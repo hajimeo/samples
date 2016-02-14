@@ -12,8 +12,9 @@ function f_ntp() {
 }
 
 function f_rc() {
-    echo "re-running rc.local ..."
-    /etc/rc.local
+    echo "Setting IP for docker0 to 172.17.42.1 ..."
+    #/etc/rc.local
+    ifconfig docker0 172.17.42.1
 }
 
 function f_docker_start() {
@@ -195,8 +196,8 @@ function f_gw_set() {
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
+    f_rc
     f_ntp
-    #f_rc
     #f_docker_run
     f_docker_start
     sleep 4
