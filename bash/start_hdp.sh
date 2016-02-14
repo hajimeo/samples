@@ -64,6 +64,10 @@ function f_etcs_mount() {
             mkdir -p /mnt/etc/node$i
         fi
 
+        if [ -d /mnt/etc/node$i/hadoop ];then
+            continue
+        fi
+
         umount /mnt/etc/node$i 2>/dev/null;
         sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,transform_symlinks node${i}${_DOMAIN_SUFFIX}:/etc /mnt/etc/node${i}
     done
