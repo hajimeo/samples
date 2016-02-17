@@ -3,6 +3,7 @@
 # function name is noun_verb
 
 _DOCKER_NETWORK_ADDR="172.17.100."
+_DOCKER_HOST_IP="172.17.42.1"
 _DOMAIN_SUFFIX=".localdomain"
 _AMBARI_HOST="node1$_DOMAIN_SUFFIX"
 
@@ -11,10 +12,14 @@ function f_ntp() {
     ntpdate -u ntp.ubuntu.com
 }
 
+function f_docker0_setup() {
+    echo "Setting IP for docker0 to $_DOCKER_HOST_IP ..."
+    ifconfig docker0 $_DOCKER_HOST_IP
+}
+
 function f_rc() {
-    echo "Setting IP for docker0 to 172.17.42.1 ..."
-    #/etc/rc.local
-    ifconfig docker0 172.17.42.1
+    echo "Re running rc.local ..."
+    /etc/rc.local
 }
 
 function f_docker_start() {
@@ -134,7 +139,7 @@ function f_screen_cmd() {
 }
 
 function f_host_setup() {
-    local _docer0="${1-172.17.42.1}"
+    local _docer0="${1-$_DOCKER_HOST_IP}"
     set -x
     apt-get update && apt-get upgrade -y
     apt-get -y install wget createrepo sshfs dnsmasq apache2 htop dstat iotop sysv-rc-conf postgresql-client mysql-client
@@ -190,26 +195,38 @@ function f_yum_remote_proxy() {
 }
 
 function f_gw_set() {
-    set -x
+    #set -x
     local _gw="`ifconfig docker0 | grep -oP 'inet addr:\d+\.\d+\.\d+\.\d' | cut -d":" -f2`"
+    echo "Setting default GW for all nodes with $_gw..."
     local _num=`docker ps -q | wc -l`
     for i in `seq 1 $_num`; do
         ssh -t node$i${_DOMAIN_SUFFIX} "route add default gw $_gw eth0"
+    done
+    #set +x
+}
+
+function f_log_cleanup() {
+    local _days="${1-7}"
+    echo "Deleting hadoop logs which is older than $_days..."
+    local _num=`docker ps -q | wc -l`
+    set -x
+    for i in `seq 1 $_num`; do
+        ssh -t node$i${_DOMAIN_SUFFIX} "\"find /var/log/ -type f -group hadoop -mtime +${_days} -print0 | xargs -0 -n1 -I {} rm -f {}\""
     done
     set +x
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
-    f_rc
+    f_docker0_setup
     f_ntp
     #f_docker_run
     f_docker_start
     sleep 4
+    f_gw_set
     f_ambari_start
     f_etcs_mount
     #f_repo_setup
-    echo "WARN: Will start all services after 10 secs..."
-    sleep 10
+    echo "WARN: Will start all services..."
     f_services_start
     f_screen_cmd
 fi
