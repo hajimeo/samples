@@ -123,6 +123,14 @@ function f_services_start() {
       echo "Some Ambari agent is in UNKNOWN state ($u). retrying..."
       sleep 5
     done
+
+    for i in `seq 1 10`; do
+      nc -z $_AMBARI_HOST 8080 && break
+
+      echo "Ambari server is not listening on $_AMBARI_HOST:8080 Waiting..."
+      sleep 5
+    done
+
     # trying anyway
     sleep 10
     curl -u admin:admin -H "X-Requested-By: ambari" "http://$_AMBARI_HOST:8080/api/v1/clusters/${c}/services?" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
