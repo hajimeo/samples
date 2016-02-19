@@ -186,7 +186,6 @@ function f_loadResp() {
     # clean up
     rm -f /tmp/f_loadResp_${_PID}.out
 
-    f_checkUpdate
     return $?
 }
 
@@ -863,7 +862,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     # Testing set -e which might cause unwanted issue
     set -e
-    f_checkUpdate
+    #f_checkUpdate
     p_interview_or_load
 
     if _isYes "$_SETUP_HDP"; then
