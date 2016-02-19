@@ -482,8 +482,7 @@ function f_checkUpdate() {
     local __doc__="Check if newer script is available, then download."
     local _local_file_path="${1-$BASH_SOURCE}"
     local _file_name=`basename ${_local_file_path}`
-    local _script_url="https://raw.githubusercontent.com/hajimeo/samples/master/bash/$_file_name"   # TODO: should I hard-code?
-    local _remote_url="${2-${g_script_url}}"
+    local _remote_url="https://raw.githubusercontent.com/hajimeo/samples/master/bash/$_file_name"   # TODO: should I hard-code?
 
     if [ ! -s "$_local_file_path" ]; then
         _warn "$FUNCNAME: could not check last modified time of $_local_file_path"
