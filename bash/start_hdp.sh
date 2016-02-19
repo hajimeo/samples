@@ -109,10 +109,7 @@ function p_interview_or_load() {
     done
     trap - SIGINT
 
-    _ask "Would you like to save your response?" "Y"
-    if _isYes; then
-        f_saveResp
-    fi
+    f_saveResp
 }
 function _cancelInterview() {
 	echo ""
@@ -151,7 +148,7 @@ function f_saveResp() {
     if [ ! -e "${_file_path}" ]; then
         touch ${_file_path}
     else
-        f_backup "${_file_path}"
+        _backup "${_file_path}"
     fi
     
     if [ ! -w "${_file_path}" ]; then
