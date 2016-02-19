@@ -117,7 +117,7 @@ function _cancelInterview() {
 	echo ""
 	echo ""
 	echo "Exiting..."
-	f_ask "Would you like to save your current responses?" "N" "is_saving_resp"
+	_ask "Would you like to save your current responses?" "N" "is_saving_resp"
 	if _isYes "$is_saving_resp"; then
 		f_saveResp
 	fi
