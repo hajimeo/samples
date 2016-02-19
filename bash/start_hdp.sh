@@ -47,7 +47,7 @@ function p_interview() {
     _ask "Network Address (xxx.xxx.xxx.) for docker containers" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Domain Suffix for docker containers" ".localdomain" "r_DOMAIN_SUFFIX" "N" "Y"
     _ask "How many nodes?" "4" "r_NUM_NODES" "N" "Y"
-    _ask "Ambari server hostname" "node1.$r_DOMAIN_SUFFIX" "r_AMBARI_HOST" "N" "Y"
+    _ask "Ambari server hostname" "node1$r_DOMAIN_SUFFIX" "r_AMBARI_HOST" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
 
     # TODO: Questions to install Ambari
@@ -90,10 +90,7 @@ function p_interview_or_load() {
 
         _info "Interview completed."
         _ask "Would you like to save your response?" "Y"
-        if _isYes; then
-            break
-        else
-            echo ""
+        if ! _isYes; then
             _ask "Would you like to re-do the interview?" "Y"
             if ! _isYes; then
                 _echo "Continuing without saving..."
@@ -873,7 +870,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     p_interview_or_load
 
     if _isYes "$_SETUP_HDP"; then
-        p_setup_hdp
+        p_host_setup
     else
         # If no option switch, start HDP services # TODO: can i start without response file?
         p_start_hdp
