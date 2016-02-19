@@ -53,12 +53,15 @@ function p_interview() {
     _ask "IP address for docker0 interface" "172.17.42.1" "r_DOCKER_HOST_IP" "N" "Y"
     _ask "Network Address (xxx.xxx.xxx.) for docker containers" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Domain Suffix for docker containers" ".localdomain" "r_DOMAIN_SUFFIX" "N" "Y"
+    _ask "Container OS type" "centos" "r_CONTAINER_OS" "N" "Y"
+    _ask "Container OS version" "6" "r_CONTAINER_OS_VER" "N" "Y"
     _ask "How many nodes?" "4" "r_NUM_NODES" "N" "Y"
-    _ask "Ambari server hostname" "node1$r_DOMAIN_SUFFIX" "r_AMBARI_HOST" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
 
     # TODO: Questions to install Ambari
-
+    _ask "Ambari server hostname" "node1$r_DOMAIN_SUFFIX" "r_AMBARI_HOST" "N" "Y"
+    _ask "Ambari server version (used to build repo URL)" "2.2.0.0" "r_AMBARI_VER" "N" "Y"
+    _ask "Ambari repo" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO" "N" "Y"
 }
 
 function p_interview_or_load() {
@@ -78,7 +81,7 @@ function p_interview_or_load() {
         _ask "Would you like to load ${_RESPONSE_FILE_PATH}?" "Y"
         if ! _isYes; then _echo "Bye."; exit 0; fi
         f_loadResp
-        _ask "Would you like to review your responses?" "N"
+        _ask "Would you like to review your responses?" "Y"
         # if don't want to review, just load and exit
         if ! _isYes; then
             return 0
@@ -229,7 +232,12 @@ function f_docker_base_create() {
         return 1
     fi
 
-    docker build -t horton/base -f $_docker_file .
+    if [ -z "$r_CONTAINER_OS" ]; then
+        _error "No container OS specified"
+        return 1
+    fi
+    docker images | grep -P "^${r_CONTAINER_OS}\s+${r_CONTAINER_OS_VER}" || docker pull ${r_CONTAINER_OS}:${r_CONTAINER_OS_VER}
+    docker build -t hdp/base -f $_docker_file .
 }
 
 function f_docker_start() {
@@ -271,16 +279,31 @@ function f_docker_run() {
     done
 }
 
+function f_ambari_server_install() {
+    local __doc__="Install Ambari Server to $r_AMBARI_HOST"
+    if [ -z "$r_AMBARI_REPO" ]; then
+        _error "Please specify Ambari repo URL"
+        return 1
+    fi
+
+    # TODO: at this moment, only Centos (yum)
+    wget -nv "$r_AMBARI_REPO" -O /tmp/ambari.repo || retuen 1
+    scp /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
+    ssh -t root@$r_AMBARI_HOST "yum install ambari-server -y"
+    ssh -t root@$r_AMBARI_HOST "ambari-server setup -s"
+    ssh -t root@$r_AMBARI_HOST "ambari-server start"
+}
+
 function f_ambari_server_start() {
     local __doc__="Starting ambari-server on $r_AMBARI_HOST"
-    ssh $r_AMBARI_HOST "ambari-server start"
+    ssh -t root@$r_AMBARI_HOST "ambari-server start"
 }
 
 function f_ambari_agent_start() {
     local __doc__="Starting ambari-agent on all containers"
     local _num=`docker ps -q | wc -l`
     for i in `seq 1 $_num`; do
-        ssh -t node$i${r_DOMAIN_SUFFIX} 'ambari-agent start'
+        ssh -t root@node$i${r_DOMAIN_SUFFIX} 'ambari-agent start'
     done
 }
 
@@ -390,8 +413,6 @@ function p_host_setup() {
     grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-trusty main" >> /etc/apt/sources.list.d/docker.list
     apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
 
-    f_docker0_setup "$_docer0"
-
     grep '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
 
     # TODO: the first IP can be wrong one
@@ -406,13 +427,15 @@ function p_host_setup() {
     f_host_performance
 
     f_dockerfile
-
+    f_docker0_setup "$_docer0"
     f_docker_base_create
 
     f_docker_run
 
     # Making directory for Apache2
     mkdir -m 777 /var/www/html/hdp
+
+    f_ambari_server_install
     set +v
 }
 
@@ -429,12 +452,30 @@ function f_dockerfile() {
     local __doc__="Download dockerfile and replace private key"
     wget https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile -O DockerFile
 
+    f_ssh_setup
+
+    local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
+
+    sed -i.bak "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" DockerFile
+}
+
+function f_ssh_setup() {
     if [ ! -e $HOME/.ssh/id_rsa ]; then
         ssh-keygen -f $HOME/.ssh/id_rsa -q -N ""
     fi
-    local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' .ssh/id_rsa`"
 
-    sed -i.bak "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" DockerFile
+    if [ ! -e $HOME/.ssh/config ]; then
+        echo "Host *
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null" > $HOME/.ssh/config
+    fi
+
+    if [ ! -e /root/.ssh/id_rsa ]; then
+        mkdir /root/.ssh &>/dev/null
+        cp $HOME/.ssh/config /root/.ssh/id_rsa
+        chmod 600 /root/.ssh/id_rsa
+        chown -R root:root /root/.ssh
+    fi
 }
 
 function f_hostname_set() {
@@ -459,9 +500,9 @@ function f_yum_remote_proxy() {
     local _proxy="$1"
     local _host="$2"
 
-    ssh $_host "grep proxy /etc/yum.conf" && return 1
-    ssh $_host "echo "proxy=${_proxy}" >> /etc/yum.conf"
-    ssh $_host "grep proxy /etc/yum.conf"
+    ssh -t root@$_host "grep proxy /etc/yum.conf" && return 1
+    ssh -t root@$_host "echo "proxy=${_proxy}" >> /etc/yum.conf"
+    ssh -t root@$_host "grep proxy /etc/yum.conf"
 }
 
 function f_gw_set() {
@@ -470,7 +511,7 @@ function f_gw_set() {
     local _num=`docker ps -q | wc -l`
     set -v
     for i in `seq 1 $_num`; do
-        ssh -t node$i${r_DOMAIN_SUFFIX} "route add default gw $_gw eth0"
+        ssh -t root@node$i${r_DOMAIN_SUFFIX} "route add default gw $_gw eth0"
     done
     set +v
 }
@@ -489,7 +530,7 @@ function f_log_cleanup() {
     local _num=`docker ps -q | wc -l`
     #set -x
     for i in `seq 1 $_num`; do
-        ssh -t node$i${r_DOMAIN_SUFFIX} "\"find /var/log/ -type f -group hadoop -mtime +${_days} -print0 | xargs -0 -n1 -I {} rm -f {}\""
+        ssh -t root@node$i${r_DOMAIN_SUFFIX} "\"find /var/log/ -type f -group hadoop -mtime +${_days} -print0 | xargs -0 -n1 -I {} rm -f {}\""
     done
     #set +x
 }
