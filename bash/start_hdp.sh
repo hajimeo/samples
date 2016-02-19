@@ -49,6 +49,9 @@ function p_interview() {
     _ask "How many nodes?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Ambari server hostname" "node1.$r_DOMAIN_SUFFIX" "r_AMBARI_HOST" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
+
+    # TODO: Questions to install Ambari
+
 }
 
 function p_interview_or_load() {
@@ -703,6 +706,10 @@ function _isYes() {
     fi
     
     return 1
+}
+function _trim() {
+	local _string="$1"
+	echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
 }
 function _isCmd() {
     local _cmd="$1"
