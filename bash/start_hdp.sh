@@ -103,6 +103,8 @@ function p_interview_or_load() {
                 _echo "Continuing without saving..."
                 break
             fi
+        else
+            break
         fi
     done
     trap - SIGINT
@@ -111,6 +113,16 @@ function p_interview_or_load() {
     if _isYes; then
         f_saveResp
     fi
+}
+function _cancelInterview() {
+	echo ""
+	echo ""
+	echo "Exiting..."
+	f_ask "Would you like to save your current responses?" "N" "is_saving_resp"
+	if _isYes "$is_saving_resp"; then
+		f_saveResp
+	fi
+	_exit
 }
 
 function p_start_hdp() {
