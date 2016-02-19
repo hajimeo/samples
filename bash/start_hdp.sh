@@ -884,6 +884,11 @@ help() {
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
+    if [ -z "$SUDO_USER" ]; then
+        _ask "No sudo. Are you sure?" "N"
+        if ! _isYes; then echo "Bye"; exit; fi
+    fi
+
     _IS_SCRIPT_RUNNING="Y"
 
     # parsing command options
