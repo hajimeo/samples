@@ -1,15 +1,16 @@
 #!/bin/bash
-# This script setup docker, then create a container(s), and install ambari-server
+# This script setups docker, then create a container(s), and install ambari-server
 #
 # Steps:
 # 1. Install OS. Recommend Ubuntu 14.x
-# 2. sudo -i    (only root works)
-# 3. screen
+# 2. sudo -i    (TODO: only root works at this moment)
+# 3. (optional) screen
 # 4. wget https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_hdp.sh  -O ./start_hdp.sh
 # 5. chmod u+x ./start_hdp.sh
 # 6. ./start_hdp.sh -i
 # 7. answer questions
 #
+# Once setup, just run ./start_hdp.sh to start service if server is rebooted
 #
 # Rules:
 # 1. Function name needs to start with f_ or p_
@@ -35,6 +36,9 @@ How to run:
 How to run only one function:
     1) source ./${g_SCRIPT_NAME}
     2) for example to output help, type 'help'
+    3) f_loadResp
+    4) list response
+    5) f_ambari_server_install
 
 Available options:
     -i    Initial set up this host for HDP
