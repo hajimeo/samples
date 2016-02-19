@@ -884,13 +884,6 @@ help() {
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
-    if [ -z "$SUDO_USER" ]; then
-        _ask "No sudo. Are you sure?" "N"
-        if ! _isYes; then echo "Bye"; exit; fi
-    fi
-
-    _IS_SCRIPT_RUNNING="Y"
-
     # parsing command options
     while getopts "r:ish" opts; do
         case $opts in
@@ -908,6 +901,13 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 exit 0
         esac
     done
+
+    if [ -z "$SUDO_USER" ]; then
+        _ask "No sudo. Are you sure?" "N"
+        if ! _isYes; then echo "Bye"; exit; fi
+    fi
+
+    _IS_SCRIPT_RUNNING="Y"
 
     # Testing set -e which might cause unwanted issue
     set -e
