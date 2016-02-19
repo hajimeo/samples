@@ -46,8 +46,9 @@ function p_interview() {
     _ask "IP address for docker0 interface" "172.17.42.1" "r_DOCKER_HOST_IP" "N" "Y"
     _ask "Network Address (xxx.xxx.xxx.) for docker containers" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Domain Suffix for docker containers" ".localdomain" "r_DOMAIN_SUFFIX" "N" "Y"
+    _ask "How many nodes?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Ambari server hostname" "node1.$r_DOMAIN_SUFFIX" "r_AMBARI_HOST" "N" "Y"
-    _ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
+    #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
 }
 
 function p_interview_or_load() {
@@ -108,7 +109,6 @@ function p_interview_or_load() {
 function p_start_hdp() {
     f_docker0_setup
     f_ntp
-    #f_docker_run
     f_docker_start
     sleep 4
     _info "Not setting up the default GW. please use f_gw_set if necessary"
@@ -203,6 +203,20 @@ function f_docker0_setup() {
     ifconfig docker0 $_docer0
 }
 
+function f_docker_base_create() {
+    local __doc__="Create a docker base image"
+    local _docker_file="$1"
+    if [ -z "$_docker_file" ]; then
+        _docker_file="./DockerFile"
+    fi
+    if [ -r "$_docker_file" ]; then
+        _error "$_docker_file is not readable"
+        return 1
+    fi
+
+    docker build -t horton/base -f $_docker_file .
+}
+
 function f_docker_start() {
     local __doc__="Starting docker containers"
     local num=`docker ps -aq | wc -l`
@@ -216,24 +230,30 @@ function f_docker_start() {
 }
 
 function f_docker_run() {
-    local __doc__="Running docker containers"
-    local num=`docker ps -aq | wc -l`
-    local _num=`docker ps -q | wc -l`
-    if [ $_num -ne 0 ]; then
-      _info "$_num containers are already running...";
-    else
-      _info "running $num docker contains ..."
-      local _ip="`f_docker_ip`"
+    local __doc__="Running (creating) docker containers"
+    local _num="${1-$r_NUM_NODES}"
+    local _num_running=`docker ps -q | wc -l`
 
-      if [ -z "$_ip" ]; then
+    if [ $_num_running -ne 0 ]; then
+      _error "$_num_running containers are already running...";
+      return 1
+    fi
+
+    if [ -z "$_num" ]; then
+        _warn "Number of nodes (containers) is not specified."
+        return 1
+    fi
+
+    local _ip="`f_docker_ip`"
+
+    if [ -z "$_ip" ]; then
         _warn "No Docker interface IP"
         return 1
-      fi
-
-      for n in `seq 1 $num`; do
-        docker run -t -i -d --dns $_ip --name node$n --privileged horton/base /startup.sh ${r_DOCKER_NETWORK_ADDR}$n node$n${r_DOMAIN_SUFFIX} $_ip
-      done
     fi
+
+    for n in `seq 1 $_num`; do
+        docker run -t -i -d --dns $_ip --name node$n --privileged horton/base /startup.sh ${r_DOCKER_NETWORK_ADDR}$n node$n${r_DOMAIN_SUFFIX} $_ip
+    done
 }
 
 function f_ambari_server_start() {
@@ -275,7 +295,7 @@ function f_etcs_mount() {
 function f_repo_setup() {
     local __doc__="TODO: This would work on only my environment. Mounting VM host's directory to use for local repo"
     local _host_pc="$1"
-    local _mu="${2-$r_VMHOST_USERNAME}"
+    local _mu="$2"
     local _src="${3-/Users/${_mu}/Public/hdp/}"
     local _mounting_dir="/var/www/html/hdp"
 
@@ -343,7 +363,7 @@ function f_screen_cmd() {
     fi
 }
 
-function f_host_setup() {
+function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
     local _docer0="${1-$r_DOCKER_HOST_IP}"
     set -v
@@ -368,9 +388,38 @@ function f_host_setup() {
     done
     service dnsmasq restart
 
+    f_host_performance
+
+    f_dockerfile
+
+    f_docker_base_create
+
+    f_docker_run
+
     # Making directory for Apache2
     mkdir -m 777 /var/www/html/hdp
     set +v
+}
+
+function f_host_performance() {
+    local __doc__="Change kernel parameters on Docker Host (Ubuntu)"
+    grep '^vm.swappiness' /etc/sysctl.conf || echo "vm.swappiness = 0" >> /etc/sysctl.conf
+    sysctl -w vm.swappiness=0
+
+    echo never > /sys/kernel/mm/transparent_hugepage/enabled
+    echo never > /sys/kernel/mm/transparent_hugepage/defrag
+}
+
+function f_dockerfile() {
+    local __doc__="Download dockerfile and replace private key"
+    wget https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile -O DockerFile
+
+    if [ ! -e $HOME/.ssh/id_rsa ]; then
+        ssh-keygen -f $HOME/.ssh/id_rsa -q -N ""
+    fi
+    local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' .ssh/id_rsa`"
+
+    sed -i.bak "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" DockerFile
 }
 
 function f_hostname_set() {
