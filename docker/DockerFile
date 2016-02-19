@@ -8,8 +8,8 @@ RUN yum -y install yum-utils sudo openssh-server openssh-clients which vim lsof 
 
 #RUN ssh-keygen -q -t rsa -N ''
 RUN mkdir -m 600 /root/.ssh
-#TODO: THIS IS A BAD IDEA
-RUN echo -e '-----BEGIN RSA PRIVATE KEY-----\nPASTE YOUR PRIVATE KEY IN HERE-----END RSA PRIVATE KEY-----\n' > /root/.ssh/id_rsa
+#TODO: shouldn't hardcode the private key
+RUN echo -e '_REPLACE_WITH_YOUR_PRIVATE_KEY_' > /root/.ssh/id_rsa
 RUN chmod 400 /root/.ssh/id_rsa
 RUN ssh-keygen -y -f /root/.ssh/id_rsa > /root/.ssh/id_rsa.pub
 RUN cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
