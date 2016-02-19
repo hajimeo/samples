@@ -1,9 +1,22 @@
 #!/bin/bash
+# This script setup docker, then create a container(s), and install ambari-server
+#
+# Steps:
+# 1. Install OS. Recommend Ubuntu 14.x
+# 2. sudo -i    (only root works)
+# 3. screen
+# 4. wget https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_hdp.sh  -O ./start_hdp.sh
+# 5. chmod u+x ./start_hdp.sh
+# 6. ./start_hdp.sh -i
+# 7. answer questions
+#
+#
 # Rules:
 # 1. Function name needs to start with f_ or p_
 # 2. Function arguments need to use local and start with _
 # 3. Variable name which stores user response needs to start with r_
 # 4. (optional) __doc__ local variable is for function usage/help
+#
 
 ### OS/shell settings
 shopt -s nocasematch
@@ -40,6 +53,7 @@ g_SCRIPT_NAME=`basename $BASH_SOURCE`
 g_SCRIPT_BASE=`basename $BASH_SOURCE .sh`
 g_DEFAULT_RESPONSE_FILEPATH="./${g_SCRIPT_BASE}.resp"
 g_BACKUP_DIR="$HOME/.build_script/"
+g_DOCKER_BASE="hdp/base"
 __PID="$$"
 __LAST_ANSWER=""
 
@@ -60,6 +74,7 @@ function p_interview() {
     # TODO: Questions to install Ambari
     _ask "Ambari server hostname" "node1$r_DOMAIN_SUFFIX" "r_AMBARI_HOST" "N" "Y"
     _ask "Ambari server version (used to build repo URL)" "2.2.0.0" "r_AMBARI_VER" "N" "Y"
+    _echo "If you have set up a Local Repo, please change below"
     _ask "Ambari repo" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO" "N" "Y"
 }
 
@@ -236,7 +251,7 @@ function f_docker_base_create() {
         return 1
     fi
     docker images | grep -P "^${r_CONTAINER_OS}\s+${r_CONTAINER_OS_VER}" || docker pull ${r_CONTAINER_OS}:${r_CONTAINER_OS_VER}
-    docker build -t hdp/base -f $_docker_file .
+    docker build -t ${g_DOCKER_BASE} -f $_docker_file .
 }
 
 function f_docker_start() {
@@ -274,7 +289,7 @@ function f_docker_run() {
     fi
 
     for n in `seq 1 $_num`; do
-        docker run -t -i -d --dns $_ip --name node$n --privileged horton/base /startup.sh ${r_DOCKER_NETWORK_ADDR}$n node$n${r_DOMAIN_SUFFIX} $_ip
+        docker run -t -i -d --dns $_ip --name node$n --privileged ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$n node$n${r_DOMAIN_SUFFIX} $_ip
     done
 }
 
@@ -456,6 +471,9 @@ function f_dockerfile() {
     local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
 
     sed -i.bak "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" DockerFile
+    if [ -n "$r_CONTAINER_OS" ]; then
+        sed -i.bak "s@centos:6@${r_CONTAINER_OS}:$r_CONTAINER_OS_VER}@1" DockerFile
+    fi
 }
 
 function f_ssh_setup() {
