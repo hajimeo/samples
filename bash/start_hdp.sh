@@ -17,12 +17,11 @@ usage() {
     echo "This script is for setting up this host for HDP or start HDP services.
 
 How to run:
-    [sudo] ./${g_SCRIPT_NAME} [-s] [-r=some_file_name.resp]
+    ./${g_SCRIPT_NAME} [-s] [-r=some_file_name.resp]
 
 How to run only one function:
-    1) sudo -s
-    2) source ./${g_SCRIPT_NAME}
-    3) for example to output help, type 'help'
+    1) source ./${g_SCRIPT_NAME}
+    2) for example to output help, type 'help'
 
 Available options:
     -i    Initial set up this host for HDP
@@ -902,9 +901,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         esac
     done
 
-    if [ -z "$SUDO_USER" ]; then
-        _ask "No sudo. Are you sure?" "N"
-        if ! _isYes; then echo "Bye"; exit; fi
+    if [ "$USER" != "root" ]; then
+        echo "Sorry, at this moment, only 'root' user is supported"
+        exit
     fi
 
     _IS_SCRIPT_RUNNING="Y"
@@ -915,6 +914,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     p_interview_or_load
 
     if _isYes "$_SETUP_HDP"; then
+        _ask "Would you like to start setup this host?" "Y"
+        if ! _isYes; then echo "Bye"; exit; fi
+
         p_host_setup
     else
         # If no option switch, start HDP services # TODO: can i start without response file?
