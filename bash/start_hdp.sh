@@ -226,7 +226,7 @@ function f_docker_base_create() {
     if [ -z "$_docker_file" ]; then
         _docker_file="./DockerFile"
     fi
-    if [ -r "$_docker_file" ]; then
+    if [ ! -r "$_docker_file" ]; then
         _error "$_docker_file is not readable"
         return 1
     fi
