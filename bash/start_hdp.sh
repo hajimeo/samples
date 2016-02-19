@@ -5,16 +5,23 @@
 # 3. Variable name which stores user response needs to start with r_
 # 4. (optional) __doc__ local variable is for function usage/help
 
+### OS/shell settings
+shopt -s nocasematch
+#shopt -s nocaseglob
+set -o posix
+#umask 0000
+
+
 usage() {
     echo "HELP/USAGE:"
     echo "This script is for setting up this host for HDP or start HDP services.
 
 How to run:
-    [sudo] ./${_SCRIPT_NAME} [-s] [-r=some_file_name.resp]
+    [sudo] ./${g_SCRIPT_NAME} [-s] [-r=some_file_name.resp]
 
 How to run only one function:
     1) sudo -s
-    2) source ./${_SCRIPT_NAME}
+    2) source ./${g_SCRIPT_NAME}
     3) for example to output help, type 'help'
 
 Available options:
@@ -30,12 +37,12 @@ Available options:
 }
 
 # Global variables
-_SCRIPT_NAME=`basename $BASH_SOURCE`
-_SCRIPT_BASE=`basename $BASH_SOURCE .sh`
-_DEFAULT_RESPONSE_FILEPATH="./${_SCRIPT_BASE}.resp"
-_BACKUP_DIR="$HOME/.build_script/"
-_PID="$$"
-
+g_SCRIPT_NAME=`basename $BASH_SOURCE`
+g_SCRIPT_BASE=`basename $BASH_SOURCE .sh`
+g_DEFAULT_RESPONSE_FILEPATH="./${g_SCRIPT_BASE}.resp"
+g_BACKUP_DIR="$HOME/.build_script/"
+__PID="$$"
+__LAST_ANSWER=""
 
 ### Procedure type functions
 
@@ -58,8 +65,8 @@ function p_interview_or_load() {
     local __doc__="Asks user to start interview, review interview, or start installing with given response file."
 
     if [ -z "${_RESPONSE_FILE_PATH}" ]; then
-        _info "Set up was requested but no response file, so that using ${_DEFAULT_RESPONSE_FILEPATH}..."
-        _RESPONSE_FILE_PATH="$_DEFAULT_RESPONSE_FILEPATH"
+        _info "Set up was requested but no response file, so that using ${g_DEFAULT_RESPONSE_FILEPATH}..."
+        _RESPONSE_FILE_PATH="$g_DEFAULT_RESPONSE_FILEPATH"
     fi
 
     if [ -r "${_RESPONSE_FILE_PATH}" ]; then
@@ -125,7 +132,7 @@ function f_saveResp() {
     local _file_path="${1-$_RESPONSE_FILE_PATH}"
     
     if [ -z "$_file_path" ]; then
-        _ask "Response file path" "$_DEFAULT_RESPONSE_FILEPATH" "_RESPONSE_FILE_PATH"
+        _ask "Response file path" "$g_DEFAULT_RESPONSE_FILEPATH" "_RESPONSE_FILE_PATH"
         _file_path="$_RESPONSE_FILE_PATH"
     fi
 
@@ -158,10 +165,10 @@ function f_saveResp() {
 
 function f_loadResp() {
     local __doc__="Load responses(answers) from given file path or from default location."
-    local _file_path="${1-$_DEFAULT_RESPONSE_FILEPATH}"
+    local _file_path="${1-$g_DEFAULT_RESPONSE_FILEPATH}"
     
     if [ -z "$_file_path" ]; then
-        _file_path="$_DEFAULT_RESPONSE_FILEPATH";
+        _file_path="$g_DEFAULT_RESPONSE_FILEPATH";
     fi
     
     local _actual_file_path="$_file_path"
@@ -181,10 +188,10 @@ function f_loadResp() {
     #fi
     
     # Note: somehow "source <(...)" does noe work, so that created tmp file.
-    grep -P -o '^r_.+[^\s]=\".*?\"' ${_file_path} > /tmp/f_loadResp_${_PID}.out && source /tmp/f_loadResp_${_PID}.out
+    grep -P -o '^r_.+[^\s]=\".*?\"' ${_file_path} > /tmp/f_loadResp_${__PID}.out && source /tmp/f_loadResp_${__PID}.out
     
     # clean up
-    rm -f /tmp/f_loadResp_${_PID}.out
+    rm -f /tmp/f_loadResp_${__PID}.out
 
     return $?
 }
@@ -562,23 +569,6 @@ function _ask() {
     fi
 
     if [ -n "${_default}" ]; then
-        if _isYes "$_FORCE_DEFAULT" ; then
-            if [ "${_var_name}" = "__LAST_ANSWER" ]; then
-                __LAST_ANSWER="${_default}"
-            elif [[ "${_var_name}" =~ ^r_ ]]; then
-                eval "${_var_name}=\"${_default}\"" || _critical "$FUNCNAME: invalid variable name '${_var_name}' or default value '${_default}'."
-
-                # display result (and logging)
-                if _isYes "$_is_secret" ; then
-                    echo "    $_question = \"*******\""
-                else
-                    echo "    $_question = \"${!_var_name}\""
-                fi
-            fi
-
-            return 0
-        fi
-
         if _isYes "$_is_secret" ; then
             _full_question="${_question} [*******]"
         else
@@ -642,7 +632,7 @@ function _ask() {
     fi
 }
 function _backup() {
-    local __doc__="Backup the given file path into ${_BACKUP_DIR}."
+    local __doc__="Backup the given file path into ${g_BACKUP_DIR}."
     local _file_path="$1"
     local _file_name="`basename $_file_path`"
     local _force="$2"
@@ -679,10 +669,10 @@ function _backup() {
     cp -p ${_file_path} ${g_backup_dir}${_new_file_name} || _critical "$FUNCNAME: failed to backup ${_file_path}"
 }
 function _makeBackupDir() {
-    if [ ! -d "${_BACKUP_DIR}" ]; then
-        mkdir -p -m 700 "${_BACKUP_DIR}"
+    if [ ! -d "${g_BACKUP_DIR}" ]; then
+        mkdir -p -m 700 "${g_BACKUP_DIR}"
         if [ -n "$SUDO_USER" ]; then
-            chown $SUDO_UID:$SUDO_GID ${_BACKUP_DIR}
+            chown $SUDO_UID:$SUDO_GID ${g_BACKUP_DIR}
         fi
     fi
 }
@@ -789,7 +779,7 @@ list() {
     elif [[ "$_name" =~ ^func ]]; then
         typeset -F | grep '^declare -f [fp]_' | cut -d' ' -f3
     elif [[ "$_name" =~ ^glob ]]; then
-        set | grep ^_
+        set | grep ^[g]_
     elif [[ "$_name" =~ ^resp ]]; then
         set | grep ^[r]_
     fi
