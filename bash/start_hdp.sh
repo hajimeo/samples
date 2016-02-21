@@ -547,6 +547,7 @@ function p_host_setup() {
         f_local_repo
     fi
     set +v
+    f_screen_cmd
 }
 
 function f_dnsmasq() {
@@ -708,7 +709,7 @@ function f_checkUpdate() {
 
         _backup "${_local_file_path}"
 
-        curl -k -L '$_remote_url' -o ${_local_file_path} || _critical "$FUNCNAME: Update failed."
+        curl -k -L "$_remote_url" -o ${_local_file_path} || _critical "$FUNCNAME: Update failed."
 
         _info "Validating the downloaded script..."
         source ${_local_file_path} || _critical "Please contact the script author."
