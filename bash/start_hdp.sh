@@ -415,7 +415,7 @@ function f_local_repo() {
     local _util_tar_gz_file="`basename "$r_HDP_REPO_UTIL_TARGZ"`"
     local _util_has_extracted=""
     # TODO: not accurate
-    local _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?//${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
+    local _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
 
     if _isNotEmptyDir "$_hdp_util_dir"; then
         if ! _isYes "$_force_extract"; then
