@@ -101,12 +101,12 @@ function p_interview_or_load() {
     local __doc__="Asks user to start interview, review interview, or start installing with given response file."
 
     if [ -z "${_RESPONSE_FILEPATH}" ]; then
-        _info "Set up was requested but no response file, so that using ${g_DEFAULT_RESPONSE_FILEPATH}..."
+        _info "No response file specified, so that using ${g_DEFAULT_RESPONSE_FILEPATH}..."
         _RESPONSE_FILEPATH="$g_DEFAULT_RESPONSE_FILEPATH"
     fi
 
     if [ -r "${_RESPONSE_FILEPATH}" ]; then
-        if [ _isYes "$_START_HDP" ]; then
+        if _isYes "$_START_HDP"; then
             f_loadResp
             return $?
         fi
