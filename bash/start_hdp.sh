@@ -323,21 +323,19 @@ function f_ambari_server_install() {
     # TODO: at this moment, only Centos (yum)
     wget -nv "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo || retuen 1
     scp /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
-    ssh -t root@$r_AMBARI_HOST "yum install ambari-server -y"
-    ssh -t root@$r_AMBARI_HOST "ambari-server setup -s"
-    ssh -t root@$r_AMBARI_HOST "ambari-server start"
+    ssh root@$r_AMBARI_HOST "yum install ambari-server -y && ambari-server setup -s && sleep 5; ambari-server start"
 }
 
 function f_ambari_server_start() {
     local __doc__="Starting ambari-server on $r_AMBARI_HOST"
-    ssh -t root@$r_AMBARI_HOST "ambari-server start"
+    ssh root@$r_AMBARI_HOST "ambari-server start"
 }
 
 function f_ambari_agent_start() {
     local __doc__="Starting ambari-agent on all containers"
     local _num=`docker ps -q | wc -l`
     for i in `seq 1 $_num`; do
-        ssh -t root@node$i${r_DOMAIN_SUFFIX} 'ambari-agent start'
+        ssh root@node$i${r_DOMAIN_SUFFIX} 'ambari-agent start'
     done
 }
 
@@ -394,38 +392,38 @@ function f_local_repo() {
 
     local _tar_gz_file="`basename "$r_HDP_REPO_TARGZ"`"
     local _has_extracted=""
-    local _util_tar_gz_file="`basename "$r_HDP_REPO_UTIL_TARGZ"`"
-    local _util_has_extracted=""
-
     local _hdp_dir="`find $_local_dir -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
 
     if _isNotEmptyDir "$_hdp_dir"; then
         _has_extracted="Y"
         _info "$_hdp_dir already exists and not empty. Skipping download."
-    elif [ -e "$_util_tar_gz_file" ]; then
-        _info "$_util_tar_gz_file already exists. Skipping download."
+    elif [ -e "$_tar_gz_file" ]; then
+        _info "$_tar_gz_file already exists. Skipping download."
     else
-        wget -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_UTIL_TARGZ"
+        wget -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_TARGZ"
     fi
 
+    if ! _isYes "$_has_extracted"; then
+        tar xzvf "$_tar_gz_file"
+        _hdp_dir="`find $_local_dir -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
+        createrepo "$_hdp_dir"
+    fi
+
+    local _util_tar_gz_file="`basename "$r_HDP_REPO_UTIL_TARGZ"`"
+    local _util_has_extracted=""
     # TODO: not accurate
     local _hdp_util_dir="`find $_local_dir -type d | grep -m1 -E "/HDP-UTILS-.+?//${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
 
     if _isNotEmptyDir "$_hdp_util_dir"; then
         _util_has_extracted="Y"
         _info "$_hdp_util_dir already exists and not empty. Skipping download."
-    elif [ -e "$_tar_gz_file" ]; then
-        _info "$_tar_gz_file already exists. Skipping download."
+    elif [ -e "$_util_tar_gz_file" ]; then
+        _info "$_util_tar_gz_file already exists. Skipping download."
     else
-        wget -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_TARGZ" || return 2
+        wget -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_UTIL_TARGZ" || return 2
     fi
 
-    if _isYes "$_has_extracted"; then
-        tar xzvf "$_tar_gz_file"
-        _hdp_dir="`find $_local_dir -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
-        createrepo "$_hdp_dir"
-    fi
-    if _isYes "$_util_has_extracted"; then
+    if ! _isYes "$_util_has_extracted"; then
         tar xzvf "$_util_tar_gz_file"
         _hdp_util_dir="`find $_local_dir -type d | grep -m1 -E "/HDP-UTILS-.+?//${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
         createrepo "_hdp_util_dir"
@@ -635,9 +633,9 @@ function f_yum_remote_proxy() {
     local _proxy="$1"
     local _host="$2"
 
-    ssh -t root@$_host "grep proxy /etc/yum.conf" && return 1
-    ssh -t root@$_host "echo "proxy=${_proxy}" >> /etc/yum.conf"
-    ssh -t root@$_host "grep proxy /etc/yum.conf"
+    ssh root@$_host "grep proxy /etc/yum.conf" && return 1
+    ssh root@$_host "echo "proxy=${_proxy}" >> /etc/yum.conf"
+    ssh root@$_host "grep proxy /etc/yum.conf"
 }
 
 function f_gw_set() {
@@ -646,7 +644,7 @@ function f_gw_set() {
     local _num=`docker ps -q | wc -l`
     set -v
     for i in `seq 1 $_num`; do
-        ssh -t root@node$i${r_DOMAIN_SUFFIX} "route add default gw $_gw eth0"
+        ssh root@node$i${r_DOMAIN_SUFFIX} "route add default gw $_gw eth0"
     done
     set +v
 }
@@ -665,7 +663,7 @@ function f_log_cleanup() {
     local _num=`docker ps -q | wc -l`
     #set -x
     for i in `seq 1 $_num`; do
-        ssh -t root@node$i${r_DOMAIN_SUFFIX} "\"find /var/log/ -type f -group hadoop -mtime +${_days} -print0 | xargs -0 -n1 -I {} rm -f {}\""
+        ssh root@node$i${r_DOMAIN_SUFFIX} "\"find /var/log/ -type f -group hadoop -mtime +${_days} -print0 | xargs -0 -n1 -I {} rm -f {}\""
     done
     #set +x
 }
