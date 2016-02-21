@@ -365,7 +365,7 @@ function f_etcs_mount() {
 function f_local_repo() {
     local __doc__="Setup local repo on Docker host (Ubuntu)"
     local _local_dir="$1"
-    local _force_extract="N"
+    local _force_extract=""
 
     apt-get install -y apache2 createrepo
 
@@ -430,7 +430,7 @@ function f_local_repo() {
 
     if ! _isYes "$_util_has_extracted"; then
         tar xzvf "$_util_tar_gz_file"
-        _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?//${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
+        _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
         createrepo "_hdp_util_dir"
     fi
 
@@ -444,7 +444,7 @@ function f_local_repo() {
         echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${_repo_path}"
     fi
 
-    cd -
+    cd - &>/dev/null
 }
 
 function f_repo_mount() {
