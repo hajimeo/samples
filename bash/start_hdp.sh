@@ -420,7 +420,7 @@ function f_local_repo() {
     elif [ -e "$_util_tar_gz_file" ]; then
         _info "$_util_tar_gz_file already exists. Skipping download."
     else
-        wget -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_UTIL_TARGZ" || return 2
+        wget -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_UTIL_TARGZ"
     fi
 
     if ! _isYes "$_util_has_extracted"; then
@@ -435,6 +435,8 @@ function f_local_repo() {
     if [ -n "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
         echo "### Local Repo URL: http://$r_DOCKER_PRIVATE_HOSTNAME/"
     fi
+
+    cd -
 }
 
 function f_repo_mount() {
