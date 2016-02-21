@@ -18,6 +18,8 @@
 # 3. Variable name which stores user response needs to start with r_
 # 4. (optional) __doc__ local variable is for function usage/help
 #
+# TODO: tcpdump (not tested), localrepo
+#
 
 ### OS/shell settings
 shopt -s nocasematch
@@ -65,6 +67,7 @@ __LAST_ANSWER=""
 
 function p_interview() {
     local __doc__="Asks user questions."
+    _ask "Run apt-get upgrade before setting up?" "N" "r_APTGET_UPGRADE" "N"
     _ask "NTP Server" "ntp.ubuntu.com" "r_NTP_SERVER" "N" "Y"
     # TODO: Changing this IP later is troublesome, so need to be careful
     _ask "IP address for docker0 interface" "172.17.42.1" "r_DOCKER_HOST_IP" "N" "Y"
@@ -73,6 +76,7 @@ function p_interview() {
     _ask "Container OS type" "centos" "r_CONTAINER_OS" "N" "Y"
     _ask "Container OS version" "6" "r_CONTAINER_OS_VER" "N" "Y"
     _ask "How many nodes?" "4" "r_NUM_NODES" "N" "Y"
+    _ask "Hostname for docker host in docker private network?" "dockerhost1" "r_DOCKER_PRIVATE_HOSTNAME" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
 
     # TODO: Questions to install Ambari
@@ -85,18 +89,18 @@ function p_interview() {
 function p_interview_or_load() {
     local __doc__="Asks user to start interview, review interview, or start installing with given response file."
 
-    if [ -z "${_RESPONSE_FILE_PATH}" ]; then
+    if [ -z "${_RESPONSE_FILEPATH}" ]; then
         _info "Set up was requested but no response file, so that using ${g_DEFAULT_RESPONSE_FILEPATH}..."
-        _RESPONSE_FILE_PATH="$g_DEFAULT_RESPONSE_FILEPATH"
+        _RESPONSE_FILEPATH="$g_DEFAULT_RESPONSE_FILEPATH"
     fi
 
-    if [ -r "${_RESPONSE_FILE_PATH}" ]; then
+    if [ -r "${_RESPONSE_FILEPATH}" ]; then
         if [ _isYes "$_START_HDP" ]; then
             f_loadResp
             return $?
         fi
 
-        _ask "Would you like to load ${_RESPONSE_FILE_PATH}?" "Y"
+        _ask "Would you like to load ${_RESPONSE_FILEPATH}?" "Y"
         if ! _isYes; then _echo "Bye."; exit 0; fi
         f_loadResp
         _ask "Would you like to review your responses?" "Y"
@@ -105,7 +109,7 @@ function p_interview_or_load() {
             return 0
         fi
     else
-        _info "responses will be saved into ${_RESPONSE_FILE_PATH}"
+        _info "responses will be saved into ${_RESPONSE_FILEPATH}"
     fi
 
     _info "Starting Interview mode..."
@@ -144,6 +148,7 @@ function _cancelInterview() {
 }
 
 function p_start_hdp() {
+    f_loadResp
     f_docker0_setup
     f_ntp
     f_docker_start
@@ -159,11 +164,11 @@ function p_start_hdp() {
 
 function f_saveResp() {
     local __doc__="Save current responses(answers) in memory into a file."
-    local _file_path="${1-$_RESPONSE_FILE_PATH}"
+    local _file_path="${1-$_RESPONSE_FILEPATH}"
     
     if [ -z "$_file_path" ]; then
-        _ask "Response file path" "$g_DEFAULT_RESPONSE_FILEPATH" "_RESPONSE_FILE_PATH"
-        _file_path="$_RESPONSE_FILE_PATH"
+        _ask "Response file path" "$g_DEFAULT_RESPONSE_FILEPATH" "_RESPONSE_FILEPATH"
+        _file_path="$_RESPONSE_FILEPATH"
     fi
 
     if [ ! -e "${_file_path}" ]; then
@@ -195,7 +200,7 @@ function f_saveResp() {
 
 function f_loadResp() {
     local __doc__="Load responses(answers) from given file path or from default location."
-    local _file_path="${1-$g_DEFAULT_RESPONSE_FILEPATH}"
+    local _file_path="${1-$_RESPONSE_FILEPATH}"
     
     if [ -z "$_file_path" ]; then
         _file_path="$g_DEFAULT_RESPONSE_FILEPATH";
@@ -422,25 +427,21 @@ function f_screen_cmd() {
 function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
     local _docer0="${1-$r_DOCKER_HOST_IP}"
+
     set -v
     apt-get update && apt-get upgrade -y
-    apt-get -y install wget createrepo sshfs dnsmasq apache2 htop dstat iotop sysv-rc-conf postgresql-client mysql-client
+    apt-get -y install wget createrepo sshfs apache2 htop dstat iotop sysv-rc-conf postgresql-client mysql-client tcpdump
     #krb5-kdc krb5-admin-server mailutils postfix
     
     apt-key adv --keyserver hkp://pgp.mit.edu:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
     grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-trusty main" >> /etc/apt/sources.list.d/docker.list
     apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
 
-    grep '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
+    # To use tcpdump from container
+    ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
+    apparmor_parser -R /etc/apparmor.d/usr.sbin.tcpdump
 
-    # TODO: the first IP can be wrong one
-    _docer0="`f_docker_ip`"
-    # TODO: shouldn't hardcode 'dockerhost1'?
-    echo "$_docer0     dockerhost1${r_DOMAIN_SUFFIX} dockerhost1" > /etc/banner_add_hosts
-    for i in `seq 1 10`; do
-        echo "${r_DOCKER_NETWORK_ADDR}${i}    node${i}${r_DOMAIN_SUFFIX} node${i}" >> /etc/banner_add_hosts
-    done
-    service dnsmasq restart
+    f_dnsmasq
 
     f_host_performance
 
@@ -455,6 +456,27 @@ function p_host_setup() {
 
     f_ambari_server_install
     set +v
+}
+
+function f_dnsmasq() {
+    local __doc__="Install and set up dnsmasq"
+    apt-get -y install dnsmasq
+
+    grep '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
+
+    # TODO: the first IP can be wrong one
+    _docer0="`f_docker_ip`"
+
+    if [ -z "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
+        _warn="Hostname for docker host in the private network is empty. using dockerhost1"
+        r_DOCKER_PRIVATE_HOSTNAME="dockerhost1"
+    fi
+
+    echo "$_docer0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /etc/banner_add_hosts
+    for i in `seq 1 10`; do
+        echo "${r_DOCKER_NETWORK_ADDR}${i}    node${i}${r_DOMAIN_SUFFIX} node${i}" >> /etc/banner_add_hosts
+    done
+    service dnsmasq restart
 }
 
 function f_host_performance() {
@@ -559,10 +581,10 @@ function f_checkUpdate() {
     local __doc__="Check if newer script is available, then download."
     local _local_file_path="${1-$BASH_SOURCE}"
     local _file_name=`basename ${_local_file_path}`
-    local _remote_url="https://raw.githubusercontent.com/hajimeo/samples/master/bash/$_file_name"   # TODO: should I hard-code?
+    local _remote_url="https://raw.githubusercontent.com/hajimeo/samples/master/bash/$_file_name"   # TODO: shouldn't I hard-code?
 
     if [ ! -s "$_local_file_path" ]; then
-        _warn "$FUNCNAME: could not check last modified time of $_local_file_path"
+        _warn "$FUNCNAME: $_local_file_path does not exist or empty"
         return 1
     fi
 
@@ -577,32 +599,28 @@ function f_checkUpdate() {
         fi
     fi
 
-    # --basic --user ${r_svn_user}:${r_svn_pass}
-    local _remote_last_mod="$(curl -s -k -L --head "${_remote_url}" | grep -i last-modified | cut -c16-)"
-    if [ -z "$_remote_last_mod" ]; then _warn "$FUNCNAME: Unknown last modified."; return 1; fi
+    # --basic --user ${r_svn_user}:${r_svn_pass}      last-modified    cut -c16-
+    local _remote_length=`curl -s -k -L --head "${_remote_url}" | grep -i '^Content-Length:' | awk '{print $2}' | tr -d '\r'`
+    if [ -z "$_remote_length" ]; then _warn "$FUNCNAME: Unknown remote length."; return 1; fi
 
-    local _remote_last_mod_ts=`date -d "${_remote_last_mod}" +"%s"`
-    local _local_last_mod_ts=`stat -c%Y ${_local_file_path}`
+    #local _local_last_mod_ts=`stat -c%Y ${_local_file_path}`
+    _local_last_length=`wc -c ./start_hdp.sh | awk '{print $1}'`
 
-    #_log "Remote: ${_remote_last_mod_ts} (gt) Local: ${_local_last_mod_ts}"
-    if [ ${_remote_last_mod_ts} -gt ${_local_last_mod_ts} ]; then
-        _info "Newer file is available."
-        echo "$_remote_last_mod"
+    if [ ${_remote_length} -ne ${_local_last_length} ]; then
+        _info "Different file is available (r=$_remote_length/l=$_local_last_length)"
         _ask "Would you like to download?" "Y"
         if ! _isYes; then return 0; fi
+        if [ ${_remote_length} -lt ${_local_last_length} ]; then
+            _ask "Are you sure?" "N"
+            if ! _isYes; then return 0; fi
+        fi
+
         _backup "${_local_file_path}"
 
-        if [[ "${_local_file_path}" =~ ^/data/sites/ ]]; then
-            svn up ${_local_file_path}
-        elif [[ "`pwd`" =~ ^/data/sites/ ]]; then
-            svn up ${_local_file_path}
-        else
-            curl -k -L '$_remote_url' -o ${_local_file_path} || _critical "$FUNCNAME: Update failed."
-        fi
+        curl -k -L '$_remote_url' -o ${_local_file_path} || _critical "$FUNCNAME: Update failed."
 
         _info "Validating the downloaded script..."
         source ${_local_file_path} || _critical "Please contact the script author."
-        changeLog
     fi
 }
 
@@ -915,7 +933,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 _START_HDP="Y"
                 ;;
             r)
-                _RESPONSE_FILE_PATH="$OPTARG"
+                _RESPONSE_FILEPATH="$OPTARG"
                 ;;
             h)
                 usage | less
