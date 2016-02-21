@@ -18,7 +18,7 @@
 # 3. Variable name which stores user response needs to start with r_
 # 4. (optional) __doc__ local variable is for function usage/help
 #
-# TODO: tcpdump (not tested), localrepo
+# TODO: tcpdump (not tested), localrepo (not tested)
 #
 
 ### OS/shell settings
@@ -73,7 +73,10 @@ function p_interview() {
     _ask "IP address for docker0 interface" "172.17.42.1" "r_DOCKER_HOST_IP" "N" "Y"
     _ask "Network Address (xxx.xxx.xxx.) for docker containers" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Domain Suffix for docker containers" ".localdomain" "r_DOMAIN_SUFFIX" "N" "Y"
-    _ask "Container OS type" "centos" "r_CONTAINER_OS" "N" "Y"
+    _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
+    if [ -n "$r_CONTAINER_OS" ]; then
+        r_CONTAINER_OS="`echo "$r_CONTAINER_OS" | tr '[:upper:]' '[:lower:]'`"
+    fi
     _ask "Container OS version" "6" "r_CONTAINER_OS_VER" "N" "Y"
     _ask "How many nodes?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Hostname for docker host in docker private network?" "dockerhost1" "r_DOCKER_PRIVATE_HOSTNAME" "N" "Y"
@@ -83,7 +86,15 @@ function p_interview() {
     _ask "Ambari server hostname" "node1$r_DOMAIN_SUFFIX" "r_AMBARI_HOST" "N" "Y"
     _ask "Ambari server version (used to build repo URL)" "2.2.0.0" "r_AMBARI_VER" "N" "Y"
     _echo "If you have set up a Local Repo, please change below"
-    _ask "Ambari repo" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO" "N" "Y"
+    _ask "Ambari repo" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
+
+    _ask "Would you like to set up local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
+    if _isYes "$r_HDP_LOCAL_REPO"; then
+        _ask "Local repository directory" "/var/www/html/hdp" "r_HDP_REPO_DIR"
+        _ask "HDP (repo) version" "2.3.4.0" "r_HDP_REPO_VER"
+        _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_CONTAINER_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
+        _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/HDP-UTILS-1.1.0.20-centos6.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
+    fi
 }
 
 function p_interview_or_load() {
@@ -147,7 +158,7 @@ function _cancelInterview() {
 	_exit
 }
 
-function p_start_hdp() {
+function p_hdp_start() {
     f_loadResp
     f_docker0_setup
     f_ntp
@@ -304,13 +315,13 @@ function f_docker_run() {
 
 function f_ambari_server_install() {
     local __doc__="Install Ambari Server to $r_AMBARI_HOST"
-    if [ -z "$r_AMBARI_REPO" ]; then
-        _error "Please specify Ambari repo URL"
+    if [ -z "$r_AMBARI_REPO_FILE" ]; then
+        _error "Please specify Ambari repo *file* URL"
         return 1
     fi
 
     # TODO: at this moment, only Centos (yum)
-    wget -nv "$r_AMBARI_REPO" -O /tmp/ambari.repo || retuen 1
+    wget -nv "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo || retuen 1
     scp /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
     ssh -t root@$r_AMBARI_HOST "yum install ambari-server -y"
     ssh -t root@$r_AMBARI_HOST "ambari-server setup -s"
@@ -353,7 +364,78 @@ function f_etcs_mount() {
     done
 }
 
-function f_repo_setup() {
+function f_local_repo() {
+    local __doc__="Setup local repo on Docker host (Ubuntu)"
+    local _local_dir="$1"
+
+    apt-get install -y apache2 createrepo
+
+    if [ -z "$r_HDP_REPO_TARGZ" ]; then
+        _error "Please specify HDP repo *tar.gz* file URL"
+        return 1
+    fi
+
+    if [ -z "$_local_dir" ]; then
+        if [ -z "$r_HDP_REPO_DIR" ]; then
+            _warn "HDP local repository dirctory is not specified. Using /var/www/html/hdp"
+            _local_dir="/var/www/html/hdp"
+        else
+            _local_dir="$r_HDP_REPO_DIR"
+        fi
+    fi
+
+    set -v
+    if [ ! -d "$_local_dir" ]; then
+        # Making directory for Apache2
+        mkdir -p -m 777 $_local_dir
+    fi
+
+    cd "$_local_dir" || return 1
+
+    local _tar_gz_file="`basename "$r_HDP_REPO_TARGZ"`"
+    local _has_extracted=""
+    local _util_tar_gz_file="`basename "$r_HDP_REPO_UTIL_TARGZ"`"
+    local _util_has_extracted=""
+
+    local _hdp_dir="`find $_local_dir -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
+
+    if _isNotEmptyDir "$_hdp_dir"; then
+        _has_extracted="Y"
+        _info "$_hdp_dir already exists and not empty. Skipping download."
+    elif [ -e "$_util_tar_gz_file" ]; then
+        _info "$_util_tar_gz_file already exists. Skipping download."
+    else
+        wget -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_UTIL_TARGZ"
+    fi
+
+    # TODO: not accurate
+    local _hdp_util_dir="`find $_local_dir -type d | grep -m1 -E "/HDP-UTILS-.+?//${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
+
+    if _isNotEmptyDir "$_hdp_util_dir"; then
+        _util_has_extracted="Y"
+        _info "$_hdp_util_dir already exists and not empty. Skipping download."
+    elif [ -e "$_tar_gz_file" ]; then
+        _info "$_tar_gz_file already exists. Skipping download."
+    else
+        wget -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_TARGZ" || return 2
+    fi
+
+    if _isYes "$_has_extracted"; then
+        tar xzvf "$_tar_gz_file"
+        _hdp_dir="`find $_local_dir -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
+        createrepo "$_hdp_dir"
+    fi
+    if _isYes "$_util_has_extracted"; then
+        tar xzvf "$_util_tar_gz_file"
+        _hdp_util_dir="`find $_local_dir -type d | grep -m1 -E "/HDP-UTILS-.+?//${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
+        createrepo "_hdp_util_dir"
+    fi
+
+    set +v
+    service apache2 start
+}
+
+function f_repo_mount() {
     local __doc__="TODO: This would work on only my environment. Mounting VM host's directory to use for local repo"
     local _host_pc="$1"
     local _mu="$2"
@@ -379,7 +461,6 @@ function f_repo_setup() {
     _info "TODO: Edit this function for your env if above is not good (and Ctrl+c now)"
     sleep 4
     sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,transform_symlinks ${_mu}@${_host_pc}:${_src} "$_mounting_dir"
-    service apache2 start
 }
 
 function f_services_start() {
@@ -430,7 +511,7 @@ function p_host_setup() {
 
     set -v
     apt-get update && apt-get upgrade -y
-    apt-get -y install wget createrepo sshfs apache2 htop dstat iotop sysv-rc-conf postgresql-client mysql-client tcpdump
+    apt-get -y install wget createrepo sshfs htop dstat iotop sysv-rc-conf postgresql-client mysql-client tcpdump
     #krb5-kdc krb5-admin-server mailutils postfix
     
     apt-key adv --keyserver hkp://pgp.mit.edu:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
@@ -451,10 +532,11 @@ function p_host_setup() {
 
     f_docker_run
 
-    # Making directory for Apache2
-    mkdir -m 777 /var/www/html/hdp
-
     f_ambari_server_install
+
+    if _isYes "$r_HDP_LOCAL_REPO"; then
+        f_local_repo
+    fi
     set +v
 }
 
@@ -796,6 +878,21 @@ function _isCmd() {
         return 1
     fi
 }
+function _isNotEmptyDir() {
+	local _dir_path="$1"
+
+    # If path is empty, treat as eampty
+	if [ -z "$_dir_path" ]; then return 1; fi
+
+    # If path is not directory, treat as eampty
+	if [ ! -d "$_dir_path" ]; then return 1; fi
+
+	if [ "$(ls -A ${_dir_path})" ]; then
+		return 0
+	else
+		return 1
+	fi
+}
 
 function _info() {
     # At this moment, not much difference from _echo and _warn, might change later
@@ -957,9 +1054,13 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         _ask "Would you like to start setup this host?" "Y"
         if ! _isYes; then echo "Bye"; exit; fi
 
+        g_START_TIME="`date -u`"
         p_host_setup
+        g_END_TIME="`date -u`"
+        echo "Started at : $g_START_TIME"
+        echo "Finished at: $g_END_TIME"
     else
         # If no option switch, start HDP services # TODO: can i start without response file?
-        p_start_hdp
+        p_hdp_start
     fi
 fi
