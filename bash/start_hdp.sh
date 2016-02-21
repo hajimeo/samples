@@ -70,7 +70,7 @@ function p_interview() {
     _ask "Run apt-get upgrade before setting up?" "N" "r_APTGET_UPGRADE" "N"
     _ask "NTP Server" "ntp.ubuntu.com" "r_NTP_SERVER" "N" "Y"
     # TODO: Changing this IP later is troublesome, so need to be careful
-    _ask "IP address for docker0 interface" "172.17.42.1" "r_DOCKER_HOST_IP" "N" "Y"
+    _ask "IP address for docker0 interface" "172.17.0.1" "r_DOCKER_HOST_IP" "N" "Y"
     _ask "Network Address (xxx.xxx.xxx.) for docker containers" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Domain Suffix for docker containers" ".localdomain" "r_DOMAIN_SUFFIX" "N" "Y"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
