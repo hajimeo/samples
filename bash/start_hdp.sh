@@ -510,17 +510,22 @@ function p_host_setup() {
     local _docer0="${1-$r_DOCKER_HOST_IP}"
 
     set -v
-    apt-get update && apt-get upgrade -y
-    apt-get -y install wget createrepo sshfs htop dstat iotop sysv-rc-conf postgresql-client mysql-client tcpdump
-    #krb5-kdc krb5-admin-server mailutils postfix
-    
+    if _isYes "$r_APTGET_UPGRADE"; then
+        apt-get update && apt-get upgrade -y
+    fi
+
     apt-key adv --keyserver hkp://pgp.mit.edu:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
     grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-trusty main" >> /etc/apt/sources.list.d/docker.list
     apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
 
+    apt-get -y install wget createrepo sshfs htop dstat iotop sysv-rc-conf postgresql-client mysql-client tcpdump
+    #krb5-kdc krb5-admin-server mailutils postfix
+
     # To use tcpdump from container
-    ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
-    apparmor_parser -R /etc/apparmor.d/usr.sbin.tcpdump
+    if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
+        ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
+        apparmor_parser -R /etc/apparmor.d/usr.sbin.tcpdump
+    fi
 
     f_dnsmasq
 
