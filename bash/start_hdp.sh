@@ -90,7 +90,7 @@ function p_interview() {
 
     _ask "Would you like to set up local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
     if _isYes "$r_HDP_LOCAL_REPO"; then
-        _ask "Local repository directory" "/var/www/html/hdp" "r_HDP_REPO_DIR"
+        _ask "Local repository directory (Apache root)" "/var/www/html" "r_HDP_REPO_DIR"
         _ask "HDP (repo) version" "2.3.4.0" "r_HDP_REPO_VER"
         _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_CONTAINER_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
         _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/HDP-UTILS-1.1.0.20-centos6.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
