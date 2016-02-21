@@ -431,7 +431,7 @@ function f_local_repo() {
     if ! _isYes "$_util_has_extracted"; then
         tar xzvf "$_util_tar_gz_file"
         _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
-        createrepo "_hdp_util_dir"
+        createrepo "$_hdp_util_dir"
     fi
 
     set +v
