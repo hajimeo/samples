@@ -365,6 +365,7 @@ function f_etcs_mount() {
 function f_local_repo() {
     local __doc__="Setup local repo on Docker host (Ubuntu)"
     local _local_dir="$1"
+    local _force_extract="N"
 
     apt-get install -y apache2 createrepo
 
@@ -392,10 +393,12 @@ function f_local_repo() {
 
     local _tar_gz_file="`basename "$r_HDP_REPO_TARGZ"`"
     local _has_extracted=""
-    local _hdp_dir="`find $_local_dir -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
+    local _hdp_dir="`find . -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
 
     if _isNotEmptyDir "$_hdp_dir"; then
-        _has_extracted="Y"
+        if ! _isYes "$_force_extract"; then
+            _has_extracted="Y"
+        fi
         _info "$_hdp_dir already exists and not empty. Skipping download."
     elif [ -e "$_tar_gz_file" ]; then
         _info "$_tar_gz_file already exists. Skipping download."
@@ -405,17 +408,19 @@ function f_local_repo() {
 
     if ! _isYes "$_has_extracted"; then
         tar xzvf "$_tar_gz_file"
-        _hdp_dir="`find $_local_dir -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
+        _hdp_dir="`find . -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
         createrepo "$_hdp_dir"
     fi
 
     local _util_tar_gz_file="`basename "$r_HDP_REPO_UTIL_TARGZ"`"
     local _util_has_extracted=""
     # TODO: not accurate
-    local _hdp_util_dir="`find $_local_dir -type d | grep -m1 -E "/HDP-UTILS-.+?//${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
+    local _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?//${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
 
     if _isNotEmptyDir "$_hdp_util_dir"; then
-        _util_has_extracted="Y"
+        if ! _isYes "$_force_extract"; then
+            _util_has_extracted="Y"
+        fi
         _info "$_hdp_util_dir already exists and not empty. Skipping download."
     elif [ -e "$_util_tar_gz_file" ]; then
         _info "$_util_tar_gz_file already exists. Skipping download."
@@ -425,7 +430,7 @@ function f_local_repo() {
 
     if ! _isYes "$_util_has_extracted"; then
         tar xzvf "$_util_tar_gz_file"
-        _hdp_util_dir="`find $_local_dir -type d | grep -m1 -E "/HDP-UTILS-.+?//${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
+        _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?//${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
         createrepo "_hdp_util_dir"
     fi
 
@@ -433,7 +438,10 @@ function f_local_repo() {
     service apache2 start
 
     if [ -n "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
-        echo "### Local Repo URL: http://$r_DOCKER_PRIVATE_HOSTNAME/"
+        local _repo_path="${_hdp_dir#\.}"
+        echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${_repo_path}"
+        _repo_path="${_hdp_util_dir#\.}"
+        echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${_repo_path}"
     fi
 
     cd -
