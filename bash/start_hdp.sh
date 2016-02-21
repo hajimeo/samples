@@ -433,6 +433,10 @@ function f_local_repo() {
 
     set +v
     service apache2 start
+
+    if [ -n "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
+        echo "### Local Repo URL: http://$r_DOCKER_PRIVATE_HOSTNAME/"
+    fi
 }
 
 function f_repo_mount() {
