@@ -544,8 +544,9 @@ function p_host_setup() {
 
     f_host_performance
 
-    f_dockerfile
     f_docker0_setup "$_docer0"
+
+    f_dockerfile
     f_docker_base_create
 
     f_docker_run
