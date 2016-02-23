@@ -440,9 +440,9 @@ function f_local_repo() {
 
     if [ -n "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
         local _repo_path="${_hdp_dir#\.}"
-        echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${_repo_path}"
+        echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}"
         _repo_path="${_hdp_util_dir#\.}"
-        echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${_repo_path}"
+        echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}"
     fi
 
     cd - &>/dev/null
