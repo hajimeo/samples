@@ -23,7 +23,7 @@ RUN chkconfig iptables off || echo ko
 RUN ( grep ^PermitRootLogin /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config ) || echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config
 RUN ( grep ^GSSAPIAuthentication /etc/ssh/sshd_config && sed -i 's/^GSSAPIAuthentication yes/GSSAPIAuthentication no/' /etc/ssh/sshd_config ) || echo 'GSSAPIAuthentication no' >> /etc/ssh/sshd_config
 RUN ( grep ^UseDNS /etc/ssh/sshd_config && sed -i 's/^UseDNS yes/UseDNS no/' /etc/ssh/sshd_config ) || echo 'UseDNS no' >> /etc/ssh/sshd_config
-RUN service sshd restart
+RUN /etc/init.d/sshd restart || service sshd restart || echo ko
 
 #RUN echo 'user=root' >> /etc/dnsmasq.conf
 #RUN echo 'listen-address=127.0.0.1' >> /etc/dnsmasq.conf
