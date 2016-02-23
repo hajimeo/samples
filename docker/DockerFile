@@ -17,7 +17,7 @@ RUN chmod 600 /root/.ssh/authorized_keys
 RUN chown -R root:root /root/.ssh
 
 RUN setenforce 0 || echo ko
-RUN chkconfig iptables off
+RUN chkconfig iptables off || echo ko
 #RUN /etc/init.d/iptables stop
 
 RUN ( grep ^PermitRootLogin /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config ) || echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config

@@ -78,6 +78,7 @@ function p_interview() {
         r_CONTAINER_OS="`echo "$r_CONTAINER_OS" | tr '[:upper:]' '[:lower:]'`"
     fi
     _ask "Container OS version" "6" "r_CONTAINER_OS_VER" "N" "Y"
+    _ask "DockerFile URL" "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile" "r_DOCKERFILE_URL" "N" "Y"
     _ask "How many nodes?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Hostname for docker host in docker private network?" "dockerhost1" "r_DOCKER_PRIVATE_HOSTNAME" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
@@ -590,15 +591,28 @@ function f_host_performance() {
 
 function f_dockerfile() {
     local __doc__="Download dockerfile and replace private key"
-    wget https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile -O DockerFile
+    local _url="$1"
+    if [ -z "$_url" ]; then
+        _url="$r_DOCKERFILE_URL"
+    fi
+    if [ -z "$_url" ]; then
+        _error "No DockerFile URL to download"
+        return 1
+    fi
+
+    if [ -e ./DockerFile ]; then
+        _backup "./DockerFile"
+    fi
+
+    wget "$_url" -O ./DockerFile
 
     f_ssh_setup
 
     local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
 
-    sed -i.bak "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" DockerFile
+    sed -i.bak "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ./DockerFile
     if [ -n "$r_CONTAINER_OS" ]; then
-        sed -i.bak "s@centos:6@${r_CONTAINER_OS}:${r_CONTAINER_OS_VER}@1" DockerFile
+        sed -i.bak "s@centos:6@${r_CONTAINER_OS}:${r_CONTAINER_OS_VER}@1" ./DockerFile
     fi
 }
 
