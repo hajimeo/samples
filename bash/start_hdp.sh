@@ -441,8 +441,16 @@ function f_local_repo() {
     if [ -n "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
         local _repo_path="${_hdp_dir#\.}"
         echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}"
-        _repo_path="${_hdp_util_dir#\.}"
-        echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}"
+        local _util_repo_path="${_hdp_util_dir#\.}"
+        echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
+
+        # TODO: this part is best effort...
+        if [ "${r_CONTAINER_OS}" = "centos" ] || [ "${r_CONTAINER_OS_VER}" = "redhat" ]; then
+            curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/2.3/operating_systems/redhat${r_CONTAINER_OS_VER}/repositories/HDP-2.3" -d '{"Repositories":{"base_url":"'http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}'","verify_base_url":true}}'
+
+            local _hdp_util_name="`echo $_util_repo_path | grep -oP 'HDP-UTILS-[\d\.]+'`"
+            curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/2.3/operating_systems/redhat${r_CONTAINER_OS_VER}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}'","verify_base_url":true}}'
+        fi
     fi
 
     cd - &>/dev/null
