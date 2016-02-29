@@ -276,14 +276,37 @@ function f_docker_base_create() {
 }
 
 function f_docker_start() {
-    local __doc__="Starting docker containers"
+    local __doc__="Starting all not running docker containers"
     local num=`docker ps -aq | wc -l`
     local _num=`docker ps -q | wc -l`
+    if [ $_num -lt $num ]; then
+        _info "starting $num - $_num docker contains ..."
+        for _q in `comm -13 <(docker ps -q) <(docker ps -aq)`; do docker start --attach=false ${_q}; done
+    fi
+}
+
+function f_docker_stop() {
+    local __doc__="Stopping all running docker containers"
+    local _num=`docker ps -q | wc -l`
     if [ $_num -ne 0 ]; then
-      _info "$_num containers are already running...";
-    else
-      _info "starting $num docker contains ..."
-      for i in `seq 1 $num`; do docker start --attach=false node$i; sleep 1; done
+        _info "stopping $_num docker contains ..."
+        sleep 3
+        for _q in `comm -12 <(docker ps -q) <(docker ps -aq)`; do docker stop ${_q} & done
+        wait
+    fi
+}
+
+function f_docker_rm() {
+    local _force="$1"
+    local __doc__="Removing all running docker containers"
+    _ask "Are you sure to delete all containers?"
+    if _isYes; then
+        if _isYes $_force; then
+            for _q in `docker ps -aq`; do docker rm --force ${_q} & done
+        else
+            for _q in `docker ps -aq`; do docker rm ${_q} & done
+        fi
+        wait
     fi
 }
 
