@@ -1112,4 +1112,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         set +e
         p_hdp_start
     fi
+else
+    _info "You may want to run 'f_loadResp'"
 fi
