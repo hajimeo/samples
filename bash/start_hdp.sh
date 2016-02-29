@@ -1094,7 +1094,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     _IS_SCRIPT_RUNNING="Y"
 
-    # Testing set -e which might cause unwanted issue
+    # TODO: Testing set -e which might cause unwanted issue
     set -e
     f_checkUpdate
     p_interview_or_load
@@ -1109,7 +1109,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         echo "Started at : $g_START_TIME"
         echo "Finished at: $g_END_TIME"
     else
-        # If no option switch, start HDP services # TODO: can i start without response file?
+        set +e
         p_hdp_start
     fi
 fi
