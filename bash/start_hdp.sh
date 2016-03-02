@@ -1164,8 +1164,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         echo "Started at : $g_START_TIME"
         echo "Finished at: $g_END_TIME"
     elif [ -n "$_FUNCTION_NAME" ]; then
-        if [[ "$_function_name" =~ ^[fp]_ ]]; then
-            type $_FUNCTION_NAME 2>/dev/null | grep "^${_function_name} is a function" &>/dev/null
+        if [[ "$_function_name" =~ ^[fph]_ ]]; then
+            type $_FUNCTION_NAME 2>/dev/null | grep " is a function" &>/dev/null
             if [ $? -eq 0 ]; then
                 $_FUNCTION_NAME
             fi
