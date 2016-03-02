@@ -40,7 +40,7 @@ How to run only one function:
     2) for example to output help, type 'help'
     3) f_loadResp
     4) list response
-    5) f_ambari_server_install
+    5) f_log_cleanup    # Delete old log files
 
 Available options:
     -i    Initial set up this host for HDP
@@ -85,14 +85,14 @@ function p_interview() {
 
     # TODO: Questions to install Ambari
     _ask "Ambari server hostname" "node1$r_DOMAIN_SUFFIX" "r_AMBARI_HOST" "N" "Y"
-    _ask "Ambari version (used to build repo URL)" "2.2.0.0" "r_AMBARI_VER" "N" "Y"
+    _ask "Ambari version (used to build repo URL)" "2.2.1.0" "r_AMBARI_VER" "N" "Y"
     _echo "If you have set up a Local Repo, please change below"
     _ask "Ambari repo" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
 
     _ask "Would you like to set up local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
     if _isYes "$r_HDP_LOCAL_REPO"; then
         _ask "Local repository directory (Apache root)" "/var/www/html" "r_HDP_REPO_DIR"
-        _ask "HDP (repo) version" "2.3.4.0" "r_HDP_REPO_VER"
+        _ask "HDP (repo) version" "2.4.0.0" "r_HDP_REPO_VER"
         _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_CONTAINER_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
         _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${r_CONTAINER_OS_VER}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
     fi
@@ -371,18 +371,23 @@ function f_ambari_start() {
 
 function f_etcs_mount() {
     local __doc__="Mounting all agent's etc directories (handy for troubleshooting)"
+    local _remount="$1"
     local _num=`docker ps -q | wc -l`
+
     for i in `seq 1 $_num`; do
         if [ ! -d /mnt/etc/node$i ]; then
             mkdir -p /mnt/etc/node$i
         fi
 
-        if [ -d /mnt/etc/node$i/hadoop ];then
-            continue
+        if _isNotEmptyDir "/mnt/etc/node$i" ;then
+            if ! _isYes "$_remount"; then
+                continue
+            else
+                umount -f /mnt/etc/node$i
+            fi
         fi
 
-        umount /mnt/etc/node$i 2>/dev/null;
-        sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,transform_symlinks node${i}${r_DOMAIN_SUFFIX}:/etc /mnt/etc/node${i}
+        sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks node${i}${r_DOMAIN_SUFFIX}:/etc /mnt/etc/node${i}
     done
 }
 
@@ -512,7 +517,7 @@ function f_repo_mount() {
     _info "Mounting ${_mu}@${_host_pc}:${_src} to $_mounting_dir ..."
     _info "TODO: Edit this function for your env if above is not good (and Ctrl+c now)"
     sleep 4
-    sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,transform_symlinks ${_mu}@${_host_pc}:${_src} "$_mounting_dir"
+    sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks ${_mu}@${_host_pc}:${_src} "$_mounting_dir"
 }
 
 function f_services_start() {
