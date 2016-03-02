@@ -50,6 +50,9 @@ Available options:
     -r=response_file_path
           To reuse your previously saved response file.
 
+    -f=function_name
+          To run particular function (ex: f_log_cleanup in crontab)
+
     -h    Show this message.
 "
 }
@@ -108,6 +111,9 @@ function p_interview_or_load() {
 
     if [ -r "${_RESPONSE_FILEPATH}" ]; then
         if _isYes "$_START_HDP"; then
+            f_loadResp
+            return $?
+        elif [ -n "$_FUNCTION_NAME" ]; then
             f_loadResp
             return $?
         fi
@@ -354,6 +360,22 @@ function f_ambari_server_install() {
 function f_ambari_server_start() {
     local __doc__="Starting ambari-server on $r_AMBARI_HOST"
     ssh root@$r_AMBARI_HOST "ambari-server start"
+}
+
+function f_ambari_agent_install() {
+    local __doc__="TODO: Installing ambari-agent on all containers"
+    if [ ! -e /tmp/ambari.repo ]; then
+        scp root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo
+    fi
+
+    local _cmd="yum install ambari-agent -y && grep "^hostname=$r_AMBARI_HOST"/etc/ambari-agent/conf/ambari-agent.ini || sed -i.bak "s@hostname=.+$@hostname=$r_AMBARI_HOST@1" /etc/ambari-agent/conf/ambari-agent.ini"
+    local _num=`docker ps -q | wc -l`
+
+    for i in `seq 1 $_num`; do
+        scp /tmp/ambari.repo root@$node$i${r_DOMAIN_SUFFIX}:/etc/yum.repos.d/
+        # Executing yum command one by one (not parallel)
+        ssh root@node$i${r_DOMAIN_SUFFIX} "$_cmd"
+    done
 }
 
 function f_ambari_agent_start() {
@@ -659,9 +681,9 @@ function f_dockerfile() {
 
     local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
 
-    sed -i.bak "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ./DockerFile
+    sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ./DockerFile
     if [ -n "$r_CONTAINER_OS" ]; then
-        sed -i.bak "s@centos:6@${r_CONTAINER_OS}:${r_CONTAINER_OS_VER}@1" ./DockerFile
+        sed -i "s@centos:6@${r_CONTAINER_OS}:${r_CONTAINER_OS_VER}@1" ./DockerFile
     fi
 }
 
@@ -1102,7 +1124,7 @@ help() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "r:ish" opts; do
+    while getopts "r:f:ish" opts; do
         case $opts in
             i)
                 _SETUP_HDP="Y"
@@ -1112,6 +1134,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             r)
                 _RESPONSE_FILEPATH="$OPTARG"
+                ;;
+            f)
+                _FUNCTION_NAME="$OPTARG"
                 ;;
             h)
                 usage | less
@@ -1138,8 +1163,14 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         g_END_TIME="`date -u`"
         echo "Started at : $g_START_TIME"
         echo "Finished at: $g_END_TIME"
+    elif [ -n "$_FUNCTION_NAME" ]; then
+        if [[ "$_function_name" =~ ^[fp]_ ]]; then
+            type $_FUNCTION_NAME 2>/dev/null | grep "^${_function_name} is a function" &>/dev/null
+            if [ $? -eq 0 ]; then
+                $_FUNCTION_NAME
+            fi
+        fi
     else
-        set +e
         p_hdp_start
     fi
 else
