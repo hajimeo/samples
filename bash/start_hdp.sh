@@ -348,6 +348,7 @@ function f_ambari_server_install() {
     wget -nv "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo || retuen 1
     scp /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
     ssh root@$r_AMBARI_HOST "yum install ambari-server -y && ambari-server setup -s && sleep 5; ambari-server start"
+    return 0
 }
 
 function f_ambari_server_start() {
@@ -566,6 +567,8 @@ function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
     local _docer0="${1-$r_DOCKER_HOST_IP}"
 
+    # TODO: Testing set -e which might cause unwanted issue
+    set -e
     set -v
     if _isYes "$r_APTGET_UPGRADE"; then
         apt-get update && apt-get upgrade -y
@@ -600,6 +603,7 @@ function p_host_setup() {
     if _isYes "$r_HDP_LOCAL_REPO"; then
         f_local_repo
     fi
+    set +e
     set +v
     f_screen_cmd
 }
@@ -1122,8 +1126,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     _IS_SCRIPT_RUNNING="Y"
 
-    # TODO: Testing set -e which might cause unwanted issue
-    set -e
     f_checkUpdate
     p_interview_or_load
 
