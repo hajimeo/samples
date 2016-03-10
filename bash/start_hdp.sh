@@ -379,13 +379,12 @@ function f_ambari_server_install() {
     # TODO: at this moment, only Centos (yum)
     wget -nv "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo || retuen 1
     scp /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
-    ssh root@$r_AMBARI_HOST "yum install ambari-server -y && ambari-server setup -s && sleep 5; ambari-server start"
-    return 0
+    ssh root@$r_AMBARI_HOST "yum install ambari-server -y && ambari-server setup -s"
 }
 
 function f_ambari_server_start() {
     local __doc__="Starting ambari-server on $r_AMBARI_HOST"
-    ssh root@$r_AMBARI_HOST "ambari-server start"
+    ssh root@$r_AMBARI_HOST "ambari-server start --silent"
 }
 
 function f_ambari_agent_install() {
@@ -657,11 +656,15 @@ function p_host_setup() {
     f_docker_run
 
     f_ambari_server_install
+    set +e
+
+    sleep 3
+    f_ambari_server_start
+    sleep 3
 
     if _isYes "$r_HDP_LOCAL_REPO"; then
         f_local_repo
     fi
-    set +e
     set +v
     f_screen_cmd
 }
@@ -764,6 +767,7 @@ function f_yum_remote_proxy() {
     local _proxy="$1"
     local _host="$2"
 
+    # TODO: set up proxy with Apache2
     ssh root@$_host "grep proxy /etc/yum.conf" && return 1
     ssh root@$_host "echo "proxy=${_proxy}" >> /etc/yum.conf"
     ssh root@$_host "grep proxy /etc/yum.conf"
