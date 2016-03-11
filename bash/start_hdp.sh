@@ -88,14 +88,14 @@ function p_interview() {
 
     # TODO: Questions to install Ambari
     _ask "Ambari server hostname" "node1$r_DOMAIN_SUFFIX" "r_AMBARI_HOST" "N" "Y"
-    _ask "Ambari version (used to build repo URL)" "2.2.1.0" "r_AMBARI_VER" "N" "Y"
+    _ask "Ambari version (used to build repo URL)" "2.2.1.1" "r_AMBARI_VER" "N" "Y"
     _echo "If you have set up a Local Repo, please change below"
     _ask "Ambari repo" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
 
     _ask "Would you like to set up local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
     if _isYes "$r_HDP_LOCAL_REPO"; then
         _ask "Local repository directory (Apache root)" "/var/www/html" "r_HDP_REPO_DIR"
-        _ask "HDP (repo) version" "2.4.0.0" "r_HDP_REPO_VER"
+        _ask "HDP (repo) version" "2.3.4.7" "r_HDP_REPO_VER"
         _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_CONTAINER_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
         _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${r_CONTAINER_OS_VER}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
     fi
