@@ -32,15 +32,20 @@ usage() {
     echo "HELP/USAGE:"
     echo "This script is for setting up this host for HDP or start HDP services.
 
-How to run:
-    ./${g_SCRIPT_NAME} [-s] [-r=some_file_name.resp]
+How to run initial set up:
+    ./${g_SCRIPT_NAME} -i [-r=some_file_name.resp]
 
-How to run only one function:
-    1) source ./${g_SCRIPT_NAME}
-    2) for example to output help, type 'help'
-    3) f_loadResp
-    4) list response
-    5) f_log_cleanup    # Delete old log files
+How to start containers and Ambari and HDP services:
+    ./${g_SCRIPT_NAME} -s [-r=some_file_name.resp]
+
+How to run a function:
+    ./${g_SCRIPT_NAME} -f some_function_name
+
+    or
+
+    . ./${g_SCRIPT_NAME}
+    f_loadResp              # loading your response which is required for many functions
+    some_function_name
 
 Available options:
     -i    Initial set up this host for HDP
@@ -55,6 +60,8 @@ Available options:
 
     -h    Show this message.
 "
+    echo "Available functions:"
+    list
 }
 
 # Global variables
@@ -82,7 +89,7 @@ function p_interview() {
         r_CONTAINER_OS="`echo "$r_CONTAINER_OS" | tr '[:upper:]' '[:lower:]'`"
     fi
     _ask "Container OS version" "6" "r_CONTAINER_OS_VER" "N" "Y"
-    _ask "DockerFile URL" "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile" "r_DOCKERFILE_URL" "N" "Y"
+    _ask "DockerFile URL or path" "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile" "r_DOCKERFILE_URL" "N" "N"
     _ask "How many nodes?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Node starting number" "1" "r_NODE_START_NUM" "N" "Y"
     _ask "Hostname for docker host in docker private network?" "dockerhost1" "r_DOCKER_PRIVATE_HOSTNAME" "N" "Y"
@@ -112,14 +119,6 @@ function p_interview_or_load() {
     fi
 
     if [ -r "${_RESPONSE_FILEPATH}" ]; then
-        if _isYes "$_START_HDP"; then
-            f_loadResp
-            return $?
-        elif [ -n "$_FUNCTION_NAME" ]; then
-            f_loadResp
-            return $?
-        fi
-
         _ask "Would you like to load ${_RESPONSE_FILEPATH}?" "Y"
         if ! _isYes; then _echo "Bye."; exit 0; fi
         f_loadResp
@@ -417,7 +416,7 @@ function f_ambari_agent_start() {
 
 function f_ambari_start() {
     local __doc__="Starting ambari-server and all ambari-agents"
-    f_ambari_server_start || return $?
+    f_ambari_server_start
     f_ambari_agent_start
 }
 
@@ -711,10 +710,15 @@ function f_dockerfile() {
     fi
 
     if [ -e ./DockerFile ]; then
-        _backup "./DockerFile"
+        _backup "./DockerFile" && rm -f ./DockerFile
     fi
 
-    wget "$_url" -O ./DockerFile
+    if [ -e "$_url" ]; then
+        _info "$_url is a local file path"
+        cat "$_url" > ./DockerFile
+    else
+        wget "$_url" -O ./DockerFile
+    fi
 
     f_ssh_setup
 
@@ -956,8 +960,8 @@ function _ask() {
 function _backup() {
     local __doc__="Backup the given file path into ${g_BACKUP_DIR}."
     local _file_path="$1"
-    local _file_name="`basename $_file_path`"
     local _force="$2"
+    local _file_name="`basename $_file_path`"
     local _new_file_name=""
 
     if [ ! -e "$_file_path" ]; then
@@ -1105,13 +1109,14 @@ function _echo() {
 
 list() {
     local _name="$1"
-    local _width=$(( $(tput cols) - 2 ))
+    #local _width=$(( $(tput cols) - 2 ))
+    local _tmp_txt=""
 
     if [[ -z "$_name" ]]; then
         (for _f in `typeset -F | grep -E '^declare -f [fp]_' | cut -d' ' -f3`; do
-            eval "echo \"--[ $_f ]\" | sed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
-            help "$_f" "Y"
-            echo ""
+            #eval "echo \"--[ $_f ]\" | sed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
+            _tmp_txt="`help "$_f" "Y"`"
+            printf "%-28s%s\n" "$_f" "$_tmp_txt"
         done)
     elif [[ "$_name" =~ ^func ]]; then
         typeset -F | grep '^declare -f [fp]_' | cut -d' ' -f3
@@ -1200,9 +1205,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _IS_SCRIPT_RUNNING=true
 
     f_checkUpdate
-    p_interview_or_load
 
     if _isYes "$_SETUP_HDP"; then
+        p_interview_or_load
         _ask "Would you like to start setup this host?" "Y"
         if ! _isYes; then echo "Bye"; exit; fi
 
@@ -1215,13 +1220,15 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         if [[ "$_FUNCTION_NAME" =~ ^[fph]_ ]]; then
             type $_FUNCTION_NAME 2>/dev/null | grep " is a function" &>/dev/null
             if [ $? -eq 0 ]; then
+                f_loadResp
                 $_FUNCTION_NAME
             fi
         fi
     elif _isYes "$_START_HDP"; then
+        f_loadResp
         p_hdp_start
     else
-        usage
+        usage | less
         exit 0
     fi
 else
