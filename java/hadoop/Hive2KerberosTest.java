@@ -1,8 +1,28 @@
 /**
- * How to run:
- * java -cp hadoop-common-2.7.1.2.3.2.0-2950.jar:hive-exec-1.2.1.2.3.2.0-2950.jar:hive-jdbc-1.2.1.2.3.2.0-2950-standalone.jar:commons-configuration-1.6.jar:hadoop-auth-2.7.1.2.3.2.0-2950.jar:hadoop-annotations-2.7.1.2.3.2.0-2950.jar:. -Djava.security.auth.login.config=./login.conf Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@HO-UBU14"
+ * HOW TO:
  *
- * https://issues.apache.org/jira/secure/attachment/12633984/TestCase_HIVE-6486.java
+ * 1) create login.conf file which contents is like below:
+SampleClient {
+ com.sun.security.auth.module.Krb5LoginModule required
+ useTicketCache=true debug=true debugNative=true;
+};
+ *
+ * 2) Copy necessary jar files in same directory as this code
+ * commons-configuration-*.jar
+ * hadoop-annotations-*.jar
+ * hadoop-auth-*.jar
+ * hadoop-common-*.jar
+ * hive-exec-*.jar
+ * hive-jdbc-*-standalone.jar
+ *
+ * 3) Compile
+ * javac -cp "$(echo *.jar | tr ' ' ':'):." Hive2KerberosTest.java
+ *
+ * 4) Run
+ * kinit
+ * java -cp "$(echo *.jar | tr ' ' ':'):." -Djava.security.auth.login.config=./login.conf Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@HO-UBU14"
+ *
+ * @see https://issues.apache.org/jira/secure/attachment/12633984/TestCase_HIVE-6486.java
  */
 
 import org.apache.hadoop.security.UserGroupInformation;
@@ -35,12 +55,6 @@ static final String PASS = null;
 // KERBEROS Related.
 static String KERBEROS_PRINCIPAL = "";
 static String KERBEROS_PASSWORD = "";
-	/* Contents of login.conf
-SampleClient {
- com.sun.security.auth.module.Krb5LoginModule required
- debug=true debugNative=true useTicketCache=true;
-};
-	 */
 
 public static class MyCallbackHandler implements CallbackHandler {
 
@@ -123,8 +137,6 @@ public static class MyCallbackHandler implements CallbackHandler {
     }
 
     public static void main(String[] args) {
-        System.out.println("-- Test started ---");
-
         JDBC_DB_URL = args[0];
         Connection conn = null;
 
@@ -137,21 +149,19 @@ public static class MyCallbackHandler implements CallbackHandler {
             UserGroupInformation.loginUserFromSubject(sub);
             conn = getConnection(sub);
 
-            if (args.length > 1) {
+            System.out.println("Successfully Connected!");
+            /*if (args.length > 1) {
                 QUERY = args[1];
                 Statement stmt = conn.createStatement() ;
                 ResultSet rs = stmt.executeQuery( QUERY );
                 traverseResultSet(rs, 10);
             }
             else {
-                System.out.println("Connected!");
-            }
+            }*/
         } catch (Exception e){
             e.printStackTrace();
         } finally {
             try { if (conn != null) conn.close(); } catch(Exception e) { e.printStackTrace();}
         }
-
-        System.out.println("Test ended  ");
     }
 }
