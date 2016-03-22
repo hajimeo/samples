@@ -1,9 +1,11 @@
 /**
  * How to run:
- * java -cp hadoop-common-2.7.1.2.3.2.0-2950.jar:hive-exec-1.2.1.2.3.2.0-2950.jar:hive-jdbc-1.2.1.2.3.2.0-2950-standalone.jar:commons-configuration-1.6.jar:hadoop-auth-2.7.1.2.3.2.0-2950.jar:. -Djava.security.auth.login.config=./login.conf Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@HO-UBU14"
+ * java -cp hadoop-common-2.7.1.2.3.2.0-2950.jar:hive-exec-1.2.1.2.3.2.0-2950.jar:hive-jdbc-1.2.1.2.3.2.0-2950-standalone.jar:commons-configuration-1.6.jar:hadoop-auth-2.7.1.2.3.2.0-2950.jar:hadoop-annotations-2.7.1.2.3.2.0-2950.jar:. -Djava.security.auth.login.config=./login.conf Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@HO-UBU14"
  *
  * https://issues.apache.org/jira/secure/attachment/12633984/TestCase_HIVE-6486.java
  */
+
+import org.apache.hadoop.security.UserGroupInformation;
 
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
@@ -31,12 +33,12 @@ static final String USER = null;
 static final String PASS = null;
 
 // KERBEROS Related.
-static String KERBEROS_PRINCIPAL = "hajime@HO-UBU14";
-static String KERBEROS_PASSWORD = "hajime";
+static String KERBEROS_PRINCIPAL = "";
+static String KERBEROS_PASSWORD = "";
 	/* Contents of login.conf
 SampleClient {
  com.sun.security.auth.module.Krb5LoginModule required
- debug=true  debugNative=true;
+ debug=true debugNative=true useTicketCache=true;
 };
 	 */
 
@@ -124,12 +126,17 @@ public static class MyCallbackHandler implements CallbackHandler {
         System.out.println("-- Test started ---");
 
         JDBC_DB_URL = args[0];
-
-        Subject sub = getSubject();
-
         Connection conn = null;
+
         try {
+            Subject sub = getSubject();
+
+            org.apache.hadoop.conf.Configuration conf = new org.apache.hadoop.conf.Configuration();
+            conf.set("hadoop.security.authentication", "Kerberos");
+            UserGroupInformation.setConfiguration(conf);
+            UserGroupInformation.loginUserFromSubject(sub);
             conn = getConnection(sub);
+
             if (args.length > 1) {
                 QUERY = args[1];
                 Statement stmt = conn.createStatement() ;
