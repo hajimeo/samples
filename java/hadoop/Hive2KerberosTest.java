@@ -1,11 +1,14 @@
 /**
  * How to run:
- * java -cp hadoop-common-2.7.1.2.3.2.0-2950.jar:hive-exec-1.2.1.2.3.2.0-2950.jar:hive-jdbc-1.2.1.2.3.2.0-2950-standalone.jar:commons-configuration-1.6.jar:hadoop-auth-2.7.1.2.3.2.0-2950.jar:. Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@HO-UBU14"
+ * java -cp hadoop-common-2.7.1.2.3.2.0-2950.jar:hive-exec-1.2.1.2.3.2.0-2950.jar:hive-jdbc-1.2.1.2.3.2.0-2950-standalone.jar:commons-configuration-1.6.jar:hadoop-auth-2.7.1.2.3.2.0-2950.jar:. -Djava.security.auth.login.config=./login.conf Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@HO-UBU14"
+ *
+ * https://issues.apache.org/jira/secure/attachment/12633984/TestCase_HIVE-6486.java
  */
 
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.sql.*;
+import java.util.Scanner;
 
 import javax.security.auth.Subject;
 import javax.security.auth.callback.Callback;
@@ -21,18 +24,15 @@ public class Hive2KerberosTest {
 
 //  JDBC credentials
 static final String JDBC_DRIVER = "org.apache.hive.jdbc.HiveDriver";
-static final String JDBC_DB_URL = "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@HO-UBU14;auth=kerberos;kerberosAuthType=fromSubject;";
-static String QUERY = "show databases;";
+static String JDBC_DB_URL = "";
+static String QUERY = "";
 
 static final String USER = null;
 static final String PASS = null;
 
 // KERBEROS Related.
-static final String KERBEROS_REALM = "HO-UBU14";
-static final String KERBEROS_KDC = "dockerhost1.localdomain";
-static final String KERBEROS_PRINCIPAL = "hajime@HO-UBU14";
-static final String KERBEROS_PASSWORD = "hajime";
-static final String jaasConfigFilePath = "./login.conf";
+static String KERBEROS_PRINCIPAL = "hajime@HO-UBU14";
+static String KERBEROS_PASSWORD = "hajime";
 	/* Contents of login.conf
 SampleClient {
  com.sun.security.auth.module.Krb5LoginModule required
@@ -44,12 +44,18 @@ public static class MyCallbackHandler implements CallbackHandler {
 
     public void handle(Callback[] callbacks)
             throws IOException, UnsupportedCallbackException {
+        Scanner reader = new Scanner(System.in);
+
         for (int i = 0; i < callbacks.length; i++) {
             if (callbacks[i] instanceof NameCallback) {
                 NameCallback nc = (NameCallback)callbacks[i];
+                System.out.println("Enter User Principal: ");
+                KERBEROS_PRINCIPAL = reader.next();
                 nc.setName(KERBEROS_PRINCIPAL);
             } else if (callbacks[i] instanceof PasswordCallback) {
                 PasswordCallback pc = (PasswordCallback)callbacks[i];
+                System.out.println("Enter password: ");
+                KERBEROS_PASSWORD = reader.next();
                 pc.setPassword(KERBEROS_PASSWORD.toCharArray());
             } else throw new UnsupportedCallbackException
                     (callbacks[i], "Unrecognised callback");
@@ -69,7 +75,6 @@ public static class MyCallbackHandler implements CallbackHandler {
             // get the Subject that represents the signed-on user
             signedOnUserSubject = lc.getSubject();
         } catch (LoginException e1) {
-            // TODO Auto-generated catch block
             e1.printStackTrace();
             System.exit(0);
         }
@@ -116,19 +121,24 @@ public static class MyCallbackHandler implements CallbackHandler {
     }
 
     public static void main(String[] args) {
-        System.setProperty("java.security.auth.login.config", jaasConfigFilePath);
-        System.setProperty("java.security.krb5.realm", KERBEROS_REALM );
-        System.setProperty("java.security.krb5.kdc", KERBEROS_KDC);
-
         System.out.println("-- Test started ---");
+
+        JDBC_DB_URL = args[0];
+
         Subject sub = getSubject();
 
         Connection conn = null;
         try {
             conn = getConnection(sub);
-            Statement stmt = conn.createStatement() ;
-            ResultSet rs = stmt.executeQuery( QUERY );
-            traverseResultSet(rs, 10);
+            if (args.length > 1) {
+                QUERY = args[1];
+                Statement stmt = conn.createStatement() ;
+                ResultSet rs = stmt.executeQuery( QUERY );
+                traverseResultSet(rs, 10);
+            }
+            else {
+                System.out.println("Connected!");
+            }
         } catch (Exception e){
             e.printStackTrace();
         } finally {
