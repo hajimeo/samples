@@ -174,7 +174,8 @@ function p_hdp_start() {
     sleep 4
     _info "Not setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
-    f_ambari_start
+    f_ambari_server_start
+    f_ambari_agent_start
     f_etcs_mount
     echo "WARN: Will start all services..."
     f_services_start
@@ -384,6 +385,11 @@ function f_ambari_server_install() {
 function f_ambari_server_start() {
     local __doc__="Starting ambari-server on $r_AMBARI_HOST"
     ssh root@$r_AMBARI_HOST "ambari-server start --silent"
+    if [ $? -ne 0 ]; then
+        # TODO: lazy retry
+        sleep 5
+        ssh root@$r_AMBARI_HOST "ambari-server start --silent"
+    fi
 }
 
 function f_ambari_agent_install() {
@@ -411,13 +417,12 @@ function f_ambari_agent_start() {
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh root@node$i${r_DOMAIN_SUFFIX} 'ambari-agent start'
+        if [ $? -ne 0 ]; then
+            # TODO: lazy retry
+            sleep 5
+            ssh root@node$i${r_DOMAIN_SUFFIX} 'ambari-agent start'
+        fi
     done
-}
-
-function f_ambari_start() {
-    local __doc__="Starting ambari-server and all ambari-agents"
-    f_ambari_server_start
-    f_ambari_agent_start
 }
 
 function f_etcs_mount() {
@@ -552,16 +557,27 @@ function f_local_repo() {
 
 function f_repo_mount() {
     local __doc__="TODO: This would work on only my environment. Mounting VM host's directory to use for local repo"
-    local _host_pc="$1"
-    local _mu="$2"
-    local _src="${3-/Users/${_mu}/Public/hdp/}"
-    local _mounting_dir="/var/www/html/hdp"
+    local _user="$1"
+    local _host_pc="$2"
+    local _src="${3-/Users/${_user}/Public/hdp/}"  # needs ending slash
+    local _mounting_dir="${4-/var/www/html/hdp}" # no need ending slash
 
     if [ -z "$_host_pc" ]; then
-      _host_pc="`env | awk '/SSH_CONNECTION/ {gsub("SSH_CONNECTION=", "", $1); print $1}'`"
-      if [ -z "$_host_pc" ]; then
-        _host_pc="192.168.136.1"
-      fi
+        _host_pc="`env | awk '/SSH_CONNECTION/ {gsub("SSH_CONNECTION=", "", $1); print $1}'`"
+        if [ -z "$_host_pc" ]; then
+            _host_pc="`netstat -rn | awk '/^0\.0\.0\.0/ {print $2}'`"
+        fi
+
+        local _src="/Users/${_user}/Public/hdp/"
+        _connect_str="${_user}@${_host_pc}:${_src}"
+    fi
+
+    if [ -z "${_user}" ]; then
+        if [ -n "$SUDO_USER" ]; then
+            _user="$SUDO_USER"
+        else
+            _user="$USER"
+        fi
     fi
 
     mount | grep "$_mounting_dir"
@@ -572,10 +588,10 @@ function f_repo_mount() {
         mkdir "$_mounting_dir" || return
     fi
 
-    _info "Mounting ${_mu}@${_host_pc}:${_src} to $_mounting_dir ..."
+    _info "Mounting ${_user}@${_host_pc}:${_src} to $_mounting_dir ..."
     _info "TODO: Edit this function for your env if above is not good (and Ctrl+c now)"
     sleep 4
-    sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks ${_mu}@${_host_pc}:${_src} "$_mounting_dir"
+    sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks ${_user}@${_host_pc}:${_src} "${_mounting_dir%/}"
 }
 
 function f_services_start() {
