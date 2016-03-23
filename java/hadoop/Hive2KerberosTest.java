@@ -14,14 +14,17 @@ SampleClient {
  * hadoop-common-*.jar
  * hive-exec-*.jar
  * hive-jdbc-*-standalone.jar
+ * -- core-site.xml         # probably don't need
  *
  * 3) Compile
- * javac -cp "$(echo *.jar | tr ' ' ':'):." Hive2KerberosTest.java
+ * javac -cp $(echo *.jar | tr ' ' ':'):. Hive2KerberosTest.java
  *
  * 4) Run
  * kinit
- * java -cp "$(echo *.jar | tr ' ' ':'):." -Djava.security.auth.login.config=./login.conf Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@HO-UBU14"
+ * java -cp $(echo *.jar | tr ' ' ':'):. -Djava.security.auth.login.config=./login.conf Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@HO-UBU14"
  *
+ *
+ * ./hive-jdbc-1.2.1.2.3.2.0-2950-standalone.jar:hadoop-common-2.7.1.2.3.2.0-2950.jar:hive-exec-1.2.1.2.3.2.0-2950.jar:./hadoop-annotations-2.7.1.2.3.2.0-2950.jar:./commons-configuration-1.6.jar:hadoop-auth-2.7.1.2.3.2.0-2950.jar
  * @see https://issues.apache.org/jira/secure/attachment/12633984/TestCase_HIVE-6486.java
  */
 
@@ -92,7 +95,7 @@ public static class MyCallbackHandler implements CallbackHandler {
             signedOnUserSubject = lc.getSubject();
         } catch (LoginException e1) {
             e1.printStackTrace();
-            System.exit(0);
+            System.exit(1);
         }
         return signedOnUserSubject;
     }
@@ -137,10 +140,16 @@ public static class MyCallbackHandler implements CallbackHandler {
     }
 
     public static void main(String[] args) {
-        JDBC_DB_URL = args[0];
         Connection conn = null;
 
         try {
+            if (args.length == 0) {
+                System.out.println("Please provide JDBC connection strings");
+                System.exit(1);
+            }
+
+            JDBC_DB_URL = args[0];
+
             Subject sub = getSubject();
 
             org.apache.hadoop.conf.Configuration conf = new org.apache.hadoop.conf.Configuration();
@@ -149,15 +158,15 @@ public static class MyCallbackHandler implements CallbackHandler {
             UserGroupInformation.loginUserFromSubject(sub);
             conn = getConnection(sub);
 
-            System.out.println("Successfully Connected!");
-            /*if (args.length > 1) {
+            if (args.length > 1) {
                 QUERY = args[1];
                 Statement stmt = conn.createStatement() ;
                 ResultSet rs = stmt.executeQuery( QUERY );
                 traverseResultSet(rs, 10);
             }
             else {
-            }*/
+                System.out.println("Successfully Connected!");
+            }
         } catch (Exception e){
             e.printStackTrace();
         } finally {
