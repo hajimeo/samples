@@ -21,7 +21,7 @@ SampleClient {
  *
  * 4) Run
  * kinit
- * java -cp $(echo *.jar | tr ' ' ':'):. -Djava.security.auth.login.config=./login.conf Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@HO-UBU14"
+ * java -cp $(echo *.jar | tr ' ' ':'):. -Djava.security.auth.login.config=./login.conf -Dsun.security.krb5.debug=true Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@HO-UBU14"
  *
  *
  * ./hive-jdbc-1.2.1.2.3.2.0-2950-standalone.jar:hadoop-common-2.7.1.2.3.2.0-2950.jar:hive-exec-1.2.1.2.3.2.0-2950.jar:./hadoop-annotations-2.7.1.2.3.2.0-2950.jar:./commons-configuration-1.6.jar:hadoop-auth-2.7.1.2.3.2.0-2950.jar
