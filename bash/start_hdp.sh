@@ -32,15 +32,20 @@ usage() {
     echo "HELP/USAGE:"
     echo "This script is for setting up this host for HDP or start HDP services.
 
-How to run:
-    ./${g_SCRIPT_NAME} [-s] [-r=some_file_name.resp]
+How to run initial set up:
+    ./${g_SCRIPT_NAME} -i [-r=some_file_name.resp]
 
-How to run only one function:
-    1) source ./${g_SCRIPT_NAME}
-    2) for example to output help, type 'help'
-    3) f_loadResp
-    4) list response
-    5) f_log_cleanup    # Delete old log files
+How to start containers and Ambari and HDP services:
+    ./${g_SCRIPT_NAME} -s [-r=some_file_name.resp]
+
+How to run a function:
+    ./${g_SCRIPT_NAME} -f some_function_name
+
+    or
+
+    . ./${g_SCRIPT_NAME}
+    f_loadResp              # loading your response which is required for many functions
+    some_function_name
 
 Available options:
     -i    Initial set up this host for HDP
@@ -55,6 +60,8 @@ Available options:
 
     -h    Show this message.
 "
+    echo "Available functions:"
+    list
 }
 
 # Global variables
@@ -73,7 +80,8 @@ function p_interview() {
     _ask "Run apt-get upgrade before setting up?" "N" "r_APTGET_UPGRADE" "N"
     _ask "NTP Server" "ntp.ubuntu.com" "r_NTP_SERVER" "N" "Y"
     # TODO: Changing this IP later is troublesome, so need to be careful
-    _ask "IP address for docker0 interface" "172.17.0.1" "r_DOCKER_HOST_IP" "N" "Y"
+    local _docker_ip=`f_docker_ip "172.17.0.1"`
+    _ask "IP address for docker0 interface" "$_docker_ip" "r_DOCKER_HOST_IP" "N" "Y"
     _ask "Network Address (xxx.xxx.xxx.) for docker containers" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Domain Suffix for docker containers" ".localdomain" "r_DOMAIN_SUFFIX" "N" "Y"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
@@ -81,8 +89,9 @@ function p_interview() {
         r_CONTAINER_OS="`echo "$r_CONTAINER_OS" | tr '[:upper:]' '[:lower:]'`"
     fi
     _ask "Container OS version" "6" "r_CONTAINER_OS_VER" "N" "Y"
-    _ask "DockerFile URL" "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile" "r_DOCKERFILE_URL" "N" "Y"
+    _ask "DockerFile URL or path" "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile" "r_DOCKERFILE_URL" "N" "N"
     _ask "How many nodes?" "4" "r_NUM_NODES" "N" "Y"
+    _ask "Node starting number" "1" "r_NODE_START_NUM" "N" "Y"
     _ask "Hostname for docker host in docker private network?" "dockerhost1" "r_DOCKER_PRIVATE_HOSTNAME" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
 
@@ -110,14 +119,6 @@ function p_interview_or_load() {
     fi
 
     if [ -r "${_RESPONSE_FILEPATH}" ]; then
-        if _isYes "$_START_HDP"; then
-            f_loadResp
-            return $?
-        elif [ -n "$_FUNCTION_NAME" ]; then
-            f_loadResp
-            return $?
-        fi
-
         _ask "Would you like to load ${_RESPONSE_FILEPATH}?" "Y"
         if ! _isYes; then _echo "Bye."; exit 0; fi
         f_loadResp
@@ -255,6 +256,32 @@ function f_ntp() {
     ntpdate -u $r_NTP_SERVER
 }
 
+function _docker_seq() {
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+
+    if [ -z "$_start_from" ]; then
+        _start_from=1
+    fi
+
+    if [ -z "$_how_many" ]; then
+        _how_many=1
+    fi
+
+    if [ $_start_from -lt 1 ]; then
+        _warn "Starting from number is not specified."
+        return 1
+    fi
+
+    local _e=`expr $_start_from + $_how_many - 1`
+    if [ $_e -lt 1 ]; then
+        _warn "Number of nodes (containers) is not specified."
+        return 1
+    fi
+
+    seq $_start_from $_e
+}
+
 function f_docker0_setup() {
     local __doc__="Setting IP for docker0 to $r_DOCKER_HOST_IP ..."
     local _docer0="${1-$r_DOCKER_HOST_IP}"
@@ -282,30 +309,32 @@ function f_docker_base_create() {
 }
 
 function f_docker_start() {
-    local __doc__="Starting all not running docker containers"
-    local num=`docker ps -aq | wc -l`
-    local _num=`docker ps -q | wc -l`
-    if [ $_num -lt $num ]; then
-        _info "starting $num - $_num docker contains ..."
-        for _q in `comm -13 <(docker ps -q) <(docker ps -aq)`; do docker start --attach=false ${_q}; done
-    fi
+    local __doc__="Starting some docker containers"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+
+    _info "starting $_how_many docker containers starting from $_start_from ..."
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        # docker seems doesn't care if i try to start already started one
+        docker start --attach=false node$_n
+    done
 }
 
 function f_docker_stop() {
-    local __doc__="Stopping all running docker containers"
-    local _num=`docker ps -q | wc -l`
-    if [ $_num -ne 0 ]; then
-        _info "stopping $_num docker contains ..."
-        sleep 3
-        for _q in `comm -12 <(docker ps -q) <(docker ps -aq)`; do docker stop ${_q} & done
-        wait
-    fi
+    local __doc__="Stopping some docker containers"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+
+    _info "stopping $_how_many docker containers starting from $_start_from ..."
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        docker stop node$_n
+    done
 }
 
 function f_docker_rm() {
     local _force="$1"
-    local __doc__="Removing all running docker containers"
-    _ask "Are you sure to delete all containers?"
+    local __doc__="Removing *all* docker containers"
+    _ask "Are you sure to delete ALL containers?"
     if _isYes; then
         if _isYes $_force; then
             for _q in `docker ps -aq`; do docker rm --force ${_q} & done
@@ -318,18 +347,8 @@ function f_docker_rm() {
 
 function f_docker_run() {
     local __doc__="Running (creating) docker containers"
-    local _num="${1-$r_NUM_NODES}"
-    local _num_running=`docker ps -q | wc -l`
-
-    if [ $_num_running -ne 0 ]; then
-      _error "$_num_running containers are already running...";
-      return 1
-    fi
-
-    if [ -z "$_num" ]; then
-        _warn "Number of nodes (containers) is not specified."
-        return 1
-    fi
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
 
     local _ip="`f_docker_ip`"
 
@@ -338,8 +357,14 @@ function f_docker_run() {
         return 1
     fi
 
-    for n in `seq 1 $_num`; do
-        docker run -t -i -d --dns $_ip --name node$n --privileged ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$n node$n${r_DOMAIN_SUFFIX} $_ip
+    local _id=""
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        _id="`docker ps -qa -f name=node$_n`"
+        if [ -n "$_id" ]; then
+            _warn "node$_n already exists. Skipping..."
+            continue
+        fi
+        docker run -t -i -d --dns $_ip --name node$_n --privileged ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n node$_n${r_DOMAIN_SUFFIX} $_ip
     done
 }
 
@@ -353,25 +378,26 @@ function f_ambari_server_install() {
     # TODO: at this moment, only Centos (yum)
     wget -nv "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo || retuen 1
     scp /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
-    ssh root@$r_AMBARI_HOST "yum install ambari-server -y && ambari-server setup -s && sleep 5; ambari-server start"
-    return 0
+    ssh root@$r_AMBARI_HOST "yum install ambari-server -y && ambari-server setup -s"
 }
 
 function f_ambari_server_start() {
     local __doc__="Starting ambari-server on $r_AMBARI_HOST"
-    ssh root@$r_AMBARI_HOST "ambari-server start"
+    ssh root@$r_AMBARI_HOST "ambari-server start --silent"
 }
 
 function f_ambari_agent_install() {
     local __doc__="TODO: Installing ambari-agent on all containers"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+
     if [ ! -e /tmp/ambari.repo ]; then
         scp root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo
     fi
 
     local _cmd="yum install ambari-agent -y && grep "^hostname=$r_AMBARI_HOST"/etc/ambari-agent/conf/ambari-agent.ini || sed -i.bak "s@hostname=.+$@hostname=$r_AMBARI_HOST@1" /etc/ambari-agent/conf/ambari-agent.ini"
-    local _num=`docker ps -q | wc -l`
 
-    for i in `seq 1 $_num`; do
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
         scp /tmp/ambari.repo root@$node$i${r_DOMAIN_SUFFIX}:/etc/yum.repos.d/
         # Executing yum command one by one (not parallel)
         ssh root@node$i${r_DOMAIN_SUFFIX} "$_cmd"
@@ -379,25 +405,28 @@ function f_ambari_agent_install() {
 }
 
 function f_ambari_agent_start() {
-    local __doc__="Starting ambari-agent on all containers"
-    local _num=`docker ps -q | wc -l`
-    for i in `seq 1 $_num`; do
+    local __doc__="Starting ambari-agent on some containers"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh root@node$i${r_DOMAIN_SUFFIX} 'ambari-agent start'
     done
 }
 
 function f_ambari_start() {
     local __doc__="Starting ambari-server and all ambari-agents"
-    f_ambari_server_start || return $?
+    f_ambari_server_start
     f_ambari_agent_start
 }
 
 function f_etcs_mount() {
     local __doc__="Mounting all agent's etc directories (handy for troubleshooting)"
     local _remount="$1"
-    local _num=`docker ps -q | wc -l`
+    local _how_many="${2-$r_NUM_NODES}"
+    local _start_from="${3-$r_NODE_START_NUM}"
 
-    for i in `seq 1 $_num`; do
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
         if [ ! -d /mnt/etc/node$i ]; then
             mkdir -p /mnt/etc/node$i
         fi
@@ -418,6 +447,7 @@ function f_local_repo() {
     local __doc__="Setup local repo on Docker host (Ubuntu)"
     local _local_dir="$1"
     local _force_extract=""
+    local _download_only=""
 
     apt-get install -y apache2 createrepo
 
@@ -455,7 +485,12 @@ function f_local_repo() {
     elif [ -e "$_tar_gz_file" ]; then
         _info "$_tar_gz_file already exists. Skipping download."
     else
+        #curl --limit-rate 200K --retry 20 -C - "$r_HDP_REPO_TARGZ" -o $_tar_gz_file
         wget -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_TARGZ"
+    fi
+
+    if _isYes "$_download_only"; then
+        return $?
     fi
 
     if ! _isYes "$_has_extracted"; then
@@ -579,9 +614,8 @@ function f_screen_cmd() {
     local __doc__="Output GNU screen command"
     screen -ls | grep -w docker
     if [ $? -ne 0 ]; then
-      local _num=`docker ps -q | wc -l`
       _info "You may want to run the following commands to start GNU Screen:"
-      echo "screen -S \"docker\" bash -c 'for s in \`seq 1 4\`; do screen -t \"node\${s}\" \"ssh\" \"node\${s}${r_DOMAIN_SUFFIX}\"; done'"
+      echo "screen -S \"docker\" bash -c 'for s in `_docker_seq`; do screen -t \"node\${s}\" \"ssh\" \"node\${s}${r_DOMAIN_SUFFIX}\"; done'"
     fi
 }
 
@@ -600,7 +634,7 @@ function p_host_setup() {
     grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-trusty main" >> /etc/apt/sources.list.d/docker.list
     apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
 
-    apt-get -y install wget createrepo sshfs htop dstat iotop sysv-rc-conf postgresql-client mysql-client tcpdump
+    apt-get -y install wget sshfs htop dstat iotop sysv-rc-conf postgresql-client mysql-client tcpdump sharutils
     #krb5-kdc krb5-admin-server mailutils postfix
 
     # To use tcpdump from container
@@ -621,11 +655,15 @@ function p_host_setup() {
     f_docker_run
 
     f_ambari_server_install
+    set +e
+
+    sleep 3
+    f_ambari_server_start
+    sleep 3
 
     if _isYes "$r_HDP_LOCAL_REPO"; then
         f_local_repo
     fi
-    set +e
     set +v
     f_screen_cmd
 }
@@ -645,7 +683,7 @@ function f_dnsmasq() {
     fi
 
     echo "$_docer0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /etc/banner_add_hosts
-    for i in `seq 1 10`; do
+    for i in `seq 1 99`; do
         echo "${r_DOCKER_NETWORK_ADDR}${i}    node${i}${r_DOMAIN_SUFFIX} node${i}" >> /etc/banner_add_hosts
     done
     service dnsmasq restart
@@ -672,10 +710,15 @@ function f_dockerfile() {
     fi
 
     if [ -e ./DockerFile ]; then
-        _backup "./DockerFile"
+        _backup "./DockerFile" && rm -f ./DockerFile
     fi
 
-    wget "$_url" -O ./DockerFile
+    if [ -e "$_url" ]; then
+        _info "$_url is a local file path"
+        cat "$_url" > ./DockerFile
+    else
+        wget "$_url" -O ./DockerFile
+    fi
 
     f_ssh_setup
 
@@ -728,6 +771,7 @@ function f_yum_remote_proxy() {
     local _proxy="$1"
     local _host="$2"
 
+    # TODO: set up proxy with Apache2
     ssh root@$_host "grep proxy /etc/yum.conf" && return 1
     ssh root@$_host "echo "proxy=${_proxy}" >> /etc/yum.conf"
     ssh root@$_host "grep proxy /etc/yum.conf"
@@ -736,18 +780,27 @@ function f_yum_remote_proxy() {
 function f_gw_set() {
     local __doc__="Set new default gateway to each container"
     local _gw="`f_docker_ip`"
-    local _num=`docker ps -q | wc -l`
-    set -v
-    for i in `seq 1 $_num`; do
-        ssh root@node$i${r_DOMAIN_SUFFIX} "route add default gw $_gw eth0"
+    # NOTE: Assuming docker name and hostname is same
+    for _name in `docker ps --format "{{.Names}}"`; do
+        ssh root@${_name}${r_DOMAIN_SUFFIX} "route add default gw $_gw eth0"
     done
-    set +v
 }
 
 function f_docker_ip() {
     local __doc__="Output docker0 IP or specified NIC's IP"
-    local _if="${1-docker0}"
-    ifconfig $_if | grep -oP 'inet addr:\d+\.\d+\.\d+\.\d' | cut -d":" -f2
+    local _ip="${1}"
+    local _if="${2-docker0}"
+    local _ifconfig="`ifconfig $_if 2>/dev/null`"
+
+    if [ -z "$_ifconfig" ]; then
+        if [ -n "$_ip" ]; then
+            echo "$_ip"
+            return 0
+        fi
+        return $?
+    fi
+
+    echo "$_ifconfig" | grep -oP 'inet addr:\d+\.\d+\.\d+\.\d' | cut -d":" -f2
     return $?
 }
 
@@ -755,13 +808,12 @@ function f_log_cleanup() {
     local __doc__="Deleting log files which group owner is hadoop"
     local _days="${1-7}"
     echo "Deleting hadoop logs which is older than $_days..."
-    local _num=`docker ps -q | wc -l`
-    #set -x
-    for i in `seq 1 $_num`; do
-        ssh root@node$i${r_DOMAIN_SUFFIX} "\"find /var/log/ -type f -group hadoop -mtime +${_days} -print0 | xargs -0 -n1 -I {} rm -f {}\""
+    # NOTE: Assuming docker name and hostname is same
+    for _name in `docker ps --format "{{.Names}}"`; do
+        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -n1 -I {} rm -f {}'
     done
-    #set +x
 }
+
 function f_checkUpdate() {
     local __doc__="Check if newer script is available, then download."
     local _local_file_path="${1-$BASH_SOURCE}"
@@ -785,7 +837,7 @@ function f_checkUpdate() {
     fi
 
     # --basic --user ${r_svn_user}:${r_svn_pass}      last-modified    cut -c16-
-    local _remote_length=`curl -s -k -L --head "${_remote_url}" | grep -i '^Content-Length:' | awk '{print $2}' | tr -d '\r'`
+    local _remote_length=`curl -m 4 -s -k -L --head "${_remote_url}" | grep -i '^Content-Length:' | awk '{print $2}' | tr -d '\r'`
     if [ -z "$_remote_length" ]; then _warn "$FUNCNAME: Unknown remote length."; return 1; fi
 
     #local _local_last_mod_ts=`stat -c%Y ${_local_file_path}`
@@ -908,8 +960,8 @@ function _ask() {
 function _backup() {
     local __doc__="Backup the given file path into ${g_BACKUP_DIR}."
     local _file_path="$1"
-    local _file_name="`basename $_file_path`"
     local _force="$2"
+    local _file_name="`basename $_file_path`"
     local _new_file_name=""
 
     if [ ! -e "$_file_path" ]; then
@@ -1057,13 +1109,14 @@ function _echo() {
 
 list() {
     local _name="$1"
-    local _width=$(( $(tput cols) - 2 ))
+    #local _width=$(( $(tput cols) - 2 ))
+    local _tmp_txt=""
 
     if [[ -z "$_name" ]]; then
         (for _f in `typeset -F | grep -E '^declare -f [fp]_' | cut -d' ' -f3`; do
-            eval "echo \"--[ $_f ]\" | sed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
-            help "$_f" "Y"
-            echo ""
+            #eval "echo \"--[ $_f ]\" | sed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
+            _tmp_txt="`help "$_f" "Y"`"
+            printf "%-28s%s\n" "$_f" "$_tmp_txt"
         done)
     elif [[ "$_name" =~ ^func ]]; then
         typeset -F | grep '^declare -f [fp]_' | cut -d' ' -f3
@@ -1149,12 +1202,12 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         exit
     fi
 
-    _IS_SCRIPT_RUNNING="Y"
+    _IS_SCRIPT_RUNNING=true
 
     f_checkUpdate
-    p_interview_or_load
 
     if _isYes "$_SETUP_HDP"; then
+        p_interview_or_load
         _ask "Would you like to start setup this host?" "Y"
         if ! _isYes; then echo "Bye"; exit; fi
 
@@ -1164,15 +1217,20 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         echo "Started at : $g_START_TIME"
         echo "Finished at: $g_END_TIME"
     elif [ -n "$_FUNCTION_NAME" ]; then
-        if [[ "$_function_name" =~ ^[fph]_ ]]; then
+        if [[ "$_FUNCTION_NAME" =~ ^[fph]_ ]]; then
             type $_FUNCTION_NAME 2>/dev/null | grep " is a function" &>/dev/null
             if [ $? -eq 0 ]; then
+                f_loadResp
                 $_FUNCTION_NAME
             fi
         fi
-    else
+    elif _isYes "$_START_HDP"; then
+        f_loadResp
         p_hdp_start
+    else
+        usage | less
+        exit 0
     fi
 else
-    _info "You may want to run 'f_loadResp'"
+    _info "You may want to run 'f_loadResp' to load your response file"
 fi
