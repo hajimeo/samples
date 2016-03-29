@@ -174,7 +174,8 @@ function p_hdp_start() {
     sleep 4
     _info "Not setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
-    f_ambari_start
+    f_ambari_server_start
+    f_ambari_agent_start
     f_etcs_mount
     echo "WARN: Will start all services..."
     f_services_start
@@ -259,6 +260,7 @@ function f_ntp() {
 function _docker_seq() {
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _output_cmd="$3"
 
     if [ -z "$_start_from" ]; then
         _start_from=1
@@ -279,7 +281,11 @@ function _docker_seq() {
         return 1
     fi
 
-    seq $_start_from $_e
+    if _isYes "$_output_cmd"; then
+        echo "seq $_start_from $_e"
+    else
+        seq $_start_from $_e
+    fi
 }
 
 function f_docker0_setup() {
@@ -384,6 +390,11 @@ function f_ambari_server_install() {
 function f_ambari_server_start() {
     local __doc__="Starting ambari-server on $r_AMBARI_HOST"
     ssh root@$r_AMBARI_HOST "ambari-server start --silent"
+    if [ $? -ne 0 ]; then
+        # TODO: lazy retry
+        sleep 5
+        ssh root@$r_AMBARI_HOST "ambari-server start --silent"
+    fi
 }
 
 function f_ambari_agent_install() {
@@ -411,13 +422,12 @@ function f_ambari_agent_start() {
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh root@node$i${r_DOMAIN_SUFFIX} 'ambari-agent start'
+        if [ $? -ne 0 ]; then
+            # TODO: lazy retry
+            sleep 5
+            ssh root@node$i${r_DOMAIN_SUFFIX} 'ambari-agent start'
+        fi
     done
-}
-
-function f_ambari_start() {
-    local __doc__="Starting ambari-server and all ambari-agents"
-    f_ambari_server_start
-    f_ambari_agent_start
 }
 
 function f_etcs_mount() {
@@ -552,16 +562,27 @@ function f_local_repo() {
 
 function f_repo_mount() {
     local __doc__="TODO: This would work on only my environment. Mounting VM host's directory to use for local repo"
-    local _host_pc="$1"
-    local _mu="$2"
-    local _src="${3-/Users/${_mu}/Public/hdp/}"
-    local _mounting_dir="/var/www/html/hdp"
+    local _user="$1"
+    local _host_pc="$2"
+    local _src="${3-/Users/${_user}/Public/hdp/}"  # needs ending slash
+    local _mounting_dir="${4-/var/www/html/hdp}" # no need ending slash
 
     if [ -z "$_host_pc" ]; then
-      _host_pc="`env | awk '/SSH_CONNECTION/ {gsub("SSH_CONNECTION=", "", $1); print $1}'`"
-      if [ -z "$_host_pc" ]; then
-        _host_pc="192.168.136.1"
-      fi
+        _host_pc="`env | awk '/SSH_CONNECTION/ {gsub("SSH_CONNECTION=", "", $1); print $1}'`"
+        if [ -z "$_host_pc" ]; then
+            _host_pc="`netstat -rn | awk '/^0\.0\.0\.0/ {print $2}'`"
+        fi
+
+        local _src="/Users/${_user}/Public/hdp/"
+        _connect_str="${_user}@${_host_pc}:${_src}"
+    fi
+
+    if [ -z "${_user}" ]; then
+        if [ -n "$SUDO_USER" ]; then
+            _user="$SUDO_USER"
+        else
+            _user="$USER"
+        fi
     fi
 
     mount | grep "$_mounting_dir"
@@ -572,10 +593,10 @@ function f_repo_mount() {
         mkdir "$_mounting_dir" || return
     fi
 
-    _info "Mounting ${_mu}@${_host_pc}:${_src} to $_mounting_dir ..."
+    _info "Mounting ${_user}@${_host_pc}:${_src} to $_mounting_dir ..."
     _info "TODO: Edit this function for your env if above is not good (and Ctrl+c now)"
     sleep 4
-    sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks ${_mu}@${_host_pc}:${_src} "$_mounting_dir"
+    sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks ${_user}@${_host_pc}:${_src} "${_mounting_dir%/}"
 }
 
 function f_services_start() {
@@ -615,7 +636,7 @@ function f_screen_cmd() {
     screen -ls | grep -w docker
     if [ $? -ne 0 ]; then
       _info "You may want to run the following commands to start GNU Screen:"
-      echo "screen -S \"docker\" bash -c 'for s in `_docker_seq`; do screen -t \"node\${s}\" \"ssh\" \"node\${s}${r_DOMAIN_SUFFIX}\"; done'"
+      echo "screen -S \"docker\" bash -c 'for s in \``_docker_seq "$r_NUM_NODES" "$r_NODE_START_NUM" "Y"`\`; do screen -t \"node\${s}\" \"ssh\" \"node\${s}${r_DOMAIN_SUFFIX}\"; done'"
     fi
 }
 
@@ -766,15 +787,71 @@ function f_hostname_set() {
     set +v
 }
 
+function f_apache_proxy() {
+    local _proxy_dir="/var/www/proxy"
+    local _cache_dir="/var/cache/apache2/mod_cache_disk"
+    local _port="28080"
+
+    apt-get install -y apache2 apache2-utils
+    a2enmod proxy proxy_http proxy_connect cache cache_disk
+    mkdir -m 777 $_proxy_dir || _info "${_proxy_dir} already exists"
+    mkdir -p -m 777 ${_cache_dir} || _info "mod_cache_disk already exists"
+
+    grep -i "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
+
+    if [ -s /etc/apache2/sites-available/proxy.conf ]; then
+        _warn "/etc/apache2/sites-available/proxy.conf already exists. Skipping..."
+        return 0
+    fi
+
+    echo "<VirtualHost *:${_port}>
+    DocumentRoot ${_proxy_dir}
+    LogLevel warn
+    ErrorLog \${APACHE_LOG_DIR}/proxy_error.log
+    CustomLog \${APACHE_LOG_DIR}/proxy_access.log combined
+
+    <IfModule mod_proxy.c>
+
+        ProxyRequests On
+        <Proxy *>
+            AddDefaultCharset off
+            Order deny,allow
+            Deny from all
+            Allow from ${r_DOCKER_NETWORK_ADDR%.}
+        </Proxy>
+
+        ProxyVia On
+
+        <IfModule mod_cache_disk.c>
+            CacheRoot ${_cache_dir}
+            CacheIgnoreCacheControl On
+            CacheEnable disk /
+            CacheEnable disk http://
+            CacheDirLevels 2
+            CacheDirLength 1
+        </IfModule>
+
+    </IfModule>
+</VirtualHost>" > /etc/apache2/sites-available/proxy.conf
+
+    a2ensite proxy
+    # TODO: should use restart?
+    service apache2 reload
+}
+
 function f_yum_remote_proxy() {
-    local __doc__="TODO: This function is to achive less internet usage caused by downloading packges. Havn't completed yet"
+    local __doc__="This function edits yum.conf of each running container to set up proxy (http://your.proxy.server:port)"
     local _proxy="$1"
-    local _host="$2"
+
+    if [ -z "$_proxy" ]; then
+        _error "No proxy (http://your.proxy.server:port) to set"
+        return 1
+    fi
 
     # TODO: set up proxy with Apache2
-    ssh root@$_host "grep proxy /etc/yum.conf" && return 1
-    ssh root@$_host "echo "proxy=${_proxy}" >> /etc/yum.conf"
-    ssh root@$_host "grep proxy /etc/yum.conf"
+    for _host in `docker ps --format "{{.Names}}"`; do
+        ssh root@$_host "grep ^proxy /etc/yum.conf || echo \"proxy=${_proxy}\" >> /etc/yum.conf"
+    done
 }
 
 function f_gw_set() {
