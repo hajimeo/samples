@@ -175,7 +175,7 @@ function p_hdp_start() {
     _info "Not setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
     f_ambari_server_start
-    f_ambari_agent_start
+    f_ambari_agent "start"
     f_etcs_mount
     echo "WARN: Will start all services..."
     f_services_start
@@ -427,21 +427,6 @@ function f_ambari_agent() {
             # TODO: lazy retry
             sleep 5
             ssh root@node$i${r_DOMAIN_SUFFIX} "ambari-agent $_cmd"
-        fi
-    done
-}
-
-function f_ambari_agent_start() {
-    local __doc__="Starting ambari-agent on some containers"
-    local _how_many="${1-$r_NUM_NODES}"
-    local _start_from="${2-$r_NODE_START_NUM}"
-
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh root@node$i${r_DOMAIN_SUFFIX} 'ambari-agent start'
-        if [ $? -ne 0 ]; then
-            # TODO: lazy retry
-            sleep 5
-            ssh root@node$i${r_DOMAIN_SUFFIX} 'ambari-agent start'
         fi
     done
 }
