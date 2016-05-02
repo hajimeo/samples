@@ -422,11 +422,11 @@ function f_ambari_agent() {
     local _start_from="${3-$r_NODE_START_NUM}"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh root@node$i${r_DOMAIN_SUFFIX} "ambari-agent $_cmd"
+        ssh root@node$i${r_DOMAIN_SUFFIX} -t "ambari-agent $_cmd"
         if [ $? -ne 0 ]; then
             # TODO: lazy retry
             sleep 5
-            ssh root@node$i${r_DOMAIN_SUFFIX} "ambari-agent $_cmd"
+            ssh root@node$i${r_DOMAIN_SUFFIX} -t "ambari-agent $_cmd"
         fi
     done
 }
