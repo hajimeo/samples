@@ -889,7 +889,7 @@ function f_log_cleanup() {
     echo "Deleting hadoop logs which is older than $_days..."
     # NOTE: Assuming docker name and hostname is same
     for _name in `docker ps --format "{{.Names}}"`; do
-        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -n1 -I {} rm -f {}'
+        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     done
 }
 
