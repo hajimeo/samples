@@ -174,8 +174,9 @@ function p_hdp_start() {
     sleep 4
     _info "Not setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
+    f_log_cleanup
     f_ambari_server_start
-    f_ambari_agent_start
+    f_ambari_agent "start"
     f_etcs_mount
     echo "WARN: Will start all services..."
     f_services_start
@@ -415,17 +416,18 @@ function f_ambari_agent_install() {
     done
 }
 
-function f_ambari_agent_start() {
-    local __doc__="Starting ambari-agent on some containers"
-    local _how_many="${1-$r_NUM_NODES}"
-    local _start_from="${2-$r_NODE_START_NUM}"
+function f_ambari_agent() {
+    local __doc__="Executing ambari-agent command on some containers"
+    local _cmd="${1-status}"
+    local _how_many="${2-$r_NUM_NODES}"
+    local _start_from="${3-$r_NODE_START_NUM}"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh root@node$i${r_DOMAIN_SUFFIX} 'ambari-agent start'
+        ssh root@node$i${r_DOMAIN_SUFFIX} -t "ambari-agent $_cmd"
         if [ $? -ne 0 ]; then
             # TODO: lazy retry
             sleep 5
-            ssh root@node$i${r_DOMAIN_SUFFIX} 'ambari-agent start'
+            ssh root@node$i${r_DOMAIN_SUFFIX} -t "ambari-agent $_cmd"
         fi
     done
 }
@@ -887,7 +889,7 @@ function f_log_cleanup() {
     echo "Deleting hadoop logs which is older than $_days..."
     # NOTE: Assuming docker name and hostname is same
     for _name in `docker ps --format "{{.Names}}"`; do
-        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -n1 -I {} rm -f {}'
+        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     done
 }
 
@@ -1281,9 +1283,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     _IS_SCRIPT_RUNNING=true
 
-    f_checkUpdate
-
     if _isYes "$_SETUP_HDP"; then
+        f_checkUpdate
         p_interview_or_load
         _ask "Would you like to start setup this host?" "Y"
         if ! _isYes; then echo "Bye"; exit; fi
@@ -1302,6 +1303,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             fi
         fi
     elif _isYes "$_START_HDP"; then
+        f_checkUpdate
         f_loadResp
         p_hdp_start
     else
