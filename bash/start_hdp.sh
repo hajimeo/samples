@@ -174,6 +174,7 @@ function p_hdp_start() {
     sleep 4
     _info "Not setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
+    f_log_cleanup
     f_ambari_server_start
     f_ambari_agent "start"
     f_etcs_mount
@@ -1282,9 +1283,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     _IS_SCRIPT_RUNNING=true
 
-    f_checkUpdate
-
     if _isYes "$_SETUP_HDP"; then
+        f_checkUpdate
         p_interview_or_load
         _ask "Would you like to start setup this host?" "Y"
         if ! _isYes; then echo "Bye"; exit; fi
@@ -1303,6 +1303,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             fi
         fi
     elif _isYes "$_START_HDP"; then
+        f_checkUpdate
         f_loadResp
         p_hdp_start
     else
