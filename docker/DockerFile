@@ -1,7 +1,7 @@
 FROM centos:6
 # HDP software requirements
-RUN yum -y remove glibc-common
 RUN yum -y update
+RUN yum -y downgrade glibc-2.12-1.166.el6.x86_64 glibc-common-2.12-1.166.el6.x86_64
 RUN yum -y install scp curl unzip tar wget openssl python
 RUN yum -y install epel-release krb5-workstation
 RUN yum -y install yum-utils sudo openssh-server openssh-clients which vim net-tools lsof tcpdump
