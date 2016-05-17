@@ -1,9 +1,8 @@
 FROM centos:6
 # HDP software requirements
+RUN yum -y update
 RUN yum -y install scp curl unzip tar wget openssl python
-
-RUN yum -y install epel-release
-#RUN yum -y install krb5-workstation # at this moment this fails due to some dependency issue
+RUN yum -y install epel-release krb5-workstation
 RUN yum -y install yum-utils sudo openssh-server openssh-clients which vim net-tools lsof tcpdump
 #RUN yum -y install dnsmasq
 
