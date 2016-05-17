@@ -732,14 +732,13 @@ function f_dockerfile() {
         return 1
     fi
 
-    if [ -e ./DockerFile ]; then
-        _backup "./DockerFile" && rm -f ./DockerFile
-    fi
-
-    if [ -e "$_url" ]; then
-        _info "$_url is a local file path"
-        cat "$_url" > ./DockerFile
+    if [ -f "$_url" ]; then
+        _info "$_url is a local file path. Skipping"
     else
+        if [ -e ./DockerFile ]; then
+            _backup "./DockerFile" && rm -f ./DockerFile
+        fi
+
         wget "$_url" -O ./DockerFile
     fi
 
