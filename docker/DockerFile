@@ -1,5 +1,6 @@
 FROM centos:6
 # HDP software requirements
+RUN yum -y remove glibc-common
 RUN yum -y update
 RUN yum -y install scp curl unzip tar wget openssl python
 RUN yum -y install epel-release krb5-workstation

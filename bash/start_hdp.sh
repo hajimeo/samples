@@ -653,9 +653,12 @@ function p_host_setup() {
         apt-get update && apt-get upgrade -y
     fi
 
-    apt-key adv --keyserver hkp://pgp.mit.edu:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key"
-    grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-trusty main" >> /etc/apt/sources.list.d/docker.list
-    apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
+    which docker
+    if [ $? -gt 0 ] || [ ! -s /etc/apt/sources.list.d/docker.list ]; then
+        apt-key adv --keyserver hkp://pgp.mit.edu:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key"
+        grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-trusty main" >> /etc/apt/sources.list.d/docker.list
+        apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
+    fi
 
     apt-get -y install wget sshfs htop dstat iotop sysv-rc-conf postgresql-client mysql-client tcpdump sharutils
     #krb5-kdc krb5-admin-server mailutils postfix
