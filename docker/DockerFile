@@ -1,8 +1,5 @@
-FROM centos:6
+FROM centos:6.7
 # HDP software requirements
-#RUN yum -y update
-# This is temp workaround to avoid dependency error
-#RUN yum -y downgrade glibc-2.12-1.166.el6_7.7.x86_64 glibc-common-2.12-1.166.el6_7.7.x86_64
 RUN yum -y install scp curl unzip tar wget openssl python
 RUN yum -y install yum-utils sudo which vim net-tools lsof tcpdump openssh-server openssh-clients
 RUN yum -y install epel-release krb5-workstation
