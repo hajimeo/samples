@@ -751,9 +751,6 @@ function f_dockerfile() {
     local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
 
     sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ./DockerFile
-    if [ -n "$r_CONTAINER_OS" ]; then
-        sed -i "s@centos:6@${r_CONTAINER_OS}:${r_CONTAINER_OS_VER}@1" ./DockerFile
-    fi
 }
 
 function f_ssh_setup() {
