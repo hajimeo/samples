@@ -88,7 +88,8 @@ function p_interview() {
     if [ -n "$r_CONTAINER_OS" ]; then
         r_CONTAINER_OS="`echo "$r_CONTAINER_OS" | tr '[:upper:]' '[:lower:]'`"
     fi
-    _ask "Container OS version" "6" "r_CONTAINER_OS_VER" "N" "Y"
+    _ask "Container OS version" "6.7" "r_CONTAINER_OS_VER" "N" "Y"
+    r_REPO_OS_VER="${r_CONTAINER_OS_VER%%.*}"
     _ask "DockerFile URL or path" "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile" "r_DOCKERFILE_URL" "N" "N"
     _ask "How many nodes?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Node starting number" "1" "r_NODE_START_NUM" "N" "Y"
@@ -99,14 +100,14 @@ function p_interview() {
     _ask "Ambari server hostname" "node1$r_DOMAIN_SUFFIX" "r_AMBARI_HOST" "N" "Y"
     _ask "Ambari version (used to build repo URL)" "2.2.1.1" "r_AMBARI_VER" "N" "Y"
     _echo "If you have set up a Local Repo, please change below"
-    _ask "Ambari repo" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
+    _ask "Ambari repo" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
 
     _ask "Would you like to set up local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
     if _isYes "$r_HDP_LOCAL_REPO"; then
         _ask "Local repository directory (Apache root)" "/var/www/html" "r_HDP_REPO_DIR"
         _ask "HDP (repo) version" "2.3.4.7" "r_HDP_REPO_VER"
-        _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_CONTAINER_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
-        _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${r_CONTAINER_OS_VER}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
+        _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_REPO_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
+        _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_REPO_OS_VER}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${r_REPO_OS_VER}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
     fi
 }
 
@@ -487,7 +488,7 @@ function f_local_repo() {
 
     local _tar_gz_file="`basename "$r_HDP_REPO_TARGZ"`"
     local _has_extracted=""
-    local _hdp_dir="`find . -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
+    local _hdp_dir="`find . -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_REPO_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
 
     if _isNotEmptyDir "$_hdp_dir"; then
         if ! _isYes "$_force_extract"; then
@@ -507,14 +508,14 @@ function f_local_repo() {
 
     if ! _isYes "$_has_extracted"; then
         tar xzvf "$_tar_gz_file"
-        _hdp_dir="`find . -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
+        _hdp_dir="`find . -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_REPO_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
         createrepo "$_hdp_dir"
     fi
 
     local _util_tar_gz_file="`basename "$r_HDP_REPO_UTIL_TARGZ"`"
     local _util_has_extracted=""
     # TODO: not accurate
-    local _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
+    local _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?/${r_CONTAINER_OS}${r_REPO_OS_VER}$"`"
 
     if _isNotEmptyDir "$_hdp_util_dir"; then
         if ! _isYes "$_force_extract"; then
@@ -529,7 +530,7 @@ function f_local_repo() {
 
     if ! _isYes "$_util_has_extracted"; then
         tar xzvf "$_util_tar_gz_file"
-        _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?/${r_CONTAINER_OS}${r_CONTAINER_OS_VER}$"`"
+        _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?/${r_CONTAINER_OS}${r_REPO_OS_VER}$"`"
         createrepo "$_hdp_util_dir"
     fi
 
@@ -544,7 +545,7 @@ function f_local_repo() {
         echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
 
         # TODO: this part is best effort...
-        if [ "${r_CONTAINER_OS}" = "centos" ] || [ "${r_CONTAINER_OS_VER}" = "redhat" ]; then
+        if [ "${r_CONTAINER_OS}" = "centos" ] || [ "${r_CONTAINER_OS}" = "redhat" ]; then
             for i in `seq 1 10`; do
               nc -z $r_AMBARI_HOST 8080 && break
               _info "Ambari server is not listening on $r_AMBARI_HOST:8080 Waiting..."
@@ -553,10 +554,10 @@ function f_local_repo() {
 
             nc -z $r_AMBARI_HOST 8080
             if [ $? -eq 0 ]; then
-                curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/2.3/operating_systems/redhat${r_CONTAINER_OS_VER}/repositories/HDP-2.3" -d '{"Repositories":{"base_url":"'http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}'","verify_base_url":true}}'
+                curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/2.3/operating_systems/redhat${r_REPO_OS_VER}/repositories/HDP-2.3" -d '{"Repositories":{"base_url":"'http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}'","verify_base_url":true}}'
 
                 local _hdp_util_name="`echo $_util_repo_path | grep -oP 'HDP-UTILS-[\d\.]+'`"
-                curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/2.3/operating_systems/redhat${r_CONTAINER_OS_VER}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}'","verify_base_url":true}}'
+                curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/2.3/operating_systems/redhat${r_REPO_OS_VER}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}'","verify_base_url":true}}'
             fi
         fi
     fi
