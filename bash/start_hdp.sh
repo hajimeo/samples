@@ -383,7 +383,7 @@ function f_ambari_server_install() {
     fi
 
     # TODO: at this moment, only Centos (yum)
-    wget -nv "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo || retuen 1
+    wget -nv "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo || return 1
     scp /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
     ssh root@$r_AMBARI_HOST "yum install ambari-server -y && ambari-server setup -s"
 }
