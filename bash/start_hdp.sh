@@ -97,7 +97,7 @@ function p_interview() {
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
 
     # TODO: Questions to install Ambari
-    _ask "Ambari server hostname" "node1$r_DOMAIN_SUFFIX" "r_AMBARI_HOST" "N" "Y"
+    _ask "Ambari server hostname" "node${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
     _ask "Ambari version (used to build repo URL)" "2.2.1.1" "r_AMBARI_VER" "N" "Y"
     _echo "If you have set up a Local Repo, please change below"
     _ask "Ambari repo" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
@@ -171,6 +171,7 @@ function p_hdp_start() {
     f_loadResp
     f_docker0_setup
     f_ntp
+    f_docker_stop_other
     f_docker_start
     sleep 4
     _info "Not setting up the default GW. please use f_gw_set if necessary"
@@ -336,6 +337,27 @@ function f_docker_stop() {
     _info "stopping $_how_many docker containers starting from $_start_from ..."
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         docker stop node$_n
+    done
+}
+
+function f_docker_stop_all() {
+    docker stop $(docker ps -q)
+}
+
+function f_docker_stop_other() {
+    local __doc__="Stopping other docker containers"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+
+    local _filter=""
+    for _s in `_docker_seq "$_how_many" "$_start_from"`; do
+        _filter="${_filter}node${_s}|"
+    done
+    _filter="${_filter%\|}"
+
+    _info "stopping docker containers other containers (${_filter})..."
+    for _n in `docker ps --format "{{.Names}}" | grep -vE "${_filter}"`; do
+        echo "docker stop node$_n"
     done
 }
 
@@ -1293,6 +1315,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         p_interview_or_load
         _ask "Would you like to start setup this host?" "Y"
         if ! _isYes; then echo "Bye"; exit; fi
+
+        _ask "Would you like to stop all running containers?" "Y"
+        if _isYes; then f_docker_stop_all; fi
 
         g_START_TIME="`date -u`"
         p_host_setup
