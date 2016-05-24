@@ -846,11 +846,16 @@ function f_yum_remote_proxy() {
     local _proxy="$1"
 
     if [ -z "$_proxy" ]; then
-        _error "No proxy (http://your.proxy.server:port) to set"
-        return 1
+        if [ -z "$r_DOCKER_HOST_IP" ]; then
+            _error "No proxy (http://your.proxy.server:port) to set"
+            return 1
+        else
+            _info "No proxy, so that using http://${r_DOCKER_HOST_IP}:28080"
+            _proxy="http://${r_DOCKER_HOST_IP}:28080"
+        fi
     fi
 
-    # TODO: set up proxy with Apache2
+    # set up proxy for all running containers
     for _host in `docker ps --format "{{.Names}}"`; do
         ssh root@$_host "grep ^proxy /etc/yum.conf || echo \"proxy=${_proxy}\" >> /etc/yum.conf"
     done
