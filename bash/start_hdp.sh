@@ -232,7 +232,7 @@ function f_loadResp() {
     local _actual_file_path="$_file_path"
     if [ ! -r "${_file_path}" ]; then
         _critical "$FUNCNAME: Not a readable response file. ${_file_path}" 1;
-        return 1
+        exit 2
     fi
     
     #g_response_file="$_file_path"  TODO: forgot what this line was for
@@ -357,7 +357,7 @@ function f_docker_stop_other() {
 
     _info "stopping docker containers other containers (${_filter})..."
     for _n in `docker ps --format "{{.Names}}" | grep -vE "${_filter}"`; do
-        echo "docker stop node$_n"
+        echo "docker stop $_n"
     done
 }
 
@@ -1180,7 +1180,6 @@ function _critical() {
     _exit ${_exit_code}
 }
 function _exit() {
-    local _exit_code=$1
     local _exit_code=$1
 
     # Forcing not to go to next step.
