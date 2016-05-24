@@ -355,9 +355,9 @@ function f_docker_stop_other() {
     done
     _filter="${_filter%\|}"
 
-    _info "stopping docker containers other containers (${_filter})..."
+    _info "stopping other docker containers (${_filter})..."
     for _n in `docker ps --format "{{.Names}}" | grep -vE "${_filter}"`; do
-        echo "docker stop $_n"
+        docker stop $_n
     done
 }
 
