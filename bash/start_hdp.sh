@@ -360,7 +360,7 @@ function f_docker_stop_other() {
     done
     _filter="${_filter%\|}"
 
-    _info "stopping other docker containers (${_filter})..."
+    _info "stopping other docker containers (not in ${_filter})..."
     for _n in `docker ps --format "{{.Names}}" | grep -vE "${_filter}"`; do
         docker stop $_n
     done
