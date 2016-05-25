@@ -96,18 +96,23 @@ function p_interview() {
     _ask "Hostname for docker host in docker private network?" "dockerhost1" "r_DOCKER_PRIVATE_HOSTNAME" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
 
-    # TODO: Questions to install Ambari
+    # Questions to install Ambari
     _ask "Ambari server hostname" "node${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
     _ask "Ambari version (used to build repo URL)" "2.2.1.1" "r_AMBARI_VER" "N" "Y"
     _echo "If you have set up a Local Repo, please change below"
     _ask "Ambari repo" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
 
-    _ask "Would you like to set up local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
+    _ask "Would you like to set up a local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
     if _isYes "$r_HDP_LOCAL_REPO"; then
         _ask "Local repository directory (Apache root)" "/var/www/html" "r_HDP_REPO_DIR"
         _ask "HDP (repo) version" "2.3.4.7" "r_HDP_REPO_VER"
         _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_REPO_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
         _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_REPO_OS_VER}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${r_REPO_OS_VER}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
+    fi
+
+    _ask "Would you like to set up a proxy server for yum on this server?" "N" "r_PROXY"
+    if _isYes "$r_PROXY"; then
+        _ask "Proxy port" "28080" "r_PROXY_PORT"
     fi
 }
 
@@ -713,6 +718,11 @@ function p_host_setup() {
     if _isYes "$r_HDP_LOCAL_REPO"; then
         f_local_repo
     fi
+
+    if _isYes "$r_PROXY"; then
+        f_apache_proxy
+        f_yum_remote_proxy
+    fi
     set +v
     f_screen_cmd
 }
@@ -814,7 +824,7 @@ function f_hostname_set() {
 function f_apache_proxy() {
     local _proxy_dir="/var/www/proxy"
     local _cache_dir="/var/cache/apache2/mod_cache_disk"
-    local _port="28080"
+    local _port="${r_PROXY_PORT-28080}"
 
     apt-get install -y apache2 apache2-utils
     a2enmod proxy proxy_http proxy_connect cache cache_disk
@@ -865,21 +875,22 @@ function f_apache_proxy() {
 
 function f_yum_remote_proxy() {
     local __doc__="This function edits yum.conf of each running container to set up proxy (http://your.proxy.server:port)"
-    local _proxy="$1"
+    local _proxy_url="$1"
+    local _port="${r_PROXY_PORT-28080}"
 
-    if [ -z "$_proxy" ]; then
+    if [ -z "$_proxy_url" ]; then
         if [ -z "$r_DOCKER_HOST_IP" ]; then
             _error "No proxy (http://your.proxy.server:port) to set"
             return 1
         else
-            _info "No proxy, so that using http://${r_DOCKER_HOST_IP}:28080"
-            _proxy="http://${r_DOCKER_HOST_IP}:28080"
+            _info "No proxy, so that using http://${r_DOCKER_HOST_IP}:${_port}"
+            _proxy_url="http://${r_DOCKER_HOST_IP}:${_port}"
         fi
     fi
 
     # set up proxy for all running containers
     for _host in `docker ps --format "{{.Names}}"`; do
-        ssh root@$_host "grep ^proxy /etc/yum.conf || echo \"proxy=${_proxy}\" >> /etc/yum.conf"
+        ssh root@$_host "grep ^proxy /etc/yum.conf || echo \"proxy=${_proxy_url}\" >> /etc/yum.conf"
     done
 }
 
