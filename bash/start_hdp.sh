@@ -975,6 +975,8 @@ function f_checkUpdate() {
 
         _info "Validating the downloaded script..."
         source ${_local_file_path} || _critical "Please contact the script author."
+        _info "Script has been updated. Please re-run."
+        _exit 0
     fi
 }
 
@@ -1086,9 +1088,9 @@ function _backup() {
         return 1
     fi
 
+    local _mod_ts=`date -d "${_mod_dt}" +"%Y%m%d-%H%M%S"`
     if _isYes "$_force"; then
         local _mod_dt="`stat -c%y $_file_path`"
-        local _mod_ts=`date -d "${_mod_dt}" +"%Y%m%d-%H%M%S"`
 
         if [[ ! $_file_name =~ "." ]]; then
             _new_file_name="${_file_name}_${_mod_ts}"
@@ -1097,9 +1099,9 @@ function _backup() {
         fi
     else
         if [[ ! $_file_name =~ "." ]]; then
-            _new_file_name="${_file_name}_${g_start_time}"
+            _new_file_name="${_file_name}_${_mod_ts}"
         else
-            _new_file_name="${_file_name/\./_${g_start_time}.}"
+            _new_file_name="${_file_name/\./_${_mod_ts}.}"
         fi
 
         if [ -e "${g_backup_dir}${_new_file_name}" ]; then
