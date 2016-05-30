@@ -110,7 +110,7 @@ function p_interview() {
         _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_REPO_OS_VER}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${r_REPO_OS_VER}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
     fi
 
-    _ask "Would you like to set up a proxy server for yum on this server?" "N" "r_PROXY"
+    _ask "Would you like to set up a proxy server for yum on this server? (Experimental)" "N" "r_PROXY"
     if _isYes "$r_PROXY"; then
         _ask "Proxy port" "28080" "r_PROXY_PORT"
     fi
@@ -860,6 +860,7 @@ function f_apache_proxy() {
             CacheEnable disk http://
             CacheDirLevels 2
             CacheDirLength 1
+            CacheMaxFileSize 50000000
         </IfModule>
 
     </IfModule>
