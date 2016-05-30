@@ -1088,9 +1088,10 @@ function _backup() {
         return 1
     fi
 
+    local _mod_dt="`stat -c%y $_file_path`"
     local _mod_ts=`date -d "${_mod_dt}" +"%Y%m%d-%H%M%S"`
+
     if _isYes "$_force"; then
-        local _mod_dt="`stat -c%y $_file_path`"
 
         if [[ ! $_file_name =~ "." ]]; then
             _new_file_name="${_file_name}_${_mod_ts}"
