@@ -3,7 +3,7 @@ FROM centos:6.7
 RUN yum -y install scp curl unzip tar wget openssl python
 # some useful packages
 RUN yum -y install yum-utils sudo which vim net-tools lsof tcpdump openssh-server openssh-clients
-RUN yum -y install epel-release krb5-workstation
+#RUN yum -y install epel-release krb5-workstation
 #RUN yum -y install dnsmasq
 
 #RUN ssh-keygen -q -t rsa -N ''
