@@ -1328,9 +1328,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         _ask "Would you like to start setup this host?" "Y"
         if ! _isYes; then echo "Bye"; exit; fi
 
-        _ask "Would you like to stop all running containers?" "Y"
-        if _isYes; then f_docker_stop_all; fi
-
         g_START_TIME="`date -u`"
         p_host_setup
         g_END_TIME="`date -u`"
