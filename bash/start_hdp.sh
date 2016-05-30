@@ -674,8 +674,6 @@ function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
     local _docer0="${1-$r_DOCKER_HOST_IP}"
 
-    # TODO: Testing set -e which might cause unwanted issue
-    set -e
     set -v
     if _isYes "$r_APTGET_UPGRADE"; then
         apt-get update && apt-get upgrade -y
@@ -709,7 +707,6 @@ function p_host_setup() {
     f_docker_run
 
     f_ambari_server_install
-    set +e
 
     sleep 3
     f_ambari_server_start
