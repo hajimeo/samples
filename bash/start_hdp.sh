@@ -971,8 +971,8 @@ function f_checkUpdate() {
 
         curl -k -L "$_remote_url" -o ${_local_file_path} || _critical "$FUNCNAME: Update failed."
 
-        _info "Validating the downloaded script..."
-        source ${_local_file_path} || _critical "Please contact the script author."
+        #_info "Validating the downloaded script..."
+        #source ${_local_file_path} || _critical "Please contact the script author."
         _info "Script has been updated. Please re-run."
         _exit 0
     fi
