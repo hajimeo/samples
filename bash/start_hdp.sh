@@ -179,13 +179,14 @@ function p_hdp_start() {
     f_docker_stop_other
     f_docker_start
     sleep 4
-    _info "Not setting up the default GW. please use f_gw_set if necessary"
+    _info "NOT setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
     f_log_cleanup
+    f_etcs_mount
+
     f_ambari_server_start
     f_ambari_agent_fix_public_hostname
     f_ambari_agent "start"
-    f_etcs_mount
     echo "WARN: Will start all services..."
     f_services_start
     f_screen_cmd
@@ -489,7 +490,7 @@ function f_ambari_agent_fix_public_hostname() {
     local __doc__="Fixing public hostname (169.254.169.254 issue)"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _cmd='grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/\[security\]/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
+    local _cmd='grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/\[security\]/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
