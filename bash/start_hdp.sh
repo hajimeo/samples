@@ -738,6 +738,11 @@ function f_dnsmasq() {
         r_DOCKER_PRIVATE_HOSTNAME="dockerhost1"
     fi
 
+    if [ -s /etc/banner_add_hosts ]; then
+        _warn "/etc/banner_add_hosts already exists. Skipping..."
+        return
+    fi
+
     echo "$_docer0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /etc/banner_add_hosts
     for i in `seq 1 99`; do
         echo "${r_DOCKER_NETWORK_ADDR}${i}    node${i}${r_DOMAIN_SUFFIX} node${i}" >> /etc/banner_add_hosts
