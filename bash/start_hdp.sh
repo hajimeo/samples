@@ -1329,10 +1329,11 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     if _isYes "$_SETUP_HDP"; then
         f_checkUpdate
         p_interview_or_load
-        _ask "Would you like to start setup this host?" "Y"
+        _ask "Would you like to start setup this host? (this will stop all running containers)" "Y"
         if ! _isYes; then echo "Bye"; exit; fi
 
         g_START_TIME="`date -u`"
+        f_docker_stop_all
         p_host_setup
         g_END_TIME="`date -u`"
         echo "Started at : $g_START_TIME"
