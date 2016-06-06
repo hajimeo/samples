@@ -334,6 +334,18 @@ function f_docker_start() {
     done
 }
 
+function f_docker_unpause() {
+    local __doc__="Experimental: Unpausing some docker containers"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+
+    _info "starting $_how_many docker containers starting from $_start_from ..."
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        # docker seems doesn't care if i try to start already started one
+        docker unpause node$_n
+    done
+}
+
 function f_docker_stop() {
     local __doc__="Stopping some docker containers"
     local _how_many="${1-$r_NUM_NODES}"
@@ -363,6 +375,23 @@ function f_docker_stop_other() {
     _info "stopping other docker containers (not in ${_filter})..."
     for _n in `docker ps --format "{{.Names}}" | grep -vE "${_filter}"`; do
         docker stop $_n
+    done
+}
+
+function f_docker_pause_other() {
+    local __doc__="Experimental: Pausing(suspending) other docker containers"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+
+    local _filter=""
+    for _s in `_docker_seq "$_how_many" "$_start_from"`; do
+        _filter="${_filter}node${_s}|"
+    done
+    _filter="${_filter%\|}"
+
+    _info "stopping other docker containers (not in ${_filter})..."
+    for _n in `docker ps --format "{{.Names}}" | grep -vE "${_filter}"`; do
+        docker pause $_n
     done
 }
 
