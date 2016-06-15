@@ -110,6 +110,8 @@ function p_interview() {
         _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_REPO_OS_VER}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${r_REPO_OS_VER}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
     fi
 
+    #_ask "Would you like to increase Ambari Alert interval?" "Y" "r_AMBARI_ALERT_INTERVAL"
+
     _ask "Would you like to set up a proxy server for yum on this server? (Experimental)" "N" "r_PROXY"
     if _isYes "$r_PROXY"; then
         _ask "Proxy port" "28080" "r_PROXY_PORT"
@@ -696,6 +698,17 @@ function f_services_start() {
     sleep 10
     curl -u admin:admin -H "X-Requested-By: ambari" "http://$r_AMBARI_HOST:8080/api/v1/clusters/${c}/services?" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
     echo ""
+}
+
+function f_alert_interval_update() {
+    local __doc__="Increase Alert interval"
+    PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -c "update alert_definition set schedule_interval = 2 where schedule_interval = 1;
+    update alert_definition set schedule_interval = 7 where schedule_interval = 3;
+    update alert_definition set schedule_interval = 11 where schedule_interval = 4;
+    update alert_definition set schedule_interval = 13 where schedule_interval = 5;
+    update alert_definition set schedule_interval = 17 where schedule_interval = 8;"
+    #PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -c "select schedule_interval, count(*) from alert_definition group by 1 order by 1;"
+    _info "Please restart Ambari Server on $r_AMBARI_HOST"
 }
 
 function f_screen_cmd() {
