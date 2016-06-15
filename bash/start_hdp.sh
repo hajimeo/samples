@@ -682,7 +682,7 @@ function f_services_start() {
       fi
   
       _info "Some Ambari agent is in UNKNOWN state ($u). retrying..."
-      sleep 5
+      sleep 3
     done
 
     for i in `seq 1 10`; do
@@ -968,6 +968,8 @@ function f_log_cleanup() {
     # NOTE: Assuming docker name and hostname is same
     for _name in `docker ps --format "{{.Names}}"`; do
         ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
+        # Agent log is owned by root
+        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ambari-* -type f -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     done
 }
 
