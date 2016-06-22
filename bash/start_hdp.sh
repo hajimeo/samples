@@ -545,7 +545,6 @@ function f_local_repo() {
         fi
     fi
 
-    set -v
     if [ ! -d "$_local_dir" ]; then
         # Making directory for Apache2
         mkdir -p -m 777 $_local_dir
@@ -601,7 +600,6 @@ function f_local_repo() {
         createrepo "$_hdp_util_dir"
     fi
 
-    set +v
     service apache2 start
     cd - &>/dev/null
 
@@ -730,15 +728,23 @@ function p_host_setup() {
         apt-get update && apt-get upgrade -y
     fi
 
+    apt-get -y install wget sshfs sysv-rc-conf htop dstat iotop tcpdump sharutils
+    #krb5-kdc krb5-admin-server mailutils postfix postgresql-client mysql-client
+
+    f_host_performance
+    f_host_misc
+
+    if _isYes "$r_HDP_LOCAL_REPO"; then
+        f_local_repo
+    fi
+
+    ### Docker set up #######
     which docker
     if [ $? -gt 0 ] || [ ! -s /etc/apt/sources.list.d/docker.list ]; then
         apt-key adv --keyserver hkp://pgp.mit.edu:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key"
         grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-trusty main" >> /etc/apt/sources.list.d/docker.list
         apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
     fi
-
-    apt-get -y install wget sshfs htop dstat iotop sysv-rc-conf postgresql-client mysql-client tcpdump sharutils
-    #krb5-kdc krb5-admin-server mailutils postfix
 
     # To use tcpdump from container
     if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
@@ -748,30 +754,21 @@ function p_host_setup() {
 
     f_dnsmasq
 
-    f_host_performance
-    f_host_misc
-
     f_docker0_setup "$_docer0"
-
     f_dockerfile
     f_docker_base_create
-
     f_docker_run
 
     f_ambari_server_install
-
     sleep 3
     f_ambari_server_start
     sleep 3
-
-    if _isYes "$r_HDP_LOCAL_REPO"; then
-        f_local_repo
-    fi
 
     if _isYes "$r_PROXY"; then
         f_apache_proxy
         f_yum_remote_proxy
     fi
+
     set +v
     f_screen_cmd
 }
@@ -874,13 +871,11 @@ function f_hostname_set() {
       return 1
     fi
     
-    set -v
     local _current="`cat /etc/hostname`"
     hostname $_new_name
     echo "$_new_name" > /etc/hostname
     sed -i.bak "s/\b${_current}\b/${_new_name}/g" /etc/hosts
     diff /etc/hosts.bak /etc/hosts
-    set +v
 }
 
 function f_apache_proxy() {
