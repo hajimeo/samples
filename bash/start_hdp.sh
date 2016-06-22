@@ -563,6 +563,9 @@ function f_local_repo() {
         _info "$_hdp_dir already exists and not empty. Skipping download."
     elif [ -e "$_tar_gz_file" ]; then
         _info "$_tar_gz_file already exists. Skipping download."
+    elif [ -e "/var/www/html/hdp/$_tar_gz_file" ]; then
+        _info "/var/www/html/hdp/$_tar_gz_file already exists. Skipping download."
+        _tar_gz_file="/var/www/html/hdp/$_tar_gz_file"
     else
         #curl --limit-rate 200K --retry 20 -C - "$r_HDP_REPO_TARGZ" -o $_tar_gz_file
         wget -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_TARGZ"
