@@ -489,7 +489,7 @@ function f_ambari_agent() {
 }
 
 function f_ambari_agent_fix_public_hostname() {
-    local __doc__="Fixing public hostname (169.254.169.254 issue)"
+    local __doc__="Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _cmd='grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/\[security\]/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
@@ -748,6 +748,7 @@ function p_host_setup() {
     f_dnsmasq
 
     f_host_performance
+    f_host_misc
 
     f_docker0_setup "$_docer0"
 
@@ -801,12 +802,20 @@ function f_dnsmasq() {
 }
 
 function f_host_performance() {
-    local __doc__="Change kernel parameters on Docker Host (Ubuntu)"
+    local __doc__="Performance related changes on the host. Eg: Change kernel parameters on Docker Host (Ubuntu)"
     grep '^vm.swappiness' /etc/sysctl.conf || echo "vm.swappiness = 0" >> /etc/sysctl.conf
     sysctl -w vm.swappiness=0
 
     echo never > /sys/kernel/mm/transparent_hugepage/enabled
     echo never > /sys/kernel/mm/transparent_hugepage/defrag
+}
+
+function f_host_misc() {
+    local __doc__="Misc. changes"
+    grep "^IP=" /etc/rc.local &>/dev/null
+    if [ $? -ne 0 ]; then
+        sed -i.bak '/^exit 0/i IP=$(/sbin/ifconfig eth0 | grep -oP "inet addr:\\\d+\\\.\\\d+\\\.\\\d+\\\.\\\d+" | cut -d":" -f2); echo "eth0 IP: $IP" > /etc/issue\n' /etc/rc.local
+    fi
 }
 
 function f_dockerfile() {
