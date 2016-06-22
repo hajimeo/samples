@@ -1389,7 +1389,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     if _isYes "$_SETUP_HDP"; then
         f_checkUpdate
         p_interview_or_load
-        _ask "Would you like to start setting up this host? (this will stop all running containers)" "Y"
+        _ask "Would you like to start setting up this host?" "Y"
         if ! _isYes; then echo "Bye"; exit; fi
         _ask "Would you like to stop all running containers?" "Y"
         if _isYes; then f_docker_stop_all; fi
