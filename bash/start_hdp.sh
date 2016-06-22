@@ -737,10 +737,6 @@ function p_host_setup() {
     f_host_performance
     f_host_misc
 
-    if _isYes "$r_HDP_LOCAL_REPO"; then
-        f_local_repo
-    fi
-
     ### Docker set up #######
     which docker
     if [ $? -gt 0 ] || [ ! -s /etc/apt/sources.list.d/docker.list ]; then
@@ -766,6 +762,10 @@ function p_host_setup() {
     sleep 3
     f_ambari_server_start
     sleep 3
+
+    if _isYes "$r_HDP_LOCAL_REPO"; then
+        f_local_repo
+    fi
 
     if _isYes "$r_PROXY"; then
         f_apache_proxy
