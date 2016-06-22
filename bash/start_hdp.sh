@@ -362,7 +362,8 @@ function f_docker_stop() {
 }
 
 function f_docker_stop_all() {
-    docker stop $(docker ps -q)
+    local __doc__="Stopping all docker containers if docker command exists"
+    which docker &>/dev/null && docker stop $(docker ps -q)
 }
 
 function f_docker_stop_other() {
