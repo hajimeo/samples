@@ -732,7 +732,7 @@ function p_host_setup() {
         apt-get update && apt-get upgrade -y
     fi
 
-    apt-get -y install wget sshfs sysv-rc-conf htop dstat iotop tcpdump sharutils
+    apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils
     #krb5-kdc krb5-admin-server mailutils postfix postgresql-client mysql-client
 
     f_host_performance
