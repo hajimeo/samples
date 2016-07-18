@@ -31,6 +31,7 @@ SampleClient {
 import org.apache.hadoop.security.UserGroupInformation;
 
 import java.io.IOException;
+import java.io.PrintStream;
 import java.security.PrivilegedExceptionAction;
 import java.sql.*;
 import java.util.Scanner;
@@ -44,6 +45,7 @@ import javax.security.auth.callback.UnsupportedCallbackException;
 import javax.security.auth.login.LoginContext;
 import javax.security.auth.login.LoginException;
 
+import org.apache.hive.jdbc.HiveStatement;
 
 public class Hive2KerberosTest {
 
@@ -139,12 +141,59 @@ public static class MyCallbackHandler implements CallbackHandler {
         return rowIndex;
     }
 
+    private static Runnable createLogRunnable(Statement statement) {
+        final PrintStream errorStream = new PrintStream(System.err, true);
+
+        if (statement instanceof HiveStatement) {
+            final HiveStatement hiveStatement = (HiveStatement) statement;
+
+            Runnable runnable = new Runnable() {
+                @Override
+                public void run() {
+                    while (hiveStatement.hasMoreLogs()) {
+                        try {
+                            // fetch the log periodically and output to beeline console
+                            for (String log : hiveStatement.getQueryLog()) {
+                                errorStream.println(log);
+                            }
+                            Thread.sleep(10 * 1000);
+                        } catch (SQLException e) {
+                            errorStream.println(new SQLWarning(e));
+                            return;
+                        } catch (InterruptedException e) {
+                            //errorStream.println("Getting log thread is interrupted, since query is done!");
+                            errorStream.println("");
+                            return;
+                        }
+                    }
+                }
+            };
+            return runnable;
+        } else {
+            errorStream.println("The statement instance is not HiveStatement type: " + statement.getClass());
+            return new Runnable() {
+                @Override
+                public void run() {
+                    // do nothing.
+                }
+            };
+        }
+    }
+
+    static boolean getMoreResults(Statement stmnt) {
+        try {
+            return stmnt.getMoreResults();
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     public static void main(String[] args) {
         Connection conn = null;
 
         try {
             if (args.length == 0) {
-                System.out.println("Please provide JDBC connection strings");
+                System.err.println("Please provide JDBC connection strings");
                 System.exit(1);
             }
 
@@ -161,8 +210,33 @@ public static class MyCallbackHandler implements CallbackHandler {
             if (args.length > 1) {
                 QUERY = args[1];
                 Statement stmt = conn.createStatement() ;
-                ResultSet rs = stmt.executeQuery( QUERY );
-                traverseResultSet(rs, 10);
+
+                // Tracking the progress (copy and paste from BeeLine.java and Commands.java)
+                Thread logThread = new Thread(createLogRunnable(stmt));
+                logThread.setDaemon(true);
+                logThread.start();
+                boolean hasResults = stmt.execute(QUERY);
+                logThread.interrupt();
+
+                if (hasResults) {
+                    System.out.println("### Printing the result set...");
+                    do {
+                        ResultSet rs = stmt.getResultSet();
+                        try {
+                            traverseResultSet(rs, 10);
+                        } finally {
+                            if (logThread != null) {
+                                logThread.join(10 * 1000);
+                                //showRemainingLogsIfAny(stmt);
+                                logThread = null;
+                            }
+                            rs.close();
+                        }
+                    } while (getMoreResults(stmt));
+                }
+
+                //ResultSet rs = stmt.executeQuery( QUERY );
+                //traverseResultSet(rs, 10);
             }
             else {
                 System.out.println("Successfully Connected!");
