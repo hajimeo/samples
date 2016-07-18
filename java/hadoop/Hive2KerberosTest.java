@@ -1,12 +1,12 @@
 /**
  * HOW TO:
- *
+ * <p>
  * 1) create login.conf file which contents is like below:
-SampleClient {
- com.sun.security.auth.module.Krb5LoginModule required
- useTicketCache=true debug=true debugNative=true;
-};
- *
+ * SampleClient {
+ * com.sun.security.auth.module.Krb5LoginModule required
+ * useTicketCache=true debug=true debugNative=true;
+ * };
+ * <p>
  * 2) Copy necessary jar files in same directory as this code
  * commons-configuration-*.jar
  * hadoop-annotations-*.jar
@@ -15,16 +15,17 @@ SampleClient {
  * hive-exec-*.jar
  * hive-jdbc-*-standalone.jar
  * -- core-site.xml         # probably don't need
- *
+ * <p>
  * 3) Compile
  * javac -cp $(echo *.jar | tr ' ' ':'):. Hive2KerberosTest.java
- *
+ * <p>
  * 4) Run
  * kinit
  * java -cp $(echo *.jar | tr ' ' ':'):. -Djava.security.auth.login.config=./login.conf -Dsun.security.krb5.debug=true Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@HO-UBU14"
- *
- *
+ * <p>
+ * <p>
  * ./hive-jdbc-1.2.1.2.3.2.0-2950-standalone.jar:hadoop-common-2.7.1.2.3.2.0-2950.jar:hive-exec-1.2.1.2.3.2.0-2950.jar:./hadoop-annotations-2.7.1.2.3.2.0-2950.jar:./commons-configuration-1.6.jar:hadoop-auth-2.7.1.2.3.2.0-2950.jar
+ *
  * @see https://issues.apache.org/jira/secure/attachment/12633984/TestCase_HIVE-6486.java
  */
 
@@ -49,40 +50,40 @@ import org.apache.hive.jdbc.HiveStatement;
 
 public class Hive2KerberosTest {
 
-//  JDBC credentials
-static final String JDBC_DRIVER = "org.apache.hive.jdbc.HiveDriver";
-static String JDBC_DB_URL = "";
-static String QUERY = "";
+    //  JDBC credentials
+    static final String JDBC_DRIVER = "org.apache.hive.jdbc.HiveDriver";
+    static String JDBC_DB_URL = "";
+    static String QUERY = "";
 
-static final String USER = null;
-static final String PASS = null;
+    static final String USER = null;
+    static final String PASS = null;
 
-// KERBEROS Related.
-static String KERBEROS_PRINCIPAL = "";
-static String KERBEROS_PASSWORD = "";
+    // KERBEROS Related.
+    static String KERBEROS_PRINCIPAL = "";
+    static String KERBEROS_PASSWORD = "";
 
-public static class MyCallbackHandler implements CallbackHandler {
+    public static class MyCallbackHandler implements CallbackHandler {
 
-    public void handle(Callback[] callbacks)
-            throws IOException, UnsupportedCallbackException {
-        Scanner reader = new Scanner(System.in);
+        public void handle(Callback[] callbacks)
+                throws IOException, UnsupportedCallbackException {
+            Scanner reader = new Scanner(System.in);
 
-        for (int i = 0; i < callbacks.length; i++) {
-            if (callbacks[i] instanceof NameCallback) {
-                NameCallback nc = (NameCallback)callbacks[i];
-                System.out.println("Enter User Principal: ");
-                KERBEROS_PRINCIPAL = reader.next();
-                nc.setName(KERBEROS_PRINCIPAL);
-            } else if (callbacks[i] instanceof PasswordCallback) {
-                PasswordCallback pc = (PasswordCallback)callbacks[i];
-                System.out.println("Enter password: ");
-                KERBEROS_PASSWORD = reader.next();
-                pc.setPassword(KERBEROS_PASSWORD.toCharArray());
-            } else throw new UnsupportedCallbackException
-                    (callbacks[i], "Unrecognised callback");
+            for (int i = 0; i < callbacks.length; i++) {
+                if (callbacks[i] instanceof NameCallback) {
+                    NameCallback nc = (NameCallback) callbacks[i];
+                    System.out.println("Enter User Principal: ");
+                    KERBEROS_PRINCIPAL = reader.next();
+                    nc.setName(KERBEROS_PRINCIPAL);
+                } else if (callbacks[i] instanceof PasswordCallback) {
+                    PasswordCallback pc = (PasswordCallback) callbacks[i];
+                    System.out.println("Enter password: ");
+                    KERBEROS_PASSWORD = reader.next();
+                    pc.setPassword(KERBEROS_PASSWORD.toCharArray());
+                } else throw new UnsupportedCallbackException
+                        (callbacks[i], "Unrecognised callback");
+            }
         }
     }
-}
 
     static Subject getSubject() {
         Subject signedOnUserSubject = null;
@@ -102,16 +103,14 @@ public static class MyCallbackHandler implements CallbackHandler {
         return signedOnUserSubject;
     }
 
-    static Connection getConnection( Subject signedOnUserSubject ) throws Exception{
+    static Connection getConnection(Subject signedOnUserSubject) throws Exception {
 
-        Connection conn = (Connection) Subject.doAs(signedOnUserSubject, new PrivilegedExceptionAction<Object>()
-        {
-            public Object run()
-            {
+        Connection conn = (Connection) Subject.doAs(signedOnUserSubject, new PrivilegedExceptionAction<Object>() {
+            public Object run() {
                 Connection con = null;
                 try {
                     Class.forName(JDBC_DRIVER);
-                    con =  DriverManager.getConnection(JDBC_DB_URL,USER,PASS);
+                    con = DriverManager.getConnection(JDBC_DB_URL, USER, PASS);
                 } catch (SQLException e) {
                     e.printStackTrace();
                 } catch (ClassNotFoundException e) {
@@ -125,17 +124,16 @@ public static class MyCallbackHandler implements CallbackHandler {
     }
 
     // Print the result set.
-    private static int  traverseResultSet(ResultSet rs, int max) throws SQLException
-    {
+    private static int traverseResultSet(ResultSet rs, int max) throws SQLException {
         ResultSetMetaData metaData = rs.getMetaData();
         int rowIndex = 0;
         while (rs.next()) {
-            for (int i=1; i<=metaData.getColumnCount(); i++) {
-                System.out.print("  "  + rs.getString(i));
+            for (int i = 1; i <= metaData.getColumnCount(); i++) {
+                System.out.print("  " + rs.getString(i));
             }
             System.out.println();
             rowIndex++;
-            if(max > 0 && rowIndex >= max )
+            if (max > 0 && rowIndex >= max)
                 break;
         }
         return rowIndex;
@@ -143,41 +141,29 @@ public static class MyCallbackHandler implements CallbackHandler {
 
     private static Runnable createLogRunnable(Statement statement) {
         final PrintStream errorStream = new PrintStream(System.err, true);
+        final HiveStatement hiveStatement = (HiveStatement) statement;
 
-        if (statement instanceof HiveStatement) {
-            final HiveStatement hiveStatement = (HiveStatement) statement;
-
-            Runnable runnable = new Runnable() {
-                @Override
-                public void run() {
-                    while (hiveStatement.hasMoreLogs()) {
-                        try {
-                            // fetch the log periodically and output to beeline console
-                            for (String log : hiveStatement.getQueryLog()) {
-                                errorStream.println(log);
-                            }
-                            Thread.sleep(10 * 1000);
-                        } catch (SQLException e) {
-                            errorStream.println(new SQLWarning(e));
-                            return;
-                        } catch (InterruptedException e) {
-                            //errorStream.println("Getting log thread is interrupted, since query is done!");
-                            errorStream.println("");
-                            return;
+        Runnable runnable = new Runnable() {
+            @Override
+            public void run() {
+                while (hiveStatement.hasMoreLogs()) {
+                    try {
+                        // fetch the log periodically and output to beeline console
+                        for (String log : hiveStatement.getQueryLog()) {
+                            errorStream.println(log);
                         }
+                        Thread.sleep(10 * 1000);
+                    } catch (SQLException e) {
+                        errorStream.println(new SQLWarning(e));
+                        return;
+                    } catch (InterruptedException e) {
+                        errorStream.println("...");
+                        return;
                     }
                 }
-            };
-            return runnable;
-        } else {
-            errorStream.println("The statement instance is not HiveStatement type: " + statement.getClass());
-            return new Runnable() {
-                @Override
-                public void run() {
-                    // do nothing.
-                }
-            };
-        }
+            }
+        };
+        return runnable;
     }
 
     static boolean getMoreResults(Statement stmnt) {
@@ -209,7 +195,7 @@ public static class MyCallbackHandler implements CallbackHandler {
 
             if (args.length > 1) {
                 QUERY = args[1];
-                Statement stmt = conn.createStatement() ;
+                Statement stmt = conn.createStatement();
 
                 // Tracking the progress (copy and paste from BeeLine.java and Commands.java)
                 Thread logThread = new Thread(createLogRunnable(stmt));
@@ -219,7 +205,7 @@ public static class MyCallbackHandler implements CallbackHandler {
                 logThread.interrupt();
 
                 if (hasResults) {
-                    System.err.println("### Printing the result set...");
+                    System.out.println("### Printing the result set...");
                     do {
                         ResultSet rs = stmt.getResultSet();
                         try {
@@ -237,14 +223,17 @@ public static class MyCallbackHandler implements CallbackHandler {
 
                 //ResultSet rs = stmt.executeQuery( QUERY );
                 //traverseResultSet(rs, 10);
-            }
-            else {
+            } else {
                 System.out.println("Successfully Connected!");
             }
-        } catch (Exception e){
+        } catch (Exception e) {
             e.printStackTrace();
         } finally {
-            try { if (conn != null) conn.close(); } catch(Exception e) { e.printStackTrace();}
+            try {
+                if (conn != null) conn.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 }
