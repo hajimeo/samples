@@ -219,7 +219,7 @@ public static class MyCallbackHandler implements CallbackHandler {
                 logThread.interrupt();
 
                 if (hasResults) {
-                    System.out.println("### Printing the result set...");
+                    System.err.println("### Printing the result set...");
                     do {
                         ResultSet rs = stmt.getResultSet();
                         try {
