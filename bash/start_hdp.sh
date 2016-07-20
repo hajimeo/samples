@@ -437,6 +437,26 @@ function f_docker_run() {
     done
 }
 
+function f_kdc_install_on_ambari_node() {
+    # TODO: somehow doesn't work well with docker
+    local __doc__="Install KDC/kadmin service to $r_AMBARI_HOST"
+    local _realm="${1-EXAMPLE.COM}"
+    local _password="${2-hadoop}"
+    local _server="${3-$r_AMBARI_HOST}"
+
+    ssh root@$_server -t "yum install krb5-server krb5-libs krb5-workstation -y"
+    ssh root@$_server -t "mv /etc/krb5.conf /etc/krb5.conf.orig; echo \"[libdefaults]
+ default_realm = $_realm
+[realms]
+ $_realm = {
+   kdc = $_server
+   admin_server = $_server
+ }\" > /etc/krb5.conf"
+    ssh root@$_server -t "kdb5_util create -s -P $_password"
+    # chkconfig krb5kdc on;chkconfig kadmin on; doesn't work with docker
+    ssh root@$_server -t "echo '*/admin *' > /var/kerberos/krb5kdc/kadm5.acl;service krb5kdc restart;service kadmin restart;kadmin.local -q \"add_principal -pw $_password admin/admin\""
+}
+
 function f_ambari_server_install() {
     local __doc__="Install Ambari Server to $r_AMBARI_HOST"
     if [ -z "$r_AMBARI_REPO_FILE" ]; then
@@ -469,7 +489,8 @@ function f_ambari_agent_install() {
         scp root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo
     fi
 
-    local _cmd="yum install ambari-agent -y && grep "^hostname=$r_AMBARI_HOST"/etc/ambari-agent/conf/ambari-agent.ini || sed -i.bak "s@hostname=.+$@hostname=$r_AMBARI_HOST@1" /etc/ambari-agent/conf/ambari-agent.ini"
+    #local _cmd="yum install ambari-agent -y && grep "^hostname=$r_AMBARI_HOST"/etc/ambari-agent/conf/ambari-agent.ini || sed -i.bak "s@hostname=.+$@hostname=$r_AMBARI_HOST@1" /etc/ambari-agent/conf/ambari-agent.ini"
+    local _cmd="yum install ambari-agent -y && ambari-agent reset $r_AMBARI_HOST"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         scp /tmp/ambari.repo root@$node$i${r_DOMAIN_SUFFIX}:/etc/yum.repos.d/
@@ -723,6 +744,11 @@ function f_screen_cmd() {
     fi
 }
 
+function f_vmware_tools_install() {
+    local __doc__="Install VMWare Tools in Ubuntu host"
+    mkdir /media/cdrom; mount /dev/cdrom /media/cdrom && cd /media/cdrom && cp VMwareTools-*.tar.gz /tmp/ && cd /tmp/ && tar xzvf VMwareTools-*.tar.gz && cd vmware-tools-distrib/ && ./vmware-install.pl -d
+}
+
 function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
     local _docer0="${1-$r_DOCKER_HOST_IP}"
@@ -732,7 +758,7 @@ function p_host_setup() {
         apt-get update && apt-get upgrade -y
     fi
 
-    apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils
+    apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils unzip
     #krb5-kdc krb5-admin-server mailutils postfix postgresql-client mysql-client
 
     f_host_performance
@@ -911,8 +937,7 @@ function f_apache_proxy() {
         <Proxy *>
             AddDefaultCharset off
             Order deny,allow
-            Deny from all
-            Allow from ${r_DOCKER_NETWORK_ADDR%.}
+            Allow from all
         </Proxy>
 
         ProxyVia On
