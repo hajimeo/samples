@@ -883,15 +883,26 @@ function f_ssh_setup() {
         ssh-keygen -f $HOME/.ssh/id_rsa -q -N ""
     fi
 
+    if [ ! -e $HOME/.ssh/id_rsa.pub ]; then
+        ssh-keygen -y -f $HOME/.ssh/id_rsa > $HOME/.ssh/id_rsa.pub
+    fi
+
+    _key="`cat $HOME/.ssh/id_rsa.pub | awk '{print $2}'`"
+    grep "$_key" $HOME/.ssh/authorized_keys &>/dev/null
+    if [ $? -ne 0 ] ; then
+      cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys && chmod 600 $HOME/.ssh/authorized_keys
+    fi
+
     if [ ! -e $HOME/.ssh/config ]; then
         echo "Host *
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null" > $HOME/.ssh/config
     fi
 
+    # TODO: At this moment the following lines are not used
     if [ ! -e /root/.ssh/id_rsa ]; then
         mkdir /root/.ssh &>/dev/null
-        cp $HOME/.ssh/config /root/.ssh/id_rsa
+        cp $HOME/.ssh/id_rsa /root/.ssh/id_rsa
         chmod 600 /root/.ssh/id_rsa
         chown -R root:root /root/.ssh
     fi
