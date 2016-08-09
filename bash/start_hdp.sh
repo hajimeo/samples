@@ -188,7 +188,7 @@ function p_hdp_start() {
 
     f_ambari_server_start
     f_ambari_agent_fix_public_hostname
-    f_ambari_agent "start"
+    f_ambari_agent "restart"
     echo "WARN: Will start all services..."
     f_services_start
     f_screen_cmd
@@ -836,6 +836,10 @@ function f_host_performance() {
 
     echo never > /sys/kernel/mm/transparent_hugepage/enabled
     echo never > /sys/kernel/mm/transparent_hugepage/defrag
+
+    # also ip forwarding as well
+    grep '^net.ipv4.ip_forward' /etc/sysctl.conf || echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
+    sysctl -w net.ipv4.ip_forward=1
 }
 
 function f_host_misc() {
@@ -1384,7 +1388,7 @@ help() {
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
-    # parsing command options
+	# parsing command options
     while getopts "r:f:ish" opts; do
         case $opts in
             i)
@@ -1407,7 +1411,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     if [ "$USER" != "root" ]; then
         echo "Sorry, at this moment, only 'root' user is supported"
-        exit
+        exit 1
     fi
 
     _IS_SCRIPT_RUNNING=true
