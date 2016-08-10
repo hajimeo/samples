@@ -87,14 +87,7 @@ function p_interview() {
     local _stack_version="2.4"
     local _stack_version_full="HDP-$_stack_version"
     local _hdp_version="2.4.2.0"
-
-    wget -nv -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
-    if [ -s /tmp/hdp_urlinfo.json ]; then
-        _stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json,pprint;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
-        _stack_version="`echo $_stack_version_full | cut -d'-' -f2`"
-        local _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json,pprint;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_REPO_OS_VER}'"]'`"
-        _hdp_version="`basename ${_hdp_repo_url%/}`"
-    fi
+    local _hdp_repo_url=""
 
     _ask "Run apt-get upgrade before setting up?" "N" "r_APTGET_UPGRADE" "N"
     _ask "NTP Server" "ntp.ubuntu.com" "r_NTP_SERVER" "N" "Y"
@@ -121,6 +114,14 @@ function p_interview() {
     _echo "If you have set up a Local Repo, please change below"
     _ask "Ambari repo" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
 
+    wget -nv -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
+    if [ -s /tmp/hdp_urlinfo.json ]; then
+        _stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json,pprint;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
+        _stack_version="`echo $_stack_version_full | cut -d'-' -f2`"
+        _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json,pprint;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_REPO_OS_VER}'"]'`"
+        _hdp_version="`basename ${_hdp_repo_url%/}`"
+    fi
+
     _ask "Would you like to use Ambari Blueprint?" "Y" "r_AMBARI_BLUEPRINT"
     if _isYes "$r_AMBARI_BLUEPRINT"; then
         _ask "Cluster name" "c${r_NODE_START_NUM}" "r_CLUSTER_NAME" "N" "Y"
@@ -129,7 +130,7 @@ function p_interview() {
         r_HDP_REPO_URL="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json,pprint;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_REPO_OS_VER}'"]'`"
         r_HDP_REPO_VER="$_hdp_version"
         if [ -z "$r_HDP_REPO_URL" ]; then
-            _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_STACK_VERSION" "N" "Y"
+            _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"
         fi
     fi
 
@@ -256,7 +257,9 @@ function p_ambari_blueprint() {
 
     f_ambari_blueprint_hostmap > /tmp/hostmap.json
     f_ambari_blueprint_clustermap > /tmp/cluster_config.json
-    f_ambari_set_repo
+    if ! _isYes "$r_HDP_LOCAL_REPO"; then
+        f_ambari_set_repo
+    fi
     curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/multinode-hdp" -d @/tmp/cluster_config.json
     curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/multinode-hdp" -d @/tmp/hostmap.json
 }
@@ -1096,6 +1099,10 @@ function p_host_setup() {
     if _isYes "$r_PROXY"; then
         f_apache_proxy
         f_yum_remote_proxy
+    fi
+
+    if _isYes "$r_AMBARI_BLUEPRINT"; then
+        p_ambari_blueprint
     fi
 
     set +v
