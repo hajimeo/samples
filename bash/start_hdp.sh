@@ -1177,7 +1177,8 @@ function f_dockerfile() {
 
     if _isUrl "$_url"; then
         if [ -e ./DockerFile ]; then
-            _backup "./DockerFile" && rm -f ./DockerFile
+            # only one backup would be enough
+            mv -f ./DockerFile ./DocerFile.bak
         fi
 
         _info "Downloading $_url ..."
