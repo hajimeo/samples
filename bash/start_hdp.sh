@@ -126,7 +126,7 @@ function p_interview() {
     if _isYes "$r_AMBARI_BLUEPRINT"; then
         _ask "Cluster name" "c${r_NODE_START_NUM}" "r_CLUSTER_NAME" "N" "Y"
         _ask "Default password" "hadoop" "r_DEFAULT_PASSWORD" "N" "Y"
-        _ask "Stack Version" "$_stack_version" "r_STACK_VERSION" "N" "Y"
+        _ask "Stack Version" "$_stack_version" "r_HDP_STACK_VERSION" "N" "Y"
         _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
         r_HDP_REPO_URL="$_hdp_repo_url"
         if [ -z "$r_HDP_REPO_URL" ]; then
@@ -137,7 +137,7 @@ function p_interview() {
     _ask "Would you like to set up a local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
     if _isYes "$r_HDP_LOCAL_REPO"; then
         _ask "Local repository directory (Apache root)" "/var/www/html/hdp" "r_HDP_REPO_DIR"
-        _ask "Stack Version" "$_stack_version" "r_STACK_VERSION"
+        _ask "Stack Version" "$_stack_version" "r_HDP_STACK_VERSION"
         _stack_version_full="HDP-${_stack_version}"
         _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
         _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_REPO_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
@@ -303,7 +303,7 @@ function f_ambari_blueprint_hostmap() {
 
 function f_ambari_blueprint_clustermap() {
     local __doc__="Output json string for Ambari Blueprint Cluster mapping TODO: it's fixed map at this moment"
-    local _stack_version="${1-$r_STACK_VERSION}"
+    local _stack_version="${1-$r_HDP_STACK_VERSION}"
     local _how_many="${2-$r_NUM_NODES}"
 
     if [ -z "$_how_many" ] || [ 4 -gt "$_how_many" ]; then
@@ -952,12 +952,12 @@ function f_ambari_set_repo() {
 
     if _isUrl "$_repo_url"; then
         # TODO: admin:admin
-        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_STACK_VERSION}/operating_systems/${_os_name}${r_REPO_OS_VER}/repositories/HDP-${r_STACK_VERSION}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
+        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${r_REPO_OS_VER}/repositories/HDP-${r_HDP_STACK_VERSION}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
     fi
 
     if _isUrl "$_util_url"; then
         local _hdp_util_name="`echo $_util_url | grep -oP 'HDP-UTILS-[\d\.]+'`"
-        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_STACK_VERSION}/operating_systems/${_os_name}${r_REPO_OS_VER}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}'
+        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${r_REPO_OS_VER}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}'
     fi
 }
 
