@@ -18,7 +18,7 @@
 # 3. Variable name which stores user response needs to start with r_
 # 4. (optional) __doc__ local variable is for function usage/help
 #
-# TODO: tcpdump (not tested), localrepo (not tested)
+# @author hajime
 #
 
 ### OS/shell settings
@@ -82,6 +82,13 @@ __LAST_ANSWER=""
 
 function p_interview() {
     local __doc__="Asks user questions."
+    local _centos_version="6.7"
+    local _ambari_version="2.2.2.0"
+    local _stack_version="2.4"
+    local _stack_version_full="HDP-$_stack_version"
+    local _hdp_version="2.4.2.0"
+    local _hdp_repo_url=""
+
     _ask "Run apt-get upgrade before setting up?" "N" "r_APTGET_UPGRADE" "N"
     _ask "NTP Server" "ntp.ubuntu.com" "r_NTP_SERVER" "N" "Y"
     # TODO: Changing this IP later is troublesome, so need to be careful
@@ -93,7 +100,7 @@ function p_interview() {
     if [ -n "$r_CONTAINER_OS" ]; then
         r_CONTAINER_OS="`echo "$r_CONTAINER_OS" | tr '[:upper:]' '[:lower:]'`"
     fi
-    _ask "Container OS version" "6.7" "r_CONTAINER_OS_VER" "N" "Y"
+    _ask "Container OS version" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
     r_REPO_OS_VER="${r_CONTAINER_OS_VER%%.*}"
     _ask "DockerFile URL or path" "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile" "r_DOCKERFILE_URL" "N" "N"
     _ask "How many nodes?" "4" "r_NUM_NODES" "N" "Y"
@@ -103,21 +110,43 @@ function p_interview() {
 
     # Questions to install Ambari
     _ask "Ambari server hostname" "node${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
-    _ask "Ambari version (used to build repo URL)" "2.2.1.1" "r_AMBARI_VER" "N" "Y"
+    _ask "Ambari version (used to build repo URL)" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
     _echo "If you have set up a Local Repo, please change below"
     _ask "Ambari repo" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
+
+    wget -q -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
+    if [ -s /tmp/hdp_urlinfo.json ]; then
+        _stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json,pprint;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
+        _stack_version="`echo $_stack_version_full | cut -d'-' -f2`"
+        _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json,pprint;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_CONTAINER_OS}${r_REPO_OS_VER}'"]'`"
+        _hdp_version="`basename ${_hdp_repo_url%/}`"
+    fi
+
+    _ask "Would you like to use Ambari Blueprint?" "Y" "r_AMBARI_BLUEPRINT"
+    if _isYes "$r_AMBARI_BLUEPRINT"; then
+        _ask "Cluster name" "c${r_NODE_START_NUM}" "r_CLUSTER_NAME" "N" "Y"
+        _ask "Default password" "hadoop" "r_DEFAULT_PASSWORD" "N" "Y"
+        _ask "Stack Version" "$_stack_version" "r_STACK_VERSION" "N" "Y"
+        _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
+        r_HDP_REPO_URL="$_hdp_repo_url"
+        if [ -z "$r_HDP_REPO_URL" ]; then
+            _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"
+        fi
+    fi
 
     _ask "Would you like to set up a local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
     if _isYes "$r_HDP_LOCAL_REPO"; then
         _ask "Local repository directory (Apache root)" "/var/www/html/hdp" "r_HDP_REPO_DIR"
-        _ask "HDP (repo) version" "2.3.4.7" "r_HDP_REPO_VER"
+        _ask "Stack Version" "$_stack_version" "r_STACK_VERSION"
+        _stack_version_full="HDP-${_stack_version}"
+        _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
         _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_REPO_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
         _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_REPO_OS_VER}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${r_REPO_OS_VER}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
     fi
 
     #_ask "Would you like to increase Ambari Alert interval?" "Y" "r_AMBARI_ALERT_INTERVAL"
 
-    _ask "Would you like to set up a proxy server for yum on this server? (Experimental)" "N" "r_PROXY"
+    _ask "Would you like to set up a proxy server for yum on this server?" "Y" "r_PROXY"
     if _isYes "$r_PROXY"; then
         _ask "Proxy port" "28080" "r_PROXY_PORT"
     fi
@@ -209,9 +238,231 @@ function p_hdp_start() {
     f_ambari_server_start
     f_ambari_agent_fix_public_hostname
     f_ambari_agent "restart"
+
+    f_ambari_update_config
+
     echo "WARN: Will start all services..."
     f_services_start
     f_screen_cmd
+}
+
+function p_ambari_blueprint() {
+    local __doc__="Build cluster with Ambari Blueprint"
+
+    # just in case, try starting server
+    f_ambari_server_start
+    _port_wait "$r_AMBARI_HOST" "8080"
+    #f_ambari_agent "stop"
+    f_ambari_agent_install
+    f_ambari_agent_fix_public_hostname
+    f_ambari_agent "start"
+    _ambari_agent_wait
+
+    f_ambari_blueprint_hostmap > /tmp/hostmap.json
+    f_ambari_blueprint_clustermap > /tmp/cluster_config.json
+    if ! _isYes "$r_HDP_LOCAL_REPO"; then
+        f_ambari_set_repo
+    fi
+    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/$r_CLUSTER_NAME" -d @/tmp/cluster_config.json
+    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/$r_CLUSTER_NAME" -d @/tmp/hostmap.json
+}
+
+function f_ambari_blueprint_hostmap() {
+    local __doc__="Output json string for Ambari Blueprint Host mapping"
+    local _cluster_name="${1-$r_CLUSTER_NAME}"
+    local _default_password="${2-$r_DEFAULT_PASSWORD}"
+    local _how_many="${3-$r_NUM_NODES}"
+    local _start_from="${4-$r_NODE_START_NUM}"
+    local _domain_suffix="${5-$r_DOMAIN_SUFFIX}"
+
+    local _host_loop=""
+    local _num=1
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
+        _host_loop="${_host_loop}
+    {
+      \"name\" : \"host_group_$_num\",
+      \"hosts\" : [
+        {
+          \"fqdn\" : \"node$i${_domain_suffix}\"
+        }
+      ]
+    },"
+    _num=$((_num+1))
+    done
+
+    _host_loop="${_host_loop%,}"
+
+    echo "{
+  \"blueprint\" : \"multinode-hdp\",
+  \"default_password\" : \"$_default_password\",
+  \"host_groups\" :["
+    echo "$_host_loop"
+    echo "  ]
+}"
+}
+
+function f_ambari_blueprint_clustermap() {
+    local __doc__="Output json string for Ambari Blueprint Cluster mapping TODO: it's fixed map at this moment"
+    local _stack_version="${1-$r_STACK_VERSION}"
+    local _how_many="${2-$r_NUM_NODES}"
+
+    if [ -z "$_how_many" ] || [ 4 -gt "$_how_many" ]; then
+        _error "At this moment, Blueprint build needs at least 4 nodes"
+        return 1
+    fi
+
+    echo '{
+  "configurations": [],
+  "host_groups": [
+    {
+      "name" : "host_group_1",
+      "components" : [
+        {
+          "name" : "YARN_CLIENT"
+        },
+        {
+          "name" : "HDFS_CLIENT"
+        },
+        {
+          "name" : "TEZ_CLIENT"
+        },
+        {
+          "name" : "ZOOKEEPER_CLIENT"
+        },
+        {
+          "name" : "HCAT"
+        },
+        {
+          "name" : "PIG"
+        },
+        {
+          "name" : "MAPREDUCE2_CLIENT"
+        },
+        {
+          "name" : "AMBARI_SERVER"
+        },
+        {
+          "name" : "ZOOKEEPER_SERVER"
+        },
+        {
+          "name" : "HIVE_CLIENT"
+        }
+      ],
+      "configurations" : [ ],
+      "cardinality" : "1"
+    },
+    {
+      "name" : "host_group_2",
+      "components" : [
+        {
+          "name" : "YARN_CLIENT"
+        },
+        {
+          "name" : "HDFS_CLIENT"
+        },
+        {
+          "name" : "HIVE_SERVER"
+        },
+        {
+          "name" : "MYSQL_SERVER"
+        },
+        {
+          "name" : "HIVE_METASTORE"
+        },
+        {
+          "name" : "HISTORYSERVER"
+        },
+        {
+          "name" : "NAMENODE"
+        },
+        {
+          "name" : "TEZ_CLIENT"
+        },
+        {
+          "name" : "ZOOKEEPER_CLIENT"
+        },
+        {
+          "name" : "PIG"
+        },
+        {
+          "name" : "WEBHCAT_SERVER"
+        },
+        {
+          "name" : "MAPREDUCE2_CLIENT"
+        },
+        {
+          "name" : "ZOOKEEPER_SERVER"
+        },
+        {
+          "name" : "APP_TIMELINE_SERVER"
+        },
+        {
+          "name" : "HIVE_CLIENT"
+        },
+        {
+          "name" : "RESOURCEMANAGER"
+        }
+      ],
+      "configurations" : [ ],
+      "cardinality" : "1"
+    },
+    {
+      "components" : [
+        {
+          "name" : "SECONDARY_NAMENODE"
+        },
+        {
+          "name" : "ZOOKEEPER_SERVER"
+        }
+      ],
+      "configurations" : [ ],
+      "name" : "host_group_3",
+      "cardinality" : "1"
+    },
+    {
+      "name" : "host_group_4",
+      "components" : [
+        {
+          "name" : "NODEMANAGER"
+        },
+        {
+          "name" : "YARN_CLIENT"
+        },
+        {
+          "name" : "HDFS_CLIENT"
+        },
+        {
+          "name" : "TEZ_CLIENT"
+        },
+        {
+          "name" : "ZOOKEEPER_CLIENT"
+        },
+        {
+          "name" : "HCAT"
+        },
+        {
+          "name" : "PIG"
+        },
+        {
+          "name" : "MAPREDUCE2_CLIENT"
+        },
+        {
+          "name" : "DATANODE"
+        },
+        {
+          "name" : "HIVE_CLIENT"
+        }
+      ],
+      "configurations" : [ ],
+      "cardinality" : "1"
+    }
+  ],
+  "Blueprints": {
+    "blueprint_name": "multinode-hdp",
+    "stack_name": "HDP",
+    "stack_version": "'$_stack_version'"
+  }
+}'
 }
 
 function f_saveResp() {
@@ -500,6 +751,23 @@ function f_ambari_server_start() {
     fi
 }
 
+function f_ambari_update_config() {
+    local __doc__="Change some configuration for this dev environment"
+
+    # TODO: need to find the best way to find the first time
+    local _c=$(PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -tAc "select count(*) from alert_definition where schedule_interval = 17;")
+    if [ $_c -eq 0 ]; then
+        ssh -t root@$r_AMBARI_HOST "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1"
+
+        PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -c "update alert_definition set schedule_interval = 2 where schedule_interval = 1;
+        update alert_definition set schedule_interval = 7 where schedule_interval = 3;
+        update alert_definition set schedule_interval = 11 where schedule_interval = 4;
+        update alert_definition set schedule_interval = 13 where schedule_interval = 5;
+        update alert_definition set schedule_interval = 17 where schedule_interval = 8;"
+    fi
+    _info "HDFS Replication Factor and Ambari Alert frequency has been updated."
+}
+
 function f_ambari_agent_install() {
     local __doc__="Installing ambari-agent on all containers for manual registration"
     local _how_many="${1-$r_NUM_NODES}"
@@ -513,9 +781,9 @@ function f_ambari_agent_install() {
     local _cmd="yum install ambari-agent -y && ambari-agent reset $r_AMBARI_HOST"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        scp /tmp/ambari.repo root@$node$i${r_DOMAIN_SUFFIX}:/etc/yum.repos.d/
+        scp /tmp/ambari.repo root@node$i${r_DOMAIN_SUFFIX}:/etc/yum.repos.d/
         # Executing yum command one by one (not parallel)
-        ssh root@node$i${r_DOMAIN_SUFFIX} "$_cmd"
+        ssh -t root@node$i${r_DOMAIN_SUFFIX} "$_cmd"
     done
 }
 
@@ -654,22 +922,42 @@ function f_local_repo() {
         local _util_repo_path="${_hdp_util_dir#\.}"
         echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
 
-        # TODO: this part is best effort...
+        # TODO: support only CentOS or RedHat at this moment
         if [ "${r_CONTAINER_OS}" = "centos" ] || [ "${r_CONTAINER_OS}" = "redhat" ]; then
-            for i in `seq 1 10`; do
-              nc -z $r_AMBARI_HOST 8080 && break
-              _info "Ambari server is not listening on $r_AMBARI_HOST:8080 Waiting..."
-              sleep 5
-            done
+            _port_wait "$r_AMBARI_HOST" "8080"
 
-            nc -z $r_AMBARI_HOST 8080
-            if [ $? -eq 0 ]; then
-                curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/2.3/operating_systems/redhat${r_REPO_OS_VER}/repositories/HDP-2.3" -d '{"Repositories":{"base_url":"'http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}'","verify_base_url":true}}'
-
-                local _hdp_util_name="`echo $_util_repo_path | grep -oP 'HDP-UTILS-[\d\.]+'`"
-                curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/2.3/operating_systems/redhat${r_REPO_OS_VER}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}'","verify_base_url":true}}'
-            fi
+            f_ambari_set_repo "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}" "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
+        else
+            _warn "At this moment only centos or redhat for local repository"
         fi
+    fi
+}
+function f_ambari_set_repo() {
+    local __doc__="Update Ambari's repository URL information"
+    local _repo_url="$1"
+    local _util_url="$2"
+    local _ambari_host="${3-$r_AMBARI_HOST}"
+    local _ambari_port="${4-8080}"
+
+    nc -z $_ambari_host $_ambari_port
+    if [ $? -ne 0 ]; then
+        _error "Ambari is not running on $_ambari_host $_ambari_port"
+        return 1
+    fi
+
+    local _os_name="$r_CONTAINER_OS"
+    if [ "${_os_name}" = "centos" ]; then
+        _os_name="redhat"
+    fi
+
+    if _isUrl "$_repo_url"; then
+        # TODO: admin:admin
+        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_STACK_VERSION}/operating_systems/${_os_name}${r_REPO_OS_VER}/repositories/HDP-${r_STACK_VERSION}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
+    fi
+
+    if _isUrl "$_util_url"; then
+        local _hdp_util_name="`echo $_util_url | grep -oP 'HDP-UTILS-[\d\.]+'`"
+        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_STACK_VERSION}/operating_systems/${_os_name}${r_REPO_OS_VER}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}'
     fi
 }
 
@@ -714,45 +1002,46 @@ function f_repo_mount() {
 
 function f_services_start() {
     local __doc__="Request 'Start all' to Ambari via API"
-    c=$(PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -tAc "select cluster_name from ambari.clusters order by cluster_id desc limit 1;")
-    if [ -z "$c" ]; then
+    local _c=$(PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -tAc "select cluster_name from ambari.clusters order by cluster_id desc limit 1;")
+    if [ -z "$_c" ]; then
       _error "No cluster name (check PostgreSQL)..."
       return 1
     fi
-    
-    for i in `seq 1 10`; do
-      u=$(PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -tAc "select count(*) from hoststate where health_status ilike '%UNKNOWN%';")
-      #curl -s --head "http://$r_AMBARI_HOST:8080/" | grep '200 OK'
-      if [ "$u" -eq 0 ]; then
-        break
-      fi
-  
-      _info "Some Ambari agent is in UNKNOWN state ($u). retrying..."
-      sleep 3
-    done
 
-    for i in `seq 1 10`; do
-      nc -z $r_AMBARI_HOST 8080 && break
+    _port_wait "$r_AMBARI_HOST" "8080"
+    _ambari_agent_wait
 
-      _info "Ambari server is not listening on $r_AMBARI_HOST:8080 Waiting..."
-      sleep 5
-    done
-
-    # trying anyway
-    sleep 10
-    curl -u admin:admin -H "X-Requested-By: ambari" "http://$r_AMBARI_HOST:8080/api/v1/clusters/${c}/services?" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+    curl -u admin:admin -H "X-Requested-By: ambari" "http://$r_AMBARI_HOST:8080/api/v1/clusters/${_c}/services?" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
     echo ""
 }
 
-function f_alert_interval_update() {
-    local __doc__="Increase Alert interval"
-    PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -c "update alert_definition set schedule_interval = 2 where schedule_interval = 1;
-    update alert_definition set schedule_interval = 7 where schedule_interval = 3;
-    update alert_definition set schedule_interval = 11 where schedule_interval = 4;
-    update alert_definition set schedule_interval = 13 where schedule_interval = 5;
-    update alert_definition set schedule_interval = 17 where schedule_interval = 8;"
-    #PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -c "select schedule_interval, count(*) from alert_definition group by 1 order by 1;"
-    _info "Please restart Ambari Server on $r_AMBARI_HOST"
+function _ambari_agent_wait() {
+    local _db_host="${1-$r_AMBARI_HOST}"
+    local _u=""
+
+    for i in `seq 1 10`; do
+      sleep 5
+      _u=$(PGPASSWORD=bigdata psql -Uambari -h $_db_host -tAc "select count(*) from hoststate where health_status ilike '%UNKNOWN%';")
+      #curl -s --head "http://$r_AMBARI_HOST:8080/" | grep '200 OK'
+      if [ "$_u" -eq 0 ]; then
+        return 0
+      fi
+
+      _info "Some Ambari agent is in UNKNOWN state ($_u). waiting..."
+    done
+    return 1
+}
+
+function _port_wait() {
+    local _host="$1"
+    local _port="$2"
+
+    for i in `seq 1 10`; do
+      sleep 5
+      nc -z $_host $_port && return 0
+      _info "$_host:$_port is unreachable. Waiting..."
+    done
+    return 1
 }
 
 function f_screen_cmd() {
@@ -778,8 +1067,9 @@ function p_host_setup() {
         apt-get update && apt-get upgrade -y
     fi
 
-    apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils unzip
-    #krb5-kdc krb5-admin-server mailutils postfix postgresql-client mysql-client
+    # NOTE: psql is required
+    apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils unzip postgresql-client mysql-client
+    #krb5-kdc krb5-admin-server mailutils postfix
 
     f_host_performance
     f_host_misc
@@ -817,6 +1107,10 @@ function p_host_setup() {
     if _isYes "$r_PROXY"; then
         f_apache_proxy
         f_yum_remote_proxy
+    fi
+
+    if _isYes "$r_AMBARI_BLUEPRINT"; then
+        p_ambari_blueprint
     fi
 
     set +v
@@ -1436,7 +1730,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             a)
                 _AUTO_SETUP_HDP="Y"
                 _SETUP_HDP="Y"
-                _RESPONSE_FILEPATH="$g_LATEST_RESPONSE_URL"
                 ;;
             i)
                 _SETUP_HDP="Y"
@@ -1460,10 +1753,18 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         echo "Sorry, at this moment, only 'root' user is supported"
         exit 1
     fi
+    grep -i 'Ubuntu 14.04' /etc/issue.net &>/dev/null
+    if [ $? -ne 0 ]; then
+        _ask "This script may not work with this OS. Are you sure?" "N"
+        if ! _isYes; then echo "Bye"; exit; fi
+    fi
 
     _IS_SCRIPT_RUNNING=true
 
     if _isYes "$_SETUP_HDP"; then
+        if _isYes "$_AUTO_SETUP_HDP" && [ -z "$_RESPONSE_FILEPATH" ]; then
+            _RESPONSE_FILEPATH="$g_LATEST_RESPONSE_URL"
+        fi
         f_checkUpdate
         p_interview_or_load
 
