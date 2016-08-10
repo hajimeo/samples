@@ -444,9 +444,6 @@ function f_ambari_blueprint_clustermap() {
           "name" : "MAPREDUCE2_CLIENT"
         },
         {
-          "name" : "OOZIE_CLIENT"
-        },
-        {
           "name" : "DATANODE"
         },
         {
@@ -1744,6 +1741,11 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     if [ "$USER" != "root" ]; then
         echo "Sorry, at this moment, only 'root' user is supported"
         exit 1
+    fi
+    grep -i 'Ubuntu 14.04' /etc/issue.net &>/dev/null
+    if [ $? -ne 0 ]; then
+        _ask "This script may not work with this OS. Are you sure?" "N"
+        if ! _isYes; then echo "Bye"; exit; fi
     fi
 
     _IS_SCRIPT_RUNNING=true
