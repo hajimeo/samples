@@ -1051,10 +1051,10 @@ function _port_wait() {
 
 function f_screen_cmd() {
     local __doc__="Output GNU screen command"
-    screen -ls | grep -w docker
+    screen -ls | grep -w "docker_$r_CLUSTER_NAME"
     if [ $? -ne 0 ]; then
       _info "You may want to run the following commands to start GNU Screen:"
-      echo "screen -S \"docker\" bash -c 'for s in \``_docker_seq "$r_NUM_NODES" "$r_NODE_START_NUM" "Y"`\`; do screen -t \"node\${s}\" \"ssh\" \"node\${s}${r_DOMAIN_SUFFIX}\"; done'"
+      echo "screen -S \"docker_$r_CLUSTER_NAME\" bash -c 'for s in \``_docker_seq "$r_NUM_NODES" "$r_NODE_START_NUM" "Y"`\`; do screen -t \"node\${s}\" \"ssh\" \"node\${s}${r_DOMAIN_SUFFIX}\"; done'"
     fi
 }
 
