@@ -763,7 +763,7 @@ function f_ambari_agent_install() {
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         scp /tmp/ambari.repo root@node$i${r_DOMAIN_SUFFIX}:/etc/yum.repos.d/
         # Executing yum command one by one (not parallel)
-        ssh root@node$i${r_DOMAIN_SUFFIX} "$_cmd"
+        ssh -t root@node$i${r_DOMAIN_SUFFIX} "$_cmd"
     done
 }
 
