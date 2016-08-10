@@ -765,7 +765,7 @@ function f_ambari_update_config() {
         update alert_definition set schedule_interval = 13 where schedule_interval = 5;
         update alert_definition set schedule_interval = 17 where schedule_interval = 8;"
     fi
-    _info "Please restart Ambari Server on $r_AMBARI_HOST"
+    _info "HDFS Replication Factor and Ambari Alert frequency has been updated."
 }
 
 function f_ambari_agent_install() {
