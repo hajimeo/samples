@@ -127,8 +127,8 @@ function p_interview() {
         _ask "Cluster name" "c${r_NODE_START_NUM}" "r_CLUSTER_NAME" "N" "Y"
         _ask "Default password" "hadoop" "r_DEFAULT_PASSWORD" "N" "Y"
         _ask "Stack Version" "$_stack_version" "r_STACK_VERSION" "N" "Y"
+        _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
         r_HDP_REPO_URL="$_hdp_repo_url"
-        r_HDP_REPO_VER="$_hdp_version"
         if [ -z "$r_HDP_REPO_URL" ]; then
             _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"
         fi
@@ -139,7 +139,7 @@ function p_interview() {
         _ask "Local repository directory (Apache root)" "/var/www/html/hdp" "r_HDP_REPO_DIR"
         _ask "Stack Version" "$_stack_version" "r_STACK_VERSION"
         _stack_version_full="HDP-${_stack_version}"
-        r_HDP_REPO_VER="$_hdp_version"
+        _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
         _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_REPO_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
         _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_REPO_OS_VER}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${r_REPO_OS_VER}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
     fi
@@ -238,6 +238,9 @@ function p_hdp_start() {
     f_ambari_server_start
     f_ambari_agent_fix_public_hostname
     f_ambari_agent "restart"
+
+    f_ambari_update_config
+
     echo "WARN: Will start all services..."
     f_services_start
     f_screen_cmd
@@ -748,6 +751,23 @@ function f_ambari_server_start() {
     fi
 }
 
+function f_ambari_update_config() {
+    local __doc__="Change some configuration for this dev environment"
+
+    # TODO: need to find the best way to find the first time
+    local _c=$(PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -tAc "select count(*) from alert_definition where schedule_interval = 17;")
+    if [ $_c -eq 0 ]; then
+        ssh -t root@$r_AMBARI_HOST "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1"
+
+        PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -c "update alert_definition set schedule_interval = 2 where schedule_interval = 1;
+        update alert_definition set schedule_interval = 7 where schedule_interval = 3;
+        update alert_definition set schedule_interval = 11 where schedule_interval = 4;
+        update alert_definition set schedule_interval = 13 where schedule_interval = 5;
+        update alert_definition set schedule_interval = 17 where schedule_interval = 8;"
+    fi
+    _info "Please restart Ambari Server on $r_AMBARI_HOST"
+}
+
 function f_ambari_agent_install() {
     local __doc__="Installing ambari-agent on all containers for manual registration"
     local _how_many="${1-$r_NUM_NODES}"
@@ -982,8 +1002,8 @@ function f_repo_mount() {
 
 function f_services_start() {
     local __doc__="Request 'Start all' to Ambari via API"
-    c=$(PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -tAc "select cluster_name from ambari.clusters order by cluster_id desc limit 1;")
-    if [ -z "$c" ]; then
+    local _c=$(PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -tAc "select cluster_name from ambari.clusters order by cluster_id desc limit 1;")
+    if [ -z "$_c" ]; then
       _error "No cluster name (check PostgreSQL)..."
       return 1
     fi
@@ -991,22 +1011,23 @@ function f_services_start() {
     _port_wait "$r_AMBARI_HOST" "8080"
     _ambari_agent_wait
 
-    curl -u admin:admin -H "X-Requested-By: ambari" "http://$r_AMBARI_HOST:8080/api/v1/clusters/${c}/services?" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+    curl -u admin:admin -H "X-Requested-By: ambari" "http://$r_AMBARI_HOST:8080/api/v1/clusters/${_c}/services?" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
     echo ""
 }
 
 function _ambari_agent_wait() {
     local _db_host="${1-$r_AMBARI_HOST}"
+    local _u=""
 
     for i in `seq 1 10`; do
       sleep 5
-      u=$(PGPASSWORD=bigdata psql -Uambari -h $_db_host -tAc "select count(*) from hoststate where health_status ilike '%UNKNOWN%';")
+      _u=$(PGPASSWORD=bigdata psql -Uambari -h $_db_host -tAc "select count(*) from hoststate where health_status ilike '%UNKNOWN%';")
       #curl -s --head "http://$r_AMBARI_HOST:8080/" | grep '200 OK'
-      if [ "$u" -eq 0 ]; then
+      if [ "$_u" -eq 0 ]; then
         return 0
       fi
 
-      _info "Some Ambari agent is in UNKNOWN state ($u). waiting..."
+      _info "Some Ambari agent is in UNKNOWN state ($_u). waiting..."
     done
     return 1
 }
@@ -1021,17 +1042,6 @@ function _port_wait() {
       _info "$_host:$_port is unreachable. Waiting..."
     done
     return 1
-}
-
-function f_alert_interval_update() {
-    local __doc__="Increase Alert interval"
-    PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -c "update alert_definition set schedule_interval = 2 where schedule_interval = 1;
-    update alert_definition set schedule_interval = 7 where schedule_interval = 3;
-    update alert_definition set schedule_interval = 11 where schedule_interval = 4;
-    update alert_definition set schedule_interval = 13 where schedule_interval = 5;
-    update alert_definition set schedule_interval = 17 where schedule_interval = 8;"
-    #PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -c "select schedule_interval, count(*) from alert_definition group by 1 order by 1;"
-    _info "Please restart Ambari Server on $r_AMBARI_HOST"
 }
 
 function f_screen_cmd() {
