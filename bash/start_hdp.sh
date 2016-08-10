@@ -1094,6 +1094,7 @@ function p_host_setup() {
     f_dockerfile
     f_docker_base_create
     f_docker_run
+    f_docker_start
 
     f_ambari_server_install
     sleep 3
