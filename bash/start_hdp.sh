@@ -161,7 +161,11 @@ function p_interview_or_load() {
     fi
 
     if _isUrl "${_RESPONSE_FILEPATH}"; then
-        local _new_resp_filepath="./`basename $_RESPONSE_FILEPATH`"
+        if [ -s "$g_DEFAULT_RESPONSE_FILEPATH" ]; then
+            local _new_resp_filepath="./`basename $_RESPONSE_FILEPATH`"
+        else
+            local _new_resp_filepath="$g_DEFAULT_RESPONSE_FILEPATH"
+        fi
         wget -nv "${_RESPONSE_FILEPATH}" -O ${_new_resp_filepath}
         _RESPONSE_FILEPATH="${_new_resp_filepath}"
     fi
