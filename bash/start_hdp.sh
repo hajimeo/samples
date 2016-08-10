@@ -35,6 +35,10 @@ usage() {
 How to run initial set up:
     ./${g_SCRIPT_NAME} -i [-r=some_file_name.resp]
 
+    or, Auto setup with default response answers
+
+    ./${g_SCRIPT_NAME} -a
+
 How to start containers and Ambari and HDP services:
     ./${g_SCRIPT_NAME} -s [-r=some_file_name.resp]
 
