@@ -290,7 +290,7 @@ function f_ambari_blueprint_hostmap() {
     _host_loop="${_host_loop%,}"
 
     echo "{
-  \"blueprint\" : \"$_cluster_name\",
+  \"blueprint\" : \"multinode-hdp\",
   \"default_password\" : \"$_default_password\",
   \"host_groups\" :["
     echo "$_host_loop"
