@@ -132,7 +132,7 @@ function p_interview_or_load() {
     fi
 
     if _isUrl "${_RESPONSE_FILEPATH}"; then
-        logal _new_resp_filepath="./`basename $_RESPONSE_FILEPATH`"
+        local _new_resp_filepath="./`basename $_RESPONSE_FILEPATH`"
         wget -nv "${_RESPONSE_FILEPATH}" -O ${_new_resp_filepath}
         _RESPONSE_FILEPATH="${_new_resp_filepath}"
     fi
