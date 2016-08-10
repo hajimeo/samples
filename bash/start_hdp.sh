@@ -68,6 +68,7 @@ Available options:
 g_SCRIPT_NAME=`basename $BASH_SOURCE`
 g_SCRIPT_BASE=`basename $BASH_SOURCE .sh`
 g_DEFAULT_RESPONSE_FILEPATH="./${g_SCRIPT_BASE}.resp"
+g_LATEST_RESPONSE_URL="https://raw.githubusercontent.com/hajimeo/samples/master/misc/latest_hdp.resp"
 g_BACKUP_DIR="$HOME/.build_script/"
 g_DOCKER_BASE="hdp/base"
 __PID="$$"
@@ -126,10 +127,25 @@ function p_interview_or_load() {
         _RESPONSE_FILEPATH="$g_DEFAULT_RESPONSE_FILEPATH"
     fi
 
+    if _isUrl "${_RESPONSE_FILEPATH}"; then
+        logal _new_resp_filepath="./`basename $_RESPONSE_FILEPATH`"
+        wget -nv "${_RESPONSE_FILEPATH}" -O ${_new_resp_filepath}
+        _RESPONSE_FILEPATH="${_new_resp_filepath}"
+    fi
+
     if [ -r "${_RESPONSE_FILEPATH}" ]; then
-        _ask "Would you like to load ${_RESPONSE_FILEPATH}?" "Y"
-        if ! _isYes; then _echo "Bye."; exit 0; fi
+        if ! _isYes "$_AUTO_SETUP_HDP"; then
+            _ask "Would you like to load ${_RESPONSE_FILEPATH}?" "Y"
+            if ! _isYes; then _echo "Bye."; exit 0; fi
+        fi
+
         f_loadResp
+
+        # if auto setup, just load and exit
+        if _isYes "$_AUTO_SETUP_HDP"; then
+            return 0
+        fi
+
         _ask "Would you like to review your responses?" "Y"
         # if don't want to review, just load and exit
         if ! _isYes; then
@@ -589,7 +605,7 @@ function f_local_repo() {
         _tar_gz_file="/var/www/html/hdp/$_tar_gz_file"
     else
         #curl --limit-rate 200K --retry 20 -C - "$r_HDP_REPO_TARGZ" -o $_tar_gz_file
-        wget -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_TARGZ"
+        wget -nv -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_TARGZ"
     fi
 
     if _isYes "$_download_only"; then
@@ -615,7 +631,7 @@ function f_local_repo() {
     elif [ -e "$_util_tar_gz_file" ]; then
         _info "$_util_tar_gz_file already exists. Skipping download."
     else
-        wget -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_UTIL_TARGZ"
+        wget -nv -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_UTIL_TARGZ"
     fi
 
     if ! _isYes "$_util_has_extracted"; then
@@ -857,18 +873,17 @@ function f_dockerfile() {
         _url="$r_DOCKERFILE_URL"
     fi
     if [ -z "$_url" ]; then
-        _error "No DockerFile URL to download"
+        _error "No DockerFile URL/path"
         return 1
     fi
 
-    if [ -f "$_url" ]; then
-        _info "$_url is a local file path. Skipping"
-    else
+    if _isUrl "$_url"; then
         if [ -e ./DockerFile ]; then
             _backup "./DockerFile" && rm -f ./DockerFile
         fi
 
-        wget "$_url" -O ./DockerFile
+        _info "Downloading $_url ..."
+        wget -nv "$_url" -O ./DockerFile
     fi
 
     f_ssh_setup
@@ -1272,7 +1287,19 @@ function _isNotEmptyDir() {
 		return 1
 	fi
 }
+function _isUrl() {
+	local _url="$1"
 
+	if [ -z "$_url" ]; then
+		return 1
+	fi
+
+	if [[ "$_url" =~ $_URL_REGEX ]]; then
+		return 0
+	fi
+
+	return 1
+}
 function _info() {
     # At this moment, not much difference from _echo and _warn, might change later
     local _msg="$1"
@@ -1301,7 +1328,7 @@ function _exit() {
     local _exit_code=$1
 
     # Forcing not to go to next step.
-    echo "Please press 'Ctrl-c' to exit."
+    echo "Please press 'Ctrl-c' again to exit."
     tail -f /dev/null
 
     if $_IS_SCRIPT_RUNNING; then
@@ -1400,8 +1427,13 @@ help() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
 	# parsing command options
-    while getopts "r:f:ish" opts; do
+    while getopts "r:f:isah" opts; do
         case $opts in
+            a)
+                _AUTO_SETUP_HDP="Y"
+                _SETUP_HDP="Y"
+                _RESPONSE_FILEPATH="$g_LATEST_RESPONSE_URL"
+                ;;
             i)
                 _SETUP_HDP="Y"
                 ;;
@@ -1430,10 +1462,15 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     if _isYes "$_SETUP_HDP"; then
         f_checkUpdate
         p_interview_or_load
-        _ask "Would you like to start setting up this host?" "Y"
-        if ! _isYes; then echo "Bye"; exit; fi
-        _ask "Would you like to stop all running containers?" "Y"
-        if _isYes; then f_docker_stop_all; fi
+
+        if ! _isYes "$_AUTO_SETUP_HDP"; then
+            _ask "Would you like to start setting up this host?" "Y"
+            if ! _isYes; then echo "Bye"; exit; fi
+            _ask "Would you like to stop all running containers?" "Y"
+            if _isYes; then f_docker_stop_all; fi
+        else
+            f_docker_stop_all
+        fi
 
         g_START_TIME="`date -u`"
         p_host_setup
