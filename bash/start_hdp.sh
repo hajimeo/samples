@@ -759,7 +759,7 @@ function f_ambari_update_config() {
     local __doc__="Change some configuration for this dev environment"
 
     # TODO: need to find the best way to find the first time
-    local _c=$(PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -tAc "select count(*) from alert_definition where schedule_interval = 17;")
+    local _c=$(PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -tAc "select count(*) from alert_definition where schedule_interval = 2;")
     if [ $_c -eq 0 ]; then
         ssh -t root@$r_AMBARI_HOST "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1"
 
@@ -768,8 +768,9 @@ function f_ambari_update_config() {
         update alert_definition set schedule_interval = 11 where schedule_interval = 4;
         update alert_definition set schedule_interval = 13 where schedule_interval = 5;
         update alert_definition set schedule_interval = 17 where schedule_interval = 8;"
+
+        _info "HDFS Replication Factor and Ambari Alert frequency has been updated."
     fi
-    _info "HDFS Replication Factor and Ambari Alert frequency has been updated."
 }
 
 function f_ambari_agent_install() {
