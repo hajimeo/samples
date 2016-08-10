@@ -1057,6 +1057,7 @@ function p_host_setup() {
         apt-get update && apt-get upgrade -y
     fi
 
+    # NOTE: psql is required
     apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils unzip postgresql-client mysql-client
     #krb5-kdc krb5-admin-server mailutils postfix
 
