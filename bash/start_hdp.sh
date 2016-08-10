@@ -261,7 +261,7 @@ function p_ambari_blueprint() {
         f_ambari_set_repo
     fi
     curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/multinode-hdp" -d @/tmp/cluster_config.json
-    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/multinode-hdp" -d @/tmp/hostmap.json
+    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/$r_CLUSTER_NAME" -d @/tmp/hostmap.json
 }
 
 function f_ambari_blueprint_hostmap() {
