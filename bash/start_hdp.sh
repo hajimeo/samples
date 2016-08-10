@@ -260,7 +260,7 @@ function p_ambari_blueprint() {
     if ! _isYes "$r_HDP_LOCAL_REPO"; then
         f_ambari_set_repo
     fi
-    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/multinode-hdp" -d @/tmp/cluster_config.json
+    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/$r_CLUSTER_NAME" -d @/tmp/cluster_config.json
     curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/$r_CLUSTER_NAME" -d @/tmp/hostmap.json
 }
 
@@ -1057,8 +1057,8 @@ function p_host_setup() {
         apt-get update && apt-get upgrade -y
     fi
 
-    apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils unzip
-    #krb5-kdc krb5-admin-server mailutils postfix postgresql-client mysql-client
+    apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils unzip postgresql-client mysql-client
+    #krb5-kdc krb5-admin-server mailutils postfix
 
     f_host_performance
     f_host_misc
