@@ -112,7 +112,7 @@ function p_interview() {
     _ask "Ambari server hostname" "node${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
     _ask "Ambari version (used to build repo URL)" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
     _echo "If you have set up a Local Repo, please change below"
-    _ask "Ambari repo" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
+    _ask "Ambari repo file URL or path" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
 
     wget -q -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
     if [ -s /tmp/hdp_urlinfo.json ]; then
@@ -740,7 +740,17 @@ function f_ambari_server_install() {
     fi
 
     # TODO: at this moment, only Centos (yum)
-    wget -nv "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo || return 1
+    if _isUrl "$r_AMBARI_REPO_FILE"; then
+        wget -nv "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo || return 1
+    else
+        if [ ! -r "$r_AMBARI_REPO_FILE" ]; then
+            _error "Please specify readable Ambari repo file or URL"
+            return 1
+        fi
+
+        cp -f "$r_AMBARI_REPO_FILE" /tmp/ambari.repo
+    fi
+
     scp /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
     ssh root@$r_AMBARI_HOST "yum install ambari-server -y && ambari-server setup -s"
 }
@@ -778,9 +788,7 @@ function f_ambari_agent_install() {
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
 
-    if [ ! -e /tmp/ambari.repo ]; then
-        scp root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo
-    fi
+    scp root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo
 
     #local _cmd="yum install ambari-agent -y && grep "^hostname=$r_AMBARI_HOST"/etc/ambari-agent/conf/ambari-agent.ini || sed -i.bak "s@hostname=.+$@hostname=$r_AMBARI_HOST@1" /etc/ambari-agent/conf/ambari-agent.ini"
     local _cmd="yum install ambari-agent -y && ambari-agent reset $r_AMBARI_HOST"
