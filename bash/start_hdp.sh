@@ -241,11 +241,12 @@ function p_hdp_start() {
 
     f_ambari_server_start
     f_ambari_agent_fix_public_hostname
-    f_ambari_agent "restart"
+    # not interested in agent restart output
+    f_ambari_agent "restart" > /dev/null
 
     f_ambari_update_config
 
-    echo "WARN: Will start all services..."
+    _info "Will start all services ..."
     f_services_start
     f_screen_cmd
 }
@@ -609,8 +610,10 @@ function f_docker_start() {
     _info "starting $_how_many docker containers starting from $_start_from ..."
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         # docker seems doesn't care if i try to start already started one
-        docker start --attach=false node$_n
+        docker start --attach=false node$_n &
+        sleep 1
     done
+    wait
 }
 
 function f_docker_unpause() {
@@ -632,8 +635,10 @@ function f_docker_stop() {
 
     _info "stopping $_how_many docker containers starting from $_start_from ..."
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        docker stop node$_n
+        docker stop node$_n &
+        sleep 1
     done
+    wait
 }
 
 function f_docker_stop_all() {
@@ -654,8 +659,10 @@ function f_docker_stop_other() {
 
     _info "stopping other docker containers (not in ${_filter})..."
     for _n in `docker ps --format "{{.Names}}" | grep -vE "${_filter}"`; do
-        docker stop $_n
+        docker stop $_n &
+        sleep 1
     done
+    wait
 }
 
 function f_docker_pause_other() {
@@ -671,8 +678,10 @@ function f_docker_pause_other() {
 
     _info "stopping other docker containers (not in ${_filter})..."
     for _n in `docker ps --format "{{.Names}}" | grep -vE "${_filter}"`; do
-        docker pause $_n
+        docker pause $_n &
+        sleep 1
     done
+    wait
 }
 
 function f_docker_rm() {
@@ -681,9 +690,15 @@ function f_docker_rm() {
     _ask "Are you sure to delete ALL containers?"
     if _isYes; then
         if _isYes $_force; then
-            for _q in `docker ps -aq`; do docker rm --force ${_q} & done
+            for _q in `docker ps -aq`; do
+                docker rm --force ${_q} &
+                sleep 1
+            done
         else
-            for _q in `docker ps -aq`; do docker rm ${_q} & done
+            for _q in `docker ps -aq`; do
+                docker rm ${_q} &
+                sleep 1
+            done
         fi
         wait
     fi
