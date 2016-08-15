@@ -255,8 +255,8 @@ function p_hdp_start() {
 
 function p_ambari_blueprint() {
     local __doc__="Build cluster with Ambari Blueprint"
-    local _hostmap_json="/tmp/hostmap.json"
-    local _cluster_config_json="/tmp/cluster_config.json"
+    local _hostmap_json="/tmp/${r_CLUSTER_NAME}_hostmap.json"
+    local _cluster_config_json="/tmp/${r_CLUSTER_NAME}_cluster_config.json"
 
     # just in case, try starting server
     f_ambari_server_start
@@ -281,10 +281,10 @@ function p_ambari_blueprint() {
         _cluster_config_json="$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
         if [ ! -s "$_cluster_config_json" ]; then
             _warn "$_cluster_config_json does not exist or empty file. Will regenerate automatically..."
-            f_ambari_blueprint_hostmap > $_cluster_config_json
+            f_ambari_blueprint_cluster_config > $_cluster_config_json
         fi
     else
-        f_ambari_blueprint_hostmap > $_cluster_config_json
+        f_ambari_blueprint_cluster_config > $_cluster_config_json
     fi
 
     if ! _isYes "$r_HDP_LOCAL_REPO"; then
@@ -328,7 +328,7 @@ function f_ambari_blueprint_hostmap() {
 }"
 }
 
-function f_ambari_blueprint_clustermap() {
+function f_ambari_blueprint_cluster_config() {
     local __doc__="Output json string for Ambari Blueprint Cluster mapping TODO: it's fixed map at this moment"
     local _stack_version="${1-$r_HDP_STACK_VERSION}"
     local _how_many="${2-$r_NUM_NODES}"
