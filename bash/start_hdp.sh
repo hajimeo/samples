@@ -859,6 +859,42 @@ function f_ambari_agent_fix_public_hostname() {
     done
 }
 
+function f_nodes_exec() {
+    local __doc__="Executing a command against all running nodes/containers"
+    local _cmd="${1}"
+    local _bg="${2-N}"
+    local _how_many="${3-$r_NUM_NODES}"
+    local _start_from="${4-$r_NODE_START_NUM}"
+
+    if [ -z "$_cmd" ]; then
+        _error "No command"
+        return 1
+    fi
+
+    if _isYes "$_bg"; then
+        local _id=`date +%s`
+    fi
+
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
+        if _isYes "$_bg"; then
+            # can't use -t for background
+            ssh -o StrictHostKeyChecking=no node${i}${r_DOMAIN_SUFFIX} -T "$_cmd" &> /tmp/.${_id}_node${i}.tmp &
+        else
+            ssh node${i}${r_DOMAIN_SUFFIX} -t "$_cmd"
+        fi
+    done
+
+    if _isYes "$_bg"; then
+        wait
+
+        for i in `_docker_seq "$_how_many" "$_start_from"`; do
+            echo "# node${i}${r_DOMAIN_SUFFIX} \"$_cmd\""
+            cat /tmp/.${_id}_node${i}.tmp | grep -v '^Warning: Permanently added'
+            rm -f /tmp/.${_id}_node${i}.tmp
+        done
+    fi
+}
+
 function f_etcs_mount() {
     local __doc__="Mounting all agent's etc directories (handy for troubleshooting)"
     local _remount="$1"
