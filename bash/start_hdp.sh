@@ -1826,6 +1826,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             _ask "Would you like to stop all running containers?" "Y"
             if _isYes; then f_docker_stop_all; fi
         else
+            _info "Stopping all docker containers..."
             f_docker_stop_all
         fi
 
