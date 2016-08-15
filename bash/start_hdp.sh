@@ -132,6 +132,8 @@ function p_interview() {
         if [ -z "$r_HDP_REPO_URL" ]; then
             _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"
         fi
+        _ask "Host mapping json path (optional)" "" "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
+        _ask "Cluster config json path (optional)" "" "r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
     fi
 
     _ask "Would you like to set up a local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
@@ -253,6 +255,8 @@ function p_hdp_start() {
 
 function p_ambari_blueprint() {
     local __doc__="Build cluster with Ambari Blueprint"
+    local _hostmap_json="/tmp/hostmap.json"
+    local _cluster_config_json="/tmp/cluster_config.json"
 
     # just in case, try starting server
     f_ambari_server_start
@@ -263,13 +267,31 @@ function p_ambari_blueprint() {
     f_ambari_agent "start"
     _ambari_agent_wait
 
-    f_ambari_blueprint_hostmap > /tmp/hostmap.json
-    f_ambari_blueprint_clustermap > /tmp/cluster_config.json
+    if [ ! -z "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ]; then
+        _hostmap_json="$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
+        if [ ! -s "$_hostmap_json" ]; then
+            _warn "$_hostmap_json does not exist or empty file. Will regenerate automatically..."
+            f_ambari_blueprint_hostmap > $_hostmap_json
+        fi
+    else
+        f_ambari_blueprint_hostmap > $_hostmap_json
+    fi
+
+    if [ ! -z "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ]; then
+        _cluster_config_json="$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
+        if [ ! -s "$_cluster_config_json" ]; then
+            _warn "$_cluster_config_json does not exist or empty file. Will regenerate automatically..."
+            f_ambari_blueprint_hostmap > $_cluster_config_json
+        fi
+    else
+        f_ambari_blueprint_hostmap > $_cluster_config_json
+    fi
+
     if ! _isYes "$r_HDP_LOCAL_REPO"; then
         f_ambari_set_repo
     fi
-    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/$r_CLUSTER_NAME" -d @/tmp/cluster_config.json
-    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/$r_CLUSTER_NAME" -d @/tmp/hostmap.json
+    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/$r_CLUSTER_NAME" -d @${_cluster_config_json}
+    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/$r_CLUSTER_NAME" -d @${_hostmap_json}
 }
 
 function f_ambari_blueprint_hostmap() {
