@@ -598,6 +598,28 @@ function _docker_seq() {
     fi
 }
 
+function f_docker_customise() {
+    # To use tcpdump from container
+    if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
+        ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
+        apparmor_parser -R /etc/apparmor.d/usr.sbin.tcpdump
+    fi
+
+    docker info | grep 'Base Device Size' | grep -oP '1\d\.\d\d GB' &>/dev/null
+    if [ $? -eq 0 ]; then
+        grep 'storage-opt dm.basesize=' /etc/init/docker.conf &>/dev/null
+        if [ $? -ne 0 ]; then
+            sed -i.bak -e 's/DOCKER_OPTS=$/DOCKER_OPTS=\"--storage-opt dm.basesize=20G\"/' /etc/init/docker.conf
+            _warn "Restarting docker (will stop all containers)..."
+            sleep 3
+            service docker restart
+        else
+            _warn "storage-opt dm.basesize=20G is already set in /etc/init/docker.conf"
+        fi
+    fi
+}
+
+
 function f_docker0_setup() {
     local __doc__="Setting IP for docker0 to $r_DOCKER_HOST_IP ..."
     local _docer0="${1-$r_DOCKER_HOST_IP}"
@@ -808,7 +830,9 @@ function f_ambari_update_config() {
     # TODO: need to find the best way to find the first time
     local _c=$(PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -tAc "select count(*) from alert_definition where schedule_interval = 2;")
     if [ $_c -eq 0 ]; then
-        ssh -t root@$r_AMBARI_HOST "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1"
+        ssh -t root@$r_AMBARI_HOST "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1" &> /tmp/configs_sh_dfs_replication.out
+        # TODO: should I reduce aggregator TTL size?
+        #ssh -t root@$r_AMBARI_HOST "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME ams-site " &> /tmp/configs_sh_dfs_replication.out
 
         PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -c "update alert_definition set schedule_interval = 2 where schedule_interval = 1;
         update alert_definition set schedule_interval = 7 where schedule_interval = 3;
@@ -1161,18 +1185,14 @@ function p_host_setup() {
     f_host_misc
 
     ### Docker set up #######
-    which docker
+    which docker &>/dev/null
     if [ $? -gt 0 ] || [ ! -s /etc/apt/sources.list.d/docker.list ]; then
         apt-key adv --keyserver hkp://pgp.mit.edu:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key"
         grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-trusty main" >> /etc/apt/sources.list.d/docker.list
         apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
     fi
 
-    # To use tcpdump from container
-    if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
-        ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
-        apparmor_parser -R /etc/apparmor.d/usr.sbin.tcpdump
-    fi
+    f_docker_customise
 
     f_dnsmasq
 
@@ -1265,7 +1285,7 @@ function f_dockerfile() {
     if _isUrl "$_url"; then
         if [ -e ./DockerFile ]; then
             # only one backup would be enough
-            mv -f ./DockerFile ./DocerFile.bak
+            mv -f ./DockerFile ./DockerFile.bak
         fi
 
         _info "Downloading $_url ..."
