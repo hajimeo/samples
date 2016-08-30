@@ -246,8 +246,7 @@ function p_hdp_start() {
     # not interested in agent restart output
     f_ambari_agent "restart" > /dev/null
 
-    f_ambari_update_config
-
+    #f_ambari_update_config
     _info "Will start all services ..."
     f_services_start
     f_screen_cmd
@@ -339,7 +338,16 @@ function f_ambari_blueprint_cluster_config() {
     fi
 
     echo '{
-  "configurations": [],
+  "configurations" : [
+    {
+      "hdfs-site" : {
+        "properties" : {
+          "dfs.replication" : "1",
+          "dfs.datanode.du.reserved" : "299999999"
+        }
+      }
+    }
+  ]
   "host_groups": [
     {
       "name" : "host_group_1",
@@ -825,7 +833,7 @@ function f_ambari_server_start() {
 }
 
 function f_ambari_update_config() {
-    local __doc__="Change some configuration for this dev environment"
+    local __doc__="TODO: Change some configuration for this dev environment"
 
     # TODO: need to find the best way to find the first time
     local _c=$(PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -tAc "select count(*) from alert_definition where schedule_interval = 2;")
