@@ -347,7 +347,7 @@ function f_ambari_blueprint_cluster_config() {
         }
       }
     }
-  ]
+  ],
   "host_groups": [
     {
       "name" : "host_group_1",
