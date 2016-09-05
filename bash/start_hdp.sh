@@ -239,7 +239,7 @@ function p_hdp_start() {
     _info "NOT setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
     f_log_cleanup
-    f_etcs_mount
+    #f_etcs_mount
 
     f_ambari_server_start
     f_ambari_agent_fix_public_hostname
