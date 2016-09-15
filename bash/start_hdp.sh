@@ -607,6 +607,7 @@ function _docker_seq() {
 }
 
 function f_docker_customise() {
+    local __doc__="Customise docker for HDP test environment"
     # To use tcpdump from container
     if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
         ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
@@ -1176,6 +1177,20 @@ function f_vmware_tools_install() {
     mkdir /media/cdrom; mount /dev/cdrom /media/cdrom && cd /media/cdrom && cp VMwareTools-*.tar.gz /tmp/ && cd /tmp/ && tar xzvf VMwareTools-*.tar.gz && cd vmware-tools-distrib/ && ./vmware-install.pl -d
 }
 
+function f_sysstat_setup() {
+    local __doc__="Install and set up sysstat"
+
+    which sar &>/dev/null
+    if [ $? -ne 0 ]; then
+        apt-get -y install sysstat
+    fi
+    grep -i '^ENABLED="false"' /etc/default/sysstat &>/dev/null
+    if [ $? -eq 0 ]; then
+        sed -i.bak -e 's/ENABLED=\"false\"/ENABLED=\"true\"/' /etc/default/sysstat
+        service sysstat restart
+    fi
+}
+
 function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
     local _docer0="${1-$r_DOCKER_HOST_IP}"
@@ -1189,6 +1204,7 @@ function p_host_setup() {
     apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils unzip postgresql-client mysql-client
     #krb5-kdc krb5-admin-server mailutils postfix
 
+    f_sysstat_setup
     f_host_performance
     f_host_misc
 
@@ -1458,9 +1474,9 @@ function f_log_cleanup() {
     _warn "Deleting hadoop logs which is older than $_days..."
     # NOTE: Assuming docker name and hostname is same
     for _name in `docker ps --format "{{.Names}}"`; do
-        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
+        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop \( -name "*.log*" -o -name "*.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
         # Agent log is owned by root
-        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ambari-* -type f -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
+        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ambari-* -type f \( -name "*.log*" -o -name "*.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     done
 }
 
