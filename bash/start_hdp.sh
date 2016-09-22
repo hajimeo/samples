@@ -1201,7 +1201,7 @@ function p_host_setup() {
     fi
 
     # NOTE: psql is required
-    apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils unzip postgresql-client mysql-client
+    apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils unzip postgresql-client mysql-client libxml2-utils
     #krb5-kdc krb5-admin-server mailutils postfix
 
     f_sysstat_setup

@@ -107,6 +107,15 @@ function f_longGC() {
     egrep "$_regex" "$_path"
 }
 
+function f_xmlDiff() {
+    local __doc__="Convert Hadoop xxxx-site.xml to (close to) Json. xmllint is required"
+    local _path1="$1"
+    local _path2="$2"
+
+    #echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path
+    diff -w <(paste <(ggrep -Pzo '<name>.+?<\/name>' $_path1) <(ggrep -Pzo '<value>.+?<\/value>' $_path1) | sort) <(paste <(ggrep -Pzo '<name>.+?<\/name>' $_path2) <(ggrep -Pzo '<value>.+?<\/value>' $_path2) | sort)
+}
+
 # TODO: find hostname and container, splits, actual query (mr?) etc from app log
 
 function f_grepWithDate() {
