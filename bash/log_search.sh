@@ -3,7 +3,8 @@
 # Bunch of grep functions to search log files
 # Don't use complex so that easily copy and paste
 #
-# TODO: tested on Mac only (eg: sed -E)
+# TODO: tested on Mac only (eg: sed -E, ggrep)
+# which ggrep || alias ggrep=grep
 #
 
 usage() {
@@ -72,7 +73,7 @@ function f_appLogContainers() {
     if [[ "$_is_including_warn" =~ (^y|^Y) ]]; then
         egrep "(^Container: container_|^LogType:|^Log Upload Time:^LogLength:)" "$_path"
     else
-        grep "^Container: container_" "$_path" | sort
+        ggrep "^Container: container_" "$_path" | sort
     fi
 }
 
@@ -108,11 +109,11 @@ function f_longGC() {
 }
 
 function f_xmlDiff() {
-    local __doc__="Convert Hadoop xxxx-site.xml to (close to) Json. xmllint is required"
+    local __doc__="TODO: Convert Hadoop xxxx-site.xml to (close to) Json"
     local _path1="$1"
     local _path2="$2"
 
-    #echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path
+    #diff -w <(echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path1) <(echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path2)
     diff -w <(paste <(ggrep -Pzo '<name>.+?<\/name>' $_path1) <(ggrep -Pzo '<value>.+?<\/value>' $_path1) | sort) <(paste <(ggrep -Pzo '<name>.+?<\/name>' $_path2) <(ggrep -Pzo '<value>.+?<\/value>' $_path2) | sort)
 }
 
