@@ -219,14 +219,14 @@ function p_interview_or_load() {
     f_saveResp
 }
 function _cancelInterview() {
-	echo ""
-	echo ""
-	echo "Exiting..."
-	_ask "Would you like to save your current responses?" "N" "is_saving_resp"
-	if _isYes "$is_saving_resp"; then
-		f_saveResp
-	fi
-	_exit
+    echo ""
+    echo ""
+    echo "Exiting..."
+    _ask "Would you like to save your current responses?" "N" "is_saving_resp"
+    if _isYes "$is_saving_resp"; then
+        f_saveResp
+    fi
+    _exit
 }
 
 function p_hdp_start() {
@@ -606,8 +606,15 @@ function _docker_seq() {
     fi
 }
 
-function f_docker_customise() {
-    local __doc__="Customise docker for HDP test environment"
+function f_docker_setup() {
+    local __doc__="Install docker (if not yet) and customise for HDP test environment"
+    which docker &>/dev/null
+    if [ $? -gt 0 ] || [ ! -s /etc/apt/sources.list.d/docker.list ]; then
+        apt-key adv --keyserver hkp://pgp.mit.edu:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key"
+        grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-trusty main" >> /etc/apt/sources.list.d/docker.list
+        apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
+    fi
+
     # To use tcpdump from container
     if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
         ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
@@ -628,6 +635,39 @@ function f_docker_customise() {
     fi
 }
 
+function f_docker_sandbox_install() {
+    local __doc__="Install Sandbox docker version"
+    local _tmp_dir="${1-/tmp}"
+    local _url="$2"
+
+    if [ -z "$_url" ]; then
+        _url="http://hortonassets.s3.amazonaws.com/2.5/HDP_2.5_docker.tar.gz"
+    fi
+
+    local _file_name="`basename "${_url}"`"
+
+    f_docker_setup
+
+    if ! _isEnoughDisk "/tmp" "10"; then
+        _error "Not enough space to download sandbox"
+        return 1
+    fi
+
+    if [ -s "${_tmp_dir%/}/${_file_name}" ]; then
+        _error "${_tmp_dir%/}/${_file_name} exists. Please delete this first"
+        return 1
+    fi
+
+    wget -nv -c -t 20 --timeout=60 --waitretry=60 "https://raw.githubusercontent.com/hortonworks/tutorials/hdp-2.5/tutorials/hortonworks/hortonworks-sandbox-hdp2.5-guide/start_sandbox.sh" -O ~/start_sandbox.sh
+    chmod u+x ~/start_sandbox.sh
+    wget -nv -c -t 20 --timeout=60 --waitretry=60 "${_url}" -O "${_tmp_dir%/}/${_file_name}" || return $?
+
+    docker load < "${_tmp_dir%/}/${_file_name}" || return $?
+
+    # TODO: this may not work. running 'sysctl -p' in sandbox docker seems to work
+    sysctl -w kernel.shmmax=41943040 && sysctl -p
+    bash -x ~/start_sandbox.sh
+}
 
 function f_docker0_setup() {
     local __doc__="Setting IP for docker0 to $r_DOCKER_HOST_IP ..."
@@ -995,6 +1035,11 @@ function f_local_repo() {
         _info "/var/www/html/hdp/$_tar_gz_file already exists. Skipping download."
         _tar_gz_file="/var/www/html/hdp/$_tar_gz_file"
     else
+        if ! _isEnoughDisk "/$_local_dir" "10"; then
+            _error "Not enough space to download $r_HDP_REPO_TARGZ"
+            return 1
+        fi
+
         #curl --limit-rate 200K --retry 20 -C - "$r_HDP_REPO_TARGZ" -o $_tar_gz_file
         wget -nv -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_TARGZ"
     fi
@@ -1151,18 +1196,6 @@ function _ambari_agent_wait() {
     return 1
 }
 
-function _port_wait() {
-    local _host="$1"
-    local _port="$2"
-
-    for i in `seq 1 10`; do
-      sleep 5
-      nc -z $_host $_port && return 0
-      _info "$_host:$_port is unreachable. Waiting..."
-    done
-    return 1
-}
-
 function f_screen_cmd() {
     local __doc__="Output GNU screen command"
     screen -ls | grep -w "docker_$r_CLUSTER_NAME"
@@ -1200,23 +1233,15 @@ function p_host_setup() {
         apt-get update && apt-get upgrade -y
     fi
 
-    # NOTE: psql is required
-    apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils unzip postgresql-client mysql-client libxml2-utils
-    #krb5-kdc krb5-admin-server mailutils postfix
+    # NOTE: psql (postgresql-client) is required
+    apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect
+    #krb5-kdc krb5-admin-server mailutils postfix mysql-client
 
     f_sysstat_setup
     f_host_performance
     f_host_misc
 
-    ### Docker set up #######
-    which docker &>/dev/null
-    if [ $? -gt 0 ] || [ ! -s /etc/apt/sources.list.d/docker.list ]; then
-        apt-key adv --keyserver hkp://pgp.mit.edu:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key"
-        grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-trusty main" >> /etc/apt/sources.list.d/docker.list
-        apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
-    fi
-
-    f_docker_customise
+    f_docker_setup
 
     f_dnsmasq
 
@@ -1671,7 +1696,46 @@ function _makeBackupDir() {
         fi
     fi
 }
+function _isEnoughDisk() {
+    local __doc__="Check if entire system or the given path has enough space with GB."
+    local _dir_path="${1-/}"
+    local _required_gb="$2"
+    local _available_space_gb=""
 
+    _available_space_gb=`_freeSpaceGB "${_dir_path}"`
+
+    if [ -z "$_required_gb" ]; then
+        echo "${_available_space_gb}GB free space"
+        _required_gb=`_totalSpaceGB`
+        _required_gb="`expr $_required_gb / 10`"
+    fi
+
+    if [ $_available_space_gb -lt $_required_gb ]; then return 1; fi
+    return 0
+}
+function _freeSpaceGB() {
+    local __doc__="Output how much space for given directory path."
+    local _dir_path="$1"
+    if [ ! -d "$_dir_path" ]; then _dir_path="-l"; fi
+    df -P --total ${_dir_path} | grep -i ^total | awk '{gb=sprintf("%.0f",$4/1024/1024);print gb}'
+}
+function _totalSpaceGB() {
+    local __doc__="Output how much space for given directory path."
+    local _dir_path="$1"
+    if [ ! -d "$_dir_path" ]; then _dir_path="-l"; fi
+    df -P --total ${_dir_path} | grep -i ^total | awk '{gb=sprintf("%.0f",$2/1024/1024);print gb}'
+}
+function _port_wait() {
+    local _host="$1"
+    local _port="$2"
+
+    for i in `seq 1 10`; do
+      sleep 5
+      nc -z $_host $_port && return 0
+      _info "$_host:$_port is unreachable. Waiting..."
+    done
+    return 1
+}
 function _isYes() {
     # Unlike other languages, 0 is nearly same as True in shell script
     local _answer="$1"
@@ -1690,8 +1754,8 @@ function _isYes() {
     return 1
 }
 function _trim() {
-	local _string="$1"
-	echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
+    local _string="$1"
+    echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
 }
 function _isCmd() {
     local _cmd="$1"
@@ -1703,32 +1767,32 @@ function _isCmd() {
     fi
 }
 function _isNotEmptyDir() {
-	local _dir_path="$1"
+    local _dir_path="$1"
 
     # If path is empty, treat as eampty
-	if [ -z "$_dir_path" ]; then return 1; fi
+    if [ -z "$_dir_path" ]; then return 1; fi
 
     # If path is not directory, treat as eampty
-	if [ ! -d "$_dir_path" ]; then return 1; fi
+    if [ ! -d "$_dir_path" ]; then return 1; fi
 
-	if [ "$(ls -A ${_dir_path})" ]; then
-		return 0
-	else
-		return 1
-	fi
+    if [ "$(ls -A ${_dir_path})" ]; then
+        return 0
+    else
+        return 1
+    fi
 }
 function _isUrl() {
-	local _url="$1"
+    local _url="$1"
 
-	if [ -z "$_url" ]; then
-		return 1
-	fi
+    if [ -z "$_url" ]; then
+        return 1
+    fi
 
-	if [[ "$_url" =~ $_URL_REGEX ]]; then
-		return 0
-	fi
+    if [[ "$_url" =~ $_URL_REGEX ]]; then
+        return 0
+    fi
 
-	return 1
+    return 1
 }
 function _info() {
     # At this moment, not much difference from _echo and _warn, might change later
@@ -1856,7 +1920,7 @@ help() {
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
-	# parsing command options
+    # parsing command options
     while getopts "r:f:isah" opts; do
         case $opts in
             a)
