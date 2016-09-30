@@ -7,10 +7,10 @@
 # 3. (optional) screen
 # 4. wget https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_hdp.sh -O ./start_hdp.sh
 # 5. chmod u+x ./start_hdp.sh
-# 6. ./start_hdp.sh -i
+# 6. ./start_hdp.sh -i    or './start_hdp.sh -a' for full automated installation
 # 7. answer questions
 #
-# Once setup, just run ./start_hdp.sh to start service if server is rebooted
+# Once setup, just run './start_hdp.sh -s' to start service if server is rebooted
 #
 # Rules:
 # 1. Function name needs to start with f_ or p_
