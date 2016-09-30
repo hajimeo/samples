@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS sample_07 (
   ROW FORMAT DELIMITED
   FIELDS TERMINATED BY '\t'
   STORED AS TextFile;
-load data local inpath './sample_07.csv' into table sample_07;
+load data local inpath './sample_07.csv' OVERWRITE into table sample_07;
 create table sample_07_orc stored as orc  as select * from sample_07;
 CREATE TABLE IF NOT EXISTS sample_08 (
   code string ,
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS sample_08 (
   ROW FORMAT DELIMITED
   FIELDS TERMINATED BY '\t'
   STORED AS TextFile;
-load data local inpath './sample_08.csv' into table sample_08;
+load data local inpath './sample_08.csv' OVERWRITE into table sample_08;
 create external IF NOT EXISTS table emp_stage (
   empid int,
   name string,
@@ -61,22 +61,11 @@ create external IF NOT EXISTS table emp_stage (
   row format delimited
   fields terminated by ","
   location '/tmp/emp_stage_data';
-load data local inpath './employee.csv' into table emp_stage;
-create table IF NOT EXISTS emp_part (
-  empid int,
-  name string,
-  designation  string,
-  salary int)
-  PARTITIONED BY (department String)
-  row format delimited fields terminated by ',';
-INSERT INTO TABLE emp_part PARTITION(department='A')
-SELECT empid, name,designation,salary FROM emp_stage WHERE department='A';
-INSERT INTO TABLE emp_part PARTITION (department='B')
-SELECT empid, name,designation,salary FROM emp_stage WHERE department='B';
-INSERT INTO TABLE emp_part PARTITION (department='C')
-SELECT empid, name,designation,salary FROM emp_stage WHERE department='C';
-INSERT INTO TABLE emp_part PARTITION (department='D')
-SELECT empid, name,designation,salary FROM emp_stage WHERE department='D';
+load data local inpath './employee.csv' OVERWRITE into table emp_stage;
+set hive.exec.dynamic.partition=true
+set hive.exec.dynamic.partition.mode=nonstrict;
+-- set hive.exec.max.dynamic.partitions.pernode=4;
+-- set hive.exec.max.created.files=100000;
 create table IF NOT EXISTS emp_part_dy (
     empid int,
     name string,
@@ -85,8 +74,17 @@ create table IF NOT EXISTS emp_part_dy (
     PARTITIONED BY (department String)
     row format delimited fields terminated by ',';
 INSERT OVERWRITE TABLE emp_part_dy PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;
+create table census(
+ssn int,
+name string,
+city string,
+email string)
+row format delimited
+fields terminated by ',';
+load data local inpath '/tmp/census.csv' OVERWRITE into table census;
 "
 # create table sample_07_id like sample_07; -- to create an identical table
 # select INPUT__FILE__NAME, code from sample_08;
+# select INPUT__FILE__NAME,empid from default.emp_part_dy where department='D';
 
 
