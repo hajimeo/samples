@@ -74,7 +74,7 @@ create table IF NOT EXISTS emp_part_dy (
     PARTITIONED BY (department String)
     row format delimited fields terminated by ',';
 INSERT OVERWRITE TABLE emp_part_dy PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;
-create table census(
+create table IF NOT EXISTS census(
 ssn int,
 name string,
 city string,
@@ -82,6 +82,14 @@ email string)
 row format delimited
 fields terminated by ',';
 load data local inpath '/tmp/census.csv' OVERWRITE into table census;
+create table IF NOT EXISTS census_clus(
+ssn int,
+name string,
+city string,
+email string)
+clustered by (ssn) into 8 buckets;
+set hive.enforce.bucketing=true
+insert overwrite table census_clus select * from census;
 "
 # create table sample_07_id like sample_07; -- to create an identical table
 # select INPUT__FILE__NAME, code from sample_08;
