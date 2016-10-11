@@ -48,7 +48,7 @@ function f_topErrors() {
 }
 
 function f_errorsAt() {
-    local __doc__="List ERROR times"
+    local __doc__="List ERROR date and time"
     local _path="$1"
     local _is_showing_longer="$2"
     local _is_including_warn="$3"
@@ -68,10 +68,10 @@ function f_errorsAt() {
 function f_appLogContainers() {
     local __doc__="List containers ID and host (from YARN app log)"
     local _path="$1"
-    local _is_including_Loginfo="$2"
+    local _sort_by_host="$2"
 
-    if [[ "$_is_including_warn" =~ (^y|^Y) ]]; then
-        egrep "(^Container: container_|^LogType:|^Log Upload Time:^LogLength:)" "$_path"
+    if [[ "$_sort_by_host" =~ (^y|^Y) ]]; then
+        ggrep "^Container: container_" "$_path" | sort -k4
     else
         ggrep "^Container: container_" "$_path" | sort
     fi
@@ -226,7 +226,6 @@ list() {
 }
 help() {
     local _function_name="$1"
-    local _doc_only="$2"
 
     if [ -z "$_function_name" ]; then
         echo "help <function name>"
@@ -239,7 +238,7 @@ help() {
     if [[ "$_function_name" =~ ^[fp]_ ]]; then
         local _code="$(type $_function_name 2>/dev/null | ggrep -v "^${_function_name} is a function")"
         if [ -z "$_code" ]; then
-            _echo "Function name '$_function_name' does not exist."
+            echo "Function name '$_function_name' does not exist."
             return 1
         fi
 
@@ -252,17 +251,15 @@ help() {
             echo -e "$__doc__"
         fi
 
-        if [[ "$_doc_only" =~ (^y|^Y) ]]; then
-            local _params="$(type $_function_name 2>/dev/null | ggrep -iP '^\s*local _[^_].*?=.*?\$\{?[1-9]' | ggrep -v awk)"
-            if [ -n "$_params" ]; then
-                echo "Parameters:"
-                echo -e "$_params
-                "
-                echo ""
-            fi
+        local _params="$(type $_function_name 2>/dev/null | ggrep -iP '^\s*local _[^_].*?=.*?\$\{?[1-9]' | ggrep -v awk)"
+        if [ -n "$_params" ]; then
+            echo "Parameters:"
+            echo -e "$_params
+            "
+            echo ""
         fi
     else
-        _echo "Unsupported Function name '$_function_name'."
+        echo "Unsupported Function name '$_function_name'."
         return 1
     fi
 }
