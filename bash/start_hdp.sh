@@ -295,8 +295,9 @@ function p_ambari_blueprint() {
 
 function f_ambari_blueprint_hostmap() {
     local __doc__="Output json string for Ambari Blueprint Host mapping"
-    local _cluster_name="${1-$r_CLUSTER_NAME}"
-    local _default_password="${2-$r_DEFAULT_PASSWORD}"
+    #local _cluster_name="${1-$r_CLUSTER_NAME}"
+    local _default_password="${1-$r_DEFAULT_PASSWORD}"
+    local _is_kerberos_on="$2"
     local _how_many="${3-$r_NUM_NODES}"
     local _start_from="${4-$r_NODE_START_NUM}"
     local _domain_suffix="${5-$r_DOMAIN_SUFFIX}"
@@ -315,27 +316,85 @@ function f_ambari_blueprint_hostmap() {
     },"
     _num=$((_num+1))
     done
-
     _host_loop="${_host_loop%,}"
+
+    # TODO: Kerboers https://cwiki.apache.org/confluence/display/AMBARI/Blueprints#Blueprints-BlueprintExample:ProvisioningMulti-NodeHDP2.3ClustertouseKERBEROS
+    local _kerberos_config=''
+    if _isYes "$_is_kerberos_on"; then
+        _kerberos_config=',
+  "credentials" : [
+    {
+      "alias" : "kdc.admin.credential",
+      "principal" : "admin/admin",
+      "key" : "'$_default_password'",
+      "type" : "TEMPORARY"
+    }
+  ],
+  "security" : {
+     "type" : "KERBEROS"
+  }
+'
+    fi
 
     echo "{
   \"blueprint\" : \"multinode-hdp\",
   \"default_password\" : \"$_default_password\",
   \"host_groups\" :["
     echo "$_host_loop"
-    echo "  ]
+    echo "  ]${_kerberos_config}
 }"
+    # NOTE: It seems blueprint works without "Clusters"
+    #  , \"Clusters\" : {\"cluster_name\":\"${_cluster_name}\"}
 }
 
 function f_ambari_blueprint_cluster_config() {
     local __doc__="Output json string for Ambari Blueprint Cluster mapping TODO: it's fixed map at this moment"
     local _stack_version="${1-$r_HDP_STACK_VERSION}"
-    local _how_many="${2-$r_NUM_NODES}"
+    local _is_kerberos_on="$2"
+    local _how_many="${3-$r_NUM_NODES}"
 
     if [ -z "$_how_many" ] || [ 4 -gt "$_how_many" ]; then
         _error "At this moment, Blueprint build needs at least 4 nodes"
         return 1
     fi
+
+    # TODO: Realm is hardcoded (and kdc_host)
+    local _kerberos_client=""
+    local _security="";
+    local _kerberos_config=""
+    if _isYes "$_is_kerberos_on"; then
+        _kerberos_client=',
+        {
+          "name" : "KERBEROS_CLIENT"
+        }
+'
+        _security=',
+    "security" : {"type" : "KERBEROS"}
+'
+        _kerberos_config=',
+    {
+      "kerberos-env": {
+        "properties_attributes" : { },
+        "properties" : {
+          "realm" : "EXAMPLE.COM",
+          "kdc_type" : "mit-kdc",
+          "kdc_host" : "'$r_AMBARI_HOST'",
+          "admin_server_host" : "'$r_AMBARI_HOST'"
+        }
+      }
+    },
+    {
+      "krb5-conf": {
+        "properties_attributes" : { },
+        "properties" : {
+          "domains" : "EXAMPLE.COM",
+          "manage_krb5_conf" : "true"
+        }
+      }
+    }
+'
+    fi
+
 
     echo '{
   "configurations" : [
@@ -381,7 +440,7 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "HIVE_CLIENT"
-        }
+        }'${_kerberos_client}'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -436,22 +495,22 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "RESOURCEMANAGER"
-        }
+        }'${_kerberos_client}'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
     },
     {
+      "name" : "host_group_3",
       "components" : [
         {
           "name" : "SECONDARY_NAMENODE"
         },
         {
           "name" : "ZOOKEEPER_SERVER"
-        }
+        }'${_kerberos_client}'
       ],
       "configurations" : [ ],
-      "name" : "host_group_3",
       "cardinality" : "1"
     },
     {
@@ -486,7 +545,7 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "HIVE_CLIENT"
-        }
+        }'${_kerberos_client}'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -495,7 +554,7 @@ function f_ambari_blueprint_cluster_config() {
   "Blueprints": {
     "blueprint_name": "multinode-hdp",
     "stack_name": "HDP",
-    "stack_version": "'$_stack_version'"
+    "stack_version": "'$_stack_version'"'${_security}'
   }
 }'
 }
