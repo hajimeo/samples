@@ -887,6 +887,7 @@ function f_kdc_install_on_ambari_node() {
     local _server="${3-$r_AMBARI_HOST}"
 
     ssh root@$_server -t "yum install krb5-server krb5-libs krb5-workstation -y"
+    ssh root@$_server -t "chkconfig  krb5kdc on; chkconfig kadmin on"
     ssh root@$_server -t "mv /etc/krb5.conf /etc/krb5.conf.orig; echo \"[libdefaults]
  default_realm = $_realm
 [realms]
@@ -1293,8 +1294,8 @@ function p_host_setup() {
     fi
 
     # NOTE: psql (postgresql-client) is required
-    apt-get -y install wget sshfs sysv-rc-conf sysstat htop dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect
-    #krb5-kdc krb5-admin-server mailutils postfix mysql-client
+    apt-get -y install wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect
+    #krb5-kdc krb5-admin-server mailutils postfix mysql-client htop
 
     f_sysstat_setup
     f_host_performance
@@ -1377,6 +1378,9 @@ function f_host_misc() {
     if [ $? -ne 0 ]; then
         sed -i.bak '/^exit 0/i IP=$(/sbin/ifconfig eth0 | grep -oP "inet addr:\\\d+\\\.\\\d+\\\.\\\d+\\\.\\\d+" | cut -d":" -f2); echo "eth0 IP: $IP" > /etc/issue\n' /etc/rc.local
     fi
+
+    grep '^PasswordAuthentication no' /etc/ssh/sshd_config && sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config && service ssh restart
+    #grep '^PermitRootLogin without-password' /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config && service ssh restart
 }
 
 function f_dockerfile() {
