@@ -1,7 +1,7 @@
 r_AMBARI_BLUEPRINT="Y"
 r_AMBARI_HOST="node1.localdomain"
 r_AMBARI_REPO_FILE="http://public-repo-1.hortonworks.com/ambari/centos6/2.x/updates/2.4.1.0/ambari.repo"
-r_AMBARI_VER="2.2.2.0"
+r_AMBARI_VER="2.4.1.0"
 r_APTGET_UPGRADE="N"
 r_CLUSTER_NAME="c1"
 r_CONTAINER_OS="centos"
