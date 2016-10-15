@@ -667,9 +667,12 @@ function _docker_seq() {
 
 function f_docker_setup() {
     local __doc__="Install docker (if not yet) and customise for HDP test environment"
+    # https://docs.docker.com/engine/installation/linux/ubuntulinux/
     which docker &>/dev/null
     if [ $? -gt 0 ] || [ ! -s /etc/apt/sources.list.d/docker.list ]; then
-        apt-key adv --keyserver hkp://pgp.mit.edu:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key"
+        #apt-get update
+        apt-get install apt-transport-https ca-certificates -y
+        apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key for docker"
         grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-trusty main" >> /etc/apt/sources.list.d/docker.list
         apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
     fi
@@ -680,23 +683,25 @@ function f_docker_setup() {
         apparmor_parser -R /etc/apparmor.d/usr.sbin.tcpdump
     fi
 
+    local _storage_size="30G"
+    # This part is different by docker version, so changing only if it was 10GB or 1*.**GB
     docker info | grep 'Base Device Size' | grep -oP '1\d\.\d\d GB' &>/dev/null
     if [ $? -eq 0 ]; then
         grep 'storage-opt dm.basesize=' /etc/init/docker.conf &>/dev/null
         if [ $? -ne 0 ]; then
-            sed -i.bak -e 's/DOCKER_OPTS=$/DOCKER_OPTS=\"--storage-opt dm.basesize=20G\"/' /etc/init/docker.conf
+            sed -i.bak -e 's/DOCKER_OPTS=$/DOCKER_OPTS=\"--storage-opt dm.basesize='${_storage_size}'\"/' /etc/init/docker.conf
             _warn "Restarting docker (will stop all containers)..."
             sleep 3
             service docker restart
         else
-            _warn "storage-opt dm.basesize=20G is already set in /etc/init/docker.conf"
+            _warn "storage-opt dm.basesize=${_storage_size} is already set in /etc/init/docker.conf"
         fi
     fi
 }
 
 function f_docker_sandbox_install() {
     local __doc__="Install Sandbox docker version"
-    local _tmp_dir="${1-/tmp}"
+    local _tmp_dir="${1-./}"
     local _url="$2"
 
     if [ -z "$_url" ]; then
@@ -707,7 +712,7 @@ function f_docker_sandbox_install() {
 
     f_docker_setup
 
-    if ! _isEnoughDisk "/tmp" "10"; then
+    if ! _isEnoughDisk "$_tmp_dir" "10"; then
         _error "Not enough space to download sandbox"
         return 1
     fi
@@ -719,11 +724,11 @@ function f_docker_sandbox_install() {
 
     wget -nv -c -t 20 --timeout=60 --waitretry=60 "https://raw.githubusercontent.com/hortonworks/tutorials/hdp-2.5/tutorials/hortonworks/hortonworks-sandbox-hdp2.5-guide/start_sandbox.sh" -O ~/start_sandbox.sh
     chmod u+x ~/start_sandbox.sh
-    wget -nv -c -t 20 --timeout=60 --waitretry=60 "${_url}" -O "${_tmp_dir%/}/${_file_name}" || return $?
+    wget -c -t 20 --timeout=60 --waitretry=60 "${_url}" -O "${_tmp_dir%/}/${_file_name}" || return $?
 
     docker load < "${_tmp_dir%/}/${_file_name}" || return $?
 
-    # TODO: this may not work. running 'sysctl -p' in sandbox docker seems to work
+    # TODO: this may not work. running 'sysctl -p' from inside of sandbox docker seems to work
     sysctl -w kernel.shmmax=41943040 && sysctl -p
     bash -x ~/start_sandbox.sh
 }
@@ -985,7 +990,7 @@ function f_ambari_agent_fix_public_hostname() {
     local __doc__="Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _cmd='grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/\[security\]/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
+    local _cmd='grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
