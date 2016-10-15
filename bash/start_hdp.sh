@@ -402,7 +402,7 @@ function f_ambari_blueprint_cluster_config() {
       "hdfs-site" : {
         "properties" : {
           "dfs.replication" : "1",
-          "dfs.datanode.du.reserved" : "299999999"
+          "dfs.datanode.du.reserved" : "536870912"
         }
       }
     }
@@ -410,6 +410,16 @@ function f_ambari_blueprint_cluster_config() {
   "host_groups": [
     {
       "name" : "host_group_1",
+      "components" : [
+        {
+          "name" : "AMBARI_SERVER"
+        }'${_kerberos_client}'
+      ],
+      "configurations" : [ ],
+      "cardinality" : "1"
+    },
+    {
+      "name" : "host_group_2",
       "components" : [
         {
           "name" : "YARN_CLIENT"
@@ -424,35 +434,10 @@ function f_ambari_blueprint_cluster_config() {
           "name" : "ZOOKEEPER_CLIENT"
         },
         {
-          "name" : "HCAT"
-        },
-        {
           "name" : "PIG"
         },
         {
-          "name" : "MAPREDUCE2_CLIENT"
-        },
-        {
-          "name" : "AMBARI_SERVER"
-        },
-        {
-          "name" : "ZOOKEEPER_SERVER"
-        },
-        {
           "name" : "HIVE_CLIENT"
-        }'${_kerberos_client}'
-      ],
-      "configurations" : [ ],
-      "cardinality" : "1"
-    },
-    {
-      "name" : "host_group_2",
-      "components" : [
-        {
-          "name" : "YARN_CLIENT"
-        },
-        {
-          "name" : "HDFS_CLIENT"
         },
         {
           "name" : "HIVE_SERVER"
@@ -470,15 +455,6 @@ function f_ambari_blueprint_cluster_config() {
           "name" : "NAMENODE"
         },
         {
-          "name" : "TEZ_CLIENT"
-        },
-        {
-          "name" : "ZOOKEEPER_CLIENT"
-        },
-        {
-          "name" : "PIG"
-        },
-        {
           "name" : "WEBHCAT_SERVER"
         },
         {
@@ -489,9 +465,6 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "APP_TIMELINE_SERVER"
-        },
-        {
-          "name" : "HIVE_CLIENT"
         },
         {
           "name" : "RESOURCEMANAGER"
@@ -505,9 +478,6 @@ function f_ambari_blueprint_cluster_config() {
       "components" : [
         {
           "name" : "SECONDARY_NAMENODE"
-        },
-        {
-          "name" : "ZOOKEEPER_SERVER"
         }'${_kerberos_client}'
       ],
       "configurations" : [ ],
@@ -516,9 +486,6 @@ function f_ambari_blueprint_cluster_config() {
     {
       "name" : "host_group_4",
       "components" : [
-        {
-          "name" : "NODEMANAGER"
-        },
         {
           "name" : "YARN_CLIENT"
         },
@@ -541,10 +508,13 @@ function f_ambari_blueprint_cluster_config() {
           "name" : "MAPREDUCE2_CLIENT"
         },
         {
-          "name" : "DATANODE"
+          "name" : "HIVE_CLIENT"
         },
         {
-          "name" : "HIVE_CLIENT"
+          "name" : "NODEMANAGER"
+        },
+        {
+          "name" : "DATANODE"
         }'${_kerberos_client}'
       ],
       "configurations" : [ ],
@@ -728,9 +698,12 @@ function f_docker_sandbox_install() {
 
     docker load < "${_tmp_dir%/}/${_file_name}" || return $?
 
-    # TODO: this may not work. running 'sysctl -p' from inside of sandbox docker seems to work
+    # This may not work. running 'sysctl -p' from inside of sandbox docker seems to work
     sysctl -w kernel.shmmax=41943040 && sysctl -p
     bash -x ~/start_sandbox.sh
+    docker exec -d sandbox /sbin/sysctl -p
+    #cat '0 10 * * * find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {};find /var/log/ambari-* -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}' > /var/spool/cron/root"
+    _info "You may need to run /usr/sbin/ambari-admin-password-reset"
 }
 
 function f_docker0_setup() {
@@ -1266,7 +1239,7 @@ function f_screen_cmd() {
     screen -ls | grep -w "docker_$r_CLUSTER_NAME"
     if [ $? -ne 0 ]; then
       _info "You may want to run the following commands to start GNU Screen:"
-      echo "screen -S \"docker_$r_CLUSTER_NAME\" bash -c 'for s in \``_docker_seq "$r_NUM_NODES" "$r_NODE_START_NUM" "Y"`\`; do screen -t \"node\${s}\" \"ssh\" \"node\${s}${r_DOMAIN_SUFFIX}\"; done'"
+      echo "screen -S \"docker_$r_CLUSTER_NAME\" bash -c 'for s in \``_docker_seq "$r_NUM_NODES" "$r_NODE_START_NUM" "Y"`\`; do screen -t \"node\${s}\" \"ssh\" \"node\${s}${r_DOMAIN_SUFFIX}\"; sleep 1; done'"
     fi
 }
 
@@ -1567,9 +1540,9 @@ function f_log_cleanup() {
     _warn "Deleting hadoop logs which is older than $_days..."
     # NOTE: Assuming docker name and hostname is same
     for _name in `docker ps --format "{{.Names}}"`; do
-        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop \( -name "*.log*" -o -name "*.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
+        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
         # Agent log is owned by root
-        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ambari-* -type f \( -name "*.log*" -o -name "*.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
+        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ambari-* -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     done
 }
 
