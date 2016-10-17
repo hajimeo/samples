@@ -83,7 +83,7 @@ __LAST_ANSWER=""
 function p_interview() {
     local __doc__="Asks user questions."
     local _centos_version="6.7"
-    local _ambari_version="2.2.2.0"
+    local _ambari_version="2.4.1.0"
     local _stack_version="2.4"
     local _stack_version_full="HDP-$_stack_version"
     local _hdp_version="2.4.2.0"
@@ -698,9 +698,10 @@ function f_docker_sandbox_install() {
 
     docker load < "${_tmp_dir%/}/${_file_name}" || return $?
 
-    # This may not work. running 'sysctl -p' from inside of sandbox docker seems to work
+    # This may not work. running 'sysctl' from inside of sandbox docker as well seems to work
     sysctl -w kernel.shmmax=41943040 && sysctl -p
     bash -x ~/start_sandbox.sh
+    docker exec -d sandbox sysctl -w kernel.shmmax=41943040
     docker exec -d sandbox /sbin/sysctl -p
     #cat '0 10 * * * find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {};find /var/log/ambari-* -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}' > /var/spool/cron/root"
     _info "You may need to run /usr/sbin/ambari-admin-password-reset"
@@ -876,6 +877,148 @@ function f_kdc_install_on_ambari_node() {
     ssh root@$_server -t "kdb5_util create -s -P $_password"
     # chkconfig krb5kdc on;chkconfig kadmin on; doesn't work with docker
     ssh root@$_server -t "echo '*/admin *' > /var/kerberos/krb5kdc/kadm5.acl;service krb5kdc restart;service kadmin restart;kadmin.local -q \"add_principal -pw $_password admin/admin\""
+}
+
+function f_ldap_server_install_on_host() {
+    local __doc__="Install LDAP server packages on Ubuntu TODO: setup"
+    local _ldap_domain="$1"
+    local _password="${2-hadoop}"
+
+    if [ -z "$_ldap_domain" ]; then
+        _warn "No LDAP Domain, so using dc=example,dc=com"
+        _ldap_domain="dc=example,dc=com"
+    fi
+
+    local _set_noninteractive=false
+    if [ -z "$DEBIAN_FRONTEND" ]; then
+        export noninteractive=noninteractive
+        _set_noninteractive=true
+    fi
+    debconf-set-selections <<EOF
+slapd slapd/internal/generated_adminpw password ${_password}
+slapd slapd/password2 password ${_password}
+slapd slapd/internal/adminpw password ${_password}
+slapd slapd/password1 password ${_password}
+slapd slapd/domain string ${_ldap_domain}
+slapd shared/organization string ${_ldap_domain}
+EOF
+    apt-get install -y slapd ldap-utils
+    if $_set_noninteractive ; then
+        unset DEBIAN_FRONTEND
+    fi
+
+    # test
+    ldapsearch -x -D "cn=admin,${_ldap_domain}" -w "${_password}" # -h ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}
+}
+
+function f_ldap_server_install_on_ambari_node() {
+    local __doc__="TODO: CentOS6 only: Install LDAP server packages TODO: setup"
+    local _ldap_domain="$1"
+    local _password="${2-hadoop}"
+    local _server="${3-$r_AMBARI_HOST}"
+
+    if [ -z "$_ldap_domain" ]; then
+        _warn "No LDAP Domain, so using dc=example,dc=com"
+        _ldap_domain="dc=example,dc=com"
+    fi
+
+    # TODO: chkconfig slapd on wouldn't do anything on docker container
+    ssh root@$_server -t "yum install openldap openldap-servers openldap-clients -y" || return $?
+    ssh root@$_server -t "cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG ; chown ldap. /var/lib/ldap/DB_CONFIG && /etc/rc.d/init.d/slapd start" || return $?
+    local _md5=""
+    _md5="`ssh root@$_server -t "slappasswd -s ${_password}"`" || return $?
+
+    if [ -z "$_md5" ]; then
+        _error "Couldn't generate hashed password"
+        return 1
+    fi
+
+    ssh root@$_server -t 'cat "dn: olcDatabase={0}config,cn=config
+changetype: modify
+add: olcRootPW
+olcRootPW: '${_md5}'
+" > /tmp/chrootpw.ldif && ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/chrootpw.ldif' || return $?
+
+    ssh root@$_server -t 'cat "dn: olcDatabase={1}monitor,cn=config
+changetype: modify
+replace: olcAccess
+olcAccess: {0}to * by dn.base="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth"
+  read by dn.base="cn=Manager,'${_ldap_domain}'" read by * none
+
+dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+replace: olcSuffix
+olcSuffix: '${_ldap_domain}'
+
+dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+replace: olcRootDN
+olcRootDN: cn=Manager,'${_ldap_domain}'
+
+dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+add: olcRootPW
+olcRootPW: '${_md5}'
+
+dn: olcDatabase={2}bdb,cn=config
+changetype: modify
+add: olcAccess
+olcAccess: {0}to attrs=userPassword,shadowLastChange by
+  dn="cn=Manager,'${_ldap_domain}'" write by anonymous auth by self write by * none
+olcAccess: {1}to dn.base="" by * read
+olcAccess: {2}to * by dn="cn=Manager,'${_ldap_domain}'" write by * read
+" > /tmp/chdomain.ldif && ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/chdomain.ldif' || return $?
+
+    ssh root@$_server -t 'dn: '${_ldap_domain}'
+objectClass: top
+objectClass: dcObject
+objectclass: organization
+o: Server World
+dc: Srv
+
+dn: cn=Manager,'${_ldap_domain}'
+objectClass: organizationalRole
+cn: Manager
+description: Directory Manager
+
+dn: ou=People,'${_ldap_domain}'
+objectClass: organizationalUnit
+ou: People
+
+dn: ou=Group,'${_ldap_domain}'
+objectClass: organizationalUnit
+ou: Group
+" > /tmp/basedomain.ldif && ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/basedomain.ldif' || return $?
+}
+
+function f_ldap_client_install() {
+    local __doc__="TODO: CentOS6 only: Install LDAP client packages"
+    # somehow having difficulty to install openldap in docker so using dockerhost1
+    local _ldap_server="${1}"
+    local _ldap_basedn="${2}"
+    local _how_many="${3-$r_NUM_NODES}"
+    local _start_from="${4-$r_NODE_START_NUM}"
+
+    if [ -z "$_ldap_server" ]; then
+        _warn "No LDAP server hostname. Using ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
+        _ldap_server="${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
+    fi
+    if [ -z "$_ldap_basedn" ]; then
+        _warn "No LDAP Base DN, so using dc=example,dc=com"
+        _ldap_basedn="dc=example,dc=com"
+    fi
+
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
+        ssh root@node$i${r_DOMAIN_SUFFIX} -t "yum -y erase nscd;yum -y install sssd sssd-client sssd-ldap openldap-clients"
+        if [ $? -eq 0 ]; then
+            ssh root@node$i${r_DOMAIN_SUFFIX} -t "authconfig --enablesssd --enablesssdauth --enablelocauthorize --enableldap --enableldapauth --disableldaptls --ldapserver=ldap://${_ldap_server} --ldapbasedn=${_ldap_basedn} --update" || _warn "node$i failed to setup ldap client"
+            # test
+            #authconfig --test
+            # getent passwd admin
+        else
+            _warn "node$i failed to install ldap client"
+        fi
+    done
 }
 
 function f_ambari_server_install() {
