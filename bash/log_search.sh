@@ -14,6 +14,12 @@ usage() {
 How to use (just source)
     . ${BASH_SOURCE}
 
+Example:
+    # Check what kind of caused by is most
+    f_topCausedByExceptions ./yarn_application.log | tail -n 10
+
+    # Check what kind of ERROR is most
+    f_topErrors ./yarn_application.log | tail -n 10
 "
     echo "Available functions:"
     list
@@ -65,7 +71,7 @@ function f_errorsAt() {
     egrep -wo "^20[12].+? $_regex" "$_path" | sort
 }
 
-function f_appLogContainers() {
+function f_appLogContainersAndHosts() {
     local __doc__="List containers ID and host (from YARN app log)"
     local _path="$1"
     local _sort_by_host="$2"
@@ -77,8 +83,20 @@ function f_appLogContainers() {
     fi
 }
 
-function f_appLogCounters() {
-    local __doc__="List counters (Tez only?) (from YARN app log)"
+function f_appLogContainerCountPerHost() {
+    local __doc__="Count container per host (from YARN app log)"
+    local _path="$1"
+    local _sort_by_host="$2"
+
+    if [[ "$_sort_by_host" =~ (^y|^Y) ]]; then
+        f_appLogContainers "$1" | awk '{print $4}' | sort | uniq -c
+    else
+        f_appLogContainers "$1" | awk '{print $4}' | sort | uniq -c | sort -n
+    fi
+}
+
+function f_appLogJobCounters() {
+    local __doc__="List the Job counters (Tez only?) (from YARN app log)"
     local _path="$1"
     local _line=""
     local _list=""
@@ -92,8 +110,8 @@ function f_appLogCounters() {
     done
 }
 
-function f_appLogExports() {
-    local __doc__="List exports (from YARN app log)"
+function f_appLogJobExports() {
+    local __doc__="List exports in the job (from YARN app log)"
     local _path="$1"
     local _regex="^export "
 
