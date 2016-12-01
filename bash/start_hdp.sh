@@ -75,6 +75,7 @@ g_DEFAULT_RESPONSE_FILEPATH="./${g_SCRIPT_BASE}.resp"
 g_LATEST_RESPONSE_URL="https://raw.githubusercontent.com/hajimeo/samples/master/misc/latest_hdp.resp"
 g_BACKUP_DIR="$HOME/.build_script/"
 g_DOCKER_BASE="hdp/base"
+g_UNAME_STR="`uname`"
 __PID="$$"
 __LAST_ANSWER=""
 
@@ -286,9 +287,6 @@ function p_ambari_blueprint() {
         f_ambari_blueprint_cluster_config > $_cluster_config_json
     fi
 
-    if ! _isYes "$r_HDP_LOCAL_REPO"; then
-        f_ambari_set_repo
-    fi
     curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/$r_CLUSTER_NAME" -d @${_cluster_config_json}
     curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/$r_CLUSTER_NAME" -d @${_hostmap_json}
 }
@@ -636,7 +634,13 @@ function _docker_seq() {
 }
 
 function f_docker_setup() {
-    local __doc__="Install docker (if not yet) and customise for HDP test environment"
+    local __doc__="Install docker (if not yet) and customise for HDP test environment (TODO: Ubuntu only)"
+
+    if [ ! `which apt-get` ]; then
+        _warn "No apt-get"
+        return 1
+    fi
+
     # https://docs.docker.com/engine/installation/linux/ubuntulinux/
     which docker &>/dev/null
     if [ $? -gt 0 ] || [ ! -s /etc/apt/sources.list.d/docker.list ]; then
@@ -883,6 +887,11 @@ function f_ldap_server_install_on_host() {
     local __doc__="Install LDAP server packages on Ubuntu TODO: setup"
     local _ldap_domain="$1"
     local _password="${2-hadoop}"
+
+    if [ ! `which apt-get` ]; then
+        _warn "No apt-get"
+        return 1
+    fi
 
     if [ -z "$_ldap_domain" ]; then
         _warn "No LDAP Domain, so using dc=example,dc=com"
@@ -1178,6 +1187,11 @@ function f_local_repo() {
     local _force_extract=""
     local _download_only=""
 
+    if [ ! `which apt-get` ]; then
+        _warn "No apt-get"
+        return 1
+    fi
+
     apt-get install -y apache2 createrepo
 
     if [ -z "$r_HDP_REPO_TARGZ" ]; then
@@ -1394,6 +1408,11 @@ function f_vmware_tools_install() {
 function f_sysstat_setup() {
     local __doc__="Install and set up sysstat"
 
+    if [ ! `which apt-get` ]; then
+        _warn "No apt-get"
+        return 1
+    fi
+
     which sar &>/dev/null
     if [ $? -ne 0 ]; then
         apt-get -y install sysstat
@@ -1409,22 +1428,21 @@ function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
     local _docer0="${1-$r_DOCKER_HOST_IP}"
 
-    set -v
-    if _isYes "$r_APTGET_UPGRADE"; then
-        apt-get update && apt-get upgrade -y
+    if [ `which apt-get` ]; then
+        if _isYes "$r_APTGET_UPGRADE"; then
+            apt-get update && apt-get upgrade -y
+        fi
+
+        # NOTE: psql (postgresql-client) is required
+        apt-get -y install wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect
+        #krb5-kdc krb5-admin-server mailutils postfix mysql-client htop
+
+        f_sysstat_setup
+        f_host_performance
+        f_host_misc
+        f_docker_setup
+        f_dnsmasq
     fi
-
-    # NOTE: psql (postgresql-client) is required
-    apt-get -y install wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect
-    #krb5-kdc krb5-admin-server mailutils postfix mysql-client htop
-
-    f_sysstat_setup
-    f_host_performance
-    f_host_misc
-
-    f_docker_setup
-
-    f_dnsmasq
 
     f_docker0_setup "$_docer0"
     f_dockerfile
@@ -1437,25 +1455,30 @@ function p_host_setup() {
     f_ambari_server_start
     sleep 3
 
-    if _isYes "$r_HDP_LOCAL_REPO"; then
-        f_local_repo
-    fi
-
     if _isYes "$r_PROXY"; then
         f_apache_proxy
         f_yum_remote_proxy
     fi
 
+    if _isYes "$r_HDP_LOCAL_REPO"; then
+        f_local_repo
+    elif ! _isYes "$r_HDP_REPO_URL"; then
+        # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
+        f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL"
+    fi
     if _isYes "$r_AMBARI_BLUEPRINT"; then
         p_ambari_blueprint
     fi
 
-    set +v
     f_screen_cmd
 }
 
 function f_dnsmasq() {
     local __doc__="Install and set up dnsmasq"
+    if [ ! `which apt-get` ]; then
+        _warn "No apt-get"
+        return 1
+    fi
     apt-get -y install dnsmasq
 
     grep '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
@@ -1582,6 +1605,11 @@ function f_apache_proxy() {
     local _cache_dir="/var/cache/apache2/mod_cache_disk"
     local _port="${r_PROXY_PORT-28080}"
 
+    if [ ! `which apt-get` ]; then
+        _warn "No apt-get"
+        return 1
+    fi
+
     apt-get install -y apache2 apache2-utils
     a2enmod proxy proxy_http proxy_connect cache cache_disk
     mkdir -m 777 $_proxy_dir || _info "${_proxy_dir} already exists"
@@ -1704,9 +1732,11 @@ function f_checkUpdate() {
         if [ "$0" = "$BASH_SOURCE" ]; then
             _warn "$FUNCNAME: No 'curl' command. Exiting."; return 1
         else
-            _ask "Would you like to install 'curl'?" "Y"
-            if _isYes ; then
-                DEBIAN_FRONTEND=noninteractive apt-get -y install curl &>/dev/null
+            if [ `which apt-get` ]; then
+                _ask "Would you like to install 'curl'?" "Y"
+                if _isYes ; then
+                    DEBIAN_FRONTEND=noninteractive apt-get -y install curl &>/dev/null
+                fi
             fi
         fi
     fi
@@ -2103,6 +2133,10 @@ help() {
     fi
 }
 
+
+
+### main() ############################################################
+
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
     while getopts "r:f:isah" opts; do
@@ -2135,8 +2169,18 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
     grep -i 'Ubuntu 14.04' /etc/issue.net &>/dev/null
     if [ $? -ne 0 ]; then
-        _ask "This script may not work with this OS. Are you sure?" "N"
-        if ! _isYes; then echo "Bye"; exit; fi
+        if [ "$g_UNAME_STR" == "Darwin" ]; then
+            echo "Detected Mac OS"
+            which docker &>/dev/null
+            if [ $? -ne 0 ]; then
+                echo "Sorry, at this moment, installing docker manually is required for Mac"
+                echo "Please check https://docs.docker.com/engine/installation/mac/"
+                exit 1
+            fi
+        else
+            _ask "This script may not work with this OS. Are you sure?" "N"
+            if ! _isYes; then echo "Bye"; exit; fi
+        fi
     fi
 
     _IS_SCRIPT_RUNNING=true
