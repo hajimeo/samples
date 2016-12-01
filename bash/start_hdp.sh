@@ -1462,7 +1462,7 @@ function p_host_setup() {
 
     if _isYes "$r_HDP_LOCAL_REPO"; then
         f_local_repo
-    elif ! _isYes "$r_HDP_REPO_URL"; then
+    elif [ ! -z "$r_HDP_REPO_URL" ]; then
         # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
         f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL"
     fi
@@ -1765,6 +1765,23 @@ function f_checkUpdate() {
         #source ${_local_file_path} || _critical "Please contact the script author."
         _info "Script has been updated. Please re-run."
         _exit 0
+    fi
+}
+
+function f_useradd() {
+    local __doc__="Add user"
+    local _user="$1"
+    local _pwd="$2"
+
+    # should specify home directory just in case?
+    useradd -d "/home/$_user/" -s `which bash` -p $(echo "$_pwd" | openssl passwd -1 -stdin) "$_user"
+    mkdir "/home/$_user/" && chown "$_user":"$_user" "/home/$_user/"
+
+    if [ -f $HOME/.ssh/id_rsa ] && [ -d "/home/$_user/" ]; then
+        mkdir "/home/$_user/.ssh" && chown "$_user":"$_user" "/home/$_user/.ssh"
+        cp $HOME/.ssh/id_rsa* "/home/$_user/.ssh/"
+        chown "$_user":"$_user" /home/$_user/.ssh/id_rsa*
+        chmod 600 "/home/$_user/.ssh/id_rsa"
     fi
 }
 
