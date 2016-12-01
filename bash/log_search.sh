@@ -139,60 +139,88 @@ function f_xmlDiff() {
 
 function f_grepWithDate() {
     local __doc__="Grep large file with date string"
-	local _date_format="$1"
-	local _log_file_path="$2"
-	local _grep_option="$3"
-	local _is_utc="$4"
-	local _interval_hour="$5"
-	local _date_regex=""
-	local _date="date"
+    local _date_format="$1"
+    local _log_file_path="$2"
+    local _grep_option="$3"
+    local _is_utc="$4"
+    local _interval_hour="$5"
+    local _date_regex=""
+    local _date="date"
 
-	if [ -z "$_interval_hour" ]; then
-		_interval_hour=0
-	fi
+    if [ -z "$_interval_hour" ]; then
+        _interval_hour=0
+    fi
 
-	# in case file path includes wildcard
-	ls $_log_file_path &>/dev/null
-	#if [ $? -ne 0 ]; then
-		#return 3
-	#fi
+    # in case file path includes wildcard
+    ls $_log_file_path &>/dev/null
+    #if [ $? -ne 0 ]; then
+        #return 3
+    #fi
 
     if [[ "$_is_utc" =~ (^y|^Y) ]]; then
-		_date="date -u"
-	fi
+        _date="date -u"
+    fi
 
-	if [ ${_interval_hour} -gt 0 ]; then
-		local _start_hour="`$_date +"%H" -d "${_interval_hour} hours ago"`"
-		local _end_hour="`$_date +"%H"`"
+    if [ ${_interval_hour} -gt 0 ]; then
+        local _start_hour="`$_date +"%H" -d "${_interval_hour} hours ago"`"
+        local _end_hour="`$_date +"%H"`"
 
-		local _tmp_date_regex=""
-		for _n in `seq 1 ${_interval_hour}`; do
-			_tmp_date_regex="`$_date +"$_date_format" -d "${_n} hours ago"`"
+        local _tmp_date_regex=""
+        for _n in `seq 1 ${_interval_hour}`; do
+            _tmp_date_regex="`$_date +"$_date_format" -d "${_n} hours ago"`"
 
-			if [ -n "$_tmp_date_regex" ]; then
-				if [ -z "$_date_regex" ]; then
-					_date_regex="$_tmp_date_regex"
-				else
-					_date_regex="${_date_regex}|${_tmp_date_regex}"
-				fi
-			fi
-		done
-	else
-		_date_regex="`$_date +"$_date_format"`"
-	fi
+            if [ -n "$_tmp_date_regex" ]; then
+                if [ -z "$_date_regex" ]; then
+                    _date_regex="$_tmp_date_regex"
+                else
+                    _date_regex="${_date_regex}|${_tmp_date_regex}"
+                fi
+            fi
+        done
+    else
+        _date_regex="`$_date +"$_date_format"`"
+    fi
 
-	if [ -z "$_date_regex" ]; then
-		return 2
-	fi
+    if [ -z "$_date_regex" ]; then
+        return 2
+    fi
 
-	# If empty interval hour, do normal grep
-	if [ -z "${_interval_hour}" ]; then
-		eval "ggrep $_grep_option $_log_file_path"
-	else
-		eval "_getAfterFirstMatch \"$_date_regex\" \"$_log_file_path\" | ggrep $_grep_option"
-	fi
+    # If empty interval hour, do normal grep
+    if [ -z "${_interval_hour}" ]; then
+        eval "ggrep $_grep_option $_log_file_path"
+    else
+        eval "_getAfterFirstMatch \"$_date_regex\" \"$_log_file_path\" | ggrep $_grep_option"
+    fi
 
-	return $?
+    return $?
+}
+
+function f_git_search() {
+    local __doc__="Grep git comments to find matching branch or tag"
+    local _search="$1"
+    local _git_dir="$2"
+    local _is_fetching="$3"
+    local _is_showing_grep_result="$4"
+
+    if [ -d "$_git_dir" ]; then
+       cd "$_git_dir"
+    fi
+
+    if [[ "$_is_fetching" =~ (^y|^Y) ]]; then
+        git fetch
+    fi
+
+    local _grep_result="`git log --all --grep "$_search"`"
+    if [[ "$_is_showing_grep_result" =~ (^y|^Y) ]]; then
+        echo "$_grep_result"
+    fi
+
+    local _commits_only="`echo "$_grep_result" | grep ^commit | cut -d ' ' -f 2`"
+
+    echo "# Searching branches ...."
+    for c in $_commits_only; do git branch -r --contains $c; done
+    echo "# Searching tags ...."
+    for c in $_commits_only; do git tag --contains $c; done
 }
 
 ### Private functions ##################################################################################################
@@ -207,16 +235,16 @@ function _split() {
 }
 
 function _getAfterFirstMatch() {
-	local _regex="$1"
-	local _file_path="$2"
+    local _regex="$1"
+    local _file_path="$2"
 
-	ls $_file_path 2>/dev/null | while read l; do
-		local _line_num=`ggrep -m1 -nP "$_regex" "$l" | cut -d ":" -f 1`
-		if [ -n "$_line_num" ]; then
-			sed -n "${_line_num},\$p" "${l}"
-		fi
-	done
-	return $?
+    ls $_file_path 2>/dev/null | while read l; do
+        local _line_num=`ggrep -m1 -nP "$_regex" "$l" | cut -d ":" -f 1`
+        if [ -n "$_line_num" ]; then
+            sed -n "${_line_num},\$p" "${l}"
+        fi
+    done
+    return $?
 }
 
 ### Help ###############################################################################################################
