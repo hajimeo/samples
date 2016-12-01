@@ -1298,7 +1298,7 @@ function f_ambari_set_repo() {
     local _ambari_host="${3-$r_AMBARI_HOST}"
     local _ambari_port="${4-8080}"
 
-    nc -z $_ambari_host $_ambari_port
+    _port_wait $_ambari_host $_ambari_port
     if [ $? -ne 0 ]; then
         _error "Ambari is not running on $_ambari_host $_ambari_port"
         return 1
@@ -1462,7 +1462,7 @@ function p_host_setup() {
 
     if _isYes "$r_HDP_LOCAL_REPO"; then
         f_local_repo
-    elif [ ! -z "$r_HDP_REPO_URL" ]; then
+    elif [ -n "$r_HDP_REPO_URL" ]; then
         # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
         f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL"
     fi
@@ -1959,9 +1959,19 @@ function _totalSpaceGB() {
 function _port_wait() {
     local _host="$1"
     local _port="$2"
+    local _times="$3"
+    local _interval="$4"
 
-    for i in `seq 1 10`; do
-      sleep 5
+    if [ -z "$_times" ]; then
+        _times=10
+    fi
+
+    if [ -z "$_interval" ]; then
+        _interval=5
+    fi
+
+    for i in `seq 1 $_times`; do
+      sleep $_interval
       nc -z $_host $_port && return 0
       _info "$_host:$_port is unreachable. Waiting..."
     done
