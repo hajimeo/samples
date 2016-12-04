@@ -76,6 +76,7 @@ g_LATEST_RESPONSE_URL="https://raw.githubusercontent.com/hajimeo/samples/master/
 g_BACKUP_DIR="$HOME/.build_script/"
 g_DOCKER_BASE="hdp/base"
 g_UNAME_STR="`uname`"
+g_DEFAULT_PASSWORD="hadoop"
 __PID="$$"
 __LAST_ANSWER=""
 
@@ -126,7 +127,7 @@ function p_interview() {
     _ask "Would you like to use Ambari Blueprint?" "Y" "r_AMBARI_BLUEPRINT"
     if _isYes "$r_AMBARI_BLUEPRINT"; then
         _ask "Cluster name" "c${r_NODE_START_NUM}" "r_CLUSTER_NAME" "N" "Y"
-        _ask "Default password" "hadoop" "r_DEFAULT_PASSWORD" "N" "Y"
+        _ask "Default password" "$g_DEFAULT_PASSWORD" "r_DEFAULT_PASSWORD" "N" "Y"
         _ask "Stack Version" "$_stack_version" "r_HDP_STACK_VERSION" "N" "Y"
         _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
         r_HDP_REPO_URL="$_hdp_repo_url"
@@ -866,7 +867,7 @@ function f_kdc_install_on_ambari_node() {
     # TODO: somehow doesn't work well with docker
     local __doc__="Install KDC/kadmin service to $r_AMBARI_HOST"
     local _realm="${1-EXAMPLE.COM}"
-    local _password="${2-hadoop}"
+    local _password="${2-$g_DEFAULT_PASSWORD}"
     local _server="${3-$r_AMBARI_HOST}"
 
     ssh root@$_server -t "yum install krb5-server krb5-libs krb5-workstation -y"
@@ -886,7 +887,7 @@ function f_kdc_install_on_ambari_node() {
 function f_ldap_server_install_on_host() {
     local __doc__="Install LDAP server packages on Ubuntu TODO: setup"
     local _ldap_domain="$1"
-    local _password="${2-hadoop}"
+    local _password="${2-$g_DEFAULT_PASSWORD}"
 
     if [ ! `which apt-get` ]; then
         _warn "No apt-get"
@@ -923,7 +924,7 @@ EOF
 function f_ldap_server_install_on_ambari_node() {
     local __doc__="TODO: CentOS6 only: Install LDAP server packages TODO: setup"
     local _ldap_domain="$1"
-    local _password="${2-hadoop}"
+    local _password="${2-$g_DEFAULT_PASSWORD}"
     local _server="${3-$r_AMBARI_HOST}"
 
     if [ -z "$_ldap_domain" ]; then
@@ -1766,6 +1767,53 @@ function f_checkUpdate() {
         _info "Script has been updated. Please re-run."
         _exit 0
     fi
+}
+
+function f_vnc_setup() {
+    local __doc__="Install X and VNC Server. NOTE: this uses about 400MB space"
+    local _user="${1-$USER}"
+    local _vpass="${2-$g_DEFAULT_PASSWORD}"
+    local _pass="${3-$g_DEFAULT_PASSWORD}"
+
+    if [ ! `which apt-get` ]; then
+        _warn "No apt-get"
+        return 1
+    fi
+
+    if [ ! `grep "$_user" /etc/passwd` ]; then
+        f_useradd "$_user" "$_pass" || return $?
+    fi
+
+    # apt-get update
+    apt-get install -y xfce4 xfce4-goodies tightvncserver firefox
+
+    # start vncserver to set up password(s) and generate startup scripts (even though we won't use it)
+    #vncserver
+    # stop to edit startup script
+    #vncserver -kill :1
+
+    su - $_user -c 'echo "hadoop" | vncpasswd -f > $HOME/.vnc/passwd
+chmod 600 $HOME/.vnc/passwd
+mv $HOME/.vnc/xstartup $HOME/.vnc/xstartup.bak &>/dev/null
+echo "#!/bin/bash
+xrdb $HOME/.Xresources
+startxfce4 &" > $HOME/.vnc/xstartup
+chmod u+x $HOME/.vnc/xstartup
+vncserver -geometry 1280x768'
+
+    # to check
+    #sudo netstat -aopen | grep 5901
+}
+
+function f_nifidemo_add() {
+    local __doc__="Deprecated: Add Nifi in HDP"
+    local _stack_version="${1-$r_HDP_STACK_VERSION}"
+    # https://github.com/abajwa-hw/ambari-nifi-service
+
+    #rm -rf /var/lib/ambari-server/resources/stacks/HDP/'$_stack_version'/services/NIFI
+    #TODO: wget http://public-repo-1.hortonworks.com/HDF/centos6/2.x/updates/2.0.1.0/tars/hdf_ambari_mp/hdf-ambari-mpack-2.0.1.0-12.tar.gz
+    ssh root@$r_AMBARI_HOST 'yum install git -y
+git clone https://github.com/abajwa-hw/ambari-nifi-service.git /var/lib/ambari-server/resources/stacks/HDP/'$_stack_version'/services/NIFI && service ambari-server restart'
 }
 
 function f_useradd() {
