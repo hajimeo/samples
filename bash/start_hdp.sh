@@ -777,6 +777,31 @@ function f_docker_stop() {
     wait
 }
 
+function f_docker_save() {
+    local __doc__="Stop containers and commit (save)"
+    local _sufix="${1}"
+    local _how_many="${2-$r_NUM_NODES}"
+    local _start_from="${3-$r_NODE_START_NUM}"
+
+    _warn "If you have not checked disk space, please Ctrl+C now (wait for 3 secs)..."
+    sleep 3
+
+    if [ -z "$_sufix" ]; then
+        # once a day should be enough?
+        _sufix="$(date +"%Y%m%d")"
+    fi
+
+    _info "stopping $_how_many docker containers starting from $_start_from ..."
+    f_docker_stop $_how_many $_start_from
+
+    _info "saving $_how_many docker containers starting from $_start_from ..."
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        docker commit node$_n node${_n}_$_sufix&
+        sleep 1
+    done
+    wait
+}
+
 function f_docker_stop_all() {
     local __doc__="Stopping all docker containers if docker command exists"
     which docker &>/dev/null && docker stop $(docker ps -q)
@@ -1787,22 +1812,198 @@ function f_vnc_setup() {
     # apt-get update
     apt-get install -y xfce4 xfce4-goodies tightvncserver firefox
 
-    # start vncserver to set up password(s) and generate startup scripts (even though we won't use it)
-    #vncserver
-    # stop to edit startup script
-    #vncserver -kill :1
-
     su - $_user -c 'echo "hadoop" | vncpasswd -f > $HOME/.vnc/passwd
 chmod 600 $HOME/.vnc/passwd
 mv $HOME/.vnc/xstartup $HOME/.vnc/xstartup.bak &>/dev/null
 echo "#!/bin/bash
 xrdb $HOME/.Xresources
 startxfce4 &" > $HOME/.vnc/xstartup
-chmod u+x $HOME/.vnc/xstartup
-vncserver -geometry 1280x768'
+chmod u+x $HOME/.vnc/xstartup'
+
+    echo "To start:"
+    echo "su - $_user -c 'vncserver -geometry 1280x768'"
+    echo "To stop:"
+    echo "su - $_user -c 'vncserver -kill :1'"
 
     # to check
     #sudo netstat -aopen | grep 5901
+}
+
+function f_sssd_setup() {
+    local __doc__="TODO: setup SSSD on each node"
+    return
+    # https://github.com/HortonworksUniversity/Security_Labs#install-solrcloud
+
+    local ad_user="registersssd"
+    local ad_domain="lab.hortonworks.net"
+    local ad_dc="ad01.lab.hortonworks.net"
+    local ad_root="dc=lab,dc=hortonworks,dc=net"
+    local ad_ou="ou=HadoopNodes,${ad_root}"
+    local ad_realm=${ad_domain^^}
+
+    sudo kinit ${ad_user}
+
+    # yum makecache fast
+    yum -y install sssd oddjob-mkhomedir authconfig sssd-krb5 sssd-ad sssd-tools adcli
+
+    sudo adcli join -v \
+      --domain-controller=${ad_dc} \
+      --domain-ou="${ad_ou}" \
+      --login-ccache="/tmp/krb5cc_0" \
+      --login-user="${ad_user}" \
+      -v \
+      --show-details
+
+    sudo tee /etc/sssd/sssd.conf > /dev/null <<EOF
+[sssd]
+## master & data nodes only require nss. Edge nodes require pam.
+services = nss, pam, ssh, autofs, pac
+config_file_version = 2
+domains = ${ad_realm}
+override_space = _
+
+[domain/${ad_realm}]
+id_provider = ad
+ad_server = ${ad_dc}
+#ad_server = ad01, ad02, ad03
+#ad_backup_server = ad-backup01, 02, 03
+auth_provider = ad
+chpass_provider = ad
+access_provider = ad
+enumerate = False
+krb5_realm = ${ad_realm}
+ldap_schema = ad
+ldap_id_mapping = True
+cache_credentials = True
+ldap_access_order = expire
+ldap_account_expire_policy = ad
+ldap_force_upper_case_realm = true
+fallback_homedir = /home/%d/%u
+default_shell = /bin/false
+ldap_referrals = false
+
+[nss]
+memcache_timeout = 3600
+override_shell = /bin/bash
+EOF
+
+    sudo chmod 0600 /etc/sssd/sssd.conf
+    sudo service sssd restart
+    sudo authconfig --enablesssd --enablesssdauth --enablemkhomedir --enablelocauthorize --update
+
+    sudo chkconfig oddjobd on
+    sudo service oddjobd restart
+    sudo chkconfig sssd on
+    sudo service sssd restart
+
+    # sudo kdestroy
+
+    #detect name of cluster
+    output=`curl -k -u hadoopadmin:$PASSWORD -i -H 'X-Requested-By: ambari'  https://localhost:8443/api/v1/clusters`
+    cluster=`echo $output | sed -n 's/.*"cluster_name" : "\([^\"]*\)".*/\1/p'`
+
+    #refresh user and group mappings
+    sudo sudo -u hdfs kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-"${cluster,,}"
+    sudo sudo -u hdfs hdfs dfsadmin -refreshUserToGroupsMappings
+
+    sudo sudo -u yarn kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/$(hostname -f)@LAB.HORTONWORKS.NET
+    sudo sudo -u yarn yarn rmadmin -refreshUserToGroupsMappings
+}
+
+function f_certificate_setup() {
+    local __doc__="Generate keystore and certificate for Hadoop SSL"
+    # http://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.5.3/bk_security/content/create-internal-ca.html
+    local _dname="$1"
+    local _password="$2"
+    local _work_dir="${3-./}"
+    local _how_many="${4-$r_NUM_NODES}"
+    local _start_from="${5-$r_NODE_START_NUM}"
+    local _domain_suffix="${6-$r_DOMAIN_SUFFIX}"
+
+    local SERVER_KEY_LOCATION="/etc/hadoop/conf/secure/"
+    local KEYSTORE_FILE="server.keystore.jks"
+    local TRUSTSTORE_FILE="server.truststore.jks"
+    local ALL_JKS="client.truststore.jks"
+    local YARN_USER="yarn"
+
+    if ! which keytool &>/dev/null; then
+        _error "Keytool is required to set up SSL"
+        return 1
+    fi
+
+    if ! which openssl &>/dev/null; then
+        _error "openssl is required to set up SSL"
+        return 1
+    fi
+
+    if [ -z "$_domain_suffix" ]; then
+        _domain_suffix="${r_DOMAIN_SUFFIX-.localdomain}"
+    fi
+    if [ -z "$_dname" ]; then
+        _dname="CN=*${_domain_suffix}, OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
+    fi
+
+    if [ -z "$_password" ]; then
+        _password=${g_DEFAULT_PASSWORD-hadoop}
+    fi
+
+    if [ ! -d "$_work_dir" ]; then
+        if ! mkdir "$_work_dir" ; then
+            _error "Couldn't create $_work_dir"
+            return 1
+        fi
+    fi
+
+    local _a
+    local _tmp=""
+
+    # TODO: why "localhost" is the alias?
+    keytool -keystore "${_work_dir%/}/${KEYSTORE_FILE}" -alias localhost -validity 3650 -genkey -keyalg RSA -keysize 2048 -dname "$_dname" -noprompt -storepass "$_password" -keypass "$_password"
+
+    echo [ req ] > "${_work_dir%/}/openssl.cnf"
+    echo input_password = $_password >> "${_work_dir%/}/openssl.cnf"
+    echo output_password = $_password >> "${_work_dir%/}/openssl.cnf"
+    echo distinguished_name = req_distinguished_name >> "${_work_dir%/}/openssl.cnf"
+    echo req_extensions = v3_req  >> "${_work_dir%/}/openssl.cnf"
+    echo prompt=no >> "${_work_dir%/}/openssl.cnf"
+    echo [req_distinguished_name] >> "${_work_dir%/}/openssl.cnf"
+    _split "_a" "$_dname"
+    _info
+    for (( idx=${#_a[@]}-1 ; idx>=0 ; idx-- )) ; do
+        _tmp="`_trim "${_a[$idx]}"`"
+        # note: nocasematch is already used
+        [[ "${_tmp}" =~ CN=\*\. ]] && _tmp="CN=rootca${_domain_suffix}"
+        echo ${_tmp} >> "${_work_dir%/}/openssl.cnf"
+    done
+    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
+    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
+    echo [ v3_req ] >> "${_work_dir%/}/openssl.cnf"
+    echo basicConstraints = critical,CA:FALSE >> "${_work_dir%/}/openssl.cnf"
+    echo keyUsage = nonRepudiation, digitalSignature, keyEncipherment, dataEncipherment, keyAgreement >> "${_work_dir%/}/openssl.cnf"
+    echo extendedKeyUsage=emailProtection,clientAuth >> "${_work_dir%/}/openssl.cnf"
+
+    # creating CA's key and Certificate
+    openssl req -new -x509 -keyout "${_work_dir%/}/ca-key" -out "${_work_dir%/}/ca-cert" -days 3650 -config "${_work_dir%/}/openssl.cnf" -passin pass:$_password || return $?
+    # create two Java trust stores and import CA's cert
+    keytool -keystore "${_work_dir%/}/${TRUSTSTORE_FILE}" -alias CARoot -import -file "${_work_dir%/}/ca-cert" -noprompt -storepass "$_password" || return $?
+    keytool -keystore "${_work_dir%/}/${ALL_JKS}"         -alias CARoot -import -file "${_work_dir%/}/ca-cert" -noprompt -storepass "$_password" || return $?
+
+    # Create java keystore and generate CSR
+    keytool -keystore "${_work_dir%/}/${KEYSTORE_FILE}" -alias localhost -certreq -file "${_work_dir%/}/csr-file" -noprompt -storepass "$_password" || return $?
+    # Gnerated signed certification singed by self CA
+    openssl x509 -req -CA "${_work_dir%/}/ca-cert" -CAkey "${_work_dir%/}/ca-key" -in "${_work_dir%/}/csr-file" -out "${_work_dir%/}/cert-signed" -days 3650 -CAcreateserial -passin pass:$_password || return $?
+    keytool -keystore "${_work_dir%/}/${KEYSTORE_FILE}" -alias CARoot -import -file "${_work_dir%/}/ca-cert" -noprompt -storepass "$_password" || return $?
+    keytool -keystore "${_work_dir%/}/${KEYSTORE_FILE}" -alias localhost -import -file "${_work_dir%/}/cert-signed" -noprompt -storepass "$_password" || return $?
+
+    _info "copying jks files for $_how_many nodes from $_start_from ..."
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
+        ssh root@node$i${_domain_suffix} -t "mkdir -p ${SERVER_KEY_LOCATION%/}"
+        scp ${_work_dir%/}/*.jks root@node$i${_domain_suffix}:${SERVER_KEY_LOCATION%/}/
+        ssh root@node$i${_domain_suffix} -t "chmod 755 $SERVER_KEY_LOCATION
+chmod 440 $SERVER_KEY_LOCATION$KEYSTORE_FILE
+chmod 440 $SERVER_KEY_LOCATION$TRUSTSTORE_FILE
+chmod 444 $SERVER_KEY_LOCATION$ALL_JKS"
+    done
 }
 
 function f_nifidemo_add() {
@@ -2082,6 +2283,18 @@ function _isUrl() {
     fi
 
     return 1
+}
+function _split() {
+	local _rtn_var_name="$1"
+	local _string="$2"
+	local _delimiter="${3-,}"
+	local _original_IFS="$IFS"
+	eval "IFS=\"$_delimiter\" read -a $_rtn_var_name <<< \"$_string\""
+	IFS="$_original_IFS"
+}
+function _trim() {
+	local _string="$1"
+	echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
 }
 function _info() {
     # At this moment, not much difference from _echo and _warn, might change later
