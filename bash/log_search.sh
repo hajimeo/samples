@@ -118,6 +118,51 @@ function f_appLogJobExports() {
     egrep "$_regex" "$_path" | sort | uniq -c
 }
 
+function f_hdfs_audit_count_per_time() {
+    local __doc__="Count HDFS audit per 10 minutes"
+    local _path="$1"
+    local _datetime_regex="$2"
+
+    if [ -z "$_datetime_regex" ]; then
+        _datetime_regex="^\d\d\d\d-\d\d-\d\d \d\d:\d"
+    fi
+
+    if ! which bar_chart.py &>/dev/null; then
+        echo "## bar_chart.py is missing..."
+        local _cmd="uniq -c"
+    else
+        local _cmd="bar_chart.py"
+    fi
+
+    grep -oE "$_datetime_regex" $_path | $_cmd
+}
+
+function f_hdfs_audit_count_per_user() {
+    local __doc__="Count HDFS audit per user for some period"
+    local _path="$1"
+    local _by_method="$2"
+    local _datetime_regex="$3"
+
+    if [ ! -z "$_datetime_regex" ]; then
+        grep -E "$_datetime_regex" $_path > /tmp/f_hdfs_audit_count_per_user_$$.tmp
+        _path="/tmp/f_hdfs_audit_count_per_user_$$.tmp"
+    fi
+
+    if ! which bar_chart.py &>/dev/null; then
+        echo "## bar_chart.py is missing..."
+        local _cmd="sort | uniq -c"
+    else
+        local _cmd="bar_chart.py"
+    fi
+
+    # TODO: not sure if sed regex is right (seems to work, Mac sed / gsed doesn't like +?)
+    if [[ "$_by_method" =~ (^y|^Y) ]]; then
+        gsed -n 's:^.*\(ugi=[^ ]*\) .*\(cmd=[^ ]*\).*src=.*$:\1,\2:p' $_path | $_cmd
+    else
+        gsed -n 's:^.*\(ugi=[^ ]*\) .*$:\1:p' $_path | $_cmd
+    fi
+}
+
 function f_longGC() {
     local __doc__="List long GC (real >= 1)"
     local _path="$1"
@@ -131,8 +176,13 @@ function f_xmlDiff() {
     local _path1="$1"
     local _path2="$2"
 
-    #diff -w <(echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path1) <(echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path2)
-    diff -w <(paste <(ggrep -Pzo '<name>.+?<\/name>' $_path1) <(ggrep -Pzo '<value>.+?<\/value>' $_path1) | sort) <(paste <(ggrep -Pzo '<name>.+?<\/name>' $_path2) <(ggrep -Pzo '<value>.+?<\/value>' $_path2) | sort)
+    if ! which xmllint &>/dev/null ; then
+        echo "xmllint is required"
+        return
+    fi
+
+    diff -w <(echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path1) <(echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path2)
+    #diff -w <(paste <(ggrep -Pzo '<name>.+?<\/name>' $_path1) <(ggrep -Pzo '<value>.+?<\/value>' $_path1) | sort) <(paste <(ggrep -Pzo '<name>.+?<\/name>' $_path2) <(ggrep -Pzo '<value>.+?<\/value>' $_path2) | sort)
 }
 
 # TODO: find hostname and container, splits, actual query (mr?) etc from app log
@@ -321,5 +371,26 @@ _TEST_REGEX='^\[.+\]$'
 ### Main ###############################################################################################################
 
 if [ "$0" = "$BASH_SOURCE" ]; then
-    usage
+    if [ -z "$1" ]; then
+        usage
+        exit
+    fi
+
+    if [ ! -s "$1" ]; then
+        echo "$1 is not a right file."
+        usage
+        exit
+    fi
+
+    if [ -s "$1" ]; then
+        echo "# Running f_topErrors $1 ..." >&2
+        _f_topErrors_out="`f_topErrors "$1"`" &
+        echo "# Running f_topCausedByExceptions $1 ..." >&2
+        _f_topCausedByExceptions="`f_topCausedByExceptions "$1"`" &
+
+        wait
+
+        echo "$_f_topErrors_out"
+        echo "$_f_topCausedByExceptions"
+    fi
 fi

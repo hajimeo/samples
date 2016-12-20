@@ -1923,7 +1923,7 @@ function f_certificate_setup() {
     local SERVER_KEY_LOCATION="/etc/hadoop/conf/secure/"
     local KEYSTORE_FILE="server.keystore.jks"
     local TRUSTSTORE_FILE="server.truststore.jks"
-    local ALL_JKS="client.truststore.jks"
+    local CLIENT_TRUSTSTORE_FILE="client.truststore.jks"
     local YARN_USER="yarn"
 
     if ! which keytool &>/dev/null; then
@@ -1956,9 +1956,7 @@ function f_certificate_setup() {
 
     local _a
     local _tmp=""
-
-    # TODO: why "localhost" is the alias?
-    keytool -keystore "${_work_dir%/}/${KEYSTORE_FILE}" -alias localhost -validity 3650 -genkey -keyalg RSA -keysize 2048 -dname "$_dname" -noprompt -storepass "$_password" -keypass "$_password"
+    _split "_a" "$_dname"
 
     echo [ req ] > "${_work_dir%/}/openssl.cnf"
     echo input_password = $_password >> "${_work_dir%/}/openssl.cnf"
@@ -1967,8 +1965,6 @@ function f_certificate_setup() {
     echo req_extensions = v3_req  >> "${_work_dir%/}/openssl.cnf"
     echo prompt=no >> "${_work_dir%/}/openssl.cnf"
     echo [req_distinguished_name] >> "${_work_dir%/}/openssl.cnf"
-    _split "_a" "$_dname"
-    _info
     for (( idx=${#_a[@]}-1 ; idx>=0 ; idx-- )) ; do
         _tmp="`_trim "${_a[$idx]}"`"
         # note: nocasematch is already used
@@ -1981,18 +1977,24 @@ function f_certificate_setup() {
     echo basicConstraints = critical,CA:FALSE >> "${_work_dir%/}/openssl.cnf"
     echo keyUsage = nonRepudiation, digitalSignature, keyEncipherment, dataEncipherment, keyAgreement >> "${_work_dir%/}/openssl.cnf"
     echo extendedKeyUsage=emailProtection,clientAuth >> "${_work_dir%/}/openssl.cnf"
+    echo [ ${_domain_suffix#.} ] >> "${_work_dir%/}/openssl.cnf"
+    echo subjectAltName = DNS:${_domain_suffix#.},DNS:*${_domain_suffix} >> "${_work_dir%/}/openssl.cnf"
 
-    # creating CA's key and Certificate
-    openssl req -new -x509 -keyout "${_work_dir%/}/ca-key" -out "${_work_dir%/}/ca-cert" -days 3650 -config "${_work_dir%/}/openssl.cnf" -passin pass:$_password || return $?
-    # create two Java trust stores and import CA's cert
-    keytool -keystore "${_work_dir%/}/${TRUSTSTORE_FILE}" -alias CARoot -import -file "${_work_dir%/}/ca-cert" -noprompt -storepass "$_password" || return $?
-    keytool -keystore "${_work_dir%/}/${ALL_JKS}"         -alias CARoot -import -file "${_work_dir%/}/ca-cert" -noprompt -storepass "$_password" || return $?
+    # Generate server certificate in a keystore. TODO: why "localhost" is the alias?
+    keytool -keystore "${_work_dir%/}/${KEYSTORE_FILE}" -alias localhost -validity 3650 -genkey -keyalg RSA -keysize 2048 -dname "$_dname" -noprompt -storepass "$_password" -keypass "$_password"
+
+    # creating root CA's key and Certificate rsa 2048bit with x509 format
+    openssl req -new -newkey rsa:2048 -x509 -keyout "${_work_dir%/}/ca-key" -out "${_work_dir%/}/ca-cert" -days 3650 -config "${_work_dir%/}/openssl.cnf" -passin pass:$_password || return $?
+
+    # create two Java *trustS stores and import CA's cert
+    keytool -keystore "${_work_dir%/}/${TRUSTSTORE_FILE}"        -alias CARoot -import -file "${_work_dir%/}/ca-cert" -noprompt -storepass "$_password" || return $?
+    keytool -keystore "${_work_dir%/}/${CLIENT_TRUSTSTORE_FILE}" -alias CARoot -import -file "${_work_dir%/}/ca-cert" -noprompt -storepass "$_password" || return $?
 
     # Create java keystore and generate CSR
     keytool -keystore "${_work_dir%/}/${KEYSTORE_FILE}" -alias localhost -certreq -file "${_work_dir%/}/csr-file" -noprompt -storepass "$_password" || return $?
     # Gnerated signed certification singed by self CA
     openssl x509 -req -CA "${_work_dir%/}/ca-cert" -CAkey "${_work_dir%/}/ca-key" -in "${_work_dir%/}/csr-file" -out "${_work_dir%/}/cert-signed" -days 3650 -CAcreateserial -passin pass:$_password || return $?
-    keytool -keystore "${_work_dir%/}/${KEYSTORE_FILE}" -alias CARoot -import -file "${_work_dir%/}/ca-cert" -noprompt -storepass "$_password" || return $?
+    keytool -keystore "${_work_dir%/}/${KEYSTORE_FILE}" -alias CARoot    -import -file "${_work_dir%/}/ca-cert"     -noprompt -storepass "$_password" || return $?
     keytool -keystore "${_work_dir%/}/${KEYSTORE_FILE}" -alias localhost -import -file "${_work_dir%/}/cert-signed" -noprompt -storepass "$_password" || return $?
 
     _info "copying jks files for $_how_many nodes from $_start_from ..."
@@ -2002,7 +2004,7 @@ function f_certificate_setup() {
         ssh root@node$i${_domain_suffix} -t "chmod 755 $SERVER_KEY_LOCATION
 chmod 440 $SERVER_KEY_LOCATION$KEYSTORE_FILE
 chmod 440 $SERVER_KEY_LOCATION$TRUSTSTORE_FILE
-chmod 444 $SERVER_KEY_LOCATION$ALL_JKS"
+chmod 444 $SERVER_KEY_LOCATION$CLIENT_TRUSTSTORE_FILE"
     done
 }
 
