@@ -69,10 +69,14 @@ docker run -v hadoop:/hadoop --name sandbox --hostname "sandbox.hortonworks.com"
 sandbox /usr/sbin/sshd -D
 fi
 #docker exec -t sandbox /etc/init.d/startup_script start
-docker exec -t sandbox make --makefile /usr/lib/hue/tools/start_scripts/start_deps.mf  -B Startup -j -i
-docker exec -t sandbox nohup su - hue -c '/bin/bash /usr/lib/tutorials/tutorials_app/run/run.sh' &>/dev/nul
+docker exec -d sandbox sysctl -w kernel.shmmax=41943040
+docker exec -d sandbox /sbin/sysctl -p
+#docker exec -t sandbox make --makefile /usr/lib/hue/tools/start_scripts/start_deps.mf  -B Startup -j -i
+#docker exec -t sandbox nohup su - hue -c '/bin/bash /usr/lib/tutorials/tutorials_app/run/run.sh' &>/dev/nul
 docker exec -t sandbox touch /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
 docker exec -t sandbox chown oozie:hadoop /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
 docker exec -d sandbox /etc/init.d/tutorials start
 docker exec -d sandbox /etc/init.d/splash
 docker exec -d sandbox /etc/init.d/shellinaboxd start
+
+#cat '0 10 * * * find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {};find /var/log/ambari-* -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}' > /var/spool/cron/root"
