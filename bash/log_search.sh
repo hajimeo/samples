@@ -303,7 +303,7 @@ function chk_sys() {
         sudo cat /proc/${_p}/status &> ${_work_dir%/}/proc_status_${_p}.out
         sudo cat /proc/${_p}/io &> ${_work_dir%/}/proc_io_${_p}.out;sleep 5;cat /proc/${_p}/io &>> ${_work_dir%/}/proc_io_${_p}.out
         sudo cat /proc/${_p}/environ | tr '\0' '\n' > ${_work_dir%/}/proc_environ_${_p}.out
-        sudo pmap -x ${_p} &>> ${_work_dir%/}/pmap_${_p}.out
+        sudo pmap -x ${_p} &> ${_work_dir%/}/pmap_${_p}.out
     fi
 
     sudo vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
