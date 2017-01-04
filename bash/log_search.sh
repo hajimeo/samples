@@ -282,6 +282,9 @@ function f_chksys() {
     if [ ! -d "$_work_dir" ] && ! mkdir $_work_dir; then
         echo "ERROR: Couldn't create $_work_dir directory"; return 1
     fi
+    if ! sudo id &>/dev/null; then
+        echo "ERROR: requires sudo/root privilege"; return 1
+    fi
 
     if [ -n "$_p" ]; then
         echo "Collecting java PID $_p related information..."
@@ -291,7 +294,7 @@ function f_chksys() {
             sudo -u ${_u} ${_j}/jstat -gccause ${_p} 1000 5 &> ${_work_dir%/}/jstat_${_p}.out &
             sudo -u ${_u} ${_j}/jmap -histo ${_p} &> ${_work_dir%/}/jmap_histo_${_p}.out &
         fi
-        sudo ps -eLo user,pid,lwp,nlwp,ruser,pcpu,stime,etime,args | grep -w "${_p}" > ${_work_dir%/}/pseLo_${_p}.out
+        sudo ps -eLo user,pid,lwp,nlwp,ruser,pcpu,stime,etime,args | grep -w "${_p}" &> ${_work_dir%/}/pseLo_${_p}.out
         sudo cat /proc/${_p}/limits &> ${_work_dir%/}/proc_limits_${_p}.out
         sudo cat /proc/${_p}/status &> ${_work_dir%/}/proc_status_${_p}.out
         sudo cat /proc/${_p}/io &> ${_work_dir%/}/proc_io_${_p}.out;sleep 5;cat /proc/${_p}/io >> ${_work_dir%/}/proc_io_${_p}.out
