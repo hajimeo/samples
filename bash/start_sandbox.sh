@@ -65,6 +65,7 @@ docker run -v hadoop:/hadoop --name sandbox --hostname "sandbox.hortonworks.com"
 -p 21000:21000 \
 -p 6188:6188 \
 -p 61888:61888 \
+-p 1520:1520 \
 -p 2222:22 \
 sandbox /usr/sbin/sshd -D
 fi
