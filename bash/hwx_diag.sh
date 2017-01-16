@@ -4,7 +4,7 @@ function f_chksys() {
     local __doc__="Execute OS command to check system for triage"
     local _p="$1"	# Java PID ex: `cat /var/run/kafka/kafka.pid`
     local _work_dir="$2"
-    [ -z "${_work_dir}" ] && _work_dir="${FUNCNAME}_tmp_dir"
+    [ -z "${_work_dir}" ] && _work_dir="/tmp/${FUNCNAME}_tmp_dir"
     if [ ! -d "$_work_dir" ] && ! mkdir $_work_dir; then
         echo "ERROR: Couldn't create $_work_dir directory"; return 1
     fi
@@ -47,7 +47,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     if [ -z "$1" ]; then
         echo "$BASH_SOURCE PID [workspace dir]"
         echo "Example:"
-        echo     $BASH_SOURCE '"`cat /var/run/kafka/kafka.pid`"'
+        echo "    "$BASH_SOURCE '"`cat /var/run/kafka/kafka.pid`"'
         exit
     fi
 
