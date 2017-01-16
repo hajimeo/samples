@@ -273,51 +273,6 @@ function f_git_search() {
     for c in $_commits_only; do git tag --contains $c; done
 }
 
-function f_chksys() {
-    local __doc__="Execute OS command to check system for triage"
-    local _u="$1"	# component process owner
-    local _p="$2"	# Java PID ex: `cat /var/run/kafka/kafka.pid`
-    local _work_dir="$3"
-    [ -z "${_work_dir}" ] && _work_dir="${FUNCNAME}_tmp_dir"
-    if [ ! -d "$_work_dir" ] && ! mkdir $_work_dir; then
-        echo "ERROR: Couldn't create $_work_dir directory"; return 1
-    fi
-    if ! sudo id &>/dev/null; then
-        echo "ERROR: requires sudo/root privilege"; return 1
-    fi
-
-    if [ -n "$_p" ]; then
-        echo "Collecting java PID $_p related information..."
-        local _j="$(dirname `sudo readlink /proc/${_p}/exe`)" 2>/dev/null
-        if [ -n "$_u" ] && [ -n "$_j" ]; then
-            for i in {1..3};do sudo -u ${_u} ${_j}/jstack -l ${_p}; sleep 5; done &> ${_work_dir%/}/jstack_${_p}.out &
-            sudo -u ${_u} ${_j}/jstat -gccause ${_p} 1000 5 &> ${_work_dir%/}/jstat_${_p}.out &
-            sudo -u ${_u} ${_j}/jmap -histo ${_p} &> ${_work_dir%/}/jmap_histo_${_p}.out &
-        fi
-        sudo ps -eLo user,pid,lwp,nlwp,ruser,pcpu,stime,etime,args | grep -w "${_p}" &> ${_work_dir%/}/pseLo_${_p}.out
-        sudo cat /proc/${_p}/limits &> ${_work_dir%/}/proc_limits_${_p}.out
-        sudo cat /proc/${_p}/status &> ${_work_dir%/}/proc_status_${_p}.out
-        sudo cat /proc/${_p}/io &> ${_work_dir%/}/proc_io_${_p}.out;sleep 5;cat /proc/${_p}/io >> ${_work_dir%/}/proc_io_${_p}.out
-        sudo cat /proc/${_p}/environ | tr '\0' '\n' > ${_work_dir%/}/proc_environ_${_p}.out
-        sudo pmap -x ${_p} &> ${_work_dir%/}/pmap_${_p}.out
-    fi
-
-    echo "Collecting OS related information..."
-    sudo vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
-    sudo pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &
-    sudo top -b -n 1 -c &> ${_work_dir%/}/top.out
-    sudo ps auxwwwf &> ${_work_dir%/}/ps.out
-    sudo netstat -aopen &> ${_work_dir%/}/netstat.out
-    sudo netstat -i &> ${_work_dir%/}/netstat_i.out
-    sudo netstat -s &> ${_work_dir%/}/netstat_s.out
-    sudo ifconfig &> ${_work_dir%/}/ifconfig.out
-    sudo nscd -g &> ${_work_dir%/}/nscd.out
-    wait
-    echo "Creating tar.gz file..."
-    tar czf ./${FUNCNAME}_$(hostname)_$(date +"%Y%m%d%H%M%S").tar.gz ${_work_dir%/}/*.out
-    echo "Completed!"
-}
-
 ### Private functions ##################################################################################################
 
 function _split() {
