@@ -74,6 +74,7 @@ else
     sandbox /usr/sbin/sshd -D
 
     sleep 5
+    echo "running ambari-admin-password-reset ..."
     docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
 fi
 
