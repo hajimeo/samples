@@ -567,9 +567,17 @@ function f_saveResp() {
 function f_loadResp() {
     local __doc__="Load responses(answers) from given file path or from default location."
     local _file_path="${1-$_RESPONSE_FILEPATH}"
-    
+    local _use_default_resp="$2"
+
     if [ -z "$_file_path" ]; then
-        _file_path="$g_DEFAULT_RESPONSE_FILEPATH";
+        if _isYes "$_use_default_resp"; then
+            _file_path="$g_DEFAULT_RESPONSE_FILEPATH";
+        else
+            _info "Avaliable response files"
+            ls -1t ./*.resp
+            local _default_file_path="`ls -1t ./*.resp | head -n1`"
+            _ask "Type a response file path" "$_default_file_path" "_file_path" "N" "Y"
+        fi
     fi
     
     local _actual_file_path="$_file_path"
@@ -697,7 +705,7 @@ function f_docker_sandbox_install() {
         return 1
     fi
 
-    wget -nv -c -t 20 --timeout=60 --waitretry=60 "https://raw.githubusercontent.com/hortonworks/tutorials/hdp-2.5/tutorials/hortonworks/hortonworks-sandbox-hdp2.5-guide/start_sandbox.sh" -O ~/start_sandbox.sh
+    wget -nv -c -t 20 --timeout=60 --waitretry=60 "https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh" -O ~/start_sandbox.sh
     chmod u+x ~/start_sandbox.sh
     wget -c -t 20 --timeout=60 --waitretry=60 "${_url}" -O "${_tmp_dir%/}/${_file_name}" || return $?
 
@@ -706,9 +714,6 @@ function f_docker_sandbox_install() {
     # This may not work. running 'sysctl' from inside of sandbox docker as well seems to work
     sysctl -w kernel.shmmax=41943040 && sysctl -p
     bash -x ~/start_sandbox.sh
-    docker exec -d sandbox sysctl -w kernel.shmmax=41943040
-    docker exec -d sandbox /sbin/sysctl -p
-    #cat '0 10 * * * find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {};find /var/log/ambari-* -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}' > /var/spool/cron/root"
     _info "You may need to run /usr/sbin/ambari-admin-password-reset"
 }
 
@@ -867,6 +872,7 @@ function f_docker_rm() {
 
 function f_docker_run() {
     local __doc__="Running (creating) docker containers"
+    # ./start_hdp.sh -r ./node11-14_2.5.0.resp -f "f_docker_run 1 16"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
 
@@ -895,7 +901,13 @@ function f_kdc_install_on_ambari_node() {
     local _password="${2-$g_DEFAULT_PASSWORD}"
     local _server="${3-$r_AMBARI_HOST}"
 
+    if [ -z "$_server" ]; then
+        _error "KDC installing hostname is missing"
+        return 1
+    fi
+
     ssh root@$_server -t "yum install krb5-server krb5-libs krb5-workstation -y"
+    # this doesn't work with docker though
     ssh root@$_server -t "chkconfig  krb5kdc on; chkconfig kadmin on"
     ssh root@$_server -t "mv /etc/krb5.conf /etc/krb5.conf.orig; echo \"[libdefaults]
  default_realm = $_realm
@@ -1111,6 +1123,7 @@ function f_ambari_update_config() {
 
 function f_ambari_agent_install() {
     local __doc__="Installing ambari-agent on all containers for manual registration"
+    # ./start_hdp.sh -r ./node11-14_2.5.0.resp -f "f_ambari_agent_install 1 16"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
 
