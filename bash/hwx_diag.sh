@@ -29,6 +29,7 @@ function f_chksys() {
     echo "Collecting OS related information..."
     vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
     pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &
+    sysctl -a &> ${_work_dir%/}/sysctl.out
     top -b -n 1 -c &> ${_work_dir%/}/top.out
     ps auxwwwf &> ${_work_dir%/}/ps.out
     netstat -aopen &> ${_work_dir%/}/netstat.out
@@ -39,7 +40,7 @@ function f_chksys() {
     wait
     echo "Creating tar.gz file..."
     local _file_path="./chksys_$(hostname)_$(date +"%Y%m%d%H%M%S").tar.gz"
-    tar czf ${_file_path} ${_work_dir%/}/*.out
+    tar --remove-files -czf ${_file_path} ${_work_dir%/}/*.out
     echo "Completed! (${_file_path})"
 }
 
