@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # @see http://hortonworks.com/hadoop-tutorial/hortonworks-sandbox-guide/#section_4
+# curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh -O
 #
 _NAME="${1-sandbox}"
 
@@ -81,7 +82,7 @@ fi
 #docker exec -t ${_NAME} nohup su - hue -c '/bin/bash /usr/lib/tutorials/tutorials_app/run/run.sh' &>/dev/nul
 docker exec -t ${_NAME} touch /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
 docker exec -t ${_NAME} chown oozie:hadoop /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
-docker exec -d ${_NAME} /etc/init.d/tutorials start
+#docker exec -d ${_NAME} /etc/init.d/tutorials start
 docker exec -d ${_NAME} /etc/init.d/splash
 docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
 
