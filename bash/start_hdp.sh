@@ -576,7 +576,9 @@ function f_loadResp() {
             _info "Avaliable response files"
             ls -1t ./*.resp
             local _default_file_path="`ls -1t ./*.resp | head -n1`"
-            _ask "Type a response file path" "$_default_file_path" "_file_path" "N" "Y"
+	    local _new_response_file=""
+            _ask "Type a response file path" "$_default_file_path" "_new_response_file" "N" "Y"
+	    _file_path="$_new_response_file"
         fi
     fi
     
