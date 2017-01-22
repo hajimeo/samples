@@ -576,9 +576,9 @@ function f_loadResp() {
             _info "Avaliable response files"
             ls -1t ./*.resp
             local _default_file_path="`ls -1t ./*.resp | head -n1`"
-	    local _new_response_file=""
+            local _new_response_file=""
             _ask "Type a response file path" "$_default_file_path" "_new_response_file" "N" "Y"
-	    _file_path="$_new_response_file"
+            _file_path="$_new_response_file"
         fi
     fi
     
@@ -811,7 +811,13 @@ function f_docker_save() {
 
 function f_docker_stop_all() {
     local __doc__="Stopping all docker containers if docker command exists"
-    which docker &>/dev/null && docker stop $(docker ps -q)
+    if ! which docker &>/dev/null; then
+        _error "No docker command found in the path"
+        return 1
+    fi
+    _info "Stopping the followings"
+    docker ps
+    docker stop $(docker ps -q)
 }
 
 function f_docker_stop_other() {
@@ -1915,10 +1921,10 @@ EOF
 
     #detect name of cluster
     output=`curl -k -u hadoopadmin:$PASSWORD -i -H 'X-Requested-By: ambari'  https://localhost:8443/api/v1/clusters`
-    cluster=`echo $output | sed -n 's/.*"cluster_name" : "\([^\"]*\)".*/\1/p'`
+    cluster=`echo $output | sed -n 's/.*"cluster_name" : "\([^\"]*\)".*/\1/p'`  # TODO: may need to convert to lower
 
     #refresh user and group mappings
-    sudo sudo -u hdfs kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-"${cluster,,}"
+    sudo sudo -u hdfs kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-"${cluster}"
     sudo sudo -u hdfs hdfs dfsadmin -refreshUserToGroupsMappings
 
     sudo sudo -u yarn kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/$(hostname -f)@LAB.HORTONWORKS.NET
