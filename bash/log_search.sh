@@ -39,9 +39,10 @@ function f_topCausedByExceptions() {
 }
 
 function f_topErrors() {
-    local __doc__="List ERRORs"
+    local __doc__="List top ERRORs"
     local _path="$1"
     local _is_including_warn="$2"
+    local _not_hiding_number="$3"
     local _regex="(ERROR|SEVERE|FATAL).+"
     local _num_regex="s/[1-9][0-9][0-9][0-9]+/_____/g"
 
@@ -50,7 +51,11 @@ function f_topErrors() {
         _num_regex="s/[0-9]/_/g"
     fi
 
-    egrep -wo "$_regex" "$_path" | sed -E "$_num_regex" | sort | uniq -c | sort
+    if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
+        egrep -wo "$_regex" "$_path" | sort | uniq -c | sort
+    else
+        egrep -wo "$_regex" "$_path" | sed -E "$_num_regex" | sort | uniq -c | sort
+    fi
 }
 
 function f_errorsAt() {
@@ -89,9 +94,9 @@ function f_appLogContainerCountPerHost() {
     local _sort_by_host="$2"
 
     if [[ "$_sort_by_host" =~ (^y|^Y) ]]; then
-        f_appLogContainers "$1" | awk '{print $4}' | sort | uniq -c
+        f_appLogContainersAndHosts "$1" | awk '{print $4}' | sort | uniq -c
     else
-        f_appLogContainers "$1" | awk '{print $4}' | sort | uniq -c | sort -n
+        f_appLogContainersAndHosts "$1" | awk '{print $4}' | sort | uniq -c | sort -n
     fi
 }
 
@@ -268,9 +273,9 @@ function f_git_search() {
     local _commits_only="`echo "$_grep_result" | grep ^commit | cut -d ' ' -f 2`"
 
     echo "# Searching branches ...."
-    for c in $_commits_only; do git branch -r --contains $c; done
+    for c in $_commits_only; do git branch -r --contains $c; done | sort
     echo "# Searching tags ...."
-    for c in $_commits_only; do git tag --contains $c; done
+    for c in $_commits_only; do git tag --contains $c; done | sort
 }
 
 ### Private functions ##################################################################################################
