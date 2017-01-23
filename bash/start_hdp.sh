@@ -573,16 +573,16 @@ function f_loadResp() {
         if _isYes "$_use_default_resp"; then
             _file_path="$g_DEFAULT_RESPONSE_FILEPATH";
         else
-            _info "Avaliable response files"
+            _info "Available response files"
             ls -1t ./*.resp
             local _default_file_path="`ls -1t ./*.resp | head -n1`"
-            local _new_response_file=""
-            _ask "Type a response file path" "$_default_file_path" "_new_response_file" "N" "Y"
-            _file_path="$_new_response_file"
+            _file_path=""
+            _ask "Type a response file path" "$_default_file_path" "_file_path" "N" "Y"
+            _info "Using $_file_path ..."
+            _RESPONSE_FILEPATH="$_file_path"
         fi
     fi
     
-    local _actual_file_path="$_file_path"
     if [ ! -r "${_file_path}" ]; then
         _critical "$FUNCNAME: Not a readable response file. ${_file_path}" 1;
         exit 2
