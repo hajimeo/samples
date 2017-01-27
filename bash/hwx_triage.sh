@@ -7,6 +7,12 @@
 
 # GLOBAL variables
 _WORK_DIR="/tmp/hwx_triage"
+_PID=""
+_LOG_DIR=""
+_LOG_DAY="1"
+_FUNCTION_NAME=""
+_VERBOSE=""
+set -o posix
 
 
 # Public functions
@@ -23,6 +29,7 @@ Available options:
     -p PID     This PID will be checked
     -l PATH    A log directory path
     -d NUM     If -l is given, collect past x days of logs (default 1 day)
+    -v         Verbose mode
     -h         Show this message
 
 Available functions:
@@ -40,6 +47,7 @@ function f_check_system() {
 
     _log "INFO" "Collecting OS related information..."
 
+    [ -n "$_VERBOSE" ] && set -x
     vmstat 1 3 &> ${_WORK_DIR%/}/vmstat.out &
     pidstat -dl 3 3 &> ${_WORK_DIR%/}/pstat.out &
     sysctl -a &> ${_WORK_DIR%/}/sysctl.out
@@ -51,6 +59,7 @@ function f_check_system() {
     ifconfig &> ${_WORK_DIR%/}/ifconfig.out
     nscd -g &> ${_WORK_DIR%/}/nscd.out
     wait
+    [ -n "$_VERBOSE" ] && set +x
 }
 
 function f_check_process() {
@@ -68,9 +77,10 @@ function f_check_process() {
 
     _log "INFO" "Collecting PID related information..."
 
+    [ -n "$_VERBOSE" ] && set -x
     cat /proc/${_p}/limits &> ${_WORK_DIR%/}/proc_limits_${_p}.out
     cat /proc/${_p}/status &> ${_WORK_DIR%/}/proc_status_${_p}.out
-    cat /proc/${_p}/io &> ${_WORK_DIR%/}/proc_io_${_p}.out;sleep 5;cat /proc/${_p}/io >> ${_WORK_DIR%/}/proc_io_${_p}_for_5sec.out
+    date > ${_WORK_DIR%/}/proc_io_${_p}.out; cat /proc/${_p}/io >> ${_WORK_DIR%/}/proc_io_${_p}.out
     cat /proc/${_p}/environ | tr '\0' '\n' > ${_WORK_DIR%/}/proc_environ_${_p}.out
     lsof -nPp ${_p} &> ${_WORK_DIR%/}/lsof_${_p}.out
 
@@ -84,6 +94,8 @@ function f_check_process() {
     ps -eLo user,pid,lwp,nlwp,ruser,pcpu,stime,etime,args | grep -w "${_p}" &> ${_WORK_DIR%/}/pseLo_${_p}.out
     pmap -x ${_p} &> ${_WORK_DIR%/}/pmap_${_p}.out
     wait
+    date >> ${_WORK_DIR%/}/proc_io_${_p}.out; cat /proc/${_p}/io >> ${_WORK_DIR%/}/proc_io_${_p}.out
+    [ -n "$_VERBOSE" ] && set +x
 }
 
 function f_collect_config() {
@@ -92,7 +104,13 @@ function f_collect_config() {
 
     _log "INFO" "Collecting HDP config files ..."
 
-    tar czhf ${_WORK_DIR%/}/hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf/* 2>&1 | grep -v 'Removing leading'
+    [ -n "$_VERBOSE" ] && set -x
+    if [ -n "$_VERBOSE" ]; then
+        tar czvhf ${_WORK_DIR%/}/hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf/* 2>&1 | grep -v 'Removing leading'
+    else
+        tar czhf ${_WORK_DIR%/}/hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf/* 2>&1 | grep -v 'Removing leading'
+    fi
+    [ -n "$_VERBOSE" ] && set +x
 }
 
 function f_collect_log_files() {
@@ -108,7 +126,13 @@ function f_collect_log_files() {
 
     _log "INFO" "Collecting log files under ${_path} for past ${_day} day(s) ..."
 
-    tar czhvf ${_WORK_DIR%/}/hdp_log_$(hostname).tar.gz `find -L "${_path}" -type f -mtime -${_day}` 2>&1 | grep -v 'Removing leading'
+    [ -n "$_VERBOSE" ] && set -x
+    if [ -n "$_VERBOSE" ]; then
+        tar czvhf ${_WORK_DIR%/}/hdp_log_$(hostname).tar.gz `find -L "${_path}" -type f -mtime -${_day}` 2>&1 | grep -v 'Removing leading'
+    else
+        tar czhf ${_WORK_DIR%/}/hdp_log_$(hostname).tar.gz `find -L "${_path}" -type f -mtime -${_day}` 2>&1 | grep -v 'Removing leading'
+    fi
+    [ -n "$_VERBOSE" ] && set +x
 }
 
 function f_tar_work_dir() {
@@ -121,7 +145,13 @@ function f_tar_work_dir() {
 
     _log "INFO" "Creating ${_file_path} file ..."
 
-    tar --remove-files -czf ${_file_path} ${_WORK_DIR%/}/* 2>&1 | grep -v 'Removing leading'
+    [ -n "$_VERBOSE" ] && set -x
+    if [ -n "$_VERBOSE" ]; then
+        tar --remove-files -czvf ${_file_path} ${_WORK_DIR%/}/* 2>&1 | grep -v 'Removing leading'
+    else
+        tar --remove-files -czf ${_file_path} ${_WORK_DIR%/}/* 2>&1 | grep -v 'Removing leading'
+    fi
+    [ -n "$_VERBOSE" ] && set +x
 }
 
 
@@ -189,7 +219,6 @@ function _list() {
     local _name="$1"
     #local _width=$(( $(tput cols) - 2 ))
     local _tmp_txt=""
-    set -o posix
 
     if [[ -z "$_name" ]]; then
         (for _f in `typeset -F | grep -E '^declare -f [fp]_' | cut -d' ' -f3`; do
@@ -210,11 +239,7 @@ function _list() {
 # Main
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    _PID=""
-    _LOG_DIR=""
-    _LOG_DAY="1"
-    _FUNCTION_NAME=""
-    while getopts "p:l:d:f:h" opts; do
+    while getopts "p:l:d:f:vh" opts; do
         case $opts in
             p)
                 _PID="$OPTARG"
@@ -224,6 +249,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             f)
                 _FUNCTION_NAME="$OPTARG"
+                ;;
+            v)
+                _VERBOSE="Y"
                 ;;
             h)
                 help | less
@@ -242,14 +270,14 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         exit 1
     fi
 
-    f_check_system || _log "WARN" "f_check_system failed - $?"
+    f_check_system
     if [ -n "$_PID" ]; then
-        f_check_process "$_PID" || _log "WARN" "f_check_process failed - $?"
+        f_check_process "$_PID"
     fi
     f_collect_config
     if [ -n "$_LOG_DIR" ]; then
-        f_collect_log_files "$_LOG_DIR" "$_LOG_DAY" || _log "WARN" "f_collect_log_files failed - $?"
+        f_collect_log_files "$_LOG_DIR" "$_LOG_DAY"
     fi
-    f_tar_work_dir || _log "WARN" "f_tar_work_dir failed - $?"
+    f_tar_work_dir
     _log "INFO" "Completed!"
 fi
