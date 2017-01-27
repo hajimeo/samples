@@ -247,6 +247,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             l)
                 _LOG_DIR="$OPTARG"
                 ;;
+            d)
+                _LOG_DAY="$OPTARG"
+                ;;
             f)
                 _FUNCTION_NAME="$OPTARG"
                 ;;
