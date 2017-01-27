@@ -6,7 +6,7 @@
 #
 
 # GLOBAL variables
-_WORK_DIR="/tmp/hwx_triage"
+_WORK_DIR="./hwx_triage"
 _PID=""
 _LOG_DIR=""
 _LOG_DAY="1"
