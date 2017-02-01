@@ -327,6 +327,7 @@ list() {
 }
 help() {
     local _function_name="$1"
+    local _doc_only="$2"
 
     if [ -z "$_function_name" ]; then
         echo "help <function name>"
@@ -350,6 +351,7 @@ help() {
             echo "No help information in function name '$_function_name'."
         else
             echo -e "$__doc__"
+            [[ "$_doc_only" =~ (^y|^Y) ]]; return
         fi
 
         local _params="$(type $_function_name 2>/dev/null | ggrep -iP '^\s*local _[^_].*?=.*?\$\{?[1-9]' | ggrep -v awk)"
