@@ -18,6 +18,9 @@
 # 3. Variable name which stores user response needs to start with r_
 # 4. (optional) __doc__ local variable is for function usage/help
 #
+# Misc.:
+# for i in {1..3}; do echo "# ho-ubu0$i";ssh root@ho-ubu0$i 'grep -E "^(r_AMBARI_VER|r_HDP_REPO_VER)=" *.resp'; done
+#
 # @author hajime
 #
 
@@ -1564,14 +1567,18 @@ function f_host_performance() {
 }
 
 function f_host_misc() {
-    local __doc__="Misc. changes"
+    local __doc__="Misc. changes for Ubuntu OS"
     grep "^IP=" /etc/rc.local &>/dev/null
     if [ $? -ne 0 ]; then
         sed -i.bak '/^exit 0/i IP=$(/sbin/ifconfig eth0 | grep -oP "inet addr:\\\d+\\\.\\\d+\\\.\\\d+\\\.\\\d+" | cut -d":" -f2); echo "eth0 IP: $IP" > /etc/issue\n' /etc/rc.local
     fi
 
-    grep '^PasswordAuthentication no' /etc/ssh/sshd_config && sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config && service ssh restart
-    #grep '^PermitRootLogin without-password' /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config && service ssh restart
+    grep '^PasswordAuthentication no' /etc/ssh/sshd_config && sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+    #grep '^PermitRootLogin without-password' /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+    #TODO: grep 'Please login as the user' $HOME/.ssh/authorized_keys && cat /home/ubuntu/.ssh/authorized_keys >> $HOME/.ssh/authorized_keys
+    if [ $? -eq 0 ]; then
+        service ssh restart
+    fi
 }
 
 function f_dockerfile() {
