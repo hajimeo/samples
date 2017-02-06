@@ -1,10 +1,14 @@
 #! /bin/sh
+# curl -O https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-agent.jar
+# curl -O https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-boot.jar
+# curl -O https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-client.jar
+# curl -O https://github.com/hajimeo/samples/raw/master/java/btrace/btrace
 
 if [ -z "$BTRACE_HOME" -o ! -d "$BTRACE_HOME" ] ; then
   # resolve links - $0 could be a link to btrace's home
   PRG="$0"
   progname=`basename "$0"`
-  BTRACE_HOME=`dirname "$PRG"`/..
+  BTRACE_HOME=`dirname "$PRG"`
   BTRACE_HOME=`cd "$BTRACE_HOME" && pwd`
 fi
 
