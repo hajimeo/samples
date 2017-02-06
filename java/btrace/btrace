@@ -1,8 +1,8 @@
 #! /bin/sh
-# curl -O https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-agent.jar
-# curl -O https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-boot.jar
-# curl -O https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-client.jar
-# curl -O https://github.com/hajimeo/samples/raw/master/java/btrace/btrace
+# curl -OL https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-agent.jar
+# curl -OL https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-boot.jar
+# curl -OL https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-client.jar
+# curl -OL https://github.com/hajimeo/samples/raw/master/java/btrace/btrace
 
 if [ -z "$BTRACE_HOME" -o ! -d "$BTRACE_HOME" ] ; then
   # resolve links - $0 could be a link to btrace's home
@@ -40,7 +40,7 @@ if [ -f "${BTRACE_HOME}/btrace-client.jar" ] ; then
               TOOLS_JAR="${JAVA_HOME}/lib/tools.jar"
           ;;
        esac
-       ${JAVA_HOME}/bin/java -cp "${BTRACE_HOME}/build/btrace-client.jar":${TOOLS_JAR}:/usr/share/lib/java/dtrace.jar com.sun.btrace.client.Main $*
+       ${JAVA_HOME}/bin/java -cp "${BTRACE_HOME}/btrace-client.jar":${TOOLS_JAR}:/usr/share/lib/java/dtrace.jar com.sun.btrace.client.Main $*
     else
        echo "Please set JAVA_HOME before running this script"
        exit 1

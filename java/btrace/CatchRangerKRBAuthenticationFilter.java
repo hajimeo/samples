@@ -1,6 +1,7 @@
 /**
  * _PID=`cat /var/run/ranger/rangeradmin.pid`
- * export JAVA_HOME="$(dirname $(dirname `readlink /proc/${_PID}/exe`))"; ./btrace ${_PID} ./CatchRangerKRBAuthenticationFilter.java
+ * export JAVA_HOME="$(dirname $(dirname `readlink /proc/${_PID}/exe`))"
+ * ./btrace ${_PID} ./CatchRangerKRBAuthenticationFilter.java
  */
 import com.sun.btrace.AnyType;
 import static com.sun.btrace.BTraceUtils.*;
