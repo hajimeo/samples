@@ -2501,6 +2501,11 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         fi
     fi
 
+   python --version > /dev/null 2> /dev/null
+   if [ ! $? -eq 0 ]; then
+	echo "Python not installed, installing ... "
+        apt-get -y install python
+   fi
     _IS_SCRIPT_RUNNING=true
 
     if _isYes "$_SETUP_HDP"; then
