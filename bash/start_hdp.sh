@@ -894,10 +894,10 @@ function f_docker_run() {
         return 1
     fi
 
-    local _id=""
+    local _line=""
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        _id="`docker ps -qa -f name=node$_n`"
-        if [ -n "$_id" ]; then
+        _line="`docker ps -a -f name=node$_n | grep -w node$_n`"
+        if [ -n "$_line" ]; then
             _warn "node$_n already exists. Skipping..."
             continue
         fi
@@ -1099,7 +1099,7 @@ function f_ambari_server_install() {
     fi
 
     scp /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
-    ssh root@$r_AMBARI_HOST "yum install ambari-server -y && ambari-server setup -s"
+    ssh root@$r_AMBARI_HOST "yum install ambari-server -y && sleep 1; ambari-server setup -s"
 }
 
 function f_ambari_server_start() {
