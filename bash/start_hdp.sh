@@ -1484,7 +1484,7 @@ function p_host_setup() {
         fi
 
         # NOTE: psql (postgresql-client) is required
-        apt-get -y install wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect
+        apt-get -y install python wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect
         #krb5-kdc krb5-admin-server mailutils postfix mysql-client htop
 
         f_sysstat_setup
@@ -2501,11 +2501,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         fi
     fi
 
-   python --version > /dev/null 2> /dev/null
-   if [ ! $? -eq 0 ]; then
-	echo "Python not installed, installing ... "
-        apt-get -y install python
-   fi
     _IS_SCRIPT_RUNNING=true
 
     if _isYes "$_SETUP_HDP"; then
