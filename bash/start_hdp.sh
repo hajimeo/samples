@@ -1099,7 +1099,7 @@ function f_ambari_server_install() {
     fi
 
     scp /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
-    ssh root@$r_AMBARI_HOST "yum install ambari-server -y && sleep 1 && ambari-server setup -s || ( sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
+    ssh root@$r_AMBARI_HOST "yum install ambari-server -y && sleep 1 && ambari-server setup -s || ( echo 'ERROR ambari-server setup failed!'; namei -l /tmp/.s.PGSQL.5432; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
 }
 
 function f_ambari_server_start() {
