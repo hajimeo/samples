@@ -1838,18 +1838,19 @@ function f_vnc_setup() {
     fi
 
     # apt-get update
-    apt-get install -y xfce4 xfce4-goodies tightvncserver firefox
+    apt-get install -y xfce4 xfce4-goodies tightvncserver autocutsel firefox
 
-    su - $_user -c 'echo "hadoop" | vncpasswd -f > $HOME/.vnc/passwd
-chmod 600 $HOME/.vnc/passwd
-mv $HOME/.vnc/xstartup $HOME/.vnc/xstartup.bak &>/dev/null
+    su - $_user -c 'mkdir ${HOME%/}/.vnc; echo "'$_vpass'" | vncpasswd -f > ${HOME%/}/.vnc/passwd
+chmod 600 ${HOME%/}/.vnc/passwd
+mv ${HOME%/}/.vnc/xstartup ${HOME%/}/.vnc/xstartup.bak &>/dev/null
 echo "#!/bin/bash
-xrdb $HOME/.Xresources
-startxfce4 &" > $HOME/.vnc/xstartup
-chmod u+x $HOME/.vnc/xstartup'
+xrdb ${HOME%/}/.Xresources
+autocutsel -fork
+startxfce4 &" > ${HOME%/}/.vnc/xstartup
+chmod u+x ${HOME%/}/.vnc/xstartup'
 
     echo "To start:"
-    echo "su - $_user -c 'vncserver -geometry 1280x768'"
+    echo "su - $_user -c 'vncserver -geometry 1280x768 -depth 16'"
     echo "To stop:"
     echo "su - $_user -c 'vncserver -kill :1'"
 
@@ -2056,9 +2057,9 @@ function f_useradd() {
     useradd -d "/home/$_user/" -s `which bash` -p $(echo "$_pwd" | openssl passwd -1 -stdin) "$_user"
     mkdir "/home/$_user/" && chown "$_user":"$_user" "/home/$_user/"
 
-    if [ -f $HOME/.ssh/id_rsa ] && [ -d "/home/$_user/" ]; then
+    if [ -f ${HOME%/}/.ssh/id_rsa ] && [ -d "/home/$_user/" ]; then
         mkdir "/home/$_user/.ssh" && chown "$_user":"$_user" "/home/$_user/.ssh"
-        cp $HOME/.ssh/id_rsa* "/home/$_user/.ssh/"
+        cp ${HOME%/}/.ssh/id_rsa* "/home/$_user/.ssh/"
         chown "$_user":"$_user" /home/$_user/.ssh/id_rsa*
         chmod 600 "/home/$_user/.ssh/id_rsa"
     fi
