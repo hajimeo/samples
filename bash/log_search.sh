@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 #
 # Bunch of grep functions to search log files
-# Don't use complex so that easily copy and paste
+# Don't use complex one, so that each function can be easily copied and pasted
+#
+# HOW-TO:
+#     source ./log_search.sh
+#     help
 #
 # TODO: tested on Mac only (eg: sed -E, ggrep)
 # which ggrep || alias ggrep=grep
