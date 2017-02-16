@@ -142,10 +142,30 @@ function f_hdfs_audit_count_per_time() {
     grep -oE "$_datetime_regex" $_path | $_cmd
 }
 
+function f_hdfs_audit_count_per_command() {
+    local __doc__="Count HDFS audit per command for some period"
+    local _path="$1"
+    local _datetime_regex="$2"
+
+    if ! which bar_chart.py &>/dev/null; then
+        echo "## bar_chart.py is missing..."
+        local _cmd="sort | uniq -c"
+    else
+        local _cmd="bar_chart.py"
+    fi
+
+    # TODO: not sure if sed regex is good (seems to work, Mac sed / gsed doesn't like +?)
+    if [ ! -z "$_datetime_regex" ]; then
+        gsed -n "s@\($_datetime_regex\).*\(cmd=[^ ]*\).*src=.*\$@\1,\2@p" $_path | $_cmd
+    else
+        gsed -n 's:^.*\(cmd=[^ ]*\) .*$:\1:p' $_path | $_cmd
+    fi
+}
+
 function f_hdfs_audit_count_per_user() {
     local __doc__="Count HDFS audit per user for some period"
     local _path="$1"
-    local _by_method="$2"
+    local _per_method="$2"
     local _datetime_regex="$3"
 
     if [ ! -z "$_datetime_regex" ]; then
@@ -160,8 +180,8 @@ function f_hdfs_audit_count_per_user() {
         local _cmd="bar_chart.py"
     fi
 
-    # TODO: not sure if sed regex is right (seems to work, Mac sed / gsed doesn't like +?)
-    if [[ "$_by_method" =~ (^y|^Y) ]]; then
+    # TODO: not sure if sed regex is good (seems to work, Mac sed / gsed doesn't like +?)
+    if [[ "$_per_method" =~ (^y|^Y) ]]; then
         gsed -n 's:^.*\(ugi=[^ ]*\) .*\(cmd=[^ ]*\).*src=.*$:\1,\2:p' $_path | $_cmd
     else
         gsed -n 's:^.*\(ugi=[^ ]*\) .*$:\1:p' $_path | $_cmd
