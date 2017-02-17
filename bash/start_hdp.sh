@@ -824,8 +824,8 @@ function f_docker_save() {
 function f_docker_stop_all() {
     local __doc__="Stopping all docker containers if docker command exists"
     if ! which docker &>/dev/null; then
-        _error "No docker command found in the path"
-        return 1
+        _info "No docker command found in the path. Not stopping."
+        return 0
     fi
     _info "Stopping the followings"
     docker ps
@@ -2526,7 +2526,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         if ! _isYes "$_AUTO_SETUP_HDP"; then
             _ask "Would you like to start setting up this host?" "Y"
             if ! _isYes; then echo "Bye"; exit; fi
-            _ask "Would you like to stop all running containers?" "Y"
+            _ask "Would you like to stop all running containers if running?" "Y"
             if _isYes; then f_docker_stop_all; fi
         else
             _info "Stopping all docker containers..."
