@@ -872,10 +872,10 @@ function f_docker_pause_other() {
     wait
 }
 
-function f_docker_rm() {
+function f_docker_rm_all() {
     local _force="$1"
     local __doc__="Removing *all* docker containers"
-    _ask "Are you sure to delete ALL containers?"
+    _ask "Are you sure to delete ALL containers?" "N"
     if _isYes; then
         if _isYes $_force; then
             for _q in `docker ps -aq`; do
