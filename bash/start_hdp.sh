@@ -662,7 +662,7 @@ function f_docker_setup() {
         apt-get install apt-transport-https ca-certificates -y
         apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key for docker"
         grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-`cat /etc/lsb-release | grep CODENAME | cut -d= -f2` main" >> /etc/apt/sources.list.d/docker.list
-        apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
+        apt-get update && apt-get purge lxc-docker*; apt-get install python docker-engine -y
     fi
 
     # To use tcpdump from container
@@ -1484,13 +1484,12 @@ function p_host_setup() {
         fi
 
         # NOTE: psql (postgresql-client) is required
-        apt-get -y install python wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect
+        apt-get -y install wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect
         #krb5-kdc krb5-admin-server mailutils postfix mysql-client htop
 
         f_sysstat_setup
         f_host_performance
         f_host_misc
-        f_docker_setup
         f_dnsmasq
     fi
 
@@ -2501,6 +2500,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             if ! _isYes; then echo "Bye"; exit; fi
         fi
     fi
+
+    f_docker_setup
 
     _IS_SCRIPT_RUNNING=true
 
