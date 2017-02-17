@@ -171,11 +171,6 @@ function p_interview() {
 function p_interview_or_load() {
     local __doc__="Asks user to start interview, review interview, or start installing with given response file."
 
-    if [ -z "${_RESPONSE_FILEPATH}" ]; then
-        _info "No response file specified, so that using ${g_DEFAULT_RESPONSE_FILEPATH}..."
-        _RESPONSE_FILEPATH="$g_DEFAULT_RESPONSE_FILEPATH"
-    fi
-
     if _isUrl "${_RESPONSE_FILEPATH}"; then
         if [ -s "$g_DEFAULT_RESPONSE_FILEPATH" ]; then
             local _new_resp_filepath="./`basename $_RESPONSE_FILEPATH`"
@@ -204,8 +199,6 @@ function p_interview_or_load() {
         if ! _isYes; then
             return 0
         fi
-    else
-        _info "responses will be saved into ${_RESPONSE_FILEPATH}"
     fi
 
     _info "Starting Interview mode..."
@@ -229,6 +222,15 @@ function p_interview_or_load() {
         fi
     done
     trap - SIGINT
+
+    if [ -z "${_RESPONSE_FILEPATH}" ]; then
+        if [ -n "${r_AMBARI_VER}" ] && [ -n "${r_HDP_REPO_VER}" ]; then
+            _RESPONSE_FILEPATH="HDP${r_HDP_REPO_VER}_${r_AMBARI_VER}.resp"
+        else
+            _RESPONSE_FILEPATH="$g_DEFAULT_RESPONSE_FILEPATH"
+        fi
+        _info "No response file specified, so that using ${_RESPONSE_FILEPATH}..."
+    fi
 
     f_saveResp
 }
