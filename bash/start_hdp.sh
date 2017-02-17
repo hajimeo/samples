@@ -98,8 +98,8 @@ function p_interview() {
 
     # TODO: Not good place to install package
     if ! which python &>/dev/null ; then
-        _info "Python is required for interview mode. Installing..."
-        apt-get install python -y
+        _warn "Python is required for interview mode. Installing..."
+        apt-get update && apt-get install python -y
     fi
 
     _ask "Run apt-get upgrade before setting up?" "N" "r_APTGET_UPGRADE" "N"
