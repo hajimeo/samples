@@ -86,13 +86,21 @@ __LAST_ANSWER=""
 ### Procedure type functions
 
 function p_interview() {
-    local __doc__="Asks user questions."
-    local _centos_version="6.7"
-    local _ambari_version="2.4.1.0"
-    local _stack_version="2.4"
+    local __doc__="Asks user questions. (Requires Python)"
+    # Default values TODO: need to update this part manually
+    local _centos_version="6.8"
+    local _ambari_version="2.4.2.0"
+    local _stack_version="2.5"
+    local _hdp_version="${_stack_version}.0.0"
+
     local _stack_version_full="HDP-$_stack_version"
-    local _hdp_version="2.4.2.0"
     local _hdp_repo_url=""
+
+    # TODO: Not good place to install package
+    if ! which python &>/dev/null ; then
+        _info "Python is required for interview mode. Installing..."
+        apt-get install python -y
+    fi
 
     _ask "Run apt-get upgrade before setting up?" "N" "r_APTGET_UPGRADE" "N"
     _ask "NTP Server" "ntp.ubuntu.com" "r_NTP_SERVER" "N" "Y"
@@ -132,6 +140,7 @@ function p_interview() {
         _ask "Cluster name" "c${r_NODE_START_NUM}" "r_CLUSTER_NAME" "N" "Y"
         _ask "Default password" "$g_DEFAULT_PASSWORD" "r_DEFAULT_PASSWORD" "N" "Y"
         _ask "Stack Version" "$_stack_version" "r_HDP_STACK_VERSION" "N" "Y"
+        if [ "$_stack_version" != "$r_HDP_STACK_VERSION" ]; then _hdp_version="${r_HDP_STACK_VERSION}.0.0"; fi
         _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
         r_HDP_REPO_URL="$_hdp_repo_url"
         if [ -z "$r_HDP_REPO_URL" ]; then
@@ -662,7 +671,7 @@ function f_docker_setup() {
         apt-get install apt-transport-https ca-certificates -y
         apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key for docker"
         grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-`cat /etc/lsb-release | grep CODENAME | cut -d= -f2` main" >> /etc/apt/sources.list.d/docker.list
-        apt-get update && apt-get purge lxc-docker*; apt-get install python docker-engine -y
+        apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
     fi
 
     # To use tcpdump from container
@@ -1487,6 +1496,7 @@ function p_host_setup() {
         apt-get -y install wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect
         #krb5-kdc krb5-admin-server mailutils postfix mysql-client htop
 
+        f_docker_setup
         f_sysstat_setup
         f_host_performance
         f_host_misc
@@ -2481,11 +2491,14 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         esac
     done
 
+    # Root check
     if [ "$USER" != "root" ]; then
         echo "Sorry, at this moment, only 'root' user is supported"
         exit 1
     fi
-    grep -i 'Ubuntu 1[46].04' /etc/issue.net &>/dev/null
+
+    # Supported OS check
+    grep -i 'Ubuntu 1[46]\.' /etc/issue.net &>/dev/null
     if [ $? -ne 0 ]; then
         if [ "$g_UNAME_STR" == "Darwin" ]; then
             echo "Detected Mac OS"
@@ -2500,8 +2513,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             if ! _isYes; then echo "Bye"; exit; fi
         fi
     fi
-
-    f_docker_setup
 
     _IS_SCRIPT_RUNNING=true
 
