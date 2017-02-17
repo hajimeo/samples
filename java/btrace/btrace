@@ -13,6 +13,10 @@ if [ -z "$BTRACE_HOME" -o ! -d "$BTRACE_HOME" ] ; then
 fi
 
 if [ -f "${BTRACE_HOME}/btrace-client.jar" ] ; then
+    if [ "${JAVA_HOME}" == "" ]; then
+        JAVA_HOME="$(dirname $(dirname `readlink /proc/${1}/exe`))"
+    fi
+
     if [ "${JAVA_HOME}" != "" ]; then
        case "`uname`" in
           Darwin*)
