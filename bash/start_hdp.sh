@@ -88,7 +88,7 @@ __LAST_ANSWER=""
 function p_interview() {
     local __doc__="Asks user questions. (Requires Python)"
     # Default values TODO: need to update this part manually
-    local _centos_version="6.8"
+    local _centos_version="6.7" # 6.8 seems does not work
     local _ambari_version="2.4.2.0"
     local _stack_version="2.5"
     local _hdp_version="${_stack_version}.0.0"
