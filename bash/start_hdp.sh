@@ -88,7 +88,7 @@ __LAST_ANSWER=""
 function p_interview() {
     local __doc__="Asks user questions. (Requires Python)"
     # Default values TODO: need to update this part manually
-    local _centos_version="6.7" # 6.8 seems does not work
+    local _centos_version="6.8"
     local _ambari_version="2.4.2.0"
     local _stack_version="2.5"
     local _hdp_version="${_stack_version}.0.0"
@@ -224,8 +224,8 @@ function p_interview_or_load() {
     trap - SIGINT
 
     if [ -z "${_RESPONSE_FILEPATH}" ]; then
-        if [ -n "${r_AMBARI_VER}" ] && [ -n "${r_HDP_REPO_VER}" ]; then
-            _RESPONSE_FILEPATH="HDP${r_HDP_REPO_VER}_${r_AMBARI_VER}.resp"
+        if [ -n "${r_AMBARI_VER}" ] || [ -n "${r_HDP_REPO_VER}" ]; then
+            _RESPONSE_FILEPATH="HDP${r_HDP_REPO_VER}_ambari${r_AMBARI_VER}.resp"
         else
             _RESPONSE_FILEPATH="$g_DEFAULT_RESPONSE_FILEPATH"
         fi
