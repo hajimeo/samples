@@ -1,5 +1,5 @@
 FROM centos:6.7
-# HDP software requirements
+# HDP software requirements + yum-plugin-ovl to avoid checksum error in CentOS6.x
 RUN yum -y install yum-plugin-ovl scp curl unzip tar wget openssl python
 # some useful packages
 RUN yum -y install yum-utils sudo which vim net-tools strace lsof tcpdump openssh-server openssh-clients openldap-clients fuse sshfs
