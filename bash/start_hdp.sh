@@ -2486,7 +2486,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         echo "Sorry, at this moment, only 'root' user is supported"
         exit 1
     fi
-    grep -i 'Ubuntu 14.04' /etc/issue.net &>/dev/null
+    grep -i 'Ubuntu 1[46].04' /etc/issue.net &>/dev/null
     if [ $? -ne 0 ]; then
         if [ "$g_UNAME_STR" == "Darwin" ]; then
             echo "Detected Mac OS"
