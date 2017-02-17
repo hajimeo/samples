@@ -126,6 +126,14 @@ function p_interview() {
     _ask "Ambari version (used to build repo URL)" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
     _echo "If you have set up a Local Repo, please change below"
     _ask "Ambari repo file URL or path" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
+    if _isUrlButNotReachable "$r_AMBARI_REPO_FILE" ; then
+        while true; do
+            _warn "URL: $r_AMBARI_REPO_FILE may not be reachable."
+            _ask "Would you like to re-type?" "Y"
+            if ! _isYes ; then break; fi
+            _ask "Ambari repo file URL or path" "" "r_AMBARI_REPO_FILE" "N" "Y"
+         done
+    fi
 
     wget -q -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
     if [ -s /tmp/hdp_urlinfo.json ]; then
@@ -182,11 +190,7 @@ function p_interview_or_load() {
     fi
 
     if [ -r "${_RESPONSE_FILEPATH}" ]; then
-        if ! _isYes "$_AUTO_SETUP_HDP"; then
-            _ask "Would you like to load ${_RESPONSE_FILEPATH}?" "Y"
-            if ! _isYes; then _echo "Bye."; exit 0; fi
-        fi
-
+        _info "Loading ${_RESPONSE_FILEPATH}..."
         f_loadResp
 
         # if auto setup, just load and exit
@@ -2330,6 +2334,20 @@ function _isUrl() {
     fi
 
     return 1
+}
+function _isUrlButNotReachable() {
+    local _url="$1"
+
+    if ! _isUrl "$_url" ; then
+        return 1
+    fi
+
+    if curl --output /dev/null --silent --head --fail "$_url" ; then
+        return 1
+    fi
+
+    # Return true only if URL and Not reachable
+    return 0
 }
 function _split() {
 	local _rtn_var_name="$1"
