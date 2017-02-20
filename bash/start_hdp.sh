@@ -86,13 +86,21 @@ __LAST_ANSWER=""
 ### Procedure type functions
 
 function p_interview() {
-    local __doc__="Asks user questions."
-    local _centos_version="6.7"
-    local _ambari_version="2.4.1.0"
-    local _stack_version="2.4"
+    local __doc__="Asks user questions. (Requires Python)"
+    # Default values TODO: need to update this part manually
+    local _centos_version="6.8"
+    local _ambari_version="2.4.2.0"
+    local _stack_version="2.5"
+    local _hdp_version="${_stack_version}.0.0"
+
     local _stack_version_full="HDP-$_stack_version"
-    local _hdp_version="2.4.2.0"
     local _hdp_repo_url=""
+
+    # TODO: Not good place to install package
+    if ! which python &>/dev/null ; then
+        _warn "Python is required for interview mode. Installing..."
+        apt-get update && apt-get install python -y
+    fi
 
     _ask "Run apt-get upgrade before setting up?" "N" "r_APTGET_UPGRADE" "N"
     _ask "NTP Server" "ntp.ubuntu.com" "r_NTP_SERVER" "N" "Y"
@@ -118,6 +126,14 @@ function p_interview() {
     _ask "Ambari version (used to build repo URL)" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
     _echo "If you have set up a Local Repo, please change below"
     _ask "Ambari repo file URL or path" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
+    if _isUrlButNotReachable "$r_AMBARI_REPO_FILE" ; then
+        while true; do
+            _warn "URL: $r_AMBARI_REPO_FILE may not be reachable."
+            _ask "Would you like to re-type?" "Y"
+            if ! _isYes ; then break; fi
+            _ask "Ambari repo file URL or path" "" "r_AMBARI_REPO_FILE" "N" "Y"
+         done
+    fi
 
     wget -q -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
     if [ -s /tmp/hdp_urlinfo.json ]; then
@@ -132,6 +148,7 @@ function p_interview() {
         _ask "Cluster name" "c${r_NODE_START_NUM}" "r_CLUSTER_NAME" "N" "Y"
         _ask "Default password" "$g_DEFAULT_PASSWORD" "r_DEFAULT_PASSWORD" "N" "Y"
         _ask "Stack Version" "$_stack_version" "r_HDP_STACK_VERSION" "N" "Y"
+        if [ "$_stack_version" != "$r_HDP_STACK_VERSION" ]; then _hdp_version="${r_HDP_STACK_VERSION}.0.0"; fi
         _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
         r_HDP_REPO_URL="$_hdp_repo_url"
         if [ -z "$r_HDP_REPO_URL" ]; then
@@ -162,11 +179,6 @@ function p_interview() {
 function p_interview_or_load() {
     local __doc__="Asks user to start interview, review interview, or start installing with given response file."
 
-    if [ -z "${_RESPONSE_FILEPATH}" ]; then
-        _info "No response file specified, so that using ${g_DEFAULT_RESPONSE_FILEPATH}..."
-        _RESPONSE_FILEPATH="$g_DEFAULT_RESPONSE_FILEPATH"
-    fi
-
     if _isUrl "${_RESPONSE_FILEPATH}"; then
         if [ -s "$g_DEFAULT_RESPONSE_FILEPATH" ]; then
             local _new_resp_filepath="./`basename $_RESPONSE_FILEPATH`"
@@ -178,11 +190,7 @@ function p_interview_or_load() {
     fi
 
     if [ -r "${_RESPONSE_FILEPATH}" ]; then
-        if ! _isYes "$_AUTO_SETUP_HDP"; then
-            _ask "Would you like to load ${_RESPONSE_FILEPATH}?" "Y"
-            if ! _isYes; then _echo "Bye."; exit 0; fi
-        fi
-
+        _info "Loading ${_RESPONSE_FILEPATH}..."
         f_loadResp
 
         # if auto setup, just load and exit
@@ -195,8 +203,6 @@ function p_interview_or_load() {
         if ! _isYes; then
             return 0
         fi
-    else
-        _info "responses will be saved into ${_RESPONSE_FILEPATH}"
     fi
 
     _info "Starting Interview mode..."
@@ -220,6 +226,15 @@ function p_interview_or_load() {
         fi
     done
     trap - SIGINT
+
+    if [ -z "${_RESPONSE_FILEPATH}" ]; then
+        if [ -n "${r_AMBARI_VER}" ] || [ -n "${r_HDP_REPO_VER}" ]; then
+            _RESPONSE_FILEPATH="HDP${r_HDP_REPO_VER}_ambari${r_AMBARI_VER}.resp"
+        else
+            _RESPONSE_FILEPATH="$g_DEFAULT_RESPONSE_FILEPATH"
+        fi
+        _info "No response file specified, so that using ${_RESPONSE_FILEPATH}..."
+    fi
 
     f_saveResp
 }
@@ -662,7 +677,7 @@ function f_docker_setup() {
         apt-get install apt-transport-https ca-certificates -y
         apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key for docker"
         grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-`cat /etc/lsb-release | grep CODENAME | cut -d= -f2` main" >> /etc/apt/sources.list.d/docker.list
-        apt-get update && apt-get purge lxc-docker*; apt-get install python docker-engine -y
+        apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
     fi
 
     # To use tcpdump from container
@@ -815,8 +830,8 @@ function f_docker_save() {
 function f_docker_stop_all() {
     local __doc__="Stopping all docker containers if docker command exists"
     if ! which docker &>/dev/null; then
-        _error "No docker command found in the path"
-        return 1
+        _info "No docker command found in the path. Not stopping."
+        return 0
     fi
     _info "Stopping the followings"
     docker ps
@@ -861,10 +876,10 @@ function f_docker_pause_other() {
     wait
 }
 
-function f_docker_rm() {
+function f_docker_rm_all() {
     local _force="$1"
     local __doc__="Removing *all* docker containers"
-    _ask "Are you sure to delete ALL containers?"
+    _ask "Are you sure to delete ALL containers?" "N"
     if _isYes; then
         if _isYes $_force; then
             for _q in `docker ps -aq`; do
@@ -1487,6 +1502,7 @@ function p_host_setup() {
         apt-get -y install wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect
         #krb5-kdc krb5-admin-server mailutils postfix mysql-client htop
 
+        f_docker_setup
         f_sysstat_setup
         f_host_performance
         f_host_misc
@@ -1572,9 +1588,14 @@ function f_host_misc() {
         sed -i.bak '/^exit 0/i IP=$(/sbin/ifconfig eth0 | grep -oP "inet addr:\\\d+\\\.\\\d+\\\.\\\d+\\\.\\\d+" | cut -d":" -f2); echo "eth0 IP: $IP" > /etc/issue\n' /etc/rc.local
     fi
 
-    grep '^PasswordAuthentication no' /etc/ssh/sshd_config && sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
-    #grep '^PermitRootLogin without-password' /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-    #TODO: grep 'Please login as the user' $HOME/.ssh/authorized_keys && cat /home/ubuntu/.ssh/authorized_keys >> $HOME/.ssh/authorized_keys
+    # AWS / Openstack only change
+    if [ -s /home/ubuntu/.ssh/authorized_keys ] && [ ! -f $HOME/.ssh/authorized_keys.bak ]; then
+        cp -p $HOME/.ssh/authorized_keys $HOME/.ssh/authorized_keys.bak
+        grep 'Please login as the user' $HOME/.ssh/authorized_keys && cat /home/ubuntu/.ssh/authorized_keys > $HOME/.ssh/authorized_keys
+    fi
+
+    grep '^PasswordAuthentication no' /etc/ssh/sshd_config && sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config || return $?
+    grep '^PermitRootLogin without-password' /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config
     if [ $? -eq 0 ]; then
         service ssh restart
     fi
@@ -2314,6 +2335,20 @@ function _isUrl() {
 
     return 1
 }
+function _isUrlButNotReachable() {
+    local _url="$1"
+
+    if ! _isUrl "$_url" ; then
+        return 1
+    fi
+
+    if curl --output /dev/null --silent --head --fail "$_url" ; then
+        return 1
+    fi
+
+    # Return true only if URL and Not reachable
+    return 0
+}
 function _split() {
 	local _rtn_var_name="$1"
 	local _string="$2"
@@ -2481,11 +2516,14 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         esac
     done
 
+    # Root check
     if [ "$USER" != "root" ]; then
         echo "Sorry, at this moment, only 'root' user is supported"
         exit 1
     fi
-    grep -i 'Ubuntu 1[46].04' /etc/issue.net &>/dev/null
+
+    # Supported OS check
+    grep -i 'Ubuntu 1[46]\.' /etc/issue.net &>/dev/null
     if [ $? -ne 0 ]; then
         if [ "$g_UNAME_STR" == "Darwin" ]; then
             echo "Detected Mac OS"
@@ -2501,8 +2539,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         fi
     fi
 
-    f_docker_setup
-
     _IS_SCRIPT_RUNNING=true
 
     if _isYes "$_SETUP_HDP"; then
@@ -2515,7 +2551,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         if ! _isYes "$_AUTO_SETUP_HDP"; then
             _ask "Would you like to start setting up this host?" "Y"
             if ! _isYes; then echo "Bye"; exit; fi
-            _ask "Would you like to stop all running containers?" "Y"
+            _ask "Would you like to stop all running containers if running?" "Y"
             if _isYes; then f_docker_stop_all; fi
         else
             _info "Stopping all docker containers..."

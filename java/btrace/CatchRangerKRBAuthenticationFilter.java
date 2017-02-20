@@ -9,12 +9,13 @@ import com.sun.btrace.annotations.*;
 
 @BTrace
 public class CatchRangerKRBAuthenticationFilter {
-    @OnMethod(clazz="org.apache.ranger.security.web.filter.RangerKRBAuthenticationFilter",
-            method="doFilter",
-            location=@Location(value=Kind.CALL)
+    //@OnMethod(clazz="org.apache.ranger.security.web.filter.RangerKRBAuthenticationFilter",
+    @OnMethod(clazz="/org\\.apache\\.ranger\\.security\\..*/",
+            method="/.*/",
+            location=@Location(value=Kind.CALL, clazz="/.*/", method="/.*/")
     )
     public static void m1(@ProbeClassName String pcn, @ProbeMethodName String pmn, AnyType[] args) {
-        println("=== CALL   doFilter    ========================");
+        println("=== CALL *  ========================");
         println(pcn);
         println(pmn);
         printArray(args);
