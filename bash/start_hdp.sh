@@ -1721,7 +1721,7 @@ function f_apache_proxy() {
             CacheDirLevels 2
             CacheDirLength 1
             CacheMaxFileSize 500000000
-	    CacheDefaultExpire 15724800  # 6 months
+	    CacheDefaultExpire 15724800
 	    CacheMaxExpire 15724800
 	    CacheLastModifiedFactor 100
         </IfModule>
