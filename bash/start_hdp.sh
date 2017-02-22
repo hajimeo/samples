@@ -143,17 +143,18 @@ function p_interview() {
         _hdp_version="`basename ${_hdp_repo_url%/}`"
     fi
 
+    _ask "Stack Version" "$_stack_version" "r_HDP_STACK_VERSION" "N" "Y"
+    if [ "$_stack_version" != "$r_HDP_STACK_VERSION" ]; then _hdp_version="${r_HDP_STACK_VERSION}.0.0"; fi
+    _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
+    r_HDP_REPO_URL="$_hdp_repo_url"
+    if [ -z "$r_HDP_REPO_URL" ]; then
+        _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"
+    fi
+
     _ask "Would you like to use Ambari Blueprint?" "Y" "r_AMBARI_BLUEPRINT"
     if _isYes "$r_AMBARI_BLUEPRINT"; then
         _ask "Cluster name" "c${r_NODE_START_NUM}" "r_CLUSTER_NAME" "N" "Y"
         _ask "Default password" "$g_DEFAULT_PASSWORD" "r_DEFAULT_PASSWORD" "N" "Y"
-        _ask "Stack Version" "$_stack_version" "r_HDP_STACK_VERSION" "N" "Y"
-        if [ "$_stack_version" != "$r_HDP_STACK_VERSION" ]; then _hdp_version="${r_HDP_STACK_VERSION}.0.0"; fi
-        _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
-        r_HDP_REPO_URL="$_hdp_repo_url"
-        if [ -z "$r_HDP_REPO_URL" ]; then
-            _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"
-        fi
         _ask "Host mapping json path (optional)" "" "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
         _ask "Cluster config json path (optional)" "" "r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
     fi
@@ -229,7 +230,8 @@ function p_interview_or_load() {
 
     if [ -z "${_RESPONSE_FILEPATH}" ]; then
         if [ -n "${r_AMBARI_VER}" ] || [ -n "${r_HDP_REPO_VER}" ]; then
-            _RESPONSE_FILEPATH="HDP${r_HDP_REPO_VER}_ambari${r_AMBARI_VER}.resp"
+            local _tmp_RESPONSE_FILEPATH="HDP${r_HDP_REPO_VER}_ambari${r_AMBARI_VER}"
+            _RESPONSE_FILEPATH="${_tmp_RESPONSE_FILEPATH//./}.resp"
         else
             _RESPONSE_FILEPATH="$g_DEFAULT_RESPONSE_FILEPATH"
         fi
@@ -1499,7 +1501,7 @@ function p_host_setup() {
         fi
 
         # NOTE: psql (postgresql-client) is required
-        apt-get -y install wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect
+        apt-get -y install wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat
         #krb5-kdc krb5-admin-server mailutils postfix mysql-client htop
 
         f_docker_setup
@@ -1870,7 +1872,7 @@ startxfce4 &" > ${HOME%/}/.vnc/xstartup
 chmod u+x ${HOME%/}/.vnc/xstartup'
 
     echo "To start:"
-    echo "su - $_user -c 'vncserver -geometry 1280x768 -depth 16'"
+    echo "su - $_user -c 'vncserver -geometry 1280x768 -depth 16 :1'"
     echo "To stop:"
     echo "su - $_user -c 'vncserver -kill :1'"
 
@@ -2196,28 +2198,16 @@ function _backup() {
     local _mod_dt="`stat -c%y $_file_path`"
     local _mod_ts=`date -d "${_mod_dt}" +"%Y%m%d-%H%M%S"`
 
-    if _isYes "$_force"; then
-
-        if [[ ! $_file_name =~ "." ]]; then
-            _new_file_name="${_file_name}_${_mod_ts}"
-        else
-            _new_file_name="${_file_name/\./_${_mod_ts}.}"
-        fi
-    else
-        if [[ ! $_file_name =~ "." ]]; then
-            _new_file_name="${_file_name}_${_mod_ts}"
-        else
-            _new_file_name="${_file_name/\./_${_mod_ts}.}"
-        fi
-
-        if [ -e "${g_backup_dir}${_new_file_name}" ]; then
+    _new_file_name="${_file_name}_${_mod_ts}"
+    if ! _isYes "$_force"; then
+        if [ -e "${g_backup_dir%/}/${_new_file_name}" ]; then
             _info "$_file_name has been already backed up. Skipping..."
             return 0
         fi
     fi
 
     _makeBackupDir
-    cp -p ${_file_path} ${g_backup_dir}${_new_file_name} || _critical "$FUNCNAME: failed to backup ${_file_path}"
+    cp -p ${_file_path} ${g_backup_dir%/}/${_new_file_name} || _critical "$FUNCNAME: failed to backup ${_file_path}"
 }
 function _makeBackupDir() {
     if [ ! -d "${g_BACKUP_DIR}" ]; then
