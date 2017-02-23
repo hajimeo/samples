@@ -432,6 +432,9 @@ function f_ambari_blueprint_cluster_config() {
       "components" : [
         {
           "name" : "AMBARI_SERVER"
+        },
+        {
+          "name" : "ZOOKEEPER_SERVER"
         }'${_kerberos_client}'
       ],
       "configurations" : [ ],
@@ -495,6 +498,9 @@ function f_ambari_blueprint_cluster_config() {
     {
       "name" : "host_group_3",
       "components" : [
+        {
+          "name" : "ZOOKEEPER_SERVER"
+        },
         {
           "name" : "SECONDARY_NAMENODE"
         }'${_kerberos_client}'
@@ -1860,7 +1866,7 @@ function f_vnc_setup() {
     fi
 
     # apt-get update
-    apt-get install -y xfce4 xfce4-goodies tightvncserver autocutsel firefox
+    apt-get install -y xfce4 xfce4-goodies firefox tightvncserver autocutsel
 
     su - $_user -c 'mkdir ${HOME%/}/.vnc; echo "'$_vpass'" | vncpasswd -f > ${HOME%/}/.vnc/passwd
 chmod 600 ${HOME%/}/.vnc/passwd
@@ -1878,6 +1884,27 @@ chmod u+x ${HOME%/}/.vnc/xstartup'
 
     # to check
     #sudo netstat -aopen | grep 5901
+}
+
+function f_x2go_setup() {
+    local __doc__="Install and setup next generation remote desktop X2Go"
+    local _user="${1-$USER}"
+    local _pass="${2-$g_DEFAULT_PASSWORD}"
+
+    if [ ! `which apt-get` ]; then
+        _warn "No apt-get"
+        return 1
+    fi
+
+    apt-add-repository ppa:x2go/stable -y
+    apt-get update
+    apt-get install xfce4 xfce4-goodies firefox x2goserver x2goserver-xsession -y || return $?
+
+    _info "Please install X2Go client from http://wiki.x2go.org/doku.php/doc:installation:x2goclient"
+
+    if [ ! `grep "$_user" /etc/passwd` ]; then
+        f_useradd "$_user" "$_pass" || return $?
+    fi
 }
 
 function f_sssd_setup() {
