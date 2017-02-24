@@ -71,7 +71,7 @@ else
     -p 61888:61888 \
     -p 1520:1520 \
     -p 2222:22 \
-    --sysctl kernel.shmmax=41943040 \
+    # --sysctl kernel.shmmax=41943040 \
     sandbox /usr/sbin/sshd -D
 
     sleep 5
@@ -80,6 +80,8 @@ else
 fi
 
 #docker exec -t ${_NAME} /etc/init.d/startup_script start
+docker exec -d sandbox sysctl -w kernel.shmmax=41943040
+docker exec -d sandbox /sbin/sysctl -p
 #docker exec -t ${_NAME} make --makefile /usr/lib/hue/tools/start_scripts/start_deps.mf  -B Startup -j -i
 #docker exec -t ${_NAME} nohup su - hue -c '/bin/bash /usr/lib/tutorials/tutorials_app/run/run.sh' &>/dev/nul
 docker exec -t ${_NAME} touch /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
