@@ -79,9 +79,10 @@ else
     docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
 fi
 
-#docker exec -t ${_NAME} /etc/init.d/startup_script start
-docker exec -d sandbox sysctl -w kernel.shmmax=41943040
-docker exec -d sandbox /sbin/sysctl -p
+docker exec -d ${_NAME} sysctl -w kernel.shmmax=41943040
+docker exec -d ${_NAME} /sbin/sysctl -p
+
+docker exec -t ${_NAME} /etc/init.d/startup_script start
 #docker exec -t ${_NAME} make --makefile /usr/lib/hue/tools/start_scripts/start_deps.mf  -B Startup -j -i
 #docker exec -t ${_NAME} nohup su - hue -c '/bin/bash /usr/lib/tutorials/tutorials_app/run/run.sh' &>/dev/nul
 docker exec -t ${_NAME} touch /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
