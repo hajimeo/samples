@@ -711,7 +711,7 @@ function f_docker_setup() {
 }
 
 function f_docker_sandbox_install() {
-    local __doc__="Install Sandbox docker version"
+    local __doc__="Install Sandbox docker version. See https://hortonworks.com/hadoop-tutorial/hortonworks-sandbox-guide"
     local _tmp_dir="${1-./}"
     local _url="$2"
 
