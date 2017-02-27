@@ -75,6 +75,7 @@ else
     -p 2222:22 \
     --sysctl kernel.shmmax=${_SHMMAX} \
     sandbox /usr/sbin/sshd -D
+
     _NEED_RESET_ADMIN_PWD=true
 fi
 
@@ -87,15 +88,16 @@ docker exec -d ${_NAME} /etc/init.d/tutorials start
 docker exec -d ${_NAME} /etc/init.d/splash
 docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
 
-docker exec -d ${_NAME} sysctl -w kernel.shmmax=${_SHMMAX}
-docker exec -d ${_NAME} /sbin/sysctl -p
-# Clean up old logs to save disk space
-docker exec -it ${_NAME} bash -c 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
-docker exec -it ${_NAME} bash -c 'find /var/log/ambari-server/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
-docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
-
 if ${_NEED_RESET_ADMIN_PWD} ; then
     echo "INFO: running ambari-admin-password-reset ..."
     docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
+else
+    docker exec -d ${_NAME} sysctl -w kernel.shmmax=${_SHMMAX}
+    docker exec -d ${_NAME} /sbin/sysctl -p
+    # Clean up old logs to save disk space
+    docker exec -it ${_NAME} bash -c 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
+    docker exec -it ${_NAME} bash -c 'find /var/log/ambari-server/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
+    docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 fi
+
 #docker exec -it ${_NAME} bash
