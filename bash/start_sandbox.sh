@@ -3,6 +3,8 @@
 # curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh -O
 #
 _NAME="${1-sandbox}"
+_NEED_RESET_ADMIN_PWD=false
+_SHMMAX=41943040
 
 echo "Waiting for docker daemon to start up:"
 until /usr/bin/docker ps 2>&1| grep STATUS>/dev/null; do  sleep 1; done;  >/dev/null
@@ -71,29 +73,29 @@ else
     -p 61888:61888 \
     -p 1520:1520 \
     -p 2222:22 \
-    # --sysctl kernel.shmmax=41943040 \
+    --sysctl kernel.shmmax=${_SHMMAX} \
     sandbox /usr/sbin/sshd -D
-
-    sleep 5
-    echo "running ambari-admin-password-reset ..."
-    docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
+    _NEED_RESET_ADMIN_PWD=true
 fi
 
-docker exec -d ${_NAME} sysctl -w kernel.shmmax=41943040
-docker exec -d ${_NAME} /sbin/sysctl -p
-
-docker exec -t ${_NAME} /etc/init.d/startup_script start
-#docker exec -t ${_NAME} make --makefile /usr/lib/hue/tools/start_scripts/start_deps.mf  -B Startup -j -i
-#docker exec -t ${_NAME} nohup su - hue -c '/bin/bash /usr/lib/tutorials/tutorials_app/run/run.sh' &>/dev/nul
+#docker exec -t ${_NAME} /etc/init.d/startup_script start
+docker exec -t ${_NAME} make --makefile /usr/lib/hue/tools/start_scripts/start_deps.mf  -B Startup -j -i
+docker exec -t ${_NAME} nohup su - hue -c '/bin/bash /usr/lib/tutorials/tutorials_app/run/run.sh' &>/dev/null
 docker exec -t ${_NAME} touch /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
 docker exec -t ${_NAME} chown oozie:hadoop /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
-#docker exec -d ${_NAME} /etc/init.d/tutorials start
+docker exec -d ${_NAME} /etc/init.d/tutorials start
 docker exec -d ${_NAME} /etc/init.d/splash
 docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
 
+docker exec -d ${_NAME} sysctl -w kernel.shmmax=${_SHMMAX}
+docker exec -d ${_NAME} /sbin/sysctl -p
 # Clean up old logs to save disk space
 docker exec -it ${_NAME} bash -c 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 docker exec -it ${_NAME} bash -c 'find /var/log/ambari-server/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 
+if ${_NEED_RESET_ADMIN_PWD} ; then
+    echo "INFO: running ambari-admin-password-reset ..."
+    docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
+fi
 #docker exec -it ${_NAME} bash
