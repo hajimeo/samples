@@ -728,14 +728,14 @@ function f_docker_sandbox_install() {
         return 1
     fi
 
-    if [ -s "${_tmp_dir%/}/${_file_name}" ]; then
-        _error "${_tmp_dir%/}/${_file_name} exists. Please delete this first"
-        return 1
-    fi
-
     wget -nv -c -t 20 --timeout=60 --waitretry=60 "https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh" -O ~/start_sandbox.sh
     chmod u+x ~/start_sandbox.sh
-    wget -c -t 20 --timeout=60 --waitretry=60 "${_url}" -O "${_tmp_dir%/}/${_file_name}" || return $?
+
+    if [ -s "${_tmp_dir%/}/${_file_name}" ]; then
+        _warn "${_tmp_dir%/}/${_file_name} exists. Reusing it..."
+    else
+        wget -c -t 20 --timeout=60 --waitretry=60 "${_url}" -O "${_tmp_dir%/}/${_file_name}" || return $?
+    fi
 
     docker load < "${_tmp_dir%/}/${_file_name}" || return $?
 
@@ -1003,7 +1003,7 @@ function f_ldap_server_install_on_ambari_node() {
         _ldap_domain="dc=example,dc=com"
     fi
 
-    # TODO: chkconfig slapd on wouldn't do anything on docker container
+    # slapd ldapsearch install TODO: chkconfig slapd on wouldn't do anything on docker container
     ssh root@$_server -t "yum install openldap openldap-servers openldap-clients -y" || return $?
     ssh root@$_server -t "cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG ; chown ldap. /var/lib/ldap/DB_CONFIG && /etc/rc.d/init.d/slapd start" || return $?
     local _md5=""
@@ -2084,6 +2084,15 @@ chmod 440 $SERVER_KEY_LOCATION$KEYSTORE_FILE
 chmod 440 $SERVER_KEY_LOCATION$TRUSTSTORE_FILE
 chmod 444 $SERVER_KEY_LOCATION$CLIENT_TRUSTSTORE_FILE"
     done
+}
+
+function f_self_signed_cert() {
+    local __doc__="TODO: Generate self-signed certificate"
+    local _work_dir="${1-./}"
+
+    openssl genrsa -out ca.key 4096
+    openssl req -new -x509 -extensions v3_ca -key ca.key -out ca.crt -days 3650
+
 }
 
 function f_nifidemo_add() {
