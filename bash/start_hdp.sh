@@ -1988,8 +1988,42 @@ EOF
     sudo sudo -u yarn yarn rmadmin -refreshUserToGroupsMappings
 }
 
+function f_openssl_cnf_generate() {
+    local __doc__="TODO: Generate openssl config file (openssl.cnf) for self-signed certificate"
+    local _dname="$1"
+    local _password="$2"
+    local _work_dir="${3-./}"
+    local _domain_suffix="${4-.`hostname -d`}"
+
+    local _a
+    local _tmp=""
+    _split "_a" "$_dname"
+
+    echo [ req ] > "${_work_dir%/}/openssl.cnf"
+    echo input_password = $_password >> "${_work_dir%/}/openssl.cnf"
+    echo output_password = $_password >> "${_work_dir%/}/openssl.cnf"
+    echo distinguished_name = req_distinguished_name >> "${_work_dir%/}/openssl.cnf"
+    echo req_extensions = v3_req  >> "${_work_dir%/}/openssl.cnf"
+    echo prompt=no >> "${_work_dir%/}/openssl.cnf"
+    echo [req_distinguished_name] >> "${_work_dir%/}/openssl.cnf"
+    for (( idx=${#_a[@]}-1 ; idx>=0 ; idx-- )) ; do
+        _tmp="`_trim "${_a[$idx]}"`"
+        # If wildcard certficat, replace to some hostname. NOTE: nocasematch is already used
+        [[ "${_tmp}" =~ CN=\*\. ]] && _tmp="CN=internalca${_domain_suffix}"
+        echo ${_tmp} >> "${_work_dir%/}/openssl.cnf"
+    done
+    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
+    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
+    echo [ v3_req ] >> "${_work_dir%/}/openssl.cnf"
+    echo basicConstraints = critical,CA:FALSE >> "${_work_dir%/}/openssl.cnf"
+    echo keyUsage = nonRepudiation, digitalSignature, keyEncipherment, dataEncipherment, keyAgreement >> "${_work_dir%/}/openssl.cnf"
+    echo extendedKeyUsage=emailProtection,clientAuth >> "${_work_dir%/}/openssl.cnf"
+    echo [ ${_domain_suffix#.} ] >> "${_work_dir%/}/openssl.cnf"
+    echo subjectAltName = DNS:${_domain_suffix#.},DNS:*${_domain_suffix} >> "${_work_dir%/}/openssl.cnf"
+}
+
 function f_certificate_setup() {
-    local __doc__="Generate keystore and certificate for Hadoop SSL"
+    local __doc__="Deprecated: Generate keystore and certificate for Hadoop SSL"
     # http://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.5.3/bk_security/content/create-internal-ca.html
     local _dname="$1"
     local _password="$2"
@@ -2015,14 +2049,13 @@ function f_certificate_setup() {
     fi
 
     if [ -z "$_domain_suffix" ]; then
-        _domain_suffix="${r_DOMAIN_SUFFIX-.localdomain}"
+        _domain_suffix=".`hostname -d`"
     fi
     if [ -z "$_dname" ]; then
         _dname="CN=*${_domain_suffix}, OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
     fi
-
     if [ -z "$_password" ]; then
-        _password=${g_DEFAULT_PASSWORD-hadoop}
+        _password="${g_DEFAULT_PASSWORD-hadoop}"
     fi
 
     if [ ! -d "$_work_dir" ]; then
@@ -2032,31 +2065,7 @@ function f_certificate_setup() {
         fi
     fi
 
-    local _a
-    local _tmp=""
-    _split "_a" "$_dname"
-
-    echo [ req ] > "${_work_dir%/}/openssl.cnf"
-    echo input_password = $_password >> "${_work_dir%/}/openssl.cnf"
-    echo output_password = $_password >> "${_work_dir%/}/openssl.cnf"
-    echo distinguished_name = req_distinguished_name >> "${_work_dir%/}/openssl.cnf"
-    echo req_extensions = v3_req  >> "${_work_dir%/}/openssl.cnf"
-    echo prompt=no >> "${_work_dir%/}/openssl.cnf"
-    echo [req_distinguished_name] >> "${_work_dir%/}/openssl.cnf"
-    for (( idx=${#_a[@]}-1 ; idx>=0 ; idx-- )) ; do
-        _tmp="`_trim "${_a[$idx]}"`"
-        # note: nocasematch is already used
-        [[ "${_tmp}" =~ CN=\*\. ]] && _tmp="CN=rootca${_domain_suffix}"
-        echo ${_tmp} >> "${_work_dir%/}/openssl.cnf"
-    done
-    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
-    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
-    echo [ v3_req ] >> "${_work_dir%/}/openssl.cnf"
-    echo basicConstraints = critical,CA:FALSE >> "${_work_dir%/}/openssl.cnf"
-    echo keyUsage = nonRepudiation, digitalSignature, keyEncipherment, dataEncipherment, keyAgreement >> "${_work_dir%/}/openssl.cnf"
-    echo extendedKeyUsage=emailProtection,clientAuth >> "${_work_dir%/}/openssl.cnf"
-    echo [ ${_domain_suffix#.} ] >> "${_work_dir%/}/openssl.cnf"
-    echo subjectAltName = DNS:${_domain_suffix#.},DNS:*${_domain_suffix} >> "${_work_dir%/}/openssl.cnf"
+    f_openssl_cnf_generate "$_dname" "$_password" "$_work_dir" "$_domain_suffix"
 
     # Generate server certificate in a keystore. TODO: why "localhost" is the alias?
     keytool -keystore "${_work_dir%/}/${KEYSTORE_FILE}" -alias localhost -validity 3650 -genkey -keyalg RSA -keysize 2048 -dname "$_dname" -noprompt -storepass "$_password" -keypass "$_password"
@@ -2086,13 +2095,65 @@ chmod 444 $SERVER_KEY_LOCATION$CLIENT_TRUSTSTORE_FILE"
     done
 }
 
+function f_internal_CA_setup() {
+    local __doc__="TODO: Setup Internal CA for generating self-signed certificate"
+    local _dname="$1"
+    local _password="$2"
+    local _ca_dir="${3-/etc/pki/CA}"
+    local _work_dir="${4-./}"
+    local _domain_suffix="${5-$r_DOMAIN_SUFFIX}"
+
+    if [ -z "$_domain_suffix" ]; then
+        _domain_suffix=".`hostname -d`"
+    fi
+    if [ -z "$_dname" ]; then
+        _dname="CN=internalca${_domain_suffix}, OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
+    fi
+    if [ -z "$_password" ]; then
+        _password="${g_DEFAULT_PASSWORD-hadoop}"
+    fi
+
+    openssl genrsa -out ${_work_dir%/}/ca.key 4096 #8192
+    # Generating CA certificate
+    f_openssl_cnf_generate "$_dname" "$_password" "$_work_dir" "$_domain_suffix"
+    openssl req -new -x509 -extensions v3_ca -key ${_work_dir%/}/ca.key -out ${_work_dir%/}/ca.crt -days 3650 -config "${_work_dir%/}/openssl.cnf" -passin pass:$_password || return $?
+
+    chmod 0400 ${_work_dir%/}/private/ca.key
+
+    # Set up the CA directory structure
+    mkdir -m 0700 ${_ca_dir%/} ${_ca_dir%/}/certs ${_ca_dir%/}/crl ${_ca_dir%/}/newcerts ${_ca_dir%/}/private
+    mv ${_work_dir%/}/ca.key ${_ca_dir%/}/private
+    mv ${_work_dir%/}/ca.crt ${_ca_dir%/}/certs
+    touch ${_ca_dir%/}/index.txt
+    echo 1000 >> ${_ca_dir%/}/serial
+}
+
 function f_self_signed_cert() {
-    local __doc__="TODO: Generate self-signed certificate"
-    local _work_dir="${1-./}"
+    local __doc__="TODO: Generate self-signed certificate. TODO: Assuming f_internal_CA_setup is used."
+    local _dname="$1"
+    local _password="$2"
+    local _ca_dir="${3-/etc/pki/CA}"
+    local _work_dir="${4-./}"
 
-    openssl genrsa -out ca.key 4096
-    openssl req -new -x509 -extensions v3_ca -key ca.key -out ca.crt -days 3650
+    if [ -z "$_dname" ]; then
+        _dname="CN=`hostname -f`, OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
+    fi
+    if [ -z "$_password" ]; then
+        _password=${g_DEFAULT_PASSWORD-hadoop}
+    fi
 
+    # Key store for service
+    keytool -keystore "${_work_dir%/}/server.keystore.jks" -alias localhost -validity 3650 -genkey -keyalg RSA -keysize 2048 -dname "$_dname" -noprompt -storepass "$_password" -keypass "$_password"
+    keytool -keystore server.keystore.jks -alias localhost -certreq -file ${_work_dir%/}/server.csr -storepass "$_password" -keypass "$_password"
+    openssl x509 -req -CA ${_ca_dir%/}/certs/ca.crt -CAkey ${_ca_dir%/}/private/ca.key -in ${_work_dir%/}/server.csr -out ${_work_dir%/}/server.crt -days 3650 -CAcreateserial -passin "pass:$_password"
+
+    keytool -keystore "${_work_dir%/}/server.keystore.jks" -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "$_password" -keypass "$_password"
+    keytool -keystore "${_work_dir%/}/server.keystore.jks" -alias localhost -import -file ${_work_dir%/}/server.crt -noprompt -storepass "$_password" -keypass "$_password"
+
+    # trust store for service (eg.: hiveserver2)
+    keytool -keystore ${_work_dir%/}/server.truststore.jks -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "changeit" -keypass "changeit"
+    # trust store for client (eg.: beeline)
+    keytool -keystore ${_work_dir%/}/client.truststore.jks -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "changeit" -keypass "changeit"
 }
 
 function f_nifidemo_add() {
