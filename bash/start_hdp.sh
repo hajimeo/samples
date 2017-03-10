@@ -143,17 +143,18 @@ function p_interview() {
         _hdp_version="`basename ${_hdp_repo_url%/}`"
     fi
 
+    _ask "Stack Version" "$_stack_version" "r_HDP_STACK_VERSION" "N" "Y"
+    if [ "$_stack_version" != "$r_HDP_STACK_VERSION" ]; then _hdp_version="${r_HDP_STACK_VERSION}.0.0"; fi
+    _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
+    r_HDP_REPO_URL="$_hdp_repo_url"
+    if [ -z "$r_HDP_REPO_URL" ]; then
+        _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"
+    fi
+
     _ask "Would you like to use Ambari Blueprint?" "Y" "r_AMBARI_BLUEPRINT"
     if _isYes "$r_AMBARI_BLUEPRINT"; then
         _ask "Cluster name" "c${r_NODE_START_NUM}" "r_CLUSTER_NAME" "N" "Y"
         _ask "Default password" "$g_DEFAULT_PASSWORD" "r_DEFAULT_PASSWORD" "N" "Y"
-        _ask "Stack Version" "$_stack_version" "r_HDP_STACK_VERSION" "N" "Y"
-        if [ "$_stack_version" != "$r_HDP_STACK_VERSION" ]; then _hdp_version="${r_HDP_STACK_VERSION}.0.0"; fi
-        _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
-        r_HDP_REPO_URL="$_hdp_repo_url"
-        if [ -z "$r_HDP_REPO_URL" ]; then
-            _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"
-        fi
         _ask "Host mapping json path (optional)" "" "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
         _ask "Cluster config json path (optional)" "" "r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
     fi
@@ -229,7 +230,8 @@ function p_interview_or_load() {
 
     if [ -z "${_RESPONSE_FILEPATH}" ]; then
         if [ -n "${r_AMBARI_VER}" ] || [ -n "${r_HDP_REPO_VER}" ]; then
-            _RESPONSE_FILEPATH="HDP${r_HDP_REPO_VER}_ambari${r_AMBARI_VER}.resp"
+            local _tmp_RESPONSE_FILEPATH="HDP${r_HDP_REPO_VER}_ambari${r_AMBARI_VER}"
+            _RESPONSE_FILEPATH="${_tmp_RESPONSE_FILEPATH//./}.resp"
         else
             _RESPONSE_FILEPATH="$g_DEFAULT_RESPONSE_FILEPATH"
         fi
@@ -430,6 +432,9 @@ function f_ambari_blueprint_cluster_config() {
       "components" : [
         {
           "name" : "AMBARI_SERVER"
+        },
+        {
+          "name" : "ZOOKEEPER_SERVER"
         }'${_kerberos_client}'
       ],
       "configurations" : [ ],
@@ -493,6 +498,9 @@ function f_ambari_blueprint_cluster_config() {
     {
       "name" : "host_group_3",
       "components" : [
+        {
+          "name" : "ZOOKEEPER_SERVER"
+        },
         {
           "name" : "SECONDARY_NAMENODE"
         }'${_kerberos_client}'
@@ -703,7 +711,7 @@ function f_docker_setup() {
 }
 
 function f_docker_sandbox_install() {
-    local __doc__="Install Sandbox docker version"
+    local __doc__="Install Sandbox docker version. See https://hortonworks.com/hadoop-tutorial/hortonworks-sandbox-guide"
     local _tmp_dir="${1-./}"
     local _url="$2"
 
@@ -720,14 +728,14 @@ function f_docker_sandbox_install() {
         return 1
     fi
 
-    if [ -s "${_tmp_dir%/}/${_file_name}" ]; then
-        _error "${_tmp_dir%/}/${_file_name} exists. Please delete this first"
-        return 1
-    fi
-
     wget -nv -c -t 20 --timeout=60 --waitretry=60 "https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh" -O ~/start_sandbox.sh
     chmod u+x ~/start_sandbox.sh
-    wget -c -t 20 --timeout=60 --waitretry=60 "${_url}" -O "${_tmp_dir%/}/${_file_name}" || return $?
+
+    if [ -s "${_tmp_dir%/}/${_file_name}" ]; then
+        _warn "${_tmp_dir%/}/${_file_name} exists. Reusing it..."
+    else
+        wget -c -t 20 --timeout=60 --waitretry=60 "${_url}" -O "${_tmp_dir%/}/${_file_name}" || return $?
+    fi
 
     docker load < "${_tmp_dir%/}/${_file_name}" || return $?
 
@@ -995,7 +1003,7 @@ function f_ldap_server_install_on_ambari_node() {
         _ldap_domain="dc=example,dc=com"
     fi
 
-    # TODO: chkconfig slapd on wouldn't do anything on docker container
+    # slapd ldapsearch install TODO: chkconfig slapd on wouldn't do anything on docker container
     ssh root@$_server -t "yum install openldap openldap-servers openldap-clients -y" || return $?
     ssh root@$_server -t "cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG ; chown ldap. /var/lib/ldap/DB_CONFIG && /etc/rc.d/init.d/slapd start" || return $?
     local _md5=""
@@ -1499,7 +1507,7 @@ function p_host_setup() {
         fi
 
         # NOTE: psql (postgresql-client) is required
-        apt-get -y install wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect
+        apt-get -y install wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat
         #krb5-kdc krb5-admin-server mailutils postfix mysql-client htop
 
         f_docker_setup
@@ -1861,7 +1869,7 @@ function f_vnc_setup() {
     fi
 
     # apt-get update
-    apt-get install -y xfce4 xfce4-goodies tightvncserver autocutsel firefox
+    apt-get install -y xfce4 xfce4-goodies firefox tightvncserver autocutsel
 
     su - $_user -c 'mkdir ${HOME%/}/.vnc; echo "'$_vpass'" | vncpasswd -f > ${HOME%/}/.vnc/passwd
 chmod 600 ${HOME%/}/.vnc/passwd
@@ -1873,12 +1881,33 @@ startxfce4 &" > ${HOME%/}/.vnc/xstartup
 chmod u+x ${HOME%/}/.vnc/xstartup'
 
     echo "To start:"
-    echo "su - $_user -c 'vncserver -geometry 1280x768 -depth 16'"
+    echo "su - $_user -c 'vncserver -geometry 1280x768 -depth 16 :1'"
     echo "To stop:"
     echo "su - $_user -c 'vncserver -kill :1'"
 
     # to check
     #sudo netstat -aopen | grep 5901
+}
+
+function f_x2go_setup() {
+    local __doc__="Install and setup next generation remote desktop X2Go"
+    local _user="${1-$USER}"
+    local _pass="${2-$g_DEFAULT_PASSWORD}"
+
+    if [ ! `which apt-get` ]; then
+        _warn "No apt-get"
+        return 1
+    fi
+
+    apt-add-repository ppa:x2go/stable -y
+    apt-get update
+    apt-get install xfce4 xfce4-goodies firefox x2goserver x2goserver-xsession -y || return $?
+
+    _info "Please install X2Go client from http://wiki.x2go.org/doku.php/doc:installation:x2goclient"
+
+    if [ ! `grep "$_user" /etc/passwd` ]; then
+        f_useradd "$_user" "$_pass" || return $?
+    fi
 }
 
 function f_sssd_setup() {
@@ -1962,8 +1991,42 @@ EOF
     sudo sudo -u yarn yarn rmadmin -refreshUserToGroupsMappings
 }
 
+function f_openssl_cnf_generate() {
+    local __doc__="TODO: Generate openssl config file (openssl.cnf) for self-signed certificate"
+    local _dname="$1"
+    local _password="$2"
+    local _work_dir="${3-./}"
+    local _domain_suffix="${4-.`hostname -d`}"
+
+    local _a
+    local _tmp=""
+    _split "_a" "$_dname"
+
+    echo [ req ] > "${_work_dir%/}/openssl.cnf"
+    echo input_password = $_password >> "${_work_dir%/}/openssl.cnf"
+    echo output_password = $_password >> "${_work_dir%/}/openssl.cnf"
+    echo distinguished_name = req_distinguished_name >> "${_work_dir%/}/openssl.cnf"
+    echo req_extensions = v3_req  >> "${_work_dir%/}/openssl.cnf"
+    echo prompt=no >> "${_work_dir%/}/openssl.cnf"
+    echo [req_distinguished_name] >> "${_work_dir%/}/openssl.cnf"
+    for (( idx=${#_a[@]}-1 ; idx>=0 ; idx-- )) ; do
+        _tmp="`_trim "${_a[$idx]}"`"
+        # If wildcard certficat, replace to some hostname. NOTE: nocasematch is already used
+        [[ "${_tmp}" =~ CN=\*\. ]] && _tmp="CN=internalca${_domain_suffix}"
+        echo ${_tmp} >> "${_work_dir%/}/openssl.cnf"
+    done
+    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
+    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
+    echo [ v3_req ] >> "${_work_dir%/}/openssl.cnf"
+    echo basicConstraints = critical,CA:FALSE >> "${_work_dir%/}/openssl.cnf"
+    echo keyUsage = nonRepudiation, digitalSignature, keyEncipherment, dataEncipherment, keyAgreement >> "${_work_dir%/}/openssl.cnf"
+    echo extendedKeyUsage=emailProtection,clientAuth >> "${_work_dir%/}/openssl.cnf"
+    echo [ ${_domain_suffix#.} ] >> "${_work_dir%/}/openssl.cnf"
+    echo subjectAltName = DNS:${_domain_suffix#.},DNS:*${_domain_suffix} >> "${_work_dir%/}/openssl.cnf"
+}
+
 function f_certificate_setup() {
-    local __doc__="Generate keystore and certificate for Hadoop SSL"
+    local __doc__="Deprecated: Generate keystore and certificate for Hadoop SSL"
     # http://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.5.3/bk_security/content/create-internal-ca.html
     local _dname="$1"
     local _password="$2"
@@ -1989,14 +2052,13 @@ function f_certificate_setup() {
     fi
 
     if [ -z "$_domain_suffix" ]; then
-        _domain_suffix="${r_DOMAIN_SUFFIX-.localdomain}"
+        _domain_suffix=".`hostname -d`"
     fi
     if [ -z "$_dname" ]; then
         _dname="CN=*${_domain_suffix}, OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
     fi
-
     if [ -z "$_password" ]; then
-        _password=${g_DEFAULT_PASSWORD-hadoop}
+        _password="${g_DEFAULT_PASSWORD-hadoop}"
     fi
 
     if [ ! -d "$_work_dir" ]; then
@@ -2006,31 +2068,7 @@ function f_certificate_setup() {
         fi
     fi
 
-    local _a
-    local _tmp=""
-    _split "_a" "$_dname"
-
-    echo [ req ] > "${_work_dir%/}/openssl.cnf"
-    echo input_password = $_password >> "${_work_dir%/}/openssl.cnf"
-    echo output_password = $_password >> "${_work_dir%/}/openssl.cnf"
-    echo distinguished_name = req_distinguished_name >> "${_work_dir%/}/openssl.cnf"
-    echo req_extensions = v3_req  >> "${_work_dir%/}/openssl.cnf"
-    echo prompt=no >> "${_work_dir%/}/openssl.cnf"
-    echo [req_distinguished_name] >> "${_work_dir%/}/openssl.cnf"
-    for (( idx=${#_a[@]}-1 ; idx>=0 ; idx-- )) ; do
-        _tmp="`_trim "${_a[$idx]}"`"
-        # note: nocasematch is already used
-        [[ "${_tmp}" =~ CN=\*\. ]] && _tmp="CN=rootca${_domain_suffix}"
-        echo ${_tmp} >> "${_work_dir%/}/openssl.cnf"
-    done
-    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
-    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
-    echo [ v3_req ] >> "${_work_dir%/}/openssl.cnf"
-    echo basicConstraints = critical,CA:FALSE >> "${_work_dir%/}/openssl.cnf"
-    echo keyUsage = nonRepudiation, digitalSignature, keyEncipherment, dataEncipherment, keyAgreement >> "${_work_dir%/}/openssl.cnf"
-    echo extendedKeyUsage=emailProtection,clientAuth >> "${_work_dir%/}/openssl.cnf"
-    echo [ ${_domain_suffix#.} ] >> "${_work_dir%/}/openssl.cnf"
-    echo subjectAltName = DNS:${_domain_suffix#.},DNS:*${_domain_suffix} >> "${_work_dir%/}/openssl.cnf"
+    f_openssl_cnf_generate "$_dname" "$_password" "$_work_dir" "$_domain_suffix"
 
     # Generate server certificate in a keystore. TODO: why "localhost" is the alias?
     keytool -keystore "${_work_dir%/}/${KEYSTORE_FILE}" -alias localhost -validity 3650 -genkey -keyalg RSA -keysize 2048 -dname "$_dname" -noprompt -storepass "$_password" -keypass "$_password"
@@ -2058,6 +2096,67 @@ chmod 440 $SERVER_KEY_LOCATION$KEYSTORE_FILE
 chmod 440 $SERVER_KEY_LOCATION$TRUSTSTORE_FILE
 chmod 444 $SERVER_KEY_LOCATION$CLIENT_TRUSTSTORE_FILE"
     done
+}
+
+function f_internal_CA_setup() {
+    local __doc__="TODO: Setup Internal CA for generating self-signed certificate"
+    local _dname="$1"
+    local _password="$2"
+    local _ca_dir="${3-/etc/pki/CA}"
+    local _work_dir="${4-./}"
+    local _domain_suffix="${5-$r_DOMAIN_SUFFIX}"
+
+    if [ -z "$_domain_suffix" ]; then
+        _domain_suffix=".`hostname -d`"
+    fi
+    if [ -z "$_dname" ]; then
+        _dname="CN=internalca${_domain_suffix}, OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
+    fi
+    if [ -z "$_password" ]; then
+        _password="${g_DEFAULT_PASSWORD-hadoop}"
+    fi
+
+    openssl genrsa -out ${_work_dir%/}/ca.key 4096 #8192
+    # Generating CA certificate
+    f_openssl_cnf_generate "$_dname" "$_password" "$_work_dir" "$_domain_suffix"
+    openssl req -new -x509 -extensions v3_ca -key ${_work_dir%/}/ca.key -out ${_work_dir%/}/ca.crt -days 3650 -config "${_work_dir%/}/openssl.cnf" -passin pass:$_password || return $?
+
+    chmod 0400 ${_work_dir%/}/private/ca.key
+
+    # Set up the CA directory structure
+    mkdir -m 0700 ${_ca_dir%/} ${_ca_dir%/}/certs ${_ca_dir%/}/crl ${_ca_dir%/}/newcerts ${_ca_dir%/}/private
+    mv ${_work_dir%/}/ca.key ${_ca_dir%/}/private
+    mv ${_work_dir%/}/ca.crt ${_ca_dir%/}/certs
+    touch ${_ca_dir%/}/index.txt
+    echo 1000 >> ${_ca_dir%/}/serial
+}
+
+function f_self_signed_cert() {
+    local __doc__="TODO: Generate self-signed certificate. TODO: Assuming f_internal_CA_setup is used."
+    local _dname="$1"
+    local _password="$2"
+    local _ca_dir="${3-/etc/pki/CA}"
+    local _work_dir="${4-./}"
+
+    if [ -z "$_dname" ]; then
+        _dname="CN=`hostname -f`, OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
+    fi
+    if [ -z "$_password" ]; then
+        _password=${g_DEFAULT_PASSWORD-hadoop}
+    fi
+
+    # Key store for service
+    keytool -keystore "${_work_dir%/}/server.keystore.jks" -alias localhost -validity 3650 -genkey -keyalg RSA -keysize 2048 -dname "$_dname" -noprompt -storepass "$_password" -keypass "$_password"
+    keytool -keystore server.keystore.jks -alias localhost -certreq -file ${_work_dir%/}/server.csr -storepass "$_password" -keypass "$_password"
+    openssl x509 -req -CA ${_ca_dir%/}/certs/ca.crt -CAkey ${_ca_dir%/}/private/ca.key -in ${_work_dir%/}/server.csr -out ${_work_dir%/}/server.crt -days 3650 -CAcreateserial -passin "pass:$_password"
+
+    keytool -keystore "${_work_dir%/}/server.keystore.jks" -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "$_password" -keypass "$_password"
+    keytool -keystore "${_work_dir%/}/server.keystore.jks" -alias localhost -import -file ${_work_dir%/}/server.crt -noprompt -storepass "$_password" -keypass "$_password"
+
+    # trust store for service (eg.: hiveserver2)
+    keytool -keystore ${_work_dir%/}/server.truststore.jks -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "changeit" -keypass "changeit"
+    # trust store for client (eg.: beeline)
+    keytool -keystore ${_work_dir%/}/client.truststore.jks -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "changeit" -keypass "changeit"
 }
 
 function f_nifidemo_add() {
@@ -2199,28 +2298,16 @@ function _backup() {
     local _mod_dt="`stat -c%y $_file_path`"
     local _mod_ts=`date -d "${_mod_dt}" +"%Y%m%d-%H%M%S"`
 
-    if _isYes "$_force"; then
-
-        if [[ ! $_file_name =~ "." ]]; then
-            _new_file_name="${_file_name}_${_mod_ts}"
-        else
-            _new_file_name="${_file_name/\./_${_mod_ts}.}"
-        fi
-    else
-        if [[ ! $_file_name =~ "." ]]; then
-            _new_file_name="${_file_name}_${_mod_ts}"
-        else
-            _new_file_name="${_file_name/\./_${_mod_ts}.}"
-        fi
-
-        if [ -e "${g_backup_dir}${_new_file_name}" ]; then
+    _new_file_name="${_file_name}_${_mod_ts}"
+    if ! _isYes "$_force"; then
+        if [ -e "${g_backup_dir%/}/${_new_file_name}" ]; then
             _info "$_file_name has been already backed up. Skipping..."
             return 0
         fi
     fi
 
     _makeBackupDir
-    cp -p ${_file_path} ${g_backup_dir}${_new_file_name} || _critical "$FUNCNAME: failed to backup ${_file_path}"
+    cp -p ${_file_path} ${g_backup_dir%/}/${_new_file_name} || _critical "$FUNCNAME: failed to backup ${_file_path}"
 }
 function _makeBackupDir() {
     if [ ! -d "${g_BACKUP_DIR}" ]; then
