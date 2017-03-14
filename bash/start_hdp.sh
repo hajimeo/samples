@@ -750,6 +750,10 @@ function f_docker0_setup() {
     local _docer0="${1-$r_DOCKER_HOST_IP}"
     _info "Setting IP for docker0 to $r_DOCKER_HOST_IP ..."
     ifconfig docker0 $r_DOCKER_HOST_IP netmask 255.255.255.0
+    if [ -f /lib/systemd/system/docker.service ]; then
+    	grep "$r_DOCKER_HOST_IP" /lib/systemd/system/docker.service || (sed -i "s/H fd:\/\//H fd:\/\/ --bip=$r_DOCKER_HOST_IP\/24/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
+    fi
+
 }
 
 function f_docker_base_create() {
