@@ -749,9 +749,13 @@ function f_docker0_setup() {
     local __doc__="Setting IP for docker0 to $r_DOCKER_HOST_IP ..."
     local _docer0="${1-$r_DOCKER_HOST_IP}"
     _info "Setting IP for docker0 to $r_DOCKER_HOST_IP ..."
-    ifconfig docker0 $r_DOCKER_HOST_IP netmask 255.255.255.0
-    if [ -f /lib/systemd/system/docker.service ]; then
-    	grep "$r_DOCKER_HOST_IP" /lib/systemd/system/docker.service || (sed -i "s/H fd:\/\//H fd:\/\/ --bip=$r_DOCKER_HOST_IP\/24/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
+    if [ `ifconfig docker0 | grep "$r_DOCKER_HOST_IP" | wc -l | awk '{print $1;}'` -eq 0 ]; then
+    	ifconfig docker0 $r_DOCKER_HOST_IP netmask 255.255.255.0
+    	if [ -f /lib/systemd/system/docker.service ]; then
+    		grep "$r_DOCKER_HOST_IP" /lib/systemd/system/docker.service || (sed -i "s/H fd:\/\//H fd:\/\/ --bip=$r_DOCKER_HOST_IP\/24/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
+    	else
+		grep "$r_DOCKER_HOST_IP" /etc/default/docker || (echo "DOCKER_OPTS=\"-bip=$r_DOCKER_HOST_IP\/24\"">>/etc/default/docker && /etc/init.d/docker restart)
+    	fi
     fi
 
 }
@@ -1511,7 +1515,7 @@ function p_host_setup() {
         fi
 
         # NOTE: psql (postgresql-client) is required
-        apt-get -y install wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat
+        apt-get -y install ntpdate wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat
         #krb5-kdc krb5-admin-server mailutils postfix mysql-client htop
 
         f_docker_setup
