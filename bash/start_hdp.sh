@@ -756,12 +756,12 @@ function f_docker0_setup() {
     fi
 
     _info "Setting IP for docker0 to $_docker0 ..."
-    if [ `ifconfig docker0 | grep "$_docker0"` ]; then
+    if ifconfig docker0 | grep "$_docker0" &>/dev/null ; then
         ifconfig docker0 $_docker0 netmask 255.255.255.0
         if [ -f /lib/systemd/system/docker.service ]; then
             grep "$_docker0" /lib/systemd/system/docker.service || (sed -i "s/H fd:\/\//H fd:\/\/ --bip=$_docker0\/24/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
         else
-        grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"-bip=$_docker0\/24\"">>/etc/default/docker && /etc/init.d/docker restart)
+            grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"-bip=$_docker0\/24\"">>/etc/default/docker && /etc/init.d/docker restart)
         fi
     fi
 
