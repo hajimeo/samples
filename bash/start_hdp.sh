@@ -65,6 +65,8 @@ Available options:
     -f=function_name
           To run particular function (ex: f_log_cleanup in crontab)
 
+    -U    Skip Update check (for batch mode or cron)
+
     -h    Show this message.
 "
     echo "Available functions:"
@@ -746,16 +748,21 @@ function f_docker_sandbox_install() {
 }
 
 function f_docker0_setup() {
-    local __doc__="Setting IP for docker0 to $r_DOCKER_HOST_IP ..."
-    local _docer0="${1-$r_DOCKER_HOST_IP}"
-    _info "Setting IP for docker0 to $r_DOCKER_HOST_IP ..."
-    if [ `ifconfig docker0 | grep "$r_DOCKER_HOST_IP" | wc -l | awk '{print $1;}'` -eq 0 ]; then
-    	ifconfig docker0 $r_DOCKER_HOST_IP netmask 255.255.255.0
-    	if [ -f /lib/systemd/system/docker.service ]; then
-    		grep "$r_DOCKER_HOST_IP" /lib/systemd/system/docker.service || (sed -i "s/H fd:\/\//H fd:\/\/ --bip=$r_DOCKER_HOST_IP\/24/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
-    	else
-		grep "$r_DOCKER_HOST_IP" /etc/default/docker || (echo "DOCKER_OPTS=\"-bip=$r_DOCKER_HOST_IP\/24\"">>/etc/default/docker && /etc/init.d/docker restart)
-    	fi
+    local __doc__="Setting IP for docker0 to $r_DOCKER_HOST_IP (default)"
+    local _docker0="${1-$r_DOCKER_HOST_IP}"
+
+    if [ -z "$_docker0" ]; then
+        _docker0="$r_DOCKER_HOST_IP"
+    fi
+
+    _info "Setting IP for docker0 to $_docker0 ..."
+    if [ `ifconfig docker0 | grep "$_docker0"` ]; then
+        ifconfig docker0 $_docker0 netmask 255.255.255.0
+        if [ -f /lib/systemd/system/docker.service ]; then
+            grep "$_docker0" /lib/systemd/system/docker.service || (sed -i "s/H fd:\/\//H fd:\/\/ --bip=$_docker0\/24/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
+        else
+        grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"-bip=$_docker0\/24\"">>/etc/default/docker && /etc/init.d/docker restart)
+        fi
     fi
 
 }
@@ -1507,7 +1514,6 @@ function f_sysstat_setup() {
 
 function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
-    local _docer0="${1-$r_DOCKER_HOST_IP}"
 
     if [ `which apt-get` ]; then
         if _isYes "$r_APTGET_UPGRADE"; then
@@ -1525,7 +1531,7 @@ function p_host_setup() {
         f_dnsmasq
     fi
 
-    f_docker0_setup "$_docer0"
+    f_docker0_setup
     f_dockerfile
     f_docker_base_create
     f_docker_run
@@ -1568,7 +1574,7 @@ function f_dnsmasq() {
     grep '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
 
     # TODO: the first IP can be wrong one
-    _docer0="`f_docker_ip`"
+    _docker0="`f_docker_ip`"
 
     if [ -z "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
         _warn="Hostname for docker host in the private network is empty. using dockerhost1"
@@ -1576,16 +1582,16 @@ function f_dnsmasq() {
     fi
 
     if [ !  -s /etc/banner_add_hosts ]; then
-	echo "$_docer0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /etc/banner_add_hosts
-	return
+        echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /etc/banner_add_hosts
+        return
     fi
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-	grep -v "node${_n}${r_DOMAIN_SUFFIX}" /etc/banner_add_hosts > /tmp/banner
+        grep -v "node${_n}${r_DOMAIN_SUFFIX}" /etc/banner_add_hosts > /tmp/banner
         echo "${r_DOCKER_NETWORK_ADDR}${_n}    node${_n}${r_DOMAIN_SUFFIX} node${_n}" >> /tmp/banner
-	cat /tmp/banner > /etc/banner_add_hosts
-
+        cat /tmp/banner > /etc/banner_add_hosts
     done
+
     service dnsmasq restart
 }
 
@@ -1687,7 +1693,7 @@ function f_hostname_set() {
       _error "no hostname"
       return 1
     fi
-    
+
     local _current="`cat /etc/hostname`"
     hostname $_new_name
     echo "$_new_name" > /etc/hostname
@@ -1812,11 +1818,15 @@ function f_log_cleanup() {
     done
 }
 
-function f_checkUpdate() {
+function f_update_check() {
     local __doc__="Check if newer script is available, then download."
     local _local_file_path="${1-$BASH_SOURCE}"
     local _file_name=`basename ${_local_file_path}`
     local _remote_url="https://raw.githubusercontent.com/hajimeo/samples/master/bash/$_file_name"   # TODO: shouldn't I hard-code?
+
+    if _isYes "$_SKIP_UPDATE_CHECK" ; then
+        return
+    fi
 
     if [ ! -s "$_local_file_path" ]; then
         _warn "$FUNCNAME: $_local_file_path does not exist or empty"
@@ -2380,7 +2390,7 @@ function _port_wait() {
 function _isYes() {
     # Unlike other languages, 0 is nearly same as True in shell script
     local _answer="$1"
-    
+
     if [ $# -eq 0 ]; then
         _answer="${__LAST_ANSWER}"
     fi
@@ -2391,7 +2401,7 @@ function _isYes() {
     elif [[ "${_answer}" =~ $_TEST_REGEX ]]; then
         eval "${_answer}" && return 0
     fi
-    
+
     return 1
 }
 function _trim() {
@@ -2450,16 +2460,16 @@ function _isUrlButNotReachable() {
     return 0
 }
 function _split() {
-	local _rtn_var_name="$1"
-	local _string="$2"
-	local _delimiter="${3-,}"
-	local _original_IFS="$IFS"
-	eval "IFS=\"$_delimiter\" read -a $_rtn_var_name <<< \"$_string\""
-	IFS="$_original_IFS"
+    local _rtn_var_name="$1"
+    local _string="$2"
+    local _delimiter="${3-,}"
+    local _original_IFS="$IFS"
+    eval "IFS=\"$_delimiter\" read -a $_rtn_var_name <<< \"$_string\""
+    IFS="$_original_IFS"
 }
 function _trim() {
-	local _string="$1"
-	echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
+    local _string="$1"
+    echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
 }
 function _info() {
     # At this moment, not much difference from _echo and _warn, might change later
@@ -2592,7 +2602,7 @@ help() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "r:f:isah" opts; do
+    while getopts "r:f:isaUh" opts; do
         case $opts in
             a)
                 _AUTO_SETUP_HDP="Y"
@@ -2609,6 +2619,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             f)
                 _FUNCTION_NAME="$OPTARG"
+                ;;
+            U)
+                _SKIP_UPDATE_CHECK="Y"
                 ;;
             h)
                 usage | less
@@ -2645,7 +2658,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         if _isYes "$_AUTO_SETUP_HDP" && [ -z "$_RESPONSE_FILEPATH" ]; then
             _RESPONSE_FILEPATH="$g_LATEST_RESPONSE_URL"
         fi
-        f_checkUpdate
+        f_update_check
         p_interview_or_load
 
         if ! _isYes "$_AUTO_SETUP_HDP"; then
@@ -2672,7 +2685,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             fi
         fi
     elif _isYes "$_START_HDP"; then
-        f_checkUpdate
+        f_update_check
         f_loadResp
         p_hdp_start
     else
