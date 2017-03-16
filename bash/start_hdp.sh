@@ -1577,7 +1577,7 @@ function f_dnsmasq() {
     _docker0="`f_docker_ip`"
 
     if [ -z "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
-        _warn="Hostname for docker host in the private network is empty. using dockerhost1"
+        _warn "Hostname for docker host in the private network is empty. using dockerhost1"
         r_DOCKER_PRIVATE_HOSTNAME="dockerhost1"
     fi
 
