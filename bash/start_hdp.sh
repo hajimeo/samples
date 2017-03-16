@@ -109,7 +109,7 @@ function p_interview() {
     # TODO: Changing this IP later is troublesome, so need to be careful
     #local _docker_ip=`f_docker_ip "172.17.0.1"`
     _ask "Network Address (xxx.xxx.xxx.) for docker containers" "172.17.0." "r_DOCKER_NETWORK_ADDR" "N" "Y"
-    _ask "Network Mask (/8, /16, /24) for docker containers" "/24" "r_DOCKER_NETWORK_MASK" "N" "Y"
+    _ask "Network Mask (/16 or /24) for docker containers" "/24" "r_DOCKER_NETWORK_MASK" "N" "Y"
     _ask "IP address for docker0 interface" "${r_DOCKER_NETWORK_ADDR}.254" "r_DOCKER_HOST_IP" "N" "Y"
     _ask "Domain Suffix for docker containers" ".localdomain" "r_DOMAIN_SUFFIX" "N" "Y"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
@@ -811,7 +811,6 @@ function f_docker_unpause() {
 
     _info "starting $_how_many docker containers starting from $_start_from ..."
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        # docker seems doesn't care if i try to start already started one
         docker unpause node$_n
     done
 }
@@ -943,7 +942,11 @@ function f_docker_run() {
             _warn "node$_n already exists. Skipping..."
             continue
         fi
-        docker run -t -i -d --dns $_ip --name node$_n --privileged ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n node$_n${r_DOMAIN_SUFFIX} $_ip
+        local _netmask="255.255.0.0"
+        if [ "$r_DOCKER_NETWORK_MASK" = "/24" ]; then
+            _netmask="255.255.255.0"
+        fi
+        docker run -t -i -d --dns $_ip --name node$_n --privileged ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n node$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
     done
 }
 
