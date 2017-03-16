@@ -107,9 +107,10 @@ function p_interview() {
     _ask "Run apt-get upgrade before setting up?" "N" "r_APTGET_UPGRADE" "N"
     _ask "NTP Server" "ntp.ubuntu.com" "r_NTP_SERVER" "N" "Y"
     # TODO: Changing this IP later is troublesome, so need to be careful
-    local _docker_ip=`f_docker_ip "172.17.0.1"`
-    _ask "IP address for docker0 interface" "$_docker_ip" "r_DOCKER_HOST_IP" "N" "Y"
-    _ask "Network Address (xxx.xxx.xxx.) for docker containers" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
+    #local _docker_ip=`f_docker_ip "172.17.0.1"`
+    _ask "Network Address (xxx.xxx.xxx.) for docker containers" "172.17.0." "r_DOCKER_NETWORK_ADDR" "N" "Y"
+    _ask "Network Mask (/8, /16, /24) for docker containers" "/24" "r_DOCKER_NETWORK_MASK" "N" "Y"
+    _ask "IP address for docker0 interface" "${r_DOCKER_NETWORK_ADDR}.254" "r_DOCKER_HOST_IP" "N" "Y"
     _ask "Domain Suffix for docker containers" ".localdomain" "r_DOMAIN_SUFFIX" "N" "Y"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
     if [ -n "$r_CONTAINER_OS" ]; then
@@ -758,10 +759,13 @@ function f_docker0_setup() {
     _info "Setting IP for docker0 to $_docker0 ..."
     if ifconfig docker0 | grep "$_docker0" &>/dev/null ; then
         ifconfig docker0 $_docker0 netmask 255.255.255.0
-        if [ -f /lib/systemd/system/docker.service ]; then
-            grep "$_docker0" /lib/systemd/system/docker.service || (sed -i "s/H fd:\/\//H fd:\/\/ --bip=$_docker0\/24/" /lib/systemd/system/docker.service && systemctl daemon-reload ; service docker restart) # TODO: Ubuntu 14 does not have systemctl
-        else
-            grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"-bip=$_docker0\/24\"">>/etc/default/docker && /etc/init.d/docker restart)
+
+        if [ -n "$r_DOCKER_NETWORK_MASK" ]; then
+            if [ -f /lib/systemd/system/docker.service ] && which systemctl &>/dev/null ; then
+                grep "$_docker0" /lib/systemd/system/docker.service || (sed -i "s/H fd:\/\//H fd:\/\/ --bip=$_docker0\/24/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
+            else
+                grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"-bip=$_docker0\/24\"">>/etc/default/docker && /etc/init.d/docker restart)
+            fi
         fi
     fi
 
