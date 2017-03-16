@@ -748,8 +748,16 @@ function f_docker_sandbox_install() {
 function f_docker0_setup() {
     local __doc__="Setting IP for docker0 to $r_DOCKER_HOST_IP ..."
     local _docer0="${1-$r_DOCKER_HOST_IP}"
-    _info "Setting IP for docker0 to $_docer0 ..."
-    ifconfig docker0 $_docer0
+    _info "Setting IP for docker0 to $r_DOCKER_HOST_IP ..."
+    if [ `ifconfig docker0 | grep "$r_DOCKER_HOST_IP" | wc -l | awk '{print $1;}'` -eq 0 ]; then
+    	ifconfig docker0 $r_DOCKER_HOST_IP netmask 255.255.255.0
+    	if [ -f /lib/systemd/system/docker.service ]; then
+    		grep "$r_DOCKER_HOST_IP" /lib/systemd/system/docker.service || (sed -i "s/H fd:\/\//H fd:\/\/ --bip=$r_DOCKER_HOST_IP\/24/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
+    	else
+		grep "$r_DOCKER_HOST_IP" /etc/default/docker || (echo "DOCKER_OPTS=\"-bip=$r_DOCKER_HOST_IP\/24\"">>/etc/default/docker && /etc/init.d/docker restart)
+    	fi
+    fi
+
 }
 
 function f_docker_base_create() {
@@ -1507,7 +1515,7 @@ function p_host_setup() {
         fi
 
         # NOTE: psql (postgresql-client) is required
-        apt-get -y install wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat
+        apt-get -y install ntpdate wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat
         #krb5-kdc krb5-admin-server mailutils postfix mysql-client htop
 
         f_docker_setup
@@ -1548,6 +1556,9 @@ function p_host_setup() {
 
 function f_dnsmasq() {
     local __doc__="Install and set up dnsmasq"
+    local _how_many="${3-$r_NUM_NODES}"
+    local _start_from="${4-$r_NODE_START_NUM}"
+
     if [ ! `which apt-get` ]; then
         _warn "No apt-get"
         return 1
@@ -1564,14 +1575,16 @@ function f_dnsmasq() {
         r_DOCKER_PRIVATE_HOSTNAME="dockerhost1"
     fi
 
-    if [ -s /etc/banner_add_hosts ]; then
-        _warn "/etc/banner_add_hosts already exists. Skipping..."
-        return
+    if [ !  -s /etc/banner_add_hosts ]; then
+	echo "$_docer0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /etc/banner_add_hosts
+	return
     fi
 
-    echo "$_docer0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /etc/banner_add_hosts
-    for i in `seq 1 99`; do
-        echo "${r_DOCKER_NETWORK_ADDR}${i}    node${i}${r_DOMAIN_SUFFIX} node${i}" >> /etc/banner_add_hosts
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+	grep -v "node${_n}${r_DOMAIN_SUFFIX}" /etc/banner_add_hosts > /tmp/banner
+        echo "${r_DOCKER_NETWORK_ADDR}${_n}    node${_n}${r_DOMAIN_SUFFIX} node${_n}" >> /tmp/banner
+	cat /tmp/banner > /etc/banner_add_hosts
+
     done
     service dnsmasq restart
 }
