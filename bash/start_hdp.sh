@@ -758,7 +758,12 @@ function f_docker0_setup() {
 
     _info "Setting IP for docker0 to $_docker0 ..."
     if ifconfig docker0 | grep "$_docker0" &>/dev/null ; then
-        ifconfig docker0 $_docker0 netmask 255.255.255.0
+        local _netmask="255.255.0.0"
+        if [ "$r_DOCKER_NETWORK_MASK" = "/24" ]; then
+            _netmask="255.255.255.0"
+        fi
+
+        ifconfig docker0 $_docker0 netmask $_netmask
 
         if [ -n "$r_DOCKER_NETWORK_MASK" ]; then
             if [ -f /lib/systemd/system/docker.service ] && which systemctl &>/dev/null ; then
