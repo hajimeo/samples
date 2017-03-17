@@ -39,7 +39,7 @@ function f_topCausedByExceptions() {
     if [[ "$_is_shorter" =~ (^y|^Y) ]]; then
         _regex="Caused by.+?Exception"
     fi
-    egrep -wo "$_regex" "$_path" | sort | uniq -c | sort
+    egrep -wo "$_regex" "$_path" | sort | uniq -c | sort -n
 }
 
 function f_topErrors() {
@@ -56,9 +56,9 @@ function f_topErrors() {
     fi
 
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
-        egrep -wo "$_regex" "$_path" | sort | uniq -c | sort
+        egrep -wo "$_regex" "$_path" | sort | uniq -c | sort -n
     else
-        egrep -wo "$_regex" "$_path" | sed -E "$_num_regex" | sort | uniq -c | sort
+        egrep -wo "$_regex" "$_path" | sed -E "$_num_regex" | sort | uniq -c | sort -n
     fi
 }
 
