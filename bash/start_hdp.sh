@@ -2030,6 +2030,13 @@ function f_openssl_cnf_generate() {
     local _work_dir="${3-./}"
     local _domain_suffix="${4-.`hostname -d`}"
 
+    if [ -z "$_dname" ]; then
+        _dname="CN=`hostname -f`, OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
+    fi
+    if [ -z "$_password" ]; then
+        _password=${g_DEFAULT_PASSWORD-hadoop}
+    fi
+
     local _a
     local _tmp=""
     _split "_a" "$_dname"
@@ -2164,6 +2171,25 @@ function f_internal_CA_setup() {
 }
 
 function f_self_signed_cert() {
+    local __doc__="TODO: Setup a self-signed certificate with openssl command. See: http://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.5.3/bk_security/content/set_up_ssl_for_ambari.html"
+    local _base_name="${1-selfsign}"
+    local _key_strength="${2-2048}"
+    local _openssl_config="$3"
+    local _config=""
+
+    if [ -n "$_openssl_config" ] && [ -e "$_openssl_config" ]; then
+        _config=" -config ${_openssl_config}" #TODO:  -passin pass:$_password
+    fi
+    # Create a private key
+    openssl genrsa -out ./${_base_name}.key $_key_strength
+    # Create a CSR
+    openssl req -new -key ./${_base_name}.key -out ./${_base_name}.csr $_config
+    # Signing a cert by itself
+    openssl x509 -req -days 3650 -in ./${_base_name}.csr -signkey ./${_base_name}.key -out ./${_base_name}.crt
+    # openssl x509 -in cert.crt -inform der -outform pem -out cert.pem
+}
+
+function f_self_signed_cert_with_internal_CA() {
     local __doc__="TODO: Generate self-signed certificate. TODO: Assuming f_internal_CA_setup is used."
     local _dname="$1"
     local _password="$2"
