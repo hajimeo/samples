@@ -1,0 +1,21 @@
+[ req ]
+input_password = hadoop
+output_password = hadoop
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt=no
+[req_distinguished_name]
+C=AU
+ST=QLD
+L=Brisbane
+O=Hortonworks
+OU=Support
+CN=sandbox.hortonworks.com
+[EMAIL PROTECTED]
+[EMAIL PROTECTED]
+[ v3_req ]
+basicConstraints = critical,CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment, dataEncipherment, keyAgreement
+extendedKeyUsage=emailProtection,clientAuth
+[ hortonworks.com ]
+subjectAltName = DNS:hortonworks.com,DNS:*.hortonworks.com
