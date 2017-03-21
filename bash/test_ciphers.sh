@@ -12,17 +12,16 @@ echo Obtaining cipher list from $SERVER with $(openssl version).
 
 for cipher in ${ciphers[@]}
 do
-echo -n Testing $cipher...
 result=$(echo -n | openssl s_client -cipher "$cipher" -connect $SERVER 2>&1)
 if [[ "$result" =~ ":error:" ]] ; then
   error=$(echo -n $result | cut -d':' -f6)
-  echo NO \($error\)
+  echo -e "$cipher\tNO ($error)" >&2
 else
   if [[ "$result" =~ "Cipher is ${cipher}" || "$result" =~ "Cipher    :" ]] ; then
-    echo YES
+    echo -e "$cipher\tYES"
   else
-    echo UNKNOWN RESPONSE
-    echo $result
+    echo -e "$cipher\tUNKNOWN RESPONSE" >&2
+    echo $result >&2
   fi
 fi
 sleep $DELAY
