@@ -73,12 +73,16 @@ else
     -p 61888:61888 \
     -p 1520:1520 \
     -p 3000:3000 \
+    -p 10016:10016 \
     -p 2222:22 \
     --sysctl kernel.shmmax=${_SHMMAX} \
     sandbox /usr/sbin/sshd -D
 
     _NEED_RESET_ADMIN_PWD=true
 fi
+# NOTE: how to change/add port later (by cata)
+# vim /var/lib/docker/containers/${_CONTAINER_ID}*/config.v2.json
+# then restart docker service, then start your container
 
 #docker exec -t ${_NAME} /etc/init.d/startup_script start
 docker exec -t ${_NAME} make --makefile /usr/lib/hue/tools/start_scripts/start_deps.mf  -B Startup -j -i
