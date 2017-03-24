@@ -74,6 +74,10 @@ else
     -p 1520:1520 \
     -p 3000:3000 \
     -p 10016:10016 \
+    -p 50470:50470 \
+    -p 50475:50475 \
+    -p 19889:19889 \
+    -p 8044:8044 \
     -p 2222:22 \
     --sysctl kernel.shmmax=${_SHMMAX} \
     sandbox /usr/sbin/sshd -D
