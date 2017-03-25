@@ -85,21 +85,23 @@ else
     _NEED_RESET_ADMIN_PWD=true
 fi
 # NOTE: how to change/add port later (by cata)
+# stop the container, then stop docker service
 # vim /var/lib/docker/containers/${_CONTAINER_ID}*/config.v2.json
-# then restart docker service, then start your container
 
 #docker exec -t ${_NAME} /etc/init.d/startup_script start
-docker exec -t ${_NAME} make --makefile /usr/lib/hue/tools/start_scripts/start_deps.mf  -B Startup -j -i
-docker exec -t ${_NAME} nohup su - hue -c '/bin/bash /usr/lib/tutorials/tutorials_app/run/run.sh' &>/dev/null
+#docker exec -t ${_NAME} make --makefile /usr/lib/hue/tools/start_scripts/start_deps.mf  -B Startup -j -i
+#docker exec -t ${_NAME} nohup su - hue -c '/bin/bash /usr/lib/tutorials/tutorials_app/run/run.sh' &>/dev/null
 docker exec -t ${_NAME} touch /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
 docker exec -t ${_NAME} chown oozie:hadoop /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
-docker exec -d ${_NAME} /etc/init.d/tutorials start
+#docker exec -d ${_NAME} /etc/init.d/tutorials start
 docker exec -d ${_NAME} /etc/init.d/splash
 docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
 
 if ${_NEED_RESET_ADMIN_PWD} ; then
     echo "INFO: running ambari-admin-password-reset ..."
     docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
+    # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
+    docker exec -it ${_NAME} bash -c 'grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
 else
     docker exec -d ${_NAME} sysctl -w kernel.shmmax=${_SHMMAX}
     docker exec -d ${_NAME} /sbin/sysctl -p
