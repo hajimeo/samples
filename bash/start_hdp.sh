@@ -2085,23 +2085,23 @@ function f_ssl_self_signed_cert() {
     local _password="$3"
     local _key_strength="${4-2048}"
     local _work_dir="${5-./}"
+    local _subj=""
 
     if [ -z "$_password" ]; then
         _password="${g_DEFAULT_PASSWORD-hadoop}"
     fi
-    if [ -z "$_subject" ]; then
-        _error "Subject is required"
-        return 1
+    if [ -n "$_subject" ]; then
+        _subj="-subj ${_subject}"
     fi
 
     # Create a private key
     openssl genrsa -out ${_work_dir%/}/${_base_name}.key $_key_strength || return $?
-    #openssl req -new -x509 -nodes -days 3650 -key ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.crt -subj "$_subject" || return $?
 
-    # Create a CSR
-    openssl req -new -key ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.csr -subj "$_subject" || return $?
-    # Signing a cert by itself
-    openssl x509 -req -days 3650 -in ${_work_dir%/}/${_base_name}.csr -signkey ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.crt || return $?
+    openssl req -new -x509 -nodes -days 3650 -key ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.crt $_subj || return $?
+    # or Create a CSR
+    #openssl req -new -key ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.csr $_subj || return $?
+    # Signing a cert by itself TODO: -extensions v3_ca -extfile openssl.cfg
+    #openssl x509 -req -days 3650 -in ${_work_dir%/}/${_base_name}.csr -signkey ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.crt || return $?
     #openssl x509 -in cert.crt -inform der -outform pem -out cert.pem
 
     # Convert pem to p12, then jks
