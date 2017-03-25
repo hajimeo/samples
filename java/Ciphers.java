@@ -1,5 +1,9 @@
 /**
  * https://confluence.atlassian.com/stashkb/list-ciphers-used-by-jvm-679609085.html
+ * List available ciphers for the JVM
+ *
+ * /usr/jdk64/jdk1.7.0_67/bin/javac Ciphers.java
+ *
  */
 
 import java.util.Iterator;
