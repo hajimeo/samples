@@ -963,7 +963,7 @@ function f_docker_run() {
 
 function f_kdc_install_on_ambari_node() {
     # TODO: somehow doesn't work well with docker
-    local __doc__="Install KDC/kadmin service to $r_AMBARI_HOST"
+    local __doc__="Install KDC/kadmin service to $r_AMBARI_HOST. May need UDP port forwarder like https://raw.githubusercontent.com/hajimeo/samples/master/python/udp_port_forwarder.py"
     local _realm="${1-EXAMPLE.COM}"
     local _password="${2-$g_DEFAULT_PASSWORD}"
     local _server="${3-$r_AMBARI_HOST}"
@@ -986,10 +986,41 @@ function f_kdc_install_on_ambari_node() {
     ssh root@$_server -t "kdb5_util create -s -P $_password"
     # chkconfig krb5kdc on;chkconfig kadmin on; doesn't work with docker
     ssh root@$_server -t "echo '*/admin *' > /var/kerberos/krb5kdc/kadm5.acl;service krb5kdc restart;service kadmin restart;kadmin.local -q \"add_principal -pw $_password admin/admin\""
+    #ssh -2CNnqTxfg -L88:$_server:88 $_server # TODO: UDP does not work
+    #ssh -2CNnqTxfg -L749:$_server:749 $_server
+    #ssh -2CNnqTxfg -L464:$_server:464 $_server
+}
+
+function f_kdc_install_on_host() {
+    local __doc__="Install KDC server packages on Ubuntu (takes long time)"
+    local _realm="${1-EXAMPLE.COM}"
+    local _password="${2-$g_DEFAULT_PASSWORD}"
+    local _server="${3-`hostname -i`}"
+
+    if [ ! `which apt-get` ]; then
+        _warn "No apt-get"
+        return 1
+    fi
+
+    DEBIAN_FRONTEND=noninteractive apt-get install -y krb5-kdc krb5-admin-server || return $?
+
+    mv /etc/krb5.conf /etc/krb5.conf.orig
+    echo "[libdefaults]
+ default_realm = $_realm
+[realms]
+ $_realm = {
+   kdc = $_server
+   admin_server = $_server
+ }" > /etc/krb5.conf
+    kdb5_util create -s -P $_password || return $?  # or krb5_newrealm
+    echo '*/admin *' > /etc/krb5kdc/kadm5.acl
+    service krb5-kdc restart
+    service krb5-admin-server restart
+    kadmin.local -q "add_principal -pw $_password admin/admin"
 }
 
 function f_ldap_server_install_on_host() {
-    local __doc__="Install LDAP server packages on Ubuntu TODO: setup"
+    local __doc__="TODO: Install LDAP server packages on Ubuntu (need to test setup)"
     local _ldap_domain="$1"
     local _password="${2-$g_DEFAULT_PASSWORD}"
 
@@ -1005,7 +1036,7 @@ function f_ldap_server_install_on_host() {
 
     local _set_noninteractive=false
     if [ -z "$DEBIAN_FRONTEND" ]; then
-        export noninteractive=noninteractive
+        export DEBIAN_FRONTEND=noninteractive
         _set_noninteractive=true
     fi
     debconf-set-selections <<EOF
@@ -1540,7 +1571,7 @@ function p_host_setup() {
 
         # NOTE: psql (postgresql-client) is required
         apt-get -y install ntpdate wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat
-        #krb5-kdc krb5-admin-server mailutils postfix mysql-client htop
+        #mailutils postfix mysql-client htop
 
         f_docker_setup
         f_sysstat_setup
@@ -2112,6 +2143,7 @@ function f_ssl_self_signed_cert() {
     keytool -keystore ${_work_dir%/}/${g_TRUSTSTORE_FILE} -alias ${_base_name} -import -file ${_work_dir%/}/${_base_name}.crt -noprompt -storepass "changeit" -keypass "changeit" || return $?
     # trust store for client (eg.: beeline)
     keytool -keystore ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE} -alias ${_base_name} -import -file ${_work_dir%/}/${_base_name}.crt -noprompt -storepass "changeit" -keypass "changeit" || return $?
+    chmod a+r ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE}
 }
 
 function f_ssl_internal_CA_setup() {
@@ -2165,18 +2197,22 @@ function f_ssl_self_signed_cert_with_internal_CA() {
         _password=${g_DEFAULT_PASSWORD-hadoop}
     fi
 
-    # Key store for service
+    # Key store for service (same as self-signed at this moment)
     keytool -keystore "${_work_dir%/}/${g_KEYSTORE_FILE}" -alias localhost -validity 3650 -genkey -keyalg RSA -keysize 2048 -dname "$_dname" -noprompt -storepass "$_password" -keypass "$_password" || return $?
-    keytool -keystore ${g_KEYSTORE_FILE} -alias localhost -certreq -file ${_work_dir%/}/server.csr -storepass "$_password" -keypass "$_password" || return $?
+    # Generate CSR from above keystore
+    keytool -keystore "${_work_dir%/}/${g_KEYSTORE_FILE}" -alias localhost -certreq -file ${_work_dir%/}/server.csr -storepass "$_password" -keypass "$_password" || return $?
+    # Sign with internal CA (ca.crt, ca,key) and generate server.crt
     openssl x509 -req -CA ${_ca_dir%/}/certs/ca.crt -CAkey ${_ca_dir%/}/private/ca.key -in ${_work_dir%/}/server.csr -out ${_work_dir%/}/server.crt -days 3650 -CAcreateserial -passin "pass:$_password" || return $?
-
+    # Import internal CA into keystore
     keytool -keystore "${_work_dir%/}/${g_KEYSTORE_FILE}" -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "$_password" -keypass "$_password" || return $?
+    # Import internal CA signed cert (server.crt) int this keystore
     keytool -keystore "${_work_dir%/}/${g_KEYSTORE_FILE}" -alias localhost -import -file ${_work_dir%/}/server.crt -noprompt -storepass "$_password" -keypass "$_password" || return $?
 
-    # trust store for service (eg.: hiveserver2)
+    # trust store for service (eg.: hiveserver2), which contains internal CA cert only
     keytool -keystore ${_work_dir%/}/${g_TRUSTSTORE_FILE} -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "changeit" -keypass "changeit" || return $?
-    # trust store for client (eg.: beeline)
+    # trust store for client (eg.: beeline), but at this moment, save content as above
     keytool -keystore ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE} -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "changeit" -keypass "changeit" || return $?
+    chmod a+r ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE}
 }
 
 function f_ssl_distribute_jks() {
@@ -2195,6 +2231,72 @@ chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*.jks
 chmod 440 ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE
 chmod 440 ${g_SERVER_KEY_LOCATION%/}/$g_TRUSTSTORE_FILE
 chmod 444 ${g_SERVER_KEY_LOCATION%/}/$g_CLIENT_TRUSTSTORE_FILE"
+    done
+}
+
+function f_ssl_ambari_config_set_for_hadoop() {
+    local __doc__="TODO: Update configs via Ambari for HDFS/YARN/MR2 (and tez). Not auomating, but asking questions"
+    local _ambari_ssl="${1}"
+    local _ambari_host="${2}"
+    local _ambari_port="${3-8080}"
+    local _opts=""
+
+    if _isYes "$_ambari_ssl"; then
+        _opts="$_opts -s"
+    fi
+    if [ -z "$_ambari_host" ]; then
+        if [ -z "$r_AMBARI_HOST" ]; then
+            _ambari_host="hostname -f"
+        else
+            _ambari_host="$r_AMBARI_HOST"
+        fi
+        _info "Using $_ambari_hsot for Ambari server hostname..."
+    fi
+
+    local _type_prop=""
+    declare -A _configs # NOTE: this should be a local variable automatically
+
+    _configs["hdfs-site:dfs.namenode.https-address"]="sandbox.hortonworks.com:50470"
+    _configs["yarn-site:yarn.log.server.url"]="https://sandbox.hortonworks.com:19889/jobhistory/logs"
+    _configs["yarn-site:yarn.resourcemanager.webapp.https.address"]="sandbox.hortonworks.com:8090"
+    _configs["ssl-server:ssl.server.keystore.location"]="${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE"
+    _configs["ssl-server:ssl.server.keystore.password"]="$g_DEFAULT_PASSWORD"
+    _configs["ssl-server:ssl.server.truststore.location"]="${g_SERVER_KEY_LOCATION%/}/$g_TRUSTSTORE_FILE"
+    _configs["ssl-server:ssl.server.truststore.password"]="changeit"
+    _configs["ssl-client:ssl.client.truststore.location"]="${g_SERVER_KEY_LOCATION%/}/$g_CLIENT_TRUSTSTORE_FILE"
+    _configs["ssl-client:ssl.client.truststore.password"]="changeit"
+
+	for _k in "${!_configs[@]}"; do
+        _split "_type_prop" "$_k" ":"
+        _ask "${_type_prop[0]} ${_type_prop[1]}" "${_configs[$_k]}" "" "" "Y"
+        _configs[$_k]="$__LAST_ANSWER"
+    done
+
+    _configs["core-site:hadoop.ssl.require.client.cert"]="false"
+    _configs["core-site:hadoop.ssl.hostname.verifier"]="DEFAULT"
+    _configs["core-site:hadoop.ssl.keystores.factory.class"]="org.apache.hadoop.security.ssl.FileBasedKeyStoresFactory"
+    _configs["core-site:hadoop.ssl.server.conf"]="ssl-server.xml"
+    _configs["core-site:hadoop.ssl.client.conf"]="ssl-client.xml"
+
+    _configs["hdfs-site:dfs.http.policy"]="HTTPS_ONLY"
+    _configs["hdfs-site:dfs.client.https.need-auth"]="false"
+    _configs["hdfs-site:dfs.datanode.https.address"]="0.0.0.0:50475"
+
+    _configs["mapred-site:mapreduce.jobhistory.http.policy"]="HTTPS_ONLY"
+    _configs["mapred-site:mapreduce.jobhistory.webapp.https.address"]="0.0.0.0:19889"
+
+    _configs["yarn-site:yarn.http.policy"]="HTTPS_ONLY"
+    _configs["yarn-site:yarn.nodemanager.webapp.https.address"]="0.0.0.0:8044"
+
+    _configs["ssl-server:ssl.server.keystore.type"]="jks"
+    _configs["ssl-server:ssl.server.keystore.keypassword"]=${_configs["ssl-server:ssl.server.keystore.password"]}
+    _configs["ssl-server:ssl.server.truststore.type"]="jks"
+
+    _configs["tez-site:tez.runtime.shuffle.ssl.enable"]="true"
+    _configs["tez-site:tez.runtime.shuffle.keep-alive.enabled"]="true"
+
+	for _k in "${!_configs[@]}"; do
+        root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh $_opts set localhost $_ambari_host ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
     done
 }
 
