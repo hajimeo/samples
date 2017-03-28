@@ -1630,9 +1630,8 @@ function f_dnsmasq() {
         r_DOCKER_PRIVATE_HOSTNAME="dockerhost1"
     fi
 
-    if [ !  -s /etc/banner_add_hosts ]; then
+    if [ ! -s /etc/banner_add_hosts ]; then
         echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /etc/banner_add_hosts
-        return
     fi
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
