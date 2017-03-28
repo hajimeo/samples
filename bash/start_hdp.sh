@@ -85,7 +85,7 @@ g_DEFAULT_PASSWORD="hadoop"
 __PID="$$"
 __LAST_ANSWER=""
 
-g_SERVER_KEY_LOCATION="/etc/hadoop/conf/secure/"
+g_SERVER_KEY_LOCATION="/etc/hadoop/secure/"
 g_KEYSTORE_FILE="server.keystore.jks"
 g_TRUSTSTORE_FILE="server.truststore.jks"
 g_CLIENT_TRUSTSTORE_FILE="client.truststore.jks"
@@ -1565,8 +1565,10 @@ function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
 
     if [ `which apt-get` ]; then
+        apt-get update || return $?
+
         if _isYes "$r_APTGET_UPGRADE"; then
-            apt-get update && apt-get upgrade -y
+            apt-get upgrade -y
         fi
 
         # NOTE: psql (postgresql-client) is required
