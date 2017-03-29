@@ -90,6 +90,7 @@ g_KEYSTORE_FILE="server.keystore.jks"
 g_TRUSTSTORE_FILE="server.truststore.jks"
 g_CLIENT_TRUSTSTORE_FILE="client.truststore.jks"
 g_YARN_USER="yarn"
+g_APT_UPDATE_DONE=""
 
 ### Procedure type functions
 
@@ -107,10 +108,12 @@ function p_interview() {
     # TODO: Not good place to install package
     if ! which python &>/dev/null ; then
         _warn "Python is required for interview mode. Installing..."
-        apt-get update && apt-get install python -y
+        _isYes "$g_APT_UPDATE_DONE" || apt-get update && g_APT_UPDATE_DONE="Y"
+        apt-get install python -y
     fi
 
     _ask "Run apt-get upgrade before setting up?" "N" "r_APTGET_UPGRADE" "N"
+    _ask "Keep running containers when you start this script with another response file?" "N" "r_DOCKER_KEEP_RUNNING" "N"
     _ask "NTP Server" "ntp.ubuntu.com" "r_NTP_SERVER" "N" "Y"
     # TODO: Changing this IP later is troublesome, so need to be careful
     #local _docker_ip=`f_docker_ip "172.17.0.1"`
@@ -264,7 +267,9 @@ function p_hdp_start() {
     f_loadResp
     f_docker0_setup
     f_ntp
-    f_docker_stop_other
+    if ! _isYes "$r_DOCKER_KEEP_RUNNING"; then
+        f_docker_stop_other
+    fi
     f_docker_start
     sleep 4
     _info "NOT setting up the default GW. please use f_gw_set if necessary"
@@ -690,7 +695,7 @@ function f_docker_setup() {
     # https://docs.docker.com/engine/installation/linux/ubuntulinux/
     which docker &>/dev/null
     if [ $? -gt 0 ] || [ ! -s /etc/apt/sources.list.d/docker.list ]; then
-        #apt-get update
+        _isYes "$g_APT_UPDATE_DONE" || apt-get update && g_APT_UPDATE_DONE="Y"
         apt-get install apt-transport-https ca-certificates -y
         apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key for docker"
         grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-`cat /etc/lsb-release | grep CODENAME | cut -d= -f2` main" >> /etc/apt/sources.list.d/docker.list
@@ -1565,7 +1570,7 @@ function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
 
     if [ `which apt-get` ]; then
-        apt-get update || return $?
+        _isYes "$g_APT_UPDATE_DONE" || apt-get update && g_APT_UPDATE_DONE="Y"
 
         if _isYes "$r_APTGET_UPGRADE"; then
             apt-get upgrade -y
@@ -1938,7 +1943,6 @@ function f_vnc_setup() {
         f_useradd "$_user" "$_pass" || return $?
     fi
 
-    # apt-get update
     apt-get install -y xfce4 xfce4-goodies firefox tightvncserver autocutsel
 
     su - $_user -c 'mkdir ${HOME%/}/.vnc; echo "'$_vpass'" | vncpasswd -f > ${HOME%/}/.vnc/passwd
@@ -2273,14 +2277,14 @@ function f_ssl_ambari_config_set_for_hadoop() {
         _configs[$_k]="$__LAST_ANSWER"
     done
 
-    _configs["core-site:hadoop.ssl.require.client.cert"]="false"
+    _configs["core-site:hadoop.ssl.require.client.cert"]="false"    # TODO: should this be true?
     _configs["core-site:hadoop.ssl.hostname.verifier"]="DEFAULT"
     _configs["core-site:hadoop.ssl.keystores.factory.class"]="org.apache.hadoop.security.ssl.FileBasedKeyStoresFactory"
     _configs["core-site:hadoop.ssl.server.conf"]="ssl-server.xml"
     _configs["core-site:hadoop.ssl.client.conf"]="ssl-client.xml"
 
     _configs["hdfs-site:dfs.http.policy"]="HTTPS_ONLY"
-    _configs["hdfs-site:dfs.client.https.need-auth"]="false"
+    _configs["hdfs-site:dfs.client.https.need-auth"]="false"        # TODO: should this be true?
     _configs["hdfs-site:dfs.datanode.https.address"]="0.0.0.0:50475"
 
     _configs["mapred-site:mapreduce.jobhistory.http.policy"]="HTTPS_ONLY"
@@ -2295,6 +2299,38 @@ function f_ssl_ambari_config_set_for_hadoop() {
 
     _configs["tez-site:tez.runtime.shuffle.ssl.enable"]="true"
     _configs["tez-site:tez.runtime.shuffle.keep-alive.enabled"]="true"
+
+	for _k in "${!_configs[@]}"; do
+        root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh $_opts set localhost $_ambari_host ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
+    done
+}
+
+function f_ssl_ambari_config_disable_for_hadoop() {
+    local __doc__="TODO: Update configs via Ambari for HDFS/YARN/MR2 (and tez) to disable SSH"
+    local _ambari_ssl="${1}"
+    local _ambari_host="${2}"
+    local _ambari_port="${3-8080}"
+    local _opts=""
+
+    if _isYes "$_ambari_ssl"; then
+        _opts="$_opts -s"
+    fi
+    if [ -z "$_ambari_host" ]; then
+        if [ -z "$r_AMBARI_HOST" ]; then
+            _ambari_host="hostname -f"
+        else
+            _ambari_host="$r_AMBARI_HOST"
+        fi
+        _info "Using $_ambari_hsot for Ambari server hostname..."
+    fi
+
+    local _type_prop=""
+    declare -A _configs # NOTE: this should be a local variable automatically
+
+    _configs["hdfs-site:dfs.http.policy"]="HTTPS_ONLY"
+    _configs["mapred-site:mapreduce.jobhistory.http.policy"]="HTTPS_ONLY"
+    _configs["yarn-site:yarn.http.policy"]="HTTPS_ONLY"
+    _configs["tez-site:tez.runtime.shuffle.ssl.enable"]="false"
 
 	for _k in "${!_configs[@]}"; do
         root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh $_opts set localhost $_ambari_host ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
@@ -2789,8 +2825,10 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             _ask "Would you like to stop all running containers if running?" "Y"
             if _isYes; then f_docker_stop_all; fi
         else
-            _info "Stopping all docker containers..."
-            f_docker_stop_all
+            if ! _isYes "$r_DOCKER_KEEP_RUNNING"; then
+                _info "Stopping all docker containers..."
+                f_docker_stop_all
+            fi
         fi
 
         g_START_TIME="`date -u`"
