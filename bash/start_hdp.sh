@@ -274,7 +274,6 @@ function p_hdp_start() {
     sleep 4
     _info "NOT setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
-    f_log_cleanup
     #f_etcs_mount
 
     f_ambari_server_start
@@ -282,8 +281,9 @@ function p_hdp_start() {
     # not interested in agent restart output
     f_ambari_agent "restart" > /dev/null
 
+    f_log_cleanup
+
     #f_ambari_update_config
-    _info "Will start all services ..."
     f_services_start
     f_screen_cmd
 }
@@ -780,7 +780,7 @@ function f_docker0_setup() {
             if [ -f /lib/systemd/system/docker.service ] && which systemctl &>/dev/null ; then
                 grep "$_docker0" /lib/systemd/system/docker.service || (sed -i 's/H fd:\/\//H fd:\/\/ --bip='$_docker0'\'$r_DOCKER_NETWORK_MASK'/' /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
             else
-                grep "$_docker0" /etc/default/docker || (echo 'DOCKER_OPTS="-bip='$_docker0$r_DOCKER_NETWORK_MASK'"' >> /etc/default/docker && /etc/init.d/docker restart)  # TODO: untested
+                grep "$_docker0" /etc/default/docker || (echo 'DOCKER_OPTS="$DOCKER_OPTS --bip='$_docker0$r_DOCKER_NETWORK_MASK'"' >> /etc/default/docker && /etc/init.d/docker restart)  # TODO: untested. May not work with 14.04
             fi
         fi
     fi
@@ -967,8 +967,7 @@ function f_docker_run() {
 }
 
 function f_kdc_install_on_ambari_node() {
-    # TODO: somehow doesn't work well with docker
-    local __doc__="Install KDC/kadmin service to $r_AMBARI_HOST. May need UDP port forwarder like https://raw.githubusercontent.com/hajimeo/samples/master/python/udp_port_forwarder.py"
+    local __doc__="(Deprecated) Install KDC/kadmin service to $r_AMBARI_HOST. May need UDP port forwarder https://raw.githubusercontent.com/hajimeo/samples/master/python/udp_port_forwarder.py"
     local _realm="${1-EXAMPLE.COM}"
     local _password="${2-$g_DEFAULT_PASSWORD}"
     local _server="${3-$r_AMBARI_HOST}"
@@ -991,9 +990,7 @@ function f_kdc_install_on_ambari_node() {
     ssh root@$_server -t "kdb5_util create -s -P $_password"
     # chkconfig krb5kdc on;chkconfig kadmin on; doesn't work with docker
     ssh root@$_server -t "echo '*/admin *' > /var/kerberos/krb5kdc/kadm5.acl;service krb5kdc restart;service kadmin restart;kadmin.local -q \"add_principal -pw $_password admin/admin\""
-    #ssh -2CNnqTxfg -L88:$_server:88 $_server # TODO: UDP does not work
-    #ssh -2CNnqTxfg -L749:$_server:749 $_server
-    #ssh -2CNnqTxfg -L464:$_server:464 $_server
+    #ssh -2CNnqTxfg -L88:$_server:88 $_server # TODO: UDP does not work. and need 749 and 464
 }
 
 function f_kdc_install_on_host() {
@@ -1196,12 +1193,42 @@ function f_ambari_server_install() {
 
 function f_ambari_server_start() {
     local __doc__="Starting ambari-server on $r_AMBARI_HOST"
+    _port_wait "$r_AMBARI_HOST" "22"
     ssh root@$r_AMBARI_HOST "ambari-server start --silent"
     if [ $? -ne 0 ]; then
-        # TODO: lazy retry
+        # lazy retry
         sleep 5
-        ssh root@$r_AMBARI_HOST "ambari-server start --silent"
+        ssh root@$r_AMBARI_HOST "ambari-server start"
     fi
+}
+
+function f_port_forward() {
+    local __doc__="Port forwarding a local port to a container port"
+    local _local_port="$1"
+    local _remote_host="$2"
+    local _remote_port="$3"
+    local _kill_process="$4"
+
+    if [ -z "$_local_port" ] || [ -z "$_remote_host" ] || [ -z "$_remote_port" ]; then
+        _error "Local Port or Remote Host or Remote Port is missing."
+        return 1
+    fi
+    local _pid="`lsof -ti:$_local_port`"
+    if [ -n "$_pid" ] ; then
+        _warn "Local port $_local_port is already used by PID $_pid."
+        if _isYes "$_kill_process" ; then
+            kill $_pid || return 3
+            _info "Killed $_pid."
+        else
+            return 0
+        fi
+    fi
+
+    #if ! which socat &>/dev/null ; then
+    #    _warn "No socat. Installing"; apt-get install socat -y || return 2
+    #fi
+    #nohup socat tcp4-listen:$_local_port,reuseaddr,fork tcp:$_remote_host:$_remote_port & TODO: which is better, socat or ssh?
+    ssh -2CNnqTxfg -L$_local_port:$_remote_host:$_remote_port $_remote_host
 }
 
 function f_ambari_update_config() {
@@ -1504,6 +1531,7 @@ function f_repo_mount() {
 function f_services_start() {
     local __doc__="Request 'Start all' to Ambari via API"
     local _c=$(PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -tAc "select cluster_name from ambari.clusters order by cluster_id desc limit 1;")
+    _info "Will start all services ..."
     if [ -z "$_c" ]; then
       _error "No cluster name (check PostgreSQL)..."
       return 1
@@ -1865,12 +1893,12 @@ function f_log_cleanup() {
     local __doc__="Deleting log files which group owner is hadoop"
     local _days="${1-7}"
     _warn "Deleting hadoop logs which is older than $_days..."
+    sleep 5
     # NOTE: Assuming docker name and hostname is same
     for _name in `docker ps --format "{{.Names}}"`; do
-        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
-        # Agent log is owned by root
-        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ambari-* -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
+        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {};find /var/log/ambari-* -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}' &
     done
+    wait
 }
 
 function f_update_check() {
@@ -2343,7 +2371,8 @@ function f_nifidemo_add() {
     # https://github.com/abajwa-hw/ambari-nifi-service
 
     #rm -rf /var/lib/ambari-server/resources/stacks/HDP/'$_stack_version'/services/NIFI
-    #TODO: wget http://public-repo-1.hortonworks.com/HDF/centos6/2.x/updates/2.0.1.0/tars/hdf_ambari_mp/hdf-ambari-mpack-2.0.1.0-12.tar.gz
+    #TODO: curl http://public-repo-1.hortonworks.com/HDF/centos6/2.x/updates/2.1.2.0/tars/hdf_ambari_mp/hdf-ambari-mpack-2.1.2.0-10.tar.gz -O
+    # http://public-repo-1.hortonworks.com/HDF/2.1.2.0/nifi-1.1.0.2.1.2.0-10-bin.tar.gz
     ssh root@$r_AMBARI_HOST 'yum install git -y
 git clone https://github.com/abajwa-hw/ambari-nifi-service.git /var/lib/ambari-server/resources/stacks/HDP/'$_stack_version'/services/NIFI && service ambari-server restart'
 }
