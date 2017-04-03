@@ -56,7 +56,7 @@ function f_check_system() {
     top -b -n 1 -c &> ${_WORK_DIR%/}/top.out
     ps auxwwwf &> ${_WORK_DIR%/}/ps.out
     netstat -aopen &> ${_WORK_DIR%/}/netstat.out
-    netstat -i &> ${_WORK_DIR%/}/netstat_i.out
+    cat /proc/net/dev &> ${_WORK_DIR%/}/net_dev.out
     netstat -s &> ${_WORK_DIR%/}/netstat_s.out
     ifconfig &> ${_WORK_DIR%/}/ifconfig.out
     nscd -g &> ${_WORK_DIR%/}/nscd.out
@@ -138,11 +138,12 @@ function f_collect_log_files() {
     else
         tar czhf ${_WORK_DIR%/}/hdp_log_$(hostname).tar.gz `find -L "${_path}" -type f -mtime -${_day}` 2>&1 | grep -v 'Removing leading'
     fi
+    # grep -i "killed process" /var/log/messages* # TODO: should we also check OOM Killer?
     [ -n "$_VERBOSE" ] && set +x
 }
 
 function f_collect_webui() {
-    local __doc__="Collect Web UI with wget"
+    local __doc__="TODO: Collect Web UI with wget"
     local _url="$1"
 
     if ! which wget &>/dev/null ; then
@@ -152,6 +153,24 @@ function f_collect_webui() {
     local _d="collect_webui"
     mkdir ${_WORK_DIR%/}/$_d
     wget -r -P${_WORK_DIR%/}/$_d -X logs -l 3 -t 1 -k --restrict-file-names=windows -E --no-check-certificate -o ${_WORK_DIR%/}/$_d/collect_webui_wget.log "$_url"
+}
+
+function f_collect_host_metrics() {
+    local __doc__="TODO: Collect host metrics from Ambari"
+    _HOST="`hostname -f`"
+    _S="`date '+%s' -d"1 hours ago"`"
+    _E="`date '+%s'`"
+    _s="15"
+    _AMBARI_SERVER="`hostname -f`" # localhost
+    _USR="admin"
+    _PWD="admin"
+    _CLS="`curl -u "${_USR}":"${_PWD}" -sk "http://${_AMBARI_SERVER}:8080/api/v1/clusters" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['items'][0]['Clusters']['cluster_name']"`"; echo $_CLS
+    curl -u "${_USR}":"${_PWD}" -k "http://$_AMBARI_SERVER:8080/api/v1/clusters/$_CLS/hosts/$_HOST" -o ${_WORK_DIR%/}/ambari_host_${_HOST}.json
+    curl -u "${_USR}":"${_PWD}" -k "http://$_AMBARI_SERVER:8080/api/v1/clusters/$_CLS/hosts/$_HOST" -G --data-urlencode "fields=metrics/cpu/cpu_user[${_S},${_E},${_s}],metrics/cpu/cpu_wio[${_S},${_E},${_s}],metrics/cpu/cpu_nice[${_S},${_E},${_s}],metrics/cpu/cpu_aidle[${_S},${_E},${_s}],metrics/cpu/cpu_system[${_S},${_E},${_s}],metrics/cpu/cpu_idle[${_S},${_E},${_s}],metrics/disk/disk_total[${_S},${_E},${_s}],metrics/disk/disk_free[${_S},${_E},${_s}],metrics/load/load_fifteen[${_S},${_E},${_s}],metrics/load/load_one[${_S},${_E},${_s}],metrics/load/load_five[${_S},${_E},${_s}],metrics/memory/swap_free[${_S},${_E},${_s}],metrics/memory/mem_shared[${_S},${_E},${_s}],metrics/memory/mem_free[${_S},${_E},${_s}],metrics/memory/mem_cached[${_S},${_E},${_s}],metrics/memory/mem_buffers[${_S},${_E},${_s}],metrics/network/bytes_in[${_S},${_E},${_s}],metrics/network/bytes_out[${_S},${_E},${_s}],metrics/network/pkts_in[${_S},${_E},${_s}],metrics/network/pkts_out[${_S},${_E},${_s}],metrics/process/proc_total[${_S},${_E},${_s}],metrics/process/proc_run[${_S},${_E},${_s}]" -o ${_WORK_DIR%/}/ambari_metrics_${_HOST}.json
+}
+
+function f_test_network() {
+    local __doc__="TODO: Test network speed/error"
 }
 
 function f_tar_work_dir() {

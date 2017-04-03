@@ -84,9 +84,11 @@ else
 
     _NEED_RESET_ADMIN_PWD=true
 fi
-# NOTE: how to change/add port later (by cata)
+# TODO: how to change/add port later (does not work)
+# copy /var/lib/docker/containers/${_CONTAINER_ID}*/config.v2.json
 # stop the container, then stop docker service
-# vim /var/lib/docker/containers/${_CONTAINER_ID}*/config.v2.json
+# paste config.v2.json
+# start docker service, then cotainer
 
 #docker exec -t ${_NAME} /etc/init.d/startup_script start
 #docker exec -t ${_NAME} make --makefile /usr/lib/hue/tools/start_scripts/start_deps.mf  -B Startup -j -i

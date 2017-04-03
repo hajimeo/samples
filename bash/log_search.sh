@@ -47,18 +47,20 @@ function f_topErrors() {
     local _path="$1"
     local _is_including_warn="$2"
     local _not_hiding_number="$3"
-    local _regex="(ERROR|SEVERE|FATAL).+"
-    local _num_regex="s/[1-9][0-9][0-9][0-9]+/_____/g"
+    local _regex="$4"
 
-    if [[ "$_is_including_warn" =~ (^y|^Y) ]]; then
-        _regex="(ERROR|SEVERE|FATAL|WARN).+"
-        _num_regex="s/[0-9]/_/g"
+    if [ -z "$_regex" ]; then
+        _regex="(ERROR|SEVERE|FATAL|java\..+?Exception).+"
+
+        if [[ "$_is_including_warn" =~ (^y|^Y) ]]; then
+            _regex="(ERROR|SEVERE|FATAL|java\..+?Exception|WARN|WARNING).+"
+        fi
     fi
 
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
         egrep -wo "$_regex" "$_path" | sort | uniq -c | sort -n
     else
-        egrep -wo "$_regex" "$_path" | sed -E "$_num_regex" | sort | uniq -c | sort -n
+        egrep -wo "$_regex" "$_path" | sed -E "s/0x[0-9a-f][0-9a-f][0-9a-f]+/0x__________/g" | sed -E "s/[0-9][0-9]+/____/g" | sort | uniq -c | sort -n
     fi
 }
 
