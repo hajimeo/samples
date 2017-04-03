@@ -275,6 +275,7 @@ function p_hdp_start() {
     _info "NOT setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
     #f_etcs_mount
+    f_dnsmasq_banner_reset
 
     f_ambari_server_start
     f_ambari_agent_fix_public_hostname
@@ -1646,8 +1647,8 @@ function p_host_setup() {
 
 function f_dnsmasq() {
     local __doc__="Install and set up dnsmasq"
-    local _how_many="${3-$r_NUM_NODES}"
-    local _start_from="${4-$r_NODE_START_NUM}"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
 
     if [ ! `which apt-get` ]; then
         _warn "No apt-get"
@@ -1656,6 +1657,14 @@ function f_dnsmasq() {
     apt-get -y install dnsmasq
 
     grep '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
+
+    f_dnsmasq_banner_reset "$_how_many" "$_start_from"
+}
+
+function f_dnsmasq_banner_reset() {
+    local __doc__="Regenerate /etc/banner_add_hosts"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
 
     # TODO: the first IP can be wrong one
     _docker0="`f_docker_ip`"
@@ -1667,6 +1676,10 @@ function f_dnsmasq() {
 
     if [ ! -s /etc/banner_add_hosts ]; then
         echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /etc/banner_add_hosts
+    else
+        grep -v "${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}" /etc/banner_add_hosts > /tmp/banner
+        echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" >> /tmp/banner
+        cat /tmp/banner > /etc/banner_add_hosts
     fi
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
