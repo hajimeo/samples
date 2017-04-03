@@ -47,18 +47,20 @@ function f_topErrors() {
     local _path="$1"
     local _is_including_warn="$2"
     local _not_hiding_number="$3"
-    local _regex="(ERROR|SEVERE|FATAL).+"
-    local _num_regex="s/[1-9][0-9][0-9][0-9]+/_____/g"
+    local _regex="$4"
 
-    if [[ "$_is_including_warn" =~ (^y|^Y) ]]; then
-        _regex="(ERROR|SEVERE|FATAL|WARN).+"
-        _num_regex="s/[0-9]/_/g"
+    if [ -z "$_regex" ]; then
+        _regex="(ERROR|SEVERE|FATAL|java\..+?Exception).+"
+
+        if [[ "$_is_including_warn" =~ (^y|^Y) ]]; then
+            _regex="(ERROR|SEVERE|FATAL|java\..+?Exception|WARN|WARNING).+"
+        fi
     fi
 
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
         egrep -wo "$_regex" "$_path" | sort | uniq -c | sort -n
     else
-        egrep -wo "$_regex" "$_path" | sed -E "$_num_regex" | sort | uniq -c | sort -n
+        egrep -wo "$_regex" "$_path" | sed -E "s/0x[0-9a-f][0-9a-f][0-9a-f]+/0x__________/g" | sed -E "s/[0-9][0-9]+/____/g" | sort | uniq -c | sort -n
     fi
 }
 
@@ -230,16 +232,23 @@ function f_grepWithDate() {
         _interval_hour=0
     fi
 
+<<<<<<< Updated upstream
     # in case file path includes wildcard
     ls $_log_file_path &>/dev/null
     #if [ $? -ne 0 ]; then
         #return 3
     #fi
+=======
+    if [ -z "$_date_format" ]; then
+        _date_format="%Y-%m-%d %H"
+    fi
+>>>>>>> Stashed changes
 
     if [[ "$_is_utc" =~ (^y|^Y) ]]; then
         _date="date -u"
     fi
 
+<<<<<<< Updated upstream
     if [ ${_interval_hour} -gt 0 ]; then
         local _start_hour="`$_date +"%H" -d "${_interval_hour} hours ago"`"
         local _end_hour="`$_date +"%H"`"
@@ -262,6 +271,18 @@ function f_grepWithDate() {
 
     if [ -z "$_date_regex" ]; then
         return 2
+=======
+    # if _start_date is integer, treat as from X hours ago
+    if [[ $_start_date =~ ^-?[0-9]+$ ]]; then
+        _start_date="`$_date -j "+$_date_format" -v-${_start_date}H`" || return 5
+        #_start_date="`$_date +"$_date_format" -d "${_start_date} hours ago"`" || return 5
+    fi
+
+    # if _end_date is integer, treat as from X hours ago
+    if [[ $_end_date =~ ^-?[0-9]+$ ]]; then
+        _end_date="`$_date -j -f "$_date_format" "${_start_date}" "+$_date_format" -v+${_end_date}H`" || return 6
+        #_end_date="`$_date +"$_date_format" -d "${_start_date} ${_end_date} hours"`" || return 6
+>>>>>>> Stashed changes
     fi
 
     # If empty interval hour, do normal grep
