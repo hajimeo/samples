@@ -1194,9 +1194,9 @@ function f_ambari_server_install() {
 function f_ambari_server_start() {
     local __doc__="Starting ambari-server on $r_AMBARI_HOST"
     _port_wait "$r_AMBARI_HOST" "22"
-    ssh root@$r_AMBARI_HOST "ambari-server start --silent"
+    ssh root@$r_AMBARI_HOST "ambari-server start --silent" &> /tmp/f_ambari_server_start.out
     if [ $? -ne 0 ]; then
-        # lazy retry
+        grep 'Ambari Server is already running' /tmp/f_ambari_server_start.out && return
         sleep 5
         ssh root@$r_AMBARI_HOST "ambari-server start"
     fi
