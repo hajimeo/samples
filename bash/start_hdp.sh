@@ -158,10 +158,7 @@ function p_interview() {
     _ask "Stack Version" "$_stack_version" "r_HDP_STACK_VERSION" "N" "Y"
     if [ "$_stack_version" != "$r_HDP_STACK_VERSION" ]; then _hdp_version="${r_HDP_STACK_VERSION}.0.0"; fi
     _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
-    r_HDP_REPO_URL="$_hdp_repo_url"
-    if [ -z "$r_HDP_REPO_URL" ] || [ "$_hdp_version" != "$r_HDP_REPO_VER" ]; then
-        _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"
-    fi
+    _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"    fi
     if _isUrlButNotReachable "$r_HDP_REPO_URL" ; then
         while true; do
             _warn "URL: $r_HDP_REPO_URL may not be reachable."
