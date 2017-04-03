@@ -159,7 +159,7 @@ function p_interview() {
     if [ "$_stack_version" != "$r_HDP_STACK_VERSION" ]; then _hdp_version="${r_HDP_STACK_VERSION}.0.0"; fi
     _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
     _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"    fi
-    if _isUrlButNotReachable "$r_HDP_REPO_URL" ; then
+    if _isUrlButNotReachable "${r_HDP_REPO_URL%/}/hdp.repo" ; then
         while true; do
             _warn "URL: $r_HDP_REPO_URL may not be reachable."
             _ask "Would you like to re-type?" "Y"
@@ -1674,8 +1674,11 @@ function f_dnsmasq_banner_reset() {
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
 
+    local _docker0="`f_docker_ip`"
     # TODO: the first IP can be wrong one
-    _docker0="`f_docker_ip`"
+    if [ -z "$r_DOCKER_HOST_IP" ]; then
+        _docker0="$r_DOCKER_HOST_IP"
+    fi
 
     if [ -z "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
         _warn "Hostname for docker host in the private network is empty. using dockerhost1"
