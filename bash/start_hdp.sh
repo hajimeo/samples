@@ -159,8 +159,16 @@ function p_interview() {
     if [ "$_stack_version" != "$r_HDP_STACK_VERSION" ]; then _hdp_version="${r_HDP_STACK_VERSION}.0.0"; fi
     _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
     r_HDP_REPO_URL="$_hdp_repo_url"
-    if [ -z "$r_HDP_REPO_URL" ]; then
+    if [ -z "$r_HDP_REPO_URL" ] || [ "$_hdp_version" != "$r_HDP_REPO_VER" ]; then
         _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"
+    fi
+    if _isUrlButNotReachable "$r_HDP_REPO_URL" ; then
+        while true; do
+            _warn "URL: $r_HDP_REPO_URL may not be reachable."
+            _ask "Would you like to re-type?" "Y"
+            if ! _isYes ; then break; fi
+            _ask "HDP Repo URL" "" "r_HDP_REPO_URL" "N" "Y"
+         done
     fi
 
     _ask "Would you like to use Ambari Blueprint?" "Y" "r_AMBARI_BLUEPRINT"
@@ -1680,13 +1688,13 @@ function f_dnsmasq_banner_reset() {
     if [ ! -s /etc/banner_add_hosts ]; then
         echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /etc/banner_add_hosts
     else
-        grep -v "${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}" /etc/banner_add_hosts > /tmp/banner
+        grep -vE "$_docker0|${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}" /etc/banner_add_hosts > /tmp/banner
         echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" >> /tmp/banner
         cat /tmp/banner > /etc/banner_add_hosts
     fi
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        grep -v "node${_n}${r_DOMAIN_SUFFIX}" /etc/banner_add_hosts > /tmp/banner
+        grep -vE "node${_n}${r_DOMAIN_SUFFIX}|${r_DOCKER_NETWORK_ADDR}${_n}" /etc/banner_add_hosts > /tmp/banner
         echo "${r_DOCKER_NETWORK_ADDR}${_n}    node${_n}${r_DOMAIN_SUFFIX} node${_n}" >> /tmp/banner
         cat /tmp/banner > /etc/banner_add_hosts
     done
@@ -2659,7 +2667,7 @@ function _isUrlButNotReachable() {
         return 1
     fi
 
-    # Return true only if URL and Not reachable
+    # Return true only if URL is NOT reachable
     return 0
 }
 function _split() {
