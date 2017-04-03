@@ -212,85 +212,52 @@ function f_xmlDiff() {
         return
     fi
 
-    diff -w <(echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path1) <(echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path2)
+    #diff -w <(echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path1) <(echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path2)
     #diff -w <(paste <(ggrep -Pzo '<name>.+?<\/name>' $_path1) <(ggrep -Pzo '<value>.+?<\/value>' $_path1) | sort) <(paste <(ggrep -Pzo '<name>.+?<\/name>' $_path2) <(ggrep -Pzo '<value>.+?<\/value>' $_path2) | sort)
 }
 
 # TODO: find hostname and container, splits, actual query (mr?) etc from app log
 
-function f_grepWithDate() {
+function f_extractByDates() {
     local __doc__="Grep large file with date string"
-    local _date_format="$1"
-    local _log_file_path="$2"
-    local _grep_option="$3"
-    local _is_utc="$4"
-    local _interval_hour="$5"
+    local _log_file_path="$1"
+    local _start_date="$2"
+    local _end_date="$3"
+    local _date_format="$4"
+    local _is_utc="$6"
+
     local _date_regex=""
     local _date="date"
 
-    if [ -z "$_interval_hour" ]; then
-        _interval_hour=0
+    # in case file path includes wildcard
+    ls -1 $_log_file_path &>/dev/null
+    if [ $? -ne 0 ]; then
+        return 3
     fi
 
-<<<<<<< Updated upstream
-    # in case file path includes wildcard
-    ls $_log_file_path &>/dev/null
-    #if [ $? -ne 0 ]; then
-        #return 3
-    #fi
-=======
-    if [ -z "$_date_format" ]; then
-        _date_format="%Y-%m-%d %H"
+    if [ -z "$_start_date" ]; then
+        return 4
     fi
->>>>>>> Stashed changes
+
+    if [ -z "$_date_format" ]; then
+        _date_format="%Y-%m-%d %H:%M:%S"
+    fi
 
     if [[ "$_is_utc" =~ (^y|^Y) ]]; then
         _date="date -u"
     fi
 
-<<<<<<< Updated upstream
-    if [ ${_interval_hour} -gt 0 ]; then
-        local _start_hour="`$_date +"%H" -d "${_interval_hour} hours ago"`"
-        local _end_hour="`$_date +"%H"`"
-
-        local _tmp_date_regex=""
-        for _n in `seq 1 ${_interval_hour}`; do
-            _tmp_date_regex="`$_date +"$_date_format" -d "${_n} hours ago"`"
-
-            if [ -n "$_tmp_date_regex" ]; then
-                if [ -z "$_date_regex" ]; then
-                    _date_regex="$_tmp_date_regex"
-                else
-                    _date_regex="${_date_regex}|${_tmp_date_regex}"
-                fi
-            fi
-        done
-    else
-        _date_regex="`$_date +"$_date_format"`"
-    fi
-
-    if [ -z "$_date_regex" ]; then
-        return 2
-=======
     # if _start_date is integer, treat as from X hours ago
     if [[ $_start_date =~ ^-?[0-9]+$ ]]; then
-        _start_date="`$_date -j "+$_date_format" -v-${_start_date}H`" || return 5
-        #_start_date="`$_date +"$_date_format" -d "${_start_date} hours ago"`" || return 5
+        _start_date="`$_date +"$_date_format" -d "${_start_date} hours ago"`" || return 5
     fi
 
     # if _end_date is integer, treat as from X hours ago
     if [[ $_end_date =~ ^-?[0-9]+$ ]]; then
-        _end_date="`$_date -j -f "$_date_format" "${_start_date}" "+$_date_format" -v+${_end_date}H`" || return 6
-        #_end_date="`$_date +"$_date_format" -d "${_start_date} ${_end_date} hours"`" || return 6
->>>>>>> Stashed changes
+        _end_date="`$_date +"$_date_format" -d "${_start_date} ${_end_date} hours ago"`" || return 6
     fi
 
-    # If empty interval hour, do normal grep
-    if [ -z "${_interval_hour}" ]; then
-        eval "ggrep $_grep_option $_log_file_path"
-    else
-        eval "_getAfterFirstMatch \"$_date_regex\" \"$_log_file_path\" | ggrep $_grep_option"
-    fi
+    eval "_getAfterFirstMatch \"$_log_file_path\" \"$_start_date\" \"$_end_date\""
 
     return $?
 }
@@ -335,13 +302,22 @@ function _split() {
 }
 
 function _getAfterFirstMatch() {
-    local _regex="$1"
-    local _file_path="$2"
+    local _file_path="$1"
+    local _start_regex="$2"
+    local _end_regex="$3"
 
     ls $_file_path 2>/dev/null | while read l; do
-        local _line_num=`ggrep -m1 -nP "$_regex" "$l" | cut -d ":" -f 1`
-        if [ -n "$_line_num" ]; then
-            sed -n "${_line_num},\$p" "${l}"
+        local _start_line_num=`ggrep -m1 -nP "$_start_regex" "$l" | cut -d ":" -f 1`
+        if [ -n "$_start_line_num" ]; then
+            local _end_line_num=""
+            if [ -n "$_end_regex" ]; then
+                _end_line_num=`ggrep -m1 -nP "$_end_regex" "$l" | cut -d ":" -f 1`
+            fi
+            if [ -n "$_end_line_num" ]; then
+                sed -n "${_start_line_num},${_end_line_num}p" "${l}"
+            else
+                sed -n "${_start_line_num},\$p" "${l}"
+            fi
         fi
     done
     return $?
