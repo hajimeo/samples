@@ -1676,7 +1676,7 @@ function f_dnsmasq_banner_reset() {
 
     local _docker0="`f_docker_ip`"
     # TODO: the first IP can be wrong one
-    if [ -z "$r_DOCKER_HOST_IP" ]; then
+    if [ -n "$r_DOCKER_HOST_IP" ]; then
         _docker0="$r_DOCKER_HOST_IP"
     fi
 
