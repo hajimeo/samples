@@ -2300,9 +2300,10 @@ chmod 444 ${g_SERVER_KEY_LOCATION%/}/$g_CLIENT_TRUSTSTORE_FILE"
 
 function f_ssl_ambari_config_set_for_hadoop() {
     local __doc__="TODO: Update configs via Ambari for HDFS/YARN/MR2 (and tez). Not auomating, but asking questions"
-    local _ambari_ssl="${1}"
-    local _ambari_host="${2}"
-    local _ambari_port="${3-8080}"
+    local _ambari_host="${1}"
+    local _ambari_port="${2-8080}"
+    local _ambari_ssl="${3}"
+    local _cluster_name="${4-$r_CLUSTER_NAME}"
     local _opts=""
 
     if _isYes "$_ambari_ssl"; then
@@ -2360,15 +2361,17 @@ function f_ssl_ambari_config_set_for_hadoop() {
     _configs["tez-site:tez.runtime.shuffle.keep-alive.enabled"]="true"
 
 	for _k in "${!_configs[@]}"; do
-        root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh $_opts set localhost $_ambari_host ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
+        _split "_type_prop" "$_k" ":"
+        ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh $_opts set $_ambari_host "$_cluster_name" ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
     done
 }
 
 function f_ssl_ambari_config_disable_for_hadoop() {
     local __doc__="TODO: Update configs via Ambari for HDFS/YARN/MR2 (and tez) to disable SSH"
-    local _ambari_ssl="${1}"
-    local _ambari_host="${2}"
-    local _ambari_port="${3-8080}"
+    local _ambari_host="${1}"
+    local _ambari_port="${2-8080}"
+    local _ambari_ssl="${3}"
+    local _cluster_name="${4-$r_CLUSTER_NAME}"
     local _opts=""
 
     if _isYes "$_ambari_ssl"; then
@@ -2386,13 +2389,14 @@ function f_ssl_ambari_config_disable_for_hadoop() {
     local _type_prop=""
     declare -A _configs # NOTE: this should be a local variable automatically
 
-    _configs["hdfs-site:dfs.http.policy"]="HTTPS_ONLY"
-    _configs["mapred-site:mapreduce.jobhistory.http.policy"]="HTTPS_ONLY"
-    _configs["yarn-site:yarn.http.policy"]="HTTPS_ONLY"
+    _configs["hdfs-site:dfs.http.policy"]="HTTP_ONLY"
+    _configs["mapred-site:mapreduce.jobhistory.http.policy"]="HTTP_ONLY"
+    _configs["yarn-site:yarn.http.policy"]="HTTP_ONLY"
     _configs["tez-site:tez.runtime.shuffle.ssl.enable"]="false"
 
 	for _k in "${!_configs[@]}"; do
-        root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh $_opts set localhost $_ambari_host ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
+        _split "_type_prop" "$_k" ":"
+        ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh $_opts set $_ambari_host "$_cluster_name" ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
     done
 }
 
