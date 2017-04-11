@@ -129,8 +129,29 @@ function f_appLogJobExports() {
     egrep "$_regex" "$_path" | sort | uniq -c
 }
 
-function f_hdfs_audit_count_per_time() {
-    local __doc__="Count HDFS audit per 10 minutes"
+function f_appLogFindFirstSyslog() {
+    local __doc__="After yarn_app_logs_splitter, find which one was started first."
+    local _dir_path="${1-.}"
+    local _num="${2-10}"
+
+    ( find "${_dir_path%/}" -name "*.syslog" | xargs -I {} bash -c "grep -oHE '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -m 1 {}" | awk -F ':' '{print $2":"$3":"$4" "$1}' ) | sort -n | head -n $_num
+}
+
+function f_appLogFindLastSyslog() {
+    local __doc__="After yarn_app_logs_splitter, find which one was ended in the last. gtac is required"
+    local _dir_path="${1-.}"
+    local _num="${2-10}"
+    local _regex="${3}"
+
+    if [ -n "$_regex" ]; then
+        ( for _f in `grep -l "$_regex" ${_dir_path%/}/*.syslog`; do _dt="`gtac $_f | grep -oE '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
+    else
+        ( for _f in `find "${_dir_path%/}" -name "*.syslog"`; do _dt="`gtac $_f | grep -oE '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
+    fi
+}
+
+function f_hdfsAuditLogCountPerTime() {
+    local __doc__="Count a log file (eg.: HDFS audit) per 10 minutes"
     local _path="$1"
     local _datetime_regex="$2"
 
@@ -148,7 +169,7 @@ function f_hdfs_audit_count_per_time() {
     grep -oE "$_datetime_regex" $_path | $_cmd
 }
 
-function f_hdfs_audit_count_per_command() {
+function f_hdfsAuditLogCountPerCommand() {
     local __doc__="Count HDFS audit per command for some period"
     local _path="$1"
     local _datetime_regex="$2"
@@ -168,7 +189,7 @@ function f_hdfs_audit_count_per_command() {
     fi
 }
 
-function f_hdfs_audit_count_per_user() {
+function f_hdfsAuditLogCountPerUser() {
     local __doc__="Count HDFS audit per user for some period"
     local _path="$1"
     local _per_method="$2"
@@ -260,6 +281,19 @@ function f_extractByDates() {
     eval "_getAfterFirstMatch \"$_log_file_path\" \"$_start_date\" \"$_end_date\""
 
     return $?
+}
+
+function f_splitApplog() {
+    local __doc__="Split YARN App log with yarn_app_logs_splitter.py"
+    local _app_log="$1"
+    local _out_name="containers_`basename $_app_log .log`"
+    # Assuming yarn_app_logs_splitter.py is in the following location
+    local _script_path="`dirname $(dirname $(dirname $BASH_SOURCE))`/dev-tools/hadoop-tools/yarn/yarn_app_logs_splitter.py"
+    if [ ! -s "$_script_path" ]; then
+        echo "$_script_path does not exist"
+        return 1
+    fi
+    python "$_script_path" --container-log-dir $_out_name --app-log $_app_log
 }
 
 function f_git_search() {
