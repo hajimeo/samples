@@ -2386,8 +2386,17 @@ function f_ssl_ambari_config_disable_for_hadoop() {
         _info "Using $_ambari_hsot for Ambari server hostname..."
     fi
 
+
     local _type_prop=""
     declare -A _configs # NOTE: this should be a local variable automatically
+
+    _configs["yarn-site:yarn.log.server.url"]="http://sandbox.hortonworks.com:19888/jobhistory/logs"
+
+	for _k in "${!_configs[@]}"; do
+        _split "_type_prop" "$_k" ":"
+        _ask "${_type_prop[0]} ${_type_prop[1]}" "${_configs[$_k]}" "" "" "Y"
+        _configs[$_k]="$__LAST_ANSWER"
+    done
 
     _configs["hdfs-site:dfs.http.policy"]="HTTP_ONLY"
     _configs["mapred-site:mapreduce.jobhistory.http.policy"]="HTTP_ONLY"
