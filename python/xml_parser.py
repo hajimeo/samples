@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# Tiny proxy for testing connection
-# Based on https://code.google.com/p/python-proxy/
+# XML Parser, and also can compare two XML files, like:
+# python ./xml_parser.py hive-site.xml hive-site.xml.backup
 #
 
 import sys, pprint
