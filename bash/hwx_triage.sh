@@ -60,6 +60,8 @@ function f_check_system() {
     netstat -s &> ${_WORK_DIR%/}/netstat_s.out
     ifconfig &> ${_WORK_DIR%/}/ifconfig.out
     nscd -g &> ${_WORK_DIR%/}/nscd.out
+    getent ahostsv4 `hostname -f` &> ${_WORK_DIR%/}/getent_from_name.out
+    getent hosts `hostname -I` &> ${_WORK_DIR%/}/getent_from_ip.out
     wait
     [ -n "$_VERBOSE" ] && set +x
 }
