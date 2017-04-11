@@ -223,18 +223,12 @@ function f_longGC() {
     egrep "$_regex" "$_path"
 }
 
-function f_xmlDiff() {
-    local __doc__="TODO: Convert Hadoop xxxx-site.xml to (close to) Json"
-    local _path1="$1"
-    local _path2="$2"
+function f_findJarByClassName() {
+    local __doc__="Find jar by class name"
+    local _search_path="${1-/usr/hdp/current/}"
+    local _class_name="$2"
 
-    if ! which xmllint &>/dev/null ; then
-        echo "xmllint is required"
-        return
-    fi
-
-    #diff -w <(echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path1) <(echo "cat /configuration/property/name/text()|/configuration/property/value/text()" | xmllint --shell $_path2)
-    #diff -w <(paste <(ggrep -Pzo '<name>.+?<\/name>' $_path1) <(ggrep -Pzo '<value>.+?<\/value>' $_path1) | sort) <(paste <(ggrep -Pzo '<name>.+?<\/name>' $_path2) <(ggrep -Pzo '<value>.+?<\/value>' $_path2) | sort)
+    find -L "$_search_path" -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | grep -w $_class_name && echo {}"
 }
 
 # TODO: find hostname and container, splits, actual query (mr?) etc from app log
