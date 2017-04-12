@@ -1613,7 +1613,7 @@ function p_host_setup() {
         fi
 
         # NOTE: psql (postgresql-client) is required
-        apt-get -y install ntpdate wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat
+        apt-get -y install ntpdate curl wget sshfs sysv-rc-conf sysstat dstat iotop tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat
         #mailutils postfix mysql-client htop
 
         f_docker_setup
