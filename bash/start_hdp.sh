@@ -165,7 +165,7 @@ function p_interview() {
         _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_REPO_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
         _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_REPO_OS_VER}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${r_REPO_OS_VER}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
     fi
-    
+
     _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"    fi
     if _isUrlButNotReachable "${r_HDP_REPO_URL%/}/hdp.repo" ; then
         while true; do
@@ -2907,18 +2907,21 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         g_END_TIME="`date -u`"
         echo "Started at : $g_START_TIME"
         echo "Finished at: $g_END_TIME"
+        exit 0
     elif [ -n "$_FUNCTION_NAME" ]; then
+        # TODO: not good validation
         if [[ "$_FUNCTION_NAME" =~ ^[fph]_ ]]; then
-            type $_FUNCTION_NAME 2>/dev/null | grep " is a function" &>/dev/null
-            if [ $? -eq 0 ]; then
-                f_loadResp
-                $_FUNCTION_NAME
-            fi
+            f_loadResp
+            eval "$_FUNCTION_NAME"
+            exit 0
         fi
+        _error "$_MAYBE_FUNCTION_NAME is not an available function name."
+        exit 1
     elif _isYes "$_START_HDP"; then
         f_update_check
         f_loadResp
         p_hdp_start
+        exit 0
     else
         usage | less
         exit 0
