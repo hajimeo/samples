@@ -1453,6 +1453,7 @@ function f_local_repo() {
 
     if [ -n "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
         local _path_diff="${_local_dir#${_document_root}}"
+        _path_diff="/${_path_diff#/}"
         local _repo_path="${_path_diff%/}${_hdp_dir#\.}"
         echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}"
         local _util_repo_path="${_path_diff%/}${_hdp_util_dir#\.}"
