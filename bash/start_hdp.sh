@@ -1357,8 +1357,9 @@ function f_etcs_mount() {
 }
 
 function f_local_repo() {
-    local __doc__="Setup local repo on Docker host (Ubuntu)"
-    local _local_dir="$1"
+    local __doc__="TODO: Setup local repo on Docker host (Ubuntu)"
+    local _local_dir="${1-/var/www/html/hdp}"
+    local _document_root="${2-/var/www/html}"
     local _force_extract=""
     local _download_only=""
 
@@ -1401,9 +1402,9 @@ function f_local_repo() {
         _info "$_hdp_dir already exists and not empty. Skipping download."
     elif [ -e "$_tar_gz_file" ]; then
         _info "$_tar_gz_file already exists. Skipping download."
-    elif [ -e "/var/www/html/hdp/$_tar_gz_file" ]; then
-        _info "/var/www/html/hdp/$_tar_gz_file already exists. Skipping download."
-        _tar_gz_file="/var/www/html/hdp/$_tar_gz_file"
+    elif [ -e "${_local_dir%/}/$_tar_gz_file" ]; then
+        _info "${_local_dir%/}/$_tar_gz_file already exists. Skipping download."
+        _tar_gz_file="${_local_dir%/}/$_tar_gz_file"
     else
         if ! _isEnoughDisk "/$_local_dir" "10"; then
             _error "Not enough space to download $r_HDP_REPO_TARGZ"
@@ -1451,9 +1452,10 @@ function f_local_repo() {
     service apache2 start
 
     if [ -n "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
-        local _repo_path="${_hdp_dir#\.}"
+        local _path_diff="${_local_dir#${_document_root}}"
+        local _repo_path="${_path_diff%/}${_hdp_dir#\.}"
         echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}"
-        local _util_repo_path="${_hdp_util_dir#\.}"
+        local _util_repo_path="${_path_diff%/}${_hdp_util_dir#\.}"
         echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
 
         # TODO: support only CentOS or RedHat at this moment
