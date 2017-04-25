@@ -224,11 +224,11 @@ function f_longGC() {
 }
 
 function f_findJarByClassName() {
-    local __doc__="Find jar by class name"
+    local __doc__="Find jar by class name (add .class in the name)"
     local _search_path="${1-/usr/hdp/current/}"
     local _class_name="$2"
 
-    find -L "$_search_path" -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | grep -w $_class_name && echo {}"
+    find -L "$_search_path" -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | grep -m 1 -w $_class_name && echo {}"
 }
 
 # TODO: find hostname and container, splits, actual query (mr?) etc from app log
