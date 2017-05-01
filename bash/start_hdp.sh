@@ -296,7 +296,7 @@ function p_hdp_start() {
 }
 
 function p_ambari_blueprint() {
-    local __doc__="Build cluster with Ambari Blueprint"
+    local __doc__="Build cluster with Ambari Blueprint (expecting agents are already installed and running)"
     local _cluster_name="${1-$r_CLUSTER_NAME}"
     local _hostmap_json="/tmp/${_cluster_name}_hostmap.json"
     local _cluster_config_json="/tmp/${_cluster_name}_cluster_config.json"
@@ -304,15 +304,10 @@ function p_ambari_blueprint() {
     # just in case, try starting server
     f_ambari_server_start
     _port_wait "$r_AMBARI_HOST" "8080" || return 1
-    #f_run_cmd_on_nodes "ambari-agent stop"
-    f_ambari_agent_install
-    f_ambari_agent_fix_public_hostname
-    f_run_cmd_on_nodes "ambari-agent start"
-    _ambari_agent_wait
 
     local _c="`f_get_cluster_name`"
     if [ "$_c" = "$_cluster_name" ]; then
-        _warn "$_cluster_name already exists in Ambari. Skipping..."
+        _warn "Cluster name $_cluster_name already exists in Ambari. Skipping..."
         return 1
     fi
 
@@ -1380,17 +1375,26 @@ function f_services_start() {
 
 function _ambari_agent_wait() {
     local _db_host="${1-$r_AMBARI_HOST}"
+    local _how_many="${2-$r_NUM_NODES}"
     local _u=""
 
-    for i in `seq 1 10`; do
-      sleep 5
-      _u=$(PGPASSWORD=bigdata psql -Uambari -h $_db_host -tAc "select count(*) from hoststate where health_status ilike '%UNKNOWN%';")
-      #curl -s --head "http://$r_AMBARI_HOST:8080/" | grep '200 OK'
-      if [ "$_u" -eq 0 ]; then
-        return 0
-      fi
+    if [ -z "$_how_many" ] || [ $_how_many -lt 1 ]; then
+        _error "No node number for validate is specified."
+        return 2
+    fi
 
-      _info "Some Ambari agent is in UNKNOWN state ($_u). waiting..."
+    for i in `seq 1 10`; do
+        _u=$(PGPASSWORD=bigdata psql -Uambari -h $_db_host -tAc "select case when (select count(*) from hoststate)=0 then -1 ELSE (select count(*) from hoststate where health_status ilike '%HEALTHY%') end;")
+        #curl -s --head "http://$r_AMBARI_HOST:8080/" | grep '200 OK'
+        if [ $_how_many -le $_u ]; then
+            return 0
+        elif [ -1 -eq $_u ]; then
+            _warn "No agent has been installed"
+            return 100
+        fi
+
+        _info "Some Ambari Agent is not in HEALTHY state ($_u / $_how_many). waiting..."
+        sleep 4
     done
     return 1
 }
@@ -1455,12 +1459,24 @@ function p_host_setup() {
     f_docker_run
     f_docker_start
 
-    f_ambari_server_install && sleep 3
-    f_ambari_server_start && sleep 3
-
     if _isYes "$r_PROXY"; then
         f_apache_proxy
         f_yum_remote_proxy
+    fi
+
+    f_ambari_server_install
+    f_ambari_server_start
+    _port_wait "$r_AMBARI_HOST" "8080"
+    if [ $? -eq 0 ]; then
+        _ambari_agent_wait
+        if [ $? -ne 0 ]; then
+            f_ambari_agent_install
+            f_ambari_agent_fix_public_hostname
+            f_run_cmd_on_nodes "ambari-agent start"
+           _ambari_agent_wait
+        fi
+    else
+        _warn "Ambari Server may not be running but keep continuing..."
     fi
 
     if _isYes "$r_HDP_LOCAL_REPO"; then
@@ -1469,6 +1485,7 @@ function p_host_setup() {
         # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
         f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL"
     fi
+
     if _isYes "$r_AMBARI_BLUEPRINT"; then
         p_ambari_blueprint
     fi
