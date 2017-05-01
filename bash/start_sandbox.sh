@@ -8,7 +8,7 @@ _SHMMAX=41943040
 
 echo "Waiting for docker daemon to start up:"
 until /usr/bin/docker ps 2>&1| grep STATUS>/dev/null; do  sleep 1; done;  >/dev/null
-/usr/bin/docker ps -a | grep -w "${_NAME}"
+/usr/bin/docker ps -a --format "{{.Names}}" | grep -w "${_NAME}"
 if [ $? -eq 0 ]; then
     /usr/bin/docker start "${_NAME}"
 else
@@ -100,7 +100,7 @@ docker exec -t ${_NAME} chown oozie:hadoop /usr/hdp/current/oozie-server/oozie-s
 docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
 
 if ${_NEED_RESET_ADMIN_PWD} ; then
-    echo "INFO: running ambari-admin-password-reset ..."
+    echo "INFO: Resetting Ambari password (type 'admin' twice) ..."
     docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
     # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
     docker exec -it ${_NAME} bash -c 'grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
