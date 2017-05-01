@@ -1479,6 +1479,7 @@ function p_host_setup() {
     f_ambari_server_start
     _port_wait "$r_AMBARI_HOST" "8080"
     if [ $? -eq 0 ]; then
+        f_run_cmd_on_nodes "ambari-agent start"
         _ambari_agent_wait
         if [ $? -ne 0 ]; then
             f_ambari_agent_install
