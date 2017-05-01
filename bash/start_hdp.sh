@@ -147,6 +147,10 @@ function p_interview() {
             _ask "Ambari repo file URL or path" "" "r_AMBARI_REPO_FILE" "N" "Y"
          done
     fi
+    # http://public-repo-1.hortonworks.com/ARTIFACTS/jdk-8u112-linux-x64.tar.gz to /var/lib/ambari-server/resources/jdk-8u112-linux-x64.tar.gz
+    _ask "Ambari JDK URL (optional)" "" "r_AMBARI_JDK_URL"
+    # http://public-repo-1.hortonworks.com/ARTIFACTS/jce_policy-8.zip to /var/lib/ambari-server/resources/jce_policy-8.zip
+    _ask "Ambari JCE URL (optional)" "" "r_AMBARI_JCE_URL"
 
     wget -q -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
     if [ -s /tmp/hdp_urlinfo.json ]; then
@@ -1010,6 +1014,13 @@ function f_ambari_server_install() {
         fi
 
         cp -f "$r_AMBARI_REPO_FILE" /tmp/ambari.repo
+    fi
+
+    if _isUrl "$r_AMBARI_JDK_URL"; then
+        ssh root@$r_AMBARI_HOST "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JDK_URL\" -O"
+    fi
+    if _isUrl "$r_AMBARI_JCE_URL"; then
+        ssh root@$r_AMBARI_HOST "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JCE_URL\" -O"
     fi
 
     scp /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
