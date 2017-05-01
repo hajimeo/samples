@@ -96,7 +96,7 @@ fi
 docker exec -t ${_NAME} touch /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
 docker exec -t ${_NAME} chown oozie:hadoop /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
 #docker exec -d ${_NAME} /etc/init.d/tutorials start
-docker exec -d ${_NAME} /etc/init.d/splash
+#docker exec -d ${_NAME} /etc/init.d/splash
 docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
 
 if ${_NEED_RESET_ADMIN_PWD} ; then
@@ -112,5 +112,10 @@ else
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-server/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 fi
+
+docker exec -it ${_NAME} /usr/sbin/ambari-server start
+docker exec -it ${_NAME} /usr/sbin/ambari-agent start
+docker exec -it ${_NAME} /sbin/service mysqld start
+#curl -u admin:admin -H "X-Requested-By:ambari" "http://sandbox.hortonworks.com:8080/api/v1/clusters/${_c}/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 
 #docker exec -it ${_NAME} bash
