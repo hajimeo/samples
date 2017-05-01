@@ -116,6 +116,6 @@ fi
 docker exec -it ${_NAME} /usr/sbin/ambari-server start
 docker exec -it ${_NAME} /usr/sbin/ambari-agent start
 docker exec -it ${_NAME} /sbin/service mysqld start
-#curl -u admin:admin -H "X-Requested-By:ambari" "http://sandbox.hortonworks.com:8080/api/v1/clusters/${_c}/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+curl -s -u admin:admin -H "X-Requested-By:ambari" -k "http://sandbox.hortonworks.com:8080/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 
 #docker exec -it ${_NAME} bash
