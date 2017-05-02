@@ -979,11 +979,17 @@ function f_docker_run() {
     done
 }
 
+function _ambari_query_sql() {
+    local _query="${1%\;}"
+    local _ambari_host="${2-$r_AMBARI_HOST}"
+
+    PGPASSWORD=bigdata psql -Uambari -h $_ambari_host -tAc "$_query;"
+}
 
 function f_get_cluster_name() {
-    local __doc__="Output (return) cluster name by using psql"
+    local __doc__="Output (return) cluster name by using SQL"
     local _ambari_host="${1-$r_AMBARI_HOST}"
-    local _c="$(PGPASSWORD=bigdata psql -Uambari -h $_ambari_host -tAc "select cluster_name from ambari.clusters order by cluster_id desc limit 1;")"
+    local _c="$(_ambari_query_sql "select cluster_name from ambari.clusters order by cluster_id desc limit 1;" $_ambari_host)"
     if [ -z "$_c" ]; then
         _error "No cluster name from $_ambari_host"
         return 1
@@ -1077,11 +1083,11 @@ function f_ambari_update_config() {
         # TODO: should I reduce aggregator TTL size?
         #ssh -t root@$r_AMBARI_HOST "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME ams-site " &> /tmp/configs_sh_dfs_replication.out
 
-        PGPASSWORD=bigdata psql -Uambari -h $r_AMBARI_HOST -c "update alert_definition set schedule_interval = 2 where schedule_interval = 1;
+        _ambari_query_sql "update alert_definition set schedule_interval = 2 where schedule_interval = 1;
         update alert_definition set schedule_interval = 7 where schedule_interval = 3;
         update alert_definition set schedule_interval = 11 where schedule_interval = 4;
         update alert_definition set schedule_interval = 13 where schedule_interval = 5;
-        update alert_definition set schedule_interval = 17 where schedule_interval = 8;"
+        update alert_definition set schedule_interval = 17 where schedule_interval = 8;" "$r_AMBARI_HOST"
 
         _info "HDFS Replication Factor and Ambari Alert frequency has been updated."
     fi
@@ -1305,11 +1311,10 @@ function f_ambari_set_repo() {
     local _repo_url="$1"
     local _util_url="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
-    local _ambari_port="${4-8080}"
 
-    _port_wait $_ambari_host $_ambari_port
+    _port_wait $_ambari_host 8080
     if [ $? -ne 0 ]; then
-        _error "Ambari is not running on $_ambari_host $_ambari_port"
+        _error "Ambari is not running on $_ambari_host 8080"
         return 1
     fi
 
@@ -1380,7 +1385,51 @@ function f_services_start() {
     _port_wait "$r_AMBARI_HOST" "8080"
     _ambari_agent_wait
 
-    curl -u admin:admin -H "X-Requested-By: ambari" "http://$r_AMBARI_HOST:8080/api/v1/clusters/${_c}/services?" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+    curl -u admin:admin -H "X-Requested-By:ambari" "http://$r_AMBARI_HOST:8080/api/v1/clusters/${_c}/services?" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+    echo ""
+}
+
+function f_service() {
+    local __doc__="Request STOP/START/RESTART to Ambari via API with maintenance mode (for _s in hbase kafka atlas; do  f_service \$_s stop; done)"
+    local _service="$1"
+    local _action="$2"
+    local _ambari_host="${3-$r_AMBARI_HOST}"
+    local _maintenance_mode="OFF"
+    local _c="`f_get_cluster_name $_ambari_host`" || return 1
+
+    if [ -z "$_c" ]; then
+      _error "No cluster name (check PostgreSQL)..."
+      return 1
+    fi
+
+    if [ -z "$_service" ]; then
+        _info "Available Services"
+        _ambari_query_sql "select service_name from servicedesiredstate where desired_state='STARTED' order by service_name" "$_ambari_host"
+        return
+    fi
+
+    if [ -z "$_action" ]; then
+        _info "Acceptable actions: start, stop, restart" # Actually it accespts others like DELETE...
+        return
+    fi
+
+    _service="${_service^^}"
+    _action="${_action^^}"
+
+    if [ "$_action" = "RESTART" ]; then
+        f_service "$_service" "stop" "$_ambari_host"
+        # TODO _n="`_ambari_query_sql "select count(*) from hostcomponentstate where service_name='$_service' and current_state='INSTALLED'"`"
+        sleep 5
+        f_service "$_service" "start" "$_ambari_host"
+        return
+    fi
+
+    [ "$_action" = "START" ] && _action="STARTED"
+    [ "$_action" = "STOP" ] && _action="INSTALLED"
+    [ "$_action" = "INSTALLED" ] && _maintenance_mode="ON"
+
+    curl -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_service'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
+    curl -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"'$_action' '$_service'","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_service'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
     echo ""
 }
 
@@ -1395,7 +1444,7 @@ function _ambari_agent_wait() {
     fi
 
     for i in `seq 1 10`; do
-        _u=$(PGPASSWORD=bigdata psql -Uambari -h $_db_host -tAc "select case when (select count(*) from hoststate)=0 then -1 ELSE (select count(*) from hoststate where health_status ilike '%HEALTHY%') end;")
+        _u=$(_ambari_query_sql "select case when (select count(*) from hoststate)=0 then -1 ELSE (select count(*) from hoststate where health_status ilike '%HEALTHY%') end;" "$_db_host")
         #curl -s --head "http://$r_AMBARI_HOST:8080/" | grep '200 OK'
         if [ $_how_many -le $_u ]; then
             return 0
