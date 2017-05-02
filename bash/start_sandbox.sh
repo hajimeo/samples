@@ -114,7 +114,8 @@ docker exec -t ${_NAME} chown oozie:hadoop /usr/hdp/current/oozie-server/oozie-s
 #docker exec -d ${_NAME} /etc/init.d/splash
 docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
 
-docker exec -it ${_NAME} bash -c '/sbin/service mysqld start' & # TODO: somehow this hangs
+# docker exec -it ${_NAME} bash -c '/sbin/service mysqld start' # TODO: somehow this hangs echo "" | nc -v sandbox.hortonworks.com 3306
+nc -vz sandbox.hortonworks.com 3306 || ssh -p 2222 localhost -t /sbin/service mysqld start
 docker exec -it ${_NAME} bash -c '/sbin/service postgresql start'
 
 if ${_NEED_RESET_ADMIN_PWD} ; then
@@ -136,6 +137,6 @@ docker exec -it ${_NAME} bash -c '/usr/sbin/ambari-server start'
 docker exec -it ${_NAME} bash -c '/usr/sbin/ambari-agent start'
 
 _port_wait "sandbox.hortonworks.com" 8080
-curl -s -u admin:admin -H "X-Requested-By:ambari" -k "http://sandbox.hortonworks.com:8080/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
-
+curl -u admin:admin -H "X-Requested-By:ambari" -k "http://sandbox.hortonworks.com:8080/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+echo ""
 #docker exec -it ${_NAME} bash
