@@ -6,6 +6,21 @@ _NAME="${1-sandbox}"
 _NEED_RESET_ADMIN_PWD=false
 _SHMMAX=41943040
 
+function _port_wait() {
+    local _host="$1"
+    local _port="$2"
+    local _times="${3-10}"
+    local _interval="${4-5}"
+
+    for i in `seq 1 $_times`; do
+      sleep $_interval
+      nc -z $_host $_port && return 0
+      echo "$_host:$_port is unreachable. Waiting..."
+    done
+    echo "$_host:$_port is unreachable."
+    return 1
+}
+
 echo "Waiting for docker daemon to start up:"
 until /usr/bin/docker ps 2>&1| grep STATUS>/dev/null; do  sleep 1; done;  >/dev/null
 /usr/bin/docker ps -a --format "{{.Names}}" | grep -w "${_NAME}"
@@ -99,8 +114,11 @@ docker exec -t ${_NAME} chown oozie:hadoop /usr/hdp/current/oozie-server/oozie-s
 #docker exec -d ${_NAME} /etc/init.d/splash
 docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
 
+docker exec -it ${_NAME} bash -c '/sbin/service mysqld start' & # TODO: somehow this hangs
+docker exec -it ${_NAME} bash -c '/sbin/service postgresql start'
+
 if ${_NEED_RESET_ADMIN_PWD} ; then
-    echo "INFO: Resetting Ambari password (type 'admin' twice) ..."
+    echo "Resetting Ambari password (type 'admin' twice) ..."
     docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
     # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
     docker exec -it ${_NAME} bash -c 'grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
@@ -113,9 +131,11 @@ else
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 fi
 
-docker exec -it ${_NAME} /usr/sbin/ambari-server start
-docker exec -it ${_NAME} /usr/sbin/ambari-agent start
-docker exec -it ${_NAME} /sbin/service mysqld start
+# just in case
+docker exec -it ${_NAME} bash -c '/usr/sbin/ambari-server start'
+docker exec -it ${_NAME} bash -c '/usr/sbin/ambari-agent start'
+
+_port_wait "sandbox.hortonworks.com" 8080
 curl -s -u admin:admin -H "X-Requested-By:ambari" -k "http://sandbox.hortonworks.com:8080/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 
 #docker exec -it ${_NAME} bash
