@@ -292,7 +292,7 @@ function p_hdp_start() {
 
     f_log_cleanup
 
-    #f_ambari_update_config
+    f_ambari_update_config
     f_services_start
 
     f_port_forward 8080 $r_AMBARI_HOST 8080 "Y"
@@ -991,7 +991,7 @@ function f_get_cluster_name() {
     local _ambari_host="${1-$r_AMBARI_HOST}"
     local _c="$(_ambari_query_sql "select cluster_name from ambari.clusters order by cluster_id desc limit 1;" $_ambari_host)"
     if [ -z "$_c" ]; then
-        _error "No cluster name from $_ambari_host"
+        _warn "No cluster name from $_ambari_host"
         return 1
     fi
     echo "$_c"
@@ -1075,22 +1075,34 @@ function f_port_forward() {
 
 function f_ambari_update_config() {
     local __doc__="TODO: Change some configuration for this dev environment"
+    local _force="$1"
 
     # TODO: need to find the best way to find the first time
-    local _c="`f_get_cluster_name $r_AMBARI_HOST`" || return 1
-    if [ $_c -eq 0 ]; then
-        ssh -t root@$r_AMBARI_HOST "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1" &> /tmp/configs_sh_dfs_replication.out
-        # TODO: should I reduce aggregator TTL size?
-        #ssh -t root@$r_AMBARI_HOST "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME ams-site " &> /tmp/configs_sh_dfs_replication.out
-
-        _ambari_query_sql "update alert_definition set schedule_interval = 2 where schedule_interval = 1;
-        update alert_definition set schedule_interval = 7 where schedule_interval = 3;
-        update alert_definition set schedule_interval = 11 where schedule_interval = 4;
-        update alert_definition set schedule_interval = 13 where schedule_interval = 5;
-        update alert_definition set schedule_interval = 17 where schedule_interval = 8;" "$r_AMBARI_HOST"
-
-        _info "HDFS Replication Factor and Ambari Alert frequency has been updated."
+    if ! _isYes "$_force"; then
+        local _c="`_ambari_query_sql "select count(*) from alert_definition where schedule_interval = 6;" $r_AMBARI_HOST`"
+        if [ 0 -ne $_c ]; then
+            _info "Skipping f_ambari_update_config as most likely this has been done."
+            return
+        fi
     fi
+
+    _info "Reducing Ambari Alert frequency..."
+    _ambari_query_sql "update alert_definition set schedule_interval = schedule_interval * 2 where schedule_interval < 11" "$r_AMBARI_HOST"
+
+    _info "Reducing dfs.replication to 1..."
+    ssh -t root@$r_AMBARI_HOST -t "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1" &> /tmp/configs_sh_dfs_replication.out
+    # TODO: should I reduce aggregator TTL size?
+    #ssh -t root@$r_AMBARI_HOST "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME ams-site " &> /tmp/configs_sh_dfs_replication.out
+
+    _info "Modifying postgresql for Ranger install later..."
+    ssh -t root@$r_AMBARI_HOST -t "ambari-server setup --jdbc-db=postgres --jdbc-driver=`ls /usr/lib/ambari-server/postgresql-*.jar`
+sudo -u postgres psql -c 'ALTER ROLE ambari WITH SUPERUSER'
+grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
+service postgresql reload"
+
+    _info "Creating 'admin' user in each node and in HDFS..."
+    local _hdfs_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" $r_AMBARI_HOST`"
+    f_useradd_on_nodes "admin"
 }
 
 function f_ambari_agent_install() {
@@ -1979,12 +1991,16 @@ function f_useradd_on_nodes() {
     local __doc__="Add user in multiple nodes. NOTE: expecting host has KDC"
     local _user="$1"
     local _password="${2-$r_DEFAULT_PASSWORD}"
-    local _hdfs_client_node="${3-$r_AMBARI_HOST}"
-    local _how_many="${4-$r_NUM_NODES}"
-    local _start_from="${5-$r_NODE_START_NUM}"
+    local _how_many="${3-$r_NUM_NODES}"
+    local _start_from="${4-$r_NODE_START_NUM}"
+    local _hdfs_client_node="$5"
     local _c="`f_get_cluster_name`"
 
     f_run_cmd_on_nodes 'useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user $_how_many $_start_from
+
+    if [ -z "$_hdfs_client_node" ]; then
+        _hdfs_client_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" $r_AMBARI_HOST`"
+    fi
     ssh root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfs -mkdir /user/$_user && hdfs dfs -chown $_user:hadoop /user/$_user\""
 
     if which kadmin.local; then
