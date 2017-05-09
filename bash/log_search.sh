@@ -223,6 +223,16 @@ function f_longGC() {
     egrep "$_regex" "$_path"
 }
 
+function f_getPerflog() {
+    local __doc__="Get lines between PERFLOG method=xxxxx"
+    local _path="$1"
+    local _approx_datetime="$2"
+    local _thread_id="$3"
+    local _method="${4-compile}"
+
+    _getAfterFirstMatch "$_path" "^${_approx_datetime}.+ Thread-${_thread_id}\]: .+<PERFLOG method=${_method} " "Thread-${_thread_id}\]: .+<\/PERFLOG method=${_method} " | ggrep -vP ": Thread-(?!${_thread_id})\]"
+}
+
 function f_findJarByClassName() {
     local __doc__="Find jar by class name (add .class in the name)"
     local _search_path="${1-/usr/hdp/current/}"
@@ -334,21 +344,20 @@ function _getAfterFirstMatch() {
     local _start_regex="$2"
     local _end_regex="$3"
 
-    ls $_file_path 2>/dev/null | while read l; do
-        local _start_line_num=`ggrep -m1 -nP "$_start_regex" "$l" | cut -d ":" -f 1`
-        if [ -n "$_start_line_num" ]; then
-            local _end_line_num=""
-            if [ -n "$_end_regex" ]; then
-                _end_line_num=`ggrep -m1 -nP "$_end_regex" "$l" | cut -d ":" -f 1`
-            fi
-            if [ -n "$_end_line_num" ]; then
-                sed -n "${_start_line_num},${_end_line_num}p" "${l}"
-            else
-                sed -n "${_start_line_num},\$p" "${l}"
-            fi
+    local _start_line_num=`ggrep -m1 -nP "$_start_regex" "$_file_path" | cut -d ":" -f 1`
+    if [ -n "$_start_line_num" ]; then
+        local _end_line_num=""
+        if [ -n "$_end_regex" ]; then
+            #sed -n "${_start_line_num},\$s/${_end_regex}/&/p" "$_file_path"
+            _end_line_num=`tail -n +${_start_line_num} "$_file_path" | ggrep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
+            _end_line_num=$(( $_end_line_num + $_start_line_num - 1 ))
         fi
-    done
-    return $?
+        if [ -n "$_end_line_num" ]; then
+            sed -n "${_start_line_num},${_end_line_num}p" "${_file_path}"
+        else
+            sed -n "${_start_line_num},\$p" "${_file_path}"
+        fi
+    fi
 }
 
 ### Help ###############################################################################################################
