@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_security.sh
 #
 # This script contains functions which help to set up Ambari/HDP security (SSL,LDAP,Kerberos etc.)
 # This script requires below:
@@ -70,7 +71,7 @@ function f_kdc_install_on_host() {
 }
 
 function f_ambari_kerberos_generate_service_config() {
-    local __doc__="TODO: Output (return) service config for Ambari APIs. TODO: MIT KDC only by created by f_kdc_install_on_host"
+    local __doc__="Output (return) service config for Ambari APIs. TODO: MIT KDC only by created by f_kdc_install_on_host"
     # https://cwiki.apache.org/confluence/display/AMBARI/Automated+Kerberizaton#AutomatedKerberizaton-EnablingKerberos
     local _realm="${1-EXAMPLE.COM}"
     local _server="${2-`hostname -i`}"
@@ -126,30 +127,36 @@ function f_ambari_kerberos_generate_service_config() {
 function f_ambari_kerberos_setup() {
     local __doc__="TODO: Setup Kerberos with Ambari APIs. TODO: MIT KDC only by created by f_kdc_install_on_host"
     # https://cwiki.apache.org/confluence/display/AMBARI/Automated+Kerberizaton#AutomatedKerberizaton-EnablingKerberos
-    local _realm="${2-EXAMPLE.COM}"
-    local _server="${3-`hostname -i`}"
-    local _kdc_type="${4}" # TODO: Not using and MIT KDC only
-    local _ambari_host="${1-$r_AMBARI_HOST}"
-    local _cluster_name="${1-$r_CLUSTER_NAME}"
+    local _realm="${1-EXAMPLE.COM}"
+    local _server="${2-`hostname -i`}"
+    local _kdc_type="${3}" # TODO: Not using and MIT KDC only
+    local _password="${4-$g_DEFAULT_PASSWORD}"
+    local _how_many="${5-$r_NUM_NODES}"
+    local _start_from="${6-$r_NODE_START_NUM}"
+    local _ambari_host="${7-$r_AMBARI_HOST}"
+    local _cluster_name="${8-$r_CLUSTER_NAME}"
 
     if [ -z "$_cluster_name" ]; then
         _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
     fi
-    return 1
 
-    curl -H "X-Requested-By:ambari" -u admin:admin -i -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' http://$_ambari_host:8080/api/v1/clusters/CLUSTER_NAME/hosts?Hosts/host_name=HOST_NAME
-    curl -H "X-Requested-By:ambari" -u admin:admin -i -X PUT -d '{"ServiceInfo": {"state" : "INSTALLED"}}' http://AMBARI_SERVER:8080/api/v1/clusters/CLUSTER_NAME/services/KERBEROS
-    curl -H "X-Requested-By:ambari" -u admin:admin -i -X PUT -d  '{"RequestInfo":{"context":"Stop Service"},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}' http://AMBARI_SERVER:8080/api/v1/clusters/CLUSTER_NAME/services
-    curl -H "X-Requested-By:ambari" -u admin:admin -i -X GET http://AMBARI_SERVER:8080/api/v1/stacks/STACK_NAME/versions/STACK_VERSION/artifacts/kerberos_descriptor
-    curl -H "X-Requested-By:ambari" -u admin:admin -i -X GET http://AMBARI_SERVER:8080/api/v1/clusters/CLUSTER_NAME/artifacts/kerberos_descriptor
-    curl -H "X-Requested-By:ambari" -u admin:admin -i -X POST -d @./payload http://AMBARI_SERVER:8080/api/v1/clusters/CLUSTER_NAME/artifacts/kerberos_descriptor
-    curl -H "X-Requested-By:ambari" -u admin:admin -i -X PUT -d @./payload http://AMBARI_SERVER:8080/api/v1/clusters/CLUSTER_NAME
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
+        curl -H "X-Requested-By:ambari" -u admin:admin -i -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/hosts?Hosts/host_name=node$i${r_DOMAIN_SUFFIX}"
+    done
+    curl -H "X-Requested-By:ambari" -u admin:admin -i -X PUT -d '{"ServiceInfo": {"state" : "INSTALLED"}}' "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/services/KERBEROS"
+    curl -H "X-Requested-By:ambari" -u admin:admin -i -X PUT -d  '{"RequestInfo":{"context":"Stop Service"},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/services"
+
+    curl -H "X-Requested-By:ambari" -u admin:admin -i -X GET http://$_ambari_host:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/artifacts/kerberos_descriptor
+    curl -H "X-Requested-By:ambari" -u admin:admin -i -X GET http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/artifacts/kerberos_descriptor
+
+    curl -H "X-Requested-By:ambari" -u admin:admin -i -X POST -d @./payload http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/artifacts/kerberos_descriptor
+    curl -H "X-Requested-By:ambari" -u admin:admin -i -X PUT -d @./payload http://$_ambari_host:8080/api/v1/clusters/$_cluster_name
     echo 'Payload
 {
   "session_attributes" : {
     "kerberos_admin" : {
-      "principal" : "ADMIN_PRINCIPAL",
-      "password" : "ADMIN_PASSWORD"
+      "principal" : "admin/admin@'$_realm'",
+      "password" : "'$_password'"
     }
   },
   "Clusters": {
@@ -157,11 +164,11 @@ function f_ambari_kerberos_setup() {
   }
 }'
     #Start all services
-    curl -H "X-Requested-By:ambari" -u admin:admin -i -X PUT -d '{"ServiceInfo": {"state" : "STARTED"}}' http://AMBARI_SERVER:8080/api/v1/clusters/CLUSTER_NAME/services
+    curl -H "X-Requested-By:ambari" -u admin:admin -i -X PUT -d '{"ServiceInfo": {"state" : "STARTED"}}' http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/services
 }
 
 function f_ldap_server_install_on_host() {
-    local __doc__="TODO: Install LDAP server packages on Ubuntu (need to test setup)"
+    local __doc__="Install LDAP server packages on Ubuntu (need to test setup)"
     local _ldap_domain="$1"
     local _password="${2-$g_DEFAULT_PASSWORD}"
 
@@ -198,7 +205,7 @@ EOF
 }
 
 function f_ldap_server_install_on_ambari_node() {
-    local __doc__="TODO: CentOS6 only: Install LDAP server packages TODO: setup"
+    local __doc__="TODO: CentOS6 only: Install LDAP server packages for sssd (security lab)"
     local _ldap_domain="$1"
     local _password="${2-$g_DEFAULT_PASSWORD}"
     local _server="${3-$r_AMBARI_HOST}"
@@ -278,7 +285,7 @@ ou: Group
 }
 
 function f_ldap_client_install() {
-    local __doc__="TODO: CentOS6 only: Install LDAP client packages"
+    local __doc__="TODO: CentOS6 only: Install LDAP client packages for sssd (security lab)"
     # somehow having difficulty to install openldap in docker so using dockerhost1
     local _ldap_server="${1}"
     local _ldap_basedn="${2}"
@@ -308,7 +315,7 @@ function f_ldap_client_install() {
 }
 
 function f_sssd_setup() {
-    local __doc__="TODO: setup SSSD on each node"
+    local __doc__="TODO: setup SSSD on each node (security lab)"
     return
     # https://github.com/HortonworksUniversity/Security_Labs#install-solrcloud
 
@@ -508,7 +515,7 @@ function f_ssl_internal_CA_setup() {
 }
 
 function f_ssl_self_signed_cert_with_internal_CA() {
-    local __doc__="TODO: Generate self-signed certificate. Assuming f_ssl_internal_CA_setup is used."
+    local __doc__="Generate self-signed certificate. Assuming f_ssl_internal_CA_setup is used."
     local _dname="$1"
     local _password="$2"
     local _common_name="${3}"
@@ -563,7 +570,7 @@ chmod 444 ${g_SERVER_KEY_LOCATION%/}/$g_CLIENT_TRUSTSTORE_FILE"
 }
 
 function f_ssl_ambari_config_set_for_hadoop() {
-    local __doc__="TODO: Update configs via Ambari for HDFS/YARN/MR2 (and tez). Not auomating, but asking questions"
+    local __doc__="Update configs via Ambari for HDFS/YARN/MR2 (and tez). Not auomating, but asking questions"
     local _ambari_host="${1}"
     local _ambari_port="${2-8080}"
     local _ambari_ssl="${3}"
