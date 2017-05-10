@@ -1095,8 +1095,8 @@ function f_ambari_update_config() {
     #ssh -t root@$r_AMBARI_HOST "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME ams-site " &> /tmp/configs_sh_dfs_replication.out
 
     _info "Modifying postgresql for Ranger install later..."
-    ssh -t root@$r_AMBARI_HOST -t "ambari-server setup --jdbc-db=postgres --jdbc-driver=`ls /usr/lib/ambari-server/postgresql-*.jar`
-sudo -u postgres psql -c 'ALTER ROLE ambari WITH SUPERUSER'
+    ssh -t root@$r_AMBARI_HOST -t "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`find /usr/lib/ambari-server/ -name 'postgresql-*.jar' | head -n 1\`
+sudo -u postgres psql -c 'CREATE ROLE rangeradmin WITH SUPERUSER'
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
 
