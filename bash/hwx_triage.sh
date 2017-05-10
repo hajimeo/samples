@@ -62,6 +62,8 @@ function f_check_system() {
     nscd -g &> ${_WORK_DIR%/}/nscd.out
     getent ahostsv4 `hostname -f` &> ${_WORK_DIR%/}/getent_from_name.out
     getent hosts `hostname -I` &> ${_WORK_DIR%/}/getent_from_ip.out
+    mount &> ${_WORK_DIR%/}/mount_df.out
+    df -h &> ${_WORK_DIR%/}/mount_df.out
     wait
     [ -n "$_VERBOSE" ] && set +x
 }
@@ -114,9 +116,9 @@ function f_collect_config() {
 
     [ -n "$_VERBOSE" ] && set -x
     if [ -n "$_VERBOSE" ]; then
-        tar czvhf ${_WORK_DIR%/}/hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf/* /etc/krb5.conf /etc/ambari-agent/conf/* 2>&1 | grep -v 'Removing leading'
+        tar czvhf ${_WORK_DIR%/}/hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf/* /etc/krb5.conf /etc/hosts /etc/ambari-agent/conf/* 2>&1 | grep -v 'Removing leading'
     else
-        tar czhf ${_WORK_DIR%/}/hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf/* /etc/krb5.conf /etc/ambari-agent/conf/* 2>&1 | grep -v 'Removing leading'
+        tar czhf ${_WORK_DIR%/}/hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf/* /etc/krb5.conf /etc/hosts /etc/ambari-agent/conf/* 2>&1 | grep -v 'Removing leading'
     fi
     [ -n "$_VERBOSE" ] && set +x
 }
@@ -171,9 +173,9 @@ function f_collect_host_metrics() {
     curl -u "${_USR}":"${_PWD}" -k "http://$_AMBARI_SERVER:8080/api/v1/clusters/$_CLS/hosts/$_HOST" -G --data-urlencode "fields=metrics/cpu/cpu_user[${_S},${_E},${_s}],metrics/cpu/cpu_wio[${_S},${_E},${_s}],metrics/cpu/cpu_nice[${_S},${_E},${_s}],metrics/cpu/cpu_aidle[${_S},${_E},${_s}],metrics/cpu/cpu_system[${_S},${_E},${_s}],metrics/cpu/cpu_idle[${_S},${_E},${_s}],metrics/disk/disk_total[${_S},${_E},${_s}],metrics/disk/disk_free[${_S},${_E},${_s}],metrics/load/load_fifteen[${_S},${_E},${_s}],metrics/load/load_one[${_S},${_E},${_s}],metrics/load/load_five[${_S},${_E},${_s}],metrics/memory/swap_free[${_S},${_E},${_s}],metrics/memory/mem_shared[${_S},${_E},${_s}],metrics/memory/mem_free[${_S},${_E},${_s}],metrics/memory/mem_cached[${_S},${_E},${_s}],metrics/memory/mem_buffers[${_S},${_E},${_s}],metrics/network/bytes_in[${_S},${_E},${_s}],metrics/network/bytes_out[${_S},${_E},${_s}],metrics/network/pkts_in[${_S},${_E},${_s}],metrics/network/pkts_out[${_S},${_E},${_s}],metrics/process/proc_total[${_S},${_E},${_s}],metrics/process/proc_run[${_S},${_E},${_s}]" -o ${_WORK_DIR%/}/ambari_metrics_${_HOST}.json
 }
 
-function f_test_network() {
-    local __doc__="TODO: Test network speed/error"
-}
+#function f_test_network() {
+#    local __doc__="TODO: Test network speed/error"
+#}
 
 function f_tar_work_dir() {
     local __doc__="Create tgz file from work dir and remove work dir"
