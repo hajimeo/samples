@@ -315,31 +315,31 @@ function f_ldap_client_install() {
 }
 
 function f_sssd_setup() {
-    local __doc__="TODO: setup SSSD on each node (security lab)"
-    return
+    local __doc__="setup SSSD on each node (security lab) If /etc/sssd/sssd.conf exists, skip"
     # https://github.com/HortonworksUniversity/Security_Labs#install-solrcloud
+    local ad_user="$1"    #registersssd
+    local ad_pwd="$2"
+    local ad_domain="$3"  #lab.hortonworks.net
+    local ad_dc="$4"      #ad01.lab.hortonworks.net
+    local ad_root="$5"    #dc=lab,dc=hortonworks,dc=net
+    local ad_ou_name="$6" #HadoopNodes
 
-    local ad_user="registersssd"
-    local ad_domain="lab.hortonworks.net"
-    local ad_dc="ad01.lab.hortonworks.net"
-    local ad_root="dc=lab,dc=hortonworks,dc=net"
-    local ad_ou="ou=HadoopNodes,${ad_root}"
+    local ad_ou="ou=${ad_ou_name},${ad_root}"
     local ad_realm=${ad_domain^^}
 
-    sudo kinit ${ad_user}
+    f_run_cmd_on_nodes 'which adcli || ( yum makecache fast && yum -y install epel-release; yum -y install sssd oddjob-mkhomedir authconfig sssd-krb5 sssd-ad sssd-tools adcli )'
 
-    # yum makecache fast
-    yum -y install sssd oddjob-mkhomedir authconfig sssd-krb5 sssd-ad sssd-tools adcli
+    local _cmd="echo -n '"${ad_pwd}"' | kinit ${ad_user}
 
-    sudo adcli join -v \
-      --domain-controller=${ad_dc} \
-      --domain-ou="${ad_ou}" \
-      --login-ccache="/tmp/krb5cc_0" \
-      --login-user="${ad_user}" \
-      -v \
-      --show-details
+sudo adcli join -v \
+  --domain-controller=${ad_dc} \
+  --domain-ou=\"${ad_ou}\" \
+  --login-ccache=\"/tmp/krb5cc_0\" \
+  --login-user=\"${ad_user}\" \
+  -v \
+  --show-details
 
-    sudo tee /etc/sssd/sssd.conf > /dev/null <<EOF
+tee /etc/sssd/sssd.conf > /dev/null <<EOF
 [sssd]
 ## master & data nodes only require nss. Edge nodes require pam.
 services = nss, pam, ssh, autofs, pac
@@ -372,27 +372,36 @@ memcache_timeout = 3600
 override_shell = /bin/bash
 EOF
 
-    sudo chmod 0600 /etc/sssd/sssd.conf
-    sudo service sssd restart
-    sudo authconfig --enablesssd --enablesssdauth --enablemkhomedir --enablelocauthorize --update
+chmod 0600 /etc/sssd/sssd.conf
+service sssd restart
+authconfig --enablesssd --enablesssdauth --enablemkhomedir --enablelocauthorize --update
 
-    sudo chkconfig oddjobd on
-    sudo service oddjobd restart
-    sudo chkconfig sssd on
-    sudo service sssd restart
+#chkconfig oddjobd on
+#service oddjobd restart
+#chkconfig sssd on
+service sssd restart
 
-    # sudo kdestroy
+kdestroy"
 
-    #detect name of cluster
-    output=`curl -k -u hadoopadmin:$PASSWORD -i -H 'X-Requested-By: ambari'  https://localhost:8443/api/v1/clusters`
-    cluster=`echo $output | sed -n 's/.*"cluster_name" : "\([^\"]*\)".*/\1/p'`  # TODO: may need to convert to lower
+    # To test: id yourusername && groups yourusername
+
+    f_run_cmd_on_nodes "[ -s /etc/sssd/sssd.conf ] || ( $_cmd )"
 
     #refresh user and group mappings
-    sudo sudo -u hdfs kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-"${cluster}"
-    sudo sudo -u hdfs hdfs dfsadmin -refreshUserToGroupsMappings
+    local _c="`f_get_cluster_name`" || return $?
+    local _hdfs_client_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" $r_AMBARI_HOST`"
+    if [ -z "$_hdfs_client_node" ]; then
+        _error "No node found for HDFS command"
+        return 1
+    fi
+    ssh root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfsadmin -refreshUserToGroupsMappings\""
 
-    sudo sudo -u yarn kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/$(hostname -f)@LAB.HORTONWORKS.NET
-    sudo sudo -u yarn yarn rmadmin -refreshUserToGroupsMappings
+    local _yarn_rm_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='RESOURCEMANAGER' and current_state='STARTED' limit 1" $r_AMBARI_HOST`"
+    if [ -z "$_yarn_rm_node" ]; then
+        _error "No node found for YARN command"
+        return 1
+    fi
+    ssh root@$_yarn_rm_node -t "sudo -u yarn bash -c \"kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/$(hostname -f); yarn rmadmin -refreshUserToGroupsMappings\""
 }
 
 function f_ssl_openssl_cnf_generate() {
