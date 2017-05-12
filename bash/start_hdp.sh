@@ -292,7 +292,6 @@ function p_hdp_start() {
 
     f_log_cleanup
 
-    f_ambari_update_config
     f_services_start
 
     f_port_forward 8080 $r_AMBARI_HOST 8080 "Y"
@@ -1564,6 +1563,7 @@ function p_host_setup() {
     fi
 
     f_port_forward 8080 $r_AMBARI_HOST 8080 "Y"
+    _info "Please run f_ambari_update_config once."
     f_screen_cmd
 }
 
