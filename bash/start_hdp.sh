@@ -1868,9 +1868,10 @@ function f_update_check() {
         else
             if [ `which apt-get` ]; then
                 _ask "Would you like to install 'curl'?" "Y"
-                if _isYes ; then
-                    DEBIAN_FRONTEND=noninteractive apt-get -y install curl &>/dev/null
+                if ! _isYes ; then
+                    return 1
                 fi
+                DEBIAN_FRONTEND=noninteractive apt-get -y install curl &>/dev/null
             fi
         fi
     fi
@@ -2140,9 +2141,7 @@ function _backup() {
 function _makeBackupDir() {
     if [ ! -d "${g_BACKUP_DIR}" ]; then
         mkdir -p -m 700 "${g_BACKUP_DIR}"
-        if [ -n "$SUDO_USER" ]; then
-            chown $SUDO_UID:$SUDO_GID ${g_BACKUP_DIR}
-        fi
+        #[ -n "$SUDO_USER" ] && chown $SUDO_UID:$SUDO_GID ${g_BACKUP_DIR}
     fi
 }
 function _isEnoughDisk() {
