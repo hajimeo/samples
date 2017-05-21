@@ -43,12 +43,18 @@ function f_topCausedByExceptions() {
 }
 
 function f_topErrors() {
-    local __doc__="List top ERRORs"
+    local __doc__="List top ERRORs. Eg.: f_topErrors ./hbase-ams-master-fslhd.log Y N \"\" \"^2017-05-10\""
     local _path="$1"
     local _is_including_warn="$2"
     local _not_hiding_number="$3"
     local _regex="$4"
+    local _date_regex_start="$5"
+    local _date_regex_end="$6"
 
+    if [ -n "$_date_regex_start" ]; then
+        _getAfterFirstMatch "$_path" "$_date_regex_start" "$_date_regex_end" > /tmp/f_topErrors_$$.tmp
+        _path=/tmp/f_topErrors_$$.tmp
+    fi
     if [ -z "$_regex" ]; then
         _regex="(ERROR|SEVERE|FATAL|java\..+?Exception).+"
 
@@ -234,11 +240,11 @@ function f_getPerflog() {
 }
 
 function f_findJarByClassName() {
-    local __doc__="Find jar by class name (add .class in the name)"
-    local _search_path="${1-/usr/hdp/current/}"
-    local _class_name="$2"
+    local __doc__="Find jar by class name (add .class in the name). If symlink needs to be followed, add -L in _search_path"
+    local _class_name="$1"
+    local _search_path="${2-/usr/hdp/current/*/}"
 
-    find -L "$_search_path" -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | grep -m 1 -w $_class_name && echo {}"
+    find $_search_path -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | grep -m 1 -w $_class_name > /tmp/f_findJarByClassName_$$.tmp && ( echo {}; cat /tmp/f_findJarByClassName_$$.tmp )"
 }
 
 # TODO: find hostname and container, splits, actual query (mr?) etc from app log
