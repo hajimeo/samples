@@ -64,6 +64,7 @@ function f_check_system() {
     getent hosts `hostname -I` &> ${_WORK_DIR%/}/getent_from_ip.out
     mount &> ${_WORK_DIR%/}/mount_df.out
     df -h &> ${_WORK_DIR%/}/mount_df.out
+    sar -qrb &> ${_WORK_DIR%/}/sar_qrb.out
     wait
     [ -n "$_VERBOSE" ] && set +x
 }
