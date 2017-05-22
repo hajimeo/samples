@@ -458,9 +458,6 @@ function f_ambari_blueprint_cluster_config() {
       "components" : [
         {
           "name" : "AMBARI_SERVER"
-        },
-        {
-          "name" : "ZOOKEEPER_SERVER"
         }'${_kerberos_client}'
       ],
       "configurations" : [ ],
@@ -507,9 +504,6 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "MAPREDUCE2_CLIENT"
-        },
-        {
-          "name" : "ZOOKEEPER_SERVER"
         },
         {
           "name" : "APP_TIMELINE_SERVER"
@@ -1022,24 +1016,24 @@ function f_ambari_server_install() {
     fi
 
     if _isUrl "$r_AMBARI_JDK_URL"; then
-        ssh root@$r_AMBARI_HOST "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JDK_URL\" -O"
+        ssh -q root@$r_AMBARI_HOST "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JDK_URL\" -O"
     fi
     if _isUrl "$r_AMBARI_JCE_URL"; then
-        ssh root@$r_AMBARI_HOST "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JCE_URL\" -O"
+        ssh -q root@$r_AMBARI_HOST "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JCE_URL\" -O"
     fi
 
     scp /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
-    ssh root@$r_AMBARI_HOST "yum clean all; yum install ambari-server -y && service postgresql initdb && service postgresql restart && for i in {1..3}; do [ -e /tmp/.s.PGSQL.5432 ] && break; sleep 5; done; ambari-server setup -s || ( echo 'ERROR ambari-server setup failed! Trying one more time...'; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
+    ssh -q root@$r_AMBARI_HOST "yum clean all; yum install ambari-server -y && service postgresql initdb && service postgresql restart && for i in {1..3}; do [ -e /tmp/.s.PGSQL.5432 ] && break; sleep 5; done; ambari-server setup -s || ( echo 'ERROR ambari-server setup failed! Trying one more time...'; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
 }
 
 function f_ambari_server_start() {
     local __doc__="Starting ambari-server on $r_AMBARI_HOST"
     _port_wait "$r_AMBARI_HOST" "22"
-    ssh root@$r_AMBARI_HOST "ambari-server start --silent" &> /tmp/f_ambari_server_start.out
+    ssh -q root@$r_AMBARI_HOST "ambari-server start --silent" &> /tmp/f_ambari_server_start.out
     if [ $? -ne 0 ]; then
         grep 'Ambari Server is already running' /tmp/f_ambari_server_start.out && return
         sleep 5
-        ssh root@$r_AMBARI_HOST "ambari-server start"
+        ssh -q root@$r_AMBARI_HOST "ambari-server start"
     fi
 }
 
@@ -1089,12 +1083,12 @@ function f_ambari_update_config() {
     _ambari_query_sql "update alert_definition set schedule_interval = schedule_interval * 2 where schedule_interval < 11" "$r_AMBARI_HOST"
 
     _info "Reducing dfs.replication to 1..."
-    ssh -t root@$r_AMBARI_HOST -t "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1" &> /tmp/configs_sh_dfs_replication.out
+    ssh -q -t root@$r_AMBARI_HOST -t "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1" &> /tmp/configs_sh_dfs_replication.out
     # TODO: should I reduce aggregator TTL size?
     #ssh -t root@$r_AMBARI_HOST "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME ams-site " &> /tmp/configs_sh_dfs_replication.out
 
     _info "Modifying postgresql for Ranger install later..."
-    ssh -t root@$r_AMBARI_HOST -t "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`find /usr/lib/ambari-server/ -name 'postgresql-*.jar' | head -n 1\`
+    ssh -q -t root@$r_AMBARI_HOST -t "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`find /usr/lib/ambari-server/ -name 'postgresql-*.jar' | head -n 1\`
 sudo -u postgres psql -c 'CREATE ROLE rangeradmin WITH SUPERUSER'
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
@@ -1118,7 +1112,7 @@ function f_ambari_agent_install() {
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         scp /tmp/ambari.repo root@node$i${r_DOMAIN_SUFFIX}:/etc/yum.repos.d/
         # Executing yum command one by one (not parallel)
-        ssh -t root@node$i${r_DOMAIN_SUFFIX} "$_cmd"
+        ssh -q -t root@node$i${r_DOMAIN_SUFFIX} "$_cmd"
     done
 }
 
@@ -1129,7 +1123,17 @@ function f_run_cmd_on_nodes() {
     local _start_from="${3-$r_NODE_START_NUM}"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+        ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+    done
+}
+
+function f_run_cmd_all() {
+    local __doc__="Executing command on all running containers"
+    local _cmd="${1}"
+
+    for _n in `docker ps --format "{{.Names}}"`; do
+        # TODO: docker exec does not work
+        ( set -x; ssh -q root@${_n}${r_DOMAIN_SUFFIX} -t "$_cmd" )
     done
 }
 
@@ -1140,7 +1144,7 @@ function f_ambari_agent_fix_public_hostname() {
     local _cmd='grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+        ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
     done
 }
 
@@ -1163,9 +1167,9 @@ function f_nodes_exec() {
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         if _isYes "$_bg"; then
             # can't use -t for background
-            ssh -o StrictHostKeyChecking=no node${i}${r_DOMAIN_SUFFIX} -T "$_cmd" &> /tmp/.${_id}_node${i}.tmp &
+            ssh -q -o StrictHostKeyChecking=no node${i}${r_DOMAIN_SUFFIX} -T "$_cmd" &> /tmp/.${_id}_node${i}.tmp &
         else
-            ssh node${i}${r_DOMAIN_SUFFIX} -t "$_cmd"
+            ssh -q node${i}${r_DOMAIN_SUFFIX} -t "$_cmd"
         fi
     done
 
@@ -1804,7 +1808,7 @@ function f_yum_remote_proxy() {
 
     # set up proxy for all running containers
     for _host in `docker ps --format "{{.Names}}"`; do
-        ssh root@$_host "grep ^proxy /etc/yum.conf || echo \"proxy=${_proxy_url}\" >> /etc/yum.conf"
+        ssh -q root@$_host "grep ^proxy /etc/yum.conf || echo \"proxy=${_proxy_url}\" >> /etc/yum.conf"
     done
 }
 
@@ -1813,7 +1817,7 @@ function f_gw_set() {
     local _gw="`f_docker_ip`"
     # NOTE: Assuming docker name and hostname is same
     for _name in `docker ps --format "{{.Names}}"`; do
-        ssh root@${_name}${r_DOMAIN_SUFFIX} "route add default gw $_gw eth0"
+        ssh -q root@${_name}${r_DOMAIN_SUFFIX} "route add default gw $_gw eth0"
     done
 }
 
@@ -1842,7 +1846,7 @@ function f_log_cleanup() {
     sleep 5
     # NOTE: Assuming docker name and hostname is same
     for _name in `docker ps --format "{{.Names}}"`; do
-        ssh root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {};find /var/log/ambari-* -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}' &
+        ssh -q root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {};find /var/log/ambari-* -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}' &
     done
     wait
 }
@@ -1967,7 +1971,7 @@ function f_nifidemo_add() {
     #rm -rf /var/lib/ambari-server/resources/stacks/HDP/'$_stack_version'/services/NIFI
     #TODO: curl http://public-repo-1.hortonworks.com/HDF/centos6/2.x/updates/2.1.2.0/tars/hdf_ambari_mp/hdf-ambari-mpack-2.1.2.0-10.tar.gz -O
     # http://public-repo-1.hortonworks.com/HDF/2.1.2.0/nifi-1.1.0.2.1.2.0-10-bin.tar.gz
-    ssh root@$r_AMBARI_HOST 'yum install git -y
+    ssh -q root@$r_AMBARI_HOST 'yum install git -y
 git clone https://github.com/abajwa-hw/ambari-nifi-service.git /var/lib/ambari-server/resources/stacks/HDP/'$_stack_version'/services/NIFI && service ambari-server restart'
 }
 
@@ -2002,7 +2006,7 @@ function f_useradd_on_nodes() {
     if [ -z "$_hdfs_client_node" ]; then
         _hdfs_client_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" $r_AMBARI_HOST`"
     fi
-    ssh root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfs -mkdir /user/$_user && hdfs dfs -chown $_user:hadoop /user/$_user\""
+    ssh -q root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfs -mkdir /user/$_user && hdfs dfs -chown $_user:hadoop /user/$_user\""
 
     if which kadmin.local; then
         if [ -z "$_password" ]; then
