@@ -1093,6 +1093,9 @@ sudo -u postgres psql -c 'CREATE ROLE rangeradmin WITH SUPERUSER'
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
 
+    _info "No password required to login Ambari..."
+    ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties';grep -q '^api.authenticate=' $_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' $_f || echo 'api.authenticate=false' >> $_f;grep -q '^api.authenticated.user=' $_f || echo 'api.authenticated.user=admin' >> $_f; ambari-server restart --skip-database-check"
+
     _info "Creating 'admin' user in each node and in HDFS..."
     local _hdfs_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" $r_AMBARI_HOST`"
     f_useradd_on_nodes "admin"
@@ -1419,7 +1422,7 @@ function f_service() {
 
     if [ -z "$_service" ]; then
         _info "Available Services"
-        _ambari_query_sql "select service_name from servicedesiredstate where desired_state='STARTED' order by service_name" "$_ambari_host"
+        _ambari_query_sql "select service_name from servicedesiredstate where 1=1 order by service_name" "$_ambari_host"
         return
     fi
 
@@ -1434,7 +1437,7 @@ function f_service() {
     if [ "$_action" = "RESTART" ]; then
         f_service "$_service" "stop" "$_ambari_host"
         # TODO _n="`_ambari_query_sql "select count(*) from hostcomponentstate where service_name='$_service' and current_state='INSTALLED'"`"
-        sleep 5
+        sleep 30
         f_service "$_service" "start" "$_ambari_host"
         return
     fi
@@ -1629,15 +1632,23 @@ function f_dnsmasq_banner_reset() {
 
 function f_host_performance() {
     local __doc__="Performance related changes on the host. Eg: Change kernel parameters on Docker Host (Ubuntu)"
-    grep '^vm.swappiness' /etc/sysctl.conf || echo "vm.swappiness = 0" >> /etc/sysctl.conf
+    grep -q '^vm.swappiness' /etc/sysctl.conf || echo "vm.swappiness = 0" >> /etc/sysctl.conf
     sysctl -w vm.swappiness=0
+
+    grep -q '^net.core.somaxconn' /etc/sysctl.conf || echo "net.core.somaxconn = 16384" >> /etc/sysctl.conf
+    sysctl -w net.core.somaxconn=16384
+
+    # also ip forwarding as well
+    grep -q '^net.ipv4.ip_forward' /etc/sysctl.conf || echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
+    sysctl -w net.ipv4.ip_forward=1
 
     echo never > /sys/kernel/mm/transparent_hugepage/enabled
     echo never > /sys/kernel/mm/transparent_hugepage/defrag
 
-    # also ip forwarding as well
-    grep '^net.ipv4.ip_forward' /etc/sysctl.conf || echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
-    sysctl -w net.ipv4.ip_forward=1
+    grep -q '^echo never > /sys/kernel/mm/transparent_hugepage/enabled' /etc/rc.local
+    if [ $? -ne 0 ]; then
+        sed -i.bak '/^exit 0/i echo never > /sys/kernel/mm/transparent_hugepage/enabled\necho never > /sys/kernel/mm/transparent_hugepage/defrag\n' /etc/rc.local
+    fi
 }
 
 function f_host_misc() {
@@ -2283,6 +2294,13 @@ function _trim() {
     local _string="$1"
     echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
 }
+function _merge() {
+    local _search_regex="$1"
+    local _replace_str="$2"
+    local _path="$3"
+    grep -qE "$_search_regex" "$_path" && sed -i.bak -e "s/${_search_regex}/${_replace_str}/" "$_path" || echo "$_replace_str" >> "$_path"
+}
+
 function _info() {
     # At this moment, not much difference from _echo and _warn, might change later
     local _msg="$1"
