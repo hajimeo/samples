@@ -248,16 +248,6 @@ function p_interview_or_load() {
     done
     trap - SIGINT
 
-    if [ -z "${_RESPONSE_FILEPATH}" ]; then
-        if [ -n "${r_AMBARI_VER}" ] || [ -n "${r_HDP_REPO_VER}" ]; then
-            local _tmp_RESPONSE_FILEPATH="HDP${r_HDP_REPO_VER}_ambari${r_AMBARI_VER}"
-            _RESPONSE_FILEPATH="${_tmp_RESPONSE_FILEPATH//./}.resp"
-        else
-            _RESPONSE_FILEPATH="$g_DEFAULT_RESPONSE_FILEPATH"
-        fi
-        _info "No response file specified, so that using ${_RESPONSE_FILEPATH}..."
-    fi
-
     f_saveResp
 }
 function _cancelInterview() {
@@ -577,7 +567,16 @@ function f_ambari_blueprint_cluster_config() {
 function f_saveResp() {
     local __doc__="Save current responses(answers) in memory into a file."
     local _file_path="${1-$_RESPONSE_FILEPATH}"
-    
+
+    if [ -z "${_file_path}" ]; then
+        if [ -n "${r_AMBARI_VER}" ] || [ -n "${r_HDP_REPO_VER}" ]; then
+            local _tmp_RESPONSE_FILEPATH="node${r_NODE_START_NUM}_HDP${r_HDP_REPO_VER}_ambari${r_AMBARI_VER}"
+            _file_path="${_tmp_RESPONSE_FILEPATH//./}.resp"
+        else
+            _file_path="$g_DEFAULT_RESPONSE_FILEPATH"
+        fi
+    fi
+
     if [ -z "$_file_path" ]; then
         _ask "Response file path" "$g_DEFAULT_RESPONSE_FILEPATH" "_RESPONSE_FILEPATH"
         _file_path="$_RESPONSE_FILEPATH"
@@ -602,10 +601,10 @@ function f_saveResp() {
     done
     
     # trying to be secure as much as possible
-    if [ -n "$SUDO_USER" ]; then
-        chown $SUDO_UID:$SUDO_GID ${_file_path}
-    fi
-    chmod 1600 ${_file_path}
+    #if [ -n "$SUDO_USER" ]; then
+    #    chown $SUDO_UID:$SUDO_GID ${_file_path}
+    #fi
+    #chmod 1600 ${_file_path}
     
     _info "Saved ${_file_path}"
 }
@@ -1437,7 +1436,7 @@ function f_service() {
     if [ "$_action" = "RESTART" ]; then
         f_service "$_service" "stop" "$_ambari_host"
         # TODO _n="`_ambari_query_sql "select count(*) from hostcomponentstate where service_name='$_service' and current_state='INSTALLED'"`"
-        sleep 30
+        sleep 40
         f_service "$_service" "start" "$_ambari_host"
         return
     fi
