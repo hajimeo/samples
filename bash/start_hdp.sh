@@ -474,6 +474,12 @@ function f_ambari_blueprint_cluster_config() {
           "yarn.app.mapreduce.am.command-opts" : "-Xmx201m -Dhdp.version=${hdp.version}"
         }
       },
+      "tez-site" : {
+        "properties" : {
+          "tez.am.resource.memory.mb" : "256",
+          "tez.task.resource.memory.mb" : "256"
+        }
+      },
       "hive-env" : {
         "properties" : {
           "hive.metastore.heapsize" : "512",
