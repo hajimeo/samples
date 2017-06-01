@@ -440,30 +440,40 @@ function f_ambari_blueprint_cluster_config() {
           "namenode_heapsize" : "513m",
           "nfsgateway_heapsize" : "512"
         }
-      },
+      }
+    },
+    {
       "hdfs-site" : {
         "properties" : {
           "dfs.replication" : "1",
           "dfs.datanode.du.reserved" : "536870912"
         }
-      },
+      }
+    },
+    {
       "yarn-env" : {
         "properties" : {
           "apptimelineserver_heapsize" : "512",
           "resourcemanager_heapsize" : "513",
           "nodemanager_heapsize" : "514"
         }
-      },
+      }
+    },
+    {
       "yarn-site" : {
         "properties" : {
           "yarn.scheduler.minimum-allocation-mb" : "256"
         }
-      },
+      }
+    },
+    {
       "mapred-env" : {
         "properties" : {
           "jobhistory_heapsize" : "512"
         }
-      },
+      }
+    },
+    {
       "mapred-site" : {
         "properties" : {
           "mapreduce.map.memory.mb" : "256",
@@ -473,13 +483,17 @@ function f_ambari_blueprint_cluster_config() {
           "yarn.app.mapreduce.am.resource.mb" : "256",
           "yarn.app.mapreduce.am.command-opts" : "-Xmx201m -Dhdp.version=${hdp.version}"
         }
-      },
+      }
+    },
+    {
       "tez-site" : {
         "properties" : {
           "tez.am.resource.memory.mb" : "256",
           "tez.task.resource.memory.mb" : "256"
         }
-      },
+      }
+    },
+    {
       "hive-env" : {
         "properties" : {
           "hive.metastore.heapsize" : "512",
