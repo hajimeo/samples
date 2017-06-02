@@ -43,7 +43,7 @@ Get more help for a function
 
 function f_check_system() {
     local __doc__="Execute OS commands for performance issue"
-    _workdir || return 1
+    _workdir || _WORK_DIR="."
 
     _log "INFO" "Collecting OS related information..."
 
@@ -72,8 +72,7 @@ function f_check_system() {
 function f_check_process() {
     local __doc__="Execute PID related commands (jstack, jstat, jmap)"
     local _p="$1"	# Java PID ex: `cat /var/run/kafka/kafka.pid`
-
-    _workdir || return 1
+    _workdir || _WORK_DIR="."
 
     if [ -z "$_p" ]; then
         _log "ERROR" "No PID"; return 1
@@ -99,6 +98,7 @@ function f_check_process() {
         # NO heap dump at this moment
         [ -x ${_cmd_dir}/jmap ] && sudo -u ${_user} ${_cmd_dir}/jmap -histo ${_p} &> ${_WORK_DIR%/}/jmap_histo_${_p}.out
         [ -x ${_cmd_dir}/jstack ] && for i in {1..3};do sudo -u ${_user} ${_cmd_dir}/jstack -l ${_p}; sleep 3; done &> ${_WORK_DIR%/}/jstack_${_p}.out &
+        top -Hb -n 3 -d 3 -p ${_p} &> ${_WORK_DIR%/}/top_${_p}.out &
         [ -x ${_cmd_dir}/jstat ] && sudo -u ${_user} ${_cmd_dir}/jstat -gccause ${_p} 1000 9 &> ${_WORK_DIR%/}/jstat_${_p}.out &
     fi
 
@@ -111,7 +111,7 @@ function f_check_process() {
 
 function f_collect_config() {
     local __doc__="Collect HDP all config files and generate tgz file"
-    _workdir || return 1
+    _workdir || _WORK_DIR="."
 
     _log "INFO" "Collecting HDP config files ..."
 
@@ -128,8 +128,7 @@ function f_collect_log_files() {
     local __doc__="Collect log files for past x days (default is 1 day) and generate tgz file"
     local _path="$1"
     local _day="${2-1}"
-
-    _workdir || return 1
+    _workdir || _WORK_DIR="."
 
     if [ -z "$_path" ] || [ ! -d "$_path" ]; then
         _log "ERROR" "$_path is not a directory"; return 1
@@ -150,6 +149,7 @@ function f_collect_log_files() {
 function f_collect_webui() {
     local __doc__="TODO: Collect Web UI with wget"
     local _url="$1"
+    _workdir || _WORK_DIR="."
 
     if ! which wget &>/dev/null ; then
         _log "ERROR" "No wget in the PATH."; return 1
@@ -162,6 +162,8 @@ function f_collect_webui() {
 
 function f_collect_host_metrics() {
     local __doc__="TODO: Collect host metrics from Ambari"
+    _workdir || _WORK_DIR="."
+
     _HOST="`hostname -f`"
     _S="`date '+%s' -d"1 hours ago"`"
     _E="`date '+%s'`"
@@ -245,7 +247,7 @@ function _log() {
 function _workdir() {
     local _work_dir="${1-$_WORK_DIR}"
 
-    [ -z "${_work_dir}" ] && _work_dir="/tmp/${FUNCNAME}_$$"
+    [ -z "${_work_dir}" ] && _work_dir="./${FUNCNAME}_$$"
 
     if [ ! -d "$_work_dir" ] && ! mkdir $_work_dir; then
         _log "ERROR" "Couldn't create $_work_dir directory"; return 1
