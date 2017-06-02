@@ -1153,7 +1153,7 @@ grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   rangera
 service postgresql reload"
 
     _info "No password required to login Ambari..."
-    ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties';grep -q '^api.authenticate=' $_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' $_f || echo 'api.authenticate=false' >> $_f;grep -q '^api.authenticated.user=' $_f || echo 'api.authenticated.user=admin' >> $_f; ambari-server restart --skip-database-check"
+    ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties';grep -q '^api.authenticate=' \$_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' \$_f || echo 'api.authenticate=false' >> \$_f;grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f; ambari-server restart --skip-database-check"
 
     _info "Creating 'admin' user in each node and in HDFS..."
     local _hdfs_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" $r_AMBARI_HOST`"
