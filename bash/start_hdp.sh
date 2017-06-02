@@ -2435,8 +2435,8 @@ function _isValidateFunc() {
 }
 
 function _log() {
-    # At this moment, outputting to STDERR
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" 1>&2
+    # At this moment, outputting to STDOUT
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@"
 }
 
 function _echo() {
