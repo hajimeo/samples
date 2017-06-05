@@ -1571,91 +1571,91 @@ function f_sysstat_setup() {
 
 function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
-    _log "INFO" "Starting Host setup (logfile = /tmp/p_host_setup.log)" | tee /tmp/p_host_setup.log
+    _log "INFO" "Starting Host setup | logfile = " "/tmp/p_host_setup.log"
 
     if [ `which apt-get` ]; then
-        _log "INFO" "Starting apt-get update" | tee -a /tmp/p_host_setup.log
+        _log "INFO" "Starting apt-get update"
         _isYes "$g_APT_UPDATE_DONE" || apt-get update &>> /tmp/p_host_setup.log && g_APT_UPDATE_DONE="Y"
 
         if _isYes "$r_APTGET_UPGRADE"; then
-            _log "INFO" "Starting apt-get upgrade" | tee -a /tmp/p_host_setup.log
+            _log "INFO" "Starting apt-get upgrade"
             apt-get upgrade -y &>> /tmp/p_host_setup.log
         fi
 
         # NOTE: psql (postgresql-client) is required
-        _log "INFO" "Starting apt-get install packages" | tee -a /tmp/p_host_setup.log
+        _log "INFO" "Starting apt-get install packages"
         apt-get -y install ntpdate curl wget sshfs sysv-rc-conf tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat &>> /tmp/p_host_setup.log
         #mailutils postfix mysql-client htop
 
-        _log "INFO" "Starting f_docker_setup" | tee -a /tmp/p_host_setup.log
+        _log "INFO" "Starting f_docker_setup"
         f_docker_setup &>> /tmp/p_host_setup.log
         #f_sysstat_setup &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_host_performance" | tee -a /tmp/p_host_setup.log
+        _log "INFO" "Starting f_host_performance"
         f_host_performance &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_host_misc" | tee -a /tmp/p_host_setup.log
+        _log "INFO" "Starting f_host_misc"
         f_host_misc &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_dnsmasq" | tee -a /tmp/p_host_setup.log
+        _log "INFO" "Starting f_dnsmasq"
         f_dnsmasq &>> /tmp/p_host_setup.log
     fi
 
-    _log "INFO" "Starting f_docker0_setup" | tee -a /tmp/p_host_setup.log
+    _log "INFO" "Starting f_docker0_setup"
     f_docker0_setup &>> /tmp/p_host_setup.log
-    _log "INFO" "Starting f_dockerfile" | tee -a /tmp/p_host_setup.log
+    _log "INFO" "Starting f_dockerfile"
     f_dockerfile &>> /tmp/p_host_setup.log
-    _log "INFO" "Starting f_docker_base_create" | tee -a /tmp/p_host_setup.log
+    _log "INFO" "Starting f_docker_base_create"
     f_docker_base_create &>> /tmp/p_host_setup.log
-    _log "INFO" "Starting f_docker_run" | tee -a /tmp/p_host_setup.log
+    _log "INFO" "Starting f_docker_run"
     f_docker_run &>> /tmp/p_host_setup.log
-    _log "INFO" "Starting f_docker_start" | tee -a /tmp/p_host_setup.log
+    _log "INFO" "Starting f_docker_start"
     f_docker_start &>> /tmp/p_host_setup.log
 
     if _isYes "$r_PROXY"; then
-        _log "INFO" "Starting f_apache_proxy" | tee -a /tmp/p_host_setup.log
+        _log "INFO" "Starting f_apache_proxy"
         f_apache_proxy &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_yum_remote_proxy" | tee -a /tmp/p_host_setup.log
+        _log "INFO" "Starting f_yum_remote_proxy"
         f_yum_remote_proxy &>> /tmp/p_host_setup.log
     fi
 
-    _log "INFO" "Starting f_ambari_server_install" | tee -a /tmp/p_host_setup.log
+    _log "INFO" "Starting f_ambari_server_install"
     f_ambari_server_install &>> /tmp/p_host_setup.log
-    _log "INFO" "Starting f_ambari_server_start" | tee -a /tmp/p_host_setup.log
+    _log "INFO" "Starting f_ambari_server_start"
     f_ambari_server_start &>> /tmp/p_host_setup.log
 
     _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log
     if [ $? -eq 0 ]; then
-        _log "INFO" "Starting f_run_cmd_on_nodes" | tee -a /tmp/p_host_setup.log
+        _log "INFO" "Starting f_run_cmd_on_nodes"
         f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
         _ambari_agent_wait &>> /tmp/p_host_setup.log
         if [ $? -ne 0 ]; then
-            _log "INFO" "Starting f_ambari_agent_install" | tee -a /tmp/p_host_setup.log
+            _log "INFO" "Starting f_ambari_agent_install"
             f_ambari_agent_install &>> /tmp/p_host_setup.log
-            _log "INFO" "Starting f_ambari_agent_fix_public_hostname" | tee -a /tmp/p_host_setup.log
+            _log "INFO" "Starting f_ambari_agent_fix_public_hostname"
             f_ambari_agent_fix_public_hostname &>> /tmp/p_host_setup.log
-            _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start" | tee -a /tmp/p_host_setup.log
+            _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
             f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
            _ambari_agent_wait &>> /tmp/p_host_setup.log
         fi
     else
-        _warn "Ambari Server may not be running but keep continuing..." | tee -a /tmp/p_host_setup.log
+        _log "WARN" "Ambari Server may not be running but keep continuing..."
     fi
 
     if _isYes "$r_HDP_LOCAL_REPO"; then
-        _log "INFO" "Starting f_local_repo" | tee -a /tmp/p_host_setup.log
+        _log "INFO" "Starting f_local_repo"
         f_local_repo &>> /tmp/p_host_setup.log
     elif [ -n "$r_HDP_REPO_URL" ]; then
         # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
-        _log "INFO" "Starting f_ambari_set_repo" | tee -a /tmp/p_host_setup.log
+        _log "INFO" "Starting f_ambari_set_repo"
         f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" &>> /tmp/p_host_setup.log
     fi
 
     if _isYes "$r_AMBARI_BLUEPRINT"; then
-        _log "INFO" "Starting p_ambari_blueprint" | tee -a /tmp/p_host_setup.log
+        _log "INFO" "Starting p_ambari_blueprint"
         p_ambari_blueprint &>> /tmp/p_host_setup.log
     fi
 
-    _log "INFO" "Starting f_port_forward" | tee -a /tmp/p_host_setup.log
+    _log "INFO" "Starting f_port_forward"
     f_port_forward 8080 $r_AMBARI_HOST 8080 "Y" &>> /tmp/p_host_setup.log
-    _info "Please run f_ambari_update_config once when HDFS is running." | tee -a /tmp/p_host_setup.log
+    _log "INFO" "Completed. Please run f_ambari_update_config once when HDFS is running."
 
     f_screen_cmd
 }
@@ -2436,7 +2436,16 @@ function _isValidateFunc() {
 
 function _log() {
     # At this moment, outputting to STDOUT
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@"
+    local _log_file_path="$3"
+    if [ -n "$_log_file_path" ]; then
+        g_LOG_FILE_PATH="$_log_file_path"
+        > $g_LOG_FILE_PATH
+    fi
+    if [ -n "$g_LOG_FILE_PATH" ]; then
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a $g_LOG_FILE_PATH
+    else
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" 1>&2
+    fi
 }
 
 function _echo() {
