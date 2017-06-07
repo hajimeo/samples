@@ -708,7 +708,7 @@ function f_loadResp() {
     
     # clean up
     rm -f /tmp/f_loadResp_${__PID}.out
-
+    touch ${_file_path}
     return $?
 }
 
@@ -1141,10 +1141,9 @@ function f_ambari_update_config() {
     _info "Reducing Ambari Alert frequency..."
     _ambari_query_sql "update alert_definition set schedule_interval = schedule_interval * 2 where schedule_interval < 11" "$r_AMBARI_HOST"
 
-    _info "Reducing dfs.replication to 1..."
-    ssh -q -t root@$r_AMBARI_HOST -t "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1" &> /tmp/configs_sh_dfs_replication.out
+    #_info "Reducing dfs.replication to 1..."
+    #ssh -q -t root@$r_AMBARI_HOST -t "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1" &> /tmp/configs_sh_dfs_replication.out
     # TODO: should I reduce aggregator TTL size?
-    #ssh -t root@$r_AMBARI_HOST "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME ams-site " &> /tmp/configs_sh_dfs_replication.out
 
     _info "Modifying postgresql for Ranger install later..."
     ssh -q -t root@$r_AMBARI_HOST -t "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`find /usr/lib/ambari-server/ -name 'postgresql-*.jar' | head -n 1\`
