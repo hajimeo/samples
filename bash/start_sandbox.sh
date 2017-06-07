@@ -115,7 +115,8 @@ docker exec -t ${_NAME} chown oozie:hadoop /usr/hdp/current/oozie-server/oozie-s
 docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
 
 # docker exec -it ${_NAME} bash -c '/sbin/service mysqld start' # TODO: somehow this hangs echo "" | nc -v sandbox.hortonworks.com 3306
-nc -vz sandbox.hortonworks.com 3306 || ssh -p 2222 localhost -t /sbin/service mysqld start
+sleep 5
+ssh -p 2222 localhost -t /sbin/service mysqld start
 docker exec -it ${_NAME} bash -c '/sbin/service postgresql start'
 
 if ${_NEED_RESET_ADMIN_PWD} ; then
