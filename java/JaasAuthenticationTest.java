@@ -1,3 +1,12 @@
+/**
+ * @see http://www.avajava.com/tutorials/lessons/how-do-i-create-a-login-module.html
+ *
+ * source /etc/hadoop/conf/hadoop-env.sh
+ * $JAVA_HOME/bin/javac JaasAuthenticationTest.java
+ * $JAVA_HOME/bin/java JaasAuthenticationTest ./testjaas.conf Client
+ * $JAVA_HOME/bin/java -Dsun.security.krb5.debug=true -Dsun.security.spnego.debug=true JaasAuthenticationTest ./testjaas.conf Client
+ */
+
 import javax.security.auth.login.LoginContext;
 import javax.security.auth.login.LoginException;
 import java.io.IOException;
@@ -21,7 +30,7 @@ public class JaasAuthenticationTest {
         }
 
         public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
-            System.out.println("Callback Handler - handle called");
+            System.out.println("Callback Handler - handle called " + this.name + " | " + this.password);
 
             for (int i = 0; i < callbacks.length; i++) {
                 if (callbacks[i] instanceof NameCallback) {
