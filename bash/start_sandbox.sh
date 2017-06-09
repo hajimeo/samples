@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # @see http://hortonworks.com/hadoop-tutorial/hortonworks-sandbox-guide/#section_4
 # curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh -O
+# ./start_sandbox.sh [sandbox-hdf]
 #
 _NAME="${1-sandbox}"
-_NEED_RESET_ADMIN_PWD=false
-_SHMMAX=41943040
 _AMBARI_PORT=8080
+if [ "${_NAME}" = "sandbox-hdf" ]; then
+    _AMBARI_PORT=9080
+fi
+_SHMMAX=41943040
+_NEED_RESET_ADMIN_PWD=false
 
 function _port_wait() {
     local _host="$1"
@@ -60,8 +64,6 @@ else
     -p 17005:17005 \
     -p 12222:22 \
     ${_NAME} /usr/sbin/sshd -D
-
-    _AMBARI_PORT=9080
   else
     docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_NAME}.hortonworks.com" --privileged -d \
     -p 6080:6080 \
@@ -136,6 +138,7 @@ else
 
   _NEED_RESET_ADMIN_PWD=true
 fi
+
 # TODO: how to change/add port later (does not work)
 # copy /var/lib/docker/containers/${_CONTAINER_ID}*/config.v2.json
 # stop the container, then stop docker service
@@ -149,21 +152,13 @@ fi
 #docker exec -t ${_NAME} chown oozie:hadoop /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
 #docker exec -d ${_NAME} /etc/init.d/splash
 
-sleep 5
+sleep 3
 docker exec -d ${_NAME} sysctl -w kernel.shmmax=${_SHMMAX}
-docker exec -d ${_NAME} /sbin/sysctl -p
+#docker exec -d ${_NAME} /sbin/sysctl -p
 docker exec -d ${_NAME} service postgresql start
 
 #ssh -p 2222 localhost -t /sbin/service mysqld start
 docker exec -d ${_NAME} service mysqld start
-
-docker exec -d ${_NAME} service ambari-server start
-docker exec -d ${_NAME} service ambari-agent start
-
-docker exec -d ${_NAME} /root/start_sandbox.sh
-docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
-docker exec -d ${_NAME} /etc/init.d/tutorials start
-
 
 if ${_NEED_RESET_ADMIN_PWD} ; then
     echo "Resetting Ambari password (type 'admin' twice) ..."
@@ -171,13 +166,20 @@ if ${_NEED_RESET_ADMIN_PWD} ; then
     # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
     docker exec -it ${_NAME} bash -c 'grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
 else
-    # Clean up old logs to save disk space
-    docker exec -it ${_NAME} bash -c 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
-    docker exec -it ${_NAME} bash -c 'find /var/log/ambari-server/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
-    docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
+    docker exec -d ${_NAME} service ambari-server start
 fi
+docker exec -d ${_NAME} service ambari-agent start
+
+docker exec -d ${_NAME} /root/start_sandbox.sh
+docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
+docker exec -d ${_NAME} /etc/init.d/tutorials start
+
+# Clean up old logs to save disk space
+docker exec -it ${_NAME} bash -c 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
+docker exec -it ${_NAME} bash -c 'find /var/log/ambari-server/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
+docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 
 _port_wait "sandbox.hortonworks.com" $_AMBARI_PORT
-curl -u admin:admin -H "X-Requested-By:ambari" -k "http://${_NAME}.hortonworks.com:${_AMBARI_PORT}/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+curl -u admin:admin -H "X-Requested-By:ambari" -k "http://localhost:${_AMBARI_PORT}/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 echo ""
 #docker exec -it ${_NAME} bash
