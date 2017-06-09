@@ -789,41 +789,6 @@ function f_docker_setup() {
     fi
 }
 
-function f_docker_sandbox_install() {
-    local __doc__="Install Sandbox docker version. See https://hortonworks.com/hadoop-tutorial/hortonworks-sandbox-guide"
-    local _tmp_dir="${1-./}"
-    local _url="$2"
-
-    if [ -z "$_url" ]; then
-        _url="http://hortonassets.s3.amazonaws.com/2.5/HDP_2.5_docker.tar.gz"
-    fi
-
-    local _file_name="`basename "${_url}"`"
-
-    f_docker_setup
-
-    if ! _isEnoughDisk "$_tmp_dir" "10"; then
-        _error "Not enough space to download sandbox"
-        return 1
-    fi
-
-    wget -nv -c -t 20 --timeout=60 --waitretry=60 "https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh" -O ~/start_sandbox.sh
-    chmod u+x ~/start_sandbox.sh
-
-    if [ -s "${_tmp_dir%/}/${_file_name}" ]; then
-        _warn "${_tmp_dir%/}/${_file_name} exists. Reusing it..."
-    else
-        wget -c -t 20 --timeout=60 --waitretry=60 "${_url}" -O "${_tmp_dir%/}/${_file_name}" || return $?
-    fi
-
-    docker load < "${_tmp_dir%/}/${_file_name}" || return $?
-
-    # This may not work. running 'sysctl' from inside of sandbox docker as well seems to work
-    sysctl -w kernel.shmmax=41943040 && sysctl -p
-    bash -x ~/start_sandbox.sh
-    _info "You may need to run /usr/sbin/ambari-admin-password-reset"
-}
-
 function f_docker0_setup() {
     local __doc__="Setting IP for docker0 to $r_DOCKER_HOST_IP (default)"
     local _docker0="${1-$r_DOCKER_HOST_IP}"
