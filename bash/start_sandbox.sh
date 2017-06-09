@@ -5,6 +5,7 @@
 _NAME="${1-sandbox}"
 _NEED_RESET_ADMIN_PWD=false
 _SHMMAX=41943040
+_AMBARI_PORT=8080
 
 function _port_wait() {
     local _host="$1"
@@ -27,7 +28,42 @@ until /usr/bin/docker ps 2>&1| grep STATUS>/dev/null; do  sleep 1; done;  >/dev/
 if [ $? -eq 0 ]; then
     /usr/bin/docker start "${_NAME}"
 else
-    docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "sandbox.hortonworks.com" --privileged -d \
+  if [ "${_NAME}" = "sandbox-hdf" ]; then
+    docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_NAME}.hortonworks.com" --privileged -d \
+    -p 12181:2181 \
+    -p 13000:3000 \
+    -p 14200:4200 \
+    -p 14557:4557 \
+    -p 16080:6080 \
+    -p 18000:8000 \
+    -p 9080:8080 \
+    -p 18744:8744 \
+    -p 18886:8886 \
+    -p 18888:8888 \
+    -p 18993:8993 \
+    -p 19000:9000 \
+    -p 19090:9090 \
+    -p 19091:9091 \
+    -p 43111:42111 \
+    -p 62888:61888 \
+    -p 25100:15100 \
+    -p 25101:15101 \
+    -p 25102:15102 \
+    -p 25103:15103 \
+    -p 25104:15104 \
+    -p 25105:15105 \
+    -p 17000:17000 \
+    -p 17001:17001 \
+    -p 17002:17002 \
+    -p 17003:17003 \
+    -p 17004:17004 \
+    -p 17005:17005 \
+    -p 12222:22 \
+    ${_NAME} /usr/sbin/sshd -D
+
+    _AMBARI_PORT=9080
+  else
+    docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_NAME}.hortonworks.com" --privileged -d \
     -p 6080:6080 \
     -p 9090:9090 \
     -p 9000:9000 \
@@ -95,9 +131,10 @@ else
     -p 8044:8044 \
     -p 2222:22 \
     --sysctl kernel.shmmax=${_SHMMAX} \
-    sandbox /usr/sbin/sshd -D
+    ${_NAME} /usr/sbin/sshd -D
+  fi
 
-    _NEED_RESET_ADMIN_PWD=true
+  _NEED_RESET_ADMIN_PWD=true
 fi
 # TODO: how to change/add port later (does not work)
 # copy /var/lib/docker/containers/${_CONTAINER_ID}*/config.v2.json
@@ -108,16 +145,25 @@ fi
 #docker exec -t ${_NAME} /etc/init.d/startup_script start
 #docker exec -t ${_NAME} make --makefile /usr/lib/hue/tools/start_scripts/start_deps.mf  -B Startup -j -i
 #docker exec -t ${_NAME} nohup su - hue -c '/bin/bash /usr/lib/tutorials/tutorials_app/run/run.sh' &>/dev/null
-docker exec -t ${_NAME} touch /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
-docker exec -t ${_NAME} chown oozie:hadoop /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
-#docker exec -d ${_NAME} /etc/init.d/tutorials start
+#docker exec -t ${_NAME} touch /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
+#docker exec -t ${_NAME} chown oozie:hadoop /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
 #docker exec -d ${_NAME} /etc/init.d/splash
-docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
 
-# docker exec -it ${_NAME} bash -c '/sbin/service mysqld start' # TODO: somehow this hangs echo "" | nc -v sandbox.hortonworks.com 3306
 sleep 5
-ssh -p 2222 localhost -t /sbin/service mysqld start
-docker exec -it ${_NAME} bash -c '/sbin/service postgresql start'
+docker exec -d ${_NAME} sysctl -w kernel.shmmax=${_SHMMAX}
+docker exec -d ${_NAME} /sbin/sysctl -p
+docker exec -d ${_NAME} service postgresql start
+
+#ssh -p 2222 localhost -t /sbin/service mysqld start
+docker exec -d ${_NAME} service mysqld start
+
+docker exec -d ${_NAME} service ambari-server start
+docker exec -d ${_NAME} service ambari-agent start
+
+docker exec -d ${_NAME} /root/start_sandbox.sh
+docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
+docker exec -d ${_NAME} /etc/init.d/tutorials start
+
 
 if ${_NEED_RESET_ADMIN_PWD} ; then
     echo "Resetting Ambari password (type 'admin' twice) ..."
@@ -125,19 +171,13 @@ if ${_NEED_RESET_ADMIN_PWD} ; then
     # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
     docker exec -it ${_NAME} bash -c 'grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
 else
-    docker exec -d ${_NAME} sysctl -w kernel.shmmax=${_SHMMAX}
-    docker exec -d ${_NAME} /sbin/sysctl -p
     # Clean up old logs to save disk space
     docker exec -it ${_NAME} bash -c 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-server/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 fi
 
-# just in case
-docker exec -it ${_NAME} bash -c '/usr/sbin/ambari-server start'
-docker exec -it ${_NAME} bash -c '/usr/sbin/ambari-agent start'
-
-_port_wait "sandbox.hortonworks.com" 8080
-curl -u admin:admin -H "X-Requested-By:ambari" -k "http://sandbox.hortonworks.com:8080/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+_port_wait "sandbox.hortonworks.com" $_AMBARI_PORT
+curl -u admin:admin -H "X-Requested-By:ambari" -k "http://${_NAME}.hortonworks.com:${_AMBARI_PORT}/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 echo ""
 #docker exec -it ${_NAME} bash
