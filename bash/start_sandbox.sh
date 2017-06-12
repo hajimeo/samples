@@ -7,7 +7,7 @@
 _NAME="${1-sandbox}"
 _AMBARI_PORT=8080
 _SHMMAX=41943040
-_NEED_RESET_ADMIN_PWD=false
+_NEW_CONTAINER=false
 
 function f_docker_image_setup() {
     #Install Sandbox docker version. See https://hortonworks.com/hadoop-tutorial/hortonworks-sandbox-guide"
@@ -234,7 +234,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         ${_NAME} /usr/sbin/sshd -D
       fi
 
-      _NEED_RESET_ADMIN_PWD=true
+      _NEW_CONTAINER=true
     fi
 
     # TODO: how to change/add port later (does not work)
@@ -257,8 +257,12 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     #ssh -p 2222 localhost -t /sbin/service mysqld start
     docker exec -d ${_NAME} service mysqld start
+    docker exec -d ${_NAME} service mysqld start
 
-    if ${_NEED_RESET_ADMIN_PWD} ; then
+    if ${_NEW_CONTAINER} ; then
+        if [ -s  ~/.ssh/id_rsa.pub ]; then
+            docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
+        fi
         echo "Resetting Ambari password (type 'admin' twice) ..."
         docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
         # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
@@ -277,7 +281,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-server/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 
-    _port_wait "sandbox.hortonworks.com" $_AMBARI_PORT
+    _port_wait "localhost" $_AMBARI_PORT
     curl -u admin:admin -H "X-Requested-By:ambari" -k "http://localhost:${_AMBARI_PORT}/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
     echo ""
     #docker exec -it ${_NAME} bash
