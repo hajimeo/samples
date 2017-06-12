@@ -4,8 +4,10 @@
 # XML Parser, and also can compare two XML files, like:
 # python ./xml_parser.py hive-site.xml hive-site.xml.backup
 #
-# ln -s ./xml_parser.py /usr/local/bin/xmldiff
-# xmldiff ./ams-site.xml <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/ambari-metrics-collector/conf/ams-site.xml)
+# Example: use a command line tool
+#   ln -s ./xml_parser.py /usr/local/bin/xmldiff
+#   ssh -p 2222 root@sandbox.hortonworks.com "echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
+#   xmldiff ./ams-site.xml <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/ambari-metrics-collector/conf/ams-site.xml)
 #
 
 import sys, pprint
