@@ -105,6 +105,10 @@ function _totalSpaceGB() {
 if [ "$0" = "$BASH_SOURCE" ]; then
     echo "Waiting for docker daemon to start up:"
     until docker ps 2>&1| grep STATUS>/dev/null; do  sleep 1; done;  >/dev/null
+
+    echo "Stopping other containers..."
+    for _n in `docker ps --format "{{.Names}}" | grep -v "${_NAME}"`; do docker stop $_n; done
+
     docker ps -a --format "{{.Names}}" | grep -w "${_NAME}"
     if [ $? -eq 0 ]; then
         docker start "${_NAME}"
