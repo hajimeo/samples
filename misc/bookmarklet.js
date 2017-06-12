@@ -6,7 +6,7 @@ if (q != null) {
     (function (s) {
         q = encodeURIComponent(s);
         w.open("https://issues.apache.org/jira/secure/QuickSearch.jspa?searchString=" + q, "t_apa_jira");
-        w.open("https://github.com/search?l=&q=" + q + "+user%3Aapache&ref=advsearch&type=Code&utf8=%E2%9C%93", "t_github");
+        w.open("https://github.com/search?l=&q="+q+"+user%3Ahortonworks+repository%3A*-release&ref=advsearch&type=Code&utf8=%E2%9C%93", "t_github");
         w.open("https://www.google.com/search?q=" + q + "%20site%3Ahortonworks.com", "t_ggl");
         w.open("https://drive.google.com/drive/search?ltmpl=drive&q=" + q, "t_drive");
         w.open("https://mail.google.com/mail/u/0/#search/" + q, "t_gmail");
