@@ -4,6 +4,9 @@
 # XML Parser, and also can compare two XML files, like:
 # python ./xml_parser.py hive-site.xml hive-site.xml.backup
 #
+# ln -s ./xml_parser.py /usr/local/bin/xmldiff
+# xmldiff ./ams-site.xml <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/ambari-metrics-collector/conf/ams-site.xml)
+#
 
 import sys, pprint
 import xml.etree.ElementTree
