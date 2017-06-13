@@ -64,4 +64,5 @@ if __name__ == '__main__':
             else:
                 out[k] = [f1[k], f2[k]]
 
+    # TODO: too lazy to format the output
     pprint.pprint(out, width=1)
