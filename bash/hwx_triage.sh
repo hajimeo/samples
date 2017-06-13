@@ -11,7 +11,6 @@ _PID=""
 _LOG_DIR=""
 _LOG_DAY="1"
 _FUNCTION_NAME=""
-_VERBOSE=""
 set -o posix
 
 
@@ -47,7 +46,6 @@ function f_check_system() {
 
     _log "INFO" "Collecting OS related information..."
 
-    [ -n "$_VERBOSE" ] && set -x
     hdp-select &> ${_WORK_DIR%/}/hdp-select.out
     ls -l /usr/hdp/current/ >> ${_WORK_DIR%/}/hdp-select.out
     vmstat 1 3 &> ${_WORK_DIR%/}/vmstat.out &
@@ -65,8 +63,8 @@ function f_check_system() {
     mount &> ${_WORK_DIR%/}/mount_df.out
     df -h &> ${_WORK_DIR%/}/mount_df.out
     sar -qrb &> ${_WORK_DIR%/}/sar_qrb.out
+    cat /proc/cpuinfo &> ${_WORK_DIR%/}/cpuinfo.out
     wait
-    [ -n "$_VERBOSE" ] && set +x
 }
 
 function f_check_process() {
@@ -80,11 +78,14 @@ function f_check_process() {
 
     local _user="`stat -c '%U' /proc/${_p}`"
     local _cmd_dir="$(dirname `readlink /proc/${_p}/exe`)" 2>/dev/null
+    # In case, java is JRE, use JAVA_HOME
+    if [ ! -x "${_cmd_dir}/jstack" ] && [ -d "$JAVA_HOME" ]; then
+        _cmd_dir="$JAVA_HOME/bin" 2>/dev/null
+    fi
 
     _log "INFO" "Collecting PID related information..."
     su - $_user -c 'klist -eaf' &> ${_WORK_DIR%/}/klist_${_user}.out
 
-    [ -n "$_VERBOSE" ] && set -x
     cat /proc/${_p}/limits &> ${_WORK_DIR%/}/proc_limits_${_p}.out
     cat /proc/${_p}/status &> ${_WORK_DIR%/}/proc_status_${_p}.out
     date > ${_WORK_DIR%/}/proc_io_${_p}.out; cat /proc/${_p}/io >> ${_WORK_DIR%/}/proc_io_${_p}.out
@@ -96,17 +97,16 @@ function f_check_process() {
         zipgrep CryptoAllPermission $_java_home/jre/lib/security/local_policy.jar &> ${_WORK_DIR%/}/jce_${_p}.out
 
         # NO heap dump at this moment
-        [ -x ${_cmd_dir}/jmap ] && sudo -u ${_user} ${_cmd_dir}/jmap -histo ${_p} &> ${_WORK_DIR%/}/jmap_histo_${_p}.out
-        [ -x ${_cmd_dir}/jstack ] && for i in {1..3};do sudo -u ${_user} ${_cmd_dir}/jstack -l ${_p}; sleep 3; done &> ${_WORK_DIR%/}/jstack_${_p}.out &
-        top -Hb -n 3 -d 3 -p ${_p} &> ${_WORK_DIR%/}/top_${_p}.out &
-        [ -x ${_cmd_dir}/jstat ] && sudo -u ${_user} ${_cmd_dir}/jstat -gccause ${_p} 1000 9 &> ${_WORK_DIR%/}/jstat_${_p}.out &
+        [ -x "${_cmd_dir}/jmap" ] && sudo -u ${_user} ${_cmd_dir}/jmap -histo ${_p} &> ${_WORK_DIR%/}/jmap_histo_${_p}.out
+        [ -x "${_cmd_dir}/jstack" ] && for i in {1..3};do sudo -u ${_user} ${_cmd_dir}/jstack -l ${_p}; sleep 3; done &> ${_WORK_DIR%/}/jstack_${_p}.out &
+        top -Hb -n 3 -d 3 -p ${_p} &> ${_WORK_DIR%/}/top_${_p}.out &    # printf "%x\n" [PID]
+        [ -x "${_cmd_dir}/jstat" ] && sudo -u ${_user} ${_cmd_dir}/jstat -gccause ${_p} 1000 9 &> ${_WORK_DIR%/}/jstat_${_p}.out &
     fi
 
     ps -eLo user,pid,lwp,nlwp,ruser,pcpu,stime,etime,args | grep -w "${_p}" &> ${_WORK_DIR%/}/pseLo_${_p}.out
     pmap -x ${_p} &> ${_WORK_DIR%/}/pmap_${_p}.out
     wait
     date >> ${_WORK_DIR%/}/proc_io_${_p}.out; cat /proc/${_p}/io >> ${_WORK_DIR%/}/proc_io_${_p}.out
-    [ -n "$_VERBOSE" ] && set +x
 }
 
 function f_collect_config() {
@@ -115,13 +115,8 @@ function f_collect_config() {
 
     _log "INFO" "Collecting HDP config files ..."
 
-    [ -n "$_VERBOSE" ] && set -x
-    if [ -n "$_VERBOSE" ]; then
-        tar czvhf ${_WORK_DIR%/}/hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf/* /etc/krb5.conf /etc/hosts /etc/ambari-agent/conf/* 2>&1 | grep -v 'Removing leading'
-    else
-        tar czhf ${_WORK_DIR%/}/hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf/* /etc/krb5.conf /etc/hosts /etc/ambari-agent/conf/* 2>&1 | grep -v 'Removing leading'
-    fi
-    [ -n "$_VERBOSE" ] && set +x
+
+    tar czhf ${_WORK_DIR%/}/hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf/* /etc/krb5.conf /etc/hosts /etc/ambari-agent/conf/* 2>&1 | grep -v 'Removing leading'
 }
 
 function f_collect_log_files() {
@@ -136,14 +131,8 @@ function f_collect_log_files() {
 
     _log "INFO" "Collecting log files under ${_path} for past ${_day} day(s) ..."
 
-    [ -n "$_VERBOSE" ] && set -x
-    if [ -n "$_VERBOSE" ]; then
-        tar czvhf ${_WORK_DIR%/}/hdp_log_$(hostname).tar.gz `find -L "${_path}" -type f -mtime -${_day}` 2>&1 | grep -v 'Removing leading'
-    else
-        tar czhf ${_WORK_DIR%/}/hdp_log_$(hostname).tar.gz `find -L "${_path}" -type f -mtime -${_day}` 2>&1 | grep -v 'Removing leading'
-    fi
+    tar czhf ${_WORK_DIR%/}/hdp_log_$(hostname).tar.gz `find -L "${_path}" -type f -mtime -${_day}` 2>&1 | grep -v 'Removing leading'
     # grep -i "killed process" /var/log/messages* # TODO: should we also check OOM Killer?
-    [ -n "$_VERBOSE" ] && set +x
 }
 
 function f_collect_webui() {
@@ -190,13 +179,7 @@ function f_tar_work_dir() {
 
     _log "INFO" "Creating ${_file_path} file ..."
 
-    [ -n "$_VERBOSE" ] && set -x
-    if [ -n "$_VERBOSE" ]; then
-        tar --remove-files -czvf ${_file_path} ${_WORK_DIR%/}/* 2>&1 | grep -v 'Removing leading'
-    else
-        tar --remove-files -czf ${_file_path} ${_WORK_DIR%/}/* 2>&1 | grep -v 'Removing leading'
-    fi
-    [ -n "$_VERBOSE" ] && set +x
+    tar --remove-files -czf ${_file_path} ${_WORK_DIR%/}/* 2>&1 | grep -v 'Removing leading'
 }
 
 
@@ -284,7 +267,7 @@ function _list() {
 # Main
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "p:l:d:f:vh" opts; do
+    while getopts "p:l:d:f:h" opts; do
         case $opts in
             p)
                 _PID="$OPTARG"
@@ -297,9 +280,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             f)
                 _FUNCTION_NAME="$OPTARG"
-                ;;
-            v)
-                _VERBOSE="Y"
                 ;;
             h)
                 help | less
