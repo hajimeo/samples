@@ -94,7 +94,8 @@ function f_check_process() {
 
     if [ -d "$_cmd_dir" ]; then
         local _java_home="$(dirname $_cmd_dir)"
-        zipgrep CryptoAllPermission $_java_home/jre/lib/security/local_policy.jar &> ${_WORK_DIR%/}/jce_${_p}.out
+        zipgrep CryptoAllPermission "$_java_home/jre/lib/security/local_policy.jar" &> ${_WORK_DIR%/}/jce_${_p}.out
+        grep "^securerandom.source=" "$_java_home/jre/lib/security/java.security" &> ${_WORK_DIR%/}/java_random_${_p}.out
 
         # NO heap dump at this moment
         [ -x "${_cmd_dir}/jmap" ] && sudo -u ${_user} ${_cmd_dir}/jmap -histo ${_p} &> ${_WORK_DIR%/}/jmap_histo_${_p}.out
