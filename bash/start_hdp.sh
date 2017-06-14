@@ -276,7 +276,7 @@ function p_hdp_start() {
     f_dnsmasq_banner_reset
 
     f_ambari_server_start
-    f_ambari_agent_fix_public_hostname
+    f_ambari_java_random
     # not interested in agent restart output
     f_run_cmd_on_nodes "ambari-agent restart" > /dev/null
 
@@ -1163,6 +1163,20 @@ function f_run_cmd_all() {
     done
 }
 
+function f_ambari_java_random() {
+    local __doc__="Using urandom instead of random"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+
+    local _javahome="`ssh -q root@$r_AMBARI_HOST "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
+    _info "Ambari Java Home ${_javahome}"
+    local _cmd='grep -q "^securerandom.source=file:/dev/random" "'${_javahome%/}'/jre/lib/security/java.security" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "'${_javahome%/}'/jre/lib/security/java.security"'
+
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
+        ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+    done
+}
+
 function f_ambari_agent_fix_public_hostname() {
     local __doc__="Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
     local _how_many="${1-$r_NUM_NODES}"
@@ -1587,7 +1601,7 @@ function p_host_setup() {
 
     _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log
     if [ $? -eq 0 ]; then
-        _log "INFO" "Starting f_run_cmd_on_nodes"
+        _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
         f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
         _ambari_agent_wait &>> /tmp/p_host_setup.log
         if [ $? -ne 0 ]; then
