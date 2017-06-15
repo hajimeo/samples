@@ -696,18 +696,18 @@ function f_ssl_ambari_config_disable_for_hadoop() {
     done
 }
 
-
-### main ########################
+### when source is used ########################
 g_START_HDP_SH="start_hdp.sh"
-# TODO: assuming g_SCRIPT_NAME contains a right filename
+# TODO: assuming g_SCRIPT_NAME contains a right filename or can be empty
 if [ "$g_SCRIPT_NAME" != "$g_START_HDP_SH" ]; then
-    if [ ! -s "$g_CURRENT_DIR/$g_START_HDP_SH" ]; then
+    if [ ! -s "./$g_START_HDP_SH" ]; then
         echo "start_hdp.sh is missing. Downloading..."
         curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/$g_START_HDP_SH -o "$g_CURRENT_DIR/$g_START_HDP_SH"
     fi
-    source "$g_CURRENT_DIR/$g_START_HDP_SH"
+    source "./$g_START_HDP_SH"
 fi
 
+### main ########################
 # TODO: at this moment, only when this script is directly used, do update check.
 if [ "$0" = "$BASH_SOURCE" ]; then
     f_update_check
