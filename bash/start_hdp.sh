@@ -1112,7 +1112,7 @@ function f_ambari_update_config() {
 
     _info "Modifying postgresql for Ranger install later..."
     ssh -q -t root@$r_AMBARI_HOST -t "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`find /usr/lib/ambari-server/ -name 'postgresql-*.jar' | head -n 1\`
-sudo -u postgres psql -c 'CREATE ROLE rangeradmin WITH SUPERUSER'
+sudo -u postgres psql -c \"CREATE ROLE rangeradmin WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
 
@@ -1120,7 +1120,6 @@ service postgresql reload"
     ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties';grep -q '^api.authenticate=' \$_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' \$_f || echo 'api.authenticate=false' >> \$_f;grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f; ambari-server restart --skip-database-check"
 
     _info "Creating 'admin' user in each node and in HDFS..."
-    local _hdfs_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" $r_AMBARI_HOST`"
     f_useradd_on_nodes "admin"
 }
 
@@ -1171,6 +1170,13 @@ function f_ambari_java_random() {
     local _javahome="`ssh -q root@$r_AMBARI_HOST "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
     _info "Ambari Java Home ${_javahome}"
     local _cmd='grep -q "^securerandom.source=file:/dev/random" "'${_javahome%/}'/jre/lib/security/java.security" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "'${_javahome%/}'/jre/lib/security/java.security"'
+
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
+        ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+    done
+
+    # TODO: at this moment, trying to change only jre
+    _cmd='_javahome="$(dirname $(dirname $(alternatives --display java | grep "link currently points to" | grep -oE "/.+jre.+/java$")))" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "$_javahome/lib/security/java.security"'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
