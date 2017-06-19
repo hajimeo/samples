@@ -48,6 +48,7 @@ function f_check_system() {
 
     hdp-select &> ${_WORK_DIR%/}/hdp-select.out
     ls -l /usr/hdp/current/ >> ${_WORK_DIR%/}/hdp-select.out
+    (which timeout && (timeout 3 time head -n 1 /dev/urandom > /dev/null;echo '-';timeout 3 time head -n 1 /dev/random > /dev/null)) &> ${_WORK_DIR%/}/random.out
     vmstat 1 3 &> ${_WORK_DIR%/}/vmstat.out &
     pidstat -dl 3 3 &> ${_WORK_DIR%/}/pstat.out &
     sysctl -a &> ${_WORK_DIR%/}/sysctl.out
