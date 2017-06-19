@@ -2,15 +2,15 @@
 # -*- coding: utf-8 -*-
 #
 # XML Parser, and also can compare two XML files, like:
-# python ./xml_parser.py hive-site.xml hive-site.xml.backup
+# python ./xml_parser.py XXXX-site.xml [YYYY-site.xml] [exclude regex]
 #
 # Example: use a command line tool
 #   ln -s ./xml_parser.py /usr/local/bin/xmldiff
 #   ssh -p 2222 root@sandbox.hortonworks.com "echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
-#   xmldiff ./ams-site.xml <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/ambari-metrics-collector/conf/ams-site.xml)
+#   xmldiff ./ams-site.xml <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/ambari-metrics-collector/conf/ams-site.xml) '.+(auth_to_local|\.hue\.).*'
 #
 
-import sys, pprint
+import sys, pprint, re
 import xml.etree.ElementTree
 
 
@@ -39,6 +39,28 @@ class XmlParser:
                 XmlParser.err(name+" does not have value")
         return rtn
 
+    @staticmethod
+    def compare_dict(dict1, dict2, ignore_regex=None):
+        rtn = {}
+        regex = None
+
+        if ignore_regex is not None:
+            regex = re.compile(ignore_regex)
+
+        # create a list contains unique keys
+        for k in list(set(dict1.keys() + dict2.keys())):
+            if regex is not None:
+                if regex.match(k):
+                    continue;
+            if not k in dict1 or not k in dict2 or dict1[k] != dict2[k]:
+                if not k in dict1:
+                    rtn[k] = [None, dict2[k]]
+                elif not k in dict2:
+                    rtn[k] = [dict1[k], None]
+                else:
+                    rtn[k] = [dict1[k], dict2[k]]
+        return rtn
+
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
@@ -50,19 +72,12 @@ if __name__ == '__main__':
         pprint.pprint(f1)
         sys.exit(0)
 
-    f2 = XmlParser.xml2dict(sys.argv[2])
-    # create a list contains unique keys
-    f1k_and_f2k_u = list(set(f1.keys() + f2.keys()))
+    ignore_regex = None
+    if len(sys.argv) == 4:
+        ignore_regex = r""+sys.argv[3]  # not so sure if this works, but seems working
 
-    out = {}
-    for k in f1k_and_f2k_u:
-        if not k in f1 or not k in f2 or f1[k] != f2[k]:
-            if not k in f1:
-                out[k] = [None, f2[k]]
-            elif not k in f2:
-                out[k] = [f1[k], None]
-            else:
-                out[k] = [f1[k], f2[k]]
+    f2 = XmlParser.xml2dict(sys.argv[2])
+    out = XmlParser.compare_dict(f1, f2, ignore_regex)
 
     # TODO: too lazy to format the output
     pprint.pprint(out, width=1)
