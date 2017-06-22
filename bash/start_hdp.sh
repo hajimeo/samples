@@ -1061,6 +1061,19 @@ function f_ambari_server_start() {
     fi
 }
 
+function f_port_forward_ssh_on_nodes() {
+    local __doc__="Opening SSH ports to each node"
+    local _init_port="${1-2200}"
+    local _how_many="${2-$r_NUM_NODES}"
+    local _start_from="${3-$r_NODE_START_NUM}"
+    local _local_port=0
+
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
+        _local_port=$(($_init_port + $i))
+        f_port_forward $_local_port node$i${r_DOMAIN_SUFFIX} 22
+    done
+}
+
 function f_port_forward() {
     local __doc__="Port forwarding a local port to a container port"
     local _local_port="$1"
@@ -1087,6 +1100,7 @@ function f_port_forward() {
     #    _warn "No socat. Installing"; apt-get install socat -y || return 2
     #fi
     #nohup socat tcp4-listen:$_local_port,reuseaddr,fork tcp:$_remote_host:$_remote_port & TODO: which is better, socat or ssh?
+    _info "port-forwarding -L$_local_port:$_remote_host:$_remote_port ..."
     ssh -2CNnqTxfg -L$_local_port:$_remote_host:$_remote_port $_remote_host
 }
 
@@ -1192,42 +1206,6 @@ function f_ambari_agent_fix_public_hostname() {
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
     done
-}
-
-function f_nodes_exec() {
-    local __doc__="Executing a command against all running nodes/containers"
-    local _cmd="${1}"
-    local _bg="${2-N}"
-    local _how_many="${3-$r_NUM_NODES}"
-    local _start_from="${4-$r_NODE_START_NUM}"
-
-    if [ -z "$_cmd" ]; then
-        _error "No command"
-        return 1
-    fi
-
-    if _isYes "$_bg"; then
-        local _id=`date +%s`
-    fi
-
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        if _isYes "$_bg"; then
-            # can't use -t for background
-            ssh -q -o StrictHostKeyChecking=no node${i}${r_DOMAIN_SUFFIX} -T "$_cmd" &> /tmp/.${_id}_node${i}.tmp &
-        else
-            ssh -q node${i}${r_DOMAIN_SUFFIX} -t "$_cmd"
-        fi
-    done
-
-    if _isYes "$_bg"; then
-        wait
-
-        for i in `_docker_seq "$_how_many" "$_start_from"`; do
-            echo "# node${i}${r_DOMAIN_SUFFIX} \"$_cmd\""
-            cat /tmp/.${_id}_node${i}.tmp | grep -v '^Warning: Permanently added'
-            rm -f /tmp/.${_id}_node${i}.tmp
-        done
-    fi
 }
 
 function f_etcs_mount() {
@@ -1607,6 +1585,8 @@ function p_host_setup() {
 
     _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log
     if [ $? -eq 0 ]; then
+        _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
+        f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
         f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
         _ambari_agent_wait &>> /tmp/p_host_setup.log
@@ -1637,8 +1617,8 @@ function p_host_setup() {
         p_ambari_blueprint &>> /tmp/p_host_setup.log
     fi
 
-    _log "INFO" "Starting f_port_forward"
     f_port_forward 8080 $r_AMBARI_HOST 8080 "Y" &>> /tmp/p_host_setup.log
+    f_port_forward_ssh_on_nodes
     _log "INFO" "Completed. Please run f_ambari_update_config once when HDFS is running."
 
     f_screen_cmd
