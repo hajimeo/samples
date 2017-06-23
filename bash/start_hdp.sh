@@ -285,6 +285,7 @@ function p_hdp_start() {
     f_services_start
 
     f_port_forward 8080 $r_AMBARI_HOST 8080 "Y"
+    f_port_forward_ssh_on_nodes
     f_screen_cmd
 }
 
