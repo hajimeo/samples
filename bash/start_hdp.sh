@@ -277,8 +277,8 @@ function p_hdp_start() {
 
     f_ambari_server_start
     f_ambari_java_random
-    # not interested in agent restart output
-    f_run_cmd_on_nodes "ambari-agent restart" > /dev/null
+    # not interested in agent start output at this moment.
+    f_run_cmd_on_nodes "ambari-agent start" > /dev/null
 
     f_log_cleanup
 
