@@ -83,6 +83,7 @@ g_BACKUP_DIR="$HOME/.build_script/"
 g_DOCKER_BASE="hdp/base"
 g_UNAME_STR="`uname`"
 g_DEFAULT_PASSWORD="hadoop"
+g_NODE_HOSTNAME_PREFIX="node"
 __PID="$$"
 __LAST_ANSWER=""
 
@@ -129,13 +130,14 @@ function p_interview() {
     _ask "Container OS version" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
     r_REPO_OS_VER="${r_CONTAINER_OS_VER%%.*}"
     _ask "DockerFile URL or path" "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile" "r_DOCKERFILE_URL" "N" "N"
-    _ask "How many nodes?" "4" "r_NUM_NODES" "N" "Y"
-    _ask "Node starting number" "1" "r_NODE_START_NUM" "N" "Y"
     _ask "Hostname for docker host in docker private network?" "dockerhost1" "r_DOCKER_PRIVATE_HOSTNAME" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
+    _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
+    _ask "Node starting number (hostname will be sequential from this nubmer)" "1" "r_NODE_START_NUM" "N" "Y"
+    _ask "Node hostname prefix" "$g_NODE_HOSTNAME_PREFIX" "r_NODE_HOSTNAME_PREFIX" "N" "Y"
 
     # Questions to install Ambari
-    _ask "Ambari server hostname" "node${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
+    _ask "Ambari server hostname" "${r_NODE_HOSTNAME_PREFIX}${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
     _ask "Ambari version (used to build repo URL)" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
     _echo "If you have set up a Local Repo, please change below"
     _ask "Ambari repo file URL or path" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
@@ -337,6 +339,7 @@ function f_ambari_blueprint_hostmap() {
     local _how_many="${3-$r_NUM_NODES}"
     local _start_from="${4-$r_NODE_START_NUM}"
     local _domain_suffix="${5-$r_DOMAIN_SUFFIX}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     local _host_loop=""
     local _num=1
@@ -346,7 +349,7 @@ function f_ambari_blueprint_hostmap() {
       \"name\" : \"host_group_$_num\",
       \"hosts\" : [
         {
-          \"fqdn\" : \"node$i${_domain_suffix}\"
+          \"fqdn\" : \"${_node}$i${_domain_suffix}\"
         }
       ]
     },"
@@ -628,10 +631,11 @@ function f_ambari_blueprint_cluster_config() {
 function f_saveResp() {
     local __doc__="Save current responses(answers) in memory into a file."
     local _file_path="${1-$_RESPONSE_FILEPATH}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     if [ -z "${_file_path}" ]; then
         if [ -n "${r_AMBARI_VER}" ] || [ -n "${r_HDP_REPO_VER}" ]; then
-            local _tmp_RESPONSE_FILEPATH="node${r_NODE_START_NUM}_HDP${r_HDP_REPO_VER}_ambari${r_AMBARI_VER}"
+            local _tmp_RESPONSE_FILEPATH="${_node}${r_NODE_START_NUM}_HDP${r_HDP_REPO_VER}_ambari${r_AMBARI_VER}"
             _file_path="${_tmp_RESPONSE_FILEPATH//./}.resp"
         else
             _file_path="$g_DEFAULT_RESPONSE_FILEPATH"
@@ -841,11 +845,12 @@ function f_docker_start() {
     local __doc__="Starting some docker containers"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     _info "starting $_how_many docker containers starting from $_start_from ..."
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         # docker seems doesn't care if i try to start already started one
-        docker start --attach=false node$_n &
+        docker start --attach=false ${_node}$_n &
         sleep 1
     done
     wait
@@ -855,10 +860,11 @@ function f_docker_unpause() {
     local __doc__="Experimental: Unpausing some docker containers"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     _info "starting $_how_many docker containers starting from $_start_from ..."
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        docker unpause node$_n
+        docker unpause ${_node}$_n
     done
 }
 
@@ -866,10 +872,11 @@ function f_docker_stop() {
     local __doc__="Stopping some docker containers"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     _info "stopping $_how_many docker containers starting from $_start_from ..."
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        docker stop node$_n &
+        docker stop ${_node}$_n &
         sleep 1
     done
     wait
@@ -880,6 +887,7 @@ function f_docker_save() {
     local _sufix="${1}"
     local _how_many="${2-$r_NUM_NODES}"
     local _start_from="${3-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     _warn "If you have not checked disk space, please Ctrl+C now (wait for 3 secs)..."
     sleep 3
@@ -894,7 +902,7 @@ function f_docker_save() {
 
     _info "saving $_how_many docker containers starting from $_start_from ..."
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        docker commit node$_n node${_n}_$_sufix&
+        docker commit ${_node}$_n ${_node}${_n}_$_sufix&
         sleep 1
     done
     wait
@@ -915,10 +923,11 @@ function f_docker_stop_other() {
     local __doc__="Stopping other docker containers"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     local _filter=""
     for _s in `_docker_seq "$_how_many" "$_start_from"`; do
-        _filter="${_filter}node${_s}|"
+        _filter="${_filter}${_node}${_s}|"
     done
     _filter="${_filter%\|}"
 
@@ -934,10 +943,11 @@ function f_docker_pause_other() {
     local __doc__="Experimental: Pausing(suspending) other docker containers"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     local _filter=""
     for _s in `_docker_seq "$_how_many" "$_start_from"`; do
-        _filter="${_filter}node${_s}|"
+        _filter="${_filter}${_node}${_s}|"
     done
     _filter="${_filter%\|}"
 
@@ -974,6 +984,7 @@ function f_docker_run() {
     # ./start_hdp.sh -r ./node11-14_2.5.0.resp -f "f_docker_run 1 16"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     local _ip="`f_docker_ip`"
 
@@ -984,16 +995,16 @@ function f_docker_run() {
 
     local _line=""
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        _line="`docker ps -a -f name=node$_n | grep -w node$_n`"
+        _line="`docker ps -a -f name=${_node}$_n | grep -w ${_node}$_n`"
         if [ -n "$_line" ]; then
-            _warn "node$_n already exists. Skipping..."
+            _warn "${_node}$_n already exists. Skipping..."
             continue
         fi
         local _netmask="255.255.0.0"
         if [ "$r_DOCKER_NETWORK_MASK" = "/24" ]; then
             _netmask="255.255.255.0"
         fi
-        docker run -t -i -d --dns $_ip --name node$_n --privileged ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n node$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
+        docker run -t -i -d --dns $_ip --name ${_node}$_n --privileged ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
     done
 }
 
@@ -1068,10 +1079,11 @@ function f_port_forward_ssh_on_nodes() {
     local _how_many="${2-$r_NUM_NODES}"
     local _start_from="${3-$r_NODE_START_NUM}"
     local _local_port=0
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         _local_port=$(($_init_port + $i))
-        f_port_forward $_local_port node$i${r_DOMAIN_SUFFIX} 22
+        f_port_forward $_local_port ${_node}$i${r_DOMAIN_SUFFIX} 22
     done
 }
 
@@ -1143,6 +1155,7 @@ function f_ambari_agent_install() {
     # ./start_hdp.sh -r ./node11-14_2.5.0.resp -f "f_ambari_agent_install 1 16"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     scp root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo
 
@@ -1150,9 +1163,9 @@ function f_ambari_agent_install() {
     local _cmd="which ambari-agent 2>/dev/null || yum install ambari-agent -y && ambari-agent reset $r_AMBARI_HOST"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        scp /tmp/ambari.repo root@node$i${r_DOMAIN_SUFFIX}:/etc/yum.repos.d/
+        scp /tmp/ambari.repo root@${_node}$i${r_DOMAIN_SUFFIX}:/etc/yum.repos.d/
         # Executing yum command one by one (not parallel)
-        ssh -q -t root@node$i${r_DOMAIN_SUFFIX} "$_cmd"
+        ssh -q -t root@${_node}$i${r_DOMAIN_SUFFIX} "$_cmd"
     done
 }
 
@@ -1161,9 +1174,10 @@ function f_run_cmd_on_nodes() {
     local _cmd="${1}"
     local _how_many="${2-$r_NUM_NODES}"
     local _start_from="${3-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
     done
 }
 
@@ -1181,20 +1195,21 @@ function f_ambari_java_random() {
     local __doc__="Using urandom instead of random"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     local _javahome="`ssh -q root@$r_AMBARI_HOST "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
     _info "Ambari Java Home ${_javahome}"
     local _cmd='grep -q "^securerandom.source=file:/dev/random" "'${_javahome%/}'/jre/lib/security/java.security" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "'${_javahome%/}'/jre/lib/security/java.security"'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
     done
 
     # TODO: at this moment, trying to change only jre
     _cmd='_javahome="$(dirname $(dirname $(alternatives --display java | grep "link currently points to" | grep -oE "/.+jre.+/java$")))" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "$_javahome/lib/security/java.security"'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
     done
 }
 
@@ -1202,10 +1217,11 @@ function f_ambari_agent_fix_public_hostname() {
     local __doc__="Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _cmd='grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
     done
 }
 
@@ -1214,21 +1230,22 @@ function f_etcs_mount() {
     local _remount="$1"
     local _how_many="${2-$r_NUM_NODES}"
     local _start_from="${3-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        if [ ! -d /mnt/etc/node$i ]; then
-            mkdir -p /mnt/etc/node$i
+        if [ ! -d /mnt/etc/${_node}$i ]; then
+            mkdir -p /mnt/etc/${_node}$i
         fi
 
-        if _isNotEmptyDir "/mnt/etc/node$i" ;then
+        if _isNotEmptyDir "/mnt/etc/${_node}$i" ;then
             if ! _isYes "$_remount"; then
                 continue
             else
-                umount -f /mnt/etc/node$i
+                umount -f /mnt/etc/${_node}$i
             fi
         fi
 
-        sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks node${i}${r_DOMAIN_SUFFIX}:/etc /mnt/etc/node${i}
+        sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks ${_node}${i}${r_DOMAIN_SUFFIX}:/etc /mnt/etc/${_node}${i}
     done
 }
 
@@ -1501,10 +1518,11 @@ function _ambari_agent_wait() {
 
 function f_screen_cmd() {
     local __doc__="Output GNU screen command"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     screen -ls | grep -w "docker_$r_CLUSTER_NAME"
     if [ $? -ne 0 ]; then
       _info "You may want to run the following commands to start GNU Screen:"
-      echo "screen -S \"docker_$r_CLUSTER_NAME\" bash -c 'for s in \``_docker_seq "$r_NUM_NODES" "$r_NODE_START_NUM" "Y"`\`; do screen -t \"node\${s}\" \"ssh\" \"node\${s}${r_DOMAIN_SUFFIX}\"; sleep 1; done'"
+      echo "screen -S \"docker_$r_CLUSTER_NAME\" bash -c 'for s in \``_docker_seq "$r_NUM_NODES" "$r_NODE_START_NUM" "Y"`\`; do screen -t \"${_node}\${s}\" \"ssh\" \"${_node}\${s}${r_DOMAIN_SUFFIX}\"; sleep 1; done'"
     fi
 }
 
@@ -1645,6 +1663,7 @@ function f_dnsmasq_banner_reset() {
     local __doc__="Regenerate /etc/banner_add_hosts"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     local _docker0="`f_docker_ip`"
     # TODO: the first IP can be wrong one
@@ -1666,8 +1685,8 @@ function f_dnsmasq_banner_reset() {
     fi
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        grep -vE "node${_n}${r_DOMAIN_SUFFIX}|${r_DOCKER_NETWORK_ADDR}${_n}" /etc/banner_add_hosts > /tmp/banner
-        echo "${r_DOCKER_NETWORK_ADDR}${_n}    node${_n}${r_DOMAIN_SUFFIX} node${_n}" >> /tmp/banner
+        grep -vE "${_node}${_n}${r_DOMAIN_SUFFIX}|${r_DOCKER_NETWORK_ADDR}${_n}" /etc/banner_add_hosts > /tmp/banner
+        echo "${r_DOCKER_NETWORK_ADDR}${_n}    ${_node}${_n}${r_DOMAIN_SUFFIX} ${_node}${_n}" >> /tmp/banner
         cat /tmp/banner > /etc/banner_add_hosts
     done
 
