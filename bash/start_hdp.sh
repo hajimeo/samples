@@ -84,8 +84,6 @@ g_DOCKER_BASE="hdp/base"
 g_UNAME_STR="`uname`"
 g_DEFAULT_PASSWORD="hadoop"
 g_NODE_HOSTNAME_PREFIX="node"
-g_DNS_SERVER="localhost"
-
 __PID="$$"
 __LAST_ANSWER=""
 
@@ -137,7 +135,6 @@ function p_interview() {
     _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Node starting number (hostname will be sequential from this nubmer)" "1" "r_NODE_START_NUM" "N" "Y"
     _ask "Node hostname prefix" "$g_NODE_HOSTNAME_PREFIX" "r_NODE_HOSTNAME_PREFIX" "N" "Y"
-    _ask "DNS Server " "$g_DNS_SERVER" "r_DNS_SERVER" "N" "Y"
 
     # Questions to install Ambari
     _ask "Ambari server hostname" "${r_NODE_HOSTNAME_PREFIX}${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
@@ -990,11 +987,6 @@ function f_docker_run() {
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     local _ip="`f_docker_ip`"
-    local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
-
-    if [ $_dns = "localhost" ]; then
-        _dns="$_ip"
-    fi
 
     if [ -z "$_ip" ]; then
         _warn "No Docker interface IP"
@@ -1012,7 +1004,7 @@ function f_docker_run() {
         if [ "$r_DOCKER_NETWORK_MASK" = "/24" ]; then
             _netmask="255.255.255.0"
         fi
-        docker run -t -i -d --dns $_dns --name ${_node}$_n --privileged ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
+        docker run -t -i -d --dns $_ip --name ${_node}$_n --privileged ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
     done
 }
 
@@ -1655,15 +1647,14 @@ function f_dnsmasq() {
     local __doc__="Install and set up dnsmasq"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
-    
-    if [ ! `ssh $_dns which apt-get` ]; then
-        _warn "No apt-get or ssh to $_dns not allowed"
+
+    if [ ! `which apt-get` ]; then
+        _warn "No apt-get"
         return 1
     fi
-    ssh $_dns apt-get -y install dnsmasq
+    apt-get -y install dnsmasq
 
-    ssh $_dns "grep '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf"
+    grep '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
 
     f_dnsmasq_banner_reset "$_how_many" "$_start_from"
 }
@@ -1673,7 +1664,6 @@ function f_dnsmasq_banner_reset() {
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
-    local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
 
     local _docker0="`f_docker_ip`"
     # TODO: the first IP can be wrong one
@@ -1686,25 +1676,19 @@ function f_dnsmasq_banner_reset() {
         r_DOCKER_PRIVATE_HOSTNAME="dockerhost1"
     fi
 
-    rm -rf /tmp/banner_add_hosts
-
-    scp $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts
-    if [ ! -s /tmp/banner_add_hosts ]; then
-        echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /tmp/banner_add_hosts
+    if [ ! -s /etc/banner_add_hosts ]; then
+        echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /etc/banner_add_hosts
     else
-        grep -vE "$_docker0|${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}" /tmp/banner_add_hosts > /tmp/banner
+        grep -vE "$_docker0|${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}" /etc/banner_add_hosts > /tmp/banner
         echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" >> /tmp/banner
-	
-        cat /tmp/banner > /tmp/banner_add_hosts
+        cat /tmp/banner > /etc/banner_add_hosts
     fi
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        grep -vE "${_node}${_n}${r_DOMAIN_SUFFIX}|${r_DOCKER_NETWORK_ADDR}${_n}" /tmp/banner_add_hosts > /tmp/banner
+        grep -vE "${_node}${_n}${r_DOMAIN_SUFFIX}|${r_DOCKER_NETWORK_ADDR}${_n}" /etc/banner_add_hosts > /tmp/banner
         echo "${r_DOCKER_NETWORK_ADDR}${_n}    ${_node}${_n}${r_DOMAIN_SUFFIX} ${_node}${_n}" >> /tmp/banner
-        cat /tmp/banner > /tmp/banner_add_hosts
+        cat /tmp/banner > /etc/banner_add_hosts
     done
-
-    scp /tmp/banner_add_hosts $_dns:/etc/
 
     local _netmask="255.255.0.0"
     if [ "$r_DOCKER_NETWORK_MASK" = "/24" ]; then
@@ -1713,7 +1697,7 @@ function f_dnsmasq_banner_reset() {
 
     _info "Setting IP for docker0 to $_docker0/$_netmask ..."
     ifconfig docker0 $_docker0 netmask $_netmask
-    ssh $_dns service dnsmasq restart
+    service dnsmasq restart
 }
 
 function f_host_performance() {
