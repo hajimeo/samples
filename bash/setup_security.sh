@@ -167,6 +167,57 @@ function f_ambari_kerberos_setup() {
     curl -H "X-Requested-By:ambari" -u admin:admin -i -X PUT -d '{"ServiceInfo": {"state" : "STARTED"}}' http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/services
 }
 
+function f_hadoop_spnego_setup() {
+    local __doc__="set up HTTP Authentication for HDFS, YARN, MapReduce2, HBase, Oozie, Falcon and Storm"
+    # http://docs.hortonworks.com/HDPDocuments/Ambari-2.4.2.0/bk_ambari-security/content/configuring_http_authentication_for_HDFS_YARN_MapReduce2_HBase_Oozie_Falcon_and_Storm.html
+    local _ambari_host="${1}"
+    local _ambari_port="${2-8080}"
+    local _ambari_ssl="${3}"
+    local _cluster_name="${4-$r_CLUSTER_NAME}"
+    local _realm="${5-EXAMPLE.COM}"
+    local _domain="${6-${r_DOMAIN_SUFFIX#.}}"
+    local _opts=""
+    local _http="http"
+
+    if _isYes "$_ambari_ssl"; then
+        _opts="$_opts -s"
+        _http="https"
+    fi
+    if [ -z "$_ambari_host" ]; then
+        if [ -z "$r_AMBARI_HOST" ]; then
+            _ambari_host="hostname -f"
+        else
+            _ambari_host="$r_AMBARI_HOST"
+        fi
+        _info "Using $_ambari_hsot for Ambari server hostname..."
+    fi
+
+    if [ -z "$_cluster_name" ]; then
+        _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
+    fi
+
+    f_run_cmd_on_nodes "dd if=/dev/urandom of=/etc/security/http_secret bs=1024 count=1 && chown hdfs:hadoop /etc/security/http_secret && chmod 440 /etc/security/http_secret"
+
+    local _type_prop=""
+    declare -A _configs # NOTE: this should be a local variable automatically
+
+    _configs["hadoop.http.authentication.simple.anonymous.allowed"]="false"
+    _configs["hadoop.http.authentication.signature.secret.file"]="/etc/security/http_secret"
+    _configs["hadoop.http.authentication.type"]="kerberos"
+    _configs["hadoop.http.authentication.kerberos.keytab"]="/etc/security/keytabs/spnego.service.keytab"
+    _configs["hadoop.http.authentication.kerberos.principal"]="HTTP/_HOST@${_realm}"
+    _configs["hadoop.http.filter.initializers"]="org.apache.hadoop.security.AuthenticationFilterInitializer"
+    _configs["hadoop.http.authentication.cookie.domain"]="${_domain}"
+
+	for _k in "${!_configs[@]}"; do
+        ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} $_opts set $_ambari_host "$_cluster_name" core-site "$_k" \"${_configs[$_k]}\""
+    done
+
+    # If Ambari is 2.4.x or higher below works
+    _info "Run the below command to restart required components"
+    echo curl -u admin:admin -sk "${_http}://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_cluster_name}/requests" -H 'X-Requested-By: Ambari' --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
+}
+
 function f_ldap_server_install_on_host() {
     local __doc__="Install LDAP server packages on Ubuntu (need to test setup)"
     local _ldap_domain="$1"
@@ -646,7 +697,7 @@ function f_ssl_ambari_config_set_for_hadoop() {
 
 	for _k in "${!_configs[@]}"; do
         _split "_type_prop" "$_k" ":"
-        ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh $_opts set $_ambari_host "$_cluster_name" ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
+        ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} $_opts set $_ambari_host "$_cluster_name" ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
     done
 }
 
@@ -692,7 +743,7 @@ function f_ssl_ambari_config_disable_for_hadoop() {
 
 	for _k in "${!_configs[@]}"; do
         _split "_type_prop" "$_k" ":"
-        ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh $_opts set $_ambari_host "$_cluster_name" ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
+        ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} $_opts set $_ambari_host "$_cluster_name" ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
     done
 }
 
