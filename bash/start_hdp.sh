@@ -135,61 +135,64 @@ function p_interview() {
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
 
     # Questions to install Ambari
-    _ask "Ambari server hostname" "node${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
-    _ask "Ambari version (used to build repo URL)" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
-    _echo "If you have set up a Local Repo, please change below"
-    _ask "Ambari repo file URL or path" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
-    if _isUrlButNotReachable "$r_AMBARI_REPO_FILE" ; then
-        while true; do
-            _warn "URL: $r_AMBARI_REPO_FILE may not be reachable."
-            _ask "Would you like to re-type?" "Y"
-            if ! _isYes ; then break; fi
-            _ask "Ambari repo file URL or path" "" "r_AMBARI_REPO_FILE" "N" "Y"
-         done
+    _ask "Installing Ambari?" "Y" "r_AMBARI_INSTALL"
+    if _isYes "$r_AMBARI_INSTALL"; then
+        _ask "Ambari server hostname" "node${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
+        _ask "Ambari version (used to build repo URL)" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
+        _echo "If you have set up a Local Repo, please change below"
+        _ask "Ambari repo file URL or path" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
+        if _isUrlButNotReachable "$r_AMBARI_REPO_FILE" ; then
+            while true; do
+                _warn "URL: $r_AMBARI_REPO_FILE may not be reachable."
+                _ask "Would you like to re-type?" "Y"
+                if ! _isYes ; then break; fi
+                _ask "Ambari repo file URL or path" "" "r_AMBARI_REPO_FILE" "N" "Y"
+             done
+        fi
+        # http://public-repo-1.hortonworks.com/ARTIFACTS/jdk-8u112-linux-x64.tar.gz to /var/lib/ambari-server/resources/jdk-8u112-linux-x64.tar.gz
+        _ask "Ambari JDK URL (optional)" "" "r_AMBARI_JDK_URL"
+        # http://public-repo-1.hortonworks.com/ARTIFACTS/jce_policy-8.zip to /var/lib/ambari-server/resources/jce_policy-8.zip
+        _ask "Ambari JCE URL (optional)" "" "r_AMBARI_JCE_URL"
+
+        wget -q -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
+        if [ -s /tmp/hdp_urlinfo.json ]; then
+            _stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json,pprint;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
+            _stack_version="`echo $_stack_version_full | cut -d'-' -f2`"
+            _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json,pprint;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_CONTAINER_OS}${r_REPO_OS_VER}'"]'`"
+            _hdp_version="`basename ${_hdp_repo_url%/}`"
+        fi
+
+        _ask "Stack Version" "$_stack_version" "r_HDP_STACK_VERSION" "N" "Y"
+        if [ "$_stack_version" != "$r_HDP_STACK_VERSION" ]; then _hdp_version="${r_HDP_STACK_VERSION}.0.0"; fi
+        _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
+
+        _ask "Would you like to set up a local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
+        if _isYes "$r_HDP_LOCAL_REPO"; then
+            _ask "Local repository directory (Apache root)" "/var/www/html/hdp" "r_HDP_REPO_DIR"
+            _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_REPO_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
+            _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_REPO_OS_VER}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${r_REPO_OS_VER}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
+        fi
+
+        _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"    fi
+        if _isUrlButNotReachable "${r_HDP_REPO_URL%/}/hdp.repo" ; then
+            while true; do
+                _warn "URL: $r_HDP_REPO_URL may not be reachable."
+                _ask "Would you like to re-type?" "Y"
+                if ! _isYes ; then break; fi
+                _ask "HDP Repo URL" "" "r_HDP_REPO_URL" "N" "Y"
+             done
+        fi
+
+        _ask "Would you like to use Ambari Blueprint?" "Y" "r_AMBARI_BLUEPRINT"
+        if _isYes "$r_AMBARI_BLUEPRINT"; then
+            _ask "Cluster name" "c${r_NODE_START_NUM}" "r_CLUSTER_NAME" "N" "Y"
+            _ask "Default password" "$g_DEFAULT_PASSWORD" "r_DEFAULT_PASSWORD" "N" "Y"
+            _ask "Host mapping json path (optional)" "" "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
+            _ask "Cluster config json path (optional)" "" "r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
+        fi
+
+        #_ask "Would you like to increase Ambari Alert interval?" "Y" "r_AMBARI_ALERT_INTERVAL"
     fi
-    # http://public-repo-1.hortonworks.com/ARTIFACTS/jdk-8u112-linux-x64.tar.gz to /var/lib/ambari-server/resources/jdk-8u112-linux-x64.tar.gz
-    _ask "Ambari JDK URL (optional)" "" "r_AMBARI_JDK_URL"
-    # http://public-repo-1.hortonworks.com/ARTIFACTS/jce_policy-8.zip to /var/lib/ambari-server/resources/jce_policy-8.zip
-    _ask "Ambari JCE URL (optional)" "" "r_AMBARI_JCE_URL"
-
-    wget -q -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
-    if [ -s /tmp/hdp_urlinfo.json ]; then
-        _stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json,pprint;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
-        _stack_version="`echo $_stack_version_full | cut -d'-' -f2`"
-        _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json,pprint;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_CONTAINER_OS}${r_REPO_OS_VER}'"]'`"
-        _hdp_version="`basename ${_hdp_repo_url%/}`"
-    fi
-
-    _ask "Stack Version" "$_stack_version" "r_HDP_STACK_VERSION" "N" "Y"
-    if [ "$_stack_version" != "$r_HDP_STACK_VERSION" ]; then _hdp_version="${r_HDP_STACK_VERSION}.0.0"; fi
-    _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
-
-    _ask "Would you like to set up a local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
-    if _isYes "$r_HDP_LOCAL_REPO"; then
-        _ask "Local repository directory (Apache root)" "/var/www/html/hdp" "r_HDP_REPO_DIR"
-        _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_REPO_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
-        _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_REPO_OS_VER}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${r_REPO_OS_VER}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
-    fi
-
-    _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"    fi
-    if _isUrlButNotReachable "${r_HDP_REPO_URL%/}/hdp.repo" ; then
-        while true; do
-            _warn "URL: $r_HDP_REPO_URL may not be reachable."
-            _ask "Would you like to re-type?" "Y"
-            if ! _isYes ; then break; fi
-            _ask "HDP Repo URL" "" "r_HDP_REPO_URL" "N" "Y"
-         done
-    fi
-
-    _ask "Would you like to use Ambari Blueprint?" "Y" "r_AMBARI_BLUEPRINT"
-    if _isYes "$r_AMBARI_BLUEPRINT"; then
-        _ask "Cluster name" "c${r_NODE_START_NUM}" "r_CLUSTER_NAME" "N" "Y"
-        _ask "Default password" "$g_DEFAULT_PASSWORD" "r_DEFAULT_PASSWORD" "N" "Y"
-        _ask "Host mapping json path (optional)" "" "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
-        _ask "Cluster config json path (optional)" "" "r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
-    fi
-
-    #_ask "Would you like to increase Ambari Alert interval?" "Y" "r_AMBARI_ALERT_INTERVAL"
 
     _ask "Would you like to set up a proxy server for yum on this server?" "Y" "r_PROXY"
     if _isYes "$r_PROXY"; then
@@ -1579,46 +1582,49 @@ function p_host_setup() {
         f_yum_remote_proxy &>> /tmp/p_host_setup.log
     fi
 
-    _log "INFO" "Starting f_ambari_server_install"
-    f_ambari_server_install &>> /tmp/p_host_setup.log
-    _log "INFO" "Starting f_ambari_server_start"
-    f_ambari_server_start &>> /tmp/p_host_setup.log
+    if _isYes "$r_AMBARI_INSTALL"; then
+        _log "INFO" "Starting f_ambari_server_install"
+        f_ambari_server_install &>> /tmp/p_host_setup.log
+        _log "INFO" "Starting f_ambari_server_start"
+        f_ambari_server_start &>> /tmp/p_host_setup.log
 
-    _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log
-    if [ $? -eq 0 ]; then
-        _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
-        f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
-        f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
-        _ambari_agent_wait &>> /tmp/p_host_setup.log
-        if [ $? -ne 0 ]; then
-            _log "INFO" "Starting f_ambari_agent_install"
-            f_ambari_agent_install &>> /tmp/p_host_setup.log
-            _log "INFO" "Starting f_ambari_agent_fix_public_hostname"
-            f_ambari_agent_fix_public_hostname &>> /tmp/p_host_setup.log
+        _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log
+        if [ $? -eq 0 ]; then
+            _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
+            f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
             _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
             f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
-           _ambari_agent_wait &>> /tmp/p_host_setup.log
+            _ambari_agent_wait &>> /tmp/p_host_setup.log
+            if [ $? -ne 0 ]; then
+                _log "INFO" "Starting f_ambari_agent_install"
+                f_ambari_agent_install &>> /tmp/p_host_setup.log
+                _log "INFO" "Starting f_ambari_agent_fix_public_hostname"
+                f_ambari_agent_fix_public_hostname &>> /tmp/p_host_setup.log
+                _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
+                f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
+               _ambari_agent_wait &>> /tmp/p_host_setup.log
+            fi
+        else
+            _log "WARN" "Ambari Server may not be running but keep continuing..."
         fi
-    else
-        _log "WARN" "Ambari Server may not be running but keep continuing..."
+
+        if _isYes "$r_HDP_LOCAL_REPO"; then
+            _log "INFO" "Starting f_local_repo"
+            f_local_repo &>> /tmp/p_host_setup.log
+        elif [ -n "$r_HDP_REPO_URL" ]; then
+            # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
+            _log "INFO" "Starting f_ambari_set_repo"
+            f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" &>> /tmp/p_host_setup.log
+        fi
+
+        if _isYes "$r_AMBARI_BLUEPRINT"; then
+            _log "INFO" "Starting p_ambari_blueprint"
+            p_ambari_blueprint &>> /tmp/p_host_setup.log
+        fi
+
+        f_port_forward 8080 $r_AMBARI_HOST 8080 "Y" &>> /tmp/p_host_setup.log
     fi
 
-    if _isYes "$r_HDP_LOCAL_REPO"; then
-        _log "INFO" "Starting f_local_repo"
-        f_local_repo &>> /tmp/p_host_setup.log
-    elif [ -n "$r_HDP_REPO_URL" ]; then
-        # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
-        _log "INFO" "Starting f_ambari_set_repo"
-        f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" &>> /tmp/p_host_setup.log
-    fi
-
-    if _isYes "$r_AMBARI_BLUEPRINT"; then
-        _log "INFO" "Starting p_ambari_blueprint"
-        p_ambari_blueprint &>> /tmp/p_host_setup.log
-    fi
-
-    f_port_forward 8080 $r_AMBARI_HOST 8080 "Y" &>> /tmp/p_host_setup.log
     f_port_forward_ssh_on_nodes
     _log "INFO" "Completed. Please run f_ambari_update_config once when HDFS is running."
 
