@@ -137,7 +137,7 @@ function p_interview() {
     _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Node starting number (hostname will be sequential from this nubmer)" "1" "r_NODE_START_NUM" "N" "Y"
     _ask "Node hostname prefix" "$g_NODE_HOSTNAME_PREFIX" "r_NODE_HOSTNAME_PREFIX" "N" "Y"
-    _ask "DNS Server " "$g_DNS_SERVER" "r_DNS_SERVER" "N" "Y"
+    _ask "DNS Server (Note: Remote DNS requires password less ssh)" "$g_DNS_SERVER" "r_DNS_SERVER" "N" "Y"
 
     # Questions to install Ambari
     _ask "Installing Ambari?" "Y" "r_AMBARI_INSTALL"
