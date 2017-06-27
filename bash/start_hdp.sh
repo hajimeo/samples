@@ -1897,7 +1897,7 @@ function f_docker_ip() {
         return $?
     fi
 
-    echo "$_ifconfig" | grep -oP 'inet addr:\d+\.\d+\.\d+\.\d' | cut -d":" -f2
+    echo "$_ifconfig" | grep -oP 'inet addr:\d+\.\d+\.\d+\.\d+' | cut -d":" -f2
     return $?
 }
 
