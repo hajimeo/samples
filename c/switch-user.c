@@ -31,14 +31,34 @@ static struct passwd* get_user_info(const char* user) {
   return result;
 }
 
+static int change_effective_user(uid_t user, gid_t group) {
+  if (geteuid() == user) {
+    return 0;
+  }
+  if (seteuid(0) != 0) {
+    printf("Failed to set effective user id 0 - %s\n", strerror(errno));
+    return -1;
+  }
+  if (setegid(group) != 0) {
+    printf("Failed to set effective group id %d - %s\n", group, strerror(errno));
+    return -1;
+  }
+  if (seteuid(user) != 0) {
+    printf("Failed to set effective user id %d - %s\n", user, strerror(errno));
+    return -1;
+  }
+  return 0;
+}
+
 /*
+ * @see container-executor.c
+ *
  * gcc -o /usr/bin/switch-user switch-user.c
  * chown yarn:hadoop /usr/bin/switch-user
  * chmod 6050 /usr/bin/switch-user
  * ls -l /usr/bin/switch-user
- * ---Sr-s--- 1 root adm 9272 Jul  4 05:35 /usr/bin/switch-user
- * su someuser_belongs_to_hadoop_group
- * ./switch-user another_user
+ * ---Sr-s--- 1 yarn hadoop 9272 Jul  4 05:35 /usr/bin/switch-user
+ * su - yarn -c 'strace /usr/bin/switch-user another_user'
  */
 int main(int argc, char **argv) {
     uid_t user = geteuid();
@@ -51,10 +71,11 @@ int main(int argc, char **argv) {
         user_info = get_user_info(argv[1]);
         printf("Switching to uid= %d, gid= %d\n", user_info->pw_uid, user_info->pw_gid);
         initgroups(argv[1],user_info->pw_gid);
+        change_effective_user(user_info->pw_uid, user_info->pw_gid);
+        user = geteuid();
+        group = getegid();
+        printf("Current uid= %d, gid= %d\n", user, group);
         free(user_info);
     }
-    user = geteuid();
-    group = getegid();
-    printf("Current uid= %d, gid= %d\n", user, group);
     return 0;
 }
