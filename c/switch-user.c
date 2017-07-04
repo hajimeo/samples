@@ -31,6 +31,15 @@ static struct passwd* get_user_info(const char* user) {
   return result;
 }
 
+/*
+ * gcc -o /usr/bin/switch-user switch-user.c
+ * chown yarn:hadoop /usr/bin/switch-user
+ * chmod 6050 /usr/bin/switch-user
+ * ls -l /usr/bin/switch-user
+ * ---Sr-s--- 1 root adm 9272 Jul  4 05:35 /usr/bin/switch-user
+ * su someuser_belongs_to_hadoop_group
+ * ./switch-user another_user
+ */
 int main(int argc, char **argv) {
     uid_t user = geteuid();
     gid_t group = getegid();
@@ -40,6 +49,7 @@ int main(int argc, char **argv) {
     printf("(should be 0) user= %d\n", user);
     if (argc > 1) {
         user_info = get_user_info(argv[1]);
+        printf("Switching to uid= %d, gid= %d\n", user_info->pw_uid, user_info->pw_gid);
         initgroups(argv[1],user_info->pw_gid);
         free(user_info);
     }
