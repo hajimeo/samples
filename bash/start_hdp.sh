@@ -499,7 +499,8 @@ function f_ambari_blueprint_cluster_config() {
       "tez-site" : {
         "properties" : {
           "tez.am.resource.memory.mb" : "256",
-          "tez.task.resource.memory.mb" : "256"
+          "tez.task.resource.memory.mb" : "256",
+          "tez.runtime.io.sort.mb" : "128"
         }
       }
     },
