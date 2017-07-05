@@ -54,10 +54,10 @@ static int change_effective_user(uid_t user, gid_t group) {
  * @see container-executor.c
  *
  * gcc -o /usr/bin/switch-user switch-user.c
- * chown yarn:hadoop /usr/bin/switch-user
+ * chown root:hadoop /usr/bin/switch-user
  * chmod 6050 /usr/bin/switch-user
  * ls -l /usr/bin/switch-user
- * ---Sr-s--- 1 yarn hadoop 9272 Jul  4 05:35 /usr/bin/switch-user
+ * ---Sr-s--- 1 root hadoop 9272 Jul  4 05:35 /usr/bin/switch-user
  * su - yarn -c 'strace /usr/bin/switch-user another_user'
  */
 int main(int argc, char **argv) {
