@@ -100,12 +100,12 @@ function f_check_process() {
 
         # NO heap dump at this moment
         [ -x "${_cmd_dir}/jmap" ] && sudo -u ${_user} ${_cmd_dir}/jmap -histo ${_p} &> ${_WORK_DIR%/}/jmap_histo_${_p}.out
-        [ -x "${_cmd_dir}/jstack" ] && for i in {1..3};do sudo -u ${_user} ${_cmd_dir}/jstack -l ${_p}; sleep 3; done &> ${_WORK_DIR%/}/jstack_${_p}.out &
         top -Hb -n 3 -d 3 -p ${_p} &> ${_WORK_DIR%/}/top_${_p}.out &    # printf "%x\n" [PID]
+        [ -x "${_cmd_dir}/jstack" ] && for i in {1..3};do sudo -u ${_user} ${_cmd_dir}/jstack -l ${_p}; sleep 3; done &> ${_WORK_DIR%/}/jstack_${_p}.out &
         [ -x "${_cmd_dir}/jstat" ] && sudo -u ${_user} ${_cmd_dir}/jstat -gccause ${_p} 1000 9 &> ${_WORK_DIR%/}/jstat_${_p}.out &
     fi
 
-    ps -eLo user,pid,lwp,nlwp,ruser,pcpu,stime,etime,args | grep -w "${_p}" &> ${_WORK_DIR%/}/pseLo_${_p}.out
+    #ps -eLo user,pid,lwp,nlwp,ruser,pcpu,stime,etime,args | grep -w "${_p}" &> ${_WORK_DIR%/}/pseLo_${_p}.out
     pmap -x ${_p} &> ${_WORK_DIR%/}/pmap_${_p}.out
     wait
     date >> ${_WORK_DIR%/}/proc_io_${_p}.out; cat /proc/${_p}/io >> ${_WORK_DIR%/}/proc_io_${_p}.out
