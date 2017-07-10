@@ -4,10 +4,13 @@
 # XML Parser, and also can compare two XML files, like:
 # python ./xml_parser.py XXXX-site.xml [YYYY-site.xml] [exclude regex]
 #
-# Example: use a command line tool
+# Example: use as a command line tool on Mac
 #   ln -s ./xml_parser.py /usr/local/bin/xmldiff
 #   ssh -p 2222 root@sandbox.hortonworks.com "echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
-#   xmldiff ./ams-site.xml <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/ambari-metrics-collector/conf/ams-site.xml) '.+(auth_to_local|\.hue\.).*'
+#   _f=./ams-site.xml; xmldiff $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/ambari-metrics-collector/conf/$_f) '.+(auth_to_local|\.hue\.).*'
+#
+# For non xml files
+# _f=./client.properties; diff -w $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/falcon/conf/$_f)
 #
 
 import sys, pprint, re
@@ -64,7 +67,7 @@ class XmlParser:
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        XmlParser.fatal('Usage: ' + sys.argv[0] + ' file1.xml [file2.xml]')
+        XmlParser.fatal('Usage: ' + sys.argv[0] + ' XXXX-site.xml [YYYY-site.xml] [exclude regex]')
 
     f1 = XmlParser.xml2dict(sys.argv[1])
 
