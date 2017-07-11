@@ -5,8 +5,10 @@
 # python ./xml_parser.py XXXX-site.xml [YYYY-site.xml] [exclude regex]
 #
 # Example: use as a command line tool on Mac
+# Setup:
 #   ln -s ./xml_parser.py /usr/local/bin/xmldiff
 #   ssh -p 2222 root@sandbox.hortonworks.com "echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
+# Run:
 #   _f=./ams-site.xml; xmldiff $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/ambari-metrics-collector/conf/$_f) '.+(auth_to_local|\.hue\.).*'
 #
 # For non xml files
@@ -14,8 +16,7 @@
 #
 
 import sys, pprint, re
-import xml.etree.ElementTree
-
+from lxml import etree
 
 class XmlParser:
     @staticmethod
@@ -31,7 +32,8 @@ class XmlParser:
     @staticmethod
     def xml2dict(filename, parent_element_name='property', key_element_name='name', value_element_name='value'):
         rtn = {}
-        r = xml.etree.ElementTree.parse(filename).getroot()
+        parser = etree.XMLParser(recover=True)
+        r = etree.ElementTree(file=filename, parser=parser).getroot()
         for p in r.findall('.//' + parent_element_name):
             try:
                 name = str(p.find(".//" + key_element_name).text).strip()
