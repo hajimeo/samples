@@ -15,6 +15,9 @@
  * hive-exec-*.jar
  * hive-jdbc-*-standalone.jar
  * -- core-site.xml         # probably don't need
+ *
+ * NOTE: HS2's jars can be used like below, but it won't help when troubleshooting classpath issue:
+ * eval "export `cat /proc/$(cat /var/run/hive/hive-server.pid)/environ | tr '\0' '\n' | grep ^CLASSPATH`"
  * <p>
  * 3) Compile
  * javac -cp $(echo *.jar | tr ' ' ':'):. Hive2KerberosTest.java
