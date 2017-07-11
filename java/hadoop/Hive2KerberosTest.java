@@ -1,33 +1,32 @@
 /**
  * HOW TO:
- * <p>
+ *
  * 1) create login.conf file which contents is like below:
  * SampleClient {
  * com.sun.security.auth.module.Krb5LoginModule required
  * useTicketCache=true debug=true debugNative=true;
  * };
- * <p>
+ *
  * 2) Copy necessary jar files in same directory as this code
- * commons-configuration-*.jar
- * hadoop-annotations-*.jar
- * hadoop-auth-*.jar
- * hadoop-common-*.jar
- * hive-exec-*.jar
- * hive-jdbc-*-standalone.jar
+ * _version=`hdp-select versions | sort -n | tail -n1`
+ * cp /usr/hdp/current/hadoop-client/lib/commons-configuration-*.jar ./
+ * cp /usr/hdp/current/hadoop-client/{hadoop-annotations-,hadoop-auth-,hadoop-common-}*${_version}.jar ./
+ * cp /usr/hdp/current/hive-client/lib/{hive-exec-,hive-jdbc-*-standalone}*.jar ./
  * -- core-site.xml         # probably don't need
+ *
+ * May need /usr/hdp/current/hive-webhcat/share/webhcat/svr/lib/xercesImpl-2.9.1.jar for newer HDP 2.4.x
+ *
+ * export CLASSPATH=`echo $(echo *.jar | tr ' ' ':'):.`
  *
  * NOTE: HS2's jars can be used like below, but it won't help when troubleshooting classpath issue:
  * eval "export `cat /proc/$(cat /var/run/hive/hive-server.pid)/environ | tr '\0' '\n' | grep ^CLASSPATH`"
- * <p>
+ *
  * 3) Compile
- * javac -cp $(echo *.jar | tr ' ' ':'):. Hive2KerberosTest.java
- * <p>
+ * javac Hive2KerberosTest.java
+ *
  * 4) Run
- * kinit
- * java -cp $(echo *.jar | tr ' ' ':'):. -Djava.security.auth.login.config=./login.conf -Dsun.security.krb5.debug=true Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@HO-UBU14"
- * <p>
- * <p>
- * ./hive-jdbc-1.2.1.2.3.2.0-2950-standalone.jar:hadoop-common-2.7.1.2.3.2.0-2950.jar:hive-exec-1.2.1.2.3.2.0-2950.jar:./hadoop-annotations-2.7.1.2.3.2.0-2950.jar:./commons-configuration-1.6.jar:hadoop-auth-2.7.1.2.3.2.0-2950.jar
+ * (optional) kinit
+ * java -Djava.security.auth.login.config=./login.conf -Dsun.security.krb5.debug=true Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@EXAMPLE.COM"
  *
  * @see https://issues.apache.org/jira/secure/attachment/12633984/TestCase_HIVE-6486.java
  */
