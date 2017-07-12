@@ -140,8 +140,8 @@ function p_interview() {
     _ask "DNS Server (Note: Remote DNS requires password less ssh)" "$g_DNS_SERVER" "r_DNS_SERVER" "N" "Y"
 
     # Questions to install Ambari
-    _ask "Installing Ambari?" "Y" "r_AMBARI_INSTALL"
-    if _isYes "$r_AMBARI_INSTALL"; then
+    _ask "Avoid installing Ambari? (to create just containers)" "Y" "r_AMBARI_NOT_INSTALL"
+    if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         _ask "Ambari server hostname" "${r_NODE_HOSTNAME_PREFIX}${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
         _ask "Ambari version (used to build repo URL)" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
         _echo "If you have set up a Local Repo, please change below"
@@ -820,7 +820,9 @@ function f_docker0_setup() {
 
         if [ -n "$r_DOCKER_NETWORK_MASK" ]; then
             if [ -f /lib/systemd/system/docker.service ] && which systemctl &>/dev/null ; then
-                grep "$_docker0" /lib/systemd/system/docker.service || (sed -i 's/H fd:\/\//H fd:\/\/ --bip='$_docker0'\'$r_DOCKER_NETWORK_MASK'/' /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
+                #grep -E '--bip=[0-9./]+?' /lib/systemd/system/docker.service || (sed -e 's@--bip=[0-9./]@--bip='${_docker0}/${r_DOCKER_NETWORK_MASK}'@' /lib/systemd/system/docker.service)
+                grep -E '--bip=[0-9./]' /lib/systemd/system/docker.service || (sed -i -e 's@--bip=[0-9./]@--bip='${_docker0}/${r_DOCKER_NETWORK_MASK}'@' /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
+                grep '--bip=' /lib/systemd/system/docker.service || (sed -i 's@H fd://@H fd:// --bip='${_docker0}/${r_DOCKER_NETWORK_MASK}'@' /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
             else
                 grep "$_docker0" /etc/default/docker || (echo 'DOCKER_OPTS="$DOCKER_OPTS --bip='$_docker0$r_DOCKER_NETWORK_MASK'"' >> /etc/default/docker && /etc/init.d/docker restart)  # TODO: untested. May not work with 14.04
             fi
@@ -1609,7 +1611,7 @@ function p_host_setup() {
         f_yum_remote_proxy &>> /tmp/p_host_setup.log
     fi
 
-    if _isYes "$r_AMBARI_INSTALL"; then
+    if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         _log "INFO" "Starting f_ambari_server_install"
         f_ambari_server_install &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_ambari_server_start"
