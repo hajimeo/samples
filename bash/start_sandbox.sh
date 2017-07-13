@@ -24,7 +24,7 @@ function f_docker_image_setup() {
         return 1
     fi
 
-    docker ps -a --format "{{.Names}}" | grep -w "${_NAME}"
+    docker ps -a --format "{{.Names}}" | grep -w "${_name}"
     if [ $? -eq 0 ]; then
         echo "Image $_name already exist. Exiting."
         return
