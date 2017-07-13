@@ -10,7 +10,7 @@
 #   f_docker_image_setup [sandbox-hdp|sandbox-hdf]
 #
 # To start Sandbox
-#   ./start_sandbox.sh [sandbox-hdp|sandbox-hdf]
+#   bash ./start_sandbox.sh [sandbox-hdp|sandbox-hdf]
 #
 
 _NAME="${1-sandbox-hdp}"
@@ -274,6 +274,12 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         if [ -s  ~/.ssh/id_rsa.pub ]; then
             docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
         fi
+
+        echo "Resetting Ambari Agent just incase ..."
+        docker exec -it ${_NAME} /usr/sbin/ambari-agent stop
+        docker exec -it ${_NAME} /usr/sbin/ambari-agent reset ${_NAME}.hortonworks.com
+        docker exec -it ${_NAME} /usr/sbin/ambari-agent start
+
         echo "Resetting Ambari password (type 'admin' twice) ..."
         docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
         # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
