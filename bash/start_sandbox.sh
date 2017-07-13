@@ -4,7 +4,7 @@
 # curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh -O
 # ./start_sandbox.sh [sandblx|sandbox-hdf|sandbox-hdp]
 #
-_NAME="${1-sandbox}"
+_NAME="${1-sandbox-hdp}"
 _AMBARI_PORT=8080
 _SHMMAX=41943040
 _NEW_CONTAINER=false
@@ -51,6 +51,7 @@ function f_docker_image_setup() {
         curl --retry 100 -C - "${_url}" -o "${_tmp_dir%/}/${_file_name}" || return $?
     fi
 
+    echo "executing docker load..."
     docker load < "${_tmp_dir%/}/${_file_name}" || return $?
 }
 
