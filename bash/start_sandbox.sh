@@ -1,9 +1,18 @@
 #!/usr/bin/env bash
 # @see http://hortonworks.com/hadoop-tutorial/hortonworks-sandbox-guide/#section_4
 #
+# Get the latest script
 # curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh -O
-# ./start_sandbox.sh [sandblx|sandbox-hdf|sandbox-hdp]
 #
+# To create Sandbox (first time only)
+#   source ./start_sandbox.sh
+#   (move to dir which has enough disk space, min. 12GB)
+#   f_docker_image_setup [sandbox-hdp|sandbox-hdf]
+#
+# To start Sandbox
+#   ./start_sandbox.sh [sandbox-hdp|sandbox-hdf]
+#
+
 _NAME="${1-sandbox-hdp}"
 _AMBARI_PORT=8080
 _SHMMAX=41943040
