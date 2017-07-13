@@ -271,6 +271,7 @@ function _cancelInterview() {
 
 function p_hdp_start() {
     f_loadResp
+    f_dnsmasq_banner_reset
     f_docker0_setup
     f_ntp
     if ! _isYes "$r_DOCKER_KEEP_RUNNING"; then
@@ -281,7 +282,6 @@ function p_hdp_start() {
     _info "NOT setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
     #f_etcs_mount
-    f_dnsmasq_banner_reset
 
     f_ambari_server_start
     f_ambari_java_random
@@ -1714,13 +1714,6 @@ function f_dnsmasq_banner_reset() {
 
     scp /tmp/banner_add_hosts $_dns:/etc/
 
-    local _netmask="255.255.0.0"
-    if [ "$r_DOCKER_NETWORK_MASK" = "/24" ]; then
-        _netmask="255.255.255.0"
-    fi
-
-    _info "Setting IP for docker0 to $_docker0/$_netmask ..."
-    ifconfig docker0 $_docker0 netmask $_netmask
     ssh $_dns service dnsmasq restart
 }
 
