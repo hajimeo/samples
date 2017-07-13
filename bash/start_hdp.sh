@@ -763,19 +763,18 @@ function _docker_seq() {
 
 function f_docker_setup() {
     local __doc__="Install docker (if not yet) and customise for HDP test environment (TODO: Ubuntu only)"
+    # https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/
 
     if [ ! `which apt-get` ]; then
         _warn "No apt-get"
         return 1
     fi
 
-    # https://docs.docker.com/engine/installation/linux/ubuntulinux/
     which docker &>/dev/null
     if [ $? -gt 0 ] || [ ! -s /etc/apt/sources.list.d/docker.list ]; then
-        _isYes "$g_APT_UPDATE_DONE" || apt-get update && g_APT_UPDATE_DONE="Y"
         apt-get install apt-transport-https ca-certificates -y
         apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key for docker"
-        grep "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-`cat /etc/lsb-release | grep CODENAME | cut -d= -f2` main" >> /etc/apt/sources.list.d/docker.list
+        grep -q "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-`cat /etc/lsb-release | grep CODENAME | cut -d= -f2` main" >> /etc/apt/sources.list.d/docker.list
         apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
     fi
 
@@ -803,32 +802,32 @@ function f_docker_setup() {
 
 function f_docker0_setup() {
     local __doc__="Setting IP for docker0 to $r_DOCKER_HOST_IP (default)"
-    local _docker0="${1-$r_DOCKER_HOST_IP}"
+    local _docker0="${1}"
+    local _mask="${2}"
 
-    if [ -z "$_docker0" ]; then
-        _docker0="$r_DOCKER_HOST_IP"
-    fi
+    [ -z "$_docker0" ] && _docker0="$r_DOCKER_HOST_IP"
+    [ -z "$_mask" ] && _mask="$r_DOCKER_NETWORK_MASK"
+    _mask="${_mask#/}"
 
-    if ifconfig docker0 | grep "$_docker0" &>/dev/null ; then
+    if ! ifconfig docker0 | grep "$_docker0" &>/dev/null ; then
         local _netmask="255.255.0.0"
-        if [ "$r_DOCKER_NETWORK_MASK" = "/24" ]; then
-            _netmask="255.255.255.0"
-        fi
+        [ "$_mask" = "24" ] && _netmask="255.255.255.0"
 
-        _info "Setting IP for docker0 to $_docker0/$_netmask ..."
+        #_info "Setting IP for docker0 to $_docker0/$_netmask ..."
         ifconfig docker0 $_docker0 netmask $_netmask
 
-        if [ -n "$r_DOCKER_NETWORK_MASK" ]; then
+        if [ -n "$_mask" ]; then
             if [ -f /lib/systemd/system/docker.service ] && which systemctl &>/dev/null ; then
-                #grep -E '--bip=[0-9./]+?' /lib/systemd/system/docker.service || (sed -e 's@--bip=[0-9./]@--bip='${_docker0}/${r_DOCKER_NETWORK_MASK}'@' /lib/systemd/system/docker.service)
-                grep -E '--bip=[0-9./]' /lib/systemd/system/docker.service || (sed -i -e 's@--bip=[0-9./]@--bip='${_docker0}/${r_DOCKER_NETWORK_MASK}'@' /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
-                grep '--bip=' /lib/systemd/system/docker.service || (sed -i 's@H fd://@H fd:// --bip='${_docker0}/${r_DOCKER_NETWORK_MASK}'@' /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart)
+                if ! grep -qE -- '--bip=' /lib/systemd/system/docker.service; then
+                    sed -i "/H fd:\/\// s/$/ --bip=${_docker0}\/${_mask}/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart
+                elif ! grep -qE -- "--bip=${_docker0}/${_mask}" /lib/systemd/system/docker.service; then
+                    sed -i -e "s/--bip=[0-9.\/]\+/--bip=${_docker0}\/${_mask}/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart
+                fi
             else
-                grep "$_docker0" /etc/default/docker || (echo 'DOCKER_OPTS="$DOCKER_OPTS --bip='$_docker0$r_DOCKER_NETWORK_MASK'"' >> /etc/default/docker && /etc/init.d/docker restart)  # TODO: untested. May not work with 14.04
+                grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"$DOCKER_OPTS --bip=$_docker0$r_DOCKER_NETWORK_MASK\"" >> /etc/default/docker && /etc/init.d/docker restart)  # TODO: untested. May not work with 14.04
             fi
         fi
     fi
-
 }
 
 function f_docker_base_create() {
