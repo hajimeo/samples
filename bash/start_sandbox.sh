@@ -121,7 +121,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         docker start "${_NAME}"
     else
       if [ "${_NAME}" = "sandbox-hdf" ]; then
-        docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_NAME}.hortonworks.com" --privileged -d \
+        docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "sandbox.hortonworks.com" --privileged -d \
         -p 12181:2181 \
         -p 13000:3000 \
         -p 14200:4200 \
@@ -154,7 +154,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         ${_NAME} /usr/sbin/sshd -D
         # NOTE: Using 8080 and 2222 for HDF as well
       else
-        docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_NAME}.hortonworks.com" --privileged -d \
+        docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "sandbox.hortonworks.com" --privileged -d \
         -p 1111:111 \
         -p 1000:1000 \
         -p 1100:1100 \
@@ -275,10 +275,10 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
         fi
 
-        echo "Resetting Ambari Agent just incase ..."
-        docker exec -it ${_NAME} /usr/sbin/ambari-agent stop
-        docker exec -it ${_NAME} /usr/sbin/ambari-agent reset ${_NAME}.hortonworks.com
-        docker exec -it ${_NAME} /usr/sbin/ambari-agent start
+        #echo "Resetting Ambari Agent just incase ..."
+        #docker exec -it ${_NAME} /usr/sbin/ambari-agent stop
+        #docker exec -it ${_NAME} /usr/sbin/ambari-agent reset ${_NAME}.hortonworks.com
+        #docker exec -it ${_NAME} /usr/sbin/ambari-agent start
 
         echo "Resetting Ambari password (type 'admin' twice) ..."
         docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
