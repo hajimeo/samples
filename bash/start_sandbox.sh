@@ -280,10 +280,11 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         #docker exec -it ${_NAME} /usr/sbin/ambari-agent reset ${_NAME}.hortonworks.com
         #docker exec -it ${_NAME} /usr/sbin/ambari-agent start
 
-        echo "Resetting Ambari password (type 'admin' twice) ..."
-        docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
         # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
         docker exec -it ${_NAME} bash -c 'grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
+
+        echo "Resetting Ambari password (type 'admin' twice) ..."
+        docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
     else
         docker exec -d ${_NAME} service ambari-server start
     fi
