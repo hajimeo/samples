@@ -300,6 +300,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 
     _port_wait "localhost" $_AMBARI_PORT
+    sleep 3
     curl -u admin:admin -H "X-Requested-By:ambari" -k "http://localhost:${_AMBARI_PORT}/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
     echo ""
     #docker exec -it ${_NAME} bash
