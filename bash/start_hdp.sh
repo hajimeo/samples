@@ -1018,7 +1018,7 @@ function f_docker_run() {
         if [ "$r_DOCKER_NETWORK_MASK" = "/24" ]; then
             _netmask="255.255.255.0"
         fi
-        docker run -t -i -d --dns $_dns --name ${_node}$_n --privileged ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
+        docker run -t -i -d --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} --ip=${r_DOCKER_NETWORK_ADDR}$_n --dns=$_dns --name=${_node}$_n ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
     done
 }
 
@@ -1072,7 +1072,7 @@ function f_ambari_server_install() {
         ssh -q root@$r_AMBARI_HOST "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JCE_URL\" -O"
     fi
 
-    scp /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
+    scp -q /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/
     ssh -q root@$r_AMBARI_HOST "yum clean all; yum install ambari-server -y && service postgresql initdb && service postgresql restart && for i in {1..3}; do [ -e /tmp/.s.PGSQL.5432 ] && break; sleep 5; done; ambari-server setup -s || ( echo 'ERROR ambari-server setup failed! Trying one more time...'; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
 }
 
@@ -1171,13 +1171,13 @@ function f_ambari_agent_install() {
     local _start_from="${2-$r_NODE_START_NUM}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
-    scp root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo
+    scp -q root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo
 
     #local _cmd="yum install ambari-agent -y && grep "^hostname=$r_AMBARI_HOST"/etc/ambari-agent/conf/ambari-agent.ini || sed -i.bak "s@hostname=.+$@hostname=$r_AMBARI_HOST@1" /etc/ambari-agent/conf/ambari-agent.ini"
     local _cmd="which ambari-agent 2>/dev/null || yum install ambari-agent -y && ambari-agent reset $r_AMBARI_HOST"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        scp /tmp/ambari.repo root@${_node}$i${r_DOMAIN_SUFFIX}:/etc/yum.repos.d/
+        scp -q /tmp/ambari.repo root@${_node}$i${r_DOMAIN_SUFFIX}:/etc/yum.repos.d/
         # Executing yum command one by one (not parallel)
         ssh -q -t root@${_node}$i${r_DOMAIN_SUFFIX} "$_cmd"
     done
@@ -1697,7 +1697,7 @@ function f_dnsmasq_banner_reset() {
 
     rm -rf /tmp/banner_add_hosts
 
-    scp $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts
+    scp -q $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts
     if [ ! -s /tmp/banner_add_hosts ]; then
         echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /tmp/banner_add_hosts
     else
@@ -1713,7 +1713,7 @@ function f_dnsmasq_banner_reset() {
         cat /tmp/banner > /tmp/banner_add_hosts
     done
 
-    scp /tmp/banner_add_hosts $_dns:/etc/
+    scp -q /tmp/banner_add_hosts $_dns:/etc/
 
     ssh -q $_dns service dnsmasq restart
 }
@@ -2381,6 +2381,17 @@ function _split() {
 function _trim() {
     local _string="$1"
     echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
+}
+function _escape_sed() {
+	local _str="$1"
+	local _escape_single_quote="$2"
+
+	if _isYes "$_escape_single_quote" ; then
+		local _str2="$(_escape_quote "$_str")"
+		echo "$_str2" | sed "s/[][\.^$*\/&|]/\\&/g"
+	else
+		echo "$_str" | sed 's/[][\.^$*\/"&|]/\\&/g'
+	fi
 }
 function _merge() {
     local _search_regex="$1"
