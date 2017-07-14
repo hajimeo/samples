@@ -114,7 +114,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     until docker ps 2>&1| grep STATUS>/dev/null; do  sleep 1; done;  >/dev/null
 
     echo "Stopping other containers..."
-    for _n in `docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$"`; do docker stop $_n; done
+    for _n in `docker ps --format "{{.Names}}" | grep -qvE "^${_NAME}$"`; do docker stop $_n; done
 
     docker ps -a --format "{{.Names}}" | grep -w "${_NAME}"
     if [ $? -eq 0 ]; then
@@ -290,9 +290,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
     docker exec -d ${_NAME} service ambari-agent start
 
-    docker exec -d ${_NAME} /root/start_sandbox.sh
-    docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
-    docker exec -d ${_NAME} /etc/init.d/tutorials start
+    #docker exec -d ${_NAME} /root/start_sandbox.sh
+    #docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
+    #docker exec -d ${_NAME} /etc/init.d/tutorials start
 
     # Clean up old logs to save disk space
     docker exec -it ${_NAME} bash -c 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
