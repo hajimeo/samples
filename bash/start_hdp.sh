@@ -140,7 +140,7 @@ function p_interview() {
     _ask "DNS Server (Note: Remote DNS requires password less ssh)" "$g_DNS_SERVER" "r_DNS_SERVER" "N" "Y"
 
     # Questions to install Ambari
-    _ask "Avoid installing Ambari? (to create just containers)" "Y" "r_AMBARI_NOT_INSTALL"
+    _ask "Avoid installing Ambari? (to create just containers)" "N" "r_AMBARI_NOT_INSTALL"
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         _ask "Ambari server hostname" "${r_NODE_HOSTNAME_PREFIX}${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
         _ask "Ambari version (used to build repo URL)" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
@@ -1018,7 +1018,8 @@ function f_docker_run() {
         if [ "$r_DOCKER_NETWORK_MASK" = "/24" ]; then
             _netmask="255.255.255.0"
         fi
-        docker run -t -i -d --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} --ip=${r_DOCKER_NETWORK_ADDR}$_n --dns=$_dns --name=${_node}$_n ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
+        # --ip may not work due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
+        docker run -t -i -d --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} --dns=$_dns --name=${_node}$_n ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
     done
 }
 
