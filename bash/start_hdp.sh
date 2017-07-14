@@ -283,6 +283,7 @@ function p_hdp_start() {
     #f_gw_set
     #f_etcs_mount
 
+    _info "Starting Ambari Server"
     f_ambari_server_start
     f_ambari_java_random
     # not interested in agent start output at this moment.
@@ -1669,9 +1670,9 @@ function f_dnsmasq() {
         _warn "No apt-get or ssh to $_dns not allowed"
         return 1
     fi
-    ssh $_dns apt-get -y install dnsmasq
+    ssh -q $_dns apt-get -y install dnsmasq
 
-    ssh $_dns "grep '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf"
+    ssh -q $_dns "grep '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf"
 
     f_dnsmasq_banner_reset "$_how_many" "$_start_from"
 }
@@ -1714,7 +1715,7 @@ function f_dnsmasq_banner_reset() {
 
     scp /tmp/banner_add_hosts $_dns:/etc/
 
-    ssh $_dns service dnsmasq restart
+    ssh -q $_dns service dnsmasq restart
 }
 
 function f_host_performance() {
@@ -1940,7 +1941,7 @@ function f_docker_ip() {
 function f_log_cleanup() {
     local __doc__="Deleting log files which group owner is hadoop"
     local _days="${1-7}"
-    _warn "Deleting hadoop logs which is older than $_days..."
+    _warn "Deleting hadoop logs which is older than $_days days..."
     sleep 5
     # NOTE: Assuming docker name and hostname is same
     for _name in `docker ps --format "{{.Names}}"`; do
