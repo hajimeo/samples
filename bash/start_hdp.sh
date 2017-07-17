@@ -85,16 +85,10 @@ g_UNAME_STR="`uname`"
 g_DEFAULT_PASSWORD="hadoop"
 g_NODE_HOSTNAME_PREFIX="node"
 g_DNS_SERVER="localhost"
+g_APT_UPDATE_DONE=""
 
 __PID="$$"
 __LAST_ANSWER=""
-
-g_SERVER_KEY_LOCATION="/etc/hadoop/secure/"
-g_KEYSTORE_FILE="server.keystore.jks"
-g_TRUSTSTORE_FILE="server.truststore.jks"
-g_CLIENT_TRUSTSTORE_FILE="client.truststore.jks"
-g_YARN_USER="yarn"
-g_APT_UPDATE_DONE=""
 
 ### Procedure type functions
 
@@ -1489,9 +1483,12 @@ function f_service() {
     _action="${_action^^}"
 
     if [ "$_action" = "RESTART" ]; then
-        f_service "$_service" "stop" "$_ambari_host"
-        # TODO _n="`_ambari_query_sql "select count(*) from hostcomponentstate where service_name='$_service' and current_state='INSTALLED'"`"
-        sleep 40
+        f_service "$_service" "stop" "$_ambari_host" || return $?
+        for _i in {1..9}; do
+            _n="`_ambari_query_sql "select count(*) from request where request_context ='set INSTALLED for $_service by f_service' and end_time < start_time"`"
+            [ 0 -eq $_n ] && break;
+            sleep 10
+        done
         f_service "$_service" "start" "$_ambari_host"
         return
     fi
@@ -1500,8 +1497,12 @@ function f_service() {
     [ "$_action" = "STOP" ] && _action="INSTALLED"
     [ "$_action" = "INSTALLED" ] && _maintenance_mode="ON"
 
+    _n="`_ambari_query_sql "select count(*) from request where request_context ='set $_action for $_service by f_service' and end_time < start_time"`"
+    [ 0 -lt $_n ] && return;
+
     curl -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_service'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
-    curl -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"'$_action' '$_service'","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_service'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
+    local _request_context=""
+    curl -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_service' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_service'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
     echo ""
 }
 
