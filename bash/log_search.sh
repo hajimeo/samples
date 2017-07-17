@@ -454,14 +454,25 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
 
     if [ -s "$1" ]; then
-        echo "# Running f_topErrors $1 ..." >&2
-        _f_topErrors_out="`f_topErrors "$1"`" &
-        echo "# Running f_topCausedByExceptions $1 ..." >&2
-        _f_topCausedByExceptions="`f_topCausedByExceptions "$1"`" &
-
+        _file_path="$1"
+        if [ -n "$2" ]; then
+            echo "# Extracting $2 $3 into a temp file ..." >&2
+            f_extractByDates "$@" > /tmp/_f_extractByDates_$$.out
+            _file_path="/tmp/_f_extractByDates_$$.out"
+        fi
+        echo "# Running f_topErrors $_file_path ..." >&2
+        f_topErrors "$_file_path" > /tmp/_f_topErrors_out_$$.out &
+        echo "# Running f_topCausedByExceptions $_file_path ..." >&2
+        f_topCausedByExceptions "$_file_path" > /tmp/_f_topCausedByExceptions_$$.out &
+        echo "# Running f_hdfsAuditLogCountPerTime $_file_path ..." >&2
+        f_hdfsAuditLogCountPerTime "$_file_path" > /tmp/_f_hdfsAuditLogCountPerTime_$$.out &
         wait
 
-        echo "$_f_topErrors_out"
-        echo "$_f_topCausedByExceptions"
+        echo "# f_topErrors " >&2
+        cat /tmp/_f_topErrors_out_$$.out
+        echo "# f_topCausedByExceptions " >&2
+        cat /tmp/_f_topCausedByExceptions_$$.out 
+        echo "# f_hdfsAuditLogCountPerTime " >&2
+        cat /tmp/_f_hdfsAuditLogCountPerTime_$$.out
     fi
 fi
