@@ -85,7 +85,7 @@ function f_ambari_kerberos_generate_service_config() {
 
     local _version="version`date +%s`000" #TODO: not sure if always using version 1 is OK
 
-    # service configuration
+    # service configuration TODO: 'kdc = {{kdc_host}}' doesn't work
     echo "[
   {
     \"Clusters\": {
@@ -96,7 +96,7 @@ function f_ambari_kerberos_generate_service_config() {
           \"domains\":\"\",
           \"manage_krb5_conf\": \"true\",
           \"conf_dir\":\"/etc\",
-          \"content\" : \"[libdefaults]\n  renew_lifetime = 7d\n  forwardable= true\n  default_realm = {{realm|upper()}}\n  ticket_lifetime = 24h\n  dns_lookup_realm = false\n  dns_lookup_kdc = false\n  #default_tgs_enctypes = {{encryption_types}}\n  #default_tkt_enctypes ={{encryption_types}}\n\n{% if domains %}\n[domain_realm]\n{% for domain in domains.split(',') %}\n  {{domain}} = {{realm|upper()}}\n{% endfor %}\n{%endif %}\n\n[logging]\n  default = FILE:/var/log/krb5kdc.log\nadmin_server = FILE:/var/log/kadmind.log\n  kdc = FILE:/var/log/krb5kdc.log\n\n[realms]\n  {{realm}} = {\n    admin_server = {{admin_server_host|default(kdc_host, True)}}\n    kdc = {{kdc_host}}\n }\n\n{# Append additional realm declarations below #}\n\"
+          \"content\" : \"[libdefaults]\n  renew_lifetime = 7d\n  forwardable= true\n  default_realm = {{realm|upper()}}\n  ticket_lifetime = 24h\n  dns_lookup_realm = false\n  dns_lookup_kdc = false\n  #default_tgs_enctypes = {{encryption_types}}\n  #default_tkt_enctypes ={{encryption_types}}\n\n{% if domains %}\n[domain_realm]\n{% for domain in domains.split(',') %}\n  {{domain}} = {{realm|upper()}}\n{% endfor %}\n{%endif %}\n\n[logging]\n  default = FILE:/var/log/krb5kdc.log\nadmin_server = FILE:/var/log/kadmind.log\n  kdc = FILE:/var/log/krb5kdc.log\n\n[realms]\n  {{realm}} = {\n    admin_server = {{admin_server_host|default(kdc_host, True)}}\n    kdc = {{kdc_host)}}\n }\n\n{# Append additional realm declarations below #}\n\"
         }
       }
     }
@@ -140,9 +140,9 @@ function f_ambari_kerberos_setup() {
     local _start_from="${5-$r_NODE_START_NUM}"
     local _ambari_host="${6-$r_AMBARI_HOST}"
     local _cluster_name="${7-$r_CLUSTER_NAME}"
-    #local _kdc_type="${3}" # TODO: Not using and MIT KDC only
     local _stack_name="HDP"
     local _request_context="Stop Service with f_ambari_kerberos_setup"
+    #local _kdc_type="${3}" # TODO: Not using and MIT KDC only
 
     if [ -z "$_cluster_name" ]; then
         _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
@@ -153,7 +153,7 @@ function f_ambari_kerberos_setup() {
     curl -H "X-Requested-By:ambari" -u admin:admin -X POST "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/services/KERBEROS/components/KERBEROS_CLIENT"
     _info "Upload the KDC configuration"
     f_ambari_kerberos_generate_service_config "$_realm" "$_server" > /tmp/${_cluster_name}_kerberos_service_conf.json
-    curl -H "X-Requested-By:ambari" -u admin:admin -i -X PUT -d @/tmp/${_cluster_name}_kerberos_service_conf.json "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
+    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT -d @/tmp/${_cluster_name}_kerberos_service_conf.json "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
 
     _info "Install Kerberos client on all nodes"
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
@@ -170,19 +170,19 @@ function f_ambari_kerberos_setup() {
         sleep 15;
     done
 
-    _info "Get the default (or current) kerberos descriptor and upload"
-    curl -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/stacks/$_stack_name/versions/${r_HDP_STACK_VERSION}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_default_descriptor.json
+    #_info "Get the default (or current) kerberos descriptor and upload"
+    #curl -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/stacks/$_stack_name/versions/${r_HDP_STACK_VERSION}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_default_descriptor.json
     #curl -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_current_descriptor.json
     # ERROR "The properties [Artifacts/stack_version, href, Artifacts/stack_name] specified in the request or predicate are not supported for the resource type Artifact."
-    python -c "import sys,json
-with open('/tmp/${_cluster_name}_kerberos_default_descriptor.json') as jd:
-    a=json.load(jd)
-a.pop('href', None)
-a['Artifacts'].pop('stack_version', None)
-a['Artifacts'].pop('stack_name', None)
-with open('/tmp/${_cluster_name}_kerberos_default_descriptor.json', 'w') as jd:
-    json.dump(a, jd)" || return $?
-    curl -H "X-Requested-By:ambari" -u admin:admin -X POST -d @/tmp/${_cluster_name}_kerberos_default_descriptor.json "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/artifacts/kerberos_descriptor"
+#    python -c "import sys,json
+#with open('/tmp/${_cluster_name}_kerberos_default_descriptor.json') as jd:
+#    a=json.load(jd)
+#a.pop('href', None)
+#a['Artifacts'].pop('stack_version', None)
+#a['Artifacts'].pop('stack_name', None)
+#with open('/tmp/${_cluster_name}_kerberos_default_descriptor.json', 'w') as jd:
+#    json.dump(a, jd)" || return $?
+#    curl -H "X-Requested-By:ambari" -u admin:admin -X POST -d @/tmp/${_cluster_name}_kerberos_default_descriptor.json "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/artifacts/kerberos_descriptor"
 
     _info "Set up Kerberos"
     curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name" -d '{
