@@ -7,11 +7,13 @@
 #
 # *NOTE*: because it uses start_hdp.sh, can't use same function name in this script
 #
-# EXAMPLE: How to set up Kerberos
-#   source ./setup_security.sh
-#   f_loadResp
-#   f_kdc_install_on_host
-#   f_ambari_kerberos_setup
+# Example 1: How to set up Kerberos
+#   source ./setup_security.sh && f_loadResp
+#   f_kdc_install_on_host && f_ambari_kerberos_setup
+#
+# Example 2: How to set up SSL on hadoop component
+#   source ./setup_security.sh && f_loadResp
+#   f_ssl_internal_CA_setup && f_ssl_self_signed_cert_with_internal_CA && f_ssl_distribute_jks && f_ssl_ambari_config_set_for_hadoop
 #
 
 ### OS/shell settings
@@ -202,8 +204,9 @@ function f_ambari_kerberos_setup() {
     sleep 5;
 
     #_info "Get the default kerberos descriptor and upload (assuming no current)"
-    #curl -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/stacks/$_stack_name/versions/${r_HDP_STACK_VERSION}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
-    curl -H "X-Requested-By:ambari" -u admin:admin -X GET "${_api_uri}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
+    curl -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/stacks/$_stack_name/versions/${r_HDP_STACK_VERSION}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
+    #curl -H "X-Requested-By:ambari" -u admin:admin -X GET "${_api_uri}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
+
     # For ERROR "The properties [Artifacts/stack_version, href, Artifacts/stack_name] specified in the request or predicate are not supported for the resource type Artifact."
     python -c "import sys,json
 with open('/tmp/${_cluster_name}_kerberos_descriptor.json') as jd:
@@ -212,10 +215,9 @@ a.pop('href', None)
 a.pop('Artifacts', None)
 with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     json.dump(a, jd)"
-    if [ -s /tmp/${_cluster_name}_kerberos_descriptor.json ]; then
-        curl -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/artifacts/kerberos_descriptor" -d @/tmp/${_cluster_name}_kerberos_descriptor.json
-        sleep 3;
-    fi
+
+    curl -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/artifacts/kerberos_descriptor" -d @/tmp/${_cluster_name}_kerberos_descriptor.json
+    sleep 3;
 
     _info "Stopping all services...."
     #curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
@@ -540,7 +542,7 @@ kdestroy"
     ssh root@$_yarn_rm_node -t "sudo -u yarn bash -c \"kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/$(hostname -f); yarn rmadmin -refreshUserToGroupsMappings\""
 }
 
-function f_ssl_openssl_cnf_generate() {
+function _ssl_openssl_cnf_generate() {
     local __doc__="Generate openssl config file (openssl.cnf) for self-signed certificate"
     local _dname="$1"
     local _password="$2"
@@ -646,7 +648,7 @@ function f_ssl_internal_CA_setup() {
 
     openssl genrsa -out ${_work_dir%/}/ca.key 4096 #8192
     # Generating CA certificate
-    f_ssl_openssl_cnf_generate "$_dname" "$_password" "$_domain_suffix" "$_work_dir" || return $?
+    _ssl_openssl_cnf_generate "$_dname" "$_password" "$_domain_suffix" "$_work_dir" || return $?
     openssl req -new -x509 -key ${_work_dir%/}/ca.key -out ${_work_dir%/}/ca.crt -days 3650 -config "${_work_dir%/}/openssl.cnf" -passin pass:$_password || return $?
 
     chmod 0400 ${_work_dir%/}/private/ca.key
@@ -710,7 +712,7 @@ function f_ssl_distribute_jks() {
 chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*.jks
 chmod 440 ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE
 chmod 440 ${g_SERVER_KEY_LOCATION%/}/$g_TRUSTSTORE_FILE
-chmod 444 ${g_CLIENT_TRUST_LOCATION%/}/$g_CLIENT_TRUSTSTORE_FILE"
+chmod 444 ${g_CLIENT_TRUST_LOCATION%/}/$g_CLIENT_TRUSTSTORE_FILE" || return $?
     done
 }
 
@@ -782,7 +784,7 @@ function f_ssl_ambari_config_set_for_hadoop() {
 
 	for _k in "${!_configs[@]}"; do
         _split "_type_prop" "$_k" ":"
-        ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} $_opts set $_ambari_host "$_cluster_name" ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
+        ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} $_opts set $_ambari_host "$_cluster_name" ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\"" || return $?
     done
 }
 
