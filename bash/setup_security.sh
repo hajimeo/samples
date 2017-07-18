@@ -82,52 +82,62 @@ function f_ambari_kerberos_generate_service_config() {
     local _realm="${1-EXAMPLE.COM}"
     local _server="${2-`hostname -f`}"
     #local _kdc_type="${3}" # TODO: Not using and MIT KDC only
-
     local _version="version`date +%s`000" #TODO: not sure if always using version 1 is OK
 
-    # service configuration TODO: 'kdc = {{kdc_host}}' doesn't work
-    echo "[
+    # TODO: 'kdc = {{kdc_host}}' may have some issue. "domains.split(\',\')" (single quotes) is not working
+    cat << KERBEROS_CONFIG
+[
   {
-    \"Clusters\": {
-      \"desired_config\": {
-        \"type\": \"krb5-conf\",
-        \"tag\": \"'$_version'\",
-        \"properties\": {
-          \"domains\":\"\",
-          \"manage_krb5_conf\": \"true\",
-          \"conf_dir\":\"/etc\",
-          \"content\" : \"[libdefaults]\n  renew_lifetime = 7d\n  forwardable= true\n  default_realm = {{realm|upper()}}\n  ticket_lifetime = 24h\n  dns_lookup_realm = false\n  dns_lookup_kdc = false\n  #default_tgs_enctypes = {{encryption_types}}\n  #default_tkt_enctypes ={{encryption_types}}\n\n{% if domains %}\n[domain_realm]\n{% for domain in domains.split(',') %}\n  {{domain}} = {{realm|upper()}}\n{% endfor %}\n{%endif %}\n\n[logging]\n  default = FILE:/var/log/krb5kdc.log\nadmin_server = FILE:/var/log/kadmind.log\n  kdc = FILE:/var/log/krb5kdc.log\n\n[realms]\n  {{realm}} = {\n    admin_server = {{admin_server_host|default(kdc_host, True)}}\n    kdc = {{kdc_host)}}\n }\n\n{# Append additional realm declarations below #}\n\"
+    "Clusters": {
+      "desired_config": [
+        {
+          "type": "kerberos-env",
+          "tag": "${_version}",
+          "properties": {
+            "ad_create_attributes_template": "\n{\n  \"objectClass\": [\"top\", \"person\", \"organizationalPerson\", \"user\"],\n  \"cn\": \"\$principal_name\",\n  #if( \$is_service )\n  \"servicePrincipalName\": \"\$principal_name\",\n  #end\n  \"userPrincipalName\": \"\$normalized_principal\",\n  \"unicodePwd\": \"\$password\",\n  \"accountExpires\": \"0\",\n  \"userAccountControl\": \"66048\"\n}",
+            "admin_server_host": "${_server}",
+            "case_insensitive_username_rules": "false",
+            "container_dn": "",
+            "create_ambari_principal": "true",
+            "encryption_types": "aes des3-cbc-sha1 rc4 des-cbc-md5",
+            "executable_search_paths": "/usr/bin, /usr/kerberos/bin, /usr/sbin, /usr/lib/mit/bin, /usr/lib/mit/sbin",
+            "group": "ambari-managed-principals",
+            "install_packages": "true",
+            "kdc_create_attributes": "",
+            "kdc_hosts": "${_server}",
+            "kdc_type": "mit-kdc",
+            "ldap_url": "",
+            "manage_auth_to_local": "true",
+            "manage_identities": "true",
+            "password_chat_timeout": "5",
+            "password_length": "20",
+            "password_min_digits": "1",
+            "password_min_lowercase_letters": "1",
+            "password_min_punctuation": "1",
+            "password_min_uppercase_letters": "1",
+            "password_min_whitespace": "0",
+            "realm": "${_realm}",
+            "service_check_principal_name": "\${cluster_name|toLower()}-\${short_date}",
+            "set_password_expiry": "false"
+          },
+          "service_config_version_note": "This is the kerberos configuration created by f_ambari_kerberos_generate_service_config."
+        },
+        {
+          "type": "krb5-conf",
+          "tag": "${_version}",
+          "properties": {
+            "conf_dir": "/etc",
+            "content": "\n[libdefaults]\n  renew_lifetime = 7d\n  forwardable = true\n  default_realm = {{realm}}\n  ticket_lifetime = 24h\n  dns_lookup_realm = false\n  dns_lookup_kdc = false\n  default_ccache_name = /tmp/krb5cc_%{uid}\n  #default_tgs_enctypes = {{encryption_types}}\n  #default_tkt_enctypes = {{encryption_types}}\n{% if domains %}\n[domain_realm]\n{%- for domain in domains.split(\",\") %}\n  {{domain|trim()}} = {{realm}}\n{%- endfor %}\n{% endif %}\n[logging]\n  default = FILE:/var/log/krb5kdc.log\n  admin_server = FILE:/var/log/kadmind.log\n  kdc = FILE:/var/log/krb5kdc.log\n\n[realms]\n  {{realm}} = {\n{%- if kdc_hosts > 0 -%}\n{%- set kdc_host_list = kdc_hosts.split(\",\")  -%}\n{%- if kdc_host_list and kdc_host_list|length > 0 %}\n    admin_server = {{admin_server_host|default(kdc_host_list[0]|trim(), True)}}\n{%- if kdc_host_list -%}\n{% for kdc_host in kdc_host_list %}\n    kdc = {{kdc_host|trim()}}\n{%- endfor -%}\n{% endif %}\n{%- endif %}\n{%- endif %}\n  }\n\n{# Append additional realm declarations below #}",
+            "domains": "",
+            "manage_krb5_conf": "true"
+          },
+          "service_config_version_note": "This is the kerberos configuration created by f_ambari_kerberos_generate_service_config."
         }
-      }
-    }
-  },
-  {
-    \"Clusters\": {
-      \"desired_config\": {
-        \"type\": \"kerberos-env\",
-        \"tag\": \"'$_version'\",
-        \"properties\": {
-          \"kdc_type\": \"mit-kdc\",
-          \"manage_identities\": \"true\",
-          \"install_packages\": \"true\",
-          \"encryption_types\": \"aes des3-cbc-sha1 rc4 des-cbc-md5\",
-          \"realm\" : \"$_realm\",
-          \"kdc_host\" : \"$_server\",
-          \"admin_server_host\" : \"$_server\",
-          \"executable_search_paths\" : \"/usr/bin, /usr/kerberos/bin, /usr/sbin, /usr/lib/mit/bin, /usr/lib/mit/sbin\",
-          \"password_length\": \"20\",
-          \"password_min_lowercase_letters\": \"1\",
-          \"password_min_uppercase_letters\": \"1\",
-          \"password_min_digits\": \"1\",
-          \"password_min_punctuation\": \"1\",
-          \"password_min_whitespace\": \"0\",
-          \"service_check_principal_name\" : \"\${cluster_name}-\${short_date}\",
-          \"case_insensitive_username_rules\" : \"false\"
-        }
-      }
+      ]
     }
   }
-]"
+]
+KERBEROS_CONFIG
 }
 
 function f_ambari_kerberos_setup() {
@@ -142,63 +152,90 @@ function f_ambari_kerberos_setup() {
     local _cluster_name="${7-$r_CLUSTER_NAME}"
     local _stack_name="HDP"
     local _request_context="Stop Service with f_ambari_kerberos_setup"
+    local _version="version`date +%s`000"
+
     #local _kdc_type="${3}" # TODO: Not using and MIT KDC only
 
     if [ -z "$_cluster_name" ]; then
         _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
     fi
+    local _api_uri="http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
+
+    # Test GET method
+    #response=$(curl --write-out %{http_code} -s -o /dev/null "${_api_uri}/configurations/service_config_versions?service_name=KERBEROS")
+
+    #_info "Delete existing KERBEROS service"
+    #_api_uri="http://node1.localdomain:8080/api/v1/clusters/c1"
+    #curl -H "X-Requested-By:ambari" -u admin:admin -i -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
+    #curl -H "X-Requested-By:ambari" -u admin:admin -i -X DELETE "${_api_uri}/services/KERBEROS"
 
     _info "register Kerberos service and component"
-    curl -H "X-Requested-By:ambari" -u admin:admin -X POST "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/services/KERBEROS"
-    curl -H "X-Requested-By:ambari" -u admin:admin -X POST "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/services/KERBEROS/components/KERBEROS_CLIENT"
-    _info "Upload the KDC configuration"
-    f_ambari_kerberos_generate_service_config "$_realm" "$_server" > /tmp/${_cluster_name}_kerberos_service_conf.json
-    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT -d @/tmp/${_cluster_name}_kerberos_service_conf.json "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
+    curl -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/services" -d '{"ServiceInfo": { "service_name": "KERBEROS"}}'
+    sleep 3;
+    curl -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/services?ServiceInfo/service_name=KERBEROS" -d '{"components":[{"ServiceComponentInfo":{"component_name":"KERBEROS_CLIENT"}}]}'
+    sleep 3;
 
-    _info "Install Kerberos client on all nodes"
+    _info "Adding Kerberos client on all nodes"
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        curl -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/hosts?Hosts/host_name=node$i${r_DOMAIN_SUFFIX}"
+        curl -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "${_api_uri}/hosts?Hosts/host_name=node$i${r_DOMAIN_SUFFIX}"
+        sleep 1;
     done
-    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"Installing Kerberos with f_ambari_kerberos_setup\"},\"Body\":{\"ServiceInfo\":{\"state\":\"INSTALLED\"}}}" "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/services/KERBEROS"
-    _info "Stopping all services...."
-    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"$_request_context\"},\"Body\":{\"ServiceInfo\":{\"state\":\"INSTALLED\"}}}" "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/services"
+     #-d '{"RequestInfo":{"query":"Hosts/host_name=node1.localdomain|Hosts/host_name=node2.localdomain|..."},"Body":{"host_components":[{"HostRoles":{"component_name":"KERBEROS_CLIENT"}}]}}'
 
-    # TDOO: confirm it's stopped
+    _info "Add/Upload the KDC configuration"
+    f_ambari_kerberos_generate_service_config "$_realm" "$_server" > /tmp/${_cluster_name}_kerberos_service_conf.json
+    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d @/tmp/${_cluster_name}_kerberos_service_conf.json
+    sleep 3;
+
+    #_info "Storing KDC admin credential temporarily"
+    #curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/credentials/kdc.admin.credential" -d "{\"Credential\":{\"principal\":\"admin/admin@${_realm}\",\"key\":\"${_password}\",\"type\":\"temporary\"}}"
+
+    _info "Starting (installing) Kerberos"
+    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/services?ServiceInfo/state=INSTALLED&ServiceInfo/service_name=KERBEROS" -d '{"RequestInfo":{"context":"Install Kerberos Servicewith f_ambari_kerberos_setup","operation_level":{"level":"CLUSTER","cluster_name":"c1"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}'
+    sleep 5;
+
+    #_info "Get the default kerberos descriptor and upload (assuming no current)"
+    #curl -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/stacks/$_stack_name/versions/${r_HDP_STACK_VERSION}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
+    curl -H "X-Requested-By:ambari" -u admin:admin -X GET "${_api_uri}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
+    # For ERROR "The properties [Artifacts/stack_version, href, Artifacts/stack_name] specified in the request or predicate are not supported for the resource type Artifact."
+    python -c "import sys,json
+with open('/tmp/${_cluster_name}_kerberos_descriptor.json') as jd:
+    a=json.load(jd)
+a.pop('href', None)
+a.pop('Artifacts', None)
+with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
+    json.dump(a, jd)"
+    if [ -s /tmp/${_cluster_name}_kerberos_descriptor.json ]; then
+        curl -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/artifacts/kerberos_descriptor" -d @/tmp/${_cluster_name}_kerberos_descriptor.json
+        sleep 3;
+    fi
+
+    _info "Stopping all services...."
+    #curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
+    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"$_request_context\"},\"Body\":{\"ServiceInfo\":{\"state\":\"INSTALLED\"}}}" "${_api_uri}/services"
+    sleep 3;
+    # confirming if it's stopped
     for _i in {1..9}; do
-        _n="`_ambari_query_sql "select count(*) from request where request_context ='$_request_context' and end_time < start_time"`"
+        _n="`_ambari_query_sql "select count(*) from request where request_context = '$_request_context' and end_time < start_time"`"
         [ 0 -eq $_n ] && break;
         sleep 15;
     done
 
-    #_info "Get the default (or current) kerberos descriptor and upload"
-    #curl -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/stacks/$_stack_name/versions/${r_HDP_STACK_VERSION}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_default_descriptor.json
-    #curl -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_current_descriptor.json
-    # ERROR "The properties [Artifacts/stack_version, href, Artifacts/stack_name] specified in the request or predicate are not supported for the resource type Artifact."
-#    python -c "import sys,json
-#with open('/tmp/${_cluster_name}_kerberos_default_descriptor.json') as jd:
-#    a=json.load(jd)
-#a.pop('href', None)
-#a['Artifacts'].pop('stack_version', None)
-#a['Artifacts'].pop('stack_name', None)
-#with open('/tmp/${_cluster_name}_kerberos_default_descriptor.json', 'w') as jd:
-#    json.dump(a, jd)" || return $?
-#    curl -H "X-Requested-By:ambari" -u admin:admin -X POST -d @/tmp/${_cluster_name}_kerberos_default_descriptor.json "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/artifacts/kerberos_descriptor"
-
     _info "Set up Kerberos"
-    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "http://$_ambari_host:8080/api/v1/clusters/$_cluster_name" -d '{
-  "session_attributes" : {
-    "kerberos_admin" : {
-      "principal" : "admin/admin@'$_realm'",
-      "password" : "'$_password'"
+    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d "{
+  \"session_attributes\" : {
+    \"kerberos_admin\" : {
+      \"principal\" : \"admin/admin@$_realm\",
+      \"password\" : \"$_password\"
     }
   },
-  "Clusters": {
-    "security_type" : "KERBEROS"
+  \"Clusters\": {
+    \"security_type\" : \"KERBEROS\"
   }
-}'
-    sleep 10;
+}"
+    sleep 3;
     _info "Start all services"
-    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"Start Service with f_ambari_kerberos_setup\"},\"Body\":{\"ServiceInfo\":{\"state\":\"STARTED\"}}}" http://$_ambari_host:8080/api/v1/clusters/$_cluster_name/services
+    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"Start Service with f_ambari_kerberos_setup\"},\"Body\":{\"ServiceInfo\":{\"state\":\"STARTED\"}}}" ${_api_uri}/services
 }
 
 function f_hadoop_spnego_setup() {
