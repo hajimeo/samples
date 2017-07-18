@@ -7,6 +7,12 @@
 #
 # *NOTE*: because it uses start_hdp.sh, can't use same function name in this script
 #
+# EXAMPLE: How to set up Kerberos
+#   source ./setup_security.sh
+#   f_loadResp
+#   f_kdc_install_on_host
+#   f_ambari_kerberos_setup
+#
 
 ### OS/shell settings
 shopt -s nocasematch
@@ -73,10 +79,11 @@ function f_kdc_install_on_host() {
     echo '*/admin *' > /etc/krb5kdc/kadm5.acl
     service krb5-kdc restart
     service krb5-admin-server restart
+    sleep 3
     kadmin.local -q "add_principal -pw $_password admin/admin"
 }
 
-function f_ambari_kerberos_generate_service_config() {
+function _ambari_kerberos_generate_service_config() {
     local __doc__="Output (return) service config for Ambari APIs. TODO: MIT KDC only by created by f_kdc_install_on_host"
     # https://cwiki.apache.org/confluence/display/AMBARI/Automated+Kerberizaton#AutomatedKerberizaton-EnablingKerberos
     local _realm="${1-EXAMPLE.COM}"
@@ -120,7 +127,7 @@ function f_ambari_kerberos_generate_service_config() {
             "service_check_principal_name": "\${cluster_name|toLower()}-\${short_date}",
             "set_password_expiry": "false"
           },
-          "service_config_version_note": "This is the kerberos configuration created by f_ambari_kerberos_generate_service_config."
+          "service_config_version_note": "This is the kerberos configuration created by _ambari_kerberos_generate_service_config."
         },
         {
           "type": "krb5-conf",
@@ -131,7 +138,7 @@ function f_ambari_kerberos_generate_service_config() {
             "domains": "",
             "manage_krb5_conf": "true"
           },
-          "service_config_version_note": "This is the kerberos configuration created by f_ambari_kerberos_generate_service_config."
+          "service_config_version_note": "This is the kerberos configuration created by _ambari_kerberos_generate_service_config."
         }
       ]
     }
@@ -183,7 +190,7 @@ function f_ambari_kerberos_setup() {
      #-d '{"RequestInfo":{"query":"Hosts/host_name=node1.localdomain|Hosts/host_name=node2.localdomain|..."},"Body":{"host_components":[{"HostRoles":{"component_name":"KERBEROS_CLIENT"}}]}}'
 
     _info "Add/Upload the KDC configuration"
-    f_ambari_kerberos_generate_service_config "$_realm" "$_server" > /tmp/${_cluster_name}_kerberos_service_conf.json
+    _ambari_kerberos_generate_service_config "$_realm" "$_server" > /tmp/${_cluster_name}_kerberos_service_conf.json
     curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d @/tmp/${_cluster_name}_kerberos_service_conf.json
     sleep 3;
 
@@ -191,7 +198,7 @@ function f_ambari_kerberos_setup() {
     #curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/credentials/kdc.admin.credential" -d "{\"Credential\":{\"principal\":\"admin/admin@${_realm}\",\"key\":\"${_password}\",\"type\":\"temporary\"}}"
 
     _info "Starting (installing) Kerberos"
-    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/services?ServiceInfo/state=INSTALLED&ServiceInfo/service_name=KERBEROS" -d '{"RequestInfo":{"context":"Install Kerberos Servicewith f_ambari_kerberos_setup","operation_level":{"level":"CLUSTER","cluster_name":"c1"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}'
+    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/services?ServiceInfo/state=INSTALLED&ServiceInfo/service_name=KERBEROS" -d '{"RequestInfo":{"context":"Install Kerberos Service with f_ambari_kerberos_setup","operation_level":{"level":"CLUSTER","cluster_name":"c1"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}'
     sleep 5;
 
     #_info "Get the default kerberos descriptor and upload (assuming no current)"
@@ -221,7 +228,7 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
         sleep 15;
     done
 
-    _info "Set up Kerberos"
+    _info "Set up Kerberos..."
     curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d "{
   \"session_attributes\" : {
     \"kerberos_admin\" : {
@@ -234,6 +241,13 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
   }
 }"
     sleep 3;
+    # wait until it's set up
+    for _i in {1..9}; do
+        _n="`_ambari_query_sql "select count(*) from request where request_context = 'Preparing Operations' and end_time < start_time"`"
+        [ 0 -eq $_n ] && break;
+        sleep 15;
+    done
+
     _info "Start all services"
     curl -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"Start Service with f_ambari_kerberos_setup\"},\"Body\":{\"ServiceInfo\":{\"state\":\"STARTED\"}}}" ${_api_uri}/services
 }
