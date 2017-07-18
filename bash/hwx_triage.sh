@@ -47,9 +47,11 @@ function f_check_system() {
     _log "INFO" "Collecting OS related information..."
 
     hdp-select &> ${_WORK_DIR%/}/hdp-select.out
+    getenforce &> ${_WORK_DIR%/}/getenforce.out
     ls -l /usr/hdp/current/ >> ${_WORK_DIR%/}/hdp-select.out
     (which timeout && (timeout 3 time head -n 1 /dev/urandom > /dev/null;echo '-';timeout 3 time head -n 1 /dev/random > /dev/null)) &> ${_WORK_DIR%/}/random.out
     vmstat 1 3 &> ${_WORK_DIR%/}/vmstat.out &
+    vmstat -d &> ${_WORK_DIR%/}/vmstat_d.out &
     pidstat -dl 3 3 &> ${_WORK_DIR%/}/pstat.out &
     sysctl -a &> ${_WORK_DIR%/}/sysctl.out
     top -b -n 1 -c &> ${_WORK_DIR%/}/top.out
