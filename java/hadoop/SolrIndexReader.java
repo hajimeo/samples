@@ -15,8 +15,8 @@ import org.apache.lucene.store.FSDirectory;
 /**
  * Created by hosako on 18/7/17.
  *
- * javac -classpath /usr/lib/ambari-infra-solr/server/solr-webapp/webapp/WEB-INF/lib/*:. SolrIndexReader.java
- * java -cp /usr/lib/ambari-infra-solr/server/solr-webapp/webapp/WEB-INF/lib/*:. SolrIndexReader /opt/ambari_infra_solr/data/ranger_audits_shard1_replica1/data/index 1
+ * javac -classpath /usr/lib/ambari-infra-solr/server/solr-webapp/webapp/WEB-INF/lib/*:. hadoop/SolrIndexReader.java
+ * java -cp /usr/lib/ambari-infra-solr/server/solr-webapp/webapp/WEB-INF/lib/*:. hadoop.SolrIndexReader /opt/ambari_infra_solr/data/ranger_audits_shard1_replica1/data/index 1
  *
  * Minimum jars:
  * /usr/lib/ambari-infra-solr/server/solr-webapp/webapp/WEB-INF/lib/lucene-core-5.5.2.jar:/usr/lib/ambari-infra-solr/server/solr-webapp/webapp/WEB-INF/lib/lucene-queryparser-5.5.2.jar:/usr/lib/ambari-infra-solr/server/solr-webapp/webapp/WEB-INF/lib/solr-solrj-5.5.2.jar
