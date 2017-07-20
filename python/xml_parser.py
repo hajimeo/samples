@@ -11,37 +11,55 @@
 # Run:
 #   _f=./ams-site.xml; xmldiff $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/ambari-metrics-collector/conf/$_f) '.+(auth_to_local|\.hue\.).*'
 #
-# For non xml files
+# Example 2:
+# Step 1: collect all configs from a cluster with below tar command
+#   tar czhvf ./hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf /etc/{ams,ambari}-* /etc/ranger/*/policycache /etc/hosts /etc/krb5.conf 2>/dev/null
+# Step 2: extract the tgz
+# Step 3: Compare with same or similar verion of your cluser!
+#   find . -type f -name '*-site.xml' | xargs -t -I {} bash -c '_f={};xmldiff $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat ${_f#.}) &> ${_f}.json'
+# Step 4: Check the result
+#   find . -type f -name '*-site.xml.json' -ls
+#
+# Misc.: for non xml files
 # _f=./client.properties; diff -w $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/falcon/conf/$_f)
 #
 
-import sys, pprint, re
+import sys, pprint, re, json
 from lxml import etree
 
 class XmlParser:
     @staticmethod
     def fatal(reason):
-        sys.stderr.write("FATAL " + reason + '\n')
+        sys.stderr.write("FATAL: " + reason + '\n')
         sys.exit(1)
 
     @staticmethod
     def err(reason, level="ERROR"):
-        sys.stderr.write(level + " " + reason + '\n')
+        sys.stderr.write(level + ": " + str(reason) + '\n')
         raise
+
+    @staticmethod
+    def warn(reason, level="WARN"):
+        sys.stderr.write(level + ": " + str(reason) + '\n')
 
     @staticmethod
     def xml2dict(filename, parent_element_name='property', key_element_name='name', value_element_name='value'):
         rtn = {}
         parser = etree.XMLParser(recover=True)
-        r = etree.ElementTree(file=filename, parser=parser).getroot()
+        try:
+            r = etree.ElementTree(file=filename, parser=parser).getroot()
+        except Exception, e:
+            XmlParser.fatal(str(e))
+            return rtn
+
         for p in r.findall('.//' + parent_element_name):
             try:
                 name = str(p.find(".//" + key_element_name).text).strip()
                 value = str(p.find(".//" + value_element_name).text).strip()
                 if len(name) > 0:
                     rtn[name] = value
-            except:
-                XmlParser.err(name+" does not have value")
+            except Exception, e:
+                XmlParser.warn(name+" does not have value. "+str(e))
         return rtn
 
     @staticmethod
@@ -84,5 +102,5 @@ if __name__ == '__main__':
     f2 = XmlParser.xml2dict(sys.argv[2])
     out = XmlParser.compare_dict(f1, f2, ignore_regex)
 
-    # TODO: too lazy to format the output
-    pprint.pprint(out, width=1)
+    # For now, just outputting as JSON (actually dict)
+    print json.dumps(out, indent=4, sort_keys=True)
