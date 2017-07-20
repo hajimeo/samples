@@ -244,6 +244,7 @@ function f_findJarByClassName() {
     local _class_name="$1"
     local _search_path="${2-/usr/hdp/current/*/}"
 
+    # NOTE: some 'less' can't read jar, in that case, replace to 'jar -tvf', but may need to modify $PATH
     find $_search_path -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | grep -m 1 -w $_class_name > /tmp/f_findJarByClassName_$$.tmp && ( echo {}; cat /tmp/f_findJarByClassName_$$.tmp )"
 }
 
