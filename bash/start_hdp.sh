@@ -2610,8 +2610,10 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         if ! _isYes "$_AUTO_SETUP_HDP"; then
             _ask "Would you like to start setting up this host?" "Y"
             if ! _isYes; then echo "Bye"; exit; fi
-            _ask "Would you like to stop all running containers if running?" "Y"
-            if _isYes; then f_docker_stop_all; fi
+            if ! _isYes "$r_DOCKER_KEEP_RUNNING"; then
+                _ask "Would you like to stop all running containers now?" "Y"
+                if _isYes; then f_docker_stop_all; fi
+            fi
         else
             if ! _isYes "$r_DOCKER_KEEP_RUNNING"; then
                 _info "Stopping all docker containers..."
