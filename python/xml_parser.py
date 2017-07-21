@@ -1,13 +1,19 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+#
+#
 
 def usage():
     print '''A simple XML Parser
-
 If one xml file is given, outputs "property=value" output (so that can copy&paste into Ambari, ex: Capacity Scheduler)
 If two xml files are given, compare and outputs the difference with JSON format.
 
 python ./xml_parser.py XXXX-site.xml [YYYY-site.xml] [exclude regex]
+
+
+To get the laest code:
+    curl -O https://raw.githubusercontent.com/hajimeo/samples/master/python/xml_parser.py
+
 
 Example 1: use as a command line tool on Mac
     Setup:
