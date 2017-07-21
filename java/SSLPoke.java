@@ -13,7 +13,7 @@ import java.io.*;
 public class SSLPoke {
     public static void main(String[] args) {
         if (args.length < 2) {
-            System.out.println("Usage: "+SSLPoke.class.getName()+" <host> <port>");
+            System.out.println("Usage: java -Djavax.net.debug=ssl,keymanager "+SSLPoke.class.getName()+" <host> <port>");
             System.exit(1);
         }
         try {
