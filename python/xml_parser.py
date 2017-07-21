@@ -2,7 +2,11 @@
 # -*- coding: utf-8 -*-
 
 def usage():
-    print '''XML Parser, and also can compare two XML files, like:
+    print '''A simple XML Parser
+
+If one xml file is given, outputs "property=value" output (so that can copy&paste into Ambari, ex: Capacity Scheduler)
+If two xml files are given, compare and outputs the difference with JSON format.
+
 python ./xml_parser.py XXXX-site.xml [YYYY-site.xml] [exclude regex]
 
 Example 1: use as a command line tool on Mac
@@ -85,6 +89,12 @@ class XmlParser:
                     rtn[k] = [dict1[k], dict2[k]]
         return rtn
 
+    @staticmethod
+    def output_as_str(dict):
+        for k in dict.keys():
+            print "%s=%s" % (k, str(dict[k]))
+
+
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
@@ -94,7 +104,8 @@ if __name__ == '__main__':
     f1 = XmlParser.xml2dict(sys.argv[1])
 
     if len(sys.argv) == 2:
-        pprint.pprint(f1)
+        #print json.dumps(f1, indent=0, sort_keys=True, separators=('', '='))
+        XmlParser.output_as_str(f1)
         sys.exit(0)
 
     ignore_regex = None
@@ -104,5 +115,5 @@ if __name__ == '__main__':
     f2 = XmlParser.xml2dict(sys.argv[2])
     out = XmlParser.compare_dict(f1, f2, ignore_regex)
 
-    # For now, just outputting as JSON (actually dict)
+    # For now, just outputting as JSON (from a dict)
     print json.dumps(out, indent=4, sort_keys=True)
