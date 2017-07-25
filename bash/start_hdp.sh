@@ -781,7 +781,7 @@ function f_docker_setup() {
 
     local _storage_size="30G"
     # This part is different by docker version, so changing only if it was 10GB or 1*.**GB
-    docker info | grep 'Base Device Size' | grep -oP '1\d\.\d\d GB' &>/dev/null
+    docker info | grep 'Base Device Size' | grep -oP '1\d\.\d\dGB' &>/dev/null
     if [ $? -eq 0 ]; then
         grep 'storage-opt dm.basesize=' /etc/init/docker.conf &>/dev/null
         if [ $? -ne 0 ]; then
@@ -841,7 +841,8 @@ function f_docker_base_create() {
         return 1
     fi
     docker images | grep -P "^${r_CONTAINER_OS}\s+${r_CONTAINER_OS_VER}" || docker pull ${r_CONTAINER_OS}:${r_CONTAINER_OS_VER}
-    docker build -t ${g_DOCKER_BASE} -f $_docker_file .
+    mkdir docker_workspace &>/dev/null
+    docker build -t ${g_DOCKER_BASE} -f $_docker_file ./docker_workspace
 }
 
 function f_docker_start() {
