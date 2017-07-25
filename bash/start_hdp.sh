@@ -827,10 +827,8 @@ function f_docker0_setup() {
 
 function f_docker_base_create() {
     local __doc__="Create a docker base image"
-    local _docker_file="$1"
-    if [ -z "$_docker_file" ]; then
-        _docker_file="./DockerFile"
-    fi
+    local _docker_file="./DockerFile"
+
     if [ ! -r "$_docker_file" ]; then
         _error "$_docker_file is not readable"
         return 1
@@ -842,7 +840,8 @@ function f_docker_base_create() {
     fi
     docker images | grep -P "^${r_CONTAINER_OS}\s+${r_CONTAINER_OS_VER}" || docker pull ${r_CONTAINER_OS}:${r_CONTAINER_OS_VER}
     mkdir docker_workspace &>/dev/null
-    docker build -t ${g_DOCKER_BASE} -f $_docker_file ./docker_workspace
+    # TODO: . is not good if there are so many files/folders
+    docker build -t ${g_DOCKER_BASE} -f $_docker_file .
 }
 
 function f_docker_start() {
@@ -1700,7 +1699,7 @@ function f_dnsmasq_banner_reset() {
 
     rm -rf /tmp/banner_add_hosts
 
-    scp -q $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts
+        scp -q $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts
     if [ ! -s /tmp/banner_add_hosts ]; then
         echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /tmp/banner_add_hosts
     else
