@@ -13,7 +13,10 @@
 #
 # Example 2: How to set up SSL on hadoop component
 #   source ./setup_security.sh && f_loadResp
-#   f_ssl_internal_CA_setup && f_ssl_self_signed_cert_with_internal_CA && f_ssl_distribute_jks && f_ssl_ambari_config_set_for_hadoop
+#   f_ssl_internal_CA_setup && f_ssl_self_signed_cert_with_internal_CA
+#   f_ssl_distribute_jks
+#   # below asks a few questions to update configs (replace sandbox.hortonworks.com to actual hostnames)
+#   f_ssl_ambari_config_set_for_hadoop
 #
 
 ### OS/shell settings
@@ -706,13 +709,14 @@ function f_ssl_distribute_jks() {
 
     _info "copying jks files for $_how_many nodes from $_start_from ..."
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh root@node$i${_domain_suffix} -t "mkdir -p ${g_SERVER_KEY_LOCATION%/};mkdir -p ${g_CLIENT_TRUST_LOCATION%/}"
-        scp ${_work_dir%/}/*.jks root@node$i${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/
-        ssh root@node$i${_domain_suffix} -t "chmod 755 $g_SERVER_KEY_LOCATION
+        ssh -q root@node$i${_domain_suffix} -t "mkdir -p ${g_SERVER_KEY_LOCATION%/};mkdir -p ${g_CLIENT_TRUST_LOCATION%/}"
+        scp -q ${_work_dir%/}/*.jks root@node$i${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/
+        scp -q ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE} root@node$i${_domain_suffix}:${g_CLIENT_TRUST_LOCATION%/}/
+        ssh -q root@node$i${_domain_suffix} -t "chmod 755 $g_SERVER_KEY_LOCATION
 chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*.jks
-chmod 440 ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE
-chmod 440 ${g_SERVER_KEY_LOCATION%/}/$g_TRUSTSTORE_FILE
-chmod 444 ${g_CLIENT_TRUST_LOCATION%/}/$g_CLIENT_TRUSTSTORE_FILE" || return $?
+chmod 440 ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}
+chmod 440 ${g_SERVER_KEY_LOCATION%/}/${g_TRUSTSTORE_FILE}
+chmod 444 ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}" || return $?
     done
 }
 
@@ -723,9 +727,11 @@ function f_ssl_ambari_config_set_for_hadoop() {
     local _ambari_ssl="${3}"
     local _cluster_name="${4-$r_CLUSTER_NAME}"
     local _opts=""
+    local _http="http"
 
     if _isYes "$_ambari_ssl"; then
         _opts="$_opts -s"
+        _http="https"
     fi
     if [ -z "$_ambari_host" ]; then
         if [ -z "$r_AMBARI_HOST" ]; then
@@ -786,6 +792,10 @@ function f_ssl_ambari_config_set_for_hadoop() {
         _split "_type_prop" "$_k" ":"
         ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} $_opts set $_ambari_host "$_cluster_name" ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\"" || return $?
     done
+
+    # If Ambari is 2.4.x or higher below works
+    _info "Run the below command to restart required components"
+    echo curl -u admin:admin -sk "${_http}://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_cluster_name}/requests" -H 'X-Requested-By: Ambari' --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
 }
 
 function f_ssl_ambari_config_disable_for_hadoop() {
