@@ -1127,33 +1127,36 @@ function f_port_forward() {
 }
 
 function f_ambari_update_config() {
-    local __doc__="TODO: Change some configuration for this dev environment"
-    local _force="$1"
+    local __doc__="Change some configurations for Dev cluster"
 
     # TODO: need to find the best way to find the first time
-    if ! _isYes "$_force"; then
-        local _c="`_ambari_query_sql "select count(*) from alert_definition where schedule_interval = 6;" $r_AMBARI_HOST`"
-        if [ 0 -ne $_c ]; then
-            _info "Skipping f_ambari_update_config as most likely this has been done."
-            return
-        fi
+    local _c="`_ambari_query_sql "select count(*) from alert_definition where schedule_interval = 1;" $r_AMBARI_HOST`"
+    if [ 0 -ne $_c ]; then
+        _info "Reducing Ambari Alert frequency..."
+        _ambari_query_sql "update alert_definition set schedule_interval = schedule_interval * 2 where schedule_interval < 11" "$r_AMBARI_HOST"
     fi
 
-    _info "Reducing Ambari Alert frequency..."
-    _ambari_query_sql "update alert_definition set schedule_interval = schedule_interval * 2 where schedule_interval < 11" "$r_AMBARI_HOST"
+    _info "Removing ZK numer restriction..."
+    ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
+_n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
+[ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
 
     #_info "Reducing dfs.replication to 1..."
     #ssh -q -t root@$r_AMBARI_HOST -t "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1" &> /tmp/configs_sh_dfs_replication.out
-    # TODO: should I reduce aggregator TTL size?
+    # Blueprint should take care above. TODO: should I reduce aggregator TTL size?
 
     _info "Modifying postgresql for Ranger install later..."
-    ssh -q -t root@$r_AMBARI_HOST -t "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`find /usr/lib/ambari-server/ -name 'postgresql-*.jar' | head -n 1\`
+    ssh -q root@$r_AMBARI_HOST "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1\`
 sudo -u postgres psql -c \"CREATE ROLE rangeradmin WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
 
     _info "No password required to login Ambari..."
-    ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties';grep -q '^api.authenticate=' \$_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' \$_f || echo 'api.authenticate=false' >> \$_f;grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f; ambari-server restart --skip-database-check"
+    ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties'
+grep -q '^api.authenticate=false' \$_f && exit
+grep -q '^api.authenticate=' \$_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' \$_f || echo 'api.authenticate=false' >> \$_f
+grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f
+ambari-server restart --skip-database-check"
 
     _info "Creating 'admin' user in each node and in HDFS..."
     f_useradd_on_nodes "admin"
@@ -2110,11 +2113,11 @@ function f_useradd_on_nodes() {
     ssh -q root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfs -mkdir /user/$_user && hdfs dfs -chown $_user:hadoop /user/$_user\""
 
     if which kadmin.local; then
+        # If no password given and if not exist, creating a keytab
         if [ -z "$_password" ]; then
-            if [ -e "${_user}.headless.keytab" ]; then
-                mv -f "${_user}.headless.keytab" "${_user}.headless.keytab.bak"
+            if [ ! -e "${_user}.headless.keytab" ]; then
+                kadmin.local -q "add_principal -randkey $_user" && kadmin.local -q "xst -k ${_user}.headless.keytab ${_user}" && _info "Generated ${_user}.headless.keytab"
             fi
-            kadmin.local -q "add_principal -randkey $_user" && kadmin.local -q "xst -k ${_user}.headless.keytab ${_user}" && _info "Generated ${_user}.headless.keytab"
         else
             kadmin.local -q "add_principal -pw $_password $_user"
         fi
