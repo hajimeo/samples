@@ -59,7 +59,7 @@ public class HdfsKerberosTest2 {
                     System.out.println(fsStatus[i].getPath().toString());
                 }
                 // fs.mkdirs(ne);
-                return "jst a value";
+                return "end of the run()";
 
             }
         });
