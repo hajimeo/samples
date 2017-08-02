@@ -5,34 +5,7 @@
       "name" : "host_group_1",
       "components" : [
         {
-          "name" : "YARN_CLIENT"
-        },
-        {
-          "name" : "HDFS_CLIENT"
-        },
-        {
-          "name" : "TEZ_CLIENT"
-        },
-        {
-          "name" : "ZOOKEEPER_CLIENT"
-        },
-        {
-          "name" : "HCAT"
-        },
-        {
-          "name" : "PIG"
-        },
-        {
-          "name" : "MAPREDUCE2_CLIENT"
-        },
-        {
           "name" : "AMBARI_SERVER"
-        },
-        {
-          "name" : "ZOOKEEPER_SERVER"
-        },
-        {
-          "name" : "HIVE_CLIENT"
         }
       ],
       "configurations" : [ ],
@@ -42,76 +15,75 @@
       "name" : "host_group_2",
       "components" : [
         {
+          "name": "RESOURCEMANAGER"
+        },
+        {
+          "name": "ZOOKEEPER_CLIENT"
+        },
+        {
+          "name": "ZOOKEEPER_SERVER"
+        },
+        {
           "name" : "YARN_CLIENT"
         },
         {
-          "name" : "HDFS_CLIENT"
+          "name": "HIVE_METASTORE"
         },
         {
-          "name" : "HIVE_SERVER"
-        },
-        {
-          "name" : "MYSQL_SERVER"
-        },
-        {
-          "name" : "HIVE_METASTORE"
-        },
-        {
-          "name" : "HISTORYSERVER"
-        },
-        {
-          "name" : "NAMENODE"
+          "name": "APP_TIMELINE_SERVER"
         },
         {
           "name" : "TEZ_CLIENT"
         },
         {
-          "name" : "ZOOKEEPER_CLIENT"
-        },
-        {
           "name" : "PIG"
         },
         {
-          "name" : "WEBHCAT_SERVER"
+          "name": "NAMENODE"
         },
         {
-          "name" : "MAPREDUCE2_CLIENT"
+          "name": "HDFS_CLIENT"
         },
         {
-          "name" : "ZOOKEEPER_SERVER"
+          "name": "MAPREDUCE2_CLIENT"
         },
         {
-          "name" : "APP_TIMELINE_SERVER"
+          "name": "HISTORYSERVER"
+        },
+        {
+          "name": "HCAT"
         },
         {
           "name" : "HIVE_CLIENT"
         },
         {
-          "name" : "RESOURCEMANAGER"
+          "name" : "MYSQL_SERVER"
+        },
+        {
+          "name" : "WEBHCAT_SERVER"
+        },
+        {
+          "name": "HIVE_SERVER"
         }
       ],
-      "configurations" : [ ],
       "cardinality" : "1"
     },
     {
+      "name" : "host_group_3",
       "components" : [
         {
-          "name" : "SECONDARY_NAMENODE"
+          "name": "ZOOKEEPER_CLIENT"
         },
         {
-          "name" : "ZOOKEEPER_SERVER"
+          "name" : "SECONDARY_NAMENODE"
         }
       ],
       "configurations" : [ ],
-      "name" : "host_group_3",
       "cardinality" : "1"
     },
     {
       "name" : "host_group_4",
       "components" : [
-        {
-          "name" : "NODEMANAGER"
-        },
         {
           "name" : "YARN_CLIENT"
         },
@@ -134,13 +106,13 @@
           "name" : "MAPREDUCE2_CLIENT"
         },
         {
-          "name" : "OOZIE_CLIENT"
+          "name" : "HIVE_CLIENT"
+        },
+        {
+          "name" : "NODEMANAGER"
         },
         {
           "name" : "DATANODE"
-        },
-        {
-          "name" : "HIVE_CLIENT"
         }
       ],
       "configurations" : [ ],
@@ -150,6 +122,6 @@
   "Blueprints": {
     "blueprint_name": "multinode-hdp",
     "stack_name": "HDP",
-    "stack_version": "2.3"
+    "stack_version": "2.4"
   }
 }
