@@ -229,6 +229,22 @@ function f_longGC() {
     egrep "$_regex" "$_path"
 }
 
+function f_listPerflogEnd() {
+    local __doc__="grep </PERFLOG ...> to see duration"
+    local _path="$1"
+    local _sort_by_duration="$2"
+
+    if [[ "$_sort_by_duration" =~ (^y|^Y) ]]; then
+        # expecting 5th one is duration after removing start and end time
+        #egrep -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k5n
+        # removing start and end so that we can easily compare two PERFLOG outputs
+        egrep -wo '</PERFLOG .+>' "$_path" | sed -E "s/ (start|end)=[0-9]+//g" | sort -t'=' -k3n
+    else
+        # sorting with start time
+        egrep -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k3n
+    fi
+}
+
 function f_getPerflog() {
     local __doc__="Get lines between PERFLOG method=xxxxx"
     local _path="$1"
