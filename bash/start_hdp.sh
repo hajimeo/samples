@@ -390,51 +390,12 @@ function f_ambari_blueprint_hostmap() {
 function f_ambari_blueprint_cluster_config() {
     local __doc__="Output json string for Ambari Blueprint Cluster mapping TODO: it's fixed map at this moment"
     local _stack_version="${1-$r_HDP_STACK_VERSION}"
-    local _is_kerberos_on="$2"
     local _how_many="${3-$r_NUM_NODES}"
 
     if [ -z "$_how_many" ] || [ 4 -gt "$_how_many" ]; then
         _error "At this moment, Blueprint build needs at least 4 nodes"
         return 1
     fi
-
-    # TODO: Realm is hardcoded (and kdc_host)
-    local _kerberos_client=""
-    local _security="";
-    local _kerberos_config=""
-    if _isYes "$_is_kerberos_on"; then
-        _kerberos_client=',
-        {
-          "name" : "KERBEROS_CLIENT"
-        }
-'
-        _security=',
-    "security" : {"type" : "KERBEROS"}
-'
-        _kerberos_config=',
-    {
-      "kerberos-env": {
-        "properties_attributes" : { },
-        "properties" : {
-          "realm" : "EXAMPLE.COM",
-          "kdc_type" : "mit-kdc",
-          "kdc_host" : "'$r_AMBARI_HOST'",
-          "admin_server_host" : "'$r_AMBARI_HOST'"
-        }
-      }
-    },
-    {
-      "krb5-conf": {
-        "properties_attributes" : { },
-        "properties" : {
-          "domains" : "EXAMPLE.COM",
-          "manage_krb5_conf" : "true"
-        }
-      }
-    }
-'
-    fi
-
 
     echo '{
   "configurations" : [
@@ -514,7 +475,7 @@ function f_ambari_blueprint_cluster_config() {
       "components" : [
         {
           "name" : "AMBARI_SERVER"
-        }'${_kerberos_client}'
+        }
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -566,7 +527,7 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "RESOURCEMANAGER"
-        }'${_kerberos_client}'
+        }
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -579,7 +540,7 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "SECONDARY_NAMENODE"
-        }'${_kerberos_client}'
+        }
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -616,7 +577,7 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "DATANODE"
-        }'${_kerberos_client}'
+        }
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -625,7 +586,7 @@ function f_ambari_blueprint_cluster_config() {
   "Blueprints": {
     "blueprint_name": "multinode-hdp",
     "stack_name": "HDP",
-    "stack_version": "'$_stack_version'"'${_security}'
+    "stack_version": "'$_stack_version'"
   }
 }'
 }
@@ -1126,7 +1087,7 @@ function f_port_forward() {
     ssh -2CNnqTxfg -L$_local_port:$_remote_host:$_remote_port $_remote_host
 }
 
-function f_ambari_update_config() {
+function p_ambari_update_config() {
     local __doc__="Change some configurations for Dev cluster"
 
     # TODO: need to find the best way to find the first time
@@ -1660,7 +1621,7 @@ function p_host_setup() {
     fi
 
     f_port_forward_ssh_on_nodes
-    _log "INFO" "Completed. Please run f_ambari_update_config once when HDFS is running."
+    _log "INFO" "Completed. Please run p_ambari_update_config once when HDFS is running."
 
     f_screen_cmd
 }
