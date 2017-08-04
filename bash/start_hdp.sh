@@ -358,30 +358,12 @@ function f_ambari_blueprint_hostmap() {
     done
     _host_loop="${_host_loop%,}"
 
-    # TODO: Kerboers https://cwiki.apache.org/confluence/display/AMBARI/Blueprints#Blueprints-BlueprintExample:ProvisioningMulti-NodeHDP2.3ClustertouseKERBEROS
-    local _kerberos_config=''
-    if _isYes "$_is_kerberos_on"; then
-        _kerberos_config=',
-  "credentials" : [
-    {
-      "alias" : "kdc.admin.credential",
-      "principal" : "admin/admin",
-      "key" : "'$_default_password'",
-      "type" : "TEMPORARY"
-    }
-  ],
-  "security" : {
-     "type" : "KERBEROS"
-  }
-'
-    fi
-
     echo "{
   \"blueprint\" : \"multinode-hdp\",
   \"default_password\" : \"$_default_password\",
   \"host_groups\" :["
     echo "$_host_loop"
-    echo "  ]${_kerberos_config}
+    echo "  ]
 }"
     # NOTE: It seems blueprint works without "Clusters"
     #  , \"Clusters\" : {\"cluster_name\":\"${_cluster_name}\"}
