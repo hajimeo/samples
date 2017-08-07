@@ -13,10 +13,7 @@
 #
 # Example 2: How to set up SSL on hadoop component
 #   source ./setup_security.sh && f_loadResp
-#   f_ssl_internal_CA_setup && f_ssl_self_signed_cert_with_internal_CA
-#   f_ssl_distribute_jks
-#   # below asks a few questions to update configs (replace sandbox.hortonworks.com to actual hostnames)
-#   f_ssl_ambari_config_set_for_hadoop
+#   f_hadoop_ssl_setup
 #
 
 ### OS/shell settings
@@ -545,6 +542,66 @@ kdestroy"
     ssh root@$_yarn_rm_node -t "sudo -u yarn bash -c \"kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/$(hostname -f); yarn rmadmin -refreshUserToGroupsMappings\""
 }
 
+function f_hadoop_ssl_setup() {
+    local __doc__="Setup SSL for hadoop https://community.hortonworks.com/articles/92305/how-to-transfer-file-using-secure-webhdfs-in-distc.html"
+    local _dname_extra="$1"
+    local _password="$2"
+    local _ambari_host="${3-$r_AMBARI_HOST}"
+    local _ambari_port="${4-8080}"
+    local _domain_suffix="${5-$r_DOMAIN_SUFFIX}"
+    local _work_dir="${6-./}"
+    local _how_many="${7-$r_NUM_NODES}"
+    local _start_from="${8-$r_NODE_START_NUM}"
+    local _c="`f_get_cluster_name`" || return $?
+    local _trust_password="changeit"
+
+    if [ ! -d "$_work_dir" ]; then
+        mkdir ${_work_dir%/} || return $?
+    fi
+    cd ${_work_dir%/} || return $?
+
+    if [ -z "$_dname_extra" ]; then
+        _dname_extra="OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
+    fi
+
+    # TODO: -aes256
+    openssl genrsa -out rootCA.key 4096
+    openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.support.hortonworks.com" -passin "pass:$_password"
+    keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${_trust_password} -noprompt
+
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
+        ssh -q root@node${i}${_domain_suffix} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}; mkdir -m 755 -p ${g_CLIENT_TRUST_LOCATION%/}"
+        scp ./$g_CLIENT_TRUSTSTORE_FILE root@node${i}${_domain_suffix}:${g_CLIENT_TRUST_LOCATION%/}/
+        ssh -q root@node${i}${_domain_suffix} "keytool -genkey -alias node${i} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE -keysize 2048 -dname \"CN=node${i}${_domain_suffix}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
+        ssh -q root@node${i}${_domain_suffix} "keytool -certreq -alias node${i} -keystore ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE -file ${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.csr -storepass ${_password}"
+        scp root@node${i}${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.csr ./
+        openssl x509 -sha256 -req -in ./node${i}-keystore.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out node${i}-keystore.crt -days 730 -passin "pass:$_password"
+        scp ./rootCA.pem ./node${i}-keystore.crt root@node${i}${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/
+        ssh -q root@node${i}${_domain_suffix} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias node${i} -import -file ${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.crt -noprompt -storepass ${_password}"
+        ssh -q root@node${i}.localdomain "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
+    done
+
+    _info "Updating Ambari configs..."
+    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.location ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}
+    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.password $_trust_password
+
+    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.truststore.location ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}
+    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.truststore.password $_trust_password
+
+    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.keystore.location ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}
+    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.keystore.password $_password
+
+    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.location ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}
+    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.password $_password
+    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.keypassword $_password
+
+    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c hdfs-site dfs.http.policy HTTPS_ONLY # or HTTP_AND_HTTPS
+
+    # If Ambari is 2.4.x or higher below works
+    _info "Run the below command to restart required components"
+    echo curl -u admin:admin -sk "${_http}://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests" -H 'X-Requested-By: Ambari' --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
+}
+
 function _ssl_openssl_cnf_generate() {
     local __doc__="Generate openssl config file (openssl.cnf) for self-signed certificate"
     local _dname="$1"
@@ -610,7 +667,7 @@ function f_ssl_self_signed_cert() {
         _subj="-subj ${_subject}"
     fi
 
-    # Create a private key
+    # Create a private key NOTE: -aes256 to encrypt
     openssl genrsa -out ${_work_dir%/}/${_base_name}.key $_key_strength || return $?
 
     openssl req -new -x509 -nodes -days 3650 -key ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.crt $_subj || return $?
@@ -756,6 +813,8 @@ function f_ssl_ambari_config_set_for_hadoop() {
     _configs["ssl-server:ssl.server.keystore.password"]="$g_DEFAULT_PASSWORD"
     _configs["ssl-server:ssl.server.truststore.location"]="${g_SERVER_KEY_LOCATION%/}/$g_TRUSTSTORE_FILE"
     _configs["ssl-server:ssl.server.truststore.password"]="changeit"
+    _configs["ssl-client:ssl.client.keystore.location"]="${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE"
+    _configs["ssl-client:ssl.client.keystore.password"]="$g_DEFAULT_PASSWORD"
     _configs["ssl-client:ssl.client.truststore.location"]="${g_CLIENT_TRUST_LOCATION%/}/$g_CLIENT_TRUSTSTORE_FILE"
     _configs["ssl-client:ssl.client.truststore.password"]="changeit"
 
