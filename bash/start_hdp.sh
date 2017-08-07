@@ -410,7 +410,7 @@ function f_ambari_blueprint_cluster_config() {
     {
       "yarn-site" : {
         "properties" : {
-          "yarn.scheduler.minimum-allocation-mb" : "256"
+          "yarn.scheduler.minimum-allocation-mb" : "320"
         }
       }
     },
