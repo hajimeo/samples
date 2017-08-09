@@ -560,42 +560,47 @@ function f_hadoop_ssl_setup() {
     fi
     cd ${_work_dir%/} || return $?
 
+    if [ -z "$_password" ]; then
+        _password=${g_DEFAULT_PASSWORD-hadoop}
+    fi
     if [ -z "$_dname_extra" ]; then
         _dname_extra="OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
     fi
 
     # TODO: -aes256
-    openssl genrsa -out rootCA.key 4096
-    openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.support.hortonworks.com" -passin "pass:$_password"
-    keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${_trust_password} -noprompt
+    openssl genrsa -out rootCA.key 4096 || return $?
+    openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.support.hortonworks.com" -passin "pass:$_password" || return $?
+    mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
+    keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${_trust_password} -noprompt || return $?
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh -q root@node${i}${_domain_suffix} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}; mkdir -m 755 -p ${g_CLIENT_TRUST_LOCATION%/}"
-        scp ./$g_CLIENT_TRUSTSTORE_FILE root@node${i}${_domain_suffix}:${g_CLIENT_TRUST_LOCATION%/}/
-        ssh -q root@node${i}${_domain_suffix} "keytool -genkey -alias node${i} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE -keysize 2048 -dname \"CN=node${i}${_domain_suffix}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
-        ssh -q root@node${i}${_domain_suffix} "keytool -certreq -alias node${i} -keystore ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE -file ${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.csr -storepass ${_password}"
-        scp root@node${i}${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.csr ./
-        openssl x509 -sha256 -req -in ./node${i}-keystore.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out node${i}-keystore.crt -days 730 -passin "pass:$_password"
-        scp ./rootCA.pem ./node${i}-keystore.crt root@node${i}${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/
-        ssh -q root@node${i}${_domain_suffix} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias node${i} -import -file ${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.crt -noprompt -storepass ${_password}"
+        scp ./$g_CLIENT_TRUSTSTORE_FILE root@node${i}${_domain_suffix}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
+        ssh -q root@node${i}${_domain_suffix} "mv -f ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null; keytool -genkey -alias node${i} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=node${i}${_domain_suffix}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
+        ssh -q root@node${i}${_domain_suffix} "keytool -certreq -alias node${i} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.csr -storepass ${_password}"
+        scp root@node${i}${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.csr ./ || return $?
+        openssl x509 -sha256 -req -in ./node${i}-keystore.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out node${i}-keystore.crt -days 730 -passin "pass:$_password" || return $?
+        scp ./rootCA.pem ./node${i}-keystore.crt root@node${i}${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/ || return $?
+        ssh -q root@node${i}${_domain_suffix} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias node${i} -import -file ${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.crt -noprompt -storepass ${_password}" || return $?
         ssh -q root@node${i}.localdomain "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
     done
 
     _info "Updating Ambari configs..."
-    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.location ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}
-    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.password $_trust_password
+    scp root@$_ambari_host:/var/lib/ambari-server/resources/scripts/configs.sh ./
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.location ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.password $_trust_password
 
-    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.truststore.location ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}
-    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.truststore.password $_trust_password
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.truststore.location ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.truststore.password $_trust_password
 
-    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.keystore.location ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}
-    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.keystore.password $_password
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.keystore.location ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.keystore.password $_password
 
-    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.location ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}
-    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.password $_password
-    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.keypassword $_password
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.location ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.password $_password
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.keypassword $_password
 
-    /var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c hdfs-site dfs.http.policy HTTPS_ONLY # or HTTP_AND_HTTPS
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c hdfs-site dfs.http.policy HTTPS_ONLY # or HTTP_AND_HTTPS
 
     # If Ambari is 2.4.x or higher below works
     _info "Run the below command to restart required components"
