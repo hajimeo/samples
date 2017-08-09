@@ -600,7 +600,7 @@ function f_hadoop_ssl_setup() {
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.password $_password
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.keypassword $_password
 
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c hdfs-site dfs.http.policy HTTPS_ONLY # or HTTP_AND_HTTPS
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c hdfs-site dfs.http.policy HTTP_AND_HTTPS # or HTTPS_ONLY
 
     # If Ambari is 2.4.x or higher below works
     _info "Run the below command to restart required components"
