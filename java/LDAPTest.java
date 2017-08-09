@@ -1,7 +1,7 @@
 /**
  * @see http://www.adamretter.org.uk/blog/entries/LDAPTest.java
  *
- * java -Djavax.net.debug=ssl,keymanager -Djavax.net.ssl.trustStore=/path/to/truststore.jks LDAPTest "ldap://ad.your-server.com:389" "dc=ad,dc=my-domain,dc=com" myLdapUsername myLdapPassword
+ * java -Djavax.net.debug=ssl,keymanager -Djavax.net.ssl.trustStore=/path/to/truststore.jks LDAPTest "ldap://ad.your-server.com:389" "dc=ad,dc=my-domain,dc=com" myLdapUsername myLdapPassword some_sAMAccountName
  *
  */
 
@@ -32,7 +32,7 @@ public class LDAPTest {
         final String ldapSearchBase = args[1];
         final String ldapUsername = args[2];
         final String ldapPassword = args[3];
-        final String ldapAccountToLookup = args[2];
+        final String ldapAccountToLookup = args[4];
 
 
         Hashtable<String, Object> env = new Hashtable<String, Object>();
@@ -59,12 +59,14 @@ public class LDAPTest {
 
         //1) lookup the ldap account
         SearchResult srLdapUser = ldap.findAccountByAccountName(ctx, ldapSearchBase, ldapAccountToLookup);
+        //System.out.println("SearchResult="+srLdapUser.toString());
 
         //2) get the SID of the users primary group
         String primaryGroupSID = ldap.getPrimaryGroupSID(srLdapUser);
 
         //3) get the users Primary Group
         String primaryGroupName = ldap.findGroupBySID(ctx, ldapSearchBase, primaryGroupSID);
+        System.out.println("primaryGroupName="+primaryGroupName);
     }
 
     public SearchResult findAccountByAccountName(DirContext ctx, String ldapSearchBase, String accountName) throws NamingException {
