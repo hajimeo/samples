@@ -567,9 +567,14 @@ function f_hadoop_ssl_setup() {
         _dname_extra="OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
     fi
 
-    # TODO: -aes256
-    openssl genrsa -out rootCA.key 4096 || return $?
-    openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.support.hortonworks.com" -passin "pass:$_password" || return $?
+    if [ -s ./rootCA.key ]; then
+        _info "rootCA.key exists. Reusing..."
+    else
+        # TODO: -aes256
+        openssl genrsa -out rootCA.key 4096 || return $?
+        openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.support.hortonworks.com" -passin "pass:$_password" || return $?
+    fi
+
     mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
     keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${_trust_password} -noprompt || return $?
 
