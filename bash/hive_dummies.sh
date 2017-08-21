@@ -2,9 +2,12 @@
 #
 # Based on https://gist.github.com/rajkrrsingh/24ff6f426248276cfa79063967f08213
 #
-# Download this script:
+# Download and execute this script:
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/hive_dummies.sh
+#   bash -x ./hive_dummies.sh [dbname]
 #
+
+_dbname="${1-dummies}"
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S %z")] INFO: generating dummy csv files..."
 wget -nv -c -t 2 --timeout=10 --waitretry=3 https://raw.githubusercontent.com/hajimeo/samples/master/misc/sample_07.csv -O sample_07.csv
@@ -31,11 +34,11 @@ echo '101,Kyle,Admin,50000,A
 119,Gabriel,Engineer,45000,A
 120,Palmer,Ceo,100000,A' > ./employee.csv
 
-echo "[$(date +"%Y-%m-%d %H:%M:%S %z")] INFO: executing hive queries... kinit may require"
+echo "[$(date +"%Y-%m-%d %H:%M:%S %z")] INFO: executing hive queries under ${_dbname} database... kinit may require"
 hive -e "
 set hive.tez.exec.print.summary;
-CREATE DATABASE IF NOT EXISTS dummies;
-USE dummies;
+CREATE DATABASE IF NOT EXISTS ${_dbname};
+USE ${_dbname};
 CREATE TABLE IF NOT EXISTS sample_07 (
   code string,
   description string,
@@ -97,5 +100,7 @@ INSERT OVERWRITE TABLE census_clus select * from census;
 # create table sample_07_id like sample_07; -- to create an identical table
 # select INPUT__FILE__NAME, code from sample_08;
 # select INPUT__FILE__NAME,empid from default.emp_part_dy where department='D';
+
+hdfs dfs -ls /apps/hive/warehouse/${_dbname}.db/*/
 
 
