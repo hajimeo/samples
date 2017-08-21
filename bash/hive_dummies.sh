@@ -2,6 +2,9 @@
 #
 # Based on https://gist.github.com/rajkrrsingh/24ff6f426248276cfa79063967f08213
 #
+# Download this script:
+#   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/hive_dummies.sh
+#
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S %z")] INFO: generating dummy csv files..."
 wget -nv -c -t 2 --timeout=10 --waitretry=3 https://raw.githubusercontent.com/hajimeo/samples/master/misc/sample_07.csv -O sample_07.csv
@@ -41,8 +44,8 @@ CREATE TABLE IF NOT EXISTS sample_07 (
   ROW FORMAT DELIMITED
   FIELDS TERMINATED BY '\t'
   STORED AS TextFile;
-load data local inpath './sample_07.csv' OVERWRITE into table sample_07;
-create table sample_07_orc stored as orc  as select * from sample_07;
+LOAD DATA LOCAL INPATH './sample_07.csv' OVERWRITE into table sample_07;
+CREATE TABLE sample_07_orc stored as orc  as select * from sample_07;
 CREATE TABLE IF NOT EXISTS sample_08 (
   code string ,
   description string ,
@@ -51,8 +54,8 @@ CREATE TABLE IF NOT EXISTS sample_08 (
   ROW FORMAT DELIMITED
   FIELDS TERMINATED BY '\t'
   STORED AS TextFile;
-load data local inpath './sample_08.csv' OVERWRITE into table sample_08;
-create external IF NOT EXISTS table emp_stage (
+LOAD DATA LOCAL INPATH './sample_08.csv' OVERWRITE into table sample_08;
+CREATE EXTERNAL TABLE IF NOT EXISTS emp_stage (
   empid int,
   name string,
   designation  string,
@@ -61,35 +64,35 @@ create external IF NOT EXISTS table emp_stage (
   row format delimited
   fields terminated by ","
   location '/tmp/emp_stage_data';
-load data local inpath './employee.csv' OVERWRITE into table emp_stage;
-set hive.exec.dynamic.partition=true
+LOAD DATA LOCAL INPATH './employee.csv' OVERWRITE into table emp_stage;
+set hive.exec.dynamic.partition=true;
 set hive.exec.dynamic.partition.mode=nonstrict;
 -- set hive.exec.max.dynamic.partitions.pernode=4;
 -- set hive.exec.max.created.files=100000;
-create table IF NOT EXISTS emp_part_dy (
-    empid int,
-    name string,
-    designation  string,
-    salary int)
-    PARTITIONED BY (department String)
-    row format delimited fields terminated by ',';
+CREATE TABLE IF NOT EXISTS emp_part_dy (
+  empid int,
+  name string,
+  designation  string,
+  salary int)
+  PARTITIONED BY (department String)
+  row format delimited fields terminated by ',';
 INSERT OVERWRITE TABLE emp_part_dy PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;
-create table IF NOT EXISTS census(
-ssn int,
-name string,
-city string,
-email string)
-row format delimited
-fields terminated by ',';
-load data local inpath '/tmp/census.csv' OVERWRITE into table census;
-create table IF NOT EXISTS census_clus(
-ssn int,
-name string,
-city string,
-email string)
-clustered by (ssn) into 8 buckets;
-set hive.enforce.bucketing=true
-insert overwrite table census_clus select * from census;
+CREATE TABLE IF NOT EXISTS census(
+  ssn int,
+  name string,
+  city string,
+  email string)
+  row format delimited
+  fields terminated by ',';
+LOAD DATA LOCAL INPATH './census.csv' OVERWRITE into table census;
+CREATE TABLE IF NOT EXISTS census_clus(
+  ssn int,
+  name string,
+  city string,
+  email string)
+  clustered by (ssn) into 8 buckets;
+set hive.enforce.bucketing=true;
+INSERT OVERWRITE TABLE census_clus select * from census;
 "
 # create table sample_07_id like sample_07; -- to create an identical table
 # select INPUT__FILE__NAME, code from sample_08;
