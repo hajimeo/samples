@@ -86,6 +86,7 @@ g_DEFAULT_PASSWORD="hadoop"
 g_NODE_HOSTNAME_PREFIX="node"
 g_DNS_SERVER="localhost"
 g_APT_UPDATE_DONE=""
+g_HDP_NETWORK="hdp"
 
 __PID="$$"
 __LAST_ANSWER=""
@@ -123,9 +124,9 @@ function p_interview() {
     if [ -n "$r_CONTAINER_OS" ]; then
         r_CONTAINER_OS="`echo "$r_CONTAINER_OS" | tr '[:upper:]' '[:lower:]'`"
     fi
-    _ask "Container OS version" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
+    _ask "Container OS version (use 7.3.1611 or higher for Centos 7)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
     r_REPO_OS_VER="${r_CONTAINER_OS_VER%%.*}"
-    _ask "DockerFile URL or path" "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile" "r_DOCKERFILE_URL" "N" "N"
+    _ask "DockerFile URL or path (use DockerFile7 for Centos 7)" "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile" "r_DOCKERFILE_URL" "N" "N"
     _ask "Hostname for docker host in docker private network?" "dockerhost1" "r_DOCKER_PRIVATE_HOSTNAME" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
     _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
@@ -267,6 +268,7 @@ function p_hdp_start() {
     f_loadResp
     f_dnsmasq_banner_reset
     f_docker0_setup
+    f_hdp_network_setup
     f_ntp
     if ! _isYes "$r_DOCKER_KEEP_RUNNING"; then
         f_docker_stop_other
@@ -738,32 +740,48 @@ function f_docker_setup() {
     fi
 }
 
-function f_docker0_setup() {
-    local __doc__="Setting IP for docker0 to $r_DOCKER_HOST_IP (default)"
-    local _docker0="${1}"
+function f_hdp_network_setup() {
+    local __doc__="Setting IP for hdp to $r_DOCKER_HOST_IP (default)"
+    local _hdp="${1}"
     local _mask="${2}"
 
-    [ -z "$_docker0" ] && _docker0="$r_DOCKER_HOST_IP"
+    [ -z "$_hdp" ] && _hdp="$r_DOCKER_HOST_IP"
     [ -z "$_mask" ] && _mask="$r_DOCKER_NETWORK_MASK"
     _mask="${_mask#/}"
 
-    if ! ifconfig docker0 | grep "$_docker0" &>/dev/null ; then
+    if ! ifconfig "$g_HDP_NETWORK" | grep "$_hdp" &>/dev/null ; then
         local _netmask="255.255.0.0"
         [ "$_mask" = "24" ] && _netmask="255.255.255.0"
+	
+	_subnet=`echo $_hdp | sed 's/[0-9]*$/0/'`
+	if ! docker network ls | grep "$g_HDP_NETWORK" &>/dev/null ; then
+		echo "Creating $g_HDP_NETWORK network with address $_subnet/$_mask"
+		docker network create --driver=bridge --gateway=$_hdp --subnet=$_subnet/$_mask -o "com.docker.network.bridge.name"="$g_HDP_NETWORK" -o "com.docker.network.bridge.host_binding_ipv4"="$_hdp" $g_HDP_NETWORK
+	fi
+    fi
+}
+
+
+
+function f_docker0_setup() {
+    local __doc__="Setting IP for docker0 to 172.18.0.0/24"
+    local _docker0="172.18.0.1"
+    local _netmask="255.255.255.0"
+    local _mask="24"
+
+    if ! ifconfig docker0 | grep "$_docker0" &>/dev/null ; then
 
         #_info "Setting IP for docker0 to $_docker0/$_netmask ..."
         ifconfig docker0 $_docker0 netmask $_netmask
 
-        if [ -n "$_mask" ]; then
-            if [ -f /lib/systemd/system/docker.service ] && which systemctl &>/dev/null ; then
-                if ! grep -qE -- '--bip=' /lib/systemd/system/docker.service; then
+        if [ -f /lib/systemd/system/docker.service ] && which systemctl &>/dev/null ; then
+                if ! grep -qE -- '--bip=' /lib/systemd/system/docker.service ; then
                     sed -i "/H fd:\/\// s/$/ --bip=${_docker0}\/${_mask}/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart
-                elif ! grep -qE -- "--bip=${_docker0}/${_mask}" /lib/systemd/system/docker.service; then
+                elif ! grep -qE -- "--bip=${_docker0}/${_mask}" /lib/systemd/system/docker.service ; then
                     sed -i -e "s/--bip=[0-9.\/]\+/--bip=${_docker0}\/${_mask}/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart
                 fi
-            else
-                grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"$DOCKER_OPTS --bip=$_docker0$r_DOCKER_NETWORK_MASK\"" >> /etc/default/docker && /etc/init.d/docker restart)  # TODO: untested. May not work with 14.04
-            fi
+        else
+                grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"$DOCKER_OPTS --bip=${_docker0}\/${_mask}\"" >> /etc/default/docker && /etc/init.d/docker restart)  # TODO: untested. May not work with 14.04
         fi
     fi
 }
@@ -771,7 +789,7 @@ function f_docker0_setup() {
 function f_docker_base_create() {
     local __doc__="Create a docker base image"
     local _docker_file="./DockerFile"
-
+    local _base="${g_DOCKER_BASE}:$r_CONTAINER_OS_VER"
     if [ ! -r "$_docker_file" ]; then
         _error "$_docker_file is not readable"
         return 1
@@ -784,7 +802,7 @@ function f_docker_base_create() {
     docker images | grep -P "^${r_CONTAINER_OS}\s+${r_CONTAINER_OS_VER}" || docker pull ${r_CONTAINER_OS}:${r_CONTAINER_OS_VER}
     mkdir docker_workspace &>/dev/null
     # TODO: . is not good if there are so many files/folders
-    docker build -t ${g_DOCKER_BASE} -f $_docker_file .
+    docker build -t ${_base} -f $_docker_file .
 }
 
 function f_docker_start() {
@@ -796,6 +814,11 @@ function f_docker_start() {
     _info "starting $_how_many docker containers starting from $_start_from ..."
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         # docker seems doesn't care if i try to start already started one
+	_net=`docker container inspect ${_node}$_n | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
+	if [ ! "$_net" = "hdp" ]; then
+		docker network disconnect $_net ${_node}$_n
+		docker network connect --ip=${r_DOCKER_NETWORK_ADDR}$_n hdp ${_node}$_n
+	fi
         docker start --attach=false ${_node}$_n &
         sleep 1
     done
@@ -934,6 +957,7 @@ function f_docker_run() {
 
     local _ip="`f_docker_ip`"
     local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
+    local _base="${g_DOCKER_BASE}:$r_CONTAINER_OS_VER"
 
     if [ $_dns = "localhost" ]; then
         _dns="$_ip"
@@ -956,7 +980,11 @@ function f_docker_run() {
             _netmask="255.255.255.0"
         fi
         # --ip may not work due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
-        docker run -t -i -d --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} --dns=$_dns --name=${_node}$_n ${g_DOCKER_BASE} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
+	if [ `echo $r_CONTAINER_OS_VER | cut -d. -f1` -gt 6 ]; then
+	docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} --network="$g_HDP_NETWORK" --ip=${r_DOCKER_NETWORK_ADDR}$_n --dns=$_dns --name=${_node}$_n ${_base}
+	else
+        docker run -t -i -d --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} --network="$g_HDP_NETWORK" --ip=${r_DOCKER_NETWORK_ADDR}$_n --dns=$_dns --name=${_node}$_n ${_base} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
+	fi
     done
 }
 
@@ -1543,6 +1571,8 @@ function p_host_setup() {
 
     _log "INFO" "Starting f_docker0_setup"
     f_docker0_setup &>> /tmp/p_host_setup.log
+    _log "INFO" "Starting f_hdp_network_setup"
+    f_hdp_network_setup &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_dockerfile"
     f_dockerfile &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_docker_base_create"
@@ -1733,6 +1763,7 @@ function f_dockerfile() {
     local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
 
     sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ./DockerFile
+    sed -i "s/FROM centos.*/FROM $r_CONTAINER_OS:$r_CONTAINER_OS_VER/" ./DockerFile
 }
 
 function f_ssh_setup() {
