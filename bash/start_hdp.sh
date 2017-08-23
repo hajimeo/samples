@@ -749,12 +749,12 @@ function f_hdp_network_setup() {
     [ -z "$_mask" ] && _mask="$r_DOCKER_NETWORK_MASK"
     _mask="${_mask#/}"
 
-    if ! ifconfig hdp | grep "$_hdp" &>/dev/null ; then
+    if ! ifconfig "$g_HDP_NETWORK" | grep "$_hdp" &>/dev/null ; then
         local _netmask="255.255.0.0"
         [ "$_mask" = "24" ] && _netmask="255.255.255.0"
 	
 	_subnet=`echo $_hdp | sed 's/[0-9]*$/0/'`
-	if ! docker network ls | grep hdp &>/dev/null ; then
+	if ! docker network ls | grep "$g_HDP_NETWORK" &>/dev/null ; then
 		echo "Creating $g_HDP_NETWORK network with address $_subnet/$_mask"
 		docker network create --driver=bridge --gateway=$_hdp --subnet=$_subnet/$_mask -o "com.docker.network.bridge.name"="$g_HDP_NETWORK" -o "com.docker.network.bridge.host_binding_ipv4"="$_hdp" $g_HDP_NETWORK
 	fi
