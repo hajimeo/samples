@@ -752,11 +752,21 @@ function f_hdp_network_setup() {
     if ! ifconfig "$g_HDP_NETWORK" | grep "$_hdp" &>/dev/null ; then
         local _netmask="255.255.0.0"
         [ "$_mask" = "24" ] && _netmask="255.255.255.0"
-	
+	docker network ls  | awk '{print $2;}' | grep -v ID | while read a; 
+	do 
+		if [ "x`docker network inspect $a |grep Subnet | sed 's/.*: \"//' | sed 's/\/.*//'`" = "x$_hdp" ]; then
+			echo "Network $a has assigned already the IP $_hdp"
+			exit 1 
+		fi
+	done	
 	_subnet=`echo $_hdp | sed 's/[0-9]*$/0/'`
 	if ! docker network ls | grep "$g_HDP_NETWORK" &>/dev/null ; then
 		echo "Creating $g_HDP_NETWORK network with address $_subnet/$_mask"
-		docker network create --driver=bridge --gateway=$_hdp --subnet=$_subnet/$_mask -o "com.docker.network.bridge.name"="$g_HDP_NETWORK" -o "com.docker.network.bridge.host_binding_ipv4"="$_hdp" $g_HDP_NETWORK
+		cmd="docker network create --driver=bridge --gateway=$_hdp --subnet=$_subnet/$_mask -o "com.docker.network.bridge.name"="$g_HDP_NETWORK" -o "com.docker.network.bridge.host_binding_ipv4"="$_hdp" $g_HDP_NETWORK"
+		if ! $cmd ; then
+			echo -e "\nCreating docker network $g_HDP_NETWORK network with address $_subnet/$_mask failed. Run manually:\n$cmd"
+			exit 1
+		fi
 	fi
     fi
 }
