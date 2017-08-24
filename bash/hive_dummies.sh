@@ -74,12 +74,12 @@ CREATE TABLE IF NOT EXISTS emp_part_bckt (
   designation  string,
   salary int)
   PARTITIONED BY (department String)
-  clustered by (salary) into 3 buckets
+  clustered by (empid) into 3 buckets
   row format delimited fields terminated by ','
-  stored as orc
-  TBLPROPERTIES ('transactional'='true');
+  stored as orc;
 set hive.exec.dynamic.partition=true;
 set hive.exec.dynamic.partition.mode=nonstrict;
+set hive.enforce.bucketing = true;
 INSERT OVERWRITE TABLE emp_part_bckt PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;
 CREATE TABLE IF NOT EXISTS census(
   ssn int,
@@ -103,9 +103,10 @@ INSERT OVERWRITE TABLE census_clus select * from census;
 # select INPUT__FILE__NAME, empid from emp_part_bckt where department='D';
 # set hive.exec.max.dynamic.partitions.pernode=4;
 # set hive.exec.max.created.files=100000;
-# ACID needs Orc, buckets, trancational=true
-# ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true');
-# ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('orc.bloom.filter.columns'='name,city,email');
+
+# ACID needs Orc, buckets, trancational=true, also testing bloom filter
+#ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='name,city,email');
+#ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;
 # ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;
 
 hdfs dfs -ls /apps/hive/warehouse/${_dbname}.db/*/
