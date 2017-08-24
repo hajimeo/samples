@@ -2231,14 +2231,14 @@ function _backup() {
 
     _new_file_name="${_file_name}_${_mod_ts}"
     if ! _isYes "$_force"; then
-        if [ -e "${g_backup_dir%/}/${_new_file_name}" ]; then
+        if [ -e "${g_BACKUP_DIR%/}/${_new_file_name}" ]; then
             _info "$_file_name has been already backed up. Skipping..."
             return 0
         fi
     fi
 
     _makeBackupDir
-    cp -p ${_file_path} ${g_backup_dir%/}/${_new_file_name} || _critical "$FUNCNAME: failed to backup ${_file_path}"
+    cp -p ${_file_path} ${g_BACKUP_DIR%/}/${_new_file_name} || _critical "$FUNCNAME: failed to backup ${_file_path}"
 }
 function _makeBackupDir() {
     if [ ! -d "${g_BACKUP_DIR}" ]; then
