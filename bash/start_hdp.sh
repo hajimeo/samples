@@ -775,13 +775,23 @@ function f_docker0_setup() {
         ifconfig docker0 $_docker0 netmask $_netmask
 
         if [ -f /lib/systemd/system/docker.service ] && which systemctl &>/dev/null ; then
-                if ! grep -qE -- '--bip=' /lib/systemd/system/docker.service ; then
-                    sed -i "/H fd:\/\// s/$/ --bip=${_docker0}\/${_mask}/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart
-                elif ! grep -qE -- "--bip=${_docker0}/${_mask}" /lib/systemd/system/docker.service ; then
-                    sed -i -e "s/--bip=[0-9.\/]\+/--bip=${_docker0}\/${_mask}/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart
-                fi
+            # If multiple --bip, clean up!
+            if grep -qE -- "--bip=[0-9.\/]\+--bip=[0-9.\/]\+" /lib/systemd/system/docker.service ; then
+                sed -i -e "s/--bip=[0-9.\/]\+//g" /lib/systemd/system/docker.service
+            fi
+            # If --bip is never set up, append
+            if ! grep -qE -- '--bip=' /lib/systemd/system/docker.service ; then
+                sed -i "/H fd:\/\// s/$/ --bip=${_docker0}\/${_mask}/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart
+                return $?
+            fi
+            # If a different --bip is used, replace
+            if ! grep -qE -- "--bip=${_docker0}/${_mask}" /lib/systemd/system/docker.service ; then
+                sed -i -e "s/--bip=[0-9.\/]\+/--bip=${_docker0}\/${_mask}/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart
+                return $?
+            fi
         else
-                grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"$DOCKER_OPTS --bip=${_docker0}\/${_mask}\"" >> /etc/default/docker && /etc/init.d/docker restart)  # TODO: untested. May not work with 14.04
+            grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"$DOCKER_OPTS --bip=${_docker0}\/${_mask}\"" >> /etc/default/docker && /etc/init.d/docker restart)  # TODO: untested. May not work with 14.04
+            return $?
         fi
     fi
 }
