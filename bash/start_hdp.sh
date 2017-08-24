@@ -95,10 +95,10 @@ __LAST_ANSWER=""
 
 function p_interview() {
     local __doc__="Asks user questions. (Requires Python)"
-    # Default values TODO: need to update this part manually
+    # Default values TODO: need to update Ambari Version manually (stack version is automatic)
     local _centos_version="6.8"
-    local _ambari_version="2.4.2.0"
-    local _stack_version="2.5"
+    local _ambari_version="2.5.1.0"
+    local _stack_version="2.6"
     local _hdp_version="${_stack_version}.0.0"
 
     local _stack_version_full="HDP-$_stack_version"
@@ -786,7 +786,7 @@ function f_docker0_setup() {
 
         if [ -f /lib/systemd/system/docker.service ] && which systemctl &>/dev/null ; then
             # If multiple --bip, clean up!
-            if grep -qE -- "--bip=[0-9.\/]\+--bip=[0-9.\/]\+" /lib/systemd/system/docker.service ; then
+            if grep -qE -- "--bip=.+--bip=.+" /lib/systemd/system/docker.service ; then
                 sed -i -e "s/--bip=[0-9.\/]\+//g" /lib/systemd/system/docker.service
             fi
             # If --bip is never set up, append
