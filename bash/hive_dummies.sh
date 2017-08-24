@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS sample_07 (
   FIELDS TERMINATED BY '\t'
   STORED AS TextFile;
 LOAD DATA LOCAL INPATH './sample_07.csv' OVERWRITE into table sample_07;
-CREATE TABLE sample_07_orc stored as orc  as select * from sample_07;
+CREATE TABLE IF NOT EXISTS sample_07_orc stored as orc as select * from sample_07;
 CREATE TABLE IF NOT EXISTS sample_08 (
   code string ,
   description string ,
@@ -68,18 +68,19 @@ CREATE EXTERNAL TABLE IF NOT EXISTS emp_stage (
   fields terminated by ","
   location '/tmp/emp_stage_data';
 LOAD DATA LOCAL INPATH './employee.csv' OVERWRITE into table emp_stage;
-set hive.exec.dynamic.partition=true;
-set hive.exec.dynamic.partition.mode=nonstrict;
--- set hive.exec.max.dynamic.partitions.pernode=4;
--- set hive.exec.max.created.files=100000;
-CREATE TABLE IF NOT EXISTS emp_part_dy (
+CREATE TABLE IF NOT EXISTS emp_part_bckt (
   empid int,
   name string,
   designation  string,
   salary int)
   PARTITIONED BY (department String)
-  row format delimited fields terminated by ',';
-INSERT OVERWRITE TABLE emp_part_dy PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;
+  clustered by (salary) into 3 buckets
+  row format delimited fields terminated by ','
+  stored as orc
+  TBLPROPERTIES ('transactional'='true');
+set hive.exec.dynamic.partition=true;
+set hive.exec.dynamic.partition.mode=nonstrict;
+INSERT OVERWRITE TABLE emp_part_bckt PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;
 CREATE TABLE IF NOT EXISTS census(
   ssn int,
   name string,
@@ -99,7 +100,13 @@ INSERT OVERWRITE TABLE census_clus select * from census;
 "
 # create table sample_07_id like sample_07; -- to create an identical table
 # select INPUT__FILE__NAME, code from sample_08;
-# select INPUT__FILE__NAME,empid from default.emp_part_dy where department='D';
+# select INPUT__FILE__NAME, empid from emp_part_bckt where department='D';
+# set hive.exec.max.dynamic.partitions.pernode=4;
+# set hive.exec.max.created.files=100000;
+# ACID needs Orc, buckets, trancational=true
+# ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true');
+# ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('orc.bloom.filter.columns'='name,city,email');
+# ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;
 
 hdfs dfs -ls /apps/hive/warehouse/${_dbname}.db/*/
 
