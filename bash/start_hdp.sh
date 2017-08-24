@@ -118,7 +118,7 @@ function p_interview() {
     local _docker_ip=`f_docker_ip "172.17.0.1"`
     _ask "First 24 bits (xxx.xxx.xxx.) of docker container IP Address" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Network Mask (/16 or /24) for docker containers" "/16" "r_DOCKER_NETWORK_MASK" "N" "Y"
-    _ask "IP address for docker0 interface" "$_docker_ip" "r_DOCKER_HOST_IP" "N" "Y"
+    _ask "IP address for ${g_HDP_NETWORK} (docker) interface" "$_docker_ip" "r_DOCKER_HOST_IP" "N" "Y"
     _ask "Domain Suffix for docker containers" ".localdomain" "r_DOMAIN_SUFFIX" "N" "Y"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
     if [ -n "$r_CONTAINER_OS" ]; then
@@ -130,7 +130,7 @@ function p_interview() {
     _ask "Hostname for docker host in docker private network?" "dockerhost1" "r_DOCKER_PRIVATE_HOSTNAME" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
     _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
-    _ask "Node starting number (hostname will be sequential from this nubmer)" "1" "r_NODE_START_NUM" "N" "Y"
+    _ask "Node starting number (hostname will be sequential from this number)" "1" "r_NODE_START_NUM" "N" "Y"
     _ask "Node hostname prefix" "$g_NODE_HOSTNAME_PREFIX" "r_NODE_HOSTNAME_PREFIX" "N" "Y"
     _ask "DNS Server (Note: Remote DNS requires password less ssh)" "$g_DNS_SERVER" "r_DNS_SERVER" "N" "Y"
 
@@ -1920,9 +1920,9 @@ function f_gw_set() {
 }
 
 function f_docker_ip() {
-    local __doc__="Output docker0 IP or specified NIC's IP"
+    local __doc__="Output ${g_HDP_NETWORK} IP or specified NIC's IP"
     local _ip="${1}"
-    local _if="${2-docker0}"
+    local _if="${2-${g_HDP_NETWORK}}"
     local _ifconfig="`ifconfig $_if 2>/dev/null`"
 
     if [ -z "$_ifconfig" ]; then
