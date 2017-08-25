@@ -126,7 +126,7 @@ function p_interview() {
         r_CONTAINER_OS="`echo "$r_CONTAINER_OS" | tr '[:upper:]' '[:lower:]'`"
     fi
     _ask "Container OS version (use 7.3.1611 or higher for Centos 7)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
-    r_REPO_OS_VER="${r_CONTAINER_OS_VER%%.*}"
+    local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
     _ask "DockerFile URL or path (use DockerFile7 for Centos 7)" "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile" "r_DOCKERFILE_URL" "N" "N"
     _ask "Hostname for docker host in docker private network?" "dockerhost1" "r_DOCKER_PRIVATE_HOSTNAME" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
@@ -141,7 +141,7 @@ function p_interview() {
         _ask "Ambari server hostname" "${r_NODE_HOSTNAME_PREFIX}${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
         _ask "Ambari version (used to build repo URL)" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
         _echo "If you have set up a Local Repo, please change below"
-        _ask "Ambari repo file URL or path" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
+        _ask "Ambari repo file URL or path" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
         if _isUrlButNotReachable "$r_AMBARI_REPO_FILE" ; then
             while true; do
                 _warn "URL: $r_AMBARI_REPO_FILE may not be reachable."
@@ -159,7 +159,7 @@ function p_interview() {
         if [ -s /tmp/hdp_urlinfo.json ]; then
             _stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json,pprint;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
             _stack_version="`echo $_stack_version_full | cut -d'-' -f2`"
-            _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json,pprint;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_CONTAINER_OS}${r_REPO_OS_VER}'"]'`"
+            _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json,pprint;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_CONTAINER_OS}${_repo_os_ver}'"]'`"
             _hdp_version="`basename ${_hdp_repo_url%/}`"
         fi
 
@@ -170,11 +170,11 @@ function p_interview() {
         _ask "Would you like to set up a local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
         if _isYes "$r_HDP_LOCAL_REPO"; then
             _ask "Local repository directory (Apache root)" "/var/www/html/hdp" "r_HDP_REPO_DIR"
-            _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${r_REPO_OS_VER}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
-            _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${r_REPO_OS_VER}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${r_REPO_OS_VER}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
+            _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${_repo_os_ver}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
+            _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${_repo_os_ver}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${_repo_os_ver}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
         fi
 
-        _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${r_REPO_OS_VER}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"    fi
+        _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"    fi
         if _isUrlButNotReachable "${r_HDP_REPO_URL%/}/hdp.repo" ; then
             while true; do
                 _warn "URL: $r_HDP_REPO_URL may not be reachable."
@@ -671,8 +671,10 @@ function f_loadResp() {
 
 function f_ntp() {
     local __doc__="Run ntpdate $r_NTP_SERVER"
-    _info "ntpdate ..."
-    ntpdate -u $r_NTP_SERVER
+    local _ntp_server="${1-$r_NTP_SERVER}"
+    [ -z "$_ntp_server" ] && _ntp_server="ntp.ubuntu.com"
+    _info "ntpdate -u $_ntp_server"
+    ntpdate -u $_ntp_server
 }
 
 function _docker_seq() {
@@ -1305,7 +1307,8 @@ function f_local_repo() {
 
     local _tar_gz_file="`basename "$r_HDP_REPO_TARGZ"`"
     local _has_extracted=""
-    local _hdp_dir="`find . -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_REPO_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
+    local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
+    local _hdp_dir="`find . -type d | grep -m1 -E "/${r_CONTAINER_OS}${_repo_os_ver}/.+?/${r_HDP_REPO_VER}$"`"
 
     if _isNotEmptyDir "$_hdp_dir"; then
         if ! _isYes "$_force_extract"; then
@@ -1333,14 +1336,14 @@ function f_local_repo() {
 
     if ! _isYes "$_has_extracted"; then
         tar xzvf "$_tar_gz_file"
-        _hdp_dir="`find . -type d | grep -m1 -E "/${r_CONTAINER_OS}${r_REPO_OS_VER}/.+?/${r_HDP_REPO_VER}$"`"
+        _hdp_dir="`find . -type d | grep -m1 -E "/${r_CONTAINER_OS}${_repo_os_ver}/.+?/${r_HDP_REPO_VER}$"`"
         createrepo "$_hdp_dir" # --update
     fi
 
     local _util_tar_gz_file="`basename "$r_HDP_REPO_UTIL_TARGZ"`"
     local _util_has_extracted=""
     # TODO: not accurate
-    local _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?/${r_CONTAINER_OS}${r_REPO_OS_VER}$"`"
+    local _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?/${r_CONTAINER_OS}${_repo_os_ver}$"`"
 
     if _isNotEmptyDir "$_hdp_util_dir"; then
         if ! _isYes "$_force_extract"; then
@@ -1355,7 +1358,7 @@ function f_local_repo() {
 
     if ! _isYes "$_util_has_extracted"; then
         tar xzvf "$_util_tar_gz_file"
-        _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?/${r_CONTAINER_OS}${r_REPO_OS_VER}$"`"
+        _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?/${r_CONTAINER_OS}${_repo_os_ver}$"`"
         createrepo "$_hdp_util_dir"
     fi
 
@@ -1387,6 +1390,7 @@ function f_ambari_set_repo() {
     local _repo_url="$1"
     local _util_url="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
+    local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
 
     _port_wait $_ambari_host 8080
     if [ $? -ne 0 ]; then
@@ -1401,12 +1405,12 @@ function f_ambari_set_repo() {
 
     if _isUrl "$_repo_url"; then
         # TODO: admin:admin
-        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${r_REPO_OS_VER}/repositories/HDP-${r_HDP_STACK_VERSION}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
+        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${_repo_os_ver}/repositories/HDP-${r_HDP_STACK_VERSION}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
     fi
 
     if _isUrl "$_util_url"; then
         local _hdp_util_name="`echo $_util_url | grep -oP 'HDP-UTILS-[\d\.]+'`"
-        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${r_REPO_OS_VER}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}'
+        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}'
     fi
 }
 
