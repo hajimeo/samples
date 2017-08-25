@@ -845,12 +845,14 @@ function f_docker_start() {
 
     _info "starting $_how_many docker containers starting from $_start_from ..."
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        if _isYes "$r_DOCKER_USE_CUSTOM_NETWORK" ; then
+            _net=`docker container inspect ${_node}$_n | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
+            if [ ! "$_net" = "$g_HDP_NETWORK" ]; then
+                docker network disconnect $_net ${_node}$_n
+                docker network connect --ip=${r_DOCKER_NETWORK_ADDR}$_n hdp ${_node}$_n
+            fi
+        fi
         # docker seems doesn't care if i try to start already started one
-	_net=`docker container inspect ${_node}$_n | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
-	if [ ! "$_net" = "hdp" ]; then
-		docker network disconnect $_net ${_node}$_n
-		docker network connect --ip=${r_DOCKER_NETWORK_ADDR}$_n hdp ${_node}$_n
-	fi
         docker start --attach=false ${_node}$_n &
         sleep 1
     done
@@ -1000,7 +1002,7 @@ function f_docker_run() {
         return 1
     fi
 
-    local _network="--network=docker0"
+    local _network=""
     local _line=""
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         _line="`docker ps -a -f name=${_node}$_n | grep -w ${_node}$_n`"
