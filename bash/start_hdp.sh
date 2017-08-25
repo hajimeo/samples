@@ -268,9 +268,11 @@ function _cancelInterview() {
 function p_hdp_start() {
     f_loadResp
     f_dnsmasq_banner_reset
-    f_docker0_setup
     if _isYes "$r_DOCKER_USE_CUSTOM_NETWORK"; then
+        f_docker0_setup "172.18.0.1" "24"
         f_hdp_network_setup
+    else
+        f_docker0_setup
     fi
     f_ntp
     if ! _isYes "$r_DOCKER_KEEP_RUNNING"; then
@@ -777,10 +779,15 @@ function f_hdp_network_setup() {
 
 
 function f_docker0_setup() {
-    local __doc__="Setting IP for docker0 to 172.18.0.0/24"
-    local _docker0="172.18.0.1"
-    local _netmask="255.255.255.0"
-    local _mask="24"
+    local __doc__="Setting IP for docker0 to $r_DOCKER_HOST_IP (default)"
+    local _docker0="${1}"
+    local _mask="${2}"
+
+    [ -z "$_docker0" ] && _docker0="$r_DOCKER_HOST_IP"
+    [ -z "$_mask" ] && _mask="${r_DOCKER_NETWORK_MASK-16}"
+    _mask="${_mask#/}"
+    local _netmask="255.255.0.0"
+    [ "$_mask" = "24" ] && _netmask="255.255.255.0"
 
     if ! ifconfig docker0 | grep "$_docker0" &>/dev/null ; then
 
@@ -1598,10 +1605,12 @@ function p_host_setup() {
     fi
 
     _log "INFO" "Starting f_docker0_setup"
-    f_docker0_setup &>> /tmp/p_host_setup.log
     if _isYes "$r_DOCKER_USE_CUSTOM_NETWORK"; then
+        f_docker0_setup "172.18.0.1" "24" &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_hdp_network_setup"
         f_hdp_network_setup &>> /tmp/p_host_setup.log
+    else
+        f_docker0_setup &>> /tmp/p_host_setup.log
     fi
     _log "INFO" "Starting f_dockerfile"
     f_dockerfile &>> /tmp/p_host_setup.log
