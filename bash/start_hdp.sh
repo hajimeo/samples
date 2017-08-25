@@ -1049,7 +1049,7 @@ function f_ambari_server_install() {
         return 1
     fi
 
-    _port_wait "$r_AMBARI_HOST" "8080" 1
+    _port_wait "$r_AMBARI_HOST" "8080" 1 &>/dev/null
     if [ $? -eq 0 ]; then
         _warn "Something is already listening on $r_AMBARI_HOST:8080"
         return 1
