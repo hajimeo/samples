@@ -1018,6 +1018,7 @@ function f_docker_run() {
         if [ `echo $r_CONTAINER_OS_VER | cut -d. -f1` -gt 6 ]; then
             docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base}
         else
+            _info "docker run -t -i -d --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask"
             docker run -t -i -d --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
         fi
     done
