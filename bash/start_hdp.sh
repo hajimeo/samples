@@ -118,7 +118,7 @@ function p_interview() {
     local _docker_ip=`f_docker_ip "172.17.0.1"`
     _ask "First 24 bits (xxx.xxx.xxx.) of docker container IP Address" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Network Mask (/16 or /24) for docker containers" "/16" "r_DOCKER_NETWORK_MASK" "N" "Y"
-    _ask "Using custom network?" "N" "r_DOCKER_USE_CUSTOM_NETWORK"
+    _ask "Using custom network? (required for CentOS 7)" "N" "r_DOCKER_USE_CUSTOM_NETWORK"
     _ask "IP address for docker network interface" "$_docker_ip" "r_DOCKER_HOST_IP" "N" "Y"
     _ask "Domain Suffix for docker containers" ".localdomain" "r_DOMAIN_SUFFIX" "N" "Y"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
