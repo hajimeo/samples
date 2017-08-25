@@ -998,7 +998,7 @@ function f_docker_run() {
         return 1
     fi
 
-    local _network=""
+    local _network="--network=docker0"
     local _line=""
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         _line="`docker ps -a -f name=${_node}$_n | grep -w ${_node}$_n`"
