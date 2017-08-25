@@ -5,7 +5,7 @@
 # 1. Install OS. Recommend Ubuntu 14.x
 # 2. sudo -i    (TODO: only root works at this moment)
 # 3. (optional) screen
-# 4. wget https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_hdp.sh -O ./start_hdp.sh
+# 4. curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_hdp.sh
 # 5. chmod u+x ./start_hdp.sh
 # 6. ./start_hdp.sh -i    or './start_hdp.sh -a' for full automated installation
 # 7. answer questions
@@ -335,8 +335,8 @@ function p_ambari_blueprint() {
         f_ambari_blueprint_cluster_config > $_cluster_config_json
     fi
 
-    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json} || return $?
-    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json} || return $?
+    curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json} || return $?
+    curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json} || return $?
 }
 
 function f_ambari_blueprint_hostmap() {
@@ -1407,12 +1407,12 @@ function f_ambari_set_repo() {
 
     if _isUrl "$_repo_url"; then
         # TODO: admin:admin
-        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${_repo_os_ver}/repositories/HDP-${r_HDP_STACK_VERSION}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
+        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${_repo_os_ver}/repositories/HDP-${r_HDP_STACK_VERSION}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
     fi
 
     if _isUrl "$_util_url"; then
         local _hdp_util_name="`echo $_util_url | grep -oP 'HDP-UTILS-[\d\.]+'`"
-        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}'
+        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}'
     fi
 }
 
@@ -1467,7 +1467,7 @@ function f_services_start() {
     _port_wait "$r_AMBARI_HOST" "8080"
     _ambari_agent_wait
 
-    curl -u admin:admin -H "X-Requested-By:ambari" "http://$r_AMBARI_HOST:8080/api/v1/clusters/${_c}/services?" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+    curl -si -u admin:admin -H "X-Requested-By:ambari" "http://$r_AMBARI_HOST:8080/api/v1/clusters/${_c}/services?" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
     echo ""
 }
 
@@ -1516,9 +1516,9 @@ function f_service() {
     _n="`_ambari_query_sql "select count(*) from request where request_context ='set $_action for $_service by f_service' and end_time < start_time"`"
     [ 0 -lt $_n ] && return;
 
-    curl -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_service'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
+    curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_service'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
     local _request_context=""
-    curl -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_service' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_service'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
+    curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_service' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_service'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
     echo ""
 }
 
