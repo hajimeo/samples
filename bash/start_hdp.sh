@@ -118,7 +118,8 @@ function p_interview() {
     local _docker_ip=`f_docker_ip "172.17.0.1"`
     _ask "First 24 bits (xxx.xxx.xxx.) of docker container IP Address" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Network Mask (/16 or /24) for docker containers" "/16" "r_DOCKER_NETWORK_MASK" "N" "Y"
-    _ask "IP address for ${g_HDP_NETWORK} (docker) interface" "$_docker_ip" "r_DOCKER_HOST_IP" "N" "Y"
+    _ask "Using custom network?" "N" "r_DOCKER_USE_CUSTOM_NETWORK"
+    _ask "IP address for docker network interface" "$_docker_ip" "r_DOCKER_HOST_IP" "N" "Y"
     _ask "Domain Suffix for docker containers" ".localdomain" "r_DOMAIN_SUFFIX" "N" "Y"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
     if [ -n "$r_CONTAINER_OS" ]; then
@@ -268,7 +269,9 @@ function p_hdp_start() {
     f_loadResp
     f_dnsmasq_banner_reset
     f_docker0_setup
-    f_hdp_network_setup
+    if _isYes "$r_DOCKER_USE_CUSTOM_NETWORK"; then
+        f_hdp_network_setup
+    fi
     f_ntp
     if ! _isYes "$r_DOCKER_KEEP_RUNNING"; then
         f_docker_stop_other
@@ -988,6 +991,11 @@ function f_docker_run() {
         return 1
     fi
 
+    local _network=""
+    if _isYes "$r_DOCKER_USE_CUSTOM_NETWORK"; then
+        _network="--network=$g_HDP_NETWORK"
+    fi
+
     local _line=""
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         _line="`docker ps -a -f name=${_node}$_n | grep -w ${_node}$_n`"
@@ -1000,11 +1008,11 @@ function f_docker_run() {
             _netmask="255.255.255.0"
         fi
         # --ip may not work due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
-	if [ `echo $r_CONTAINER_OS_VER | cut -d. -f1` -gt 6 ]; then
-	docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} --network="$g_HDP_NETWORK" --ip=${r_DOCKER_NETWORK_ADDR}$_n --dns=$_dns --name=${_node}$_n ${_base}
-	else
-        docker run -t -i -d --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} --network="$g_HDP_NETWORK" --ip=${r_DOCKER_NETWORK_ADDR}$_n --dns=$_dns --name=${_node}$_n ${_base} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
-	fi
+        if [ `echo $r_CONTAINER_OS_VER | cut -d. -f1` -gt 6 ]; then
+            docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --ip=${r_DOCKER_NETWORK_ADDR}$_n --dns=$_dns --name=${_node}$_n ${_base}
+        else
+            docker run -t -i -d --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --ip=${r_DOCKER_NETWORK_ADDR}$_n --dns=$_dns --name=${_node}$_n ${_base} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
+        fi
     done
 }
 
@@ -1591,8 +1599,10 @@ function p_host_setup() {
 
     _log "INFO" "Starting f_docker0_setup"
     f_docker0_setup &>> /tmp/p_host_setup.log
-    _log "INFO" "Starting f_hdp_network_setup"
-    f_hdp_network_setup &>> /tmp/p_host_setup.log
+    if _isYes "$r_DOCKER_USE_CUSTOM_NETWORK"; then
+        _log "INFO" "Starting f_hdp_network_setup"
+        f_hdp_network_setup &>> /tmp/p_host_setup.log
+    fi
     _log "INFO" "Starting f_dockerfile"
     f_dockerfile &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_docker_base_create"
@@ -1920,9 +1930,16 @@ function f_gw_set() {
 }
 
 function f_docker_ip() {
-    local __doc__="Output ${g_HDP_NETWORK} IP or specified NIC's IP"
+    local __doc__="Output IP or specified NIC's IP used by docker"
     local _ip="${1}"
-    local _if="${2-${g_HDP_NETWORK}}"
+    local _if="${2}"
+    if [ -z "$_if" ]; then
+        if _isYes "$r_DOCKER_USE_CUSTOM_NETWORK"; then
+            _if="$g_HDP_NETWORK"
+        else
+            _if="docker0"
+        fi
+    fi
     local _ifconfig="`ifconfig $_if 2>/dev/null`"
 
     if [ -z "$_ifconfig" ]; then
