@@ -855,6 +855,7 @@ function f_docker_start() {
         # docker seems doesn't care if i try to start already started one
         docker start --attach=false ${_node}$_n &
         sleep 1
+	docker exec -it ${_node}$_n bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
     done
     wait
 }
