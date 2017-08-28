@@ -19,7 +19,7 @@ chown -R root:root /root/.ssh;\
 service sshd restart || echo ko;\
 umask 022
 
-RUN echo -e '#!/bin/bash\n_DEF_GW="$3"\nif [ -n "$1" ]; then\n  /sbin/ifconfig eth0 $1 netmask $4\n  if [ -n "$_DEF_GW" ]; then  # 172.17.0.1\n    /sbin/ip route add default via $_DEF_GW dev eth0\n  fi\nfi\n\nif [ -n "$2" ]; then\n  echo "127.0.0.1 localhost" > /etc/hosts\n  echo "$1 $2" >> /etc/hosts\n  hostname $2\n  echo "$2" > /etc/hostname\nfi\nservice sshd restart || systemctl restart sshd.service || echo ko\nbash' > /startup.sh
+RUN echo -e '#!/bin/bash\nservice sshd restart || echo ko\nbash' > /startup.sh
 RUN chmod a+x /startup.sh
 
 #HDP deps
