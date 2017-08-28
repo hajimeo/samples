@@ -1,37 +1,23 @@
 FROM centos:6.8
 # HDP software requirements + yum-plugin-ovl to avoid checksum error in CentOS6.x
-RUN yum -y install yum-plugin-ovl scp curl unzip tar wget openssl python
-# some useful packages
-RUN yum -y install yum-utils sudo which vim net-tools strace lsof tcpdump openssh-server openssh-clients openldap-clients fuse sshfs nc
+RUN yum -y install yum-plugin-ovl scp curl unzip tar wget openssl python;\
+yum -y install yum-utils sudo which vim net-tools strace lsof tcpdump openssh-server openssh-clients openldap-clients fuse sshfs nc
 
-#RUN ssh-keygen -q -t rsa -N ''
-RUN mkdir -m 600 /root/.ssh
-#TODO: shouldn't hardcode the private key
-RUN echo -e '_REPLACE_WITH_YOUR_PRIVATE_KEY_' > /root/.ssh/id_rsa
-RUN chmod 400 /root/.ssh/id_rsa
-RUN ssh-keygen -y -f /root/.ssh/id_rsa > /root/.ssh/id_rsa.pub
-RUN cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
-RUN chmod 600 /root/.ssh/authorized_keys
-RUN chown -R root:root /root/.ssh
-
-RUN setenforce 0 || echo ko
-RUN chkconfig iptables off || systemctl disable iptables.service || echo ko
-#RUN /etc/init.d/iptables stop
-
-RUN ( grep ^PermitRootLogin /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config ) || echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config
-RUN ( grep ^GSSAPIAuthentication /etc/ssh/sshd_config && sed -i 's/^GSSAPIAuthentication yes/GSSAPIAuthentication no/' /etc/ssh/sshd_config ) || echo 'GSSAPIAuthentication no' >> /etc/ssh/sshd_config
-RUN ( grep ^UseDNS /etc/ssh/sshd_config && sed -i 's/^UseDNS yes/UseDNS no/' /etc/ssh/sshd_config ) || echo 'UseDNS no' >> /etc/ssh/sshd_config
-RUN service sshd restart || systemctl restart sshd.service || echo ko
-
-#RUN echo 'user=root' >> /etc/dnsmasq.conf
-#RUN echo 'listen-address=127.0.0.1' >> /etc/dnsmasq.conf
-#RUN echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf
-#RUN echo 'conf-dir=/etc/dnsmasq.d' >> /etc/dnsmasq.conf
-#RUN echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
-#RUN echo 'nameserver 172.17.0.1' > /etc/resolv.dnsmasq.conf
-#RUN service dnsmasq restart || echo ko
-
-RUN umask 022
+#disable iptables and SeLinux, setup ssh
+RUN setenforce 0 || echo ko;\
+chkconfig iptables off || echo ko;\
+mkdir -m 600 /root/.ssh;\
+echo -e '_REPLACE_WITH_YOUR_PRIVATE_KEY_' > /root/.ssh/id_rsa;\
+chmod 400 /root/.ssh/id_rsa;\
+ssh-keygen -y -f /root/.ssh/id_rsa > /root/.ssh/id_rsa.pub;\
+cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys;\
+chmod 600 /root/.ssh/authorized_keys;\
+chown -R root:root /root/.ssh;\
+( grep ^PermitRootLogin /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config ) || echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config;\
+( grep ^GSSAPIAuthentication /etc/ssh/sshd_config && sed -i 's/^GSSAPIAuthentication yes/GSSAPIAuthentication no/' /etc/ssh/sshd_config ) || echo 'GSSAPIAuthentication no' >> /etc/ssh/sshd_config;\
+( grep ^UseDNS /etc/ssh/sshd_config && sed -i 's/^UseDNS yes/UseDNS no/' /etc/ssh/sshd_config ) || echo 'UseDNS no' >> /etc/ssh/sshd_config;\
+service sshd restart || echo ko;\
+umask 022
 
 RUN echo -e '#!/bin/bash\n_DEF_GW="$3"\nif [ -n "$1" ]; then\n  /sbin/ifconfig eth0 $1 netmask $4\n  if [ -n "$_DEF_GW" ]; then  # 172.17.0.1\n    /sbin/ip route add default via $_DEF_GW dev eth0\n  fi\nfi\n\nif [ -n "$2" ]; then\n  echo "127.0.0.1 localhost" > /etc/hosts\n  echo "$1 $2" >> /etc/hosts\n  hostname $2\n  echo "$2" > /etc/hostname\nfi\nservice sshd restart || systemctl restart sshd.service || echo ko\nbash' > /startup.sh
 RUN chmod a+x /startup.sh
