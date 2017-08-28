@@ -1590,7 +1590,7 @@ function p_host_setup() {
 
         if _isYes "$r_APTGET_UPGRADE"; then
             _log "INFO" "Starting apt-get upgrade"
-            apt-get upgrade -y docker-engine &>> /tmp/p_host_setup.log
+            apt-get -y install --only-upgrade docker-engine &>> /tmp/p_host_setup.log
         fi
 
         # NOTE: psql (postgresql-client) is required
