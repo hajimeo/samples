@@ -7,7 +7,7 @@ mysql mysql-libs mysql-connector-java acl alsa-lib at atk avahi-libs bc cairo cd
 
 #disable iptables and SeLinux, setup ssh
 RUN setenforce 0 || echo ko;\
-systemctl disable iptables || echo ko;\
+systemctl disable firewalld.service || echo ko;\
 mkdir -m 600 /root/.ssh;\
 echo -e '_REPLACE_WITH_YOUR_PRIVATE_KEY_' > /root/.ssh/id_rsa;\
 chmod 400 /root/.ssh/id_rsa;\
