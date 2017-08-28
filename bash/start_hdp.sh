@@ -96,7 +96,7 @@ __LAST_ANSWER=""
 function p_interview() {
     local __doc__="Asks user questions. (Requires Python)"
     # Default values TODO: need to update Ambari Version manually (stack version is automatic)
-    local _centos_version="6.8"
+    local _centos_version="6.9"
     local _ambari_version="2.5.1.0"
     local _stack_version="2.6"
     local _hdp_version="${_stack_version}.0.0"
@@ -1017,12 +1017,8 @@ function f_docker_run() {
             _network="--network=$g_HDP_NETWORK --ip=${r_DOCKER_NETWORK_ADDR}${_n}"
         fi
 
-        if [ `echo $r_CONTAINER_OS_VER | cut -d. -f1` -gt 6 ]; then
-            docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base}
-        else
-            _info "docker run -t -i -d --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask"
-            docker run -t -i -d --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
-        fi
+        docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base}
+        
     done
 }
 
@@ -1590,7 +1586,7 @@ function p_host_setup() {
 
         if _isYes "$r_APTGET_UPGRADE"; then
             _log "INFO" "Starting apt-get upgrade"
-            apt-get upgrade -y docker-engine &>> /tmp/p_host_setup.log
+            apt-get -y install --only-upgrade docker-engine &>> /tmp/p_host_setup.log
         fi
 
         # NOTE: psql (postgresql-client) is required
