@@ -35,7 +35,7 @@ echo '101,Kyle,Admin,50000,A
 120,Palmer,Ceo,100000,A' > ./employee.csv
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S %z")] INFO: executing hive queries under ${_dbname} database... kinit may require"
-hive -e "
+hive -hiveconf hive.root.logger=INFO,console -e "
 set hive.tez.exec.print.summary;
 CREATE DATABASE IF NOT EXISTS ${_dbname};
 USE ${_dbname};
