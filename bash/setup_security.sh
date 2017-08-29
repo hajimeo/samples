@@ -573,22 +573,28 @@ function f_hadoop_ssl_setup() {
     if [ -s ./rootCA.key ]; then
         _info "rootCA.key exists. Reusing..."
     else
-        # TODO: -aes256
+        # Step1: create my root CA (key) TODO: -aes256
         openssl genrsa -out rootCA.key 4096 || return $?
+        # Step2: create root CA's cert (pem)
         openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.support.hortonworks.com" -passin "pass:$_password" || return $?
     fi
 
     mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
+    # Step3: Create a truststore file used by clients
     keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${_trust_password} -noprompt || return $?
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh -q root@node${i}${_domain_suffix} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}; mkdir -m 755 -p ${g_CLIENT_TRUST_LOCATION%/}"
         scp ./$g_CLIENT_TRUSTSTORE_FILE root@node${i}${_domain_suffix}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
+        # Step4: On each node, create a privatekey for the node
         ssh -q root@node${i}${_domain_suffix} "mv -f ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null; keytool -genkey -alias node${i} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=node${i}${_domain_suffix}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
+        # Step5: On each node, create a CSR
         ssh -q root@node${i}${_domain_suffix} "keytool -certreq -alias node${i} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.csr -storepass ${_password}"
         scp root@node${i}${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.csr ./ || return $?
+        # Step6: Sign the CSR with the root CA
         openssl x509 -sha256 -req -in ./node${i}-keystore.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out node${i}-keystore.crt -days 730 -passin "pass:$_password" || return $?
         scp ./rootCA.pem ./node${i}-keystore.crt root@node${i}${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/ || return $?
+        # Step7: On each node, import root CA's cert and the signed cert
         ssh -q root@node${i}${_domain_suffix} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias node${i} -import -file ${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.crt -noprompt -storepass ${_password}" || return $?
         ssh -q root@node${i}.localdomain "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
     done
