@@ -104,10 +104,8 @@ INSERT OVERWRITE TABLE census_clus select * from census;
 # set hive.exec.max.dynamic.partitions.pernode=4;
 # set hive.exec.max.created.files=100000;
 
-# ACID needs Orc, buckets, trancational=true, also testing bloom filter
-#ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='name,city,email');
-#ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;
-# ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;
+# ACID needs Orc, buckets, transactional=true, also testing bloom filter
+#hive -e "ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='name,city,email');ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;"
 
 hdfs dfs -ls /apps/hive/warehouse/${_dbname}.db/*/
 

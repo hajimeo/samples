@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_security.sh
+#
+# DOWNLOAD:
+#   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_security.sh
+#
 #
 # This script contains functions which help to set up Ambari/HDP security (SSL,LDAP,Kerberos etc.)
 # This script requires below:
@@ -11,7 +14,7 @@
 #   source ./setup_security.sh && f_loadResp
 #   f_kdc_install_on_host && f_ambari_kerberos_setup
 #
-# Example 2: How to set up SSL on hadoop component
+# Example 2: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
 #   source ./setup_security.sh && f_loadResp
 #   f_hadoop_ssl_setup
 #
@@ -590,7 +593,7 @@ function f_hadoop_ssl_setup() {
         ssh -q root@node${i}.localdomain "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
     done
 
-    _info "Updating Ambari configs..."
+    _info "Updating Ambari configs for HDFS..."
     scp root@$_ambari_host:/var/lib/ambari-server/resources/scripts/configs.sh ./
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.location ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.password $_trust_password
@@ -608,7 +611,8 @@ function f_hadoop_ssl_setup() {
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c hdfs-site dfs.http.policy HTTP_AND_HTTPS # or HTTPS_ONLY
 
     # If Ambari is 2.4.x or higher below works
-    _info "Run the below command to restart required components"
+    _info "For MR2,YARN and other components:\nhttps://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.6.1/bk_security/content/enabling-ssl-for-components.html"
+    _info "Completed.\nRun the below command to restart required components"
     echo curl -u admin:admin -sk "${_http}://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests" -H 'X-Requested-By: Ambari' --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
 }
 
