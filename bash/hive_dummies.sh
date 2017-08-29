@@ -74,8 +74,7 @@ CREATE TABLE IF NOT EXISTS emp_part_bckt (
   designation  string,
   salary int)
   PARTITIONED BY (department String)
-  clustered by (empid) into 3 buckets
-  row format delimited fields terminated by ','
+  clustered by (empid) into 2 buckets
   stored as orc;
 set hive.exec.dynamic.partition=true;
 set hive.exec.dynamic.partition.mode=nonstrict;
@@ -104,10 +103,8 @@ INSERT OVERWRITE TABLE census_clus select * from census;
 # set hive.exec.max.dynamic.partitions.pernode=4;
 # set hive.exec.max.created.files=100000;
 
-
+# hive (1) returns ArrayIndexOutOfBoundsException if transactional is true and 'orc.bloom.filter.columns' is not '*'
 echo "[$(date +"%Y-%m-%d %H:%M:%S %z")] INFO: ACID needs Orc, buckets, transactional=true, also testing bloom filter, like below:"
-echo "hive -e \"USE ${_dbname};ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='name,city,email');ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;\""
+echo "hive -e \"USE ${_dbname};ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='*');ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;\""
 
 hdfs dfs -ls /apps/hive/warehouse/${_dbname}.db/*/
-
-
