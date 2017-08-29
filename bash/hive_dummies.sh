@@ -4,7 +4,7 @@
 #
 # Download and execute this script:
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/hive_dummies.sh
-#   bash -x ./hive_dummies.sh [dbname]
+#   bash ./hive_dummies.sh [dbname]
 #
 
 _dbname="${1-dummies}"
@@ -65,7 +65,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS emp_stage (
   Salary int,
   department string)
   row format delimited
-  fields terminated by ","
+  fields terminated by ','
   location '/tmp/emp_stage_data';
 LOAD DATA LOCAL INPATH './employee.csv' OVERWRITE into table emp_stage;
 CREATE TABLE IF NOT EXISTS emp_part_bckt (
