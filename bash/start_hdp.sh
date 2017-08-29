@@ -1163,12 +1163,12 @@ sudo -u postgres psql -c \"CREATE ROLE rangeradmin WITH SUPERUSER LOGIN PASSWORD
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
 
-    _info "No password required to login Ambari..."
-    ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties'
-grep -q '^api.authenticate=false' \$_f && exit
-grep -q '^api.authenticate=' \$_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' \$_f || echo 'api.authenticate=false' >> \$_f
-grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f
-ambari-server restart --skip-database-check"
+    #_info "No password required to login Ambari..."
+    #ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties'
+#grep -q '^api.authenticate=false' \$_f && exit
+#grep -q '^api.authenticate=' \$_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' \$_f || echo 'api.authenticate=false' >> \$_f
+#grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f
+#ambari-server restart --skip-database-check"
 
     _info "Creating 'admin' user in each node and in HDFS..."
     f_useradd_on_nodes "admin"
