@@ -1,7 +1,5 @@
 FROM centos:6.8
 
-#legacy DockerFile, all new changes goes to DockerFile6
-
 #install HDP requirements + dependencies and system tools
 RUN yum -y install yum-plugin-ovl scp curl unzip tar wget openssl python;\
 yum -y install yum-utils sudo which vim net-tools strace lsof tcpdump openssh-server openssh-clients openldap-clients fuse sshfs nc\

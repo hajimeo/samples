@@ -1,39 +1,24 @@
 FROM centos:7.3.1611
 
-# HDP software requirements + yum-plugin-ovl to avoid checksum error in CentOS6.x
-RUN yum -y install yum-plugin-ovl scp curl unzip tar wget openssl python
-# some useful packages
-RUN yum -y install yum-utils sudo which vim net-tools strace lsof tcpdump openssh-server openssh-clients openldap-clients fuse sshfs nc
+#install HDP requirements + dependencies and system tools 
+RUN yum -y install yum-plugin-ovl scp curl unzip tar wget openssl python;\
+yum -y install yum-utils sudo which vim net-tools strace lsof tcpdump openssh-server openssh-clients openldap-clients fuse sshfs nc\
+mysql mysql-libs mysql-connector-java acl alsa-lib at atk avahi-libs bc cairo cdparanoia-libs cronie cronie-anacron crontabs cups cups-libs cvs cyrus-sasl db4 db4-cxx db4-devel db4-utils dbus ed fontconfig foomatic foomatic-db foomatic-db-filesystem foomatic-db-ppds freetype gdbm gdbm-devel gdk-pixbuf2 gettext ghostscript ghostscript-fonts glibc glibc-common glibc-devel glibc-headers gnutls gstreamer gstreamer-plugins-base gstreamer-tools gtk2 hesiod hicolor-icon-theme iso-codes jasper-libs kernel-headers lcms-libs libICE libSM libX11 libX11-common libXau libXcomposite libXcursor libXdamage libXext libXfixes libXfont libXft libXi libXinerama libXrandr libXrender libXt libXtst libXv libXxf86vm libcap-ng libfontenc libgomp libgudev1 libjpeg-turbo libmng libogg liboil libpng libthai libtheora libtiff libudev libvisual libvorbis libxcb logrotate m4 mailx man mesa-dri-drivers mesa-dri-filesystem mesa-dri1-drivers mesa-libGL mesa-libGLU mesa-private-llvm nc openjpeg-libs pango passwd patch pax perl-CGI perl-ExtUtils-MakeMaker perl-ExtUtils-ParseXS perl-Test-Harness perl-Test-Simple perl-devel phonon-backend-gstreamer pixman poppler poppler-data poppler-utils portreserve procmail qt qt-sqlite qt-x11 qt3 redhat-lsb redhat-lsb-compat redhat-lsb-core redhat-lsb-graphics redhat-lsb-printing rsyslog sendmail time tmpwatch tzdata urw-fonts xml-common xorg-x11-font-utils xz xz-lzma-compat
 
-#RUN ssh-keygen -q -t rsa -N ''
-RUN mkdir -m 600 /root/.ssh
-#TODO: shouldn't hardcode the private key
-RUN echo -e '_REPLACE_WITH_YOUR_PRIVATE_KEY_' > /root/.ssh/id_rsa
-RUN chmod 400 /root/.ssh/id_rsa
-RUN ssh-keygen -y -f /root/.ssh/id_rsa > /root/.ssh/id_rsa.pub
-RUN cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
-RUN chmod 600 /root/.ssh/authorized_keys
-RUN chown -R root:root /root/.ssh
-
-RUN setenforce 0 || echo ko
-RUN chkconfig iptables off || systemctl disable iptables || echo ko
-
-RUN ( grep ^PermitRootLogin /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config ) || echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config
-RUN ( grep ^GSSAPIAuthentication /etc/ssh/sshd_config && sed -i 's/^GSSAPIAuthentication yes/GSSAPIAuthentication no/' /etc/ssh/sshd_config ) || echo 'GSSAPIAuthentication no' >> /etc/ssh/sshd_config
-RUN ( grep ^UseDNS /etc/ssh/sshd_config && sed -i 's/^UseDNS yes/UseDNS no/' /etc/ssh/sshd_config ) || echo 'UseDNS no' >> /etc/ssh/sshd_config
-
-#RUN echo 'user=root' >> /etc/dnsmasq.conf
-#RUN echo 'listen-address=127.0.0.1' >> /etc/dnsmasq.conf
-#RUN echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf
-#RUN echo 'conf-dir=/etc/dnsmasq.d' >> /etc/dnsmasq.conf
-#RUN echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
-#RUN echo 'nameserver 172.17.0.1' > /etc/resolv.dnsmasq.conf
-#RUN service dnsmasq restart || echo ko
-
-RUN umask 022
-
-#HDP deps
-RUN yum -y install mysql mysql-libs mysql-connector-java acl alsa-lib at atk avahi-libs bc cairo cdparanoia-libs cronie cronie-anacron crontabs cups cups-libs cvs cyrus-sasl db4 db4-cxx db4-devel db4-utils dbus ed fontconfig foomatic foomatic-db foomatic-db-filesystem foomatic-db-ppds freetype gdbm gdbm-devel gdk-pixbuf2 gettext ghostscript ghostscript-fonts glibc glibc-common glibc-devel glibc-headers gnutls gstreamer gstreamer-plugins-base gstreamer-tools gtk2 hesiod hicolor-icon-theme iso-codes jasper-libs kernel-headers lcms-libs libICE libSM libX11 libX11-common libXau libXcomposite libXcursor libXdamage libXext libXfixes libXfont libXft libXi libXinerama libXrandr libXrender libXt libXtst libXv libXxf86vm libcap-ng libfontenc libgomp libgudev1 libjpeg-turbo libmng libogg liboil libpng libthai libtheora libtiff libudev libvisual libvorbis libxcb logrotate m4 mailx man mesa-dri-drivers mesa-dri-filesystem mesa-dri1-drivers mesa-libGL mesa-libGLU mesa-private-llvm nc openjpeg-libs pango passwd patch pax perl-CGI perl-ExtUtils-MakeMaker perl-ExtUtils-ParseXS perl-Test-Harness perl-Test-Simple perl-devel phonon-backend-gstreamer pixman poppler poppler-data poppler-utils portreserve procmail qt qt-sqlite qt-x11 qt3 redhat-lsb redhat-lsb-compat redhat-lsb-core redhat-lsb-graphics redhat-lsb-printing rsyslog sendmail time tmpwatch tzdata urw-fonts xml-common xorg-x11-font-utils xz xz-lzma-compat
+#disable iptables and SeLinux, setup ssh
+RUN setenforce 0 || echo ko;\
+systemctl disable firewalld.service || echo ko;\
+mkdir -m 600 /root/.ssh;\
+echo -e '_REPLACE_WITH_YOUR_PRIVATE_KEY_' > /root/.ssh/id_rsa;\
+chmod 400 /root/.ssh/id_rsa;\
+ssh-keygen -y -f /root/.ssh/id_rsa > /root/.ssh/id_rsa.pub;\
+cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys;\
+chmod 600 /root/.ssh/authorized_keys;\
+chown -R root:root /root/.ssh;\
+( grep ^PermitRootLogin /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config ) || echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config;\
+( grep ^GSSAPIAuthentication /etc/ssh/sshd_config && sed -i 's/^GSSAPIAuthentication yes/GSSAPIAuthentication no/' /etc/ssh/sshd_config ) || echo 'GSSAPIAuthentication no' >> /etc/ssh/sshd_config;\
+( grep ^UseDNS /etc/ssh/sshd_config && sed -i 's/^UseDNS yes/UseDNS no/' /etc/ssh/sshd_config ) || echo 'UseDNS no' >> /etc/ssh/sshd_config;\
+umask 022
 
 # Centos 7 customizations, by default leave only sshd enabled
 ENV container docker

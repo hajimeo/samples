@@ -96,7 +96,7 @@ __LAST_ANSWER=""
 function p_interview() {
     local __doc__="Asks user questions. (Requires Python)"
     # Default values TODO: need to update Ambari Version manually (stack version is automatic)
-    local _centos_version="6.8"
+    local _centos_version="6.9"
     local _ambari_version="2.5.1.0"
     local _stack_version="2.6"
     local _hdp_version="${_stack_version}.0.0"
@@ -111,14 +111,13 @@ function p_interview() {
         apt-get install python -y
     fi
 
-    _ask "Run apt-get upgrade before setting up?" "N" "r_APTGET_UPGRADE" "N"
+    _ask "Run apt-get upgrade (docker) before setting up?" "N" "r_APTGET_UPGRADE" "N"
     _ask "Keep running containers when you start this script with another response file?" "N" "r_DOCKER_KEEP_RUNNING" "N"
     _ask "NTP Server" "ntp.ubuntu.com" "r_NTP_SERVER" "N" "Y"
     # TODO: Changing this IP later is troublesome, so need to be careful
     local _docker_ip=`f_docker_ip "172.17.0.1"`
     _ask "First 24 bits (xxx.xxx.xxx.) of docker container IP Address" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Network Mask (/16 or /24) for docker containers" "/16" "r_DOCKER_NETWORK_MASK" "N" "Y"
-    _ask "Using custom network? (required for CentOS 7)" "Y" "r_DOCKER_USE_CUSTOM_NETWORK"
     _ask "IP address for docker network interface" "$_docker_ip" "r_DOCKER_HOST_IP" "N" "Y"
     _ask "Domain Suffix for docker containers" ".localdomain" "r_DOMAIN_SUFFIX" "N" "Y"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
@@ -127,7 +126,11 @@ function p_interview() {
     fi
     _ask "Container OS version (use 7.3.1611 or higher for Centos 7)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
     local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
-    _ask "DockerFile URL or path (use DockerFile7 for Centos 7)" "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile" "r_DOCKERFILE_URL" "N" "N"
+    local _docker_file_url="https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6"
+    if [ "x`echo $r_CONTAINER_OS_VER | cut -d. -f1`" = "x7" ]; then
+        local _docker_file_url="https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile7"
+    fi
+    _ask "DockerFile URL or path" "$_docker_file_url" "r_DOCKERFILE_URL" "N" "N"
     _ask "Hostname for docker host in docker private network?" "dockerhost1" "r_DOCKER_PRIVATE_HOSTNAME" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
     _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
@@ -268,12 +271,8 @@ function _cancelInterview() {
 function p_hdp_start() {
     f_loadResp
     f_dnsmasq_banner_reset
-    if _isYes "$r_DOCKER_USE_CUSTOM_NETWORK"; then
-        f_docker0_setup "172.18.0.1" "24"
-        f_hdp_network_setup
-    else
-        f_docker0_setup
-    fi
+    f_docker0_setup "172.18.0.1" "24"
+    f_hdp_network_setup
     f_ntp
     if ! _isYes "$r_DOCKER_KEEP_RUNNING"; then
         f_docker_stop_other
@@ -845,12 +844,10 @@ function f_docker_start() {
 
     _info "starting $_how_many docker containers starting from $_start_from ..."
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        if _isYes "$r_DOCKER_USE_CUSTOM_NETWORK" ; then
-            _net=`docker container inspect ${_node}$_n | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
-            if [ ! "$_net" = "$g_HDP_NETWORK" ]; then
-                docker network disconnect $_net ${_node}$_n
-                docker network connect --ip=${r_DOCKER_NETWORK_ADDR}$_n hdp ${_node}$_n
-            fi
+        _net=`docker container inspect ${_node}$_n | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
+        if [ ! "$_net" = "$g_HDP_NETWORK" ]; then
+            docker network disconnect $_net ${_node}$_n
+            docker network connect --ip=${r_DOCKER_NETWORK_ADDR}$_n hdp ${_node}$_n
         fi
         # docker seems doesn't care if i try to start already started one
         docker start --attach=false ${_node}$_n &
@@ -1020,12 +1017,8 @@ function f_docker_run() {
             _network="--network=$g_HDP_NETWORK --ip=${r_DOCKER_NETWORK_ADDR}${_n}"
         fi
 
-        if [ `echo $r_CONTAINER_OS_VER | cut -d. -f1` -gt 6 ]; then
-            docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base}
-        else
-            _info "docker run -t -i -d --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask"
-            docker run -t -i -d --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base} /startup.sh ${r_DOCKER_NETWORK_ADDR}$_n ${_node}$_n${r_DOMAIN_SUFFIX} $_ip $_netmask
-        fi
+        docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base}
+        
     done
 }
 
@@ -1596,7 +1589,7 @@ function p_host_setup() {
 
         if _isYes "$r_APTGET_UPGRADE"; then
             _log "INFO" "Starting apt-get upgrade"
-            apt-get upgrade -y &>> /tmp/p_host_setup.log
+            apt-get -y install --only-upgrade docker-engine &>> /tmp/p_host_setup.log
         fi
 
         # NOTE: psql (postgresql-client) is required
@@ -1616,13 +1609,9 @@ function p_host_setup() {
     fi
 
     _log "INFO" "Starting f_docker0_setup"
-    if _isYes "$r_DOCKER_USE_CUSTOM_NETWORK"; then
-        f_docker0_setup "172.18.0.1" "24" &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_hdp_network_setup"
-        f_hdp_network_setup &>> /tmp/p_host_setup.log
-    else
-        f_docker0_setup &>> /tmp/p_host_setup.log
-    fi
+    f_docker0_setup "172.18.0.1" "24" &>> /tmp/p_host_setup.log
+    _log "INFO" "Starting f_hdp_network_setup"
+    f_hdp_network_setup &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_dockerfile"
     f_dockerfile &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_docker_base_create"
@@ -1954,11 +1943,7 @@ function f_docker_ip() {
     local _ip="${1}"
     local _if="${2}"
     if [ -z "$_if" ]; then
-        if _isYes "$r_DOCKER_USE_CUSTOM_NETWORK"; then
-            _if="$g_HDP_NETWORK"
-        else
-            _if="docker0"
-        fi
+        _if="$g_HDP_NETWORK"
     fi
     local _ifconfig="`ifconfig $_if 2>/dev/null`"
 
