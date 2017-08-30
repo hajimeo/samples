@@ -383,6 +383,7 @@ function f_ambari_blueprint_hostmap() {
 function f_ambari_blueprint_cluster_config() {
     local __doc__="Output json string for Ambari Blueprint Cluster mapping TODO: it's fixed map at this moment"
     local _stack_version="${1-$r_HDP_STACK_VERSION}"
+    local _type="${2-$r_CLUSTER_TYPE}"
     local _how_many="${3-$r_NUM_NODES}"
 
     if [ -z "$_how_many" ] || [ 4 -gt "$_how_many" ]; then
@@ -390,8 +391,47 @@ function f_ambari_blueprint_cluster_config() {
         return 1
     fi
 
+    local _extra_comps_1=""
+    local _extra_comps_2=""
+    local _extra_comps_3=""
+    local _extra_comps_4=""
+    if [ "$_type" = "security" ]; then
+        _extra_comps_1=''
+        _extra_comps_2=',{"name":"SLIDER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
+        _extra_comps_3=',{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}'
+        _extra_comps_4=',{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"},{"name":"SLIDER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
+    fi
+
     echo '{
   "configurations" : [
+    {
+      "admin-properties" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "db_root_user" : "ranger",
+          "DB_FLAVOR" : "POSTGRES",
+          "db_name" : "ranger",
+          "policymgr_external_url" : "http://%HOSTGROUP::host_group_3%:6080",
+          "db_user" : "rangeradmin",
+          "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
+          "db_host" : "'$r_AMBARI_HOST'"
+        }
+      }
+    },
+    {
+      "kms-properties" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "db_root_user" : "ambari",
+          "DB_FLAVOR" : "POSTGRES",
+          "db_name" : "rangerkms",
+          "db_user" : "rangerkms",
+          "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
+          "REPOSITORY_CONFIG_USERNAME" : "keyadmin",
+          "db_host" : "'$r_AMBARI_HOST'"
+        }
+      }
+    },
     {
       "hadoop-env" : {
         "properties" : {
@@ -468,7 +508,7 @@ function f_ambari_blueprint_cluster_config() {
       "components" : [
         {
           "name" : "AMBARI_SERVER"
-        }
+        }'$_extra_comps_1'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -477,10 +517,37 @@ function f_ambari_blueprint_cluster_config() {
       "name" : "host_group_2",
       "components" : [
         {
-          "name" : "YARN_CLIENT"
+          "name" : "NAMENODE"
+        },
+        {
+          "name" : "HISTORYSERVER"
+        },
+        {
+          "name" : "APP_TIMELINE_SERVER"
+        },
+        {
+          "name" : "RESOURCEMANAGER"
+        },
+        {
+          "name" : "MYSQL_SERVER"
+        },
+        {
+          "name" : "HIVE_SERVER"
+        },
+        {
+          "name" : "HIVE_METASTORE"
+        },
+        {
+          "name" : "WEBHCAT_SERVER"
         },
         {
           "name" : "HDFS_CLIENT"
+        },
+        {
+          "name" : "MAPREDUCE2_CLIENT"
+        },
+        {
+          "name" : "YARN_CLIENT"
         },
         {
           "name" : "TEZ_CLIENT"
@@ -493,34 +560,7 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "HIVE_CLIENT"
-        },
-        {
-          "name" : "HIVE_SERVER"
-        },
-        {
-          "name" : "MYSQL_SERVER"
-        },
-        {
-          "name" : "HIVE_METASTORE"
-        },
-        {
-          "name" : "HISTORYSERVER"
-        },
-        {
-          "name" : "NAMENODE"
-        },
-        {
-          "name" : "WEBHCAT_SERVER"
-        },
-        {
-          "name" : "MAPREDUCE2_CLIENT"
-        },
-        {
-          "name" : "APP_TIMELINE_SERVER"
-        },
-        {
-          "name" : "RESOURCEMANAGER"
-        }
+        }'$_extra_comps_2'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -533,7 +573,10 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "SECONDARY_NAMENODE"
-        }
+        },
+        {
+          "name" : "HDFS_CLIENT"
+        }'$_extra_comps_3'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -542,10 +585,19 @@ function f_ambari_blueprint_cluster_config() {
       "name" : "host_group_4",
       "components" : [
         {
-          "name" : "YARN_CLIENT"
+          "name" : "DATANODE"
+        },
+        {
+          "name" : "NODEMANAGER"
         },
         {
           "name" : "HDFS_CLIENT"
+        },
+        {
+          "name" : "MAPREDUCE2_CLIENT"
+        },
+        {
+          "name" : "YARN_CLIENT"
         },
         {
           "name" : "TEZ_CLIENT"
@@ -560,17 +612,8 @@ function f_ambari_blueprint_cluster_config() {
           "name" : "PIG"
         },
         {
-          "name" : "MAPREDUCE2_CLIENT"
-        },
-        {
           "name" : "HIVE_CLIENT"
-        },
-        {
-          "name" : "NODEMANAGER"
-        },
-        {
-          "name" : "DATANODE"
-        }
+        }'$_extra_comps_4'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
