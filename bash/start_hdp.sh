@@ -1689,8 +1689,8 @@ function p_host_setup() {
         if [ $? -eq 0 ]; then
             _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
             f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
-            f_run_cmd_on_nodes "ambari-agent start"
-            _ambari_agent_wait &>> /tmp/p_host_setup.log
+            f_run_cmd_on_nodes "ambari-agent start" &> /dev/null
+            _ambari_agent_wait &> /dev/null
             if [ $? -ne 0 ]; then
                 _log "INFO" "Starting f_ambari_agent_install"
                 f_ambari_agent_install &>> /tmp/p_host_setup.log
