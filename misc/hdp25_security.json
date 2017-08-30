@@ -1,0 +1,255 @@
+{
+  "configurations" : [
+    {
+      "hadoop-env" : {
+        "properties" : {
+          "dtnode_heapsize" : "512m",
+          "namenode_heapsize" : "513m",
+          "nfsgateway_heapsize" : "512"
+        }
+      }
+    },
+    {
+      "hdfs-site" : {
+        "properties" : {
+          "dfs.replication" : "1",
+          "dfs.datanode.du.reserved" : "536870912"
+        }
+      }
+    },
+    {
+      "yarn-env" : {
+        "properties" : {
+          "apptimelineserver_heapsize" : "512",
+          "resourcemanager_heapsize" : "513",
+          "nodemanager_heapsize" : "514"
+        }
+      }
+    },
+    {
+      "yarn-site" : {
+        "properties" : {
+          "yarn.scheduler.minimum-allocation-mb" : "320"
+        }
+      }
+    },
+    {
+      "mapred-env" : {
+        "properties" : {
+          "jobhistory_heapsize" : "512"
+        }
+      }
+    },
+    {
+      "mapred-site" : {
+        "properties" : {
+          "mapreduce.map.memory.mb" : "256",
+          "mapreduce.map.java.opts" : "-Xmx202m",
+          "mapreduce.reduce.memory.mb" : "256",
+          "mapreduce.reduce.java.opts" : "-Xmx203m",
+          "yarn.app.mapreduce.am.resource.mb" : "256",
+          "yarn.app.mapreduce.am.command-opts" : "-Xmx201m -Dhdp.version=${hdp.version}"
+        }
+      }
+    },
+    {
+      "tez-site" : {
+        "properties" : {
+          "tez.am.resource.memory.mb" : "256",
+          "tez.task.resource.memory.mb" : "256",
+          "tez.runtime.io.sort.mb" : "128"
+        }
+      }
+    },
+    {
+      "hive-env" : {
+        "properties" : {
+          "hive.metastore.heapsize" : "512",
+          "hive.heapsize" : "513"
+        }
+      }
+    }
+  ],
+  "host_groups": [
+    {
+      "name" : "host_group_1",
+      "components" : [
+        {
+          "name" : "AMBARI_SERVER"
+        }
+      ],
+      "configurations" : [ ],
+      "cardinality" : "1"
+    },
+    {
+      "name" : "host_group_2",
+      "components" : [
+        {
+          "name" : "HIVE_SERVER"
+        },
+        {
+          "name" : "INFRA_SOLR_CLIENT"
+        },
+        {
+          "name" : "HIVE_METASTORE"
+        },
+        {
+          "name" : "TEZ_CLIENT"
+        },
+        {
+          "name" : "ZOOKEEPER_CLIENT"
+        },
+        {
+          "name" : "WEBHCAT_SERVER"
+        },
+        {
+          "name" : "SLIDER"
+        },
+        {
+          "name" : "OOZIE_CLIENT"
+        },
+        {
+          "name" : "YARN_CLIENT"
+        },
+        {
+          "name" : "HDFS_CLIENT"
+        },
+        {
+          "name" : "MYSQL_SERVER"
+        },
+        {
+          "name" : "HISTORYSERVER"
+        },
+        {
+          "name" : "NAMENODE"
+        },
+        {
+          "name" : "PIG"
+        },
+        {
+          "name" : "MAPREDUCE2_CLIENT"
+        },
+        {
+          "name" : "ATLAS_CLIENT"
+        },
+        {
+          "name" : "HBASE_CLIENT"
+        },
+        {
+          "name" : "APP_TIMELINE_SERVER"
+        },
+        {
+          "name" : "HIVE_CLIENT"
+        },
+        {
+          "name" : "RESOURCEMANAGER"
+        }
+      ],
+      "configurations" : [ ],
+      "cardinality" : "1"
+    },
+    {
+      "name" : "host_group_3",
+      "components" : [
+        {
+          "name" : "HDFS_CLIENT"
+        },
+        {
+          "name" : "INFRA_SOLR_CLIENT"
+        },
+        {
+          "name" : "HBASE_MASTER"
+        },
+        {
+          "name" : "ATLAS_SERVER"
+        },
+        {
+          "name" : "KAFKA_BROKER"
+        },
+        {
+          "name" : "RANGER_ADMIN"
+        },
+        {
+          "name" : "ZOOKEEPER_SERVER"
+        },
+        {
+          "name" : "HBASE_CLIENT"
+        },
+        {
+          "name" : "INFRA_SOLR"
+        },
+        {
+          "name" : "KNOX_GATEWAY"
+        },
+        {
+          "name" : "RANGER_USERSYNC"
+        },
+        {
+          "name" : "RANGER_KMS_SERVER"
+        }
+      ],
+      "configurations" : [ ],
+      "cardinality" : "1"
+    },
+    {
+      "name" : "host_group_4",
+      "components" : [
+        {
+          "name" : "NODEMANAGER"
+        },
+        {
+          "name" : "RANGER_TAGSYNC"
+        },
+        {
+          "name" : "YARN_CLIENT"
+        },
+        {
+          "name" : "HDFS_CLIENT"
+        },
+        {
+          "name" : "INFRA_SOLR_CLIENT"
+        },
+        {
+          "name" : "TEZ_CLIENT"
+        },
+        {
+          "name" : "ZOOKEEPER_CLIENT"
+        },
+        {
+          "name" : "HCAT"
+        },
+        {
+          "name" : "PIG"
+        },
+        {
+          "name" : "MAPREDUCE2_CLIENT"
+        },
+        {
+          "name" : "SLIDER"
+        },
+        {
+          "name" : "ATLAS_CLIENT"
+        },
+        {
+          "name" : "HBASE_REGIONSERVER"
+        },
+        {
+          "name" : "DATANODE"
+        },
+        {
+          "name" : "HBASE_CLIENT"
+        },
+        {
+          "name" : "HIVE_CLIENT"
+        }
+      ],
+      "configurations" : [ ],
+      "cardinality" : "1"
+    }
+  ],
+  "Blueprints": {
+    "blueprint_name": "multinode-hdp",
+    "stack_name": "HDP",
+    "stack_version": "2.5"
+  }
+}
