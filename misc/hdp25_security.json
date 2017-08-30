@@ -106,9 +106,6 @@
           "name" : "SLIDER"
         },
         {
-          "name" : "OOZIE_CLIENT"
-        },
-        {
           "name" : "YARN_CLIENT"
         },
         {
