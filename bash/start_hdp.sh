@@ -2019,7 +2019,7 @@ function f_update_check() {
 
         _backup "${_local_file_path}" && _info "Backup was saved into ${g_BACKUP_DIR%/}"
 
-        curl -q -k -L "$_remote_url" -o ${_local_file_path} || _critical "$FUNCNAME: Update failed."
+        curl -s -k -L "$_remote_url" -o ${_local_file_path} || _critical "$FUNCNAME: Update failed."
 
         #_info "Validating the downloaded script..."
         #source ${_local_file_path} || _critical "Please contact the script author."
