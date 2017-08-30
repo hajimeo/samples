@@ -1,6 +1,20 @@
 {
   "configurations" : [
     {
+      "admin-properties" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "db_root_user" : "ranger",
+          "DB_FLAVOR" : "POSTGRES",
+          "db_name" : "ranger",
+          "policymgr_external_url" : "http://%HOSTGROUP::host_group_3%:6080",
+          "db_user" : "rangeradmin",
+          "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
+          "db_host" : "node1.localdomain"
+        }
+      }
+    },
+    {
       "hadoop-env" : {
         "properties" : {
           "dtnode_heapsize" : "512m",
@@ -183,6 +197,9 @@
         },
         {
           "name" : "RANGER_USERSYNC"
+        },
+        {
+          "name" : "RANGER_KMS_SERVER"
         }
       ],
       "configurations" : [ ],
