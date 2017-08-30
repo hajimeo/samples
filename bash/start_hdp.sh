@@ -281,7 +281,6 @@ function p_hdp_start() {
     sleep 4
     _info "NOT setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
-    #f_etcs_mount
 
     _info "Starting Ambari Server"
     f_ambari_server_start
@@ -1247,26 +1246,34 @@ function f_ambari_agent_fix_public_hostname() {
 }
 
 function f_etcs_mount() {
-    local __doc__="Mounting all agent's etc directories (handy for troubleshooting)"
+    local __doc__="Mounting all agent's etc/log directories (handy for troubleshooting)"
     local _remount="$1"
     local _how_many="${2-$r_NUM_NODES}"
     local _start_from="${3-$r_NODE_START_NUM}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        if [ ! -d /mnt/etc/${_node}$i ]; then
-            mkdir -p /mnt/etc/${_node}$i
-        fi
+        [ -d /mnt/${_node}$i/etc ] || mkdir -p /mnt/${_node}$i/etc
+        [ -d /mnt/${_node}$i/log ] || mkdir -p /mnt/${_node}$i/log
 
-        if _isNotEmptyDir "/mnt/etc/${_node}$i" ;then
+        if _isNotEmptyDir "/mnt/${_node}$i/etc" ;then
             if ! _isYes "$_remount"; then
                 continue
             else
-                umount -f /mnt/etc/${_node}$i
+                umount -f /mnt/${_node}$i/etc
             fi
         fi
 
-        sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks ${_node}${i}${r_DOMAIN_SUFFIX}:/etc /mnt/etc/${_node}${i}
+        if _isNotEmptyDir "/mnt/${_node}$i/log" ;then
+            if ! _isYes "$_remount"; then
+                continue
+            else
+                umount -f /mnt/${_node}$i/log
+            fi
+        fi
+
+        sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks,ro ${_node}${i}${r_DOMAIN_SUFFIX}:/etc /mnt/${_node}${i}/etc
+        sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks,ro ${_node}${i}${r_DOMAIN_SUFFIX}:/var/log /mnt/${_node}${i}/log
     done
 }
 
@@ -1639,8 +1646,7 @@ function p_host_setup() {
         if [ $? -eq 0 ]; then
             _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
             f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
-            _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
-            f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
+            f_run_cmd_on_nodes "ambari-agent start"
             _ambari_agent_wait &>> /tmp/p_host_setup.log
             if [ $? -ne 0 ]; then
                 _log "INFO" "Starting f_ambari_agent_install"
