@@ -193,6 +193,9 @@ function p_interview() {
             _ask "Default password" "$g_DEFAULT_PASSWORD" "r_DEFAULT_PASSWORD" "N" "Y"
             _ask "Cluster config json path (optional)" "" "r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
             _ask "Host mapping json path (optional)" "" "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
+            if [ -z "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ]; then
+                _ask "Would you like to install Knox, Ranger and Atlas?" "N" "r_AMBARI_BLUEPRINT_INSTALL_SECURITY"
+            fi
         fi
 
         #_ask "Would you like to increase Ambari Alert interval?" "Y" "r_AMBARI_ALERT_INTERVAL"
@@ -315,8 +318,8 @@ function p_ambari_blueprint() {
 
     _info "Modifying postgresql for Ranger/KMS install later..."
     ssh -q root@$r_AMBARI_HOST "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1\`
-sudo -u postgres psql -c \"CREATE ROLE rangeradmin WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
-grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
+sudo -u postgres psql -c \"CREATE ROLE ranger WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
+grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   ranger,rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
 
     if [ ! -z "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ]; then
@@ -353,6 +356,11 @@ function f_ambari_blueprint_hostmap() {
     local _domain_suffix="${5-$r_DOMAIN_SUFFIX}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
+    if [ -z "$_how_many" ] || [ 4 -gt "$_how_many" ]; then
+        _error "At this moment, Blueprint build needs at least 4 nodes"
+        return 1
+    fi
+
     local _host_loop=""
     local _num=1
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
@@ -383,28 +391,19 @@ function f_ambari_blueprint_hostmap() {
 function f_ambari_blueprint_cluster_config() {
     local __doc__="Output json string for Ambari Blueprint Cluster mapping TODO: it's fixed map at this moment"
     local _stack_version="${1-$r_HDP_STACK_VERSION}"
-    local _type="${2-$r_CLUSTER_TYPE}"
-    local _how_many="${3-$r_NUM_NODES}"
-
-    if [ -z "$_how_many" ] || [ 4 -gt "$_how_many" ]; then
-        _error "At this moment, Blueprint build needs at least 4 nodes"
-        return 1
-    fi
+    local _install_security="${2-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
 
     local _extra_comps_1=""
     local _extra_comps_2=""
     local _extra_comps_3=""
     local _extra_comps_4=""
-    if [ "$_type" = "security" ]; then
+    local _extra_configs=""
+    if _isYes "$_install_security" ; then
         _extra_comps_1=''
         _extra_comps_2=',{"name":"SLIDER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
         _extra_comps_3=',{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}'
         _extra_comps_4=',{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"},{"name":"SLIDER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
-    fi
-
-    echo '{
-  "configurations" : [
-    {
+        _extra_configs=',{
       "admin-properties" : {
         "properties_attributes" : { },
         "properties" : {
@@ -422,7 +421,7 @@ function f_ambari_blueprint_cluster_config() {
       "kms-properties" : {
         "properties_attributes" : { },
         "properties" : {
-          "db_root_user" : "ambari",
+          "db_root_user" : "ranger",
           "DB_FLAVOR" : "POSTGRES",
           "db_name" : "rangerkms",
           "db_user" : "rangerkms",
@@ -432,6 +431,30 @@ function f_ambari_blueprint_cluster_config() {
         }
       }
     },
+    {
+      "ranger-admin-site" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "ranger.jpa.audit.jdbc.url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/ranger_audit",
+          "ranger.jpa.jdbc.url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/ranger",
+          "ranger.jpa.jdbc.driver" : "org.postgresql.Driver",
+          "ranger.jpa.audit.jdbc.driver" : "org.postgresql.Driver",
+          "ranger.jpa.audit.jdbc.dialect" : "org.eclipse.persistence.platform.database.PostgreSQLPlatform"
+        }
+      }
+    },
+    {
+      "ranger-env" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "xasecure.audit.destination.solr" : "false"
+        }
+      }
+    }'
+    fi
+
+    echo '{
+  "configurations" : [
     {
       "hadoop-env" : {
         "properties" : {
@@ -500,7 +523,7 @@ function f_ambari_blueprint_cluster_config() {
           "hive.heapsize" : "513"
         }
       }
-    }
+    }'$_extra_configs'"
   ],
   "host_groups": [
     {
