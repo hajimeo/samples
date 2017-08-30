@@ -313,6 +313,12 @@ function p_ambari_blueprint() {
         return 1
     fi
 
+    _info "Modifying postgresql for Ranger/KMS install later..."
+    ssh -q root@$r_AMBARI_HOST "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1\`
+sudo -u postgres psql -c \"CREATE ROLE rangeradmin WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
+grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
+service postgresql reload"
+
     if [ ! -z "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ]; then
         _hostmap_json="$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
         if [ ! -s "$_hostmap_json" ]; then
@@ -1131,7 +1137,7 @@ function f_port_forward() {
     ssh -2CNnqTxfg -L$_local_port:$_remote_host:$_remote_port $_remote_host
 }
 
-function p_ambari_update_config() {
+function p_post_install_changes() {
     local __doc__="Change some configurations for Dev cluster"
 
     # TODO: need to find the best way to find the first time
@@ -1152,12 +1158,6 @@ _n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'comp
     #_info "Reducing dfs.replication to 1..."
     #ssh -q -t root@$r_AMBARI_HOST -t "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1" &> /tmp/configs_sh_dfs_replication.out
     # Blueprint should take care above. TODO: should I reduce aggregator TTL size?
-
-    _info "Modifying postgresql for Ranger install later..."
-    ssh -q root@$r_AMBARI_HOST "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1\`
-sudo -u postgres psql -c \"CREATE ROLE rangeradmin WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
-grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
-service postgresql reload"
 
     #_info "No password required to login Ambari..."
     #ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties'
@@ -1679,7 +1679,7 @@ function p_host_setup() {
     fi
 
     f_port_forward_ssh_on_nodes
-    _log "INFO" "Completed. Please run p_ambari_update_config once when HDFS is running."
+    _log "INFO" "Completed. Please run p_post_install_changes when HDFS is running."
 
     f_screen_cmd
 }
