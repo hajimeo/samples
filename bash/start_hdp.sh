@@ -1898,7 +1898,7 @@ function f_apache_proxy() {
             CacheEnable disk http://
             CacheDirLevels 2
             CacheDirLength 1
-            CacheMaxFileSize 50000000
+            CacheMaxFileSize 256000000
         </IfModule>
 
     </IfModule>
