@@ -1032,7 +1032,7 @@ function _ambari_query_sql() {
 function f_get_cluster_name() {
     local __doc__="Output (return) cluster name by using SQL"
     local _ambari_host="${1-$r_AMBARI_HOST}"
-    local _c="$(_ambari_query_sql "select cluster_name from ambari.clusters order by cluster_id desc limit 1;" $_ambari_host)"
+    local _c="$(_ambari_query_sql "select cluster_name from clusters order by cluster_id desc limit 1;" $_ambari_host)"
     if [ -z "$_c" ]; then
         _warn "No cluster name from $_ambari_host"
         return 1
