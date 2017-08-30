@@ -173,6 +173,9 @@
           "name" : "ZOOKEEPER_SERVER"
         },
         {
+          "name" : "SECONDARY_NAMENODE"
+        },
+        {
           "name" : "HBASE_CLIENT"
         },
         {
