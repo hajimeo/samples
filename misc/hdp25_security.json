@@ -15,6 +15,20 @@
       }
     },
     {
+      "kms-properties" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "db_root_user" : "ambari",
+          "DB_FLAVOR" : "POSTGRES",
+          "db_name" : "rangerkms",
+          "db_user" : "rangerkms",
+          "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
+          "REPOSITORY_CONFIG_USERNAME" : "keyadmin",
+          "db_host" : "node1.localdomain"
+        }
+      }
+    },
+    {
       "hadoop-env" : {
         "properties" : {
           "dtnode_heapsize" : "512m",
