@@ -532,7 +532,7 @@ function f_ambari_blueprint_cluster_config() {
           "hive.heapsize" : "513"
         }
       }
-    }'$_extra_configs'"
+    }'$_extra_configs'
   ],
   "host_groups": [
     {
