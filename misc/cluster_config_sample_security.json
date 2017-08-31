@@ -1,0 +1,195 @@
+{
+  "configurations" : [
+    {
+      "hadoop-env" : {
+        "properties" : {
+          "dtnode_heapsize" : "512m",
+          "namenode_heapsize" : "513m",
+          "nfsgateway_heapsize" : "512"
+        }
+      }
+    },
+    {
+      "hdfs-site" : {
+        "properties" : {
+          "dfs.replication" : "1",
+          "dfs.datanode.du.reserved" : "536870912"
+        }
+      }
+    },
+    {
+      "yarn-env" : {
+        "properties" : {
+          "apptimelineserver_heapsize" : "512",
+          "resourcemanager_heapsize" : "513",
+          "nodemanager_heapsize" : "514"
+        }
+      }
+    },
+    {
+      "yarn-site" : {
+        "properties" : {
+          "yarn.scheduler.minimum-allocation-mb" : "320"
+        }
+      }
+    },
+    {
+      "mapred-env" : {
+        "properties" : {
+          "jobhistory_heapsize" : "512"
+        }
+      }
+    },
+    {
+      "mapred-site" : {
+        "properties" : {
+          "mapreduce.map.memory.mb" : "256",
+          "mapreduce.map.java.opts" : "-Xmx202m",
+          "mapreduce.reduce.memory.mb" : "256",
+          "mapreduce.reduce.java.opts" : "-Xmx203m",
+          "yarn.app.mapreduce.am.resource.mb" : "256",
+          "yarn.app.mapreduce.am.command-opts" : "-Xmx201m -Dhdp.version=${hdp.version}"
+        }
+      }
+    },
+    {
+      "tez-site" : {
+        "properties" : {
+          "tez.am.resource.memory.mb" : "256",
+          "tez.task.resource.memory.mb" : "256",
+          "tez.runtime.io.sort.mb" : "128"
+        }
+      }
+    },
+    {
+      "hive-env" : {
+        "properties" : {
+          "hive.metastore.heapsize" : "512",
+          "hive.heapsize" : "513"
+        }
+      }
+    },{ "admin-properties" : { "properties_attributes" : { }, "properties" : { "db_root_user" : "ranger", "DB_FLAVOR" : "POSTGRES", "db_name" : "ranger", "policymgr_external_url" : "http://%HOSTGROUP::host_group_3%:6080", "db_user" : "rangeradmin", "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}", "db_host" : "node11.localdomain" } } }, { "kms-properties" : { "properties_attributes" : { }, "properties" : { "db_root_user" : "ranger", "DB_FLAVOR" : "POSTGRES", "db_name" : "rangerkms", "db_user" : "rangerkms", "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}", "REPOSITORY_CONFIG_USERNAME" : "keyadmin", "db_host" : "node11.localdomain" } } }, { "ranger-admin-site" : { "properties_attributes" : { }, "properties" : { "ranger.jpa.audit.jdbc.url" : "jdbc:postgresql://node11.localdomain:5432/ranger_audit", "ranger.jpa.jdbc.url" : "jdbc:postgresql://node11.localdomain:5432/ranger", "ranger.jpa.jdbc.driver" : "org.postgresql.Driver", "ranger.jpa.audit.jdbc.driver" : "org.postgresql.Driver", "ranger.jpa.audit.jdbc.dialect" : "org.eclipse.persistence.platform.database.PostgreSQLPlatform" } } }, { "ranger-env" : { "properties_attributes" : { }, "properties" : { "xasecure.audit.destination.solr" : "false" } } }, { "dbks-site" : { "properties_attributes" : { }, "properties" : { "ranger.ks.jpa.jdbc.url" : "jdbc:postgresql://node1.localdomain:5432/rangerkms", "ranger.ks.jpa.jdbc.driver" : "org.postgresql.Driver" } } }
+  ],
+  "host_groups": [
+    {
+      "name" : "host_group_1",
+      "components" : [
+        {
+          "name" : "AMBARI_SERVER"
+        }
+      ],
+      "configurations" : [ ],
+      "cardinality" : "1"
+    },
+    {
+      "name" : "host_group_2",
+      "components" : [
+        {
+          "name" : "NAMENODE"
+        },
+        {
+          "name" : "HISTORYSERVER"
+        },
+        {
+          "name" : "APP_TIMELINE_SERVER"
+        },
+        {
+          "name" : "RESOURCEMANAGER"
+        },
+        {
+          "name" : "MYSQL_SERVER"
+        },
+        {
+          "name" : "HIVE_SERVER"
+        },
+        {
+          "name" : "HIVE_METASTORE"
+        },
+        {
+          "name" : "WEBHCAT_SERVER"
+        },
+        {
+          "name" : "HDFS_CLIENT"
+        },
+        {
+          "name" : "MAPREDUCE2_CLIENT"
+        },
+        {
+          "name" : "YARN_CLIENT"
+        },
+        {
+          "name" : "TEZ_CLIENT"
+        },
+        {
+          "name" : "ZOOKEEPER_CLIENT"
+        },
+        {
+          "name" : "PIG"
+        },
+        {
+          "name" : "HIVE_CLIENT"
+        },{"name":"SLIDER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}
+      ],
+      "configurations" : [ ],
+      "cardinality" : "1"
+    },
+    {
+      "name" : "host_group_3",
+      "components" : [
+        {
+          "name" : "ZOOKEEPER_SERVER"
+        },
+        {
+          "name" : "SECONDARY_NAMENODE"
+        },
+        {
+          "name" : "HDFS_CLIENT"
+        },{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}
+      ],
+      "configurations" : [ ],
+      "cardinality" : "1"
+    },
+    {
+      "name" : "host_group_4",
+      "components" : [
+        {
+          "name" : "DATANODE"
+        },
+        {
+          "name" : "NODEMANAGER"
+        },
+        {
+          "name" : "HDFS_CLIENT"
+        },
+        {
+          "name" : "MAPREDUCE2_CLIENT"
+        },
+        {
+          "name" : "YARN_CLIENT"
+        },
+        {
+          "name" : "TEZ_CLIENT"
+        },
+        {
+          "name" : "ZOOKEEPER_CLIENT"
+        },
+        {
+          "name" : "HCAT"
+        },
+        {
+          "name" : "PIG"
+        },
+        {
+          "name" : "HIVE_CLIENT"
+        },{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"},{"name":"SLIDER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}
+      ],
+      "configurations" : [ ],
+      "cardinality" : "1"
+    }
+  ],
+  "Blueprints": {
+    "blueprint_name": "multinode-hdp",
+    "stack_name": "HDP",
+    "stack_version": "2.5"
+  }
+}
