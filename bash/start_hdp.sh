@@ -194,7 +194,7 @@ function p_interview() {
             _ask "Cluster config json path (optional)" "" "r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
             _ask "Host mapping json path (optional)" "" "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
             if [ -z "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ]; then
-                _ask "Would you like to install Knox, Ranger and Atlas?" "N" "r_AMBARI_BLUEPRINT_INSTALL_SECURITY"
+                _ask "Would you like to install Knox, Ranger and Atlas? (experimental)" "N" "r_AMBARI_BLUEPRINT_INSTALL_SECURITY"
             fi
         fi
 
@@ -456,7 +456,7 @@ function f_ambari_blueprint_cluster_config() {
         "properties_attributes" : { },
         "properties" : {
           "ranger.ks.jpa.jdbc.url" : "jdbc:postgresql://node1.localdomain:5432/rangerkms",
-          "ranger.ks.jpa.jdbc.driver" : "org.postgresql.Driver",
+          "ranger.ks.jpa.jdbc.driver" : "org.postgresql.Driver"
         }
       }
     }'
