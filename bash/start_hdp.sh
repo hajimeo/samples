@@ -466,6 +466,25 @@ function f_ambari_blueprint_cluster_config() {
           "ranger.ks.jpa.jdbc.driver" : "org.postgresql.Driver"
         }
       }
+    },
+    {
+      "application-properties" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "atlas.audit.hbase.zookeeper.quorum" : "%HOSTGROUP::host_group_3%",
+          "atlas.graph.index.search.solr.zookeeper-url" : "%HOSTGROUP::host_group_3%:2181/infra-solr",
+          "atlas.graph.storage.hostname" : "%HOSTGROUP::host_group_3%"
+        }
+      }
+    },
+    {
+      "tagsync-application-properties" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "atlas.kafka.bootstrap.servers" : "%HOSTGROUP::host_group_3%:6667",
+          "atlas.kafka.zookeeper.connect" : "%HOSTGROUP::host_group_3%"
+        }
+      }
     }'
     fi
 
