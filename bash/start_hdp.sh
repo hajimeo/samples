@@ -430,6 +430,7 @@ function f_ambari_blueprint_cluster_config() {
           "db_name" : "rangerkms",
           "db_user" : "rangerkms",
           "db_password" : "'$g_DEFAULT_PASSWORD'",
+          "KMS_MASTER_KEY_PASSWD" : "'$g_DEFAULT_PASSWORD'",
           "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
           "REPOSITORY_CONFIG_USERNAME" : "keyadmin",
           "db_host" : "'$r_AMBARI_HOST'"
