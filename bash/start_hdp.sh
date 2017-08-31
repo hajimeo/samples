@@ -462,7 +462,7 @@ function f_ambari_blueprint_cluster_config() {
       "dbks-site" : {
         "properties_attributes" : { },
         "properties" : {
-          "ranger.ks.jpa.jdbc.url" : "jdbc:postgresql://node1.localdomain:5432/rangerkms",
+          "ranger.ks.jpa.jdbc.url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/rangerkms",
           "ranger.ks.jpa.jdbc.driver" : "org.postgresql.Driver"
         }
       }
