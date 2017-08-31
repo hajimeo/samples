@@ -408,10 +408,12 @@ function f_ambari_blueprint_cluster_config() {
         "properties_attributes" : { },
         "properties" : {
           "db_root_user" : "ranger",
+          "db_root_password" : "'$g_DEFAULT_PASSWORD'",
           "DB_FLAVOR" : "POSTGRES",
           "db_name" : "ranger",
           "policymgr_external_url" : "http://%HOSTGROUP::host_group_3%:6080",
           "db_user" : "rangeradmin",
+          "db_password" : "'$g_DEFAULT_PASSWORD'",
           "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
           "db_host" : "'$r_AMBARI_HOST'"
         }
@@ -422,9 +424,11 @@ function f_ambari_blueprint_cluster_config() {
         "properties_attributes" : { },
         "properties" : {
           "db_root_user" : "ranger",
+          "db_root_password" : "'$g_DEFAULT_PASSWORD'",
           "DB_FLAVOR" : "POSTGRES",
           "db_name" : "rangerkms",
           "db_user" : "rangerkms",
+          "db_password" : "'$g_DEFAULT_PASSWORD'",
           "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
           "REPOSITORY_CONFIG_USERNAME" : "keyadmin",
           "db_host" : "'$r_AMBARI_HOST'"
@@ -447,6 +451,7 @@ function f_ambari_blueprint_cluster_config() {
       "ranger-env" : {
         "properties_attributes" : { },
         "properties" : {
+          "ranger_admin_password" : "'$g_DEFAULT_PASSWORD'",
           "xasecure.audit.destination.solr" : "false"
         }
       }
