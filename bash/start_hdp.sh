@@ -194,7 +194,7 @@ function p_interview() {
             _ask "Cluster config json path (optional)" "" "r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
             _ask "Host mapping json path (optional)" "" "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
             if [ -z "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ]; then
-                _ask "Would you like to install Knox, Ranger and Atlas? (experimental)" "N" "r_AMBARI_BLUEPRINT_INSTALL_SECURITY"
+                _ask "Would you like to install Knox, Ranger, Atlas (HBase, Kafka, Solr)?" "N" "r_AMBARI_BLUEPRINT_INSTALL_SECURITY"
             fi
         fi
 
@@ -1595,8 +1595,19 @@ function f_services_start() {
     echo ""
 }
 
+function f_add_comp() {
+    local __doc__="Add (client) component as Ambari Web UI installs all clients (f_add_comp node1.localdomain HDFS_CLIENT"
+    local _host="$1"
+    local _comp="$2"
+    local _ambari_host="${3-$r_AMBARI_HOST}"
+    local _c="`f_get_cluster_name $_ambari_host`" || return 1
+
+    curl -si -u admin:admin -H "X-Requested-By:ambari" -X POST -d '{"host_components" : [{"HostRoles":{"component_name":"'${_comp}'"}}]}' "http://localhost:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
+    curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"HostRoles": {"state": "INSTALLED"}}' "http://localhost:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
+}
+
 function f_service() {
-    local __doc__="Request STOP/START/RESTART to Ambari via API with maintenance mode (for _s in hbase kafka atlas; do  f_service \$_s stop; done)"
+    local __doc__='Request STOP/START/RESTART to Ambari via API with maintenance mode (for _s in hbase kafka atlas; do f_service $_s stop; done)'
     local _service="$1"
     local _action="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
