@@ -406,8 +406,6 @@ function f_ambari_blueprint_cluster_config() {
     local _extra_comps_4=""
     local _extra_configs=""
     if _isYes "$_install_security" ; then
-        _extra_comps_1=''
-        _extra_comps_2=',{"name":"SLIDER"},{"name":"HBASE_CLIENT"}'
         _extra_comps_3=',{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}'
         _extra_comps_4=',{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"},{"name":"SLIDER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
         # https://cwiki.apache.org/confluence/display/AMBARI/Blueprint+support+for+Ranger
@@ -624,6 +622,9 @@ function f_ambari_blueprint_cluster_config() {
           "name" : "WEBHCAT_SERVER"
         },
         {
+          "name" : "SLIDER"
+        },
+        {
           "name" : "HDFS_CLIENT"
         },
         {
@@ -672,6 +673,9 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "NODEMANAGER"
+        },
+        {
+          "name" : "SLIDER"
         },
         {
           "name" : "HDFS_CLIENT"
