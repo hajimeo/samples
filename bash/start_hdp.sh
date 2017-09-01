@@ -335,11 +335,18 @@ service postgresql reload"
     if [ ! -z "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ]; then
         _cluster_config_json="$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
         if [ ! -s "$_cluster_config_json" ]; then
-            _warn "$_cluster_config_json does not exist or empty file. Will regenerate automatically..."
-            f_ambari_blueprint_cluster_config > $_cluster_config_json
+            _error "$_cluster_config_json does not exist. Stopping Ambari Blueprint..."
+            return 1
         fi
     else
         f_ambari_blueprint_cluster_config > $_cluster_config_json
+        _info "Removing ZK number restrictions..."
+        ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
+_n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
+[ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
+        ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
+_n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
+[ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
     fi
 
     curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json} || return $?
@@ -1265,14 +1272,6 @@ function p_post_install_changes() {
         _info "Reducing Ambari Alert frequency..."
         _ambari_query_sql "update alert_definition set schedule_interval = schedule_interval * 2 where schedule_interval < 11" "$r_AMBARI_HOST"
     fi
-
-    _info "Removing ZK numer restriction..."
-    ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
-_n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
-[ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
-    ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
-_n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
-[ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
 
     #_info "Reducing dfs.replication to 1..."
     #ssh -q -t root@$r_AMBARI_HOST -t "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1" &> /tmp/configs_sh_dfs_replication.out
