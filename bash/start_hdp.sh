@@ -340,14 +340,15 @@ service postgresql reload"
         fi
     else
         f_ambari_blueprint_cluster_config > $_cluster_config_json
-        _info "Removing ZK number restrictions..."
-        ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
+    fi
+
+    _info "Removing ZK number restrictions..."
+    ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
 _n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
 [ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
-        ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
+    ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
 _n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
 [ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
-    fi
 
     curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json} || return $?
     curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json} || return $?
@@ -406,7 +407,8 @@ function f_ambari_blueprint_cluster_config() {
     local _extra_comps_4=""
     local _extra_configs=""
     if _isYes "$_install_security" ; then
-        _extra_comps_3=',{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}'
+        # TODO: ,{"name":"RANGER_KMS_SERVER"}
+        _extra_comps_3=',{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}'
         _extra_comps_4=',{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
         # https://cwiki.apache.org/confluence/display/AMBARI/Blueprint+support+for+Ranger
         _extra_configs=',{
