@@ -179,7 +179,7 @@ function f_ambari_kerberos_setup() {
     local _api_uri="http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
 
     # Test GET method
-    #response=$(curl --write-out %{http_code} -si -o /dev/null "${_api_uri}/configurations/service_config_versions?service_name=KERBEROS")
+    #response=$(curl --write-out %{http_code} -s -o /dev/null "${_api_uri}/configurations/service_config_versions?service_name=KERBEROS")
 
     #_info "Delete existing KERBEROS service"
     #_api_uri="http://node1.localdomain:8080/api/v1/clusters/c1"
@@ -212,8 +212,8 @@ function f_ambari_kerberos_setup() {
     sleep 5;
 
     #_info "Get the default kerberos descriptor and upload (assuming no current)"
-    curl -si -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/stacks/$_stack_name/versions/${r_HDP_STACK_VERSION}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
-    #curl -si -H "X-Requested-By:ambari" -u admin:admin -X GET "${_api_uri}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
+    curl -s -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/stacks/$_stack_name/versions/${r_HDP_STACK_VERSION}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
+    #curl -s -H "X-Requested-By:ambari" -u admin:admin -X GET "${_api_uri}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
 
     # For ERROR "The properties [Artifacts/stack_version, href, Artifacts/stack_name] specified in the request or predicate are not supported for the resource type Artifact."
     python -c "import sys,json
