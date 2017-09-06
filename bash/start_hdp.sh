@@ -493,7 +493,7 @@ function f_ambari_blueprint_cluster_config() {
         "properties_attributes" : { },
         "properties" : {
           "atlas.kafka.bootstrap.servers" : "%HOSTGROUP::host_group_3%:6667",
-          "atlas.kafka.zookeeper.connect" : "%HOSTGROUP::host_group_3%"
+          "atlas.kafka.zookeeper.connect" : "%HOSTGROUP::host_group_3%:2181"
         }
       }
     },
@@ -869,6 +869,12 @@ function f_docker_setup() {
     if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
         ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
         apparmor_parser -R /etc/apparmor.d/usr.sbin.tcpdump
+    fi
+
+    # To use mysql from container
+    if [ ! -L /etc/apparmor.d/disable/usr.sbin.mysqld ]; then
+        ln -sf /etc/apparmor.d/usr.sbin.mysqld /etc/apparmor.d/disable/
+        apparmor_parser -R /etc/apparmor.d/usr.sbin.mysqld
     fi
 
     local _storage_size="30G"
