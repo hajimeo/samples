@@ -8,8 +8,6 @@ RUN yum -y install yum-utils sudo which vim net-tools strace lsof tcpdump openss
 RUN mkdir -m 600 /root/.ssh
 #TODO: shouldn't hardcode the private key
 RUN echo -e '_REPLACE_WITH_YOUR_PRIVATE_KEY_' > /root/.ssh/id_rsa
-RUN echo -e '_REPLACE_WITH_YOUR_PUBLIC_KEY_' > /root/.ssh/authorized_keys
-
 RUN chmod 400 /root/.ssh/id_rsa
 RUN ssh-keygen -y -f /root/.ssh/id_rsa > /root/.ssh/id_rsa.pub
 RUN cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys
