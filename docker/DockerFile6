@@ -10,7 +10,6 @@ RUN setenforce 0 || echo ko;\
 chkconfig iptables off || echo ko;\
 mkdir -m 600 /root/.ssh;\
 echo -e '_REPLACE_WITH_YOUR_PRIVATE_KEY_' > /root/.ssh/id_rsa;\
-echo -e '_REPLACE_WITH_YOUR_PUBLIC_KEY_' > /root/.ssh/authorized_keys;\
 chmod 400 /root/.ssh/id_rsa;\
 ssh-keygen -y -f /root/.ssh/id_rsa > /root/.ssh/id_rsa.pub;\
 cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys;\
