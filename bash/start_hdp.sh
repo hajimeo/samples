@@ -5,7 +5,7 @@
 # 1. Install OS. Recommend Ubuntu 14.x
 # 2. sudo -i    (TODO: only root works at this moment)
 # 3. (optional) screen
-# 4. wget https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_hdp.sh -O ./start_hdp.sh
+# 4. curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_hdp.sh
 # 5. chmod u+x ./start_hdp.sh
 # 6. ./start_hdp.sh -i    or './start_hdp.sh -a' for full automated installation
 # 7. answer questions
@@ -96,7 +96,7 @@ __LAST_ANSWER=""
 function p_interview() {
     local __doc__="Asks user questions. (Requires Python)"
     # Default values TODO: need to update Ambari Version manually (stack version is automatic)
-    local _centos_version="6.9"
+    local _centos_version="6.8" # TODO: 6.9 doesn't work
     local _ambari_version="2.5.1.0"
     local _stack_version="2.6"
     local _hdp_version="${_stack_version}.0.0"
@@ -191,8 +191,11 @@ function p_interview() {
         if _isYes "$r_AMBARI_BLUEPRINT"; then
             _ask "Cluster name" "c${r_NODE_START_NUM}" "r_CLUSTER_NAME" "N" "Y"
             _ask "Default password" "$g_DEFAULT_PASSWORD" "r_DEFAULT_PASSWORD" "N" "Y"
-            _ask "Host mapping json path (optional)" "" "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
             _ask "Cluster config json path (optional)" "" "r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
+            _ask "Host mapping json path (optional)" "" "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
+            if [ -z "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ]; then
+                _ask "Would you like to install Knox, Ranger, Atlas (HBase, Kafka, Solr)?" "N" "r_AMBARI_BLUEPRINT_INSTALL_SECURITY"
+            fi
         fi
 
         #_ask "Would you like to increase Ambari Alert interval?" "Y" "r_AMBARI_ALERT_INTERVAL"
@@ -281,7 +284,6 @@ function p_hdp_start() {
     sleep 4
     _info "NOT setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
-    #f_etcs_mount
 
     _info "Starting Ambari Server"
     f_ambari_server_start
@@ -314,6 +316,12 @@ function p_ambari_blueprint() {
         return 1
     fi
 
+    _info "Modifying postgresql for Ranger/KMS install later..."
+    ssh -q root@$r_AMBARI_HOST "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1\`
+sudo -u postgres psql -c \"CREATE ROLE ranger WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
+grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   ranger,rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
+service postgresql reload"
+
     if [ ! -z "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ]; then
         _hostmap_json="$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
         if [ ! -s "$_hostmap_json" ]; then
@@ -327,15 +335,23 @@ function p_ambari_blueprint() {
     if [ ! -z "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ]; then
         _cluster_config_json="$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
         if [ ! -s "$_cluster_config_json" ]; then
-            _warn "$_cluster_config_json does not exist or empty file. Will regenerate automatically..."
-            f_ambari_blueprint_cluster_config > $_cluster_config_json
+            _error "$_cluster_config_json does not exist. Stopping Ambari Blueprint..."
+            return 1
         fi
     else
         f_ambari_blueprint_cluster_config > $_cluster_config_json
     fi
 
-    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json} || return $?
-    curl -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json} || return $?
+    _info "Removing ZK number restrictions..."
+    ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
+_n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
+[ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
+    ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
+_n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
+[ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
+
+    curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json} || return $?
+    curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json} || return $?
 }
 
 function f_ambari_blueprint_hostmap() {
@@ -347,6 +363,11 @@ function f_ambari_blueprint_hostmap() {
     local _start_from="${4-$r_NODE_START_NUM}"
     local _domain_suffix="${5-$r_DOMAIN_SUFFIX}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+
+    if [ -z "$_how_many" ] || [ 4 -gt "$_how_many" ]; then
+        _error "At this moment, Blueprint build needs at least 4 nodes"
+        return 1
+    fi
 
     local _host_loop=""
     local _num=1
@@ -378,11 +399,118 @@ function f_ambari_blueprint_hostmap() {
 function f_ambari_blueprint_cluster_config() {
     local __doc__="Output json string for Ambari Blueprint Cluster mapping TODO: it's fixed map at this moment"
     local _stack_version="${1-$r_HDP_STACK_VERSION}"
-    local _how_many="${3-$r_NUM_NODES}"
+    local _install_security="${2-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
 
-    if [ -z "$_how_many" ] || [ 4 -gt "$_how_many" ]; then
-        _error "At this moment, Blueprint build needs at least 4 nodes"
-        return 1
+    local _extra_comps_1=""
+    local _extra_comps_2=""
+    local _extra_comps_3=""
+    local _extra_comps_4=""
+    local _extra_configs=""
+    if _isYes "$_install_security" ; then
+        # TODO: ,{"name":"RANGER_KMS_SERVER"}
+        _extra_comps_3=',{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}'
+        _extra_comps_4=',{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
+        # https://cwiki.apache.org/confluence/display/AMBARI/Blueprint+support+for+Ranger
+        _extra_configs=',{
+      "admin-properties" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "db_root_user" : "ranger",
+          "db_root_password" : "'$g_DEFAULT_PASSWORD'",
+          "DB_FLAVOR" : "POSTGRES",
+          "db_name" : "ranger",
+          "policymgr_external_url" : "http://%HOSTGROUP::host_group_3%:6080",
+          "db_user" : "rangeradmin",
+          "db_password" : "'$g_DEFAULT_PASSWORD'",
+          "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
+          "db_host" : "'$r_AMBARI_HOST'"
+        }
+      }
+    },
+    {
+      "kms-properties" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "db_root_user" : "ranger",
+          "db_root_password" : "'$g_DEFAULT_PASSWORD'",
+          "DB_FLAVOR" : "POSTGRES",
+          "db_name" : "rangerkms",
+          "db_user" : "rangerkms",
+          "db_password" : "'$g_DEFAULT_PASSWORD'",
+          "KMS_MASTER_KEY_PASSWD" : "'$g_DEFAULT_PASSWORD'",
+          "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
+          "REPOSITORY_CONFIG_USERNAME" : "keyadmin",
+          "db_host" : "'$r_AMBARI_HOST'"
+        }
+      }
+    },
+    {
+      "ranger-admin-site" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "ranger.jpa.audit.jdbc.url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/ranger_audit",
+          "ranger.jpa.jdbc.url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/ranger",
+          "ranger.jpa.jdbc.driver" : "org.postgresql.Driver",
+          "ranger.jpa.audit.jdbc.driver" : "org.postgresql.Driver",
+          "ranger.jpa.audit.jdbc.dialect" : "org.eclipse.persistence.platform.database.PostgreSQLPlatform"
+        }
+      }
+    },
+    {
+      "ranger-env" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "ranger_admin_password" : "'$g_DEFAULT_PASSWORD'",
+          "xasecure.audit.destination.solr" : "false"
+        }
+      }
+    },
+    {
+      "dbks-site" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "ranger.ks.jpa.jdbc.url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/rangerkms",
+          "ranger.ks.jpa.jdbc.driver" : "org.postgresql.Driver"
+        }
+      }
+    },
+    {
+      "application-properties" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "atlas.audit.hbase.zookeeper.quorum" : "%HOSTGROUP::host_group_3%",
+          "atlas.graph.index.search.solr.zookeeper-url" : "%HOSTGROUP::host_group_3%:2181/infra-solr",
+          "atlas.graph.storage.hostname" : "%HOSTGROUP::host_group_3%"
+        }
+      }
+    },
+    {
+      "tagsync-application-properties" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "atlas.kafka.bootstrap.servers" : "%HOSTGROUP::host_group_3%:6667",
+          "atlas.kafka.zookeeper.connect" : "%HOSTGROUP::host_group_3%"
+        }
+      }
+    },
+    {
+      "hbase-env" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "hbase_regionserver_xmn_max" : "448",
+          "hbase_master_heapsize" : "768",
+          "hbase_regionserver_heapsize" : "1024"
+        }
+      }
+    },
+    {
+      "atlas-env" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "atlas_server_xmx" : "1024"
+        }
+      }
+    }'
     fi
 
     echo '{
@@ -455,7 +583,7 @@ function f_ambari_blueprint_cluster_config() {
           "hive.heapsize" : "513"
         }
       }
-    }
+    }'$_extra_configs'
   ],
   "host_groups": [
     {
@@ -463,7 +591,7 @@ function f_ambari_blueprint_cluster_config() {
       "components" : [
         {
           "name" : "AMBARI_SERVER"
-        }
+        }'$_extra_comps_1'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -472,10 +600,40 @@ function f_ambari_blueprint_cluster_config() {
       "name" : "host_group_2",
       "components" : [
         {
-          "name" : "YARN_CLIENT"
+          "name" : "NAMENODE"
+        },
+        {
+          "name" : "HISTORYSERVER"
+        },
+        {
+          "name" : "APP_TIMELINE_SERVER"
+        },
+        {
+          "name" : "RESOURCEMANAGER"
+        },
+        {
+          "name" : "MYSQL_SERVER"
+        },
+        {
+          "name" : "HIVE_SERVER"
+        },
+        {
+          "name" : "HIVE_METASTORE"
+        },
+        {
+          "name" : "WEBHCAT_SERVER"
+        },
+        {
+          "name" : "SLIDER"
         },
         {
           "name" : "HDFS_CLIENT"
+        },
+        {
+          "name" : "MAPREDUCE2_CLIENT"
+        },
+        {
+          "name" : "YARN_CLIENT"
         },
         {
           "name" : "TEZ_CLIENT"
@@ -488,34 +646,7 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "HIVE_CLIENT"
-        },
-        {
-          "name" : "HIVE_SERVER"
-        },
-        {
-          "name" : "MYSQL_SERVER"
-        },
-        {
-          "name" : "HIVE_METASTORE"
-        },
-        {
-          "name" : "HISTORYSERVER"
-        },
-        {
-          "name" : "NAMENODE"
-        },
-        {
-          "name" : "WEBHCAT_SERVER"
-        },
-        {
-          "name" : "MAPREDUCE2_CLIENT"
-        },
-        {
-          "name" : "APP_TIMELINE_SERVER"
-        },
-        {
-          "name" : "RESOURCEMANAGER"
-        }
+        }'$_extra_comps_2'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -528,7 +659,10 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "SECONDARY_NAMENODE"
-        }
+        },
+        {
+          "name" : "HDFS_CLIENT"
+        }'$_extra_comps_3'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -537,10 +671,22 @@ function f_ambari_blueprint_cluster_config() {
       "name" : "host_group_4",
       "components" : [
         {
-          "name" : "YARN_CLIENT"
+          "name" : "DATANODE"
+        },
+        {
+          "name" : "NODEMANAGER"
+        },
+        {
+          "name" : "SLIDER"
         },
         {
           "name" : "HDFS_CLIENT"
+        },
+        {
+          "name" : "MAPREDUCE2_CLIENT"
+        },
+        {
+          "name" : "YARN_CLIENT"
         },
         {
           "name" : "TEZ_CLIENT"
@@ -555,17 +701,8 @@ function f_ambari_blueprint_cluster_config() {
           "name" : "PIG"
         },
         {
-          "name" : "MAPREDUCE2_CLIENT"
-        },
-        {
           "name" : "HIVE_CLIENT"
-        },
-        {
-          "name" : "NODEMANAGER"
-        },
-        {
-          "name" : "DATANODE"
-        }
+        }'$_extra_comps_4'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -852,7 +989,8 @@ function f_docker_start() {
         # docker seems doesn't care if i try to start already started one
         docker start --attach=false ${_node}$_n &
         sleep 1
-	docker exec -it ${_node}$_n bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
+	    docker exec -it ${_node}$_n bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh &>/dev/null && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
+	    docker exec -it ${_node}$_n bash -c "grep -q \"${r_DOCKER_PRIVATE_HOSTNAME}\" /etc/hosts || echo \"${r_DOCKER_HOST_IP} ${r_DOCKER_PRIVATE_HOSTNAME}\" >> /etc/hosts"
     done
     wait
 }
@@ -1032,7 +1170,7 @@ function _ambari_query_sql() {
 function f_get_cluster_name() {
     local __doc__="Output (return) cluster name by using SQL"
     local _ambari_host="${1-$r_AMBARI_HOST}"
-    local _c="$(_ambari_query_sql "select cluster_name from ambari.clusters order by cluster_id desc limit 1;" $_ambari_host)"
+    local _c="$(_ambari_query_sql "select cluster_name from clusters order by cluster_id desc limit 1;" $_ambari_host)"
     if [ -z "$_c" ]; then
         _warn "No cluster name from $_ambari_host"
         return 1
@@ -1131,7 +1269,7 @@ function f_port_forward() {
     ssh -2CNnqTxfg -L$_local_port:$_remote_host:$_remote_port $_remote_host
 }
 
-function p_ambari_update_config() {
+function p_post_install_changes() {
     local __doc__="Change some configurations for Dev cluster"
 
     # TODO: need to find the best way to find the first time
@@ -1141,27 +1279,16 @@ function p_ambari_update_config() {
         _ambari_query_sql "update alert_definition set schedule_interval = schedule_interval * 2 where schedule_interval < 11" "$r_AMBARI_HOST"
     fi
 
-    _info "Removing ZK numer restriction..."
-    ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
-_n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
-[ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
-
     #_info "Reducing dfs.replication to 1..."
     #ssh -q -t root@$r_AMBARI_HOST -t "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1" &> /tmp/configs_sh_dfs_replication.out
     # Blueprint should take care above. TODO: should I reduce aggregator TTL size?
 
-    _info "Modifying postgresql for Ranger install later..."
-    ssh -q root@$r_AMBARI_HOST "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1\`
-sudo -u postgres psql -c \"CREATE ROLE rangeradmin WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
-grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
-service postgresql reload"
-
-    _info "No password required to login Ambari..."
-    ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties'
-grep -q '^api.authenticate=false' \$_f && exit
-grep -q '^api.authenticate=' \$_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' \$_f || echo 'api.authenticate=false' >> \$_f
-grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f
-ambari-server restart --skip-database-check"
+    #_info "No password required to login Ambari..."
+    #ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties'
+#grep -q '^api.authenticate=false' \$_f && exit
+#grep -q '^api.authenticate=' \$_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' \$_f || echo 'api.authenticate=false' >> \$_f
+#grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f
+#ambari-server restart --skip-database-check"
 
     _info "Creating 'admin' user in each node and in HDFS..."
     f_useradd_on_nodes "admin"
@@ -1243,26 +1370,34 @@ function f_ambari_agent_fix_public_hostname() {
 }
 
 function f_etcs_mount() {
-    local __doc__="Mounting all agent's etc directories (handy for troubleshooting)"
+    local __doc__="Mounting all agent's etc/log directories (handy for troubleshooting)"
     local _remount="$1"
     local _how_many="${2-$r_NUM_NODES}"
     local _start_from="${3-$r_NODE_START_NUM}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        if [ ! -d /mnt/etc/${_node}$i ]; then
-            mkdir -p /mnt/etc/${_node}$i
-        fi
+        [ -d /mnt/${_node}$i/etc ] || mkdir -p /mnt/${_node}$i/etc
+        [ -d /mnt/${_node}$i/log ] || mkdir -p /mnt/${_node}$i/log
 
-        if _isNotEmptyDir "/mnt/etc/${_node}$i" ;then
+        if _isNotEmptyDir "/mnt/${_node}$i/etc" ;then
             if ! _isYes "$_remount"; then
                 continue
             else
-                umount -f /mnt/etc/${_node}$i
+                umount -f /mnt/${_node}$i/etc
             fi
         fi
 
-        sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks ${_node}${i}${r_DOMAIN_SUFFIX}:/etc /mnt/etc/${_node}${i}
+        if _isNotEmptyDir "/mnt/${_node}$i/log" ;then
+            if ! _isYes "$_remount"; then
+                continue
+            else
+                umount -f /mnt/${_node}$i/log
+            fi
+        fi
+
+        sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks,ro ${_node}${i}${r_DOMAIN_SUFFIX}:/etc /mnt/${_node}${i}/etc
+        sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks,ro ${_node}${i}${r_DOMAIN_SUFFIX}:/var/log /mnt/${_node}${i}/log
     done
 }
 
@@ -1401,12 +1536,12 @@ function f_ambari_set_repo() {
 
     if _isUrl "$_repo_url"; then
         # TODO: admin:admin
-        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${_repo_os_ver}/repositories/HDP-${r_HDP_STACK_VERSION}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
+        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${_repo_os_ver}/repositories/HDP-${r_HDP_STACK_VERSION}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
     fi
 
     if _isUrl "$_util_url"; then
         local _hdp_util_name="`echo $_util_url | grep -oP 'HDP-UTILS-[\d\.]+'`"
-        curl -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}'
+        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}'
     fi
 }
 
@@ -1461,12 +1596,23 @@ function f_services_start() {
     _port_wait "$r_AMBARI_HOST" "8080"
     _ambari_agent_wait
 
-    curl -u admin:admin -H "X-Requested-By:ambari" "http://$r_AMBARI_HOST:8080/api/v1/clusters/${_c}/services?" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+    curl -si -u admin:admin -H "X-Requested-By:ambari" "http://$r_AMBARI_HOST:8080/api/v1/clusters/${_c}/services?" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
     echo ""
 }
 
+function f_add_comp() {
+    local __doc__="Add (client) component as Ambari Web UI installs all clients (f_add_comp node1.localdomain HDFS_CLIENT"
+    local _host="$1"
+    local _comp="$2"
+    local _ambari_host="${3-$r_AMBARI_HOST}"
+    local _c="`f_get_cluster_name $_ambari_host`" || return 1
+
+    curl -si -u admin:admin -H "X-Requested-By:ambari" -X POST -d '{"host_components" : [{"HostRoles":{"component_name":"'${_comp}'"}}]}' "http://localhost:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
+    curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"HostRoles": {"state": "INSTALLED"}}' "http://localhost:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
+}
+
 function f_service() {
-    local __doc__="Request STOP/START/RESTART to Ambari via API with maintenance mode (for _s in hbase kafka atlas; do  f_service \$_s stop; done)"
+    local __doc__='Request STOP/START/RESTART to Ambari via API with maintenance mode (for _s in hbase kafka atlas; do f_service $_s stop; done)'
     local _service="$1"
     local _action="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
@@ -1510,9 +1656,9 @@ function f_service() {
     _n="`_ambari_query_sql "select count(*) from request where request_context ='set $_action for $_service by f_service' and end_time < start_time"`"
     [ 0 -lt $_n ] && return;
 
-    curl -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_service'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
+    curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_service'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
     local _request_context=""
-    curl -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_service' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_service'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
+    curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_service' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_service'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
     echo ""
 }
 
@@ -1635,9 +1781,8 @@ function p_host_setup() {
         if [ $? -eq 0 ]; then
             _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
             f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
-            _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
-            f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
-            _ambari_agent_wait &>> /tmp/p_host_setup.log
+            f_run_cmd_on_nodes "ambari-agent start" &> /dev/null
+            _ambari_agent_wait &> /dev/null
             if [ $? -ne 0 ]; then
                 _log "INFO" "Starting f_ambari_agent_install"
                 f_ambari_agent_install &>> /tmp/p_host_setup.log
@@ -1669,7 +1814,7 @@ function p_host_setup() {
     fi
 
     f_port_forward_ssh_on_nodes
-    _log "INFO" "Completed. Please run p_ambari_update_config once when HDFS is running."
+    _log "INFO" "Completed. Please run p_post_install_changes when HDFS is running."
 
     f_screen_cmd
 }
@@ -1894,7 +2039,7 @@ function f_apache_proxy() {
             CacheEnable disk http://
             CacheDirLevels 2
             CacheDirLength 1
-            CacheMaxFileSize 50000000
+            CacheMaxFileSize 256000000
         </IfModule>
 
     </IfModule>
@@ -2013,9 +2158,9 @@ function f_update_check() {
             if ! _isYes; then return 0; fi
         fi
 
-        _backup "${_local_file_path}"
+        _backup "${_local_file_path}" && _info "Backup was saved into ${g_BACKUP_DIR%/}"
 
-        curl -k -L "$_remote_url" -o ${_local_file_path} || _critical "$FUNCNAME: Update failed."
+        curl -s -k -L "$_remote_url" -o ${_local_file_path} || _critical "$FUNCNAME: Update failed."
 
         #_info "Validating the downloaded script..."
         #source ${_local_file_path} || _critical "Please contact the script author."

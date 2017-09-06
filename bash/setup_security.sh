@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_security.sh
+#
+# DOWNLOAD:
+#   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_security.sh
+#
 #
 # This script contains functions which help to set up Ambari/HDP security (SSL,LDAP,Kerberos etc.)
 # This script requires below:
@@ -11,7 +14,7 @@
 #   source ./setup_security.sh && f_loadResp
 #   f_kdc_install_on_host && f_ambari_kerberos_setup
 #
-# Example 2: How to set up SSL on hadoop component
+# Example 2: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
 #   source ./setup_security.sh && f_loadResp
 #   f_hadoop_ssl_setup
 #
@@ -68,6 +71,11 @@ function f_kdc_install_on_host() {
     fi
 
     DEBIAN_FRONTEND=noninteractive apt-get install -y krb5-kdc krb5-admin-server || return $?
+
+    if [ -s /var/lib/krb5kdc/principal ]; then
+        _info "/var/lib/krb5kdc/principal already exists. Not try creating..."
+        return 0
+    fi
 
     mv /etc/krb5.conf /etc/krb5.conf.orig
     echo "[libdefaults]
@@ -175,37 +183,37 @@ function f_ambari_kerberos_setup() {
 
     #_info "Delete existing KERBEROS service"
     #_api_uri="http://node1.localdomain:8080/api/v1/clusters/c1"
-    #curl -H "X-Requested-By:ambari" -u admin:admin -i -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
-    #curl -H "X-Requested-By:ambari" -u admin:admin -i -X DELETE "${_api_uri}/services/KERBEROS"
+    #curl -si -H "X-Requested-By:ambari" -u admin:admin -i -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
+    #curl -si -H "X-Requested-By:ambari" -u admin:admin -i -X DELETE "${_api_uri}/services/KERBEROS"
 
     _info "register Kerberos service and component"
-    curl -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/services" -d '{"ServiceInfo": { "service_name": "KERBEROS"}}'
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/services" -d '{"ServiceInfo": { "service_name": "KERBEROS"}}'
     sleep 3;
-    curl -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/services?ServiceInfo/service_name=KERBEROS" -d '{"components":[{"ServiceComponentInfo":{"component_name":"KERBEROS_CLIENT"}}]}'
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/services?ServiceInfo/service_name=KERBEROS" -d '{"components":[{"ServiceComponentInfo":{"component_name":"KERBEROS_CLIENT"}}]}'
     sleep 3;
 
     _info "Adding Kerberos client on all nodes"
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        curl -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "${_api_uri}/hosts?Hosts/host_name=node$i${r_DOMAIN_SUFFIX}"
+        curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "${_api_uri}/hosts?Hosts/host_name=node$i${r_DOMAIN_SUFFIX}"
         sleep 1;
     done
      #-d '{"RequestInfo":{"query":"Hosts/host_name=node1.localdomain|Hosts/host_name=node2.localdomain|..."},"Body":{"host_components":[{"HostRoles":{"component_name":"KERBEROS_CLIENT"}}]}}'
 
     _info "Add/Upload the KDC configuration"
     _ambari_kerberos_generate_service_config "$_realm" "$_server" > /tmp/${_cluster_name}_kerberos_service_conf.json
-    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d @/tmp/${_cluster_name}_kerberos_service_conf.json
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d @/tmp/${_cluster_name}_kerberos_service_conf.json
     sleep 3;
 
     #_info "Storing KDC admin credential temporarily"
-    #curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/credentials/kdc.admin.credential" -d "{\"Credential\":{\"principal\":\"admin/admin@${_realm}\",\"key\":\"${_password}\",\"type\":\"temporary\"}}"
+    #curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/credentials/kdc.admin.credential" -d "{\"Credential\":{\"principal\":\"admin/admin@${_realm}\",\"key\":\"${_password}\",\"type\":\"temporary\"}}"
 
     _info "Starting (installing) Kerberos"
-    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/services?ServiceInfo/state=INSTALLED&ServiceInfo/service_name=KERBEROS" -d '{"RequestInfo":{"context":"Install Kerberos Service with f_ambari_kerberos_setup","operation_level":{"level":"CLUSTER","cluster_name":"c1"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}'
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/services?ServiceInfo/state=INSTALLED&ServiceInfo/service_name=KERBEROS" -d '{"RequestInfo":{"context":"Install Kerberos Service with f_ambari_kerberos_setup","operation_level":{"level":"CLUSTER","cluster_name":"c1"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}'
     sleep 5;
 
     #_info "Get the default kerberos descriptor and upload (assuming no current)"
-    curl -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/stacks/$_stack_name/versions/${r_HDP_STACK_VERSION}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
-    #curl -H "X-Requested-By:ambari" -u admin:admin -X GET "${_api_uri}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
+    curl -s -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/stacks/$_stack_name/versions/${r_HDP_STACK_VERSION}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
+    #curl -s -H "X-Requested-By:ambari" -u admin:admin -X GET "${_api_uri}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
 
     # For ERROR "The properties [Artifacts/stack_version, href, Artifacts/stack_name] specified in the request or predicate are not supported for the resource type Artifact."
     python -c "import sys,json
@@ -216,12 +224,12 @@ a.pop('Artifacts', None)
 with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     json.dump(a, jd)"
 
-    curl -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/artifacts/kerberos_descriptor" -d @/tmp/${_cluster_name}_kerberos_descriptor.json
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/artifacts/kerberos_descriptor" -d @/tmp/${_cluster_name}_kerberos_descriptor.json
     sleep 3;
 
     _info "Stopping all services...."
-    #curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
-    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"$_request_context\"},\"Body\":{\"ServiceInfo\":{\"state\":\"INSTALLED\"}}}" "${_api_uri}/services"
+    #curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"$_request_context\"},\"Body\":{\"ServiceInfo\":{\"state\":\"INSTALLED\"}}}" "${_api_uri}/services"
     sleep 3;
     # confirming if it's stopped
     for _i in {1..9}; do
@@ -231,7 +239,7 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     done
 
     _info "Set up Kerberos..."
-    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d "{
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d "{
   \"session_attributes\" : {
     \"kerberos_admin\" : {
       \"principal\" : \"admin/admin@$_realm\",
@@ -251,7 +259,7 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     done
 
     _info "Start all services"
-    curl -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"Start Service with f_ambari_kerberos_setup\"},\"Body\":{\"ServiceInfo\":{\"state\":\"STARTED\"}}}" ${_api_uri}/services
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"Start Service with f_ambari_kerberos_setup\"},\"Body\":{\"ServiceInfo\":{\"state\":\"STARTED\"}}}" ${_api_uri}/services
 }
 
 function f_hadoop_spnego_setup() {
@@ -570,27 +578,33 @@ function f_hadoop_ssl_setup() {
     if [ -s ./rootCA.key ]; then
         _info "rootCA.key exists. Reusing..."
     else
-        # TODO: -aes256
+        # Step1: create my root CA (key) TODO: -aes256
         openssl genrsa -out rootCA.key 4096 || return $?
+        # Step2: create root CA's cert (pem)
         openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.support.hortonworks.com" -passin "pass:$_password" || return $?
     fi
 
     mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
+    # Step3: Create a truststore file used by clients
     keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${_trust_password} -noprompt || return $?
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh -q root@node${i}${_domain_suffix} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}; mkdir -m 755 -p ${g_CLIENT_TRUST_LOCATION%/}"
         scp ./$g_CLIENT_TRUSTSTORE_FILE root@node${i}${_domain_suffix}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
+        # Step4: On each node, create a privatekey for the node
         ssh -q root@node${i}${_domain_suffix} "mv -f ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null; keytool -genkey -alias node${i} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=node${i}${_domain_suffix}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
+        # Step5: On each node, create a CSR
         ssh -q root@node${i}${_domain_suffix} "keytool -certreq -alias node${i} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.csr -storepass ${_password}"
         scp root@node${i}${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.csr ./ || return $?
+        # Step6: Sign the CSR with the root CA
         openssl x509 -sha256 -req -in ./node${i}-keystore.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out node${i}-keystore.crt -days 730 -passin "pass:$_password" || return $?
         scp ./rootCA.pem ./node${i}-keystore.crt root@node${i}${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/ || return $?
+        # Step7: On each node, import root CA's cert and the signed cert
         ssh -q root@node${i}${_domain_suffix} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias node${i} -import -file ${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.crt -noprompt -storepass ${_password}" || return $?
         ssh -q root@node${i}.localdomain "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
     done
 
-    _info "Updating Ambari configs..."
+    _info "Updating Ambari configs for HDFS..."
     scp root@$_ambari_host:/var/lib/ambari-server/resources/scripts/configs.sh ./
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.location ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.password $_trust_password
@@ -608,7 +622,8 @@ function f_hadoop_ssl_setup() {
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c hdfs-site dfs.http.policy HTTP_AND_HTTPS # or HTTPS_ONLY
 
     # If Ambari is 2.4.x or higher below works
-    _info "Run the below command to restart required components"
+    _info "For MR2,YARN and other components:\nhttps://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.6.1/bk_security/content/enabling-ssl-for-components.html"
+    _info "Completed.\nRun the below command to restart required components"
     echo curl -u admin:admin -sk "${_http}://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests" -H 'X-Requested-By: Ambari' --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
 }
 

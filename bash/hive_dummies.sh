@@ -4,7 +4,7 @@
 #
 # Download and execute this script:
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/hive_dummies.sh
-#   bash -x ./hive_dummies.sh [dbname]
+#   bash ./hive_dummies.sh [dbname]
 #
 
 _dbname="${1-dummies}"
@@ -35,7 +35,7 @@ echo '101,Kyle,Admin,50000,A
 120,Palmer,Ceo,100000,A' > ./employee.csv
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S %z")] INFO: executing hive queries under ${_dbname} database... kinit may require"
-hive -e "
+hive -hiveconf hive.root.logger=INFO,console -e "
 set hive.tez.exec.print.summary;
 CREATE DATABASE IF NOT EXISTS ${_dbname};
 USE ${_dbname};
@@ -61,11 +61,11 @@ LOAD DATA LOCAL INPATH './sample_08.csv' OVERWRITE into table sample_08;
 CREATE EXTERNAL TABLE IF NOT EXISTS emp_stage (
   empid int,
   name string,
-  designation  string,
+  designation string,
   Salary int,
   department string)
   row format delimited
-  fields terminated by ","
+  fields terminated by ','
   location '/tmp/emp_stage_data';
 LOAD DATA LOCAL INPATH './employee.csv' OVERWRITE into table emp_stage;
 CREATE TABLE IF NOT EXISTS emp_part_bckt (
@@ -74,8 +74,7 @@ CREATE TABLE IF NOT EXISTS emp_part_bckt (
   designation  string,
   salary int)
   PARTITIONED BY (department String)
-  clustered by (empid) into 3 buckets
-  row format delimited fields terminated by ','
+  clustered by (empid) into 2 buckets
   stored as orc;
 set hive.exec.dynamic.partition=true;
 set hive.exec.dynamic.partition.mode=nonstrict;
@@ -104,11 +103,8 @@ INSERT OVERWRITE TABLE census_clus select * from census;
 # set hive.exec.max.dynamic.partitions.pernode=4;
 # set hive.exec.max.created.files=100000;
 
-# ACID needs Orc, buckets, trancational=true, also testing bloom filter
-#ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='name,city,email');
-#ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;
-# ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;
+# hive (1) returns ArrayIndexOutOfBoundsException if transactional is true and 'orc.bloom.filter.columns' is not '*'
+echo "[$(date +"%Y-%m-%d %H:%M:%S %z")] INFO: ACID needs Orc, buckets, transactional=true, also testing bloom filter, like below:"
+echo "hive -e \"USE ${_dbname};ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='*');ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;\""
 
 hdfs dfs -ls /apps/hive/warehouse/${_dbname}.db/*/
-
-

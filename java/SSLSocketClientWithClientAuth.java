@@ -51,6 +51,9 @@ import java.security.KeyStore;
  * This program assumes that the client is not inside a firewall.
  * The application can be modified to connect to a server outside
  * the firewall by following SSLSocketClientWithTunneling.java.
+ *
+ * curl -O https://raw.githubusercontent.com/hajimeo/samples/master/java/testkeys
+ * java -Djavax.net.debug=ssl,keymanager -Djavax.net.ssl.trustStore=ranger-plugin-truststore.jks SSLSocketClientWithClientAuth 127.0.0.1 6182 /service/plugins/policies/download/Sandbox_hadoop
  */
 public class SSLSocketClientWithClientAuth {
 
