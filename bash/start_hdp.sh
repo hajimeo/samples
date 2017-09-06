@@ -321,6 +321,10 @@ function p_ambari_blueprint() {
 sudo -u postgres psql -c \"CREATE ROLE ranger WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   ranger,rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
+    if [ -f /usr/share/java/mysql-connector-java.jar ]; then
+        scp /usr/share/java/mysql-connector-java.jar ssh -q root@$r_AMBARI_HOST:/tmp/mysql-connector-java.jar
+        ssh -q root@$r_AMBARI_HOST "ambari-server setup --jdbc-db=mysql --jdbc-driver=/tmp/mysql-connector-java.jar"
+    fi
 
     if [ ! -z "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ]; then
         _hostmap_json="$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
@@ -1737,7 +1741,7 @@ function p_host_setup() {
 
         # NOTE: psql (postgresql-client) is required
         _log "INFO" "Starting apt-get install packages"
-        apt-get -y install ntpdate curl wget sshfs sysv-rc-conf tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat nscd &>> /tmp/p_host_setup.log
+        apt-get -y install ntpdate curl wget sshfs sysv-rc-conf tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat nscd libmysql-java &>> /tmp/p_host_setup.log
         #mailutils postfix mysql-client htop
 
         _log "INFO" "Starting f_docker_setup"
