@@ -265,7 +265,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     #ssh -p 2222 localhost -t /sbin/service mysqld start
     docker exec -d ${_NAME} service mysqld start
-    docker exec -d ${_NAME} service mysqld start
 
     if ${_NEW_CONTAINER} ; then
         if [ -s  ~/.ssh/id_rsa.pub ]; then
