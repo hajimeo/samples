@@ -1946,8 +1946,12 @@ function f_dockerfile() {
     f_ssh_setup
 
     local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
+    local _pubkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/authorized_keys`"
 
     sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ./DockerFile
+    # authorized_keys can have @
+    sed -i "s?_REPLACE_WITH_YOUR_PUBLIC_KEY_?${_pubkey}?1" ./DockerFile
+
     sed -i "s/FROM centos.*/FROM $r_CONTAINER_OS:$r_CONTAINER_OS_VER/" ./DockerFile
 }
 
