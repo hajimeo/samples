@@ -465,7 +465,10 @@ function f_ambari_blueprint_cluster_config() {
         "properties_attributes" : { },
         "properties" : {
           "ranger_admin_password" : "'$g_DEFAULT_PASSWORD'",
-          "xasecure.audit.destination.solr" : "false"
+          "xasecure.audit.destination.solr" : "false",
+          "xasecure.audit.destination.hdfs" : "false",
+          "xasecure.audit.destination.hdfs.dir" : "hdfs://%HOSTGROUP::host_group_2%:8020/ranger/audit",
+          "ranger_privelege_user_jdbc_url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/postgres"
         }
       }
     },
@@ -484,7 +487,8 @@ function f_ambari_blueprint_cluster_config() {
         "properties" : {
           "atlas.audit.hbase.zookeeper.quorum" : "%HOSTGROUP::host_group_3%",
           "atlas.graph.index.search.solr.zookeeper-url" : "%HOSTGROUP::host_group_3%:2181/infra-solr",
-          "atlas.graph.storage.hostname" : "%HOSTGROUP::host_group_3%"
+          "atlas.graph.storage.hostname" : "%HOSTGROUP::host_group_3%",
+          "atlas.rest.address" : "http://%HOSTGROUP::host_group_3%:21000"
         }
       }
     },
@@ -583,6 +587,7 @@ function f_ambari_blueprint_cluster_config() {
     {
       "hive-env" : {
         "properties" : {
+          "hive.atlas.hook" : "false",
           "hive.metastore.heapsize" : "512",
           "hive.heapsize" : "513"
         }
@@ -646,6 +651,9 @@ function f_ambari_blueprint_cluster_config() {
           "name" : "ZOOKEEPER_CLIENT"
         },
         {
+          "name" : "HCAT"
+        },
+        {
           "name" : "PIG"
         },
         {
@@ -665,7 +673,31 @@ function f_ambari_blueprint_cluster_config() {
           "name" : "SECONDARY_NAMENODE"
         },
         {
+          "name" : "SLIDER"
+        },
+        {
           "name" : "HDFS_CLIENT"
+        },
+        {
+          "name" : "MAPREDUCE2_CLIENT"
+        },
+        {
+          "name" : "YARN_CLIENT"
+        },
+        {
+          "name" : "TEZ_CLIENT"
+        },
+        {
+          "name" : "ZOOKEEPER_CLIENT"
+        },
+        {
+          "name" : "HCAT"
+        },
+        {
+          "name" : "PIG"
+        },
+        {
+          "name" : "HIVE_CLIENT"
         }'$_extra_comps_3'
       ],
       "configurations" : [ ],
