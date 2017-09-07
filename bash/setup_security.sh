@@ -238,6 +238,9 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
         sleep 15;
     done
 
+    # occationaly gets "Cannot run program "kadmin": error=2, No such file or directory"
+    ssh -q root@$_ambari_host -t which kadmin &>/dev/null || sleep 10
+
     _info "Set up Kerberos..."
     curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d "{
   \"session_attributes\" : {
