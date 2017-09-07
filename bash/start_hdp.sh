@@ -322,7 +322,8 @@ sudo -u postgres psql -c \"CREATE ROLE ranger WITH SUPERUSER LOGIN PASSWORD '${g
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   ranger,rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
     if [ -f /usr/share/java/mysql-connector-java.jar ]; then
-        scp /usr/share/java/mysql-connector-java.jar ssh -q root@$r_AMBARI_HOST:/tmp/mysql-connector-java.jar
+        _info "setup mysql-connector-java..."
+        scp /usr/share/java/mysql-connector-java.jar root@$r_AMBARI_HOST:/tmp/mysql-connector-java.jar
         ssh -q root@$r_AMBARI_HOST "ambari-server setup --jdbc-db=mysql --jdbc-driver=/tmp/mysql-connector-java.jar"
     fi
 
@@ -581,6 +582,13 @@ function f_ambari_blueprint_cluster_config() {
           "tez.am.resource.memory.mb" : "256",
           "tez.task.resource.memory.mb" : "256",
           "tez.runtime.io.sort.mb" : "128"
+        }
+      }
+    },
+    {
+      "hive-site" : {
+        "properties" : {
+          "hive.exec.post.hooks" : "org.apache.hadoop.hive.ql.hooks.ATSHook"
         }
       }
     },
@@ -1275,6 +1283,9 @@ function f_port_forward_ssh_on_nodes() {
     local _local_port=0
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
+    _info "Synchronize authorized_keys between host and containers..."
+    f_copy_auth_keys_to_containers "$_how_many" "$_start_from"
+
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         _local_port=$(($_init_port + $i))
         f_port_forward $_local_port ${_node}$i${r_DOMAIN_SUFFIX} 22
@@ -1960,6 +1971,22 @@ function f_host_misc() {
     fi
 }
 
+function f_copy_auth_keys_to_containers() {
+    local __doc__="Synchronize authorized_keys by copying from host to containers"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+
+    if [ ! -s $HOME/.ssh/authorized_keys ]; then
+        _warn "No $HOME/.ssh/authorized_keys"
+        return 1
+    fi
+
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
+        scp -q $HOME/.ssh/authorized_keys root@${_node}$i${r_DOMAIN_SUFFIX}:/root/.ssh/authorized_keys && ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} chmod 600 /root/.ssh/authorized_keys
+    done
+}
+
 function f_dockerfile() {
     local __doc__="Download dockerfile and replace private key"
     local _url="$1"
@@ -1984,16 +2011,13 @@ function f_dockerfile() {
     f_ssh_setup
 
     local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
-    local _pubkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/authorized_keys`"
 
     sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ./DockerFile
-    # authorized_keys can have @
-    sed -i "s?_REPLACE_WITH_YOUR_PUBLIC_KEY_?${_pubkey}?1" ./DockerFile
-
     sed -i "s/FROM centos.*/FROM $r_CONTAINER_OS:$r_CONTAINER_OS_VER/" ./DockerFile
 }
 
 function f_ssh_setup() {
+    local __doc__="Creage a private/public keys and setup authorized_keys ssh config & permissions on host"
     if [ ! -e $HOME/.ssh/id_rsa ]; then
         ssh-keygen -f $HOME/.ssh/id_rsa -q -N ""
     fi
@@ -2014,7 +2038,7 @@ function f_ssh_setup() {
   UserKnownHostsFile /dev/null" > $HOME/.ssh/config
     fi
 
-    # TODO: At this moment the following lines are not used
+    # If current user isn't 'root', copy this user's ssh keys to root
     if [ ! -e /root/.ssh/id_rsa ]; then
         mkdir /root/.ssh &>/dev/null
         cp $HOME/.ssh/id_rsa /root/.ssh/id_rsa
