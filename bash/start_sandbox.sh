@@ -72,7 +72,7 @@ function _port_wait() {
 
     for i in `seq 1 $_times`; do
       sleep $_interval
-      curl -sIL "http://$_host:$_port/ | grep -q '^HTTP/1.1 20'" && return 0
+      curl -sIL "http://$_host:$_port/" | grep -q '^HTTP/1.1 20' && return 0
       echo "$_host:$_port is unreachable. Waiting..."
     done
     echo "$_host:$_port is unreachable."
