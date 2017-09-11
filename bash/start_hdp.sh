@@ -905,18 +905,6 @@ function f_docker_setup() {
         apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
     fi
 
-    # To use tcpdump from container
-    if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
-        ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
-        apparmor_parser -R /etc/apparmor.d/usr.sbin.tcpdump
-    fi
-
-    # To use mysql from container
-    if [ ! -L /etc/apparmor.d/disable/usr.sbin.mysqld ]; then
-        ln -sf /etc/apparmor.d/usr.sbin.mysqld /etc/apparmor.d/disable/
-        apparmor_parser -R /etc/apparmor.d/usr.sbin.mysqld
-    fi
-
     local _storage_size="30G"
     # This part is different by docker version, so changing only if it was 10GB or 1*.**GB
     docker info | grep 'Base Device Size' | grep -oP '1\d\.\d\dGB' &>/dev/null
@@ -1028,6 +1016,18 @@ function f_docker_start() {
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+
+    # To use tcpdump from container
+    if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
+        ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
+        apparmor_parser -R /etc/apparmor.d/usr.sbin.tcpdump
+    fi
+
+    # To use mysql from container
+    if [ ! -L /etc/apparmor.d/disable/usr.sbin.mysqld ]; then
+        ln -sf /etc/apparmor.d/usr.sbin.mysqld /etc/apparmor.d/disable/
+        apparmor_parser -R /etc/apparmor.d/usr.sbin.mysqld
+    fi
 
     _info "starting $_how_many docker containers starting from $_start_from ..."
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do

@@ -110,6 +110,18 @@ function _totalSpaceGB() {
 
 ### main() ############################################################
 if [ "$0" = "$BASH_SOURCE" ]; then
+    # To use tcpdump from container
+    if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
+        ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
+        apparmor_parser -R /etc/apparmor.d/usr.sbin.tcpdump
+    fi
+
+    # To use mysql from container
+    if [ ! -L /etc/apparmor.d/disable/usr.sbin.mysqld ]; then
+        ln -sf /etc/apparmor.d/usr.sbin.mysqld /etc/apparmor.d/disable/
+        apparmor_parser -R /etc/apparmor.d/usr.sbin.mysqld
+    fi
+
     echo "Waiting for docker daemon to start up:"
     until docker ps 2>&1| grep STATUS>/dev/null; do  sleep 1; done;  >/dev/null
 
