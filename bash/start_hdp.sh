@@ -1045,7 +1045,7 @@ function f_docker_start() {
         # docker exec adds "\r" which causes bash syntax error
 	    local _dupe="`docker exec -it ${_node}$_n grep -E "^[0-9\.]+\s+${_node}$_n${r_DOMAIN_SUFFIX}" /etc/hosts | grep -v "^${r_DOCKER_NETWORK_ADDR}$_n"`"
 	    if [ ! -z "$_dupe" ]; then
-	        _warn "Detected duplicate $_dupe in /etc/hosts. Restarting to fix ..."
+	        _warn "Detected duplicate ${_node}$_n${r_DOMAIN_SUFFIX} in /etc/hosts. Restarting to fix ..."
 	        docker restart ${_node}$_n
 	    fi
 
