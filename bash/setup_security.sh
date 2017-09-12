@@ -15,11 +15,16 @@
 #   f_kdc_install_on_host && f_ambari_kerberos_setup
 #
 # If Sandbox (after KDC setup):
-#   f_ambari_kerberos_setup "EXAMPLE.COM" "172.17.0.1" "hadoop" "sandbox.hortonworks.com" "sandbox.hortonworks.com"
+# NOTE sandbox.hortonworks.com needs to be resolved to a proper IP
+#   f_ambari_kerberos_setup "EXAMPLE.COM" "172.17.0.1" "" "sandbox.hortonworks.com" "sandbox.hortonworks.com"
 #
 # Example 2: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
 #   source ./setup_security.sh && f_loadResp
 #   f_hadoop_ssl_setup
+#
+# If Sandbox:
+# NOTE sandbox.hortonworks.com needs to be resolved to a proper IP
+#   f_hadoop_ssl_setup "" "" "sandbox.hortonworks.com" "8080" "sandbox.hortonworks.com"
 #
 
 ### OS/shell settings
@@ -165,10 +170,14 @@ function f_ambari_kerberos_setup() {
     # https://cwiki.apache.org/confluence/display/AMBARI/Automated+Kerberizaton#AutomatedKerberizaton-EnablingKerberos
     local _realm="${1-EXAMPLE.COM}"
     local _kdc_server="${2-$r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
-    local _password="${3-$g_DEFAULT_PASSWORD}"
+    local _password="${3}"
     local _ambari_host="${4-$r_AMBARI_HOST}"
     local _how_many="${5-$r_NUM_NODES}"
     local _start_from="${6-$r_NODE_START_NUM}"
+
+    if [ -z "$_password" ]; then
+        _password=${g_DEFAULT_PASSWORD-hadoop}
+    fi
 
     local _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
     local _api_uri="http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
@@ -568,11 +577,11 @@ function f_hadoop_ssl_setup() {
     local _password="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
     local _ambari_port="${4-8080}"
-    local _domain_suffix="${5-$r_DOMAIN_SUFFIX}"
-    local _how_many="${6-$r_NUM_NODES}"
-    local _start_from="${7-$r_NODE_START_NUM}"
+    local _how_many="${5-$r_NUM_NODES}"
+    local _start_from="${6-$r_NODE_START_NUM}"
+    local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
     local _work_dir="${8-./}"
-    local _c="`f_get_cluster_name`" || return $?
+    local _c="`f_get_cluster_name $_ambari_host`" || return $?
     local _trust_password="changeit"
 
     if [ ! -d "$_work_dir" ]; then
@@ -600,21 +609,15 @@ function f_hadoop_ssl_setup() {
     # Step3: Create a truststore file used by clients
     keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${_trust_password} -noprompt || return $?
 
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@node${i}${_domain_suffix} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}; mkdir -m 755 -p ${g_CLIENT_TRUST_LOCATION%/}"
-        scp ./$g_CLIENT_TRUSTSTORE_FILE root@node${i}${_domain_suffix}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
-        # Step4: On each node, create a privatekey for the node
-        ssh -q root@node${i}${_domain_suffix} "mv -f ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null; keytool -genkey -alias node${i} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=node${i}${_domain_suffix}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
-        # Step5: On each node, create a CSR
-        ssh -q root@node${i}${_domain_suffix} "keytool -certreq -alias node${i} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.csr -storepass ${_password}"
-        scp root@node${i}${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.csr ./ || return $?
-        # Step6: Sign the CSR with the root CA
-        openssl x509 -sha256 -req -in ./node${i}-keystore.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out node${i}-keystore.crt -days 730 -passin "pass:$_password" || return $?
-        scp ./rootCA.pem ./node${i}-keystore.crt root@node${i}${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/ || return $?
-        # Step7: On each node, import root CA's cert and the signed cert
-        ssh -q root@node${i}${_domain_suffix} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias node${i} -import -file ${g_SERVER_KEY_LOCATION%/}/node${i}-keystore.crt -noprompt -storepass ${_password}" || return $?
-        ssh -q root@node${i}.localdomain "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
-    done
+    if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
+        for i in $_how_many; do
+            _hadoop_ssl_per_node "$i" || return $?
+        done
+    else
+        for i in `_docker_seq "$_how_many" "$_start_from"`; do
+            _hadoop_ssl_per_node "node${i}${_domain_suffix}" || return $?
+        done
+    fi
 
     _info "Updating Ambari configs for HDFS..."
     scp root@$_ambari_host:/var/lib/ambari-server/resources/scripts/configs.sh ./
@@ -637,6 +640,24 @@ function f_hadoop_ssl_setup() {
     _info "For MR2,YARN and other components:\nhttps://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.6.1/bk_security/content/enabling-ssl-for-components.html"
     _info "Completed.\nRun the below command to restart required components"
     echo curl -u admin:admin -sk "${_http}://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests" -H 'X-Requested-By: Ambari' --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
+}
+
+function _hadoop_ssl_per_node() {
+    local _node="$1"
+
+    ssh -q root@${_node} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}; mkdir -m 755 -p ${g_CLIENT_TRUST_LOCATION%/}"
+    scp ./$g_CLIENT_TRUSTSTORE_FILE root@${_node}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
+    # Step4: On each node, create a privatekey for the node
+    ssh -q root@${_node} "mv -f ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null; keytool -genkey -alias ${_node} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
+    # Step5: On each node, create a CSR
+    ssh -q root@${_node} "keytool -certreq -alias ${_node} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.csr -storepass ${_password}"
+    scp root@${_node}:${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.csr ./ || return $?
+    # Step6: Sign the CSR with the root CA
+    openssl x509 -sha256 -req -in ./${_node}-keystore.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ${_node}-keystore.crt -days 730 -passin "pass:$_password" || return $?
+    scp ./rootCA.pem ./${_node}-keystore.crt root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
+    # Step7: On each node, import root CA's cert and the signed cert
+    ssh -q root@${_node} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias ${_node} -import -file ${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.crt -noprompt -storepass ${_password}" || return $?
+    ssh -q root@${_node} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
 }
 
 function _ssl_openssl_cnf_generate() {
