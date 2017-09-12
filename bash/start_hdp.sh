@@ -1042,9 +1042,10 @@ function f_docker_start() {
         docker start --attach=false ${_node}$_n &
         sleep 1
 
-	    _c="`docker exec -it ${_node}$_n grep -c ${_node}$_n${r_DOMAIN_SUFFIX} /etc/hosts`"
-	    if [ 1 -lt "$_c" ]; then
-	        _warn "Detected duplicated ${_node}$_n${r_DOMAIN_SUFFIX} in /etc/hosts. Restarting to fix ..."
+        # docker exec adds "\r" which causes bash syntax error
+	    local _dupe="`docker exec -it ${_node}$_n grep -E "^[0-9\.]+\s+${_node}$_n${r_DOMAIN_SUFFIX}" /etc/hosts | grep -v "^${r_DOCKER_NETWORK_ADDR}$_n"`"
+	    if [ ! -z "$_dupe" ]; then
+	        _warn "Detected duplicate $_dupe in /etc/hosts. Restarting to fix ..."
 	        docker restart ${_node}$_n
 	    fi
 
