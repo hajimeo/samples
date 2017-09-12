@@ -1675,7 +1675,7 @@ function f_add_comp() {
 }
 
 function f_service() {
-    local __doc__='Request STOP/START/RESTART to Ambari via API with maintenance mode (for _s in hbase kafka atlas; do f_service $_s stop; done)'
+    local __doc__='Request STOP/START/RESTART to Ambari via API with maintenance mode (ex: f_service "hbase kafka atlas" "stop")'
     local _service="$1"
     local _action="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
@@ -1701,28 +1701,31 @@ function f_service() {
     _service="${_service^^}"
     _action="${_action^^}"
 
-    if [ "$_action" = "RESTART" ]; then
-        f_service "$_service" "stop" "$_ambari_host" || return $?
-        for _i in {1..9}; do
-            _n="`_ambari_query_sql "select count(*) from request where request_context ='set INSTALLED for $_service by f_service' and end_time < start_time"`"
-            [ 0 -eq $_n ] && break;
-            sleep 10
-        done
-        f_service "$_service" "start" "$_ambari_host"
-        return
-    fi
+    for _s in `echo $_service | sed 's/ /\n/g'`; do
+        if [ "$_action" = "RESTART" ]; then
+            f_service "$_s" "stop" "$_ambari_host" || return $?
+            for _i in {1..9}; do
+                _n="`_ambari_query_sql "select count(*) from request where request_context ='set INSTALLED for $_s by f_service' and end_time < start_time" "$_ambari_host"`"
+                [ 0 -eq $_n ] && break;
+                sleep 10
+            done
+            f_service "$_s" "start" "$_ambari_host"
+            return
+        fi
 
-    [ "$_action" = "START" ] && _action="STARTED"
-    [ "$_action" = "STOP" ] && _action="INSTALLED"
-    [ "$_action" = "INSTALLED" ] && _maintenance_mode="ON"
+        [ "$_action" = "START" ] && _action="STARTED"
+        [ "$_action" = "STOP" ] && _action="INSTALLED"
+        [ "$_action" = "INSTALLED" ] && _maintenance_mode="ON"
 
-    _n="`_ambari_query_sql "select count(*) from request where request_context ='set $_action for $_service by f_service' and end_time < start_time"`"
-    [ 0 -lt $_n ] && return;
+        _n="`_ambari_query_sql "select count(*) from request where request_context ='set $_action for $_s by f_service' and end_time < start_time" "$_ambari_host"`"
+        # same action for same service is already running
+        [ 0 -lt $_n ] && continue;
 
-    curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_service'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
-    local _request_context=""
-    curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_service' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_service'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_service"
-    echo ""
+        curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_s"
+        local _request_context=""
+        curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_s' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_s'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_s"
+        echo ""
+    done
 }
 
 function _ambari_agent_wait() {
@@ -2613,6 +2616,7 @@ function _isUrlButNotReachable() {
     # Return true only if URL is NOT reachable
     return 0
 }
+# Deprecated: use sed, like for _s in `echo "HDFS MR2 YARN" | sed 's/ /\n/g'`; do echo $_s "Y"; done
 function _split() {
     local _rtn_var_name="$1"
     local _string="$2"
