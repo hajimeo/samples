@@ -14,6 +14,9 @@
 #   source ./setup_security.sh && f_loadResp
 #   f_kdc_install_on_host && f_ambari_kerberos_setup
 #
+# If Sandbox (after KDC setup):
+#   f_ambari_kerberos_setup "your kdc hostname" "password" "sandbox.hortonworks.com" "Sandbox" "sandbox.hortonworks.com"
+#
 # Example 2: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
 #   source ./setup_security.sh && f_loadResp
 #   f_hadoop_ssl_setup
@@ -161,12 +164,12 @@ function f_ambari_kerberos_setup() {
     local __doc__="TODO: Setup Kerberos with Ambari APIs. TODO: MIT KDC which was created by f_kdc_install_on_host"
     # https://cwiki.apache.org/confluence/display/AMBARI/Automated+Kerberizaton#AutomatedKerberizaton-EnablingKerberos
     local _realm="${1-EXAMPLE.COM}"
-    local _server="${2-$r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
+    local _kdc_server="${2-$r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
     local _password="${3-$g_DEFAULT_PASSWORD}"
-    local _how_many="${4-$r_NUM_NODES}"
-    local _start_from="${5-$r_NODE_START_NUM}"
-    local _ambari_host="${6-$r_AMBARI_HOST}"
-    local _cluster_name="${7-$r_CLUSTER_NAME}"
+    local _ambari_host="${4-$r_AMBARI_HOST}"
+    local _cluster_name="${5-$r_CLUSTER_NAME}"
+    local _how_many="${6-$r_NUM_NODES}"
+    local _start_from="${7-$r_NODE_START_NUM}"
     local _stack_name="HDP"
     local _request_context="Stop Service with f_ambari_kerberos_setup"
     local _version="version`date +%s`000"
@@ -192,15 +195,24 @@ function f_ambari_kerberos_setup() {
     curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/services?ServiceInfo/service_name=KERBEROS" -d '{"components":[{"ServiceComponentInfo":{"component_name":"KERBEROS_CLIENT"}}]}'
     sleep 3;
 
-    _info "Adding Kerberos client on all nodes"
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "${_api_uri}/hosts?Hosts/host_name=node$i${r_DOMAIN_SUFFIX}"
-        sleep 1;
-    done
+    if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
+        local _hostnames="$_how_many"
+        _info "Adding Kerberos client to $_hostnames"
+        for _h in $_hostnames; do
+            curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "${_api_uri}/hosts?Hosts/host_name=${_h}"
+            sleep 1;
+        done
+    else
+        _info "Adding Kerberos client on all nodes"
+        for i in `_docker_seq "$_how_many" "$_start_from"`; do
+            curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "${_api_uri}/hosts?Hosts/host_name=node$i${r_DOMAIN_SUFFIX}"
+            sleep 1;
+        done
+    fi
      #-d '{"RequestInfo":{"query":"Hosts/host_name=node1.localdomain|Hosts/host_name=node2.localdomain|..."},"Body":{"host_components":[{"HostRoles":{"component_name":"KERBEROS_CLIENT"}}]}}'
 
     _info "Add/Upload the KDC configuration"
-    _ambari_kerberos_generate_service_config "$_realm" "$_server" > /tmp/${_cluster_name}_kerberos_service_conf.json
+    _ambari_kerberos_generate_service_config "$_realm" "$_kdc_server" > /tmp/${_cluster_name}_kerberos_service_conf.json
     curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d @/tmp/${_cluster_name}_kerberos_service_conf.json
     sleep 3;
 
