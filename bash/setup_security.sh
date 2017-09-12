@@ -15,7 +15,7 @@
 #   f_kdc_install_on_host && f_ambari_kerberos_setup
 #
 # If Sandbox (after KDC setup):
-#   f_ambari_kerberos_setup "EXAMPLE.COM" "172.17.0.1" "hadoop" "sandbox.hortonworks.com" "Sandbox" "sandbox.hortonworks.com"
+#   f_ambari_kerberos_setup "EXAMPLE.COM" "172.17.0.1" "hadoop" "sandbox.hortonworks.com" "sandbox.hortonworks.com"
 #
 # Example 2: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
 #   source ./setup_security.sh && f_loadResp
@@ -167,9 +167,9 @@ function f_ambari_kerberos_setup() {
     local _kdc_server="${2-$r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
     local _password="${3-$g_DEFAULT_PASSWORD}"
     local _ambari_host="${4-$r_AMBARI_HOST}"
-    local _cluster_name="${5-$r_CLUSTER_NAME}"
-    local _how_many="${6-$r_NUM_NODES}"
-    local _start_from="${7-$r_NODE_START_NUM}"
+    local _how_many="${5-$r_NUM_NODES}"
+    local _start_from="${6-$r_NODE_START_NUM}"
+    local _cluster_name="${7-$r_CLUSTER_NAME}"
     local _stack_name="HDP"
     local _request_context="Stop Service with f_ambari_kerberos_setup"
     local _version="version`date +%s`000"
@@ -180,6 +180,8 @@ function f_ambari_kerberos_setup() {
         _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
     fi
     local _api_uri="http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
+
+    local _stack_version"`_ambari_query_sql "select s.stack_version from clusters c join stack s on c.desired_stack_id = s.stack_id where c.cluster_name='$_cluster_name';" "$_ambari_host"`"
 
     # Test GET method
     #response=$(curl --write-out %{http_code} -s -o /dev/null "${_api_uri}/configurations/service_config_versions?service_name=KERBEROS")
@@ -224,7 +226,7 @@ function f_ambari_kerberos_setup() {
     sleep 5;
 
     #_info "Get the default kerberos descriptor and upload (assuming no current)"
-    curl -s -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/stacks/$_stack_name/versions/${r_HDP_STACK_VERSION}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
+    curl -s -H "X-Requested-By:ambari" -u admin:admin -X GET "http://$_ambari_host:8080/api/v1/stacks/$_stack_name/versions/${_stack_version}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
     #curl -s -H "X-Requested-By:ambari" -u admin:admin -X GET "${_api_uri}/artifacts/kerberos_descriptor" -o /tmp/${_cluster_name}_kerberos_descriptor.json
 
     # For ERROR "The properties [Artifacts/stack_version, href, Artifacts/stack_name] specified in the request or predicate are not supported for the resource type Artifact."
