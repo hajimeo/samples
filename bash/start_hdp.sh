@@ -522,6 +522,7 @@ function f_ambari_blueprint_cluster_config() {
     }'
     fi
 
+    # TODO: Ambari 2.5.1 can't set hive.exec.post.hooks, probably a bug in Ambari
     echo '{
   "configurations" : [
     {
@@ -1033,12 +1034,20 @@ function f_docker_start() {
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         _net=`docker container inspect ${_node}$_n | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
         if [ ! "$_net" = "$g_HDP_NETWORK" ]; then
+            _info "Moving network from $_net to $g_HDP_NETWORK"
             docker network disconnect $_net ${_node}$_n
             docker network connect --ip=${r_DOCKER_NETWORK_ADDR}$_n hdp ${_node}$_n
         fi
         # docker seems doesn't care if i try to start already started one
         docker start --attach=false ${_node}$_n &
         sleep 1
+
+	    _c="`docker exec -it ${_node}$_n grep -c ${_node}$_n${r_DOMAIN_SUFFIX} /etc/hosts`"
+	    if [ 1 -lt "$_c" ]; then
+	        _warn "Detected duplicated ${_node}$_n${r_DOMAIN_SUFFIX} in /etc/hosts. Restarting to fix ..."
+	        docker restart ${_node}$_n
+	    fi
+
 	    docker exec -it ${_node}$_n bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh &>/dev/null && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
 	    docker exec -it ${_node}$_n bash -c "grep -q \"${r_DOCKER_PRIVATE_HOSTNAME}\" /etc/hosts || echo \"${r_DOCKER_HOST_IP} ${r_DOCKER_PRIVATE_HOSTNAME}\" >> /etc/hosts"
     done
