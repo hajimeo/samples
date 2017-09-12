@@ -15,7 +15,7 @@
 #   f_kdc_install_on_host && f_ambari_kerberos_setup
 #
 # If Sandbox (after KDC setup):
-#   f_ambari_kerberos_setup "your kdc hostname" "password" "sandbox.hortonworks.com" "Sandbox" "sandbox.hortonworks.com"
+#   f_ambari_kerberos_setup "EXAMPLE.COM" "172.17.0.1" "hadoop" "sandbox.hortonworks.com" "Sandbox" "sandbox.hortonworks.com"
 #
 # Example 2: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
 #   source ./setup_security.sh && f_loadResp
@@ -220,7 +220,7 @@ function f_ambari_kerberos_setup() {
     #curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/credentials/kdc.admin.credential" -d "{\"Credential\":{\"principal\":\"admin/admin@${_realm}\",\"key\":\"${_password}\",\"type\":\"temporary\"}}"
 
     _info "Starting (installing) Kerberos"
-    curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/services?ServiceInfo/state=INSTALLED&ServiceInfo/service_name=KERBEROS" -d '{"RequestInfo":{"context":"Install Kerberos Service with f_ambari_kerberos_setup","operation_level":{"level":"CLUSTER","cluster_name":"c1"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}'
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/services?ServiceInfo/state=INSTALLED&ServiceInfo/service_name=KERBEROS" -d '{"RequestInfo":{"context":"Install Kerberos Service with f_ambari_kerberos_setup","operation_level":{"level":"CLUSTER","cluster_name":"'$_cluster_name'"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}'
     sleep 5;
 
     #_info "Get the default kerberos descriptor and upload (assuming no current)"
@@ -245,7 +245,7 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     sleep 3;
     # confirming if it's stopped
     for _i in {1..9}; do
-        _n="`_ambari_query_sql "select count(*) from request where request_context = '$_request_context' and end_time < start_time"`"
+        _n="`_ambari_query_sql "select count(*) from request where request_context = '$_request_context' and end_time < start_time" "$_ambari_host"`"
         [ 0 -eq $_n ] && break;
         sleep 15;
     done
@@ -268,7 +268,7 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     sleep 3;
     # wait until it's set up
     for _i in {1..9}; do
-        _n="`_ambari_query_sql "select count(*) from request where request_context = 'Preparing Operations' and end_time < start_time"`"
+        _n="`_ambari_query_sql "select count(*) from request where request_context = 'Preparing Operations' and end_time < start_time" "$_ambari_host"`"
         [ 0 -eq $_n ] && break;
         sleep 15;
     done
