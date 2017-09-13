@@ -34,7 +34,7 @@ set -o posix
 #umask 0000
 
 # Global variables
-g_SERVER_KEY_LOCATION="/etc/hadoop/secure/"
+g_SERVER_KEY_LOCATION="/etc/hadoop/secure/serverKeys/"
 g_CLIENT_TRUST_LOCATION="/etc/hadoop/secure/clientKeys/"
 g_KEYSTORE_FILE="server.keystore.jks"
 g_TRUSTSTORE_FILE="server.truststore.jks"
@@ -627,6 +627,9 @@ function f_hadoop_ssl_setup() {
 
     _info "Updating Ambari configs for HDFS..."
     scp root@$_ambari_host:/var/lib/ambari-server/resources/scripts/configs.sh ./
+    #bash ./configs.sh -u admin -p admin -port ${_ambari_port} get $_ambari_host $_c ssl-client /tmp/ssl-client_$$.json
+    #bash ./configs.sh -u admin -p admin -port ${_ambari_port} get $_ambari_host $_c ssl-server /tmp/ssl-server_$$.json
+
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.location ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.password ${g_CLIENT_TRUSTSTORE_PASSWORD}
 
@@ -641,9 +644,6 @@ function f_hadoop_ssl_setup() {
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.keypassword $_password
 
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c hdfs-site dfs.http.policy HTTP_AND_HTTPS # or HTTPS_ONLY
-
-    #/var/lib/ambari-server/resources/scripts/configs.py -l $_ambari_host -t ${_ambari_port} -n $_c -a get -c ssl-client /tmp/ssl-client_$$.json
-
 
     # If Ambari is 2.4.x or higher below works
     _info "For MR2,YARN and other components:\nhttps://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.6.1/bk_security/content/enabling-ssl-for-components.html"
