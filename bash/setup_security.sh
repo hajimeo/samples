@@ -626,28 +626,17 @@ function f_hadoop_ssl_setup() {
     fi
 
     _info "Updating Ambari configs for HDFS..."
-    scp root@$_ambari_host:/var/lib/ambari-server/resources/scripts/configs.sh ./
-    #bash ./configs.sh -u admin -p admin -port ${_ambari_port} get $_ambari_host $_c ssl-client /tmp/ssl-client_$$.json
-    #bash ./configs.sh -u admin -p admin -port ${_ambari_port} get $_ambari_host $_c ssl-server /tmp/ssl-server_$$.json
-
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.location ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.password ${g_CLIENT_TRUSTSTORE_PASSWORD}
-
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.truststore.location ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.truststore.password ${g_CLIENT_TRUSTSTORE_PASSWORD}
-
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.keystore.location ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.keystore.password $_password
-
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.location ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.password $_password
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.keystore.keypassword $_password
-
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c hdfs-site dfs.http.policy HTTP_AND_HTTPS # or HTTPS_ONLY
+    f_ambari_configs "core-site" "{\"hadoop.rpc.protection\":\"privacy\",\"hadoop.ssl.require.client.cert\":\"false\",\"hadoop.ssl.hostname.verifier\":\"DEFAULT\",\"hadoop.ssl.keystores.factory.class\":\"org.apache.hadoop.security.ssl.FileBasedKeyStoresFactory\",\"hadoop.ssl.server.conf\":\"ssl-server.xml\",\"hadoop.ssl.client.conf\":\"ssl-client.xml\"}" "$_ambari_host"
+    f_ambari_configs "ssl-client" "{\"ssl.client.truststore.location\":\"${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}\",\"ssl.client.truststore.password\":\"${g_CLIENT_TRUSTSTORE_PASSWORD}\",\"ssl.client.keystore.location\":\"${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}\",\"ssl.client.keystore.password\":\"$_password\"}" "$_ambari_host"
+    f_ambari_configs "ssl-server" "{\"ssl.server.truststore.location\":\"${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}\",\"ssl.server.truststore.password\":\"${g_CLIENT_TRUSTSTORE_PASSWORD}\",\"ssl.server.keystore.location\":\"${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}\",\"ssl.server.keystore.password\":\"$_password\",\"ssl.server.keystore.keypassword\":\"$_password\"}" "$_ambari_host"
+    f_ambari_configs "hdfs-site" "{\"dfs.encrypt.data.transfer\":\"true\",\"dfs.encrypt.data.transfer.algorithm\":\"3des\",\"dfs.http.policy\":\"HTTPS_ONLY\"}" "$_ambari_host" # or HTTP_AND_HTTPS
+    f_ambari_configs "mapred-site" "{\"mapreduce.jobhistory.http.policy\":\"HTTPS_ONLY\",\"mapreduce.jobhistory.webapp.https.address\":\"0.0.0.0:19888\"}" "$_ambari_host"
+    f_ambari_configs "yarn-site" "{\"yarn.http.policy\":\"HTTPS_ONLY\",\"yarn.nodemanager.webapp.https.address\":\"0.0.0.0:8044\"}" "$_ambari_host"
+    #f_ambari_configs "tez-site" "{\"tez.runtime.shuffle.ssl.enable\":\"true\",\"tez.runtime.shuffle.keep-alive.enabled\":\"true\"}" "$_ambari_host"
 
     # If Ambari is 2.4.x or higher below works
-    _info "For MR2,YARN and other components:\nhttps://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.6.1/bk_security/content/enabling-ssl-for-components.html"
-    _info "Completed.\nRun the below command to restart required components"
+    _info "TODO: Please manually update: yarn.resourcemanager.webapp.https.address"
+    _info "Run the below command to restart *ALL* required components:"
     echo curl -u admin:admin -sk "${_http}://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests" -H 'X-Requested-By: Ambari' --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
 }
 
