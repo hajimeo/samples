@@ -1710,7 +1710,7 @@ function f_service() {
                 sleep 10
             done
             f_service "$_s" "start" "$_ambari_host"
-            return
+            break
         fi
 
         [ "$_action" = "START" ] && _action="STARTED"
@@ -1719,7 +1719,7 @@ function f_service() {
 
         _n="`_ambari_query_sql "select count(*) from request where request_context ='set $_action for $_s by f_service' and end_time < start_time" "$_ambari_host"`"
         # same action for same service is already running
-        [ 0 -lt $_n ] && continue;
+        [ 0 -lt $_n ] && break;
 
         curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_s"
         local _request_context=""
