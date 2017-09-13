@@ -1045,10 +1045,10 @@ function f_docker_start() {
         # docker exec adds "\r" which causes bash syntax error
 	    local _dupe="`docker exec -it ${_node}$_n grep -E "^[0-9\.]+\s+${_node}$_n${r_DOMAIN_SUFFIX}" /etc/hosts | grep -v "^${r_DOCKER_NETWORK_ADDR}$_n"`"
 	    if [ ! -z "$_dupe" ]; then
-	        _warn "TODO: Detected duplicate ${_node}$_n${r_DOMAIN_SUFFIX} in /etc/hosts. Please fix ..."
-	        #docker restart ${_node}$_n
+	        _warn "TODO: Detected duplicate ${_node}$_n${r_DOMAIN_SUFFIX} in /etc/hosts. Trying to fix by restarting container..."
+	        docker restart ${_node}$_n
 	        # need to start necessary services in here but how to start service is different by container, so expecting /startup.sh absorb this
-	        #docker exec ${_node}$_n timeout 5 /startup.sh
+	        docker exec ${_node}$_n timeout 5 /startup.sh
 	    fi
 
 	    docker exec -it ${_node}$_n bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh &>/dev/null && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
