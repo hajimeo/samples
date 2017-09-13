@@ -15,7 +15,6 @@ RUN chmod 600 /root/.ssh/authorized_keys
 RUN chown -R root:root /root/.ssh
 
 RUN setenforce 0 || echo ko
-RUN chkconfig iptables off || systemctl disable iptables.service || echo ko
 #RUN /etc/init.d/iptables stop
 
 RUN ( grep ^PermitRootLogin /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config ) || echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config
@@ -33,7 +32,7 @@ RUN service sshd restart || systemctl restart sshd.service || echo ko
 
 RUN umask 022
 
-RUN echo -e '#!/bin/bash\n/etc/init.d/iptables stop\n_DEF_GW="$3"\nif [ -n "$1" ]; then\n  /sbin/ifconfig eth0 $1 netmask $4\n  if [ -n "$_DEF_GW" ]; then  # 172.17.0.1\n    /sbin/ip route add default via $_DEF_GW dev eth0\n  fi\nfi\n\nif [ -n "$2" ]; then\n  echo "127.0.0.1 localhost" > /etc/hosts\n  echo "$1 $2" >> /etc/hosts\n  hostname $2\n  echo "$2" > /etc/hostname\nfi\nservice sshd restart || systemctl restart sshd.service || echo ko\nbash' > /startup.sh
+RUN echo -e '#!/bin/bash\n_DEF_GW="$3"\nif [ -n "$1" ]; then\n  /sbin/ifconfig eth0 $1 netmask $4\n  if [ -n "$_DEF_GW" ]; then  # 172.17.0.1\n    /sbin/ip route add default via $_DEF_GW dev eth0\n  fi\nfi\n\nif [ -n "$2" ]; then\n  echo "127.0.0.1 localhost" > /etc/hosts\n  echo "$1 $2" >> /etc/hosts\n  hostname $2\n  echo "$2" > /etc/hostname\nfi\nservice sshd restart || systemctl restart sshd.service || echo ko\nbash' > /startup.sh
 RUN chmod a+x /startup.sh
 
 #HDP deps
