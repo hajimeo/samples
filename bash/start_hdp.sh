@@ -1834,8 +1834,8 @@ function p_host_setup() {
     if _isYes "$r_PROXY"; then
         _log "INFO" "Starting f_apache_proxy"
         f_apache_proxy &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_yum_remote_proxy"
-        f_yum_remote_proxy &>> /tmp/p_host_setup.log
+        _log "INFO" "Starting f_node_proxy_setup"
+        f_node_proxy_setup &>> /tmp/p_host_setup.log
     fi
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
@@ -2135,8 +2135,8 @@ function f_apache_proxy() {
     service apache2 reload
 }
 
-function f_yum_remote_proxy() {
-    local __doc__="This function edits yum.conf of each running container to set up proxy (http://your.proxy.server:port)"
+function f_node_proxy_setup() {
+    local __doc__="This function edits yum.conf and /etc/environment of each running container to set up proxy (http://your.proxy.server:port)"
     local _proxy_url="$1"
     local _port="${r_PROXY_PORT-28080}"
 
@@ -2152,7 +2152,7 @@ function f_yum_remote_proxy() {
 
     # set up proxy for all running containers
     for _host in `docker ps --format "{{.Names}}"`; do
-        ssh -q root@$_host "grep ^proxy /etc/yum.conf || echo \"proxy=${_proxy_url}\" >> /etc/yum.conf"
+        ssh -q root@$_host "grep ^proxy /etc/yum.conf || echo \"proxy=${_proxy_url}\" >> /etc/yum.conf;grep ^http_proxy /etc/environment || echo \"http_proxy=${_proxy_url}\" >> /etc/environment;grep ^https_proxy /etc/environment || echo \"https_proxy=${_proxy_url}\" >> /etc/environment"
     done
 }
 
