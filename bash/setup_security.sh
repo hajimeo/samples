@@ -15,7 +15,7 @@
 #   f_kdc_install_on_host && f_ambari_kerberos_setup
 #
 # If Sandbox (after KDC setup):
-# NOTE sandbox.hortonworks.com needs to be resolved to a proper IP
+# NOTE: sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
 #   f_ambari_kerberos_setup "EXAMPLE.COM" "172.17.0.1" "" "sandbox.hortonworks.com" "sandbox.hortonworks.com"
 #
 # Example 2: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
@@ -23,7 +23,7 @@
 #   f_hadoop_ssl_setup
 #
 # If Sandbox:
-# NOTE sandbox.hortonworks.com needs to be resolved to a proper IP
+# NOTE sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
 #   f_hadoop_ssl_setup "" "" "sandbox.hortonworks.com" "8080" "sandbox.hortonworks.com"
 #
 
@@ -35,10 +35,11 @@ set -o posix
 
 # Global variables
 g_SERVER_KEY_LOCATION="/etc/hadoop/secure/"
-g_CLIENT_TRUST_LOCATION="/etc/security/clientKeys/"
+g_CLIENT_TRUST_LOCATION="/etc/hadoop/secure/clientKeys/"
 g_KEYSTORE_FILE="server.keystore.jks"
 g_TRUSTSTORE_FILE="server.truststore.jks"
 g_CLIENT_TRUSTSTORE_FILE="all.jks"
+g_CLIENT_TRUSTSTORE_PASSWORD="changeit"
 
 function f_kdc_install_on_ambari_node() {
     local __doc__="(Deprecated) Install KDC/kadmin service to $r_AMBARI_HOST. May need UDP port forwarder https://raw.githubusercontent.com/hajimeo/samples/master/python/udp_port_forwarder.py"
@@ -204,7 +205,7 @@ function f_ambari_kerberos_setup() {
     if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
         local _hostnames="$_how_many"
         _info "Adding Kerberos client to $_hostnames"
-        for _h in $_hostnames; do
+        for _h in `echo $_hostnames | sed 's/ /\n/g'`; do
             curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "${_api_uri}/hosts?Hosts/host_name=${_h}"
             sleep 1;
         done
@@ -582,7 +583,6 @@ function f_hadoop_ssl_setup() {
     local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
     local _work_dir="${8-./}"
     local _c="`f_get_cluster_name $_ambari_host`" || return $?
-    local _trust_password="changeit"
 
     if [ ! -d "$_work_dir" ]; then
         mkdir ${_work_dir%/} || return $?
@@ -607,25 +607,31 @@ function f_hadoop_ssl_setup() {
 
     mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
     # Step3: Create a truststore file used by clients
-    keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${_trust_password} -noprompt || return $?
+    keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD} -noprompt || return $?
+
+    local _javahome="`ssh -q root@$_ambari_host "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
+    local _cacerts="${_javahome%/}/jre/lib/security/cacerts"
 
     if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
-        for i in $_how_many; do
-            _hadoop_ssl_per_node "$i" || return $?
+        local _hostnames="$_how_many"
+        _info "Copying jks to $_hostnames ..."
+        for i in  `echo $_hostnames | sed 's/ /\n/g'`; do
+            _hadoop_ssl_per_node "$i" "$_cacerts" || return $?
         done
     else
+        _info "Copying jks to all nodes..."
         for i in `_docker_seq "$_how_many" "$_start_from"`; do
-            _hadoop_ssl_per_node "node${i}${_domain_suffix}" || return $?
+            _hadoop_ssl_per_node "node${i}${_domain_suffix}" "$_cacerts" || return $?
         done
     fi
 
     _info "Updating Ambari configs for HDFS..."
     scp root@$_ambari_host:/var/lib/ambari-server/resources/scripts/configs.sh ./
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.location ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.password $_trust_password
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.truststore.password ${g_CLIENT_TRUSTSTORE_PASSWORD}
 
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.truststore.location ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.truststore.password $_trust_password
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-server ssl.server.truststore.password ${g_CLIENT_TRUSTSTORE_PASSWORD}
 
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.keystore.location ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c ssl-client ssl.client.keystore.password $_password
@@ -636,6 +642,9 @@ function f_hadoop_ssl_setup() {
 
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c hdfs-site dfs.http.policy HTTP_AND_HTTPS # or HTTPS_ONLY
 
+    #/var/lib/ambari-server/resources/scripts/configs.py -l $_ambari_host -t ${_ambari_port} -n $_c -a get -c ssl-client /tmp/ssl-client_$$.json
+
+
     # If Ambari is 2.4.x or higher below works
     _info "For MR2,YARN and other components:\nhttps://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.6.1/bk_security/content/enabling-ssl-for-components.html"
     _info "Completed.\nRun the below command to restart required components"
@@ -644,6 +653,7 @@ function f_hadoop_ssl_setup() {
 
 function _hadoop_ssl_per_node() {
     local _node="$1"
+    local _cacerts="$2"
 
     ssh -q root@${_node} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}; mkdir -m 755 -p ${g_CLIENT_TRUST_LOCATION%/}"
     scp ./$g_CLIENT_TRUSTSTORE_FILE root@${_node}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
@@ -658,6 +668,10 @@ function _hadoop_ssl_per_node() {
     # Step7: On each node, import root CA's cert and the signed cert
     ssh -q root@${_node} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias ${_node} -import -file ${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.crt -noprompt -storepass ${_password}" || return $?
     ssh -q root@${_node} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
+
+    if [ ! -z "$_cacerts" ]; then
+        ssh -q root@${_node} "keytool -keystore $_cacerts -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD}"
+    fi
 }
 
 function _ssl_openssl_cnf_generate() {
@@ -740,9 +754,9 @@ function f_ssl_self_signed_cert() {
     keytool -importkeystore -deststorepass $_password -destkeypass $_password -destkeystore "${_work_dir%/}/${g_KEYSTORE_FILE}" -srckeystore ${_work_dir%/}/${_base_name}.p12 -srcstoretype PKCS12 -srcstorepass $_password -alias ${_base_name}
 
     # trust store for service (eg.: hiveserver2)
-    keytool -keystore ${_work_dir%/}/${g_TRUSTSTORE_FILE} -alias ${_base_name} -import -file ${_work_dir%/}/${_base_name}.crt -noprompt -storepass "changeit" -keypass "changeit" || return $?
+    keytool -keystore ${_work_dir%/}/${g_TRUSTSTORE_FILE} -alias ${_base_name} -import -file ${_work_dir%/}/${_base_name}.crt -noprompt -storepass "${g_CLIENT_TRUSTSTORE_PASSWORD}" || return $?
     # trust store for client (eg.: beeline)
-    keytool -keystore ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE} -alias ${_base_name} -import -file ${_work_dir%/}/${_base_name}.crt -noprompt -storepass "changeit" -keypass "changeit" || return $?
+    keytool -keystore ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE} -alias ${_base_name} -import -file ${_work_dir%/}/${_base_name}.crt -noprompt -storepass "${g_CLIENT_TRUSTSTORE_PASSWORD}" || return $?
     chmod a+r ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE}
 }
 
@@ -809,9 +823,9 @@ function f_ssl_self_signed_cert_with_internal_CA() {
     keytool -keystore "${_work_dir%/}/${g_KEYSTORE_FILE}" -alias localhost -import -file ${_work_dir%/}/server.crt -noprompt -storepass "$_password" -keypass "$_password" || return $?
 
     # trust store for service (eg.: hiveserver2), which contains internal CA cert only
-    keytool -keystore ${_work_dir%/}/${g_TRUSTSTORE_FILE} -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "changeit" -keypass "changeit" || return $?
+    keytool -keystore ${_work_dir%/}/${g_TRUSTSTORE_FILE} -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "${g_CLIENT_TRUSTSTORE_PASSWORD}" || return $?
     # trust store for client (eg.: beeline), but at this moment, save content as above
-    keytool -keystore ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE} -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "changeit" -keypass "changeit" || return $?
+    keytool -keystore ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE} -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "${g_CLIENT_TRUSTSTORE_PASSWORD}" || return $?
     chmod a+r ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE}
 }
 
@@ -870,11 +884,11 @@ function f_ssl_ambari_config_set_for_hadoop() {
     _configs["ssl-server:ssl.server.keystore.location"]="${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE"
     _configs["ssl-server:ssl.server.keystore.password"]="$g_DEFAULT_PASSWORD"
     _configs["ssl-server:ssl.server.truststore.location"]="${g_SERVER_KEY_LOCATION%/}/$g_TRUSTSTORE_FILE"
-    _configs["ssl-server:ssl.server.truststore.password"]="changeit"
+    _configs["ssl-server:ssl.server.truststore.password"]="${g_CLIENT_TRUSTSTORE_PASSWORD}"
     _configs["ssl-client:ssl.client.keystore.location"]="${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE"
     _configs["ssl-client:ssl.client.keystore.password"]="$g_DEFAULT_PASSWORD"
     _configs["ssl-client:ssl.client.truststore.location"]="${g_CLIENT_TRUST_LOCATION%/}/$g_CLIENT_TRUSTSTORE_FILE"
-    _configs["ssl-client:ssl.client.truststore.password"]="changeit"
+    _configs["ssl-client:ssl.client.truststore.password"]="${g_CLIENT_TRUSTSTORE_PASSWORD}"
 
 	for _k in "${!_configs[@]}"; do
         _split "_type_prop" "$_k" ":"
