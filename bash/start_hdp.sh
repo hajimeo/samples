@@ -554,7 +554,8 @@ function f_ambari_blueprint_cluster_config() {
     {
       "yarn-site" : {
         "properties" : {
-          "yarn.scheduler.minimum-allocation-mb" : "320"
+          "yarn.scheduler.minimum-allocation-mb" : "320",
+          "yarn.nodemanager.delete.debug-delay-sec" : "1800"
         }
       }
     },
