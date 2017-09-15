@@ -18,7 +18,15 @@
 # NOTE: sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
 #   f_ambari_kerberos_setup "EXAMPLE.COM" "172.17.0.1" "" "sandbox.hortonworks.com" "sandbox.hortonworks.com"
 #
-# Example 2: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
+# Example 2: How to set up HTTP Authentication (SPNEGO) on hadoop component
+#   source ./setup_security.sh && f_loadResp
+#   f_hadoop_spnego_setup
+#
+# If Sandbox (after KDC/kerberos setup):
+# NOTE sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
+#   f_hadoop_spnego_setup "EXAMPLE.COM" "hortonworks.com" "sandbox.hortonworks.com" "8080" "sandbox.hortonworks.com"
+#
+# Example 3: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
 #   source ./setup_security.sh && f_loadResp
 #   f_hadoop_ssl_setup
 #
@@ -284,55 +292,131 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"Start Service with f_ambari_kerberos_setup\"},\"Body\":{\"ServiceInfo\":{\"state\":\"STARTED\"}}}" ${_api_uri}/services
 }
 
+function f_hadoop_ssl_setup() {
+    local __doc__="Setup SSL for hadoop https://community.hortonworks.com/articles/92305/how-to-transfer-file-using-secure-webhdfs-in-distc.html"
+    local _dname_extra="$1"
+    local _password="$2"
+    local _ambari_host="${3-$r_AMBARI_HOST}"
+    local _ambari_port="${4-8080}"
+    local _how_many="${5-$r_NUM_NODES}"
+    local _start_from="${6-$r_NODE_START_NUM}"
+    local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
+    local _work_dir="${8-./}"
+    local _c="`f_get_cluster_name $_ambari_host`" || return $?
+
+    if [ ! -d "$_work_dir" ]; then
+        mkdir ${_work_dir%/} || return $?
+    fi
+    cd ${_work_dir%/} || return $?
+
+    if [ -z "$_password" ]; then
+        _password=${g_DEFAULT_PASSWORD-hadoop}
+    fi
+    if [ -z "$_dname_extra" ]; then
+        _dname_extra="OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
+    fi
+
+    if [ -s ./rootCA.key ]; then
+        _info "rootCA.key exists. Reusing..."
+    else
+        # Step1: create my root CA (key) TODO: -aes256
+        openssl genrsa -out rootCA.key 4096 || return $?
+        # Step2: create root CA's cert (pem)
+        openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.support.hortonworks.com" -passin "pass:$_password" || return $?
+    fi
+
+    mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
+    # Step3: Create a truststore file used by clients
+    keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD} -noprompt || return $?
+
+    local _javahome="`ssh -q root@$_ambari_host "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
+    local _cacerts="${_javahome%/}/jre/lib/security/cacerts"
+
+    if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
+        local _hostnames="$_how_many"
+        _info "Copying jks to $_hostnames ..."
+        for i in  `echo $_hostnames | sed 's/ /\n/g'`; do
+            _hadoop_ssl_per_node "$i" "$_cacerts" || return $?
+        done
+    else
+        _info "Copying jks to all nodes..."
+        for i in `_docker_seq "$_how_many" "$_start_from"`; do
+            _hadoop_ssl_per_node "node${i}${_domain_suffix}" "$_cacerts" || return $?
+        done
+    fi
+
+    _info "Updating Ambari configs for HDFS..."
+    f_ambari_configs "core-site" "{\"hadoop.rpc.protection\":\"privacy\",\"hadoop.ssl.require.client.cert\":\"false\",\"hadoop.ssl.hostname.verifier\":\"DEFAULT\",\"hadoop.ssl.keystores.factory.class\":\"org.apache.hadoop.security.ssl.FileBasedKeyStoresFactory\",\"hadoop.ssl.server.conf\":\"ssl-server.xml\",\"hadoop.ssl.client.conf\":\"ssl-client.xml\"}" "$_ambari_host"
+    f_ambari_configs "ssl-client" "{\"ssl.client.truststore.location\":\"${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}\",\"ssl.client.truststore.password\":\"${g_CLIENT_TRUSTSTORE_PASSWORD}\",\"ssl.client.keystore.location\":\"${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}\",\"ssl.client.keystore.password\":\"$_password\"}" "$_ambari_host"
+    f_ambari_configs "ssl-server" "{\"ssl.server.truststore.location\":\"${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}\",\"ssl.server.truststore.password\":\"${g_CLIENT_TRUSTSTORE_PASSWORD}\",\"ssl.server.keystore.location\":\"${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}\",\"ssl.server.keystore.password\":\"$_password\",\"ssl.server.keystore.keypassword\":\"$_password\"}" "$_ambari_host"
+    f_ambari_configs "hdfs-site" "{\"dfs.encrypt.data.transfer\":\"true\",\"dfs.encrypt.data.transfer.algorithm\":\"3des\",\"dfs.http.policy\":\"HTTPS_ONLY\"}" "$_ambari_host" # or HTTP_AND_HTTPS
+    f_ambari_configs "mapred-site" "{\"mapreduce.jobhistory.http.policy\":\"HTTPS_ONLY\",\"mapreduce.jobhistory.webapp.https.address\":\"0.0.0.0:19888\"}" "$_ambari_host"
+    f_ambari_configs "yarn-site" "{\"yarn.http.policy\":\"HTTPS_ONLY\",\"yarn.nodemanager.webapp.https.address\":\"0.0.0.0:8044\"}" "$_ambari_host"
+    f_ambari_configs "tez-site" "{\"tez.runtime.shuffle.keep-alive.enabled\":\"true\"}" "$_ambari_host"
+
+    # If Ambari is 2.4.x or higher below works
+    _info "TODO: Please manually update:
+    yarn.resourcemanager.webapp.https.address=RM_HOST:8090
+    mapreduce.shuffle.ssl.enabled=true (mapreduce.shuffle.port)
+    tez.runtime.shuffle.ssl.enable=true"
+
+    _info "Run the below command to restart *ALL* required components:"
+    echo "curl -si -u admin:admin -H 'X-Requested-By:ambari' 'http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests' -X POST --data '{\"RequestInfo\":{\"command\":\"RESTART\",\"context\":\"Restart all required services\",\"operation_level\":\"host_component\"},\"Requests/resource_filters\":[{\"hosts_predicate\":\"HostRoles/stale_configs=true\"}]}'"
+}
+
+function _hadoop_ssl_per_node() {
+    local _node="$1"
+    local _cacerts="$2"
+
+    ssh -q root@${_node} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}; mkdir -m 755 -p ${g_CLIENT_TRUST_LOCATION%/}"
+    scp ./$g_CLIENT_TRUSTSTORE_FILE root@${_node}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
+    # Step4: On each node, create a privatekey for the node
+    ssh -q root@${_node} "mv -f ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null; keytool -genkey -alias ${_node} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
+    # Step5: On each node, create a CSR
+    ssh -q root@${_node} "keytool -certreq -alias ${_node} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.csr -storepass ${_password}"
+    scp root@${_node}:${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.csr ./ || return $?
+    # Step6: Sign the CSR with the root CA
+    openssl x509 -sha256 -req -in ./${_node}-keystore.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ${_node}-keystore.crt -days 730 -passin "pass:$_password" || return $?
+    scp ./rootCA.pem ./${_node}-keystore.crt root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
+    # Step7: On each node, import root CA's cert and the signed cert
+    ssh -q root@${_node} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias ${_node} -import -file ${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.crt -noprompt -storepass ${_password}" || return $?
+
+    if [ ! -z "$_cacerts" ]; then
+        ssh -q root@${_node} "keytool -keystore $_cacerts -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD}"
+    fi
+
+    ssh -q root@${_node} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
+}
+
 function f_hadoop_spnego_setup() {
     local __doc__="set up HTTP Authentication for HDFS, YARN, MapReduce2, HBase, Oozie, Falcon and Storm"
     # http://docs.hortonworks.com/HDPDocuments/Ambari-2.4.2.0/bk_ambari-security/content/configuring_http_authentication_for_HDFS_YARN_MapReduce2_HBase_Oozie_Falcon_and_Storm.html
-    local _ambari_host="${1}"
-    local _ambari_port="${2-8080}"
-    local _ambari_ssl="${3}"
-    local _cluster_name="${4-$r_CLUSTER_NAME}"
-    local _realm="${5-EXAMPLE.COM}"
-    local _domain="${6-${r_DOMAIN_SUFFIX#.}}"
-    local _opts=""
-    local _http="http"
+    local _realm="${1-EXAMPLE.COM}"
+    local _domain="${2-${r_DOMAIN_SUFFIX#.}}"
+    local _ambari_host="${3-$r_AMBARI_HOST}"
+    local _ambari_port="${4-8080}"
+    local _how_many="${5-$r_NUM_NODES}"
+    local _start_from="${6-$r_NODE_START_NUM}"
 
-    if _isYes "$_ambari_ssl"; then
-        _opts="$_opts -s"
-        _http="https"
-    fi
-    if [ -z "$_ambari_host" ]; then
-        if [ -z "$r_AMBARI_HOST" ]; then
-            _ambari_host="hostname -f"
-        else
-            _ambari_host="$r_AMBARI_HOST"
-        fi
-        _info "Using $_ambari_hsot for Ambari server hostname..."
-    fi
+    local _c="`f_get_cluster_name $_ambari_host`" || return 1
+    local _cmd="[ ! -s /etc/security/http_secret ] && dd if=/dev/urandom of=/etc/security/http_secret bs=1024 count=1; chown hdfs:hadoop /etc/security/http_secret; chmod 440 /etc/security/http_secret"
 
-    if [ -z "$_cluster_name" ]; then
-        _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
+    if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
+        local _hostnames="$_how_many"
+        _info "Creating http_secret on $_hostnames ..."
+        for i in  `echo $_hostnames | sed 's/ /\n/g'`; do
+            ssh -q "$i" "$_cmd" || return $?
+        done
+    else
+        _info "Creating http_secret on all nodes ..."
+        f_run_cmd_on_nodes "$_cmd" "$_how_many" "$_start_from" || return $?
     fi
 
-    f_run_cmd_on_nodes "dd if=/dev/urandom of=/etc/security/http_secret bs=1024 count=1 && chown hdfs:hadoop /etc/security/http_secret && chmod 440 /etc/security/http_secret"
-
-    local _type_prop=""
-    declare -A _configs # NOTE: this should be a local variable automatically
-
-    _configs["hadoop.http.authentication.simple.anonymous.allowed"]="false"
-    _configs["hadoop.http.authentication.signature.secret.file"]="/etc/security/http_secret"
-    _configs["hadoop.http.authentication.type"]="kerberos"
-    _configs["hadoop.http.authentication.kerberos.keytab"]="/etc/security/keytabs/spnego.service.keytab"
-    _configs["hadoop.http.authentication.kerberos.principal"]="HTTP/_HOST@${_realm}"
-    _configs["hadoop.http.filter.initializers"]="org.apache.hadoop.security.AuthenticationFilterInitializer"
-    _configs["hadoop.http.authentication.cookie.domain"]="${_domain}"
-
-	for _k in "${!_configs[@]}"; do
-        ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} $_opts set $_ambari_host "$_cluster_name" core-site "$_k" \"${_configs[$_k]}\""
-    done
+    f_ambari_configs "core-site" "{\"hadoop.http.authentication.simple.anonymous.allowed\":\"false\",\"hadoop.http.authentication.signature.secret.file\":\"/etc/security/http_secret\",\"hadoop.http.authentication.type\":\"kerberos\",\"hadoop.http.authentication.kerberos.keytab\":\"/etc/security/keytabs/spnego.service.keytab\",\"hadoop.http.authentication.kerberos.principal\":\"HTTP/_HOST@${_realm}\",\"hadoop.http.filter.initializers\":\"org.apache.hadoop.security.AuthenticationFilterInitializer\",\"hadoop.http.authentication.cookie.domain\":\"${_domain}\"}" "$_ambari_host"
 
     # If Ambari is 2.4.x or higher below works
-    _info "Run the below command to restart required components"
-    echo curl -u admin:admin -sk "${_http}://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_cluster_name}/requests" -H 'X-Requested-By: Ambari' --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
+    _info "Run the below command to restart *ALL* required components:"
+    echo "curl -si -u admin:admin -H 'X-Requested-By:ambari' 'http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests' -X POST --data '{\"RequestInfo\":{\"command\":\"RESTART\",\"context\":\"Restart all required services\",\"operation_level\":\"host_component\"},\"Requests/resource_filters\":[{\"hosts_predicate\":\"HostRoles/stale_configs=true\"}]}'"
 }
 
 function f_ldap_server_install_on_host() {
@@ -570,101 +654,6 @@ kdestroy"
         return 1
     fi
     ssh root@$_yarn_rm_node -t "sudo -u yarn bash -c \"kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/$(hostname -f); yarn rmadmin -refreshUserToGroupsMappings\""
-}
-
-function f_hadoop_ssl_setup() {
-    local __doc__="Setup SSL for hadoop https://community.hortonworks.com/articles/92305/how-to-transfer-file-using-secure-webhdfs-in-distc.html"
-    local _dname_extra="$1"
-    local _password="$2"
-    local _ambari_host="${3-$r_AMBARI_HOST}"
-    local _ambari_port="${4-8080}"
-    local _how_many="${5-$r_NUM_NODES}"
-    local _start_from="${6-$r_NODE_START_NUM}"
-    local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
-    local _work_dir="${8-./}"
-    local _c="`f_get_cluster_name $_ambari_host`" || return $?
-
-    if [ ! -d "$_work_dir" ]; then
-        mkdir ${_work_dir%/} || return $?
-    fi
-    cd ${_work_dir%/} || return $?
-
-    if [ -z "$_password" ]; then
-        _password=${g_DEFAULT_PASSWORD-hadoop}
-    fi
-    if [ -z "$_dname_extra" ]; then
-        _dname_extra="OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
-    fi
-
-    if [ -s ./rootCA.key ]; then
-        _info "rootCA.key exists. Reusing..."
-    else
-        # Step1: create my root CA (key) TODO: -aes256
-        openssl genrsa -out rootCA.key 4096 || return $?
-        # Step2: create root CA's cert (pem)
-        openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.support.hortonworks.com" -passin "pass:$_password" || return $?
-    fi
-
-    mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
-    # Step3: Create a truststore file used by clients
-    keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD} -noprompt || return $?
-
-    local _javahome="`ssh -q root@$_ambari_host "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
-    local _cacerts="${_javahome%/}/jre/lib/security/cacerts"
-
-    if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
-        local _hostnames="$_how_many"
-        _info "Copying jks to $_hostnames ..."
-        for i in  `echo $_hostnames | sed 's/ /\n/g'`; do
-            _hadoop_ssl_per_node "$i" "$_cacerts" || return $?
-        done
-    else
-        _info "Copying jks to all nodes..."
-        for i in `_docker_seq "$_how_many" "$_start_from"`; do
-            _hadoop_ssl_per_node "node${i}${_domain_suffix}" "$_cacerts" || return $?
-        done
-    fi
-
-    _info "Updating Ambari configs for HDFS..."
-    f_ambari_configs "core-site" "{\"hadoop.rpc.protection\":\"privacy\",\"hadoop.ssl.require.client.cert\":\"false\",\"hadoop.ssl.hostname.verifier\":\"DEFAULT\",\"hadoop.ssl.keystores.factory.class\":\"org.apache.hadoop.security.ssl.FileBasedKeyStoresFactory\",\"hadoop.ssl.server.conf\":\"ssl-server.xml\",\"hadoop.ssl.client.conf\":\"ssl-client.xml\"}" "$_ambari_host"
-    f_ambari_configs "ssl-client" "{\"ssl.client.truststore.location\":\"${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}\",\"ssl.client.truststore.password\":\"${g_CLIENT_TRUSTSTORE_PASSWORD}\",\"ssl.client.keystore.location\":\"${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}\",\"ssl.client.keystore.password\":\"$_password\"}" "$_ambari_host"
-    f_ambari_configs "ssl-server" "{\"ssl.server.truststore.location\":\"${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}\",\"ssl.server.truststore.password\":\"${g_CLIENT_TRUSTSTORE_PASSWORD}\",\"ssl.server.keystore.location\":\"${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}\",\"ssl.server.keystore.password\":\"$_password\",\"ssl.server.keystore.keypassword\":\"$_password\"}" "$_ambari_host"
-    f_ambari_configs "hdfs-site" "{\"dfs.encrypt.data.transfer\":\"true\",\"dfs.encrypt.data.transfer.algorithm\":\"3des\",\"dfs.http.policy\":\"HTTPS_ONLY\"}" "$_ambari_host" # or HTTP_AND_HTTPS
-    f_ambari_configs "mapred-site" "{\"mapreduce.jobhistory.http.policy\":\"HTTPS_ONLY\",\"mapreduce.jobhistory.webapp.https.address\":\"0.0.0.0:19888\"}" "$_ambari_host"
-    f_ambari_configs "yarn-site" "{\"yarn.http.policy\":\"HTTPS_ONLY\",\"yarn.nodemanager.webapp.https.address\":\"0.0.0.0:8044\"}" "$_ambari_host"
-    f_ambari_configs "tez-site" "{\"tez.runtime.shuffle.keep-alive.enabled\":\"true\"}" "$_ambari_host"
-
-    # If Ambari is 2.4.x or higher below works
-    _info "TODO: Please manually update:
-    yarn.resourcemanager.webapp.https.address=RM_HOST:8090
-    mapreduce.shuffle.ssl.enabled=true (mapreduce.shuffle.port)
-    tez.runtime.shuffle.ssl.enable=true"
-    _info "Run the below command to restart *ALL* required components:"
-    echo curl -u admin:admin -sk "${_http}://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests" -H 'X-Requested-By: Ambari' --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
-}
-
-function _hadoop_ssl_per_node() {
-    local _node="$1"
-    local _cacerts="$2"
-
-    ssh -q root@${_node} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}; mkdir -m 755 -p ${g_CLIENT_TRUST_LOCATION%/}"
-    scp ./$g_CLIENT_TRUSTSTORE_FILE root@${_node}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
-    # Step4: On each node, create a privatekey for the node
-    ssh -q root@${_node} "mv -f ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null; keytool -genkey -alias ${_node} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
-    # Step5: On each node, create a CSR
-    ssh -q root@${_node} "keytool -certreq -alias ${_node} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.csr -storepass ${_password}"
-    scp root@${_node}:${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.csr ./ || return $?
-    # Step6: Sign the CSR with the root CA
-    openssl x509 -sha256 -req -in ./${_node}-keystore.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ${_node}-keystore.crt -days 730 -passin "pass:$_password" || return $?
-    scp ./rootCA.pem ./${_node}-keystore.crt root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
-    # Step7: On each node, import root CA's cert and the signed cert
-    ssh -q root@${_node} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias ${_node} -import -file ${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.crt -noprompt -storepass ${_password}" || return $?
-
-    if [ ! -z "$_cacerts" ]; then
-        ssh -q root@${_node} "keytool -keystore $_cacerts -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD}"
-    fi
-
-    ssh -q root@${_node} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
 }
 
 function _ssl_openssl_cnf_generate() {
