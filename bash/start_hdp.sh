@@ -1437,7 +1437,7 @@ function f_ambari_configs() {
     echo "import json
 a=json.loads('{'+open('/tmp/${_type}_$$.json','r').read()+'}')
 n=json.loads('"${_dict}"')
-a.update(n)
+a['properties'].update(n)
 s=json.dumps(a['properties'])
 f=open('/tmp/${_type}_updated_$$.json','w')
 f.write('\"properties\":'+s)
@@ -1676,17 +1676,24 @@ function f_repo_mount() {
 
 function f_services_start() {
     local __doc__="Request 'Start all' to Ambari via API"
-    local _c="`f_get_cluster_name $r_AMBARI_HOST`" || return 1
+    local _is_stale_only="$1"
+    local _ambari_host="${2-$r_AMBARI_HOST}"
+    local _ambari_port="${3-8080}"
+    local _c="`f_get_cluster_name $_ambari_host`" || return 1
     _info "Will start all services ..."
     if [ -z "$_c" ]; then
       _error "No cluster name (check PostgreSQL)..."
       return 1
     fi
 
-    _port_wait "$r_AMBARI_HOST" "8080"
-    _ambari_agent_wait
+    _port_wait "$_ambari_host" "8080"
+    _ambari_agent_wait "$_ambari_host"
 
-    curl -si -u admin:admin -H "X-Requested-By:ambari" "http://$r_AMBARI_HOST:8080/api/v1/clusters/${_c}/services?" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+    if _isYes "$_is_stale_only"; then
+        curl -si -u admin:admin -H "X-Requested-By:ambari" "http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests" -X POST --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
+    else
+        curl -si -u admin:admin -H "X-Requested-By:ambari" "http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/services" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_c}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+    fi
     echo ""
 }
 
