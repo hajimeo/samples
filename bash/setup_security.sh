@@ -632,10 +632,13 @@ function f_hadoop_ssl_setup() {
     f_ambari_configs "hdfs-site" "{\"dfs.encrypt.data.transfer\":\"true\",\"dfs.encrypt.data.transfer.algorithm\":\"3des\",\"dfs.http.policy\":\"HTTPS_ONLY\"}" "$_ambari_host" # or HTTP_AND_HTTPS
     f_ambari_configs "mapred-site" "{\"mapreduce.jobhistory.http.policy\":\"HTTPS_ONLY\",\"mapreduce.jobhistory.webapp.https.address\":\"0.0.0.0:19888\"}" "$_ambari_host"
     f_ambari_configs "yarn-site" "{\"yarn.http.policy\":\"HTTPS_ONLY\",\"yarn.nodemanager.webapp.https.address\":\"0.0.0.0:8044\"}" "$_ambari_host"
-    #f_ambari_configs "tez-site" "{\"tez.runtime.shuffle.ssl.enable\":\"true\",\"tez.runtime.shuffle.keep-alive.enabled\":\"true\"}" "$_ambari_host"
+    f_ambari_configs "tez-site" "{\"tez.runtime.shuffle.keep-alive.enabled\":\"true\"}" "$_ambari_host"
 
     # If Ambari is 2.4.x or higher below works
-    _info "TODO: Please manually update: yarn.resourcemanager.webapp.https.address"
+    _info "TODO: Please manually update:
+    yarn.resourcemanager.webapp.https.address=RM_HOST:8090
+    mapreduce.shuffle.ssl.enabled=true (mapreduce.shuffle.port)
+    tez.runtime.shuffle.ssl.enable=true"
     _info "Run the below command to restart *ALL* required components:"
     echo curl -u admin:admin -sk "${_http}://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests" -H 'X-Requested-By: Ambari' --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
 }
