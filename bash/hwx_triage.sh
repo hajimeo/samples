@@ -48,6 +48,7 @@ function f_check_system() {
 
     hdp-select &> ${_WORK_DIR%/}/hdp-select.out
     getenforce &> ${_WORK_DIR%/}/getenforce.out
+    iptables -t nat -L &> ${_WORK_DIR%/}/iptables.out
     ls -l /usr/hdp/current/ >> ${_WORK_DIR%/}/hdp-select.out
     (which timeout && (timeout 3 time head -n 1 /dev/urandom > /dev/null;echo '-';timeout 3 time head -n 1 /dev/random > /dev/null)) &> ${_WORK_DIR%/}/random.out
     vmstat 1 3 &> ${_WORK_DIR%/}/vmstat.out &
@@ -63,6 +64,7 @@ function f_check_system() {
     nscd -g &> ${_WORK_DIR%/}/nscd.out
     getent ahostsv4 `hostname -f` &> ${_WORK_DIR%/}/getent_from_name.out
     getent hosts `hostname -I` &> ${_WORK_DIR%/}/getent_from_ip.out
+    python -c 'import socket;print socket.getfqdn()' &> ${_WORK_DIR%/}/python_getfqdn.out
     mount &> ${_WORK_DIR%/}/mount_df.out
     df -h &> ${_WORK_DIR%/}/mount_df.out
     sar -qrbd &> ${_WORK_DIR%/}/sar_qrbd.out
