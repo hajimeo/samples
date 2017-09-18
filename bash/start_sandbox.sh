@@ -27,7 +27,7 @@ function f_docker_image_setup() {
 
     which docker &>/dev/null
     if [ $? -ne 0 ]; then
-        echo "Please install docker - https://docs.docker.com/engine/installation/linux/ubuntu/"
+        echo "Please install docker - https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/"
         echo "or "
         echo "./start_hdp.sh -f f_docker_setup"
         return 1
