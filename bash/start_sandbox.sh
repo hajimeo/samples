@@ -288,6 +288,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
         fi
         docker exec -it ${_NAME} bash -c "chpasswd <<< root:hadoop"
+        docker exec -it ${_NAME} bash -c "chown -R hdfs:hadoop /hadoop/hdfs"
 
         #echo "Resetting Ambari Agent just incase ..."
         #docker exec -it ${_NAME} /usr/sbin/ambari-agent stop
