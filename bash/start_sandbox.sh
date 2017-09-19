@@ -318,6 +318,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     echo "Waiting Amari Server is ready on port $_AMBARI_PORT , then start all services..."
     _port_wait "localhost" $_AMBARI_PORT
     sleep 3
+    # TODO:
+    #f_service "ZEPPELIN ATLAS KNOX FALCON OOZIE FLUME HBASE KAFKA SPARK SPARK2 STORM AMBARI_INFRA" "STOP" sandbox.hortonworks.com
+    #f_service "ZOOKEEPER RANGER HDFS MAPREDUCE2 YARN HIVE" "START" sandbox.hortonworks.com
     curl -u admin:admin -H "X-Requested-By:ambari" -k "http://localhost:${_AMBARI_PORT}/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
     echo ""
     #docker exec -it ${_NAME} bash
