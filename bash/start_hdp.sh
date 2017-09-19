@@ -1227,7 +1227,7 @@ function _ambari_query_sql() {
     local _query="${1%\;}"
     local _ambari_host="${2-$r_AMBARI_HOST}"
 
-    ssh root@$_ambari_host 'PGPASSWORD=bigdata psql -Uambari -tAc "'$_query';"'
+    ssh -q root@$_ambari_host 'PGPASSWORD=bigdata psql -Uambari -tAc "'${_query}';"'
 }
 
 function f_get_cluster_name() {
