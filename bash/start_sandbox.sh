@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # @see http://hortonworks.com/hadoop-tutorial/hortonworks-sandbox-guide/#section_4
+# @see https://raw.githubusercontent.com/hortonworks/data-tutorials/master/tutorials/hdp/sandbox-port-forwarding-guide/assets/start-sandbox-hdp.sh
 #
 # Get the latest script
 # curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh -O
