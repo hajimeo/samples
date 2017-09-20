@@ -191,7 +191,7 @@ function f_ambari_kerberos_setup() {
     local _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
     local _api_uri="http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
     local _stack_name="HDP"
-    local _stack_version"`_ambari_query_sql "select s.stack_version from clusters c join stack s on c.desired_stack_id = s.stack_id where c.cluster_name='$_cluster_name';" "$_ambari_host"`"
+    local _stack_version="`_ambari_query_sql "select s.stack_version from clusters c join stack s on c.desired_stack_id = s.stack_id where c.cluster_name='$_cluster_name';" "$_ambari_host"`"
     local _request_context="Stop Service with f_ambari_kerberos_setup"
     local _version="version`date +%s`000"
 
