@@ -415,8 +415,9 @@ function f_hadoop_spnego_setup() {
     f_ambari_configs "core-site" "{\"hadoop.http.authentication.simple.anonymous.allowed\":\"false\",\"hadoop.http.authentication.signature.secret.file\":\"/etc/security/http_secret\",\"hadoop.http.authentication.type\":\"kerberos\",\"hadoop.http.authentication.kerberos.keytab\":\"/etc/security/keytabs/spnego.service.keytab\",\"hadoop.http.authentication.kerberos.principal\":\"HTTP/_HOST@${_realm}\",\"hadoop.http.filter.initializers\":\"org.apache.hadoop.security.AuthenticationFilterInitializer\",\"hadoop.http.authentication.cookie.domain\":\"${_domain}\"}" "$_ambari_host"
 
     # If Ambari is 2.4.x or higher below works
-    _info "Run the below command to restart *ALL* required components:"
-    echo "curl -si -u admin:admin -H 'X-Requested-By:ambari' 'http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests' -X POST --data '{\"RequestInfo\":{\"command\":\"RESTART\",\"context\":\"Restart all required services\",\"operation_level\":\"host_component\"},\"Requests/resource_filters\":[{\"hosts_predicate\":\"HostRoles/stale_configs=true\"}]}'"
+    _info "Restarting HDFS MAPREDUCE2 YARN..."
+    sleep 3
+    f_service 'HDFS MAPREDUCE2 YARN' 'RESTART' "$_ambari_host"
 }
 
 function f_ldap_server_install_on_host() {
