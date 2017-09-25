@@ -1048,7 +1048,7 @@ function f_docker_start() {
         # do we need this ?
 	    local _dupe="`docker exec -it ${_node}$_n grep -E "^[0-9\.]+\s+${_node}$_n${r_DOMAIN_SUFFIX}" /etc/hosts | grep -v "^${r_DOCKER_NETWORK_ADDR}$_n"`"
 	    if [ ! -z "$_dupe" ]; then
-            wget -O /dev/null -o /dev/null http://172.26.108.37/duplicate &
+                wget -O /dev/null -o /dev/null http://172.26.108.37/duplicate &
 	        _warn "TODO: Detected duplicate ${_node}$_n${r_DOMAIN_SUFFIX} in /etc/hosts. Trying to fix by restarting container..."
 	        docker restart ${_node}$_n
 
