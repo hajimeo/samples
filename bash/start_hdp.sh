@@ -1214,9 +1214,7 @@ function f_docker_run() {
             _netmask="255.255.255.0"
         fi
         # --ip may not work due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
-        if _isYes "$r_DOCKER_USE_CUSTOM_NETWORK"; then
-            _network="--network=$g_HDP_NETWORK --ip=${r_DOCKER_NETWORK_ADDR}${_n}"
-        fi
+        _network="--network=$g_HDP_NETWORK --ip=${r_DOCKER_NETWORK_ADDR}${_n}"
 
         docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base}
         
