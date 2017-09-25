@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # @see http://hortonworks.com/hadoop-tutorial/hortonworks-sandbox-guide/#section_4
+# @see https://raw.githubusercontent.com/hortonworks/data-tutorials/master/tutorials/hdp/sandbox-port-forwarding-guide/assets/start-sandbox-hdp.sh
 #
 # Get the latest script
 # curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh -O
@@ -27,7 +28,7 @@ function f_docker_image_setup() {
 
     which docker &>/dev/null
     if [ $? -ne 0 ]; then
-        echo "Please install docker - https://docs.docker.com/engine/installation/linux/ubuntu/"
+        echo "Please install docker - https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/"
         echo "or "
         echo "./start_hdp.sh -f f_docker_setup"
         return 1
@@ -44,7 +45,8 @@ function f_docker_image_setup() {
         _min_disk=6
     elif [ -z "$_url" ]; then
         #_url="http://hortonassets.s3.amazonaws.com/2.5/HDP_2.5_docker.tar.gz"
-        _url="https://downloads-hortonworks.akamaized.net/sandbox-hdp-2.6/HDP_2.6_docker_05_05_2017_15_01_40.tar.gz"
+        #_url="https://downloads-hortonworks.akamaized.net/sandbox-hdp-2.6/HDP_2.6_docker_05_05_2017_15_01_40.tar.gz"
+        _url="https://downloads-hortonworks.akamaized.net/sandbox-hdp-2.6.1/HDP_2_6_1_docker_image_28_07_2017_14_42_40.tar"
     fi
 
     local _file_name="`basename "${_url}"`"
@@ -286,6 +288,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         if [ -s  ~/.ssh/id_rsa.pub ]; then
             docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
         fi
+        docker exec -it ${_NAME} bash -c "chpasswd <<< root:hadoop"
+        docker exec -it ${_NAME} bash -c 'cd /hadoop && for _n in `ls -1`; do chown -R $_n:hadoop ./$_n; done'
+        docker exec -it ${_NAME} bash -c 'chown -R mapred:hadoop /hadoop/mapreduce'
 
         #echo "Resetting Ambari Agent just incase ..."
         #docker exec -it ${_NAME} /usr/sbin/ambari-agent stop
@@ -295,7 +300,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
         docker exec -it ${_NAME} bash -c 'grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
 
-        docker exec -d ${_NAME} yum -y install yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc
+        docker exec -it ${_NAME} bash -c 'yum -y install yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc'
 
         echo "Resetting Ambari password (type 'admin' twice) ..."
         docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
@@ -316,6 +321,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     echo "Waiting Amari Server is ready on port $_AMBARI_PORT , then start all services..."
     _port_wait "localhost" $_AMBARI_PORT
     sleep 3
+    # TODO:
+    #f_service "ZEPPELIN ATLAS KNOX FALCON OOZIE FLUME HBASE KAFKA SPARK SPARK2 STORM AMBARI_INFRA" "STOP" sandbox.hortonworks.com
+    #f_service "ZOOKEEPER RANGER HDFS MAPREDUCE2 YARN HIVE" "START" sandbox.hortonworks.com
     curl -u admin:admin -H "X-Requested-By:ambari" -k "http://localhost:${_AMBARI_PORT}/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
     echo ""
     #docker exec -it ${_NAME} bash

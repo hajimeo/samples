@@ -191,7 +191,7 @@ function f_ambari_kerberos_setup() {
     local _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
     local _api_uri="http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
     local _stack_name="HDP"
-    local _stack_version"`_ambari_query_sql "select s.stack_version from clusters c join stack s on c.desired_stack_id = s.stack_id where c.cluster_name='$_cluster_name';" "$_ambari_host"`"
+    local _stack_version="`_ambari_query_sql "select s.stack_version from clusters c join stack s on c.desired_stack_id = s.stack_id where c.cluster_name='$_cluster_name';" "$_ambari_host"`"
     local _request_context="Stop Service with f_ambari_kerberos_setup"
     local _version="version`date +%s`000"
 
@@ -957,17 +957,6 @@ function f_ssl_ambari_config_disable_for_hadoop() {
     done
 }
 
-### when source is used ########################
-g_START_HDP_SH="start_hdp.sh"
-# TODO: assuming g_SCRIPT_NAME contains a right filename or can be empty
-if [ "$g_SCRIPT_NAME" != "$g_START_HDP_SH" ]; then
-    if [ ! -s "./$g_START_HDP_SH" ]; then
-        echo "start_hdp.sh is missing. Downloading..."
-        curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/$g_START_HDP_SH -o "$g_CURRENT_DIR/$g_START_HDP_SH"
-    fi
-    source "./$g_START_HDP_SH"
-fi
-
 ### main ########################
 # TODO: at this moment, only when this script is directly used, do update check.
 if [ "$0" = "$BASH_SOURCE" ]; then
@@ -977,4 +966,12 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     f_loadResp 'path/to/your/resp/file'
     f_xxxxx # or type 'help'
     "
+else
+    g_START_HDP_SH="start_hdp.sh"
+    # TODO: assuming g_SCRIPT_NAME contains a right filename or can be empty
+    if [ ! -s "./$g_START_HDP_SH" ]; then
+        echo "start_hdp.sh is missing. Downloading..."
+        curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/$g_START_HDP_SH -o "./$g_START_HDP_SH"
+    fi
+    source "./$g_START_HDP_SH"
 fi
