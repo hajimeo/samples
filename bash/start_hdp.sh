@@ -1018,6 +1018,7 @@ function f_docker_start() {
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+    local _centos_os_ver="${r_CONTAINER_OS_VER%%.*}"
 
     # To use tcpdump from container
     if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
@@ -1044,12 +1045,18 @@ function f_docker_start() {
         sleep 1
 
         # docker exec adds "\r" which causes bash syntax error
+        # do we need this ?
 	    local _dupe="`docker exec -it ${_node}$_n grep -E "^[0-9\.]+\s+${_node}$_n${r_DOMAIN_SUFFIX}" /etc/hosts | grep -v "^${r_DOCKER_NETWORK_ADDR}$_n"`"
 	    if [ ! -z "$_dupe" ]; then
+                wget -O /dev/null -o /dev/null http://172.26.108.37/duplicate &
 	        _warn "TODO: Detected duplicate ${_node}$_n${r_DOMAIN_SUFFIX} in /etc/hosts. Trying to fix by restarting container..."
 	        docker restart ${_node}$_n
+
+            #centos  7 is not using /startup.sh
+            if [ $_centos_os_ver -eq 6 ]; then
 	        # need to start necessary services in here but how to start service is different by container, so expecting /startup.sh absorb this
-	        docker exec ${_node}$_n timeout 5 /startup.sh
+	            docker exec ${_node}$_n timeout 5 /startup.sh
+            fi 
 	    fi
 
 	    docker exec -it ${_node}$_n bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh &>/dev/null && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
@@ -1214,9 +1221,7 @@ function f_docker_run() {
             _netmask="255.255.255.0"
         fi
         # --ip may not work due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
-        if _isYes "$r_DOCKER_USE_CUSTOM_NETWORK"; then
-            _network="--network=$g_HDP_NETWORK --ip=${r_DOCKER_NETWORK_ADDR}${_n}"
-        fi
+        _network="--network=$g_HDP_NETWORK --ip=${r_DOCKER_NETWORK_ADDR}${_n}"
 
         docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base}
         
