@@ -15,6 +15,7 @@
 #
 
 _NAME="${1-sandbox-hdp}"
+_HOSTNAME="${2-sandbox.hortonworks.com}"
 _AMBARI_PORT=8080
 _SHMMAX=41943040
 _NEW_CONTAINER=false
@@ -112,6 +113,12 @@ function _totalSpaceGB() {
 
 ### main() ############################################################
 if [ "$0" = "$BASH_SOURCE" ]; then
+    if `grep -qE "^172.18.0.+${_HOSTNAME}" /etc/hosts`; then
+        echo "WARN /etc/hosts doesn't look like having ${_HOSTNAME}.
+If you would like to fix this now, press Ctrl+c."
+        sleep 7
+    fi
+
     # To use tcpdump from container
     if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
         ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
@@ -132,7 +139,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         docker start "${_NAME}"
     else
       if [ "${_NAME}" = "sandbox-hdf" ]; then
-        docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "sandbox.hortonworks.com" --privileged -d \
+        docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" --privileged -d \
         -p 12181:2181 \
         -p 13000:3000 \
         -p 14200:4200 \
@@ -165,7 +172,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         ${_NAME} /usr/sbin/sshd -D
         # NOTE: Using 8080 and 2222 for HDF as well
       else
-        docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "sandbox.hortonworks.com" --privileged -d \
+        docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" --privileged -d \
         -p 1111:111 \
         -p 1000:1000 \
         -p 1100:1100 \
@@ -284,10 +291,12 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     #ssh -p 2222 localhost -t /sbin/service mysqld start
     docker exec -d ${_NAME} service mysqld start
 
+    # setting up password-less ssh to sandbox
+    if [ -s  ~/.ssh/id_rsa.pub ]; then
+        docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
+    fi
+
     if ${_NEW_CONTAINER} ; then
-        if [ -s  ~/.ssh/id_rsa.pub ]; then
-            docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
-        fi
         docker exec -it ${_NAME} bash -c "chpasswd <<< root:hadoop"
         docker exec -it ${_NAME} bash -c 'cd /hadoop && for _n in `ls -1`; do chown -R $_n:hadoop ./$_n; done'
         docker exec -it ${_NAME} bash -c 'chown -R mapred:hadoop /hadoop/mapreduce'
@@ -321,12 +330,12 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 
     echo "Waiting Amari Server is ready on port $_AMBARI_PORT , then start all services..."
-    _port_wait "localhost" $_AMBARI_PORT
+    _port_wait "${_HOSTNAME}" $_AMBARI_PORT
     sleep 3
-    # TODO:
-    #f_service "ZEPPELIN ATLAS KNOX FALCON OOZIE FLUME HBASE KAFKA SPARK SPARK2 STORM AMBARI_INFRA" "STOP" sandbox.hortonworks.com
-    #f_service "ZOOKEEPER RANGER HDFS MAPREDUCE2 YARN HIVE" "START" sandbox.hortonworks.com
-    curl -u admin:admin -H "X-Requested-By:ambari" -k "http://localhost:${_AMBARI_PORT}/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+    # TODO: Because sandbox's HDFS is in Maintenance mode, the curl command below wouldn't work
+    #f_service "ZEPPELIN ATLAS KNOX FALCON OOZIE FLUME HBASE KAFKA SPARK SPARK2 STORM AMBARI_INFRA" "STOP" ${_HOSTNAME}
+    #f_service "ZOOKEEPER RANGER HDFS MAPREDUCE2 YARN HIVE" "START" ${_HOSTNAME}
+    curl -u admin:admin -H "X-Requested-By:ambari" -k "http://${_HOSTNAME}:${_AMBARI_PORT}/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
     echo ""
     #docker exec -it ${_NAME} bash
 fi
