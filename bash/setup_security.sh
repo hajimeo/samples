@@ -188,6 +188,11 @@ function f_ambari_kerberos_setup() {
         _password=${g_DEFAULT_PASSWORD-hadoop}
     fi
 
+    if ! which python &>/dev/null; then
+        _error "Please install python (eg: apt-get install -y python)"
+        return 1
+    fi
+
     local _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
     local _api_uri="http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
     local _stack_name="HDP"
