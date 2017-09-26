@@ -416,6 +416,8 @@ function f_ambari_blueprint_cluster_config() {
         _extra_comps_3=',{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}'
         _extra_comps_4=',{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
         # https://cwiki.apache.org/confluence/display/AMBARI/Blueprint+support+for+Ranger
+        # TODO: policymgr_external_url is supposed to be used for rest.url but it becomes {{policymgr_mgr_url}}
+        # TODO: amb_ranger_admin doesn't look like working. Need to create from Ranger Web UI
         _extra_configs=',{
       "admin-properties" : {
         "properties_attributes" : { },
@@ -465,7 +467,8 @@ function f_ambari_blueprint_cluster_config() {
       "ranger-env" : {
         "properties_attributes" : { },
         "properties" : {
-          "ranger_admin_password" : "'$g_DEFAULT_PASSWORD'",
+          "ranger_admin_username" : "amb_ranger_admin",
+          "ranger_admin_password" : "Password1",
           "xasecure.audit.destination.solr" : "false",
           "xasecure.audit.destination.hdfs" : "false",
           "xasecure.audit.destination.hdfs.dir" : "hdfs://%HOSTGROUP::host_group_2%:8020/ranger/audit",
@@ -1224,7 +1227,6 @@ function f_docker_run() {
         _network="--network=$g_HDP_NETWORK --ip=${r_DOCKER_NETWORK_ADDR}${_n}"
 
         docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base}
-        
     done
 }
 
