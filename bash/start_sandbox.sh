@@ -201,6 +201,7 @@ If you would like to fix this now, press Ctrl+c."
         -p 1100:1100 \
         -p 1220:1220 \
         -p 1520:1520 \
+        -p 1521:1521 \
         -p 1988:1988 \
         -p 2049:2049 \
         -p 2100:2100 \
