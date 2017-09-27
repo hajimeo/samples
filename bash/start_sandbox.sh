@@ -157,7 +157,7 @@ If you would like to fix this now, press Ctrl+c."
             fi
         fi
 
-      if [ "${_NAME}" = "sandbox-hdf" ]; then
+      if [[ "${_NAME}" == "sandbox-hdf"* ]]; then
         docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
         -p 12181:2181 \
         -p 13000:3000 \
@@ -188,9 +188,9 @@ If you would like to fix this now, press Ctrl+c."
         -p 17004:17004 \
         -p 17005:17005 \
         -p 2222:22 \
-        ${_NAME} /usr/sbin/sshd -D
+        sandbox-hdf /usr/sbin/sshd -D || exit $?
         # NOTE: Using 8080 and 2222 for HDF as well
-      else
+      elif [[ "${_NAME}" == "sandbox-hdp"* ]]; then
         docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
         -p 1111:111 \
         -p 1000:1000 \
@@ -283,7 +283,9 @@ If you would like to fix this now, press Ctrl+c."
         -p 61888:61888 \
         -p 2222:22 \
         --sysctl kernel.shmmax=${_SHMMAX} \
-        ${_NAME} /usr/sbin/sshd -D
+        sandbox-hdp /usr/sbin/sshd -D || exit $?
+      else
+        docker run --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d "${_NAME}" || exit $?
       fi
 
       _NEW_CONTAINER=true
