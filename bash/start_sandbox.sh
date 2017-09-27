@@ -40,7 +40,7 @@ function f_docker_image_setup() {
         return 1
     fi
 
-    docker ps -a --format "{{.Names}}" | grep -w "${_name}"
+    docker ps -a --format "{{.Names}}" | grep -qw "${_name}"
     if [ $? -eq 0 ]; then
         echo "Image $_name already exist. Exiting."
         return
@@ -141,9 +141,9 @@ If you would like to fix this now, press Ctrl+c."
     fi
 
     echo "Waiting for docker daemon to start up:"
-    until docker ps 2>&1| grep STATUS>/dev/null; do  sleep 1; done;  >/dev/null
+    until docker ps 2>&1| grep -q STATUS; do  sleep 1; done;  >/dev/null
 
-    docker ps -a --format "{{.Names}}" | grep -w "${_NAME}"
+    docker ps -a --format "{{.Names}}" | grep -qw "${_NAME}"
     if [ $? -eq 0 ]; then
         docker start "${_NAME}"
     else
@@ -330,7 +330,7 @@ If you would like to fix this now, press Ctrl+c."
         #docker exec -it ${_NAME} /usr/sbin/ambari-agent start
 
         # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
-        docker exec -it ${_NAME} bash -c 'grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
+        docker exec -it ${_NAME} bash -c 'grep -q "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
 
         docker exec -it ${_NAME} bash -c 'yum install -y yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc'
 
