@@ -337,8 +337,9 @@ If you would like to fix this now, press Ctrl+c."
 
         docker exec -it ${_NAME} bash -c 'yum install -y yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc'
 
-        echo "Resetting Ambari password (type 'admin' twice) ..."
-        docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
+        echo "Resetting Ambari password (to 'admin') ..."
+        docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL'\""
+        #docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
     else
         docker exec -d ${_NAME} service ambari-server start
     fi
