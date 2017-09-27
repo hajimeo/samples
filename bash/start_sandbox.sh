@@ -13,7 +13,10 @@
 # To start Sandbox (IP needs 'hdp' network)
 #   bash ./start_sandbox.sh [sandbox-hdp|sandbox-hdf] [IP] [hostname]
 #
-
+# How to create 'hdp' network (incomplete as how to change docker config is different by OS)
+#   # TODO: update docker config file to add " --bip=172.18.0.1\/24", then restart docker service, then
+#   docker network create --driver=bridge --gateway=172.17.0.1 --subnet=172.17.0.0/16 -o com.docker.network.bridge.name=hdp -o com.docker.network.bridge.host_binding_ipv4=172.17.0.1 hdp
+#
 _NAME="${1-sandbox-hdp}"
 _IP="${2}"
 _HOSTNAME="${3-sandbox.hortonworks.com}"
@@ -24,9 +27,9 @@ _NEW_CONTAINER=false
 
 function f_docker_image_setup() {
     #Install Sandbox docker version. See https://hortonworks.com/hadoop-tutorial/hortonworks-sandbox-guide"
-    local _tmp_dir="${1-./}"
-    local _name="${2-$_NAME}" # sandbox or sandbox-hdf
-    local _url="$3"
+    local _name="${1-$_NAME}" # sandbox or sandbox-hdf
+    local _url="$2"
+    local _tmp_dir="${3-./}"
     local _min_disk="12"
 
     which docker &>/dev/null
