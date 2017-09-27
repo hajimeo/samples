@@ -991,7 +991,7 @@ function f_docker0_setup() {
                 return $?
             fi
         else
-            grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"$DOCKER_OPTS --bip=${_docker0}\/${_mask}\"" >> /etc/default/docker && /etc/init.d/docker restart)  # TODO: untested. May not work with 14.04
+            grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"$DOCKER_OPTS --bip=${_docker0}/${_mask}\"" >> /etc/default/docker && /etc/init.d/docker restart)
             return $?
         fi
     fi
