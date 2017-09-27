@@ -47,8 +47,9 @@ function f_docker_image_setup() {
     fi
 
     if [ "${_name}" = "sandbox-hdf" ]; then
-        #_url="https://downloads-hortonworks.akamaized.net/sandbox-hdf-2.1/HDF_2.1.2_docker_image_04_05_2017_13_12_03.tar.gz"
-        _url="https://downloads-hortonworks.akamaized.net/sandbox-hdf-3.0/HDF_3.0_docker_12_6_2017.tar.gz"
+        _url="https://downloads-hortonworks.akamaized.net/sandbox-hdf-2.1/HDF_2.1.2_docker_image_04_05_2017_13_12_03.tar.gz"
+        # TODO: open /var/lib/docker/tmp/docker-import-989759448/apps/json: no such file or directory
+        #_url="https://downloads-hortonworks.akamaized.net/sandbox-hdf-3.0/HDF_3.0_docker_12_6_2017.tar.gz"
         _min_disk=9
     elif [ -z "$_url" ]; then
         #_url="http://hortonassets.s3.amazonaws.com/2.5/HDP_2.5_docker.tar.gz"
@@ -190,7 +191,10 @@ If you would like to fix this now, press Ctrl+c."
         -p 2222:22 \
         sandbox-hdf /usr/sbin/sshd -D || exit $?
         # NOTE: Using 8080 and 2222 for HDF as well
-      elif [[ "${_NAME}" == "sandbox-hdp"* ]]; then
+      else
+        _image_name="sandbox"
+        [[ "${_NAME}" == "sandbox-hdp"* ]] && _image_name="sandbox-hdp"
+
         docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
         -p 1111:111 \
         -p 1000:1000 \
@@ -283,9 +287,7 @@ If you would like to fix this now, press Ctrl+c."
         -p 61888:61888 \
         -p 2222:22 \
         --sysctl kernel.shmmax=${_SHMMAX} \
-        sandbox-hdp /usr/sbin/sshd -D || exit $?
-      else
-        docker run --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d "${_NAME}" || exit $?
+        ${_image_name} /usr/sbin/sshd -D || exit $?
       fi
 
       _NEW_CONTAINER=true
