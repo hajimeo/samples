@@ -64,7 +64,8 @@ function f_docker_image_setup() {
     fi
 
     if [ -s "${_tmp_dir%/}/${_file_name}" ]; then
-        echo "${_tmp_dir%/}/${_file_name} exists. Reusing it..."
+        echo "INFO: ${_tmp_dir%/}/${_file_name} exists. Reusing it..."
+        sleep 3
     else
         curl --retry 100 -C - "${_url}" -o "${_tmp_dir%/}/${_file_name}" || return $?
     fi
