@@ -10,12 +10,14 @@
 #   (move to dir which has enough disk space, min. 12GB)
 #   f_docker_image_setup [sandbox-hdp|sandbox-hdf]
 #
-# To start Sandbox
-#   bash ./start_sandbox.sh [sandbox-hdp|sandbox-hdf]
+# To start Sandbox (IP needs 'hdp' network)
+#   bash ./start_sandbox.sh [sandbox-hdp|sandbox-hdf] [IP] [hostname]
 #
 
 _NAME="${1-sandbox-hdp}"
-_HOSTNAME="${2-sandbox.hortonworks.com}"
+_IP="${2}"
+_HOSTNAME="${3-sandbox.hortonworks.com}"
+_CUSTOM_NETWORK="hdp"
 _AMBARI_PORT=8080
 _SHMMAX=41943040
 _NEW_CONTAINER=false
@@ -139,8 +141,18 @@ If you would like to fix this now, press Ctrl+c."
     if [ $? -eq 0 ]; then
         docker start "${_NAME}"
     else
+        _network=""
+        if [ ! -z "$_IP" ]; then
+            if ! docker network ls | grep -qw "$_CUSTOM_NETWORK"; then
+                echo "WARN: IP $_IP is given but no custom network $_CUSTOM_NETWORK. Ignoring IP..."
+                sleep 5
+            else
+                _network="--network=${_CUSTOM_NETWORK} --ip=${_IP}"
+            fi
+        fi
+
       if [ "${_NAME}" = "sandbox-hdf" ]; then
-        docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" --privileged -d \
+        docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
         -p 12181:2181 \
         -p 13000:3000 \
         -p 14200:4200 \
@@ -173,7 +185,7 @@ If you would like to fix this now, press Ctrl+c."
         ${_NAME} /usr/sbin/sshd -D
         # NOTE: Using 8080 and 2222 for HDF as well
       else
-        docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" --privileged -d \
+        docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
         -p 1111:111 \
         -p 1000:1000 \
         -p 1100:1100 \
