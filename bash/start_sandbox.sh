@@ -120,7 +120,7 @@ function _totalSpaceGB() {
 
 ### main() ############################################################
 if [ "$0" = "$BASH_SOURCE" ]; then
-    if grep -qE "^[1-9].+${_HOSTNAME}" /etc/hosts; then
+    if ! grep -qE "^[1-9].+${_HOSTNAME}" /etc/hosts; then
         echo "WARN /etc/hosts doesn't look like having ${_HOSTNAME}.
 If you would like to fix this now, press Ctrl+c."
         sleep 7
