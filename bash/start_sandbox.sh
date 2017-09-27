@@ -72,7 +72,7 @@ function f_docker_image_setup() {
     fi
 
     echo "executing docker load..."
-    docker load < "${_tmp_dir%/}/${_file_name}" || return $?
+    docker load -i "${_tmp_dir%/}/${_file_name}" || return $?
 }
 
 function _port_wait() {
