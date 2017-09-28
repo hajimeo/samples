@@ -56,10 +56,10 @@ function f_topErrors() {
         _path=/tmp/f_topErrors_$$.tmp
     fi
     if [ -z "$_regex" ]; then
-        _regex="(ERROR|SEVERE|FATAL|java\..+?Exception).+"
+        _regex="(ERROR|SEVERE|FATAL|SHUTDOWN|java\..+?Exception).+"
 
         if [[ "$_is_including_warn" =~ (^y|^Y) ]]; then
-            _regex="(ERROR|SEVERE|FATAL|java\..+?Exception|WARN|WARNING).+"
+            _regex="(ERROR|SEVERE|FATAL|SHUTDOWN|java\..+?Exception|WARN|WARNING).+"
         fi
     fi
 
@@ -67,6 +67,29 @@ function f_topErrors() {
         egrep -wo "$_regex" "$_path" | sort | uniq -c | sort -n
     else
         egrep -wo "$_regex" "$_path" | sed -E "s/0x[0-9a-f][0-9a-f][0-9a-f]+/0x__________/g" | sed -E "s/[0-9][0-9]+/____/g" | sort | uniq -c | sort -n
+    fi
+}
+
+function f_topSlowLogs() {
+    local __doc__="List top performance related log entries. Eg.: f_topSlwErrors ./hbase-ams-master-fslhd.log Y \"\" \"^2017-05-10\""
+    local _path="$1"
+    local _not_hiding_number="$2"
+    local _regex="$3"
+    local _date_regex_start="$4"
+    local _date_regex_end="$5"
+
+    if [ -n "$_date_regex_start" ]; then
+        _getAfterFirstMatch "$_path" "$_date_regex_start" "$_date_regex_end" > /tmp/f_topErrors_$$.tmp
+        _path=/tmp/f_topErrors_$$.tmp
+    fi
+    if [ -z "$_regex" ]; then
+        _regex="(slow|performance|delay|latency).+"
+    fi
+
+    if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
+        egrep -wio "$_regex" "$_path" | sort | uniq -c | sort -n
+    else
+        egrep -wio "$_regex" "$_path" | sed -E "s/0x[0-9a-f][0-9a-f][0-9a-f]+/0x__________/g" | sed -E "s/[0-9][0-9]+/____/g" | sort | uniq -c | sort -n
     fi
 }
 
@@ -484,18 +507,28 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             _file_path="/tmp/_f_extractByDates_$$.out"
         fi
         echo "# Running f_topErrors $_file_path ..." >&2
-        f_topErrors "$_file_path" > /tmp/_f_topErrors_out_$$.out &
+        f_topErrors "$_file_path" "Y" > /tmp/_f_topErrors_$$.out &
+        echo "# Running f_topSlowLogs $_file_path ..." >&2
+        f_topSlowLogs "$_file_path" > /tmp/_f_topSlowLogs_$$.out &
         echo "# Running f_topCausedByExceptions $_file_path ..." >&2
         f_topCausedByExceptions "$_file_path" > /tmp/_f_topCausedByExceptions_$$.out &
         echo "# Running f_hdfsAuditLogCountPerTime $_file_path ..." >&2
         f_hdfsAuditLogCountPerTime "$_file_path" > /tmp/_f_hdfsAuditLogCountPerTime_$$.out &
         wait
 
-        echo "# f_topErrors " >&2
-        cat /tmp/_f_topErrors_out_$$.out
-        echo "# f_topCausedByExceptions " >&2
-        cat /tmp/_f_topCausedByExceptions_$$.out 
-        echo "# f_hdfsAuditLogCountPerTime " >&2
-        cat /tmp/_f_hdfsAuditLogCountPerTime_$$.out
+        echo ""
+        echo "============================================================================"
+        echo "# f_topErrors (top 40)" >&2
+        cat /tmp/_f_topErrors_$$.out | tail -n 40
+        echo ""
+        echo "# f_topSlowLogs (top 40)" >&2
+        cat /tmp/_f_topSlowLogs_$$.out | tail -n 40
+        echo ""
+        echo "# f_topCausedByExceptions (top 40)" >&2
+        cat /tmp/_f_topCausedByExceptions_$$.out | tail -n 40
+        echo ""
+        echo "# f_hdfsAuditLogCountPerTime (last 48 lines)" >&2
+        cat /tmp/_f_hdfsAuditLogCountPerTime_$$.out | tail -n 48
+        echo ""
     fi
 fi
