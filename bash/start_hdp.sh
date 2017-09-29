@@ -998,22 +998,30 @@ function f_docker0_setup() {
 }
 
 function f_docker_base_create() {
-    local __doc__="Create a docker base image"
-    local _docker_file="./DockerFile"
-    local _base="${g_DOCKER_BASE}:$r_CONTAINER_OS_VER"
-    if [ ! -r "$_docker_file" ]; then
-        _error "$_docker_file is not readable"
-        return 1
-    fi
+    local __doc__="Create a docker base image (f_docker_base_create ./DockerFile centos 6.8)"
+    local _docker_file="${1-$r_DOCKERFILE_URL}"
+    local _os_name="${2-$r_CONTAINER_OS}"
+    local _os_ver_num="${3-$r_CONTAINER_OS_VER}"
+    local _base="${g_DOCKER_BASE}:$_os_ver_num"
 
-    if [ -z "$r_CONTAINER_OS" ]; then
+    if [ -z "$_os_name" ]; then
         _error "No container OS specified"
         return 1
     fi
-    docker images | grep -P "^${r_CONTAINER_OS}\s+${r_CONTAINER_OS_VER}" || docker pull ${r_CONTAINER_OS}:${r_CONTAINER_OS_VER}
-    mkdir docker_workspace &>/dev/null
+    _os_name="${_os_name,,}"
+
+    local _local_docker_file="$_docker_file"
+    _isUrl "$_docker_file" && _local_docker_file="./`basename ${_docker_file}`"
+    f_dockerfile "$_docker_file" "$_os_name:$_os_ver_num" "$_local_docker_file" || return $?
+
+    if [ ! -r "$_local_docker_file" ]; then
+        _error "$_local_docker_file is not readable"
+        return 1
+    fi
+
+    docker images | grep -P "^${_os_name}\s+${_os_ver_num}" || docker pull ${_os_name}:${_os_ver_num}
     # TODO: . is not good if there are so many files/folders
-    docker build -t ${_base} -f $_docker_file .
+    docker build -t ${_base} -f $_local_docker_file .
 }
 
 function f_docker_start() {
@@ -1863,8 +1871,6 @@ function p_host_setup() {
     f_docker0_setup "172.18.0.1" "24" &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_hdp_network_setup"
     f_hdp_network_setup &>> /tmp/p_host_setup.log
-    _log "INFO" "Starting f_dockerfile"
-    f_dockerfile &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_docker_base_create"
     f_docker_base_create &>> /tmp/p_host_setup.log || return $?
     _log "INFO" "Starting f_docker_run"
@@ -2045,35 +2051,36 @@ function f_copy_auth_keys_to_containers() {
 
 function f_dockerfile() {
     local __doc__="Download dockerfile and replace private key"
-    local _url="$1"
-    if [ -z "$_url" ]; then
-        _url="$r_DOCKERFILE_URL"
-    fi
+    local _url="${1-$r_DOCKERFILE_URL}"
+    local _os_and_ver="${2}"
+    local _new_filepath="${3-\./DockerFile}"
+
     if [ -z "$_url" ]; then
         _error "No DockerFile URL/path"
         return 1
     fi
 
     if _isUrl "$_url"; then
-        if [ -e ./DockerFile ]; then
+        if [ -e ${_new_filepath} ]; then
             # only one backup would be enough
-            mv -f ./DockerFile ./DockerFile.bak
+            mv -f ${_new_filepath} ${_new_filepath}.bak
         fi
 
         _info "Downloading $_url ..."
-        wget -nv "$_url" -O ./DockerFile
+        wget -nv "$_url" -O ${_new_filepath}
     fi
 
+    # make sure ssh key is set up to replace DockerFile's _REPLACE_WITH_YOUR_PRIVATE_KEY_
     f_ssh_setup
 
     local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
 
-    sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ./DockerFile
-    sed -i "s/FROM centos.*/FROM $r_CONTAINER_OS:$r_CONTAINER_OS_VER/" ./DockerFile
+    sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ${_new_filepath}
+    [ -z "$_os_and_ver" ] || sed -i "s/FROM centos.*/FROM ${_os_and_ver}/" ${_new_filepath}
 }
 
 function f_ssh_setup() {
-    local __doc__="Creage a private/public keys and setup authorized_keys ssh config & permissions on host"
+    local __doc__="Create a private/public keys and setup authorized_keys ssh config & permissions on host"
     if [ ! -e $HOME/.ssh/id_rsa ]; then
         ssh-keygen -f $HOME/.ssh/id_rsa -q -N ""
     fi
