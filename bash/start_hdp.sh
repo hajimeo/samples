@@ -55,6 +55,10 @@ How to run a function:
     f_loadResp              # loading your response which is required for many functions
     some_function_name
 
+How to create a node or nodes
+    f_docker_base_create https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6 centos 6.8
+    f_docker_run
+
 Available options:
     -i    Initial set up this host for HDP
 
@@ -217,7 +221,7 @@ function p_interview_or_load() {
         else
             local _new_resp_filepath="$g_DEFAULT_RESPONSE_FILEPATH"
         fi
-        wget -nv "${_RESPONSE_FILEPATH}" -O ${_new_resp_filepath}
+        wget -nv -c -t 3 --timeout=30 --waitretry=5 "${_RESPONSE_FILEPATH}" -O ${_new_resp_filepath}
         _RESPONSE_FILEPATH="${_new_resp_filepath}"
     fi
 
@@ -1059,7 +1063,8 @@ function f_docker_start() {
         # do we need this ?
 	    local _dupe="`docker exec -it ${_node}$_n grep -E "^[0-9\.]+\s+${_node}$_n${r_DOMAIN_SUFFIX}" /etc/hosts | grep -v "^${r_DOCKER_NETWORK_ADDR%\.}.$_n"`"
 	    if [ ! -z "$_dupe" ]; then
-                wget -O /dev/null -o /dev/null http://172.26.108.37:8181/duplicate &
+	        # TODO: should be removed later
+            wget -O /dev/null -o /dev/null http://172.26.108.37:8181/duplicate &
 	        _warn "TODO: Detected duplicate ${_node}$_n${r_DOMAIN_SUFFIX} in /etc/hosts. Trying to fix by restarting container..."
 	        docker restart ${_node}$_n
 
@@ -1270,7 +1275,7 @@ function f_ambari_server_install() {
 
     # TODO: at this moment, only Centos (yum)
     if _isUrl "$r_AMBARI_REPO_FILE"; then
-        wget -nv "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo || return 1
+        wget -nv -c -t 3 --timeout=30 --waitretry=5 "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo || return 1
     else
         if [ ! -r "$r_AMBARI_REPO_FILE" ]; then
             _error "Please specify readable Ambari repo file or URL"
@@ -2067,7 +2072,7 @@ function f_dockerfile() {
         fi
 
         _info "Downloading $_url ..."
-        wget -nv "$_url" -O ${_new_filepath}
+        wget -nv -c -t 3 --timeout=30 --waitretry=5 "$_url" -O ${_new_filepath}
     fi
 
     # make sure ssh key is set up to replace DockerFile's _REPLACE_WITH_YOUR_PRIVATE_KEY_
