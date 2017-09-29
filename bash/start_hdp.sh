@@ -55,9 +55,11 @@ How to run a function:
     f_loadResp              # loading your response which is required for many functions
     some_function_name
 
-How to create a node or nodes
+How to create a node(s)
+    # if docker image is not ready
     f_docker_base_create https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6 centos 6.8
-    f_docker_run
+    # create 1 node which hostname is node101.localdmain, and OS is CentOS 6.8
+    p_nodes_create 1 101 6.8 172.17.0. sandbox.hortonworks.com
 
 Available options:
     -i    Initial set up this host for HDP
@@ -274,6 +276,21 @@ function _cancelInterview() {
         f_saveResp
     fi
     _exit
+}
+
+function p_nodes_create() {
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+    local _os_ver="${3-$r_CONTAINER_OS_VER}"
+    local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
+    local _ambari_host="${5-$r_AMBARI_HOST}"
+
+    f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix"
+    f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
+    f_ambari_agent_install "$_how_many" "$_start_from" "$_ambari_host"
+    f_ambari_agent_fix_public_hostname "$_how_many" "$_start_from"
+    f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from"
+    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
 }
 
 function p_hdp_start() {
@@ -1901,8 +1918,6 @@ function p_host_setup() {
 
         _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log
         if [ $? -eq 0 ]; then
-            _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
-            f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
             f_run_cmd_on_nodes "ambari-agent start" &> /dev/null
             _ambari_agent_wait &> /dev/null
             if [ $? -ne 0 ]; then
@@ -1914,6 +1929,8 @@ function p_host_setup() {
                 f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
                _ambari_agent_wait &>> /tmp/p_host_setup.log
             fi
+            _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
+            f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
         else
             _log "WARN" "Ambari Server may not be running but keep continuing..."
         fi
@@ -1963,8 +1980,12 @@ function f_dnsmasq_banner_reset() {
     local __doc__="Regenerate /etc/banner_add_hosts"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"
+
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
+    local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
+    local _base="${g_DOCKER_BASE}:$_os_ver"
 
     local _docker0="`f_docker_ip`"
     # TODO: the first IP can be wrong one
@@ -1981,17 +2002,17 @@ function f_dnsmasq_banner_reset() {
 
         scp -q $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts
     if [ ! -s /tmp/banner_add_hosts ]; then
-        echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" > /tmp/banner_add_hosts
+        echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" > /tmp/banner_add_hosts
     else
-        grep -vE "$_docker0|${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}" /tmp/banner_add_hosts > /tmp/banner
-        echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX} ${r_DOCKER_PRIVATE_HOSTNAME}" >> /tmp/banner
+        grep -vE "$_docker0|${r_DOCKER_PRIVATE_HOSTNAME}${_domain}" /tmp/banner_add_hosts > /tmp/banner
+        echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" >> /tmp/banner
 	
         cat /tmp/banner > /tmp/banner_add_hosts
     fi
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        grep -vE "${_node}${_n}${r_DOMAIN_SUFFIX}|${r_DOCKER_NETWORK_ADDR%\.}.${_n}" /tmp/banner_add_hosts > /tmp/banner
-        echo "${r_DOCKER_NETWORK_ADDR%\.}.${_n}    ${_node}${_n}${r_DOMAIN_SUFFIX} ${_node}${_n}" >> /tmp/banner
+        grep -vE "${_node}${_n}${_domain}|${_ip_prefix%\.}.${_n}" /tmp/banner_add_hosts > /tmp/banner
+        echo "${_ip_prefix%\.}.${_n}    ${_node}${_n}${_domain} ${_node}${_n}" >> /tmp/banner
         cat /tmp/banner > /tmp/banner_add_hosts
     done
 
