@@ -1041,7 +1041,7 @@ function f_docker_start() {
         if [ ! "$_net" = "$g_HDP_NETWORK" ]; then
             _info "Moving network from $_net to $g_HDP_NETWORK"
             docker network disconnect $_net ${_node}$_n
-            docker network connect --ip=${r_DOCKER_NETWORK_ADDR}$_n hdp ${_node}$_n
+            docker network connect --ip=${r_DOCKER_NETWORK_ADDR%\.}.$_n hdp ${_node}$_n
         fi
         # docker seems doesn't care if i try to start already started one
         docker start --attach=false ${_node}$_n &
@@ -1049,7 +1049,7 @@ function f_docker_start() {
 
         # docker exec adds "\r" which causes bash syntax error
         # do we need this ?
-	    local _dupe="`docker exec -it ${_node}$_n grep -E "^[0-9\.]+\s+${_node}$_n${r_DOMAIN_SUFFIX}" /etc/hosts | grep -v "^${r_DOCKER_NETWORK_ADDR}$_n"`"
+	    local _dupe="`docker exec -it ${_node}$_n grep -E "^[0-9\.]+\s+${_node}$_n${r_DOMAIN_SUFFIX}" /etc/hosts | grep -v "^${r_DOCKER_NETWORK_ADDR%\.}.$_n"`"
 	    if [ ! -z "$_dupe" ]; then
                 wget -O /dev/null -o /dev/null http://172.26.108.37:8181/duplicate &
 	        _warn "TODO: Detected duplicate ${_node}$_n${r_DOMAIN_SUFFIX} in /etc/hosts. Trying to fix by restarting container..."
@@ -1976,8 +1976,8 @@ function f_dnsmasq_banner_reset() {
     fi
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        grep -vE "${_node}${_n}${r_DOMAIN_SUFFIX}|${r_DOCKER_NETWORK_ADDR}${_n}" /tmp/banner_add_hosts > /tmp/banner
-        echo "${r_DOCKER_NETWORK_ADDR}${_n}    ${_node}${_n}${r_DOMAIN_SUFFIX} ${_node}${_n}" >> /tmp/banner
+        grep -vE "${_node}${_n}${r_DOMAIN_SUFFIX}|${r_DOCKER_NETWORK_ADDR%\.}.${_n}" /tmp/banner_add_hosts > /tmp/banner
+        echo "${r_DOCKER_NETWORK_ADDR%\.}.${_n}    ${_node}${_n}${r_DOMAIN_SUFFIX} ${_node}${_n}" >> /tmp/banner
         cat /tmp/banner > /tmp/banner_add_hosts
     done
 
