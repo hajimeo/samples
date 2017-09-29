@@ -1222,8 +1222,8 @@ function f_docker_run() {
             _warn "${_node}$_n already exists. Skipping..."
             continue
         fi
-        # --ip may not work due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
-        _network="--network=$g_HDP_NETWORK --ip=${_ip_prefix}${_n}"
+        # --ip may not work if no custom network due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
+        [ ! -z "$_ip_prefix" ] && _network="--network=$g_HDP_NETWORK --ip=${_ip_prefix%\.}.${_n}"
 
         docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${_domain} ${_network} --dns=$_dns --name=${_node}$_n ${_base} || return $?
     done
