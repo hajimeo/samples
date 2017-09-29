@@ -85,6 +85,7 @@ g_UNAME_STR="`uname`"
 g_DEFAULT_PASSWORD="hadoop"
 g_NODE_HOSTNAME_PREFIX="node"
 g_DNS_SERVER="localhost"
+g_DOMAIN_SUFFIX=".localdomain"
 g_APT_UPDATE_DONE=""
 g_HDP_NETWORK="hdp"
 
@@ -119,7 +120,7 @@ function p_interview() {
     _ask "First 24 bits (xxx.xxx.xxx.) of docker container IP Address" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Network Mask (/16 or /24) for docker containers" "/16" "r_DOCKER_NETWORK_MASK" "N" "Y"
     _ask "IP address for docker network interface" "$_docker_ip" "r_DOCKER_HOST_IP" "N" "Y"
-    _ask "Domain Suffix for docker containers" ".localdomain" "r_DOMAIN_SUFFIX" "N" "Y"
+    _ask "Domain Suffix for docker containers" "${g_DOMAIN_SUFFIX}" "r_DOMAIN_SUFFIX" "N" "Y"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
     if [ -n "$r_CONTAINER_OS" ]; then
         r_CONTAINER_OS="`echo "$r_CONTAINER_OS" | tr '[:upper:]' '[:lower:]'`"
@@ -593,7 +594,8 @@ function f_ambari_blueprint_cluster_config() {
     {
       "hive-site" : {
         "properties" : {
-          "hive.exec.post.hooks" : "org.apache.hadoop.hive.ql.hooks.ATSHook"
+          "hive.exec.post.hooks" : "org.apache.hadoop.hive.ql.hooks.ATSHook",
+          "hive.log.explain.output" : "true"
         }
       }
     },
@@ -936,8 +938,6 @@ function f_hdp_network_setup() {
     _mask="${_mask#/}"
 
     if ! ifconfig "$g_HDP_NETWORK" | grep "$_hdp" &>/dev/null ; then
-        local _netmask="255.255.0.0"
-        [ "$_mask" = "24" ] && _netmask="255.255.255.0"
         docker network ls | awk '{print $2;}' | grep -v ID | while read a;
         do
             if [ "x`docker network inspect $a |grep Subnet | sed 's/.*: \"//' | sed 's/\/.*//'`" = "x$_hdp" ]; then
@@ -1192,15 +1192,18 @@ function f_docker_rm_all() {
 }
 
 function f_docker_run() {
-    local __doc__="Running (creating) docker containers"
+    local __doc__="Running (creating) multiple docker containers"
     # ./start_hdp.sh -r ./node11-14_2.5.0.resp -f "f_docker_run 1 16"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+    local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"
+    local _os_ver="${4-$r_CONTAINER_OS_VER}"
 
     local _ip="`f_docker_ip`"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
-    local _base="${g_DOCKER_BASE}:$r_CONTAINER_OS_VER"
+    local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
+    local _base="${g_DOCKER_BASE}:$_os_ver"
 
     if [ $_dns = "localhost" ]; then
         _dns="$_ip"
@@ -1219,14 +1222,10 @@ function f_docker_run() {
             _warn "${_node}$_n already exists. Skipping..."
             continue
         fi
-        local _netmask="255.255.0.0"
-        if [ "$r_DOCKER_NETWORK_MASK" = "/24" ]; then
-            _netmask="255.255.255.0"
-        fi
         # --ip may not work due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
-        _network="--network=$g_HDP_NETWORK --ip=${r_DOCKER_NETWORK_ADDR}${_n}"
+        _network="--network=$g_HDP_NETWORK --ip=${_ip_prefix}${_n}"
 
-        docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${r_DOMAIN_SUFFIX} ${_network} --dns=$_dns --name=${_node}$_n ${_base}
+        docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${_domain} ${_network} --dns=$_dns --name=${_node}$_n ${_base} || return $?
     done
 }
 
@@ -1372,17 +1371,20 @@ function f_ambari_agent_install() {
     # ./start_hdp.sh -r ./node11-14_2.5.0.resp -f "f_ambari_agent_install 1 16"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+    local _ambari_host="${3-$r_AMBARI_HOST}"
 
-    scp -q root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+    local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
+
+    scp -q root@$_ambari_host:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo || return $?
 
     #local _cmd="yum install ambari-agent -y && grep "^hostname=$r_AMBARI_HOST"/etc/ambari-agent/conf/ambari-agent.ini || sed -i.bak "s@hostname=.+$@hostname=$r_AMBARI_HOST@1" /etc/ambari-agent/conf/ambari-agent.ini"
-    local _cmd="which ambari-agent 2>/dev/null || yum install ambari-agent -y && ambari-agent reset $r_AMBARI_HOST"
+    local _cmd="which ambari-agent 2>/dev/null || yum install ambari-agent -y && ambari-agent reset $_ambari_host"
 
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        scp -q /tmp/ambari.repo root@${_node}$i${r_DOMAIN_SUFFIX}:/etc/yum.repos.d/
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        scp -q /tmp/ambari.repo root@${_node}$_n${_domain}:/etc/yum.repos.d/
         # Executing yum command one by one (not parallel)
-        ssh -q -t root@${_node}$i${r_DOMAIN_SUFFIX} "$_cmd"
+        ssh -q -t root@${_node}$_n${_domain} "$_cmd"
     done
 }
 
@@ -2206,16 +2208,15 @@ function f_gw_set() {
 
 function f_docker_ip() {
     local __doc__="Output IP or specified NIC's IP used by docker"
-    local _ip="${1}"
+    local _default_ip="${1}"
     local _if="${2}"
-    if [ -z "$_if" ]; then
-        _if="$g_HDP_NETWORK"
-    fi
+
+    [ -z "$_if" ] && _if="$g_HDP_NETWORK"
     local _ifconfig="`ifconfig $_if 2>/dev/null`"
 
     if [ -z "$_ifconfig" ]; then
-        if [ -n "$_ip" ]; then
-            echo "$_ip"
+        if [ -n "$_default_ip" ]; then
+            echo "$_default_ip"
             return 0
         fi
         return $?
