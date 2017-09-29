@@ -1196,8 +1196,8 @@ function f_docker_run() {
     # ./start_hdp.sh -r ./node11-14_2.5.0.resp -f "f_docker_run 1 16"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"
-    local _os_ver="${4-$r_CONTAINER_OS_VER}"
+    local _os_ver="${3-$r_CONTAINER_OS_VER}"
+    local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
 
     local _ip="`f_docker_ip`"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
