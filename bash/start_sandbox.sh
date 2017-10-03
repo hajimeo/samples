@@ -71,7 +71,8 @@ function f_docker_image_setup() {
         curl --retry 100 -C - "${_url}" -o "${_tmp_dir%/}/${_file_name}" || return $?
     fi
 
-    echo "Executing \"docker import -i ${_tmp_dir%/}/${_file_name}\"   If fails, please re-try with \"load\""
+    echo "Executing \"docker import ${_tmp_dir%/}/${_file_name}\"
+If fails, please re-try with \"dokcer load -i ${_tmp_dir%/}/${_file_name}\""
     docker import -i "${_tmp_dir%/}/${_file_name}" || return $?
 }
 
@@ -308,12 +309,10 @@ If you would like to fix this now, press Ctrl+c."
     #docker exec -d ${_NAME} /etc/init.d/splash
 
     sleep 3
+
     docker exec -d ${_NAME} sysctl -w kernel.shmmax=${_SHMMAX}
     #docker exec -d ${_NAME} /sbin/sysctl -p
     docker exec -d ${_NAME} service postgresql start
-
-    #ssh -p 2222 localhost -t /sbin/service mysqld start
-    docker exec -d ${_NAME} service mysqld start
 
     # setting up password-less ssh to sandbox
     if [ -s  ~/.ssh/id_rsa.pub ]; then
@@ -324,8 +323,11 @@ If you would like to fix this now, press Ctrl+c."
         docker exec -it ${_NAME} bash -c "chpasswd <<< root:hadoop"
         docker exec -it ${_NAME} bash -c 'cd /hadoop && for _n in `ls -1`; do chown -R $_n:hadoop ./$_n; done'
         docker exec -it ${_NAME} bash -c 'chown -R mapred:hadoop /hadoop/mapreduce'
+        docker exec -it ${_NAME} bash -c 'chown -R mysql:mysql /var/lib/mysql /var/run/mysqld'
+
         # As of this typing, sandbox repo for tutorial is broken so moving out for now
         docker exec -it ${_NAME} bash -c 'mv /etc/yum.repos.d/sandbox.repo /root/'
+        docker exec -it ${_NAME} bash -c 'yum install -y yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc'
 
         #echo "Resetting Ambari Agent just incase ..."
         #docker exec -it ${_NAME} /usr/sbin/ambari-agent stop
@@ -335,15 +337,15 @@ If you would like to fix this now, press Ctrl+c."
         # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
         docker exec -it ${_NAME} bash -c 'grep -q "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
 
-        docker exec -it ${_NAME} bash -c 'yum install -y yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc'
-
         echo "Resetting Ambari password (to 'admin') ..."
         docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL'\""
         #docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
-    else
-        docker exec -d ${_NAME} service ambari-server start
     fi
+
+    docker exec -d ${_NAME} service mysqld start
+
     docker exec -d ${_NAME} service ambari-agent start
+    docker exec -d ${_NAME} service ambari-server start
 
     #docker exec -d ${_NAME} /root/start_sandbox.sh
     #docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
