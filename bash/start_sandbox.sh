@@ -46,7 +46,7 @@ function f_docker_image_setup() {
         return
     fi
 
-    if [ "${_name}" = "sandbox-hdf" ]; then
+    if [[ "${_name}" == "sandbox-hdf"* ]]; then
         #_url="https://downloads-hortonworks.akamaized.net/sandbox-hdf-2.1/HDF_2.1.2_docker_image_04_05_2017_13_12_03.tar.gz"
         _url="https://downloads-hortonworks.akamaized.net/sandbox-hdf-3.0/HDF_3.0_docker_12_6_2017.tar.gz"
         _min_disk=9
