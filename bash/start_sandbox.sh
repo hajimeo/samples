@@ -64,13 +64,14 @@ function f_docker_image_setup() {
     fi
 
     if [ -s "${_tmp_dir%/}/${_file_name}" ]; then
-        echo "INFO: ${_tmp_dir%/}/${_file_name} exists. Reusing it..."
+        echo "${_tmp_dir%/}/${_file_name} exists. Reusing it..."
         sleep 3
     else
+        echo "Executing \"cur \"${_url}\" -o ${_tmp_dir%/}/${_file_name}\""
         curl --retry 100 -C - "${_url}" -o "${_tmp_dir%/}/${_file_name}" || return $?
     fi
 
-    echo "executing \"docker import -i ${_tmp_dir%/}/${_file_name}\"   If fails, please try with \"load\""
+    echo "Executing \"docker import -i ${_tmp_dir%/}/${_file_name}\"   If fails, please re-try with \"load\""
     docker import -i "${_tmp_dir%/}/${_file_name}" || return $?
 }
 
@@ -85,7 +86,7 @@ function _port_wait() {
       curl -sIL "http://$_host:$_port/" | grep -q '^HTTP/1.1 20' && return 0
       echo "$_host:$_port is unreachable. Waiting..."
     done
-    echo "$_host:$_port is unreachable."
+    echo "WARN: $_host:$_port is unreachable."
     return 1
 }
 function _isEnoughDisk() {
@@ -123,7 +124,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _regex="^[1-9].+${_HOSTNAME}"
     [ ! -z "$_IP" ] && _regex="^${_IP}\s+${_HOSTNAME}"
     if ! grep -qE "$_regex" /etc/hosts; then
-        echo "WARN /etc/hosts doesn't look like having ${_HOSTNAME}.
+        echo "WARN: /etc/hosts doesn't look like having ${_HOSTNAME}.
 If you would like to fix this now, press Ctrl+c."
         sleep 7
     fi
