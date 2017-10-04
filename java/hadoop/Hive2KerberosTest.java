@@ -26,7 +26,7 @@
  *
  * 4) Run
  * (optional) kinit
- * java -Djava.security.auth.login.config=./login.conf -Dsun.security.krb5.debug=true Hive2KerberosTest "jdbc:hive2://node2.localdomain:10000/default;principal=hive/node2.localdomain@EXAMPLE.COM"
+ * java -Djava.security.auth.login.config=./login.conf -Dsun.security.krb5.debug=true Hive2KerberosTest "jdbc:hive2://`hostname -f`:10000/default;principal=hive/_HOST@EXAMPLE.COM"
  *
  * @see https://issues.apache.org/jira/secure/attachment/12633984/TestCase_HIVE-6486.java
  */
