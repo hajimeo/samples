@@ -154,6 +154,9 @@ def tmpCaseDocumentationQualityCheck(csv_file_path, case_owner_column='Case Owne
     for row in r:
         if case_owner_index is None:
             case_owner_index=row.index(case_owner_column)
+        if len(row) < (case_owner_index+1):
+            log.debug("line number %s does not have case owner column(%s). Skipping..." % (str(r.line_num), str(case_owner_index)))
+            continue
         data_per_owner.setdefault(row[case_owner_index],[]).append(row)
     f.close()
     f2=open(new_filepath, 'wb')
