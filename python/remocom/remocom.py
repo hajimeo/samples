@@ -324,7 +324,7 @@ Example:
     ./remocom.py
     ./remocom.py -u 'hajime' -i '192.168.56.11' -c 'date'
     ./remocom.py -u 'hajime' -i '127.0.0.1,192.168.56.11' -c 'sudo su -;date;whoami'
-    ./remocom.py -i '127.0.0.1,192.168.56.11' -c 'sudo su -;date;whoami' -m hajime.osako@harmonyseasia.com -t 'Mail sending test'
+    ./remocom.py -i '127.0.0.1,192.168.56.11' -c 'sudo su -;date;whoami' -m test@testtest.tet -t 'Mail sending test'
     ./remocom.py -i '127.0.0.1,192.168.56.11' -f test.sh -c 'sudo -s'
 
 IP/Hosts (used with -i)
