@@ -7,6 +7,10 @@
 #     source ./log_search.sh
 #     help
 #
+#     ln -s ./log_search.sh /usr/local/bin/logsearch
+#     logsearch some_log_file.log [start_date] [end_date]| tee some_log_file.out
+#     _DATE_FORMAT="\d\d Sep 2017" logsearch ambari-server.log | tee ambari-server.logsearch.out
+#
 # TODO: tested on Mac only (eg: sed -E, ggrep)
 # which ggrep || alias ggrep=grep
 #
@@ -66,7 +70,7 @@ function f_topErrors() {
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
         egrep -wo "$_regex" "$_path" | sort | uniq -c | sort -n
     else
-        egrep -wo "$_regex" "$_path" | sed -E "s/0x[0-9a-f][0-9a-f][0-9a-f]+/0x__________/g" | sed -E "s/[0-9][0-9]+/____/g" | sort | uniq -c | sort -n
+        egrep -wo "$_regex" "$_path" | gsed -r "s/0x[0-9a-f][0-9a-f][0-9a-f]+/0x__________/g" | gsed -r "s/[0-9][0-9]+/____/g" | sort | uniq -c | sort -n
     fi
 }
 
@@ -83,13 +87,14 @@ function f_topSlowLogs() {
         _path=/tmp/f_topErrors_$$.tmp
     fi
     if [ -z "$_regex" ]; then
-        _regex="(slow|performance|delay|latency).+"
+        _regex="(slow|performance|delay|delaying|waiting|latency|too many|not sufficient).+"
     fi
 
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
         egrep -wio "$_regex" "$_path" | sort | uniq -c | sort -n
     else
-        egrep -wio "$_regex" "$_path" | sed -E "s/0x[0-9a-f][0-9a-f][0-9a-f]+/0x__________/g" | sed -E "s/[0-9][0-9]+/____/g" | sort | uniq -c | sort -n
+        # ([0-9]){2,4} didn't work
+        egrep -wi "$_regex" "$_path" | gsed -r "s/[0-9a-f][0-9a-f][0-9a-f][0-9a-f]+/____/g" | gsed -r "s/[0-9]/_/g" | sort | uniq -c | sort -n
     fi
 }
 
@@ -163,7 +168,7 @@ function f_appLogFindFirstSyslog() {
     local _dir_path="${1-.}"
     local _num="${2-10}"
 
-    ( find "${_dir_path%/}" -name "*.syslog" | xargs -I {} bash -c "grep -oHE '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -m 1 {}" | awk -F ':' '{print $2":"$3":"$4" "$1}' ) | sort -n | head -n $_num
+    ( find "${_dir_path%/}" -name "*.syslog" | xargs -I {} bash -c "grep -oHE '^${_DATE_FORMAT} \d\d:\d\d:\d\d' -m 1 {}" | awk -F ':' '{print $2":"$3":"$4" "$1}' ) | sort -n | head -n $_num
 }
 
 function f_appLogFindLastSyslog() {
@@ -173,9 +178,9 @@ function f_appLogFindLastSyslog() {
     local _regex="${3}"
 
     if [ -n "$_regex" ]; then
-        ( for _f in `grep -l "$_regex" ${_dir_path%/}/*.syslog`; do _dt="`gtac $_f | grep -oE '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
+        ( for _f in `grep -l "$_regex" ${_dir_path%/}/*.syslog`; do _dt="`gtac $_f | grep -oE "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
     else
-        ( for _f in `find "${_dir_path%/}" -name "*.syslog"`; do _dt="`gtac $_f | grep -oE '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
+        ( for _f in `find "${_dir_path%/}" -name "*.syslog"`; do _dt="`gtac $_f | grep -oE "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
     fi
 }
 
@@ -185,7 +190,7 @@ function f_hdfsAuditLogCountPerTime() {
     local _datetime_regex="$2"
 
     if [ -z "$_datetime_regex" ]; then
-        _datetime_regex="^\d\d\d\d-\d\d-\d\d \d\d:\d"
+        _datetime_regex="^${_DATE_FORMAT} \d\d:\d"
     fi
 
     if ! which bar_chart.py &>/dev/null; then
@@ -261,7 +266,7 @@ function f_listPerflogEnd() {
         # expecting 5th one is duration after removing start and end time
         #egrep -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k5n
         # removing start and end so that we can easily compare two PERFLOG outputs
-        egrep -wo '</PERFLOG .+>' "$_path" | sed -E "s/ (start|end)=[0-9]+//g" | sort -t'=' -k3n
+        egrep -wo '</PERFLOG .+>' "$_path" | gsed -r "s/ (start|end)=[0-9]+//g" | sort -t'=' -k3n
     else
         # sorting with start time
         egrep -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k3n
@@ -352,6 +357,24 @@ function f_splitApplog() {
     python "$_script_path" --container-log-dir $_out_name --app-log $_app_log
 }
 
+function f_swimlane() {
+    local __doc__="TODO: use swimlane (but broken?)"
+    local _app_log="$1"
+    local _out_name="`basename $_app_log .log`.svg"
+    local _tmp_name="`basename $_app_log .log`.tmp"
+    local _script_path="`dirname $(dirname $(dirname $BASH_SOURCE))`/tez/tez-tools/swimlanes/swimlane.py"
+    grep 'HISTORY' $_app_log > ./$_tmp_name
+    if [ ! -s "$_tmp_name" ]; then
+        echo "$_tmp_name is empty."
+        return 1
+    fi
+    if [ ! -s "$_script_path" ]; then
+        echo "$_script_path does not exist"
+        return 1
+    fi
+    python "$_script_path" -o $_out_name $_tmp_name
+}
+
 function f_git_search() {
     local __doc__="Grep git comments to find matching branch or tag"
     local _search="$1"
@@ -400,14 +423,14 @@ function _getAfterFirstMatch() {
     if [ -n "$_start_line_num" ]; then
         local _end_line_num=""
         if [ -n "$_end_regex" ]; then
-            #sed -n "${_start_line_num},\$s/${_end_regex}/&/p" "$_file_path"
+            #gsed -n "${_start_line_num},\$s/${_end_regex}/&/p" "$_file_path"
             _end_line_num=`tail -n +${_start_line_num} "$_file_path" | ggrep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
             _end_line_num=$(( $_end_line_num + $_start_line_num - 1 ))
         fi
         if [ -n "$_end_line_num" ]; then
-            sed -n "${_start_line_num},${_end_line_num}p" "${_file_path}"
+            gsed -n "${_start_line_num},${_end_line_num}p" "${_file_path}"
         else
-            sed -n "${_start_line_num},\$p" "${_file_path}"
+            gsed -n "${_start_line_num},\$p" "${_file_path}"
         fi
     fi
 }
@@ -423,7 +446,7 @@ list() {
 
     if [[ -z "$_name" ]]; then
         (for _f in `typeset -F | ggrep -E '^declare -f [fp]_' | cut -d' ' -f3`; do
-            #eval "echo \"--[ $_f ]\" | sed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
+            #eval "echo \"--[ $_f ]\" | gsed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
             _tmp_txt="`help "$_f" "Y"`"
             printf "%-28s%s\n" "$_f" "$_tmp_txt"
         done)
@@ -484,6 +507,7 @@ _IP_RANGE_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|
 _HOSTNAME_REGEX='^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
 _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
 _TEST_REGEX='^\[.+\]$'
+[ -z "$_DATE_FORMAT" ] && _DATE_FORMAT="\d\d\d\d-\d\d-\d\d"
 
 ### Main ###############################################################################################################
 
@@ -516,18 +540,18 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         f_hdfsAuditLogCountPerTime "$_file_path" > /tmp/_f_hdfsAuditLogCountPerTime_$$.out &
         wait
 
-        echo ""
-        echo "============================================================================"
-        echo "# f_topErrors (top 40)" >&2
+        echo "" >&2
+        echo "============================================================================" >&2
+        echo "# f_topErrors (top 40)"
         cat /tmp/_f_topErrors_$$.out | tail -n 40
         echo ""
-        echo "# f_topSlowLogs (top 40)" >&2
+        echo "# f_topSlowLogs (top 40)"
         cat /tmp/_f_topSlowLogs_$$.out | tail -n 40
         echo ""
-        echo "# f_topCausedByExceptions (top 40)" >&2
+        echo "# f_topCausedByExceptions (top 40)"
         cat /tmp/_f_topCausedByExceptions_$$.out | tail -n 40
         echo ""
-        echo "# f_hdfsAuditLogCountPerTime (last 48 lines)" >&2
+        echo "# f_hdfsAuditLogCountPerTime (last 48 lines)"
         cat /tmp/_f_hdfsAuditLogCountPerTime_$$.out | tail -n 48
         echo ""
     fi
