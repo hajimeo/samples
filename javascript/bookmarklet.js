@@ -22,22 +22,3 @@ void 1;
 //w.open("https://issues.apache.org/jira/secure/Dashboard.jspa", "t_apa_jira").location="https://issues.apache.org/jira/secure/QuickSearch.jspa?jql=text%20~%20\"" + q + "\"\"%20ORDER%20BY%20created%20DESC";
 //w.open("https://stackoverflow.com/search?q=" + q, "t_sto");
 //w.open("http://search-hadoop.com/?q=" + q + "", "t_hdp");
-
-javascript:w = window;
-d = document;
-s = "" + (w.getSelection ? w.getSelection() : d.getSelection ? d.getSelection() : d.selection.createRange().text);
-q = prompt("search word", s);
-if (q != null) {
-    (function (s) {
-        q = encodeURIComponent(s);
-        w.open("https://hortonworks.my.salesforce.com/_ui/search/ui/UnifiedSearchResults?asPhrase=0&str=" + q, "t_sf");
-        w.open("https://hortonworks.jira.com/secure/QuickSearch.jspa?jql=project in (EAR%2C BUG) AND text ~ \"" + s.replace(/(")/g, '\\$1') + "\" ORDER BY created DESC", "t_hw_jira");
-        w.open("http://172.26.104.144/source/search?defs=&refs=&path=&hist=&type=&q=" + q, "t_grok");
-        w.open("https://hipchat.hortonworks.com/search?q=" + q + "&t=all&a=Search", "t_hipchat");
-        w.open("https://hortonworks.app.box.com/folder/0/search?query=" + q + "&types=&updatedTime=&owners=&itemSize=&updatedTimeFrom=&updatedTimeTo=&tags=", "t_box");
-        w.open("https://hwxmonarch.atlassian.net/secure/QuickSearch.jspa?searchString=" + q, "t_hw_jira2");
-        w.open("https://drive.google.com/drive/u/1/search?q=" + q, "t_drive2");
-        w.open("https://wiki.hortonworks.com/dosearchsite.action?queryString=" + q + "&where=conf_all", "t_wiki");
-    })(q)
-}
-void 1;
