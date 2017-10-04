@@ -1,33 +1,35 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#
+
 
 def usage():
     print '''A simple XML Parser
 If one xml file is given, outputs "property=value" output (so that can copy&paste into Ambari, ex: Capacity Scheduler)
 If two xml files are given, compare and outputs the difference with JSON format.
 
-python ./xml_parser.py XXXX-site.xml [YYYY-site.xml] [exclude regex]
+python ./xml_parser.py XXXX-site.xml [YYYY-site.xml] [join type (f|l|r|i)] [exclude regex]
 
 
-To get the laest code:
+To get the latest code:
     curl -O https://raw.githubusercontent.com/hajimeo/samples/master/python/xml_parser.py
 
 
-Example 1: use as a command line tool on Mac
+Example 1: use as a command line tool on Mac (eg: ln -s ./xml_parser.py /usr/local/bin/xmldiff)
     Setup:
-      ln -s ./xml_parser.py /usr/local/bin/xmldiff
       ssh -p 2222 root@sandbox.hortonworks.com "echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
     Run:
-      _f=./ams-site.xml; xmldiff $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/ambari-metrics-collector/conf/$_f) '.+(auth_to_local|\.hue\.).*'
+      _f=./ams-site.xml; ./xml_parser.py $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/ambari-metrics-collector/conf/$_f) 'F' '.+(auth_to_local|\.hue\.).*'
 
 Example 2: Compare all xxx-site.xml between two clusters
     Step 1: collect all configs from a cluster with below tar command
       tar czhvf ./hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf /etc/{ams,ambari}-* /etc/ranger/*/policycache /etc/hosts /etc/krb5.conf 2>/dev/null
-    Step 2: extract the tgz
-    Step 3: Compare with same or similar verion of your cluser!
-      find . -type f -name '*-site.xml' | xargs -t -I {} bash -c '_f={};xmldiff $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat ${_f#.}) > ${_f}.json'
+      
+    Step 2: extract hdp_all_conf_xxxx.tgz
+    
+    Step 3: Compare with same or similar version of your cluster
+      find . -type f -name '*-site.xml' | xargs -t -I {} bash -c '_f={};./xml_parser.py $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat ${_f#.}) > ${_f}.json'
+      
     Step 4: Check the result
       find . -type f -name '*-site.xml.json' -ls
 
@@ -74,7 +76,7 @@ class XmlParser:
         return rtn
 
     @staticmethod
-    def compare_dict(dict1, dict2, ignore_regex=None):
+    def compare_dict(l_dict, r_dict, join_type='f', ignore_regex=None):
         rtn = {}
         regex = None
 
@@ -82,17 +84,22 @@ class XmlParser:
             regex = re.compile(ignore_regex)
 
         # create a list contains unique keys
-        for k in list(set(dict1.keys() + dict2.keys())):
+        for k in list(set(l_dict.keys() + r_dict.keys())):
             if regex is not None:
                 if regex.match(k):
-                    continue;
-            if not k in dict1 or not k in dict2 or dict1[k] != dict2[k]:
-                if not k in dict1:
-                    rtn[k] = [None, dict2[k]]
-                elif not k in dict2:
-                    rtn[k] = [dict1[k], None]
+                    continue
+            if not k in l_dict or not k in r_dict or l_dict[k] != r_dict[k]:
+                if join_type.lower() in ['l', 'i'] and not k in l_dict:
+                    continue
+                if join_type.lower() in ['r', 'i'] and not k in r_dict:
+                    continue
+
+                if not k in l_dict:
+                    rtn[k] = [None, r_dict[k]]
+                elif not k in r_dict:
+                    rtn[k] = [l_dict[k], None]
                 else:
-                    rtn[k] = [dict1[k], dict2[k]]
+                    rtn[k] = [l_dict[k], r_dict[k]]
         return rtn
 
     @staticmethod
@@ -114,12 +121,16 @@ if __name__ == '__main__':
         XmlParser.output_as_str(f1)
         sys.exit(0)
 
+    join_type = 'f'
+    if len(sys.argv) > 3:
+        join_type = sys.argv[3]
+
     ignore_regex = None
-    if len(sys.argv) == 4:
-        ignore_regex = r""+sys.argv[3]  # not so sure if this works, but seems working
+    if len(sys.argv) == 5:
+        ignore_regex = r""+sys.argv[4]  # not so sure if this works, but seems working
 
     f2 = XmlParser.xml2dict(sys.argv[2])
-    out = XmlParser.compare_dict(f1, f2, ignore_regex)
+    out = XmlParser.compare_dict(f1, f2, join_type, ignore_regex)
 
     # For now, just outputting as JSON (from a dict)
     print json.dumps(out, indent=4, sort_keys=True)
