@@ -88,8 +88,8 @@ class Runner(MyBase):
         self.setOptions(argv=argv, options=self.options, help_message=help_message)
         
         default_cred_filename = "."+os.path.basename(os.path.splitext(__file__)[0])+".pyc"
-	current_dir_path = os.path.dirname(__file__)+"/"
-	default_cred_path = current_dir_path+default_cred_filename
+        current_dir_path = os.path.dirname(__file__)+"/"
+        default_cred_path = current_dir_path+default_cred_filename
         self.loadCred(default_cred_path)
 
         if self.sudopassword is None and self.passphrase is None:
