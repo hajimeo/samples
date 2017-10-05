@@ -306,6 +306,7 @@ function f_hadoop_ssl_setup() {
     local _how_many="${5-$r_NUM_NODES}"
     local _start_from="${6-$r_NODE_START_NUM}"
     local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
+    local _no_updating_ambari_config="${8-$r_NO_UPDATING_AMBARI_CONFIG}"
     local _work_dir="${8-./}"
     local _c="`f_get_cluster_name $_ambari_host`" || return $?
 
@@ -349,6 +350,8 @@ function f_hadoop_ssl_setup() {
             _hadoop_ssl_per_node "node${i}${_domain_suffix}" "$_cacerts" || return $?
         done
     fi
+
+    _isYes "$_no_updating_ambari_config" && return $?
 
     _info "Updating Ambari configs for HDFS..."
     f_ambari_configs "core-site" "{\"hadoop.rpc.protection\":\"privacy\",\"hadoop.ssl.require.client.cert\":\"false\",\"hadoop.ssl.hostname.verifier\":\"DEFAULT\",\"hadoop.ssl.keystores.factory.class\":\"org.apache.hadoop.security.ssl.FileBasedKeyStoresFactory\",\"hadoop.ssl.server.conf\":\"ssl-server.xml\",\"hadoop.ssl.client.conf\":\"ssl-client.xml\"}" "$_ambari_host"
