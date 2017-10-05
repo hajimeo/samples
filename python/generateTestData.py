@@ -151,9 +151,13 @@ def tmpCaseDocumentationQualityCheck(csv_file_path, case_owner_column='Case Owne
     r = csv.reader(f, dialect=dialect)
     case_owner_index=None
     data_per_owner={}
+    column_header=[]
     for row in r:
         if case_owner_index is None:
+            # Expecting first one is column headers
             case_owner_index=row.index(case_owner_column)
+            column_header=row
+            continue
         if len(row) < (case_owner_index+1):
             log.debug("line number %s does not have case owner column(%s). Skipping..." % (str(r.line_num), str(case_owner_index)))
             continue
@@ -161,6 +165,7 @@ def tmpCaseDocumentationQualityCheck(csv_file_path, case_owner_column='Case Owne
     f.close()
     f2=open(new_filepath, 'wb')
     w = csv.writer(f2, dialect=dialect)
+    w.writerow(column_header)
     for case_owner, rows in data_per_owner.iteritems():
         if len(rows) <= how_many:
             new_rows=rows
