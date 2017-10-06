@@ -540,6 +540,70 @@ function f_ambari_blueprint_cluster_config() {
       }
     },
     {
+      "ranger-yarn-security" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "ranger.plugin.yarn.policy.rest.url" : "http://%HOSTGROUP::host_group_3%:6080"
+        }
+      }
+    },
+    {
+      "ranger-hdfs-security" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "ranger.plugin.hdfs.policy.rest.url" : "http://%HOSTGROUP::host_group_3%:6080"
+        }
+      }
+    },
+    {
+      "ranger-kafka-security" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "ranger.plugin.kafka.policy.rest.url" : "http://%HOSTGROUP::host_group_3%:6080"
+        }
+      }
+    },
+    {
+      "ranger-hive-security" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "ranger.plugin.hive.policy.rest.url" : "http://%HOSTGROUP::host_group_3%:6080"
+        }
+      }
+    },
+    {
+      "ranger-atlas-security" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "ranger.plugin.atlas.policy.rest.url" : "http://%HOSTGROUP::host_group_3%:6080"
+        }
+      }
+    },
+    {
+      "ranger-knox-security" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "ranger.plugin.knox.policy.rest.url" : "http://%HOSTGROUP::host_group_3%:6080"
+        }
+      }
+    },
+    {
+      "ranger-kms-security" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "ranger.plugin.kms.policy.rest.url" : "http://%HOSTGROUP::host_group_3%:6080"
+        }
+      }
+    },
+    {
+      "ranger-hbase-security" : {
+        "properties_attributes" : { },
+        "properties" : {
+          "ranger.plugin.knox.policy.rest.url" : "http://%HOSTGROUP::host_group_3%:6080"
+        }
+      }
+    },
+    {
       "atlas-env" : {
         "properties_attributes" : { },
         "properties" : {
