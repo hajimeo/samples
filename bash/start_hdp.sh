@@ -58,7 +58,7 @@ How to run a function:
 How to create a node(s)
     # if docker image is not ready
     f_docker_base_create https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6 centos 6.8
-    # create 1 node which hostname is node101.localdmain, and OS is CentOS 6.8
+    # create 1 node which hostname is node101.localdmain, and OS is CentOS 6.8, and Ambari is sandbox.hortonworks.com
     p_nodes_create 1 101 6.8 172.17.0. sandbox.hortonworks.com
 
 Available options:
@@ -388,8 +388,8 @@ function f_ambari_blueprint_hostmap() {
     local _is_kerberos_on="$2"
     local _how_many="${3-$r_NUM_NODES}"
     local _start_from="${4-$r_NODE_START_NUM}"
-    local _domain_suffix="${5-$r_DOMAIN_SUFFIX}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+    local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
     if [ -z "$_how_many" ] || [ 4 -gt "$_how_many" ]; then
         _error "At this moment, Blueprint build needs at least 4 nodes"
@@ -404,7 +404,7 @@ function f_ambari_blueprint_hostmap() {
       \"name\" : \"host_group_$_num\",
       \"hosts\" : [
         {
-          \"fqdn\" : \"${_node}$i${_domain_suffix}\"
+          \"fqdn\" : \"${_node}${i}.${_domain_suffix#.}\"
         }
       ]
     },"
@@ -424,9 +424,12 @@ function f_ambari_blueprint_hostmap() {
 }
 
 function f_ambari_blueprint_cluster_config() {
-    local __doc__="Output json string for Ambari Blueprint Cluster mapping TODO: it's fixed map at this moment"
+    local __doc__="Output json string for Ambari Blueprint Cluster mapping. 1=Ambari 2=>hadoop,Hive 3=>HBase,Security 4=>slave"
     local _stack_version="${1-$r_HDP_STACK_VERSION}"
     local _install_security="${2-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
+    local _start_from="${3-$r_NODE_START_NUM}"
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+    local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
     local _extra_comps_1=""
     local _extra_comps_2=""
@@ -434,8 +437,7 @@ function f_ambari_blueprint_cluster_config() {
     local _extra_comps_4=""
     local _extra_configs=""
     if _isYes "$_install_security" ; then
-        # TODO: ,{"name":"RANGER_KMS_SERVER"}
-        _extra_comps_3=',{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}'
+        _extra_comps_3=',{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}'
         _extra_comps_4=',{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
         # https://cwiki.apache.org/confluence/display/AMBARI/Blueprint+support+for+Ranger
         # TODO: policymgr_external_url is supposed to be used for rest.url but it becomes {{policymgr_mgr_url}}
@@ -785,7 +787,19 @@ function f_ambari_blueprint_cluster_config() {
     "stack_name": "HDP",
     "stack_version": "'$_stack_version'"
   }
-}'
+}' > /tmp/f_ambari_blueprint_cluster_config_$$.json
+
+    # %HOSTGROUP::host_group_N% is not reliable, so if _start_from is given, replacing to actual hostname
+    if [ ! -z "$_start_from" ]; then
+        # Currently host_group_x is from 1 to 4
+        local _node_num=""
+        for i in {1..4}; do
+            _node_num="$(( $_start_from + $i - 1 ))"
+            sed -i "s/%HOSTGROUP::host_group_${i}%/${_node}${_node_num}.${_domain_suffix#.}/g" /tmp/f_ambari_blueprint_cluster_config_$$.json
+        done
+    fi
+
+    cat /tmp/f_ambari_blueprint_cluster_config_$$.json
 }
 
 function f_saveResp() {
