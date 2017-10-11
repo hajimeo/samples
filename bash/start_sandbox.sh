@@ -319,11 +319,13 @@ If you would like to fix this now, press Ctrl+c."
         docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
     fi
 
+    # somehow suddenly directory permissions become broken
+    docker exec -it ${_NAME} bash -c 'cd /hadoop && for _n in `ls -1`; do chown -R $_n:hadoop ./$_n 2>/dev/null; done'
+    docker exec -it ${_NAME} bash -c 'chown -R mapred:hadoop /hadoop/mapreduce'
+    docker exec -it ${_NAME} bash -c 'chown -R mysql:mysql /var/lib/mysql /var/run/mysqld'
+
     if ${_NEW_CONTAINER} ; then
         docker exec -it ${_NAME} bash -c "chpasswd <<< root:hadoop"
-        docker exec -it ${_NAME} bash -c 'cd /hadoop && for _n in `ls -1`; do chown -R $_n:hadoop ./$_n; done'
-        docker exec -it ${_NAME} bash -c 'chown -R mapred:hadoop /hadoop/mapreduce'
-        docker exec -it ${_NAME} bash -c 'chown -R mysql:mysql /var/lib/mysql /var/run/mysqld'
 
         # As of this typing, sandbox repo for tutorial is broken so moving out for now
         docker exec -it ${_NAME} bash -c 'mv /etc/yum.repos.d/sandbox.repo /root/'
