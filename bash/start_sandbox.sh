@@ -73,7 +73,7 @@ function f_docker_image_setup() {
 
     echo "Executing \"docker import ${_tmp_dir%/}/${_file_name}\"
 If fails, please re-try with \"dokcer load -i ${_tmp_dir%/}/${_file_name}\""
-    docker import -i "${_tmp_dir%/}/${_file_name}" || return $?
+    docker import "${_tmp_dir%/}/${_file_name}" || return $?
 }
 
 function _port_wait() {
@@ -145,7 +145,7 @@ If you would like to fix this now, press Ctrl+c."
     echo "Waiting for docker daemon to start up:"
     until docker ps 2>&1| grep -q STATUS; do  sleep 1; done;  >/dev/null
 
-    docker ps -a --format "{{.Names}}" | grep -qw "${_NAME}"
+    docker ps -a --format "{{.Names}}" | grep -E "^${_NAME}$"
     if [ $? -eq 0 ]; then
         docker start "${_NAME}"
     else
