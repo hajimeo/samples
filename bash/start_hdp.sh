@@ -1974,6 +1974,8 @@ function p_host_setup() {
     f_docker0_setup "172.18.0.1" "24" &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_hdp_network_setup"
     f_hdp_network_setup &>> /tmp/p_host_setup.log
+    _log "INFO" "Starting f_ssh_setup"
+    f_ssh_setup &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_docker_base_create"
     f_docker_base_create &>> /tmp/p_host_setup.log || return $?
     _log "INFO" "Starting f_docker_run"
@@ -2178,11 +2180,13 @@ function f_dockerfile() {
     fi
 
     # make sure ssh key is set up to replace DockerFile's _REPLACE_WITH_YOUR_PRIVATE_KEY_
-    f_ssh_setup
+    if [ -s $HOME/.ssh/id_rsa ]; then
+        local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
+        sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ${_new_filepath}
+    else
+        _warn "No private key to replace _REPLACE_WITH_YOUR_PRIVATE_KEY_"
+    fi
 
-    local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
-
-    sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ${_new_filepath}
     [ -z "$_os_and_ver" ] || sed -i "s/FROM centos.*/FROM ${_os_and_ver}/" ${_new_filepath}
 }
 
@@ -2215,6 +2219,9 @@ function f_ssh_setup() {
         chmod 600 /root/.ssh/id_rsa
         chown -R root:root /root/.ssh
     fi
+
+    # To make 'ssh root@localhost' work
+    grep -q "^`cat $HOME/.ssh/id_rsa.pub`" /root/.ssh/authorized_keys || echo "`cat $HOME/.ssh/id_rsa.pub`" >> /root/.ssh/authorized_keys
 }
 
 function f_hostname_set() {
