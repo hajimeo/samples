@@ -349,7 +349,7 @@ If you would like to fix this now, press Ctrl+c."
 
     # setting up password-less ssh to sandbox
     if [ -s  ~/.ssh/id_rsa.pub ]; then
-        docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
+        docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> /root/.ssh/authorized_keys"
     fi
 
     # TODO: somehow suddenly directory permissions become broken
