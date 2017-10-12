@@ -80,7 +80,7 @@ function _port_wait() {
     local _host="$1"
     local _port="$2"
     local _times="${3-10}"
-    local _interval="${4-5}"
+    local _interval="${4-6}"
 
     for i in `seq 1 $_times`; do
       sleep $_interval
@@ -144,6 +144,9 @@ If you would like to fix this now, press Ctrl+c."
 
     echo "Waiting for docker daemon to start up:"
     until docker ps 2>&1| grep -q STATUS; do  sleep 1; done;  >/dev/null
+
+    # Stop all containers (including $_NAME if it's already running)
+    #docker stop $(docker ps -q)
 
     docker ps -a --format "{{.Names}}" | grep -E "^${_NAME}$"
     if [ $? -eq 0 ]; then
@@ -310,16 +313,27 @@ If you would like to fix this now, press Ctrl+c."
 
     sleep 3
 
+    echo "Starting PosrgreSQL, Ambari Server and Agent ..."
     docker exec -d ${_NAME} sysctl -w kernel.shmmax=${_SHMMAX}
     #docker exec -d ${_NAME} /sbin/sysctl -p
     docker exec -d ${_NAME} service postgresql start
+    if ${_NEW_CONTAINER} ; then
+        # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
+        docker exec -it ${_NAME} bash -c 'grep -q "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
+
+        echo "Resetting Ambari password (to 'admin') ..."
+        #docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
+        docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL'\""
+    fi
+    docker exec -d ${_NAME} service ambari-server start
+    docker exec -d ${_NAME} service ambari-agent start
 
     # setting up password-less ssh to sandbox
     if [ -s  ~/.ssh/id_rsa.pub ]; then
         docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
     fi
 
-    # somehow suddenly directory permissions become broken
+    # TODO: somehow suddenly directory permissions become broken
     docker exec -it ${_NAME} bash -c 'cd /hadoop && for _n in `ls -1`; do chown -R $_n:hadoop ./$_n 2>/dev/null; done'
     docker exec -it ${_NAME} bash -c 'chown -R mapred:hadoop /hadoop/mapreduce'
     docker exec -it ${_NAME} bash -c 'chown -R mysql:mysql /var/lib/mysql /var/run/mysqld'
@@ -335,19 +349,10 @@ If you would like to fix this now, press Ctrl+c."
         #docker exec -it ${_NAME} /usr/sbin/ambari-agent stop
         #docker exec -it ${_NAME} /usr/sbin/ambari-agent reset ${_NAME}.hortonworks.com
         #docker exec -it ${_NAME} /usr/sbin/ambari-agent start
-
-        # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
-        docker exec -it ${_NAME} bash -c 'grep -q "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
-
-        echo "Resetting Ambari password (to 'admin') ..."
-        docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL'\""
-        #docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
     fi
 
+    # for Hive, Oozie, Ranger, KMS etc, making sure mysql starts
     docker exec -d ${_NAME} service mysqld start
-
-    docker exec -d ${_NAME} service ambari-agent start
-    docker exec -d ${_NAME} service ambari-server start
 
     #docker exec -d ${_NAME} /root/start_sandbox.sh
     #docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
