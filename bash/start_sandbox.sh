@@ -19,7 +19,7 @@
 #
 _NAME="${1-sandbox-hdp}"
 _IP="${2}"
-_HOSTNAME="${3-sandbox.hortonworks.com}"
+_HOSTNAME="${3}"
 _CUSTOM_NETWORK="hdp"
 _AMBARI_PORT=8080
 _SHMMAX=41943040
@@ -122,6 +122,13 @@ function _totalSpaceGB() {
 
 ### main() ############################################################
 if [ "$0" = "$BASH_SOURCE" ]; then
+    # TODO: Seems HDF image works with only sandbox-hdf.hortonwroks.com
+    if [[ "${_NAME}" == "sandbox-hdf"* ]]; then
+        _HOSTNAME="sandbox-hdf.hortonworks.com"
+    else
+        _HOSTNAME="sandbox.hortonworks.com"
+    fi
+
     _regex="^[1-9].+${_HOSTNAME}"
     [ ! -z "$_IP" ] && _regex="^${_IP}\s+${_HOSTNAME}"
     if ! grep -qE "$_regex" /etc/hosts; then
@@ -324,13 +331,14 @@ If you would like to fix this now, press Ctrl+c."
 
     sleep 3
 
-    echo "Starting PosrgreSQL, Ambari Server and Agent ..."
+    echo "Starting PostgreSQL, Ambari Server and Agent ..."
     docker exec -d ${_NAME} sysctl -w kernel.shmmax=${_SHMMAX}
     #docker exec -d ${_NAME} /sbin/sysctl -p
     docker exec -d ${_NAME} service postgresql start
     if ${_NEW_CONTAINER} ; then
         # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
         docker exec -it ${_NAME} bash -c 'grep -q "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
+        docker exec -it ${_NAME} bash -c "ambari-agent reset ${_HOSTNAME}"
 
         echo "Resetting Ambari password (to 'admin') ..."
         #docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
@@ -356,7 +364,7 @@ If you would like to fix this now, press Ctrl+c."
         docker exec -it ${_NAME} bash -c 'mv /etc/yum.repos.d/sandbox.repo /root/'
         docker exec -it ${_NAME} bash -c 'yum install -y yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc'
 
-        #echo "Resetting Ambari Agent just incase ..."
+        #echo "Resetting Ambari Agent just in case ..."
         #docker exec -it ${_NAME} /usr/sbin/ambari-agent stop
         #docker exec -it ${_NAME} /usr/sbin/ambari-agent reset ${_NAME}.hortonworks.com
         #docker exec -it ${_NAME} /usr/sbin/ambari-agent start
