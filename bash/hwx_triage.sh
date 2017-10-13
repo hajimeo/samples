@@ -4,6 +4,8 @@
 # Tested on CentOS 6.6
 # @author Hajime
 #
+# Each function should work individually
+#
 
 # GLOBAL variables
 _WORK_DIR="./hwx_triage"
@@ -42,14 +44,15 @@ Get more help for a function
 
 function f_check_system() {
     local __doc__="Execute OS commands for performance issue"
-    _workdir || _WORK_DIR="."
+    [ -z "$_WORK_DIR" ] && _WORK_DIR="."
+    echo "INFO" "Collecting OS related information..." >&2
 
-    _log "INFO" "Collecting OS related information..."
-
+    uname -a &> ${_WORK_DIR%/}/uname-a.out
     hdp-select &> ${_WORK_DIR%/}/hdp-select.out
+    ls -l /usr/hdp/current/ &>> ${_WORK_DIR%/}/hdp-select.out
+    ls -l /etc/security/keytabs/ &> ${_WORK_DIR%/}/ls-keytabs.out
     getenforce &> ${_WORK_DIR%/}/getenforce.out
     iptables -t nat -L &> ${_WORK_DIR%/}/iptables.out
-    ls -l /usr/hdp/current/ >> ${_WORK_DIR%/}/hdp-select.out
     (which timeout && (timeout 3 time head -n 1 /dev/urandom > /dev/null;echo '-';timeout 3 time head -n 1 /dev/random > /dev/null)) &> ${_WORK_DIR%/}/random.out
     vmstat 1 3 &> ${_WORK_DIR%/}/vmstat.out &
     vmstat -d &> ${_WORK_DIR%/}/vmstat_d.out &
@@ -58,7 +61,6 @@ function f_check_system() {
     top -b -n 1 -c &> ${_WORK_DIR%/}/top.out
     ps auxwwwf &> ${_WORK_DIR%/}/ps.out
     netstat -aopen &> ${_WORK_DIR%/}/netstat.out
-    cat /proc/net/dev &> ${_WORK_DIR%/}/net_dev.out
     netstat -s &> ${_WORK_DIR%/}/netstat_s.out
     ifconfig &> ${_WORK_DIR%/}/ifconfig.out
     nscd -g &> ${_WORK_DIR%/}/nscd.out
@@ -68,17 +70,19 @@ function f_check_system() {
     mount &> ${_WORK_DIR%/}/mount_df.out
     df -h &> ${_WORK_DIR%/}/mount_df.out
     sar -qrbd &> ${_WORK_DIR%/}/sar_qrbd.out
+    cat /proc/net/dev &> ${_WORK_DIR%/}/net_dev.out
     cat /proc/cpuinfo &> ${_WORK_DIR%/}/cpuinfo.out
+    cat /proc/meminfo &> ${_WORK_DIR%/}/meminfo.out
     wait
 }
 
 function f_check_process() {
     local __doc__="Execute PID related commands (jstack, jstat, jmap)"
     local _p="$1"	# Java PID ex: `cat /var/run/kafka/kafka.pid`
-    _workdir || _WORK_DIR="."
+    [ -z "$_WORK_DIR" ] && _WORK_DIR="."
 
     if [ -z "$_p" ]; then
-        _log "ERROR" "No PID"; return 1
+        echo "ERROR" "No PID" >&2; return 1
     fi
 
     local _user="`stat -c '%U' /proc/${_p}`"
@@ -88,7 +92,7 @@ function f_check_process() {
         _cmd_dir="$JAVA_HOME/bin" 2>/dev/null
     fi
 
-    _log "INFO" "Collecting PID related information..."
+    echo "INFO" "Collecting PID related information..." >&2
     su - $_user -c 'klist -eaf' &> ${_WORK_DIR%/}/klist_${_user}.out
 
     cat /proc/${_p}/limits &> ${_WORK_DIR%/}/proc_limits_${_p}.out
@@ -117,25 +121,24 @@ function f_check_process() {
 
 function f_collect_config() {
     local __doc__="Collect HDP all config files and generate tgz file"
-    _workdir || _WORK_DIR="."
+    [ -z "$_WORK_DIR" ] && _WORK_DIR="."
 
-    _log "INFO" "Collecting HDP config files ..."
-
-
-    tar czhf ${_WORK_DIR%/}/hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf/* /etc/krb5.conf /etc/hosts /etc/ambari-agent/conf/* 2>&1 | grep -v 'Removing leading'
+    echo "INFO" "Collecting HDP config files ..." >&2
+    # no 'v' at this moment
+    tar czhf ${_WORK_DIR%/}/hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf /etc/{ams,ambari}-* /etc/ranger/*/policycache /etc/hosts /etc/krb5.conf 2>/dev/null
 }
 
 function f_collect_log_files() {
     local __doc__="Collect log files for past x days (default is 1 day) and generate tgz file"
     local _path="$1"
     local _day="${2-1}"
-    _workdir || _WORK_DIR="."
+    [ -z "$_WORK_DIR" ] && _WORK_DIR="."
 
     if [ -z "$_path" ] || [ ! -d "$_path" ]; then
-        _log "ERROR" "$_path is not a directory"; return 1
+        echo "ERROR" "$_path is not a directory" >&2; return 1
     fi
 
-    _log "INFO" "Collecting log files under ${_path} for past ${_day} day(s) ..."
+    echo "INFO" "Collecting log files under ${_path} for past ${_day} day(s) ..." >&2
 
     tar czhf ${_WORK_DIR%/}/hdp_log_$(hostname).tar.gz `find -L "${_path}" -type f -mtime -${_day}` 2>&1 | grep -v 'Removing leading'
     # grep -i "killed process" /var/log/messages* # TODO: should we also check OOM Killer?
@@ -144,10 +147,10 @@ function f_collect_log_files() {
 function f_collect_webui() {
     local __doc__="TODO: Collect Web UI with wget"
     local _url="$1"
-    _workdir || _WORK_DIR="."
+    [ -z "$_WORK_DIR" ] && _WORK_DIR="."
 
     if ! which wget &>/dev/null ; then
-        _log "ERROR" "No wget in the PATH."; return 1
+        echo "ERROR" "No wget in the PATH." >&2; return 1
     fi
 
     local _d="collect_webui"
@@ -155,20 +158,65 @@ function f_collect_webui() {
     wget -r -P${_WORK_DIR%/}/$_d -X logs -l 3 -t 1 -k --restrict-file-names=windows -E --no-check-certificate -o ${_WORK_DIR%/}/$_d/collect_webui_wget.log "$_url"
 }
 
-function f_collect_host_metrics() {
-    local __doc__="TODO: Collect host metrics from Ambari"
-    _workdir || _WORK_DIR="."
+function f_collect_host_info_from_ambari() {
+    local __doc__="Access to Ambari API to get the host information"
+    local _admin="${1-admin}"
+    local _admin_pass="$2"
+    local _comp="${3}"
+    local _node="${4}"
+    local _date_start_string="$5"
+    local _date_end_string="$6"
+    local _protocol="${7-http}"
+    local _ambari_port="${8-8080}"
 
-    _HOST="`hostname -f`"
-    _S="`date '+%s' -d"1 hours ago"`"
-    _E="`date '+%s'`"
-    _s="15"
-    _AMBARI_SERVER="`hostname -f`" # localhost
-    _USR="admin"
-    _PWD="admin"
-    _CLS="`curl -u "${_USR}":"${_PWD}" -sk "http://${_AMBARI_SERVER}:8080/api/v1/clusters" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['items'][0]['Clusters']['cluster_name']"`"; echo $_CLS
-    curl -u "${_USR}":"${_PWD}" -k "http://$_AMBARI_SERVER:8080/api/v1/clusters/$_CLS/hosts/$_HOST" -o ${_WORK_DIR%/}/ambari_host_${_HOST}.json
-    curl -u "${_USR}":"${_PWD}" -k "http://$_AMBARI_SERVER:8080/api/v1/clusters/$_CLS/hosts/$_HOST" -G --data-urlencode "fields=metrics/cpu/cpu_user[${_S},${_E},${_s}],metrics/cpu/cpu_wio[${_S},${_E},${_s}],metrics/cpu/cpu_nice[${_S},${_E},${_s}],metrics/cpu/cpu_aidle[${_S},${_E},${_s}],metrics/cpu/cpu_system[${_S},${_E},${_s}],metrics/cpu/cpu_idle[${_S},${_E},${_s}],metrics/disk/disk_total[${_S},${_E},${_s}],metrics/disk/disk_free[${_S},${_E},${_s}],metrics/load/load_fifteen[${_S},${_E},${_s}],metrics/load/load_one[${_S},${_E},${_s}],metrics/load/load_five[${_S},${_E},${_s}],metrics/memory/swap_free[${_S},${_E},${_s}],metrics/memory/mem_shared[${_S},${_E},${_s}],metrics/memory/mem_free[${_S},${_E},${_s}],metrics/memory/mem_cached[${_S},${_E},${_s}],metrics/memory/mem_buffers[${_S},${_E},${_s}],metrics/network/bytes_in[${_S},${_E},${_s}],metrics/network/bytes_out[${_S},${_E},${_s}],metrics/network/pkts_in[${_S},${_E},${_s}],metrics/network/pkts_out[${_S},${_E},${_s}],metrics/process/proc_total[${_S},${_E},${_s}],metrics/process/proc_run[${_S},${_E},${_s}]" -o ${_WORK_DIR%/}/ambari_metrics_${_HOST}.json
+    local _cmd_opts="-s -k -u ${_admin}"
+    [ -z "${_admin_pass}" ] || _cmd_opts="${_cmd_opts}:${_admin_pass}"
+    [ -z "$_node" ] && _node="`hostname -f`"
+    [ -z "$_date_start_string" ] && _date_start_string="4 hours ago"
+    [ -z "$_date_end_string" ] && _date_end_string="now"
+    [ -z "$_protocol" ] && _protocol="http"
+    [ -z "$_ambari_port" ] && _ambari_port="8080"
+    [ -z "$_WORK_DIR" ] && _WORK_DIR="."
+    echo "INFO" "Collecting this host information from Ambari..." >&2
+
+    local _ambari="`grep '^hostname=' /etc/ambari-agent/conf/ambari-agent.ini | cut -d= -f2`"
+    if [ -z "$_ambari" ]; then
+        echo "ERROR" "No hostname= in ambari-agent.ini" >&2
+        return 1
+    fi
+
+    local _href="`curl ${_cmd_opts} ${_protocol}://${_ambari}:${_ambari_port}/api/v1/clusters/ | grep -oE 'http://.+/clusters/[^"/]+'`"
+    if [ -z "$_href" ]; then
+        echo "ERROR" "No href from ${_protocol}://${_ambari}:${_ambari_port}/api/v1/clusters/" >&2
+        return 2
+    fi
+
+    # Looks like Ambari 2.5.x doesn't care of the case (lower or upper or mix) for hostname
+    curl ${_cmd_opts} "${_href}/hosts/${_node}" -o ${_WORK_DIR%/}/ambari_${_node}.json
+
+    # If no python, not collecting detailed metrics at this moment
+    which python &>/dev/null || return
+
+    local _S="`date '+%s' -d"${_date_start_string}"`"
+    local _E="`date '+%s' -d"${_date_end_string}"`"
+    local _s="15"
+    local _script="import sys,json
+a=json.loads(sys.stdin.read())
+r=[]
+for k,v in a['metrics'].iteritems():
+  if isinstance(v,dict):
+    for k2 in v:
+      r+=['metrics/%s/%s["${_S}","${_E}","${_s}"]' % (k, k2)]
+print ','.join(r)"
+
+    local _fields="`cat ${_WORK_DIR%/}/ambari_${_node}.json | python -c "${_script}"`"
+    [ -z "$_fields" ] || curl ${_cmd_opts} "${_href}/hosts/${_node}" -G --data-urlencode "fields=${_fields}" -o ${_WORK_DIR%/}/ambari_${_node}_metrics.json
+
+    if [ ! -z "$_comp" ]; then
+        curl ${_cmd_opts} "${_href}/hosts/${_node}/host_components/${_comp^^}" -o ${_WORK_DIR%/}/ambari_${_node}_${_comp}.json
+        _fields="`cat ${_WORK_DIR%/}/ambari_${_node}_${_comp}.json | python -c "${_script}"`"
+        [ -z "$_fields" ] || curl ${_cmd_opts} "${_href}/hosts/${_node}/host_components/${_comp^^}" -G --data-urlencode "fields=${_fields}" -o ${_WORK_DIR%/}/ambari_${_node}_${_comp}_metrics.json
+    fi
 }
 
 #function f_test_network() {
@@ -183,7 +231,7 @@ function f_tar_work_dir() {
         _file_path="./hdp_triage_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz"
     fi
 
-    _log "INFO" "Creating ${_file_path} file ..."
+    echo "INFO" "Creating ${_file_path} file ..." >&2
 
     tar --remove-files -czf ${_file_path} ${_WORK_DIR%/}/* 2>&1 | grep -v 'Removing leading'
 }
@@ -201,14 +249,14 @@ help() {
     if [[ "$_function_name" =~ ^[fp]_ ]]; then
         local _code="$(type $_function_name 2>/dev/null | grep -v "^${_function_name} is a function")"
         if [ -z "$_code" ]; then
-            _log "ERROR" "Function name '$_function_name' does not exist."; return 1
+            echo "ERROR" "Function name '$_function_name' does not exist." >&2; return 1
         fi
 
         local _eval="$(echo -e "${_code}" | awk '/__doc__=/,/;/')"
         eval "$_eval"
 
         if [ -z "$__doc__" ]; then
-            _log "INFO" "No help information in function name '$_function_name'."
+            echo "INFO" "No help information in function name '$_function_name'." >&2
         else
             echo -e "$__doc__"
             [[ "$_doc_only" =~ (^y|^Y) ]] && return
@@ -222,7 +270,7 @@ help() {
         fi
         echo -e "${_code}"
     else
-        _log "ERROR" "Unsupported Function name '$_function_name'."; return 1
+        echo "ERROR" "Unsupported Function name '$_function_name'." >&2; return 1
     fi
 }
 
@@ -239,11 +287,11 @@ function _workdir() {
     [ -z "${_work_dir}" ] && _work_dir="./${FUNCNAME}_$$"
 
     if [ ! -d "$_work_dir" ] && ! mkdir $_work_dir; then
-        _log "ERROR" "Couldn't create $_work_dir directory"; return 1
+        echo "ERROR" "Couldn't create $_work_dir directory" >&2; return 1
     fi
 
     if [ ! -w "$_work_dir" ]; then
-        _log "ERROR" "Couldn't write $_work_dir directory"; return 1
+        echo "ERROR" "Couldn't write $_work_dir directory" >&2; return 1
     fi
 
     _WORK_DIR="${_work_dir}"
@@ -300,10 +348,11 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     # validation
     if [ "$USER" != "root" ]; then
-        _log "ERROR" "Please run as 'root' user"
+        echo "ERROR" "Please run as 'root' user" >&2
         exit 1
     fi
 
+    _workdir
     f_check_system
     if [ -n "$_PID" ]; then
         f_check_process "$_PID"
@@ -313,5 +362,5 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         f_collect_log_files "$_LOG_DIR" "$_LOG_DAY"
     fi
     f_tar_work_dir
-    _log "INFO" "Completed!"
+    echo "INFO" "Completed!" >&2
 fi
