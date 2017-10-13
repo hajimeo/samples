@@ -1397,7 +1397,7 @@ function f_ambari_server_install() {
 function f_ambari_server_start() {
     local __doc__="Starting ambari-server on $r_AMBARI_HOST"
     _port_wait "$r_AMBARI_HOST" "22"
-    ssh -q root@$r_AMBARI_HOST "ambari-server start --silent" &> /tmp/f_ambari_server_start.out
+    ssh -q root@$r_AMBARI_HOST "ambari-server start --skip-database-check --silent" &> /tmp/f_ambari_server_start.out
     if [ $? -ne 0 ]; then
         grep 'Ambari Server is already running' /tmp/f_ambari_server_start.out && return
         sleep 5
@@ -2503,7 +2503,7 @@ function f_useradd() {
 function f_useradd_on_nodes() {
     local __doc__="Add user in multiple nodes. NOTE: expecting host has KDC"
     local _user="$1"
-    local _password="${2-$r_DEFAULT_PASSWORD}"
+    local _password="${2-$g_DEFAULT_PASSWORD}"
     local _how_many="${3-$r_NUM_NODES}"
     local _start_from="${4-$r_NODE_START_NUM}"
     local _hdfs_client_node="$5"
