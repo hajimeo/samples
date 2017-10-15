@@ -346,7 +346,7 @@ If you would like to fix this now, press Ctrl+c."
         #docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
         docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL'\""
     fi
-    docker exec -d ${_NAME} service ambari-server start
+    docker exec -d ${_NAME} service ambari-server start --skip-database-check
     docker exec -d ${_NAME} service ambari-agent start
 
     # setting up password-less ssh to sandbox
