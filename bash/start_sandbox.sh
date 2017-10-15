@@ -76,20 +76,22 @@ If fails, please re-try with \"dokcer load -i ${_tmp_dir%/}/${_file_name}\""
     docker import "${_tmp_dir%/}/${_file_name}" || return $?
 }
 
-function _port_wait() {
+function f_ambari_start_all() {
     local _host="$1"
     local _port="$2"
-    local _times="${3-10}"
+    local _cluster="${3-Sandbox}"
+    local _times="${3-20}"
     local _interval="${4-6}"
 
     for i in `seq 1 $_times`; do
-      sleep $_interval
-      curl -sIL "http://$_host:$_port/" | grep -q '^HTTP/1.1 20' && return 0
-      echo "$_host:$_port is unreachable. Waiting..."
+        curl -sL -u admin:admin "http://$_host:$_port/api/v1/clusters/${_cluster}?fields=Clusters/health_report" | grep -qE '"Host/host_state/HEALTHY" : [1-9]' && break
+        echo "$_host:$_port is unreachable. Waiting ($i)..."
+        sleep $_interval
     done
-    echo "WARN: $_host:$_port is unreachable."
-    return 1
+    sleep 3
+    curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 }
+
 function _isEnoughDisk() {
     local __doc__="Check if entire system or the given path has enough space with GB."
     local _dir_path="${1-/}"
@@ -382,13 +384,17 @@ If you would like to fix this now, press Ctrl+c."
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-server/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 
-    echo "Waiting Amari Server is ready on port $_AMBARI_PORT , then start all services..."
-    _port_wait "${_HOSTNAME}" $_AMBARI_PORT
-    sleep 3
+    echo "With nohup, executing the start ALL services API to ${_HOSTNAME}:${_AMBARI_PORT}..."
+    sleep 5
     # TODO: Because sandbox's HDFS is in Maintenance mode, the curl command below wouldn't work
     #f_service "ZEPPELIN ATLAS KNOX FALCON OOZIE FLUME HBASE KAFKA SPARK SPARK2 STORM AMBARI_INFRA" "STOP" ${_HOSTNAME}
     #f_service "ZOOKEEPER RANGER HDFS MAPREDUCE2 YARN HIVE" "START" ${_HOSTNAME}
-    curl -u admin:admin -H "X-Requested-By:ambari" -k "http://${_HOSTNAME}:${_AMBARI_PORT}/api/v1/clusters/Sandbox/services?" -X PUT --data '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+    # NOTE: --retry-connrefused is from curl v 7.52.0
+    export -f f_ambari_start_all
+    nohup bash -c "f_ambari_start_all ${_HOSTNAME} ${_AMBARI_PORT}" &
     echo ""
+    sleep 1
+    echo "Completed! (except the following background job)"
+    jobs -l
     #docker exec -it ${_NAME} bash
 fi
