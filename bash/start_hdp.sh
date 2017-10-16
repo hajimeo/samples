@@ -998,7 +998,7 @@ function f_docker_setup() {
     local __doc__="Install docker (if not yet) and customise for HDP test environment (TODO: Ubuntu only)"
     # https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/
 
-    if [ ! `which apt-get` ]; then
+    if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
         return 1
     fi
@@ -1618,7 +1618,7 @@ function f_local_repo() {
     local _force_extract=""
     local _download_only=""
 
-    if [ ! `which apt-get` ]; then
+    if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
         return 1
     fi
@@ -1917,15 +1917,10 @@ function f_screen_cmd() {
     fi
 }
 
-function f_vmware_tools_install() {
-    local __doc__="Install VMWare Tools in Ubuntu host"
-    mkdir /media/cdrom; mount /dev/cdrom /media/cdrom && cd /media/cdrom && cp VMwareTools-*.tar.gz /tmp/ && cd /tmp/ && tar xzvf VMwareTools-*.tar.gz && cd vmware-tools-distrib/ && ./vmware-install.pl -d
-}
-
 function f_sysstat_setup() {
     local __doc__="Install and set up sysstat"
 
-    if [ ! `which apt-get` ]; then
+    if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
         return 1
     fi
@@ -1939,6 +1934,11 @@ function f_sysstat_setup() {
         sed -i.bak -e 's/ENABLED=\"false\"/ENABLED=\"true\"/' /etc/default/sysstat
         service sysstat restart
     fi
+}
+
+function f_vmware_tools_install() {
+    local __doc__="Install VMWare Tools in Ubuntu host"
+    mkdir /media/cdrom; mount /dev/cdrom /media/cdrom && cd /media/cdrom && cp VMwareTools-*.tar.gz /tmp/ && cd /tmp/ && tar xzvf VMwareTools-*.tar.gz && cd vmware-tools-distrib/ && ./vmware-install.pl -d
 }
 
 function p_host_setup() {
@@ -2124,10 +2124,6 @@ function f_host_performance() {
 
 function f_host_misc() {
     local __doc__="Misc. changes for Ubuntu OS"
-    grep "^IP=" /etc/rc.local &>/dev/null
-    if [ $? -ne 0 ]; then
-        sed -i.bak '/^exit 0/i IP=$(/sbin/ifconfig eth0 | grep -oP "inet addr:\\\d+\\\.\\\d+\\\.\\\d+\\\.\\\d+" | cut -d":" -f2); echo "eth0 IP: $IP" > /etc/issue\n' /etc/rc.local
-    fi
 
     # AWS / Openstack only change
     if [ -s /home/ubuntu/.ssh/authorized_keys ] && [ ! -f $HOME/.ssh/authorized_keys.bak ]; then
@@ -2244,7 +2240,7 @@ function f_apache_proxy() {
     local _cache_dir="/var/cache/apache2/mod_cache_disk"
     local _port="${r_PROXY_PORT-28080}"
 
-    if [ ! `which apt-get` ]; then
+    if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
         return 1
     fi
@@ -2378,7 +2374,7 @@ function f_update_check() {
         if [ "$0" = "$BASH_SOURCE" ]; then
             _warn "$FUNCNAME: No 'curl' command. Exiting."; return 1
         else
-            if [ `which apt-get` ]; then
+            if ! which apt-get &>/dev/null; then
                 _ask "Would you like to install 'curl'?" "Y"
                 if ! _isYes ; then
                     return 1
@@ -2421,7 +2417,7 @@ function f_vnc_setup() {
     local _vpass="${2-$g_DEFAULT_PASSWORD}"
     local _pass="${3-$g_DEFAULT_PASSWORD}"
 
-    if [ ! `which apt-get` ]; then
+    if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
         return 1
     fi
@@ -2455,7 +2451,7 @@ function f_x2go_setup() {
     local _user="${1-$USER}"
     local _pass="${2-$g_DEFAULT_PASSWORD}"
 
-    if [ ! `which apt-get` ]; then
+    if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
         return 1
     fi
