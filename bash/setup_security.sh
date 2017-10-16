@@ -183,6 +183,7 @@ function f_ambari_kerberos_setup() {
     local _ambari_host="${4-$r_AMBARI_HOST}"
     local _how_many="${5-$r_NUM_NODES}"
     local _start_from="${6-$r_NODE_START_NUM}"
+    local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
 
     if [ -z "$_password" ]; then
         _password=${g_DEFAULT_PASSWORD-hadoop}
@@ -225,7 +226,7 @@ function f_ambari_kerberos_setup() {
     else
         _info "Adding Kerberos client on all nodes"
         for i in `_docker_seq "$_how_many" "$_start_from"`; do
-            curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "${_api_uri}/hosts?Hosts/host_name=node$i${r_DOMAIN_SUFFIX}"
+            curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "${_api_uri}/hosts?Hosts/host_name=node$i${_domain_suffix}"
             sleep 1;
         done
     fi
@@ -270,7 +271,7 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
         sleep 15;
     done
 
-    # occationaly gets "Cannot run program "kadmin": error=2, No such file or directory"
+    # occasionally gets "Cannot run program "kadmin": error=2, No such file or directory"
     ssh -q root@$_ambari_host -t which kadmin &>/dev/null || sleep 10
 
     _info "Set up Kerberos..."
@@ -962,6 +963,35 @@ function f_ssl_ambari_config_disable_for_hadoop() {
 	for _k in "${!_configs[@]}"; do
         _split "_type_prop" "$_k" ":"
         ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} $_opts set $_ambari_host "$_cluster_name" ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
+    done
+}
+
+
+function f_etc_hosts_update() {
+    local __doc__="TODO: maintain /etc/hosts for security (distcp)"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+    local _ip_network="${3}"
+    local _node="${4-$g_NODE_HOSTNAME_PREFIX}"
+    local _domain_suffix="${5-$r_DOMAIN_SUFFIX}"
+    local _last_num=$(( $_start_from + $_how_many - 1 ))
+    local _f=/etc/hosts
+
+    local _bak="_$(date +"%Y%m%d%").bak"
+    for i in {$_start_from..$_last_num}; do
+        if [ ! -z "$_bak" ] && [ -s $_f$_bak ]; then
+            _bak=""
+        fi
+
+        if grep -qE "^[1-9]+.+\s${_node}${i}.${_domain_suffix#.}\b" $_f; then
+            sed -i"$_bak" -e "s/^[1-9]+.+\s${_node}${i}.${_domain_suffix#.}.+$/${_ip_network%.}.${i} ${_node}${i}.${_domain_suffix#.} ${_node}${i}.${_domain_suffix#.}. ${_node}${i}/" $_f && _bak=""
+        else
+            if [ ! -z "$_bak" ]; then
+                cp -p $_f $_f$_bak
+                _bak=""
+            fi
+            echo '${_ip_network%.}.${i} ${_node}${i}.${_domain_suffix#.} ${_node}${i}.${_domain_suffix#.} ${_node}${i}.${_domain_suffix#.}. ${_node}${i}' >> $_f
+        fi
     done
 }
 
