@@ -334,15 +334,15 @@ If you would like to fix this now, press Ctrl+c."
     sleep 3
 
     echo "Starting PostgreSQL, Ambari Server and Agent ..."
-    docker exec -d ${_NAME} sysctl -w kernel.shmmax=${_SHMMAX}
+    docker exec -it ${_NAME} bash -c "sysctl -w kernel.shmmax=${_SHMMAX};service postgresql start"
     #docker exec -d ${_NAME} /sbin/sysctl -p
-    docker exec -d ${_NAME} service postgresql start
     if ${_NEW_CONTAINER} ; then
         # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
         docker exec -it ${_NAME} bash -c 'grep -q "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
         docker exec -it ${_NAME} bash -c "ambari-agent reset ${_HOSTNAME}"
 
         echo "Resetting Ambari password (to 'admin') ..."
+        sleep 5
         #docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
         docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL'\""
     fi
