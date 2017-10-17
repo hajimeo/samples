@@ -414,6 +414,7 @@ function f_ambari_blueprint_hostmap() {
 
     echo "{
   \"blueprint\" : \"multinode-hdp\",
+  \"config_recommendation_strategy\" : \"ALWAYS_APPLY_DONT_OVERRIDE_CUSTOM_VALUES\",
   \"default_password\" : \"$_default_password\",
   \"host_groups\" :["
     echo "$_host_loop"
@@ -613,7 +614,7 @@ function f_ambari_blueprint_cluster_config() {
     }'
     fi
 
-    # TODO: Ambari 2.5.1 can't set hive.exec.post.hooks, probably a bug in Ambari
+    # TODO: Ambari 2.5.1 can't set hive.exec.post.hooks, probably a bug in Ambari (probably regression bug of AMBARI-17802)
     echo '{
   "configurations" : [
     {
