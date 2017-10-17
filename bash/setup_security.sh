@@ -307,9 +307,9 @@ function f_hadoop_ssl_setup() {
     local _how_many="${5-$r_NUM_NODES}"
     local _start_from="${6-$r_NODE_START_NUM}"
     local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
-    local _no_updating_ambari_config="${8-$r_NO_UPDATING_AMBARI_CONFIG}"
+    local _wildcard_jks_filename="${8-$g_KEYSTORE_FILE}"
+    local _no_updating_ambari_config="${9-$r_NO_UPDATING_AMBARI_CONFIG}"
     local _work_dir="${8-./}"
-    local _c="`f_get_cluster_name $_ambari_host`" || return $?
 
     if [ ! -d "$_work_dir" ]; then
         mkdir ${_work_dir%/} || return $?
@@ -330,11 +330,22 @@ function f_hadoop_ssl_setup() {
         openssl genrsa -out rootCA.key 4096 || return $?
         # Step2: create root CA's cert (pem)
         openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.support.hortonworks.com" -passin "pass:$_password" || return $?
+        chmod 600 ./rootCA.key
     fi
 
     mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
-    # Step3: Create a truststore file used by clients
+    # Step3: Create a truststore file used by all clients/nodes
     keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD} -noprompt || return $?
+
+    if [ ! -z "$_wildcard_jks_filename" ]; then
+        # Step4: Generate a wildcard key/cert
+        _hadoop_ssl_use_wildcard "$_domain_suffix" "./rootCA.key" "./rootCA.pem" "selfsinged-wildcard" "$_password" || return $?
+        if [ ! -s ./selfsinged-wildcard.jks ]; then
+            _error "Couldn't generate ./selfsinged-wildcard.jks"
+            return 1
+        fi
+        cp -p ./selfsinged-wildcard.jks ./$_wildcard_jks_filename
+    fi
 
     local _javahome="`ssh -q root@$_ambari_host "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
     local _cacerts="${_javahome%/}/jre/lib/security/cacerts"
@@ -343,25 +354,33 @@ function f_hadoop_ssl_setup() {
         local _hostnames="$_how_many"
         _info "Copying jks to $_hostnames ..."
         for i in  `echo $_hostnames | sed 's/ /\n/g'`; do
-            _hadoop_ssl_per_node "$i" "$_cacerts" || return $?
+            _hadoop_ssl_per_node "$i" "$_cacerts" "$_wildcard_jks_filename" || return $?
         done
     else
         _info "Copying jks to all nodes..."
         for i in `_docker_seq "$_how_many" "$_start_from"`; do
-            _hadoop_ssl_per_node "node${i}${_domain_suffix}" "$_cacerts" || return $?
+            _hadoop_ssl_per_node "node${i}${_domain_suffix}" "$_cacerts" "$_wildcard_jks_filename" || return $?
         done
     fi
 
     _isYes "$_no_updating_ambari_config" && return $?
+    _hadoop_ssl_config_update "$_ambari_host" "$_ambari_port" "$_password"
+}
+
+function _hadoop_ssl_config_update() {
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+    local _ambari_port="${2-8080}"
+    local _password="$3"
+    local _c="`f_get_cluster_name $_ambari_host`" || return $?
 
     _info "Updating Ambari configs for HDFS..."
-    f_ambari_configs "core-site" "{\"hadoop.rpc.protection\":\"privacy\",\"hadoop.ssl.require.client.cert\":\"false\",\"hadoop.ssl.hostname.verifier\":\"DEFAULT\",\"hadoop.ssl.keystores.factory.class\":\"org.apache.hadoop.security.ssl.FileBasedKeyStoresFactory\",\"hadoop.ssl.server.conf\":\"ssl-server.xml\",\"hadoop.ssl.client.conf\":\"ssl-client.xml\"}" "$_ambari_host"
-    f_ambari_configs "ssl-client" "{\"ssl.client.truststore.location\":\"${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}\",\"ssl.client.truststore.password\":\"${g_CLIENT_TRUSTSTORE_PASSWORD}\",\"ssl.client.keystore.location\":\"${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}\",\"ssl.client.keystore.password\":\"$_password\"}" "$_ambari_host"
-    f_ambari_configs "ssl-server" "{\"ssl.server.truststore.location\":\"${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}\",\"ssl.server.truststore.password\":\"${g_CLIENT_TRUSTSTORE_PASSWORD}\",\"ssl.server.keystore.location\":\"${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}\",\"ssl.server.keystore.password\":\"$_password\",\"ssl.server.keystore.keypassword\":\"$_password\"}" "$_ambari_host"
-    f_ambari_configs "hdfs-site" "{\"dfs.encrypt.data.transfer\":\"true\",\"dfs.encrypt.data.transfer.algorithm\":\"3des\",\"dfs.http.policy\":\"HTTPS_ONLY\"}" "$_ambari_host" # or HTTP_AND_HTTPS
-    f_ambari_configs "mapred-site" "{\"mapreduce.jobhistory.http.policy\":\"HTTPS_ONLY\",\"mapreduce.jobhistory.webapp.https.address\":\"0.0.0.0:19888\"}" "$_ambari_host"
-    f_ambari_configs "yarn-site" "{\"yarn.http.policy\":\"HTTPS_ONLY\",\"yarn.nodemanager.webapp.https.address\":\"0.0.0.0:8044\"}" "$_ambari_host"
-    f_ambari_configs "tez-site" "{\"tez.runtime.shuffle.keep-alive.enabled\":\"true\"}" "$_ambari_host"
+    f_ambari_configs "core-site" "{\"hadoop.rpc.protection\":\"privacy\",\"hadoop.ssl.require.client.cert\":\"false\",\"hadoop.ssl.hostname.verifier\":\"DEFAULT\",\"hadoop.ssl.keystores.factory.class\":\"org.apache.hadoop.security.ssl.FileBasedKeyStoresFactory\",\"hadoop.ssl.server.conf\":\"ssl-server.xml\",\"hadoop.ssl.client.conf\":\"ssl-client.xml\"}" "$_ambari_host" "$_ambari_port"
+    f_ambari_configs "ssl-client" "{\"ssl.client.truststore.location\":\"${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}\",\"ssl.client.truststore.password\":\"${g_CLIENT_TRUSTSTORE_PASSWORD}\",\"ssl.client.keystore.location\":\"${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}\",\"ssl.client.keystore.password\":\"$_password\"}" "$_ambari_host" "$_ambari_port"
+    f_ambari_configs "ssl-server" "{\"ssl.server.truststore.location\":\"${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}\",\"ssl.server.truststore.password\":\"${g_CLIENT_TRUSTSTORE_PASSWORD}\",\"ssl.server.keystore.location\":\"${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}\",\"ssl.server.keystore.password\":\"$_password\",\"ssl.server.keystore.keypassword\":\"$_password\"}" "$_ambari_host" "$_ambari_port"
+    f_ambari_configs "hdfs-site" "{\"dfs.encrypt.data.transfer\":\"true\",\"dfs.encrypt.data.transfer.algorithm\":\"3des\",\"dfs.http.policy\":\"HTTPS_ONLY\"}" "$_ambari_host" "$_ambari_port" # or HTTP_AND_HTTPS
+    f_ambari_configs "mapred-site" "{\"mapreduce.jobhistory.http.policy\":\"HTTPS_ONLY\",\"mapreduce.jobhistory.webapp.https.address\":\"0.0.0.0:19888\"}" "$_ambari_host" "$_ambari_port"
+    f_ambari_configs "yarn-site" "{\"yarn.http.policy\":\"HTTPS_ONLY\",\"yarn.nodemanager.webapp.https.address\":\"0.0.0.0:8044\"}" "$_ambari_host" "$_ambari_port"
+    f_ambari_configs "tez-site" "{\"tez.runtime.shuffle.keep-alive.enabled\":\"true\"}" "$_ambari_host" "$_ambari_port"
 
     # If Ambari is 2.4.x or higher below works
     _info "TODO: Please manually update:
@@ -375,10 +394,27 @@ function f_hadoop_ssl_setup() {
 
 function _hadoop_ssl_per_node() {
     local _node="$1"
-    local _cacerts="$2"
+    local _java_default_truststore_path="$2"
+    local _local_keystore_path="$3"
 
     ssh -q root@${_node} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}; mkdir -m 755 -p ${g_CLIENT_TRUST_LOCATION%/}"
     scp ./$g_CLIENT_TRUSTSTORE_FILE root@${_node}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
+
+    # Not using "! -s" because if a path is given, shouldn't try generating jks on each node
+    if [ -z "$_local_keystore_path" ]; then
+        _hadoop_ssl_per_node_inner "$_node" "$_java_default_truststore_path"
+    else
+        scp ./rootCA.pem $_local_keystore_path root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
+    fi
+
+    ssh -q root@${_node} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
+}
+
+function _hadoop_ssl_per_node_inner() {
+    local _node="$1"
+    local _java_default_truststore_path="$2"
+    # TODO: assuming rootCA.xxx file names
+
     # Step4: On each node, create a privatekey for the node
     ssh -q root@${_node} "mv -f ${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null; keytool -genkey -alias ${_node} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
     # Step5: On each node, create a CSR
@@ -389,13 +425,52 @@ function _hadoop_ssl_per_node() {
     scp ./rootCA.pem ./${_node}-keystore.crt root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
     # Step7: On each node, import root CA's cert and the signed cert
     ssh -q root@${_node} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias ${_node} -import -file ${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.crt -noprompt -storepass ${_password}" || return $?
+    # Step8 (optional): if the java default truststore (cacerts) path is given, also import the cert
+    if [ ! -z "$_java_default_truststore_path" ]; then
+        ssh -q root@${_node} "keytool -keystore $_java_default_truststore_path -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD}"
+    fi
+}
 
-    if [ ! -z "$_cacerts" ]; then
-        ssh -q root@${_node} "keytool -keystore $_cacerts -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD}"
+function _hadoop_ssl_use_wildcard() {
+    local __doc__="Create a self-signed wildcard certificate with openssl command."
+    local _domain_suffix="${1-$r_DOMAIN_SUFFIX}"
+    local _CA_key="${2}"
+    local _CA_cert="${3}"
+    local _base_name="${4-selfsignwildcard}"
+    local _password="$5"
+    local _key_strength="${6-2048}"
+    local _work_dir="${7-./}"
+
+    local _subject="/C=AU/ST=QLD/L=Brisbane/O=Hortonworks/OU=Support/CN=*.${_domain_suffix#.}"
+    local _subj=""
+
+    [ -z "$_domain_suffix" ] && _domain_suffix=".`hostname`"
+    [ -z "$_password" ] && _password=${g_DEFAULT_PASSWORD-hadoop}
+    [ -n "$_subject" ] && _subj="-subj ${_subject}"
+
+    # Create a private key with wildcard CN and a CSR file. NOTE: -aes256 to encrypt
+    openssl req -nodes -newkey rsa:$_key_strength -keyout ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.csr $_subj
+    # Signing a cert with two years expiration
+    if [ ! -s "$_CA_key" ]; then
+        _info "TODO: No root CA key file ($_CA_key), so signing by itself (not sure if works)..."
+        openssl x509 -sha256 -req -in ${_work_dir%/}/${_base_name}.csr -signkey ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.crt -days 730 -passin "pass:$_password" || return $?
+    else
+        openssl x509 -sha256 -req -in ${_work_dir%/}/${_base_name}.csr -CA ${_CA_cert} -CAkey ${_CA_key} -CAcreateserial -out ${_work_dir%/}/${_base_name}.crt -days 730 -passin "pass:$_password" || return $?
     fi
 
-    ssh -q root@${_node} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
+    # Combine a wildcard key and cert, and convert to p12, so that can convert to a jks file
+    openssl pkcs12 -export -in ${_work_dir%/}/${_base_name}.crt -inkey ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.p12 -name ${_base_name} -passout pass:$_password || return $?
+    # Convert p12 to jks
+    keytool -importkeystore -deststorepass $_password -destkeypass $_password -destkeystore ${_work_dir%/}/${_base_name}.jks -srckeystore ${_work_dir%/}/${_base_name}.p12 -srcstoretype PKCS12 -srcstorepass $_password -alias ${_base_name} || return $?
+
+    if [ ! -s "$_CA_cert" ]; then
+        keytool -keystore ${_work_dir%/}/${_base_name}.jks -alias rootCA -import -file "$_CA_cert" -noprompt -storepass ${_password}
+    fi
+
+    chmod 600 ${_work_dir%/}/${_base_name}.{key,jks}
+    # NOTE: a truststore needs to import this cert or root CA cert.
 }
+
 
 function f_hadoop_spnego_setup() {
     local __doc__="set up HTTP Authentication for HDFS, YARN, MapReduce2, HBase, Oozie, Falcon and Storm"
@@ -665,55 +740,6 @@ kdestroy"
     ssh root@$_yarn_rm_node -t "sudo -u yarn bash -c \"kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/$(hostname -f); yarn rmadmin -refreshUserToGroupsMappings\""
 }
 
-function _ssl_openssl_cnf_generate() {
-    local __doc__="Generate openssl config file (openssl.cnf) for self-signed certificate"
-    local _dname="$1"
-    local _password="$2"
-    local _domain_suffix="${3-.`hostname -d`}"
-    local _work_dir="${4-./}"
-
-    if [ -e "${_work_dir%/}/openssl.cnf" ]; then
-        _warn "${_work_dir%/}/openssl.cnf exists. Skipping..."
-        return
-    fi
-
-    if [ -z "$_domain_suffix" ]; then
-        _domain_suffix=".`hostname`"
-    fi
-    if [ -z "$_dname" ]; then
-        _dname="CN=*${_domain_suffix}, OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
-    fi
-    if [ -z "$_password" ]; then
-        _password=${g_DEFAULT_PASSWORD-hadoop}
-    fi
-
-    local _a
-    local _tmp=""
-    _split "_a" "$_dname"
-
-    echo [ req ] > "${_work_dir%/}/openssl.cnf"
-    echo input_password = $_password >> "${_work_dir%/}/openssl.cnf"
-    echo output_password = $_password >> "${_work_dir%/}/openssl.cnf"
-    echo distinguished_name = req_distinguished_name >> "${_work_dir%/}/openssl.cnf"
-    echo req_extensions = v3_req  >> "${_work_dir%/}/openssl.cnf"
-    echo prompt=no >> "${_work_dir%/}/openssl.cnf"
-    echo [req_distinguished_name] >> "${_work_dir%/}/openssl.cnf"
-    for (( idx=${#_a[@]}-1 ; idx>=0 ; idx-- )) ; do
-        _tmp="`_trim "${_a[$idx]}"`"
-        # If wildcard certficat, replace to some hostname. NOTE: nocasematch is already used
-        #[[ "${_tmp}" =~ CN=\*\. ]] && _tmp="CN=internalca${_domain_suffix}"
-        echo ${_tmp} >> "${_work_dir%/}/openssl.cnf"
-    done
-    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
-    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
-    echo [ v3_req ] >> "${_work_dir%/}/openssl.cnf"
-    echo basicConstraints = critical,CA:FALSE >> "${_work_dir%/}/openssl.cnf"
-    echo keyUsage = nonRepudiation, digitalSignature, keyEncipherment, dataEncipherment, keyAgreement >> "${_work_dir%/}/openssl.cnf"
-    echo extendedKeyUsage=emailProtection,clientAuth >> "${_work_dir%/}/openssl.cnf"
-    echo [ ${_domain_suffix#.} ] >> "${_work_dir%/}/openssl.cnf"
-    echo subjectAltName = DNS:${_domain_suffix#.},DNS:*${_domain_suffix} >> "${_work_dir%/}/openssl.cnf"
-}
-
 function f_ssl_self_signed_cert() {
     local __doc__="Setup a self-signed certificate with openssl command. See: http://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.5.3/bk_security/content/set_up_ssl_for_ambari.html"
     local _subject="$1" # "/C=AU/ST=QLD/O=Hortonworks/CN=*.hortonworks.com"
@@ -732,7 +758,7 @@ function f_ssl_self_signed_cert() {
 
     # Create a private key NOTE: -aes256 to encrypt
     openssl genrsa -out ${_work_dir%/}/${_base_name}.key $_key_strength || return $?
-
+    # Generate cert from above key
     openssl req -new -x509 -nodes -days 3650 -key ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.crt $_subj || return $?
     # or Create a CSR
     #openssl req -new -key ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.csr $_subj || return $?
@@ -752,7 +778,7 @@ function f_ssl_self_signed_cert() {
 }
 
 function f_ssl_internal_CA_setup() {
-    local __doc__="Setup Internal CA for generating self-signed certificate"
+    local __doc__="(not in use) Setup Internal CA for generating self-signed certificate"
     local _dname="$1"
     local _password="$2"
     local _domain_suffix="${3-$r_DOMAIN_SUFFIX}"
@@ -784,188 +810,42 @@ function f_ssl_internal_CA_setup() {
     echo 1000 >> ${_ca_dir%/}/serial
 }
 
-function f_ssl_self_signed_cert_with_internal_CA() {
-    local __doc__="Generate self-signed certificate. Assuming f_ssl_internal_CA_setup is used."
+function _ssl_openssl_cnf_generate() {
+    local __doc__="(not in use) Generate openssl config file (openssl.cnf) for self-signed certificate (default is for wildcard)"
+    # _ssl_openssl_cnf_generate "$_dname" "$_password" "$_domain_suffix" "$_work_dir"
     local _dname="$1"
     local _password="$2"
-    local _common_name="${3}"
-    local _ca_dir="${4-./}"
-    local _work_dir="${5-./}"
+    local _domain_suffix="${3-.`hostname -d`}"
+    local _work_dir="${4-./}"
 
-    if [ -z "$_common_name" ]; then
-        _common_name="`hostname -f`"
-    fi
-    if [ -z "$_dname" ]; then
-        _dname="CN=${_common_name}, OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
-    fi
-    if [ -z "$_password" ]; then
-        _password=${g_DEFAULT_PASSWORD-hadoop}
+    if [ -s "${_work_dir%/}/openssl.cnf" ]; then
+        _warn "${_work_dir%/}/openssl.cnf exists. Skipping..."
+        return
     fi
 
-    # Key store for service (same as self-signed at this moment)
-    keytool -keystore "${_work_dir%/}/${g_KEYSTORE_FILE}" -alias localhost -validity 3650 -genkey -keyalg RSA -keysize 2048 -dname "$_dname" -noprompt -storepass "$_password" -keypass "$_password" || return $?
-    # Generate CSR from above keystore
-    keytool -keystore "${_work_dir%/}/${g_KEYSTORE_FILE}" -alias localhost -certreq -file ${_work_dir%/}/server.csr -storepass "$_password" -keypass "$_password" || return $?
-    # Sign with internal CA (ca.crt, ca,key) and generate server.crt
-    openssl x509 -req -CA ${_ca_dir%/}/certs/ca.crt -CAkey ${_ca_dir%/}/private/ca.key -in ${_work_dir%/}/server.csr -out ${_work_dir%/}/server.crt -days 3650 -CAcreateserial -passin "pass:$_password" || return $?
-    # Import internal CA into keystore
-    keytool -keystore "${_work_dir%/}/${g_KEYSTORE_FILE}" -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "$_password" -keypass "$_password" || return $?
-    # Import internal CA signed cert (server.crt) int this keystore
-    keytool -keystore "${_work_dir%/}/${g_KEYSTORE_FILE}" -alias localhost -import -file ${_work_dir%/}/server.crt -noprompt -storepass "$_password" -keypass "$_password" || return $?
+    [ -z "$_domain_suffix" ] && _domain_suffix=".`hostname`"
+    [ -z "$_dname" ] && _dname="CN=*.${_domain_suffix#.}, OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
+    [ -z "$_password" ] && _password=${g_DEFAULT_PASSWORD-hadoop}
 
-    # trust store for service (eg.: hiveserver2), which contains internal CA cert only
-    keytool -keystore ${_work_dir%/}/${g_TRUSTSTORE_FILE} -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "${g_CLIENT_TRUSTSTORE_PASSWORD}" || return $?
-    # trust store for client (eg.: beeline), but at this moment, save content as above
-    keytool -keystore ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE} -alias CARoot -import -file ${_ca_dir%/}/certs/ca.crt -noprompt -storepass "${g_CLIENT_TRUSTSTORE_PASSWORD}" || return $?
-    chmod a+r ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE}
+    echo [ req ] > "${_work_dir%/}/openssl.cnf"
+    echo input_password = $_password >> "${_work_dir%/}/openssl.cnf"
+    echo output_password = $_password >> "${_work_dir%/}/openssl.cnf"
+    echo distinguished_name = req_distinguished_name >> "${_work_dir%/}/openssl.cnf"
+    echo req_extensions = v3_req  >> "${_work_dir%/}/openssl.cnf"
+    echo prompt=no >> "${_work_dir%/}/openssl.cnf"
+    echo [req_distinguished_name] >> "${_work_dir%/}/openssl.cnf"
+    for _a in `echo "$_dname" | sed 's/,/\n/g'`; do
+        echo ${_a} >> "${_work_dir%/}/openssl.cnf"
+    done
+    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
+    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
+    echo [ v3_req ] >> "${_work_dir%/}/openssl.cnf"
+    echo basicConstraints = critical,CA:FALSE >> "${_work_dir%/}/openssl.cnf"
+    echo keyUsage = nonRepudiation, digitalSignature, keyEncipherment, dataEncipherment, keyAgreement >> "${_work_dir%/}/openssl.cnf"
+    echo extendedKeyUsage=emailProtection,clientAuth >> "${_work_dir%/}/openssl.cnf"
+    echo [ ${_domain_suffix#.} ] >> "${_work_dir%/}/openssl.cnf"
+    echo subjectAltName = DNS:${_domain_suffix#.},DNS:*${_domain_suffix} >> "${_work_dir%/}/openssl.cnf"
 }
-
-function f_ssl_distribute_jks() {
-    local __doc__="Distribute JKS files generated by f_ssl_self_signed_cert_with_internal_CA to all nodes."
-    local _work_dir="${1-./}"
-    local _how_many="${2-$r_NUM_NODES}"
-    local _start_from="${3-$r_NODE_START_NUM}"
-    local _domain_suffix="${4-$r_DOMAIN_SUFFIX}"
-
-    _info "copying jks files for $_how_many nodes from $_start_from ..."
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@node$i${_domain_suffix} -t "mkdir -p ${g_SERVER_KEY_LOCATION%/};mkdir -p ${g_CLIENT_TRUST_LOCATION%/}"
-        scp -q ${_work_dir%/}/*.jks root@node$i${_domain_suffix}:${g_SERVER_KEY_LOCATION%/}/
-        scp -q ${_work_dir%/}/${g_CLIENT_TRUSTSTORE_FILE} root@node$i${_domain_suffix}:${g_CLIENT_TRUST_LOCATION%/}/
-        ssh -q root@node$i${_domain_suffix} -t "chmod 755 $g_SERVER_KEY_LOCATION
-chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*.jks
-chmod 440 ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}
-chmod 440 ${g_SERVER_KEY_LOCATION%/}/${g_TRUSTSTORE_FILE}
-chmod 444 ${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}" || return $?
-    done
-}
-
-function f_ssl_ambari_config_set_for_hadoop() {
-    local __doc__="Update configs via Ambari for HDFS/YARN/MR2 (and tez). Not auomating, but asking questions"
-    local _ambari_host="${1}"
-    local _ambari_port="${2-8080}"
-    local _ambari_ssl="${3}"
-    local _cluster_name="${4-$r_CLUSTER_NAME}"
-    local _opts=""
-    local _http="http"
-
-    if _isYes "$_ambari_ssl"; then
-        _opts="$_opts -s"
-        _http="https"
-    fi
-    if [ -z "$_ambari_host" ]; then
-        if [ -z "$r_AMBARI_HOST" ]; then
-            _ambari_host="hostname -f"
-        else
-            _ambari_host="$r_AMBARI_HOST"
-        fi
-        _info "Using $_ambari_hsot for Ambari server hostname..."
-    fi
-
-    if [ -z "$_cluster_name" ]; then
-        _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
-    fi
-
-    local _type_prop=""
-    declare -A _configs # NOTE: this should be a local variable automatically
-
-    _configs["hdfs-site:dfs.namenode.https-address"]="sandbox.hortonworks.com:50470"
-    _configs["yarn-site:yarn.log.server.url"]="https://sandbox.hortonworks.com:19889/jobhistory/logs"
-    _configs["yarn-site:yarn.resourcemanager.webapp.https.address"]="sandbox.hortonworks.com:8090"
-    _configs["ssl-server:ssl.server.keystore.location"]="${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE"
-    _configs["ssl-server:ssl.server.keystore.password"]="$g_DEFAULT_PASSWORD"
-    _configs["ssl-server:ssl.server.truststore.location"]="${g_SERVER_KEY_LOCATION%/}/$g_TRUSTSTORE_FILE"
-    _configs["ssl-server:ssl.server.truststore.password"]="${g_CLIENT_TRUSTSTORE_PASSWORD}"
-    _configs["ssl-client:ssl.client.keystore.location"]="${g_SERVER_KEY_LOCATION%/}/$g_KEYSTORE_FILE"
-    _configs["ssl-client:ssl.client.keystore.password"]="$g_DEFAULT_PASSWORD"
-    _configs["ssl-client:ssl.client.truststore.location"]="${g_CLIENT_TRUST_LOCATION%/}/$g_CLIENT_TRUSTSTORE_FILE"
-    _configs["ssl-client:ssl.client.truststore.password"]="${g_CLIENT_TRUSTSTORE_PASSWORD}"
-
-	for _k in "${!_configs[@]}"; do
-        _split "_type_prop" "$_k" ":"
-        _ask "${_type_prop[0]} ${_type_prop[1]}" "${_configs[$_k]}" "" "" "Y"
-        _configs[$_k]="$__LAST_ANSWER"
-    done
-
-    _configs["core-site:hadoop.ssl.require.client.cert"]="false"    # TODO: should this be true?
-    _configs["core-site:hadoop.ssl.hostname.verifier"]="DEFAULT"
-    _configs["core-site:hadoop.ssl.keystores.factory.class"]="org.apache.hadoop.security.ssl.FileBasedKeyStoresFactory"
-    _configs["core-site:hadoop.ssl.server.conf"]="ssl-server.xml"
-    _configs["core-site:hadoop.ssl.client.conf"]="ssl-client.xml"
-
-    _configs["hdfs-site:dfs.http.policy"]="HTTPS_ONLY"
-    _configs["hdfs-site:dfs.client.https.need-auth"]="false"        # TODO: should this be true?
-    _configs["hdfs-site:dfs.datanode.https.address"]="0.0.0.0:50475"
-
-    _configs["mapred-site:mapreduce.jobhistory.http.policy"]="HTTPS_ONLY"
-    _configs["mapred-site:mapreduce.jobhistory.webapp.https.address"]="0.0.0.0:19889"
-
-    _configs["yarn-site:yarn.http.policy"]="HTTPS_ONLY"
-    _configs["yarn-site:yarn.nodemanager.webapp.https.address"]="0.0.0.0:8044"
-
-    _configs["ssl-server:ssl.server.keystore.type"]="jks"
-    _configs["ssl-server:ssl.server.keystore.keypassword"]=${_configs["ssl-server:ssl.server.keystore.password"]}
-    _configs["ssl-server:ssl.server.truststore.type"]="jks"
-
-    _configs["tez-site:tez.runtime.shuffle.ssl.enable"]="true"
-    _configs["tez-site:tez.runtime.shuffle.keep-alive.enabled"]="true"
-
-	for _k in "${!_configs[@]}"; do
-        _split "_type_prop" "$_k" ":"
-        ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} $_opts set $_ambari_host "$_cluster_name" ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\"" || return $?
-    done
-
-    # If Ambari is 2.4.x or higher below works
-    _info "Run the below command to restart required components"
-    echo curl -u admin:admin -sk "${_http}://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_cluster_name}/requests" -H 'X-Requested-By: Ambari' --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
-}
-
-function f_ssl_ambari_config_disable_for_hadoop() {
-    local __doc__="TODO: Update configs via Ambari for HDFS/YARN/MR2 (and tez) to disable SSH"
-    local _ambari_host="${1}"
-    local _ambari_port="${2-8080}"
-    local _ambari_ssl="${3}"
-    local _cluster_name="${4-$r_CLUSTER_NAME}"
-    local _opts=""
-
-    if _isYes "$_ambari_ssl"; then
-        _opts="$_opts -s"
-    fi
-    if [ -z "$_ambari_host" ]; then
-        if [ -z "$r_AMBARI_HOST" ]; then
-            _ambari_host="hostname -f"
-        else
-            _ambari_host="$r_AMBARI_HOST"
-        fi
-        _info "Using $_ambari_hsot for Ambari server hostname..."
-    fi
-
-    if [ -z "$_cluster_name" ]; then
-        _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
-    fi
-
-    local _type_prop=""
-    declare -A _configs # NOTE: this should be a local variable automatically
-
-    _configs["yarn-site:yarn.log.server.url"]="http://sandbox.hortonworks.com:19888/jobhistory/logs"
-
-	for _k in "${!_configs[@]}"; do
-        _split "_type_prop" "$_k" ":"
-        _ask "${_type_prop[0]} ${_type_prop[1]}" "${_configs[$_k]}" "" "" "Y"
-        _configs[$_k]="$__LAST_ANSWER"
-    done
-
-    _configs["hdfs-site:dfs.http.policy"]="HTTP_ONLY"
-    _configs["mapred-site:mapreduce.jobhistory.http.policy"]="HTTP_ONLY"
-    _configs["yarn-site:yarn.http.policy"]="HTTP_ONLY"
-    _configs["tez-site:tez.runtime.shuffle.ssl.enable"]="false"
-
-	for _k in "${!_configs[@]}"; do
-        _split "_type_prop" "$_k" ":"
-        ssh root@${_ambari_host} "/var/lib/ambari-server/resources/scripts/configs.sh -u admin -p admin -port ${_ambari_port} $_opts set $_ambari_host "$_cluster_name" ${_type_prop[0]} ${_type_prop[1]} \"${_configs[$_k]}\""
-    done
-}
-
 
 function f_etc_hosts_update() {
     local __doc__="TODO: maintain /etc/hosts for security (distcp)"
