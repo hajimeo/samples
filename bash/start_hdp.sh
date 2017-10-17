@@ -2236,6 +2236,7 @@ function f_hostname_set() {
 }
 
 function f_apache_proxy() {
+    local __doc__="Generate proxy.conf and restart apache2"
     local _proxy_dir="/var/www/proxy"
     local _cache_dir="/var/cache/apache2/mod_cache_disk"
     local _port="${r_PROXY_PORT-28080}"
@@ -2254,7 +2255,7 @@ function f_apache_proxy() {
     fi
 
     apt-get install -y apache2 apache2-utils
-    a2enmod proxy proxy_http proxy_connect cache cache_disk
+    a2enmod proxy proxy_http proxy_connect cache cache_disk ssl
 
     grep -i "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
 
@@ -2262,9 +2263,22 @@ function f_apache_proxy() {
     DocumentRoot ${_proxy_dir}
     LogLevel warn
     ErrorLog \${APACHE_LOG_DIR}/proxy_error.log
-    CustomLog \${APACHE_LOG_DIR}/proxy_access.log combined
+    CustomLog \${APACHE_LOG_DIR}/proxy_access.log combined" > /etc/apache2/sites-available/proxy.conf
 
-    <IfModule mod_proxy.c>
+    # TODO: Can't use proxy for SSL port
+    if [ -s /etc/apache2/ssl/server.key ]; then
+    echo "    SSLEngine on
+    SSLCertificateFile /etc/apache2/ssl/server.crt
+    SSLCertificateKeyFile /etc/apache2/ssl/server.key
+" >> /etc/apache2/sites-available/proxy.conf
+    fi
+
+    echo "    <IfModule mod_proxy.c>
+        SSLProxyEngine On
+        SSLProxyVerify none
+        SSLProxyCheckPeerCN off
+        SSLProxyCheckPeerName off
+        SSLProxyCheckPeerExpire off
 
         ProxyRequests On
         <Proxy *>
@@ -2284,13 +2298,12 @@ function f_apache_proxy() {
             CacheDirLength 1
             CacheMaxFileSize 256000000
         </IfModule>
-
     </IfModule>
-</VirtualHost>" > /etc/apache2/sites-available/proxy.conf
+</VirtualHost>" >> /etc/apache2/sites-available/proxy.conf
 
     a2ensite proxy
-    # TODO: should use restart?
-    service apache2 reload
+    # Due to 'ssl' module, using restart rather than reload
+    service apache2 restart
 }
 
 function f_node_proxy_setup() {
