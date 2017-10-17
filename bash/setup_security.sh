@@ -28,10 +28,13 @@
 #
 # Example 3: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
 #   source ./setup_security.sh && f_loadResp
-#   f_hadoop_ssl_setup
+#   mkdir ssl_setup; cd ssl_setup
+#   f_hadoop_ssl_setup       # with wildcard certificate
+#   f_hadoop_ssl_setup "" "" $r_AMBARI_HOST 8080 $r_NUM_NODES $r_NODE_START_NUM $r_DOMAIN_SUFFIX N # No wildcard cert
 #
 # If Sandbox:
 # NOTE sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
+#   mkdir ssl_setup; cd ssl_setup
 #   f_hadoop_ssl_setup "" "" "sandbox.hortonworks.com" "8080" "sandbox.hortonworks.com"
 #
 
@@ -307,13 +310,10 @@ function f_hadoop_ssl_setup() {
     local _how_many="${5-$r_NUM_NODES}"
     local _start_from="${6-$r_NODE_START_NUM}"
     local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
-    local _wildcard_jks_filename="${8-$g_KEYSTORE_FILE}"
+    local _use_wildcard_cert="${8-Y}"
     local _no_updating_ambari_config="${9-$r_NO_UPDATING_AMBARI_CONFIG}"
     local _work_dir="${8-./}"
 
-    if [ ! -d "$_work_dir" ]; then
-        mkdir ${_work_dir%/} || return $?
-    fi
     cd ${_work_dir%/} || return $?
 
     if [ -z "$_password" ]; then
@@ -337,14 +337,15 @@ function f_hadoop_ssl_setup() {
     # Step3: Create a truststore file used by all clients/nodes
     keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD} -noprompt || return $?
 
-    if [ ! -z "$_wildcard_jks_filename" ]; then
+    # Note: using wildcard certificate doesn't work via Apache2 proxy
+    if [[ "$_use_wildcard_cert" =~ (^y|^Y) ]]; then
         # Step4: Generate a wildcard key/cert
         _hadoop_ssl_use_wildcard "$_domain_suffix" "./rootCA.key" "./rootCA.pem" "selfsinged-wildcard" "$_password" || return $?
         if [ ! -s ./selfsinged-wildcard.jks ]; then
             _error "Couldn't generate ./selfsinged-wildcard.jks"
             return 1
         fi
-        cp -p ./selfsinged-wildcard.jks ./$_wildcard_jks_filename
+        cp -p ./selfsinged-wildcard.jks ./$g_KEYSTORE_FILE
     fi
 
     local _javahome="`ssh -q root@$_ambari_host "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
@@ -354,16 +355,16 @@ function f_hadoop_ssl_setup() {
         local _hostnames="$_how_many"
         _info "Copying jks to $_hostnames ..."
         for i in  `echo $_hostnames | sed 's/ /\n/g'`; do
-            _hadoop_ssl_per_node "$i" "$_cacerts" "$_wildcard_jks_filename" || return $?
+            _hadoop_ssl_per_node "$i" "$_cacerts" "./$g_KEYSTORE_FILE" || return $?
         done
     else
         _info "Copying jks to all nodes..."
         for i in `_docker_seq "$_how_many" "$_start_from"`; do
-            _hadoop_ssl_per_node "node${i}${_domain_suffix}" "$_cacerts" "$_wildcard_jks_filename" || return $?
+            _hadoop_ssl_per_node "node${i}${_domain_suffix}" "$_cacerts" "./$g_KEYSTORE_FILE" || return $?
         done
     fi
 
-    _isYes "$_no_updating_ambari_config" && return $?
+    [[ "$_no_updating_ambari_config" =~ (^y|^Y) ]] && return $?
     _hadoop_ssl_config_update "$_ambari_host" "$_ambari_port" "$_password"
 }
 
