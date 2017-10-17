@@ -2294,7 +2294,7 @@ function f_apache_proxy() {
 }
 
 function f_node_proxy_setup() {
-    local __doc__="This function edits yum.conf and /etc/environment of each running container to set up proxy (http://your.proxy.server:port)"
+    local __doc__="This function edits yum.conf of each running container to set up proxy (http://your.proxy.server:port)"
     local _proxy_url="$1"
     local _port="${r_PROXY_PORT-28080}"
 
@@ -2310,7 +2310,8 @@ function f_node_proxy_setup() {
 
     # set up proxy for all running containers
     for _host in `docker ps --format "{{.Names}}"`; do
-        ssh -q root@$_host "grep ^proxy /etc/yum.conf || echo \"proxy=${_proxy_url}\" >> /etc/yum.conf;grep ^http_proxy /etc/environment || echo \"http_proxy=${_proxy_url}\" >> /etc/environment;grep ^https_proxy /etc/environment || echo \"https_proxy=${_proxy_url}\" >> /etc/environment"
+        ssh -q root@$_host "grep ^proxy /etc/yum.conf || echo \"proxy=${_proxy_url}\" >> /etc/yum.conf"
+        #ssh -q root@$_host "grep ^http_proxy /etc/environment || echo \"http_proxy=${_proxy_url}\" >> /etc/environment;grep ^https_proxy /etc/environment || echo \"https_proxy=${_proxy_url}\" >> /etc/environment"
     done
 }
 
