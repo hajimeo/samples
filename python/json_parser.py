@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-
+# NOTE: https://pypi.python.org/pypi/json-delta/ may do better job
+#
 
 def usage():
     print '''A simple JSON Parser/Sorter
