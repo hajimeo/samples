@@ -45,8 +45,8 @@ set -o posix
 #umask 0000
 
 # Global variables
-g_SERVER_KEY_LOCATION="/etc/hadoop/secure/serverKeys/"
-g_CLIENT_TRUST_LOCATION="/etc/hadoop/secure/clientKeys/"
+g_SERVER_KEY_LOCATION="/etc/security/serverKeys/"
+g_CLIENT_TRUST_LOCATION="/etc/security/clientKeys/"
 g_KEYSTORE_FILE="server.keystore.jks"
 g_TRUSTSTORE_FILE="server.truststore.jks"
 g_CLIENT_TRUSTSTORE_FILE="all.jks"
