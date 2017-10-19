@@ -409,6 +409,8 @@ function _hadoop_ssl_per_node() {
     fi
 
     ssh -q root@${_node} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
+    # TODO: For ranger. if file exist, need to import the certificate
+    ssh -q root@${_node} 'for l in `ls -d /usr/hdp/current/*/conf`; do ln -s /etc/hadoop/secure/clientKeys/all.jks ${l%/}/ranger-plugin-truststore.jks 2>/dev/null; done'
 }
 
 function _hadoop_ssl_per_node_inner() {
