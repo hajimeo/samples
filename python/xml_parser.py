@@ -8,7 +8,7 @@ def usage():
 If one xml file is given, outputs "property=value" output (so that can copy&paste into Ambari, ex: Capacity Scheduler)
 If two xml files are given, compare and outputs the difference with JSON format.
 
-python ./xml_parser.py XXXX-site.xml [YYYY-site.xml] [join type (f|l|r|i)] [exclude regex]
+python ./xml_parser.py XXXX-site.xml [YYYY-site.xml] [join type (f|l|r|i)] [exclude regex for key]
 
 
 To get the latest code:
