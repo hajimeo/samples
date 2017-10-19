@@ -309,7 +309,7 @@ function f_extractByDates() {
     local _is_utc="$6"
 
     local _date_regex=""
-    local _date="date"
+    local _date="gdate"
 
     # in case file path includes wildcard
     ls -1 $_log_file_path &>/dev/null
@@ -326,7 +326,7 @@ function f_extractByDates() {
     fi
 
     if [[ "$_is_utc" =~ (^y|^Y) ]]; then
-        _date="date -u"
+        _date="gdate -u"
     fi
 
     # if _start_date is integer, treat as from X hours ago
