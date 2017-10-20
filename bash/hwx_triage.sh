@@ -159,15 +159,15 @@ function f_collect_webui() {
 }
 
 function f_collect_host_info_from_ambari() {
-    local __doc__="Access to Ambari API to get the host information"
-    local _admin="${1-admin}"
-    local _admin_pass="$2"
-    local _comp="${3}"
-    local _node="${4}"
-    local _date_start_string="$5"
-    local _date_end_string="$6"
-    local _protocol="${7-http}"
-    local _ambari_port="${8-8080}"
+    local __doc__="Access to Ambari API to get the host (and component) information"
+    local _admin="${1-admin}"      # Ambari Admin username
+    local _admin_pass="$2"         # If no password, each curl command will ask you to type
+    local _comp="${3}"             # host_component eg: DATANODE, HBASE_REGIONSERVER
+    local _node="${4}"             # node name = hostname
+    local _date_start_string="$5"  # eg: "4 hours ago"
+    local _date_end_string="$6"    # eg: "now" (or blank = now)
+    local _protocol="${7-http}"    # if https, change to https
+    local _ambari_port="${8-8080}" # if no default port
 
     local _cmd_opts="-s -k -u ${_admin}"
     [ -z "${_admin_pass}" ] || _cmd_opts="${_cmd_opts}:${_admin_pass}"
