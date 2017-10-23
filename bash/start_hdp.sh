@@ -1081,29 +1081,13 @@ function f_docker0_setup() {
             if grep -qE -- "--bip=.+--bip=.+" ${_f} ; then
                 sed -i -e "s/--bip=[0-9.\/]\+//g" ${_f}
             fi
+
             # If --bip is never set up, append
             if ! grep -qE -- '--bip=' ${_f} ; then
                 sed -i "/^ExecStart=/ s/$/ --bip=${_docker0}\/${_mask}/" ${_f} && _restart_required=true
-            fi
             # If a different --bip is used, replace
-            if ! grep -qE -- "--bip=${_docker0}/${_mask}" ${_f} ; then
+            elif ! grep -qE -- "--bip=${_docker0}/${_mask}" ${_f} ; then
                 sed -i -e "s/--bip=[0-9.\/]\+/--bip=${_docker0}\/${_mask}/" ${_f} && _restart_required=true
-            fi
-
-            # If DNS IP looks like IP address, update docker config file's DNS setting
-            if [[ "$_dns_ip" =~ $_IP_REGEX ]]; then
-                # If multiple --dns, clean up!
-                if grep -qE -- "--dns=.+--dns=.+" ${_f} ; then
-                    sed -i -e "s/--dns=[0-9.\/]\+//g" ${_f}
-                fi
-                # If --dns is never set up, append
-                if ! grep -qE -- '--dns=' ${_f} ; then
-                    sed -i "/^ExecStart=/ s/$/ --dns=${_dns_ip}/" ${_f} && _restart_required=true
-                fi
-                # If a different --dns is used, replace
-                if ! grep -qE -- "--dns=${_dns_ip}" ${_f} ; then
-                    sed -i -e "s/--dns=[0-9.\/]\+/--dns=${_dns_ip}/" ${_f} && _restart_required=true
-                fi
             fi
 
             $_restart_required && systemctl daemon-reload && service docker restart
@@ -1968,7 +1952,7 @@ function p_host_setup() {
         _isYes "$g_APT_UPDATE_DONE" || apt-get update &>> /tmp/p_host_setup.log && g_APT_UPDATE_DONE="Y"
 
         if _isYes "$r_APTGET_UPGRADE"; then
-            _log "INFO" "Starting apt-get upgrade"
+            _log "INFO" "Starting apt-get -y install --only-upgrade docker-engine"
             apt-get -y install --only-upgrade docker-engine &>> /tmp/p_host_setup.log
         fi
 
