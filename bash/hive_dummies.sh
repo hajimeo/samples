@@ -105,6 +105,7 @@ INSERT OVERWRITE TABLE census_clus select * from census;
 
 # hive (1) returns ArrayIndexOutOfBoundsException if transactional is true and 'orc.bloom.filter.columns' is not '*'
 echo "[$(date +"%Y-%m-%d %H:%M:%S %z")] INFO: ACID needs Orc, buckets, transactional=true, also testing bloom filter, like below:"
-echo "hive -e \"USE ${_dbname};ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='*');ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;\""
+echo "hive -e \"USE ${_dbname};ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='*');TRUNCATE TABLE emp_part_bckt;INSERT INTO TABLE emp_part_bckt PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;\""
+#\""ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;\""
 
 hdfs dfs -ls /apps/hive/warehouse/${_dbname}.db/*/
