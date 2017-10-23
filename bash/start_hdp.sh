@@ -332,7 +332,7 @@ function p_ambari_blueprint() {
     f_ambari_server_start
     _port_wait "$r_AMBARI_HOST" "8080" || return 1
 
-    local _c="`f_get_cluster_name`"
+    local _c="`f_get_cluster_name 2>/dev/null`"
     if [ "$_c" = "$_cluster_name" ]; then
         _warn "Cluster name $_cluster_name already exists in Ambari. Skipping..."
         return 1
@@ -2035,8 +2035,9 @@ function p_host_setup() {
     fi
 
     f_port_forward_ssh_on_nodes
+    _log "INFO" "Completed. Grepping ERROR and WORN from /tmp/p_host_setup.log"
     grep -Ew '(ERROR|WARN)' /tmp/p_host_setup.log
-    _log "INFO" "Completed. Please run p_post_install_changes when HDFS is running."
+    _log "INFO" "Please run p_post_install_changes when HDFS is running."
 
     f_screen_cmd
 }
