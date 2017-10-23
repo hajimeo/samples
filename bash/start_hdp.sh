@@ -143,7 +143,7 @@ function p_interview() {
     _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Node starting number (hostname will be sequential from this number)" "1" "r_NODE_START_NUM" "N" "Y"
     _ask "Node hostname prefix" "$g_NODE_HOSTNAME_PREFIX" "r_NODE_HOSTNAME_PREFIX" "N" "Y"
-    _ask "DNS Server (Note: Remote DNS requires password less ssh)" "$g_DNS_SERVER" "r_DNS_SERVER" "N" "Y"
+    _ask "DNS Server IP for containers (Note: Remote DNS requires password less ssh)" "$r_DOCKER_HOST_IP" "r_DNS_SERVER" "N" "Y"
 
     # Questions to install Ambari
     _ask "Avoid installing Ambari? (to create just containers)" "N" "r_AMBARI_NOT_INSTALL"
@@ -1057,39 +1057,57 @@ function f_hdp_network_setup() {
     fi
 }
 
-
-
 function f_docker0_setup() {
     local __doc__="Setting IP for docker0 to $r_DOCKER_HOST_IP (default)"
     local _docker0="${1}"
     local _mask="${2}"
+    local _dns_ip="${3}"
 
     [ -z "$_docker0" ] && _docker0="$r_DOCKER_HOST_IP"
     [ -z "$_mask" ] && _mask="${r_DOCKER_NETWORK_MASK-16}"
     _mask="${_mask#/}"
     local _netmask="255.255.0.0"
     [ "$_mask" = "24" ] && _netmask="255.255.255.0"
+    [ -z "$_dns_ip" ] && _dns_ip="`f_docker_ip`"
 
     if ! ifconfig docker0 | grep "$_docker0" &>/dev/null ; then
-
         #_info "Setting IP for docker0 to $_docker0/$_netmask ..."
         ifconfig docker0 $_docker0 netmask $_netmask
+        _f="/lib/systemd/system/docker.service"
 
-        if [ -f /lib/systemd/system/docker.service ] && which systemctl &>/dev/null ; then
+        if [ -f "${_f}" ] && which systemctl &>/dev/null ; then
+            local _restart_required=false
             # If multiple --bip, clean up!
-            if grep -qE -- "--bip=.+--bip=.+" /lib/systemd/system/docker.service ; then
-                sed -i -e "s/--bip=[0-9.\/]\+//g" /lib/systemd/system/docker.service
+            if grep -qE -- "--bip=.+--bip=.+" ${_f} ; then
+                sed -i -e "s/--bip=[0-9.\/]\+//g" ${_f}
             fi
             # If --bip is never set up, append
-            if ! grep -qE -- '--bip=' /lib/systemd/system/docker.service ; then
-                sed -i "/H fd:\/\// s/$/ --bip=${_docker0}\/${_mask}/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart
-                return $?
+            if ! grep -qE -- '--bip=' ${_f} ; then
+                sed -i "/^ExecStart=/ s/$/ --bip=${_docker0}\/${_mask}/" ${_f} && _restart_required=true
             fi
             # If a different --bip is used, replace
-            if ! grep -qE -- "--bip=${_docker0}/${_mask}" /lib/systemd/system/docker.service ; then
-                sed -i -e "s/--bip=[0-9.\/]\+/--bip=${_docker0}\/${_mask}/" /lib/systemd/system/docker.service && systemctl daemon-reload && service docker restart
-                return $?
+            if ! grep -qE -- "--bip=${_docker0}/${_mask}" ${_f} ; then
+                sed -i -e "s/--bip=[0-9.\/]\+/--bip=${_docker0}\/${_mask}/" ${_f} && _restart_required=true
             fi
+
+            # If DNS IP looks like IP address, update docker config file's DNS setting
+            if [[ "$_dns_ip" =~ $_IP_REGEX ]]; then
+                # If multiple --dns, clean up!
+                if grep -qE -- "--dns=.+--dns=.+" ${_f} ; then
+                    sed -i -e "s/--dns=[0-9.\/]\+//g" ${_f}
+                fi
+                # If --dns is never set up, append
+                if ! grep -qE -- '--dns=' ${_f} ; then
+                    sed -i "/^ExecStart=/ s/$/ --dns=${_dns_ip}/" ${_f} && _restart_required=true
+                fi
+                # If a different --dns is used, replace
+                if ! grep -qE -- "--dns=${_dns_ip}" ${_f} ; then
+                    sed -i -e "s/--dns=[0-9.\/]\+/--dns=${_dns_ip}/" ${_f} && _restart_required=true
+                fi
+            fi
+
+            $_restart_required && systemctl daemon-reload && service docker restart
+            return $?
         else
             grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"$DOCKER_OPTS --bip=${_docker0}/${_mask}\"" >> /etc/default/docker && /etc/init.d/docker restart)
             return $?
@@ -1308,18 +1326,17 @@ function f_docker_run() {
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
     local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
 
-    local _ip="`f_docker_ip`"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
     local _base="${g_DOCKER_BASE}:$_os_ver"
 
     if [ $_dns = "localhost" ]; then
-        _dns="$_ip"
+        _dns="`f_docker_ip`"
     fi
 
-    if [ -z "$_ip" ]; then
-        _warn "No Docker interface IP"
+    if [ -z "$_dns" ]; then
+        _warn "No DNS IP Address"
         return 1
     fi
 
@@ -1825,8 +1842,8 @@ function f_add_comp() {
     local _ambari_host="${3-$r_AMBARI_HOST}"
     local _c="`f_get_cluster_name $_ambari_host`" || return 1
 
-    curl -si -u admin:admin -H "X-Requested-By:ambari" -X POST -d '{"host_components" : [{"HostRoles":{"component_name":"'${_comp}'"}}]}' "http://localhost:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
-    curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"HostRoles": {"state": "INSTALLED"}}' "http://localhost:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
+    curl -si -u admin:admin -H "X-Requested-By:ambari" -X POST -d '{"host_components" : [{"HostRoles":{"component_name":"'${_comp}'"}}]}' "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
+    curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"HostRoles": {"state": "INSTALLED"}}' "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
 }
 
 function f_service() {
@@ -2045,7 +2062,7 @@ function f_dnsmasq() {
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
-    
+
     if [ ! `ssh $_dns which apt-get` ]; then
         _warn "No apt-get or ssh to $_dns not allowed"
         return 1
@@ -2100,6 +2117,17 @@ function f_dnsmasq_banner_reset() {
     scp -q /tmp/banner_add_hosts $_dns:/etc/
 
     ssh -q $_dns service dnsmasq restart
+}
+
+function f_update_resolv_confs() {
+    local __doc__="TODO: trying to update /etc/resolv.conf"
+    local _dns_ip="$1" # Should use $r_DOCKER_HOST_IP ?
+    local _how_many="${2-$r_NUM_NODES}"
+    local _start_from="${3-$r_NODE_START_NUM}"
+
+    [[ "$_dns_ip" =~ $_IP_REGEX ]] || return 1
+    # 'nameserver' would be case sensitive (capital wouldn't be right)
+    f_run_cmd_on_nodes '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${_dns_ip}'\b" $_f || sed -i.bak "0,/^nameserver/ s/^/nameserver '${_dns_ip}'\n&/" $_f' "$_how_many" "$_start_from"
 }
 
 function f_host_performance() {
