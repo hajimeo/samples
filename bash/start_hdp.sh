@@ -1473,13 +1473,9 @@ function f_tunnel() {
     local _tunnel_nic_from_ip="${_container_network_from/172.17./10.0.}" && _tunnel_nic_from_ip="${_tunnel_nic_from_ip%0}1"
     local _tunnel_nic_to_ip="${_container_network_to/172.17./10.0.}" && _tunnel_nic_to_ip="${_tunnel_nic_to_ip%0}1"
 
-    if ! ifconfig ppp0; then
-        pppd updetach noauth silent nodeflate pty "ssh root@${_connecting_to} pppd nodetach notty noauth" ipparam vpn $_tunnel_nic_from_ip:$_tunnel_nic_to_ip || return $?
-        ssh -qt root@${_connecting_to} "ip route add ${_container_network_from%0}0/${_container_net_mask#/} via $_tunnel_nic_to_ip"
-    else
-        _warn "ppp0 already exists! (kill pppd process)"
-        ps auxwww | grep -w pppd | grep -v grep
-    fi
+    ps auxwww | grep -w pppd | grep -v grep
+    pppd updetach noauth silent nodeflate pty "ssh root@${_connecting_to} pppd nodetach notty noauth" ipparam vpn $_tunnel_nic_from_ip:$_tunnel_nic_to_ip || return $?
+    ssh -qt root@${_connecting_to} "ip route add ${_container_network_from%0}0/${_container_net_mask#/} via $_tunnel_nic_to_ip"
 
     #ip route del ${_container_network_to%0}0/${_container_net_mask#/}
     ip route add ${_container_network_to%0}0/${_container_net_mask#/} via $_tunnel_nic_from_ip
