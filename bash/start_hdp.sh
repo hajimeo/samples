@@ -1470,10 +1470,23 @@ function f_tunnel() {
     [ -z "$_container_network_to" ] && return 12
     [ -z "$_container_network_from" ] && return 13
 
-    local _tunnel_nic_from_ip="${_container_network_from/172.17./10.0.}" && _tunnel_nic_from_ip="${_tunnel_nic_from_ip%0}1"
+    local _tunnel_nic_from_ip=""
+    local _tmp_tunnel_nic_from_ip=""
     local _tunnel_nic_to_ip="${_container_network_to/172.17./10.0.}" && _tunnel_nic_to_ip="${_tunnel_nic_to_ip%0}1"
 
-    ps auxwww | grep -w pppd | grep -v grep
+    for i in {1..10}; do
+        _tmp_tunnel_nic_from_ip="${_container_network_from/172.17./10.0.}"
+        _tmp_tunnel_nic_from_ip="${_tmp_tunnel_nic_from_ip%0}$i"
+        if ! ifconfig | grep -qw $_tmp_tunnel_nic_from_ip; then
+            _tunnel_nic_from_ip="$_tmp_tunnel_nic_from_ip"
+            break;
+        fi
+    done
+    if [ -z "$_tunnel_nic_from_ip" ];then
+        ps auxwww | grep -w pppd | grep -v grep
+        return 21
+    fi
+
     pppd updetach noauth silent nodeflate pty "ssh root@${_connecting_to} pppd nodetach notty noauth" ipparam vpn $_tunnel_nic_from_ip:$_tunnel_nic_to_ip || return $?
     ssh -qt root@${_connecting_to} "ip route add ${_container_network_from%0}0/${_container_net_mask#/} via $_tunnel_nic_to_ip"
 
