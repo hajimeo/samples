@@ -1403,7 +1403,7 @@ function f_ambari_server_start() {
     if [ $? -ne 0 ]; then
         grep 'Ambari Server is already running' /tmp/f_ambari_server_start.out && return
         sleep 5
-        ssh -q root@$r_AMBARI_HOST "ambari-server start"
+        ssh -q root@$r_AMBARI_HOST "ambari-server start --skip-database-check"
     fi
 }
 
