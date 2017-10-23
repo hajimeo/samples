@@ -1146,6 +1146,10 @@ function f_docker_start() {
     fi
 
     _info "starting $_how_many docker containers starting from $_start_from ..."
+    local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
+    local _docker_net_addr="172.17.0.0"
+    [[ "$r_DOCKER_HOST_IP" =~ $_regex ]] && _docker_net_addr="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0.0"
+
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         _net=`docker container inspect ${_node}$_n | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
         if [ ! "$_net" = "$g_HDP_NETWORK" ]; then
@@ -1175,7 +1179,7 @@ function f_docker_start() {
 
 	    docker exec -it ${_node}$_n bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh &>/dev/null && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
 	    docker exec -it ${_node}$_n bash -c "grep -q \"${r_DOCKER_PRIVATE_HOSTNAME}\" /etc/hosts || echo \"${r_DOCKER_HOST_IP} ${r_DOCKER_PRIVATE_HOSTNAME}\" >> /etc/hosts"
-	    docker exec -it ${_node}$_n bash -c "ip route del 172.17.0.0/16 via 0.0.0.0"
+	    docker exec -it ${_node}$_n bash -c "ip route del ${_docker_net_addr}/16 via 0.0.0.0"
     done
     wait
 }
@@ -1471,15 +1475,16 @@ function f_tunnel() {
     [ -z "$_container_network_to" ] && return 12
     [ -z "$_container_network_from" ] && return 13
 
-    local _tunnel_nic_from_ip=""
-    local _tmp_tunnel_nic_from_ip=""
-    local _tunnel_nic_to_ip="${_container_network_to/172.17./10.0.}" && _tunnel_nic_to_ip="${_tunnel_nic_to_ip%0}1"
+    local _regex="[0-9]+\.([0-9]+)\.([0-9]+)\.[0-9]+"
+    local _network_prefix="10.0.0."
+    local _tunnel_nic_to_ip="10.0.1.2"
+    [[ "$_container_network_to" =~ $_regex ]] && _tunnel_nic_to_ip="10.${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.1"
+    [[ "$_container_network_from" =~ $_regex ]] && _network_prefix="10.${BASH_REMATCH[1]}.${BASH_REMATCH[2]}."
 
+    local _tunnel_nic_from_ip=""
     for i in {1..10}; do
-        _tmp_tunnel_nic_from_ip="${_container_network_from/172.17./10.0.}"
-        _tmp_tunnel_nic_from_ip="${_tmp_tunnel_nic_from_ip%0}$i"
-        if ! ifconfig | grep -qw $_tmp_tunnel_nic_from_ip; then
-            _tunnel_nic_from_ip="$_tmp_tunnel_nic_from_ip"
+        if ! ifconfig | grep -qw "${_network_prefix}$i"; then
+            _tunnel_nic_from_ip="${_network_prefix}$i"
             break;
         fi
     done
