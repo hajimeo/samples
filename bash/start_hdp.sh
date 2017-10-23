@@ -1454,6 +1454,39 @@ function f_port_forward() {
     ssh -2CNnqTxfg -L$_local_port:$_remote_host:$_remote_port $_remote_host
 }
 
+function f_tunnel() {
+    local __doc__="Create a tunnel between this host and a target host. Requires ppp and password-less SSH"
+    local _connecting_to="$1" # Remote host IP
+    local _container_network_to="$2" # ex: 172.17.140.0 or 172.17.140.
+    local _container_network_from="${3-${r_DOCKER_NETWORK_ADDR%.}.0}"
+    local _container_net_mask="${4-24}"
+    local _outside_nic_name="${5-ens3}"
+
+    # NOTE: normally below should be OK but doesn't work with our VMs in the lab
+    #[ -z "$_connecting_from" ] && _connecting_from="`hostname -i`"
+    local _connecting_from="`ifconfig ${_outside_nic_name} | grep -oP 'inet addr:\d+\.\d+\.\d+\.\d+' | cut -d":" -f2`"
+
+    [ -z "$_connecting_to" ] && return 11
+    [ -z "$_container_network_to" ] && return 12
+    [ -z "$_container_network_from" ] && return 13
+
+    local _tunnel_nic_from_ip="${_container_network_from/172.17./10.0.}" && _tunnel_nic_from_ip="${_tunnel_nic_from_ip%0}1"
+    local _tunnel_nic_to_ip="${_container_network_to/172.17./10.0.}" && _tunnel_nic_to_ip="${_tunnel_nic_to_ip%0}1"
+
+    if ! ifconfig ppp0; then
+        pppd updetach noauth silent nodeflate pty "ssh root@${_connecting_to} pppd nodetach notty noauth" ipparam vpn $_tunnel_nic_from_ip:$_tunnel_nic_to_ip || return $?
+        ssh -qt root@${_connecting_to} "ip route add ${_container_network_from%0}0/${_container_net_mask#/} via $_tunnel_nic_to_ip"
+    else
+        _warn "ppp0 already exists! (kill pppd process)"
+        ps auxwww | grep -w pppd | grep -v grep
+    fi
+
+    #ip route del ${_container_network_to%0}0/${_container_net_mask#/}
+    ip route add ${_container_network_to%0}0/${_container_net_mask#/} via $_tunnel_nic_from_ip
+    #iptables -t nat -L --line-numbers; iptables -t nat -D POSTROUTING 1 && iptables -t nat -F
+    #iptables -t nat -F POSTROUTING && iptables -t nat -A POSTROUTING -s ${_container_network_from%0}0/${_container_net_mask#/} ! -d 172.17.0.0/16 -j MASQUERADE
+}
+
 function p_post_install_changes() {
     local __doc__="Change some configurations for Dev cluster"
 
