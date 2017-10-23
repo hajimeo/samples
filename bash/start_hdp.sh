@@ -377,7 +377,9 @@ _n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'
 _n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
 [ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
 
+    _info "Posting ${_cluster_config_json} ..."
     curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json} || return $?
+    _info "Posting ${_hostmap_json} ..."
     curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json} || return $?
 }
 
@@ -412,14 +414,12 @@ function f_ambari_blueprint_hostmap() {
     done
     _host_loop="${_host_loop%,}"
 
-    echo "{
-  \"blueprint\" : \"multinode-hdp\",
-  \"config_recommendation_strategy\" : \"ALWAYS_APPLY_DONT_OVERRIDE_CUSTOM_VALUES\",
-  \"default_password\" : \"$_default_password\",
-  \"host_groups\" :["
-    echo "$_host_loop"
-    echo "  ]
-}"
+    echo '{
+  "blueprint" : "multinode-hdp",
+  "config_recommendation_strategy" : "ALWAYS_APPLY_DONT_OVERRIDE_CUSTOM_VALUES",
+  "default_password" : "'$_default_password'",
+  "host_groups" :['$_host_loop']
+}'
     # NOTE: It seems blueprint works without "Clusters"
     #  , \"Clusters\" : {\"cluster_name\":\"${_cluster_name}\"}
 }
