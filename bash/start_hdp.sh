@@ -1179,7 +1179,10 @@ function f_docker_start() {
 
 	    docker exec -it ${_node}$_n bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh &>/dev/null && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
 	    docker exec -it ${_node}$_n bash -c "grep -q \"${r_DOCKER_PRIVATE_HOSTNAME}\" /etc/hosts || echo \"${r_DOCKER_HOST_IP} ${r_DOCKER_PRIVATE_HOSTNAME}\" >> /etc/hosts"
-	    docker exec -it ${_node}$_n bash -c "ip route del ${_docker_net_addr}/16 via 0.0.0.0"
+	    if [ "$_docker_net_addr" != "${r_DOCKER_NETWORK_ADDR%0}0" ]; then
+    	    docker exec -it ${_node}$_n bash -c "ip route del ${_docker_net_addr}/16 via 0.0.0.0"
+    	    #[ ! -z "$r_DOCKER_NETWORK_ADDR" ] && docker exec -it ${_node}$_n bash -c "ip route add ${r_DOCKER_NETWORK_ADDR%0}0/${r_DOCKER_NETWORK_MASK#/} via 0.0.0.0"
+        fi
     done
     wait
 }
