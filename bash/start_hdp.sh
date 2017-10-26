@@ -614,6 +614,7 @@ function f_ambari_blueprint_cluster_config() {
     }'
     fi
 
+    local _clients=',{"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"ZOOKEEPER_CLIENT"}, {"name":"HCAT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}, {"name":"SLIDER"}'
     # TODO: Ambari 2.5.1 can't set hive.exec.post.hooks, probably a bug in Ambari (probably regression bug of AMBARI-17802)
     echo '{
   "configurations" : [
@@ -703,7 +704,7 @@ function f_ambari_blueprint_cluster_config() {
       "components" : [
         {
           "name" : "AMBARI_SERVER"
-        }'$_extra_comps_1'
+        }'${_clients}${_extra_comps_1}'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -734,34 +735,7 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "WEBHCAT_SERVER"
-        },
-        {
-          "name" : "SLIDER"
-        },
-        {
-          "name" : "HDFS_CLIENT"
-        },
-        {
-          "name" : "MAPREDUCE2_CLIENT"
-        },
-        {
-          "name" : "YARN_CLIENT"
-        },
-        {
-          "name" : "TEZ_CLIENT"
-        },
-        {
-          "name" : "ZOOKEEPER_CLIENT"
-        },
-        {
-          "name" : "HCAT"
-        },
-        {
-          "name" : "PIG"
-        },
-        {
-          "name" : "HIVE_CLIENT"
-        }'$_extra_comps_2'
+        }'${_clients}${_extra_comps_2}'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -774,34 +748,7 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "SECONDARY_NAMENODE"
-        },
-        {
-          "name" : "SLIDER"
-        },
-        {
-          "name" : "HDFS_CLIENT"
-        },
-        {
-          "name" : "MAPREDUCE2_CLIENT"
-        },
-        {
-          "name" : "YARN_CLIENT"
-        },
-        {
-          "name" : "TEZ_CLIENT"
-        },
-        {
-          "name" : "ZOOKEEPER_CLIENT"
-        },
-        {
-          "name" : "HCAT"
-        },
-        {
-          "name" : "PIG"
-        },
-        {
-          "name" : "HIVE_CLIENT"
-        }'$_extra_comps_3'
+        }'${_clients}${_extra_comps_3}'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
@@ -814,34 +761,7 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "NODEMANAGER"
-        },
-        {
-          "name" : "SLIDER"
-        },
-        {
-          "name" : "HDFS_CLIENT"
-        },
-        {
-          "name" : "MAPREDUCE2_CLIENT"
-        },
-        {
-          "name" : "YARN_CLIENT"
-        },
-        {
-          "name" : "TEZ_CLIENT"
-        },
-        {
-          "name" : "ZOOKEEPER_CLIENT"
-        },
-        {
-          "name" : "HCAT"
-        },
-        {
-          "name" : "PIG"
-        },
-        {
-          "name" : "HIVE_CLIENT"
-        }'$_extra_comps_4'
+        }'${_clients}${_extra_comps_4}'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
