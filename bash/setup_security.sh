@@ -51,10 +51,11 @@ g_KEYSTORE_FILE="server.keystore.jks"
 g_TRUSTSTORE_FILE="server.truststore.jks"
 g_CLIENT_TRUSTSTORE_FILE="all.jks"
 g_CLIENT_TRUSTSTORE_PASSWORD="changeit"
+g_KDC_REALM="`hostname -s`" && g_KDC_REALM=${g_KDC_REALM^^}
 
 function f_kdc_install_on_ambari_node() {
     local __doc__="(Deprecated) Install KDC/kadmin service to $r_AMBARI_HOST. May need UDP port forwarder https://raw.githubusercontent.com/hajimeo/samples/master/python/udp_port_forwarder.py"
-    local _realm="${1-EXAMPLE.COM}"
+    local _realm="${1-$g_KDC_REALM}"
     local _password="${2-$g_DEFAULT_PASSWORD}"
     local _server="${3-$r_AMBARI_HOST}"
 
@@ -81,7 +82,7 @@ function f_kdc_install_on_ambari_node() {
 
 function f_kdc_install_on_host() {
     local __doc__="Install KDC server packages on Ubuntu (takes long time)"
-    local _realm="${1-EXAMPLE.COM}"
+    local _realm="${1-$g_KDC_REALM}"
     local _password="${2-$g_DEFAULT_PASSWORD}"
     local _server="${3-`hostname -i`}"
 
@@ -89,34 +90,51 @@ function f_kdc_install_on_host() {
         _warn "No apt-get"
         return 1
     fi
-
     DEBIAN_FRONTEND=noninteractive apt-get install -y krb5-kdc krb5-admin-server || return $?
 
-    if [ -s /var/lib/krb5kdc/principal ]; then
-        _info "/var/lib/krb5kdc/principal already exists. Not try creating..."
-        return 0
+    if [ -s /etc/krb5kdc/kdc.conf ] && [ -s /var/lib/krb5kdc/principal_${_realm} ]; then
+        if grep -qE '^\s?'${_realm}'\b' /etc/krb5kdc/kdc.conf; then
+            _info "Realm: ${_realm} may already exit in /etc/krb5kdc/kdc.conf. Not try creating..."
+            return 0
+        fi
     fi
 
-    mv /etc/krb5.conf /etc/krb5.conf.orig
-    echo "[libdefaults]
- default_realm = $_realm
-[realms]
- $_realm = {
-   kdc = $_server
-   admin_server = $_server
- }" > /etc/krb5.conf
-    kdb5_util create -s -P $_password || return $?  # or krb5_newrealm
-    echo '*/admin *' > /etc/krb5kdc/kadm5.acl
-    service krb5-kdc restart
-    service krb5-admin-server restart
+    echo '    '${_realm}' = {
+        database_name = /var/lib/krb5kdc/principal_'${_realm}'
+        admin_keytab = FILE:/etc/krb5kdc/kadm5_'${_realm}'.keytab
+        acl_file = /etc/krb5kdc/kadm5_'${_realm}'.acl
+        key_stash_file = /etc/krb5kdc/stash_'${_realm}'
+        kdc_ports = 750,88
+        max_life = 10h 0m 0s
+        max_renewable_life = 7d 0h 0m 0s
+        master_key_type = des3-hmac-sha1
+        supported_enctypes = aes256-cts:normal arcfour-hmac:normal des3-hmac-sha1:normal des-cbc-crc:normal des:normal des:v4 des:norealm des:onlyrealm des:afs3
+        default_principal_flags = +preauth
+    }' >> /etc/krb5kdc/kdc.conf
+
+    # KDC process seems to use default_realm, and sed needs to escape + somehow
+    sed -i_$(date +"%Y%m%d").bak -e 's/^\s*default_realm.\+$/  default_realm = '${_realm}'/' /etc/krb5.conf
+    # With 'sed', append/insert multiple lines
+    if ! grep -qE '^\s?'${_realm}'\b' /etc/krb5.conf; then
+        echo '  '${_realm}' = {
+   kdc = '${_server}'
+   admin_server = '${_server}'
+ }' > /tmp/f_kdc_install_on_host_$$.tmp
+        sed -i "/\[realms\]/r /tmp/f_kdc_install_on_host_$$.tmp" /etc/krb5.conf
+    fi
+
+    kdb5_util create -r ${_realm} -s -P ${_password} || return $?  # or krb5_newrealm
+    mv /etc/krb5kdc/kadm5_${_realm}.acl /etc/krb5kdc/kadm5_${_realm}.orig &>/dev/null
+    echo '*/admin *' > /etc/krb5kdc/kadm5_${_realm}.acl
+    service krb5-kdc restart && service krb5-admin-server restart
     sleep 3
-    kadmin.local -q "add_principal -pw $_password admin/admin"
+    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} admin/admin@${_realm}"
 }
 
 function _ambari_kerberos_generate_service_config() {
     local __doc__="Output (return) service config for Ambari APIs. TODO: MIT KDC only by created by f_kdc_install_on_host"
     # https://cwiki.apache.org/confluence/display/AMBARI/Automated+Kerberizaton#AutomatedKerberizaton-EnablingKerberos
-    local _realm="${1-EXAMPLE.COM}"
+    local _realm="${1-$g_KDC_REALM}"
     local _server="${2-`hostname -f`}"
     #local _kdc_type="${3}" # TODO: Not using and MIT KDC only
     local _version="version`date +%s`000" #TODO: not sure if always using version 1 is OK
@@ -180,7 +198,7 @@ KERBEROS_CONFIG
 function f_ambari_kerberos_setup() {
     local __doc__="Setup Kerberos with Ambari APIs. TODO: MIT KDC only and it needs to be created by f_kdc_install_on_host"
     # https://cwiki.apache.org/confluence/display/AMBARI/Automated+Kerberizaton#AutomatedKerberizaton-EnablingKerberos
-    local _realm="${1-EXAMPLE.COM}"
+    local _realm="${1-$g_KDC_REALM}"
     local _kdc_server="${2-$r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
     local _password="${3}"
     local _ambari_host="${4-$r_AMBARI_HOST}"
@@ -481,7 +499,7 @@ function _hadoop_ssl_use_wildcard() {
 function f_hadoop_spnego_setup() {
     local __doc__="set up HTTP Authentication for HDFS, YARN, MapReduce2, HBase, Oozie, Falcon and Storm"
     # http://docs.hortonworks.com/HDPDocuments/Ambari-2.4.2.0/bk_ambari-security/content/configuring_http_authentication_for_HDFS_YARN_MapReduce2_HBase_Oozie_Falcon_and_Storm.html
-    local _realm="${1-EXAMPLE.COM}"
+    local _realm="${1-$g_KDC_REALM}"
     local _domain="${2-${r_DOMAIN_SUFFIX#.}}"
     local _ambari_host="${3-$r_AMBARI_HOST}"
     local _ambari_port="${4-8080}"
