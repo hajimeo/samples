@@ -52,7 +52,7 @@ function f_check_system() {
     ls -l /usr/hdp/current/ &>> ${_WORK_DIR%/}/hdp-select.out
     ls -l /etc/security/keytabs/ &> ${_WORK_DIR%/}/ls-keytabs.out
     getenforce &> ${_WORK_DIR%/}/getenforce.out
-    iptables -t nat -L &> ${_WORK_DIR%/}/iptables.out
+    iptables -t nat -nL &> ${_WORK_DIR%/}/iptables.out
     (which timeout && (timeout 3 time head -n 1 /dev/urandom > /dev/null;echo '-';timeout 3 time head -n 1 /dev/random > /dev/null)) &> ${_WORK_DIR%/}/random.out
     vmstat 1 3 &> ${_WORK_DIR%/}/vmstat.out &
     vmstat -d &> ${_WORK_DIR%/}/vmstat_d.out &
