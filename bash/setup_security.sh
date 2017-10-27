@@ -16,7 +16,7 @@
 #
 # If Sandbox (after KDC setup):
 # NOTE: sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
-#   f_ambari_kerberos_setup "EXAMPLE.COM" "172.17.0.1" "" "sandbox.hortonworks.com" "sandbox.hortonworks.com"
+#   f_ambari_kerberos_setup "$g_KDC_REALM" "172.17.0.1" "" "sandbox.hortonworks.com" "sandbox.hortonworks.com"
 #
 # Example 2: How to set up HTTP Authentication (SPNEGO) on hadoop component
 #   source ./setup_security.sh && f_loadResp
@@ -24,7 +24,7 @@
 #
 # If Sandbox (after KDC/kerberos setup):
 # NOTE sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
-#   f_hadoop_spnego_setup "EXAMPLE.COM" "hortonworks.com" "sandbox.hortonworks.com" "8080" "sandbox.hortonworks.com"
+#   f_hadoop_spnego_setup "$g_KDC_REALM" "hortonworks.com" "sandbox.hortonworks.com" "8080" "sandbox.hortonworks.com"
 #
 # Example 3: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
 #   source ./setup_security.sh && f_loadResp
