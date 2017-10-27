@@ -46,7 +46,7 @@ function f_docker_image_setup() {
         return
     fi
 
-    if [[ "${_name}" =~ ^"sandbox-hdf"* ]]; then
+    if [[ "${_name}" =~ ^"sandbox-hdf" ]]; then
         #_url="https://downloads-hortonworks.akamaized.net/sandbox-hdf-2.1/HDF_2.1.2_docker_image_04_05_2017_13_12_03.tar.gz"
         _url="https://downloads-hortonworks.akamaized.net/sandbox-hdf-3.0/HDF_3.0_docker_12_6_2017.tar.gz"
         _min_disk=9
@@ -125,7 +125,7 @@ function _totalSpaceGB() {
 ### main() ############################################################
 if [ "$0" = "$BASH_SOURCE" ]; then
     # TODO: Seems HDF image works with only sandbox-hdf.hortonwroks.com
-    if [[ "${_NAME}" =~ ^"sandbox-hdf"* ]]; then
+    if [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
         _HOSTNAME="sandbox-hdf.hortonworks.com"
     else
         _HOSTNAME="sandbox.hortonworks.com"
@@ -176,16 +176,16 @@ If you would like to fix this now, press Ctrl+c."
         docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"
         if [ $? -eq 0 ]; then
             _image_name="${_NAME}"
-        elif [[ "${_NAME}" =~ ^"sandbox-hdf"* ]]; then
+        elif [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
             _image_name="sandbox-hdf"
-        elif [[ "${_NAME}" =~ ^"sandbox-hdp"* ]]; then
+        elif [[ "${_NAME}" =~ ^"sandbox-hdp" ]]; then
             _image_name="sandbox-hdp"
         else
             _image_name="sandbox"
         fi
 
         # If name contains hdf assuming HDF
-        if [[ "${_NAME}" =~ ^"sandbox-hdf"* ]]; then
+        if [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
             docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
             -p 12181:2181 \
             -p 13000:3000 \
