@@ -98,7 +98,6 @@ function f_kdc_install_on_host() {
             return 0
         fi
     fi
-
     echo '    '${_realm}' = {
         database_name = /var/lib/krb5kdc/principal_'${_realm}'
         admin_keytab = FILE:/etc/krb5kdc/kadm5_'${_realm}'.keytab
@@ -110,7 +109,9 @@ function f_kdc_install_on_host() {
         master_key_type = des3-hmac-sha1
         supported_enctypes = aes256-cts:normal arcfour-hmac:normal des3-hmac-sha1:normal des-cbc-crc:normal des:normal des:v4 des:norealm des:onlyrealm des:afs3
         default_principal_flags = +preauth
-    }' >> /etc/krb5kdc/kdc.conf
+    }
+'  > /tmp/f_kdc_install_on_host_kdc_$$.tmp
+    sed -i "/\[realms\]/r /tmp/f_kdc_install_on_host_kdc_$$.tmp" /etc/krb5kdc/kdc.conf
 
     # KDC process seems to use default_realm, and sed needs to escape + somehow
     sed -i_$(date +"%Y%m%d").bak -e 's/^\s*default_realm.\+$/  default_realm = '${_realm}'/' /etc/krb5.conf
@@ -119,8 +120,9 @@ function f_kdc_install_on_host() {
         echo '  '${_realm}' = {
    kdc = '${_server}'
    admin_server = '${_server}'
- }' > /tmp/f_kdc_install_on_host_$$.tmp
-        sed -i "/\[realms\]/r /tmp/f_kdc_install_on_host_$$.tmp" /etc/krb5.conf
+ }
+' > /tmp/f_kdc_install_on_host_krb5_$$.tmp
+        sed -i "/\[realms\]/r /tmp/f_kdc_install_on_host_krb5_$$.tmp" /etc/krb5.conf
     fi
 
     kdb5_util create -r ${_realm} -s -P ${_password} || return $?  # or krb5_newrealm
