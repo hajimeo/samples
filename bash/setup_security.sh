@@ -228,10 +228,9 @@ function f_ambari_kerberos_setup() {
     # Test GET method
     #response=$(curl --write-out %{http_code} -s -o /dev/null "${_api_uri}/configurations/service_config_versions?service_name=KERBEROS")
 
-    #_info "Delete existing KERBEROS service"
-    #_api_uri="http://node1.localdomain:8080/api/v1/clusters/c1"
-    #curl -si -H "X-Requested-By:ambari" -u admin:admin -i -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
-    #curl -si -H "X-Requested-By:ambari" -u admin:admin -i -X DELETE "${_api_uri}/services/KERBEROS"
+    _info "Delete existing KERBEROS service (if exists)"
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -i -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -i -X DELETE "${_api_uri}/services/KERBEROS"
 
     _info "register Kerberos service and component"
     curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/services" -d '{"ServiceInfo": { "service_name": "KERBEROS"}}'
