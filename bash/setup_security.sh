@@ -234,22 +234,22 @@ function f_ambari_kerberos_setup() {
     sleep 3;
 
     _info "register Kerberos service and component"
-    curl -I -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/services" -d '{"ServiceInfo": { "service_name": "KERBEROS"}}'
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/services" -d '{"ServiceInfo": { "service_name": "KERBEROS"}}' | grep -qE '^HTTP/1.1 2' || return 11
     sleep 3;
-    curl -I -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/services?ServiceInfo/service_name=KERBEROS" -d '{"components":[{"ServiceComponentInfo":{"component_name":"KERBEROS_CLIENT"}}]}'
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/services?ServiceInfo/service_name=KERBEROS" -d '{"components":[{"ServiceComponentInfo":{"component_name":"KERBEROS_CLIENT"}}]}' | grep -qE '^HTTP/1.1 2' || return 12
     sleep 3;
 
     if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
         local _hostnames="$_how_many"
         _info "Adding Kerberos client to $_hostnames"
         for _h in `echo $_hostnames | sed 's/ /\n/g'`; do
-            curl -I -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "${_api_uri}/hosts?Hosts/host_name=${_h}"
+            curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "${_api_uri}/hosts?Hosts/host_name=${_h}" | grep -qE '^HTTP/1.1 2' || return 21
             sleep 1;
         done
     else
         _info "Adding Kerberos client on all nodes"
         for i in `_docker_seq "$_how_many" "$_start_from"`; do
-            curl -I -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "${_api_uri}/hosts?Hosts/host_name=node$i${_domain_suffix}"
+            curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST -d '{"host_components" : [{"HostRoles" : {"component_name":"KERBEROS_CLIENT"}}]}' "${_api_uri}/hosts?Hosts/host_name=node$i${_domain_suffix}" | grep -qE '^HTTP/1.1 2' || return 22
             sleep 1;
         done
     fi
@@ -257,14 +257,14 @@ function f_ambari_kerberos_setup() {
 
     _info "Add/Upload the KDC configuration"
     _ambari_kerberos_generate_service_config "$_realm" "$_kdc_server" > /tmp/${_cluster_name}_kerberos_service_conf.json
-    curl -I -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d @/tmp/${_cluster_name}_kerberos_service_conf.json
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d @/tmp/${_cluster_name}_kerberos_service_conf.json | grep -qE '^HTTP/1.1 2' || return 31
     sleep 3;
 
     _info "Storing KDC admin credential temporarily"
-    curl -I -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/credentials/kdc.admin.credential" -d '{ "Credential" : { "principal" : "admin/admin@'$_realm'", "key" : "'$_password'", "type" : "temporary" } }'
+    curl -s -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/credentials/kdc.admin.credential" -d '{ "Credential" : { "principal" : "admin/admin@'$_realm'", "key" : "'$_password'", "type" : "temporary" } }'
 
     _info "Starting (installing) Kerberos"
-    curl -I -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/services?ServiceInfo/state=INSTALLED&ServiceInfo/service_name=KERBEROS" -d '{"RequestInfo":{"context":"Install Kerberos Service with f_ambari_kerberos_setup","operation_level":{"level":"CLUSTER","cluster_name":"'$_cluster_name'"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}'
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/services?ServiceInfo/state=INSTALLED&ServiceInfo/service_name=KERBEROS" -d '{"RequestInfo":{"context":"Install Kerberos Service with f_ambari_kerberos_setup","operation_level":{"level":"CLUSTER","cluster_name":"'$_cluster_name'"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}' | grep -qE '^HTTP/1.1 2' || return 32
     sleep 5;
 
     #_info "Get the default kerberos descriptor and upload (assuming no current)"
@@ -281,12 +281,12 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     json.dump(a, jd)"
 
     # This fails if it's already posted and ignorable
-    curl -I -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/artifacts/kerberos_descriptor" -d @/tmp/${_cluster_name}_kerberos_descriptor.json
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/artifacts/kerberos_descriptor" -d @/tmp/${_cluster_name}_kerberos_descriptor.json | grep -qE '^HTTP/1.1 2' || return 33
     sleep 3;
 
     _info "Stopping all services...."
-    #curl -I -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
-    curl -I -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"$_request_context\"},\"Body\":{\"ServiceInfo\":{\"state\":\"INSTALLED\"}}}" "${_api_uri}/services"
+    #curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"$_request_context\"},\"Body\":{\"ServiceInfo\":{\"state\":\"INSTALLED\"}}}" "${_api_uri}/services" | grep -qE '^HTTP/1.1 2' || return 34
     sleep 3;
     # confirming if it's stopped
     for _i in {1..9}; do
@@ -299,7 +299,7 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     ssh -q root@$_ambari_host -t which kadmin &>/dev/null || sleep 10
 
     _info "Set up Kerberos for $_realm..."
-    curl -I -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d '{"session_attributes" : {"kerberos_admin" : {"principal" : "admin/admin@'$_realm'", "password" : "'$_password'"}}, "Clusters": {"security_type" : "KERBEROS"}}'
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d '{"session_attributes" : {"kerberos_admin" : {"principal" : "admin/admin@'$_realm'", "password" : "'$_password'"}}, "Clusters": {"security_type" : "KERBEROS"}}' | grep -qE '^HTTP/1.1 2' || return 35
     sleep 3;
 
     # wait until it's set up
@@ -310,7 +310,7 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     done
 
     _info "Start all services"
-    curl -I -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"Start Service with f_ambari_kerberos_setup\"},\"Body\":{\"ServiceInfo\":{\"state\":\"STARTED\"}}}" ${_api_uri}/services
+    curl -s -H "X-Requested-By:ambari" -u admin:admin -X PUT -d "{\"RequestInfo\":{\"context\":\"Start Service with f_ambari_kerberos_setup\"},\"Body\":{\"ServiceInfo\":{\"state\":\"STARTED\"}}}" ${_api_uri}/services
 }
 
 function f_hadoop_ssl_setup() {
