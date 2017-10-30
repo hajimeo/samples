@@ -260,8 +260,8 @@ function f_ambari_kerberos_setup() {
     curl -sI -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d @/tmp/${_cluster_name}_kerberos_service_conf.json
     sleep 3;
 
-    #_info "Storing KDC admin credential temporarily"
-    #curl -sI -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/credentials/kdc.admin.credential" -d "{\"Credential\":{\"principal\":\"admin/admin@${_realm}\",\"key\":\"${_password}\",\"type\":\"temporary\"}}"
+    _info "Storing KDC admin credential temporarily"
+    curl -sI -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/credentials/kdc.admin.credential" -d '{ "Credential" : { "principal" : "admin/admin@'$_realm'", "key" : "'$_password'", "type" : "temporary" } }'
 
     _info "Starting (installing) Kerberos"
     curl -sI -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/services?ServiceInfo/state=INSTALLED&ServiceInfo/service_name=KERBEROS" -d '{"RequestInfo":{"context":"Install Kerberos Service with f_ambari_kerberos_setup","operation_level":{"level":"CLUSTER","cluster_name":"'$_cluster_name'"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}'
@@ -299,7 +299,6 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     ssh -q root@$_ambari_host -t which kadmin &>/dev/null || sleep 10
 
     _info "Set up Kerberos for $_realm..."
-    curl -sI -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/credentials/kdc.admin.credential" -d '{ "Credential" : { "principal" : "admin/admin@'$_realm'", "key" : "'$_password'", "type" : "persisted" } }'
     curl -sI -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d '{"session_attributes" : {"kerberos_admin" : {"principal" : "admin/admin@'$_realm'", "password" : "'$_password'"}}, "Clusters": {"security_type" : "KERBEROS"}}'
     sleep 3;
 
