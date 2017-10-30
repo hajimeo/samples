@@ -12,7 +12,7 @@
 #
 # Example 1: How to set up Kerberos
 #   source ./setup_security.sh && f_loadResp
-#   f_kdc_install_on_host && f_ambari_kerberos_setup
+    #   f_kdc_install_on_host && f_ambari_kerberos_setup
 #
 # If Sandbox (after KDC setup):
 # NOTE: sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
@@ -93,7 +93,7 @@ function f_kdc_install_on_host() {
     DEBIAN_FRONTEND=noninteractive apt-get install -y krb5-kdc krb5-admin-server || return $?
 
     if [ -s /etc/krb5kdc/kdc.conf ] && [ -s /var/lib/krb5kdc/principal_${_realm} ]; then
-        if grep -qE '^\s?'${_realm}'\b' /etc/krb5kdc/kdc.conf; then
+        if grep -qE '^\s*'${_realm}'\b' /etc/krb5kdc/kdc.conf; then
             _info "Realm: ${_realm} may already exit in /etc/krb5kdc/kdc.conf. Not try creating..."
             return 0
         fi
@@ -116,7 +116,7 @@ function f_kdc_install_on_host() {
     # KDC process seems to use default_realm, and sed needs to escape + somehow
     sed -i_$(date +"%Y%m%d").bak -e 's/^\s*default_realm.\+$/  default_realm = '${_realm}'/' /etc/krb5.conf
     # With 'sed', append/insert multiple lines
-    if ! grep -qE '^\s?'${_realm}'\b' /etc/krb5.conf; then
+    if ! grep -qE '^\s*'${_realm}'\b' /etc/krb5.conf; then
         echo '  '${_realm}' = {
    kdc = '${_server}'
    admin_server = '${_server}'
@@ -280,6 +280,7 @@ a.pop('Artifacts', None)
 with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     json.dump(a, jd)"
 
+    # This fails if it's already posted and ignorable
     curl -si -H "X-Requested-By:ambari" -u admin:admin -X POST "${_api_uri}/artifacts/kerberos_descriptor" -d @/tmp/${_cluster_name}_kerberos_descriptor.json
     sleep 3;
 
@@ -497,7 +498,6 @@ function _hadoop_ssl_use_wildcard() {
     # NOTE: a truststore needs to import this cert or root CA cert.
 }
 
-
 function f_hadoop_spnego_setup() {
     local __doc__="set up HTTP Authentication for HDFS, YARN, MapReduce2, HBase, Oozie, Falcon and Storm"
     # http://docs.hortonworks.com/HDPDocuments/Ambari-2.4.2.0/bk_ambari-security/content/configuring_http_authentication_for_HDFS_YARN_MapReduce2_HBase_Oozie_Falcon_and_Storm.html
@@ -528,6 +528,8 @@ function f_hadoop_spnego_setup() {
     _info "Run the below command to restart *ALL* required components:"
     echo "curl -si -u admin:admin -H 'X-Requested-By:ambari' 'http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests' -X POST --data '{\"RequestInfo\":{\"command\":\"RESTART\",\"context\":\"Restart all required services\",\"operation_level\":\"host_component\"},\"Requests/resource_filters\":[{\"hosts_predicate\":\"HostRoles/stale_configs=true\"}]}'"
 }
+
+
 
 function f_ldap_server_install_on_host() {
     local __doc__="Install LDAP server packages on Ubuntu (need to test setup)"
