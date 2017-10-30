@@ -257,7 +257,7 @@ function f_ambari_kerberos_setup() {
 
     _info "Add/Upload the KDC configuration"
     _ambari_kerberos_generate_service_config "$_realm" "$_kdc_server" > /tmp/${_cluster_name}_kerberos_service_conf.json
-    curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d @/tmp/${_cluster_name}_kerberos_service_conf.json | grep -qE '^HTTP/1.1 2' || return 31
+    curl -si -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d @/tmp/${_cluster_name}_kerberos_service_conf.json | grep -E '^HTTP/1.1 2' || return 31
     sleep 3
 
     _info "Storing KDC admin credential temporarily"
