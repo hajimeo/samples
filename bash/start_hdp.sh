@@ -2026,7 +2026,7 @@ function p_host_setup() {
     fi
 
     f_port_forward_ssh_on_nodes
-    _log "INFO" "Completed. Grepping ERROR and WORN from /tmp/p_host_setup.log"
+    _log "INFO" "Completed. Grepping ERRORs and WORNs from /tmp/p_host_setup.log"
     grep -Ew '(ERROR|WARN)' /tmp/p_host_setup.log
     _log "INFO" "Please run p_post_install_changes when HDFS is running."
 
