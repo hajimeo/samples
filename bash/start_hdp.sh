@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # This script setups docker, then create a container(s), and install ambari-server
+# Requires: Python and Bash version *4* or higher
 #
 # Steps:
 # 1. Install OS. Recommend Ubuntu 14.x
@@ -104,7 +105,7 @@ function p_interview() {
     local __doc__="Asks user questions. (Requires Python)"
     # Default values TODO: need to update Ambari Version manually (stack version is automatic)
     local _centos_version="6.8" # TODO: 6.9 doesn't work
-    local _ambari_version="2.5.1.0"
+    local _ambari_version="2.5.2.0"
     local _stack_version="2.6"
     local _hdp_version="${_stack_version}.0.0"
 
@@ -118,21 +119,34 @@ function p_interview() {
         apt-get install python -y
     fi
 
+    echo "=== Required questions ==========================="
+    _ask "First 24 bits (xxx.xxx.xxx.) of container IP Address" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
+    _ask "Node starting number (hostname will be sequential from this number)" "1" "r_NODE_START_NUM" "N" "Y"
+    _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
+    _ask "$r_CONTAINER_OS version (use 7.3.1611 or higher for Centos 7)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
+    r_CONTAINER_OS="${r_CONTAINER_OS,,}"
+    local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
+
+    _ask "Ambari version" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
+    wget -q -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
+    if [ -s /tmp/hdp_urlinfo.json ]; then
+        _stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json,pprint;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
+        _stack_version="`echo $_stack_version_full | cut -d'-' -f2`"
+        _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json,pprint;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_CONTAINER_OS}${_repo_os_ver}'"]'`"
+        _hdp_version="`basename ${_hdp_repo_url%/}`"
+    fi
+    _ask "HDP Version" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
+
+    echo ""
+    echo "=== Optional questions (hit Enter keys) =========="
     _ask "Run apt-get upgrade (docker) before setting up?" "N" "r_APTGET_UPGRADE" "N"
     _ask "Keep running containers when you start this script with another response file?" "N" "r_DOCKER_KEEP_RUNNING" "N"
     _ask "NTP Server" "ntp.ubuntu.com" "r_NTP_SERVER" "N" "Y"
     # TODO: Changing this IP later is troublesome, so need to be careful
     local _docker_ip=`f_docker_ip "172.17.0.1"`
-    _ask "First 24 bits (xxx.xxx.xxx.) of docker container IP Address" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Network Mask (/16 or /24) for docker containers" "/16" "r_DOCKER_NETWORK_MASK" "N" "Y"
     _ask "IP address for docker network interface" "$_docker_ip" "r_DOCKER_HOST_IP" "N" "Y"
     _ask "Domain Suffix for docker containers" "${g_DOMAIN_SUFFIX}" "r_DOMAIN_SUFFIX" "N" "Y"
-    _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
-    if [ -n "$r_CONTAINER_OS" ]; then
-        r_CONTAINER_OS="`echo "$r_CONTAINER_OS" | tr '[:upper:]' '[:lower:]'`"
-    fi
-    _ask "Container OS version (use 7.3.1611 or higher for Centos 7)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
-    local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
     local _docker_file_url="https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6"
     if [ "x`echo $r_CONTAINER_OS_VER | cut -d. -f1`" = "x7" ]; then
         local _docker_file_url="https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile7"
@@ -141,7 +155,6 @@ function p_interview() {
     _ask "Hostname for docker host in docker private network?" "dockerhost1" "r_DOCKER_PRIVATE_HOSTNAME" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
     _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
-    _ask "Node starting number (hostname will be sequential from this number)" "1" "r_NODE_START_NUM" "N" "Y"
     _ask "Node hostname prefix" "$g_NODE_HOSTNAME_PREFIX" "r_NODE_HOSTNAME_PREFIX" "N" "Y"
     _ask "DNS Server IP for containers (Note: Remote DNS requires password less ssh)" "$r_DOCKER_HOST_IP" "r_DNS_SERVER" "N" "Y"
 
@@ -149,7 +162,6 @@ function p_interview() {
     _ask "Avoid installing Ambari? (to create just containers)" "N" "r_AMBARI_NOT_INSTALL"
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         _ask "Ambari server hostname" "${r_NODE_HOSTNAME_PREFIX}${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
-        _ask "Ambari version (used to build repo URL)" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
         _echo "If you have set up a Local Repo, please change below"
         _ask "Ambari repo file URL or path" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
         if _isUrlButNotReachable "$r_AMBARI_REPO_FILE" ; then
@@ -164,18 +176,6 @@ function p_interview() {
         _ask "Ambari JDK URL (optional)" "" "r_AMBARI_JDK_URL"
         # http://public-repo-1.hortonworks.com/ARTIFACTS/jce_policy-8.zip to /var/lib/ambari-server/resources/jce_policy-8.zip
         _ask "Ambari JCE URL (optional)" "" "r_AMBARI_JCE_URL"
-
-        wget -q -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
-        if [ -s /tmp/hdp_urlinfo.json ]; then
-            _stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json,pprint;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
-            _stack_version="`echo $_stack_version_full | cut -d'-' -f2`"
-            _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json,pprint;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_CONTAINER_OS}${_repo_os_ver}'"]'`"
-            _hdp_version="`basename ${_hdp_repo_url%/}`"
-        fi
-
-        _ask "Stack Version" "$_stack_version" "r_HDP_STACK_VERSION" "N" "Y"
-        if [ "$_stack_version" != "$r_HDP_STACK_VERSION" ]; then _hdp_version="${r_HDP_STACK_VERSION}.0.0"; fi
-        _ask "HDP Version for repository" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
 
         _ask "Would you like to set up a local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
         if _isYes "$r_HDP_LOCAL_REPO"; then
@@ -426,11 +426,21 @@ function f_ambari_blueprint_hostmap() {
 
 function f_ambari_blueprint_cluster_config() {
     local __doc__="Output json string for Ambari Blueprint Cluster mapping. 1=Ambari 2=>hadoop,Hive 3=>HBase,Security 4=>slave"
-    local _stack_version="${1-$r_HDP_STACK_VERSION}"
+    local _stack_version="${1}"
     local _install_security="${2-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
     local _start_from="${3-$r_NODE_START_NUM}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
+
+    if [ -z "$_stack_version" ]; then
+        local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
+        if [[ "$r_HDP_REPO_VER" =~ $_regex ]]; then
+            _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+        else
+            _error "Couldn't determine the stack version"
+            return 1
+        fi
+    fi
 
     local _extra_comps_1=""
     local _extra_comps_2=""
@@ -1718,14 +1728,22 @@ function f_ambari_set_repo() {
         _os_name="redhat"
     fi
 
+    local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
+    if [[ "$r_HDP_REPO_VER" =~ $_regex ]]; then
+        local _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+    else
+        _error "Couldn't determine the stack version"
+        return 1
+    fi
+
     if _isUrl "$_repo_url"; then
         # TODO: admin:admin
-        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${_repo_os_ver}/repositories/HDP-${r_HDP_STACK_VERSION}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
+        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/HDP-${_stack_version}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
     fi
 
     if _isUrl "$_util_url"; then
         local _hdp_util_name="`echo $_util_url | grep -oP 'HDP-UTILS-[\d\.]+'`"
-        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${r_HDP_STACK_VERSION}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}'
+        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}'
     fi
 }
 
@@ -2469,7 +2487,7 @@ function f_x2go_setup() {
 
 function f_nifidemo_add() {
     local __doc__="Deprecated: Add Nifi in HDP"
-    local _stack_version="${1-$r_HDP_STACK_VERSION}"
+    local _stack_version="${1}"
     # https://github.com/abajwa-hw/ambari-nifi-service
 
     #rm -rf /var/lib/ambari-server/resources/stacks/HDP/'$_stack_version'/services/NIFI
