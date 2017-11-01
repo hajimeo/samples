@@ -1,7 +1,8 @@
 /**
  * @see http://www.adamretter.org.uk/blog/entries/LDAPTest.java
  *
- * java -Djavax.net.debug=ssl,keymanager -Djavax.net.ssl.trustStore=/path/to/truststore.jks LDAPTest "ldap://ad.your-server.com:389" "dc=ad,dc=my-domain,dc=com" myLdapUsername myLdapPassword some_sAMAccountName
+ * java -Djavax.net.debug=ssl,keymanager -Djavax.net.ssl.trustStore=/path/to/truststore.jks LDAPTest "ldaps://ad.your-server.com:636" "dc=ad,dc=my-domain,dc=com" myLdapUsername myLdapPassword some_sAMAccountName
+ * java -Djavax.net.debug=all LDAPTest "ldap://192.168.0.21:389" "dc=hdp,dc=localdomain" ldap@hdp.localdomain "$_LDAP_PASSWORD" ldap follow
  *
  */
 
@@ -34,6 +35,10 @@ public class LDAPTest {
         final String ldapPassword = args[3];
         final String ldapAccountToLookup = args[4];
 
+        String referral = "ignore";
+        if (args.length > 5) {
+            referral = args[5];
+        }
 
         Hashtable<String, Object> env = new Hashtable<String, Object>();
         env.put(Context.SECURITY_AUTHENTICATION, "simple");
@@ -46,12 +51,15 @@ public class LDAPTest {
         env.put(Context.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.ldap.LdapCtxFactory");
         env.put(Context.PROVIDER_URL, ldapAdServer);
 
+        // Set referral property; "ignore" is the default
+        env.put(Context.REFERRAL, referral);
+
         //ensures that objectSID attribute values
         //will be returned as a byte[] instead of a String
         env.put("java.naming.ldap.attributes.binary", "objectSID");
 
         // the following is helpful in debugging errors
-        //env.put("com.sun.jndi.ldap.trace.ber", System.err);
+        env.put("com.sun.jndi.ldap.trace.ber", System.err);
 
         LdapContext ctx = new InitialLdapContext(env,null);
 
@@ -59,7 +67,7 @@ public class LDAPTest {
 
         //1) lookup the ldap account
         SearchResult srLdapUser = ldap.findAccountByAccountName(ctx, ldapSearchBase, ldapAccountToLookup);
-        //System.out.println("SearchResult="+srLdapUser.toString());
+        System.out.println("SearchResult="+srLdapUser.toString());
 
         //2) get the SID of the users primary group
         String primaryGroupSID = ldap.getPrimaryGroupSID(srLdapUser);
@@ -71,7 +79,7 @@ public class LDAPTest {
 
     public SearchResult findAccountByAccountName(DirContext ctx, String ldapSearchBase, String accountName) throws NamingException {
 
-        String searchFilter = "(&(objectClass=user)(sAMAccountName=" + accountName + "))";
+        String searchFilter = "(&(sAMAccountName=" + accountName + "))";
 
         SearchControls searchControls = new SearchControls();
         searchControls.setSearchScope(SearchControls.SUBTREE_SCOPE);
@@ -90,6 +98,18 @@ public class LDAPTest {
         }
 
         return searchResult;
+    }
+
+    public NamingEnumeration searchAccount(DirContext ctx, String ldapSearchBase, String accountName) throws NamingException {
+
+        String searchFilter = "(&(sAMAccountName=" + accountName + "))";
+
+        SearchControls searchControls = new SearchControls();
+        searchControls.setSearchScope(SearchControls.SUBTREE_SCOPE);
+
+        NamingEnumeration<SearchResult> results = ctx.search(ldapSearchBase, searchFilter, searchControls);
+
+        return results;
     }
 
     public String findGroupBySID(DirContext ctx, String ldapSearchBase, String sid) throws NamingException {
