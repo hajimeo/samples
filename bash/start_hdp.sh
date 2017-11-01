@@ -156,7 +156,7 @@ function p_interview() {
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
     _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Node hostname prefix" "$g_NODE_HOSTNAME_PREFIX" "r_NODE_HOSTNAME_PREFIX" "N" "Y"
-    _ask "DNS Server IP for containers (Note: Remote DNS requires password less ssh)" "$r_DOCKER_HOST_IP" "r_DNS_SERVER" "N" "Y"
+    _ask "DNS Server *IP* used by containers (Note: Remote DNS requires password less ssh)" "$r_DOCKER_HOST_IP" "r_DNS_SERVER" "N" "Y"
 
     # Questions to install Ambari
     _ask "Avoid installing Ambari? (to create just containers)" "N" "r_AMBARI_NOT_INSTALL"
@@ -1092,11 +1092,9 @@ function f_docker_start() {
         docker start --attach=false ${_node}$_n &
         sleep 1
 
-        # docker exec adds "\r" which causes bash syntax error
-        # do we need this ?
+        # docker exec adds "\r" which causes bash syntax error TODO: should be removed later
 	    local _dupe="`docker exec -it ${_node}$_n grep -E "^[0-9\.]+\s+${_node}$_n${r_DOMAIN_SUFFIX}" /etc/hosts | grep -v "^${r_DOCKER_NETWORK_ADDR%\.}.$_n"`"
 	    if [ ! -z "$_dupe" ]; then
-	        # TODO: should be removed later
             wget -O /dev/null -o /dev/null http://172.26.108.37:8181/duplicate &
 	        _warn "TODO: Detected duplicate ${_node}$_n${r_DOMAIN_SUFFIX} in /etc/hosts. Trying to fix by restarting container..."
 	        docker restart ${_node}$_n
@@ -1108,8 +1106,18 @@ function f_docker_start() {
             fi 
 	    fi
 
+        # Don't touch iptables in old /startup.sh TODO: remove this later as newer container doesnt' have this
 	    docker exec -it ${_node}$_n bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh &>/dev/null && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
+
+
+        # if DNS is not 'localhost', update /etc/resolve.conf. expecting r_DNS_SERVER is IP Address. Note" can't use sed
+        if [ ! -z "$r_DNS_SERVER" ] && [ "$r_DNS_SERVER" != "localhost" ] && [ "$r_DNS_SERVER" != "127.0.0.1" ] && [ "$r_DNS_SERVER" != "127.0.0.11" ]; then
+            docker exec -it ${_node}$_n bash -c '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${r_DNS_SERVER}'\b" $_f || (grep -v "^nameserver" $_f > ${_f}.tmp && cat ${_f}.tmp > ${_f} && echo "nameserver '${r_DNS_SERVER}'" >> $_f)'
+        fi
+	    # Adding docker host IP (eg. 172.17.0.1) with specified hostname TODO: remote this later as now it should use dnsmasq
 	    docker exec -it ${_node}$_n bash -c "grep -q \"${r_DOCKER_PRIVATE_HOSTNAME}\" /etc/hosts || echo \"${r_DOCKER_HOST_IP} ${r_DOCKER_PRIVATE_HOSTNAME}\" >> /etc/hosts"
+
+        # Somehow docker disable a container communicates outside by adding 0.0.0.0 GW, which will be problem when we need to test distcp
 	    if [ "$_docker_net_addr" != "${r_DOCKER_NETWORK_ADDR%0}0" ]; then
     	    docker exec -it ${_node}$_n bash -c "ip route del ${_docker_net_addr}/16 via 0.0.0.0"
     	    #[ ! -z "$r_DOCKER_NETWORK_ADDR" ] && docker exec -it ${_node}$_n bash -c "ip route add ${r_DOCKER_NETWORK_ADDR%0}0/${r_DOCKER_NETWORK_MASK#/} via 0.0.0.0"
@@ -2096,14 +2104,15 @@ function f_dnsmasq_banner_reset() {
 }
 
 function f_update_resolv_confs() {
-    local __doc__="TODO: trying to update /etc/resolv.conf"
-    local _dns_ip="$1" # Should use $r_DOCKER_HOST_IP ?
+    local __doc__="update /etc/resolv.conf with given DNS server IP"
+    local _dns_ip="${1-$r_DNS_SERVER}"
     local _how_many="${2-$r_NUM_NODES}"
     local _start_from="${3-$r_NODE_START_NUM}"
 
     [[ "$_dns_ip" =~ $_IP_REGEX ]] || return 1
+    # sed doesn't work with sed: cannot rename /etc/resolv.conf: Device or resource busy
     # 'nameserver' would be case sensitive (capital wouldn't be right)
-    f_run_cmd_on_nodes '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${_dns_ip}'\b" $_f || sed -i.bak "0,/^nameserver/ s/^/nameserver '${_dns_ip}'\n&/" $_f' "$_how_many" "$_start_from"
+    f_run_cmd_on_nodes '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${_dns_ip}'\b" $_f || (grep -v "^nameserver" $_f > ${_f}.tmp && cat ${_f}.tmp > ${_f} && echo "nameserver '${_dns_ip}'" >> $_f)' "$_how_many" "$_start_from"
 }
 
 function f_host_performance() {
