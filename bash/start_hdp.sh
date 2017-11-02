@@ -1110,7 +1110,7 @@ function f_docker_start() {
 	    docker exec -it ${_node}$_n bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh &>/dev/null && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
 
 
-        # if DNS is not 'localhost', update /etc/resolve.conf. expecting r_DNS_SERVER is IP Address. Note" can't use sed
+        # if DNS is not 'localhost', update /etc/resolve.conf. expecting r_DNS_SERVER is IP Address. Note: can't use sed
         if [ ! -z "$r_DNS_SERVER" ] && [ "$r_DNS_SERVER" != "localhost" ] && [ "$r_DNS_SERVER" != "127.0.0.1" ] && [ "$r_DNS_SERVER" != "127.0.0.11" ]; then
             docker exec -it ${_node}$_n bash -c '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${r_DNS_SERVER}'\b" $_f || (grep -v "^nameserver" $_f > ${_f}.tmp && cat ${_f}.tmp > ${_f} && echo "nameserver '${r_DNS_SERVER}'" >> $_f)'
         fi
@@ -1305,7 +1305,7 @@ function f_get_cluster_name() {
 }
 
 function f_ambari_server_install() {
-    local __doc__="Install Ambari Server to $r_AMBARI_HOST"
+    local __doc__="Install Ambari Server to $r_AMBARI_HOST and start"
     if [ -z "$r_AMBARI_REPO_FILE" ]; then
         _error "Please specify Ambari repo *file* URL"
         return 1
@@ -1341,6 +1341,14 @@ function f_ambari_server_install() {
 
     _info "Installing ambari-server on $r_AMBARI_HOST ..."
     ssh -q root@$r_AMBARI_HOST "yum clean all; yum install ambari-server -y && service postgresql initdb && service postgresql restart && for i in {1..3}; do [ -e /tmp/.s.PGSQL.5432 ] && break; sleep 5; done; ambari-server setup -s || ( echo 'ERROR ambari-server setup failed! Trying one more time...'; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
+
+    if [ $? -ne 0 ]; then
+        _error "Ambari installation failed with exit code $?."
+        return 1
+    fi
+
+    _info "Starting ambari-server..."
+    f_ambari_server_start
 }
 
 function f_ambari_server_start() {
@@ -1488,8 +1496,10 @@ function f_ambari_agent_install() {
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo root@${_node}$_n${_domain}:/etc/yum.repos.d/
         # Executing yum command one by one (not parallel)
-        ssh -q -t root@${_node}$_n${_domain} "$_cmd"
+        ssh -q -t root@${_node}$_n${_domain} "$_cmd" &
+        sleep 1
     done
+    wait
 }
 
 function f_run_cmd_on_nodes() {
@@ -1992,29 +2002,22 @@ function p_host_setup() {
     fi
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
-        _log "INFO" "Starting f_ambari_server_install"
-        f_ambari_server_install &>> /tmp/p_host_setup.log || return $?
-        _log "INFO" "Starting f_ambari_server_start"
-        f_ambari_server_start &>> /tmp/p_host_setup.log
+        _log "INFO" "Starting f_ambari_server_install in background"
+        f_ambari_server_install &>> /tmp/p_host_setup.log &
 
+        _log "INFO" "Starting f_ambari_agent_install"
+        f_ambari_agent_install &>> /tmp/p_host_setup.log
+        _log "INFO" "Starting f_ambari_agent_fix_public_hostname"
+        f_ambari_agent_fix_public_hostname &>> /tmp/p_host_setup.log
+        _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
+        f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
+        _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
+        f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
+
+        # wait for f_ambari_server_install
+        wait
+        _log "INFO" "Waiting for $r_AMBARI_HOST 8080 ready..."
         _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log
-        if [ $? -eq 0 ]; then
-            f_run_cmd_on_nodes "ambari-agent start" &> /dev/null
-            _ambari_agent_wait &> /dev/null
-            if [ $? -ne 0 ]; then
-                _log "INFO" "Starting f_ambari_agent_install"
-                f_ambari_agent_install &>> /tmp/p_host_setup.log
-                _log "INFO" "Starting f_ambari_agent_fix_public_hostname"
-                f_ambari_agent_fix_public_hostname &>> /tmp/p_host_setup.log
-                _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
-                f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
-               _ambari_agent_wait &>> /tmp/p_host_setup.log
-            fi
-            _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
-            f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
-        else
-            _log "WARN" "Ambari Server may not be running but keep continuing..."
-        fi
 
         if _isYes "$r_HDP_LOCAL_REPO"; then
             _log "INFO" "Starting f_local_repo"
