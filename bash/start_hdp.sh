@@ -1490,13 +1490,10 @@ function f_ambari_agent_install() {
 
     scp -q root@$_ambari_host:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo || return $?
 
-    #local _cmd="yum install ambari-agent -y && grep "^hostname=$r_AMBARI_HOST"/etc/ambari-agent/conf/ambari-agent.ini || sed -i.bak "s@hostname=.+$@hostname=$r_AMBARI_HOST@1" /etc/ambari-agent/conf/ambari-agent.ini"
-    local _cmd="which ambari-agent 2>/dev/null || yum install ambari-agent -y && ambari-agent reset $_ambari_host)"
-
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo root@${_node}$_n${_domain}:/etc/yum.repos.d/
         # Executing yum command one by one (not parallel)
-        ssh -q -t root@${_node}$_n${_domain} "$_cmd" &
+        ssh -q -t root@${_node}$_n${_domain} "nohup bash -c \"which ambari-agent 2>/dev/null || yum install ambari-agent -y && ambari-agent reset $_ambari_host)\" &"
         sleep 1
     done
 
