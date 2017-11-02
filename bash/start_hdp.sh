@@ -1352,11 +1352,11 @@ function f_ambari_server_install() {
 }
 
 function f_ambari_server_start() {
-    local __doc__="Starting ambari-server on $r_AMBARI_HOST"
+    local __doc__="Starting ambari-server on $r_AMBARI_HOST if not started yet"
     _port_wait "$r_AMBARI_HOST" "22"
-    ssh -q root@$r_AMBARI_HOST "ambari-server start --skip-database-check --silent" &> /tmp/f_ambari_server_start.out
+    ssh -q root@$r_AMBARI_HOST "ambari-server start --skip-database-check" &> /tmp/f_ambari_server_start.out
     if [ $? -ne 0 ]; then
-        grep 'Ambari Server is already running' /tmp/f_ambari_server_start.out && return
+        grep -q 'REASON: Ambari Server is already running' /tmp/f_ambari_server_start.out && return
         sleep 5
         ssh -q root@$r_AMBARI_HOST "ambari-server start --skip-database-check"
     fi
