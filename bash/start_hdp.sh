@@ -1479,7 +1479,7 @@ function p_post_install_changes() {
 }
 
 function f_ambari_agent_install() {
-    local __doc__="Installing ambari-agent on all containers for manual registration"
+    local __doc__="Installing ambari-agent on all containers for manual registration (not starting)"
     # ./start_hdp.sh -r ./node11-14_2.5.0.resp -f "f_ambari_agent_install 1 16"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
@@ -1491,7 +1491,7 @@ function f_ambari_agent_install() {
     scp -q root@$_ambari_host:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo || return $?
 
     #local _cmd="yum install ambari-agent -y && grep "^hostname=$r_AMBARI_HOST"/etc/ambari-agent/conf/ambari-agent.ini || sed -i.bak "s@hostname=.+$@hostname=$r_AMBARI_HOST@1" /etc/ambari-agent/conf/ambari-agent.ini"
-    local _cmd="which ambari-agent 2>/dev/null || yum install ambari-agent -y && ambari-agent reset $_ambari_host"
+    local _cmd="which ambari-agent 2>/dev/null || yum install ambari-agent -y && ambari-agent reset $_ambari_host)"
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo root@${_node}$_n${_domain}:/etc/yum.repos.d/
@@ -1499,7 +1499,21 @@ function f_ambari_agent_install() {
         ssh -q -t root@${_node}$_n${_domain} "$_cmd" &
         sleep 1
     done
-    wait
+
+    local _ok=0
+    for _i in {1..30}; do
+        _ok=0
+        sleep 20
+        for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+            ssh -q -t root@${_node}$_n${_domain} "grep -qw $_ambari_host /etc/ambari-agent/conf/ambari-agent.ini 2>/dev/null"
+            if [ $? -eq 0 ]; then
+                _ok=$(( $_ok + 1 ))
+                [ $_ok -eq $_how_many ] && return 0
+                continue
+            fi
+            _info "No agent on ${_node}$_n${_domain}"
+        done
+    done
 }
 
 function f_run_cmd_on_nodes() {
@@ -2028,6 +2042,7 @@ function p_host_setup() {
             f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" &>> /tmp/p_host_setup.log
         fi
 
+        _ambari_agent_wait &>> /tmp/p_host_setup.log
         if _isYes "$r_AMBARI_BLUEPRINT"; then
             _log "INFO" "Starting p_ambari_blueprint"
             p_ambari_blueprint &>> /tmp/p_host_setup.log
