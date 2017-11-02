@@ -1997,8 +1997,8 @@ function p_host_setup() {
     fi
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
-        _log "INFO" "Starting f_ambari_server_install in background"
-        f_ambari_server_install &>> /tmp/p_host_setup.log &
+        _log "INFO" "Starting f_ambari_server_install"
+        f_ambari_server_install &>> /tmp/p_host_setup.log
 
         _log "INFO" "Starting f_ambari_agent_install"
         f_ambari_agent_install &>> /tmp/p_host_setup.log
@@ -2010,7 +2010,6 @@ function p_host_setup() {
         f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
 
         # wait for f_ambari_server_install
-        wait
         _log "INFO" "Waiting for $r_AMBARI_HOST 8080 ready..."
         _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log
 
