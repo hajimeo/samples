@@ -1493,8 +1493,10 @@ function f_ambari_agent_install() {
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo root@${_node}$_n${_domain}:/etc/yum.repos.d/
         # Executing yum command one by one (not parallel)
-        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || (yum install ambari-agent -y && ambari-agent reset $_ambari_host)"
+        ssh -q root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || (yum install ambari-agent -y && ambari-agent reset $_ambari_host)" &
+        sleep 1
     done
+    wait $!
 }
 
 function f_run_cmd_on_nodes() {
@@ -1998,20 +2000,20 @@ function p_host_setup() {
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         _log "INFO" "Starting f_ambari_server_install"
-        f_ambari_server_install &>> /tmp/p_host_setup.log
-
+        f_ambari_server_install &>> /tmp/p_host_setup.log &
         _log "INFO" "Starting f_ambari_agent_install"
         f_ambari_agent_install &>> /tmp/p_host_setup.log
+
+        # wait for f_ambari_server_install
+        _log "INFO" "Waiting for $r_AMBARI_HOST 8080 ready..."
+        _port_wait "$r_AMBARI_HOST" "8080" 20 30 &>> /tmp/p_host_setup.log || return $?
+
         _log "INFO" "Starting f_ambari_agent_fix_public_hostname"
         f_ambari_agent_fix_public_hostname &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
         f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
         f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
-
-        # wait for f_ambari_server_install
-        _log "INFO" "Waiting for $r_AMBARI_HOST 8080 ready..."
-        _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log
 
         if _isYes "$r_HDP_LOCAL_REPO"; then
             _log "INFO" "Starting f_local_repo"
@@ -2032,7 +2034,7 @@ function p_host_setup() {
     fi
 
     f_port_forward_ssh_on_nodes
-    _log "INFO" "Completed. Grepping ERRORs and WORNs from /tmp/p_host_setup.log"
+    _log "INFO" "Completed. Grepping ERRORs and WARNs from /tmp/p_host_setup.log"
     grep -Ew '(ERROR|WARN)' /tmp/p_host_setup.log
     _log "INFO" "Please run p_post_install_changes when HDFS is running."
 
