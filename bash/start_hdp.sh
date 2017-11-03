@@ -1489,7 +1489,8 @@ function f_ambari_agent_install() {
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
     if [ ! -s /tmp/ambari.repo_${__PID} ]; then
-        scp -q root@$_ambari_host:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo_${__PID} || return $?
+        _info "No /tmp/ambari.repo_${__PID} in local, so trying to get from $_ambari_host ..."
+        scp root@$_ambari_host:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo_${__PID} || return $?
     fi
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
