@@ -1495,10 +1495,7 @@ function f_ambari_agent_install() {
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
-    if [ ! -s /tmp/ambari.repo_${__PID} ]; then
-        _info "No /tmp/ambari.repo_${__PID} in local, so trying to get from $_ambari_host ..."
-        scp root@$_ambari_host:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo_${__PID} || return $?
-    fi
+    [ ! -s "/tmp/ambari.repo_${__PID}" ] && f_get_ambari_repo_file
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/
@@ -1506,7 +1503,21 @@ function f_ambari_agent_install() {
         ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || (yum install ambari-agent -y && ambari-agent reset $_ambari_host)" &
         sleep 1
     done
-    wait $?
+
+    local _ok=0
+    for _i in {1..30}; do
+        _ok=0
+        sleep 20
+        for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+            ssh -q -t root@${_node}$_n${_domain} "grep -qw $_ambari_host /etc/ambari-agent/conf/ambari-agent.ini 2>/dev/null"
+            if [ $? -eq 0 ]; then
+                _ok=$(( $_ok + 1 ))
+                [ $_ok -eq $_how_many ] && return 0
+                continue
+            fi
+            _info "No agent on ${_node}$_n${_domain}"
+        done
+    done
 }
 
 function f_run_cmd_on_nodes() {
@@ -2010,7 +2021,7 @@ function p_host_setup() {
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         _log "INFO" "Starting f_ambari_server_install"
-        f_get_ambari_repo_file
+        f_get_ambari_repo_file &>> /tmp/p_host_setup.log
         f_ambari_server_install &>> /tmp/p_host_setup.log &
         _log "INFO" "Starting f_ambari_agent_install"
         f_ambari_agent_install &>> /tmp/p_host_setup.log || return $?
