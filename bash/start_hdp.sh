@@ -1501,7 +1501,7 @@ function f_ambari_agent_install() {
         # Executing yum command one by one
         ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y" &
     done
-    wait $?
+    wait
 }
 
 function f_run_cmd_on_nodes() {
@@ -2005,14 +2005,14 @@ function p_host_setup() {
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
+        _log "INFO" "Starting f_ambari_server_install"
+        f_ambari_server_install &>> /tmp/p_host_setup.log &
         _log "INFO" "Starting f_ambari_agent_install"
         f_ambari_agent_install &>> /tmp/p_host_setup.log || return $?
-        _log "INFO" "Starting f_ambari_server_install"
-        f_ambari_server_install &>> /tmp/p_host_setup.log
 
         # wait for f_ambari_server_install
         _log "INFO" "Waiting for $r_AMBARI_HOST 8080 ready..."
-        _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log || return $?
+        _port_wait "$r_AMBARI_HOST" "8080" 10 20 &>> /tmp/p_host_setup.log || return $?
 
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent reset $r_AMBARI_HOST"
         f_run_cmd_on_nodes "ambari-agent reset $r_AMBARI_HOST" &>> /tmp/p_host_setup.log
