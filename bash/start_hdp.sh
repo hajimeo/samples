@@ -1998,7 +1998,7 @@ function p_host_setup() {
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         _log "INFO" "Starting f_ambari_server_install"
-        f_ambari_server_install &>> /tmp/p_host_setup.log &
+        f_ambari_server_install &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_ambari_agent_install"
         f_ambari_agent_install &>> /tmp/p_host_setup.log
 
