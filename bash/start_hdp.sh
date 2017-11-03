@@ -1498,24 +1498,9 @@ function f_ambari_agent_install() {
     [ ! -s "/tmp/ambari.repo_${__PID}" ] && f_get_ambari_repo_file
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/
-        # Executing yum command parallel TODO: somehow "ssh" doesn't work with &
-        docker exec -d ${_node}$_n bash -c "which ambari-agent 2>/dev/null || (yum install ambari-agent -y && ambari-agent reset $_ambari_host)" || return $?
-    done
-
-    local _ok=0
-    for _i in {1..20}; do
-        _ok=0
-        sleep 30
-        for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-            ssh -q -t root@${_node}$_n${_domain} "grep -qw $_ambari_host /etc/ambari-agent/conf/ambari-agent.ini 2>/dev/null"
-            if [ $? -eq 0 ]; then
-                _ok=$(( $_ok + 1 ))
-                [ $_ok -eq $_how_many ] && return 0
-                continue
-            fi
-            _info "No agent on ${_node}$_n${_domain}"
-        done
+        scp -q /tmp/ambari.repo root@${_node}$_n${_domain}:/etc/yum.repos.d/
+        # Executing yum command one by one (not parallel)
+        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || (yum install ambari-agent -y && ambari-agent reset $_ambari_host)"
     done
 }
 
