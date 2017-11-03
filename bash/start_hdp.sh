@@ -1490,7 +1490,6 @@ function f_ambari_agent_install() {
     # ./start_hdp.sh -r ./node11-14_2.5.0.resp -f "f_ambari_agent_install 1 16"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _ambari_host="${3-$r_AMBARI_HOST}"
 
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
@@ -1499,9 +1498,10 @@ function f_ambari_agent_install() {
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo root@${_node}$_n${_domain}:/etc/yum.repos.d/
-        # Executing yum command one by one (not parallel)
-        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || (yum install ambari-agent -y && ambari-agent reset $_ambari_host)"
+        # Executing yum command one by one
+        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y" &
     done
+    wait $?
 }
 
 function f_run_cmd_on_nodes() {
@@ -2014,6 +2014,8 @@ function p_host_setup() {
         _log "INFO" "Waiting for $r_AMBARI_HOST 8080 ready..."
         _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log || return $?
 
+        _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent reset $r_AMBARI_HOST"
+        f_run_cmd_on_nodes "ambari-agent reset $r_AMBARI_HOST" &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_ambari_agent_fix_public_hostname"
         f_ambari_agent_fix_public_hostname &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
