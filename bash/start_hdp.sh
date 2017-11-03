@@ -1319,14 +1319,14 @@ function f_ambari_server_install() {
 
     # TODO: at this moment, only Centos (yum)
     if _isUrl "$r_AMBARI_REPO_FILE"; then
-        wget -nv -c -t 3 --timeout=30 --waitretry=5 "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo || return 1
+        wget -nv -c -t 3 --timeout=30 --waitretry=5 "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo_$$ || return 1
     else
         if [ ! -r "$r_AMBARI_REPO_FILE" ]; then
             _error "Please specify readable Ambari repo file or URL"
             return 1
         fi
 
-        cp -f "$r_AMBARI_REPO_FILE" /tmp/ambari.repo
+        cp -f "$r_AMBARI_REPO_FILE" /tmp/ambari.repo_$$
     fi
 
     if _isUrl "$r_AMBARI_JDK_URL"; then
@@ -1336,8 +1336,8 @@ function f_ambari_server_install() {
         ssh -q root@$r_AMBARI_HOST "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JCE_URL\" -O"
     fi
 
-    _info "Copying ambari.repo to $r_AMBARI_HOST ..."
-    scp -q /tmp/ambari.repo root@$r_AMBARI_HOST:/etc/yum.repos.d/ || return $?
+    _info "Copying /tmp/ambari.repo_$$ to $r_AMBARI_HOST ..."
+    scp -q /tmp//tmp/ambari.repo_$$ root@$r_AMBARI_HOST:/etc/yum.repos.d/tmp/ambari.repo || return $?
 
     _info "Installing ambari-server on $r_AMBARI_HOST ..."
     ssh -q root@$r_AMBARI_HOST "yum clean all; yum install ambari-server -y && service postgresql initdb && service postgresql restart && for i in {1..3}; do [ -e /tmp/.s.PGSQL.5432 ] && break; sleep 5; done; ambari-server setup -s || ( echo 'ERROR ambari-server setup failed! Trying one more time...'; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
@@ -1488,10 +1488,12 @@ function f_ambari_agent_install() {
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
-    scp -q root@$_ambari_host:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo || return $?
+    if [ ! -s /tmp/ambari.repo_$$ ]; then
+        scp -q root@$_ambari_host:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo_$$ || return $?
+    fi
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        scp -q /tmp/ambari.repo root@${_node}$_n${_domain}:/etc/yum.repos.d/
+        scp -q /tmp/ambari.repo_$$ root@${_node}$_n${_domain}:/etc/yum.repos.d/
         # Executing yum command one by one (not parallel)
         ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || (yum install ambari-agent -y && ambari-agent reset $_ambari_host)" &
         sleep 1
@@ -2000,9 +2002,9 @@ function p_host_setup() {
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         _log "INFO" "Starting f_ambari_server_install"
-        f_ambari_server_install &>> /tmp/p_host_setup.log
+        f_ambari_server_install &>> /tmp/p_host_setup.log &
         _log "INFO" "Starting f_ambari_agent_install"
-        f_ambari_agent_install &>> /tmp/p_host_setup.log
+        f_ambari_agent_install &>> /tmp/p_host_setup.log || return $?
 
         # wait for f_ambari_server_install
         _log "INFO" "Waiting for $r_AMBARI_HOST 8080 ready..."
