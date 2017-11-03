@@ -1304,31 +1304,31 @@ function f_get_cluster_name() {
     echo "$_c"
 }
 
-function f_ambari_server_install() {
-    local __doc__="Install Ambari Server to $r_AMBARI_HOST and start"
-    if [ -z "$r_AMBARI_REPO_FILE" ]; then
+function f_get_ambari_repo_file() {
+    local __doc__="Download the ambari.repo file"
+    local _file="${1-$r_AMBARI_REPO_FILE}"
+
+    if [ -z "$_file" ]; then
         _error "Please specify Ambari repo *file* URL"
         return 1
     fi
 
-    _port_wait "$r_AMBARI_HOST" "8080" 1 &>/dev/null
-    if [ $? -eq 0 ]; then
-        _warn "Something is already listening on $r_AMBARI_HOST:8080"
-        return 1
-    fi
-
-    # TODO: at this moment, only Centos (yum)
-    if _isUrl "$r_AMBARI_REPO_FILE"; then
-        wget -nv -c -t 3 --timeout=30 --waitretry=5 "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo_${__PID} || return 1
+    if _isUrl "$_file"; then
+        wget -nv -c -t 3 --timeout=30 --waitretry=5 "$_file" -O /tmp/ambari.repo_${__PID} || return 1
     else
-        if [ ! -r "$r_AMBARI_REPO_FILE" ]; then
+        if [ ! -r "$_file" ]; then
             _error "Please specify readable Ambari repo file or URL"
             return 1
         fi
 
-        cp -f "$r_AMBARI_REPO_FILE" /tmp/ambari.repo_${__PID}
+        cp -f "$_file" /tmp/ambari.repo_${__PID}
     fi
+}
 
+function f_ambari_server_install() {
+    local __doc__="Install Ambari Server to $r_AMBARI_HOST and start"
+
+    # TODO: at this moment, only Centos (yum)
     if _isUrl "$r_AMBARI_JDK_URL"; then
         ssh -q root@$r_AMBARI_HOST "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JDK_URL\" -O"
     fi
@@ -1336,6 +1336,13 @@ function f_ambari_server_install() {
         ssh -q root@$r_AMBARI_HOST "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JCE_URL\" -O"
     fi
 
+    _port_wait "$_file" "8080" 1 &>/dev/null
+    if [ $? -eq 0 ]; then
+        _warn "Something is already listening on $_file:8080"
+        return 1
+    fi
+
+    [ ! -s "/tmp/ambari.repo_${__PID}" ] && f_get_ambari_repo_file
     _info "Copying /tmp/ambari.repo_${__PID} to $r_AMBARI_HOST ..."
     scp -q /tmp/ambari.repo_${__PID} root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo || return $?
 
@@ -2003,6 +2010,7 @@ function p_host_setup() {
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         _log "INFO" "Starting f_ambari_server_install"
+        f_get_ambari_repo_file
         f_ambari_server_install &>> /tmp/p_host_setup.log &
         _log "INFO" "Starting f_ambari_agent_install"
         f_ambari_agent_install &>> /tmp/p_host_setup.log || return $?
