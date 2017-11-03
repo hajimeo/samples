@@ -625,7 +625,7 @@ function f_ambari_blueprint_cluster_config() {
     }'
     fi
 
-    local _clients=',{"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"ZOOKEEPER_CLIENT"}, {"name":"HCAT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}'
+    local _clients=',{"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"HCAT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}'
     # TODO: Ambari 2.5.1 can't set hive.exec.post.hooks, probably a bug in Ambari (probably regression bug of AMBARI-17802)
     echo '{
   "configurations" : [
@@ -760,7 +760,7 @@ function f_ambari_blueprint_cluster_config() {
         },
         {
           "name" : "SECONDARY_NAMENODE"
-        }, {"name":"SLIDER"}'${_clients}${_extra_comps_3}'
+        }, {"name":"SLIDER"}, {"name":"ZOOKEEPER_CLIENT"}'${_clients}${_extra_comps_3}'
       ],
       "configurations" : [ ],
       "cardinality" : "1"
