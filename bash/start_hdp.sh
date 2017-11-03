@@ -1493,10 +1493,8 @@ function f_ambari_agent_install() {
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo root@${_node}$_n${_domain}:/etc/yum.repos.d/
         # Executing yum command one by one (not parallel)
-        ssh -q root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || (yum install ambari-agent -y && ambari-agent reset $_ambari_host)" &
-        sleep 1
+        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || (yum install ambari-agent -y && ambari-agent reset $_ambari_host)"
     done
-    wait $!
 }
 
 function f_run_cmd_on_nodes() {
