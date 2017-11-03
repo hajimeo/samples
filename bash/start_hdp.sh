@@ -2020,15 +2020,15 @@ function p_host_setup() {
     fi
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
-        _log "INFO" "Starting f_ambari_server_install"
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
-        f_ambari_server_install &>> /tmp/p_host_setup.log &
         _log "INFO" "Starting f_ambari_agent_install"
         f_ambari_agent_install &>> /tmp/p_host_setup.log || return $?
+        _log "INFO" "Starting f_ambari_server_install"
+        f_ambari_server_install &>> /tmp/p_host_setup.log
 
         # wait for f_ambari_server_install
         _log "INFO" "Waiting for $r_AMBARI_HOST 8080 ready..."
-        _port_wait "$r_AMBARI_HOST" "8080" 20 30 &>> /tmp/p_host_setup.log || return $?
+        _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log || return $?
 
         _log "INFO" "Starting f_ambari_agent_fix_public_hostname"
         f_ambari_agent_fix_public_hostname &>> /tmp/p_host_setup.log
