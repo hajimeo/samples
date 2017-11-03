@@ -1337,7 +1337,7 @@ function f_ambari_server_install() {
     fi
 
     _info "Copying /tmp/ambari.repo_$$ to $r_AMBARI_HOST ..."
-    scp -q /tmp//tmp/ambari.repo_$$ root@$r_AMBARI_HOST:/etc/yum.repos.d/tmp/ambari.repo || return $?
+    scp -q /tmp/ambari.repo_$$ root@$r_AMBARI_HOST:/etc/yum.repos.d/tmp/ambari.repo || return $?
 
     _info "Installing ambari-server on $r_AMBARI_HOST ..."
     ssh -q root@$r_AMBARI_HOST "yum clean all; yum install ambari-server -y && service postgresql initdb && service postgresql restart && for i in {1..3}; do [ -e /tmp/.s.PGSQL.5432 ] && break; sleep 5; done; ambari-server setup -s || ( echo 'ERROR ambari-server setup failed! Trying one more time...'; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
