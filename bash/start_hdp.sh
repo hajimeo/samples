@@ -1347,7 +1347,7 @@ function f_ambari_server_install() {
     scp -q /tmp/ambari.repo_${__PID} root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo || return $?
 
     _info "Installing ambari-server on $r_AMBARI_HOST ..."
-    ssh -q root@$r_AMBARI_HOST "yum clean all; yum install ambari-server -y && service postgresql initdb && service postgresql restart && for i in {1..3}; do [ -e /tmp/.s.PGSQL.5432 ] && break; sleep 5; done; ambari-server setup -s || ( echo 'ERROR ambari-server setup failed! Trying one more time...'; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
+    ssh -q root@$r_AMBARI_HOST "yum clean all; yum install ambari-server -y; sleep 5; ambari-server setup -s || ( echo 'ERROR ambari-server setup failed! Trying one more time...'; sleep 5; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
 
     if [ $? -ne 0 ]; then
         _error "Ambari installation failed with exit code $?."
