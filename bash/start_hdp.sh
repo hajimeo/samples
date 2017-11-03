@@ -1326,7 +1326,18 @@ function f_get_ambari_repo_file() {
 }
 
 function f_ambari_server_install() {
-    local __doc__="Install Ambari Server to $r_AMBARI_HOST and start"
+    local __doc__="Install Ambari Server to $r_AMBARI_HOST"
+
+    [ ! -s "/tmp/ambari.repo_${__PID}" ] && f_get_ambari_repo_file
+    _info "Copying /tmp/ambari.repo_${__PID} to $r_AMBARI_HOST ..."
+    scp -q /tmp/ambari.repo_${__PID} root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo || return $?
+
+    _info "Installing ambari-server on $r_AMBARI_HOST ..."
+    ssh -q root@$r_AMBARI_HOST "yum clean all && yum install ambari-server -y && service postgresql initdb; service postgresql restart"
+}
+
+function f_ambari_server_setup() {
+    local __doc__="Setup Ambari Server on $r_AMBARI_HOST"
 
     # TODO: at this moment, only Centos (yum)
     if _isUrl "$r_AMBARI_JDK_URL"; then
@@ -1347,15 +1358,7 @@ function f_ambari_server_install() {
     scp -q /tmp/ambari.repo_${__PID} root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo || return $?
 
     _info "Installing ambari-server on $r_AMBARI_HOST ..."
-    ssh -q root@$r_AMBARI_HOST "yum clean all; yum install ambari-server -y; sleep 5; ambari-server setup -s || ( echo 'ERROR ambari-server setup failed! Trying one more time...'; sleep 5; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
-
-    if [ $? -ne 0 ]; then
-        _error "Ambari installation failed with exit code $?."
-        return 1
-    fi
-
-    _info "Starting ambari-server..."
-    f_ambari_server_start
+    ssh -q root@$r_AMBARI_HOST "ambari-server setup -s --verbose || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
 }
 
 function f_ambari_server_start() {
@@ -2006,13 +2009,16 @@ function p_host_setup() {
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_ambari_server_install"
-        f_ambari_server_install &>> /tmp/p_host_setup.log &
+        f_ambari_server_install &>> /tmp/p_host_setup.log || return $?
         _log "INFO" "Starting f_ambari_agent_install"
         f_ambari_agent_install &>> /tmp/p_host_setup.log || return $?
+        _log "INFO" "Starting f_ambari_server_setup"
+        f_ambari_server_setup &>> /tmp/p_host_setup.log || return $?
+        _log "INFO" "Starting f_ambari_server_start"
+        f_ambari_server_start &>> /tmp/p_host_setup.log || return $?
 
-        # wait for f_ambari_server_install
         _log "INFO" "Waiting for $r_AMBARI_HOST 8080 ready..."
-        _port_wait "$r_AMBARI_HOST" "8080" 10 20 &>> /tmp/p_host_setup.log || return $?
+        _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log || return $?
 
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent reset $r_AMBARI_HOST"
         f_run_cmd_on_nodes "ambari-agent reset $r_AMBARI_HOST" &>> /tmp/p_host_setup.log
