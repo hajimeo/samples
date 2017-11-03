@@ -783,7 +783,7 @@ function f_ambari_blueprint_cluster_config() {
     "stack_name": "HDP",
     "stack_version": "'$_stack_version'"
   }
-}' > /tmp/f_ambari_blueprint_cluster_config_$$.json
+}' > /tmp/f_ambari_blueprint_cluster_config_${__PID}.json
 
     # %HOSTGROUP::host_group_N% is not reliable, so if _start_from is given, replacing to actual hostname
     if [ ! -z "$_start_from" ]; then
@@ -791,11 +791,11 @@ function f_ambari_blueprint_cluster_config() {
         local _node_num=""
         for i in {1..4}; do
             _node_num="$(( $_start_from + $i - 1 ))"
-            sed -i "s/%HOSTGROUP::host_group_${i}%/${_node}${_node_num}.${_domain_suffix#.}/g" /tmp/f_ambari_blueprint_cluster_config_$$.json
+            sed -i "s/%HOSTGROUP::host_group_${i}%/${_node}${_node_num}.${_domain_suffix#.}/g" /tmp/f_ambari_blueprint_cluster_config_${__PID}.json
         done
     fi
 
-    cat /tmp/f_ambari_blueprint_cluster_config_$$.json
+    cat /tmp/f_ambari_blueprint_cluster_config_${__PID}.json
 }
 
 function f_saveResp() {
@@ -1319,14 +1319,14 @@ function f_ambari_server_install() {
 
     # TODO: at this moment, only Centos (yum)
     if _isUrl "$r_AMBARI_REPO_FILE"; then
-        wget -nv -c -t 3 --timeout=30 --waitretry=5 "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo_$$ || return 1
+        wget -nv -c -t 3 --timeout=30 --waitretry=5 "$r_AMBARI_REPO_FILE" -O /tmp/ambari.repo_${__PID} || return 1
     else
         if [ ! -r "$r_AMBARI_REPO_FILE" ]; then
             _error "Please specify readable Ambari repo file or URL"
             return 1
         fi
 
-        cp -f "$r_AMBARI_REPO_FILE" /tmp/ambari.repo_$$
+        cp -f "$r_AMBARI_REPO_FILE" /tmp/ambari.repo_${__PID}
     fi
 
     if _isUrl "$r_AMBARI_JDK_URL"; then
@@ -1336,8 +1336,8 @@ function f_ambari_server_install() {
         ssh -q root@$r_AMBARI_HOST "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JCE_URL\" -O"
     fi
 
-    _info "Copying /tmp/ambari.repo_$$ to $r_AMBARI_HOST ..."
-    scp -q /tmp/ambari.repo_$$ root@$r_AMBARI_HOST:/etc/yum.repos.d/tmp/ambari.repo || return $?
+    _info "Copying /tmp/ambari.repo_${__PID} to $r_AMBARI_HOST ..."
+    scp -q /tmp/ambari.repo_${__PID} root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo || return $?
 
     _info "Installing ambari-server on $r_AMBARI_HOST ..."
     ssh -q root@$r_AMBARI_HOST "yum clean all; yum install ambari-server -y && service postgresql initdb && service postgresql restart && for i in {1..3}; do [ -e /tmp/.s.PGSQL.5432 ] && break; sleep 5; done; ambari-server setup -s || ( echo 'ERROR ambari-server setup failed! Trying one more time...'; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
@@ -1488,12 +1488,12 @@ function f_ambari_agent_install() {
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
-    if [ ! -s /tmp/ambari.repo_$$ ]; then
-        scp -q root@$_ambari_host:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo_$$ || return $?
+    if [ ! -s /tmp/ambari.repo_${__PID} ]; then
+        scp -q root@$_ambari_host:/etc/yum.repos.d/ambari.repo /tmp/ambari.repo_${__PID} || return $?
     fi
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        scp -q /tmp/ambari.repo_$$ root@${_node}$_n${_domain}:/etc/yum.repos.d/
+        scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/
         # Executing yum command one by one (not parallel)
         ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || (yum install ambari-agent -y && ambari-agent reset $_ambari_host)" &
         sleep 1
@@ -1554,19 +1554,19 @@ function f_ambari_configs() {
     local _c="`f_get_cluster_name $_ambari_host`" || return $?
 
     scp -q root@$_ambari_host:/var/lib/ambari-server/resources/scripts/configs.sh ./ || return $?
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} get $_ambari_host $_c $_type /tmp/${_type}_$$.json || return $?
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} get $_ambari_host $_c $_type /tmp/${_type}_${__PID}.json || return $?
 
     echo "import json
-a=json.loads('{'+open('/tmp/${_type}_$$.json','r').read()+'}')
+a=json.loads('{'+open('/tmp/${_type}_${__PID}.json','r').read()+'}')
 n=json.loads('"${_dict}"')
 a['properties'].update(n)
 s=json.dumps(a['properties'])
-f=open('/tmp/${_type}_updated_$$.json','w')
+f=open('/tmp/${_type}_updated_${__PID}.json','w')
 f.write('\"properties\":'+s)
-f.close()" > /tmp/configs_$$.py
+f.close()" > /tmp/configs_${__PID}.py
 
-    python /tmp/configs_$$.py || return $?
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c $_type /tmp/${_type}_updated_$$.json
+    python /tmp/configs_${__PID}.py || return $?
+    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c $_type /tmp/${_type}_updated_${__PID}.json
 }
 
 function f_ambari_agent_fix_public_hostname() {
