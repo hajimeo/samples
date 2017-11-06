@@ -551,7 +551,7 @@ function f_kerberos_crossrealm_setup() {
 
 function f_ldap_server_install_on_host() {
     local __doc__="Install LDAP server packages on Ubuntu (need to test setup)"
-    local _ldap_domain="$1"
+    local _shared_domain="$1"
     local _password="${2-$g_DEFAULT_PASSWORD}"
 
     if [ ! `which apt-get` ]; then
@@ -559,31 +559,30 @@ function f_ldap_server_install_on_host() {
         return 1
     fi
 
-    if [ -z "$_ldap_domain" ]; then
-        _warn "No LDAP Domain, so using dc=example,dc=com"
-        _ldap_domain="dc=example,dc=com"
-    fi
+    [ -z "$_shared_domain" ] && _shared_domain="example.com"
 
-    local _set_noninteractive=false
-    if [ -z "$DEBIAN_FRONTEND" ]; then
-        export DEBIAN_FRONTEND=noninteractive
-        _set_noninteractive=true
-    fi
-    debconf-set-selections <<EOF
+cat << EOF | debconf-set-selections
+slapd slapd/internal/adminpw password ${_password}
 slapd slapd/internal/generated_adminpw password ${_password}
 slapd slapd/password2 password ${_password}
-slapd slapd/internal/adminpw password ${_password}
 slapd slapd/password1 password ${_password}
-slapd slapd/domain string ${_ldap_domain}
-slapd shared/organization string ${_ldap_domain}
+slapd slapd/dump_database_destdir string /var/backups/slapd-VERSION
+slapd slapd/domain string ${_shared_domain}
+slapd shared/organization string Support
+slapd slapd/backend string HDB
+slapd slapd/purge_database boolean true
+slapd slapd/move_old_database boolean true
+slapd slapd/allow_ldap_v2 boolean true
+slapd slapd/no_configuration boolean false
+slapd slapd/dump_database string when needed
 EOF
-    apt-get install -y slapd ldap-utils
-    if $_set_noninteractive ; then
-        unset DEBIAN_FRONTEND
-    fi
 
-    # test
-    ldapsearch -x -D "cn=admin,${_ldap_domain}" -w "${_password}" # -h ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}
+    DEBIAN_FRONTEND=noninteractive apt-get install -y slapd ldap-utils
+
+    if [ "$_shared_domain" == "example.com" ]; then
+        curl curl -H "accept-encoding: gzip" https://raw.githubusercontent.com/hajimeo/samples/master/misc/example.ldif -o /tmp/example.ldif || return $?
+        ldapadd -x -D cn=admin,dc=example,dc=com -w hadoop -f /tmp/example.ldif
+    fi
 }
 
 function f_ldap_server_install_on_ambari_node() {
@@ -600,21 +599,35 @@ function f_ldap_server_install_on_ambari_node() {
     # slapd ldapsearch install TODO: chkconfig slapd on wouldn't do anything on docker container
     ssh root@$_server -t "yum install openldap openldap-servers openldap-clients -y" || return $?
     ssh root@$_server -t "cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG ; chown ldap. /var/lib/ldap/DB_CONFIG && /etc/rc.d/init.d/slapd start" || return $?
-    local _md5=""
-    _md5="`ssh root@$_server -t "slappasswd -s ${_password}"`" || return $?
+}
+
+function f_ldap_server_configure() {
+    local __doc__="TODO: Configure LDAP server via SSH (requires password-less ssh)"
+    local _ldap_domain="$1"
+    local _password="${2-$g_DEFAULT_PASSWORD}"
+    local _server="${3-localhost}"
+
+    if [ -z "$_ldap_domain" ]; then
+        _ldap_domain="dc=example,dc=com"
+        _warn "No LDAP Domain, so using ${_ldap_domain}"
+    fi
+
+    local _md5="`ssh root@$_server -t "slappasswd -s ${_password}"`" || return $?
 
     if [ -z "$_md5" ]; then
         _error "Couldn't generate hashed password"
         return 1
     fi
 
-    ssh root@$_server -t 'cat "dn: olcDatabase={0}config,cn=config
+    _info "Updating password"
+    ssh -q root@$_server -t 'echo "dn: olcDatabase={0}config,cn=config
 changetype: modify
 add: olcRootPW
 olcRootPW: '${_md5}'
 " > /tmp/chrootpw.ldif && ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/chrootpw.ldif' || return $?
 
-    ssh root@$_server -t 'cat "dn: olcDatabase={1}monitor,cn=config
+    _info "Updating domain"
+    ssh -q root@$_server -t 'echo "dn: olcDatabase={1}monitor,cn=config
 changetype: modify
 replace: olcAccess
 olcAccess: {0}to * by dn.base="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth"
@@ -644,7 +657,8 @@ olcAccess: {1}to dn.base="" by * read
 olcAccess: {2}to * by dn="cn=Manager,'${_ldap_domain}'" write by * read
 " > /tmp/chdomain.ldif && ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/chdomain.ldif' || return $?
 
-    ssh root@$_server -t 'dn: '${_ldap_domain}'
+    _info "Updating base domain"
+    ssh root@$_server -t 'echo "dn: '${_ldap_domain}'
 objectClass: top
 objectClass: dcObject
 objectclass: organization
