@@ -30,8 +30,7 @@
 # Example 3: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
 #   source ./setup_security.sh && f_loadResp
 #   mkdir ssl_setup; cd ssl_setup
-#   f_hadoop_ssl_setup       # with wildcard certificate
-#   f_hadoop_ssl_setup "" "" $r_AMBARI_HOST 8080 $r_NUM_NODES $r_NODE_START_NUM $r_DOMAIN_SUFFIX N # No wildcard cert
+#   f_hadoop_ssl_setup
 #
 # If Sandbox:
 # NOTE sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
@@ -342,7 +341,7 @@ function f_hadoop_ssl_setup() {
         # Step1: create my root CA (key) TODO: -aes256
         openssl genrsa -out rootCA.key 4096 || return $?
         # Step2: create root CA's cert (pem)
-        openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.support.hortonworks.com" -passin "pass:$_password" || return $?
+        openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.`hostname -s`.hortonworks.com" -passin "pass:$_password" || return $?
         chmod 600 ./rootCA.key
     fi
 
@@ -414,8 +413,8 @@ function _hadoop_ssl_per_node() {
     ssh -q root@${_node} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}; mkdir -m 755 -p ${g_CLIENT_TRUST_LOCATION%/}"
     scp ./$g_CLIENT_TRUSTSTORE_FILE root@${_node}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
 
-    # Not using "! -s" because if a path is given, shouldn't try generating jks on each node
-    if [ -z "$_local_keystore_path" ]; then
+    if [ ! -s "$_local_keystore_path" ]; then
+        _info "$_local_keystore_path doesn't exist in local, so that recreate and push to nodes..."
         _hadoop_ssl_per_node_inner "$_node" "$_java_default_truststore_path"
     else
         scp ./rootCA.pem $_local_keystore_path root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
