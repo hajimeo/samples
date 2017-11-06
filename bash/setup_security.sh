@@ -421,9 +421,9 @@ function _hadoop_ssl_per_node() {
         scp ./rootCA.pem $_local_keystore_path root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
     fi
 
-    ssh -q root@${_node} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
-    # TODO: For ranger. if file exist, need to import the certificate
+    # TODO: For ranger. if file exist, need to import the certificate. Also if not kerberos, two way SSL won't work because of non 'usr_client' extension
     ssh -q root@${_node} 'for l in `ls -d /usr/hdp/current/*/conf`; do ln -s /etc/hadoop/secure/clientKeys/all.jks ${l%/}/ranger-plugin-truststore.jks 2>/dev/null; done'
+    ssh -q root@${_node} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
 }
 
 function _hadoop_ssl_per_node_inner() {
