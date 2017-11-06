@@ -12,7 +12,8 @@
 #
 # Example 1: How to set up Kerberos
 #   source ./setup_security.sh && f_loadResp
-    #   f_kdc_install_on_host && f_ambari_kerberos_setup
+#   f_kdc_install_on_host
+#   f_ambari_kerberos_setup
 #
 # If Sandbox (after KDC setup):
 # NOTE: sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
@@ -229,11 +230,11 @@ function f_ambari_kerberos_setup() {
     #response=$(curl --write-out %{http_code} -s -o /dev/null "${_api_uri}/configurations/service_config_versions?service_name=KERBEROS")
 
     _info "Storing KDC admin credential temporarily"
-    curl -s -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/credentials/kdc.admin.credential" -d '{ "Credential" : { "principal" : "admin/admin@'$_realm'", "key" : "'$_password'", "type" : "temporary" } }'
+    curl -s -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}/credentials/kdc.admin.credential" -d '{ "Credential" : { "principal" : "admin/admin@'$_realm'", "key" : "'$_password'", "type" : "temporary" } }' &>/dev/null
 
     _info "Delete existing KERBEROS service (if exists)"
-    curl -s -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
-    curl -s -H "X-Requested-By:ambari" -u admin:admin -X DELETE "${_api_uri}/services/KERBEROS"
+    curl -s -H "X-Requested-By:ambari" -u admin:admin -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}' &>/dev/null
+    curl -s -H "X-Requested-By:ambari" -u admin:admin -X DELETE "${_api_uri}/services/KERBEROS" &>/dev/null
     sleep 3
 
     _info "register Kerberos service and component"
@@ -520,7 +521,7 @@ function f_hadoop_spnego_setup() {
     echo "curl -si -u admin:admin -H 'X-Requested-By:ambari' 'http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests' -X POST --data '{\"RequestInfo\":{\"command\":\"RESTART\",\"context\":\"Restart all required services\",\"operation_level\":\"host_component\"},\"Requests/resource_filters\":[{\"hosts_predicate\":\"HostRoles/stale_configs=true\"}]}'"
 }
 
-function f_crossrealm_setup() {
+function f_kerberos_crossrealm_setup() {
     local __doc__="TODO: Setup cross realm (MIT only). Requires Password-less SSH login"
     local _remote_kdc="$1"
     local _remote_ambari="$2"
@@ -542,6 +543,9 @@ function f_crossrealm_setup() {
 
     kadmin.local -q "add_principal -pw $_password krbtgt/${_remote_realm}@${_local_realm}" || return 31
     ssh -q root@${_remote_kdc} kadmin.local -q "add_principal -pw $_password krbtgt/${_local_realm}@${_remote_realm}" || return 32
+    # - set hadoop.security.auth_to_local for both clusters
+    # - set [capaths] in both clusters
+    # - set dfs.namenode.kerberos.principal.pattern = *
 }
 
 
