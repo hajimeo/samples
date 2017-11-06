@@ -323,7 +323,7 @@ function f_hadoop_ssl_setup() {
     local _how_many="${5-$r_NUM_NODES}"
     local _start_from="${6-$r_NODE_START_NUM}"
     local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
-    local _use_wildcard_cert="${8-Y}"
+    local _use_wildcard_cert="${8-N}" # TODO: getting "hostname mismatch"
     local _no_updating_ambari_config="${9-$r_NO_UPDATING_AMBARI_CONFIG}"
     local _work_dir="${8-./}"
 
