@@ -1506,7 +1506,7 @@ function f_ambari_agent_install() {
     [ ! -s "/tmp/ambari.repo_${__PID}" ] && f_get_ambari_repo_file
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/
+        scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo
         # Executing yum command one by one
         ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y" &
     done
