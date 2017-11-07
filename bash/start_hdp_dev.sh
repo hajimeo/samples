@@ -289,7 +289,7 @@ function p_nodes_create() {
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix"
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
     f_ambari_agent_install "$_how_many" "$_start_from" "$_ambari_host"
-    f_ambari_agent_fix_public_hostname "$_how_many" "$_start_from"
+    f_ambari_agent_fix "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
 }
@@ -1587,7 +1587,7 @@ f.close()" > /tmp/configs_${__PID}.py
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c $_type /tmp/${_type}_updated_${__PID}.json
 }
 
-function f_ambari_agent_fix_public_hostname() {
+function f_ambari_agent_fix() {
     local __doc__="Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
@@ -1596,6 +1596,7 @@ function f_ambari_agent_fix_public_hostname() {
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "sed -i.bak -e '/^verify/ s/\(platform_default\|enable\)/disable/' /etc/python/cert-verification.cfg 2>/dev/null"
     done
 }
 
@@ -2034,8 +2035,8 @@ function p_host_setup() {
 
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent reset $r_AMBARI_HOST"
         f_run_cmd_on_nodes "ambari-agent reset $r_AMBARI_HOST" &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_ambari_agent_fix_public_hostname"
-        f_ambari_agent_fix_public_hostname &>> /tmp/p_host_setup.log
+        _log "INFO" "Starting f_ambari_agent_fix"
+        f_ambari_agent_fix &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
         f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
