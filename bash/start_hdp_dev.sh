@@ -6,7 +6,7 @@
 # 1. Install OS. Recommend Ubuntu 14.x
 # 2. sudo -i    (TODO: only root works at this moment)
 # 3. (optional) screen
-# 4. curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_hdp.sh
+# 4. curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_hdp_dev.sh
 # 5. chmod u+x ./start_hdp.sh
 # 6. ./start_hdp.sh -i    or './start_hdp.sh -a' for full automated installation
 # 7. answer questions
@@ -1512,7 +1512,7 @@ function f_ambari_agent_install() {
     done
     wait
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent" || return $?
+        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y" || return $?
     done
 }
 
