@@ -1511,6 +1511,9 @@ function f_ambari_agent_install() {
         ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y" &
     done
     wait
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent" || return $?
+    done
 }
 
 function f_run_cmd_on_nodes() {
