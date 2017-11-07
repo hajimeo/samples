@@ -1472,6 +1472,9 @@ function f_tunnel() {
 function p_post_install_changes() {
     local __doc__="Change some configurations for Dev cluster"
 
+    _info "Using urandom instead of random"
+    f_ambari_java_random
+
     # TODO: need to find the best way to find the first time
     local _c="`_ambari_query_sql "select count(*) from alert_definition where schedule_interval = 1;" $r_AMBARI_HOST`"
     if [ 0 -ne $_c ]; then
@@ -2023,7 +2026,6 @@ function p_host_setup() {
         f_ambari_agent_install &>> /tmp/p_host_setup.log || return $?
         _log "INFO" "Starting f_ambari_server_setup"
         f_ambari_server_setup &>> /tmp/p_host_setup.log || return $?
-        f_ambari_java_random
         _log "INFO" "Starting f_ambari_server_start"
         f_ambari_server_start &>> /tmp/p_host_setup.log || return $?
 
