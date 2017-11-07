@@ -297,6 +297,7 @@ function p_nodes_create() {
 function p_hdp_start() {
     f_loadResp
     f_dnsmasq_banner_reset
+    f_restart_services_just_in_case
     f_docker0_setup "172.18.0.1" "24"
     f_hdp_network_setup
     f_ntp
@@ -310,7 +311,6 @@ function p_hdp_start() {
 
     _info "Starting Ambari Server"
     f_ambari_server_start
-    f_ambari_java_random
     # not interested in agent start output at this moment.
     f_run_cmd_on_nodes "ambari-agent start" > /dev/null
 
@@ -894,6 +894,11 @@ function f_ntp() {
     [ -z "$_ntp_server" ] && _ntp_server="ntp.ubuntu.com"
     _info "ntpdate -u $_ntp_server"
     ntpdate -u $_ntp_server
+}
+
+function f_restart_services_just_in_case() {
+    local __doc__="Restart some services just in case"
+    which kadmin.local &>/dev/null && service krb5-kdc restart && service krb5-admin-server restart
 }
 
 function _docker_seq() {
@@ -2015,6 +2020,7 @@ function p_host_setup() {
         f_ambari_agent_install &>> /tmp/p_host_setup.log || return $?
         _log "INFO" "Starting f_ambari_server_setup"
         f_ambari_server_setup &>> /tmp/p_host_setup.log || return $?
+        f_ambari_java_random
         _log "INFO" "Starting f_ambari_server_start"
         f_ambari_server_start &>> /tmp/p_host_setup.log || return $?
 
