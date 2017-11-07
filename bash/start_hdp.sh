@@ -289,7 +289,7 @@ function p_nodes_create() {
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix"
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
     f_ambari_agent_install "$_how_many" "$_start_from" "$_ambari_host"
-    f_ambari_agent_fix_public_hostname "$_how_many" "$_start_from"
+    f_ambari_agent_fix "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
 }
@@ -1331,6 +1331,14 @@ function f_get_ambari_repo_file() {
     fi
 }
 
+function f_ambari_install() {
+    local __doc__="Install Ambari Server and Agent rpms"
+
+    f_ambari_server_install &
+    f_ambari_agent_install
+    wait
+}
+
 function f_ambari_server_install() {
     local __doc__="Install Ambari Server to $r_AMBARI_HOST"
 
@@ -1472,6 +1480,9 @@ function f_tunnel() {
 function p_post_install_changes() {
     local __doc__="Change some configurations for Dev cluster"
 
+    _info "Using urandom instead of random"
+    f_ambari_java_random
+
     # TODO: need to find the best way to find the first time
     local _c="`_ambari_query_sql "select count(*) from alert_definition where schedule_interval = 1;" $r_AMBARI_HOST`"
     if [ 0 -ne $_c ]; then
@@ -1511,6 +1522,9 @@ function f_ambari_agent_install() {
         ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y" &
     done
     wait
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y" || return $?
+    done
 }
 
 function f_run_cmd_on_nodes() {
@@ -1581,7 +1595,7 @@ f.close()" > /tmp/configs_${__PID}.py
     bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c $_type /tmp/${_type}_updated_${__PID}.json
 }
 
-function f_ambari_agent_fix_public_hostname() {
+function f_ambari_agent_fix() {
     local __doc__="Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
@@ -1590,6 +1604,7 @@ function f_ambari_agent_fix_public_hostname() {
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "sed -i.bak -e '/^verify/ s/\(platform_default\|enable\)/disable/' /etc/python/cert-verification.cfg 2>/dev/null"
     done
 }
 
@@ -2014,13 +2029,10 @@ function p_host_setup() {
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_ambari_server_install"
-        f_ambari_server_install &>> /tmp/p_host_setup.log || return $?
-        _log "INFO" "Starting f_ambari_agent_install"
-        f_ambari_agent_install &>> /tmp/p_host_setup.log || return $?
+        _log "INFO" "Starting f_ambari_install"
+        f_ambari_install &>> /tmp/p_host_setup.log || return $?
         _log "INFO" "Starting f_ambari_server_setup"
         f_ambari_server_setup &>> /tmp/p_host_setup.log || return $?
-        f_ambari_java_random
         _log "INFO" "Starting f_ambari_server_start"
         f_ambari_server_start &>> /tmp/p_host_setup.log || return $?
 
@@ -2029,8 +2041,8 @@ function p_host_setup() {
 
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent reset $r_AMBARI_HOST"
         f_run_cmd_on_nodes "ambari-agent reset $r_AMBARI_HOST" &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_ambari_agent_fix_public_hostname"
-        f_ambari_agent_fix_public_hostname &>> /tmp/p_host_setup.log
+        _log "INFO" "Starting f_ambari_agent_fix"
+        f_ambari_agent_fix &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
         f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
