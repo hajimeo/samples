@@ -2438,7 +2438,7 @@ function f_update_check() {
     if [ -z "$_remote_length" ]; then _warn "$FUNCNAME: Unknown remote length."; return 1; fi
 
     #local _local_last_mod_ts=`stat -c%Y ${_local_file_path}`
-    _local_last_length=`wc -c ./start_hdp.sh | awk '{print $1}'`
+    _local_last_length=`wc -c ./${g_SCRIPT_NAME} | awk '{print $1}'`
 
     if [ ${_remote_length} -ne ${_local_last_length} ]; then
         _info "Different file is available (r=$_remote_length/l=$_local_last_length)"
