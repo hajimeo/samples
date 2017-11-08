@@ -829,7 +829,7 @@ function f_saveResp() {
     fi
     
     # clear file (no warning...)
-    cat /dev/null > ${_file_path}
+    echo "# Saved at `date`" > ${_file_path}
     
     for _v in `set | grep -P -o "^r_.+?[^\s]="`; do
         _new_v="${_v%=}"
