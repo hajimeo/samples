@@ -1487,7 +1487,7 @@ function p_post_install_changes() {
     local _c="`_ambari_query_sql "select count(*) from alert_definition where schedule_interval = 1;" $r_AMBARI_HOST`"
     if [ 0 -ne $_c ]; then
         _info "Reducing Ambari Alert frequency..."
-        _ambari_query_sql "update alert_definition set schedule_interval = schedule_interval * 2 where schedule_interval < 11" "$r_AMBARI_HOST"
+        _ambari_query_sql 'update alert_definition set schedule_interval = schedule_interval * 2 where schedule_interval < 11' "$r_AMBARI_HOST"
     fi
 
     #_info "Reducing dfs.replication to 1..."
