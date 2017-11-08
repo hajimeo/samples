@@ -1501,10 +1501,10 @@ function p_post_install_changes() {
 #grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f
 #ambari-server restart --skip-database-check"
 
-    _info "Creating 'admin' user in each node and in HDFS..."
-    f_useradd_on_nodes "admin"
-    f_useradd_on_nodes "sam"
-    f_useradd_on_nodes "tom"
+    _info "Creating 'admin', 'sam', 'tom' (Knox LDAPDemo) users in each node and in HDFS..."
+    for _n in admin sam tom; do
+        f_useradd_on_nodes "$_n" "${_n}-password"
+    done
 }
 
 function f_ambari_agent_install() {
