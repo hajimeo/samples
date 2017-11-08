@@ -1503,6 +1503,8 @@ function p_post_install_changes() {
 
     _info "Creating 'admin' user in each node and in HDFS..."
     f_useradd_on_nodes "admin"
+    f_useradd_on_nodes "sam"
+    f_useradd_on_nodes "tom"
 }
 
 function f_ambari_agent_install() {
