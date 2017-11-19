@@ -1997,7 +1997,7 @@ function f_ttyd() {
     fi
     apt-get install -y ttyd
 
-    _info "To start ttyd: 'nohup sudo -u $_user ttyd -p 7681 bash &'"
+    _info "To start ttyd: 'su -u $_user -i ttyd -p 7681 bash &'"
 }
 
 function f_vmware_tools_install() {
@@ -2572,12 +2572,13 @@ function f_useradd() {
     local __doc__="Add user on Host"
     local _user="$1"
     local _pwd="$2"
+    local _copy_id_rsa="$3"
 
     # should specify home directory just in case?
     useradd -d "/home/$_user/" -s `which bash` -p $(echo "$_pwd" | openssl passwd -1 -stdin) "$_user"
     mkdir "/home/$_user/" && chown "$_user":"$_user" "/home/$_user/"
 
-    if [ -f ${HOME%/}/.ssh/id_rsa ] && [ -d "/home/$_user/" ]; then
+    if _isYes "$_copy_id_rsa" &&[ -f ${HOME%/}/.ssh/id_rsa ] && [ -d "/home/$_user/" ]; then
         mkdir "/home/$_user/.ssh" && chown "$_user":"$_user" "/home/$_user/.ssh"
         cp ${HOME%/}/.ssh/id_rsa* "/home/$_user/.ssh/"
         chown "$_user":"$_user" /home/$_user/.ssh/id_rsa*
