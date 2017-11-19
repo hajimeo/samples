@@ -1975,6 +1975,31 @@ function f_sysstat_setup() {
     fi
 }
 
+function f_ttyd() {
+    local __doc__="Install and set up https://tsl0922.github.io/ttyd/"
+    local _user="${1-ttyduser}"
+    local _vpass="${2-$g_DEFAULT_PASSWORD}"
+    local _pass="${3-$g_DEFAULT_PASSWORD}"
+
+    if ! which apt-get &>/dev/null; then
+        _warn "No apt-get"
+        return 1
+    fi
+
+    if [ ! `grep "$_user" /etc/passwd` ]; then
+        f_useradd "$_user" "$_pass" || return $?
+    fi
+
+    if ! which ttyd &>/dev/null; then
+        apt-get install -y software-properties-common
+        add-apt-repository ppa:tsl0922/ttyd-dev -y
+        apt-get update
+    fi
+    apt-get install -y ttyd
+
+    _info "To start ttyd: 'nohup sudo -u $_user ttyd -p 7681 bash &'"
+}
+
 function f_vmware_tools_install() {
     local __doc__="Install VMWare Tools in Ubuntu host"
     mkdir /media/cdrom; mount /dev/cdrom /media/cdrom && cd /media/cdrom && cp VMwareTools-*.tar.gz /tmp/ && cd /tmp/ && tar xzvf VMwareTools-*.tar.gz && cd vmware-tools-distrib/ && ./vmware-install.pl -d
@@ -2001,6 +2026,7 @@ function p_host_setup() {
         _log "INFO" "Starting f_docker_setup"
         f_docker_setup &>> /tmp/p_host_setup.log
         #f_sysstat_setup &>> /tmp/p_host_setup.log
+        f_ttyd &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_host_performance"
         f_host_performance &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_host_misc"
