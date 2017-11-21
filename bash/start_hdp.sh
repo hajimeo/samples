@@ -1573,30 +1573,6 @@ function f_ambari_java_random() {
     done
 }
 
-function f_ambari_configs() {
-    local __doc__="Wrapper function to update configs with configs.sh"
-    local _type="$1"
-    local _dict="$2"
-    local _ambari_host="${3-$r_AMBARI_HOST}"
-    local _ambari_port="${4-8080}"
-    local _c="`f_get_cluster_name $_ambari_host`" || return $?
-
-    scp -q root@$_ambari_host:/var/lib/ambari-server/resources/scripts/configs.sh ./ || return $?
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} get $_ambari_host $_c $_type /tmp/${_type}_${__PID}.json || return $?
-
-    echo "import json
-a=json.loads('{'+open('/tmp/${_type}_${__PID}.json','r').read()+'}')
-n=json.loads('"${_dict}"')
-a['properties'].update(n)
-s=json.dumps(a['properties'])
-f=open('/tmp/${_type}_updated_${__PID}.json','w')
-f.write('\"properties\":'+s)
-f.close()" > /tmp/configs_${__PID}.py
-
-    python /tmp/configs_${__PID}.py || return $?
-    bash ./configs.sh -u admin -p admin -port ${_ambari_port} set $_ambari_host $_c $_type /tmp/${_type}_updated_${__PID}.json
-}
-
 function f_ambari_agent_fix() {
     local __doc__="Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
     local _how_many="${1-$r_NUM_NODES}"
