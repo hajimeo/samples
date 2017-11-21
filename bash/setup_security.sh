@@ -399,6 +399,7 @@ function _hadoop_ssl_config_update() {
     f_ambari_configs "yarn-site" "{\"yarn.http.policy\":\"HTTPS_ONLY\",\"yarn.nodemanager.webapp.https.address\":\"0.0.0.0:8044\"}" "$_ambari_host" "$_ambari_port"
     f_ambari_configs "tez-site" "{\"tez.runtime.shuffle.keep-alive.enabled\":\"true\"}" "$_ambari_host" "$_ambari_port"
 
+    # TODO: https://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.6.2/bk_hdfs-administration/content/configuring_datanode_sasl.html for not using jsvc
     # If Ambari is 2.4.x or higher below works
     _info "TODO: Please manually update:
     yarn.resourcemanager.webapp.https.address=RM_HOST:8090
