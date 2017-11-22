@@ -69,7 +69,7 @@ function f_check_system() {
     python -c 'import socket;print socket.getfqdn()' &> ${_WORK_DIR%/}/python_getfqdn.out
     mount &> ${_WORK_DIR%/}/mount_df.out
     df -h &> ${_WORK_DIR%/}/mount_df.out
-    sar -qrbd &> ${_WORK_DIR%/}/sar_qrbd.out
+    sar -qrbd -p &> ${_WORK_DIR%/}/sar_qrbd.out # if no -p, ls -l /dev/sd*
     cat /proc/net/dev &> ${_WORK_DIR%/}/net_dev.out
     cat /proc/cpuinfo &> ${_WORK_DIR%/}/cpuinfo.out
     cat /proc/meminfo &> ${_WORK_DIR%/}/meminfo.out
@@ -177,7 +177,7 @@ function f_collect_host_info_from_ambari() {
     [ -z "$_protocol" ] && _protocol="http"
     [ -z "$_ambari_port" ] && _ambari_port="8080"
     [ -z "$_WORK_DIR" ] && _WORK_DIR="."
-    echo "INFO" "Collecting this host information from Ambari..." >&2
+    echo "INFO" "Collecting ${_node} information from Ambari..." >&2
 
     local _ambari="`grep '^hostname=' /etc/ambari-agent/conf/ambari-agent.ini | cut -d= -f2`"
     if [ -z "$_ambari" ]; then
@@ -197,7 +197,7 @@ function f_collect_host_info_from_ambari() {
     # If no python, not collecting detailed metrics at this moment
     which python &>/dev/null || return
 
-    local _S="`date '+%s' -d"${_date_start_string}"`"
+    local _S="`date '+%s' -d"${_date_start_string}"`" || return $?
     local _E="`date '+%s' -d"${_date_end_string}"`"
     local _s="15"
     local _script="import sys,json
@@ -209,15 +209,31 @@ for k,v in a['metrics'].iteritems():
       r+=['metrics/%s/%s["${_S}","${_E}","${_s}"]' % (k, k2)]
 print ','.join(r)"
 
+    echo "INFO" "Collecting ${_node} metric from Ambari..." >&2
     local _fields="`cat ${_WORK_DIR%/}/ambari_${_node}.json | python -c "${_script}"`"
     [ -z "$_fields" ] || curl ${_cmd_opts} "${_href}/hosts/${_node}" -G --data-urlencode "fields=${_fields}" -o ${_WORK_DIR%/}/ambari_${_node}_metrics.json
 
     if [ ! -z "$_comp" ]; then
+        echo "INFO" "Collecting ${_node} ${_comp} metric from Ambari..." >&2
         curl ${_cmd_opts} "${_href}/hosts/${_node}/host_components/${_comp^^}" -o ${_WORK_DIR%/}/ambari_${_node}_${_comp}.json
         _fields="`cat ${_WORK_DIR%/}/ambari_${_node}_${_comp}.json | python -c "${_script}"`"
         [ -z "$_fields" ] || curl ${_cmd_opts} "${_href}/hosts/${_node}/host_components/${_comp^^}" -G --data-urlencode "fields=${_fields}" -o ${_WORK_DIR%/}/ambari_${_node}_${_comp}_metrics.json
     fi
 }
+
+function f_namenode_checklist() {
+    local _hadoop_conf="${1-./}"
+    local _props="dfs.namenode.audit.log.async dfs.namenode.servicerpc-address dfs.namenode.handler.count dfs.namenode.service.handler.count dfs.namenode.lifeline.rpc-address ipc.[0-9]+.backoff.enable ipc.[0-9]+.callqueue.impl dfs.namenode.name.dir< dfs.journalnode.edits.dir dfs.namenode.accesstime.precision"
+    for _p in $_props; do
+        echo $_p
+        grep -A1 -E "<name>$_p" ${_hadoop_conf%/}/*-site.xml | grep "<value>"
+    done
+    grep -E '^log4j\..+\.(BlockStateChange|StateChange)' ${_hadoop_conf%/}/log4j.properties
+}
+
+
+
+
 
 #function f_test_network() {
 #    local __doc__="TODO: Test network speed/error"
