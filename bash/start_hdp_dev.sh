@@ -1335,8 +1335,9 @@ function f_get_ambari_repo_file() {
 function f_ambari_install() {
     local __doc__="Install Ambari Server and Agent rpms"
 
-    f_ambari_server_install &
-    f_ambari_agent_install
+    f_ambari_server_install || return $?
+    f_ambari_server_setup &
+    f_ambari_agent_install || return $?
     wait
 }
 
@@ -2036,8 +2037,6 @@ function p_host_setup() {
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_ambari_install"
         f_ambari_install &>> /tmp/p_host_setup.log || return $?
-        _log "INFO" "Starting f_ambari_server_setup"
-        f_ambari_server_setup &>> /tmp/p_host_setup.log || return $?
         _log "INFO" "Starting f_ambari_server_start"
         f_ambari_server_start &>> /tmp/p_host_setup.log || return $?
 
