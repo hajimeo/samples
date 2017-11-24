@@ -13,6 +13,9 @@ python ./json_parser.py some.json [another.json] [join type (f|l|r|i)] [exclude 
 
 To get the latest code:
     curl -O https://raw.githubusercontent.com/hajimeo/samples/master/python/json_parser.py
+
+Ambari API example:
+    curl -o config_${_SERVICE}_${_VER}.json -u admin:admin "http://`hostname -f`:8080/api/v1/clusters/$_CLUSTER/configurations/service_config_versions?service_name=$_SERVICE&service_config_version=$_VER"
 '''
 
 import sys, pprint, re, json
@@ -58,7 +61,7 @@ class JsonParser:
             if regex is not None:
                 if regex.match(k):
                     continue
-            if isinstance(l_dict[k], dict) and isinstance(r_dict[k], dict):
+            if k in l_dict and k in r_dict and isinstance(l_dict[k], dict) and isinstance(r_dict[k], dict):
                 tmp_rtn = JsonParser.compare_dict(l_dict[k], r_dict[k], join_type, ignore_regex)
                 if len(tmp_rtn) > 0:
                     rtn[k] = tmp_rtn
