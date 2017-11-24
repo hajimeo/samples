@@ -1320,6 +1320,7 @@ function f_get_ambari_repo_file() {
     fi
 
     if _isUrl "$_file"; then
+        rm -f /tmp/ambari.repo_${__PID}
         wget -nv -c -t 3 --timeout=30 --waitretry=5 "$_file" -O /tmp/ambari.repo_${__PID} || return 1
     else
         if [ ! -r "$_file" ]; then

@@ -1320,6 +1320,7 @@ function f_get_ambari_repo_file() {
     fi
 
     if _isUrl "$_file"; then
+        rm -f /tmp/ambari.repo_${__PID}
         wget -nv -c -t 3 --timeout=30 --waitretry=5 "$_file" -O /tmp/ambari.repo_${__PID} || return 1
     else
         if [ ! -r "$_file" ]; then
@@ -1347,7 +1348,7 @@ function f_ambari_server_install() {
     scp -q /tmp/ambari.repo_${__PID} root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo || return $?
 
     _info "Installing ambari-server on $r_AMBARI_HOST ..."
-    ssh -q root@$r_AMBARI_HOST "yum clean all && yum install ambari-server -y && service postgresql initdb; service postgresql restart"
+    ssh -q root@$r_AMBARI_HOST "(set -x; yum clean all; yum install -y ambari-server && service postgresql initdb; service postgresql restart)"
 }
 
 function f_ambari_server_setup() {
@@ -1371,7 +1372,7 @@ function f_ambari_server_setup() {
     _info "Copying /tmp/ambari.repo_${__PID} to $r_AMBARI_HOST ..."
     scp -q /tmp/ambari.repo_${__PID} root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo || return $?
 
-    _info "Installing ambari-server on $r_AMBARI_HOST ..."
+    _info "Setting up ambari-server on $r_AMBARI_HOST ..."
     ssh -q root@$r_AMBARI_HOST "ambari-server setup -s --verbose || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
 }
 
