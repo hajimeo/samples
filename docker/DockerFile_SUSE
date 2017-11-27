@@ -1,0 +1,12 @@
+FROM opensuse:42.2
+
+RUN zypper install -y dbus-1 systemd-sysvinit
+RUN cp /usr/lib/systemd/system/dbus.service /etc/systemd/system/; \
+    sed -i 's/OOMScoreAdjust=-900//' /etc/systemd/system/dbus.service
+
+RUN zypper install -y which openssh net-tools iproute curl unzip tar wget openssl vim sudo less || echo ko
+RUN systemctl enable sshd || echo ko
+RUN systemctl start sshd || echo ko
+
+VOLUME ["/sys/fs/cgroup", "/run"]
+CMD ["/sbin/init"]
