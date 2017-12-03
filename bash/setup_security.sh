@@ -730,15 +730,23 @@ function f_sssd_setup() {
     local ad_dc="$4"      #ad01.lab.hortonworks.net
     local ad_root="$5"    #dc=lab,dc=hortonworks,dc=net
     local ad_ou_name="$6" #HadoopNodes
+    local _ambari_host="${7-$r_AMBARI_HOST}"
+    local _target_host="$7"
 
     local ad_ou="ou=${ad_ou_name},${ad_root}"
     local ad_realm=${ad_domain^^}
 
-    f_run_cmd_on_nodes 'which adcli || ( yum makecache fast && yum -y install epel-release; yum -y install sssd oddjob-mkhomedir authconfig sssd-krb5 sssd-ad sssd-tools adcli )'
+    local _cmd='which adcli &>/dev/null || ( yum makecache fast && yum -y install epel-release; yum -y install sssd oddjob-mkhomedir authconfig sssd-krb5 sssd-ad sssd-tools adcli )'
+    if [ -z "$_target_host" ]; then
+        f_run_cmd_on_nodes "$_cmd"
+    else
+        ssh -q root@${_target_host} -t "$_cmd"
+    fi
 
-    local _cmd="echo -n '"${ad_pwd}"' | kinit ${ad_user}
+    # echo -n way works on CentOS6 but not on Mac
+    _cmd="echo -n '"${ad_pwd}"' | kinit ${ad_user}
 
-sudo adcli join -v \
+adcli join -v \
   --domain-controller=${ad_dc} \
   --domain-ou=\"${ad_ou}\" \
   --login-ccache=\"/tmp/krb5cc_0\" \
@@ -791,24 +799,27 @@ service sssd restart
 kdestroy"
 
     # To test: id yourusername && groups yourusername
-
-    f_run_cmd_on_nodes "[ -s /etc/sssd/sssd.conf ] || ( $_cmd )"
+    if [ -z "$_target_host" ]; then
+        f_run_cmd_on_nodes "[ -s /etc/sssd/sssd.conf ] || ( $_cmd )"
+    else
+        ssh -q root@${_target_host} -t "[ -s /etc/sssd/sssd.conf ] || ( $_cmd )"
+    fi
 
     #refresh user and group mappings
-    local _c="`f_get_cluster_name`" || return $?
-    local _hdfs_client_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" $r_AMBARI_HOST`"
+    local _c="`f_get_cluster_name ${_ambari_host}`" || return $?
+    local _hdfs_client_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" ${_ambari_host}`"
     if [ -z "$_hdfs_client_node" ]; then
-        _error "No node found for HDFS command"
+        _warn "No hdfs client node found to execute 'hdfs dfsadmin -refreshUserToGroupsMappings'"
         return 1
     fi
-    ssh root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfsadmin -refreshUserToGroupsMappings\""
+    ssh -q root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfsadmin -refreshUserToGroupsMappings\""
 
-    local _yarn_rm_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='RESOURCEMANAGER' and current_state='STARTED' limit 1" $r_AMBARI_HOST`"
+    local _yarn_rm_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='RESOURCEMANAGER' and current_state='STARTED' limit 1" ${_ambari_host}`"
     if [ -z "$_yarn_rm_node" ]; then
-        _error "No node found for YARN command"
+        _error "No yarn client node found to execute 'yarn rmadmin -refreshUserToGroupsMappings'"
         return 1
     fi
-    ssh root@$_yarn_rm_node -t "sudo -u yarn bash -c \"kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/$(hostname -f); yarn rmadmin -refreshUserToGroupsMappings\""
+    ssh -q root@$_yarn_rm_node -t "sudo -u yarn bash -c \"kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/$(hostname -f); yarn rmadmin -refreshUserToGroupsMappings\""
 }
 
 function f_ssl_self_signed_cert() {
