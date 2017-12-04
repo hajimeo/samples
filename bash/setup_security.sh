@@ -937,7 +937,10 @@ function f_ambari_configs() {
     local _ambari_port="${4-8080}"
     local _c="`f_get_cluster_name $_ambari_host`" || return $?
 
-    scp -q root@$_ambari_host:/var/lib/ambari-server/resources/scripts/configs.sh ./ || return $?
+    if [ ! -s ./configs.sh ]; then
+        # TODO: this is a temp workaround because Ambari 2.6.0 removed configs.sh
+        curl -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/configs.sh || return $?
+    fi
     bash ./configs.sh -u "${g_admin}" -p "${g_admin_pwd}" -port ${_ambari_port} get $_ambari_host $_c $_type /tmp/${_type}_${__PID}.json || return $?
 
     echo "import json
