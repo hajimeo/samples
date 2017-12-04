@@ -391,6 +391,13 @@ If you would like to fix this now, press Ctrl+c."
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-server/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 
+    # NOTE: docker exec add '$' and '\r'
+    _NETWORK_ADDR=`ssh -q ${_HOSTNAME} hostname -i | sed 's/\(.\+\)\.[0-9]\+$/\1/'`
+    if [ ! -z "$_NETWORK_ADDR" ]; then
+        which dnsmasq &>/dev/null && docker exec -it ${_NAME} bash -c 'echo "nameserver '${_NETWORK_ADDR}'" > /etc/resolv.conf'
+        docker exec -it ${_NAME} bash -c "ip route del ${_NETWORK_ADDR}.0/24 via 0.0.0.0"
+    fi
+
     echo "With nohup, executing the start ALL services API to ${_HOSTNAME}:${_AMBARI_PORT}..."
     sleep 5
     # TODO: Because sandbox's HDFS is in Maintenance mode, the curl command below wouldn't work
