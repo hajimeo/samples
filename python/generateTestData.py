@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 import sys
 import os
-#import fileinput
 import re
 import random
 import string
@@ -143,6 +142,14 @@ def prepareCsvFileForImport(csv_file_path, dialect='excel'):
     return True
 
 def tmpCaseDocumentationQualityCheck(csv_file_path, case_owner_column='Case Owner', how_many=4, dialect='excel'):
+    '''
+    NOTE: may need to run "gsed 's/^M/\n/g' test_windwos_excel.csv > converted_for_mac.csv"
+    :param csv_file_path: A CSV file generated from Excel
+    :param case_owner_column: The first line of the CSV is header and which needs to contain this string
+    :param how_many: How many cases per TSE
+    :param dialect:
+    :return: Boolean
+    '''
     new_filepath=os.path.splitext(csv_file_path)[0]+".random.csv"
     if os.path.isfile(new_filepath) and os.path.getsize(new_filepath) > 0:
         log.error("%s already exists" % (new_filepath))
@@ -160,6 +167,9 @@ def tmpCaseDocumentationQualityCheck(csv_file_path, case_owner_column='Case Owne
             continue
         if len(row) < (case_owner_index+1):
             log.debug("line number %s does not have case owner column(%s). Skipping..." % (str(r.line_num), str(case_owner_index)))
+            continue
+        if len(row[case_owner_index]) < 1:
+            log.debug("line number %s does not have case owner column(%s). Skipping.." % (str(r.line_num), str(case_owner_index)))
             continue
         data_per_owner.setdefault(row[case_owner_index],[]).append(row)
     f.close()
@@ -190,7 +200,6 @@ if __name__ == '__main__':
         if not os.path.isfile(sys.argv[2]):
             log.error("%s is not a file" % (sys.argv[2]))
             exit(1)
-
         tablename=""
         stored_as="TEXTFILE"
         if len(sys.argv) > 3:
@@ -202,17 +211,18 @@ if __name__ == '__main__':
         if len(sys.argv) != 5:
             help()
             exit(1)
-
-        how_many_rows = int(sys.argv[1])
+        how_many_rows = int(sys.argv[2])
         log.debug("how_many_rows: "+str(how_many_rows))
-        tablename = sys.argv[2]
-        lines_of_create_statement = sys.argv[3].split('\n')
+        tablename = sys.argv[3]
+        lines_of_create_statement = sys.argv[4].split('\n')
         #lines_of_create_statement = []
         #for l in fileinput.input():
         #    lines_of_create_statement.append(l)
         printInserts(how_many_rows, tablename, lines_of_create_statement)
     elif sys.argv[1] == 'PREPARE':
-        printCreateStatementFromCsvFile(sys.argv[1])
+        printCreateStatementFromCsvFile(sys.argv[2])
+    elif sys.argv[1] == 'CASEDOC':
+        tmpCaseDocumentationQualityCheck(sys.argv[2])
     else:
         help()
         exit(0)
