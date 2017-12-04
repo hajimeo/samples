@@ -1492,10 +1492,6 @@ function p_post_install_changes() {
         _ambari_query_sql "update alert_definition set schedule_interval = schedule_interval * 2 where schedule_interval < 11" "$r_AMBARI_HOST"
     fi
 
-    #_info "Reducing dfs.replication to 1..."
-    #ssh -q -t root@$r_AMBARI_HOST -t "/var/lib/ambari-server/resources/scripts/configs.sh set localhost $r_CLUSTER_NAME hdfs-site dfs.replication 1" &> /tmp/configs_sh_dfs_replication.out
-    # Blueprint should take care above. TODO: should I reduce aggregator TTL size?
-
     #_info "No password required to login Ambari..."
     #ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties'
 #grep -q '^api.authenticate=false' \$_f && exit
