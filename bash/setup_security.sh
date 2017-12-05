@@ -238,6 +238,7 @@ function f_ambari_kerberos_setup() {
     _info "Delete existing KERBEROS service (if exists)"
     curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}' &>/dev/null
     curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X DELETE "${_api_uri}/services/KERBEROS" &>/dev/null
+    curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X DELETE "${_api_uri}/artifacts/kerberos_descriptor" &>/dev/null
     sleep 3
 
     _info "register Kerberos service and component"
