@@ -403,6 +403,102 @@ function f_git_search() {
     for c in $_commits_only; do git tag --contains $c; done | sort
 }
 
+function f_hdfs_checklist() {
+    local __doc__="Store HDFS config checklist in this function"
+    local _conf="${1-./}"
+
+    # 1. check the following properties' values
+    local _props="dfs.namenode.audit.log.async dfs.namenode.servicerpc-address dfs.namenode.handler.count dfs.namenode.service.handler.count dfs.namenode.lifeline.rpc-address ipc.[0-9]+.backoff.enable ipc.[0-9]+.callqueue.impl dfs.namenode.name.dir< dfs.journalnode.edits.dir dfs.namenode.accesstime.precision"
+
+    _loop_props "${_conf%/}" "${_props}"
+
+    # 2. Check log4j config for performance
+    grep -E '^log4j\..+\.(BlockStateChange|StateChange)' ${_conf%/}/log4j.properties
+}
+
+function f_hive_checklist() {
+    local __doc__="Store Hive config checklist in this function"
+    local _conf="${1-./}"
+    local _extra="$2"
+
+    # 1. check the following properties' values
+    # grep -ohE '\(property\(.+$' * | cut -d '"' -f 2 | tr '\n' ' '
+
+    echo "# Hive config check"
+    local _props="hive.auto.convert.join hive.merge.mapfiles hive.merge.mapredfiles hive.exec.compress.intermediate hive.exec.compress.output datanucleus.cache.level2.type hive.default.fileformat.managed hive.default.fileformat fs.hdfs.impl.disable.cache fs.file.impl.disable.cache hive.cbo.enable hive.compute.query.using.stats hive.stats.fetch.column.stats hive.stats.fetch.partition.stats hive.execution.engine datanucleus.fixedDatastore hive.exim.strict.repl.tables datanucleus.autoCreateSchema hive.exec.parallel hive.plan.serialization.format hive.server2.tez.initialize.default.sessions hive.vectorized.execution.enabled hive.vectorized.execution.reduce.enabled"
+    _loop_props "${_conf%/}" "${_props}"
+
+    echo -e "\n# Tez config check"
+    _props="tez.am.am-rm.heartbeat.interval-ms.max tez.runtime.transfer.data-via-events.enabled tez.session.am.dag.submit.timeout.secs tez.am.container.reuse.enabled tez.runtime.io.sort.mb tez.session.client.timeout.secs tez.runtime.shuffle.memory-to-memory.enable tez.runtime.task.input.post-merge.buffer.percent tez.am.container.session.delay-allocation-millis tez.session.am.dag.submit.timeout.secs tez.runtime.shuffle.fetch.buffer.percent tez.task.am.heartbeat.interval-ms.max tez.task.am.heartbeat.counter.interval-ms.max tez.task.get-task.sleep.interval-ms.max tez.task.scale.memory.enabled"
+    _loop_props "${_conf%/}" "${_props}"
+
+    if [[ "_extra" =~ (^y|^Y) ]]; then
+        echo -e "\n# HDFS config check"
+        _props="hdfs.audit.logger dfs.block.access.token.enable dfs.blocksize dfs.namenode.checkpoint.period dfs.datanode.failed.volumes.tolerated dfs.datanode.max.transfer.threads dfs.permissions.enabled hadoop.security.group.mapping fs.defaultFS dfs.namenode.accesstime.precision dfs.ha.automatic-failover.enabled dfs.namenode.checkpoint.txns dfs.namenode.stale.datanode.interval dfs.namenode.name.dir dfs.namenode.handler.count dfs.namenode.metrics.logger.period.seconds dfs.namenode.name.dir dfs.namenode.top.enabled fs.protected.directories dfs.replication dfs.namenode.name.dir.restore dfs.namenode.safemode.threshold-pct dfs.namenode.avoid.read.stale.datanode dfs.namenode.avoid.write.stale.datanode dfs.replication dfs.client.block.write.replace-datanode-on-failure.enable dfs.client.block.write.replace-datanode-on-failure.policy dfs.client.block.write.replace-datanode-on-failure.best-effort dfs.datanode.du.reserved hadoop.security.logger dfs.client.read.shortcircuit dfs.domain.socket.path fs.trash.interval fs.permissions.umask-mode ha.zookeeper.acl ha.health-monitor.rpc-timeout.ms"
+        _loop_props "${_conf%/}" "${_props}"
+
+        echo -e "\n# YARN config check"
+        _props="yarn.timeline-service.generic-application-history.save-non-am-container-meta-info yarn.timeline-service.enabled hadoop.security.authentication yarn.timeline-service.http-authentication.type yarn.timeline-service.store-class yarn.timeline-service.ttl-enable yarn.timeline-service.ttl-ms yarn.acl.enable yarn.log-aggregation-enable yarn.nodemanager.recovery.enabled yarn.resourcemanager.recovery.enabled yarn.resourcemanager.work-preserving-recovery.enabled yarn.nodemanager.local-dirs yarn.nodemanager.log-dirs yarn.nodemanager.resource.cpu-vcores yarn.nodemanager.vmem-pmem-ratio"
+        _loop_props "${_conf%/}" "${_props}"
+
+        echo -e "\n# MR config check"
+        _props="mapreduce.map.output.compress mapreduce.output.fileoutputformat.compress io.sort.factor mapreduce.task.io.sort.mb mapreduce.map.sort.spill.percent mapreduce.map.speculative mapreduce.input.fileinputformat.split.maxsize mapreduce.input.fileinputformat.split.minsize mapreduce.reduce.shuffle.parallelcopies mapreduce.reduce.speculative mapreduce.job.reduce.slowstart.completedmaps mapreduce.tasktracker.group"
+        _loop_props "${_conf%/}" "${_props}"
+    fi
+
+    # 2. Extra properties from set output
+    if [ -f "$_hadoop_conf" ]; then
+        echo -e "\n# System:java"
+        # |system:java\.class\.path
+        grep -E '^(env:HOSTNAME|env:HADOOP_HEAPSIZE|env:HADOOP_CLIENT_OPTS|system:hdp\.version|system:java\.home|system:java\.vm\.*|system:java\.io\.tmpdir|system:os\.version|system:user\.timezone)=' "$_hadoop_conf"
+    fi
+}
+
+function _loop_props() {
+    local _conf="${1-./}"
+    local _props="$2"
+    for _p in $_props; do
+        if [ -d "$_conf" ]; then
+            echo $_p
+            grep -A1 -E "<name>$_p" ${_conf%/}/*-site.xml | grep "<value>"
+        else
+            # Expecting 'set' command output
+            grep "${_p}" $_conf
+        fi
+    done
+}
+
+function f_load_ambaridb() {
+    local __doc__="Load ambari DB sql file into Mac's PostgreSQL DB"
+    local _sql_file="$1"
+    local _missing_tables_sql="$2"
+    local _sudo_user="${3-$USER}"
+    local _ambari_pwd="${4-bigdata}"
+
+    # If a few tables are missing, need missing tables' schema
+    # pg_dump -Uambari -h `hostname -f` ambari -s -t alert_history -t host_role_command -t execution_command -t stage -t request > ambari_missing_table_ddl.sql
+
+    #psql template1 -c 'DROP DATABASE ambari;'
+    sudo -u ${_sudo_user} -i psql template1 -c 'ALTER DATABASE ambari RENAME TO ambari_'$(date +"%Y%m%d%H%M%S")';'
+    sudo -u ${_sudo_user} -i psql template1 -c 'CREATE DATABASE ambari;'
+    sudo -u ${_sudo_user} -i psql template1 -c "CREATE USER ambari WITH LOGIN PASSWORD '${_ambari_pwd}';"
+    sudo -u ${_sudo_user} -i psql template1 -c 'GRANT ALL PRIVILEGES ON DATABASE ambari TO ambari;'
+
+    export PGPASSWORD="${_ambari_pwd}"
+    psql -Uambari -h `hostname -f` ambari -c 'CREATE SCHEMA ambari;ALTER SCHEMA ambari OWNER TO ambari;';
+    # It's OK to see relation error for index (TODO: upgrade table may fail)
+    [ -s "$_missing_tables_sql" ] && psql -Uambari -h `hostname -f` ambari < ${_missing_tables_sql}
+    psql -Uambari -h `hostname -f` ambari < ${_sql_file}
+    [ -s "$_missing_tables_sql" ] && psql -Uambari -h `hostname -f` ambari < ${_missing_tables_sql}
+    psql -Uambari -h `hostname -f` -c "UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL';"
+    psql -Uambari -h `hostname -f` -c "select * from metainfo where metainfo_key = 'version';"
+    psql -Uambari -h `hostname -f` -c "SELECT * FROM clusters WHERE security_type = 'KERBEROS';"
+    #UPDATE clusters SET security_type = 'NONE' WHERE provisioning_state = 'INSTALLED';
+    #curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X DELETE "${_api_uri}/services/KERBEROS" &>/dev/null
+    #curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X DELETE "${_api_uri}/artifacts/kerberos_descriptor" &>/dev/null
+    unset PGPASSWORD
+}
+
 ### Private functions ##################################################################################################
 
 function _split() {
