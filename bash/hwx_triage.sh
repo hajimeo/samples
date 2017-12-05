@@ -49,7 +49,7 @@ function f_check_system() {
 
     uname -a &> ${_WORK_DIR%/}/uname-a.out
     hdp-select &> ${_WORK_DIR%/}/hdp-select.out
-    ls -l /usr/hdp/current/ &>> ${_WORK_DIR%/}/hdp-select.out
+    ls -l /usr/hdp/current/ >> ${_WORK_DIR%/}/hdp-select.out
     ls -l /etc/security/keytabs/ &> ${_WORK_DIR%/}/ls-keytabs.out
     getenforce &> ${_WORK_DIR%/}/getenforce.out
     iptables -t nat -nL &> ${_WORK_DIR%/}/iptables.out
@@ -220,20 +220,6 @@ print ','.join(r)"
         [ -z "$_fields" ] || curl ${_cmd_opts} "${_href}/hosts/${_node}/host_components/${_comp^^}" -G --data-urlencode "fields=${_fields}" -o ${_WORK_DIR%/}/ambari_${_node}_${_comp}_metrics.json
     fi
 }
-
-function f_namenode_checklist() {
-    local _hadoop_conf="${1-./}"
-    local _props="dfs.namenode.audit.log.async dfs.namenode.servicerpc-address dfs.namenode.handler.count dfs.namenode.service.handler.count dfs.namenode.lifeline.rpc-address ipc.[0-9]+.backoff.enable ipc.[0-9]+.callqueue.impl dfs.namenode.name.dir< dfs.journalnode.edits.dir dfs.namenode.accesstime.precision"
-    for _p in $_props; do
-        echo $_p
-        grep -A1 -E "<name>$_p" ${_hadoop_conf%/}/*-site.xml | grep "<value>"
-    done
-    grep -E '^log4j\..+\.(BlockStateChange|StateChange)' ${_hadoop_conf%/}/log4j.properties
-}
-
-
-
-
 
 #function f_test_network() {
 #    local __doc__="TODO: Test network speed/error"
