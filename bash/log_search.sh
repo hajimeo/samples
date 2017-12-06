@@ -168,7 +168,7 @@ function f_appLogFindFirstSyslog() {
     local _dir_path="${1-.}"
     local _num="${2-10}"
 
-    ( find "${_dir_path%/}" -name "*.syslog" | xargs -I {} bash -c "grep -oHE '^${_DATE_FORMAT} \d\d:\d\d:\d\d' -m 1 {}" | awk -F ':' '{print $2":"$3":"$4" "$1}' ) | sort -n | head -n $_num
+    ( find "${_dir_path%/}" -name "*.syslog" | xargs -I {} bash -c "ggrep -oHE '^${_DATE_FORMAT} \d\d:\d\d:\d\d' -m 1 {}" | awk -F ':' '{print $2":"$3":"$4" "$1}' ) | sort -n | head -n $_num
 }
 
 function f_appLogFindLastSyslog() {
@@ -178,9 +178,9 @@ function f_appLogFindLastSyslog() {
     local _regex="${3}"
 
     if [ -n "$_regex" ]; then
-        ( for _f in `grep -l "$_regex" ${_dir_path%/}/*.syslog`; do _dt="`gtac $_f | grep -oE "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
+        ( for _f in `ggrep -l "$_regex" ${_dir_path%/}/*.syslog`; do _dt="`gtac $_f | ggrep -oE "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
     else
-        ( for _f in `find "${_dir_path%/}" -name "*.syslog"`; do _dt="`gtac $_f | grep -oE "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
+        ( for _f in `find "${_dir_path%/}" -name "*.syslog"`; do _dt="`gtac $_f | ggrep -oE "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
     fi
 }
 
@@ -200,7 +200,7 @@ function f_hdfsAuditLogCountPerTime() {
         local _cmd="bar_chart.py"
     fi
 
-    grep -oE "$_datetime_regex" $_path | $_cmd
+    ggrep -oE "$_datetime_regex" $_path | $_cmd
 }
 
 function f_hdfsAuditLogCountPerCommand() {
@@ -230,7 +230,7 @@ function f_hdfsAuditLogCountPerUser() {
     local _datetime_regex="$3"
 
     if [ ! -z "$_datetime_regex" ]; then
-        grep -E "$_datetime_regex" $_path > /tmp/f_hdfs_audit_count_per_user_$$.tmp
+        ggrep -E "$_datetime_regex" $_path > /tmp/f_hdfs_audit_count_per_user_$$.tmp
         _path="/tmp/f_hdfs_audit_count_per_user_$$.tmp"
     fi
 
@@ -258,7 +258,7 @@ function f_longGC() {
 }
 
 function f_listPerflogEnd() {
-    local __doc__="grep </PERFLOG ...> to see duration"
+    local __doc__="ggrep </PERFLOG ...> to see duration"
     local _path="$1"
     local _sort_by_duration="$2"
 
@@ -290,11 +290,11 @@ function f_findJarByClassName() {
 
     # if search path is an integer, treat as PID
     if [[ $_search_path =~ ^-?[0-9]+$ ]]; then
-        lsof -nPp $_search_path | grep -oE '/.+\.(jar|war)$' | sort | uniq | xargs -I {} bash -c "less {} | grep -qm1 -w $_class_name && echo {}"
+        lsof -nPp $_search_path | ggrep -oE '/.+\.(jar|war)$' | sort | uniq | xargs -I {} bash -c "less {} | ggrep -qm1 -w $_class_name && echo {}"
         return
     fi
     # NOTE: some 'less' can't read jar, in that case, replace to 'jar -tvf', but may need to modify $PATH
-    find $_search_path -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | grep -m 1 -w $_class_name > /tmp/f_findJarByClassName_$$.tmp && ( echo {}; cat /tmp/f_findJarByClassName_$$.tmp )"
+    find $_search_path -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | ggrep -m 1 -w $_class_name > /tmp/f_findJarByClassName_$$.tmp && ( echo {}; cat /tmp/f_findJarByClassName_$$.tmp )"
     # TODO: it won't search war file...
 }
 
@@ -363,7 +363,7 @@ function f_swimlane() {
     local _out_name="`basename $_app_log .log`.svg"
     local _tmp_name="`basename $_app_log .log`.tmp"
     local _script_path="`dirname $(dirname $(dirname $BASH_SOURCE))`/tez/tez-tools/swimlanes/swimlane.py"
-    grep 'HISTORY' $_app_log > ./$_tmp_name
+    ggrep 'HISTORY' $_app_log > ./$_tmp_name
     if [ ! -s "$_tmp_name" ]; then
         echo "$_tmp_name is empty."
         return 1
@@ -395,7 +395,7 @@ function f_git_search() {
         echo "$_grep_result"
     fi
 
-    local _commits_only="`echo "$_grep_result" | grep ^commit | cut -d ' ' -f 2`"
+    local _commits_only="`echo "$_grep_result" | ggrep ^commit | cut -d ' ' -f 2`"
 
     echo "# Searching branches ...."
     for c in $_commits_only; do git branch -r --contains $c; done | sort
@@ -410,60 +410,72 @@ function f_hdfs_checklist() {
     # 1. check the following properties' values
     local _props="dfs.namenode.audit.log.async dfs.namenode.servicerpc-address dfs.namenode.handler.count dfs.namenode.service.handler.count dfs.namenode.lifeline.rpc-address ipc.[0-9]+.backoff.enable ipc.[0-9]+.callqueue.impl dfs.namenode.name.dir< dfs.journalnode.edits.dir dfs.namenode.accesstime.precision"
 
-    _loop_props "${_conf%/}" "${_props}"
+    _search_properties "${_conf%/}/*-site.xml" "${_props}" "Y"
 
     # 2. Check log4j config for performance
-    grep -E '^log4j\..+\.(BlockStateChange|StateChange)' ${_conf%/}/log4j.properties
+    ggrep -E '^log4j\..+\.(BlockStateChange|StateChange)' ${_conf%/}/log4j.properties
 }
 
 function f_hive_checklist() {
     local __doc__="Store Hive config checklist in this function"
-    local _conf="${1-./}"
-    local _extra="$2"
+    local _conf="${1-./}"   # set / set -v output or hive-site.xml
+    local _others="$2"      # check HDFS, YARN, MR2 configs if 'y'
 
     # 1. check the following properties' values
-    # grep -ohE '\(property\(.+$' * | cut -d '"' -f 2 | tr '\n' ' '
+    # ggrep -ohE '\(property\(.+$' * | cut -d '"' -f 2 | tr '\n' ' '
 
-    echo "# Hive config check"
+    echo "# Hive config check" >&2
     local _props="hive.auto.convert.join hive.merge.mapfiles hive.merge.mapredfiles hive.exec.compress.intermediate hive.exec.compress.output datanucleus.cache.level2.type hive.default.fileformat.managed hive.default.fileformat fs.hdfs.impl.disable.cache fs.file.impl.disable.cache hive.cbo.enable hive.compute.query.using.stats hive.stats.fetch.column.stats hive.stats.fetch.partition.stats hive.execution.engine datanucleus.fixedDatastore hive.exim.strict.repl.tables datanucleus.autoCreateSchema hive.exec.parallel hive.plan.serialization.format hive.server2.tez.initialize.default.sessions hive.vectorized.execution.enabled hive.vectorized.execution.reduce.enabled"
-    _loop_props "${_conf%/}" "${_props}"
+    _search_properties "${_conf%/}" "${_props}"
 
-    echo -e "\n# Tez config check"
+    echo -e "\n# Tez config check" >&2
     _props="tez.am.am-rm.heartbeat.interval-ms.max tez.runtime.transfer.data-via-events.enabled tez.session.am.dag.submit.timeout.secs tez.am.container.reuse.enabled tez.runtime.io.sort.mb tez.session.client.timeout.secs tez.runtime.shuffle.memory-to-memory.enable tez.runtime.task.input.post-merge.buffer.percent tez.am.container.session.delay-allocation-millis tez.session.am.dag.submit.timeout.secs tez.runtime.shuffle.fetch.buffer.percent tez.task.am.heartbeat.interval-ms.max tez.task.am.heartbeat.counter.interval-ms.max tez.task.get-task.sleep.interval-ms.max tez.task.scale.memory.enabled"
-    _loop_props "${_conf%/}" "${_props}"
+    _search_properties "${_conf%/}" "${_props}"
 
-    if [[ "_extra" =~ (^y|^Y) ]]; then
-        echo -e "\n# HDFS config check"
-        _props="hdfs.audit.logger dfs.block.access.token.enable dfs.blocksize dfs.namenode.checkpoint.period dfs.datanode.failed.volumes.tolerated dfs.datanode.max.transfer.threads dfs.permissions.enabled hadoop.security.group.mapping fs.defaultFS dfs.namenode.accesstime.precision dfs.ha.automatic-failover.enabled dfs.namenode.checkpoint.txns dfs.namenode.stale.datanode.interval dfs.namenode.name.dir dfs.namenode.handler.count dfs.namenode.metrics.logger.period.seconds dfs.namenode.name.dir dfs.namenode.top.enabled fs.protected.directories dfs.replication dfs.namenode.name.dir.restore dfs.namenode.safemode.threshold-pct dfs.namenode.avoid.read.stale.datanode dfs.namenode.avoid.write.stale.datanode dfs.replication dfs.client.block.write.replace-datanode-on-failure.enable dfs.client.block.write.replace-datanode-on-failure.policy dfs.client.block.write.replace-datanode-on-failure.best-effort dfs.datanode.du.reserved hadoop.security.logger dfs.client.read.shortcircuit dfs.domain.socket.path fs.trash.interval fs.permissions.umask-mode ha.zookeeper.acl ha.health-monitor.rpc-timeout.ms"
-        _loop_props "${_conf%/}" "${_props}"
-
-        echo -e "\n# YARN config check"
-        _props="yarn.timeline-service.generic-application-history.save-non-am-container-meta-info yarn.timeline-service.enabled hadoop.security.authentication yarn.timeline-service.http-authentication.type yarn.timeline-service.store-class yarn.timeline-service.ttl-enable yarn.timeline-service.ttl-ms yarn.acl.enable yarn.log-aggregation-enable yarn.nodemanager.recovery.enabled yarn.resourcemanager.recovery.enabled yarn.resourcemanager.work-preserving-recovery.enabled yarn.nodemanager.local-dirs yarn.nodemanager.log-dirs yarn.nodemanager.resource.cpu-vcores yarn.nodemanager.vmem-pmem-ratio"
-        _loop_props "${_conf%/}" "${_props}"
-
-        echo -e "\n# MR config check"
-        _props="mapreduce.map.output.compress mapreduce.output.fileoutputformat.compress io.sort.factor mapreduce.task.io.sort.mb mapreduce.map.sort.spill.percent mapreduce.map.speculative mapreduce.input.fileinputformat.split.maxsize mapreduce.input.fileinputformat.split.minsize mapreduce.reduce.shuffle.parallelcopies mapreduce.reduce.speculative mapreduce.job.reduce.slowstart.completedmaps mapreduce.tasktracker.group"
-        _loop_props "${_conf%/}" "${_props}"
-    fi
+    echo -e "\n# Hive extra config check" >&2
+    _props="hive.metastore.client.connect.retry.delay hive.metastore.client.connect.retry.delay hive.metastore.failure.retries hive\..*aux.jars.path hive.server2.async.exec.threads hive\.server2\..*\.threads hive.tez.java.opts hive.server2.idle.session.check.operation hive.server2.session.check.interval hive.server2.idle.session.timeout hive.server2.idle.operation.timeout tez.session.am.dag.submit.timeout.secs tez.yarn.ats.event.flush.timeout.millis hive.llap.*"
+    _search_properties "${_conf%/}" "${_props}"
 
     # 2. Extra properties from set output
-    if [ -f "$_hadoop_conf" ]; then
-        echo -e "\n# System:java"
+    echo -e "\n# hadoop common (mainly from core-site.xml and set -v required)" >&2
+    _props="hadoop\.proxyuser\..* hadoop\.ssl\..* hadoop\.http\.authentication\..* ipc\.client\..*"
+    _search_properties "${_conf%/}" "${_props}"
+
+    if [[ "$_others" =~ (^y|^Y) ]]; then
+        echo -e "\n# HDFS config check" >&2
+        _props="hdfs.audit.logger dfs.block.access.token.enable dfs.blocksize dfs.namenode.checkpoint.period dfs.datanode.failed.volumes.tolerated dfs.datanode.max.transfer.threads dfs.permissions.enabled hadoop.security.group.mapping fs.defaultFS dfs.namenode.accesstime.precision dfs.ha.automatic-failover.enabled dfs.namenode.checkpoint.txns dfs.namenode.stale.datanode.interval dfs.namenode.name.dir dfs.namenode.handler.count dfs.namenode.metrics.logger.period.seconds dfs.namenode.name.dir dfs.namenode.top.enabled fs.protected.directories dfs.replication dfs.namenode.name.dir.restore dfs.namenode.safemode.threshold-pct dfs.namenode.avoid.read.stale.datanode dfs.namenode.avoid.write.stale.datanode dfs.replication dfs.client.block.write.replace-datanode-on-failure.enable dfs.client.block.write.replace-datanode-on-failure.policy dfs.client.block.write.replace-datanode-on-failure.best-effort dfs.datanode.du.reserved hadoop.security.logger dfs.client.read.shortcircuit dfs.domain.socket.path fs.trash.interval fs.permissions.umask-mode ha.zookeeper.acl ha.health-monitor.rpc-timeout.ms"
+        _search_properties "${_conf%/}" "${_props}"
+
+        echo -e "\n# YARN config check" >&2
+        _props="yarn.timeline-service.generic-application-history.save-non-am-container-meta-info yarn.timeline-service.enabled hadoop.security.authentication yarn.timeline-service.http-authentication.type yarn.timeline-service.store-class yarn.timeline-service.ttl-enable yarn.timeline-service.ttl-ms yarn.acl.enable yarn.log-aggregation-enable yarn.nodemanager.recovery.enabled yarn.resourcemanager.recovery.enabled yarn.resourcemanager.work-preserving-recovery.enabled yarn.nodemanager.local-dirs yarn.nodemanager.log-dirs yarn.nodemanager.resource.cpu-vcores yarn.nodemanager.vmem-pmem-ratio"
+        _search_properties "${_conf%/}" "${_props}"
+
+        echo -e "\n# MR config check" >&2
+        _props="mapreduce.map.output.compress mapreduce.output.fileoutputformat.compress io.sort.factor mapreduce.task.io.sort.mb mapreduce.map.sort.spill.percent mapreduce.map.speculative mapreduce.input.fileinputformat.split.maxsize mapreduce.input.fileinputformat.split.minsize mapreduce.reduce.shuffle.parallelcopies mapreduce.reduce.speculative mapreduce.job.reduce.slowstart.completedmaps mapreduce.tasktracker.group"
+        _search_properties "${_conf%/}" "${_props}"
+    fi
+
+    # 3. Extra properties from set output
+    if [ -f "$_conf" ]; then
+        echo -e "\n# System:java" >&2
         # |system:java\.class\.path
-        grep -E '^(env:HOSTNAME|env:HADOOP_HEAPSIZE|env:HADOOP_CLIENT_OPTS|system:hdp\.version|system:java\.home|system:java\.vm\.*|system:java\.io\.tmpdir|system:os\.version|system:user\.timezone)=' "$_hadoop_conf"
+        ggrep -E '^(env:HOSTNAME|env:HADOOP_HEAPSIZE|env:HADOOP_CLIENT_OPTS|system:hdp\.version|system:java\.home|system:java\.vm\.*|system:java\.io\.tmpdir|system:os\.version|system:user\.timezone)=' "$_conf"
     fi
 }
 
-function _loop_props() {
-    local _conf="${1-./}"
-    local _props="$2"
-    for _p in $_props; do
-        if [ -d "$_conf" ]; then
-            echo $_p
-            grep -A1 -E "<name>$_p" ${_conf%/}/*-site.xml | grep "<value>"
+function _search_properties() {
+    local _path="${1-./}"
+    local _props="$2" # space separated regex
+    local _is_name_value_xml="$3"
+
+    for _p in ${_props}; do
+        if [[ "${_is_name_value_xml}" =~ (^y|^Y) ]]; then
+            local _out="`ggrep -Pzo "(?s)<name>${_p}</name>.+?</value>" ${_path}`"
+            [[ "${_out}" =~ (<value>)(.*)(</value>) ]]
+            echo "${_p}=${BASH_REMATCH[2]}"
         else
-            # Expecting 'set' command output
-            grep "${_p}" $_conf
+            # Expecting hive 'set' command output or similar style (prop=value)
+            ggrep -P "${_p}" ${_path}
         fi
     done
 }
