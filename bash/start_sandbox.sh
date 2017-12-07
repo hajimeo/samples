@@ -75,9 +75,12 @@ function f_docker_image_setup() {
         curl --retry 100 -C - "${_url}" -o "${_tmp_dir%/}/${_file_name}" || return $?
     fi
 
-    echo "Executing \"docker import ${_tmp_dir%/}/${_file_name}\"
-If fails, please re-try with \"dokcer load -i ${_tmp_dir%/}/${_file_name}\""
-    docker import "${_tmp_dir%/}/${_file_name}" || return $?
+    if [[ "${_name}" =~ ^"sandbox-hdf" ]]; then
+        # Somehow HDF3 does not work with docker load
+        docker import "${_tmp_dir%/}/${_file_name}"
+    else
+        dokcer load -i "${_tmp_dir%/}/${_file_name}"
+    fi
 }
 
 function f_ambari_start_all() {
