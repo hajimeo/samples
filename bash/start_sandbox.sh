@@ -17,14 +17,20 @@
 #   # TODO: update docker config file to add " --bip=172.18.0.1\/24", then restart docker service, then
 #   docker network create --driver=bridge --gateway=172.17.0.1 --subnet=172.17.0.0/16 -o com.docker.network.bridge.name=hdp -o com.docker.network.bridge.host_binding_ipv4=172.17.0.1 hdp
 #
+
+### Arguments (all are optional)
 _NAME="${1-sandbox-hdp}"
 _IP="${2}"
 _HOSTNAME="${3}"
+
+### Global variables
 _CUSTOM_NETWORK="hdp"
 _AMBARI_PORT=8080
 _SHMMAX=41943040
 _NEW_CONTAINER=false
 
+
+### functions
 function f_docker_image_setup() {
     #Install Sandbox docker version. See https://hortonworks.com/hadoop-tutorial/hortonworks-sandbox-guide"
     local _name="${1-$_NAME}" # sandbox or sandbox-hdf
@@ -134,20 +140,21 @@ function _totalSpaceGB() {
     df -P --total ${_dir_path} | grep -i ^total | awk '{gb=sprintf("%.0f",$2/1024/1024);print gb}'
 }
 
-### main() ############################################################
+### main()
 if [ "$0" = "$BASH_SOURCE" ]; then
     # TODO: Seems HDF image works with only sandbox-hdf.hortonwroks.com
     if [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
         _HOSTNAME="sandbox-hdf.hortonworks.com"
+    elif [[ "${_NAME}" =~ ^"sandbox-hdp" ]]; then
+        _HOSTNAME="sandbox-hdp.hortonworks.com"
     else
         _HOSTNAME="sandbox.hortonworks.com"
     fi
 
-    _regex="^[1-9].+${_HOSTNAME}"
-    [ ! -z "$_IP" ] && _regex="^${_IP}\s+${_HOSTNAME}"
-    if ! grep -qE "$_regex" /etc/hosts; then
-        echo "WARN: /etc/hosts doesn't look like having ${_HOSTNAME}.
-If you would like to fix this now, press Ctrl+c."
+    python -c "import socket; socket.gethostbyname(\"${_HOSTNAME}\")" 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo "WARN: ${_HOSTNAME} may not be resolvable.
+If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         sleep 7
     fi
 
