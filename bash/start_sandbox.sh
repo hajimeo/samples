@@ -365,6 +365,7 @@ If you would like to fix this now, press Ctrl+c."
 
     # setting up password-less ssh to sandbox
     if [ -s  ~/.ssh/id_rsa.pub ]; then
+        docker exec -it ${_NAME} bash -c "[ -f /root/.ssh/authorized_keys ] || ( install -D -m 600 /dev/null /root/.ssh/authorized_keys && chmod 700 /root/.ssh )"
         docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> /root/.ssh/authorized_keys"
     fi
 
@@ -377,7 +378,7 @@ If you would like to fix this now, press Ctrl+c."
         docker exec -it ${_NAME} bash -c "chpasswd <<< root:hadoop"
 
         # As of this typing, sandbox repo for tutorial is broken so moving out for now
-        docker exec -it ${_NAME} bash -c 'mv /etc/yum.repos.d/sandbox.repo /root/'
+        docker exec -it ${_NAME} bash -c 'mv /etc/yum.repos.d/sandbox.repo /root/' &>/dev/null
         docker exec -it ${_NAME} bash -c 'yum install -y yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc'
 
         #echo "Resetting Ambari Agent just in case ..."
