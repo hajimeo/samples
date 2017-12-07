@@ -402,7 +402,7 @@ If you would like to fix this now, press Ctrl+c."
     # NOTE: docker exec add '$' and '\r'
     _NETWORK_ADDR=`ssh -q ${_HOSTNAME} hostname -i | sed 's/\(.\+\)\.[0-9]\+$/\1/'`
     if [ ! -z "$_NETWORK_ADDR" ]; then
-        which dnsmasq &>/dev/null && docker exec -it ${_NAME} bash -c 'echo "nameserver '${_NETWORK_ADDR}'" > /etc/resolv.conf'
+        which dnsmasq &>/dev/null && docker exec -it ${_NAME} bash -c 'echo "nameserver '${_NETWORK_ADDR}.1'" > /etc/resolv.conf'
         docker exec -it ${_NAME} bash -c "ip route del ${_NETWORK_ADDR}.0/24 via 0.0.0.0"
     fi
 
