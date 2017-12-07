@@ -40,9 +40,12 @@ function f_docker_image_setup() {
         return 1
     fi
 
-    docker ps -a --format "{{.Names}}" | grep -qw "${_name}"
-    if [ $? -eq 0 ]; then
+    local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_name}:"`"
+    if [ ! -z "$_existing_img" ]; then
         echo "Image $_name already exist. Exiting."
+        echo "To rename image:"
+        echo "    docker tag ${_existing_img} <new_name>:<new_tag>"
+        echo "    docker rmi ${_existing_img}"
         return
     fi
 
