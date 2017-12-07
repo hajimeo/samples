@@ -403,6 +403,19 @@ function f_git_search() {
     for c in $_commits_only; do git tag --contains $c; done | sort
 }
 
+function f_os_checklist() {
+    local __doc__="Check OS kernel parameters"
+    local _conf="${1-./}"
+
+    #cat /sys/kernel/mm/transparent_hugepage/enabled
+    #cat /sys/kernel/mm/transparent_hugepage/defrag
+
+    # 1. check "sysctl -a" output
+    local _props="kernel.shmmax vm.oom_dump_tasks vm.zone_reclaim_mode vm.swappiness vm.dirty_ratio vm.dirty_background_ratio net.core.somaxconn net.core.netdev_max_backlog net.core.rmem_max net.core.wmem_max net.core.rmem_default net.core.wmem_default net.ipv4.tcp_rmem net.ipv4.tcp_wmem net.ipv4.ip_local_port_range net.ipv4.tcp_mtu_probing net.ipv4.tcp_fin_timeout net.ipv4.conf.*.forwarding"
+
+    _search_properties "${_conf%/}" "${_props}"
+}
+
 function f_hdfs_checklist() {
     local __doc__="Store HDFS config checklist in this function"
     local _conf="${1-./}"
