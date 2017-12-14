@@ -142,13 +142,15 @@ function _totalSpaceGB() {
 
 ### main()
 if [ "$0" = "$BASH_SOURCE" ]; then
-    # TODO: Seems HDF image works with only sandbox-hdf.hortonwroks.com
-    if [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
-        _HOSTNAME="sandbox-hdf.hortonworks.com"
-    elif [[ "${_NAME}" =~ ^"sandbox-hdp" ]]; then
-        _HOSTNAME="sandbox-hdp.hortonworks.com"
-    else
-        _HOSTNAME="sandbox.hortonworks.com"
+    if [ -z "${_HOSTNAME}" ]; then
+        # TODO: Seems HDF image works with only sandbox-hdf.hortonwroks.com
+        if [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
+            _HOSTNAME="sandbox-hdf.hortonworks.com"
+        elif [[ "${_NAME}" =~ ^"sandbox-hdp" ]]; then
+            _HOSTNAME="sandbox-hdp.hortonworks.com"
+        else
+            _HOSTNAME="sandbox.hortonworks.com"
+        fi
     fi
 
     python -c "import socket; socket.gethostbyname(\"${_HOSTNAME}\")" 2>/dev/null
