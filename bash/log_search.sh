@@ -20,7 +20,10 @@ usage() {
     echo "This script contains useful functions to search log files.
 
 How to use (just source)
-    . ${BASH_SOURCE}
+    source ${BASH_SOURCE}
+Or
+    ${BASH_SOURCE} log_file_path [start_date] [end_date]
+    NOTE: as using grep, wouldn't work if you specify minutes or seconds
 
 Example:
     # Check what kind of caused by is most
@@ -648,7 +651,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         _file_path="$1"
         if [ -n "$2" ]; then
             echo "# Extracting $2 $3 into a temp file ..." >&2
-            f_extractByDates "$@" > /tmp/_f_extractByDates_$$.out
+            f_extractByDates "$1" "$2" "$3" > /tmp/_f_extractByDates_$$.out
             _file_path="/tmp/_f_extractByDates_$$.out"
         fi
         echo "# Running f_topErrors $_file_path ..." >&2
