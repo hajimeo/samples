@@ -11,7 +11,7 @@
 #   f_docker_image_setup [sandbox-hdp|sandbox-hdf]
 #
 # To start Sandbox (IP needs 'hdp' network)
-#   bash ./start_sandbox.sh [sandbox-hdp|sandbox-hdf] [IP] [hostname]
+#   bash ./start_sandbox.sh [sandbox-hdp|sandbox-hdf] [hostname] [IP]
 #
 # How to create 'hdp' network (incomplete as how to change docker config is different by OS)
 #   # TODO: update docker config file to add " --bip=172.18.0.1\/24", then restart docker service, then
@@ -20,8 +20,8 @@
 
 ### Arguments (all are optional)
 _NAME="${1-sandbox-hdp}"
-_IP="${2}"
-_HOSTNAME="${3}"
+_HOSTNAME="${2}"
+_IP="${3}"
 
 ### Global variables
 _CUSTOM_NETWORK="hdp"
@@ -366,6 +366,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         sleep 5
         #docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
         docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL'\""
+        #docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE hosts set host_name='${_HOSTNAME}' where host_id=1;UPDATE hosts set public_host_name='${_HOSTNAME}' where host_id=1;\""
     fi
     docker exec -d ${_NAME} service ambari-server start --skip-database-check
     docker exec -d ${_NAME} service ambari-agent start
