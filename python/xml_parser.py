@@ -2,33 +2,35 @@
 # -*- coding: utf-8 -*-
 #
 
+import sys, pprint, re, json, os
+from lxml import etree
 
 def usage():
-    print '''A simple XML Parser
+    usage_str = '''A simple XML Parser
 If one xml file is given, outputs "property=value" output (so that can copy&paste into Ambari, ex: Capacity Scheduler)
 If two xml files are given, compare and outputs the difference with JSON format.
 
-python ./xml_parser.py XXXX-site.xml [YYYY-site.xml] [join type (f|l|r|i)] [exclude regex for key]
+python %s XXXX-site.xml [YYYY-site.xml] [join type (f|l|r|i)] [exclude regex for key]
 
 
 To get the latest code:
     curl -O https://raw.githubusercontent.com/hajimeo/samples/master/python/xml_parser.py
 
 
-Example 1: use as a command line tool on Mac (eg: ln -s ./xml_parser.py /usr/local/bin/xmldiff)
+Example 1: use as a command line tool on Mac (eg: ln -s %s /usr/local/bin/xmldiff)
     Setup:
       ssh -p 2222 root@sandbox.hortonworks.com "echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
     Run:
-      _f=./ams-site.xml; ./xml_parser.py $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/ambari-metrics-collector/conf/$_f) 'F' '.+(auth_to_local|\.hue\.).*'
+      _f=/etc/ambari-metrics-collector/conf/ams-site.xml; %s ./${_f} <(ssh -Cp 2222 root@sandbox.hortonworks.com cat ${_f}) 'F' '.+(auth_to_local|\.hue\.).*'
 
 Example 2: Compare all xxx-site.xml between two clusters
     Step 1: collect all configs from a cluster with below tar command
-      tar czhvf ./hdp_all_conf_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz /usr/hdp/current/*/conf /etc/{ams,ambari}-* /etc/ranger/*/policycache /etc/hosts /etc/krb5.conf 2>/dev/null
+      tar czhvf ./hdp_all_conf_$(hostname).tgz /usr/hdp/current/*/conf /etc/{ams,ambari}-* /etc/ranger/*/policycache /etc/hosts /etc/krb5.conf 2>/dev/null
       
     Step 2: extract hdp_all_conf_xxxx.tgz
     
     Step 3: Compare with same or similar version of your cluster
-      find . -type f -name '*-site.xml' | xargs -t -I {} bash -c '_f={};./xml_parser.py $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat ${_f#.}) > ${_f}.json'
+      find . -type f -name '*-site.xml' | xargs -t -I {} bash -c '_f={};%s $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat ${_f#.}) > ${_f}.json'
       
     Step 4: Check the result
       find . -type f -name '*-site.xml.json' -ls
@@ -36,9 +38,8 @@ Example 2: Compare all xxx-site.xml between two clusters
 Misc.: for non xml files
     _f=./client.properties; diff -w $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/falcon/conf/$_f)
 '''
-
-import sys, pprint, re, json
-from lxml import etree
+    filename = os.path.basename(__file__)
+    print usage_str % (filename, filename, filename, filename)
 
 class XmlParser:
     @staticmethod
