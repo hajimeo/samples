@@ -1,4 +1,4 @@
-FROM centos:7.3.1611
+FROM centos:7.4.1708
 
 #install HDP requirements + dependencies and system tools 
 RUN sed -i 's/override_install_langs.*/override_install_langs=en_US.utf8/' /etc/yum.conf;yum -y install yum-plugin-ovl scp curl unzip tar wget openssl python;\

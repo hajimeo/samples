@@ -123,7 +123,7 @@ function p_interview() {
     _ask "First 24 bits (xxx.xxx.xxx.) of container IP Address" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Node starting number (hostname will be sequential from this number)" "1" "r_NODE_START_NUM" "N" "Y"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
-    _ask "$r_CONTAINER_OS version (use 7.3.1611 or higher for Centos 7)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
+    _ask "$r_CONTAINER_OS version (use 7.4.1708 or higher for Centos 7)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
     r_CONTAINER_OS="${r_CONTAINER_OS,,}"
     local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
 
@@ -2121,7 +2121,7 @@ function f_dnsmasq_banner_reset() {
     else
         grep -vE "$_docker0|${r_DOCKER_PRIVATE_HOSTNAME}${_domain}" /tmp/banner_add_hosts > /tmp/banner
         echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" >> /tmp/banner
-	
+
         cat /tmp/banner > /tmp/banner_add_hosts
     fi
 
