@@ -181,7 +181,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
     # If same container name exists start it
     docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"
     if [ $? -eq 0 ]; then
-        docker start "${_NAME}"
+        docker start "${_NAME}" || exit $?
     else
         _network=""
         if [ ! -z "$_IP" ]; then
