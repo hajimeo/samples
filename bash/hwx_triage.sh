@@ -154,7 +154,7 @@ function f_collect_log_files() {
 function f_collect_webui() {
     local __doc__="TODO: Collect Web UI with wget"
     local _url="$1"
-    local _work_dir="${1-$_WORK_DIR}"
+    local _work_dir="${2-$_WORK_DIR}"
     [ -z "$_work_dir" ] && _work_dir="."
 
     if ! which wget &>/dev/null ; then
@@ -235,7 +235,7 @@ print ','.join(r)"
 #}
 
 function f_tar_work_dir() {
-    local __doc__="Create tgz file from work dir and cleanup work dir"
+    local __doc__="Create tgz file from work dir and cleanup work dir if hwx_triage"
     local _tar_file_path="$1"
     local _work_dir="${2-$_WORK_DIR}"
 
