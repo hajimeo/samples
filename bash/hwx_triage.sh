@@ -83,7 +83,7 @@ function f_check_system() {
 function f_check_process() {
     local __doc__="Execute PID related commands (jstack, jstat, jmap)"
     local _p="$1"	# Java PID ex: `cat /var/run/kafka/kafka.pid`
-    local _work_dir="${2-$_work_dir}"
+    local _work_dir="${2-$_WORK_DIR}"
     [ -z "$_work_dir" ] && _work_dir="."
 
     if [ -z "$_p" ]; then
