@@ -143,7 +143,7 @@ function f_collect_log_files() {
 
     echo "INFO" "Collecting log files under ${_path} for past ${_day} day(s) ..." >&2
 
-    tar czhf ${_WORK_DIR%/}/hdp_log_$(hostname).tar.gz `find -L "${_path}" -type f -mtime -${_day}` 2>&1 | grep -v 'Removing leading'
+    tar czhf ${_WORK_DIR%/}/hdp_log_$(hostname)_$(date +"%Y%m%d%H%M%S").tar.gz `find -L "${_path}" -type f -mtime -${_day}` 2>&1 | grep -v 'Removing leading'
     # grep -i "killed process" /var/log/messages* # TODO: should we also check OOM Killer?
 }
 
