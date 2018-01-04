@@ -240,7 +240,7 @@ function f_tar_work_dir() {
     local _work_dir="${2-$_WORK_DIR}"
 
     if [ -z "$_tar_file_path" ]; then
-        _tar_file_path="./hdp_triage_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz"
+        _tar_file_path="./hwx_triage_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz"
     fi
 
     if [ -z "${_work_dir%/}" ] || [ ! -d "$_work_dir" ]; then
