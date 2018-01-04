@@ -229,16 +229,22 @@ print ','.join(r)"
 #}
 
 function f_tar_work_dir() {
-    local __doc__="Create tgz file from work dir and remove work dir"
-    local _file_path="$1"
+    local __doc__="Create tgz file from work dir and cleanup work dir"
+    local _tar_file_path="$1"
+    local _work_dir="${2-$_WORK_DIR}"
 
-    if [ -z "$_file_path" ]; then
-        _file_path="./hdp_triage_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz"
+    if [ -z "$_tar_file_path" ]; then
+        _tar_file_path="./hdp_triage_$(hostname)_$(date +"%Y%m%d%H%M%S").tgz"
     fi
 
-    echo "INFO" "Creating ${_file_path} file ..." >&2
+    if [ -z "${_work_dir%/}" ] || [ ! -d "$_work_dir" ]; then
+        echo "ERROR" "${_work_dir} is not a good directory to tar" >&2
+        return 1
+    fi
 
-    tar --remove-files -czf ${_file_path} ${_WORK_DIR%/}/* 2>&1 | grep -v 'Removing leading'
+    echo "INFO" "Creating ${_tar_file_path} file ..." >&2
+
+    tar --remove-files -czf ${_tar_file_path} ${_work_dir%/}/* 2>&1 | grep -v 'Removing leading'
 }
 
 
