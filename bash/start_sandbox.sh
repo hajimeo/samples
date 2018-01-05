@@ -367,7 +367,8 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         echo "Resetting Ambari password (to 'admin') ..."
         sleep 5
         #docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
-        docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL'\""
+        docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00', active=1 WHERE user_name='admin' and user_type='LOCAL';\""
+        #docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE metainfo SET metainfo_value = '${_AMBARI_VERSION}' where metainfo_key = 'version';\""
         #docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE hosts set host_name='${_HOSTNAME}' where host_id=1;UPDATE hosts set public_host_name='${_HOSTNAME}' where host_id=1;\""
     fi
     docker exec -d ${_NAME} service ambari-server start --skip-database-check
