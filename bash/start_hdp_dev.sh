@@ -130,9 +130,9 @@ function p_interview() {
     _ask "Ambari version" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
     wget -q -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
     if [ -s /tmp/hdp_urlinfo.json ]; then
-        _stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json,pprint;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
+        _stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
         _stack_version="`echo $_stack_version_full | cut -d'-' -f2`"
-        _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json,pprint;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_CONTAINER_OS}${_repo_os_ver}'"]'`"
+        _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_CONTAINER_OS}${_repo_os_ver}'"]'`"
         _hdp_version="`basename ${_hdp_repo_url%/}`"
     fi
     _ask "HDP Version" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
