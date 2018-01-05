@@ -157,7 +157,7 @@ function f_appLogContainerCountPerHost() {
             if [[ "$_line" =~ ${_regex} ]]; then
                 echo "# ${BASH_REMATCH[1]}"
                 # TODO: not clean enough. eg: [['File System Counters HDFS_BYTES_READ=1469456609',
-                echo "${BASH_REMATCH[2]}" | gsed -r 's/\[([^"\[])/\["\1/g' | gsed -r 's/([^"])\]/\1"\]/g' | gsed -r 's/([^"]), ([^"])/\1", "\2/g' | gsed -r 's/\]\[/\], \[/g' | python -c "import sys,pprint;pprint.pprint(eval(sys.stdin.read()), indent=4)"
+                echo "${BASH_REMATCH[2]}" | gsed -r 's/\[([^"\[])/\["\1/g' | gsed -r 's/([^"])\]/\1"\]/g' | gsed -r 's/([^"]), ([^"])/\1", "\2/g' | gsed -r 's/\]\[/\], \[/g' | python -m json.tool
                 echo ""
             fi
         done
