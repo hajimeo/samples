@@ -151,9 +151,16 @@ function f_appLogJobCounters() {
     local __doc__="List the Job Final counters (Tez only?) (from YARN app log)"
     local _path="$1"
     local _line=""
-    local _list=""
+    local _regex="(Final Counters for [^ :]+)[^\[]+(\[.+$)"
 
-    ggrep -Eo "Final Counters for .+$" "$_path"
+    ggrep -Eo "Final Counters for .+$" "$_path" | while read -r _line ; do
+        if [[ "$_line" =~ ${_regex} ]]; then
+            echo "# ${BASH_REMATCH[1]}"
+            # TODO: not clean enough. eg: [['File System Counters HDFS_BYTES_READ=1469456609',
+            echo "${BASH_REMATCH[2]}" | gsed -r 's/\[([^"\[])/\["\1/g' | gsed -r 's/([^"])\]/\1"\]/g' | gsed -r 's/([^"]), ([^"])/\1", "\2/g' | gsed -r 's/\]\[/\], \[/g' | python -c "import sys,pprint;pprint.pprint(eval(sys.stdin.read()))"
+            echo ""
+        fi
+    done
 }
 
 function f_appLogJobExports() {
