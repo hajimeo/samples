@@ -19,18 +19,22 @@ usage() {
     echo "HELP/USAGE:"
     echo "This script contains useful functions to search log files.
 
-How to use (just source)
+How to use: source and use some function
     source ${BASH_SOURCE}
-Or
-    ${BASH_SOURCE} log_file_path [start_date] [end_date]
-    NOTE: as using grep, wouldn't work if you specify minutes or seconds
+    help f_someFunctionName
 
-Example:
+    Examples:
     # Check what kind of caused by is most
     f_topCausedByExceptions ./yarn_application.log | tail -n 10
 
     # Check what kind of ERROR is most
     f_topErrors ./yarn_application.log | tail -n 10
+Or
+    ${BASH_SOURCE} -f log_file_path [-s start_date] [-e end_date] [-t log_type]
+    NOTE:
+      For start and end date, as using grep, may not return good result if you specify minutes or seconds.
+      'log_type' currently accepts only 'ya' (yarn app log)
+
 "
     echo "Available functions:"
     list
@@ -90,7 +94,7 @@ function f_topSlowLogs() {
         _path=/tmp/f_topErrors_$$.tmp
     fi
     if [ -z "$_regex" ]; then
-        _regex="(slow|performance|delay|delaying|waiting|latency|too many|not sufficient).+"
+        _regex="(slow|performance|delay|delaying|waiting|latency|too many|not sufficient|lock held).+"
     fi
 
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
@@ -125,9 +129,9 @@ function f_appLogContainersAndHosts() {
     local _sort_by_host="$2"
 
     if [[ "$_sort_by_host" =~ (^y|^Y) ]]; then
-        ggrep "^Container: container_" "$_path" | sort -k4
+        ggrep "^Container: container_" "$_path" | sort -k4 | uniq
     else
-        ggrep "^Container: container_" "$_path" | sort
+        ggrep "^Container: container_" "$_path" | sort | uniq
     fi
 }
 
@@ -144,18 +148,12 @@ function f_appLogContainerCountPerHost() {
 }
 
 function f_appLogJobCounters() {
-    local __doc__="List the Job counters (Tez only?) (from YARN app log)"
+    local __doc__="List the Job Final counters (Tez only?) (from YARN app log)"
     local _path="$1"
     local _line=""
     local _list=""
-    local _final_containers=""
 
-    egrep -o "Final Counters for .+$" "$_path" | while read -r _line ; do
-        echo $_line | egrep -o "Final Counters for .+?:"
-        _list="`echo $_line | egrep -o "\[.+$"`"
-
-        echo $_list | python -c "import sys,pprint;pprint.pprint(sys.stdin.read());"
-    done
+    ggrep -Eo "Final Counters for .+$" "$_path"
 }
 
 function f_appLogJobExports() {
@@ -357,7 +355,8 @@ function f_splitApplog() {
         echo "$_script_path does not exist"
         return 1
     fi
-    python "$_script_path" --container-log-dir $_out_name --app-log $_app_log
+    grep -Fv "***********************************************************************" $_app_log > /tmp/${_app_log}.tmp
+    python "$_script_path" --container-log-dir $_out_name --app-log /tmp/${_app_log}.tmp
 }
 
 function f_swimlane() {
@@ -636,47 +635,79 @@ _TEST_REGEX='^\[.+\]$'
 ### Main ###############################################################################################################
 
 if [ "$0" = "$BASH_SOURCE" ]; then
-    if [ -z "$1" ]; then
+    # parsing command options
+    while getopts "f:s:e:t:h" opts; do
+        case $opts in
+            f)
+                _FILE_PATH="$OPTARG"
+                ;;
+            s)
+                _START_DATE="$OPTARG"
+                ;;
+            e)
+                _END_DATE="$OPTARG"
+                ;;
+            t)
+                _LOG_TYPE="$OPTARG"
+                ;;
+            h)
+                usage | less
+                exit 0
+        esac
+    done
+
+    if [ -z "$_FILE_PATH" ]; then
         usage
         exit
     fi
 
-    if [ ! -s "$1" ]; then
-        echo "$1 is not a right file."
-        usage
-        exit
+    if [ ! -s "$_FILE_PATH" ]; then
+        echo "$_FILE_PATH is not a right file. (-h for help)"
+        exit 1
     fi
 
-    if [ -s "$1" ]; then
-        _file_path="$1"
-        if [ -n "$2" ]; then
-            echo "# Extracting $2 $3 into a temp file ..." >&2
-            f_extractByDates "$1" "$2" "$3" > /tmp/_f_extractByDates_$$.out
-            _file_path="/tmp/_f_extractByDates_$$.out"
-        fi
-        echo "# Running f_topErrors $_file_path ..." >&2
-        f_topErrors "$_file_path" "Y" > /tmp/_f_topErrors_$$.out &
-        echo "# Running f_topSlowLogs $_file_path ..." >&2
-        f_topSlowLogs "$_file_path" > /tmp/_f_topSlowLogs_$$.out &
-        echo "# Running f_topCausedByExceptions $_file_path ..." >&2
-        f_topCausedByExceptions "$_file_path" > /tmp/_f_topCausedByExceptions_$$.out &
+    _file_path="$_FILE_PATH"
+    if [ -n "$_START_DATE" ]; then
+        echo "# Extracting $_START_DATE $_END_DATE into a temp file ..." >&2
+        f_extractByDates "$_FILE_PATH" "$_START_DATE" "$_END_DATE" > /tmp/_f_extractByDates_$$.out
+        _file_path="/tmp/_f_extractByDates_$$.out"
+    fi
+    echo "# Running f_topErrors $_file_path ..." >&2
+    f_topErrors "$_file_path" "Y" > /tmp/_f_topErrors_$$.out &
+    echo "# Running f_topCausedByExceptions $_file_path ..." >&2
+    f_topCausedByExceptions "$_file_path" > /tmp/_f_topCausedByExceptions_$$.out &
+    echo "# Running f_topSlowLogs $_file_path ..." >&2
+    f_topSlowLogs "$_file_path" > /tmp/_f_topSlowLogs_$$.out &
+    if [ "$_LOG_TYPE" != "ya" ]; then
         echo "# Running f_hdfsAuditLogCountPerTime $_file_path ..." >&2
         f_hdfsAuditLogCountPerTime "$_file_path" > /tmp/_f_hdfsAuditLogCountPerTime_$$.out &
-        wait
+    fi
+    wait
 
-        echo "" >&2
-        echo "============================================================================" >&2
-        echo "# f_topErrors (top 40)"
-        cat /tmp/_f_topErrors_$$.out | tail -n 40
-        echo ""
-        echo "# f_topSlowLogs (top 40)"
-        cat /tmp/_f_topSlowLogs_$$.out | tail -n 40
-        echo ""
-        echo "# f_topCausedByExceptions (top 40)"
-        cat /tmp/_f_topCausedByExceptions_$$.out | tail -n 40
-        echo ""
+    echo "" >&2
+    echo "============================================================================" >&2
+    echo "# f_topErrors (top 40)"
+    cat /tmp/_f_topErrors_$$.out | tail -n 40
+    echo ""
+    echo "# f_topCausedByExceptions (top 40)"
+    cat /tmp/_f_topCausedByExceptions_$$.out | tail -n 40
+    echo ""
+    echo "# f_topSlowLogs (top 40)"
+    cat /tmp/_f_topSlowLogs_$$.out | tail -n 40
+    echo ""
+    if [ "$_LOG_TYPE" != "ya" ]; then
         echo "# f_hdfsAuditLogCountPerTime (last 48 lines)"
         cat /tmp/_f_hdfsAuditLogCountPerTime_$$.out | tail -n 48
+        echo ""
+    fi
+
+    # if app log, run f_appLogxxxxx
+    if [ "$_LOG_TYPE" = "ya" ]; then
+        echo "# f_appLogContainersAndHosts"
+        f_appLogContainersAndHosts "$_file_path" "Y"
+        echo ""
+        echo "# f_appLogJobCounters"
+        f_appLogJobCounters "$_file_path"
         echo ""
     fi
 fi
