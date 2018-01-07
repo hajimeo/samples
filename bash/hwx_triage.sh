@@ -62,11 +62,13 @@ function f_check_system() {
     vmstat -d &> ${_work_dir%/}/vmstat_d.out &
     pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &
     sysctl -a &> ${_work_dir%/}/sysctl.out
+
     top -b -n 1 -c &> ${_work_dir%/}/top.out
     ps auxwwwf &> ${_work_dir%/}/ps.out
     netstat -aopen &> ${_work_dir%/}/netstat.out
-    netstat -s &> ${_work_dir%/}/netstat_s.out
     ifconfig &> ${_work_dir%/}/ifconfig.out
+
+    netstat -s &> ${_work_dir%/}/netstat_s.out
     nscd -g &> ${_work_dir%/}/nscd.out
     getent ahostsv4 `hostname -f` &> ${_work_dir%/}/getent_from_name.out
     getent hosts `hostname -I` &> ${_work_dir%/}/getent_from_ip.out
