@@ -1007,11 +1007,8 @@ function f_docker0_setup() {
     [ "$_mask" = "24" ] && _netmask="255.255.255.0"
     [ -z "$_dns_ip" ] && _dns_ip="`f_docker_ip`"
 
-    if ! ifconfig docker0 | grep "$_docker0" &>/dev/null ; then
-        #_info "Setting IP for docker0 to $_docker0/$_netmask ..."
-        ifconfig docker0 $_docker0 netmask $_netmask
-        _f="/lib/systemd/system/docker.service"
-
+    if ! ifconfig docker0 | grep -q "$_docker0" ; then
+        local _f="/lib/systemd/system/docker.service"
         if [ -f "${_f}" ] && which systemctl &>/dev/null ; then
             local _restart_required=false
             # If multiple --bip, clean up!
@@ -1028,11 +1025,19 @@ function f_docker0_setup() {
             fi
 
             $_restart_required && systemctl daemon-reload && service docker restart
-            return $?
         else
-            grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"$DOCKER_OPTS --bip=${_docker0}/${_mask}\"" >> /etc/default/docker && /etc/init.d/docker restart)
+            _f="/etc/default/docker"
+            grep "$_docker0" ${_f} || (echo "DOCKER_OPTS=\"$DOCKER_OPTS --bip=${_docker0}/${_mask}\"" >> ${_f} && service docker restart)
+        fi
+
+        if [ $? -ne 0 ]; then
+            _error "Moving docker0 (bridge) to ${_docker0} failed. Please check ${_f}"
             return $?
         fi
+
+        # If everything good, change docker0 IP
+        #_info "Setting IP for docker0 to $_docker0/$_netmask ..."
+        ifconfig docker0 ${_docker0} netmask ${_netmask}
     fi
 }
 
