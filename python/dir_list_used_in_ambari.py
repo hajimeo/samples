@@ -91,10 +91,10 @@ if __name__ == '__main__':
     print "/usr/hdp/"
     print "/usr/lib/ambari-*"
     print "/var/lib/ambari-*"
-    print "/opt/ambari_"
+    print "/opt/ambari_*"
     print "/usr/lib/python2.6/site-packages/resource_monitoring"
     print "/var/lib/hadoop*"
-    print "/var/lib/knox"
+    print "/var/lib/knox/"
     sys.stderr.write('# Below may need to change\n')
     #print "/home/xxxxx"
     print "/var/log/"
