@@ -68,6 +68,10 @@ class JsonParser:
 
 
 if __name__ == '__main__':
+    # TODO: These need to be adjusted by each environment
+    pattern=re.compile(r"([_\-\.]dir|[_\-\.]path|dataDir)")
+    value_ecludes=re.compile(r"^/var/run/|^/tmp|^/var/log/|^/etc|^/apps/|^/user|^/app-logs|^/ats/|,|:")
+
     if len(sys.argv) < 2:
         JsonParser.err("Need a json file")
         sys.exit(0)
@@ -75,9 +79,6 @@ if __name__ == '__main__':
     dict = JsonParser.json2dict(sys.argv[1])
     # For debugging purpose
     #print json.dumps(dict, indent=4, sort_keys=True)
-    #print "/home/xxxxx"
-    pattern=re.compile(r"([_\-\.]dir|[_\-\.]path|dataDir)")
-    value_ecludes=re.compile(r"^/var/run/|^/tmp|^/var/log/|^/etc|^/apps/|^/user|^/app-logs|^/ats/|,|:")
     for config_type, properties in dict.items():
         #print config_type
         props = properties.keys()
@@ -95,5 +96,6 @@ if __name__ == '__main__':
     print "/var/lib/hadoop*"
     print "/var/lib/knox"
     sys.stderr.write('# Below may need to change\n')
+    #print "/home/xxxxx"
     print "/var/log/"
     print "/tmp/"
