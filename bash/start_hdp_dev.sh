@@ -1988,6 +1988,9 @@ function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
     _log "INFO" "Starting Host setup | logfile = " "/tmp/p_host_setup.log"
 
+    _log "INFO" "Starting f_ssh_setup"
+    f_ssh_setup &>> /tmp/p_host_setup.log || return $?
+
     if [ `which apt-get` ]; then
         _log "INFO" "Starting apt-get update"
         _isYes "$g_APT_UPDATE_DONE" || apt-get update &>> /tmp/p_host_setup.log && g_APT_UPDATE_DONE="Y"
@@ -2018,8 +2021,6 @@ function p_host_setup() {
     f_docker0_setup "172.18.0.1" "24" &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_hdp_network_setup"
     f_hdp_network_setup &>> /tmp/p_host_setup.log
-    _log "INFO" "Starting f_ssh_setup"
-    f_ssh_setup &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_docker_base_create"
     f_docker_base_create &>> /tmp/p_host_setup.log || return $?
     _log "INFO" "Starting f_docker_run"
@@ -2241,6 +2242,8 @@ function f_dockerfile() {
 
 function f_ssh_setup() {
     local __doc__="Create a private/public keys and setup authorized_keys ssh config & permissions on host"
+    which ssh-keygen &>/dev/null || return $?
+
     if [ ! -e $HOME/.ssh/id_rsa ]; then
         ssh-keygen -f $HOME/.ssh/id_rsa -q -N ""
     fi
