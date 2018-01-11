@@ -69,8 +69,8 @@ class JsonParser:
 
 if __name__ == '__main__':
     # TODO: These need to be adjusted by each environment
-    pattern=re.compile(r"([_\-\.]dir|[_\-\.]path|dataDir)")
-    value_ecludes=re.compile(r"^/var/run/|^/tmp|^/var/log/|^/etc|^/apps/|^/user|^/app-logs|^/ats/|,|:")
+    pattern=re.compile(r"([_\.]dir|-dirs|[\.]path|dataDir)")
+    value_ecludes=re.compile(r"^/var/run/|^/tmp|^/var/log/|^/etc|^/apps/|^/user|\$|,|:")
 
     if len(sys.argv) < 2:
         JsonParser.err("Need a json file")
