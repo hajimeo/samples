@@ -123,16 +123,16 @@ function p_interview() {
     _ask "First 24 bits (xxx.xxx.xxx.) of container IP Address" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     _ask "Node starting number (hostname will be sequential from this number)" "1" "r_NODE_START_NUM" "N" "Y"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
-    _ask "$r_CONTAINER_OS version (use 7.3.1611 or higher for Centos 7)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
+    _ask "$r_CONTAINER_OS version (use 7.4.1708 or higher for Centos 7)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
     r_CONTAINER_OS="${r_CONTAINER_OS,,}"
     local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
 
     _ask "Ambari version" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
     wget -q -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
     if [ -s /tmp/hdp_urlinfo.json ]; then
-        _stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json,pprint;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
+        _stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
         _stack_version="`echo $_stack_version_full | cut -d'-' -f2`"
-        _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json,pprint;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_CONTAINER_OS}${_repo_os_ver}'"]'`"
+        _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_CONTAINER_OS}${_repo_os_ver}'"]'`"
         _hdp_version="`basename ${_hdp_repo_url%/}`"
     fi
     _ask "HDP Version" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
@@ -1007,11 +1007,8 @@ function f_docker0_setup() {
     [ "$_mask" = "24" ] && _netmask="255.255.255.0"
     [ -z "$_dns_ip" ] && _dns_ip="`f_docker_ip`"
 
-    if ! ifconfig docker0 | grep "$_docker0" &>/dev/null ; then
-        #_info "Setting IP for docker0 to $_docker0/$_netmask ..."
-        ifconfig docker0 $_docker0 netmask $_netmask
-        _f="/lib/systemd/system/docker.service"
-
+    if ! ifconfig docker0 | grep -q "$_docker0" ; then
+        local _f="/lib/systemd/system/docker.service"
         if [ -f "${_f}" ] && which systemctl &>/dev/null ; then
             local _restart_required=false
             # If multiple --bip, clean up!
@@ -1028,11 +1025,19 @@ function f_docker0_setup() {
             fi
 
             $_restart_required && systemctl daemon-reload && service docker restart
-            return $?
         else
-            grep "$_docker0" /etc/default/docker || (echo "DOCKER_OPTS=\"$DOCKER_OPTS --bip=${_docker0}/${_mask}\"" >> /etc/default/docker && /etc/init.d/docker restart)
+            _f="/etc/default/docker"
+            grep "$_docker0" ${_f} || (echo "DOCKER_OPTS=\"$DOCKER_OPTS --bip=${_docker0}/${_mask}\"" >> ${_f} && service docker restart)
+        fi
+
+        if [ $? -ne 0 ]; then
+            _error "Moving docker0 (bridge) to ${_docker0} failed. Please check ${_f}"
             return $?
         fi
+
+        # If everything good, change docker0 IP
+        #_info "Setting IP for docker0 to $_docker0/$_netmask ..."
+        ifconfig docker0 ${_docker0} netmask ${_netmask}
     fi
 }
 
@@ -1335,8 +1340,9 @@ function f_get_ambari_repo_file() {
 function f_ambari_install() {
     local __doc__="Install Ambari Server and Agent rpms"
 
-    f_ambari_server_install &
-    f_ambari_agent_install
+    f_ambari_server_install || return $?
+    f_ambari_server_setup &
+    f_ambari_agent_install || return $?
     wait
 }
 
@@ -1982,6 +1988,9 @@ function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
     _log "INFO" "Starting Host setup | logfile = " "/tmp/p_host_setup.log"
 
+    _log "INFO" "Starting f_ssh_setup"
+    f_ssh_setup &>> /tmp/p_host_setup.log || return $?
+
     if [ `which apt-get` ]; then
         _log "INFO" "Starting apt-get update"
         _isYes "$g_APT_UPDATE_DONE" || apt-get update &>> /tmp/p_host_setup.log && g_APT_UPDATE_DONE="Y"
@@ -2012,8 +2021,6 @@ function p_host_setup() {
     f_docker0_setup "172.18.0.1" "24" &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_hdp_network_setup"
     f_hdp_network_setup &>> /tmp/p_host_setup.log
-    _log "INFO" "Starting f_ssh_setup"
-    f_ssh_setup &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_docker_base_create"
     f_docker_base_create &>> /tmp/p_host_setup.log || return $?
     _log "INFO" "Starting f_docker_run"
@@ -2032,8 +2039,6 @@ function p_host_setup() {
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_ambari_install"
         f_ambari_install &>> /tmp/p_host_setup.log || return $?
-        _log "INFO" "Starting f_ambari_server_setup"
-        f_ambari_server_setup &>> /tmp/p_host_setup.log || return $?
         _log "INFO" "Starting f_ambari_server_start"
         f_ambari_server_start &>> /tmp/p_host_setup.log || return $?
 
@@ -2087,7 +2092,8 @@ function f_dnsmasq() {
     fi
     ssh -q $_dns apt-get -y install dnsmasq
 
-    ssh -q $_dns "grep '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf"
+    ssh -q $_dns "grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf"
+    ssh -q $_dns "grep -q '^resolv-file=' /etc/dnsmasq.conf || (echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf; echo 'nameserver 8.8.8.8' > /etc/resolv.dnsmasq.conf)"
 
     f_dnsmasq_banner_reset "$_how_many" "$_start_from"
 }
@@ -2236,6 +2242,8 @@ function f_dockerfile() {
 
 function f_ssh_setup() {
     local __doc__="Create a private/public keys and setup authorized_keys ssh config & permissions on host"
+    which ssh-keygen &>/dev/null || return $?
+
     if [ ! -e $HOME/.ssh/id_rsa ]; then
         ssh-keygen -f $HOME/.ssh/id_rsa -q -N ""
     fi
