@@ -85,7 +85,7 @@ function f_docker_image_setup() {
         # Somehow HDF3 does not work with docker load
         docker import "${_tmp_dir%/}/${_file_name}"
     else
-        dokcer load -i "${_tmp_dir%/}/${_file_name}"
+        docker load -i "${_tmp_dir%/}/${_file_name}"
     fi
 }
 
@@ -208,10 +208,12 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         # If name contains hdf assuming HDF
         if [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
             docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
+            -p 11099:1099 \
             -p 12181:2181 \
             -p 13000:3000 \
             -p 14200:4200 \
             -p 14557:4557 \
+            -p 15005:5005 \
             -p 16080:6080 \
             -p 18000:8000 \
             -p ${_AMBARI_PORT}:8080 \
@@ -244,6 +246,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
             docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
             -p 1111:111 \
             -p 1000:1000 \
+            -p 1099:1099 \
             -p 1100:1100 \
             -p 1220:1220 \
             -p 1520:1520 \
