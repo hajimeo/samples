@@ -372,7 +372,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         #docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
         docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00', active=1 WHERE user_name='admin' and user_type='LOCAL';\""
         #docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE metainfo SET metainfo_value = '${_AMBARI_VERSION}' where metainfo_key = 'version';\""
-        #docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE hosts set host_name='${_HOSTNAME}' where host_id=1;UPDATE hosts set public_host_name='${_HOSTNAME}' where host_id=1;\""
+        docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE hosts set host_name='${_HOSTNAME}', public_host_name='${_HOSTNAME}' where host_id=1;\""
     fi
     docker exec -d ${_NAME} service ambari-server start --skip-database-check
     docker exec -d ${_NAME} service ambari-agent start
@@ -390,6 +390,11 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     if ${_NEW_CONTAINER} ; then
         docker exec -it ${_NAME} bash -c "chpasswd <<< root:hadoop"
+
+        #if nc -z localhost 28080; then
+        #    echo "TODO: Looks like proxy has been setup. Assuming proxy_url as http://dockerhost1.localdomain:28080 and using it for yum.conf..."
+        #    docker exec -it ${_NAME} bash -c 'grep ^proxy /etc/yum.conf || echo \"proxy=http://dockerhost1.localdomain:28080\" >> /etc/yum.conf'
+        #fi
 
         # As of this typing, sandbox repo for tutorial is broken so moving out for now
         docker exec -it ${_NAME} bash -c 'mv /etc/yum.repos.d/sandbox.repo /root/' &>/dev/null
