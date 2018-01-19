@@ -2190,6 +2190,14 @@ function f_host_misc() {
     if [ $? -eq 0 ]; then
         service ssh restart
     fi
+
+    if [ ! -s /etc/update-motd.d/99-start-hdp ]; then
+        echo '#!/bin/bash
+ls -lt ~/*.resp
+docker ps' > /etc/update-motd.d/99-start-hdp
+        chmod a+x /etc/update-motd.d/99-start-hdp
+        run-parts --lsbsysinit /etc/update-motd.d > /run/motd.dynamic
+    fi
 }
 
 function f_copy_auth_keys_to_containers() {
