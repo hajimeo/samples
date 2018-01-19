@@ -207,7 +207,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
 
         # If name contains hdf assuming HDF
         if [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
-            docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
+            docker run --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
             -p 11099:1099 \
             -p 12181:2181 \
             -p 13000:3000 \
@@ -243,7 +243,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
             ${_image_name} /usr/sbin/sshd -D || exit $?
             # NOTE: Using 8080 and 2222 for HDF as well
         else
-            docker run -v hadoop:/hadoop --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
+            docker run --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
             -p 1111:111 \
             -p 1000:1000 \
             -p 1099:1099 \
@@ -380,6 +380,8 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
     if [ -s  ~/.ssh/id_rsa.pub ]; then
         docker exec -it ${_NAME} bash -c "[ -f /root/.ssh/authorized_keys ] || ( install -D -m 600 /dev/null /root/.ssh/authorized_keys && chmod 700 /root/.ssh )"
         docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> /root/.ssh/authorized_keys"
+
+        docker exec -it ${_NAME} bash -c '[ ! -d /home/admin ] && mkdir -m 700 /home/admin && chown admin:admin /home/admin'
     fi
 
     # TODO: somehow suddenly directory permissions become broken
