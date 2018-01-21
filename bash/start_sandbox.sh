@@ -110,6 +110,25 @@ function f_ambari_start_all() {
     curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services?" -X PUT -d '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 }
 
+function f_useradd() {
+    local __doc__="TODO: Add user"
+    local _user="$1"
+    local _password="${2}"
+    local _cluster="${3-sandbox}"
+    local _container="${4-$_NAME}"
+    [ -z "$_user" ] && return 11
+    [ -z "$_password" ] && _password="${_user}-password"
+    [ -z "$_cluster" ] && return 13
+    [ -z "$_container" ] && _container=`docker ps --format "{{.Names}}" | grep -m1 -i '^sandbox'`
+
+    docker exec -it ${_container} bash -c 'useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
+    docker exec -it ${_container} bash -c "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_cluster} &>/dev/null; hdfs dfs -mkdir /user/$_user && hdfs dfs -chown $_user:hadoop /user/$_user\""
+
+    if which kadmin.local; then
+        kadmin.local -q "add_principal -pw $_password $_user"
+    fi
+}
+
 function _isEnoughDisk() {
     local __doc__="Check if entire system or the given path has enough space with GB."
     local _dir_path="${1-/}"
@@ -409,6 +428,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     # for Hive, Oozie, Ranger, KMS etc, making sure mysql starts
     docker exec -d ${_NAME} service mysqld start
+    docker exec -d ${_NAME} bash -c 'sudo -u knox -i /usr/hdp/current/knox-server/bin/ldap.sh start'
 
     #docker exec -d ${_NAME} /root/start_sandbox.sh
     #docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
