@@ -261,7 +261,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
             -p 17004:17004 \
             -p 17005:17005 \
             -p 2222:22 \
-            ${_image_name} /usr/sbin/sshd -D || exit $?
+            ${_image_name} /sbin/init || exit $?
             # NOTE: Using 8080 and 2222 for HDF as well
         else
             docker run --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged -d \
@@ -359,7 +359,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
             -p 61888:61888 \
             -p 2222:22 \
             --sysctl kernel.shmmax=${_SHMMAX} \
-            ${_image_name} /usr/sbin/sshd -D || exit $?
+            ${_image_name} /sbin/init || exit $?
         fi
 
         _NEW_CONTAINER=true
@@ -379,6 +379,8 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
     #docker exec -d ${_NAME} /etc/init.d/splash
 
     sleep 3
+
+    docker exec -it ${_NAME} bash -c "service sshd start"
 
     echo "Starting PostgreSQL, Ambari Server and Agent ..."
     docker exec -it ${_NAME} bash -c "sysctl -w kernel.shmmax=${_SHMMAX};service postgresql start"
