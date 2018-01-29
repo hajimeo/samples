@@ -58,6 +58,7 @@ function f_docker_image_setup() {
     if [[ "${_name}" =~ ^"sandbox-hdf" ]]; then
         #_url="https://downloads-hortonworks.akamaized.net/sandbox-hdf-2.1/HDF_2.1.2_docker_image_04_05_2017_13_12_03.tar.gz"
         _url="https://downloads-hortonworks.akamaized.net/sandbox-hdf-3.0/HDF_3.0_docker_12_6_2017.tar.gz"
+        #TODO: docker pull orendain/sandbox-hdf-analytics:3.0.2.0
         _min_disk=9
     elif [ -z "$_url" ]; then
         #_url="http://hortonassets.s3.amazonaws.com/2.5/HDP_2.5_docker.tar.gz"
@@ -224,9 +225,10 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
             _image_name="sandbox"
         fi
 
+        # TODO: '--name "${_NAME}"' works if :latest exist, so that 'orendain/sandbox-hdf-analytics:3.0.2.0' doesn't work
         # If name contains hdf assuming HDF
         if [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
-            docker run --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
+            docker run --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged -d \
             -p 11099:1099 \
             -p 12181:2181 \
             -p 13000:3000 \
@@ -262,7 +264,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
             ${_image_name} /usr/sbin/sshd -D || exit $?
             # NOTE: Using 8080 and 2222 for HDF as well
         else
-            docker run --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} --privileged -d \
+            docker run --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged -d \
             -p 1111:111 \
             -p 1000:1000 \
             -p 1099:1099 \
