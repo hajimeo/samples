@@ -405,7 +405,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
 
         # As of this typing, sandbox repo for tutorial is broken so moving out for now
         docker exec -it ${_NAME} bash -c 'mv /etc/yum.repos.d/sandbox.repo /root/' &>/dev/null
-        nohup docker exec -it ${_NAME} bash -c 'yum -q install -y yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc' &
+        docker exec -dt ${_NAME} yum -q -y install yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc
     fi
 
     echo "Starting PostgreSQL, Ambari Server and Agent ..."
@@ -433,9 +433,9 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         docker exec -it ${_NAME} bash -c '[ ! -d /home/admin ] && mkdir -m 700 /home/admin && chown admin:admin /home/admin'
     fi
 
-    # TODO: somehow suddenly directory permissions become broken
-    docker exec -it ${_NAME} bash -c 'cd /hadoop && for _n in `ls -1`; do chown -R $_n:hadoop ./$_n 2>/dev/null; done'
-    docker exec -it ${_NAME} bash -c 'chown -R mapred:hadoop /hadoop/mapreduce'
+    # somehow suddenly directory permissions became broken, but after removing -v /hadoop in docker run should be OK
+    #docker exec -it ${_NAME} bash -c 'cd /hadoop && for _n in `ls -1`; do chown -R $_n:hadoop ./$_n 2>/dev/null; done'
+    #docker exec -it ${_NAME} bash -c 'chown -R mapred:hadoop /hadoop/mapreduce'
     docker exec -it ${_NAME} bash -c 'chown -R mysql:mysql /var/lib/mysql /var/run/mysqld'
 
     # for Hive, Oozie, Ranger, KMS etc, making sure mysql starts
