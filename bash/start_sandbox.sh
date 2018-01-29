@@ -11,17 +11,13 @@
 #   f_docker_image_setup [sandbox-hdp|sandbox-hdf]
 #
 # To start Sandbox (IP needs 'hdp' network)
-#   bash ./start_sandbox.sh [sandbox-hdp|sandbox-hdf] [hostname] [IP]
+#   bash ./start_sandbox.sh -m <image name> -n <container name> -h <container hostname> -i <container IP address>
 #
 # How to create 'hdp' network (incomplete as how to change docker config is different by OS)
 #   # TODO: update docker config file to add " --bip=172.18.0.1\/24", then restart docker service, then
 #   docker network create --driver=bridge --gateway=172.17.0.1 --subnet=172.17.0.0/16 -o com.docker.network.bridge.name=hdp -o com.docker.network.bridge.host_binding_ipv4=172.17.0.1 hdp
 #
 
-### Arguments (all are optional)
-_NAME="${1-sandbox-hdp}"
-_HOSTNAME="${2}"
-_IP="${3}"
 
 ### Global variables
 _CUSTOM_NETWORK="hdp"
@@ -162,6 +158,26 @@ function _totalSpaceGB() {
 
 ### main()
 if [ "$0" = "$BASH_SOURCE" ]; then
+    _NAME="sandbox-hdp"
+
+    # parsing command options
+    while getopts "m:n:h:i:" opts; do
+        case $opts in
+            m)
+                _IMAGE="$OPTARG"
+                ;;
+            n)
+                _NAME="$OPTARG"
+                ;;
+            h)
+                _HOSTNAME="$OPTARG"
+                ;;
+            i)
+                _IP="$OPTARG"
+                ;;
+        esac
+    done
+
     if [ -z "${_HOSTNAME}" ]; then
         # TODO: Seems HDF image works with only sandbox-hdf.hortonwroks.com
         if [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
@@ -213,16 +229,18 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
             fi
         fi
 
-        # If *exactly* same image name exist, use it
-        docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"
-        if [ $? -eq 0 ]; then
-            _image_name="${_NAME}"
-        elif [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
-            _image_name="sandbox-hdf"
-        elif [[ "${_NAME}" =~ ^"sandbox-hdp" ]]; then
-            _image_name="sandbox-hdp"
-        else
-            _image_name="sandbox"
+        if [ -z "$_IMAGE" ]; then
+            # If *exactly* same image name exist, use it
+            docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"
+            if [ $? -eq 0 ]; then
+                _IMAGE="${_NAME}"
+            elif [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
+                _IMAGE="sandbox-hdf"
+            elif [[ "${_NAME}" =~ ^"sandbox-hdp" ]]; then
+                _IMAGE="sandbox-hdp"
+            else
+                _IMAGE="sandbox"
+            fi
         fi
 
         # TODO: '--name "${_NAME}"' works if :latest exist, so that 'orendain/sandbox-hdf-analytics:3.0.2.0' doesn't work
@@ -261,7 +279,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
             -p 17004:17004 \
             -p 17005:17005 \
             -p 2222:22 \
-            ${_image_name} /sbin/init || exit $?
+            ${_IMAGE} /sbin/init || exit $?
             # NOTE: Using 8080 and 2222 for HDF as well
         else
             docker run --name "${_NAME}" --hostname "${_HOSTNAME}" ${_network} -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged -d \
@@ -359,7 +377,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
             -p 61888:61888 \
             -p 2222:22 \
             --sysctl kernel.shmmax=${_SHMMAX} \
-            ${_image_name} /sbin/init || exit $?
+            ${_IMAGE} /sbin/init || exit $?
         fi
 
         _NEW_CONTAINER=true
@@ -381,6 +399,14 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
     sleep 3
 
     docker exec -it ${_NAME} bash -c "service sshd start"
+
+    if ${_NEW_CONTAINER} ; then
+        docker exec -it ${_NAME} bash -c "chpasswd <<< root:hadoop"
+
+        # As of this typing, sandbox repo for tutorial is broken so moving out for now
+        docker exec -it ${_NAME} bash -c 'mv /etc/yum.repos.d/sandbox.repo /root/' &>/dev/null
+        nohup docker exec -it ${_NAME} bash -c 'yum -q install -y yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc' &
+    fi
 
     echo "Starting PostgreSQL, Ambari Server and Agent ..."
     docker exec -it ${_NAME} bash -c "sysctl -w kernel.shmmax=${_SHMMAX};service postgresql start"
@@ -411,24 +437,6 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
     docker exec -it ${_NAME} bash -c 'cd /hadoop && for _n in `ls -1`; do chown -R $_n:hadoop ./$_n 2>/dev/null; done'
     docker exec -it ${_NAME} bash -c 'chown -R mapred:hadoop /hadoop/mapreduce'
     docker exec -it ${_NAME} bash -c 'chown -R mysql:mysql /var/lib/mysql /var/run/mysqld'
-
-    if ${_NEW_CONTAINER} ; then
-        docker exec -it ${_NAME} bash -c "chpasswd <<< root:hadoop"
-
-        #if nc -z localhost 28080; then
-        #    echo "TODO: Looks like proxy has been setup. Assuming proxy_url as http://dockerhost1.localdomain:28080 and using it for yum.conf..."
-        #    docker exec -it ${_NAME} bash -c 'grep ^proxy /etc/yum.conf || echo \"proxy=http://dockerhost1.localdomain:28080\" >> /etc/yum.conf'
-        #fi
-
-        # As of this typing, sandbox repo for tutorial is broken so moving out for now
-        docker exec -it ${_NAME} bash -c 'mv /etc/yum.repos.d/sandbox.repo /root/' &>/dev/null
-        docker exec -it ${_NAME} bash -c 'yum install -y yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc'
-
-        #echo "Resetting Ambari Agent just in case ..."
-        #docker exec -it ${_NAME} /usr/sbin/ambari-agent stop
-        #docker exec -it ${_NAME} /usr/sbin/ambari-agent reset ${_NAME}.hortonworks.com
-        #docker exec -it ${_NAME} /usr/sbin/ambari-agent start
-    fi
 
     # for Hive, Oozie, Ranger, KMS etc, making sure mysql starts
     docker exec -d ${_NAME} service mysqld start
