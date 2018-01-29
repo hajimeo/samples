@@ -1284,6 +1284,8 @@ function f_docker_run() {
 
     local _network=""
     local _line=""
+    [ ! -d /var/tmp/share ] && mkdir -p -m 777 /var/tmp/share
+
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         _line="`docker ps -a -f name=${_node}$_n | grep -w ${_node}$_n`"
         if [ -n "$_line" ]; then
@@ -1293,7 +1295,7 @@ function f_docker_run() {
         # --ip may not work if no custom network due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
         [ ! -z "$_ip_prefix" ] && _network="--network=$g_HDP_NETWORK --ip=${_ip_prefix%\.}.${_n}"
 
-        docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${_domain} ${_network} --dns=$_dns --name=${_node}$_n ${_base} || return $?
+        docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share --privileged --hostname=${_node}$_n${_domain} ${_network} --dns=$_dns --name=${_node}$_n ${_base} || return $?
     done
 }
 
@@ -1763,7 +1765,7 @@ function f_ambari_set_repo() {
     fi
 
     if _isUrl "$_repo_url"; then
-        # TODO: admin:admin
+        # TODO: if Ambari 2.6 https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
         curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/HDP-${_stack_version}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
     fi
 
