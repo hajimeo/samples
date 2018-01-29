@@ -1763,7 +1763,7 @@ function f_ambari_set_repo() {
     fi
 
     if _isUrl "$_repo_url"; then
-        # TODO: admin:admin
+        # TODO: if Ambari 2.6 https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
         curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/HDP-${_stack_version}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
     fi
 
