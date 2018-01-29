@@ -431,6 +431,9 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> /root/.ssh/authorized_keys"
 
         docker exec -it ${_NAME} bash -c '[ ! -d /home/admin ] && mkdir -m 700 /home/admin && chown admin:admin /home/admin'
+        # for Knox LDAP demo users
+        docker exec -it ${_NAME} bash -c '[ ! -d /home/tom ] && useradd tom'
+        docker exec -it ${_NAME} bash -c '[ ! -d /home/sam ] && useradd sam'
     fi
 
     # somehow suddenly directory permissions became broken, but after removing -v /hadoop in docker run should be OK
