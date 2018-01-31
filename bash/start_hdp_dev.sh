@@ -280,6 +280,8 @@ function _cancelInterview() {
 }
 
 function p_nodes_create() {
+    local __doc__="Create container(s) and if _ambari_host is given, try installing agent"
+    # p_nodes_create 1 100 '7.4.1708' '172.17.140' ''
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
@@ -288,13 +290,18 @@ function p_nodes_create() {
 
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix"
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
-    f_ambari_agent_install "$_how_many" "$_start_from" "$_ambari_host"
+    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
+    if [ -z "$_ambari_host" ]; then
+        _warn "No ambari host specified, so not setting up ambari agent"
+        return
+    fi
+    f_ambari_agent_install "$_how_many" "$_start_from" "${_ambari_host}"
     f_ambari_agent_fix "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from"
-    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
 }
 
 function p_hdp_start() {
+    local __doc__="Start up HDP containers"
     f_loadResp
     f_dnsmasq_banner_reset
     f_restart_services_just_in_case
@@ -1731,7 +1738,7 @@ function f_local_repo() {
         if [ "${r_CONTAINER_OS}" = "centos" ] || [ "${r_CONTAINER_OS}" = "redhat" ]; then
             _port_wait "$r_AMBARI_HOST" "8080"
 
-            f_ambari_set_repo "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}" "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
+            f_ambari_set_repo "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}" "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}" || return $?
         else
             _warn "At this moment only centos or redhat for local repository"
         fi
@@ -1744,6 +1751,7 @@ function f_ambari_set_repo() {
     local _util_url="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
     local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
+    local _stack="HDP" # for AMBARI-22565 repo_name change. TODO: need to support HDF etc.
 
     _port_wait $_ambari_host 8080
     if [ $? -ne 0 ]; then
@@ -1764,14 +1772,25 @@ function f_ambari_set_repo() {
         return 1
     fi
 
-    if _isUrl "$_repo_url"; then
-        # TODO: if Ambari 2.6 https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
-        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/HDP-${_stack_version}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
-    fi
+    # TODO: if Ambari 2.6 https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
+    # http://sandbox.hortonworks.com:8080/api/v1/stacks/HDP/versions/2.6/repository_versions?fields=operating_systems/repositories/Repositories/base_url
+    if [[ "${r_AMBARI_VER}" =~ ^2.6. ]]; then
+        _warn "TODO: Ambari 2.6.x doesn't work at this moment"
+        return 1
+        # fields=*,operating_systems/repositories/Repositories/*
+        curl -s -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1?fields=operating_systems/repositories/Repositories/*" -o /tmp/repo_ver_1.json || return $?
+        grep -vw 'href' /tmp/repo_ver_1.json > /tmp/repo_ver_1.1.json
+        # TODO: replace base_url and if no version, download VDF and modify XML...
+        curl -si -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1" -X PUT -H 'X-Requested-By: ambari' -d @/tmp/repo_ver_1.1.json || return $?
+    else
+        if _isUrl "$_repo_url"; then
+            curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}' || return $?
+        fi
 
-    if _isUrl "$_util_url"; then
-        local _hdp_util_name="`echo $_util_url | grep -oP 'HDP-UTILS-[\d\.]+'`"
-        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}'
+        if _isUrl "$_util_url"; then
+            local _hdp_util_name="`echo $_util_url | grep -oP "${_stack}-UTILS-[\d\.]+"`"
+            curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}' || return $?
+        fi
     fi
 }
 
@@ -2058,10 +2077,10 @@ function p_host_setup() {
 
         if _isYes "$r_HDP_LOCAL_REPO"; then
             _log "INFO" "Starting f_local_repo"
-            f_local_repo &>> /tmp/p_host_setup.log
+            f_local_repo &>> /tmp/p_host_setup.log || return $?
         elif [ -n "$r_HDP_REPO_URL" ]; then
             # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
-            _log "INFO" "Starting f_ambari_set_repo"
+            _log "INFO" "Starting f_ambari_set_repo (may not work with Ambari 2.6)"
             f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" &>> /tmp/p_host_setup.log
         fi
 
@@ -2196,7 +2215,8 @@ function f_host_misc() {
     if [ ! -s /etc/update-motd.d/99-start-hdp ]; then
         echo '#!/bin/bash
 ls -lt ~/*.resp
-docker ps' > /etc/update-motd.d/99-start-hdp
+docker ps
+screen -ls' > /etc/update-motd.d/99-start-hdp
         chmod a+x /etc/update-motd.d/99-start-hdp
         run-parts --lsbsysinit /etc/update-motd.d > /run/motd.dynamic
     fi
