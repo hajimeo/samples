@@ -4,15 +4,20 @@
 #
 # Download and execute this script:
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/hive_dummies.sh
-#   bash ./hive_dummies.sh [dbname]
+#   bash ./hive_dummies.sh [dbname] [beeline conn str (No -n or -p)]
 #
 
-_dbname="${1-dummies}"
+_dbname="${1}"
+[ -z "$_dbname" ] && _dbname="dummies"
+_beeline_u="${2}"
+
+[ -d ./hive_workspace ] || mkdir ./hive_workspace
+rm -f ./hive_workspace/*.csv
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S %z")] INFO: generating dummy csv files..."
-wget -nv -c -t 2 --timeout=10 --waitretry=3 https://raw.githubusercontent.com/hajimeo/samples/master/misc/sample_07.csv -O sample_07.csv
-wget -nv -c -t 2 --timeout=10 --waitretry=3 https://raw.githubusercontent.com/hajimeo/samples/master/misc/sample_08.csv -O sample_08.csv
-wget -nv -c -t 2 --timeout=10 --waitretry=3 https://raw.githubusercontent.com/hajimeo/samples/master/misc/census.csv -O census.csv
+wget -nv -c -t 2 --timeout=10 --waitretry=3 https://raw.githubusercontent.com/hajimeo/samples/master/misc/sample_07.csv -O ./hive_workspace/sample_07.csv
+wget -nv -c -t 2 --timeout=10 --waitretry=3 https://raw.githubusercontent.com/hajimeo/samples/master/misc/sample_08.csv -O ./hive_workspace/sample_08.csv
+wget -nv -c -t 2 --timeout=10 --waitretry=3 https://raw.githubusercontent.com/hajimeo/samples/master/misc/census.csv -O ./hive_workspace/census.csv
 echo '101,Kyle,Admin,50000,A
 102,Xander,Admin,50000,B
 103,Jerome,Sales,60000,A
@@ -32,10 +37,20 @@ echo '101,Kyle,Admin,50000,A
 117,Drew,Engineer,45000,D
 118,Quinlan,Admin,50000,B
 119,Gabriel,Engineer,45000,A
-120,Palmer,Ceo,100000,A' > ./employee.csv
+120,Palmer,Ceo,100000,A' > ./hive_workspace/employee.csv
 
 echo "[$(date +"%Y-%m-%d %H:%M:%S %z")] INFO: executing hive queries under ${_dbname} database... kinit may require"
-hive -hiveconf hive.root.logger=INFO,console -e "
+# -hiveconf hive.root.logger=INFO,console
+_cmd="hive"
+if [ -n "${_beeline_u}" ]; then
+    _cmd="beeline --verbose=true --outputformat=tsv2 -u '${_beeline_u}'"
+fi
+
+# To support Beeline, uploading into HDFS
+hdfs dfs -mkdir /tmp/hive_workspace
+hdfs dfs -put -f ./hive_workspace/*.csv /tmp/hive_workspace/
+
+$_cmd -e "
 set hive.tez.exec.print.summary;
 CREATE DATABASE IF NOT EXISTS ${_dbname};
 USE ${_dbname};
@@ -47,7 +62,7 @@ CREATE TABLE IF NOT EXISTS sample_07 (
   ROW FORMAT DELIMITED
   FIELDS TERMINATED BY '\t'
   STORED AS TextFile;
-LOAD DATA LOCAL INPATH './sample_07.csv' OVERWRITE into table sample_07;
+LOAD DATA INPATH '/tmp/hive_workspace/sample_07.csv' OVERWRITE into table sample_07;
 CREATE TABLE IF NOT EXISTS sample_07_orc stored as orc as select * from sample_07;
 CREATE TABLE IF NOT EXISTS sample_08 (
   code string ,
@@ -57,7 +72,7 @@ CREATE TABLE IF NOT EXISTS sample_08 (
   ROW FORMAT DELIMITED
   FIELDS TERMINATED BY '\t'
   STORED AS TextFile;
-LOAD DATA LOCAL INPATH './sample_08.csv' OVERWRITE into table sample_08;
+LOAD DATA INPATH '/tmp/hive_workspace/sample_08.csv' OVERWRITE into table sample_08;
 CREATE EXTERNAL TABLE IF NOT EXISTS emp_stage (
   empid int,
   name string,
@@ -67,7 +82,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS emp_stage (
   row format delimited
   fields terminated by ','
   location '/tmp/emp_stage_data';
-LOAD DATA LOCAL INPATH './employee.csv' OVERWRITE into table emp_stage;
+LOAD DATA INPATH '/tmp/hive_workspace/employee.csv' OVERWRITE into table emp_stage;
 CREATE TABLE IF NOT EXISTS emp_part_bckt (
   empid int,
   name string,
@@ -87,7 +102,7 @@ CREATE TABLE IF NOT EXISTS census(
   email string)
   row format delimited
   fields terminated by ',';
-LOAD DATA LOCAL INPATH './census.csv' OVERWRITE into table census;
+LOAD DATA INPATH '/tmp/hive_workspace/census.csv' OVERWRITE into table census;
 CREATE TABLE IF NOT EXISTS census_clus(
   ssn int,
   name string,
@@ -105,7 +120,17 @@ INSERT OVERWRITE TABLE census_clus select * from census;
 
 # hive (1) returns ArrayIndexOutOfBoundsException if transactional is true and 'orc.bloom.filter.columns' is not '*'
 echo "[$(date +"%Y-%m-%d %H:%M:%S %z")] INFO: ACID needs Orc, buckets, transactional=true, also testing bloom filter, like below:"
-echo "hive -e \"USE ${_dbname};ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='*');TRUNCATE TABLE emp_part_bckt;INSERT INTO TABLE emp_part_bckt PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;\""
+echo "${_cmd} -e \"USE ${_dbname};ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='*');TRUNCATE TABLE emp_part_bckt;INSERT INTO TABLE emp_part_bckt PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;\""
 #\""ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;\""
 
+if which hbase &>/dev/null; then
+    echo "create 'emp_review','review'" | hbase shell
+    ${_cmd} -e "USE ${_dbname};
+CREATE EXTERNAL TABLE IF NOT EXISTS emp_review(rowkey STRING, empid INT, score FLOAT)
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+WITH SERDEPROPERTIES ('hbase.columns.mapping' = ':key, review:empid, review:score')
+TBLPROPERTIES ('hbase.table.name' = 'emp_review');
+INSERT INTO emp_review select concat_ws('-',cast(empid as string),cast(CURRENT_TIMESTAMP as string)), empid, cast(rand() * 100 as int) from emp_stage;
+"
+fi
 hdfs dfs -ls /apps/hive/warehouse/${_dbname}.db/*/
