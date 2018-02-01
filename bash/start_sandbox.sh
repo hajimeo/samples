@@ -2,22 +2,24 @@
 # @see http://hortonworks.com/hadoop-tutorial/hortonworks-sandbox-guide/#section_4
 # @see https://raw.githubusercontent.com/hortonworks/data-tutorials/master/tutorials/hdp/sandbox-port-forwarding-guide/assets/start-sandbox-hdp.sh
 #
-# Get the latest script
-# curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh -O
-#
-# To create Sandbox (first time only)
-#   source ./start_sandbox.sh
-#   (move to dir which has enough disk space, min. 12GB)
-#   f_docker_image_setup [sandbox-hdp|sandbox-hdf]
-#
-# To start Sandbox (IP needs 'hdp' network)
-#   bash ./start_sandbox.sh -m <image name> -n <container name> -h <container hostname> -i <container IP address>
-#
-# How to create 'hdp' network (incomplete as how to change docker config is different by OS)
-#   # TODO: update docker config file to add " --bip=172.18.0.1\/24", then restart docker service, then
-#   docker network create --driver=bridge --gateway=172.17.0.1 --subnet=172.17.0.0/16 -o com.docker.network.bridge.name=hdp -o com.docker.network.bridge.host_binding_ipv4=172.17.0.1 hdp
-#
 
+function usage() {
+    echo "Get the latest script
+    curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh -O
+
+To create Sandbox (first time only)
+    source ./start_sandbox.sh
+    (move to dir which has enough disk space, min. 12GB)
+    f_docker_image_setup [sandbox-hdp|sandbox-hdf]
+
+To start Sandbox (IP needs 'hdp' network)
+    bash ./start_sandbox.sh -m <image name> -n <container name> -h <container hostname> -i <container IP address>
+
+TODO: How to create 'hdp' network (incomplete as how to change docker config is different by OS)
+Update docker config file to add " --bip=172.18.0.1\/24", then restart docker service, then
+    docker network create --driver=bridge --gateway=172.17.0.1 --subnet=172.17.0.0/16 -o com.docker.network.bridge.name=hdp -o com.docker.network.bridge.host_binding_ipv4=172.17.0.1 hdp
+"
+}
 
 ### Global variables
 _CUSTOM_NETWORK="hdp"
@@ -158,7 +160,7 @@ function _totalSpaceGB() {
 
 ### main()
 if [ "$0" = "$BASH_SOURCE" ]; then
-    _NAME="sandbox-hdp"
+    #_NAME="sandbox-hdp"
 
     # parsing command options
     while getopts "m:n:h:i:" opts; do
@@ -177,6 +179,25 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
         esac
     done
+
+    if [ -z "$_NAME" ]; then
+        usage
+        exit
+    fi
+
+    if [ -z "$_IMAGE" ]; then
+        # If *exactly* same image name exist, use it
+        docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"
+        if [ $? -eq 0 ]; then
+            _IMAGE="${_NAME}"
+        elif [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
+            _IMAGE="sandbox-hdf"
+        elif [[ "${_NAME}" =~ ^"sandbox-hdp" ]]; then
+            _IMAGE="sandbox-hdp"
+        else
+            _IMAGE="sandbox"
+        fi
+    fi
 
     if [ -z "${_HOSTNAME}" ]; then
         # TODO: Seems HDF image works with only sandbox-hdf.hortonwroks.com
@@ -226,20 +247,6 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
                 sleep 5
             else
                 _network="--network=${_CUSTOM_NETWORK} --ip=${_IP}"
-            fi
-        fi
-
-        if [ -z "$_IMAGE" ]; then
-            # If *exactly* same image name exist, use it
-            docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"
-            if [ $? -eq 0 ]; then
-                _IMAGE="${_NAME}"
-            elif [[ "${_NAME}" =~ ^"sandbox-hdf" ]]; then
-                _IMAGE="sandbox-hdf"
-            elif [[ "${_NAME}" =~ ^"sandbox-hdp" ]]; then
-                _IMAGE="sandbox-hdp"
-            else
-                _IMAGE="sandbox"
             fi
         fi
 
