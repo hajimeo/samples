@@ -443,9 +443,9 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         docker exec -it ${_NAME} bash -c '[ ! -d /home/sam ] && useradd sam'
     fi
 
-    # somehow suddenly directory permissions became broken, but after removing -v /hadoop in docker run should be OK
-    #docker exec -it ${_NAME} bash -c 'cd /hadoop && for _n in `ls -1`; do chown -R $_n:hadoop ./$_n 2>/dev/null; done'
-    #docker exec -it ${_NAME} bash -c 'chown -R mapred:hadoop /hadoop/mapreduce'
+    # In case -v /hadoop was used. TODO: the following two lines (not mysql one) should be removed later
+    docker exec -it ${_NAME} bash -c 'cd /hadoop && for _n in `ls -1`; do chown -R $_n:hadoop ./$_n 2>/dev/null; done'
+    docker exec -it ${_NAME} bash -c 'chown -R mapred:hadoop /hadoop/mapreduce'
     docker exec -it ${_NAME} bash -c 'chown -R mysql:mysql /var/lib/mysql /var/run/mysqld'
 
     # for Hive, Oozie, Ranger, KMS etc, making sure mysql starts
