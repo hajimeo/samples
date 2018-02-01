@@ -12,11 +12,11 @@ To create Sandbox (first time only)
     (move to dir which has enough disk space, min. 12GB)
     f_docker_image_setup [sandbox-hdp|sandbox-hdf]
 
-To start Sandbox (IP needs 'hdp' network)
-    bash ./start_sandbox.sh -m <image name> -n <container name> -h <container hostname> -i <container IP address>
+To start Sandbox (to assign an IP with -i, 'hdp' network is required)
+    bash ./start_sandbox.sh -n <container name> -m <image name> [-h <container hostname>] [-i <container IP>]
 
 TODO: How to create 'hdp' network (incomplete as how to change docker config is different by OS)
-Update docker config file to add " --bip=172.18.0.1\/24", then restart docker service, then
+Update docker config file to add \" --bip=172.18.0.1\/24\", then restart docker service, then
     docker network create --driver=bridge --gateway=172.17.0.1 --subnet=172.17.0.0/16 -o com.docker.network.bridge.name=hdp -o com.docker.network.bridge.host_binding_ipv4=172.17.0.1 hdp
 "
 }
