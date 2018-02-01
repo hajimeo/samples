@@ -732,7 +732,7 @@ function f_sssd_setup() {
     local ad_root="$5"    #dc=lab,dc=hortonworks,dc=net
     local ad_ou_name="$6" #HadoopNodes
     local _ambari_host="${7-$r_AMBARI_HOST}"
-    local _target_host="$7"
+    local _target_host="$8"
 
     local ad_ou="ou=${ad_ou_name},${ad_root}"
     local ad_realm=${ad_domain^^}
