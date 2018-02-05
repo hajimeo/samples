@@ -29,3 +29,6 @@ ${_CMD} -c hive-site -k hive.tez.container.size -v 512
 ${_CMD} -c hive-site -k tez.am.resource.memory.mb -v 512
 ${_CMD} -c hive-env -k hive.heapsize -v 1024
 ${_CMD} -c hive-env -k hive.metastore.heapsize -v 512
+
+echo "[$(date +"%Y-%m-%d %H:%M:%S,%3N")] INFO Restart all required services..." 1>&2
+curl -si -u admin:"${_ADM_PWD}" -H "X-Requested-By:ambari" "http://`hostname -f`:8080/api/v1/clusters/${_CLUSTER}/requests" -X POST --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
