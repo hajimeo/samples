@@ -20,20 +20,13 @@ if [ -z "$_ADM_PWD" ]; then
 fi
 
 _CMD="/var/lib/ambari-server/resources/scripts/configs.py -a set -l localhost -n ${_CLUSTER} -u admin -p ${_ADM_PWD}"
-
-${_CMD} -c yarn-site -k yarn.scheduler.minimum-allocation-mb -v 250
-echo '"properties": {
-    "tez.am.resource.memory.mb" : "512",
-    "tez.task.resource.memory.mb" : "512",
-        "tez.runtime.io.sort.mb" : "136",
-        "tez.runtime.unordered.output.buffer.size-mb" : "38"
-}' > /tmp/tez-site.json
-${_CMD} -c tez-site -f /tmp/tez-site.json
-echo '"properties": {
-    "hive.tez.container.size" : "512",
-    "tez.am.resource.memory.mb" : "512"
-}' > /tmp/hive-site.json
-${_CMD} -c hive-site -f /tmp/hive-site.json
+${_CMD} -c yarn-site -k yarn.scheduler.minimum-allocation-mb -v 256
+${_CMD} -c tez-site -k tez.am.resource.memory.mb -v 512
+${_CMD} -c tez-site -k tez.task.resource.memory.mb -v 512
+${_CMD} -c tez-site -k tez.runtime.io.sort.mb -v 256
+${_CMD} -c tez-site -k tez.runtime.unordered.output.buffer.size-mb -v 48
+${_CMD} -c hive-site -k hive.tez.container.size -v 512
+${_CMD} -c hive-site -k tez.am.resource.memory.mb -v 512
 ${_CMD} -c hive-env -k hive.heapsize -v 1024
 ${_CMD} -c hive-env -k hive.metastore.heapsize -v 512
 
