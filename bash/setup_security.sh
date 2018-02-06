@@ -936,7 +936,7 @@ function f_ambari_configs() {
     local _c="`f_get_cluster_name $_ambari_host`" || return $?
 
     if [ ! -s ./configs.py ]; then
-        curl -O http://${_ambari_host}:${_ambari_port}/resources/scripts/configs.py || return $?
+        curl -O https://raw.githubusercontent.com/apache/ambari/trunk/ambari-server/src/main/resources/scripts/configs.py || return $?
     fi
     if [ ! -s ./configs.py ]; then
         _error "No ./configs.py"
@@ -950,9 +950,9 @@ function f_ambari_configs() {
         return 0
     fi
 
-    # TODO: configs.py may not escape strings such as quote and \n
+    # NOTE: configs.py may not escape strings such as quote and \n if older than Ambari 2.6 (so that downloading from trunk
     echo "import json
-a=json.loads('{'+open('/tmp/${_type}_${__PID}.json','r').read()+'}')
+a=json.load('/tmp/${_type}_${__PID}.json')
 n=json.loads('"${_dict}"')
 a['properties'].update(n)
 s=json.dumps(a['properties'])
