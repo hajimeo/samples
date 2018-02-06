@@ -399,6 +399,7 @@ function _hadoop_ssl_config_update() {
 
     # TODO: https://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.6.2/bk_hdfs-administration/content/configuring_datanode_sasl.html for not using jsvc
     # If Ambari is 2.4.x or higher below works
+    echo ""
     _info "TODO: Please manually update:
     yarn.resourcemanager.webapp.https.address=RM_HOST:8090
     mapreduce.shuffle.ssl.enabled=true (mapreduce.shuffle.port)
@@ -952,12 +953,11 @@ function f_ambari_configs() {
 
     # NOTE: configs.py may not escape strings such as quote and \n if older than Ambari 2.6 (so that downloading from trunk
     echo "import json
-a=json.load('/tmp/${_type}_${__PID}.json')
+a=json.load(open('/tmp/${_type}_${__PID}.json', 'r'))
 n=json.loads('"${_dict}"')
 a['properties'].update(n)
-s=json.dumps(a['properties'])
 f=open('/tmp/${_type}_updated_${__PID}.json','w')
-f.write('\"properties\":'+s)
+json.dump(a, f)
 f.close()" > /tmp/configs_${__PID}.py
 
     python /tmp/configs_${__PID}.py || return $?
