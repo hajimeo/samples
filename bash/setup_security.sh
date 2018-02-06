@@ -938,10 +938,6 @@ function f_ambari_configs() {
     local _ambari_port="${4-8080}"
     local _c="`f_get_cluster_name $_ambari_host`" || return $?
 
-    if [ ! -s ./configs.sh ]; then
-        curl -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/configs.sh || return $?
-    fi
-
     if [ ! -s ./configs.py ]; then
         curl -O http://${_ambari_host}:${_ambari_port}/resources/scripts/configs.py || return $?
     fi
@@ -950,18 +946,14 @@ function f_ambari_configs() {
         return 1
     fi
 
-    if [ -s ./configs.sh ]; then
-        # TODO: this is a temp workaround because Ambari 2.6.0 removed configs.sh and configs.py may not escape strings such as quote and \n
-        bash ./configs.sh -u "${g_admin}" -p "${g_admin_pwd}" -port ${_ambari_port} get $_ambari_host $_c $_type /tmp/${_type}_${__PID}.json || return $?
-    else
-        python ./configs.py -u "${g_admin}" -p "${g_admin_pwd}" -l $_ambari_host -t ${_ambari_port} -a get -n $_c -c $_type -f /tmp/${_type}_${__PID}.json || return $?
-    fi
+    python ./configs.py -u "${g_admin}" -p "${g_admin_pwd}" -l $_ambari_host -t ${_ambari_port} -a get -n $_c -c $_type -f /tmp/${_type}_${__PID}.json || return $?
 
     if [ -z "${_dict}" ]; then
         _info "No _dict given, so that exiting in here (just download)"
         return 0
     fi
 
+    # TODO: configs.py may not escape strings such as quote and \n
     echo "import json
 a=json.loads('{'+open('/tmp/${_type}_${__PID}.json','r').read()+'}')
 n=json.loads('"${_dict}"')
