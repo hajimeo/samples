@@ -329,9 +329,6 @@ function f_hadoop_ssl_setup() {
     local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
     local _use_wildcard_cert="${8-N}" # TODO: getting "hostname mismatch"
     local _no_updating_ambari_config="${9-$r_NO_UPDATING_AMBARI_CONFIG}"
-    local _work_dir="${8-./}"
-
-    cd ${_work_dir%/} || return $?
 
     if [ -z "$_password" ]; then
         _password=${g_DEFAULT_PASSWORD-hadoop}
