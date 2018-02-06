@@ -12,8 +12,11 @@ To create Sandbox (first time only)
     (move to dir which has enough disk space, min. 12GB)
     f_docker_image_setup [sandbox-hdp|sandbox-hdf]
 
-To start Sandbox (to assign an IP with -i, 'hdp' network is required)
-    bash ./start_sandbox.sh -n <container name> -m <image name> [-h <container hostname>] [-i <container IP>]
+To start Sandbox
+    bash ./start_sandbox.sh -n <container name> [-m <image name>] [-h <container hostname>] [-i <container IP>]
+
+    NOTE: To assign an IP with -i, 'hdp' network is required.
+    If no -m, if same image name as container name exist, it uses that.
 
 TODO: How to create 'hdp' network (incomplete as how to change docker config is different by OS)
 Update docker config file to add \" --bip=172.18.0.1\/24\", then restart docker service, then
@@ -418,16 +421,18 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
     echo "Starting PostgreSQL, Ambari Server and Agent ..."
     docker exec -it ${_NAME} bash -c "sysctl -w kernel.shmmax=${_SHMMAX};service postgresql start"
     #docker exec -d ${_NAME} /sbin/sysctl -p
+
     if ${_NEW_CONTAINER} ; then
         # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
         docker exec -it ${_NAME} bash -c 'grep -q "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
         docker exec -it ${_NAME} bash -c "ambari-agent reset ${_HOSTNAME}"
 
+        sleep 3
         echo "Resetting Ambari password (to 'admin') and hostname to ${_HOSTNAME}..."
         #docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
-        docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00', active=1 WHERE user_name='admin' and user_type='LOCAL';\""
+        docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -h localhost -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00', active=1 WHERE user_name='admin' and user_type='LOCAL';\""
         #docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE metainfo SET metainfo_value = '${_AMBARI_VERSION}' where metainfo_key = 'version';\""
-        docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE hosts set host_name='${_HOSTNAME}', public_host_name='${_HOSTNAME}' where host_id=1;\""
+        docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -h localhost -Uambari -tAc \"UPDATE hosts set host_name='${_HOSTNAME}', public_host_name='${_HOSTNAME}' where host_id=1;\""
     fi
     docker exec -d ${_NAME} service ambari-server start --skip-database-check
     docker exec -d ${_NAME} service ambari-agent start
@@ -461,12 +466,12 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-server/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 
+    # If dnsmasq is installed, assuming it's configured
+    which dnsmasq &>/dev/null && docker exec -it ${_NAME} bash -c 'echo "nameserver '${_NETWORK_ADDR}.1'" > /etc/resolv.conf'
+
     # NOTE: docker exec add '$' and '\r'
     _NETWORK_ADDR=`ssh -q ${_HOSTNAME} hostname -i | sed 's/\(.\+\)\.[0-9]\+$/\1/'`
-    if [ ! -z "$_NETWORK_ADDR" ]; then
-        which dnsmasq &>/dev/null && docker exec -it ${_NAME} bash -c 'echo "nameserver '${_NETWORK_ADDR}.1'" > /etc/resolv.conf'
-        docker exec -it ${_NAME} bash -c "ip route del ${_NETWORK_ADDR}.0/24 via 0.0.0.0"
-    fi
+    [ -z "$_NETWORK_ADDR" ] || docker exec -it ${_NAME} bash -c "ip route del ${_NETWORK_ADDR}.0/24 via 0.0.0.0"
 
     echo "With nohup, executing the start ALL services API to ${_HOSTNAME}:${_AMBARI_PORT}..."
     sleep 5
