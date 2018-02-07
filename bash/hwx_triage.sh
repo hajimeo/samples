@@ -23,6 +23,11 @@ set -o posix
 usage() {
     echo "This script is for collecting OS command outputs, and if PID is provided, collecting PID related information.
 
+Example 1: Run one script (eg.: f_check_system)
+    source ./hwx_triage.sh
+    help f_check_system     # to see the help of this function
+    f_check_system
+
 Example 1: Collect Kafka PID related information
     $BASH_SOURCE -p \"\`cat /var/run/kafka/kafka.pid\`\"
 
@@ -33,7 +38,7 @@ Available options:
     -p PID     This PID will be checked
     -l PATH    A log directory path
     -d NUM     If -l is given, collect past x days of logs (default 1 day)
-    -v         Verbose mode
+    -v         (TODO) Verbose mode
     -h         Show this message
 
 Available functions:
@@ -57,11 +62,10 @@ function f_check_system() {
     ls -l /etc/security/keytabs/ &> ${_work_dir%/}/ls-keytabs.out
     getenforce &> ${_work_dir%/}/getenforce.out
     iptables -t nat -nL &> ${_work_dir%/}/iptables.out
-    (which timeout && (timeout 3 time head -n 1 /dev/urandom > /dev/null;echo '-';timeout 3 time head -n 1 /dev/random > /dev/null)) &> ${_work_dir%/}/random.out
+    (which timeout &>/dev/null && (timeout 3 time head -n 1 /dev/urandom > /dev/null;echo '-';timeout 3 time head -n 1 /dev/random > /dev/null)) &> ${_work_dir%/}/random.out
     vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
     vmstat -d &> ${_work_dir%/}/vmstat_d.out &
     pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &
-    sysctl -a &> ${_work_dir%/}/sysctl.out
 
     top -b -n 1 -c &> ${_work_dir%/}/top.out
     ps auxwwwf &> ${_work_dir%/}/ps.out
@@ -79,6 +83,9 @@ function f_check_system() {
     cat /proc/net/dev &> ${_work_dir%/}/net_dev.out
     cat /proc/cpuinfo &> ${_work_dir%/}/cpuinfo.out
     cat /proc/meminfo &> ${_work_dir%/}/meminfo.out
+
+    sysctl -a &> ${_work_dir%/}/sysctl.out
+    sar -A &> ${_work_dir%/}/sar_A.out
     wait
 }
 
@@ -114,10 +121,13 @@ function f_check_process() {
         grep "^securerandom.source=" "$_java_home/jre/lib/security/java.security" &> ${_work_dir%/}/java_random_${_p}.out
 
         # NO heap dump at this moment
-        [ -x "${_cmd_dir}/jmap" ] && sudo -u ${_user} ${_cmd_dir}/jmap -histo ${_p} &> ${_work_dir%/}/jmap_histo_${_p}.out
+        local _pre_cmd=""
+        which timeout &>/dev/null && _pre_cmd="timeout 12"
+        [ -x "${_cmd_dir}/jmap" ] && $_pre_cmd sudo -u ${_user} ${_cmd_dir}/jmap -histo ${_p} &> ${_work_dir%/}/jmap_histo_${_p}.out
         top -Hb -n 3 -d 3 -p ${_p} &> ${_work_dir%/}/top_${_p}.out &    # printf "%x\n" [PID]
-        [ -x "${_cmd_dir}/jstack" ] && for i in {1..3};do sudo -u ${_user} ${_cmd_dir}/jstack -l ${_p}; sleep 3; done &> ${_work_dir%/}/jstack_${_p}.out &
-        [ -x "${_cmd_dir}/jstat" ] && sudo -u ${_user} ${_cmd_dir}/jstat -gccause ${_p} 1000 9 &> ${_work_dir%/}/jstat_${_p}.out &
+        [ -x "${_cmd_dir}/jstack" ] && for i in {1..3};do $_pre_cmd sudo -u ${_user} ${_cmd_dir}/jstack -l ${_p}; sleep 3; done &> ${_work_dir%/}/jstack_${_p}.out &
+        #$_pre_cmd pstack ${_p} &> ${_work_dir%/}/pstack_${_p}.out &    # if jstack or jstack -F doesn't work
+        [ -x "${_cmd_dir}/jstat" ] && $_pre_cmd sudo -u ${_user} ${_cmd_dir}/jstat -gccause ${_p} 1000 9 &> ${_work_dir%/}/jstat_${_p}.out &
     fi
 
     #ps -eLo user,pid,lwp,nlwp,ruser,pcpu,stime,etime,args | grep -w "${_p}" &> ${_work_dir%/}/pseLo_${_p}.out
