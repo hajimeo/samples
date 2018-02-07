@@ -1,8 +1,8 @@
-#! /bin/sh
-# curl -OL https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-agent.jar
-# curl -OL https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-boot.jar
-# curl -OL https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-client.jar
-# curl -OL https://github.com/hajimeo/samples/raw/master/java/btrace/btrace
+#!/usr/bin/env bash
+#
+# To download the latest script:
+#   curl -OL https://github.com/hajimeo/samples/raw/master/java/btrace/btrace
+#
 
 if [ -z "$BTRACE_HOME" -o ! -d "$BTRACE_HOME" ] ; then
   # resolve links - $0 could be a link to btrace's home
@@ -12,9 +12,13 @@ if [ -z "$BTRACE_HOME" -o ! -d "$BTRACE_HOME" ] ; then
   BTRACE_HOME=`cd "$BTRACE_HOME" && pwd`
 fi
 
+[ -f "${BTRACE_HOME}/btrace-client.jar" ] || curl -so ${BTRACE_HOME}/btrace-client.jar https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-client.jar
+[ -f "${BTRACE_HOME}/btrace-agent.jar" ] || curl -so ${BTRACE_HOME}/btrace-agent.jar https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-agent.jar
+[ -f "${BTRACE_HOME}/btrace-boot.jar" ] || curl -so ${BTRACE_HOME}/btrace-client.jar https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-boot.jar
+
 if [ -f "${BTRACE_HOME}/btrace-client.jar" ] ; then
-    if [ "${JAVA_HOME}" == "" ]; then
-        JAVA_HOME="$(dirname $(dirname `readlink /proc/${1}/exe`))"
+    if [ "${JAVA_HOME}" = "" ]; then
+        export JAVA_HOME="$(dirname $(dirname `readlink /proc/${1}/exe`))"
     fi
 
     if [ "${JAVA_HOME}" != "" ]; then
