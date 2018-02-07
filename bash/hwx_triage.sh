@@ -28,10 +28,10 @@ Example 1: Run one script (eg.: f_check_system)
     help f_check_system     # to see the help of this function
     f_check_system
 
-Example 1: Collect Kafka PID related information
+Example 2: Collect Kafka PID related information
     $BASH_SOURCE -p \"\`cat /var/run/kafka/kafka.pid\`\"
 
-Example 2: Collect Kafka PID related information with Kafka log (for past 1 day)
+Example 3: Collect Kafka PID related information with Kafka log (for past 1 day)
     $BASH_SOURCE -p \"\`cat /var/run/kafka/kafka.pid\`\" -l \"/var/log/kafka\" [-d 1]
 
 Available options:
