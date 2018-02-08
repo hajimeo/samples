@@ -415,7 +415,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
 
         # As of this typing, sandbox repo for tutorial is broken so moving out for now
         docker exec -it ${_NAME} bash -c 'mv /etc/yum.repos.d/sandbox.repo /root/' &>/dev/null
-        docker exec -dt ${_NAME} yum -q -y install yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc
+        docker exec -dt ${_NAME} yum -q -y install yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc sharutils
     fi
 
     echo "Starting PostgreSQL, Ambari Server and Agent ..."
@@ -469,9 +469,13 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
     # NOTE: docker exec add '$' and '\r'
     _NETWORK_ADDR=`ssh -q ${_HOSTNAME} hostname -i | sed 's/\(.\+\)\.[0-9]\+$/\1/'`
     if [ -n "$_NETWORK_ADDR" ]; then
-        # If dnsmasq is installed, assuming it's configured
-        which dnsmasq &>/dev/null && docker exec -it ${_NAME} bash -c 'echo "nameserver '${_NETWORK_ADDR}.1'" > /etc/resolv.conf'
         docker exec -it ${_NAME} bash -c "ip route del ${_NETWORK_ADDR}.0/24 via 0.0.0.0"
+    fi
+
+    # If docker custom network is configured and dnsmasq is installed, assuming it's configured for DNS
+    _host_ip="`ifconfig $_CUSTOM_NETWORK | grep -oP 'inet addr:\d+\.\d+\.\d+\.\d+' | cut -d":" -f2`"
+    if [ -n "${_host_ip}" ]; then
+        which dnsmasq &>/dev/null && docker exec -it ${_NAME} bash -c 'echo "nameserver '${_host_ip}'" > /etc/resolv.conf'
     fi
 
     echo "With nohup, executing the start ALL services API to ${_HOSTNAME}:${_AMBARI_PORT}..."
