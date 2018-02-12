@@ -478,9 +478,9 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         docker exec -it ${_NAME} bash -c "ip route del ${_NETWORK_ADDR}.0/24 via 0.0.0.0"
     fi
 
-    if [ -n "${_HOST_HDP_IP}" ]; then
-        which dnsmasq &>/dev/null && docker exec -it ${_NAME} bash -c "grep -q ${_HOST_HDP_IP} /etc/resolv.conf || echo \"nameserver ${_HOST_HDP_IP}\" > /etc/resolv.conf"
-    fi
+    #if [ -n "${_HOST_HDP_IP}" ]; then
+    #    which dnsmasq &>/dev/null && docker exec -it ${_NAME} bash -c "grep -q ${_HOST_HDP_IP} /etc/resolv.conf || echo \"nameserver ${_HOST_HDP_IP}\" > /etc/resolv.conf"
+    #fi
 
     echo "With nohup, executing the start ALL services API to ${_HOSTNAME}:${_AMBARI_PORT}..."
     sleep 5
