@@ -184,8 +184,11 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     done
 
     if [ -z "$_NAME" ]; then
-        usage
-        exit
+        if [ -z "$_IMAGE" ]; then
+            usage
+            exit
+        fi
+        _NAME=${_IMAGE}
     fi
 
     if [ -z "$_IMAGE" ]; then
