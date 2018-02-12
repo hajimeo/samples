@@ -249,15 +249,13 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         docker start "${_NAME}" || exit $?
     else
         _network=""
-        if docker network ls | grep -qw "$_CUSTOM_NETWORK"; then
-            _network="--network=${_CUSTOM_NETWORK}"
-
-            [ -n "$_IP" ] && _network="${_network} --ip=${_IP}"
-            [ -n "${_HOST_HDP_IP}" ] && _network="${_network} --dns=${_HOST_HDP_IP}"
-        else
-            if [ ! -z "$_IP" ]; then
+        if [ ! -z "$_IP" ]; then
+            if ! docker network ls | grep -qw "$_CUSTOM_NETWORK"; then
                 echo "WARN: IP $_IP is given but no custom network $_CUSTOM_NETWORK. Ignoring IP..."
                 sleep 5
+            else
+                _network="--network=${_CUSTOM_NETWORK} --ip=${_IP}"
+                # TODO: how about --dns?
             fi
         fi
 
@@ -481,7 +479,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
     fi
 
     if [ -n "${_HOST_HDP_IP}" ]; then
-        which dnsmasq &>/dev/null && docker exec -it ${_NAME} bash -c "grep -q ${_HOST_HDP_IP} /etc/resolv.conf || echo \"nameserver ${_HOST_HDP_IP}\" >> /etc/resolv.conf"
+        which dnsmasq &>/dev/null && docker exec -it ${_NAME} bash -c "grep -q ${_HOST_HDP_IP} /etc/resolv.conf || echo \"nameserver ${_HOST_HDP_IP}\" > /etc/resolv.conf"
     fi
 
     echo "With nohup, executing the start ALL services API to ${_HOSTNAME}:${_AMBARI_PORT}..."
