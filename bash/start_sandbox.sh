@@ -405,16 +405,14 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
     # paste config.v2.json
     # start docker service, then cotainer
 
+    # startup_script modify /etc/resolv.conf so removing
+    docker exec -it ${_NAME} bash -c 'grep -q -F "> /etc/resolv.conf" /etc/rc.d/init.d/startup_script && tar -cvzf /root/startup_script.tgz `find /etc/rc.d/ -name '*startup_script'` --remove-files'
     #docker exec -t ${_NAME} /etc/init.d/startup_script start
     #docker exec -t ${_NAME} make --makefile /usr/lib/hue/tools/start_scripts/start_deps.mf  -B Startup -j -i
     #docker exec -t ${_NAME} nohup su - hue -c '/bin/bash /usr/lib/tutorials/tutorials_app/run/run.sh' &>/dev/null
     #docker exec -t ${_NAME} touch /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
     #docker exec -t ${_NAME} chown oozie:hadoop /usr/hdp/current/oozie-server/oozie-server/work/Catalina/localhost/oozie/SESSIONS.ser
-    #docker exec -d ${_NAME} /etc/init.d/splash
-
-    sleep 3
-
-    docker exec -it ${_NAME} bash -c "service sshd start"
+    #docker exec -d ${_NAME} /etc/init.d/splash  # to intentioanlly break hue?
 
     if ${_NEW_CONTAINER} ; then
         docker exec -it ${_NAME} bash -c "chpasswd <<< root:hadoop"
@@ -424,10 +422,10 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         docker exec -dt ${_NAME} yum -q -y install yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc sharutils
     fi
 
-    echo "Starting PostgreSQL, Ambari Server and Agent ..."
+    echo "Starting SSHd, PostgreSQL, Ambari Server and Agent ..."
+    docker exec -it ${_NAME} bash -c "service sshd start"
     docker exec -it ${_NAME} bash -c "sysctl -w kernel.shmmax=${_SHMMAX};service postgresql start"
     #docker exec -d ${_NAME} /sbin/sysctl -p
-
     if ${_NEW_CONTAINER} ; then
         # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
         docker exec -it ${_NAME} bash -c 'grep -q "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
