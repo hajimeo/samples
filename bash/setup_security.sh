@@ -934,7 +934,8 @@ function f_ambari_configs() {
     local _dict="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
     local _ambari_port="${4-8080}"
-    local _c="`f_get_cluster_name $_ambari_host`" || return $?
+    local _c="${5}"
+    [ -z "$_c" ] && _c="`f_get_cluster_name $_ambari_host`" || return $?
 
     if [ ! -s ./configs.py ]; then
         curl -O https://raw.githubusercontent.com/apache/ambari/trunk/ambari-server/src/main/resources/scripts/configs.py || return $?
