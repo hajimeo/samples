@@ -288,13 +288,19 @@ function p_nodes_create() {
 
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix"
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
-    f_ambari_agent_install "$_how_many" "$_start_from" "$_ambari_host"
+    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
+    if [ -z "$_ambari_host" ]; then
+        _warn "No ambari host specified, so not setting up ambari agent"
+        return
+    fi
+    f_ambari_agent_install "$_how_many" "$_start_from" "${_ambari_host}"
     f_ambari_agent_fix "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
 }
 
 function p_hdp_start() {
+    local __doc__="Start up HDP containers"
     f_loadResp
     f_dnsmasq_banner_reset
     f_restart_services_just_in_case
@@ -658,7 +664,7 @@ function f_ambari_blueprint_cluster_config() {
     {
       "yarn-site" : {
         "properties" : {
-          "yarn.scheduler.minimum-allocation-mb" : "320",
+          "yarn.scheduler.minimum-allocation-mb" : "250",
           "yarn.nodemanager.delete.debug-delay-sec" : "1800"
         }
       }
@@ -685,15 +691,18 @@ function f_ambari_blueprint_cluster_config() {
     {
       "tez-site" : {
         "properties" : {
-          "tez.am.resource.memory.mb" : "256",
-          "tez.task.resource.memory.mb" : "256",
-          "tez.runtime.io.sort.mb" : "128"
+          "tez.am.resource.memory.mb" : "512",
+          "tez.task.resource.memory.mb" : "512",
+          "tez.runtime.io.sort.mb" : "256",
+          "tez.runtime.unordered.output.buffer.size-mb" : "48"
         }
       }
     },
     {
       "hive-site" : {
         "properties" : {
+          "hive.tez.container.size" : "512",
+          "tez.am.resource.memory.mb" : "512",
           "hive.exec.post.hooks" : "org.apache.hadoop.hive.ql.hooks.ATSHook",
           "hive.log.explain.output" : "true"
         }
@@ -704,7 +713,7 @@ function f_ambari_blueprint_cluster_config() {
         "properties" : {
           "hive.atlas.hook" : "false",
           "hive.metastore.heapsize" : "512",
-          "hive.heapsize" : "513"
+          "hive.heapsize" : "1024"
         }
       }
     }'$_extra_configs'
@@ -1284,6 +1293,8 @@ function f_docker_run() {
 
     local _network=""
     local _line=""
+    [ ! -d /var/tmp/share ] && mkdir -p -m 777 /var/tmp/share
+
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         _line="`docker ps -a -f name=${_node}$_n | grep -w ${_node}$_n`"
         if [ -n "$_line" ]; then
@@ -1293,7 +1304,7 @@ function f_docker_run() {
         # --ip may not work if no custom network due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
         [ ! -z "$_ip_prefix" ] && _network="--network=$g_HDP_NETWORK --ip=${_ip_prefix%\.}.${_n}"
 
-        docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged --hostname=${_node}$_n${_domain} ${_network} --dns=$_dns --name=${_node}$_n ${_base} || return $?
+        docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share --privileged --hostname=${_node}$_n${_domain} ${_network} --dns=$_dns --name=${_node}$_n ${_base} || return $?
     done
 }
 
@@ -1335,6 +1346,7 @@ function f_get_ambari_repo_file() {
 
         cp -f "$_file" /tmp/ambari.repo_${__PID}
     fi
+    echo "/tmp/ambari.repo_${__PID}"
 }
 
 function f_ambari_install() {
@@ -1493,8 +1505,8 @@ function p_post_install_changes() {
     # TODO: need to find the best way to find the first time
     local _c="`_ambari_query_sql "select count(*) from alert_definition where schedule_interval = 1;" $r_AMBARI_HOST`"
     if [ 0 -ne $_c ]; then
-        _info "Reducing Ambari Alert frequency..."
-        _ambari_query_sql "update alert_definition set schedule_interval = schedule_interval * 2 where schedule_interval < 11" "$r_AMBARI_HOST"
+        _info "Disabling Ambari Alerts"
+        _ambari_query_sql "delete from alert_current where definition_id in (select definition_id from alert_definition where ENABLED = 1);update alert_definition set enabled = 0 where enabled = 1;" "$r_AMBARI_HOST"
     fi
 
     #_info "No password required to login Ambari..."
@@ -1729,7 +1741,7 @@ function f_local_repo() {
         if [ "${r_CONTAINER_OS}" = "centos" ] || [ "${r_CONTAINER_OS}" = "redhat" ]; then
             _port_wait "$r_AMBARI_HOST" "8080"
 
-            f_ambari_set_repo "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}" "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
+            f_ambari_set_repo "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}" "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}" || return $?
         else
             _warn "At this moment only centos or redhat for local repository"
         fi
@@ -2056,10 +2068,10 @@ function p_host_setup() {
 
         if _isYes "$r_HDP_LOCAL_REPO"; then
             _log "INFO" "Starting f_local_repo"
-            f_local_repo &>> /tmp/p_host_setup.log
+            f_local_repo &>> /tmp/p_host_setup.log || return $?
         elif [ -n "$r_HDP_REPO_URL" ]; then
             # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
-            _log "INFO" "Starting f_ambari_set_repo"
+            _log "INFO" "Starting f_ambari_set_repo (may not work with Ambari 2.6)"
             f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" &>> /tmp/p_host_setup.log
         fi
 
@@ -2096,6 +2108,13 @@ function f_dnsmasq() {
     ssh -q $_dns "grep -q '^resolv-file=' /etc/dnsmasq.conf || (echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf; echo 'nameserver 8.8.8.8' > /etc/resolv.dnsmasq.conf)"
 
     f_dnsmasq_banner_reset "$_how_many" "$_start_from"
+
+    if [ -d /etc/docker ] && [ ! -f /etc/docker/daemon.json ]; then
+        echo '{
+    "dns": ["172.17.0.1", "8.8.8.8"]
+}' > /etc/docker/daemon.json
+        _warn "service docker restart required"
+    fi
 }
 
 function f_dnsmasq_banner_reset() {
@@ -2194,7 +2213,8 @@ function f_host_misc() {
     if [ ! -s /etc/update-motd.d/99-start-hdp ]; then
         echo '#!/bin/bash
 ls -lt ~/*.resp
-docker ps' > /etc/update-motd.d/99-start-hdp
+docker ps
+screen -ls' > /etc/update-motd.d/99-start-hdp
         chmod a+x /etc/update-motd.d/99-start-hdp
         run-parts --lsbsysinit /etc/update-motd.d > /run/motd.dynamic
     fi
