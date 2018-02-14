@@ -209,7 +209,7 @@ function p_interview() {
         #_ask "Would you like to increase Ambari Alert interval?" "Y" "r_AMBARI_ALERT_INTERVAL"
     fi
 
-    _ask "Would you like to set up a proxy server for yum on this server?" "Y" "r_PROXY"
+    _ask "Would you like to set up a proxy server for yum on this server?" "N" "r_PROXY"
     if _isYes "$r_PROXY"; then
         _ask "Proxy port" "28080" "r_PROXY_PORT"
     fi
@@ -1506,32 +1506,6 @@ function f_tunnel() {
     #echo "Please run \"ip route del 172.17.0.0/16 via 0.0.0.0\" on all containers on both hosts."
 }
 
-function p_post_install_changes() {
-    local __doc__="Change some configurations for Dev cluster"
-
-    _info "Using urandom instead of random"
-    f_ambari_java_random
-
-    # TODO: need to find the best way to find the first time
-    local _c="`_ambari_query_sql "select count(*) from alert_definition where schedule_interval = 1;" $r_AMBARI_HOST`"
-    if [ 0 -ne $_c ]; then
-        _info "Disabling Ambari Alerts"
-        _ambari_query_sql "delete from alert_current where definition_id in (select definition_id from alert_definition where ENABLED = 1);update alert_definition set enabled = 0 where enabled = 1;" "$r_AMBARI_HOST"
-    fi
-
-    #_info "No password required to login Ambari..."
-    #ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties'
-#grep -q '^api.authenticate=false' \$_f && exit
-#grep -q '^api.authenticate=' \$_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' \$_f || echo 'api.authenticate=false' >> \$_f
-#grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f
-#ambari-server restart --skip-database-check"
-
-    _info "Creating 'admin', 'sam', 'tom' (Knox LDAPDemo) users in each node and in HDFS..."
-    for _n in admin sam tom; do
-        f_useradd_on_nodes "$_n" "${_n}-password"
-    done
-}
-
 function f_ambari_agent_install() {
     local __doc__="Installing ambari-agent on all containers for manual registration (not starting)"
     # ./start_hdp.sh -r ./node11-14_2.5.0.resp -f "f_ambari_agent_install 1 16"
@@ -1594,7 +1568,8 @@ function f_ambari_java_random() {
     _cmd='_javahome="$(dirname $(dirname $(alternatives --display java | grep "link currently points to" | grep -oE "/.+jre.+/java$")))" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "$_javahome/lib/security/java.security"'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+        # if no 'java' in the path, this outputs error
+        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd" 2>/dev/null
     done
 }
 
@@ -2066,6 +2041,8 @@ function p_host_setup() {
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_ambari_install"
         f_ambari_install &>> /tmp/p_host_setup.log || return $?
+        _log "INFO" "Starting f_cluster_performance"
+        f_cluster_performance &>> /tmp/p_host_setup.log || return $?
         _log "INFO" "Starting f_ambari_server_start"
         f_ambari_server_start &>> /tmp/p_host_setup.log || return $?
 
@@ -2102,7 +2079,6 @@ function p_host_setup() {
     f_port_forward_ssh_on_nodes
     _log "INFO" "Completed. Grepping ERRORs and WARNs from /tmp/p_host_setup.log"
     grep -Ew '(ERROR|WARN)' /tmp/p_host_setup.log
-    _log "INFO" "Please run p_post_install_changes when HDFS is running."
 
     f_screen_cmd
 }
@@ -2187,6 +2163,27 @@ function f_update_resolv_confs() {
     # sed doesn't work with sed: cannot rename /etc/resolv.conf: Device or resource busy
     # 'nameserver' would be case sensitive (capital wouldn't be right)
     f_run_cmd_on_nodes '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${_dns_ip}'\b" $_f || (grep -v "^nameserver" $_f > ${_f}.tmp && cat ${_f}.tmp > ${_f} && echo "nameserver '${_dns_ip}'" >> $_f)' "$_how_many" "$_start_from"
+}
+
+function f_cluster_performance() {
+    local __doc__="TODO: Ambari/HDP performance hack"
+
+    _info "Using urandom instead of random"
+    f_ambari_java_random
+
+    _info "Disabling Ambari Alerts"
+    _ambari_query_sql "delete from alert_current where definition_id in (select definition_id from alert_definition where ENABLED = 1);update alert_definition set enabled = 0 where enabled = 1;" "$r_AMBARI_HOST"
+
+    #_info "No password required to login Ambari..."
+    #ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties'
+#grep -q '^api.authenticate=false' \$_f && exit
+#grep -q '^api.authenticate=' \$_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' \$_f || echo 'api.authenticate=false' >> \$_f
+#grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f
+#ambari-server restart --skip-database-check"
+
+    # TODO: This isn't performance related but putting in here for now
+    #_info "Creating 'admin', 'sam', 'tom' (Knox LDAPDemo) users in each node and in HDFS..."
+    #for _n in admin sam tom; do f_useradd_on_nodes "$_n" "${_n}-password"; done
 }
 
 function f_host_performance() {
