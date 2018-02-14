@@ -1055,7 +1055,7 @@ function f_docker_base_create() {
     local _docker_file="${1-$r_DOCKERFILE_URL}"
     local _os_name="${2-$r_CONTAINER_OS}"
     local _os_ver_num="${3-$r_CONTAINER_OS_VER}"
-    local _force_build="${4}"
+    local _force_build="${4-$r_DOCKER_FORCE_BUILD}"
     local _base="${g_DOCKER_BASE}:$_os_ver_num"
 
     if ! _isYes "$_force_build"; then
