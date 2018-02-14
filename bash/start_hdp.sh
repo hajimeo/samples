@@ -1055,7 +1055,16 @@ function f_docker_base_create() {
     local _docker_file="${1-$r_DOCKERFILE_URL}"
     local _os_name="${2-$r_CONTAINER_OS}"
     local _os_ver_num="${3-$r_CONTAINER_OS_VER}"
+    local _force_build="${4}"
     local _base="${g_DOCKER_BASE}:$_os_ver_num"
+
+    if ! _isYes "$_force_build"; then
+        local _existing_id="`docker images -q ${_base}`"
+        if [ -n "${_existing_id}" ]; then
+            echo "Skipping creating ${_base} as already exists. Please run 'docker rmi ${_existing_id}' to recreate."
+            #return 0
+        fi
+    fi
 
     if [ -z "$_os_name" ]; then
         _error "No container OS specified"
@@ -1073,7 +1082,7 @@ function f_docker_base_create() {
     fi
 
     docker images | grep -P "^${_os_name}\s+${_os_ver_num}" || docker pull ${_os_name}:${_os_ver_num}
-    # TODO: . is not good if there are so many files/folders
+    # TODO: . is not good if there are so many files/folders (docker build -t hdp/base:7.4.1708 -f ./DockerFile7 .)
     docker build -t ${_base} -f $_local_docker_file .
 }
 
@@ -3113,7 +3122,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         if ! _isYes "$_AUTO_SETUP_HDP"; then
             _ask "Would you like to start setting up this host?" "Y"
             if ! _isYes; then echo "Bye"; exit; fi
-            if ! _isYes "$r_DOCKER_KEEP_RUNNING"; then
+            if [ -n "$r_DOCKER_KEEP_RUNNING" ]; then
+                _isYes "$r_DOCKER_KEEP_RUNNING" || f_docker_stop_all
+            else
                 _ask "Would you like to stop all running containers now?" "Y"
                 if _isYes; then f_docker_stop_all; fi
             fi
