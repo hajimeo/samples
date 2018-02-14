@@ -1061,8 +1061,8 @@ function f_docker_base_create() {
     if ! _isYes "$_force_build"; then
         local _existing_id="`docker images -q ${_base}`"
         if [ -n "${_existing_id}" ]; then
-            echo "Skipping creating ${_base} as already exists. Please run 'docker rmi ${_existing_id}' to recreate."
-            #return 0
+            _warn "Skipping creating ${_base} as already exists. Please run 'docker rmi ${_existing_id}' to recreate."
+            return 0
         fi
     fi
 
