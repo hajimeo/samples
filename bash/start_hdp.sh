@@ -280,6 +280,8 @@ function _cancelInterview() {
 }
 
 function p_nodes_create() {
+    local __doc__="Create container(s) and if _ambari_host is given, try installing agent"
+    # p_nodes_create 1 100 '7.4.1708' '172.17.140' ''
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
@@ -296,7 +298,6 @@ function p_nodes_create() {
     f_ambari_agent_install "$_how_many" "$_start_from" "${_ambari_host}"
     f_ambari_agent_fix "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from"
-    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
 }
 
 function p_hdp_start() {
@@ -1082,7 +1083,7 @@ function f_docker_base_create() {
     fi
 
     docker images | grep -P "^${_os_name}\s+${_os_ver_num}" || docker pull ${_os_name}:${_os_ver_num}
-    # TODO: . is not good if there are so many files/folders (docker build -t hdp/base:7.4.1708 -f ./DockerFile7 .)
+    # TODO: . is not good if there are so many files/folders
     docker build -t ${_base} -f $_local_docker_file .
 }
 
@@ -1763,6 +1764,7 @@ function f_ambari_set_repo() {
     local _util_url="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
     local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
+    local _stack="HDP" # for AMBARI-22565 repo_name change. TODO: need to support HDF etc.
 
     _port_wait $_ambari_host 8080
     if [ $? -ne 0 ]; then
@@ -1783,14 +1785,18 @@ function f_ambari_set_repo() {
         return 1
     fi
 
+    if [[ "${r_AMBARI_VER}" =~ ^2.6. ]]; then
+        _warn "TODO: Ambari 2.6.x may not work with local repo at this moment"
+    fi
+
     if _isUrl "$_repo_url"; then
         # TODO: if Ambari 2.6 https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
-        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/HDP-${_stack_version}" -d '{"Repositories":{"base_url":"'${_repo_url}'","verify_base_url":true}}'
+        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}'
     fi
 
     if _isUrl "$_util_url"; then
         local _hdp_util_name="`echo $_util_url | grep -oP 'HDP-UTILS-[\d\.]+'`"
-        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/HDP/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"base_url":"'${_util_url}'","verify_base_url":true}}'
+        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"repo_name": "'${_hdp_util_name}'", "base_url":"'${_util_url}'","verify_base_url":true}}'
     fi
 }
 
