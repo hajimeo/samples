@@ -457,6 +457,9 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     # for Hive, Oozie, Ranger, KMS etc, making sure mysql starts
     docker exec -d ${_NAME} service mysqld start
+    # TODO: may need to reset root db user password
+    # mysql -uroot -phadoop mysql -e "select user, host from user where User='root' and Password =''"
+    # mysql -uroot -phadoop mysql -e "set password for 'root'@'%'= PASSWORD('hadoop')"
     docker exec -d ${_NAME} bash -c 'sudo -u knox -i /usr/hdp/current/knox-server/bin/ldap.sh start'
 
     #docker exec -d ${_NAME} /root/start_sandbox.sh
