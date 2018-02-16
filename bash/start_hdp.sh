@@ -1797,7 +1797,7 @@ function f_ambari_set_repo() {
     fi
 
     if _isUrl "$_util_url"; then
-        local _hdp_util_name="`echo $_util_url | grep -oP 'HDP-UTILS-[\d\.]+'`"
+        local _hdp_util_name="`echo $_util_url | grep -oP "HDP-UTILS-[\d\.]+"`"
         curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"repo_name": "'${_hdp_util_name}'", "base_url":"'${_util_url}'","verify_base_url":true}}'
     fi
 }
