@@ -280,8 +280,8 @@ function _cancelInterview() {
 }
 
 function p_ambari_node_create() {
-    local __doc__="Create one node and install AmbariServer (TODO: only centos)"
-    # p_nodes_create 1 100 '7.4.1708' '172.17.140' ''
+    local __doc__="Create one node and install AmbariServer (NOTE: only centos and doesn't create docker image)"
+    # p_ambari_node_create /path/to/ambari.repo 111 '7.4.1708' '172.17.100.'
     local _ambari_repo_file="${1-$r_AMBARI_REPO_FILE}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
@@ -303,8 +303,8 @@ function p_ambari_node_create() {
 }
 
 function p_nodes_create() {
-    local __doc__="Create container(s) and if _ambari_host is given, try installing agent"
-    # p_nodes_create 1 100 '7.4.1708' '172.17.140' ''
+    local __doc__="Create container(s) and if _ambari_host is given, try installing agent (NOTE: only centos and doesn't create docker image)"
+    # p_nodes_create 1 100 '7.4.1708' '172.17.140.' ''
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
