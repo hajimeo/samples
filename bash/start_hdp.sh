@@ -279,6 +279,29 @@ function _cancelInterview() {
     _exit
 }
 
+function p_ambari_node_create() {
+    local __doc__="Create one node and install AmbariServer (TODO: only centos)"
+    # p_nodes_create 1 100 '7.4.1708' '172.17.140' ''
+    local _ambari_repo_file="${1-$r_AMBARI_REPO_FILE}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+    local _os_ver="${3-$r_CONTAINER_OS_VER}"
+    local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
+
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+    local _suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
+    local _ambari_host="${_node}${_start_from}${_suffix}"
+    local _how_many="1"
+
+    f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix" || return $?
+    f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix" || return $?
+    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from" || return $?
+    f_get_ambari_repo_file "$_ambari_repo_file" || return $?
+    f_ambari_server_install "${_ambari_host}"|| return $?
+    f_ambari_server_setup "${_ambari_host}" || return $?
+    f_ambari_server_start "${_ambari_host}" || return $?
+    #f_cluster_performance "${_ambari_host}" || return $?
+}
+
 function p_nodes_create() {
     local __doc__="Create container(s) and if _ambari_host is given, try installing agent"
     # p_nodes_create 1 100 '7.4.1708' '172.17.140' ''
@@ -291,7 +314,7 @@ function p_nodes_create() {
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix"
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
-    if [ -z "$_ambari_host" ]; then
+    if [ -z "${_ambari_host}" ]; then
         _warn "No ambari host specified, so not setting up ambari agent"
         return
     fi
@@ -1322,15 +1345,15 @@ function _ambari_query_sql() {
     local _query="${1%\;}"
     local _ambari_host="${2-$r_AMBARI_HOST}"
 
-    ssh -q root@$_ambari_host "PGPASSWORD=bigdata psql -Uambari -tAc \"${_query};\""
+    ssh -q root@${_ambari_host} "PGPASSWORD=bigdata psql -Uambari -tAc \"${_query};\""
 }
 
 function f_get_cluster_name() {
     local __doc__="Output (return) cluster name by using SQL"
     local _ambari_host="${1-$r_AMBARI_HOST}"
-    local _c="$(_ambari_query_sql "select cluster_name from clusters order by cluster_id desc limit 1;" $_ambari_host)"
+    local _c="$(_ambari_query_sql "select cluster_name from clusters order by cluster_id desc limit 1;" ${_ambari_host})"
     if [ -z "$_c" ]; then
-        _warn "No cluster name from $_ambari_host"
+        _warn "No cluster name from ${_ambari_host}"
         return 1
     fi
     echo "$_c"
@@ -1370,48 +1393,52 @@ function f_ambari_install() {
 
 function f_ambari_server_install() {
     local __doc__="Install Ambari Server to $r_AMBARI_HOST"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
 
     [ ! -s "/tmp/ambari.repo_${__PID}" ] && f_get_ambari_repo_file
-    _info "Copying /tmp/ambari.repo_${__PID} to $r_AMBARI_HOST ..."
-    scp -q /tmp/ambari.repo_${__PID} root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo || return $?
+    _info "Copying /tmp/ambari.repo_${__PID} to ${_ambari_host} ..."
+    scp -q /tmp/ambari.repo_${__PID} root@${_ambari_host}:/etc/yum.repos.d/ambari.repo || return $?
 
-    _info "Installing ambari-server on $r_AMBARI_HOST ..."
-    ssh -q root@$r_AMBARI_HOST "(set -x; yum clean all; yum install -y ambari-server && service postgresql initdb; service postgresql restart)"
+    _info "Installing ambari-server on ${_ambari_host} ..."
+    ssh -q root@${_ambari_host} "(set -x; yum clean all; yum install -y ambari-server && service postgresql initdb; service postgresql restart)"
 }
 
 function f_ambari_server_setup() {
-    local __doc__="Setup Ambari Server on $r_AMBARI_HOST"
+    local __doc__="Setup Ambari Server on $r_AMBARI_HOST (use r_AMBARI_JDK_URL and r_AMBARI_JCE_URL env variables)"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
 
     # TODO: at this moment, only Centos (yum)
     if _isUrl "$r_AMBARI_JDK_URL"; then
-        ssh -q root@$r_AMBARI_HOST "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JDK_URL\" -O"
+        ssh -q root@${_ambari_host} "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JDK_URL\" -O"
     fi
     if _isUrl "$r_AMBARI_JCE_URL"; then
-        ssh -q root@$r_AMBARI_HOST "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JCE_URL\" -O"
+        ssh -q root@${_ambari_host} "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JCE_URL\" -O"
     fi
 
-    _port_wait "$_file" "8080" 1 &>/dev/null
+    _port_wait "${_ambari_host}" "8080" 1 &>/dev/null
     if [ $? -eq 0 ]; then
-        _warn "Something is already listening on $_file:8080"
+        _warn "Something is already listening on ${_ambari_host}:8080, so just in case, not setting up"
         return 1
     fi
 
     [ ! -s "/tmp/ambari.repo_${__PID}" ] && f_get_ambari_repo_file
-    _info "Copying /tmp/ambari.repo_${__PID} to $r_AMBARI_HOST ..."
-    scp -q /tmp/ambari.repo_${__PID} root@$r_AMBARI_HOST:/etc/yum.repos.d/ambari.repo || return $?
+    _info "Copying /tmp/ambari.repo_${__PID} to ${_ambari_host} ..."
+    scp -q /tmp/ambari.repo_${__PID} root@${_ambari_host}:/etc/yum.repos.d/ambari.repo || return $?
 
-    _info "Setting up ambari-server on $r_AMBARI_HOST ..."
-    ssh -q root@$r_AMBARI_HOST "ambari-server setup -s --verbose || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
+    _info "Setting up ambari-server on ${_ambari_host} ..."
+    ssh -q root@${_ambari_host} "ambari-server setup -s --verbose || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
 }
 
 function f_ambari_server_start() {
     local __doc__="Starting ambari-server on $r_AMBARI_HOST if not started yet"
-    _port_wait "$r_AMBARI_HOST" "22"
-    ssh -q root@$r_AMBARI_HOST "ambari-server start --skip-database-check" &> /tmp/f_ambari_server_start.out
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+    
+    _port_wait "${_ambari_host}" "22"
+    ssh -q root@${_ambari_host} "ambari-server start --skip-database-check" &> /tmp/f_ambari_server_start.out
     if [ $? -ne 0 ]; then
         grep -q 'REASON: Ambari Server is already running' /tmp/f_ambari_server_start.out && return
         sleep 5
-        ssh -q root@$r_AMBARI_HOST "ambari-server start --skip-database-check"
+        ssh -q root@${_ambari_host} "ambari-server start --skip-database-check"
     fi
 }
 
@@ -1741,9 +1768,9 @@ function f_ambari_set_repo() {
     local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
     local _stack="HDP" # for AMBARI-22565 repo_name change. TODO: need to support HDF etc.
 
-    _port_wait $_ambari_host 8080
+    _port_wait ${_ambari_host} 8080
     if [ $? -ne 0 ]; then
-        _error "Ambari is not running on $_ambari_host 8080"
+        _error "Ambari is not running on ${_ambari_host} 8080"
         return 1
     fi
 
@@ -1819,15 +1846,15 @@ function f_services_start() {
     local _is_stale_only="$1"
     local _ambari_host="${2-$r_AMBARI_HOST}"
     local _ambari_port="${3-8080}"
-    local _c="`f_get_cluster_name $_ambari_host`" || return 1
+    local _c="`f_get_cluster_name ${_ambari_host}`" || return 1
     _info "Will start all services ..."
     if [ -z "$_c" ]; then
       _error "No cluster name (check PostgreSQL)..."
       return 1
     fi
 
-    _port_wait "$_ambari_host" "8080"
-    _ambari_agent_wait "$_ambari_host"
+    _port_wait "${_ambari_host}" "8080"
+    _ambari_agent_wait "${_ambari_host}"
 
     if _isYes "$_is_stale_only"; then
         curl -si -u admin:admin -H "X-Requested-By:ambari" "http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests" -X POST --data '{"RequestInfo":{"command":"RESTART","context":"Restart all required services","operation_level":"host_component"},"Requests/resource_filters":[{"hosts_predicate":"HostRoles/stale_configs=true"}]}'
@@ -1842,7 +1869,7 @@ function f_add_comp() {
     local _host="$1"
     local _comp="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
-    local _c="`f_get_cluster_name $_ambari_host`" || return 1
+    local _c="`f_get_cluster_name ${_ambari_host}`" || return 1
 
     curl -si -u admin:admin -H "X-Requested-By:ambari" -X POST -d '{"host_components" : [{"HostRoles":{"component_name":"'${_comp}'"}}]}' "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
     curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"HostRoles": {"state": "INSTALLED"}}' "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
@@ -1854,7 +1881,7 @@ function f_service() {
     local _action="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
     local _maintenance_mode="OFF"
-    local _c="`f_get_cluster_name $_ambari_host`" || return 1
+    local _c="`f_get_cluster_name ${_ambari_host}`" || return 1
 
     if [ -z "$_c" ]; then
       _error "No cluster name (check PostgreSQL)..."
@@ -1863,7 +1890,7 @@ function f_service() {
 
     if [ -z "$_service" ]; then
         _info "Available Services"
-        _ambari_query_sql "select service_name from servicedesiredstate where 1=1 order by service_name" "$_ambari_host"
+        _ambari_query_sql "select service_name from servicedesiredstate where 1=1 order by service_name" "${_ambari_host}"
         return
     fi
 
@@ -1877,25 +1904,25 @@ function f_service() {
 
     for _s in `echo $_service | sed 's/ /\n/g'`; do
         if [ "$_action" = "RESTART" ]; then
-            f_service "$_s" "stop" "$_ambari_host" || return $?
+            f_service "$_s" "stop" "${_ambari_host}" || return $?
             for _i in {1..9}; do
-                _n="`_ambari_query_sql "select count(*) from request where request_context ='set INSTALLED for $_s by f_service' and end_time < start_time" "$_ambari_host"`"
+                _n="`_ambari_query_sql "select count(*) from request where request_context ='set INSTALLED for $_s by f_service' and end_time < start_time" "${_ambari_host}"`"
                 [ 0 -eq $_n ] && break;
                 sleep 10
             done
-            f_service "$_s" "start" "$_ambari_host"
+            f_service "$_s" "start" "${_ambari_host}"
         else
             [ "$_action" = "START" ] && _action="STARTED"
             [ "$_action" = "STOP" ] && _action="INSTALLED"
             [ "$_action" = "INSTALLED" ] && _maintenance_mode="ON"
 
-            _n="`_ambari_query_sql "select count(*) from request where request_context ='set $_action for $_s by f_service' and end_time < start_time" "$_ambari_host"`"
+            _n="`_ambari_query_sql "select count(*) from request where request_context ='set $_action for $_s by f_service' and end_time < start_time" "${_ambari_host}"`"
             # same action for same service is already running
             [ 0 -lt $_n ] && break;
 
-            curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_s"
+            curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
             local _request_context=""
-            curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_s' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_s'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://$_ambari_host:8080/api/v1/clusters/$_c/services/$_s"
+            curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_s' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_s'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
             echo ""
         fi
     done
@@ -2037,6 +2064,9 @@ function p_host_setup() {
         f_node_proxy_setup &>> /tmp/p_host_setup.log
     fi
 
+    _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
+    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
+
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_ambari_install"
@@ -2055,8 +2085,6 @@ function p_host_setup() {
         f_ambari_agent_fix &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
         f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
-        f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
 
         if _isYes "$r_HDP_LOCAL_REPO"; then
             _log "INFO" "Starting f_local_repo"
