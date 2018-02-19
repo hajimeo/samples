@@ -531,6 +531,65 @@ function f_hadoop_spnego_setup() {
     echo "curl -si -u ${g_admin}:${g_admin_pwd} -H 'X-Requested-By:ambari' 'http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests' -X POST --data '{\"RequestInfo\":{\"command\":\"RESTART\",\"context\":\"Restart all required services\",\"operation_level\":\"host_component\"},\"Requests/resource_filters\":[{\"hosts_predicate\":\"HostRoles/stale_configs=true\"}]}'"
 }
 
+function f_ranger_ad_setup() {
+    local __doc__="TODO: Setup ranger AD (LDAP is slightly different)"
+    local _ldap_url="${1}"
+    local _domain="${2}"
+    local _basedn="${3}"
+    local _binddn="${4}"
+    local _binddn_pwd="${5-${g_DEFAULT_PASSWORD-hadoop}}" # TODO: not sure if it will work without encrypting
+    local _ad_or_ldap="${6-AD}"
+    local _ambari_host="${7-$r_AMBARI_HOST}"
+
+    local ranger_admin_site='{
+        "ranger.authentication.method": "ACTIVE_DIRECTORY",
+        "ranger.ldap.ad.base.dn": "'${_basedn}'",
+        "ranger.ldap.ad.domain": "'${_domain}'"
+    }'
+    f_ambari_configs "ranger-admin-site" "${ranger_admin_site}" "$_ambari_host"
+
+    local ranger_ugsync_site='{
+        "ranger.usersync.group.memberattributename": "member",
+        "ranger.usersync.group.nameattribute": "cn",
+        "ranger.usersync.group.objectclass": "group",
+        "ranger.usersync.group.search.first.enabled": "true",
+        "ranger.usersync.group.searchbase": "'${_basedn}'",
+        "ranger.usersync.group.searchfilter": "(objectClass=group)",
+        "ranger.usersync.ldap.binddn": "'${_binddn}'",
+        "ranger.usersync.ldap.ldapbindpassword": "'${_binddn_pwd}'",
+        "ranger.usersync.ldap.url": "'${_ldap_url}'",
+        "ranger.usersync.ldap.user.nameattribute": "sAMAcountName",
+        "ranger.usersync.ldap.user.objectclass": "user",
+        "ranger.usersync.ldap.user.searchbase": "cn=users,'${_basedn}'",
+        "ranger.usersync.source.impl.class": "org.apache.ranger.ldapusersync.process.LdapUserGroupBuilder"
+    }'
+
+    # TODO: change attributes for LDAP
+    if [ "LDAP" = "${_ad_or_ldap}" ]; then
+        ranger_admin_site='{
+            "ranger.authentication.method": "LDAP",
+            "ranger.ldap.user.dnpattern": "uid={0},ou=users,'${_basedn}'",
+            "ranger.ldap.group.searchfilter": "(member=uid={0},ou=Users,'${_basedn}')"
+        }'
+        local ranger_ugsync_site='{
+            "ranger.usersync.group.memberattributename": "member",
+            "ranger.usersync.group.nameattribute": "cn",
+            "ranger.usersync.group.objectclass": "groupofnames",
+            "ranger.usersync.group.search.first.enabled": "true",
+            "ranger.usersync.group.searchbase": "'${_basedn}'",
+            "ranger.usersync.group.searchfilter": "(objectClass=group)",
+            "ranger.usersync.ldap.binddn": "'${_binddn}'",
+            "ranger.usersync.ldap.ldapbindpassword": "'${_binddn_pwd}'",
+            "ranger.usersync.ldap.url": "'${_ldap_url}'",
+            "ranger.usersync.ldap.user.nameattribute": "uid",
+            "ranger.usersync.ldap.user.objectclass": "person",
+            "ranger.usersync.ldap.user.searchbase": "ou=Users,'${_basedn}'",
+            "ranger.usersync.source.impl.class": "org.apache.ranger.ldapusersync.process.LdapUserGroupBuilder"
+        }'
+    fi
+    f_ambari_configs "ranger-ugsync-site" "${ranger_ugsync_site}" "$_ambari_host"
+}
+
 function f_kerberos_crossrealm_setup() {
     local __doc__="TODO: Setup cross realm (MIT only). Requires Password-less SSH login"
     local _remote_kdc="$1"
@@ -962,7 +1021,8 @@ json.dump(a, f)
 f.close()" > /tmp/configs_${__PID}.py
 
     python /tmp/configs_${__PID}.py || return $?
-    python ./configs.py -u "${g_admin}" -p "${g_admin_pwd}" -l $_ambari_host -t ${_ambari_port} -a set -n $_c -c $_type -f /tmp/${_type}_updated_${__PID}.json
+    python ./configs.py -u "${g_admin}" -p "${g_admin_pwd}" -l $_ambari_host -t ${_ambari_port} -a set -n $_c -c $_type -f /tmp/${_type}_updated_${__PID}.json || return $?
+    rm -f ./doSet_version*.json
 }
 
 function f_etc_hosts_update() {
