@@ -105,7 +105,7 @@ function p_interview() {
     local __doc__="Asks user questions. (Requires Python)"
     # Default values TODO: need to update Ambari Version manually (stack version is automatic)
     local _centos_version="6.8" # TODO: 6.9 doesn't work
-    local _ambari_version="2.5.2.0"
+    local _ambari_version="2.6.1.3"
     local _stack_version="2.6"
     local _hdp_version="${_stack_version}.0.0"
 
