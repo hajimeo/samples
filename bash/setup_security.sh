@@ -542,11 +542,11 @@ function f_ranger_ad_setup() {
     local _ad_or_ldap="${6-AD}"
     local _ambari_host="${7-$r_AMBARI_HOST}"
 
+    # TODO "ranger.ldap.user.dnpattern": "CN={0},CN=Users,'${_basedn}'"
     local ranger_admin_site='{
         "ranger.authentication.method": "ACTIVE_DIRECTORY",
         "ranger.ldap.ad.base.dn": "'${_basedn}'",
-        "ranger.ldap.ad.domain": "'${_domain}'",
-        "ranger.ldap.user.dnpattern": "CN={0},CN=Users,'${_basedn}'"
+        "ranger.ldap.ad.domain": "'${_domain}'"
     }'
     f_ambari_configs "ranger-admin-site" "${ranger_admin_site}" "$_ambari_host"
 
