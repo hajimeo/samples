@@ -1366,7 +1366,7 @@ function f_get_cluster_name() {
 }
 
 function f_get_ambari_repo_file() {
-    local __doc__="Download the ambari.repo file"
+    local __doc__="Download or copy the ambari.repo file into /tmp/ambari.repo_${__PID}"
     local _file="${1-$r_AMBARI_REPO_FILE}"
 
     if [ -z "$_file" ]; then
@@ -1397,6 +1397,15 @@ function f_ambari_install() {
     wait
 }
 
+function f_ambari_upgrade() {
+    local __doc__="TODO: Upgrade Ambari Server and Agent rpms"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+    return
+
+    f_ambari_server_upgrade "${_ambari_host}" "${_repo_url_or_file}"
+    # TODO: upgrade agent and if possible, post upgrade tasks...
+}
+
 function f_ambari_server_install() {
     local __doc__="Install Ambari Server to $r_AMBARI_HOST"
     local _ambari_host="${1-$r_AMBARI_HOST}"
@@ -1407,6 +1416,21 @@ function f_ambari_server_install() {
 
     _info "Installing ambari-server on ${_ambari_host} ..."
     ssh -q root@${_ambari_host} "(set -x; yum clean all; yum install -y ambari-server && service postgresql initdb; service postgresql restart)"
+}
+
+function f_ambari_server_upgrade() {
+    local __doc__="Upgrade Ambari Server on $r_AMBARI_HOST"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+    local _repo_url_or_file="$2"
+
+    f_get_ambari_repo_file "${_repo_url_or_file}" || return $?
+
+    _info "Copying /tmp/ambari.repo_${__PID} to ${_ambari_host} ..."
+    scp -q /tmp/ambari.repo_${__PID} root@${_ambari_host}:/etc/yum.repos.d/ambari.repo || return $?
+
+    _info "Installing ambari-server on $r_AMBARI_HOST ..."
+    # 'ambari-server stop' returns 0 even it's already stopped
+    ssh -q root@${_ambari_host} "(set -x; yum clean all && ambari-server stop && yum upgrade -y ambari-server && ambari-server upgrade -s && ambari-server start"
 }
 
 function f_ambari_server_setup() {
@@ -1440,7 +1464,7 @@ function f_ambari_server_reset() {
     local _ambari_host="${1-$r_AMBARI_HOST}"
     
     _port_wait "${_ambari_host}" "22"
-    ssh -q root@${_ambari_host} "ambari-server stop && ambari-server reset -s"
+    ssh -q root@${_ambari_host} "ambari-server stop && ambari-server reset -s && ambari-server start --skip-database-check"
 }
 
 function f_ambari_server_start() {
@@ -1450,7 +1474,7 @@ function f_ambari_server_start() {
     _port_wait "${_ambari_host}" "22"
     ssh -q root@${_ambari_host} "ambari-server start --skip-database-check" &> /tmp/f_ambari_server_start.out
     if [ $? -ne 0 ]; then
-        grep -q 'Ambari Server is already running' /tmp/f_ambari_server_start.out && return
+        grep -iq 'Ambari Server is already running' /tmp/f_ambari_server_start.out && return
         sleep 5
         ssh -q root@${_ambari_host} "ambari-server start --skip-database-check"
     fi
