@@ -533,7 +533,7 @@ function f_hadoop_spnego_setup() {
 
 function f_ranger_ad_setup() {
     local __doc__="TODO: Setup ranger AD (LDAP is slightly different)"
-    #f_ranger_ad_setup "ldaps://WIN-59T24EHPKJN.hdp.localdomain:636" "HDP.LOCALDOMAIN" "dc=hdp,dc=localdomain" "CN=ldap,CN=Users,DC=hdp,DC=localdomain" '******' 'AD' 'sandbox-hdp.hortonworks.com'
+    #f_ranger_ad_setup "ldaps://WIN-59T24EHPKJN.hdp.localdomain:636" "HDP.LOCALDOMAIN" "dc=hdp,dc=localdomain" "ldap@hdp.localdomain" '******' 'AD' 'sandbox-hdp.hortonworks.com'
     local _ldap_url="${1}"
     local _domain="${2}"
     local _basedn="${3}"
