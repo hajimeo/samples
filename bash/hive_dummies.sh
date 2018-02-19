@@ -26,7 +26,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _beeline_u="${2}"
     _cmd="hive"
     if [ -n "${_beeline_u}" ]; then
-        _cmd="beeline --verbose=true --outputformat=tsv2 -u '${_beeline_u}'"
+        _cmd="beeline --verbose=true --outputformat=tsv2 -u '${_beeline_u}' -n $USER"
     fi
 
     # Prepare (create a work dir and remove old csv files)
@@ -142,7 +142,7 @@ if [ -s /var/log/hadoop/hdfs/hdfs-audit.log ]; then
         sed -r 's/([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9],[0-9][0-9][0-9]|FSNamesystem.audit:) /\1\t/g' /var/log/hadoop/hdfs/hdfs-audit.log > ${g_WORK_DIR%/}/hdfs-audit.csv
         hdfs dfs -put -f ${g_WORK_DIR%/}/hdfs-audit.csv /tmp/hive_workspace/
 
-    _sql="${_sql}
+        _sql="${_sql}
 CREATE TABLE IF NOT EXISTS hdfs_audit (
   datetime_str STRING,
   log_class STRING,
