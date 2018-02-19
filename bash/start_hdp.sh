@@ -356,12 +356,22 @@ function p_hdp_start() {
 function p_ambari_blueprint() {
     local __doc__="Build cluster with Ambari Blueprint (expecting agents are already installed and running)"
     local _cluster_name="${1-$r_CLUSTER_NAME}"
-    local _hostmap_json="/tmp/${_cluster_name}_hostmap.json"
-    local _cluster_config_json="/tmp/${_cluster_name}_cluster_config.json"
+    local _ambari_host="${2-$r_AMBARI_HOST}"
+    local _hostmap_json="${3-$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH}"
+    local _cluster_config_json="${4-$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH}"
+    local _reset="$5"
+
+    [ -z "${_hostmap_json}" ] && _hostmap_json="/tmp/${_cluster_name}_hostmap.json"
+    [ -z "${_cluster_config_json}" ] &&  _cluster_config_json="/tmp/${_cluster_name}_cluster_config.json"
+
+    if _isYes "$_reset"; then
+        _warn "Resetting Ambari Server on ${_ambari_host}..."
+        f_ambari_server_reset "${_ambari_host}"
+    fi
 
     # just in case, try starting server
     f_ambari_server_start
-    _port_wait "$r_AMBARI_HOST" "8080" || return 1
+    _port_wait "${_ambari_host}" "8080" || return 1
 
     local _c="`f_get_cluster_name 2>/dev/null`"
     if [ "$_c" = "$_cluster_name" ]; then
@@ -369,49 +379,45 @@ function p_ambari_blueprint() {
         return 1
     fi
 
+    # Preparing Ambari for Blueprint (like setting up JDBC drivers)
     _info "Modifying postgresql for Ranger/KMS install later..."
-    ssh -q root@$r_AMBARI_HOST "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1\`
+    ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1\`
 sudo -u postgres psql -c \"CREATE ROLE ranger WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   ranger,rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
+
     if [ -f /usr/share/java/mysql-connector-java.jar ]; then
         _info "setup mysql-connector-java..."
-        scp /usr/share/java/mysql-connector-java.jar root@$r_AMBARI_HOST:/tmp/mysql-connector-java.jar
-        ssh -q root@$r_AMBARI_HOST "ambari-server setup --jdbc-db=mysql --jdbc-driver=/tmp/mysql-connector-java.jar"
+        scp /usr/share/java/mysql-connector-java.jar root@${_ambari_host}:/tmp/mysql-connector-java.jar
+        ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=mysql --jdbc-driver=/tmp/mysql-connector-java.jar"
     fi
 
-    if [ ! -z "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ]; then
-        _hostmap_json="$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH"
-        if [ ! -s "$_hostmap_json" ]; then
-            _warn "$_hostmap_json does not exist or empty file. Will regenerate automatically..."
-            f_ambari_blueprint_hostmap > $_hostmap_json
-        fi
+    if [ -n "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ] && [ ! -s "$_hostmap_json" ]; then
+        _warn "$_hostmap_json does not exist or empty file. Will regenerate automatically..."
+        f_ambari_blueprint_hostmap > $_hostmap_json
     else
         f_ambari_blueprint_hostmap > $_hostmap_json
     fi
 
-    if [ ! -z "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ]; then
-        _cluster_config_json="$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
-        if [ ! -s "$_cluster_config_json" ]; then
-            _error "$_cluster_config_json does not exist. Stopping Ambari Blueprint..."
-            return 1
-        fi
+    if [ -n "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ] && [ ! -s "$_cluster_config_json" ]; then
+        _error "$_cluster_config_json does not exist. Stopping Ambari Blueprint..."
+        return 1
     else
         f_ambari_blueprint_cluster_config > $_cluster_config_json
     fi
 
     _info "Removing ZK number restrictions..."
-    ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
+    ssh -q root@${_ambari_host} '_f=/usr/lib/ambari-server/web/javascripts/app.js
 _n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
 [ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
-    ssh -q root@$r_AMBARI_HOST '_f=/usr/lib/ambari-server/web/javascripts/app.js
+    ssh -q root@${_ambari_host} '_f=/usr/lib/ambari-server/web/javascripts/app.js
 _n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
 [ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
 
     _info "Posting ${_cluster_config_json} ..."
-    curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json} || return $?
+    curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json} || return $?
     _info "Posting ${_hostmap_json} ..."
-    curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://$r_AMBARI_HOST:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json} || return $?
+    curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json} || return $?
 }
 
 function f_ambari_blueprint_hostmap() {
@@ -1429,14 +1435,22 @@ function f_ambari_server_setup() {
     ssh -q root@${_ambari_host} "ambari-server setup -s --verbose || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
 }
 
-function f_ambari_server_start() {
-    local __doc__="Starting ambari-server on $r_AMBARI_HOST if not started yet"
+function f_ambari_server_reset() {
+    local __doc__="WARNING: this reset ambari-server on $r_AMBARI_HOST"
     local _ambari_host="${1-$r_AMBARI_HOST}"
     
     _port_wait "${_ambari_host}" "22"
+    ssh -q root@${_ambari_host} "ambari-server stop && ambari-server reset -s"
+}
+
+function f_ambari_server_start() {
+    local __doc__="Starting ambari-server on $r_AMBARI_HOST if not started yet"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+
+    _port_wait "${_ambari_host}" "22"
     ssh -q root@${_ambari_host} "ambari-server start --skip-database-check" &> /tmp/f_ambari_server_start.out
     if [ $? -ne 0 ]; then
-        grep -q 'REASON: Ambari Server is already running' /tmp/f_ambari_server_start.out && return
+        grep -q 'Ambari Server is already running' /tmp/f_ambari_server_start.out && return
         sleep 5
         ssh -q root@${_ambari_host} "ambari-server start --skip-database-check"
     fi
