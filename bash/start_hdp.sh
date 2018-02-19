@@ -121,8 +121,10 @@ function p_interview() {
 
     echo "=== Required questions ==========================="
     _ask "First 24 bits (xxx.xxx.xxx.) of container IP Address" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
+    [ -n "$r_DOCKER_NETWORK_ADDR" ] && r_DOCKER_NETWORK_ADDR="${r_DOCKER_NETWORK_ADDR%.}."
     _ask "Node starting number (hostname will be sequential from this number)" "1" "r_NODE_START_NUM" "N" "Y"
     _ask "Domain Suffix for docker containers" "${g_DOMAIN_SUFFIX}" "r_DOMAIN_SUFFIX" "N" "Y"
+    [ -n "$r_DOMAIN_SUFFIX" ] && r_DOMAIN_SUFFIX=".${r_CONTAINER_OS_VER#.}"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
     _ask "$r_CONTAINER_OS version (use 7.4.1708 or higher for Centos 7)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
     r_CONTAINER_OS="${r_CONTAINER_OS,,}"
@@ -157,9 +159,14 @@ function p_interview() {
     _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Node hostname prefix" "$g_NODE_HOSTNAME_PREFIX" "r_NODE_HOSTNAME_PREFIX" "N" "Y"
     _ask "DNS Server *IP* used by containers (Note: Remote DNS requires password less ssh)" "$r_DOCKER_HOST_IP" "r_DNS_SERVER" "N" "Y"
+    _ask "Would you like to set up a proxy server (for yum) on this server?" "N" "r_PROXY"
+    if _isYes "$r_PROXY"; then
+        _ask "Proxy port" "28080" "r_PROXY_PORT"
+    fi
 
     # Questions to install Ambari
     _ask "Avoid installing Ambari? (to create just containers)" "N" "r_AMBARI_NOT_INSTALL"
+    echo "====== Ambari related questions =========="
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         _ask "Ambari server hostname" "${r_NODE_HOSTNAME_PREFIX}${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
         _echo "If you have set up a Local Repo, please change below"
@@ -207,11 +214,6 @@ function p_interview() {
         fi
 
         #_ask "Would you like to increase Ambari Alert interval?" "Y" "r_AMBARI_ALERT_INTERVAL"
-    fi
-
-    _ask "Would you like to set up a proxy server for yum on this server?" "N" "r_PROXY"
-    if _isYes "$r_PROXY"; then
-        _ask "Proxy port" "28080" "r_PROXY_PORT"
     fi
 }
 
@@ -379,14 +381,12 @@ function p_ambari_blueprint() {
         return 1
     fi
 
-    # Preparing Ambari for Blueprint (like setting up JDBC drivers)
-    _info "Modifying postgresql for Ranger/KMS install later..."
+    _info "Setting up Ambari for Blueprint (like setting up JDBC drivers, adding Postgres DB users) ..."
     ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1\`
 sudo -u postgres psql -c \"CREATE ROLE ranger WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   ranger,rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
-
-    if [ -f /usr/share/java/mysql-connector-java.jar ]; then
+    if [ -s /usr/share/java/mysql-connector-java.jar ]; then
         _info "setup mysql-connector-java..."
         scp /usr/share/java/mysql-connector-java.jar root@${_ambari_host}:/tmp/mysql-connector-java.jar
         ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=mysql --jdbc-driver=/tmp/mysql-connector-java.jar"
@@ -2412,7 +2412,7 @@ function f_apache_proxy() {
     mkdir -p -m 777 ${_cache_dir}
 
     if [ -s /etc/apache2/sites-available/proxy.conf ]; then
-        _warn "/etc/apache2/sites-available/proxy.conf already exists. Skipping..."
+        _info "/etc/apache2/sites-available/proxy.conf already exists. Skipping..."
         return 0
     fi
 
