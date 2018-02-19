@@ -474,6 +474,7 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
     # NOTE: docker exec add '$' and '\r'
     _NETWORK_ADDR=`ssh -q ${_HOSTNAME} hostname -i | sed 's/\(.\+\)\.[0-9]\+$/\1/'`
     if [ -n "$_NETWORK_ADDR" ]; then
+        echo "Removing ${_NETWORK_ADDR}.0/24 via 0.0.0.0 which prevents container access ${_NETWORK_ADDR}.1 ..."
         docker exec -it ${_NAME} bash -c "ip route del ${_NETWORK_ADDR}.0/24 via 0.0.0.0"
     fi
 
