@@ -86,13 +86,13 @@ function f_topSlowLogs() {
         _path=/tmp/f_topErrors_$$.tmp
     fi
     if [ -z "$_regex" ]; then
-        _regex="(slow|performance|delay|delaying|waiting|latency|too many|not sufficient|lock held).+"
+        _regex="(slow|performance|delay|delaying|waiting|latency|too many|not sufficient|lock held|took [0-9]+ms|timeout).+"
     fi
 
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
         egrep -wio "$_regex" "$_path" | sort | uniq -c | sort -n
     else
-        # ([0-9]){2,4} didn't work
+        # ([0-9]){2,4} didn't work also (my note) sed doesn't support \d
         egrep -wi "$_regex" "$_path" | gsed -r "s/[0-9a-f][0-9a-f][0-9a-f][0-9a-f]+/____/g" | gsed -r "s/[0-9]/_/g" | sort | uniq -c | sort -n
     fi
 }
@@ -215,7 +215,7 @@ function f_hdfsAuditLogCountPerCommand() {
         local _cmd="bar_chart.py"
     fi
 
-    # TODO: not sure if sed regex is good (seems to work, Mac sed / gsed doesn't like +?)
+    # TODO: not sure if sed regex is good (seems to work, Mac sed / gsed doesn't like +?)、Also sed doen't support ¥d
     if [ ! -z "$_datetime_regex" ]; then
         gsed -n "s@\($_datetime_regex\).*\(cmd=[^ ]*\).*src=.*\$@\1,\2@p" $_path | $_cmd
     else
@@ -374,6 +374,31 @@ function f_swimlane() {
         return 1
     fi
     python "$_script_path" -o $_out_name $_tmp_name
+}
+
+function f_start_end_time_with_diff(){
+    local __doc__="Find the start & end datetime and calculate the difference from a log file (eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"\d\d:\d\d:\d\d\.\d\d\d\"; done | sort -k2)"
+    local _log="$1"
+    local _date_regex="${2}"
+    [ -z "$_date_regex" ] && _date_regex="^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d"
+
+    local _start_date=`ggrep -oPm1 "$_date_regex" $_log` || return $?
+    local _end_date=`gtac $_log | ggrep -oPm1 "$_date_regex"` || return $?
+    local _start_int=`gdate -d "${_start_date}" +"%s"`
+    local _end_int=`gdate -d "${_end_date}" +"%s"`
+    local _diff=$(( $_end_int - $_start_int ))
+    # Filename, start datetime, enddatetime, difference, (filesize)
+    echo -e "${_log}\t${_start_date}\t${_end_date}\t${_diff}\t(`gstat -c"%s" ${_log}`)"
+}
+
+function f_split_strace() {
+    local __doc__="Split a strace output, which didn't use -ff, per PID"
+    local _strace_out="$1"
+    local _save_dir="${2-./}"
+    for _p in `awk '{print $1}' "${_strace_out}" | sort | uniq`
+    do
+        grep ^${_p} "${_strace_out}" > ${_save_dir}${_p}.out
+    done
 }
 
 function f_git_search() {
