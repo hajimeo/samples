@@ -133,16 +133,16 @@ INSERT OVERWRITE TABLE census_clus select * from census;
 # set hive.exec.max.dynamic.partitions.pernode=4;
 # set hive.exec.max.created.files=100000;
 
-if [ -s /var/log/hadoop/hdfs/hdfs-audit.log ]; then
-    _log "INFO" "Adding SQL for importing /var/log/hadoop/hdfs/hdfs-audit.log."
-    _file_size=`gstat -c"%s" /var/log/hadoop/hdfs/hdfs-audit.log`
-    if [ $(( 1024 * 1024 * 1024 )) -lt $_file_size ]; then
-        _log "WARN" "/var/log/hadoop/hdfs/hdfs-audit.log file size () is larger than 1GB so that not importing"
-    else
-        sed -r 's/([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9],[0-9][0-9][0-9]|FSNamesystem.audit:) /\1\t/g' /var/log/hadoop/hdfs/hdfs-audit.log > ${g_WORK_DIR%/}/hdfs-audit.csv
-        hdfs dfs -put -f ${g_WORK_DIR%/}/hdfs-audit.csv /tmp/hive_workspace/
+    if [ -s /var/log/hadoop/hdfs/hdfs-audit.log ]; then
+        _log "INFO" "Adding SQL for importing /var/log/hadoop/hdfs/hdfs-audit.log."
+        _file_size=`gstat -c"%s" /var/log/hadoop/hdfs/hdfs-audit.log`
+        if [ $(( 1024 * 1024 * 1024 )) -lt $_file_size ]; then
+            _log "WARN" "/var/log/hadoop/hdfs/hdfs-audit.log file size () is larger than 1GB so that not importing"
+        else
+            sed -r 's/([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9],[0-9][0-9][0-9]|FSNamesystem.audit:) /\1\t/g' /var/log/hadoop/hdfs/hdfs-audit.log > ${g_WORK_DIR%/}/hdfs-audit.csv
+            hdfs dfs -put -f ${g_WORK_DIR%/}/hdfs-audit.csv /tmp/hive_workspace/
 
-        _sql="${_sql}
+            _sql="${_sql}
 CREATE TABLE IF NOT EXISTS hdfs_audit (
   datetime_str STRING,
   log_class STRING,
@@ -162,36 +162,36 @@ LINES TERMINATED BY '\n'
 STORED AS TEXTFILE;
 LOAD DATA INPATH '/tmp/hive_workspace/hdfs-audit.csv' OVERWRITE into table hdfs_audit;
 "
+        fi
     fi
-fi
 
-if which hbase &>/dev/null; then
-    _log "INFO" "Creating HBase table 'emp_review' with hbase shell..."
-    # TODO: HBase doesn't seem to have 'create table if not exists' statement
-    echo "create 'emp_review','review'" | hbase shell
-    _log "INFO" "Adding SQLs for creating HBase external table 'emp_review' ..."
-    _sql="${_sql}
+    if which hbase &>/dev/null; then
+        _log "INFO" "Creating HBase table 'emp_review' with hbase shell..."
+        # TODO: HBase doesn't seem to have 'create table if not exists' statement
+        echo "create 'emp_review','review'" | hbase shell
+        _log "INFO" "Adding SQLs for creating HBase external table 'emp_review' ..."
+        _sql="${_sql}
 CREATE EXTERNAL TABLE IF NOT EXISTS emp_review(rowkey STRING, empid INT, score FLOAT)
 STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
 WITH SERDEPROPERTIES ('hbase.columns.mapping' = ':key, review:empid, review:score')
 TBLPROPERTIES ('hbase.table.name' = 'emp_review');
 INSERT INTO emp_review select concat_ws('-',cast(empid as string),cast(CURRENT_TIMESTAMP as string)), empid, cast(rand() * 100 as int) from emp_stage;
 "
-fi
+    fi
 
-# TODO: no good way to find if druid is installed and use *hive2*
-if false; then
-    _log "INFO" "Adding SQLs for creating a Druid table..."
-    # https://jp.hortonworks.com/blog/sub-second-analytics-hive-druid/
-    #set hive.druid.metadata.uri=jdbc:mysql://db.example.com/druid_benchmark;
-    #set hive.druid.indexer.partition.size.max=9000000;
-    #set hive.druid.indexer.memory.rownum.max=100000;
-    #set hive.tez.container.size=16000;
-    #set hive.tez.java.opts=-Xmx10g -XX:MaxDirectMemorySize=1024g -Duser.timezone="America/New_York";
-    #set hive.llap.execution.mode=none;
+    # TODO: no good way to find if druid is installed and use *hive2*
+    if false; then
+        _log "INFO" "Adding SQLs for creating a Druid table..."
+        # https://jp.hortonworks.com/blog/sub-second-analytics-hive-druid/
+        #set hive.druid.metadata.uri=jdbc:mysql://db.example.com/druid_benchmark;
+        #set hive.druid.indexer.partition.size.max=9000000;
+        #set hive.druid.indexer.memory.rownum.max=100000;
+        #set hive.tez.container.size=16000;
+        #set hive.tez.java.opts=-Xmx10g -XX:MaxDirectMemorySize=1024g -Duser.timezone="America/New_York";
+        #set hive.llap.execution.mode=none;
 
-    # NOTE: not sure if cast(from_unixtime( is needed for __time
-    _sql="${_sql}
+        # NOTE: not sure if cast(from_unixtime( is needed for __time
+        _sql="${_sql}
 CREATE TABLE IF NOT EXISTS hdfs_audit_month
 STORED BY 'org.apache.hadoop.hive.druid.DruidStorageHandler'
 TBLPROPERTIES ('druid.datasource' = 'hdfs_audit_day', 'druid.segment.granularity' = 'MONTH', 'druid.query.granularity' = 'DAY')
@@ -204,18 +204,19 @@ SELECT
 FROM
  hdfs_audit;
 "
+    fi
+
+    _log "INFO" "Executing SQLs..."
+    ${_cmd} -e "${_sql}"
+
+    # NOTE: hive (1) returns ArrayIndexOutOfBoundsException if transactional is true and 'orc.bloom.filter.columns' is not '*'
+    _log "INFO" "Completed!
+    NOTE: ACID needs Orc, buckets, transactional=true, also testing bloom filter, like below:
+    ${_cmd} -e \"USE ${_dbname};ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='*');TRUNCATE TABLE emp_part_bckt;INSERT INTO TABLE emp_part_bckt PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;\"
+    "
+    # May need below too?
+    #\""ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;\""
+
+    _log "INFO" "Listing HDFS /apps/hive/warehouse/${_dbname}.db/"
+    hdfs dfs -ls /apps/hive/warehouse/${_dbname}.db/*/
 fi
-
-_log "INFO" "Executing SQLs..."
-${_cmd} -e "${_sql}"
-
-# NOTE: hive (1) returns ArrayIndexOutOfBoundsException if transactional is true and 'orc.bloom.filter.columns' is not '*'
-_log "INFO" "Completed!
-NOTE: ACID needs Orc, buckets, transactional=true, also testing bloom filter, like below:
-${_cmd} -e \"USE ${_dbname};ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='*');TRUNCATE TABLE emp_part_bckt;INSERT INTO TABLE emp_part_bckt PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;\"
-"
-# May need below too?
-#\""ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;\""
-
-_log "INFO" "Listing HDFS /apps/hive/warehouse/${_dbname}.db/"
-hdfs dfs -ls /apps/hive/warehouse/${_dbname}.db/*/
