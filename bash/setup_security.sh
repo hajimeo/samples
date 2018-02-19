@@ -533,6 +533,7 @@ function f_hadoop_spnego_setup() {
 
 function f_ranger_ad_setup() {
     local __doc__="TODO: Setup ranger AD (LDAP is slightly different)"
+    #f_ranger_ad_setup "ldaps://WIN-59T24EHPKJN.hdp.localdomain:636" "HDP.LOCALDOMAIN" "dc=hdp,dc=localdomain" "CN=ldap,CN=Users,DC=hdp,DC=localdomain" '******' 'AD' 'sandbox-hdp.hortonworks.com'
     local _ldap_url="${1}"
     local _domain="${2}"
     local _basedn="${3}"
@@ -544,13 +545,14 @@ function f_ranger_ad_setup() {
     local ranger_admin_site='{
         "ranger.authentication.method": "ACTIVE_DIRECTORY",
         "ranger.ldap.ad.base.dn": "'${_basedn}'",
-        "ranger.ldap.ad.domain": "'${_domain}'"
+        "ranger.ldap.ad.domain": "'${_domain}'",
+        "ranger.ldap.user.dnpattern": "CN={0},CN=Users,'${_basedn}'"
     }'
     f_ambari_configs "ranger-admin-site" "${ranger_admin_site}" "$_ambari_host"
 
     local ranger_ugsync_site='{
         "ranger.usersync.group.memberattributename": "member",
-        "ranger.usersync.group.nameattribute": "cn",
+        "ranger.usersync.group.nameattribute": "distinguishedName",
         "ranger.usersync.group.objectclass": "group",
         "ranger.usersync.group.search.first.enabled": "true",
         "ranger.usersync.group.searchbase": "'${_basedn}'",
@@ -588,6 +590,8 @@ function f_ranger_ad_setup() {
         }'
     fi
     f_ambari_configs "ranger-ugsync-site" "${ranger_ugsync_site}" "$_ambari_host"
+
+    echo 'ranger.truststore.alia, ranger.truststore.file, ranger.usersync.truststore.file, xasecure.policymgr.clientssl.truststore, xasecure.policymgr.clientssl.truststore may need to be changed'
 }
 
 function f_kerberos_crossrealm_setup() {
