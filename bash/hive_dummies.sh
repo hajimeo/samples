@@ -32,7 +32,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     # Prepare (create a work dir and remove old csv files)
     [ -d "${g_WORK_DIR%/}" ] || mkdir ${g_WORK_DIR%/}
     rm -f ${g_WORK_DIR%/}/*.csv
-    _sql="CREATE DATABASE IF NOT EXISTS ${_dbname};USE ${_dbname};"
+    _sql="CREATE DATABASE IF NOT EXISTS ${_dbname};USE ${_dbname};set hive.tez.container.size=1024;set hive.tez.java.opts=-Xmx820m;"
 
     _log "INFO" "generating dummy csv files..."
     wget -nv -c -t 2 --timeout=10 --waitretry=3 https://raw.githubusercontent.com/hajimeo/samples/master/misc/sample_07.csv -O ${g_WORK_DIR%/}/sample_07.csv
