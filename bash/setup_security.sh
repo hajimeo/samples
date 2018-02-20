@@ -68,19 +68,19 @@ function f_kdc_install_on_ambari_node() {
         return 1
     fi
 
-    ssh root@$_server -t "yum install krb5-server krb5-libs krb5-workstation -y"
+    ssh -q root@$_server -t "yum install krb5-server krb5-libs krb5-workstation -y"
     # this doesn't work with docker though
-    ssh root@$_server -t "chkconfig  krb5kdc on; chkconfig kadmin on"
-    ssh root@$_server -t "mv /etc/krb5.conf /etc/krb5.conf.orig; echo \"[libdefaults]
+    ssh -q root@$_server -t "chkconfig  krb5kdc on; chkconfig kadmin on"
+    ssh -q root@$_server -t "mv /etc/krb5.conf /etc/krb5.conf.orig; echo \"[libdefaults]
  default_realm = $_realm
 [realms]
  $_realm = {
    kdc = $_server
    admin_server = $_server
  }\" > /etc/krb5.conf"
-    ssh root@$_server -t "kdb5_util create -s -P $_password"
+    ssh -q root@$_server -t "kdb5_util create -s -P $_password"
     # chkconfig krb5kdc on;chkconfig kadmin on; doesn't work with docker
-    ssh root@$_server -t "echo '*/admin *' > /var/kerberos/krb5kdc/kadm5.acl;service krb5kdc restart;service kadmin restart;kadmin.local -q \"add_principal -pw $_password admin/admin\""
+    ssh -q root@$_server -t "echo '*/admin *' > /var/kerberos/krb5kdc/kadm5.acl;service krb5kdc restart;service kadmin restart;kadmin.local -q \"add_principal -pw $_password admin/admin\""
     #ssh -2CNnqTxfg -L88:$_server:88 $_server # TODO: UDP does not work. and need 749 and 464
 }
 
@@ -386,7 +386,6 @@ function _hadoop_ssl_config_update() {
     local _ambari_host="${1-$r_AMBARI_HOST}"
     local _ambari_port="${2-8080}"
     local _password="$3"
-    local _c="`f_get_cluster_name $_ambari_host`" || return $?
 
     _info "Updating Ambari configs for HDFS..."
     f_ambari_configs "core-site" "{\"hadoop.rpc.protection\":\"privacy\",\"hadoop.ssl.require.client.cert\":\"false\",\"hadoop.ssl.hostname.verifier\":\"DEFAULT\",\"hadoop.ssl.keystores.factory.class\":\"org.apache.hadoop.security.ssl.FileBasedKeyStoresFactory\",\"hadoop.ssl.server.conf\":\"ssl-server.xml\",\"hadoop.ssl.client.conf\":\"ssl-client.xml\"}" "$_ambari_host" "$_ambari_port"
@@ -406,7 +405,7 @@ function _hadoop_ssl_config_update() {
     tez.runtime.shuffle.ssl.enable=true"
 
     _info "Run the below command to restart *ALL* required components:"
-    echo "curl -si -u ${g_admin}:${g_admin_pwd} -H 'X-Requested-By:ambari' 'http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests' -X POST --data '{\"RequestInfo\":{\"command\":\"RESTART\",\"context\":\"Restart all required services\",\"operation_level\":\"host_component\"},\"Requests/resource_filters\":[{\"hosts_predicate\":\"HostRoles/stale_configs=true\"}]}'"
+    f_echo_restart_command "$_ambari_host" "$_ambari_port"
 }
 
 function _hadoop_ssl_per_node() {
@@ -510,7 +509,6 @@ function f_hadoop_spnego_setup() {
     local _how_many="${5-$r_NUM_NODES}"
     local _start_from="${6-$r_NODE_START_NUM}"
 
-    local _c="`f_get_cluster_name $_ambari_host`" || return 1
     local _cmd="[ ! -s /etc/security/http_secret ] && dd if=/dev/urandom of=/etc/security/http_secret bs=1024 count=1; chown hdfs:hadoop /etc/security/http_secret; chmod 440 /etc/security/http_secret"
 
     if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
@@ -528,11 +526,11 @@ function f_hadoop_spnego_setup() {
 
     # If Ambari is 2.4.x or higher below works
     _info "Run the below command to restart *ALL* required components:"
-    echo "curl -si -u ${g_admin}:${g_admin_pwd} -H 'X-Requested-By:ambari' 'http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests' -X POST --data '{\"RequestInfo\":{\"command\":\"RESTART\",\"context\":\"Restart all required services\",\"operation_level\":\"host_component\"},\"Requests/resource_filters\":[{\"hosts_predicate\":\"HostRoles/stale_configs=true\"}]}'"
+    f_echo_restart_command "$_ambari_host" "$_ambari_port"
 }
 
-function f_ranger_ad_setup() {
-    local __doc__="TODO: Setup ranger AD (LDAP is slightly different)"
+function f_ldap_ranger() {
+    local __doc__="TODO: Setup ranger admin/usersync with LDAP (TODO: currently only AD)"
     #f_ranger_ad_setup "ldaps://WIN-59T24EHPKJN.hdp.localdomain:636" "HDP.LOCALDOMAIN" "dc=hdp,dc=localdomain" "ldap@hdp.localdomain" '******' 'AD' 'sandbox-hdp.hortonworks.com'
     local _ldap_url="${1}"
     local _domain="${2}"
@@ -541,6 +539,7 @@ function f_ranger_ad_setup() {
     local _binddn_pwd="${5-${g_DEFAULT_PASSWORD-hadoop}}" # TODO: not sure if it will work without encrypting
     local _ad_or_ldap="${6-AD}"
     local _ambari_host="${7-$r_AMBARI_HOST}"
+    [ -z "${_ambari_host}" ] && return 1
 
     # TODO "ranger.ldap.user.dnpattern": "CN={0},CN=Users,'${_basedn}'"
     local ranger_admin_site='{
@@ -591,7 +590,9 @@ function f_ranger_ad_setup() {
     fi
     f_ambari_configs "ranger-ugsync-site" "${ranger_ugsync_site}" "$_ambari_host"
 
-    echo 'ranger.truststore.alia, ranger.truststore.file, ranger.usersync.truststore.file, xasecure.policymgr.clientssl.truststore, xasecure.policymgr.clientssl.truststore may need to be changed'
+    _info 'ranger.truststore.alia, ranger.truststore.file, ranger.usersync.truststore.file, xasecure.policymgr.clientssl.truststore, xasecure.policymgr.clientssl.truststore may need to be changed'
+    _info "Run the below command to restart *ALL* required components:"
+    f_echo_restart_command "$_ambari_host"
 }
 
 function f_kerberos_crossrealm_setup() {
@@ -621,6 +622,54 @@ function f_kerberos_crossrealm_setup() {
     # - set dfs.namenode.kerberos.principal.pattern = *
 }
 
+function f_ldap_hadoop_groupmapping() {
+    local __doc__="Setup Hadoop Group Mapping with LDAP (TODO: currently works only with Knox demo LDAP)"
+    local _ldap_url="$1"
+    local _ambari_host="${2-$r_AMBARI_HOST}"
+    [ -z "${_ambari_host}" ] && return 1
+
+    local _basedn="dc=hadoop,dc=apache,dc=org"
+    [ -z "${_ldap_url}" ] && _ldap_url="ldap://${_ambari_host}:33389/"
+    
+    local core_site='{
+        "hadoop.security.group.mapping":"org.apache.hadoop.security.CompositeGroupsMapping",
+        "hadoop.security.group.mapping.providers":"shell4services,ldap4users",
+        "hadoop.security.group.mapping.provider.shell4services":"org.apache.hadoop.security.ShellBasedUnixGroupsMapping",
+        "hadoop.security.group.mapping.provider.ldap4users":"org.apache.hadoop.security.LdapGroupsMapping",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.url":"'${_ldap_url%/}'/'${_basedn}'",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.bind.user":"uid=admin,ou=people,'${_basedn}'",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.bind.password":"admin-password",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.base":"",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.search.filter.user":"(uid={0})",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.search.filter.group":"(objectclass=groupOfNames)",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.search.attr.member":"member",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.search.attr.group.name":"cn"
+    }'
+    f_ambari_configs "core-site" "${core_site}" "$_ambari_host" || return $?
+
+    _info "Run the below command to restart *ALL* required components:"
+    f_echo_restart_command "$_ambari_host"
+    #echo "sudo -u hdfs -i hdfs dfsadmin -refreshUserToGroupsMappings"
+    #echo "sudo -u yarn -i yarn rmadmin -refreshUserToGroupsMappings"
+}
+
+function f_ldap_ambari() {
+    local __doc__="Setup Ambari Server with LDAP (for Knox SSO) (TODO: currently works only with Knox demo LDAP)"
+    # r_AMBARI_HOST="sandbox-hdp.hortonworks.com" f_ldap_ambari
+    local _ldap_host="$1"
+    local _ldap_port="$2"
+    local _ambari_host="${3-$r_AMBARI_HOST}"
+    [ -z "${_ambari_host}" ] && return 1
+
+    [ -z "${_ldap_host}" ] && _ldap_host="${_ambari_host}"
+    [ -z "${_ldap_port}" ] && _ldap_port="33389"    # TODO: currently default is knox demo ldap
+
+    ssh -q root@${_ambari_host} -t "ambari-server setup-ldap --ldap-url=${_ldap_host}:${_ldap_port} --ldap-user-class=person --ldap-user-attr=uid --ldap-group-class=groupofnames --ldap-ssl=false --ldap-secondary-url="" --ldap-referral="" --ldap-group-attr=cn --ldap-member-attr=member --ldap-dn=dn --ldap-base-dn=dc=hadoop,dc=apache,dc=org --ldap-bind-anonym=false --ldap-manager-dn=uid=admin,ou=people,dc=hadoop,dc=apache,dc=org --ldap-manager-password=admin-password  --ldap-sync-username-collisions-behavior=skip --ldap-save-settings && echo 'authentication.ldap.pagination.enabled=false' >> /etc/ambari-server/conf/ambari.properties && ambari-server restart --skip-database-check"
+
+    _info "Once Ambari Server is ready, run the following command"
+    f_echo_start_demoldap "${_ldap_host}" "${_ambari_host}"
+    echo "ssh -q root@${_ambari_host} -t 'ambari-server sync-ldap --ldap-sync-admin-name=admin --ldap-sync-admin-password=admin --all'"
+}
 
 function f_ldap_server_install_on_host() {
     local __doc__="Install LDAP server packages on Ubuntu (need to test setup)"
@@ -670,8 +719,8 @@ function f_ldap_server_install_on_ambari_node() {
     fi
 
     # slapd ldapsearch install TODO: chkconfig slapd on wouldn't do anything on docker container
-    ssh root@$_server -t "yum install openldap openldap-servers openldap-clients -y" || return $?
-    ssh root@$_server -t "cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG ; chown ldap. /var/lib/ldap/DB_CONFIG && /etc/rc.d/init.d/slapd start" || return $?
+    ssh -q root@$_server -t "yum install openldap openldap-servers openldap-clients -y" || return $?
+    ssh -q root@$_server -t "cp /usr/share/openldap-servers/DB_CONFIG.example /var/lib/ldap/DB_CONFIG ; chown ldap. /var/lib/ldap/DB_CONFIG && /etc/rc.d/init.d/slapd start" || return $?
 }
 
 function f_ldap_server_configure() {
@@ -685,7 +734,7 @@ function f_ldap_server_configure() {
         _warn "No LDAP Domain, so using ${_ldap_domain}"
     fi
 
-    local _md5="`ssh root@$_server -t "slappasswd -s ${_password}"`" || return $?
+    local _md5="`ssh -q root@$_server -t "slappasswd -s ${_password}"`" || return $?
 
     if [ -z "$_md5" ]; then
         _error "Couldn't generate hashed password"
@@ -731,7 +780,7 @@ olcAccess: {2}to * by dn="cn=Manager,'${_ldap_domain}'" write by * read
 " > /tmp/chdomain.ldif && ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/chdomain.ldif' || return $?
 
     _info "Updating base domain"
-    ssh root@$_server -t 'echo "dn: '${_ldap_domain}'
+    ssh -q root@$_server -t 'echo "dn: '${_ldap_domain}'
 objectClass: top
 objectClass: dcObject
 objectclass: organization
@@ -771,9 +820,9 @@ function f_ldap_client_install() {
     fi
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh root@node$i${r_DOMAIN_SUFFIX} -t "yum -y erase nscd;yum -y install sssd sssd-client sssd-ldap openldap-clients"
+        ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "yum -y erase nscd;yum -y install sssd sssd-client sssd-ldap openldap-clients"
         if [ $? -eq 0 ]; then
-            ssh root@node$i${r_DOMAIN_SUFFIX} -t "authconfig --enablesssd --enablesssdauth --enablelocauthorize --enableldap --enableldapauth --disableldaptls --ldapserver=ldap://${_ldap_server} --ldapbasedn=${_ldap_basedn} --update" || _warn "node$i failed to setup ldap client"
+            ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "authconfig --enablesssd --enablesssdauth --enablelocauthorize --enableldap --enableldapauth --disableldaptls --ldapserver=ldap://${_ldap_server} --ldapbasedn=${_ldap_basedn} --update" || _warn "node$i failed to setup ldap client"
             # test
             #authconfig --test
             # getent passwd admin
@@ -1055,6 +1104,25 @@ function f_etc_hosts_update() {
             echo '${_ip_network%.}.${i} ${_node}${i}.${_domain_suffix#.} ${_node}${i}.${_domain_suffix#.} ${_node}${i}.${_domain_suffix#.}. ${_node}${i}' >> $_f
         fi
     done
+}
+
+function f_echo_restart_command() {
+    local __doc__="Output stale config restart API command"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+    local _ambari_port="${2-8080}"
+    local _c="`f_get_cluster_name $_ambari_host`" || return $?
+
+    echo "curl -si -u ${g_admin}:${g_admin_pwd} -H 'X-Requested-By:ambari' 'http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests' -X POST --data '{\"RequestInfo\":{\"command\":\"RESTART\",\"context\":\"Restart all required services\",\"operation_level\":\"host_component\"},\"Requests/resource_filters\":[{\"hosts_predicate\":\"HostRoles/stale_configs=true\"}]}'"
+}
+
+function f_echo_start_demoldap() {
+    local __doc__="Output Knox Demo LDAP start command"
+    local _knox_host="${1}"
+    local _ambari_host="${2-$r_AMBARI_HOST}"
+    local _ambari_port="${3-8080}"
+    local _c="`f_get_cluster_name $_ambari_host`" || return $?
+
+    echo "curl -si -u ${g_admin}:${g_admin_pwd} -H 'X-Requested-By:ambari' 'http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests' -X POST --data '{\"RequestInfo\":{\"context\":\"Start Demo LDAP\",\"command\":\"STARTDEMOLDAP\"},\"Requests/resource_filters\":[{\"service_name\":\"KNOX\",\"component_name\":\"KNOX_GATEWAY\",\"hosts\":\"${_knox_host}\"}]}'"
 }
 
 ### main ########################
