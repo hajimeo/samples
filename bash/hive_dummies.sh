@@ -135,8 +135,8 @@ INSERT OVERWRITE TABLE census_clus select * from census;
 
     if [ -s /var/log/hadoop/hdfs/hdfs-audit.log ]; then
         _log "INFO" "Adding SQL for importing /var/log/hadoop/hdfs/hdfs-audit.log."
-        _file_size=`gstat -c"%s" /var/log/hadoop/hdfs/hdfs-audit.log`
-        if [ $(( 1024 * 1024 * 1024 )) -lt $_file_size ]; then
+        _file_size=`stat -c"%s" /var/log/hadoop/hdfs/hdfs-audit.log`
+        if [ -n "$_file_size" ] && [ $(( 1024 * 1024 * 1024 )) -lt $_file_size ]; then
             _log "WARN" "/var/log/hadoop/hdfs/hdfs-audit.log file size () is larger than 1GB so that not importing"
         else
             sed -r 's/([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9],[0-9][0-9][0-9]|FSNamesystem.audit:) /\1\t/g' /var/log/hadoop/hdfs/hdfs-audit.log > ${g_WORK_DIR%/}/hdfs-audit.csv
