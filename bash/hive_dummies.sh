@@ -168,15 +168,17 @@ LOAD DATA INPATH '/tmp/hive_workspace/hdfs-audit.csv' OVERWRITE into table hdfs_
     if which hbase &>/dev/null; then
         _log "INFO" "Creating HBase table 'emp_review' with hbase shell..."
         # TODO: HBase doesn't seem to have 'create table if not exists' statement
-        echo "create 'emp_review','review'" | hbase shell
-        _log "INFO" "Adding SQLs for creating HBase external table 'emp_review' ..."
-        _sql="${_sql}
-CREATE EXTERNAL TABLE IF NOT EXISTS emp_review(rowkey STRING, empid INT, score FLOAT)
-STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
-WITH SERDEPROPERTIES ('hbase.columns.mapping' = ':key, review:empid, review:score')
-TBLPROPERTIES ('hbase.table.name' = 'emp_review');
-INSERT INTO emp_review select concat_ws('-',cast(empid as string),cast(CURRENT_TIMESTAMP as string)), empid, cast(rand() * 100 as int) from emp_stage;
+        echo "create 'emp_review','review'" | hbase shell &> /tmp/hive_dummies_hbase_$$.out
+        if ! grep -q 'Here is some help for this command' /tmp/hive_dummies_hbase_$$.out; then
+            _log "INFO" "Adding SQLs for creating HBase external table 'emp_review' ..."
+            _sql="${_sql}
+    CREATE EXTERNAL TABLE IF NOT EXISTS emp_review(rowkey STRING, empid INT, score FLOAT)
+    STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'
+    WITH SERDEPROPERTIES ('hbase.columns.mapping' = ':key, review:empid, review:score')
+    TBLPROPERTIES ('hbase.table.name' = 'emp_review');
+    INSERT INTO emp_review select concat_ws('-',cast(empid as string),cast(CURRENT_TIMESTAMP as string)), empid, cast(rand() * 100 as int) from emp_stage;
 "
+        fi
     fi
 
     # TODO: no good way to find if druid is installed and use *hive2*
