@@ -559,7 +559,7 @@ function f_ldap_ranger() {
         "ranger.usersync.ldap.binddn": "'${_binddn}'",
         "ranger.usersync.ldap.ldapbindpassword": "'${_binddn_pwd}'",
         "ranger.usersync.ldap.url": "'${_ldap_url}'",
-        "ranger.usersync.ldap.user.nameattribute": "sAMAcountName",
+        "ranger.usersync.ldap.user.nameattribute": "sAMAccountName",
         "ranger.usersync.ldap.user.objectclass": "user",
         "ranger.usersync.ldap.user.searchbase": "cn=users,'${_basedn}'",
         "ranger.usersync.source.impl.class": "org.apache.ranger.ldapusersync.process.LdapUserGroupBuilder"
@@ -664,7 +664,7 @@ function f_ldap_ambari() {
     [ -z "${_ldap_host}" ] && _ldap_host="${_ambari_host}"
     [ -z "${_ldap_port}" ] && _ldap_port="33389"    # TODO: currently default is knox demo ldap
 
-    ssh -q root@${_ambari_host} -t "ambari-server setup-ldap --ldap-url=${_ldap_host}:${_ldap_port} --ldap-user-class=person --ldap-user-attr=uid --ldap-group-class=groupofnames --ldap-ssl=false --ldap-secondary-url="" --ldap-referral="" --ldap-group-attr=cn --ldap-member-attr=member --ldap-dn=dn --ldap-base-dn=dc=hadoop,dc=apache,dc=org --ldap-bind-anonym=false --ldap-manager-dn=uid=admin,ou=people,dc=hadoop,dc=apache,dc=org --ldap-manager-password=admin-password  --ldap-sync-username-collisions-behavior=skip --ldap-save-settings && echo 'authentication.ldap.pagination.enabled=false' >> /etc/ambari-server/conf/ambari.properties && ambari-server restart --skip-database-check"
+    ssh -q root@${_ambari_host} -t "ambari-server setup-ldap --ldap-url=${_ldap_host}:${_ldap_port} --ldap-user-class=person --ldap-user-attr=uid --ldap-group-class=groupofnames --ldap-ssl=false --ldap-secondary-url="" --ldap-referral="" --ldap-group-attr=cn --ldap-member-attr=member --ldap-dn=dn --ldap-base-dn=dc=hadoop,dc=apache,dc=org --ldap-bind-anonym=false --ldap-manager-dn=uid=admin,ou=people,dc=hadoop,dc=apache,dc=org --ldap-manager-password=admin-password　--ldap-sync-username-collisions-behavior=skip --ldap-save-settings && echo 'authentication.ldap.pagination.enabled=false' >> /etc/ambari-server/conf/ambari.properties && ambari-server restart --skip-database-check"
 
     _info "Once Ambari Server is ready, run the following command"
     f_echo_start_demoldap "${_ldap_host}" "${_ambari_host}"
