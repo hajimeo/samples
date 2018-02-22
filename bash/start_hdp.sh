@@ -124,7 +124,7 @@ function p_interview() {
     [ -n "$r_DOCKER_NETWORK_ADDR" ] && r_DOCKER_NETWORK_ADDR="${r_DOCKER_NETWORK_ADDR%.}."
     _ask "Node starting number (hostname will be sequential from this number)" "1" "r_NODE_START_NUM" "N" "Y"
     _ask "Domain Suffix for docker containers" "${g_DOMAIN_SUFFIX}" "r_DOMAIN_SUFFIX" "N" "Y"
-    [ -n "$r_DOMAIN_SUFFIX" ] && r_DOMAIN_SUFFIX=".${r_CONTAINER_OS_VER#.}"
+    [ -n "$r_DOMAIN_SUFFIX" ] && r_DOMAIN_SUFFIX=".${r_DOMAIN_SUFFIX#.}"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
     _ask "$r_CONTAINER_OS version (use 7.4.1708 or higher for Centos 7)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
     r_CONTAINER_OS="${r_CONTAINER_OS,,}"
