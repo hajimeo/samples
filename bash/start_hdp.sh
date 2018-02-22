@@ -1612,7 +1612,8 @@ function f_ambari_agent_install() {
     local _is_first_one_successful=1
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo || continue
-        local _cmd="ssh -q -t root@${_node}$_n${_domain} \"which ambari-agent 2>/dev/null || yum install ambari-agent -y\" &> /tmp/f_ambari_agent_install_${_n}.out"
+        # no "-t"
+        local _cmd="ssh -q root@${_node}$_n${_domain} \"which ambari-agent 2>/dev/null || yum install ambari-agent -y\" &> /tmp/f_ambari_agent_install_${_n}.out"
         if [ 0 -eq ${_is_first_one_successful} ]; then
             eval "${_cmd}" &
         else
@@ -1625,7 +1626,8 @@ function f_ambari_agent_install() {
     wait
     # Executing yum command one by one just in case
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y" || return $?
+        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y"
+        _info "${_node}$_n${_domain} 'which ambari-agent' exit code was $?"
     done
 }
 
@@ -1643,7 +1645,8 @@ function f_ambari_agent_upgrade() {
     local _is_first_one_successful=1
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo || continue
-        local _cmd="ssh -q -t root@${_node}$_n${_domain} \"(set -x; yum clean all && ambari-agent stop; yum upgrade -y ambari-agent && ambari-agent restart)\" &> /tmp/f_ambari_agent_install_${_n}.out"
+        # no "-t"
+        local _cmd="ssh -q root@${_node}$_n${_domain} \"(set -x; yum clean all && ambari-agent stop; yum upgrade -y ambari-agent && ambari-agent restart)\" &> /tmp/f_ambari_agent_upgrade_${_n}.out"
         if [ 0 -eq ${_is_first_one_successful} ]; then
             eval "${_cmd}" &
         else
@@ -1654,6 +1657,11 @@ function f_ambari_agent_upgrade() {
         sleep 1
     done
     wait
+    # TODO: how can i verify agent is upgraded?
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        ssh -q -t root@${_node}$_n${_domain} "ambari-agent status"
+        _info "${_node}$_n${_domain} 'ambari-agent status' exit code was $?"
+    done
 }
 
 function f_run_cmd_on_nodes() {
