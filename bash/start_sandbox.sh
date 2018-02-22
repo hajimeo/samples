@@ -435,11 +435,17 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         #docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
         docker exec -it ${_NAME} bash -c "[ -S /tmp/.s.PGSQL.5432 ] || sleep 5; PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00', active=1 WHERE user_name='admin' and user_type='LOCAL';UPDATE hosts set host_name='${_HOSTNAME}', public_host_name='${_HOSTNAME}' where host_id=1;\""
         #docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -Uambari -tAc \"UPDATE metainfo SET metainfo_value = '${_AMBARI_VERSION}' where metainfo_key = 'version';\""
+
+        # In case -v /hadoop was used. TODO: the following three lines should be removed later
+        docker exec -it ${_NAME} bash -c 'rm -rf /hadoop/yarn/{local,log}'
+        docker exec -it ${_NAME} bash -c 'cd /hadoop && for _n in `ls -1`; do chown -R $_n:hadoop ./$_n 2>/dev/null; done'
+        docker exec -it ${_NAME} bash -c 'chown -R mapred:hadoop /hadoop/mapreduce'
     fi
+
     docker exec -d ${_NAME} service ambari-server start --skip-database-check
     docker exec -d ${_NAME} service ambari-agent start
 
-    # setting up password-less ssh to sandbox
+    # setting up password-less ssh to sandbox whenever it starts in case .ssh is updated.
     if [ -s  ~/.ssh/id_rsa.pub ]; then
         docker exec -it ${_NAME} bash -c "[ -f /root/.ssh/authorized_keys ] || ( install -D -m 600 /dev/null /root/.ssh/authorized_keys && chmod 700 /root/.ssh )"
         docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> /root/.ssh/authorized_keys"
@@ -450,12 +456,8 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         docker exec -it ${_NAME} bash -c '[ ! -d /home/sam ] && useradd sam'
     fi
 
-    # In case -v /hadoop was used. TODO: the following two lines (not mysql one) should be removed later
-    docker exec -it ${_NAME} bash -c 'cd /hadoop && for _n in `ls -1`; do chown -R $_n:hadoop ./$_n 2>/dev/null; done'
-    docker exec -it ${_NAME} bash -c 'chown -R mapred:hadoop /hadoop/mapreduce'
-    docker exec -it ${_NAME} bash -c 'chown -R mysql:mysql /var/lib/mysql /var/run/mysqld'
-
     # for Hive, Oozie, Ranger, KMS etc, making sure mysql starts
+    docker exec -it ${_NAME} bash -c 'chown -R mysql:mysql /var/lib/mysql /var/run/mysqld'
     docker exec -d ${_NAME} service mysqld start
     # TODO: may need to reset root db user password
     # mysql -uroot -phadoop mysql -e "select user, host from user where User='root' and Password =''"
