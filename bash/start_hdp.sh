@@ -1701,11 +1701,11 @@ function f_ambari_java_random() {
     done
 
     # TODO: at this moment, trying to change only jre, and below might be broken
-    _cmd='_javahome="$(dirname $(dirname $(alternatives --display java | grep "link currently points to" | grep -oE "/.+jre.+/java$")))" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "$_javahome/lib/security/java.security"'
+    _cmd='_alt_java="$(alternatives --display java | grep "link currently points to" | grep -oE "/.+jre.+/java$")" && _javahome="$(dirname $(dirname "$_alt_java"))" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "$_javahome/lib/security/java.security"'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         # if no 'java' in the path, this outputs error
-        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd" 2>/dev/null
+        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
     done
 }
 
