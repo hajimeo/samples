@@ -1400,12 +1400,12 @@ function f_ambari_install() {
 }
 
 function f_ambari_upgrade() {
-    local __doc__="TODO: Upgrade Ambari Server and Agent rpms"
+    local __doc__="Upgrade Ambari Server and Agents"
     local _ambari_host="${1-$r_AMBARI_HOST}"
-    return
+    local _repo_url_or_file="$2"
 
     f_ambari_server_upgrade "${_ambari_host}" "${_repo_url_or_file}"
-    # TODO: upgrade agent and if possible, post upgrade tasks...
+    f_ambari_agent_upgrade "${_ambari_host}" "${_repo_url_or_file}"
 }
 
 function f_ambari_server_install() {
@@ -1423,7 +1423,7 @@ function f_ambari_server_install() {
 function f_ambari_server_upgrade() {
     local __doc__="Upgrade Ambari Server on $r_AMBARI_HOST"
     local _ambari_host="${1-$r_AMBARI_HOST}"
-    local _repo_url_or_file="$2"
+    local _repo_url_or_file="${2}" # as upgrade, not using $r_AMBARI_REPO_FILE
 
     f_get_ambari_repo_file "${_repo_url_or_file}" || return $?
 
@@ -1432,7 +1432,7 @@ function f_ambari_server_upgrade() {
 
     _info "Installing ambari-server on $r_AMBARI_HOST ..."
     # 'ambari-server stop' returns 0 even it's already stopped
-    ssh -q root@${_ambari_host} "(set -x; yum clean all && ambari-server stop && yum upgrade -y ambari-server && ambari-server upgrade -s && ambari-server start"
+    ssh -q root@${_ambari_host} "(set -x; yum clean all && ambari-server stop && yum upgrade -y ambari-server && ambari-server upgrade -s && ambari-server start)"
 }
 
 function f_ambari_server_setup() {
@@ -1604,12 +1604,29 @@ function f_ambari_agent_install() {
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo
-        # Executing yum command one by one
         ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y" &
     done
     wait
+    # Executing yum command one by one just in case
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y" || return $?
+    done
+}
+
+function f_ambari_agent_upgrade() {
+    local __doc__="Upgrading ambari-agent on all containers"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+    local _repo_url_or_file="${3}" # as upgrade, not using $r_AMBARI_REPO_FILE
+
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+    local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
+
+    f_get_ambari_repo_file "${_repo_url_or_file}" || return $?
+
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo
+        ssh -q -t root@${_node}$_n${_domain} "(set -x; yum clean all && ambari-agent stop && yum upgrade -y ambari-agent && ambari-agent start)"
     done
 }
 
