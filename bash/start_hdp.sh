@@ -1403,9 +1403,11 @@ function f_ambari_upgrade() {
     local __doc__="Upgrade Ambari Server and Agents"
     local _ambari_host="${1-$r_AMBARI_HOST}"
     local _repo_url_or_file="$2"
+    local _how_many="${3-$r_NUM_NODES}"
+    local _start_from="${4-$r_NODE_START_NUM}"
 
     f_ambari_server_upgrade "${_ambari_host}" "${_repo_url_or_file}"
-    f_ambari_agent_upgrade "${_ambari_host}" "${_repo_url_or_file}"
+    f_ambari_agent_upgrade "${_how_many}" "${_start_from}" "${_repo_url_or_file}"
 }
 
 function f_ambari_server_install() {
