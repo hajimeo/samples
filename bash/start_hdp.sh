@@ -1700,7 +1700,7 @@ function f_ambari_java_random() {
         ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
     done
 
-    # TODO: at this moment, trying to change only jre
+    # TODO: at this moment, trying to change only jre, and below might be broken
     _cmd='_javahome="$(dirname $(dirname $(alternatives --display java | grep "link currently points to" | grep -oE "/.+jre.+/java$")))" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "$_javahome/lib/security/java.security"'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
@@ -2180,8 +2180,6 @@ function p_host_setup() {
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_ambari_install"
         f_ambari_install &>> /tmp/p_host_setup.log || return $?
-        _log "INFO" "Starting f_cluster_performance"
-        f_cluster_performance &>> /tmp/p_host_setup.log || return $?
         _log "INFO" "Starting f_ambari_server_start"
         f_ambari_server_start &>> /tmp/p_host_setup.log || return $?
 
@@ -2209,6 +2207,9 @@ function p_host_setup() {
             _log "INFO" "Starting p_ambari_blueprint"
             p_ambari_blueprint &>> /tmp/p_host_setup.log
         fi
+
+        _log "INFO" "TODO: Starting f_cluster_performance"
+        f_cluster_performance &>> /tmp/p_host_setup.log || return $?
 
         f_port_forward 8080 $r_AMBARI_HOST 8080 "Y" &>> /tmp/p_host_setup.log
     fi
