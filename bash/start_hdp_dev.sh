@@ -159,14 +159,14 @@ function p_interview() {
     _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Node hostname prefix" "$g_NODE_HOSTNAME_PREFIX" "r_NODE_HOSTNAME_PREFIX" "N" "Y"
     _ask "DNS Server *IP* used by containers (Note: Remote DNS requires password less ssh)" "$r_DOCKER_HOST_IP" "r_DNS_SERVER" "N" "Y"
-    _ask "Would you like to set up a proxy server (for yum) on this server?" "N" "r_PROXY"
+    _ask "Would you like to set up a proxy server (for yum) on this server?" "Y" "r_PROXY"
     if _isYes "$r_PROXY"; then
         _ask "Proxy port" "28080" "r_PROXY_PORT"
     fi
 
     # Questions to install Ambari
     _ask "Avoid installing Ambari? (to create just containers)" "N" "r_AMBARI_NOT_INSTALL"
-    echo "====== Ambari related questions =========="
+    echo "====== Ambari related questions =================="
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         _ask "Ambari server hostname" "${r_NODE_HOSTNAME_PREFIX}${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
         _echo "If you have set up a Local Repo, please change below"
@@ -180,9 +180,11 @@ function p_interview() {
              done
         fi
         # http://public-repo-1.hortonworks.com/ARTIFACTS/jdk-8u112-linux-x64.tar.gz to /var/lib/ambari-server/resources/jdk-8u112-linux-x64.tar.gz
-        _ask "Ambari JDK URL (optional)" "" "r_AMBARI_JDK_URL"
+        local _jdk="`ls -1t ./jdk-*-linux-x64*gz 2>/dev/null | head -n1`"
+        _ask "Ambari JDK URL or path (optional)" "${_jdk}" "r_AMBARI_JDK_URL"
         # http://public-repo-1.hortonworks.com/ARTIFACTS/jce_policy-8.zip to /var/lib/ambari-server/resources/jce_policy-8.zip
-        _ask "Ambari JCE URL (optional)" "" "r_AMBARI_JCE_URL"
+        local _jce="`ls -1t ./jce_policy-*.zip 2>/dev/null | head -n1`"
+        _ask "Ambari JCE URL or path (optional)" "${_jce}" "r_AMBARI_JCE_URL"
 
         _ask "Would you like to set up a local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
         if _isYes "$r_HDP_LOCAL_REPO"; then
@@ -253,8 +255,8 @@ function p_interview_or_load() {
     trap '_cancelInterview' SIGINT
     while true; do
         p_interview
-
-        _info "Interview completed."
+        echo "=================================================================="
+        _info "Interview completed!"
         _ask "Would you like to save your response?" "Y"
         if ! _isYes; then
             _ask "Would you like to re-do the interview?" "Y"
@@ -1398,12 +1400,19 @@ function f_ambari_install() {
 }
 
 function f_ambari_upgrade() {
-    local __doc__="TODO: Upgrade Ambari Server and Agent rpms"
-    local _ambari_host="${1-$r_AMBARI_HOST}"
-    return
+    local __doc__="Upgrade Ambari Server and Agents"
+    local _repo_url_or_file="$1"
+    local _ambari_host="${2-$r_AMBARI_HOST}"
+    local _how_many="${3-$r_NUM_NODES}"
+    local _start_from="${4-$r_NODE_START_NUM}"
 
-    f_ambari_server_upgrade "${_ambari_host}" "${_repo_url_or_file}"
-    # TODO: upgrade agent and if possible, post upgrade tasks...
+    if [ -z "$_repo_url_or_file" ]; then
+        _error "_repo_url_or_file is required for this function"
+        return 1
+    fi
+
+    f_ambari_server_upgrade "${_ambari_host}" "${_repo_url_or_file}" || return $?
+    f_ambari_agent_upgrade "${_repo_url_or_file}" "${_how_many}" "${_start_from}"
 }
 
 function f_ambari_server_install() {
@@ -1421,7 +1430,7 @@ function f_ambari_server_install() {
 function f_ambari_server_upgrade() {
     local __doc__="Upgrade Ambari Server on $r_AMBARI_HOST"
     local _ambari_host="${1-$r_AMBARI_HOST}"
-    local _repo_url_or_file="$2"
+    local _repo_url_or_file="${2}" # as upgrade, not using $r_AMBARI_REPO_FILE
 
     f_get_ambari_repo_file "${_repo_url_or_file}" || return $?
 
@@ -1430,19 +1439,36 @@ function f_ambari_server_upgrade() {
 
     _info "Installing ambari-server on $r_AMBARI_HOST ..."
     # 'ambari-server stop' returns 0 even it's already stopped
-    ssh -q root@${_ambari_host} "(set -x; yum clean all && ambari-server stop && yum upgrade -y ambari-server && ambari-server upgrade -s && ambari-server start"
+    ssh -q root@${_ambari_host} "(set -x; yum clean all && ambari-server stop && yum upgrade -y ambari-server && ambari-server upgrade -s && ambari-server start)"
 }
 
 function f_ambari_server_setup() {
     local __doc__="Setup Ambari Server on $r_AMBARI_HOST (use r_AMBARI_JDK_URL and r_AMBARI_JCE_URL env variables)"
     local _ambari_host="${1-$r_AMBARI_HOST}"
+    local _jdk_file="${2-$r_AMBARI_JDK_URL}"
+    local _jce_file="${3-$r_AMBARI_JCE_URL}"
 
-    # TODO: at this moment, only Centos (yum)
-    if _isUrl "$r_AMBARI_JDK_URL"; then
-        ssh -q root@${_ambari_host} "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JDK_URL\" -O"
+    local _target_dir="/var/lib/ambari-server/resources/"
+
+    if _isUrl "${_jdk_file}"; then
+        curl "${_jdk_file}" -O
+        _jdk_file="./`basename "${_jdk_file}"`"
     fi
-    if _isUrl "$r_AMBARI_JCE_URL"; then
-        ssh -q root@${_ambari_host} "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JCE_URL\" -O"
+    if _isUrl "${_jce_file}"; then
+        curl "${_jce_file}" -O
+        _jce_file="./`basename "${_jce_file}"`"
+    fi
+
+    if [ -s "${_jdk_file}" ] || [ -s "${_jce_file}" ]; then
+        ssh -q root@${_ambari_host} "mkdir -p ${_target_dir%/}"
+    fi
+
+    if [ -s "${_jdk_file}" ]; then
+        scp "${_jdk_file}" root@${_ambari_host}:${_target_dir%/}/
+    fi
+
+    if [ -s "${_jce_file}" ]; then
+        scp "${_jce_file}" root@${_ambari_host}:${_target_dir%/}/
     fi
 
     _port_wait "${_ambari_host}" "8080" 1 &>/dev/null
@@ -1451,6 +1477,7 @@ function f_ambari_server_setup() {
         return 1
     fi
 
+    # TODO: at this moment, only Centos (yum)
     [ ! -s "/tmp/ambari.repo_${__PID}" ] && f_get_ambari_repo_file
     _info "Copying /tmp/ambari.repo_${__PID} to ${_ambari_host} ..."
     scp -q /tmp/ambari.repo_${__PID} root@${_ambari_host}:/etc/yum.repos.d/ambari.repo || return $?
@@ -1573,23 +1600,67 @@ function f_tunnel() {
 
 function f_ambari_agent_install() {
     local __doc__="Installing ambari-agent on all containers for manual registration (not starting)"
-    # ./start_hdp.sh -r ./node11-14_2.5.0.resp -f "f_ambari_agent_install 1 16"
-    local _how_many="${1-$r_NUM_NODES}"
-    local _start_from="${2-$r_NODE_START_NUM}"
+    local _repo_url_or_file="${1-$r_AMBARI_REPO_FILE}"
+    local _how_many="${2-$r_NUM_NODES}"
+    local _start_from="${3-$r_NODE_START_NUM}"
 
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
-    [ ! -s "/tmp/ambari.repo_${__PID}" ] && f_get_ambari_repo_file
+    f_get_ambari_repo_file "${_repo_url_or_file}" || return $?
 
+    local _is_first_one_successful=1
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo
-        # Executing yum command one by one
-        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y" &
+        scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo || continue
+        # no "-t"
+        local _cmd="ssh -q root@${_node}$_n${_domain} \"which ambari-agent 2>/dev/null || yum install ambari-agent -y\" &> /tmp/f_ambari_agent_install_${_n}.out"
+        if [ 0 -eq ${_is_first_one_successful} ]; then
+            eval "${_cmd}" &
+        else
+            eval "${_cmd}"
+            _is_first_one_successful=$?
+        fi
+        _info "Check /tmp/f_ambari_agent_install_${_n}.out for agent installation"
+        sleep 1
     done
     wait
+    # Executing yum command one by one just in case
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y" || return $?
+        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y"
+        _info "${_node}$_n${_domain} 'which ambari-agent' exit code was $?"
+    done
+}
+
+function f_ambari_agent_upgrade() {
+    local __doc__="Upgrading ambari-agent on all containers"
+    local _repo_url_or_file="${1}" # as upgrade, not using $r_AMBARI_REPO_FILE
+    local _how_many="${2-$r_NUM_NODES}"
+    local _start_from="${3-$r_NODE_START_NUM}"
+
+    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+    local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
+
+    f_get_ambari_repo_file "${_repo_url_or_file}" || return $?
+
+    local _is_first_one_successful=1
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo || continue
+        # no "-t"
+        local _cmd="ssh -q root@${_node}$_n${_domain} \"(set -x; yum clean all && ambari-agent stop; yum upgrade -y ambari-agent && ambari-agent restart)\" &> /tmp/f_ambari_agent_upgrade_${_n}.out"
+        if [ 0 -eq ${_is_first_one_successful} ]; then
+            eval "${_cmd}" &
+        else
+            eval "${_cmd}"
+            _is_first_one_successful=$?
+        fi
+        _info "Check /tmp/f_ambari_agent_upgrade_${_n}.out for agent upgrade"
+        sleep 1
+    done
+    wait
+    # TODO: how can i verify agent is upgraded?
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        ssh -q -t root@${_node}$_n${_domain} "ambari-agent status"
+        _info "${_node}$_n${_domain} 'ambari-agent status' exit code was $?"
     done
 }
 
