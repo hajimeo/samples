@@ -159,14 +159,14 @@ function p_interview() {
     _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Node hostname prefix" "$g_NODE_HOSTNAME_PREFIX" "r_NODE_HOSTNAME_PREFIX" "N" "Y"
     _ask "DNS Server *IP* used by containers (Note: Remote DNS requires password less ssh)" "$r_DOCKER_HOST_IP" "r_DNS_SERVER" "N" "Y"
-    _ask "Would you like to set up a proxy server (for yum) on this server?" "N" "r_PROXY"
+    _ask "Would you like to set up a proxy server (for yum) on this server?" "Y" "r_PROXY"
     if _isYes "$r_PROXY"; then
         _ask "Proxy port" "28080" "r_PROXY_PORT"
     fi
 
     # Questions to install Ambari
     _ask "Avoid installing Ambari? (to create just containers)" "N" "r_AMBARI_NOT_INSTALL"
-    echo "====== Ambari related questions =========="
+    echo "====== Ambari related questions =================="
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         _ask "Ambari server hostname" "${r_NODE_HOSTNAME_PREFIX}${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
         _echo "If you have set up a Local Repo, please change below"
@@ -255,8 +255,8 @@ function p_interview_or_load() {
     trap '_cancelInterview' SIGINT
     while true; do
         p_interview
-
-        _info "Interview completed."
+        echo "=================================================================="
+        _info "Interview completed!"
         _ask "Would you like to save your response?" "Y"
         if ! _isYes; then
             _ask "Would you like to re-do the interview?" "Y"
