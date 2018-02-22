@@ -180,9 +180,11 @@ function p_interview() {
              done
         fi
         # http://public-repo-1.hortonworks.com/ARTIFACTS/jdk-8u112-linux-x64.tar.gz to /var/lib/ambari-server/resources/jdk-8u112-linux-x64.tar.gz
-        _ask "Ambari JDK URL (optional)" "" "r_AMBARI_JDK_URL"
+        local _jdk="`ls -1t ./jdk-*-linux-x64*gz 2>/dev/null | head -n1`"
+        _ask "Ambari JDK URL or path (optional)" "${_jdk}" "r_AMBARI_JDK_URL"
         # http://public-repo-1.hortonworks.com/ARTIFACTS/jce_policy-8.zip to /var/lib/ambari-server/resources/jce_policy-8.zip
-        _ask "Ambari JCE URL (optional)" "" "r_AMBARI_JCE_URL"
+        local _jce="`ls -1t ./jce_policy-*.zip 2>/dev/null | head -n1`"
+        _ask "Ambari JCE URL or path (optional)" "${_jce}" "r_AMBARI_JCE_URL"
 
         _ask "Would you like to set up a local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
         if _isYes "$r_HDP_LOCAL_REPO"; then
@@ -1436,13 +1438,30 @@ function f_ambari_server_upgrade() {
 function f_ambari_server_setup() {
     local __doc__="Setup Ambari Server on $r_AMBARI_HOST (use r_AMBARI_JDK_URL and r_AMBARI_JCE_URL env variables)"
     local _ambari_host="${1-$r_AMBARI_HOST}"
+    local _jdk_file="${2-$r_AMBARI_JDK_URL}"
+    local _jce_file="${3-$r_AMBARI_JCE_URL}"
 
-    # TODO: at this moment, only Centos (yum)
-    if _isUrl "$r_AMBARI_JDK_URL"; then
-        ssh -q root@${_ambari_host} "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JDK_URL\" -O"
+    local _target_dir="/var/lib/ambari-server/resources/"
+
+    if _isUrl "${_jdk_file}"; then
+        curl "${_jdk_file}" -O
+        _jdk_file="./`basename "${_jdk_file}"`"
     fi
-    if _isUrl "$r_AMBARI_JCE_URL"; then
-        ssh -q root@${_ambari_host} "mkdir -p /var/lib/ambari-server/resources/; cd /var/lib/ambari-server/resources/ && curl \"$r_AMBARI_JCE_URL\" -O"
+    if _isUrl "${_jce_file}"; then
+        curl "${_jce_file}" -O
+        _jce_file="./`basename "${_jce_file}"`"
+    fi
+
+    if [ -s "${_jdk_file}" ] || [ -s "${_jce_file}" ]; then
+        ssh -q root@${_ambari_host} "mkdir -p ${_target_dir%/}"
+    fi
+
+    if [ -s "${_jdk_file}" ]; then
+        scp "${_jdk_file}" root@${_ambari_host}:${_target_dir%/}/
+    fi
+
+    if [ -s "${_jce_file}" ]; then
+        scp "${_jce_file}" root@${_ambari_host}:${_target_dir%/}/
     fi
 
     _port_wait "${_ambari_host}" "8080" 1 &>/dev/null
@@ -1451,6 +1470,7 @@ function f_ambari_server_setup() {
         return 1
     fi
 
+    # TODO: at this moment, only Centos (yum)
     [ ! -s "/tmp/ambari.repo_${__PID}" ] && f_get_ambari_repo_file
     _info "Copying /tmp/ambari.repo_${__PID} to ${_ambari_host} ..."
     scp -q /tmp/ambari.repo_${__PID} root@${_ambari_host}:/etc/yum.repos.d/ambari.repo || return $?
