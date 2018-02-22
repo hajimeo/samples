@@ -1401,13 +1401,18 @@ function f_ambari_install() {
 
 function f_ambari_upgrade() {
     local __doc__="Upgrade Ambari Server and Agents"
-    local _ambari_host="${1-$r_AMBARI_HOST}"
-    local _repo_url_or_file="$2"
+    local _repo_url_or_file="$1"
+    local _ambari_host="${2-$r_AMBARI_HOST}"
     local _how_many="${3-$r_NUM_NODES}"
     local _start_from="${4-$r_NODE_START_NUM}"
 
-    f_ambari_server_upgrade "${_ambari_host}" "${_repo_url_or_file}"
-    f_ambari_agent_upgrade "${_how_many}" "${_start_from}" "${_repo_url_or_file}"
+    if [ -z "$_repo_url_or_file" ]; then
+        _error "_repo_url_or_file is required for this function"
+        return 1
+    fi
+
+    f_ambari_server_upgrade "${_ambari_host}" "${_repo_url_or_file}" || return $?
+    f_ambari_agent_upgrade "${_repo_url_or_file}" "${_how_many}" "${_start_from}"
 }
 
 function f_ambari_server_install() {
@@ -1595,18 +1600,27 @@ function f_tunnel() {
 
 function f_ambari_agent_install() {
     local __doc__="Installing ambari-agent on all containers for manual registration (not starting)"
-    # ./start_hdp.sh -r ./node11-14_2.5.0.resp -f "f_ambari_agent_install 1 16"
-    local _how_many="${1-$r_NUM_NODES}"
-    local _start_from="${2-$r_NODE_START_NUM}"
+    local _repo_url_or_file="${1-$r_AMBARI_REPO_FILE}"
+    local _how_many="${2-$r_NUM_NODES}"
+    local _start_from="${3-$r_NODE_START_NUM}"
 
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
-    [ ! -s "/tmp/ambari.repo_${__PID}" ] && f_get_ambari_repo_file
+    f_get_ambari_repo_file "${_repo_url_or_file}" || return $?
 
+    local _is_first_one_successful=1
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo
-        ssh -q -t root@${_node}$_n${_domain} "which ambari-agent 2>/dev/null || yum install ambari-agent -y" &
+        scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo || continue
+        local _cmd="ssh -q -t root@${_node}$_n${_domain} \"which ambari-agent 2>/dev/null || yum install ambari-agent -y\" &> /tmp/f_ambari_agent_install_${_n}.out"
+        if [ 0 -eq ${_is_first_one_successful} ]; then
+            eval "${_cmd}" &
+        else
+            eval "${_cmd}"
+            _is_first_one_successful=$?
+        fi
+        _info "Check /tmp/f_ambari_agent_install_${_n}.out for agent installation"
+        sleep 1
     done
     wait
     # Executing yum command one by one just in case
@@ -1617,19 +1631,29 @@ function f_ambari_agent_install() {
 
 function f_ambari_agent_upgrade() {
     local __doc__="Upgrading ambari-agent on all containers"
-    local _how_many="${1-$r_NUM_NODES}"
-    local _start_from="${2-$r_NODE_START_NUM}"
-    local _repo_url_or_file="${3}" # as upgrade, not using $r_AMBARI_REPO_FILE
+    local _repo_url_or_file="${1}" # as upgrade, not using $r_AMBARI_REPO_FILE
+    local _how_many="${2-$r_NUM_NODES}"
+    local _start_from="${3-$r_NODE_START_NUM}"
 
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
     f_get_ambari_repo_file "${_repo_url_or_file}" || return $?
 
+    local _is_first_one_successful=1
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo
-        ssh -q -t root@${_node}$_n${_domain} "(set -x; yum clean all && ambari-agent stop && yum upgrade -y ambari-agent && ambari-agent start)"
+        scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo || continue
+        local _cmd="ssh -q -t root@${_node}$_n${_domain} \"(set -x; yum clean all && ambari-agent stop; yum upgrade -y ambari-agent && ambari-agent restart)\" &> /tmp/f_ambari_agent_install_${_n}.out"
+        if [ 0 -eq ${_is_first_one_successful} ]; then
+            eval "${_cmd}" &
+        else
+            eval "${_cmd}"
+            _is_first_one_successful=$?
+        fi
+        _info "Check /tmp/f_ambari_agent_upgrade_${_n}.out for agent upgrade"
+        sleep 1
     done
+    wait
 }
 
 function f_run_cmd_on_nodes() {
