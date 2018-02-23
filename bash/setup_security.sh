@@ -581,6 +581,8 @@ function f_ldap_ranger() {
             "ranger.usersync.group.searchfilter": "(objectClass=group)",
             "ranger.usersync.ldap.binddn": "'${_binddn}'",
             "ranger.usersync.ldap.ldapbindpassword": "'${_binddn_pwd}'",
+            "ranger.ldap.base.dn": "'${_basedn}'",
+            "ranger.usersync.ldap.searchBase": "'${_basedn}'",
             "ranger.usersync.ldap.url": "'${_ldap_url}'",
             "ranger.usersync.ldap.user.nameattribute": "uid",
             "ranger.usersync.ldap.user.objectclass": "person",
@@ -624,8 +626,8 @@ function f_kerberos_crossrealm_setup() {
 
 function f_ldap_hadoop_groupmapping() {
     local __doc__="Setup Hadoop Group Mapping with LDAP (TODO: currently works only with Knox demo LDAP)"
-    local _ldap_url="$1"
-    local _ambari_host="${2-$r_AMBARI_HOST}"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+    local _ldap_url="$2"
     [ -z "${_ambari_host}" ] && return 1
 
     local _basedn="dc=hadoop,dc=apache,dc=org"
@@ -1050,7 +1052,7 @@ function f_ambari_configs() {
     [ -z "$_c" ] && _c="`f_get_cluster_name $_ambari_host`" || return $?
 
     if [ ! -s ./configs.py ]; then
-        curl -O https://raw.githubusercontent.com/apache/ambari/trunk/ambari-server/src/main/resources/scripts/configs.py || return $?
+        curl -s -O https://raw.githubusercontent.com/apache/ambari/trunk/ambari-server/src/main/resources/scripts/configs.py || return $?
     fi
     if [ ! -s ./configs.py ]; then
         _error "No ./configs.py"
