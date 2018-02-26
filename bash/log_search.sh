@@ -145,7 +145,7 @@ function f_appLogContainerCountPerHost() {
         local _line=""
         local _regex="(Final Counters for [^ :]+)[^\[]+(\[.+$)"
 
-        ggrep -Eo "Final Counters for .+$" "$_path" | while read -r _line ; do
+        ggrep -oP "Final Counters for .+$" "$_path" | while read -r _line ; do
             if [[ "$_line" =~ ${_regex} ]]; then
                 echo "# ${BASH_REMATCH[1]}"
                 # TODO: not clean enough. eg: [['File System Counters HDFS_BYTES_READ=1469456609',
@@ -168,7 +168,7 @@ function f_appLogFindFirstSyslog() {
     local _dir_path="${1-.}"
     local _num="${2-10}"
 
-    ( find "${_dir_path%/}" -name "*.syslog" | xargs -I {} bash -c "ggrep -oHE '^${_DATE_FORMAT} \d\d:\d\d:\d\d' -m 1 {}" | awk -F ':' '{print $2":"$3":"$4" "$1}' ) | sort -n | head -n $_num
+    ( find "${_dir_path%/}" -name "*.syslog" | xargs -I {} bash -c "ggrep -oHP '^${_DATE_FORMAT} \d\d:\d\d:\d\d' -m 1 {}" | awk -F ':' '{print $2":"$3":"$4" "$1}' ) | sort -n | head -n $_num
 }
 
 function f_appLogFindLastSyslog() {
@@ -178,9 +178,9 @@ function f_appLogFindLastSyslog() {
     local _regex="${3}"
 
     if [ -n "$_regex" ]; then
-        ( for _f in `ggrep -l "$_regex" ${_dir_path%/}/*.syslog`; do _dt="`gtac $_f | ggrep -oE "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
+        ( for _f in `ggrep -l "$_regex" ${_dir_path%/}/*.syslog`; do _dt="`gtac $_f | ggrep -oP "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
     else
-        ( for _f in `find "${_dir_path%/}" -name "*.syslog"`; do _dt="`gtac $_f | ggrep -oE "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
+        ( for _f in `find "${_dir_path%/}" -name "*.syslog"`; do _dt="`gtac $_f | ggrep -oP "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
     fi
 }
 
@@ -200,7 +200,7 @@ function f_hdfsAuditLogCountPerTime() {
         local _cmd="bar_chart.py"
     fi
 
-    ggrep -oE "$_datetime_regex" $_path | $_cmd
+    ggrep -oP "$_datetime_regex" $_path | $_cmd
 }
 
 function f_hdfsAuditLogCountPerCommand() {
@@ -230,7 +230,7 @@ function f_hdfsAuditLogCountPerUser() {
     local _datetime_regex="$3"
 
     if [ ! -z "$_datetime_regex" ]; then
-        ggrep -E "$_datetime_regex" $_path > /tmp/f_hdfs_audit_count_per_user_$$.tmp
+        ggrep -P "$_datetime_regex" $_path > /tmp/f_hdfs_audit_count_per_user_$$.tmp
         _path="/tmp/f_hdfs_audit_count_per_user_$$.tmp"
     fi
 
@@ -290,7 +290,7 @@ function f_findJarByClassName() {
 
     # if search path is an integer, treat as PID
     if [[ $_search_path =~ ^-?[0-9]+$ ]]; then
-        lsof -nPp $_search_path | ggrep -oE '/.+\.(jar|war)$' | sort | uniq | xargs -I {} bash -c "less {} | ggrep -qm1 -w $_class_name && echo {}"
+        lsof -nPp $_search_path | ggrep -oP '/.+\.(jar|war)$' | sort | uniq | xargs -I {} bash -c "less {} | ggrep -qm1 -w $_class_name && echo {}"
         return
     fi
     # NOTE: some 'less' can't read jar, in that case, replace to 'jar -tvf', but may need to modify $PATH
@@ -377,7 +377,7 @@ function f_swimlane() {
 }
 
 function f_start_end_time_with_diff(){
-    local __doc__="Find the start & end datetime and calculate the difference from a log file (eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"\d\d:\d\d:\d\d\.\d\d\d\"; done | sort -k2)"
+    local __doc__="Output start time, end time, difference(sec), (filesize) from a log file (eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d\"; done | sort -k2)"
     local _log="$1"
     local _date_regex="${2}"
     [ -z "$_date_regex" ] && _date_regex="^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d"
@@ -452,7 +452,7 @@ function f_hdfs_checklist() {
     _search_properties "${_conf%/}/*-site.xml" "${_props}" "Y"
 
     # 2. Check log4j config for performance
-    ggrep -E '^log4j\..+\.(BlockStateChange|StateChange)' ${_conf%/}/log4j.properties
+    ggrep -P '^log4j\..+\.(BlockStateChange|StateChange)' ${_conf%/}/log4j.properties
 }
 
 function f_hive_checklist() {
@@ -461,7 +461,7 @@ function f_hive_checklist() {
     local _others="$2"      # check HDFS, YARN, MR2 configs if 'y'
 
     # 1. check the following properties' values
-    # ggrep -ohE '\(property\(.+$' * | cut -d '"' -f 2 | tr '\n' ' '
+    # ggrep -ohP '\(property\(.+$' * | cut -d '"' -f 2 | tr '\n' ' '
 
     echo "# Hive config check" >&2
     local _props="hive.auto.convert.join hive.merge.mapfiles hive.merge.mapredfiles hive.exec.compress.intermediate hive.exec.compress.output datanucleus.cache.level2.type hive.default.fileformat.managed hive.default.fileformat fs.hdfs.impl.disable.cache fs.file.impl.disable.cache hive.cbo.enable hive.compute.query.using.stats hive.stats.fetch.column.stats hive.stats.fetch.partition.stats hive.execution.engine datanucleus.fixedDatastore hive.exim.strict.repl.tables datanucleus.autoCreateSchema hive.exec.parallel hive.plan.serialization.format hive.server2.tez.initialize.default.sessions hive.vectorized.execution.enabled hive.vectorized.execution.reduce.enabled"
@@ -498,7 +498,7 @@ function f_hive_checklist() {
     if [ -f "$_conf" ]; then
         echo -e "\n# System:java" >&2
         # |system:java\.class\.path
-        ggrep -E '^(env:HOSTNAME|env:HADOOP_HEAPSIZE|env:HADOOP_CLIENT_OPTS|system:hdp\.version|system:java\.home|system:java\.vm\.*|system:java\.io\.tmpdir|system:os\.version|system:user\.timezone)=' "$_conf"
+        ggrep -P '^(env:HOSTNAME|env:HADOOP_HEAPSIZE|env:HADOOP_CLIENT_OPTS|system:hdp\.version|system:java\.home|system:java\.vm\.*|system:java\.io\.tmpdir|system:os\.version|system:user\.timezone)=' "$_conf"
     fi
 }
 
@@ -520,33 +520,40 @@ function _search_properties() {
 }
 
 function f_load_ambaridb() {
-    local __doc__="Load ambari DB sql file into Mac's PostgreSQL DB"
+    local __doc__="Load ambari DB sql file into Mac's (locals) PostgreSQL DB"
     local _sql_file="$1"
     local _missing_tables_sql="$2"
     local _sudo_user="${3-$USER}"
     local _ambari_pwd="${4-bigdata}"
 
     # If a few tables are missing, need missing tables' schema
-    # pg_dump -Uambari -h `hostname -f` ambari -s -t alert_history -t host_role_command -t execution_command -t stage -t request > ambari_missing_table_ddl.sql
+    # pg_dump -Uambari -h `hostname -f` ambari -s -t alert_history -t host_role_command -t execution_command -t request > ambari_missing_table_ddl.sql
 
-    #psql template1 -c 'DROP DATABASE ambari;'
-    sudo -u ${_sudo_user} -i psql template1 -c 'ALTER DATABASE ambari RENAME TO ambari_'$(date +"%Y%m%d%H%M%S")';'
-    sudo -u ${_sudo_user} -i psql template1 -c 'CREATE DATABASE ambari;'
-    sudo -u ${_sudo_user} -i psql template1 -c "CREATE USER ambari WITH LOGIN PASSWORD '${_ambari_pwd}';"
-    sudo -u ${_sudo_user} -i psql template1 -c 'GRANT ALL PRIVILEGES ON DATABASE ambari TO ambari;'
+    if ! sudo -u ${_sudo_user} -i psql -l; then
+        echo "Connecting to local postgresql failed. Is PostgreSQL running?"
+        echo "pg_ctl -D /usr/local/var/postgres -l ~/postgresql.log start"
+        echo "sudo -iu ${_sudo_user} psql template1 -c 'DROP DATABASE ambari;'"
+        return 1
+    fi
+
+    sudo -iu ${_sudo_user} psql template1 -c 'ALTER DATABASE ambari RENAME TO ambari_'$(date +"%Y%m%d%H%M%S")';'
+    sudo -iu ${_sudo_user} psql template1 -c 'CREATE DATABASE ambari;'
+    sudo -iu ${_sudo_user} psql template1 -c "CREATE USER ambari WITH LOGIN PASSWORD '${_ambari_pwd}';"
+    sudo -iu ${_sudo_user} psql template1 -c 'GRANT ALL PRIVILEGES ON DATABASE ambari TO ambari;'
 
     export PGPASSWORD="${_ambari_pwd}"
-    psql -Uambari -h `hostname -f` ambari -c 'CREATE SCHEMA ambari;ALTER SCHEMA ambari OWNER TO ambari;';
+    psql -Uambari -h `hostname -f` ambari -c 'CREATE SCHEMA ambari;ALTER SCHEMA ambari OWNER TO ambari;'
     # It's OK to see relation error for index (TODO: upgrade table may fail)
     [ -s "$_missing_tables_sql" ] && psql -Uambari -h `hostname -f` ambari < ${_missing_tables_sql}
     psql -Uambari -h `hostname -f` ambari < ${_sql_file}
     [ -s "$_missing_tables_sql" ] && psql -Uambari -h `hostname -f` ambari < ${_missing_tables_sql}
     psql -Uambari -h `hostname -f` -c "UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL';"
     psql -Uambari -h `hostname -f` -c "select * from metainfo where metainfo_key = 'version';"
+    psql -Uambari -h `hostname -f` -c "select repo_version_id, stack_id, display_name, repo_type, substring(repositories, 1, 500) from repo_version order by repo_version_id desc limit 5;"
     psql -Uambari -h `hostname -f` -c "SELECT * FROM clusters WHERE security_type = 'KERBEROS';"
     #UPDATE clusters SET security_type = 'NONE' WHERE provisioning_state = 'INSTALLED';
-    #curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X DELETE "${_api_uri}/services/KERBEROS" &>/dev/null
-    #curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X DELETE "${_api_uri}/artifacts/kerberos_descriptor" &>/dev/null
+    #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/services/KERBEROS"
+    #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/artifacts/kerberos_descriptor"
     unset PGPASSWORD
 }
 
@@ -592,7 +599,7 @@ list() {
     set -o posix
 
     if [[ -z "$_name" ]]; then
-        (for _f in `typeset -F | ggrep -E '^declare -f [fp]_' | cut -d' ' -f3`; do
+        (for _f in `typeset -F | ggrep -P '^declare -f [fp]_' | cut -d' ' -f3`; do
             #eval "echo \"--[ $_f ]\" | gsed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
             _tmp_txt="`help "$_f" "Y"`"
             printf "%-28s%s\n" "$_f" "$_tmp_txt"
