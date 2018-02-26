@@ -217,7 +217,7 @@ FROM
         if ls -l /usr/hdp/current/sqoop-client/lib/postgresql-9*jdbc4.jar; then
             _ambari="`sed -nr 's/^hostname ?= ?([^ ]+)/\1/p' /etc/ambari-agent/conf/ambari-agent.ini`"
             _log "INFO" "Importing ambari.alert_history on $_ambari into hive ..."
-            sqoop import --connect "jdbc:postgresql://${_ambari}:5432/ambari" --username "ambari" --password "bigdata" --null-string "\\\\N" --null-non-string "\\\\N" --hive-drop-import-delims --hive-import --hive-overwrite --hive-database ${_dbname} --hive-table ambari_alert_history --target-dir /apps/hive/warehouse/${_dbname}.db/ambari_alert_history --m 1 --query "select * from ambari.alert_history where \$CONDITIONS order by alert_id desc limit 100" --verbose &> /tmp/hive_dummies_sqoop_$USER.out
+            sqoop import --connect "jdbc:postgresql://${_ambari}:5432/ambari" --username "ambari" --password "bigdata" --null-string "\\\\N" --null-non-string "\\\\N" --hive-drop-import-delims --hive-import --hive-database ${_dbname} --hive-table ambari_alert_history --delete-target-dir --target-dir /apps/hive/warehouse/${_dbname}.db/ambari_alert_history --m 1 --query "select * from ambari.alert_history where \$CONDITIONS order by alert_id desc limit 100" --verbose &> /tmp/hive_dummies_sqoop_$USER.out
         fi
     fi
 
