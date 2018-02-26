@@ -632,7 +632,11 @@ function f_ldap_hadoop_groupmapping() {
 
     local _basedn="dc=hadoop,dc=apache,dc=org"
     [ -z "${_ldap_url}" ] && _ldap_url="ldap://${_ambari_host}:33389/"
-    
+
+    # TODO: populate 'properties_attributes' like below:
+    # "properties_attributes":{"final":{"fs.defaultFS":"true"},"password":{"hadoop.security.group.mapping.provider.ldap4users.ldap.bind.password":"true"},"user":{},"group":{},"text":{},"additional_user_property":{},"not_managed_hdfs_path":{},"value_from_property_file":{}}
+    # TODO: encrypt password
+    #    "hadoop.security.credential.provider.path":"/etc/hadoop/hadoop/conf/core-site.jceks",
     local core_site='{
         "hadoop.security.group.mapping":"org.apache.hadoop.security.CompositeGroupsMapping",
         "hadoop.security.group.mapping.providers":"shell4services,ldap4users",
