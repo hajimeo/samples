@@ -22,12 +22,14 @@ function _log() {
 if [ "$0" = "$BASH_SOURCE" ]; then
     # Process arguments
     _dbname="${1}"
-    [ -z "$_dbname" ] && _dbname="dummies"
     _beeline_u="${2}"
-    _cmd="hive"
-    if [ -n "${_beeline_u}" ]; then
-        _cmd="beeline --verbose=true --outputformat=tsv2 -u '${_beeline_u}' -n $USER"
-    fi
+
+    [ -z "$_dbname" ] && _dbname="dummies"
+
+    _cmd="hive -hiveconf hive.tez.exec.print.summary=true"
+    [ -n "${_beeline_u}" ] && _cmd="beeline --verbose=true --outputformat=tsv2 -u '${_beeline_u}' -n $USER"
+    # -hiveconf hive.root.logger=DEBUG,console
+    _cmd="${_cmd} -hiveconf hive.tez.exec.print.summary=true"
 
     # Prepare (create a work dir and remove old csv files)
     [ -d "${g_WORK_DIR%/}" ] || mkdir ${g_WORK_DIR%/}
@@ -67,8 +69,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     #_log "INFO" "executing hive queries under ${_dbname} database... kinit may require"
     _log "INFO" "Generating SQLs against ${_dbname} database... "
-    # -hiveconf hive.root.logger=INFO,console
-    # -hiveconf hive.tez.exec.print.summary=true
     _sql="${_sql}
 CREATE TABLE IF NOT EXISTS sample_07 (
   code string,
