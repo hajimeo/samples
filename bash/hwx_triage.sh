@@ -200,7 +200,7 @@ function f_collect_host_info_from_ambari() {
     [ -z "$_work_dir" ] && _work_dir="."
     echo "INFO" "Collecting ${_node} information from Ambari..." >&2
 
-    local _ambari="`grep '^hostname=' /etc/ambari-agent/conf/ambari-agent.ini | cut -d= -f2`"
+    local _ambari="`sed -nr 's/^hostname ?= ?([^ ]+)/\1/p' /etc/ambari-agent/conf/ambari-agent.ini`"
     if [ -z "$_ambari" ]; then
         echo "ERROR" "No hostname= in ambari-agent.ini" >&2
         return 1
