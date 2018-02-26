@@ -169,8 +169,8 @@ LOAD DATA INPATH '/tmp/hive_workspace/hdfs-audit.csv' OVERWRITE into table hdfs_
     if which hbase &>/dev/null; then
         _log "INFO" "Creating HBase table 'emp_review' with hbase shell..."
         # TODO: HBase doesn't seem to have 'create table if not exists' statement
-        echo "create 'emp_review','review'" | hbase shell &> /tmp/hive_dummies_hbase_$$.out
-        if ! grep -q 'Here is some help for this command' /tmp/hive_dummies_hbase_$$.out; then
+        echo "create 'emp_review','review'" | hbase shell &> /tmp/hive_dummies_hbase_$USER.out
+        if ! grep -q 'Here is some help for this command' /tmp/hive_dummies_hbase_$USER.out; then
             _log "INFO" "Adding SQLs for creating HBase external table 'emp_review' ..."
             _sql="${_sql}
     CREATE EXTERNAL TABLE IF NOT EXISTS emp_review(rowkey STRING, empid INT, score FLOAT)
@@ -217,7 +217,7 @@ FROM
         if ls -l /usr/hdp/current/sqoop-client/lib/postgresql-9*jdbc4.jar; then
             _ambari="`sed -nr 's/^hostname ?= ?([^ ]+)/\1/p' /etc/ambari-agent/conf/ambari-agent.ini`"
             _log "INFO" "Importing ambari.alert_history on $_ambari into hive ..."
-            sqoop import --connect "jdbc:postgresql://${_ambari}:5432/ambari" --username "ambari" --password "bigdata" --null-string "\\\\N" --null-non-string "\\\\N" --hive-drop-import-delims --hive-import --hive-overwrite --hive-database ${_dbname} --hive-table ambari_alert_history --target-dir /apps/hive/warehouse/${_dbname}.db/ambari_alert_history --m 1 --query "select * from ambari.alert_history where \$CONDITIONS order by alrt_id desc limit 100" --verbose &> /tmp/hive_dummies_sqoop.out
+            sqoop import --connect "jdbc:postgresql://${_ambari}:5432/ambari" --username "ambari" --password "bigdata" --null-string "\\\\N" --null-non-string "\\\\N" --hive-drop-import-delims --hive-import --hive-overwrite --hive-database ${_dbname} --hive-table ambari_alert_history --target-dir /apps/hive/warehouse/${_dbname}.db/ambari_alert_history --m 1 --query "select * from ambari.alert_history where \$CONDITIONS order by alrt_id desc limit 100" --verbose &> /tmp/hive_dummies_sqoop_$USER.out
         fi
     fi
 
