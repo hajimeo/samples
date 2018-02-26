@@ -67,7 +67,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     #_log "INFO" "executing hive queries under ${_dbname} database... kinit may require"
     _log "INFO" "Generating SQLs against ${_dbname} database... "
-    # -hiveconf hive.root.logger=INFO,console -hiveconf hive.tez.exec.print.summary=true
+    # -hiveconf hive.root.logger=INFO,console
+    # -hiveconf hive.tez.exec.print.summary=true
     _sql="${_sql}
 CREATE TABLE IF NOT EXISTS sample_07 (
   code string,
@@ -210,6 +211,15 @@ FROM
 
     _log "INFO" "Executing SQLs..."
     ${_cmd} -e "${_sql}"
+
+    if which sqoop &>/dev/null; then
+        _log "INFO" "Check (PostgreSQL) JDBC driver. If postgresql-9*jdbc4.jar exists, start Sqoop Import job..."
+        if ls -l /usr/hdp/current/sqoop-client/lib/postgresql-9*jdbc4.jar; then
+            _ambari="`sed -nr 's/^hostname ?= ?([^ ]+)/\1/p' /etc/ambari-agent/conf/ambari-agent.ini`"
+            _log "INFO" "Importing ambari.alert_history on $_ambari into hive ..."
+            sqoop import --connect "jdbc:postgresql://${_ambari}:5432/ambari" --username "ambari" --password "bigdata" --null-string "\\\\N" --null-non-string "\\\\N" --hive-drop-import-delims --hive-import --hive-overwrite --hive-database ${_dbname} --hive-table ambari_alert_history --target-dir /apps/hive/warehouse/${_dbname}.db/ambari_alert_history --m 1 --query "select * from ambari.alert_history where \$CONDITIONS order by alrt_id desc limit 100" --verbose &> /tmp/hive_dummies_sqoop.out
+        fi
+    fi
 
     # NOTE: hive (1) returns ArrayIndexOutOfBoundsException if transactional is true and 'orc.bloom.filter.columns' is not '*'
     _log "INFO" "Completed!
