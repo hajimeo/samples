@@ -358,7 +358,7 @@ function f_splitApplog() {
         if [ ! -d "$(dirname $BASH_SOURCE)" ]; then
             mkdir -p "$(dirname $BASH_SOURCE)" || return $?
         fi
-        curl -so "${_script_path}" https://raw.githubusercontent.com/hiteshs/dev-tools/master/hadoop-tools/yarn/yarn_app_logs_splitter.py || return $?
+        curl -so "${_script_path}" https://raw.githubusercontent.com/hajimeo/samples/master/misc/yarn_app_logs_splitter.py || return $?
     fi
     if [ ! -r "$_app_log" ]; then
         echo "$_app_log is not readable"
