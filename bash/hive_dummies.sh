@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 #
-# Based on https://gist.github.com/rajkrrsingh/24ff6f426248276cfa79063967f08213
-#
 # Download and execute this script:
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/hive_dummies.sh
 #   bash ./hive_dummies.sh [dbname] [beeline conn str (No -n or -p)]
+#
+# Purpose of this script:
+#   Create multiple Hive tables with data automatically so that testing query/functnality would be easier.
+#   Based on https://gist.github.com/rajkrrsingh/24ff6f426248276cfa79063967f08213
 #
 
 g_LOG_FILE_PATH=""
