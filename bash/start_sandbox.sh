@@ -430,6 +430,9 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     echo "Starting SSHd, PostgreSQL, Ambari Server and Agent ..."
     docker exec -it ${_NAME} bash -c "service sshd start"
+    docker exec -it ${_NAME} bash -c "sed -i -r \"s/^#?log_line_prefix = ''/log_line_prefix = '%m '/\" /var/lib/pgsql/data/postgresql.conf"
+    docker exec -it ${_NAME} bash -c "sed -i -r \"s/^#?log_statement = 'none'/log_statement = 'mod'/\" /var/lib/pgsql/data/postgresql.conf"
+    docker exec -it ${_NAME} bash -c "ln -s /var/lib/pgsql/data/pg_log /var/log/postgresql"
     docker exec -it ${_NAME} bash -c "sysctl -w kernel.shmmax=${_SHMMAX};service postgresql start"
     #docker exec -d ${_NAME} /sbin/sysctl -p
     if ${_NEW_CONTAINER} ; then
