@@ -635,7 +635,8 @@ function f_ldap_hadoop_groupmapping() {
 
     # TODO: populate 'properties_attributes' like below:
     # "properties_attributes":{"final":{"fs.defaultFS":"true"},"password":{"hadoop.security.group.mapping.provider.ldap4users.ldap.bind.password":"true"},"user":{},"group":{},"text":{},"additional_user_property":{},"not_managed_hdfs_path":{},"value_from_property_file":{}}
-    # TODO: encrypt password
+    # TODO: encrypt password (on both NamdeNode and ... all nodes which use ranger plugin?)
+    # hadoop credential create hadoop.security.group.mapping.ldap.bind.password -value admin-password -provider jceks://file/etc/hadoop/hadoop/conf/core-site.jceks; chmod a+r /etc/hadoop/hadoop/conf/core-site.jceks
     #    "hadoop.security.credential.provider.path":"/etc/hadoop/hadoop/conf/core-site.jceks",
     local core_site='{
         "hadoop.security.group.mapping":"org.apache.hadoop.security.CompositeGroupsMapping",
@@ -1047,7 +1048,7 @@ function _ssl_openssl_cnf_generate() {
 }
 
 function f_ambari_configs() {
-    local __doc__="Wrapper function to update configs with configs.sh"
+    local __doc__="Wrapper function to update *multiple* configs with configs.py"
     local _type="$1"
     local _dict="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
