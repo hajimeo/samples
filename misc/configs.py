@@ -51,6 +51,7 @@ TYPE = 'type'
 TAG = 'tag'
 ITEMS = 'items'
 TAG_PREFIX = 'version'
+ACCEPTABLE_ATTRIBUTES = ['final', 'password', 'user', 'group', 'text', 'additional_user_property', 'not_managed_hdfs_path', 'value_from_property_file']
 
 CLUSTERS_URL = '/api/v1/clusters/{0}'
 DESIRED_CONFIGS_URL = CLUSTERS_URL + '?fields=Clusters/desired_configs'
@@ -131,10 +132,13 @@ def update_config(cluster, config_type, config_updater, accessor):
   properties, attributes = config_updater(cluster, config_type, accessor)
   create_new_desired_config(cluster, config_type, properties, attributes, accessor)
 
-def update_specific_property(config_name, config_value):
+def update_specific_property(config_name, config_value, property_type=None):
   def update(cluster, config_type, accessor):
     properties, attributes = get_current_config(cluster, config_type, accessor)
     properties[config_name] = config_value
+    if property_type and property_type.lower() in ACCEPTABLE_ATTRIBUTES:
+      if attributes.has_key(property_type.lower()): attributes[property_type.lower()].update({config_name:"true"})
+      else: attributes.update({property_type.lower():{config_name:"true"}})
     return properties, attributes
   return update
 
@@ -215,7 +219,7 @@ def get_config(cluster, config_type, accessor, output):
     config[ATTRIBUTES] = attributes
   output(config)
 
-def set_properties(cluster, config_type, args, accessor):
+def set_properties(cluster, config_type, args, accessor, property_type=None):
   logger.info('### Performing "set":')
 
   if len(args) == 1:
@@ -232,7 +236,7 @@ def set_properties(cluster, config_type, args, accessor):
   else:
     config_name = args[0]
     config_value = args[1]
-    updater = update_specific_property(config_name, config_value)
+    updater = update_specific_property(config_name, config_value, property_type)
     logger.info('### new property - "{0}":"{1}"'.format(config_name, config_value))
   update_config(cluster, config_type, updater, accessor)
   return 0
@@ -281,6 +285,7 @@ def main():
   config_options_group.add_option("-f", "--file", dest="file", help="File where entire configurations are saved to, or read from. Supported extensions (.xml, .json>)")
   config_options_group.add_option("-k", "--key", dest="key", help="Key that has to be set or deleted. Not necessary for 'get' action.")
   config_options_group.add_option("-v", "--value", dest="value", help="Optional value to be set. Not necessary for 'get' or 'delete' actions.")
+  config_options_group.add_option("-z", "--property-type", dest="property_type", help="Used for PASSWORD property type to obfuscate the value")
   parser.add_option_group(config_options_group)
 
   (options, args) = parser.parse_args()
@@ -330,6 +335,7 @@ def main():
   host = options.host
   cluster = options.cluster
   config_type = options.config_type
+  property_type = options.property_type
 
   accessor = api_accessor(host, user, password, protocol, port)
   if action == SET_ACTION:
@@ -340,7 +346,7 @@ def main():
       action_args = [options.file]
     else:
       action_args = [options.key, options.value]
-    return set_properties(cluster, config_type, action_args, accessor)
+    return set_properties(cluster, config_type, action_args, accessor, property_type)
 
   elif action == GET_ACTION:
     if options.file:
