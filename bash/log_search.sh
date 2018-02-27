@@ -352,7 +352,7 @@ function f_splitApplog() {
     local _app_log="$1"
     local _out_name="containers_`basename $_app_log .log`"
     # Assuming yarn_app_logs_splitter.py is in the following location
-    local _script_path="$(dirname $(dirname $BASH_SOURCE))/misc/yarn_app_logs_splitter.py"
+    local _script_path="$(dirname "$_SCRIPT_DIR")/misc/yarn_app_logs_splitter.py"
     if [ ! -s "$_script_path" ]; then
         echo "$_script_path does not exist. Downloading..."
         if [ ! -d "$(dirname $BASH_SOURCE)" ]; then
@@ -672,6 +672,7 @@ _HOSTNAME_REGEX='^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-
 _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
 _TEST_REGEX='^\[.+\]$'
 [ -z "$_DATE_FORMAT" ] && _DATE_FORMAT="\d\d\d\d-\d\d-\d\d"
+_SCRIPT_DIR="$(dirname $BASH_SOURCE)"
 
 ### Main ###############################################################################################################
 
