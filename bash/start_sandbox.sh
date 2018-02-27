@@ -97,6 +97,7 @@ function f_ambari_start_all() {
     local _times="${3-20}"
     local _interval="${4-6}"
 
+    # NOTE: --retry-connrefused is from curl v 7.52.0
     for i in `seq 1 $_times`; do
         curl -sL -u admin:admin "http://$_host:$_port/api/v1/clusters/${_cluster}?fields=Clusters/health_report" | grep -qE '"Host/host_state/HEALTHY" : [1-9]' && break
         echo "$_host:$_port is unreachable. Waiting ($i)..."
@@ -219,6 +220,12 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     if [ $? -ne 0 ]; then
         echo "WARN: ${_HOSTNAME} may not be resolvable.
 If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
+        sleep 7
+    fi
+
+    if [ ! -s /etc/docker/daemon.json ]; then
+        echo "WARN: /etc/docker/daemon.json is not configured
+If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
         sleep 7
     fi
 
@@ -475,20 +482,20 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
     # NOTE: docker exec add '$' and '\r'
     _NETWORK_ADDR=`ssh -q ${_HOSTNAME} hostname -i | sed 's/\(.\+\)\.[0-9]\+$/\1/'`
     if [ -n "$_NETWORK_ADDR" ]; then
-        echo "Removing ${_NETWORK_ADDR}.0/24 via 0.0.0.0 which prevents container access ${_NETWORK_ADDR}.1 ..."
-        docker exec -it ${_NAME} bash -c "ip route del ${_NETWORK_ADDR}.0/24 via 0.0.0.0"
+        echo "Removing ${_NETWORK_ADDR%.}.0/24 via 0.0.0.0 which prevents container access ${_NETWORK_ADDR%.}.1 ..."
+        docker exec -it ${_NAME} bash -c "ip route del ${_NETWORK_ADDR%.}.0/24 via 0.0.0.0"
+
+        if nc -z ${_NETWORK_ADDR%.}.1 28080; then
+            docker exec -it ${_NAME} bash -c "grep -q ^proxy /etc/yum.conf || echo \"proxy=http://${_NETWORK_ADDR%.}.1:28080\" >> /etc/yum.conf"
+        fi
     fi
 
-    #if [ -n "${_HOST_HDP_IP}" ]; then
-    #    which dnsmasq &>/dev/null && docker exec -it ${_NAME} bash -c "grep -q ${_HOST_HDP_IP} /etc/resolv.conf || echo \"nameserver ${_HOST_HDP_IP}\" > /etc/resolv.conf"
-    #fi
-
-    echo "With nohup, executing the start ALL services API to ${_HOSTNAME}:${_AMBARI_PORT}..."
-    sleep 5
-    # TODO: Because sandbox's HDFS is in Maintenance mode, the curl command below wouldn't work
-    #f_service "ZEPPELIN ATLAS KNOX FALCON OOZIE FLUME HBASE KAFKA SPARK SPARK2 STORM AMBARI_INFRA" "STOP" ${_HOSTNAME}
-    #f_service "ZOOKEEPER RANGER HDFS MAPREDUCE2 YARN HIVE" "START" ${_HOSTNAME}
-    # NOTE: --retry-connrefused is from curl v 7.52.0
+    if [ -e ./start_hdp.sh ]; then
+        echo "To stop/start particular services (otherwise will start all after 5 seconds):"
+        echo "./start_hdp.sh -f 'f_service \"ZEPPELIN SPARK SPARK2 STORM FALCON OOZIE FLUME ATLAS HBASE KAFKA\" \"STOP\" \"${_HOSTNAME}\"'"
+        echo "./start_hdp.sh -f 'f_service \"ZOOKEEPER AMBARI_INFRA RANGER HDFS MAPREDUCE2 YARN HIVE\" \"START\" \"${_HOSTNAME}\"'"
+        sleep 5
+    fi
     export -f f_ambari_start_all
     nohup bash -c "f_ambari_start_all ${_HOSTNAME} ${_AMBARI_PORT}" &
     echo ""
