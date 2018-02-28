@@ -14,7 +14,7 @@ usage() {
     echo "HELP/USAGE:"
     echo "This script contains useful functions to search log files.
 
-How to use: source and use some function
+How to use: source, then use some function
     source ${BASH_SOURCE}
     help f_someFunctionName
 
@@ -672,7 +672,7 @@ _HOSTNAME_REGEX='^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-
 _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
 _TEST_REGEX='^\[.+\]$'
 [ -z "$_DATE_FORMAT" ] && _DATE_FORMAT="\d\d\d\d-\d\d-\d\d"
-_SCRIPT_DIR="$(dirname $BASH_SOURCE)"
+_SCRIPT_DIR="$(dirname $(realpath "$BASH_SOURCE"))"
 
 ### Main ###############################################################################################################
 
