@@ -1353,7 +1353,7 @@ function _ambari_query_sql() {
     local _query="${1%\;}"
     local _ambari_host="${2-$r_AMBARI_HOST}"
 
-    ssh -q root@${_ambari_host} "PGPASSWORD=bigdata psql -Uambari -tAc \"${_query};\""
+    ssh -q root@${_ambari_host} "PGPASSWORD=bigdata psql -h ${_ambari_host} -Uambari -tAc \"${_query};\""
 }
 
 function f_get_cluster_name() {
@@ -2029,7 +2029,7 @@ function f_service() {
             # same action for same service is already running
             [ 0 -lt $_n ] && break;
 
-            curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
+            curl -s -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
             local _request_context=""
             curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_s' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_s'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
             echo ""
