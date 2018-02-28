@@ -355,8 +355,8 @@ function f_splitApplog() {
     local _script_path="$(dirname "$_SCRIPT_DIR")/misc/yarn_app_logs_splitter.py"
     if [ ! -s "$_script_path" ]; then
         echo "$_script_path does not exist. Downloading..."
-        if [ ! -d "$(dirname $BASH_SOURCE)" ]; then
-            mkdir -p "$(dirname $BASH_SOURCE)" || return $?
+        if [ ! -d "$(dirname "${_script_path}")" ]; then
+            mkdir -p "$(dirname "${_script_path}")" || return $?
         fi
         curl -so "${_script_path}" https://raw.githubusercontent.com/hajimeo/samples/master/misc/yarn_app_logs_splitter.py || return $?
     fi
