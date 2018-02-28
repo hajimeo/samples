@@ -364,8 +364,8 @@ function f_splitApplog() {
         echo "$_app_log is not readable"
         return 1
     fi
-    grep -Fv "***********************************************************************" $_app_log > /tmp/${_app_log}.tmp
-    python "$_script_path" --container-log-dir $_out_name --app-log /tmp/${_app_log}.tmp
+    #grep -Fv "***********************************************************************" $_app_log > /tmp/${_app_log}.tmp
+    python "$_script_path" --container-log-dir $_out_name --app-log "$_app_log"
 }
 
 function f_swimlane() {
