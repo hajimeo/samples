@@ -990,20 +990,21 @@ function f_docker_setup() {
         apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
     fi
 
-    local _storage_size="30G"
+    # commenting below as newer docker wouldn't need this and docker info sometimes takes time
+    #local _storage_size="30G"
     # This part is different by docker version, so changing only if it was 10GB or 1*.**GB
-    docker info | grep 'Base Device Size' | grep -oP '1\d\.\d\dGB' &>/dev/null
-    if [ $? -eq 0 ]; then
-        grep 'storage-opt dm.basesize=' /etc/init/docker.conf &>/dev/null
-        if [ $? -ne 0 ]; then
-            sed -i.bak -e 's/DOCKER_OPTS=$/DOCKER_OPTS=\"--storage-opt dm.basesize='${_storage_size}'\"/' /etc/init/docker.conf
-            _warn "Restarting docker (will stop all containers)..."
-            sleep 3
-            service docker restart
-        else
-            _warn "storage-opt dm.basesize=${_storage_size} is already set in /etc/init/docker.conf"
-        fi
-    fi
+    #docker info 2>/dev/null | grep 'Base Device Size' | grep -owP '1\d\.\d\dGB' &>/dev/null
+    #if [ $? -eq 0 ]; then
+    #    grep 'storage-opt dm.basesize=' /etc/init/docker.conf &>/dev/null
+    #    if [ $? -ne 0 ]; then
+    #        sed -i.bak -e 's/DOCKER_OPTS=$/DOCKER_OPTS=\"--storage-opt dm.basesize='${_storage_size}'\"/' /etc/init/docker.conf
+    #        _warn "Restarting docker (will stop all containers)..."
+    #        sleep 3
+    #        service docker restart
+    #    else
+    #        _warn "storage-opt dm.basesize=${_storage_size} is already set in /etc/init/docker.conf"
+    #    fi
+    #fi
 }
 
 function f_hdp_network_setup() {
@@ -2222,7 +2223,9 @@ function p_host_setup() {
 
     f_port_forward_ssh_on_nodes
     _log "INFO" "Completed. Grepping ERRORs and WARNs from /tmp/p_host_setup.log"
+    echo "//=========================================================================="
     grep -Ew '(ERROR|WARN)' /tmp/p_host_setup.log
+    echo "==========================================================================//"
 
     f_screen_cmd
 }
