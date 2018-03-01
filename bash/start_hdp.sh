@@ -298,7 +298,7 @@ function p_ambari_node_create() {
 
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix" || return $?
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix" || return $?
-    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from" || return $?
+    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
     f_get_ambari_repo_file "$_ambari_repo_file" || return $?
     f_ambari_server_install "${_ambari_host}"|| return $?
     f_ambari_server_setup "${_ambari_host}" || return $?
@@ -1423,6 +1423,11 @@ function f_ambari_server_install() {
     _info "Copying /tmp/ambari.repo_${__PID} to ${_ambari_host} ..."
     scp -q /tmp/ambari.repo_${__PID} root@${_ambari_host}:/etc/yum.repos.d/ambari.repo || return $?
 
+    if ssh -q root@${_ambari_host} "which ambari-server && ambari-server --version"; then
+        _warn "New ambari.repo file is coppied but ambari-server on ${_ambari_host} is already installed, so skipping..."
+        return 0
+    fi
+
     _info "Installing ambari-server on ${_ambari_host} ..."
     ssh -q root@${_ambari_host} "(set -x; yum clean all; yum install -y ambari-server && service postgresql initdb; service postgresql restart)"
 }
@@ -1501,7 +1506,8 @@ function f_ambari_server_start() {
     _port_wait "${_ambari_host}" "22"
     ssh -q root@${_ambari_host} "ambari-server start --skip-database-check" &> /tmp/f_ambari_server_start.out
     if [ $? -ne 0 ]; then
-        grep -iq 'Ambari Server is already running' /tmp/f_ambari_server_start.out && return
+        # if 'Server not yet listening...' should be OK.
+        grep -iqE 'Ambari Server is already running|Server not yet listening on http port 8080 after 50 seconds' /tmp/f_ambari_server_start.out && return
         sleep 5
         ssh -q root@${_ambari_host} "ambari-server start --skip-database-check"
     fi
