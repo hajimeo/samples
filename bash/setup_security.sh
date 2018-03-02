@@ -236,9 +236,11 @@ function f_ambari_kerberos_setup() {
     curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X PUT "${_api_uri}/credentials/kdc.admin.credential" -d '{ "Credential" : { "principal" : "admin/admin@'$_realm'", "key" : "'$_password'", "type" : "temporary" } }' &>/dev/null
 
     _info "Delete existing KERBEROS service (if exists)"
-    curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}' &>/dev/null
+    curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
+    # TODO: if above failed, should not execute blow two. If AD is used, may get The 'krb5-conf' configuration is not available error
     curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X DELETE "${_api_uri}/services/KERBEROS" &>/dev/null
     curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X DELETE "${_api_uri}/artifacts/kerberos_descriptor" &>/dev/null
+    # NOTE: for Web UI, ambari-server restart might be needed
     sleep 3
 
     _info "register Kerberos service and component"
@@ -676,6 +678,8 @@ function f_ldap_ambari() {
     _info "Once Ambari Server is ready, run the following command"
     f_echo_start_demoldap "${_ldap_host}" "${_ambari_host}"
     echo "ssh -q root@${_ambari_host} -t 'ambari-server sync-ldap --ldap-sync-admin-name=admin --ldap-sync-admin-password=admin --all'"
+    # NOTE: --verbose outputs below
+    # Calling API http://127.0.0.1:8080/api/v1/ldap_sync_events : [{'Event': {'specs': [{'principal_type': 'users', 'sync_type': 'all'}, {'principal_type': 'groups', 'sync_type': 'all'}]}}]
 }
 
 function f_ldap_server_install_on_host() {
