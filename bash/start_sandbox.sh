@@ -466,15 +466,14 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
         docker exec -it ${_NAME} bash -c 'mv /etc/yum.repos.d/sandbox.repo /root/' &>/dev/null
         docker exec -dt ${_NAME} yum -q -y install yum-utils sudo which vim net-tools strace lsof tcpdump openldap-clients nc sharutils
 
-        echo "INFO: New container only Ambari config changes..."
+        echo "INFO: New container only Ambari config changes, public_hostname_script, admin password, java.home urandom..."
         # (optional) Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
         docker exec -it ${_NAME} bash -c 'grep -q "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
         docker exec -it ${_NAME} bash -c "ambari-agent reset ${_HOSTNAME}"
-
-        echo "INFO: Resetting Ambari password (to 'admin') and hostname to ${_HOSTNAME}..."
         #docker exec -it ${_NAME} /usr/sbin/ambari-admin-password-reset
         docker exec -it ${_NAME} bash -c "(set -x;[ -S /tmp/.s.PGSQL.5432 ] || (sleep 5;service postgresql restart;sleep 5); PGPASSWORD=bigdata psql -h ${_HOSTNAME} -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00', active=1 WHERE user_name='admin' and user_type='LOCAL';UPDATE hosts set host_name='${_HOSTNAME}', public_host_name='${_HOSTNAME}' where host_id=1;\")"
         #docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -h ${_HOSTNAME}  -Uambari -tAc \"UPDATE metainfo SET metainfo_value = '${_AMBARI_VERSION}' where metainfo_key = 'version';\""
+        docker exec -it ${_NAME} bash -c '_javahome="`grep java.home /etc/ambari-server/conf/ambari.properties | cut -d "=" -f2`" && grep -q "^securerandom.source=file:/dev/random" ${_javahome%/}/jre/lib/security/java.security && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" ${_javahome%/}/jre/lib/security/java.security'
     fi
 
     echo "INFO: Starting Ambari Server & Agent, and Knox Demo LDAP ..."
