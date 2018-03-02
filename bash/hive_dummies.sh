@@ -216,6 +216,7 @@ FROM
 
     if which sqoop &>/dev/null; then
         _log "INFO" "Check (PostgreSQL) JDBC driver. If postgresql-9*jdbc4.jar exists, start Sqoop Import job..."
+        # cp `ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1` /usr/hdp/current/sqoop-client/lib/
         if ls -l /usr/hdp/current/sqoop-client/lib/postgresql-9*jdbc4.jar; then
             _ambari="`sed -nr 's/^hostname ?= ?([^ ]+)/\1/p' /etc/ambari-agent/conf/ambari-agent.ini`"
             _log "INFO" "Importing ambari.alert_history on $_ambari into hive ..."
