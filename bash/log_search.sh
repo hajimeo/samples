@@ -529,7 +529,7 @@ function _search_properties() {
     done
 }
 
-function f_load_ambaridb() {
+function f_load_ambaridb_to_postgres() {
     local __doc__="Load ambari DB sql file into Mac's (locals) PostgreSQL DB"
     local _sql_file="$1"
     local _missing_tables_sql="$2"
@@ -542,10 +542,10 @@ function f_load_ambaridb() {
     if ! sudo -u ${_sudo_user} -i psql -l; then
         echo "Connecting to local postgresql failed. Is PostgreSQL running?"
         echo "pg_ctl -D /usr/local/var/postgres -l ~/postgresql.log start"
-        echo "sudo -iu ${_sudo_user} psql template1 -c 'DROP DATABASE ambari;'"
         return 1
     fi
 
+    #echo "sudo -iu ${_sudo_user} psql template1 -c 'DROP DATABASE ambari;'"
     sudo -iu ${_sudo_user} psql template1 -c 'ALTER DATABASE ambari RENAME TO ambari_'$(date +"%Y%m%d%H%M%S")';'
     sudo -iu ${_sudo_user} psql template1 -c 'CREATE DATABASE ambari;'
     sudo -iu ${_sudo_user} psql template1 -c "CREATE USER ambari WITH LOGIN PASSWORD '${_ambari_pwd}';"
@@ -553,11 +553,16 @@ function f_load_ambaridb() {
 
     export PGPASSWORD="${_ambari_pwd}"
     psql -Uambari -h `hostname -f` ambari -c 'CREATE SCHEMA ambari;ALTER SCHEMA ambari OWNER TO ambari;'
+
+    # TODO: may need to replace the schema if not 'ambari'
+    #gsed -i'.bak' -r 's/\b(custom_schema|custom_owner)\b/ambari/g' ambari.sql
+
     # It's OK to see relation error for index (TODO: upgrade table may fail)
     [ -s "$_missing_tables_sql" ] && psql -Uambari -h `hostname -f` ambari < ${_missing_tables_sql}
     psql -Uambari -h `hostname -f` ambari < ${_sql_file}
     [ -s "$_missing_tables_sql" ] && psql -Uambari -h `hostname -f` ambari < ${_missing_tables_sql}
     psql -Uambari -h `hostname -f` -c "UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL';"
+
     psql -Uambari -h `hostname -f` -c "select * from metainfo where metainfo_key = 'version';"
     psql -Uambari -h `hostname -f` -c "select repo_version_id, stack_id, display_name, repo_type, substring(repositories, 1, 500) from repo_version order by repo_version_id desc limit 5;"
     psql -Uambari -h `hostname -f` -c "SELECT * FROM clusters WHERE security_type = 'KERBEROS';"
@@ -565,6 +570,49 @@ function f_load_ambaridb() {
     #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/services/KERBEROS"
     #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/artifacts/kerberos_descriptor"
     unset PGPASSWORD
+}
+
+function f_load_ambaridb_to_mysql() {
+    local __doc__="Load ambari DB sql file into Mac's (locals) MySQL DB"
+    local _sql_file="$1"
+    local _missing_tables_sql="$2"
+    local _sudo_user="${3-$USER}"
+    local _ambari_pwd="${4-bigdata}"
+
+    # If a few tables are missing, need missing tables' schema
+    # pg_dump -Uambari -h `hostname -f` ambari -s -t alert_history -t host_role_command -t execution_command -t request > ambari_missing_table_ddl.sql
+
+    if ! mysql -u root -e 'show databases'; then
+        echo "Connecting to local MySQL failed. Is MySQL running?"
+        echo "brew services start mysql"
+        return 1
+    fi
+
+    mysql -u root -e "CREATE USER 'ambari'@'%' IDENTIFIED BY '${_ambari_pwd}';
+GRANT ALL PRIVILEGES ON *.* TO 'ambari'@'%';
+CREATE USER 'ambari'@'localhost' IDENTIFIED BY '${_ambari_pwd}';
+GRANT ALL PRIVILEGES ON *.* TO 'ambari'@'localhost';
+CREATE USER 'ambari'@'`hostname -f`' IDENTIFIED BY '${_ambari_pwd}';
+GRANT ALL PRIVILEGES ON *.* TO 'ambari'@'`hostname -f`';
+FLUSH PRIVILEGES;"
+
+    if ! mysql -uambari -p${_ambari_pwd} -h `hostname -f` -e 'create database ambari'; then
+        echo "Please drop the database first as renaming DB on MySQL is hard"
+        echo "mysql -uambari -p${_ambari_pwd} -h `hostname -f` -e 'DROP DATABASE ambari;'"
+        return
+    fi
+
+    mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari < "${_sql_file}"
+
+    # TODO: _missing_tables_sql
+    mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari -e "UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL';"
+
+    mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari -e "select * from metainfo where metainfo_key = 'version'\G"
+    mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari -e "select repo_version_id, stack_id, display_name, repo_type, substring(repositories, 1, 500) from repo_version order by repo_version_id desc limit 5\G"
+    mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari -e "SELECT * FROM clusters WHERE security_type = 'KERBEROS'\G"
+    echo "mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari -e \"UPDATE clusters SET security_type = 'NONE' WHERE provisioning_state = 'INSTALLED';\""
+    #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/services/KERBEROS"
+    #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/artifacts/kerberos_descriptor"
 }
 
 ### Private functions ##################################################################################################
