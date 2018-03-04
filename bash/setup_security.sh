@@ -631,12 +631,25 @@ function f_ldap_hadoop_groupmapping() {
     local _ambari_host="${1-$r_AMBARI_HOST}"
     local _ldap_url="$2"
     [ -z "${_ambari_host}" ] && return 1
-
-    local _basedn="dc=hadoop,dc=apache,dc=org"
     [ -z "${_ldap_url}" ] && _ldap_url="ldap://${_ambari_host}:33389/"
 
-    # TODO: populate 'properties_attributes' like below:
-    # "properties_attributes":{"final":{"fs.defaultFS":"true"},"password":{"hadoop.security.group.mapping.provider.ldap4users.ldap.bind.password":"true"},"user":{},"group":{},"text":{},"additional_user_property":{},"not_managed_hdfs_path":{},"value_from_property_file":{}}
+    local _basedn="dc=hadoop,dc=apache,dc=org"
+    local _bind_user="uid=admin,ou=people,${_basedn}"
+    local _bind_pass="admin-password"
+    local _base=""  # NOTE/TODO: somehow base need to be empty and need to use basedn in ldap URL
+    local _filter_user="(&(objectclass=person)(uid={0}))"
+    local _filter_group="(objectclass=groupofnames)"
+    local _attr_member="member"
+    local _attr_group_name="cn"
+
+    local _test_user="admin"
+    local _filter_user_test="`echo ${_filter_user} | sed 's/{0}/'${_test_user}'/'`"
+
+    if which ldapsearch &>/dev/null; then
+        LDAPTLS_REQCERT=never ldapsearch -x -H ${_ldap_url} -D "${_bind_user}" -w "${_bind_pass}" -b "${_basedn}" "${_filter_user_test}" || return $?
+        LDAPTLS_REQCERT=never ldapsearch -x -H ${_ldap_url} -D "${_bind_user}" -w "${_bind_pass}" -b "${_basedn}" "${_filter_group}" ${_attr_member} ${_attr_group_name} || return $?
+    fi
+
     # TODO: encrypt password (on both NamdeNode and ... all nodes which use ranger plugin?)
     # hadoop credential create hadoop.security.group.mapping.ldap.bind.password -value admin-password -provider jceks://file/etc/hadoop/hadoop/conf/core-site.jceks; chmod a+r /etc/hadoop/hadoop/conf/core-site.jceks
     #    "hadoop.security.credential.provider.path":"/etc/hadoop/hadoop/conf/core-site.jceks",
@@ -646,15 +659,18 @@ function f_ldap_hadoop_groupmapping() {
         "hadoop.security.group.mapping.provider.shell4services":"org.apache.hadoop.security.ShellBasedUnixGroupsMapping",
         "hadoop.security.group.mapping.provider.ldap4users":"org.apache.hadoop.security.LdapGroupsMapping",
         "hadoop.security.group.mapping.provider.ldap4users.ldap.url":"'${_ldap_url%/}'/'${_basedn}'",
-        "hadoop.security.group.mapping.provider.ldap4users.ldap.bind.user":"uid=admin,ou=people,'${_basedn}'",
-        "hadoop.security.group.mapping.provider.ldap4users.ldap.bind.password":"admin-password",
-        "hadoop.security.group.mapping.provider.ldap4users.ldap.base":"",
-        "hadoop.security.group.mapping.provider.ldap4users.ldap.search.filter.user":"(uid={0})",
-        "hadoop.security.group.mapping.provider.ldap4users.ldap.search.filter.group":"(objectclass=groupOfNames)",
-        "hadoop.security.group.mapping.provider.ldap4users.ldap.search.attr.member":"member",
-        "hadoop.security.group.mapping.provider.ldap4users.ldap.search.attr.group.name":"cn"
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.bind.user":"'${_bind_user}'",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.base":"'${_base}'",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.search.filter.user":"'${_filter_user}'",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.search.filter.group":"'${_filter_group}'",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.search.attr.member":"'${_attr_member}'",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.search.attr.group.name":"'${_attr_group_name}'"
     }'
-    f_ambari_configs "core-site" "${core_site}" "$_ambari_host" || return $?
+
+    f_ambari_configs "core-site" "${core_site}" "${_ambari_host}" || return $?
+    # NOTE: 'properties_attributes' is like below:
+    # "properties_attributes":{"final":{"fs.defaultFS":"true"},"password":{"hadoop.security.group.mapping.provider.ldap4users.ldap.bind.password":"true"},"user":{},"group":{},"text":{},"additional_user_property":{},"not_managed_hdfs_path":{},"value_from_property_file":{}}
+    f_ambari_configs_py_password "core-site" "hadoop.security.group.mapping.provider.ldap4users.ldap.bind.password" "${_bind_pass}" "${_ambari_host}"
 
     _info "Run the below command to restart *ALL* required components:"
     f_echo_restart_command "$_ambari_host"
@@ -1051,6 +1067,24 @@ function _ssl_openssl_cnf_generate() {
     echo subjectAltName = DNS:${_domain_suffix#.},DNS:*${_domain_suffix} >> "${_work_dir%/}/openssl.cnf"
 }
 
+function f_ambari_configs_py_password() {
+    local __doc__="Wrapper function of configs.py for updating one PASSWORD type property"
+    local _type="$1"
+    local _key="$2"
+    local _value="$3"
+    local _ambari_host="${4-$r_AMBARI_HOST}"
+    local _ambari_port="${5-8080}"
+    local _c="${6}"
+    [ -z "$_c" ] && _c="`f_get_cluster_name $_ambari_host`" || return $?
+
+    if [ ! -s ./configs.py ]; then
+        curl -s -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/configs.py || return $?
+    fi
+
+    python ./configs.py -u "${g_admin}" -p "${g_admin_pwd}" -l ${_ambari_host} -t ${_ambari_port} -a set -n ${_c} -c ${_type} -k "${_key}" -v "${_value}" -z "PASSWORD" || return $?
+    rm -f ./doSet_version*.json
+}
+
 function f_ambari_configs() {
     local __doc__="Wrapper function to update *multiple* configs with configs.py"
     local _type="$1"
@@ -1061,14 +1095,14 @@ function f_ambari_configs() {
     [ -z "$_c" ] && _c="`f_get_cluster_name $_ambari_host`" || return $?
 
     if [ ! -s ./configs.py ]; then
-        curl -s -O https://raw.githubusercontent.com/apache/ambari/trunk/ambari-server/src/main/resources/scripts/configs.py || return $?
+        curl -s -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/configs.py || return $?
     fi
     if [ ! -s ./configs.py ]; then
         _error "No ./configs.py"
         return 1
     fi
 
-    python ./configs.py -u "${g_admin}" -p "${g_admin_pwd}" -l $_ambari_host -t ${_ambari_port} -a get -n $_c -c $_type -f /tmp/${_type}_${__PID}.json || return $?
+    python ./configs.py -u "${g_admin}" -p "${g_admin_pwd}" -l ${_ambari_host} -t ${_ambari_port} -a get -n ${_c} -c ${_type} -f /tmp/${_type}_${__PID}.json || return $?
 
     if [ -z "${_dict}" ]; then
         _info "No _dict given, so that exiting in here (just download)"
