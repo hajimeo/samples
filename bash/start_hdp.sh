@@ -1181,7 +1181,7 @@ function f_docker_start() {
 
         # Somehow docker disable a container communicates outside by adding 0.0.0.0 GW, which will be problem when we need to test distcp
 	    if [ "$_docker_net_addr" != "${r_DOCKER_NETWORK_ADDR%0}0" ]; then
-    	    docker exec -it ${_node}$_n bash -c "ip route del ${_docker_net_addr}/16 via 0.0.0.0"
+    	    docker exec -it ${_node}$_n bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 || ip route del ${_docker_net_addr}/16 via 0.0.0.0"
     	    #[ ! -z "$r_DOCKER_NETWORK_ADDR" ] && docker exec -it ${_node}$_n bash -c "ip route add ${r_DOCKER_NETWORK_ADDR%0}0/${r_DOCKER_NETWORK_MASK#/} via 0.0.0.0"
         fi
     done
@@ -2121,7 +2121,7 @@ function f_ttyd() {
     fi
     apt-get install -y ttyd
 
-    _info "To start ttyd: 'su -u $_user -i ttyd -p 7681 bash &'"
+    _info "To start ttyd: 'sudo -u $_user -i ttyd -p 7681 bash &'"
 }
 
 function f_vmware_tools_install() {
@@ -2279,7 +2279,7 @@ function f_dnsmasq_banner_reset() {
 
     rm -rf /tmp/banner_add_hosts
 
-        scp -q $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts
+    scp -q $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts
     if [ ! -s /tmp/banner_add_hosts ]; then
         echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" > /tmp/banner_add_hosts
     else
@@ -2296,7 +2296,6 @@ function f_dnsmasq_banner_reset() {
     done
 
     scp -q /tmp/banner_add_hosts $_dns:/etc/
-
     ssh -q $_dns service dnsmasq restart
 }
 
