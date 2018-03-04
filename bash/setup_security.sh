@@ -406,7 +406,6 @@ function _hadoop_ssl_config_update() {
     mapreduce.shuffle.ssl.enabled=true (mapreduce.shuffle.port)
     tez.runtime.shuffle.ssl.enable=true"
 
-    _info "Run the below command to restart *ALL* required components:"
     f_echo_restart_command "$_ambari_host" "$_ambari_port"
 }
 
@@ -526,8 +525,6 @@ function f_hadoop_spnego_setup() {
 
     f_ambari_configs "core-site" "{\"hadoop.http.authentication.simple.anonymous.allowed\":\"false\",\"hadoop.http.authentication.signature.secret.file\":\"/etc/security/http_secret\",\"hadoop.http.authentication.type\":\"kerberos\",\"hadoop.http.authentication.kerberos.keytab\":\"/etc/security/keytabs/spnego.service.keytab\",\"hadoop.http.authentication.kerberos.principal\":\"HTTP/_HOST@${_realm}\",\"hadoop.http.filter.initializers\":\"org.apache.hadoop.security.AuthenticationFilterInitializer\",\"hadoop.http.authentication.cookie.domain\":\"${_domain}\"}" "$_ambari_host"
 
-    # If Ambari is 2.4.x or higher below works
-    _info "Run the below command to restart *ALL* required components:"
     f_echo_restart_command "$_ambari_host" "$_ambari_port"
 }
 
@@ -595,7 +592,6 @@ function f_ldap_ranger() {
     f_ambari_configs "ranger-ugsync-site" "${ranger_ugsync_site}" "$_ambari_host"
 
     _info 'ranger.truststore.alia, ranger.truststore.file, ranger.usersync.truststore.file, xasecure.policymgr.clientssl.truststore, xasecure.policymgr.clientssl.truststore may need to be changed'
-    _info "Run the below command to restart *ALL* required components:"
     f_echo_restart_command "$_ambari_host"
 }
 
@@ -672,7 +668,6 @@ function f_ldap_hadoop_groupmapping() {
     # "properties_attributes":{"final":{"fs.defaultFS":"true"},"password":{"hadoop.security.group.mapping.provider.ldap4users.ldap.bind.password":"true"},"user":{},"group":{},"text":{},"additional_user_property":{},"not_managed_hdfs_path":{},"value_from_property_file":{}}
     f_ambari_configs_py_password "core-site" "hadoop.security.group.mapping.provider.ldap4users.ldap.bind.password" "${_bind_pass}" "${_ambari_host}" || return $?
 
-    _info "Run the below command to restart *ALL* required components:"
     f_echo_restart_command "$_ambari_host"
     #echo "sudo -u hdfs -i hdfs dfsadmin -refreshUserToGroupsMappings"
     #echo "sudo -u yarn -i yarn rmadmin -refreshUserToGroupsMappings"
@@ -1157,6 +1152,8 @@ function f_echo_restart_command() {
     local _ambari_port="${2-8080}"
     local _c="`f_get_cluster_name $_ambari_host`" || return $?
 
+    # If Ambari is 2.4.x or higher below works
+    _info "Run the below command to restart *ALL* required components (AMBARI-18450 doesn't work as expected)"
     echo "curl -si -u ${g_admin}:${g_admin_pwd} -H 'X-Requested-By:ambari' 'http://${_ambari_host}:${_ambari_port}/api/v1/clusters/${_c}/requests' -X POST --data '{\"RequestInfo\":{\"command\":\"RESTART\",\"context\":\"Restart all required services\",\"operation_level\":\"host_component\"},\"Requests/resource_filters\":[{\"hosts_predicate\":\"HostRoles/stale_configs=true\"}]}'"
 }
 
