@@ -670,7 +670,7 @@ function f_ldap_hadoop_groupmapping() {
     f_ambari_configs "core-site" "${core_site}" "${_ambari_host}" || return $?
     # NOTE: 'properties_attributes' is like below:
     # "properties_attributes":{"final":{"fs.defaultFS":"true"},"password":{"hadoop.security.group.mapping.provider.ldap4users.ldap.bind.password":"true"},"user":{},"group":{},"text":{},"additional_user_property":{},"not_managed_hdfs_path":{},"value_from_property_file":{}}
-    f_ambari_configs_py_password "core-site" "hadoop.security.group.mapping.provider.ldap4users.ldap.bind.password" "${_bind_pass}" "${_ambari_host}"
+    f_ambari_configs_py_password "core-site" "hadoop.security.group.mapping.provider.ldap4users.ldap.bind.password" "${_bind_pass}" "${_ambari_host}" || return $?
 
     _info "Run the below command to restart *ALL* required components:"
     f_echo_restart_command "$_ambari_host"
