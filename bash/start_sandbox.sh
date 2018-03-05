@@ -285,6 +285,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
             -p 18993:8993 \
             -p 19000:9000 \
             -p 19090:9090 \
+            -p 19088:9088 \
             -p 19091:9091 \
             -p 5005:5005 \
             -p 43111:42111 \
@@ -358,6 +359,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
             -p 8983:8983 \
             -p 8993:8993 \
             -p 9000:9000 \
+            -p 9088:9088 \
             -p 9090:9090 \
             -p 9995:9995 \
             -p 9996:9996 \
