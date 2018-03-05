@@ -297,11 +297,17 @@ function p_ambari_node_create() {
     local _how_many="1"
 
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix" || return $?
+    f_docker_start "$_how_many" "$_start_from"
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix" || return $?
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
     f_get_ambari_repo_file "$_ambari_repo_file" || return $?
     f_ambari_server_install "${_ambari_host}"|| return $?
-    f_ambari_server_setup "${_ambari_host}" || return $?
+
+    local _jdk="`ls -1t ./jdk-*-linux-x64*gz 2>/dev/null | head -n1`"
+    local _jce="`ls -1t ./jce_policy-*.zip 2>/dev/null | head -n1`"
+    [ -n "$r_AMBARI_JDK_URL" ] && _jdk="$r_AMBARI_JDK_URL"
+    [ -n "$r_AMBARI_JCE_URL" ] && _jce="$r_AMBARI_JCE_URL"
+    f_ambari_server_setup "${_ambari_host}" "${_jdk}" "$_jce" || return $?
     f_ambari_server_start "${_ambari_host}" || return $?
     #f_cluster_performance "${_ambari_host}" || return $?
 }
@@ -316,6 +322,7 @@ function p_nodes_create() {
     local _ambari_host="${5-$r_AMBARI_HOST}"
 
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix"
+    f_docker_start "$_how_many" "$_start_from"
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
     if [ -z "${_ambari_host}" ]; then
@@ -1120,11 +1127,17 @@ function f_docker_base_create() {
 }
 
 function f_docker_start() {
-    local __doc__="Starting some docker containers"
+    local __doc__="Starting some docker containers with a few customization"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _os_ver="${3-$r_CONTAINER_OS_VER}"
+    local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
+
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
-    local _centos_os_ver="${r_CONTAINER_OS_VER%%.*}"
+    local _centos_os_ver="${_os_ver%%.*}"
+    local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
+    local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
+    [ $_dns = "localhost" ] && _dns="`f_docker_ip`"
 
     # To use tcpdump from container
     if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
@@ -1154,30 +1167,34 @@ function f_docker_start() {
         docker start --attach=false ${_node}$_n &
         sleep 1
 
-        # docker exec adds "\r" which causes bash syntax error TODO: should be removed later
-	    local _dupe="`docker exec -it ${_node}$_n grep -E "^[0-9\.]+\s+${_node}$_n${r_DOMAIN_SUFFIX}" /etc/hosts | grep -v "^${r_DOCKER_NETWORK_ADDR%\.}.$_n"`"
-	    if [ ! -z "$_dupe" ]; then
-            wget -O /dev/null -o /dev/null http://172.26.108.37:8181/duplicate &
-	        _warn "TODO: Detected duplicate ${_node}$_n${r_DOMAIN_SUFFIX} in /etc/hosts. Trying to fix by restarting container..."
-	        docker restart ${_node}$_n
+        if [ -n "$_ip_prefix" ]; then
+            # docker exec adds "\r" which causes bash syntax error TODO: should be removed later
+            local _dupe="`docker exec -it ${_node}$_n grep -E "^[0-9\.]+\s+${_node}$_n${_domain_suffix}" /etc/hosts | grep -v "^${_ip_prefix%\.}.$_n"`"
+            if [ ! -z "$_dupe" ]; then
+                wget -O /dev/null -o /dev/null http://172.26.108.37:8181/duplicate &
+                _warn "TODO: Detected duplicate ${_node}$_n${_domain_suffix} in /etc/hosts. Trying to fix by restarting container..."
+                docker restart ${_node}$_n
 
-            #centos  7 is not using /startup.sh
-            if [ $_centos_os_ver -eq 6 ]; then
-	        # need to start necessary services in here but how to start service is different by container, so expecting /startup.sh absorb this
-	            docker exec ${_node}$_n timeout 5 /startup.sh
-            fi 
-	    fi
+                #if restarted, calling ./startup.sh (and centos 7 is not using /startup.sh)
+                if [ $_centos_os_ver -eq 6 ]; then
+                # need to start necessary services in here but how to start service is different by container, so expecting /startup.sh absorb this
+                    docker exec ${_node}$_n timeout 5 /startup.sh
+                fi
+            fi
+        fi
 
         # Don't touch iptables in old /startup.sh TODO: remove this later as newer container doesnt' have this
 	    docker exec -it ${_node}$_n bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh &>/dev/null && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
 
-
-        # if DNS is not 'localhost', update /etc/resolve.conf. expecting r_DNS_SERVER is IP Address. Note: can't use sed
-        if [ ! -z "$r_DNS_SERVER" ] && [ "$r_DNS_SERVER" != "localhost" ] && [ "$r_DNS_SERVER" != "127.0.0.1" ] && [ "$r_DNS_SERVER" != "127.0.0.11" ]; then
-            docker exec -it ${_node}$_n bash -c '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${r_DNS_SERVER}'\b" $_f || (grep -v "^nameserver" $_f > ${_f}.tmp && cat ${_f}.tmp > ${_f} && echo "nameserver '${r_DNS_SERVER}'" >> $_f)'
+        # if DNS is not 'localhost', update /etc/resolve.conf. expecting _dns is IP Address. Note: can't use sed
+        if [ ! -z "${_dns}" ] && [ "${_dns}" != "localhost" ] && [ "${_dns}" != "127.0.0.1" ] && [ "${_dns}" != "127.0.0.11" ]; then
+            docker exec -it ${_node}$_n bash -c '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${_dns}'\b" $_f || (grep -v "^nameserver" $_f > ${_f}.tmp && cat ${_f}.tmp > ${_f} && echo "nameserver '${_dns}'" >> $_f)'
         fi
-	    # Adding docker host IP (eg. 172.17.0.1) with specified hostname TODO: remote this later as now it should use dnsmasq
-	    docker exec -it ${_node}$_n bash -c "grep -q \"${r_DOCKER_PRIVATE_HOSTNAME}\" /etc/hosts || echo \"${r_DOCKER_HOST_IP} ${r_DOCKER_PRIVATE_HOSTNAME}\" >> /etc/hosts"
+
+        if [ -n "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
+            # Adding docker host IP (eg. 172.17.0.1) with specified hostname TODO: remote this later as now it should use dnsmasq
+            docker exec -it ${_node}$_n bash -c "grep -q \"${r_DOCKER_PRIVATE_HOSTNAME}\" /etc/hosts || echo \"${r_DOCKER_HOST_IP} ${r_DOCKER_PRIVATE_HOSTNAME}\" >> /etc/hosts"
+        fi
 
         # Somehow docker disable a container communicates outside by adding 0.0.0.0 GW, which will be problem when we need to test distcp
 	    if [ "$_docker_net_addr" != "${r_DOCKER_NETWORK_ADDR%0}0" ]; then
@@ -1489,7 +1506,11 @@ function f_ambari_server_setup() {
     scp -q /tmp/ambari.repo_${__PID} root@${_ambari_host}:/etc/yum.repos.d/ambari.repo || return $?
 
     _info "Setting up ambari-server on ${_ambari_host} ..."
-    ssh -q root@${_ambari_host} "ambari-server setup -s --verbose || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
+    ssh -q root@${_ambari_host} "ambari-server setup -s --verbose || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )" || return $?
+
+    # Optional: ambari server related setting (TODO: will this work with CentOS7?)
+    ssh -q root@${_ambari_host} "sed -i -r \"s/^#?log_line_prefix = ''/log_line_prefix = '%m '/\" /var/lib/pgsql/data/postgresql.conf"
+    ssh -q root@${_ambari_host} "sed -i -r \"s/^#?log_statement = 'none'/log_statement = 'mod'/\" /var/lib/pgsql/data/postgresql.conf"
 }
 
 function f_ambari_server_reset() {
