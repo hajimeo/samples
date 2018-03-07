@@ -95,7 +95,7 @@ function f_ambari_wait() {
     local _port="${2-8080}"
     local _cluster="${3-Sandbox}"
     local _times="${3-20}"
-    local _interval="${4-6}"
+    local _interval="${4-10}"
 
     # NOTE: --retry-connrefused is from curl v 7.52.0
     for i in `seq 1 $_times`; do
