@@ -49,7 +49,6 @@ g_SERVER_KEY_LOCATION="/etc/security/serverKeys/"
 g_CLIENT_KEY_LOCATION="/etc/security/clientKeys/"
 g_CLIENT_TRUST_LOCATION="/etc/security/clientKeys/"
 g_KEYSTORE_FILE="server.keystore.jks"
-g_KEYSTORE_FILE_P12="server.keystore.p12"
 g_TRUSTSTORE_FILE="server.truststore.jks"
 g_CLIENT_KEYSTORE_FILE="client.keystore.jks"
 g_CLIENT_TRUSTSTORE_FILE="all.jks"
@@ -556,31 +555,50 @@ function f_ssl_ambari_2way() {
 
     # 1. cp (root) CA key and generate keystore.p12
     if [ ! -r ./rootCA.key ]; then
-        echo "ERROR: ./rootCA.key is not readable. Did you run f_ssl_hadoop?"
-        return 1
+        echo "WARN: ./rootCA.key is not readable. Did you run f_ssl_hadoop?"
+        echo "WARN: After 10 seconds, it will use ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}"
+        sleep 10
+
+        # This ca.crt doesn't work to generate new agent cert but agent download this crt
+        scp ./rootCA.pem root@${_ambari_host}:${_keys_dir%/}/ca.crt || return $?
+        # 1.1. If server.keystore.p12 doesn't exist, convert .jks to .p12
+        ssh -q root@${_ambari_host} "[ -f ${_keys_dir%/}/keystore.p12 ] || keytool -importkeystore -srckeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -srcstorepass $_password -destkeystore ${_keys_dir%/}/keystore.p12 -deststoretype pkcs12 -deststorepass $_password" || return $?
+        # 1.2. Export .key from .p12 , and this ca.key doesn't work
+        ssh -q root@${_ambari_host} "openssl pkcs12 -in ${_keys_dir%/}/keystore.p12 -nocerts -out ${_keys_dir%/}/${_ambari_host}.key -passin pass:$_password -passout pass:$_password && cp ${_keys_dir%/}/${_ambari_host}.key ${_keys_dir%/}/ca.key" || return $?
+        # 1.3. Export .crt from .p12
+        ssh -q root@${_ambari_host} "openssl pkcs12 -in ${_keys_dir%/}/keystore.p12 -clcerts -nokeys -out ${_keys_dir%/}/${_ambari_host}.crt -passin pass:$_password" || return $?
+        # 1.4. Add rootCA.pem into keystore.p12
+        # NOTE: if Intermediate, merge the root CA and intermediate CA to one file (cat rootCA.crt interCA.crt > ca.crt)
+        # NOTE: ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} should have rootCA already
+    else
+        # 1.1. copy local root ca key file to remote ambari-server node as ca.key
+        scp ./rootCA.key root@${_ambari_host}:${_keys_dir%/}/ca.key || return $?
+        # 1.2. generate ca.csr
+        ssh -q root@${_ambari_host} "openssl req -passin pass:${_password} -new -key ${_keys_dir%/}/ca.key -out ${_keys_dir%/}/ca.csr -batch" || return $?
+        # 1.3. generate ca.crt
+        ssh -q root@${_ambari_host} "openssl ca -out ${_keys_dir%/}/ca.crt -days 1095 -keyfile ${_keys_dir%/}/ca.key -key ${_password} -selfsign -extensions jdk7_ca -config ${_keys_dir%/}/ca.config -subj '/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.${_ambari_host}' -batch -infiles ${_keys_dir%/}/ca.csr" || return $?
+        # 1.4. generate keystore.p12 which ambari uses as keystore and truststore if not specified
+        ssh -q root@${_ambari_host} "openssl pkcs12 -export -in ${_keys_dir%/}/ca.crt -inkey ${_keys_dir%/}/ca.key -certfile ${_keys_dir%/}/ca.crt -out ${_keys_dir%/}/keystore.p12 -password pass:${_password} -passin pass:${_password}" || return $?
     fi
-    scp ./rootCA.key root@${_ambari_host}:${_keys_dir%/}/ca.key || return $?
-    ssh -q root@${_ambari_host} "openssl req -passin pass:${_password} -new -key ${_keys_dir%/}/ca.key -out ${_keys_dir%/}/ca.csr -batch" || return $?
-    ssh -q root@${_ambari_host} "openssl ca -out ${_keys_dir%/}/ca.crt -days 1095 -keyfile ${_keys_dir%/}/ca.key -key ${_password} -selfsign -extensions jdk7_ca -config ${_keys_dir%/}/ca.config -subj '/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.${_ambari_host}' -batch -infiles ${_keys_dir%/}/ca.csr" || return $?
-    # Merge the root CA and Intermediate CA to one file
-    ssh -q root@${_ambari_host} "openssl pkcs12 -export -in ${_keys_dir%/}/ca.crt -inkey ${_keys_dir%/}/ca.key -certfile ${_keys_dir%/}/ca.crt -out ${_keys_dir%/}/keystore.p12 -password pass:${_password} -passin pass:${_password}" || return $?
+    # 1.5 Set correct permission
+    ssh -q root@${_ambari_host} "chmod 600 ${_keys_dir%/}/*.{key,p12}"
 
-    # 3. CREATE ambari-server key and cert
-    #ssh -q root@${_ambari_host} "[ ! -f ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} ] && keytool -importkeystore -srckeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -srcstorepass $_password -destkeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -deststoretype pkcs12 -deststorepass $_password && chmod 600 ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12}" || return $?
-    #ssh -q root@${_ambari_host} "openssl pkcs12 -in ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -nocerts -out ${_keys_dir%/}/${_ambari_host}.key" || return $?
-    #ssh -q root@${_ambari_host} "openssl pkcs12 -in ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -clcerts -nokeys -out ${_keys_dir%/}/${_ambari_host}.crt" || return $?
-
+    # 2. Update ambari.properties and restart
     ssh -q root@${_ambari_host} "grep '^security.server.two_way_ssl=true' /etc/ambari-server/conf/ambari.properties || echo -e '\nsecurity.server.two_way_ssl=true' >> /etc/ambari-server/conf/ambari.properties"
     ssh -q root@${_ambari_host} -t "ambari-server restart --skip-database-check"
+
+    # 3. Clear agent's old certificate (and generate) TODO: Do this for all other agents
     for _i in {1..9}; do sleep 5; nc -z ${_ambari_host} 8080 && break; done
+    ssh -q root@${_node} -t "rm -f /var/lib/ambari-agent/keys/*" || return $?
+    # 3.2. Same as ambair-server node, create .p12 from .jks file
+    #ssh -q root@${_node} "[ -f ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} ] || keytool -importkeystore -srckeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -srcstorepass $_password -destkeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -deststoretype pkcs12 -deststorepass $_password && chmod 600 ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12}" || return $?
+    # 3.3. Export .key from .p12 and saved in to agent's keys dir
+    #ssh -q root@${_node} "openssl pkcs12 -in ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -nocerts -out /var/lib/ambari-agent/keys/${_node}.key -passin pass:$_password -passout pass:$_password" || return $?
+    # 3.4. Export .crt from .p12 and saved in to agent's keys dir
+    #ssh -q root@${_node} "openssl pkcs12 -in ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -clcerts -nokeys -out /var/lib/ambari-agent/keys/${_node}.crt -passin pass:$_password" || return $?
+    ssh -q root@${_node} -t "ambari-agent restart" || return $?
 
-    # TODO: Do this for all other agents
-    ssh -q root@${_node} -t "rm -f /var/lib/ambari-agent/keys/* && ambari-agent restart" || return $?
-    #ssh -q root@${_node} "[ ! -f ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} ] && keytool -importkeystore -srckeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -srcstorepass $_password -destkeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -deststoretype pkcs12 -deststorepass $_password && chmod 600 ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12}" || return $?
-    #ssh -q root@${_node} "openssl pkcs12 -in ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -nocerts -out /var/lib/ambari-agent/keys/${_node}.key" || return $?
-    #ssh -q root@${_node} "openssl pkcs12 -in ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -clcerts -nokeys -out /var/lib/ambari-agent/keys/${_node}.crt" || return $?
-
-    echo "To test, run below command on the node"
+    echo "Completed! To test, run below command on each node"
     echo 'echo -n | openssl s_client -connect '${_ambari_host}':8441 -CAfile /var/lib/ambari-agent/keys/ca.crt -cert /var/lib/ambari-agent/keys/`hostname -f`.crt -certform PEM -key /var/lib/ambari-agent/keys/`hostname -f`.key'
 }
 
