@@ -21,21 +21,21 @@
 #
 # Example 2: How to set up HTTP Authentication (SPNEGO) on hadoop component
 #   source ./setup_security.sh && f_loadResp
-#   f_hadoop_spnego_setup
+#   f_spnego_hadoop
 #
 # If Sandbox (after KDC/kerberos setup):
 # NOTE sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
-#   f_hadoop_spnego_setup "$g_KDC_REALM" "hortonworks.com" "sandbox.hortonworks.com" "8080" "sandbox.hortonworks.com"
+#   f_spnego_hadoop "$g_KDC_REALM" "hortonworks.com" "sandbox.hortonworks.com" "8080" "sandbox.hortonworks.com"
 #
 # Example 3: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
 #   source ./setup_security.sh && f_loadResp
 #   mkdir ssl_setup; cd ssl_setup
-#   f_hadoop_ssl_setup
+#   f_ssl_hadoop
 #
 # If Sandbox:
 # NOTE sandbox-hdp.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
 #   mkdir ssl_setup; cd ssl_setup
-#   r_NO_UPDATING_AMBARI_CONFIG=Y f_hadoop_ssl_setup "" "" "sandbox-hdp.hortonworks.com" "8080" "sandbox-hdp.hortonworks.com"
+#   r_NO_UPDATING_AMBARI_CONFIG=Y f_ssl_hadoop "" "" "sandbox-hdp.hortonworks.com" "8080" "sandbox-hdp.hortonworks.com"
 #
 
 ### OS/shell settings
@@ -49,6 +49,7 @@ g_SERVER_KEY_LOCATION="/etc/security/serverKeys/"
 g_CLIENT_KEY_LOCATION="/etc/security/clientKeys/"
 g_CLIENT_TRUST_LOCATION="/etc/security/clientKeys/"
 g_KEYSTORE_FILE="server.keystore.jks"
+g_KEYSTORE_FILE_P12="server.keystore.p12"
 g_TRUSTSTORE_FILE="server.truststore.jks"
 g_CLIENT_KEYSTORE_FILE="client.keystore.jks"
 g_CLIENT_TRUSTSTORE_FILE="all.jks"
@@ -320,7 +321,7 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X PUT -d "{\"RequestInfo\":{\"context\":\"Start Service with f_ambari_kerberos_setup\"},\"Body\":{\"ServiceInfo\":{\"state\":\"STARTED\"}}}" ${_api_uri}/services
 }
 
-function f_hadoop_ssl_setup() {
+function f_ssl_hadoop() {
     local __doc__="Setup SSL for hadoop https://community.hortonworks.com/articles/92305/how-to-transfer-file-using-secure-webhdfs-in-distc.html"
     local _dname_extra="$1"
     local _password="$2"
@@ -343,10 +344,19 @@ function f_hadoop_ssl_setup() {
         _info "rootCA.key exists. Reusing..."
     else
         # Step1: create my root CA (key) TODO: -aes256
-        openssl genrsa -out rootCA.key 4096 || return $?
-        # Step2: create root CA's cert (pem)
+        openssl genrsa -out ./rootCA.key 4096 || return $?
+
+        # (Optional) For Ambari 2-way SSL
+        #[ -r ./ca.config ] || curl -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/ca.config
+        #mkdir -p ./db/certs
+        #mkdir -p ./db/newcerts
+        #openssl req -passin pass:${_password} -new -key ./rootCA.key -out ./rootCA.csr -batch
+        #openssl ca -out rootCA.crt -days 1095 -keyfile rootCA.key -key ${_password} -selfsign -extensions jdk7_ca -config ./ca.config -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.`hostname -s`.hortonworks.com" -batch -infiles ./rootCA.csr
+        #openssl pkcs12 -export -in ./rootCA.crt -inkey ./rootCA.key -certfile ./rootCA.crt -out ./keystore.p12 -password pass:${_password} -passin pass:${_password}
+
+        # Step2: create root CA's pem
         openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.`hostname -s`.hortonworks.com" -passin "pass:$_password" || return $?
-        chmod 600 ./rootCA.key
+        chmod 600 ./rootCA.*
     fi
 
     mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
@@ -502,7 +512,7 @@ function _hadoop_ssl_use_wildcard() {
     # NOTE: a truststore needs to import this cert or root CA cert.
 }
 
-function f_hadoop_spnego_setup() {
+function f_spnego_hadoop() {
     local __doc__="set up HTTP Authentication for HDFS, YARN, MapReduce2, HBase, Oozie, Falcon and Storm"
     # http://docs.hortonworks.com/HDPDocuments/Ambari-2.4.2.0/bk_ambari-security/content/configuring_http_authentication_for_HDFS_YARN_MapReduce2_HBase_Oozie_Falcon_and_Storm.html
     local _realm="${1-$g_KDC_REALM}"
@@ -531,35 +541,44 @@ function f_hadoop_spnego_setup() {
 }
 
 function f_ssl_ambari_2way() {
-    local __doc__="TODO: Setup two way SSL (run f_hadoop_ssl_setup first)"
+    local __doc__="TODO: Setup two way SSL (run f_ssl_hadoop first)"
     local _ambari_host="$1"
     local _password=${g_DEFAULT_PASSWORD-hadoop}
     local _keys_dir="/var/lib/ambari-server/keys"
-    # Do not overwrite existing backup
-    ssh -q root@${_ambari_host} "cp -pr ${_keys_dir} ${_keys_dir%/}.bak" || return $?
-    ssh -q root@${_ambari_host} "rm -f ${_keys_dir%/}/${_ambari_host}.{csr,crt} && > ${_keys_dir%/}/index.txt && rm -f ${_keys_dir%/}/db/newcerts/*" || return $?
-    ssh -q root@${_ambari_host} "mkdir -m 700 ${_keys_dir}" || return $?
+    local _node="${_ambari_host}"
 
-    # convert jks to p12
-    ssh -q root@${_ambari_host} "keytool -importkeystore -srckeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -srcstorepass $_password -destkeystore ${_keys_dir}/keystore.p12 -deststoretype pkcs12 -deststorepass $_password && chmod 600 ${_keys_dir}/keystore.p12" || return $?
+    # 0. BACKUP and CLEANUP! Do not overwrite existing backup
+    ssh -q root@${_ambari_host} "[ -d ${_keys_dir%/}.bak ]" && return $?
+    ssh -q root@${_ambari_host} "cp -pr ${_keys_dir} ${_keys_dir%/}.bak" || return $?
+    ssh -q root@${_ambari_host} "rm -f ${_keys_dir%/}/ca.key && rm -f ${_keys_dir%/}/*.{csr,crt} && rm -f ${_keys_dir%/}/keystore.p12 && rm -rf ${_keys_dir%/}/db/* && echo '00' > ${_keys_dir%/}/db/serial && > ${_keys_dir%/}/db/index.txt && > ${_keys_dir%/}/db/index.txt.attr && mkdir -m 700 ${_keys_dir%/}/db/newcerts && mkdir -m 700 ${_keys_dir%/}/db/certs" || return $?
+    ssh -q root@${_ambari_host} "mkdir -m 700 ${_keys_dir}"
+    ssh -q root@${_ambari_host} "echo "$_password" > ${_keys_dir%/}/pass.txt"
+
+    # 1. cp (root) CA key and generate keystore.p12
     if [ ! -r ./rootCA.key ]; then
-        echo "ERROR: rootCA.key is not readable"
+        echo "ERROR: ./rootCA.key is not readable. Did you run f_ssl_hadoop?"
         return 1
     fi
     scp ./rootCA.key root@${_ambari_host}:${_keys_dir%/}/ca.key || return $?
-    scp ./rootCA.pem root@${_ambari_host}:${_keys_dir%/}/ca.pem
+    ssh -q root@${_ambari_host} "openssl req -passin pass:${_password} -new -key ${_keys_dir%/}/ca.key -out ${_keys_dir%/}/ca.csr -batch" || return $?
+    ssh -q root@${_ambari_host} "openssl ca -out ${_keys_dir%/}/ca.crt -days 1095 -keyfile ${_keys_dir%/}/ca.key -key ${_password} -selfsign -extensions jdk7_ca -config ${_keys_dir%/}/ca.config -subj '/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.${_ambari_host}' -batch -infiles ${_keys_dir%/}/ca.csr" || return $?
+    # Merge the root CA and Intermediate CA to one file
+    ssh -q root@${_ambari_host} "openssl pkcs12 -export -in ${_keys_dir%/}/ca.crt -inkey ${_keys_dir%/}/ca.key -certfile ${_keys_dir%/}/ca.crt -out ${_keys_dir%/}/keystore.p12 -password pass:${_password} -passin pass:${_password}" || return $?
 
-    # because keystore and truststore is same (eystore.p12), need to import root CA
-    ssh -q root@${_ambari_host} "keytool -keystore ${_keys_dir}/keystore.p12 -storetype pkcs12 -alias CARoot -import -file ${_keys_dir%/}/ca.pem -storepass ${_password} -noprompt" || return $?
-
-    ssh -q root@${_ambari_host} "cp ${g_SERVER_KEY_LOCATION%/}/`hostname -f`.crt ${_keys_dir%/}/"
-    ssh -q root@${_ambari_host} "echo "$_password" > ${_keys_dir%/}/pass.txt"
+    # 3. CREATE ambari-server key and cert
+    #ssh -q root@${_ambari_host} "[ ! -f ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} ] && keytool -importkeystore -srckeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -srcstorepass $_password -destkeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -deststoretype pkcs12 -deststorepass $_password && chmod 600 ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12}" || return $?
+    #ssh -q root@${_ambari_host} "openssl pkcs12 -in ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -nocerts -out ${_keys_dir%/}/${_ambari_host}.key" || return $?
+    #ssh -q root@${_ambari_host} "openssl pkcs12 -in ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -clcerts -nokeys -out ${_keys_dir%/}/${_ambari_host}.crt" || return $?
 
     ssh -q root@${_ambari_host} "grep '^security.server.two_way_ssl=true' /etc/ambari-server/conf/ambari.properties || echo -e '\nsecurity.server.two_way_ssl=true' >> /etc/ambari-server/conf/ambari.properties"
     ssh -q root@${_ambari_host} -t "ambari-server restart --skip-database-check"
     for _i in {1..9}; do sleep 5; nc -z ${_ambari_host} 8080 && break; done
-    ssh -q root@${_ambari_host} -t "rm -f /var/lib/ambari-agent/keys/* && cp ${g_SERVER_KEY_LOCATION%/}/`hostname -f`.* /var/lib/ambari-agent/keys/ && chmod 600 /var/lib/ambari-agent/keys/*.key && ambari-agent start" || return $?
-    # TODO: Do above for all other agents
+
+    # TODO: Do this for all other agents
+    ssh -q root@${_node} -t "rm -f /var/lib/ambari-agent/keys/* && ambari-agent restart" || return $?
+    #ssh -q root@${_node} "[ ! -f ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} ] && keytool -importkeystore -srckeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -srcstorepass $_password -destkeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -deststoretype pkcs12 -deststorepass $_password && chmod 600 ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12}" || return $?
+    #ssh -q root@${_node} "openssl pkcs12 -in ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -nocerts -out /var/lib/ambari-agent/keys/${_node}.key" || return $?
+    #ssh -q root@${_node} "openssl pkcs12 -in ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE_P12} -clcerts -nokeys -out /var/lib/ambari-agent/keys/${_node}.crt" || return $?
 
     echo "To test, run below command on the node"
     echo 'echo -n | openssl s_client -connect '${_ambari_host}':8441 -CAfile /var/lib/ambari-agent/keys/ca.crt -cert /var/lib/ambari-agent/keys/`hostname -f`.crt -certform PEM -key /var/lib/ambari-agent/keys/`hostname -f`.key'
