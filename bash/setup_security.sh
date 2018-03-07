@@ -33,9 +33,9 @@
 #   f_hadoop_ssl_setup
 #
 # If Sandbox:
-# NOTE sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
+# NOTE sandbox-hdp.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
 #   mkdir ssl_setup; cd ssl_setup
-#   f_hadoop_ssl_setup "" "" "sandbox.hortonworks.com" "8080" "sandbox.hortonworks.com"
+#   r_NO_UPDATING_AMBARI_CONFIG=Y f_hadoop_ssl_setup "" "" "sandbox-hdp.hortonworks.com" "8080" "sandbox-hdp.hortonworks.com"
 #
 
 ### OS/shell settings
@@ -434,23 +434,25 @@ function _hadoop_ssl_per_node_inner() {
     local _node="$1"
     local _java_default_truststore_path="$2"
     # TODO: assuming rootCA.xxx file names
+    # TODO: convert server.keystore.jks to .p12
+    #keytool -importkeystore -srckeystore /etc/security/serverKeys/server.keystore.jks -destkeystore /etc/security/serverKeys/server.keystore.p12 -deststoretype pkcs12
 
     # Step4: On each node, create a privatekey for the node
     ssh -q root@${_node} "mv -f ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null; keytool -genkey -alias ${_node} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
     ssh -q root@${_node} "mv -f ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE}.$$.bak &>/dev/null; keytool -genkey -alias ${_node} -keyalg RSA -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
     # Step5: On each node, create a CSR
-    ssh -q root@${_node} "keytool -certreq -alias ${_node} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.csr -storepass ${_password}"
-    ssh -q root@${_node} "keytool -certreq -alias ${_node} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client-keystore.csr -storepass ${_password}"
-    scp root@${_node}:${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.csr ./ || return $?
-    scp root@${_node}:${g_CLIENT_KEY_LOCATION%/}/${_node}-client-keystore.csr ./ || return $?
+    ssh -q root@${_node} "keytool -certreq -alias ${_node} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/${_node}.csr -storepass ${_password}"
+    ssh -q root@${_node} "keytool -certreq -alias ${_node} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client.csr -storepass ${_password}"
+    scp root@${_node}:${g_SERVER_KEY_LOCATION%/}/${_node}.csr ./ || return $?
+    scp root@${_node}:${g_CLIENT_KEY_LOCATION%/}/${_node}-client.csr ./ || return $?
     # Step6: Sign the CSR with the root CA
-    openssl x509 -sha256 -req -in ./${_node}-keystore.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ${_node}-keystore.crt -days 730 -passin "pass:$_password" || return $?
-    openssl x509 -extensions usr_cert -sha256 -req -in ./${_node}-client-keystore.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ${_node}-client-keystore.crt -days 730 -passin "pass:$_password"
-    scp ./rootCA.pem ./${_node}-keystore.crt root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
-    scp ./${_node}-client-keystore.crt root@${_node}:${g_CLIENT_KEY_LOCATION%/}/
+    openssl x509 -sha256 -req -in ./${_node}.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ${_node}.crt -days 730 -passin "pass:$_password" || return $?
+    openssl x509 -extensions usr_cert -sha256 -req -in ./${_node}-client.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ${_node}-client.crt -days 730 -passin "pass:$_password"
+    scp ./rootCA.pem ./${_node}.crt root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
+    scp ./${_node}-client.crt root@${_node}:${g_CLIENT_KEY_LOCATION%/}/
     # Step7: On each node, import root CA's cert and the signed cert
-    ssh -q root@${_node} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias ${_node} -import -file ${g_SERVER_KEY_LOCATION%/}/${_node}-keystore.crt -noprompt -storepass ${_password}" || return $?
-    ssh -q root@${_node} "keytool -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias ${_node} -import -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client-keystore.crt -noprompt -storepass ${_password}"
+    ssh -q root@${_node} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias ${_node} -import -file ${g_SERVER_KEY_LOCATION%/}/${_node}.crt -noprompt -storepass ${_password}" || return $?
+    ssh -q root@${_node} "keytool -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias ${_node} -import -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client.crt -noprompt -storepass ${_password}"
     # Step8 (optional): if the java default truststore (cacerts) path is given, also import the cert (and doesn't care if cert already exists)
     if [ ! -z "/etc/pki/java/cacerts" ]; then
         ssh -q root@${_node} "keytool -keystore /etc/pki/java/cacerts -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
@@ -526,6 +528,41 @@ function f_hadoop_spnego_setup() {
     f_ambari_configs "core-site" "{\"hadoop.http.authentication.simple.anonymous.allowed\":\"false\",\"hadoop.http.authentication.signature.secret.file\":\"/etc/security/http_secret\",\"hadoop.http.authentication.type\":\"kerberos\",\"hadoop.http.authentication.kerberos.keytab\":\"/etc/security/keytabs/spnego.service.keytab\",\"hadoop.http.authentication.kerberos.principal\":\"HTTP/_HOST@${_realm}\",\"hadoop.http.filter.initializers\":\"org.apache.hadoop.security.AuthenticationFilterInitializer\",\"hadoop.http.authentication.cookie.domain\":\"${_domain}\"}" "$_ambari_host"
 
     f_echo_restart_command "$_ambari_host" "$_ambari_port"
+}
+
+function f_ssl_ambari_2way() {
+    local __doc__="TODO: Setup two way SSL (run f_hadoop_ssl_setup first)"
+    local _ambari_host="$1"
+    local _password=${g_DEFAULT_PASSWORD-hadoop}
+    local _keys_dir="/var/lib/ambari-server/keys"
+    # Do not overwrite existing backup
+    ssh -q root@${_ambari_host} "cp -pr ${_keys_dir} ${_keys_dir%/}.bak" || return $?
+    ssh -q root@${_ambari_host} "rm -f ${_keys_dir%/}/${_ambari_host}.{csr,crt} && > ${_keys_dir%/}/index.txt && rm -f ${_keys_dir%/}/db/newcerts/*" || return $?
+    ssh -q root@${_ambari_host} "mkdir -m 700 ${_keys_dir}" || return $?
+
+    # convert jks to p12
+    ssh -q root@${_ambari_host} "keytool -importkeystore -srckeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -srcstorepass $_password -destkeystore ${_keys_dir}/keystore.p12 -deststoretype pkcs12 -deststorepass $_password && chmod 600 ${_keys_dir}/keystore.p12" || return $?
+    if [ ! -r ./rootCA.key ]; then
+        echo "ERROR: rootCA.key is not readable"
+        return 1
+    fi
+    scp ./rootCA.key root@${_ambari_host}:${_keys_dir%/}/ca.key || return $?
+    scp ./rootCA.pem root@${_ambari_host}:${_keys_dir%/}/ca.pem
+
+    # because keystore and truststore is same (eystore.p12), need to import root CA
+    ssh -q root@${_ambari_host} "keytool -keystore ${_keys_dir}/keystore.p12 -storetype pkcs12 -alias CARoot -import -file ${_keys_dir%/}/ca.pem -storepass ${_password} -noprompt" || return $?
+
+    ssh -q root@${_ambari_host} "cp ${g_SERVER_KEY_LOCATION%/}/`hostname -f`.crt ${_keys_dir%/}/"
+    ssh -q root@${_ambari_host} "echo "$_password" > ${_keys_dir%/}/pass.txt"
+
+    ssh -q root@${_ambari_host} "grep '^security.server.two_way_ssl=true' /etc/ambari-server/conf/ambari.properties || echo -e '\nsecurity.server.two_way_ssl=true' >> /etc/ambari-server/conf/ambari.properties"
+    ssh -q root@${_ambari_host} -t "ambari-server restart --skip-database-check"
+    for _i in {1..9}; do sleep 5; nc -z ${_ambari_host} 8080 && break; done
+    ssh -q root@${_ambari_host} -t "rm -f /var/lib/ambari-agent/keys/* && cp ${g_SERVER_KEY_LOCATION%/}/`hostname -f`.* /var/lib/ambari-agent/keys/ && chmod 600 /var/lib/ambari-agent/keys/*.key && ambari-agent start" || return $?
+    # TODO: Do above for all other agents
+
+    echo "To test, run below command on the node"
+    echo 'echo -n | openssl s_client -connect '${_ambari_host}':8441 -CAfile /var/lib/ambari-agent/keys/ca.crt -cert /var/lib/ambari-agent/keys/`hostname -f`.crt -certform PEM -key /var/lib/ambari-agent/keys/`hostname -f`.key'
 }
 
 function f_ldap_ranger() {
