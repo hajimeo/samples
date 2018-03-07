@@ -90,26 +90,83 @@ function f_docker_image_setup() {
     fi
 }
 
-function f_ambari_start_all() {
-    local _host="$1"
-    local _port="$2"
+function f_ambari_wait() {
+    local _host="${1-$_HOSTNAME}"
+    local _port="${2-8080}"
     local _cluster="${3-Sandbox}"
     local _times="${3-20}"
     local _interval="${4-6}"
 
     # NOTE: --retry-connrefused is from curl v 7.52.0
     for i in `seq 1 $_times`; do
-        curl -sL -u admin:admin "http://$_host:$_port/api/v1/clusters/${_cluster}?fields=Clusters/health_report" | grep -qE '"Host/host_state/HEALTHY" : [1-9]' && break
-        echo "INFO: $_host:$_port is unreachable. Waiting ($i)..."
         sleep $_interval
+        curl -sL -u admin:admin "http://$_host:$_port/api/v1/clusters/${_cluster}?fields=Clusters/health_report" | grep -oE '"Host/host_state/HEALTHY" : [1-9]+' && break
+        echo "INFO: $_host:$_port is unreachable. Waiting ($i)..."
     done
+    # To wait other agents will be available (but doesn't matter for sandbox)
     sleep 5
+}
+
+function f_ambari_start_all() {
+    local _host="${1-$_HOSTNAME}"
+    local _port="${2-8080}"
+    local _cluster="${3-Sandbox}"
+
     if ${_NEW_CONTAINER} ; then
         # Sandbox's HDFS is always in maintenance mode so that start all does not work
         curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services/HDFS" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode OFF for HDFS"},"Body":{"ServiceInfo":{"maintenance_state":"OFF"}}}'
     fi
     sleep 1
     curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services?" -X PUT -d '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+}
+
+function f_service() {
+    local _service="$1" # Space separated service name
+    local _action="$2"  # Acceptable actions: START and STOP
+    local _host="${3-$_HOSTNAME}"
+    local _port="${4-8080}"
+    local _cluster="${5-Sandbox}"
+    local _maintenance_mode="OFF"
+
+    if [ -z "$_service" ]; then
+        echo "Available services"
+        curl -su admin:admin "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services?fields=ServiceInfo/service_name" | grep -oE '"service_name".+'
+        return 0
+    fi
+    _service="${_service^^}"
+
+    if [ -z "$_action" ]; then
+        echo "$_service status"
+        for _s in `echo ${_service} | sed 's/ /\n/g'`; do
+            curl -su admin:admin "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services/${_s}?fields=ServiceInfo/service_name,ServiceInfo/state" | grep -oE '("service_name"|"state").+'
+        done
+        return 0
+    fi
+    _action="${_action^^}"
+
+    for _s in `echo ${_service} | sed 's/ /\n/g'`; do
+        if [ "$_action" = "RESTART" ]; then
+            f_service "$_s" "stop" "${_ambari_host}" "${_port}" "${_cluster}"|| return $?
+            for _i in {1..9}; do
+                curl -su admin:admin "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services/${_s}?ServiceInfo/state=INSTALLED&fields=ServiceInfo/state" | grep -wq INSTALLED && break;
+                # Waiting it stops
+                sleep 10
+            done
+            # If starting fails, keep going next
+            f_service "$_s" "start" "${_ambari_host}" "${_port}" "${_cluster}"
+        else
+            [ "$_action" = "START" ] && _action="STARTED"
+            [ "$_action" = "STOP" ] && _action="INSTALLED"
+            [ "$_action" = "INSTALLED" ] && _maintenance_mode="ON"
+
+            # same action for same service is already done
+            curl -su admin:admin "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services/${_s}?ServiceInfo/state=${_action}&fields=ServiceInfo/state" | grep -wq ${_action} && break;
+
+            curl -s -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services/$_s"
+            curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_s' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'${_cluster}'","service_name":"'$_s'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services/$_s"
+            echo ""
+        fi
+    done
 }
 
 function f_useradd() {
@@ -498,17 +555,18 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
         fi
     fi
 
-    if [ -e ./start_hdp.sh ]; then
-        echo "INFO: To stop/start particular services (otherwise will start all after 5 seconds):"
-        echo "./start_hdp.sh -f 'f_service \"ZEPPELIN SPARK SPARK2 STORM FALCON OOZIE FLUME ATLAS HBASE KAFKA\" \"STOP\" \"${_HOSTNAME}\"'"
-        echo "./start_hdp.sh -f 'f_service \"ZOOKEEPER AMBARI_INFRA RANGER HDFS MAPREDUCE2 YARN HIVE\" \"START\" \"${_HOSTNAME}\"'"
+    echo "INFO: Waiting Ambari Server is ready (feel free to press Ctrl+c to exit)..."
+    f_ambari_wait ${_HOSTNAME} ${_AMBARI_PORT}
+
+    if ${_NEW_CONTAINER} ; then
+        echo "INFO: Starting minimum services after 5 seconds:..."
         sleep 5
+        f_service "ZEPPELIN SPARK SPARK2 STORM FALCON OOZIE FLUME ATLAS HBASE KAFKA" "STOP" "${_HOSTNAME}"
+        f_service "ZOOKEEPER AMBARI_INFRA RANGER HDFS MAPREDUCE2 YARN HIVE" "START" "${_HOSTNAME}"
+    else
+        f_ambari_start_all
     fi
-    export -f f_ambari_start_all
-    nohup bash -c "f_ambari_start_all ${_HOSTNAME} ${_AMBARI_PORT}" &
     echo ""
-    sleep 1
-    echo "*** Completed! (except the following background job) ***"
-    jobs -l
+    echo "*** Completed! ***"
     #docker exec -it ${_NAME} bash
 fi
