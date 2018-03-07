@@ -159,10 +159,11 @@ function f_service() {
             [ "$_action" = "STOP" ] && _action="INSTALLED"
             [ "$_action" = "INSTALLED" ] && _maintenance_mode="ON"
 
-            # same action for same service is already done
-            curl -su admin:admin "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services/${_s}?ServiceInfo/state=${_action}&fields=ServiceInfo/state" | grep -wq ${_action} && break;
-
             curl -s -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services/$_s"
+
+            # same action for same service is already done
+            curl -su admin:admin "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services/${_s}?ServiceInfo/state=${_action}&fields=ServiceInfo/state" | grep -wq ${_action} && continue;
+
             curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_s' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'${_cluster}'","service_name":"'$_s'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services/$_s"
             echo ""
         fi
