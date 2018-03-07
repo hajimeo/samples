@@ -560,11 +560,12 @@ function f_ssl_ambari_2way() {
         echo "WARN: After 10 seconds, it will use ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}"
         sleep 10
 
-        # This ca.crt doesn't work to generate new agent cert but agent download this crt
+        # This ca.crt doesn't work as CA cert to generate new agent cert, however agent download this crt and use as truststore
         scp ./rootCA.pem root@${_ambari_host}:${_keys_dir%/}/ca.crt || return $?
-        # 1.1. If server.keystore.p12 doesn't exist, convert .jks to .p12
+
+        # 1.1. If keystore.p12 doesn't exist, convert .jks to .p12
         ssh -q root@${_ambari_host} "[ -f ${_keys_dir%/}/keystore.p12 ] || keytool -importkeystore -srckeystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -srcstorepass $_password -destkeystore ${_keys_dir%/}/keystore.p12 -deststoretype pkcs12 -deststorepass $_password" || return $?
-        # 1.2. Export .key from .p12 , and this ca.key doesn't work
+        # 1.2. Export .key from .p12 , and this ca.key doesn't work to generate .csr, keystore.p12 etc. Probably don't need?
         ssh -q root@${_ambari_host} "openssl pkcs12 -in ${_keys_dir%/}/keystore.p12 -nocerts -out ${_keys_dir%/}/${_ambari_host}.key -passin pass:$_password -passout pass:$_password && cp ${_keys_dir%/}/${_ambari_host}.key ${_keys_dir%/}/ca.key" || return $?
         # 1.3. Export .crt from .p12
         ssh -q root@${_ambari_host} "openssl pkcs12 -in ${_keys_dir%/}/keystore.p12 -clcerts -nokeys -out ${_keys_dir%/}/${_ambari_host}.crt -passin pass:$_password" || return $?
