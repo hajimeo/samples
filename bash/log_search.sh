@@ -7,7 +7,7 @@
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 #
 # TODO: tested on Mac only (eg: sed -E, ggrep)
-# which ggrep || alias ggrep=grep
+# TODO: which ggrep || alias ggrep=grep
 #
 
 usage() {
@@ -289,16 +289,45 @@ function f_getPerflog() {
 function f_findJarByClassName() {
     local __doc__="Find jar by class name (add .class in the name). If symlink needs to be followed, add -L in _search_path"
     local _class_name="$1"
-    local _search_path="${2-/usr/hdp/current/*/}"
+    local _search_path="${2-/usr/hdp/current/*/}" # can be PID too
 
     # if search path is an integer, treat as PID
     if [[ $_search_path =~ ^-?[0-9]+$ ]]; then
-        lsof -nPp $_search_path | ggrep -oP '/.+\.(jar|war)$' | sort | uniq | xargs -I {} bash -c "less {} | ggrep -qm1 -w $_class_name && echo {}"
+        lsof -nPp $_search_path | grep -oE '/.+\.(jar|war)$' | sort | uniq | xargs -I {} bash -c "less {} | grep -qm1 -w $_class_name && echo {}"
         return
     fi
     # NOTE: some 'less' can't read jar, in that case, replace to 'jar -tvf', but may need to modify $PATH
-    find $_search_path -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | ggrep -m 1 -w $_class_name > /tmp/f_findJarByClassName_$$.tmp && ( echo {}; cat /tmp/f_findJarByClassName_$$.tmp )"
+    find $_search_path -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | grep -m 1 -w $_class_name > /tmp/f_findJarByClassName_$$.tmp && ( echo {}; cat /tmp/f_findJarByClassName_$$.tmp )"
     # TODO: it won't search war file...
+}
+
+function f_patchJar() {
+    local __doc__="Find jar by *full* class name (without .class) by using PID, which means that component needs to be running, and then export CLASSPATH, and compiles if class_name.java exists"
+    local _class_name="$1" # should be full class name but without .class
+    local _pid="$2"
+
+    local _class_path="$( echo "${_class_name}" | sed 's/\./\//g' )"
+    local _basename="$(basename ${_class_path})"
+    local _dirname="$(dirname ${_class_path})"
+    local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
+    which ${_cmd_dir}/jar &>/dev/null || return 1
+    ls -l /proc/${_pid}/fd | grep -oE '/.+\.(jar|war)$' > /tmp/f_findJarByClassNameFromPIDAndSetClassPath_${_pid}.out
+
+    cat /tmp/f_findJarByClassNameFromPIDAndSetClassPath_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | grep -E "'${_class_path}'.class" > /tmp/f_patchJar_'${_basename}'.out && echo {} && cat /tmp/f_patchJar_'${_basename}'.out >&2' | tee /tmp/f_patchJar_${_basename}_jar.out
+    export CLASSPATH=$(cat /tmp/f_findJarByClassNameFromPIDAndSetClassPath_${_pid}.out | tr '\n' ':')
+    if [ -r "${_basename}.java" ]; then
+        ${_cmd_dir}/javac "${_basename}.java" || return $?
+        mkdir -p ${_dirname}
+        mv ${_basename}*class ${_dirname} || return $?
+
+        for _j in `cat /tmp/f_patchJar_${_basename}_jar.out`; do
+            local _j_basename="$(basename ${_j})"
+            [ ! -s ${_j_basename} ] || cp -p ${_j} ./${_j_basename} || continue
+            eval "${_cmd_dir}/jar -uf ${_j} ${_dirname%/}/${_basename}*class"
+            #ls -l ${_j}
+            less ${_j} | grep -F "${_dirname%/}/${_basename}"
+        done
+    fi
 }
 
 # TODO: find hostname and container, splits, actual query (mr?) etc from app log
@@ -566,7 +595,7 @@ function f_load_ambaridb_to_postgres() {
     psql -Uambari -h `hostname -f` -c "select * from metainfo where metainfo_key = 'version';"
     psql -Uambari -h `hostname -f` -c "select repo_version_id, stack_id, display_name, repo_type, substring(repositories, 1, 500) from repo_version order by repo_version_id desc limit 5;"
     psql -Uambari -h `hostname -f` -c "SELECT * FROM clusters WHERE security_type = 'KERBEROS';"
-    #UPDATE clusters SET security_type = 'NONE' WHERE provisioning_state = 'INSTALLED';
+    #UPDATE clusters SET security_type = 'NONE' WHERE provisioning_state = 'INSTALLED' and security_type = 'KERBEROS';
     #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/services/KERBEROS"
     #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/artifacts/kerberos_descriptor"
     unset PGPASSWORD
