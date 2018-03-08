@@ -322,7 +322,7 @@ function f_patchJar() {
 
         for _j in `cat /tmp/f_patchJar_${_basename}_jar.out`; do
             local _j_basename="$(basename ${_j})"
-            [ ! -s ${_j_basename} ] || cp -p ${_j} ./${_j_basename} || continue
+            [ ! -s ${_j_basename} ] && cp -p ${_j} ./${_j_basename} || continue
             eval "${_cmd_dir}/jar -uf ${_j} ${_dirname%/}/${_basename}*class"
             #ls -l ${_j}
             less ${_j} | grep -F "${_dirname%/}/${_basename}"
