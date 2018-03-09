@@ -12,6 +12,12 @@
 g_LOG_FILE_PATH=""
 g_WORK_DIR="./hive_workspace"
 
+# TODO: no good way to find if druid is installed and *hive2*
+g_DRUID_AVAILABLE=false
+which hbase &>/dev/null && g_HABASE_AVAILABLE=true
+which sqoop &>/dev/null && g_SQOOP_AVAILABLE=true
+[ -s /var/log/hadoop/hdfs/hdfs-audit.log ] && g_HDFS_AUDIT_AVAILABLE=true
+
 function _log() {
     if [ -n "$g_LOG_FILE_PATH" ]; then
         echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a $g_LOG_FILE_PATH
@@ -136,7 +142,7 @@ INSERT OVERWRITE TABLE census_clus select * from census;
 # set hive.exec.max.dynamic.partitions.pernode=4;
 # set hive.exec.max.created.files=100000;
 
-    if [ -s /var/log/hadoop/hdfs/hdfs-audit.log ]; then
+    if ${g_HDFS_AUDIT_AVAILABLE}; then
         _log "INFO" "Adding SQL for importing /var/log/hadoop/hdfs/hdfs-audit.log."
         _file_size=`stat -c"%s" /var/log/hadoop/hdfs/hdfs-audit.log`
         if [ -n "$_file_size" ] && [ $(( 1024 * 1024 * 1024 )) -lt $_file_size ]; then
@@ -168,7 +174,7 @@ LOAD DATA INPATH '/tmp/hive_workspace/hdfs-audit.csv' OVERWRITE into table hdfs_
         fi
     fi
 
-    if which hbase &>/dev/null; then
+    if ${g_HABASE_AVAILABLE}; then
         _log "INFO" "Creating HBase table 'emp_review' with hbase shell..."
         # TODO: HBase doesn't seem to have 'create table if not exists' statement
         echo "create 'emp_review','review'" | hbase shell &> /tmp/hive_dummies_hbase_$USER.out
@@ -184,10 +190,9 @@ LOAD DATA INPATH '/tmp/hive_workspace/hdfs-audit.csv' OVERWRITE into table hdfs_
         fi
     fi
 
-    # TODO: no good way to find if druid is installed and use *hive2*
-    if false; then
+    if ${g_DRUID_AVAILABLE}; then
         _log "INFO" "Adding SQLs for creating a Druid table..."
-        # https://jp.hortonworks.com/blog/sub-second-analytics-hive-druid/
+        # https://hortonworks.com/blog/sub-second-analytics-hive-druid/
         #set hive.druid.metadata.uri=jdbc:mysql://db.example.com/druid_benchmark;
         #set hive.druid.indexer.partition.size.max=9000000;
         #set hive.druid.indexer.memory.rownum.max=100000;
@@ -199,7 +204,9 @@ LOAD DATA INPATH '/tmp/hive_workspace/hdfs-audit.csv' OVERWRITE into table hdfs_
         _sql="${_sql}
 CREATE TABLE IF NOT EXISTS hdfs_audit_month
 STORED BY 'org.apache.hadoop.hive.druid.DruidStorageHandler'
-TBLPROPERTIES ('druid.datasource' = 'hdfs_audit_day', 'druid.segment.granularity' = 'MONTH', 'druid.query.granularity' = 'DAY')
+TBLPROPERTIES (
+  'druid.segment.granularity' = 'MONTH',
+  'druid.query.granularity' = 'DAY')
 AS
 SELECT
  cast(from_unixtime(unix_timestamp(datetime_str, 'yyyy-MM-dd HH:mm:ss,SSS')) as timestamp) as `__time`,
@@ -214,7 +221,7 @@ FROM
     _log "INFO" "Executing SQLs..."
     ${_cmd} -e "${_sql}"
 
-    if which sqoop &>/dev/null; then
+    if ${g_SQOOP_AVAILABLE}; then
         _log "INFO" "Check (PostgreSQL) JDBC driver. If postgresql-9*jdbc4.jar exists, start Sqoop Import job..."
         # cp `ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1` /usr/hdp/current/sqoop-client/lib/
         if ls -l /usr/hdp/current/sqoop-client/lib/postgresql-9*jdbc4.jar; then
