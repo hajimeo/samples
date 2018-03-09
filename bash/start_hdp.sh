@@ -336,7 +336,7 @@ function p_nodes_create() {
 
 function p_nodes_start() {
     local __doc__="Start container(s). If _ambari_host is given, try starting ambari server and services (NOTE: dnsmasq should be configured)"
-    # p_nodes_start 1 100
+    # p_nodes_start 1 101 node101.localdomain
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _ambari_host="${3-$r_AMBARI_HOST}"
@@ -351,7 +351,7 @@ function p_nodes_start() {
     f_ambari_server_start "${_ambari_host}"
     f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from" > /dev/null
     f_log_cleanup    # probably wouldn't want to clean log for non ambari managed node
-    f_services_start
+    f_services_start "${_ambari_host}"
     f_port_forward 8080 ${_ambari_host} 8080 "Y"
     f_port_forward_ssh_on_nodes "$_how_many" "$_start_from"
 }
@@ -1995,9 +1995,9 @@ function f_repo_mount() {
 
 function f_services_start() {
     local __doc__="Request 'Start all' to Ambari via API"
-    local _is_stale_only="$1"
-    local _ambari_host="${2-$r_AMBARI_HOST}"
-    local _ambari_port="${3-8080}"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+    local _ambari_port="${2-8080}"
+    local _is_stale_only="$3"
     local _c="`f_get_cluster_name ${_ambari_host}`" || return 1
     _info "Will start all services ..."
     if [ -z "$_c" ]; then
