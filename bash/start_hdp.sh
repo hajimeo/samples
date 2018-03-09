@@ -311,7 +311,7 @@ function p_ambari_node_create() {
 }
 
 function p_nodes_create() {
-    local __doc__="Create container(s) and if _ambari_host is given, try installing agent (NOTE: only centos and doesn't create docker image)"
+    local __doc__="Create container(s). If _ambari_repo_file is given, try installing agent (NOTE: only centos and doesn't create docker image)"
     # p_nodes_create 1 100 '7.4.1708' '172.17.140.' './ambari.repo'
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
@@ -335,15 +335,12 @@ function p_nodes_create() {
 }
 
 function p_nodes_start() {
-    local __doc__="Create container(s) and if _ambari_host is given, try installing agent (NOTE: only centos and doesn't create docker image)"
-    # p_nodes_start 1 100 '7.4.1708' '172.17.140.'
+    local __doc__="Start container(s). If _ambari_host is given, try starting ambari server and services (NOTE: dnsmasq should be configured)"
+    # p_nodes_start 1 100
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _os_ver="${3-$r_CONTAINER_OS_VER}"
-    local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
-    local _ambari_host="${5-$r_AMBARI_HOST}"
+    local _ambari_host="${3-$r_AMBARI_HOST}"
 
-    f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
     f_docker_start "$_how_many" "$_start_from"
     if [ -z "${_ambari_host}" ]; then
         _warn "No ambari host specified, so not starting ambari"
@@ -362,6 +359,8 @@ function p_nodes_start() {
 function p_hdp_start() {
     local __doc__="Start up HDP containers"
     f_loadResp
+
+    f_dnsmasq_banner_reset
     f_restart_services_just_in_case
     f_docker0_setup "172.18.0.1" "24"
     f_hdp_network_setup
@@ -1143,6 +1142,7 @@ function f_docker_start() {
     local __doc__="Starting some docker containers with a few customization"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    # TODO: below two options should be removed
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
     local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
 
