@@ -311,18 +311,25 @@ function f_patchJar() {
     local _dirname="$(dirname ${_class_path})"
     local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
     which ${_cmd_dir}/jar &>/dev/null || return 1
-    ls -l /proc/${_pid}/fd | grep -oE '/.+\.(jar|war)$' > /tmp/f_findJarByClassNameFromPIDAndSetClassPath_${_pid}.out
+    ls -l /proc/${_pid}/fd | grep -oE '/.+\.(jar|war)$' > /tmp/f_patchJar_${_pid}.out
 
-    cat /tmp/f_findJarByClassNameFromPIDAndSetClassPath_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | grep -E "'${_class_path}'.class" > /tmp/f_patchJar_'${_basename}'_tmp.out && echo {} && cat /tmp/f_patchJar_'${_basename}'_tmp.out >&2' | tee /tmp/f_patchJar_${_basename}_jar.out
-    export CLASSPATH=$(cat /tmp/f_findJarByClassNameFromPIDAndSetClassPath_${_pid}.out | tr '\n' ':')
+    # If needs to compile but _jars.out exist, don't try searching as it takes time
+    if [ -r "${_basename}.java" ] && [ ! -s /tmp/f_patchJar_${_basename}_jars.out ]; then
+        cat /tmp/f_patchJar_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | grep -E "'${_class_path}'.class" > /tmp/f_patchJar_'${_basename}'_tmp.out && echo {} && cat /tmp/f_patchJar_'${_basename}'_tmp.out >&2' | tee /tmp/f_patchJar_${_basename}_jars.out
+    else
+        echo "/tmp/f_patchJar_${_basename}_jars.out exists. Reusing..."
+    fi
+
+    CLASSPATH=$(cat /tmp/f_patchJar_${_pid}.out | tr '\n' ':')
+
     if [ -r "${_basename}.java" ]; then
         ${_cmd_dir}/javac "${_basename}.java" || return $?
-        mkdir -p ${_dirname}
+        [ ! -d "${_dirname}" ] && mkdir -p ${_dirname}
         mv -f ${_basename}*class "${_dirname%/}/" || return $?
 
-        for _j in `cat /tmp/f_patchJar_${_basename}_jar.out`; do
+        for _j in `cat /tmp/f_patchJar_${_basename}_jars.out`; do
             local _j_basename="$(basename ${_j})"
-            [ ! -s ${_j_basename} ] && cp -p ${_j} ./${_j_basename} || continue
+            [ ! -s ${_j_basename} ] && cp -p ${_j} ./${_j_basename}
             eval "${_cmd_dir}/jar -uf ${_j} ${_dirname%/}/${_basename}*class"
             #ls -l ${_j}
             ${_cmd_dir}/jar -tvf ${_j} | grep -F "${_dirname%/}/${_basename}"
