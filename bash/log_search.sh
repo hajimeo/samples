@@ -320,18 +320,30 @@ function f_patchJar() {
         echo "/tmp/f_patchJar_${_basename}_jars.out exists. Reusing..."
     fi
 
-    export CLASSPATH=$(cat /tmp/f_patchJar_${_pid}.out | tr '\n' ':')
+    # if wokring classpath exist, use it
+    if [ -s /tmp/f_patchJar_${_basename}_${_pid}_cp.out ]; then
+        export CLASSPATH="$(cat /tmp/f_patchJar_${_basename}_${_pid}_cp.out)"
+    else
+        local _cp=$(cat /tmp/f_patchJar_${_pid}.out | tr '\n' ':')
+        export CLASSPATH="${_cp%:}"
+    fi
 
     if [ -r "${_basename}.java" ]; then
+        # Compile
         ${_cmd_dir}/javac "${_basename}.java" || return $?
-        [ ! -d "${_dirname}" ] && mkdir -p ${_dirname}
+        # Saving workign classpath
+        echo $CLASSPATH > /tmp/f_patchJar_${_basename}_${_pid}_cp.out
+        [ -d "${_dirname}" ] || mkdir -p ${_dirname}
         mv -f ${_basename}*class "${_dirname%/}/" || return $?
 
         for _j in `cat /tmp/f_patchJar_${_basename}_jars.out`; do
             local _j_basename="$(basename ${_j})"
-            [ ! -s ${_j_basename} ] && cp -p ${_j} ./${_j_basename}
+            # If jar file hasn't been backed up, taking one, and if backup fails, skip this jar.
+            if [ ! -s ${_j_basename} ]; then
+                cp -p ${_j} ./${_j_basename} || continue
+            fi
             eval "${_cmd_dir}/jar -uf ${_j} ${_dirname%/}/${_basename}*class"
-            #ls -l ${_j}
+            ls -l ${_j}
             ${_cmd_dir}/jar -tvf ${_j} | grep -F "${_dirname%/}/${_basename}"
         done
     fi
