@@ -296,13 +296,11 @@ function p_ambari_node_create() {
     local _ambari_host="${_node}${_start_from}${_suffix}"
     local _how_many="1"
 
-    f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix" || return $?
-    f_docker_start "$_how_many" "$_start_from"
-    f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix" || return $?
-    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
+    # not passing repo file (unless r_AMBARI_REPO_FILE is set) so that won't install agent
+    p_nodes_create "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix"
+
     f_get_ambari_repo_file "$_ambari_repo_file" || return $?
     f_ambari_server_install "${_ambari_host}"|| return $?
-
     local _jdk="`ls -1t ./jdk-*-linux-x64*gz 2>/dev/null | head -n1`"
     local _jce="`ls -1t ./jce_policy-*.zip 2>/dev/null | head -n1`"
     [ -n "$r_AMBARI_JDK_URL" ] && _jdk="$r_AMBARI_JDK_URL"
@@ -314,30 +312,56 @@ function p_ambari_node_create() {
 
 function p_nodes_create() {
     local __doc__="Create container(s) and if _ambari_host is given, try installing agent (NOTE: only centos and doesn't create docker image)"
-    # p_nodes_create 1 100 '7.4.1708' '172.17.140.' ''
+    # p_nodes_create 1 100 '7.4.1708' '172.17.140.' './ambari.repo'
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+    local _os_ver="${3-$r_CONTAINER_OS_VER}"
+    local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
+    local _ambari_repo_file="${5-$r_AMBARI_REPO_FILE}"
+
+    f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
+    f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix" || return $?
+    f_docker_start "$_how_many" "$_start_from"
+    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
+
+    if [ -z "${_ambari_repo_file}" ]; then
+        _warn "No ambari repo file specified, so not setting up ambari agent"
+        return
+    fi
+    sleep 3
+    f_ambari_agent_install "${_ambari_repo_file}" "$_how_many" "$_start_from"
+    f_ambari_agent_fix "$_how_many" "$_start_from"
+    f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from"
+}
+
+function p_nodes_start() {
+    local __doc__="Create container(s) and if _ambari_host is given, try installing agent (NOTE: only centos and doesn't create docker image)"
+    # p_nodes_start 1 100 '7.4.1708' '172.17.140.'
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
     local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
     local _ambari_host="${5-$r_AMBARI_HOST}"
 
-    f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix"
-    f_docker_start "$_how_many" "$_start_from"
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
-    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
+    f_docker_start "$_how_many" "$_start_from"
     if [ -z "${_ambari_host}" ]; then
-        _warn "No ambari host specified, so not setting up ambari agent"
+        _warn "No ambari host specified, so not starting ambari"
         return
     fi
-    f_ambari_agent_install "$_how_many" "$_start_from" "${_ambari_host}"
-    f_ambari_agent_fix "$_how_many" "$_start_from"
-    f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from"
+
+    sleep 3
+    f_ambari_server_start "${_ambari_host}"
+    f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from" > /dev/null
+    f_log_cleanup    # probably wouldn't want to clean log for non ambari managed node
+    f_services_start
+    f_port_forward 8080 ${_ambari_host} 8080 "Y"
+    f_port_forward_ssh_on_nodes "$_how_many" "$_start_from"
 }
 
 function p_hdp_start() {
     local __doc__="Start up HDP containers"
     f_loadResp
-    f_dnsmasq_banner_reset
     f_restart_services_just_in_case
     f_docker0_setup "172.18.0.1" "24"
     f_hdp_network_setup
@@ -345,22 +369,11 @@ function p_hdp_start() {
     if ! _isYes "$r_DOCKER_KEEP_RUNNING"; then
         f_docker_stop_other
     fi
-    f_docker_start
-    sleep 4
+
+    p_nodes_start
+
     _info "NOT setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
-
-    _info "Starting Ambari Server"
-    f_ambari_server_start
-    # not interested in agent start output at this moment.
-    f_run_cmd_on_nodes "ambari-agent start" > /dev/null
-
-    f_log_cleanup
-
-    f_services_start
-
-    f_port_forward 8080 $r_AMBARI_HOST 8080 "Y"
-    f_port_forward_ssh_on_nodes
     f_screen_cmd
 }
 
@@ -1537,18 +1550,19 @@ function f_ambari_server_start() {
 
 function f_port_forward_ssh_on_nodes() {
     local __doc__="Opening SSH ports to each node"
-    local _init_port="${1-2200}"
-    local _how_many="${2-$r_NUM_NODES}"
-    local _start_from="${3-$r_NODE_START_NUM}"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+    local _init_port="${3-2200}"
     local _local_port=0
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+    local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
     _info "Synchronize authorized_keys between host and containers..."
     f_copy_auth_keys_to_containers "$_how_many" "$_start_from"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         _local_port=$(($_init_port + $i))
-        f_port_forward $_local_port ${_node}$i${r_DOMAIN_SUFFIX} 22
+        f_port_forward $_local_port ${_node}$i${_domain} 22
     done
 }
 
@@ -1722,6 +1736,7 @@ function f_ambari_java_random() {
 
     local _javahome="`ssh -q root@$r_AMBARI_HOST "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
     _info "Ambari Java Home ${_javahome}"
+    # or -Djava.security.egd=file:///dev/urandom
     local _cmd='grep -q "^securerandom.source=file:/dev/random" "'${_javahome%/}'/jre/lib/security/java.security" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "'${_javahome%/}'/jre/lib/security/java.security"'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
@@ -2032,7 +2047,7 @@ function f_service() {
     fi
 
     if [ -z "$_action" ]; then
-        _info "Acceptable actions: start, stop, restart" # Actually it accespts others like DELETE...
+        _info "Acceptable actions: start, stop, restart" # Actually it accepts others like DELETE...
         return
     fi
 
@@ -2058,7 +2073,6 @@ function f_service() {
             [ 0 -lt $_n ] && break;
 
             curl -s -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
-            local _request_context=""
             curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_s' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_s'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
             echo ""
         fi
@@ -2624,12 +2638,12 @@ function f_log_cleanup() {
     local __doc__="Deleting log files which group owner is hadoop"
     local _days="${1-7}"
     _warn "Deleting hadoop logs which is older than $_days days..."
-    sleep 5
-    # NOTE: Assuming docker name and hostname is same
+    sleep 3
     for _name in `docker ps --format "{{.Names}}"`; do
-        ssh -q root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {};find /var/log/ambari-* -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}' &
+        _info "Running f_log_cleanup on ${_name}..."
+        docker exec -d ${_name} bash -c 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {};find /var/log/ambari-* -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
+        sleep 1
     done
-    wait
 }
 
 function f_update_check() {
