@@ -66,6 +66,9 @@ How to create a node(s)
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS6.8, and Ambari is node101.localdomain
     p_nodes_create '3' '102' '6.8' '172.17.100.' 'node101.localdomain'
 
+    # To start above example 4 nodes
+    p_nodes_start '4' '101' 'node101.localdomain'
+
 Available options:
     -i    Initial set up this host for HDP
 
