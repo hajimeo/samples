@@ -313,19 +313,19 @@ function f_patchJar() {
     which ${_cmd_dir}/jar &>/dev/null || return 1
     ls -l /proc/${_pid}/fd | grep -oE '/.+\.(jar|war)$' > /tmp/f_findJarByClassNameFromPIDAndSetClassPath_${_pid}.out
 
-    cat /tmp/f_findJarByClassNameFromPIDAndSetClassPath_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | grep -E "'${_class_path}'.class" > /tmp/f_patchJar_'${_basename}'.out && echo {} && cat /tmp/f_patchJar_'${_basename}'.out >&2' | tee /tmp/f_patchJar_${_basename}_jar.out
+    cat /tmp/f_findJarByClassNameFromPIDAndSetClassPath_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | grep -E "'${_class_path}'.class" > /tmp/f_patchJar_'${_basename}'_tmp.out && echo {} && cat /tmp/f_patchJar_'${_basename}'_tmp.out >&2' | tee /tmp/f_patchJar_${_basename}_jar.out
     export CLASSPATH=$(cat /tmp/f_findJarByClassNameFromPIDAndSetClassPath_${_pid}.out | tr '\n' ':')
     if [ -r "${_basename}.java" ]; then
         ${_cmd_dir}/javac "${_basename}.java" || return $?
         mkdir -p ${_dirname}
-        mv ${_basename}*class ${_dirname} || return $?
+        mv -f ${_basename}*class "${_dirname%/}/" || return $?
 
         for _j in `cat /tmp/f_patchJar_${_basename}_jar.out`; do
             local _j_basename="$(basename ${_j})"
             [ ! -s ${_j_basename} ] && cp -p ${_j} ./${_j_basename} || continue
             eval "${_cmd_dir}/jar -uf ${_j} ${_dirname%/}/${_basename}*class"
             #ls -l ${_j}
-            less ${_j} | grep -F "${_dirname%/}/${_basename}"
+            ${_cmd_dir}/jar -tvf ${_j} | grep -F "${_dirname%/}/${_basename}"
         done
     fi
 }
