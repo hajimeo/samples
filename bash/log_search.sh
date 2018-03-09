@@ -320,7 +320,7 @@ function f_patchJar() {
         echo "/tmp/f_patchJar_${_basename}_jars.out exists. Reusing..."
     fi
 
-    CLASSPATH=$(cat /tmp/f_patchJar_${_pid}.out | tr '\n' ':')
+    export CLASSPATH=$(cat /tmp/f_patchJar_${_pid}.out | tr '\n' ':')
 
     if [ -r "${_basename}.java" ]; then
         ${_cmd_dir}/javac "${_basename}.java" || return $?
