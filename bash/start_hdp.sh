@@ -57,10 +57,14 @@ How to run a function:
     some_function_name
 
 How to create a node(s)
-    # if docker image is not ready
-    f_docker_base_create https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6 centos 6.8
-    # create 1 node which hostname is node101.localdmain, and OS is CentOS 6.8, and Ambari is sandbox.hortonworks.com
-    p_nodes_create 1 101 6.8 172.17.0. sandbox.hortonworks.com
+    # If docker image for CentOS 6.8 is not ready
+    f_docker_base_create 'https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6' 'centos' '6.8'
+
+    # Create one node with Ambari Server, hostname: node101.localdomain, OS ver: CentOS6.8, Network addr: 172.17.100.x
+    p_ambari_node_create '/path/to/ambari.repo' '101' '6.8' '172.17.100.'
+
+    # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS6.8, and Ambari is node101.localdomain
+    p_nodes_create '3' '102' '6.8' '172.17.100.' 'node101.localdomain'
 
 Available options:
     -i    Initial set up this host for HDP
