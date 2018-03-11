@@ -1,7 +1,7 @@
 r_DOCKER_NETWORK_ADDR="172.17.100." # Change this
 r_NODE_START_NUM="1"                # Change this
 r_DOMAIN_SUFFIX=".localdomain"      # Change this
-r_AMBARI_VER="2.6.1.3"              # Change this
+r_AMBARI_VER="2.6.1.5"              # Change this
 r_HDP_REPO_VER="2.6.4.0"            # Change this
 r_CLUSTER_NAME="$(echo `hostname -s`_${r_NODE_START_NUM} | sed 's/[^a-zA-Z0-9_]//g')"
 r_AMBARI_BLUEPRINT="Y"

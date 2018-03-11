@@ -64,7 +64,10 @@ How to create a node(s)
     p_ambari_node_create '/path/to/ambari.repo' '101' '6.8' '172.17.100.'
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS6.8, and Ambari is node101.localdomain
-    p_nodes_create '3' '102' '6.8' '172.17.100.' 'node101.localdomain'
+    p_nodes_create '3' '102' '6.8' '172.17.100.' '/path/to/ambari.repo'
+
+    # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
+    p_ambari_blueprint 'mytestcluster' 'node101.localdomain' ['/path/to/hostmap.json'] ['/path/to/cluster.json']
 
     # To start above example 4 nodes
     p_nodes_start '4' '101' 'node101.localdomain'
@@ -112,7 +115,7 @@ function p_interview() {
     local __doc__="Asks user questions. (Requires Python)"
     # Default values TODO: need to update Ambari Version manually (stack version is automatic)
     local _centos_version="6.8" # TODO: 6.9 doesn't work
-    local _ambari_version="2.6.1.3"
+    local _ambari_version="2.6.1.5"
     local _stack_version="2.6"
     local _hdp_version="${_stack_version}.0.0"
 
@@ -336,7 +339,7 @@ function p_nodes_create() {
         return
     fi
     sleep 3
-    f_ambari_agent_install "${_ambari_repo_file}" "$_how_many" "$_start_from"
+    f_ambari_agent_install "${_ambari_repo_file}" "$_how_many" "$_start_from" || return $?
     f_ambari_agent_fix "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from"
 }
@@ -1526,7 +1529,7 @@ function f_ambari_server_setup() {
     scp -q /tmp/ambari.repo_${__PID} root@${_ambari_host}:/etc/yum.repos.d/ambari.repo || return $?
 
     _info "Setting up ambari-server on ${_ambari_host} ..."
-    ssh -q root@${_ambari_host} "ambari-server setup -s --verbose || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )" || return $?
+    ssh -q root@${_ambari_host} "ambari-server setup -s --enable-lzo-under-gpl-license || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )" || return $?
 
     # Optional: ambari server related setting (TODO: will this work with CentOS7?)
     ssh -q root@${_ambari_host} "sed -i -r \"s/^#?log_line_prefix = ''/log_line_prefix = '%m '/\" /var/lib/pgsql/data/postgresql.conf"
