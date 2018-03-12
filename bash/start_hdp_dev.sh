@@ -1239,11 +1239,11 @@ function _docker_start() {
     sleep 1
 
     # TODO: below section should be removed later
-    if [ -n "$_ip_prefix" ]; then
+    if [ -n "${_ip_address}" ]; then
         # docker exec adds "\r" which causes bash syntax error
         local _dupe="`docker exec -it ${_name} grep -E "^[0-9\.]+\s+${_hostname}" /etc/hosts | grep -v "^${_ip_address}"`"
         if [ ! -z "$_dupe" ]; then
-            _warn "TODO: Detected duplicate ${_hostname} in /etc/hosts. Trying to fix by restarting container..."
+            _warn "TODO: Detected duplicate ${_dupe} for ${_hostname} / ${_ip_address} in /etc/hosts. Trying to fix by restarting container..."
             docker restart ${_name}
 
             #if restarted, calling ./startup.sh (and centos 7 is not using /startup.sh)
