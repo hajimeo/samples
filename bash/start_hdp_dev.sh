@@ -494,7 +494,7 @@ function f_ambari_blueprint_hostmap() {
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
-    if [ -z "$_how_many" ] || [ 3 -lt "$_how_many" ]; then
+    if [ -z "$_how_many" ] || [ 4 -lt "$_how_many" ]; then
         _error "At this moment, Blueprint build needs at least 3 nodes"
         return 1
     fi
@@ -2014,6 +2014,7 @@ function f_ambari_set_repo() {
         #grep -vw 'href' /tmp/repo_ver_1.json > /tmp/repo_ver_1.1.json
         # TODO: replace base_url and if no version, download VDF and modify XML...
         #curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1" -X PUT -H 'X-Requested-By: ambari' -d @/tmp/repo_ver_1.1.json || return $?
+        # TODO: How about Util?
     #fi
 
     if _isUrl "$_repo_url"; then
