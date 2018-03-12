@@ -1223,10 +1223,6 @@ function f_docker_start() {
     fi
 
     _info "starting $_how_many docker containers starting from $_start_from ..."
-    local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
-    local _docker_net_addr="172.17.0.0"
-    [[ "$r_DOCKER_HOST_IP" =~ $_regex ]] && _docker_net_addr="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0.0"
-
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         local _net=`docker container inspect ${_node}$_n | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
         if [ ! "$_net" = "$g_HDP_NETWORK" ]; then
@@ -1275,10 +1271,11 @@ function _docker_start() {
     fi
 
     # Somehow docker disable a container communicates outside by adding 0.0.0.0 GW, which will be problem when we test distcp
-    local _network_addr=`ssh -q ${_hostname} hostname -i | sed 's/\(.\+\)\.[0-9]\+$/\1/'`
-    if [ -n "${_network_addr}" ]; then
-        docker exec -it ${_name} bash -c "ip route del ${_network_addr%.}.0/24 via 0.0.0.0 || ip route del ${_network_addr%.}.0/16 via 0.0.0.0"
-    fi
+    local _docker_ip=`f_docker_ip "172.17.0.1"`
+    local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
+    local _docker_net_addr="172.17.0.0"
+    [[ "${_docker_ip}" =~ $_regex ]] && _docker_net_addr="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0.0"
+    docker exec -it ${_name} bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 || ip route del ${_docker_net_addr}/16 via 0.0.0.0"
 }
 
 function f_docker_unpause() {
@@ -2374,8 +2371,9 @@ function f_dnsmasq() {
     f_dnsmasq_banner_reset "$_how_many" "$_start_from"
 
     if [ -d /etc/docker ] && [ ! -f /etc/docker/daemon.json ]; then
+        local _docker_ip=`f_docker_ip "172.17.0.1"`
         echo '{
-    "dns": ["172.17.0.1", "8.8.8.8"]
+    "dns": ["'${_docker_ip}'", "8.8.8.8"]
 }' > /etc/docker/daemon.json
         _warn "service docker restart required"
     fi
