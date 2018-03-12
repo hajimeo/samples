@@ -57,10 +57,20 @@ How to run a function:
     some_function_name
 
 How to create a node(s)
-    # if docker image is not ready
-    f_docker_base_create https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6 centos 6.8
-    # create 1 node which hostname is node101.localdmain, and OS is CentOS 6.8, and Ambari is sandbox.hortonworks.com
-    p_nodes_create 1 101 6.8 172.17.0. sandbox.hortonworks.com
+    # If docker image for CentOS 6.8 is not ready
+    f_docker_base_create 'https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6' 'centos' '6.8'
+
+    # Create one node with Ambari Server, hostname: node101.localdomain, OS ver: CentOS6.8, Network addr: 172.17.100.x
+    p_ambari_node_create 'ambari2615.ubu01.localdomain' '172.17.110.100' '7.4.1708' '/path/to/ambari.repo' 'DNS'
+
+    # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS6.8, and Ambari is node101.localdomain
+    p_nodes_create '3' '102' '172.17.100.' '6.8' '/path/to/ambari.repo'
+
+    # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
+    p_ambari_blueprint 'mytestcluster' 'node101.localdomain' ['/path/to/hostmap.json'] ['/path/to/cluster.json']
+
+    # To start above example 4 nodes
+    p_nodes_start '4' '101' 'node101.localdomain'
 
 Available options:
     -i    Initial set up this host for HDP
@@ -105,7 +115,7 @@ function p_interview() {
     local __doc__="Asks user questions. (Requires Python)"
     # Default values TODO: need to update Ambari Version manually (stack version is automatic)
     local _centos_version="6.8" # TODO: 6.9 doesn't work
-    local _ambari_version="2.6.1.3"
+    local _ambari_version="2.6.1.5"
     local _stack_version="2.6"
     local _hdp_version="${_stack_version}.0.0"
 
@@ -284,52 +294,103 @@ function _cancelInterview() {
 }
 
 function p_ambari_node_create() {
-    local __doc__="Create one node and install AmbariServer (NOTE: only centos and doesn't create docker image)"
-    # p_ambari_node_create /path/to/ambari.repo 111 '7.4.1708' '172.17.100.'
-    local _ambari_repo_file="${1-$r_AMBARI_REPO_FILE}"
-    local _start_from="${2-$r_NODE_START_NUM}"
+    local __doc__="TODO: Create one node and install AmbariServer (NOTE: only centos and doesn't create docker image)"
+    # p_ambari_node_create 'ambari2615.ubu01.localdomain' '172.17.110.100' '7.4.1708' '/path/to/ambari.repo'
+    local _ambari_host="${1}"
+    local _ip_address="${2}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
-    local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
+    local _ambari_repo_file="${4-$r_AMBARI_REPO_FILE}"
+    local _dns="$5"
 
-    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
-    local _suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
-    local _ambari_host="${_node}${_start_from}${_suffix}"
-    local _how_many="1"
+    if [[ "${_ambari_host}" =~ ^[0-9]+$ ]]; then
+        local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+        local _suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
+        local _how_many="1"
+        _ambari_host="${_node}${_start_from}${_suffix}"
+    fi
 
-    f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix" || return $?
-    f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix" || return $?
-    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from" || return $?
+    # NOTE: Intentionally not passing repo file (unless r_AMBARI_REPO_FILE is set) so that won't install agent
+    _node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_dns}"
+
     f_get_ambari_repo_file "$_ambari_repo_file" || return $?
     f_ambari_server_install "${_ambari_host}"|| return $?
-    f_ambari_server_setup "${_ambari_host}" || return $?
+    local _jdk="`ls -1t ./jdk-*-linux-x64*gz 2>/dev/null | head -n1`"
+    local _jce="`ls -1t ./jce_policy-*.zip 2>/dev/null | head -n1`"
+    [ -n "$r_AMBARI_JDK_URL" ] && _jdk="$r_AMBARI_JDK_URL"
+    [ -n "$r_AMBARI_JCE_URL" ] && _jce="$r_AMBARI_JCE_URL"
+    f_ambari_server_setup "${_ambari_host}" "${_jdk}" "$_jce" || return $?
     f_ambari_server_start "${_ambari_host}" || return $?
     #f_cluster_performance "${_ambari_host}" || return $?
 }
 
+function f_node_create() {
+    local __doc__="TODO: Create one node (NOTE: no agent installation, only centos, and doesn't create docker image)"
+    local _hostname="${1}"
+    local _ip_address="${2}"
+    local _os_ver="${3-$r_CONTAINER_OS_VER}"
+    local _dns="$4"
+    [ -z "${_dns}" ] && _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
+    [ $_dns = "localhost" ] && _dns="`f_docker_ip`"
+
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
+    f_dnsmasq_banner_reset "${_hostname}" "" "${_ip_address}"
+    _docker_run "${_hostname}" "${_ip_address}" "${g_DOCKER_BASE}:$_os_ver" "${_dns}" || return $?
+    _docker_start "${_hostname}" "${_ip_address}" "${_dns}"
+
+    docker exec -it ${_name} bash -c "chpasswd <<< root:$g_DEFAULT_PASSWORD"
+}
+
 function p_nodes_create() {
-    local __doc__="Create container(s) and if _ambari_host is given, try installing agent (NOTE: only centos and doesn't create docker image)"
-    # p_nodes_create 1 100 '7.4.1708' '172.17.140.' ''
+    local __doc__="Create container(s). If _ambari_repo_file is given, try installing agent (NOTE: only centos and doesn't create docker image)"
+    # p_nodes_create 1 100 '172.17.140.' '7.4.1708' './ambari.repo'
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _os_ver="${3-$r_CONTAINER_OS_VER}"
-    local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
-    local _ambari_host="${5-$r_AMBARI_HOST}"
+    local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"
+    local _os_ver="${4-$r_CONTAINER_OS_VER}"
+    local _ambari_repo_file="${5-$r_AMBARI_REPO_FILE}"
 
-    f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix"
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
+    f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix" || return $?
+    f_docker_start "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
-    if [ -z "${_ambari_host}" ]; then
-        _warn "No ambari host specified, so not setting up ambari agent"
+
+    if [ -z "${_ambari_repo_file}" ]; then
+        _warn "No ambari repo file specified, so not setting up ambari agent"
         return
     fi
-    f_ambari_agent_install "$_how_many" "$_start_from" "${_ambari_host}"
+    sleep 3
+    f_ambari_agent_install "${_ambari_repo_file}" "$_how_many" "$_start_from" || return $?
     f_ambari_agent_fix "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from"
+}
+
+function p_nodes_start() {
+    local __doc__="Start container(s). If _ambari_host is given, try starting ambari server and services (NOTE: dnsmasq should be configured)"
+    # p_nodes_start 1 101 node101.localdomain
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+    local _ambari_host="${3-$r_AMBARI_HOST}"
+
+    f_docker_start "$_how_many" "$_start_from"
+    if [ -z "${_ambari_host}" ]; then
+        _warn "No ambari host specified, so not starting ambari"
+        return
+    fi
+
+    sleep 3
+    f_ambari_server_start "${_ambari_host}"
+    f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from" > /dev/null
+    f_log_cleanup    # probably wouldn't want to clean log for non ambari managed node
+    f_services_start "${_ambari_host}"
+    f_port_forward 8080 ${_ambari_host} 8080 "Y"
+    f_port_forward_ssh_on_nodes "$_how_many" "$_start_from"
 }
 
 function p_hdp_start() {
     local __doc__="Start up HDP containers"
     f_loadResp
+
     f_dnsmasq_banner_reset
     f_restart_services_just_in_case
     f_docker0_setup "172.18.0.1" "24"
@@ -338,22 +399,11 @@ function p_hdp_start() {
     if ! _isYes "$r_DOCKER_KEEP_RUNNING"; then
         f_docker_stop_other
     fi
-    f_docker_start
-    sleep 4
+
+    p_nodes_start
+
     _info "NOT setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
-
-    _info "Starting Ambari Server"
-    f_ambari_server_start
-    # not interested in agent start output at this moment.
-    f_run_cmd_on_nodes "ambari-agent start" > /dev/null
-
-    f_log_cleanup
-
-    f_services_start
-
-    f_port_forward 8080 $r_AMBARI_HOST 8080 "Y"
-    f_port_forward_ssh_on_nodes
     f_screen_cmd
 }
 
@@ -395,15 +445,15 @@ service postgresql reload"
     fi
 
     if [ -n "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ] && [ ! -s "$_hostmap_json" ]; then
-            _warn "$_hostmap_json does not exist or empty file. Will regenerate automatically..."
-            f_ambari_blueprint_hostmap > $_hostmap_json
+        _warn "$_hostmap_json does not exist or empty file. Will regenerate automatically..."
+        f_ambari_blueprint_hostmap > $_hostmap_json
     else
         f_ambari_blueprint_hostmap > $_hostmap_json
     fi
 
     if [ -n "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ] && [ ! -s "$_cluster_config_json" ]; then
-            _error "$_cluster_config_json does not exist. Stopping Ambari Blueprint..."
-            return 1
+        _error "$_cluster_config_json does not exist. Stopping Ambari Blueprint..."
+        return 1
     else
         f_ambari_blueprint_cluster_config > $_cluster_config_json
     fi
@@ -990,20 +1040,21 @@ function f_docker_setup() {
         apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
     fi
 
-    local _storage_size="30G"
+    # commenting below as newer docker wouldn't need this and docker info sometimes takes time
+    #local _storage_size="30G"
     # This part is different by docker version, so changing only if it was 10GB or 1*.**GB
-    docker info | grep 'Base Device Size' | grep -oP '1\d\.\d\dGB' &>/dev/null
-    if [ $? -eq 0 ]; then
-        grep 'storage-opt dm.basesize=' /etc/init/docker.conf &>/dev/null
-        if [ $? -ne 0 ]; then
-            sed -i.bak -e 's/DOCKER_OPTS=$/DOCKER_OPTS=\"--storage-opt dm.basesize='${_storage_size}'\"/' /etc/init/docker.conf
-            _warn "Restarting docker (will stop all containers)..."
-            sleep 3
-            service docker restart
-        else
-            _warn "storage-opt dm.basesize=${_storage_size} is already set in /etc/init/docker.conf"
-        fi
-    fi
+    #docker info 2>/dev/null | grep 'Base Device Size' | grep -owP '1\d\.\d\dGB' &>/dev/null
+    #if [ $? -eq 0 ]; then
+    #    grep 'storage-opt dm.basesize=' /etc/init/docker.conf &>/dev/null
+    #    if [ $? -ne 0 ]; then
+    #        sed -i.bak -e 's/DOCKER_OPTS=$/DOCKER_OPTS=\"--storage-opt dm.basesize='${_storage_size}'\"/' /etc/init/docker.conf
+    #        _warn "Restarting docker (will stop all containers)..."
+    #        sleep 3
+    #        service docker restart
+    #    else
+    #        _warn "storage-opt dm.basesize=${_storage_size} is already set in /etc/init/docker.conf"
+    #    fi
+    #fi
 }
 
 function f_hdp_network_setup() {
@@ -1119,11 +1170,18 @@ function f_docker_base_create() {
 }
 
 function f_docker_start() {
-    local __doc__="Starting some docker containers"
+    local __doc__="Starting some docker containers with a few customization"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    # TODO: below two options should be removed
+    local _os_ver="${3-$r_CONTAINER_OS_VER}"
+    local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
+
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
-    local _centos_os_ver="${r_CONTAINER_OS_VER%%.*}"
+    local _centos_os_ver="${_os_ver%%.*}"
+    local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
+    local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
+    [ $_dns = "localhost" ] && _dns="`f_docker_ip`"
 
     # To use tcpdump from container
     if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
@@ -1143,48 +1201,58 @@ function f_docker_start() {
     [[ "$r_DOCKER_HOST_IP" =~ $_regex ]] && _docker_net_addr="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0.0"
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        _net=`docker container inspect ${_node}$_n | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
+        local _net=`docker container inspect ${_node}$_n | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
         if [ ! "$_net" = "$g_HDP_NETWORK" ]; then
             _info "Moving network from $_net to $g_HDP_NETWORK"
             docker network disconnect $_net ${_node}$_n
             docker network connect --ip=${r_DOCKER_NETWORK_ADDR%\.}.$_n hdp ${_node}$_n
         fi
+
         # docker seems doesn't care if i try to start already started one
-        docker start --attach=false ${_node}$_n &
-        sleep 1
-
-        # docker exec adds "\r" which causes bash syntax error TODO: should be removed later
-	    local _dupe="`docker exec -it ${_node}$_n grep -E "^[0-9\.]+\s+${_node}$_n${r_DOMAIN_SUFFIX}" /etc/hosts | grep -v "^${r_DOCKER_NETWORK_ADDR%\.}.$_n"`"
-	    if [ ! -z "$_dupe" ]; then
-            wget -O /dev/null -o /dev/null http://172.26.108.37:8181/duplicate &
-	        _warn "TODO: Detected duplicate ${_node}$_n${r_DOMAIN_SUFFIX} in /etc/hosts. Trying to fix by restarting container..."
-	        docker restart ${_node}$_n
-
-            #centos  7 is not using /startup.sh
-            if [ $_centos_os_ver -eq 6 ]; then
-	        # need to start necessary services in here but how to start service is different by container, so expecting /startup.sh absorb this
-	            docker exec ${_node}$_n timeout 5 /startup.sh
-            fi 
-	    fi
-
-        # Don't touch iptables in old /startup.sh TODO: remove this later as newer container doesnt' have this
-	    docker exec -it ${_node}$_n bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh &>/dev/null && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
-
-
-        # if DNS is not 'localhost', update /etc/resolve.conf. expecting r_DNS_SERVER is IP Address. Note: can't use sed
-        if [ ! -z "$r_DNS_SERVER" ] && [ "$r_DNS_SERVER" != "localhost" ] && [ "$r_DNS_SERVER" != "127.0.0.1" ] && [ "$r_DNS_SERVER" != "127.0.0.11" ]; then
-            docker exec -it ${_node}$_n bash -c '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${r_DNS_SERVER}'\b" $_f || (grep -v "^nameserver" $_f > ${_f}.tmp && cat ${_f}.tmp > ${_f} && echo "nameserver '${r_DNS_SERVER}'" >> $_f)'
-        fi
-	    # Adding docker host IP (eg. 172.17.0.1) with specified hostname TODO: remote this later as now it should use dnsmasq
-	    docker exec -it ${_node}$_n bash -c "grep -q \"${r_DOCKER_PRIVATE_HOSTNAME}\" /etc/hosts || echo \"${r_DOCKER_HOST_IP} ${r_DOCKER_PRIVATE_HOSTNAME}\" >> /etc/hosts"
-
-        # Somehow docker disable a container communicates outside by adding 0.0.0.0 GW, which will be problem when we need to test distcp
-	    if [ "$_docker_net_addr" != "${r_DOCKER_NETWORK_ADDR%0}0" ]; then
-    	    docker exec -it ${_node}$_n bash -c "ip route del ${_docker_net_addr}/16 via 0.0.0.0"
-    	    #[ ! -z "$r_DOCKER_NETWORK_ADDR" ] && docker exec -it ${_node}$_n bash -c "ip route add ${r_DOCKER_NETWORK_ADDR%0}0/${r_DOCKER_NETWORK_MASK#/} via 0.0.0.0"
-        fi
+        _docker_start "${_node}$_n${_domain_suffix}" "${_ip_prefix%\.}.$_n" "${_dns}"
     done
     wait
+}
+
+function _docker_start() {
+    local _hostname="$1"
+    local _ip_address="$2"
+    local _dns="$3"
+
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
+    docker start --attach=false ${_name} &
+    sleep 1
+
+    # TODO: below section should be removed later
+    if [ -n "$_ip_prefix" ]; then
+        # docker exec adds "\r" which causes bash syntax error
+        local _dupe="`docker exec -it ${_name} grep -E "^[0-9\.]+\s+${_hostname}" /etc/hosts | grep -v "^${_ip_address}"`"
+        if [ ! -z "$_dupe" ]; then
+            _warn "TODO: Detected duplicate ${_hostname} in /etc/hosts. Trying to fix by restarting container..."
+            docker restart ${_name}
+
+            #if restarted, calling ./startup.sh (and centos 7 is not using /startup.sh)
+            if [ $_centos_os_ver -eq 6 ]; then
+                # need to start necessary services in here but how to start service is different by container, so expecting /startup.sh absorb this
+                docker exec ${_name} timeout 5 /startup.sh
+            fi
+        fi
+    fi
+
+    # Don't touch iptables in old /startup.sh TODO: remove this later as newer container doesnt' have this
+    docker exec -it ${_name} bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh &>/dev/null && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
+
+    # if DNS is not 'localhost', update /etc/resolve.conf. expecting _dns is IP Address. Note: can't use sed
+    if [ ! -z "${_dns}" ] && [ "${_dns}" != "localhost" ] && [ "${_dns}" != "127.0.0.1" ] && [ "${_dns}" != "127.0.0.11" ]; then
+        docker exec -it ${_name} bash -c '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${_dns}'\b" $_f || (grep -v "^nameserver" $_f > ${_f}.tmp && cat ${_f}.tmp > ${_f} && echo "nameserver '${_dns}'" >> $_f)'
+    fi
+
+    # Somehow docker disable a container communicates outside by adding 0.0.0.0 GW, which will be problem when we test distcp
+    local _network_addr=`ssh -q ${_hostname} hostname -i | sed 's/\(.\+\)\.[0-9]\+$/\1/'`
+    if [ -n "${_network_addr}" ]; then
+        docker exec -it ${_name} bash -c "ip route del ${_network_addr%.}.0/24 via 0.0.0.0 || ip route del ${_network_addr%.}.0/16 via 0.0.0.0"
+    fi
 }
 
 function f_docker_unpause() {
@@ -1320,40 +1388,51 @@ function f_docker_run() {
 
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
-    local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
-    local _base="${g_DOCKER_BASE}:$_os_ver"
-
-    if [ $_dns = "localhost" ]; then
-        _dns="`f_docker_ip`"
-    fi
+    [ $_dns = "localhost" ] && _dns="`f_docker_ip`"
 
     if [ -z "$_dns" ]; then
         _warn "No DNS IP Address"
         return 1
     fi
 
-    local _network=""
+    local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
+    local _base="${g_DOCKER_BASE}:$_os_ver"
+    local _ip_address=""
     local _line=""
+
     [ ! -d /var/tmp/share ] && mkdir -p -m 777 /var/tmp/share
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        _line="`docker ps -a -f name=${_node}$_n | grep -w ${_node}$_n`"
-        if [ -n "$_line" ]; then
-            _warn "${_node}$_n already exists. Skipping..."
-            continue
-        fi
-        # --ip may not work if no custom network due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
-        [ ! -z "$_ip_prefix" ] && _network="--network=$g_HDP_NETWORK --ip=${_ip_prefix%\.}.${_n}"
-
-        docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share --privileged --hostname=${_node}$_n${_domain} ${_network} --dns=$_dns --name=${_node}$_n ${_base} || return $?
+        _docker_run "${_node}$_n${_domain}" "${_ip_address}" "${_base}" "${_dns}" || continue
     done
+}
+
+function _docker_run() {
+    local _hostname="$1"
+    local _ip_address="$2"
+    local _base="$3"
+    local _dns="$4"
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
+    _line="`docker ps -a -f name=${_name} | grep -w ${_name}`"
+    if [ -n "$_line" ]; then
+        _warn "Container name:${_name} already exists. Skipping..."
+        return 2
+    fi
+
+    # --ip may not work if no custom network due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
+    local _options=""
+    [ ! -z "${_ip_address}" ] && _options="${_options} --network=$g_HDP_NETWORK --ip=${_ip_address}"
+    [ ! -z "${_dns}" ] && _options="${_options} --dns=${_dns}"
+
+    docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share --privileged --hostname=${_hostname} ${_options} --name=${_name} ${_base}
 }
 
 function _ambari_query_sql() {
     local _query="${1%\;}"
     local _ambari_host="${2-$r_AMBARI_HOST}"
 
-    ssh -q root@${_ambari_host} "PGPASSWORD=bigdata psql -Uambari -tAc \"${_query};\""
+    ssh -q root@${_ambari_host} "PGPASSWORD=bigdata psql -h ${_ambari_host} -Uambari -tAc \"${_query};\""
 }
 
 function f_get_cluster_name() {
@@ -1423,6 +1502,11 @@ function f_ambari_server_install() {
     _info "Copying /tmp/ambari.repo_${__PID} to ${_ambari_host} ..."
     scp -q /tmp/ambari.repo_${__PID} root@${_ambari_host}:/etc/yum.repos.d/ambari.repo || return $?
 
+    if ssh -q root@${_ambari_host} "which ambari-server && ambari-server --version"; then
+        _warn "New ambari.repo file is coppied but ambari-server on ${_ambari_host} is already installed, so skipping..."
+        return 0
+    fi
+
     _info "Installing ambari-server on ${_ambari_host} ..."
     ssh -q root@${_ambari_host} "(set -x; yum clean all; yum install -y ambari-server && service postgresql initdb; service postgresql restart)"
 }
@@ -1483,7 +1567,11 @@ function f_ambari_server_setup() {
     scp -q /tmp/ambari.repo_${__PID} root@${_ambari_host}:/etc/yum.repos.d/ambari.repo || return $?
 
     _info "Setting up ambari-server on ${_ambari_host} ..."
-    ssh -q root@${_ambari_host} "ambari-server setup -s --verbose || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )"
+    ssh -q root@${_ambari_host} "ambari-server setup -s --enable-lzo-under-gpl-license || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )" || return $?
+
+    # Optional: ambari server related setting (TODO: will this work with CentOS7?)
+    ssh -q root@${_ambari_host} "sed -i -r \"s/^#?log_line_prefix = ''/log_line_prefix = '%m '/\" /var/lib/pgsql/data/postgresql.conf"
+    ssh -q root@${_ambari_host} "sed -i -r \"s/^#?log_statement = 'none'/log_statement = 'mod'/\" /var/lib/pgsql/data/postgresql.conf"
 }
 
 function f_ambari_server_reset() {
@@ -1501,7 +1589,8 @@ function f_ambari_server_start() {
     _port_wait "${_ambari_host}" "22"
     ssh -q root@${_ambari_host} "ambari-server start --skip-database-check" &> /tmp/f_ambari_server_start.out
     if [ $? -ne 0 ]; then
-        grep -iq 'Ambari Server is already running' /tmp/f_ambari_server_start.out && return
+        # if 'Server not yet listening...' should be OK.
+        grep -iqE 'Ambari Server is already running|Server not yet listening on http port 8080 after 50 seconds' /tmp/f_ambari_server_start.out && return
         sleep 5
         ssh -q root@${_ambari_host} "ambari-server start --skip-database-check"
     fi
@@ -1509,18 +1598,19 @@ function f_ambari_server_start() {
 
 function f_port_forward_ssh_on_nodes() {
     local __doc__="Opening SSH ports to each node"
-    local _init_port="${1-2200}"
-    local _how_many="${2-$r_NUM_NODES}"
-    local _start_from="${3-$r_NODE_START_NUM}"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+    local _init_port="${3-2200}"
     local _local_port=0
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+    local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
     _info "Synchronize authorized_keys between host and containers..."
     f_copy_auth_keys_to_containers "$_how_many" "$_start_from"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         _local_port=$(($_init_port + $i))
-        f_port_forward $_local_port ${_node}$i${r_DOMAIN_SUFFIX} 22
+        f_port_forward $_local_port ${_node}$i${_domain} 22
     done
 }
 
@@ -1694,6 +1784,7 @@ function f_ambari_java_random() {
 
     local _javahome="`ssh -q root@$r_AMBARI_HOST "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
     _info "Ambari Java Home ${_javahome}"
+    # or -Djava.security.egd=file:///dev/urandom
     local _cmd='grep -q "^securerandom.source=file:/dev/random" "'${_javahome%/}'/jre/lib/security/java.security" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "'${_javahome%/}'/jre/lib/security/java.security"'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
@@ -1898,17 +1989,17 @@ function f_ambari_set_repo() {
 
     # TODO: if Ambari 2.6 https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
     # http://sandbox.hortonworks.com:8080/api/v1/stacks/HDP/versions/2.6/repository_versions?fields=operating_systems/repositories/Repositories/base_url
-    if [[ "${r_AMBARI_VER}" =~ ^2.6. ]]; then
+    if [[ "${r_AMBARI_VER}" =~ ^2.6. ]]; then # TODO: get ambari version
         _warn "TODO: Ambari 2.6.x may not work with local repo at this moment"
         return 1
         # fields=*,operating_systems/repositories/Repositories/*
-        curl -s -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1?fields=operating_systems/repositories/Repositories/*" -o /tmp/repo_ver_1.json || return $?
+        curl -s -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1?fields=operating_systems/repositories/Repositories/*" -o /tmp/repo_ver_1.json || return $?
         grep -vw 'href' /tmp/repo_ver_1.json > /tmp/repo_ver_1.1.json
         # TODO: replace base_url and if no version, download VDF and modify XML...
-        curl -si -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1" -X PUT -H 'X-Requested-By: ambari' -d @/tmp/repo_ver_1.1.json || return $?
+        curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1" -X PUT -H 'X-Requested-By: ambari' -d @/tmp/repo_ver_1.1.json || return $?
     else
         if _isUrl "$_repo_url"; then
-        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}'
+            curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}'
         fi
 
         if _isUrl "$_util_url"; then
@@ -1959,9 +2050,9 @@ function f_repo_mount() {
 
 function f_services_start() {
     local __doc__="Request 'Start all' to Ambari via API"
-    local _is_stale_only="$1"
-    local _ambari_host="${2-$r_AMBARI_HOST}"
-    local _ambari_port="${3-8080}"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+    local _ambari_port="${2-8080}"
+    local _is_stale_only="$3"
     local _c="`f_get_cluster_name ${_ambari_host}`" || return 1
     _info "Will start all services ..."
     if [ -z "$_c" ]; then
@@ -2011,7 +2102,7 @@ function f_service() {
     fi
 
     if [ -z "$_action" ]; then
-        _info "Acceptable actions: start, stop, restart" # Actually it accespts others like DELETE...
+        _info "Acceptable actions: start, stop, restart" # Actually it accepts others like DELETE...
         return
     fi
 
@@ -2036,8 +2127,7 @@ function f_service() {
             # same action for same service is already running
             [ 0 -lt $_n ] && break;
 
-            curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
-            local _request_context=""
+            curl -s -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
             curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_s' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_s'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
             echo ""
         fi
@@ -2121,7 +2211,7 @@ function f_ttyd() {
     fi
     apt-get install -y ttyd
 
-    _info "To start ttyd: 'su -u $_user -i ttyd -p 7681 bash &'"
+    _info "To start ttyd: 'sudo -u $_user -i ttyd -p 7681 bash &'"
 }
 
 function f_vmware_tools_install() {
@@ -2223,7 +2313,9 @@ function p_host_setup() {
 
     f_port_forward_ssh_on_nodes
     _log "INFO" "Completed. Grepping ERRORs and WARNs from /tmp/p_host_setup.log"
+    echo "//=========================================================================="
     grep -Ew '(ERROR|WARN)' /tmp/p_host_setup.log
+    echo "==========================================================================//"
 
     f_screen_cmd
 }
@@ -2255,9 +2347,9 @@ function f_dnsmasq() {
 
 function f_dnsmasq_banner_reset() {
     local __doc__="Regenerate /etc/banner_add_hosts"
-    local _how_many="${1-$r_NUM_NODES}"
+    local _how_many="${1-$r_NUM_NODES}"             # Or hostname
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"
+    local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"  # Or exact IP address
 
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
@@ -2277,24 +2369,40 @@ function f_dnsmasq_banner_reset() {
 
     rm -rf /tmp/banner_add_hosts
 
-        scp -q $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts
-    if [ ! -s /tmp/banner_add_hosts ]; then
-        echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" > /tmp/banner_add_hosts
-    else
-        grep -vE "$_docker0|${r_DOCKER_PRIVATE_HOSTNAME}${_domain}" /tmp/banner_add_hosts > /tmp/banner
-        echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" >> /tmp/banner
+    # if no banner file, no point of updating it.
+    scp -q $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts || return $?
 
-        cat /tmp/banner > /tmp/banner_add_hosts
+    if [ -n "${_docker0}" ]; then
+        # If an empty file
+        if [ ! -s /tmp/banner_add_hosts ]; then
+            echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" > /tmp/banner_add_hosts
+        else
+            grep -vE "$_docker0|${r_DOCKER_PRIVATE_HOSTNAME}${_domain}" /tmp/banner_add_hosts > /tmp/banner
+            echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" >> /tmp/banner
+            cat /tmp/banner > /tmp/banner_add_hosts
+        fi
     fi
 
-    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        grep -vE "${_node}${_n}${_domain}|${_ip_prefix%\.}.${_n}" /tmp/banner_add_hosts > /tmp/banner
-        echo "${_ip_prefix%\.}.${_n}    ${_node}${_n}${_domain} ${_node}${_n}" >> /tmp/banner
+    if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
+        local _hostname="$_how_many"
+        local _ip_address="${_ip_prefix}"
+        local _shortname="`echo "${_hostname}" | cut -d"." -f1`"
+        grep -vE "${_hostname}|${_ip_address}" /tmp/banner_add_hosts > /tmp/banner
+        echo "${_ip_address}    ${_hostname} ${_shortname}" >> /tmp/banner
         cat /tmp/banner > /tmp/banner_add_hosts
-    done
+    else
+        for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+            local _hostname="${_node}${_n}${_domain}"
+            local _ip_address="${_ip_prefix%\.}.${_n}"
+            local _shortname="${_node}${_n}"
+        grep -vE "${_hostname}|${_ip_address}" /tmp/banner_add_hosts > /tmp/banner
+            echo "${_ip_address}    ${_hostname} ${_shortname}" >> /tmp/banner
+            cat /tmp/banner > /tmp/banner_add_hosts
+        done
+    fi
 
+    # copy back and restart
     scp -q /tmp/banner_add_hosts $_dns:/etc/
-
     ssh -q $_dns service dnsmasq restart
 }
 
@@ -2602,12 +2710,12 @@ function f_log_cleanup() {
     local __doc__="Deleting log files which group owner is hadoop"
     local _days="${1-7}"
     _warn "Deleting hadoop logs which is older than $_days days..."
-    sleep 5
-    # NOTE: Assuming docker name and hostname is same
+    sleep 3
     for _name in `docker ps --format "{{.Names}}"`; do
-        ssh -q root@${_name}${r_DOMAIN_SUFFIX} 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {};find /var/log/ambari-* -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}' &
+        _info "Running f_log_cleanup on ${_name}..."
+        docker exec -d ${_name} bash -c 'find /var/log/ -type f -group hadoop \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {};find /var/log/ambari-* -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +'${_days}' -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
+        sleep 1
     done
-    wait
 }
 
 function f_update_check() {
