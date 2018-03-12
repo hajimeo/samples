@@ -321,7 +321,7 @@ function p_ambari_node_create() {
     fi
 
     # NOTE: Intentionally not using ambari repo file (unless r_AMBARI_REPO_FILE is set) so that won't install agent
-    f_node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_dns}" || return $?
+    p_node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_dns}" || return $?
 
     f_get_ambari_repo_file "$_ambari_repo_file" || return $?
     f_ambari_server_install "${_ambari_host}"|| return $?
@@ -334,12 +334,14 @@ function p_ambari_node_create() {
     f_ambari_java_random "${_ambari_host}"
 }
 
-function f_node_create() {
+function p_node_create() {
     local __doc__="TODO: Create one node (NOTE: no agent installation, only centos, and doesn't create docker image)"
     local _hostname="${1}"
     local _ip_address="${2}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
     local _dns="$4"
+    local _ambari_repo_file="${5-$r_AMBARI_REPO_FILE}"
+
     [ -z "${_dns}" ] && _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
     [ $_dns = "localhost" ] && _dns="`f_docker_ip`"
 
@@ -348,8 +350,17 @@ function f_node_create() {
     f_dnsmasq_banner_reset "${_hostname}" "" "${_ip_address}"
     _docker_run "${_hostname}" "${_ip_address}" "${g_DOCKER_BASE}:$_os_ver" "${_dns}" || return $?
     _docker_start "${_hostname}" "${_ip_address}" "${_dns}"
+    sleep 1
 
     docker exec -it ${_name} bash -c "chpasswd <<< root:$g_DEFAULT_PASSWORD"
+
+    if [ -z "${_ambari_repo_file}" ]; then
+        _warn "No ambari repo file specified, so not setting up ambari agent"
+        return
+    fi
+    docker exec -it ${_name} bash -c 'which ambari-agent 2>/dev/null || yum install ambari-agent -y'
+    _ambari_agent_fix "${_hostname}"
+    docker exec -it ${_name} bash -c 'ambari-agent start'
 }
 
 function p_nodes_create() {
@@ -1819,12 +1830,18 @@ function f_ambari_agent_fix() {
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
-    local _cmd='grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
-        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "sed -i.bak -e '/^verify/ s/\(platform_default\|enable\)/disable/' /etc/python/cert-verification.cfg 2>/dev/null"
+        _ambari_agent_fix "${_node}$i${r_DOMAIN_SUFFIX}"
     done
+}
+
+function _ambari_agent_fix() {
+    local __doc__="Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh, and other misc changes"
+    local _hostname="${1}"
+
+    ssh -q root@${_hostname} -t 'grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
+    ssh -q root@${_hostname} -t "sed -i.bak -e '/^verify/ s/\(platform_default\|enable\)/disable/' /etc/python/cert-verification.cfg 2>/dev/null"
 }
 
 function f_etcs_mount() {
