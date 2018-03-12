@@ -1223,7 +1223,7 @@ function f_docker_start() {
         fi
 
         # docker seems doesn't care if i try to start already started one
-        _docker_start "${_node}$_n${_domain_suffix}" "${_ip_prefix%\.}.$_n" "${_dns}"
+        _docker_start "${_node}$_n${_domain_suffix}" "${_ip_prefix%\.}.$_n" "${_dns}" &
     done
     wait
 }
@@ -1235,8 +1235,7 @@ function _docker_start() {
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
-    docker start --attach=false ${_name} &
-    sleep 1
+    docker start --attach=false ${_name}
 
     # TODO: below section should be removed later
     if [ -n "${_ip_address}" ]; then
