@@ -61,7 +61,7 @@ How to create a node(s)
     f_docker_base_create 'https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6' 'centos' '6.8'
 
     # Create one node with Ambari Server, hostname: node101.localdomain, OS ver: CentOS6.8, Network addr: 172.17.100.x
-    p_ambari_node_create 'ambari2615.ubu01.localdomain' '172.17.110.100' '7.4.1708' '/path/to/ambari.repo' 'DNS'
+    p_ambari_node_create 'ambari2615.ubu01.localdomain' '172.17.140.101' '7.4.1708' '/path/to/ambari.repo' 'DNS'
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS6.8, and Ambari is node101.localdomain
     p_nodes_create '3' '102' '172.17.100.' '6.8' '/path/to/ambari.repo'
@@ -105,6 +105,9 @@ g_DNS_SERVER="localhost"
 g_DOMAIN_SUFFIX=".localdomain"
 g_APT_UPDATE_DONE=""
 g_HDP_NETWORK="hdp"
+g_CENTOS_VERSION="6.8"
+g_AMBARI_VERSION="2.6.1.5" # TODO: need to update Ambari Version manually
+g_STACK_VERSION="2.6"
 
 __PID="$$"
 __LAST_ANSWER=""
@@ -113,10 +116,10 @@ __LAST_ANSWER=""
 
 function p_interview() {
     local __doc__="Asks user questions. (Requires Python)"
-    # Default values TODO: need to update Ambari Version manually (stack version is automatic)
-    local _centos_version="6.8" # TODO: 6.9 doesn't work
-    local _ambari_version="2.6.1.5"
-    local _stack_version="2.6"
+    # Default values (stack version is automatic)
+    local _centos_version="${g_CENTOS_VERSION}" # TODO: 6.9 doesn't work
+    local _ambari_version="${g_AMBARI_VERSION}"
+    local _stack_version="${g_STACK_VERSION}"
     local _hdp_version="${_stack_version}.0.0"
 
     local _stack_version_full="HDP-$_stack_version"
@@ -309,8 +312,16 @@ function p_ambari_node_create() {
         _ambari_host="${_node}${_start_from}${_suffix}"
     fi
 
-    # NOTE: Intentionally not passing repo file (unless r_AMBARI_REPO_FILE is set) so that won't install agent
-    _node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_dns}"
+    if [ -z "$_ambari_repo_file" ]; then
+        local _repo_os_ver="${_os_ver%%.*}"
+        local _container_os="centos"
+        _ambari_repo_file="http://public-repo-1.hortonworks.com/ambari/${_container_os}${_repo_os_ver}/2.x/updates/${g_AMBARI_VERSION}/ambari.repo"
+        _info "No _ambari_repo_file specified so that using: ${_ambari_repo_file}"
+        sleep 3
+    fi
+
+    # NOTE: Intentionally not using ambari repo file (unless r_AMBARI_REPO_FILE is set) so that won't install agent
+    f_node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_dns}" || return $?
 
     f_get_ambari_repo_file "$_ambari_repo_file" || return $?
     f_ambari_server_install "${_ambari_host}"|| return $?
@@ -320,7 +331,7 @@ function p_ambari_node_create() {
     [ -n "$r_AMBARI_JCE_URL" ] && _jce="$r_AMBARI_JCE_URL"
     f_ambari_server_setup "${_ambari_host}" "${_jdk}" "$_jce" || return $?
     f_ambari_server_start "${_ambari_host}" || return $?
-    #f_cluster_performance "${_ambari_host}" || return $?
+    f_ambari_java_random "${_ambari_host}"
 }
 
 function f_node_create() {
@@ -1784,20 +1795,18 @@ function f_ambari_java_random() {
 
     local _javahome="`ssh -q root@$r_AMBARI_HOST "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
     _info "Ambari Java Home ${_javahome}"
+
     # or -Djava.security.egd=file:///dev/urandom
-    local _cmd='grep -q "^securerandom.source=file:/dev/random" "'${_javahome%/}'/jre/lib/security/java.security" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "'${_javahome%/}'/jre/lib/security/java.security"'
+    local _cmd='grep -q "^securerandom.source=file:/dev/random" "'${_javahome%/}'/jre/lib/security/java.security" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "'${_javahome%/}'/jre/lib/security/java.security"
+_alt_java="$(alternatives --display java | grep "link currently points to" | grep -oE "/.+jre.+/java$")" && _javahome="$(dirname $(dirname "$_alt_java"))" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "$_javahome/lib/security/java.security"'
 
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
-    done
-
-    # TODO: at this moment, trying to change only jre, and below might be broken
-    _cmd='_alt_java="$(alternatives --display java | grep "link currently points to" | grep -oE "/.+jre.+/java$")" && _javahome="$(dirname $(dirname "$_alt_java"))" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "$_javahome/lib/security/java.security"'
-
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        # if no 'java' in the path, this outputs error
-        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
-    done
+    if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
+        ssh -q root@${_how_many} -t "$_cmd"
+    else
+        for i in `_docker_seq "$_how_many" "$_start_from"`; do
+            ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+        done
+    fi
 }
 
 function f_ambari_agent_fix() {
@@ -2420,15 +2429,16 @@ function f_update_resolv_confs() {
 
 function f_cluster_performance() {
     local __doc__="TODO: Ambari/HDP performance hack"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
 
     _info "Using urandom instead of random"
     f_ambari_java_random
 
     _info "Disabling Ambari Alerts"
-    _ambari_query_sql "delete from alert_current where definition_id in (select definition_id from alert_definition where ENABLED = 1);update alert_definition set enabled = 0 where enabled = 1;" "$r_AMBARI_HOST"
+    _ambari_query_sql "delete from alert_current where definition_id in (select definition_id from alert_definition where ENABLED = 1);update alert_definition set enabled = 0 where enabled = 1;" "$_ambari_host"
 
     #_info "No password required to login Ambari..."
-    #ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties'
+    #ssh -q root@$_ambari_host "_f='/etc/ambari-server/conf/ambari.properties'
 #grep -q '^api.authenticate=false' \$_f && exit
 #grep -q '^api.authenticate=' \$_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' \$_f || echo 'api.authenticate=false' >> \$_f
 #grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f
