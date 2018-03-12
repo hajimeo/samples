@@ -457,16 +457,16 @@ service postgresql reload"
 
     if [ -n "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ] && [ ! -s "$_hostmap_json" ]; then
         _warn "$_hostmap_json does not exist or empty file. Will regenerate automatically..."
-        f_ambari_blueprint_hostmap > $_hostmap_json
+        f_ambari_blueprint_hostmap > $_hostmap_json || return $?
     else
-        f_ambari_blueprint_hostmap > $_hostmap_json
+        f_ambari_blueprint_hostmap > $_hostmap_json || return $?
     fi
 
     if [ -n "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ] && [ ! -s "$_cluster_config_json" ]; then
         _error "$_cluster_config_json does not exist. Stopping Ambari Blueprint..."
         return 1
     else
-        f_ambari_blueprint_cluster_config > $_cluster_config_json
+        f_ambari_blueprint_cluster_config > $_cluster_config_json || return $?
     fi
 
     _info "Removing ZK number restrictions..."
