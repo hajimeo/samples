@@ -12,11 +12,13 @@
 g_LOG_FILE_PATH=""
 g_WORK_DIR="./hive_workspace"
 
-# TODO: no good way to find if druid is installed and *hive2*
-g_DRUID_AVAILABLE=false
-which hbase &>/dev/null && g_HABASE_AVAILABLE=true
-which sqoop &>/dev/null && g_SQOOP_AVAILABLE=true
-[ -s /var/log/hadoop/hdfs/hdfs-audit.log ] && g_HDFS_AUDIT_AVAILABLE=true
+## Extra importing (default is disabling all)
+[ -z "${g_Trans_AVAILABLE}" ] && g_Trans_AVAILABLE=false;     # TODO: need to find if ACID/Transaction is on
+[ -z "${g_nnLOG_AVAILABLE}" ] && g_nnLOG_AVAILABLE=false;     #[ -s /var/log/hadoop/hdfs/hdfs-audit.log ] && g_nnLOG_AVAILABLE=true
+[ -z "${g_HBASE_AVAILABLE}" ] && g_HBASE_AVAILABLE=false;     #which hbase &>/dev/null && g_HBASE_AVAILABLE=true
+[ -z "${g_SQOOP_AVAILABLE}" ] && g_SQOOP_AVAILABLE=false;     #which sqoop &>/dev/null && g_SQOOP_AVAILABLE=true
+[ -z "${g_DRUID_AVAILABLE}" ] && g_DRUID_AVAILABLE=false;     # TODO: no good way to find if druid is installed and *hive2*
+
 
 function _log() {
     if [ -n "$g_LOG_FILE_PATH" ]; then
@@ -97,6 +99,22 @@ CREATE TABLE IF NOT EXISTS sample_08 (
   FIELDS TERMINATED BY '\t'
   STORED AS TextFile;
 LOAD DATA INPATH '/tmp/hive_workspace/sample_08.csv' OVERWRITE into table sample_08;
+CREATE TABLE IF NOT EXISTS census_csv(
+  ssn int,
+  name string,
+  city string,
+  email string)
+  row format delimited
+  fields terminated by ',';
+LOAD DATA INPATH '/tmp/hive_workspace/census.csv' OVERWRITE into table census_csv;
+CREATE TABLE IF NOT EXISTS census_clus(
+  ssn int,
+  name string,
+  city string,
+  email string)
+  clustered by (ssn) into 8 buckets;
+set hive.enforce.bucketing=true;
+INSERT OVERWRITE TABLE census_clus select * from census_csv;
 CREATE EXTERNAL TABLE IF NOT EXISTS emp_stage (
   empid int,
   name string,
@@ -107,34 +125,41 @@ CREATE EXTERNAL TABLE IF NOT EXISTS emp_stage (
   fields terminated by ','
   location '/tmp/emp_stage_data';
 LOAD DATA INPATH '/tmp/hive_workspace/employee.csv' OVERWRITE into table emp_stage;
+"
+
+    #NOTE: ACID needs Orc, buckets, transactional=true, also testing bloom filter, like below:
+    #${_cmd} -e \"USE ${_dbname};ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='*');TRUNCATE TABLE emp_part_bckt;INSERT INTO TABLE emp_part_bckt PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;\"
+    # May need below too?
+    #\""ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;\""
+    if ${g_Trans_AVAILABLE}; then
+    _sql="${_sql}
 CREATE TABLE IF NOT EXISTS emp_part_bckt (
   empid int,
   name string,
   designation  string,
   salary int)
   PARTITIONED BY (department String)
-  clustered by (empid) into 2 buckets
-  stored as orc;
+  CLUSTERED BY (empid) INTO 2 BUCKETS
+  STORED AS orc
+  TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='*');
+"
+    else
+    _sql="${_sql}
+CREATE TABLE IF NOT EXISTS emp_part_bckt (
+  empid int,
+  name string,
+  designation  string,
+  salary int)
+  PARTITIONED BY (department String)
+  CLUSTERED BY (empid) INTO 2 BUCKETS
+  STORED AS orc;
+"
+    fi
+    _sql="${_sql}
 set hive.exec.dynamic.partition=true;
 set hive.exec.dynamic.partition.mode=nonstrict;
 set hive.enforce.bucketing = true;
 INSERT OVERWRITE TABLE emp_part_bckt PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;
-CREATE TABLE IF NOT EXISTS census(
-  ssn int,
-  name string,
-  city string,
-  email string)
-  row format delimited
-  fields terminated by ',';
-LOAD DATA INPATH '/tmp/hive_workspace/census.csv' OVERWRITE into table census;
-CREATE TABLE IF NOT EXISTS census_clus(
-  ssn int,
-  name string,
-  city string,
-  email string)
-  clustered by (ssn) into 8 buckets;
-set hive.enforce.bucketing=true;
-INSERT OVERWRITE TABLE census_clus select * from census;
 "
 # create table sample_07_id like sample_07; -- to create an identical table
 # select INPUT__FILE__NAME, code from sample_08;
@@ -142,7 +167,8 @@ INSERT OVERWRITE TABLE census_clus select * from census;
 # set hive.exec.max.dynamic.partitions.pernode=4;
 # set hive.exec.max.created.files=100000;
 
-    if ${g_HDFS_AUDIT_AVAILABLE}; then
+
+    if ${g_nnLOG_AVAILABLE}; then
         _log "INFO" "Adding SQL for importing /var/log/hadoop/hdfs/hdfs-audit.log."
         _file_size=`stat -c"%s" /var/log/hadoop/hdfs/hdfs-audit.log`
         if [ -n "$_file_size" ] && [ $(( 1024 * 1024 * 1024 )) -lt $_file_size ]; then
@@ -174,7 +200,8 @@ LOAD DATA INPATH '/tmp/hive_workspace/hdfs-audit.csv' OVERWRITE into table hdfs_
         fi
     fi
 
-    if ${g_HABASE_AVAILABLE}; then
+
+    if ${g_HBASE_AVAILABLE}; then
         _log "INFO" "Creating HBase table 'emp_review' with hbase shell..."
         # TODO: HBase doesn't seem to have 'create table if not exists' statement
         echo "create 'emp_review','review'" | hbase shell &> /tmp/hive_dummies_hbase_$USER.out
@@ -189,6 +216,7 @@ LOAD DATA INPATH '/tmp/hive_workspace/hdfs-audit.csv' OVERWRITE into table hdfs_
 "
         fi
     fi
+
 
     if ${g_DRUID_AVAILABLE}; then
         _log "INFO" "Adding SQLs for creating a Druid table..."
@@ -218,8 +246,10 @@ FROM
 "
     fi
 
+
     _log "INFO" "Executing SQLs..."
     ${_cmd} -e "${_sql}"
+
 
     if ${g_SQOOP_AVAILABLE}; then
         _log "INFO" "Check (PostgreSQL) JDBC driver. If postgresql-9*jdbc4.jar exists, start Sqoop Import job..."
@@ -231,14 +261,9 @@ FROM
         fi
     fi
 
-    # NOTE: hive (1) returns ArrayIndexOutOfBoundsException if transactional is true and 'orc.bloom.filter.columns' is not '*'
-    _log "INFO" "Completed!
-    NOTE: ACID needs Orc, buckets, transactional=true, also testing bloom filter, like below:
-    ${_cmd} -e \"USE ${_dbname};ALTER TABLE emp_part_bckt SET TBLPROPERTIES ('transactional'='true', 'orc.create.index'='true', 'orc.bloom.filter.columns'='*');TRUNCATE TABLE emp_part_bckt;INSERT INTO TABLE emp_part_bckt PARTITION(department) SELECT empid, name,designation,salary,department FROM emp_stage;\"
-    "
-    # May need below too?
-    #\""ANALYZE TABLE emp_part_bckt PARTITION(department) COMPUTE STATISTICS;ANALYZE TABLE emp_part_bckt COMPUTE STATISTICS for COLUMNS;\""
 
+    # NOTE: hive (1) returns ArrayIndexOutOfBoundsException if transactional is true and 'orc.bloom.filter.columns' is not '*'
+    _log "INFO" "Completed!"
     _log "INFO" "Listing HDFS /apps/hive/warehouse/${_dbname}.db/"
     hdfs dfs -ls /apps/hive/warehouse/${_dbname}.db/*/
 fi
