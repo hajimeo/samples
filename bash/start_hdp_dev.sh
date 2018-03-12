@@ -61,7 +61,7 @@ How to create a node(s)
     f_docker_base_create 'https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6' 'centos' '6.8'
 
     # Create one node with Ambari Server, hostname: node101.localdomain, OS ver: CentOS6.8, Network addr: 172.17.100.x
-    p_ambari_node_create 'ambari2615.ubu01.localdomain' '172.17.140.101' '7.4.1708' '/path/to/ambari.repo' 'DNS'
+    p_ambari_node_create 'ambari2615.ubu04.localdomain' '172.17.140.101' '7.4.1708' '/path/to/ambari.repo' 'DNS'
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS6.8, and Ambari is node101.localdomain
     p_nodes_create '3' '102' '172.17.100.' '6.8' '/path/to/ambari.repo'
@@ -493,8 +493,8 @@ function f_ambari_blueprint_hostmap() {
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
-    if [ -z "$_how_many" ] || [ 4 -gt "$_how_many" ]; then
-        _error "At this moment, Blueprint build needs at least 4 nodes"
+    if [ -z "$_how_many" ] || [ 3 -lt "$_how_many" ]; then
+        _error "At this moment, Blueprint build needs at least 3 nodes"
         return 1
     fi
 
@@ -1789,20 +1789,22 @@ function f_run_cmd_all() {
 
 function f_ambari_java_random() {
     local __doc__="Using urandom instead of random"
-    local _how_many="${1-$r_NUM_NODES}"
-    local _start_from="${2-$r_NODE_START_NUM}"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+    local _how_many="${2-$r_NUM_NODES}"
+    local _start_from="${3-$r_NODE_START_NUM}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
-    local _javahome="`ssh -q root@$r_AMBARI_HOST "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
+    local _javahome="`ssh -q root@${_ambari_host} "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
+    [ -z "${_javahome}" ] && return
     _info "Ambari Java Home ${_javahome}"
 
     # or -Djava.security.egd=file:///dev/urandom
     local _cmd='grep -q "^securerandom.source=file:/dev/random" "'${_javahome%/}'/jre/lib/security/java.security" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "'${_javahome%/}'/jre/lib/security/java.security"
 _alt_java="$(alternatives --display java | grep "link currently points to" | grep -oE "/.+jre.+/java$")" && _javahome="$(dirname $(dirname "$_alt_java"))" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "$_javahome/lib/security/java.security"'
 
-    if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
-        ssh -q root@${_how_many} -t "$_cmd"
-    else
+    ssh -q root@${_ambari_host} -t "$_cmd"
+
+    if [ -n "$_how_many" ]; then
         for i in `_docker_seq "$_how_many" "$_start_from"`; do
             ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
         done
