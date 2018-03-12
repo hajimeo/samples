@@ -490,6 +490,7 @@ function f_ambari_blueprint_hostmap() {
     local _is_kerberos_on="$2"
     local _how_many="${3-$r_NUM_NODES}"
     local _start_from="${4-$r_NODE_START_NUM}"
+    #local _ambari_host="${5-$r_AMBARI_HOST}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
@@ -529,6 +530,8 @@ function f_ambari_blueprint_cluster_config() {
     local _stack_version="${1}"
     local _install_security="${2-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
     local _start_from="${3-$r_NODE_START_NUM}"
+    local _ambari_host="${4-$r_AMBARI_HOST}"
+
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
@@ -542,7 +545,7 @@ function f_ambari_blueprint_cluster_config() {
         fi
     fi
 
-    local _extra_comps_1=""
+    local _extra_comps_1=""  # NOTE: at this moment, this one should NOT be used
     local _extra_comps_2=""
     local _extra_comps_3=""
     local _extra_comps_4=""
@@ -565,7 +568,7 @@ function f_ambari_blueprint_cluster_config() {
           "db_user" : "rangeradmin",
           "db_password" : "'$g_DEFAULT_PASSWORD'",
           "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
-          "db_host" : "'$r_AMBARI_HOST'"
+          "db_host" : "'${_ambari_host}'"
         }
       }
     },
@@ -582,7 +585,7 @@ function f_ambari_blueprint_cluster_config() {
           "KMS_MASTER_KEY_PASSWD" : "'$g_DEFAULT_PASSWORD'",
           "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
           "REPOSITORY_CONFIG_USERNAME" : "keyadmin",
-          "db_host" : "'$r_AMBARI_HOST'"
+          "db_host" : "'${_ambari_host}'"
         }
       }
     },
@@ -590,8 +593,8 @@ function f_ambari_blueprint_cluster_config() {
       "ranger-admin-site" : {
         "properties_attributes" : { },
         "properties" : {
-          "ranger.jpa.audit.jdbc.url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/ranger_audit",
-          "ranger.jpa.jdbc.url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/ranger",
+          "ranger.jpa.audit.jdbc.url" : "jdbc:postgresql://'${_ambari_host}':5432/ranger_audit",
+          "ranger.jpa.jdbc.url" : "jdbc:postgresql://'${_ambari_host}':5432/ranger",
           "ranger.jpa.jdbc.driver" : "org.postgresql.Driver",
           "ranger.jpa.audit.jdbc.driver" : "org.postgresql.Driver",
           "ranger.jpa.audit.jdbc.dialect" : "org.eclipse.persistence.platform.database.PostgreSQLPlatform"
@@ -607,7 +610,7 @@ function f_ambari_blueprint_cluster_config() {
           "xasecure.audit.destination.solr" : "false",
           "xasecure.audit.destination.hdfs" : "false",
           "xasecure.audit.destination.hdfs.dir" : "hdfs://%HOSTGROUP::host_group_2%:8020/ranger/audit",
-          "ranger_privelege_user_jdbc_url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/postgres"
+          "ranger_privelege_user_jdbc_url" : "jdbc:postgresql://'${_ambari_host}':5432/postgres"
         }
       }
     },
@@ -615,7 +618,7 @@ function f_ambari_blueprint_cluster_config() {
       "dbks-site" : {
         "properties_attributes" : { },
         "properties" : {
-          "ranger.ks.jpa.jdbc.url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/rangerkms",
+          "ranger.ks.jpa.jdbc.url" : "jdbc:postgresql://'${_ambari_host}':5432/rangerkms",
           "ranger.ks.jpa.jdbc.driver" : "org.postgresql.Driver"
         }
       }
