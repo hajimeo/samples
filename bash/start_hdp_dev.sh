@@ -335,7 +335,7 @@ function p_ambari_node_create() {
 }
 
 function p_node_create() {
-    local __doc__="TODO: Create one node (NOTE: no agent installation, only centos, and doesn't create docker image)"
+    local __doc__="TODO: Create one node (NOTE: no agent installation if no ambari.repo, only centos, and doesn't create docker image)"
     local _hostname="${1}"
     local _ip_address="${2}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
@@ -347,7 +347,7 @@ function p_node_create() {
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
-    f_dnsmasq_banner_reset "${_hostname}" "" "${_ip_address}"
+    f_dnsmasq_banner_reset "${_hostname}" "" "${_ip_address}" "${_dns}"
     _docker_run "${_hostname}" "${_ip_address}" "${g_DOCKER_BASE}:$_os_ver" "${_dns}" || return $?
     _docker_start "${_hostname}" "${_ip_address}" "${_dns}"
     sleep 1
@@ -2386,9 +2386,10 @@ function f_dnsmasq_banner_reset() {
     local _how_many="${1-$r_NUM_NODES}"             # Or hostname
     local _start_from="${2-$r_NODE_START_NUM}"
     local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"  # Or exact IP address
+    local _dns="${4}"
+    [ -z "${_dns}" ] && _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
 
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
-    local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
     local _base="${g_DOCKER_BASE}:$_os_ver"
 
