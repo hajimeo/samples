@@ -37,6 +37,7 @@ function f_docker_image_setup() {
     local _url="$2"
     local _tmp_dir="${3-./}"
     local _min_disk="12"
+    local _cmd=""
 
     which docker &>/dev/null
     if [ $? -ne 0 ]; then
@@ -57,14 +58,16 @@ function f_docker_image_setup() {
 
     if [[ "${_name}" =~ ^"sandbox-hdf" ]]; then
         #_url="https://downloads-hortonworks.akamaized.net/sandbox-hdf-2.1/HDF_2.1.2_docker_image_04_05_2017_13_12_03.tar.gz"
-        _url="https://downloads-hortonworks.akamaized.net/sandbox-hdf-3.0/HDF_3.0_docker_12_6_2017.tar.gz"
+        #_url="https://downloads-hortonworks.akamaized.net/sandbox-hdf-3.0/HDF_3.0_docker_12_6_2017.tar.gz"
         #TODO: docker pull orendain/sandbox-hdf-analytics:3.0.2.0
+        _cmd='docker pull hortonworks/sandbox-hdf-standalone:3.1.0'
         _min_disk=9
     elif [ -z "$_url" ]; then
         #_url="http://hortonassets.s3.amazonaws.com/2.5/HDP_2.5_docker.tar.gz"
         #_url="https://downloads-hortonworks.akamaized.net/sandbox-hdp-2.6/HDP_2.6_docker_05_05_2017_15_01_40.tar.gz"
         #_url="https://downloads-hortonworks.akamaized.net/sandbox-hdp-2.6.1/HDP_2_6_1_docker_image_28_07_2017_14_42_40.tar"
-        _url="https://downloads-hortonworks.akamaized.net/sandbox-hdp-2.6.3/HDP_2.6.3_docker_10_11_2017.tar"
+        #_url="https://downloads-hortonworks.akamaized.net/sandbox-hdp-2.6.3/HDP_2.6.3_docker_10_11_2017.tar"
+        _cmd='docker pull hortonworks/sandbox-hdp-standalone:2.6.4'
     fi
 
     local _file_name="`basename "${_url}"`"
@@ -74,19 +77,24 @@ function f_docker_image_setup() {
         return 1
     fi
 
-    if [ -s "${_tmp_dir%/}/${_file_name}" ]; then
-        echo "INFO: ${_tmp_dir%/}/${_file_name} exists. Reusing it..."
-        sleep 3
+    if [ -n "${_cmd}" ]; then
+        echo "INFO: Executing \"${_cmd}\""
+        eval "${_cmd}"
     else
-        echo "INFO: Executing \"cur \"${_url}\" -o ${_tmp_dir%/}/${_file_name}\""
-        curl --retry 100 -C - "${_url}" -o "${_tmp_dir%/}/${_file_name}" || return $?
-    fi
+        if [ -s "${_tmp_dir%/}/${_file_name}" ]; then
+            echo "INFO: ${_tmp_dir%/}/${_file_name} exists. Reusing it..."
+            sleep 3
+        else
+            echo "INFO: Executing \"cur \"${_url}\" -o ${_tmp_dir%/}/${_file_name}\""
+            curl --retry 100 -C - "${_url}" -o "${_tmp_dir%/}/${_file_name}" || return $?
+        fi
 
-    if [[ "${_name}" =~ ^"sandbox-hdf" ]]; then
-        # Somehow HDF3 does not work with docker load
-        docker import "${_tmp_dir%/}/${_file_name}"
-    else
-        docker load -i "${_tmp_dir%/}/${_file_name}"
+        if [[ "${_name}" =~ ^"sandbox-hdf" ]]; then
+            # Somehow HDF3 does not work with docker load
+            docker import "${_tmp_dir%/}/${_file_name}"
+        else
+            docker load -i "${_tmp_dir%/}/${_file_name}"
+        fi
     fi
 }
 
