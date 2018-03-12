@@ -349,7 +349,7 @@ function p_node_create() {
 
     f_dnsmasq_banner_reset "${_hostname}" "" "${_ip_address}" "${_dns}"
     _docker_run "${_hostname}" "${_ip_address}" "${g_DOCKER_BASE}:$_os_ver" "${_dns}" || return $?
-    _docker_start "${_hostname}" "${_ip_address}" "${_dns}"
+    f_docker_start_one "${_hostname}" "${_ip_address}" "${_dns}"
     sleep 1
 
     docker exec -it ${_name} bash -c "chpasswd <<< root:$g_DEFAULT_PASSWORD"
@@ -359,7 +359,7 @@ function p_node_create() {
         _warn "No ambari repo file specified, so not setting up ambari agent"
         return
     fi
-    docker exec -it ${_name} bash -c 'which ambari-agent 2>/dev/null || yum install ambari-agent -y'
+    docker exec -it ${_name} bash -c 'which ambari-agent 2>/dev/null || yum install ambari-agent -y' || return $?
     _ambari_agent_fix "${_hostname}"
     docker exec -it ${_name} bash -c 'ambari-agent start'
 }
@@ -1232,12 +1232,13 @@ function f_docker_start() {
         fi
 
         # docker seems doesn't care if i try to start already started one
-        _docker_start "${_node}$_n${_domain_suffix}" "${_ip_prefix%\.}.$_n" "${_dns}" &
+        f_docker_start_one "${_node}$_n${_domain_suffix}" "${_ip_prefix%\.}.$_n" "${_dns}" &
     done
     wait
 }
 
-function _docker_start() {
+function f_docker_start_one() {
+    local __doc__="Starting one docker container with a few customization"
     local _hostname="$1"
     local _ip_address="$2"
     local _dns="$3"
