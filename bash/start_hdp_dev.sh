@@ -353,6 +353,7 @@ function p_node_create() {
     sleep 1
 
     docker exec -it ${_name} bash -c "chpasswd <<< root:$g_DEFAULT_PASSWORD"
+    _copy_auth_keys_to_containers "${_hostname}"
 
     if [ -z "${_ambari_repo_file}" ]; then
         _warn "No ambari repo file specified, so not setting up ambari agent"
@@ -376,6 +377,7 @@ function p_nodes_create() {
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix" || return $?
     f_docker_start "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
+    f_copy_auth_keys_to_containers "$_how_many" "$_start_from"
 
     if [ -z "${_ambari_repo_file}" ]; then
         _warn "No ambari repo file specified, so not setting up ambari agent"
@@ -1630,9 +1632,6 @@ function f_port_forward_ssh_on_nodes() {
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
-    _info "Synchronize authorized_keys between host and containers..."
-    f_copy_auth_keys_to_containers "$_how_many" "$_start_from"
-
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         _local_port=$(($_init_port + $i))
         f_port_forward $_local_port ${_node}$i${_domain} 22
@@ -2307,6 +2306,8 @@ function p_host_setup() {
 
     _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
+    _log "INFO" "Starting f_copy_auth_keys_to_containers"
+    f_copy_auth_keys_to_containers
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
@@ -2533,8 +2534,14 @@ function f_copy_auth_keys_to_containers() {
     fi
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        scp -q $HOME/.ssh/authorized_keys root@${_node}$i${r_DOMAIN_SUFFIX}:/root/.ssh/authorized_keys && ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} chmod 600 /root/.ssh/authorized_keys
+        _copy_auth_keys_to_containers "${_node}$i${r_DOMAIN_SUFFIX}"
     done
+}
+
+function _copy_auth_keys_to_containers() {
+    local _hostname="$1"
+    [ -s "$HOME/.ssh/authorized_keys" ] || return 1
+    scp -q $HOME/.ssh/authorized_keys root@${_hostname}:/root/.ssh/authorized_keys && ssh -q root@${_hostname} chmod 600 /root/.ssh/authorized_keys
 }
 
 function f_dockerfile() {
