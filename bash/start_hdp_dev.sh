@@ -64,12 +64,12 @@ How to create a node(s)
     p_ambari_node_create 'ambari2615.ubu04.localdomain' '172.17.140.101' '7.4.1708' '/path/to/ambari.repo' 'DNS'
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS6.8, and Ambari is node101.localdomain
-    p_nodes_create '3' '102' '172.17.100.' '7.4.1708' '/path/to/ambari.repo'
+    p_nodes_create '2' '102' '172.17.140.' '7.4.1708' '/path/to/ambari.repo'
 
     # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
-    f_ambari_blueprint_hostmap 3 101 > /tmp/hostmap.json
-    f_ambari_blueprint_cluster_config 3 101 '2.6' 'N' > /tmp/cluster.json
-    p_ambari_blueprint 'node101.localdomain' '/tmp/hostmap.json' '/tmp/cluster.json'
+    f_ambari_blueprint_hostmap 2 102 > /tmp/hostmap.json
+    f_ambari_blueprint_cluster_config 2 102 '2.6' 'N' > /tmp/cluster.json
+    p_ambari_blueprint 'ambari2615.ubu04.localdomain' '/tmp/hostmap.json' '/tmp/cluster.json' '2.5.3.0' 'centos7' '' 'Y'
 
     # To start above example 4 nodes
     p_nodes_start '4' '101' 'node101.localdomain'
@@ -483,13 +483,13 @@ _n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'comp
 
     # Starting Blueprint related APIs
     local _hdp_repo_url="${r_HDP_REPO_URL}"
-    if [ -z "${_hdp_repo_url}" ] && [ -z ${_hdp_version} ]; then
+    if [ -z "${_hdp_repo_url}" ] && [ -n ${_hdp_version} ]; then
         _hdp_repo_url="http://public-repo-1.hortonworks.com/HDP/${_os_type}/2.x/updates/${_hdp_version}/"
     fi
 
     if [ -n "${_hdp_repo_url}" ]; then
         # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
-        f_ambari_set_repo "$_hdp_repo_url" "$r_HDP_UTIL_URL" "${_os_type}" "${_hdp_version}"
+        f_ambari_set_repo "$_hdp_repo_url" "$r_HDP_UTIL_URL" "${_os_type}" "${_hdp_version}" "${_ambari_host}" || return $?
     fi
 
     if [ ! -s "${_hostmap_json}" ]; then
@@ -506,7 +506,7 @@ _n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'comp
     fi
 
     _info "Posting ${_cluster_config_json} ..."
-    curl -s -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json} | tee /tmp/grep -E '"status" : (2|409)' || return 400
+    curl -s -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json}
     _info "Posting ${_hostmap_json} ..."
     curl -s -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json}
     echo ""
@@ -1192,7 +1192,7 @@ function f_docker_start_one() {
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
     local _net=`docker container inspect ${_name} | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
-    if [ -n "$g_HDP_NETWORK" ] && [ ! "$_net" = "$g_HDP_NETWORK" ]; then
+    if [ -n "${_ip_address}" ] && [ -n "$g_HDP_NETWORK" ] && [ ! "$_net" = "$g_HDP_NETWORK" ]; then
         _info "Moving network from $_net to $g_HDP_NETWORK"
         docker network disconnect $_net ${_name}
         docker network connect --ip=${_ip_address} hdp ${_name}
