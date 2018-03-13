@@ -1,0 +1,83 @@
+  {
+    "hadoop-env": {
+      "properties": {
+        "dtnode_heapsize": "512m",
+        "namenode_heapsize": "513m",
+        "nfsgateway_heapsize": "512"
+      }
+    }
+  },
+  {
+    "hdfs-site": {
+      "properties": {
+        "dfs.replication": "1",
+        "dfs.datanode.du.reserved": "536870912"
+      }
+    }
+  },
+  {
+    "yarn-env": {
+      "properties": {
+        "apptimelineserver_heapsize": "512",
+        "resourcemanager_heapsize": "513",
+        "nodemanager_heapsize": "514"
+      }
+    }
+  },
+  {
+    "yarn-site": {
+      "properties": {
+        "yarn.scheduler.minimum-allocation-mb": "250",
+        "yarn.nodemanager.delete.debug-delay-sec": "1800"
+      }
+    }
+  },
+  {
+    "mapred-env": {
+      "properties": {
+        "jobhistory_heapsize": "512"
+      }
+    }
+  },
+  {
+    "mapred-site": {
+      "properties": {
+        "mapreduce.map.memory.mb": "256",
+        "mapreduce.map.java.opts": "-Xmx202m",
+        "mapreduce.reduce.memory.mb": "256",
+        "mapreduce.reduce.java.opts": "-Xmx203m",
+        "mapreduce.task.io.sort.mb": "64",
+        "yarn.app.mapreduce.am.resource.mb": "256",
+        "yarn.app.mapreduce.am.command-opts": "-Xmx201m -Dhdp.version=${hdp.version}"
+      }
+    }
+  },
+  {
+    "tez-site": {
+      "properties": {
+        "tez.am.resource.memory.mb": "512",
+        "tez.task.resource.memory.mb": "512",
+        "tez.runtime.io.sort.mb": "256",
+        "tez.runtime.unordered.output.buffer.size-mb": "48"
+      }
+    }
+  },
+  {
+    "hive-site": {
+      "properties": {
+        "hive.tez.container.size": "512",
+        "tez.am.resource.memory.mb": "512",
+        "hive.exec.post.hooks": "org.apache.hadoop.hive.ql.hooks.ATSHook",
+        "hive.log.explain.output": "true"
+      }
+    }
+  },
+  {
+    "hive-env": {
+      "properties": {
+        "hive.atlas.hook": "false",
+        "hive.metastore.heapsize": "512",
+        "hive.heapsize": "1024"
+      }
+    }
+  }
