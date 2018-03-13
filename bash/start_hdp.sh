@@ -105,6 +105,9 @@ g_DNS_SERVER="localhost"
 g_DOMAIN_SUFFIX=".localdomain"
 g_APT_UPDATE_DONE=""
 g_HDP_NETWORK="hdp"
+g_CENTOS_VERSION="6.8"
+g_AMBARI_VERSION="2.6.1.5" # TODO: need to update Ambari Version manually
+g_STACK_VERSION="2.6"
 
 __PID="$$"
 __LAST_ANSWER=""
@@ -113,10 +116,10 @@ __LAST_ANSWER=""
 
 function p_interview() {
     local __doc__="Asks user questions. (Requires Python)"
-    # Default values TODO: need to update Ambari Version manually (stack version is automatic)
-    local _centos_version="6.8" # TODO: 6.9 doesn't work
-    local _ambari_version="2.6.1.5"
-    local _stack_version="2.6"
+    # Default values (stack version is automatic)
+    local _centos_version="${g_CENTOS_VERSION}" # TODO: 6.9 doesn't work
+    local _ambari_version="${g_AMBARI_VERSION}"
+    local _stack_version="${g_STACK_VERSION}"
     local _hdp_version="${_stack_version}.0.0"
 
     local _stack_version_full="HDP-$_stack_version"
@@ -425,16 +428,16 @@ service postgresql reload"
 
     if [ -n "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ] && [ ! -s "$_hostmap_json" ]; then
         _warn "$_hostmap_json does not exist or empty file. Will regenerate automatically..."
-        f_ambari_blueprint_hostmap > $_hostmap_json
+        f_ambari_blueprint_hostmap > $_hostmap_json || return $?
     else
-        f_ambari_blueprint_hostmap > $_hostmap_json
+        f_ambari_blueprint_hostmap > $_hostmap_json || return $?
     fi
 
     if [ -n "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ] && [ ! -s "$_cluster_config_json" ]; then
         _error "$_cluster_config_json does not exist. Stopping Ambari Blueprint..."
         return 1
     else
-        f_ambari_blueprint_cluster_config > $_cluster_config_json
+        f_ambari_blueprint_cluster_config > $_cluster_config_json || return $?
     fi
 
     _info "Removing ZK number restrictions..."
@@ -497,6 +500,8 @@ function f_ambari_blueprint_cluster_config() {
     local _stack_version="${1}"
     local _install_security="${2-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
     local _start_from="${3-$r_NODE_START_NUM}"
+    local _ambari_host="${4-$r_AMBARI_HOST}"
+
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
@@ -510,7 +515,7 @@ function f_ambari_blueprint_cluster_config() {
         fi
     fi
 
-    local _extra_comps_1=""
+    local _extra_comps_1=""  # NOTE: at this moment, this one should NOT be used
     local _extra_comps_2=""
     local _extra_comps_3=""
     local _extra_comps_4=""
@@ -533,7 +538,7 @@ function f_ambari_blueprint_cluster_config() {
           "db_user" : "rangeradmin",
           "db_password" : "'$g_DEFAULT_PASSWORD'",
           "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
-          "db_host" : "'$r_AMBARI_HOST'"
+          "db_host" : "'${_ambari_host}'"
         }
       }
     },
@@ -550,7 +555,7 @@ function f_ambari_blueprint_cluster_config() {
           "KMS_MASTER_KEY_PASSWD" : "'$g_DEFAULT_PASSWORD'",
           "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
           "REPOSITORY_CONFIG_USERNAME" : "keyadmin",
-          "db_host" : "'$r_AMBARI_HOST'"
+          "db_host" : "'${_ambari_host}'"
         }
       }
     },
@@ -558,8 +563,8 @@ function f_ambari_blueprint_cluster_config() {
       "ranger-admin-site" : {
         "properties_attributes" : { },
         "properties" : {
-          "ranger.jpa.audit.jdbc.url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/ranger_audit",
-          "ranger.jpa.jdbc.url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/ranger",
+          "ranger.jpa.audit.jdbc.url" : "jdbc:postgresql://'${_ambari_host}':5432/ranger_audit",
+          "ranger.jpa.jdbc.url" : "jdbc:postgresql://'${_ambari_host}':5432/ranger",
           "ranger.jpa.jdbc.driver" : "org.postgresql.Driver",
           "ranger.jpa.audit.jdbc.driver" : "org.postgresql.Driver",
           "ranger.jpa.audit.jdbc.dialect" : "org.eclipse.persistence.platform.database.PostgreSQLPlatform"
@@ -575,7 +580,7 @@ function f_ambari_blueprint_cluster_config() {
           "xasecure.audit.destination.solr" : "false",
           "xasecure.audit.destination.hdfs" : "false",
           "xasecure.audit.destination.hdfs.dir" : "hdfs://%HOSTGROUP::host_group_2%:8020/ranger/audit",
-          "ranger_privelege_user_jdbc_url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/postgres"
+          "ranger_privelege_user_jdbc_url" : "jdbc:postgresql://'${_ambari_host}':5432/postgres"
         }
       }
     },
@@ -583,7 +588,7 @@ function f_ambari_blueprint_cluster_config() {
       "dbks-site" : {
         "properties_attributes" : { },
         "properties" : {
-          "ranger.ks.jpa.jdbc.url" : "jdbc:postgresql://'$r_AMBARI_HOST':5432/rangerkms",
+          "ranger.ks.jpa.jdbc.url" : "jdbc:postgresql://'${_ambari_host}':5432/rangerkms",
           "ranger.ks.jpa.jdbc.driver" : "org.postgresql.Driver"
         }
       }
@@ -744,6 +749,7 @@ function f_ambari_blueprint_cluster_config() {
           "mapreduce.map.java.opts" : "-Xmx202m",
           "mapreduce.reduce.memory.mb" : "256",
           "mapreduce.reduce.java.opts" : "-Xmx203m",
+          "mapreduce.task.io.sort.mb" : "64",
           "yarn.app.mapreduce.am.resource.mb" : "256",
           "yarn.app.mapreduce.am.command-opts" : "-Xmx201m -Dhdp.version=${hdp.version}"
         }
@@ -1286,8 +1292,9 @@ function f_docker_stop_all() {
         _info "No docker command found in the path. Not stopping."
         return 0
     fi
-    _info "Stopping the followings"
+    _info "Stopping the followings after 5 seconds..."
     docker ps
+    sleep 5
     docker stop $(docker ps -q)
 }
 
@@ -1566,9 +1573,6 @@ function f_port_forward_ssh_on_nodes() {
     local _local_port=0
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
-
-    _info "Synchronize authorized_keys between host and containers..."
-    f_copy_auth_keys_to_containers "$_how_many" "$_start_from"
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         _local_port=$(($_init_port + $i))
@@ -2227,6 +2231,8 @@ function p_host_setup() {
 
     _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
+    _log "INFO" "Starting f_copy_auth_keys_to_containers"
+    f_copy_auth_keys_to_containers
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
@@ -2293,8 +2299,9 @@ function f_dnsmasq() {
     f_dnsmasq_banner_reset "$_how_many" "$_start_from"
 
     if [ -d /etc/docker ] && [ ! -f /etc/docker/daemon.json ]; then
+        local _docker_ip=`f_docker_ip "172.17.0.1"`
         echo '{
-    "dns": ["172.17.0.1", "8.8.8.8"]
+    "dns": ["'${_docker_ip}'", "8.8.8.8"]
 }' > /etc/docker/daemon.json
         _warn "service docker restart required"
     fi
@@ -2358,15 +2365,16 @@ function f_update_resolv_confs() {
 
 function f_cluster_performance() {
     local __doc__="TODO: Ambari/HDP performance hack"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
 
     _info "Using urandom instead of random"
     f_ambari_java_random
 
     _info "Disabling Ambari Alerts"
-    _ambari_query_sql "delete from alert_current where definition_id in (select definition_id from alert_definition where ENABLED = 1);update alert_definition set enabled = 0 where enabled = 1;" "$r_AMBARI_HOST"
+    _ambari_query_sql "delete from alert_current where definition_id in (select definition_id from alert_definition where ENABLED = 1);update alert_definition set enabled = 0 where enabled = 1;" "$_ambari_host"
 
     #_info "No password required to login Ambari..."
-    #ssh -q root@$r_AMBARI_HOST "_f='/etc/ambari-server/conf/ambari.properties'
+    #ssh -q root@$_ambari_host "_f='/etc/ambari-server/conf/ambari.properties'
 #grep -q '^api.authenticate=false' \$_f && exit
 #grep -q '^api.authenticate=' \$_f && sed -i 's/^api.authenticate=true/api.authenticate=false/' \$_f || echo 'api.authenticate=false' >> \$_f
 #grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f
