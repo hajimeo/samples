@@ -64,7 +64,7 @@ How to create a node(s)
     p_ambari_node_create 'ambari2615.ubu04.localdomain' '172.17.140.101' '7.4.1708' '/path/to/ambari.repo' 'DNS'
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS6.8, and Ambari is node101.localdomain
-    p_nodes_create '3' '102' '172.17.100.' '6.8' '/path/to/ambari.repo'
+    p_nodes_create '3' '102' '172.17.100.' '7.4.1708' '/path/to/ambari.repo'
 
     # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
     f_ambari_blueprint_hostmap 3 101 > /tmp/hostmap.json
@@ -333,6 +333,7 @@ function p_ambari_node_create() {
     [ -n "$r_AMBARI_JCE_URL" ] && _jce="$r_AMBARI_JCE_URL"
     f_ambari_server_setup "${_ambari_host}" "${_jdk}" "$_jce" || return $?
     f_ambari_server_start "${_ambari_host}" || return $?
+    f_port_forward 8080 ${_ambari_host} 8080 "Y"
     f_ambari_java_random "${_ambari_host}"
 }
 
@@ -2038,48 +2039,53 @@ function f_service() {
     local _service="$1"
     local _action="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
+    local _port="${4-8080}"
+    local _cluster="${5}"
     local _maintenance_mode="OFF"
-    local _c="`f_get_cluster_name ${_ambari_host}`" || return 1
+    [ -z "${_cluster}" ] && _cluster="`f_get_cluster_name ${_ambari_host}`" || return 1
 
-    if [ -z "$_c" ]; then
+    if [ -z "$_cluster" ]; then
       _error "No cluster name (check PostgreSQL)..."
       return 1
     fi
 
     if [ -z "$_service" ]; then
-        _info "Available Services"
-        _ambari_query_sql "select service_name from servicedesiredstate where 1=1 order by service_name" "${_ambari_host}"
-        return
+        echo "Available services"
+        curl -su admin:admin "http://${_ambari_host}:${_port}/api/v1/clusters/${_cluster}/services?fields=ServiceInfo/service_name" | grep -oE '"service_name".+'
+        return 0
     fi
+    _service="${_service^^}"
 
     if [ -z "$_action" ]; then
-        _info "Acceptable actions: start, stop, restart" # Actually it accepts others like DELETE...
-        return
+        echo "$_service status"
+        for _s in `echo ${_service} | sed 's/ /\n/g'`; do
+            curl -su admin:admin "http://${_ambari_host}:${_port}/api/v1/clusters/${_cluster}/services/${_s}?fields=ServiceInfo/service_name,ServiceInfo/state" | grep -oE '("service_name"|"state").+'
+        done
+        return 0
     fi
-
-    _service="${_service^^}"
     _action="${_action^^}"
 
-    for _s in `echo $_service | sed 's/ /\n/g'`; do
+    for _s in `echo ${_service} | sed 's/ /\n/g'`; do
         if [ "$_action" = "RESTART" ]; then
-            f_service "$_s" "stop" "${_ambari_host}" || return $?
+            f_service "$_s" "stop" "${_ambari_host}" "${_port}" "${_cluster}"|| return $?
             for _i in {1..9}; do
-                _n="`_ambari_query_sql "select count(*) from request where request_context ='set INSTALLED for $_s by f_service' and end_time < start_time" "${_ambari_host}"`"
-                [ 0 -eq $_n ] && break;
+                curl -su admin:admin "http://${_ambari_host}:${_port}/api/v1/clusters/${_cluster}/services/${_s}?ServiceInfo/state=INSTALLED&fields=ServiceInfo/state" | grep -wq INSTALLED && break;
+                # Waiting it stops
                 sleep 10
             done
-            f_service "$_s" "start" "${_ambari_host}"
+            # If starting fails, keep going next
+            f_service "$_s" "start" "${_ambari_host}" "${_port}" "${_cluster}"
         else
             [ "$_action" = "START" ] && _action="STARTED"
             [ "$_action" = "STOP" ] && _action="INSTALLED"
             [ "$_action" = "INSTALLED" ] && _maintenance_mode="ON"
 
-            _n="`_ambari_query_sql "select count(*) from request where request_context ='set $_action for $_s by f_service' and end_time < start_time" "${_ambari_host}"`"
-            # same action for same service is already running
-            [ 0 -lt $_n ] && break;
+            curl -s -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://${_ambari_host}:${_port}/api/v1/clusters/${_cluster}/services/$_s"
 
-            curl -s -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
-            curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_s' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_s'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
+            # same action for same service is already done
+            curl -su admin:admin "http://${_ambari_host}:${_port}/api/v1/clusters/${_cluster}/services/${_s}?ServiceInfo/state=${_action}&fields=ServiceInfo/state" | grep -wq ${_action} && continue;
+
+            curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_s' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'${_cluster}'","service_name":"'$_s'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://${_ambari_host}:${_port}/api/v1/clusters/${_cluster}/services/$_s"
             echo ""
         fi
     done
