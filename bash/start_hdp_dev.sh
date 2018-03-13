@@ -439,8 +439,10 @@ function p_ambari_blueprint() {
     local _ambari_host="${1-$r_AMBARI_HOST}"
     local _hostmap_json="${2-$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH}"
     local _cluster_config_json="${3-$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH}"
-    local _cluster_name="${4-$r_CLUSTER_NAME}"
-    local _reset="$5"
+    local _hdp_version="${4-$r_HDP_REPO_VER}"
+    local _os_type="${5-centos7}"   # centos6 or centos7
+    local _cluster_name="${6-$r_CLUSTER_NAME}"
+    local _reset="${7-$r_AMBARI_RESET}"
 
     local _num="`echo "${_ambari_host}" | cut -d"." -f1 | sed 's/[^0-9]//g'`"
     [ -z "$_cluster_name" ] && _cluster_name="$(echo `hostname -s`_${_num} | sed 's/[^a-zA-Z0-9_]//g')"
@@ -478,6 +480,17 @@ _n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'
     ssh -q root@${_ambari_host} '_f=/usr/lib/ambari-server/web/javascripts/app.js
 _n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
 [ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
+
+    # Starting Blueprint related APIs
+    local _hdp_repo_url="${r_HDP_REPO_URL}"
+    if [ -z "${_hdp_repo_url}" ] && [ -z ${_hdp_version} ]; then
+        _hdp_repo_url="http://public-repo-1.hortonworks.com/HDP/${_os_type}/2.x/updates/${_hdp_version}/"
+    fi
+
+    if [ -n "${_hdp_repo_url}" ]; then
+        # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
+        f_ambari_set_repo "$_hdp_repo_url" "$r_HDP_UTIL_URL" "${_os_type}" "${_hdp_version}"
+    fi
 
     if [ ! -s "${_hostmap_json}" ]; then
         [ -n "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ] && _warn "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH is specifed but $_hostmap_json does not exist. Will regenerate automatically..."
@@ -1898,14 +1911,8 @@ function f_local_repo() {
         local _util_repo_path="${_path_diff%/}${_hdp_util_dir#\.}"
         echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
 
-        # TODO: support only CentOS or RedHat at this moment
-        if [ "${r_CONTAINER_OS}" = "centos" ] || [ "${r_CONTAINER_OS}" = "redhat" ]; then
-            _port_wait "$r_AMBARI_HOST" "8080"
-
-            f_ambari_set_repo "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}" "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}" || return $?
-        else
-            _warn "At this moment only centos or redhat for local repository"
-        fi
+        r_HDP_REPO_URL="http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}"
+        r_HDP_UTIL_URL="http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
     fi
 }
 
@@ -1913,9 +1920,12 @@ function f_ambari_set_repo() {
     local __doc__="Update Ambari's repository URL information"
     local _repo_url="$1"
     local _util_url="$2"
-    local _ambari_host="${3-$r_AMBARI_HOST}"
-    local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
+    local _os_type="$3"
+    local _stack_version="$4"
+    local _ambari_host="${5-$r_AMBARI_HOST}"
+
     local _stack="HDP" # for AMBARI-22565 repo_name change. TODO: need to support HDF etc.
+    _os_type="`echo "${_os_type}" | sed 's/centos/redhat/'`"
 
     _port_wait ${_ambari_host} 8080
     if [ $? -ne 0 ]; then
@@ -1923,17 +1933,25 @@ function f_ambari_set_repo() {
         return 1
     fi
 
-    local _os_name="$r_CONTAINER_OS"
-    if [ "${_os_name}" = "centos" ]; then
-        _os_name="redhat"
+    local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
+    if [ -z "${_stack_version}" ]; then
+        if [[ "$r_HDP_REPO_VER" =~ $_regex ]]; then
+            _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+        else
+            _error "Couldn't determine the stack version"
+            return 1
+        fi
+    elif [[ "${_stack_version}" =~ $_regex ]]; then
+        _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
     fi
 
-    local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
-    if [[ "$r_HDP_REPO_VER" =~ $_regex ]]; then
-        local _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
-    else
-        _error "Couldn't determine the stack version"
-        return 1
+    if [ -z "${_os_type}" ]; then
+        local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
+        local _os_name="$r_CONTAINER_OS"
+        if [ "${_os_name}" = "centos" ]; then
+            _os_name="redhat"
+        fi
+        _os_type="${_os_name}${_repo_os_ver}"
     fi
 
     if [[ "${r_AMBARI_VER}" =~ ^2.6. ]]; then
@@ -1953,13 +1971,14 @@ function f_ambari_set_repo() {
 
     if _isUrl "$_repo_url"; then
         # TODO: if Ambari 2.6 https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
-        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}'
+        curl -s -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_type}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}' || return $?
     fi
 
     if _isUrl "$_util_url"; then
         local _hdp_util_name="`echo $_util_url | grep -oP "HDP-UTILS-[\d\.]+"`"
-        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"repo_name": "'${_hdp_util_name}'", "base_url":"'${_util_url}'","verify_base_url":true}}'
+        curl -s -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_type}/repositories/${_hdp_util_name}" -d '{"Repositories":{"repo_name": "'${_hdp_util_name}'", "base_url":"'${_util_url}'","verify_base_url":true}}' || return $?
     fi
+    echo ""
 }
 
 function f_repo_mount() {
@@ -2253,16 +2272,23 @@ function p_host_setup() {
         if _isYes "$r_HDP_LOCAL_REPO"; then
             _log "INFO" "Starting f_local_repo"
             f_local_repo &>> /tmp/p_host_setup.log || return $?
-        elif [ -n "$r_HDP_REPO_URL" ]; then
-            # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
-            _log "INFO" "Starting f_ambari_set_repo (may not work with Ambari 2.6)"
-            f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" &>> /tmp/p_host_setup.log
         fi
 
         _ambari_agent_wait &>> /tmp/p_host_setup.log
         if _isYes "$r_AMBARI_BLUEPRINT"; then
             _log "INFO" "Starting p_ambari_blueprint"
             p_ambari_blueprint &>> /tmp/p_host_setup.log
+        else
+            if [ -n "$r_HDP_REPO_URL" ]; then
+                _log "INFO" "Starting f_ambari_set_repo (may not work with Ambari 2.6)"
+                # TODO: support only CentOS or RedHat at this moment
+                if [ "${r_CONTAINER_OS}" = "centos" ] || [ "${r_CONTAINER_OS}" = "redhat" ]; then
+                    # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
+                    f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" &>> /tmp/p_host_setup.log
+                else
+                    _warn "At this moment only centos or redhat"
+                fi
+            fi
         fi
 
         _log "INFO" "TODO: Starting f_cluster_performance"
