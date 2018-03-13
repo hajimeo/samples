@@ -1163,17 +1163,9 @@ function f_docker_start() {
 
     _info "starting $_how_many docker containers starting from $_start_from ..."
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        local _net=`docker container inspect ${_node}$_n | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
-        if [ ! "$_net" = "$g_HDP_NETWORK" ]; then
-            _info "Moving network from $_net to $g_HDP_NETWORK"
-            docker network disconnect $_net ${_node}$_n
-            docker network connect --ip=${r_DOCKER_NETWORK_ADDR%\.}.$_n hdp ${_node}$_n
-        fi
-
         # docker seems doesn't care if i try to start already started one
-        f_docker_start_one "${_node}$_n${_domain_suffix}" "${_ip_prefix%\.}.$_n" "${_dns}" &
+        f_docker_start_one "${_node}$_n${_domain_suffix}" "${_ip_prefix%\.}.$_n" "${_dns}"
     done
-    wait
 }
 
 function f_docker_start_one() {
@@ -1184,30 +1176,18 @@ function f_docker_start_one() {
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
-    docker start --attach=false ${_name}
-
-    # TODO: below section should be removed later
-    if [ -n "${_ip_address}" ]; then
-        # docker exec adds "\r" which causes bash syntax error
-        local _dupe="`docker exec -it ${_name} grep -E "^[0-9\.]+\s+${_hostname}" /etc/hosts | grep -v "^${_ip_address}"`"
-        if [ ! -z "$_dupe" ]; then
-            _warn "TODO: Detected duplicate ${_dupe} for ${_hostname} / ${_ip_address} in /etc/hosts. Trying to fix by restarting container..."
-            docker restart ${_name}
-
-            #if restarted, calling ./startup.sh (and centos 7 is not using /startup.sh)
-            if [ $_centos_os_ver -eq 6 ]; then
-                # need to start necessary services in here but how to start service is different by container, so expecting /startup.sh absorb this
-                docker exec ${_name} timeout 5 /startup.sh
-            fi
-        fi
+    local _net=`docker container inspect ${_name} | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
+    if [ -n "$g_HDP_NETWORK" ] && [ ! "$_net" = "$g_HDP_NETWORK" ]; then
+        _info "Moving network from $_net to $g_HDP_NETWORK"
+        docker network disconnect $_net ${_name}
+        docker network connect --ip=${_ip_address} hdp ${_name}
     fi
 
-    # Don't touch iptables in old /startup.sh TODO: remove this later as newer container doesnt' have this
-    docker exec -it ${_name} bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh &>/dev/null && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
+    docker start --attach=false ${_name}
 
     # if DNS is not 'localhost', update /etc/resolve.conf. expecting _dns is IP Address. Note: can't use sed
     if [ ! -z "${_dns}" ] && [ "${_dns}" != "localhost" ] && [ "${_dns}" != "127.0.0.1" ] && [ "${_dns}" != "127.0.0.11" ]; then
-        docker exec -it ${_name} bash -c '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${_dns}'\b" $_f || (grep -v "^nameserver" $_f > ${_f}.tmp && cat ${_f}.tmp > ${_f} && echo "nameserver '${_dns}'" >> $_f)'
+        docker exec -dt ${_name} bash -c '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${_dns}'\b" $_f || (grep -v "^nameserver" $_f > ${_f}.tmp && cat ${_f}.tmp > ${_f} && echo "nameserver '${_dns}'" >> $_f)'
     fi
 
     # Somehow docker disable a container communicates outside by adding 0.0.0.0 GW, which will be problem when we test distcp
@@ -1215,7 +1195,7 @@ function f_docker_start_one() {
     local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
     local _docker_net_addr="172.17.0.0"
     [[ "${_docker_ip}" =~ $_regex ]] && _docker_net_addr="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0.0"
-    docker exec -it ${_name} bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 || ip route del ${_docker_net_addr}/16 via 0.0.0.0"
+    docker exec -it ${_name} bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 &>/dev/null || ip route del ${_docker_net_addr}/16 via 0.0.0.0"
 }
 
 function f_docker_unpause() {
