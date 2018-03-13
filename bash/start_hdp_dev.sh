@@ -67,7 +67,9 @@ How to create a node(s)
     p_nodes_create '3' '102' '172.17.100.' '6.8' '/path/to/ambari.repo'
 
     # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
-    p_ambari_blueprint 'mytestcluster' 'node101.localdomain' ['/path/to/hostmap.json'] ['/path/to/cluster.json']
+    f_ambari_blueprint_hostmap 3 101 > /tmp/hostmap.json
+    f_ambari_blueprint_cluster_config 3 101 '2.6' 'N' > /tmp/cluster.json
+    p_ambari_blueprint 'mytestcluster' 'node101.localdomain' '/tmp/hostmap.json' '/tmp/cluster.json'
 
     # To start above example 4 nodes
     p_nodes_start '4' '101' 'node101.localdomain'
@@ -499,18 +501,14 @@ _n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'comp
 function f_ambari_blueprint_hostmap() {
     local __doc__="Output json string for Ambari Blueprint Host mapping"
     #local _cluster_name="${1-$r_CLUSTER_NAME}"
-    local _default_password="${1-$r_DEFAULT_PASSWORD}"
-    local _is_kerberos_on="$2"
-    local _how_many="${3-$r_NUM_NODES}"
-    local _start_from="${4-$r_NODE_START_NUM}"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+    local _default_password="${3-$r_DEFAULT_PASSWORD}"
+    local _is_kerberos_on="$4"
     #local _ambari_host="${5-$r_AMBARI_HOST}"
+
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
-
-    # host_group_1 = Ambari only
-    # host_group_2 = All master
-    # host_group_3 = Standby / HA (if only group_2 and group_3 only, + Slaves)
-    # host_group_4 = Slaves
 
     if [ -z "$_how_many" ] || [ 3 -gt "$_how_many" ]; then
         _error "At this moment, Blueprint build needs at least 3 nodes"
@@ -544,69 +542,97 @@ function f_ambari_blueprint_hostmap() {
 }
 
 function _ambari_blueprint_host_groups() {
-    local _how_many="${1-4}"
+    local _how_many="${1-$r_NUM_NODES}"  # accepts 1, 2, 3 and 4
     local _including_ambari="$2"
     local _install_security="${3-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
-    
-    local _clients=',{"name":"ZOOKEEPER_CLIENT"}, {"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"HCAT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}, {"name":"SLIDER"}'
-    local _extra_comps_1=""  # NOTE: at this moment, this one should NOT be used
-    local _extra_comps_2=""
-    local _extra_comps_3=""
-    local _extra_comps_4=""
-    local _extra_configs=""
-    
-    if _isYes "$_install_security" ; then
-        _extra_comps_3=',{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}'
-        _extra_comps_4=',{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
-    fi
-
-    # host_group_1 = Ambari only
-    # host_group_2 = All master
-    # host_group_3 = Standby / HA (if only group_2 and group_3 only, + Slaves)
-    # host_group_4 = Slaves
 
     local _ambari_only='{"name":"AMBARI_SERVER"}'
     local _master_comps='{"name":"ZOOKEEPER_SERVER"},{"name":"NAMENODE"},{"name":"HISTORYSERVER"},{"name":"APP_TIMELINE_SERVER"},{"name":"RESOURCEMANAGER"},{"name":"MYSQL_SERVER"},{"name":"HIVE_SERVER"},{"name":"HIVE_METASTORE"},{"name":"WEBHCAT_SERVER"}'
     local _standby_comps='{"name":"SECONDARY_NAMENODE"}'
     local _slave_comps='{"name":"DATANODE"},{"name" : "NODEMANAGER"}'
+    local _clients='{"name":"ZOOKEEPER_CLIENT"}, {"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"HCAT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}, {"name":"SLIDER"}'
 
-    echo '  "host_groups": [
-    {
-      "name" : "host_group_1",
-      "components" : ['${_ambari_only}'],
-      "configurations" : [ ]
-    },
-    {
-      "name" : "host_group_2",
-      "components" : [
-        '${_master_comps}${_clients}${_extra_comps_2}'
-      ],
-      "configurations" : [ ]
-    },
-    {
-      "name" : "host_group_3",
-      "components" : [
-        '${_standby_comps}${_clients}${_extra_comps_3}'
-      ],
-      "configurations" : [ ]
-    },
-    {
-      "name" : "host_group_4",
-      "components" : [
-        '${_slave_comps}${_clients}${_extra_comps_4}'
-      ],
-      "configurations" : [ ]
-    }
-  ],
+    local _security_master_comps='{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"}'
+    local _security_slave_comps='{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"}'
+    local _security_clients='{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
+
+    local _extra_sec_master_comps=""
+    local _extra_sec_slave_comps=""
+    if _isYes "$_install_security" ; then
+        _extra_sec_master_comps=','${_security_master_comps}','${_security_clients}
+        _extra_sec_slave_comps=','${_security_slave_comps}','${_security_clients}
+    fi
+
+    local _final_hsot_groups=""
+    if ! [[ "$_how_many" =~ ^[1-9][0-9]*$ ]]; then
+        _error "_how_many should be between 1 and 4 (given $_how_many)"
+        return 1
+    elif [ $_how_many = 1 ]; then
+        if _isYes "$_including_ambari" ; then
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_ambari_only}','${_master_comps}','${_standby_comps}','${_slave_comps}${_extra_sec_master_comps}${_extra_sec_slave_comps}'], "configurations" : [ ] }
 '
+        else
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_master_comps}','${_standby_comps}','${_slave_comps}${_extra_sec_master_comps}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+'
+        fi
+    elif [ $_how_many = 2 ]; then
+        if _isYes "$_including_ambari" ; then
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_ambari_only}'], "configurations" : [ ] },
+    { "name" : "host_group_2", "components" : ['${_master_comps}','${_standby_comps}','${_slave_comps}','${_clients}${_extra_sec_master_comps}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+'
+        else
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_master_comps}','${_clients}${_extra_sec_master_comps}'], "configurations" : [ ] },
+    { "name" : "host_group_2", "components" : ['${_standby_comps}','${_slave_comps}','${_clients}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+'
+        fi
+    elif [ $_how_many = 3 ]; then
+        if _isYes "$_including_ambari" ; then
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_ambari_only}'], "configurations" : [ ] },
+    { "name" : "host_group_2", "components" : ['${_master_comps}','${_clients}${_extra_sec_master_comps}'], "configurations" : [ ] },
+    { "name" : "host_group_3", "components" : ['${_standby_comps}','${_slave_comps}','${_clients}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+'
+        else
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_master_comps}','${_clients}'], "configurations" : [ ] },
+    { "name" : "host_group_2", "components" : ['${_standby_comps}','${_clients}${_extra_sec_master_comps}'], "configurations" : [ ] },
+    { "name" : "host_group_3", "components" : ['${_slave_comps}','${_clients}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+'
+        fi
+    elif [ $_how_many = 4 ]; then
+        if _isYes "$_including_ambari" ; then
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_ambari_only}'], "configurations" : [ ] },
+    { "name" : "host_group_2", "components" : ['${_master_comps}','${_clients}'], "configurations" : [ ] },
+    { "name" : "host_group_3", "components" : ['${_standby_comps}','${_clients}${_extra_sec_master_comps}'], "configurations" : [ ] },
+    { "name" : "host_group_4", "components" : ['${_slave_comps}','${_clients}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+'
+        else
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_master_comps}','${_clients}'], "configurations" : [ ] },
+    { "name" : "host_group_2", "components" : ['${_standby_comps}','${_clients}${_extra_sec_master_comps}'], "configurations" : [ ] },
+    { "name" : "host_group_3", "components" : ['${_slave_comps}','${_clients}${_extra_sec_slave_comps}'], "configurations" : [ ] },
+    { "name" : "host_group_4", "components" : ['${_clients}'], "configurations" : [ ] }
+'
+        fi
+    fi
+
+    # NOTE: NOT ending with "," for now
+    echo '  "host_groups": ['${_final_hsot_groups}']'
 }
 
 function f_ambari_blueprint_cluster_config() {
     local __doc__="Output json string for Ambari Blueprint Cluster mapping. 1=Ambari 2=>hadoop,Hive 3=>HBase,Security 4=>slave"
-    local _stack_version="${1}"
-    local _install_security="${2-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
-    local _start_from="${3-$r_NODE_START_NUM}"
-    local _ambari_host="${4-$r_AMBARI_HOST}"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+    local _stack_version="${3}" # ex: 2.6
+    local _including_ambari="${4-Y}"
+    local _install_security="${5-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
+    local _db_host="${6-$r_AMBARI_HOST}"   # this DB host is used for security only (Ranger/KMS)
 
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
@@ -621,6 +647,7 @@ function f_ambari_blueprint_cluster_config() {
         fi
     fi
 
+    local _extra_configs=""
     if _isYes "$_install_security" ; then
         # https://cwiki.apache.org/confluence/display/AMBARI/Blueprint+support+for+Ranger
         # TODO: policymgr_external_url is supposed to be used for rest.url but it becomes {{policymgr_mgr_url}}
@@ -637,7 +664,7 @@ function f_ambari_blueprint_cluster_config() {
           "db_user" : "rangeradmin",
           "db_password" : "'$g_DEFAULT_PASSWORD'",
           "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
-          "db_host" : "'${_ambari_host}'"
+          "db_host" : "'${_db_host-localhost}'"
         }
       }
     },
@@ -654,7 +681,7 @@ function f_ambari_blueprint_cluster_config() {
           "KMS_MASTER_KEY_PASSWD" : "'$g_DEFAULT_PASSWORD'",
           "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
           "REPOSITORY_CONFIG_USERNAME" : "keyadmin",
-          "db_host" : "'${_ambari_host}'"
+          "db_host" : "'${_db_host-localhost}'"
         }
       }
     },
@@ -662,8 +689,8 @@ function f_ambari_blueprint_cluster_config() {
       "ranger-admin-site" : {
         "properties_attributes" : { },
         "properties" : {
-          "ranger.jpa.audit.jdbc.url" : "jdbc:postgresql://'${_ambari_host}':5432/ranger_audit",
-          "ranger.jpa.jdbc.url" : "jdbc:postgresql://'${_ambari_host}':5432/ranger",
+          "ranger.jpa.audit.jdbc.url" : "jdbc:postgresql://'${_db_host-localhost}':5432/ranger_audit",
+          "ranger.jpa.jdbc.url" : "jdbc:postgresql://'${_db_host-localhost}':5432/ranger",
           "ranger.jpa.jdbc.driver" : "org.postgresql.Driver",
           "ranger.jpa.audit.jdbc.driver" : "org.postgresql.Driver",
           "ranger.jpa.audit.jdbc.dialect" : "org.eclipse.persistence.platform.database.PostgreSQLPlatform"
@@ -679,7 +706,7 @@ function f_ambari_blueprint_cluster_config() {
           "xasecure.audit.destination.solr" : "false",
           "xasecure.audit.destination.hdfs" : "false",
           "xasecure.audit.destination.hdfs.dir" : "hdfs://%HOSTGROUP::host_group_2%:8020/ranger/audit",
-          "ranger_privelege_user_jdbc_url" : "jdbc:postgresql://'${_ambari_host}':5432/postgres"
+          "ranger_privelege_user_jdbc_url" : "jdbc:postgresql://'${_db_host-localhost}':5432/postgres"
         }
       }
     },
@@ -687,7 +714,7 @@ function f_ambari_blueprint_cluster_config() {
       "dbks-site" : {
         "properties_attributes" : { },
         "properties" : {
-          "ranger.ks.jpa.jdbc.url" : "jdbc:postgresql://'${_ambari_host}':5432/rangerkms",
+          "ranger.ks.jpa.jdbc.url" : "jdbc:postgresql://'${_db_host-localhost}':5432/rangerkms",
           "ranger.ks.jpa.jdbc.driver" : "org.postgresql.Driver"
         }
       }
@@ -801,14 +828,14 @@ function f_ambari_blueprint_cluster_config() {
         _warn "Couldn't download blueprint_common_properties.json, so reusing /tmp/blueprint_common_properties.json"
     fi
     local _common_props="`cat /tmp/blueprint_common_properties.json`"
-    local _host_groups="`_ambari_blueprint_host_groups`"
+    local _host_groups="`_ambari_blueprint_host_groups "${_how_many}" "${_including_ambari}" "${_install_security}"`"
 
     # TODO: Ambari 2.5.1 can't set hive.exec.post.hooks, probably a bug in Ambari (probably regression bug of AMBARI-17802)
     echo '{
   "configurations" : [
     '${_common_props}${_extra_configs}'
   ],
-  '$_host_groups'
+  '$_host_groups',
   "Blueprints": {
     "blueprint_name": "multinode-hdp",
     "stack_name": "HDP",
