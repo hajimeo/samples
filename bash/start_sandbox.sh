@@ -120,11 +120,6 @@ function f_ambari_start_all() {
     local _port="${2-8080}"
     local _cluster="${3-Sandbox}"
 
-    if ${_NEW_CONTAINER} ; then
-        # Sandbox's HDFS is always in maintenance mode so that start all does not work
-        curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services/HDFS" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode OFF for HDFS"},"Body":{"ServiceInfo":{"maintenance_state":"OFF"}}}'
-    fi
-    sleep 1
     curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services?" -X PUT -d '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 }
 
@@ -314,6 +309,9 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     # Stop all containers (including $_NAME if it's already running)
     #docker stop $(docker ps -q)
+
+    _STACK="HDP"
+    [[ "${_NAME}" =~ ^"sandbox-hdf" ]] && _STACK="HDF"
 
     # If same container name exists start it
     if docker ps --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
@@ -567,14 +565,16 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     echo "INFO: Waiting Ambari Server is ready (feel free to press Ctrl+c to exit)..."
     f_ambari_wait ${_HOSTNAME} ${_AMBARI_PORT}
 
-    if ${_NEW_CONTAINER} ; then
+    if ${_NEW_CONTAINER}; then
         echo "INFO: Starting minimum services after 5 seconds:..."
         sleep 5
-        f_service "ZEPPELIN SPARK SPARK2 STORM FALCON OOZIE FLUME ATLAS HBASE KAFKA" "STOP" "${_HOSTNAME}"
-        f_service "ZOOKEEPER AMBARI_INFRA RANGER HDFS MAPREDUCE2 YARN HIVE" "START" "${_HOSTNAME}"
-    else
-        f_ambari_start_all
+        if [ "$_STACK" = "HDP" ]; then
+            f_service "ZEPPELIN SPARK SPARK2 STORM FALCON OOZIE FLUME ATLAS HBASE KAFKA" "STOP" "${_HOSTNAME}"
+        else
+            f_service "STORM KAFKA LOGSEARCH" "STOP" "${_HOSTNAME}"
+        fi
     fi
+    f_ambari_start_all
     echo ""
     echo "*** Completed! ***"
     #docker exec -it ${_NAME} bash
