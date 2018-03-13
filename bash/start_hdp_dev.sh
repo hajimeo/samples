@@ -69,7 +69,7 @@ How to create a node(s)
     # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
     f_ambari_blueprint_hostmap 3 101 > /tmp/hostmap.json
     f_ambari_blueprint_cluster_config 3 101 '2.6' 'N' > /tmp/cluster.json
-    p_ambari_blueprint 'mytestcluster' 'node101.localdomain' '/tmp/hostmap.json' '/tmp/cluster.json'
+    p_ambari_blueprint 'node101.localdomain' '/tmp/hostmap.json' '/tmp/cluster.json'
 
     # To start above example 4 nodes
     p_nodes_start '4' '101' 'node101.localdomain'
@@ -436,12 +436,14 @@ function p_hdp_start() {
 
 function p_ambari_blueprint() {
     local __doc__="Build cluster with Ambari Blueprint (expecting agents are already installed and running)"
-    local _cluster_name="${1-$r_CLUSTER_NAME}"
-    local _ambari_host="${2-$r_AMBARI_HOST}"
-    local _hostmap_json="${3-$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH}"
-    local _cluster_config_json="${4-$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH}"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+    local _hostmap_json="${2-$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH}"
+    local _cluster_config_json="${3-$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH}"
+    local _cluster_name="${4-$r_CLUSTER_NAME}"
     local _reset="$5"
 
+    local _num="`echo "${_ambari_host}" | cut -d"." -f1 | sed 's/[^0-9]//g'`"
+    [ -z "$_cluster_name" ] && _cluster_name="$(echo `hostname -s`_${_num} | sed 's/[^a-zA-Z0-9_]//g')"
     [ -z "${_hostmap_json}" ] && _hostmap_json="/tmp/${_cluster_name}_hostmap.json"
     [ -z "${_cluster_config_json}" ] &&  _cluster_config_json="/tmp/${_cluster_name}_cluster_config.json"
 
@@ -451,7 +453,7 @@ function p_ambari_blueprint() {
     fi
 
     # just in case, try starting server
-    f_ambari_server_start
+    f_ambari_server_start "${_ambari_host}"
     _port_wait "${_ambari_host}" "8080" || return 1
 
     local _c="`f_get_cluster_name 2>/dev/null`"
@@ -460,7 +462,7 @@ function p_ambari_blueprint() {
         return 1
     fi
 
-    _info "Setting up Ambari for Blueprint (like setting up JDBC drivers, adding Postgres DB users) ..."
+    _info "Setting up Ambari for Blueprint (like setting up JDBC drivers, adding Postgres DB users, Removing ZK number restrictions) ..."
     ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1\`
 sudo -u postgres psql -c \"CREATE ROLE ranger WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   ranger,rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
@@ -470,22 +472,6 @@ service postgresql reload"
         scp /usr/share/java/mysql-connector-java.jar root@${_ambari_host}:/tmp/mysql-connector-java.jar
         ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=mysql --jdbc-driver=/tmp/mysql-connector-java.jar"
     fi
-
-    if [ -n "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ] && [ ! -s "$_hostmap_json" ]; then
-        _warn "$_hostmap_json does not exist or empty file. Will regenerate automatically..."
-        f_ambari_blueprint_hostmap > $_hostmap_json || return $?
-    else
-        f_ambari_blueprint_hostmap > $_hostmap_json || return $?
-    fi
-
-    if [ -n "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ] && [ ! -s "$_cluster_config_json" ]; then
-        _error "$_cluster_config_json does not exist. Stopping Ambari Blueprint..."
-        return 1
-    else
-        f_ambari_blueprint_cluster_config > $_cluster_config_json || return $?
-    fi
-
-    _info "Removing ZK number restrictions..."
     ssh -q root@${_ambari_host} '_f=/usr/lib/ambari-server/web/javascripts/app.js
 _n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
 [ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
@@ -493,10 +479,24 @@ _n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'
 _n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
 [ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
 
+    if [ ! -s "${_hostmap_json}" ]; then
+        [ -n "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ] && _warn "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH is specifed but $_hostmap_json does not exist. Will regenerate automatically..."
+        f_ambari_blueprint_hostmap > $_hostmap_json || return $?
+    fi
+
+    if [ ! -s "$_cluster_config_json" ]; then
+        if [ -n "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ]; then
+            _error "r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH is specified but $_cluster_config_json does not exist. Stopping Ambari Blueprint..."
+            return 1
+        fi
+        f_ambari_blueprint_cluster_config > $_cluster_config_json || return $?
+    fi
+
     _info "Posting ${_cluster_config_json} ..."
-    curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json} || return $?
+    curl -s -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json} | tee /tmp/grep -E '"status" : (2|409)' || return 400
     _info "Posting ${_hostmap_json} ..."
-    curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json} || return $?
+    curl -s -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json}
+    echo ""
 }
 
 function f_ambari_blueprint_hostmap() {
@@ -508,10 +508,11 @@ function f_ambari_blueprint_hostmap() {
     local _is_kerberos_on="$4"
     #local _ambari_host="${5-$r_AMBARI_HOST}"
 
+    [ -z "$_default_password" ] && _default_password="${g_DEFAULT_PASSWORD}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
-    if [ -z "$_how_many" ] || [ 3 -gt "$_how_many" ]; then
+    if ! [[ "$_how_many" =~ ^[1-9][0-9]*$ ]]; then
         _error "At this moment, Blueprint build needs at least 3 nodes"
         return 1
     fi
@@ -3025,6 +3026,11 @@ function _port_wait() {
 
     if [ -z "$_interval" ]; then
         _interval=5
+    fi
+
+    if [ -z "$_host" ]; then
+        _error "No _host specified"
+        return 1
     fi
 
     for i in `seq 1 $_times`; do
