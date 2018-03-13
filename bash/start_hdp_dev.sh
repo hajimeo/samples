@@ -63,9 +63,9 @@ How to create a node(s)
     # Create one node with Ambari Server, hostname: node101.localdomain, OS ver: CentOS6.8, Network addr: 172.17.100.x
     p_ambari_node_create 'ambari2615.ubu04.localdomain' '172.17.140.101' '7.4.1708' '/path/to/ambari.repo' 'DNS'
 
-    # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS6.8, and Ambari is node101.localdomain
-    export r_DOMAIN_SUFFIX=.ubu04.localdomain; p_nodes_create '2' '102' '172.17.140.' '7.4.1708' '/path/to/ambari.repo'
-
+    # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS7.4, and Ambari is ambari2615.ubu04.localdomain
+    export r_DOMAIN_SUFFIX='.ubu04.localdomain'
+    p_nodes_create '2' '102' '172.17.140.' '7.4.1708' '/path/to/ambari.repo' 'ambari2615.ubu04.localdomain'
     # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
     f_ambari_blueprint_hostmap 2 102 > /tmp/hostmap.json
     f_ambari_blueprint_cluster_config 2 102 '2.6' 'N' > /tmp/cluster.json
@@ -301,7 +301,7 @@ function _cancelInterview() {
 function p_ambari_node_create() {
     local __doc__="TODO: Create one node and install AmbariServer (NOTE: only centos and doesn't create docker image)"
     # p_ambari_node_create 'ambari2615.ubu01.localdomain' '172.17.110.100' '7.4.1708' '/path/to/ambari.repo'
-    local _ambari_host="${1}"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
     local _ip_address="${2}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
     local _ambari_repo_file="${4-$r_AMBARI_REPO_FILE}"
@@ -344,6 +344,7 @@ function p_node_create() {
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
     local _dns="$4"
     local _ambari_repo_file="${5-$r_AMBARI_REPO_FILE}"
+    local _ambari_host="${6-$r_AMBARI_HOST}"
 
     [ -z "${_dns}" ] && _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
     [ $_dns = "localhost" ] && _dns="`f_docker_ip`"
@@ -364,6 +365,7 @@ function p_node_create() {
     fi
     docker exec -it ${_name} bash -c 'which ambari-agent 2>/dev/null || yum install ambari-agent -y' || return $?
     _ambari_agent_fix "${_hostname}"
+    [ -n "${_ambari_host}" ] && docker exec -it ${_name} bash -c "ambari-agent reset ${_ambari_host}"
     docker exec -it ${_name} bash -c 'ambari-agent start'
 }
 
@@ -375,6 +377,7 @@ function p_nodes_create() {
     local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"
     local _os_ver="${4-$r_CONTAINER_OS_VER}"
     local _ambari_repo_file="${5-$r_AMBARI_REPO_FILE}"
+    local _ambari_host="${6-$r_AMBARI_HOST}"
 
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix" || return $?
@@ -389,6 +392,7 @@ function p_nodes_create() {
     sleep 3
     f_ambari_agent_install "${_ambari_repo_file}" "$_how_many" "$_start_from" || return $?
     f_ambari_agent_fix "$_how_many" "$_start_from"
+    [ -n "${_ambari_host}" ] && f_run_cmd_on_nodes "ambari-agent reset ${_ambari_host}" "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from"
 }
 
