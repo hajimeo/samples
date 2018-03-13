@@ -1286,6 +1286,7 @@ function f_docker_stop_all() {
         _info "No docker command found in the path. Not stopping."
         return 0
     fi
+    [ `docker ps -q | wc -l` -eq 0 ] && return
     _info "Stopping the followings after 5 seconds..."
     docker ps
     sleep 5
