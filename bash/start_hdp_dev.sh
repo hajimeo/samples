@@ -64,7 +64,7 @@ How to create a node(s)
     p_ambari_node_create 'ambari2615.ubu04.localdomain' '172.17.140.101' '7.4.1708' '/path/to/ambari.repo' 'DNS'
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS6.8, and Ambari is node101.localdomain
-    p_nodes_create '2' '102' '172.17.140.' '7.4.1708' '/path/to/ambari.repo'
+    export r_DOMAIN_SUFFIX=.ubu04.localdomain; p_nodes_create '2' '102' '172.17.140.' '7.4.1708' '/path/to/ambari.repo'
 
     # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
     f_ambari_blueprint_hostmap 2 102 > /tmp/hostmap.json
@@ -1356,13 +1356,11 @@ function f_docker_run() {
 
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
     local _base="${g_DOCKER_BASE}:$_os_ver"
-    local _ip_address=""
-    local _line=""
 
     [ ! -d /var/tmp/share ] && mkdir -p -m 777 /var/tmp/share
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        _docker_run "${_node}$_n${_domain}" "${_ip_address}" "${_base}" "${_dns}" || continue
+        _docker_run "${_node}$_n${_domain}" "${_ip_prefix%\.}.${_n}" "${_base}" "${_dns}" || continue
     done
 }
 
