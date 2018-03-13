@@ -507,6 +507,11 @@ function f_ambari_blueprint_hostmap() {
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
+    # host_group_1 = Ambari only
+    # host_group_2 = All master
+    # host_group_3 = Standby / HA (if only group_2 and group_3 only, + Slaves)
+    # host_group_4 = Slaves
+
     if [ -z "$_how_many" ] || [ 3 -gt "$_how_many" ]; then
         _error "At this moment, Blueprint build needs at least 3 nodes"
         return 1
@@ -538,6 +543,64 @@ function f_ambari_blueprint_hostmap() {
     #  , \"Clusters\" : {\"cluster_name\":\"${_cluster_name}\"}
 }
 
+function _ambari_blueprint_host_groups() {
+    local _how_many="${1-4}"
+    local _including_ambari="$2"
+    local _install_security="${3-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
+    
+    local _clients=',{"name":"ZOOKEEPER_CLIENT"}, {"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"HCAT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}, {"name":"SLIDER"}'
+    local _extra_comps_1=""  # NOTE: at this moment, this one should NOT be used
+    local _extra_comps_2=""
+    local _extra_comps_3=""
+    local _extra_comps_4=""
+    local _extra_configs=""
+    
+    if _isYes "$_install_security" ; then
+        _extra_comps_3=',{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}'
+        _extra_comps_4=',{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
+    fi
+
+    # host_group_1 = Ambari only
+    # host_group_2 = All master
+    # host_group_3 = Standby / HA (if only group_2 and group_3 only, + Slaves)
+    # host_group_4 = Slaves
+
+    local _ambari_only='{"name":"AMBARI_SERVER"}'
+    local _master_comps='{"name":"ZOOKEEPER_SERVER"},{"name":"NAMENODE"},{"name":"HISTORYSERVER"},{"name":"APP_TIMELINE_SERVER"},{"name":"RESOURCEMANAGER"},{"name":"MYSQL_SERVER"},{"name":"HIVE_SERVER"},{"name":"HIVE_METASTORE"},{"name":"WEBHCAT_SERVER"}'
+    local _standby_comps='{"name":"SECONDARY_NAMENODE"}'
+    local _slave_comps='{"name":"DATANODE"},{"name" : "NODEMANAGER"}'
+
+    echo '  "host_groups": [
+    {
+      "name" : "host_group_1",
+      "components" : ['${_ambari_only}'],
+      "configurations" : [ ]
+    },
+    {
+      "name" : "host_group_2",
+      "components" : [
+        '${_master_comps}${_clients}${_extra_comps_2}'
+      ],
+      "configurations" : [ ]
+    },
+    {
+      "name" : "host_group_3",
+      "components" : [
+        '${_standby_comps}${_clients}${_extra_comps_3}'
+      ],
+      "configurations" : [ ]
+    },
+    {
+      "name" : "host_group_4",
+      "components" : [
+        '${_slave_comps}${_clients}${_extra_comps_4}'
+      ],
+      "configurations" : [ ]
+    }
+  ],
+'
+}
+
 function f_ambari_blueprint_cluster_config() {
     local __doc__="Output json string for Ambari Blueprint Cluster mapping. 1=Ambari 2=>hadoop,Hive 3=>HBase,Security 4=>slave"
     local _stack_version="${1}"
@@ -558,14 +621,7 @@ function f_ambari_blueprint_cluster_config() {
         fi
     fi
 
-    local _extra_comps_1=""  # NOTE: at this moment, this one should NOT be used
-    local _extra_comps_2=""
-    local _extra_comps_3=""
-    local _extra_comps_4=""
-    local _extra_configs=""
     if _isYes "$_install_security" ; then
-        _extra_comps_3=',{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}'
-        _extra_comps_4=',{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
         # https://cwiki.apache.org/confluence/display/AMBARI/Blueprint+support+for+Ranger
         # TODO: policymgr_external_url is supposed to be used for rest.url but it becomes {{policymgr_mgr_url}}
         # TODO: amb_ranger_admin doesn't look like working. Need to create from Ranger Web UI
@@ -740,164 +796,19 @@ function f_ambari_blueprint_cluster_config() {
     }'
     fi
 
-    local _clients=',{"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"HCAT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}'
+    if ! curl -s -o /tmp/blueprint_common_properties.json "https://raw.githubusercontent.com/hajimeo/samples/master/misc/blueprint_common_properties.json" ; then
+        [ ! -s /tmp/blueprint_common_properties.json ] && return 1
+        _warn "Couldn't download blueprint_common_properties.json, so reusing /tmp/blueprint_common_properties.json"
+    fi
+    local _common_props="`cat /tmp/blueprint_common_properties.json`"
+    local _host_groups="`_ambari_blueprint_host_groups`"
+
     # TODO: Ambari 2.5.1 can't set hive.exec.post.hooks, probably a bug in Ambari (probably regression bug of AMBARI-17802)
     echo '{
   "configurations" : [
-    {
-      "hadoop-env" : {
-        "properties" : {
-          "dtnode_heapsize" : "512m",
-          "namenode_heapsize" : "513m",
-          "nfsgateway_heapsize" : "512"
-        }
-      }
-    },
-    {
-      "hdfs-site" : {
-        "properties" : {
-          "dfs.replication" : "1",
-          "dfs.datanode.du.reserved" : "536870912"
-        }
-      }
-    },
-    {
-      "yarn-env" : {
-        "properties" : {
-          "apptimelineserver_heapsize" : "512",
-          "resourcemanager_heapsize" : "513",
-          "nodemanager_heapsize" : "514"
-        }
-      }
-    },
-    {
-      "yarn-site" : {
-        "properties" : {
-          "yarn.scheduler.minimum-allocation-mb" : "250",
-          "yarn.nodemanager.delete.debug-delay-sec" : "1800"
-        }
-      }
-    },
-    {
-      "mapred-env" : {
-        "properties" : {
-          "jobhistory_heapsize" : "512"
-        }
-      }
-    },
-    {
-      "mapred-site" : {
-        "properties" : {
-          "mapreduce.map.memory.mb" : "256",
-          "mapreduce.map.java.opts" : "-Xmx202m",
-          "mapreduce.reduce.memory.mb" : "256",
-          "mapreduce.reduce.java.opts" : "-Xmx203m",
-          "mapreduce.task.io.sort.mb" : "64",
-          "yarn.app.mapreduce.am.resource.mb" : "256",
-          "yarn.app.mapreduce.am.command-opts" : "-Xmx201m -Dhdp.version=${hdp.version}"
-        }
-      }
-    },
-    {
-      "tez-site" : {
-        "properties" : {
-          "tez.am.resource.memory.mb" : "512",
-          "tez.task.resource.memory.mb" : "512",
-          "tez.runtime.io.sort.mb" : "256",
-          "tez.runtime.unordered.output.buffer.size-mb" : "48"
-        }
-      }
-    },
-    {
-      "hive-site" : {
-        "properties" : {
-          "hive.tez.container.size" : "512",
-          "tez.am.resource.memory.mb" : "512",
-          "hive.exec.post.hooks" : "org.apache.hadoop.hive.ql.hooks.ATSHook",
-          "hive.log.explain.output" : "true"
-        }
-      }
-    },
-    {
-      "hive-env" : {
-        "properties" : {
-          "hive.atlas.hook" : "false",
-          "hive.metastore.heapsize" : "512",
-          "hive.heapsize" : "1024"
-        }
-      }
-    }'$_extra_configs'
+    '${_common_props}${_extra_configs}'
   ],
-  "host_groups": [
-    {
-      "name" : "host_group_1",
-      "components" : [
-        {
-          "name" : "AMBARI_SERVER"
-        }'${_clients}${_extra_comps_1}'
-      ],
-      "configurations" : [ ],
-      "cardinality" : "1"
-    },
-    {
-      "name" : "host_group_2",
-      "components" : [
-        {
-          "name" : "NAMENODE"
-        },
-        {
-          "name" : "HISTORYSERVER"
-        },
-        {
-          "name" : "APP_TIMELINE_SERVER"
-        },
-        {
-          "name" : "RESOURCEMANAGER"
-        },
-        {
-          "name" : "MYSQL_SERVER"
-        },
-        {
-          "name" : "HIVE_SERVER"
-        },
-        {
-          "name" : "HIVE_METASTORE"
-        },
-        {
-          "name" : "WEBHCAT_SERVER"
-        }
-        , {"name":"SLIDER"}'${_clients}${_extra_comps_2}'
-      ],
-      "configurations" : [ ],
-      "cardinality" : "1"
-    },
-    {
-      "name" : "host_group_3",
-      "components" : [
-        {
-          "name" : "ZOOKEEPER_SERVER"
-        },
-        {
-          "name" : "SECONDARY_NAMENODE"
-        }, {"name":"SLIDER"}, {"name":"ZOOKEEPER_CLIENT"}'${_clients}${_extra_comps_3}'
-      ],
-      "configurations" : [ ],
-      "cardinality" : "1"
-    },
-    {
-      "name" : "host_group_4",
-      "components" : [
-        {
-          "name" : "DATANODE"
-        },
-        {
-          "name" : "NODEMANAGER"
-        }, {"name":"SLIDER"}'${_clients}${_extra_comps_4}'
-      ],
-      "configurations" : [ ],
-      "cardinality" : "1"
-    }
-  ],
+  '$_host_groups'
   "Blueprints": {
     "blueprint_name": "multinode-hdp",
     "stack_name": "HDP",
