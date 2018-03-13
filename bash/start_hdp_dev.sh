@@ -507,7 +507,7 @@ function f_ambari_blueprint_hostmap() {
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
-    if [ -z "$_how_many" ] || [ 4 -lt "$_how_many" ]; then
+    if [ -z "$_how_many" ] || [ 3 -gt "$_how_many" ]; then
         _error "At this moment, Blueprint build needs at least 3 nodes"
         return 1
     fi
@@ -792,6 +792,7 @@ function f_ambari_blueprint_cluster_config() {
           "mapreduce.map.java.opts" : "-Xmx202m",
           "mapreduce.reduce.memory.mb" : "256",
           "mapreduce.reduce.java.opts" : "-Xmx203m",
+          "mapreduce.task.io.sort.mb" : "64",
           "yarn.app.mapreduce.am.resource.mb" : "256",
           "yarn.app.mapreduce.am.command-opts" : "-Xmx201m -Dhdp.version=${hdp.version}"
         }
