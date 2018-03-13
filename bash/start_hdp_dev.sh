@@ -65,10 +65,10 @@ How to create a node(s)
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS7.4, and Ambari is ambari2615.ubu04.localdomain
     export r_DOMAIN_SUFFIX='.ubu04.localdomain'
-    p_nodes_create '2' '102' '172.17.140.' '7.4.1708' '/path/to/ambari.repo' 'ambari2615.ubu04.localdomain'
+    p_nodes_create '2' '102' '172.17.140.' '7.4.1708' 'ambari2615.ubu04.localdomain' '/path/to/ambari.repo'
     # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
     f_ambari_blueprint_hostmap 2 102 > /tmp/hostmap.json
-    f_ambari_blueprint_cluster_config 2 102 '2.6' 'N' > /tmp/cluster.json
+    f_ambari_blueprint_cluster_config 2 102 '2.5' 'N' > /tmp/cluster.json
     p_ambari_blueprint 'ambari2615.ubu04.localdomain' '/tmp/hostmap.json' '/tmp/cluster.json' '2.5.3.0' 'centos7' '' 'Y'
 
     # To start above example 4 nodes
@@ -343,8 +343,8 @@ function p_node_create() {
     local _ip_address="${2}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
     local _dns="$4"
-    local _ambari_repo_file="${5-$r_AMBARI_REPO_FILE}"
-    local _ambari_host="${6-$r_AMBARI_HOST}"
+    local _ambari_host="${5-$r_AMBARI_HOST}"
+    local _ambari_repo_file="${6-$r_AMBARI_REPO_FILE}"
 
     [ -z "${_dns}" ] && _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
     [ $_dns = "localhost" ] && _dns="`f_docker_ip`"
@@ -360,9 +360,15 @@ function p_node_create() {
     _copy_auth_keys_to_containers "${_hostname}"
 
     if [ -z "${_ambari_repo_file}" ]; then
-        _warn "No ambari repo file specified, so not setting up ambari agent"
-        return
+        if [ -n "${_ambari_host}" ]; then
+            scp root@${_ambari_host}:/etc/yum.repos.d/ambari.repo /tmp/ambari_$$.repo || return $?
+            _ambari_repo_file="/tmp/ambari_$$.repo"
+        else
+            _warn "No ambari repo file specified, so not setting up ambari agent"
+            return
+        fi
     fi
+    scp -q ${_ambari_repo_file} root@${_hostname}:/etc/yum.repos.d/ambari.repo || return $?
     docker exec -it ${_name} bash -c 'which ambari-agent 2>/dev/null || yum install ambari-agent -y' || return $?
     _ambari_agent_fix "${_hostname}"
     [ -n "${_ambari_host}" ] && docker exec -it ${_name} bash -c "ambari-agent reset ${_ambari_host}"
@@ -371,13 +377,12 @@ function p_node_create() {
 
 function p_nodes_create() {
     local __doc__="Create container(s). If _ambari_repo_file is given, try installing agent (NOTE: only centos and doesn't create docker image)"
-    # p_nodes_create 1 100 '172.17.140.' '7.4.1708' './ambari.repo'
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"
     local _os_ver="${4-$r_CONTAINER_OS_VER}"
-    local _ambari_repo_file="${5-$r_AMBARI_REPO_FILE}"
-    local _ambari_host="${6-$r_AMBARI_HOST}"
+    local _ambari_host="${5-$r_AMBARI_HOST}"
+    local _ambari_repo_file="${6-$r_AMBARI_REPO_FILE}"
 
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix" || return $?
@@ -386,8 +391,13 @@ function p_nodes_create() {
     f_copy_auth_keys_to_containers "$_how_many" "$_start_from"
 
     if [ -z "${_ambari_repo_file}" ]; then
-        _warn "No ambari repo file specified, so not setting up ambari agent"
-        return
+        if [ -n "${_ambari_host}" ]; then
+            scp root@${_ambari_host}:/etc/yum.repos.d/ambari.repo /tmp/ambari_$$.repo || return $?
+            _ambari_repo_file="/tmp/ambari_$$.repo"
+        else
+            _warn "No ambari repo file specified, so not setting up ambari agent"
+            return
+        fi
     fi
     sleep 3
     f_ambari_agent_install "${_ambari_repo_file}" "$_how_many" "$_start_from" || return $?
@@ -2496,6 +2506,12 @@ function _copy_auth_keys_to_containers() {
     local _hostname="$1"
     [ -s "$HOME/.ssh/authorized_keys" ] || return 1
     scp -q $HOME/.ssh/authorized_keys root@${_hostname}:/root/.ssh/authorized_keys && ssh -q root@${_hostname} chmod 600 /root/.ssh/authorized_keys
+    if [ ! -s /tmp/ssh_config_$$ ]; then
+        echo "Host *
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null" > /tmp/ssh_config_$$
+    fi
+    scp -q /tmp/ssh_config_$$ root@${_hostname}:/root/.ssh/config
 }
 
 function f_dockerfile() {
