@@ -1933,7 +1933,7 @@ function f_ambari_set_repo() {
     local _repo_url="$1"
     local _util_url="$2"
     local _os_type="$3"
-    local _stack_version="$4"
+    local _hdp_version="${4-$r_HDP_REPO_VER}"
     local _ambari_host="${5-$r_AMBARI_HOST}"
 
     local _stack="HDP" # for AMBARI-22565 repo_name change. TODO: need to support HDF etc.
@@ -1946,15 +1946,11 @@ function f_ambari_set_repo() {
     fi
 
     local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
-    if [ -z "${_stack_version}" ]; then
-        if [[ "$r_HDP_REPO_VER" =~ $_regex ]]; then
-            _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
-        else
-            _error "Couldn't determine the stack version"
-            return 1
-        fi
-    elif [[ "${_stack_version}" =~ $_regex ]]; then
-        _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+    if [[ "${_hdp_version}" =~ $_regex ]]; then
+        local _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+    else
+        _error "Couldn't determine the stack version"
+        return 1
     fi
 
     if [ -z "${_os_type}" ]; then
@@ -1966,29 +1962,35 @@ function f_ambari_set_repo() {
         _os_type="${_os_name}${_repo_os_ver}"
     fi
 
-    if [[ "${r_AMBARI_VER}" =~ ^2.6. ]]; then
-        _warn "TODO: Ambari 2.6.x may not work with local repo at this moment"
-    fi
+    # if no r_AMBARI_VER, assuming 2.6 or higher
+    if [[ ! "${r_AMBARI_VER}" =~ ^[23]\.[6789] ]]; then
+        if _isUrl "$_repo_url"; then
+            # TODO: if Ambari 2.6 https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
+            curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_type}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}' || return $?
+        fi
 
-    # TODO: if Ambari 2.6 https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
-    # http://sandbox.hortonworks.com:8080/api/v1/stacks/HDP/versions/2.6/repository_versions?fields=operating_systems/repositories/Repositories/base_url
-    #if [[ "${r_AMBARI_VER}" =~ ^2.6. ]]; then # TODO: get ambari version
-        # fields=*,operating_systems/repositories/Repositories/*
-        #curl -s -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1?fields=operating_systems/repositories/Repositories/*" -o /tmp/repo_ver_1.json || return $?
-        #grep -vw 'href' /tmp/repo_ver_1.json > /tmp/repo_ver_1.1.json
-        # TODO: replace base_url and if no version, download VDF and modify XML...
-        #curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1" -X PUT -H 'X-Requested-By: ambari' -d @/tmp/repo_ver_1.1.json || return $?
-        # TODO: How about Util?
-    #fi
-
-    if _isUrl "$_repo_url"; then
+        if _isUrl "$_util_url"; then
+            local _hdp_util_name="`echo $_util_url | grep -oP "HDP-UTILS-[\d\.]+"`"
+            curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_type}/repositories/${_hdp_util_name}" -d '{"Repositories":{"repo_name": "'${_hdp_util_name}'", "base_url":"'${_util_url}'","verify_base_url":true}}' || return $?
+        fi
+    else
+        _warn "TODO: Ambari 2.6.x and higher may not work with local repo at this moment"
         # TODO: if Ambari 2.6 https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
-        curl -s -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_type}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}' || return $?
-    fi
-
-    if _isUrl "$_util_url"; then
-        local _hdp_util_name="`echo $_util_url | grep -oP "HDP-UTILS-[\d\.]+"`"
-        curl -s -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_type}/repositories/${_hdp_util_name}" -d '{"Repositories":{"repo_name": "'${_hdp_util_name}'", "base_url":"'${_util_url}'","verify_base_url":true}}' || return $?
+        # http://sandbox.hortonworks.com:8080/api/v1/stacks/HDP/versions/2.6/repository_versions?fields=operating_systems/repositories/Repositories/base_url
+        # fields=*,operating_systems/repositories/Repositories/*
+        curl -s -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1?fields=operating_systems/repositories/Repositories/*" -o /tmp/repo_ver_1.json || return $?
+        grep -vw 'href' /tmp/repo_ver_1.json > /tmp/repo_ver_1.1.json
+        if _isUrl "$_repo_url"; then
+            sed -i.bak 's@/"base_url" : "http.\+/'${_stack}'/.*'${_os_type}'/.\+"@"base_url" : "'$_repo_url'"@g' /tmp/repo_ver_1.1.json
+        else
+            sed -i.bak "s@/updates/${_stack_version}.[0-9].[0-9]@${_hdp_version}@g" /tmp/repo_ver_1.1.json
+        fi
+        if _isUrl "$_util_url"; then
+            sed -i.bak 's@/"base_url" : "http.\+-UTILS-.\+/'${_os_type}'.*"@"base_url" : "'$_util_url'"@g' /tmp/repo_ver_1.1.json
+        else
+            sed -i.bak "s@/updates/${_stack_version}.[0-9].[0-9]@${_hdp_version}@g" /tmp/repo_ver_1.1.json
+        fi
+        curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1" -X PUT -H 'X-Requested-By: ambari' -d @/tmp/repo_ver_1.1.json || return $?
     fi
     echo ""
 }
