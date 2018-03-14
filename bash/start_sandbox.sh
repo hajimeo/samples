@@ -120,6 +120,12 @@ function f_ambari_start_all() {
     local _port="${2-8080}"
     local _cluster="${3-Sandbox}"
 
+    if ${_NEW_CONTAINER} ; then
+        # Sandbox's HDFS is always in maintenance mode so that start all does not work
+        curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services/HDFS" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode OFF for HDFS"},"Body":{"ServiceInfo":{"maintenance_state":"OFF"}}}'
+    fi
+    sleep 1
+
     curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services?" -X PUT -d '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 }
 
