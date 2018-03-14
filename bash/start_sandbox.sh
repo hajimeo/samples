@@ -407,7 +407,9 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
             -p 8044:8044 \
             -p 8050:8050 \
             -p ${_AMBARI_PORT}:8080 \
+            -p 8081:8081 \
             -p 8082:8082 \
+            -p 8083:8083 \
             -p 8086:8086 \
             -p 8088:8088 \
             -p 8090:8090 \
@@ -502,7 +504,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     docker exec -it ${_NAME} bash -c '[ ! -d /home/tom ] && useradd tom'
     docker exec -it ${_NAME} bash -c '[ ! -d /home/sam ] && useradd sam'
     # startup_script modify /etc/resolv.conf so removing
-    docker exec -it ${_NAME} bash -c 'grep -q -F "> /etc/resolv.conf" /etc/rc.d/init.d/startup_script && tar -cvzf /root/startup_script.tgz `find /etc/rc.d/ -name '*startup_script'` --remove-files'
+    #docker exec -it ${_NAME} bash -c 'grep -q -F "> /etc/resolv.conf" /etc/rc.d/init.d/startup_script && tar -cvzf /root/startup_script.tgz `find /etc/rc.d/ -name '*startup_script' -o -name '*tutorials'` --remove-files'
 
     docker exec -it ${_NAME} bash -c "service sshd start"
 
@@ -522,6 +524,8 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     if ${_NEW_CONTAINER} ; then
         echo "INFO: New container only OS config changes..."
+        docker exec -it ${_NAME} bash -c 'chkconfig startup_script off ; chkconfig tutorials off; chkconfig shellinaboxd off; chkconfig hue off; chkconfig httpd off'
+        docker exec -it ${_NAME} bash -c 'service startup_script stop ; service tutorials stop; service shellinaboxd stop; service hue stop; service httpd stop'
         docker exec -it ${_NAME} bash -c "chpasswd <<< root:hadoop"
         # In case -v /hadoop was used. TODO: the following three lines should be removed later
         docker exec -it ${_NAME} bash -c 'rm -rf /hadoop/yarn/{local,log}'
