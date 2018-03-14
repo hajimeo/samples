@@ -522,10 +522,10 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     # mysql -uroot -phadoop mysql -e "select user, host from user where User='root' and Password =''"
     # mysql -uroot -phadoop mysql -e "set password for 'root'@'%'= PASSWORD('hadoop')"
 
+    docker exec -dt ${_NAME} bash -c 'service startup_script stop ; service tutorials stop; service shellinaboxd stop; service hue stop; service httpd stop'
     if ${_NEW_CONTAINER} ; then
         echo "INFO: New container only OS config changes..."
         docker exec -it ${_NAME} bash -c 'chkconfig startup_script off ; chkconfig tutorials off; chkconfig shellinaboxd off; chkconfig hue off; chkconfig httpd off'
-        docker exec -it ${_NAME} bash -c 'service startup_script stop ; service tutorials stop; service shellinaboxd stop; service hue stop; service httpd stop'
         docker exec -it ${_NAME} bash -c "chpasswd <<< root:hadoop"
         # In case -v /hadoop was used. TODO: the following three lines should be removed later
         docker exec -it ${_NAME} bash -c 'rm -rf /hadoop/yarn/{local,log}'
