@@ -69,7 +69,7 @@ How to create a node(s)
     # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
     f_ambari_blueprint_hostmap 2 102 > /tmp/hostmap.json
     f_ambari_blueprint_cluster_config 2 102 '2.5' 'N' > /tmp/cluster.json
-    p_ambari_blueprint 'ambari2615.ubu04.localdomain' '/tmp/hostmap.json' '/tmp/cluster.json' '2.5.3.0' 'centos7' '' 'Y'
+    p_ambari_blueprint 'ambari2615.ubu04.localdomain' '/tmp/hostmap.json' '/tmp/cluster.json' '2.5.3.0' 'centos7' '2' '' 'Y'
 
     # To start above example 4 nodes
     p_nodes_start '4' '101' 'node101.localdomain'
@@ -456,8 +456,9 @@ function p_ambari_blueprint() {
     local _cluster_config_json="${3-$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH}"
     local _hdp_version="${4-$r_HDP_REPO_VER}"
     local _os_type="${5-centos7}"   # centos6 or centos7
-    local _cluster_name="${6-$r_CLUSTER_NAME}"
-    local _reset="${7-$r_AMBARI_RESET}"
+    local _how_many="${6-$r_NUM_NODES}"
+    local _cluster_name="${7-$r_CLUSTER_NAME}"
+    local _reset="${8-$r_AMBARI_RESET}"
 
     local _num="`echo "${_ambari_host}" | cut -d"." -f1 | sed 's/[^0-9]//g'`"
     [ -z "$_cluster_name" ] && _cluster_name="$(echo `hostname -s`_${_num} | sed 's/[^a-zA-Z0-9_]//g')"
@@ -472,6 +473,8 @@ function p_ambari_blueprint() {
     # just in case, try starting server
     f_ambari_server_start "${_ambari_host}"
     _port_wait "${_ambari_host}" "8080" || return 1
+
+    [ -n "${_how_many}" ] && _ambari_agent_wait "${_ambari_host}" "${_how_many}"
 
     local _c="`f_get_cluster_name 2>/dev/null`"
     if [ "$_c" = "$_cluster_name" ]; then
@@ -1564,7 +1567,7 @@ function f_ambari_server_start() {
     if [ $? -ne 0 ]; then
         # if 'Server not yet listening...' should be OK.
         grep -iqE 'Ambari Server is already running|Server not yet listening on http port 8080 after 50 seconds' /tmp/f_ambari_server_start.out && return
-        sleep 5
+        sleep 1
         ssh -q root@${_ambari_host} "ambari-server start --skip-database-check"
     fi
 }
@@ -3082,9 +3085,9 @@ function _port_wait() {
     fi
 
     for i in `seq 1 $_times`; do
-      sleep $_interval
       nc -z $_host $_port && return 0
       _info "$_host:$_port is unreachable. Waiting..."
+      sleep $_interval
     done
     _warn "$_host:$_port is unreachable."
     return 1
