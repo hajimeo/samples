@@ -180,12 +180,12 @@ function f_collect_webui() {
 
 function f_collect_host_info_from_ambari() {
     local __doc__="Access to Ambari API to get the host (and component) information"
-    local _admin="${1-admin}"      # Ambari Admin username
-    local _admin_pass="$2"         # If no password, each curl command will ask you to type
-    local _comp="${3}"             # host_component eg: DATANODE, HBASE_REGIONSERVER
-    local _node="${4}"             # node name = hostname
-    local _date_start_string="$5"  # eg: "4 hours ago"
-    local _date_end_string="$6"    # eg: "now" (or blank = now)
+    local _node="${1}"             # node name = hostname
+    local _comp="${2}"             # host_component eg: DATANODE, HBASE_REGIONSERVER
+    local _date_start_string="$3"  # eg & default: "4 hours ago"
+    local _date_end_string="$4"    # eg & default: "now"
+    local _admin="${5-admin}"      # Ambari Admin username
+    local _admin_pass="${6-admin}" # If no password (""), each curl command will ask you to type
     local _protocol="${7-http}"    # if https, change to https
     local _ambari_port="${8-8080}" # if no default port
     local _work_dir="${9-$_WORK_DIR}"
@@ -202,21 +202,22 @@ function f_collect_host_info_from_ambari() {
 
     local _ambari="`sed -nr 's/^hostname ?= ?([^ ]+)/\1/p' /etc/ambari-agent/conf/ambari-agent.ini`"
     if [ -z "$_ambari" ]; then
-        echo "ERROR" "No hostname= in ambari-agent.ini" >&2
+        echo "ERROR" "No ambar server hostname in ambari-agent.ini" >&2
         return 1
     fi
 
+    # generating base url from href entry from clusters API response
     local _href="`curl ${_cmd_opts} ${_protocol}://${_ambari}:${_ambari_port}/api/v1/clusters/ | grep -oE 'http://.+/clusters/[^"/]+'`"
     if [ -z "$_href" ]; then
         echo "ERROR" "No href from ${_protocol}://${_ambari}:${_ambari_port}/api/v1/clusters/" >&2
         return 2
     fi
 
-    # Looks like Ambari 2.5.x doesn't care of the case (lower or upper or mix) for hostname
-    curl ${_cmd_opts} "${_href}/hosts/${_node}" -o ${_work_dir%/}/ambari_${_node}.json
+    # Looks like Ambari 2.5.x doesn't care the case (lower or upper or mix) for hostname
+    curl ${_cmd_opts} "${_href}/hosts/${_node}" -o ${_work_dir%/}/ambari_${_node}.json || return $?
 
     # If no python, not collecting detailed metrics at this moment
-    which python &>/dev/null || return
+    which python >/dev/null || return $?
 
     local _S="`date '+%s' -d"${_date_start_string}"`" || return $?
     local _E="`date '+%s' -d"${_date_end_string}"`"
@@ -239,6 +240,72 @@ print ','.join(r)"
         curl ${_cmd_opts} "${_href}/hosts/${_node}/host_components/${_comp^^}" -o ${_work_dir%/}/ambari_${_node}_${_comp}.json
         _fields="`cat ${_work_dir%/}/ambari_${_node}_${_comp}.json | python -c "${_script}"`"
         [ -z "$_fields" ] || curl ${_cmd_opts} "${_href}/hosts/${_node}/host_components/${_comp^^}" -G --data-urlencode "fields=${_fields}" -o ${_work_dir%/}/ambari_${_node}_${_comp}_metrics.json
+    fi
+}
+
+function f_collect_metrics_from_ambari() {
+    local __doc__="Access to Ambari API to get particular metrics (so far no node level metrics)"
+    local _serv="${1}"             # service eg: YARN, HDFS
+    local _comp="${2}"             # host_component eg: DATANODE, HBASE_REGIONSERVER
+    local _fields="${3}"           # eg: "metrics/cpu/cpu_idle._sum,metrics/cpu/cpu_idle._avg"
+    local _date_start_string="$4"  # eg & default: "4 hours ago"
+    local _date_end_string="$5"    # eg & default: "now"
+    local _admin="${6-admin}"      # Ambari Admin username
+    local _admin_pass="${7-admin}" # If no password (""), each curl command will ask you to type
+    local _protocol="${8-http}"    # if https, change to https
+    local _ambari_port="${9-8080}" # if no default port
+    local _work_dir="$_WORK_DIR"   # TODO: bash can't use 10
+
+    local _cmd_opts="-s -k -u ${_admin}"
+    [ -z "${_admin_pass}" ] || _cmd_opts="${_cmd_opts}:${_admin_pass}"
+    [ -z "$_date_start_string" ] && _date_start_string="4 hours ago"
+    [ -z "$_date_end_string" ] && _date_end_string="now"
+    [ -z "$_protocol" ] && _protocol="http"
+    [ -z "$_ambari_port" ] && _ambari_port="8080"
+    [ -z "$_work_dir" ] && _work_dir="."
+
+    [ -z "${_serv}" ] && return 1
+    [ -z "${_comp}" ] && return 1
+
+    local _ambari="`sed -nr 's/^hostname ?= ?([^ ]+)/\1/p' /etc/ambari-agent/conf/ambari-agent.ini 2>/dev/null`"
+    if [ -z "$_ambari" ]; then
+        echo "INFO" "No ambari server hostname in ambari-agent.ini, so that using " >&2
+        _ambari="`hostname -f`"
+    fi
+
+    local _href="`curl ${_cmd_opts} ${_protocol}://${_ambari}:${_ambari_port}/api/v1/clusters/ | grep -oE 'http://.+/clusters/[^"/]+'`"
+    if [ -z "$_href" ]; then
+        echo "ERROR" "No href from ${_protocol}://${_ambari}:${_ambari_port}/api/v1/clusters/" >&2
+        return 2
+    fi
+
+    # For this function, python is mandatory
+    which python >/dev/null || return $?
+
+    if [ -z "${_fields}" ]; then
+        curl ${_cmd_opts} "${_href}/services/${_serv}/components/${_comp}" -o ${_work_dir%/}/ambari_${_comp}.json || return $?
+    else
+        curl ${_cmd_opts} "${_href}/services/${_serv}/components/${_comp}?fields=${_fields}" -o ${_work_dir%/}/ambari_${_comp}.json || return $?
+    fi
+
+    local _S="`date '+%s' -d"${_date_start_string}"`" || return $?
+    local _E="`date '+%s' -d"${_date_end_string}"`"
+    local _s="15"
+    local _script="import sys,json
+a=json.loads(sys.stdin.read())
+r=[]
+for k,v in a['metrics'].iteritems():
+  if isinstance(v,dict):
+    for k2 in v:
+      r+=['metrics/%s/%s["${_S}","${_E}","${_s}"]' % (k, k2)]
+print ','.join(r)"
+
+    echo "INFO" "Collecting ${_serv} / ${_comp} metric from Ambari..." >&2
+    local _fields="`cat ${_work_dir%/}/ambari_${_comp}.json | python -c "${_script}"`"
+    if [ -z "$_fields" ]; then
+        echo "WARN" "Couldn't determine fields. Please check ambari_${_comp}.json if exists." >&2
+    else
+        curl ${_cmd_opts} "${_href}/services/${_serv}/components/${_comp}" -G --data-urlencode "fields=${_fields}" -o ${_work_dir%/}/ambari_${_comp}_metrics.json
     fi
 }
 
