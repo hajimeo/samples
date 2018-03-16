@@ -450,14 +450,38 @@ function f_start_end_time_with_diff(){
 }
 
 function f_split_strace() {
-    local __doc__="Split a strace output, which didn't use -ff, per PID"
-    local _strace_out="$1"
+    local __doc__="Split a strace output, which didn't use -ff, per PID. As this function may take time, it should be safe to cancel at any time, and re-run later"
+    local _strace_file="$1"
     local _save_dir="${2-./}"
-    for _p in `awk '{print $1}' "${_strace_out}" | sort | uniq`
+    local _reverse="$3"
+
+    local _cat="cat"
+    if [[ "${_reverse}" =~ (^y|^Y) ]]; then
+        which tac &>/dev/null && _cat="tac"
+        which gtac &>/dev/null && _cat="gtac"
+    fi
+
+    [ ! -d "${_save_dir%/}" ] && ( mkdir -p "${_save_dir%/}" || return $? )
+    if [ ! -s "${_save_dir%/}/_pid_list.tmp" ]; then
+        awk '{print $1}' "${_strace_file}" | sort -n | uniq > "${_save_dir%/}/_pid_list.tmp"
+    else
+        echo "${_save_dir%/}/_pid_list.tmp exists. Reusing..." 1>&2
+    fi
+
+    for _p in `${_cat} "${_save_dir%/}/_pid_list.tmp"`
     do
-        grep ^${_p} "${_strace_out}" > ${_save_dir}${_p}.out
+        if [ -s "${_save_dir%/}/${_p}.out" ]; then
+            if [[ "${_reverse}" =~ (^y|^Y) ]]; then
+                echo "${_save_dir%/}/${_p}.out exists. As reverse mode, exiting..." 1>&2
+                return
+            fi
+            echo "${_save_dir%/}/${_p}.out exists. skipping..." 1>&2
+            continue
+        fi
+        grep "^${_p} " "${_strace_file}" > "${_save_dir%/}/.${_p}.out" && mv -f "${_save_dir%/}/.${_p}.out" "${_save_dir%/}/${_p}.out"
     done
 }
+
 
 function f_git_search() {
     local __doc__="Grep git comments to find matching branch or tag"
@@ -577,6 +601,9 @@ function _search_properties() {
     done
 }
 
+_COMMON_QUERIE_UPDATES="UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL';"
+_COMMON_QUERIE_SELECTS="select * from metainfo where metainfo_key = 'version';select repo_version_id, stack_id, display_name, repo_type, substring(repositories, 1, 500) from repo_version order by repo_version_id desc limit 5;ELECT * FROM clusters WHERE security_type = 'KERBEROS';"
+
 function f_load_ambaridb_to_postgres() {
     local __doc__="Load ambari DB sql file into Mac's (locals) PostgreSQL DB"
     local _sql_file="$1"
@@ -587,14 +614,18 @@ function f_load_ambaridb_to_postgres() {
     # If a few tables are missing, need missing tables' schema
     # pg_dump -Uambari -h `hostname -f` ambari -s -t alert_history -t host_role_command -t execution_command -t request > ambari_missing_table_ddl.sql
 
-    if ! sudo -u ${_sudo_user} -i psql -l; then
+    if ! sudo -u ${_sudo_user} -i psql template1 -c '\l+'; then
         echo "Connecting to local postgresql failed. Is PostgreSQL running?"
-        echo "pg_ctl -D /usr/local/var/postgres -l ~/postgresql.log start"
+        echo "pg_ctl -D /usr/local/var/postgres -l ~/postgresql.log restart"
         return 1
     fi
+    sleep 3q
 
     #echo "sudo -iu ${_sudo_user} psql template1 -c 'DROP DATABASE ambari;'"
-    sudo -iu ${_sudo_user} psql template1 -c 'ALTER DATABASE ambari RENAME TO ambari_'$(date +"%Y%m%d%H%M%S")';'
+    if ! sudo -iu ${_sudo_user} psql template1 -c 'ALTER DATABASE ambari RENAME TO ambari_'$(date +"%Y%m%d%H%M%S") ; then
+        sudo -iu ${_sudo_user} psql template1 -c "select pid, usename, application_name, client_addr, client_port, waiting, state, query_start, query, xact_start from pg_stat_activity where datname='ambari'"
+        return 1
+    fi
     sudo -iu ${_sudo_user} psql template1 -c 'CREATE DATABASE ambari;'
     sudo -iu ${_sudo_user} psql template1 -c "CREATE USER ambari WITH LOGIN PASSWORD '${_ambari_pwd}';"
     sudo -iu ${_sudo_user} psql template1 -c 'GRANT ALL PRIVILEGES ON DATABASE ambari TO ambari;'
@@ -609,12 +640,10 @@ function f_load_ambaridb_to_postgres() {
     [ -s "$_missing_tables_sql" ] && psql -Uambari -h `hostname -f` ambari < ${_missing_tables_sql}
     psql -Uambari -h `hostname -f` ambari < ${_sql_file}
     [ -s "$_missing_tables_sql" ] && psql -Uambari -h `hostname -f` ambari < ${_missing_tables_sql}
-    psql -Uambari -h `hostname -f` -c "UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL';"
+    psql -Uambari -h `hostname -f` -c "${_COMMON_QUERIE_UPDATES}"
+    psql -Uambari -h `hostname -f` -c "${_COMMON_QUERIE_SELECTS}"
 
-    psql -Uambari -h `hostname -f` -c "select * from metainfo where metainfo_key = 'version';"
-    psql -Uambari -h `hostname -f` -c "select repo_version_id, stack_id, display_name, repo_type, substring(repositories, 1, 500) from repo_version order by repo_version_id desc limit 5;"
-    psql -Uambari -h `hostname -f` -c "SELECT * FROM clusters WHERE security_type = 'KERBEROS';"
-    #UPDATE clusters SET security_type = 'NONE' WHERE provisioning_state = 'INSTALLED' and security_type = 'KERBEROS';
+    echo "psql -Uambari -h `hostname -f` -xc \"UPDATE clusters SET security_type = 'NONE' WHERE provisioning_state = 'INSTALLED' and security_type = 'KERBEROS';\""
     #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/services/KERBEROS"
     #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/artifacts/kerberos_descriptor"
     unset PGPASSWORD
@@ -653,12 +682,10 @@ FLUSH PRIVILEGES;"
     mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari < "${_sql_file}"
 
     # TODO: _missing_tables_sql
-    mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari -e "UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL';"
+    mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari -e "${_COMMON_QUERIE_UPDATES}"
+    mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari -e "${_COMMON_QUERIE_SELECTS}"
 
-    mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari -e "select * from metainfo where metainfo_key = 'version'\G"
-    mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari -e "select repo_version_id, stack_id, display_name, repo_type, substring(repositories, 1, 500) from repo_version order by repo_version_id desc limit 5\G"
-    mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari -e "SELECT * FROM clusters WHERE security_type = 'KERBEROS'\G"
-    echo "mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari -e \"UPDATE clusters SET security_type = 'NONE' WHERE provisioning_state = 'INSTALLED';\""
+    echo "mysql -u ambari -p${_ambari_pwd} -h `hostname -f` ambari -e \"UPDATE clusters SET security_type = 'NONE' WHERE provisioning_state = 'INSTALLED' and security_type = 'KERBEROS';\""
     #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/services/KERBEROS"
     #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/artifacts/kerberos_descriptor"
 }
