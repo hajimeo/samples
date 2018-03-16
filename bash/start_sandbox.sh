@@ -17,6 +17,15 @@ To start Sandbox
     NOTE: To assign an IP with -i, 'hdp' network is required.
     If no -m, if same image name as container name exist, it uses that.
 
+To add a test node using 'hdp/base:6.8' image
+    docker run --name sandbox-node1 --hostname sandbox-node1.hortonworks.com --network=${_CUSTOM_NETWORK} --ip=172.17.0.101 -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged -d hdp/base:6.8 /sbin/init
+    docker run -tid -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share --privileged \
+        --hostname=sandbox-node1.hortonworks.com --name=sandbox-node1 hdp/base:6.8
+    f_ssh_config sandbox-node1
+    docker exec -it sandbox-node1 bash
+
+    NOTE: Name resolution doesn't work from host so that using docker exec
+
 TODO: How to create 'hdp' network (incomplete as how to change docker config is different by OS)
 Update docker config file to add \" --bip=172.18.0.1\/24\", then restart docker service, then
     docker network create --driver=bridge --gateway=172.17.0.1 --subnet=172.17.0.0/16 -o com.docker.network.bridge.name=hdp -o com.docker.network.bridge.host_binding_ipv4=172.17.0.1 hdp
@@ -196,6 +205,26 @@ function f_useradd() {
     if which kadmin.local; then
         kadmin.local -q "add_principal -pw $_password $_user"
     fi
+}
+
+function f_ssh_config() {
+    local __doc__="Copy keys and setup authorized key"
+    local _name="${1-$_NAME}"
+    local _key="$2"
+    local _pub_key="$3"
+
+    if [ -z "${_key}" ] && [ -r ~/.ssh/id_rsa ]; then
+        _key=~/.ssh/id_rsa
+    fi
+
+    if [ -z "${_pub_key}" ] && [ -r ~/.ssh/id_rsa.pub ]; then
+        _pub_key=~/.ssh/id_rsa.pub
+    fi
+
+    docker exec -it ${_name} bash -c "[ -f /root/.ssh/authorized_keys ] || ( install -D -m 600 /dev/null /root/.ssh/authorized_keys && chmod 700 /root/.ssh )"
+    docker exec -it ${_name} bash -c "[ -f /root/.ssh/id_rsa ] || echo \"`cat ${_key}`\" > /root/.ssh/id_rsa; chmod 600 /root/.ssh/id_rsa"
+    docker exec -it ${_name} bash -c "grep -q \"^`cat ${_pub_key}`\" /root/.ssh/authorized_keys || echo \"`cat ${_pub_key}`\" >> /root/.ssh/authorized_keys"
+    docker exec -it ${_name} bash -c "[ -f /root/.ssh/config ] || echo -e \"Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\" > /root/.ssh/config"
 }
 
 function _isEnoughDisk() {
@@ -501,10 +530,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     echo "INFO: OS config changes, and starting SSHd, PostgreSQL, and MySQL ..."
     # setting up password-less ssh to sandbox whenever it starts in case .ssh is updated.
-    if [ -s  ~/.ssh/id_rsa.pub ]; then
-        docker exec -it ${_NAME} bash -c "[ -f /root/.ssh/authorized_keys ] || ( install -D -m 600 /dev/null /root/.ssh/authorized_keys && chmod 700 /root/.ssh )"
-        docker exec -it ${_NAME} bash -c "grep -q \"^`cat ~/.ssh/id_rsa.pub`\" /root/.ssh/authorized_keys || echo \"`cat ~/.ssh/id_rsa.pub`\" >> /root/.ssh/authorized_keys"
-    fi
+    f_ssh_config
     docker exec -it ${_NAME} bash -c '[ ! -d /home/admin ] && mkdir -m 700 /home/admin && chown admin:admin /home/admin'
     # for Knox LDAP demo users
     docker exec -it ${_NAME} bash -c '[ ! -d /home/tom ] && useradd tom'
@@ -528,7 +554,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     # mysql -uroot -phadoop mysql -e "select user, host from user where User='root' and Password =''"
     # mysql -uroot -phadoop mysql -e "set password for 'root'@'%'= PASSWORD('hadoop')"
 
-    docker exec -dt ${_NAME} bash -c 'service startup_script stop ; service tutorials stop; service shellinaboxd stop; service hue stop; service httpd stop'
+    docker exec -dt ${_NAME} bash -c 'service startup_script stop; service tutorials stop; service shellinaboxd stop; service httpd stop; service hue stop'
     if ${_NEW_CONTAINER} ; then
         echo "INFO: New container only OS config changes..."
         docker exec -it ${_NAME} bash -c 'chkconfig startup_script off ; chkconfig tutorials off; chkconfig shellinaboxd off; chkconfig hue off; chkconfig httpd off'
