@@ -320,12 +320,17 @@ function f_patchJar() {
         echo "/tmp/f_patchJar_${_basename}_jars.out exists. Reusing..."
     fi
 
-    # if wokring classpath exist, use it
-    if [ -s /tmp/f_patchJar_${_basename}_${_pid}_cp.out ]; then
-        export CLASSPATH="$(cat /tmp/f_patchJar_${_basename}_${_pid}_cp.out)"
-    else
-        local _cp=$(cat /tmp/f_patchJar_${_pid}.out | tr '\n' ':')
+    if [ -e "${_cmd_dir}/jcmd" ]; then
+        local _cp="`${_cmd_dir}/jcmd ${_pid}} VM.system_properties | grep '^java.class.path=' | sed 's/\\:/:/g' | cut -d"=" -f 2`"
         export CLASSPATH="${_cp%:}"
+    else
+        # if wokring classpath exist, use it
+        if [ -s /tmp/f_patchJar_${_basename}_${_pid}_cp.out ]; then
+            export CLASSPATH="$(cat /tmp/f_patchJar_${_basename}_${_pid}_cp.out)"
+        else
+            local _cp=$(cat /tmp/f_patchJar_${_pid}.out | tr '\n' ':')
+            export CLASSPATH="${_cp%:}"
+        fi
     fi
 
     if [ -r "${_basename}.java" ]; then
