@@ -2203,6 +2203,7 @@ function f_sysstat_setup() {
 }
 
 function f_ttyd() {
+    # TODO: https://www.tecmint.com/shell-in-a-box-a-web-based-ssh-terminal-to-access-remote-linux-servers/
     local __doc__="Install and set up https://tsl0922.github.io/ttyd/"
     local _user="${1-ttyduser}"
     local _vpass="${2-$g_DEFAULT_PASSWORD}"
