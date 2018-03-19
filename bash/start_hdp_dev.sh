@@ -500,15 +500,7 @@ _n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'comp
 [ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
 
     # Starting Blueprint related APIs
-    local _hdp_repo_url="${r_HDP_REPO_URL}"
-    if [ -z "${_hdp_repo_url}" ] && [ -n ${_hdp_version} ]; then
-        _hdp_repo_url="http://public-repo-1.hortonworks.com/HDP/${_os_type}/2.x/updates/${_hdp_version}/"
-    fi
-
-    if [ -n "${_hdp_repo_url}" ]; then
-        # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
-        f_ambari_set_repo "$_hdp_repo_url" "$r_HDP_UTIL_URL" "${_os_type}" "${_hdp_version}" "${_ambari_host}" || return $?
-    fi
+    f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" "${_os_type}" "${_hdp_version}" "${_ambari_host}" || return $?
 
     if [ ! -s "${_hostmap_json}" ]; then
         [ -n "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ] && _warn "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH is specifed but $_hostmap_json does not exist. Will regenerate automatically..."
@@ -539,6 +531,7 @@ function f_ambari_blueprint_hostmap() {
     local _default_password="${4-$r_DEFAULT_PASSWORD}"
     local _is_kerberos_on="$5"
     #local _ambari_host="${5-$r_AMBARI_HOST}"
+    local _stack="HDP" # TODO: need to support HDF etc.
 
     [ -z "$_default_password" ] && _default_password="${g_DEFAULT_PASSWORD}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
@@ -565,10 +558,28 @@ function f_ambari_blueprint_hostmap() {
     done
     _host_loop="${_host_loop%,}"
 
-    # TODO: need -xxx after version  "repository_version": "'${_hdp_version}'",
+    local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
+    if [[ "${_hdp_version}" =~ $_regex ]]; then
+        local _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+    else
+        _error "Couldn't determine the stack version"
+        return 1
+    fi
+
+    curl -sO http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json
+    # Get the latest vdf file just for repo version and using 'centos7'
+    local _vdf="`python -c 'import json;f=open("hdp_urlinfo.json");j=json.load(f);print j["'${_stack}-${_stack_version}'"]["manifests"]["'${_hdp_version}'"]["centos7"]'`"
+    if [ -z "$_vdf" ];then
+        local _repo_ver='"repository_version_id" : "1"'
+    else
+        local _repo_ver="`echo $_vdf | grep -oE "${_hdp_version}-[0-9]+"`"
+        _repo_ver='"repository_version" : "'${_repo_ver}'"'
+    fi
+
     echo '{
   "blueprint" : "multinode-hdp",
   "config_recommendation_strategy" : "ALWAYS_APPLY_DONT_OVERRIDE_CUSTOM_VALUES",
+  '${_repo_ver}',
   "default_password" : "'$_default_password'",
   "host_groups" :['$_host_loop']
 }'
@@ -672,8 +683,8 @@ function f_ambari_blueprint_config() {
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
+    local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
     if [[ "${_hdp_version}" =~ $_regex ]]; then
-        local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
         local _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
     else
         _error "Couldn't determine the stack version"
@@ -1934,15 +1945,14 @@ function f_local_repo() {
 }
 
 function f_ambari_set_repo() {
-    local __doc__="Update Ambari's repository URL information"
-    local _repo_url="$1"
+    local __doc__="Update Ambari's repository or VDF *URL* information"
+    local _repo_url="$1"    # or VDF file URL
     local _util_url="$2"
     local _os_type="$3"
     local _hdp_version="${4-$r_HDP_REPO_VER}"
     local _ambari_host="${5-$r_AMBARI_HOST}"
 
     local _stack="HDP" # for AMBARI-22565 repo_name change. TODO: need to support HDF etc.
-    _os_type="`echo "${_os_type}" | sed 's/centos/redhat/'`"
 
     _port_wait ${_ambari_host} 8080
     if [ $? -ne 0 ]; then
@@ -1950,8 +1960,8 @@ function f_ambari_set_repo() {
         return 1
     fi
 
+    local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
     if [[ "${_hdp_version}" =~ $_regex ]]; then
-        local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
         local _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
     else
         _error "Couldn't determine the stack version"
@@ -1963,11 +1973,11 @@ function f_ambari_set_repo() {
         local _os_name="$r_CONTAINER_OS"
          _os_type="${_os_name}${_repo_os_ver}"
     fi
+    local _tmp_os_type="`echo ${_os_type} | sed 's/centos/redhat/'`"
 
     # if no r_AMBARI_VER, assuming 2.6 or higher, otherwise, use regex to detect if it's older than 2.6
     if [[ ! "${r_AMBARI_VER}" =~ ^[23]\.[6789] ]]; then
         # NOTE: should use redhat if centos
-        local _tmp_os_type="`echo ${_os_type} | sed 's/centos/redhat/'`"
         if _isUrl "$_repo_url"; then
             curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}' || return $?
         fi
@@ -1977,32 +1987,32 @@ function f_ambari_set_repo() {
             curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_hdp_util_name}" -d '{"Repositories":{"repo_name": "'${_hdp_util_name}'", "base_url":"'${_util_url}'","verify_base_url":true}}' || return $?
         fi
     else
-        _warn "TODO: Ambari 2.6.x and higher may not work with local repo at this moment"
-        # TODO: if Ambari 2.6 https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
-        # always get the latest
-        curl -sO http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json
-        # Get the latest vdf file (confusing, sometimes centos, sometimes redhat
-        local _vdf="`python -c 'import json;f=open("hdp_urlinfo.json");j=json.load(f);print j["'${_stack}-${_stack_version}']["latest-vdf"]["'${_os_name}${_repo_os_ver}'"]'`" || return $?
-        # Upload the VDF definition
-        curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/version_definitions" -X POST -H 'X-Requested-By: ambari' -d '{"VersionDefinition":{"version_url":"'${_vdf}'"}}'
-
-        # http://sandbox.hortonworks.com:8080/api/v1/stacks/HDP/versions/2.6/repository_versions?fields=operating_systems/repositories/Repositories/base_url
-        #    fields=*,operating_systems/repositories/Repositories/*
-        # http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1?fields=operating_systems/repositories/Repositories/*
-
-        curl -s -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/redhat6/repositories/${_stack}-${_stack_version}" -o /tmp/repo_${_stack}-${_stack_version}.json || return $?
-        grep -vw 'href' /tmp/repo_${_stack}-${_stack_version}.json > /tmp/repo_${_stack}-${_stack_version}_mod.json
-        if _isUrl "$_repo_url"; then
-            sed -i.bak 's@/"base_url" : "http.\+/'${_stack}'/.*'${_os_type}'/.\+"@"base_url" : "'$_repo_url'"@g' /tmp/repo_${_stack}-${_stack_version}_mod.json
+        # https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
+        _warn "Ambari 2.6.x and higher need VDF file in the local repo web server, and pass the URL as _repo_url"
+        if _isUrl "$_repo_url" && [[ "${_repo_url}" =~ \.xml$ ]]; then
+            curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/version_definitions" -X POST -H 'X-Requested-By: ambari' -d '{"VersionDefinition":{"version_url":"'${_repo_url}'"}}' | grep -E '^HTTP/1.1 [45]'
         else
-            sed -i.bak "s@/updates/${_stack_version}.[0-9].[0-9]@${_hdp_version}@g" /tmp/repo_${_stack}-${_stack_version}_mod.json
+            # always get the latest
+            curl -sO http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json
+            # Get the latest vdf file (confusing, sometimes centos, sometimes redhat
+            local _vdf="`python -c 'import json;f=open("hdp_urlinfo.json");j=json.load(f);print j["'${_stack}-${_stack_version}'"]["manifests"]["'${_hdp_version}'"]["'${_os_type}'"]'`" || return $?
+            [ -z "${_vdf} " ] && return 1
+            # Upload the VDF definition
+            curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/version_definitions" -X POST -H 'X-Requested-By: ambari' -d '{"VersionDefinition":{"version_url":"'${_vdf}'"}}' | grep -E '^HTTP/1.1 [45]'
         fi
-        if _isUrl "$_util_url"; then
-            sed -i.bak 's@/"base_url" : "http.\+-UTILS-.\+/'${_os_type}'.*"@"base_url" : "'$_util_url'"@g' /tmp/repo_${_stack}-${_stack_version}_mod.json
-        else
-            sed -i.bak "s@/updates/${_stack_version}.[0-9].[0-9]@${_hdp_version}@g" /tmp/repo_${_stack}-${_stack_version}_mod.json
-        fi
-        curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1" -X PUT -H 'X-Requested-By: ambari' -d @/tmp/repo_${_stack}-${_stack_version}_mod.json || return $?
+
+        # NOTE: for already provisioned cluster
+        #curl -s -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_stack}-${_stack_version}" -o /tmp/repo_${_stack}-${_stack_version}.json || return $?
+        #grep -vw 'href' /tmp/repo_${_stack}-${_stack_version}.json > /tmp/repo_${_stack}-${_stack_version}_mod.json
+        #if _isUrl "$_repo_url"; then
+        #    sed -i.bak 's@/"base_url" : "http.\+/'${_stack}'/.*'${_os_type}'/.\+"@"base_url" : "'$_repo_url'"@g' /tmp/repo_${_stack}-${_stack_version}_mod.json
+        #else
+        #    sed -i.bak "s@/updates/${_stack_version}.[0-9].[0-9]@/updates/${_hdp_version}@g" /tmp/repo_${_stack}-${_stack_version}_mod.json
+        #fi
+        #if _isUrl "$_util_url"; then
+        #    sed -i.bak 's@/"base_url" : "http.\+-UTILS-.\+/'${_os_type}'.*"@"base_url" : "'$_util_url'"@g' /tmp/repo_${_stack}-${_stack_version}_mod.json
+        #fi
+        #curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1" -X PUT -H 'X-Requested-By: ambari' -d @/tmp/repo_${_stack}-${_stack_version}_mod.json || return $?
     fi
     echo ""
 }
