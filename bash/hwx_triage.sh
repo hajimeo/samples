@@ -180,15 +180,16 @@ function f_collect_webui() {
 
 function f_collect_host_info_from_ambari() {
     local __doc__="Access to Ambari API to get the host (and component) information"
-    local _node="${1}"             # node name = hostname
-    local _comp="${2}"             # host_component eg: DATANODE, HBASE_REGIONSERVER
-    local _date_start_string="$3"  # eg & default: "4 hours ago"
-    local _date_end_string="$4"    # eg & default: "now"
-    local _admin="${5-admin}"      # Ambari Admin username
-    local _admin_pass="${6-admin}" # If no password (""), each curl command will ask you to type
-    local _protocol="${7-http}"    # if https, change to https
-    local _ambari_port="${8-8080}" # if no default port
+    local _node="${1}"              # node name = hostname
+    local _comp="${2}"              # host_component eg: DATANODE, HBASE_REGIONSERVER
+    local _date_start_string="$3"   # eg & default: "4 hours ago"
+    local _date_end_string="$4"     # eg & default: "now"
+    local _admin="${5-admin}"       # Ambari Admin username
+    local _admin_pass="${6-admin}"  # If no password (""), each curl command will ask you to type
+    local _protocol="${7-http}"     # if https, change to https
+    local _ambari_port="${8-8080}"  # if no default port
     local _work_dir="${9-$_WORK_DIR}"
+    local _fields="$_AMBARI_API_FIELDS"
 
     local _cmd_opts="-s -k -u ${_admin}"
     [ -z "${_admin_pass}" ] || _cmd_opts="${_cmd_opts}:${_admin_pass}"
@@ -215,6 +216,11 @@ function f_collect_host_info_from_ambari() {
 
     # Looks like Ambari 2.5.x doesn't care the case (lower or upper or mix) for hostname
     curl ${_cmd_opts} "${_href}/hosts/${_node}" -o ${_work_dir%/}/ambari_${_node}.json || return $?
+    if [ -z "${_fields}" ]; then
+        curl ${_cmd_opts} "${_href}/hosts/${_node}" -o ${_work_dir%/}/ambari_${_node}.json || return $?
+    else
+        curl ${_cmd_opts} "${_href}/hosts/${_node}?fields=${_fields}" -o ${_work_dir%/}/ambari_${_node}.json || return $?
+    fi
 
     # If no python, not collecting detailed metrics at this moment
     which python >/dev/null || return $?
@@ -232,21 +238,21 @@ for k,v in a['metrics'].iteritems():
 print ','.join(r)"
 
     echo "INFO" "Collecting ${_node} metric from Ambari..." >&2
-    local _fields="`cat ${_work_dir%/}/ambari_${_node}.json | python -c "${_script}"`"
-    [ -z "$_fields" ] || curl ${_cmd_opts} "${_href}/hosts/${_node}" -G --data-urlencode "fields=${_fields}" -o ${_work_dir%/}/ambari_${_node}_metrics.json
+    local _fields_with_time="`cat ${_work_dir%/}/ambari_${_node}.json | python -c "${_script}"`"
+    [ -z "${_fields_with_time}" ] || curl ${_cmd_opts} "${_href}/hosts/${_node}" -G --data-urlencode "fields=${_fields_with_time}" -o ${_work_dir%/}/ambari_${_node}_metrics.json
 
     if [ ! -z "$_comp" ]; then
         echo "INFO" "Collecting ${_node} ${_comp} metric from Ambari..." >&2
         curl ${_cmd_opts} "${_href}/hosts/${_node}/host_components/${_comp^^}" -o ${_work_dir%/}/ambari_${_node}_${_comp}.json
-        _fields="`cat ${_work_dir%/}/ambari_${_node}_${_comp}.json | python -c "${_script}"`"
-        [ -z "$_fields" ] || curl ${_cmd_opts} "${_href}/hosts/${_node}/host_components/${_comp^^}" -G --data-urlencode "fields=${_fields}" -o ${_work_dir%/}/ambari_${_node}_${_comp}_metrics.json
+        _fields_with_time="`cat ${_work_dir%/}/ambari_${_node}_${_comp}.json | python -c "${_script}"`"
+        [ -z "${_fields_with_time}" ] || curl ${_cmd_opts} "${_href}/hosts/${_node}/host_components/${_comp^^}" -G --data-urlencode "fields=${_fields_with_time}" -o ${_work_dir%/}/ambari_${_node}_${_comp}_metrics.json
     fi
 }
 
 function f_collect_metrics_from_ambari() {
     local __doc__="Access to Ambari API to get particular metrics (so far no node level metrics)"
     local _serv="${1}"             # service eg: YARN, HDFS
-    local _comp="${2}"             # host_component eg: DATANODE, HBASE_REGIONSERVER
+    local _comp="${2}"             # eg: DATANODE, HBASE_REGIONSERVER
     local _fields="${3}"           # eg: "metrics/cpu/cpu_idle._sum,metrics/cpu/cpu_idle._avg"
     local _date_start_string="$4"  # eg & default: "4 hours ago"
     local _date_end_string="$5"    # eg & default: "now"
@@ -282,10 +288,13 @@ function f_collect_metrics_from_ambari() {
     # For this function, python is mandatory
     which python >/dev/null || return $?
 
-    if [ -z "${_fields}" ]; then
-        curl ${_cmd_opts} "${_href}/services/${_serv}/components/${_comp}" -o ${_work_dir%/}/ambari_${_comp}.json || return $?
-    else
-        curl ${_cmd_opts} "${_href}/services/${_serv}/components/${_comp}?fields=${_fields}" -o ${_work_dir%/}/ambari_${_comp}.json || return $?
+    local _tmp_fields=$(echo "${_fields}" | sed -e 's/[^A-Za-z0-9._-]//g')
+    if [ ! -s "${_work_dir%/}/ambari_${_comp}_${_tmp_fields}.json" ]; then
+        if [ -z "${_fields}" ]; then
+            curl ${_cmd_opts} "${_href}/services/${_serv}/components/${_comp}" -o ${_work_dir%/}/ambari_${_comp}_${_tmp_fields}.json || return $?
+        else
+            curl ${_cmd_opts} "${_href}/services/${_serv}/components/${_comp}?fields=${_fields}" -o ${_work_dir%/}/ambari_${_comp}_${_tmp_fields}.json || return $?
+        fi
     fi
 
     local _S="`date '+%s' -d"${_date_start_string}"`" || return $?
@@ -301,11 +310,41 @@ for k,v in a['metrics'].iteritems():
 print ','.join(r)"
 
     echo "INFO" "Collecting ${_serv} / ${_comp} metric from Ambari..." >&2
-    local _fields="`cat ${_work_dir%/}/ambari_${_comp}.json | python -c "${_script}"`"
+    local _fields="`cat ${_work_dir%/}/ambari_${_comp}_${_tmp_fields}.json | python -c "${_script}"`"
     if [ -z "$_fields" ]; then
         echo "WARN" "Couldn't determine fields. Please check ambari_${_comp}.json if exists." >&2
     else
         curl ${_cmd_opts} "${_href}/services/${_serv}/components/${_comp}" -G --data-urlencode "fields=${_fields}" -o ${_work_dir%/}/ambari_${_comp}_metrics.json
+    fi
+}
+
+function f_collect_metrics_from_AMS() {
+    local __doc__="Access to AMS API to get particular metrics (so far no node level metrics)"
+    local _comp="${1}"              # component eg: DATANODE, HBASE_REGIONSERVER
+    local _metric_names="${2}"      # eg: "cpu_system._sum,cpu_user._sum,cpu_nice._sum,cpu_wio._sum,cpu_idle._sum,cpu_idle._avg"
+    local _precision="${3}"         # eg: DAYS, HOURS, MINUTES or SECONDS
+    local _date_start_string="$4"   # eg & default: "4 hours ago"
+    local _date_end_string="$5"     # eg & default: "now"
+    local _ams_url="$6"             # eg & default: http://`hostname -f`:6188 (running from AMS node)
+    local _work_dir="${7-$_WORK_DIR}"
+
+    local _cmd_opts="-s -k"
+    [ -z "$_date_start_string" ] && _date_start_string="4 hours ago"
+    [ -z "$_date_end_string" ] && _date_end_string="now"
+    [ -z "$_work_dir" ] && _work_dir="."
+    [ -z "${_comp}" ] && return 1
+    [ -z "${_precision}" ] && _precision="MINUTES"
+    [ -z "${_ams_url}" ] && _ams_url="http://`hostname -f`:6188"
+    local _base_url="${_ams_url%/}/ws/v1/timeline/metrics"
+    # Seems AMS works with second and millisecond both
+    local _S="`date '+%s' -d"${_date_start_string}"`" || return $?
+    local _E="`date '+%s' -d"${_date_end_string}"`"
+
+    echo "INFO" "Collecting ${_comp} metric from AMS (${_ams_url}) ..." >&2
+    if [ -z "$_metric_names" ]; then
+        echo "WARN" "Couldn't determine fields. Please check ambari_${_comp}.json if exists." >&2
+    else
+        curl ${_cmd_opts} "${_base_url}" -G --data-urlencode "metricNames=${_metric_names}" --data-urlencode "appId=${_comp}" --data-urlencode "startTime=${_S}" --data-urlencode "endTime=${_E}" --data-urlencode "precision=${_precision}" -o ${_work_dir%/}/ams_${_comp}_metrics.json
     fi
 }
 
