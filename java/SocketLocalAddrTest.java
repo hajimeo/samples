@@ -1,3 +1,9 @@
+/**
+ *
+ * java SocketLocalAddrTest remote_host `hostname -f`
+ *
+ */
+
 import java.net.InetAddress;
 import java.net.Socket;
 
