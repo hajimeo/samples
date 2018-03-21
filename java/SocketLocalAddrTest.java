@@ -2,8 +2,6 @@
  * java SocketLocalAddrTest remote_host remote_port local_host [message]
  * java SocketLocalAddrTest ZK_HOST 2181 `hostname -f` ruok
  * java SocketLocalAddrTest WEB_SERVER 80 `hostname -f` 'GET / HTTP/1.0\r\n'
- *
- * Ref: http://www.cafeaulait.org/course/week12/22.html
  */
 
 import java.io.*;
@@ -28,10 +26,10 @@ public class SocketLocalAddrTest {
         }
 
         if (args.length > 3) {
-            PrintWriter out = new PrintWriter(socket.getOutputStream(), false); // true would be OK and no flush
+            PrintWriter out = new PrintWriter(socket.getOutputStream(), false); // 'true' would be OK and no flush
             InputStream in = socket.getInputStream();
-            InputStreamReader isr = new InputStreamReader(in);
-            BufferedReader br = new BufferedReader(isr);
+            InputStreamReader in_reader = new InputStreamReader(in);
+            BufferedReader buf_reader = new BufferedReader(in_reader);
 
             // Sending...
             out.println(args[3]);
@@ -42,12 +40,12 @@ public class SocketLocalAddrTest {
 
             // Receiving/reading...
             int c;
-            while ((c = br.read()) != -1) {
+            while ((c = buf_reader.read()) != -1) {
                 System.out.print((char) c);
             }
+            System.out.println("");
         }
 
-        System.out.println("");
         InetAddress ia = socket.getLocalAddress();
         System.out.println("LocalAddress: "+ia);
         socket.close();
