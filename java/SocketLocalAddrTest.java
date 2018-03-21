@@ -29,15 +29,18 @@ public class SocketLocalAddrTest {
 
         if (args.length > 3) {
             PrintWriter out = new PrintWriter(socket.getOutputStream(), false); // true would be OK and no flush
+            InputStream in = socket.getInputStream();
+            InputStreamReader isr = new InputStreamReader(in);
+            BufferedReader br = new BufferedReader(isr);
+
+            // Sending...
             out.println(args[3]);
             out.flush();
             // Below is to read from stdin as user input
             //BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             //BufferedReader stdIn = new BufferedReader(new InputStreamReader(System.in));
-            
-            InputStream in = socket.getInputStream();
-            InputStreamReader isr = new InputStreamReader(in);
-            BufferedReader br = new BufferedReader(isr);
+
+            // Receiving/reading...
             int c;
             while ((c = br.read()) != -1) {
                 System.out.print((char) c);
