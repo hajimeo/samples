@@ -30,7 +30,7 @@ shopt -s nocasematch
 #shopt -s nocaseglob
 set -o posix
 #umask 0000
-
+alias dps='docker ps --format "{{.Image}}\t{{.Names}}\t{{.Status}}"'
 
 usage() {
     echo "HELP/USAGE:"
@@ -61,11 +61,11 @@ How to create a node(s)
     f_docker_base_create 'https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6' 'centos' '6.8'
 
     # Create one node with Ambari Server, hostname: node101.localdomain, OS ver: CentOS6.8, Network addr: 172.17.100.x
-    p_ambari_node_create 'ambari2615.ubu04.localdomain' '172.17.140.101' '7.4.1708' '/path/to/ambari.repo' 'DNS'
+    p_ambari_node_create 'ambari2615.ubu04.localdomain' '172.17.140.101' '7.4.1708' [/path/to/ambari.repo] [DNS_IP]
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS7.4, and Ambari is ambari2615.ubu04.localdomain
     export r_DOMAIN_SUFFIX='.ubu04.localdomain'
-    p_nodes_create '2' '102' '172.17.140.' '7.4.1708' 'ambari2615.ubu04.localdomain' '/path/to/ambari.repo'
+    p_nodes_create '2' '102' '172.17.140.' '7.4.1708' 'ambari2615.ubu04.localdomain' [/path/to/ambari.repo]
     # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
     f_ambari_blueprint_hostmap 2 102 '2.5.3.0' > /tmp/hostmap.json
     f_ambari_blueprint_config 2 102 '2.5.3.0' 'N' > /tmp/cluster.json
@@ -334,7 +334,7 @@ function p_ambari_node_create() {
     [ -n "$r_AMBARI_JCE_URL" ] && _jce="$r_AMBARI_JCE_URL"
     f_ambari_server_setup "${_ambari_host}" "${_jdk}" "$_jce" || return $?
     f_ambari_server_start "${_ambari_host}" || return $?
-    f_port_forward 8080 ${_ambari_host} 8080 "Y"
+    f_port_forward 8080 ${_ambari_host} 8080
     f_ambari_java_random "${_ambari_host}"
 }
 
@@ -365,7 +365,7 @@ function p_node_create() {
             scp root@${_ambari_host}:/etc/yum.repos.d/ambari.repo /tmp/ambari_$$.repo || return $?
             _ambari_repo_file="/tmp/ambari_$$.repo"
         else
-            _warn "No ambari repo file specified, so not setting up ambari agent"
+            _warn "No ambari repo file specified, so not setting up Agent"
             return
         fi
     fi
@@ -396,13 +396,13 @@ function p_nodes_create() {
             scp root@${_ambari_host}:/etc/yum.repos.d/ambari.repo /tmp/ambari_$$.repo || return $?
             _ambari_repo_file="/tmp/ambari_$$.repo"
         else
-            _warn "No ambari repo file specified, so not setting up ambari agent"
+            _warn "No ambari repo file specified, so not setting up Agent"
             return
         fi
     fi
     sleep 3
-    f_ambari_agent_install "${_ambari_repo_file}" "$_how_many" "$_start_from" || return $?
-    f_ambari_agent_fix "$_how_many" "$_start_from"
+    f_ambari_agents_install "${_ambari_repo_file}" "$_how_many" "$_start_from" || return $?
+    f_ambari_agents_fix "$_how_many" "$_start_from"
     [ -n "${_ambari_host}" ] && f_run_cmd_on_nodes "ambari-agent reset ${_ambari_host}" "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from"
 }
@@ -1214,7 +1214,7 @@ function f_docker_start() {
 
 function f_docker_start_one() {
     local __doc__="Starting one docker container with a few customization"
-    local _hostname="$1"
+    local _hostname="$1"    # short name is OK
     local _ip_address="$2"
     local _dns="$3"
 
@@ -1461,7 +1461,7 @@ function f_ambari_install() {
 
     f_ambari_server_install || return $?
     f_ambari_server_setup &
-    f_ambari_agent_install || return $?
+    f_ambari_agents_install || return $?
     wait
 }
 
@@ -1478,7 +1478,7 @@ function f_ambari_upgrade() {
     fi
 
     f_ambari_server_upgrade "${_ambari_host}" "${_repo_url_or_file}" || return $?
-    f_ambari_agent_upgrade "${_repo_url_or_file}" "${_how_many}" "${_start_from}"
+    f_ambari_agents_upgrade "${_repo_url_or_file}" "${_how_many}" "${_start_from}"
 }
 
 function f_ambari_server_install() {
@@ -1672,7 +1672,7 @@ function f_tunnel() {
     #echo "Please run \"ip route del 172.17.0.0/16 via 0.0.0.0\" on all containers on both hosts."
 }
 
-function f_ambari_agent_install() {
+function f_ambari_agents_install() {
     local __doc__="Installing ambari-agent on all containers for manual registration (not starting)"
     local _repo_url_or_file="${1-$r_AMBARI_REPO_FILE}"
     local _how_many="${2-$r_NUM_NODES}"
@@ -1687,14 +1687,14 @@ function f_ambari_agent_install() {
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo || continue
         # no "-t"
-        local _cmd="ssh -q root@${_node}$_n${_domain} \"which ambari-agent 2>/dev/null || yum install ambari-agent -y\" &> /tmp/f_ambari_agent_install_${_n}.out"
+        local _cmd="ssh -q root@${_node}$_n${_domain} \"which ambari-agent 2>/dev/null || yum install ambari-agent -y\" &> /tmp/f_ambari_agents_install_${_n}.out"
         if [ 0 -eq ${_is_first_one_successful} ]; then
             eval "${_cmd}" &
         else
             eval "${_cmd}"
             _is_first_one_successful=$?
         fi
-        _info "Check /tmp/f_ambari_agent_install_${_n}.out for agent installation"
+        _info "Check /tmp/f_ambari_agents_install_${_n}.out for agent installation"
         sleep 1
     done
     wait
@@ -1705,7 +1705,7 @@ function f_ambari_agent_install() {
     done
 }
 
-function f_ambari_agent_upgrade() {
+function f_ambari_agents_upgrade() {
     local __doc__="Upgrading ambari-agent on all containers"
     local _repo_url_or_file="${1}" # as upgrade, not using $r_AMBARI_REPO_FILE
     local _how_many="${2-$r_NUM_NODES}"
@@ -1720,14 +1720,14 @@ function f_ambari_agent_upgrade() {
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo || continue
         # no "-t"
-        local _cmd="ssh -q root@${_node}$_n${_domain} \"(set -x; yum clean all && ambari-agent stop; yum upgrade -y ambari-agent && ambari-agent restart)\" &> /tmp/f_ambari_agent_upgrade_${_n}.out"
+        local _cmd="ssh -q root@${_node}$_n${_domain} \"(set -x; yum clean all && ambari-agent stop; yum upgrade -y ambari-agent && ambari-agent restart)\" &> /tmp/f_ambari_agents_upgrade_${_n}.out"
         if [ 0 -eq ${_is_first_one_successful} ]; then
             eval "${_cmd}" &
         else
             eval "${_cmd}"
             _is_first_one_successful=$?
         fi
-        _info "Check /tmp/f_ambari_agent_upgrade_${_n}.out for agent upgrade"
+        _info "Check /tmp/f_ambari_agents_upgrade_${_n}.out for agent upgrade"
         sleep 1
     done
     wait
@@ -1736,6 +1736,33 @@ function f_ambari_agent_upgrade() {
         ssh -q -t root@${_node}$_n${_domain} "ambari-agent status"
         _info "${_node}$_n${_domain} 'ambari-agent status' exit code was $?"
     done
+}
+
+function f_ambari_agent_reset() {
+    local __doc__="Goal is Completely Reset/reinstall one ambari-agent. NOTE: it will ask y/n when erase packages"
+    local _agent_host="${1}"
+    local _ambari_host="${2-$r_AMBARI_HOST}"
+
+    # Cleaning up HDP / HDF packages
+    _info "Removing Ambari Metrics,Solr,Log/HDP/HDF packages... (it will ask y/n)"
+    sleep 3
+    ssh -qt root@${_agent_host} 'yum erase ambari-[!as]*;for _r in `grep -iE "^\[(HDP-[2-9]|HDF-[2-9])" /etc/yum.repos.d/*.repo | sed -n -r "s/^.*\[(.+)\]/\1/p"`; do yum erase $(yum list installed | grep -E "@${_r}$" | awk "{ print $1 }"); done'
+    ssh -qt root@${_agent_host} 'mv -vf `grep -liE "^\[(HDP-[2-9]|HDF-[2-9])" /etc/yum.repos.d/*.repo` /tmp/'
+
+    scp -q root@${_ambari_host}:/etc/yum.repos.d/ambari.repo /tmp/ambari_$$.repo || return $?
+    scp -q /tmp/ambari_$$.repo root@${_agent_host}:/etc/yum.repos.d/ambari.repo || return $?
+    # Installing package. no "-t"
+    ssh -q root@${_agent_host} "(set -x; yum clean all; ambari-agent stop; yum remove ambari-agent -y; yum install ambari-agent -y)" || return $?
+
+    _ambari_agent_fix "${_agent_host}"
+    ssh -q -t root@${_agent_host} "(set -x; ambari-agent reset ${_ambari_host} && ambari-agent start)" || return $?
+    local _c="`f_get_cluster_name ${_ambari_host}`"
+    [ -z "${_c}" ] && return 1
+    sleep 5
+    curl -Is -u admin:admin "http://${_ambari_host}:8080/api/v1/hosts/${_agent_host}" | grep '^HTTP/1.1 2' || sleep 5
+    curl -Is -u admin:admin "http://${_ambari_host}:8080/api/v1/hosts/${_agent_host}" | grep '^HTTP/1.1 2' || sleep 5
+    curl -is -u admin:admin -X POST -H "X-Requested-By:ambari" "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_agent_host}" || return
+    _info "If Java is not managed by Ambari, please make sure 'java.home' location in ambari.properties exists in this node."
 }
 
 function f_run_cmd_on_nodes() {
@@ -1784,7 +1811,7 @@ _alt_java="$(alternatives --display java | grep "link currently points to" | gre
     fi
 }
 
-function f_ambari_agent_fix() {
+function f_ambari_agents_fix() {
     local __doc__="Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
@@ -2301,8 +2328,8 @@ function p_host_setup() {
 
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent reset $r_AMBARI_HOST"
         f_run_cmd_on_nodes "ambari-agent reset $r_AMBARI_HOST" &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_ambari_agent_fix"
-        f_ambari_agent_fix &>> /tmp/p_host_setup.log
+        _log "INFO" "Starting f_ambari_agents_fix"
+        f_ambari_agents_fix &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
         f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
 
