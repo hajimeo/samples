@@ -30,7 +30,7 @@ shopt -s nocasematch
 #shopt -s nocaseglob
 set -o posix
 #umask 0000
-
+alias dps='docker ps --format "{{.Image}}\t{{.Names}}\t{{.Status}}"'
 
 usage() {
     echo "HELP/USAGE:"
@@ -61,13 +61,15 @@ How to create a node(s)
     f_docker_base_create 'https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6' 'centos' '6.8'
 
     # Create one node with Ambari Server, hostname: node101.localdomain, OS ver: CentOS6.8, Network addr: 172.17.100.x
-    p_ambari_node_create '/path/to/ambari.repo' '101' '6.8' '172.17.100.'
+    p_ambari_node_create 'ambari2615.ubu04.localdomain' '172.17.140.101' '7.4.1708' [/path/to/ambari.repo] [DNS_IP]
 
-    # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS6.8, and Ambari is node101.localdomain
-    p_nodes_create '3' '102' '6.8' '172.17.100.' '/path/to/ambari.repo'
-
+    # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS7.4, and Ambari is ambari2615.ubu04.localdomain
+    export r_DOMAIN_SUFFIX='.ubu04.localdomain'
+    p_nodes_create '2' '102' '172.17.140.' '7.4.1708' 'ambari2615.ubu04.localdomain' [/path/to/ambari.repo]
     # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
-    p_ambari_blueprint 'mytestcluster' 'node101.localdomain' ['/path/to/hostmap.json'] ['/path/to/cluster.json']
+    f_ambari_blueprint_hostmap 2 102 '2.5.3.0' > /tmp/hostmap.json
+    f_ambari_blueprint_config 2 102 '2.5.3.0' 'N' > /tmp/cluster.json
+    p_ambari_blueprint 'ambari2615.ubu04.localdomain' '/tmp/hostmap.json' '/tmp/cluster.json' '2.5.3.0' 'centos7' '2' '' 'Y'
 
     # To start above example 4 nodes
     p_nodes_start '4' '101' 'node101.localdomain'
@@ -136,7 +138,8 @@ function p_interview() {
     _ask "First 24 bits (xxx.xxx.xxx.) of container IP Address" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     [ -n "$r_DOCKER_NETWORK_ADDR" ] && r_DOCKER_NETWORK_ADDR="${r_DOCKER_NETWORK_ADDR%.}."
     _ask "Node starting number (hostname will be sequential from this number)" "1" "r_NODE_START_NUM" "N" "Y"
-    _ask "Domain Suffix for docker containers" "${g_DOMAIN_SUFFIX}" "r_DOMAIN_SUFFIX" "N" "Y"
+    local _name="$(echo `hostname -s` | sed 's/[^a-zA-Z0-9_]//g')"
+    _ask "Domain Suffix for docker containers" ".${_name}.${g_DOMAIN_SUFFIX#.}" "r_DOMAIN_SUFFIX" "N" "Y"
     [ -n "$r_DOMAIN_SUFFIX" ] && r_DOMAIN_SUFFIX=".${r_DOMAIN_SUFFIX#.}"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
     _ask "$r_CONTAINER_OS version (use 7.4.1708 or higher for Centos 7)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
@@ -1292,6 +1295,7 @@ function f_docker_stop_all() {
         _info "No docker command found in the path. Not stopping."
         return 0
     fi
+    [ `docker ps -q | wc -l` -eq 0 ] && return
     _info "Stopping the followings after 5 seconds..."
     docker ps
     sleep 5
@@ -1560,7 +1564,7 @@ function f_ambari_server_start() {
     if [ $? -ne 0 ]; then
         # if 'Server not yet listening...' should be OK.
         grep -iqE 'Ambari Server is already running|Server not yet listening on http port 8080 after 50 seconds' /tmp/f_ambari_server_start.out && return
-        sleep 5
+        sleep 1
         ssh -q root@${_ambari_host} "ambari-server start --skip-database-check"
     fi
 }
@@ -2046,48 +2050,53 @@ function f_service() {
     local _service="$1"
     local _action="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
+    local _port="${4-8080}"
+    local _cluster="${5}"
     local _maintenance_mode="OFF"
-    local _c="`f_get_cluster_name ${_ambari_host}`" || return 1
+    [ -z "${_cluster}" ] && _cluster="`f_get_cluster_name ${_ambari_host}`" || return 1
 
-    if [ -z "$_c" ]; then
+    if [ -z "$_cluster" ]; then
       _error "No cluster name (check PostgreSQL)..."
       return 1
     fi
 
     if [ -z "$_service" ]; then
-        _info "Available Services"
-        _ambari_query_sql "select service_name from servicedesiredstate where 1=1 order by service_name" "${_ambari_host}"
-        return
+        echo "Available services"
+        curl -su admin:admin "http://${_ambari_host}:${_port}/api/v1/clusters/${_cluster}/services?fields=ServiceInfo/service_name" | grep -oE '"service_name".+'
+        return 0
     fi
+    _service="${_service^^}"
 
     if [ -z "$_action" ]; then
-        _info "Acceptable actions: start, stop, restart" # Actually it accepts others like DELETE...
-        return
+        echo "$_service status"
+        for _s in `echo ${_service} | sed 's/ /\n/g'`; do
+            curl -su admin:admin "http://${_ambari_host}:${_port}/api/v1/clusters/${_cluster}/services/${_s}?fields=ServiceInfo/service_name,ServiceInfo/state" | grep -oE '("service_name"|"state").+'
+        done
+        return 0
     fi
-
-    _service="${_service^^}"
     _action="${_action^^}"
 
-    for _s in `echo $_service | sed 's/ /\n/g'`; do
+    for _s in `echo ${_service} | sed 's/ /\n/g'`; do
         if [ "$_action" = "RESTART" ]; then
-            f_service "$_s" "stop" "${_ambari_host}" || return $?
+            f_service "$_s" "stop" "${_ambari_host}" "${_port}" "${_cluster}"|| return $?
             for _i in {1..9}; do
-                _n="`_ambari_query_sql "select count(*) from request where request_context ='set INSTALLED for $_s by f_service' and end_time < start_time" "${_ambari_host}"`"
-                [ 0 -eq $_n ] && break;
+                curl -su admin:admin "http://${_ambari_host}:${_port}/api/v1/clusters/${_cluster}/services/${_s}?ServiceInfo/state=INSTALLED&fields=ServiceInfo/state" | grep -wq INSTALLED && break;
+                # Waiting it stops
                 sleep 10
             done
-            f_service "$_s" "start" "${_ambari_host}"
+            # If starting fails, keep going next
+            f_service "$_s" "start" "${_ambari_host}" "${_port}" "${_cluster}"
         else
             [ "$_action" = "START" ] && _action="STARTED"
             [ "$_action" = "STOP" ] && _action="INSTALLED"
             [ "$_action" = "INSTALLED" ] && _maintenance_mode="ON"
 
-            _n="`_ambari_query_sql "select count(*) from request where request_context ='set $_action for $_s by f_service' and end_time < start_time" "${_ambari_host}"`"
-            # same action for same service is already running
-            [ 0 -lt $_n ] && break;
+            curl -s -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://${_ambari_host}:${_port}/api/v1/clusters/${_cluster}/services/$_s"
 
-            curl -s -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode '$_maintenance_mode' '$_s'"},"Body":{"ServiceInfo":{"maintenance_state":"'$_maintenance_mode'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
-            curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_s' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'$_c'","service_name":"'$_s'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://${_ambari_host}:8080/api/v1/clusters/$_c/services/$_s"
+            # same action for same service is already done
+            curl -su admin:admin "http://${_ambari_host}:${_port}/api/v1/clusters/${_cluster}/services/${_s}?ServiceInfo/state=${_action}&fields=ServiceInfo/state" | grep -wq ${_action} && continue;
+
+            curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"RequestInfo":{"context":"set '$_action' for '$_s' by f_service","operation_level":{"level":"SERVICE","cluster_name":"'${_cluster}'","service_name":"'$_s'"}},"Body":{"ServiceInfo":{"state":"'$_action'"}}}' "http://${_ambari_host}:${_port}/api/v1/clusters/${_cluster}/services/$_s"
             echo ""
         fi
     done
@@ -2310,12 +2319,13 @@ function f_dnsmasq() {
 
 function f_dnsmasq_banner_reset() {
     local __doc__="Regenerate /etc/banner_add_hosts"
-    local _how_many="${1-$r_NUM_NODES}"
+    local _how_many="${1-$r_NUM_NODES}"             # Or hostname
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"
+    local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"  # Or exact IP address
+    local _dns="${4}"
+    [ -z "${_dns}" ] && _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
 
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
-    local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
     local _base="${g_DOCKER_BASE}:$_os_ver"
 
@@ -2332,22 +2342,39 @@ function f_dnsmasq_banner_reset() {
 
     rm -rf /tmp/banner_add_hosts
 
-    scp -q $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts
+    # if no banner file, no point of updating it.
+    scp -q $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts || return $?
+
+    if [ -n "${_docker0}" ]; then
+        # If an empty file
     if [ ! -s /tmp/banner_add_hosts ]; then
         echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" > /tmp/banner_add_hosts
     else
         grep -vE "$_docker0|${r_DOCKER_PRIVATE_HOSTNAME}${_domain}" /tmp/banner_add_hosts > /tmp/banner
         echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" >> /tmp/banner
-	
-        cat /tmp/banner > /tmp/banner_add_hosts
+            cat /tmp/banner > /tmp/banner_add_hosts
+        fi
     fi
 
+    if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
+        local _hostname="$_how_many"
+        local _ip_address="${_ip_prefix}"
+        local _shortname="`echo "${_hostname}" | cut -d"." -f1`"
+        grep -vE "${_hostname}|${_ip_address}" /tmp/banner_add_hosts > /tmp/banner
+        echo "${_ip_address}    ${_hostname} ${_shortname}" >> /tmp/banner
+        cat /tmp/banner > /tmp/banner_add_hosts
+    else
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        grep -vE "${_node}${_n}${_domain}|${_ip_prefix%\.}.${_n}" /tmp/banner_add_hosts > /tmp/banner
-        echo "${_ip_prefix%\.}.${_n}    ${_node}${_n}${_domain} ${_node}${_n}" >> /tmp/banner
+            local _hostname="${_node}${_n}${_domain}"
+            local _ip_address="${_ip_prefix%\.}.${_n}"
+            local _shortname="${_node}${_n}"
+        grep -vE "${_hostname}|${_ip_address}" /tmp/banner_add_hosts > /tmp/banner
+            echo "${_ip_address}    ${_hostname} ${_shortname}" >> /tmp/banner
         cat /tmp/banner > /tmp/banner_add_hosts
     done
+    fi
 
+    # copy back and restart
     scp -q /tmp/banner_add_hosts $_dns:/etc/
     ssh -q $_dns service dnsmasq restart
 }
@@ -2444,8 +2471,20 @@ function f_copy_auth_keys_to_containers() {
     fi
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        scp -q $HOME/.ssh/authorized_keys root@${_node}$i${r_DOMAIN_SUFFIX}:/root/.ssh/authorized_keys && ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} chmod 600 /root/.ssh/authorized_keys
+        _copy_auth_keys_to_containers "${_node}$i${r_DOMAIN_SUFFIX}"
     done
+}
+
+function _copy_auth_keys_to_containers() {
+    local _hostname="$1"
+    [ -s "$HOME/.ssh/authorized_keys" ] || return 1
+    scp -q $HOME/.ssh/authorized_keys root@${_hostname}:/root/.ssh/authorized_keys && ssh -q root@${_hostname} chmod 600 /root/.ssh/authorized_keys
+    if [ ! -s /tmp/ssh_config_$$ ]; then
+        echo "Host *
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null" > /tmp/ssh_config_$$
+    fi
+    scp -q /tmp/ssh_config_$$ root@${_hostname}:/root/.ssh/config
 }
 
 function f_dockerfile() {
@@ -3006,10 +3045,15 @@ function _port_wait() {
         _interval=5
     fi
 
+    if [ -z "$_host" ]; then
+        _error "No _host specified"
+        return 1
+    fi
+
     for i in `seq 1 $_times`; do
-      sleep $_interval
       nc -z $_host $_port && return 0
       _info "$_host:$_port is unreachable. Waiting..."
+      sleep $_interval
     done
     _warn "$_host:$_port is unreachable."
     return 1
