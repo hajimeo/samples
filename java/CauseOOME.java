@@ -1,7 +1,6 @@
 /**
  * curl -O https://raw.githubusercontent.com/hajimeo/samples/master/java/CauseOOME.java
  * javac CauseOOME.java
- * java -verbose:gc -Xmx16m CauseOOME
  * java -verbose:gc -XX:+PrintGCDetails -Xmx16m CauseOOME
  * java -verbose:gc -XX:+PrintClassHistogramBeforeFullGC -Xmx16m CauseOOME
  */
