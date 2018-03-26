@@ -2,7 +2,7 @@
  * curl -O https://raw.githubusercontent.com/hajimeo/samples/master/java/CauseLeaking.java
  * javac CauseLeaking.java
  * java -verbose:gc -XX:+PrintGCDetails -Xmx4m CauseLeaking
- * java -verbose:gc -XX:+PrintClassHistogramBeforeFullGC -Xmx4m CauseLeaking
+ * java -XX:+PrintClassHistogramBeforeFullGC -Xmx4m CauseLeaking 2>&1 | grep Socket
  */
 
 import java.io.IOException;
@@ -44,17 +44,15 @@ public class CauseLeaking {
     }
 
     private void OOMEing(int maxIteration) throws Exception {
-        Socket[] _list = new Socket[maxIteration];
-
         for (int i = 0; i < maxIteration; i++) {
             if ((i % 100) == 0) {
                 log("Free Mem: " + Runtime.getRuntime().freeMemory() + " (loop " + (i + 1) + ")");
                 Thread.sleep(1000);
             }
 
-            _list[i] = new Socket(InetAddress.getLocalHost(), port);
+            Socket s = new Socket(InetAddress.getLocalHost(), port);
             // I'm supposed to try clearing this object (but not right way)...
-            _list[i] = null;
+            s = null;
         }
     }
 
