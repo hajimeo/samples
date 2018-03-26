@@ -18,13 +18,14 @@ To start Sandbox
     If no -m, if same image name as container name exist, it uses that.
 
 To add a test node using 'hdp/base:6.8' image
-    docker run --name sandbox-node1 --hostname sandbox-node1.hortonworks.com --network=${_CUSTOM_NETWORK} --ip=172.17.0.101 -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged -d hdp/base:6.8 /sbin/init
+    _NAME='sandbox-node1'
     docker run -tid -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share --privileged \
-        --hostname=sandbox-node1.hortonworks.com --name=sandbox-node1 hdp/base:6.8
-    f_ssh_config sandbox-node1
-    docker exec -it sandbox-node1 bash
+        --hostname=\${_NAME}.hortonworks.com --name=\${_NAME} hdp/base:6.8
+    f_ssh_config \${_NAME}
+    docker exec -it \${_NAME} bash -c '[ -d /usr/lib/jvm/jre-1.8.0-openjdk.x86_64 ] && ln -s /usr/lib/jvm/jre-1.8.0-openjdk.x86_64 /usr/lib/jvm/java'
+    docker exec -it \${_NAME} bash
 
-    NOTE: Name resolution doesn't work from host so that using docker exec
+    NOTE: Name resolution doesn't work from host, so that using docker exec
 
 TODO: How to create 'hdp' network (incomplete as how to change docker config is different by OS)
 Update docker config file to add \" --bip=172.18.0.1\/24\", then restart docker service, then
@@ -59,9 +60,15 @@ function f_docker_image_setup() {
     local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_name}:"`"
     if [ ! -z "$_existing_img" ]; then
         echo "WARN: Image $_name already exist. Exiting."
-        echo "To rename image:"
-        echo "    docker tag ${_existing_img} <new_name>:<new_tag>"
-        echo "    docker rmi ${_existing_img}"
+        echo "To rename image:
+    docker tag ${_existing_img} <new_name>:<new_tag>
+    docker rmi ${_existing_img}
+To backup image:
+    docker save <image id> | gzip > some_image_name.tgz
+    docker exmport <container id> | gzip > some_container_name.tgz
+To restore
+    gunzip -c saved_exported.tgz | docker load
+"
         return
     fi
 
