@@ -1,8 +1,8 @@
 /**
  * curl -O https://raw.githubusercontent.com/hajimeo/samples/master/java/CauseLeaking.java
  * javac CauseLeaking.java
- * java -verbose:gc -XX:+PrintGCDetails -Xmx4m CauseLeaking
- * java -XX:+PrintClassHistogramBeforeFullGC -Xmx4m CauseLeaking | grep -F '#instances' -A 20
+ * java -verbose:gc -XX:+PrintGCDetails -Xmx16m CauseLeaking
+ * java -XX:+PrintClassHistogramBeforeFullGC -Xmx16m CauseLeaking | grep -F '#instances' -A 20
  *
  * Ref: https://qiita.com/mmmm/items/f33b757119fc4dbd6aa1
  */
@@ -31,11 +31,6 @@ public class CauseLeaking {
             OutputStream os = he.getResponseBody();
             for (int i = 0; i < loop; i++) {
                 os.write(httpResponse.getBytes());
-                try {
-                    Thread.sleep(200);
-                } catch (InterruptedException e) {
-                    log("InterruptedException happened. but ignoring...");
-                }
             }
             os.close();
         }
@@ -67,7 +62,7 @@ public class CauseLeaking {
     }
 
     private void OOMEing(int maxIteration, String spec) throws Exception {
-        int numThreads = 50;
+        int numThreads = 20;
         List<Future<InputStream>> _list = new ArrayList<Future<InputStream>>();
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);
         for (int i = 0; i < maxIteration; i++) {

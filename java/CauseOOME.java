@@ -2,7 +2,7 @@
  * curl -O https://raw.githubusercontent.com/hajimeo/samples/master/java/CauseOOME.java
  * javac CauseOOME.java
  * java -verbose:gc -XX:+PrintGCDetails -Xmx8m CauseOOME
- * java -XX:+PrintClassHistogramBeforeFullGC -XX:+PrintClassHistogramAfterFullGC -Xmx8m CauseOOME
+ * java -XX:+PrintClassHistogramBeforeFullGC -Xmx8m CauseOOME | grep -F '#instances' -A 20
  */
 
 import java.time.LocalDateTime;
