@@ -61,7 +61,7 @@ public class CauseLeaking {
         httpServer.stop(0);
     }
 
-    private void OOMEing(int maxIteration, String spec) throws Exception {
+    public void OOMEing(int maxIteration, String spec) throws Exception {
         int numThreads = 20;
         List<Future<InputStream>> _list = new ArrayList<Future<InputStream>>();
         ExecutorService executor = Executors.newFixedThreadPool(numThreads);

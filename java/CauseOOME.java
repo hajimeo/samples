@@ -10,7 +10,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 public class CauseOOME {
-    private void OOMEing(int initSize, int maxIteration) throws Exception {
+    public void OOMEing(int initSize, int maxIteration) throws Exception {
         List<byte[]> _list = new LinkedList<byte[]>();
         int size = initSize;
         long f;

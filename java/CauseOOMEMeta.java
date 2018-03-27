@@ -21,7 +21,7 @@ public class CauseOOMEMeta {
         this.tmpClassSource="z_"+classId+".java";
     }
 
-    public void createIt() {
+    private void createIt() {
         try {
             FileWriter aWriter = new FileWriter(this.tmpClassSource, true);
             aWriter.write("public class " + this.tmpClassName + "{");
@@ -35,7 +35,7 @@ public class CauseOOMEMeta {
         }
     }
 
-    public boolean compileIt() {
+    private boolean compileIt() {
         String[] source = {new String(this.tmpClassSource)};
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         ByteArrayOutputStream err = new ByteArrayOutputStream();
@@ -44,7 +44,7 @@ public class CauseOOMEMeta {
         return (rc == 0);
     }
 
-    public void runIt() {
+    private void runIt() {
         try {
             Class params[] = {};
             Object paramsObj[] = {};
@@ -58,7 +58,7 @@ public class CauseOOMEMeta {
         }
     }
 
-    public void deleteIt() {
+    private void deleteIt() {
         try {
             new File(this.tmpClassName + ".class").delete();
             new File(this.tmpClassSource).delete();
@@ -67,7 +67,7 @@ public class CauseOOMEMeta {
         }
     }
 
-    private static void OOMEing(int maxIteration) throws Exception {
+    public static void OOMEing(int maxIteration) throws Exception {
         for (int i = 0; i < maxIteration; i++) {
             if (i % 100 == 0)
                 log("Free Mem: " + Runtime.getRuntime().freeMemory() + " (loop " + (i + 1) + ")");
