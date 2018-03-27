@@ -20,6 +20,7 @@ import com.sun.net.httpserver.HttpServer;
 public class CauseLeaking {
     private static int port = 18000;
     private static HttpServer server;
+    private static Socket[] _list;
 
     static class MyHandler implements HttpHandler {
         @Override
@@ -44,15 +45,15 @@ public class CauseLeaking {
     }
 
     private void OOMEing(int maxIteration) throws Exception {
+        _list = new Socket[maxIteration];
         for (int i = 0; i < maxIteration; i++) {
             if ((i % 100) == 0) {
                 log("Free Mem: " + Runtime.getRuntime().freeMemory() + " (loop " + (i + 1) + ")");
                 Thread.sleep(1000);
             }
 
-            Socket s = new Socket(InetAddress.getLocalHost(), port);
-            // I'm supposed to try clearing this object (but not right way)...
-            s = null;
+            _list[i] = new Socket(InetAddress.getLocalHost(), port);
+            _list[i] = null;
         }
     }
 
