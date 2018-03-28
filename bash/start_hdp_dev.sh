@@ -323,8 +323,7 @@ function p_ambari_node_create() {
         sleep 3
     fi
 
-    # NOTE: Intentionally not using ambari repo file (unless r_AMBARI_REPO_FILE is set) so that won't install agent
-    p_node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_dns}" || return $?
+    p_node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_ambari_host}" "" "${_dns}" || return $?
 
     f_get_ambari_repo_file "$_ambari_repo_file" || return $?
     f_ambari_server_install "${_ambari_host}"|| return $?
@@ -343,9 +342,9 @@ function p_node_create() {
     local _hostname="${1}"
     local _ip_address="${2}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
-    local _dns="$4"
-    local _ambari_host="${5-$r_AMBARI_HOST}"
-    local _ambari_repo_file="${6-$r_AMBARI_REPO_FILE}"
+    local _ambari_host="${4-$r_AMBARI_HOST}"
+    local _ambari_repo_file="${5-$r_AMBARI_REPO_FILE}"
+    local _dns="$6"
 
     [ -z "${_dns}" ] && _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
     [ $_dns = "localhost" ] && _dns="`f_docker_ip`"
@@ -462,8 +461,8 @@ function p_ambari_blueprint() {
 
     local _num="`echo "${_ambari_host}" | cut -d"." -f1 | sed 's/[^0-9]//g'`"
     [ -z "$_cluster_name" ] && _cluster_name="$(echo `hostname -s`_${_num} | sed 's/[^a-zA-Z0-9_]//g')"
-    [ -z "${_hostmap_json}" ] && _hostmap_json="/tmp/${_cluster_name}_hostmap.json"
-    [ -z "${_cluster_config_json}" ] &&  _cluster_config_json="/tmp/${_cluster_name}_cluster_config.json"
+    [ -z "${_hostmap_json}" ] && _hostmap_json="/tmp/${_cluster_name}_hostmap.json" && rm -f "${_hostmap_json}"
+    [ -z "${_cluster_config_json}" ] &&  _cluster_config_json="/tmp/${_cluster_name}_cluster_config.json" && rm -f "${_cluster_config_json}"
 
     if _isYes "$_reset"; then
         _warn "Resetting Ambari Server on ${_ambari_host}..."
@@ -1562,11 +1561,15 @@ function f_ambari_server_setup() {
 }
 
 function f_ambari_server_reset() {
-    local __doc__="WARNING: this reset ambari-server on $r_AMBARI_HOST"
+    local __doc__="this reset ambari-server on $r_AMBARI_HOST"
     local _ambari_host="${1-$r_AMBARI_HOST}"
 
-    _port_wait "${_ambari_host}" "22"
-    ssh -q root@${_ambari_host} "ambari-server stop && ambari-server reset -s && ambari-server start --skip-database-check"
+    _warn "Resetting Ambari Server after 5 sec..."
+    sleep 5
+
+    ssh -q root@${_ambari_host} "ambari-server stop" || return $?
+    ssh -q root@${_ambari_host} 'PGPASSWORD="bigdata" pg_dump -Uambari ambari -Z 9 -f ./ambari_$(ambari-server --version)_$(date +"%Y%m%d").sql.gz'
+    ssh -q root@${_ambari_host} "ambari-server reset -s && ambari-server start --skip-database-check"
 }
 
 function f_ambari_server_start() {
@@ -1746,7 +1749,7 @@ function f_ambari_agent_reset() {
     # Cleaning up HDP / HDF packages
     _info "Removing Ambari Metrics,Solr,Log/HDP/HDF packages... (it will ask y/n)"
     sleep 3
-    ssh -qt root@${_agent_host} 'yum erase ambari-[!as]*;for _r in `grep -iE "^\[(HDP-[2-9]|HDF-[2-9])" /etc/yum.repos.d/*.repo | sed -n -r "s/^.*\[(.+)\]/\1/p"`; do yum erase $(yum list installed | grep -E "@${_r}$" | awk "{ print $1 }"); done'
+    ssh -qt root@${_agent_host} 'yum erase ambari-[!as]*; grep -qiE "^\[(HDP-[2-9]|HDF-[2-9])" /etc/yum.repos.d/*.repo && for _r in `grep -iE "^\[(HDP-[2-9]|HDF-[2-9])" /etc/yum.repos.d/*.repo | sed -n -r "s/^.*\[(.+)\]/\1/p"`; do yum erase $(yum list installed | grep -E "@${_r}$" | awk "{ print $1 }"); done'
     ssh -qt root@${_agent_host} 'mv -vf `grep -liE "^\[(HDP-[2-9]|HDF-[2-9])" /etc/yum.repos.d/*.repo` /tmp/'
 
     scp -q root@${_ambari_host}:/etc/yum.repos.d/ambari.repo /tmp/ambari_$$.repo || return $?
@@ -1759,9 +1762,17 @@ function f_ambari_agent_reset() {
     local _c="`f_get_cluster_name ${_ambari_host}`"
     [ -z "${_c}" ] && return 1
     sleep 5
-    curl -Is -u admin:admin "http://${_ambari_host}:8080/api/v1/hosts/${_agent_host}" | grep '^HTTP/1.1 2' || sleep 5
-    curl -Is -u admin:admin "http://${_ambari_host}:8080/api/v1/hosts/${_agent_host}" | grep '^HTTP/1.1 2' || sleep 5
-    curl -is -u admin:admin -X POST -H "X-Requested-By:ambari" "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_agent_host}" || return
+    curl -Is -u admin:admin "http://${_ambari_host}:8080/api/v1/hosts/${_agent_host}" | grep -q '^HTTP/1.1 2'
+    if [ $? -ne 0 ]; then
+        sleep 5
+        curl -Is -u admin:admin "http://${_ambari_host}:8080/api/v1/hosts/${_agent_host}" | grep '^HTTP/1.1 2' || sleep 5
+    fi
+    curl -is -u admin:admin -X POST -H "X-Requested-By:ambari" "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_agent_host}" | grep '^HTTP/1.1 2' || return $?
+    # If no component at all, Ambari shows this node as heartbeat lost
+    curl -is -u admin:admin "http://${_ambari_host}:8080/api/v1/clusters/${_c}/services/AMBARI_METRICS/components/METRICS_MONITOR" | grep '^HTTP/1.1 2'
+    if [ $? -eq 0 ]; then
+        f_add_comp "${_agent_host}" "METRICS_MONITOR" "${_ambari_host}"
+    fi
     _info "If Java is not managed by Ambari, please make sure 'java.home' location in ambari.properties exists in this node."
 }
 
@@ -2115,6 +2126,7 @@ function f_add_comp() {
 
     curl -si -u admin:admin -H "X-Requested-By:ambari" -X POST -d '{"host_components" : [{"HostRoles":{"component_name":"'${_comp}'"}}]}' "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
     curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"HostRoles": {"state": "INSTALLED"}}' "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
+    echo ""
 }
 
 function f_service() {
