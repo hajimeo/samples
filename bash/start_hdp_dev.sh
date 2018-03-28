@@ -766,8 +766,8 @@ function f_ambari_blueprint_config() {
       "application-properties" : {
         "properties_attributes" : { },
         "properties" : {
-          "atlas.audit.hbase.zookeeper.quorum" : "%HOSTGROUP::host_group_3%",
-          "atlas.graph.index.search.solr.zookeeper-url" : "%HOSTGROUP::host_group_3%:2181/infra-solr",
+          "atlas.audit.hbase.zookeeper.quorum" : "%HOSTGROUP::host_group_2%",
+          "atlas.graph.index.search.solr.zookeeper-url" : "%HOSTGROUP::host_group_2%:2181/infra-solr",
           "atlas.graph.storage.hostname" : "%HOSTGROUP::host_group_3%",
           "atlas.rest.address" : "http://%HOSTGROUP::host_group_3%:21000"
         }
@@ -778,7 +778,7 @@ function f_ambari_blueprint_config() {
         "properties_attributes" : { },
         "properties" : {
           "atlas.kafka.bootstrap.servers" : "%HOSTGROUP::host_group_3%:6667",
-          "atlas.kafka.zookeeper.connect" : "%HOSTGROUP::host_group_3%:2181"
+          "atlas.kafka.zookeeper.connect" : "%HOSTGROUP::host_group_2%:2181"
         }
       }
     },
