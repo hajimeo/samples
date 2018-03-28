@@ -17,7 +17,7 @@
 #
 # If Sandbox (after KDC setup):
 # NOTE: sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
-#   f_ambari_kerberos_setup "$g_KDC_REALM" "172.17.0.1" "" "sandbox.hortonworks.com" "sandbox.hortonworks.com"
+#   f_ambari_kerberos_setup "$g_KDC_REALM" "172.17.0.1" "" "sandbox-hdp.hortonworks.com" "sandbox-hdp.hortonworks.com"
 #
 # Example 2: How to set up HTTP Authentication (SPNEGO) on hadoop component
 #   source ./setup_security.sh && f_loadResp
@@ -221,6 +221,10 @@ function f_ambari_kerberos_setup() {
         _error "Please install python (eg: apt-get install -y python)"
         return 1
     fi
+
+    # Test admin principal before proceeding
+    #echo -e "${_password}" | kinit -l 5m -c /tmp/krb5cc_test_$$ admin/admin@${_realm} >/dev/null || return $?
+    kadmin -s ${_kdc_server} -p admin/admin@${_realm} -w ${_password} -r ${_realm} -q "get_principal admin/admin@${_realm}" >/dev/null || return $?
 
     local _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
     local _api_uri="http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
@@ -694,6 +698,7 @@ function f_kerberos_crossrealm_setup() {
     local _remote_realm="`ssh -q root@${_remote_kdc} sed -n -e 's/^ *default_realm *= *\b\(.\+\)\b/\1/p' /etc/krb5.conf`"
     [ -z  "${_remote_realm}" ] && return 22
 
+    # TODO: expecting run this function from KDC server
     kadmin.local -q "add_principal -pw $_password krbtgt/${_remote_realm}@${_local_realm}" || return 31
     ssh -q root@${_remote_kdc} kadmin.local -q "add_principal -pw $_password krbtgt/${_local_realm}@${_remote_realm}" || return 32
     # - set hadoop.security.auth_to_local for both clusters
