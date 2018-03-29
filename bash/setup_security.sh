@@ -1176,10 +1176,6 @@ function f_ambari_configs() {
     if [ ! -s ./configs.py ]; then
         curl -s -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/configs.py || return $?
     fi
-    if [ ! -s ./configs.py ]; then
-        _error "No ./configs.py"
-        return 1
-    fi
 
     python ./configs.py -u "${g_admin}" -p "${g_admin_pwd}" -l ${_ambari_host} -t ${_ambari_port} -a get -n ${_c} -c ${_type} -f /tmp/${_type}_${__PID}.json || return $?
 
@@ -1188,7 +1184,6 @@ function f_ambari_configs() {
         return 0
     fi
 
-    # NOTE: configs.py may not escape strings such as quote and \n if older than Ambari 2.6 (so that downloading from trunk
     echo "import json
 a=json.load(open('/tmp/${_type}_${__PID}.json', 'r'))
 n=json.loads('"${_dict}"')
@@ -1198,7 +1193,7 @@ json.dump(a, f)
 f.close()" > /tmp/configs_${__PID}.py
 
     python /tmp/configs_${__PID}.py || return $?
-    python ./configs.py -u "${g_admin}" -p "${g_admin_pwd}" -l $_ambari_host -t ${_ambari_port} -a set -n $_c -c $_type -f /tmp/${_type}_updated_${__PID}.json || return $?
+    python ./configs.py -u "${g_admin}" -p "${g_admin_pwd}" -l ${_ambari_host} -t ${_ambari_port} -a set -n ${_c} -c $_type -f /tmp/${_type}_updated_${__PID}.json || return $?
     rm -f ./doSet_version*.json
 }
 
