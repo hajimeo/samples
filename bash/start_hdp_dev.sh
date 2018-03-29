@@ -338,7 +338,7 @@ function p_ambari_node_create() {
     [ -n "$r_AMBARI_JCE_URL" ] && _jce="$r_AMBARI_JCE_URL"
     f_ambari_server_setup "${_ambari_host}" "${_jdk}" "${_jce}" "${_port}" || return $?
     f_ambari_server_start "${_ambari_host}" || return $?
-    f_port_forward ${_port}} ${_ambari_host} ${_port}}
+    f_port_forward ${_port} ${_ambari_host} ${_port}
     f_ambari_java_random "${_ambari_host}"
 }
 
