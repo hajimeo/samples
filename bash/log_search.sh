@@ -877,7 +877,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         f_appLogContainersAndHosts "$_file_path" "Y"
         echo ""
         echo "# f_appLogJobCounters"
-        f_appLogJobCounters "$_file_path"
+        f_appLogJobCounters "$_file_path" > /tmp/f_appLogJobCounters_$$.out
+        echo "# Saved in /tmp/f_appLogJobCounters_$$.out"
+        grep -i fail /tmp/f_appLogJobCounters_$$.out | grep -v '=0'
         echo ""
     fi
 fi
