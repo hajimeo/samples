@@ -124,8 +124,12 @@ function f_ambari_wait() {
     # NOTE: --retry-connrefused is from curl v 7.52.0
     for i in `seq 1 $_times`; do
         sleep $_interval
-        nc -z $_host $_port && curl -sL -u admin:admin "http://$_host:$_port/api/v1/clusters/${_cluster}?fields=Clusters/health_report" | grep -oE '"Host/host_state/HEALTHY" : [1-9]+' && break
-        echo "INFO: $_host:$_port is unreachable. Waiting for ${_interval} secs ($i/${_times})..."
+        if ! nc -z $_host $_port; then
+            echo "INFO: $_host:$_port is unreachable. Waiting for ${_interval} secs ($i/${_times})..."
+            continue
+        fi
+        curl -sL -u admin:admin "http://$_host:$_port/api/v1/clusters/${_cluster}?fields=Clusters/health_report" | grep -oE '"Host/host_state/HEALTHY" : [1-9]+' && break
+        echo "INFO: $_host:$_port is not ready. Waiting for ${_interval} secs ($i/${_times})..."
     done
     # To wait other agents will be available (but doesn't matter for sandbox)
     sleep 5
