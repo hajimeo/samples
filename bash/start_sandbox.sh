@@ -585,11 +585,6 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
         docker exec -it ${_NAME} bash -c '_javahome="`grep java.home /etc/ambari-server/conf/ambari.properties | cut -d "=" -f2`" && grep -q "^securerandom.source=file:/dev/random" ${_javahome%/}/jre/lib/security/java.security && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" ${_javahome%/}/jre/lib/security/java.security'
     fi
 
-    echo "INFO: Starting Ambari Server & Agent, and Knox Demo LDAP ..."
-    docker exec -d ${_NAME} service ambari-server start --skip-database-check
-    docker exec -d ${_NAME} service ambari-agent start
-    docker exec -d ${_NAME} bash -c 'sudo -u knox -i /usr/hdp/current/knox-server/bin/ldap.sh start'
-
     #docker exec -d ${_NAME} /root/start_sandbox.sh
     #docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
     #docker exec -d ${_NAME} /etc/init.d/tutorials start
@@ -604,6 +599,11 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
             docker exec -it ${_NAME} bash -c "grep -q ^proxy /etc/yum.conf || echo \"proxy=http://${_NETWORK_ADDR%.}.1:28080\" >> /etc/yum.conf"
         fi
     fi
+
+    echo "INFO: Starting Ambari Server & Agent, and Knox Demo LDAP ..."
+    docker exec -d ${_NAME} service ambari-agent start
+    docker exec -d ${_NAME} bash -c 'sudo -u knox -i /usr/hdp/current/knox-server/bin/ldap.sh start'
+    docker exec -it ${_NAME} service ambari-server start --skip-database-check
 
     echo "INFO: Waiting Ambari Server is ready (feel free to press Ctrl+c to exit)..."
     f_ambari_wait ${_HOSTNAME} ${_AMBARI_PORT}
