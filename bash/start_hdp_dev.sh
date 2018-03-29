@@ -61,7 +61,7 @@ How to create a node(s)
     f_docker_base_create 'https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6' 'centos' '6.8'
 
     # Create one node with Ambari Server, hostname: node101.localdomain, OS ver: CentOS6.8, Network addr: 172.17.100.x
-    p_ambari_node_create 'ambari2615.ubu04.localdomain' '172.17.140.101' '7.4.1708' [/path/to/ambari.repo] [DNS_IP]
+    p_ambari_node_create 'ambari2615.ubu04.localdomain:8008' '172.17.140.101' '7.4.1708' [/path/to/ambari.repo] [DNS_IP]
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS7.4, and Ambari is ambari2615.ubu04.localdomain
     export r_DOMAIN_SUFFIX='.ubu04.localdomain'
@@ -301,18 +301,23 @@ function _cancelInterview() {
 
 function p_ambari_node_create() {
     local __doc__="TODO: Create one node and install AmbariServer (NOTE: only centos and doesn't create docker image)"
-    # p_ambari_node_create 'ambari2615.ubu01.localdomain' '172.17.110.100' '7.4.1708' '/path/to/ambari.repo'
+    # p_ambari_node_create 'ambari2615.ubu01.localdomain:8080' '172.17.110.100' '7.4.1708' '/path/to/ambari.repo'
     local _ambari_host="${1-$r_AMBARI_HOST}"
     local _ip_address="${2}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
     local _ambari_repo_file="${4-$r_AMBARI_REPO_FILE}"
     local _dns="$5"
+    local _port="8080"
 
+    # if _amabari_host is integer, generate hostname with _node and _suffix
     if [[ "${_ambari_host}" =~ ^[0-9]+$ ]]; then
         local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
         local _suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
         local _how_many="1"
-        _ambari_host="${_node}${_start_from}${_suffix}"
+        _ambari_host="${_node}${_ambari_host}${_suffix}"
+    elif [[ "${_ambari_host}" =~ ^([^:]+):([0-9]+)$ ]]; then
+        _ambari_host="${BASH_REMATCH[1]}"
+        _port="${BASH_REMATCH[2]}"
     fi
 
     if [ -z "$_ambari_repo_file" ]; then
@@ -331,9 +336,9 @@ function p_ambari_node_create() {
     local _jce="`ls -1t ./jce_policy-*.zip 2>/dev/null | head -n1`"
     [ -n "$r_AMBARI_JDK_URL" ] && _jdk="$r_AMBARI_JDK_URL"
     [ -n "$r_AMBARI_JCE_URL" ] && _jce="$r_AMBARI_JCE_URL"
-    f_ambari_server_setup "${_ambari_host}" "${_jdk}" "$_jce" || return $?
+    f_ambari_server_setup "${_ambari_host}" "${_jdk}" "${_jce}" "${_port}" || return $?
     f_ambari_server_start "${_ambari_host}" || return $?
-    f_port_forward 8080 ${_ambari_host} 8080
+    f_port_forward ${_port}} ${_ambari_host} ${_port}}
     f_ambari_java_random "${_ambari_host}"
 }
 
@@ -1517,6 +1522,8 @@ function f_ambari_server_setup() {
     local _ambari_host="${1-$r_AMBARI_HOST}"
     local _jdk_file="${2-$r_AMBARI_JDK_URL}"
     local _jce_file="${3-$r_AMBARI_JCE_URL}"
+    local _port="${4}"
+    [ -z "${_port}" ] && _port="8080"
 
     local _target_dir="/var/lib/ambari-server/resources/"
 
@@ -1541,19 +1548,17 @@ function f_ambari_server_setup() {
         scp "${_jce_file}" root@${_ambari_host}:${_target_dir%/}/
     fi
 
-    _port_wait "${_ambari_host}" "8080" 1 &>/dev/null
-    if [ $? -eq 0 ]; then
-        _warn "Something is already listening on ${_ambari_host}:8080, so just in case, not setting up"
+    if nc -z ${_ambari_host} ${_port}; then
+        _warn "Something is already listening on ${_ambari_host}:${_port}, so just in case, not setting up"
         return 1
     fi
 
-    # TODO: at this moment, only Centos (yum)
-    [ ! -s "/tmp/ambari.repo_${__PID}" ] && f_get_ambari_repo_file
-    _info "Copying /tmp/ambari.repo_${__PID} to ${_ambari_host} ..."
-    scp -q /tmp/ambari.repo_${__PID} root@${_ambari_host}:/etc/yum.repos.d/ambari.repo || return $?
-
-    _info "Setting up ambari-server on ${_ambari_host} ..."
-    ssh -q root@${_ambari_host} "ambari-server setup -s --enable-lzo-under-gpl-license || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )" || return $?
+    _info "Setting up ambari-server on ${_ambari_host} without --enable-lzo-under-gpl-license ..."
+    ssh -q root@${_ambari_host} "ambari-server setup -s || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )" || return $?
+    if [ "${_port}" != "8080" ]; then
+        # default installation doesn't have client.api.port
+        ssh -q root@${_ambari_host} "echo -e '\nclient.api.port=${_port}' >> /etc/ambari-server/conf/ambari.properties"
+    fi
 
     # Optional: ambari server related setting (TODO: will this work with CentOS7?)
     ssh -q root@${_ambari_host} "sed -i -r \"s/^#?log_line_prefix = ''/log_line_prefix = '%m '/\" /var/lib/pgsql/data/postgresql.conf"
