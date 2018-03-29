@@ -300,7 +300,7 @@ function _cancelInterview() {
 }
 
 function p_ambari_node_create() {
-    local __doc__="TODO: Create one node and install AmbariServer (NOTE: only centos and doesn't create docker image)"
+    local __doc__="Create one node and install AmbariServer (NOTE: only centos and doesn't create docker image)"
     # p_ambari_node_create 'ambari2615.ubu01.localdomain:8080' '172.17.110.100' '7.4.1708' '/path/to/ambari.repo'
     local _ambari_host="${1-$r_AMBARI_HOST}"
     local _ip_address="${2}"
@@ -328,7 +328,16 @@ function p_ambari_node_create() {
         sleep 3
     fi
 
-    p_node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_ambari_host}" "$_ambari_repo_file" "${_dns}" || return $?
+    p_node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_ambari_host}" "${_ambari_repo_file}" "${_dns}" || return $?
+
+    p_ambari_node_setup "${_ambari_repo_file}" "${_ambari_host}" "${_port}"
+}
+
+function p_ambari_node_setup() {
+    local __doc__="Intall and Setup AmbariServer on an existing node"
+    local _ambari_repo_file="${1-$r_AMBARI_REPO_FILE}"
+    local _ambari_host="${2-$r_AMBARI_HOST}"
+    local _port="${3-8080}"
 
     f_get_ambari_repo_file "$_ambari_repo_file" || return $?
     f_ambari_server_install "${_ambari_host}"|| return $?
@@ -337,9 +346,9 @@ function p_ambari_node_create() {
     [ -n "$r_AMBARI_JDK_URL" ] && _jdk="$r_AMBARI_JDK_URL"
     [ -n "$r_AMBARI_JCE_URL" ] && _jce="$r_AMBARI_JCE_URL"
     f_ambari_server_setup "${_ambari_host}" "${_jdk}" "${_jce}" "${_port}" || return $?
+    f_ambari_java_random "${_ambari_host}"
     f_ambari_server_start "${_ambari_host}" || return $?
     f_port_forward ${_port} ${_ambari_host} ${_port}
-    f_ambari_java_random "${_ambari_host}"
 }
 
 function p_node_create() {
