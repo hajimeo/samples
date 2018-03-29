@@ -61,7 +61,7 @@ How to create a node(s)
     f_docker_base_create 'https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6' 'centos' '6.8'
 
     # Create one node with Ambari Server, hostname: node101.localdomain, OS ver: CentOS6.8, Network addr: 172.17.100.x
-    p_ambari_node_create 'ambari2615.ubu04.localdomain:8008' '172.17.140.101' '7.4.1708' [/path/to/ambari.repo] [DNS_IP]
+    p_ambari_node_create 'ambari2510.localdomain:8008' '172.17.100.125' '7.4.1708' [/path/to/ambari.repo] [DNS_IP]
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS7.4, and Ambari is ambari2615.ubu04.localdomain
     export r_DOMAIN_SUFFIX='.ubu04.localdomain'
@@ -328,7 +328,7 @@ function p_ambari_node_create() {
         sleep 3
     fi
 
-    p_node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_ambari_host}" "" "${_dns}" || return $?
+    p_node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_ambari_host}" "$_ambari_repo_file" "${_dns}" || return $?
 
     f_get_ambari_repo_file "$_ambari_repo_file" || return $?
     f_ambari_server_install "${_ambari_host}"|| return $?
@@ -366,7 +366,8 @@ function p_node_create() {
 
     if [ -z "${_ambari_repo_file}" ]; then
         if [ -n "${_ambari_host}" ]; then
-            scp root@${_ambari_host}:/etc/yum.repos.d/ambari.repo /tmp/ambari_$$.repo || return $?
+            _warn "No ambari repo file specified, so trying to get from ${_ambari_host}"
+            scp root@${_ambari_host}:/etc/yum.repos.d/ambari.repo /tmp/ambari_$$.repo || return 0
             _ambari_repo_file="/tmp/ambari_$$.repo"
         else
             _warn "No ambari repo file specified, so not setting up Agent"
