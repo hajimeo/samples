@@ -12,7 +12,7 @@ To create Sandbox (first time only)
     f_docker_image_setup [sandbox-hdp|sandbox-hdf]
 
 To start Sandbox
-    bash ./start_sandbox.sh -n <container name> [-m <image name>] [-h <container hostname>] [-i <container IP>]
+    bash ./start_sandbox.sh -s -n <container name> [-m <image name>] [-h <container hostname>] [-i <container IP>]
 
     NOTE: To assign an IP with -i, 'hdp' network is required.
     If no -m, if same image name as container name exist, it uses that.
@@ -37,6 +37,7 @@ _CUSTOM_NETWORK="hdp"
 _AMBARI_PORT=8080
 _SHMMAX=41943040
 _NEW_CONTAINER=false
+_STOP_SANDBOX_CONTAINERS=false
 
 
 ### functions
@@ -273,7 +274,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     #_NAME="sandbox-hdp"
 
     # parsing command options
-    while getopts "m:n:h:i:" opts; do
+    while getopts "m:n:h:i:s" opts; do
         case $opts in
             m)
                 _IMAGE="$OPTARG"
@@ -283,6 +284,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             h)
                 _HOSTNAME="$OPTARG"
+                ;;
+            s)
+                _STOP_SANDBOX_CONTAINERS=true
                 ;;
             i)
                 _IP="$OPTARG"
@@ -358,6 +362,12 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     _STACK="HDP"
     [[ "${_NAME}" =~ ^"sandbox-hdf" ]] && _STACK="HDF"
+
+    if ${_STOP_SANDBOX_CONTAINERS}; then
+        if docker ps --format "{{.Names}}" | grep -vqE "^${_NAME}$" | grep -qiE "^sandbox"; then
+            docker stop `docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$" | grep -iE "^sandbox"`
+        fi
+    fi
 
     # If same container name exists start it
     if docker ps --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
