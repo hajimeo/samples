@@ -297,6 +297,11 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         esac
     done
 
+    if ${_LIST_SANDBOX_CONTAINERS}; then
+        docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.RunningFor}}\t{{.Status}}\t{{.Networks}}\t{{.Mounts}}"
+        exit
+    fi
+
     if [ -z "$_NAME" ]; then
         if [ -z "$_IMAGE" ]; then
             usage
@@ -365,11 +370,6 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     _STACK="HDP"
     [[ "${_NAME}" =~ ^"sandbox-hdf" ]] && _STACK="HDF"
-
-    if ${_LIST_SANDBOX_CONTAINERS}; then
-        docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.RunningFor}}\t{{.Status}}\t{{.Networks}}\t{{.Mounts}}"
-        exit
-    fi
 
     if ${_STOP_SANDBOX_CONTAINERS}; then
         if docker ps --format "{{.Names}}" | grep -vqE "^${_NAME}$" | grep -qiE "^sandbox"; then
