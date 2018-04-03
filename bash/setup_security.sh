@@ -613,7 +613,7 @@ function f_ssl_ambari_2way() {
 
 function f_ldap_ranger() {
     local __doc__="TODO: Setup ranger admin/usersync with LDAP (TODO: currently only AD)"
-    #f_ldap_ranger "ldap://WIN-59T24EHPKJN.hdp.localdomain" "HDP.LOCALDOMAIN" "dc=hdp,dc=localdomain" "ldap@hdp.localdomain" '******' 'AD' 'sandbox-hdp.hortonworks.com'
+    #f_ldap_ranger "ldap://winad.hdp.localdomain" "HDP.LOCALDOMAIN" "dc=hdp,dc=localdomain" "ldap@hdp.localdomain" '******' 'AD' 'sandbox-hdp.hortonworks.com'
     local _ldap_url="${1}"
     local _domain="${2}"
     local _basedn="${3}"
