@@ -127,7 +127,8 @@ function f_ambari_wait() {
             echo "INFO: $_host:$_port is unreachable. Waiting for ${_interval} secs ($i/${_times})..."
             continue
         fi
-        curl -sL -u admin:admin "http://$_host:$_port/api/v1/clusters/${_cluster}?fields=Clusters/health_report" | grep -oE '"Host/host_state/HEALTHY" : [1-9]+' && break
+        curl -sL -u admin:admin "http://$_host:$_port/api/v1/clusters/${_cluster}?fields=Clusters/health_report" | tee /tmp/f_ambari_wait_$$.out
+        grep -qoE '"Host/host_state/HEALTHY" : [1-9]+' /tmp/f_ambari_wait_$$.out && break
         echo "INFO: $_host:$_port is not ready. Waiting for ${_interval} secs ($i/${_times})..."
     done
     # To wait other agents will be available (but doesn't matter for sandbox)
@@ -538,7 +539,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-server/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 
-    echo "INFO: OS config changes, and starting SSHd, PostgreSQL, and MySQL ..."
+    echo "INFO: OS config changes, and starting SSHd, and MySQL ..."
     # setting up password-less ssh to sandbox whenever it starts in case .ssh is updated.
     f_ssh_config
     docker exec -it ${_NAME} bash -c '[ ! -d /home/admin ] && mkdir -m 700 /home/admin && chown admin:admin /home/admin'
@@ -605,9 +606,11 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     fi
 
     echo "INFO: Starting Ambari Server & Agent, and Knox Demo LDAP ..."
-    docker exec -d ${_NAME} service ambari-agent start
     docker exec -d ${_NAME} bash -c 'sudo -u knox -i /usr/hdp/current/knox-server/bin/ldap.sh start'
-    docker exec -it ${_NAME} bash -c 'service postgresql restart;service ambari-server start --skip-database-check'
+    docker exec -d ${_NAME} service ambari-agent start
+    if ! nc -z ${_HOSTNAME} ${_AMBARI_PORT}; then
+        docker exec -it ${_NAME} bash -c 'service ambari-server start --skip-database-check || (service postgresql restart && service ambari-server restart --skip-database-check)'
+    fi
 
     echo "INFO: Waiting Ambari Server is ready (feel free to press Ctrl+c to exit)..."
     f_ambari_wait ${_HOSTNAME} ${_AMBARI_PORT}
