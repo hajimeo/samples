@@ -613,7 +613,7 @@ function f_ssl_ambari_2way() {
 
 function f_ldap_ranger() {
     local __doc__="TODO: Setup ranger admin/usersync with LDAP (TODO: currently only AD)"
-    #f_ranger_ad_setup "ldaps://WIN-59T24EHPKJN.hdp.localdomain:636" "HDP.LOCALDOMAIN" "dc=hdp,dc=localdomain" "ldap@hdp.localdomain" '******' 'AD' 'sandbox-hdp.hortonworks.com'
+    #f_ldap_ranger "ldap://WIN-59T24EHPKJN.hdp.localdomain" "HDP.LOCALDOMAIN" "dc=hdp,dc=localdomain" "ldap@hdp.localdomain" '******' 'AD' 'sandbox-hdp.hortonworks.com'
     local _ldap_url="${1}"
     local _domain="${2}"
     local _basedn="${3}"
@@ -633,7 +633,7 @@ function f_ldap_ranger() {
 
     local ranger_ugsync_site='{
         "ranger.usersync.group.memberattributename": "member",
-        "ranger.usersync.group.nameattribute": "distinguishedName",
+        "ranger.usersync.group.nameattribute": "cn",
         "ranger.usersync.group.objectclass": "group",
         "ranger.usersync.group.search.first.enabled": "true",
         "ranger.usersync.group.searchbase": "'${_basedn}'",
@@ -642,7 +642,7 @@ function f_ldap_ranger() {
         "ranger.usersync.ldap.ldapbindpassword": "'${_binddn_pwd}'",
         "ranger.usersync.ldap.url": "'${_ldap_url}'",
         "ranger.usersync.ldap.user.nameattribute": "sAMAccountName",
-        "ranger.usersync.ldap.user.objectclass": "user",
+        "ranger.usersync.ldap.user.objectclass": "person",
         "ranger.usersync.ldap.user.searchbase": "cn=users,'${_basedn}'",
         "ranger.usersync.source.impl.class": "org.apache.ranger.ldapusersync.process.LdapUserGroupBuilder"
     }'
