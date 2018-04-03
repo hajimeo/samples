@@ -609,7 +609,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     docker exec -d ${_NAME} bash -c 'sudo -u knox -i /usr/hdp/current/knox-server/bin/ldap.sh start'
     docker exec -d ${_NAME} service ambari-agent start
     if ! nc -z ${_HOSTNAME} ${_AMBARI_PORT}; then
-        docker exec -it ${_NAME} bash -c 'service ambari-server start --skip-database-check || (service postgresql restart && service ambari-server restart --skip-database-check)'
+        docker exec -it ${_NAME} bash -c 'service ambari-server start --skip-database-check || (service postgresql restart; service ambari-server restart --skip-database-check)'
     fi
 
     echo "INFO: Waiting Ambari Server is ready (feel free to press Ctrl+c to exit)..."
