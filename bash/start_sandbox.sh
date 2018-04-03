@@ -19,8 +19,7 @@ To start Sandbox
 
 To add a test node using 'hdp/base:6.8' image
     _NAME='sandbox-node1'
-    docker run -tid -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share --privileged \
-        --hostname=\${_NAME}.hortonworks.com --name=\${_NAME} hdp/base:6.8
+    docker run -tid -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share --privileged --hostname=\${_NAME}.hortonworks.com --name=\${_NAME} hdp/base:6.8
     f_ssh_config \${_NAME}
     docker exec -it \${_NAME} bash -c '[ -d /usr/lib/jvm/jre-1.8.0-openjdk.x86_64 ] && ln -s /usr/lib/jvm/jre-1.8.0-openjdk.x86_64 /usr/lib/jvm/java'
     docker exec -it \${_NAME} bash
@@ -551,13 +550,6 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     docker exec -it ${_NAME} bash -c "service sshd start"
 
-    # PostgreSQL
-    docker exec -it ${_NAME} bash -c "sed -i -r \"s/^#?log_line_prefix = ''/log_line_prefix = '%m '/\" /var/lib/pgsql/data/postgresql.conf"
-    docker exec -it ${_NAME} bash -c "sed -i -r \"s/^#?log_statement = 'none'/log_statement = 'mod'/\" /var/lib/pgsql/data/postgresql.conf"
-    docker exec -it ${_NAME} bash -c "ln -s /var/lib/pgsql/data/pg_log /var/log/postgresql"
-    docker exec -it ${_NAME} bash -c "sysctl -w kernel.shmmax=${_SHMMAX};service postgresql start"
-    #docker exec -d ${_NAME} /sbin/sysctl -p
-
     # MySQL, for Hive, Oozie, Ranger, KMS etc, making sure mysql starts
     docker exec -it ${_NAME} bash -c 'chown -R mysql:mysql /var/lib/mysql /var/run/mysqld'
     docker exec -d ${_NAME} service mysqld start
@@ -567,7 +559,15 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     docker exec -dt ${_NAME} bash -c 'service startup_script stop; service tutorials stop; service shellinaboxd stop; service httpd stop; service hue stop'
     if ${_NEW_CONTAINER} ; then
-        echo "INFO: New container only OS config changes..."
+        echo "INFO: New container only: OS & PostgreSQL config changes..."
+
+        # PostgreSQL
+        docker exec -it ${_NAME} bash -c "sed -i -r \"s/^#?log_line_prefix = ''/log_line_prefix = '%m '/\" /var/lib/pgsql/data/postgresql.conf"
+        docker exec -it ${_NAME} bash -c "sed -i -r \"s/^#?log_statement = 'none'/log_statement = 'mod'/\" /var/lib/pgsql/data/postgresql.conf"
+        docker exec -it ${_NAME} bash -c "[ -d /var/log/postgresql ] || ln -s /var/lib/pgsql/data/pg_log /var/log/postgresql"
+        docker exec -it ${_NAME} bash -c "sysctl -w kernel.shmmax=${_SHMMAX};service postgresql restart"
+        #docker exec -d ${_NAME} /sbin/sysctl -p
+
         docker exec -it ${_NAME} bash -c 'chkconfig startup_script off ; chkconfig tutorials off; chkconfig shellinaboxd off; chkconfig hue off; chkconfig httpd off'
         docker exec -it ${_NAME} bash -c "chpasswd <<< root:hadoop"
         # In case -v /hadoop was used. TODO: the following three lines should be removed later
@@ -607,7 +607,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     echo "INFO: Starting Ambari Server & Agent, and Knox Demo LDAP ..."
     docker exec -d ${_NAME} service ambari-agent start
     docker exec -d ${_NAME} bash -c 'sudo -u knox -i /usr/hdp/current/knox-server/bin/ldap.sh start'
-    docker exec -it ${_NAME} service ambari-server start --skip-database-check
+    docker exec -it ${_NAME} bash -c 'service postgresql restart;service ambari-server start --skip-database-check'
 
     echo "INFO: Waiting Ambari Server is ready (feel free to press Ctrl+c to exit)..."
     f_ambari_wait ${_HOSTNAME} ${_AMBARI_PORT}
