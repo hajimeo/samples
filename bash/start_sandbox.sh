@@ -372,7 +372,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     [[ "${_NAME}" =~ ^"sandbox-hdf" ]] && _STACK="HDF"
 
     if ${_STOP_SANDBOX_CONTAINERS}; then
-        if docker ps --format "{{.Names}}" | grep -vqE "^${_NAME}$" | grep -qiE "^sandbox"; then
+        if docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$" | grep -qiE "^sandbox"; then
             docker stop `docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$" | grep -iE "^sandbox"`
         fi
     fi
