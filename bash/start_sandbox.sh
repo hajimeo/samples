@@ -117,10 +117,10 @@ To restore
 function f_ambari_wait() {
     local _host="${1-$_HOSTNAME}"
     local _port="${2-8080}"
-    local _cluster="${3-Sandbox}"
+    local _cluster="${3}"
     local _times="${3-30}"
     local _interval="${4-10}"
-
+    [ -z "${_cluster}" ] && _cluster="`curl -s -u admin:admin "http://${_host}:${_port}/api/v1/clusters" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['items'][0]['Clusters']['cluster_name']"`"
     # NOTE: --retry-connrefused is from curl v 7.52.0
     for i in `seq 1 $_times`; do
         sleep $_interval
@@ -139,7 +139,8 @@ function f_ambari_wait() {
 function f_ambari_start_all() {
     local _host="${1-$_HOSTNAME}"
     local _port="${2-8080}"
-    local _cluster="${3-Sandbox}"
+    local _cluster="${3}"
+    [ -z "${_cluster}" ] && _cluster="`curl -s -u admin:admin "http://${_host}:${_port}/api/v1/clusters" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['items'][0]['Clusters']['cluster_name']"`"
 
     if ${_NEW_CONTAINER} ; then
         # Sandbox's HDFS is always in maintenance mode so that start all does not work
@@ -147,7 +148,7 @@ function f_ambari_start_all() {
     fi
     sleep 1
 
-    curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services?" -X PUT -d '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"Sandbox"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+    curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services?" -X PUT -d '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 }
 
 function f_service() {
@@ -155,7 +156,8 @@ function f_service() {
     local _action="$2"  # Acceptable actions: START and STOP
     local _host="${3-$_HOSTNAME}"
     local _port="${4-8080}"
-    local _cluster="${5-Sandbox}"
+    local _cluster="${5}"
+    [ -z "${_cluster}" ] && _cluster="`curl -s -u admin:admin "http://${_host}:${_port}/api/v1/clusters" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['items'][0]['Clusters']['cluster_name']"`"
     local _maintenance_mode="OFF"
 
     if [ -z "$_service" ]; then
