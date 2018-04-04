@@ -1596,7 +1596,7 @@ function f_ambari_server_start() {
         # if 'Server not yet listening...' should be OK.
         grep -iqE 'Ambari Server is already running|Server not yet listening on http port 8080 after 50 seconds' /tmp/f_ambari_server_start.out && return
         sleep 1
-        ssh -q root@${_ambari_host} "service postgresql start; sleep 3; service ambari-server restart --skip-database-check"
+        ssh -q root@${_ambari_host} "service postgresql start; sleep 5; service ambari-server restart --skip-database-check"
     fi
 }
 
