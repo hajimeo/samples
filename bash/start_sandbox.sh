@@ -120,7 +120,7 @@ function f_ambari_wait() {
     local _cluster="${3}"
     local _times="${3-30}"
     local _interval="${4-10}"
-    [ -z "${_cluster}" ] && _cluster="`curl -s -u admin:admin "http://${_host}:${_port}/api/v1/clusters" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['items'][0]['Clusters']['cluster_name']"`"
+
     # NOTE: --retry-connrefused is from curl v 7.52.0
     for i in `seq 1 $_times`; do
         sleep $_interval
@@ -128,6 +128,7 @@ function f_ambari_wait() {
             echo "INFO: $_host:$_port is unreachable. Waiting for ${_interval} secs ($i/${_times})..."
             continue
         fi
+        [ -z "${_cluster}" ] && _cluster="`curl -s -u admin:admin "http://${_host}:${_port}/api/v1/clusters" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['items'][0]['Clusters']['cluster_name']"`"
         curl -sL -u admin:admin "http://$_host:$_port/api/v1/clusters/${_cluster}?fields=Clusters/health_report" | tee /tmp/f_ambari_wait_$$.out
         grep -qoE '"Host/host_state/HEALTHY" : [1-9]+' /tmp/f_ambari_wait_$$.out && break
         echo "INFO: $_host:$_port is not ready. Waiting for ${_interval} secs ($i/${_times})..."
