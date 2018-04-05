@@ -581,18 +581,19 @@ function f_ambari_blueprint_hostmap() {
 
     curl -sO http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json
     # Get the latest vdf file just for repo version and using 'centos7'
-    local _vdf="`python -c 'import json;f=open("hdp_urlinfo.json");j=json.load(f);print j["'${_stack}-${_stack_version}'"]["manifests"]["'${_hdp_version}'"]["centos7"]'`"
-    if [ -z "$_vdf" ];then
-        local _repo_ver='"repository_version_id" : "1"'
-    else
-        local _repo_ver="`echo $_vdf | grep -oE "${_hdp_version}-[0-9]+"`"
-        _repo_ver='"repository_version" : "'${_repo_ver}'"'
+    local _repo_ver=""
+    local _vdf="`python -c 'import json;f=open("hdp_urlinfo.json");j=json.load(f);print j["'${_stack}-${_stack_version}'"]["manifests"]["'${_hdp_version}'"]["centos7"]'`" 2>/dev/null
+    if [ -n "$_vdf" ];then
+        #local _repo_ver='"repository_version_id" : "1"'
+        local _repo_ver_tmp="`echo $_vdf | grep -oE "${_hdp_version}-[0-9]+"`"
+        _repo_ver='"repository_version" : "'${_repo_ver_tmp}'",'
+        # NOTE: Ambari version older than 2.6 does not accept repository_version_id
     fi
 
     echo '{
   "blueprint" : "multinode-hdp",
   "config_recommendation_strategy" : "ALWAYS_APPLY_DONT_OVERRIDE_CUSTOM_VALUES",
-  '${_repo_ver}',
+  '${_repo_ver}'
   "default_password" : "'$_default_password'",
   "host_groups" :['$_host_loop']
 }'
