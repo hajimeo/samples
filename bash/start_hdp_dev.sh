@@ -2367,14 +2367,14 @@ function p_host_setup() {
         _ambari_agent_wait &>> /tmp/p_host_setup.log
         if _isYes "$r_AMBARI_BLUEPRINT"; then
             _log "INFO" "Starting p_ambari_blueprint"
-            p_ambari_blueprint &>> /tmp/p_host_setup.log
+            p_ambari_blueprint &>> /tmp/p_host_setup.log || return $?
         else
             if [ -n "$r_HDP_REPO_URL" ]; then
                 _log "INFO" "Starting f_ambari_set_repo (may not work with Ambari 2.6)"
                 # TODO: support only CentOS or RedHat at this moment
                 if [ "${r_CONTAINER_OS}" = "centos" ] || [ "${r_CONTAINER_OS}" = "redhat" ]; then
                     # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
-                    f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" &>> /tmp/p_host_setup.log
+                    f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" &>> /tmp/p_host_setup.log || return $?
                 else
                     _warn "At this moment only centos or redhat"
                 fi
