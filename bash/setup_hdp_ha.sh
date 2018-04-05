@@ -50,6 +50,7 @@ function setup_nn_ha() {
     local _qjournal="`echo "$_journal_nodes" | sed 's/,/:8485;/g'`:8485"
 
     # Update config
+    # NOTE: grep -IRs -wE 'defaultFS|ha\.zookeeper|journalnode|nameservices|dfs\.ha|nn1|nn2|failover|shared\.edits' -A1 *
     _ambari_configs "core-site" '{"fs.defaultFS":"hdfs://'${_nameservice}'","ha.zookeeper.quorum":"'${_first_nn}':2181"}' "${_host}" "${_port}" "${_protocol}" "${_cluster}" || return $?
     _ambari_configs "hdfs-site" '{"dfs.journalnode.edits.dir":"/hadoop/hdfs/journal","dfs.nameservices":"'${_nameservice}'","dfs.internal.nameservices":"'${_nameservice}'","dfs.ha.namenodes.'${_nameservice}'":"nn1,nn2","dfs.namenode.rpc-address.'${_nameservice}'.nn1":"'${_first_nn}':8020","dfs.namenode.rpc-address.'${_nameservice}'.nn2":"'${_second_nn}':8020","dfs.namenode.http-address.'${_nameservice}'.nn1":"'${_first_nn}':50070","dfs.namenode.http-address.'${_nameservice}'.nn2":"'${_second_nn}':50070","dfs.namenode.https-address.'${_nameservice}'.nn1":"'${_first_nn}':50470","dfs.namenode.https-address.'${_nameservice}'.nn2":"'${_second_nn}':50470","dfs.client.failover.proxy.provider.'${_nameservice}'":"org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider","dfs.namenode.shared.edits.dir":"qjournal://'${_qjournal}'/'${_nameservice}'","dfs.ha.fencing.methods":"shell(/bin/true)","dfs.ha.automatic-failover.enabled":true}' "${_host}" "${_port}" "${_protocol}" "${_cluster}" || return $?
 
@@ -64,7 +65,8 @@ function setup_nn_ha() {
     _ambari_wait_comp_state "${_ambari_cluster_api_url}" "HDFS" "JOURNALNODE" "STARTED"
     # Initialize JournalNodes
     ssh -qt root@${_first_nn} "su hdfs -l -c 'hdfs namenode -initializeSharedEdits'" || return $?
-    
+    ssh -qt root@${_first_nn} "su hdfs -l -c 'hdfs zkfc -formatZK'" || return $?
+
     # Start required services, starting all components including clients...
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/services?ServiceInfo/service_name.in(ZOOKEEPER)" -X PUT --data '{"RequestInfo":{"context":"Start required services ZOOKEEPER","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}' | grep -q '^HTTP/1.1 2' || return $?
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/services?ServiceInfo/service_name.in(AMBARI_INFRA)" -X PUT --data '{"RequestInfo":{"context":"Start required services AMBARI_INFRA","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
@@ -73,7 +75,6 @@ function setup_nn_ha() {
 
     _ambari_wait_comp_state "${_ambari_cluster_api_url}" "HDFS" "NAMENODE" "STARTED"
     #TODO: should i wait until safemode finished?
-    ssh -qt root@${_first_nn} "su hdfs -l -c 'hdfs zkfc -formatZK'" || return $?
     ssh -qt root@${_second_nn} "su hdfs -l -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_cluster,,}\"" &>/dev/null
     ssh -qt root@${_second_nn} "su hdfs -l -c 'hdfs namenode -bootstrapStandby'" || return $?
 
