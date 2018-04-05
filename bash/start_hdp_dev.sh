@@ -2482,7 +2482,7 @@ function f_dnsmasq_banner_reset() {
 
     # copy back and restart
     scp -q /tmp/banner_add_hosts $_dns:/etc/
-    ssh -q $_dns service dnsmasq restart
+    ssh -q $_dns "service dnsmasq reload || service dnsmasq restart"
 }
 
 function f_update_resolv_confs() {
