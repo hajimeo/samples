@@ -500,11 +500,7 @@ function p_ambari_blueprint() {
 sudo -u postgres psql -c \"CREATE ROLE ranger WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   ranger,rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
-    if [ -s /usr/share/java/mysql-connector-java.jar ]; then
-        _info "setup mysql-connector-java..."
-        scp /usr/share/java/mysql-connector-java.jar root@${_ambari_host}:/tmp/mysql-connector-java.jar
-        ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=mysql --jdbc-driver=/tmp/mysql-connector-java.jar"
-    fi
+
     ssh -q root@${_ambari_host} '_f=/usr/lib/ambari-server/web/javascripts/app.js
 _n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
 [ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
@@ -1573,6 +1569,12 @@ function f_ambari_server_setup() {
     # Optional: ambari server related setting (TODO: will this work with CentOS7?)
     ssh -q root@${_ambari_host} "sed -i -r \"s/^#?log_line_prefix = ''/log_line_prefix = '%m '/\" /var/lib/pgsql/data/postgresql.conf"
     ssh -q root@${_ambari_host} "sed -i -r \"s/^#?log_statement = 'none'/log_statement = 'mod'/\" /var/lib/pgsql/data/postgresql.conf"
+
+    if [ -s /usr/share/java/mysql-connector-java.jar ]; then
+        _info "setup mysql-connector-java..."
+        scp /usr/share/java/mysql-connector-java.jar root@${_ambari_host}:/usr/share/java/mysql-connector-java.jar
+        ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=mysql --jdbc-driver=/usr/share/java/mysql-connector-java.jar"
+    fi
 }
 
 function f_ambari_server_reset() {
