@@ -227,6 +227,7 @@ function f_ssh_config() {
     local _name="${1-$_NAME}"
     local _key="$2"
     local _pub_key="$3"
+    # ssh -q -oBatchMode=yes ${_name} echo && return 0
 
     if [ -z "${_key}" ] && [ -r ~/.ssh/id_rsa ]; then
         _key=~/.ssh/id_rsa
@@ -237,7 +238,7 @@ function f_ssh_config() {
     fi
 
     docker exec -it ${_name} bash -c "[ -f /root/.ssh/authorized_keys ] || ( install -D -m 600 /dev/null /root/.ssh/authorized_keys && chmod 700 /root/.ssh )"
-    docker exec -it ${_name} bash -c "[ -f /root/.ssh/id_rsa ] || echo \"`cat ${_key}`\" > /root/.ssh/id_rsa; chmod 600 /root/.ssh/id_rsa"
+    docker exec -it ${_name} bash -c "[ -f /root/.ssh/id_rsa.orig ] && exit; [ -f /root/.ssh/id_rsa ] && mv /root/.ssh/id_rsa /root/.ssh/id_rsa.orig; echo \"`cat ${_key}`\" > /root/.ssh/id_rsa; chmod 600 /root/.ssh/id_rsa;echo \"`cat ${_pub_key}`\" > /root/.ssh/id_rsa.pub; chmod 644 /root/.ssh/id_rsa.pub"
     docker exec -it ${_name} bash -c "grep -q \"^`cat ${_pub_key}`\" /root/.ssh/authorized_keys || echo \"`cat ${_pub_key}`\" >> /root/.ssh/authorized_keys"
     docker exec -it ${_name} bash -c "[ -f /root/.ssh/config ] || echo -e \"Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\" > /root/.ssh/config"
 }
@@ -376,6 +377,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     if ${_STOP_SANDBOX_CONTAINERS}; then
         if docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$" | grep -qiE "^sandbox"; then
+            echo "INFO: Stopping other sandbox container(s)"
             docker stop `docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$" | grep -iE "^sandbox"`
         fi
     fi
