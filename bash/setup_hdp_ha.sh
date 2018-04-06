@@ -69,7 +69,6 @@ function setup_nn_ha() {
     _ambari_wait_comp_state "${_ambari_cluster_api_url}" "HDFS" "JOURNALNODE" "STARTED"
     # Initialize JournalNodes
     ssh -qt root@${_first_nn} "su hdfs -l -c 'hdfs namenode -initializeSharedEdits'" || return $?
-    ssh -qt root@${_first_nn} "su hdfs -l -c 'hdfs zkfc -formatZK'" || return $?
 
     # Start required services, starting all components including clients...
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/services?ServiceInfo/service_name.in(ZOOKEEPER)" -X PUT --data '{"RequestInfo":{"context":"Start required services ZOOKEEPER","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}' | grep -q '^HTTP/1.1 2' || return $?
@@ -79,6 +78,7 @@ function setup_nn_ha() {
 
     _ambari_wait_comp_state "${_ambari_cluster_api_url}" "HDFS" "NAMENODE" "STARTED"
     #TODO: should i wait until safemode finished?
+    ssh -qt root@${_first_nn} "su hdfs -l -c 'hdfs zkfc -formatZK'" || return $?
     ssh -qt root@${_second_nn} "su hdfs -l -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_cluster,,}\"" &>/dev/null
     ssh -qt root@${_second_nn} "su hdfs -l -c 'hdfs namenode -bootstrapStandby'" || return $?
 
