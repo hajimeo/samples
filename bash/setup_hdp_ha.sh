@@ -20,8 +20,11 @@ function setup_nn_ha() {
     local _nameservice="${2}"
     local _first_nn="${3}"
     local _second_nn="${4}"        # TODO: currently new NN must be Secondary NameNode
-    local _journal_nodes="${5}"             # eg: "node2.houbu01.localdomain,node3.houbu01.localdomain,node4.houbu01.localdomain"
+    local _journal_nodes="${5}"    # eg: "node2.houbu01.localdomain,node3.houbu01.localdomain,node4.houbu01.localdomain"
+    local _zookeeper_hosts="${6-$_first_nn}"
     local _cluster="`basename "${_ambari_cluster_api_url%/}"`"
+
+    # TODO: If kerberosed, it will ask admin principal to install rpm
 
     # Safemode and checkpointing
     ssh -qt root@${_first_nn} "su hdfs -l -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_cluster,,}\"" &>/dev/null
@@ -29,8 +32,10 @@ function setup_nn_ha() {
 
     # Stop all
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/services?" -X PUT --data '{"RequestInfo":{"context":"Stop all services","operation_level":{"level":"CLUSTER","cluster_name":"houbu01_1"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}' | grep -q '^HTTP/1.1 2' || return $?
-    # Wait until stop. TODO: Assuming ZOOKEEPER will be the last
-    _ambari_wait_comp_state "${_ambari_cluster_api_url}" "ZOOKEEPER" "ZOOKEEPER_SERVER" "INSTALLED"
+    # Wait until stop. Assuming ZOOKEEPER will be the last
+    for _zk in `echo "${_zookeeper_hosts}" | sed 's/,/\n/g'`; do
+        _ambari_wait_comp_state "${_ambari_cluster_api_url}" "${_zk}" "ZOOKEEPER_SERVER" "INSTALLED"
+    done
 
     # Assign a namenode to a host
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/hosts" --data '{"RequestInfo":{"query":"Hosts/host_name='${_second_nn}'"},"Body":{"host_components":[{"HostRoles":{"component_name":"NAMENODE"}}]}}' | grep -q '^HTTP/1.1 2' || return $?
@@ -38,6 +43,7 @@ function setup_nn_ha() {
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/host_components?" -X PUT --data '{"RequestInfo":{"context":"Install NameNode","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"},"query":"HostRoles/component_name=NAMENODE&HostRoles/host_name.in('${_second_nn}')&HostRoles/maintenance_state=OFF"},"Body":{"HostRoles":{"state":"INSTALLED"}}}' | grep -q '^HTTP/1.1 2' || return $?
     # Add a JournalNode
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/services?ServiceInfo/service_name=HDFS" --data '{"components":[{"ServiceComponentInfo":{"component_name":"JOURNALNODE"}}]}' | grep -q '^HTTP/1.1 2' || return $?
+
     # Assign JournalNodes to hosts
     [ -z "$_journal_nodes" ] && return 1
     for _jn in `echo "$_journal_nodes" | sed 's/,/\n/g'`; do
@@ -51,11 +57,12 @@ function setup_nn_ha() {
     local _protocol="${BASH_REMATCH[1]}"
     local _host="${BASH_REMATCH[2]}"
     local _port="${BASH_REMATCH[3]}"
-    local _qjournal="`echo "$_journal_nodes" | sed 's/,/:8485;/g'`:8485"
+    local _qjournal="`echo "${_journal_nodes}" | sed 's/,/:8485;/g'`:8485"
+    local _zkquorum="`echo "${_zookeeper_hosts}" | sed 's/,/:2181;/g'`:2181"
 
     # Update config
     # NOTE: grep -IRs -wE 'defaultFS|ha\.zookeeper|journalnode|nameservices|dfs\.ha|nn1|nn2|failover|shared\.edits' -A1 *
-    _ambari_configs "core-site" '{"fs.defaultFS":"hdfs://'${_nameservice}'","ha.zookeeper.quorum":"'${_first_nn}':2181"}' "${_host}" "${_port}" "${_protocol}" "${_cluster}" || return $?
+    _ambari_configs "core-site" '{"fs.defaultFS":"hdfs://'${_nameservice}'","ha.zookeeper.quorum":"'${_zkquorum}'"}' "${_host}" "${_port}" "${_protocol}" "${_cluster}" || return $?
     _ambari_configs "hdfs-site" '{"dfs.journalnode.edits.dir":"/hadoop/hdfs/journal","dfs.nameservices":"'${_nameservice}'","dfs.internal.nameservices":"'${_nameservice}'","dfs.ha.namenodes.'${_nameservice}'":"nn1,nn2","dfs.namenode.rpc-address.'${_nameservice}'.nn1":"'${_first_nn}':8020","dfs.namenode.rpc-address.'${_nameservice}'.nn2":"'${_second_nn}':8020","dfs.namenode.http-address.'${_nameservice}'.nn1":"'${_first_nn}':50070","dfs.namenode.http-address.'${_nameservice}'.nn2":"'${_second_nn}':50070","dfs.namenode.https-address.'${_nameservice}'.nn1":"'${_first_nn}':50470","dfs.namenode.https-address.'${_nameservice}'.nn2":"'${_second_nn}':50470","dfs.client.failover.proxy.provider.'${_nameservice}'":"org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider","dfs.namenode.shared.edits.dir":"qjournal://'${_qjournal}'/'${_nameservice}'","dfs.ha.fencing.methods":"shell(/bin/true)","dfs.ha.automatic-failover.enabled":true}' "${_host}" "${_port}" "${_protocol}" "${_cluster}" || return $?
 
     # Install HDFS client
@@ -63,21 +70,25 @@ function setup_nn_ha() {
     # Start Journal nodes
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/host_components?" -X PUT --data '{"RequestInfo":{"context":"Start JournalNode","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"},"query":"HostRoles/component_name=JOURNALNODE&HostRoles/host_name.in('${_journal_nodes}')&HostRoles/maintenance_state=OFF"},"Body":{"HostRoles":{"state":"STARTED"}}}' | grep -q '^HTTP/1.1 2' || return $?
     # Maintenance mode on SECONDARY NameNode (if fails, keep going)
-    curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/hosts/'${_second_nn}'/host_components/SECONDARY_NAMENODE" -X PUT --data '{"RequestInfo":{},"Body":{"HostRoles":{"maintenance_state":"ON"}}}'
+    curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/hosts/${_second_nn}/host_components/SECONDARY_NAMENODE" -X PUT --data '{"RequestInfo":{},"Body":{"HostRoles":{"maintenance_state":"ON"}}}'
 
     # Wait Journal Nodes starts
-    _ambari_wait_comp_state "${_ambari_cluster_api_url}" "HDFS" "JOURNALNODE" "STARTED"
+    for _jn in `echo "$_journal_nodes" | sed 's/,/\n/g'`; do
+        _ambari_wait_comp_state "${_ambari_cluster_api_url}" "${_jn}" "JOURNALNODE" "STARTED"
+    done
     # Initialize JournalNodes
     ssh -qt root@${_first_nn} "su hdfs -l -c 'hdfs namenode -initializeSharedEdits'" || return $?
 
-    # Start required services, starting all components including clients...
+    # Start required services to start HDFS, starting all components including clients...
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/services?ServiceInfo/service_name.in(ZOOKEEPER)" -X PUT --data '{"RequestInfo":{"context":"Start required services ZOOKEEPER","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}' | grep -q '^HTTP/1.1 2' || return $?
+    # TODO: at this moment, starting AMBARI_INFRA, but probably RANGER too (and if fails, keep going)
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/services?ServiceInfo/service_name.in(AMBARI_INFRA)" -X PUT --data '{"RequestInfo":{"context":"Start required services AMBARI_INFRA","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 
+    # Starting NameNode
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/host_components?" -X PUT --data '{"RequestInfo":{"context":"Start NameNode","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"},"query":"HostRoles/component_name=NAMENODE&HostRoles/host_name.in('${_first_nn}')&HostRoles/maintenance_state=OFF"},"Body":{"HostRoles":{"state":"STARTED"}}}' | grep -q '^HTTP/1.1 2' || return $?
 
-    _ambari_wait_comp_state "${_ambari_cluster_api_url}" "HDFS" "NAMENODE" "STARTED"
-    #TODO: should i wait until safemode finished?
+    _ambari_wait_comp_state "${_ambari_cluster_api_url}" "${_first_nn}" "NAMENODE" "STARTED"
+    #NOTE: should i wait until exiting safemode?
     ssh -qt root@${_first_nn} "su hdfs -l -c 'hdfs zkfc -formatZK'" || return $?
     ssh -qt root@${_second_nn} "su hdfs -l -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_cluster,,}\"" &>/dev/null
     ssh -qt root@${_second_nn} "su hdfs -l -c 'hdfs namenode -bootstrapStandby'" || return $?
@@ -85,21 +96,24 @@ function setup_nn_ha() {
     # Starting new NN
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/host_components?" -X PUT --data '{"RequestInfo":{"context":"Start NameNode","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"},"query":"HostRoles/component_name=NAMENODE&HostRoles/host_name.in('${_second_nn}')&HostRoles/maintenance_state=OFF"},"Body":{"HostRoles":{"state":"STARTED"}}}'
 
-    # Adding, assigining to hosts, installing and starting ZKFC
+    # Adding ZKFC. Assigning to hosts, installing and starting
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/services?ServiceInfo/service_name=HDFS" --data '{"components":[{"ServiceComponentInfo":{"component_name":"ZKFC"}}]}' | grep -q '^HTTP/1.1 2' || return $?
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/hosts" --data '{"RequestInfo":{"query":"Hosts/host_name='${_second_nn}'|Hosts/host_name='${_first_nn}'"},"Body":{"host_components":[{"HostRoles":{"component_name":"ZKFC"}}]}}' | grep -q '^HTTP/1.1 2' || return $?
-    curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/host_components?" -X PUT --data '{"RequestInfo":{"context":"Install ZKFailoverController","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"},"query":"HostRoles/component_name=ZKFC&HostRoles/host_name.in('${_second_nn}','${_first_nn}')&HostRoles/maintenance_state=OFF"},"Body":{"HostRoles":{"state":"INSTALLED"}}}'
+    curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/host_components?" -X PUT --data '{"RequestInfo":{"context":"Install ZKFailoverController","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"},"query":"HostRoles/component_name=ZKFC&HostRoles/host_name.in('${_second_nn}','${_first_nn}')&HostRoles/maintenance_state=OFF"},"Body":{"HostRoles":{"state":"INSTALLED"}}}' | grep -q '^HTTP/1.1 2' || return $?
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/host_components?" -X PUT --data '{"RequestInfo":{"context":"Start ZKFailoverController","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"},"query":"HostRoles/component_name=ZKFC&HostRoles/host_name.in('${_second_nn}','${_first_nn}')&HostRoles/maintenance_state=OFF"},"Body":{"HostRoles":{"state":"STARTED"}}}'
 
-    # TODO: Ranger config update if Ranger is installed in here
+    # NOTE: Update Ranger config in here, if Ranger is installed
 
-    curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/hosts/'${_second_nn}'/host_components/SECONDARY_NAMENODE" -X DELETE
+    # Delete unnecessary SECONDARY_NAMENODE. If fails, keep going (can fix this from UI)
+    curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/hosts/${_second_nn}/host_components/SECONDARY_NAMENODE" -X DELETE
 
-    # STOP ALL, then START ALL
+    # STOP HDFS, then START ALL
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/services?ServiceInfo/service_name.in(HDFS)" -X PUT --data '{"RequestInfo":{"context":"Stop required services","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}'
-    # Wait until stop. TODO: Assuming ZOOKEEPER will be the last
-    _ambari_wait_comp_state "${_ambari_cluster_api_url}" "ZOOKEEPER" "ZOOKEEPER_SERVER" "INSTALLED"
-    curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/services" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+    # Wait until stop. Assuming ZKFC will be the last
+    _ambari_wait_comp_state "${_ambari_cluster_api_url}" "${_first_nn}" "ZKFC" "INSTALLED"
+    _ambari_wait_comp_state "${_ambari_cluster_api_url}" "${_second_nn}" "ZKFC" "INSTALLED"
+    curl -sku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/services" -X PUT --data '{"RequestInfo":{"context":"_PARSE_.START.ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
+    echo " "
 }
 
 function setup_rm_ha() {
@@ -127,16 +141,15 @@ function setup_rm_ha() {
 function _ambari_wait_comp_state() {
     local __doc__="Sleep until state becomes _state or timeout (_loop x _interval)"
     local _ambari_cluster_api_url="${1}"    # eg: http://ho-ubu01:8080/api/v1/clusters/houbu01_1
-    local _service="${2}"
+    local _host="${2}"
     local _comp="${3}"
     local _state="${4}"
     local _loop="${5-20}"
     local _interval="${6-10}"
     [ -z "${_state}" ] && return 1
 
-    local _url="${_ambari_cluster_api_url%/}/services/${_service}?fields=ServiceInfo/state"
-    [ -n "${_comp}" ] && _url="${_ambari_cluster_api_url%/}/services/${_service}/components/${_comp}?fields=ServiceComponentInfo/state"
-
+    local _url="${_ambari_cluster_api_url%/}/hosts/${_host}/host_components/${_comp}?fields=HostRoles/state"
+    sleep 1
     for _i in `seq 1 ${_loop}`; do
         curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_url}" | grep '"state" : "'${_state}'"' && break;
         sleep 10
