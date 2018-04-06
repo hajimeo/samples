@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# DOWNLOAD
+#   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_hdp_ha.sh
+#
+
 ### Global variable ###################
 g_AMBARI_USER='admin'
 g_AMBARI_PASS='admin'
@@ -126,7 +130,7 @@ function _ambari_wait_comp_state() {
     local _service="${2}"
     local _comp="${3}"
     local _state="${4}"
-    local _loop="${5-10}"
+    local _loop="${5-20}"
     local _interval="${6-10}"
     [ -z "${_state}" ] && return 1
 
