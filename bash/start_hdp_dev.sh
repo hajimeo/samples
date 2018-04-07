@@ -201,14 +201,14 @@ function p_interview() {
         local _jce="`ls -1t ./jce_policy-*.zip 2>/dev/null | head -n1`"
         _ask "Ambari JCE URL or path (optional)" "${_jce}" "r_AMBARI_JCE_URL"
 
-        _ask "Would you like to set up a local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
+        _ask "Would you like to download and set up a local repo for HDP? (may take long time)" "N" "r_HDP_LOCAL_REPO"
         if _isYes "$r_HDP_LOCAL_REPO"; then
             _ask "Local repository directory (Apache root)" "/var/www/html/hdp" "r_HDP_REPO_DIR"
             _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${_repo_os_ver}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
             _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${_repo_os_ver}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${_repo_os_ver}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
         fi
 
-        _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"    fi
+        _ask "HDP Repo URL or *VDF* XMF file URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"    fi
         if _isUrlButNotReachable "${r_HDP_REPO_URL%/}/hdp.repo" ; then
             while true; do
                 _warn "URL: $r_HDP_REPO_URL may not be reachable."
@@ -2047,10 +2047,10 @@ function f_ambari_set_repo() {
         fi
     else
         # https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
-        _warn "Ambari 2.6.x and higher need VDF file in the local repo web server, and pass the URL as _repo_url"
         if _isUrl "$_repo_url" && [[ "${_repo_url}" =~ \.xml$ ]]; then
             curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/version_definitions" -X POST -H 'X-Requested-By: ambari' -d '{"VersionDefinition":{"version_url":"'${_repo_url}'"}}' | grep -E '^HTTP/1.1 [45]'
         else
+            _warn "Ambari 2.6.x and higher need VDF file as URL. Trying to generate URL from hdp_urlinfo.json"
             # always get the latest
             curl -sO http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json
             # Get the latest vdf file (confusing, sometimes centos, sometimes redhat
