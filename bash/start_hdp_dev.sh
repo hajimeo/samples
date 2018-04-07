@@ -1571,8 +1571,10 @@ function f_ambari_server_setup() {
     ssh -q root@${_ambari_host} "sed -i -r \"s/^#?log_statement = 'none'/log_statement = 'mod'/\" /var/lib/pgsql/data/postgresql.conf"
 
     if [ -s /usr/share/java/mysql-connector-java.jar ]; then
+        local _copy_file="/usr/share/java/mysql-connector-java.jar"
+        [ -L /usr/share/java/mysql-connector-java.jar ] && _copy_file="`realpath /usr/share/java/mysql-connector-java.jar`"
         _info "setup mysql-connector-java..."
-        scp /usr/share/java/mysql-connector-java.jar root@${_ambari_host}:/usr/share/java/mysql-connector-java.jar
+        scp ${_copy_file} root@${_ambari_host}:/usr/share/java/mysql-connector-java.jar
         ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=mysql --jdbc-driver=/usr/share/java/mysql-connector-java.jar"
     fi
 }
