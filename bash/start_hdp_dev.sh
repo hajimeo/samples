@@ -1574,6 +1574,7 @@ function f_ambari_server_setup() {
         local _copy_file="/usr/share/java/mysql-connector-java.jar"
         [ -L /usr/share/java/mysql-connector-java.jar ] && _copy_file="`realpath /usr/share/java/mysql-connector-java.jar`"
         _info "setup mysql-connector-java..."
+        ssh -q root@${_ambari_host} "mkdir -m 777 -p /usr/share/java 2>/dev/null"
         scp ${_copy_file} root@${_ambari_host}:/usr/share/java/mysql-connector-java.jar
         ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=mysql --jdbc-driver=/usr/share/java/mysql-connector-java.jar"
     fi
