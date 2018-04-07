@@ -364,7 +364,7 @@ function p_node_create() {
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
-    f_dnsmasq_banner_reset "${_hostname}" "" "${_ip_address}" "${_dns}"
+    f_dnsmasq_banner_reset "${_hostname}" "" "${_ip_address}" "${_dns}" || return $?
     _docker_run "${_hostname}" "${_ip_address}" "${g_DOCKER_BASE}:$_os_ver" "${_dns}" || return $?
     f_docker_start_one "${_hostname}" "${_ip_address}" "${_dns}"
     sleep 1
@@ -398,7 +398,7 @@ function p_nodes_create() {
     local _ambari_host="${5-$r_AMBARI_HOST}"
     local _ambari_repo_file="${6-$r_AMBARI_REPO_FILE}"
 
-    f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
+    f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix" || return $?
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix" || return $?
     f_docker_start "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
@@ -445,9 +445,9 @@ function p_nodes_start() {
 function p_hdp_start() {
     local __doc__="Start up HDP containers"
     f_loadResp
+    f_restart_services_just_in_case
 
     f_dnsmasq_banner_reset
-    f_restart_services_just_in_case
     f_docker0_setup "172.18.0.1" "24"
     f_hdp_network_setup
     f_ntp
@@ -1009,7 +1009,8 @@ function f_ntp() {
 
 function f_restart_services_just_in_case() {
     local __doc__="Restart some services just in case"
-    which kadmin.local &>/dev/null && service krb5-kdc restart && service krb5-admin-server restart
+    which dnsmasq &>/dev/null && service dnsmasq restart
+    which kadmin.local &>/dev/null && (service krb5-kdc restart; service krb5-admin-server restart)
 }
 
 function _docker_seq() {
@@ -2296,6 +2297,7 @@ function f_vmware_tools_install() {
 function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
     _log "INFO" "Starting Host setup | logfile = " "/tmp/p_host_setup.log"
+    f_restart_services_just_in_case
 
     _log "INFO" "Starting f_ssh_setup"
     f_ssh_setup &>> /tmp/p_host_setup.log || return $?
@@ -2323,7 +2325,7 @@ function p_host_setup() {
         _log "INFO" "Starting f_host_misc"
         f_host_misc &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_dnsmasq"
-        f_dnsmasq &>> /tmp/p_host_setup.log
+        f_dnsmasq &>> /tmp/p_host_setup.log || return $?
     fi
 
     _log "INFO" "Starting f_docker0_setup"
@@ -2418,7 +2420,7 @@ function f_dnsmasq() {
     ssh -q $_dns "grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf"
     ssh -q $_dns "grep -q '^resolv-file=' /etc/dnsmasq.conf || (echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf; echo 'nameserver 8.8.8.8' > /etc/resolv.dnsmasq.conf)"
 
-    f_dnsmasq_banner_reset "$_how_many" "$_start_from"
+    f_dnsmasq_banner_reset "$_how_many" "$_start_from" || return $?
 
     if [ -d /etc/docker ] && [ ! -f /etc/docker/daemon.json ]; then
         local _docker_ip=`f_docker_ip "172.17.0.1"`
