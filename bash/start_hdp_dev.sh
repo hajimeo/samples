@@ -1411,7 +1411,7 @@ function _docker_run() {
     local _dns="$4"
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
-    _line="`docker ps -a -f name=${_name} | grep -w ${_name}`"
+    _line="`docker ps -a --format "{{.Names}}" | grep -E "^${_name}$"`"
     if [ -n "$_line" ]; then
         _warn "Container name:${_name} already exists. Skipping..."
         return 2
@@ -1476,7 +1476,7 @@ function f_ambari_install() {
 }
 
 function f_ambari_upgrade() {
-    local __doc__="Upgrade Ambari Server and Agents"
+    local __doc__="Upgrade Ambari Server and Agents (use r_DOMAIN_SUFFIX)"
     local _repo_url_or_file="$1"
     local _ambari_host="${2-$r_AMBARI_HOST}"
     local _how_many="${3-$r_NUM_NODES}"
@@ -1726,7 +1726,7 @@ function f_ambari_agents_install() {
 }
 
 function f_ambari_agents_upgrade() {
-    local __doc__="Upgrading ambari-agent on all containers"
+    local __doc__="Upgrading ambari-agent on all containers (use r_DOMAIN_SUFFIX)"
     local _repo_url_or_file="${1}" # as upgrade, not using $r_AMBARI_REPO_FILE
     local _how_many="${2-$r_NUM_NODES}"
     local _start_from="${3-$r_NODE_START_NUM}"
@@ -1896,6 +1896,7 @@ function f_local_repo() {
     local _document_root="${2-/var/www/html}"
     local _force_extract=""
     local _download_only=""
+    #TODO: sed -i.bak 's/public-repo-1.hortonworks.com/dockerhost1.localdomain\/hdp/g' *.repo # *.xml
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
