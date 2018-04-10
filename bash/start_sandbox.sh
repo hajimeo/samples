@@ -376,8 +376,8 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     [[ "${_NAME}" =~ ^"sandbox-hdf" ]] && _STACK="HDF"
 
     if ${_STOP_SANDBOX_CONTAINERS}; then
-        if docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$" | grep -qiE "^sandbox"; then
-            echo "INFO: Stopping other sandbox container(s)"
+        if docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$"; then    # | grep -qiE "^sandbox"
+            echo "INFO: Stopping other container(s)"
             docker stop `docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$" | grep -iE "^sandbox"`
         fi
     fi
@@ -562,7 +562,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-server/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
     docker exec -it ${_NAME} bash -c 'find /var/log/ambari-agent/ -type f \( -name "*\.log*" -o -name "*\.out*" \) -mtime +7 -exec grep -Iq . {} \; -and -print0 | xargs -0 -t -n1 -I {} rm -f {}'
 
-    echo "INFO: OS config changes, and starting SSHd, and MySQL ..."
+    echo "INFO: OS config changes, and starting SSHd, and stopping unnecessary services ..."
     # setting up password-less ssh to sandbox whenever it starts in case .ssh is updated.
     f_ssh_config
     docker exec -it ${_NAME} bash -c '[ ! -d /home/admin ] && mkdir -m 700 /home/admin && chown admin:admin /home/admin'
@@ -573,15 +573,8 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     #docker exec -it ${_NAME} bash -c 'grep -q -F "> /etc/resolv.conf" /etc/rc.d/init.d/startup_script && tar -cvzf /root/startup_script.tgz `find /etc/rc.d/ -name '*startup_script' -o -name '*tutorials'` --remove-files'
 
     docker exec -it ${_NAME} bash -c "service sshd start"
-
-    # MySQL, for Hive, Oozie, Ranger, KMS etc, making sure mysql starts
-    docker exec -it ${_NAME} bash -c 'chown -R mysql:mysql /var/lib/mysql /var/run/mysqld'
-    docker exec -d ${_NAME} service mysqld start
-    # TODO: may need to reset root db user password
-    # mysql -uroot -phadoop mysql -e "select user, host from user where User='root' and Password =''"
-    # mysql -uroot -phadoop mysql -e "set password for 'root'@'%'= PASSWORD('hadoop')"
-
     docker exec -dt ${_NAME} bash -c 'service startup_script stop; service tutorials stop; service shellinaboxd stop; service httpd stop; service hue stop'
+
     if ${_NEW_CONTAINER} ; then
         echo "INFO: New container only: OS & PostgreSQL config changes..."
 
@@ -611,7 +604,16 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
         docker exec -it ${_NAME} bash -c "(set -x;[ -S /tmp/.s.PGSQL.5432 ] || (sleep 5;service postgresql restart;sleep 5); PGPASSWORD=bigdata psql -h ${_HOSTNAME} -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00', active=1 WHERE user_name='admin' and user_type='LOCAL';UPDATE hosts set host_name='${_HOSTNAME}', public_host_name='${_HOSTNAME}' where host_id=1;\")"
         #docker exec -it ${_NAME} bash -c "PGPASSWORD=bigdata psql -h ${_HOSTNAME}  -Uambari -tAc \"UPDATE metainfo SET metainfo_value = '${_AMBARI_VERSION}' where metainfo_key = 'version';\""
         docker exec -it ${_NAME} bash -c '_javahome="`grep java.home /etc/ambari-server/conf/ambari.properties | cut -d "=" -f2`" && grep -q "^securerandom.source=file:/dev/random" ${_javahome%/}/jre/lib/security/java.security && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" ${_javahome%/}/jre/lib/security/java.security'
+
+        docker exec -it ${_NAME} bash -c 'chown -R mysql:mysql /var/lib/mysql /var/run/mysqld'
     fi
+
+    echo "INFO: Starting mysql ..."
+    # MySQL, for Hive, Oozie, Ranger, KMS etc, making sure mysql starts
+    docker exec -it ${_NAME} service mysqld start
+    # TODO: may need to reset root db user password
+    # mysql -uroot -phadoop mysql -e "select user, host from user where User='root' and Password =''"
+    # mysql -uroot -phadoop mysql -e "set password for 'root'@'%'= PASSWORD('hadoop')"
 
     #docker exec -d ${_NAME} /root/start_sandbox.sh
     #docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
