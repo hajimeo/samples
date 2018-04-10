@@ -610,7 +610,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     echo "INFO: Starting mysql ..."
     # MySQL, for Hive, Oozie, Ranger, KMS etc, making sure mysql starts
-    docker exec -it ${_NAME} service mysqld start
+    docker exec -d ${_NAME} bash -c 'service mysqld start'
     # TODO: may need to reset root db user password
     # mysql -uroot -phadoop mysql -e "select user, host from user where User='root' and Password =''"
     # mysql -uroot -phadoop mysql -e "set password for 'root'@'%'= PASSWORD('hadoop')"
@@ -634,7 +634,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     docker exec -d ${_NAME} bash -c 'sudo -u knox -i /usr/hdp/current/knox-server/bin/ldap.sh start'
     docker exec -d ${_NAME} service ambari-agent start
     if ! nc -z ${_HOSTNAME} ${_AMBARI_PORT}; then
-        docker exec -it ${_NAME} bash -c 'service postgresql start; service ambari-server start --skip-database-check || (service postgresql start;sleep 5;service ambari-server restart --skip-database-check)' || exit $?
+        docker exec -d ${_NAME} bash -c 'service postgresql start; service ambari-server start --skip-database-check || (service postgresql start;sleep 5;service ambari-server restart --skip-database-check)' || exit $?
     fi
 
     echo "INFO: Waiting Ambari Server is ready (feel free to press Ctrl+c to exit)..."
