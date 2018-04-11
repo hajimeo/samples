@@ -403,7 +403,7 @@ function _hadoop_ssl_config_update() {
     local _ambari_port="${2-8080}"
     local _password="$3"
 
-    _info "Updating Ambari configs for HDFS..."
+    _info "Updating Ambari configs for HDFS (to use SSL and SASL)..."
     f_ambari_configs "core-site" "{\"hadoop.rpc.protection\":\"privacy\",\"hadoop.ssl.require.client.cert\":\"false\",\"hadoop.ssl.hostname.verifier\":\"DEFAULT\",\"hadoop.ssl.keystores.factory.class\":\"org.apache.hadoop.security.ssl.FileBasedKeyStoresFactory\",\"hadoop.ssl.server.conf\":\"ssl-server.xml\",\"hadoop.ssl.client.conf\":\"ssl-client.xml\"}" "$_ambari_host" "$_ambari_port"
     f_ambari_configs "ssl-client" "{\"ssl.client.truststore.location\":\"${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}\",\"ssl.client.truststore.password\":\"${g_CLIENT_TRUSTSTORE_PASSWORD}\",\"ssl.client.keystore.location\":\"${g_CLIENT_KEY_LOCATION%/}/${g_KEYSTORE_FILE}\",\"ssl.client.keystore.password\":\"$_password\"}" "$_ambari_host" "$_ambari_port"
     f_ambari_configs "ssl-server" "{\"ssl.server.truststore.location\":\"${g_CLIENT_TRUST_LOCATION%/}/${g_CLIENT_TRUSTSTORE_FILE}\",\"ssl.server.truststore.password\":\"${g_CLIENT_TRUSTSTORE_PASSWORD}\",\"ssl.server.keystore.location\":\"${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}\",\"ssl.server.keystore.password\":\"$_password\",\"ssl.server.keystore.keypassword\":\"$_password\"}" "$_ambari_host" "$_ambari_port"
@@ -618,7 +618,7 @@ function f_ldap_ranger() {
     local _domain="${2}"
     local _basedn="${3}"
     local _binddn="${4}"
-    local _binddn_pwd="${5-${g_DEFAULT_PASSWORD-hadoop}}" # TODO: not sure if it will work without encrypting
+    local _binddn_pwd="${5-${g_DEFAULT_PASSWORD-hadoop}}" # TODO: password should be stoed in jceks file
     local _ad_or_ldap="${6-AD}"
     local _ambari_host="${7-$r_AMBARI_HOST}"
     [ -z "${_ambari_host}" ] && return 1
@@ -631,6 +631,7 @@ function f_ldap_ranger() {
     }'
     f_ambari_configs "ranger-admin-site" "${ranger_admin_site}" "$_ambari_host"
 
+    # NOTE: for AD, without setting 'ranger.usersync.ldap.searchBase', it seems to work, but just in case.
     local ranger_ugsync_site='{
         "ranger.usersync.group.memberattributename": "member",
         "ranger.usersync.group.nameattribute": "cn",
@@ -640,6 +641,7 @@ function f_ldap_ranger() {
         "ranger.usersync.group.searchfilter": "(objectClass=group)",
         "ranger.usersync.ldap.binddn": "'${_binddn}'",
         "ranger.usersync.ldap.ldapbindpassword": "'${_binddn_pwd}'",
+        "ranger.usersync.ldap.searchBase": "'${_basedn}'",
         "ranger.usersync.ldap.url": "'${_ldap_url}'",
         "ranger.usersync.ldap.user.nameattribute": "sAMAccountName",
         "ranger.usersync.ldap.user.objectclass": "person",
