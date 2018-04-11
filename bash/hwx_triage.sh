@@ -83,6 +83,7 @@ function f_check_system() {
     cat /proc/net/dev &> ${_work_dir%/}/net_dev.out
     cat /proc/cpuinfo &> ${_work_dir%/}/cpuinfo.out
     cat /proc/meminfo &> ${_work_dir%/}/meminfo.out
+    numactl -H &> ${_work_dir%/}/numa.out
 
     sysctl -a &> ${_work_dir%/}/sysctl.out
     sar -A &> ${_work_dir%/}/sar_A.out
@@ -340,11 +341,11 @@ function f_collect_metrics_from_AMS() {
     local _S="`date '+%s' -d"${_date_start_string}"`" || return $?
     local _E="`date '+%s' -d"${_date_end_string}"`"
 
-    echo "INFO" "Collecting ${_comp} metric from AMS (${_ams_url}) ..." >&2
+    echo "INFO" "Collecting ${_comp^^} metric from AMS (${_ams_url}) ..." >&2
     if [ -z "$_metric_names" ]; then
         echo "WARN" "Couldn't determine fields. Please check ambari_${_comp}.json if exists." >&2
     else
-        curl ${_cmd_opts} "${_base_url}" -G --data-urlencode "metricNames=${_metric_names}" --data-urlencode "appId=${_comp}" --data-urlencode "startTime=${_S}" --data-urlencode "endTime=${_E}" --data-urlencode "precision=${_precision}" -o ${_work_dir%/}/ams_${_comp}_metrics.json
+        curl ${_cmd_opts} "${_base_url}" -G --data-urlencode "metricNames=${_metric_names}" --data-urlencode "appId=${_comp^^}" --data-urlencode "startTime=${_S}" --data-urlencode "endTime=${_E}" --data-urlencode "precision=${_precision}" -o ${_work_dir%/}/ams_${_comp}_metrics.json
     fi
 }
 
