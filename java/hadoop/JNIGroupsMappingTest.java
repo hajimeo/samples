@@ -3,7 +3,7 @@
  *
  * javac -cp `hadoop classpath` ./hadoop/JNIGroupsMappingTest.java
  * java -cp `hadoop classpath` -Djava.library.path=/usr/hdp/current/hadoop-client/lib/native hadoop.JNIGroupsMappingTest
- * java -cp `hadoop classpath` -Djava.library.path=/usr/hdp/current/hadoop-client/lib/native hadoop.JNIGroupsMappingTest hosako
+ * java -cp `hadoop classpath` -Djava.library.path=/usr/hdp/current/hadoop-client/lib/native -Dhadoop.root.logger=DEBUG,console hadoop.JNIGroupsMappingTest $USER
  */
 package hadoop;
 
