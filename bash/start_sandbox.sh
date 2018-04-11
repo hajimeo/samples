@@ -610,7 +610,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
 
     echo "INFO: Starting mysql ..."
     # MySQL, for Hive, Oozie, Ranger, KMS etc, making sure mysql starts
-    docker exec -d ${_NAME} bash -c 'service mysqld start'
+    docker exec -it ${_NAME} bash -c 'service mysqld restart'
     # TODO: may need to reset root db user password
     # mysql -uroot -phadoop mysql -e "select user, host from user where User='root' and Password =''"
     # mysql -uroot -phadoop mysql -e "set password for 'root'@'%'= PASSWORD('hadoop')"
