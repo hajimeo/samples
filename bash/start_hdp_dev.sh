@@ -3322,6 +3322,48 @@ function _isValidateFunc() {
     return 1
 }
 
+function _upsert() {
+	local __doc__="Modify the given file with given parameter name and value."
+	local _file_path="$1"
+	local _param_name="$2"
+	local _param_val="$3"
+	local _if_not_exist_append_after="$4"    # This needs to be a line, not search keyword
+	local _between_char="${5-=}"
+	local _comment_char="${6-#}"
+	local _param_name_sed=`_escape_sed ${_param_name}`
+
+	[ ! -f "${_file_path}" ] && return 11
+	# Make a backup
+	local _file_name="`basename "${_file_path}"`"
+	[ ! -f "/tmp/${_file_name}.orig" ] && cp -p "${_file_path}" "/tmp/${_file_name}.orig"
+
+	# If name=value is already set, all good
+	grep -qP "^\s*${_param_name}\s*${_between_char}\s*${_param_val}\b" "${_file_path}" && return 0
+
+	# If name= is already set, replace all with /g
+	if grep -qP "^\s*${_param_name}\s*${_between_char}" "${_file_path}"; then
+	    sed -i -r "s/^([[:space:]]*${_param_name_sed})([[:space:]]*${_between_char}[[:space:]]*)[^${_comment_char} ]*(.*)$/\1\2${_param_val}\3/g" "${_file_path}"
+	    return $?
+	fi
+
+	# If name= is not set and no _if_not_exist_append_after, just append in the end of line (TODO: it might add extra newline)
+	if [ -z "${_if_not_exist_append_after}" ]; then
+	    echo -e "\n${_param_name}${_between_char}${_param_val}" >> ${_file_path}
+	    return $?
+	fi
+
+	# If name= is not set and _if_not_exist_append_after is set, inserting
+	if [ -n "${_if_not_exist_append_after}" ]; then
+    	local _if_not_exist_append_after_sed=`_escape_sed ${_if_not_exist_append_after}`
+	    sed -i -r "0,/^(${_if_not_exist_append_after_sed}.*)$/s//\1\n${_param_name}${_between_char}${_param_val}/" ${_file_path}
+	    return $?
+	fi
+}
+function _escape_sed() {
+	local _str="$1"
+    echo "$_str" | sed 's/[][\.^$*\/"&]/\\&/g'
+}
+
 function _log() {
     # At this moment, outputting to STDOUT
     local _log_file_path="$3"
