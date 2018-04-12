@@ -680,6 +680,58 @@ function f_ldap_ranger() {
     f_echo_restart_command "$_ambari_host"
 }
 
+function f_ldap_zeppelin() {
+    local __doc__="TODO: Setup Zeppelin with LDAP (or AD)"
+    #f_ldap_zeppelin "ldap://winad.hdp.localdomain" "HDP.LOCALDOMAIN" "dc=hdp,dc=localdomain" "ldap@hdp.localdomain" '******' 'AD' 'sandbox-hdp.hortonworks.com'
+    local _ldap_url="${1}"
+    local _basedn="${2}"
+    local _ad_or_ldap="${3}"
+    local _ambari_host="${4-$r_AMBARI_HOST}"
+    [ -z "${_ambari_host}" ] && return 1
+
+    # ./configs.py -a get -l localhost -n Sandbox -u admin -p admin -c zeppelin-shiro-ini -k shiro_ini_content
+    f_ambari_configs "zeppelin-shiro-ini" "" "$_ambari_host" || return $?
+    if [ ! -s /tmp/zeppelin-shiro-ini_${__PID}.json ]; then
+        _error "Couldn't get zeppelin-shiro-ini from ${_ambari_host}"
+        return 1
+    fi
+
+    python -c "import json
+a=json.load(open('/tmp/zeppelin-shiro-ini_${__PID}.json', 'r'))
+print a['properties']['shiro_ini_content']" > /tmp/zeppelin-shiro-ini_${__PID}.ini || return $?
+
+    # upserting in opposite order as it will be inserted after [main] if not exist
+    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "shiro.loginUrl" "/api/login" "[main]"
+    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "securityManager.sessionManager.globalSessionTimeout" "86400000" "[main]"
+    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "securityManager.sessionManager" "\$sessionManager" "[main]"
+    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "securityManager.cacheManager" "\$cacheManager" "[main]"
+    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "cacheManager" "org.apache.shiro.cache.MemoryConstrainedCacheManager" "[main]"
+    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "sessionManager" "org.apache.shiro.web.session.mgt.DefaultWebSessionManager" "[main]"
+    if [ "${_ad_or_ldap^^}" = "AD" ]; then
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "activeDirectoryRealm.searchBase" "${_basedn}" "[main]"
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "activeDirectoryRealm.url" "${_ldap_url}" "[main]"
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "activeDirectoryRealm" "org.apache.zeppelin.realm.ActiveDirectoryGroupRealm" "[main]"
+    else
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.contextFactory.authenticationMechanism" "simple" "[main]"
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.contextFactory.url" "${_ldap_url}" "[main]"
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.userDnTemplate" "uid={0},${_basedn}" "[main]"
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.contextFactory.environment[ldap.searchBase]" "${_basedn}" "[main]"
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm" "org.apache.zeppelin.realm.LdapRealm" "[main]"
+    fi
+
+    if [ ! -s ./configs.py ]; then
+        curl -s -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/configs.py || return $?
+    fi
+    local _c="`f_get_cluster_name $_ambari_host`" || return $?
+
+    #sed '{:q;N;s/\n/\\n/g;t q}' /tmp/zeppelin-shiro-ini_${__PID}.ini
+    python ./configs.py -u "${g_admin}" -p "${g_admin_pwd}" -l ${_ambari_host} -t 8080 -a set -n ${_c} -c "zeppelin-shiro-ini" -k "shiro_ini_content" -v "`cat /tmp/zeppelin-shiro-ini_${__PID}.ini`" /tmp/zeppelin-shiro-ini_${__PID}.ini || return $?
+    python ./configs.py -u "${g_admin}" -p "${g_admin_pwd}" -l ${_ambari_host} -t 8080 -a set -n ${_c} -c "zeppelin-config" -k "zeppelin.anonymous.allowed" -v "false" /tmp/zeppelin-shiro-ini_${__PID}.ini || return $?
+    rm -f ./doSet_version*.json
+
+    f_echo_restart_command "$_ambari_host"
+}
+
 function f_kerberos_crossrealm_setup() {
     local __doc__="TODO: Setup cross realm (MIT only). Requires Password-less SSH login"
     local _remote_kdc="$1"
@@ -1168,7 +1220,7 @@ function f_ambari_configs_py_password() {
 }
 
 function f_ambari_configs() {
-    local __doc__="Wrapper function to update *multiple* configs with configs.py"
+    local __doc__="Wrapper function to get and update *multiple* configs with configs.py"
     local _type="$1"
     local _dict="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
@@ -1183,7 +1235,7 @@ function f_ambari_configs() {
     python ./configs.py -u "${g_admin}" -p "${g_admin_pwd}" -l ${_ambari_host} -t ${_ambari_port} -a get -n ${_c} -c ${_type} -f /tmp/${_type}_${__PID}.json || return $?
 
     if [ -z "${_dict}" ]; then
-        _info "No _dict given, so that exiting in here (just download)"
+        _info "No _dict given, so that exiting in here (just get/download)"
         return 0
     fi
 
