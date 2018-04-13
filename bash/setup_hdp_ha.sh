@@ -3,10 +3,6 @@
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_hdp_ha.sh
 #
 
-### Global variable ###################
-g_AMBARI_USER='admin'
-g_AMBARI_PASS='admin'
-
 usage() {
     echo '
     source ./setup_hdp_ha.sh
@@ -14,6 +10,10 @@ usage() {
     setup_rm_ha "http://ambari-host:8080/api/v1/clusters/YourClusterName" "first_rm_fqdn" "second_rm_fqdn"
 '
 }
+
+### Global variable ###################
+[ -z "${g_AMBARI_USER}" ] && g_AMBARI_USER='admin'
+[ -z "${g_AMBARI_PASS}" ] && g_AMBARI_PASS='admin'
 
 function setup_nn_ha() {
     local _ambari_cluster_api_url="${1}"    # eg: http://ho-ubu01:8080/api/v1/clusters/houbu01_1
@@ -120,7 +120,6 @@ function setup_rm_ha() {
     local _ambari_cluster_api_url="${1}"    # eg: http://ho-ubu01:8080/api/v1/clusters/houbu01_1
     local _first_rm="${2}"
     local _second_rm="${3}"
-    local _zookeeper_hosts="${4-$_first_rm}"
 
     local _cluster="`basename "${_ambari_cluster_api_url%/}"`"
     local _regex="^(http|https)://([^:]+):([0-9]+)/"
@@ -128,11 +127,11 @@ function setup_rm_ha() {
     local _protocol="${BASH_REMATCH[1]}"
     local _host="${BASH_REMATCH[2]}"
     local _port="${BASH_REMATCH[3]}"
-    local _zkquorum="`echo "${_zookeeper_hosts}" | sed 's/,/:2181;/g'`:2181"
 
     # Stop related services
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/services?ServiceInfo/service_name.in(YARN,MAPREDUCE2,TEZ,HIVE,HBASE,PIG,ZOOKEEPER,AMBARI_INFRA,KAFKA,KNOX,RANGER,RANGER_KMS,SLIDER)" -X PUT --data '{"RequestInfo":{"context":"Stop required services","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}'
-    _ambari_wait_comp_state "${_ambari_cluster_api_url}" "${_zk}" "ZOOKEEPER_SERVER" "INSTALLED"
+    _ambari_wait_comp_state "${_ambari_cluster_api_url}" "${_first_rm}" "RESOURCEMANAGER" "INSTALLED"
+    sleep 20
 
     # Assign RM to _second_nm
     curl -siku "${g_AMBARI_USER}":"${g_AMBARI_PASS}" -H "X-Requested-By:ambari" "${_ambari_cluster_api_url%/}/hosts" --data '{"RequestInfo":{"query":"Hosts/host_name='${_second_rm}'"},"Body":{"host_components":[{"HostRoles":{"component_name":"RESOURCEMANAGER"}}]}}'
