@@ -30,7 +30,6 @@ shopt -s nocasematch
 #shopt -s nocaseglob
 set -o posix
 #umask 0000
-alias dps='docker ps --format "{{.Image}}\t{{.Names}}\t{{.Status}}"'
 
 usage() {
     echo "HELP/USAGE:"
@@ -61,7 +60,7 @@ How to create a node(s)
     f_docker_base_create 'https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6' 'centos' '6.8'
 
     # Create one node with Ambari Server, hostname: node101.localdomain, OS ver: CentOS6.8, Network addr: 172.17.100.x
-    p_ambari_node_create 'ambari2615.ubu04.localdomain' '172.17.140.101' '7.4.1708' [/path/to/ambari.repo] [DNS_IP]
+    p_ambari_node_create 'ambari2510.localdomain:8008' '172.17.100.125' '7.4.1708' [/path/to/ambari.repo] [DNS_IP]
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS7.4, and Ambari is ambari2615.ubu04.localdomain
     export r_DOMAIN_SUFFIX='.ubu04.localdomain'
@@ -202,7 +201,7 @@ function p_interview() {
         local _jce="`ls -1t ./jce_policy-*.zip 2>/dev/null | head -n1`"
         _ask "Ambari JCE URL or path (optional)" "${_jce}" "r_AMBARI_JCE_URL"
 
-        _ask "Would you like to set up a local repo for HDP? (may take long time to downlaod)" "N" "r_HDP_LOCAL_REPO"
+        _ask "Would you like to download and set up a local repo for HDP? (may take long time)" "N" "r_HDP_LOCAL_REPO"
         if _isYes "$r_HDP_LOCAL_REPO"; then
             _ask "Local repository directory (Apache root)" "/var/www/html/hdp" "r_HDP_REPO_DIR"
             _ask "URL for HDP repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_HDP_REPO_VER}/HDP-${r_HDP_REPO_VER}-${r_CONTAINER_OS}${_repo_os_ver}-rpm.tar.gz" "r_HDP_REPO_TARGZ"
@@ -375,9 +374,9 @@ function p_nodes_start() {
 function p_hdp_start() {
     local __doc__="Start up HDP containers"
     f_loadResp
+    f_restart_services_just_in_case
 
     f_dnsmasq_banner_reset
-    f_restart_services_just_in_case
     f_docker0_setup "172.18.0.1" "24"
     f_hdp_network_setup
     f_ntp
@@ -977,7 +976,8 @@ function f_ntp() {
 
 function f_restart_services_just_in_case() {
     local __doc__="Restart some services just in case"
-    which kadmin.local &>/dev/null && service krb5-kdc restart && service krb5-admin-server restart
+    which dnsmasq &>/dev/null && service dnsmasq restart
+    which kadmin.local &>/dev/null && (service krb5-kdc restart; service krb5-admin-server restart)
 }
 
 function _docker_seq() {
@@ -1821,6 +1821,7 @@ function f_local_repo() {
     local _document_root="${2-/var/www/html}"
     local _force_extract=""
     local _download_only=""
+    #TODO: sed -i.bak 's/public-repo-1.hortonworks.com/dockerhost1.localdomain\/hdp/g' *.repo # *.xml
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
@@ -2043,6 +2044,7 @@ function f_add_comp() {
 
     curl -si -u admin:admin -H "X-Requested-By:ambari" -X POST -d '{"host_components" : [{"HostRoles":{"component_name":"'${_comp}'"}}]}' "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
     curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"HostRoles": {"state": "INSTALLED"}}' "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
+    echo ""
 }
 
 function f_service() {
@@ -2191,6 +2193,7 @@ function f_vmware_tools_install() {
 function p_host_setup() {
     local __doc__="Install packages into this host (Ubuntu)"
     _log "INFO" "Starting Host setup | logfile = " "/tmp/p_host_setup.log"
+    f_restart_services_just_in_case
 
     _log "INFO" "Starting f_ssh_setup"
     f_ssh_setup &>> /tmp/p_host_setup.log || return $?
@@ -2218,7 +2221,7 @@ function p_host_setup() {
         _log "INFO" "Starting f_host_misc"
         f_host_misc &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_dnsmasq"
-        f_dnsmasq &>> /tmp/p_host_setup.log
+        f_dnsmasq &>> /tmp/p_host_setup.log || return $?
     fi
 
     _log "INFO" "Starting f_docker0_setup"
@@ -2306,7 +2309,7 @@ function f_dnsmasq() {
     ssh -q $_dns "grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf"
     ssh -q $_dns "grep -q '^resolv-file=' /etc/dnsmasq.conf || (echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf; echo 'nameserver 8.8.8.8' > /etc/resolv.dnsmasq.conf)"
 
-    f_dnsmasq_banner_reset "$_how_many" "$_start_from"
+    f_dnsmasq_banner_reset "$_how_many" "$_start_from" || return $?
 
     if [ -d /etc/docker ] && [ ! -f /etc/docker/daemon.json ]; then
         local _docker_ip=`f_docker_ip "172.17.0.1"`
@@ -2376,7 +2379,7 @@ function f_dnsmasq_banner_reset() {
 
     # copy back and restart
     scp -q /tmp/banner_add_hosts $_dns:/etc/
-    ssh -q $_dns service dnsmasq restart
+    ssh -q $_dns "service dnsmasq reload || service dnsmasq restart"
 }
 
 function f_update_resolv_confs() {
@@ -3143,22 +3146,48 @@ function _trim() {
     local _string="$1"
     echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
 }
-function _escape_sed() {
-	local _str="$1"
-	local _escape_single_quote="$2"
 
-	if _isYes "$_escape_single_quote" ; then
-		local _str2="$(_escape_quote "$_str")"
-		echo "$_str2" | sed "s/[][\.^$*\/&|]/\\&/g"
-	else
-		echo "$_str" | sed 's/[][\.^$*\/"&|]/\\&/g'
+function _upsert() {
+	local __doc__="Modify the given file with given parameter name and value."
+	local _file_path="$1"
+	local _name="$2"
+	local _value="$3"
+	local _if_not_exist_append_after="$4"    # This needs to be a line, not search keyword
+	local _between_char="${5-=}"
+	local _comment_char="${6-#}"
+	# NOTE & TODO: Not sure why /\\\&/ works, should be /\\&/ ...
+	local _name_esc_sed=`echo "${_name}" | sed 's/[][\.^$*\/"&]/\\\&/g'`
+	local _name_esc_sed_for_val=`echo "${_name}" | sed 's/[\/]/\\\&/g'`
+	local _name_escaped=`printf %q "${_name}"`
+	local _value_esc_sed=`echo "${_value}" | sed 's/[\/]/\\\&/g'`
+	local _value_escaped=`printf %q "${_value}"`
+
+	[ ! -f "${_file_path}" ] && return 11
+	# Make a backup
+	local _file_name="`basename "${_file_path}"`"
+	[ ! -f "/tmp/${_file_name}.orig" ] && cp -p "${_file_path}" "/tmp/${_file_name}.orig"
+
+	# If name=value is already set, all good
+	grep -qP "^\s*${_name_escaped}\s*${_between_char}\s*${_value_escaped}\b" "${_file_path}" && return 0
+
+	# If name= is already set, replace all with /g
+	if grep -qP "^\s*${_name_escaped}\s*${_between_char}" "${_file_path}"; then
+	    sed -i -r "s/^([[:space:]]*${_name_esc_sed})([[:space:]]*${_between_char}[[:space:]]*)[^${_comment_char} ]*(.*)$/\1\2${_value_esc_sed}\3/g" "${_file_path}"
+	    return $?
 	fi
-}
-function _merge() {
-    local _search_regex="$1"
-    local _replace_str="$2"
-    local _path="$3"
-    grep -qE "$_search_regex" "$_path" && sed -i.bak -e "s/${_search_regex}/${_replace_str}/" "$_path" || echo "$_replace_str" >> "$_path"
+
+	# If name= is not set and no _if_not_exist_append_after, just append in the end of line (TODO: it might add extra newline)
+	if [ -z "${_if_not_exist_append_after}" ]; then
+	    echo -e "\n${_name}${_between_char}${_value}" >> ${_file_path}
+	    return $?
+	fi
+
+	# If name= is not set and _if_not_exist_append_after is set, inserting
+	if [ -n "${_if_not_exist_append_after}" ]; then
+    	local _if_not_exist_append_after_sed="`echo "${_if_not_exist_append_after}" | sed 's/[][\.^$*\/"&]/\\\&/g'`"
+	    sed -i -r "0,/^(${_if_not_exist_append_after_sed}.*)$/s//\1\n${_name_esc_sed_for_val}${_between_char}${_value_esc_sed}/" ${_file_path}
+	    return $?
+	fi
 }
 
 function _info() {
@@ -3207,49 +3236,6 @@ function _isValidateFunc() {
     fi
     return 1
 }
-
-function _upsert() {
-	local __doc__="Modify the given file with given parameter name and value."
-	local _file_path="$1"
-	local _param_name="$2"
-	local _param_val="$3"
-	local _if_not_exist_append_after="$4"    # This needs to be a line, not search keyword
-	local _between_char="${5-=}"
-	local _comment_char="${6-#}"
-	local _param_name_sed=`_escape_sed ${_param_name}`
-
-	[ ! -f "${_file_path}" ] && return 11
-	# Make a backup
-	local _file_name="`basename "${_file_path}"`"
-	[ ! -f "/tmp/${_file_name}.orig" ] && cp -p "${_file_path}" "/tmp/${_file_name}.orig"
-
-	# If name=value is already set, all good
-	grep -qP "^\s*${_param_name}\s*${_between_char}\s*${_param_val}\b" "${_file_path}" && return 0
-
-	# If name= is already set, replace all with /g
-	if grep -qP "^\s*${_param_name}\s*${_between_char}" "${_file_path}"; then
-	    sed -i -r "s/^([[:space:]]*${_param_name_sed})([[:space:]]*${_between_char}[[:space:]]*)[^${_comment_char} ]*(.*)$/\1\2${_param_val}\3/g" "${_file_path}"
-	    return $?
-	fi
-
-	# If name= is not set and no _if_not_exist_append_after, just append in the end of line (TODO: it might add extra newline)
-	if [ -z "${_if_not_exist_append_after}" ]; then
-	    echo -e "\n${_param_name}${_between_char}${_param_val}" >> ${_file_path}
-	    return $?
-	fi
-
-	# If name= is not set and _if_not_exist_append_after is set, inserting
-	if [ -n "${_if_not_exist_append_after}" ]; then
-    	local _if_not_exist_append_after_sed=`_escape_sed ${_if_not_exist_append_after}`
-	    sed -i -r "0,/^(${_if_not_exist_append_after_sed}.*)$/s//\1\n${_param_name}${_between_char}${_param_val}/" ${_file_path}
-	    return $?
-	fi
-}
-function _escape_sed() {
-	local _str="$1"
-    echo "$_str" | sed 's/[][\.^$*\/"&]/\\&/g'
-}
-
 function _log() {
     # At this moment, outputting to STDOUT
     local _log_file_path="$3"

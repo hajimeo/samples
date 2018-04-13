@@ -3253,26 +3253,53 @@ function _split() {
     eval "IFS=\"$_delimiter\" read -a $_rtn_var_name <<< \"$_string\""
     IFS="$_original_IFS"
 }
+
 function _trim() {
     local _string="$1"
     echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
 }
-function _escape_sed() {
-	local _str="$1"
-	local _escape_single_quote="$2"
 
-	if _isYes "$_escape_single_quote" ; then
-		local _str2="$(_escape_quote "$_str")"
-		echo "$_str2" | sed "s/[][\.^$*\/&|]/\\&/g"
-	else
-		echo "$_str" | sed 's/[][\.^$*\/"&|]/\\&/g'
+function _upsert() {
+	local __doc__="Modify the given file with given parameter name and value."
+	local _file_path="$1"
+	local _name="$2"
+	local _value="$3"
+	local _if_not_exist_append_after="$4"    # This needs to be a line, not search keyword
+	local _between_char="${5-=}"
+	local _comment_char="${6-#}"
+	# NOTE & TODO: Not sure why /\\\&/ works, should be /\\&/ ...
+	local _name_esc_sed=`echo "${_name}" | sed 's/[][\.^$*\/"&]/\\\&/g'`
+	local _name_esc_sed_for_val=`echo "${_name}" | sed 's/[\/]/\\\&/g'`
+	local _name_escaped=`printf %q "${_name}"`
+	local _value_esc_sed=`echo "${_value}" | sed 's/[\/]/\\\&/g'`
+	local _value_escaped=`printf %q "${_value}"`
+
+	[ ! -f "${_file_path}" ] && return 11
+	# Make a backup
+	local _file_name="`basename "${_file_path}"`"
+	[ ! -f "/tmp/${_file_name}.orig" ] && cp -p "${_file_path}" "/tmp/${_file_name}.orig"
+
+	# If name=value is already set, all good
+	grep -qP "^\s*${_name_escaped}\s*${_between_char}\s*${_value_escaped}\b" "${_file_path}" && return 0
+
+	# If name= is already set, replace all with /g
+	if grep -qP "^\s*${_name_escaped}\s*${_between_char}" "${_file_path}"; then
+	    sed -i -r "s/^([[:space:]]*${_name_esc_sed})([[:space:]]*${_between_char}[[:space:]]*)[^${_comment_char} ]*(.*)$/\1\2${_value_esc_sed}\3/g" "${_file_path}"
+	    return $?
 	fi
-}
-function _merge() {
-    local _search_regex="$1"
-    local _replace_str="$2"
-    local _path="$3"
-    grep -qE "$_search_regex" "$_path" && sed -i.bak -e "s/${_search_regex}/${_replace_str}/" "$_path" || echo "$_replace_str" >> "$_path"
+
+	# If name= is not set and no _if_not_exist_append_after, just append in the end of line (TODO: it might add extra newline)
+	if [ -z "${_if_not_exist_append_after}" ]; then
+	    echo -e "\n${_name}${_between_char}${_value}" >> ${_file_path}
+	    return $?
+	fi
+
+	# If name= is not set and _if_not_exist_append_after is set, inserting
+	if [ -n "${_if_not_exist_append_after}" ]; then
+    	local _if_not_exist_append_after_sed="`echo "${_if_not_exist_append_after}" | sed 's/[][\.^$*\/"&]/\\\&/g'`"
+	    sed -i -r "0,/^(${_if_not_exist_append_after_sed}.*)$/s//\1\n${_name_esc_sed_for_val}${_between_char}${_value_esc_sed}/" ${_file_path}
+	    return $?
+	fi
 }
 
 function _info() {
@@ -3321,49 +3348,6 @@ function _isValidateFunc() {
     fi
     return 1
 }
-
-function _upsert() {
-	local __doc__="Modify the given file with given parameter name and value."
-	local _file_path="$1"
-	local _param_name="$2"
-	local _param_val="$3"
-	local _if_not_exist_append_after="$4"    # This needs to be a line, not search keyword
-	local _between_char="${5-=}"
-	local _comment_char="${6-#}"
-	local _param_name_sed=`_escape_sed ${_param_name}`
-
-	[ ! -f "${_file_path}" ] && return 11
-	# Make a backup
-	local _file_name="`basename "${_file_path}"`"
-	[ ! -f "/tmp/${_file_name}.orig" ] && cp -p "${_file_path}" "/tmp/${_file_name}.orig"
-
-	# If name=value is already set, all good
-	grep -qP "^\s*${_param_name}\s*${_between_char}\s*${_param_val}\b" "${_file_path}" && return 0
-
-	# If name= is already set, replace all with /g
-	if grep -qP "^\s*${_param_name}\s*${_between_char}" "${_file_path}"; then
-	    sed -i -r "s/^([[:space:]]*${_param_name_sed})([[:space:]]*${_between_char}[[:space:]]*)[^${_comment_char} ]*(.*)$/\1\2${_param_val}\3/g" "${_file_path}"
-	    return $?
-	fi
-
-	# If name= is not set and no _if_not_exist_append_after, just append in the end of line (TODO: it might add extra newline)
-	if [ -z "${_if_not_exist_append_after}" ]; then
-	    echo -e "\n${_param_name}${_between_char}${_param_val}" >> ${_file_path}
-	    return $?
-	fi
-
-	# If name= is not set and _if_not_exist_append_after is set, inserting
-	if [ -n "${_if_not_exist_append_after}" ]; then
-    	local _if_not_exist_append_after_sed=`_escape_sed ${_if_not_exist_append_after}`
-	    sed -i -r "0,/^(${_if_not_exist_append_after_sed}.*)$/s//\1\n${_param_name}${_between_char}${_param_val}/" ${_file_path}
-	    return $?
-	fi
-}
-function _escape_sed() {
-	local _str="$1"
-    echo "$_str" | sed 's/[][\.^$*\/"&]/\\&/g'
-}
-
 function _log() {
     # At this moment, outputting to STDOUT
     local _log_file_path="$3"
@@ -3377,7 +3361,6 @@ function _log() {
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" 1>&2
     fi
 }
-
 function _echo() {
     local _msg="$1"
     local _stderr="$2"
