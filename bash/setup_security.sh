@@ -681,10 +681,10 @@ function f_ldap_ranger() {
 }
 
 function f_ldap_zeppelin() {
-    local __doc__="TODO: Setup Zeppelin with LDAP (or AD)"
-    #f_ldap_zeppelin "ldap://winad.hdp.localdomain" "HDP.LOCALDOMAIN" "dc=hdp,dc=localdomain" "ldap@hdp.localdomain" '******' 'AD' 'sandbox-hdp.hortonworks.com'
-    local _ldap_url="${1}"
-    local _basedn="${2}"
+    local __doc__="TODO: Setup Zeppelin with (Knox Demo) LDAP or AD"
+    # Ref: https://zeppelin.apache.org/docs/0.7.3/security/shiroauthentication.html#configure-realm-optional
+    local _ldap_url="${1}"      # ldap://sandbox-hdp.hortonworks.com:33389
+    local _search_base="${2}"   # ou=people,dc=hadoop,dc=apache,dc=org
     local _ad_or_ldap="${3}"
     local _ambari_host="${4-$r_AMBARI_HOST}"
     [ -z "${_ambari_host}" ] && return 1
@@ -701,23 +701,26 @@ a=json.load(open('/tmp/zeppelin-shiro-ini_${__PID}.json', 'r'))
 print a['properties']['shiro_ini_content']" > /tmp/zeppelin-shiro-ini_${__PID}.ini || return $?
 
     # upserting in opposite order as it will be inserted after [main] if not exist
-    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "shiro.loginUrl" "/api/login" "[main]"
-    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "securityManager.sessionManager.globalSessionTimeout" "86400000" "[main]"
-    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "securityManager.sessionManager" "\$sessionManager" "[main]"
-    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "securityManager.cacheManager" "\$cacheManager" "[main]"
-    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "cacheManager" "org.apache.shiro.cache.MemoryConstrainedCacheManager" "[main]"
-    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "sessionManager" "org.apache.shiro.web.session.mgt.DefaultWebSessionManager" "[main]"
+    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "shiro.loginUrl" "/api/login" "[main]" || return $?
+    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "securityManager.sessionManager.globalSessionTimeout" "86400000" "[main]" || return $?
+    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "securityManager.sessionManager" "\$sessionManager" "[main]" || return $?
+    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "securityManager.cacheManager" "\$cacheManager" "[main]" || return $?
+    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "cacheManager" "org.apache.shiro.cache.MemoryConstrainedCacheManager" "[main]" || return $?
+    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "sessionManager" "org.apache.shiro.web.session.mgt.DefaultWebSessionManager" "[main]" || return $?
     if [ "${_ad_or_ldap^^}" = "AD" ]; then
-        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "activeDirectoryRealm.searchBase" "${_basedn}" "[main]"
-        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "activeDirectoryRealm.url" "${_ldap_url}" "[main]"
-        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "activeDirectoryRealm" "org.apache.zeppelin.realm.ActiveDirectoryGroupRealm" "[main]"
+        # TODO: need to test AD
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "activeDirectoryRealm.searchBase" "${_search_base}" "[main]" || return $?
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "activeDirectoryRealm.url" "${_ldap_url}" "[main]" || return $?
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "activeDirectoryRealm" "org.apache.zeppelin.realm.ActiveDirectoryGroupRealm" "[main]" || return $?
     else
-        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.contextFactory.authenticationMechanism" "simple" "[main]"
-        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.contextFactory.url" "${_ldap_url}" "[main]"
-        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.userDnTemplate" "uid={0},${_basedn}" "[main]"
-        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.contextFactory.environment[ldap.searchBase]" "${_basedn}" "[main]"
-        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm" "org.apache.zeppelin.realm.LdapRealm" "[main]"
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.contextFactory.authenticationMechanism" "simple" "[main]" || return $?
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.contextFactory.url" "${_ldap_url}" "[main]" || return $?
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.userDnTemplate" "uid={0},${_search_base}" "[main]" || return $?
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.contextFactory.environment[ldap.searchBase]" "${_search_base}" "[main]" || return $?
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm" "org.apache.zeppelin.realm.LdapGroupRealm" "[main]" || return $?
+        #_upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm" "org.apache.shiro.realm.ldap.JndiLdapRealm" "[main]" # for older version (2.5)
     fi
+    _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "/**" "authc" "[urls]" || return $?
 
     if [ ! -s ./configs.py ]; then
         curl -s -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/configs.py || return $?
