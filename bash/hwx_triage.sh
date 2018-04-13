@@ -10,7 +10,10 @@
 # Each function should work individually
 #
 
-# GLOBAL variables
+### Global variable ###################
+[ -z "${g_AMBARI_USER}" ] && g_AMBARI_USER='admin'
+[ -z "${g_AMBARI_PASS}" ] && g_AMBARI_PASS='admin'
+
 _WORK_DIR="./hwx_triage"
 _PID=""
 _LOG_DIR=""
@@ -183,40 +186,33 @@ function f_collect_host_info_from_ambari() {
     local __doc__="Access to Ambari API to get the host (and component) information"
     local _node="${1}"              # node name = hostname
     local _comp="${2}"              # host_component eg: DATANODE, HBASE_REGIONSERVER
-    local _date_start_string="$3"   # eg & default: "4 hours ago"
-    local _date_end_string="$4"     # eg & default: "now"
-    local _admin="${5-admin}"       # Ambari Admin username
-    local _admin_pass="${6-admin}"  # If no password (""), each curl command will ask you to type
-    local _protocol="${7-http}"     # if https, change to https
-    local _ambari_port="${8-8080}"  # if no default port
-    local _work_dir="${9-$_WORK_DIR}"
-    local _fields="$_AMBARI_API_FIELDS"
+    local _fields="${3}"            # metric field filter eg: "metrics/cpu/cpu_idle._sum,metrics/cpu/cpu_idle._avg"
+    local _date_start_string="$4"   # default: "1 hour ago"
+    local _date_end_string="$5"     # default: "now"
+    local _ambari_url="$6"          # http://hostname:8080/
+    local _work_dir="$_WORK_DIR"
+    local _admin="${g_AMBARI_USER-admin}"
+    local _pass="${g_AMBARI_PASS}"
 
     local _cmd_opts="-s -k -u ${_admin}"
-    [ -z "${_admin_pass}" ] || _cmd_opts="${_cmd_opts}:${_admin_pass}"
+    [ -z "${_pass}" ] && read -p "Enter password for user '${_admin}': " -s "_pass"
+    echo ""
+    [ -n "${_pass}" ] && _cmd_opts="${_cmd_opts}:${_pass}"
     [ -z "$_node" ] && _node="`hostname -f`"
-    [ -z "$_date_start_string" ] && _date_start_string="4 hours ago"
+    [ -z "$_date_start_string" ] && _date_start_string="1 hour ago"
     [ -z "$_date_end_string" ] && _date_end_string="now"
-    [ -z "$_protocol" ] && _protocol="http"
-    [ -z "$_ambari_port" ] && _ambari_port="8080"
     [ -z "$_work_dir" ] && _work_dir="."
+    [ -z "${_ambari_url}" ] && _ambari_url="http://`hostname -f`:8080/"
     echo "INFO" "Collecting ${_node} information from Ambari..." >&2
 
-    local _ambari="`sed -nr 's/^hostname ?= ?([^ ]+)/\1/p' /etc/ambari-agent/conf/ambari-agent.ini`"
-    if [ -z "$_ambari" ]; then
-        echo "ERROR" "No ambar server hostname in ambari-agent.ini" >&2
-        return 1
-    fi
-
     # generating base url from href entry from clusters API response
-    local _href="`curl ${_cmd_opts} ${_protocol}://${_ambari}:${_ambari_port}/api/v1/clusters/ | grep -oE 'http://.+/clusters/[^"/]+'`"
+    local _href="`curl ${_cmd_opts} ${_ambari_url%/}/api/v1/clusters/ | grep -oE 'http://.+/clusters/[^"/]+'`"
     if [ -z "$_href" ]; then
-        echo "ERROR" "No href from ${_protocol}://${_ambari}:${_ambari_port}/api/v1/clusters/" >&2
+        echo "ERROR" "No href from ${_ambari_url%/}/api/v1/clusters/" >&2
         return 2
     fi
 
     # Looks like Ambari 2.5.x doesn't care the case (lower or upper or mix) for hostname
-    curl ${_cmd_opts} "${_href}/hosts/${_node}" -o ${_work_dir%/}/ambari_${_node}.json || return $?
     if [ -z "${_fields}" ]; then
         curl ${_cmd_opts} "${_href}/hosts/${_node}" -o ${_work_dir%/}/ambari_${_node}.json || return $?
     else
@@ -240,49 +236,41 @@ print ','.join(r)"
 
     echo "INFO" "Collecting ${_node} metric from Ambari..." >&2
     local _fields_with_time="`cat ${_work_dir%/}/ambari_${_node}.json | python -c "${_script}"`"
-    [ -z "${_fields_with_time}" ] || curl ${_cmd_opts} "${_href}/hosts/${_node}" -G --data-urlencode "fields=${_fields_with_time}" -o ${_work_dir%/}/ambari_${_node}_metrics.json
+    [ -n "${_fields_with_time}" ] && curl ${_cmd_opts} "${_href}/hosts/${_node}" -G --data-urlencode "fields=${_fields_with_time}" -o ${_work_dir%/}/ambari_${_node}_metrics.json
 
     if [ ! -z "$_comp" ]; then
         echo "INFO" "Collecting ${_node} ${_comp} metric from Ambari..." >&2
-        curl ${_cmd_opts} "${_href}/hosts/${_node}/host_components/${_comp^^}" -o ${_work_dir%/}/ambari_${_node}_${_comp}.json
-        _fields_with_time="`cat ${_work_dir%/}/ambari_${_node}_${_comp}.json | python -c "${_script}"`"
-        [ -z "${_fields_with_time}" ] || curl ${_cmd_opts} "${_href}/hosts/${_node}/host_components/${_comp^^}" -G --data-urlencode "fields=${_fields_with_time}" -o ${_work_dir%/}/ambari_${_node}_${_comp}_metrics.json
+        curl ${_cmd_opts} "${_href}/hosts/${_node}/host_components/${_comp^^}" -G --data-urlencode "fields=${_fields_with_time}" -o ${_work_dir%/}/ambari_${_node}_${_comp}_metrics.json
     fi
 }
 
-function f_collect_metrics_from_ambari() {
+function f_collect_comp_metrics_from_ambari() {
     local __doc__="Access to Ambari API to get particular metrics (so far no node level metrics)"
     local _serv="${1}"             # service eg: YARN, HDFS
     local _comp="${2}"             # eg: DATANODE, HBASE_REGIONSERVER
     local _fields="${3}"           # eg: "metrics/cpu/cpu_idle._sum,metrics/cpu/cpu_idle._avg"
-    local _date_start_string="$4"  # eg & default: "4 hours ago"
-    local _date_end_string="$5"    # eg & default: "now"
-    local _admin="${6-admin}"      # Ambari Admin username
-    local _admin_pass="${7-admin}" # If no password (""), each curl command will ask you to type
-    local _protocol="${8-http}"    # if https, change to https
-    local _ambari_port="${9-8080}" # if no default port
-    local _work_dir="$_WORK_DIR"   # TODO: bash can't use 10
+    local _date_start_string="$4"  # default: "1 hour ago"
+    local _date_end_string="$5"    # default: "now"
+    local _ambari_url="$6"         # http://hostname:8080/
+    local _work_dir="$_WORK_DIR"
+    local _admin="${g_AMBARI_USER-admin}"
+    local _pass="${g_AMBARI_PASS}"
 
     local _cmd_opts="-s -k -u ${_admin}"
-    [ -z "${_admin_pass}" ] || _cmd_opts="${_cmd_opts}:${_admin_pass}"
-    [ -z "$_date_start_string" ] && _date_start_string="4 hours ago"
+    [ -z "${_pass}" ] && read -p "Enter password for user '${_admin}': " -s "_pass"
+    echo ""
+    [ -n "${_pass}" ] && _cmd_opts="${_cmd_opts}:${_pass}"
+    [ -z "$_date_start_string" ] && _date_start_string="1 hour ago"
     [ -z "$_date_end_string" ] && _date_end_string="now"
-    [ -z "$_protocol" ] && _protocol="http"
-    [ -z "$_ambari_port" ] && _ambari_port="8080"
     [ -z "$_work_dir" ] && _work_dir="."
+    [ -z "${_ambari_url}" ] && _ambari_url="http://`hostname -f`:8080/"
 
     [ -z "${_serv}" ] && return 1
     [ -z "${_comp}" ] && return 1
 
-    local _ambari="`sed -nr 's/^hostname ?= ?([^ ]+)/\1/p' /etc/ambari-agent/conf/ambari-agent.ini 2>/dev/null`"
-    if [ -z "$_ambari" ]; then
-        echo "INFO" "No ambari server hostname in ambari-agent.ini, so that using " >&2
-        _ambari="`hostname -f`"
-    fi
-
-    local _href="`curl ${_cmd_opts} ${_protocol}://${_ambari}:${_ambari_port}/api/v1/clusters/ | grep -oE 'http://.+/clusters/[^"/]+'`"
+    local _href="`curl ${_cmd_opts} ${_ambari_url%/}/api/v1/clusters/ | grep -oE 'http://.+/clusters/[^"/]+'`"
     if [ -z "$_href" ]; then
-        echo "ERROR" "No href from ${_protocol}://${_ambari}:${_ambari_port}/api/v1/clusters/" >&2
+        echo "ERROR" "No href from ${_ambari_url%/}/api/v1/clusters/" >&2
         return 2
     fi
 
@@ -290,11 +278,13 @@ function f_collect_metrics_from_ambari() {
     which python >/dev/null || return $?
 
     local _tmp_fields=$(echo "${_fields}" | sed -e 's/[^A-Za-z0-9._-]//g')
-    if [ ! -s "${_work_dir%/}/ambari_${_comp}_${_tmp_fields}.json" ]; then
+    # For speed up, if file exists, reuse it
+    if [ ! -s "/tmp/ambari_${_comp}_${_tmp_fields}.json" ]; then
         if [ -z "${_fields}" ]; then
-            curl ${_cmd_opts} "${_href}/services/${_serv}/components/${_comp}" -o ${_work_dir%/}/ambari_${_comp}_${_tmp_fields}.json || return $?
+            _tmp_fields="all-fields"
+            curl ${_cmd_opts} "${_href}/services/${_serv^^}/components/${_comp^^}" -o /tmp/ambari_${_comp}_${_tmp_fields}.json || return $?
         else
-            curl ${_cmd_opts} "${_href}/services/${_serv}/components/${_comp}?fields=${_fields}" -o ${_work_dir%/}/ambari_${_comp}_${_tmp_fields}.json || return $?
+            curl ${_cmd_opts} "${_href}/services/${_serv^^}/components/${_comp^^}" -G --data-urlencode "fields=${_fields}" -o /tmp/ambari_${_comp}_${_tmp_fields}.json || return $?
         fi
     fi
 
@@ -310,27 +300,28 @@ for k,v in a['metrics'].iteritems():
       r+=['metrics/%s/%s["${_S}","${_E}","${_s}"]' % (k, k2)]
 print ','.join(r)"
 
-    echo "INFO" "Collecting ${_serv} / ${_comp} metric from Ambari..." >&2
-    local _fields="`cat ${_work_dir%/}/ambari_${_comp}_${_tmp_fields}.json | python -c "${_script}"`"
+    _fields="`cat /tmp/ambari_${_comp}_${_tmp_fields}.json | python -c "${_script}"`"
     if [ -z "$_fields" ]; then
-        echo "WARN" "Couldn't determine fields. Please check ambari_${_comp}.json if exists." >&2
-    else
-        curl ${_cmd_opts} "${_href}/services/${_serv}/components/${_comp}" -G --data-urlencode "fields=${_fields}" -o ${_work_dir%/}/ambari_${_comp}_metrics.json
+        echo "WARN" "Couldn't determine fields. Please check /tmp/ambari_${_comp}_${_tmp_fields}.json if exists." >&2
+        return 11
     fi
+
+    echo "INFO" "Collecting ${_serv} / ${_comp} metric from Ambari..." >&2
+    curl ${_cmd_opts} "${_href}/services/${_serv^^}/components/${_comp^^}" -G --data-urlencode "fields=${_fields}" -o ${_work_dir%/}/ambari_${_comp}_metrics.json
 }
 
-function f_collect_metrics_from_AMS() {
+function f_collect_comp_metrics_from_AMS() {
     local __doc__="Access to AMS API to get particular metrics (so far no node level metrics)"
     local _comp="${1}"              # component eg: DATANODE, HBASE_REGIONSERVER
     local _metric_names="${2}"      # eg: "cpu_system._sum,cpu_user._sum,cpu_nice._sum,cpu_wio._sum,cpu_idle._sum,cpu_idle._avg"
     local _precision="${3}"         # eg: DAYS, HOURS, MINUTES or SECONDS
-    local _date_start_string="$4"   # eg & default: "4 hours ago"
+    local _date_start_string="$4"   # eg & default: "1 hour ago"
     local _date_end_string="$5"     # eg & default: "now"
     local _ams_url="$6"             # eg & default: http://`hostname -f`:6188 (running from AMS node)
     local _work_dir="${7-$_WORK_DIR}"
 
     local _cmd_opts="-s -k"
-    [ -z "$_date_start_string" ] && _date_start_string="4 hours ago"
+    [ -z "$_date_start_string" ] && _date_start_string="1 hour ago"
     [ -z "$_date_end_string" ] && _date_end_string="now"
     [ -z "$_work_dir" ] && _work_dir="."
     [ -z "${_comp}" ] && return 1
