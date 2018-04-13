@@ -313,12 +313,12 @@ print ','.join(r)"
 function f_collect_comp_metrics_from_AMS() {
     local __doc__="Access to AMS API to get particular metrics (so far no node level metrics)"
     local _comp="${1}"              # component eg: DATANODE, HBASE_REGIONSERVER
-    local _metric_names="${2}"      # eg: "cpu_system._sum,cpu_user._sum,cpu_nice._sum,cpu_wio._sum,cpu_idle._sum,cpu_idle._avg"
+    local _metric_names="${2}"      # eg: "cpu%"
     local _precision="${3}"         # eg: DAYS, HOURS, MINUTES or SECONDS
     local _date_start_string="$4"   # eg & default: "1 hour ago"
     local _date_end_string="$5"     # eg & default: "now"
     local _ams_url="$6"             # eg & default: http://`hostname -f`:6188 (running from AMS node)
-    local _work_dir="${7-$_WORK_DIR}"
+    local _work_dir="$_WORK_DIR"
 
     local _cmd_opts="-s -k"
     [ -z "$_date_start_string" ] && _date_start_string="1 hour ago"
@@ -334,10 +334,13 @@ function f_collect_comp_metrics_from_AMS() {
 
     echo "INFO" "Collecting ${_comp^^} metric from AMS (${_ams_url}) ..." >&2
     if [ -z "$_metric_names" ]; then
-        echo "WARN" "Couldn't determine fields. Please check ambari_${_comp}.json if exists." >&2
-    else
-        curl ${_cmd_opts} "${_base_url}" -G --data-urlencode "metricNames=${_metric_names}" --data-urlencode "appId=${_comp^^}" --data-urlencode "startTime=${_S}" --data-urlencode "endTime=${_E}" --data-urlencode "precision=${_precision}" -o ${_work_dir%/}/ams_${_comp}_metrics.json
+        echo "ERROR" "No metric names (eg: cpu%)" >&2
+        return 11
     fi
+
+    curl ${_cmd_opts} "${_base_url}" -G --data-urlencode "metricNames=${_metric_names}" --data-urlencode "appId=${_comp^^}" --data-urlencode "startTime=${_S}" --data-urlencode "endTime=${_E}" --data-urlencode "precision=${_precision}" -o ${_work_dir%/}/ams_${_comp}_metrics.json || return $?
+    cat ${_work_dir%/}/ams_${_comp}_metrics.json | python -m json.tool > /tmp/ams_${_comp}_metrics.json || return $?
+    mv -f /tmp/ams_${_comp}_metrics.json ${_work_dir%/}/ams_${_comp}_metrics.json
 }
 
 #function f_test_network() {
