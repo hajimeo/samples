@@ -90,6 +90,7 @@ function f_check_system() {
 
     sysctl -a &> ${_work_dir%/}/sysctl.out
     sar -A &> ${_work_dir%/}/sar_A.out
+    env &> ${_work_dir%/}/env.out  # to check PATH, LD_LIBRARY_PATH, JAVA_HOME, CLASSPATH
     wait
 }
 
@@ -314,7 +315,7 @@ function f_collect_comp_metrics_from_AMS() {
     local __doc__="Access to AMS API to get particular metrics (so far no node level metrics)"
     local _comp="${1}"              # component eg: DATANODE, HBASE_REGIONSERVER
     local _metric_names="${2}"      # eg: "cpu%"
-    local _precision="${3}"         # eg: DAYS, HOURS, MINUTES or SECONDS
+    local _extra="${3}"             # eg: "precision=MINUTES&hostname=%"
     local _date_start_string="$4"   # eg & default: "1 hour ago"
     local _date_end_string="$5"     # eg & default: "now"
     local _ams_url="$6"             # eg & default: http://`hostname -f`:6188 (running from AMS node)
@@ -338,7 +339,8 @@ function f_collect_comp_metrics_from_AMS() {
         return 11
     fi
 
-    curl ${_cmd_opts} "${_base_url}" -G --data-urlencode "metricNames=${_metric_names}" --data-urlencode "appId=${_comp^^}" --data-urlencode "startTime=${_S}" --data-urlencode "endTime=${_E}" --data-urlencode "precision=${_precision}" -o ${_work_dir%/}/ams_${_comp}_metrics.json || return $?
+    [ -n "${_extra}" ] && _base_url="${_base_url}?${_extra}"
+    curl ${_cmd_opts} "${_base_url}" -G --data-urlencode "metricNames=${_metric_names}" --data-urlencode "appId=${_comp^^}" --data-urlencode "startTime=${_S}" --data-urlencode "endTime=${_E}" -o ${_work_dir%/}/ams_${_comp}_metrics.json || return $?
     cat ${_work_dir%/}/ams_${_comp}_metrics.json | python -m json.tool > /tmp/ams_${_comp}_metrics.json || return $?
     mv -f /tmp/ams_${_comp}_metrics.json ${_work_dir%/}/ams_${_comp}_metrics.json
 }
