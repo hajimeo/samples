@@ -369,16 +369,10 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     echo "INFO: Waiting for docker daemon to start up:"
     until docker ps 2>&1| grep -q STATUS; do  sleep 1; done;  >/dev/null
 
-    # Stop all containers (including $_NAME if it's already running)
-    #docker stop $(docker ps -q)
-
-    _STACK="HDP"
-    [[ "${_NAME}" =~ ^"sandbox-hdf" ]] && _STACK="HDF"
-
     if ${_STOP_SANDBOX_CONTAINERS}; then
         if docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$"; then    # | grep -qiE "^sandbox"
             echo "INFO: Stopping other container(s)"
-            docker stop `docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$" | grep -iE "^sandbox"`
+            docker stop `docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$"`
         fi
     fi
 
@@ -643,10 +637,10 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     if ${_NEW_CONTAINER}; then
         echo "INFO: Starting minimum services after 5 seconds:..."
         sleep 5
-        if [ "$_STACK" = "HDP" ]; then
-            f_service "ZEPPELIN SPARK SPARK2 STORM FALCON OOZIE FLUME ATLAS HBASE KAFKA" "STOP" "${_HOSTNAME}"
-        else
+        if [[ "${_NAME}" =~ "-hdf" ]]; then
             f_service "STORM KAFKA LOGSEARCH" "STOP" "${_HOSTNAME}"
+        else
+            f_service "ZEPPELIN SPARK SPARK2 STORM FALCON OOZIE FLUME ATLAS HBASE KAFKA" "STOP" "${_HOSTNAME}"
         fi
     fi
     f_ambari_start_all
