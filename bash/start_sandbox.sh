@@ -278,28 +278,36 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     #_NAME="sandbox-hdp"
 
     # parsing command options
-    while getopts "m:n:h:i:sl" opts; do
+    while getopts "m:n:h:i:slu" opts; do
         case $opts in
-            m)
-                _IMAGE="$OPTARG"
-                ;;
-            n)
-                _NAME="$OPTARG"
-                ;;
             h)
                 _HOSTNAME="$OPTARG"
                 ;;
             i)
                 _IP="$OPTARG"
                 ;;
-            s)
-                _STOP_SANDBOX_CONTAINERS=true
-                ;;
             l)
                 _LIST_SANDBOX_CONTAINERS=true
                 ;;
+            m)
+                _IMAGE="$OPTARG"
+                ;;
+            n)
+                _NAME="$OPTARG"
+                ;;
+            s)
+                _STOP_SANDBOX_CONTAINERS=true
+                ;;
+            u)
+                _UPDATE_CODE=true
+                ;;
         esac
     done
+
+    if ${_UPDATE_CODE}; then
+        curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh -o "$BASH_SOURCE"
+        exit
+    fi
 
     if ${_LIST_SANDBOX_CONTAINERS}; then
         docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.RunningFor}}\t{{.Status}}\t{{.Networks}}\t{{.Mounts}}"
@@ -477,6 +485,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
             -p 8088:8088 \
             -p 8090:8090 \
             -p 8091:8091 \
+            -p 8100:8100 \
             -p 8188:8188 \
             -p 8190:8190 \
             -p 8443:8443 \
