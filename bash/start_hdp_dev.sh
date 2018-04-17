@@ -2390,7 +2390,7 @@ function p_host_setup() {
             fi
         fi
 
-        _log "INFO" "TODO: Starting f_cluster_performance"
+        _log "WARN" "TODO: (cluster wouldn't be ready but) Starting f_cluster_performance"
         f_cluster_performance &>> /tmp/p_host_setup.log || return $?
 
         f_port_forward 8080 $r_AMBARI_HOST 8080 "Y" &>> /tmp/p_host_setup.log
