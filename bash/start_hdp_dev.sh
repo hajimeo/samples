@@ -2523,8 +2523,8 @@ function f_cluster_performance() {
 #ambari-server restart --skip-database-check"
 
     # TODO: This isn't performance related but putting in here for now
-    #_info "Creating 'admin', 'sam', 'tom' (Knox LDAPDemo) users in each node and in HDFS..."
-    #for _n in admin sam tom; do f_useradd_on_nodes "$_n" "${_n}-password"; done
+    _info "Creating 'admin', 'sam', 'tom' (Knox LDAPDemo) users in each node and in HDFS..."
+    for _n in admin sam tom; do f_useradd_on_nodes "$_n" "${_n}-password"; done
 }
 
 function f_host_performance() {
@@ -2974,7 +2974,9 @@ function f_useradd_on_nodes() {
     if [ -z "$_hdfs_client_node" ]; then
         _hdfs_client_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" $r_AMBARI_HOST`"
     fi
-    ssh -q root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfs -mkdir /user/$_user && hdfs dfs -chown $_user:hadoop /user/$_user\""
+    if [ -n "$_hdfs_client_node" ]; then
+        ssh -q root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfs -mkdir /user/$_user && hdfs dfs -chown $_user:hadoop /user/$_user\""
+    fi
 
     if which kadmin.local; then
         # If no password given and if not exist, creating a keytab
