@@ -96,6 +96,7 @@ Available options:
 g_SCRIPT_NAME="start_hdp_dev.sh"
 g_SCRIPT_BASE=`basename $g_SCRIPT_NAME .sh`
 g_DEFAULT_RESPONSE_FILEPATH="./${g_SCRIPT_BASE}.resp"
+g_RESPONSE_FILEPATH=""
 g_LATEST_RESPONSE_URL="https://raw.githubusercontent.com/hajimeo/samples/master/misc/latest_hdp.resp"
 g_BACKUP_DIR="$HOME/.build_script/"
 g_DOCKER_BASE="hdp/base"
@@ -109,6 +110,7 @@ g_HDP_NETWORK="hdp"
 g_CENTOS_VERSION="6.8"
 g_AMBARI_VERSION="2.6.1.5" # TODO: need to update Ambari Version manually
 g_STACK_VERSION="2.6"
+
 
 __PID="$$"
 __LAST_ANSWER=""
@@ -237,18 +239,18 @@ function p_interview() {
 function p_interview_or_load() {
     local __doc__="Asks user to start interview, review interview, or start installing with given response file."
 
-    if _isUrl "${_RESPONSE_FILEPATH}"; then
+    if _isUrl "${g_RESPONSE_FILEPATH}"; then
         if [ -s "$g_DEFAULT_RESPONSE_FILEPATH" ]; then
-            local _new_resp_filepath="./`basename $_RESPONSE_FILEPATH`"
+            local _new_resp_filepath="./`basename $g_RESPONSE_FILEPATH`"
         else
             local _new_resp_filepath="$g_DEFAULT_RESPONSE_FILEPATH"
         fi
-        wget -nv -c -t 3 --timeout=30 --waitretry=5 "${_RESPONSE_FILEPATH}" -O ${_new_resp_filepath}
-        _RESPONSE_FILEPATH="${_new_resp_filepath}"
+        wget -nv -c -t 3 --timeout=30 --waitretry=5 "${g_RESPONSE_FILEPATH}" -O ${_new_resp_filepath}
+        g_RESPONSE_FILEPATH="${_new_resp_filepath}"
     fi
 
-    if [ -r "${_RESPONSE_FILEPATH}" ]; then
-        _info "Loading ${_RESPONSE_FILEPATH}..."
+    if [ -r "${g_RESPONSE_FILEPATH}" ]; then
+        _info "Loading ${g_RESPONSE_FILEPATH}..."
         f_loadResp
 
         # if auto setup, just load and exit
@@ -912,7 +914,7 @@ function f_ambari_blueprint_config() {
 
 function f_saveResp() {
     local __doc__="Save current responses(answers) in memory into a file."
-    local _file_path="${1-$_RESPONSE_FILEPATH}"
+    local _file_path="${1-$g_RESPONSE_FILEPATH}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     if [ -z "${_file_path}" ]; then
@@ -925,8 +927,8 @@ function f_saveResp() {
     fi
 
     if [ -z "$_file_path" ]; then
-        _ask "Response file path" "$g_DEFAULT_RESPONSE_FILEPATH" "_RESPONSE_FILEPATH"
-        _file_path="$_RESPONSE_FILEPATH"
+        _ask "Response file path" "$g_DEFAULT_RESPONSE_FILEPATH" "g_RESPONSE_FILEPATH"
+        _file_path="$g_RESPONSE_FILEPATH"
     fi
 
     if [ ! -e "${_file_path}" ]; then
@@ -958,7 +960,7 @@ function f_saveResp() {
 
 function f_loadResp() {
     local __doc__="Load responses(answers) from given file path or from default location."
-    local _file_path="${1-$_RESPONSE_FILEPATH}"
+    local _file_path="${1-$g_RESPONSE_FILEPATH}"
     local _use_default_resp="$2"
 
     if [ -z "$_file_path" ]; then
@@ -971,17 +973,16 @@ function f_loadResp() {
             _file_path=""
             _ask "Type a response file path" "$_default_file_path" "_file_path" "N" "Y"
             _info "Using $_file_path ..."
-            _RESPONSE_FILEPATH="$_file_path"
         fi
     fi
     
     if [ ! -r "${_file_path}" ]; then
         _critical "$FUNCNAME: Not a readable response file. ${_file_path}" 1;
+        g_RESPONSE_FILEPATH=""
         exit 2
     fi
-    
-    #g_response_file="$_file_path"  TODO: forgot what this line was for
-    
+    g_RESPONSE_FILEPATH="$_file_path"
+
     #local _extension="${_actual_file_path##*.}"
     #if [ "$_extension" = "7z" ]; then
     #    local _dir_path="$(dirname ${_actual_file_path})"
@@ -991,12 +992,13 @@ function f_loadResp() {
     #fi
     
     # Note: somehow "source <(...)" does noe work, so that created tmp file.
-    grep -P -o '^r_.+[^\s]=\".*?\"' ${_file_path} > /tmp/f_loadResp_${__PID}.out && source /tmp/f_loadResp_${__PID}.out
+    grep -P -o '^r_.+[^\s]=\".*?\"' ${_file_path} > /tmp/f_loadResp_${__PID}.out || return $?
+    source /tmp/f_loadResp_${__PID}.out || return $?
     
     # clean up
     rm -f /tmp/f_loadResp_${__PID}.out
     touch ${_file_path}
-    return $?
+    return 0
 }
 
 function f_ntp() {
@@ -2390,8 +2392,8 @@ function p_host_setup() {
             fi
         fi
 
-        _log "WARN" "TODO: (cluster wouldn't be ready but) Starting f_cluster_performance"
-        f_cluster_performance &>> /tmp/p_host_setup.log || return $?
+        _log "INFO" "*Scheduling* f_cluster_performance"
+        echo "bash `realpath $BASH_SOURCE` -r `realpath ${g_RESPONSE_FILEPATH}` -f f_cluster_performance" | at now +1 hour
 
         f_port_forward 8080 $r_AMBARI_HOST 8080 "Y" &>> /tmp/p_host_setup.log
     fi
@@ -3461,7 +3463,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 _START_HDP="Y"
                 ;;
             r)
-                _RESPONSE_FILEPATH="$OPTARG"
+                g_RESPONSE_FILEPATH="$OPTARG"
                 ;;
             f)
                 _FUNCTION_NAME="$OPTARG"
@@ -3501,8 +3503,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _IS_SCRIPT_RUNNING=true
 
     if _isYes "$_SETUP_HDP"; then
-        if _isYes "$_AUTO_SETUP_HDP" && [ -z "$_RESPONSE_FILEPATH" ]; then
-            _RESPONSE_FILEPATH="$g_LATEST_RESPONSE_URL"
+        if _isYes "$_AUTO_SETUP_HDP" && [ -z "$g_RESPONSE_FILEPATH" ]; then
+            g_RESPONSE_FILEPATH="$g_LATEST_RESPONSE_URL"
         fi
         f_update_check
         p_interview_or_load
