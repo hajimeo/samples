@@ -39,6 +39,7 @@ _SHMMAX=41943040
 _NEW_CONTAINER=false
 _STOP_SANDBOX_CONTAINERS=false
 _LIST_SANDBOX_CONTAINERS=false
+_UPDATE_CODE=false
 
 ### functions
 function f_docker_image_setup() {
