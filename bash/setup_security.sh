@@ -623,6 +623,7 @@ function f_ldap_ranger() {
     local _ambari_host="${7-$r_AMBARI_HOST}"
     [ -z "${_ambari_host}" ] && return 1
 
+    # NOTE: grep -E 'ranger\..*(\.usersync\..+attribute|\.objectclass|\.ldap\.|\.usersync\.source\.impl\.class|\.authentication\.method|enabled)' -A1 -IRs ./*-site.xml
     # TODO "ranger.ldap.user.dnpattern": "CN={0},CN=Users,'${_basedn}'"
     local ranger_admin_site='{
         "ranger.authentication.method": "ACTIVE_DIRECTORY",
