@@ -36,10 +36,6 @@ Update docker config file to add \" --bip=172.18.0.1\/24\", then restart docker 
 _CUSTOM_NETWORK="hdp"
 _AMBARI_PORT=8080
 _SHMMAX=41943040
-_NEW_CONTAINER=false
-_STOP_SANDBOX_CONTAINERS=false
-_LIST_SANDBOX_CONTAINERS=false
-_UPDATE_CODE=false
 
 ### functions
 function f_docker_image_setup() {
@@ -144,7 +140,7 @@ function f_ambari_start_all() {
     local _cluster="${3}"
     [ -z "${_cluster}" ] && _cluster="`curl -s -u admin:admin "http://${_host}:${_port}/api/v1/clusters" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['items'][0]['Clusters']['cluster_name']"`"
 
-    if ${_NEW_CONTAINER} ; then
+    if [ -n "${_NEW_CONTAINER}" ] && ${_NEW_CONTAINER} ; then
         # Sandbox's HDFS is always in maintenance mode so that start all does not work
         curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services/HDFS" -X PUT -d '{"RequestInfo":{"context":"Maintenance Mode OFF for HDFS"},"Body":{"ServiceInfo":{"maintenance_state":"OFF"}}}'
     fi
@@ -277,6 +273,10 @@ function _totalSpaceGB() {
 ### main()
 if [ "$0" = "$BASH_SOURCE" ]; then
     #_NAME="sandbox-hdp"
+    _NEW_CONTAINER=false
+    _STOP_SANDBOX_CONTAINERS=false
+    _LIST_SANDBOX_CONTAINERS=false
+    _UPDATE_CODE=false
 
     # parsing command options
     while getopts "m:n:h:i:slu" opts; do
@@ -305,12 +305,12 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         esac
     done
 
-    if ${_UPDATE_CODE}; then
+    if [ -n "${_UPDATE_CODE}" ] && ${_UPDATE_CODE}; then
         curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_sandbox.sh -o "$BASH_SOURCE"
         exit
     fi
 
-    if ${_LIST_SANDBOX_CONTAINERS}; then
+    if [ -n "${_LIST_SANDBOX_CONTAINERS}" ] && ${_LIST_SANDBOX_CONTAINERS}; then
         docker ps -a --format "table {{.Names}}\t{{.Image}}\t{{.RunningFor}}\t{{.Status}}\t{{.Networks}}\t{{.Mounts}}"
         exit
     fi
@@ -378,7 +378,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     echo "INFO: Waiting for docker daemon to start up:"
     until docker ps 2>&1| grep -q STATUS; do  sleep 1; done;  >/dev/null
 
-    if ${_STOP_SANDBOX_CONTAINERS}; then
+    if [ -n "${_STOP_SANDBOX_CONTAINERS}" ] && ${_STOP_SANDBOX_CONTAINERS}; then
         if docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$"; then    # | grep -qiE "^sandbox"
             echo "INFO: Stopping other container(s)"
             docker stop `docker ps --format "{{.Names}}" | grep -vE "^${_NAME}$"`
