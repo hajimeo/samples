@@ -579,7 +579,7 @@ function f_ambari_blueprint_hostmap() {
 
     local _repo_ver=""
     # If r_AMBARI_VER is not set or (not good way but) not older than 2.6, set _repo_ver
-    if [ -z "${r_AMBARI_VER}" ] || [[ ! "${r_AMBARI_VER}" =~ ^2\.[0-5]$ ]]; then
+    if [ -z "${r_AMBARI_VER}" ] || [[ ! "${r_AMBARI_VER}" =~ ^2\.[0-5]\. ]]; then
         curl -sO http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json
         # Get the latest vdf file just for repo version and using 'centos7'
         local _vdf="`python -c 'import json;f=open("hdp_urlinfo.json");j=json.load(f);print j["'${_stack}-${_stack_version}'"]["manifests"]["'${_hdp_version}'"]["centos7"]'`" 2>/dev/null
@@ -2041,7 +2041,7 @@ function f_ambari_set_repo() {
     local _tmp_os_type="`echo ${_os_type} | sed 's/centos/redhat/'`"
 
     # if r_AMBARI_VER is 2.5 or older, using older way to submit _repo_url
-    if [ -n "${r_AMBARI_VER}" ] && [[ "${r_AMBARI_VER}" =~ ^2\.[0-5]$ ]]; then
+    if [ -n "${r_AMBARI_VER}" ] && [[ "${r_AMBARI_VER}" =~ ^2\.[0-5]\. ]]; then
         # NOTE: should use redhat if centos
         if _isUrl "$_repo_url"; then
             curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}' || return $?
@@ -2057,7 +2057,7 @@ function f_ambari_set_repo() {
         if _isUrl "$_repo_url" && [[ "${_repo_url}" =~ \.xml$ ]]; then
             curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/version_definitions" -X POST -H 'X-Requested-By: ambari' -d '{"VersionDefinition":{"version_url":"'${_repo_url}'"}}' | grep -E '^HTTP/1.1 [45]'
         else
-            _warn "Ambari 2.6.x and higher need VDF file as URL. Trying to generate URL from hdp_urlinfo.json"
+            _warn "${r_AMBARI_VER}: Ambari 2.6.x and higher need VDF file as URL. Trying to generate URL from hdp_urlinfo.json"
             # always get the latest
             curl -sO http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json
             # Get the latest vdf file (confusing, sometimes centos, sometimes redhat
