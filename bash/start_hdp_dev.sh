@@ -577,15 +577,18 @@ function f_ambari_blueprint_hostmap() {
         return 1
     fi
 
-    curl -sO http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json
-    # Get the latest vdf file just for repo version and using 'centos7'
     local _repo_ver=""
-    local _vdf="`python -c 'import json;f=open("hdp_urlinfo.json");j=json.load(f);print j["'${_stack}-${_stack_version}'"]["manifests"]["'${_hdp_version}'"]["centos7"]'`" 2>/dev/null
-    if [ -n "$_vdf" ];then
-        #local _repo_ver='"repository_version_id" : "1"'
-        local _repo_ver_tmp="`echo $_vdf | grep -oE "${_hdp_version}-[0-9]+"`"
-        _repo_ver='"repository_version" : "'${_repo_ver_tmp}'",'
-        # NOTE: Ambari version older than 2.6 does not accept repository_version_id
+    # If r_AMBARI_VER is not set or (not good way but) not older than 2.6, set _repo_ver
+    if [ -z "${r_AMBARI_VER}" ] || [[ ! "${r_AMBARI_VER}" =~ ^2\.[0-5]$ ]]; then
+        curl -sO http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json
+        # Get the latest vdf file just for repo version and using 'centos7'
+        local _vdf="`python -c 'import json;f=open("hdp_urlinfo.json");j=json.load(f);print j["'${_stack}-${_stack_version}'"]["manifests"]["'${_hdp_version}'"]["centos7"]'`" 2>/dev/null
+        if [ -n "$_vdf" ];then
+            #local _repo_ver='"repository_version_id" : "1"'
+            local _repo_ver_tmp="`echo $_vdf | grep -oE "${_hdp_version}-[0-9]+"`"
+            _repo_ver='"repository_version" : "'${_repo_ver_tmp}'",'
+            # NOTE: Ambari version older than 2.6 does not accept repository_version_id
+        fi
     fi
 
     echo '{
@@ -2037,8 +2040,8 @@ function f_ambari_set_repo() {
     fi
     local _tmp_os_type="`echo ${_os_type} | sed 's/centos/redhat/'`"
 
-    # if no r_AMBARI_VER, assuming 2.6 or higher, otherwise, use regex to detect if it's older than 2.6
-    if [[ ! "${r_AMBARI_VER}" =~ ^[23]\.[6789] ]]; then
+    # if r_AMBARI_VER is 2.5 or older, using older way to submit _repo_url
+    if [ -n "${r_AMBARI_VER}" ] && [[ "${r_AMBARI_VER}" =~ ^2\.[0-5]$ ]]; then
         # NOTE: should use redhat if centos
         if _isUrl "$_repo_url"; then
             curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}' || return $?
@@ -2050,6 +2053,7 @@ function f_ambari_set_repo() {
         fi
     else
         # https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
+        # NOTE: Another workaround would be updating /var/lib/ambari-server/resources/stacks/${_stack}/${_stack_version}/repos/repoinfo.xml
         if _isUrl "$_repo_url" && [[ "${_repo_url}" =~ \.xml$ ]]; then
             curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/version_definitions" -X POST -H 'X-Requested-By: ambari' -d '{"VersionDefinition":{"version_url":"'${_repo_url}'"}}' | grep -E '^HTTP/1.1 [45]'
         else
@@ -2063,7 +2067,7 @@ function f_ambari_set_repo() {
             curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/version_definitions" -X POST -H 'X-Requested-By: ambari' -d '{"VersionDefinition":{"version_url":"'${_vdf}'"}}' | grep -E '^HTTP/1.1 [45]'
         fi
 
-        # NOTE: for already provisioned cluster
+        # NOTE: For already provisioned cluster
         #curl -s -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_stack}-${_stack_version}" -o /tmp/repo_${_stack}-${_stack_version}.json || return $?
         #grep -vw 'href' /tmp/repo_${_stack}-${_stack_version}.json > /tmp/repo_${_stack}-${_stack_version}_mod.json
         #if _isUrl "$_repo_url"; then
