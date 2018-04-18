@@ -2512,7 +2512,7 @@ function f_update_resolv_confs() {
 }
 
 function f_cluster_performance() {
-    local __doc__="TODO: Ambari/HDP performance hack"
+    local __doc__="Modifications to improve cluster (Ambari/HDP) performance, however, cluster installation needs to be completed (TODO: this change requre ambari and hdp restart)"
     local _ambari_host="${1-$r_AMBARI_HOST}"
 
     _info "Using urandom instead of random"
@@ -2528,7 +2528,7 @@ function f_cluster_performance() {
 #grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f
 #ambari-server restart --skip-database-check"
 
-    # TODO: This isn't performance related but putting in here for now
+    # This isn't performance related but putting in here for now
     _info "Creating 'admin', 'sam', 'tom' (Knox LDAPDemo) users in each node and in HDFS..."
     for _n in admin sam tom; do f_useradd_on_nodes "$_n" "${_n}-password"; done
 }
