@@ -96,6 +96,7 @@ Available options:
 g_SCRIPT_NAME="start_hdp.sh"
 g_SCRIPT_BASE=`basename $g_SCRIPT_NAME .sh`
 g_DEFAULT_RESPONSE_FILEPATH="./${g_SCRIPT_BASE}.resp"
+g_RESPONSE_FILEPATH=""
 g_LATEST_RESPONSE_URL="https://raw.githubusercontent.com/hajimeo/samples/master/misc/latest_hdp.resp"
 g_BACKUP_DIR="$HOME/.build_script/"
 g_DOCKER_BASE="hdp/base"
@@ -137,11 +138,12 @@ function p_interview() {
     _ask "First 24 bits (xxx.xxx.xxx.) of container IP Address" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     [ -n "$r_DOCKER_NETWORK_ADDR" ] && r_DOCKER_NETWORK_ADDR="${r_DOCKER_NETWORK_ADDR%.}."
     _ask "Node starting number (hostname will be sequential from this number)" "1" "r_NODE_START_NUM" "N" "Y"
+    _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
     local _name="$(echo `hostname -s` | sed 's/[^a-zA-Z0-9_]//g')"
     _ask "Domain Suffix for docker containers" ".${_name}.${g_DOMAIN_SUFFIX#.}" "r_DOMAIN_SUFFIX" "N" "Y"
     [ -n "$r_DOMAIN_SUFFIX" ] && r_DOMAIN_SUFFIX=".${r_DOMAIN_SUFFIX#.}"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
-    _ask "$r_CONTAINER_OS version (use 7.4.1708 or higher for Centos 7)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
+    _ask "$r_CONTAINER_OS version (eg: 7.4.1708 or 6.8)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
     r_CONTAINER_OS="${r_CONTAINER_OS,,}"
     local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
 
@@ -171,7 +173,6 @@ function p_interview() {
     _ask "DockerFile URL or path" "$_docker_file_url" "r_DOCKERFILE_URL" "N" "N"
     _ask "Hostname for docker host in docker private network?" "dockerhost1" "r_DOCKER_PRIVATE_HOSTNAME" "N" "Y"
     #_ask "Username to mount VM host directory for local repo (optional)" "$SUDO_UID" "r_VMHOST_USERNAME" "N" "N"
-    _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
     _ask "Node hostname prefix" "$g_NODE_HOSTNAME_PREFIX" "r_NODE_HOSTNAME_PREFIX" "N" "Y"
     _ask "DNS Server *IP* used by containers (Note: Remote DNS requires password less ssh)" "$r_DOCKER_HOST_IP" "r_DNS_SERVER" "N" "Y"
     _ask "Would you like to set up a proxy server (for yum) on this server?" "Y" "r_PROXY"
@@ -208,7 +209,7 @@ function p_interview() {
             _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${_repo_os_ver}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${_repo_os_ver}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
         fi
 
-        _ask "HDP Repo URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"    fi
+        _ask "HDP Repo URL or *VDF* XMF file URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"    fi
         if _isUrlButNotReachable "${r_HDP_REPO_URL%/}/hdp.repo" ; then
             while true; do
                 _warn "URL: $r_HDP_REPO_URL may not be reachable."
@@ -237,18 +238,18 @@ function p_interview() {
 function p_interview_or_load() {
     local __doc__="Asks user to start interview, review interview, or start installing with given response file."
 
-    if _isUrl "${_RESPONSE_FILEPATH}"; then
+    if _isUrl "${g_RESPONSE_FILEPATH}"; then
         if [ -s "$g_DEFAULT_RESPONSE_FILEPATH" ]; then
-            local _new_resp_filepath="./`basename $_RESPONSE_FILEPATH`"
+            local _new_resp_filepath="./`basename $g_RESPONSE_FILEPATH`"
         else
             local _new_resp_filepath="$g_DEFAULT_RESPONSE_FILEPATH"
         fi
-        wget -nv -c -t 3 --timeout=30 --waitretry=5 "${_RESPONSE_FILEPATH}" -O ${_new_resp_filepath}
-        _RESPONSE_FILEPATH="${_new_resp_filepath}"
+        wget -nv -c -t 3 --timeout=30 --waitretry=5 "${g_RESPONSE_FILEPATH}" -O ${_new_resp_filepath}
+        g_RESPONSE_FILEPATH="${_new_resp_filepath}"
     fi
 
-    if [ -r "${_RESPONSE_FILEPATH}" ]; then
-        _info "Loading ${_RESPONSE_FILEPATH}..."
+    if [ -r "${g_RESPONSE_FILEPATH}" ]; then
+        _info "Loading ${g_RESPONSE_FILEPATH}..."
         f_loadResp
 
         # if auto setup, just load and exit
@@ -300,19 +301,43 @@ function _cancelInterview() {
 
 function p_ambari_node_create() {
     local __doc__="Create one node and install AmbariServer (NOTE: only centos and doesn't create docker image)"
-    # p_ambari_node_create /path/to/ambari.repo 111 '7.4.1708' '172.17.100.'
-    local _ambari_repo_file="${1-$r_AMBARI_REPO_FILE}"
-    local _start_from="${2-$r_NODE_START_NUM}"
+    # p_ambari_node_create 'ambari2615.ubu01.localdomain:8080' '172.17.110.100' '7.4.1708' '/path/to/ambari.repo'
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+    local _ip_address="${2}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
-    local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
+    local _ambari_repo_file="${4-$r_AMBARI_REPO_FILE}"
+    local _dns="$5"
+    local _port="8080"
 
-    local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
-    local _suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
-    local _ambari_host="${_node}${_start_from}${_suffix}"
-    local _how_many="1"
+    # if _amabari_host is integer, generate hostname with _node and _suffix
+    if [[ "${_ambari_host}" =~ ^[0-9]+$ ]]; then
+        local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
+        local _suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
+        local _how_many="1"
+        _ambari_host="${_node}${_ambari_host}${_suffix}"
+    elif [[ "${_ambari_host}" =~ ^([^:]+):([0-9]+)$ ]]; then
+        _ambari_host="${BASH_REMATCH[1]}"
+        _port="${BASH_REMATCH[2]}"
+    fi
 
-    # not passing repo file (unless r_AMBARI_REPO_FILE is set) so that won't install agent
-    p_nodes_create "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix"
+    if [ -z "$_ambari_repo_file" ]; then
+        local _repo_os_ver="${_os_ver%%.*}"
+        local _container_os="centos"
+        _ambari_repo_file="http://public-repo-1.hortonworks.com/ambari/${_container_os}${_repo_os_ver}/2.x/updates/${g_AMBARI_VERSION}/ambari.repo"
+        _info "No _ambari_repo_file specified so that using: ${_ambari_repo_file}"
+        sleep 3
+    fi
+
+    p_node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_ambari_host}" "${_ambari_repo_file}" "${_dns}" || return $?
+
+    p_ambari_node_setup "${_ambari_repo_file}" "${_ambari_host}" "${_port}"
+}
+
+function p_ambari_node_setup() {
+    local __doc__="Intall and Setup AmbariServer on an existing node"
+    local _ambari_repo_file="${1-$r_AMBARI_REPO_FILE}"
+    local _ambari_host="${2-$r_AMBARI_HOST}"
+    local _port="${3-8080}"
 
     f_get_ambari_repo_file "$_ambari_repo_file" || return $?
     f_ambari_server_install "${_ambari_host}"|| return $?
@@ -320,32 +345,79 @@ function p_ambari_node_create() {
     local _jce="`ls -1t ./jce_policy-*.zip 2>/dev/null | head -n1`"
     [ -n "$r_AMBARI_JDK_URL" ] && _jdk="$r_AMBARI_JDK_URL"
     [ -n "$r_AMBARI_JCE_URL" ] && _jce="$r_AMBARI_JCE_URL"
-    f_ambari_server_setup "${_ambari_host}" "${_jdk}" "$_jce" || return $?
+    f_ambari_server_setup "${_ambari_host}" "${_jdk}" "${_jce}" "${_port}" || return $?
+    f_ambari_java_random "${_ambari_host}"
     f_ambari_server_start "${_ambari_host}" || return $?
-    #f_cluster_performance "${_ambari_host}" || return $?
+    f_port_forward ${_port} ${_ambari_host} ${_port}
+}
+
+function p_node_create() {
+    local __doc__="TODO: Create one node (NOTE: no agent installation if no ambari.repo, only centos, and doesn't create docker image)"
+    local _hostname="${1}"
+    local _ip_address="${2}"
+    local _os_ver="${3-$r_CONTAINER_OS_VER}"
+    local _ambari_host="${4-$r_AMBARI_HOST}"
+    local _ambari_repo_file="${5-$r_AMBARI_REPO_FILE}"
+    local _dns="$6"
+
+    [ -z "${_dns}" ] && _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
+    [ $_dns = "localhost" ] && _dns="`f_docker_ip`"
+
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
+    f_dnsmasq_banner_reset "${_hostname}" "" "${_ip_address}" "${_dns}" || return $?
+    _docker_run "${_hostname}" "${_ip_address}" "${g_DOCKER_BASE}:$_os_ver" "${_dns}" || return $?
+    f_docker_start_one "${_hostname}" "${_ip_address}" "${_dns}"
+    sleep 1
+
+    docker exec -it ${_name} bash -c "chpasswd <<< root:$g_DEFAULT_PASSWORD"
+    _copy_auth_keys_to_containers "${_hostname}"
+
+    if [ -z "${_ambari_repo_file}" ]; then
+        if [ -n "${_ambari_host}" ]; then
+            _warn "No ambari repo file specified, so trying to get from ${_ambari_host}"
+            scp root@${_ambari_host}:/etc/yum.repos.d/ambari.repo /tmp/ambari_$$.repo || return 0
+            _ambari_repo_file="/tmp/ambari_$$.repo"
+        else
+            _warn "No ambari repo file specified, so not setting up Agent"
+            return
+        fi
+    fi
+    scp -q ${_ambari_repo_file} root@${_hostname}:/etc/yum.repos.d/ambari.repo || return $?
+    docker exec -it ${_name} bash -c 'which ambari-agent 2>/dev/null || yum install ambari-agent -y' || return $?
+    _ambari_agent_fix "${_hostname}"
+    [ -n "${_ambari_host}" ] && docker exec -it ${_name} bash -c "ambari-agent reset ${_ambari_host}"
+    docker exec -it ${_name} bash -c 'ambari-agent start'
 }
 
 function p_nodes_create() {
     local __doc__="Create container(s). If _ambari_repo_file is given, try installing agent (NOTE: only centos and doesn't create docker image)"
-    # p_nodes_create 1 100 '7.4.1708' '172.17.140.' './ambari.repo'
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _os_ver="${3-$r_CONTAINER_OS_VER}"
-    local _ip_prefix="${4-$r_DOCKER_NETWORK_ADDR}"
-    local _ambari_repo_file="${5-$r_AMBARI_REPO_FILE}"
+    local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"
+    local _os_ver="${4-$r_CONTAINER_OS_VER}"
+    local _ambari_host="${5-$r_AMBARI_HOST}"
+    local _ambari_repo_file="${6-$r_AMBARI_REPO_FILE}"
 
-    f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix"
+    f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix" || return $?
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix" || return $?
     f_docker_start "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
+    f_copy_auth_keys_to_containers "$_how_many" "$_start_from"
 
     if [ -z "${_ambari_repo_file}" ]; then
-        _warn "No ambari repo file specified, so not setting up ambari agent"
-        return
+        if [ -n "${_ambari_host}" ]; then
+            scp root@${_ambari_host}:/etc/yum.repos.d/ambari.repo /tmp/ambari_$$.repo || return $?
+            _ambari_repo_file="/tmp/ambari_$$.repo"
+        else
+            _warn "No ambari repo file specified, so not setting up Agent"
+            return
+        fi
     fi
     sleep 3
-    f_ambari_agent_install "${_ambari_repo_file}" "$_how_many" "$_start_from" || return $?
-    f_ambari_agent_fix "$_how_many" "$_start_from"
+    f_ambari_agents_install "${_ambari_repo_file}" "$_how_many" "$_start_from" || return $?
+    f_ambari_agents_fix "$_how_many" "$_start_from"
+    [ -n "${_ambari_host}" ] && f_run_cmd_on_nodes "ambari-agent reset ${_ambari_host}" "$_how_many" "$_start_from"
     f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from"
 }
 
@@ -393,14 +465,19 @@ function p_hdp_start() {
 
 function p_ambari_blueprint() {
     local __doc__="Build cluster with Ambari Blueprint (expecting agents are already installed and running)"
-    local _cluster_name="${1-$r_CLUSTER_NAME}"
-    local _ambari_host="${2-$r_AMBARI_HOST}"
-    local _hostmap_json="${3-$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH}"
-    local _cluster_config_json="${4-$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH}"
-    local _reset="$5"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+    local _hostmap_json="${2-$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH}"
+    local _cluster_config_json="${3-$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH}"
+    local _hdp_version="${4-$r_HDP_REPO_VER}"
+    local _os_type="${5-centos7}"   # centos6 or centos7
+    local _how_many="${6-$r_NUM_NODES}"
+    local _cluster_name="${7-$r_CLUSTER_NAME}"
+    local _reset="${8-$r_AMBARI_RESET}"
 
-    [ -z "${_hostmap_json}" ] && _hostmap_json="/tmp/${_cluster_name}_hostmap.json"
-    [ -z "${_cluster_config_json}" ] &&  _cluster_config_json="/tmp/${_cluster_name}_cluster_config.json"
+    local _num="`echo "${_ambari_host}" | cut -d"." -f1 | sed 's/[^0-9]//g'`"
+    [ -z "$_cluster_name" ] && _cluster_name="$(echo `hostname -s`_${_num} | sed 's/[^a-zA-Z0-9_]//g')"
+    [ -z "${_hostmap_json}" ] && _hostmap_json="/tmp/${_cluster_name}_hostmap.json" && rm -f "${_hostmap_json}"
+    [ -z "${_cluster_config_json}" ] &&  _cluster_config_json="/tmp/${_cluster_name}_cluster_config.json" && rm -f "${_cluster_config_json}"
 
     if _isYes "$_reset"; then
         _warn "Resetting Ambari Server on ${_ambari_host}..."
@@ -408,8 +485,10 @@ function p_ambari_blueprint() {
     fi
 
     # just in case, try starting server
-    f_ambari_server_start
+    f_ambari_server_start "${_ambari_host}"
     _port_wait "${_ambari_host}" "8080" || return 1
+
+    [ -n "${_how_many}" ] && _ambari_agent_wait "${_ambari_host}" "${_how_many}"
 
     local _c="`f_get_cluster_name 2>/dev/null`"
     if [ "$_c" = "$_cluster_name" ]; then
@@ -417,32 +496,12 @@ function p_ambari_blueprint() {
         return 1
     fi
 
-    _info "Setting up Ambari for Blueprint (like setting up JDBC drivers, adding Postgres DB users) ..."
+    _info "Setting up Ambari for Blueprint (like setting up JDBC drivers, adding Postgres DB users, Removing ZK number restrictions) ..."
     ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1\`
 sudo -u postgres psql -c \"CREATE ROLE ranger WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   ranger,rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
-    if [ -s /usr/share/java/mysql-connector-java.jar ]; then
-        _info "setup mysql-connector-java..."
-        scp /usr/share/java/mysql-connector-java.jar root@${_ambari_host}:/tmp/mysql-connector-java.jar
-        ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=mysql --jdbc-driver=/tmp/mysql-connector-java.jar"
-    fi
 
-    if [ -n "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ] && [ ! -s "$_hostmap_json" ]; then
-        _warn "$_hostmap_json does not exist or empty file. Will regenerate automatically..."
-        f_ambari_blueprint_hostmap > $_hostmap_json || return $?
-    else
-        f_ambari_blueprint_hostmap > $_hostmap_json || return $?
-    fi
-
-    if [ -n "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ] && [ ! -s "$_cluster_config_json" ]; then
-        _error "$_cluster_config_json does not exist. Stopping Ambari Blueprint..."
-        return 1
-    else
-        f_ambari_blueprint_cluster_config > $_cluster_config_json || return $?
-    fi
-
-    _info "Removing ZK number restrictions..."
     ssh -q root@${_ambari_host} '_f=/usr/lib/ambari-server/web/javascripts/app.js
 _n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
 [ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
@@ -450,24 +509,46 @@ _n=`awk "/^[[:blank:]]+if \(hostComponents.filterProperty\('"'"'componentName'"'
 _n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'componentName'"'"', '"'"'ZOOKEEPER_SERVER'"'"'\).length < 3\)/{ print NR; exit }" $_f`
 [ -n "$_n" ] && sed -i "$_n,$(( $_n + 2 )) s/^/\/\//" $_f'
 
+    # Starting Blueprint related APIs
+    f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" "${_os_type}" "${_hdp_version}" "${_ambari_host}" || return $?
+
+    if [ ! -s "${_hostmap_json}" ]; then
+        [ -n "$r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH" ] && _warn "r_AMBARI_BLUEPRINT_HOSTMAPPING_PATH is specifed but $_hostmap_json does not exist. Will regenerate automatically..."
+        f_ambari_blueprint_hostmap > $_hostmap_json || return $?
+    fi
+
+    if [ ! -s "$_cluster_config_json" ]; then
+        if [ -n "$r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH" ]; then
+            _error "r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH is specified but $_cluster_config_json does not exist. Stopping Ambari Blueprint..."
+            return 1
+        fi
+        f_ambari_blueprint_config > $_cluster_config_json || return $?
+    fi
+
     _info "Posting ${_cluster_config_json} ..."
-    curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json} || return $?
+    curl -s -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json}
     _info "Posting ${_hostmap_json} ..."
-    curl -si -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json} || return $?
+    curl -s -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json}
+    echo ""
 }
 
 function f_ambari_blueprint_hostmap() {
     local __doc__="Output json string for Ambari Blueprint Host mapping"
     #local _cluster_name="${1-$r_CLUSTER_NAME}"
-    local _default_password="${1-$r_DEFAULT_PASSWORD}"
-    local _is_kerberos_on="$2"
-    local _how_many="${3-$r_NUM_NODES}"
-    local _start_from="${4-$r_NODE_START_NUM}"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+    local _hdp_version="${3-$r_HDP_REPO_VER}"
+    local _default_password="${4-$r_DEFAULT_PASSWORD}"
+    local _is_kerberos_on="$5"
+    #local _ambari_host="${5-$r_AMBARI_HOST}"
+    local _stack="HDP" # TODO: need to support HDF etc.
+
+    [ -z "$_default_password" ] && _default_password="${g_DEFAULT_PASSWORD}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
-    if [ -z "$_how_many" ] || [ 4 -gt "$_how_many" ]; then
-        _error "At this moment, Blueprint build needs at least 4 nodes"
+    if ! [[ "$_how_many" =~ ^[1-9][0-9]*$ ]]; then
+        _error "At this moment, Blueprint build needs at least 3 nodes"
         return 1
     fi
 
@@ -487,9 +568,32 @@ function f_ambari_blueprint_hostmap() {
     done
     _host_loop="${_host_loop%,}"
 
+    local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
+    if [[ "${_hdp_version}" =~ $_regex ]]; then
+        local _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+    else
+        _error "Couldn't determine the stack version"
+        return 1
+    fi
+
+    local _repo_ver=""
+    # If r_AMBARI_VER is not set or (not good way but) not older than 2.6, set _repo_ver
+    if [ -z "${r_AMBARI_VER}" ] || [[ ! "${r_AMBARI_VER}" =~ ^2\.[0-5]\. ]]; then
+        curl -sO http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json
+        # Get the latest vdf file just for repo version and using 'centos7'
+        local _vdf="`python -c 'import json;f=open("hdp_urlinfo.json");j=json.load(f);print j["'${_stack}-${_stack_version}'"]["manifests"]["'${_hdp_version}'"]["centos7"]'`" 2>/dev/null
+        if [ -n "$_vdf" ];then
+            #local _repo_ver='"repository_version_id" : "1"'
+            local _repo_ver_tmp="`echo $_vdf | grep -oE "${_hdp_version}-[0-9]+"`"
+            _repo_ver='"repository_version" : "'${_repo_ver_tmp}'",'
+            # NOTE: Ambari version older than 2.6 does not accept repository_version_id
+        fi
+    fi
+
     echo '{
   "blueprint" : "multinode-hdp",
   "config_recommendation_strategy" : "ALWAYS_APPLY_DONT_OVERRIDE_CUSTOM_VALUES",
+  '${_repo_ver}'
   "default_password" : "'$_default_password'",
   "host_groups" :['$_host_loop']
 }'
@@ -497,34 +601,112 @@ function f_ambari_blueprint_hostmap() {
     #  , \"Clusters\" : {\"cluster_name\":\"${_cluster_name}\"}
 }
 
-function f_ambari_blueprint_cluster_config() {
+function _ambari_blueprint_host_groups() {
+    local _how_many="${1-$r_NUM_NODES}"  # accepts 1, 2, 3 and 4
+    local _including_ambari="$2"
+    local _install_security="${3-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
+
+    local _ambari_only='{"name":"AMBARI_SERVER"}'
+    local _master_comps='{"name":"ZOOKEEPER_SERVER"},{"name":"NAMENODE"},{"name":"HISTORYSERVER"},{"name":"APP_TIMELINE_SERVER"},{"name":"RESOURCEMANAGER"},{"name":"MYSQL_SERVER"},{"name":"HIVE_SERVER"},{"name":"HIVE_METASTORE"},{"name":"WEBHCAT_SERVER"}'
+    local _standby_comps='{"name":"SECONDARY_NAMENODE"}'
+    local _slave_comps='{"name":"DATANODE"},{"name" : "NODEMANAGER"}'
+    local _clients='{"name":"ZOOKEEPER_CLIENT"}, {"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"HCAT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}, {"name":"SLIDER"}'
+
+    local _security_master_comps='{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"}'
+    local _security_slave_comps='{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"}'
+    local _security_clients='{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
+
+    local _extra_sec_master_comps=""
+    local _extra_sec_slave_comps=""
+    if _isYes "$_install_security" ; then
+        _extra_sec_master_comps=','${_security_master_comps}','${_security_clients}
+        _extra_sec_slave_comps=','${_security_slave_comps}','${_security_clients}
+    fi
+
+    local _final_hsot_groups=""
+    if ! [[ "$_how_many" =~ ^[1-9][0-9]*$ ]]; then
+        _error "_how_many should be between 1 and 4 (given $_how_many)"
+        return 1
+    elif [ $_how_many = 1 ]; then
+        if _isYes "$_including_ambari" ; then
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_ambari_only}','${_master_comps}','${_standby_comps}','${_slave_comps}${_extra_sec_master_comps}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+'
+        else
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_master_comps}','${_standby_comps}','${_slave_comps}${_extra_sec_master_comps}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+'
+        fi
+    elif [ $_how_many = 2 ]; then
+        if _isYes "$_including_ambari" ; then
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_ambari_only}'], "configurations" : [ ] },
+    { "name" : "host_group_2", "components" : ['${_master_comps}','${_standby_comps}','${_slave_comps}','${_clients}${_extra_sec_master_comps}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+'
+        else
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_master_comps}','${_clients}${_extra_sec_master_comps}'], "configurations" : [ ] },
+    { "name" : "host_group_2", "components" : ['${_standby_comps}','${_slave_comps}','${_clients}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+'
+        fi
+    elif [ $_how_many = 3 ]; then
+        if _isYes "$_including_ambari" ; then
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_ambari_only}'], "configurations" : [ ] },
+    { "name" : "host_group_2", "components" : ['${_master_comps}','${_clients}${_extra_sec_master_comps}'], "configurations" : [ ] },
+    { "name" : "host_group_3", "components" : ['${_standby_comps}','${_slave_comps}','${_clients}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+'
+        else
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_master_comps}','${_clients}'], "configurations" : [ ] },
+    { "name" : "host_group_2", "components" : ['${_standby_comps}','${_clients}${_extra_sec_master_comps}'], "configurations" : [ ] },
+    { "name" : "host_group_3", "components" : ['${_slave_comps}','${_clients}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+'
+        fi
+    elif [ $_how_many = 4 ]; then
+        if _isYes "$_including_ambari" ; then
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_ambari_only}'], "configurations" : [ ] },
+    { "name" : "host_group_2", "components" : ['${_master_comps}','${_clients}'], "configurations" : [ ] },
+    { "name" : "host_group_3", "components" : ['${_standby_comps}','${_clients}${_extra_sec_master_comps}'], "configurations" : [ ] },
+    { "name" : "host_group_4", "components" : ['${_slave_comps}','${_clients}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+'
+        else
+            _final_hsot_groups='
+    { "name" : "host_group_1", "components" : ['${_master_comps}','${_clients}'], "configurations" : [ ] },
+    { "name" : "host_group_2", "components" : ['${_standby_comps}','${_clients}${_extra_sec_master_comps}'], "configurations" : [ ] },
+    { "name" : "host_group_3", "components" : ['${_slave_comps}','${_clients}${_extra_sec_slave_comps}'], "configurations" : [ ] },
+    { "name" : "host_group_4", "components" : ['${_clients}'], "configurations" : [ ] }
+'
+        fi
+    fi
+
+    # NOTE: NOT ending with "," for now
+    echo '  "host_groups": ['${_final_hsot_groups}']'
+}
+
+function f_ambari_blueprint_config() {
     local __doc__="Output json string for Ambari Blueprint Cluster mapping. 1=Ambari 2=>hadoop,Hive 3=>HBase,Security 4=>slave"
-    local _stack_version="${1}"
-    local _install_security="${2-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
-    local _start_from="${3-$r_NODE_START_NUM}"
-    local _ambari_host="${4-$r_AMBARI_HOST}"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+    local _hdp_version="${3-$r_HDP_REPO_VER}"
+    local _including_ambari="${4-Y}"
+    local _install_security="${5-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
+    local _db_host="${6-$r_AMBARI_HOST}"   # this DB host is used for security only (Ranger/KMS)
 
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain_suffix="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
 
-    if [ -z "$_stack_version" ]; then
-        local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
-        if [[ "$r_HDP_REPO_VER" =~ $_regex ]]; then
-            _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
-        else
-            _error "Couldn't determine the stack version"
-            return 1
-        fi
+    local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
+    if [[ "${_hdp_version}" =~ $_regex ]]; then
+        local _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+    else
+        _error "Couldn't determine the stack version"
+        return 1
     fi
 
-    local _extra_comps_1=""  # NOTE: at this moment, this one should NOT be used
-    local _extra_comps_2=""
-    local _extra_comps_3=""
-    local _extra_comps_4=""
     local _extra_configs=""
     if _isYes "$_install_security" ; then
-        _extra_comps_3=',{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"},{"name":"INFRA_SOLR_CLIENT"},{"name":"HBASE_CLIENT"}'
-        _extra_comps_4=',{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"},{"name":"INFRA_SOLR_CLIENT"},{"name":"ATLAS_CLIENT"},{"name":"HBASE_CLIENT"}'
         # https://cwiki.apache.org/confluence/display/AMBARI/Blueprint+support+for+Ranger
         # TODO: policymgr_external_url is supposed to be used for rest.url but it becomes {{policymgr_mgr_url}}
         # TODO: amb_ranger_admin doesn't look like working. Need to create from Ranger Web UI
@@ -540,7 +722,7 @@ function f_ambari_blueprint_cluster_config() {
           "db_user" : "rangeradmin",
           "db_password" : "'$g_DEFAULT_PASSWORD'",
           "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
-          "db_host" : "'${_ambari_host}'"
+          "db_host" : "'${_db_host-localhost}'"
         }
       }
     },
@@ -557,7 +739,7 @@ function f_ambari_blueprint_cluster_config() {
           "KMS_MASTER_KEY_PASSWD" : "'$g_DEFAULT_PASSWORD'",
           "SQL_CONNECTOR_JAR" : "{{driver_curl_target}}",
           "REPOSITORY_CONFIG_USERNAME" : "keyadmin",
-          "db_host" : "'${_ambari_host}'"
+          "db_host" : "'${_db_host-localhost}'"
         }
       }
     },
@@ -565,8 +747,8 @@ function f_ambari_blueprint_cluster_config() {
       "ranger-admin-site" : {
         "properties_attributes" : { },
         "properties" : {
-          "ranger.jpa.audit.jdbc.url" : "jdbc:postgresql://'${_ambari_host}':5432/ranger_audit",
-          "ranger.jpa.jdbc.url" : "jdbc:postgresql://'${_ambari_host}':5432/ranger",
+          "ranger.jpa.audit.jdbc.url" : "jdbc:postgresql://'${_db_host-localhost}':5432/ranger_audit",
+          "ranger.jpa.jdbc.url" : "jdbc:postgresql://'${_db_host-localhost}':5432/ranger",
           "ranger.jpa.jdbc.driver" : "org.postgresql.Driver",
           "ranger.jpa.audit.jdbc.driver" : "org.postgresql.Driver",
           "ranger.jpa.audit.jdbc.dialect" : "org.eclipse.persistence.platform.database.PostgreSQLPlatform"
@@ -582,7 +764,7 @@ function f_ambari_blueprint_cluster_config() {
           "xasecure.audit.destination.solr" : "false",
           "xasecure.audit.destination.hdfs" : "false",
           "xasecure.audit.destination.hdfs.dir" : "hdfs://%HOSTGROUP::host_group_2%:8020/ranger/audit",
-          "ranger_privelege_user_jdbc_url" : "jdbc:postgresql://'${_ambari_host}':5432/postgres"
+          "ranger_privelege_user_jdbc_url" : "jdbc:postgresql://'${_db_host-localhost}':5432/postgres"
         }
       }
     },
@@ -590,7 +772,7 @@ function f_ambari_blueprint_cluster_config() {
       "dbks-site" : {
         "properties_attributes" : { },
         "properties" : {
-          "ranger.ks.jpa.jdbc.url" : "jdbc:postgresql://'${_ambari_host}':5432/rangerkms",
+          "ranger.ks.jpa.jdbc.url" : "jdbc:postgresql://'${_db_host-localhost}':5432/rangerkms",
           "ranger.ks.jpa.jdbc.driver" : "org.postgresql.Driver"
         }
       }
@@ -599,8 +781,8 @@ function f_ambari_blueprint_cluster_config() {
       "application-properties" : {
         "properties_attributes" : { },
         "properties" : {
-          "atlas.audit.hbase.zookeeper.quorum" : "%HOSTGROUP::host_group_3%",
-          "atlas.graph.index.search.solr.zookeeper-url" : "%HOSTGROUP::host_group_3%:2181/infra-solr",
+          "atlas.audit.hbase.zookeeper.quorum" : "%HOSTGROUP::host_group_2%",
+          "atlas.graph.index.search.solr.zookeeper-url" : "%HOSTGROUP::host_group_2%:2181/infra-solr",
           "atlas.graph.storage.hostname" : "%HOSTGROUP::host_group_3%",
           "atlas.rest.address" : "http://%HOSTGROUP::host_group_3%:21000"
         }
@@ -611,7 +793,7 @@ function f_ambari_blueprint_cluster_config() {
         "properties_attributes" : { },
         "properties" : {
           "atlas.kafka.bootstrap.servers" : "%HOSTGROUP::host_group_3%:6667",
-          "atlas.kafka.zookeeper.connect" : "%HOSTGROUP::host_group_3%:2181"
+          "atlas.kafka.zookeeper.connect" : "%HOSTGROUP::host_group_2%:2181"
         }
       }
     },
@@ -699,170 +881,25 @@ function f_ambari_blueprint_cluster_config() {
     }'
     fi
 
-    local _clients=',{"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"HCAT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}'
+    if ! curl -s -o /tmp/blueprint_common_properties.json "https://raw.githubusercontent.com/hajimeo/samples/master/misc/blueprint_common_properties.json" ; then
+        [ ! -s /tmp/blueprint_common_properties.json ] && return 1
+        _warn "Couldn't download blueprint_common_properties.json, so reusing /tmp/blueprint_common_properties.json"
+    fi
+    local _common_props="`cat /tmp/blueprint_common_properties.json`"
+    local _host_groups="`_ambari_blueprint_host_groups "${_how_many}" "${_including_ambari}" "${_install_security}"`"
+
     # TODO: Ambari 2.5.1 can't set hive.exec.post.hooks, probably a bug in Ambari (probably regression bug of AMBARI-17802)
     echo '{
   "configurations" : [
-    {
-      "hadoop-env" : {
-        "properties" : {
-          "dtnode_heapsize" : "512m",
-          "namenode_heapsize" : "513m",
-          "nfsgateway_heapsize" : "512"
-        }
-      }
-    },
-    {
-      "hdfs-site" : {
-        "properties" : {
-          "dfs.replication" : "1",
-          "dfs.datanode.du.reserved" : "536870912"
-        }
-      }
-    },
-    {
-      "yarn-env" : {
-        "properties" : {
-          "apptimelineserver_heapsize" : "512",
-          "resourcemanager_heapsize" : "513",
-          "nodemanager_heapsize" : "514"
-        }
-      }
-    },
-    {
-      "yarn-site" : {
-        "properties" : {
-          "yarn.scheduler.minimum-allocation-mb" : "250",
-          "yarn.nodemanager.delete.debug-delay-sec" : "1800"
-        }
-      }
-    },
-    {
-      "mapred-env" : {
-        "properties" : {
-          "jobhistory_heapsize" : "512"
-        }
-      }
-    },
-    {
-      "mapred-site" : {
-        "properties" : {
-          "mapreduce.map.memory.mb" : "256",
-          "mapreduce.map.java.opts" : "-Xmx202m",
-          "mapreduce.reduce.memory.mb" : "256",
-          "mapreduce.reduce.java.opts" : "-Xmx203m",
-          "mapreduce.task.io.sort.mb" : "64",
-          "yarn.app.mapreduce.am.resource.mb" : "256",
-          "yarn.app.mapreduce.am.command-opts" : "-Xmx201m -Dhdp.version=${hdp.version}"
-        }
-      }
-    },
-    {
-      "tez-site" : {
-        "properties" : {
-          "tez.am.resource.memory.mb" : "512",
-          "tez.task.resource.memory.mb" : "512",
-          "tez.runtime.io.sort.mb" : "256",
-          "tez.runtime.unordered.output.buffer.size-mb" : "48"
-        }
-      }
-    },
-    {
-      "hive-site" : {
-        "properties" : {
-          "hive.tez.container.size" : "512",
-          "tez.am.resource.memory.mb" : "512",
-          "hive.exec.post.hooks" : "org.apache.hadoop.hive.ql.hooks.ATSHook",
-          "hive.log.explain.output" : "true"
-        }
-      }
-    },
-    {
-      "hive-env" : {
-        "properties" : {
-          "hive.atlas.hook" : "false",
-          "hive.metastore.heapsize" : "512",
-          "hive.heapsize" : "1024"
-        }
-      }
-    }'$_extra_configs'
+    '${_common_props}${_extra_configs}'
   ],
-  "host_groups": [
-    {
-      "name" : "host_group_1",
-      "components" : [
-        {
-          "name" : "AMBARI_SERVER"
-        }'${_clients}${_extra_comps_1}'
-      ],
-      "configurations" : [ ],
-      "cardinality" : "1"
-    },
-    {
-      "name" : "host_group_2",
-      "components" : [
-        {
-          "name" : "NAMENODE"
-        },
-        {
-          "name" : "HISTORYSERVER"
-        },
-        {
-          "name" : "APP_TIMELINE_SERVER"
-        },
-        {
-          "name" : "RESOURCEMANAGER"
-        },
-        {
-          "name" : "MYSQL_SERVER"
-        },
-        {
-          "name" : "HIVE_SERVER"
-        },
-        {
-          "name" : "HIVE_METASTORE"
-        },
-        {
-          "name" : "WEBHCAT_SERVER"
-        }
-        , {"name":"SLIDER"}'${_clients}${_extra_comps_2}'
-      ],
-      "configurations" : [ ],
-      "cardinality" : "1"
-    },
-    {
-      "name" : "host_group_3",
-      "components" : [
-        {
-          "name" : "ZOOKEEPER_SERVER"
-        },
-        {
-          "name" : "SECONDARY_NAMENODE"
-        }, {"name":"SLIDER"}, {"name":"ZOOKEEPER_CLIENT"}'${_clients}${_extra_comps_3}'
-      ],
-      "configurations" : [ ],
-      "cardinality" : "1"
-    },
-    {
-      "name" : "host_group_4",
-      "components" : [
-        {
-          "name" : "DATANODE"
-        },
-        {
-          "name" : "NODEMANAGER"
-        }, {"name":"SLIDER"}'${_clients}${_extra_comps_4}'
-      ],
-      "configurations" : [ ],
-      "cardinality" : "1"
-    }
-  ],
+  '$_host_groups',
   "Blueprints": {
     "blueprint_name": "multinode-hdp",
     "stack_name": "HDP",
     "stack_version": "'$_stack_version'"
   }
-}' > /tmp/f_ambari_blueprint_cluster_config_${__PID}.json
+}' > /tmp/f_ambari_blueprint_config_${__PID}.json
 
     # %HOSTGROUP::host_group_N% is not reliable, so if _start_from is given, replacing to actual hostname
     if [ ! -z "$_start_from" ]; then
@@ -870,16 +907,16 @@ function f_ambari_blueprint_cluster_config() {
         local _node_num=""
         for i in {1..4}; do
             _node_num="$(( $_start_from + $i - 1 ))"
-            sed -i "s/%HOSTGROUP::host_group_${i}%/${_node}${_node_num}.${_domain_suffix#.}/g" /tmp/f_ambari_blueprint_cluster_config_${__PID}.json
+            sed -i "s/%HOSTGROUP::host_group_${i}%/${_node}${_node_num}.${_domain_suffix#.}/g" /tmp/f_ambari_blueprint_config_${__PID}.json
         done
     fi
 
-    cat /tmp/f_ambari_blueprint_cluster_config_${__PID}.json
+    cat /tmp/f_ambari_blueprint_config_${__PID}.json
 }
 
 function f_saveResp() {
     local __doc__="Save current responses(answers) in memory into a file."
-    local _file_path="${1-$_RESPONSE_FILEPATH}"
+    local _file_path="${1-$g_RESPONSE_FILEPATH}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     if [ -z "${_file_path}" ]; then
@@ -892,8 +929,8 @@ function f_saveResp() {
     fi
 
     if [ -z "$_file_path" ]; then
-        _ask "Response file path" "$g_DEFAULT_RESPONSE_FILEPATH" "_RESPONSE_FILEPATH"
-        _file_path="$_RESPONSE_FILEPATH"
+        _ask "Response file path" "$g_DEFAULT_RESPONSE_FILEPATH" "g_RESPONSE_FILEPATH"
+        _file_path="$g_RESPONSE_FILEPATH"
     fi
 
     if [ ! -e "${_file_path}" ]; then
@@ -925,7 +962,7 @@ function f_saveResp() {
 
 function f_loadResp() {
     local __doc__="Load responses(answers) from given file path or from default location."
-    local _file_path="${1-$_RESPONSE_FILEPATH}"
+    local _file_path="${1-$g_RESPONSE_FILEPATH}"
     local _use_default_resp="$2"
 
     if [ -z "$_file_path" ]; then
@@ -938,17 +975,16 @@ function f_loadResp() {
             _file_path=""
             _ask "Type a response file path" "$_default_file_path" "_file_path" "N" "Y"
             _info "Using $_file_path ..."
-            _RESPONSE_FILEPATH="$_file_path"
         fi
     fi
     
     if [ ! -r "${_file_path}" ]; then
         _critical "$FUNCNAME: Not a readable response file. ${_file_path}" 1;
+        g_RESPONSE_FILEPATH=""
         exit 2
     fi
-    
-    #g_response_file="$_file_path"  TODO: forgot what this line was for
-    
+    g_RESPONSE_FILEPATH="$_file_path"
+
     #local _extension="${_actual_file_path##*.}"
     #if [ "$_extension" = "7z" ]; then
     #    local _dir_path="$(dirname ${_actual_file_path})"
@@ -958,12 +994,13 @@ function f_loadResp() {
     #fi
     
     # Note: somehow "source <(...)" does noe work, so that created tmp file.
-    grep -P -o '^r_.+[^\s]=\".*?\"' ${_file_path} > /tmp/f_loadResp_${__PID}.out && source /tmp/f_loadResp_${__PID}.out
+    grep -P -o '^r_.+[^\s]=\".*?\"' ${_file_path} > /tmp/f_loadResp_${__PID}.out || return $?
+    source /tmp/f_loadResp_${__PID}.out || return $?
     
     # clean up
     rm -f /tmp/f_loadResp_${__PID}.out
     touch ${_file_path}
-    return $?
+    return 0
 }
 
 function f_ntp() {
@@ -1184,57 +1221,40 @@ function f_docker_start() {
     fi
 
     _info "starting $_how_many docker containers starting from $_start_from ..."
+    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        # docker seems doesn't care if i try to start already started one
+        f_docker_start_one "${_node}$_n${_domain_suffix}" "${_ip_prefix%\.}.$_n" "${_dns}"
+    done
+}
+
+function f_docker_start_one() {
+    local __doc__="Starting one docker container with a few customization"
+    local _hostname="$1"    # short name is OK
+    local _ip_address="$2"
+    local _dns="$3"
+
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
+    local _net=`docker container inspect ${_name} | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
+    if [ -n "${_ip_address}" ] && [ -n "$g_HDP_NETWORK" ] && [ ! "$_net" = "$g_HDP_NETWORK" ]; then
+        _info "Moving network from $_net to $g_HDP_NETWORK"
+        docker network disconnect $_net ${_name}
+        docker network connect --ip=${_ip_address} hdp ${_name}
+    fi
+
+    docker start --attach=false ${_name}
+
+    # if DNS is not 'localhost', update /etc/resolve.conf. expecting _dns is IP Address. Note: can't use sed
+    if [ ! -z "${_dns}" ] && [ "${_dns}" != "localhost" ] && [ "${_dns}" != "127.0.0.1" ] && [ "${_dns}" != "127.0.0.11" ]; then
+        docker exec -dt ${_name} bash -c '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${_dns}'\b" $_f || (grep -v "^nameserver" $_f > ${_f}.tmp && cat ${_f}.tmp > ${_f} && echo "nameserver '${_dns}'" >> $_f)'
+    fi
+
+    # Somehow docker disable a container communicates outside by adding 0.0.0.0 GW, which will be problem when we test distcp
+    local _docker_ip=`f_docker_ip "172.17.0.1"`
     local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
     local _docker_net_addr="172.17.0.0"
-    [[ "$r_DOCKER_HOST_IP" =~ $_regex ]] && _docker_net_addr="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0.0"
-
-    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        _net=`docker container inspect ${_node}$_n | grep '"Networks": {' -A1 | tail -1 | awk  '{print $1;}' | sed 's/\"//g' | sed 's/://'`
-        if [ ! "$_net" = "$g_HDP_NETWORK" ]; then
-            _info "Moving network from $_net to $g_HDP_NETWORK"
-            docker network disconnect $_net ${_node}$_n
-            docker network connect --ip=${r_DOCKER_NETWORK_ADDR%\.}.$_n hdp ${_node}$_n
-        fi
-        # docker seems doesn't care if i try to start already started one
-        docker start --attach=false ${_node}$_n &
-        sleep 1
-
-        if [ -n "$_ip_prefix" ]; then
-            # docker exec adds "\r" which causes bash syntax error TODO: should be removed later
-            local _dupe="`docker exec -it ${_node}$_n grep -E "^[0-9\.]+\s+${_node}$_n${_domain_suffix}" /etc/hosts | grep -v "^${_ip_prefix%\.}.$_n"`"
-            if [ ! -z "$_dupe" ]; then
-                wget -O /dev/null -o /dev/null http://172.26.108.37:8181/duplicate &
-                _warn "TODO: Detected duplicate ${_node}$_n${_domain_suffix} in /etc/hosts. Trying to fix by restarting container..."
-                docker restart ${_node}$_n
-
-                #if restarted, calling ./startup.sh (and centos 7 is not using /startup.sh)
-                if [ $_centos_os_ver -eq 6 ]; then
-                # need to start necessary services in here but how to start service is different by container, so expecting /startup.sh absorb this
-                    docker exec ${_node}$_n timeout 5 /startup.sh
-                fi
-            fi
-        fi
-
-        # Don't touch iptables in old /startup.sh TODO: remove this later as newer container doesnt' have this
-	    docker exec -it ${_node}$_n bash -c "grep -qE '^/etc/init.d/iptables ' /startup.sh &>/dev/null && sed -i 's/^\/etc\/init.d\/iptables.*//' /startup.sh"
-
-        # if DNS is not 'localhost', update /etc/resolve.conf. expecting _dns is IP Address. Note: can't use sed
-        if [ ! -z "${_dns}" ] && [ "${_dns}" != "localhost" ] && [ "${_dns}" != "127.0.0.1" ] && [ "${_dns}" != "127.0.0.11" ]; then
-            docker exec -it ${_node}$_n bash -c '_f=/etc/resolv.conf; grep -qE "^nameserver\s'${_dns}'\b" $_f || (grep -v "^nameserver" $_f > ${_f}.tmp && cat ${_f}.tmp > ${_f} && echo "nameserver '${_dns}'" >> $_f)'
-        fi
-
-        if [ -n "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
-            # Adding docker host IP (eg. 172.17.0.1) with specified hostname TODO: remote this later as now it should use dnsmasq
-            docker exec -it ${_node}$_n bash -c "grep -q \"${r_DOCKER_PRIVATE_HOSTNAME}\" /etc/hosts || echo \"${r_DOCKER_HOST_IP} ${r_DOCKER_PRIVATE_HOSTNAME}\" >> /etc/hosts"
-        fi
-
-        # Somehow docker disable a container communicates outside by adding 0.0.0.0 GW, which will be problem when we need to test distcp
-	    if [ "$_docker_net_addr" != "${r_DOCKER_NETWORK_ADDR%0}0" ]; then
-    	    docker exec -it ${_node}$_n bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 || ip route del ${_docker_net_addr}/16 via 0.0.0.0"
-    	    #[ ! -z "$r_DOCKER_NETWORK_ADDR" ] && docker exec -it ${_node}$_n bash -c "ip route add ${r_DOCKER_NETWORK_ADDR%0}0/${r_DOCKER_NETWORK_MASK#/} via 0.0.0.0"
-        fi
-    done
-    wait
+    [[ "${_docker_ip}" =~ $_regex ]] && _docker_net_addr="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0.0"
+    docker exec -it ${_name} bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 &>/dev/null || ip route del ${_docker_net_addr}/16 via 0.0.0.0"
 }
 
 function f_docker_unpause() {
@@ -1372,33 +1392,42 @@ function f_docker_run() {
 
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
-    local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
-    local _base="${g_DOCKER_BASE}:$_os_ver"
-
-    if [ $_dns = "localhost" ]; then
-        _dns="`f_docker_ip`"
-    fi
+    [ $_dns = "localhost" ] && _dns="`f_docker_ip`"
 
     if [ -z "$_dns" ]; then
         _warn "No DNS IP Address"
         return 1
     fi
 
-    local _network=""
-    local _line=""
+    local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
+    local _base="${g_DOCKER_BASE}:$_os_ver"
+
     [ ! -d /var/tmp/share ] && mkdir -p -m 777 /var/tmp/share
 
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
-        _line="`docker ps -a -f name=${_node}$_n | grep -w ${_node}$_n`"
-        if [ -n "$_line" ]; then
-            _warn "${_node}$_n already exists. Skipping..."
-            continue
-        fi
-        # --ip may not work if no custom network due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
-        [ ! -z "$_ip_prefix" ] && _network="--network=$g_HDP_NETWORK --ip=${_ip_prefix%\.}.${_n}"
-
-        docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share --privileged --hostname=${_node}$_n${_domain} ${_network} --dns=$_dns --name=${_node}$_n ${_base} || return $?
+        _docker_run "${_node}$_n${_domain}" "${_ip_prefix%\.}.${_n}" "${_base}" "${_dns}" || continue
     done
+}
+
+function _docker_run() {
+    local _hostname="$1"
+    local _ip_address="$2"
+    local _base="$3"
+    local _dns="$4"
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
+    _line="`docker ps -a --format "{{.Names}}" | grep -E "^${_name}$"`"
+    if [ -n "$_line" ]; then
+        _warn "Container name:${_name} already exists. Skipping..."
+        return 2
+    fi
+
+    # --ip may not work if no custom network due to "docker: Error response from daemon: user specified IP address is supported on user defined networks only."
+    local _options=""
+    [ ! -z "${_ip_address}" ] && _options="${_options} --network=$g_HDP_NETWORK --ip=${_ip_address}"
+    [ ! -z "${_dns}" ] && _options="${_options} --dns=${_dns}"
+
+    docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share --privileged --hostname=${_hostname} ${_options} --name=${_name} ${_base}
 }
 
 function _ambari_query_sql() {
@@ -1447,12 +1476,12 @@ function f_ambari_install() {
 
     f_ambari_server_install || return $?
     f_ambari_server_setup &
-    f_ambari_agent_install || return $?
+    f_ambari_agents_install || return $?
     wait
 }
 
 function f_ambari_upgrade() {
-    local __doc__="Upgrade Ambari Server and Agents"
+    local __doc__="Upgrade Ambari Server and Agents (use r_DOMAIN_SUFFIX)"
     local _repo_url_or_file="$1"
     local _ambari_host="${2-$r_AMBARI_HOST}"
     local _how_many="${3-$r_NUM_NODES}"
@@ -1464,7 +1493,7 @@ function f_ambari_upgrade() {
     fi
 
     f_ambari_server_upgrade "${_ambari_host}" "${_repo_url_or_file}" || return $?
-    f_ambari_agent_upgrade "${_repo_url_or_file}" "${_how_many}" "${_start_from}"
+    f_ambari_agents_upgrade "${_repo_url_or_file}" "${_how_many}" "${_start_from}"
 }
 
 function f_ambari_server_install() {
@@ -1504,6 +1533,8 @@ function f_ambari_server_setup() {
     local _ambari_host="${1-$r_AMBARI_HOST}"
     local _jdk_file="${2-$r_AMBARI_JDK_URL}"
     local _jce_file="${3-$r_AMBARI_JCE_URL}"
+    local _port="${4}"
+    [ -z "${_port}" ] && _port="8080"
 
     local _target_dir="/var/lib/ambari-server/resources/"
 
@@ -1528,31 +1559,42 @@ function f_ambari_server_setup() {
         scp "${_jce_file}" root@${_ambari_host}:${_target_dir%/}/
     fi
 
-    _port_wait "${_ambari_host}" "8080" 1 &>/dev/null
-    if [ $? -eq 0 ]; then
-        _warn "Something is already listening on ${_ambari_host}:8080, so just in case, not setting up"
+    if nc -z ${_ambari_host} ${_port}; then
+        _warn "Something is already listening on ${_ambari_host}:${_port}, so just in case, not setting up"
         return 1
     fi
 
-    # TODO: at this moment, only Centos (yum)
-    [ ! -s "/tmp/ambari.repo_${__PID}" ] && f_get_ambari_repo_file
-    _info "Copying /tmp/ambari.repo_${__PID} to ${_ambari_host} ..."
-    scp -q /tmp/ambari.repo_${__PID} root@${_ambari_host}:/etc/yum.repos.d/ambari.repo || return $?
-
-    _info "Setting up ambari-server on ${_ambari_host} ..."
-    ssh -q root@${_ambari_host} "ambari-server setup -s --enable-lzo-under-gpl-license || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )" || return $?
+    _info "Setting up ambari-server on ${_ambari_host} without --enable-lzo-under-gpl-license ..."
+    ssh -q root@${_ambari_host} "ambari-server setup -s || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )" || return $?
+    if [ "${_port}" != "8080" ]; then
+        # default installation doesn't have client.api.port
+        ssh -q root@${_ambari_host} "echo -e '\nclient.api.port=${_port}' >> /etc/ambari-server/conf/ambari.properties"
+    fi
 
     # Optional: ambari server related setting (TODO: will this work with CentOS7?)
     ssh -q root@${_ambari_host} "sed -i -r \"s/^#?log_line_prefix = ''/log_line_prefix = '%m '/\" /var/lib/pgsql/data/postgresql.conf"
     ssh -q root@${_ambari_host} "sed -i -r \"s/^#?log_statement = 'none'/log_statement = 'mod'/\" /var/lib/pgsql/data/postgresql.conf"
+
+    if [ -s /usr/share/java/mysql-connector-java.jar ]; then
+        local _copy_file="/usr/share/java/mysql-connector-java.jar"
+        [ -L /usr/share/java/mysql-connector-java.jar ] && _copy_file="`realpath /usr/share/java/mysql-connector-java.jar`"
+        _info "setup mysql-connector-java..."
+        ssh -q root@${_ambari_host} "mkdir -m 777 -p /usr/share/java 2>/dev/null"
+        scp ${_copy_file} root@${_ambari_host}:/usr/share/java/mysql-connector-java.jar
+        ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=mysql --jdbc-driver=/usr/share/java/mysql-connector-java.jar"
+    fi
 }
 
 function f_ambari_server_reset() {
-    local __doc__="WARNING: this reset ambari-server on $r_AMBARI_HOST"
+    local __doc__="this reset ambari-server on $r_AMBARI_HOST"
     local _ambari_host="${1-$r_AMBARI_HOST}"
-    
-    _port_wait "${_ambari_host}" "22"
-    ssh -q root@${_ambari_host} "ambari-server stop && ambari-server reset -s && ambari-server start --skip-database-check"
+
+    _warn "Resetting Ambari Server after 5 sec..."
+    sleep 5
+
+    ssh -q root@${_ambari_host} "ambari-server stop" || return $?
+    ssh -q root@${_ambari_host} 'PGPASSWORD="bigdata" pg_dump -Uambari ambari -Z 9 -f ./ambari_$(ambari-server --version)_$(date +"%Y%m%d").sql.gz'
+    ssh -q root@${_ambari_host} "ambari-server reset -s && ambari-server start --skip-database-check"
 }
 
 function f_ambari_server_start() {
@@ -1565,7 +1607,7 @@ function f_ambari_server_start() {
         # if 'Server not yet listening...' should be OK.
         grep -iqE 'Ambari Server is already running|Server not yet listening on http port 8080 after 50 seconds' /tmp/f_ambari_server_start.out && return
         sleep 1
-        ssh -q root@${_ambari_host} "ambari-server start --skip-database-check"
+        ssh -q root@${_ambari_host} "service postgresql start; sleep 5; service ambari-server restart --skip-database-check"
     fi
 }
 
@@ -1658,7 +1700,7 @@ function f_tunnel() {
     #echo "Please run \"ip route del 172.17.0.0/16 via 0.0.0.0\" on all containers on both hosts."
 }
 
-function f_ambari_agent_install() {
+function f_ambari_agents_install() {
     local __doc__="Installing ambari-agent on all containers for manual registration (not starting)"
     local _repo_url_or_file="${1-$r_AMBARI_REPO_FILE}"
     local _how_many="${2-$r_NUM_NODES}"
@@ -1673,14 +1715,14 @@ function f_ambari_agent_install() {
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo || continue
         # no "-t"
-        local _cmd="ssh -q root@${_node}$_n${_domain} \"which ambari-agent 2>/dev/null || yum install ambari-agent -y\" &> /tmp/f_ambari_agent_install_${_n}.out"
+        local _cmd="ssh -q root@${_node}$_n${_domain} \"which ambari-agent 2>/dev/null || yum install ambari-agent -y\" &> /tmp/f_ambari_agents_install_${_n}.out"
         if [ 0 -eq ${_is_first_one_successful} ]; then
             eval "${_cmd}" &
         else
             eval "${_cmd}"
             _is_first_one_successful=$?
         fi
-        _info "Check /tmp/f_ambari_agent_install_${_n}.out for agent installation"
+        _info "Check /tmp/f_ambari_agents_install_${_n}.out for agent installation"
         sleep 1
     done
     wait
@@ -1691,8 +1733,8 @@ function f_ambari_agent_install() {
     done
 }
 
-function f_ambari_agent_upgrade() {
-    local __doc__="Upgrading ambari-agent on all containers"
+function f_ambari_agents_upgrade() {
+    local __doc__="Upgrading ambari-agent on all containers (use r_DOMAIN_SUFFIX)"
     local _repo_url_or_file="${1}" # as upgrade, not using $r_AMBARI_REPO_FILE
     local _how_many="${2-$r_NUM_NODES}"
     local _start_from="${3-$r_NODE_START_NUM}"
@@ -1706,14 +1748,14 @@ function f_ambari_agent_upgrade() {
     for _n in `_docker_seq "$_how_many" "$_start_from"`; do
         scp -q /tmp/ambari.repo_${__PID} root@${_node}$_n${_domain}:/etc/yum.repos.d/ambari.repo || continue
         # no "-t"
-        local _cmd="ssh -q root@${_node}$_n${_domain} \"(set -x; yum clean all && ambari-agent stop; yum upgrade -y ambari-agent && ambari-agent restart)\" &> /tmp/f_ambari_agent_upgrade_${_n}.out"
+        local _cmd="ssh -q root@${_node}$_n${_domain} \"(set -x; yum clean all && ambari-agent stop; yum upgrade -y ambari-agent && ambari-agent restart)\" &> /tmp/f_ambari_agents_upgrade_${_n}.out"
         if [ 0 -eq ${_is_first_one_successful} ]; then
             eval "${_cmd}" &
         else
             eval "${_cmd}"
             _is_first_one_successful=$?
         fi
-        _info "Check /tmp/f_ambari_agent_upgrade_${_n}.out for agent upgrade"
+        _info "Check /tmp/f_ambari_agents_upgrade_${_n}.out for agent upgrade"
         sleep 1
     done
     wait
@@ -1722,6 +1764,41 @@ function f_ambari_agent_upgrade() {
         ssh -q -t root@${_node}$_n${_domain} "ambari-agent status"
         _info "${_node}$_n${_domain} 'ambari-agent status' exit code was $?"
     done
+}
+
+function f_ambari_agent_reset() {
+    local __doc__="Goal is Completely Reset/reinstall one ambari-agent. NOTE: it will ask y/n when erase packages"
+    local _agent_host="${1}"
+    local _ambari_host="${2-$r_AMBARI_HOST}"
+
+    # Cleaning up HDP / HDF packages
+    _info "Removing Ambari Metrics,Solr,Log/HDP/HDF packages... (it will ask y/n)"
+    sleep 3
+    ssh -qt root@${_agent_host} 'yum erase ambari-[!as]*; grep -qiE "^\[(HDP-[2-9]|HDF-[2-9])" /etc/yum.repos.d/*.repo && for _r in `grep -iE "^\[(HDP-[2-9]|HDF-[2-9])" /etc/yum.repos.d/*.repo | sed -n -r "s/^.*\[(.+)\]/\1/p"`; do yum erase $(yum list installed | grep -E "@${_r}$" | awk "{ print $1 }"); done'
+    ssh -qt root@${_agent_host} 'mv -vf `grep -liE "^\[(HDP-[2-9]|HDF-[2-9])" /etc/yum.repos.d/*.repo` /tmp/'
+
+    scp -q root@${_ambari_host}:/etc/yum.repos.d/ambari.repo /tmp/ambari_$$.repo || return $?
+    scp -q /tmp/ambari_$$.repo root@${_agent_host}:/etc/yum.repos.d/ambari.repo || return $?
+    # Installing package. no "-t"
+    ssh -q root@${_agent_host} "(set -x; yum clean all; ambari-agent stop; yum remove ambari-agent -y; yum install ambari-agent -y)" || return $?
+
+    _ambari_agent_fix "${_agent_host}"
+    ssh -q -t root@${_agent_host} "(set -x; ambari-agent reset ${_ambari_host} && ambari-agent start)" || return $?
+    local _c="`f_get_cluster_name ${_ambari_host}`"
+    [ -z "${_c}" ] && return 1
+    sleep 5
+    curl -Is -u admin:admin "http://${_ambari_host}:8080/api/v1/hosts/${_agent_host}" | grep -q '^HTTP/1.1 2'
+    if [ $? -ne 0 ]; then
+        sleep 5
+        curl -Is -u admin:admin "http://${_ambari_host}:8080/api/v1/hosts/${_agent_host}" | grep '^HTTP/1.1 2' || sleep 5
+    fi
+    curl -is -u admin:admin -X POST -H "X-Requested-By:ambari" "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_agent_host}" | grep '^HTTP/1.1 2' || return $?
+    # If no component at all, Ambari shows this node as heartbeat lost
+    curl -is -u admin:admin "http://${_ambari_host}:8080/api/v1/clusters/${_c}/services/AMBARI_METRICS/components/METRICS_MONITOR" | grep '^HTTP/1.1 2'
+    if [ $? -eq 0 ]; then
+        f_add_comp "${_agent_host}" "METRICS_MONITOR" "${_ambari_host}"
+    fi
+    _info "If Java is not managed by Ambari, please make sure 'java.home' location in ambari.properties exists in this node."
 }
 
 function f_run_cmd_on_nodes() {
@@ -1748,39 +1825,45 @@ function f_run_cmd_all() {
 
 function f_ambari_java_random() {
     local __doc__="Using urandom instead of random"
-    local _how_many="${1-$r_NUM_NODES}"
-    local _start_from="${2-$r_NODE_START_NUM}"
+    local _ambari_host="${1-$r_AMBARI_HOST}"
+    local _how_many="${2-$r_NUM_NODES}"
+    local _start_from="${3-$r_NODE_START_NUM}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
-    local _javahome="`ssh -q root@$r_AMBARI_HOST "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
+    local _javahome="`ssh -q root@${_ambari_host} "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
+    [ -z "${_javahome}" ] && return
     _info "Ambari Java Home ${_javahome}"
+
     # or -Djava.security.egd=file:///dev/urandom
-    local _cmd='grep -q "^securerandom.source=file:/dev/random" "'${_javahome%/}'/jre/lib/security/java.security" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "'${_javahome%/}'/jre/lib/security/java.security"'
+    local _cmd='grep -q "^securerandom.source=file:/dev/random" "'${_javahome%/}'/jre/lib/security/java.security" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "'${_javahome%/}'/jre/lib/security/java.security"
+_alt_java="$(alternatives --display java | grep "link currently points to" | grep -oE "/.+jre.+/java$")" && _javahome="$(dirname $(dirname "$_alt_java"))" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "$_javahome/lib/security/java.security"'
 
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
-    done
+    ssh -q root@${_ambari_host} -t "$_cmd"
 
-    # TODO: at this moment, trying to change only jre, and below might be broken
-    _cmd='_alt_java="$(alternatives --display java | grep "link currently points to" | grep -oE "/.+jre.+/java$")" && _javahome="$(dirname $(dirname "$_alt_java"))" && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" "$_javahome/lib/security/java.security"'
-
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        # if no 'java' in the path, this outputs error
-        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
-    done
+    if [ -n "$_how_many" ]; then
+        for i in `_docker_seq "$_how_many" "$_start_from"`; do
+            ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+        done
+    fi
 }
 
-function f_ambari_agent_fix() {
+function f_ambari_agents_fix() {
     local __doc__="Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
-    local _cmd='grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
-        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "sed -i.bak -e '/^verify/ s/\(platform_default\|enable\)/disable/' /etc/python/cert-verification.cfg 2>/dev/null"
+        _ambari_agent_fix "${_node}$i${r_DOMAIN_SUFFIX}"
     done
+}
+
+function _ambari_agent_fix() {
+    local __doc__="Fixing public hostname (169.254.169.254 issue) by appending public_hostname.sh, and other misc changes"
+    local _hostname="${1}"
+
+    ssh -q root@${_hostname} -t 'grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
+    ssh -q root@${_hostname} -t "sed -i.bak -e '/^verify/ s/\(platform_default\|enable\)/disable/' /etc/python/cert-verification.cfg 2>/dev/null"
 }
 
 function f_etcs_mount() {
@@ -1920,23 +2003,19 @@ function f_local_repo() {
         local _util_repo_path="${_path_diff%/}${_hdp_util_dir#\.}"
         echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
 
-        # TODO: support only CentOS or RedHat at this moment
-        if [ "${r_CONTAINER_OS}" = "centos" ] || [ "${r_CONTAINER_OS}" = "redhat" ]; then
-            _port_wait "$r_AMBARI_HOST" "8080"
-
-            f_ambari_set_repo "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}" "http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}" || return $?
-        else
-            _warn "At this moment only centos or redhat for local repository"
-        fi
+        r_HDP_REPO_URL="http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}"
+        r_HDP_UTIL_URL="http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
     fi
 }
 
 function f_ambari_set_repo() {
-    local __doc__="Update Ambari's repository URL information"
-    local _repo_url="$1"
+    local __doc__="Update Ambari's repository or VDF *URL* information"
+    local _repo_url="$1"    # or VDF file URL
     local _util_url="$2"
-    local _ambari_host="${3-$r_AMBARI_HOST}"
-    local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
+    local _os_type="$3"
+    local _hdp_version="${4-$r_HDP_REPO_VER}"
+    local _ambari_host="${5-$r_AMBARI_HOST}"
+
     local _stack="HDP" # for AMBARI-22565 repo_name change. TODO: need to support HDF etc.
 
     _port_wait ${_ambari_host} 8080
@@ -1945,32 +2024,62 @@ function f_ambari_set_repo() {
         return 1
     fi
 
-    local _os_name="$r_CONTAINER_OS"
-    if [ "${_os_name}" = "centos" ]; then
-        _os_name="redhat"
-    fi
-
     local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
-    if [[ "$r_HDP_REPO_VER" =~ $_regex ]]; then
+    if [[ "${_hdp_version}" =~ $_regex ]]; then
         local _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
     else
         _error "Couldn't determine the stack version"
         return 1
     fi
 
-    if [[ "${r_AMBARI_VER}" =~ ^2.6. ]]; then
-        _warn "TODO: Ambari 2.6.x may not work with local repo at this moment"
+    if [ -z "${_os_type}" ]; then
+        local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
+        local _os_name="$r_CONTAINER_OS"
+         _os_type="${_os_name}${_repo_os_ver}"
     fi
+    local _tmp_os_type="`echo ${_os_type} | sed 's/centos/redhat/'`"
 
-    if _isUrl "$_repo_url"; then
-        # TODO: if Ambari 2.6 https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
-        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}'
-    fi
+    # if r_AMBARI_VER is 2.5 or older, using older way to submit _repo_url
+    if [ -n "${r_AMBARI_VER}" ] && [[ "${r_AMBARI_VER}" =~ ^2\.[0-5]\. ]]; then
+        # NOTE: should use redhat if centos
+        if _isUrl "$_repo_url"; then
+            curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}' || return $?
+        fi
 
-    if _isUrl "$_util_url"; then
-        local _hdp_util_name="`echo $_util_url | grep -oP "HDP-UTILS-[\d\.]+"`"
-        curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${r_AMBARI_HOST}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_os_name}${_repo_os_ver}/repositories/${_hdp_util_name}" -d '{"Repositories":{"repo_name": "'${_hdp_util_name}'", "base_url":"'${_util_url}'","verify_base_url":true}}'
+        if _isUrl "$_util_url"; then
+            local _hdp_util_name="`echo $_util_url | grep -oP "HDP-UTILS-[\d\.]+"`"
+            curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_hdp_util_name}" -d '{"Repositories":{"repo_name": "'${_hdp_util_name}'", "base_url":"'${_util_url}'","verify_base_url":true}}' || return $?
+        fi
+    else
+        # https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
+        # NOTE: Another workaround would be updating /var/lib/ambari-server/resources/stacks/${_stack}/${_stack_version}/repos/repoinfo.xml
+        if _isUrl "$_repo_url" && [[ "${_repo_url}" =~ \.xml$ ]]; then
+            curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/version_definitions" -X POST -H 'X-Requested-By: ambari' -d '{"VersionDefinition":{"version_url":"'${_repo_url}'"}}' | grep -E '^HTTP/1.1 [45]'
+        else
+            _warn "${r_AMBARI_VER}: Ambari 2.6.x and higher need VDF file as URL. Trying to generate URL from hdp_urlinfo.json"
+            # always get the latest
+            curl -sO http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json
+            # Get the latest vdf file (confusing, sometimes centos, sometimes redhat
+            local _vdf="`python -c 'import json;f=open("hdp_urlinfo.json");j=json.load(f);print j["'${_stack}-${_stack_version}'"]["manifests"]["'${_hdp_version}'"]["'${_os_type}'"]'`" || return $?
+            [ -z "${_vdf} " ] && return 1
+            # Upload the VDF definition
+            curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/version_definitions" -X POST -H 'X-Requested-By: ambari' -d '{"VersionDefinition":{"version_url":"'${_vdf}'"}}' | grep -E '^HTTP/1.1 [45]'
+        fi
+
+        # NOTE: For already provisioned cluster
+        #curl -s -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_stack}-${_stack_version}" -o /tmp/repo_${_stack}-${_stack_version}.json || return $?
+        #grep -vw 'href' /tmp/repo_${_stack}-${_stack_version}.json > /tmp/repo_${_stack}-${_stack_version}_mod.json
+        #if _isUrl "$_repo_url"; then
+        #    sed -i.bak 's@/"base_url" : "http.\+/'${_stack}'/.*'${_os_type}'/.\+"@"base_url" : "'$_repo_url'"@g' /tmp/repo_${_stack}-${_stack_version}_mod.json
+        #else
+        #    sed -i.bak "s@/updates/${_stack_version}.[0-9].[0-9]@/updates/${_hdp_version}@g" /tmp/repo_${_stack}-${_stack_version}_mod.json
+        #fi
+        #if _isUrl "$_util_url"; then
+        #    sed -i.bak 's@/"base_url" : "http.\+-UTILS-.\+/'${_os_type}'.*"@"base_url" : "'$_util_url'"@g' /tmp/repo_${_stack}-${_stack_version}_mod.json
+        #fi
+        #curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1" -X PUT -H 'X-Requested-By: ambari' -d @/tmp/repo_${_stack}-${_stack_version}_mod.json || return $?
     fi
+    echo ""
 }
 
 function f_repo_mount() {
@@ -2259,28 +2368,35 @@ function p_host_setup() {
 
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent reset $r_AMBARI_HOST"
         f_run_cmd_on_nodes "ambari-agent reset $r_AMBARI_HOST" &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_ambari_agent_fix"
-        f_ambari_agent_fix &>> /tmp/p_host_setup.log
+        _log "INFO" "Starting f_ambari_agents_fix"
+        f_ambari_agents_fix &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent start"
         f_run_cmd_on_nodes "ambari-agent start" &>> /tmp/p_host_setup.log
 
         if _isYes "$r_HDP_LOCAL_REPO"; then
             _log "INFO" "Starting f_local_repo"
             f_local_repo &>> /tmp/p_host_setup.log || return $?
-        elif [ -n "$r_HDP_REPO_URL" ]; then
-            # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
-            _log "INFO" "Starting f_ambari_set_repo (may not work with Ambari 2.6)"
-            f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" &>> /tmp/p_host_setup.log
         fi
 
         _ambari_agent_wait &>> /tmp/p_host_setup.log
         if _isYes "$r_AMBARI_BLUEPRINT"; then
             _log "INFO" "Starting p_ambari_blueprint"
-            p_ambari_blueprint &>> /tmp/p_host_setup.log
+            p_ambari_blueprint &>> /tmp/p_host_setup.log || return $?
+        else
+            if [ -n "$r_HDP_REPO_URL" ]; then
+                _log "INFO" "Starting f_ambari_set_repo (may not work with Ambari 2.6)"
+                # TODO: support only CentOS or RedHat at this moment
+                if [ "${r_CONTAINER_OS}" = "centos" ] || [ "${r_CONTAINER_OS}" = "redhat" ]; then
+                    # TODO: at this moment r_HDP_UTIL_URL always empty if not local repo
+                    f_ambari_set_repo "$r_HDP_REPO_URL" "$r_HDP_UTIL_URL" &>> /tmp/p_host_setup.log || return $?
+                else
+                    _warn "At this moment only centos or redhat"
+                fi
+            fi
         fi
 
-        _log "INFO" "TODO: Starting f_cluster_performance"
-        f_cluster_performance &>> /tmp/p_host_setup.log || return $?
+        _log "INFO" "*Scheduling* f_cluster_performance"
+        echo "bash `realpath $BASH_SOURCE` -r `realpath ${g_RESPONSE_FILEPATH}` -f f_cluster_performance" | at now +1 hour
 
         f_port_forward 8080 $r_AMBARI_HOST 8080 "Y" &>> /tmp/p_host_setup.log
     fi
@@ -2350,11 +2466,11 @@ function f_dnsmasq_banner_reset() {
 
     if [ -n "${_docker0}" ]; then
         # If an empty file
-    if [ ! -s /tmp/banner_add_hosts ]; then
-        echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" > /tmp/banner_add_hosts
-    else
-        grep -vE "$_docker0|${r_DOCKER_PRIVATE_HOSTNAME}${_domain}" /tmp/banner_add_hosts > /tmp/banner
-        echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" >> /tmp/banner
+        if [ ! -s /tmp/banner_add_hosts ]; then
+            echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" > /tmp/banner_add_hosts
+        else
+            grep -vE "$_docker0|${r_DOCKER_PRIVATE_HOSTNAME}${_domain}" /tmp/banner_add_hosts > /tmp/banner
+            echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" >> /tmp/banner
             cat /tmp/banner > /tmp/banner_add_hosts
         fi
     fi
@@ -2367,14 +2483,14 @@ function f_dnsmasq_banner_reset() {
         echo "${_ip_address}    ${_hostname} ${_shortname}" >> /tmp/banner
         cat /tmp/banner > /tmp/banner_add_hosts
     else
-    for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        for _n in `_docker_seq "$_how_many" "$_start_from"`; do
             local _hostname="${_node}${_n}${_domain}"
             local _ip_address="${_ip_prefix%\.}.${_n}"
             local _shortname="${_node}${_n}"
         grep -vE "${_hostname}|${_ip_address}" /tmp/banner_add_hosts > /tmp/banner
             echo "${_ip_address}    ${_hostname} ${_shortname}" >> /tmp/banner
-        cat /tmp/banner > /tmp/banner_add_hosts
-    done
+            cat /tmp/banner > /tmp/banner_add_hosts
+        done
     fi
 
     # copy back and restart
@@ -2395,7 +2511,7 @@ function f_update_resolv_confs() {
 }
 
 function f_cluster_performance() {
-    local __doc__="TODO: Ambari/HDP performance hack"
+    local __doc__="Modifications to improve cluster (Ambari/HDP) performance, however, cluster installation needs to be completed (TODO: this change requre ambari and hdp restart)"
     local _ambari_host="${1-$r_AMBARI_HOST}"
 
     _info "Using urandom instead of random"
@@ -2411,9 +2527,9 @@ function f_cluster_performance() {
 #grep -q '^api.authenticated.user=' \$_f || echo 'api.authenticated.user=admin' >> \$_f
 #ambari-server restart --skip-database-check"
 
-    # TODO: This isn't performance related but putting in here for now
-    #_info "Creating 'admin', 'sam', 'tom' (Knox LDAPDemo) users in each node and in HDFS..."
-    #for _n in admin sam tom; do f_useradd_on_nodes "$_n" "${_n}-password"; done
+    # This isn't performance related but putting in here for now
+    _info "Creating 'admin', 'sam', 'tom' (Knox LDAPDemo) users in each node and in HDFS..."
+    for _n in admin sam tom; do f_useradd_on_nodes "$_n" "${_n}-password"; done
 }
 
 function f_host_performance() {
@@ -2841,7 +2957,7 @@ function f_useradd() {
     useradd -d "/home/$_user/" -s `which bash` -p $(echo "$_pwd" | openssl passwd -1 -stdin) "$_user"
     mkdir "/home/$_user/" && chown "$_user":"$_user" "/home/$_user/"
 
-    if _isYes "$_copy_id_rsa" &&[ -f ${HOME%/}/.ssh/id_rsa ] && [ -d "/home/$_user/" ]; then
+    if _isYes "$_copy_id_rsa" && [ -f ${HOME%/}/.ssh/id_rsa ] && [ -d "/home/$_user/" ]; then
         mkdir "/home/$_user/.ssh" && chown "$_user":"$_user" "/home/$_user/.ssh"
         cp ${HOME%/}/.ssh/id_rsa* "/home/$_user/.ssh/"
         chown "$_user":"$_user" /home/$_user/.ssh/id_rsa*
@@ -2863,7 +2979,9 @@ function f_useradd_on_nodes() {
     if [ -z "$_hdfs_client_node" ]; then
         _hdfs_client_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" $r_AMBARI_HOST`"
     fi
-    ssh -q root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfs -mkdir /user/$_user && hdfs dfs -chown $_user:hadoop /user/$_user\""
+    if [ -n "$_hdfs_client_node" ]; then
+        ssh -q root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfs -mkdir /user/$_user && hdfs dfs -chown $_user:hadoop /user/$_user\""
+    fi
 
     if which kadmin.local; then
         # If no password given and if not exist, creating a keytab
@@ -3142,6 +3260,7 @@ function _split() {
     eval "IFS=\"$_delimiter\" read -a $_rtn_var_name <<< \"$_string\""
     IFS="$_original_IFS"
 }
+
 function _trim() {
     local _string="$1"
     echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
@@ -3249,7 +3368,6 @@ function _log() {
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" 1>&2
     fi
 }
-
 function _echo() {
     local _msg="$1"
     local _stderr="$2"
@@ -3348,7 +3466,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 _START_HDP="Y"
                 ;;
             r)
-                _RESPONSE_FILEPATH="$OPTARG"
+                g_RESPONSE_FILEPATH="$OPTARG"
                 ;;
             f)
                 _FUNCTION_NAME="$OPTARG"
@@ -3388,8 +3506,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _IS_SCRIPT_RUNNING=true
 
     if _isYes "$_SETUP_HDP"; then
-        if _isYes "$_AUTO_SETUP_HDP" && [ -z "$_RESPONSE_FILEPATH" ]; then
-            _RESPONSE_FILEPATH="$g_LATEST_RESPONSE_URL"
+        if _isYes "$_AUTO_SETUP_HDP" && [ -z "$g_RESPONSE_FILEPATH" ]; then
+            g_RESPONSE_FILEPATH="$g_LATEST_RESPONSE_URL"
         fi
         f_update_check
         p_interview_or_load
