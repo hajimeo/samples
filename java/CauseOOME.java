@@ -46,7 +46,8 @@ public class CauseOOME {
             test.OOMEing(size, maxIteration);
         } catch (OutOfMemoryError e) {
             e.printStackTrace();
-            log("Completed test.");
+            long f = Runtime.getRuntime().freeMemory();
+            log("Completed test. (Free Mem: " + f +")");
         }
     }
 }

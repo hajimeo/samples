@@ -98,7 +98,8 @@ public class CauseOOMEMeta {
             OOMEing(maxIteration);
         } catch (OutOfMemoryError e) {
             e.printStackTrace();
-            log("Completed test.");
+            long f = Runtime.getRuntime().freeMemory();
+            log("Completed test. (Free Mem: " + f +")");
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(1);
