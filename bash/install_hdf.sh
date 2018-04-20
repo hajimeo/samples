@@ -19,6 +19,8 @@ _HDF_FULL_VERSION="${3:-3.1.1.0-35}"
 _CONFIG_JSON="cluster_config.json"
 _HOSTMAP_JSON="host_mapping.json"
 _OS_TYPE="centos7"
+# Cannot derive key from empty/short password -- password must be at least 12 characters
+_PASSWORD="WeDoHadoop!1"
 
 # Populate other version variables
 if [[ "${_HDF_FULL_VERSION}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\.([0-9]+)- ]]; then
@@ -34,6 +36,7 @@ _HDF_TAR_GZ="http://public-repo-1.hortonworks.com/HDF/${_OS_TYPE}/${_hdf_v}.x/up
 _HDF_VDF="http://public-repo-1.hortonworks.com/HDF/${_OS_TYPE}/${_hdf_v}.x/updates/${_hdf_version}/HDF-${_HDF_FULL_VERSION}.xml"
 
 # If configuration json file doesn't exist, create it
+# NOTE: THIS IS DEMO, so, for real blueprint depoloyment, would need to populate "configurations" part
 if [ ! -s "${_CONFIG_JSON}" ]; then
     tee "${_CONFIG_JSON}" > /dev/null << EOF
 {
@@ -42,7 +45,11 @@ if [ ! -s "${_CONFIG_JSON}" ]; then
     "stack_name" : "HDF",
     "stack_version" : "${_hdf_stack_ver}"
   },
-  "configurations": [],
+  "configurations": [
+    "nifi-ambari-config": {
+      "nifi.security.encrypt.configuration.password": "${_PASSWORD}"
+    }
+  ],
   "host_groups": [
     {
       "components": [
@@ -69,7 +76,7 @@ if [ ! -s "${_HOSTMAP_JSON}" ]; then
     tee "${_HOSTMAP_JSON}" > /dev/null << EOF
 {
   "blueprint": "${_CLUSTER_NAME}-bp",
-  "default_password": "hadoop",
+  "default_password": "${_PASSWORD}",
   "host_groups": [
     {
       "hosts": [
