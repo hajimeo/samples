@@ -46,8 +46,10 @@ if [ ! -s "${_CONFIG_JSON}" ]; then
     "stack_version" : "${_hdf_stack_ver}"
   },
   "configurations": [
-    "nifi-ambari-config": {
-      "nifi.security.encrypt.configuration.password": "${_PASSWORD}"
+    {
+        "nifi-ambari-config": {
+          "nifi.security.encrypt.configuration.password": "${_PASSWORD}"
+        }
     }
   ],
   "host_groups": [
