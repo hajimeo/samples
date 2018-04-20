@@ -50,7 +50,7 @@ class XmlParser:
     @staticmethod
     def err(reason, level="ERROR"):
         sys.stderr.write(level + ": " + str(reason) + '\n')
-        raise
+        raise ValueError(str(reason))
 
     @staticmethod
     def warn(reason, level="WARN"):
@@ -71,6 +71,7 @@ class XmlParser:
                 name = str(p.find(".//" + key_element_name).text).strip()
                 value = str(p.find(".//" + value_element_name).text).strip()
                 if len(name) > 0:
+                    if value == 'None': value=""
                     rtn[name] = value
             except Exception, e:
                 XmlParser.warn(name+" does not have value. "+str(e))
@@ -134,4 +135,5 @@ if __name__ == '__main__':
     out = XmlParser.compare_dict(f1, f2, join_type, ignore_regex)
 
     # For now, just outputting as JSON (from a dict)
+    #pprint.pprint(out)
     print json.dumps(out, indent=4, sort_keys=True)
