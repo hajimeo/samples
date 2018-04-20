@@ -10,21 +10,24 @@
 #
 # *NOTE*: because it uses start_hdp.sh, can't use same function name in this script
 #
+# Example 0: source
+#   source ./setup_security.sh
+#   f_loadResp  # If not Sandbox
+#
 # Example 1: How to set up Kerberos
-#   source ./setup_security.sh && f_loadResp
 #   f_kdc_install_on_host
 #   f_ambari_kerberos_setup
 #
-# If Sandbox (after KDC setup):
-# NOTE: sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
+#   If Sandbox (after KDC setup):
+#   NOTE: sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
 #   f_ambari_kerberos_setup "$g_KDC_REALM" "172.17.0.1" "" "sandbox-hdp.hortonworks.com" "sandbox-hdp.hortonworks.com"
 #
 # Example 2: How to set up HTTP Authentication (SPNEGO) on hadoop component
 #   source ./setup_security.sh && f_loadResp
 #   f_spnego_hadoop
 #
-# If Sandbox (after KDC/kerberos setup):
-# NOTE sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
+#   If Sandbox (after KDC/kerberos setup):
+#   NOTE: sandbox.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
 #   f_spnego_hadoop "$g_KDC_REALM" "hortonworks.com" "sandbox.hortonworks.com" "8080" "sandbox.hortonworks.com"
 #
 # Example 3: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
@@ -32,8 +35,8 @@
 #   mkdir ssl_setup; cd ssl_setup
 #   f_ssl_hadoop
 #
-# If Sandbox:
-# NOTE sandbox-hdp.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
+#   If Sandbox:
+#   NOTE: sandbox-hdp.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
 #   mkdir ssl_setup; cd ssl_setup
 #   r_NO_UPDATING_AMBARI_CONFIG=Y f_ssl_hadoop "" "" "sandbox-hdp.hortonworks.com" "8080" "sandbox-hdp.hortonworks.com"
 #
