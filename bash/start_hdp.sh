@@ -2059,6 +2059,7 @@ function f_ambari_set_repo() {
             _warn "${r_AMBARI_VER}: Ambari 2.6.x and higher need VDF file as URL. Trying to generate URL from hdp_urlinfo.json"
             # always get the latest
             curl -sO http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json
+            # http://public-repo-1.hortonworks.com/HDF/hdf_urlinfo.json
             # Get the latest vdf file (confusing, sometimes centos, sometimes redhat
             local _vdf="`python -c 'import json;f=open("hdp_urlinfo.json");j=json.load(f);print j["'${_stack}-${_stack_version}'"]["manifests"]["'${_hdp_version}'"]["'${_os_type}'"]'`" || return $?
             [ -z "${_vdf} " ] && return 1
@@ -2643,17 +2644,18 @@ function f_ssh_setup() {
     which ssh-keygen &>/dev/null || return $?
 
     if [ ! -e $HOME/.ssh/id_rsa ]; then
-        ssh-keygen -f $HOME/.ssh/id_rsa -q -N ""
+        ssh-keygen -f $HOME/.ssh/id_rsa -q -N "" || return 11
     fi
 
     if [ ! -e $HOME/.ssh/id_rsa.pub ]; then
-        ssh-keygen -y -f $HOME/.ssh/id_rsa > $HOME/.ssh/id_rsa.pub
+        ssh-keygen -y -f $HOME/.ssh/id_rsa > $HOME/.ssh/id_rsa.pub || return 12
     fi
 
     _key="`cat $HOME/.ssh/id_rsa.pub | awk '{print $2}'`"
     grep "$_key" $HOME/.ssh/authorized_keys &>/dev/null
     if [ $? -ne 0 ] ; then
-      cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys && chmod 600 $HOME/.ssh/authorized_keys
+        cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys && chmod 600 $HOME/.ssh/authorized_keys
+        [ $? -ne 0 ] && return 13
     fi
 
     if [ ! -e $HOME/.ssh/config ]; then
