@@ -634,7 +634,7 @@ function _ambari_blueprint_host_groups() {
 '
         else
             _final_hsot_groups='
-    { "name" : "host_group_1", "components" : ['${_master_comps}','${_standby_comps}','${_slave_comps}${_extra_sec_master_comps}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+    { "name" : "host_group_1", "components" : ['${_master_comps}','${_standby_comps}','${_slave_comps}','${_clients}${_extra_sec_master_comps}${_extra_sec_slave_comps}'], "configurations" : [ ] }
 '
         fi
     elif [ $_how_many = 2 ]; then
