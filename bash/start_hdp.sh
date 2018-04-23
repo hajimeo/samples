@@ -2463,7 +2463,9 @@ function f_dnsmasq_banner_reset() {
     rm -rf /tmp/banner_add_hosts
 
     # if no banner file, no point of updating it.
-    scp -q $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts || return $?
+    if [ -s /etc/banner_add_hosts ]; then
+        scp -q $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts || return $?
+    fi
 
     if [ -n "${_docker0}" ]; then
         # If an empty file
