@@ -16,11 +16,7 @@ public class CauseOOME {
         long f;
         for (int i = 0; i < maxIteration; i++) {
             f = Runtime.getRuntime().freeMemory();
-            if (f > (10*size))
-                size = initSize * (i + 1);
-            else
-                size = (int) (initSize * Math.sqrt((i + 1)));
-
+            size = initSize * (i + 1);
             log("Free Mem: " + f + " (adding " + size + " bytes / loop " + (i + 1) + ")");
             byte[] b = new byte[size];
             _list.add(b);
