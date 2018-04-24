@@ -10,27 +10,28 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 public class CauseOOME {
-    public void OOMEing(int maxIteration) throws Exception {
+    public void OOMEing(int maxIteration, int interval) throws Exception {
         List<byte[]> _list = new LinkedList<byte[]>();
         int size;
-        long freeMem;
-        int freePer;
         long maxMem = Runtime.getRuntime().maxMemory();
 
         for (int i = 0; i < maxIteration; i++) {
-            freeMem = Runtime.getRuntime().freeMemory();
-            freePer = (int) ((float) freeMem / maxMem * 100);
+            long freeMem = Runtime.getRuntime().freeMemory();
+            long freePer = (int) ((float) freeMem / maxMem * 100);
 
             if (freePer > 10) size = (int) ((maxMem - freeMem) * 0.10);
             else size = (int) ((maxMem - freeMem) * 0.01);
 
-            log("Free Mem: " + freePer + "% (adding " + size + " bytes | loop " + (i + 1) + ")");
+            if (interval > 499)
+                log("Free Mem: " + freePer + "% (adding " + size + " bytes | loop " + (i + 1) + ")");
+
             byte[] b = new byte[size];
             /*
              * Do something against b in here
              */
             _list.add(b);
-            Thread.sleep(500);
+            if (interval > 0)
+                Thread.sleep(interval);
         }
     }
 
@@ -43,12 +44,13 @@ public class CauseOOME {
     }
 
     public static void main(String[] args) throws Exception {
-        int maxIteration = (args.length > 1) ? Integer.parseInt(args[0]) : 10000;
+        int maxIteration = (args.length > 0) ? Integer.parseInt(args[0]) : 10000;
+        int interval = (args.length > 1) ? Integer.parseInt(args[1]) : 500;
 
         CauseOOME test = new CauseOOME();
-        log("Starting test with max loop=" + maxIteration + "...");
+        log("Starting test with max loop=" + maxIteration + " and interval=" + interval + " ...");
         try {
-            test.OOMEing(maxIteration);
+            test.OOMEing(maxIteration, interval);
         } catch (OutOfMemoryError e) {
             e.printStackTrace();
             long f = Runtime.getRuntime().freeMemory();
