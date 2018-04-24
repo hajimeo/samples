@@ -10,15 +10,25 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 public class CauseOOME {
-    public void OOMEing(int initSize, int maxIteration) throws Exception {
+    public void OOMEing(int maxIteration) throws Exception {
         List<byte[]> _list = new LinkedList<byte[]>();
-        int size = initSize;
-        long f;
+        int size;
+        long freeMem;
+        int freePer;
+        long maxMem = Runtime.getRuntime().maxMemory();
+
         for (int i = 0; i < maxIteration; i++) {
-            f = Runtime.getRuntime().freeMemory();
-            size = initSize * (i + 1);
-            log("Free Mem: " + f + " (adding " + size + " bytes / loop " + (i + 1) + ")");
+            freeMem = Runtime.getRuntime().freeMemory();
+            freePer = (int) ((float) freeMem / maxMem * 100);
+
+            if (freePer > 10) size = (int) ((maxMem - freeMem) * 0.10);
+            else size = (int) ((maxMem - freeMem) * 0.01);
+
+            log("Free Mem: " + freePer + "% (adding " + size + " bytes | loop " + (i + 1) + ")");
             byte[] b = new byte[size];
+            /*
+             * Do something against b in here
+             */
             _list.add(b);
             Thread.sleep(500);
         }
@@ -33,17 +43,16 @@ public class CauseOOME {
     }
 
     public static void main(String[] args) throws Exception {
-        int size = (args.length > 0) ? Integer.parseInt(args[0]) : 10240;
-        int maxIteration = (args.length > 1) ? Integer.parseInt(args[1]) : 10000;
+        int maxIteration = (args.length > 1) ? Integer.parseInt(args[0]) : 10000;
 
         CauseOOME test = new CauseOOME();
-        log("Starting test with initial size=" + size + " / loop=" + maxIteration + "...");
+        log("Starting test with max loop=" + maxIteration + "...");
         try {
-            test.OOMEing(size, maxIteration);
+            test.OOMEing(maxIteration);
         } catch (OutOfMemoryError e) {
             e.printStackTrace();
             long f = Runtime.getRuntime().freeMemory();
-            log("Completed test. (Free Mem: " + f +")");
+            log("Completed test. (Free Mem: " + f + ")");
         }
     }
 }
