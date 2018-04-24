@@ -1,7 +1,7 @@
 /**
  * curl -O https://raw.githubusercontent.com/hajimeo/samples/master/java/CauseOOMEOverhead.java
  * javac CauseOOMEOverhead.java
- * java -Xmx100m -XX:+UseParallelGC -verbose:gc  -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=50 CauseOOMEOverhead
+ * java -Xmx100m -XX:+UseParallelGC -verbose:gc -XX:GCTimeLimit=50 -XX:GCHeapFreeLimit=50 CauseOOMEOverhead
  * java -Xmx100m -XX:+UseParallelGC -XX:+PrintClassHistogramAfterFullGC CauseOOMEOverhead | grep -F '#instances' -A 3
  * <p>
  * Ref: https://plumbr.io/outofmemoryerror/gc-overhead-limit-exceeded
