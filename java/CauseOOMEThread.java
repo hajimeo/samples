@@ -14,11 +14,12 @@ class CauseOOMEThread {
                 CauseOOMEThread.log("Creating thread "+i);
             new Thread(() -> {
                 try {
-                    Thread.sleep(60*1000);
+                    Thread.sleep(600000);
                 } catch (InterruptedException e) {
                     CauseOOMEThread.log("Interrupted "+this.toString());
                 }
             }).start();
+            Thread.sleep(20);
         }
         CauseOOMEThread.log("Finished creating "+maxThread+" threads");
     }
