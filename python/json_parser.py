@@ -8,6 +8,7 @@
 import sys, pprint, re, json, getopt
 
 _OPTIONS = {'h': 'help',
+            'd': 'debug',
             'l:': 'left=',
             'r:': 'right=',
             'e:': 'exclude=',
@@ -17,21 +18,26 @@ _OPTIONS = {'h': 'help',
             'v:': 'value_element=',
             's': 'sort'}
 
+
 def usage():
     global _OPTIONS
     print '''A simple JSON Parser/Sorter
-If one json file is given, outputs "property=value" output (so that can copy&paste into Ambari, ex: Capacity Scheduler)
-If two json files are given, compare and outputs the difference with JSON format.
+If one json file is given, this outputs json strings which is under "key_element" (default "type").
+If "value_element" (default "properties") is provided, output json objects which is under "key_element" and "value_element".
+If two json files are given, this compares and outputs the difference with JSON format.
 
-python ./json_parser.py --left=some.json [--right=another.json] [--exclude=exclude regex for key] [--output_type=f|l|r]
+    python ./json_parser.py --left=some.json [--right=another.json] [--exclude=exclude regex for key] [--output_type=f|l|r]
 
 To get the latest code:
     curl -O https://raw.githubusercontent.com/hajimeo/samples/master/python/json_parser.py
 
 Ambari API example:
-    curl -o config_${_SERVICE}_${_VER}.json -u admin:admin "http://`hostname -f`:8080/api/v1/clusters/$_CLUSTER/configurations/service_config_versions?service_name=$_SERVICE&service_config_version=$_VER"
-    
+    curl -o config_${_SERVICE}_${_VER}.json -u admin:admin "http://`hostname -f`:8080/api/v1/clusters/$_CLUSTER/configurations/service_config_versions?service_name=$_SERVICE&service_config_version=$_VER"  
     curl -o current_config.json -u admin:admin "http://`hostname -f`:8080/api/v1/clusters/$_CLUSTER/configurations/service_config_versions?is_current=true"
+
+Compare blueprint example:
+    
+    python ./json_parser.py -l blueprint_1.json -r blueprint_2.json -k 'configurations' -v '' -e '.*(principal|keytab|address|url|uri|host).*'
 
 Option switch (arguments):
     %s
@@ -39,6 +45,8 @@ Option switch (arguments):
 
 
 class JsonParser:
+    DEBUG = False
+
     def __init__(self):
         self.left = None
         self.right = None
@@ -54,16 +62,25 @@ class JsonParser:
     @staticmethod
     def fatal(reason):
         sys.stderr.write("FATAL: " + reason + '\n')
+        sys.stderr.flush()
         sys.exit(1)
 
     @staticmethod
     def err(reason, level="ERROR"):
         sys.stderr.write(level + ": " + str(reason) + '\n')
-        raise
+        sys.stderr.flush()
+        raise Exception(str(reason))
 
     @staticmethod
     def warn(reason, level="WARN"):
         sys.stderr.write(level + ": " + str(reason) + '\n')
+        sys.stderr.flush()
+
+    @staticmethod
+    def debug(reason, level="DEBUG"):
+        if JsonParser.DEBUG is True:
+            sys.stderr.write(level + ": " + str(reason) + "\n")
+            sys.stderr.flush()
 
     @staticmethod
     def json2dict(filename, key_element=None, value_element=None, sort=True):
@@ -84,6 +101,27 @@ class JsonParser:
         rtn = {}
         regex = None
 
+        if type(l_dict) is not type(r_dict):
+            JsonParser.err("Left object is not same as Right object.")
+
+        if isinstance(l_dict, list):
+            if len(l_dict) == 1:
+                l_dict = l_dict[0]
+                r_dict = r_dict[0]
+            else:
+                for ld in l_dict:
+                    if not isinstance(ld, dict):
+                        JsonParser.err("TODO: Currently comparing list object is not supported. %s" % (len(l_dict)))
+                    ld_keys = ld.keys()
+                    if len(ld_keys) != 1:
+                        JsonParser.err(
+                            "TODO: list=>dict object having multiple keys is not supported. %s" % (len(ld_keys)))
+                    rd={}
+                    rd[ld_keys[0]] = JsonParser.find_key_from_dict(r_dict, ld_keys[0], None)
+                    tmp_rtn = JsonParser.compare_dict(ld[ld_keys[0]], rd[ld_keys[0]], join_type, exclude_regex, output_type)
+                    if len(tmp_rtn) > 0: rtn[ld_keys[0]] = tmp_rtn
+                return rtn
+
         if exclude_regex is not None:
             regex = re.compile(exclude_regex)
 
@@ -91,6 +129,7 @@ class JsonParser:
         for k in list(set(l_dict.keys() + r_dict.keys())):
             if regex is not None:
                 if regex.match(k):
+                    JsonParser.debug("k matched with %s!" % (exclude_regex))
                     continue
 
             if k in l_dict and k in r_dict and isinstance(l_dict[k], dict) and isinstance(r_dict[k], dict):
@@ -132,7 +171,7 @@ class JsonParser:
     @staticmethod
     def output_as_str(obj):
         # TODO: need better output format
-        pprint.pprint(obj)
+        print json.dumps(obj, indent=4, sort_keys=True)
 
     @staticmethod
     def find_key_from_dict(obj, search_key, search_value_key=None):
@@ -141,22 +180,24 @@ class JsonParser:
         if isinstance(obj, dict):
             # if search_key is found, return a dict
             if search_key in obj:
-                if not search_value_key:
-                    return obj[search_key]
+                try:
+                    if not search_value_key:
+                        return obj[search_key]
 
-                if search_value_key in obj:
-                    rtn[obj[search_key]] = obj[search_value_key]
-                else:
-                    # search_value_key is specified but couldn't find in same hierarchie
-                    rtn[obj[search_key]] = None
+                    if search_value_key in obj:
+                        rtn[obj[search_key]] = obj[search_value_key]
+                    else:
+                        # search_value_key is specified but couldn't find in same hierarchie
+                        rtn[obj[search_key]] = None
+                except TypeError:
+                    JsonParser.err("TypeError for serch_key=%s search_value_key=%s obj[search_key] length=%s" % (search_key, search_value_key, len(obj[search_key])))
                 return rtn
-
             # if couldn't find the search key and its value is a dict object, check recursively (child_key is not used)
             for child_key, child_obj in obj.items():
                 tmp_rtn = JsonParser.find_key_from_dict(child_obj, search_key, search_value_key)
                 if tmp_rtn:
                     rtn.update(tmp_rtn)
-
+            return rtn
         # NOTE: if object is list, assuming the value of search_key is unique
         if isinstance(obj, list):
             for child_obj in obj:
@@ -165,7 +206,7 @@ class JsonParser:
                     rtn.update(tmp_rtn)
         return rtn
 
-    def setOptions(self, argv, options={'v': 'verbose', 'h': 'help'}):
+    def setOptions(self, argv, options={'d': 'debug', 'h': 'help'}):
         '''
         Handle command arguments and set *this* class properties
         options example: {'u:':'username=', 'p:':'password=', v':'verbose', 'h':'help'}
@@ -182,9 +223,8 @@ class JsonParser:
 
                 if opt in ('h', 'help'):
                     self.usage()
-                # elif opt in ('v','verbose'):
-                #    self.log.setLevel(logging.DEBUG)
-                #    print "DEBUG: opt=%s" % (str(opts))
+                elif opt in ('d','debug'):
+                    JsonParser.DEBUG=True
                 elif opt in options.keys():
                     setattr(self, options[opt], True)
                 elif opt in options.values():
@@ -206,6 +246,7 @@ if __name__ == '__main__':
 
     js = JsonParser()
     js.setOptions(sys.argv[1:], _OPTIONS)
+    JsonParser.debug((js.left, js.right, js.key_element, js.value_element, js.sort, js.exclude, js.output_type))
 
     f1_dict = JsonParser.json2dict(js.left, key_element=js.key_element, value_element=js.value_element, sort=js.sort)
 
