@@ -689,7 +689,7 @@ function f_ldap_zeppelin() {
     # Ref: https://zeppelin.apache.org/docs/0.7.3/security/shiroauthentication.html#configure-realm-optional
     local _ldap_url="${1}"      # ldap://sandbox-hdp.hortonworks.com:33389
     local _search_base="${2}"   # ou=people,dc=hadoop,dc=apache,dc=org
-    local _ad_or_ldap="${3}"
+    local _ad_or_ldap="${3}"    # If empty, LDAP
     local _ambari_host="${4-$r_AMBARI_HOST}"
     [ -z "${_ambari_host}" ] && return 1
 
@@ -712,17 +712,25 @@ print a['properties']['shiro_ini_content']" > /tmp/zeppelin-shiro-ini_${__PID}.i
     _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "cacheManager" "org.apache.shiro.cache.MemoryConstrainedCacheManager" "[main]" || return $?
     _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "sessionManager" "org.apache.shiro.web.session.mgt.DefaultWebSessionManager" "[main]" || return $?
     if [ "${_ad_or_ldap^^}" = "AD" ]; then
-        # TODO: need to test AD
+        # TODO: need to test AD (also without below, gets NPE)
+        #_upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "activeDirectoryRealm.groupRolesMap" "\"CN=Administrators,CN=Builtin,DC=hdp,DC=localdomain\":admin" "[main]" || return $?
         _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "activeDirectoryRealm.searchBase" "${_search_base}" "[main]" || return $?
         _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "activeDirectoryRealm.url" "${_ldap_url}" "[main]" || return $?
         _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "activeDirectoryRealm" "org.apache.zeppelin.realm.ActiveDirectoryGroupRealm" "[main]" || return $?
+        # no authenticationMechanism so need to use ldaps?
+        #activeDirectoryRealm.systemUsername
+        #activeDirectoryRealm.systemPassword
     else
         _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.contextFactory.authenticationMechanism" "simple" "[main]" || return $?
         _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.contextFactory.url" "${_ldap_url}" "[main]" || return $?
         _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.userDnTemplate" "uid={0},${_search_base}" "[main]" || return $?
         _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm.contextFactory.environment[ldap.searchBase]" "${_search_base}" "[main]" || return $?
-        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm" "org.apache.zeppelin.realm.LdapGroupRealm" "[main]" || return $?
+        _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm" "org.apache.zeppelin.realm.LdapGroupRealm" "[main]" || return $?  # should use LdapRealm?
         #_upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "ldapRealm" "org.apache.shiro.realm.ldap.JndiLdapRealm" "[main]" # for older version (2.5)
+
+        # TODO: adding system user enable LDAP pool as per org.apache.shiro.realm.ldap.JndiLdapContextFactory#isPoolingConnections
+        #ldapRealm.contextFactory.systemUsername=uid=admin,,ou=people,dc=hadoop,dc=apache,dc=org
+        #ldapRealm.contextFactory.systemPassword=admin-password
     fi
     _upsert "/tmp/zeppelin-shiro-ini_${__PID}.ini" "/**" "authc" "[urls]" || return $?
 
