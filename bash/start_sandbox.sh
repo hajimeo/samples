@@ -146,6 +146,9 @@ function f_ambari_start_all() {
     fi
     sleep 1
 
+    # Just incase, starting mysql. if it's already started, ignore.
+    ssh -q ${_host} -t 'service mysqld start &>/dev/null'
+
     curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services?" -X PUT -d '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 }
 
@@ -626,7 +629,7 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     #docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
     #docker exec -d ${_NAME} /etc/init.d/tutorials start
 
-    # NOTE: docker exec add '$' and '\r'
+    # NOTE: docker exec add '$' and '\r' (should I specify the port 2222?)
     _NETWORK_ADDR=`ssh -q ${_HOSTNAME} hostname -i | sed 's/\(.\+\)\.[0-9]\+$/\1/'`
     if [ -n "$_NETWORK_ADDR" ]; then
         echo "INFO: Removing ${_NETWORK_ADDR%.}.0/24 via 0.0.0.0 which prevents container access ${_NETWORK_ADDR%.}.1 ..."
