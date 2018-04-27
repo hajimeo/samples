@@ -37,7 +37,7 @@ Ambari API example:
 
 Compare blueprint example:
     
-    python ./json_parser.py -l blueprint_1.json -r blueprint_2.json -k 'configurations' -v '' -e '.*(principal|keytab|address|url|uri|host).*'
+    python ./json_parser.py -l blueprint_1.json -r blueprint_2.json -k 'configurations' -v '' -e '.*(principal|keytab).*'
 
 Option switch (arguments):
     %s
@@ -149,8 +149,10 @@ class JsonParser:
                     continue
 
                 if not k in l_dict:
+                    if not r_dict[k]: continue
                     rtn[k] = JsonParser.output_filter(None, r_dict[k], output_type)
                 elif not k in r_dict:
+                    if not l_dict[k]: continue
                     rtn[k] = JsonParser.output_filter(l_dict[k], None, output_type)
                 else:
                     # Special logic for Ambari "SECRET:xxxx-site:N:prop"
