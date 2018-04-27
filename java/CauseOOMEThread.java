@@ -1,39 +1,26 @@
 /**
  * curl -O https://raw.githubusercontent.com/hajimeo/samples/master/java/CauseOOMEThread.java
  * javac CauseOOMEThread.java
- * ulimit -u 10
- * java CauseOOMEThread 10
+ * java CauseOOMEThread
  */
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 class CauseOOMEThread {
-    public class ConnectCaller implements Callable<String> {
-        private String spec;
-
-        public ConnectCaller(String spec) {
-            this.spec = spec;
-        }
-
-        public String call() throws Exception {
-            CauseOOMEThread.log("Called "+spec);
-            return this.spec;
-        }
-    }
-
-    public void OOMEing(int maxThread) throws Exception {
-        ExecutorService executor = Executors.newFixedThreadPool(maxThread);
-        String spec="";
+    private void OOMEing(int maxThread) throws Exception {
         for (int i = 0; i < maxThread; i++) {
-            spec="" + i;
-            executor.submit(new ConnectCaller(spec));
-            Thread.sleep(100);
+            if (i % 100 == 0)
+                CauseOOMEThread.log("Creating thread "+i);
+            new Thread(() -> {
+                try {
+                    Thread.sleep(60*1000);
+                } catch (InterruptedException e) {
+                    CauseOOMEThread.log("Interrupted "+this.toString());
+                }
+            }).start();
         }
-        executor.shutdown();
+        CauseOOMEThread.log("Finished creating "+maxThread+" threads");
     }
 
     private static String getCurrentLocalDateTimeStamp() {
@@ -45,7 +32,7 @@ class CauseOOMEThread {
     }
 
     public static void main(String[] args) throws Exception {
-        int maxThread = (args.length > 0) ? Integer.parseInt(args[0]) : 10000;
+        int maxThread = (args.length > 0) ? Integer.parseInt(args[0]) : 100000;
 
         if (maxThread > 0) {
             CauseOOMEThread cl = new CauseOOMEThread();
@@ -54,7 +41,7 @@ class CauseOOMEThread {
                 cl.OOMEing(maxThread);
             } catch (OutOfMemoryError e) {
                 e.printStackTrace();
-                log("You would not see this 'Completed test. (Free Mem: " + Runtime.getRuntime().freeMemory() + ")' message");
+                log("Completed test. (Free Mem: " + Runtime.getRuntime().freeMemory() + ")");
                 System.exit(100);
             }
         }
