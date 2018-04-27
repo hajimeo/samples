@@ -15,6 +15,8 @@ usage() {
 [ -z "${g_AMBARI_USER}" ] && g_AMBARI_USER='admin'
 [ -z "${g_AMBARI_PASS}" ] && g_AMBARI_PASS='admin'
 
+
+
 function setup_nn_ha() {
     local _ambari_cluster_api_url="${1}"    # eg: http://ho-ubu01:8080/api/v1/clusters/houbu01_1
     local _nameservice="${2}"
