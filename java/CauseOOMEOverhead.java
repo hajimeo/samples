@@ -30,8 +30,7 @@ class CauseOOMEOverhead {
                 map.put(r.nextInt(), "value");
             } catch (OutOfMemoryError e) {
                 e.printStackTrace();
-                long f = Runtime.getRuntime().freeMemory();
-                log("You would not see this 'Completed test. (Free Mem: " + f + ")' message");
+                log("You would not see this 'Completed test. (Free Mem: " + Runtime.getRuntime().freeMemory() + ")' message");
                 System.exit(100);
             }
         }
