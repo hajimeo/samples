@@ -42,6 +42,7 @@ class CauseOOMEThread {
             log("Starting test with max threads=" + maxThread + " ...");
             try {
                 cl.OOMEing(maxThread, waitIntervalMs);
+                System.exit(0);
             } catch (OutOfMemoryError e) {
                 e.printStackTrace();
                 log("Completed test. (Free Mem: " + Runtime.getRuntime().freeMemory() + ")");
