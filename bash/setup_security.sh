@@ -241,7 +241,7 @@ function f_ambari_kerberos_setup() {
     #response=$(curl --write-out %{http_code} -s -o /dev/null "${_api_uri}/configurations/service_config_versions?service_name=KERBEROS")
 
     _info "Storing KDC admin credential temporarily"
-    curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X PUT "${_api_uri}/credentials/kdc.admin.credential" -d '{ "Credential" : { "principal" : "admin/admin@'$_realm'", "key" : "'$_password'", "type" : "temporary" } }' &>/dev/null
+    curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X POST "${_api_uri}/credentials/kdc.admin.credential" -d '{ "Credential" : { "principal" : "admin/admin@'$_realm'", "key" : "'$_password'", "type" : "temporary" } }' &>/dev/null
 
     _info "Delete existing KERBEROS service (if exists)"
     curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
