@@ -451,7 +451,7 @@ function f_start_end_time_with_diff(){
     local _end_int=`gdate -d "${_end_date}" +"%s"`
     local _diff=$(( $_end_int - $_start_int ))
     # Filename, start datetime, enddatetime, difference, (filesize)
-    echo -e "${_log}\t${_start_date}\t${_end_date}\t${_diff}\t(size:`gstat -c"%s" ${_log}`)"
+    echo -e "${_log}\t${_start_date}\t${_end_date}\t${_diff}s\t$((`gstat -c"%s" ${_log}` / 1024))KB"
 }
 
 function f_split_strace() {
