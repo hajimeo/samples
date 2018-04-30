@@ -440,7 +440,7 @@ function f_swimlane() {
 }
 
 function f_start_end_time_with_diff(){
-    local __doc__="Output start time, end time, difference(sec), (filesize) from a log file (eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\t' -k2)"
+    local __doc__="Output start time, end time, difference(sec), (filesize) from a log file (eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\t' -k2)"
     local _log="$1"
     local _date_regex="${2}"
     [ -z "$_date_regex" ] && _date_regex="^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d"
