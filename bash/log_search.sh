@@ -443,15 +443,15 @@ function f_start_end_time_with_diff(){
     local __doc__="Output start time, end time, difference(sec), (filesize) from a log file (eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\t' -k2)"
     local _log="$1"
     local _date_regex="${2}"
-    [ -z "$_date_regex" ] && _date_regex="^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d"
+    [ -z "$_date_regex" ] && _date_regex="^20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d"
 
-    local _start_date=`ggrep -oPm1 "$_date_regex" $_log` || return $?
-    local _end_date=`gtac $_log | ggrep -oPm1 "$_date_regex"` || return $?
+    local _start_date=`ggrep -oPm1 "$_date_regex" $_log | sed 's/T/ /'` || return $?
+    local _end_date=`gtac $_log | ggrep -oPm1 "$_date_regex" | sed 's/T/ /'` || return $?
     local _start_int=`gdate -d "${_start_date}" +"%s"`
     local _end_int=`gdate -d "${_end_date}" +"%s"`
     local _diff=$(( $_end_int - $_start_int ))
     # Filename, start datetime, enddatetime, difference, (filesize)
-    echo -e "${_log}\t${_start_date}\t${_end_date}\t${_diff}\t(`gstat -c"%s" ${_log}`)"
+    echo -e "${_log}\t${_start_date}\t${_end_date}\t${_diff}\t(size:`gstat -c"%s" ${_log}`)"
 }
 
 function f_split_strace() {
