@@ -956,7 +956,7 @@ function f_saveResp() {
     #    chown $SUDO_UID:$SUDO_GID ${_file_path}
     #fi
     #chmod 1600 ${_file_path}
-    
+    g_RESPONSE_FILEPATH="${_file_path}"
     _info "Saved ${_file_path}"
 }
 
@@ -2383,6 +2383,9 @@ function p_host_setup() {
         if _isYes "$r_AMBARI_BLUEPRINT"; then
             _log "INFO" "Starting p_ambari_blueprint"
             p_ambari_blueprint &>> /tmp/p_host_setup.log || return $?
+
+            _log "INFO" "*Scheduling* f_cluster_performance"
+            echo "bash `realpath $BASH_SOURCE` -r `realpath ${g_RESPONSE_FILEPATH}` -f f_cluster_performance" | at now +1 hour
         else
             if [ -n "$r_HDP_REPO_URL" ]; then
                 _log "INFO" "Starting f_ambari_set_repo (may not work with Ambari 2.6)"
@@ -2395,9 +2398,6 @@ function p_host_setup() {
                 fi
             fi
         fi
-
-        _log "INFO" "*Scheduling* f_cluster_performance"
-        echo "bash `realpath $BASH_SOURCE` -r `realpath ${g_RESPONSE_FILEPATH}` -f f_cluster_performance" | at now +1 hour
 
         f_port_forward 8080 $r_AMBARI_HOST 8080 "Y" &>> /tmp/p_host_setup.log
     fi
