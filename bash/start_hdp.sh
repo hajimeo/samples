@@ -2355,7 +2355,7 @@ function p_host_setup() {
     _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_copy_auth_keys_to_containers"
-    f_copy_auth_keys_to_containers
+    f_copy_auth_keys_to_containers &>> /tmp/p_host_setup.log || return $?
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
@@ -2593,6 +2593,7 @@ function f_copy_auth_keys_to_containers() {
     fi
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
+        docker exec -it ${_node}$i "service sshd start" &>/dev/null # just in case starting
         _copy_auth_keys_to_containers "${_node}$i${r_DOMAIN_SUFFIX}"
     done
 }
