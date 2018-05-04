@@ -14,12 +14,10 @@ public class CauseOOMEDirect {
     public void OOMEing(int maxIteration, int interval) throws Exception {
 
         for (int i = 1; i <= maxIteration; i++) {
-            log("Allocating "+i*1024*1024+" (loop "+i+")");
-            ByteBuffer buffer = ByteBuffer.allocateDirect(i*1024*1024);
+            log("Allocating " + i * 1024 * 1024 + " (loop " + i + ")");
+            ByteBuffer buffer = ByteBuffer.allocateDirect(i * 1024 * 1024);
             if (interval > 499) {
-                log("Free Memory: " + Runtime.getRuntime().freeMemory());
-                log("Native used: " + sun.misc.SharedSecrets.getJavaNioAccess().getDirectBufferPool().getMemoryUsed());
-                log("Max Direct : " + sun.misc.VM.maxDirectMemory());
+                log("Free Mem(heap): " + Runtime.getRuntime().freeMemory()/1024 + "KB | Native used: " + sun.misc.SharedSecrets.getJavaNioAccess().getDirectBufferPool().getMemoryUsed()/1024 + "KB / Max Direct: " + sun.misc.VM.maxDirectMemory()/1024 + "KB");
             }
             if (interval > 0)
                 Thread.sleep(interval);
@@ -44,7 +42,7 @@ public class CauseOOMEDirect {
             test.OOMEing(maxIteration, interval);
         } catch (OutOfMemoryError e) {
             e.printStackTrace();
-            log("You would not see this 'Completed test. (Free Mem: " + Runtime.getRuntime().freeMemory() + ")' message");
+            log("Completed test. (Free Mem (heap): " + Runtime.getRuntime().freeMemory() + ")");
             System.exit(100);
         }
     }
