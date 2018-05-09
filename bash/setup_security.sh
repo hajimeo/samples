@@ -381,19 +381,18 @@ function f_ssl_hadoop() {
         cp -p ./selfsinged-wildcard.jks ./$g_KEYSTORE_FILE
     fi
 
-    local _javahome="`ssh -q root@$_ambari_host "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
-    local _cacerts="${_javahome%/}/jre/lib/security/cacerts"
+    local _java_home="`ssh -q root@$_ambari_host "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
 
     if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
         local _hostnames="$_how_many"
         _info "Copying jks to $_hostnames ..."
         for i in  `echo $_hostnames | sed 's/ /\n/g'`; do
-            _hadoop_ssl_per_node "$i" "$_cacerts" "./$g_KEYSTORE_FILE" || return $?
+            _hadoop_ssl_per_node "$i" "${_java_home}" "./$g_KEYSTORE_FILE" || return $?
         done
     else
         _info "Copying jks to all nodes..."
         for i in `_docker_seq "$_how_many" "$_start_from"`; do
-            _hadoop_ssl_per_node "node${i}${_domain_suffix}" "$_cacerts" "./$g_KEYSTORE_FILE" || return $?
+            _hadoop_ssl_per_node "node${i}${_domain_suffix}" "${_java_home}" "./$g_KEYSTORE_FILE" || return $?
         done
     fi
 
@@ -428,15 +427,16 @@ function _hadoop_ssl_config_update() {
 
 function _hadoop_ssl_per_node() {
     local _node="$1"
-    local _java_default_truststore_path="$2"
+    local _java_home="$2"
     local _local_keystore_path="$3"
 
-    ssh -q root@${_node} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}; mkdir -m 755 -p ${g_CLIENT_KEY_LOCATION%/}"
+    ssh -q root@${_node} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}" || return $?
+    ssh -q root@${_node} "mkdir -m 755 -p ${g_CLIENT_KEY_LOCATION%/}"
     scp ./$g_CLIENT_TRUSTSTORE_FILE root@${_node}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
 
     if [ ! -s "$_local_keystore_path" ]; then
         _info "$_local_keystore_path doesn't exist in local, so that recreate and push to nodes..."
-        _hadoop_ssl_per_node_inner "$_node" "$_java_default_truststore_path"
+        _hadoop_ssl_per_node_inner "$_node" "$_java_home"
     else
         scp ./rootCA.pem $_local_keystore_path root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
     fi
@@ -449,17 +449,23 @@ function _hadoop_ssl_per_node() {
 
 function _hadoop_ssl_per_node_inner() {
     local _node="$1"
-    local _java_default_truststore_path="$2"
+    local _java_home="$2"
+    local _java_default_truststore_path="${_java_home%/}/jre/lib/security/cacerts"
     # TODO: assuming rootCA.xxx file names
     # TODO: convert server.keystore.jks to .p12
     #keytool -importkeystore -srckeystore /etc/security/serverKeys/server.keystore.jks -destkeystore /etc/security/serverKeys/server.keystore.p12 -deststoretype pkcs12
 
+    local _keytool="keytool"
+    if [ -n "${_java_home}" ]; then
+        _keytool="${_java_home%/}/bin/keytool"
+    fi
+
     # Step4: On each node, create a privatekey for the node
-    ssh -q root@${_node} "mv -f ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null; keytool -genkey -alias ${_node} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
-    ssh -q root@${_node} "mv -f ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE}.$$.bak &>/dev/null; keytool -genkey -alias ${_node} -keyalg RSA -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
+    ssh -q root@${_node} "mv -f ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null; ${_keytool} -genkey -alias ${_node} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
+    ssh -q root@${_node} "mv -f ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE}.$$.bak &>/dev/null; ${_keytool} -genkey -alias ${_node} -keyalg RSA -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
     # Step5: On each node, create a CSR
-    ssh -q root@${_node} "keytool -certreq -alias ${_node} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/${_node}.csr -storepass ${_password}"
-    ssh -q root@${_node} "keytool -certreq -alias ${_node} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client.csr -storepass ${_password}"
+    ssh -q root@${_node} "${_keytool} -certreq -alias ${_node} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/${_node}.csr -storepass ${_password}"
+    ssh -q root@${_node} "${_keytool} -certreq -alias ${_node} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client.csr -storepass ${_password}"
     scp root@${_node}:${g_SERVER_KEY_LOCATION%/}/${_node}.csr ./ || return $?
     scp root@${_node}:${g_CLIENT_KEY_LOCATION%/}/${_node}-client.csr ./ || return $?
     # Step6: Sign the CSR with the root CA
@@ -468,14 +474,14 @@ function _hadoop_ssl_per_node_inner() {
     scp ./rootCA.pem ./${_node}.crt root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
     scp ./${_node}-client.crt root@${_node}:${g_CLIENT_KEY_LOCATION%/}/
     # Step7: On each node, import root CA's cert and the signed cert
-    ssh -q root@${_node} "keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias ${_node} -import -file ${g_SERVER_KEY_LOCATION%/}/${_node}.crt -noprompt -storepass ${_password}" || return $?
-    ssh -q root@${_node} "keytool -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};keytool -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias ${_node} -import -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client.crt -noprompt -storepass ${_password}"
+    ssh -q root@${_node} "${_keytool} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};${_keytool} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias ${_node} -import -file ${g_SERVER_KEY_LOCATION%/}/${_node}.crt -noprompt -storepass ${_password}" || return $?
+    ssh -q root@${_node} "${_keytool} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};${_keytool} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias ${_node} -import -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client.crt -noprompt -storepass ${_password}"
     # Step8 (optional): if the java default truststore (cacerts) path is given, also import the cert (and doesn't care if cert already exists)
     if [ ! -z "/etc/pki/java/cacerts" ]; then
-        ssh -q root@${_node} "keytool -keystore /etc/pki/java/cacerts -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
+        ssh -q root@${_node} "${_keytool} -keystore /etc/pki/java/cacerts -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
     fi
     if [ ! -z "$_java_default_truststore_path" ]; then
-        ssh -q root@${_node} "keytool -keystore $_java_default_truststore_path -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
+        ssh -q root@${_node} "${_keytool} -keystore $_java_default_truststore_path -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
     fi
 }
 
