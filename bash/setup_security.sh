@@ -1014,7 +1014,7 @@ function f_ldap_client_install() {
 }
 
 function f_sssd_setup() {
-    local __doc__="setup SSSD on each node (security lab) If /etc/sssd/sssd.conf exists, skip"
+    local __doc__="setup SSSD on each node (security lab) If /etc/sssd/sssd.conf exists, skip. Kerberos is required."
     # https://github.com/HortonworksUniversity/Security_Labs#install-solrcloud
     # f_sssd_setup administrator '******' 'hdp.localdomain' 'adhost.hdp.localdomain' 'dc=hdp,dc=localdomain' 'hadoop' 'sandbox-hdp.hortonworks.com' 'sandbox-hdp.hortonworks.com'
     local ad_user="$1"    #registersssd
@@ -1036,6 +1036,7 @@ function f_sssd_setup() {
         ssh -q root@${_target_host} -t "$_cmd"
     fi
 
+    # TODO: bellow requires Kerberos has been set up, also only for CentOS6 (CentOS7 uses realm command)
     # echo -n way works on CentOS6 but not on Mac
     _cmd="echo -n '"${ad_pwd}"' | kinit ${ad_user}
 
