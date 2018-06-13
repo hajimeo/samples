@@ -1180,18 +1180,24 @@ function f_docker_base_create() {
     fi
     _os_name="${_os_name,,}"
 
-    local _local_docker_file="$_docker_file"
-    _isUrl "$_docker_file" && _local_docker_file="./`basename ${_docker_file}`"
-    f_dockerfile "$_docker_file" "$_os_name:$_os_ver_num" "$_local_docker_file" || return $?
+    local _local_docker_file="${_docker_file}"
+    _isUrl "${_docker_file}" && _local_docker_file="./`basename ${_docker_file}`"
+    f_dockerfile "${_docker_file}" "${_os_name}:${_os_ver_num}" "${_local_docker_file}" || return $?
 
-    if [ ! -r "$_local_docker_file" ]; then
-        _error "$_local_docker_file is not readable"
+    #_local_docker_file="`realpath "${_local_docker_file}"`"
+    if [ ! -r "${_local_docker_file}" ]; then
+        _error "${_local_docker_file} is not readable"
         return 1
     fi
 
-    docker images | grep -P "^${_os_name}\s+${_os_ver_num}" || docker pull ${_os_name}:${_os_ver_num}
-    # TODO: . is not good if there are so many files/folders
-    docker build -t ${_base} -f $_local_docker_file .
+    if ! docker images | grep -P "^${_os_name}\s+${_os_ver_num}"; then
+        docker pull ${_os_name}:${_os_ver_num} || return $?
+    fi
+    # "." is not good if there are so many files/folders but https://github.com/moby/moby/issues/14339 is unclear
+    local _build_dir="$(mktemp -d)" || return $?
+    cp -f ${_local_docker_file} ${_build_dir%/}/DockerFile || return $?
+    cd ${_build_dir} || return $?
+    docker build -t ${_base} .
 }
 
 function f_docker_start() {
