@@ -956,7 +956,7 @@ function f_saveResp() {
     #    chown $SUDO_UID:$SUDO_GID ${_file_path}
     #fi
     #chmod 1600 ${_file_path}
-    
+    g_RESPONSE_FILEPATH="${_file_path}"
     _info "Saved ${_file_path}"
 }
 
@@ -1190,8 +1190,8 @@ function f_docker_base_create() {
     fi
 
     docker images | grep -P "^${_os_name}\s+${_os_ver_num}" || docker pull ${_os_name}:${_os_ver_num}
-    # TODO: . is not good if there are so many files/folders
-    docker build -t ${_base} -f $_local_docker_file .
+    # "." is not good if there are so many files/folders
+    docker build -t ${_base} -f $_local_docker_file $(mktemp -d)
 }
 
 function f_docker_start() {
@@ -2355,7 +2355,7 @@ function p_host_setup() {
     _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_copy_auth_keys_to_containers"
-    f_copy_auth_keys_to_containers
+    f_copy_auth_keys_to_containers &>> /tmp/p_host_setup.log || return $?
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
@@ -2383,6 +2383,9 @@ function p_host_setup() {
         if _isYes "$r_AMBARI_BLUEPRINT"; then
             _log "INFO" "Starting p_ambari_blueprint"
             p_ambari_blueprint &>> /tmp/p_host_setup.log || return $?
+
+            _log "INFO" "*Scheduling* f_cluster_performance"
+            echo "bash `realpath $BASH_SOURCE` -r `realpath ${g_RESPONSE_FILEPATH}` -f f_cluster_performance" | at now +1 hour
         else
             if [ -n "$r_HDP_REPO_URL" ]; then
                 _log "INFO" "Starting f_ambari_set_repo (may not work with Ambari 2.6)"
@@ -2395,9 +2398,6 @@ function p_host_setup() {
                 fi
             fi
         fi
-
-        _log "INFO" "*Scheduling* f_cluster_performance"
-        echo "bash `realpath $BASH_SOURCE` -r `realpath ${g_RESPONSE_FILEPATH}` -f f_cluster_performance" | at now +1 hour
 
         f_port_forward 8080 $r_AMBARI_HOST 8080 "Y" &>> /tmp/p_host_setup.log
     fi
@@ -2593,6 +2593,7 @@ function f_copy_auth_keys_to_containers() {
     fi
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
+        docker exec -it ${_node}$i "service sshd start" &>/dev/null # just in case starting
         _copy_auth_keys_to_containers "${_node}$i${r_DOMAIN_SUFFIX}"
     done
 }
