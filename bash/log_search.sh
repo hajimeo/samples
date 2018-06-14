@@ -142,21 +142,21 @@ function f_appLogContainerCountPerHost() {
     fi
 }
 
-    function f_appLogJobCounters() {
-        local __doc__="List the Job Final counters (Tez only?) (from YARN app log)"
-        local _path="$1"
-        local _line=""
-        local _regex="(Final Counters for [^ :]+)[^\[]+(\[.+$)"
+function f_appLogJobCounters() {
+    local __doc__="List the Job Final counters (Tez only?) (from YARN app log)"
+    local _path="$1"
+    local _line=""
+    local _regex="(Final Counters for [^ :]+)[^\[]+(\[.+$)"
 
-        ggrep -oP "Final Counters for .+$" "$_path" | while read -r _line ; do
-            if [[ "$_line" =~ ${_regex} ]]; then
-                echo "# ${BASH_REMATCH[1]}"
-                # TODO: not clean enough. eg: [['File System Counters HDFS_BYTES_READ=1469456609',
-                echo "${BASH_REMATCH[2]}" | gsed -r 's/\[([^"\[])/\["\1/g' | gsed -r 's/([^"])\]/\1"\]/g' | gsed -r 's/([^"]), ([^"])/\1", "\2/g' | gsed -r 's/\]\[/\], \[/g' | python -m json.tool
-                echo ""
-            fi
-        done
-    }
+    ggrep -oP "Final Counters for .+$" "$_path" | while read -r _line ; do
+        if [[ "$_line" =~ ${_regex} ]]; then
+            echo "# ${BASH_REMATCH[1]}"
+            # TODO: not clean enough. eg: [['File System Counters HDFS_BYTES_READ=1469456609',
+            echo "${BASH_REMATCH[2]}" | gsed -r 's/\[([^"\[])/\["\1/g' | gsed -r 's/([^"])\]/\1"\]/g' | gsed -r 's/([^"]), ([^"])/\1", "\2/g' | gsed -r 's/\]\[/\], \[/g' | python -m json.tool
+            echo ""
+        fi
+    done
+}
 
 function f_appLogJobExports() {
     local __doc__="List exports in the job (from YARN app log)"
@@ -714,6 +714,15 @@ function f_validate_siro_ini() {
 
 
 ### Private functions ##################################################################################################
+
+function _mg() {
+    local __doc__="Grep multiple files with Multiple process"
+    local _search_regex="$1"    # (ERROR |FATAL|Caused by|Stack trace)
+    local _grep_option="$2"
+    local _num_process="${3:-4}"
+    [ -z "${_grep_option}" ] && _grep_option="-wE"
+    find . -type f -print0 | xargs -0 -n1 -P ${_num_process} grep -H ${_grep_option} "${_search_regex}"
+}
 
 function _split() {
     local _rtn_var_name="$1"
