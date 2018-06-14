@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+#
 # Based on https://pymotw.com/2/BaseHTTPServer/
+#   python SympleWebServer.py 0.0.0.0 38080 debug
 #
 from BaseHTTPServer import BaseHTTPRequestHandler
 from BaseHTTPServer import HTTPServer
@@ -12,7 +14,7 @@ class SympleWebServer(BaseHTTPRequestHandler):
     '''
     REST *like* simple web server (no dependent module)
     At this moment only GET is supported
-    Expecting "/method/arg1/arg2" style path
+    Expecting "/category/method?key1=val1&key2=val2" style path
     '''
     log_level=""
 
@@ -21,16 +23,23 @@ class SympleWebServer(BaseHTTPRequestHandler):
         Handle GET method
         '''
         self.debug_log()
-        self.send_response(200)
+        try:
+            (category, method, args) = self.get_category_method_and_args_from_path()
+            self.send_response(200)
+        except:
+            self.send_response(500)
         self.end_headers()
-        self.wfile.write("GET!")
+        self.wfile.write("GET! "+category+" "+method+" "+str(args))
         return
 
-    def get_method_and_args_from_path(self):
+    def get_category_method_and_args_from_path(self):
         '''
         Get a method name and arg values from the URL path
         '''
         parsed_path = urlparse.urlparse(self.path)
+        dirs=parsed_path.path.split("/")
+        args=urlparse.parse_qs(parsed_path.query)
+        return (dirs[1], dirs[2], args)
 
     def debug_log(self):
         if SympleWebServer.log_level.lower() == 'debug':
