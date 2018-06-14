@@ -31,9 +31,16 @@ class SympleWebServer(BaseHTTPRequestHandler):
         request = urllib2.Request(SympleWebServer.creds.slack_search_baseurl+"/api/search.messages", data)
         response = urllib2.urlopen(request)
         json_str=response.read()
-        # TODO: need more prettier format (eg: utilize highlight=true)
+        # TODO: need more prettier format (eg: utilize highlight=true, convert unixtimestamp, use 'previous')
         json_parsed = json.loads(json_str)
-        return json.dumps(json_parsed, indent=4)
+        try:
+            rtn_tmp = json_parsed['messages']['matches']
+            rtn = []
+            for o in rtn_tmp:
+                rtn.append({"username":o['username']+" ("+o['user']+")", "permalink":o['permalink'], "text":o['text'], "ts":o['ts']})
+        except KeyError:
+            rtn = json_parsed
+        return json.dumps(rtn, indent=4)
 
     def _process(self):
         output = ""
@@ -48,10 +55,14 @@ class SympleWebServer(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(output)
         except:
-            self._log_message(True)
+            self._log_message()
+            #self._log(sys.exc_info()[1], "ERROR")
+            #import traceback
+            #self._log(traceback.format_stack(), "ERROR")
             self.send_response(500)
             self.end_headers()
             self.wfile.write("ERROR!")
+
 
     def __setup(self):
         if bool(SympleWebServer.creds) is False:
