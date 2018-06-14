@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 #
 # Based on https://pymotw.com/2/BaseHTTPServer/
-#   python SympleWebServer.py 0.0.0.0 38080 debug
+#   python SympleWebServer.py 0.0.0.0 38080 verbose
 #
 from BaseHTTPServer import BaseHTTPRequestHandler
 from BaseHTTPServer import HTTPServer
-import urlparse
-import sys
+import urllib, urllib2
+import urlparse, sys, os, imp, json
 
 
 class SympleWebServer(BaseHTTPRequestHandler):
@@ -16,33 +16,56 @@ class SympleWebServer(BaseHTTPRequestHandler):
     At this moment only GET is supported
     Expecting "/category/method?key1=val1&key2=val2" style path
     '''
-    log_level=""
+    verbose= ""
+    creds=None
 
     def do_GET(self):
-        '''
-        Handle GET method
-        '''
-        self.debug_log()
-        try:
-            (category, method, args) = self.get_category_method_and_args_from_path()
-            self.send_response(200)
-        except:
-            self.send_response(500)
-        self.end_headers()
-        self.wfile.write("GET! "+category+" "+method+" "+str(args))
+        self._log_message()
+        self._process()
         return
 
-    def get_category_method_and_args_from_path(self):
-        '''
-        Get a method name and arg values from the URL path
-        '''
+    @staticmethod
+    def handle_slack_search(query_args):
+        query_args['token']=SympleWebServer.creds.slack_search_token
+        data = urllib.urlencode(query_args)
+        request = urllib2.Request(SympleWebServer.creds.slack_search_baseurl+"/api/search.messages", data)
+        response = urllib2.urlopen(request)
+        json_str=response.read()
+        # TODO: need more prettier format (eg: utilize highlight=true)
+        json_parsed = json.loads(json_str)
+        return json.dumps(json_parsed, indent=4)
+
+    def _process(self):
+        output = ""
+        self.__setup()
+        try:
+            (category, method, args) = self._get_category_method_and_args_from_path()
+            if category.lower() == 'slack':
+                if method.lower() == 'search':
+                    output = SympleWebServer.handle_slack_search(args)
+
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(output)
+        except:
+            self._log_message(True)
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write("ERROR!")
+
+    def __setup(self):
+        if bool(SympleWebServer.creds) is False:
+            credpath = "."+os.path.basename(os.path.splitext(__file__)[0]).lower()+".pyc"
+            SympleWebServer.creds = imp.load_compiled("*", credpath)
+
+    def _get_category_method_and_args_from_path(self):
         parsed_path = urlparse.urlparse(self.path)
         dirs=parsed_path.path.split("/")
         args=urlparse.parse_qs(parsed_path.query)
         return (dirs[1], dirs[2], args)
 
-    def debug_log(self):
-        if SympleWebServer.log_level.lower() == 'debug':
+    def _log_message(self, force=False):
+        if SympleWebServer.verbose.lower() == 'verbose' or force:
             parsed_path = urlparse.urlparse(self.path)
             message_parts = [
                 'CLIENT VALUES:',
@@ -65,16 +88,15 @@ class SympleWebServer(BaseHTTPRequestHandler):
                 message_parts.append('%s=%s' % (name, value.rstrip()))
             message_parts.append('')
             message = '\r\n'.join(message_parts)
-            self.log(message, "DEBUG")
+            self._log(message, "DEBUG")
 
-    def log(self, msg, level):
+    def _log(self, msg, level):
         # sys.stderr.write(level+" "+msg + '\n')
         self.log_message(level+" %s", msg)
 
 
 if __name__ == '__main__':
     # TODO: error handling
-
     listen_host = '0.0.0.0'
     listen_port = 38080
 
@@ -83,7 +105,7 @@ if __name__ == '__main__':
     if len(sys.argv) > 2:
         listen_port = int(sys.argv[2])
     if len(sys.argv) > 3:
-        SympleWebServer.log_level=sys.argv[3]
+        SympleWebServer.verbose=sys.argv[3]
 
     server = HTTPServer((listen_host, listen_port), SympleWebServer)
     print('Starting server, use <Ctrl-C> to stop')
