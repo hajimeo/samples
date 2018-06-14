@@ -10,20 +10,20 @@ import sys
 
 class SympleWebServer(BaseHTTPRequestHandler):
     '''
-    REST *like* simple web server (no depdendent module)
+    REST *like* simple web server (no dependent module)
     At this moment only GET is supported
     Expecting "/method/arg1/arg2" style path
     '''
-
-    handler_name = ""
+    log_level=""
 
     def do_GET(self):
         '''
         Handle GET method
         '''
+        self.debug_log()
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(message)
+        self.wfile.write("GET!")
         return
 
     def get_method_and_args_from_path(self):
@@ -32,13 +32,10 @@ class SympleWebServer(BaseHTTPRequestHandler):
         '''
         parsed_path = urlparse.urlparse(self.path)
 
-
-    def debug_message(self):
-        '''
-        Output debug message
-        '''
-        parsed_path = urlparse.urlparse(self.path)
-        message_parts = [
+    def debug_log(self):
+        if SympleWebServer.log_level.lower() == 'debug':
+            parsed_path = urlparse.urlparse(self.path)
+            message_parts = [
                 'CLIENT VALUES:',
                 'client_address=%s (%s)' % (self.client_address,
                                             self.address_string()),
@@ -55,38 +52,30 @@ class SympleWebServer(BaseHTTPRequestHandler):
                 '',
                 'HEADERS RECEIVED:',
                 ]
-        for name, value in sorted(self.headers.items()):
-            message_parts.append('%s=%s' % (name, value.rstrip()))
-        message_parts.append('')
-        message = '\r\n'.join(message_parts)
-        SympleWebServer.stderr(message_parts, 'DEBUG')
+            for name, value in sorted(self.headers.items()):
+                message_parts.append('%s=%s' % (name, value.rstrip()))
+            message_parts.append('')
+            message = '\r\n'.join(message_parts)
+            self.log(message, "DEBUG")
 
-    @staticmethod
-    def start_server(listen_host='0.0.0.0', listen_port='8080', handler_name=""):
-        '''
-        Start web servier= 
-        '''
-        SympleWebServer.handler_name = handler_name
-        server = HTTPServer((listen_host, listen_port), SympleWebServer)
-        SympleWebServer.stderr('Starting server, use <Ctrl-C> to stop', "INFO")
-        server.serve_forever()
+    def log(self, msg, level):
+        # sys.stderr.write(level+" "+msg + '\n')
+        self.log_message(level+" %s", msg)
 
-    @staticmethod
-    def stderr(msg, level='ERROR'):
-        sys.stderr.write(level+" "+msg + '\n')
 
 if __name__ == '__main__':
     # TODO: error handling
 
     listen_host = '0.0.0.0'
-    listen_port = 8080
-    handler_name = ""
+    listen_port = 38080
 
     if len(sys.argv) > 1:
         listen_host = sys.argv[1]
     if len(sys.argv) > 2:
         listen_port = int(sys.argv[2])
     if len(sys.argv) > 3:
-        handler_name = sys.argv[3]
+        SympleWebServer.log_level=sys.argv[3]
 
-    SympleWebServer.start_server(listen_host, listen_port, handler_name)
+    server = HTTPServer((listen_host, listen_port), SympleWebServer)
+    print('Starting server, use <Ctrl-C> to stop')
+    server.serve_forever()
