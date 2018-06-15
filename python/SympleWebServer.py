@@ -7,7 +7,7 @@
 from BaseHTTPServer import BaseHTTPRequestHandler
 from BaseHTTPServer import HTTPServer
 import urllib, urllib2
-import urlparse, sys, os, imp, json
+import urlparse, sys, os, imp, json, traceback
 
 
 class SympleWebServer(BaseHTTPRequestHandler):
@@ -36,9 +36,10 @@ class SympleWebServer(BaseHTTPRequestHandler):
         try:
             rtn_tmp = json_parsed['messages']['matches']
             rtn = []
-            for o in rtn_tmp:
-                rtn.append({"username":o['username']+" ("+o['user']+")", "permalink":o['permalink'], "text":o['text'], "ts":o['ts']})
-        except KeyError:
+            if len(rtn_tmp) > 0:
+                for o in rtn_tmp:
+                    rtn.append({"username":o['username']+" ("+o['user']+")", "permalink":o['permalink'], "text":o['text'], "ts":o['ts']})
+        except:
             rtn = json_parsed
         return json.dumps(rtn, indent=4)
 
@@ -52,16 +53,12 @@ class SympleWebServer(BaseHTTPRequestHandler):
                     output = SympleWebServer.handle_slack_search(args)
 
             self.send_response(200)
-            self.end_headers()
-            self.wfile.write(output)
         except:
-            self._log_message()
-            #self._log(sys.exc_info()[1], "ERROR")
-            #import traceback
-            #self._log(traceback.format_stack(), "ERROR")
+            #self._log_message(True)
+            self._log(str(sys.exc_info()[1])+"\r\n"+str(traceback.format_stack()), "ERROR")
             self.send_response(500)
-            self.end_headers()
-            self.wfile.write("ERROR!")
+        self.end_headers()
+        self.wfile.write(output)
 
 
     def __setup(self):
@@ -71,9 +68,10 @@ class SympleWebServer(BaseHTTPRequestHandler):
 
     def _get_category_method_and_args_from_path(self):
         parsed_path = urlparse.urlparse(self.path)
-        dirs=parsed_path.path.split("/")
         args=urlparse.parse_qs(parsed_path.query)
-        return (dirs[1], dirs[2], args)
+        dirs=parsed_path.path.split("/")
+        if len(dirs) < 3: return "", "", args
+        return dirs[1], dirs[2], args
 
     def _log_message(self, force=False):
         if SympleWebServer.verbose.lower() == 'verbose' or force:
