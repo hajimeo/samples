@@ -209,8 +209,16 @@ function p_interview() {
             _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${_repo_os_ver}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${_repo_os_ver}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
         fi
 
-        _ask "HDP Repo URL or *VDF* XMF file URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"    fi
-        if _isUrlButNotReachable "${r_HDP_REPO_URL%/}/hdp.repo" ; then
+        _ask "HDP Repo URL or *VDF* XMF  URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"
+        if ! [[ "${r_HDP_REPO_URL}" =~ \.xml$ ]] ; then
+            while true; do
+                _warn "URL: $r_HDP_REPO_URL does not look like a VDF XML URL."
+                _ask "Would you like to re-type?" "Y"
+                if ! _isYes ; then break; fi
+                _ask "HDP Repo URL" "" "r_HDP_REPO_URL" "N" "Y"
+             done
+        fi
+        if _isUrlButNotReachable "${r_HDP_REPO_URL}" ; then
             while true; do
                 _warn "URL: $r_HDP_REPO_URL may not be reachable."
                 _ask "Would you like to re-type?" "Y"
