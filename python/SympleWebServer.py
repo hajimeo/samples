@@ -63,8 +63,17 @@ class SympleWebServer(BaseHTTPRequestHandler):
 
     def __setup(self):
         if bool(SympleWebServer.creds) is False:
-            credpath = "."+os.path.basename(os.path.splitext(__file__)[0]).lower()+".pyc"
-            SympleWebServer.creds = imp.load_compiled("*", credpath)
+            credpath = "."+os.path.basename(os.path.splitext(__file__)[0]).lower()
+            if os.path.exists(credpath):
+                try:
+                    SympleWebServer.creds = imp.load_compiled("*", credpath)
+                except ImportError:
+                    SympleWebServer.creds = imp.load_source("*", credpath)
+            elif os.path.exists(credpath+".pyc"):
+                SympleWebServer.creds = imp.load_compiled("*", credpath+".pyc")
+            elif os.path.exists(credpath+".py"):
+                SympleWebServer.creds = imp.load_source("*", credpath+".py")
+
 
     def _get_category_method_and_args_from_path(self):
         parsed_path = urlparse.urlparse(self.path)
