@@ -96,6 +96,7 @@ class SympleWebServer(BaseHTTPRequestHandler):
                 import py_compile
                 py_compile.compile(credpath+".tmp", credpath+"c")
                 os.remove(credpath+".tmp")
+                self._log(credpath+" should be deleted", "WARN")
 
 
 
