@@ -35,7 +35,7 @@ class SympleWebServer(BaseHTTPRequestHandler):
         request = urllib2.Request(SympleWebServer._creds.slack_search_baseurl + "/api/search.messages", data)
         response = urllib2.urlopen(request)
         json_str = response.read()
-        # TODO: need more prettier format (eg: utilize highlight=true, convert unixtimestamp, use 'previous')
+        # TODO: need more prettier format (eg: utilize highlight=true, use 'previous', unicode characters)
         json_obj = json.loads(json_str)
         # to avoid "UnicodeEncodeError: 'ascii' codec can't encode character"
         html = u"<h2>Hit " + str(json_obj['messages']['total']) + u"messages</h2>\n"
@@ -52,7 +52,7 @@ class SympleWebServer(BaseHTTPRequestHandler):
     def _process(self):
         self._reload()
         (category, method, args) = self._get_category_method_and_args_from_path()
-        output = u"<html><head><title>"+category.upper()+":"+method.upper()+"</title></head><body>"
+        output = u"<html><head><meta charset='utf-8'><title>"+category.upper()+":"+method.upper()+"</title></head><body>"
         if category.lower() == 'slack':
             if method.lower() == 'search':
                 output += SympleWebServer.handle_slack_search(args)
