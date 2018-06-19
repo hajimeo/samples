@@ -6,8 +6,11 @@
 #
 from BaseHTTPServer import BaseHTTPRequestHandler
 from BaseHTTPServer import HTTPServer
-import urllib, urllib2
-import urlparse, sys, os, imp, json, traceback, base64
+import urllib, urllib2, urlparse, sys, os, imp, json, traceback, base64, datetime, math
+
+
+def toDateStr(ts):
+    return datetime.datetime.fromtimestamp(math.floor(float(ts))).strftime('%Y-%m-%d %H:%M:%S')
 
 
 class SympleWebServer(BaseHTTPRequestHandler):
@@ -27,39 +30,36 @@ class SympleWebServer(BaseHTTPRequestHandler):
     @staticmethod
     def handle_slack_search(query_args):
         query_args['token'] = SympleWebServer._creds.slack_search_token
+        query_args['highlight'] = "true"
         data = urllib.urlencode(query_args)
         request = urllib2.Request(SympleWebServer._creds.slack_search_baseurl + "/api/search.messages", data)
         response = urllib2.urlopen(request)
         json_str = response.read()
         # TODO: need more prettier format (eg: utilize highlight=true, convert unixtimestamp, use 'previous')
-        json_parsed = json.loads(json_str)
-        try:
-            rtn_tmp = json_parsed['messages']['matches']
-            rtn = []
-            if len(rtn_tmp) > 0:
-                for o in rtn_tmp:
-                    rtn.append({"username": o['username'] + " (" + o['user'] + ")", "permalink": o['permalink'],
-                                "text": o['text'], "ts": o['ts']})
-        except:
-            rtn = json_parsed
-        return json.dumps(rtn, indent=4)
+        json_obj = json.loads(json_str)
+        # to avoid "UnicodeEncodeError: 'ascii' codec can't encode character"
+        html = u"<h2>Hit " + str(json_obj['messages']['total']) + u"messages</h2>\n"
+        if len(json_obj['messages']['matches']) > 0:
+            for o in json_obj['messages']['matches']:
+                html += u"<hr/>"
+                html += u"DateTime: " + toDateStr(o['ts']) + "<br/>\n"
+                html += u"Username:  " + o['username'] + u" (" + o['user'] + ")<br/>\n"
+                html += u"PermaLink: <a href='" + o['permalink'] + u"' target='_blank'>" + o['permalink'] + u"</a><br/>\n"
+                html += u"<blockquote style='white-space:pre-wrap'><tt>" + o['text'] + u"</tt></blockquote>\n"
+        #html = json.dumps(json_obj, indent=4)
+        return html
 
     def _process(self):
         self._reload()
-        output = ""
-        try:
-            (category, method, args) = self._get_category_method_and_args_from_path()
-            if category.lower() == 'slack':
-                if method.lower() == 'search':
-                    output = SympleWebServer.handle_slack_search(args)
-
-            self.send_response(200)
-        except:
-            # self._debug_message(True)
-            self._log(str(sys.exc_info()[1]) + "\r\n" + str(traceback.format_stack()), "ERROR")
-            self.send_response(500)
+        (category, method, args) = self._get_category_method_and_args_from_path()
+        output = u"<html><head><title>"+category.upper()+":"+method.upper()+"</title></head><body>"
+        if category.lower() == 'slack':
+            if method.lower() == 'search':
+                output += SympleWebServer.handle_slack_search(args)
+        output += "</body></html>"
+        self.send_response(200)
         self.end_headers()
-        self.wfile.write(output)
+        self.wfile.write(output.encode('utf-8'))
 
     def _reload(self):
         plain = False
@@ -74,7 +74,7 @@ class SympleWebServer(BaseHTTPRequestHandler):
                 credpath = credpath + ".pyc"
             elif os.path.exists(credpath + ".py"):
                 credpath = credpath + ".py"
-            self._log("Reloading "+credpath)
+            self._log("Reloading " + credpath)
             try:
                 c = imp.load_compiled("*", credpath)
             except ImportError:
@@ -83,24 +83,20 @@ class SympleWebServer(BaseHTTPRequestHandler):
             for p, v in vars(c).iteritems():
                 if not p.startswith('__'):
                     if plain:
-                        s[p]=base64.b64encode(v)
+                        s[p] = base64.b64encode(v)
                     else:
                         setattr(c, p, base64.b64decode(v))
             SympleWebServer._creds = c
-            #self._log(str(SympleWebServer._creds.__dict__))
+            # self._log(str(SympleWebServer._creds.__dict__))
             if plain:
-                f = open(credpath+".tmp", "wb")
+                f = open(credpath + ".tmp", "wb")
                 for p, v in s.iteritems():
-                    f.write(p+"='"+v+"'\n")
+                    f.write(p + "='" + v + "'\n")
                 f.close()
                 import py_compile
-                py_compile.compile(credpath+".tmp", credpath+"c")
-                os.remove(credpath+".tmp")
-                self._log(credpath+" should be deleted", "WARN")
-
-
-
-
+                py_compile.compile(credpath + ".tmp", credpath + "c")
+                os.remove(credpath + ".tmp")
+                self._log(credpath + " should be deleted", "WARN")
 
     def _get_category_method_and_args_from_path(self):
         parsed_path = urlparse.urlparse(self.path)
@@ -137,7 +133,7 @@ class SympleWebServer(BaseHTTPRequestHandler):
 
     def _log(self, msg, level="DEBUG"):
         if SympleWebServer.verbose.lower() == 'verbose' or level.lower() in ["error", "warn", "warning"]:
-            #sys.stderr.write(level+": "+msg + '\n')
+            # sys.stderr.write(level+": "+msg + '\n')
             self.log_message(level.upper() + ": %s", msg)
 
 
