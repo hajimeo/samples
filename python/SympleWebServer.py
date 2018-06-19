@@ -7,7 +7,7 @@
 from BaseHTTPServer import BaseHTTPRequestHandler
 from BaseHTTPServer import HTTPServer
 import urllib, urllib2
-import urlparse, sys, os, imp, json, traceback
+import urlparse, sys, os, imp, json, traceback, base64
 
 
 class SympleWebServer(BaseHTTPRequestHandler):
@@ -16,21 +16,21 @@ class SympleWebServer(BaseHTTPRequestHandler):
     At this moment only GET is supported
     Expecting "/category/method?key1=val1&key2=val2" style path
     '''
-    verbose= ""
-    creds=None
+    verbose = ""
+    _creds = {}
 
     def do_GET(self):
-        self._log_message()
+        self._debug_message()
         self._process()
         return
 
     @staticmethod
     def handle_slack_search(query_args):
-        query_args['token']=SympleWebServer.creds.slack_search_token
+        query_args['token'] = SympleWebServer._creds.slack_search_token
         data = urllib.urlencode(query_args)
-        request = urllib2.Request(SympleWebServer.creds.slack_search_baseurl+"/api/search.messages", data)
+        request = urllib2.Request(SympleWebServer._creds.slack_search_baseurl + "/api/search.messages", data)
         response = urllib2.urlopen(request)
-        json_str=response.read()
+        json_str = response.read()
         # TODO: need more prettier format (eg: utilize highlight=true, convert unixtimestamp, use 'previous')
         json_parsed = json.loads(json_str)
         try:
@@ -38,14 +38,15 @@ class SympleWebServer(BaseHTTPRequestHandler):
             rtn = []
             if len(rtn_tmp) > 0:
                 for o in rtn_tmp:
-                    rtn.append({"username":o['username']+" ("+o['user']+")", "permalink":o['permalink'], "text":o['text'], "ts":o['ts']})
+                    rtn.append({"username": o['username'] + " (" + o['user'] + ")", "permalink": o['permalink'],
+                                "text": o['text'], "ts": o['ts']})
         except:
             rtn = json_parsed
         return json.dumps(rtn, indent=4)
 
     def _process(self):
+        self._reload()
         output = ""
-        self.__setup()
         try:
             (category, method, args) = self._get_category_method_and_args_from_path()
             if category.lower() == 'slack':
@@ -54,35 +55,60 @@ class SympleWebServer(BaseHTTPRequestHandler):
 
             self.send_response(200)
         except:
-            #self._log_message(True)
-            self._log(str(sys.exc_info()[1])+"\r\n"+str(traceback.format_stack()), "ERROR")
+            # self._debug_message(True)
+            self._log(str(sys.exc_info()[1]) + "\r\n" + str(traceback.format_stack()), "ERROR")
             self.send_response(500)
         self.end_headers()
         self.wfile.write(output)
 
+    def _reload(self):
+        plain = False
+        s = {}
+        if bool(SympleWebServer._creds) is False or os.path.exists("./.reload_cred"):
+            if os.path.exists("./.reload_cred"): os.remove("./.reload_cred")
+            credpath = "." + os.path.basename(os.path.splitext(__file__)[0]).lower()
+            # try reading a compiled one first
+            if os.path.exists(credpath + "c"):
+                credpath = credpath + "c"
+            elif os.path.exists(credpath + ".pyc"):
+                credpath = credpath + ".pyc"
+            elif os.path.exists(credpath + ".py"):
+                credpath = credpath + ".py"
+            self._log("Reloading "+credpath)
+            try:
+                c = imp.load_compiled("*", credpath)
+            except ImportError:
+                c = imp.load_source("*", credpath)
+                plain = True
+            for p, v in vars(c).iteritems():
+                if not p.startswith('__'):
+                    if plain:
+                        s[p]=base64.b64encode(v)
+                    else:
+                        setattr(c, p, base64.b64decode(v))
+            SympleWebServer._creds = c
+            #self._log(str(SympleWebServer._creds.__dict__))
+            if plain:
+                f = open(credpath+".tmp", "wb")
+                for p, v in s.iteritems():
+                    f.write(p+"='"+v+"'\n")
+                f.close()
+                import py_compile
+                py_compile.compile(credpath+".tmp", credpath+"c")
+                os.remove(credpath+".tmp")
 
-    def __setup(self):
-        if bool(SympleWebServer.creds) is False:
-            credpath = "."+os.path.basename(os.path.splitext(__file__)[0]).lower()
-            if os.path.exists(credpath):
-                try:
-                    SympleWebServer.creds = imp.load_compiled("*", credpath)
-                except ImportError:
-                    SympleWebServer.creds = imp.load_source("*", credpath)
-            elif os.path.exists(credpath+".pyc"):
-                SympleWebServer.creds = imp.load_compiled("*", credpath+".pyc")
-            elif os.path.exists(credpath+".py"):
-                SympleWebServer.creds = imp.load_source("*", credpath+".py")
+
+
 
 
     def _get_category_method_and_args_from_path(self):
         parsed_path = urlparse.urlparse(self.path)
-        args=urlparse.parse_qs(parsed_path.query)
-        dirs=parsed_path.path.split("/")
+        args = urlparse.parse_qs(parsed_path.query)
+        dirs = parsed_path.path.split("/")
         if len(dirs) < 3: return "", "", args
         return dirs[1], dirs[2], args
 
-    def _log_message(self, force=False):
+    def _debug_message(self, force=False):
         if SympleWebServer.verbose.lower() == 'verbose' or force:
             parsed_path = urlparse.urlparse(self.path)
             message_parts = [
@@ -101,16 +127,17 @@ class SympleWebServer(BaseHTTPRequestHandler):
                 'protocol_version=%s' % self.protocol_version,
                 '',
                 'HEADERS RECEIVED:',
-                ]
+            ]
             for name, value in sorted(self.headers.items()):
                 message_parts.append('%s=%s' % (name, value.rstrip()))
             message_parts.append('')
             message = '\r\n'.join(message_parts)
-            self._log(message, "DEBUG")
+            self._log(message)
 
-    def _log(self, msg, level):
-        # sys.stderr.write(level+" "+msg + '\n')
-        self.log_message(level+" %s", msg)
+    def _log(self, msg, level="DEBUG"):
+        if SympleWebServer.verbose.lower() == 'verbose' or level.lower() in ["error", "warn", "warning"]:
+            #sys.stderr.write(level+": "+msg + '\n')
+            self.log_message(level.upper() + ": %s", msg)
 
 
 if __name__ == '__main__':
@@ -123,7 +150,8 @@ if __name__ == '__main__':
     if len(sys.argv) > 2:
         listen_port = int(sys.argv[2])
     if len(sys.argv) > 3:
-        SympleWebServer.verbose=sys.argv[3]
+        SympleWebServer.verbose = sys.argv[3]
+        print("verbose mode is on")
 
     server = HTTPServer((listen_host, listen_port), SympleWebServer)
     print('Starting server, use <Ctrl-C> to stop')
