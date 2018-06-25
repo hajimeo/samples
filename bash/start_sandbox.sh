@@ -149,6 +149,7 @@ function f_ambari_start_all() {
     # Just incase, starting mysql. if it's already started, ignore.
     #ssh -q ${_host} -t 'service mysqld start &>/dev/null'
 
+    #curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/hosts/${_host}/host_components" -X PUT --data '{"RequestInfo":{"context":"Start All Host Components","operation_level":{"level":"HOST","cluster_name":"Sandbox","host_names":"'${_host}'"},"query":"HostRoles/component_name.in(APP_TIMELINE_SERVER,DATANODE,HISTORYSERVER,HIVE_METASTORE,HIVE_SERVER,MYSQL_SERVER,NAMENODE,NFS_GATEWAY,NODEMANAGER,RESOURCEMANAGER,SECONDARY_NAMENODE,WEBHCAT_SERVER,ZOOKEEPER_SERVER)"},"Body":{"HostRoles":{"state":"STARTED"}}}'
     curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services?" -X PUT -d '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 }
 
