@@ -19,7 +19,7 @@ To start Sandbox
 
 To add a test node using 'hdp/base:6.8' image
     _NAME='sandbox-node1'
-    docker run -tid -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share --privileged --hostname=\${_NAME}.hortonworks.com --name=\${_NAME} hdp/base:6.8
+    docker run -tid -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share --privileged --hostname=\${_NAME}.hortonworks.com --name=\${_NAME} hdp/base:7.4.1708
     f_ssh_config \${_NAME}
     docker exec -it \${_NAME} bash -c '[ -d /usr/lib/jvm/jre-1.8.0-openjdk.x86_64 ] && ln -s /usr/lib/jvm/jre-1.8.0-openjdk.x86_64 /usr/lib/jvm/java'
     docker exec -it \${_NAME} bash
@@ -61,8 +61,8 @@ function f_docker_image_setup() {
     docker tag ${_existing_img} <new_name>:<new_tag>
     docker rmi ${_existing_img}
 To backup image:
-    docker save <image id> | gzip > some_image_name.tgz
-    docker exmport <container id> | gzip > some_container_name.tgz
+    docker save <image id> | gzip > saved_image_name.tgz
+    docker export <container id> | gzip > exported_container_name.tgz
 To restore
     gunzip -c saved_exported.tgz | docker load
 "
@@ -147,7 +147,7 @@ function f_ambari_start_all() {
     sleep 1
 
     # Just incase, starting mysql. if it's already started, ignore.
-    ssh -q ${_host} -t 'service mysqld start &>/dev/null'
+    #ssh -q ${_host} -t 'service mysqld start &>/dev/null'
 
     curl -siL -u admin:admin -H "X-Requested-By:ambari" -k "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services?" -X PUT -d '{"RequestInfo":{"context":"START ALL_SERVICES","operation_level":{"level":"CLUSTER","cluster_name":"'${_cluster}'"}},"Body":{"ServiceInfo":{"state":"STARTED"}}}'
 }
@@ -166,7 +166,8 @@ function f_service() {
         curl -su admin:admin "http://${_host}:${_port}/api/v1/clusters/${_cluster}/services?fields=ServiceInfo/service_name" | grep -oE '"service_name".+'
         return 0
     fi
-    _service="${_service^^}"
+    # ${_server^^} doesn't work on Mac
+    _service="$( echo ${_service} | awk '{print toupper($0)}' )"
 
     if [ -z "$_action" ]; then
         echo "$_service status"
@@ -175,7 +176,7 @@ function f_service() {
         done
         return 0
     fi
-    _action="${_action^^}"
+    _action="$( echo ${_action} | awk '{print toupper($0)}' )"
 
     for _s in `echo ${_service} | sed 's/ /\n/g'`; do
         if [ "$_action" = "RESTART" ]; then
@@ -204,7 +205,7 @@ function f_service() {
 }
 
 function f_useradd() {
-    local __doc__="TODO: Add user"
+    local __doc__="TODO: Add user in a node (container)"
     local _user="$1"
     local _password="${2}"
     local _cluster="${3-sandbox}"
@@ -223,7 +224,7 @@ function f_useradd() {
 }
 
 function f_ssh_config() {
-    local __doc__="Copy keys and setup authorized key"
+    local __doc__="Copy keys and setup authorized key to a node (container)"
     local _name="${1-$_NAME}"
     local _key="$2"
     local _pub_key="$3"
@@ -276,7 +277,7 @@ function _totalSpaceGB() {
 ### main()
 if [ "$0" = "$BASH_SOURCE" ]; then
     #_NAME="sandbox-hdp"
-    _NEW_CONTAINER=false
+    _NEW_CONTAINER=${_NEW_CONTAINER:-false}
     _STOP_SANDBOX_CONTAINERS=false
     _LIST_SANDBOX_CONTAINERS=false
     _UPDATE_CODE=false
@@ -358,8 +359,8 @@ If you would like to fix this now, press Ctrl+c to stop (sleep 7 seconds)"
         sleep 7
     fi
 
-    if [ ! -s /etc/docker/daemon.json ]; then
-        echo "WARN: /etc/docker/daemon.json is not configured
+    if [ ! -s /etc/docker/daemon.json ] && [ ! -s $HOME/.docker/daemon.json ]; then
+        echo "WARN: daemon.json is not configured
 If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
         sleep 7
     fi
@@ -629,8 +630,8 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     #docker exec -d ${_NAME} /etc/init.d/shellinaboxd start
     #docker exec -d ${_NAME} /etc/init.d/tutorials start
 
-    # NOTE: docker exec add '$' and '\r' (should I specify the port 2222?)
-    _NETWORK_ADDR=`ssh -q ${_HOSTNAME} hostname -i | sed 's/\(.\+\)\.[0-9]\+$/\1/'`
+    # NOTE: docker exec add '$' and '\r'
+    _NETWORK_ADDR=`ssh -q -p 2222 root@localhost hostname -i | sed 's/\(.\+\)\.[0-9]\+$/\1/'`
     if [ -n "$_NETWORK_ADDR" ]; then
         echo "INFO: Removing ${_NETWORK_ADDR%.}.0/24 via 0.0.0.0 which prevents container access ${_NETWORK_ADDR%.}.1 ..."
         docker exec -it ${_NAME} bash -c "ip route del ${_NETWORK_ADDR%.}.0/24 via 0.0.0.0 || ip route del ${_NETWORK_ADDR%.}.0/16 via 0.0.0.0"
