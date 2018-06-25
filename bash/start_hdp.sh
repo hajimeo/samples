@@ -2101,16 +2101,14 @@ function f_repo_mount() {
     local __doc__="TODO: This would work on only my environment. Mounting VM host's directory to use for local repo"
     local _user="$1"
     local _host_pc="$2"
-    local _src="${3-/Users/${_user}/Public/hdp/}"  # needs ending slash
-    local _mounting_dir="${4-/var/www/html/hdp}" # no need ending slash
+    local _src="${3:-/Users/${_user}/Public/hdp/}"  # needs ending slash
+    local _mounting_dir="${4:-/var/www/html/hdp}" # no need ending slash
 
     if [ -z "$_host_pc" ]; then
         _host_pc="`env | awk '/SSH_CONNECTION/ {gsub("SSH_CONNECTION=", "", $1); print $1}'`"
         if [ -z "$_host_pc" ]; then
             _host_pc="`netstat -rn | awk '/^0\.0\.0\.0/ {print $2}'`"
         fi
-
-        local _src="/Users/${_user}/Public/hdp/"
         _connect_str="${_user}@${_host_pc}:${_src}"
     fi
 
