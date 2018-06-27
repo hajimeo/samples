@@ -367,18 +367,20 @@ If you would like to fis this now, press Ctrl+c to stop (sleep 7 seconds)"
     fi
 
     # To use tcpdump from container
-    if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
-        ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
-        apparmor_parser -R /etc/apparmor.d/usr.sbin.tcpdump
+    if which apparmor_parser &>/dev/null; then
+        if [ ! -L /etc/apparmor.d/disable/usr.sbin.tcpdump ]; then
+            ln -sf /etc/apparmor.d/usr.sbin.tcpdump /etc/apparmor.d/disable/
+            apparmor_parser -R /etc/apparmor.d/usr.sbin.tcpdump
+        fi
+
+        # To use mysql from container
+        if [ ! -L /etc/apparmor.d/disable/usr.sbin.mysqld ]; then
+            ln -sf /etc/apparmor.d/usr.sbin.mysqld /etc/apparmor.d/disable/
+            apparmor_parser -R /etc/apparmor.d/usr.sbin.mysqld
+        fi
     fi
 
-    # To use mysql from container
-    if [ ! -L /etc/apparmor.d/disable/usr.sbin.mysqld ]; then
-        ln -sf /etc/apparmor.d/usr.sbin.mysqld /etc/apparmor.d/disable/
-        apparmor_parser -R /etc/apparmor.d/usr.sbin.mysqld
-    fi
-
-    _HOST_HDP_IP=`ifconfig $_CUSTOM_NETWORK | grep -oP 'inet addr:\d+\.\d+\.\d+\.\d+' | cut -d":" -f2`
+    _HOST_HDP_IP=`ifconfig $_CUSTOM_NETWORK | grep -oE 'inet addr:\d+\.\d+\.\d+\.\d+' | cut -d":" -f2`
 
     echo "INFO: Waiting for docker daemon to start up:"
     until docker ps 2>&1| grep -q STATUS; do  sleep 1; done;  >/dev/null
