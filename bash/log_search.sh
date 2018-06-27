@@ -301,21 +301,41 @@ function f_findJarByClassName() {
     # TODO: it won't search war file...
 }
 
+function f_searchClass() {
+    local __doc__="Find jar by *full* class name (without .class) by using PID, which means that component needs to be running, and then export CLASSPATH, and compiles if class_name.java exists"
+    local _class_name="$1" # should be full class name but without .class
+    local _pid="$2"
+
+    local _class_file_path="$( echo "${_class_name}" | sed 's/\./\//g' )"
+    local _basename="$(basename ${_class_file_path})"
+    local _dirname="$(dirname ${_class_file_path})"
+    local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
+    which ${_cmd_dir}/jar &>/dev/null || return 1
+    ls -l /proc/${_pid}/fd | grep -oE '/.+\.(jar|war)$' > /tmp/f_searchClass_${_pid}.out
+
+    # If needs to compile but _jars.out exist, don't try searching as it takes long time
+    if [ ! -s /tmp/f_searchClass_${_basename}_jars.out ]; then
+        cat /tmp/f_searchClass_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | grep -E "'${_class_file_path}'.class" > /tmp/f_searchClass_'${_basename}'_tmp.out && echo {} && cat /tmp/f_searchClass_'${_basename}'_tmp.out >&2' | tee /tmp/f_searchClass_${_basename}_jars.out
+    else
+        cat /tmp/f_searchClass_${_basename}_jars.out
+    fi
+}
+
 function f_patchJar() {
     local __doc__="Find jar by *full* class name (without .class) by using PID, which means that component needs to be running, and then export CLASSPATH, and compiles if class_name.java exists"
     local _class_name="$1" # should be full class name but without .class
     local _pid="$2"
 
-    local _class_path="$( echo "${_class_name}" | sed 's/\./\//g' )"
-    local _basename="$(basename ${_class_path})"
-    local _dirname="$(dirname ${_class_path})"
+    local _class_file_path="$( echo "${_class_name}" | sed 's/\./\//g' )"
+    local _basename="$(basename ${_class_file_path})"
+    local _dirname="$(dirname ${_class_file_path})"
     local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
     which ${_cmd_dir}/jar &>/dev/null || return 1
     ls -l /proc/${_pid}/fd | grep -oE '/.+\.(jar|war)$' > /tmp/f_patchJar_${_pid}.out
 
-    # If needs to compile but _jars.out exist, don't try searching as it takes time
+    # If needs to compile but _jars.out exist, don't try searching as it takes long time
     if [ -r "${_basename}.java" ] && [ ! -s /tmp/f_patchJar_${_basename}_jars.out ]; then
-        cat /tmp/f_patchJar_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | grep -E "'${_class_path}'.class" > /tmp/f_patchJar_'${_basename}'_tmp.out && echo {} && cat /tmp/f_patchJar_'${_basename}'_tmp.out >&2' | tee /tmp/f_patchJar_${_basename}_jars.out
+        cat /tmp/f_patchJar_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | grep -E "'${_class_file_path}'.class" > /tmp/f_patchJar_'${_basename}'_tmp.out && echo {} && cat /tmp/f_patchJar_'${_basename}'_tmp.out >&2' | tee /tmp/f_patchJar_${_basename}_jars.out
     else
         echo "/tmp/f_patchJar_${_basename}_jars.out exists. Reusing..."
     fi
