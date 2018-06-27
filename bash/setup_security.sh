@@ -621,15 +621,15 @@ function f_ssl_ambari_2way() {
 }
 
 function f_ldap_ranger() {
-    local __doc__="TODO: Setup ranger admin/usersync with LDAP (TODO: currently only AD)"
+    local __doc__="TODO: Setup ranger admin/usersync with LDAP (TODO: currently only tested with AD)"
     #f_ldap_ranger "ldap://winad.hdp.localdomain" "HDP.LOCALDOMAIN" "dc=hdp,dc=localdomain" "ldap@hdp.localdomain" '******' 'AD' 'sandbox-hdp.hortonworks.com'
     local _ldap_url="${1}"
     local _domain="${2}"
     local _basedn="${3}"
     local _binddn="${4}"
-    local _binddn_pwd="${5-${g_DEFAULT_PASSWORD-hadoop}}" # TODO: password should be stoed in jceks file
-    local _ad_or_ldap="${6-AD}"
-    local _ambari_host="${7-$r_AMBARI_HOST}"
+    local _binddn_pwd="${5:-${g_DEFAULT_PASSWORD-hadoop}}" # TODO: password should be stoed in jceks file
+    local _ad_or_ldap="${6:-AD}"
+    local _ambari_host="${7:-${r_AMBARI_HOST}}"
     [ -z "${_ambari_host}" ] && return 1
 
     # NOTE: grep -E 'ranger\..*(\.usersync\..+attribute|\.objectclass|\.ldap\.|\.usersync\.source\.impl\.class|\.authentication\.method|enabled)' -A1 -IRs ./*-site.xml
@@ -660,7 +660,7 @@ function f_ldap_ranger() {
     }'
 
     # TODO: change attributes for LDAP
-    if [ "LDAP" = "${_ad_or_ldap}" ]; then
+    if [ "LDAP" = "${_ad_or_ldap^^}" ]; then
         ranger_admin_site='{
             "ranger.authentication.method": "LDAP",
             "ranger.ldap.user.dnpattern": "uid={0},ou=users,'${_basedn}'",
@@ -782,25 +782,37 @@ function f_kerberos_crossrealm_setup() {
 }
 
 function f_ldap_hadoop_groupmapping() {
-    local __doc__="Setup Hadoop Group Mapping with LDAP (TODO: currently works only with Knox demo LDAP)"
-    local _ambari_host="${1-$r_AMBARI_HOST}"
-    local _ldap_url="$2"
+    local __doc__="Setup Hadoop Group Mapping with LDAP/AD"
+    #f_ldap_hadoop_groupmapping "ldap://winad.hdp.localdomain" "HDP.LOCALDOMAIN" "dc=hdp,dc=localdomain" "ldap@hdp.localdomain" '******' 'AD' 'sandbox-hdp.hortonworks.com'
+    local _ldap_url="${1}"
+    local _domain="${2}"
+    local _basedn="${3}"    # dc=hadoop,dc=apache,dc=org
+    local _bind_user="${4}"    # uid=admin,ou=people,${_basedn}
+    local _bind_pass="${5:-${g_DEFAULT_PASSWORD-hadoop}}" # admin-password
+    local _ad_or_ldap="${6:-AD}"
+    local _ambari_host="${7:-${r_AMBARI_HOST}}"
+
     [ -z "${_ambari_host}" ] && return 1
     [ -z "${_ldap_url}" ] && _ldap_url="ldap://${_ambari_host}:33389/"
 
-    local _basedn="dc=hadoop,dc=apache,dc=org"
-    local _bind_user="uid=admin,ou=people,${_basedn}"
-    local _bind_pass="admin-password"
-    local _base=""  # NOTE/TODO: somehow base need to be empty and need to use basedn in ldap URL
-    local _filter_user="(&(objectclass=person)(uid={0}))"
-    local _filter_group="(objectclass=groupofnames)"
+    local _final_ldap_url="${_ldap_url%/}/"
+    local _final_basedn="${_basedn}"
+    local _filter_user="(&(objectclass=person)(sAMAccountName={0}))"
+    local _filter_group="(objectClass=group)"
+    local _test_user="administrator"
     local _attr_member="member"
     local _attr_group_name="cn"
 
-    local _test_user="admin"
-    local _filter_user_test="`echo ${_filter_user} | sed 's/{0}/'${_test_user}'/'`"
+    if [ "LDAP" = "${_ad_or_ldap^^}" ]; then
+        _final_ldap_url="${_ldap_url%/}/${_basedn}"  # NOTE/TODO: somehow base need to be empty and need to use basedn in ldap URL
+        _final_basedn=""
+        _filter_user="(&(objectclass=person)(uid={0}))"
+        _filter_group="(objectclass=groupofnames)"
+        _test_user="admin"
+    fi
 
     if which ldapsearch &>/dev/null; then
+        local _filter_user_test="`echo ${_filter_user} | sed 's/{0}/'${_test_user}'/'`"
         LDAPTLS_REQCERT=never ldapsearch -x -H ${_ldap_url} -D "${_bind_user}" -w "${_bind_pass}" -b "${_basedn}" "${_filter_user_test}" || return $?
         LDAPTLS_REQCERT=never ldapsearch -x -H ${_ldap_url} -D "${_bind_user}" -w "${_bind_pass}" -b "${_basedn}" "${_filter_group}" ${_attr_member} ${_attr_group_name} || return $?
     fi
@@ -813,9 +825,9 @@ function f_ldap_hadoop_groupmapping() {
         "hadoop.security.group.mapping.providers":"shell4services,ldap4users",
         "hadoop.security.group.mapping.provider.shell4services":"org.apache.hadoop.security.ShellBasedUnixGroupsMapping",
         "hadoop.security.group.mapping.provider.ldap4users":"org.apache.hadoop.security.LdapGroupsMapping",
-        "hadoop.security.group.mapping.provider.ldap4users.ldap.url":"'${_ldap_url%/}'/'${_basedn}'",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.url":"'${_final_ldap_url}'",
         "hadoop.security.group.mapping.provider.ldap4users.ldap.bind.user":"'${_bind_user}'",
-        "hadoop.security.group.mapping.provider.ldap4users.ldap.base":"'${_base}'",
+        "hadoop.security.group.mapping.provider.ldap4users.ldap.base":"'${_final_basedn}'",
         "hadoop.security.group.mapping.provider.ldap4users.ldap.search.filter.user":"'${_filter_user}'",
         "hadoop.security.group.mapping.provider.ldap4users.ldap.search.filter.group":"'${_filter_group}'",
         "hadoop.security.group.mapping.provider.ldap4users.ldap.search.attr.member":"'${_attr_member}'",
