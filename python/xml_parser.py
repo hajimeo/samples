@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
+# sudo easy_install pip
+# sudo pip install lxml
+#
 
 import sys, pprint, re, json, os
 from lxml import etree
