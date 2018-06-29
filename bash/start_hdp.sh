@@ -107,8 +107,8 @@ g_DNS_SERVER="localhost"
 g_DOMAIN_SUFFIX=".localdomain"
 g_APT_UPDATE_DONE=""
 g_HDP_NETWORK="hdp"
-g_CENTOS_VERSION="6.8"
-g_AMBARI_VERSION="2.6.1.5" # TODO: need to update Ambari Version manually
+g_CENTOS_VERSION="7.4.1708"
+g_AMBARI_VERSION="2.6.2.2" # TODO: need to update Ambari Version manually
 g_STACK_VERSION="2.6"
 
 __PID="$$"
@@ -614,7 +614,7 @@ function _ambari_blueprint_host_groups() {
     local _including_ambari="$2"
     local _install_security="${3-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
 
-    local _ambari_only='{"name":"AMBARI_SERVER"}'
+    local _ambari_server='{"name":"AMBARI_SERVER"}'
     local _master_comps='{"name":"ZOOKEEPER_SERVER"},{"name":"NAMENODE"},{"name":"HISTORYSERVER"},{"name":"APP_TIMELINE_SERVER"},{"name":"RESOURCEMANAGER"},{"name":"MYSQL_SERVER"},{"name":"HIVE_SERVER"},{"name":"HIVE_METASTORE"},{"name":"WEBHCAT_SERVER"}'
     local _standby_comps='{"name":"SECONDARY_NAMENODE"}'
     local _slave_comps='{"name":"DATANODE"},{"name" : "NODEMANAGER"}'
@@ -638,7 +638,7 @@ function _ambari_blueprint_host_groups() {
     elif [ $_how_many = 1 ]; then
         if _isYes "$_including_ambari" ; then
             _final_hsot_groups='
-    { "name" : "host_group_1", "components" : ['${_ambari_only}','${_master_comps}','${_standby_comps}','${_slave_comps}${_extra_sec_master_comps}${_extra_sec_slave_comps}'], "configurations" : [ ] }
+    { "name" : "host_group_1", "components" : ['${_ambari_server}','${_master_comps}','${_standby_comps}','${_slave_comps}${_extra_sec_master_comps}${_extra_sec_slave_comps}'], "configurations" : [ ] }
 '
         else
             _final_hsot_groups='
@@ -648,7 +648,7 @@ function _ambari_blueprint_host_groups() {
     elif [ $_how_many = 2 ]; then
         if _isYes "$_including_ambari" ; then
             _final_hsot_groups='
-    { "name" : "host_group_1", "components" : ['${_ambari_only}'], "configurations" : [ ] },
+    { "name" : "host_group_1", "components" : ['${_ambari_server}'], "configurations" : [ ] },
     { "name" : "host_group_2", "components" : ['${_master_comps}','${_standby_comps}','${_slave_comps}','${_clients}${_extra_sec_master_comps}${_extra_sec_slave_comps}'], "configurations" : [ ] }
 '
         else
@@ -660,7 +660,7 @@ function _ambari_blueprint_host_groups() {
     elif [ $_how_many = 3 ]; then
         if _isYes "$_including_ambari" ; then
             _final_hsot_groups='
-    { "name" : "host_group_1", "components" : ['${_ambari_only}'], "configurations" : [ ] },
+    { "name" : "host_group_1", "components" : ['${_ambari_server}'], "configurations" : [ ] },
     { "name" : "host_group_2", "components" : ['${_master_comps}','${_clients}${_extra_sec_master_comps}'], "configurations" : [ ] },
     { "name" : "host_group_3", "components" : ['${_standby_comps}','${_slave_comps}','${_clients}${_extra_sec_slave_comps}'], "configurations" : [ ] }
 '
@@ -674,7 +674,7 @@ function _ambari_blueprint_host_groups() {
     elif [ $_how_many = 4 ]; then
         if _isYes "$_including_ambari" ; then
             _final_hsot_groups='
-    { "name" : "host_group_1", "components" : ['${_ambari_only}'], "configurations" : [ ] },
+    { "name" : "host_group_1", "components" : ['${_ambari_server}'], "configurations" : [ ] },
     { "name" : "host_group_2", "components" : ['${_master_comps}','${_clients}'], "configurations" : [ ] },
     { "name" : "host_group_3", "components" : ['${_standby_comps}','${_clients}${_extra_sec_master_comps}'], "configurations" : [ ] },
     { "name" : "host_group_4", "components" : ['${_slave_comps}','${_clients}${_extra_sec_slave_comps}'], "configurations" : [ ] }
@@ -1199,6 +1199,7 @@ function f_docker_base_create() {
     fi
 
     if ! docker images | grep -P "^${_os_name}\s+${_os_ver_num}"; then
+        _info "pulling OS image ${_os_name}:${_os_ver_num} ..."
         docker pull ${_os_name}:${_os_ver_num} || return $?
     fi
     # "." is not good if there are so many files/folders but https://github.com/moby/moby/issues/14339 is unclear
@@ -1918,7 +1919,7 @@ function f_local_repo() {
     local _document_root="${2-/var/www/html}"
     local _force_extract=""
     local _download_only=""
-    #TODO: sed -i.bak 's/public-repo-1.hortonworks.com/dockerhost1.localdomain\/hdp/g' *.repo # *.xml
+    #TODO: sed -i.bak 's/public-repo-1.hortonworks.com/dockerhost1.localdomain\/hdp/g' ./*.{repo,xml} # also remove index.html
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
@@ -2368,6 +2369,9 @@ function p_host_setup() {
     f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_copy_auth_keys_to_containers"
     f_copy_auth_keys_to_containers &>> /tmp/p_host_setup.log || return $?
+
+    _log "INFO" "Starting f_run_cmd_on_nodes export TERM (TODO: remove this later: E437: terminal capability \"cm\" required)"
+    f_run_cmd_on_nodes "echo -e '\nexport TERM=xterm-256color' >> /etc/profile" &>> /tmp/p_host_setup.log
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
