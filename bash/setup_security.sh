@@ -1040,7 +1040,7 @@ function f_sssd_setup() {
     local ad_realm=${ad_domain^^}
 
     # TODO: CentOS7 causes "The name com.redhat.oddjob_mkhomedir was not provided by any .service files" if oddjob and oddjob-mkhomedir is installed due to some messagebus issue
-    local _cmd='which adcli &>/dev/null || ( yum makecache fast && yum -y install epel-release; yum -y install sssd authconfig sssd-krb5 sssd-ad sssd-tools adcli; yum erase -y nscd )'
+    local _cmd='which adcli &>/dev/null || ( yum makecache fast && yum -y install epel-release; yum -y install sssd authconfig sssd-krb5 sssd-ad sssd-tools adcli oddjob-mkhomedir; yum erase -y nscd )'
     if [ -z "$_target_host" ]; then
         f_run_cmd_on_nodes "$_cmd"
     else
@@ -1094,10 +1094,10 @@ EOF
 chmod 0600 /etc/sssd/sssd.conf
 
 systemctl enable sssd &>/dev/null
-#service messagebus restart &>/dev/null
-#systemctl enable oddjobd &>/dev/null
-#service oddjobd restart &>/dev/null
 service sssd restart
+service messagebus restart &>/dev/null
+systemctl enable oddjobd &>/dev/null
+service oddjobd restart &>/dev/null
 
 authconfig --enablesssd --enablesssdauth --enablemkhomedir --enablelocauthorize --update
 kdestroy"
