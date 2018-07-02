@@ -23,7 +23,6 @@
 #   f_ambari_kerberos_setup "$g_KDC_REALM" "172.17.0.1" "" "sandbox-hdp.hortonworks.com" "sandbox-hdp.hortonworks.com"
 #
 # Example 2: How to set up HTTP Authentication (SPNEGO) on hadoop component
-#   source ./setup_security.sh && f_loadResp
 #   f_spnego_hadoop
 #
 #   If Sandbox (after KDC/kerberos setup):
@@ -31,7 +30,6 @@
 #   f_spnego_hadoop "$g_KDC_REALM" "hortonworks.com" "sandbox.hortonworks.com" "8080" "sandbox.hortonworks.com"
 #
 # Example 3: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
-#   source ./setup_security.sh && f_loadResp
 #   mkdir ssl_setup; cd ssl_setup
 #   f_ssl_hadoop
 #
@@ -1041,7 +1039,8 @@ function f_sssd_setup() {
     local ad_ou="ou=${ad_ou_name},${ad_root}"
     local ad_realm=${ad_domain^^}
 
-    local _cmd='which adcli &>/dev/null || ( yum makecache fast && yum -y install epel-release; yum -y install sssd oddjob-mkhomedir authconfig sssd-krb5 sssd-ad sssd-tools adcli )'
+    # TODO: CentOS7 causes "The name com.redhat.oddjob_mkhomedir was not provided by any .service files" if oddjob and oddjob-mkhomedir is installed due to some messagebus issue
+    local _cmd='which adcli &>/dev/null || ( yum makecache fast && yum -y install epel-release; yum -y install sssd authconfig sssd-krb5 sssd-ad sssd-tools adcli; yum erase -y nscd )'
     if [ -z "$_target_host" ]; then
         f_run_cmd_on_nodes "$_cmd"
     else
@@ -1071,7 +1070,6 @@ override_space = _
 [domain/${ad_realm}]
 id_provider = ad
 ad_server = ${ad_dc}
-#ad_server = ad01, ad02, ad03
 #ad_backup_server = ad-backup01, 02, 03
 auth_provider = ad
 chpass_provider = ad
@@ -1094,14 +1092,14 @@ override_shell = /bin/bash
 EOF
 
 chmod 0600 /etc/sssd/sssd.conf
+
+systemctl enable sssd &>/dev/null
+#service messagebus restart &>/dev/null
+#systemctl enable oddjobd &>/dev/null
+#service oddjobd restart &>/dev/null
 service sssd restart
+
 authconfig --enablesssd --enablesssdauth --enablemkhomedir --enablelocauthorize --update
-
-#chkconfig oddjobd on
-#service oddjobd restart
-#chkconfig sssd on
-service sssd restart
-
 kdestroy"
 
     # To test: id yourusername && groups yourusername
