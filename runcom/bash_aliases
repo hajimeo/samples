@@ -1,1 +1,0 @@
-alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
