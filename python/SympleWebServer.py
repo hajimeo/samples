@@ -158,7 +158,10 @@ if __name__ == '__main__':
     if len(sys.argv) > 3:
         SympleWebServer.verbose = sys.argv[3]
         print("verbose mode is on")
-
-    server = HTTPServer((listen_host, listen_port), SympleWebServer)
-    print('Starting server, use <Ctrl-C> to stop')
-    server.serve_forever()
+    try:
+        server = HTTPServer((listen_host, listen_port), SympleWebServer)
+        print('Starting server, use <Ctrl-C> to stop')
+        server.serve_forever()
+    except (KeyboardInterrupt):
+        print("\nAborting ... Keyboard Interrupt.")
+        sys.exit(0)
