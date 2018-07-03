@@ -104,46 +104,43 @@ class SympleWebServer(BaseHTTPRequestHandler):
             os.remove(credpath + ".tmp")
             self._log(credpath + " should be deleted", "WARN")
 
-
-def _get_category_method_and_args_from_path(self):
-    parsed_path = urlparse.urlparse(self.path)
-    args = urlparse.parse_qs(parsed_path.query)
-    dirs = parsed_path.path.split("/")
-    if len(dirs) < 3: return "", "", args
-    return dirs[1], dirs[2], args
-
-
-def _debug_message(self, force=False):
-    if SympleWebServer.verbose.lower() == 'verbose' or force:
+    def _get_category_method_and_args_from_path(self):
         parsed_path = urlparse.urlparse(self.path)
-        message_parts = [
-            'CLIENT VALUES:',
-            'client_address=%s (%s)' % (self.client_address,
-                                        self.address_string()),
-            'command=%s' % self.command,
-            'path=%s' % self.path,
-            'real path=%s' % parsed_path.path,
-            'query=%s' % parsed_path.query,
-            'request_version=%s' % self.request_version,
-            '',
-            'SERVER VALUES:',
-            'server_version=%s' % self.server_version,
-            'sys_version=%s' % self.sys_version,
-            'protocol_version=%s' % self.protocol_version,
-            '',
-            'HEADERS RECEIVED:',
-        ]
-        for name, value in sorted(self.headers.items()):
-            message_parts.append('%s=%s' % (name, value.rstrip()))
-        message_parts.append('')
-        message = '\r\n'.join(message_parts)
-        self._log(message)
+        args = urlparse.parse_qs(parsed_path.query)
+        dirs = parsed_path.path.split("/")
+        if len(dirs) < 3: return "", "", args
+        return dirs[1], dirs[2], args
 
+    def _debug_message(self, force=False):
+        if SympleWebServer.verbose.lower() == 'verbose' or force:
+            parsed_path = urlparse.urlparse(self.path)
+            message_parts = [
+                'CLIENT VALUES:',
+                'client_address=%s (%s)' % (self.client_address,
+                                            self.address_string()),
+                'command=%s' % self.command,
+                'path=%s' % self.path,
+                'real path=%s' % parsed_path.path,
+                'query=%s' % parsed_path.query,
+                'request_version=%s' % self.request_version,
+                '',
+                'SERVER VALUES:',
+                'server_version=%s' % self.server_version,
+                'sys_version=%s' % self.sys_version,
+                'protocol_version=%s' % self.protocol_version,
+                '',
+                'HEADERS RECEIVED:',
+            ]
+            for name, value in sorted(self.headers.items()):
+                message_parts.append('%s=%s' % (name, value.rstrip()))
+            message_parts.append('')
+            message = '\r\n'.join(message_parts)
+            self._log(message)
 
-def _log(self, msg, level="DEBUG"):
-    if SympleWebServer.verbose.lower() == 'verbose' or level.lower() in ["error", "warn", "warning"]:
-        # sys.stderr.write(level+": "+msg + '\n')
-        self.log_message(level.upper() + ": %s", msg)
+    def _log(self, msg, level="DEBUG"):
+        if SympleWebServer.verbose.lower() == 'verbose' or level.lower() in ["error", "warn", "warning"]:
+            # sys.stderr.write(level+": "+msg + '\n')
+            self.log_message(level.upper() + ": %s", msg)
 
 
 if __name__ == '__main__':
