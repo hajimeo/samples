@@ -44,15 +44,16 @@ class SympleWebServer(BaseHTTPRequestHandler):
                 html += u"<hr/>"
                 html += u"DateTime: " + toDateStr(o['ts']) + "<br/>\n"
                 html += u"Username:  " + o['username'] + u" (" + o['user'] + ")<br/>\n"
-                html += u"PermaLink: <a href='" + o['permalink'] + u"' target='_blank'>" + o['permalink'] + u"</a><br/>\n"
+                html += u"PermaLink: <a href='" + o['permalink'] + u"' target='_blank'>" + o[
+                    'permalink'] + u"</a><br/>\n"
                 html += u"<blockquote style='white-space:pre-wrap'><tt>" + o['text'] + u"</tt></blockquote>\n"
-        #html = json.dumps(json_obj, indent=4)
+        # html = json.dumps(json_obj, indent=4)
         return html
 
     def _process(self):
         self._reload()
         (category, method, args) = self._get_category_method_and_args_from_path()
-        output = u"<html><head><meta charset='utf-8'><title>"+category.upper()+":"+method.upper()+"</title></head><body>"
+        output = u"<html><head><meta charset='utf-8'><title>" + category.upper() + ":" + method.upper() + "</title></head><body>"
         if category.lower() == 'slack':
             if method.lower() == 'search':
                 output += SympleWebServer.handle_slack_search(args)
@@ -64,77 +65,85 @@ class SympleWebServer(BaseHTTPRequestHandler):
     def _reload(self):
         plain = False
         s = {}
-        if bool(SympleWebServer._creds) is False or os.path.exists("./.reload_cred"):
-            if os.path.exists("./.reload_cred"): os.remove("./.reload_cred")
-            credpath = "." + os.path.basename(os.path.splitext(__file__)[0]).lower()
-            # try reading a compiled one first
-            if os.path.exists(credpath + "c"):
-                credpath = credpath + "c"
-            elif os.path.exists(credpath + ".pyc"):
-                credpath = credpath + ".pyc"
-            elif os.path.exists(credpath + ".py"):
-                credpath = credpath + ".py"
-            self._log("Reloading " + credpath)
-            try:
-                c = imp.load_compiled("*", credpath)
-            except ImportError:
-                c = imp.load_source("*", credpath)
-                plain = True
-            for p, v in vars(c).iteritems():
-                if not p.startswith('__'):
-                    if plain:
-                        s[p] = base64.b64encode(v)
-                    else:
-                        setattr(c, p, base64.b64decode(v))
-            SympleWebServer._creds = c
-            # self._log(str(SympleWebServer._creds.__dict__))
-            if plain:
-                f = open(credpath + ".tmp", "wb")
-                for p, v in s.iteritems():
-                    f.write(p + "='" + v + "'\n")
-                f.close()
-                import py_compile
-                py_compile.compile(credpath + ".tmp", credpath + "c")
-                os.remove(credpath + ".tmp")
-                self._log(credpath + " should be deleted", "WARN")
+        current_dir = os.path.dirname(__file__)
+        # if current_dir+"/.reload_cred" exist, force reloading credentials
+        if bool(SympleWebServer._creds) is True and os.path.exists(current_dir + "/.reload_cred") is False:
+            return
+        # in case of keeping reloading, removing now
+        if os.path.exists(current_dir + "/.reload_cred"):
+            os.remove(current_dir + "/.reload_cred")
+        credpath = current_dir + "/" + "." + os.path.basename(os.path.splitext(__file__)[0]).lower()
+        # try reading a compiled one first
+        if os.path.exists(credpath + "c"):
+            credpath = credpath + "c"
+        elif os.path.exists(credpath + ".pyc"):
+            credpath = credpath + ".pyc"
+        elif os.path.exists(credpath + ".py"):
+            credpath = credpath + ".py"
+        self._log("Reloading " + credpath)
+        try:
+            c = imp.load_compiled("*", credpath)
+        except ImportError:
+            c = imp.load_source("*", credpath)
+            plain = True
+        for p, v in vars(c).iteritems():
+            if not p.startswith('__'):
+                if plain:
+                    s[p] = base64.b64encode(v)
+                else:
+                    setattr(c, p, base64.b64decode(v))
+        SympleWebServer._creds = c
+        # self._log(str(SympleWebServer._creds.__dict__))
+        if plain:
+            f = open(credpath + ".tmp", "wb")
+            for p, v in s.iteritems():
+                f.write(p + "='" + v + "'\n")
+            f.close()
+            import py_compile
+            py_compile.compile(credpath + ".tmp", credpath + "c")
+            os.remove(credpath + ".tmp")
+            self._log(credpath + " should be deleted", "WARN")
 
-    def _get_category_method_and_args_from_path(self):
+
+def _get_category_method_and_args_from_path(self):
+    parsed_path = urlparse.urlparse(self.path)
+    args = urlparse.parse_qs(parsed_path.query)
+    dirs = parsed_path.path.split("/")
+    if len(dirs) < 3: return "", "", args
+    return dirs[1], dirs[2], args
+
+
+def _debug_message(self, force=False):
+    if SympleWebServer.verbose.lower() == 'verbose' or force:
         parsed_path = urlparse.urlparse(self.path)
-        args = urlparse.parse_qs(parsed_path.query)
-        dirs = parsed_path.path.split("/")
-        if len(dirs) < 3: return "", "", args
-        return dirs[1], dirs[2], args
+        message_parts = [
+            'CLIENT VALUES:',
+            'client_address=%s (%s)' % (self.client_address,
+                                        self.address_string()),
+            'command=%s' % self.command,
+            'path=%s' % self.path,
+            'real path=%s' % parsed_path.path,
+            'query=%s' % parsed_path.query,
+            'request_version=%s' % self.request_version,
+            '',
+            'SERVER VALUES:',
+            'server_version=%s' % self.server_version,
+            'sys_version=%s' % self.sys_version,
+            'protocol_version=%s' % self.protocol_version,
+            '',
+            'HEADERS RECEIVED:',
+        ]
+        for name, value in sorted(self.headers.items()):
+            message_parts.append('%s=%s' % (name, value.rstrip()))
+        message_parts.append('')
+        message = '\r\n'.join(message_parts)
+        self._log(message)
 
-    def _debug_message(self, force=False):
-        if SympleWebServer.verbose.lower() == 'verbose' or force:
-            parsed_path = urlparse.urlparse(self.path)
-            message_parts = [
-                'CLIENT VALUES:',
-                'client_address=%s (%s)' % (self.client_address,
-                                            self.address_string()),
-                'command=%s' % self.command,
-                'path=%s' % self.path,
-                'real path=%s' % parsed_path.path,
-                'query=%s' % parsed_path.query,
-                'request_version=%s' % self.request_version,
-                '',
-                'SERVER VALUES:',
-                'server_version=%s' % self.server_version,
-                'sys_version=%s' % self.sys_version,
-                'protocol_version=%s' % self.protocol_version,
-                '',
-                'HEADERS RECEIVED:',
-            ]
-            for name, value in sorted(self.headers.items()):
-                message_parts.append('%s=%s' % (name, value.rstrip()))
-            message_parts.append('')
-            message = '\r\n'.join(message_parts)
-            self._log(message)
 
-    def _log(self, msg, level="DEBUG"):
-        if SympleWebServer.verbose.lower() == 'verbose' or level.lower() in ["error", "warn", "warning"]:
-            # sys.stderr.write(level+": "+msg + '\n')
-            self.log_message(level.upper() + ": %s", msg)
+def _log(self, msg, level="DEBUG"):
+    if SympleWebServer.verbose.lower() == 'verbose' or level.lower() in ["error", "warn", "warning"]:
+        # sys.stderr.write(level+": "+msg + '\n')
+        self.log_message(level.upper() + ": %s", msg)
 
 
 if __name__ == '__main__':
