@@ -303,22 +303,34 @@ function f_findJarByClassName() {
 
 function f_searchClass() {
     local __doc__="Find jar by *full* class name (without .class) by using PID, which means that component needs to be running, and then export CLASSPATH, and compiles if class_name.java exists"
-    local _class_name="$1" # should be full class name but without .class
-    local _pid="$2"
+    local _class_name="$1"  # should be full class name but without .class
+    local _pid="$2"         # PID or directory
 
     local _class_file_path="$( echo "${_class_name}" | sed 's/\./\//g' )"
     local _basename="$(basename ${_class_file_path})"
-    local _dirname="$(dirname ${_class_file_path})"
+
+    if [ -d "${_pid}" ]; then
+        grep -l -Rs "${_class_file_path}" "${_pid}"
+        return $?
+    fi
+
     local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
     which ${_cmd_dir}/jar &>/dev/null || return 1
-    ls -l /proc/${_pid}/fd | grep -oE '/.+\.(jar|war)$' > /tmp/f_searchClass_${_pid}.out
 
-    # If needs to compile but _jars.out exist, don't try searching as it takes long time
     if [ ! -s /tmp/f_searchClass_${_basename}_jars.out ]; then
+        ls -l /proc/${_pid}/fd | grep -oE '/.+\.(jar|war)$' > /tmp/f_searchClass_${_pid}.out
         cat /tmp/f_searchClass_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | grep -E "'${_class_file_path}'.class" > /tmp/f_searchClass_'${_basename}'_tmp.out && echo {} && cat /tmp/f_searchClass_'${_basename}'_tmp.out >&2' | tee /tmp/f_searchClass_${_basename}_jars.out
     else
         cat /tmp/f_searchClass_${_basename}_jars.out
     fi
+}
+
+function f_classpath() {
+    local __doc__="Ooutput classpath of the given PID"
+    local _pid="$1"
+    local _user="`stat -c '%U' /proc/${_pid}`" || return $?
+    local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
+    sudo -u ${_user} ${_cmd_dir}/jcmd ${_pid} VM.system_properties | grep '^java.class.path=' | sed 's/\\:/:/g' | cut -d"=" -f 2
 }
 
 function f_patchJar() {
@@ -334,29 +346,35 @@ function f_patchJar() {
     ls -l /proc/${_pid}/fd | grep -oE '/.+\.(jar|war)$' > /tmp/f_patchJar_${_pid}.out
 
     # If needs to compile but _jars.out exist, don't try searching as it takes long time
-    if [ -r "${_basename}.java" ] && [ ! -s /tmp/f_patchJar_${_basename}_jars.out ]; then
+    if [ ! -s /tmp/f_patchJar_${_basename}_jars.out ]; then
         cat /tmp/f_patchJar_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | grep -E "'${_class_file_path}'.class" > /tmp/f_patchJar_'${_basename}'_tmp.out && echo {} && cat /tmp/f_patchJar_'${_basename}'_tmp.out >&2' | tee /tmp/f_patchJar_${_basename}_jars.out
     else
         echo "/tmp/f_patchJar_${_basename}_jars.out exists. Reusing..."
     fi
 
     if [ -e "${_cmd_dir}/jcmd" ]; then
-        local _cp="`${_cmd_dir}/jcmd ${_pid}} VM.system_properties | grep '^java.class.path=' | sed 's/\\:/:/g' | cut -d"=" -f 2`"
-        export CLASSPATH="${_cp%:}"
+        local _cp="`f_classpath ${_pid}`"
     else
         # if wokring classpath exist, use it
         if [ -s /tmp/f_patchJar_${_basename}_${_pid}_cp.out ]; then
-            export CLASSPATH="$(cat /tmp/f_patchJar_${_basename}_${_pid}_cp.out)"
+            local _cp="$(cat /tmp/f_patchJar_${_basename}_${_pid}_cp.out)"
         else
             local _cp=$(cat /tmp/f_patchJar_${_pid}.out | tr '\n' ':')
-            export CLASSPATH="${_cp%:}"
         fi
     fi
 
     if [ -r "${_basename}.java" ]; then
+        [ -z "${_cp}" ] && return 1
+
+        if [ -z "$_CLASSPATH" ]; then
+            export CLASSPATH="${_cp%:}"
+        else
+            export CLASSPATH="${_cp%:}:$_CLASSPATH"
+        fi
+
         # Compile
         ${_cmd_dir}/javac "${_basename}.java" || return $?
-        # Saving workign classpath
+        # Saving workign classpath if able to compile
         echo $CLASSPATH > /tmp/f_patchJar_${_basename}_${_pid}_cp.out
         [ -d "${_dirname}" ] || mkdir -p ${_dirname}
         mv -f ${_basename}*class "${_dirname%/}/" || return $?
@@ -371,6 +389,8 @@ function f_patchJar() {
             ls -l ${_j}
             ${_cmd_dir}/jar -tvf ${_j} | grep -F "${_dirname%/}/${_basename}"
         done
+    else
+        echo "${_basename}.java is not readable."
     fi
 }
 
