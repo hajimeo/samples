@@ -1,0 +1,17 @@
+Host *
+  ServerAliveInterval 20
+
+Host sftp
+  Hostname sftp.atscale.com
+  User hajime.osako
+
+Host 10.* 172.* 192.168.* localhost
+  ForwardAgent yes
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  LogLevel QUIET
+
+Host *.cloudapp.net
+  ServerAliveInterval 20
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
