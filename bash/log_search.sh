@@ -40,14 +40,15 @@ function f_rg() {
     local __doc__="Search current directory with rg"
     local _regex="$1"
     local _rg_opts="$2"
-    local _date_regex="$3"
-    local _extra_regex="$4"
+    local _extra_regex="$3"
+
+    # TODO: currently only ISO format YYYY-MM-DD hh:mX:XX
+    local _date_regex="^[0-9-/]+ \d\d:\d"
+    local _tmpfile_pfx="./.rg_"
+    local _regex_escaped="`echo "${_regex}" | sed "s/[^[:alnum:].-]/_/g"`"
 
     [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
     [ -z "${_extra_regex}" ] && _extra_regex="\b[Ff]ailed\b|\b[Ss]low\b|\[Tt]oo .+\b"
-
-    local _suffix="`echo "${_regex}" | sed "s/[^[:alnum:].-]/_/g"`"
-    local _tmpfile_pfx="./.rg_${_suffix}"
 
     if ! which rg &>/dev/null; then
         echo "'rg' is required (eg: brew install rg)"
@@ -56,40 +57,46 @@ function f_rg() {
     rg --search-zip -l ${_rg_opts}"${_regex}"
 
     echo "//=== greping *.log* files ==========================================="
-    rg --search-zip --no-line-number --no-filename ${_rg_opts}"${_regex}" -g '*.log*' | sed 's/^\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)T/\1 /' | sort -n | uniq > "${_tmpfile_pfx}_logs_sorted.out"
-    [ -s "${_tmpfile_pfx}_logs_sorted.out" ] && sed -i "" '1i\
+    rg --search-zip --no-line-number --no-filename ${_rg_opts}"${_regex}" -g '*.log*' | sed 's/^\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)T/\1 /' | sort -n | uniq > "${_tmpfile_pfx}${_regex_escaped}_logs_sorted.out"
+    [ -s "${_tmpfile_pfx}${_regex_escaped}_logs_sorted.out" ] && sed -i "" '1i\
 # REGEX = '${_regex}'
-' "${_tmpfile_pfx}_logs_sorted.out"
+' "${_tmpfile_pfx}${_regex_escaped}_logs_sorted.out"
 
-    if [ -s "${_tmpfile_pfx}_logs_sorted.out" ]; then
-        if [ -z "${_date_regex}" ]; then
-            if [ `wc -l "${_tmpfile_pfx}_logs_sorted.out" | awk '{print $1}'` -gt 400 ]; then
-                _date_regex="^[0-9-/]+ \d\d:\d"
-            else
-                _date_regex="^[0-9-/]+ \d\d:\d\d:"
+    if [ -s "${_tmpfile_pfx}${_regex_escaped}_logs_sorted.out" ]; then
+        rg --no-line-number -o "\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|${_extra_regex}" "${_tmpfile_pfx}${_regex_escaped}_logs_sorted.out" > "/tmp/_f_rg_loglevels_threads_$$.out"
+        cat "/tmp/_f_rg_loglevels_threads_$$.out" | sort | uniq -c | sort -rn | head -n 20
+
+        local _first_dt="`rg -N -m 1 -o "${_date_regex}" "${_tmpfile_pfx}${_regex_escaped}_logs_sorted.out"`"
+        # @see https://raw.githubusercontent.com/hajimeo/samples/master/golang/dateregex.go
+        if which dateregex &>/dev/null; then
+            local _last_cmd="tail -n1"
+            which gtac &>/dev/null && _last_cmd="gtac"
+            which tac &>/dev/null && _last_cmd="tac"
+            local _last_dt="`${_last_cmd} "${_tmpfile_pfx}${_regex_escaped}_logs_sorted.out" | rg -m 1 -o "${_date_regex}"`"
+            if [ -n "${_last_dt}" ]; then
+                _first_dt="`dateregex "${_first_dt}0" "${_last_dt}9"`"
             fi
         fi
 
-        rg --no-line-number -o "\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|${_extra_regex}" "${_tmpfile_pfx}_logs_sorted.out" > "/tmp/_f_rg_loglevels_threads_$$.out"
-        cat "/tmp/_f_rg_loglevels_threads_$$.out" | sort | uniq -c | sort -rn | head -n 20
-
-        local _first_dt="`rg -N -m 1 -o "${_date_regex}" "${_tmpfile_pfx}_logs_sorted.out"`"
         for _t in `cat "/tmp/_f_rg_loglevels_threads_$$.out" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n 3 | awk '{print $2}'`; do
             local _thread="`echo ${_t} | sed 's/[][]//g'`"
-            (rg --search-zip --no-line-number --no-filename ${_rg_opts}"^${_first_dt}.+\[${_thread}\]" | sort -n | uniq > "${_tmpfile_pfx}_${_thread}.out" &)
+            echo "# REGEX = ${_thread} (${_regex})" > "${_tmpfile_pfx}${_thread}_logs_sorted.out"
+            (rg --search-zip --no-line-number --no-filename ${_rg_opts}"^${_first_dt}.+\[${_thread}\]" -g '*.log*' | sort -n | uniq >> "${_tmpfile_pfx}${_thread}_logs_sorted.out" &)
         done
 
         if which bar_chart.py &>/dev/null; then
-            # sudo -H python -mpip install matplotlib
-            # sudo -H pip install data_hacks
+            #sudo -H python -mpip install matplotlib
+            #sudo -H pip install data_hacks
+            [ `wc -l "${_tmpfile_pfx}${_regex_escaped}_logs_sorted.out" | awk '{print $1}'` -lt 400 ] && _date_regex="^[0-9-/]+ \d\d:\d\d"
             echo ' '
-            rg --no-line-number -o "${_date_regex}" "${_tmpfile_pfx}_logs_sorted.out" | bar_chart.py # no longer needs sed 's/T/ /' as it's already done
+            rg --no-line-number -o "${_date_regex}" "${_tmpfile_pfx}${_regex_escaped}_logs_sorted.out" | bar_chart.py # no longer needs sed 's/T/ /' as it's already done
             echo ' '
         fi
         wait; sleep 1
     fi
 
-    ls -ltrh "${_tmpfile_pfx}"*
+    echo "# generated temp files"
+    ls -ltrh "${_tmpfile_pfx}"*.out
     echo "====================================================================//"
     echo ' '
     for j in $(rg -l ${_rg_opts}"${_regex}" -g '*.json'); do
@@ -820,7 +827,7 @@ function f_validate_siro_ini() {
 ### Private functions ##################################################################################################
 
 function _mg() {
-    local __doc__="Grep multiple files with Multiple process"
+    local __doc__="Deprecated and use 'rg': Grep multiple files with Multiple process"
     local _search_regex="$1"    # (ERROR |FATAL|Caused by|Stack trace)
     local _grep_option="$2"
     local _num_process="${3:-4}"
