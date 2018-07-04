@@ -42,7 +42,7 @@ function f_rg() {
     local _rg_opts="$2"
     local _date_regex="$3"
     local _suffix="`echo "${_regex}" | sed "s/[^[:alnum:].-]/_/g"`"
-    local _tmp_file="./.rg_logs_sorted_${_suffix}_$$.out"
+    local _tmpfile_pfx="./.rg_${_suffix}"
     [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
 
     if ! which rg &>/dev/null; then
@@ -52,31 +52,38 @@ function f_rg() {
     rg --search-zip -l ${_rg_opts}"${_regex}"
 
     echo "//=== greping *.log* files ==========================================="
-    rg --search-zip --no-line-number --no-filename ${_rg_opts}"${_regex}" -g '*.log*' | sed 's/^\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)T/\1 /' | sort -n | uniq > "${_tmp_file}"
-    [ -s "${_tmp_file}" ] && sed -i "" '1i\
+    rg --search-zip --no-line-number --no-filename ${_rg_opts}"${_regex}" -g '*.log*' | sed 's/^\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)T/\1 /' | sort -n | uniq > "${_tmpfile_pfx}_logs_sorted.out"
+    [ -s "${_tmpfile_pfx}_logs_sorted.out" ] && sed -i "" '1i\
 # REGEX = '${_regex}'
-' "${_tmp_file}"
+' "${_tmpfile_pfx}_logs_sorted.out"
 
-    if [ -s "${_tmp_file}" ]; then
-        rg --no-line-number -o '\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|\b[Ff]ailed\b|\b[Ss]low\b|\[Tt]oo .+\b' "${_tmp_file}" | sort | uniq -c | sort -n | tail -n 40
+    if [ -s "${_tmpfile_pfx}_logs_sorted.out" ]; then
+        rg --no-line-number -o '\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|\b[Ff]ailed\b|\b[Ss]low\b|\[Tt]oo .+\b' "${_tmpfile_pfx}_logs_sorted.out" | sort | uniq -c | sort -n | tail -n 40 | tee "${_tmpfile_pfx}_topN.out"
+
+        local _first_dt="`rg -N -m 1 -o "${_date_regex}" "${_tmpfile_pfx}_logs_sorted.out"`"
+        for _t in `tail -n 3 "${_tmpfile_pfx}_topN.out" | awk '{print $3}'`; do
+            local _thread="`echo ${_t} | sed 's/[][]//g'`"
+            (rg --search-zip --no-line-number --no-filename ${_rg_opts}"^${_first_dt}.+\[${_thread}\]" | sort -n | uniq > "${_tmpfile_pfx}_${_thread}.out" &)
+        done
 
         if which bar_chart.py &>/dev/null; then
             # sudo -H python -mpip install matplotlib
             # sudo -H pip install data_hacks
             if [ -z "${_date_regex}" ]; then
-                if [ `wc -l ${_tmp_file} | awk '{print $1}'` -gt 400 ]; then
+                if [ `wc -l "${_tmpfile_pfx}_logs_sorted.out" | awk '{print $1}'` -gt 400 ]; then
                     _date_regex="^[0-9-/]+ \d\d:\d"
                 else
                     _date_regex="^[0-9-/]+ \d\d:\d\d:"
                 fi
             fi
             echo ' '
-            rg --no-line-number -o "${_date_regex}" "${_tmp_file}" | bar_chart.py # | sed 's/T/ /'
+            rg --no-line-number -o "${_date_regex}" "${_tmpfile_pfx}_logs_sorted.out" | bar_chart.py # no longer needs sed 's/T/ /' as it's already done
             echo ' '
         fi
+        wait
     fi
 
-    ls -lh "${_tmp_file}"
+    ls -lh "${_tmpfile_pfx}"*
     echo "====================================================================//"
     echo ' '
     for j in $(rg -l ${_rg_opts}"${_regex}" -g '*.json'); do
