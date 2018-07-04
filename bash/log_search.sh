@@ -7,7 +7,7 @@
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 #
 # TODO: tested on Mac only (eg: sed -E, ggrep)
-# TODO: which ggrep || alias ggrep=grep
+# TODO: which ggrep || brew install grep ('grep' will install ggrep)
 #
 
 usage() {
