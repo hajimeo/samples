@@ -39,8 +39,9 @@ Or
 function f_rg() {
     local __doc__="Search current directory with rg"
     local _regex="$1"
-    local _rg_opts="$2"
-    local _extra_regex="$3"
+    local _extra_regex="$2"
+    local _rg_opts="$3"
+    local _thread_num="${4:-3}"
 
     # TODO: currently only ISO format YYYY-MM-DD hh:mX:XX
     local _date_regex="^[0-9-/]+ \d\d:\d"
@@ -78,7 +79,7 @@ function f_rg() {
             fi
         fi
 
-        for _t in `cat "/tmp/_f_rg_loglevels_threads_$$.out" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n 3 | awk '{print $2}'`; do
+        for _t in `cat "/tmp/_f_rg_loglevels_threads_$$.out" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n ${_thread_num} | awk '{print $2}'`; do
             local _thread="`echo ${_t} | sed 's/[][]//g'`"
             echo "# REGEX = ${_thread} (${_regex})" > "${_tmpfile_pfx}${_thread}_logs_sorted.out"
             (rg --search-zip --no-line-number --no-filename ${_rg_opts}"^${_first_dt}.+\[${_thread}\]" -g '*.log*' | sort -n | uniq >> "${_tmpfile_pfx}${_thread}_logs_sorted.out" &)
