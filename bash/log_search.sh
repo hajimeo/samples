@@ -49,7 +49,7 @@ function f_rg() {
     local _regex_escaped="`echo "${_regex}" | sed "s/[^[:alnum:].-]/_/g"`"
 
     [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
-    [ -z "${_extra_regex}" ] && _extra_regex="\b[Ff]ailed\b|\b[Ss]low\b|[Tt]oo .+\b"
+    [ -z "${_extra_regex}" ] && _extra_regex="\S+\s*[Ff]ailed\s*\S+|\S+\s*[Ss]low\s*\S+|\S+\s*[Tt]oo\s*\S+"
 
     if ! which rg &>/dev/null; then
         echo "'rg' is required (eg: brew install rg)"
@@ -99,8 +99,8 @@ function f_rg() {
         wait; sleep 2
     fi
 
-    echo "# generated temp files (TODO: sometimes 'ls -lh' doesn't show right size)"
-    ls -lh "${_tmpfile_pfx}"*.out
+    echo "# generated temp files (TODO: sometimes 'ls -ltrh' doesn't show right size)"
+    ls -ltrh "${_tmpfile_pfx}"*.out
     echo "====================================================================//"
     echo ' '
     for j in $(rg -l ${_rg_opts}"${_regex}" -g '*.json'); do
