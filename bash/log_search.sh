@@ -41,35 +41,43 @@ function f_rg() {
     local _regex="$1"
     local _rg_opts="$2"
     local _date_regex="$3"
-    local _tmp_file="/tmp/rg_log_sorted_$$.out"
+    local _suffix="`echo "${_regex}" | sed "s/[^[:alnum:].-]/_/g"`"
+    local _tmp_file="./.rg_logs_sorted_${_suffix}_$$.out"
+    [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
 
     if ! which rg &>/dev/null; then
         echo "'rg' is required (eg: brew install rg)"
         return 101
     fi
-
-    [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
-
     rg --search-zip -l ${_rg_opts}"${_regex}"
-    echo "//=== greping *.log* files ==========================================="
-    echo "# REGEX = ${_regex}" > "${_tmp_file}"
-    rg --search-zip --no-line-number --no-filename ${_rg_opts}"${_regex}" -g '*.log*' | sed 's/^\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)T/\1 /' | sort -n | uniq >> "${_tmp_file}"
-    rg --no-line-number -o '\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|\b[Ff]ailed\b|\b[Ss]low\b|\[Tt]oo .+\b' "${_tmp_file}" | sort | uniq -c | sort -n | tail -n 40
 
-    if which bar_chart.py &>/dev/null; then
-        # sudo -H python -mpip install matplotlib
-        # sudo -H pip install data_hacks
-        if [ -z "${_date_regex}" ]; then
-            if [ `wc -l ${_tmp_file} | awk '{print $1}'` -gt 400 ]; then
-                _date_regex="^[0-9-/]+ \d\d:\d"
-            else
-                _date_regex="^[0-9-/]+ \d\d:\d\d:"
-            fi
-        fi
-        echo ' '
-        rg --no-line-number -o "${_date_regex}" "${_tmp_file}" | bar_chart.py # | sed 's/T/ /'
-        echo ' '
+    echo "//=== greping *.log* files ==========================================="
+    if [ ! -s "${_tmp_file}" ]; then
+        rg --search-zip --no-line-number --no-filename ${_rg_opts}"${_regex}" -g '*.log*' | sed 's/^\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)T/\1 /' | sort -n | uniq > "${_tmp_file}"
+        [ -s "${_tmp_file}" ] && sed -i "" '1i\
+# REGEX = '${_regex}'
+' "${_tmp_file}"
     fi
+
+    if [ -s "${_tmp_file}" ]; then
+        rg --no-line-number -o '\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|\b[Ff]ailed\b|\b[Ss]low\b|\[Tt]oo .+\b' "${_tmp_file}" | sort | uniq -c | sort -n | tail -n 40
+
+        if which bar_chart.py &>/dev/null; then
+            # sudo -H python -mpip install matplotlib
+            # sudo -H pip install data_hacks
+            if [ -z "${_date_regex}" ]; then
+                if [ `wc -l ${_tmp_file} | awk '{print $1}'` -gt 400 ]; then
+                    _date_regex="^[0-9-/]+ \d\d:\d"
+                else
+                    _date_regex="^[0-9-/]+ \d\d:\d\d:"
+                fi
+            fi
+            echo ' '
+            rg --no-line-number -o "${_date_regex}" "${_tmp_file}" | bar_chart.py # | sed 's/T/ /'
+            echo ' '
+        fi
+    fi
+
     ls -lh "${_tmp_file}"
     echo "====================================================================//"
     echo ' '
