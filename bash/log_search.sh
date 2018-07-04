@@ -41,9 +41,13 @@ function f_rg() {
     local _regex="$1"
     local _rg_opts="$2"
     local _date_regex="$3"
+    local _extra_regex="$4"
+
+    [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
+    [ -z "${_extra_regex}" ] && _extra_regex="\b[Ff]ailed\b|\b[Ss]low\b|\[Tt]oo .+\b"
+
     local _suffix="`echo "${_regex}" | sed "s/[^[:alnum:].-]/_/g"`"
     local _tmpfile_pfx="./.rg_${_suffix}"
-    [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
 
     if ! which rg &>/dev/null; then
         echo "'rg' is required (eg: brew install rg)"
@@ -58,10 +62,19 @@ function f_rg() {
 ' "${_tmpfile_pfx}_logs_sorted.out"
 
     if [ -s "${_tmpfile_pfx}_logs_sorted.out" ]; then
-        rg --no-line-number -o '\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|\b[Ff]ailed\b|\b[Ss]low\b|\[Tt]oo .+\b' "${_tmpfile_pfx}_logs_sorted.out" | sort | uniq -c | sort -n | tail -n 40 | tee "${_tmpfile_pfx}_topN.out"
+        if [ -z "${_date_regex}" ]; then
+            if [ `wc -l "${_tmpfile_pfx}_logs_sorted.out" | awk '{print $1}'` -gt 400 ]; then
+                _date_regex="^[0-9-/]+ \d\d:\d"
+            else
+                _date_regex="^[0-9-/]+ \d\d:\d\d:"
+            fi
+        fi
+
+        rg --no-line-number -o "\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|${_extra_regex}" "${_tmpfile_pfx}_logs_sorted.out" > "/tmp/_f_rg_loglevels_threads_$$.out"
+        cat "/tmp/_f_rg_loglevels_threads_$$.out" | sort | uniq -c | sort -rn | head -n 20
 
         local _first_dt="`rg -N -m 1 -o "${_date_regex}" "${_tmpfile_pfx}_logs_sorted.out"`"
-        for _t in `tail -n 3 "${_tmpfile_pfx}_topN.out" | awk '{print $3}'`; do
+        for _t in `cat "/tmp/_f_rg_loglevels_threads_$$.out" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n 3 | awk '{print $2}'`; do
             local _thread="`echo ${_t} | sed 's/[][]//g'`"
             (rg --search-zip --no-line-number --no-filename ${_rg_opts}"^${_first_dt}.+\[${_thread}\]" | sort -n | uniq > "${_tmpfile_pfx}_${_thread}.out" &)
         done
@@ -69,21 +82,14 @@ function f_rg() {
         if which bar_chart.py &>/dev/null; then
             # sudo -H python -mpip install matplotlib
             # sudo -H pip install data_hacks
-            if [ -z "${_date_regex}" ]; then
-                if [ `wc -l "${_tmpfile_pfx}_logs_sorted.out" | awk '{print $1}'` -gt 400 ]; then
-                    _date_regex="^[0-9-/]+ \d\d:\d"
-                else
-                    _date_regex="^[0-9-/]+ \d\d:\d\d:"
-                fi
-            fi
             echo ' '
             rg --no-line-number -o "${_date_regex}" "${_tmpfile_pfx}_logs_sorted.out" | bar_chart.py # no longer needs sed 's/T/ /' as it's already done
             echo ' '
         fi
-        wait
+        wait; sleep 1
     fi
 
-    ls -lh "${_tmpfile_pfx}"*
+    ls -ltrh "${_tmpfile_pfx}"*
     echo "====================================================================//"
     echo ' '
     for j in $(rg -l ${_rg_opts}"${_regex}" -g '*.json'); do
