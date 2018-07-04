@@ -1,4 +1,5 @@
 syntax on
+colorscheme pablo
 set hlsearch
 set nocompatible
 set wildmenu
