@@ -49,7 +49,7 @@ function f_rg() {
     local _regex_escaped="`echo "${_regex}" | sed "s/[^[:alnum:].-]/_/g"`"
 
     [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
-    [ -z "${_extra_regex}" ] && _extra_regex="\b[Ff]ailed\b|\b[Ss]low\b|\[Tt]oo .+\b"
+    [ -z "${_extra_regex}" ] && _extra_regex="\b[Ff]ailed\b|\b[Ss]low\b|[Tt]oo .+\b"
 
     if ! which rg &>/dev/null; then
         echo "'rg' is required (eg: brew install rg)"
@@ -68,7 +68,7 @@ function f_rg() {
     if [ -s "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out" ]; then
         rg --no-line-number -o "\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|${_extra_regex}" \
          "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out" > "/tmp/_f_rg_loglevels_threads_$$.out"
-        cat "/tmp/_f_rg_loglevels_threads_$$.out" | sort | uniq -c | sort -rn | head -n 20
+        cat "/tmp/_f_rg_loglevels_threads_$$.out" | sort | uniq -c | sort -rn | head -n 40
 
         local _first_dt="`rg -N -m 1 -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out"`"
         # @see https://raw.githubusercontent.com/hajimeo/samples/master/golang/dateregex.go
