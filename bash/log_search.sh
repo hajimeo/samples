@@ -32,7 +32,7 @@ Or
 
 "
     echo "Available functions:"
-    list
+    _list
 }
 ### Public functions ###################################################################################################
 
@@ -368,11 +368,11 @@ function f_findJarByClassName() {
 
     # if search path is an integer, treat as PID
     if [[ $_search_path =~ ^-?[0-9]+$ ]]; then
-        lsof -nPp $_search_path | grep -oE '/.+\.(jar|war)$' | sort | uniq | xargs -I {} bash -c "less {} | grep -qm1 -w $_class_name && echo {}"
+        lsof -nPp $_search_path | ggrep -oE '/.+\.(jar|war)$' | sort | uniq | xargs -I {} bash -c "less {} | ggrep -qm1 -w $_class_name && echo {}"
         return
     fi
     # NOTE: some 'less' can't read jar, in that case, replace to 'jar -tvf', but may need to modify $PATH
-    find $_search_path -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | grep -m 1 -w $_class_name > /tmp/f_findJarByClassName_$$.tmp && ( echo {}; cat /tmp/f_findJarByClassName_$$.tmp )"
+    find $_search_path -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | ggrep -m 1 -w $_class_name > /tmp/f_findJarByClassName_$$.tmp && ( echo {}; cat /tmp/f_findJarByClassName_$$.tmp )"
     # TODO: it won't search war file...
 }
 
@@ -385,7 +385,7 @@ function f_searchClass() {
     local _basename="$(basename ${_class_file_path})"
 
     if [ -d "${_pid}" ]; then
-        grep -l -Rs "${_class_file_path}" "${_pid}"
+        ggrep -l -Rs "${_class_file_path}" "${_pid}"
         return $?
     fi
 
@@ -393,8 +393,8 @@ function f_searchClass() {
     which ${_cmd_dir}/jar &>/dev/null || return 1
 
     if [ ! -s /tmp/f_searchClass_${_basename}_jars.out ]; then
-        ls -l /proc/${_pid}/fd | grep -oE '/.+\.(jar|war)$' > /tmp/f_searchClass_${_pid}.out
-        cat /tmp/f_searchClass_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | grep -E "'${_class_file_path}'.class" > /tmp/f_searchClass_'${_basename}'_tmp.out && echo {} && cat /tmp/f_searchClass_'${_basename}'_tmp.out >&2' | tee /tmp/f_searchClass_${_basename}_jars.out
+        ls -l /proc/${_pid}/fd | ggrep -oE '/.+\.(jar|war)$' > /tmp/f_searchClass_${_pid}.out
+        cat /tmp/f_searchClass_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | ggrep -E "'${_class_file_path}'.class" > /tmp/f_searchClass_'${_basename}'_tmp.out && echo {} && cat /tmp/f_searchClass_'${_basename}'_tmp.out >&2' | tee /tmp/f_searchClass_${_basename}_jars.out
     else
         cat /tmp/f_searchClass_${_basename}_jars.out
     fi
@@ -405,7 +405,7 @@ function f_classpath() {
     local _pid="$1"
     local _user="`stat -c '%U' /proc/${_pid}`" || return $?
     local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
-    sudo -u ${_user} ${_cmd_dir}/jcmd ${_pid} VM.system_properties | grep '^java.class.path=' | sed 's/\\:/:/g' | cut -d"=" -f 2
+    sudo -u ${_user} ${_cmd_dir}/jcmd ${_pid} VM.system_properties | ggrep '^java.class.path=' | sed 's/\\:/:/g' | cut -d"=" -f 2
 }
 
 function f_patchJar() {
@@ -418,11 +418,11 @@ function f_patchJar() {
     local _dirname="$(dirname ${_class_file_path})"
     local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
     which ${_cmd_dir}/jar &>/dev/null || return 1
-    ls -l /proc/${_pid}/fd | grep -oE '/.+\.(jar|war)$' > /tmp/f_patchJar_${_pid}.out
+    ls -l /proc/${_pid}/fd | ggrep -oE '/.+\.(jar|war)$' > /tmp/f_patchJar_${_pid}.out
 
     # If needs to compile but _jars.out exist, don't try searching as it takes long time
     if [ ! -s /tmp/f_patchJar_${_basename}_jars.out ]; then
-        cat /tmp/f_patchJar_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | grep -E "'${_class_file_path}'.class" > /tmp/f_patchJar_'${_basename}'_tmp.out && echo {} && cat /tmp/f_patchJar_'${_basename}'_tmp.out >&2' | tee /tmp/f_patchJar_${_basename}_jars.out
+        cat /tmp/f_patchJar_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | ggrep -E "'${_class_file_path}'.class" > /tmp/f_patchJar_'${_basename}'_tmp.out && echo {} && cat /tmp/f_patchJar_'${_basename}'_tmp.out >&2' | tee /tmp/f_patchJar_${_basename}_jars.out
     else
         echo "/tmp/f_patchJar_${_basename}_jars.out exists. Reusing..."
     fi
@@ -462,7 +462,7 @@ function f_patchJar() {
             fi
             eval "${_cmd_dir}/jar -uf ${_j} ${_dirname%/}/${_basename}*class"
             ls -l ${_j}
-            ${_cmd_dir}/jar -tvf ${_j} | grep -F "${_dirname%/}/${_basename}"
+            ${_cmd_dir}/jar -tvf ${_j} | ggrep -F "${_dirname%/}/${_basename}"
         done
     else
         echo "${_basename}.java is not readable."
@@ -532,7 +532,7 @@ function f_splitApplog() {
         echo "$_app_log is not readable"
         return 1
     fi
-    #grep -Fv "***********************************************************************" $_app_log > /tmp/${_app_log}.tmp
+    #ggrep -Fv "***********************************************************************" $_app_log > /tmp/${_app_log}.tmp
     python "$_script_path" --container-log-dir $_out_name --app-log "$_app_log"
 }
 
@@ -598,7 +598,7 @@ function f_split_strace() {
             echo "${_save_dir%/}/${_p}.out exists. skipping..." 1>&2
             continue
         fi
-        grep "^${_p} " "${_strace_file}" > "${_save_dir%/}/.${_p}.out" && mv -f "${_save_dir%/}/.${_p}.out" "${_save_dir%/}/${_p}.out"
+        ggrep "^${_p} " "${_strace_file}" > "${_save_dir%/}/.${_p}.out" && mv -f "${_save_dir%/}/.${_p}.out" "${_save_dir%/}/${_p}.out"
     done
 }
 
@@ -813,7 +813,7 @@ FLUSH PRIVILEGES;"
 function f_gc_before_after_check() {
     local __doc__="TODO: add PrintClassHistogramBeforeFullGC, and parse log to find which objects are increasing"
     return
-    # TODO: grep -F '#instances' -A 20 solr_gc.log | grep -E -- '----------------|org.apache'
+    # TODO: ggrep -F '#instances' -A 20 solr_gc.log | ggrep -E -- '----------------|org.apache'
     export JAVA_GC_LOG_DIR="/some/location"
     export JAVA_GC_OPTS="-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${JAVA_GC_LOG_DIR%/}/ \
     -XX:+PrintClassHistogramBeforeFullGC -XX:+PrintClassHistogramAfterFullGC \
@@ -836,7 +836,7 @@ function _mg() {
     local _grep_option="$2"
     local _num_process="${3:-4}"
     [ -z "${_grep_option}" ] && _grep_option="-wE"
-    find . -type f -print0 | xargs -0 -n1 -P ${_num_process} grep -H ${_grep_option} "${_search_regex}"
+    find . -type f -print0 | xargs -0 -n1 -P ${_num_process} ggrep -H ${_grep_option} "${_search_regex}"
 }
 
 function _split() {
@@ -871,7 +871,55 @@ function _getAfterFirstMatch() {
 
 ### Help ###############################################################################################################
 
-list() {
+help() {
+    local _function_name="$1"
+    local _show_code="$2"
+    local _doc_only="$3"
+
+    if [ -z "$_function_name" ]; then
+        echo "help <function name> [Y]"
+        echo ""
+        _list "func"
+        echo ""
+        return
+    fi
+
+    local _output=""
+    if [[ "$_function_name" =~ ^[fp]_ ]]; then
+        local _code="$(type $_function_name 2>/dev/null | ggrep -v "^${_function_name} is a function")"
+        if [ -z "$_code" ]; then
+            echo "Function name '$_function_name' does not exist."
+            return 1
+        fi
+
+        eval "$(echo -e "${_code}" | awk '/__doc__=/,/;/')"
+        if [ -z "$__doc__" ]; then
+            _output="No help information in function name '$_function_name'.\n"
+        else
+            _output="$__doc__"
+            if [[ "${_doc_only}" =~ (^y|^Y) ]]; then
+                echo -e "${_output}"; return
+            fi
+        fi
+
+        local _params="$(type $_function_name 2>/dev/null | ggrep -iP '^\s*local _[^_].*?=.*?\$\{?[1-9]' | ggrep -v awk)"
+        if [ -n "$_params" ]; then
+            _output="${_output}Parameters:\n"
+            _output="${_output}${_params}\n"
+        fi
+        if [[ "${_show_code}" =~ (^y|^Y) ]] ; then
+            _output="${_output}\n${_code}\n"
+            echo -e "${_output}" | less
+        elif [ -n "$_output" ]; then
+            echo -e "${_output}"
+            echo "(\"help $_function_name y\" to show code)"
+        fi
+    else
+        echo "Unsupported Function name '$_function_name'."
+        return 1
+    fi
+}
+_list() {
     local _name="$1"
     #local _width=$(( $(tput cols) - 2 ))
     local _tmp_txt=""
@@ -881,7 +929,7 @@ list() {
     if [[ -z "$_name" ]]; then
         (for _f in `typeset -F | ggrep -P '^declare -f [fp]_' | cut -d' ' -f3`; do
             #eval "echo \"--[ $_f ]\" | gsed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
-            _tmp_txt="`help "$_f" "Y"`"
+            _tmp_txt="`help "$_f" "" "Y"`"
             printf "%-28s%s\n" "$_f" "$_tmp_txt"
         done)
     elif [[ "$_name" =~ ^func ]]; then
@@ -890,47 +938,6 @@ list() {
         set | ggrep ^[g]_
     elif [[ "$_name" =~ ^resp ]]; then
         set | ggrep ^[r]_
-    fi
-}
-help() {
-    local _function_name="$1"
-    local _doc_only="$2"
-
-    if [ -z "$_function_name" ]; then
-        echo "help <function name>"
-        echo ""
-        list "func"
-        echo ""
-        return
-    fi
-
-    if [[ "$_function_name" =~ ^[fp]_ ]]; then
-        local _code="$(type $_function_name 2>/dev/null | ggrep -v "^${_function_name} is a function")"
-        if [ -z "$_code" ]; then
-            echo "Function name '$_function_name' does not exist."
-            return 1
-        fi
-
-        local _eval="$(echo -e "${_code}" | awk '/__doc__=/,/;/')"
-        eval "$_eval"
-
-        if [ -z "$__doc__" ]; then
-            echo "No help information in function name '$_function_name'."
-        else
-            echo -e "$__doc__"
-            [[ "$_doc_only" =~ (^y|^Y) ]] && return
-        fi
-
-        local _params="$(type $_function_name 2>/dev/null | ggrep -iP '^\s*local _[^_].*?=.*?\$\{?[1-9]' | ggrep -v awk)"
-        if [ -n "$_params" ]; then
-            echo "Parameters:"
-            echo -e "$_params
-            "
-            echo ""
-        fi
-    else
-        echo "Unsupported Function name '$_function_name'."
-        return 1
     fi
 }
 
@@ -1021,7 +1028,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         echo "# f_appLogJobCounters"
         f_appLogJobCounters "$_file_path" > /tmp/f_appLogJobCounters_$$.out
         echo "# Saved in /tmp/f_appLogJobCounters_$$.out"
-        grep -i fail /tmp/f_appLogJobCounters_$$.out | grep -v '=0'
+        ggrep -i fail /tmp/f_appLogJobCounters_$$.out | ggrep -v '=0'
         echo ""
     fi
 fi
