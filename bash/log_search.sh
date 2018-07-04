@@ -85,7 +85,7 @@ function f_rg() {
         for _t in `cat "/tmp/_f_rg_loglevels_threads_$$.out" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n ${_thread_num} | awk '{print $2}'`; do
             local _thread="`echo ${_t} | sed 's/[][]//g'`"
             echo "# REGEX = ${_thread} (${_regex})" > "${_tmpfile_pfx}2_${_thread}_logs_sorted.out"
-            (rg --search-zip --no-line-number --no-filename ${_rg_opts}"^${_first_dt}.+\[${_thread}\]" -g '*.log*' | sort -n | uniq >> "${_tmpfile_pfx}2_${_thread}_logs_sorted.out" &)
+            rg --search-zip --no-line-number --no-filename ${_rg_opts}"^${_first_dt}.+\[${_thread}\]" -g '*.log*' | sort -n | uniq >> "${_tmpfile_pfx}2_${_thread}_logs_sorted.out"
         done
 
         if which bar_chart.py &>/dev/null; then
@@ -96,7 +96,6 @@ function f_rg() {
             rg --no-line-number -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out" | bar_chart.py # no longer needs sed 's/T/ /' as it's already done
             echo ' '
         fi
-        wait; sleep 2
     fi
 
     echo "# generated temp files (TODO: sometimes 'ls -ltrh' doesn't show right size)"
