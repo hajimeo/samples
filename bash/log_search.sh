@@ -57,26 +57,26 @@ function f_rg() {
     fi
     rg --search-zip -l ${_rg_opts}"${_regex}"
 
-    echo "//=== greping *.log* files ==========================================="
+    echo "//=== greping *.log* files =================================================================================="
     rg --search-zip --no-line-number --no-filename ${_rg_opts}"${_regex}" -g '*.log*' \
      | sed 's/^\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)T/\1 /' \
-     | sort -n | uniq > "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out"
-    [ -s "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out" ] && sed -i "" '1i\
+     | sort -n | uniq > "${_tmpfile_pfx}1_${_regex_escaped}.out"
+    [ -s "${_tmpfile_pfx}1_${_regex_escaped}.out" ] && sed -i "" '1i\
 # REGEX = '${_regex}'
-' "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out"
+' "${_tmpfile_pfx}1_${_regex_escaped}.out"
 
-    if [ -s "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out" ]; then
+    if [ -s "${_tmpfile_pfx}1_${_regex_escaped}.out" ]; then
         rg --no-line-number -o "\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|${_extra_regex}" \
-         "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out" > "/tmp/_f_rg_loglevels_threads_$$.out"
+         "${_tmpfile_pfx}1_${_regex_escaped}.out" > "/tmp/_f_rg_loglevels_threads_$$.out"
         cat "/tmp/_f_rg_loglevels_threads_$$.out" | sort | uniq -c | sort -rn | head -n 40
 
-        local _first_dt="`rg -N -m 1 -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out"`"
+        local _first_dt="`rg -N -m 1 -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}.out"`"
         # @see https://raw.githubusercontent.com/hajimeo/samples/master/golang/dateregex.go
         if which dateregex &>/dev/null; then
             local _last_cmd="tail -n1"
             which gtac &>/dev/null && _last_cmd="gtac"
             which tac &>/dev/null && _last_cmd="tac"
-            local _last_dt="`${_last_cmd} "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out" | rg -m 1 -o "${_date_regex}"`"
+            local _last_dt="`${_last_cmd} "${_tmpfile_pfx}1_${_regex_escaped}.out" | rg -m 1 -o "${_date_regex}"`"
             if [ -n "${_last_dt}" ]; then
                 _first_dt="`dateregex "${_first_dt}0" "${_last_dt}9"`"
             fi
@@ -84,28 +84,30 @@ function f_rg() {
 
         for _t in `cat "/tmp/_f_rg_loglevels_threads_$$.out" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n ${_thread_num} | awk '{print $2}'`; do
             local _thread="`echo ${_t} | sed 's/[][]//g'`"
-            echo "# REGEX = ${_thread} (${_regex})" > "${_tmpfile_pfx}2_${_thread}_logs_sorted.out"
-            rg --search-zip --no-line-number --no-filename ${_rg_opts}"^(${_first_dt}).+\[${_thread}\]" -g '*.log*' | sort -n | uniq >> "${_tmpfile_pfx}2_${_thread}_logs_sorted.out"
+            echo "# REGEX = ${_thread} (${_regex})" > "${_tmpfile_pfx}2_${_thread}.out"
+            rg --search-zip --no-line-number --no-filename ${_rg_opts}"^(${_first_dt}).+\[${_thread}\]" -g '*.log*' | sort -n | uniq >> "${_tmpfile_pfx}2_${_thread}.out"
         done
 
         if which bar_chart.py &>/dev/null; then
             #sudo -H python -mpip install matplotlib
             #sudo -H pip install data_hacks
-            [ `wc -l "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out" | awk '{print $1}'` -lt 400 ] && _date_regex="^[0-9-/]+ \d\d:\d\d"
+            [ `wc -l "${_tmpfile_pfx}1_${_regex_escaped}.out" | awk '{print $1}'` -lt 400 ] && _date_regex="^[0-9-/]+ \d\d:\d\d"
             echo ' '
-            rg --no-line-number -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out" | bar_chart.py # no longer needs sed 's/T/ /' as it's already done
-            echo ' '
+            rg --no-line-number -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}.out" | bar_chart.py # no longer needs sed 's/T/ /' as it's already done
         fi
     fi
-
-    echo "# generated temp files (TODO: sometimes 'ls -ltrh' doesn't show right size)"
-    ls -ltrh "${_tmpfile_pfx}"*.out
-    echo "====================================================================//"
+    echo "===========================================================================================================//"
     echo ' '
+    echo "# grep-ing json files with formatting... Ctrl+c to skip (TODO: test)"
+    trap ' ' SIGINT
     for j in $(rg -l ${_rg_opts}"${_regex}" -g '*.json'); do
         echo "$j"
         python -m json.tool "$j" | rg -A1 -B3 ${_rg_opts}"${_regex}"
     done
+    trap - SIGINT
+    echo ' '
+    echo "# generated temp files (TODO: sometimes 'ls -ltrh' doesn't show right size)"
+    ls -ltrh "${_tmpfile_pfx}"*.out
 }
 
 function f_topCausedByExceptions() {
