@@ -52,7 +52,7 @@ function f_rg() {
     [ -z "${_extra_regex}" ] && _extra_regex="\S+\s*[Ff]ailed\s*\S+|\S+\s*[Ss]low\s*\S+|\S+\s*[Tt]oo\s*\S+"
 
     if ! which rg &>/dev/null; then
-        echo "'rg' is required (eg: brew install rg)"
+        echo "'rg' is required (eg: brew install rg)" >&2
         return 101
     fi
     rg --search-zip -l ${_rg_opts}"${_regex}"
@@ -98,7 +98,7 @@ function f_rg() {
     fi
     echo "===========================================================================================================//"
     echo ' '
-    echo "# grep-ing json files with formatting... Ctrl+c to skip (TODO: test)"
+    echo "# grep-ing json files with formatting... Ctrl+c to skip (TODO: test)" >&2
     trap ' ' SIGINT
     for j in $(rg -l ${_rg_opts}"${_regex}" -g '*.json'); do
         echo "$j"
@@ -106,7 +106,7 @@ function f_rg() {
     done
     trap - SIGINT
     echo ' '
-    echo "# generated temp files (TODO: sometimes 'ls -ltrh' doesn't show right size)"
+    echo "# generated temp files (TODO: sometimes 'ls -ltrh' doesn't show right size)" >&2
     ls -ltrh "${_tmpfile_pfx}"*.out
 }
 
