@@ -96,10 +96,10 @@ function f_rg() {
             rg --no-line-number -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}_logs_sorted.out" | bar_chart.py # no longer needs sed 's/T/ /' as it's already done
             echo ' '
         fi
-        wait
+        wait; sleep 2
     fi
 
-    echo "# generated temp files (TODO: somehow 'ls -lh' doesn't show right size)"
+    echo "# generated temp files (TODO: sometimes 'ls -lh' doesn't show right size)"
     ls -lh "${_tmpfile_pfx}"*.out
     echo "====================================================================//"
     echo ' '
