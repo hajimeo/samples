@@ -55,7 +55,7 @@ function f_rg() {
         echo "'rg' is required (eg: brew install rg)" >&2
         return 101
     fi
-    rg --search-zip -l ${_rg_opts}"${_regex}"
+    rg --search-zip -c ${_rg_opts}"${_regex}"
 
     echo "//=== greping *.log* files =================================================================================="
     rg --search-zip --no-line-number --no-filename ${_rg_opts}"${_regex}" -g '*.log*' \
@@ -98,11 +98,18 @@ function f_rg() {
     fi
     echo "===========================================================================================================//"
     echo ' '
-    echo "# grep-ing json files with formatting... Ctrl+c to skip (TODO: test)" >&2
+    echo "# grep-ing -m ${_thread_num} json with formatting (len 1000)... Ctrl+c to skip(TODO:test)" >&2
     trap ' ' SIGINT
     for j in $(rg -l ${_rg_opts}"${_regex}" -g '*.json'); do
-        echo "$j"
-        python -m json.tool "$j" | rg -A1 -B3 ${_rg_opts}"${_regex}"
+        echo "## $j"
+        rg -N -m3 ${_rg_opts}"${_regex}" "$j" | python -c 'import sys,json
+for l in sys.stdin:
+    l2=l.strip().lstrip("[").rstrip(",]")[:10000]
+    try:
+        jo=json.loads(l2)
+        print json.dumps(jo, indent=4)
+    except ValueError:
+        print l2'
     done
     trap - SIGINT
     echo ' '
