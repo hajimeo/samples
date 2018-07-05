@@ -10,6 +10,10 @@ alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_
 function r2dh() {
     local _3rd_dec="${1:-100}"
     local _dh_ip="${2:-192.168.0.31}"
-    sudo route delete -net 172.17.${_3rd_dec}.0/24 &>/dev/null
-    sudo route add -net 172.17.${_3rd_dec}.0/24 ${_dh_ip}
+    # Mac OS X
+    sudo route delete -net 172.17.${_3rd_dec}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd_dec}.0/24 ${_dh_ip}
+    # Linux (Ubuntu)
+    #sudo ip route del 172.17.${_3rd_dec}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd_dec}.0/24 gw ${_dh_ip} ens3
+    # Windows (Cygwin)
+    #route delete 172.17.${_3rd_dec}.0 &>/dev/null;route add 172.17.${_3rd_dec}.0 mask 255.255.255.0 ${_dh_ip};
 }
