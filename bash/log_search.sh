@@ -43,9 +43,10 @@ function f_rg() {
     local _rg_opts="$3"
     local _thread_num="${4:-3}"
 
+    local _def_rg_opts="--search-zip --no-line-number" # -g '*.json' -g '*.log*' --heading
     # TODO: currently only ISO format YYYY-MM-DD hh:mX:XX
     local _date_regex="^[0-9-/]+ \d\d:\d"
-    local _tmpfile_pfx="./.rg"
+    local _tmpfile_pfx="./rg_"
     local _regex_escaped="`echo "${_regex}" | sed "s/[^[:alnum:].-]/_/g"`"
 
     [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
@@ -55,56 +56,54 @@ function f_rg() {
         echo "'rg' is required (eg: brew install rg)" >&2
         return 101
     fi
-    rg --search-zip -c ${_rg_opts}"${_regex}"
+    rg ${_def_rg_opts} -g '!*.ipynb' -g '!*.tmp' ${_rg_opts}-c "${_regex}"
 
     echo "//=== greping *.log* files =================================================================================="
-    rg --search-zip --no-line-number --no-filename ${_rg_opts}"${_regex}" -g '*.log*' \
+    echo "# REGEX = ${_regex}" > "${_tmpfile_pfx}1_${_regex_escaped}.tmp"
+    rg ${_def_rg_opts} --no-filename -g '*.log*' ${_rg_opts}"${_regex}" \
      | sed 's/^\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)T/\1 /' \
-     | sort -n | uniq > "${_tmpfile_pfx}1_${_regex_escaped}.out"
-    [ -s "${_tmpfile_pfx}1_${_regex_escaped}.out" ] && sed -i "" '1i\
-# REGEX = '${_regex}'
-' "${_tmpfile_pfx}1_${_regex_escaped}.out"
+     | sort -n | uniq >> "${_tmpfile_pfx}1_${_regex_escaped}.tmp"
 
-    if [ -s "${_tmpfile_pfx}1_${_regex_escaped}.out" ]; then
-        rg --no-line-number -o "\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|${_extra_regex}" \
-         "${_tmpfile_pfx}1_${_regex_escaped}.out" > "/tmp/_f_rg_loglevels_threads_$$.out"
-        cat "/tmp/_f_rg_loglevels_threads_$$.out" | sort | uniq -c | sort -rn | head -n 40
+    if [ "`wc -l "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | awk '{print $1}'`" -gt 1 ]; then
+        rg ${_def_rg_opts} -o "\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|${_extra_regex}" \
+         "${_tmpfile_pfx}1_${_regex_escaped}.tmp" > "/tmp/_f_rg_loglevels_threads_$$.tmp"
+        cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | sort | uniq -c | sort -rn | head -n 40
 
-        local _first_dt="`rg -N -m 1 -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}.out"`"
+        local _first_dt="`rg ${_def_rg_opts} -m 1 -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}.tmp"`"
         # @see https://raw.githubusercontent.com/hajimeo/samples/master/golang/dateregex.go
         if which dateregex &>/dev/null; then
             local _last_cmd="tail -n1"
             which gtac &>/dev/null && _last_cmd="gtac"
             which tac &>/dev/null && _last_cmd="tac"
-            local _last_dt="`${_last_cmd} "${_tmpfile_pfx}1_${_regex_escaped}.out" | rg -m 1 -o "${_date_regex}"`"
+            local _last_dt="`${_last_cmd} "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | rg ${_def_rg_opts} -m 1 -o "${_date_regex}"`"
             if [ -n "${_last_dt}" ]; then
                 _first_dt="`dateregex "${_first_dt}0" "${_last_dt}9"`"
             fi
         fi
 
-        for _t in `cat "/tmp/_f_rg_loglevels_threads_$$.out" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n ${_thread_num} | awk '{print $2}'`; do
+        for _t in `cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n ${_thread_num} | awk '{print $2}'`; do
             local _thread="`echo ${_t} | sed 's/[][]//g'`"
-            echo "# REGEX = ${_thread} (${_regex})" > "${_tmpfile_pfx}2_${_thread}.out"
-            rg --search-zip --no-line-number --no-filename ${_rg_opts}"^(${_first_dt}).+\[${_thread}\]" -g '*.log*' | sort -n | uniq >> "${_tmpfile_pfx}2_${_thread}.out"
+            echo "# REGEX = ${_thread} (${_regex})" > "${_tmpfile_pfx}2_${_thread}.tmp"
+            rg ${_def_rg_opts} --no-filename -g '*.log*' ${_rg_opts}"^(${_first_dt}).+\[${_thread}\]" | sort -n | uniq >> "${_tmpfile_pfx}2_${_thread}.tmp"
         done
 
         if which bar_chart.py &>/dev/null; then
             #sudo -H python -mpip install matplotlib
             #sudo -H pip install data_hacks
-            [ `wc -l "${_tmpfile_pfx}1_${_regex_escaped}.out" | awk '{print $1}'` -lt 400 ] && _date_regex="^[0-9-/]+ \d\d:\d\d"
+            [ "`wc -l "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | awk '{print $1}'`" -lt 400 ] && _date_regex="^[0-9-/]+ \d\d:\d\d"
             echo ' '
-            rg --no-line-number -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}.out" | bar_chart.py # no longer needs sed 's/T/ /' as it's already done
+            rg ${_def_rg_opts} -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | bar_chart.py # no longer needs sed 's/T/ /' as it's already done
         fi
     fi
     echo "===========================================================================================================//"
     echo ' '
     echo "# grep-ing -m ${_thread_num} json with formatting (len 1000)... Ctrl+c to skip(TODO:test)" >&2
     trap ' ' SIGINT
-    for j in $(rg -l ${_rg_opts}"${_regex}" -g '*.json'); do
+    for j in $(rg ${_def_rg_opts} --no-filename -g '*.json' -l ${_rg_opts}"${_regex}"); do
         echo "## $j"
-        rg -N -m3 ${_rg_opts}"${_regex}" "$j" | python -c 'import sys,json
+        rg ${_def_rg_opts} -m3 ${_rg_opts}"${_regex}" "$j" | python -c 'import sys,json
 for l in sys.stdin:
-    l2=l.strip().lstrip("[").rstrip(",]")[:10000]
+    l2=l.strip().lstrip("[").rstrip(",]")[:1000]
     try:
         jo=json.loads(l2)
         print json.dumps(jo, indent=4)
@@ -114,7 +113,7 @@ for l in sys.stdin:
     trap - SIGINT
     echo ' '
     echo "# generated temp files (TODO: sometimes 'ls -ltrh' doesn't show right size)" >&2
-    ls -ltrh "${_tmpfile_pfx}"*.out
+    ls -ltrh "${_tmpfile_pfx}"*.tmp
 }
 
 function f_topCausedByExceptions() {
