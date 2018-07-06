@@ -1,3 +1,7 @@
+# Need below
+#export RIPGREP_CONFIG_PATH=$HOME/.rgrc
+#ln -s <this file> $HOME/.rgrc
+
 # Don't let ripgrep vomit really long lines to my terminal. (it ommits)
 #--max-columns=150
 # Add my 'web' type.
@@ -5,6 +9,8 @@
 web:*.{html,css,js}*
 # Using glob patterns to include/exclude files or folders
 --glob=!git/*
+--glob=!*.ipynb
+--glob=!*.tmp
 # Set the colors.
 #--colors=line:none
 #--colors=line:style:bold
