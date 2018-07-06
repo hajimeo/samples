@@ -8,7 +8,7 @@ if (q != null) {
         w.open("https://myactivity.google.com/myactivity?q=" + q, "t_myactivity");
         w.open("https://mail.google.com/mail/u/0/#search/" + q, "t_gmail");
         w.open("https://drive.google.com/drive/search?ltmpl=drive&q=" + q, "t_drive");
-        w.open("http://search.osakos.com/index.php?query=" + q + "&rows=50&submit=Search&indexes%5B%5D=hadoop&indexes%5B%5D=hajime&indexes%5B%5D=public&adv=1", "t_search");
+        w.open("http://search.osakos.com/index.php?query=" + q + "&rows=50&submit=Search&indexes%5B%5D=hadoop&indexes%5B%5D=hajime&indexes%5B%5D=public&indexes%5B%5D=olap&adv=1", "t_search");
         w.open("https://hadoop-and-hdp.blogspot.com.au/search?q=" + q, "t_blog");
         w.open("https://github.com/search?l=&q=" + q + "+org%3Aapache&ref=advsearch&type=Code&utf8=%E2%9C%93", "t_gitapa");
         w.open("https://issues.apache.org/jira/issues/?jql=text ~ \"" + s.replace(/(")/g, '\\$1') + "\" ORDER BY created DESC", "t_apa_jira");
