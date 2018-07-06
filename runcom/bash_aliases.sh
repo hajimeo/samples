@@ -5,14 +5,17 @@ alias utc2int='python -c "import sys,time,dateutil.parser;print int(time.mktime(
 alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\""'
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
+# jn ./some_notebook.ipynb &
 alias jn='if [ -d ~/backup/jupyter-notebook ]; then
     while true; do
-        rsync -a *.ipynb ~/backup/jupyter-notebook/ || break
+        if [ "`ls -1 ./*.ipynb 2>/dev/null | wc -l`" -gt 0 ]; then
+            rsync -a --exclude="./Untitled.ipynb" ./*.ipynb ~/backup/jupyter-notebook/ || break
+        fi
         sleep 180
+        nc -z localhost 8888 &>/dev/null || break
     done &
 fi
-jupyter-notebook
-jobs -l'
+jupyter-notebook'
 
 # Route to Docker Host. As alias doesn't allow to use sudo, using a function
 function r2dh() {
