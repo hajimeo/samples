@@ -7,7 +7,8 @@
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 #
 # TODO: tested on Mac only (eg: sed -E, ggrep)
-# TODO: which ggrep || brew install grep ('grep' will install ggrep)
+# brew install grep     # 'grep' will install ggrep
+# brew install gnu-sed  # for gsed
 #
 
 usage() {
@@ -50,7 +51,7 @@ function f_rg() {
     local _regex_escaped="`echo "${_regex}" | sed "s/[^[:alnum:].-]/_/g"`"
 
     [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
-    [ -z "${_extra_regex}" ] && _extra_regex="\S+\s*[Ff]ailed\s*\S+|\S+\s*[Ss]low\s*\S+|\S+\s*[Tt]oo\s*\S+"
+    [ -z "${_extra_regex}" ] && _extra_regex="\S+\s*[Ff]ailed\s*\S+|\S+\s*[Ss]low\s*\S+|\S+\s*[Tt]oo\s*\S+|\S+\s*rejecting\s*\S+"
 
     if ! which rg &>/dev/null; then
         echo "'rg' is required (eg: brew install rg)" >&2
@@ -67,7 +68,7 @@ function f_rg() {
     if [ "`wc -l "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | awk '{print $1}'`" -gt 1 ]; then
         rg ${_def_rg_opts} -o "\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|${_extra_regex}" \
          "${_tmpfile_pfx}1_${_regex_escaped}.tmp" > "/tmp/_f_rg_loglevels_threads_$$.tmp"
-        cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | sort | uniq -c | sort -rn | head -n 40
+        cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | sort | uniq -c | sort -rn | head -n 20
 
         local _first_dt="`rg ${_def_rg_opts} -m 1 -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}.tmp"`"
         # @see https://raw.githubusercontent.com/hajimeo/samples/master/golang/dateregex.go
@@ -77,7 +78,7 @@ function f_rg() {
             which tac &>/dev/null && _last_cmd="tac"
             local _last_dt="`${_last_cmd} "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | rg ${_def_rg_opts} -m 1 -o "${_date_regex}"`"
             if [ -n "${_last_dt}" ]; then
-                _first_dt="`dateregex "${_first_dt}0" "${_last_dt}9"`"
+                _first_dt="`dateregex "${_first_dt}0" "${_last_dt}9"`" || return $?
             fi
         fi
 
@@ -114,6 +115,7 @@ for l in sys.stdin:
     echo ' '
     echo "# generated temp files (TODO: sometimes 'ls -ltrh' doesn't show right size)" >&2
     ls -ltrh "${_tmpfile_pfx}"*.tmp
+    echo "# May want to also run 'f_topErrors'" >&2
 }
 
 function f_topCausedByExceptions() {
@@ -129,31 +131,47 @@ function f_topCausedByExceptions() {
 }
 
 function f_topErrors() {
-    local __doc__="List top ERRORs. Eg.: f_topErrors ./hbase-ams-master-fslhd.log Y N \"\" \"^2017-05-10\""
+    local __doc__="List top ERRORs. Eg.: f_topErrors ./hbase-ams-master-fslhd.log Y 10 \"2017-05-10\""
     local _path="$1"
     local _is_including_warn="$2"
-    local _not_hiding_number="$3"
-    local _regex="$4"
-    local _date_regex_start="$5"
-    local _date_regex_end="$6"
+    local _top_N="${3:-10}"
+    local _date_from="$4"   # ISO format datetime
+    local _date_to="$5"     # ISO format datetime
+    local _regex="$6"       # to overwrite default regex to detect ERRORs
 
-    if [ -n "$_date_regex_start" ]; then
-        _getAfterFirstMatch "$_path" "$_date_regex_start" "$_date_regex_end" > /tmp/f_topErrors_$$.tmp
-        _path=/tmp/f_topErrors_$$.tmp
+    if ! which rg &>/dev/null; then
+        echo "'rg' is required (eg: brew install rg)" >&2
+        return 101
     fi
+
     if [ -z "$_regex" ]; then
-        _regex="(ERROR|SEVERE|FATAL|SHUTDOWN|java\..+?Exception).+"
+        _regex="\b(ERROR|SEVERE|FATAL|SHUTDOWN|java\..+?Exception).+"
+        [[ "$_is_including_warn" =~ (^y|^Y) ]] && _regex="\b(ERROR|SEVERE|FATAL|SHUTDOWN|java\..+?Exception|WARN|WARNING).+"
+    fi
 
-        if [[ "$_is_including_warn" =~ (^y|^Y) ]]; then
-            _regex="(ERROR|SEVERE|FATAL|SHUTDOWN|java\..+?Exception|WARN|WARNING).+"
+    if [ -n "${_date_from}" ]; then
+        if ! which dateregex &>/dev/null; then
+            echo "'dateregex' is required (@see https://raw.githubusercontent.com/hajimeo/samples/master/golang/dateregex.go)" >&2
+            return 101
         fi
+        local _date_regex="`dateregex "${_date_from}" "${_date_to}"`" || return $?
+        _regex="^(${_date_regex}).+${_regex}"
     fi
 
-    if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
-        egrep -wo "$_regex" "$_path" | sort | uniq -c | sort -n
-    else
-        egrep -wo "$_regex" "$_path" | gsed -r "s/0x[0-9a-f][0-9a-f][0-9a-f]+/0x__________/g" | gsed -r "s/[0-9][0-9]+/____/g" | sort | uniq -c | sort -n
+    echo "# Regex = '${_regex}'" >&2
+    # Currently only search .log or .log.gz etc
+    if [ -z "${_path}" ]; then
+        # NOTE: -c does not work with -l
+        rg --search-zip -c -g '*.log*' -o "${_regex}"
+        echo " "
     fi
+    rg --search-zip --no-line-number --no-filename -g '*.log*' -o "${_regex}" ${_path} \
+     | gsed -r "s/[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+/_____UUID_____/g" \
+     | gsed -r "s/0x[0-9a-f][0-9a-f][0-9a-f]+/0x____________/g" \
+     | gsed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/___DATE___ /g" \
+     | gsed -r "s/[0-2][0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/___TIME___/g" \
+     | gsed -r "s/[0-9][0-9][0-9][0-9][0-9]+/_NUM_/g" \
+     | sort | uniq -c | sort -n | tail -n ${_top_N}
 }
 
 function f_topSlowLogs() {
@@ -165,8 +183,8 @@ function f_topSlowLogs() {
     local _date_regex_end="$5"
 
     if [ -n "$_date_regex_start" ]; then
-        _getAfterFirstMatch "$_path" "$_date_regex_start" "$_date_regex_end" > /tmp/f_topErrors_$$.tmp
-        _path=/tmp/f_topErrors_$$.tmp
+        _getAfterFirstMatch "$_path" "$_date_regex_start" "$_date_regex_end" > /tmp/f_topSlowLogs$$.tmp
+        _path=/tmp/f_topSlowLogs$$.tmp
     fi
     if [ -z "$_regex" ]; then
         _regex="(slow|performance|delay|delaying|waiting|latency|too many|not sufficient|lock held|took [0-9]+ms|timeout).+"
