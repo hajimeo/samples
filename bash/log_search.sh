@@ -44,6 +44,15 @@ function f_rg() {
     local _rg_opts="$3"
     local _thread_num="${4:-3}"
 
+    if ! which rg &>/dev/null; then
+        echo "'rg' is required (eg: brew install rg)" >&2
+        return 101
+    fi
+    if [ -z "${_regex}" ]; then
+        echo "No regular expression" >&2
+        return 102
+    fi
+
     local _def_rg_opts="--search-zip --no-line-number" # -g '*.json' -g '*.log*' --heading
     # TODO: currently only ISO format YYYY-MM-DD hh:mX:XX
     local _date_regex="^[0-9-/]+ \d\d:\d"
@@ -53,10 +62,6 @@ function f_rg() {
     [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
     [ -z "${_extra_regex}" ] && _extra_regex="\S+\s*[Ff]ailed\s*\S+|\S+\s*[Ss]low\s*\S+|\S+\s*[Tt]oo\s*\S+|\S+\s*rejecting\s*\S+"
 
-    if ! which rg &>/dev/null; then
-        echo "'rg' is required (eg: brew install rg)" >&2
-        return 101
-    fi
     rg ${_def_rg_opts} -g '!*.ipynb' -g '!*.tmp' ${_rg_opts}-c "${_regex}"
 
     echo "//=== greping *.log* files =================================================================================="
@@ -133,7 +138,7 @@ function f_topCausedByExceptions() {
 function f_topErrors() {
     local __doc__="List top ERRORs. Eg.: f_topErrors ./hbase-ams-master-fslhd.log Y 10 \"2017-05-10\""
     local _path="$1"
-    local _is_including_warn="$2"
+    local _is_including_warn="${2-Y}"
     local _top_N="${3:-10}"
     local _date_from="$4"   # ISO format datetime
     local _date_to="$5"     # ISO format datetime
