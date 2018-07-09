@@ -21,11 +21,11 @@ function replaceUrl(details) {
         if (!tab) return;
         var match = caseId_regex.exec(details.url);
         if (! match) {
-            match = caseId_regex_Lightning(details.url)
+            match = caseId_regex_Lightning.exec(details.url)
         }
 
         if (match && match.length > 1) {
-            var new_url = "https://na63.salesforce.com/console#%2F" + match[1]+"|";
+            var new_url = "https://na63.salesforce.com/console#%2F" + match[1];
             console.log("New URL = " + new_url);
             chrome.tabs.update(tab.id, {url: new_url});
         }
