@@ -1,0 +1,21 @@
+{
+  "name": "Replace URLs",
+  "version": "1.0",
+  "description": "Replace paticular URLs",
+  "background": {
+    "scripts": [
+      "background.js"
+    ],
+    "persistent": true
+  },
+  "permissions": [
+    "tabs",
+    "http://*/",
+    "https://*/",
+    "webRequest",
+    "webNavigation",
+    "cookies",
+    "storage"
+  ],
+  "manifest_version": 2
+}
