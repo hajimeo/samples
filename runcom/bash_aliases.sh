@@ -15,7 +15,7 @@ alias jn='if [ -d ~/backup/jupyter-notebook ]; then
         nc -z localhost 8888 &>/dev/null || break
     done &
 fi
-jupyter-notebook'
+jupyter notebook'
 
 # Route to Docker Host. As alias doesn't allow to use sudo, using a function
 function r2dh() {
