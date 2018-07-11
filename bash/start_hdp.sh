@@ -1167,7 +1167,7 @@ function f_docker0_setup() {
 }
 
 function f_docker_base_create() {
-    local __doc__="Create a docker base image (f_docker_base_create ./DockerFile centos 6.8)"
+    local __doc__="Create a docker base image (f_docker_base_create ./Dockerfile centos 6.8)"
     local _docker_file="${1-$r_DOCKERFILE_URL}"
     local _os_name="${2-$r_CONTAINER_OS}"
     local _os_ver_num="${3-$r_CONTAINER_OS_VER}"
@@ -1204,7 +1204,7 @@ function f_docker_base_create() {
     fi
     # "." is not good if there are so many files/folders but https://github.com/moby/moby/issues/14339 is unclear
     local _build_dir="$(mktemp -d)" || return $?
-    cp -f ${_local_docker_file} ${_build_dir%/}/DockerFile || return $?
+    cp -f ${_local_docker_file} ${_build_dir%/}/Dockerfile || return $?
     cd ${_build_dir} || return $?
     docker build -t ${_base} .
 }
@@ -2625,10 +2625,10 @@ function f_dockerfile() {
     local __doc__="Download dockerfile and replace private key"
     local _url="${1-$r_DOCKERFILE_URL}"
     local _os_and_ver="${2}"
-    local _new_filepath="${3-\./DockerFile}"
+    local _new_filepath="${3-\./Dockerfile}"
 
     if [ -z "$_url" ]; then
-        _error "No DockerFile URL/path"
+        _error "No Dockerfile URL/path"
         return 1
     fi
 
@@ -2642,7 +2642,7 @@ function f_dockerfile() {
         wget -nv -c -t 3 --timeout=30 --waitretry=5 "$_url" -O ${_new_filepath}
     fi
 
-    # make sure ssh key is set up to replace DockerFile's _REPLACE_WITH_YOUR_PRIVATE_KEY_
+    # make sure ssh key is set up to replace Dockerfile's _REPLACE_WITH_YOUR_PRIVATE_KEY_
     if [ -s $HOME/.ssh/id_rsa ]; then
         local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
         sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ${_new_filepath}
