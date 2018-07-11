@@ -2419,11 +2419,6 @@ function p_host_setup() {
     fi
 
     f_port_forward_ssh_on_nodes
-    _log "INFO" "Completed. Grepping ERRORs and WARNs from /tmp/p_host_setup.log"
-    echo "//=========================================================================="
-    grep -Ew '(ERROR|WARN)' /tmp/p_host_setup.log
-    echo "==========================================================================//"
-
     f_screen_cmd
 }
 
@@ -3551,6 +3546,12 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
         g_START_TIME="`date -u`"
         p_host_setup
+        if [ -s /tmp/p_host_setup.log ]; then
+            _log "INFO" "Completed. Grepping ERRORs and WARNs from /tmp/p_host_setup.log"
+            echo "//=========================================================================="
+            grep -Ew '(ERROR|WARN)' /tmp/p_host_setup.log
+            echo "==========================================================================//"
+        fi
         g_END_TIME="`date -u`"
         echo "Started at : $g_START_TIME"
         echo "Finished at: $g_END_TIME"
