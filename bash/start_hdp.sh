@@ -2343,14 +2343,16 @@ function p_host_setup() {
         f_host_performance &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_host_misc"
         f_host_misc &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_dnsmasq"
-        f_dnsmasq &>> /tmp/p_host_setup.log || return $?
     fi
 
     _log "INFO" "Starting f_docker0_setup"
     f_docker0_setup "172.18.0.1" "24" &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_hdp_network_setup"
     f_hdp_network_setup &>> /tmp/p_host_setup.log
+
+    _log "INFO" "Starting f_dnsmasq"
+    f_dnsmasq &>> /tmp/p_host_setup.log || return $?
+
     _log "INFO" "Starting f_docker_base_create"
     f_docker_base_create &>> /tmp/p_host_setup.log || return $?
     _log "INFO" "Starting f_docker_run"
