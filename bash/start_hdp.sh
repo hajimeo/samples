@@ -1919,7 +1919,7 @@ function f_local_repo() {
     local _document_root="${2-/var/www/html}"
     local _force_extract=""
     local _download_only=""
-    #TODO: sed -i.bak 's/public-repo-1.hortonworks.com/dockerhost1.localdomain\/hdp/g' ./*.{repo,xml} # also remove index.html
+    #TODO: sed -i.bak 's/public-repo-1.hortonworks.com/dockerhost1\/hdp/g' ./*.{repo,xml} # also remove index.html
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
