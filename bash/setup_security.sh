@@ -391,6 +391,23 @@ function f_ssl_hadoop() {
     _hadoop_ssl_config_update "$_ambari_host" "$_ambari_port" "$_password"
 }
 
+function f_export_key() {
+    local __doc__="Export private key from keystore"
+    local _keystore="${1}"
+    local _in_pass="${2}"
+    local _alias="${3}"
+    local _private_key="${4}"
+    local _tmp_keystore="`basename "${_keystore}"`.tmp.jks"
+
+    [ -z "${_alias}" ] &&  _alias="`hostname -f`"
+    [ -z "${_private_key}" ] &&  _private_key="${_alias}.key"
+
+    keytool -importkeystore -noprompt -srckeystore ${_keystore} -srcstorepass "${_in_pass}" -srcalias ${_alias} \
+     -destkeystore ${_tmp_keystore} -deststoretype PKCS12 -deststorepass ${_in_pass} -destkeypass ${_in_pass} || return $?
+    openssl pkcs12 -in ${_tmp_keystore} -passin "pass:${_in_pass}" -nodes -nocerts -out ${_private_key} || return $?
+    rm -f ${_tmp_keystore}
+}
+
 function _hadoop_ssl_config_update() {
     local _ambari_host="${1-$r_AMBARI_HOST}"
     local _ambari_port="${2-8080}"
