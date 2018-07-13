@@ -30,7 +30,7 @@
 #   f_spnego_hadoop "$g_KDC_REALM" "hortonworks.com" "sandbox.hortonworks.com" "8080" "sandbox.hortonworks.com"
 #
 # Example 3: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
-#   mkdir ssl_setup; cd ssl_setup
+#   mkdir ssl_setup; cd ssl_setupr
 #   f_ssl_hadoop
 #
 #   If Sandbox:
@@ -328,22 +328,15 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
 
 function f_ssl_hadoop() {
     local __doc__="Setup SSL for hadoop https://community.hortonworks.com/articles/92305/how-to-transfer-file-using-secure-webhdfs-in-distc.html"
-    local _dname_extra="$1"
-    local _password="$2"
-    local _ambari_host="${3-$r_AMBARI_HOST}"
-    local _ambari_port="${4-8080}"
-    local _how_many="${5-$r_NUM_NODES}"
-    local _start_from="${6-$r_NODE_START_NUM}"
-    local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
-    local _use_wildcard_cert="${8-N}" # TODO: getting "hostname mismatch"
-    local _no_updating_ambari_config="${9-$r_NO_UPDATING_AMBARI_CONFIG}"
-
-    if [ -z "$_password" ]; then
-        _password=${g_DEFAULT_PASSWORD-hadoop}
-    fi
-    if [ -z "$_dname_extra" ]; then
-        _dname_extra="OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
-    fi
+    local _dname_extra="${1:-OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU}"
+    local _password="${2:-${g_DEFAULT_PASSWORD-hadoop}}"
+    local _ambari_host="${3:-$r_AMBARI_HOST}"
+    local _ambari_port="${4:-8080}"
+    local _how_many="${5:-$r_NUM_NODES}"
+    local _start_from="${6:-$r_NODE_START_NUM}"
+    local _domain_suffix="${7:-$r_DOMAIN_SUFFIX}"
+    local _use_wildcard_cert="${8:-N}" # TODO: getting "hostname mismatch"
+    local _no_updating_ambari_config="${9:-$r_NO_UPDATING_AMBARI_CONFIG}"
 
     if [ -s ./rootCA.key ]; then
         _info "rootCA.key exists. Reusing..."
