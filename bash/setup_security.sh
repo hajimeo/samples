@@ -405,6 +405,7 @@ function f_export_key() {
     keytool -importkeystore -noprompt -srckeystore ${_keystore} -srcstorepass "${_in_pass}" -srcalias ${_alias} \
      -destkeystore ${_tmp_keystore} -deststoretype PKCS12 -deststorepass ${_in_pass} -destkeypass ${_in_pass} || return $?
     openssl pkcs12 -in ${_tmp_keystore} -passin "pass:${_in_pass}" -nodes -nocerts -out ${_private_key} || return $?
+    chmod 640  ${_private_key} && chown root:hadoop ${_private_key}
     rm -f ${_tmp_keystore}
 }
 
