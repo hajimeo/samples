@@ -30,7 +30,7 @@
 #   f_spnego_hadoop "$g_KDC_REALM" "hortonworks.com" "sandbox.hortonworks.com" "8080" "sandbox.hortonworks.com"
 #
 # Example 3: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
-#   mkdir ssl_setup; cd ssl_setupr
+#   mkdir ssl_setup; cd ssl_setup
 #   f_ssl_hadoop
 #
 #   If Sandbox:
@@ -88,10 +88,14 @@ function f_kdc_install_on_ambari_node() {
 
 function f_kdc_install_on_host() {
     local __doc__="Install KDC server packages on Ubuntu (takes long time)"
-    local _realm="${1-$g_KDC_REALM}"
-    local _password="${2-$g_DEFAULT_PASSWORD}"
-    local _server="${3-`hostname -i`}"
+    local _realm="${1:-$g_KDC_REALM}"
+    local _password="${2:-$g_DEFAULT_PASSWORD}"
+    local _server="${3:-`hostname -i`}"
 
+    if [ -z "${_server}" ]; then
+        _error "No server IP/name for KDC"
+        return 1
+    fi
     if [ ! `which apt-get` ]; then
         _warn "No apt-get"
         return 1
@@ -120,7 +124,7 @@ function f_kdc_install_on_host() {
     sed -i "/\[realms\]/r /tmp/f_kdc_install_on_host_kdc_$$.tmp" /etc/krb5kdc/kdc.conf
 
     # KDC process seems to use default_realm, and sed needs to escape + somehow
-    sed -i_$(date +"%Y%m%d").bak -e 's/^\s*default_realm.\+$/  default_realm = '${_realm}'/' /etc/krb5.conf
+    sed -i_$(date +"%Y%m%d%H%M%S").bak -e 's/^\s*default_realm.\+$/  default_realm = '${_realm}'/' /etc/krb5.conf
     # With 'sed', append/insert multiple lines
     if ! grep -qE '^\s*'${_realm}'\b' /etc/krb5.conf; then
         echo '  '${_realm}' = {
@@ -407,6 +411,11 @@ function f_export_key() {
     openssl pkcs12 -in ${_tmp_keystore} -passin "pass:${_in_pass}" -nodes -nocerts -out ${_private_key} || return $?
     chmod 640  ${_private_key} && chown root:hadoop ${_private_key}
     rm -f ${_tmp_keystore}
+
+    if [ -s "${_alias}.crt" ] && [ -s "rootCA.pem" ] && [ -s "${_alias}.key" ]; then
+        cat ${_alias}.crt rootCA.pem ${_alias}.key > certificate.pem
+        chmod 640 certificate.pem; chown root:hadoop certificate.pem
+    fi
 }
 
 function _hadoop_ssl_config_update() {
