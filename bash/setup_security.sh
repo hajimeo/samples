@@ -332,7 +332,7 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
 
 function f_ssl_hadoop() {
     local __doc__="Setup SSL for hadoop https://community.hortonworks.com/articles/92305/how-to-transfer-file-using-secure-webhdfs-in-distc.html"
-    local _dname_extra="${1:-OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU}"
+    local _dname_extra="${1:-OU=Lab, O=Osakos, L=Brisbane, ST=QLD, C=AU}"
     local _password="${2:-${g_DEFAULT_PASSWORD-hadoop}}"
     local _ambari_host="${3:-$r_AMBARI_HOST}"
     local _ambari_port="${4:-8080}"
@@ -353,11 +353,11 @@ function f_ssl_hadoop() {
         #mkdir -p ./db/certs
         #mkdir -p ./db/newcerts
         #openssl req -passin pass:${_password} -new -key ./rootCA.key -out ./rootCA.csr -batch
-        #openssl ca -out rootCA.crt -days 1095 -keyfile rootCA.key -key ${_password} -selfsign -extensions jdk7_ca -config ./ca.config -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.`hostname -s`.hortonworks.com" -batch -infiles ./rootCA.csr
+        #openssl ca -out rootCA.crt -days 1095 -keyfile rootCA.key -key ${_password} -selfsign -extensions jdk7_ca -config ./ca.config -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.osakos.com" -batch -infiles ./rootCA.csr
         #openssl pkcs12 -export -in ./rootCA.crt -inkey ./rootCA.key -certfile ./rootCA.crt -out ./keystore.p12 -password pass:${_password} -passin pass:${_password}
 
         # Step2: create root CA's pem
-        openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.`hostname -s`.hortonworks.com" -passin "pass:$_password" || return $?
+        openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.osakos.com" -passin "pass:$_password" || return $?
         chmod 600 ./rootCA.*
     fi
 
@@ -513,7 +513,7 @@ function _hadoop_ssl_use_wildcard() {
     local _key_strength="${6-2048}"
     local _work_dir="${7-./}"
 
-    local _subject="/C=AU/ST=QLD/L=Brisbane/O=Hortonworks/OU=Support/CN=*.${_domain_suffix#.}"
+    local _subject="/C=AU/ST=QLD/L=Brisbane/O=Osakos/OU=Lab/CN=*.${_domain_suffix#.}"
     local _subj=""
 
     [ -z "$_domain_suffix" ] && _domain_suffix=".`hostname`"
@@ -609,7 +609,7 @@ function f_ssl_ambari_2way() {
         # 1.2. generate ca.csr
         ssh -q root@${_ambari_host} "openssl req -passin pass:${_password} -new -key ${_keys_dir%/}/ca.key -out ${_keys_dir%/}/ca.csr -batch" || return $?
         # 1.3. generate ca.crt
-        ssh -q root@${_ambari_host} "openssl ca -out ${_keys_dir%/}/ca.crt -days 1095 -keyfile ${_keys_dir%/}/ca.key -key ${_password} -selfsign -extensions jdk7_ca -config ${_keys_dir%/}/ca.config -subj '/C=AU/ST=QLD/O=Hortonworks/CN=RootCA.${_ambari_host}' -batch -infiles ${_keys_dir%/}/ca.csr" || return $?
+        ssh -q root@${_ambari_host} "openssl ca -out ${_keys_dir%/}/ca.crt -days 1095 -keyfile ${_keys_dir%/}/ca.key -key ${_password} -selfsign -extensions jdk7_ca -config ${_keys_dir%/}/ca.config -subj '/C=AU/ST=QLD/O=Osakos/CN=RootCA.${_ambari_host}' -batch -infiles ${_keys_dir%/}/ca.csr" || return $?
         # 1.4. generate keystore.p12 which ambari uses as keystore and truststore if not specified
         ssh -q root@${_ambari_host} "openssl pkcs12 -export -in ${_keys_dir%/}/ca.crt -inkey ${_keys_dir%/}/ca.key -certfile ${_keys_dir%/}/ca.crt -out ${_keys_dir%/}/keystore.p12 -password pass:${_password} -passin pass:${_password}" || return $?
     fi
@@ -1148,7 +1148,7 @@ kdestroy"
 
 function f_ssl_self_signed_cert() {
     local __doc__="Setup a self-signed certificate with openssl command. See: http://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.5.3/bk_security/content/set_up_ssl_for_ambari.html"
-    local _subject="$1" # "/C=AU/ST=QLD/O=Hortonworks/CN=*.hortonworks.com"
+    local _subject="$1" # "/C=AU/ST=QLD/O=Osakos/CN=*.lab.osakos.com"
     local _base_name="${2-selfsign}"
     local _password="$3"
     local _key_strength="${4-2048}"
@@ -1195,7 +1195,7 @@ function f_ssl_internal_CA_setup() {
         _domain_suffix=".`hostname -d`"
     fi
     if [ -z "$_dname" ]; then
-        _dname="CN=internalca${_domain_suffix}, OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
+        _dname="CN=internalca${_domain_suffix}, OU=Lab, O=Osakos, L=Brisbane, ST=QLD, C=AU"
     fi
     if [ -z "$_password" ]; then
         _password="${g_DEFAULT_PASSWORD-hadoop}"
@@ -1230,7 +1230,7 @@ function _ssl_openssl_cnf_generate() {
     fi
 
     [ -z "$_domain_suffix" ] && _domain_suffix=".`hostname`"
-    [ -z "$_dname" ] && _dname="CN=*.${_domain_suffix#.}, OU=Support, O=Hortonworks, L=Brisbane, ST=QLD, C=AU"
+    [ -z "$_dname" ] && _dname="CN=*.${_domain_suffix#.}, OU=Lab, O=Osakos, L=Brisbane, ST=QLD, C=AU"
     [ -z "$_password" ] && _password=${g_DEFAULT_PASSWORD-hadoop}
 
     echo [ req ] > "${_work_dir%/}/openssl.cnf"
