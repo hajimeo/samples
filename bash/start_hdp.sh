@@ -60,11 +60,11 @@ How to create a node(s)
     f_docker_base_create 'https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6' 'centos' '6.8'
 
     # Create one node with Ambari Server, hostname: node101.localdomain, OS ver: CentOS6.8, Network addr: 172.17.100.x
-    p_ambari_node_create 'ambari2510.localdomain:8008' '172.17.100.125' '7.4.1708' [/path/to/ambari.repo] [DNS_IP]
+    p_ambari_node_create 'ambari2510.localdomain:8008' '172.17.100.125' '7.5.1804' [/path/to/ambari.repo] [DNS_IP]
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS7.4, and Ambari is ambari2615.ubu04.localdomain
     export r_DOMAIN_SUFFIX='.ubu04.localdomain'
-    p_nodes_create '2' '102' '172.17.140.' '7.4.1708' 'ambari2615.ubu04.localdomain' [/path/to/ambari.repo]
+    p_nodes_create '2' '102' '172.17.140.' '7.5.1804' 'ambari2615.ubu04.localdomain' [/path/to/ambari.repo]
     # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
     f_ambari_blueprint_hostmap 2 102 '2.5.3.0' > /tmp/hostmap.json
     f_ambari_blueprint_config 2 102 '2.5.3.0' 'N' > /tmp/cluster.json
@@ -107,7 +107,7 @@ g_DNS_SERVER="localhost"
 g_DOMAIN_SUFFIX=".localdomain"
 g_APT_UPDATE_DONE=""
 g_HDP_NETWORK="hdp"
-g_CENTOS_VERSION="7.4.1708"
+g_CENTOS_VERSION="7.5.1804"
 g_AMBARI_VERSION="2.6.2.2" # TODO: need to update Ambari Version manually
 g_STACK_VERSION="2.6"
 
@@ -143,7 +143,7 @@ function p_interview() {
     _ask "Domain Suffix for docker containers" ".${_name}.${g_DOMAIN_SUFFIX#.}" "r_DOMAIN_SUFFIX" "N" "Y"
     [ -n "$r_DOMAIN_SUFFIX" ] && r_DOMAIN_SUFFIX=".${r_DOMAIN_SUFFIX#.}"
     _ask "Container OS type (small letters)" "centos" "r_CONTAINER_OS" "N" "Y"
-    _ask "$r_CONTAINER_OS version (eg: 7.4.1708 or 6.8)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
+    _ask "$r_CONTAINER_OS version (eg: 7.5.1804 or 6.8)" "$_centos_version" "r_CONTAINER_OS_VER" "N" "Y"
     r_CONTAINER_OS="${r_CONTAINER_OS,,}"
     local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
 
@@ -309,7 +309,7 @@ function _cancelInterview() {
 
 function p_ambari_node_create() {
     local __doc__="Create one node and install AmbariServer (NOTE: only centos and doesn't create docker image)"
-    # p_ambari_node_create 'ambari2615.ubu01.localdomain:8080' '172.17.110.100' '7.4.1708' '/path/to/ambari.repo'
+    # p_ambari_node_create 'ambari2615.ubu01.localdomain:8080' '172.17.110.100' '7.5.1804' '/path/to/ambari.repo'
     local _ambari_host="${1-$r_AMBARI_HOST}"
     local _ip_address="${2}"
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
@@ -2597,6 +2597,10 @@ screen -ls' > /etc/update-motd.d/99-start-hdp
         chmod a+x /etc/update-motd.d/99-start-hdp
         run-parts --lsbsysinit /etc/update-motd.d > /run/motd.dynamic
     fi
+
+    # @see https://bugs.launchpad.net/ubuntu/+source/systemd/+bug/1624320
+    systemctl disable systemd-resolved
+    #reboot
 }
 
 function f_copy_auth_keys_to_containers() {
