@@ -1,4 +1,4 @@
-FROM centos:6.8
+FROM centos:6
 
 #install HDP requirements + dependencies and system tools
 RUN yum -y install yum-plugin-ovl scp curl unzip tar wget openssl python nscd;\
