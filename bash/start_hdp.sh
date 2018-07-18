@@ -3510,7 +3510,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
 
     # Supported OS check
-    grep -i 'Ubuntu 1[46]\.' /etc/issue.net &>/dev/null
+    grep -i 'Ubuntu 1[468]\.' /etc/issue.net &>/dev/null
     if [ $? -ne 0 ]; then
         if [ "$g_UNAME_STR" == "Darwin" ]; then
             echo "Detected Mac OS"
