@@ -1878,6 +1878,7 @@ function _ambari_agent_fix() {
     local _hostname="${1}"
 
     ssh -q root@${_hostname} -t 'grep "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini || ( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini )'
+    ssh -q root@${_hostname} -t 'grep "^force_https_protocol" /etc/ambari-agent/conf/ambari-agent.ini || sed -i "/^keysdir/i force_https_protocol=PROTOCOL_TLSv1_2" /etc/ambari-agent/conf/ambari-agent.ini'
     ssh -q root@${_hostname} -t "sed -i.bak -e '/^verify/ s/\(platform_default\|enable\)/disable/' /etc/python/cert-verification.cfg 2>/dev/null"
 }
 
