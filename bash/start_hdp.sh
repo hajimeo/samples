@@ -2333,7 +2333,7 @@ function p_host_setup() {
 
         # NOTE: psql (postgresql-client) is required
         _log "INFO" "Starting apt-get install packages"
-        apt-get -y install ntpdate curl wget sshfs sysv-rc-conf tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat nscd libmysql-java ppp at &>> /tmp/p_host_setup.log
+        apt-get -y install ntpdate curl wget sshfs sysv-rc-conf tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat nscd libmysql-java ppp at resolvconf &>> /tmp/p_host_setup.log
         #mailutils postfix mysql-client htop
 
         _log "INFO" "Starting f_docker_setup"
