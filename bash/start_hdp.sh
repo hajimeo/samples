@@ -2600,8 +2600,15 @@ screen -ls' > /etc/update-motd.d/99-start-hdp
     fi
 
     # @see https://bugs.launchpad.net/ubuntu/+source/systemd/+bug/1624320
-    systemctl disable systemd-resolved
-    #reboot
+    if grep -q '^nameserver 127.0.0.53' /etc/resolv.conf; then
+        systemctl disable systemd-resolved
+        mkdir -p /run/systemd/resolve
+        if ! grep -q '^nameserver 127.0.0.1' /run/systemd/resolve/stub-resolv.conf; then
+            echo 'nameserver 127.0.0.1' >> /run/systemd/resolve/stub-resolv.conf
+        fi
+        _warn "systemctl disable systemd-resolved was run. Please reboot"
+        #reboot
+    fi
 }
 
 function f_copy_auth_keys_to_containers() {
