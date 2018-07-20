@@ -2927,6 +2927,7 @@ function f_update_check() {
 
 function f_vnc_setup() {
     local __doc__="Install X and VNC Server. NOTE: this uses about 400MB space"
+    # https://www.digitalocean.com/community/tutorials/how-to-install-and-configure-vnc-on-ubuntu-16-04
     local _user="${1-$USER}"
     local _vpass="${2-$g_DEFAULT_PASSWORD}"
     local _pass="${3-$g_DEFAULT_PASSWORD}"
@@ -2942,18 +2943,25 @@ function f_vnc_setup() {
 
     apt-get install -y xfce4 xfce4-goodies firefox tightvncserver autocutsel
 
-    su - $_user -c 'mkdir ${HOME%/}/.vnc; echo "'$_vpass'" | vncpasswd -f > ${HOME%/}/.vnc/passwd
-chmod 600 ${HOME%/}/.vnc/passwd
+    su - $_user -c 'expect <<EOF
+spawn "vncpasswd"
+expect "Password:"
+send "'${_vpass}'\r"
+expect "Verify:"
+send "'${_vpass}'\r"
+expect eof
+exit
+EOF
 mv ${HOME%/}/.vnc/xstartup ${HOME%/}/.vnc/xstartup.bak &>/dev/null
 echo "#!/bin/bash
 xrdb ${HOME%/}/.Xresources
 autocutsel -fork
 startxfce4 &" > ${HOME%/}/.vnc/xstartup
 chmod u+x ${HOME%/}/.vnc/xstartup'
-
-    echo "To start:"
+    #echo "TightVNC client: https://www.tightvnc.com/download.php"
+    echo "- to start:"
     echo "su - $_user -c 'vncserver -geometry 1280x768 -depth 16 :1'"
-    echo "To stop:"
+    echo "- to stop:"
     echo "su - $_user -c 'vncserver -kill :1'"
 
     # to check
