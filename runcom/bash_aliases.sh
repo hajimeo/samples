@@ -28,3 +28,9 @@ function r2dh() {
     # Windows (Cygwin)
     #route delete 172.17.${_3rd_dec}.0 &>/dev/null;route add 172.17.${_3rd_dec}.0 mask 255.255.255.0 ${_dh_ip};
 }
+
+function bar() {
+    local _path="${1-./*}"  # TODO: need to sort?
+    local _datetime_regex="${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d\d}"
+    ggrep -oP "$_datetime_regex" $_path | bar_chart.py
+}
