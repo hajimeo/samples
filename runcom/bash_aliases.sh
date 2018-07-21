@@ -7,12 +7,16 @@ alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
 # jn ./some_notebook.ipynb &
 alias jn='if [ -d ~/backup/jupyter-notebook ]; then
+    cp ~/backup/jupyter-notebook/Aggregation.ipynb ./ &>/dev/null
     while true; do
         if [ "`ls -1 ./*.ipynb 2>/dev/null | wc -l`" -gt 0 ]; then
             rsync -a --exclude="./Untitled.ipynb" ./*.ipynb ~/backup/jupyter-notebook/ || break
         fi
-        sleep 180
-        nc -z localhost 8888 &>/dev/null || break
+        sleep 300
+        if ! nc -z localhost 8888 &>/dev/null; then
+            mv -f ./Aggregation.ipynb /tmp/
+            break
+        fi
     done &
 fi
 jupyter notebook'
