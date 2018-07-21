@@ -11,6 +11,8 @@
 # brew install gnu-sed  # for gsed
 #
 
+[ -n "$_DEBUG" ] && (set -x; set -e)
+
 usage() {
     echo "HELP/USAGE:"
     echo "This script contains useful functions to search log files.
@@ -53,7 +55,7 @@ function f_rg() {
         return 102
     fi
 
-    local _def_rg_opts="--search-zip --no-line-number" # -g '*.json' -g '*.log*' --heading
+    local _def_rg_opts="--search-zip --no-line-number" # -g '*.json' -g '*.xml' -g '*.yaml' -g '*.yml' -g '*.log*' --heading
     # TODO: currently only ISO format YYYY-MM-DD hh:mX:XX
     local _date_regex="^[0-9-/]+ \d\d:\d"
     local _tmpfile_pfx="./rg_"
@@ -62,9 +64,9 @@ function f_rg() {
     [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
     [ -z "${_extra_regex}" ] && _extra_regex="\S+\s*[Ff]ailed\s*\S+|\S+\s*[Ss]low\s*\S+|\S+\s*[Tt]oo\s*\S+|\S+\s*rejecting\s*\S+"
 
-    rg ${_def_rg_opts} -g '!*.ipynb' -g '!*.tmp' ${_rg_opts}-c "${_regex}"
+    rg ${_def_rg_opts} -H -g '!*.ipynb' -g '!*.tmp' ${_rg_opts}-c "${_regex}"
 
-    echo "//=== greping *.log* files =================================================================================="
+    echo "//=== finding threads (FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) ==========================================="
     echo "# REGEX = ${_regex}" > "${_tmpfile_pfx}1_${_regex_escaped}.tmp"
     rg ${_def_rg_opts} --no-filename -g '*.log*' ${_rg_opts}"${_regex}" \
      | sed 's/^\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)T/\1 /' \
@@ -120,7 +122,7 @@ for l in sys.stdin:
     echo ' '
     echo "# generated temp files (TODO: sometimes 'ls -ltrh' doesn't show right size)" >&2
     ls -ltrh "${_tmpfile_pfx}"*.tmp
-    echo "# May want to also run 'f_topErrors'" >&2
+    echo "# May want to also run 'f_topErrors ${_tmpfile_pfx}1_${_regex_escaped}.tmp'" >&2
 }
 
 function f_topCausedByExceptions() {
@@ -584,8 +586,16 @@ function f_swimlane() {
     python "$_script_path" -o $_out_name $_tmp_name
 }
 
+function f_start_end_list(){
+    local __doc__="Output start time, end time, difference(sec), (filesize) from a log files"
+    local _files="${1}"
+    local _date_regex="${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d}"
+    [ -z  "${_files}" ] && _files=`ls -1`
+    for _f in ${_files}; do f_start_end_time_with_diff $_f "${_date_regex}"; done | sort -t$'\t' -k2
+}
+
 function f_start_end_time_with_diff(){
-    local __doc__="Output start time, end time, difference(sec), (filesize) from a log file (eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\t' -k2)"
+    local __doc__="Output start time, end time, difference(sec), (filesize) from a log file (eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)"
     local _log="$1"
     local _date_regex="${2}"
     [ -z "$_date_regex" ] && _date_regex="^20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d"
