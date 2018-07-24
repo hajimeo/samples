@@ -110,6 +110,7 @@ g_HDP_NETWORK="hdp"
 g_CENTOS_VERSION="7.5.1804"
 g_AMBARI_VERSION="2.6.2.2" # TODO: need to update Ambari Version manually
 g_STACK_VERSION="2.6"
+g_AMBARI_PORT="8080"
 
 __PID="$$"
 __LAST_ANSWER=""
@@ -185,6 +186,7 @@ function p_interview() {
     echo "====== Ambari related questions =================="
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         _ask "Ambari server hostname" "${r_NODE_HOSTNAME_PREFIX}${r_NODE_START_NUM}${r_DOMAIN_SUFFIX}" "r_AMBARI_HOST" "N" "Y"
+        _ask "Ambari port number" "${g_AMBARI_PORT}" "r_AMBARI_PORT" "N" "Y"
         _echo "If you have set up a Local Repo, please change below"
         _ask "Ambari repo file URL or path" "http://public-repo-1.hortonworks.com/ambari/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_AMBARI_VER}/ambari.repo" "r_AMBARI_REPO_FILE" "N" "Y"
         if _isUrlButNotReachable "$r_AMBARI_REPO_FILE" ; then
@@ -315,7 +317,7 @@ function p_ambari_node_create() {
     local _os_ver="${3-$r_CONTAINER_OS_VER}"
     local _ambari_repo_file="${4-$r_AMBARI_REPO_FILE}"
     local _dns="$5"
-    local _port="8080"
+    local _port="${r_AMBARI_PORT:-${g_AMBARI_PORT}}"
 
     # if _amabari_host is integer, generate hostname with _node and _suffix
     if [[ "${_ambari_host}" =~ ^[0-9]+$ ]]; then
@@ -345,7 +347,7 @@ function p_ambari_node_setup() {
     local __doc__="Intall and Setup AmbariServer on an existing node"
     local _ambari_repo_file="${1-$r_AMBARI_REPO_FILE}"
     local _ambari_host="${2-$r_AMBARI_HOST}"
-    local _port="${3-8080}"
+    local _port="${3-${r_AMBARI_PORT:-${g_AMBARI_PORT}}}"
 
     f_get_ambari_repo_file "$_ambari_repo_file" || return $?
     f_ambari_server_install "${_ambari_host}"|| return $?
@@ -447,7 +449,7 @@ function p_nodes_start() {
     f_run_cmd_on_nodes "ambari-agent start" "$_how_many" "$_start_from" > /dev/null
     f_log_cleanup    # probably wouldn't want to clean log for non ambari managed node
     f_services_start "${_ambari_host}"
-    f_port_forward 8080 ${_ambari_host} 8080 "Y"
+    f_port_forward ${r_AMBARI_PORT:-${g_AMBARI_PORT}} ${_ambari_host} ${r_AMBARI_PORT:-${g_AMBARI_PORT}} "Y"
     f_port_forward_ssh_on_nodes "$_how_many" "$_start_from"
 }
 
@@ -494,7 +496,7 @@ function p_ambari_blueprint() {
 
     # just in case, try starting server
     f_ambari_server_start "${_ambari_host}"
-    _port_wait "${_ambari_host}" "8080" || return 1
+    _port_wait "${_ambari_host}" "${r_AMBARI_PORT:-${g_AMBARI_PORT}}" || return 1
 
     [ -n "${_how_many}" ] && _ambari_agent_wait "${_ambari_host}" "${_how_many}"
 
@@ -534,9 +536,9 @@ _n=`awk "/^[[:blank:]]+if \(App.HostComponent.find\(\).filterProperty\('"'"'comp
     fi
 
     _info "Posting ${_cluster_config_json} ..."
-    curl -s -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json}
+    curl -s -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/blueprints/$_cluster_name" -d @${_cluster_config_json}
     _info "Posting ${_hostmap_json} ..."
-    curl -s -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:8080/api/v1/clusters/$_cluster_name" -d @${_hostmap_json}
+    curl -s -H "X-Requested-By: ambari" -X POST -u admin:admin "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/clusters/$_cluster_name" -d @${_hostmap_json}
     echo ""
 }
 
@@ -1559,7 +1561,7 @@ function f_ambari_server_setup() {
     local _jdk_file="${2-$r_AMBARI_JDK_URL}"
     local _jce_file="${3-$r_AMBARI_JCE_URL}"
     local _port="${4}"
-    [ -z "${_port}" ] && _port="8080"
+    [ -z "${_port}" ] && _port="${r_AMBARI_PORT:-${g_AMBARI_PORT}}"
 
     local _target_dir="/var/lib/ambari-server/resources/"
 
@@ -1591,7 +1593,7 @@ function f_ambari_server_setup() {
 
     _info "Setting up ambari-server on ${_ambari_host} without --enable-lzo-under-gpl-license ..."
     ssh -q root@${_ambari_host} "ambari-server setup -s || ( echo 'ERROR: ambari-server setup failed! Trying one more time...'; service postgresql start; sleep 3; sed -i.bak '/server.jdbc.database/d' /etc/ambari-server/conf/ambari.properties; ambari-server setup -s --verbose )" || return $?
-    if [ "${_port}" != "8080" ]; then
+    if [ "${_port}" != "${r_AMBARI_PORT:-${g_AMBARI_PORT}}" ]; then
         # default installation doesn't have client.api.port
         ssh -q root@${_ambari_host} "echo -e '\nclient.api.port=${_port}' >> /etc/ambari-server/conf/ambari.properties"
     fi
@@ -1630,7 +1632,7 @@ function f_ambari_server_start() {
     ssh -q root@${_ambari_host} "ambari-server start --skip-database-check" &> /tmp/f_ambari_server_start.out
     if [ $? -ne 0 ]; then
         # if 'Server not yet listening...' should be OK.
-        grep -iqE 'Ambari Server is already running|Server not yet listening on http port 8080 after 50 seconds' /tmp/f_ambari_server_start.out && return
+        grep -iqE 'Ambari Server is already running|Server not yet listening on ambari port after 50 seconds' /tmp/f_ambari_server_start.out && return
         sleep 1
         ssh -q root@${_ambari_host} "service postgresql start; sleep 5; service ambari-server restart --skip-database-check"
     fi
@@ -1812,14 +1814,14 @@ function f_ambari_agent_reset() {
     local _c="`f_get_cluster_name ${_ambari_host}`"
     [ -z "${_c}" ] && return 1
     sleep 5
-    curl -Is -u admin:admin "http://${_ambari_host}:8080/api/v1/hosts/${_agent_host}" | grep -q '^HTTP/1.1 2'
+    curl -Is -u admin:admin "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/hosts/${_agent_host}" | grep -q '^HTTP/1.1 2'
     if [ $? -ne 0 ]; then
         sleep 5
-        curl -Is -u admin:admin "http://${_ambari_host}:8080/api/v1/hosts/${_agent_host}" | grep '^HTTP/1.1 2' || sleep 5
+        curl -Is -u admin:admin "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/hosts/${_agent_host}" | grep '^HTTP/1.1 2' || sleep 5
     fi
-    curl -is -u admin:admin -X POST -H "X-Requested-By:ambari" "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_agent_host}" | grep '^HTTP/1.1 2' || return $?
+    curl -is -u admin:admin -X POST -H "X-Requested-By:ambari" "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/clusters/${_c}/hosts/${_agent_host}" | grep '^HTTP/1.1 2' || return $?
     # If no component at all, Ambari shows this node as heartbeat lost
-    curl -is -u admin:admin "http://${_ambari_host}:8080/api/v1/clusters/${_c}/services/AMBARI_METRICS/components/METRICS_MONITOR" | grep '^HTTP/1.1 2'
+    curl -is -u admin:admin "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/clusters/${_c}/services/AMBARI_METRICS/components/METRICS_MONITOR" | grep '^HTTP/1.1 2'
     if [ $? -eq 0 ]; then
         f_add_comp "${_agent_host}" "METRICS_MONITOR" "${_ambari_host}"
     fi
@@ -2044,9 +2046,9 @@ function f_ambari_set_repo() {
 
     local _stack="HDP" # for AMBARI-22565 repo_name change. TODO: need to support HDF etc.
 
-    _port_wait ${_ambari_host} 8080
+    _port_wait ${_ambari_host} ${r_AMBARI_PORT:-${g_AMBARI_PORT}}
     if [ $? -ne 0 ]; then
-        _error "Ambari is not running on ${_ambari_host} 8080"
+        _error "Ambari is not running on ${_ambari_host} ${r_AMBARI_PORT:-${g_AMBARI_PORT}}"
         return 1
     fi
 
@@ -2069,18 +2071,18 @@ function f_ambari_set_repo() {
     if [ -n "${r_AMBARI_VER}" ] && [[ "${r_AMBARI_VER}" =~ ^2\.[0-5]\. ]]; then
         # NOTE: should use redhat if centos
         if _isUrl "$_repo_url"; then
-            curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}' || return $?
+            curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_stack}-${_stack_version}" -d '{"Repositories":{"repo_name": "'${_stack}-${_stack_version}'", "base_url":"'${_repo_url}'","verify_base_url":true}}' || return $?
         fi
 
         if _isUrl "$_util_url"; then
             local _hdp_util_name="`echo $_util_url | grep -oP "HDP-UTILS-[\d\.]+"`"
-            curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_hdp_util_name}" -d '{"Repositories":{"repo_name": "'${_hdp_util_name}'", "base_url":"'${_util_url}'","verify_base_url":true}}' || return $?
+            curl -si -H "X-Requested-By: ambari" -X PUT -u admin:admin "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_hdp_util_name}" -d '{"Repositories":{"repo_name": "'${_hdp_util_name}'", "base_url":"'${_util_url}'","verify_base_url":true}}' || return $?
         fi
     else
         # https://docs.hortonworks.com/HDPDocuments/Ambari-2.6.0.0/bk_ambari-release-notes/content/ambari_relnotes-2.6.0.0-behavioral-changes.html
         # NOTE: Another workaround would be updating /var/lib/ambari-server/resources/stacks/${_stack}/${_stack_version}/repos/repoinfo.xml
         if _isUrl "$_repo_url" && [[ "${_repo_url}" =~ \.xml$ ]]; then
-            curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/version_definitions" -X POST -H 'X-Requested-By: ambari' -d '{"VersionDefinition":{"version_url":"'${_repo_url}'"}}' | grep -E '^HTTP/1.1 [45]'
+            curl -si -u admin:admin "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/version_definitions" -X POST -H 'X-Requested-By: ambari' -d '{"VersionDefinition":{"version_url":"'${_repo_url}'"}}' | grep -E '^HTTP/1.1 [45]'
         else
             _warn "${r_AMBARI_VER}: Ambari 2.6.x and higher need VDF file as URL. Trying to generate URL from hdp_urlinfo.json"
             # always get the latest
@@ -2090,11 +2092,11 @@ function f_ambari_set_repo() {
             local _vdf="`python -c 'import json;f=open("hdp_urlinfo.json");j=json.load(f);print j["'${_stack}-${_stack_version}'"]["manifests"]["'${_hdp_version}'"]["'${_os_type}'"]'`" || return $?
             [ -z "${_vdf} " ] && return 1
             # Upload the VDF definition
-            curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/version_definitions" -X POST -H 'X-Requested-By: ambari' -d '{"VersionDefinition":{"version_url":"'${_vdf}'"}}' | grep -E '^HTTP/1.1 [45]'
+            curl -si -u admin:admin "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/version_definitions" -X POST -H 'X-Requested-By: ambari' -d '{"VersionDefinition":{"version_url":"'${_vdf}'"}}' | grep -E '^HTTP/1.1 [45]'
         fi
 
         # NOTE: For already provisioned cluster
-        #curl -s -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_stack}-${_stack_version}" -o /tmp/repo_${_stack}-${_stack_version}.json || return $?
+        #curl -s -u admin:admin "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/stacks/${_stack}/versions/${_stack_version}/operating_systems/${_tmp_os_type}/repositories/${_stack}-${_stack_version}" -o /tmp/repo_${_stack}-${_stack_version}.json || return $?
         #grep -vw 'href' /tmp/repo_${_stack}-${_stack_version}.json > /tmp/repo_${_stack}-${_stack_version}_mod.json
         #if _isUrl "$_repo_url"; then
         #    sed -i.bak 's@/"base_url" : "http.\+/'${_stack}'/.*'${_os_type}'/.\+"@"base_url" : "'$_repo_url'"@g' /tmp/repo_${_stack}-${_stack_version}_mod.json
@@ -2104,7 +2106,7 @@ function f_ambari_set_repo() {
         #if _isUrl "$_util_url"; then
         #    sed -i.bak 's@/"base_url" : "http.\+-UTILS-.\+/'${_os_type}'.*"@"base_url" : "'$_util_url'"@g' /tmp/repo_${_stack}-${_stack_version}_mod.json
         #fi
-        #curl -si -u admin:admin "http://${_ambari_host}:8080/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1" -X PUT -H 'X-Requested-By: ambari' -d @/tmp/repo_${_stack}-${_stack_version}_mod.json || return $?
+        #curl -si -u admin:admin "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/stacks/${_stack}/versions/${_stack_version}/repository_versions/1" -X PUT -H 'X-Requested-By: ambari' -d @/tmp/repo_${_stack}-${_stack_version}_mod.json || return $?
     fi
     echo ""
 }
@@ -2149,7 +2151,7 @@ function f_repo_mount() {
 function f_services_start() {
     local __doc__="Request 'Start all' to Ambari via API"
     local _ambari_host="${1-$r_AMBARI_HOST}"
-    local _ambari_port="${2-8080}"
+    local _ambari_port="${2-${r_AMBARI_PORT:-${g_AMBARI_PORT}}}"
     local _is_stale_only="$3"
     local _c="`f_get_cluster_name ${_ambari_host}`" || return 1
     _info "Will start all services ..."
@@ -2158,7 +2160,7 @@ function f_services_start() {
       return 1
     fi
 
-    _port_wait "${_ambari_host}" "8080"
+    _port_wait "${_ambari_host}" "${r_AMBARI_PORT:-${g_AMBARI_PORT}}"
     _ambari_agent_wait "${_ambari_host}"
 
     if _isYes "$_is_stale_only"; then
@@ -2176,8 +2178,8 @@ function f_add_comp() {
     local _ambari_host="${3-$r_AMBARI_HOST}"
     local _c="`f_get_cluster_name ${_ambari_host}`" || return 1
 
-    curl -si -u admin:admin -H "X-Requested-By:ambari" -X POST -d '{"host_components" : [{"HostRoles":{"component_name":"'${_comp}'"}}]}' "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
-    curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"HostRoles": {"state": "INSTALLED"}}' "http://${_ambari_host}:8080/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
+    curl -si -u admin:admin -H "X-Requested-By:ambari" -X POST -d '{"host_components" : [{"HostRoles":{"component_name":"'${_comp}'"}}]}' "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
+    curl -si -u admin:admin -H "X-Requested-By:ambari" -X PUT -d '{"HostRoles": {"state": "INSTALLED"}}' "http://${_ambari_host}:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/api/v1/clusters/${_c}/hosts/${_host}/host_components/${_comp}"
     echo ""
 }
 
@@ -2186,7 +2188,7 @@ function f_service() {
     local _service="$1"
     local _action="$2"
     local _ambari_host="${3-$r_AMBARI_HOST}"
-    local _port="${4-8080}"
+    local _port="${4-${r_AMBARI_PORT:-${g_AMBARI_PORT}}}"
     local _cluster="${5}"
     local _maintenance_mode="OFF"
     [ -z "${_cluster}" ] && _cluster="`f_get_cluster_name ${_ambari_host}`" || return 1
@@ -2250,7 +2252,7 @@ function _ambari_agent_wait() {
 
     for i in `seq 1 10`; do
         _u=$(_ambari_query_sql "select case when (select count(*) from hoststate)=0 then -1 ELSE (select count(*) from hoststate where health_status ilike '%HEALTHY%') end;" "$_db_host")
-        #curl -s --head "http://$r_AMBARI_HOST:8080/" | grep '200 OK'
+        #curl -s --head "http://$r_AMBARI_HOST:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/" | grep '200 OK'
         if [ $_how_many -le $_u ]; then
             return 0
         elif [ -1 -eq $_u ]; then
@@ -2394,8 +2396,8 @@ function p_host_setup() {
         _log "INFO" "Starting f_ambari_server_start"
         f_ambari_server_start &>> /tmp/p_host_setup.log || return $?
 
-        _log "INFO" "Waiting for $r_AMBARI_HOST 8080 ready..."
-        _port_wait "$r_AMBARI_HOST" "8080" &>> /tmp/p_host_setup.log || return $?
+        _log "INFO" "Waiting for $r_AMBARI_HOST ${r_AMBARI_PORT:-${g_AMBARI_PORT}} ready..."
+        _port_wait "$r_AMBARI_HOST" "${r_AMBARI_PORT:-${g_AMBARI_PORT}}" &>> /tmp/p_host_setup.log || return $?
 
         _log "INFO" "Starting f_run_cmd_on_nodes ambari-agent reset $r_AMBARI_HOST"
         f_run_cmd_on_nodes "ambari-agent reset $r_AMBARI_HOST" &>> /tmp/p_host_setup.log
@@ -2429,7 +2431,7 @@ function p_host_setup() {
             fi
         fi
 
-        f_port_forward 8080 $r_AMBARI_HOST 8080 "Y" &>> /tmp/p_host_setup.log
+        f_port_forward ${r_AMBARI_PORT:-${g_AMBARI_PORT}} ${r_AMBARI_HOST} ${r_AMBARI_PORT:-${g_AMBARI_PORT}} "Y" &>> /tmp/p_host_setup.log
     fi
 
     f_port_forward_ssh_on_nodes
@@ -2942,7 +2944,7 @@ function f_vnc_setup() {
     fi
 
     apt-get install -y xfce4 xfce4-goodies firefox tightvncserver autocutsel
-
+    # TODO: also disable screensaver and sleep (eg: /home/hajime/.xscreensaver
     su - $_user -c 'expect <<EOF
 spawn "vncpasswd"
 expect "Password:"
