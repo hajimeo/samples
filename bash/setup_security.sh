@@ -463,6 +463,8 @@ function _hadoop_ssl_per_node() {
     ssh -q root@${_node} 'for l in `ls -d /usr/hdp/current/*/conf`; do ln -s '${g_CLIENT_TRUST_LOCATION%/}'/'${g_CLIENT_TRUSTSTORE_FILE}' ${l%/}/ranger-plugin-truststore.jks 2>/dev/null; done'
     ssh -q root@${_node} 'for l in `ls -d /usr/hdp/current/*/conf`; do ln -s '${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE}' ${l%/}/ranger-plugin-keystore.jks 2>/dev/null; done'
     ssh -q root@${_node} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
+    # yum -y install ca-certificates
+    ssh -q root@${_node} "which update-ca-trust && cp -f ${g_SERVER_KEY_LOCATION%/}/rootCA.pem /etc/pki/ca-trust/source/anchors/ && update-ca-trust force-enable && update-ca-trust extract && update-ca-trust check;"
 }
 
 function _hadoop_ssl_per_node_inner() {
