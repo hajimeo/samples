@@ -500,10 +500,10 @@ function _hadoop_ssl_commands_per_node() {
     ${_ssh} "${_keytool} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};${_keytool} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias ${_node} -import -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client.crt -noprompt -storepass ${_password}"
     # Step8 (optional): if the java default truststore (cacerts) path is given, also import the cert (and doesn't care if cert already exists)
     if [ ! -z "/etc/pki/java/cacerts" ]; then
-        ${_ssh} "${_keytool} -keystore /etc/pki/java/cacerts -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
+        ${_ssh} "${_keytool} -delete -keystore /etc/pki/java/cacerts -alias hadoopRootCA -noprompt -storepass changeit;${_keytool} -import -keystore /etc/pki/java/cacerts -alias hadoopRootCA -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
     fi
-    if [ ! -z "$_java_default_truststore_path" ]; then
-        ${_ssh} "${_keytool} -keystore $_java_default_truststore_path -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
+    if [ ! -z "${_java_default_truststore_path}" ]; then
+        ${_ssh} "${_keytool} -delete -keystore ${_java_default_truststore_path} -alias hadoopRootCA -noprompt -storepass changeit;${_keytool} -import -keystore ${_java_default_truststore_path} -alias hadoopRootCA -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
     fi
 }
 
@@ -1188,7 +1188,7 @@ function f_ssl_self_signed_cert() {
 }
 
 function f_ssl_internal_CA_setup() {
-    local __doc__="DEPRECATED: Setup Internal CA for generating self-signed certificate"
+    local __doc__="Setup Internal CA for generating self-signed certificate"
     local _dname="$1"
     local _password="$2"
     local _domain_suffix="${3-$r_DOMAIN_SUFFIX}"
@@ -1254,6 +1254,7 @@ function _ssl_openssl_cnf_generate() {
     echo keyUsage = nonRepudiation, digitalSignature, keyEncipherment, dataEncipherment, keyAgreement >> "${_work_dir%/}/openssl.cnf"
     echo extendedKeyUsage=emailProtection,clientAuth >> "${_work_dir%/}/openssl.cnf"
     echo [ ${_domain_suffix#.} ] >> "${_work_dir%/}/openssl.cnf"
+    # Need this for Chrome
     echo subjectAltName = DNS:${_domain_suffix#.},DNS:*${_domain_suffix} >> "${_work_dir%/}/openssl.cnf"
 }
 
