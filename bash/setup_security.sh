@@ -338,11 +338,18 @@ function f_ssl_hadoop() {
     local _how_many="${4:-$r_NUM_NODES}"
     local _start_from="${5:-$r_NODE_START_NUM}"
     local _domain_suffix="${6:-${r_DOMAIN_SUFFIX:-.`hostname -s`.localdomain}}"
-    local _openssl_cnf="${7:-/etc/ssl/openssl.cnf}"
+    local _openssl_cnf="${7}"
     local _no_updating_ambari_config="${8:-$r_NO_UPDATING_AMBARI_CONFIG}"
 
-    openssl req -newkey rsa:2048 -days 3650 -nodes -x509 -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" \
-        -extensions SAN -config <(cat "${_openssl_cnf}" <(printf "[SAN]\nsubjectAltName='DNS:*.${_domain_suffix#.}'")) \
+    if [ ! -s "${_openssl_cnf}" ]; then
+        local _dname="${4:-OU=Lab, O=Osakos, L=Brisbane, ST=QLD, C=AU}"
+        _ssl_openssl_cnf_generate "${_dname}" "${_password}" "${_domain_suffix}" "./"
+        [ ! -s "./openssl.cnf" ] && return 1
+        _openssl_cnf=./openssl.cnf
+    fi
+
+    openssl req -newkey rsa:2048 -days 3650 -nodes -x509 -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}"
+        -extensions SAN -config ${_openssl_cnf} \
         -keyout ./server.${_domain_suffix#.}.key -out ./server.${_domain_suffix#.}.crt
 
     mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
