@@ -352,7 +352,7 @@ function f_ssl_hadoop() {
         _info "rootCA.key exists. Reusing..."
     else
         # Step1: create my root CA (key) and cert (pem)
-        openssl genrsa -out ./rootCA.key 4096 || return $?
+        openssl genrsa -aes256 -out ./rootCA.key 2048 || return $?
 
         # (Optional) For Ambari 2-way SSL
         #[ -r ./ca.config ] || curl -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/ca.config
@@ -365,7 +365,7 @@ function f_ssl_hadoop() {
         # ref: https://stackoverflow.com/questions/50788043/how-to-trust-self-signed-localhost-certificates-on-linux-chrome-and-firefox
         openssl req -x509 -new -sha256 -days 3650 -key ./rootCA.key -out ./rootCA.pem \
             -config ${_openssl_cnf} -extensions v3_ca \
-            -subj "/C=AU/ST=QLD/O=HajimeTest/CN=RootCA.${_domain_suffix#.}" \
+            -subj "/CN=RootCA.${_domain_suffix#.}" \
             -passin "pass:$_password" || return $?
         chmod 600 ./rootCA.*
         if [ -d /usr/local/share/ca-certificates ]; then
