@@ -481,10 +481,11 @@ function _hadoop_ssl_commands_per_node() {
     ${_ssh} "mv -f ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null"
     ${_ssh} "mv -f ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE}.$$.bak &>/dev/null"
     # Step4: On each node, create private keys for this node (one is as server key, another is as client key)
-    ${_ssh} "${_keytool} -genkey -alias ${_node} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
+    ${_ssh} "${_keytool} -genkey -alias ${_node} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}" || return $?
     ${_ssh} "${_keytool} -genkey -alias ${_node} -keyalg RSA -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
     # Step5: On each node, create CSRs
-    ${_ssh} "${_keytool} -certreq -alias ${_node} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/${_node}.csr -storepass ${_password} -ext SAN=DNS:*.`hostname -s`.localdomain"
+    # TODO: https://stackoverflow.com/questions/33827789/self-signed-certificate-dnsname-components-must-begin-with-a-letter , hence *expecting* ${_node} is FQDN
+    ${_ssh} "${_keytool} -certreq -alias ${_node} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/${_node}.csr -storepass ${_password} -ext SAN=DNS:${_node}" || return $?
     ${_ssh} "${_keytool} -certreq -alias ${_node} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client.csr -storepass ${_password}"
     # Download into (Ubuntu) host node
     scp root@${_node}:${g_SERVER_KEY_LOCATION%/}/${_node}.csr ./ || return $?
