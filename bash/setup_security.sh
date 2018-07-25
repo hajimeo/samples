@@ -338,7 +338,7 @@ function f_ssl_hadoop() {
     local _how_many="${4:-$r_NUM_NODES}"
     local _start_from="${5:-$r_NODE_START_NUM}"
     local _domain_suffix="${6:-${r_DOMAIN_SUFFIX:-.`hostname -s`.localdomain}}"
-    local _openssl_cnf="${7}"
+    local _openssl_cnf="${7:-./openssl.cnf}"
     local _no_updating_ambari_config="${8:-$r_NO_UPDATING_AMBARI_CONFIG}"
 
     if [ ! -s "${_openssl_cnf}" ]; then
@@ -348,12 +348,39 @@ function f_ssl_hadoop() {
         _openssl_cnf=./openssl.cnf
     fi
 
-    openssl req -newkey rsa:2048 -days 3650 -nodes -x509 -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" \
-        -extensions SAN -config ${_openssl_cnf} \
-        -keyout ./server.${_domain_suffix#.}.key -out ./server.${_domain_suffix#.}.crt
+    if [ -s ./rootCA.key ]; then
+        _info "rootCA.key exists. Reusing..."
+    else
+        # Step1: create my root CA (key) and cert (pem)
+        openssl genrsa -out ./rootCA.key 4096 || return $?
 
-    mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
+        # (Optional) For Ambari 2-way SSL
+        #[ -r ./ca.config ] || curl -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/ca.config
+        #mkdir -p ./db/certs
+        #mkdir -p ./db/newcerts
+        #openssl req -passin pass:${_password} -new -key ./rootCA.key -out ./rootCA.csr -batch
+        #openssl ca -out rootCA.crt -days 1095 -keyfile rootCA.key -key ${_password} -selfsign -extensions jdk7_ca -config ./ca.config -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.localdomain" -batch -infiles ./rootCA.csr
+        #openssl pkcs12 -export -in ./rootCA.crt -inkey ./rootCA.key -certfile ./rootCA.crt -out ./keystore.p12 -password pass:${_password} -passin pass:${_password}
+
+        # ref: https://stackoverflow.com/questions/50788043/how-to-trust-self-signed-localhost-certificates-on-linux-chrome-and-firefox
+        openssl req -x509 -new -sha256 -days 3650 -key ./rootCA.key -out ./rootCA.pem \
+            -config ${_openssl_cnf} -extensions v3_ca
+            -subj "/C=AU/ST=QLD/O=HajimeTest/CN=RootCA.${_domain_suffix#.}" \
+            -passin "pass:$_password" || return $?
+        chmod 600 ./rootCA.*
+        if [ -d /usr/local/share/ca-certificates ]; then
+            which update-ca-certificates && cp -f ./rootCA.pem /usr/local/share/ca-certificates && update-ca-certificates
+            #openssl x509 -in /etc/ssl/certs/ca-certificates.crt -noout -subject
+        fi
+    fi
+
+    # Step2: create server key and certificate
+    openssl genrsa -out ./server.${_domain_suffix#.}.key 2048 || return $?
+    openssl req -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" -extensions v3_req -sha256 -new -key ./server.${_domain_suffix#.}.key -out ./server.${_domain_suffix#.}.csr || return $?
+    openssl x509 -req -extensions v3_req -days 3650 -sha256 -in ./server.${_domain_suffix#.}.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ./server.${_domain_suffix#.}.crt -extfile ${_openssl_cnf}
+
     # Step3: Create a client truststore file used by all clients/nodes and a server keystore
+    mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
     keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias hadoopAllCert -import -file ./server.${_domain_suffix#.}.crt -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD} -noprompt || return $?
     openssl pkcs12 -export -in ./server.${_domain_suffix#.}.crt -inkey ./server.${_domain_suffix#.}.key -certfile ./server.${_domain_suffix#.}.crt -out ./${g_KEYSTORE_FILE_P12} -passin "pass:${_password}" -passout "pass:${_password}" || return $?
     keytool -importkeystore -srckeystore ./${g_KEYSTORE_FILE_P12} -srcstoretype pkcs12 -srcstorepass ${_password} -destkeystore ./${g_KEYSTORE_FILE} -deststoretype JKS -deststorepass ${_password} || return $?
@@ -378,7 +405,8 @@ function f_ssl_hadoop() {
 }
 
 function f_ssl_hadoop_old() {
-    local __doc__="Setup SSL for hadoop https://community.hortonworks.com/articles/92305/how-to-transfer-file-using-secure-webhdfs-in-distc.html"
+    local __doc__="DEPRECATED: Setup SSL for hadoop https://community.hortonworks.com/articles/92305/how-to-transfer-file-using-secure-webhdfs-in-distc.html"
+    # This causes "Windows does not have enough information to verify this certificate"
     local _password="${1:-${g_DEFAULT_PASSWORD-hadoop}}"
     local _ambari_host="${2:-$r_AMBARI_HOST}"
     local _ambari_port="${3:-8080}"
@@ -505,9 +533,10 @@ ${_java_home%/}/bin/keytool -import -keystore ${_java_home%/}/jre/lib/security/c
     ${_ssh} 'for l in `ls -d /usr/hdp/current/*/conf`; do ln -s '${g_CLIENT_TRUST_LOCATION%/}'/'${g_CLIENT_TRUSTSTORE_FILE}' ${l%/}/ranger-plugin-truststore.jks 2>/dev/null; done'
     ${_ssh} 'for l in `ls -d /usr/hdp/current/*/conf`; do ln -s '${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE}' ${l%/}/ranger-plugin-keystore.jks 2>/dev/null; done'
     ${_ssh} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
-    #yum -y install ca-certificates
+    #yum install ca-certificates -y
     # TODO: not sure if using server.${_domain_suffix#.}.crt is OK
     ${_ssh} "which update-ca-trust && cp -f ${g_SERVER_KEY_LOCATION%/}/server.${_domain_suffix#.}.crt /etc/pki/ca-trust/source/anchors/ && update-ca-trust force-enable && update-ca-trust extract && update-ca-trust check;"
+    # ls -l /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt
 }
 
 function _hadoop_ssl_per_node_old() {
@@ -1323,14 +1352,22 @@ function _ssl_openssl_cnf_generate() {
         echo ${_a} >> "${_work_dir%/}/openssl.cnf"
     done
     echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
-    echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"
+    #echo [EMAIL PROTECTED] >> "${_work_dir%/}/openssl.cnf"   # can't remember why put twice
+    echo [ v3_ca ] >> "${_work_dir%/}/openssl.cnf"
+    echo "subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always,issuer
+basicConstraints = critical, CA:TRUE, pathlen:3
+keyUsage = critical, cRLSign, keyCertSign
+nsCertType = sslCA, emailCA" >> "${_work_dir%/}/openssl.cnf"
     echo [ v3_req ] >> "${_work_dir%/}/openssl.cnf"
-    echo basicConstraints = critical,CA:FALSE >> "${_work_dir%/}/openssl.cnf"
-    echo keyUsage = nonRepudiation, digitalSignature, keyEncipherment, dataEncipherment, keyAgreement >> "${_work_dir%/}/openssl.cnf"
-    echo extendedKeyUsage=emailProtection,clientAuth >> "${_work_dir%/}/openssl.cnf"
-    echo [ ${_domain_suffix#.} ] >> "${_work_dir%/}/openssl.cnf"
+    echo "basicConstraints = CA:FALSE
+keyUsage = nonRepudiation, digitalSignature, keyEncipherment
+#extendedKeyUsage=serverAuth
+subjectAltName = @alt_names" >> "${_work_dir%/}/openssl.cnf"
     # Need this for Chrome
-    echo subjectAltName = DNS:${_domain_suffix#.},DNS:*${_domain_suffix} >> "${_work_dir%/}/openssl.cnf"
+    echo "[ alt_names ]
+DNS.1 = ${_domain_suffix#.}
+DNS.2 = *.${_domain_suffix#.}" >> "${_work_dir%/}/openssl.cnf"
 }
 
 function f_ambari_configs_py_password() {
