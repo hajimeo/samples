@@ -341,17 +341,9 @@ function f_ssl_hadoop() {
     local _openssl_cnf="${7:-/etc/ssl/openssl.cnf}"
     local _no_updating_ambari_config="${8:-$r_NO_UPDATING_AMBARI_CONFIG}"
 
-    openssl req \
-      -newkey rsa:2048 \
-      -days 3650 \
-      -nodes \
-      -x509 \
-      -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" \
-      -extensions SAN \
-      -config <( cat "${_openssl_cnf}" \
-        <(printf "[SAN]\nsubjectAltName='DNS:*.${_domain_suffix#.}'")) \
-      -keyout ./server.${_domain_suffix#.}.key \
-      -out ./server.${_domain_suffix#.}.crt
+    openssl req -newkey rsa:2048 -days 3650 -nodes -x509 -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" \
+        -extensions SAN -config <(cat "${_openssl_cnf}" <(printf "[SAN]\nsubjectAltName='DNS:*.${_domain_suffix#.}'")) \
+        -keyout ./server.${_domain_suffix#.}.key -out ./server.${_domain_suffix#.}.crt
 
     mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
     # Step3: Create a client truststore file used by all clients/nodes and a server keystore
