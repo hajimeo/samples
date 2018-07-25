@@ -364,7 +364,7 @@ function f_ssl_hadoop() {
 
         # ref: https://stackoverflow.com/questions/50788043/how-to-trust-self-signed-localhost-certificates-on-linux-chrome-and-firefox
         openssl req -x509 -new -sha256 -days 3650 -key ./rootCA.key -out ./rootCA.pem \
-            -config ${_openssl_cnf} -extensions v3_ca
+            -config ${_openssl_cnf} -extensions v3_ca \
             -subj "/C=AU/ST=QLD/O=HajimeTest/CN=RootCA.${_domain_suffix#.}" \
             -passin "pass:$_password" || return $?
         chmod 600 ./rootCA.*
@@ -520,22 +520,21 @@ function _hadoop_ssl_per_node() {
 
     ${_ssh} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}" || return $?
     ${_ssh} "mkdir -m 755 -p ${g_CLIENT_KEY_LOCATION%/}"
-    scp ./${g_KEYSTORE_FILE} ./server.${_domain_suffix#.}.{crt,key} root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
+    scp ./${g_KEYSTORE_FILE} ./server.${_domain_suffix#.}.{crt,key} ./rootCA.pem root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
     scp ./${g_CLIENT_TRUSTSTORE_FILE} root@${_node}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
 
     # Step8 (optional): if the java default truststore (cacerts) path is given, also import the cert (and doesn't care if cert already exists)
-    ${_ssh} "${_java_home%/}/bin/keytool -delete -keystore /etc/pki/java/cacerts -alias hadoopRootCA -noprompt -storepass changeit
-${_java_home%/}/bin/keytool -import -keystore /etc/pki/java/cacerts -alias hadoopRootCA -file ${g_SERVER_KEY_LOCATION%/}/server.${_domain_suffix#.}.crt -noprompt -storepass changeit"
-    ${_ssh} "${_java_home%/}/bin/keytool -delete -keystore ${_java_home%/}/jre/lib/security/cacerts -alias hadoopRootCA -noprompt -storepass changeit
-${_java_home%/}/bin/keytool -import -keystore ${_java_home%/}/jre/lib/security/cacerts -alias hadoopRootCA -file ${g_SERVER_KEY_LOCATION%/}/server.${_domain_suffix#.}.crt -noprompt -storepass changeit"
+    ${_ssh} "${_java_home%/}/bin/keytool -delete -keystore /etc/pki/java/cacerts -alias hadoopRootCA -noprompt -storepass changeit &>/dev/null
+${_java_home%/}/bin/keytool -import -keystore /etc/pki/java/cacerts -alias hadoopRootCA -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
+    ${_ssh} "${_java_home%/}/bin/keytool -delete -keystore ${_java_home%/}/jre/lib/security/cacerts -alias hadoopRootCA -noprompt -storepass changeit &>/dev/null
+${_java_home%/}/bin/keytool -import -keystore ${_java_home%/}/jre/lib/security/cacerts -alias hadoopRootCA -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
 
     # TODO: For ranger. if file exist, need to import the certificate. Also if not kerberos, two way SSL won't work because of non 'usr_client' extension
     ${_ssh} 'for l in `ls -d /usr/hdp/current/*/conf`; do ln -s '${g_CLIENT_TRUST_LOCATION%/}'/'${g_CLIENT_TRUSTSTORE_FILE}' ${l%/}/ranger-plugin-truststore.jks 2>/dev/null; done'
     ${_ssh} 'for l in `ls -d /usr/hdp/current/*/conf`; do ln -s '${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE}' ${l%/}/ranger-plugin-keystore.jks 2>/dev/null; done'
     ${_ssh} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
     #yum install ca-certificates -y
-    # TODO: not sure if using server.${_domain_suffix#.}.crt is OK
-    ${_ssh} "which update-ca-trust && cp -f ${g_SERVER_KEY_LOCATION%/}/server.${_domain_suffix#.}.crt /etc/pki/ca-trust/source/anchors/ && update-ca-trust force-enable && update-ca-trust extract && update-ca-trust check;"
+    ${_ssh} "which update-ca-trust && cp -f ${g_SERVER_KEY_LOCATION%/}/rootCA.pem /etc/pki/ca-trust/source/anchors/ && update-ca-trust force-enable && update-ca-trust extract && update-ca-trust check;"
     # ls -l /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt
 }
 
