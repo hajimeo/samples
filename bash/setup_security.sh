@@ -31,12 +31,12 @@
 #
 # Example 3: How to set up SSL on hadoop component (requires JRE/JDK for keytool command)
 #   mkdir ssl_setup; cd ssl_setup
-#   f_ssl_hadoop
+#   r_NO_UPDATING_AMBARI_CONFIG=Y f_ssl_hadoop
 #
 #   If Sandbox:
 #   NOTE: sandbox-hdp.hortonworks.com needs to be resolved to a proper IP, also password less scp/ssh required
 #   mkdir ssl_setup; cd ssl_setup
-#   r_NO_UPDATING_AMBARI_CONFIG=Y f_ssl_hadoop "" "" "sandbox-hdp.hortonworks.com" "8080" "sandbox-hdp.hortonworks.com"
+#   f_ssl_hadoop "" "sandbox-hdp.hortonworks.com" "8080" "sandbox-hdp.hortonworks.com"
 #
 
 ### OS/shell settings
@@ -332,14 +332,13 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
 
 function f_ssl_hadoop() {
     local __doc__="Setup SSL for hadoop https://community.hortonworks.com/articles/92305/how-to-transfer-file-using-secure-webhdfs-in-distc.html"
-    local _dname_extra="${1:-OU=Lab, O=Osakos, L=Brisbane, ST=QLD, C=AU}"
-    local _password="${2:-${g_DEFAULT_PASSWORD-hadoop}}"
-    local _ambari_host="${3:-$r_AMBARI_HOST}"
-    local _ambari_port="${4:-8080}"
-    local _how_many="${5:-$r_NUM_NODES}"
-    local _start_from="${6:-$r_NODE_START_NUM}"
-    local _domain_suffix="${7:-$r_DOMAIN_SUFFIX}"
-    local _no_updating_ambari_config="${8:-$r_NO_UPDATING_AMBARI_CONFIG}"
+    local _password="${1:-${g_DEFAULT_PASSWORD-hadoop}}"
+    local _ambari_host="${2:-$r_AMBARI_HOST}"
+    local _ambari_port="${3:-8080}"
+    local _how_many="${4:-$r_NUM_NODES}"
+    local _start_from="${5:-$r_NODE_START_NUM}"
+    local _domain_suffix="${6:-$r_DOMAIN_SUFFIX}"
+    local _no_updating_ambari_config="${7:-$r_NO_UPDATING_AMBARI_CONFIG}"
 
     if [ -s ./rootCA.key ]; then
         _info "rootCA.key exists. Reusing..."
@@ -375,12 +374,12 @@ function f_ssl_hadoop() {
         local _hostnames="$_how_many"
         _info "Copying jks to $_hostnames ..."
         for i in  `echo $_hostnames | sed 's/ /\n/g'`; do
-            _hadoop_ssl_per_node "$i" "${_java_home}" "./$g_KEYSTORE_FILE" || return $?
+            _hadoop_ssl_per_node "$i" "${_java_home}" "./$g_KEYSTORE_FILE" "${_password}" || return $?
         done
     else
         _info "Copying jks to all nodes..."
         for i in `_docker_seq "$_how_many" "$_start_from"`; do
-            _hadoop_ssl_per_node "node${i}${_domain_suffix}" "${_java_home}" "./$g_KEYSTORE_FILE" || return $?
+            _hadoop_ssl_per_node "node${i}${_domain_suffix}" "${_java_home}" "./$g_KEYSTORE_FILE" "${_password}" || return $?
         done
     fi
 
@@ -440,6 +439,7 @@ function _hadoop_ssl_per_node() {
     local _node="$1"
     local _java_home="$2"
     local _local_keystore_path="$3"
+    local _password="${4:-${g_DEFAULT_PASSWORD-hadoop}}"
 
     ssh -q root@${_node} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}" || return $?
     ssh -q root@${_node} "mkdir -m 755 -p ${g_CLIENT_KEY_LOCATION%/}"
@@ -447,7 +447,7 @@ function _hadoop_ssl_per_node() {
 
     if [ ! -s "${_local_keystore_path}" ]; then
         _info "${_local_keystore_path} doesn't exist in local, so that recreate and push to nodes..."
-        _hadoop_ssl_commands_per_node "$_node" "$_java_home"
+        _hadoop_ssl_commands_per_node "$_node" "$_java_home" "${_password}"
     else
         scp ./rootCA.pem ${_local_keystore_path} root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
     fi
@@ -463,6 +463,9 @@ function _hadoop_ssl_per_node() {
 function _hadoop_ssl_commands_per_node() {
     local _node="$1"
     local _java_home="$2"
+    local _password="${3:-${g_DEFAULT_PASSWORD-hadoop}}"
+    local _dname_extra="${4:-OU=Lab, O=Osakos, L=Brisbane, ST=QLD, C=AU}"
+
     local _java_default_truststore_path="${_java_home%/}/jre/lib/security/cacerts"
     # TODO: assuming rootCA.xxx file names
     # TODO: convert server.keystore.jks to .p12
