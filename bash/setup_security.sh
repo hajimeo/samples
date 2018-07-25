@@ -342,17 +342,18 @@ function f_ssl_hadoop() {
     local _no_updating_ambari_config="${8:-$r_NO_UPDATING_AMBARI_CONFIG}"
 
     if [ ! -s "${_openssl_cnf}" ]; then
-        local _dname="${4:-OU=Lab, O=Osakos, L=Brisbane, ST=QLD, C=AU}"
-        _ssl_openssl_cnf_generate "${_dname}" "${_password}" "${_domain_suffix}" "./"
-        [ ! -s "./openssl.cnf" ] && return 1
-        _openssl_cnf=./openssl.cnf
+        curl -s -o "${_openssl_cnf}" https://raw.githubusercontent.com/hajimeo/samples/master/misc/openssl.cnf || return $?
+    echo "
+[ alt_names ]
+DNS.1 = ${_domain_suffix#.}
+DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
     fi
 
     if [ -s ./rootCA.key ]; then
         _info "rootCA.key exists. Reusing..."
     else
-        # Step1: create my root CA (key) and cert (pem)
-        openssl genrsa -aes256 -out ./rootCA.key 2048 || return $?
+        # Step1: create my root CA (key) and cert (pem) TODO: -aes256 otherwise key is not protected
+        openssl genrsa -out ./rootCA.key 2048 || return $?
 
         # (Optional) For Ambari 2-way SSL
         #[ -r ./ca.config ] || curl -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/ca.config
@@ -377,7 +378,7 @@ function f_ssl_hadoop() {
     # Step2: create server key and certificate
     openssl genrsa -out ./server.${_domain_suffix#.}.key 2048 || return $?
     openssl req -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" -extensions v3_req -sha256 -new -key ./server.${_domain_suffix#.}.key -out ./server.${_domain_suffix#.}.csr || return $?
-    openssl x509 -req -extensions v3_req -days 3650 -sha256 -in ./server.${_domain_suffix#.}.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ./server.${_domain_suffix#.}.crt -extfile ${_openssl_cnf}
+    openssl x509 -req -extensions v3_req -days 3650 -sha256 -in ./server.${_domain_suffix#.}.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ./server.${_domain_suffix#.}.crt -extfile ${_openssl_cnf} -passin "pass:$_password"
 
     # Step3: Create a client truststore file used by all clients/nodes and a server keystore
     mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
