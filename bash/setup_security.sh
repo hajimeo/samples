@@ -357,7 +357,7 @@ function f_ssl_hadoop() {
 
         # Step2: create root CA's pem
         openssl req -x509 -new -key ./rootCA.key -days 3650 -out ./rootCA.pem \
-            -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.localdomain"
+            -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.localdomain" \
             -passin "pass:$_password" || return $?
         chmod 600 ./rootCA.*
         if [ -d /usr/local/share/ca-certificates ]; then
