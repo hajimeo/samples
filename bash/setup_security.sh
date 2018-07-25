@@ -339,8 +339,7 @@ function f_ssl_hadoop() {
     local _how_many="${5:-$r_NUM_NODES}"
     local _start_from="${6:-$r_NODE_START_NUM}"
     local _domain_suffix="${7:-$r_DOMAIN_SUFFIX}"
-    local _use_wildcard_cert="${8:-N}" # TODO: getting "hostname mismatch"
-    local _no_updating_ambari_config="${9:-$r_NO_UPDATING_AMBARI_CONFIG}"
+    local _no_updating_ambari_config="${8:-$r_NO_UPDATING_AMBARI_CONFIG}"
 
     if [ -s ./rootCA.key ]; then
         _info "rootCA.key exists. Reusing..."
@@ -353,29 +352,23 @@ function f_ssl_hadoop() {
         #mkdir -p ./db/certs
         #mkdir -p ./db/newcerts
         #openssl req -passin pass:${_password} -new -key ./rootCA.key -out ./rootCA.csr -batch
-        #openssl ca -out rootCA.crt -days 1095 -keyfile rootCA.key -key ${_password} -selfsign -extensions jdk7_ca -config ./ca.config -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.osakos.com" -batch -infiles ./rootCA.csr
+        #openssl ca -out rootCA.crt -days 1095 -keyfile rootCA.key -key ${_password} -selfsign -extensions jdk7_ca -config ./ca.config -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.localdomain" -batch -infiles ./rootCA.csr
         #openssl pkcs12 -export -in ./rootCA.crt -inkey ./rootCA.key -certfile ./rootCA.crt -out ./keystore.p12 -password pass:${_password} -passin pass:${_password}
 
         # Step2: create root CA's pem
-        openssl req -x509 -new -key ./rootCA.key -days 1095 -out ./rootCA.pem -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.osakos.com" -passin "pass:$_password" || return $?
+        openssl req -x509 -new -key ./rootCA.key -days 3650 -out ./rootCA.pem \
+            -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.localdomain"
+            -passin "pass:$_password" || return $?
         chmod 600 ./rootCA.*
+        if [ -d /usr/local/share/ca-certificates ]; then
+            which update-ca-certificates && cp -f ./rootCA.pem /usr/local/share/ca-certificates && update-ca-certificates
+            openssl x509 -in /etc/ssl/certs/ca-certificates.crt -noout -subject
+        fi
     fi
 
     mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
     # Step3: Create a truststore file used by all clients/nodes
     keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias CARoot -import -file ./rootCA.pem -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD} -noprompt || return $?
-
-    # Note: using wildcard certificate doesn't work via Apache2 proxy
-    if [[ "$_use_wildcard_cert" =~ (^y|^Y) ]]; then
-        # Step4: Generate a wildcard key/cert
-        _hadoop_ssl_use_wildcard "$_domain_suffix" "./rootCA.key" "./rootCA.pem" "selfsinged-wildcard" "$_password" || return $?
-        if [ ! -s ./selfsinged-wildcard.jks ]; then
-            _error "Couldn't generate ./selfsinged-wildcard.jks"
-            return 1
-        fi
-        cp -p ./selfsinged-wildcard.jks ./$g_KEYSTORE_FILE
-    fi
-
     local _java_home="`ssh -q root@$_ambari_host "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
 
     if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
@@ -450,13 +443,13 @@ function _hadoop_ssl_per_node() {
 
     ssh -q root@${_node} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}" || return $?
     ssh -q root@${_node} "mkdir -m 755 -p ${g_CLIENT_KEY_LOCATION%/}"
-    scp ./$g_CLIENT_TRUSTSTORE_FILE root@${_node}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
+    scp ./${g_CLIENT_TRUSTSTORE_FILE} root@${_node}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
 
-    if [ ! -s "$_local_keystore_path" ]; then
-        _info "$_local_keystore_path doesn't exist in local, so that recreate and push to nodes..."
-        _hadoop_ssl_per_node_inner "$_node" "$_java_home"
+    if [ ! -s "${_local_keystore_path}" ]; then
+        _info "${_local_keystore_path} doesn't exist in local, so that recreate and push to nodes..."
+        _hadoop_ssl_commands_per_node "$_node" "$_java_home"
     else
-        scp ./rootCA.pem $_local_keystore_path root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
+        scp ./rootCA.pem ${_local_keystore_path} root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
     fi
 
     # TODO: For ranger. if file exist, need to import the certificate. Also if not kerberos, two way SSL won't work because of non 'usr_client' extension
@@ -467,7 +460,7 @@ function _hadoop_ssl_per_node() {
     ssh -q root@${_node} "which update-ca-trust && cp -f ${g_SERVER_KEY_LOCATION%/}/rootCA.pem /etc/pki/ca-trust/source/anchors/ && update-ca-trust force-enable && update-ca-trust extract && update-ca-trust check;"
 }
 
-function _hadoop_ssl_per_node_inner() {
+function _hadoop_ssl_commands_per_node() {
     local _node="$1"
     local _java_home="$2"
     local _java_default_truststore_path="${_java_home%/}/jre/lib/security/cacerts"
@@ -479,13 +472,18 @@ function _hadoop_ssl_per_node_inner() {
     if [ -n "${_java_home}" ]; then
         _keytool="${_java_home%/}/bin/keytool"
     fi
+    local _ssh="ssh -q root@${_node}"
 
-    # Step4: On each node, create a privatekey for the node
-    ssh -q root@${_node} "mv -f ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null; ${_keytool} -genkey -alias ${_node} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
-    ssh -q root@${_node} "mv -f ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE}.$$.bak &>/dev/null; ${_keytool} -genkey -alias ${_node} -keyalg RSA -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
-    # Step5: On each node, create a CSR
-    ssh -q root@${_node} "${_keytool} -certreq -alias ${_node} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/${_node}.csr -storepass ${_password}"
-    ssh -q root@${_node} "${_keytool} -certreq -alias ${_node} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client.csr -storepass ${_password}"
+    # Taking a backup
+    ${_ssh} "mv -f ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE}.$$.bak &>/dev/null"
+    ${_ssh} "mv -f ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE}.$$.bak &>/dev/null"
+    # Step4: On each node, create private keys for this node (one is as server key, another is as client key)
+    ${_ssh} "${_keytool} -genkey -alias ${_node} -keyalg RSA -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
+    ${_ssh} "${_keytool} -genkey -alias ${_node} -keyalg RSA -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -keysize 2048 -dname \"CN=${_node}, ${_dname_extra}\" -noprompt -storepass ${_password} -keypass ${_password}"
+    # Step5: On each node, create CSRs
+    ${_ssh} "${_keytool} -certreq -alias ${_node} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -file ${g_SERVER_KEY_LOCATION%/}/${_node}.csr -storepass ${_password} -ext SAN=DNS:*.`hostname -s`.localdomain"
+    ${_ssh} "${_keytool} -certreq -alias ${_node} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client.csr -storepass ${_password}"
+    # Download into (Ubuntu) host node
     scp root@${_node}:${g_SERVER_KEY_LOCATION%/}/${_node}.csr ./ || return $?
     scp root@${_node}:${g_CLIENT_KEY_LOCATION%/}/${_node}-client.csr ./ || return $?
     # Step6: Sign the CSR with the root CA
@@ -494,19 +492,19 @@ function _hadoop_ssl_per_node_inner() {
     scp ./rootCA.pem ./${_node}.crt root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
     scp ./${_node}-client.crt root@${_node}:${g_CLIENT_KEY_LOCATION%/}/
     # Step7: On each node, import root CA's cert and the signed cert
-    ssh -q root@${_node} "${_keytool} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};${_keytool} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias ${_node} -import -file ${g_SERVER_KEY_LOCATION%/}/${_node}.crt -noprompt -storepass ${_password}" || return $?
-    ssh -q root@${_node} "${_keytool} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};${_keytool} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias ${_node} -import -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client.crt -noprompt -storepass ${_password}"
+    ${_ssh} "${_keytool} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};${_keytool} -keystore ${g_SERVER_KEY_LOCATION%/}/${g_KEYSTORE_FILE} -alias ${_node} -import -file ${g_SERVER_KEY_LOCATION%/}/${_node}.crt -noprompt -storepass ${_password}" || return $?
+    ${_ssh} "${_keytool} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};${_keytool} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias ${_node} -import -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client.crt -noprompt -storepass ${_password}"
     # Step8 (optional): if the java default truststore (cacerts) path is given, also import the cert (and doesn't care if cert already exists)
     if [ ! -z "/etc/pki/java/cacerts" ]; then
-        ssh -q root@${_node} "${_keytool} -keystore /etc/pki/java/cacerts -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
+        ${_ssh} "${_keytool} -keystore /etc/pki/java/cacerts -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
     fi
     if [ ! -z "$_java_default_truststore_path" ]; then
-        ssh -q root@${_node} "${_keytool} -keystore $_java_default_truststore_path -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
+        ${_ssh} "${_keytool} -keystore $_java_default_truststore_path -alias hadoopRootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
     fi
 }
 
 function _hadoop_ssl_use_wildcard() {
-    local __doc__="Create a self-signed wildcard certificate with openssl command."
+    local __doc__="TODO: Create a self-signed wildcard certificate with openssl command."
     local _domain_suffix="${1-$r_DOMAIN_SUFFIX}"
     local _CA_key="${2}"
     local _CA_cert="${3}"
@@ -522,7 +520,7 @@ function _hadoop_ssl_use_wildcard() {
     [ -z "$_password" ] && _password=${g_DEFAULT_PASSWORD-hadoop}
     [ -n "$_subject" ] && _subj="-subj ${_subject}"
 
-    # Create a private key with wildcard CN and a CSR file. NOTE: -aes256 to encrypt
+    # Create a private key with wildcard CN and a CSR file. NOTE: -aes256 to encrypt (TODO: need SAN for chrome)
     openssl req -nodes -newkey rsa:$_key_strength -keyout ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.csr $_subj
     # Signing a cert with two years expiration
     if [ ! -s "$_CA_key" ]; then
@@ -1149,8 +1147,8 @@ kdestroy"
 }
 
 function f_ssl_self_signed_cert() {
-    local __doc__="Setup a self-signed certificate with openssl command. See: http://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.5.3/bk_security/content/set_up_ssl_for_ambari.html"
-    local _subject="$1" # "/C=AU/ST=QLD/O=Osakos/CN=*.lab.osakos.com"
+    local __doc__="DEPRECATED: Setup a self-signed certificate with openssl command. See: http://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.5.3/bk_security/content/set_up_ssl_for_ambari.html"
+    local _subject="$1" # "/C=AU/ST=QLD/O=Osakos/CN=*.`hostname -s`.localdomain"
     local _base_name="${2-selfsign}"
     local _password="$3"
     local _key_strength="${4-2048}"
@@ -1166,7 +1164,7 @@ function f_ssl_self_signed_cert() {
 
     # Create a private key NOTE: -aes256 to encrypt
     openssl genrsa -out ${_work_dir%/}/${_base_name}.key $_key_strength || return $?
-    # Generate cert from above key
+    # Generate cert from above key (TODO: need SAN for chrome)
     openssl req -new -x509 -nodes -days 3650 -key ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.crt $_subj || return $?
     # or Create a CSR
     #openssl req -new -key ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.csr $_subj || return $?
@@ -1186,7 +1184,7 @@ function f_ssl_self_signed_cert() {
 }
 
 function f_ssl_internal_CA_setup() {
-    local __doc__="(not in use) Setup Internal CA for generating self-signed certificate"
+    local __doc__="DEPRECATED: Setup Internal CA for generating self-signed certificate"
     local _dname="$1"
     local _password="$2"
     local _domain_suffix="${3-$r_DOMAIN_SUFFIX}"
