@@ -348,7 +348,7 @@ function f_ssl_hadoop() {
         _openssl_cnf=./openssl.cnf
     fi
 
-    openssl req -newkey rsa:2048 -days 3650 -nodes -x509 -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}"
+    openssl req -newkey rsa:2048 -days 3650 -nodes -x509 -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" \
         -extensions SAN -config ${_openssl_cnf} \
         -keyout ./server.${_domain_suffix#.}.key -out ./server.${_domain_suffix#.}.crt
 
