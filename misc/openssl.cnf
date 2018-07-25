@@ -221,7 +221,7 @@ subjectAltName = @alt_names
 
 # Extensions to add to a certificate request
 
-ddbasicConstraints = CA:FALSE
+basicConstraints = CA:FALSE
 keyUsage = nonRepudiation, digitalSignature, keyEncipherment
 
 [ v3_ca ]
