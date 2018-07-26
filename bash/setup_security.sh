@@ -1151,6 +1151,32 @@ function f_ldap_client_install() {
     done
 }
 
+function f_freeipa_install() {
+    local __doc__="Install freeIPA"
+    local _node="$1"
+    local _password="${2:-secret12}"
+    local _how_many="${3:-$r_NUM_NODES}"
+    local _start_from="${4:-$r_NODE_START_NUM}"
+
+    # Used ports https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/linux_domain_identity_authentication_and_policy_guide/installing-ipa
+    #ssh -q root@${_node} -t "yum update -y"
+    ssh -q root@${_node} -t "yum install freeipa-server -y"
+
+    # seems FreeIPA needs ipv6 for loopback
+    ssh -q root@${_node} -t 'grep -q '^net.ipv6.conf.all.disable_ipv6' /etc/sysctl.conf || echo "net.ipv6.conf.all.disable_ipv6 = 0" >> /etc/sysctl.conf
+grep -q '^net.ipv6.conf.lo.disable_ipv6' /etc/sysctl.conf || echo "net.ipv6.conf.lo.disable_ipv6 = 0" >> /etc/sysctl.conf
+sysctl -w net.ipv6.conf.all.disable_ipv6=0
+sysctl -w net.ipv6.conf.lo.disable_ipv6=0'
+
+    # TODO: got D-bus error when systemctl is used (restarting it makes install works but makes docker slow/unstable)
+    ssh -q root@${_node} -t 'service dbus restart;_d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U'
+    #ssh -q root@${_node} -t 'ipactl status'
+
+    for i in `_docker_seq "$_how_many" "$_start_from"`; do
+        ssh -q root@node${i} -t '_d=`hostname -d`; yum install ipa-client -y && ipa-client-install --unattended --hostname=`hostname -f` --server='${_node}' --domain=`hostname -d` --realm=${_d^^} -p admin -w '${_password}' --mkhomedir'
+    done
+}
+
 function f_sssd_setup() {
     local __doc__="setup SSSD on each node (security lab) If /etc/sssd/sssd.conf exists, skip. Kerberos is required."
     # https://github.com/HortonworksUniversity/Security_Labs#install-solrcloud
