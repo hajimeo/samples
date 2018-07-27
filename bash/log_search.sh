@@ -41,10 +41,10 @@ Or
 
 function f_rg() {
     local __doc__="Search current directory with rg"
+    # f_rg '^2018-07-27 1[3-5]:.+"
     local _regex="$1"
-    local _extra_regex="$2"
+    local _thread_num="${2:-6}"
     local _rg_opts="$3"
-    local _thread_num="${4:-3}"
 
     if ! which rg &>/dev/null; then
         echo "'rg' is required (eg: brew install rg)" >&2
@@ -62,20 +62,19 @@ function f_rg() {
     local _regex_escaped="`echo "${_regex}" | sed "s/[^[:alnum:].-]/_/g"`"
 
     [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
-    [ -z "${_extra_regex}" ] && _extra_regex="\S+\s*[Ff]ailed\s*\S+|\S+\s*[Ss]low\s*\S+|\S+\s*[Tt]oo\s*\S+|\S+\s*rejecting\s*\S+"
 
     rg ${_def_rg_opts} -H -g '!*.ipynb' -g '!*.tmp' ${_rg_opts}-c "${_regex}"
 
-    echo "//=== finding threads (FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) ==========================================="
+    echo "//=== busy threads matching regex ============================================================================"
     echo "# REGEX = ${_regex}" > "${_tmpfile_pfx}1_${_regex_escaped}.tmp"
     rg ${_def_rg_opts} --no-filename -g '*.log*' ${_rg_opts}"${_regex}" \
      | sed 's/^\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)T/\1 /' \
      | sort -n | uniq >> "${_tmpfile_pfx}1_${_regex_escaped}.tmp"
 
     if [ "`wc -l "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | awk '{print $1}'`" -gt 1 ]; then
-        rg ${_def_rg_opts} -o "\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]|${_extra_regex}" \
+        rg ${_def_rg_opts} -o "\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]" \
          "${_tmpfile_pfx}1_${_regex_escaped}.tmp" > "/tmp/_f_rg_loglevels_threads_$$.tmp"
-        cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | sort | uniq -c | sort -rn | head -n 20
+        cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | sort | uniq -c | sort -rn | head -n 40
 
         local _first_dt="`rg ${_def_rg_opts} -m 1 -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}.tmp"`"
         # @see https://raw.githubusercontent.com/hajimeo/samples/master/golang/dateregex.go
@@ -89,12 +88,11 @@ function f_rg() {
             fi
         fi
 
-        for _t in `cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n ${_thread_num} | awk '{print $2}'`; do
-            local _thread="`echo ${_t} | sed 's/[][]//g'`"
-            echo "# REGEX = ${_thread} (${_regex})" > "${_tmpfile_pfx}2_${_thread}.tmp"
-            rg ${_def_rg_opts} --no-filename -g '*.log*' ${_rg_opts}"^(${_first_dt}).+\[${_thread}\]" | sort -n | uniq >> "${_tmpfile_pfx}2_${_thread}.tmp"
-        done
+        # generating thread level logs for top _thread_num threads TODO: '_first_dt' sometimes becomes very long and rg fails
+        cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n ${_thread_num} | awk '{print $2}' | sed 's/[][]//g' | \
+            xargs -n1 -P3 -I {} bash -c "_t={};rg ${_def_rg_opts} --no-filename -g \"*.log*\" ${_rg_opts}\"^(${_first_dt}).+\[\${_t}\]\" | sort -n | uniq > ${_tmpfile_pfx}2_\${_t}.tmp"
 
+        # just for fun, drawing bar chart
         if which bar_chart.py &>/dev/null; then
             #sudo -H python -mpip install matplotlib
             #sudo -H pip install data_hacks
@@ -105,7 +103,7 @@ function f_rg() {
     fi
     echo "===========================================================================================================//"
     echo ' '
-    echo "# grep-ing -m ${_thread_num} json with formatting (len 1000)... Ctrl+c to skip(TODO:test)" >&2
+    echo "# grep-ing -m ${_thread_num} json with formatting (len 1000)... Ctrl+c to skip" >&2
     trap ' ' SIGINT
     for j in $(rg ${_def_rg_opts} --no-filename -g '*.json' -l ${_rg_opts}"${_regex}"); do
         echo "## $j"
@@ -139,12 +137,11 @@ function f_topCausedByExceptions() {
 
 function f_topErrors() {
     local __doc__="List top ERRORs. Eg.: f_topErrors ./hbase-ams-master-fslhd.log Y 10 \"2017-05-10\""
-    local _path="$1"
-    local _is_including_warn="${2-Y}"
-    local _top_N="${3:-10}"
+    local _path="$1"        # file path which rg accepts and NEEDS double-quotes
+    local _regex="$2"       # to overwrite default regex to detect ERRORs
+    local _top_N="${3:-10}" # how many result to show
     local _date_from="$4"   # ISO format datetime
     local _date_to="$5"     # ISO format datetime
-    local _regex="$6"       # to overwrite default regex to detect ERRORs
 
     if ! which rg &>/dev/null; then
         echo "'rg' is required (eg: brew install rg)" >&2
@@ -152,8 +149,7 @@ function f_topErrors() {
     fi
 
     if [ -z "$_regex" ]; then
-        _regex="\b(ERROR|SEVERE|FATAL|SHUTDOWN|java\..+?Exception).+"
-        [[ "$_is_including_warn" =~ (^y|^Y) ]] && _regex="\b(ERROR|SEVERE|FATAL|SHUTDOWN|java\..+?Exception|WARN|WARNING).+"
+        _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|java\..+?Exception|[Ff]ailed|[Ss]low|[Tt]oo|rejecting|[Ee]rror)\b.+"
     fi
 
     if [ -n "${_date_from}" ]; then
@@ -170,13 +166,24 @@ function f_topErrors() {
     if [ -z "${_path}" ]; then
         # NOTE: -c does not work with -l
         rg --search-zip -c -g '*.log*' -o "${_regex}"
+    fi
+
+    rg --search-zip --no-line-number --no-filename -g '*.log*' -o "${_regex}" ${_path} > /tmp/f_topErrors.$$.tmp
+
+    # just for fun, drawing bar chart
+    if which bar_chart.py &>/dev/null; then
+        local _date_regex2="^[0-9-/]+ \d\d:\d"
+        [ "`wc -l /tmp/f_topErrors.$$.tmp | awk '{print $1}'`" -lt 400 ] && _date_regex2="^[0-9-/]+ \d\d:\d\d"
+        echo ' '
+        rg --search-zip --no-line-number --no-filename -g '*.log*' -o "${_date_regex2}" /tmp/f_topErrors.$$.tmp | sed 's/T/ /' | bar_chart.py
         echo " "
     fi
-    rg --search-zip --no-line-number --no-filename -g '*.log*' -o "${_regex}" ${_path} \
-     | gsed -r "s/[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+/_____UUID_____/g" \
-     | gsed -r "s/0x[0-9a-f][0-9a-f][0-9a-f]+/0x____________/g" \
-     | gsed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/___DATE___ /g" \
-     | gsed -r "s/[0-2][0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/___TIME___/g" \
+
+    cat /tmp/f_topErrors.$$.tmp | gsed -r "s/[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+/__UUID__/g" \
+     | gsed -r "s/0x[0-9a-f][0-9a-f]+/0x_HEX_/g" \
+     | gsed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/_DATE_ /g" \
+     | gsed -r "s/[0-2][0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/_TIME_/g" \
+     | gsed -r "s/-[0-9]+\]\s+\{/-N] {/g" \
      | gsed -r "s/[0-9][0-9][0-9][0-9][0-9]+/_NUM_/g" \
      | sort | uniq -c | sort -n | tail -n ${_top_N}
 }
