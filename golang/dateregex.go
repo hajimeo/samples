@@ -1,7 +1,7 @@
 /**
  * Output a regex strings for date range
  * Accept start and end datetime strings
- * ./dateregex "start_ISO_datetime" "end_ISO_datetime" [interval] [input date go-style format] [out date go-style format]
+ * ./dateregex "start_ISO_datetime" "end_ISO_datetime" [input datetime go-style format] [output datetime go-style format]
  */
 package main
 
@@ -19,8 +19,8 @@ func main() {
     loc, _ := time.LoadLocation("UTC")
     interval, err := strconv.ParseInt("600", 10, 64) // 10 mins
 
-    if len(os.Args) > 4 && len(os.Args[4]) > 0 {
-        layout_in = os.Args[4]
+    if len(os.Args) > 3 && len(os.Args[3]) > 0 {
+        layout_in = os.Args[3]
         //fmt.Println(layout_in)
     }
 
@@ -44,17 +44,16 @@ func main() {
     //fmt.Println(et.Format(layout_in))
     etu := et.Unix()
 
-    if len(os.Args) > 3 && len(os.Args[3]) > 0 {
-        interval, err = strconv.ParseInt(os.Args[3], 10, 64)
-        if err != nil {
-            fmt.Println(err)
-            os.Exit(1)
+    if len(os.Args) > 4 && len(os.Args[4]) > 0 {
+        layout_out = os.Args[4]
+    } else {
+        if (etu - stu) >= 3600 {
+            layout_out = "2006-01-02 15:"
+            interval, err = strconv.ParseInt("3600", 10, 64) // 1 hour
         }
+        // TODO: need more sophisticated logic
     }
-
-    if len(os.Args) > 5 && len(os.Args[5]) > 0 {
-        layout_out = os.Args[5]
-    }
+    //fmt.Println(layout_out)
 
     for ctu := stu; ctu <= etu; ctu += interval {
         ct := time.Unix(ctu, 0).In(loc)
