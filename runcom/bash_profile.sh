@@ -14,3 +14,5 @@ export RIPGREP_CONFIG_PATH=$HOME/.rgrc
 if [ -f ~/IdeaProjects/samples/runcom/bash_aliases.sh ]; then
     source ~/IdeaProjects/samples/runcom/bash_aliases.sh
 fi
+
+export PYTHONPATH=~/IdeaProjects/samples/python:$PYTHONPATH
