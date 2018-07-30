@@ -44,7 +44,7 @@ as_license_source: atscale
 lzo_jar_location: ''
 as_hive_metastore_database: 'false'
 ruby_bin: "/tmp/puppet/embedded/bin/ruby"
-hadoop_classpath: "/usr/hdp/%hdp_version%/hadoop/conf:/usr/hdp/%hdp_version%/hadoop/lib/*:/usr/hdp/%hdp_version%/hadoop/.//*:/usr/hdp/%hdp_version%/hadoop-hdfs/./:/usr/hdp/%hdp_version%/hadoop-hdfs/lib/*:/usr/hdp/%hdp_version%/hadoop-hdfs/.//*:/usr/hdp/%hdp_version%/hadoop-yarn/lib/*:/usr/hdp/%hdp_version%/hadoop-yarn/.//*:/usr/hdp/%hdp_version%/hadoop-mapreduce/lib/*:/usr/hdp/%hdp_version%/hadoop-mapreduce/.//*::mysql-connector-java.jar:/usr/hdp/%hdp_version%/tez/*:/usr/hdp/%hdp_version%/tez/lib/*:/usr/hdp/%hdp_version%/tez/conf"
+hadoop_classpath: "%hadoop_classpath%"
 as_namenode: ''
 thrifty_client_protocol: hortonworks
 as_auth_host: ''
