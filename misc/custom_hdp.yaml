@@ -67,12 +67,12 @@ custom_krb5conf_file: ''
 as_hive_doas: ''
 as_hdp_version: %hdp_version%
 as_hdp_major_version: '%hdp_major_version%'
-delegated_auth_enabled: 'true'
+delegated_auth_enabled: '%delegated_auth_enabled%'
 as_hive_queue: default
 as_hive_scratchdir: ''
 as_hive_warehouse: ''
 as_spark_queue: default
 as_spark_mem: 2G
-as_spark_cores: '2'
-as_spark_workers: '2'
+as_spark_cores: '1'
+as_spark_workers: '1'
 compute_stats_disabled: ''
