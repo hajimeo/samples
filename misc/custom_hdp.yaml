@@ -60,7 +60,7 @@ as_kerberos_hive_principal_interactive: atscale/%atscale_host%@%realm%
 as_kerberos_short_name_interactive: atscale
 as_kerberos_hive_principal_keytab_interactive: "/etc/security/keytabs/atscale.service.keytab"
 as_kerberos_hive_metastore_principal: hive/_HOST@%realm%
-as_hdfs_name_node_kerberos_principal: hdfs-%hdp_cluster_name%@%realm%
+as_hdfs_name_node_kerberos_principal: %hdfs_principal%@%realm%
 as_hdfs_use_tls: 'false'
 use_custom_krb5conf: 'false'
 custom_krb5conf_file: ''
