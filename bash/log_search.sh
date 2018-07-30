@@ -136,7 +136,7 @@ function f_topCausedByExceptions() {
 }
 
 function f_topErrors() {
-    local __doc__="List top ERRORs. Eg.: f_topErrors ./hbase-ams-master-fslhd.log Y 10 \"2017-05-10\""
+    local __doc__="List top ERRORs. NOTE: with _date_from and without may produce different result (ex: Caused by)"
     local _path="$1"        # file path which rg accepts and NEEDS double-quotes
     local _regex="$2"       # to overwrite default regex to detect ERRORs
     local _top_N="${3:-10}" # how many result to show
@@ -149,7 +149,7 @@ function f_topErrors() {
     fi
 
     if [ -z "$_regex" ]; then
-        _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|java\..+?Exception|[Ff]ailed|[Ss]low|[Tt]oo|rejecting|[Ee]rror)\b.+"
+        _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|java\..+?Exception|[Ff]ailed|[Ss]low|[Tt]oo|rejecting|[Ee]rror)\b.+"
     fi
 
     if [ -n "${_date_from}" ]; then
@@ -171,7 +171,7 @@ function f_topErrors() {
     rg --search-zip --no-line-number --no-filename -g '*.log*' -o "${_regex}" ${_path} > /tmp/f_topErrors.$$.tmp
 
     # just for fun, drawing bar chart
-    if which bar_chart.py &>/dev/null; then
+    if [ -n "${_date_from}" ] && which bar_chart.py &>/dev/null; then
         local _date_regex2="^[0-9-/]+ \d\d:\d"
         [ "`wc -l /tmp/f_topErrors.$$.tmp | awk '{print $1}'`" -lt 400 ] && _date_regex2="^[0-9-/]+ \d\d:\d\d"
         echo ' '
