@@ -39,7 +39,7 @@ as_ha_cluster_fqdns: %atscale_host%
 hll_enabled: 'true'
 hll_create_jar: 'true'
 as_drill_to_raw_query_limit_optional: 'false'
-as_license_file: "/var/tmp/share/atscale/dev-vm-license-atscale.json"
+as_license_file: "%license_file%"
 as_license_source: atscale
 lzo_jar_location: ''
 as_hive_metastore_database: 'false'
