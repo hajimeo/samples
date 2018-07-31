@@ -54,15 +54,11 @@ func main() {
         if hr == 0 && (end_unixtime-current_unixtime) >= (60*60*24) {
             current_layout_out = "2006-01-02"
             current_unixtime += (60 * 60 * 24)
-            //fmt.Println("# "+strconv.Itoa(hr))
-            //fmt.Println("# "+last_date_str)
         } else if last_date_str == current_date_str {
             fmt.Printf("|%02d", hr)
             current_unixtime += (3600)
             continue
         } else if (end_unixtime-current_unixtime) >= (60*60) {
-            //fmt.Println("## "+strconv.Itoa(hr))
-            //fmt.Println("## "+last_date_str)
             // Next date
             if last_date_str != current_date_str {
                 if last_date_str != "" {
