@@ -88,9 +88,13 @@ function f_rg() {
             fi
         fi
 
-        # generating thread level logs for top _thread_num threads TODO: '_first_dt' sometimes becomes very long and rg fails
-        cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n ${_thread_num} | awk '{print $2}' | sed 's/[][]//g' | \
-            xargs -n1 -P3 -I {} bash -c "_t={};rg ${_def_rg_opts} --no-filename -g \"*.log*\" ${_rg_opts}\"^(${_first_dt}).+\[\${_t}\]\" | sort -n | uniq > ${_tmpfile_pfx}2_\${_t}.tmp"
+        # generating thread level logs for top _thread_num threads
+        local _threads="$(cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n ${_thread_num} | awk '{print $2}' | sed 's/[][]//g')"
+        for _t in ${_threads}; do
+            echo "rg ${_def_rg_opts} --no-filename -g '*.log*' ${_rg_opts}'^(${_first_dt}).+\[${_t}\]' | sort -n | uniq > ${_tmpfile_pfx}2_${_t}.tmp" > /tmp/f_rg_xargs_${_t}_$$.sh
+        done
+        # seems xargs has command length limit and -s 40K didn't work
+        echo ${_threads} | xargs -t -n1 -P3 -I @@ bash /tmp/f_rg_xargs_@@_$$.sh
 
         # just for fun, drawing bar chart
         if which bar_chart.py &>/dev/null; then
@@ -149,7 +153,7 @@ function f_topErrors() {
     fi
 
     if [ -z "$_regex" ]; then
-        _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|java\..+?Exception|[Ff]ailed|[Ss]low|[Tt]oo|rejecting|[Ee]rror)\b.+"
+        _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|java\..+?Exception|[Ff]ailed|[Ss]low|[Tt]oo|rejecting|[Ee]rror|timed out)\b.+"
     fi
 
     if [ -n "${_date_from}" ]; then
@@ -165,17 +169,17 @@ function f_topErrors() {
     # Currently only search .log or .log.gz etc
     if [ -z "${_path}" ]; then
         # NOTE: -c does not work with -l
-        rg --search-zip -c -g '*.log*' -o "${_regex}"
+        rg --search-zip -c -g '*.log*' -g '*.stdout*' -o "${_regex}"
     fi
 
-    rg --search-zip --no-line-number --no-filename -g '*.log*' -o "${_regex}" ${_path} > /tmp/f_topErrors.$$.tmp
+    rg --search-zip --no-line-number --no-filename -g '*.log*' -g '*.stdout*' -o "${_regex}" ${_path} > /tmp/f_topErrors.$$.tmp
 
     # just for fun, drawing bar chart
     if [ -n "${_date_from}" ] && which bar_chart.py &>/dev/null; then
         local _date_regex2="^[0-9-/]+ \d\d:\d"
         [ "`wc -l /tmp/f_topErrors.$$.tmp | awk '{print $1}'`" -lt 400 ] && _date_regex2="^[0-9-/]+ \d\d:\d\d"
         echo ' '
-        rg --search-zip --no-line-number --no-filename -g '*.log*' -o "${_date_regex2}" /tmp/f_topErrors.$$.tmp | sed 's/T/ /' | bar_chart.py
+        rg --search-zip --no-line-number --no-filename -g '*.log*' -g '*.stdout*' -o "${_date_regex2}" /tmp/f_topErrors.$$.tmp | sed 's/T/ /' | bar_chart.py
         echo " "
     fi
 
@@ -872,6 +876,17 @@ function f_gc_before_after_check() {
 function f_validate_siro_ini() {
     local __doc__="TODO: Read shiro config file and, at least, generate ldapsarch command"
     return
+}
+
+function f_count_threads() {
+    local __doc__="Grep periodic log and count threads"
+    local _file="$1"
+    local _tail_n="${2-10}"
+    if [ -n "${_tail_n}" ]; then
+        rg -N -o '^"([^"]+)"' -r '$1' "${_file}" | gsed -r 's/-[0-9]+$//g' | sort | uniq -c | sort -n | tail -n ${_tail_n}
+    else
+        rg -N -o '^"([^"]+)"' -r '$1' "${_file}" | sort | uniq
+    fi
 }
 
 
