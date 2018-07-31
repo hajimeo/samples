@@ -94,7 +94,7 @@ function f_rg() {
             echo "rg ${_def_rg_opts} --no-filename -g '*.log*' ${_rg_opts}'^(${_first_dt}).+\[${_t}\]' | sort -n | uniq > ${_tmpfile_pfx}2_${_t}.tmp" > /tmp/f_rg_xargs_${_t}_$$.sh
         done
         # seems xargs has command length limit and -s 40K didn't work
-        echo ${_threads} | xargs -t -n1 -P3 -I @@ bash /tmp/f_rg_xargs_@@_$$.sh
+        echo ${_threads} | xargs -n1 -P3 -I @@ bash /tmp/f_rg_xargs_@@_$$.sh
 
         # just for fun, drawing bar chart
         if which bar_chart.py &>/dev/null; then
