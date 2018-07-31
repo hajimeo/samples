@@ -1,7 +1,7 @@
 /**
  * Output a regex strings for date range
  * Accept start and end datetime strings
- * ./dateregex "start_ISO_datetime" "end_ISO_datetime" [input datetime go-style format] [output datetime go-style format]
+ * ./dateregex "start_ISO_datetime" "end_ISO_datetime"
  */
 package main
 
@@ -14,15 +14,11 @@ import (
 
 func main() {
     // Defaults
+    // TODO: it doesn't work with YYYY/MM/DD
     layout_in := "2006-01-02 15:04"
-    layout_out := "2006-01-02 15:04"
+    layout_out := "2006-01-02 15:0"
     loc, _ := time.LoadLocation("UTC")
     interval, err := strconv.ParseInt("600", 10, 64) // 10 mins
-
-    if len(os.Args) > 3 && len(os.Args[3]) > 0 {
-        layout_in = os.Args[3]
-        //fmt.Println(layout_in)
-    }
 
     start_str := os.Args[1]
     start_time, err := time.Parse(layout_in, start_str)
@@ -41,40 +37,64 @@ func main() {
             os.Exit(1)
         }
     }
-    //fmt.Println(end_time.Format(layout_in))
+
     end_unixtime := end_time.Unix()
+    last_date_str := ""
 
-    if len(os.Args) > 4 && len(os.Args[4]) > 0 {
-        layout_out = os.Args[4]
-    } else {
-        if (end_unixtime - start_unixtime) >= 3600 {
-            layout_out = "2006-01-02 15:"
-            interval, err = strconv.ParseInt("3600", 10, 64) // 1 hour
-        }
-        // TODO: need more sophisticated logic
-    }
-
-    for current_unixtime := start_unixtime; current_unixtime <= end_unixtime; current_unixtime += interval {
+    // TODO: need more sophisticated logic
+    for current_unixtime := start_unixtime; current_unixtime < (end_unixtime+interval); current_unixtime += interval {
         current_layout_out := layout_out
         current_time := time.Unix(current_unixtime, 0).In(loc)
+        current_date_str := current_time.Format("2006-01-02")
         hr, _, _ := current_time.Clock()
-        if hr == 0 && (end_unixtime-current_unixtime) > (60*60*24) {
+        //fmt.Println("# "+strconv.Itoa(hr))
+        //fmt.Println("# "+strconv.FormatInt(interval, 10))
+
+        // Cover whole day
+        if hr == 0 && (end_unixtime-current_unixtime) >= (60*60*24) {
             current_layout_out = "2006-01-02"
-            current_unixtime += (60*60*24)
+            current_unixtime += (60 * 60 * 24)
+            //fmt.Println("# "+strconv.Itoa(hr))
+            //fmt.Println("# "+last_date_str)
+        } else if last_date_str == current_date_str {
+            fmt.Printf("|%02d", hr)
+            current_unixtime += (3600)
+            continue
+        } else if (end_unixtime-current_unixtime) >= (60*60) {
+            //fmt.Println("## "+strconv.Itoa(hr))
+            //fmt.Println("## "+last_date_str)
+            // Next date
+            if last_date_str != current_date_str {
+                if last_date_str != "" {
+                    fmt.Print(")|")
+                }
+                fmt.Print(current_date_str+" (")
+                fmt.Printf("%02d", hr)
+            }
+            current_unixtime += (3599)  // Strange. 3600 doesn't work. Skips last hour
+            last_date_str = current_date_str
+            continue
         }
 
-        //fmt.Println(current_layout_out)
+        if last_date_str != "" {
+            fmt.Print(")|")
+            last_date_str = ""
+        }
+
         current_time_str := current_time.Format(current_layout_out)
 
-        last_c := current_time_str[(len(current_time_str)-1):]
+        last_c := current_time_str[(len(current_time_str) - 1):]
         if last_c == ":" {
-            fmt.Print(current_time_str[:(len(current_time_str)-1)])
+            fmt.Print(current_time_str[:(len(current_time_str) - 1)])
         } else {
             fmt.Print(current_time_str)
         }
         if (current_unixtime + interval) <= end_unixtime {
             fmt.Print("|")
         }
+    }
+    if last_date_str != "" {
+        fmt.Print(")")
     }
     fmt.Println()
 }
