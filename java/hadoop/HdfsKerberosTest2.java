@@ -1,5 +1,13 @@
-package hadoop;
+/*
+ * mkdir hadoop
+ * curl -o ./hadoop/HdfsKerberosTest2.java https://raw.githubusercontent.com/hajimeo/samples/master/java/hadoop/HdfsKerberosTest2.java
+ * export JAVA_HOME=/usr/local/atscale/share/jdk1.8.0_171/
+ * $JAVA_HOME/bin/javac -cp `hadoop classpath` ./hadoop/HdfsKerberosTest2.java
+ * export CLASSPATH=".:`sudo -u atscale $JAVA_HOME/bin/jcmd $(lsof -ti:10502) VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/\\:/:/g'`:`hadoop classpath`"
+ * $JAVA_HOME/bin/java -Djava.security.auth.login.config=/usr/local/atscale/conf/krb/atscale-jaas.conf hadoop.HdfsKerberosTest2 Client # or Engine
+ */
 
+package hadoop;
 /*
 create "login.conf" file which contents is like below:
 
@@ -29,10 +37,15 @@ import java.security.PrivilegedExceptionAction;
 
 
 public class HdfsKerberosTest2 {
+    static String logincontext = "SampleClient";
+
     public static void main(String[] args) throws Exception {
         //System.setProperty("java.security.krb5.realm","");
         //System.setProperty("java.security.krb5.kdc","");
         //System.setProperty("java.security.krb5.conf", "");
+        if (args.length >= 1) {
+            logincontext = args[0];
+        }
 
         Configuration configuration = new Configuration();
 
@@ -42,20 +55,20 @@ public class HdfsKerberosTest2 {
         Subject sub = getSubject();
 
 
-        System.out.println("ticket present: "+ UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
+        System.out.println("ticket present: " + UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION);
         System.out.println(UserGroupInformation.getCurrentUser());
         UserGroupInformation.loginUserFromSubject(sub);
 
         UserGroupInformation ugi =
                 UserGroupInformation.createProxyUser("root", UserGroupInformation.getLoginUser());
-        System.out.println("User name"+UserGroupInformation.getLoginUser().getUserName() );
-        System.out.println("Credentials*****: "+ugi.getRealAuthenticationMethod());
-        ugi.doAs(new PrivilegedExceptionAction<String>(){
+        System.out.println("User name" + UserGroupInformation.getLoginUser().getUserName());
+        System.out.println("Credentials*****: " + ugi.getRealAuthenticationMethod());
+        ugi.doAs(new PrivilegedExceptionAction<String>() {
             public String run() throws Exception {
 
                 FileSystem fs = FileSystem.get(configuration);
                 FileStatus[] fsStatus = fs.listStatus(new Path("/"));
-                for(int i = 0; i < fsStatus.length; i++){
+                for (int i = 0; i < fsStatus.length; i++) {
                     System.out.println(fsStatus[i].getPath().toString());
                 }
                 // fs.mkdirs(ne);
@@ -71,7 +84,7 @@ public class HdfsKerberosTest2 {
         // create a LoginContext based on the entry in the login.conf file
         LoginContext lc;
         try {
-            lc = new LoginContext("SampleClient", new MyCallbackHandler());
+            lc = new LoginContext(logincontext, new MyCallbackHandler());
             // login (effectively populating the Subject)
             lc.login();
             // get the Subject that represents the signed-on user
@@ -85,6 +98,7 @@ public class HdfsKerberosTest2 {
 
     static String KERBEROS_PRINCIPAL = "";
     static String KERBEROS_PASSWORD = "";
+
     public static class MyCallbackHandler implements CallbackHandler {
 
         public void handle(Callback[] callbacks)
