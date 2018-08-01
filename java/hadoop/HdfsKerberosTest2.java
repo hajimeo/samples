@@ -4,7 +4,7 @@
  * export JAVA_HOME=/usr/local/atscale/share/jdk1.8.0_171/
  * $JAVA_HOME/bin/javac -cp `hadoop classpath` ./hadoop/HdfsKerberosTest2.java
  * export CLASSPATH=".:`sudo -u atscale $JAVA_HOME/bin/jcmd $(lsof -ti:10502) VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/\\:/:/g'`:`hadoop classpath`"
- * $JAVA_HOME/bin/java -Djava.security.auth.login.config=/usr/local/atscale/conf/krb/atscale-jaas.conf hadoop.HdfsKerberosTest2 Client # or Engine
+ * $JAVA_HOME/bin/java -Dsun.security.krb5.debug=true -Djava.security.auth.login.config=/usr/local/atscale/conf/krb/atscale-jaas.conf hadoop.HdfsKerberosTest2 Client # or Engine
  */
 
 package hadoop;
