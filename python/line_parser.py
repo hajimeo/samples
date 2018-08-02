@@ -10,6 +10,7 @@ _PREV_COUNTER = 0
 _PREV_LABEL = ""
 
 # All functions need to use "lp_" prefix
+# TODO: should be a class
 def lp_thread_num(line):
     global _PREV_COUNTER
     global _PREV_LABEL
