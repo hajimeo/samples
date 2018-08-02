@@ -6,7 +6,12 @@ alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys
 
 alias asftpl='ssh asftp "ls -ltr /home/ubuntu/upload/ | tail"'
 function asftpd() {
-    [ -n "$1" ] && sftp asftp:/home/ubuntu/upload/$1
+    [ -z "$1" ] && return 1
+    local _ext="${1##*.}"
+    local _rsync_opts="-Phz"
+    [[ "${_ext}" =~ gz|zip ]] && _rsync_opts="-Ph"
+    #sftp asftp:/home/ubuntu/upload/$1
+    rsync ${_rsync_opts} asftp:/home/ubuntu/upload/$1 ./
 }
 
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
