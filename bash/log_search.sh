@@ -122,8 +122,9 @@ for l in sys.stdin:
     done
     trap - SIGINT
     echo ' '
-    echo "# generated temp files (TODO: sometimes 'ls -ltrh' doesn't show right size)" >&2
-    ls -ltrh "${_tmpfile_pfx}"*.tmp
+    echo "# generated temp files (file name    start    end    diff_sec    size)" >&2
+    f_start_end_list "${_tmpfile_pfx}*.tmp"
+    echo ' '
     echo "# May want to also run 'f_topErrors ${_tmpfile_pfx}1_${_regex_escaped}.tmp'" >&2
 }
 
@@ -598,11 +599,11 @@ function f_swimlane() {
 }
 
 function f_start_end_list(){
-    local __doc__="Output start time, end time, difference(sec), (filesize) from a log files"
+    local __doc__="Output start time, end time, difference(sec), (filesize) from *multiple* log files"
     local _files="${1}"
     local _date_regex="${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d}"
     [ -z  "${_files}" ] && _files=`ls -1`
-    for _f in ${_files}; do f_start_end_time_with_diff $_f "${_date_regex}"; done | sort -t$'\t' -k2
+    for _f in `ls -1 ${_files}`; do f_start_end_time_with_diff $_f "${_date_regex}"; done | sort -t$'\t' -k2
 }
 
 function f_start_end_time_with_diff(){
