@@ -1,7 +1,7 @@
 ---
 as_atscale_host: %atscale_host%
 as_preview_enabled: 'true'
-as_default_schema: atscale
+as_default_schema: %default_schema%
 is_silent: 'true'
 as_install_sample_data: 'false'
 as_install_sample_data_omniture: 'false'
@@ -30,7 +30,7 @@ as_hadoop_conf_dir: "/etc/hadoop/conf"
 as_hive_conf_dir: "/usr/hdp/%hdp_version%/hive/conf"
 as_tez_conf_dir: "/etc/tez/conf/"
 as_compute_stats: 'true'
-as_hdfs_root_dir: "/user/atscale/atscale"
+as_hdfs_root_dir: "%hdfs_root_dir%"
 as_ha_enabled: 'false'
 as_ha_node_type: master
 as_ha_node_number: '1'
@@ -42,7 +42,8 @@ as_drill_to_raw_query_limit_optional: 'false'
 as_license_file: "%license_file%"
 as_license_source: atscale
 lzo_jar_location: ''
-as_hive_metastore_database: 'false'
+as_hive_metastore_database: '%hive_metastore_database%'
+as_hive_metastore_password: '%hive_metastore_password%'
 ruby_bin: "/tmp/puppet/embedded/bin/ruby"
 hadoop_classpath: "%hadoop_classpath%"
 as_namenode: ''
@@ -59,8 +60,8 @@ as_kerberos_short_name_batch: atscale
 as_kerberos_hive_principal_interactive: atscale/%atscale_host%@%realm%
 as_kerberos_short_name_interactive: atscale
 as_kerberos_hive_principal_keytab_interactive: "/etc/security/keytabs/atscale.service.keytab"
-as_kerberos_hive_metastore_principal: hive/_HOST@%realm%
-as_hdfs_name_node_kerberos_principal: %hdfs_principal%@%realm%
+as_kerberos_hive_metastore_principal: hive/_HOST@%hadoop_realm%
+as_hdfs_name_node_kerberos_principal: %hdfs_principal%@%hadoop_realm%
 as_hdfs_use_tls: 'false'
 use_custom_krb5conf: 'false'
 custom_krb5conf_file: ''
