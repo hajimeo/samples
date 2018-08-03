@@ -269,9 +269,7 @@ function f_install_atscale() {
     sudo -u ${_usr} ./bin/install -l ${_license}
     cd -
 
-    if [ -x "${_dir%/}/bin/atscale_start" ]; then
-        grep -q 'atscale_start' /etc/rc.local || echo -e "\nsudo -u ${_usr} ${_dir%/}/bin/atscale_start" >> /etc/rc.local
-    fi
+    f_after_install_hack
 }
 
 function f_after_install_hack() {
@@ -279,6 +277,13 @@ function f_after_install_hack() {
     local _dir="${1:-${_ATSCALE_DIR}}"
     local _db_pwd="${2:-hadoop}"
     local _usr="${3:-${_ATSCALE_USER}}"
+    local _installer_parent_dir="${4:-/home/${_usr}}"
+    local _wh_name="${5:-defaultWH}"
+    local _env_name="${5:-defaultEnv}"
+
+    if [ -x "${_dir%/}/bin/atscale_start" ]; then
+        grep -q 'atscale_start' /etc/rc.local || echo -e "\nsudo -u ${_usr} ${_dir%/}/bin/atscale_start" >> /etc/rc.local
+    fi
 
     # TODO: I think below is needed if kerberos
     #${_dir%/}/apps/engine/bin/engine_wrapper.sh
@@ -296,6 +301,25 @@ function f_after_install_hack() {
 #<property><name>tez.tez-ui.history-url.base</name><value>http://'${_ambari}':8080/#/main/view/TEZ/tez_cluster_instance</value></property>' ${_dir%/}/share/apache-tez-*/conf/tez-site.xml
 
     sudo -u ${_usr} ${_dir%/}/bin/atscale_service_control restart atscale-hiveserver2 atscale-spark
+
+    [ -s "${_installer_parent_di%/}/custom.yaml" ] || return 0
+    _load_yaml ${_installer_parent_di%/}/custom.yaml "inst_" || return $?
+    local _hdfsUri="`_get_from_xml "${inst_as_hadoop_conf_dir%/}/core-site.xml" "fs.defaultFS"`" || return $?
+    # Setup Environment, first connection
+    jwt="`curl -s -X GET -u admin:admin "http://$(hostname -f):10500/default/auth"`" || return $?
+
+    local _response="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default" -H "Authorization: Bearer ${jwt}" -d '{"name":"'${_wh_name}'","connectionId":"con1","hdfsUri":"'${_hdfsUri}'","hdfsNameNodeKerberosPrincipal":"'${inst_as_hdfs_name_node_kerberos_principal}'","hdfsSecondaryUri":null,"hdfsSecondaryNameNodeKerberosPrincipal":null,"hadoopRpcProtection":null,"subgroups":[],"defaultSchema":"'${inst_as_default_schema}'"}'`" || return $?
+    echo "${_response}"
+    local _groupId=`echo ${_response} | cut -d'"' -f 20`
+    [ -z "${_groupId}" ] && return 1
+
+    # In my custom_hdp.yaml, i'm using hive for batch so using batch
+    [ -z "${inst_as_hive_host_batch}" ] && inst_as_hive_host_batch="`hostname -f`"
+    curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default/connection-group/${_groupId}" -H "Authorization: Bearer ${jwt}" \
+    -d '{"name":"'${inst_as_hive_flavor_batch}'","hosts":"'${inst_as_hive_host_batch}'","port":'${inst_as_hive_host_batch}',"connectorType":"hive","username":"atscale","password":"atscale","extraJdbcFlags":";principal='${inst_as_kerberos_hive_principal_batch}'","queryRoles":["large_user_query_role","small_user_query_role","system_query_role","canary_query_role"],"extraProperties":{}}' || return $?
+
+    curl -s -k "http://$(hostname -f):10502/environments/orgId/default" -H "Authorization: Bearer ${jwt}" \
+    -d '{"name":"'${_env_name}'","connectionIds":["'${_groupId}'"],"hiveServer2Port":11111}' || return $?
 }
 
 function f_dataloader() {
@@ -530,6 +554,21 @@ function f_ha_with_tls_setup() {
     service haproxy reload
 }
 
+function _load_yaml() {
+    local _yaml_file="${1:-${_CUSTOM_YAML}}"
+    local _name_space="${2}"
+    [ -s "${_yaml_file}" ] || return 1
+    #source <(sed -e 's/:[^:\/\/]/=/g;s/$//g;s/ *=/=/g' ${_yaml_file})
+    source <(sed -nr 's/^([^:]+): *(.+)/'${_name_space}'\1=\2/p' ${_yaml_file})
+}
+
+function _get_from_xml() {
+    local _xml_file="$1"
+    local _name="$2"
+    # TODO: won't work with multiple lines
+    grep -F '<name>'${_name}'</name>' -A 1 ${_xml_file} | grep -Pzo '<value>.+?</value>' | sed -nr 's/<value>(.+)<\/value>/\1/p'
+}
+
 help() {
     local _function_name="$1"
     local _show_code="$2"
@@ -614,6 +653,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
     #set -x
     _SCHEMA_AND_HDFSDIR="atscale$$"
-    f_setup
-    f_install_atscale
+    f_setup || exit $?
+    f_install_atscale || exit $?
 fi
