@@ -72,7 +72,8 @@ as_hive_queue: default
 as_hive_scratchdir: ''
 as_hive_warehouse: ''
 as_spark_queue: default
-as_spark_mem: 2G
+as_spark_driver_mem: 1G
+as_spark_mem: 1G
 as_spark_cores: '1'
 as_spark_workers: '1'
 compute_stats_disabled: ''
