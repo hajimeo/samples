@@ -173,11 +173,10 @@ function f_backup_atscale() {
     [ -z "${_installed_ver}" ] && _installed_ver="unknown"
     local _suffix=${_installed_ver}_$(date +"%Y%m%d")_$$
     if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
-        sudo -u ${_usr} "${_dir%/}/bin/atscale_stop_apps" -f
+        sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control start postgres"; sleep 5
         f_pg_dump "${_dir%/}/share/postgresql-9.*/" "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz"
         if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
-            echo "ERROR: Failed to take DB dump into ${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" >&2; sleep 3
-            return 1
+            echo "WARN: Failed to take DB dump into ${_TMP_DIR%/}/atscale_${_suffix}.sql.gz. Maybe PostgreSQL is stopped?" >&2; sleep 3
         fi
     fi
 
@@ -199,7 +198,7 @@ function f_pg_dump() {
     local _dump_dest_filename="${2:-./atscale_$(date +"%Y%m%d%H%M%S").sql.gz}"
     local _lib_path="$(ls -1dtr ${_pg_dir%/}/lib | head -n1)"
 
-    LD_LIBRARY_PATH=${_lib_path} PGPASSWORD=${PGPASSWORD:-atscale} ${_pg_dir%/}/bin/pg_dump -h localhost -p 10518 -d atscale -U atscale -Z 9 -f ${_dump_dest_filename} &
+    LD_LIBRARY_PATH=${_lib_path} PGPASSWORD=${PGPASSWORD:-atscale} ${_pg_dir%/}/bin/pg_dump -h localhost -p 10520 -d atscale -U atscale -Z 9 -f ${_dump_dest_filename} &
     trap 'kill %1' SIGINT
     echo "INFO: Executing pg_dump. Ctrl+c to skip 'pg_dump' command"; wait
     trap - SIGINT
