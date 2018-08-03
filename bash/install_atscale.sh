@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-
 usage() {
     cat << END
 A sample bash script for setting up and installing atscale
 Tested on CentOS6|CentOS7 against hadoop clusters (HDP)
+
+Download: curl -o /var/tmp/share/atscale/install_atscale.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/install_atscale.sh
 
 To see help message of a function:
    $0 -h <function_name>
@@ -93,7 +94,10 @@ function f_setup() {
     sudo -u ${_hdfs_user} hdfs dfs -chown ${_atscale_user}: /user/${_atscale_user}
 
     if which hive &>/dev/null; then
-        [ -s /etc/security/keytabs/${_atscale_user}.service.keytab ] && sudo -u ${_atscale_user} kinit -kt /etc/security/keytabs/${_atscale_user}.service.keytab ${_atscale_user}/`hostname -f`
+        if [ -s /etc/security/keytabs/${_atscale_user}.service.keytab ]; then
+            local _atscale_principal="`klist -k /etc/security/keytabs/${_atscale_user}.service.keytab | grep -oE -m1 "${_atscale_user}/$(hostname -f)@.+$"`"
+            sudo -u ${_atscale_user} kinit -kt /etc/security/keytabs/${_atscale_user}.service.keytab ${_atscale_principal}
+        fi
         # TODO: should use beeline and tez, also if new installation, should drop database
         sudo -u ${_atscale_user} hive -hiveconf hive.execution.engine='mr' -e "CREATE DATABASE IF NOT EXISTS ${_schema}" &
     fi
@@ -158,7 +162,7 @@ function f_generate_custom_yaml() {
 }
 
 function f_backup_atscale() {
-    local __doc__="Backup (actually move) atscale directory, and execute pg_dump for DB backup"
+    local __doc__="Backup (or move if new installation) atscale directory, and execute pg_dump for DB backup"
     local _dir="${1:-${_ATSCALE_DIR}}"
     local _usr="${2:-${_ATSCALE_USER}}"
     local _is_upgrading="${3-${_UPGRADING}}"
