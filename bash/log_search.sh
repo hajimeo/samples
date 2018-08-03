@@ -879,6 +879,21 @@ function f_validate_siro_ini() {
     return
 }
 
+function f_count_lines() {
+    local __doc__="Count lines between _search_regex"
+    local _file="$1"
+    local _search_regex="${2:-"^20\\d\\d-\\d\\d-\\d\\d .+Periodic stack trace 1"}"
+
+    local _ext="${_file##*.}"
+    if [[ "${_ext}" =~ gz ]]; then
+        local _line_num=`gunzip -c ${_file} | wc -l`
+        ggrep -nP "${_search_regex}" <(gunzip -c ${_file}) | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | python ~/IdeaProjects/samples/python/line_parser.py thread_num ${_line_num}
+    else
+        local _line_num=`wc -l ${_file}`
+        ggrep -nP "${_search_regex}" ${_file} | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | python ~/IdeaProjects/samples/python/line_parser.py thread_num ${_line_num}
+    fi
+}
+
 function f_count_threads() {
     local __doc__="Grep periodic log and count threads"
     local _file="$1"
