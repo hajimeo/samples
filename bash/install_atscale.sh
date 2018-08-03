@@ -271,6 +271,9 @@ function f_install_atscale() {
     sudo -u ${_usr} ./bin/install -l ${_license}
     cd -
 
+    local _last_log="`ls -t1 /home/atscale/log/install-20*.log | head -n1`"
+    [ -s "${_last_log}" ] && grep '^Error:' ${_last_log}
+
     f_after_install_hack
 }
 
@@ -324,6 +327,8 @@ function f_after_install_hack() {
 
     local _envId="`curl -s -k "http://$(hostname -f):10502/environments/orgId/default" -H "Authorization: Bearer ${jwt}" \
     -d '{"name":"'${_env_name}'","connectionIds":["'${_groupId}'"],"hiveServer2Port":11111}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
+
+    curl -s -k "http://$(hostname -f):10500/api/1.0/org/default/setupWizard/setupComplete" -H "Authorization: Bearer ${jwt}" --data-binary 'orgId=default'
 }
 
 function f_dataloader() {
