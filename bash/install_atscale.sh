@@ -131,22 +131,27 @@ function f_generate_custom_yaml() {
     #/usr/hdp/%hdp_version%/hadoop/conf:/usr/hdp/%hdp_version%/hadoop/lib/*:/usr/hdp/%hdp_version%/hadoop/.//*:/usr/hdp/%hdp_version%/hadoop-hdfs/./:/usr/hdp/%hdp_version%/hadoop-hdfs/lib/*:/usr/hdp/%hdp_version%/hadoop-hdfs/.//*:/usr/hdp/%hdp_version%/hadoop-yarn/lib/*:/usr/hdp/%hdp_version%/hadoop-yarn/.//*:/usr/hdp/%hdp_version%/hadoop-mapreduce/lib/*:/usr/hdp/%hdp_version%/hadoop-mapreduce/.//*::mysql-connector-java.jar:/usr/hdp/%hdp_version%/tez/*:/usr/hdp/%hdp_version%/tez/lib/*:/usr/hdp/%hdp_version%/tez/conf
     local _hadoop_classpath="`hadoop classpath`" || return $?
 
-    # Kerberos related: TODO: at this moment, deciding by below atscale keytab file
+    # Kerberos related, decided by atscale keytab file
     local _is_kerberized="false"
     local _delegated_auth_enabled="false"
     local _realm="EXAMPLE.COM"
+    local _hadoop_realm="EXAMPLE.COM"
     local _hdfs_principal="hdfs"
     local _hive_metastore_database="false"
+
     if [ -s /etc/security/keytabs/atscale.service.keytab ]; then
         _is_kerberized="true"
         _delegated_auth_enabled="true"
         _as_hive_metastore_database="true"  # Using remote metastore causes Kerberos issues
         _realm=`sudo -u ${_usr} klist -kt /etc/security/keytabs/atscale.service.keytab | grep -m1 -oP '@.+' | sed 's/@//'` || return $?
         # TODO: expecting this node has hdfs headless keytab (it should though)
-        _hdfs_principal=`klist -kt /etc/security/keytabs/hdfs.headless.keytab | grep -m1 -oP 'hdfs-.+@' | sed 's/@//'` || return $?
+        _hadoop_realm=`sudo -u ${_usr} klist -kt /etc/security/keytabs/hdfs.headless.keytab | grep -m1 -oP '@.+' | sed 's/@//'`
+        [ -z "${_hadoop_realm}" ] && _hadoop_realm="${_realm}"
+        _hdfs_principal=`klist -kt /etc/security/keytabs/hdfs.headless.keytab | grep -m1 -oP 'hdfs-.+@' | sed 's/@//'`
+        [ -z "${_hdfs_principal}" ] && _hdfs_principal="hdfs"
     fi
 
-    for _v in atscale_host license_file default_schema hdfs_root_dir hdp_version hdp_major_version hadoop_classpath is_kerberized delegated_auth_enabled hive_metastore_database realm hdfs_principal; do
+    for _v in atscale_host license_file default_schema hdfs_root_dir hdp_version hdp_major_version hadoop_classpath is_kerberized delegated_auth_enabled hive_metastore_database hadoop_realm realm hdfs_principal; do
         local _v2="_"${_v}
         # TODO: some variable contains "/" so at this moment using "@" but not perfect
         sed -i "s@%${_v}%@${!_v2}@g" $_tmp_yaml || return $?
