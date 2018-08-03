@@ -4,7 +4,7 @@ usage() {
 A sample bash script for setting up and installing atscale
 Tested on CentOS6|CentOS7 against hadoop clusters (HDP)
 
-Download: curl -o /var/tmp/share/atscale/install_atscale.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/install_atscale.sh
+Download: curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/install_atscale.sh -o /var/tmp/share/atscale/install_atscale.sh
 
 To see help message of a function:
    $0 -h <function_name>
@@ -62,8 +62,6 @@ function f_setup() {
         chown ${_atscale_user}: "${_atscale_dir}" || return $?
     fi
 
-    yum install -e 0 -y bzip2 bzip2-libs curl rsync unzip || return $?
-
     # If looks like Kerberos is enabled
     grep -A 1 'hadoop.security.authentication' /etc/hadoop/conf/core-site.xml | grep -qw "kerberos"
     if [ "$?" -eq "0" ]; then
@@ -102,6 +100,9 @@ function f_setup() {
         sudo -u ${_atscale_user} hive -hiveconf hive.execution.engine='mr' -e "CREATE DATABASE IF NOT EXISTS ${_schema}" &
     fi
 
+    # Running yum in here so that above hive command might finish before yum completes.
+    yum install -e 0 -y bzip2 bzip2-libs curl rsync unzip || return $?
+
     # Optionals. Not important
     if [ -d /var/www/html ] && [ ! -e /var/www/html/atscale ]; then
         ln -s ${_TMP_DIR%/} /var/www/html/atscale
@@ -109,6 +110,7 @@ function f_setup() {
     if [ ! -e /var/log/atscale ]; then
         ln -s ${_atscale_dir%/}/log /var/log/atscale
     fi
+    return 0
 }
 
 function f_generate_custom_yaml() {
