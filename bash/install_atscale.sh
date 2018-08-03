@@ -148,8 +148,8 @@ function f_generate_custom_yaml() {
         _hive_metastore_database="true"     # Using remote metastore causes Kerberos issues
         _hive_metastore_password="${DEFAULT_PWD}"   # TODO: statick password...
         _realm=`sudo -u ${_usr} klist -kt /etc/security/keytabs/atscale.service.keytab | grep -m1 -oP '@.+' | sed 's/@//'` || return $?
-        # TODO: expecting this node has hdfs headless keytab (it should though)
-        _hadoop_realm=`sudo -u ${_usr} klist -kt /etc/security/keytabs/hdfs.headless.keytab | grep -m1 -oP '@.+' | sed 's/@//'`
+        # TODO: expecting this node has hdfs headless keytab and readable by root (it should though)
+        _hadoop_realm=`klist -kt /etc/security/keytabs/hdfs.headless.keytab | grep -m1 -oP '@.+' | sed 's/@//'`
         [ -z "${_hadoop_realm}" ] && _hadoop_realm="${_realm}"
         _hdfs_principal=`klist -kt /etc/security/keytabs/hdfs.headless.keytab | grep -m1 -oP 'hdfs-.+@' | sed 's/@//'`
         [ -z "${_hdfs_principal}" ] && _hdfs_principal="hdfs"
