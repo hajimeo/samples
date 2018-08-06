@@ -137,6 +137,17 @@ function f_getQueries() {
     _getAfterFirstMatch "${_path}" "queryId=${_uuid}\} - Executing SQL Query" "^20\d\d-\d\d-\d\d" "Y"
 }
 
+function f_checkResultSize() {
+    local __doc__="Get result sizes"
+    local _date_regex="${1:-"20\\d\\d-\\d\\d-\\d\\d \\d\\d:\\d"}"
+    # TODO: should I use 'resultSize'?
+    rg -N --no-filename -g 'debug*.log*' -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ size = ([1-9]\d*).+ time = ([0-9.]+)" -r '${1},${2},${3},${4}s' | sed 's/ /T/' | tee /tmp/f_checkResultSize_$$.out | awk -F',' '{print $1" "$3}' | bar_chart.py -A
+    echo "### Large result set ############################################################"
+    for _n in `cat /tmp/f_checkResultSize_$$.out | awk -F',' '{print $3}' | sort -n | tail`; do
+        rg -N ",${_n}," /tmp/f_checkResultSize_$$.out
+    done
+}
+
 function f_topCausedByExceptions() {
     local __doc__="List Caused By xxxxException"
     local _path="$1"
