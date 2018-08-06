@@ -150,7 +150,7 @@ function f_checkResultSize() {
 }
 
 function f_topCausedByExceptions() {
-    local __doc__="List Caused By xxxxException"
+    local __doc__="List Caused By xxxxException (Requires rg)"
     local _path="$1"
     local _is_shorter="$2"
     local _regex="Caused by.+Exception"
@@ -158,7 +158,7 @@ function f_topCausedByExceptions() {
     if [[ "$_is_shorter" =~ (^y|^Y) ]]; then
         _regex="Caused by.+?Exception"
     fi
-    egrep -wo "$_regex" "$_path" | sort | uniq -c | sort -n
+    rg -N -o "$_regex" "$_path" | sort | uniq -c | sort -n
 }
 
 function f_topErrors() {
@@ -175,7 +175,7 @@ function f_topErrors() {
     fi
 
     if [ -z "$_regex" ]; then
-        _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|java\..+?Exception|[Ff]ailed|[Ss]low|[Tt]oo|rejecting|[Ee]rror|timed out)\b.+"
+        _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|[Ff]ailed|[Ss]low|[Tt]oo|rejecting|[Ee]rror|timed out)\b.+"
     fi
 
     if [ -n "${_date_from}" ]; then
