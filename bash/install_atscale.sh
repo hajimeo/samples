@@ -208,7 +208,6 @@ function f_rm_logs() {
     local __doc__="Delete AtScale log and postgreSql log files"
     local _dir="${1:-${_ATSCALE_DIR}}"
     local _days="${2:-1}"
-    [ -z "${_dir}" ] && return 1
     [ -d "${_dir}" ] || return 1
     find ${_dir%/}/{log,share/postgresql-*/data/pg_log} -type f -mtime +${_days} \( -name "*\.gz" -o \( -name "*\.log\.*" -o -name "*\.stdout\.*" \) -exec grep -Iq . {} \; \) -and -print0 | xargs -0 -t -P3 -n1 -I {} rm -f {}
 }
