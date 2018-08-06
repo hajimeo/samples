@@ -1168,8 +1168,9 @@ grep -q '^net.ipv6.conf.lo.disable_ipv6' /etc/sysctl.conf || echo "net.ipv6.conf
 sysctl -w net.ipv6.conf.all.disable_ipv6=0
 sysctl -w net.ipv6.conf.lo.disable_ipv6=0'
 
-    # TODO: got D-bus error when systemctl is used (restarting it makes install works but makes docker slow/unstable)
-    ssh -q root@${_node} -t 'ipactl status || (service dbus restart;_d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U)' || return $?
+    # NOTE: got D-bus error when freeIPA calls systemctl (service dbus restart makes install works but makes docker slow/unstable)
+    # Adding -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket in dcoker run
+    ssh -q root@${_node} -t 'ipactl status || (_d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U)' || return $?
     ssh -q root@${_node} -t 'grep -q "ipactl start" /etc/rc.local || echo -e "\n`which ipactl` start" >> /etc/rc.local'
 
     ssh -q root@${_node} -t 'ipactl status' || return $?
