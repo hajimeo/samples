@@ -1455,9 +1455,9 @@ function _docker_run() {
     [ ! -z "${_ip_address}" ] && _options="${_options} --network=$g_HDP_NETWORK --ip=${_ip_address}"
     [ ! -z "${_dns}" ] && _options="${_options} --dns=${_dns}"
 
+    #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
     docker run -t -i -d \
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
-        -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
         -v /var/tmp/share:/var/tmp/share \
         --privileged --hostname=${_hostname} ${_options} --name=${_name} ${_base} /sbin/init
 }
