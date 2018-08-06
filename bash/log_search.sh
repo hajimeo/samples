@@ -125,7 +125,12 @@ for l in sys.stdin:
     echo "# generated temp files (file name    start    end    diff_sec    size)" >&2
     f_start_end_list "${_tmpfile_pfx}*.tmp"
     echo ' '
-    echo "# May want to also run 'f_topErrors ${_tmpfile_pfx}1_${_regex_escaped}.tmp'" >&2
+    echo "# May want to also run
+        f_topErrors ${_tmpfile_pfx}1_${_regex_escaped}.tmp
+        f_checkResultSize 'YYYY-MM-DD hh:m'
+        f_count_lines
+        f_count_threads
+    " >&2
 }
 
 function f_getQueries() {
@@ -622,9 +627,10 @@ function f_swimlane() {
 function f_start_end_list(){
     local __doc__="Output start time, end time, difference(sec), (filesize) from *multiple* log files"
     local _files="${1}"
-    local _date_regex="${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d}"
+    local _sort="${2:-2}"
+    local _date_regex="${3:-^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d}"
     [ -z  "${_files}" ] && _files=`ls -1`
-    for _f in `ls -1 ${_files}`; do f_start_end_time_with_diff $_f "${_date_regex}"; done | sort -t$'\t' -k2
+    for _f in `ls -1 ${_files}`; do f_start_end_time_with_diff $_f "${_date_regex}"; done | sort -t$'\t' -k${_sort}
 }
 
 function f_start_end_time_with_diff(){
@@ -633,8 +639,13 @@ function f_start_end_time_with_diff(){
     local _date_regex="${2}"
     [ -z "$_date_regex" ] && _date_regex="^20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d"
 
-    local _start_date=`ggrep -oPm1 "$_date_regex" $_log | sed 's/T/ /'` || return $?
-    local _end_date=`gtac $_log | ggrep -oPm1 "$_date_regex" | sed 's/T/ /'` || return $?
+    local _start_date=`rg -N -om1 "$_date_regex" ${_log} | sed 's/T/ /'` || return $?
+    local _extension="${_log##*.}"
+    if [ "${_extension}" = 'gz' ]; then
+        local _end_date=`gunzip -c ${_log} | gtac | rg -N -om1 "$_date_regex" | sed 's/T/ /'` || return $?
+    else
+        local _end_date=`gtac ${_log} | rg -N -om1 "$_date_regex" | sed 's/T/ /'` || return $?
+    fi
     local _start_int=`gdate -d "${_start_date}" +"%s"`
     local _end_int=`gdate -d "${_end_date}" +"%s"`
     local _diff=$(( $_end_int - $_start_int ))
@@ -904,7 +915,7 @@ function f_count_lines() {
     local __doc__="Count lines between _search_regex"
     local _file="$1"
     local _search_regex="${2:-"^20\\d\\d-\\d\\d-\\d\\d .+Periodic stack trace 1"}"
-
+    [ -z "${_file}" ] && _file="`find . -name periodic.log -print | head -n1`" && ls -lh ${_file}
     local _ext="${_file##*.}"
     if [[ "${_ext}" =~ gz ]]; then
         local _line_num=`gunzip -c ${_file} | wc -l`
@@ -919,6 +930,7 @@ function f_count_threads() {
     local __doc__="Grep periodic log and count threads"
     local _file="$1"
     local _tail_n="${2-10}"
+    [ -z "${_file}" ] &&  _file="`find . -name periodic.log -print | head -n1`" && ls -lh ${_file}
     if [ -n "${_tail_n}" ]; then
         rg -N -o '^"([^"]+)"' -r '$1' "${_file}" | gsed -r 's/-[0-9]+$//g' | sort | uniq -c | sort -n | tail -n ${_tail_n}
     else
