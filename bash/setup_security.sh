@@ -1154,7 +1154,7 @@ function f_ldap_client_install() {
 function f_freeipa_install() {
     local __doc__="Install freeIPA"
     local _node="$1"
-    local _password="${2:-secret12}"
+    local _password="${2:-secret12}"    # password need to be 8 or longer
     local _how_many="${3:-$r_NUM_NODES}"
     local _start_from="${4:-$r_NODE_START_NUM}"
 
@@ -1169,12 +1169,15 @@ sysctl -w net.ipv6.conf.all.disable_ipv6=0
 sysctl -w net.ipv6.conf.lo.disable_ipv6=0'
 
     # TODO: got D-bus error when systemctl is used (restarting it makes install works but makes docker slow/unstable)
-    ssh -q root@${_node} -t 'service dbus restart;_d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U'
-    #ssh -q root@${_node} -t 'ipactl status'
+    ssh -q root@${_node} -t 'ipactl status || (service dbus restart;_d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U)' || return $?
+    ssh -q root@${_node} -t 'grep -q "ipactl start" /etc/rc.local || echo -e "\n`which ipactl` start" >> /etc/rc.local'
 
+    ssh -q root@${_node} -t 'ipactl status' || return $?
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@node${i} -t '_d=`hostname -d`; yum install ipa-client -y && ipa-client-install --unattended --hostname=`hostname -f` --server='${_node}' --domain=`hostname -d` --realm=${_d^^} -p admin -w '${_password}' --mkhomedir'
+        ssh -q root@node${i} -t '[ "`hostname -f`" = "'${_node}'" ] || (_d=`hostname -d`; yum install ipa-client -y && ipa-client-install --unattended --hostname=`hostname -f` --server='${_node}' --domain=`hostname -d` --realm=${_d^^} -p admin -w '${_password}' --mkhomedir)'
     done
+
+    # TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days
 }
 
 function f_sssd_setup() {
