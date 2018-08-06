@@ -679,7 +679,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         exit
     fi
     #set -x
-    _SCHEMA_AND_HDFSDIR="atscale$$"
+    # Probably I wouldn't create more than one instance per day
+    _SCHEMA_AND_HDFSDIR="atscale$(date +"%Y%m%d")"
     f_setup || exit $?
     f_install_atscale || exit $?
 fi
