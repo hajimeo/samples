@@ -47,7 +47,7 @@ function f_setup() {
     local _hdfs_user="${_HDFS_USER:-hdfs}"
 
     if [ ! -d "${_tmp_dir}" ]; then
-        echo "WARN: ${_tmp_dir} does not exist. Try creating it..."; sleep 5
+        echo "WARN: ${_tmp_dir} does not exist. Try creating it..."; sleep 3
         mkdir -m 777 -p ${_tmp_dir} || return $?
     fi
     chmod 777 ${_tmp_dir}
@@ -67,20 +67,20 @@ function f_setup() {
         if [ ! -s /etc/security/keytabs/${_atscale_user}.service.keytab ]; then
             echo "INFO: Creating principals and keytabs (TODO: only for MIT KDC)..." >&2; sleep 1
             if [ -z "${_kadmin_usr}" ]; then
-                echo "WARN: _KADMIN_USR is not set, so that NOT creating ${_atscale_user} principal." >&2; sleep 5
+                echo "WARN: _KADMIN_USR is not set, so that NOT creating ${_atscale_user} principal." >&2; sleep 3
             else
                 if which ipa &>/dev/null; then
                     local _def_realm="`sed -nr 's/^\s*default_realm\s*=\s(.+)/\1/p' /etc/krb5.conf`"
                     local _kdc="`grep -Pzo '(?s)^\s*'${_def_realm}'\s*=\s*\{.+\}' /etc/krb5.conf | sed -nr 's/\s*kdc\s*=\s*(.+)/\1/p'`"
                     if [ -n "${_kdc}" ]; then
-                        echo "INFO: Looks like ipa is used. Please type 'admin' user password" >&2; sleep 3
+                        echo "INFO: Looks like ipa is used. Please type 'admin' user password" >&2; sleep 1
                         #echo -n "${_kadmin_pwd}" | kinit ${_kadmin_usr}
                         kinit admin
                         #ipa service-add ${_atscale_user}/`hostname -f`   # TODO: Bug? https://bugzilla.redhat.com/show_bug.cgi?id=1602410
                         ipa-getkeytab -s ${_kdc} -p ${_atscale_user}/`hostname -f` -k /etc/security/keytabs/${_atscale_user}.service.keytab
                     fi
                     if [ $? -ne 0 ]; then
-                        echo "ERROR: If FreeIPA is used, please create SPN: ${_atscale_user}/`hostname -f` from your FreeIPA GUI and export keytab." >&2; sleep 7
+                        echo "ERROR: If FreeIPA is used, please create SPN: ${_atscale_user}/`hostname -f` from your FreeIPA GUI and export keytab." >&2; sleep 5
                     fi
                 else
                     kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "add_principal -randkey ${_atscale_user}/`hostname -f`" && \
@@ -194,11 +194,11 @@ function f_backup_atscale() {
         fi
     fi
 
-    echo "INFO: Stopping AtScale before backing up..." >&2; sleep 3
+    echo "INFO: Stopping AtScale before backing up..." >&2; sleep 1
     sudo -u ${_usr} ${_dir%/}/bin/atscale_service_control stop all
     if [[ "${_is_upgrading}" =~ (^y|^Y) ]]; then
         local _days=3
-        echo "INFO: Deleting (rotated) log files which are older than ${_days} days..." >&2; sleep 3
+        echo "INFO: Deleting (rotated) log files which are older than ${_days} days..." >&2; sleep 1
         f_rm_logs "${_dir}" "${_days}"
         tar -czf ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz ${_dir%/} || return $? # Not using -h or -v for now
     else
@@ -243,7 +243,7 @@ function f_install_atscale() {
 
     # If it looks like one installed already, trying to take a backup
     if [ -s "${_dir%/}/bin/atscale_service_control" ]; then
-        echo "INFO: Looks like another AtScale is already installed in ${_dir%/}/. Taking backup..." >&2; sleep 3
+        echo "INFO: Looks like another AtScale is already installed in ${_dir%/}/. Taking backup..." >&2; sleep 1
         if ! f_backup_atscale; then     # backup should stop AtScale
             echo "ERROR: Backup failed!!!" >&2; sleep 5
             return 1
@@ -258,7 +258,7 @@ function f_install_atscale() {
     # NOTE: From here, all commands should be run as atscale user.
     if [ ! -d ${_installer_parent_dir%/}/atscale-${_version}.*-${_OS_ARCH} ]; then
         if [ ! -r "${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz" ]; then
-            echo "INFO: No ${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz. Downloading from internet..." >&2; sleep 3
+            echo "INFO: No ${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz. Downloading from internet..." >&2; sleep 1
             sudo -u ${_usr} curl --retry 100 -C - -o ${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz "https://s3-us-west-1.amazonaws.com/files.atscale.com/installer/package/atscale-${_version}.latest-${_OS_ARCH}.tar.gz" || return $?
         fi
 
@@ -266,7 +266,7 @@ function f_install_atscale() {
     fi
 
     if [ -s "${_custom_yaml}" ]; then
-        echo "INFO: Copying ${_custom_yaml} to ${_installer_parent_dir%/}/custom.yaml..." >&2; sleep 3
+        echo "INFO: Copying ${_custom_yaml} to ${_installer_parent_dir%/}/custom.yaml..." >&2; sleep 1
         [ -f ${_installer_parent_dir%/}/custom.yaml ] && mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom.yaml.$$.bak
         cp -f "${_custom_yaml}" ${_installer_parent_dir%/}/custom.yaml || return $?
     elif [ ! -s ${_installer_parent_dir%/}/custom.yaml ]; then
@@ -275,10 +275,10 @@ function f_install_atscale() {
             return 1
         fi
 
-        echo "INFO: As no custom.yaml given, generating..." >&2; sleep 3
+        echo "INFO: As no custom.yaml given, generating..." >&2; sleep 1
         f_generate_custom_yaml || return $?
     else
-        echo "INFO: Using existing ${_installer_parent_dir%/}/custom.yaml. For clean installation, remove this file." >&2; sleep 3
+        echo "WARN: Using existing ${_installer_parent_dir%/}/custom.yaml. For clean installation, remove this file." >&2; sleep 3
     fi
 
     # installer needs to be run from this dir
