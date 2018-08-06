@@ -128,6 +128,15 @@ for l in sys.stdin:
     echo "# May want to also run 'f_topErrors ${_tmpfile_pfx}1_${_regex_escaped}.tmp'" >&2
 }
 
+function f_getQueries() {
+    local __doc__="Get Inbound and outbound queries with query ID from queries.log"
+    local _uuid="$1"
+    local _path="$2"
+    #ggrep -m 1 -Pz "(?s)queryId=${_uuid}\} - Received .+?20\d\d-\d\d-\d\d" ${_path}
+    _getAfterFirstMatch "${_path}" "queryId=${_uuid}\} - Received SQL query" "^20\d\d-\d\d-\d\d" "Y"
+    _getAfterFirstMatch "${_path}" "queryId=${_uuid}\} - Executing SQL Query" "^20\d\d-\d\d-\d\d" "Y"
+}
+
 function f_topCausedByExceptions() {
     local __doc__="List Caused By xxxxException"
     local _path="$1"
@@ -930,13 +939,16 @@ function _getAfterFirstMatch() {
     local _file_path="$1"
     local _start_regex="$2"
     local _end_regex="$3"
+    local _exclude_first_line="$4"
 
     local _start_line_num=`ggrep -m1 -nP "$_start_regex" "$_file_path" | cut -d ":" -f 1`
     if [ -n "$_start_line_num" ]; then
         local _end_line_num=""
         if [ -n "$_end_regex" ]; then
             #gsed -n "${_start_line_num},\$s/${_end_regex}/&/p" "$_file_path"
-            _end_line_num=`tail -n +${_start_line_num} "$_file_path" | ggrep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
+            local _tmp_start_line_num=$_start_line_num
+            [[ "$_exclude_first_line" =~ y|Y ]] && _tmp_start_line_num=$(($_start_line_num + 1))
+            _end_line_num=`tail -n +${_tmp_start_line_num} "$_file_path" | ggrep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
             _end_line_num=$(( $_end_line_num + $_start_line_num - 1 ))
         fi
         if [ -n "$_end_line_num" ]; then
