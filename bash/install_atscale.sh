@@ -68,13 +68,21 @@ function f_setup() {
         echo "INFO: Creating principals and keytabs (TODO: only for MIT KDC)..." >&2; sleep 1
         if [ ! -s /etc/security/keytabs/${_atscale_user}.service.keytab ]; then
             if [ -z "${_kadmin_usr}" ]; then
-                echo "WARN: _kadmin_usr is not set, so that not creating ${_atscale_user} principal." >&2 sleep 7
+                echo "WARN: _kadmin_usr is not set, so that NOT creating ${_atscale_user} principal." >&2; sleep 5
             else
                 if which ipa &>/dev/null; then
-                    echo "INFO: (TODO) if FreeIPA is used, please create SPN: ${_atscale_user}/`hostname -f` from your FreeIPA GUI and export keytab." >&2; sleep 5
-                    #echo -n "${_kadmin_pwd}" | kinit ${_kadmin_usr}
-                    #ipa service-add ${_atscale_user}/`hostname -f`
-                    #ipa-getkeytab -s freeipa.server.com -p ${_atscale_user}/`hostname -f` -k /etc/security/keytabs/${_atscale_user}.service.keytab
+                    local _def_realm="`sed -nr 's/^\s*default_realm\s*=\s(.+)/\1/p' /etc/krb5.conf`"
+                    local _kdc="`grep -Pzo '(?s)^\s*'${_def_realm}'\s*=\s*\{.+\}' /etc/krb5.conf | sed -nr 's/\s*kdc\s*=\s*(.+)/\1/p'`"
+                    if [ -n "${_kdc}" ]; then
+                        echo "INFO: Looks like ipa is used. Please type 'admin' user password" >&2; sleep 3
+                        #echo -n "${_kadmin_pwd}" | kinit ${_kadmin_usr}
+                        kinit admin
+                        #ipa service-add ${_atscale_user}/`hostname -f`   # TODO: Bug? https://bugzilla.redhat.com/show_bug.cgi?id=1602410
+                        ipa-getkeytab -s ${_kdc} -p ${_atscale_user}/`hostname -f` -k /etc/security/keytabs/${_atscale_user}.service.keytab
+                    fi
+                    if [ $? -ne 0 ]; then
+                        echo "ERROR: If FreeIPA is used, please create SPN: ${_atscale_user}/`hostname -f` from your FreeIPA GUI and export keytab." >&2; sleep 7
+                    fi
                 else
                     kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "add_principal -randkey ${_atscale_user}/`hostname -f`" && \
                     kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "xst -k /etc/security/keytabs/${_atscale_user}.service.keytab ${_atscale_user}/`hostname -f`"
