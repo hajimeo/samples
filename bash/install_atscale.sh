@@ -192,6 +192,9 @@ function f_backup_atscale() {
     echo "INFO: Stopping AtScale before backing up..." >&2; sleep 3
     sudo -u ${_usr} ${_dir%/}/bin/atscale_service_control stop all
     if [[ "${_is_upgrading}" =~ (^y|^Y) ]]; then
+        local _days=3
+        echo "INFO: Deleting (rotated) log files which are older than ${_days} days..." >&2; sleep 3
+        f_rm_logs "${_dir}" "${_days}"
         tar -czf ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz ${_dir%/} || return $? # Not using -h or -v for now
     else
         mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
@@ -199,6 +202,15 @@ function f_backup_atscale() {
         chown ${_usr}: ${_dir%/} || return $?
     fi
     ls -ltrd ${_dir%/}* # Just displaying directories to remind to delete later.
+}
+
+function f_rm_logs() {
+    local __doc__="Delete AtScale log and postgreSql log files"
+    local _dir="${1:-${_ATSCALE_DIR}}"
+    local _days="${2:-1}"
+    [ -z "${_dir}" ] && return 1
+    [ -d "${_dir}" ] || return 1
+    find ${_dir%/}/{log,share/postgresql-*/data/pg_log} -type f -mtime +${_days} \( -name "*\.gz" -o \( -name "*\.log\.*" -o -name "*\.stdout\.*" \) -exec grep -Iq . {} \; \) -and -print0 | xargs -0 -t -P3 -n1 -I {} rm -f {}
 }
 
 function f_pg_dump() {
