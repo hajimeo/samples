@@ -1152,7 +1152,8 @@ function f_ldap_client_install() {
 }
 
 function f_freeipa_install() {
-    local __doc__="Install freeIPA"
+    local __doc__="Install freeIPA (may better create a dedicated container)"
+    # p_nodes_create 1 99 '172.17.100.' '7.5.1804' '' '' # Intentionally no Ambari install
     local _node="$1"
     local _password="${2:-secret12}"    # password need to be 8 or longer
     local _how_many="${3:-$r_NUM_NODES}"
@@ -1170,7 +1171,7 @@ sysctl -w net.ipv6.conf.lo.disable_ipv6=0'
 
     # TODO: got D-bus error when freeIPA calls systemctl (service dbus restart makes install works but makes docker slow/unstable)
     # Adding -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket in dcoker run
-    ssh -q root@${_node} -t 'ipactl status || (service dbus reload;_d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U)' || return $?
+    ssh -q root@${_node} -t 'ipactl status || (service dbus restart;_d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U)' || return $?
     ssh -q root@${_node} -t 'grep -q "ipactl start" /etc/rc.local || echo -e "\n`which ipactl` start" >> /etc/rc.local'
 
     ssh -q root@${_node} -t 'ipactl status' || return $?
