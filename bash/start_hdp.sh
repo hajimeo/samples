@@ -651,7 +651,7 @@ function _ambari_blueprint_host_groups() {
     elif [ $_how_many = 2 ]; then
         if _isYes "$_including_ambari" ; then
             _final_hsot_groups='
-    { "name" : "host_group_1", "components" : ['${_ambari_server}'], "configurations" : [ ] },
+    { "name" : "host_group_1", "components" : ['${_ambari_server}','${_clients}'], "configurations" : [ ] },
     { "name" : "host_group_2", "components" : ['${_master_comps}','${_standby_comps}','${_slave_comps}','${_clients}${_extra_sec_master_comps}${_extra_sec_slave_comps}'], "configurations" : [ ] }
 '
         else
@@ -663,7 +663,7 @@ function _ambari_blueprint_host_groups() {
     elif [ $_how_many = 3 ]; then
         if _isYes "$_including_ambari" ; then
             _final_hsot_groups='
-    { "name" : "host_group_1", "components" : ['${_ambari_server}'], "configurations" : [ ] },
+    { "name" : "host_group_1", "components" : ['${_ambari_server}','${_clients}'], "configurations" : [ ] },
     { "name" : "host_group_2", "components" : ['${_master_comps}','${_clients}${_extra_sec_master_comps}'], "configurations" : [ ] },
     { "name" : "host_group_3", "components" : ['${_standby_comps}','${_slave_comps}','${_clients}${_extra_sec_slave_comps}'], "configurations" : [ ] }
 '
