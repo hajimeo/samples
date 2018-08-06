@@ -243,6 +243,7 @@ function p_interview() {
 
         #_ask "Would you like to increase Ambari Alert interval?" "Y" "r_AMBARI_ALERT_INTERVAL"
     fi
+    # TODO: Hidden (non-asked) property: r_EXEC_ON_CONTAINERS="contaner_name1:command,container_name2:command"
 }
 
 function p_interview_or_load() {
@@ -1454,7 +1455,11 @@ function _docker_run() {
     [ ! -z "${_ip_address}" ] && _options="${_options} --network=$g_HDP_NETWORK --ip=${_ip_address}"
     [ ! -z "${_dns}" ] && _options="${_options} --dns=${_dns}"
 
-    docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share --privileged --hostname=${_hostname} ${_options} --name=${_name} ${_base} /sbin/init
+    docker run -t -i -d \
+        -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
+        -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
+        -v /var/tmp/share:/var/tmp/share \
+        --privileged --hostname=${_hostname} ${_options} --name=${_name} ${_base} /sbin/init
 }
 
 function _ambari_query_sql() {
