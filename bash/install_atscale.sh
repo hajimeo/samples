@@ -55,7 +55,6 @@ function f_setup() {
     echo "TODO: Please run 'adduser ${_atscale_user}' on other hadoop nodes" >&2; sleep 3
     adduser ${_atscale_user}
     usermod -a -G hadoop ${_atscale_user}
-    su - ${_atscale_user} -c 'grep -q '${_atscale_dir%/}' $HOME/.bash_profile || echo "export PATH=${PATH%:}:'${_atscale_dir%/}'/bin" >> $HOME/.bash_profile'
 
     if [ ! -d "${_atscale_dir}" ]; then
         mkdir -p "${_atscale_dir}" || return $?
@@ -65,10 +64,10 @@ function f_setup() {
     # If looks like Kerberos is enabled
     grep -A 1 'hadoop.security.authentication' /etc/hadoop/conf/core-site.xml | grep -qw "kerberos"
     if [ "$?" -eq "0" ]; then
-        echo "INFO: Creating principals and keytabs (TODO: only for MIT KDC)..." >&2; sleep 1
         if [ ! -s /etc/security/keytabs/${_atscale_user}.service.keytab ]; then
+            echo "INFO: Creating principals and keytabs (TODO: only for MIT KDC)..." >&2; sleep 1
             if [ -z "${_kadmin_usr}" ]; then
-                echo "WARN: _kadmin_usr is not set, so that NOT creating ${_atscale_user} principal." >&2; sleep 5
+                echo "WARN: _KADMIN_USR is not set, so that NOT creating ${_atscale_user} principal." >&2; sleep 5
             else
                 if which ipa &>/dev/null; then
                     local _def_realm="`sed -nr 's/^\s*default_realm\s*=\s(.+)/\1/p' /etc/krb5.conf`"
@@ -111,13 +110,11 @@ function f_setup() {
     # Running yum in here so that above hive command might finish before yum completes.
     yum install -e 0 -y bzip2 bzip2-libs curl rsync unzip || return $?
 
-    # Optionals. Not important
-    if [ -d /var/www/html ] && [ ! -e /var/www/html/atscale ]; then
-        ln -s ${_TMP_DIR%/} /var/www/html/atscale
-    fi
-    if [ ! -e /var/log/atscale ]; then
-        ln -s ${_atscale_dir%/}/log /var/log/atscale
-    fi
+    # Optionals: Not important if fails
+    su - ${_atscale_user} -c 'grep -q '${_atscale_dir%/}' $HOME/.bash_profile || echo "export PATH=${PATH%:}:'${_atscale_dir%/}'/bin" >> $HOME/.bash_profile'
+    [ ! -d /var/log/atscale ] && ln -s ${_atscale_dir%/}/log /var/log/atscale
+    [ -d /var/www/html ] && [ ! -e /var/www/html/atscale ] && ln -s ${_TMP_DIR%/} /var/www/html/atscale
+
     return 0
 }
 
