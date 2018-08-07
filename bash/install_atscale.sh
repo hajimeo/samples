@@ -111,6 +111,7 @@ function f_setup() {
     yum install -e 0 -y bzip2 bzip2-libs curl rsync unzip || return $?
 
     # Optionals: Not important if fails
+    ln -s /etc/krb5.conf /etc/krb5_atscale.conf
     su - ${_atscale_user} -c 'grep -q '${_atscale_dir%/}' $HOME/.bash_profile || echo "export PATH=${PATH%:}:'${_atscale_dir%/}'/bin" >> $HOME/.bash_profile'
     [ ! -d /var/log/atscale ] && ln -s ${_atscale_dir%/}/log /var/log/atscale
     [ -d /var/www/html ] && [ ! -e /var/www/html/atscale ] && ln -s ${_TMP_DIR%/} /var/www/html/atscale
@@ -149,8 +150,8 @@ function f_generate_custom_yaml() {
 
     if [ -s /etc/security/keytabs/atscale.service.keytab ]; then
         _is_kerberized="true"
-        _delegated_auth_enabled="true"
-        #_hive_metastore_database="true"     # Using remote metastore causes Kerberos issues but for now, commenting
+        #_delegated_auth_enabled="true"      # Default on 7.0.0 is false
+        _hive_metastore_database="true"      # Using remote metastore causes Kerberos issues
         _hive_metastore_password="${DEFAULT_PWD}"   # TODO: statick password...
         _realm=`sudo -u ${_usr} klist -kt /etc/security/keytabs/atscale.service.keytab | grep -m1 -oP '@.+' | sed 's/@//'` || return $?
         # TODO: expecting this node has hdfs headless keytab and readable by root (it should though)
