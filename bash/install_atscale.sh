@@ -297,7 +297,7 @@ function f_install_atscale() {
 function f_after_install() {
     local __doc__="Normal installation does not work well with HDP, so need to change a few"
     local _dir="${1:-${_ATSCALE_DIR}}"
-    local _db_pwd="${2-hadoop}"
+    local _db_pwd="${2:-${_DEFAULT_PWD}}"
     local _usr="${3:-${_ATSCALE_USER}}"
     local _installer_parent_dir="${4:-/home/${_usr}}"
     local _wh_name="${5:-defaultWH}"
@@ -311,7 +311,10 @@ function f_after_install() {
     #${_dir%/}/apps/engine/bin/engine_wrapper.sh
     #export AS_ENGINE_EXTRA_CLASSPATH="config.ini:/etc/hadoop/conf/"
 
-    if [ -n "${_db_pwd}" ]; then
+    _load_yaml ${_installer_parent_dir%/}/custom.yaml "inst_" || return $?
+    [ -n "${inst_hive_metastore_password}" ] && _db_pwd="${inst_hive_metastore_password}"
+
+    if [ "${inst_as_hive_metastore_database}" = 'true' ] && [ -n "${_db_pwd}" ]; then
         grep -q "javax.jdo.option.ConnectionPassword" ${_dir%/}/share/apache-hive-*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
     <property><name>javax.jdo.option.ConnectionPassword</name><value>'${_db_pwd}'</value></property>' ${_dir%/}/share/apache-hive-*/conf/hive-site.xml
         grep -q "javax.jdo.option.ConnectionPassword" ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
@@ -325,29 +328,25 @@ function f_after_install() {
     #grep -q "tez.tez-ui.history-url.base" ${_dir%/}/share/apache-tez-*/conf/tez-site.xml || sed -i.$$.bak '/<\/configuration>/i \
 #<property><name>tez.tez-ui.history-url.base</name><value>http://'${_ambari}':8080/#/main/view/TEZ/tez_cluster_instance</value></property>' ${_dir%/}/share/apache-tez-*/conf/tez-site.xml
 
-    # if skipping first wizard introduced form 6.7.0
-    if [ -s "${_installer_parent_dir%/}/custom.yaml" ]; then
-        which python &>/dev/null || return 0
-        _load_yaml ${_installer_parent_dir%/}/custom.yaml "inst_" || return $?
-        local _hdfsUri="`_get_from_xml "${inst_as_hadoop_conf_dir%/}/core-site.xml" "fs.defaultFS"`" || return $?
+    # Skipping first wizard introduced form 6.7.0 by populating data with APIs
+    local _hdfsUri="`_get_from_xml "${inst_as_hadoop_conf_dir%/}/core-site.xml" "fs.defaultFS"`" || return $?
 
-        jwt="`curl -s -X GET -u admin:admin "http://$(hostname -f):10500/default/auth"`" || return $?
+    jwt="`curl -s -X GET -u admin:admin "http://$(hostname -f):10500/default/auth"`" || return $?
 
-        local _groupId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default" -H "Authorization: Bearer ${jwt}" -d '{"name":"'${_wh_name}'","connectionId":"con1","hdfsUri":"'${_hdfsUri}'","hdfsNameNodeKerberosPrincipal":"'${inst_as_hdfs_name_node_kerberos_principal}'","hdfsSecondaryUri":null,"hdfsSecondaryNameNodeKerberosPrincipal":null,"hadoopRpcProtection":null,"subgroups":[],"defaultSchema":"'${inst_as_default_schema}'"}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
-        # response example
-        # { "status" : { "code" : 0, "message" : "200 OK" }, "responseCreated" : "2018-08-03T05:19:20.779Z", "response" : { "created" : true, "id" : "e22b575e-393f-4056-b5bf-32ea44501561" } }
-        [ -z "${_groupId}" ] && return 1
+    local _groupId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default" -H "Authorization: Bearer ${jwt}" -d '{"name":"'${_wh_name}'","connectionId":"con1","hdfsUri":"'${_hdfsUri}'","hdfsNameNodeKerberosPrincipal":"'${inst_as_hdfs_name_node_kerberos_principal}'","hdfsSecondaryUri":null,"hdfsSecondaryNameNodeKerberosPrincipal":null,"hadoopRpcProtection":null,"subgroups":[],"defaultSchema":"'${inst_as_default_schema}'"}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
+    # response example
+    # { "status" : { "code" : 0, "message" : "200 OK" }, "responseCreated" : "2018-08-03T05:19:20.779Z", "response" : { "created" : true, "id" : "e22b575e-393f-4056-b5bf-32ea44501561" } }
+    [ -z "${_groupId}" ] && return 1
 
-        # In my custom_hdp.yaml, i'm using hive for batch, so using batch
-        [ -z "${inst_as_hive_host_batch}" ] && inst_as_hive_host_batch="`hostname -f`"
-        local _conId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default/connection-group/${_groupId}" -H "Authorization: Bearer ${jwt}" \
-        -d '{"name":"'${inst_as_hive_flavor_batch}'","hosts":"'${inst_as_hive_host_batch}'","port":'${inst_as_hive_port_batch}',"connectorType":"hive","username":"atscale","password":"atscale","extraJdbcFlags":";principal='${inst_as_kerberos_hive_principal_batch}'","queryRoles":["large_user_query_role","small_user_query_role","system_query_role","canary_query_role"],"extraProperties":{}}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
+    # In my custom_hdp.yaml, i'm using hive for batch, so using batch
+    [ -z "${inst_as_hive_host_batch}" ] && inst_as_hive_host_batch="`hostname -f`"
+    local _conId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default/connection-group/${_groupId}" -H "Authorization: Bearer ${jwt}" \
+    -d '{"name":"'${inst_as_hive_flavor_batch}'","hosts":"'${inst_as_hive_host_batch}'","port":'${inst_as_hive_port_batch}',"connectorType":"hive","username":"atscale","password":"atscale","extraJdbcFlags":";principal='${inst_as_kerberos_hive_principal_batch}'","queryRoles":["large_user_query_role","small_user_query_role","system_query_role","canary_query_role"],"extraProperties":{}}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
 
-        local _envId="`curl -s -k "http://$(hostname -f):10502/environments/orgId/default" -H "Authorization: Bearer ${jwt}" \
-        -d '{"name":"'${_env_name}'","connectionIds":["'${_groupId}'"],"hiveServer2Port":11111}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
+    local _envId="`curl -s -k "http://$(hostname -f):10502/environments/orgId/default" -H "Authorization: Bearer ${jwt}" \
+    -d '{"name":"'${_env_name}'","connectionIds":["'${_groupId}'"],"hiveServer2Port":11111}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
 
-        curl -s -k "http://$(hostname -f):10500/api/1.0/org/default/setupWizard/setupComplete" -H "Authorization: Bearer ${jwt}" --data-binary 'orgId=default'
-    fi
+    curl -s -k "http://$(hostname -f):10500/api/1.0/org/default/setupWizard/setupComplete" -H "Authorization: Bearer ${jwt}" --data-binary 'orgId=default'
 }
 
 function f_dataloader() {
