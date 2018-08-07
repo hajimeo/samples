@@ -13,11 +13,11 @@ as_use_rpms: 'false'
 as_hive_flavor: atscale-sparksql
 as_hive_flavor_batch: atscale-hive
 as_hive_host_interactive: ''
-as_hive_port_interactive: '10000'
+as_hive_port_interactive: '10511'
 as_hive_user_interactive: atscale
 as_hive_password_interactive: ''
 as_hive_host_batch: ''
-as_hive_port_batch: '10511'
+as_hive_port_batch: '10510'
 as_hive_user_batch: atscale
 as_hive_password_batch: ''
 as_install_directory: "/usr/local/atscale"
@@ -28,7 +28,7 @@ as_hadoop_libexec: "/usr/hdp/%hdp_version%/hadoop/libexec"
 as_hdfs_home: "/usr/hdp/%hdp_version%/hadoop-hdfs"
 as_hadoop_conf_dir: "/etc/hadoop/conf"
 as_hive_conf_dir: "/usr/hdp/%hdp_version%/hive/conf"
-as_tez_conf_dir: "/etc/tez/conf/"
+as_tez_conf_dir: "/etc/tez/conf"
 as_compute_stats: 'true'
 as_hdfs_root_dir: "%hdfs_root_dir%"
 as_ha_enabled: 'false'
@@ -43,7 +43,6 @@ as_license_file: "%license_file%"
 as_license_source: atscale
 lzo_jar_location: ''
 as_hive_metastore_database: '%hive_metastore_database%'
-as_hive_metastore_password: '%hive_metastore_password%'
 ruby_bin: "/tmp/puppet/embedded/bin/ruby"
 hadoop_classpath: "%hadoop_classpath%"
 as_namenode: ''
@@ -63,9 +62,13 @@ as_kerberos_hive_principal_keytab_interactive: "/etc/security/keytabs/atscale.se
 as_kerberos_hive_metastore_principal: hive/_HOST@%hadoop_realm%
 as_hdfs_name_node_kerberos_principal: %hdfs_principal%@%hadoop_realm%
 as_hdfs_use_tls: 'false'
-use_custom_krb5conf: 'false'
-custom_krb5conf_file: ''
-as_hive_doas: ''
+use_custom_krb5conf: 'true'
+custom_krb5conf_file: "/etc/krb5_atscale.conf"
+as_hive_doas: 'false'
+as_hive_metastore_user: "<empty>"
+as_hive_metastore_url: "<empty>"
+as_hive_metastore_password: '%hive_metastore_password%'
+as_hive_drivername: "<empty>"
 as_hdp_version: %hdp_version%
 as_hdp_major_version: '%hdp_major_version%'
 delegated_auth_enabled: '%delegated_auth_enabled%'
