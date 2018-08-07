@@ -1190,7 +1190,7 @@ ipa-client-install --unattended --hostname=`hostname -f` --server='${_node}' --d
     if [[ "${_force_client}" =~ y|Y ]]; then
         _warn "Due to dbus restart, may need to stop/start containers"
     fi
-    # TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days
+    _warn "TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days"
 }
 
 function f_sssd_setup() {
