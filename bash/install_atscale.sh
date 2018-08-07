@@ -290,10 +290,10 @@ function f_install_atscale() {
     local _last_log="`ls -t1 /home/atscale/log/install-20*.log | head -n1`"
     [ -s "${_last_log}" ] && grep '^Error:' ${_last_log}
 
-    f_after_install_hack
+    f_after_install
 }
 
-function f_after_install_hack() {
+function f_after_install() {
     local __doc__="Normal installation does not work well with HDP, so need to change a few"
     local _dir="${1:-${_ATSCALE_DIR}}"
     local _db_pwd="${2-hadoop}"
@@ -325,7 +325,7 @@ function f_after_install_hack() {
 #<property><name>tez.tez-ui.history-url.base</name><value>http://'${_ambari}':8080/#/main/view/TEZ/tez_cluster_instance</value></property>' ${_dir%/}/share/apache-tez-*/conf/tez-site.xml
 
     # if skipping first wizard introduced form 6.7.0
-    if [ ! -s "${_installer_parent_dir%/}/custom.yaml" ]; then
+    if [ -s "${_installer_parent_dir%/}/custom.yaml" ]; then
         which python &>/dev/null || return 0
         _load_yaml ${_installer_parent_dir%/}/custom.yaml "inst_" || return $?
         local _hdfsUri="`_get_from_xml "${inst_as_hadoop_conf_dir%/}/core-site.xml" "fs.defaultFS"`" || return $?
