@@ -703,7 +703,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         exit
     fi
     #set -x
-    _SCHEMA_AND_HDFSDIR="atscale$(echo $_ATSCALE_VER | sed 's/[^0-9]//g')_$$"
+    # Wouldn't create more than once per day per version
+    _SCHEMA_AND_HDFSDIR="atscale$(echo $_ATSCALE_VER | sed 's/[^0-9]//g')_$(date +"%Y%m%d")"
     f_setup || exit $?
     f_install_atscale || exit $?
 fi
