@@ -47,12 +47,12 @@ function f_setup() {
     local _hdfs_user="${_HDFS_USER:-hdfs}"
 
     if [ ! -d "${_tmp_dir}" ]; then
-        echo "WARN: ${_tmp_dir} does not exist. Try creating it..."; sleep 3
+        _log "WARN" "${_tmp_dir} does not exist. Try creating it..."; sleep 3
         mkdir -m 777 -p ${_tmp_dir} || return $?
     fi
     chmod 777 ${_tmp_dir}
 
-    echo "TODO: Please run 'adduser ${_atscale_user}' on other hadoop nodes" >&2; sleep 3
+    _log "TODO" "Please run 'adduser ${_atscale_user}' on other hadoop nodes"; sleep 3
     adduser ${_atscale_user}
     usermod -a -G hadoop ${_atscale_user}
 
@@ -65,22 +65,22 @@ function f_setup() {
     grep -A 1 'hadoop.security.authentication' /etc/hadoop/conf/core-site.xml | grep -qw "kerberos"
     if [ "$?" -eq "0" ]; then
         if [ ! -s /etc/security/keytabs/${_atscale_user}.service.keytab ]; then
-            echo "INFO: Creating principals and keytabs (TODO: only for MIT KDC)..." >&2; sleep 1
+            _log "INFO" "Creating principals and keytabs (TODO: only for MIT KDC)..."; sleep 1
             if [ -z "${_kadmin_usr}" ]; then
-                echo "WARN: _KADMIN_USR is not set, so that NOT creating ${_atscale_user} principal." >&2; sleep 3
+                _log "WARN" "_KADMIN_USR is not set, so that NOT creating ${_atscale_user} principal."; sleep 3
             else
                 if which ipa &>/dev/null; then
                     local _def_realm="`sed -nr 's/^\s*default_realm\s*=\s(.+)/\1/p' /etc/krb5.conf`"
                     local _kdc="`grep -Pzo '(?s)^\s*'${_def_realm}'\s*=\s*\{.+\}' /etc/krb5.conf | sed -nr 's/\s*kdc\s*=\s*(.+)/\1/p'`"
                     if [ -n "${_kdc}" ]; then
-                        echo "INFO: Looks like ipa is used. Please type 'admin' user password" >&2; sleep 1
+                        _log "INFO" "Looks like ipa is used. Please type 'admin' user password"; sleep 1
                         #echo -n "${_kadmin_pwd}" | kinit ${_kadmin_usr}
                         kinit admin
                         #ipa service-add ${_atscale_user}/`hostname -f`   # TODO: Bug? https://bugzilla.redhat.com/show_bug.cgi?id=1602410
                         ipa-getkeytab -s ${_kdc} -p ${_atscale_user}/`hostname -f` -k /etc/security/keytabs/${_atscale_user}.service.keytab
                     fi
                     if [ $? -ne 0 ]; then
-                        echo "ERROR: If FreeIPA is used, please create SPN: ${_atscale_user}/`hostname -f` from your FreeIPA GUI and export keytab." >&2; sleep 5
+                        _log "ERROR" "If FreeIPA is used, please create SPN: ${_atscale_user}/`hostname -f` from your FreeIPA GUI and export keytab."; sleep 5
                     fi
                 else
                     kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "add_principal -randkey ${_atscale_user}/`hostname -f`" && \
@@ -190,15 +190,15 @@ function f_backup_atscale() {
         sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control start postgres"; sleep 5
         f_pg_dump "${_dir%/}/share/postgresql-9.*/" "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz"
         if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
-            echo "WARN: Failed to take DB dump into ${_TMP_DIR%/}/atscale_${_suffix}.sql.gz. Maybe PostgreSQL is stopped?" >&2; sleep 3
+            _log "WARN" "Failed to take DB dump into ${_TMP_DIR%/}/atscale_${_suffix}.sql.gz. Maybe PostgreSQL is stopped?"; sleep 3
         fi
     fi
 
-    echo "INFO: Stopping AtScale before backing up..." >&2; sleep 1
+    _log "INFO" "Stopping AtScale before backing up..."; sleep 1
     sudo -u ${_usr} ${_dir%/}/bin/atscale_service_control stop all
     if [[ "${_is_upgrading}" =~ (^y|^Y) ]]; then
         local _days=3
-        echo "INFO: Deleting (rotated) log files which are older than ${_days} days..." >&2; sleep 1
+        _log "INFO" "Deleting (rotated) log files which are older than ${_days} days..."; sleep 1
         f_rm_logs "${_dir}" "${_days}"
         tar -czf ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz ${_dir%/} || return $? # Not using -h or -v for now
     else
@@ -225,7 +225,7 @@ function f_pg_dump() {
 
     LD_LIBRARY_PATH=${_lib_path} PGPASSWORD=${PGPASSWORD:-atscale} ${_pg_dir%/}/bin/pg_dump -h localhost -p 10520 -d atscale -U atscale -Z 9 -f ${_dump_dest_filename} &
     trap 'kill %1' SIGINT
-    echo "INFO: Executing pg_dump. Ctrl+c to skip 'pg_dump' command"; wait
+    _log "INFO" "Executing pg_dump. Ctrl+c to skip 'pg_dump' command"; wait
     trap - SIGINT
 }
 
@@ -243,9 +243,9 @@ function f_install_atscale() {
 
     # If it looks like one installed already, trying to take a backup
     if [ -s "${_dir%/}/bin/atscale_service_control" ]; then
-        echo "INFO: Looks like another AtScale is already installed in ${_dir%/}/. Taking backup..." >&2; sleep 1
+        _log "INFO" "Looks like another AtScale is already installed in ${_dir%/}/. Taking backup..."; sleep 1
         if ! f_backup_atscale; then     # backup should stop AtScale
-            echo "ERROR: Backup failed!!!" >&2; sleep 5
+            _log "ERROR" "Backup failed!!!"; sleep 5
             return 1
         fi
 
@@ -258,7 +258,7 @@ function f_install_atscale() {
     # NOTE: From here, all commands should be run as atscale user.
     if [ ! -d ${_installer_parent_dir%/}/atscale-${_version}.*-${_OS_ARCH} ]; then
         if [ ! -r "${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz" ]; then
-            echo "INFO: No ${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz. Downloading from internet..." >&2; sleep 1
+            _log "INFO" "No ${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz. Downloading from internet..."; sleep 1
             sudo -u ${_usr} curl --retry 100 -C - -o ${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz "https://s3-us-west-1.amazonaws.com/files.atscale.com/installer/package/atscale-${_version}.latest-${_OS_ARCH}.tar.gz" || return $?
         fi
 
@@ -266,24 +266,24 @@ function f_install_atscale() {
     fi
 
     if [ -s "${_custom_yaml}" ]; then
-        echo "INFO: Copying ${_custom_yaml} to ${_installer_parent_dir%/}/custom.yaml..." >&2; sleep 1
+        _log "INFO" "Copying ${_custom_yaml} to ${_installer_parent_dir%/}/custom.yaml..."; sleep 1
         [ -f ${_installer_parent_dir%/}/custom.yaml ] && mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom.yaml.$$.bak
         cp -f "${_custom_yaml}" ${_installer_parent_dir%/}/custom.yaml || return $?
     elif [ ! -s ${_installer_parent_dir%/}/custom.yaml ]; then
         if [[ "${_UPGRADING}}" =~ (^y|^Y) ]]; then
-            echo "ERROR: Upgrading is specified but no custom.yaml file!!!" >&2; sleep 5
+            _log "ERROR" "Upgrading is specified but no custom.yaml file!!!"; sleep 5
             return 1
         fi
 
-        echo "INFO: As no custom.yaml given, generating..." >&2; sleep 1
+        _log "INFO" "As no custom.yaml given, generating..."; sleep 1
         f_generate_custom_yaml || return $?
     else
-        echo "WARN: Using existing ${_installer_parent_dir%/}/custom.yaml. For clean installation, remove this file." >&2; sleep 3
+        _log "WARN" "Using existing ${_installer_parent_dir%/}/custom.yaml. For clean installation, remove this file."; sleep 3
     fi
 
     # installer needs to be run from this dir
     cd ${_installer_parent_dir%/}/atscale-${_version}.*-${_OS_ARCH}/ || return $?
-    echo "INFO: executing 'sudo -u ${_usr} ./bin/install -l ${_license}'" >&2
+    _log "INFO" "executing 'sudo -u ${_usr} ./bin/install -l ${_license}'"; sleep 1
     sudo -u ${_usr} ./bin/install -l ${_license}
     cd -
 
@@ -368,11 +368,11 @@ function f_ldap_cert_setup() {
 
     echo -n | openssl s_client -connect ${_ldap_host}:${_ldap_port} -showcerts 2>&1 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ${_TMP_DIR%/}/${_ldap_host}_${_ldap_port}.crt
     if [ ! -s "${_TMP_DIR%/}/${_ldap_host}_${_ldap_port}.crt" ]; then
-        echo "WARN: Certificate is NOT available on ${_ldap_host}:${_ldap_port}" >&2; sleep 3
+        _log "WARN" "Certificate is NOT available on ${_ldap_host}:${_ldap_port}"; sleep 3
         return 1
     fi
     ${_java_home%/}/bin/keytool -import -trustcacerts -file "${_TMP_DIR%/}/${_ldap_host}_${_ldap_port}.crt" -alias "${_ldap_host}" -keystore "${_truststore}" -noprompt -storepass "${_storepass}" || return $?
-    echo "INFO: You need to restart AtScale to use the updated truststore." >&2; sleep 1
+    _log "INFO" "You need to restart AtScale to use the updated truststore."; sleep 1
 }
 
 function f_export_key() {
@@ -412,12 +412,12 @@ function f_ha_with_tls_setup() {
         f_export_key "${_certs_dir%/}/server.keystore.jks" "hadoop"
     fi
     if [ ! -s "${_certificate}" ]; then
-        echo "ERROR: No ${_certificate}" >&2; return 1
+        _log "ERROR" "No ${_certificate}"; sleep 5; return 1
     fi
 
     if [ ! -s "$_sample_conf" ]; then
         if [ ! -e './bin/generate_haproxy_cfg' ]; then
-            echo "WARN: No sample HA config and no generate_haproxy_cfg" >&2
+            _log "WARN" "No sample HA config and no generate_haproxy_cfg"; sleep 3
             if [ -s /etc/haproxy/haproxy.cfg.orig ] && [ -s /etc/haproxy/haproxy.cfg ]; then
                 echo "Assuming the sample is copied to /etc/haproxy/haproxy.cfg"
             elif [ -s /var/tmp/share/atscale/haproxy.cfg.sample ]; then
@@ -594,6 +594,15 @@ function _get_from_xml() {
     local _name="$2"
     # TODO: won't work with multiple lines
     grep -F '<name>'${_name}'</name>' -A 1 ${_xml_file} | grep -Pzo '<value>.+?</value>' | sed -nr 's/<value>(.+)<\/value>/\1/p'
+}
+
+function _log() {
+    # At this moment, outputting to STDERR
+    if [ -n "${_LOG_FILE_PATH}" ]; then
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a ${g_LOG_FILE_PATH} 1>&2
+    else
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" 1>&2
+    fi
 }
 
 help() {
