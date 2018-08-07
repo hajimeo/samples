@@ -1156,29 +1156,38 @@ function f_freeipa_install() {
     # p_nodes_create 1 99 '172.17.100.' '7.5.1804' '' '' # Intentionally no Ambari install
     local _node="$1"
     local _password="${2:-secret12}"    # password need to be 8 or longer
-    local _how_many="${3:-$r_NUM_NODES}"
-    local _start_from="${4:-$r_NODE_START_NUM}"
+    local _force_client="${3}"
+    local _how_many="${4:-$r_NUM_NODES}"
+    local _start_from="${5:-$r_NODE_START_NUM}"
 
     # Used ports https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/linux_domain_identity_authentication_and_policy_guide/installing-ipa
     #ssh -q root@${_node} -t "yum update -y"
     ssh -q root@${_node} -t "yum install freeipa-server -y" || return $?
 
     # seems FreeIPA needs ipv6 for loopback
-    ssh -q root@${_node} -t 'grep -q '^net.ipv6.conf.all.disable_ipv6' /etc/sysctl.conf || echo "net.ipv6.conf.all.disable_ipv6 = 0" >> /etc/sysctl.conf
-grep -q '^net.ipv6.conf.lo.disable_ipv6' /etc/sysctl.conf || echo "net.ipv6.conf.lo.disable_ipv6 = 0" >> /etc/sysctl.conf
-sysctl -w net.ipv6.conf.all.disable_ipv6=0
-sysctl -w net.ipv6.conf.lo.disable_ipv6=0'
+    ssh -q root@${_node} -t 'grep -q '^net.ipv6.conf.all.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.conf.all.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.all.disable_ipv6=0)
+grep -q '^net.ipv6.conf.lo.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.conf.lo.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.lo.disable_ipv6=0)'
 
     # TODO: got D-bus error when freeIPA calls systemctl (service dbus restart makes install works but makes docker slow/unstable)
     # Adding -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket in dcoker run
     ssh -q root@${_node} -t 'ipactl status || (service dbus restart;_d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U)' || return $?
     ssh -q root@${_node} -t 'grep -q "ipactl start" /etc/rc.local || echo -e "\n`which ipactl` start" >> /etc/rc.local'
 
-    ssh -q root@${_node} -t 'ipactl status' || return $?
+    local _uninstall=""
+    [[ "${_force_client}" =~ y|Y ]] && _uninstall="service dbus restart; ipa-client-install --unattended --uninstall"
+
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@node${i} -t '[ "`hostname -f`" = "'${_node}'" ] || (_d=`hostname -d`; yum install ipa-client -y && ipa-client-install --unattended --hostname=`hostname -f` --server='${_node}' --domain=`hostname -d` --realm=${_d^^} -p admin -w '${_password}' --mkhomedir)'
+        ssh -q root@node${i} -t '[ "`hostname -f`" = "'${_node}'" ] && exit
+ipa ping &>/dev/null && exit
+_d=`hostname -d`
+yum install ipa-client -y
+'${_uninstall}'
+ipa-client-install --unattended --hostname=`hostname -f` --server='${_node}' --domain=`hostname -d` --realm=${_d^^} -p admin -w '${_password}' --mkhomedir --force-join'
     done
 
+    if [[ "${_force_client}" =~ y|Y ]]; then
+        _warn "Due to dbus restart, may need to stop/start containers"
+    fi
     # TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days
 }
 
