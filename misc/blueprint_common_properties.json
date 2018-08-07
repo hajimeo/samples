@@ -8,6 +8,13 @@
     }
   },
   {
+    "core-site": {
+      "properties": {
+        "hadoop.proxyuser.*": "*"
+      }
+    }
+  },
+  {
     "hdfs-site": {
       "properties": {
         "dfs.replication": "1",
