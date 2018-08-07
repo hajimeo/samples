@@ -274,24 +274,29 @@ function f_install_atscale() {
         sudo -u ${_usr} tar -xf ${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz -C ${_installer_parent_dir%/}/ || return $?
     fi
 
+    # If some custom yaml is specified in the argument or _ATSCALE_CUSTOMYAML
+    if [ -n "${_custom_yaml}" ]; then
+        if [ ! -s "${_custom_yaml}" ]; then
+            _log "ERROR" "${_custom_yaml} does not exist!!"; sleep 5
+            return 1
+        fi
+
+        [ -s ${_installer_parent_dir%/}/custom.yaml ] && mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom.yaml.$$.bak
+        _log "INFO" "Copying ${_custom_yaml} to ${_installer_parent_dir%/}/custom.yaml ..."; sleep 1
+        cp -f "${_custom_yaml}" ${_installer_parent_dir%/}/custom.yaml || return $?
+    fi
+
     if [[ "${_UPGRADING}}" =~ (^y|^Y) ]]; then
         # If upgrading, must put custom.yaml in correct location before starting installation
         if [ ! -s ${_installer_parent_dir%/}/custom.yaml ]; then
             _log "ERROR" "Upgrading is specified but no custom.yaml file!!!"; sleep 5
             return 1
         fi
-    elif [ -n "${_custom_yaml}" ]; then # If some custom yaml is specified in the argument
-        if [ ! -s "${_custom_yaml}" ]; then
-            _log "ERROR" "${_custom_yaml} does not exist!!"; sleep 5
-            return 1
-        fi
-
-        [ -f ${_installer_parent_dir%/}/custom.yaml ] && mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom.yaml.$$.bak
-        _log "INFO" "Copying ${_custom_yaml} to ${_installer_parent_dir%/}/custom.yaml ..."; sleep 1
-        cp -f "${_custom_yaml}" ${_installer_parent_dir%/}/custom.yaml || return $?
     else
-        _log "INFO" "As no custom.yaml given, generating..."; sleep 1
-        f_generate_custom_yaml || return $?
+        if [ ! -n "${_custom_yaml}" ]; then
+            _log "WARN" "As no custom.yaml specified (eg: _ATSCALE_CUSTOMYAML), generating new one..."; sleep 3
+            f_generate_custom_yaml || return $?
+        fi
     fi
 
     # installer needs to be run from this dir
