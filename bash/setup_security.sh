@@ -1176,9 +1176,11 @@ grep -q '^net.ipv6.conf.lo.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.con
     local _uninstall=""
     [[ "${_force_client}" =~ y|Y ]] && _uninstall="service dbus restart; ipa-client-install --unattended --uninstall"
 
+    #ipa ping
+    #ipa config-show --all
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh -q root@node${i} -t '[ "`hostname -f`" = "'${_node}'" ] && exit
-ipa ping &>/dev/null && exit
+echo -n "'${_password}'" | kinit admin && exit
 _d=`hostname -d`
 yum install ipa-client -y
 '${_uninstall}'
