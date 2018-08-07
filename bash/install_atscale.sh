@@ -26,9 +26,9 @@ END
 [ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="atscale"
 
 ### Arguments ########################
-_ATSCALE_USER="${1:-atscale}"
-_ATSCALE_LICENSE="${2:-${_TMP_DIR}/dev-vm-license-atscale.json}"
-_ATSCALE_VER="${5:-7.0.0}"
+_ATSCALE_VER="${1:-7.0.0}"
+_ATSCALE_USER="${2:-atscale}"
+_ATSCALE_LICENSE="${3:-${_TMP_DIR}/dev-vm-license-atscale.json}"
 _ATSCALE_CUSTOMYAML="${4}"
 _UPGRADING="${5}"
 
@@ -128,6 +128,7 @@ function f_generate_custom_yaml() {
     local _license_file="${1:-${_ATSCALE_LICENSE}}"
     local _usr="${2:-${_ATSCALE_USER}}"
     local _schema_and_hdfsdir="${3:-${_SCHEMA_AND_HDFSDIR}}"
+    local _installer_parent_dir="${4:-/home/${_usr}}"
 
     # TODO: currently only for HDP
     local _tmp_yaml=/tmp/custom_hdp.yaml
@@ -171,12 +172,12 @@ function f_generate_custom_yaml() {
         sed -i "s@%${_v}%@${!_v2}@g" $_tmp_yaml || return $?
     done
 
-    if [ -n "${_usr}" ]; then
-        if [ -f /home/${_usr%/}/custom.yaml ] && [ ! -s /home/${_usr%/}/custom_$$.yaml ]; then
-            mv /home/${_usr%/}/custom.yaml /home/${_usr%/}/custom_$$.yaml || return $?
+    if [ -d "${_installer_parent_dir}" ]; then
+        if [ -f ${_installer_parent_dir%/}/custom.yaml ] && [ ! -s ${_installer_parent_dir%/}/custom_$$.yaml ]; then
+            mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom_$$.yaml || return $?
         fi
-        # CentOS seems to have an alias "cp -i"
-        /usr/bin/cp -f ${_tmp_yaml} /home/${_usr%/}/custom.yaml && chown ${_usr}: /home/${_usr%/}/custom.yaml
+        # CentOS seems to have an alias of "cp -i"
+        mv -f ${_tmp_yaml} ${_installer_parent_dir%/}/custom.yaml && chown ${_usr}: ${_installer_parent_dir%/}/custom.yaml
     fi
 }
 
@@ -273,20 +274,24 @@ function f_install_atscale() {
         sudo -u ${_usr} tar -xf ${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz -C ${_installer_parent_dir%/}/ || return $?
     fi
 
-    if [ -s "${_custom_yaml}" ]; then
-        _log "INFO" "Copying ${_custom_yaml} to ${_installer_parent_dir%/}/custom.yaml..."; sleep 1
-        [ -f ${_installer_parent_dir%/}/custom.yaml ] && mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom.yaml.$$.bak
-        cp -f "${_custom_yaml}" ${_installer_parent_dir%/}/custom.yaml || return $?
-    elif [ ! -s ${_installer_parent_dir%/}/custom.yaml ]; then
-        if [[ "${_UPGRADING}}" =~ (^y|^Y) ]]; then
+    if [[ "${_UPGRADING}}" =~ (^y|^Y) ]]; then
+        # If upgrading, must put custom.yaml in correct location before starting installation
+        if [ ! -s ${_installer_parent_dir%/}/custom.yaml ]; then
             _log "ERROR" "Upgrading is specified but no custom.yaml file!!!"; sleep 5
             return 1
         fi
+    elif [ -n "${_custom_yaml}" ]; then # If some custom yaml is specified in the argument
+        if [ ! -s "${_custom_yaml}" ]; then
+            _log "ERROR" "${_custom_yaml} does not exist!!"; sleep 5
+            return 1
+        fi
 
+        [ -f ${_installer_parent_dir%/}/custom.yaml ] && mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom.yaml.$$.bak
+        _log "INFO" "Copying ${_custom_yaml} to ${_installer_parent_dir%/}/custom.yaml ..."; sleep 1
+        cp -f "${_custom_yaml}" ${_installer_parent_dir%/}/custom.yaml || return $?
+    else
         _log "INFO" "As no custom.yaml given, generating..."; sleep 1
         f_generate_custom_yaml || return $?
-    else
-        _log "WARN" "Using existing ${_installer_parent_dir%/}/custom.yaml. For clean installation, remove this file."; sleep 3
     fi
 
     # installer needs to be run from this dir
