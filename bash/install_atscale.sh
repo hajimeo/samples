@@ -53,12 +53,16 @@ function f_setup() {
     chmod 777 ${_tmp_dir}
 
     _log "TODO" "Please run 'adduser ${_atscale_user}' on other hadoop nodes"; sleep 3
-    adduser ${_atscale_user}
-    usermod -a -G hadoop ${_atscale_user}
+    adduser ${_atscale_user} &>/dev/null
+    usermod -a -G hadoop ${_atscale_user} &>/dev/null
 
     if [ ! -d "${_atscale_dir}" ]; then
         mkdir -p "${_atscale_dir}" || return $?
         chown ${_atscale_user}: "${_atscale_dir}" || return $?
+    fi
+
+    if ! grep -qF "hadoop.proxyuser.${_atscale_user}" /etc/hadoop/conf/core-site.xml; then
+        _log "WARN" "Please check hadoop.proxyuser.${_atscale_user}.hosts and groups in core-site."; sleep 3
     fi
 
     # If looks like Kerberos is enabled
@@ -150,9 +154,9 @@ function f_generate_custom_yaml() {
 
     if [ -s /etc/security/keytabs/atscale.service.keytab ]; then
         _is_kerberized="true"
-        #_delegated_auth_enabled="true"      # Default on 7.0.0 is false
-        _hive_metastore_database="true"      # Using remote metastore causes Kerberos issues
-        _hive_metastore_password="${DEFAULT_PWD}"   # TODO: statick password...
+        _delegated_auth_enabled="true"       # Default on 7.0.0 is false
+        #_hive_metastore_database="true"      # Using remote metastore causes Kerberos issues, however this one update metastore version "Set by MetaStore UNKNOWN@172.17.100.6"
+        #_hive_metastore_password="${DEFAULT_PWD}"   # TODO: static password...
         _realm=`sudo -u ${_usr} klist -kt /etc/security/keytabs/atscale.service.keytab | grep -m1 -oP '@.+' | sed 's/@//'` || return $?
         # TODO: expecting this node has hdfs headless keytab and readable by root (it should though)
         _hadoop_realm=`klist -kt /etc/security/keytabs/hdfs.headless.keytab | grep -m1 -oP '@.+' | sed 's/@//'`
@@ -297,10 +301,9 @@ function f_install_atscale() {
 function f_after_install() {
     local __doc__="Normal installation does not work well with HDP, so need to change a few"
     local _dir="${1:-${_ATSCALE_DIR}}"
-    local _db_pwd="${2:-${_DEFAULT_PWD}}"
-    local _usr="${3:-${_ATSCALE_USER}}"
-    local _installer_parent_dir="${4:-/home/${_usr}}"
-    local _wh_name="${5:-defaultWH}"
+    local _usr="${2:-${_ATSCALE_USER}}"
+    local _installer_parent_dir="${3:-/home/${_usr}}"
+    local _wh_name="${4:-defaultWH}"
     local _env_name="${5:-defaultEnv}"
 
     if [ -x "${_dir%/}/bin/atscale_start" ]; then
@@ -312,13 +315,12 @@ function f_after_install() {
     #export AS_ENGINE_EXTRA_CLASSPATH="config.ini:/etc/hadoop/conf/"
 
     _load_yaml ${_installer_parent_dir%/}/custom.yaml "inst_" || return $?
-    [ -n "${inst_hive_metastore_password}" ] && _db_pwd="${inst_hive_metastore_password}"
 
-    if [ "${inst_as_hive_metastore_database}" = 'true' ] && [ -n "${_db_pwd}" ]; then
+    if [ "${inst_as_hive_metastore_database}" = 'true' ]; then
         grep -q "javax.jdo.option.ConnectionPassword" ${_dir%/}/share/apache-hive-*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
-    <property><name>javax.jdo.option.ConnectionPassword</name><value>'${_db_pwd}'</value></property>' ${_dir%/}/share/apache-hive-*/conf/hive-site.xml
+    <property><name>javax.jdo.option.ConnectionPassword</name><value>'${inst_hive_metastore_password}'</value></property>' ${_dir%/}/share/apache-hive-*/conf/hive-site.xml
         grep -q "javax.jdo.option.ConnectionPassword" ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
-    <property><name>javax.jdo.option.ConnectionPassword</name><value>'${_db_pwd}'</value></property>' ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml
+    <property><name>javax.jdo.option.ConnectionPassword</name><value>'${inst_hive_metastore_password}}'</value></property>' ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml
 
         sudo -u ${_usr} ${_dir%/}/bin/atscale_service_control restart atscale-hiveserver2 atscale-spark
     fi
