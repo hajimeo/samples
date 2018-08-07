@@ -1161,7 +1161,7 @@ function f_freeipa_install() {
 
     # Used ports https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/linux_domain_identity_authentication_and_policy_guide/installing-ipa
     #ssh -q root@${_node} -t "yum update -y"
-    ssh -q root@${_node} -t "yum install freeipa-server -y"
+    ssh -q root@${_node} -t "yum install freeipa-server -y" || return $?
 
     # seems FreeIPA needs ipv6 for loopback
     ssh -q root@${_node} -t 'grep -q '^net.ipv6.conf.all.disable_ipv6' /etc/sysctl.conf || echo "net.ipv6.conf.all.disable_ipv6 = 0" >> /etc/sysctl.conf
