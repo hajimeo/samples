@@ -191,26 +191,29 @@ function f_backup_atscale() {
     local _installed_ver="$(sed -n -e 's/^as_version: \([0-9.]\+\).*/\1/p' "`ls -t ${_dir%/}/conf/versions/versions.*.yml | head -n1`")"
     [ -z "${_installed_ver}" ] && _installed_ver="unknown"
     local _suffix=${_installed_ver}_$(date +"%Y%m%d")_$$
-    if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
-        sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control start postgres"; sleep 5
-        f_pg_dump "${_dir%/}/share/postgresql-9.*/" "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz"
-        if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
-            _log "WARN" "Failed to take DB dump into ${_TMP_DIR%/}/atscale_${_suffix}.sql.gz. Maybe PostgreSQL is stopped?"; sleep 3
-        fi
-    fi
+
+    #if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
+    #    sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control start postgres"; sleep 5
+    #    f_pg_dump "${_dir%/}/share/postgresql-9.*/" "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz"
+    #    if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
+    #        _log "WARN" "Failed to take DB dump into ${_TMP_DIR%/}/atscale_${_suffix}.sql.gz. Maybe PostgreSQL is stopped?"; sleep 3
+    #    fi
+    #fi
 
     _log "INFO" "Stopping AtScale before backing up..."; sleep 1
-    sudo -u ${_usr} ${_dir%/}/bin/atscale_service_control stop all
     if [[ "${_is_upgrading}" =~ (^y|^Y) ]]; then
+        sudo -u ${_usr} ${_dir%/}/bin/atscale_service_control stop all
         local _days=3
         _log "INFO" "Deleting (rotated) log files which are older than ${_days} days..."; sleep 1
         f_rm_logs "${_dir}" "${_days}"
         tar -czf ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz ${_dir%/} || return $? # Not using -h or -v for now
     else
+        sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f
         mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
         mkdir ${_dir%/} || return $?
         chown ${_usr}: ${_dir%/} || return $?
     fi
+
     ls -ltrd ${_dir%/}* # Just displaying directories to remind to delete later.
 }
 
@@ -249,7 +252,7 @@ function f_install_atscale() {
     # If it looks like one installed already, trying to take a backup
     if [ -s "${_dir%/}/bin/atscale_service_control" ]; then
         _log "INFO" "Looks like another AtScale is already installed in ${_dir%/}/. Taking backup..."; sleep 1
-        if ! f_backup_atscale; then     # backup should stop AtScale
+        if ! f_backup_atscale; then     # NOTE: backup should stop AtScale
             _log "ERROR" "Backup failed!!!"; sleep 5
             return 1
         fi
