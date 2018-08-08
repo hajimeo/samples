@@ -108,9 +108,10 @@ g_DOMAIN_SUFFIX=".localdomain"
 g_APT_UPDATE_DONE=""
 g_HDP_NETWORK="hdp"
 g_CENTOS_VERSION="7.5.1804"
-g_AMBARI_VERSION="2.6.2.2" # TODO: need to update Ambari Version manually
-g_STACK_VERSION="2.6"
+g_AMBARI_VERSION="2.6.2.2"  # TODO: need to update Ambari version manually
 g_AMBARI_PORT="8080"
+g_STACK_VERSION="2.6"       # Also need to update in case hdp_urlinfo.json doesn't work
+g_JDK_FILE="jdk-8u112-linux-x64.tar.gz" # Also need to update when HWX updates JDK
 
 __PID="$$"
 __LAST_ANSWER=""
@@ -199,7 +200,12 @@ function p_interview() {
         fi
         # http://public-repo-1.hortonworks.com/ARTIFACTS/jdk-8u112-linux-x64.tar.gz to /var/lib/ambari-server/resources/jdk-8u112-linux-x64.tar.gz
         local _jdk="`ls -1t ./jdk-*-linux-x64*gz 2>/dev/null | head -n1`"
-        _ask "Ambari JDK URL or path (optional)" "${_jdk}" "r_AMBARI_JDK_URL"
+        if [ -z "${_jdk}" ]; then
+            nohup curl -s -O -C - --retry 4 "http://public-repo-1.hortonworks.com/ARTIFACTS/${g_JDK_FILE}" &
+            r_AMBARI_JDK_URL="./${g_JDK_FILE}"
+        else
+            _ask "Ambari JDK URL or path (optional)" "${_jdk}" "r_AMBARI_JDK_URL"
+        fi
         # http://public-repo-1.hortonworks.com/ARTIFACTS/jce_policy-8.zip to /var/lib/ambari-server/resources/jce_policy-8.zip
         local _jce="`ls -1t ./jce_policy-*.zip 2>/dev/null | head -n1`"
         _ask "Ambari JCE URL or path (optional)" "${_jce}" "r_AMBARI_JCE_URL"
@@ -211,7 +217,11 @@ function p_interview() {
             _ask "URL for UTIL repo tar.gz file" "http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.20/repos/${r_CONTAINER_OS}${_repo_os_ver}/HDP-UTILS-1.1.0.20-${r_CONTAINER_OS}${_repo_os_ver}.tar.gz" "r_HDP_REPO_UTIL_TARGZ"
         fi
 
-        _ask "HDP Repo URL or *VDF* XMF  URL" "http://public-repo-1.hortonworks.com/HDP/${r_CONTAINER_OS}${_repo_os_ver}/2.x/updates/${r_HDP_REPO_VER}/" "r_HDP_REPO_URL" "N" "Y"
+        if [ -s /tmp/hdp_urlinfo.json ]; then
+            local _tmp_hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['${_stack_version_full}']['manifests']['${r_HDP_REPO_VER}']['${r_CONTAINER_OS}${_repo_os_ver}'])"`"
+            [ -n "${_tmp_hdp_repo_url}" ] && _hdp_repo_url="${_tmp_hdp_repo_url}"
+        fi
+        _ask "HDP Repo URL or *VDF* XMF  URL" "${_hdp_repo_url}" "r_HDP_REPO_URL" "N" "Y"
         if ! [[ "${r_HDP_REPO_URL}" =~ \.xml$ ]] ; then
             while true; do
                 _warn "URL: $r_HDP_REPO_URL does not look like a VDF XML URL."
