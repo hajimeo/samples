@@ -357,9 +357,16 @@ function f_after_install() {
     # Skipping first wizard introduced form 6.7.0 by populating data with APIs
     local _hdfsUri="`_get_from_xml "${inst_as_hadoop_conf_dir%/}/core-site.xml" "fs.defaultFS"`" || return $?
 
+    local hdfsNameNodeKerberosPrincipal="null"
+    local extraJdbcFlags="\"\""
+    if [ "${inst_as_is_kerberized}" = "true" ]; then
+        hdfsNameNodeKerberosPrincipal="\"${inst_as_hdfs_name_node_kerberos_principal}\""
+        extraJdbcFlags="\";principal=${inst_as_kerberos_hive_principal_batch}\""
+    fi
+
     jwt="`curl -s -X GET -u admin:admin "http://$(hostname -f):10500/default/auth"`" || return $?
 
-    local _groupId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default" -H "Authorization: Bearer ${jwt}" -d '{"name":"'${_wh_name}'","connectionId":"con1","hdfsUri":"'${_hdfsUri}'","hdfsNameNodeKerberosPrincipal":"'${inst_as_hdfs_name_node_kerberos_principal}'","hdfsSecondaryUri":null,"hdfsSecondaryNameNodeKerberosPrincipal":null,"hadoopRpcProtection":null,"subgroups":[],"defaultSchema":"'${inst_as_default_schema}'"}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
+    local _groupId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default" -H "Authorization: Bearer ${jwt}" -d '{"name":"'${_wh_name}'","connectionId":"con1","hdfsUri":"'${_hdfsUri}'","hdfsNameNodeKerberosPrincipal":'${hdfsNameNodeKerberosPrincipal}',"hdfsSecondaryUri":null,"hdfsSecondaryNameNodeKerberosPrincipal":null,"hadoopRpcProtection":null,"subgroups":[],"defaultSchema":"'${inst_as_default_schema}'"}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
     # response example
     # { "status" : { "code" : 0, "message" : "200 OK" }, "responseCreated" : "2018-08-03T05:19:20.779Z", "response" : { "created" : true, "id" : "e22b575e-393f-4056-b5bf-32ea44501561" } }
     [ -z "${_groupId}" ] && return 1
@@ -367,7 +374,7 @@ function f_after_install() {
     # In my custom_hdp.yaml, i'm using hive for batch, so using batch
     [ -z "${inst_as_hive_host_batch}" ] && inst_as_hive_host_batch="`hostname -f`"
     local _conId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default/connection-group/${_groupId}" -H "Authorization: Bearer ${jwt}" \
-    -d '{"name":"'${inst_as_hive_flavor_batch}'","hosts":"'${inst_as_hive_host_batch}'","port":'${inst_as_hive_port_batch}',"connectorType":"hive","username":"atscale","password":"atscale","extraJdbcFlags":";principal='${inst_as_kerberos_hive_principal_batch}'","queryRoles":["large_user_query_role","small_user_query_role","system_query_role","canary_query_role"],"extraProperties":{}}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
+    -d '{"name":"'${inst_as_hive_flavor_batch}'","hosts":"'${inst_as_hive_host_batch}'","port":'${inst_as_hive_port_batch}',"connectorType":"hive","username":"atscale","password":"atscale","extraJdbcFlags":'${extraJdbcFlags}',"queryRoles":["large_user_query_role","small_user_query_role","system_query_role","canary_query_role"],"extraProperties":{}}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
 
     local _envId="`curl -s -k "http://$(hostname -f):10502/environments/orgId/default" -H "Authorization: Bearer ${jwt}" \
     -d '{"name":"'${_env_name}'","connectionIds":["'${_groupId}'"],"hiveServer2Port":11111}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
@@ -377,22 +384,24 @@ function f_after_install() {
 
 function f_switch_version() {
     local _version="$1"
-    local _dir="${1:-${_ATSCALE_DIR}}"
-    local _usr="${2:-${_ATSCALE_USER}}"
+    local _dir="${2:-${_ATSCALE_DIR}}"
+    local _usr="${3:-${_ATSCALE_USER}}"
 
     [ -z "${_version}" ] && return 1
-    local _target_dir="`ls -1r ${_dir%/}_${_version}* | head -n1`"
+    local _target_dir="`ls -1dr ${_dir%/}_${_version}* | head -n1`"
     if [ -z "${_target_dir}" ]; then
         _log "ERROR" "Couldn't find ${_dir%/}_${_version}*"
         return 1
     fi
 
-    sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f || return $?
+    if [ -s ${_dir%/}/bin/atscale_stop ]; then
+        sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f || return $?
+    fi
 
     if [ -L "${_dir%/}" ]; then
         # sometimes ln -f doesn't work so
         mv -f ${_dir%/} ${_dir%/}.symlink.bak || return $?
-    else
+    elif [ -e "${_dir%/}" ]; then
         local _suffix="`_get_suffix`"
         mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
     fi
