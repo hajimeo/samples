@@ -375,6 +375,31 @@ function f_after_install() {
     curl -s -k "http://$(hostname -f):10500/api/1.0/org/default/setupWizard/setupComplete" -H "Authorization: Bearer ${jwt}" --data-binary 'orgId=default'
 }
 
+function f_switch_version() {
+    local _version="$1"
+    local _dir="${1:-${_ATSCALE_DIR}}"
+    local _usr="${2:-${_ATSCALE_USER}}"
+
+    [ -z "${_version}" ] && return 1
+    local _target_dir="`ls -1r ${_dir%/}_${_version}* | head -n1`"
+    if [ -z "${_target_dir}" ]; then
+        _log "ERROR" "Couldn't find ${_dir%/}_${_version}*"
+        return 1
+    fi
+
+    sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f || return $?
+
+    if [ -L "${_dir%/}" ]; then
+        # sometimes ln -f doesn't work so
+        mv -f ${_dir%/} ${_dir%/}.symlink.bak || return $?
+    else
+        local _suffix="`_get_suffix`"
+        mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
+    fi
+    ln -s ${_target_dir%/} ${_dir%/} || return $?
+    sudo -u ${_usr} ${_dir%/}/bin/atscale_start || return $?
+}
+
 function f_dataloader() {
     local __doc__="TODO: run dataloader-cli. Need env UUID"
     local _envId="${1:-prod}"
