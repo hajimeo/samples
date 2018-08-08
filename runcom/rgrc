@@ -17,4 +17,5 @@ web:*.{html,css,js}*
 # Because who cares about case!?
 --smart-case
 --search-zip
+--no-line-number
 #--no-filename
