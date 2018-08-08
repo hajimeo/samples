@@ -194,10 +194,9 @@ function f_backup_atscale() {
 
     [ -d ${_dir%/} ] || return    # No dir, no backup
 
-    local _installed_ver="$(sed -n -e 's/^as_version: \([0-9.]\+\).*/\1/p' "`ls -t ${_dir%/}/conf/versions/versions.*.yml | head -n1`")"
-    [ -z "${_installed_ver}" ] && _installed_ver="unknown"
-    local _suffix=${_installed_ver}_$(date +"%Y%m%d")_$$
+    local _suffix="`_get_suffix`"
 
+    # For now, no pg_dump as it's slow.
     #if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
     #    sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control start postgres"; sleep 5
     #    f_pg_dump "${_dir%/}/share/postgresql-9.*/" "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz"
@@ -221,6 +220,13 @@ function f_backup_atscale() {
     fi
 
     ls -ltrd ${_dir%/}* # Just displaying directories to remind to delete later.
+}
+
+function _get_suffix() {
+    local _dir="${1:-${_ATSCALE_DIR}}"
+    local _installed_ver="$(sed -n -e 's/^as_version: \([0-9.]\+\).*/\1/p' "`ls -t ${_dir%/}/conf/versions/versions.*.yml | head -n1`")"
+    [ -z "${_installed_ver}" ] && _installed_ver="unknown"
+    echo "${_installed_ver}_$(date +"%Y%m%d%H%M%S")"
 }
 
 function f_rm_logs() {
