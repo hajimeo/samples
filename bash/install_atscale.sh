@@ -318,8 +318,6 @@ function f_install_atscale() {
 
     local _last_log="`ls -t1 /home/atscale/log/install-20*.log | head -n1`"
     [ -s "${_last_log}" ] && grep '^Error:' ${_last_log}
-
-    f_after_install
 }
 
 function f_after_install() {
@@ -380,6 +378,7 @@ function f_after_install() {
     -d '{"name":"'${_env_name}'","connectionIds":["'${_groupId}'"],"hiveServer2Port":11111}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
 
     curl -s -k "http://$(hostname -f):10500/api/1.0/org/default/setupWizard/setupComplete" -H "Authorization: Bearer ${jwt}" --data-binary 'orgId=default'
+    echo ""
 }
 
 function f_switch_version() {
@@ -413,10 +412,19 @@ function f_switch_version() {
 }
 
 function f_dataloader() {
-    local __doc__="TODO: run dataloader-cli. Need env UUID"
-    local _envId="${1:-prod}"
+    local __doc__="Run dataloader-cli. Need env UUID"
+    local _envId="${1}"
     [ -e ${_ATSCALE_DIR%/}/bin/dataloader ] || return $?
-    # Just pincking the smallest (no special reason).
+    if [ -z "${_envId}" ]; then
+        local jwt="`curl -s -X GET -u admin:admin "http://$(hostname -f):10500/default/auth"`"
+        local _orgId="`curl -s -H "Authorization: Bearer $jwt" "http://$(hostname -f):10500/api/1.0/orgs" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response'][0]['id']"`"
+        [ -z "${_orgId}" ] && return 10
+        local _engId="`curl -s -H "Authorization: Bearer $jwt" "http://$(hostname -f):10500/api/1.0/org/${_orgId}/engine" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response'][0]['engine_id']"`"
+        [ -z "${_engId}" ] && return 11
+        _envId="`curl -s -H "Authorization: Bearer $jwt" "http://$(hostname -f):10500/api/1.0/org/${_orgId}/engine/${_engId}/environments" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response'][0]['id']"`"
+        [ -z "${_envId}" ] && return 12
+    fi
+    # Just picking the smallest (no special reason).
     local _archive="`ls -1Sr ${_ATSCALE_DIR%/}/data/*.zip | head -n1`"
     sudo -u ${_ATSCALE_USER} ${_ATSCALE_DIR%/}/bin/dataloader installarchive -env ${_envId} -archive=${_archive}
 }
@@ -755,4 +763,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _SCHEMA_AND_HDFSDIR="atscale$(echo $_ATSCALE_VER | sed 's/[^0-9]//g')_$(date +"%Y%m%d")"
     f_setup || exit $?
     f_install_atscale || exit $?
+    f_after_install
+    _log "NOTE" "To import a sample data, execute 'f_dataloader' function"
 fi
