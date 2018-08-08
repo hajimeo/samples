@@ -25,7 +25,8 @@ END
 [ -z "${_ATSCALE_DIR}" ] && _ATSCALE_DIR="/usr/local/atscale"
 [ -z "${_TMP_DIR}" ] && _TMP_DIR="/var/tmp/share/atscale"
 [ -z "${_OS_ARCH}" ] && _OS_ARCH="el6.x86_64"
-[ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="atscale"
+#[ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="" This global variable should not have default value
+
 
 ### Arguments ########################
 _ATSCALE_VER="${1:-7.0.0}"
@@ -762,8 +763,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         exit
     fi
     #set -x
-    # Wouldn't create more than once per day per version
-    _SCHEMA_AND_HDFSDIR="atscale$(echo $_ATSCALE_VER | sed 's/[^0-9]//g')_$(date +"%Y%m%d")"
+    # As using version, populating in here. I wouldn't create more than once per day per version
+    [ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="atscale$(echo $_ATSCALE_VER | sed 's/[^0-9]//g')_$(date +"%Y%m%d")"
     f_setup || exit $?
     f_install_atscale || exit $?
     f_after_install
