@@ -231,7 +231,7 @@ function p_interview() {
 
         _ask "Would you like to use Ambari Blueprint?" "Y" "r_AMBARI_BLUEPRINT"
         if _isYes "$r_AMBARI_BLUEPRINT"; then
-            local _cluster_name="$(echo `hostname -s`_${r_NODE_START_NUM} | sed 's/[^a-zA-Z0-9_]//g')"
+            local _cluster_name="$(echo `hostname -s`${r_NODE_START_NUM} | sed 's/[^a-zA-Z0-9_]//g')"
             _ask "Cluster name" "$_cluster_name" "r_CLUSTER_NAME" "N" "Y"
             _ask "Default password" "$g_DEFAULT_PASSWORD" "r_DEFAULT_PASSWORD" "N" "Y"
             _ask "Cluster config json path (optional)" "" "r_AMBARI_BLUEPRINT_CLUSTERCONFIG_PATH"
