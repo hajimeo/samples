@@ -367,15 +367,18 @@ function f_after_install() {
     local _groupId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default" -H "Authorization: Bearer ${jwt}" -d '{"name":"'${_wh_name}'","connectionId":"con1","hdfsUri":"'${_hdfsUri}'","hdfsNameNodeKerberosPrincipal":'${hdfsNameNodeKerberosPrincipal}',"hdfsSecondaryUri":null,"hdfsSecondaryNameNodeKerberosPrincipal":null,"hadoopRpcProtection":null,"subgroups":[],"defaultSchema":"'${inst_as_default_schema}'"}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
     # response example
     # { "status" : { "code" : 0, "message" : "200 OK" }, "responseCreated" : "2018-08-03T05:19:20.779Z", "response" : { "created" : true, "id" : "e22b575e-393f-4056-b5bf-32ea44501561" } }
-    [ -z "${_groupId}" ] && return 1
+    [ -z "${_groupId}" ] && return 11
 
     # In my custom_hdp.yaml, i'm using hive for batch, so using batch
     [ -z "${inst_as_hive_host_batch}" ] && inst_as_hive_host_batch="`hostname -f`"
     local _conId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default/connection-group/${_groupId}" -H "Authorization: Bearer ${jwt}" \
     -d '{"name":"'${inst_as_hive_flavor_batch}'","hosts":"'${inst_as_hive_host_batch}'","port":'${inst_as_hive_port_batch}',"connectorType":"hive","username":"atscale","password":"atscale","extraJdbcFlags":'${extraJdbcFlags}',"queryRoles":["large_user_query_role","small_user_query_role","system_query_role","canary_query_role"],"extraProperties":{}}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
+    # Can execute next API call without conId though...
+    [ -z "${_conId}" ] && return 12
 
     local _envId="`curl -s -k "http://$(hostname -f):10502/environments/orgId/default" -H "Authorization: Bearer ${jwt}" \
     -d '{"name":"'${_env_name}'","connectionIds":["'${_groupId}'"],"hiveServer2Port":11111}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
+    [ -z "${_envId}" ] && return 13
 
     curl -s -k "http://$(hostname -f):10500/api/1.0/org/default/setupWizard/setupComplete" -H "Authorization: Bearer ${jwt}" --data-binary 'orgId=default'
     echo ""
