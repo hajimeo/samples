@@ -28,7 +28,7 @@ jupyter notebook'
 
 ### Functions (some command syntax does not work with alias eg: sudo) ###############################
 function asftpl() {
-    ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lt '$1' | head'
+    ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lt '$2' | head -n ${1:-20}'
 }
 function asftpd() {
     [ -z "$1" ] && return 1
