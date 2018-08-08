@@ -1070,20 +1070,20 @@ function f_docker_setup() {
 
     which docker &>/dev/null
     if [ $? -gt 0 ]; then
-        apt-get remove docker docker-engine docker.io -y
         apt-get install apt-transport-https ca-certificates curl software-properties-common -y
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-        apt-key fingerprint 0EBFCD88 || return $?
-        add-apt-repository \
-           "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
-           $(lsb_release -cs) \
-           stable"
-        # Old (14.04 and 16.04) way
-        #apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key for docker"
-        #grep -q "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-`cat /etc/lsb-release | grep CODENAME | cut -d= -f2` main" >> /etc/apt/sources.list.d/docker.list
-        apt-get update || return $?
-        #apt-get purge lxc-docker*; apt-get install docker-engine -y
-        apt-get install docker-ce -y
+        # if Ubuntu 18
+        if grep -qi 'Ubuntu 18\.' /etc/issue.net; then
+            apt-get purge docker docker-engine docker.io -y
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+            apt-key fingerprint 0EBFCD88 || return $?
+            add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+            apt-get update && apt-get install docker-ce -y
+        else
+            # Old (14.04 and 16.04) way
+            apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key for docker"
+            grep -q "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-`cat /etc/lsb-release | grep CODENAME | cut -d= -f2` main" >> /etc/apt/sources.list.d/docker.list
+            apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
+        fi
     fi
 
     # commenting below as newer docker wouldn't need this and docker info sometimes takes time
@@ -3549,7 +3549,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
 
     # Supported OS check
-    grep -i 'Ubuntu 1[468]\.' /etc/issue.net &>/dev/null
+    grep -qi 'Ubuntu 1[468]\.' /etc/issue.net
     if [ $? -ne 0 ]; then
         if [ "$g_UNAME_STR" == "Darwin" ]; then
             echo "Detected Mac OS"
