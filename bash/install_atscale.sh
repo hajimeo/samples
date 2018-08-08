@@ -4,7 +4,9 @@ usage() {
 A sample bash script for setting up and installing atscale
 Tested on CentOS6|CentOS7 against hadoop clusters (HDP)
 
-Download: curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/install_atscale.sh -o /var/tmp/share/atscale/install_atscale.sh
+Download:
+  mkdir -p -m 777 /var/tmp/share/atscale
+  curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/install_atscale.sh -o /var/tmp/share/atscale/install_atscale.sh
 
 To see help message of a function:
    $0 -h <function_name>
@@ -136,7 +138,10 @@ function f_generate_custom_yaml() {
 
     # expected variables
     local _atscale_host="`hostname -f`" || return $?
-    [ -s "${_license_file}" ] || return 11
+    if [ ! -s "${_license_file}" ]; then
+        _log "ERROR" "No ${_license_file}"; sleep 5
+        return 11
+    fi
     local _default_schema="${_schema_and_hdfsdir}"
     local _hdfs_root_dir="/user/${_usr}/${_schema_and_hdfsdir}"
     local _hdp_version="`hdp-select versions | tail -n 1`" || return $?
