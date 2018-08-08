@@ -207,13 +207,13 @@ function f_backup_atscale() {
 
     _log "INFO" "Stopping AtScale before backing up..."; sleep 1
     if [[ "${_is_upgrading}" =~ (^y|^Y) ]]; then
-        sudo -u ${_usr} ${_dir%/}/bin/atscale_service_control stop all
+        sudo -u ${_usr} ${_dir%/}/bin/atscale_service_control stop all; sleep 5
         local _days=3
         _log "INFO" "Deleting (rotated) log files which are older than ${_days} days..."; sleep 1
         f_rm_logs "${_dir}" "${_days}"
         tar -czf ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz ${_dir%/} || return $? # Not using -h or -v for now
     else
-        sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f
+        sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f; sleep 5
         mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
         mkdir ${_dir%/} || return $?
         chown ${_usr}: ${_dir%/} || return $?
@@ -396,6 +396,7 @@ function f_switch_version() {
 
     if [ -s ${_dir%/}/bin/atscale_stop ]; then
         sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f || return $?
+        sleep 5
     fi
 
     if [ -L "${_dir%/}" ]; then
@@ -406,6 +407,8 @@ function f_switch_version() {
         mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
     fi
     ln -s ${_target_dir%/} ${_dir%/} || return $?
+
+    ps aux | grep "^${_usr}" | grep -vP '(grep|ps aux)' && sleep 5
     sudo -u ${_usr} ${_dir%/}/bin/atscale_start || return $?
 }
 
