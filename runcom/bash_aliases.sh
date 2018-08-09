@@ -4,7 +4,10 @@ alias urlencode='python -c "import sys, urllib as ul; print ul.quote_plus(sys.ar
 alias utc2int='python -c "import sys,time,dateutil.parser;print int(time.mktime(dateutil.parser.parse(sys.argv[1]).timetuple()))"'
 alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\""'
 
-alias sWeb='python ~/IdeaProjects/samples/python/SympleWebServer.py &'
+#ln -s ~/IdeaProjects/XxXxxxx_doc_NNN/docs ~/Public/XxXxxxx_latest
+alias sWeb='(cd ~/Public/atscale_latest/ && python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out) &
+python ~/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &
+jobs -l'
 
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
@@ -12,10 +15,10 @@ alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_
 alias jn='if [ -d ~/backup/jupyter-notebook ]; then
     cp -f ~/backup/jupyter-notebook/Aggregation.ipynb ./
     while true; do
+        sleep 300
         if [ "`ls -1 ./*.ipynb 2>/dev/null | wc -l`" -gt 0 ]; then
             rsync -a --exclude="./Untitled.ipynb" ./*.ipynb ~/backup/jupyter-notebook/ || break
         fi
-        sleep 300
         if ! nc -z localhost 8888 &>/dev/null; then
             mv -f ./Aggregation.ipynb /tmp/
             break
