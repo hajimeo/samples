@@ -127,6 +127,7 @@ function f_setup() {
 }
 
 function f_scala_setup() {
+    local __doc__="Download scala and setup"
     local _ver="${1:-2.12.3}"
     local _tmp_dir="${2:-${_TMP_DIR}}"
     local _inst_dir="${3:-/usr/local/scala}"
@@ -150,6 +151,7 @@ function f_scala_setup() {
 }
 
 function java_exports() {
+    local __doc__="Export JAVA_HOME and CLASSPATH by using port number"
     local _port="${1:-10502}"
     local _dir="${2:-${_ATSCALE_DIR}}"
 
@@ -452,22 +454,55 @@ function f_switch_version() {
     sudo -u ${_usr} ${_dir%/}/bin/atscale_start || return $?
 }
 
+function _export_org_eng_env() {
+    local jwt="$1"
+    local _host="${2:-$(hostname -f)}"
+
+    local _orgId="`curl -s -H "Authorization: Bearer $jwt" "http://${_host}:10500/api/1.0/orgs" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response'][0]['id']"`"
+    [ -z "${_orgId}" ] && return 21
+    export _ORG_ID="${_orgId}"
+    local _engId="`curl -s -H "Authorization: Bearer $jwt" "http://${_host}:10500/api/1.0/org/${_orgId}/engine" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response'][0]['engine_id']"`"
+    [ -z "${_engId}" ] && return 22
+    export _ENGINE_ID="${_engId}"
+    _envId="`curl -s -H "Authorization: Bearer $jwt" "http://${_host}:10500/api/1.0/org/${_orgId}/engine/${_engId}/environments" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response'][0]['id']"`"
+    [ -z "${_envId}" ] && return 23
+    export _ENV_ID="${_envId}"
+}
+
 function f_dataloader() {
     local __doc__="Run dataloader-cli. Need env UUID"
     local _envId="${1}"
     [ -e ${_ATSCALE_DIR%/}/bin/dataloader ] || return $?
     if [ -z "${_envId}" ]; then
         local jwt="`curl -s -X GET -u admin:admin "http://$(hostname -f):10500/default/auth"`"
-        local _orgId="`curl -s -H "Authorization: Bearer $jwt" "http://$(hostname -f):10500/api/1.0/orgs" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response'][0]['id']"`"
-        [ -z "${_orgId}" ] && return 10
-        local _engId="`curl -s -H "Authorization: Bearer $jwt" "http://$(hostname -f):10500/api/1.0/org/${_orgId}/engine" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response'][0]['engine_id']"`"
-        [ -z "${_engId}" ] && return 11
-        _envId="`curl -s -H "Authorization: Bearer $jwt" "http://$(hostname -f):10500/api/1.0/org/${_orgId}/engine/${_engId}/environments" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response'][0]['id']"`"
-        [ -z "${_envId}" ] && return 12
+        _export_org_eng_env "${jwt}" || return $?
+        _envId="${_ENV_ID}"
     fi
     # Just picking the smallest (no special reason).
     local _archive="`ls -1Sr ${_ATSCALE_DIR%/}/data/*.zip | head -n1`"
     sudo -u ${_ATSCALE_USER} ${_ATSCALE_DIR%/}/bin/dataloader installarchive -env ${_envId} -archive=${_archive}
+}
+
+function f_import_project() {
+    local __doc__="Import (Upload) project xml with API calls"
+    local _path="$1"
+    local _host="${2:-$(hostname -f)}"
+    [ -s "${_path}" ] || return 11
+
+    local jwt="`curl -s -X GET -u admin:admin "http://${_host}:10500/default/auth"`"
+    _export_org_eng_env "${jwt}" "${_host}" || return $?
+
+    #  -F verifyOnly=true | 'a['response']['name']
+    local _projectId="`curl -s -H "Authorization: Bearer $jwt" "http://${_host}:10500/api/1.0/org/${_ORG_ID}/file/import" -F file=@${_path} --compressed | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`"
+    [ -z "${_projectId}" ] && return 12
+    # Should I rename?
+    #curl 'http://${_host}:10500/api/1.0/org/${_ORG_ID}/project/${_projectId}/rename/IRM' -X POST
+    # NOTE: --data-binary needs -H 'Content-Type: application/json'
+    local _first_cubeId="`curl -s -H "Authorization: Bearer $jwt" "http://${_host}:10500/api/1.0/org/${_ORG_ID}/project/${_projectId}" -X PATCH -H 'Content-Type: application/json' --data-binary '{"projectId":"'${_projectId}'","display_name":"","renaming_query_name":false,"description":"","updating_description":false,"intended_env_id":"'${_ENV_ID}'","prediction_def_aggs":""}' --compressed | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['cubes']['cube'][0]['id']"`"
+    [ -z "${_first_cubeId}" ] && return 13
+    # Default permission
+    curl -s -H "Authorization: Bearer $jwt" "http://${_host}:10500/api/1.0/org/${_ORG_ID}/permissions/project/${_projectId}" -H 'Content-Type: application/json' --data-binary '{"exclusive_access":false}'
+    echo ""
 }
 
 function f_ldap_cert_setup() {
