@@ -40,8 +40,8 @@ _UPGRADING="${5}"
 function f_setup() {
     local __doc__="Setup OS and hadoop to install AtScale (eg: create a user)"
     # f_setup atscale /usr/local/atscale /var/tmp/share/atscale atscale$$
-    local _atscale_user="${1:-${_ATSCALE_USER}}"
-    local _atscale_dir="${2:-${_ATSCALE_DIR}}"
+    local _user="${1:-${_ATSCALE_USER}}"
+    local _target_dir="${2:-${_ATSCALE_DIR}}"
     local _tmp_dir="${3:-${_TMP_DIR}}"
     local _schema="${4:-${_SCHEMA_AND_HDFSDIR}}"
     local _kadmin_usr="${5:-${_KADMIN_USR}}"
@@ -55,26 +55,26 @@ function f_setup() {
     fi
     chmod 777 ${_tmp_dir}
 
-    _log "TODO" "Please run 'adduser ${_atscale_user}' on other hadoop nodes"; sleep 3
-    adduser ${_atscale_user} &>/dev/null
-    usermod -a -G hadoop ${_atscale_user} &>/dev/null
+    _log "TODO" "Please run 'adduser ${_user}' on other hadoop nodes"; sleep 3
+    adduser ${_user} &>/dev/null
+    usermod -a -G hadoop ${_user} &>/dev/null
 
-    if [ ! -d "${_atscale_dir}" ]; then
-        mkdir -p "${_atscale_dir}" || return $?
-        chown ${_atscale_user}: "${_atscale_dir}" || return $?
+    if [ ! -d "${_target_dir}" ]; then
+        mkdir -p "${_target_dir}" || return $?
+        chown ${_user}: "${_target_dir}" || return $?
     fi
 
-    if ! grep -qF "hadoop.proxyuser.${_atscale_user}" /etc/hadoop/conf/core-site.xml; then
-        _log "WARN" "Please check hadoop.proxyuser.${_atscale_user}.hosts and groups in core-site."; sleep 3
+    if ! grep -qF "hadoop.proxyuser.${_user}" /etc/hadoop/conf/core-site.xml; then
+        _log "WARN" "Please check hadoop.proxyuser.${_user}.hosts and groups in core-site."; sleep 3
     fi
 
     # If looks like Kerberos is enabled
     grep -A 1 'hadoop.security.authentication' /etc/hadoop/conf/core-site.xml | grep -qw "kerberos"
     if [ "$?" -eq "0" ]; then
-        if [ ! -s /etc/security/keytabs/${_atscale_user}.service.keytab ]; then
+        if [ ! -s /etc/security/keytabs/${_user}.service.keytab ]; then
             _log "INFO" "Creating principals and keytabs (TODO: only for MIT KDC)..."; sleep 1
             if [ -z "${_kadmin_usr}" ]; then
-                _log "WARN" "_KADMIN_USR is not set, so that NOT creating ${_atscale_user} principal."; sleep 3
+                _log "WARN" "_KADMIN_USR is not set, so that NOT creating ${_user} principal."; sleep 3
             else
                 if which ipa &>/dev/null; then
                     local _def_realm="`sed -nr 's/^\s*default_realm\s*=\s(.+)/\1/p' /etc/krb5.conf`"
@@ -84,17 +84,17 @@ function f_setup() {
                         #echo -n "${_kadmin_pwd}" | kinit ${_kadmin_usr}
                         kinit admin
                         #ipa service-add ${_atscale_user}/`hostname -f`   # TODO: Bug? https://bugzilla.redhat.com/show_bug.cgi?id=1602410
-                        ipa-getkeytab -s ${_kdc} -p ${_atscale_user}/`hostname -f` -k /etc/security/keytabs/${_atscale_user}.service.keytab
+                        ipa-getkeytab -s ${_kdc} -p ${_user}/`hostname -f` -k /etc/security/keytabs/${_user}.service.keytab
                     fi
                     if [ $? -ne 0 ]; then
-                        _log "ERROR" "If FreeIPA is used, please create SPN: ${_atscale_user}/`hostname -f` from your FreeIPA GUI and export keytab."; sleep 5
+                        _log "ERROR" "If FreeIPA is used, please create SPN: ${_user}/`hostname -f` from your FreeIPA GUI and export keytab."; sleep 5
                     fi
                 else
-                    kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "add_principal -randkey ${_atscale_user}/`hostname -f`" && \
-                    kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "xst -k /etc/security/keytabs/${_atscale_user}.service.keytab ${_atscale_user}/`hostname -f`"
+                    kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "add_principal -randkey ${_user}/`hostname -f`" && \
+                    kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "xst -k /etc/security/keytabs/${_user}.service.keytab ${_user}/`hostname -f`"
                 fi
-                chown ${_atscale_user}: /etc/security/keytabs/${_atscale_user}.service.keytab
-                chmod 640 /etc/security/keytabs/${_atscale_user}.service.keytab
+                chown ${_user}: /etc/security/keytabs/${_user}.service.keytab
+                chmod 640 /etc/security/keytabs/${_user}.service.keytab
             fi
         fi
 
@@ -102,16 +102,16 @@ function f_setup() {
         sudo -u ${_hdfs_user} kinit -kt /etc/security/keytabs/hdfs.headless.keytab ${_hdfs_principal}
     fi
 
-    sudo -u ${_hdfs_user} hdfs dfs -mkdir /user/${_atscale_user}
-    sudo -u ${_hdfs_user} hdfs dfs -chown ${_atscale_user}: /user/${_atscale_user}
+    sudo -u ${_hdfs_user} hdfs dfs -mkdir /user/${_user}
+    sudo -u ${_hdfs_user} hdfs dfs -chown ${_user}: /user/${_user}
 
     if which hive &>/dev/null; then
-        if [ -s /etc/security/keytabs/${_atscale_user}.service.keytab ]; then
-            local _atscale_principal="`klist -k /etc/security/keytabs/${_atscale_user}.service.keytab | grep -oE -m1 "${_atscale_user}/$(hostname -f)@.+$"`"
-            sudo -u ${_atscale_user} kinit -kt /etc/security/keytabs/${_atscale_user}.service.keytab ${_atscale_principal}
+        if [ -s /etc/security/keytabs/${_user}.service.keytab ]; then
+            local _atscale_principal="`klist -k /etc/security/keytabs/${_user}.service.keytab | grep -oE -m1 "${_user}/$(hostname -f)@.+$"`"
+            sudo -u ${_user} kinit -kt /etc/security/keytabs/${_user}.service.keytab ${_atscale_principal}
         fi
         # TODO: should use beeline and tez, also if new installation, should drop database
-        sudo -u ${_atscale_user} hive -hiveconf hive.execution.engine='mr' -e "CREATE DATABASE IF NOT EXISTS ${_schema}" &
+        sudo -u ${_user} hive -hiveconf hive.execution.engine='mr' -e "CREATE DATABASE IF NOT EXISTS ${_schema}" &
     fi
 
     # Running yum in here so that above hive command might finish before yum completes.
@@ -119,11 +119,48 @@ function f_setup() {
 
     # Optionals: Not important if fails
     ln -s /etc/krb5.conf /etc/krb5_atscale.conf
-    su - ${_atscale_user} -c 'grep -q '${_atscale_dir%/}' $HOME/.bash_profile || echo "export PATH=${PATH%:}:'${_atscale_dir%/}'/bin" >> $HOME/.bash_profile'
-    [ ! -d /var/log/atscale ] && ln -s ${_atscale_dir%/}/log /var/log/atscale
+    su - ${_user} -c 'grep -q '${_target_dir%/}' $HOME/.bash_profile || echo "export PATH=${PATH%:}:'${_target_dir%/}'/bin" >> $HOME/.bash_profile'
+    [ ! -d /var/log/atscale ] && ln -s ${_target_dir%/}/log /var/log/atscale
     [ -d /var/www/html ] && [ ! -e /var/www/html/atscale ] && ln -s ${_TMP_DIR%/} /var/www/html/atscale
 
     return 0
+}
+
+function f_scala_setup() {
+    local _ver="${1:-2.12.3}"
+    local _tmp_dir="${2:-${_TMP_DIR}}"
+    local _inst_dir="${3:-/usr/local/scala}"
+
+    if [ ! -d "${_tmp_dir%/}/scala-${_ver}" ]; then
+        if [ ! -s "${_tmp_dir%/}/scala-${_ver}.tgz" ]; then
+            curl --retry 3 -C - -o "${_tmp_dir%/}/scala-${_ver}.tgz" "https://downloads.lightbend.com/scala/${_ver}/scala-${_ver}.tgz" || return $?
+        fi
+        tar -xf "${_tmp_dir%/}/scala-${_ver}.tgz" -C "${_tmp_dir%/}/" || return $?
+        chmod a+x ${_inst_dir%/}/bin/*
+    fi
+
+    [ -d "${_inst_dir%/}" ] || ln -s "${_tmp_dir%/}/scala-${_ver}" "${_inst_dir%/}"
+
+    if ! grep -q 'export SCALA_HOME' /etc/profile; then
+        echo -e '\nexport SCALA_HOME='${_inst_dir%/}'\nexport PATH=$PATH:$SCALA_HOME/bin' >> /etc/profile
+    fi
+
+    export SCALA_HOME=${_inst_dir%/}
+    export PATH=$PATH:$SCALA_HOME/bin
+}
+
+function java_exports() {
+    local _port="${1:-10502}"
+    local _dir="${2:-${_ATSCALE_DIR}}"
+
+    local _p=`lsof -ti:${_port}`
+    if [ -z "${_p}" ]; then
+        echo "Nothing running on port ${_port}"
+        return 11
+    fi
+    local _user="`stat -c '%U' /proc/${_p}`"
+    export JAVA_HOME="$(ls -1d ${_dir%/}/share/jdk*| head -n1)" # not expecting more than one dir
+    export CLASSPATH=".:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"   #:`hadoop classpath`
 }
 
 function f_generate_custom_yaml() {
