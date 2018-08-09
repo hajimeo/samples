@@ -63,9 +63,26 @@ function f_rg() {
 
     [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
 
-    rg ${_def_rg_opts} -H -g '!*.ipynb' -g '!*.tmp' ${_rg_opts}-c "${_regex}"
+    # Version information
+    local _build_yaml="`find . -type f -name build.yaml -print | head -n1`"
+    if [ -s "${_build_yaml}" ]; then
+        cat "${_build_yaml}"
+        echo " "
+    fi
 
-    echo "//=== busy threads matching regex ============================================================================"
+    # If _regex is UUID, checking if it's query ID TODO: add more logic for other types of UUID
+    if [[ "${_regex}" =~ .{8}-.{4}-.{4}-.{12} ]]; then
+        echo "# checking if this UUID is a query ID"
+        rg ${_def_rg_opts} --no-filename -g '*.log*' "^\d\d\d\d-\d\d-\d\d.+${_regex}.+ (Received|Executing) (SQL|Analysis) [Qq]uery"  | sort -n | uniq
+        echo " "
+    fi
+
+    # Count matches
+    echo "# counting matches"
+    rg ${_def_rg_opts} -H -g '!*.ipynb' -g '!*.tmp' ${_rg_opts}-c "${_regex}"
+    echo " "
+
+    echo "# busy threads matching regex"
     echo "# REGEX = ${_regex}" > "${_tmpfile_pfx}1_${_regex_escaped}.tmp"
     rg ${_def_rg_opts} --no-filename -g '*.log*' ${_rg_opts}"${_regex}" \
      | sed 's/^\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)T/\1 /' \
@@ -77,21 +94,21 @@ function f_rg() {
         cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | sort | uniq -c | sort -rn | head -n 40
 
         local _first_dt="`rg ${_def_rg_opts} -m 1 -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}.tmp"`"
+        local _last_cmd="tail -n1"
+        which gtac &>/dev/null && _last_cmd="gtac"
+        which tac &>/dev/null && _last_cmd="tac"
+        local _last_dt="`${_last_cmd} "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | rg ${_def_rg_opts} -m 1 -o "${_date_regex}"`"
+
         # @see https://raw.githubusercontent.com/hajimeo/samples/master/golang/dateregex.go
-        if which dateregex &>/dev/null; then
-            local _last_cmd="tail -n1"
-            which gtac &>/dev/null && _last_cmd="gtac"
-            which tac &>/dev/null && _last_cmd="tac"
-            local _last_dt="`${_last_cmd} "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | rg ${_def_rg_opts} -m 1 -o "${_date_regex}"`"
-            if [ -n "${_last_dt}" ]; then
-                _first_dt="`dateregex "${_first_dt}0" "${_last_dt}9"`" || return $?
-            fi
+        local _date_regex_t="${_first_dt}"
+        if which dateregex &>/dev/null && [ -n "${_last_dt}" ]; then
+            local _date_regex_t="`dateregex "${_first_dt}0" "${_last_dt}9"`" || return $?
         fi
 
         # generating thread level logs for top _thread_num threads
         local _threads="$(cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n ${_thread_num} | awk '{print $2}' | sed 's/[][]//g')"
         for _t in ${_threads}; do
-            echo "rg ${_def_rg_opts} --no-filename -g '*.log*' ${_rg_opts}'^(${_first_dt}).+\[${_t}\]' | sort -n | uniq > ${_tmpfile_pfx}2_${_t}.tmp" > /tmp/f_rg_xargs_${_t}_$$.sh
+            echo "rg ${_def_rg_opts} --no-filename -g '*.log*' ${_rg_opts}'^(${_date_regex_t}).+\[${_t}\]' | sort -n | uniq > ${_tmpfile_pfx}2_${_t}.tmp" > /tmp/f_rg_xargs_${_t}_$$.sh
         done
         # seems xargs has command length limit and -s 40K didn't work
         echo ${_threads} | xargs -n1 -P3 -I @@ bash /tmp/f_rg_xargs_@@_$$.sh
@@ -105,8 +122,8 @@ function f_rg() {
             rg ${_def_rg_opts} -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | bar_chart.py # no longer needs sed 's/T/ /' as it's already done
         fi
     fi
-    echo "===========================================================================================================//"
     echo ' '
+
     echo "# grep-ing -m ${_thread_num} json with formatting (len 1000)... Ctrl+c to skip" >&2
     trap ' ' SIGINT
     for j in $(rg ${_def_rg_opts} --no-filename -g '*.json' -l ${_rg_opts}"${_regex}"); do
@@ -126,7 +143,7 @@ for l in sys.stdin:
     f_start_end_list "${_tmpfile_pfx}*.tmp"
     echo ' '
     echo "# May want to also run
-        f_topErrors ${_tmpfile_pfx}1_${_regex_escaped}.tmp
+        f_topErrors './hosts/*/logs/engine/engine.*' '${_first_dt}0' '${_last_dt}9'
         f_checkResultSize 'YYYY-MM-DD hh:m'
         f_count_lines
         f_count_threads
@@ -169,10 +186,10 @@ function f_topCausedByExceptions() {
 function f_topErrors() {
     local __doc__="List top ERRORs. NOTE: with _date_from and without may produce different result (ex: Caused by)"
     local _path="$1"        # file path which rg accepts and NEEDS double-quotes
-    local _regex="$2"       # to overwrite default regex to detect ERRORs
-    local _top_N="${3:-10}" # how many result to show
-    local _date_from="$4"   # ISO format datetime
-    local _date_to="$5"     # ISO format datetime
+    local _date_from="$2"   # ISO format datetime
+    local _date_to="$3"     # ISO format datetime
+    local _regex="$4"       # to overwrite default regex to detect ERRORs
+    local _top_N="${5:-10}" # how many result to show
 
     if ! which rg &>/dev/null; then
         echo "'rg' is required (eg: brew install rg)" >&2
@@ -1106,7 +1123,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         _file_path="/tmp/_f_extractByDates_$$.out"
     fi
     echo "# Running f_topErrors $_file_path ..." >&2
-    f_topErrors "$_file_path" "Y" > /tmp/_f_topErrors_$$.out &
+    f_topErrors "$_file_path" > /tmp/_f_topErrors_$$.out &
     echo "# Running f_topCausedByExceptions $_file_path ..." >&2
     f_topCausedByExceptions "$_file_path" > /tmp/_f_topCausedByExceptions_$$.out &
     echo "# Running f_topSlowLogs $_file_path ..." >&2
