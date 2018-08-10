@@ -411,6 +411,16 @@ function p_node_create() {
     docker exec -it ${_name} bash -c 'ambari-agent start'
 }
 
+function f_commands_run_on_nodes() {
+    local __doc__="Misc. OS commands. Non HDP / Ambari related commands"
+    local _how_many="${1-$r_NUM_NODES}"
+    local _start_from="${2-$r_NODE_START_NUM}"
+
+    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
+    f_run_cmd_on_nodes "echo -e '\nexport TERM=xterm-256color' >> /etc/profile" "$_how_many" "$_start_from"
+    f_copy_auth_keys_to_containers "$_how_many" "$_start_from" || return $?
+}
+
 function p_nodes_create() {
     local __doc__="Create container(s). If _ambari_repo_file is given, try installing agent (NOTE: only centos and doesn't create docker image)"
     local _how_many="${1-$r_NUM_NODES}"
@@ -423,8 +433,8 @@ function p_nodes_create() {
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" "$_ip_prefix" || return $?
     f_docker_run "$_how_many" "$_start_from" "$_os_ver" "$_ip_prefix" || return $?
     f_docker_start "$_how_many" "$_start_from"
-    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" "$_how_many" "$_start_from"
-    f_copy_auth_keys_to_containers "$_how_many" "$_start_from"
+
+    f_commands_run_on_nodes "$_how_many" "$_start_from"
 
     if [ -z "${_ambari_repo_file}" ]; then
         if [ -n "${_ambari_host}" ]; then
@@ -2397,13 +2407,8 @@ function p_host_setup() {
         f_node_proxy_setup &>> /tmp/p_host_setup.log
     fi
 
-    _log "INFO" "Starting f_run_cmd_on_nodes chpasswd"
-    f_run_cmd_on_nodes "chpasswd <<< root:$g_DEFAULT_PASSWORD" &>> /tmp/p_host_setup.log
-    _log "INFO" "Starting f_copy_auth_keys_to_containers"
-    f_copy_auth_keys_to_containers &>> /tmp/p_host_setup.log || return $?
-
-    _log "INFO" "Starting f_run_cmd_on_nodes export TERM (TODO: remove this later: E437: terminal capability \"cm\" required)"
-    f_run_cmd_on_nodes "echo -e '\nexport TERM=xterm-256color' >> /etc/profile" &>> /tmp/p_host_setup.log
+    _log "INFO" "Starting f_commands_run_on_nodes"
+    f_commands_run_on_nodes &>> /tmp/p_host_setup.log || return $?
 
     if ! _isYes "$r_AMBARI_NOT_INSTALL"; then
         f_get_ambari_repo_file &>> /tmp/p_host_setup.log
@@ -2644,6 +2649,7 @@ function f_copy_auth_keys_to_containers() {
     local __doc__="Synchronize authorized_keys by copying from host to containers"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
     if [ ! -s $HOME/.ssh/authorized_keys ]; then
