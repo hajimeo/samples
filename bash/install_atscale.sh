@@ -275,7 +275,11 @@ function f_backup_atscale() {
         _log "INFO" "Deleting (rotated) log files which are older than ${_days} days..."; sleep 1
         f_rm_logs "${_dir}" "${_days}"
         _log "INFO" "Creating ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz from ${_dir%/} ..."; sleep 1
-        tar -czf ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz ${_dir%/}/ || return $? # Not using -h or -v for now
+        tar -czf ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz ${_dir%/}/ & # Not using -h or -v for now
+        trap 'kill %1' SIGINT
+        _log "INFO" "Ctrl+c to skip 'tar -czf ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz ...' command"; wait
+        trap - SIGINT
+        [ -s ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz ] || return $?
     else
         sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f; sleep 5
         mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
@@ -311,6 +315,7 @@ function f_pg_dump() {
     trap 'kill %1' SIGINT
     _log "INFO" "Executing pg_dump. Ctrl+c to skip 'pg_dump' command"; wait
     trap - SIGINT
+    [ -s ${_dump_dest_filename} ] || return $?
 }
 
 function f_install_atscale() {
