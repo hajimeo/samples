@@ -21,6 +21,7 @@ g_WORK_DIR="./hive_workspace"
 [ -z "${g_DRUID_AVAILABLE}" ] && g_DRUID_AVAILABLE=false;     # TODO: no good way to find if druid is installed and *hive2*
 
 function _genAddPartition4ranger() {
+    #hive -e "use dummies;`_genAddPartition4ranger`"
     local _table_name="${1:-ranger_audits}"
     local _ranger_audit="${2:-/ranger/audit}"
     local _date_regex="${3:-`date -d "1 day ago" +'%Y%m'`}*" # normally today's audit is empty, and as using IF NOT EXISTS, adding for a month
@@ -47,10 +48,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     [ -s /etc/security/keytabs/hive.service.keytab ] && kinit -kt /etc/security/keytabs/hive.service.keytab hive/`hostname -f`
 
     # Process arguments
-    _dbname="${1}"
+    _dbname="${1:-dummies}"
     _beeline_u="${2}"
-
-    [ -z "$_dbname" ] && _dbname="dummies"
 
     _cmd="hive -hiveconf hive.tez.exec.print.summary=true"
     [ -n "${_beeline_u}" ] && _cmd="beeline --verbose=true --outputformat=tsv2 -u '${_beeline_u}' -n $USER"
