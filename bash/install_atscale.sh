@@ -29,11 +29,11 @@ END
 
 
 ### Arguments ########################
-_ATSCALE_VER="${1:-7.0.0}"
-_ATSCALE_USER="${2:-atscale}"
-_ATSCALE_LICENSE="${3:-${_TMP_DIR}/dev-vm-license-atscale.json}"
-_ATSCALE_CUSTOMYAML="${4}"
-_UPDATING="${5}"   # This is also for re-installing to change some properties
+[ -z "${_ATSCALE_VER}" ] && _ATSCALE_VER="${1:-7.0.0}"
+[ -z "${_ATSCALE_USER}" ] && _ATSCALE_USER="${2:-atscale}"
+[ -z "${_ATSCALE_LICENSE}" ] && _ATSCALE_LICENSE="${3:-${_TMP_DIR}/dev-vm-license-atscale.json}"
+[ -z "${_ATSCALE_CUSTOMYAML}" ] && _ATSCALE_CUSTOMYAML="${4}"
+[ -z "${_UPDATING}" ] && _UPDATING="${5}"   # This is also for re-installing to change some properties
 
 
 ### Functions ########################
