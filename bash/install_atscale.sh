@@ -33,7 +33,7 @@ _ATSCALE_VER="${1:-7.0.0}"
 _ATSCALE_USER="${2:-atscale}"
 _ATSCALE_LICENSE="${3:-${_TMP_DIR}/dev-vm-license-atscale.json}"
 _ATSCALE_CUSTOMYAML="${4}"
-_UPGRADING="${5}"
+_UPDATING="${5}"   # This is also for re-installing to change some properties
 
 
 ### Functions ########################
@@ -253,7 +253,7 @@ function f_backup_atscale() {
     local __doc__="Backup (or move if new installation) atscale directory, and execute pg_dump for DB backup"
     local _dir="${1:-${_ATSCALE_DIR}}"
     local _usr="${2:-${_ATSCALE_USER}}"
-    local _is_upgrading="${3-${_UPGRADING}}"
+    local _is_updating="${3-${_UPDATING}}"
 
     [ -d ${_dir%/} ] || return    # No dir, no backup
 
@@ -269,7 +269,7 @@ function f_backup_atscale() {
     #fi
 
     _log "INFO" "Stopping AtScale before backing up..."; sleep 1
-    if [[ "${_is_upgrading}" =~ (^y|^Y) ]]; then
+    if [[ "${_is_updating}" =~ (^y|^Y) ]]; then
         sudo -u ${_usr} ${_dir%/}/bin/atscale_service_control stop all; sleep 5
         local _days=3
         _log "INFO" "Deleting (rotated) log files which are older than ${_days} days..."; sleep 1
@@ -320,6 +320,7 @@ function f_install_atscale() {
     local _usr="${4:-${_ATSCALE_USER}}"
     local _custom_yaml="${5:-${_ATSCALE_CUSTOMYAML}}"
     local _installer_parent_dir="${6:-/home/${_usr}}"
+    local _is_updating="${7-${_UPDATING}}"
 
     # It should be created by f_setup when user is created, so exiting.
     [ -d "${_installer_parent_dir}" ] || return $?
@@ -332,7 +333,7 @@ function f_install_atscale() {
             return 1
         fi
 
-        if [[ "${_UPGRADING}}" =~ (^y|^Y) ]]; then
+        if [[ "${_is_updating}}" =~ (^y|^Y) ]]; then
             # If upgrading, making sure necessary services are started
             sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control start postgres repmgrd haproxy xinetd"
         fi
@@ -360,7 +361,7 @@ function f_install_atscale() {
         cp -f "${_custom_yaml}" ${_installer_parent_dir%/}/custom.yaml || return $?
     fi
 
-    if [[ "${_UPGRADING}}" =~ (^y|^Y) ]]; then
+    if [[ "${_is_updating}}" =~ (^y|^Y) ]]; then
         # If upgrading, must put custom.yaml in correct location before starting installation
         if [ ! -s ${_installer_parent_dir%/}/custom.yaml ]; then
             _log "ERROR" "Upgrading is specified but no custom.yaml file!!!"; sleep 5
