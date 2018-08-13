@@ -403,12 +403,16 @@ function f_after_install() {
 
     if [ "${inst_as_hive_metastore_database}" = 'true' ]; then
         grep -q "hive.metastore.schema.verification" ${_dir%/}/share/apache-hive-*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
-    <property><name>atscale-spark</name><value>false</value></property>' ${_dir%/}/share/apache-hive-*/conf/hive-site.xml
+    <property><name>hive.metastore.schema.verification</name><value>false</value></property>' ${_dir%/}/share/apache-hive-*/conf/hive-site.xml
+        grep -q "hive.metastore.schema.verification.record.version" ${_dir%/}/share/apache-hive-*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
+    <property><name>hive.metastore.schema.verification.record.version</name><value>false</value></property>' ${_dir%/}/share/apache-hive-*/conf/hive-site.xml
         grep -q "javax.jdo.option.ConnectionPassword" ${_dir%/}/share/apache-hive-*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
     <property><name>javax.jdo.option.ConnectionPassword</name><value>'${inst_hive_metastore_password}'</value></property>' ${_dir%/}/share/apache-hive-*/conf/hive-site.xml
 
         grep -q "hive.metastore.schema.verification" ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
-    <property><name>atscale-spark</name><value>false</value></property>' ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml
+    <property><name>hive.metastore.schema.verification</name><value>false</value></property>' ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml
+        grep -q "hive.metastore.schema.verification.record.version" ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
+    <property><name>hive.metastore.schema.verification.record.version</name><value>false</value></property>' ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml
         grep -q "javax.jdo.option.ConnectionPassword" ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
     <property><name>javax.jdo.option.ConnectionPassword</name><value>'${inst_hive_metastore_password}}'</value></property>' ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml
 
