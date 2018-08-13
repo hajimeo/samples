@@ -85,6 +85,7 @@ function f_setup() {
                         kinit admin
                         #ipa service-add ${_atscale_user}/`hostname -f`   # TODO: Bug? https://bugzilla.redhat.com/show_bug.cgi?id=1602410
                         ipa-getkeytab -s ${_kdc} -p ${_user}/`hostname -f` -k /etc/security/keytabs/${_user}.service.keytab
+                        # NOTE: for user keytab, append --password or -P
                     fi
                     if [ $? -ne 0 ]; then
                         _log "ERROR" "If FreeIPA is used, please create SPN: ${_user}/`hostname -f` from your FreeIPA GUI and export keytab."; sleep 5
@@ -124,6 +125,28 @@ function f_setup() {
     [ -d /var/www/html ] && [ ! -e /var/www/html/atscale ] && ln -s ${_TMP_DIR%/} /var/www/html/atscale
 
     return 0
+}
+
+function todo_delegation() {
+    local _rule_name="${1:-atscalesrvda}"
+    local _adm_pass="${2:-secret12}"
+    local _hdp_host="${3:-`hostname -f`}"    # Currently expecting hive and hdfs are installed in one node
+
+    echo -n "${_adm_pass}" | kinit admin
+    ipa servicedelegationrule-add ${_rule_name}
+    ipa servicedelegationtarget-add target-${_rule_name}
+    ipa servicedelegationrule-add-target --servicedelegationtargets=target-${_rule_name} ${_rule_name}
+
+    local _atscale_princ="`ipa service-find atscale | sed -nr 's/\s*Principal name: (.+)/\1/p'`"
+    ipa servicedelegationrule-add-member --principals ${_atscale_princ} ${_rule_name}
+
+    for _spn in `ipa service-find --man-by-hosts ${_hdp_host} | grep -i 'Keytab: True' -B 2 | sed -nr 's/\s*Principal name: (.+)/\1/p'`; do
+        ipa servicedelegationtarget-add-member --principals=${_spn} target-${_rule_name}
+    done
+
+    ipa servicedelegationrule-show ${_rule_name}
+    ipa servicedelegationtarget-show target-${_rule_name}
+    # TODO: delegation         Group to Group Delegation ???
 }
 
 function f_scala_setup() {
@@ -201,7 +224,7 @@ function f_generate_custom_yaml() {
     if [ -s /etc/security/keytabs/atscale.service.keytab ]; then
         _is_kerberized="true"
         _delegated_auth_enabled="true"       # Default on 7.0.0 is false
-        #_hive_metastore_database="true"      # Using remote metastore causes Kerberos issues, however this one update metastore version "Set by MetaStore UNKNOWN@172.17.100.6"
+        _hive_metastore_database="true"      # Using remote metastore causes Kerberos issues, however this one update metastore version "Set by MetaStore UNKNOWN@172.17.100.6"
         #_hive_metastore_password="${DEFAULT_PWD}"   # TODO: static password...
         _realm=`sudo -u ${_usr} klist -kt /etc/security/keytabs/atscale.service.keytab | grep -m1 -oP '@.+' | sed 's/@//'` || return $?
         # TODO: expecting this node has hdfs headless keytab and readable by root (it should though)
@@ -379,8 +402,13 @@ function f_after_install() {
     _load_yaml ${_installer_parent_dir%/}/custom.yaml "inst_" || return $?
 
     if [ "${inst_as_hive_metastore_database}" = 'true' ]; then
+        grep -q "hive.metastore.schema.verification" ${_dir%/}/share/apache-hive-*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
+    <property><name>atscale-spark</name><value>false</value></property>' ${_dir%/}/share/apache-hive-*/conf/hive-site.xml
         grep -q "javax.jdo.option.ConnectionPassword" ${_dir%/}/share/apache-hive-*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
     <property><name>javax.jdo.option.ConnectionPassword</name><value>'${inst_hive_metastore_password}'</value></property>' ${_dir%/}/share/apache-hive-*/conf/hive-site.xml
+
+        grep -q "hive.metastore.schema.verification" ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
+    <property><name>atscale-spark</name><value>false</value></property>' ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml
         grep -q "javax.jdo.option.ConnectionPassword" ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml || sed -i.$$.bak '/<\/configuration>/i \
     <property><name>javax.jdo.option.ConnectionPassword</name><value>'${inst_hive_metastore_password}}'</value></property>' ${_dir%/}/share/spark-apache2_*/conf/hive-site.xml
 
@@ -519,7 +547,8 @@ function f_ldap_cert_setup() {
         return 1
     fi
     ${_java_home%/}/bin/keytool -import -trustcacerts -file "${_TMP_DIR%/}/${_ldap_host}_${_ldap_port}.crt" -alias "${_ldap_host}" -keystore "${_truststore}" -noprompt -storepass "${_storepass}" || return $?
-    _log "INFO" "You need to restart AtScale to use the updated truststore."; sleep 1
+    _log "INFO" "You need to restart Engine to use the updated truststore."; sleep 1
+    #sudo -u atscale /usr/local/atscale/bin/atscale_service_control restart engine
 }
 
 function f_export_key() {
