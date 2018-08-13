@@ -70,6 +70,11 @@ function f_rg() {
         echo " "
     fi
 
+    # Version information
+    echo "# last 3 settings changes"
+    rg -g 'settings.json' '    "createdAt' -m 3 -B
+    echo " "
+
     # If _regex is UUID, checking if it's query ID TODO: add more logic for other types of UUID
     if [[ "${_regex}" =~ .{8}-.{4}-.{4}-.{12} ]]; then
         echo "# checking if this UUID is a query ID"
@@ -160,7 +165,7 @@ function f_getQueries() {
 }
 
 function f_checkResultSize() {
-    local __doc__="Get result sizes"
+    local __doc__="Get result sizes (datetime, queryId, size, seconds)"
     local _date_regex="${1:-"20\\d\\d-\\d\\d-\\d\\d \\d\\d:\\d"}"
     local _file_regex="${2:-"debug*.log*"}"
     # TODO: should I use 'resultSize'?
