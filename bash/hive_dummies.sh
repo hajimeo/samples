@@ -14,11 +14,23 @@ g_WORK_DIR="./hive_workspace"
 
 ## Extra importing (default is disabling all)
 [ -z "${g_Trans_AVAILABLE}" ] && g_Trans_AVAILABLE=false;     # TODO: need to find if ACID/Transaction is on
-[ -z "${g_nnLOG_AVAILABLE}" ] && g_nnLOG_AVAILABLE=false;     #[ -s /var/log/hadoop/hdfs/hdfs-audit.log ] && g_nnLOG_AVAILABLE=true
-[ -z "${g_HBASE_AVAILABLE}" ] && g_HBASE_AVAILABLE=false;     #which hbase &>/dev/null && g_HBASE_AVAILABLE=true
-[ -z "${g_SQOOP_AVAILABLE}" ] && g_SQOOP_AVAILABLE=false;     #which sqoop &>/dev/null && g_SQOOP_AVAILABLE=true
+[ -z "${g_nnLOG_AVAILABLE}" ] && g_nnLOG_AVAILABLE=false;     # [ -s /var/log/hadoop/hdfs/hdfs-audit.log ] && g_nnLOG_AVAILABLE=true
+[ -z "${g_RANGE_AVAILABLE}" ] && g_RANGE_AVAILABLE=false;     # check xml
+[ -z "${g_HBASE_AVAILABLE}" ] && g_HBASE_AVAILABLE=false;     # which hbase &>/dev/null && g_HBASE_AVAILABLE=true
+[ -z "${g_SQOOP_AVAILABLE}" ] && g_SQOOP_AVAILABLE=false;     # which sqoop &>/dev/null && g_SQOOP_AVAILABLE=true
 [ -z "${g_DRUID_AVAILABLE}" ] && g_DRUID_AVAILABLE=false;     # TODO: no good way to find if druid is installed and *hive2*
 
+function _genAddPartition() {
+    local _ranger_audit="${1:-/ranger/audit}"
+    local _yyyymmdd="${2:-`date -d "1 day ago" +'%Y%m%d'`}" # normally today's audit is empty
+    for _p in `hdfs dfs -ls -d -C ${_ranger_audit%/}/*/${_yyyymmdd}`; do
+        if [[ "${_p}" =~ ${_ranger_audit//\/\\/}\/([^/]+)\/([^/]+) ]]; then
+            local _service="${BASH_REMATCH[1]}"
+            local _evtDate="${BASH_REMATCH[2]}"
+            echo "ALTER TABLE ranger_audit_event_json ADD IF NOT EXISTS PARTITION (service='${_service}', evtDate='${_evtDate}') LOCATION '${_p}';"
+        fi
+    done
+}
 
 function _log() {
     if [ -n "$g_LOG_FILE_PATH" ]; then
@@ -30,6 +42,8 @@ function _log() {
 
 ### Main ###############################################################################################################
 if [ "$0" = "$BASH_SOURCE" ]; then
+    [ -s /etc/security/keytabs/hive.service.keytab ] && kinit -kt /etc/security/keytabs/hive.service.keytab hive/`hostname -f`
+
     # Process arguments
     _dbname="${1}"
     _beeline_u="${2}"
@@ -200,6 +214,43 @@ LOAD DATA INPATH '/tmp/hive_workspace/hdfs-audit.csv' OVERWRITE into table hdfs_
         fi
     fi
 
+
+    if ${g_RANGE_AVAILABLE}; then
+        # https://community.hortonworks.com/articles/60802/ranger-audit-in-hive-table-a-sample-approach-1.html
+        # https://cwiki.apache.org/confluence/display/RANGER/Ranger+Audit+Schema#RangerAuditSchema-AudittoHDFS <<< Too old?
+        # /usr/hdp/current/hive-server2-hive2/lib/hive-hcatalog-core.jar
+        _log "INFO" "Creating table which read ranger audit log (json)"
+        _sql="${_sql}
+CREATE EXTERNAL TABLE IF NOT EXISTS ranger_audit_event_json (
+  repoType int,
+  repo string,
+  reqUser string,
+  evtTime TIMESTAMP,
+  access string,
+  resource string,
+  resType string,
+  action string,
+  result int,
+  policy int,
+  enforcer string,
+  sess string,
+  cliType string,
+  cliIP string,
+  reqData string,
+  agentHost string,
+  logType string,
+  id string,
+  seq_num bigint,
+  event_count int,
+  event_dur_ms bigint,
+  tags array<string>,
+  additional_info string,
+  cluster_name string
+)
+PARTITIONED BY (service string, evtDate string)
+row format serde 'org.apache.hive.hcatalog.data.JsonSerDe';
+`_genAddPartition`"
+    fi
 
     if ${g_HBASE_AVAILABLE}; then
         _log "INFO" "Creating HBase table 'emp_review' with hbase shell..."
