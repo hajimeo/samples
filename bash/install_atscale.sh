@@ -344,7 +344,7 @@ function f_install_atscale() {
             sudo -u ${_usr} "${_dir%/}/bin/atscale_start"
             sudo -u ${_usr} "${_dir%/}/bin/atscale_stop_apps" -f
             sleep 5
-            sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control status"
+            sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control" status
         fi
     fi
 
