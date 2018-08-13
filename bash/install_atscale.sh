@@ -25,6 +25,7 @@ END
 [ -z "${_ATSCALE_DIR}" ] && _ATSCALE_DIR="/usr/local/atscale"
 [ -z "${_TMP_DIR}" ] && _TMP_DIR="/var/tmp/share/atscale"
 [ -z "${_OS_ARCH}" ] && _OS_ARCH="el6.x86_64"
+[ -z "${_KEYTAB_DIR}" ] && _KEYTAB_DIR="/etc/security/keytabs"
 #[ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="" This global variable should not have default value
 
 
@@ -44,8 +45,9 @@ function f_setup() {
     local _target_dir="${2:-${_ATSCALE_DIR}}"
     local _tmp_dir="${3:-${_TMP_DIR}}"
     local _schema="${4:-${_SCHEMA_AND_HDFSDIR}}"
-    local _kadmin_usr="${5:-${_KADMIN_USR}}"
-    local _kadmin_pwd="${6:-${_DEFAULT_PWD}}"
+    local _is_updating="${5-${_UPDATING}}"
+    local _kadmin_usr="${6:-${_KADMIN_USR}}"
+    local _kadmin_pwd="${7:-${_DEFAULT_PWD}}"
 
     local _hdfs_user="${_HDFS_USER:-hdfs}"
 
@@ -69,13 +71,13 @@ function f_setup() {
     fi
 
     # If looks like Kerberos is enabled
-    grep -A 1 'hadoop.security.authentication' /etc/hadoop/conf/core-site.xml | grep -qw "kerberos"
-    if [ "$?" -eq "0" ]; then
-        if [ ! -s /etc/security/keytabs/${_user}.service.keytab ]; then
+    if grep -A 1 'hadoop.security.authentication' /etc/hadoop/conf/core-site.xml | grep -qw "kerberos"; then
+        if [ ! -s ${_KEYTAB_DIR%/}/${_user}.service.keytab ]; then
             _log "INFO" "Creating principals and keytabs (TODO: only for MIT KDC)..."; sleep 1
             if [ -z "${_kadmin_usr}" ]; then
                 _log "WARN" "_KADMIN_USR is not set, so that NOT creating ${_user} principal."; sleep 3
             else
+                # If FreeIPA
                 if which ipa &>/dev/null; then
                     local _def_realm="`sed -nr 's/^\s*default_realm\s*=\s(.+)/\1/p' /etc/krb5.conf`"
                     local _kdc="`grep -Pzo '(?s)^\s*'${_def_realm}'\s*=\s*\{.+\}' /etc/krb5.conf | sed -nr 's/\s*kdc\s*=\s*(.+)/\1/p'`"
@@ -84,34 +86,37 @@ function f_setup() {
                         #echo -n "${_kadmin_pwd}" | kinit ${_kadmin_usr}
                         kinit admin
                         #ipa service-add ${_atscale_user}/`hostname -f`   # TODO: Bug? https://bugzilla.redhat.com/show_bug.cgi?id=1602410
-                        ipa-getkeytab -s ${_kdc} -p ${_user}/`hostname -f` -k /etc/security/keytabs/${_user}.service.keytab
+                        ipa-getkeytab -s ${_kdc} -p ${_user}/`hostname -f` -k ${_KEYTAB_DIR%/}/${_user}.service.keytab
                         # NOTE: for user keytab, append --password or -P
+                        #ipa-getkeytab -s ${_kdc} -p ${_user} -f` -k ${_KEYTAB_DIR%/}/${_user}.service.keytab -P
                     fi
                     if [ $? -ne 0 ]; then
                         _log "ERROR" "If FreeIPA is used, please create SPN: ${_user}/`hostname -f` from your FreeIPA GUI and export keytab."; sleep 5
                     fi
                 else
                     kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "add_principal -randkey ${_user}/`hostname -f`" && \
-                    kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "xst -k /etc/security/keytabs/${_user}.service.keytab ${_user}/`hostname -f`"
+                    kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "xst -k ${_KEYTAB_DIR%/}/${_user}.service.keytab ${_user}/`hostname -f`"
                 fi
-                chown ${_user}: /etc/security/keytabs/${_user}.service.keytab
-                chmod 640 /etc/security/keytabs/${_user}.service.keytab
+                chown ${_user}: ${_KEYTAB_DIR%/}/${_user}.service.keytab
+                chmod 640 ${_KEYTAB_DIR%/}/${_user}.service.keytab
             fi
         fi
 
-        local _hdfs_principal="`klist -k /etc/security/keytabs/hdfs.headless.keytab | grep -oE -m1 'hdfs-.+$'`"
-        sudo -u ${_hdfs_user} kinit -kt /etc/security/keytabs/hdfs.headless.keytab ${_hdfs_principal}
+        local _atscale_principal="`klist -k ${_KEYTAB_DIR%/}/${_user}.service.keytab | grep -oE -m1 "${_user}/$(hostname -f)@.+$"`"
+        sudo -u ${_user} kinit -kt ${_KEYTAB_DIR%/}/${_user}.service.keytab ${_atscale_principal} || return $?
     fi
 
-    sudo -u ${_hdfs_user} hdfs dfs -mkdir /user/${_user}
-    sudo -u ${_hdfs_user} hdfs dfs -chown ${_user}: /user/${_user}
-
-    if which hive &>/dev/null; then
-        if [ -s /etc/security/keytabs/${_user}.service.keytab ]; then
-            local _atscale_principal="`klist -k /etc/security/keytabs/${_user}.service.keytab | grep -oE -m1 "${_user}/$(hostname -f)@.+$"`"
-            sudo -u ${_user} kinit -kt /etc/security/keytabs/${_user}.service.keytab ${_atscale_principal}
+    if [[ "${_is_updating}" =~ (^y|^Y) ]]; then
+        _log "INFO" "Updating (Upgrading) is selected, so that not creating a HDFS dir and Hive schema"; sleep 1
+    else
+        if [ -s ${_KEYTAB_DIR%/}/hdfs.headless.keytab ]; then
+            local _hdfs_principal="`klist -k ${_KEYTAB_DIR%/}/hdfs.headless.keytab | grep -oE -m1 'hdfs-.+$'`"
+            sudo -u ${_hdfs_user} kinit -kt ${_KEYTAB_DIR%/}/hdfs.headless.keytab ${_hdfs_principal}
         fi
-        # TODO: should use beeline and tez, also if new installation, should drop database
+        sudo -u ${_hdfs_user} hdfs dfs -mkdir /user/${_user}
+        sudo -u ${_hdfs_user} hdfs dfs -chown ${_user}: /user/${_user}
+
+        # Assuming 'hive' command exists TODO: should use beeline and tez, also if new installation, should drop database
         sudo -u ${_user} hive -hiveconf hive.execution.engine='mr' -e "CREATE DATABASE IF NOT EXISTS ${_schema}" &
     fi
 
@@ -221,16 +226,16 @@ function f_generate_custom_yaml() {
     local _hive_metastore_database="false"
     local _hive_metastore_password="<empty>"
 
-    if [ -s /etc/security/keytabs/atscale.service.keytab ]; then
+    if [ -s ${_KEYTAB_DIR%/}/atscale.service.keytab ]; then
         _is_kerberized="true"
         _delegated_auth_enabled="true"       # Default on 7.0.0 is false
         _hive_metastore_database="true"      # Using remote metastore causes Kerberos issues, however this one update metastore version "Set by MetaStore UNKNOWN@172.17.100.6"
         #_hive_metastore_password="${DEFAULT_PWD}"   # TODO: static password...
-        _realm=`sudo -u ${_usr} klist -kt /etc/security/keytabs/atscale.service.keytab | grep -m1 -oP '@.+' | sed 's/@//'` || return $?
+        _realm=`sudo -u ${_usr} klist -kt ${_KEYTAB_DIR%/}/atscale.service.keytab | grep -m1 -oP '@.+' | sed 's/@//'` || return $?
         # TODO: expecting this node has hdfs headless keytab and readable by root (it should though)
-        _hadoop_realm=`klist -kt /etc/security/keytabs/hdfs.headless.keytab | grep -m1 -oP '@.+' | sed 's/@//'`
+        _hadoop_realm=`klist -kt ${_KEYTAB_DIR%/}/hdfs.headless.keytab | grep -m1 -oP '@.+' | sed 's/@//'`
         [ -z "${_hadoop_realm}" ] && _hadoop_realm="${_realm}"
-        _hdfs_principal=`klist -kt /etc/security/keytabs/hdfs.headless.keytab | grep -m1 -oP 'hdfs-.+@' | sed 's/@//'`
+        _hdfs_principal=`klist -kt ${_KEYTAB_DIR%/}/hdfs.headless.keytab | grep -m1 -oP 'hdfs-.+@' | sed 's/@//'`
         [ -z "${_hdfs_principal}" ] && _hdfs_principal="hdfs"
     fi
 
