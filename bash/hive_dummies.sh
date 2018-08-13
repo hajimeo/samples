@@ -20,15 +20,16 @@ g_WORK_DIR="./hive_workspace"
 [ -z "${g_SQOOP_AVAILABLE}" ] && g_SQOOP_AVAILABLE=false;     # which sqoop &>/dev/null && g_SQOOP_AVAILABLE=true
 [ -z "${g_DRUID_AVAILABLE}" ] && g_DRUID_AVAILABLE=false;     # TODO: no good way to find if druid is installed and *hive2*
 
-function _genAddPartition() {
-    local _ranger_audit="${1:-/ranger/audit}"
-    local _date_regex="${2:-`date -d "1 day ago" +'%Y%m'`}*" # normally today's audit is empty, and as using IF NOT EXISTS, adding for a month
+function _genAddPartition4ranger() {
+    local _table_name="${1:-ranger_audits}"
+    local _ranger_audit="${2:-/ranger/audit}"
+    local _date_regex="${3:-`date -d "1 day ago" +'%Y%m'`}*" # normally today's audit is empty, and as using IF NOT EXISTS, adding for a month
 
     for _p in `hdfs dfs -ls -d -C ${_ranger_audit%/}/*/${_date_regex}`; do
         if [[ "${_p}" =~ ${_ranger_audit//\/\\/}\/([^/]+)\/([^/]+) ]]; then
             local _service="${BASH_REMATCH[1]}"
             local _evtDate="${BASH_REMATCH[2]}"
-            echo "ALTER TABLE ranger_audit_event_json ADD IF NOT EXISTS PARTITION (service='${_service}', evtDate='${_evtDate}') LOCATION '${_p}';"
+            echo "ALTER TABLE ${_table_name} ADD IF NOT EXISTS PARTITION (service='${_service}', evtDate='${_evtDate}') LOCATION '${_p}';"
         fi
     done
 }
@@ -222,7 +223,7 @@ LOAD DATA INPATH '/tmp/hive_workspace/hdfs-audit.csv' OVERWRITE into table hdfs_
         # /usr/hdp/current/hive-server2-hive2/lib/hive-hcatalog-core.jar
         _log "INFO" "Creating table which read ranger audit log (json)"
         _sql="${_sql}
-CREATE EXTERNAL TABLE IF NOT EXISTS ranger_audit_event_json (
+CREATE EXTERNAL TABLE IF NOT EXISTS ranger_audits (
   repoType int,
   repo string,
   reqUser string,
@@ -250,7 +251,7 @@ CREATE EXTERNAL TABLE IF NOT EXISTS ranger_audit_event_json (
 )
 PARTITIONED BY (service string, evtDate string)
 row format serde 'org.apache.hive.hcatalog.data.JsonSerDe';
-`_genAddPartition`"
+`_genAddPartition4ranger`"
     fi
 
     if ${g_HBASE_AVAILABLE}; then
