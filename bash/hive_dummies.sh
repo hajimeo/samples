@@ -22,8 +22,9 @@ g_WORK_DIR="./hive_workspace"
 
 function _genAddPartition() {
     local _ranger_audit="${1:-/ranger/audit}"
-    local _yyyymmdd="${2:-`date -d "1 day ago" +'%Y%m%d'`}" # normally today's audit is empty
-    for _p in `hdfs dfs -ls -d -C ${_ranger_audit%/}/*/${_yyyymmdd}`; do
+    local _date_regex="${2:-`date -d "1 day ago" +'%Y%m'`}*" # normally today's audit is empty, and as using IF NOT EXISTS, adding for a month
+
+    for _p in `hdfs dfs -ls -d -C ${_ranger_audit%/}/*/${_date_regex}`; do
         if [[ "${_p}" =~ ${_ranger_audit//\/\\/}\/([^/]+)\/([^/]+) ]]; then
             local _service="${BASH_REMATCH[1]}"
             local _evtDate="${BASH_REMATCH[2]}"
