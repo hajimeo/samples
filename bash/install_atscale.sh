@@ -337,8 +337,9 @@ function f_install_atscale() {
         if [[ "${_is_updating}}" =~ (^y|^Y) ]]; then
             # If upgrading, making sure necessary services are started
             sudo -u ${_usr} "${_dir%/}/bin/atscale_start"
+            sleep 3
             sudo -u ${_usr} "${_dir%/}/bin/atscale_stop_apps" -f
-            sleep 5
+            sleep 3
             sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control" status
         fi
     fi
@@ -385,7 +386,8 @@ function f_install_atscale() {
     cd -
 
     local _last_log="`ls -t1 /home/atscale/log/install-20*.log | head -n1`"
-    [ -s "${_last_log}" ] && grep '^Error:' ${_last_log}
+    [ -s "${_last_log}" ] && grep '^Error:' ${_last_log} && return 1
+    return 0
 }
 
 function f_after_install() {
