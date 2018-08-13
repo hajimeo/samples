@@ -274,7 +274,8 @@ function f_backup_atscale() {
         local _days=3
         _log "INFO" "Deleting (rotated) log files which are older than ${_days} days..."; sleep 1
         f_rm_logs "${_dir}" "${_days}"
-        tar -czf ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz ${_dir%/} || return $? # Not using -h or -v for now
+        _log "INFO" "Creating ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz from ${_dir%/} ..."; sleep 1
+        tar -czf ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz ${_dir%/}/ || return $? # Not using -h or -v for now
     else
         sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f; sleep 5
         mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
