@@ -341,7 +341,10 @@ function f_install_atscale() {
 
         if [[ "${_is_updating}}" =~ (^y|^Y) ]]; then
             # If upgrading, making sure necessary services are started
-            sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control start postgres repmgrd haproxy xinetd"
+            sudo -u ${_usr} "${_dir%/}/bin/atscale_start"
+            sudo -u ${_usr} "${_dir%/}/bin/atscale_stop_apps" -f
+            sleep 5
+            sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control status"
         fi
     fi
 
