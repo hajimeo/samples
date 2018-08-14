@@ -258,11 +258,12 @@ function f_backup_atscale() {
     local __doc__="Backup (or move if new installation) atscale directory, and execute pg_dump for DB backup"
     local _dir="${1:-${_ATSCALE_DIR}}"
     local _usr="${2:-${_ATSCALE_USER}}"
-    local _is_updating="${3-${_UPDATING}}"
+    local _dst_dir="${3-${_TMP_DIR}}"
+    local _is_updating="${4-${_UPDATING}}"
 
     [ -d ${_dir%/} ] || return    # No dir, no backup
 
-    local _suffix="`_get_suffix`"
+    local _suffix="`_get_vardate_suffix`"
 
     # For now, no pg_dump as it's slow.
     #if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
@@ -273,28 +274,55 @@ function f_backup_atscale() {
     #    fi
     #fi
 
+    local _days=3
+    _log "INFO" "Deleting log files which are older than ${_days} days..."; sleep 1
+    f_rm_logs "${_dir}" "${_days}"
+
     _log "INFO" "Stopping AtScale before backing up..."; sleep 1
     sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f || return $?
+
     if [[ "${_is_updating}" =~ (^y|^Y) ]]; then
-        local _days=2
-        _log "INFO" "Deleting (rotated) log files which are older than ${_days} days..."; sleep 1
-        f_rm_logs "${_dir}" "${_days}"
-        _log "INFO" "Creating ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz from ${_dir%/} ..."; sleep 1
-        tar -czf ${_TMP_DIR%/}/atscale_${_suffix}.tar.gz ${_dir%/}/ || return $?    # Not using -h or -v for now
+        _log "INFO" "Excluding logs, creating ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz from ${_dir%/} ..."; sleep 1
+        [ -s "${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz" ] && [ ! -s ${_dst_dir%/}/atscale_backup_${_suffix}_$$.tar.gz ] && mv -f ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz ${_dst_dir%/}/atscale_backup_${_suffix}_$$.tar.gz &>/dev/null
+        cd `dirname ${_dir}` || return $?   # Need 'cd' for creating exclude list (-X)
+        tar -czf ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz "`basename ${_dir%/}`" -X <(ls -1 `basename ${_dir%/}`/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null)    # Not using -h or -v for now
+        cd -
+        [ 2097152 -lt "`wc -c <${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz`" ] || return 18
+
+        ls -ltr ${_dst_dir%/}/atscale_backup_*.tar.gz
     else
-        mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
+        [ -e ${_dir%/}_${_suffix} ] && [ ! -e ${_dir%/}_${_suffix}_$$ ] && mv ${_dir%/}_${_suffix} ${_dir%/}_${_suffix}_$$
+        [ -e ${_dir%/} ] && mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
         mkdir ${_dir%/} || return $?
         chown ${_usr}: ${_dir%/} || return $?
-    fi
 
-    ls -ltrd ${_dir%/}* # Just displaying directories to remind to delete later.
+        ls -ltrd ${_dir%/}* # Just displaying directories to remind to delete later.
+    fi
 }
 
-function _get_suffix() {
+function f_restart_atscale() {
+    local __doc__="Restore AtScale from a backup taken from f_backup_atscale()"
+    local _backup="$1"
+    local _dir="${2-${_ATSCALE_DIR}}"
+    local _usr="${3:-${_ATSCALE_USER}}"
+
+    local _tmp_dir="$(mktemp -d)" || return $?
+    tar xf ${_backup} -C ${_tmp_dir%/}/ || return $?
+
+    _log "INFO" "Stopping AtScale before restoring..."; sleep 2
+    sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f || return $?
+
+    local _suffix="`_get_vardate_suffix`"
+    [ -e ${_dir%/}_${_suffix} ] && [ ! -e ${_dir%/}_${_suffix}_$$ ] && mv ${_dir%/}_${_suffix} ${_dir%/}_${_suffix}_$$
+    [ -e ${_dir%/} ] && mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
+    mv ${_tmp_dir%/}/`basename ${_dir%/}` `dirname ${_dir}`/
+}
+
+function _get_vardate_suffix() {
     local _dir="${1:-${_ATSCALE_DIR}}"
     local _installed_ver="$(sed -n -e 's/^as_version: \([0-9.]\+\).*/\1/p' "`ls -t ${_dir%/}/conf/versions/versions.*.yml | head -n1`")"
     [ -z "${_installed_ver}" ] && _installed_ver="unknown"
-    echo "${_installed_ver}_$(date +"%Y%m%d%H%M%S")"
+    echo "${_installed_ver}_$(date +"%Y%m%d")"
 }
 
 function f_rm_logs() {
@@ -489,7 +517,7 @@ function f_switch_version() {
         # sometimes ln -f doesn't work so
         mv -f ${_dir%/} ${_dir%/}.symlink.bak || return $?
     elif [ -e "${_dir%/}" ]; then
-        local _suffix="`_get_suffix`"
+        local _suffix="`_get_vardate_suffix`"
         mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
     fi
     ln -s ${_target_dir%/} ${_dir%/} || return $?
