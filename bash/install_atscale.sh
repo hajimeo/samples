@@ -255,7 +255,7 @@ function f_generate_custom_yaml() {
 }
 
 function f_backup_atscale() {
-    local __doc__="Backup (or move if new installation) atscale directory, and execute pg_dump for DB backup"
+    local __doc__="Backup (or move if new installation) atscale directory, *excluding* log files"
     local _dir="${1:-${_ATSCALE_DIR}}"
     local _usr="${2:-${_ATSCALE_USER}}"
     local _dst_dir="${3-${_TMP_DIR}}"
