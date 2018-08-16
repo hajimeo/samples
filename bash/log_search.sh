@@ -72,13 +72,14 @@ function f_rg() {
 
     # Version information
     echo "# last 3 settings changes"
-    rg -g 'settings.json' '    "createdAt' -m 3 -B 3
+    local _settings="`find . -name 'settings.json' -print`"
+    cat "${_settings}" | python -c "import sys,json;a=json.loads(sys.stdin.read());print json.dumps(a[-3:], indent=4)"
     echo " "
 
     # If _regex is UUID, checking if it's query ID TODO: add more logic for other types of UUID
     if [[ "${_regex}" =~ .{8}-.{4}-.{4}-.{12} ]]; then
-        echo "# checking if this UUID is a query ID"
-        rg ${_def_rg_opts} --no-filename -g '*.log*' "^\d\d\d\d-\d\d-\d\d.+${_regex}.+ (Received|Executing) (SQL|Analysis) [Qq]uery"  | sort -n | uniq
+        echo "# checking if this UUID is a query ID by searching *only* queries.log files"
+        rg ${_def_rg_opts} -g 'queries.log*' "^\d\d\d\d-\d\d-\d\d.+${_regex}.+ (Received|Executing) (SQL|Analysis) [Qq]uery" -A 3
         echo " "
     fi
 
@@ -149,7 +150,7 @@ for l in sys.stdin:
     echo ' '
     echo "# May want to also run
         f_topErrors './hosts/*/logs/engine/engine.*' '${_first_dt}0' '${_last_dt}9'
-        f_checkResultSize 'YYYY-MM-DD hh:m'
+        f_checkResultSize '${_first_dt}'    # until ${_last_dt}
         f_count_lines
         f_count_threads
     " >&2
