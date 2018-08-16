@@ -70,10 +70,14 @@ function f_rg() {
         echo " "
     fi
 
-    # Version information
     echo "# last 3 settings changes"
     local _settings="`find . -name 'settings.json' -print`"
     cat "${_settings}" | python -c "import sys,json;a=json.loads(sys.stdin.read());print json.dumps(a[-3:], indent=4)"
+    echo " "
+
+    echo "# 10 large tables (by num rows)"
+    local _tableSizes="`find . -name 'tableSizes.tsv' -print`"
+    cat "${_tableSizes}" | sort -n -k2 | tail -n 10
     echo " "
 
     # If _regex is UUID, checking if it's query ID TODO: add more logic for other types of UUID
@@ -83,7 +87,6 @@ function f_rg() {
         echo " "
     fi
 
-    # Count matches
     echo "# counting matches"
     rg ${_def_rg_opts} -H -g '!*.ipynb' -g '!*.tmp' ${_rg_opts}-c "${_regex}"
     echo " "
