@@ -39,6 +39,7 @@ class SympleWebServer(BaseHTTPRequestHandler):
         json_obj = json.loads(json_str)
         # to avoid "UnicodeEncodeError: 'ascii' codec can't encode character"
         html = u"<h2>Hit " + str(json_obj['messages']['total']) + u"messages</h2>\n"
+        html+= u"<p>Query<code>" + str(query_args['query']) + "</code></p>\n"
         if len(json_obj['messages']['matches']) > 0:
             for o in json_obj['messages']['matches']:
                 html += u"<hr/>"
