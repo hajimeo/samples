@@ -281,6 +281,11 @@ function f_backup_atscale() {
     _log "INFO" "Stopping AtScale before backing up..."; sleep 1
     sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f || return $?
 
+    # Best effort of backing up custom.yaml (note: config_debug.yaml doesn't look like updated)
+    if [ -s "/home/${_usr%/}/custom.yaml" ] && [ ! -e "${_dir%/}/custom_backup_${_suffix}.yaml" ]; then
+        cp -f "/home/${_usr%/}/custom.yaml" ${_dir%/}/custom_backup_${_suffix}.yaml
+    fi
+
     if [[ "${_is_updating}" =~ (^y|^Y) ]]; then
         _log "INFO" "Excluding logs, creating ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz from ${_dir%/} ..."; sleep 1
         [ -s "${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz" ] && [ ! -s ${_dst_dir%/}/atscale_backup_${_suffix}_$$.tar.gz ] && mv -f ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz ${_dst_dir%/}/atscale_backup_${_suffix}_$$.tar.gz &>/dev/null
@@ -559,10 +564,12 @@ function f_import_project() {
     local __doc__="Import (Upload) project xml with API calls"
     local _path="$1"
     local _host="${2:-$(hostname -f)}"
+    local _envId="${3}"
     [ -s "${_path}" ] || return 11
 
     local jwt="`curl -s -X GET -u admin:admin "http://${_host}:10500/default/auth"`"
     _export_org_eng_env "${jwt}" "${_host}" || return $?
+    [ -z "${_envId}" ] && _envId="${_ENV_ID}"
 
     #  -F verifyOnly=true | 'a['response']['name']
     local _projectId="`curl -s -H "Authorization: Bearer $jwt" "http://${_host}:10500/api/1.0/org/${_ORG_ID}/file/import" -F file=@${_path} --compressed | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`"
@@ -570,7 +577,7 @@ function f_import_project() {
     # Should I rename?
     #curl 'http://${_host}:10500/api/1.0/org/${_ORG_ID}/project/${_projectId}/rename/IRM' -X POST
     # NOTE: --data-binary needs -H 'Content-Type: application/json'
-    local _first_cubeId="`curl -s -H "Authorization: Bearer $jwt" "http://${_host}:10500/api/1.0/org/${_ORG_ID}/project/${_projectId}" -X PATCH -H 'Content-Type: application/json' --data-binary '{"projectId":"'${_projectId}'","display_name":"","renaming_query_name":false,"description":"","updating_description":false,"intended_env_id":"'${_ENV_ID}'","prediction_def_aggs":""}' --compressed | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['cubes']['cube'][0]['id']"`"
+    local _first_cubeId="`curl -s -H "Authorization: Bearer $jwt" "http://${_host}:10500/api/1.0/org/${_ORG_ID}/project/${_projectId}" -X PATCH -H 'Content-Type: application/json' --data-binary '{"projectId":"'${_projectId}'","display_name":"","renaming_query_name":false,"description":"","updating_description":false,"intended_env_id":"'${_envId}'","prediction_def_aggs":""}' --compressed | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['cubes']['cube'][0]['id']"`"
     [ -z "${_first_cubeId}" ] && return 13
     # Default permission
     curl -s -H "Authorization: Bearer $jwt" "http://${_host}:10500/api/1.0/org/${_ORG_ID}/permissions/project/${_projectId}" -H 'Content-Type: application/json' --data-binary '{"exclusive_access":false}'
