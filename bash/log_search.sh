@@ -72,7 +72,7 @@ function f_rg() {
 
     # Version information
     echo "# last 3 settings changes"
-    rg -g 'settings.json' '    "createdAt' -m 3 -B
+    rg -g 'settings.json' '    "createdAt' -m 3 -B 3
     echo " "
 
     # If _regex is UUID, checking if it's query ID TODO: add more logic for other types of UUID
