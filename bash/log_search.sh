@@ -9,6 +9,7 @@
 # TODO: tested on Mac only (eg: sed -E, ggrep)
 # brew install grep     # 'grep' will install ggrep
 # brew install gnu-sed  # for gsed
+# brew install dateutils # for dateconf
 #
 
 [ -n "$_DEBUG" ] && (set -x; set -e)
@@ -672,11 +673,17 @@ function f_start_end_time_with_diff(){
     else
         local _end_date=`gtac ${_log} | rg -N -om1 "$_date_regex" | sed 's/T/ /'` || return $?
     fi
-    local _start_int=`gdate -d "${_start_date}" +"%s"`
-    local _end_int=`gdate -d "${_end_date}" +"%s"`
+    local _start_int=`_date2int "${_start_date}"`
+    local _end_int=`_date2int "${_end_date}"`
     local _diff=$(( $_end_int - $_start_int ))
     # Filename, start datetime, enddatetime, difference, (filesize)
     echo -e "${_log}\t${_start_date}\t${_end_date}\t${_diff}s\t$((`gstat -c"%s" ${_log}` / 1024))KB"
+}
+
+function _date2int() {
+    local _date_str="$1"
+    [[ "${_date_str}" =~ ^[0-9][0-9]\/[0-9][0-9]\/[0-9][0-9].[0-9][0-9]:[0-9][0-9]:[0-9][0-9] ]] && _date_str="`dateconv "${_date_str}" -i "%y/%m/%d %H:%M:%S" -f "%Y-%m-%d %H:%M:%S"`"
+    gdate -d "${_date_str}" +"%s"
 }
 
 function f_split_strace() {
