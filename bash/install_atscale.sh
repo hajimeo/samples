@@ -506,7 +506,7 @@ function f_switch_version() {
     local _dir="${2:-${_ATSCALE_DIR}}"
     local _usr="${3:-${_ATSCALE_USER}}"
 
-    [ -z "${_version}" ] && return 1
+    if [ -z "${_version}" ]; then ls -1dr ${_dir%/}_${_version}*; return 1; fi
     local _target_dir="`ls -1dr ${_dir%/}_${_version}* | head -n1`"
     if [ -z "${_target_dir}" ]; then
         _log "ERROR" "Couldn't find ${_dir%/}_${_version}*"
@@ -529,6 +529,7 @@ function f_switch_version() {
 
     ps aux | grep "^${_usr}" | grep -vP '(grep|ps aux)' && sleep 5
     sudo -u ${_usr} ${_dir%/}/bin/atscale_start || return $?
+    ls -dl ${_dir%/}
 }
 
 function _export_org_eng_env() {
