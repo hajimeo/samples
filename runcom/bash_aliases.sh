@@ -1,8 +1,10 @@
 alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
 alias urldecode='python -c "import sys, urllib as ul; print ul.unquote_plus(sys.argv[1])"'
 alias urlencode='python -c "import sys, urllib as ul; print ul.quote_plus(sys.argv[1])"'
-alias utc2int='python -c "import sys,time,dateutil.parser;print int(time.mktime(dateutil.parser.parse(sys.argv[1]).timetuple()))"'
+alias utc2int='python -c "import sys,time,dateutil.parser;print int(time.mktime(dateutil.parser.parse(sys.argv[1]).timetuple()))"'  # doesn't work with yy/mm/dd (2 digits year)
 alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\""'
+
+alias logS="source ~/IdeaProjects/samples/bash/log_search.sh"
 
 #ln -s ~/IdeaProjects/XxXxxxx_doc_NNN/docs ~/Public/XxXxxxx_latest
 alias sWeb='(cd ~/Public/atscale_latest/ && python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out) &
