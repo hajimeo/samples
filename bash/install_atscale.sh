@@ -287,7 +287,7 @@ function f_backup_atscale() {
 
     # Best effort of backing up custom.yaml (note: config_debug.yaml doesn't look like updated)
     if [ -s "/home/${_usr%/}/custom.yaml" ] && [ ! -e "${_dir%/}/custom_backup_${_suffix}.yaml" ]; then
-        cp -f "/home/${_usr%/}/custom.yaml" ${_dir%/}/custom_backup_${_suffix}.yaml
+        cp -p -f "/home/${_usr%/}/custom.yaml" ${_dir%/}/custom_backup_${_suffix}.yaml
     fi
 
     local _backup_filename="atscale_$(hostname -f)_${_suffix}"
@@ -362,7 +362,7 @@ function f_pg_dump() {
 
 function f_psql() {
     local __doc__="psql wrapper function. Due to \$@, need env variable _ATSCALE_DIR"
-    #f_psql -xc "select * from pg_settings where name ilike 'archive%'"
+    #f_psql -xc "select * from pg_settings where name ilike '%archive%' or name ilike '%wal\_%'"
     local _pg_dir="${_ATSCALE_DIR%/}/share/postgresql-9.*/"
     local _lib_path="$(ls -1dtr ${_pg_dir%/}/lib | head -n1)"
     LD_LIBRARY_PATH=${_lib_path} PGPASSWORD=${PGPASSWORD:-atscale} ${_pg_dir%/}/bin/psql -h localhost -p 10520 -d atscale -U atscale "$@"
@@ -411,6 +411,7 @@ function f_install_atscale() {
     if [ ! -d ${_installer_parent_dir%/}/atscale-${_version}.*-${_OS_ARCH} ]; then
         if [ ! -r "${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz" ]; then
             _log "INFO" "No ${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz. Downloading from internet..."; sleep 1
+            #s3cmd ls s3://files.atscale.com/installer/package/ | grep -E 'atscale-[6789].+latest.+\.tar\.gz$'  # NOTE: https requires s3-us-west-1.amazonaws.com hostname
             sudo -u ${_usr} curl --retry 100 -C - -o ${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz "https://s3-us-west-1.amazonaws.com/files.atscale.com/installer/package/atscale-${_version}.latest-${_OS_ARCH}.tar.gz" || return $?
         fi
 
@@ -426,7 +427,7 @@ function f_install_atscale() {
 
         [ -s ${_installer_parent_dir%/}/custom.yaml ] && mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom.yaml.$$.bak
         _log "INFO" "Copying ${_custom_yaml} to ${_installer_parent_dir%/}/custom.yaml ..."; sleep 1
-        cp -f "${_custom_yaml}" ${_installer_parent_dir%/}/custom.yaml || return $?
+        sudo -u ${_usr} cp -f "${_custom_yaml}" ${_installer_parent_dir%/}/custom.yaml || return $?
     fi
 
     if [[ "${_is_updating}}" =~ (^y|^Y) ]]; then
@@ -476,14 +477,14 @@ function f_after_install() {
         local _spark_xml=${_dir%/}/share/spark-apache2_*/conf/hive-site.xml
 
         for _x in ${_hive_xml} ${_spark_xml}; do
-            [ ! -s ${_x}.$$.bak ] && cp -f ${_x} ${_x}.$$.bak
+            [ ! -s ${_x}.$$.bak ] && cp -p -f ${_x} ${_x}.$$.bak
             # Note this property order is important
             grep -q "hive.metastore.schema.verification" ${_x} || sed -i '/<\/configuration>/i \
     <property><name>hive.metastore.schema.verification</name><value>false</value></property>' ${_x}
             grep -q "hive.metastore.schema.verification.record.version" ${_x} || sed -i '/<\/configuration>/i \
     <property><name>hive.metastore.schema.verification.record.version</name><value>false</value></property>' ${_x}
             grep -q "javax.jdo.option.ConnectionPassword" ${_x} || sed -i '/<\/configuration>/i \
-    <property><name>javax.jdo.option.ConnectionPassword</name><value>'${inst_hive_metastore_password}'</value></property>' ${_x}
+    <property><name>javax.jdo.option.ConnectionPassword</name><value>'${inst_as_hive_metastore_password}'</value></property>' ${_x}
         done
 
         sudo -u ${_usr} ${_dir%/}/bin/atscale_service_control restart atscale-hiveserver2 atscale-spark
