@@ -290,13 +290,13 @@ function f_backup_atscale() {
         cp -f "/home/${_usr%/}/custom.yaml" ${_dir%/}/custom_backup_${_suffix}.yaml
     fi
 
-    local _backup_tgz="atscale_$(hostname -f)_${_suffix}.tar.gz"
-    _log "INFO" "Without log files, creating ${_dst_dir%/}/${_backup_tgz} from ${_dir%/} ..."; sleep 1
-    [ -s "${_dst_dir%/}/${_backup_tgz}" ] && [ ! -s ${_dst_dir%/}/atscale_$(hostname -f)_${_suffix}_$$.tar.gz ] && mv -f ${_dst_dir%/}/${_backup_tgz} ${_dst_dir%/}/atscale_$(hostname -f)_${_suffix}_$$.tar.gz &>/dev/null
+    local _backup_filename="atscale_$(hostname -f)_${_suffix}"
+    _log "INFO" "Without log files, creating ${_dst_dir%/}/${_backup_filename}.tgz from ${_dir%/} ..."; sleep 1
+    [ -s "${_dst_dir%/}/${_backup_filename}.tgz" ] && [ ! -s ${_dst_dir%/}/${_backup_filename}_$$.tgz ] && mv -f ${_dst_dir%/}/${_backup_filename}.tgz ${_dst_dir%/}/${_backup_filename}_$$.tgz &>/dev/null
     cd `dirname ${_dir}` || return $?   # Need 'cd' for creating exclude list (-X) as -C didn't work
-    tar -cvhzf ${_dst_dir%/}/${_backup_tgz} "`basename ${_dir%/}`" -X <(ls -1 `basename ${_dir%/}`/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null)
+    tar -cvhzf ${_dst_dir%/}/${_backup_filename}.tgz "`basename ${_dir%/}`" -X <(ls -1 `basename ${_dir%/}`/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null)
     cd -
-    [ 2097152 -lt "`wc -c <${_dst_dir%/}/${_backup_tgz}`" ] || return 18
+    [ 2097152 -lt "`wc -c <${_dst_dir%/}/${_backup_filename}.tgz`" ] || return 18
 
     ls -ltr ${_dst_dir%/}/atscale_$(hostname -f)_*.tar.gz
 }
