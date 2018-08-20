@@ -309,6 +309,7 @@ function f_restore_atscale() {
     local _usr="${3:-${_ATSCALE_USER}}"
 
     local _tmp_dir="$(mktemp -d)" || return $?
+    _log "INFO" "Extracting ${_backup} in ${_tmp_dir%/}/ ..."; sleep 2
     tar xf ${_backup} -C ${_tmp_dir%/}/ || return $?
 
     _log "INFO" "Stopping AtScale before restoring..."; sleep 2
