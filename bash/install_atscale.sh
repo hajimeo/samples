@@ -290,14 +290,14 @@ function f_backup_atscale() {
         cp -f "/home/${_usr%/}/custom.yaml" ${_dir%/}/custom_backup_${_suffix}.yaml
     fi
 
-    _log "INFO" "Excluding logs, creating ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz from ${_dir%/} ..."; sleep 1
-    [ -s "${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz" ] && [ ! -s ${_dst_dir%/}/atscale_backup_${_suffix}_$$.tar.gz ] && mv -f ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz ${_dst_dir%/}/atscale_backup_${_suffix}_$$.tar.gz &>/dev/null
+    _log "INFO" "Excluding logs, creating ${_dst_dir%/}/atscale_$(hostname -f)_${_suffix}.tar.gz from ${_dir%/} ..."; sleep 1
+    [ -s "${_dst_dir%/}/atscale_$(hostname -f)_${_suffix}.tar.gz" ] && [ ! -s ${_dst_dir%/}/atscale_$(hostname -f)_${_suffix}_$$.tar.gz ] && mv -f ${_dst_dir%/}/atscale_$(hostname -f)_${_suffix}.tar.gz ${_dst_dir%/}/atscale_$(hostname -f)_${_suffix}_$$.tar.gz &>/dev/null
     cd `dirname ${_dir}` || return $?   # Need 'cd' for creating exclude list (-X)
-    tar -czf ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz "`basename ${_dir%/}`" -X <(ls -1 `basename ${_dir%/}`/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null)    # Not using -h or -v for now
+    tar -czf ${_dst_dir%/}/atscale_$(hostname -f)_${_suffix}.tar.gz "`basename ${_dir%/}`" -X <(ls -1 `basename ${_dir%/}`/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null)    # Not using -h or -v for now
     cd -
-    [ 2097152 -lt "`wc -c <${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz`" ] || return 18
+    [ 2097152 -lt "`wc -c <${_dst_dir%/}/atscale_$(hostname -f)_${_suffix}.tar.gz`" ] || return 18
 
-    ls -ltr ${_dst_dir%/}/atscale_backup_*.tar.gz
+    ls -ltr ${_dst_dir%/}/atscale_$(hostname -f)_*.tar.gz
 }
 
 function f_restore_atscale() {
