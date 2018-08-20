@@ -6,10 +6,9 @@ alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys
 
 alias logS="source ~/IdeaProjects/samples/bash/log_search.sh"
 
-#ln -s ~/IdeaProjects/XxXxxxx_doc_NNN/docs ~/Public/XxXxxxx_latest
-alias sWeb='(cd ~/Public/atscale_latest/ && python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out) &
-python ~/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &
-jobs -l'
+#rsync -Pharz root@server:/usr/local/atscale/apps/modeler/assets/modeler/public/* ./atscale_doc_XXX/
+#ln -s ~/IdeaProjects/atscale_doc_NNN/docs ~/Public/atscale_latest
+alias sWeb='(cd ~/Public/atscale_latest/ && python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out) & python ~/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &'
 
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
