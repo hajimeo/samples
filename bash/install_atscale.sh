@@ -125,7 +125,8 @@ function f_setup() {
 
     # Optionals: Not important if fails
     ln -s /etc/krb5.conf /etc/krb5_atscale.conf
-    su - ${_user} -c 'grep -q '${_target_dir%/}' $HOME/.bash_profile || echo "export PATH=${PATH%:}:'${_target_dir%/}'/bin" >> $HOME/.bash_profile'
+    su - ${_user} -c 'grep -q '${_target_dir%/}' $HOME/.bash_profile || echo -e "\nexport PATH=${PATH%:}:'${_target_dir%/}'/bin" >> $HOME/.bash_profile'
+    [ -s ${_KEYTAB_DIR%/}/${_user}.service.keytab ] && su - ${_user} -c 'grep -q '${_KEYTAB_DIR%/}/${_user}.service.keytab' $HOME/.bash_profile || echo -e "\nkinit -kt '${_KEYTAB_DIR%/}'/'${_user}'.service.keytab '${_user}'/`hostname -f` &>/dev/null" >> $HOME/.bash_profile'
     [ ! -d /var/log/atscale ] && ln -s ${_target_dir%/}/log /var/log/atscale
     [ -d /var/www/html ] && [ ! -e /var/www/html/atscale ] && ln -s ${_TMP_DIR%/} /var/www/html/atscale
 
@@ -263,7 +264,7 @@ function f_backup_atscale() {
 
     [ -d ${_dir%/} ] || return    # No dir, no backup
 
-    local _suffix="`_get_vardate_suffix`"
+    local _suffix="`_get_suffix`"
 
     # For now, no pg_dump as it's slow.
     #if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
@@ -305,7 +306,7 @@ function f_backup_atscale() {
     fi
 }
 
-function f_restart_atscale() {
+function f_restore_atscale() {
     local __doc__="Restore AtScale from a backup taken from f_backup_atscale()"
     local _backup="$1"
     local _dir="${2-${_ATSCALE_DIR}}"
@@ -317,17 +318,26 @@ function f_restart_atscale() {
     _log "INFO" "Stopping AtScale before restoring..."; sleep 2
     sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f || return $?
 
-    local _suffix="`_get_vardate_suffix`"
+    local _suffix="`_get_suffix`"
     [ -e ${_dir%/}_${_suffix} ] && [ ! -e ${_dir%/}_${_suffix}_$$ ] && mv ${_dir%/}_${_suffix} ${_dir%/}_${_suffix}_$$
     [ -e ${_dir%/} ] && mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
     mv ${_tmp_dir%/}/`basename ${_dir%/}` `dirname ${_dir}`/
 }
 
-function _get_vardate_suffix() {
-    local _dir="${1:-${_ATSCALE_DIR}}"
-    local _installed_ver="$(sed -n -e 's/^as_version: \([0-9.]\+\).*/\1/p' "`ls -t ${_dir%/}/conf/versions/versions.*.yml | head -n1`")"
-    [ -z "${_installed_ver}" ] && _installed_ver="unknown"
-    echo "${_installed_ver}_$(date +"%Y%m%d")"
+function _get_suffix() {
+    local _ver="${1}"
+    local _dir="${2:-${_ATSCALE_DIR}}"
+    if [ -z "${_ver}" ]; then
+        local _default_schema="$(sed -n 's/^as_default_schema: *\([^ ]\+\)/\1/p' "${_dir%/}/conf/config_debug.yaml")"
+        if [ -n "${_default_schema}" ]; then
+            echo ${_default_schema#_} | sed 's/[^0-9_]//g'
+            return
+        fi
+        grep -q "^as_version:" ${_dir%/}/conf/versions/versions.*.yml 2>/dev/null && _ver="$(sed -n 's/^as_version: *\([0-9.]\+\).*/\1/p' "`ls -t ${_dir%/}/conf/versions/versions.*.yml | head -n1`")"
+        [ -z "${_ver}" ] && _ver="000000"
+    fi
+    # Removing dot as this will be used for database/schema name in hive
+    echo "${_ver}_$(date +"%Y%m%d")" | sed 's/[^0-9_]//g'
 }
 
 function f_rm_logs() {
@@ -522,7 +532,7 @@ function f_switch_version() {
         # sometimes ln -f doesn't work so
         mv -f ${_dir%/} ${_dir%/}.symlink.bak || return $?
     elif [ -e "${_dir%/}" ]; then
-        local _suffix="`_get_vardate_suffix`"
+        local _suffix="`_get_suffix`"
         mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
     fi
     ln -s ${_target_dir%/} ${_dir%/} || return $?
@@ -917,7 +927,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
     #set -x
     # As using version, populating in here. I wouldn't create more than once per day per version
-    [ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="atscale$(echo $_ATSCALE_VER | sed 's/[^0-9]//g')_$(date +"%Y%m%d")"
+    [ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="atscale_$(_get_suffix "$_ATSCALE_VER")"
     f_setup || exit $?
     f_install_atscale || exit $?
     f_after_install
