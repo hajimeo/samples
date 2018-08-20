@@ -293,8 +293,8 @@ function f_backup_atscale() {
     local _backup_tgz="atscale_$(hostname -f)_${_suffix}.tar.gz"
     _log "INFO" "Without log files, creating ${_dst_dir%/}/${_backup_tgz} from ${_dir%/} ..."; sleep 1
     [ -s "${_dst_dir%/}/${_backup_tgz}" ] && [ ! -s ${_dst_dir%/}/atscale_$(hostname -f)_${_suffix}_$$.tar.gz ] && mv -f ${_dst_dir%/}/${_backup_tgz} ${_dst_dir%/}/atscale_$(hostname -f)_${_suffix}_$$.tar.gz &>/dev/null
-    cd `dirname ${_dir}` || return $?   # Need 'cd' for creating exclude list (-X)
-    tar -czf ${_dst_dir%/}/${_backup_tgz} "`basename ${_dir%/}`" -X <(ls -1 `basename ${_dir%/}`/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null)    # Not using -h or -v for now
+    cd `dirname ${_dir}` || return $?   # Need 'cd' for creating exclude list (-X) as -C didn't work
+    tar -cvhzf ${_dst_dir%/}/${_backup_tgz} "`basename ${_dir%/}`" -X <(ls -1 `basename ${_dir%/}`/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null)
     cd -
     [ 2097152 -lt "`wc -c <${_dst_dir%/}/${_backup_tgz}`" ] || return 18
 
@@ -325,8 +325,11 @@ function _get_suffix() {
     if [ -z "${_ver}" ]; then
         local _default_schema="$(sed -n 's/^as_default_schema: *\([^ ]\+\)/\1/p' "${_dir%/}/conf/config_debug.yaml")"
         if [ -n "${_default_schema}" ]; then
-            echo ${_default_schema#_} | sed 's/[^0-9_]//g'
-            return
+            _var="`echo ${_default_schema#_} | sed 's/[^0-9_]//g'`"
+            if [ -n "${_var}" ]; then
+                echo "$_var"
+                return
+            fi
         fi
         grep -q "^as_version:" ${_dir%/}/conf/versions/versions.*.yml 2>/dev/null && _ver="$(sed -n 's/^as_version: *\([0-9.]\+\).*/\1/p' "`ls -t ${_dir%/}/conf/versions/versions.*.yml | head -n1`")"
         [ -z "${_ver}" ] && _ver="000000"
