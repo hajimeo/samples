@@ -23,7 +23,8 @@ function replaceUrl(details) {
 
         if (match && match.length > 1) {
             //var new_url = "https://na63.salesforce.com/console#%2F" + match[1];
-            var new_url = "https://customers.atscale.com/" + match[2];
+            //var new_url = "https://customers.atscale.com/" + match[2];
+            var new_url = "https://customers.atscale.com/s/case/" + match[2] + "/detail";
             console.log("New URL = " + new_url);
             chrome.tabs.update(tab.id, {url: new_url});
         }
