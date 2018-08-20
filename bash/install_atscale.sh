@@ -525,8 +525,13 @@ function f_switch_version() {
 
     if [ -s ${_dir%/}/bin/atscale_stop ]; then
         sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f || return $?
-        sleep 5
+        sleep 1
     fi
+
+    for _i in {1..3}; do
+        lsof -ti:10520 -s TCP:LISTEN || break
+        sleep 3
+    done
 
     if [ -L "${_dir%/}" ]; then
         # sometimes ln -f doesn't work so
@@ -537,7 +542,6 @@ function f_switch_version() {
     fi
     ln -s ${_target_dir%/} ${_dir%/} || return $?
 
-    ps aux | grep "^${_usr}" | grep -vP '(grep|ps aux)' && sleep 5
     sudo -u ${_usr} ${_dir%/}/bin/atscale_start || return $?
     ls -dl ${_dir%/}
 }
