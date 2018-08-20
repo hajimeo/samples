@@ -571,6 +571,8 @@ function _atscale_stop() {
         sleep 3
     done
     lsof -ti:10520 -s TCP:LISTEN && return 31
+
+    ps h -u ${_usr}
 }
 
 function _export_org_eng_env() {
