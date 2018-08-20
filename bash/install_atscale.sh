@@ -283,7 +283,7 @@ function f_backup_atscale() {
     f_rm_logs "${_dir}" "${_days}"
 
     _log "INFO" "Stopping AtScale before backing up..."; sleep 1
-    sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f || return $?
+    _atscale_stop "${_dir}" "${_usr}"  || return $?
 
     # Best effort of backing up custom.yaml (note: config_debug.yaml doesn't look like updated)
     if [ -s "/home/${_usr%/}/custom.yaml" ] && [ ! -e "${_dir%/}/custom_backup_${_suffix}.yaml" ]; then
@@ -312,7 +312,7 @@ function f_restore_atscale() {
     tar xf ${_backup} -C ${_tmp_dir%/}/ || return $?
 
     _log "INFO" "Stopping AtScale before restoring..."; sleep 2
-    sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f || return $?
+    _atscale_stop "${_dir}" "${_usr}" || return $?
 
     local _suffix="`_get_suffix`"
     [ -e ${_dir%/}_${_suffix} ] && [ ! -e ${_dir%/}_${_suffix}_$$ ] && mv ${_dir%/}_${_suffix} ${_dir%/}_${_suffix}_$$
@@ -398,6 +398,7 @@ function f_install_atscale() {
             sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control" status
         else
            _log "INFO" "Looks like another AtScale is already installed in ${_dir%/}/. Moving this directory..."; sleep 1
+            _atscale_stop "${_dir}" "${_usr}" || return $?
             local _suffix="`_get_suffix`"
             [ -e ${_dir%/}_${_suffix} ] && [ ! -e ${_dir%/}_${_suffix}_$$ ] && mv ${_dir%/}_${_suffix} ${_dir%/}_${_suffix}_$$
             [ -e ${_dir%/} ] && mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
@@ -539,15 +540,7 @@ function f_switch_version() {
         return 1
     fi
 
-    if [ -s ${_dir%/}/bin/atscale_stop ]; then
-        sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f || return $?
-        sleep 1
-    fi
-
-    for _i in {1..3}; do
-        lsof -ti:10520 -s TCP:LISTEN || break
-        sleep 3
-    done
+    _atscale_stop "${_dir}" "${_usr}" || return $?
 
     if [ -L "${_dir%/}" ]; then
         # sometimes ln -f doesn't work so
@@ -560,6 +553,22 @@ function f_switch_version() {
 
     sudo -u ${_usr} ${_dir%/}/bin/atscale_start || return $?
     ls -dl ${_dir%/}
+}
+
+function _atscale_stop() {
+    local _dir="${1:-${_ATSCALE_DIR}}"
+    local _usr="${2:-${_ATSCALE_USER}}"
+
+    if [ -s ${_dir%/}/bin/atscale_stop ]; then
+        sudo -u ${_usr} ${_dir%/}/bin/atscale_stop -f || return $?
+    fi
+
+    sleep 1
+    for _i in {1..3}; do
+        lsof -ti:10520 -s TCP:LISTEN || return 0
+        sleep 3
+    done
+    lsof -ti:10520 -s TCP:LISTEN && return 31
 }
 
 function _export_org_eng_env() {
