@@ -318,7 +318,8 @@ function f_restore_atscale() {
     local _suffix="`_get_suffix`"
     [ -e ${_dir%/}_${_suffix} ] && [ ! -e ${_dir%/}_${_suffix}_$$ ] && mv ${_dir%/}_${_suffix} ${_dir%/}_${_suffix}_$$
     if [ -e ${_dir%/} ]; then mv ${_dir%/} ${_dir%/}_${_suffix} || return $?; fi
-    mv ${_tmp_dir%/}/`basename ${_dir%/}` `dirname ${_dir}`/
+    mv ${_tmp_dir%/}/`basename ${_dir%/}` `dirname ${_dir}`/ || return $?
+    ls -ld ${_dir%/}*
 }
 
 function _get_suffix() {
