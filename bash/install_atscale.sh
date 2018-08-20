@@ -256,24 +256,27 @@ function f_generate_custom_yaml() {
 }
 
 function f_backup_atscale() {
-    local __doc__="Backup (or move if new installation) atscale directory, *excluding* log files"
+    local __doc__="Backup atscale directory, *excluding* log files"
     local _dir="${1:-${_ATSCALE_DIR}}"
     local _usr="${2:-${_ATSCALE_USER}}"
     local _dst_dir="${3-${_TMP_DIR}}"
-    local _is_updating="${4-${_UPDATING}}"
+    local _is_pgdump="${4}"
 
     [ -d ${_dir%/} ] || return    # No dir, no backup
 
     local _suffix="`_get_suffix`"
 
-    # For now, no pg_dump as it's slow.
-    #if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
-    #    sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control start postgres"; sleep 5
-    #    f_pg_dump "${_dir%/}/share/postgresql-9.*/" "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz"
-    #    if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
-    #        _log "WARN" "Failed to take DB dump into ${_TMP_DIR%/}/atscale_${_suffix}.sql.gz. Maybe PostgreSQL is stopped?"; sleep 3
-    #    fi
-    #fi
+    if [[ "${_is_pgdump}" =~ (^y|^Y) ]]; then
+        if [ -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
+            _log "WARN" "No pg_dump as ${_TMP_DIR%/}/atscale_${_suffix}.sql.gz already exists."; sleep 3
+        else
+            sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control start postgres"; sleep 5
+            f_pg_dump "${_dir%/}/share/postgresql-9.*/" "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz"
+            if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
+                _log "WARN" "Failed to take DB dump into ${_TMP_DIR%/}/atscale_${_suffix}.sql.gz. Maybe PostgreSQL is stopped?"; sleep 3
+            fi
+        fi
+    fi
 
     local _days=3
     _log "INFO" "Deleting log files which are older than ${_days} days..."; sleep 1
@@ -287,23 +290,14 @@ function f_backup_atscale() {
         cp -f "/home/${_usr%/}/custom.yaml" ${_dir%/}/custom_backup_${_suffix}.yaml
     fi
 
-    if [[ "${_is_updating}" =~ (^y|^Y) ]]; then
-        _log "INFO" "Excluding logs, creating ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz from ${_dir%/} ..."; sleep 1
-        [ -s "${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz" ] && [ ! -s ${_dst_dir%/}/atscale_backup_${_suffix}_$$.tar.gz ] && mv -f ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz ${_dst_dir%/}/atscale_backup_${_suffix}_$$.tar.gz &>/dev/null
-        cd `dirname ${_dir}` || return $?   # Need 'cd' for creating exclude list (-X)
-        tar -czf ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz "`basename ${_dir%/}`" -X <(ls -1 `basename ${_dir%/}`/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null)    # Not using -h or -v for now
-        cd -
-        [ 2097152 -lt "`wc -c <${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz`" ] || return 18
+    _log "INFO" "Excluding logs, creating ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz from ${_dir%/} ..."; sleep 1
+    [ -s "${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz" ] && [ ! -s ${_dst_dir%/}/atscale_backup_${_suffix}_$$.tar.gz ] && mv -f ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz ${_dst_dir%/}/atscale_backup_${_suffix}_$$.tar.gz &>/dev/null
+    cd `dirname ${_dir}` || return $?   # Need 'cd' for creating exclude list (-X)
+    tar -czf ${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz "`basename ${_dir%/}`" -X <(ls -1 `basename ${_dir%/}`/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null)    # Not using -h or -v for now
+    cd -
+    [ 2097152 -lt "`wc -c <${_dst_dir%/}/atscale_backup_${_suffix}.tar.gz`" ] || return 18
 
-        ls -ltr ${_dst_dir%/}/atscale_backup_*.tar.gz
-    else
-        [ -e ${_dir%/}_${_suffix} ] && [ ! -e ${_dir%/}_${_suffix}_$$ ] && mv ${_dir%/}_${_suffix} ${_dir%/}_${_suffix}_$$
-        [ -e ${_dir%/} ] && mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
-        mkdir ${_dir%/} || return $?
-        chown ${_usr}: ${_dir%/} || return $?
-
-        ls -ltrd ${_dir%/}* # Just displaying directories to remind to delete later.
-    fi
+    ls -ltr ${_dst_dir%/}/atscale_backup_*.tar.gz
 }
 
 function f_restore_atscale() {
@@ -376,19 +370,27 @@ function f_install_atscale() {
 
     # If it looks like one installed already, trying to take a backup
     if [ -s "${_dir%/}/bin/atscale_service_control" ]; then
-        _log "INFO" "Looks like another AtScale is already installed in ${_dir%/}/. Taking backup..."; sleep 1
-        if ! f_backup_atscale; then     # NOTE: backup should stop AtScale
-            _log "ERROR" "Backup failed!!!"; sleep 5
-            return 1
-        fi
+       if [[ "${_is_updating}}" =~ (^y|^Y) ]]; then
+           _log "INFO" "Looks like another AtScale is already installed in ${_dir%/}/. Taking backup..."; sleep 1
+            if ! f_backup_atscale; then     # NOTE: backup should stop AtScale
+                _log "ERROR" "Backup failed!!!"; sleep 5
+                return 1
+            fi
 
-        if [[ "${_is_updating}}" =~ (^y|^Y) ]]; then
-            # If upgrading, making sure necessary services are started
+             # If upgrading, making sure necessary services are started
             sudo -u ${_usr} "${_dir%/}/bin/atscale_start"
             sleep 3
             sudo -u ${_usr} "${_dir%/}/bin/atscale_stop_apps" -f
             sleep 3
             sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control" status
+        else
+           _log "INFO" "Looks like another AtScale is already installed in ${_dir%/}/. Moving this directory..."; sleep 1
+            local _suffix="`_get_suffix`"
+            [ -e ${_dir%/}_${_suffix} ] && [ ! -e ${_dir%/}_${_suffix}_$$ ] && mv ${_dir%/}_${_suffix} ${_dir%/}_${_suffix}_$$
+            [ -e ${_dir%/} ] && mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
+            mkdir ${_dir%/} || return $?
+            chown ${_usr}: ${_dir%/} || return $?
+            ls -ltrd ${_dir%/}* # Just displaying directories to remind to delete later.
         fi
     fi
 
