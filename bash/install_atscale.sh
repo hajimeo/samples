@@ -271,7 +271,7 @@ function f_backup_atscale() {
             _log "WARN" "No pg_dump as ${_TMP_DIR%/}/atscale_${_suffix}.sql.gz already exists."; sleep 3
         else
             sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control start postgres"; sleep 5
-            f_pg_dump "${_dir%/}/share/postgresql-9.*/" "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz"
+            f_pg_dump "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" "${_dir%/}/share/postgresql-9.*/"
             if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
                 _log "WARN" "Failed to take DB dump into ${_TMP_DIR%/}/atscale_${_suffix}.sql.gz. Maybe PostgreSQL is stopped?"; sleep 3
             fi
@@ -299,6 +299,7 @@ function f_backup_atscale() {
     [ 2097152 -lt "`wc -c <${_dst_dir%/}/${_backup_filename}.tgz`" ] || return 18
 
     ls -ltr ${_dst_dir%/}/atscale_$(hostname -f)_*.tar.gz
+    _log "INFO" "To start AtScale: sudo -u ${_usr} ${_dir%/}/bin/atscale_start"
 }
 
 function f_restore_atscale() {
@@ -348,8 +349,8 @@ function f_rm_logs() {
 
 function f_pg_dump() {
     local __doc__="Execute atscale's pg_dump to backup PostgreSQL 'atscale' database"
-    local _pg_dir="${1:-${_ATSCALE_DIR%/}/share/postgresql-9.*/}"
-    local _dump_dest_filename="${2:-./atscale_$(date +"%Y%m%d%H%M%S").sql.gz}"
+    local _dump_dest_filename="${1:-./atscale_$(date +"%Y%m%d%H%M%S").sql.gz}"
+    local _pg_dir="${2:-${_ATSCALE_DIR%/}/share/postgresql-9.*/}"
     local _lib_path="$(ls -1dtr ${_pg_dir%/}/lib | head -n1)"
 
     LD_LIBRARY_PATH=${_lib_path} PGPASSWORD=${PGPASSWORD:-atscale} ${_pg_dir%/}/bin/pg_dump -h localhost -p 10520 -d atscale -U atscale -Z 9 -f ${_dump_dest_filename} &
@@ -357,6 +358,14 @@ function f_pg_dump() {
     _log "INFO" "Executing pg_dump. Ctrl+c to skip 'pg_dump' command"; wait
     trap - SIGINT
     [ -s ${_dump_dest_filename} ] || return $?
+}
+
+function f_psql() {
+    local __doc__="psql wrapper function. Due to \$@, need env variable _ATSCALE_DIR"
+    #f_psql -xc "select * from pg_settings where name ilike 'archive%'"
+    local _pg_dir="${_ATSCALE_DIR%/}/share/postgresql-9.*/"
+    local _lib_path="$(ls -1dtr ${_pg_dir%/}/lib | head -n1)"
+    LD_LIBRARY_PATH=${_lib_path} PGPASSWORD=${PGPASSWORD:-atscale} ${_pg_dir%/}/bin/psql -h localhost -p 10520 -d atscale -U atscale "$@"
 }
 
 function f_install_atscale() {
