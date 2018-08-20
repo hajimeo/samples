@@ -126,7 +126,7 @@ function f_setup() {
     # Optionals: Not important if fails
     ln -s /etc/krb5.conf /etc/krb5_atscale.conf
     su - ${_user} -c 'grep -q '${_target_dir%/}' $HOME/.bash_profile || echo -e "\nexport PATH=${PATH%:}:'${_target_dir%/}'/bin" >> $HOME/.bash_profile'
-    [ -s ${_KEYTAB_DIR%/}/${_user}.service.keytab ] && su - ${_user} -c 'grep -q '${_KEYTAB_DIR%/}/${_user}.service.keytab' $HOME/.bash_profile || echo -e "\nkinit -kt '${_KEYTAB_DIR%/}'/'${_user}'.service.keytab '${_user}'/`hostname -f` &>/dev/null &" >> $HOME/.bash_profile'
+    [ -s ${_KEYTAB_DIR%/}/${_user}.service.keytab ] && ( su - ${_user} -c 'grep -q '${_KEYTAB_DIR%/}/${_user}.service.keytab' $HOME/.bash_profile || echo -e "\nkinit -kt '${_KEYTAB_DIR%/}'/'${_user}'.service.keytab '${_user}'/`hostname -f` &>/dev/null &" >> $HOME/.bash_profile' )
     [ ! -d /var/log/atscale ] && ln -s ${_target_dir%/}/log /var/log/atscale
     [ -d /var/www/html ] && [ ! -e /var/www/html/atscale ] && ln -s ${_TMP_DIR%/} /var/www/html/atscale
 
@@ -317,7 +317,7 @@ function f_restore_atscale() {
 
     local _suffix="`_get_suffix`"
     [ -e ${_dir%/}_${_suffix} ] && [ ! -e ${_dir%/}_${_suffix}_$$ ] && mv ${_dir%/}_${_suffix} ${_dir%/}_${_suffix}_$$
-    [ -e ${_dir%/} ] && mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
+    if [ -e ${_dir%/} ]; then mv ${_dir%/} ${_dir%/}_${_suffix} || return $?; fi
     mv ${_tmp_dir%/}/`basename ${_dir%/}` `dirname ${_dir}`/
 }
 
@@ -402,7 +402,7 @@ function f_install_atscale() {
             _atscale_stop "${_dir}" "${_usr}" || return $?
             local _suffix="`_get_suffix`"
             [ -e ${_dir%/}_${_suffix} ] && [ ! -e ${_dir%/}_${_suffix}_$$ ] && mv ${_dir%/}_${_suffix} ${_dir%/}_${_suffix}_$$
-            [ -e ${_dir%/} ] && mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
+            if [ -e ${_dir%/} ]; then mv ${_dir%/} ${_dir%/}_${_suffix} || return $?; fi
             mkdir ${_dir%/} || return $?
             chown ${_usr}: ${_dir%/} || return $?
             ls -ltrd ${_dir%/}* # Just displaying directories to remind to delete later.
