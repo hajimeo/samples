@@ -491,6 +491,7 @@ function p_hdp_start() {
 
     _info "NOT setting up the default GW. please use f_gw_set if necessary"
     #f_gw_set
+    docker stats --no-stream
     f_screen_cmd
 }
 
@@ -2927,9 +2928,9 @@ function f_update_check() {
     if [ -z "$_remote_length" ]; then _warn "$FUNCNAME: Unknown remote length."; return 1; fi
 
     #local _local_last_mod_ts=`stat -c%Y ${_local_file_path}`
-    _local_last_length=`wc -c ./${g_SCRIPT_NAME} | awk '{print $1}'`
+    _local_last_length=`wc -c <./${g_SCRIPT_NAME}`
 
-    if [ ${_remote_length} -ne ${_local_last_length} ]; then
+    if [ ${_remote_length} -gt $(( ${_local_last_length} / 2 )) ] && [ ${_remote_length} -ne ${_local_last_length} ]; then
         _info "Different file is available (r=$_remote_length/l=$_local_last_length)"
         _ask "Would you like to download?" "Y"
         if ! _isYes; then return 0; fi
