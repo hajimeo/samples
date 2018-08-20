@@ -231,7 +231,7 @@ function f_generate_custom_yaml() {
         _is_kerberized="true"
         _delegated_auth_enabled="true"       # Default on 7.0.0 is false
         _hive_metastore_database="true"      # Using remote metastore causes Kerberos issues, however this one update metastore version "Set by MetaStore UNKNOWN@172.17.100.6"
-        _hive_metastore_password="${DEFAULT_PWD}"   # TODO: static password...
+        _hive_metastore_password="${_DEFAULT_PWD}"   # TODO: static password...
         _realm=`sudo -u ${_usr} klist -kt ${_KEYTAB_DIR%/}/atscale.service.keytab | grep -m1 -oP '@.+' | sed 's/@//'` || return $?
         # TODO: expecting this node has hdfs headless keytab and readable by root (it should though)
         _hadoop_realm=`klist -kt ${_KEYTAB_DIR%/}/hdfs.headless.keytab | grep -m1 -oP '@.+' | sed 's/@//'`
