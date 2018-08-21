@@ -123,11 +123,11 @@ function f_setup() {
     yum install -e 0 -y bzip2 bzip2-libs curl rsync unzip || return $?
 
     # Optionals: Not important if fails
-    ln -s /etc/krb5.conf /etc/krb5_atscale.conf
+    ln -s /etc/krb5.conf /etc/krb5_atscale.conf &>/dev/null
     su - ${_user} -c 'grep -q '${_target_dir%/}' $HOME/.bash_profile || echo -e "\nexport PATH=${PATH%:}:'${_target_dir%/}'/bin" >> $HOME/.bash_profile'
     [ -s ${_KEYTAB_DIR%/}/${_user}.service.keytab ] && ( su - ${_user} -c 'grep -q '${_KEYTAB_DIR%/}/${_user}.service.keytab' $HOME/.bash_profile || echo -e "\nkinit -kt '${_KEYTAB_DIR%/}'/'${_user}'.service.keytab '${_user}'/`hostname -f` &>/dev/null &" >> $HOME/.bash_profile' )
-    [ ! -d /var/log/atscale ] && ln -s ${_target_dir%/}/log /var/log/atscale
-    [ -d /var/www/html ] && [ ! -e /var/www/html/atscale ] && ln -s ${_TMP_DIR%/} /var/www/html/atscale
+    [ ! -d /var/log/atscale ] && ln -s ${_target_dir%/}/log /var/log/atscale &>/dev/null
+    #[ -d /var/www/html ] && [ ! -e /var/www/html/atscale ] && ln -s ${_TMP_DIR%/} /var/www/html/atscale &>/dev/null
 
     return 0
 }
