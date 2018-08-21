@@ -30,7 +30,7 @@ END
 
 
 ### Arguments ########################
-[ -z "${_ATSCALE_VER}" ] && _ATSCALE_VER="${1:-7.0.0}"
+[ -z "${_ATSCALE_VER}" ] && _ATSCALE_VER="${1:-7.1.0}"
 [ -z "${_ATSCALE_USER}" ] && _ATSCALE_USER="${2:-atscale}"
 [ -z "${_ATSCALE_LICENSE}" ] && _ATSCALE_LICENSE="${3:-${_TMP_DIR}/dev-vm-license-atscale.json}"
 [ -z "${_ATSCALE_CUSTOMYAML}" ] && _ATSCALE_CUSTOMYAML="${4}"
