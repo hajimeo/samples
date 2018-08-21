@@ -9,8 +9,8 @@ alias logS="source ~/IdeaProjects/samples/bash/log_search.sh"
 # rsync -Pharz root@server:/usr/local/atscale/apps/modeler/assets/modeler/public/* ./atscale_doc_NNN/
 # cd ./atscale_doc_NNN/ && patch -p0 -b < ~/doc_index.patch
 # ln -s ~/IdeaProjects/atscale_doc_NNN/docs ~/Public/atscale_latest
-#(cd ~/Public/atscale_latest/ && python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out) &
-alias sWeb='python ~/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &'
+alias aDoc='cd ~/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out &'
+alias sWeb='nohup python ~/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &'
 
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
