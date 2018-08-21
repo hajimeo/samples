@@ -66,12 +66,11 @@ function f_setup() {
         chown ${_user}: "${_target_dir}" || return $?
     fi
 
-    if ! grep -qF "hadoop.proxyuser.${_user}" /etc/hadoop/conf/core-site.xml; then
-        _log "WARN" "Please check hadoop.proxyuser.${_user}.hosts and groups in core-site."; sleep 3
-    fi
-
     # If looks like Kerberos is enabled
     if grep -A 1 'hadoop.security.authentication' /etc/hadoop/conf/core-site.xml | grep -qw "kerberos"; then
+        if ! grep -qF "hadoop.proxyuser.${_user}" /etc/hadoop/conf/core-site.xml; then
+            _log "WARN" "Please check hadoop.proxyuser.${_user}.hosts and groups in core-site."; sleep 3
+        fi
         if [ ! -s ${_KEYTAB_DIR%/}/${_user}.service.keytab ]; then
             _log "INFO" "Creating principals and keytabs (TODO: only for MIT KDC)..."; sleep 1
             if [ -z "${_kadmin_usr}" ]; then
