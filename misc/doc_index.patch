@@ -13,5 +13,5 @@ Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 \ No newline at end of file
 +              --></script></body></html>
 +<script type="text/javascript">/*Hajime*/$(function(){var qps = new URLSearchParams(window.location.search);if(qps.has('textToSearch')){$('#textToSearch').val(qps.get('textToSearch'));executeQuery();}});</script>
-+<script type="text/javascript">/*Hajime*/$(function(){$('#oldFrames').attr('href', "https://docs.atscale.com/latest/"+window.location.hash);});</script>
++<script type="text/javascript">/*Hajime*/$(function(){$('#breadcrumbLinks').append("<a href='https://docs.atscale.com/latest/index.html"+window.location.hash+"'>(latest)</a>");});</script>
 \ No newline at end of file
