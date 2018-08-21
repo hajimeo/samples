@@ -160,25 +160,55 @@ for l in sys.stdin:
     " >&2
 }
 
+function f_preCheckoutDuration() {
+    # f_preCheckoutDuration | sort -t'|' -nk3 | tail -n 10
+    local _path="$1"
+    rg -N --no-filename -g '*.log*' -o '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+).+preCheckout timing report:.+statementDurations=[^=]+=([0-9,.]+) (.+)\].+testDuration=[^=]+=([0-9,.]+) (.+)\]' -r '${1}|${2}${3}|${4}${5}' ${_path} | gsed -r 's/([0-9]+)\.([0-9]{2})s/\1\20ms/g' | gsed -r 's/ms//g'
+}
+
 function f_getQueries() {
     local __doc__="Get Inbound and outbound queries with query ID from queries.log"
+    # for _q in `cat /tmp/f_checkResultSize_$$.out | grep ' s$' | sort -t'|' -nrk4 | head -n20 | awk -F'|' '{print $2}'`; do echo "# $_q";f_getQueries $_q; done
     local _uuid="$1"
     local _path="$2"
+
+    #Logging query estimation:
+    #Logging query failure:         , time = \d+ (ms|s),
+    #Logging query part planned:
+    #Logging query planned:
+    #Logging query received:
+    #Logging query success:         , size = 154, time = \d+ (ms|s),
+    #Logging subquery failure:      , time = \d+ (ms|s),
+    #Logging subquery part planned:
+    #Logging subquery started:
+    #Logging subquery success:      , resultSize = 154, time = \d+ (ms|s),
+
+    if [ -z "${_path}" ]; then
+        _path="`rg -l "queryId=${_uuid}.+ (Received|Executing) (.+) [Qq]uery" | sort | head -n1`"
+        [ -z "${_path}" ] && return 1
+    fi
+
     #ggrep -m 1 -Pz "(?s)queryId=${_uuid}\} - Received .+?20\d\d-\d\d-\d\d" ${_path}
-    _getAfterFirstMatch "${_path}" "queryId=${_uuid}\} - Received SQL query" "^20\d\d-\d\d-\d\d" "Y"
-    _getAfterFirstMatch "${_path}" "queryId=${_uuid}\} - Executing SQL Query" "^20\d\d-\d\d-\d\d" "Y"
+    _getAfterFirstMatch "${_path}" "queryId=${_uuid}.+ (Received|Executing) (.+) [Qq]uery" "^20\d\d-\d\d-\d\d" "Y"
 }
 
 function f_checkResultSize() {
-    local __doc__="Get result sizes (datetime, queryId, size, seconds)"
-    local _date_regex="${1:-"20\\d\\d-\\d\\d-\\d\\d \\d\\d:\\d"}"
-    local _file_regex="${2:-"debug*.log*"}"
-    # TODO: should I use 'resultSize'?
-    rg -N --no-filename -g "${_file_regex}" -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ size = ([1-9]\d*).+ time = ([0-9.]+)" -r '${1},${2},${3},${4}s' | sed 's/ /T/' | tee /tmp/f_checkResultSize_$$.out | awk -F',' '{print $1" "$3}' | bar_chart.py -A
-    echo "### Large result set ############################################################"
-    for _n in `cat /tmp/f_checkResultSize_$$.out | awk -F',' '{print $3}' | sort -n | tail`; do
-        rg -N ",${_n}," /tmp/f_checkResultSize_$$.out
-    done
+    local __doc__="Get result sizes (datetime, queryId, size, time)"
+    local _n="${1:-20}"
+    rg -N --no-filename -g "*.log*" -i -o "^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d\d\d).+ queryId=(........-....-....-....-............).+ size = ([^,]+), time = ([^,]+)," -r '${1}|${2}|${3}|${4}' | sort -n | uniq > /tmp/f_checkResultSize_$$.out
+    echo "### histogram (time vs size) ##############################################################"
+    rg -N --no-filename "^(\d\d\d\d-\d\d-\d\d).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_checkResultSize_$$.out | bar_chart.py -A
+    echo ' '
+    echo "### histogram (time vs query count) #######################################################"
+    rg -N --no-filename "^(\d\d\d\d-\d\d-\d\d).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_checkResultSize_$$.out | bar_chart.py
+    echo ' '
+    echo "### Large size (datetime|queryId|size|time) ###############################################"
+    cat /tmp/f_checkResultSize_$$.out | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
+    echo ' '
+    echo "### Slow query (datetime|queryId|size|time) ###############################################"
+    cat /tmp/f_checkResultSize_$$.out | grep ' s$' | sort -t '|' -nk4 | tail -n${_n} | tr '|' '\t'
+    echo " "
+    ls -lh /tmp/f_checkResultSize_$$.out
 }
 
 function f_topCausedByExceptions() {
@@ -997,21 +1027,26 @@ function _getAfterFirstMatch() {
     local _start_regex="$2"
     local _end_regex="$3"
     local _exclude_first_line="$4"
+    local _extension="${_file_path##*.}"
 
-    local _start_line_num=`ggrep -m1 -nP "$_start_regex" "$_file_path" | cut -d ":" -f 1`
+    local _start_line_num=`rg -n -m1 "$_start_regex" "$_file_path" | cut -d ":" -f 1`
     if [ -n "$_start_line_num" ]; then
-        local _end_line_num=""
+        local _end_line_num="\$"
         if [ -n "$_end_regex" ]; then
             #gsed -n "${_start_line_num},\$s/${_end_regex}/&/p" "$_file_path"
             local _tmp_start_line_num=$_start_line_num
             [[ "$_exclude_first_line" =~ y|Y ]] && _tmp_start_line_num=$(($_start_line_num + 1))
-            _end_line_num=`tail -n +${_tmp_start_line_num} "$_file_path" | ggrep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
+            if [ "${_extension}" = 'gz' ]; then
+                _end_line_num=`gunzip -c "$_file_path" | tail -n +${_tmp_start_line_num} | ggrep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
+            else
+                _end_line_num=`tail -n +${_tmp_start_line_num} "$_file_path" | ggrep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
+            fi
             _end_line_num=$(( $_end_line_num + $_start_line_num - 1 ))
         fi
-        if [ -n "$_end_line_num" ]; then
-            gsed -n "${_start_line_num},${_end_line_num}p" "${_file_path}"
+        if [ "${_extension}" = 'gz' ]; then
+            gunzip -c "${_file_path}" | gsed -n "${_start_line_num},${_end_line_num}p"
         else
-            gsed -n "${_start_line_num},\$p" "${_file_path}"
+            gsed -n "${_start_line_num},${_end_line_num}p" "${_file_path}"
         fi
     fi
 }
