@@ -1,0 +1,17 @@
+Index: docs/index.html
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- docs/index.html	(date 1534811696000)
++++ docs/index.html	(date 1534811696000)
+@@ -48,4 +48,6 @@
+                     }
+                   });
+                 });
+-              --></script></body></html>
+\ No newline at end of file
++              --></script></body></html>
++<script type="text/javascript">/*Hajime*/$(function(){var qps = new URLSearchParams(window.location.search);if(qps.has('textToSearch')){$('#textToSearch').val(qps.get('textToSearch'));executeQuery();}});</script>
++<script type="text/javascript">/*Hajime*/$(function(){$('#oldFrames').attr('href', "https://docs.atscale.com/latest/"+window.location.hash);});</script>
+\ No newline at end of file
