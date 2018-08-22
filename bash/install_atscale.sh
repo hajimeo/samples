@@ -38,6 +38,7 @@ END
 [ -z "${_ATSCALE_LICENSE}" ] && _ATSCALE_LICENSE="${3:-${_TMP_DIR}/dev-vm-license-atscale.json}"
 [ -z "${_ATSCALE_CUSTOMYAML}" ] && _ATSCALE_CUSTOMYAML="${4}"
 [ -z "${_UPDATING}" ] && _UPDATING="${5}"   # This is also for re-installing to change some properties
+[ -z "${_NO_BACKUP}" ] && _NO_BACKUP="${6}"   # This is also for re-installing to change some properties
 
 
 ### Functions ########################
@@ -342,13 +343,10 @@ function _get_suffix() {
     local _ver="${1}"
     local _dir="${2:-${_ATSCALE_DIR}}"
     if [ -z "${_ver}" ]; then
-        local _default_schema="$(sed -n 's/^as_default_schema: *\([^ ]\+\)/\1/p' "${_dir%/}/conf/config_debug.yaml")"
-        if [ -n "${_default_schema}" ]; then
-            _var="`echo ${_default_schema#_} | sed 's/[^0-9_]//g'`"
-            if [ -n "${_var}" ]; then
-                echo "$_var"
-                return
-            fi
+        _var="$(sed -n 's/^as_default_schema: *\([^ ]\+\)/\1/p' "${_dir%/}/conf/config_debug.yaml" | sed 's/[^0-9_]//g')"
+        if [ -n "${_var}" ]; then
+            echo ${_var#_}
+            return
         fi
         grep -q "^as_version:" ${_dir%/}/conf/versions/versions.*.yml 2>/dev/null && _ver="$(sed -n 's/^as_version: *\([0-9.]\+\).*/\1/p' "`ls -1 ${_dir%/}/conf/versions/versions.*.yml | tail -n1`")"
         [ -z "${_ver}" ] && _ver="000000"
@@ -409,17 +407,20 @@ function f_install_atscale() {
     local _custom_yaml="${5:-${_ATSCALE_CUSTOMYAML}}"
     local _installer_parent_dir="${6:-/home/${_usr}}"
     local _is_updating="${7-${_UPDATING}}"
+    local _no_backup="${8-${_NO_BACKUP}}"
 
     # It should be created by f_setup when user is created, so exiting.
     [ -d "${_installer_parent_dir}" ] || return $?
 
     # If it looks like one installed already, trying to take a backup
     if [ -s "${_dir%/}/bin/atscale_service_control" ]; then
-       if [[ "${_is_updating}}" =~ (^y|^Y) ]]; then
-           _log "INFO" "Looks like another AtScale is already installed in ${_dir%/}/. Taking backup..."; sleep 1
-            if ! f_atscale_backup; then     # NOTE: backup should stop AtScale
-                _log "ERROR" "Backup failed!!!"; sleep 5
-                return 1
+        if [[ "${_is_updating}}" =~ (^y|^Y) ]]; then
+            if [[ ! "${_no_backup}}" =~ (^y|^Y) ]]; then
+                _log "INFO" "Looks like another AtScale is already installed in ${_dir%/}/. Taking backup..."; sleep 1
+                if ! f_atscale_backup; then     # NOTE: backup should stop AtScale
+                    _log "ERROR" "Backup failed!!!"; sleep 5
+                    return 1
+                fi
             fi
 
              # If upgrading, making sure necessary services are started
