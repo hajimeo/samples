@@ -15,6 +15,9 @@ END
     # My NOTE:
     # Restore dir when install failed in the middle of installation:
     #   rmdir /usr/local/atscale && mv /usr/local/atscale_${_ATSCALE_VER}.*_$(date +"%Y%m%d")* /usr/local/atscale
+    #
+    #   $exec_dir             = File.realpath(File.dirname(__FILE__) + '/../..')
+    #   $custom_yaml_file     = $exec_dir + '/custom.yaml'
 }
 
 
@@ -254,6 +257,20 @@ function f_generate_custom_yaml() {
     fi
 }
 
+_change_key_value_in_file() {
+  local filename=$1
+  local key=$2
+  local new_value=$3
+
+  if [ $(grep -c "^\s*${key}:" ${filename}) -eq 0 ]; then
+    # append new_value if it's not already present in file
+    echo '${key}: ${new_value}' >> ${filename}
+  else
+    # otherwise replace the current value with new_value
+    sed -i -e 's/^\(${key}:\)\(\s*\)\(.*\)/\1 ${new_value}/' ${filename}
+  fi
+}
+
 function f_backup_atscale() {
     local __doc__="Backup atscale directory, *excluding* log files"
     local _dir="${1:-${_ATSCALE_DIR}}"
@@ -333,7 +350,7 @@ function _get_suffix() {
                 return
             fi
         fi
-        grep -q "^as_version:" ${_dir%/}/conf/versions/versions.*.yml 2>/dev/null && _ver="$(sed -n 's/^as_version: *\([0-9.]\+\).*/\1/p' "`ls -t ${_dir%/}/conf/versions/versions.*.yml | head -n1`")"
+        grep -q "^as_version:" ${_dir%/}/conf/versions/versions.*.yml 2>/dev/null && _ver="$(sed -n 's/^as_version: *\([0-9.]\+\).*/\1/p' "`ls -1 ${_dir%/}/conf/versions/versions.*.yml | tail -n1`")"
         [ -z "${_ver}" ] && _ver="000000"
     fi
     # Removing dot as this will be used for database/schema name in hive
@@ -641,12 +658,42 @@ function f_import_project() {
     echo ""
 }
 
+function f_enable_TLS() {
+    local __doc__="Enable HTTPS/SSL/TLS on AtScale"
+    local _custom_yaml="${1}"
+    local _dir="${2:-${_ATSCALE_DIR}}"
+    local _usr="${3:-${_ATSCALE_USER}}"
+    local _installer_parent_dir="${4:-/home/${_usr}}"
+
+    # Update custom yaml so that next installer run won't break
+    [ -z "${_custom_yaml}" ] && _custom_yaml=${_installer_parent_dir%/}/custom.yaml
+    [ ! -r "${_custom_yaml}" ] && return 1
+    sudo -u ${_usr} cp "${_custom_yaml}" "${_custom_yaml}_$$.bak" || return $?
+
+    if [ ! -f /etc/security/serverKeys/`hostname -f`.key ]; then
+        _log "ERROR" "Please create /etc/security/serverKeys/`hostname -f`.{key,crt} files for this node"
+        return 1
+    fi
+
+    _change_key_value_in_file "${_custom_yaml}" "as_auth_host" "`hostname -f`"
+    _change_key_value_in_file "${_custom_yaml}" "as_secure_installation" 'true'
+    _change_key_value_in_file "${_custom_yaml}" "as_atscale_host_cert" "/etc/security/serverKeys/`hostname -f`.crt"
+    _change_key_value_in_file "${_custom_yaml}" "as_atscale_host_key" "/etc/security/serverKeys/`hostname -f`.key"
+    if [ -s /etc/security/clientKeys/all.jks ]; then
+        _change_key_value_in_file "${_custom_yaml}" "has_custom_truststore" 'true'
+        _change_key_value_in_file "${_custom_yaml}" "custom_truststore_location" "/etc/security/clientKeys/all.jks"
+        _change_key_value_in_file "${_custom_yaml}" "custom_truststore_password" "changeit"
+    fi
+    local _ver="$(sed -n 's/^as_version: *\([0-9.]\+\).*/\1/p' "`ls -1 ${_dir%/}/conf/versions/versions.*.yml | tail -n1`")"
+    _log "INFO" "Re-run '_UPDATING=Y f_install_atscale ${_ver}' to update certificate"
+}
+
 function f_ldap_cert_setup() {
     local __doc__="If LDAPS is available, import the LDAP/AD certificate into a trust store"
     local _ldap_host="${1:-$(hostname -f)}"
     local _ldap_port="${2:-636}" # or 389
     local _java_home="${3:-$(ls -1d ${_ATSCALE_DIR%/}/share/jdk*)}"
-    local _truststore="${4:-${_java_home%/}/jre/lib/security/cacerts}"
+    local _truststore="${4:-${_java_home%/}/jre/lib/security/cacerts}" # or ${_dir%/}/security
     local _storepass="${5:-changeit}"
 
     echo -n | openssl s_client -connect ${_ldap_host}:${_ldap_port} -showcerts 2>&1 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ${_TMP_DIR%/}/${_ldap_host}_${_ldap_port}.crt
