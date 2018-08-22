@@ -763,7 +763,7 @@ function f_export_key() {
     fi
 }
 
-function f_ha_with_tls_setup() {
+function f_setup_HAProxy_with_TLS() {
     local __doc__="Setup (outside) HAProxy for Atscale HA"
     local _certificate="${1:-/etc/security/serverKeys/certificate.pem}" # Result of f_export_key and 'cd /etc/security/serverKeys && cat ./server.`hostname -d`.crt ./rootCA.pem ./server.`hostname -d`.key > certificate.pem'
     local _master_node="${2:-node3.`hostname -d`}"
