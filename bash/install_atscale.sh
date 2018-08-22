@@ -661,8 +661,8 @@ function f_import_project() {
 function f_setup_TLS() {
     local __doc__="Enable HTTPS/SSL/TLS on AtScale"
     local _custom_yaml="${1}"
-    local _key="${2:-/etc/security/serverKeys/server.`hostname -d`.key"}"
-    local _crt="${3:-/etc/security/serverKeys/server.`hostname -d`.crt"}"
+    local _key="${2:-/etc/security/serverKeys/server.`hostname -d`.key}"
+    local _crt="${3:-/etc/security/serverKeys/server.`hostname -d`.crt}"
     local _dir="${4:-${_ATSCALE_DIR}}"
     local _usr="${5:-${_ATSCALE_USER}}"
     local _installer_parent_dir="${6:-/home/${_usr}}"
