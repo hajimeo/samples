@@ -423,9 +423,8 @@ function f_install_atscale() {
                 fi
             fi
 
-             # If upgrading, making sure necessary services are started
-            sudo -u ${_usr} "${_dir%/}/bin/atscale_start"
-            sleep 3
+            # If upgrading, making sure necessary services are started
+            f_atscale_start ${_dir} ${_usr} || return $?
             sudo -u ${_usr} "${_dir%/}/bin/atscale_stop_apps" -f
             sleep 3
             sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control" status
@@ -585,8 +584,25 @@ function f_switch_version() {
     # Symlink doesn't work when upgrading due to 'Failed to set group to' error
     mv ${_target_dir%/} ${_dir%/} || return $?
 
-    sudo -u ${_usr} ${_dir%/}/bin/atscale_start || return $?
+    f_atscale_start ${_dir} ${_usr} || return $?
     ls -dl ${_dir%/}
+}
+
+function f_atscale_start() {
+    local __doc__="Sometimes AtScale fails to start postgreSQL and I don't notice that, so that making sure postgresql is started"
+    local _dir="${1:-${_ATSCALE_DIR}}"
+    local _usr="${2:-${_ATSCALE_USER}}"
+
+    if [ -s ${_dir%/}/bin/atscale_start ]; then
+        sudo -u ${_usr} ${_dir%/}/bin/atscale_start
+    fi
+
+    sleep 1
+    for _i in {1..3}; do
+        lsof -ti:10520 -s TCP:LISTEN && return 0
+        sleep 3
+    done
+    lsof -ti:10520 -s TCP:LISTEN
 }
 
 function f_atscale_stop() {
@@ -605,6 +621,13 @@ function f_atscale_stop() {
     done
     ps h -u ${_usr}
     lsof -ti:10520 -s TCP:LISTEN && return 31
+}
+
+function f_atscale_status() {
+    local _cmd="${1:-status}"
+    local _dir="${2:-${_ATSCALE_DIR}}"
+    local _usr="${3:-${_ATSCALE_USER}}"
+    sudo -u ${_usr} ${_dir%/}/bin/atscale_service_control $_cmd
 }
 
 function _export_org_eng_env() {
