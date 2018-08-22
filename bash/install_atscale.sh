@@ -267,7 +267,7 @@ _change_key_value_in_file() {
     echo '${key}: ${new_value}' >> ${filename}
   else
     # otherwise replace the current value with new_value
-    sed -i -e 's/^\(${key}:\)\(\s*\)\(.*\)/\1 ${new_value}/' ${filename}
+    sed -i -e 's/^\('${key}':\)\(\s*\)\(.*\)/\1 '${new_value}'/' ${filename}
   fi
 }
 
