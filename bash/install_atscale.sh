@@ -661,24 +661,26 @@ function f_import_project() {
 function f_setup_TLS() {
     local __doc__="Enable HTTPS/SSL/TLS on AtScale"
     local _custom_yaml="${1}"
-    local _dir="${2:-${_ATSCALE_DIR}}"
-    local _usr="${3:-${_ATSCALE_USER}}"
-    local _installer_parent_dir="${4:-/home/${_usr}}"
+    local _key="${2:-/etc/security/serverKeys/server.`hostname -d`.key"}"
+    local _crt="${3:-/etc/security/serverKeys/server.`hostname -d`.crt"}"
+    local _dir="${4:-${_ATSCALE_DIR}}"
+    local _usr="${5:-${_ATSCALE_USER}}"
+    local _installer_parent_dir="${6:-/home/${_usr}}"
 
     # Update custom yaml so that next installer run won't break
     [ -z "${_custom_yaml}" ] && _custom_yaml=${_installer_parent_dir%/}/custom.yaml
     [ ! -r "${_custom_yaml}" ] && return 1
     sudo -u ${_usr} cp "${_custom_yaml}" "${_custom_yaml}_$$.bak" || return $?
 
-    if [ ! -f /etc/security/serverKeys/server.`hostname -d`.key ]; then
-        _log "ERROR" "Please create /etc/security/serverKeys/server.`hostname -d`.{key,crt} files for this node (eg.: f_ssl_hadoop)"
+    if [ ! -f ${_key} ]; then
+        _log "ERROR" "Please create ${_key} and .crt for this server (eg.: f_ssl_hadoop)"
         return 1
     fi
 
     _change_key_value_in_file "${_custom_yaml}" "as_auth_host" "`hostname -f`"
     _change_key_value_in_file "${_custom_yaml}" "as_secure_installation" 'true'
-    _change_key_value_in_file "${_custom_yaml}" "as_atscale_host_cert" "/etc/security/serverKeys/server.`hostname -d`.crt"
-    _change_key_value_in_file "${_custom_yaml}" "as_atscale_host_key" "/etc/security/serverKeys/server.`hostname -d`.key"
+    _change_key_value_in_file "${_custom_yaml}" "as_atscale_host_key" "${_key}"
+    _change_key_value_in_file "${_custom_yaml}" "as_atscale_host_cert" "${_crt}"
     if [ -s /etc/security/clientKeys/all.jks ]; then
         _change_key_value_in_file "${_custom_yaml}" "has_custom_truststore" 'true'
         _change_key_value_in_file "${_custom_yaml}" "custom_truststore_location" "/etc/security/clientKeys/all.jks"
