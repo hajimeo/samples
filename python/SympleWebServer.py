@@ -143,6 +143,15 @@ class SympleWebServer(BaseHTTPRequestHandler):
             # sys.stderr.write(level+": "+msg + '\n')
             self.log_message(level.upper() + ": %s", msg)
 
+def start_https_server(host, port, key, crt):
+    import BaseHTTPServer,SimpleHTTPServer,ssl
+    httpd = BaseHTTPServer.HTTPServer((host, port), SimpleHTTPServer.SimpleHTTPRequestHandler)
+    try:
+        httpd.socket = ssl.wrap_socket(httpd.socket, keyfile=key, certfile=crt, server_side=True, ssl_version=ssl.PROTOCOL_TLSv1_2)
+    except AttributeError:
+        httpd.socket = ssl.wrap_socket(httpd.socket, keyfile=key, certfile=crt, server_side=True, ssl_version=ssl.PROTOCOL_TLS)
+    httpd.serve_forever()
+
 
 if __name__ == '__main__':
     # TODO: error handling

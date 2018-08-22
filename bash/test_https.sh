@@ -3,7 +3,7 @@
 function get_ciphers() {
     # @see http://superuser.com/questions/109213/how-do-i-list-the-ssl-tls-cipher-suites-a-particular-website-offers
     # OpenSSL requires the port number.
-    local _host="$1"
+    local _host="${1:-`hostname -f`}"
     local _port="${2:-443}"
     local _server=$_host:$_port
     local _delay=1
@@ -58,7 +58,10 @@ function start_https() {
     cd "$_doc_root" || return $?
     nohup python -c "import BaseHTTPServer,SimpleHTTPServer,ssl
 httpd = BaseHTTPServer.HTTPServer(('${_host}', ${_port}), SimpleHTTPServer.SimpleHTTPRequestHandler)
-httpd.socket = ssl.wrap_socket(httpd.socket, keyfile='${_key}', certfile='${_crt}', server_side=True)
+try:
+  httpd.socket = ssl.wrap_socket(httpd.socket, keyfile='${_key}', certfile='${_crt}', server_side=True, ssl_version=ssl.PROTOCOL_TLSv1_2)
+except AttributeError:
+  httpd.socket = ssl.wrap_socket(httpd.socket, keyfile='${_key}', certfile='${_crt}', server_side=True, ssl_version=ssl.PROTOCOL_TLS)
 httpd.serve_forever()" &
     sleep 1
     cd - &>/dev/null
@@ -78,5 +81,5 @@ function check_pem_file() {
 
 ### main ########################
 if [ "$0" = "$BASH_SOURCE" ]; then
-    get_ciphers $1 $2
+    echo "source $BASH_SOURCE"
 fi
