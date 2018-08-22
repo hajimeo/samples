@@ -582,7 +582,8 @@ function f_switch_version() {
         local _suffix="`_get_suffix`"
         mv ${_dir%/} ${_dir%/}_${_suffix} || return $?
     fi
-    ln -s ${_target_dir%/} ${_dir%/} || return $?
+    # Symlink doesn't work when upgrading due to 'Failed to set group to' error
+    mv ${_target_dir%/} ${_dir%/} || return $?
 
     sudo -u ${_usr} ${_dir%/}/bin/atscale_start || return $?
     ls -dl ${_dir%/}
