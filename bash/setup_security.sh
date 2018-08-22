@@ -386,7 +386,7 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
     openssl pkcs12 -export -in ./server.${_domain_suffix#.}.crt -inkey ./server.${_domain_suffix#.}.key -certfile ./server.${_domain_suffix#.}.crt -out ./${g_KEYSTORE_FILE_P12} -passin "pass:${_password}" -passout "pass:${_password}" || return $?
     keytool -importkeystore -srckeystore ./${g_KEYSTORE_FILE_P12} -srcstoretype pkcs12 -srcstorepass ${_password} -destkeystore ./${g_KEYSTORE_FILE} -deststoretype JKS -deststorepass ${_password} || return $?
 
-    local _java_home="`ssh -q root@${_ambari_host} "grep java.home /etc/ambari-server/conf/ambari.properties | cut -d \"=\" -f2"`"
+    local _java_home="`ssh -q root@${_ambari_host} "sed -n -r 's/^java\.home=(.+)/\1/p' /etc/ambari-server/conf/ambari.properties"`"
 
     if ! [[ "${_how_many}" =~ ^[0-9]+$ ]]; then
         local _hostnames="${_how_many}"
