@@ -249,8 +249,8 @@ function f_generate_custom_yaml() {
     done
 
     if [ -d "${_installer_parent_dir}" ]; then
-        if [ -f ${_installer_parent_dir%/}/custom.yaml ] && [ ! -s ${_installer_parent_dir%/}/custom_$$.yaml ]; then
-            mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom_$$.yaml || return $?
+        if [ -f ${_installer_parent_dir%/}/custom.yaml ]; then
+            mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom.yaml_$(date +"%Y%m%d%H%M%S") || return $?
         fi
         # CentOS seems to have an alias of "cp -i"
         mv -f ${_tmp_yaml} ${_installer_parent_dir%/}/custom.yaml && chown ${_usr}: ${_installer_parent_dir%/}/custom.yaml
@@ -264,7 +264,7 @@ _change_key_value_in_file() {
 
   if [ $(grep -c "^\s*${key}:" ${filename}) -eq 0 ]; then
     # append new_value if it's not already present in file
-    echo '${key}: ${new_value}' >> ${filename}
+    echo "${key}: ${new_value}" >> ${filename}
   else
     # otherwise replace the current value with new_value
     sed -i -e 's/^\('${key}':\)\(\s*\)\(.*\)/\1 '${new_value}'/' ${filename}
@@ -302,8 +302,8 @@ function f_atscale_backup() {
     f_atscale_stop "${_dir}" "${_usr}"  || return $?
 
     # Best effort of backing up custom.yaml (note: config_debug.yaml doesn't look like updated)
-    if [ -s "/home/${_usr%/}/custom.yaml" ] && [ ! -e "${_dir%/}/custom_backup_${_suffix}.yaml" ]; then
-        cp -p -f "/home/${_usr%/}/custom.yaml" ${_dir%/}/custom_backup_${_suffix}.yaml
+    if [ -s "/home/${_usr%/}/custom.yaml" ] && [ ! -e "${_dir%/}/custom_${_suffix}.yaml" ]; then
+        cp -p -f "/home/${_usr%/}/custom.yaml" ${_dir%/}/custom_${_suffix}.yaml
     fi
 
     local _backup_filename="atscale_$(hostname -f)_${_suffix}"
@@ -458,7 +458,7 @@ function f_install_atscale() {
             return 1
         fi
 
-        [ -s ${_installer_parent_dir%/}/custom.yaml ] && mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom.yaml.$$.bak
+        [ -s ${_installer_parent_dir%/}/custom.yaml ] && mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom.yaml_$(date +"%Y%m%d%H%M%S")
         _log "INFO" "Copying ${_custom_yaml} to ${_installer_parent_dir%/}/custom.yaml ..."; sleep 1
         sudo -u ${_usr} cp -f "${_custom_yaml}" ${_installer_parent_dir%/}/custom.yaml || return $?
     fi
@@ -670,7 +670,7 @@ function f_setup_TLS() {
     # Update custom yaml so that next installer run won't break
     [ -z "${_custom_yaml}" ] && _custom_yaml=${_installer_parent_dir%/}/custom.yaml
     [ ! -r "${_custom_yaml}" ] && return 1
-    sudo -u ${_usr} cp "${_custom_yaml}" "${_custom_yaml}_$$.bak" || return $?
+    sudo -u ${_usr} cp "${_custom_yaml}" "${_custom_yaml}_$(date +"%Y%m%d%H%M%S")"
 
     if [ ! -f ${_key} ]; then
         _log "ERROR" "Please create ${_key} and .crt for this server (eg.: f_ssl_hadoop)"
@@ -686,7 +686,13 @@ function f_setup_TLS() {
         _change_key_value_in_file "${_custom_yaml}" "custom_truststore_location" "/etc/security/clientKeys/all.jks"
         _change_key_value_in_file "${_custom_yaml}" "custom_truststore_password" "changeit"
     fi
-    local _ver="$(sed -n 's/^as_version: *\([0-9.]\+\).*/\1/p' "`ls -1 ${_dir%/}/conf/versions/versions.*.yml | tail -n1`")"
+
+    if [[ ! "${_custom_yaml}" -ef "${_installer_parent_dir%/}/custom.yaml" ]]; then
+        mv "${_installer_parent_dir%/}/custom.yaml" "${_installer_parent_dir%/}/custom.yaml_$(date +"%Y%m%d%H%M%S")"
+        sudo -u ${_usr} cp "${_custom_yaml}" "${_installer_parent_dir%/}/custom.yaml" || return $?
+    fi
+
+    local _ver="$(sed -n 's/^as_version: *\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p' "`ls -1 ${_dir%/}/conf/versions/versions.*.yml | tail -n1`")"
     _log "INFO" "Re-run '_UPDATING=Y f_install_atscale ${_ver}' to update certificate"
 }
 
