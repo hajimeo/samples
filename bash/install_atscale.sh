@@ -670,15 +670,15 @@ function f_enable_TLS() {
     [ ! -r "${_custom_yaml}" ] && return 1
     sudo -u ${_usr} cp "${_custom_yaml}" "${_custom_yaml}_$$.bak" || return $?
 
-    if [ ! -f /etc/security/serverKeys/`hostname -f`.key ]; then
-        _log "ERROR" "Please create /etc/security/serverKeys/`hostname -f`.{key,crt} files for this node"
+    if [ ! -f /etc/security/serverKeys/server.`hostname -d`.key ]; then
+        _log "ERROR" "Please create /etc/security/serverKeys/server.`hostname -d`.{key,crt} files for this node (eg.: f_ssl_hadoop)"
         return 1
     fi
 
     _change_key_value_in_file "${_custom_yaml}" "as_auth_host" "`hostname -f`"
     _change_key_value_in_file "${_custom_yaml}" "as_secure_installation" 'true'
-    _change_key_value_in_file "${_custom_yaml}" "as_atscale_host_cert" "/etc/security/serverKeys/`hostname -f`.crt"
-    _change_key_value_in_file "${_custom_yaml}" "as_atscale_host_key" "/etc/security/serverKeys/`hostname -f`.key"
+    _change_key_value_in_file "${_custom_yaml}" "as_atscale_host_cert" "/etc/security/serverKeys/server.`hostname -d`.crt"
+    _change_key_value_in_file "${_custom_yaml}" "as_atscale_host_key" "/etc/security/serverKeys/server.`hostname -d`.key"
     if [ -s /etc/security/clientKeys/all.jks ]; then
         _change_key_value_in_file "${_custom_yaml}" "has_custom_truststore" 'true'
         _change_key_value_in_file "${_custom_yaml}" "custom_truststore_location" "/etc/security/clientKeys/all.jks"
