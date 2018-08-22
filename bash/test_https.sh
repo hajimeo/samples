@@ -37,9 +37,13 @@ function export_key() {
         openssl pkcs8 -outform PEM -in key.pkcs8 -out ${_out} -nocrypt
     elif [ "$_type" = "jks" ]; then
         keytool -importkeystore -noprompt -srckeystore ${_file} -srcstorepass "${_pass}" -srcalias ${_alias} \
-         -destkeystore /tmp/tmpkeystore_$$.jks -deststoretype PKCS12 -deststorepass ${_pass} -destkeypass ${_pass} || return $?
-        openssl pkcs12 -in /tmp/tmpkeystore_$$.jks -passin "pass:${_pass}" -nodes -nocerts -out ${_out} || return $?
-        rm -f /tmp/tmpkeystore_$$.jks
+         -destkeystore /tmp/tmpkeystore_$$.p12 -deststoretype PKCS12 -deststorepass "${_pass}" -destkeypass "${_pass}" || return $?
+        openssl pkcs12 -in /tmp/tmpkeystore_$$.p12 -passin "pass:${_pass}" -nodes -nocerts -out ${_out} || return $?
+
+        if [ ! -f "`basename $_out`.crt" ]; then
+            keytool -export -rfc -keystore ${_file} -alias ${_alias} -storepass "${_pass}" -file "`basename $_out`.crt"
+        fi
+        rm -f /tmp/tmpkeystore_$$.p12
     fi
     chmod 600 ${_out}
 }
