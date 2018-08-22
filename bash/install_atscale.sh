@@ -354,11 +354,9 @@ function f_pg_dump() {
     local _pg_dir="${2:-${_ATSCALE_DIR%/}/share/postgresql-9.*/}"
     local _lib_path="$(ls -1dtr ${_pg_dir%/}/lib | head -n1)"
 
-    LD_LIBRARY_PATH=${_lib_path} PGPASSWORD=${PGPASSWORD:-atscale} ${_pg_dir%/}/bin/pg_dump -h localhost -p 10520 -d atscale -U atscale -Z 9 -f ${_dump_dest_filename} &
-    trap 'kill %1' SIGINT
-    _log "INFO" "Executing pg_dump. Ctrl+c to skip 'pg_dump' command"; wait
-    trap - SIGINT
+    LD_LIBRARY_PATH=${_lib_path} PGPASSWORD=${PGPASSWORD:-atscale} ${_pg_dir%/}/bin/pg_dump -h localhost -p 10520 -U atscale -d atscale -Z 9 -f ${_dump_dest_filename} -v 1>&2 || return $?
     [ -s ${_dump_dest_filename} ] || return $?
+    ls -lh ${_dump_dest_filename}
 }
 
 function f_pg_ctl() {
