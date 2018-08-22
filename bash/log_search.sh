@@ -40,6 +40,60 @@ Or
 }
 ### Public functions ###################################################################################################
 
+function f_support() {
+    local __doc__="Scan a support bundle"
+    local _def_rg_opts="--search-zip --no-line-number" # -g '*.json' -g '*.xml' -g '*.yaml' -g '*.yml' -g '*.log*' --heading
+    # TODO: currently only ISO format YYYY-MM-DD hh:mX:XX
+    local _date_regex="^[0-9-/]+ \d\d:\d"
+    local _tmpfile_pfx="./rg_"
+    local _regex_escaped="`echo "${_regex}" | sed "s/[^[:alnum:].-]/_/g"`"
+
+    [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
+
+    echo "# Version information"
+    #local _build_yaml="`find . -type f -name build.yaml -print | head -n1`"
+    find . -type f -name 'versions.*.yml' -print | tee /tmp/versions_$$.out
+    local _versions_yaml="`cat /tmp/versions_$$.out | sort -n | tail -n1`"
+    if [ -s "${_versions_yaml}" ]; then
+        cat "${_versions_yaml}"
+        echo " "
+    fi
+
+    echo "# Kerberos information"
+    _find_and_cat "config.yaml" | grep '^kerberos'
+    echo " "
+
+    echo "# last 3 settings changes"
+    _find_and_cat "settings.json" | python -c "import sys,json;a=json.loads(sys.stdin.read());print json.dumps(a[-3:], indent=4)"
+    echo " "
+
+    echo "# Connection pool"
+    _find_and_cat "pool.json"
+    echo " "
+
+    echo "# Cache status"
+    _find_and_cat "current-status.json"
+    echo " "
+
+    echo "# Engine properties"
+    _find_and_cat "properties.json"
+    echo " "
+
+    echo "# AD/LDAP config"
+    _find_and_cat "directory_configurations.json"
+    echo " "
+
+    echo "# 10 large tables (by num rows)"
+    _find_and_cat "tableSizes.tsv" | sort -n -k2 | tail -n 10
+    echo " "
+}
+
+function _find_and_cat() {
+    local _f="`find . -name "$1" -print`"
+    cat "${_f}"
+}
+
+
 function f_rg() {
     local __doc__="Search current directory with rg"
     # f_rg '^2018-07-27 1[3-5]:.+"
@@ -63,23 +117,6 @@ function f_rg() {
     local _regex_escaped="`echo "${_regex}" | sed "s/[^[:alnum:].-]/_/g"`"
 
     [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
-
-    # Version information
-    local _build_yaml="`find . -type f -name build.yaml -print | head -n1`"
-    if [ -s "${_build_yaml}" ]; then
-        cat "${_build_yaml}"
-        echo " "
-    fi
-
-    echo "# last 3 settings changes"
-    local _settings="`find . -name 'settings.json' -print`"
-    cat "${_settings}" | python -c "import sys,json;a=json.loads(sys.stdin.read());print json.dumps(a[-3:], indent=4)"
-    echo " "
-
-    echo "# 10 large tables (by num rows)"
-    local _tableSizes="`find . -name 'tableSizes.tsv' -print`"
-    cat "${_tableSizes}" | sort -n -k2 | tail -n 10
-    echo " "
 
     # If _regex is UUID, checking if it's query ID TODO: add more logic for other types of UUID
     if [[ "${_regex}" =~ .{8}-.{4}-.{4}-.{12} ]]; then
@@ -164,6 +201,7 @@ function f_preCheckoutDuration() {
     # f_preCheckoutDuration | sort -t'|' -nk3 | tail -n 10
     local _path="$1"
     rg -N --no-filename -g '*.log*' -o '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+).+preCheckout timing report:.+statementDurations=[^=]+=([0-9,.]+) (.+)\].+testDuration=[^=]+=([0-9,.]+) (.+)\]' -r '${1}|${2}${3}|${4}${5}' ${_path} | gsed -r 's/([0-9]+)\.([0-9]{2})s/\1\20ms/g' | gsed -r 's/ms//g'
+    # TODO:  going into queue, is [#34] in line
 }
 
 function f_getQueries() {
