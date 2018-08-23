@@ -585,7 +585,7 @@ function f_switch_version() {
     mv ${_target_dir%/} ${_dir%/} || return $?
 
     f_atscale_start ${_dir} ${_usr} || return $?
-    ls -dl ${_dir%/}*
+    ls -dltr ${_dir%/}*
 }
 
 function f_atscale_start() {
