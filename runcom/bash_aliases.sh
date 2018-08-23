@@ -1,17 +1,12 @@
+# Simple/generic alias commands
 alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
 alias urldecode='python -c "import sys, urllib as ul; print ul.unquote_plus(sys.argv[1])"'
 alias urlencode='python -c "import sys, urllib as ul; print ul.quote_plus(sys.argv[1])"'
 alias utc2int='python -c "import sys,time,dateutil.parser;print int(time.mktime(dateutil.parser.parse(sys.argv[1]).timetuple()))"'  # doesn't work with yy/mm/dd (2 digits year)
 alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\""'
 
+# Alias commands related to my script and work
 alias logS="source ~/IdeaProjects/samples/bash/log_search.sh"
-
-# rsync -Pharz root@server:/usr/local/atscale/apps/modeler/assets/modeler/public/* ./atscale_doc_NNN/
-# cd ./atscale_doc_NNN/ && patch -p0 -b < ~/doc_index.patch
-# ln -s ~/IdeaProjects/atscale_doc_NNN/docs ~/Public/atscale_latest
-alias aDoc='cd ~/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out &'
-alias sWeb='nohup python ~/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &'
-
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
 # jn ./some_notebook.ipynb &
@@ -30,19 +25,30 @@ alias jn='if [ -d ~/backup/jupyter-notebook ]; then
 fi
 jupyter notebook'
 
+# Hostname specific alias command
+# rsync -Pharz root@server:/usr/local/atscale/apps/modeler/assets/modeler/public/* ./atscale_doc_NNN/
+# cd ./atscale_doc_NNN/ && patch -p0 -b < ~/doc_index.patch
+# ln -s ~/IdeaProjects/atscale_doc_NNN/docs ~/Public/atscale_latest
+alias aDoc='cd ~/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out &'
+alias sWeb='nohup python ~/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &'
+# NOTE: https requires s3-us-west-1.amazonaws.com
+alias asS3='s3cmd ls s3://files.atscale.com/installer/package/ | grep -E "atscale-[6789].+latest.+\.tar\.gz$"'
+
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ###############################
+# NOTE: the hostname 'asftp' is specified in .ssh_config
 function asftpl() {
-    ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lhtr '$2' | tail -n ${1:-20}'
+    ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lht '$2' | head -n '${1:-10}
 }
 function asftpd() {
-    [ -z "$1" ] && return 1
-    local _ext="${1##*.}"
-    local _rsync_opts="-Phz"
-    [[ "${_ext}" =~ gz|zip ]] && _rsync_opts="-Ph"
-    #sftp asftp:/home/ubuntu/upload/$1
-    rsync ${_rsync_opts} asftp:/home/ubuntu/upload/$1 ./
+    [ -z "$1" ] && ( asftpl; return 1 )
+    for _a in "$@"; do
+        local _ext="${_a##*.}"
+        local _rsync_opts="-Phz"
+        [[ "${_ext}" =~ gz|zip|tgz ]] && _rsync_opts="-Ph"
+        rsync ${_rsync_opts} asftp:"/home/ubuntu/upload/$_a" ./
+    done
 }
 
 function jargrep() {
