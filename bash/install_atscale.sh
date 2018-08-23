@@ -339,20 +339,31 @@ function f_atscale_restore() {
     ls -ld ${_dir%/}*
 }
 
+function _get_version() {
+    local _dir="${1:-${_ATSCALE_DIR}}"
+    local _number_underscore_only="${2}"
+    grep -q "^as_version:" ${_dir%/}/conf/versions/versions.*.yml 2>/dev/null || return 1
+    local _ver="$(sed -n 's/^as_version: *\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p' "`ls -1 ${_dir%/}/conf/versions/versions.*.yml | tail -n1`")"
+    if [[ "${_number_underscore_only}" =~ (^y|^Y) ]]; then
+        echo "${_ver}" | sed 's/[^0-9_]//g'
+        return 0
+    fi
+    echo "${_ver}"
+}
+
 function _get_suffix() {
     local _ver="${1}"
     local _dir="${2:-${_ATSCALE_DIR}}"
     if [ -z "${_ver}" ]; then
-        _var="$(sed -n 's/^as_default_schema: *\([^ ]\+\)/\1/p' "${_dir%/}/conf/config_debug.yaml" | sed 's/[^0-9_]//g')"
-        if [ -n "${_var}" ]; then
-            echo ${_var#_}
-            return
-        fi
-        grep -q "^as_version:" ${_dir%/}/conf/versions/versions.*.yml 2>/dev/null && _ver="$(sed -n 's/^as_version: *\([0-9.]\+\).*/\1/p' "`ls -1 ${_dir%/}/conf/versions/versions.*.yml | tail -n1`")"
-        [ -z "${_ver}" ] && _ver="000000"
+        # If the default schema is found, use it.
+        [ -r "${_dir%/}/conf/config_debug.yaml" ] && _ver="$(sed -n 's/^as_default_schema: *\([^ ]\+\)/\1/p' "${_dir%/}/conf/config_debug.yaml" | sed 's/[^0-9_]//g')"
+        if [ -n "${_ver}" ]; then echo ${_ver#_}; return; fi
+
+        _ver="`_get_version "${_dir}"`" "Y"
+        [ -z "${_ver}" ] && _ver="000"    # means unknown
     fi
     # Removing dot as this will be used for database/schema name in hive
-    echo "${_ver}_$(date +"%Y%m%d")" | sed 's/[^0-9_]//g'
+    echo "${_ver}_$(date +"%Y%m%d")"
 }
 
 function f_rm_logs() {
@@ -565,7 +576,12 @@ function f_switch_version() {
     local _dir="${2:-${_ATSCALE_DIR}}"
     local _usr="${3:-${_ATSCALE_USER}}"
 
-    if [ -z "${_version}" ]; then ls -1dr ${_dir%/}_${_version}*; return 1; fi
+    if [ -z "${_version}" ]; then
+        echo "Currently used version: `_get_version "${_dir}"`"
+        ls -1dtr ${_dir%/}_${_version}*
+        return 1
+    fi
+
     local _target_dir="`ls -1dr ${_dir%/}_${_version}* | head -n1`"
     if [ -z "${_target_dir}" ]; then
         _log "ERROR" "Couldn't find ${_dir%/}_${_version}*"
@@ -717,7 +733,7 @@ function f_setup_TLS() {
         sudo -u ${_usr} cp "${_custom_yaml}" "${_installer_parent_dir%/}/custom.yaml" || return $?
     fi
 
-    local _ver="$(sed -n 's/^as_version: *\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p' "`ls -1 ${_dir%/}/conf/versions/versions.*.yml | tail -n1`")"
+    local _ver="`_get_version "${_dir}"`"
     _log "INFO" "Re-run '_UPDATING=Y f_install_atscale ${_ver}' to update certificate"
 }
 
