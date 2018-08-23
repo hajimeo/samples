@@ -578,8 +578,16 @@ function f_switch_version() {
 
     if [ -z "${_version}" ]; then
         echo "Currently used version: `_get_version "${_dir}"`"
-        ls -1dtr ${_dir%/}_*
-        return 1
+        echo "Installed AtScales under `dirname "${_dir}"`"
+        for _d in `ls -1dtr ${_dir%/}_*`; do
+            local _dname="`basename "${_d}"`"
+            if [[ "${_dname}" =~ ^(atscale_)([^_]+)(_.+)$ ]]; then
+                echo "    ${BASH_REMATCH[1]}*${BASH_REMATCH[2]}*${BASH_REMATCH[3]}"
+            else
+                echo "    ${_dname}"
+            fi
+        done
+        return
     fi
 
     local _target_dir="`ls -1dr ${_dir%/}_${_version}* | head -n1`"
