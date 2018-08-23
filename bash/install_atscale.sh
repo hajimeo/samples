@@ -578,7 +578,7 @@ function f_switch_version() {
 
     if [ -z "${_version}" ]; then
         echo "Currently used version: `_get_version "${_dir}"`"
-        ls -1dtr ${_dir%/}_${_version}*
+        ls -1dtr ${_dir%/}_*
         return 1
     fi
 
