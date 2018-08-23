@@ -49,9 +49,9 @@ function f_setup() {
     local _target_dir="${2:-${_ATSCALE_DIR}}"
     local _tmp_dir="${3:-${_TMP_DIR}}"
     local _schema="${4:-${_SCHEMA_AND_HDFSDIR}}"
-    local _is_updating="${5-${_UPDATING}}"
-    local _kadmin_usr="${6:-${_KADMIN_USR}}"
-    local _kadmin_pwd="${7:-${_DEFAULT_PWD}}"
+    local _kadmin_usr="${5:-${_KADMIN_USR}}"
+    local _kadmin_pwd="${6:-${_DEFAULT_PWD}}"
+    local _is_updating="${7-${_UPDATING}}"
 
     local _hdfs_user="${_HDFS_USER:-hdfs}"
 
@@ -276,18 +276,19 @@ function f_atscale_backup() {
     local __doc__="Backup atscale directory, *excluding* log files"
     local _dir="${1:-${_ATSCALE_DIR}}"
     local _usr="${2:-${_ATSCALE_USER}}"
-    local _dst_dir="${3-${_TMP_DIR}}"
-    local _is_pgdump="${4}"
+    local _dst_dir="${3:-${_TMP_DIR}}"
+    local _using_pg_dump="${4}"
+    local _using_tar="${5}"
 
     [ -d ${_dir%/} ] || return    # No dir, no backup
 
     local _suffix="`_get_suffix`"
 
-    if [[ "${_is_pgdump}" =~ (^y|^Y) ]]; then
+    if [[ "${_using_pg_dump}" =~ (^y|^Y) ]]; then
         if [ -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
             _log "WARN" "No pg_dump as ${_TMP_DIR%/}/atscale_${_suffix}.sql.gz already exists."; sleep 3
         else
-            sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control start postgres"; sleep 5
+            sudo -u ${_usr} "${_dir%/}/bin/atscale_service_control" start postgres ; sleep 5
             f_pg_dump "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" "${_dir%/}/share/postgresql-9.*/"
             if [ ! -s "${_TMP_DIR%/}/atscale_${_suffix}.sql.gz" ]; then
                 _log "WARN" "Failed to take DB dump into ${_TMP_DIR%/}/atscale_${_suffix}.sql.gz. Maybe PostgreSQL is stopped?"; sleep 3
@@ -308,34 +309,50 @@ function f_atscale_backup() {
     fi
 
     local _backup_filename="atscale_$(hostname -f)_${_suffix}"
-    _log "INFO" "Without log files, creating ${_dst_dir%/}/${_backup_filename}.tgz from ${_dir%/} ..."; sleep 1
-    [ -s "${_dst_dir%/}/${_backup_filename}.tgz" ] && [ ! -s ${_dst_dir%/}/${_backup_filename}_$$.tgz ] && mv -f ${_dst_dir%/}/${_backup_filename}.tgz ${_dst_dir%/}/${_backup_filename}_$$.tgz &>/dev/null
-    cd `dirname ${_dir}` || return $?   # Need 'cd' for creating exclude list (-X) as -C didn't work
-    tar -cvhzf ${_dst_dir%/}/${_backup_filename}.tgz "`basename ${_dir%/}`" -X <(ls -1 `basename ${_dir%/}`/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null)
-    cd -
-    [ 2097152 -lt "`wc -c <${_dst_dir%/}/${_backup_filename}.tgz`" ] || return 18
-
-    ls -ltr ${_dst_dir%/}/atscale_$(hostname -f)_*.tgz
+    if which rsync &>/dev/null && [[ ! "${_using_tar}" =~ (^y|^Y) ]]; then
+        _log "INFO" "Rsync to ${_dst_dir%/}/${_backup_filename} from ${_dir}. Excluding log files ..."; sleep 1
+        if [ ! -d "${_dst_dir%/}/${_backup_filename}" ]; then mkdir -p ${_dst_dir%/}/${_backup_filename} || return $?; fi
+        rsync -a --modify-window=1 --exclude-from=<(ls -1 ${_dir%/}/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null) ${_dir%/}/* ${_dst_dir%/}/${_backup_filename%/}/ || return $?
+        [ 2048 -lt "`du -s ${_dst_dir%/}/${_backup_filename%/} | awk '{print $1}'`" ] || return 18
+        du -sh ${_dst_dir%/}/${_backup_filename%/}
+    else
+        _log "INFO" "Creating ${_dst_dir%/}/${_backup_filename}.tgz from ${_dir%/}. Excluding log files ..."; sleep 1
+        [ -s "${_dst_dir%/}/${_backup_filename}.tgz" ] && [ ! -s ${_dst_dir%/}/${_backup_filename}_$$.tgz ] && mv -f ${_dst_dir%/}/${_backup_filename}.tgz ${_dst_dir%/}/${_backup_filename}_$$.tgz &>/dev/null
+        cd `dirname ${_dir}` || return $?   # Need 'cd' for creating exclude list (-X) as -C didn't work
+        tar -chzf ${_dst_dir%/}/${_backup_filename}.tgz "`basename ${_dir%/}`" -X <(ls -1 `basename ${_dir%/}`/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null)
+        cd -
+        [ 2097152 -lt "`wc -c <${_dst_dir%/}/${_backup_filename}.tgz`" ] || return 19
+        ls -lh ${_dst_dir%/}/${_backup_filename}.tgz
+    fi
     _log "INFO" "To start AtScale: sudo -u ${_usr} ${_dir%/}/bin/atscale_start"
 }
 
 function f_atscale_restore() {
     local __doc__="Restore AtScale from a backup taken from f_backup_atscale()"
     local _backup="$1"
-    local _dir="${2-${_ATSCALE_DIR}}"
+    local _dir="${2:-${_ATSCALE_DIR}}"
     local _usr="${3:-${_ATSCALE_USER}}"
+    local _tmp_dir=""
 
-    local _tmp_dir="$(mktemp -d)" || return $?
-    _log "INFO" "Extracting ${_backup} in ${_tmp_dir%/}/ ..."; sleep 2
-    tar xf ${_backup} -C ${_tmp_dir%/}/ || return $?
+    if [ ! -d "${_backup}" ]; then
+        _tmp_dir="$(mktemp -d)" || return $?
+        _log "INFO" "Extracting ${_backup} in ${_tmp_dir%/}/ ..."; sleep 1
+        tar xf ${_backup} -C ${_tmp_dir%/}/ || return $?
+    fi
 
-    _log "INFO" "Stopping AtScale before restoring..."; sleep 2
+    _log "INFO" "Stopping AtScale before restoring..."; sleep 1
     f_atscale_stop "${_dir}" "${_usr}" || return $?
 
+    # making backup
     local _suffix="`_get_suffix`"
     [ -e ${_dir%/}_${_suffix} ] && [ ! -e ${_dir%/}_${_suffix}_$$ ] && mv ${_dir%/}_${_suffix} ${_dir%/}_${_suffix}_$$
     if [ -e ${_dir%/} ]; then mv ${_dir%/} ${_dir%/}_${_suffix} || return $?; fi
-    mv ${_tmp_dir%/}/`basename ${_dir%/}` `dirname ${_dir}`/ || return $?
+
+    if [ -n "${_tmp_dir%/}" ]; then
+        mv "${_tmp_dir%/}/`basename ${_dir%/}`" "`dirname ${_dir%/}`/" || return $?
+    else
+        mv "${_backup%/}" "${_dir%/}" || return $?
+    fi
     ls -ld ${_dir%/}*
 }
 
