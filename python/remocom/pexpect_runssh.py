@@ -285,6 +285,8 @@ class MyBase(object):
     
     @requires: logger (for self.log.xxx)
     '''
+    log = None
+
     def __setAttr(self, attr, val):
         #if type(val) == type('str'):
         #    val = pipes.quote(val)
@@ -376,7 +378,7 @@ class MyBase(object):
         if rename_if_exist:
             if os.path.isfile(file_name):
                 for i in range(1, 10):
-                    if not self.isExist(file_name+"."+i):
+                    if not os.path.isfile(file_name+"."+i):
                         file_name = file_name+"."+i
                         break
             if os.path.isfile(file_name):
