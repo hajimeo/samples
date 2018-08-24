@@ -94,6 +94,61 @@ function _find_and_cat() {
     cat "${_f}"
 }
 
+function f_performance() {
+    local _date_regex="${1}"
+    local _file_path="${2}"
+    local _n="${3:-20}"
+
+    echo "# Get result sizes from the engine debug log (datetime, queryId, size, time)"
+    f_checkResultSize "${_date_regex}" "${_file_path}" "${_n}"
+    echo " "
+
+    echo "# Get 'preCheckout timing report' from the engine debug log (datetime, statement duration, test duration)"
+    f_preCheckoutDuration "${_date_regex}" "${_file_path}" | sort -t'|' -nk3 | tail -n${_n}
+    echo " "
+
+    echo "# Count lines and threads between _search_regex of the last periodic.log"
+    f_count_lines
+    f_count_threads "" "${_n}"
+    echo " "
+
+    f_topSlowLogs "${_file_path}" "${_date_regex}"
+}
+
+function f_checkResultSize() {
+    local __doc__="Get result sizes from the engine debug log (datetime, queryId, size, time)"
+    local _date_regex="${1}"
+    local _file_path="${2}"
+    local _n="${3:-20}"
+    [ -z "${_date_regex}" ] && _date_regex="\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+"
+
+    rg -N --no-filename -g "debug*.log*" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ size = ([^,]+), time = ([^,]+)," -r '${1}|${2}|${3}|${4}' ${_file_path} | sort -n | uniq > /tmp/f_checkResultSize_$$.out
+    echo "### histogram (time vs size) ##############################################################"
+    rg -N --no-filename "^(\d\d\d\d-\d\d-\d\d).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_checkResultSize_$$.out | bar_chart.py -A
+    echo ' '
+    echo "### histogram (time vs query count) #######################################################"
+    rg -N --no-filename "^(\d\d\d\d-\d\d-\d\d).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_checkResultSize_$$.out | bar_chart.py
+    echo ' '
+    echo "### Large size (datetime|queryId|size|time) ###############################################"
+    cat /tmp/f_checkResultSize_$$.out | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
+    echo ' '
+    echo "### Slow query (datetime|queryId|size|time) ###############################################"
+    cat /tmp/f_checkResultSize_$$.out | grep ' s$' | sort -t '|' -nk4 | tail -n${_n} | tr '|' '\t'
+    echo " "
+    ls -lh /tmp/f_checkResultSize_$$.out
+}
+
+function f_preCheckoutDuration() {
+    local __doc__="Get 'preCheckout timing report' from the engine debug log (datetime, statement duration, test duration)"
+    # f_preCheckoutDuration | sort -t'|' -nk3 | tail -n 10
+    local _date_regex="${1}"
+    local _file_path="${2}"
+    #local _n="${3:-20}"
+    [ -z "${_date_regex}" ] && _date_regex="\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+"
+
+    # NOTE: queryId sometime is not included
+    rg -N --no-filename -g 'debug*.log*' -o "^(${_date_regex}).+preCheckout timing report:.+statementDurations=[^=]+=([0-9,.]+) (.+)\].+testDuration=[^=]+=([0-9,.]+) (.+)\]" -r '${1}|${2}${3}|${4}${5}' ${_file_path} | gsed -r 's/([0-9]+)\.([0-9]{2})s/\1\20ms/g'# | gsed -r 's/ms//g'
+}
 
 function f_rg() {
     local __doc__="Search current directory with rg"
@@ -198,13 +253,6 @@ for l in sys.stdin:
     " >&2
 }
 
-function f_preCheckoutDuration() {
-    # f_preCheckoutDuration | sort -t'|' -nk3 | tail -n 10
-    local _path="$1"
-    rg -N --no-filename -g '*.log*' -o '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+).+preCheckout timing report:.+statementDurations=[^=]+=([0-9,.]+) (.+)\].+testDuration=[^=]+=([0-9,.]+) (.+)\]' -r '${1}|${2}${3}|${4}${5}' ${_path} | gsed -r 's/([0-9]+)\.([0-9]{2})s/\1\20ms/g' | gsed -r 's/ms//g'
-    # TODO:  going into queue, is [#34] in line
-}
-
 function f_getQueries() {
     local __doc__="Get Inbound and outbound queries with query ID from queries.log"
     # for _q in `cat /tmp/f_checkResultSize_$$.out | grep ' s$' | sort -t'|' -nrk4 | head -n20 | awk -F'|' '{print $2}'`; do echo "# $_q";f_getQueries $_q; done
@@ -239,25 +287,6 @@ p=[l['use_ssl']] and 'ldaps' or 'ldap'
 r=re.search(r\"^[^=]*?=?([^=]+?)[ ,@]\", l['username'])
 u=[bool(r)] and r.group(1) or 'some_testuser'
 print 'LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"' % (p, l['host_name'], l['port'], l['username'], l['base_dn'], l['user_configuration']['unique_id_attribute'], u)"
-}
-
-function f_checkResultSize() {
-    local __doc__="Get result sizes (datetime, queryId, size, time)"
-    local _n="${1:-20}"
-    rg -N --no-filename -g "*.log*" -i -o "^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d\d\d).+ queryId=(........-....-....-....-............).+ size = ([^,]+), time = ([^,]+)," -r '${1}|${2}|${3}|${4}' | sort -n | uniq > /tmp/f_checkResultSize_$$.out
-    echo "### histogram (time vs size) ##############################################################"
-    rg -N --no-filename "^(\d\d\d\d-\d\d-\d\d).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_checkResultSize_$$.out | bar_chart.py -A
-    echo ' '
-    echo "### histogram (time vs query count) #######################################################"
-    rg -N --no-filename "^(\d\d\d\d-\d\d-\d\d).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_checkResultSize_$$.out | bar_chart.py
-    echo ' '
-    echo "### Large size (datetime|queryId|size|time) ###############################################"
-    cat /tmp/f_checkResultSize_$$.out | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
-    echo ' '
-    echo "### Slow query (datetime|queryId|size|time) ###############################################"
-    cat /tmp/f_checkResultSize_$$.out | grep ' s$' | sort -t '|' -nk4 | tail -n${_n} | tr '|' '\t'
-    echo " "
-    ls -lh /tmp/f_checkResultSize_$$.out
 }
 
 function f_topCausedByExceptions() {
@@ -316,36 +345,40 @@ function f_topErrors() {
         echo " "
     fi
 
-    cat /tmp/f_topErrors.$$.tmp | gsed -r "s/[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+/__UUID__/g" \
+    cat "/tmp/f_topErrors.$$.tmp" | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
+}
+
+function _replace_number() {
+    gsed -r "s/[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+/__UUID__/g" \
      | gsed -r "s/0x[0-9a-f][0-9a-f]+/0x_HEX_/g" \
      | gsed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/_DATE_ /g" \
      | gsed -r "s/[0-2][0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/_TIME_/g" \
      | gsed -r "s/-[0-9]+\]\s+\{/-N] {/g" \
-     | gsed -r "s/[0-9][0-9][0-9][0-9][0-9]+/_NUM_/g" \
-     | sort | uniq -c | sort -n | tail -n ${_top_N}
+     | gsed -r "s/[0-9][0-9][0-9][0-9][0-9]+/_NUM_/g"
 }
 
 function f_topSlowLogs() {
     local __doc__="List top performance related log entries. Eg.: f_topSlwErrors ./hbase-ams-master-fslhd.log Y \"\" \"^2017-05-10\""
-    local _path="$1"
-    local _not_hiding_number="$2"
-    local _regex="$3"
-    local _date_regex_start="$4"
-    local _date_regex_end="$5"
+    local _date_regex_start="$1"
+    local _date_regex_end="$2"
+    local _glob="${3:-debug.*log*}"
+    local _regex="$4"
+    local _not_hiding_number="$5"
+    local _top_N="${6:-10}" # how many result to show
 
     if [ -n "$_date_regex_start" ]; then
         _getAfterFirstMatch "$_path" "$_date_regex_start" "$_date_regex_end" > /tmp/f_topSlowLogs$$.tmp
         _path=/tmp/f_topSlowLogs$$.tmp
     fi
     if [ -z "$_regex" ]; then
-        _regex="(slow|performance|delay|delaying|waiting|latency|too many|not sufficient|lock held|took [0-9]+ms|timeout).+"
+        _regex="(slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout|timed out|going into queue, is \[...+\] in line).+"
     fi
 
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
-        egrep -wio "$_regex" "$_path" | sort | uniq -c | sort -n
+        rg -N --no-filename -g "${_glob}" -wio "$_regex" $_path | sort | uniq -c | sort -n
     else
         # ([0-9]){2,4} didn't work also (my note) sed doesn't support \d
-        egrep -wi "$_regex" "$_path" | gsed -r "s/[0-9a-f][0-9a-f][0-9a-f][0-9a-f]+/____/g" | gsed -r "s/[0-9]/_/g" | sort | uniq -c | sort -n
+        rg -N --no-filename -g "${_glob}" -wi "$_regex" $_path | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
     fi
 }
 
@@ -1024,7 +1057,7 @@ function f_validate_siro_ini() {
 }
 
 function f_count_lines() {
-    local __doc__="Count lines between _search_regex"
+    local __doc__="Count lines between _search_regex of periodic.log"
     local _file="$1"
     local _search_regex="${2:-"^20\\d\\d-\\d\\d-\\d\\d .+Periodic stack trace 1"}"
     [ -z "${_file}" ] && _file="`find . -name periodic.log -print | head -n1`" && ls -lh ${_file}
@@ -1039,7 +1072,7 @@ function f_count_lines() {
 }
 
 function f_count_threads() {
-    local __doc__="Grep periodic log and count threads"
+    local __doc__="Grep periodic log and count threads of periodic.log"
     local _file="$1"
     local _tail_n="${2-10}"
     [ -z "${_file}" ] &&  _file="`find . -name periodic.log -print | head -n1`" && ls -lh ${_file}
@@ -1226,8 +1259,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     f_topErrors "$_file_path" > /tmp/_f_topErrors_$$.out &
     echo "# Running f_topCausedByExceptions $_file_path ..." >&2
     f_topCausedByExceptions "$_file_path" > /tmp/_f_topCausedByExceptions_$$.out &
-    echo "# Running f_topSlowLogs $_file_path ..." >&2
-    f_topSlowLogs "$_file_path" > /tmp/_f_topSlowLogs_$$.out &
     if [ "$_LOG_TYPE" != "ya" ]; then
         echo "# Running f_hdfsAuditLogCountPerTime $_file_path ..." >&2
         f_hdfsAuditLogCountPerTime "$_file_path" > /tmp/_f_hdfsAuditLogCountPerTime_$$.out &
@@ -1241,9 +1272,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     echo ""
     echo "# f_topCausedByExceptions (top 40)"
     cat /tmp/_f_topCausedByExceptions_$$.out | tail -n 40
-    echo ""
-    echo "# f_topSlowLogs (top 40)"
-    cat /tmp/_f_topSlowLogs_$$.out | tail -n 40
     echo ""
     if [ "$_LOG_TYPE" != "ya" ]; then
         echo "# f_hdfsAuditLogCountPerTime (last 48 lines)"
