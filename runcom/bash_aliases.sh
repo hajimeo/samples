@@ -11,19 +11,18 @@ alias logS="source ~/IdeaProjects/samples/bash/log_search.sh"
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
 # jn ./some_notebook.ipynb &
 alias jn='if [ -d ~/backup/jupyter-notebook ]; then
-    cp -f ~/backup/jupyter-notebook/Aggregation.ipynb ./
+    cp -f ~/backup/jupyter-notebook/Aggregation.ipynb ./ && jupyter notebook &
     while true; do
         sleep 300
         if [ "`ls -1 ./*.ipynb 2>/dev/null | wc -l`" -gt 0 ]; then
-            rsync -a --exclude="./Untitled.ipynb" ./*.ipynb ~/backup/jupyter-notebook/ || break
+            rsync -a --exclude="Untitled.ipynb" ./*.ipynb ~/backup/jupyter-notebook/ || break
         fi
         if ! nc -z localhost 8888 &>/dev/null; then
             mv -f ./Aggregation.ipynb /tmp/
             break
         fi
     done &
-fi
-jupyter notebook'
+fi'
 
 # Hostname specific alias command
 # rsync -Pharz root@server:/usr/local/atscale/apps/modeler/assets/modeler/public/* ./atscale_doc_NNN/
