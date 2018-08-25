@@ -40,7 +40,7 @@ Or
 }
 ### Public functions ###################################################################################################
 
-function f_support() {
+function p_support() {
     local __doc__="Scan a support bundle"
     local _regex="$1"
 
@@ -89,12 +89,7 @@ function f_support() {
     echo " "
 }
 
-function _find_and_cat() {
-    local _f="`find . -name "$1" -print`"
-    cat "${_f}"
-}
-
-function f_performance() {
+function p_performance() {
     local _date_regex="${1}"
     local _file_path="${2}"
     local _n="${3:-20}"
@@ -107,12 +102,22 @@ function f_performance() {
     f_preCheckoutDuration "${_date_regex}" "${_file_path}" | sort -t'|' -nk3 | tail -n${_n}
     echo " "
 
+    # TODO: echo "# Check Agg Batch Kick off count from the engine debug log (datetime, batchId, how many, isFullBuild)"
+    f_aggBatchKickoffSize "${_date_regex}" "${_file_path}" | sort -t'|' -nk3 | tail -n${_n}
+
     echo "# Count lines and threads between _search_regex of the last periodic.log"
     f_count_lines
     f_count_threads "" "${_n}"
     echo " "
 
     f_topSlowLogs "${_file_path}" "${_date_regex}"
+}
+
+
+
+function _find_and_cat() {
+    local _f="`find . -name "$1" -print`"
+    cat "${_f}"
 }
 
 function f_checkResultSize() {
@@ -148,6 +153,17 @@ function f_preCheckoutDuration() {
 
     # NOTE: queryId sometime is not included
     rg -N --no-filename -g 'debug*.log*' -o "^(${_date_regex}).+preCheckout timing report:.+statementDurations=[^=]+=([0-9,.]+) (.+)\].+testDuration=[^=]+=([0-9,.]+) (.+)\]" -r '${1}|${2}${3}|${4}${5}' ${_file_path} | gsed -r 's/([0-9]+)\.([0-9]{2})s/\1\20ms/g'# | gsed -r 's/ms//g'
+}
+
+function f_aggBatchKickoffSize() {
+    local __doc__="Check Agg Batch Kick off count from the engine debug log (datetime, batchId, how many, isFullBuild)"
+    # f_aggBatchKickoffSize | sort -t'|' -nk3 | tail -n 10
+    local _date_regex="${1}"
+    local _file_path="${2}"
+    #local _n="${3:-20}"
+    [ -z "${_date_regex}" ] && _date_regex="\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+"
+
+    rg -N --no-filename -g 'debug*.log*' -o "^(${_date_regex}).+ Kickoff batch (........-....-....-....-............) with ([0-9,]+) aggregate\(s\) and isFullBuild (.+)" -r '${1}|${2}|${3}|${4}' ${_file_path}
 }
 
 function f_rg() {
