@@ -137,7 +137,9 @@ function p_interview() {
     fi
 
     echo "=== Required questions ==========================="
-    _ask "First 24 bits (xxx.xxx.xxx.) of container IP Address" "172.17.100." "r_DOCKER_NETWORK_ADDR" "N" "Y"
+    _local _docker_network_addr="$(grep -h '^r_DOCKER_NETWORK_ADDR=' *.resp | sort | uniq -c | sort -nr | head -n1 | sed -nr 's/[^"]+"([^"]+)"/\1/p')"
+    [ -z "${_docker_network_addr}" ] && _docker_network_addr="172.17.100."
+    _ask "First 24 bits (xxx.xxx.xxx.) of container IP Address" "${_docker_network_addr%.}." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     [ -n "$r_DOCKER_NETWORK_ADDR" ] && r_DOCKER_NETWORK_ADDR="${r_DOCKER_NETWORK_ADDR%.}."
     _ask "Node starting number (hostname will be sequential from this number)" "1" "r_NODE_START_NUM" "N" "Y"
     _ask "How many nodes (docker containers) creating?" "4" "r_NUM_NODES" "N" "Y"
@@ -1711,7 +1713,7 @@ function f_port_forward() {
 }
 
 function f_tunnel() {
-    local __doc__="Create a tunnel between this host and a target host. Requires ppp and password-less SSH"
+    local __doc__="TODO: Create a tunnel between this host and a target host. Requires ppp and password-less SSH"
     local _connecting_to="$1" # Remote host IP
     local _container_network_to="$2" # ex: 172.17.140.0 or 172.17.140.
     local _container_network_from="${3-${r_DOCKER_NETWORK_ADDR%.}.0}"
@@ -1752,6 +1754,23 @@ function f_tunnel() {
     #iptables -t nat -L --line-numbers; iptables -t nat -D POSTROUTING 3 #iptables -t nat -F
     #iptables -t nat -A POSTROUTING -s ${_container_network_from%0}0/${_container_net_mask#/} ! -d 172.17.0.0/16 -j MASQUERADE
     #echo "Please run \"ip route del 172.17.0.0/16 via 0.0.0.0\" on all containers on both hosts."
+}
+
+function f_pptpd() {
+    local __doc__="Setup PPTP daemon on Ubuntu host"
+    local _user="${1:-pptpuser}"
+    local _pass="${2:-$g_DEFAULT_PASSWORD}"
+    # https://pupli.net/2018/01/24/setup-pptp-server-on-ubuntu-16-04/
+    apt-get isntall -y pptpd || return $?
+    systemctl enable pptpd
+    grep -q '^localip' /etc/pptpd.conf || echo -e 'localip 10.0.0.1\nremoteip 10.0.0.100-200' >> /etc/pptpd.conf
+    # NOTE: not setting up DNS by editing pptpd-options, and net.ipv4.ip_forward=1 should have been done
+
+    if ! grep -q "$_user" /etc/passwd; then
+        f_useradd "$_user" "$_pass" || return $?
+    fi
+    grep -q "^${_user}" /etc/ppp/chap-secrets || echo "${_user} * ${_pass} *" >> /etc/ppp/chap-secrets
+    service pptpd restart
 }
 
 function f_ambari_agents_install() {
@@ -1953,13 +1972,29 @@ function f_etcs_mount() {
     done
 }
 
+function f_sed_after_repo_download() {
+    local _dir="${1:-./}"   # /var/www/html/ambari/centos7/2.7.0.0-897
+    local _subdir="${2:-hdp}"
+    local _web_host="${3:-`hostname -i`}"
+
+    # TODO: ambari has #json.url and below also change this url. Is it OK?
+    [ -f ${_dir%/}/index.html ] && mv ${_dir%/}/index.html ${_dir%/}/index.html.orig
+    sed -i.bak 's/public-repo-1.hortonworks.com/'${_web_host}'\/'${_subdir}'/g' ${_dir%/}/*.repo || return $?
+    if [ -f ${_dir%/}/*.xml ]; then
+        sed -i.$$.bak 's/public-repo-1.hortonworks.com/'${_web_host}'\/'${_subdir}'/g' ${_dir%/}/*.xml || return $?
+    fi
+    ls -lh ${_dir%/}/*.{repo,xml}*
+    local _url="`sed -nr 's/^[^#]+(http.+'`hostname -i`'.+)/\1/p' ${_dir%/}*.repo | head -n1`"
+    _info "Testing $_url ..."
+    curl -kIL "${_url}"
+}
+
 function f_local_repo() {
     local __doc__="TODO: Setup local repo on Docker host (Ubuntu)"
     local _local_dir="${1-/var/www/html/hdp}"
     local _document_root="${2-/var/www/html}"
     local _force_extract=""
     local _download_only=""
-    #TODO: sed -i.bak 's/public-repo-1.hortonworks.com/dockerhost1\/hdp/g' ./*.{repo,xml} # also remove index.html
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
@@ -2061,6 +2096,8 @@ function f_local_repo() {
         r_HDP_REPO_URL="http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}"
         r_HDP_UTIL_URL="http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
     fi
+
+    _info "Please run 'f_sed_after_repo_download' with proper arguments"
 }
 
 function f_ambari_set_repo() {
@@ -2962,7 +2999,7 @@ function f_vnc_setup() {
         return 1
     fi
 
-    if [ ! `grep "$_user" /etc/passwd` ]; then
+    if ! grep -q "$_user" /etc/passwd; then
         f_useradd "$_user" "$_pass" || return $?
     fi
 
