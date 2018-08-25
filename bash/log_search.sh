@@ -102,7 +102,7 @@ function p_performance() {
     f_preCheckoutDuration "${_date_regex}" "${_file_path}" | sort -t'|' -nk3 | tail -n${_n}
     echo " "
 
-    # TODO: echo "# Check Agg Batch Kick off count from the engine debug log (datetime, batchId, how many, isFullBuild)"
+    echo "# Check Agg Batch Kick off count from the engine debug log (datetime, batchId, how many, isFullBuild)"
     f_aggBatchKickoffSize "${_date_regex}" "${_file_path}" | sort -t'|' -nk3 | tail -n${_n}
 
     echo "# Count lines and threads between _search_regex of the last periodic.log"
