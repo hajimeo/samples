@@ -639,12 +639,15 @@ function _ambari_blueprint_host_groups() {
     local _how_many="${1-$r_NUM_NODES}"  # accepts 1, 2, 3 and 4
     local _including_ambari="$2"
     local _install_security="${3-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
+    local _stack_version="${4}"
 
     local _ambari_server='{"name":"AMBARI_SERVER"}'
     local _master_comps='{"name":"ZOOKEEPER_SERVER"},{"name":"NAMENODE"},{"name":"HISTORYSERVER"},{"name":"APP_TIMELINE_SERVER"},{"name":"RESOURCEMANAGER"},{"name":"MYSQL_SERVER"},{"name":"HIVE_SERVER"},{"name":"HIVE_METASTORE"},{"name":"WEBHCAT_SERVER"}'
+    [ "${_stack_version}" = "3.0" ] && _master_comps='{"name":"ZOOKEEPER_SERVER"},{"name":"NAMENODE"},{"name":"HISTORYSERVER"},{"name":"APP_TIMELINE_SERVER"},{"name":"RESOURCEMANAGER"},{"name":"MYSQL_SERVER"},{"name":"HIVE_SERVER"},{"name":"HIVE_METASTORE"}'
     local _standby_comps='{"name":"SECONDARY_NAMENODE"}'
     local _slave_comps='{"name":"DATANODE"},{"name" : "NODEMANAGER"}'
     local _clients='{"name":"ZOOKEEPER_CLIENT"}, {"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"HCAT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}, {"name":"SLIDER"}'
+    [ "${_stack_version}" = "3.0" ] && _clients='{"name":"ZOOKEEPER_CLIENT"}, {"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}, {"name":"SLIDER"}'
 
     local _security_master_comps='{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"}'
     local _security_slave_comps='{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"}'
@@ -920,7 +923,7 @@ function f_ambari_blueprint_config() {
         _warn "Couldn't download blueprint_common_properties.json, so reusing /tmp/blueprint_common_properties.json"
     fi
     local _common_props="`cat /tmp/blueprint_common_properties.json`"
-    local _host_groups="`_ambari_blueprint_host_groups "${_how_many}" "${_including_ambari}" "${_install_security}"`"
+    local _host_groups="`_ambari_blueprint_host_groups "${_how_many}" "${_including_ambari}" "${_install_security}" "${_stack_version}"`"
 
     # TODO: Ambari 2.5.1 can't set hive.exec.post.hooks, probably a bug in Ambari (probably regression bug of AMBARI-17802)
     echo '{
