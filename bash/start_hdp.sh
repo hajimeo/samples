@@ -137,7 +137,7 @@ function p_interview() {
     fi
 
     echo "=== Required questions ==========================="
-    _local _docker_network_addr="$(grep -h '^r_DOCKER_NETWORK_ADDR=' *.resp | sort | uniq -c | sort -nr | head -n1 | sed -nr 's/[^"]+"([^"]+)"/\1/p')"
+    local _docker_network_addr="$(grep -h '^r_DOCKER_NETWORK_ADDR=' *.resp | sort | uniq -c | sort -nr | head -n1 | sed -nr 's/[^"]+"([^"]+)"/\1/p')"
     [ -z "${_docker_network_addr}" ] && _docker_network_addr="172.17.100."
     _ask "First 24 bits (xxx.xxx.xxx.) of container IP Address" "${_docker_network_addr%.}." "r_DOCKER_NETWORK_ADDR" "N" "Y"
     [ -n "$r_DOCKER_NETWORK_ADDR" ] && r_DOCKER_NETWORK_ADDR="${r_DOCKER_NETWORK_ADDR%.}."
