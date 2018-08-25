@@ -1973,16 +1973,15 @@ function f_etcs_mount() {
 }
 
 function f_sed_after_repo_download() {
-    local _dir="${1:-./}"   # /var/www/html/ambari/centos7/2.7.0.0-897
+    local _dir="${1:-./}"   # /var/www/html/hdp/HDP/centos7/3.x/updates/3.0.0.0
     local _subdir="${2:-hdp}"
     local _web_host="${3:-`hostname -i`}"
+    [ -n "${_subdir}" ] && _subdir='\/'${_subdir%/}
 
     # TODO: ambari has #json.url and below also change this url. Is it OK?
     [ -f ${_dir%/}/index.html ] && mv ${_dir%/}/index.html ${_dir%/}/index.html.orig
-    sed -i.bak 's/public-repo-1.hortonworks.com/'${_web_host}'\/'${_subdir}'/g' ${_dir%/}/*.repo || return $?
-    if [ -f ${_dir%/}/*.xml ]; then
-        sed -i.$$.bak 's/public-repo-1.hortonworks.com/'${_web_host}'\/'${_subdir}'/g' ${_dir%/}/*.xml || return $?
-    fi
+    sed -i.$$.bak 's/public-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.repo || return $?
+    sed -i.$$.bak 's/public-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.xml
     ls -lh ${_dir%/}/*.{repo,xml}*
     local _url="`sed -nr 's/^[^#]+(http.+'`hostname -i`'.+)/\1/p' ${_dir%/}*.repo | head -n1`"
     _info "Testing $_url ..."
