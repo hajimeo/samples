@@ -641,9 +641,13 @@ function _ambari_blueprint_host_groups() {
     local _install_security="${3-$r_AMBARI_BLUEPRINT_INSTALL_SECURITY}"
     local _stack_version="${4}"
 
+    # http://172.17.120.21:8080/api/v1/stacks/HDP/versions/3.0/services
+    # http://172.17.120.21:8080/api/v1/stacks/HDP/versions/3.0/services/YARN/components
+
     local _ambari_server='{"name":"AMBARI_SERVER"}'
     local _master_comps='{"name":"ZOOKEEPER_SERVER"},{"name":"NAMENODE"},{"name":"HISTORYSERVER"},{"name":"APP_TIMELINE_SERVER"},{"name":"RESOURCEMANAGER"},{"name":"MYSQL_SERVER"},{"name":"HIVE_SERVER"},{"name":"HIVE_METASTORE"},{"name":"WEBHCAT_SERVER"}'
-    [ "${_stack_version}" = "3.0" ] && _master_comps='{"name":"ZOOKEEPER_SERVER"},{"name":"NAMENODE"},{"name":"HISTORYSERVER"},{"name":"APP_TIMELINE_SERVER"},{"name":"RESOURCEMANAGER"},{"name":"MYSQL_SERVER"},{"name":"HIVE_SERVER"},{"name":"HIVE_METASTORE"}'
+    # YARN_REGISTRY_DNS cardinality 0-1
+    [ "${_stack_version}" = "3.0" ] && _master_comps='{"name":"ZOOKEEPER_SERVER"},{"name":"NAMENODE"},{"name":"HISTORYSERVER"},{"name":"APP_TIMELINE_SERVER"},{"name":"TIMELINE_READER"},{"name":"RESOURCEMANAGER"},{"name":"MYSQL_SERVER"},{"name":"HIVE_SERVER"},{"name":"HIVE_METASTORE"}'
     local _standby_comps='{"name":"SECONDARY_NAMENODE"}'
     local _slave_comps='{"name":"DATANODE"},{"name" : "NODEMANAGER"}'
     local _clients='{"name":"ZOOKEEPER_CLIENT"}, {"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"HCAT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}, {"name":"SLIDER"}'
