@@ -67,18 +67,18 @@ def _db(dbname=':memory:', dbtype='sqlite', isolation_level=None, echo=False):
 def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, echo=False):
     conn = _db(dbname=dbname, dbtype=dbtype, isolation_level=isolation_level, echo=echo)
     if dbtype == 'sqlite':
-        #db.connect().connection.connection.text_factory = str
+        # db.connect().connection.connection.text_factory = str
         conn.text_factory = str
         return conn
     return conn.connect()
 
 
-def insert2table(conn, taple, log_message, tablename, num_cols):
+def _insert2table(conn, tablename, taple, long_value="", num_cols=None):
     if bool(num_cols) and len(taple) < num_cols:
         # - 1 for message
         for i in range(((num_cols - 1) - len(taple))):
             taple += (None,)
-        taple += (log_message,)
+    taple += (long_value,)
     placeholders = ','.join('?' * len(taple))
     return conn.execute("INSERT INTO " + tablename + " VALUES (" + placeholders + ")", taple)
 
@@ -99,8 +99,8 @@ def file2table(conn, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\
         if begin_re.search(l):
             # If previous matches aren't empty, save previous date into a table
             if bool(prev_matches):
-                last_res = insert2table(conn=conn, taple=prev_matches, log_message=prev_message, tablename=tablename,
-                                        num_cols=num_cols)
+                last_res = _insert2table(conn=conn, tablename=tablename, taple=prev_matches, long_value=prev_message,
+                                         num_cols=num_cols)
                 prev_message = None
                 prev_matches = None
 
@@ -122,24 +122,28 @@ def file2table(conn, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\
             prev_message += "" + l  # Looks like each line already has '\n'
     # insert last message
     if bool(prev_matches):
-        last_res = insert2table(conn=conn, taple=prev_matches, log_message=prev_message, tablename=tablename,
-                                num_cols=num_cols)
+        last_res = _insert2table(conn=conn, tablename=tablename, taple=prev_matches, long_value=prev_message,
+                                 num_cols=num_cols)
     return last_res
 
 
-def files2table(conn, file_glob, tablename, create_table_if_not_ddl="", num_cols=8, line_beginning="^\d\d\d\d-\d\d-\d\d",
-                line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) (.+?) (\{.*?\}) (.+?) - (.*)",
+def files2table(conn, file_glob, tablename=None,
+                col_def="datetime TEXT, loglevel TEXT, thread TEXT, jsonstr TEXT, size TEXT, time TEXT, message TEXT",
+                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
+                line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
                 size_regex="[sS]ize = ([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
                 max_file_num=10):
+    # NOTE: as python dict does not guarantee the order, col_def is using string
+    if bool(num_cols) is False:
+        _cols = col_def.split(",")
+        num_cols = len(_cols)
     files = globr(file_glob)
     if bool(files) is False: return False
     if len(files) > max_file_num:
         raise ValueError('Glob: %s returned too many files (%s)' % (file_glob, str(len(files))))
-    if create_table_if_not_ddl == "":
-        create_table_if_not_ddl = "CREATE TABLE IF NOT EXISTS " + tablename + " (datetime TEXT, log_level TEXT, thread TEXT, object TEXT, class TEXT, size TEXT, time TEXT, message TEXT)"
     # If not None, create a table
-    if bool(create_table_if_not_ddl):
-        conn.execute(create_table_if_not_ddl)
+    if bool(tablename) and bool(col_def):
+        conn.execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def))
     for f in files:
         file2table(conn=conn, file=f, tablename=tablename, num_cols=num_cols, line_beginning=line_beginning,
                    line_matching=line_matching, size_regex=size_regex, time_regex=time_regex)
