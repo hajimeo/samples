@@ -1990,7 +1990,7 @@ function f_sed_after_repo_download() {
     sed -i.$$.bak 's/public-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.repo || return $?
     sed -i.$$.bak 's/public-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.xml
     ls -lh ${_dir%/}/*.{repo,xml}*
-    local _url="`sed -nr 's/^[^#]+(http.+'`hostname -i`'.+)/\1/p' ${_dir%/}*.repo | head -n1`"
+    local _url="`sed -nr 's/^[^#]+(http.+'$(hostname -i)'.+)/\1/p' ${_dir%/}*.repo | head -n1`"
     _info "Testing $_url ..."
     curl -kIL "${_url}"
 }
