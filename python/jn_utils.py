@@ -57,23 +57,38 @@ def load_jsons(src="./"):
 
 
 ### DB processing functions
-def db(dbname=':memory:', dbtype='sqlite', isolation_level=None, echo=False):
-    # if dbtype == 'sqlite':
-    #    return sqlite3.connect(dbname, isolation_level=isolation_level)
+# NOTE: without sqlalchemy is faster
+def _db(dbname=':memory:', dbtype='sqlite', isolation_level=None, echo=False):
+    if dbtype == 'sqlite':
+        return sqlite3.connect(dbname, isolation_level=isolation_level)
     return create_engine(dbtype + ':///' + dbname, isolation_level=isolation_level, echo=echo)
 
 
 def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, echo=False):
-    engine = db(dbname=dbname, dbtype=dbtype, isolation_level=isolation_level, echo=echo)
+    conn = _db(dbname=dbname, dbtype=dbtype, isolation_level=isolation_level, echo=echo)
     if dbtype == 'sqlite':
-        engine.connect().connection.connection.text_factory = str
-    return engine.connect()
+        #db.connect().connection.connection.text_factory = str
+        conn.text_factory = str
+        return conn
+    return conn.connect()
 
 
-def file2table(db, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\d\d",
-               line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) (.+?) (\{.*?\}) (.+?) - (.*)"):
+def insert2table(conn, taple, log_message, tablename, num_cols):
+    if bool(num_cols) and len(taple) < num_cols:
+        # - 1 for message
+        for i in range(((num_cols - 1) - len(taple))):
+            taple += (None,)
+        taple += (log_message,)
+    placeholders = ','.join('?' * len(taple))
+    return conn.execute("INSERT INTO " + tablename + " VALUES (" + placeholders + ")", taple)
+
+
+def file2table(conn, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\d\d",
+               line_matching="(.+)", size_regex="", time_regex=""):
     begin_re = re.compile(line_beginning)
     line_re = re.compile(line_matching)
+    if bool(size_regex): size_re = re.compile(size_regex)
+    if bool(time_regex): time_re = re.compile(time_regex)
     prev_matches = None
     prev_message = None
     last_res = None
@@ -84,40 +99,55 @@ def file2table(db, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\d\
         if begin_re.search(l):
             # If previous matches aren't empty, save previous date into a table
             if bool(prev_matches):
-                last_res = insert_taple(db=db, values=prev_matches, log_message=prev_message, tablename=tablename,
+                last_res = insert2table(conn=conn, taple=prev_matches, log_message=prev_message, tablename=tablename,
                                         num_cols=num_cols)
                 prev_message = None
                 prev_matches = None
+
             _matches = line_re.search(l)
             if _matches:
                 _tmp_groups = _matches.groups()
                 prev_message = _tmp_groups[-1]
                 prev_matches = _tmp_groups[:(len(_tmp_groups) - 1)]
+
+                if bool(size_regex):
+                    _size_matches = size_re.search(prev_message)
+                    if _size_matches:
+                        prev_matches += (_size_matches.group(1),)
+                if bool(time_regex):
+                    _time_matches = time_re.search(prev_message)
+                    if _time_matches:
+                        prev_matches += (_time_matches.group(1),)
         else:
             prev_message += "" + l  # Looks like each line already has '\n'
     # insert last message
     if bool(prev_matches):
-        last_res = insert_taple(db=db, values=prev_matches, log_message=prev_message, tablename=tablename,
+        last_res = insert2table(conn=conn, taple=prev_matches, log_message=prev_message, tablename=tablename,
                                 num_cols=num_cols)
     return last_res
 
 
-def insert_taple(db, values, log_message, tablename, num_cols):
-    if bool(num_cols) and len(values) < num_cols:
-        # - 1 for message
-        for i in range(((num_cols - 1) - len(values))):
-            values += (None,)
-        values += (log_message,)
-    placeholders = ','.join('?' * len(values))
-    return db.execute("INSERT INTO " + tablename + " VALUES (" + placeholders + ")", values)
-
-
-def files2table(db, file_glob, tablename, num_cols, create_table_if_not_ddl, line_beginning="^\d\d\d\d-\d\d-\d\d",
-                line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) (.+?) (\{.*?\}) (.+?) - (.*)", max_file_num=10):
+def files2table(conn, file_glob, tablename, create_table_if_not_ddl="", num_cols=8, line_beginning="^\d\d\d\d-\d\d-\d\d",
+                line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) (.+?) (\{.*?\}) (.+?) - (.*)",
+                size_regex="[sS]ize = ([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
+                max_file_num=10):
     files = globr(file_glob)
     if bool(files) is False: return False
     if len(files) > max_file_num:
         raise ValueError('Glob: %s returned too many files (%s)' % (file_glob, str(len(files))))
-    db.execute(create_table_if_not_ddl)
+    if create_table_if_not_ddl == "":
+        create_table_if_not_ddl = "CREATE TABLE IF NOT EXISTS " + tablename + " (datetime TEXT, log_level TEXT, thread TEXT, object TEXT, class TEXT, size TEXT, time TEXT, message TEXT)"
+    # If not None, create a table
+    if bool(create_table_if_not_ddl):
+        conn.execute(create_table_if_not_ddl)
     for f in files:
-        file2table(db=db, file=f, tablename=tablename, num_cols=num_cols, line_beginning=line_beginning, line_matching=line_matching)
+        file2table(conn=conn, file=f, tablename=tablename, num_cols=num_cols, line_beginning=line_beginning,
+                   line_matching=line_matching, size_regex=size_regex, time_regex=time_regex)
+
+# TEST
+# file_glob="debug.2018-08-23*.gz"
+# tablename="engine_debug_log"
+# conn = ju.connect()
+# ju.files2table(conn=conn, file_glob=file_glob, tablename=tablename)
+# res = conn.execute("SELECT MAX(oid) FROM "+tablename)
+# res.fetchall()
