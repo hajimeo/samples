@@ -380,7 +380,7 @@ function _get_suffix() {
         [ -z "${_ver}" ] && _ver="000"    # means unknown
     fi
     # Removing dot as this will be used for database/schema name in hive
-    echo "${_ver}_$(date +"%Y%m%d")"
+    echo "${_ver}_$(date +"%Y%m%d")" | sed 's/[^0-9_]//g'
 }
 
 function f_rm_logs() {
@@ -662,6 +662,7 @@ function f_atscale_stop() {
     done
     ps h -u ${_usr}
     lsof -ti:10520 -s TCP:LISTEN && return 31
+    #pkill -u ${_usr}
 }
 
 function f_atscale_status() {
