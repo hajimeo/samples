@@ -1,16 +1,23 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# Python Jupyter Notebook helper/utility functions
+# @author: hajime
+#
+
 import sys, os, fnmatch, gzip, re
 import pandas as pd
 from sqlalchemy import create_engine
 import sqlite3
 
-_LAST_FILE_LIST = []  # for debug
-
 
 ### Text processing functions
-# As Python 2.7's glob does not have recursive option
 def globr(ptn='*', src='./'):
+    """
+    As Python 2.7's glob does not have recursive option
+    :param ptn: glob regex pattern
+    :param src: source/importing directory path
+    :return: list contains matched file pathes
+    """
     matches = []
     for root, dirnames, filenames in os.walk(src):
         # os walk doesn't sort and almost random
@@ -21,6 +28,11 @@ def globr(ptn='*', src='./'):
 
 ### File handling functions
 def read(file):
+    """
+    Read a single normal or gz file
+    :param file:
+    :return: file handler
+    """
     if not os.path.isfile(file):
         return None
     if file.endswith(".gz"):
@@ -29,51 +41,82 @@ def read(file):
         return open(file, "r")
 
 
-def load_jsons(src="./"):
+def load_jsons(src="./", conn_for_table=None):
     """
     Find json files from current path and load as pandas dataframes object
+    :param src: glob(r) source/importing directory path
+    :param conn_for_table: If connection object is given, convert JSON to table
     :return: dict contains Pandas dataframes object
     """
-    global _LAST_FILE_LIST
     names_dict = {}
     dfs = {}
 
-    _LAST_FILE_LIST = globr('*.json', src)
-    for f_path in _LAST_FILE_LIST:
-        f_1st_c = os.path.splitext(os.path.basename(f_path))[0][0]
-        new_name = f_1st_c
+    files = globr('*.json', src)
+    for f in files:
+        f_name, f_ext = os.path.splitext(os.path.basename(f))
+        _1st_char = f_name[0]
+        new_name = _1st_char
         for i in range(0, 9):
             if i > 0:
-                new_name = f_1st_c + str(i)
-            if new_name in names_dict and names_dict[new_name] == f_path:
-                # print "Found "+new_name+" for "+f_path
+                new_name = _1st_char + str(i)
+            if new_name in names_dict and names_dict[new_name] == f:
+                # print "Found "+new_name+" for "+f
                 break
             if new_name not in names_dict:
-                # print "New name "+new_name+" hasn't been used for "+f_path
+                # print "New name "+new_name+" hasn't been used for "+f
                 break
-        names_dict[new_name] = f_path
-        dfs[new_name] = pd.read_json(f_path)
+        names_dict[new_name] = f
+        dfs[new_name] = pd.read_json(f)
+        if bool(conn_for_table):
+            dfs[new_name].to_sql(f_name, con=conn_for_table)
     return (dfs, names_dict)
 
 
 ### DB processing functions
 # NOTE: without sqlalchemy is faster
-def _db(dbname=':memory:', dbtype='sqlite', isolation_level=None, echo=False):
-    if dbtype == 'sqlite':
+def _db(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalchemy=False, echo=False):
+    """
+    Create a DB object. For performance purpose, currently not using sqlalchemy if dbtype is sqlite
+    :param dbname: Database name
+    :param dbtype: DB type
+    :param isolation_level: Isolation level
+    :param echo: True output more if sqlalchemy is used
+    :return: DB object
+    """
+    if force_sqlalchemy is False and dbtype == 'sqlite':
         return sqlite3.connect(dbname, isolation_level=isolation_level)
     return create_engine(dbtype + ':///' + dbname, isolation_level=isolation_level, echo=echo)
 
 
-def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, echo=False):
-    conn = _db(dbname=dbname, dbtype=dbtype, isolation_level=isolation_level, echo=echo)
+def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalchemy=False, echo=False):
+    """
+    Connect to a database
+    :param dbname: Database name
+    :param dbtype: DB type
+    :param isolation_level: Isolation level
+    :param echo: True output more if sqlalchemy is used
+    :return: connection object
+    """
+    db = _db(dbname=dbname, dbtype=dbtype, isolation_level=isolation_level, force_sqlalchemy=force_sqlalchemy, echo=echo)
     if dbtype == 'sqlite':
-        # db.connect().connection.connection.text_factory = str
-        conn.text_factory = str
-        return conn
-    return conn.connect()
+        if force_sqlalchemy is False:
+            db.text_factory = str
+        else:
+            db.connect().connection.connection.text_factory = str
+        return db
+    return db.connect()
 
 
 def _insert2table(conn, tablename, taple, long_value="", num_cols=None):
+    """
+    Insert one taple to a tabale
+    :param conn: Connection object created by connect()
+    :param tablename: Table name
+    :param taple:
+    :param long_value: multi-lines log messages
+    :param num_cols: Number of columns in the table to populate missing column as None/NULL
+    :return: execute() method result
+    """
     if bool(num_cols) and len(taple) < num_cols:
         # - 1 for message
         for i in range(((num_cols - 1) - len(taple))):
@@ -85,6 +128,18 @@ def _insert2table(conn, tablename, taple, long_value="", num_cols=None):
 
 def file2table(conn, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\d\d",
                line_matching="(.+)", size_regex="", time_regex=""):
+    """
+    Insert one file (log) lines into one table
+    :param conn: Connection object created by connect()
+    :param file: (Log) file path
+    :param tablename: Table name
+    :param num_cols: number of columns in the table
+    :param line_beginning: To detect the beginning of the log entry (normally ^\d\d\d\d-\d\d-\d\d)
+    :param line_matching: A group matching regex to separate one log lines into columns
+    :param size_regex: (optional) size-like regex to populate 'size' column
+    :param time_regex: (optional) time/duration like regex to populate 'time' column
+    :return: last result of conn.execute()
+    """
     begin_re = re.compile(line_beginning)
     line_re = re.compile(line_matching)
     if bool(size_regex): size_re = re.compile(size_regex)
@@ -133,6 +188,20 @@ def files2table(conn, file_glob, tablename=None,
                 line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
                 size_regex="[sS]ize = ([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
                 max_file_num=10):
+    """
+    Insert multiple files into one table
+    :param conn:  Connection object
+    :param file_glob: simple regex used in glob to select files.
+    :param tablename: Table name
+    :param col_def: Column definition (column_name1 data_type, column_name2 data_type, ...)
+    :param num_cols: Number of columns in the table. Optional if col_def is given.
+    :param line_beginning: To detect the beginning of the log entry (normally ^\d\d\d\d-\d\d-\d\d)
+    :param line_matching: A group matching regex to separate one log lines into columns
+    :param size_regex: (optional) size-like regex to populate 'size' column
+    :param time_regex: (optional) time/duration like regex to populate 'time' column
+    :param max_file_num: To avoid memory issue, setting max files to import
+    :return: last result from file2table()
+    """
     # NOTE: as python dict does not guarantee the order, col_def is using string
     if bool(num_cols) is False:
         _cols = col_def.split(",")
@@ -144,9 +213,14 @@ def files2table(conn, file_glob, tablename=None,
     # If not None, create a table
     if bool(tablename) and bool(col_def):
         conn.execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def))
+    res = None
     for f in files:
-        file2table(conn=conn, file=f, tablename=tablename, num_cols=num_cols, line_beginning=line_beginning,
+        res = file2table(conn=conn, file=f, tablename=tablename, num_cols=num_cols, line_beginning=line_beginning,
                    line_matching=line_matching, size_regex=size_regex, time_regex=time_regex)
+        if bool(res) is False:
+            return res
+    return res
+
 
 # TEST
 # file_glob="debug.2018-08-23*.gz"
