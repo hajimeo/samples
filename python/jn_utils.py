@@ -6,7 +6,7 @@
 
 import sys, os, fnmatch, gzip, re
 import pandas as pd
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, types
 import sqlite3
 
 
@@ -41,11 +41,12 @@ def read(file):
         return open(file, "r")
 
 
-def load_jsons(src="./", conn_for_table=None):
+def load_jsons(src="./", conn_for_table=None, string_cols=['connectionId', 'planJson', 'json']):
     """
     Find json files from current path and load as pandas dataframes object
     :param src: glob(r) source/importing directory path
     :param conn_for_table: If connection object is given, convert JSON to table
+    :param string_cols: As of today, to_sql fails if column is json, so forcing those columns to string
     :return: dict contains Pandas dataframes object
     """
     names_dict = {}
@@ -68,8 +69,22 @@ def load_jsons(src="./", conn_for_table=None):
         names_dict[new_name] = f
         dfs[new_name] = pd.read_json(f)
         if bool(conn_for_table):
-            dfs[new_name].to_sql(f_name, con=conn_for_table)
+            try:
+                # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
+                _force_string(df=dfs[new_name], string_cols=string_cols)
+                dfs[new_name].to_sql(name=f_name, con=conn_for_table, chunksize=10)
+            # Get error message from Exception
+            except Exception as e:
+                sys.stderr.write("%s: %s\n" % (str(f_name), str(e)))
+                raise
     return (dfs, names_dict)
+
+
+def _force_string(df, string_cols):
+    keys = df.columns.tolist()
+    for k in keys:
+        if k in string_cols or k.lower().find('json') > 0:
+            df[k] = df[k].to_string()
 
 
 ### DB processing functions
@@ -97,7 +112,8 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     :param echo: True output more if sqlalchemy is used
     :return: connection object
     """
-    db = _db(dbname=dbname, dbtype=dbtype, isolation_level=isolation_level, force_sqlalchemy=force_sqlalchemy, echo=echo)
+    db = _db(dbname=dbname, dbtype=dbtype, isolation_level=isolation_level, force_sqlalchemy=force_sqlalchemy,
+             echo=echo)
     if dbtype == 'sqlite':
         if force_sqlalchemy is False:
             db.text_factory = str
@@ -138,7 +154,7 @@ def file2table(conn, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\
     :param line_matching: A group matching regex to separate one log lines into columns
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
-    :return: last result of conn.execute()
+    :return: A tuple contains last result of conn.execute()
     """
     begin_re = re.compile(line_beginning)
     line_re = re.compile(line_matching)
@@ -146,7 +162,6 @@ def file2table(conn, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\
     if bool(time_regex): time_re = re.compile(time_regex)
     prev_matches = None
     prev_message = None
-    last_res = None
     f = read(file)
     # Read lines
     for l in f:
@@ -154,8 +169,10 @@ def file2table(conn, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\
         if begin_re.search(l):
             # If previous matches aren't empty, save previous date into a table
             if bool(prev_matches):
-                last_res = _insert2table(conn=conn, tablename=tablename, taple=prev_matches, long_value=prev_message,
-                                         num_cols=num_cols)
+                res = _insert2table(conn=conn, tablename=tablename, taple=prev_matches, long_value=prev_message,
+                                    num_cols=num_cols)
+                if bool(res) is False:
+                    return (res, prev_matches, prev_message, num_cols)
                 prev_message = None
                 prev_matches = None
 
@@ -177,9 +194,11 @@ def file2table(conn, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\
             prev_message += "" + l  # Looks like each line already has '\n'
     # insert last message
     if bool(prev_matches):
-        last_res = _insert2table(conn=conn, tablename=tablename, taple=prev_matches, long_value=prev_message,
-                                 num_cols=num_cols)
-    return last_res
+        res = _insert2table(conn=conn, tablename=tablename, taple=prev_matches, long_value=prev_message,
+                            num_cols=num_cols)
+        if bool(res) is False:
+            return (res, prev_matches, prev_message, num_cols)
+    return True
 
 
 def files2table(conn, file_glob, tablename=None,
@@ -200,32 +219,42 @@ def files2table(conn, file_glob, tablename=None,
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
-    :return: last result from file2table()
+    :return: A tuple contains multiple information for debug
     """
     # NOTE: as python dict does not guarantee the order, col_def is using string
     if bool(num_cols) is False:
         _cols = col_def.split(",")
         num_cols = len(_cols)
     files = globr(file_glob)
-    if bool(files) is False: return False
+
+    if bool(files) is False:
+        return False
+
     if len(files) > max_file_num:
         raise ValueError('Glob: %s returned too many files (%s)' % (file_glob, str(len(files))))
+
     # If not None, create a table
     if bool(tablename) and bool(col_def):
-        conn.execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def))
-    res = None
+        res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def))
+        if bool(res) is False:
+            return (res, tablename, col_def)
+
     for f in files:
         res = file2table(conn=conn, file=f, tablename=tablename, num_cols=num_cols, line_beginning=line_beginning,
-                   line_matching=line_matching, size_regex=size_regex, time_regex=time_regex)
+                         line_matching=line_matching, size_regex=size_regex, time_regex=time_regex)
         if bool(res) is False:
-            return res
-    return res
+            return (res, f, tablename)
+    return True
 
 
-# TEST
-# file_glob="debug.2018-08-23*.gz"
-# tablename="engine_debug_log"
-# conn = ju.connect()
-# ju.files2table(conn=conn, file_glob=file_glob, tablename=tablename)
-# res = conn.execute("SELECT MAX(oid) FROM "+tablename)
-# res.fetchall()
+# TEST commands
+'''
+file_glob="debug.2018-08-23*.gz"
+tablename="engine_debug_log"
+conn = ju.connect(dbname='test.db')   # super slow
+res = ju.files2table(conn=conn, file_glob=file_glob, tablename=tablename)
+print res
+conn.execute("select name from sqlite_master where type = 'table'").fetchall()
+conn.execute("select sql from sqlite_master where name='%s'" % (tablename)).fetchall()
+conn.execute("SELECT MAX(oid) FROM %s" % (tablename)).fetchall()
+'''
