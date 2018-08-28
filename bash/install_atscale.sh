@@ -112,15 +112,15 @@ function f_setup() {
     if [[ "${_is_updating}" =~ (^y|^Y) ]]; then
         _log "INFO" "Updating (Upgrading) is selected, so that not creating a HDFS dir and Hive schema"; sleep 1
     else
+        # Assuming 'hive' command exists
+        sudo -u ${_user} hive -e "CREATE DATABASE IF NOT EXISTS ${_schema}" &
+
         if [ -s ${_KEYTAB_DIR%/}/hdfs.headless.keytab ]; then
             local _hdfs_principal="`klist -k ${_KEYTAB_DIR%/}/hdfs.headless.keytab | grep -oE -m1 'hdfs-.+$'`"
             sudo -u ${_hdfs_user} kinit -kt ${_KEYTAB_DIR%/}/hdfs.headless.keytab ${_hdfs_principal}
         fi
         sudo -u ${_hdfs_user} hdfs dfs -mkdir /user/${_user}
         sudo -u ${_hdfs_user} hdfs dfs -chown ${_user}: /user/${_user}
-
-        # Assuming 'hive' command exists TODO: should use beeline and tez, also if new installation, should drop database
-        sudo -u ${_user} hive -e "CREATE DATABASE IF NOT EXISTS ${_schema}" &
     fi
 
     # Running yum in here so that above hive command might finish before yum completes.
