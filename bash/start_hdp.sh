@@ -1044,6 +1044,60 @@ function f_loadResp() {
     return 0
 }
 
+function f_setup_HAProxy() {
+    local __doc__="Install and setup HAProxy"
+    local _master_node="${1}"
+    local _slave_node="${2}"
+    local _certificate="${3}"   # cat ./server.`hostname -d`.crt ./rootCA.pem ./server.`hostname -d`.key > certificate.pem'
+    local _ports="${4:-"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"}"
+    local _haproxy_tmpl_conf="${5:-/var/tmp/share/atscale/haproxy.tmpl.cfg}"
+
+    local _ssl_crt=""
+    local _cfg="/etc/haproxy/haproxy.cfg"
+    [ -n "${_master_node}" ] || return 1
+    apt-get install haproxy -y || return $?
+
+    local _first_port="`echo $_ports | awk '{print $1}'`"
+    if openssl s_client -connect ${_master_node}:${_first_port} -quiet; then
+        _info "Seems TLS/SSL is enabled on ${_master_node}:${_first_port}"
+
+        # If certificate is given, assuming to use TLS/SSL
+        if [ ! -s "${_certificate}" ]; then
+            _error "No ${_certificate} for TLS/SSL/HTTPS"; return 1
+        fi
+        _ssl_crt=' ssl crt '${_certificate}
+    fi
+
+    # Always get the latest template for now
+    curl -s --retry 3 -o ${_haproxy_tmpl_conf} "https://raw.githubusercontent.com/hajimeo/samples/master/misc/haproxy.tmpl.cfg" || return $?
+
+    # Backup
+    if [ -s "${_cfg}" ]; then
+        # Seems Ubuntu 16 and CentOS 6/7 use same config path
+        mv "${_cfg}" "${_cfg}".$(date +"%Y%m%d%H%M%S") || return $?
+        cp -f "${_haproxy_tmpl_conf}" "${_cfg}" || return $?
+    fi
+
+    # append 'ssl-server-verify none' in global
+    # comment out 'default-server init-addr last,libc,none'
+
+    for _p in $_ports; do
+        grep -qE "\s+bind\s+.+:{_p}\s*$" "${_cfg}" && continue
+        echo "
+frontend frontend_p${_p}
+  bind *:${_p}${_ssl_crt}
+  default_backend backend_p${_p}" >> "${_cfg}"
+        echo "
+backend backend_p${_p}
+  option httpchk GET /ping HTTP/1.1\r\nHost:\ www
+  server first_node ${_master_node}:${_p}${_ssl_crt}" >> "${_cfg}"
+        [ -n "${_slave_node}" ] && echo "  server second_node ${_master_node}:${_p}${_ssl_crt}" >> "${_cfg}"
+    done
+
+    # NOTE: May need to configure rsyslog.conf for log if CentOS
+    service haproxy reload
+}
+
 function f_ntp() {
     local __doc__="Run ntpdate $r_NTP_SERVER"
     local _ntp_server="${1-$r_NTP_SERVER}"
