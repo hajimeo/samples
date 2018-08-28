@@ -541,8 +541,11 @@ function f_install_post_tasks() {
     <property><name>hive.metastore.schema.verification</name><value>false</value></property>' ${_x}
             grep -q "hive.metastore.schema.verification.record.version" ${_x} || sed -i '/<\/configuration>/i \
     <property><name>hive.metastore.schema.verification.record.version</name><value>false</value></property>' ${_x}
-            grep -q "javax.jdo.option.ConnectionPassword" ${_x} || sed -i '/<\/configuration>/i \
+
+            if [ -n "${inst_as_hive_metastore_password}" ] && [ "${inst_as_hive_metastore_password}" != "<empty>" ]; then
+                grep -q "javax.jdo.option.ConnectionPassword" ${_x} || sed -i '/<\/configuration>/i \
     <property><name>javax.jdo.option.ConnectionPassword</name><value>'${inst_as_hive_metastore_password}'</value></property>' ${_x}
+            fi
         done
 
         sudo -u ${_usr} ${_dir%/}/bin/atscale_service_control restart atscale-hiveserver2 atscale-spark
