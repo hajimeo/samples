@@ -376,11 +376,11 @@ function _get_suffix() {
         [ -r "${_dir%/}/conf/config_debug.yaml" ] && _ver="$(sed -n 's/^as_default_schema: *\([^ ]\+\)/\1/p' "${_dir%/}/conf/config_debug.yaml" | sed 's/[^0-9_]//g')"
         if [ -n "${_ver}" ]; then echo ${_ver#_}; return; fi
 
-        _ver="`_get_version "${_dir}"`" "Y"
+        # Removing dot as this will be used for database/schema name in hive
+        _ver="`_get_version "${_dir}" "Y"`"
         [ -z "${_ver}" ] && _ver="000"    # means unknown
     fi
-    # Removing dot as this will be used for database/schema name in hive
-    echo "${_ver}_$(date +"%Y%m%d")" | sed 's/[^0-9_]//g'
+    echo "${_ver}_$(date +"%Y%m%d")"
 }
 
 function f_rm_logs() {
