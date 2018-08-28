@@ -114,7 +114,7 @@ function f_setup() {
     else
         # Assuming hive client installed
         local _zk_quorum="$(_get_from_xml "/etc/hive/conf/hive-site.xml" "hive.zookeeper.quorum")"
-        sudo -u ${_user} beeline -u 'jdbc:hive2://${_zk_quorum}/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace=hiveserver2' -n ${_user} -e "CREATE DATABASE IF NOT EXISTS ${_schema}" || return $?
+        sudo -u ${_user} beeline -u "jdbc:hive2://${_zk_quorum}/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace=hiveserver2" -n ${_user} -e "CREATE DATABASE IF NOT EXISTS ${_schema}" || return $?
 
         if [ -s ${_KEYTAB_DIR%/}/hdfs.headless.keytab ]; then
             local _hdfs_principal="`klist -k ${_KEYTAB_DIR%/}/hdfs.headless.keytab | grep -oE -m1 'hdfs-.+$'`"
