@@ -573,8 +573,16 @@ function f_install_post_tasks() {
     # { "status" : { "code" : 0, "message" : "200 OK" }, "responseCreated" : "2018-08-03T05:19:20.779Z", "response" : { "created" : true, "id" : "e22b575e-393f-4056-b5bf-32ea44501561" } }
     [ -z "${_groupId}" ] && return 11
 
-    # In my custom_hdp.yaml, i'm using hive for batch, so using batch
-    [ -z "${inst_as_hive_host_batch}" ] && inst_as_hive_host_batch="`hostname -f`"
+    # In my custom_hdp.yaml, as_hive_flavor_batch uses atscale-hive, so using batch (also spark as interactive but it often doesn't work and also not suitable for system queries)
+    if [ -z "${inst_as_hive_host_batch}" ]; then
+        if [ "${as_hive_flavor_batch}" = "hive" ]; then
+            # TODO: at this moment, assuming HS2 is installed same node as HMS
+            inst_as_hive_host_batch="`_get_from_xml "/etc/hive/conf/hive-site.xml" "hive.metastore.uris" | sed -r 's/.+\/\/([^:]+):.+/\1/'`"
+            inst_as_hive_port_batch="`_get_from_xml "/etc/hive/conf/hive-site.xml" "hive.server2.thrift.port"`"
+        else
+            inst_as_hive_host_batch="`hostname -f`"
+        fi
+    fi
     local _conId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default/connection-group/${_groupId}" -H "Authorization: Bearer ${jwt}" \
     -d '{"name":"'${inst_as_hive_flavor_batch}'","hosts":"'${inst_as_hive_host_batch}'","port":'${inst_as_hive_port_batch}',"connectorType":"hive","username":"atscale","password":"atscale","extraJdbcFlags":'${extraJdbcFlags}',"queryRoles":["large_user_query_role","small_user_query_role","system_query_role","canary_query_role"],"extraProperties":{}}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
     # Can execute next API call without conId though...
