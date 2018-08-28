@@ -120,7 +120,7 @@ function f_setup() {
         sudo -u ${_hdfs_user} hdfs dfs -chown ${_user}: /user/${_user}
 
         # Assuming 'hive' command exists TODO: should use beeline and tez, also if new installation, should drop database
-        sudo -u ${_user} hive -hiveconf hive.execution.engine='mr' -e "CREATE DATABASE IF NOT EXISTS ${_schema}" &
+        sudo -u ${_user} hive -e "CREATE DATABASE IF NOT EXISTS ${_schema}" &
     fi
 
     # Running yum in here so that above hive command might finish before yum completes.
@@ -206,7 +206,7 @@ function f_generate_custom_yaml() {
 
     # TODO: currently only for HDP
     local _tmp_yaml=/tmp/custom_hdp.yaml
-    curl -s -o ${_tmp_yaml} "https://raw.githubusercontent.com/hajimeo/samples/master/misc/custom_hdp.yaml" || return $?
+    curl -s --retry 3 -o ${_tmp_yaml} "https://raw.githubusercontent.com/hajimeo/samples/master/misc/custom_hdp.yaml" || return $?
 
     # expected variables
     local _atscale_host="`hostname -f`" || return $?
@@ -399,6 +399,7 @@ function f_pg_dump() {
 
     LD_LIBRARY_PATH=${_lib_path} PGPASSWORD=${PGPASSWORD:-atscale} ${_pg_dir%/}/bin/pg_dump -h localhost -p 10520 -U atscale -d atscale -Z 9 -f ${_dump_dest_filename} -v 1>&2 || return $?
     [ -s ${_dump_dest_filename} ] || return $?
+    echo ""
     ls -lh ${_dump_dest_filename}
 }
 
@@ -817,8 +818,8 @@ function f_setup_HAProxy_with_TLS() {
         # TODO: password 'hadoop' needs to be changed
         f_export_key "${_certs_dir%/}/server.keystore.jks" "hadoop"
     fi
-    if [ ! -s "${_certificate}" ]; then
-        _log "ERROR" "No ${_certificate}"; sleep 5; return 1
+        if [ ! -s "${_certificate}" ]; then
+            _log "ERROR" "No ${_certificate}"; sleep 5; return 1
     fi
 
     if [ ! -s "$_sample_conf" ]; then
@@ -844,7 +845,7 @@ function f_setup_HAProxy_with_TLS() {
         cp -f "${_sample_conf}" /etc/haproxy/haproxy.cfg || return $?
     fi
 
-    yum install haproxy -y || return $?
+        yum install haproxy -y || return $?
 
     # append 'ssl-server-verify none' in global
     # comment out 'default-server init-addr last,libc,none'
