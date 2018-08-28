@@ -359,13 +359,8 @@ function f_atscale_restore() {
 
 function _get_version() {
     local _dir="${1:-${_ATSCALE_DIR}}"
-    local _number_underscore_only="${2}"
     grep -q "^as_version:" ${_dir%/}/conf/versions/versions.*.yml 2>/dev/null || return 1
     local _ver="$(sed -n 's/^as_version: *\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p' "`ls -1 ${_dir%/}/conf/versions/versions.*.yml | tail -n1`")"
-    if [[ "${_number_underscore_only}" =~ (^y|^Y) ]]; then
-        echo "${_ver}" | sed 's/[^0-9_]//g'
-        return 0
-    fi
     echo "${_ver}"
 }
 
@@ -377,11 +372,11 @@ function _get_suffix() {
         [ -r "${_dir%/}/conf/config_debug.yaml" ] && _ver="$(sed -n 's/^as_default_schema: *\([^ ]\+\)/\1/p' "${_dir%/}/conf/config_debug.yaml" | sed 's/[^0-9_]//g')"
         if [ -n "${_ver}" ]; then echo ${_ver#_}; return; fi
 
-        # Removing dot as this will be used for database/schema name in hive
-        _ver="`_get_version "${_dir}" "Y"`"
+        _ver="`_get_version "${_dir}"`"
         [ -z "${_ver}" ] && _ver="000"    # means unknown
     fi
-    echo "${_ver}_$(date +"%Y%m%d")"
+    # Removing dot as this will be used for database/schema name in hive
+    echo "${_ver}_$(date +"%Y%m%d")" | sed 's/[^0-9_]//g'
 }
 
 function f_rm_logs() {
