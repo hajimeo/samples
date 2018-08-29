@@ -310,21 +310,24 @@ function f_atscale_backup() {
     fi
 
     local _backup_filename="atscale_$(hostname -f)_${_suffix}"
+    cd `dirname ${_dir}` || return $?   # Need 'cd' for creating exclude list (-X) as -C didn't work
+    ls -1 `basename ${_dir%/}`/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null > /tmp/f_atscale_backup_exclude_files_$$.out
+    ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null >> /tmp/f_atscale_backup_exclude_files_$$.out
+
     if which rsync &>/dev/null && [[ ! "${_using_tar}" =~ (^y|^Y) ]]; then
-        _log "INFO" "Rsync to ${_dst_dir%/}/${_backup_filename} from ${_dir}. Excluding log files ..."; sleep 1
+        _log "INFO" "Rsync to ${_dst_dir%/}/${_backup_filename} from ${_dir} Excluding log files ..."; sleep 1
         if [ ! -d "${_dst_dir%/}/${_backup_filename}" ]; then mkdir -p ${_dst_dir%/}/${_backup_filename} || return $?; fi
-        rsync -a --modify-window=1 --exclude-from=<(ls -1 ${_dir%/}/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null) ${_dir%/}/* ${_dst_dir%/}/${_backup_filename%/}/ || return $?
+        rsync -a --modify-window=1 --exclude-from=/tmp/f_atscale_backup_exclude_files_$$.out `basename ${_dir%/}`/* ${_dst_dir%/}/${_backup_filename%/}/ || return $?
         [ 2048 -lt "`du -s ${_dst_dir%/}/${_backup_filename%/} | awk '{print $1}'`" ] || return 18
         du -sh ${_dst_dir%/}/${_backup_filename%/}
     else
-        _log "INFO" "Creating ${_dst_dir%/}/${_backup_filename}.tgz from ${_dir%/}. Excluding log files ..."; sleep 1
+        _log "INFO" "Creating ${_dst_dir%/}/${_backup_filename}.tgz from ${_dir%/} Excluding log files ..."; sleep 1
         [ -s "${_dst_dir%/}/${_backup_filename}.tgz" ] && [ ! -s ${_dst_dir%/}/${_backup_filename}_$$.tgz ] && mv -f ${_dst_dir%/}/${_backup_filename}.tgz ${_dst_dir%/}/${_backup_filename}_$$.tgz &>/dev/null
-        cd `dirname ${_dir}` || return $?   # Need 'cd' for creating exclude list (-X) as -C didn't work
-        tar -chzf ${_dst_dir%/}/${_backup_filename}.tgz "`basename ${_dir%/}`" -X <(ls -1 `basename ${_dir%/}`/log/*{.stdout,/*.log,/*.log.gz} 2>/dev/null; ls -1 `basename ${_dir%/}`/share/postgresql-*/data/pg_log/* 2>/dev/null)
-        cd -
+        tar -chzf ${_dst_dir%/}/${_backup_filename}.tgz "`basename ${_dir%/}`" -X /tmp/f_atscale_backup_exclude_files_$$.out
         [ 2097152 -lt "`wc -c <${_dst_dir%/}/${_backup_filename}.tgz`" ] || return 19
         ls -lh ${_dst_dir%/}/${_backup_filename}.tgz
     fi
+    cd -
     _log "INFO" "To start AtScale: sudo -u ${_usr} ${_dir%/}/bin/atscale_start"
 }
 
@@ -384,7 +387,7 @@ function f_rm_logs() {
     local _dir="${1:-${_ATSCALE_DIR}}"
     local _days="${2:-1}"
     [ -d "${_dir}" ] || return $?
-    find ${_dir%/}/{log,share/postgresql-*/data/pg_log} -type f -mtime +${_days} \( -name "*\.gz" -o \( -name "*\.log\.*" -o -name "*\.stdout\.*" \) -exec grep -Iq . {} \; \) -and -print0 | xargs -0 -t -P3 -n1 -I {} rm -f {}
+    find ${_dir%/}/{log,share/postgresql-*/data/pg_log} -type f -and -mtime +${_days} -and \( -name "*.log.gz" -o -name "postgresql-2*.log" -o -name "*.stdout" \) -and -print0| xargs -0 -t -P3 -n1 -I {} rm -f {}
 }
 
 function f_pg_dump() {
