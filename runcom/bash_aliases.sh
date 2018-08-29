@@ -9,7 +9,8 @@ alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys
 alias logS="source ~/IdeaProjects/samples/bash/log_search.sh"
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
-# jn ./some_notebook.ipynb &
+# port: 30000
+alias mb='java -jar ~/Applications/metabase.jar'
 alias jn='if [ -d ~/backup/jupyter-notebook ]; then
     cp -f ~/backup/jupyter-notebook/Aggregation.ipynb ./ && jupyter notebook &
     while true; do
