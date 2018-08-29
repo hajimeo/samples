@@ -1058,7 +1058,7 @@ function f_setup_HAProxy() {
     apt-get install haproxy -y || return $?
 
     local _first_port="`echo $_ports | awk '{print $1}'`"
-    if openssl s_client -connect ${_master_node}:${_first_port} -quiet; then
+    if [ -n "${_certificate}" ] || openssl s_client -connect ${_master_node}:${_first_port} -quiet; then
         _info "Seems TLS/SSL is enabled on ${_master_node}:${_first_port}"
 
         # If certificate is given, assuming to use TLS/SSL
