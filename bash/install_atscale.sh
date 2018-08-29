@@ -509,7 +509,9 @@ function f_install_atscale() {
     cd -
 
     local _last_log="`ls -t1 /home/atscale/log/install-20*.log | head -n1`"
-    [ -s "${_last_log}" ] && grep '^Error:' ${_last_log} && return 1
+    if [ -s "${_last_log}" ]; then
+        cat "${_last_log}" | grep -v 'The yum provider can only be used as root' | grep '^Error:' && return 1
+    fi
     return 0
 }
 
