@@ -50,67 +50,104 @@ function p_support() {
     find . -type f -name 'versions.*.yml' -print | tee /tmp/versions_$$.out
     local _versions_yaml="`cat /tmp/versions_$$.out | sort -n | tail -n1`"
     if [ -s "${_versions_yaml}" ]; then
+        echo " "
         echo "## ${_versions_yaml}"
         cat "${_versions_yaml}"
         echo " "
     fi
-
-    echo "# Kerberos information"
-    _find_and_cat "config.yaml" | grep '^kerberos'
     echo " "
 
-    echo "# last 3 settings changes"
+    echo "# $(date +"%H%M%S"): settings.json last 3 settings changes"
     _find_and_cat "settings.json" | python -c "import sys,json;a=json.loads(sys.stdin.read());print json.dumps(a[-3:], indent=4)"
     echo " "
+    echo " "
 
-    echo "# Connection pool"
+    echo "# $(date +"%H%M%S"): config-custom.yaml for the first 20 lines"
+    _find_and_cat "config-custom.yaml" | head -n 20
+    echo " "
+    echo " "
+
+    echo "# $(date +"%H%M%S"): config.yaml - Kerberos information"
+    _find_and_cat "config.yaml" | grep '^kerberos'
+    echo " "
+    echo " "
+
+    echo "# $(date +"%H%M%S"): config.yaml | grep -iE '(max|size|pool).+000$' | grep -vi 'time'"
+    _find_and_cat "config.yaml" | grep -iE '(max|size|pool).+000$' | grep -vi "time"
+    echo " "
+    echo " "
+
+    echo "# $(date +"%H%M%S"): Connection pool"
     _find_and_cat "pool.json"
     echo " "
+    echo " "
 
-    #echo "# AtScale Engine Runtime Info"
+    echo "# $(date +"%H%M%S"): runtime.yaml"
     _find_and_cat "runtime.yaml"
     echo " "
+    echo " "
 
-    echo "# Cache status"
+    echo "# $(date +"%H%M%S"): current-status.json Cache status"
     _find_and_cat "current-status.json"
     echo " "
+    echo " "
 
-    echo "# Engine properties"
+    echo "# $(date +"%H%M%S"): properties.json Engine properties for last 20 lines"
     _find_and_cat "properties.json" | tail -n 20
     echo " "
-
-    echo "# AD/LDAP config"
-    _find_and_cat "directory_configurations.json"
-    f_genLdapsearch
     echo " "
 
-    echo "# 10 large tables (by num rows)"
+    echo "# $(date +"%H%M%S"): directory_configurations.json"
+    _find_and_cat "directory_configurations.json"
+    echo " "
+    echo " "
+    f_genLdapsearch
+    echo " "
+    echo " "
+
+    echo "# $(date +"%H%M%S"): tableSizes.tsv 10 large tables (by num rows)"
     _find_and_cat "tableSizes.tsv" | sort -n -k2 | tail -n 10
     echo " "
 }
 
 function p_performance() {
     local _date_regex="${1}"
-    local _file_path="${2}"
+    local _glob="${2}"
     local _n="${3:-20}"
 
-    echo "# Get result sizes from the engine debug log (datetime, queryId, size, time)"
-    f_checkResultSize "${_date_regex}" "${_file_path}" "${_n}"
+    echo "# $(date +"%H%M%S"): f_checkResultSize success query size from the engine log (datetime, queryId, size, time) and top ${_n}"
+    f_checkResultSize "${_date_regex}" "${_glob}" "${_n}"
     echo " "
 
-    echo "# Get 'preCheckout timing report' from the engine debug log (datetime, statement duration, test duration)"
-    f_preCheckoutDuration "${_date_regex}" "${_file_path}" | sort -t'|' -nk3 | tail -n${_n}
+    echo "# $(date +"%H%M%S"): f_failedQueries failed queries from the engine log (datetime, queryId, time) and top ${_n}"
+    f_failedQueries "${_date_regex}" "${_glob}" "${_n}"
     echo " "
 
-    echo "# Check Agg Batch Kick off count from the engine debug log (datetime, batchId, how many, isFullBuild)"
-    f_aggBatchKickoffSize "${_date_regex}" "${_file_path}" | sort -t'|' -nk3 | tail -n${_n}
+    echo "# $(date +"%H%M%S"): f_preCheckoutDuration from the engine debug log (datetime, statement duration, test duration) and top ${_n}"
+    f_preCheckoutDuration "${_date_regex}" "${_glob}" | sort -t'|' -nk3 | tail -n${_n}
+    echo " "
 
-    echo "# Count lines and threads between _search_regex of the last periodic.log"
+    echo "# $(date +"%H%M%S"): f_aggBatchKickoffSize from the engine debug log (datetime, batchId, how many, isFullBuild) and top ${_n}"
+    f_aggBatchKickoffSize "${_date_regex}" "${_glob}" ${_n}
+    echo " "
+
+    echo "# $(date +"%H%M%S"): f_count_lines and f_count_threads against the last periodic.log for top ${_n}"
     f_count_lines
     f_count_threads "" "${_n}"
     echo " "
 
-    f_topSlowLogs "${_file_path}" "${_date_regex}"
+    echo "# $(date +"%H%M%S"): f_topSlowLogs from engine *debug* log if no _glob, and top ${_n}"
+    f_topSlowLogs "^${_date_regex}" "" "${_glob}" "" "" "${_n}"
+    echo " "
+
+    echo "# $(date +"%H%M%S"): f_topErrors from engine log and top ${_n}"
+    f_topErrors "${_glob}" "${_date_regex}" "" "" "${_n}"
+    echo " "
+
+    if [ -n "${_glob}" ]; then
+        echo "# $(date +"%H%M%S"): f_start_end_list (start time, end time, difference(sec), filesize)"
+        f_start_end_list "${_date_regex}" "${_glob}"
+    fi
 }
 
 
@@ -122,17 +159,17 @@ function _find_and_cat() {
 
 function f_checkResultSize() {
     local __doc__="Get result sizes from the engine debug log (datetime, queryId, size, time)"
-    local _date_regex="${1}"
-    local _file_path="${2}"
+    local _date_regex="${1}"    # No need ^
+    local _glob="${2:-engine*.log*}"
     local _n="${3:-20}"
-    [ -z "${_date_regex}" ] && _date_regex="\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+"
+    [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
-    rg -N --no-filename -g "debug*.log*" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ size = ([^,]+), time = ([^,]+)," -r '${1}|${2}|${3}|${4}' ${_file_path} | sort -n | uniq > /tmp/f_checkResultSize_$$.out
-    echo "### histogram (time vs size) ##############################################################"
-    rg -N --no-filename "^(\d\d\d\d-\d\d-\d\d).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_checkResultSize_$$.out | bar_chart.py -A
+    rg -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ size = ([^,]+), time = ([^,]+)," -r '${1}|${2}|${3}|${4}' | sort -n | uniq > /tmp/f_checkResultSize_$$.out
+    echo "### histogram (time vs query size) ########################################################"
+    rg -N --no-filename "^(${_DATE_FORMAT}).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_checkResultSize_$$.out | bar_chart.py -A
     echo ' '
     echo "### histogram (time vs query count) #######################################################"
-    rg -N --no-filename "^(\d\d\d\d-\d\d-\d\d).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_checkResultSize_$$.out | bar_chart.py
+    rg -N --no-filename "^(${_DATE_FORMAT}).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_checkResultSize_$$.out | bar_chart.py
     echo ' '
     echo "### Large size (datetime|queryId|size|time) ###############################################"
     cat /tmp/f_checkResultSize_$$.out | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
@@ -143,27 +180,59 @@ function f_checkResultSize() {
     ls -lh /tmp/f_checkResultSize_$$.out
 }
 
+function f_failedQueries() {
+    local __doc__="Get Logging query failures (datetime, queryId, time)"
+    local _date_regex="${1}"    # No need ^
+    local _glob="${2:-engine*.log*}"
+    local _n="${3:-20}"
+    [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
+
+    rg -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ Logging query failure.+ time = ([^,]+)," -r '${1}|${2}|${3}' | sort -n | uniq > /tmp/f_failedQueries_$$.out
+    echo "### histogram (time vs failed query count) ################################################"
+    rg -N --no-filename "^(${_DATE_FORMAT}).(\d\d:\d).*\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_failedQueries_$$.out | bar_chart.py
+    echo ' '
+    echo "### Slow failed query (datetime|queryId|time) #############################################"
+    cat /tmp/f_checkResultSize_$$.out | grep ' s$' | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
+    echo " "
+    ls -lh /tmp/f_checkResultSize_$$.out
+}
+
 function f_preCheckoutDuration() {
     local __doc__="Get 'preCheckout timing report' from the engine debug log (datetime, statement duration, test duration)"
     # f_preCheckoutDuration | sort -t'|' -nk3 | tail -n 10
-    local _date_regex="${1}"
-    local _file_path="${2}"
+    local _date_regex="${1}"    # No need ^
+    local _glob="${2:-engine*.log*}"
     #local _n="${3:-20}"
-    [ -z "${_date_regex}" ] && _date_regex="\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+"
+    [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
     # NOTE: queryId sometime is not included
-    rg -N --no-filename -g 'debug*.log*' -o "^(${_date_regex}).+preCheckout timing report:.+statementDurations=[^=]+=([0-9,.]+) (.+)\].+testDuration=[^=]+=([0-9,.]+) (.+)\]" -r '${1}|${2}${3}|${4}${5}' ${_file_path} | gsed -r 's/([0-9]+)\.([0-9]{2})s/\1\20ms/g'# | gsed -r 's/ms//g'
+    rg -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+preCheckout timing report:.+statementDurations=[^=]+=([0-9,.]+) (.+)\].+testDuration=[^=]+=([0-9,.]+) (.+)\]" -r '${1}|${2}${3}|${4}${5}' | gsed -r 's/([0-9]+)\.([0-9]{2})s/\1\20ms/g'# | gsed -r 's/ms//g'
 }
 
 function f_aggBatchKickoffSize() {
     local __doc__="Check Agg Batch Kick off count from the engine debug log (datetime, batchId, how many, isFullBuild)"
     # f_aggBatchKickoffSize | sort -t'|' -nk3 | tail -n 10
-    local _date_regex="${1}"
-    local _file_path="${2}"
-    #local _n="${3:-20}"
-    [ -z "${_date_regex}" ] && _date_regex="\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+"
+    local _date_regex="${1}"    # No need ^
+    local _glob="${2:-engine*.log*}"
+    local _n="${3:-20}"
+    [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
-    rg -N --no-filename -g 'debug*.log*' -o "^(${_date_regex}).+ Kickoff batch (........-....-....-....-............) with ([0-9,]+) aggregate\(s\) and isFullBuild (.+)" -r '${1}|${2}|${3}|${4}' ${_file_path}
+    rg -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+ Kickoff batch (........-....-....-....-............) with ([0-9,]+) aggregate\(s\) and isFullBuild (.+)" -r '${1}|${2}|${3}|${4}' | sort > /tmp/f_aggBatchKickoffSize_$$.out
+
+    rg -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+WARN.+ Aggregate Batch.+(........-....-....-....-............).+failed with error message" -r '${1}|${2}' | sort > /tmp/f_aggBatchKickoffSize_failed_$$.out
+
+    echo "### histogram (time vs batch aggregate size) ##############################################"
+    rg -N --no-filename "^(${_DATE_FORMAT}).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_aggBatchKickoffSize_$$.out | bar_chart.py -A
+    echo ' '
+    echo "### histogram (time vs batch count) #######################################################"
+    rg -N --no-filename "^(${_DATE_FORMAT}).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_aggBatchKickoffSize_$$.out | bar_chart.py
+    echo ' '
+    echo "### histogram (time vs failed batch count) ################################################"
+    rg -N --no-filename "^(${_DATE_FORMAT}).(\d\d:\d).*\|([^|]+)" -r '${1}T${2}' /tmp/f_aggBatchKickoffSize_failed_$$.out | bar_chart.py
+    echo ' '
+    echo "### Large size (datetime|batchId|size|full) ###############################################"
+    cat /tmp/f_aggBatchKickoffSize_$$.out | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
+    echo ' '
 }
 
 function f_rg() {
@@ -193,7 +262,7 @@ function f_rg() {
     # If _regex is UUID, checking if it's query ID TODO: add more logic for other types of UUID
     if [[ "${_regex}" =~ .{8}-.{4}-.{4}-.{12} ]]; then
         echo "# checking if this UUID is a query ID by searching *only* queries.log files"
-        rg ${_def_rg_opts} -g 'queries.log*' "^\d\d\d\d-\d\d-\d\d.+${_regex}.+ (Received|Executing) (SQL|Analysis) [Qq]uery" -A 3
+        rg ${_def_rg_opts} -g 'queries.log*' "^${_DATE_FORMAT}.+${_regex}.+ (Received|Executing) (SQL|Analysis) [Qq]uery" -A 3
         echo " "
     fi
 
@@ -259,7 +328,7 @@ for l in sys.stdin:
     trap - SIGINT
     echo ' '
     echo "# generated temp files (file name    start    end    diff_sec    size)" >&2
-    f_start_end_list "${_tmpfile_pfx}*.tmp"
+    f_start_end_list "" "${_tmpfile_pfx}*.tmp"
     echo ' '
     echo "# May want to also run
         f_topErrors './hosts/*/logs/engine/engine.*' '${_first_dt}0' '${_last_dt}9'
@@ -319,7 +388,7 @@ function f_topCausedByExceptions() {
 
 function f_topErrors() {
     local __doc__="List top ERRORs. NOTE: with _date_from and without may produce different result (ex: Caused by)"
-    local _path="$1"        # file path which rg accepts and NEEDS double-quotes
+    local _glob="${1:-engine*.log*}"        # file path which rg accepts and NEEDS double-quotes
     local _date_from="$2"   # ISO format datetime
     local _date_to="$3"     # ISO format datetime
     local _regex="$4"       # to overwrite default regex to detect ERRORs
@@ -343,21 +412,17 @@ function f_topErrors() {
         _regex="^(${_date_regex}).+${_regex}"
     fi
 
-    echo "# Regex = '${_regex}'" >&2
+    echo "# Regex = '${_regex}'"
     # Currently only search .log or .log.gz etc
-    if [ -z "${_path}" ]; then
-        # NOTE: -c does not work with -l
-        rg --search-zip -c -g '*.log*' -g '*.stdout*' -o "${_regex}"
-    fi
-
-    rg --search-zip --no-line-number --no-filename -g '*.log*' -g '*.stdout*' -o "${_regex}" ${_path} > /tmp/f_topErrors.$$.tmp
+    rg --search-zip -c -g "${_glob}" "${_regex}"
+    rg --search-zip --no-line-number --no-filename -g "${_glob}" -o "${_regex}" > /tmp/f_topErrors.$$.tmp
 
     # just for fun, drawing bar chart
     if [ -n "${_date_from}" ] && which bar_chart.py &>/dev/null; then
         local _date_regex2="^[0-9-/]+ \d\d:\d"
         [ "`wc -l /tmp/f_topErrors.$$.tmp | awk '{print $1}'`" -lt 400 ] && _date_regex2="^[0-9-/]+ \d\d:\d\d"
         echo ' '
-        rg --search-zip --no-line-number --no-filename -g '*.log*' -g '*.stdout*' -o "${_date_regex2}" /tmp/f_topErrors.$$.tmp | sed 's/T/ /' | bar_chart.py
+        rg --search-zip --no-line-number --no-filename -o "${_date_regex2}" /tmp/f_topErrors.$$.tmp | sed 's/T/ /' | bar_chart.py
         echo " "
     fi
 
@@ -390,11 +455,13 @@ function f_topSlowLogs() {
         _regex="(slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout|timed out|going into queue, is \[...+\] in line).+"
     fi
 
+    echo "# Regex = '${_regex}'"
+    rg --search-zip -c -g "${_glob}" -wio "${_regex}"
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
-        rg -N --no-filename -g "${_glob}" -wio "$_regex" $_path | sort | uniq -c | sort -n
+        rg --search-zip -N --no-filename -g "${_glob}" -wio "$_regex" $_path | sort | uniq -c | sort -n
     else
         # ([0-9]){2,4} didn't work also (my note) sed doesn't support \d
-        rg -N --no-filename -g "${_glob}" -wi "$_regex" $_path | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
+        rg --search-zip -N --no-filename -g "${_glob}" -wio "$_regex" $_path | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
     fi
 }
 
@@ -781,15 +848,17 @@ function f_swimlane() {
 
 function f_start_end_list(){
     local __doc__="Output start time, end time, difference(sec), (filesize) from *multiple* log files"
-    local _files="${1}"
-    local _sort="${2:-2}"
-    local _date_regex="${3:-^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d}"
-    [ -z  "${_files}" ] && _files=`ls -1`
-    for _f in `ls -1 ${_files}`; do f_start_end_time_with_diff $_f "${_date_regex}"; done | sort -t$'\t' -k${_sort}
+    local _date_regex="${1:-${_DATE_FORMAT}.\d\d:\d\d:\d\d}"
+    local _glob="${2}"
+    local _sort="${3:-2}"
+    # If no file(s) given, check current working directory
+    local _files="`ls -1`"
+    [ -n  "${_glob}" ] && _files="`find . -type f -name "${_glob}" -print`"
+    for _f in `echo ${_files}`; do f_start_end_time_with_diff $_f "^${_date_regex}"; done | sort -t$'\t' -k${_sort}
 }
 
 function f_start_end_time_with_diff(){
-    local __doc__="Output start time, end time, difference(sec), (filesize) from a log file (eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"^\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)"
+    local __doc__="Output start time, end time, difference(sec), (filesize) from a log file (eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"^${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)"
     local _log="$1"
     local _date_regex="${2}"
     [ -z "$_date_regex" ] && _date_regex="^20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d"
@@ -805,7 +874,7 @@ function f_start_end_time_with_diff(){
     local _end_int=`_date2int "${_end_date}"`
     local _diff=$(( $_end_int - $_start_int ))
     # Filename, start datetime, enddatetime, difference, (filesize)
-    echo -e "${_log}\t${_start_date}\t${_end_date}\t${_diff}s\t$((`gstat -c"%s" ${_log}` / 1024))KB"
+    echo -e "`basename ${_log}`\t${_start_date}\t${_end_date}\t${_diff}s\t$((`gstat -c"%s" ${_log}` / 1024))KB"
 }
 
 function _date2int() {
