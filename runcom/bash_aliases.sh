@@ -47,7 +47,7 @@ function asftpl() {
         _name="-name '$1' "
     fi
     #ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lht '$1' | head -n '${2:-20}
-    ssh -q asftp -t 'cd /home/ubuntu/upload && find . -type f -mtime -2 -size +10240k '${_name}'-ls | sort -k9,10 -r | tail -n'${_n}
+    ssh -q asftp -t 'cd /home/ubuntu/upload && find . -type f -mtime -2 -size +10240k '${_name}'-ls | sort -k9,10 | tail -n'${_n}
 }
 function asftpd() {
     [ -z "$1" ] && ( asftpl; return 1 )
