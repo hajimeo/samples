@@ -77,13 +77,12 @@ def load_jsons(src="./", db_conn=None, string_cols=['connectionId', 'planJson', 
 def _pick_new_key(file, names_dict, using_1st_char=False):
     f_name = os.path.basename(file)
     if using_1st_char:
-        new_key = f_name[0]
-    else:
-        new_key = f_name
+        f_name = f_name[0]
+    new_key = f_name
 
     for i in range(0, 9):
         if i > 0:
-            new_key = new_key + str(i)
+            new_key = f_name + str(i)
         if new_key in names_dict and names_dict[new_key] == file:
             break
         if new_key not in names_dict:
