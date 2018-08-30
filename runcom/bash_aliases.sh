@@ -43,7 +43,7 @@ function asftpl() {
     local _name=""
     if [[ "$1" =~ [0-9]+ ]]; then
         _n=$1
-    else
+    elif [ -n "$1" ]; then
         _name="-name '$1' "
     fi
     #ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lht '$1' | head -n '${2:-20}
