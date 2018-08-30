@@ -1087,9 +1087,9 @@ function f_setup_HAProxy() {
 frontend frontend_p${_p}
   bind *:${_p}${_ssl_crt}
   default_backend backend_p${_p}" >> "${_cfg}"
+        # TODO:  option httpchk GET /ping HTTP/1.1\r\nHost:\ www
         echo "
 backend backend_p${_p}
-  option httpchk GET /ping HTTP/1.1\r\nHost:\ www
   server first_node ${_master_node}:${_p}${_ssl_crt}" >> "${_cfg}"
         [ -n "${_slave_node}" ] && echo "  server second_node ${_master_node}:${_p}${_ssl_crt}" >> "${_cfg}"
     done
