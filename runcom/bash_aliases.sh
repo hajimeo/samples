@@ -39,18 +39,20 @@ alias asS3='s3cmd ls s3://files.atscale.com/installer/package/ | grep -E "atscal
 ### Functions (some command syntax does not work with alias eg: sudo) ###############################
 # NOTE: the hostname 'asftp' is specified in .ssh_config
 function asftpl() {
-    local _n=10
-    local _name=""
+    local _name="$1"
+    local _n="$2"
+    # If the first argument looks like integer, use as n
     if [[ "$1" =~ [0-9]+ ]]; then
         _n=$1
+        [ -n "$2" ] && _name="-name '$2' "
     elif [ -n "$1" ]; then
+        _n="$2"
         _name="-name '$1' "
     fi
-    #ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lht '$1' | head -n '${2:-20}
-    ssh -q asftp -t 'cd /home/ubuntu/upload && find . -type f -mtime -2 -size +10240k '${_name}'-ls | sort -k9,10 | tail -n'${_n}
+    ssh -q asftp -t 'cd /home/ubuntu/upload && find . -type f -mtime -2 -size +10240k '${_name}'-ls | sort -k9,10 | tail -n'${_n:-20}
 }
 function asftpd() {
-    [ -z "$1" ] && ( asftpl; return 1 )
+    [ -z "$1" ] && ( ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lhtr | tail -n20'; return 1 )
     for _a in "$@"; do
         local _ext="${_a##*.}"
         local _rsync_opts="-Phz"
