@@ -73,7 +73,7 @@ function p_support() {
     echo " "
 
     echo "# $(date +"%H%M%S"): config.yaml | grep -iE '(max|size|pool).+000$' | grep -vi 'time'"
-    _find_and_cat "config.yaml" | grep -iE '(max|size|pool).+000$' | grep -vi "time"
+    _find_and_cat "config.yaml" | grep -iE '(max|size|pool).+(000|mins|hours)$' | grep -vi "time"
     echo " "
     echo " "
 
@@ -114,47 +114,65 @@ function p_performance() {
     local _date_regex="${1}"
     local _glob="${2}"
     local _n="${3:-20}"
+    local _exclude_slow_one="$4"
 
-    echo "# $(date +"%H%M%S"): f_checkResultSize success query size from the engine log (datetime, queryId, size, time) and top ${_n}"
-    f_checkResultSize "${_date_regex}" "${_glob}" "${_n}"
+    # Prepare command list for _mexec (but as rg is already multi-threading, not much diff)
+    if [[ ! "${_exclude_slow_one}" =~ ^(y|Y) ]]; then
+        cat << EOF > /tmp/perform_cmds.tmp
+f_topSlowLogs "^${_date_regex}" "${_glob}" "" "" "${_n}"                           > /tmp/perform_f_topSlowLogs_$$.out
+f_topErrors "${_glob}" "${_date_regex}" "" "" "${_n}"                              > /tmp/perform_f_topErrors_$$.out
+EOF
+    fi
+    cat << EOF >> /tmp/perform_cmds.tmp
+f_checkResultSize "${_date_regex}" "${_glob}" "${_n}"                              > /tmp/perform_f_checkResultSize_$$.out
+f_checkMaterializeWorkers "${_date_regex}" "${_glob}" "${_n}"                      > /tmp/perform_f_checkMaterializeWorkers_$$.out
+f_failedQueries "${_date_regex}" "${_glob}" "${_n}"                                > /tmp/perform_f_failedQueries_$$.out
+f_preCheckoutDuration "${_date_regex}" "${_glob}" | sort -t'|' -nk3 | tail -n${_n} > /tmp/perform_f_preCheckoutDuration_$$.out
+f_aggBatchKickoffSize "${_date_regex}" "${_glob}" ${_n}                            > /tmp/perform_f_aggBatchKickoffSize_$$.out
+f_count_lines                                                                      > /tmp/perform_f_count_lines_$$.out
+f_count_threads "" "${_n}"                                                         > /tmp/perform_f_count_threads_$$.out
+EOF
+    _mexec /tmp/perform_cmds.tmp "source $BASH_SOURCE;"
+
+    echo "# f_checkResultSize success query size from the engine log (datetime, queryId, size, time) and top ${_n}"
+    cat /tmp/perform_f_checkResultSize_$$.out
     echo " "
 
-    echo "# $(date +"%H%M%S"): f_failedQueries failed queries from the engine log (datetime, queryId, time) and top ${_n}"
-    f_failedQueries "${_date_regex}" "${_glob}" "${_n}"
+    echo "# f_checkMaterializeWorkers Materialization queue size from the engine debug log and top ${_n}"
+    cat /tmp/perform_f_checkMaterializeWorkers_$$.out
     echo " "
 
-    echo "# $(date +"%H%M%S"): f_preCheckoutDuration from the engine debug log (datetime, statement duration, test duration) and top ${_n}"
-    f_preCheckoutDuration "${_date_regex}" "${_glob}" | sort -t'|' -nk3 | tail -n${_n}
+    echo "# f_failedQueries failed queries from the engine log (datetime, queryId, time) and top ${_n}"
+    cat /tmp/perform_f_failedQueries_$$.out
     echo " "
 
-    echo "# $(date +"%H%M%S"): f_aggBatchKickoffSize from the engine debug log (datetime, batchId, how many, isFullBuild) and top ${_n}"
-    f_aggBatchKickoffSize "${_date_regex}" "${_glob}" ${_n}
+    echo "# f_preCheckoutDuration from the engine debug log (datetime, statement duration, test duration) and top ${_n}"
+    cat /tmp/perform_f_preCheckoutDuration_$$.out
     echo " "
 
-    echo "# $(date +"%H%M%S"): f_count_lines and f_count_threads against the last periodic.log for top ${_n}"
-    f_count_lines
-    f_count_threads "" "${_n}"
+    echo "# f_aggBatchKickoffSize from the engine debug log (datetime, batchId, how many, isFullBuild) and top ${_n}"
+    cat /tmp/perform_f_aggBatchKickoffSize_$$.out
     echo " "
 
-    echo "# $(date +"%H%M%S"): f_topSlowLogs from engine *debug* log if no _glob, and top ${_n}"
-    f_topSlowLogs "^${_date_regex}" "" "${_glob}" "" "" "${_n}"
+    echo "# f_count_lines and f_count_threads against the last periodic.log for top ${_n}"
+    cat /tmp/perform_f_count_lines_$$.out
+    cat /tmp/perform_f_count_threads_$$.out
     echo " "
 
-    echo "# $(date +"%H%M%S"): f_topErrors from engine log and top ${_n}"
-    f_topErrors "${_glob}" "${_date_regex}" "" "" "${_n}"
-    echo " "
+    if [[ ! "${_exclude_slow_one}" =~ ^(y|Y) ]]; then
+        echo "# f_topSlowLogs from engine *debug* log if no _glob, and top ${_n}"
+        cat /tmp/perform_f_topSlowLogs_$$.out
+        echo " "
+
+        echo "# f_topErrors from engine log and top ${_n}"
+        cat /tmp/perform_f_topErrors_$$.out
+        echo " "
+    fi
 
     if [ -n "${_glob}" ]; then
-        echo "# $(date +"%H%M%S"): f_start_end_list (start time, end time, difference(sec), filesize)"
+        echo "# f_start_end_list (start time, end time, difference(sec), filesize)"
         f_start_end_list "${_date_regex}" "${_glob}"
     fi
-}
-
-
-
-function _find_and_cat() {
-    local _f="`find . -name "$1" -print`"
-    cat "${_f}"
 }
 
 function f_checkResultSize() {
@@ -165,11 +183,11 @@ function f_checkResultSize() {
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
     rg -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ size = ([^,]+), time = ([^,]+)," -r '${1}|${2}|${3}|${4}' | sort -n | uniq > /tmp/f_checkResultSize_$$.out
-    echo "### histogram (time vs query size) ########################################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_checkResultSize_$$.out | bar_chart.py -A
+    echo "### histogram (time vs query result size) #################################################"
+    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_checkResultSize_$$.out | bar_chart.py -A
     echo ' '
     echo "### histogram (time vs query count) #######################################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_checkResultSize_$$.out | bar_chart.py
+    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_checkResultSize_$$.out | bar_chart.py
     echo ' '
     echo "### Large size (datetime|queryId|size|time) ###############################################"
     cat /tmp/f_checkResultSize_$$.out | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
@@ -178,6 +196,32 @@ function f_checkResultSize() {
     cat /tmp/f_checkResultSize_$$.out | grep ' s$' | sort -t '|' -nk4 | tail -n${_n} | tr '|' '\t'
     echo " "
     ls -lh /tmp/f_checkResultSize_$$.out
+}
+
+function f_checkMaterializeWorkers() {
+    local __doc__="Check Materialization worker size (datetime, queryId, size, time)"
+    local _date_regex="${1}"    # No need ^
+    local _glob="${2:-debug*.log*}" # As TRACE log, needs debug log
+    local _n="${3:-20}"
+    [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
+
+    local _waiting="$(rg -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+TRACE .+ No workers available for request, adding to queue of size (\d+)" -r '${1}|${2}')"
+    local _working="$(rg -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+TRACE .+ Worker .+ is available to handle request" -r '${1}|-1')"
+    ( echo  "${_waiting}"; echo "${_working}" ) | awk -F"|" '{print $1"|"$2+1}' | sort -n > /tmp/f_checkMaterializeWorkers_$$.out
+    # Shouldn't accumulate queue size (need windowing...)
+    echo "### histogram (time vs worker queue (waiting) size) #######################################"
+    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)" -r '${1}T${2} ${3}' /tmp/f_checkMaterializeWorkers_$$.out | sort -n | uniq  | sort -k1,1r -k2,2nr > /tmp/f_checkMaterializeWorkers_filtered_$$.out
+    for _dt in `cat /tmp/f_checkMaterializeWorkers_filtered_$$.out | cut -d" " -f1 | sort -n | uniq`; do
+        grep -m 1 "^${_dt}" /tmp/f_checkMaterializeWorkers_filtered_$$.out
+    done | bar_chart.py -A
+    echo ' '
+    echo "### histogram (time vs materialize request count) #########################################"
+    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)" -r '${1}T${2}' /tmp/f_checkMaterializeWorkers_$$.out | bar_chart.py
+    echo ' '
+    echo "### Large materialize queue size (datetime|size) ##########################################"
+    cat /tmp/f_checkMaterializeWorkers_$$.out | sort -t '|' -nk2 | tail -n${_n} | tr '|' '\t'
+    echo " "
+    ls -lh /tmp/f_checkMaterializeWorkers_$$.out
 }
 
 function f_failedQueries() {
@@ -189,12 +233,12 @@ function f_failedQueries() {
 
     rg -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ Logging query failure.+ time = ([^,]+)," -r '${1}|${2}|${3}' | sort -n | uniq > /tmp/f_failedQueries_$$.out
     echo "### histogram (time vs failed query count) ################################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(\d\d:\d).*\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_failedQueries_$$.out | bar_chart.py
+    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_failedQueries_$$.out | bar_chart.py
     echo ' '
     echo "### Slow failed query (datetime|queryId|time) #############################################"
-    cat /tmp/f_checkResultSize_$$.out | grep ' s$' | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
+    cat /tmp/f_failedQueries_$$.out | grep ' s$' | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
     echo " "
-    ls -lh /tmp/f_checkResultSize_$$.out
+    ls -lh /tmp/f_failedQueries_$$.out
 }
 
 function f_preCheckoutDuration() {
@@ -222,13 +266,13 @@ function f_aggBatchKickoffSize() {
     rg -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+WARN.+ Aggregate Batch.+(........-....-....-....-............).+failed with error message" -r '${1}|${2}' | sort > /tmp/f_aggBatchKickoffSize_failed_$$.out
 
     echo "### histogram (time vs batch aggregate size) ##############################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_aggBatchKickoffSize_$$.out | bar_chart.py -A
+    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_aggBatchKickoffSize_$$.out | bar_chart.py -A
     echo ' '
     echo "### histogram (time vs batch count) #######################################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(\d\d:\d).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_aggBatchKickoffSize_$$.out | bar_chart.py
+    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_aggBatchKickoffSize_$$.out | bar_chart.py
     echo ' '
     echo "### histogram (time vs failed batch count) ################################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(\d\d:\d).*\|([^|]+)" -r '${1}T${2}' /tmp/f_aggBatchKickoffSize_failed_$$.out | bar_chart.py
+    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)" -r '${1}T${2}' /tmp/f_aggBatchKickoffSize_failed_$$.out | bar_chart.py
     echo ' '
     echo "### Large size (datetime|batchId|size|full) ###############################################"
     cat /tmp/f_aggBatchKickoffSize_$$.out | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
@@ -331,7 +375,7 @@ for l in sys.stdin:
     f_start_end_list "" "${_tmpfile_pfx}*.tmp"
     echo ' '
     echo "# May want to also run
-        f_topErrors './hosts/*/logs/engine/engine.*' '${_first_dt}0' '${_last_dt}9'
+        f_topErrors \"engine.*log*\" '${_first_dt}0' '${_last_dt}9'
         f_checkResultSize '${_first_dt}'    # until ${_last_dt}
         f_count_lines
         f_count_threads
@@ -400,7 +444,7 @@ function f_topErrors() {
     fi
 
     if [ -z "$_regex" ]; then
-        _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|[Ff]ailed|[Ss]low|[Tt]oo|rejecting|[Ee]rror|timed out)\b.+"
+        _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|[Ff]ailed)\b.+"
     fi
 
     if [ -n "${_date_from}" ]; then
@@ -413,8 +457,7 @@ function f_topErrors() {
     fi
 
     echo "# Regex = '${_regex}'"
-    # Currently only search .log or .log.gz etc
-    rg --search-zip -c -g "${_glob}" "${_regex}"
+    #rg --search-zip -c -g "${_glob}" "${_regex}"
     rg --search-zip --no-line-number --no-filename -g "${_glob}" -o "${_regex}" > /tmp/f_topErrors.$$.tmp
 
     # just for fun, drawing bar chart
@@ -429,39 +472,28 @@ function f_topErrors() {
     cat "/tmp/f_topErrors.$$.tmp" | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
 }
 
-function _replace_number() {
-    gsed -r "s/[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+/__UUID__/g" \
-     | gsed -r "s/0x[0-9a-f][0-9a-f]+/0x_HEX_/g" \
-     | gsed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/_DATE_ /g" \
-     | gsed -r "s/[0-2][0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/_TIME_/g" \
-     | gsed -r "s/-[0-9]+\]\s+\{/-N] {/g" \
-     | gsed -r "s/[0-9][0-9][0-9][0-9][0-9]+/_NUM_/g"
-}
-
 function f_topSlowLogs() {
-    local __doc__="List top performance related log entries. Eg.: f_topSlwErrors ./hbase-ams-master-fslhd.log Y \"\" \"^2017-05-10\""
-    local _date_regex_start="$1"
-    local _date_regex_end="$2"
-    local _glob="${3:-debug.*log*}"
-    local _regex="$4"
-    local _not_hiding_number="$5"
-    local _top_N="${6:-10}" # how many result to show
+    local __doc__="List top performance related log entries."
+    local _date_regex="$1"
+    local _glob="${2:-debug.*log*}"
+    local _regex="$3"
+    local _not_hiding_number="$4"
+    local _top_N="${5:-10}" # how many result to show
 
-    if [ -n "$_date_regex_start" ]; then
-        _getAfterFirstMatch "$_path" "$_date_regex_start" "$_date_regex_end" > /tmp/f_topSlowLogs$$.tmp
-        _path=/tmp/f_topSlowLogs$$.tmp
-    fi
     if [ -z "$_regex" ]; then
-        _regex="(slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout|timed out|going into queue, is \[...+\] in line).+"
+        _regex="\b(Caused by|slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout|timed out|going into queue, is \[...+\] in line|rejecting)\b.+"
+    fi
+    if [ -n "${_date_regex}" ]; then
+        _regex="^${_date_regex}.+${_regex}"
     fi
 
     echo "# Regex = '${_regex}'"
-    rg --search-zip -c -g "${_glob}" -wio "${_regex}"
+    #rg --search-zip -c -g "${_glob}" -wio "${_regex}"
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
-        rg --search-zip -N --no-filename -g "${_glob}" -wio "$_regex" $_path | sort | uniq -c | sort -n
+        rg --search-zip -N --no-filename -g "${_glob}" -io "$_regex" | sort | uniq -c | sort -n
     else
         # ([0-9]){2,4} didn't work also (my note) sed doesn't support \d
-        rg --search-zip -N --no-filename -g "${_glob}" -wio "$_regex" $_path | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
+        rg --search-zip -N --no-filename -g "${_glob}" -io "$_regex" | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
     fi
 }
 
@@ -877,12 +909,6 @@ function f_start_end_time_with_diff(){
     echo -e "`basename ${_log}`\t${_start_date}\t${_end_date}\t${_diff}s\t$((`gstat -c"%s" ${_log}` / 1024))KB"
 }
 
-function _date2int() {
-    local _date_str="$1"
-    [[ "${_date_str}" =~ ^[0-9][0-9]\/[0-9][0-9]\/[0-9][0-9].[0-9][0-9]:[0-9][0-9]:[0-9][0-9] ]] && _date_str="`dateconv "${_date_str}" -i "%y/%m/%d %H:%M:%S" -f "%Y-%m-%d %H:%M:%S"`"
-    gdate -d "${_date_str}" +"%s"
-}
-
 function f_split_strace() {
     local __doc__="Split a strace output, which didn't use -ff, per PID. As this function may take time, it should be safe to cancel at any time, and re-run later"
     local _strace_file="$1"
@@ -1018,26 +1044,8 @@ function f_hive_checklist() {
     fi
 }
 
-function _search_properties() {
-    local _path="${1-./}"
-    local _props="$2" # space separated regex
-    local _is_name_value_xml="$3"
-
-    for _p in ${_props}; do
-        if [[ "${_is_name_value_xml}" =~ (^y|^Y) ]]; then
-            local _out="`ggrep -Pzo "(?s)<name>${_p}</name>.+?</value>" ${_path}`"
-            [[ "${_out}" =~ (<value>)(.*)(</value>) ]]
-            echo "${_p}=${BASH_REMATCH[2]}"
-        else
-            # Expecting hive 'set' command output or similar style (prop=value)
-            ggrep -P "${_p}" ${_path}
-        fi
-    done
-}
-
 _COMMON_QUERIE_UPDATES="UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00' WHERE user_name='admin' and user_type='LOCAL';"
 _COMMON_QUERIE_SELECTS="select * from metainfo where metainfo_key = 'version';select repo_version_id, stack_id, display_name, repo_type, substring(repositories, 1, 500) from repo_version order by repo_version_id desc limit 5;SELECT * FROM clusters WHERE security_type = 'KERBEROS';"
-
 function f_load_ambaridb_to_postgres() {
     local __doc__="Load ambari DB sql file into Mac's (locals) PostgreSQL DB"
     local _sql_file="$1"
@@ -1171,13 +1179,17 @@ function f_count_threads() {
 
 ### Private functions ##################################################################################################
 
-function _mg() {
-    local __doc__="Deprecated and use 'rg': Grep multiple files with Multiple process"
-    local _search_regex="$1"    # (ERROR |FATAL|Caused by|Stack trace)
-    local _grep_option="$2"
-    local _num_process="${3:-4}"
-    [ -z "${_grep_option}" ] && _grep_option="-wE"
-    find . -type f -print0 | xargs -0 -n1 -P ${_num_process} ggrep -H ${_grep_option} "${_search_regex}"
+function _mexec() {
+    local __doc__="Execute multple commands concurrently. NOTE: seems Mac's xargs has command length limit and no -r to ignore empty line"
+    local _cmds_list="$1"
+    local _prefix_cmd="$2"  # NOTE: no ";"
+    local _suffix_cmd="$3"  # NOTE: no ";"
+    local _num_process="${4:-3}"
+    if [ -f "${_cmds_list}" ]; then
+        cat "${_cmds_list}"
+    else
+        echo ${_cmds_list}
+    fi | tr '\n' '\0' | xargs -0 -n1 -P${_num_process} -I @@ bash -c "${_prefix_cmd}@@${_suffix_cmd}"
 }
 
 function _split() {
@@ -1202,7 +1214,7 @@ function _getAfterFirstMatch() {
         if [ -n "$_end_regex" ]; then
             #gsed -n "${_start_line_num},\$s/${_end_regex}/&/p" "$_file_path"
             local _tmp_start_line_num=$_start_line_num
-            [[ "$_exclude_first_line" =~ y|Y ]] && _tmp_start_line_num=$(($_start_line_num + 1))
+            [[ "$_exclude_first_line" =~ ^(y|Y) ]] && _tmp_start_line_num=$(($_start_line_num + 1))
             if [ "${_extension}" = 'gz' ]; then
                 _end_line_num=`gunzip -c "$_file_path" | tail -n +${_tmp_start_line_num} | ggrep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
             else
@@ -1217,6 +1229,45 @@ function _getAfterFirstMatch() {
         fi
     fi
 }
+
+function _date2int() {
+    local _date_str="$1"
+    [[ "${_date_str}" =~ ^[0-9][0-9]\/[0-9][0-9]\/[0-9][0-9].[0-9][0-9]:[0-9][0-9]:[0-9][0-9] ]] && _date_str="`dateconv "${_date_str}" -i "%y/%m/%d %H:%M:%S" -f "%Y-%m-%d %H:%M:%S"`"
+    gdate -d "${_date_str}" +"%s"
+}
+
+function _find_and_cat() {
+    local _f="`find . -name "$1" -print`"
+    cat "${_f}"
+}
+
+function _replace_number() {
+    gsed -r "s/[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+/__UUID__/g" \
+     | gsed -r "s/0x[0-9a-f][0-9a-f]+/0x_HEX_/g" \
+     | gsed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/_DATE_ /g" \
+     | gsed -r "s/[0-2][0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/_TIME_/g" \
+     | gsed -r "s/-[0-9]+\]\s+\{/-N] {/g" \
+     | gsed -r "s/[0-9][0-9][0-9][0-9][0-9]+/_NUM_/g"
+}
+
+function _search_properties() {
+    local _path="${1-./}"
+    local _props="$2" # space separated regex
+    local _is_name_value_xml="$3"
+
+    for _p in ${_props}; do
+        if [[ "${_is_name_value_xml}" =~ (^y|^Y) ]]; then
+            local _out="`ggrep -Pzo "(?s)<name>${_p}</name>.+?</value>" ${_path}`"
+            [[ "${_out}" =~ (<value>)(.*)(</value>) ]]
+            echo "${_p}=${BASH_REMATCH[2]}"
+        else
+            # Expecting hive 'set' command output or similar style (prop=value)
+            ggrep -P "${_p}" ${_path}
+        fi
+    done
+}
+
+
 
 ### Help ###############################################################################################################
 
@@ -1298,10 +1349,11 @@ _HOSTNAME_REGEX='^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-
 _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
 _TEST_REGEX='^\[.+\]$'
 [ -z "$_DATE_FORMAT" ] && _DATE_FORMAT="\d\d\d\d-\d\d-\d\d"
+[ -z "$_TIME_FMT4CHART" ] && _TIME_FMT4CHART="\d\d:\d"
 _SCRIPT_DIR="$(dirname $(realpath "$BASH_SOURCE"))"
 
-### Main ###############################################################################################################
 
+### Main ###############################################################################################################
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
     while getopts "f:s:e:t:h" opts; do
