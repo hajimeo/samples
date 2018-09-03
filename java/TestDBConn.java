@@ -6,9 +6,6 @@ import java.sql.*;
 
 public class TestDBConn {
     public static void main(String[] args) {
-        Connection conn = null;
-        Statement stmt = null;
-
         if (args.length < 4) {
             System.err.println("Usage:");
             System.err.println("    java -cp .:path_to_jdbc.jar TestDBConn driver_class_name jdbc_str username password [sql]");
@@ -20,7 +17,6 @@ public class TestDBConn {
         String jdbc_conn_str = args[1];
         String db_user = args[2];
         String db_pass = args[3];
-
         String sql = "";
         if (args.length > 4) {
             sql = args[4];
@@ -29,11 +25,11 @@ public class TestDBConn {
         try {
             Class.forName(class_name);
             System.err.println("INFO: Connecting to " + jdbc_conn_str + " as " + db_user + "...");
-            conn = DriverManager.getConnection(jdbc_conn_str, db_user, db_pass);
+            Connection conn = DriverManager.getConnection(jdbc_conn_str, db_user, db_pass);
 
             if (sql.length() > 0) {
                 System.err.println("INFO: Executing " + sql + " ...");
-                stmt = conn.createStatement();
+                Statement stmt = conn.createStatement();
                 ResultSet rs = stmt.executeQuery(sql);
                 ResultSetMetaData metaData = rs.getMetaData();
                 int columnCount = metaData.getColumnCount();
