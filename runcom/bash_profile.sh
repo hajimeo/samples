@@ -4,22 +4,32 @@ if [ -f ~/IdeaProjects/samples/runcom/bash_aliases.sh ]; then
 fi
 
 # Go/Golang related
-export GOROOT=/usr/local/opt/go/libexec
-export GOPATH=$HOME/go
-export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
+if [ -d /usr/local/opt/go/libexec ]; then
+    export GOROOT=/usr/local/opt/go/libexec
+    export GOPATH=$HOME/go
+    export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
+fi
 
 # Kerberos client
-export KRB5_CONFIG=$HOME/krb5.conf
+if [ -s $HOME/krb5.conf ]; then
+    export KRB5_CONFIG=$HOME/krb5.conf
+fi
 
 # ripgrep(rg)
-export RIPGREP_CONFIG_PATH=$HOME/.rgrc
+if [ -s RIPGREP_CONFIG_PATH=$HOME/.rgrc ]; then
+    export RIPGREP_CONFIG_PATH=$HOME/.rgrc
+fi
 
-# python
-export PYTHONPATH=~/IdeaProjects/samples/python:$PYTHONPATH
+# python related
+if [ -d ~/IdeaProjects/samples/python ]; then
+    export PYTHONPATH=~/IdeaProjects/samples/python:$PYTHONPATH
+fi
 
-# java
-#export JAVA_HOME=`/usr/libexec/java_home -v 10`
-export JAVA_HOME=`/usr/libexec/java_home -v 1.8`
+# java related
+if [ -f /usr/libexec/java_home ]; then
+    #export JAVA_HOME=`/usr/libexec/java_home -v 10`
+    export JAVA_HOME=`/usr/libexec/java_home -v 1.8`
+fi
 
 # iterm2
 #curl -L https://iterm2.com/shell_integration/bash -o ~/.iterm2_shell_integration.bash
