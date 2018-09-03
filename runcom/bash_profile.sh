@@ -1,6 +1,8 @@
 # ln -s ~/IdeaProjects/samples/runcom/bash_profile.sh ~/.bash_profile
-if [ -f ~/IdeaProjects/samples/runcom/bash_aliases.sh ]; then
+if [ -s ~/IdeaProjects/samples/runcom/bash_aliases.sh ]; then
     source ~/IdeaProjects/samples/runcom/bash_aliases.sh
+elif [ -s ~/.bash_aliases ]; then
+    source ~/.bash_aliases
 fi
 
 # Go/Golang related
