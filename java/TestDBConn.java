@@ -28,12 +28,11 @@ public class TestDBConn {
 
         try {
             Class.forName(class_name);
-
-            System.err.println("Connecting to database...");
+            System.err.println("INFO: Connecting to " + jdbc_conn_str + " as " + db_user + "...");
             conn = DriverManager.getConnection(jdbc_conn_str, db_user, db_pass);
 
             if (sql.length() > 0) {
-                System.err.println("Executing statement...");
+                System.err.println("INFO: Executing " + sql + " ...");
                 stmt = conn.createStatement();
                 ResultSet rs = stmt.executeQuery(sql);
                 ResultSetMetaData metaData = rs.getMetaData();
@@ -58,7 +57,7 @@ public class TestDBConn {
             }
             conn.close();
 
-            System.out.println("Completed!");
+            System.err.println("INFO: Completed!");
         } catch (Exception e) {
             e.printStackTrace();
         }
