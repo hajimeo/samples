@@ -1,5 +1,16 @@
 #!/usr/bin/env bash
+#
 # Collection of functions to setup a desktop / work environment
+# Expecting this script works with non-root user (but sudo required)
+#
+#
+
+function f_setup_bash() {
+    [ -s ~/.bash_profile ] && mv ~/.bash_profile /tmp/.bash_profile_$$
+    curl -o ~/.bash_profile -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh"
+    [ -s ~/.bash_aliases ] && mv ~/.bash_aliases /tmp/.bash_aliases_$$
+    curl -o ~/.bash_aliases -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh"
+}
 
 function f_setup_rg() {
     if ! which rg &>/dev/null; then
@@ -30,15 +41,19 @@ function f_setup_jupyter() {
         return 1
     fi
 
-    sudo pip install --upgrade pip
+    # TODO: should use vertualenv?
+    #virtualenv myenv && source myenv/bin/activate
+    sudo -i pip install --upgrade pip
 
-    sudo pip install jupyter || return $?
-    sudo pip install jupyter_contrib_nbextensions pandas sqlalchemy ipython-sql
+    sudo -i pip install jupyter || return $?
+    sudo -i pip install jupyter_contrib_nbextensions pandas sqlalchemy ipython-sql
 
     # Enable spell checker
-    sudo pip install bash_kernel && python -m bash_kernel.install
-    sudo jupyter contrib nbextension install # --user
-    sudo jupyter nbextension enable spellchecker/main
+    sudo -i pip install bash_kernel && sudo -i python -m bash_kernel.install
+    if [ $? -eq 0 ]; then
+        sudo -i jupyter contrib nbextension install # --user
+        sudo -i jupyter nbextension enable spellchecker/main
+    fi
 }
 
 function f_jn(){
