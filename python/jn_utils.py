@@ -66,6 +66,7 @@ def load_jsons(src="./", db_conn=None, string_cols=['connectionId', 'planJson', 
     :param db_conn: If connection object is given, convert JSON to table
     :param string_cols: As of today, to_sql fails if column is json, so forcing those columns to string
     :return: dict contains Pandas dataframes object
+    # TODO: add test
     >>> pass
     """
     names_dict = {}
@@ -272,6 +273,7 @@ def _read_file_and_search(file, line_beginning, line_matching, size_regex=None, 
     :param time_regex: Regex to capture time/duration
     :param num_cols: Number of columns
     :return: A list of tuples
+    # TODO: add test
     >>> pass
     """
     begin_re = re.compile(line_beginning)
@@ -317,6 +319,7 @@ def files2table(conn, file_glob, tablename=None,
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
     :return: A tuple contains multiple information for debug
+    # TODO: add test
     >>> pass
     """
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
@@ -375,6 +378,7 @@ def files2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr',
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
     :return: A concatenated DF object
+    # TODO: add test
     >>> pass
     """
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
