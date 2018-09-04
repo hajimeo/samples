@@ -11,16 +11,15 @@ from sqlalchemy import create_engine
 import sqlite3
 
 
-### Utility's utility functions
-
-
 ### Text processing functions
 def globr(ptn='*', src='./'):
     """
     As Python 2.7's glob does not have recursive option
     :param ptn: glob regex pattern
     :param src: source/importing directory path
-    :return: list contains matched file pathes
+    :return: list contains matched file paths
+    >>> l = globr();len(l) > 0
+    True
     """
     matches = []
     for root, dirnames, filenames in os.walk(src):
@@ -36,6 +35,8 @@ def read(file):
     Read a single normal or gz file
     :param file:
     :return: file handler
+    >>> f = read(__file__);f.name == __file__
+    True
     """
     if not os.path.isfile(file):
         return None
@@ -52,13 +53,14 @@ def load_jsons(src="./", db_conn=None, string_cols=['connectionId', 'planJson', 
     :param db_conn: If connection object is given, convert JSON to table
     :param string_cols: As of today, to_sql fails if column is json, so forcing those columns to string
     :return: dict contains Pandas dataframes object
+    >>> pass
     """
     names_dict = {}
     dfs = {}
 
     files = globr('*.json', src)
     for f in files:
-        new_name = _pick_new_key(f, names_dict, True)
+        new_name = pick_new_key(os.path.basename(f), names_dict, True)
         names_dict[new_name] = f
         dfs[new_name] = pd.read_json(f)
         if bool(db_conn):
@@ -74,16 +76,26 @@ def load_jsons(src="./", db_conn=None, string_cols=['connectionId', 'planJson', 
     return (dfs, names_dict)
 
 
-def _pick_new_key(file, names_dict, using_1st_char=False):
-    f_name = os.path.basename(file)
+def pick_new_key(name, names_dict, using_1st_char=False):
+    """
+    Find a non-conflicting a dict key for given name (normally a file name/path)
+    :param name: name to be saved or used as a dict key
+    :param names_dict: list of names which already exist
+    :param using_1st_char: if new name
+    :return: a string of a new dict key which hasn't been used
+    >>> pick_new_key('test', {'test':'aaa'}, False)
+    'test1'
+    >>> pick_new_key('test', {'test':'aaa', 't':'bbb'}, True)
+    't1'
+    """
     if using_1st_char:
-        f_name = f_name[0]
-    new_key = f_name
+        name = name[0]
+    new_key = name
 
     for i in range(0, 9):
         if i > 0:
-            new_key = f_name + str(i)
-        if new_key in names_dict and names_dict[new_key] == file:
+            new_key = name + str(i)
+        if new_key in names_dict and names_dict[new_key] == name:
             break
         if new_key not in names_dict:
             break
@@ -91,13 +103,23 @@ def _pick_new_key(file, names_dict, using_1st_char=False):
 
 
 def _force_string(df, string_cols):
+    """
+    Convert some DF cols to String to workaround "<table>: Error binding parameter <N> - probably unsupported type."
+    :param df: A *reference* of panda DataFrame
+    :param string_cols: List contains column names. Ex. ['connectionId', 'planJson', 'json']
+    :return: Void
+    # TODO: at this moment, somehow it add row id(?)
+    >>> import pandas as pd;df = pd.DataFrame({'col1':'a','col2':{'s1':'v1'}, 'col3':1234});_force_string(df, ['col2'])
+    >>> df.col2.to_string()
+    u's1    s1    v1'
+    """
     keys = df.columns.tolist()
     for k in keys:
         if k in string_cols or k.lower().find('json') > 0:
             df[k] = df[k].to_string()
 
 
-### DB processing functions
+### Database/DataFrame processing functions
 # NOTE: without sqlalchemy is faster
 def _db(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalchemy=False, echo=False):
     """
@@ -107,6 +129,8 @@ def _db(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalche
     :param isolation_level: Isolation level
     :param echo: True output more if sqlalchemy is used
     :return: DB object
+    # As testing in connect()
+    >>> pass
     """
     if force_sqlalchemy is False and dbtype == 'sqlite':
         return sqlite3.connect(dbname, isolation_level=isolation_level)
@@ -121,6 +145,9 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     :param isolation_level: Isolation level
     :param echo: True output more if sqlalchemy is used
     :return: connection object
+    >>> import sqlite3;s = connect()
+    >>> isinstance(s, sqlite3.Connection)
+    True
     """
     db = _db(dbname=dbname, dbtype=dbtype, isolation_level=isolation_level, force_sqlalchemy=force_sqlalchemy,
              echo=echo)
@@ -133,23 +160,42 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     return db.connect()
 
 
-def _insert2table(conn, tablename, tuple, long_value="", num_cols=None):
+def massage_tuple_for_save(tpl, long_value="", num_fields=None):
     """
-    Insert one tuple to a tabale
+    Massage the given tuple to convert to a DataFrame or a Table columns later
+    :param tpl: Tuple which contains value of a row
+    :param long_value: multi-lines log messages
+    :param num_fields: Number of columns in the table to populate missing column as None/NULL
+    :return: modified tuple
+    >>> massage_tuple_for_save(('a','b'), "aaaa", 4)
+    ('a', 'b', None, 'aaaa')
+    """
+    if bool(num_fields) and len(tpl) < num_fields:
+        # - 1 for message
+        for i in range(((num_fields - 1) - len(tpl))):
+            tpl += (None,)
+    tpl += (long_value,)
+    return tpl
+
+
+def _insert2table(conn, tablename, tpls, long_value="", num_cols=None, chunk_size=1000):
+    """
+    Insert one tuple or tuples to a table
     :param conn: Connection object created by connect()
     :param tablename: Table name
-    :param tuple:
+    :param tpls: a Tuple or a list of Tuples, which each Tuple contains values for a row
     :param long_value: multi-lines log messages
     :param num_cols: Number of columns in the table to populate missing column as None/NULL
     :return: execute() method result
+    # TODO: a bit hard to test
+    >>> pass
     """
-    if bool(num_cols) and len(tuple) < num_cols:
-        # - 1 for message
-        for i in range(((num_cols - 1) - len(tuple))):
-            tuple += (None,)
-    tuple += (long_value,)
-    placeholders = ','.join('?' * len(tuple))
-    return conn.execute("INSERT INTO " + tablename + " VALUES (" + placeholders + ")", tuple)
+    if isinstance(tpls, list):
+        first_obj = tpls[0]
+    else:
+        first_obj = tpls
+    placeholders = ','.join('?' * len(first_obj))
+    return conn.execute("INSERT INTO " + tablename + " VALUES (" + placeholders + ")", tpls)
 
 
 def file2table(conn, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\d\d",
@@ -165,6 +211,7 @@ def file2table(conn, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :return: A tuple contains last result of conn.execute()
+    >>> pass
     """
     begin_re = re.compile(line_beginning)
     line_re = re.compile(line_matching)
@@ -180,7 +227,7 @@ def file2table(conn, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\
             # If previous matches aren't empty, save previous date into a table
             if bool(prev_matches):
                 # TODO: should insert multiple tuples
-                res = _insert2table(conn=conn, tablename=tablename, tuple=prev_matches, long_value=prev_message,
+                res = _insert2table(conn=conn, tablename=tablename, tpls=prev_matches, long_value=prev_message,
                                     num_cols=num_cols)
                 if bool(res) is False:
                     return (res, prev_matches, prev_message, num_cols)
@@ -205,7 +252,7 @@ def file2table(conn, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\
             prev_message += "" + l  # Looks like each line already has '\n'
     # insert last message
     if bool(prev_matches):
-        res = _insert2table(conn=conn, tablename=tablename, tuple=prev_matches, long_value=prev_message,
+        res = _insert2table(conn=conn, tablename=tablename, tpls=prev_matches, long_value=prev_message,
                             num_cols=num_cols)
         if bool(res) is False:
             return (res, prev_matches, prev_message, num_cols)
@@ -231,6 +278,7 @@ def files2table(conn, file_glob, tablename=None,
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
     :return: A tuple contains multiple information for debug
+    >>> pass
     """
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_cols) is False:
@@ -270,22 +318,6 @@ def files2table(conn, file_glob, tablename=None,
     return True
 
 
-def _prepare4df(tuple, long_value="", num_fields=None):
-    """
-    Insert one tuple to a tabale
-    :param tuple:
-    :param long_value: multi-lines log messages
-    :param num_fields: Number of columns in the table to populate missing column as None/NULL
-    :return: modified tuple
-    """
-    if bool(num_fields) and len(tuple) < num_fields:
-        # - 1 for message
-        for i in range(((num_fields - 1) - len(tuple))):
-            tuple += (None,)
-    tuple += (long_value,)
-    return tuple
-
-
 def file2df(file, col_names=None, num_fields=None,
             line_beginning="^\d\d\d\d-\d\d-\d\d",
             line_matching="(.+)", size_regex="", time_regex=""):
@@ -299,6 +331,7 @@ def file2df(file, col_names=None, num_fields=None,
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :return: A dataframe object
+    >>> pass
     """
     if bool(num_fields) is False:
         num_fields = len(col_names)
@@ -316,7 +349,7 @@ def file2df(file, col_names=None, num_fields=None,
         if begin_re.search(l):
             # If previous matches aren't empty, save previous date into a table
             if bool(prev_matches):
-                tmp_tuple = _prepare4df(tuple=prev_matches, long_value=prev_message, num_fields=num_fields)
+                tmp_tuple = massage_tuple_for_save(tpl=prev_matches, long_value=prev_message, num_fields=num_fields)
                 if bool(tmp_tuple) is False:
                     return (prev_matches, prev_message, num_fields)
                 tuples += [tmp_tuple]
@@ -341,7 +374,7 @@ def file2df(file, col_names=None, num_fields=None,
             prev_message += "" + l  # Looks like each line already has '\n'
     # append last message
     if bool(prev_matches):
-        tuples += [_prepare4df(tuple=prev_matches, long_value=prev_message, num_fields=num_fields)]
+        tuples += [massage_tuple_for_save(tpl=prev_matches, long_value=prev_message, num_fields=num_fields)]
     return pd.DataFrame.from_records(tuples, columns=col_names)
 
 
@@ -361,6 +394,7 @@ def files2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr',
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
     :return: A concatenated DF object
+    >>> pass
     """
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_fields) is False:
@@ -381,14 +415,19 @@ def files2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr',
     return pd.concat(dfs)
 
 
-# TEST commands
-'''
-file_glob="debug.2018-08-23*.gz"
-tablename="engine_debug_log"
-conn = ju.connect()   # Using dbname will be super slow
-res = ju.files2table(conn=conn, file_glob=file_glob, tablename=tablename)
-print res
-conn.execute("select name from sqlite_master where type = 'table'").fetchall()
-conn.execute("select sql from sqlite_master where name='%s'" % (tablename)).fetchall()
-conn.execute("SELECT MAX(oid) FROM %s" % (tablename)).fetchall()
-'''
+if __name__ == '__main__':
+    import doctest
+
+    doctest.testmod(verbose=True)
+
+    # TEST commands
+    '''
+    file_glob="debug.2018-08-23*.gz"
+    tablename="engine_debug_log"
+    conn = ju.connect()   # Using dbname will be super slow
+    res = ju.files2table(conn=conn, file_glob=file_glob, tablename=tablename)
+    print res
+    conn.execute("select name from sqlite_master where type = 'table'").fetchall()
+    conn.execute("select sql from sqlite_master where name='%s'" % (tablename)).fetchall()
+    conn.execute("SELECT MAX(oid) FROM %s" % (tablename)).fetchall()
+    '''
