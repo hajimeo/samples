@@ -12,7 +12,7 @@ alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_
 # port: 30000
 alias mb='java -jar ~/Applications/metabase.jar'
 alias jn='if [ -d ~/backup/jupyter-notebook ]; then
-    cp -f ~/backup/jupyter-notebook/Aggregation.ipynb ./ && jupyter notebook &
+    cp ~/backup/jupyter-notebook/Aggregation.ipynb ./ && jupyter notebook &
     while true; do
         sleep 300
         if [ "`ls -1 ./*.ipynb 2>/dev/null | wc -l`" -gt 0 ]; then
