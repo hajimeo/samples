@@ -18,7 +18,7 @@ if [ -s $HOME/krb5.conf ]; then
 fi
 
 # ripgrep(rg)
-if [ -s RIPGREP_CONFIG_PATH=$HOME/.rgrc ]; then
+if [ -s $HOME/.rgrc ]; then
     export RIPGREP_CONFIG_PATH=$HOME/.rgrc
 fi
 
