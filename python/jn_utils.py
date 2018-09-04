@@ -5,10 +5,43 @@
 #
 
 import sys, os, fnmatch, gzip, re
-from multiprocessing import Process
+import multiprocessing as mp
 import pandas as pd
 from sqlalchemy import create_engine
 import sqlite3
+
+
+def _mexec(func_and_args, num=None):
+    """
+    Execute multiple functions asynchronously
+    :param func_and_args: list of [func_obj, [args]]
+    :param num: number of pool. if None, half of CPUs
+    :return: List of multiprocessing.pool.ApplyResult
+    >>> def square(x): return x * x
+    ...
+    >>> def cube(y): return y * y * y
+    ...
+    >>> rs = _mexec([[square, {'x':1}], [cube, 2]])
+    >>> rs[0].get()
+    1
+    >>> rs[1].get()
+    8
+    """
+    if bool(num) is False: num = int(mp.cpu_count() / 2)
+    p = mp.Pool(num)
+    rs = []
+    for l in func_and_args:
+        if len(l) > 1:
+            if isinstance(l[1], dict):
+                rs += [p.apply_async(l[0], kwds=l[1])]
+            elif isinstance(l[1], list):
+                rs += [p.apply_async(l[0], args=l[1])]
+            else:
+                rs += [p.apply_async(l[0], args=[l[1]])]
+        else:
+            rs += [p.apply_async(l[0])]
+    p.close()
+    return rs
 
 
 ### Text/List processing functions
@@ -394,9 +427,12 @@ def files2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr',
 
     dfs = []
     # TODO: Should use Process or Pool class
+    func_and_args = []
     for f in files:
-        tuples = _read_file_and_search(file=f, line_beginning=line_beginning, line_matching=line_matching,
-                                       size_regex=size_regex, time_regex=time_regex, num_cols=num_fields)
+        func_and_args += [_read_file_and_search, {'file':f, 'line_beginning':line_beginning, 'line_matching':line_matching, 'size_regex':size_regex, 'time_regex':time_regex, 'num_cols':num_fields}]
+    rs = _mexec(func_and_args)
+    for r in rs:
+        tuples = r.get()
         if len(tuples) > 0:
             dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
     return pd.concat(dfs)
