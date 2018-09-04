@@ -207,6 +207,10 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     return db.connect()
 
 
+def query(conn, sql):
+    return conn.execute(sql).fetchall()
+
+
 def massage_tuple_for_save(tpl, long_value="", num_cols=None):
     """
     Massage the given tuple to convert to a DataFrame or a Table columns later
@@ -243,7 +247,7 @@ def _insert2table(conn, tablename, tpls, chunk_size=1000):
     chunked_list = _chunks(tpls, chunk_size)
     placeholders = ','.join('?' * len(first_obj))
     for l in chunked_list:
-        res = conn.execute("INSERT INTO " + tablename + " VALUES (" + placeholders + ")", l)
+        res = conn.executemany("INSERT INTO " + tablename + " VALUES (" + placeholders + ")", l)
         if bool(res) is False:
             return res
     return res
@@ -351,7 +355,7 @@ def files2table(conn, file_glob, tablename=None,
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
-    :return: A tuple contains multiple information for debug
+    :return: True or a tuple contains multiple information for debug
     # TODO: add test
     >>> pass
     """
@@ -385,20 +389,23 @@ def files2table(conn, file_glob, tablename=None,
             return (res, tablename, col_def_str)
 
     # TODO: Should use Process or Pool class to process per file
+    func_and_args = []
     for f in files:
-        tuples = _read_file_and_search(file=f, line_beginning=line_beginning, line_matching=line_matching,
-                                       size_regex=size_regex, time_regex=time_regex, num_cols=num_cols)
+        func_and_args += [[_read_file_and_search, {'file':f, 'line_beginning':line_beginning, 'line_matching':line_matching, 'size_regex':size_regex, 'time_regex':time_regex, 'num_cols':num_cols}]]
+    rs = _mexec(func_and_args)
+    for r in rs:
+        tuples = r.get()
         if len(tuples) > 0:
             res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
             if bool(res) is False:
-                return (res, f, tablename)
+                return res
     return True
 
 
 def files2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
               num_fields=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
               line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
-              size_regex="[sS]ize = ([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
+              size_regex="[sS]ize =? ?([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
               max_file_num=10):
     """
     Convert multiple files to multiple DataFrame objects
