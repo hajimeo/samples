@@ -3,6 +3,7 @@
 # Collection of functions to setup a desktop / work environment
 # Expecting this script works with non-root user (but sudo required)
 #
+# curl -O "https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_work_env.sh"
 #
 
 function f_setup_bash() {
@@ -109,9 +110,10 @@ function _log() {
 
 ### Main ###############################################################################################################
 if [ "$0" = "$BASH_SOURCE" ]; then
-    if [ "$1" =~ ^f_ ]; then
+    if [[ "$1" =~ ^f_ ]]; then
         eval "$@"
     else
+        f_setup_bash
         f_setup_rg
         f_setup_jupyter
     fi
