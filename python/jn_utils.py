@@ -11,7 +11,20 @@ from sqlalchemy import create_engine
 import sqlite3
 
 
-### Text processing functions
+### Text/List processing functions
+def _chunks(l, n):
+    """
+    Split/Slice a list by the size 'n'
+    From https://stackoverflow.com/questions/312443/how-do-you-split-a-list-into-evenly-sized-chunks
+    :param l: A list object
+    :param n: Chunk size
+    :return: New list
+    >>> _chunks([1,2,3,4,5], 2)
+    [[1, 2], [3, 4], [5]]
+    """
+    return [l[i:i + n] for i in xrange(0, len(l), n)]
+
+
 def globr(ptn='*', src='./'):
     """
     As Python 2.7's glob does not have recursive option
@@ -30,12 +43,12 @@ def globr(ptn='*', src='./'):
 
 
 ### File handling functions
-def read(file):
+def _read(file):
     """
     Read a single normal or gz file
     :param file:
     :return: file handler
-    >>> f = read(__file__);f.name == __file__
+    >>> f = _read(__file__);f.name == __file__
     True
     """
     if not os.path.isfile(file):
@@ -160,32 +173,30 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     return db.connect()
 
 
-def massage_tuple_for_save(tpl, long_value="", num_fields=None):
+def massage_tuple_for_save(tpl, long_value="", num_cols=None):
     """
     Massage the given tuple to convert to a DataFrame or a Table columns later
     :param tpl: Tuple which contains value of a row
     :param long_value: multi-lines log messages
-    :param num_fields: Number of columns in the table to populate missing column as None/NULL
+    :param num_cols: Number of columns in the table to populate missing column as None/NULL
     :return: modified tuple
     >>> massage_tuple_for_save(('a','b'), "aaaa", 4)
     ('a', 'b', None, 'aaaa')
     """
-    if bool(num_fields) and len(tpl) < num_fields:
+    if bool(num_cols) and len(tpl) < num_cols:
         # - 1 for message
-        for i in range(((num_fields - 1) - len(tpl))):
+        for i in range(((num_cols - 1) - len(tpl))):
             tpl += (None,)
     tpl += (long_value,)
     return tpl
 
 
-def _insert2table(conn, tablename, tpls, long_value="", num_cols=None, chunk_size=1000):
+def _insert2table(conn, tablename, tpls, chunk_size=1000):
     """
     Insert one tuple or tuples to a table
     :param conn: Connection object created by connect()
     :param tablename: Table name
     :param tpls: a Tuple or a list of Tuples, which each Tuple contains values for a row
-    :param long_value: multi-lines log messages
-    :param num_cols: Number of columns in the table to populate missing column as None/NULL
     :return: execute() method result
     # TODO: a bit hard to test
     >>> pass
@@ -194,69 +205,97 @@ def _insert2table(conn, tablename, tpls, long_value="", num_cols=None, chunk_siz
         first_obj = tpls[0]
     else:
         first_obj = tpls
+        tpls = [tpls]
+    chunked_list = _chunks(tpls, chunk_size)
     placeholders = ','.join('?' * len(first_obj))
-    return conn.execute("INSERT INTO " + tablename + " VALUES (" + placeholders + ")", tpls)
+    for l in chunked_list:
+        res = conn.execute("INSERT INTO " + tablename + " VALUES (" + placeholders + ")", l)
+        if bool(res) is False:
+            return res
+    return res
 
 
-def file2table(conn, file, tablename, num_cols, line_beginning="^\d\d\d\d-\d\d-\d\d",
-               line_matching="(.+)", size_regex="", time_regex=""):
+def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=None, time_re=None, num_cols=None):
     """
-    Insert one file (log) lines into one table
-    :param conn: Connection object created by connect()
-    :param file: (Log) file path
-    :param tablename: Table name
-    :param num_cols: number of columns in the table
-    :param line_beginning: To detect the beginning of the log entry (normally ^\d\d\d\d-\d\d-\d\d)
-    :param line_matching: A group matching regex to separate one log lines into columns
-    :param size_regex: (optional) size-like regex to populate 'size' column
-    :param time_regex: (optional) time/duration like regex to populate 'time' column
-    :return: A tuple contains last result of conn.execute()
+    Search a line with given regex (compiled)
+    :param line: String of a log line
+    :param prev_matches: A tuple which contains previously matched groups
+    :param prev_message: String contain log's long text which often multi-lines
+    :param begin_re: Compiled regex to find the beginning of the log line
+    :param line_re: Compiled regex for group match to get the (column) values
+    :param size_re: An optional compiled regex to find size related value
+    :param time_re: An optional compiled regex to find time related value
+    :param num_cols: Number of columns used in massage_tuple_for_save() to populate empty columns with Null
+    :return: (tuple, prev_matches, prev_message)
+    >>> import re;line = "2018-09-04 12:23:45 test";begin_re=re.compile("^\d\d\d\d-\d\d-\d\d");line_re=re.compile("(^\d\d\d\d-\d\d-\d\d).+(test)")
+    >>> _find_matching(line, None, None, begin_re, line_re)
+    (None, ('2018-09-04',), 'test')
+    """
+    tmp_tuple = None
+    # If current line is beginning of a new *log* line (eg: ^2018-08-\d\d...)
+    if begin_re.search(line):
+        # and if previous matches aren't empty, prev_matches is going to be saved
+        if bool(prev_matches):
+            tmp_tuple = massage_tuple_for_save(tpl=prev_matches, long_value=prev_message, num_cols=num_cols)
+            if bool(tmp_tuple) is False:
+                # If some error happened, returning without modifying prev_xxxx
+                return (tmp_tuple, prev_matches, prev_message)
+            prev_message = None
+            prev_matches = None
+
+        _matches = line_re.search(line)
+        if _matches:
+            _tmp_groups = _matches.groups()
+            prev_message = _tmp_groups[-1]
+            prev_matches = _tmp_groups[:(len(_tmp_groups) - 1)]
+
+            if bool(size_re):
+                _size_matches = size_re.search(prev_message)
+                if _size_matches:
+                    prev_matches += (_size_matches.group(1),)
+            if bool(time_re):
+                _time_matches = time_re.search(prev_message)
+                if _time_matches:
+                    prev_matches += (_time_matches.group(1),)
+    else:
+        prev_message += "" + line  # Looks like each line already has '\n'
+    return (tmp_tuple, prev_matches, prev_message)
+
+
+def _read_file_and_search(file, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None):
+    """
+    Read a file and search each line with given regex
+    :param file: A file path
+    :param line_beginning: Regex to find the beginning of the line (normally like ^2018-08-21)
+    :param line_matching: Regex to capture column values
+    :param size_regex: Regex to capture size
+    :param time_regex: Regex to capture time/duration
+    :param num_cols: Number of columns
+    :return: A list of tuples
     >>> pass
     """
     begin_re = re.compile(line_beginning)
     line_re = re.compile(line_matching)
-    if bool(size_regex): size_re = re.compile(size_regex)
-    if bool(time_regex): time_re = re.compile(time_regex)
+    size_re = re.compile(size_regex) if bool(size_regex) else None
+    time_re = re.compile(time_regex) if bool(time_regex) else None
     prev_matches = None
     prev_message = None
-    f = read(file)
+    tuples = []
+
+    f = _read(file)
     # Read lines
     for l in f:
-        # If current line is beginning of a new *log* line (eg: ^2018-08-\d\d...)
-        if begin_re.search(l):
-            # If previous matches aren't empty, save previous date into a table
-            if bool(prev_matches):
-                # TODO: should insert multiple tuples
-                res = _insert2table(conn=conn, tablename=tablename, tpls=prev_matches, long_value=prev_message,
-                                    num_cols=num_cols)
-                if bool(res) is False:
-                    return (res, prev_matches, prev_message, num_cols)
-                prev_message = None
-                prev_matches = None
+        (tmp_tuple, prev_matches, prev_message) = _find_matching(line=l, prev_matches=prev_matches,
+                                                                 prev_message=prev_message, begin_re=begin_re,
+                                                                 line_re=line_re, size_re=size_re, time_re=time_re,
+                                                                 num_cols=num_cols)
+        if bool(tmp_tuple):
+            tuples += [tmp_tuple]
 
-            _matches = line_re.search(l)
-            if _matches:
-                _tmp_groups = _matches.groups()
-                prev_message = _tmp_groups[-1]
-                prev_matches = _tmp_groups[:(len(_tmp_groups) - 1)]
-
-                if bool(size_regex):
-                    _size_matches = size_re.search(prev_message)
-                    if _size_matches:
-                        prev_matches += (_size_matches.group(1),)
-                if bool(time_regex):
-                    _time_matches = time_re.search(prev_message)
-                    if _time_matches:
-                        prev_matches += (_time_matches.group(1),)
-        else:
-            prev_message += "" + l  # Looks like each line already has '\n'
-    # insert last message
+    # append last message
     if bool(prev_matches):
-        res = _insert2table(conn=conn, tablename=tablename, tpls=prev_matches, long_value=prev_message,
-                            num_cols=num_cols)
-        if bool(res) is False:
-            return (res, prev_matches, prev_message, num_cols)
-    return True
+        tuples += [massage_tuple_for_save(tpl=prev_matches, long_value=prev_message, num_cols=num_cols)]
+    return tuples
 
 
 def files2table(conn, file_glob, tablename=None,
@@ -309,73 +348,15 @@ def files2table(conn, file_glob, tablename=None,
         if bool(res) is False:
             return (res, tablename, col_def_str)
 
+    # TODO: Should use Process or Pool class to process per file
     for f in files:
-        # TODO: Should use Process or Pool class
-        res = file2table(conn=conn, file=f, tablename=tablename, num_cols=num_cols, line_beginning=line_beginning,
-                         line_matching=line_matching, size_regex=size_regex, time_regex=time_regex)
-        if bool(res) is False:
-            return (res, f, tablename)
+        tuples = _read_file_and_search(file=f, line_beginning=line_beginning, line_matching=line_matching,
+                                       size_regex=size_regex, time_regex=time_regex, num_cols=num_cols)
+        if len(tuples) > 0:
+            res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
+            if bool(res) is False:
+                return (res, f, tablename)
     return True
-
-
-def file2df(file, col_names=None, num_fields=None,
-            line_beginning="^\d\d\d\d-\d\d-\d\d",
-            line_matching="(.+)", size_regex="", time_regex=""):
-    """
-    Convert one (log) file to a DataFrame object
-    :param file: (Log) file path
-    :param col_names: Column name *list*
-    :param num_fields: number of columns in the table
-    :param line_beginning: To detect the beginning of the log entry (normally ^\d\d\d\d-\d\d-\d\d)
-    :param line_matching: A group matching regex to separate one log lines into columns
-    :param size_regex: (optional) size-like regex to populate 'size' column
-    :param time_regex: (optional) time/duration like regex to populate 'time' column
-    :return: A dataframe object
-    >>> pass
-    """
-    if bool(num_fields) is False:
-        num_fields = len(col_names)
-    begin_re = re.compile(line_beginning)
-    line_re = re.compile(line_matching)
-    if bool(size_regex): size_re = re.compile(size_regex)
-    if bool(time_regex): time_re = re.compile(time_regex)
-    prev_matches = None
-    prev_message = None
-    f = read(file)
-    tuples = []
-    # Read lines
-    for l in f:
-        # If current line is beginning of a new *log* line (eg: ^2018-08-\d\d...)
-        if begin_re.search(l):
-            # If previous matches aren't empty, save previous date into a table
-            if bool(prev_matches):
-                tmp_tuple = massage_tuple_for_save(tpl=prev_matches, long_value=prev_message, num_fields=num_fields)
-                if bool(tmp_tuple) is False:
-                    return (prev_matches, prev_message, num_fields)
-                tuples += [tmp_tuple]
-                prev_message = None
-                prev_matches = None
-
-            _matches = line_re.search(l)
-            if _matches:
-                _tmp_groups = _matches.groups()
-                prev_message = _tmp_groups[-1]
-                prev_matches = _tmp_groups[:(len(_tmp_groups) - 1)]
-
-                if bool(size_regex):
-                    _size_matches = size_re.search(prev_message)
-                    if _size_matches:
-                        prev_matches += (_size_matches.group(1),)
-                if bool(time_regex):
-                    _time_matches = time_re.search(prev_message)
-                    if _time_matches:
-                        prev_matches += (_time_matches.group(1),)
-        else:
-            prev_message += "" + l  # Looks like each line already has '\n'
-    # append last message
-    if bool(prev_matches):
-        tuples += [massage_tuple_for_save(tpl=prev_matches, long_value=prev_message, num_fields=num_fields)]
-    return pd.DataFrame.from_records(tuples, columns=col_names)
 
 
 def files2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
@@ -408,10 +389,12 @@ def files2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr',
         raise ValueError('Glob: %s returned too many files (%s)' % (file_glob, str(len(files))))
 
     dfs = []
+    # TODO: Should use Process or Pool class
     for f in files:
-        # TODO: Should use Process or Pool class
-        dfs += [file2df(file=f, col_names=col_names, num_fields=num_fields, line_beginning=line_beginning,
-                        line_matching=line_matching, size_regex=size_regex, time_regex=time_regex)]
+        tuples = _read_file_and_search(file=f, line_beginning=line_beginning, line_matching=line_matching,
+                                       size_regex=size_regex, time_regex=time_regex, num_cols=num_fields)
+        if len(tuples) > 0:
+            dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
     return pd.concat(dfs)
 
 
