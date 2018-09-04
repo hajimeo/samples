@@ -412,6 +412,8 @@ def files2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr',
     :param max_file_num: To avoid memory issue, setting max files to import
     :return: A concatenated DF object
     # TODO: add test
+    #>>> engine_log = files2dfs(file_glob="debug.2018-08-28.11.log.gz")
+    #>>> engine_log[engine_log.loglevel=='DEBUG'].head(10)
     >>> pass
     """
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
@@ -426,10 +428,9 @@ def files2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr',
         raise ValueError('Glob: %s returned too many files (%s)' % (file_glob, str(len(files))))
 
     dfs = []
-    # TODO: Should use Process or Pool class
     func_and_args = []
     for f in files:
-        func_and_args += [_read_file_and_search, {'file':f, 'line_beginning':line_beginning, 'line_matching':line_matching, 'size_regex':size_regex, 'time_regex':time_regex, 'num_cols':num_fields}]
+        func_and_args += [[_read_file_and_search, {'file':f, 'line_beginning':line_beginning, 'line_matching':line_matching, 'size_regex':size_regex, 'time_regex':time_regex, 'num_cols':num_fields}]]
     rs = _mexec(func_and_args)
     for r in rs:
         tuples = r.get()
