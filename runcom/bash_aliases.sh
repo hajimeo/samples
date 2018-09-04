@@ -16,7 +16,7 @@ alias jn='if [ -d ~/backup/jupyter-notebook ]; then
     while true; do
         sleep 300
         if [ "`ls -1 ./*.ipynb 2>/dev/null | wc -l`" -gt 0 ]; then
-            rsync -a --exclude="Untitled.ipynb" ./*.ipynb ~/backup/jupyter-notebook/ || break
+            rsync -Pa --exclude="Untitled.ipynb" ./*.ipynb ~/backup/jupyter-notebook/ || break
         fi
         if ! nc -z localhost 8888 &>/dev/null; then
             mv -f ./Aggregation.ipynb /tmp/
