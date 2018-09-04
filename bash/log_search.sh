@@ -170,8 +170,8 @@ EOF
     fi
 
     if [ -n "${_glob}" ]; then
-        echo "# f_start_end_list (start time, end time, difference(sec), filesize)"
-        f_start_end_list "${_date_regex}" "${_glob}"
+        echo "# f_list_start_end (start time, end time, difference(sec), filesize)"
+        f_list_start_end "${_glob}" "${_date_regex}"
     fi
 }
 
@@ -372,7 +372,7 @@ for l in sys.stdin:
     trap - SIGINT
     echo ' '
     echo "# generated temp files (file name    start    end    diff_sec    size)" >&2
-    f_start_end_list "" "${_tmpfile_pfx}*.tmp"
+    f_list_start_end "${_tmpfile_pfx}*.tmp"
     echo ' '
     echo "# May want to also run
         f_topErrors \"engine.*log*\" '${_first_dt}0' '${_last_dt}9'
@@ -878,14 +878,17 @@ function f_swimlane() {
     python "$_script_path" -o $_out_name $_tmp_name
 }
 
-function f_start_end_list(){
+function f_list_start_end(){
     local __doc__="Output start time, end time, difference(sec), (filesize) from *multiple* log files"
-    local _date_regex="${1:-${_DATE_FORMAT}.\d\d:\d\d:\d\d}"
-    local _glob="${2}"
+    local _glob="${1}"
+    local _date_regex="${2:-${_DATE_FORMAT}.\d\d:\d\d:\d\d}"
     local _sort="${3:-2}"
     # If no file(s) given, check current working directory
-    local _files="`ls -1`"
-    [ -n  "${_glob}" ] && _files="`find . -type f -name "${_glob}" -print`"
+    if [ -n "${_glob}" ]; then
+        _files="`find . -type f -name "${_glob}" -print`"
+    else
+        local _files="`ls -1`"
+    fi
     for _f in `echo ${_files}`; do f_start_end_time_with_diff $_f "^${_date_regex}"; done | sort -t$'\t' -k${_sort}
 }
 
@@ -893,14 +896,14 @@ function f_start_end_time_with_diff(){
     local __doc__="Output start time, end time, difference(sec), (filesize) from a log file (eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"^${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)"
     local _log="$1"
     local _date_regex="${2}"
-    [ -z "$_date_regex" ] && _date_regex="^20\d\d-\d\d-\d\d.\d\d:\d\d:\d\d"
+    [ -z "$_date_regex" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d"
 
-    local _start_date=`rg -N -om1 "$_date_regex" ${_log} | sed 's/T/ /'` || return $?
+    local _start_date=`rg --search-zip -N -om1 "^$_date_regex" ${_log} | sed 's/T/ /'` || return $?
     local _extension="${_log##*.}"
     if [ "${_extension}" = 'gz' ]; then
-        local _end_date=`gunzip -c ${_log} | gtac | rg -N -om1 "$_date_regex" | sed 's/T/ /'` || return $?
+        local _end_date=`gunzip -c ${_log} | gtac | rg -N -om1 "^$_date_regex" | sed 's/T/ /'` || return $?
     else
-        local _end_date=`gtac ${_log} | rg -N -om1 "$_date_regex" | sed 's/T/ /'` || return $?
+        local _end_date=`gtac ${_log} | rg --search-zip -N -om1 "^$_date_regex" | sed 's/T/ /'` || return $?
     fi
     local _start_int=`_date2int "${_start_date}"`
     local _end_int=`_date2int "${_end_date}"`
