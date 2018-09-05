@@ -8,6 +8,7 @@ alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys
 # Start python interactive after loading json object in 'pdf' (pandas dataframe)
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
+alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
 
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
