@@ -1,16 +1,21 @@
-# Simple/generic alias commands
+### Simple/generic alias commands (some need pip though) ###############################################################
+# cd to the last modified dir
 alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
 alias urldecode='python -c "import sys, urllib as ul; print ul.unquote_plus(sys.argv[1])"'
 alias urlencode='python -c "import sys, urllib as ul; print ul.quote_plus(sys.argv[1])"'
 alias utc2int='python -c "import sys,time,dateutil.parser;print int(time.mktime(dateutil.parser.parse(sys.argv[1]).timetuple()))"'  # doesn't work with yy/mm/dd (2 digits year)
 alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\""'
-
-# Alias commands related to my script and work
-alias logS="source ~/IdeaProjects/samples/bash/log_search.sh"
+# Start python interactive after loading json object in 'pdf' (pandas dataframe)
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
-# port: 30000
+
+
+## Non generic (OS/host/app specific) alias commands ###################################################################
+# Load/source my log searching utility functions
+alias logS="source ~/IdeaProjects/samples/bash/log_search.sh"
+# Start metabase on port: 30000
 alias mb='java -jar ~/Applications/metabase.jar'
+# Start Jupyter Notebook with Aggregation template (and backup-ing)
 alias jn='if [ -d ~/backup/jupyter-notebook ]; then
     cp ~/backup/jupyter-notebook/Aggregation.ipynb ./ && jupyter notebook &
     while true; do
@@ -24,20 +29,31 @@ alias jn='if [ -d ~/backup/jupyter-notebook ]; then
         fi
     done &
 fi'
-
-# Hostname specific alias command
-# rsync -Pharz root@server:/usr/local/atscale/apps/modeler/assets/modeler/public/* ./atscale_doc_NNN/
-# cd ./atscale_doc_NNN/ && patch -p0 -b < ~/doc_index.patch
-# ln -s ~/IdeaProjects/atscale_doc_NNN/docs ~/Public/atscale_latest
+# Start python simple http server from the specific dir
+# To setup:
+#   rsync -Pharz root@server:/usr/local/atscale/apps/modeler/assets/modeler/public/* ./atscale_doc_NNN/
+#   cd ./atscale_doc_NNN/ && patch -p0 -b < ~/doc_index.patch
+#   ln -s ~/IdeaProjects/atscale_doc_NNN/docs ~/Public/atscale_latest
 alias aDoc='cd ~/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out &'
+# Start my simple rest API server
 alias sWeb='nohup python ~/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &'
-# NOTE: https requires s3-us-west-1.amazonaws.com
+# List and grep some specific files from s3. NOTE: https:// requires s3-us-west-1.amazonaws.com
 alias asS3='s3cmd ls s3://files.atscale.com/installer/package/ | grep -E "atscale-[6789].+latest.+\.tar\.gz$"'
 
 
-
-### Functions (some command syntax does not work with alias eg: sudo) ###############################
-# NOTE: the hostname 'asftp' is specified in .ssh_config
+### Functions (some command syntax does not work with alias eg: sudo) ##################################################
+# Mac only: Start Google Chrome in incognito with proxy
+function chromep() {
+    local _proxy_host="${1:-http://support:28080}"
+    local _reuse_session="${2}" # This means Chrome needs to be shutdown to use proxy
+    local _proxy=""; [ -n "$_proxy_host" ] && _proxy="--proxy-server=$_proxy_host"
+    local _user_dir="--user-data-dir=$(mktemp -d)"; [[ "${_reuse_session}" =~ ^(y|Y) ]] && _user_dir=""
+    nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ${_user_dir} ${_proxy} &
+    # Below didn't work
+    #open -na "Google Chrome" --args "--user-data-dir=${_tmp_dir} ${_proxy}"
+    #open -na "Google Chrome" --args "--incognito ${_proxy}"
+}
+# List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
 function asftpl() {
     local _name="${1}"
     local _n="${2:-20}"
@@ -48,6 +64,7 @@ function asftpl() {
     #ssh -q asftp -t 'cd /home/ubuntu/upload && find . -type f -mtime -2 -size +10240k -name "'${_name}'" -ls | sort -k9,10 | tail -n'${_n}
     ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lhtr '${_name}'| tail -n'${_n}
 }
+# Download files from hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
 function asftpd() {
     [ -z "$1" ] && ( asftpl; return 1 )
     for _a in "$@"; do
@@ -58,16 +75,17 @@ function asftpd() {
     done
 }
 
+# Grep against jar file to find a class ($1)
 function jargrep() {
     local _cmd="jar -tf"
     which jar &>/dev/null || _cmd="less"
     find -L ${2:-./} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c ''${_cmd}' {} | grep -wi '$1' && echo {}'
 }
-
+# Grep file(s) with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
-    ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d\d}" ${1-./*} | bar_chart.py # TODO: need to sort?
+    ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
 }
-
+# Add route to dockerhost to access containers directly
 function r2dh() {
     local _3rd="${1:-100}"  # 3rd decimal in network address
     local _dh="${2:-192.168.0.31}"  # docker host IP
