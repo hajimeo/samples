@@ -596,15 +596,22 @@ function f_install_post_tasks() {
     echo ""
 }
 
+function _atscale_info() {
+    local _dir="${1:-${_ATSCALE_DIR}}"
+    local _msg="${2:-"Version: "}"
+    echo "${_msg}`_get_version "${_dir}"`"
+    # NOTE old version such as 5.12 does not have config_debug.yaml
+    sed -nr 's/^(as_target_env|as_is_kerberized|as_secure_installation):(.+)$/    \1:\2/p' ${_dir%/}/conf/config_debug.yaml 2>/dev/null
+}
+
 function f_switch_version() {
     local _version="$1"
     local _dir="${2:-${_ATSCALE_DIR}}"
     local _usr="${3:-${_ATSCALE_USER}}"
 
     if [ -z "${_version}" ]; then
-        echo "Currently used version: `_get_version "${_dir}"`"
-        sed -nr 's/^(as_target_env|as_is_kerberized|as_secure_installation):(.+)$/    \1:\2/p' ${_dir%/}/conf/config_debug.yaml 2>/dev/null
-        echo -e "\nInstalled AtScales under `dirname "${_dir}"` (with *INITIAL* config)"
+        _atscale_info "${_dir}" "Currently used version: "
+        echo -e "\nOther AtScales under `dirname "${_dir}"` (with *INITIAL* config)"
         for _d in `ls -1dtr ${_dir%/}_*`; do
             local _dname="`basename "${_d}"`"
             if [[ "${_dname}" =~ ^(atscale_)([^_]+)(_.+)$ ]]; then
@@ -612,8 +619,7 @@ function f_switch_version() {
             else
                 echo "  ${_dname}"
             fi
-            # NOTE old version such as 5.12 does not have config_debug.yaml
-            sed -nr 's/^(as_target_env|as_is_kerberized|as_secure_installation):(.+)$/    \1:\2/p' ${_d%/}/conf/config_debug.yaml 2>/dev/null
+            _atscale_info "${_d}" "    version: "
         done
         return
     fi
@@ -637,7 +643,8 @@ function f_switch_version() {
     mv ${_target_dir%/} ${_dir%/} || return $?
 
     f_atscale_start ${_dir} ${_usr} || return $?
-    ls -dltr ${_dir%/}*
+    _log "INFO" "AtScale started"
+    _atscale_info "${_dir}" "Currently used version: "
 }
 
 function f_atscale_start() {
