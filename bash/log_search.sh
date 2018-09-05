@@ -73,6 +73,9 @@ function p_support() {
     echo " "
 
     echo "# $(date +"%H%M%S"): config.yaml | grep -iE '(max|size|pool).+000$' | grep -vi 'time'"
+    # Exact config parameter(s) which would cause issue
+    _find_and_cat "config.yaml" | grep -iE '(aggregates.batch.buildFromExisting.enabled)'
+    # Try finding parameters which value might be too big
     _find_and_cat "config.yaml" | grep -iE '(max|size|pool).+(000|mins|hours)$' | grep -vi "time"
     echo " "
     echo " "
@@ -186,7 +189,7 @@ function f_checkResultSize() {
     echo "### histogram (time vs query result size) #################################################"
     rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_checkResultSize_$$.out | bar_chart.py -A
     echo ' '
-    echo "### histogram (time vs query count) #######################################################"
+    echo "### histogram (time vs query requests) ####################################################"
     rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_checkResultSize_$$.out | bar_chart.py
     echo ' '
     echo "### Large size (datetime|queryId|size|time) ###############################################"
@@ -1160,10 +1163,10 @@ function f_count_lines() {
     local _ext="${_file##*.}"
     if [[ "${_ext}" =~ gz ]]; then
         local _line_num=`gunzip -c ${_file} | wc -l`
-        ggrep -nP "${_search_regex}" <(gunzip -c ${_file}) | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | python ~/IdeaProjects/samples/python/line_parser.py thread_num ${_line_num}
+        ggrep -nP "${_search_regex}" <(gunzip -c ${_file}) | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | python ~/IdeaProjects/samples/python/line_parser.py thread_num ${_line_num} | bar_chart.py -A
     else
         local _line_num=`wc -l ${_file}`
-        ggrep -nP "${_search_regex}" ${_file} | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | python ~/IdeaProjects/samples/python/line_parser.py thread_num ${_line_num}
+        ggrep -nP "${_search_regex}" ${_file} | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | python ~/IdeaProjects/samples/python/line_parser.py thread_num ${_line_num} | bar_chart.py -A
     fi
 }
 
