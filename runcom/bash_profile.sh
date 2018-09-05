@@ -1,4 +1,7 @@
-# ln -s ~/IdeaProjects/samples/runcom/bash_profile.sh ~/.bash_profile
+# NOTE: for screen, .bashrc is needed, and in .bashrc, source .bash_profile
+# An example of usage
+#   ln -s ~/IdeaProjects/samples/runcom/bash_profile.sh ~/.bash_profile
+#
 if [ -s ~/IdeaProjects/samples/runcom/bash_aliases.sh ]; then
     source ~/IdeaProjects/samples/runcom/bash_aliases.sh
 elif [ -s ~/.bash_aliases ]; then
