@@ -604,7 +604,7 @@ function f_switch_version() {
     if [ -z "${_version}" ]; then
         echo "Currently used version: `_get_version "${_dir}"`"
         sed -nr 's/^(as_target_env|as_is_kerberized|as_secure_installation):(.+)$/    \1:\2/p' ${_dir%/}/conf/config_debug.yaml 2>/dev/null
-        echo -e "\nInstalled AtScales under `dirname "${_dir}"`"
+        echo -e "\nInstalled AtScales under `dirname "${_dir}"` (with *INITIAL* config)"
         for _d in `ls -1dtr ${_dir%/}_*`; do
             local _dname="`basename "${_d}"`"
             if [[ "${_dname}" =~ ^(atscale_)([^_]+)(_.+)$ ]]; then
