@@ -44,6 +44,22 @@ def _mexec(func_and_args, num=None):
     return rs
 
 
+def dict2global(d):
+    """
+    Iterate the given dict and create global variables (key = value)
+    :param d: Dict
+    :return: Void
+    >>> dict2global({'a':'test', 'b':'test2'})
+    >>> b == 'test2'
+    True
+    """
+    for k, v in d.iteritems():
+        # should throw KeyError?
+        if k in globals():
+            raise ValueError('%s is already used' % (k))
+        globals()[k] = v
+
+
 ### Text/List processing functions
 def _chunks(l, n):
     """
@@ -92,13 +108,14 @@ def _read(file):
         return open(file, "r")
 
 
-def load_jsons(src="./", db_conn=None, string_cols=['connectionId', 'planJson', 'json'], chunksize=None):
+def load_jsons(src="./", db_conn=None, string_cols=['connectionId', 'planJson', 'json'], chunksize=None, set_to_global=False):
     """
     Find json files from current path and load as pandas dataframes object
     :param src: glob(r) source/importing directory path
     :param db_conn: If connection object is given, convert JSON to table
     :param string_cols: As of today, to_sql fails if column is json, so forcing those columns to string
-    :return: dict contains Pandas dataframes object
+    :param set_to_global: Instead of storing into a dict 'dfs', set to global variables (NOTE: this ooesn't work with Jupyter)
+    :return: A tuple contain key=>file relationship and Pandas dataframes objects
     # TODO: add test
     >>> pass
     """
@@ -120,15 +137,19 @@ def load_jsons(src="./", db_conn=None, string_cols=['connectionId', 'planJson', 
             except Exception as e:
                 sys.stderr.write("%s: %s\n" % (str(f_name), str(e)))
                 raise
-    return (dfs, names_dict)
+    if set_to_global:
+        dict2global(dfs)
+        dfs = None
+    return (names_dict, dfs)
 
 
-def pick_new_key(name, names_dict, using_1st_char=False):
+def pick_new_key(name, names_dict, using_1st_char=False, check_global=False):
     """
     Find a non-conflicting a dict key for given name (normally a file name/path)
     :param name: name to be saved or used as a dict key
     :param names_dict: list of names which already exist
     :param using_1st_char: if new name
+    :param check_global: if new name is used as a global variable
     :return: a string of a new dict key which hasn't been used
     >>> pick_new_key('test', {'test':'aaa'}, False)
     'test1'
@@ -144,7 +165,9 @@ def pick_new_key(name, names_dict, using_1st_char=False):
             new_key = name + str(i)
         if new_key in names_dict and names_dict[new_key] == name:
             break
-        if new_key not in names_dict:
+        if new_key not in names_dict and check_global is False:
+            break
+        if new_key not in names_dict and check_global is True and new_key not in globals():
             break
     return new_key
 
