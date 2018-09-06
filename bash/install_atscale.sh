@@ -601,7 +601,7 @@ function _atscale_info() {
     local _msg="${2:-"Version: "}"
     echo "${_msg}`_get_version "${_dir}"`"
     # NOTE old version such as 5.12 does not have config_debug.yaml
-    sed -nr 's/^(as_target_env|as_is_kerberized|as_secure_installation):(.+)$/    \1:\2/p' ${_dir%/}/conf/config_debug.yaml 2>/dev/null
+    sed -nr 's/^(as_target_env|as_is_kerberized|as_secure_installation|as_default_schema|as_hdfs_root_dir):(.+)$/    \1:\2/p' ${_dir%/}/conf/config_debug.yaml 2>/dev/null #| sort
 }
 
 function f_switch_version() {
