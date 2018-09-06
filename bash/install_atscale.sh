@@ -22,23 +22,23 @@ END
 
 
 ### Global variables #################
-[ -z "${_HDFS_USER}" ] && _HDFS_USER="hdfs"
-[ -z "${_KADMIN_USR}" ] && _KADMIN_USR="admin/admin"
-[ -z "${_DEFAULT_PWD}" ] && _DEFAULT_PWD="hadoop"
-[ -z "${_ATSCALE_DIR}" ] && _ATSCALE_DIR="/usr/local/atscale"
-[ -z "${_TMP_DIR}" ] && _TMP_DIR="/var/tmp/share/atscale"
-[ -z "${_OS_ARCH}" ] && _OS_ARCH="el6.x86_64"
-[ -z "${_KEYTAB_DIR}" ] && _KEYTAB_DIR="/etc/security/keytabs"
-#[ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="" This global variable should not have default value
+[ -z "${_HDFS_USER}" ] && _HDFS_USER="hdfs"                     # Used to create a hdfs directory for atscale user
+[ -z "${_KADMIN_USR}" ] && _KADMIN_USR="admin/admin"            # Used to create atscale service principal
+[ -z "${_DEFAULT_PWD}" ] && _DEFAULT_PWD="hadoop"               # kadmin password, hive metastore DB password etc.
+[ -z "${_ATSCALE_DIR}" ] && _ATSCALE_DIR="/usr/local/atscale"   # AtScale installing directory path
+[ -z "${_TMP_DIR}" ] && _TMP_DIR="/var/tmp/share/atscale"       # Temp/work directory to store various data, such as installer.tar.gz
+[ -z "${_OS_ARCH}" ] && _OS_ARCH="el6.x86_64"                   # OS+Architecture strings used in installer file name
+[ -z "${_KEYTAB_DIR}" ] && _KEYTAB_DIR="/etc/security/keytabs"  # Keytab default location (this is the default for HDP)
+#[ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR=""      # NOTE: This is intentional as this needs to be empty
 
 
 ### Arguments ########################
-[ -z "${_ATSCALE_VER}" ] && _ATSCALE_VER="${1:-7.1.0}"
-[ -z "${_ATSCALE_USER}" ] && _ATSCALE_USER="${2:-atscale}"
+[ -z "${_ATSCALE_VER}" ] && _ATSCALE_VER="${1:-7.1.0}"          # AtScale version mainly used to find the right installer file
+[ -z "${_ATSCALE_USER}" ] && _ATSCALE_USER="${2:-atscale}"      # AtScale service user
 [ -z "${_ATSCALE_LICENSE}" ] && _ATSCALE_LICENSE="${3:-${_TMP_DIR}/dev-vm-license-atscale.json}"
-[ -z "${_ATSCALE_CUSTOMYAML}" ] && _ATSCALE_CUSTOMYAML="${4}"
-[ -z "${_UPDATING}" ] && _UPDATING="${5}"   # This is also for re-installing to change some properties
-[ -z "${_NO_BACKUP}" ] && _NO_BACKUP="${6}"   # This is also for re-installing to change some properties
+[ -z "${_ATSCALE_CUSTOMYAML}" ] && _ATSCALE_CUSTOMYAML="${4}"   # Path to custom.yaml file. If empty, automatically generated
+[ -z "${_UPDATING}" ] && _UPDATING="${5}"                       # Upgrading & Updating (means re-running installer to update some properties)
+[ -z "${_NO_BACKUP}" ] && _NO_BACKUP="${6}"                     # As back up takes time, if you are really sure, you can skip taking backup
 
 
 ### Functions ########################
