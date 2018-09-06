@@ -57,50 +57,51 @@ function p_support() {
     fi
     echo " "
 
-    echo "# $(date +"%H%M%S"): settings.json last 3 settings changes"
+    echo "# settings.json last 3 settings changes"
     _find_and_cat "settings.json" | python -c "import sys,json;a=json.loads(sys.stdin.read());print json.dumps(a[-3:], indent=4)"
     echo " "
     echo " "
 
-    echo "# $(date +"%H%M%S"): config-custom.yaml for the first 20 lines"
+    echo "# config-custom.yaml for the first 20 lines"
     _find_and_cat "config-custom.yaml" | head -n 20
     echo " "
     echo " "
 
-    echo "# $(date +"%H%M%S"): config.yaml - Kerberos information"
+    echo "# config.yaml - Kerberos information"
     _find_and_cat "config.yaml" | grep '^kerberos'
     echo " "
     echo " "
 
-    echo "# $(date +"%H%M%S"): config.yaml | grep -iE '(max|size|pool).+000$' | grep -vi 'time'"
+    echo "# config.yaml | grep -iE '(max|size|pool).+000$' | grep -vi 'time'"
     # Exact config parameter(s) which would cause issue
+    # Aggregate Batch <UUID> failed creating a build order for rebuilding aggregates.
     _find_and_cat "config.yaml" | grep -iE '(aggregates.batch.buildFromExisting.enabled)'
     # Try finding parameters which value might be too big
     _find_and_cat "config.yaml" | grep -iE '(max|size|pool).+(000|mins|hours)$' | grep -vi "time"
     echo " "
     echo " "
 
-    echo "# $(date +"%H%M%S"): Connection pool"
+    echo "# Connection pool"
     _find_and_cat "pool.json"
     echo " "
     echo " "
 
-    echo "# $(date +"%H%M%S"): runtime.yaml"
+    echo "# runtime.yaml"
     _find_and_cat "runtime.yaml"
     echo " "
     echo " "
 
-    echo "# $(date +"%H%M%S"): current-status.json Cache status"
+    echo "# current-status.json Cache status"
     _find_and_cat "current-status.json"
     echo " "
     echo " "
 
-    echo "# $(date +"%H%M%S"): properties.json Engine properties for last 20 lines"
+    echo "# properties.json Engine properties for last 20 lines"
     _find_and_cat "properties.json" | tail -n 20
     echo " "
     echo " "
 
-    echo "# $(date +"%H%M%S"): directory_configurations.json"
+    echo "# directory_configurations.json"
     _find_and_cat "directory_configurations.json"
     echo " "
     echo " "
@@ -108,7 +109,7 @@ function p_support() {
     echo " "
     echo " "
 
-    echo "# $(date +"%H%M%S"): tableSizes.tsv 10 large tables (by num rows)"
+    echo "# tableSizes.tsv 10 large tables (by num rows)"
     _find_and_cat "tableSizes.tsv" | sort -n -k2 | tail -n 10
     echo " "
 }
