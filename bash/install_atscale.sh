@@ -4,12 +4,32 @@ usage() {
 A sample bash script for setting up and installing atscale
 Tested on CentOS6|CentOS7 against hadoop clusters (HDP)
 
-Download:
+DOWNLOAD:
   mkdir -p -m 777 /var/tmp/share/atscale
   curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/install_atscale.sh -o /var/tmp/share/atscale/install_atscale.sh
 
+HELP:
 To see help message of a function:
-   $0 -h <function_name>
+  $0 -h <function_name>
+
+SCRIPT LIFE CYCLE:
+1. Setup (create a user, schema, hdfs dir etc) for AtScale, then install a new and latest Atscale
+  $0
+
+2. Install another AtScale with different version. Eg.: 7.0.0
+  $0 7.0.0
+
+3. Upgrade (update) currently used AtScale
+  _UPDATING=Y $0
+
+4. Switch AtScale (stop current AtScale and start another already installed AtScale)
+  source $0
+  f_switch_version          # This shows which versions are installed
+  f_switch_version "710"    # This stops current AtScale and start atscale_710_YYYYMMDD
+
+5. Upload some sample data
+  source $0
+  f_dataloader
 
 END
     # My NOTE:
