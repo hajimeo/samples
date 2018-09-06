@@ -27,7 +27,7 @@ SCRIPT LIFE CYCLE:
   f_switch_version          # This shows which versions are installed
   f_switch_version "710"    # This stops current AtScale and start atscale_710_YYYYMMDD
 
-5. Upload some sample data
+5. Upload some sample data (to use an existing project.xml, use genfile_wrapper.sh)
   source $0
   f_dataloader
 
