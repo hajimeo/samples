@@ -20,7 +20,7 @@ as_hive_host_batch: ''
 as_hive_port_batch: '10510'
 as_hive_user_batch: atscale
 as_hive_password_batch: ''
-as_install_directory: "/usr/local/atscale"
+as_install_directory: "%install_directory%"
 as_local_host: %atscale_host%
 as_engine_memory: 2G
 as_hadoop_common_home: "/usr/hdp/%hdp_version%/hadoop"
