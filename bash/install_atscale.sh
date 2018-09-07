@@ -53,7 +53,7 @@ END
 
 
 ### Arguments ########################
-[ -z "${_ATSCALE_VER}" ] && _ATSCALE_VER="${1:-7.1.0}"          # AtScale version mainly used to find the right installer file
+[ -z "${_ATSCALE_VER}" ] && _ATSCALE_VER="${1:-7.1.2}"          # AtScale version mainly used to find the right installer file
 [ -z "${_ATSCALE_USER}" ] && _ATSCALE_USER="${2:-atscale}"      # AtScale service user
 [ -z "${_ATSCALE_LICENSE}" ] && _ATSCALE_LICENSE="${3:-${_TMP_DIR}/dev-vm-license-atscale.json}"
 [ -z "${_ATSCALE_CUSTOMYAML}" ] && _ATSCALE_CUSTOMYAML="${4}"   # Path to custom.yaml file. If empty, automatically generated
