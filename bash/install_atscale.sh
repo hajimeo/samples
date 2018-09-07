@@ -474,6 +474,10 @@ function f_install_hive() {
 
     if [ ! -d /user/hive/warehouse ]; then mkdir -p -m 777 /user/hive/warehouse || return $?; fi
     if [ ! -d /tmp/hive ]; then mkdir -m 777 /tmp/hive || return $?; fi     # this shouldn't be needed, but just in case
+
+    if [ ! -d /data ]; then mkdir -m 777 /data || return $?; fi
+    if [ ! -d /engine ]; then mkdir -m 777 /engine || return $?; fi
+
     if [ ! -d ${_dir%/}/${_hive%/}/logs ]; then mkdir -p -m 777 ${_dir%/}/${_hive%/}/logs || return $?; fi
     if [ ! -d ${_dir%/}/${_hive%/}/tmp/java ]; then mkdir -p -m 777 ${_dir%/}/${_hive%/}/tmp/java || return $?; fi
 
