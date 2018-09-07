@@ -445,7 +445,7 @@ function f_psql() {
 function f_install_hive() {
     local __doc__="Install Apache Hive (and hadoop-core)"
     local _usr="${1:-${_ATSCALE_USER:-$USER}}"
-    local _as_dir="${2:-${_ATSCALE_DIR:-./}}"
+    local _as_dir="${2:-${_ATSCALE_DIR}}"
     local _java_home="${3:-$JAVA_HOME}"
 
     if [ -z "${_java_home}" ]; then
@@ -456,10 +456,10 @@ function f_install_hive() {
         fi
     fi
 
+    [ -z "${_as_dir%/}" ] && return 1
     local _dir="$(dirname ${_as_dir})/apache-hive"
     local _hive="apache-hive-1.2.2-bin"
     local _hadoop_core="hadoop-2.9.1"
-
 
     if [ ! -d "${_dir}" ]; then
         mkdir -p "${_dir%/}" || return $?
@@ -473,13 +473,10 @@ function f_install_hive() {
     fi
 
     if [ ! -d /user/hive/warehouse ]; then mkdir -p -m 777 /user/hive/warehouse || return $?; fi
-    if [ ! -d /tmp/hive ]; then mkdir -m 777 /tmp/hive || return $?; fi     # this shouldn't be needed, but just in case
-
-    if [ ! -d /data ]; then mkdir -m 777 /data || return $?; fi
-    if [ ! -d /engine ]; then mkdir -m 777 /engine || return $?; fi
-
-    if [ ! -d ${_dir%/}/${_hive%/}/logs ]; then mkdir -p -m 777 ${_dir%/}/${_hive%/}/logs || return $?; fi
-    if [ ! -d ${_dir%/}/${_hive%/}/tmp/java ]; then mkdir -p -m 777 ${_dir%/}/${_hive%/}/tmp/java || return $?; fi
+    if [ ! -d ${_dir%/}/${_hive%/}/tmp ]; then mkdir -p -m 777 ${_dir%/}/${_hive%/}/tmp || return $?; fi
+    # TODO: Do not want to create under / but don't know how to change
+    if [ ! -d /data ]; then mkdir -p -m 777 /data || return $?; fi
+    if [ ! -d /engine ]; then mkdir -p -m 777 /engine || return $?; fi
 
     [ -s "${_dir%/}/${_hive%/}/conf/hive-site.xml" ] && mv "${_dir%/}/${_hive%/}/conf/hive-site.xml" "${_dir%/}/${_hive%/}/conf/hive-site.xml.$(date +"%Y%m%d%H%M%S")"
     #<property><name>hive.metastore.schema.verification</name><value>false</value></property>
@@ -487,7 +484,7 @@ function f_install_hive() {
     #<property><name>system:user.name</name><value>${user.name}</value></property>
     # To logging, need to add hive-log4j.properties and hive-exec-log4j.properties in the class path
     sudo -u ${_usr} echo '<configuration>
-    <property><name>system:java.io.tmpdir</name><value>'${_dir%/}/${_hive%/}/tmp/java'</value></property>
+    <property><name>system:java.io.tmpdir</name><value>'${_dir%/}/${_hive%/}/tmp'</value></property>
 </configuration>
 ' > "${_dir%/}/${_hive%/}/conf/hive-site.xml" || return $?
 
@@ -495,15 +492,12 @@ function f_install_hive() {
     sudo -u ${_usr} echo '<?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
 <configuration>
-    <property>
-        <name>fs.defaultFS</name>
-        <value>file:///</value>
-    </property>
+    <property><name>fs.defaultFS</name><value>file:///</value></property>
 </configuration>
 ' > "${_dir%/}/${_hadoop_core%/}/etc/hadoop/core-site.xml" || return $?
 
-    if [ -s "${_dir%/}/start_hiveserver2.sh" ]; then
-        _log "INFO" "${_dir%/}/start_hiveserver2.sh exists, so not modifying."; sleep 1
+    if [ -s "${_dir%/}/apache_hive.sh" ]; then
+        _log "INFO" "${_dir%/}/apache_hive.sh exists, so not modifying."; sleep 1
     else
         echo '#!/usr/bin/env bash
 if [ "$USER" != "'${_usr}'" ]; then
@@ -516,15 +510,21 @@ export HADOOP_HOME='${_dir%/}/${_hadoop_core}'
 export JAVA_HOME='${_java_home}'
 
 cd $HIVE_HOME || return $?
+
+if [ "$1" = "beeline" ]; then
+    $HIVE_HOME/bin/beeline -u jdbc:hive2://localhost:10000
+    exit $?
+fi
 if [ ! -s ./metastore_db ]; then
     $HIVE_HOME/bin/schematool -dbType derby -initSchema || return $?
 fi
 nohup $HIVE_HOME/bin/hiveserver2 "$@" &> '${_dir%/}'/hiveserver2.out &
-' > ${_dir%/}/start_hiveserver2.sh
-        chown ${_usr}: ${_dir%/}/start_hiveserver2.sh
-        chmod u+x ${_dir%/}/start_hiveserver2.sh
+' > ${_dir%/}/apache_hive.sh
+        chown ${_usr}: ${_dir%/}/apache_hive.sh
+        chmod u+x ${_dir%/}/apache_hive.sh
     fi
-    _log "To start: sudo -u ${_usr} ${_dir%/}/start_hiveserver2.sh --hiveconf hive.server2.thrift.port=10002"
+    _log "To start:  sudo -u ${_usr} ${_dir%/}/apache_hive.sh"
+    _log "To access: sudo -u ${_usr} ${_dir%/}/apache_hive.sh beeline"
 }
 
 function f_install_atscale() {
