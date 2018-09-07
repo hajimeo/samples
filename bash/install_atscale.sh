@@ -278,7 +278,7 @@ function f_generate_custom_yaml() {
             mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom.yaml_$(date +"%Y%m%d%H%M%S") || return $?
         fi
         # CentOS seems to have an alias of "cp -i"
-        mv -f ${_tmp_yaml} ${_installer_parent_dir%/}/custom.yaml && chown ${_usr}: ${_installer_parent_dir%/}/custom.yaml
+        cp ${_tmp_yaml} ${_installer_parent_dir%/}/custom.yaml && chown ${_usr}: ${_installer_parent_dir%/}/custom.yaml
     fi
 }
 
@@ -605,17 +605,34 @@ function f_install_atscale() {
         fi
     fi
 
-    # installer needs to be run from this dir
-    _log "INFO" "executing 'cd ${_installer_parent_dir%/}/atscale-${_version}.*-${_OS_ARCH} && sudo -u ${_usr} ./bin/install -l ${_license}'"; sleep 1
-    cd ${_installer_parent_dir%/}/atscale-${_version}.*-${_OS_ARCH}/ || return $?
-    sudo -u ${_usr} ./bin/install -l ${_license}
-    cd -
+    f_run_installer "" "${_version}" "${_license}" "${_usr}" "${_installer_parent_dir}"
 
     local _last_log="`ls -t1 /home/atscale/log/install-20*.log | head -n1`"
     if [ -s "${_last_log}" ]; then
         cat "${_last_log}" | grep -v 'The yum provider can only be used as root' | grep '^Error:' && return 1
     fi
     return 0
+}
+
+function f_run_installer() {
+    local __doc__="Run AtScale instaler (for re-configure)"
+    local _installer_dir="${1}"
+    local _version="${2:-${_ATSCALE_VER}}"
+    local _license="${3:-${_ATSCALE_LICENSE}}"
+    local _usr="${4:-${_ATSCALE_USER}}"
+    local _installer_parent_dir="${5:-/home/${_usr}}"
+
+    if [ ! -d "${_installer_dir}" ]; then
+        _installer_dir="${_installer_parent_dir%/}/atscale-${_version}.*-${_OS_ARCH}"
+        _log "INFO" "No Installer's path specified, so that guessed as ${_installer_dir} ..."; sleep 1
+    fi
+
+    # NOTE: installer needs to be run from this dir. Abs path does not work...
+    _log "INFO" "executing 'cd ${_installer_dir} && sudo -u ${_usr} ./bin/install -l ${_license}'"; sleep 1
+    cd ${_installer_dir%/}/ || return $?
+    # NOTE: As of this typing this installer returns non zero exit code even it's OK...
+    sudo -u ${_usr} ./bin/install -l ${_license}
+    cd -
 }
 
 function f_install_post_tasks() {
@@ -1260,7 +1277,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         _ATSCALE_CUSTOMYAML=/tmp/custom_minimum.yaml f_install_atscale || exit $?
         f_install_hive || exit $?
         sudo -u ${_ATSCALE_USER} $(dirname ${_ATSCALE_DIR})/apache-hive/apache_hive.sh -e 'CREATE DATABASE IF NOT EXISTS atscale' || exit $?
-        _extra_classpath="$(sed -n -r 's/^export HADOOP_HOME=(.+)$/\1/p' $(dirname ${_ATSCALE_DIR})/apache-hive/apache_hive.sh)"
+        _extra_classpath="$(sed -n -r 's/^export HADOOP_HOME=(.+)$/\1/p' $(dirname ${_ATSCALE_DIR})/apache-hive/apache_hive.sh)" || exit $?
         f_install_post_tasks "" "" "" "" "" "${_extra_classpath%/}/" "${_STANDALONE}"
     else
         # As using version, populating in here. I wouldn't create more than once per day per version
