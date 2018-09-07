@@ -16,6 +16,7 @@ alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
 alias logS="source ~/IdeaProjects/samples/bash/log_search.sh"
 # Start metabase on port: 30000
 alias mb='java -jar ~/Applications/metabase.jar'
+alias vnc='java -jar ~/Applications/tightvnc-jviewer.jar'
 # Start Jupyter Notebook with Aggregation template (and backup-ing)
 alias jn='if [ -d ~/backup/jupyter-notebook ]; then
     cp ~/backup/jupyter-notebook/Aggregation.ipynb ./ && jupyter notebook &
