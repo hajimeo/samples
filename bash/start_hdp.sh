@@ -59,10 +59,13 @@ How to create a node(s)
     # If docker image for CentOS 6.8 is not ready
     f_docker_base_create 'https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6' 'centos' '6.8'
 
-    # Create one node with Ambari Server, hostname: node101.localdomain, OS ver: CentOS6.8, Network addr: 172.17.100.x
+    # Create one node with Ambari Server, hostname: ambari2510.localdomain, OS ver: CentOS7.5, Network addr: 172.17.100.x
     p_ambari_node_create 'ambari2510.localdomain:8008' '172.17.100.125' '7.5.1804' [/path/to/ambari.repo] [DNS_IP]
 
-    # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS7.4, and Ambari is ambari2615.ubu04.localdomain
+    # Create one node WITHOUT Ambari, hostname: node101.localdomain, OS ver: CentOS7.5, Network addr: 172.17.100.x
+    p_node_create 'test.ubuntu.localdomain' '172.17.100.125' '7.5.1804' [DNS_IP]
+
+    # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS7.5, and Ambari is ambari2615.ubu04.localdomain
     export r_DOMAIN_SUFFIX='.ubu04.localdomain'
     p_nodes_create '2' '102' '172.17.140.' '7.5.1804' 'ambari2615.ubu04.localdomain' [/path/to/ambari.repo]
     # Install HDP to *4* nodes with blueprint (cluster name, Ambari host [and hostmap and cluster json files])
@@ -351,7 +354,25 @@ function p_ambari_node_create() {
         sleep 3
     fi
 
-    p_node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_ambari_host}" "${_ambari_repo_file}" "${_dns}" || return $?
+    p_node_create "${_ambari_host}" "${_ip_address}" "${_os_ver}" "${_dns}" || return $?
+
+    if [ -z "${_ambari_repo_file}" ]; then
+        if [ -n "${_ambari_host}" ]; then
+            _warn "No ambari repo file specified, so trying to get from ${_ambari_host}"
+            scp root@${_ambari_host}:/etc/yum.repos.d/ambari.repo /tmp/ambari_$$.repo || return 0
+            _ambari_repo_file="/tmp/ambari_$$.repo"
+        else
+            _warn "No ambari repo file specified, so not setting up Agent"
+            return
+        fi
+    fi
+
+    local _name="`echo "${_ambari_host}" | cut -d"." -f1`"
+    scp -q ${_ambari_repo_file} root@${_ambari_host}:/etc/yum.repos.d/ambari.repo || return $?
+    docker exec -it ${_name} bash -c 'which ambari-agent 2>/dev/null || yum install ambari-agent -y' || return $?
+    _ambari_agent_fix "${_ambari_host}"
+    [ -n "${_ambari_host}" ] && docker exec -it ${_name} bash -c "ambari-agent reset ${_ambari_host}"
+    docker exec -it ${_name} bash -c 'ambari-agent start'
 
     p_ambari_node_setup "${_ambari_repo_file}" "${_ambari_host}" "${_port}"
 }
@@ -378,12 +399,10 @@ function p_node_create() {
     local __doc__="TODO: Create one node (NOTE: no agent installation if no ambari.repo, only centos, and doesn't create docker image)"
     local _hostname="${1}"
     local _ip_address="${2}"
-    local _os_ver="${3-$r_CONTAINER_OS_VER}"
-    local _ambari_host="${4-$r_AMBARI_HOST}"
-    local _ambari_repo_file="${5-$r_AMBARI_REPO_FILE}"
-    local _dns="$6"
+    local _os_ver="${3-${r_CONTAINER_OS_VER:-$g_CENTOS_VERSION}}"
+    local _dns="$4"
 
-    [ -z "${_dns}" ] && _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
+    [ -z "${_dns}" ] && _dns="${r_DNS_SERVER:-$g_DNS_SERVER}"
     [ $_dns = "localhost" ] && _dns="`f_docker_ip`"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
@@ -395,22 +414,6 @@ function p_node_create() {
 
     docker exec -it ${_name} bash -c "chpasswd <<< root:$g_DEFAULT_PASSWORD"
     _copy_auth_keys_to_containers "${_hostname}"
-
-    if [ -z "${_ambari_repo_file}" ]; then
-        if [ -n "${_ambari_host}" ]; then
-            _warn "No ambari repo file specified, so trying to get from ${_ambari_host}"
-            scp root@${_ambari_host}:/etc/yum.repos.d/ambari.repo /tmp/ambari_$$.repo || return 0
-            _ambari_repo_file="/tmp/ambari_$$.repo"
-        else
-            _warn "No ambari repo file specified, so not setting up Agent"
-            return
-        fi
-    fi
-    scp -q ${_ambari_repo_file} root@${_hostname}:/etc/yum.repos.d/ambari.repo || return $?
-    docker exec -it ${_name} bash -c 'which ambari-agent 2>/dev/null || yum install ambari-agent -y' || return $?
-    _ambari_agent_fix "${_hostname}"
-    [ -n "${_ambari_host}" ] && docker exec -it ${_name} bash -c "ambari-agent reset ${_ambari_host}"
-    docker exec -it ${_name} bash -c 'ambari-agent start'
 }
 
 function f_commands_run_on_nodes() {
@@ -3082,7 +3085,7 @@ startxfce4 &" > ${HOME%/}/.vnc/xstartup
 chmod u+x ${HOME%/}/.vnc/xstartup'
     #echo "TightVNC client: https://www.tightvnc.com/download.php"
     echo "- to start:"
-    echo "su - $_user -c 'vncserver -geometry 1280x768 -depth 16 :1'"
+    echo "su - $_user -c 'vncserver -geometry 1600x960 -depth 8 :1'"
     echo "- to stop:"
     echo "su - $_user -c 'vncserver -kill :1'"
 
