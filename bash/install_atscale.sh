@@ -214,7 +214,7 @@ function f_java_envs() {
         return 11
     fi
     local _user="`stat -c '%U' /proc/${_p}`"
-    export JAVA_HOME="$(ls -1d ${_dir%/}/share/jdk*| head -n1)" # not expecting more than one dir
+    export JAVA_HOME="$(ls -1dt ${_dir%/}/share/jdk* | head -n1)" # not expecting more than one dir
     export CLASSPATH=".:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"   #:`hadoop classpath`
 }
 
@@ -441,6 +441,77 @@ function f_psql() {
     LD_LIBRARY_PATH=${_pg_dir%/}/lib PGPASSWORD=${PGPASSWORD:-atscale} ${_pg_dir%/}/bin/psql -h localhost -p 10520 -U atscale "$@"
 }
 
+function f_install_hive() {
+    local __doc__="Install Apache Hive (and hadoop-core)"
+    local _usr="${1:-${_ATSCALE_USER:-$USER}}"
+    local _as_dir="${2:-${_ATSCALE_DIR:-./}}"
+    local _dir="$(dirname ${_as_dir})/apache-hive"
+
+    local _hive="apache-hive-1.2.2-bin"
+    local _hadoop_core="hadoop-2.9.1"
+
+    if [ ! -d "${_dir}" ]; then
+        mkdir -p "${_dir%/}" || return $?
+        chown ${_usr}: "${_dir%/}" || return $?
+    fi
+    if [ ! -d "${_dir%/}/${_hive}" ]; then
+        _download_and_extract "https://archive.apache.org/dist/hive/hive-1.2.2/${_hive}.tar.gz" "${_TMP_DIR%/}" "${_dir}" "${_usr}" || return $?
+    fi
+    if [ ! -d "${_dir%/}/${_hadoop_core}" ]; then
+        _download_and_extract "https://archive.apache.org/dist/hadoop/core/stable/${_hadoop_core}.tar.gz" "${_TMP_DIR%/}" "${_dir}" "${_usr}" || return $?
+    fi
+
+    if [ ! -d /user/hive/warehouse ]; then mkdir -p -m 777 /user/hive/warehouse || return $?; fi
+    if [ ! -d /tmp/hive ]; then mkdir -m 777 /tmp/hive || return $?; fi     # this shouldn't be needed, but just in case
+    if [ ! -d ${_dir%/}/${_hive%/}/logs ]; then mkdir -p -m 777 ${_dir%/}/${_hive%/}/logs || return $?; fi
+    if [ ! -d ${_dir%/}/${_hive%/}/tmp/java ]; then mkdir -p -m 777 ${_dir%/}/${_hive%/}/tmp/java || return $?; fi
+
+    [ -s "${_dir%/}/${_hive%/}/conf/hive-site.xml" ] && mv "${_dir%/}/${_hive%/}/conf/hive-site.xml" "${_dir%/}/${_hive%/}/conf/hive-site.xml.$(date +"%Y%m%d%H%M%S")"
+    #<property><name>hive.metastore.schema.verification</name><value>false</value></property>
+    #<property><name>hive.metastore.schema.verification.record.version</name><value>false</value></property>
+    #<property><name>system:user.name</name><value>${user.name}</value></property>
+    # To logging, need to add hive-log4j.properties and hive-exec-log4j.properties in the class path
+    sudo -u ${_usr} echo '<configuration>
+    <property><name>system:java.io.tmpdir</name><value>'${_dir%/}/${_hive%/}/tmp/java'</value></property>
+</configuration>
+' > "${_dir%/}/${_hive%/}/conf/hive-site.xml" || return $?
+
+    [ -s "${_dir%/}/${_hadoop_core%/}/etc/hadoop/core-site.xml" ] && mv "${_dir%/}/${_hadoop_core%/}/etc/hadoop/core-site.xml" "${_dir%/}/${_hadoop_core%/}/etc/hadoop/core-site.xml.$(date +"%Y%m%d%H%M%S")"
+    sudo -u ${_usr} echo '<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+    <property>
+        <name>fs.defaultFS</name>
+        <value>file:///</value>
+    </property>
+</configuration>
+' > "${_dir%/}/${_hadoop_core%/}/etc/hadoop/core-site.xml" || return $?
+
+    if [ -s "${_dir%/}/start_hiveserver2.sh" ]; then
+        _log "INFO" "${_dir%/}/start_hiveserver2.sh exists, so not modifying."; sleep 1
+    else
+        echo '#!/usr/bin/env bash
+if [ "$USER" != "'${_usr}'" ]; then
+  echo "Sorry, this script must be run as the '${_usr}' user."
+  exit 1
+fi
+
+export HIVE_HOME='${_dir%/}/${_hive}'
+export HADOOP_HOME='${_dir%/}/${_hadoop_core}'
+export JAVA_HOME='$(ls -1dt ${_as_dir%/}/share/jdk* | head -n1)'
+
+cd $HIVE_HOME || return $?
+if [ ! -s ./metastore_db ]; then
+    $HIVE_HOME/bin/schematool -dbType derby -initSchema || return $?
+fi
+nohup $HIVE_HOME/bin/hiveserver2 "$@" &> '${_dir%/}'/hiveserver2.out &
+' > ${_dir%/}/start_hiveserver2.sh
+        chown ${_usr}: ${_dir%/}/start_hiveserver2.sh
+        chmod u+x ${_dir%/}/start_hiveserver2.sh
+    fi
+    _log "To start: sudo -u ${_usr} ${_dir%/}/start_hiveserver2.sh --hiveconf hive.server2.thrift.port=10002"
+}
+
 function f_install_atscale() {
     local __doc__="Install AtScale software"
     local _version="${1:-${_ATSCALE_VER}}"
@@ -485,13 +556,8 @@ function f_install_atscale() {
 
     # NOTE: From here, all commands should be run as atscale user.
     if [ ! -d ${_installer_parent_dir%/}/atscale-${_version}.*-${_OS_ARCH} ]; then
-        if [ ! -r "${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz" ]; then
-            _log "INFO" "No ${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz. Downloading from internet..."; sleep 1
-            #s3cmd ls s3://files.atscale.com/installer/package/ | grep -E 'atscale-[6789].+latest.+\.tar\.gz$'  # NOTE: https requires s3-us-west-1.amazonaws.com hostname
-            sudo -u ${_usr} curl --retry 100 -C - -o ${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz "https://s3-us-west-1.amazonaws.com/files.atscale.com/installer/package/atscale-${_version}.latest-${_OS_ARCH}.tar.gz" || return $?
-        fi
-
-        sudo -u ${_usr} tar -xf ${_TMP_DIR%/}/atscale-${_version}.latest-${_OS_ARCH}.tar.gz -C ${_installer_parent_dir%/}/ || return $?
+        #s3cmd ls s3://files.atscale.com/installer/package/ | grep -E 'atscale-[6789].+latest.+\.tar\.gz$'  # NOTE: https requires s3-us-west-1.amazonaws.com hostname
+        _download_and_extract "https://s3-us-west-1.amazonaws.com/files.atscale.com/installer/package/atscale-${_version}.latest-${_OS_ARCH}.tar.gz" "${_TMP_DIR%/}" "${_installer_parent_dir}"
     fi
 
     # If some custom yaml is specified in the argument or _ATSCALE_CUSTOMYAML
@@ -805,7 +871,7 @@ function f_setup_ldap_cert() {
     local __doc__="If LDAPS is available, import the LDAP/AD certificate into a trust store"
     local _ldap_host="${1:-$(hostname -f)}"
     local _ldap_port="${2:-636}" # or 389
-    local _java_home="${3:-$(ls -1d ${_ATSCALE_DIR%/}/share/jdk*)}"
+    local _java_home="${3:-$(ls -1dt ${_ATSCALE_DIR%/}/share/jdk* | head -n1)}"
     local _truststore="${4:-${_java_home%/}/jre/lib/security/cacerts}" # or ${_dir%/}/security
     local _storepass="${5:-changeit}"
 
@@ -1038,6 +1104,25 @@ function _get_from_xml() {
     local _name="$2"
     # TODO: won't work with multiple lines
     grep -F '<name>'${_name}'</name>' -A 1 ${_xml_file} | grep -Pzo '<value>.+?</value>' | sed -nr 's/<value>(.+)<\/value>/\1/p'
+}
+
+function _download_and_extract() {
+    local _url="$1"
+    local _save_dir="${2:-${_TMP_DIR:-./}}"
+    local _extract_to="${3}"
+    local _as_user="${4:-${_ATSCALE_USER:-$USER}}"
+    local _file="$5"
+    [ -z "${_file}" ] && _file="`basename "${_url}"`"
+
+    if [ ! -r "${_save_dir%/}/${_file}" ]; then
+        _log "INFO" "No ${_save_dir%/}/${_file}. Downloading from internet..."; sleep 1
+        sudo -u ${_as_user} curl --retry 100 -C - -o "${_save_dir%/}/${_file}" "${_url}" || return $?
+    fi
+
+    if [ -d "${_extract_to}" ]; then
+        sudo -u ${_as_user} tar -xf ${_save_dir%/}/${_file} -C ${_extract_to%/}/ || return $?
+        _log "INFO" "Extracted ${_file} into ${_extract_to}"; sleep 1
+    fi
 }
 
 function _log() {
