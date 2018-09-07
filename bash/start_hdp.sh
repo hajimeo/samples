@@ -412,8 +412,7 @@ function p_node_create() {
     f_docker_start_one "${_hostname}" "${_ip_address}" "${_dns}"
     sleep 1
 
-    docker exec -it ${_name} bash -c "chpasswd <<< root:$g_DEFAULT_PASSWORD"
-    _copy_auth_keys_to_containers "${_hostname}"
+    f_commands_run_on_nodes "${_hostname}"
 }
 
 function f_commands_run_on_nodes() {
@@ -1945,9 +1944,13 @@ function f_run_cmd_on_nodes() {
     local _start_from="${3-$r_NODE_START_NUM}"
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
 
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
-    done
+    if [[ "$_how_many" =~ ^[0-9]+$ ]]; then
+        for i in `_docker_seq "$_how_many" "$_start_from"`; do
+            ssh -q root@${_node}$i${r_DOMAIN_SUFFIX} -t "$_cmd"
+        done
+    else
+        ssh -q root@${_how_many} -t "$_cmd"
+    fi
 }
 
 function f_run_cmd_all() {
@@ -2758,10 +2761,15 @@ function f_copy_auth_keys_to_containers() {
         return 1
     fi
 
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        docker exec -it ${_node}$i "service sshd start" &>/dev/null # just in case starting
-        _copy_auth_keys_to_containers "${_node}$i${r_DOMAIN_SUFFIX}"
-    done
+    if [[ "$_how_many" =~ ^[0-9]+$ ]]; then
+        for i in `_docker_seq "$_how_many" "$_start_from"`; do
+            docker exec -it ${_node}$i "service sshd start" &>/dev/null # just in case starting
+            _copy_auth_keys_to_containers "${_node}$i${r_DOMAIN_SUFFIX}"
+        done
+    else
+        docker exec -it ${_how_many} "service sshd start" &>/dev/null # just in case starting
+        _copy_auth_keys_to_containers "${_how_many}"
+    fi
 }
 
 function _copy_auth_keys_to_containers() {
