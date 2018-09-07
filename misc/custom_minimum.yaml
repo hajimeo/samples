@@ -3,7 +3,7 @@ as_atscale_host: %atscale_host%
 as_preview_enabled: ''
 as_skip_first_time_setup_dialog: ''
 as_default_schema: %default_schema%
-is_silent: 'false'
+is_silent: 'true'
 as_install_sample_data: 'false'
 as_install_sample_data_omniture: 'false'
 as_target_env: other
