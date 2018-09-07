@@ -71,7 +71,7 @@ function f_setup() {
     local _schema="${4:-${_SCHEMA_AND_HDFSDIR}}"
     local _kadmin_usr="${5:-${_KADMIN_USR}}"
     local _kadmin_pwd="${6:-${_DEFAULT_PWD}}"
-    local _is_updating="${7-${_UPDATING}}"
+    local _skip_hdfs_hive="${7-${_UPDATING}}"  # Skip HDFS dir and Hive schema creating
 
     local _hdfs_user="${_HDFS_USER:-hdfs}"
 
@@ -129,7 +129,7 @@ function f_setup() {
         sudo -u ${_user} kinit -kt ${_KEYTAB_DIR%/}/${_user}.service.keytab ${_atscale_principal} || return $?
     fi
 
-    if [[ "${_is_updating}" =~ (^y|^Y) ]]; then
+    if [[ "${_skip_hdfs_hive}" =~ (^y|^Y) ]]; then
         _log "INFO" "Updating (Upgrading) is selected, so that not creating a HDFS dir and Hive schema"; sleep 1
     else
         # Assuming hive client installed
@@ -223,7 +223,8 @@ function f_generate_custom_yaml() {
     local _license_file="${1:-${_ATSCALE_LICENSE}}"
     local _usr="${2:-${_ATSCALE_USER}}"
     local _schema_and_hdfsdir="${3:-${_SCHEMA_AND_HDFSDIR}}"
-    local _installer_parent_dir="${4:-/home/${_usr}}"
+    local _install_directory="${4:-${_ATSCALE_DIR}}"
+    local _installer_parent_dir="${5:-/home/${_usr}}"
 
     # TODO: currently only for HDP
     local _tmp_yaml=/tmp/custom_hdp.yaml
@@ -264,7 +265,7 @@ function f_generate_custom_yaml() {
         [ -z "${_hdfs_principal}" ] && _hdfs_principal="hdfs"
     fi
 
-    for _v in atscale_host license_file default_schema hdfs_root_dir hdp_version hdp_major_version hadoop_classpath is_kerberized delegated_auth_enabled hive_metastore_database hive_metastore_password hadoop_realm realm hdfs_principal; do
+    for _v in atscale_host install_directory license_file default_schema hdfs_root_dir hdp_version hdp_major_version hadoop_classpath is_kerberized delegated_auth_enabled hive_metastore_database hive_metastore_password hadoop_realm realm hdfs_principal; do
         local _v2="_"${_v}
         # TODO: some variable contains "/" so at this moment using "@" but not perfect
         sed -i "s@%${_v}%@${!_v2}@g" $_tmp_yaml || return $?
@@ -445,10 +446,20 @@ function f_install_hive() {
     local __doc__="Install Apache Hive (and hadoop-core)"
     local _usr="${1:-${_ATSCALE_USER:-$USER}}"
     local _as_dir="${2:-${_ATSCALE_DIR:-./}}"
-    local _dir="$(dirname ${_as_dir})/apache-hive"
+    local _java_home="${3:-$JAVA_HOME}"
 
+    if [ -z "${_java_home}" ]; then
+        _java_home="$(ls -1dt ${_as_dir%/}/share/jdk* | head -n1)"
+        if [ -z "${_java_home}" ]; then
+            _log "ERROR" "Could not determine JAVA_HOME"; sleep 3;
+            return 1
+        fi
+    fi
+
+    local _dir="$(dirname ${_as_dir})/apache-hive"
     local _hive="apache-hive-1.2.2-bin"
     local _hadoop_core="hadoop-2.9.1"
+
 
     if [ ! -d "${_dir}" ]; then
         mkdir -p "${_dir%/}" || return $?
@@ -498,7 +509,7 @@ fi
 
 export HIVE_HOME='${_dir%/}/${_hive}'
 export HADOOP_HOME='${_dir%/}/${_hadoop_core}'
-export JAVA_HOME='$(ls -1dt ${_as_dir%/}/share/jdk* | head -n1)'
+export JAVA_HOME='${_java_home}'
 
 cd $HIVE_HOME || return $?
 if [ ! -s ./metastore_db ]; then
@@ -586,8 +597,8 @@ function f_install_atscale() {
     fi
 
     # installer needs to be run from this dir
+    _log "INFO" "executing 'cd ${_installer_parent_dir%/}/atscale-${_version}.*-${_OS_ARCH} && sudo -u ${_usr} ./bin/install -l ${_license}'"; sleep 1
     cd ${_installer_parent_dir%/}/atscale-${_version}.*-${_OS_ARCH}/ || return $?
-    _log "INFO" "executing 'sudo -u ${_usr} ./bin/install -l ${_license}'"; sleep 1
     sudo -u ${_usr} ./bin/install -l ${_license}
     cd -
 
