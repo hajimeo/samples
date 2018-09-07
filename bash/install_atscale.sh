@@ -59,6 +59,7 @@ END
 [ -z "${_ATSCALE_CUSTOMYAML}" ] && _ATSCALE_CUSTOMYAML="${4}"   # Path to custom.yaml file. If empty, automatically generated
 [ -z "${_UPDATING}" ] && _UPDATING="${5}"                       # Upgrading & Updating (means re-running installer to update some properties)
 [ -z "${_NO_BACKUP}" ] && _NO_BACKUP="${6}"                     # As back up takes time, if you are really sure, you can skip taking backup
+[ -z "${_STANDALONE}" ] && _STANDALONE="${7}"                   # Everything will run in this node, no hadoop required
 
 
 ### Functions ########################
@@ -220,15 +221,16 @@ function f_java_envs() {
 
 function f_generate_custom_yaml() {
     local __doc__="Generate custom yaml"
-    local _license_file="${1:-${_ATSCALE_LICENSE}}"
+    local _template_file="${1:-custom_hdp.yaml}"
     local _usr="${2:-${_ATSCALE_USER}}"
-    local _schema_and_hdfsdir="${3:-${_SCHEMA_AND_HDFSDIR}}"
-    local _install_directory="${4:-${_ATSCALE_DIR}}"
-    local _installer_parent_dir="${5:-/home/${_usr}}"
+    local _license_file="${3:-${_ATSCALE_LICENSE}}"
+    local _schema_and_hdfsdir="${4:-${_SCHEMA_AND_HDFSDIR}}"
+    local _install_directory="${5:-${_ATSCALE_DIR}}"
+    local _installer_parent_dir="${6:-/home/${_usr}}"
 
-    # TODO: currently only for HDP
-    local _tmp_yaml=/tmp/custom_hdp.yaml
-    curl -s --retry 3 -o ${_tmp_yaml} "https://raw.githubusercontent.com/hajimeo/samples/master/misc/custom_hdp.yaml" || return $?
+    # NOTE: For now, always get the latest one
+    local _tmp_yaml=/tmp/${_template_file}
+    curl -s --retry 3 -o ${_tmp_yaml} "https://raw.githubusercontent.com/hajimeo/samples/master/misc/${_template_file}" || return $?
 
     # expected variables
     local _atscale_host="`hostname -f`" || return $?
@@ -511,8 +513,8 @@ export JAVA_HOME='${_java_home}'
 
 cd $HIVE_HOME || return $?
 
-if [ "$1" = "beeline" ]; then
-    $HIVE_HOME/bin/beeline -u jdbc:hive2://localhost:10000
+if lsof -ti:10000 &>/dev/null; then
+    $HIVE_HOME/bin/beeline -u jdbc:hive2://localhost:10000 "$@"
     exit $?
 fi
 if [ ! -s ./metastore_db ]; then
@@ -524,7 +526,7 @@ nohup $HIVE_HOME/bin/hiveserver2 "$@" &> '${_dir%/}'/hiveserver2.out &
         chmod u+x ${_dir%/}/apache_hive.sh
     fi
     _log "To start:  sudo -u ${_usr} ${_dir%/}/apache_hive.sh"
-    _log "To access: sudo -u ${_usr} ${_dir%/}/apache_hive.sh beeline"
+    _log "To access: sudo -u ${_usr} ${_dir%/}/apache_hive.sh -e 'CREATE DATABASE IF NOT EXISTS atscale'"
 }
 
 function f_install_atscale() {
@@ -582,9 +584,12 @@ function f_install_atscale() {
             return 1
         fi
 
-        [ -s ${_installer_parent_dir%/}/custom.yaml ] && mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom.yaml_$(date +"%Y%m%d%H%M%S")
-        _log "INFO" "Copying ${_custom_yaml} to ${_installer_parent_dir%/}/custom.yaml ..."; sleep 1
-        sudo -u ${_usr} cp -f "${_custom_yaml}" ${_installer_parent_dir%/}/custom.yaml || return $?
+        # Check if files are same path
+        if [[ ! "${_custom_yaml}" -ef "${_installer_parent_dir%/}/custom.yaml" ]]; then
+            [ -s ${_installer_parent_dir%/}/custom.yaml ] && mv -f ${_installer_parent_dir%/}/custom.yaml ${_installer_parent_dir%/}/custom.yaml_$(date +"%Y%m%d%H%M%S")
+            _log "INFO" "Copying ${_custom_yaml} to ${_installer_parent_dir%/}/custom.yaml ..."; sleep 1
+            sudo -u ${_usr} cp -f "${_custom_yaml}" ${_installer_parent_dir%/}/custom.yaml || return $?
+        fi
     fi
 
     if [[ "${_is_updating}}" =~ (^y|^Y) ]]; then
@@ -620,14 +625,16 @@ function f_install_post_tasks() {
     local _installer_parent_dir="${3:-/home/${_usr}}"
     local _wh_name="${4:-defaultWH}"
     local _env_name="${5:-defaultEnv}"
+    local _extra_class="${6}"
+    local _standalone="${7:-${_STANDALONE}}"
 
     if [ -x "${_dir%/}/bin/atscale_start" ]; then
         grep -q 'atscale_start' /etc/rc.local || echo -e "\nsudo -u ${_usr} ${_dir%/}/bin/atscale_start" >> /etc/rc.local
     fi
 
-    # TODO: I think below is needed if kerberos
-    #${_dir%/}/apps/engine/bin/engine_wrapper.sh
-    #export AS_ENGINE_EXTRA_CLASSPATH="config.ini:/etc/hadoop/conf/"
+    if [ -n "${_extra_class}" ]; then
+        sed -i.$(date +"%Y%m%d%H%M%S") -r 's#^export AS_ENGINE_EXTRA_CLASSPATH=.+$#export AS_ENGINE_EXTRA_CLASSPATH="config.ini:'${_extra_class}'"#' ${_dir%/}/apps/engine/bin/engine_wrapper.sh
+    fi
 
     _load_yaml ${_installer_parent_dir%/}/custom.yaml "inst_" || return $?
 
@@ -658,7 +665,24 @@ function f_install_post_tasks() {
 #<property><name>tez.tez-ui.history-url.base</name><value>http://'${_ambari}':8080/#/main/view/TEZ/tez_cluster_instance</value></property>' ${_dir%/}/share/apache-tez-*/conf/tez-site.xml
 
     # Skipping first wizard introduced form 6.7.0 by populating data with APIs
-    local _hdfsUri="`_get_from_xml "${inst_as_hadoop_conf_dir%/}/core-site.xml" "fs.defaultFS"`" || return $?
+    if [[ "${_standalone}" =~ ^(y|Y) ]]; then
+        local _hdfsUri="file:///"
+        inst_as_hive_flavor_batch="hive-standalone"
+        inst_as_hive_host_batch="localhost" # localhost would be safer...?
+        inst_as_hive_port_batch="10000"
+    else
+        local _hdfsUri="`_get_from_xml "${inst_as_hadoop_conf_dir%/}/core-site.xml" "fs.defaultFS"`" || return $?
+        # In my custom_hdp.yaml, as_hive_flavor_batch uses atscale-hive, so using batch (also spark as interactive but it often doesn't work and also not suitable for system queries)
+        if [ -z "${inst_as_hive_host_batch}" ]; then
+            if [ "${as_hive_flavor_batch}" = "hive" ]; then
+                # TODO: at this moment, assuming HS2 is installed same node as HMS
+                inst_as_hive_host_batch="`_get_from_xml "/etc/hive/conf/hive-site.xml" "hive.metastore.uris" | sed -r 's/.+\/\/([^:]+):.+/\1/'`"
+                inst_as_hive_port_batch="`_get_from_xml "/etc/hive/conf/hive-site.xml" "hive.server2.thrift.port"`"
+            else
+                inst_as_hive_host_batch="`hostname -f`"
+            fi
+        fi
+    fi
 
     local hdfsNameNodeKerberosPrincipal="null"
     local extraJdbcFlags="\"\""
@@ -674,16 +698,6 @@ function f_install_post_tasks() {
     # { "status" : { "code" : 0, "message" : "200 OK" }, "responseCreated" : "2018-08-03T05:19:20.779Z", "response" : { "created" : true, "id" : "e22b575e-393f-4056-b5bf-32ea44501561" } }
     [ -z "${_groupId}" ] && return 11
 
-    # In my custom_hdp.yaml, as_hive_flavor_batch uses atscale-hive, so using batch (also spark as interactive but it often doesn't work and also not suitable for system queries)
-    if [ -z "${inst_as_hive_host_batch}" ]; then
-        if [ "${as_hive_flavor_batch}" = "hive" ]; then
-            # TODO: at this moment, assuming HS2 is installed same node as HMS
-            inst_as_hive_host_batch="`_get_from_xml "/etc/hive/conf/hive-site.xml" "hive.metastore.uris" | sed -r 's/.+\/\/([^:]+):.+/\1/'`"
-            inst_as_hive_port_batch="`_get_from_xml "/etc/hive/conf/hive-site.xml" "hive.server2.thrift.port"`"
-        else
-            inst_as_hive_host_batch="`hostname -f`"
-        fi
-    fi
     local _conId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default/connection-group/${_groupId}" -H "Authorization: Bearer ${jwt}" \
     -d '{"name":"'${inst_as_hive_flavor_batch}'","hosts":"'${inst_as_hive_host_batch}'","port":'${inst_as_hive_port_batch}',"connectorType":"hive","username":"atscale","password":"atscale","extraJdbcFlags":'${extraJdbcFlags}',"queryRoles":["large_user_query_role","small_user_query_role","system_query_role","canary_query_role"],"extraProperties":{}}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
     # Can execute next API call without conId though...
@@ -873,6 +887,7 @@ function f_setup_TLS() {
         _change_key_value_in_file "${_custom_yaml}" "custom_truststore_password" "changeit"
     fi
 
+    # Check if files are same path
     if [[ ! "${_custom_yaml}" -ef "${_installer_parent_dir%/}/custom.yaml" ]]; then
         mv "${_installer_parent_dir%/}/custom.yaml" "${_installer_parent_dir%/}/custom.yaml_$(date +"%Y%m%d%H%M%S")"
         sudo -u ${_usr} cp "${_custom_yaml}" "${_installer_parent_dir%/}/custom.yaml" || return $?
@@ -1232,10 +1247,28 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         exit
     fi
     #set -x
-    # As using version, populating in here. I wouldn't create more than once per day per version
-    [ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="atscale_$(_get_suffix "$_ATSCALE_VER")"
-    f_setup || exit $?
-    f_install_atscale || exit $?
-    f_install_post_tasks
+
+    if [[ "${_STANDALONE}" =~ ^(y|Y) ]]; then
+        [ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="atscale"
+        _UPDATING=Y f_setup || exit $?
+        f_generate_custom_yaml "custom_minimum.yaml"
+        if [ ! -s /tmp/custom_minimum.yaml ]; then
+            _log "ERROR" "Failed to generate /tmp/custom_minimum.yaml"; sleep 3
+            exit 1
+        fi
+        # Need to install AtScale first, as this hive uses AtScale's JDK
+        _ATSCALE_CUSTOMYAML=/tmp/custom_minimum.yaml f_install_atscale || exit $?
+        f_install_hive || exit $?
+        sudo -u ${_ATSCALE_USER} $(dirname ${_ATSCALE_DIR})/apache-hive/apache_hive.sh -e 'CREATE DATABASE IF NOT EXISTS atscale' || exit $?
+        _extra_classpath="$(sed -n -r 's/^export HADOOP_HOME=(.+)$/\1/p' $(dirname ${_ATSCALE_DIR})/apache-hive/apache_hive.sh)"
+        f_install_post_tasks "" "" "" "" "" "${_extra_classpath%/}/" "${_STANDALONE}"
+    else
+        # As using version, populating in here. I wouldn't create more than once per day per version
+        [ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="atscale_$(_get_suffix "$_ATSCALE_VER")"
+        f_setup || exit $?
+        f_install_atscale || exit $?
+        f_install_post_tasks
+    fi
+
     _log "NOTE" "To import a sample data, execute 'f_dataloader' function"
 fi
