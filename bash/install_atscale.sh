@@ -445,10 +445,11 @@ function f_psql() {
 }
 
 function f_install_hive() {
-    local __doc__="Install Apache Hive (and hadoop-core)"
+    local __doc__="Install Apache Hive (and hadoop-core) and setup for AtScale"
     local _usr="${1:-${_ATSCALE_USER:-$USER}}"
     local _as_dir="${2:-${_ATSCALE_DIR}}"
     local _java_home="${3:-$JAVA_HOME}"
+    local _schema_and_hadoopdir="${4:-${_SCHEMA_AND_HDFSDIR}}"
 
     if [ -z "${_java_home}" ]; then
         _java_home="$(ls -1dt ${_as_dir%/}/share/jdk* | head -n1)"
@@ -502,31 +503,35 @@ function f_install_hive() {
         _log "INFO" "${_dir%/}/apache_hive.sh exists, so not modifying."; sleep 1
     else
         echo '#!/usr/bin/env bash
-if [ "$USER" != "'${_usr}'" ]; then
-  echo "Sorry, this script must be run as the '${_usr}' user."
-  exit 1
-fi
-
 export HIVE_HOME='${_dir%/}/${_hive}'
 export HADOOP_HOME='${_dir%/}/${_hadoop_core}'
 export JAVA_HOME='${_java_home}'
 
-cd $HIVE_HOME || return $?
-
-if lsof -ti:10000 &>/dev/null; then
-    $HIVE_HOME/bin/beeline -u jdbc:hive2://localhost:10000 "$@"
-    exit $?
-fi
-if [ ! -s ./metastore_db ]; then
+if [ "$0" = "$BASH_SOURCE" ]; then
+  if [ "$USER" != "'${_usr}'" ]; then
+    echo "Sorry, this script must be run as the '${_usr}' user."
+    exit 1
+  fi
+  cd $HIVE_HOME || return $?
+  if [ ! -s ./metastore_db ]; then
     $HIVE_HOME/bin/schematool -dbType derby -initSchema || return $?
+  fi
+  nohup $HIVE_HOME/bin/hiveserver2 "$@" &> '${_dir%/}'/hiveserver2.out &
 fi
-nohup $HIVE_HOME/bin/hiveserver2 "$@" &> '${_dir%/}'/hiveserver2.out &
 ' > ${_dir%/}/apache_hive.sh
         chown ${_usr}: ${_dir%/}/apache_hive.sh
         chmod u+x ${_dir%/}/apache_hive.sh
     fi
-    _log "To start:  sudo -u ${_usr} ${_dir%/}/apache_hive.sh"
-    _log "To access: sudo -u ${_usr} ${_dir%/}/apache_hive.sh -e 'CREATE DATABASE IF NOT EXISTS atscale'"
+
+    _log "INFO" "Starting hiveserver2 on port 10000..."; sleep 1
+    sudo -u ${_usr} ${_dir%/}/apache_hive.sh || return $?
+    sleep 1
+    for _i in {1..3}; do
+        lsof -ti:10000 -s TCP:LISTEN && break
+        sleep 3
+    done
+    source ${_dir%/}/apache_hive.sh
+    $HIVE_HOME/bin/beeline -u "jdbc:hive2://localhost:10000/" -e "CREATE DATABASE IF NOT EXISTS "${_schema_and_hadoopdir}";"
 }
 
 function f_install_atscale() {
@@ -1266,7 +1271,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     #set -x
 
     if [[ "${_STANDALONE}" =~ ^(y|Y) ]]; then
-        [ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="atscale"
+        [ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="atscale_$(_get_suffix "$_ATSCALE_VER")"
         _UPDATING=Y f_setup || exit $?
         f_generate_custom_yaml "custom_minimum.yaml"
         if [ ! -s /tmp/custom_minimum.yaml ]; then
@@ -1276,7 +1281,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         # Need to install AtScale first, as this hive uses AtScale's JDK
         _ATSCALE_CUSTOMYAML=/tmp/custom_minimum.yaml f_install_atscale || exit $?
         f_install_hive || exit $?
-        sudo -u ${_ATSCALE_USER} $(dirname ${_ATSCALE_DIR})/apache-hive/apache_hive.sh -e 'CREATE DATABASE IF NOT EXISTS atscale' || exit $?
         _extra_classpath="$(sed -n -r 's/^export HADOOP_HOME=(.+)$/\1/p' $(dirname ${_ATSCALE_DIR})/apache-hive/apache_hive.sh)" || exit $?
         f_install_post_tasks "" "" "" "" "" "${_extra_classpath%/}/" "${_STANDALONE}"
     else
