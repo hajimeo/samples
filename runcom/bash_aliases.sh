@@ -36,9 +36,7 @@ fi'
 #   rsync -Pharz root@server:/usr/local/atscale/apps/modeler/assets/modeler/public/* ./atscale_doc_NNN/
 #   cd ./atscale_doc_NNN/ && patch -p0 -b < ~/doc_index.patch
 #   ln -s ~/IdeaProjects/atscale_doc_NNN/docs ~/Public/atscale_latest
-alias aDoc='cd ~/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out &'
-# Start my simple rest API server
-alias sWeb='nohup python ~/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &'
+alias webs='cd ~/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out & nohup python ~/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &'
 # List and grep some specific files from s3. NOTE: https:// requires s3-us-west-1.amazonaws.com
 alias asS3='s3cmd ls s3://files.atscale.com/installer/package/ | grep -E "atscale-[6789].+latest.+\.tar\.gz$"'
 
