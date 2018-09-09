@@ -34,5 +34,6 @@ void 1;
 //w.open("https://www.google.com/search?q=" + q + "%20site%3Ahortonworks.com", "t_ggl");
 //w.open("https://cwiki.apache.org/confluence/dosearchsite.action?queryString=" + q, "t_apa_wiki");
 //w.open("https://issues.apache.org/jira/issues/?jql=text ~ \"" + s.replace(/(")/g, '\\$1') + "\" ORDER BY created DESC", "t_apa_jira");
+//w.open("https://issues.apache.org/jira/secure/QuickSearch.jspa?searchString=" + q, "t_apa_jira");
 //w.open("https://stackoverflow.com/search?q=" + q, "t_sto");
 //w.open("http://search-hadoop.com/?q=" + q + "", "t_hdp");
