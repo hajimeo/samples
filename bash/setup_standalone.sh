@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 function usage() {
-    echo "$BASH_SOURCE [-c|-u|-h] -n <container_name> -v <version>
+    echo "$BASH_SOURCE -c -n <container_name> -v <version>
 
 This script does the followings:
     -c [-n <container_name>|-v <version>]
@@ -12,8 +12,13 @@ This script does the followings:
     -n <container_name>     <<< no '-c'
         Start a docker container of the given name (hostname), and stat services in the container.
 
-    -p
+    -P
         Use docker's port forwarding for the application
+        This also stops other docker containers unless -N is specified
+
+    -S
+        Stop any other conflicting containers.
+        if -P is used or the host is Mac, this would be also needed.
 
     -u
         Update this script to the latest
@@ -31,6 +36,7 @@ This script does the followings:
 _IMAGE_NAME="hdp/base"                          # TODO: change to more appropriate image name
 _CREATE_AND_SETUP=false
 _DOCKER_PORT_FORWARD=false
+_DOCKER_STOP_OTHER=false
 _PORTS="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
 _SERVICE="atscale"                              # This is used by the app installer script so shouldn't change
 _WORK_DIR="/var/tmp/share"                      # If Mac, needs to be /private/var/tmp/share
@@ -170,7 +176,8 @@ function f_docker_run() {
     local _hostname="$1"
     local _base="$2"
     local _ports="${3}" #"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
-    local _share_dir="${4:-${_WORK_DIR}}"
+    local _stop_other=${4:-${_DOCKER_STOP_OTHER}}
+    local _share_dir="${5:-${_WORK_DIR}}"
     # NOTE: At this moment, removed _ip as it requires a custom network (see start_hdp.sh for how)
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
@@ -186,8 +193,16 @@ function f_docker_run() {
     for _p in $_ports; do
         local _pid="`lsof -ti:${_p} | head -n1`"
         if [ -n "${_pid}" ]; then
-            _log "ERROR" "Docker run could not use the port ${_p} as it's used by pid:${_pid}"
-            return 1
+            if ${_stop_other}; then
+                local _cname="`_docker_find_by_port ${_p}`"
+                if [ -n "${_cname}" ]; then
+                    _log "INFO" "Stopping ${_cname} container..."
+                    docker stop ${_cname}
+                fi
+            else
+                _log "ERROR" "Docker run could not use the port ${_p} as it's used by pid:${_pid}"
+                return 1
+            fi
         fi
         _port_opts="${_port_opts} -p ${_p}:${_p}"
     done
@@ -202,8 +217,21 @@ function f_docker_run() {
 function f_docker_start() {
     local __doc__="Starting one docker container (TODO: with a few customization)"
     local _hostname="$1"    # short name is also OK
+    local _stop_other=${2:-${_DOCKER_STOP_OTHER}}
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
+    if ${_stop_other}; then
+        # Probably --filter can do better...
+        for _p in `docker inspect atscale700 | python -c "import sys,json;a=json.loads(sys.stdin.read());print ' '.join([l.replace('/tcp', '') for l in a[0]['Config']['ExposedPorts'].keys()])"`; do
+            local _cname="`_docker_find_by_port ${_p}`"
+            if [ -n "${_cname}" ]; then
+                _log "INFO" "Stopping ${_cname} container..."
+                docker stop ${_cname}
+            fi
+        done
+    fi
+
     docker start --attach=false ${_name}
 
     # Somehow docker disable a container communicates outside by adding 0.0.0.0 GW, which will be problem when we test distcp
@@ -212,6 +240,17 @@ function f_docker_start() {
     #local _docker_net_addr="172.17.0.0"
     #[[ "${_docker_ip}" =~ $_regex ]] && _docker_net_addr="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0.0"
     #docker exec -it ${_name} bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 &>/dev/null || ip route del ${_docker_net_addr}/16 via 0.0.0.0"
+}
+
+function _docker_find_by_port() {
+    local _port="$1"
+    for _n in `docker ps --format "{{.Names}}"`; do
+        if docker port ${_n} | grep -q "^${_port}/"; then
+            echo "${_n}"
+            return
+        fi
+    done
+    return 1
 }
 
 function f_container_useradd() {
@@ -344,6 +383,10 @@ main() {
         _log "ERROR" "lsof is required for this script."
         return 1
     fi
+    if ! which python &>/dev/null; then
+        _log "ERROR" "python is required for this script."
+        return 1
+    fi
     if [ "`uname`" = "Darwin" ]; then
         if ! which gsed &>/dev/null; then
             _log "ERROR" "gsed is required for this script. (brew uninstall gnu-sed)"
@@ -407,7 +450,7 @@ main() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "cn:v:uh" opts; do
+    while getopts "cn:v:PSuh" opts; do
         case $opts in
             h)
                 usage
@@ -425,6 +468,12 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             v)
                 _VERSION="$OPTARG"
+                ;;
+            P)
+                _DOCKER_PORT_FORWARD=true
+                ;;
+            S)
+                _DOCKER_STOP_OTHER=true
                 ;;
         esac
     done
