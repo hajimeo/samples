@@ -165,7 +165,7 @@ function f_docker_run() {
     for _p in $_ports; do
         local _pid="`lsof -ti:${_p} | head -n1`"
         if [ -n "${_pid}" ]; then
-            _log "ERROR" "Docker run could not use the port ${_p} as it's used by ${_pid}"
+            _log "ERROR" "Docker run could not use the port ${_p} as it's used by pid:${_pid}"
             return 1
         fi
         _port_opts="${_port_opts} -p ${_p}:${_p}"
@@ -355,7 +355,7 @@ main() {
             _log "INFO" "Creating ${_NAME} (container)..."
             # It's hard to access container directly on Mac, so adding port forwarding
             local _ports="";
-            if _DOCKER_PORT_FORWARD || [ "`uname`" = "Darwin" ]; then
+            if $_DOCKER_PORT_FORWARD || [ "`uname`" = "Darwin" ]; then
                 _ports=${_PORTS}
             fi
             local _ip="`f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}"`" || return $?
