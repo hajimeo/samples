@@ -176,8 +176,6 @@ function f_docker_run() {
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
         -v ${_share_dir%/}:/var/tmp/share ${_port_opts} \
         --privileged --hostname=${_hostname} --name=${_name} ${_base} /sbin/init || return $?
-    sleep 1
-    docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${_name}
 }
 
 function f_docker_start() {
@@ -359,7 +357,9 @@ main() {
             if $_DOCKER_PORT_FORWARD || [ "`uname`" = "Darwin" ]; then
                 _ports=${_PORTS}
             fi
-            local _ip="`f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}"`" || return $?
+            f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}" || return $?
+            sleep 3
+            local _ip="`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${_NAME}`"
             if [ -z "${_ip}" ]; then
                 _log "ERROR" "No IP assigned to the container ${_NAME}"
                 return 1
