@@ -28,7 +28,7 @@ This script does the followings:
 _IMAGE_NAME="hdp/base"                          # TODO: change to more appropriate image name
 _CREATE_AND_SETUP=false
 _START_SERVICE=false
-_USER="atscale"                                 # This is used by the app installer script so shouldn't change
+_SERVICE="atscale"                              # This is used by the app installer script so shouldn't change
 _WORK_DIR="/var/tmp/share"                      # If Mac, needs to be /private/var/tmp/share
 _CENTOS_VERSION="7.5.1804"
 
@@ -171,7 +171,7 @@ function f_docker_start() {
 function f_container_useradd() {
     local __doc__="Add user in a node (container)"
     local _name="${1:-${_NAME}}"
-    local _user="${2:-${_USER}}"
+    local _user="${2:-${_SERVICE}}"
     local _password="${3}"  # Optional. If empty, will be username-password
 
     [ -z "$_user" ] && return 1
@@ -204,7 +204,7 @@ function f_as_setup() {
     local __doc__="Setup a specific Application Service for the container"
     local _hostname="$1"
     local _version="${2:-${_VERSION}}"
-    local _user="${3:-${_USER}}"
+    local _user="${3:-${_SERVICE}}"
     local _share_dir="${4:-${_WORK_DIR}}"
 
     [ ! -d "${_share_dir%/}/${_user}" ] && mkdir -p -m 777 "${_share_dir%/}${_user}"
@@ -230,7 +230,7 @@ function f_as_setup() {
 function f_as_start() {
     local __doc__="Start a specific Application Service for the container"
     local _hostname="$1"
-    local _user="${2:-${_USER}}"
+    local _user="${2:-${_SERVICE}}"
     local _share_dir="${3:-${_WORK_DIR}}"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
@@ -306,12 +306,12 @@ main() {
         _WORK_DIR=/private/var/tmp/share
     fi
 
-    if [ ! -d "${_WORK_DIR%/}/${_USER}" ]; then
-        mkdir -p -m 777 "${_WORK_DIR%/}/${_USER}" || return $?
+    if [ ! -d "${_WORK_DIR%/}/${_SERVICE}" ]; then
+        mkdir -p -m 777 "${_WORK_DIR%/}/${_SERVICE}" || return $?
     fi
 
     if [ -z "$_NAME" ] && [ -n "$_VERSION" ]; then
-        _NAME="${_USER}$(echo ${_VERSION} | sed 's/[^0-9]//g')"
+        _NAME="${_SERVICE}$(echo ${_VERSION} | sed 's/[^0-9]//g')"
     fi
 
     if $_CREATE_AND_SETUP; then
@@ -331,7 +331,7 @@ main() {
             f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}" || return $?
 
             _log "INFO" "Setting up ${_NAME} (container)..."
-            f_container_useradd "${_NAME}" "${_USER}" || return $?
+            f_container_useradd "${_NAME}" "${_SERVICE}" || return $?
             f_container_ssh_config "${_NAME}" || return $?
 
             if [ -n "$_VERSION" ]; then
