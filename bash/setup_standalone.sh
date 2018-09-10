@@ -4,14 +4,20 @@ function usage() {
     echo "$BASH_SOURCE -c -n <container_name> -v <version>
 
 This script does the followings:
+CREATE:
     -c [-n <container_name>|-v <version>]
         Create a docker image.
         If -n <container_name> or -v <version> is provided, a docker container will be created.
         Also, Installs necessary service in the container.
 
+START:
     -n <container_name>     <<< no '-c'
-        Start a docker container of the given name (hostname), and stat services in the container.
+        Start a docker container of the given name (hostname), and start services in the container.
 
+    -v <version>            <<< no '-c'
+        Start a docker container of this version, and start services in the container.
+
+OTHERS:
     -P
         Use docker's port forwarding for the application
         This also stops other docker containers unless -N is specified
@@ -25,7 +31,9 @@ This script does the followings:
 
     -h
         To see this message
+
 "
+    docker stats --no-stream
 }
 
 
