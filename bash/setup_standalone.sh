@@ -268,6 +268,15 @@ function _docker_find_by_port() {
     return 1
 }
 
+function f_container_misc() {
+    local __doc__="Add user in a node (container)"
+    local _name="${1:-${_NAME}}"
+    local _password="${2-$_SERVICE}"  # Optional. If empty, will be _SERVICE
+
+    docker exec -it ${_name} bash -c "chpasswd <<< root:${_password}"
+    docker exec -it ${_name} bash -c "echo -e '\nexport TERM=xterm-256color' >> /etc/profile"
+}
+
 function f_container_useradd() {
     local __doc__="Add user in a node (container)"
     local _name="${1:-${_NAME}}"
