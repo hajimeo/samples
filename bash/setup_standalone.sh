@@ -238,7 +238,7 @@ function f_docker_start() {
 
     if ${_stop_other}; then
         # Probably --filter can do better...
-        for _p in `docker inspect atscale700 | python -c "import sys,json;a=json.loads(sys.stdin.read());print ' '.join([l.replace('/tcp', '') for l in a[0]['Config']['ExposedPorts'].keys()])"`; do
+        for _p in `docker inspect ${_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print ' '.join([l.replace('/tcp', '') for l in a[0]['Config']['ExposedPorts'].keys()])"`; do
             local _cname="`_docker_find_by_port ${_p}`"
             if [ -n "${_cname}" ]; then
                 _log "INFO" "Stopping ${_cname} container..."
