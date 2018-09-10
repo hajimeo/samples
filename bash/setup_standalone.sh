@@ -277,7 +277,7 @@ function f_container_useradd() {
     [ -z "$_user" ] && return 1
     [ -z "$_password" ] && _password="${_user}-password"
 
-    docker exec -it ${_name} bash -c 'useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
+    docker exec -it ${_name} bash -c 'grep -q "^'$_user':" /etc/passwd && exit 0; useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
 
     if [ "`uname`" = "Linux" ]; then
         which kadmin.local &>/dev/null && kadmin.local -q "add_principal -pw $_password $_user"
