@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_standalone.sh
 
 function usage() {
     echo "$BASH_SOURCE -c -n <container_name> -v <version>
