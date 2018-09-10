@@ -438,10 +438,12 @@ main() {
         f_as_start "${_NAME}.${_DOMAIN#.}"
     fi
 
-    [ "$USER" != "root" ] && _SUDO_SED=true
+    if [ "$USER" != "root" ]; then
+        _SUDO_SED=true
+        _log "INFO" "Updating /etc/hosts. It may ask a sudo password."
+    fi
     local _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
     $_DOCKER_PORT_FORWARD && _container_ip="127.0.0.1"
-    _log "WARN" "Updating /etc/hosts. It may ask a sudo password."
     f_update_hosts "${_NAME}.${_DOMAIN#.}" "${_container_ip}"
     if [ $? -ne 0 ]; then
         _log "WARN" "Please update /etc/hosts to add '${_container_ip}     ${_NAME}.${_DOMAIN#.}'"
