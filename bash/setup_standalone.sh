@@ -12,6 +12,9 @@ This script does the followings:
     -n <container_name>     <<< no '-c'
         Start a docker container of the given name (hostname), and stat services in the container.
 
+    -p
+        Use docker's port forwarding for the application
+
     -u
         Update this script to the latest
 
@@ -27,7 +30,8 @@ This script does the followings:
 
 _IMAGE_NAME="hdp/base"                          # TODO: change to more appropriate image name
 _CREATE_AND_SETUP=false
-_START_SERVICE=false
+_DOCKER_PORT_FORWARD=false
+_PORTS="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
 _SERVICE="atscale"                              # This is used by the app installer script so shouldn't change
 _WORK_DIR="/var/tmp/share"                      # If Mac, needs to be /private/var/tmp/share
 _CENTOS_VERSION="7.5.1804"
@@ -55,6 +59,26 @@ function f_update() {
             return 1
         fi
     fi
+}
+
+function f_update_hosts() {
+    local __doc__="Update /etc/hosts"
+    local _ip="$1"
+    local _hostname="$2"
+    [ -z "${_ip}" ] && return 11
+    [ -z "${_hostname}" ] && return 12
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
+    # If entry is already exists. TODO: This regex is not perfect
+    grep -qE "^${_ip}.+${_hostname}" /etc/hosts && return
+
+    # If IP already exists, append the hostname in the end of line
+    if grep -qE "^${_ip}\s+" /etc/hosts; then
+        _sed -i "/^${_ip}\s+/ s/$/ ${_hostname}/" /etc/hosts
+        return
+    fi
+
+    echo -e "\n${_ip} ${_hostname} ${_name}" >> /etc/hosts
 }
 
 function _gen_dockerFile() {
@@ -151,7 +175,9 @@ function f_docker_run() {
     docker run -t -i -d \
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
         -v ${_share_dir%/}:/var/tmp/share ${_port_opts} \
-        --privileged --hostname=${_hostname} --name=${_name} ${_base} /sbin/init
+        --privileged --hostname=${_hostname} --name=${_name} ${_base} /sbin/init || return $?
+    sleep 1
+    docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${_name}
 }
 
 function f_docker_start() {
@@ -287,7 +313,7 @@ function _log() {
 
 
 main() {
-    local __doc__="Main function which accepts global variables"
+    local __doc__="Main function which accepts global variables (old dirty code should be written in here)"
 
     # Validations
     if ! which docker &>/dev/null; then
@@ -328,8 +354,21 @@ main() {
         if [ -n "$_NAME" ]; then
             _log "INFO" "Creating ${_NAME} (container)..."
             # It's hard to access container directly on Mac, so adding port forwarding
-            local _ports=""; [ "`uname`" = Darwin ] && _ports="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
-            f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}" || return $?
+            local _ports="";
+            if _DOCKER_PORT_FORWARD || [ "`uname`" = "Darwin" ]; then
+                _ports=${_PORTS}
+            fi
+            local _ip="`f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}"`" || return $?
+            if [ -z "${_ip}" ]; then
+                _log "ERROR" "No IP assigned to the container ${_NAME}"
+                return 1
+            fi
+
+            if [ "$USER" = "root" ]; then
+                f_update_hosts "${_ip}" "${_NAME}.${_DOMAIN#.}" || _log "WARN" "Failed to update /etc/hosts for ${_ip} ${_NAME}.${_DOMAIN#.}"
+            else
+                _log "WARN" "Please update /etc/hosts for ${_ip} ${_NAME}.${_DOMAIN#.}"
+            fi
 
             _log "INFO" "Setting up ${_NAME} (container)..."
             f_container_useradd "${_NAME}" "${_SERVICE}" || return $?
