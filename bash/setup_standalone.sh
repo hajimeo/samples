@@ -38,16 +38,16 @@ OTHERS:
 
 
 ### Default values
-[ -z "${_VERSION}" ] && _VERSION="7.1.2"        # Default software version, mainly used to find the right installer file
-[ -z "${_DOMAIN}" ] && _DOMAIN="localdomain"    # Default container domain
+[ -z "${_VERSION}" ] && _VERSION="7.1.2"                # Default software version, mainly used to find the right installer file
+[ -z "${_DOMAIN}" ] && _DOMAIN="standalone.localdomain" # Default container domain
 
-_IMAGE_NAME="hdp/base"                          # TODO: change to more appropriate image name
+_IMAGE_NAME="hdp/base"                                  # TODO: change to more appropriate image name
 _CREATE_AND_SETUP=false
 _DOCKER_PORT_FORWARD=false
 _DOCKER_STOP_OTHER=false
 _PORTS="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
-_SERVICE="atscale"                              # This is used by the app installer script so shouldn't change
-_WORK_DIR="/var/tmp/share"                      # If Mac, needs to be /private/var/tmp/share
+_SERVICE="atscale"                                      # This is used by the app installer script so shouldn't change
+_WORK_DIR="/var/tmp/share"                              # If Mac, needs to be /private/var/tmp/share
 _CENTOS_VERSION="7.5.1804"
 
 
@@ -443,10 +443,10 @@ main() {
             fi
         fi
     elif [ -n "$_NAME" ]; then
-        _log "INFO" "Starting $_NAME"
+        _log "INFO" "Starting container $_NAME"
         f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
         sleep 3
-        f_as_start || return $?
+        f_as_start "${_NAME}.${_DOMAIN#.}" || return $?
     fi
 
     if [ "$USER" = "root" ]; then
