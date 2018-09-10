@@ -114,7 +114,7 @@ function f_update_hosts() {
     fi
 
     if [ -z "${_ip_in_hosts}" ] || [ "${_ip_in_hosts}" != "${_container_ip}" ]; then
-        _sed -e "\$a${_container_ip} ${_hostname} ${_name}" /etc/hosts
+        _sed -i -e "\$a${_container_ip} ${_hostname} ${_name}" /etc/hosts
     fi
 }
 
