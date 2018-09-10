@@ -145,8 +145,8 @@ function f_setup() {
         sudo -u ${_hdfs_user} hdfs dfs -chown ${_user}: /user/${_user}
     fi
 
-    # Running yum in here so that above hive command might finish before yum completes.
-    yum install -e 0 -y bzip2 bzip2-libs curl rsync unzip || return $?
+    # Running yum with nohup because thses should be already installed by DockerFile7
+    nohup yum install -e 0 -y bzip2 bzip2-libs curl rsync unzip &>/tmp/yum.out &
 
     # Optionals: Not important if fails
     ln -s /etc/krb5.conf /etc/krb5_atscale.conf &>/dev/null
