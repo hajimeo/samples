@@ -95,7 +95,7 @@ function f_setup() {
     nohup yum install -e 0 -y bzip2 bzip2-libs curl rsync unzip &>/tmp/yum.out &
 
     # If looks like Kerberos is enabled
-    if grep -A 1 'hadoop.security.authentication' /etc/hadoop/conf/core-site.xml | grep -qw "kerberos"; then
+    if grep -A 1 'hadoop.security.authentication' /etc/hadoop/conf/core-site.xml 2>/dev/null | grep -qw "kerberos"; then
         if ! grep -qF "hadoop.proxyuser.${_user}" /etc/hadoop/conf/core-site.xml; then
             _log "WARN" "Please check hadoop.proxyuser.${_user}.hosts and groups in core-site."; sleep 3
         fi
