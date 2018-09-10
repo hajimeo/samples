@@ -91,6 +91,9 @@ function f_setup() {
         chown ${_user}: "${_target_dir}" || return $?
     fi
 
+    # Running yum with nohup because thses should be already installed by DockerFile7
+    nohup yum install -e 0 -y bzip2 bzip2-libs curl rsync unzip &>/tmp/yum.out &
+
     # If looks like Kerberos is enabled
     if grep -A 1 'hadoop.security.authentication' /etc/hadoop/conf/core-site.xml | grep -qw "kerberos"; then
         if ! grep -qF "hadoop.proxyuser.${_user}" /etc/hadoop/conf/core-site.xml; then
@@ -144,9 +147,6 @@ function f_setup() {
         sudo -u ${_hdfs_user} hdfs dfs -mkdir /user/${_user}
         sudo -u ${_hdfs_user} hdfs dfs -chown ${_user}: /user/${_user}
     fi
-
-    # Running yum with nohup because thses should be already installed by DockerFile7
-    nohup yum install -e 0 -y bzip2 bzip2-libs curl rsync unzip &>/tmp/yum.out &
 
     # Optionals: Not important if fails
     ln -s /etc/krb5.conf /etc/krb5_atscale.conf &>/dev/null
