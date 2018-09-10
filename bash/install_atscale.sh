@@ -1172,7 +1172,7 @@ function _download_and_extract() {
     local _file="$5"
     [ -z "${_file}" ] && _file="`basename "${_url}"`"
 
-    if [ ! -r "${_save_dir%/}/${_file}" ]; then
+    if [ ! -s "${_save_dir%/}/${_file}" ]; then
         _log "INFO" "No ${_save_dir%/}/${_file}. Downloading from internet..."; sleep 1
         sudo -u ${_as_user} curl --retry 100 -C - -o "${_save_dir%/}/${_file}" "${_url}" || return $?
     fi
