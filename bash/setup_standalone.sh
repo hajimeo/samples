@@ -431,7 +431,7 @@ main() {
 
     [ "$USER" != "root" ] && _SUDO_SED=true
     local _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
-    [ $_DOCKER_PORT_FORWARD ] && _container_ip="127.0.0.1"
+    $_DOCKER_PORT_FORWARD && _container_ip="127.0.0.1"
     _log "WARN" "Updating /etc/hosts. It may ask a sudo password."
     f_update_hosts "${_NAME}.${_DOMAIN#.}" "${_container_ip}"
     if [ $? -ne 0 ]; then
