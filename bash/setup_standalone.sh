@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 
 function usage() {
-    echo "$BASH_SOURCE [-c|-u|-h] -n=container_name -v=version
+    echo "$BASH_SOURCE [-c|-u|-h] -n <container_name> -v <version>
 
 This script does the followings:
     -c
         If docker image does not exist, create a docker image.
 
-    -c -n=name
+    -c -n container_name
         Above plus create a named container.
         Install necessary services if not installed yet in the container (the version can be specified).
 
-    -n=name     <<< no '-c'
+    -n container_name     <<< no '-c'
         Start a docker container if the given name (hostname) exists, and stat services in the container.
 
     -u
@@ -24,16 +24,16 @@ This script does the followings:
 
 
 ### Default values
-[ -z "${_VERSION}" ] && _VERSION="${7.1.2}"          # Default software version, mainly used to find the right installer file
-[ -z "${_NAME}" ] && _NAME="${standalone}"              # Default container name
-[ -z "${_DOMAIN}" ] && _DOMAIN="localdomain"         # Default container domain
+[ -z "${_VERSION}" ] && _VERSION="7.1.2"        # Default software version, mainly used to find the right installer file
+[ -z "${_NAME}" ] && _NAME="standalone"         # Default container name
+[ -z "${_DOMAIN}" ] && _DOMAIN="localdomain"    # Default container domain
 
-_IMAGE_NAME="hdp/base"                               # TODO: change to more appropriate image name
+_IMAGE_NAME="hdp/base"                          # TODO: change to more appropriate image name
 _CREATE_AND_SETUP=false
 _START_SERVICE=false
-_USER="atscale"
+_USER="atscale"                                 # This is used by the app installer script so shouldn't change
+_WORK_DIR="/var/tmp/share"                      # If Mac, needs to be /private/var/tmp/share
 _CENTOS_VERSION="7.5.1804"
-_WORK_DIR="/var/tmp/share"
 
 
 ### Functions used to build and setup a container
@@ -42,17 +42,21 @@ function f_update() {
     local _target="${1:-${BASH_SOURCE}}"
     local _file_name="`basename ${_target}`"
     local _backup_file="/tmp/${_file_name}_$(date +"%Y%m%d%H%M%S")"
-    cp "${_target}" "${_backup_file}" || return $?
+    if [ -f "${_target}" ]; then
+        cp "${_target}" "${_backup_file}" || return $?
+    fi
     curl --retry 3 "https://raw.githubusercontent.com/hajimeo/samples/master/bash/${_file_name}" -o "${_target}"
-    if $? -ne 0; then
+    if [ $? -ne 0 ]; then
         mv -f "${_backup_file}" "${_target}"
         return 1
     fi
-    local _length=`wc -c <./${_target}`
-    local _old_length=`wc -c <./${_backup_file}`
-    if [ ${_length} -lt $(( ${_old_length} / 2 )) ]; then
-        mv -f "${_backup_file}" "${_target}"
-        return 1
+    if [ -f "${_backup_file}" ]; then
+        local _length=`wc -c <${_target}`
+        local _old_length=`wc -c <${_backup_file}`
+        if [ ${_length} -lt $(( ${_old_length} / 2 )) ]; then
+            mv -f "${_backup_file}" "${_target}"
+            return 1
+        fi
     fi
 }
 
@@ -72,13 +76,13 @@ function _gen_dockerFile() {
 
     # make sure ssh key is set up to replace Dockerfile's _REPLACE_WITH_YOUR_PRIVATE_KEY_
     if [ -s $HOME/.ssh/id_rsa ]; then
-        local _pkey="`sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
-        sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ${_new_filepath}
+        local _pkey="`_sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
+        _sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ${_new_filepath}
     else
-        _warn "No private key to replace _REPLACE_WITH_YOUR_PRIVATE_KEY_"
+        _log "WARN" "No private key to replace _REPLACE_WITH_YOUR_PRIVATE_KEY_"
     fi
 
-    [ -z "$_os_and_ver" ] || sed -i "s/FROM centos.*/FROM ${_os_and_ver}/" ${_new_filepath}
+    [ -z "$_os_and_ver" ] || _sed -i "s/FROM centos.*/FROM ${_os_and_ver}/" ${_new_filepath}
 }
 function f_docker_base_create() {
     local __doc__="Create a docker base image (f_docker_base_create ./Dockerfile centos 6.8)"
@@ -107,7 +111,7 @@ function f_docker_base_create() {
         return 1
     fi
 
-    if ! docker images | grep -P "^${_os_name}\s+${_os_ver_num}"; then
+    if ! docker images | grep -E "^${_os_name}\s+${_os_ver_num}"; then
         _log "INFO" "pulling OS image ${_os_name}:${_os_ver_num} ..."
         docker pull ${_os_name}:${_os_ver_num} || return $?
     fi
@@ -115,7 +119,7 @@ function f_docker_base_create() {
     local _build_dir="$(mktemp -d)" || return $?
     mv ${_docker_file} ${_build_dir%/}/DockerFile || return $?
     cd ${_build_dir} || return $?
-    docker build -t ${_base} . || return $?
+    docker build -f ${_build_dir%/}/DockerFile -t ${_base} . || return $?
     cd -
 }
 
@@ -123,7 +127,8 @@ function f_docker_run() {
     local __doc__="Execute docker run with my preferred options"
     local _hostname="$1"
     local _base="$2"
-    local _share_dir="${3:-${_WORK_DIR}}"
+    local _ports="${3}" #"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
+    local _share_dir="${4:-${_WORK_DIR}}"
     # NOTE: At this moment, removed _ip as it requires a custom network (see start_hdp.sh for how)
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
@@ -131,14 +136,24 @@ function f_docker_run() {
 
     _line="`docker ps -a --format "{{.Names}}" | grep -E "^${_name}$"`"
     if [ -n "$_line" ]; then
-        _warn "Container name:${_name} already exists. Skipping..."
+        _log "WARN" "Container name ${_name} already exists. Skipping..."
         return 2
     fi
+
+    local _port_opts=""
+    for _p in $_ports; do
+        local _pid="`lsof -ti:${_p} | head -n1`"
+        if [ -n "${_pid}" ]; then
+            _log "WARN" "Docker run could not use the port ${_p} as it's used by ${_pid}"
+        else
+            _port_opts="${_port_opts} -p ${_p}:${_p}"
+        fi
+    done
 
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
     docker run -t -i -d \
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
-        -v ${_share_dir%/}:${_share_dir%/} \
+        -v ${_share_dir%/}:/var/tmp/share ${_port_opts} \
         --privileged --hostname=${_hostname} --name=${_name} ${_base} /sbin/init
 }
 
@@ -148,26 +163,34 @@ function f_docker_start() {
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
     docker start --attach=false ${_name}
+
+    # Somehow docker disable a container communicates outside by adding 0.0.0.0 GW, which will be problem when we test distcp
+    #local _docker_ip="172.17.0.1"
+    #local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
+    #local _docker_net_addr="172.17.0.0"
+    #[[ "${_docker_ip}" =~ $_regex ]] && _docker_net_addr="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0.0"
+    #docker exec -it ${_name} bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 &>/dev/null || ip route del ${_docker_net_addr}/16 via 0.0.0.0"
 }
 
 function f_container_useradd() {
     local __doc__="Add user in a node (container)"
-    local _user="${1}"
-    local _password="${2}"  # Optional. If empty, will be username-password
-    local _container="${3-${_NAME}}"
+    local _name="${1:-${_NAME}}"
+    local _user="${2:-${_USER}}"
+    local _password="${3}"  # Optional. If empty, will be username-password
 
     [ -z "$_user" ] && return 1
     [ -z "$_password" ] && _password="${_user}-password"
 
-    docker exec -it ${_container} bash -c 'useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
-    if which kadmin.local; then
-        kadmin.local -q "add_principal -pw $_password $_user"
+    docker exec -it ${_name} bash -c 'useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
+
+    if [ "`uname`" = "Linux" ]; then
+        which kadmin.local &>/dev/null && kadmin.local -q "add_principal -pw $_password $_user"
     fi
 }
 
 function f_container_ssh_config() {
     local __doc__="Copy keys and setup authorized key to a node (container)"
-    local _name="${1-$_NAME}"
+    local _name="${1:-${_NAME}}"
     local _key="$2"
     local _pub_key="$3"
 
@@ -181,8 +204,8 @@ function f_container_ssh_config() {
     docker exec -it ${_name} bash -c "[ -f /root/.ssh/config ] || echo -e \"Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\" > /root/.ssh/config"
 }
 
-function f_setup_app() {
-    local __doc__="Setup a specific app for the container"
+function f_as_setup() {
+    local __doc__="Setup a specific Application Service for the container"
     local _hostname="$1"
     local _version="${2:-${_VERSION}}"
     local _user="${3:-${_USER}}"
@@ -191,10 +214,40 @@ function f_setup_app() {
     [ ! -d "${_share_dir%/}/${_user}" ] && mkdir -p -m 777 "${_share_dir%/}${_user}"
 
     # Always get the latest script for now
-    curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/install_atscale.sh -o ${_share_dir%/}${_user%/}/install_atscale.sh
-    # should I use docker exec?
-    #local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    ssh -q root@${_hostname} -t "export _STANDALONE=Y;bash ${_share_dir%/}${_user%/}/install_atscale.sh ${_version}"
+    f_update "${_share_dir%/}/${_user%/}/install_atscale.sh" || return $?
+
+    if [ ! -s ${_share_dir%/}/${_user%/}/install_atscale.sh ]; then
+        _log "ERROR" "Failed to create ${_share_dir%/}/${_user%/}/install_atscale.sh"
+        return 1
+    fi
+
+    if [ ! -s ${_share_dir%/}/${_user%/}/dev-vm-license-atscale.json ]; then
+        _log "ERROR" "Please copy  a license file as ${_share_dir%/}/${_user%/}/dev-vm-license-atscale.json"
+        return 1
+    fi
+
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+    docker exec -it ${_name} bash -c "export _STANDALONE=Y;bash /var/tmp/share/atscale/install_atscale.sh ${_version}"
+    #ssh -q root@${_hostname} -t "export _STANDALONE=Y;bash ${_share_dir%/}${_user%/}/install_atscale.sh ${_version}"
+}
+
+function f_as_start() {
+    local __doc__="Start a specific Application Service for the container"
+    local _hostname="$1"
+    local _user="${2:-${_USER}}"
+    local _share_dir="${3:-${_WORK_DIR}}"
+
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+    docker exec -it ${_name} bash -c "source /var/tmp/share/atscale/install_atscale.sh;f_atscale_start"
+    #ssh -q root@${_hostname} -t "source ${_share_dir%/}${_user%/}/install_atscale.sh;f_atscale_start"
+}
+
+function _sed() {
+    if which gsed &>/dev/null; then
+        gsed "$@"
+    else
+        sed "$@"
+    fi
 }
 
 function _isEnoughDisk() {
@@ -239,17 +292,31 @@ function _log() {
 main() {
     local __doc__="Main function which accepts global variables"
 
+    # Validations
     if ! which docker &>/dev/null; then
-        _log "ERROR" "docker is required for this script. https://docs.docker.com/install/"
+        _log "ERROR" "docker is required for this script. (https://docs.docker.com/install/)"
         return 1
     fi
+    if ! which lsof &>/dev/null; then
+        _log "ERROR" "lsof is required for this script."
+        return 1
+    fi
+    if [ "`uname`" = "Darwin" ]; then
+        if ! which gsed &>/dev/null; then
+            _log "ERROR" "gsed is required for this script. (brew uninstall gnu-sed)"
+            return 1
+        fi
 
-    [ ! -d "${_WORK_DIR%/}" ] && mkdir -p -m 777 "${_WORK_DIR%/}"
+        _WORK_DIR=/private/var/tmp/share
+    fi
+
+    if [ ! -d "${_WORK_DIR%/}/${_USER}" ]; then
+        mkdir -p -m 777 "${_WORK_DIR%/}/${_USER}" || return $?
+    fi
 
     if $_CREATE_AND_SETUP; then
         _log "INFO" "Creating docker image and container"
-
-        local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_IMAGE_NAME}:"`"
+        local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_IMAGE_NAME}:${_CENTOS_VERSION}"`"
         if [ ! -z "$_existing_img" ]; then
             _log "INFO" "${_IMAGE_NAME} already exists so that skipping image creating part..."
         else
@@ -258,22 +325,33 @@ main() {
         fi
 
         if [ -n "$_NAME" ]; then
+            #if [ -n "$_VERSION" ]; then
+            #    _NAME="${_NAME}$(echo ${_VERSION} | sed s/[^0-9]//g)"
+            #fi
+
             _log "INFO" "Creating ${_NAME} (container)..."
-            f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" || return $?
+            # It's hard to access container directly on Mac, so adding port forwarding [ "`uname`" = Darwin ] &&
+            local _ports="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
+            f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}" || return $?
 
             _log "INFO" "Setting up ${_NAME} (container)..."
-            f_container_useradd "${_USER}" || return $?
-            f_container_ssh_config "${_USER}" || return $?
+            f_container_useradd "${_NAME}" "${_USER}" || return $?
+            f_container_ssh_config "${_NAME}" || return $?
 
-            _log "INFO" "Setting up ${_NAME} (container)..."
-            f_setup_app "${_NAME}.${_DOMAIN#.}"
+            if [ -n "$_VERSION" ]; then
+                _log "INFO" "Setting up an Application for version ${_VERSION} on ${_NAME} ..."
+                f_as_setup "${_NAME}.${_DOMAIN#.}" "${_VERSION}" || return $?
+                # as setup starts the app, no need f_as_start
+            fi
         fi
-        return #?
+        return $?
     fi
 
     if [ -n "$_NAME" ]; then
         _log "INFO" "Starting $_NAME"
-        f_docker_start "${_NAME}.${_DOMAIN#.}"
+        f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
+        sleep 3
+        f_as_start || return $?
         return $?
     fi
 }
@@ -301,6 +379,11 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
         esac
     done
+
+    if (($# < 1)); then
+        usage
+        exit 0
+    fi
 
     main
 fi
