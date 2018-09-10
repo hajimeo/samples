@@ -4,15 +4,13 @@ function usage() {
     echo "$BASH_SOURCE [-c|-u|-h] -n <container_name> -v <version>
 
 This script does the followings:
-    -c
-        If docker image does not exist, create a docker image.
+    -c [-n <container_name>|-v <version>]
+        Create a docker image.
+        If -n <container_name> or -v <version> is provided, a docker container will be created.
+        Also, Installs necessary service in the container.
 
-    -c -n container_name
-        Above plus create a named container.
-        Install necessary services if not installed yet in the container (the version can be specified).
-
-    -n container_name     <<< no '-c'
-        Start a docker container if the given name (hostname) exists, and stat services in the container.
+    -n <container_name>     <<< no '-c'
+        Start a docker container of the given name (hostname), and stat services in the container.
 
     -u
         Update this script to the latest
@@ -25,7 +23,6 @@ This script does the followings:
 
 ### Default values
 [ -z "${_VERSION}" ] && _VERSION="7.1.2"        # Default software version, mainly used to find the right installer file
-[ -z "${_NAME}" ] && _NAME="standalone"         # Default container name
 [ -z "${_DOMAIN}" ] && _DOMAIN="localdomain"    # Default container domain
 
 _IMAGE_NAME="hdp/base"                          # TODO: change to more appropriate image name
@@ -145,9 +142,8 @@ function f_docker_run() {
         local _pid="`lsof -ti:${_p} | head -n1`"
         if [ -n "${_pid}" ]; then
             _log "WARN" "Docker run could not use the port ${_p} as it's used by ${_pid}"
-        else
-            _port_opts="${_port_opts} -p ${_p}:${_p}"
         fi
+        _port_opts="${_port_opts} -p ${_p}:${_p}"
     done
 
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
@@ -314,6 +310,10 @@ main() {
         mkdir -p -m 777 "${_WORK_DIR%/}/${_USER}" || return $?
     fi
 
+    if [ -z "$_NAME" ] && [ -n "$_VERSION" ]; then
+        _NAME="${_USER}$(echo ${_VERSION} | sed 's/[^0-9]//g')"
+    fi
+
     if $_CREATE_AND_SETUP; then
         _log "INFO" "Creating docker image and container"
         local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_IMAGE_NAME}:${_CENTOS_VERSION}"`"
@@ -325,10 +325,6 @@ main() {
         fi
 
         if [ -n "$_NAME" ]; then
-            #if [ -n "$_VERSION" ]; then
-            #    _NAME="${_NAME}$(echo ${_VERSION} | sed s/[^0-9]//g)"
-            #fi
-
             _log "INFO" "Creating ${_NAME} (container)..."
             # It's hard to access container directly on Mac, so adding port forwarding [ "`uname`" = Darwin ] &&
             local _ports="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
