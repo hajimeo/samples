@@ -261,6 +261,7 @@ function f_as_start() {
     local _share_dir="${3:-${_WORK_DIR}}"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
+    docker exec -it ${_name} bash -c "sudo -u ${_user} /usr/local/apache-hive/apache_hive.sh"
     docker exec -it ${_name} bash -c "source /var/tmp/share/atscale/install_atscale.sh;f_atscale_start"
     #ssh -q root@${_hostname} -t "source ${_share_dir%/}${_user%/}/install_atscale.sh;f_atscale_start"
 }
