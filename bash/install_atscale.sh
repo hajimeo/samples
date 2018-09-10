@@ -1159,6 +1159,7 @@ function _load_yaml() {
 function _get_from_xml() {
     local _xml_file="$1"
     local _name="$2"
+    [ ! -s ${_xml_file} ] && return 1
     # TODO: won't work with multiple lines
     grep -F '<name>'${_name}'</name>' -A 1 ${_xml_file} | grep -Pzo '<value>.+?</value>' | sed -nr 's/<value>(.+)<\/value>/\1/p'
 }
