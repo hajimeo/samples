@@ -456,11 +456,12 @@ main() {
         f_as_start "${_NAME}.${_DOMAIN#.}"
     fi
 
-    [ ! $_DOCKER_PORT_FORWARD ] && [ "$USER" != "root" ] && _SUDO_SED=true
+    [ "$USER" != "root" ] && _SUDO_SED=true
+    local _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
+    [ $_DOCKER_PORT_FORWARD ] && _container_ip="127.0.0.1"
     _log "WARN" "Updating /etc/hosts. It may ask a sudo password."
-    f_update_hosts "${_NAME}.${_DOMAIN#.}"
+    f_update_hosts "${_NAME}.${_DOMAIN#.}" "${_container_ip}"
     if [ $? -ne 0 ]; then
-        local _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
         _log "WARN" "Please update /etc/hosts to add '${_container_ip}     ${_NAME}.${_DOMAIN#.}'"
     fi
 }
