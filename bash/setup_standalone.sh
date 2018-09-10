@@ -45,6 +45,7 @@ _IMAGE_NAME="hdp/base"                                  # TODO: change to more a
 _CREATE_AND_SETUP=false
 _DOCKER_PORT_FORWARD=false
 _DOCKER_STOP_OTHER=false
+_SUDO_SED=false
 _PORTS="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
 _SERVICE="atscale"                                      # This is used by the app installer script so shouldn't change
 _WORK_DIR="/var/tmp/share"                              # If Mac, needs to be /private/var/tmp/share
@@ -98,7 +99,7 @@ function f_update_hosts() {
     [ "${_ip_in_hosts}" = "${_container_ip}" ] && return 0
 
     # Take backup before modifying
-    cp -p /etc/hosts /tmp/hosts_$(date +"%Y%m%d%H%M%S")
+    cp /etc/hosts /tmp/hosts_$(date +"%Y%m%d%H%M%S")
 
     # Remove the hostname
     _sed -i -r "s/\s${_hostname}\s?/ /" /etc/hosts
@@ -112,7 +113,7 @@ function f_update_hosts() {
     fi
 
     if [ -z "${_ip_in_hosts}" ] || [ "${_ip_in_hosts}" != "${_container_ip}" ]; then
-        echo "${_container_ip} ${_hostname}" >> /etc/hosts
+        _sed -e "\$a${_container_ip} ${_hostname}" /etc/hosts
     fi
 }
 
@@ -193,7 +194,7 @@ function f_docker_run() {
 
     _line="`docker ps -a --format "{{.Names}}" | grep -E "^${_name}$"`"
     if [ -n "$_line" ]; then
-        _log "WARN" "Container name ${_name} already exists. Skipping..."; sleep 3
+        _log "WARN" "Container name ${_name} already exists. Skipping..."; sleep 1
         return 0
     fi
 
@@ -228,6 +229,11 @@ function f_docker_start() {
     local _stop_other=${2:-${_DOCKER_STOP_OTHER}}
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
+    if docker ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
+        _log "INFO" "Container ${_name} is already running."
+        return
+    fi
 
     if ${_stop_other}; then
         # Probably --filter can do better...
@@ -333,10 +339,11 @@ function f_as_start() {
 }
 
 function _sed() {
-    if which gsed &>/dev/null; then
-        gsed "$@"
+    local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
+    if ${_SUDO_SED}; then
+        sudo ${_cmd} "$@"
     else
-        sed "$@"
+        ${_cmd} "$@"
     fi
 }
 
@@ -430,7 +437,7 @@ main() {
                 _ports=${_PORTS}
             fi
             f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}" || return $?
-            sleep 3
+            sleep 1
 
             _log "INFO" "Setting up ${_NAME} (container)..."
             f_container_useradd "${_NAME}" "${_SERVICE}" || return $?
@@ -445,14 +452,16 @@ main() {
     elif [ -n "$_NAME" ]; then
         _log "INFO" "Starting container $_NAME"
         f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
-        sleep 3
-        f_as_start "${_NAME}.${_DOMAIN#.}" || return $?
+        sleep 1
+        f_as_start "${_NAME}.${_DOMAIN#.}"
     fi
 
-    if [ "$USER" = "root" ]; then
-        f_update_hosts "${_NAME}.${_DOMAIN#.}" || _log "WARN" "Failed to update /etc/hosts for ${_NAME}.${_DOMAIN#.}"
-    else
-        _log "WARN" "Please update /etc/hosts for ${_NAME}.${_DOMAIN#.}"
+    [ ! $_DOCKER_PORT_FORWARD ] && [ "$USER" != "root" ] && _SUDO_SED=true
+    _log "WARN" "Updating /etc/hosts. It may ask a sudo password."
+    f_update_hosts "${_NAME}.${_DOMAIN#.}"
+    if [ $? -ne 0 ]; then
+        local _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
+        _log "WARN" "Please update /etc/hosts to add '${_container_ip}     ${_NAME}.${_DOMAIN#.}'"
     fi
 }
 
