@@ -240,10 +240,18 @@ function f_generate_custom_yaml() {
     fi
     local _default_schema="${_schema_and_hdfsdir}"
     local _hdfs_root_dir="/user/${_usr}/${_schema_and_hdfsdir}"
-    local _hdp_version="`hdp-select versions | tail -n 1`" || return $?
-    local _hdp_major_version="`echo ${_hdp_version} | grep -oP '^\d\.\d+'`" || return $?
-    #/usr/hdp/%hdp_version%/hadoop/conf:/usr/hdp/%hdp_version%/hadoop/lib/*:/usr/hdp/%hdp_version%/hadoop/.//*:/usr/hdp/%hdp_version%/hadoop-hdfs/./:/usr/hdp/%hdp_version%/hadoop-hdfs/lib/*:/usr/hdp/%hdp_version%/hadoop-hdfs/.//*:/usr/hdp/%hdp_version%/hadoop-yarn/lib/*:/usr/hdp/%hdp_version%/hadoop-yarn/.//*:/usr/hdp/%hdp_version%/hadoop-mapreduce/lib/*:/usr/hdp/%hdp_version%/hadoop-mapreduce/.//*::mysql-connector-java.jar:/usr/hdp/%hdp_version%/tez/*:/usr/hdp/%hdp_version%/tez/lib/*:/usr/hdp/%hdp_version%/tez/conf
-    local _hadoop_classpath="`hadoop classpath`" || return $?
+    if which hdp-select &>/dev/null; then
+        local _hdp_version="`hdp-select versions | tail -n 1`"
+        local _hdp_major_version="`echo ${_hdp_version} | grep -oP '^\d\.\d+'`"
+        #/usr/hdp/%hdp_version%/hadoop/conf:/usr/hdp/%hdp_version%/hadoop/lib/*:/usr/hdp/%hdp_version%/hadoop/.//*:/usr/hdp/%hdp_version%/hadoop-hdfs/./:/usr/hdp/%hdp_version%/hadoop-hdfs/lib/*:/usr/hdp/%hdp_version%/hadoop-hdfs/.//*:/usr/hdp/%hdp_version%/hadoop-yarn/lib/*:/usr/hdp/%hdp_version%/hadoop-yarn/.//*:/usr/hdp/%hdp_version%/hadoop-mapreduce/lib/*:/usr/hdp/%hdp_version%/hadoop-mapreduce/.//*::mysql-connector-java.jar:/usr/hdp/%hdp_version%/tez/*:/usr/hdp/%hdp_version%/tez/lib/*:/usr/hdp/%hdp_version%/tez/conf
+    else
+        _log "WARN" "No hdp-select so that can't determine hdp version"; sleep 3
+    fi
+    if which hadoop &>/dev/null; then
+        local _hadoop_classpath="`hadoop classpath`"
+    else
+        _log "WARN" "No hadoop command so that can't determine hadoop classpath"; sleep 3
+    fi
 
     # Kerberos related, decided by atscale keytab file
     local _is_kerberized="false"
