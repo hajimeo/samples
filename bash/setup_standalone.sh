@@ -133,15 +133,16 @@ function f_docker_run() {
 
     _line="`docker ps -a --format "{{.Names}}" | grep -E "^${_name}$"`"
     if [ -n "$_line" ]; then
-        _log "WARN" "Container name ${_name} already exists. Skipping..."
-        return 2
+        _log "WARN" "Container name ${_name} already exists. Skipping..."; sleep 3
+        return 0
     fi
 
     local _port_opts=""
     for _p in $_ports; do
         local _pid="`lsof -ti:${_p} | head -n1`"
         if [ -n "${_pid}" ]; then
-            _log "WARN" "Docker run could not use the port ${_p} as it's used by ${_pid}"
+            _log "ERROR" "Docker run could not use the port ${_p} as it's used by ${_pid}"
+            return 1
         fi
         _port_opts="${_port_opts} -p ${_p}:${_p}"
     done
@@ -326,8 +327,8 @@ main() {
 
         if [ -n "$_NAME" ]; then
             _log "INFO" "Creating ${_NAME} (container)..."
-            # It's hard to access container directly on Mac, so adding port forwarding [ "`uname`" = Darwin ] &&
-            local _ports="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
+            # It's hard to access container directly on Mac, so adding port forwarding
+            local _ports=""; [ "`uname`" = Darwin ] && _ports="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
             f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}" || return $?
 
             _log "INFO" "Setting up ${_NAME} (container)..."
