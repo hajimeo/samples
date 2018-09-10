@@ -1273,7 +1273,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     if [[ "${_STANDALONE}" =~ ^(y|Y) ]]; then
         [ -z "${_SCHEMA_AND_HDFSDIR}" ] && _SCHEMA_AND_HDFSDIR="atscale_$(_get_suffix "$_ATSCALE_VER")"
         _UPDATING=Y f_setup || exit $?
-        f_generate_custom_yaml "custom_minimum.yaml"
+        f_generate_custom_yaml "custom_minimum.yaml" || return $?
         if [ ! -s /tmp/custom_minimum.yaml ]; then
             _log "ERROR" "Failed to generate /tmp/custom_minimum.yaml"; sleep 3
             exit 1
