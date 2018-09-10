@@ -359,16 +359,17 @@ main() {
             fi
             f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}" || return $?
             sleep 3
-            local _ip="`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${_NAME}`"
-            if [ -z "${_ip}" ]; then
+            #local _ip="`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${_NAME}`"
+            local _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
+            if [ -z "${_container_ip}" ]; then
                 _log "ERROR" "No IP assigned to the container ${_NAME}"
                 return 1
             fi
 
             if [ "$USER" = "root" ]; then
-                f_update_hosts "${_ip}" "${_NAME}.${_DOMAIN#.}" || _log "WARN" "Failed to update /etc/hosts for ${_ip} ${_NAME}.${_DOMAIN#.}"
+                f_update_hosts "${_container_ip}" "${_NAME}.${_DOMAIN#.}" || _log "WARN" "Failed to update /etc/hosts for ${_container_ip} ${_NAME}.${_DOMAIN#.}"
             else
-                _log "WARN" "Please update /etc/hosts for ${_ip} ${_NAME}.${_DOMAIN#.}"
+                _log "WARN" "Please update /etc/hosts for ${_container_ip} ${_NAME}.${_DOMAIN#.}"
             fi
 
             _log "INFO" "Setting up ${_NAME} (container)..."
