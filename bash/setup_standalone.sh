@@ -62,31 +62,43 @@ function f_update() {
 }
 
 function f_update_hosts() {
-    local __doc__="Update /etc/hosts"
-    local _ip="$1"
-    local _hostname="$2"
-    [ -z "${_ip}" ] && return 11
+    local __doc__="Update /etc/hosts for the container"
+    local _hostname="$1"
+    local _container_ip="$2"
+
     [ -z "${_hostname}" ] && return 12
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
+    if [ -z "${_container_ip}" ]; then
+        #local _ip="`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${_NAME}`"
+        _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
+        if [ -z "${_container_ip}" ]; then
+            _log "ERROR" "No IP assigned to the container ${_NAME}"
+            return 1
+        fi
+    fi
+
     # TODO: this regex is not perfect
     local _ip_in_hosts="$(_sed -nr "s/^([0-9.]+).*\s${_hostname}.*$/\1/p" /etc/hosts)"
-
     # If a good entry is already exists.
-    [ "${_ip_in_hosts}" = "${_ip}" ] && return 0
+    [ "${_ip_in_hosts}" = "${_container_ip}" ] && return 0
 
+    # Take backup before modifying
     cp -p /etc/hosts /tmp/hosts_$(date +"%Y%m%d%H%M%S")
+
     # Remove the hostname
     _sed -i -r "s/\s${_hostname}\s?/ /" /etc/hosts
     # Delete unnecessary line
     _sed -i -r "/^${_ip_in_hosts}\s+$/d" /etc/hosts
 
     # If IP already exists, append the hostname in the end of line
-    if grep -qE "^${_ip}\s+" /etc/hosts; then
-        _sed -i -r "/^${_ip}\s+/ s/\s*$/ ${_hostname}/" /etc/hosts
+    if grep -qE "^${_container_ip}\s+" /etc/hosts; then
+        _sed -i -r "/^${_container_ip}\s+/ s/\s*$/ ${_hostname}/" /etc/hosts
         return $?
     fi
 
-    if [ -z "${_ip_in_hosts}" ] || [ "${_ip_in_hosts}" != "${_ip}" ]; then
-        echo "${_ip} ${_hostname}" >> /etc/hosts
+    if [ -z "${_ip_in_hosts}" ] || [ "${_ip_in_hosts}" != "${_container_ip}" ]; then
+        echo "${_container_ip} ${_hostname}" >> /etc/hosts
     fi
 }
 
@@ -368,18 +380,6 @@ main() {
             fi
             f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}" || return $?
             sleep 3
-            #local _ip="`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${_NAME}`"
-            local _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
-            if [ -z "${_container_ip}" ]; then
-                _log "ERROR" "No IP assigned to the container ${_NAME}"
-                return 1
-            fi
-
-            if [ "$USER" = "root" ]; then
-                f_update_hosts "${_container_ip}" "${_NAME}.${_DOMAIN#.}" || _log "WARN" "Failed to update /etc/hosts for ${_container_ip} ${_NAME}.${_DOMAIN#.}"
-            else
-                _log "WARN" "Please update /etc/hosts for ${_container_ip} ${_NAME}.${_DOMAIN#.}"
-            fi
 
             _log "INFO" "Setting up ${_NAME} (container)..."
             f_container_useradd "${_NAME}" "${_SERVICE}" || return $?
@@ -391,15 +391,17 @@ main() {
                 # as setup starts the app, no need f_as_start
             fi
         fi
-        return $?
-    fi
-
-    if [ -n "$_NAME" ]; then
+    elif [ -n "$_NAME" ]; then
         _log "INFO" "Starting $_NAME"
         f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
         sleep 3
         f_as_start || return $?
-        return $?
+    fi
+
+    if [ "$USER" = "root" ]; then
+        f_update_hosts "${_NAME}.${_DOMAIN#.}" || _log "WARN" "Failed to update /etc/hosts for ${_NAME}.${_DOMAIN#.}"
+    else
+        _log "WARN" "Please update /etc/hosts for ${_NAME}.${_DOMAIN#.}"
     fi
 }
 
