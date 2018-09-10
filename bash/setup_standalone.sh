@@ -67,18 +67,27 @@ function f_update_hosts() {
     local _hostname="$2"
     [ -z "${_ip}" ] && return 11
     [ -z "${_hostname}" ] && return 12
-    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+    # TODO: this regex is not perfect
+    local _ip_in_hosts="$(_sed -nr "s/^([0-9.]+).*\s${_hostname}.*$/\1/p" /etc/hosts)"
 
-    # If entry is already exists. TODO: This regex is not perfect
-    grep -qE "^${_ip}.+${_hostname}" /etc/hosts && return
+    # If a good entry is already exists.
+    [ "${_ip_in_hosts}" = "${_ip}" ] && return 0
+
+    cp -p /etc/hosts /tmp/hosts_$(date +"%Y%m%d%H%M%S")
+    # Remove the hostname
+    _sed -i -r "s/\s${_hostname}\s?/ /" /etc/hosts
+    # Delete unnecessary line
+    _sed -i -r "/^${_ip_in_hosts}\s+$/d" /etc/hosts
 
     # If IP already exists, append the hostname in the end of line
     if grep -qE "^${_ip}\s+" /etc/hosts; then
-        _sed -i "/^${_ip}\s+/ s/$/ ${_hostname}/" /etc/hosts
-        return
+        _sed -i -r "/^${_ip}\s+/ s/\s*$/ ${_hostname}/" /etc/hosts
+        return $?
     fi
 
-    echo -e "\n${_ip} ${_hostname} ${_name}" >> /etc/hosts
+    if [ -z "${_ip_in_hosts}" ] || [ "${_ip_in_hosts}" != "${_ip}" ]; then
+        echo "${_ip} ${_hostname}" >> /etc/hosts
+    fi
 }
 
 function _gen_dockerFile() {
