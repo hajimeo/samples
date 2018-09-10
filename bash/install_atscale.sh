@@ -534,7 +534,7 @@ fi
     _log "INFO" "Starting hiveserver2 on port 10000..."; sleep 1
     sudo -u ${_usr} ${_dir%/}/apache_hive.sh || return $?
     sleep 1
-    for _i in {1..3}; do
+    for _i in {1..6}; do
         lsof -ti:10000 -s TCP:LISTEN && break
         sleep 3
     done
