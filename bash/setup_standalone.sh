@@ -310,7 +310,7 @@ function f_as_setup() {
     [ ! -d "${_share_dir%/}/${_user}" ] && mkdir -p -m 777 "${_share_dir%/}${_user}"
 
     # Always get the latest script for now
-    f_update "${_share_dir%/}/${_user%/}/install_atscale.sh" || return $?
+    f_update "${_share_dir%/}/${_user%/}/install_atscale.sh"
 
     if [ ! -s ${_share_dir%/}/${_user%/}/install_atscale.sh ]; then
         _log "ERROR" "Failed to create ${_share_dir%/}/${_user%/}/install_atscale.sh"
@@ -348,35 +348,6 @@ function _sed() {
     fi
 }
 
-function _isEnoughDisk() {
-    local __doc__="Check if entire system or the given path has enough space with GB."
-    local _dir_path="${1-/}"
-    local _required_gb="$2"
-    local _available_space_gb=""
-
-    _available_space_gb=`_freeSpaceGB "${_dir_path}"`
-
-    if [ -z "$_required_gb" ]; then
-        echo "INFO: ${_available_space_gb}GB free space"
-        _required_gb=`_totalSpaceGB`
-        _required_gb="`expr $_required_gb / 10`"
-    fi
-
-    if [ $_available_space_gb -lt $_required_gb ]; then return 1; fi
-    return 0
-}
-function _freeSpaceGB() {
-    local __doc__="Output how much space for given directory path."
-    local _dir_path="$1"
-    if [ ! -d "$_dir_path" ]; then _dir_path="-l"; fi
-    df -P --total ${_dir_path} | grep -i ^total | awk '{gb=sprintf("%.0f",$4/1024/1024);print gb}'
-}
-function _totalSpaceGB() {
-    local __doc__="Output how much space for given directory path."
-    local _dir_path="$1"
-    if [ ! -d "$_dir_path" ]; then _dir_path="-l"; fi
-    df -P --total ${_dir_path} | grep -i ^total | awk '{gb=sprintf("%.0f",$2/1024/1024);print gb}'
-}
 function _log() {
     # At this moment, outputting to STDERR
     if [ -n "${_LOG_FILE_PATH}" ]; then
@@ -385,6 +356,7 @@ function _log() {
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" 1>&2
     fi
 }
+
 
 
 main() {
