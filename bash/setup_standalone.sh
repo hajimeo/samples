@@ -102,19 +102,19 @@ function f_update_hosts() {
     # Take backup before modifying
     cp /etc/hosts /tmp/hosts_$(date +"%Y%m%d%H%M%S")
 
-    # Remove the hostname
+    # Remove the hostname and unnecessary line
+    _sed -i -r "s/\s${_hostname} ${_name}\s?/ /" /etc/hosts
     _sed -i -r "s/\s${_hostname}\s?/ /" /etc/hosts
-    # Delete unnecessary line
     _sed -i -r "/^${_ip_in_hosts}\s+$/d" /etc/hosts
 
     # If IP already exists, append the hostname in the end of line
     if grep -qE "^${_container_ip}\s+" /etc/hosts; then
-        _sed -i -r "/^${_container_ip}\s+/ s/\s*$/ ${_hostname}/" /etc/hosts
+        _sed -i -r "/^${_container_ip}\s+/ s/\s*$/ ${_hostname} ${_name}/" /etc/hosts
         return $?
     fi
 
     if [ -z "${_ip_in_hosts}" ] || [ "${_ip_in_hosts}" != "${_container_ip}" ]; then
-        _sed -e "\$a${_container_ip} ${_hostname}" /etc/hosts
+        _sed -e "\$a${_container_ip} ${_hostname} ${_name}" /etc/hosts
     fi
 }
 
