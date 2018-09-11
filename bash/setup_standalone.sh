@@ -417,6 +417,7 @@ main() {
         fi
 
         _WORK_DIR=/private/var/tmp/share
+        _DOCKER_PORT_FORWARD=true
     fi
 
     if [ ! -d "${_WORK_DIR%/}/${_SERVICE}" ]; then
@@ -441,7 +442,7 @@ main() {
             _log "INFO" "Creating ${_NAME} (container)..."
             # It's hard to access container directly on Mac, so adding port forwarding
             local _ports="";
-            if $_DOCKER_PORT_FORWARD || [ "`uname`" = "Darwin" ]; then
+            if $_DOCKER_PORT_FORWARD; then
                 _ports=${_PORTS}
             fi
 
