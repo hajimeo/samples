@@ -441,32 +441,35 @@ main() {
             if $_DOCKER_PORT_FORWARD || [ "`uname`" = "Darwin" ]; then
                 _ports=${_PORTS}
             fi
-            local _img_name="${_IMAGE_NAME}:${_CENTOS_VERSION}"
+
             if docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
                 _log "INFO" "Image ${_NAME} already exists. Using this instead of ${_IMAGE_NAME}:${_CENTOS_VERSION}..."; sleep 1
-                _img_name="${_NAME}"
-            fi
-            f_docker_run "${_NAME}.${_DOMAIN#.}" "${_img_name}" "${_ports}" || return $?
-            sleep 1
+                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_NAME}" "${_ports}" || return $?
+                sleep 1
+                f_as_start "${_NAME}.${_DOMAIN#.}"
+            else
+                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}" || return $?
+                sleep 1
+                _log "INFO" "Setting up ${_NAME} (container)..."
+                f_container_useradd "${_NAME}" "${_SERVICE}" || return $?
+                f_container_ssh_config "${_NAME}"   # it's OK to fail || return $?
+                f_container_misc "${_NAME}"         # it's OK to fail || return $?
 
-            _log "INFO" "Setting up ${_NAME} (container)..."
-            f_container_useradd "${_NAME}" "${_SERVICE}" || return $?
-            f_container_ssh_config "${_NAME}"   # it's OK to fail || return $?
-            f_container_misc "${_NAME}"         # it's OK to fail || return $?
-
-            if [ -n "$_VERSION" ]; then
-                _log "INFO" "Setting up an Application for version ${_VERSION} on ${_NAME} ..."
-                f_as_setup "${_NAME}.${_DOMAIN#.}" "${_VERSION}" || return $?
-                # as setup starts the app, no need f_as_start
+                if [ -n "$_VERSION" ]; then
+                    _log "INFO" "Setting up an Application for version ${_VERSION} on ${_NAME} ..."
+                    f_as_setup "${_NAME}.${_DOMAIN#.}" "${_VERSION}" || return $?
+                    # as setup starts the app, no need f_as_start
+                fi
             fi
         fi
     elif [ -n "$_NAME" ]; then
-        _log "INFO" "Starting container $_NAME"
+        _log "INFO" "Starting container: $_NAME"
         f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
         sleep 1
         f_as_start "${_NAME}.${_DOMAIN#.}"
     fi
 
+    # Common part
     if [ "$USER" != "root" ]; then
         _SUDO_SED=true
         _log "INFO" "Updating /etc/hosts. It may ask a sudo password."
