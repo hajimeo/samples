@@ -11,6 +11,8 @@ function f_setup_bash() {
     curl -o ~/.bash_profile -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh"
     [ -s ~/.bash_aliases ] && mv ~/.bash_aliases /tmp/.bash_aliases_$$
     curl -o ~/.bash_aliases -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh"
+
+    sudo -i pip install data_hacks
 }
 
 function f_setup_rg() {
