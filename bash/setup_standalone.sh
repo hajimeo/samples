@@ -371,7 +371,7 @@ function f_as_start() {
     local _share_dir="${3:-${_WORK_DIR}}"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    docker exec -it ${_name} bash -c "sudo -u ${_user} /usr/local/apache-hive/apache_hive.sh && sudo -u ${_user} /usr/local/atscale/bin/atscale_start"
+    docker exec -it ${_name} bash -c "sudo -u ${_user} /usr/local/atscale/bin/atscale_start;sudo -u ${_user} /usr/local/apache-hive/apache_hive.sh"
 }
 
 function _sed() {
