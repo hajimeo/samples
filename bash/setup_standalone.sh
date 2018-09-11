@@ -487,18 +487,21 @@ main() {
         fi
 
         # if name is given and running, updates /etc/hosts
-        local _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
-        # Assuming this container is running if IP is returned
-        if [ -n "${_container_ip}" ]; then
-            # If no root user, uses "sudo" in sed
-            if [ "$USER" != "root" ]; then
-                _SUDO_SED=true
-                _log "INFO" "Updating /etc/hosts. It may ask your sudo password."
-            fi
+        if docker ps --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
+            local _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
+            if [ -z "${_container_ip}" ]; then
+                _log "WARN" "${_NAME} is running but not returning IP. Please check and update /etc/hosts manually."
+            else
+                # If no root user, uses "sudo" in sed
+                if [ "$USER" != "root" ]; then
+                    _SUDO_SED=true
+                    _log "INFO" "Updating /etc/hosts. It may ask your sudo password."
+                fi
 
-            # If port forwarding is used, better use localhost
-            $_DOCKER_PORT_FORWARD && _container_ip="127.0.0.1"
-            f_update_hosts "${_NAME}.${_DOMAIN#.}" "${_container_ip}" ||  _log "WARN" "Please update /etc/hosts to add '${_container_ip} ${_NAME}.${_DOMAIN#.}'"
+                # If port forwarding is used, better use localhost
+                $_DOCKER_PORT_FORWARD && _container_ip="127.0.0.1"
+                f_update_hosts "${_NAME}.${_DOMAIN#.}" "${_container_ip}" ||  _log "WARN" "Please update /etc/hosts to add '${_container_ip} ${_NAME}.${_DOMAIN#.}'"
+            fi
         fi
     fi
 }
