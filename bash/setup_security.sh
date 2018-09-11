@@ -90,7 +90,7 @@ function f_kdc_install_on_host() {
     local __doc__="Install KDC server packages on Ubuntu (takes long time)"
     local _realm="${1:-$g_KDC_REALM}"
     local _password="${2:-$g_DEFAULT_PASSWORD}"
-    local _server="${3:-`hostname -i`}"
+    local _server="${3:-`hostname -i | awk '{print $1}'`}"
 
     if [ -z "${_server}" ]; then
         _error "No server IP/name for KDC"
@@ -124,16 +124,19 @@ function f_kdc_install_on_host() {
     sed -i "/\[realms\]/r /tmp/f_kdc_install_on_host_kdc_$$.tmp" /etc/krb5kdc/kdc.conf
 
     # KDC process seems to use default_realm, and sed needs to escape + somehow
-    sed -i_$(date +"%Y%m%d%H%M%S").bak -e 's/^\s*default_realm.\+$/  default_realm = '${_realm}'/' /etc/krb5.conf
-    # With 'sed', append/insert multiple lines
-    if ! grep -qE '^\s*'${_realm}'\b' /etc/krb5.conf; then
-        echo '  '${_realm}' = {
+    cp -p /etc/krb5.conf /etc/krb5.conf.$(date +"%Y%m%d%H%M%S") || return $?
+
+    echo '[libdefaults]
+  default_realm = '${_realm}'
+  dns_lookup_realm = false
+  dns_lookup_kdc = false
+
+[realms]
+  '${_realm}' = {
    kdc = '${_server}'
    admin_server = '${_server}'
  }
-' > /tmp/f_kdc_install_on_host_krb5_$$.tmp
-        sed -i "/\[realms\]/r /tmp/f_kdc_install_on_host_krb5_$$.tmp" /etc/krb5.conf
-    fi
+' > /etc/krb5.conf
 
     kdb5_util create -r ${_realm} -s -P ${_password} || return $?  # or krb5_newrealm
     mv /etc/krb5kdc/kadm5_${_realm}.acl /etc/krb5kdc/kadm5_${_realm}.orig &>/dev/null
