@@ -258,6 +258,28 @@ function f_docker_start() {
     #docker exec -it ${_name} bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 &>/dev/null || ip route del ${_docker_net_addr}/16 via 0.0.0.0"
 }
 
+function f_docker_commit() {
+    local __doc__="Cleaning up unncecessary files and then save a container as an image"
+    local _hostname="$1"    # short name is also OK
+
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
+    if docker images --format "{{.Repository}}" | grep -qE "^${_name}$"; then
+        _log "WARN" "Image ${_name} already exists. Please do 'docker rmi ${_name}' first."; sleep 1
+        return
+    fi
+    if ! docker ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
+        _log "INFO" "Container ${_name} is NOT running, so that not cleaning up..."; sleep 1
+    fi
+
+    docker exec -it ${_name} bash -c 'find /usr/local/atscale/{log,share/postgresql-*/data/pg_log} -type f -and \( -name "*.log*" -o -name "postgresql-2*.log" -o -name "*.stdout" \) -and -print0| xargs -0 -P3 -n1 -I {} rm -f {}'
+    docker exec -it ${_name} bash -c 'rm -rf /home/atscale/atscale-*-el6.x86_64;rm -rf /home/atscale/log/*'
+
+    docker stop ${_name} || return $?
+    docker commit ${_name} ${_name} || return $?
+    _log "INFO" "Saving ${_name} as image was completed. Feel free to do 'docker rm -f ${_name}'"; sleep 1
+}
+
 function _docker_find_by_port() {
     local _port="$1"
     for _n in `docker ps --format "{{.Names}}"`; do
@@ -419,7 +441,12 @@ main() {
             if $_DOCKER_PORT_FORWARD || [ "`uname`" = "Darwin" ]; then
                 _ports=${_PORTS}
             fi
-            f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}" || return $?
+            local _img_name="${_IMAGE_NAME}:${_CENTOS_VERSION}"
+            if docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
+                _log "INFO" "Image ${_NAME} already exists. Using this instead of ${_IMAGE_NAME}:${_CENTOS_VERSION}..."; sleep 1
+                _img_name="${_NAME}"
+            fi
+            f_docker_run "${_NAME}.${_DOMAIN#.}" "${_img_name}" "${_ports}" || return $?
             sleep 1
 
             _log "INFO" "Setting up ${_NAME} (container)..."
