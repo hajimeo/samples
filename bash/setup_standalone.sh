@@ -282,7 +282,7 @@ function f_docker_commit() {
 
     docker stop ${_name} || return $?
     docker commit ${_name} ${_name} || return $?
-    _log "INFO" "Saving ${_name} as image was completed. Feel free to do 'docker rm -f ${_name}'"; sleep 1
+    _log "INFO" "Saving ${_name} as image was completed. Feel free to do 'docker rm ${_name}'"; sleep 1
 }
 
 function _docker_find_by_port() {
