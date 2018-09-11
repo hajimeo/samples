@@ -4,29 +4,33 @@
 function usage() {
     echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>]
 
-This script for building a docker container for standalone/sandbox for testing in dev env, and does the followings:
+This script is for building a docker container for standalone/sandbox for testing in dev env, and does the followings:
 
-CREATE:
-    -c [-n <container_name>|-v <version>]
+CREATE IMAGE/CONTAINER:
+    -c [-v <version>|-n <container_name>]
         Create a docker image for Standalone/Sandbox
-        If -n <container_name> or -v <version> is provided, a docker container will be created.
-        Also, Installs necessary service in the container.
+        Docker container will be created if -n <container_name> or -v <version> is provided.
+        Then installs necessary service in the container.
 
-START:
+START CONTAINER:
     -n <container_name>     <<< no '-c'
         Start a docker container of the given name (hostname), and start services in the container.
 
     -v <version>            <<< no '-c'
         Start a docker container of this version, and start services in the container.
 
+SAVE CONTAINER:
+    -s -n <container_name>
+        Save this container as image, so that creating a container will be faster.
+        NOTE: this operation takes time.
+
 OTHERS:
     -P
-        Use docker's port forwarding for the application
-        This also stops other docker containers unless -N is specified
+        Used with -c to use docker's port forwarding for the application
 
     -S
-        Stop any other conflicting containers.
-        if -P is used or the host is Mac, this would be also needed.
+        Used with -c, -n, -v to stop any other conflicting containers.
+        When -P is used or the host is Mac, this option would be needed.
 
     -u
         Update this script to the latest
@@ -47,6 +51,7 @@ _IMAGE_NAME="hdp/base"                                  # TODO: change to more a
 _CREATE_AND_SETUP=false
 _DOCKER_PORT_FORWARD=false
 _DOCKER_STOP_OTHER=false
+_DOCKER_SAVE=false
 _SUDO_SED=false
 _PORTS="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
 _SERVICE="atscale"                                      # This is used by the app installer script so shouldn't change
@@ -462,6 +467,12 @@ main() {
                 fi
             fi
         fi
+    elif $_DOCKER_SAVE; then
+        if [ -z "$_NAME" ]; then
+            _log "ERROR" "Docker save (commit) was specified but no name to save."
+            return 1
+        fi
+        f_docker_commit "$_NAME"
     elif [ -n "$_NAME" ]; then
         _log "INFO" "Starting container: $_NAME"
         f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
@@ -469,22 +480,27 @@ main() {
         f_as_start "${_NAME}.${_DOMAIN#.}"
     fi
 
-    # Common part
-    if [ "$USER" != "root" ]; then
-        _SUDO_SED=true
-        _log "INFO" "Updating /etc/hosts. It may ask a sudo password."
-    fi
-    local _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
-    $_DOCKER_PORT_FORWARD && _container_ip="127.0.0.1"
-    f_update_hosts "${_NAME}.${_DOMAIN#.}" "${_container_ip}"
-    if [ $? -ne 0 ]; then
-        _log "WARN" "Please update /etc/hosts to add '${_container_ip}     ${_NAME}.${_DOMAIN#.}'"
+    # if name is given and running, updates /etc/hosts
+    if [ -n "${_NAME}" ]; then
+        local _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
+        # Assuming this container is running if IP is returned
+        if [ -n "${_container_ip}" ]; then
+            # If no root user, uses "sudo" in sed
+            if [ "$USER" != "root" ]; then
+                _SUDO_SED=true
+                _log "INFO" "Updating /etc/hosts. It may ask your sudo password."
+            fi
+
+            # If port forwarding is used, better use localhost
+            $_DOCKER_PORT_FORWARD && _container_ip="127.0.0.1"
+            f_update_hosts "${_NAME}.${_DOMAIN#.}" "${_container_ip}" ||  _log "WARN" "Please update /etc/hosts to add '${_container_ip} ${_NAME}.${_DOMAIN#.}'"
+        fi
     fi
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "cn:v:PSuh" opts; do
+    while getopts "cn:v:sPSuh" opts; do
         case $opts in
             h)
                 usage
@@ -496,6 +512,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             c)
                 _CREATE_AND_SETUP=true
+                ;;
+            s)
+                _DOCKER_SAVE=true
                 ;;
             n)
                 _NAME="$OPTARG"
