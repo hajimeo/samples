@@ -32,10 +32,7 @@ alias jn='if [ -d ~/backup/jupyter-notebook ]; then
     done &
 fi'
 # Start python simple http server from the specific dir
-# To setup:
-#   rsync -Pharz root@server:/usr/local/atscale/apps/modeler/assets/modeler/public/* ./atscale_doc_NNN/
-#   cd ./atscale_doc_NNN/ && patch -p0 -b < ~/doc_index.patch
-#   ln -s ~/IdeaProjects/atscale_doc_NNN/docs ~/Public/atscale_latest
+# To setup: asDocSync <server ip>
 alias webs='cd ~/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out & nohup python ~/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &'
 # List and grep some specific files from s3. NOTE: https:// requires s3-us-west-1.amazonaws.com
 alias asS3='s3cmd ls s3://files.atscale.com/installer/package/ | grep -E "atscale-[6789].+latest-el6\.x86_64\.tar\.gz$"'
@@ -73,6 +70,12 @@ function asftpd() {
         [[ "${_ext}" =~ ^gz|zip|tgz$ ]] && _rsync_opts="-Ph"
         rsync ${_rsync_opts} asftp:"/home/ubuntu/upload/$_a" ./
     done
+}
+function asDocSync() {
+    local _server="$1"
+    local _loginas="${2:-root}"
+    rsync -Phrz ${_loginas}@${_server}:/usr/local/atscale/apps/modeler/assets/modeler/public/docs/* ~/Public/atscale_latest/
+    cd ~/Public/atscale_latest/ && patch -p0 -b < ~/IdeaProjects/samples/misc/doc_index.patch
 }
 
 # Grep against jar file to find a class ($1)
