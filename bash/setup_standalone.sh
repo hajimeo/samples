@@ -2,7 +2,7 @@
 # curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_standalone.sh
 
 function usage() {
-    echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>]
+    echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>] [-s]
 
 This script is for building a docker container for standalone/sandbox for testing in dev env, and does the followings:
 
