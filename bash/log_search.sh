@@ -11,6 +11,7 @@
 # brew install gnu-sed  # for gsed
 # brew install dateutils # for dateconf
 # brew install coreutils # for gtac gdate
+# curl https://raw.githubusercontent.com/hajimeo/samples/master/python/line_parser.py -o /usr/local/bin/line_parser.py
 #
 
 [ -n "$_DEBUG" ] && (set -x; set -e)
@@ -1166,10 +1167,10 @@ function f_count_lines() {
     local _ext="${_file##*.}"
     if [[ "${_ext}" =~ gz ]]; then
         local _line_num=`gunzip -c ${_file} | wc -l`
-        _grep -nP "${_search_regex}" <(gunzip -c ${_file}) | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | python ~/IdeaProjects/samples/python/line_parser.py thread_num ${_line_num} | bar_chart.py -A
+        _grep -nP "${_search_regex}" <(gunzip -c ${_file}) | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | line_parser.py thread_num ${_line_num} | bar_chart.py -A
     else
         local _line_num=`wc -l ${_file}`
-        _grep -nP "${_search_regex}" ${_file} | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | python ~/IdeaProjects/samples/python/line_parser.py thread_num ${_line_num} | bar_chart.py -A
+        _grep -nP "${_search_regex}" ${_file} | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | line_parser.py thread_num ${_line_num} | bar_chart.py -A
     fi
 }
 
