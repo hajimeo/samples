@@ -467,21 +467,26 @@ main() {
                 fi
             fi
         fi
-    elif $_DOCKER_SAVE; then
+    fi
+
+    if $_DOCKER_SAVE; then
         if [ -z "$_NAME" ]; then
             _log "ERROR" "Docker save (commit) was specified but no name to save."
             return 1
         fi
         f_docker_commit "$_NAME"
-    elif [ -n "$_NAME" ]; then
-        _log "INFO" "Starting container: $_NAME"
-        f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
-        sleep 1
-        f_as_start "${_NAME}.${_DOMAIN#.}"
     fi
 
-    # if name is given and running, updates /etc/hosts
-    if [ -n "${_NAME}" ]; then
+    if [ -n "$_NAME" ]; then
+        # If creating, container should be started already. If saveing, it intentionally stops the container.
+        if ! $_CREATE_AND_SETUP && ! $_DOCKER_SAVE; then
+            _log "INFO" "Starting container: $_NAME"
+            f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
+            sleep 1
+            f_as_start "${_NAME}.${_DOMAIN#.}"
+        fi
+
+        # if name is given and running, updates /etc/hosts
         local _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
         # Assuming this container is running if IP is returned
         if [ -n "${_container_ip}" ]; then
