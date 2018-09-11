@@ -129,7 +129,7 @@ function p_interview() {
     local _stack_version="${g_STACK_VERSION}"
     local _hdp_version="${_stack_version}.0.0"
 
-    local _stack_version_full="HDP-$_stack_version"
+        local _stack_version_full="HDP-$_stack_version"
     local _hdp_repo_url=""
 
     # TODO: Not good place to install package
@@ -225,8 +225,10 @@ function p_interview() {
         if [ -s /tmp/hdp_urlinfo.json ]; then
             local _tmp_hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['${_stack_version_full}']['manifests']['${r_HDP_REPO_VER}']['${r_CONTAINER_OS}${_repo_os_ver}'])"`"
             [ -n "${_tmp_hdp_repo_url}" ] && _hdp_repo_url="${_tmp_hdp_repo_url}"
+            # TODO: for debug
+            [ -n "${_tmp_hdp_repo_url}" ] || echo "DEBUG: a['${_stack_version_full}']['manifests']['${r_HDP_REPO_VER}']['${r_CONTAINER_OS}${_repo_os_ver}']"
         fi
-        _ask "HDP Repo URL or *VDF* XMF  URL" "${_hdp_repo_url}" "r_HDP_REPO_URL" "N" "Y"
+        _ask "HDP Repo URL or *VDF* XMF URL" "${_hdp_repo_url}" "r_HDP_REPO_URL" "N" "Y"
         if ! [[ "${r_HDP_REPO_URL}" =~ \.xml$ ]] ; then
             while true; do
                 _warn "URL: $r_HDP_REPO_URL does not look like a VDF XML URL."
