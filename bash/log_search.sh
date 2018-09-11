@@ -141,11 +141,11 @@ f_count_threads "" "${_n}"                                                      
 EOF
     _mexec /tmp/perform_cmds.tmp "source $BASH_SOURCE;"
 
-    echo "# f_checkResultSize success query size from the engine log (datetime, queryId, size, time) and top ${_n}"
+    echo "# f_checkResultSize success query size from the engine log (datetime, queryId, size, time)"
     cat /tmp/perform_f_checkResultSize_$$.out
     echo " "
 
-    echo "# f_checkMaterializeWorkers Materialization queue size from the engine debug log and top ${_n}"
+    echo "# f_checkMaterializeWorkers Materialization queue size from the engine debug log"
     cat /tmp/perform_f_checkMaterializeWorkers_$$.out
     echo " "
 
@@ -916,7 +916,7 @@ function f_start_end_time_with_diff(){
     local _end_int=`_date2int "${_end_date}"`
     local _diff=$(( $_end_int - $_start_int ))
     # Filename, start datetime, enddatetime, difference, (filesize)
-    echo -e "`basename ${_log}`\t${_start_date}\t${_end_date}\t${_diff}s\t$((`gstat -c"%s" ${_log}` / 1024))KB"
+    echo -e "`basename ${_log}`\t${_start_date}\t${_end_date}\t${_diff}s\t$((`wc -c <${_log}` / 1024))KB"
 }
 
 function f_split_strace() {
