@@ -74,8 +74,9 @@ function p_support() {
 
     echo "# config.yaml | grep -iE '(max|size|pool).+000$' | grep -vi 'time'"
     # Exact config parameter(s) which would cause issue
-    # Aggregate Batch <UUID> failed creating a build order for rebuilding aggregates.
-    _find_and_cat "config.yaml" | grep -iE '(aggregates.batch.buildFromExisting.enabled)'
+    # TODO: Aggregate Batch <UUID> failed creating a build order for rebuilding aggregates.
+    # TODO: aggregates.maxExternalRequestDuration.timeout
+    _find_and_cat "config.yaml" | grep -iE '(aggregates.batch.buildFromExisting)'
     # Try finding parameters which value might be too big
     _find_and_cat "config.yaml" | grep -iE '(max|size|pool).+(000|mins|hours)$' | grep -vi "time"
     echo " "
