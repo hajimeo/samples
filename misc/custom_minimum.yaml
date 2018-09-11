@@ -46,7 +46,7 @@ lzo_jar_location: ''
 as_hive_metastore_database: 'false'
 hadoop_classpath: ''
 as_namenode: ''
-thrifty_client_protocol: cloudera
+thrifty_client_protocol: hortonworks
 as_auth_host: ''
 as_secure_installation: 'false'
 has_custom_truststore: ''
