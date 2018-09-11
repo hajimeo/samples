@@ -10,6 +10,7 @@
 # brew install grep     # 'grep' will install ggrep
 # brew install gnu-sed  # for gsed
 # brew install dateutils # for dateconf
+# brew install coreutils # for gtac gdate
 #
 
 [ -n "$_DEBUG" ] && (set -x; set -e)
@@ -255,7 +256,7 @@ function f_preCheckoutDuration() {
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
     # NOTE: queryId sometime is not included
-    rg -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+preCheckout timing report:.+statementDurations=[^=]+=([0-9,.]+) (.+)\].+testDuration=[^=]+=([0-9,.]+) (.+)\]" -r '${1}|${2}${3}|${4}${5}' | gsed -r 's/([0-9]+)\.([0-9]{2})s/\1\20ms/g'# | gsed -r 's/ms//g'
+    rg -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+preCheckout timing report:.+statementDurations=[^=]+=([0-9,.]+) (.+)\].+testDuration=[^=]+=([0-9,.]+) (.+)\]" -r '${1}|${2}${3}|${4}${5}' | _sed -r 's/([0-9]+)\.([0-9]{2})s/\1\20ms/g'# | _sed -r 's/ms//g'
 }
 
 function f_aggBatchKickoffSize() {
@@ -332,8 +333,8 @@ function f_rg() {
 
         local _first_dt="`rg ${_def_rg_opts} -m 1 -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}.tmp"`"
         local _last_cmd="tail -n1"
-        which gtac &>/dev/null && _last_cmd="gtac"
         which tac &>/dev/null && _last_cmd="tac"
+        which gtac &>/dev/null && _last_cmd="gtac"
         local _last_dt="`${_last_cmd} "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | rg ${_def_rg_opts} -m 1 -o "${_date_regex}"`"
 
         # @see https://raw.githubusercontent.com/hajimeo/samples/master/golang/dateregex.go
@@ -409,7 +410,7 @@ function f_getQueries() {
         [ -z "${_path}" ] && return 1
     fi
 
-    #ggrep -m 1 -Pz "(?s)queryId=${_uuid}\} - Received .+?20\d\d-\d\d-\d\d" ${_path}
+    #_grep -m 1 -Pz "(?s)queryId=${_uuid}\} - Received .+?20\d\d-\d\d-\d\d" ${_path}
     _getAfterFirstMatch "${_path}" "queryId=${_uuid}.+ (Received|Executing) (.+) [Qq]uery" "^20\d\d-\d\d-\d\d" "Y"
 }
 
@@ -526,9 +527,9 @@ function f_appLogContainersAndHosts() {
     local _sort_by_host="$2"
 
     if [[ "$_sort_by_host" =~ (^y|^Y) ]]; then
-        ggrep "^Container: container_" "$_path" | sort -k4 | uniq
+        _grep "^Container: container_" "$_path" | sort -k4 | uniq
     else
-        ggrep "^Container: container_" "$_path" | sort | uniq
+        _grep "^Container: container_" "$_path" | sort | uniq
     fi
 }
 
@@ -550,11 +551,11 @@ function f_appLogJobCounters() {
     local _line=""
     local _regex="(Final Counters for [^ :]+)[^\[]+(\[.+$)"
 
-    ggrep -oP "Final Counters for .+$" "$_path" | while read -r _line ; do
+    _grep -oP "Final Counters for .+$" "$_path" | while read -r _line ; do
         if [[ "$_line" =~ ${_regex} ]]; then
             echo "# ${BASH_REMATCH[1]}"
             # TODO: not clean enough. eg: [['File System Counters HDFS_BYTES_READ=1469456609',
-            echo "${BASH_REMATCH[2]}" | gsed -r 's/\[([^"\[])/\["\1/g' | gsed -r 's/([^"])\]/\1"\]/g' | gsed -r 's/([^"]), ([^"])/\1", "\2/g' | gsed -r 's/\]\[/\], \[/g' | python -m json.tool
+            echo "${BASH_REMATCH[2]}" | _sed -r 's/\[([^"\[])/\["\1/g' | _sed -r 's/([^"])\]/\1"\]/g' | _sed -r 's/([^"]), ([^"])/\1", "\2/g' | _sed -r 's/\]\[/\], \[/g' | python -m json.tool
             echo ""
         fi
     done
@@ -573,19 +574,19 @@ function f_appLogFindFirstSyslog() {
     local _dir_path="${1-.}"
     local _num="${2-10}"
 
-    ( find "${_dir_path%/}" -name "*.syslog" | xargs -I {} bash -c "ggrep -oHP '^${_DATE_FORMAT} \d\d:\d\d:\d\d' -m 1 {}" | awk -F ':' '{print $2":"$3":"$4" "$1}' ) | sort -n | head -n $_num
+    ( find "${_dir_path%/}" -name "*.syslog" | xargs -I {} bash -c "_grep -oHP '^${_DATE_FORMAT} \d\d:\d\d:\d\d' -m 1 {}" | awk -F ':' '{print $2":"$3":"$4" "$1}' ) | sort -n | head -n $_num
 }
 
 function f_appLogFindLastSyslog() {
-    local __doc__="After yarn_app_logs_splitter, find which one was ended in the last. gtac is required"
+    local __doc__="After yarn_app_logs_splitter, find which one was ended in the last. gtac/tac is required"
     local _dir_path="${1-.}"
     local _num="${2-10}"
     local _regex="${3}"
 
     if [ -n "$_regex" ]; then
-        ( for _f in `ggrep -l "$_regex" ${_dir_path%/}/*.syslog`; do _dt="`gtac $_f | ggrep -oP "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
+        ( for _f in `_grep -l "$_regex" ${_dir_path%/}/*.syslog`; do _dt="`_tac $_f | _grep -oP "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
     else
-        ( for _f in `find "${_dir_path%/}" -name "*.syslog"`; do _dt="`gtac $_f | ggrep -oP "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
+        ( for _f in `find "${_dir_path%/}" -name "*.syslog"`; do _dt="`_tac $_f | _grep -oP "^${_DATE_FORMAT} \d\d:\d\d:\d\d" -m 1`" && echo "$_dt $_f"; done ) | sort -nr | head -n $_num
     fi
 }
 
@@ -607,7 +608,7 @@ function f_hdfsAuditLogCountPerTime() {
         local _cmd="bar_chart.py"
     fi
 
-    ggrep -oP "$_datetime_regex" $_path | $_cmd
+    _grep -oP "$_datetime_regex" $_path | $_cmd
 }
 
 function f_hdfsAuditLogCountPerCommand() {
@@ -624,9 +625,9 @@ function f_hdfsAuditLogCountPerCommand() {
 
     # TODO: not sure if sed regex is good (seems to work, Mac sed / gsed doesn't like +?)、Also sed doen't support ¥d
     if [ ! -z "$_datetime_regex" ]; then
-        gsed -n "s@\($_datetime_regex\).*\(cmd=[^ ]*\).*src=.*\$@\1,\2@p" $_path | $_cmd
+        _sed -n "s@\($_datetime_regex\).*\(cmd=[^ ]*\).*src=.*\$@\1,\2@p" $_path | $_cmd
     else
-        gsed -n 's:^.*\(cmd=[^ ]*\) .*$:\1:p' $_path | $_cmd
+        _sed -n 's:^.*\(cmd=[^ ]*\) .*$:\1:p' $_path | $_cmd
     fi
 }
 
@@ -637,7 +638,7 @@ function f_hdfsAuditLogCountPerUser() {
     local _datetime_regex="$3"
 
     if [ ! -z "$_datetime_regex" ]; then
-        ggrep -P "$_datetime_regex" $_path > /tmp/f_hdfs_audit_count_per_user_$$.tmp
+        _grep -P "$_datetime_regex" $_path > /tmp/f_hdfs_audit_count_per_user_$$.tmp
         _path="/tmp/f_hdfs_audit_count_per_user_$$.tmp"
     fi
 
@@ -650,9 +651,9 @@ function f_hdfsAuditLogCountPerUser() {
 
     # TODO: not sure if sed regex is good (seems to work, Mac sed / gsed doesn't like +?)
     if [[ "$_per_method" =~ (^y|^Y) ]]; then
-        gsed -n 's:^.*\(ugi=[^ ]*\) .*\(cmd=[^ ]*\).*src=.*$:\1,\2:p' $_path | $_cmd
+        _sed -n 's:^.*\(ugi=[^ ]*\) .*\(cmd=[^ ]*\).*src=.*$:\1,\2:p' $_path | $_cmd
     else
-        gsed -n 's:^.*\(ugi=[^ ]*\) .*$:\1:p' $_path | $_cmd
+        _sed -n 's:^.*\(ugi=[^ ]*\) .*$:\1:p' $_path | $_cmd
     fi
 }
 
@@ -665,7 +666,7 @@ function f_longGC() {
 }
 
 function f_listPerflogEnd() {
-    local __doc__="ggrep </PERFLOG ...> to see duration"
+    local __doc__="_grep </PERFLOG ...> to see duration"
     local _path="$1"
     local _sort_by_duration="$2"
 
@@ -673,7 +674,7 @@ function f_listPerflogEnd() {
         # expecting 5th one is duration after removing start and end time
         #egrep -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k5n
         # removing start and end so that we can easily compare two PERFLOG outputs
-        egrep -wo '</PERFLOG .+>' "$_path" | gsed -r "s/ (start|end)=[0-9]+//g" | sort -t'=' -k3n
+        egrep -wo '</PERFLOG .+>' "$_path" | _sed -r "s/ (start|end)=[0-9]+//g" | sort -t'=' -k3n
     else
         # sorting with start time
         egrep -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k3n
@@ -687,7 +688,7 @@ function f_getPerflog() {
     local _thread_id="$3"
     local _method="${4-compile}"
 
-    _getAfterFirstMatch "$_path" "^${_approx_datetime}.+ Thread-${_thread_id}\]: .+<PERFLOG method=${_method} " "Thread-${_thread_id}\]: .+<\/PERFLOG method=${_method} " | ggrep -vP ": Thread-(?!${_thread_id})\]"
+    _getAfterFirstMatch "$_path" "^${_approx_datetime}.+ Thread-${_thread_id}\]: .+<PERFLOG method=${_method} " "Thread-${_thread_id}\]: .+<\/PERFLOG method=${_method} " | _grep -vP ": Thread-(?!${_thread_id})\]"
 }
 
 function f_findJarByClassName() {
@@ -697,11 +698,11 @@ function f_findJarByClassName() {
 
     # if search path is an integer, treat as PID
     if [[ $_search_path =~ ^-?[0-9]+$ ]]; then
-        lsof -nPp $_search_path | ggrep -oE '/.+\.(jar|war)$' | sort | uniq | xargs -I {} bash -c "less {} | ggrep -qm1 -w $_class_name && echo {}"
+        lsof -nPp $_search_path | _grep -oE '/.+\.(jar|war)$' | sort | uniq | xargs -I {} bash -c "less {} | _grep -qm1 -w $_class_name && echo {}"
         return
     fi
     # NOTE: some 'less' can't read jar, in that case, replace to 'jar -tvf', but may need to modify $PATH
-    find $_search_path -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | ggrep -m 1 -w $_class_name > /tmp/f_findJarByClassName_$$.tmp && ( echo {}; cat /tmp/f_findJarByClassName_$$.tmp )"
+    find $_search_path -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | _grep -m 1 -w $_class_name > /tmp/f_findJarByClassName_$$.tmp && ( echo {}; cat /tmp/f_findJarByClassName_$$.tmp )"
     # TODO: it won't search war file...
 }
 
@@ -714,7 +715,7 @@ function f_searchClass() {
     local _basename="$(basename ${_class_file_path})"
 
     if [ -d "${_pid}" ]; then
-        ggrep -l -Rs "${_class_file_path}" "${_pid}"
+        _grep -l -Rs "${_class_file_path}" "${_pid}"
         return $?
     fi
 
@@ -722,8 +723,8 @@ function f_searchClass() {
     which ${_cmd_dir}/jar &>/dev/null || return 1
 
     if [ ! -s /tmp/f_searchClass_${_basename}_jars.out ]; then
-        ls -l /proc/${_pid}/fd | ggrep -oE '/.+\.(jar|war)$' > /tmp/f_searchClass_${_pid}.out
-        cat /tmp/f_searchClass_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | ggrep -E "'${_class_file_path}'.class" > /tmp/f_searchClass_'${_basename}'_tmp.out && echo {} && cat /tmp/f_searchClass_'${_basename}'_tmp.out >&2' | tee /tmp/f_searchClass_${_basename}_jars.out
+        ls -l /proc/${_pid}/fd | _grep -oE '/.+\.(jar|war)$' > /tmp/f_searchClass_${_pid}.out
+        cat /tmp/f_searchClass_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | _grep -E "'${_class_file_path}'.class" > /tmp/f_searchClass_'${_basename}'_tmp.out && echo {} && cat /tmp/f_searchClass_'${_basename}'_tmp.out >&2' | tee /tmp/f_searchClass_${_basename}_jars.out
     else
         cat /tmp/f_searchClass_${_basename}_jars.out
     fi
@@ -734,7 +735,7 @@ function f_classpath() {
     local _pid="$1"
     local _user="`stat -c '%U' /proc/${_pid}`" || return $?
     local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
-    sudo -u ${_user} ${_cmd_dir}/jcmd ${_pid} VM.system_properties | ggrep '^java.class.path=' | sed 's/\\:/:/g' | cut -d"=" -f 2
+    sudo -u ${_user} ${_cmd_dir}/jcmd ${_pid} VM.system_properties | _grep '^java.class.path=' | sed 's/\\:/:/g' | cut -d"=" -f 2
 }
 
 function f_patchJar() {
@@ -747,11 +748,11 @@ function f_patchJar() {
     local _dirname="$(dirname ${_class_file_path})"
     local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
     which ${_cmd_dir}/jar &>/dev/null || return 1
-    ls -l /proc/${_pid}/fd | ggrep -oE '/.+\.(jar|war)$' > /tmp/f_patchJar_${_pid}.out
+    ls -l /proc/${_pid}/fd | _grep -oE '/.+\.(jar|war)$' > /tmp/f_patchJar_${_pid}.out
 
     # If needs to compile but _jars.out exist, don't try searching as it takes long time
     if [ ! -s /tmp/f_patchJar_${_basename}_jars.out ]; then
-        cat /tmp/f_patchJar_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | ggrep -E "'${_class_file_path}'.class" > /tmp/f_patchJar_'${_basename}'_tmp.out && echo {} && cat /tmp/f_patchJar_'${_basename}'_tmp.out >&2' | tee /tmp/f_patchJar_${_basename}_jars.out
+        cat /tmp/f_patchJar_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | _grep -E "'${_class_file_path}'.class" > /tmp/f_patchJar_'${_basename}'_tmp.out && echo {} && cat /tmp/f_patchJar_'${_basename}'_tmp.out >&2' | tee /tmp/f_patchJar_${_basename}_jars.out
     else
         echo "/tmp/f_patchJar_${_basename}_jars.out exists. Reusing..."
     fi
@@ -791,7 +792,7 @@ function f_patchJar() {
             fi
             eval "${_cmd_dir}/jar -uf ${_j} ${_dirname%/}/${_basename}*class"
             ls -l ${_j}
-            ${_cmd_dir}/jar -tvf ${_j} | ggrep -F "${_dirname%/}/${_basename}"
+            ${_cmd_dir}/jar -tvf ${_j} | _grep -F "${_dirname%/}/${_basename}"
         done
     else
         echo "${_basename}.java is not readable."
@@ -809,7 +810,7 @@ function f_extractByDates() {
     local _is_utc="$6"
 
     local _date_regex=""
-    local _date="gdate"
+    local _date="_date"
 
     # in case file path includes wildcard
     ls -1 $_log_file_path &>/dev/null
@@ -826,7 +827,7 @@ function f_extractByDates() {
     fi
 
     if [[ "$_is_utc" =~ (^y|^Y) ]]; then
-        _date="gdate -u"
+        _date="_date -u"
     fi
 
     # if _start_date is integer, treat as from X hours ago
@@ -861,7 +862,7 @@ function f_splitApplog() {
         echo "$_app_log is not readable"
         return 1
     fi
-    #ggrep -Fv "***********************************************************************" $_app_log > /tmp/${_app_log}.tmp
+    #_grep -Fv "***********************************************************************" $_app_log > /tmp/${_app_log}.tmp
     python "$_script_path" --container-log-dir $_out_name --app-log "$_app_log"
 }
 
@@ -871,7 +872,7 @@ function f_swimlane() {
     local _out_name="`basename $_app_log .log`.svg"
     local _tmp_name="`basename $_app_log .log`.tmp"
     local _script_path="`dirname $(dirname $(dirname $BASH_SOURCE))`/tez/tez-tools/swimlanes/swimlane.py"
-    ggrep 'HISTORY' $_app_log > ./$_tmp_name
+    _grep 'HISTORY' $_app_log > ./$_tmp_name
     if [ ! -s "$_tmp_name" ]; then
         echo "$_tmp_name is empty."
         return 1
@@ -906,9 +907,9 @@ function f_start_end_time_with_diff(){
     local _start_date=`rg --search-zip -N -om1 "^$_date_regex" ${_log} | sed 's/T/ /'` || return $?
     local _extension="${_log##*.}"
     if [ "${_extension}" = 'gz' ]; then
-        local _end_date=`gunzip -c ${_log} | gtac | rg -N -om1 "^$_date_regex" | sed 's/T/ /'` || return $?
+        local _end_date=`gunzip -c ${_log} | _tac | rg -N -om1 "^$_date_regex" | sed 's/T/ /'` || return $?
     else
-        local _end_date=`gtac ${_log} | rg --search-zip -N -om1 "^$_date_regex" | sed 's/T/ /'` || return $?
+        local _end_date=`_tac ${_log} | rg --search-zip -N -om1 "^$_date_regex" | sed 's/T/ /'` || return $?
     fi
     local _start_int=`_date2int "${_start_date}"`
     local _end_int=`_date2int "${_end_date}"`
@@ -946,7 +947,7 @@ function f_split_strace() {
             echo "${_save_dir%/}/${_p}.out exists. skipping..." 1>&2
             continue
         fi
-        ggrep "^${_p} " "${_strace_file}" > "${_save_dir%/}/.${_p}.out" && mv -f "${_save_dir%/}/.${_p}.out" "${_save_dir%/}/${_p}.out"
+        _grep "^${_p} " "${_strace_file}" > "${_save_dir%/}/.${_p}.out" && mv -f "${_save_dir%/}/.${_p}.out" "${_save_dir%/}/${_p}.out"
     done
 }
 
@@ -971,7 +972,7 @@ function f_git_search() {
         echo "$_grep_result"
     fi
 
-    local _commits_only="`echo "$_grep_result" | ggrep ^commit | cut -d ' ' -f 2`"
+    local _commits_only="`echo "$_grep_result" | _grep ^commit | cut -d ' ' -f 2`"
 
     echo "# Searching branches ...."
     for c in $_commits_only; do git branch -r --contains $c; done | sort
@@ -1002,7 +1003,7 @@ function f_hdfs_checklist() {
     _search_properties "${_conf%/}/*-site.xml" "${_props}" "Y"
 
     # 2. Check log4j config for performance
-    ggrep -P '^log4j\..+\.(BlockStateChange|StateChange)' ${_conf%/}/log4j.properties
+    _grep -P '^log4j\..+\.(BlockStateChange|StateChange)' ${_conf%/}/log4j.properties
 }
 
 function f_hive_checklist() {
@@ -1011,7 +1012,7 @@ function f_hive_checklist() {
     local _others="$2"      # check HDFS, YARN, MR2 configs if 'y'
 
     # 1. check the following properties' values
-    # ggrep -ohP '\(property\(.+$' * | cut -d '"' -f 2 | tr '\n' ' '
+    # _grep -ohP '\(property\(.+$' * | cut -d '"' -f 2 | tr '\n' ' '
 
     echo "# Hive config check" >&2
     local _props="hive.auto.convert.join hive.merge.mapfiles hive.merge.mapredfiles hive.exec.compress.intermediate hive.exec.compress.output datanucleus.cache.level2.type hive.default.fileformat.managed hive.default.fileformat fs.hdfs.impl.disable.cache fs.file.impl.disable.cache hive.cbo.enable hive.compute.query.using.stats hive.stats.fetch.column.stats hive.stats.fetch.partition.stats hive.execution.engine datanucleus.fixedDatastore hive.exim.strict.repl.tables datanucleus.autoCreateSchema hive.exec.parallel hive.plan.serialization.format hive.server2.tez.initialize.default.sessions hive.vectorized.execution.enabled hive.vectorized.execution.reduce.enabled"
@@ -1048,7 +1049,7 @@ function f_hive_checklist() {
     if [ -f "$_conf" ]; then
         echo -e "\n# System:java" >&2
         # |system:java\.class\.path
-        ggrep -P '^(env:HOSTNAME|env:HADOOP_HEAPSIZE|env:HADOOP_CLIENT_OPTS|system:hdp\.version|system:java\.home|system:java\.vm\.*|system:java\.io\.tmpdir|system:os\.version|system:user\.timezone)=' "$_conf"
+        _grep -P '^(env:HOSTNAME|env:HADOOP_HEAPSIZE|env:HADOOP_CLIENT_OPTS|system:hdp\.version|system:java\.home|system:java\.vm\.*|system:java\.io\.tmpdir|system:os\.version|system:user\.timezone)=' "$_conf"
     fi
 }
 
@@ -1084,7 +1085,7 @@ function f_load_ambaridb_to_postgres() {
     psql -Uambari -h `hostname -f` ambari -c 'CREATE SCHEMA ambari;ALTER SCHEMA ambari OWNER TO ambari;'
 
     # TODO: may need to replace the schema if not 'ambari'
-    #gsed -i'.bak' -r 's/\b(custom_schema|custom_owner)\b/ambari/g' ambari.sql
+    #_sed -i'.bak' -r 's/\b(custom_schema|custom_owner)\b/ambari/g' ambari.sql
 
     # It's OK to see relation error for index (TODO: upgrade table may fail)
     [ -s "$_missing_tables_sql" ] && psql -Uambari -h `hostname -f` ambari < ${_missing_tables_sql}
@@ -1143,7 +1144,7 @@ FLUSH PRIVILEGES;"
 function f_gc_before_after_check() {
     local __doc__="TODO: add PrintClassHistogramBeforeFullGC, and parse log to find which objects are increasing"
     return
-    # TODO: ggrep -F '#instances' -A 20 solr_gc.log | ggrep -E -- '----------------|org.apache'
+    # TODO: _grep -F '#instances' -A 20 solr_gc.log | _grep -E -- '----------------|org.apache'
     export JAVA_GC_LOG_DIR="/some/location"
     export JAVA_GC_OPTS="-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${JAVA_GC_LOG_DIR%/}/ \
     -XX:+PrintClassHistogramBeforeFullGC -XX:+PrintClassHistogramAfterFullGC \
@@ -1165,10 +1166,10 @@ function f_count_lines() {
     local _ext="${_file##*.}"
     if [[ "${_ext}" =~ gz ]]; then
         local _line_num=`gunzip -c ${_file} | wc -l`
-        ggrep -nP "${_search_regex}" <(gunzip -c ${_file}) | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | python ~/IdeaProjects/samples/python/line_parser.py thread_num ${_line_num} | bar_chart.py -A
+        _grep -nP "${_search_regex}" <(gunzip -c ${_file}) | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | python ~/IdeaProjects/samples/python/line_parser.py thread_num ${_line_num} | bar_chart.py -A
     else
         local _line_num=`wc -l ${_file}`
-        ggrep -nP "${_search_regex}" ${_file} | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | python ~/IdeaProjects/samples/python/line_parser.py thread_num ${_line_num} | bar_chart.py -A
+        _grep -nP "${_search_regex}" ${_file} | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | python ~/IdeaProjects/samples/python/line_parser.py thread_num ${_line_num} | bar_chart.py -A
     fi
 }
 
@@ -1178,7 +1179,7 @@ function f_count_threads() {
     local _tail_n="${2-10}"
     [ -z "${_file}" ] &&  _file="`find . -name periodic.log -print | head -n1`" && ls -lh ${_file}
     if [ -n "${_tail_n}" ]; then
-        rg -N -o '^"([^"]+)"' -r '$1' "${_file}" | gsed -r 's/-[0-9]+$//g' | sort | uniq -c | sort -n | tail -n ${_tail_n}
+        rg -N -o '^"([^"]+)"' -r '$1' "${_file}" | _sed -r 's/-[0-9]+$//g' | sort | uniq -c | sort -n | tail -n ${_tail_n}
     else
         rg -N -o '^"([^"]+)"' -r '$1' "${_file}" | sort | uniq
     fi
@@ -1220,20 +1221,20 @@ function _getAfterFirstMatch() {
     if [ -n "$_start_line_num" ]; then
         local _end_line_num="\$"
         if [ -n "$_end_regex" ]; then
-            #gsed -n "${_start_line_num},\$s/${_end_regex}/&/p" "$_file_path"
+            #_sed -n "${_start_line_num},\$s/${_end_regex}/&/p" "$_file_path"
             local _tmp_start_line_num=$_start_line_num
             [[ "$_exclude_first_line" =~ ^(y|Y) ]] && _tmp_start_line_num=$(($_start_line_num + 1))
             if [ "${_extension}" = 'gz' ]; then
-                _end_line_num=`gunzip -c "$_file_path" | tail -n +${_tmp_start_line_num} | ggrep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
+                _end_line_num=`gunzip -c "$_file_path" | tail -n +${_tmp_start_line_num} | _grep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
             else
-                _end_line_num=`tail -n +${_tmp_start_line_num} "$_file_path" | ggrep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
+                _end_line_num=`tail -n +${_tmp_start_line_num} "$_file_path" | _grep -m1 -nP "$_end_regex" | cut -d ":" -f 1`
             fi
             _end_line_num=$(( $_end_line_num + $_start_line_num - 1 ))
         fi
         if [ "${_extension}" = 'gz' ]; then
-            gunzip -c "${_file_path}" | gsed -n "${_start_line_num},${_end_line_num}p"
+            gunzip -c "${_file_path}" | _sed -n "${_start_line_num},${_end_line_num}p"
         else
-            gsed -n "${_start_line_num},${_end_line_num}p" "${_file_path}"
+            _sed -n "${_start_line_num},${_end_line_num}p" "${_file_path}"
         fi
     fi
 }
@@ -1241,7 +1242,7 @@ function _getAfterFirstMatch() {
 function _date2int() {
     local _date_str="$1"
     [[ "${_date_str}" =~ ^[0-9][0-9]\/[0-9][0-9]\/[0-9][0-9].[0-9][0-9]:[0-9][0-9]:[0-9][0-9] ]] && _date_str="`dateconv "${_date_str}" -i "%y/%m/%d %H:%M:%S" -f "%Y-%m-%d %H:%M:%S"`"
-    gdate -d "${_date_str}" +"%s"
+    _date -d "${_date_str}" +"%s"
 }
 
 function _find_and_cat() {
@@ -1250,12 +1251,12 @@ function _find_and_cat() {
 }
 
 function _replace_number() {
-    gsed -r "s/[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+/__UUID__/g" \
-     | gsed -r "s/0x[0-9a-f][0-9a-f]+/0x_HEX_/g" \
-     | gsed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/_DATE_ /g" \
-     | gsed -r "s/[0-2][0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/_TIME_/g" \
-     | gsed -r "s/-[0-9]+\]\s+\{/-N] {/g" \
-     | gsed -r "s/[0-9][0-9][0-9][0-9][0-9]+/_NUM_/g"
+    _sed -r "s/[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+/__UUID__/g" \
+     | _sed -r "s/0x[0-9a-f][0-9a-f]+/0x_HEX_/g" \
+     | _sed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/_DATE_ /g" \
+     | _sed -r "s/[0-2][0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/_TIME_/g" \
+     | _sed -r "s/-[0-9]+\]\s+\{/-N] {/g" \
+     | _sed -r "s/[0-9][0-9][0-9][0-9][0-9]+/_NUM_/g"
 }
 
 function _search_properties() {
@@ -1265,14 +1266,31 @@ function _search_properties() {
 
     for _p in ${_props}; do
         if [[ "${_is_name_value_xml}" =~ (^y|^Y) ]]; then
-            local _out="`ggrep -Pzo "(?s)<name>${_p}</name>.+?</value>" ${_path}`"
+            local _out="`_grep -Pzo "(?s)<name>${_p}</name>.+?</value>" ${_path}`"
             [[ "${_out}" =~ (<value>)(.*)(</value>) ]]
             echo "${_p}=${BASH_REMATCH[2]}"
         else
             # Expecting hive 'set' command output or similar style (prop=value)
-            ggrep -P "${_p}" ${_path}
+            _grep -P "${_p}" ${_path}
         fi
     done
+}
+
+function _sed() {
+    local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
+    ${_cmd} "$@"
+}
+function _grep() {
+    local _cmd="grep"; which gsed &>/dev/null && _cmd="ggrep"
+    ${_cmd} "$@"
+}
+function _date() {
+    local _cmd="date"; which gdate &>/dev/null && _cmd="gdate"
+    ${_cmd} "$@"
+}
+function _tac() {
+    local _cmd="tac"; which gtac &>/dev/null && _cmd="gtac"
+    ${_cmd} "$@"
 }
 
 
@@ -1294,7 +1312,7 @@ help() {
 
     local _output=""
     if [[ "$_function_name" =~ ^[fp]_ ]]; then
-        local _code="$(type $_function_name 2>/dev/null | ggrep -v "^${_function_name} is a function")"
+        local _code="$(type $_function_name 2>/dev/null | _grep -v "^${_function_name} is a function")"
         if [ -z "$_code" ]; then
             echo "Function name '$_function_name' does not exist."
             return 1
@@ -1310,7 +1328,7 @@ help() {
             fi
         fi
 
-        local _params="$(type $_function_name 2>/dev/null | ggrep -iP '^\s*local _[^_].*?=.*?\$\{?[1-9]' | ggrep -v awk)"
+        local _params="$(type $_function_name 2>/dev/null | _grep -iP '^\s*local _[^_].*?=.*?\$\{?[1-9]' | _grep -v awk)"
         if [ -n "$_params" ]; then
             _output="${_output}Parameters:\n"
             _output="${_output}${_params}\n"
@@ -1335,17 +1353,17 @@ _list() {
     set -o posix
 
     if [[ -z "$_name" ]]; then
-        (for _f in `typeset -F | ggrep -P '^declare -f [fp]_' | cut -d' ' -f3`; do
-            #eval "echo \"--[ $_f ]\" | gsed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
+        (for _f in `typeset -F | _grep -P '^declare -f [fp]_' | cut -d' ' -f3`; do
+            #eval "echo \"--[ $_f ]\" | _sed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
             _tmp_txt="`help "$_f" "" "Y"`"
             printf "%-28s%s\n" "$_f" "$_tmp_txt"
         done)
     elif [[ "$_name" =~ ^func ]]; then
-        typeset -F | ggrep '^declare -f [fp]_' | cut -d' ' -f3
+        typeset -F | _grep '^declare -f [fp]_' | cut -d' ' -f3
     elif [[ "$_name" =~ ^glob ]]; then
-        set | ggrep ^[g]_
+        set | _grep ^[g]_
     elif [[ "$_name" =~ ^resp ]]; then
-        set | ggrep ^[r]_
+        set | _grep ^[r]_
     fi
 }
 
@@ -1432,7 +1450,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         echo "# f_appLogJobCounters"
         f_appLogJobCounters "$_file_path" > /tmp/f_appLogJobCounters_$$.out
         echo "# Saved in /tmp/f_appLogJobCounters_$$.out"
-        ggrep -i fail /tmp/f_appLogJobCounters_$$.out | ggrep -v '=0'
+        _grep -i fail /tmp/f_appLogJobCounters_$$.out | _grep -v '=0'
         echo ""
     fi
 fi
