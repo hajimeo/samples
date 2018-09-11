@@ -2,12 +2,13 @@
 # curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_standalone.sh
 
 function usage() {
-    echo "$BASH_SOURCE -c -n <container_name> -v <version>
+    echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>]
 
-This script does the followings:
+This script for building a docker container for standalone/sandbox for testing in dev env, and does the followings:
+
 CREATE:
     -c [-n <container_name>|-v <version>]
-        Create a docker image.
+        Create a docker image for Standalone/Sandbox
         If -n <container_name> or -v <version> is provided, a docker container will be created.
         Also, Installs necessary service in the container.
 
@@ -423,7 +424,8 @@ main() {
 
             _log "INFO" "Setting up ${_NAME} (container)..."
             f_container_useradd "${_NAME}" "${_SERVICE}" || return $?
-            f_container_ssh_config "${_NAME}" || return $?
+            f_container_ssh_config "${_NAME}"   # it's OK to fail || return $?
+            f_container_misc "${_NAME}"         # it's OK to fail || return $?
 
             if [ -n "$_VERSION" ]; then
                 _log "INFO" "Setting up an Application for version ${_VERSION} on ${_NAME} ..."
