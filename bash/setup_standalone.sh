@@ -222,6 +222,7 @@ function f_docker_run() {
         fi
         _port_opts="${_port_opts} -p ${_p}:${_p}"
     done
+    [ -n "${_port_opts}" ] && ! lsof -ti:22222 && _port_opts="${_port_opts} -p 22222:22"
 
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
     docker run -t -i -d \
