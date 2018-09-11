@@ -9,7 +9,7 @@
 # TODO: tested on Mac only (eg: sed -E, ggrep)
 # brew install grep     # 'grep' will install ggrep
 # brew install gnu-sed  # for gsed
-# brew install dateutils # for dateconf
+# brew install dateutils # for dateconv
 # brew install coreutils # for gtac gdate
 # curl https://raw.githubusercontent.com/hajimeo/samples/master/python/line_parser.py -o /usr/local/bin/line_parser.py
 #
