@@ -415,12 +415,12 @@ function f_getQueries() {
 
 function f_genLdapsearch() {
     local __doc__="Generate ldapsearch command from a json file"
-    _find_and_cat "directory_configurations.json" | python -c "import sys,re,json
+    _find_and_cat "directory_configurations.json" | python -c 'import sys,re,json
 a=json.loads(sys.stdin.read());l=a[0]
-p=[l['use_ssl']] and 'ldaps' or 'ldap'
-r=re.search(r\"^[^=]*?=?([^=]+?)[ ,@]\", l['username'])
-u=[bool(r)] and r.group(1) or 'some_testuser'
-print 'LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"' % (p, l['host_name'], l['port'], l['username'], l['base_dn'], l['user_configuration']['unique_id_attribute'], u)"
+p="ldaps" if l["use_ssl"] else "ldap"
+r=re.search(r"^[^=]*?=?([^=]+?)[ ,@]", l["username"])
+u=r.group(1) if bool(r) else l["username"]
+print "LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"" % (p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u)'
 }
 
 function f_topCausedByExceptions() {
