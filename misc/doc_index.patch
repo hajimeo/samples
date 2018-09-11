@@ -1,10 +1,10 @@
-Index: docs/index.html
+Index: index.html
 IDEA additional info:
 Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
 <+>UTF-8
 ===================================================================
---- docs/index.html	(date 1534811696000)
-+++ docs/index.html	(date 1534811696000)
+--- index.html	(date 1534811696000)
++++ index.html	(date 1534811696000)
 @@ -48,4 +48,6 @@
                      }
                    });
