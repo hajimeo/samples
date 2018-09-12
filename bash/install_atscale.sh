@@ -420,9 +420,15 @@ function f_rm_logs() {
 
 function f_pg_dump() {
     local __doc__="Execute atscale's pg_dump to backup PostgreSQL 'atscale' database"
-    local _dump_dest_filename="${1:-./atscale_$(date +"%Y%m%d%H%M%S").sql.gz}"
+    local _dump_dest_filename="${1:-./atscale_$(date +"%Y%m%d%H%M%S").sql}"
+    local _quick="${2}"
+
     local _pg_dir="$(ls -1dt ${_ATSCALE_DIR%/}/share/postgresql-9.* | head -n1)"
-    LD_LIBRARY_PATH=${_pg_dir%/}/lib PGPASSWORD=${PGPASSWORD:-atscale} ${_pg_dir%/}/bin/pg_dump -h localhost -p 10520 -U atscale -d atscale -Z 9 -f ${_dump_dest_filename} -v 1>&2 || return $?
+    if [[ "${_quick}" =~ ^(y|Y) ]]; then
+        LD_LIBRARY_PATH=${_pg_dir%/}/lib PGPASSWORD=${PGPASSWORD:-atscale} ${_pg_dir%/}/bin/pg_dump -h localhost -p 10520 -U atscale -d atscale -T queries_planned -T query_details -f ${_dump_dest_filename} -v 1>&2 || return $?
+    else
+        LD_LIBRARY_PATH=${_pg_dir%/}/lib PGPASSWORD=${PGPASSWORD:-atscale} ${_pg_dir%/}/bin/pg_dump -h localhost -p 10520 -U atscale -d atscale -Z 9 -f ${_dump_dest_filename}.gz -v 1>&2 || return $?
+    fi
     [ -s ${_dump_dest_filename} ] || return $?
     echo ""
     ls -lh ${_dump_dest_filename}
