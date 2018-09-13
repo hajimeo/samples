@@ -540,7 +540,8 @@ $HIVE_HOME/bin/beeline -u "jdbc:hive2://localhost:10000/" "$@"
 ' > ${_dir%/}/hive
 
         chown ${_usr}: ${_dir%/}/{apache_hive.sh,hive}
-        chmod u+x ${_dir%/}/{apache_hive.sh,hive}
+        chmod u+x ${_dir%/}/apache_hive.sh
+        chmod a+x ${_dir%/}/hive
     fi
 
     _log "INFO" "Starting hiveserver2 on port 10000..."; sleep 1
@@ -552,7 +553,7 @@ $HIVE_HOME/bin/beeline -u "jdbc:hive2://localhost:10000/" "$@"
     done
 
     if [ -z "${_schema_and_hadoopdir}" ]; then
-        _log "WARN" "No schema name was given, so that not creating any database(schema)";sleep 3
+        _log "WARN" "No schema name was given, so that not creating any database (schema)";sleep 3
     else
         ${_dir%/}/hive -e "CREATE DATABASE IF NOT EXISTS "${_schema_and_hadoopdir}";"
     fi
