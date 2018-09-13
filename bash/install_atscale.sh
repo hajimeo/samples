@@ -55,7 +55,7 @@ END
 ### Arguments ########################
 [ -z "${_ATSCALE_VER}" ] && _ATSCALE_VER="${1:-7.2.0}"          # AtScale version mainly used to find the right installer file
 [ -z "${_ATSCALE_USER}" ] && _ATSCALE_USER="${2:-atscale}"      # AtScale service user
-[ -z "${_ATSCALE_LICENSE}" ] && _ATSCALE_LICENSE="${3:-${_TMP_DIR}/dev-vm-license-atscale.json}"
+[ -z "${_ATSCALE_LICENSE}" ] && _ATSCALE_LICENSE="${3:-$(ls -1t ${_TMP_DIR%/}/dev*license*.json | head -n1)}"
 [ -z "${_ATSCALE_CUSTOMYAML}" ] && _ATSCALE_CUSTOMYAML="${4}"   # Path to custom.yaml file. If empty, automatically generated
 [ -z "${_UPDATING}" ] && _UPDATING="${5}"                       # Upgrading & Updating (means re-running installer to update some properties)
 [ -z "${_NO_BACKUP}" ] && _NO_BACKUP="${6}"                     # As back up takes time, if you are really sure, you can skip taking backup
