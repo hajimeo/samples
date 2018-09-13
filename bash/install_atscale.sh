@@ -533,8 +533,14 @@ if [ "$0" = "$BASH_SOURCE" ]; then
   nohup $HIVE_HOME/bin/hiveserver2 "$@" &> '${_dir%/}'/hiveserver2.out &
 fi
 ' > ${_dir%/}/apache_hive.sh
-        chown ${_usr}: ${_dir%/}/apache_hive.sh
-        chmod u+x ${_dir%/}/apache_hive.sh
+
+        echo '#!/usr/bin/env bash
+source '${_dir%/}'/apache_hive.sh
+$HIVE_HOME/bin/beeline -u "jdbc:hive2://localhost:10000/" "$@"
+' > ${_dir%/}/hive
+
+        chown ${_usr}: ${_dir%/}/{apache_hive.sh,hive}
+        chmod u+x ${_dir%/}/{apache_hive.sh,hive}
     fi
 
     _log "INFO" "Starting hiveserver2 on port 10000..."; sleep 1
@@ -544,8 +550,12 @@ fi
         lsof -ti:10000 -s TCP:LISTEN && break
         sleep 3
     done
-    source ${_dir%/}/apache_hive.sh
-    $HIVE_HOME/bin/beeline -u "jdbc:hive2://localhost:10000/" -e "CREATE DATABASE IF NOT EXISTS "${_schema_and_hadoopdir}";"
+
+    if [ -z "${_schema_and_hadoopdir}" ]; then
+        _log "WARN" "No schema name was given, so that not creating any database(schema)";sleep 3
+    else
+        ${_dir%/}/hive -e "CREATE DATABASE IF NOT EXISTS "${_schema_and_hadoopdir}";"
+    fi
 }
 
 function f_install_atscale() {
