@@ -319,6 +319,7 @@ function f_container_useradd() {
 
     if [ "`uname`" = "Linux" ]; then
         which kadmin.local &>/dev/null && kadmin.local -q "add_principal -pw $_password $_user"
+        return 0
     fi
 }
 
