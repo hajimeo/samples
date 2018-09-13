@@ -2,7 +2,7 @@
 # curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_standalone.sh
 
 function usage() {
-    echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>] [-s]
+    echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>] [-s] [-l /path/to/dev-license.json]
 
 This script is for building a docker container for standalone/sandbox for testing in dev env, and does the followings:
 
@@ -32,6 +32,9 @@ OTHERS:
         Used with -c, -n, -v to stop any other conflicting containers.
         When -P is used or the host is Mac, this option would be needed.
 
+    -l /path/to/dev-license.json
+        A path to the software licene file
+
     -u
         Update this script to the latest
 
@@ -44,19 +47,20 @@ OTHERS:
 
 
 ### Default values
+[ -z "${_WORK_DIR}" ] && _WORK_DIR="/var/tmp/share"     # If Mac, may need to be /private/var/tmp/share
+[ -z "${_SHARE_DIR}" ] && _SHARE_DIR="/var/tmp/share"   # Docker container's share dir (normally same as _WORK_DIR except Mac)
+[ -z "${_DOMAIN}" ] && _DOMAIN="standalone.localdomain" # Default container domain suffix
+[ -z "${_OS_VERSION}" ] && _OS_VERSION="7.5.1804"       # Container OS version (normally CentOS version)
+[ -z "${_IMAGE_NAME}" ] && _IMAGE_NAME="hdp/base"       # Docker image name TODO: change to more appropriate image name
+[ -z "${_SERVICE}" ] && _SERVICE="atscale"              # This is used by the app installer script so shouldn't change
 [ -z "${_VERSION}" ] && _VERSION="7.1.2"                # Default software version, mainly used to find the right installer file
-[ -z "${_DOMAIN}" ] && _DOMAIN="standalone.localdomain" # Default container domain
-
-_IMAGE_NAME="hdp/base"                                  # TODO: change to more appropriate image name
+[ -z "${_LICENSE}" ] && _LICENSE="$(ls -1t ${_WORK_DIR%/}/${_SERVICE%/}/dev*license*.json | head -n1)" # A license file to use the _SERVICE
+[ -z "${_PORTS}" ] && _PORTS="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"  # Used by docker port forwarding
 _CREATE_AND_SETUP=false
 _DOCKER_PORT_FORWARD=false
 _DOCKER_STOP_OTHER=false
 _DOCKER_SAVE=false
 _SUDO_SED=false
-_PORTS="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
-_SERVICE="atscale"                                      # This is used by the app installer script so shouldn't change
-_WORK_DIR="/var/tmp/share"                              # If Mac, needs to be /private/var/tmp/share
-_CENTOS_VERSION="7.5.1804"
 
 
 ### Functions used to build and setup a container
@@ -81,6 +85,7 @@ function f_update() {
             return 1
         fi
     fi
+    _log "INFO" "Script has been updated. Backup: ${_backup_file}"
 }
 
 function f_update_hosts() {
@@ -148,11 +153,12 @@ function _gen_dockerFile() {
 
     [ -z "$_os_and_ver" ] || _sed -i "s/FROM centos.*/FROM ${_os_and_ver}/" ${_new_filepath}
 }
+
 function f_docker_base_create() {
     local __doc__="Create a docker base image (f_docker_base_create ./Dockerfile centos 6.8)"
     local _docker_file="${1:-DockerFile7}"
     local _os_name="${2:-centos}"
-    local _os_ver_num="${3:-${_CENTOS_VERSION}}"
+    local _os_ver_num="${3:-${_OS_VERSION}}"
     local _force_build="${4}"
 
     local _base="${_IMAGE_NAME}:$_os_ver_num"
@@ -193,11 +199,12 @@ function f_docker_run() {
     local _base="$2"
     local _ports="${3}" #"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
     local _stop_other=${4:-${_DOCKER_STOP_OTHER}}
-    local _share_dir="${5:-${_WORK_DIR}}"
+    local _share_dir_from="${5:-${_WORK_DIR}}"
+    local _share_dir_to="${6:-${_SHARE_DIR}}"
     # NOTE: At this moment, removed _ip as it requires a custom network (see start_hdp.sh for how)
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    [ ! -d "${_share_dir%/}" ] && mkdir -p -m 777 "${_share_dir%/}"
+    [ ! -d "${_share_dir_from%/}" ] && mkdir -p -m 777 "${_share_dir_from%/}"
 
     _line="`docker ps -a --format "{{.Names}}" | grep -E "^${_name}$"`"
     if [ -n "$_line" ]; then
@@ -227,7 +234,7 @@ function f_docker_run() {
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
     docker run -t -i -d \
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
-        -v ${_share_dir%/}:/var/tmp/share ${_port_opts} \
+        -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} \
         --privileged --hostname=${_hostname} --name=${_name} ${_base} /sbin/init || return $?
 }
 
@@ -341,29 +348,37 @@ function f_container_ssh_config() {
 }
 
 function f_as_setup() {
-    local __doc__="Setup a specific Application Service for the container"
+    local __doc__="Install/Setup a specific Application Service for the container"
     local _hostname="$1"
     local _version="${2:-${_VERSION}}"
-    local _user="${3:-${_SERVICE}}"
-    local _share_dir="${4:-${_WORK_DIR}}"
+    local _license="${3:-${_LICENSE}}"
+    local _user="${4:-${_SERVICE}}"
+    local _work_dir="${5:-${_WORK_DIR}}"
+    local _share_dir="${6:-${_SHARE_DIR}}"
 
-    [ ! -d "${_share_dir%/}/${_user}" ] && mkdir -p -m 777 "${_share_dir%/}${_user}"
+    [ ! -d "${_work_dir%/}/${_user}" ] && mkdir -p -m 777 "${_work_dir%/}${_user}"
 
     # Always get the latest script for now
-    f_update "${_share_dir%/}/${_user%/}/install_atscale.sh"
+    f_update "${_work_dir%/}/${_user%/}/install_atscale.sh"
 
-    if [ ! -s ${_share_dir%/}/${_user%/}/install_atscale.sh ]; then
-        _log "ERROR" "Failed to create ${_share_dir%/}/${_user%/}/install_atscale.sh"
+    if [ ! -s ${_work_dir%/}/${_user%/}/install_atscale.sh ]; then
+        _log "ERROR" "Failed to create ${_work_dir%/}/${_user%/}/install_atscale.sh"
         return 1
     fi
 
-    if [ ! -s ${_share_dir%/}/${_user%/}/dev-vm-license-atscale.json ]; then
-        _log "ERROR" "Please copy  a license file as ${_share_dir%/}/${_user%/}/dev-vm-license-atscale.json"
+    if [ ! -s "${_license}" ]; then
+        _log "ERROR" "Please copy a license file as ${_work_dir%/}/${_user%/}/dev-vm-license.json"
         return 1
+    fi
+
+    if [ ! -f "${_work_dir%/}/${_user%/}/$(basename "${_license}")" ]; then
+        cp ${_license} ${_work_dir%/}/${_user%/}/ || return 11
     fi
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    docker exec -it ${_name} bash -c "export _STANDALONE=Y;bash /var/tmp/share/atscale/install_atscale.sh ${_version}"
+    docker exec -it ${_name} bash -c "export _STANDALONE=Y
+export _ATSCALE_LICENSE=${_share_dir%/}/${_user%/}/$(basename "${_license}")
+bash ${_share_dir%/}/${_user%/}/install_atscale.sh ${_version}"
     #ssh -q root@${_hostname} -t "export _STANDALONE=Y;bash ${_share_dir%/}${_user%/}/install_atscale.sh ${_version}"
 }
 
@@ -433,7 +448,7 @@ main() {
 
     if $_CREATE_AND_SETUP; then
         _log "INFO" "Creating docker image and container"
-        local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_IMAGE_NAME}:${_CENTOS_VERSION}"`"
+        local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_IMAGE_NAME}:${_OS_VERSION}"`"
         if [ ! -z "$_existing_img" ]; then
             _log "INFO" "${_IMAGE_NAME} already exists so that skipping image creating part..."
         else
@@ -450,12 +465,12 @@ main() {
             fi
 
             if docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
-                _log "INFO" "Image ${_NAME} already exists. Using this instead of ${_IMAGE_NAME}:${_CENTOS_VERSION}..."; sleep 1
+                _log "INFO" "Image ${_NAME} already exists. Using this instead of ${_IMAGE_NAME}:${_OS_VERSION}..."; sleep 1
                 f_docker_run "${_NAME}.${_DOMAIN#.}" "${_NAME}" "${_ports}" || return $?
                 sleep 1
                 f_as_start "${_NAME}.${_DOMAIN#.}"
             else
-                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_CENTOS_VERSION}" "${_ports}" || return $?
+                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_OS_VERSION}" "${_ports}" || return $?
                 sleep 1
                 _log "INFO" "Setting up ${_NAME} (container)..."
                 f_container_useradd "${_NAME}" "${_SERVICE}" || return $?
@@ -510,7 +525,7 @@ main() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "cn:v:sPSuh" opts; do
+    while getopts "cn:v:l:sPSuh" opts; do
         case $opts in
             h)
                 usage
@@ -531,6 +546,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             v)
                 _VERSION="$OPTARG"
+                ;;
+            l)
+                _LICENSE="$OPTARG"
                 ;;
             P)
                 _DOCKER_PORT_FORWARD=true
