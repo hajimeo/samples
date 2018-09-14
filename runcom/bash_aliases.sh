@@ -37,14 +37,15 @@ alias webs='cd ~/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 3808
 # List and grep some specific files from s3. NOTE: https:// requires s3-us-west-1.amazonaws.com
 alias asS3='s3cmd ls s3://files.atscale.com/installer/package/ | grep -E "atscale-[6789].+latest-el6\.x86_64\.tar\.gz$"'
 
+
+### Functions (some command syntax does not work with alias eg: sudo) ##################################################
 # Mac only: Start Google Chrome in incognito with proxy
 # NOTE: Below didn't work
 #open -na "Google Chrome" --args "--user-data-dir=${_tmp_dir} --proxy-server=${_proxy}"
 #open -na "Google Chrome" --args "--incognito --proxy-server=${_proxy}"
-alias chromep='nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --incognito --user-data-dir=$(mktemp -d) --proxy-server="socks5://192.168.6.162:28081" &>/tmp/chrome.out &'
-
-
-### Functions (some command syntax does not work with alias eg: sudo) ##################################################
+function chromep() {
+    nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --incognito --user-data-dir=$(mktemp -d) --proxy-server="socks5://${1:-192.168.6.162}:${2:-28081}" &>/tmp/chrome.out &
+}
 
 # List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
 function asftpl() {
