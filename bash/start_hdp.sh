@@ -484,6 +484,9 @@ function p_hdp_start() {
     local __doc__="Start up HDP containers"
     f_loadResp
     f_restart_services_just_in_case
+    if _isYes "$r_PROXY"; then
+        f_socks5_proxy
+    fi
 
     f_dnsmasq_banner_reset
     f_docker0_setup "172.18.0.1" "24"
@@ -2507,8 +2510,9 @@ function p_host_setup() {
     f_docker_start &>> /tmp/p_host_setup.log
 
     if _isYes "$r_PROXY"; then
-        _log "INFO" "Starting f_apache_proxy"
+        _log "INFO" "Starting f_apache_proxy and Socks5 proxy"
         f_apache_proxy &>> /tmp/p_host_setup.log
+        f_socks5_proxy &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_node_proxy_setup"
         f_node_proxy_setup &>> /tmp/p_host_setup.log
     fi
@@ -2870,6 +2874,14 @@ function f_hostname_set() {
     diff /etc/hosts.bak /etc/hosts
 }
 
+function f_socks5_proxy() {
+    local __doc__="Start Socks5 proxy (for websocket)"
+    local _port="${1:-$((${r_PROXY_PORT:-28080} + 1))}"
+    [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
+    lsof -i:${_port} && return 0
+    ssh -gC2qTxnNf -D${_port} localhost
+}
+
 function f_apache_proxy() {
     local __doc__="Generate proxy.conf and restart apache2"
     local _proxy_dir="/var/www/proxy"
@@ -2890,7 +2902,7 @@ function f_apache_proxy() {
     fi
 
     apt-get install -y apache2 apache2-utils
-    a2enmod proxy proxy_http proxy_connect cache cache_disk ssl
+    a2enmod proxy proxy_http proxy_connect proxy_wstunnel cache cache_disk ssl
 
     grep -i "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
 
