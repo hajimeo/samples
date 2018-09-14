@@ -40,15 +40,20 @@ alias asS3='s3cmd ls s3://files.atscale.com/installer/package/ | grep -E "atscal
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
 # Mac only: Start Google Chrome in incognito with proxy
-function chromep() {
-    local _proxy_host="${1:-http://support:28080}"
-    local _reuse_session="${2}" # This means Chrome needs to be shutdown to use proxy
-    local _proxy=""; [ -n "$_proxy_host" ] && _proxy="--proxy-server=$_proxy_host"
-    local _user_dir="--user-data-dir=$(mktemp -d)"; [[ "${_reuse_session}" =~ ^(y|Y) ]] && _user_dir=""
-    nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" ${_user_dir} ${_proxy} &
-    # Below didn't work
-    #open -na "Google Chrome" --args "--user-data-dir=${_tmp_dir} ${_proxy}"
-    #open -na "Google Chrome" --args "--incognito ${_proxy}"
+# Below didn't work
+#open -na "Google Chrome" --args "--user-data-dir=${_tmp_dir} ${_proxy}"
+#open -na "Google Chrome" --args "--incognito ${_proxy}"
+function chromes() {
+    local _host="${1:-support}"
+    local _port="${2:-28081}"
+    if ! nc -z ${_host} ${_port} &>/dev/null; then
+        if ! lsof -ti:${_port}; then
+            echo "Assuming password-less ssh was setup for 'root' on ${_host} ..."
+            ssh -q -f -N -C -D ${_port} root@${_host} || return $?
+        fi
+        _host="localhost"
+    fi
+    nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir=$(mktemp -d)--proxy-server=socks5://${_host}:${_port} &>/dev/null &
 }
 # List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
 function asftpl() {
