@@ -44,7 +44,10 @@ alias asS3='s3cmd ls s3://files.atscale.com/installer/package/ | grep -E "atscal
 #open -na "Google Chrome" --args "--user-data-dir=${_tmp_dir} --proxy-server=${_proxy}"
 #open -na "Google Chrome" --args "--incognito --proxy-server=${_proxy}"
 function chromep() {
-    nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --incognito --user-data-dir=$(mktemp -d) --proxy-server="socks5://${1:-192.168.6.162}:${2:-28081}" &>/tmp/chrome.out &
+    local _host="${1:-192.168.6.162}"
+    local _port=${2:-28081}
+    [ ! -d $HOME/.chromep/${_host}_${_port} ] && mkdir -p $HOME/.chromep/${_host}_${_port}
+    nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir=$HOME/.chromep/${_host}_${_port} --proxy-server="socks5://${_host}:${_port}" &>/tmp/chrome.out &
 }
 
 # List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
