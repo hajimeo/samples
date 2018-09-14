@@ -53,7 +53,7 @@ function chromes() {
         fi
         _host="localhost"
     fi
-    nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir=$(mktemp -d)--proxy-server=socks5://${_host}:${_port} &>/dev/null &
+    nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir=$(mktemp -d)--proxy-server="http=socks5://${_host}:${_port};https=socks5://${_host}:${_port}" &>/dev/null &
 }
 # List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
 function asftpl() {
