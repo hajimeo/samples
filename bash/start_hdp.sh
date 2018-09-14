@@ -2879,7 +2879,7 @@ function f_socks5_proxy() {
     local _port="${1:-$((${r_PROXY_PORT:-28080} + 1))}"
     [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
     lsof -i:${_port} && return 0
-    ssh -gC2qTxnNf -D${_port} localhost
+    ssh -gC2TxnNf -D${_port} localhost &> /tmp/ssh_socks5.out
 }
 
 function f_apache_proxy() {
