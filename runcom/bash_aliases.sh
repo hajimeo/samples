@@ -100,3 +100,9 @@ function r2dh() {
         route delete 172.17.${_3rd}.0 &>/dev/null;route add 172.17.${_3rd}.0 mask 255.255.255.0 ${_dh};
     fi
 }
+function sshs() {
+    local _user_at_host="$1"
+    local _session_name="${2}"
+    ssh ${_user_at_host} -t "screen -r ${_session_name}|| screen -ls"
+    [ $? -ne 0 ] && [ -n "${_session_name}" ] && ssh ${_user_at_host} -t "screen -S ${_session_name}"
+}
