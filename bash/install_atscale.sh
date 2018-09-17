@@ -704,54 +704,54 @@ function f_install_post_tasks() {
     #grep -q "tez.tez-ui.history-url.base" ${_dir%/}/share/apache-tez-*/conf/tez-site.xml || sed -i.$$.bak '/<\/configuration>/i \
 #<property><name>tez.tez-ui.history-url.base</name><value>http://'${_ambari}':8080/#/main/view/TEZ/tez_cluster_instance</value></property>' ${_dir%/}/share/apache-tez-*/conf/tez-site.xml
 
+    if [[ "${_standalone}" =~ ^(y|Y) ]]; then
+        local _hdfsUri="file:///"
+        inst_as_hive_flavor_batch="hive-standalone"
+        inst_as_hive_host_batch="localhost" # localhost would be safer...?
+        inst_as_hive_port_batch="10000"
+    else
+        local _hdfsUri="`_get_from_xml "${inst_as_hadoop_conf_dir%/}/core-site.xml" "fs.defaultFS"`" || return $?
+        # In my custom_hdp.yaml, as_hive_flavor_batch uses atscale-hive, so using batch (also spark as interactive but it often doesn't work and also not suitable for system queries)
+        if [ -z "${inst_as_hive_host_batch}" ]; then
+            if [ "${as_hive_flavor_batch}" = "hive" ]; then
+                # TODO: at this moment, assuming HS2 is installed same node as HMS
+                inst_as_hive_host_batch="`_get_from_xml "/etc/hive/conf/hive-site.xml" "hive.metastore.uris" | sed -r 's/.+\/\/([^:]+):.+/\1/'`"
+                inst_as_hive_port_batch="`_get_from_xml "/etc/hive/conf/hive-site.xml" "hive.server2.thrift.port"`"
+            else
+                inst_as_hive_host_batch="`hostname -f`"
+            fi
+        fi
+    fi
+
+    local hdfsNameNodeKerberosPrincipal="null"
+    local extraJdbcFlags="\"\""
+    if [ "${inst_as_is_kerberized}" = "true" ]; then
+        hdfsNameNodeKerberosPrincipal="\"${inst_as_hdfs_name_node_kerberos_principal}\""
+        extraJdbcFlags="\";principal=${inst_as_kerberos_hive_principal_batch}\""
+    fi
+
+    jwt="`curl -s -X GET -u admin:admin "http://$(hostname -f):10500/default/auth"`" || return $?
+
+    local _groupId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default" -H "Authorization: Bearer ${jwt}" -d '{"name":"'${_wh_name}'","connectionId":"con1","hdfsUri":"'${_hdfsUri}'","hdfsNameNodeKerberosPrincipal":'${hdfsNameNodeKerberosPrincipal}',"hdfsSecondaryUri":null,"hdfsSecondaryNameNodeKerberosPrincipal":null,"hadoopRpcProtection":null,"subgroups":[],"defaultSchema":"'${inst_as_default_schema}'"}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
+    # response example
+    # { "status" : { "code" : 0, "message" : "200 OK" }, "responseCreated" : "2018-08-03T05:19:20.779Z", "response" : { "created" : true, "id" : "e22b575e-393f-4056-b5bf-32ea44501561" } }
+    [ -z "${_groupId}" ] && return 11
+
+    local _conId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default/connection-group/${_groupId}" -H "Authorization: Bearer ${jwt}" \
+    -d '{"name":"'${inst_as_hive_flavor_batch}'","hosts":"'${inst_as_hive_host_batch}'","port":'${inst_as_hive_port_batch}',"connectorType":"hive","username":"atscale","password":"atscale","extraJdbcFlags":'${extraJdbcFlags}',"queryRoles":["large_user_query_role","small_user_query_role","system_query_role","canary_query_role"],"extraProperties":{}}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
+    # Can execute next API call without conId though...
+    [ -z "${_conId}" ] && return 12
+
+    local _envId="`curl -s -k "http://$(hostname -f):10502/environments/orgId/default" -H "Authorization: Bearer ${jwt}" \
+    -d '{"name":"'${_env_name}'","connectionIds":["'${_groupId}'"],"hiveServer2Port":11111}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
+    [ -z "${_envId}" ] && return 13
+
     # Skipping first wizard introduced form 6.7.0 by populating data with APIs
     local _ver=`_get_version`
     if [[ "${_ver}" =~ ^(6\.[789]|[78]\.) ]]; then
-        if [[ "${_standalone}" =~ ^(y|Y) ]]; then
-            local _hdfsUri="file:///"
-            inst_as_hive_flavor_batch="hive-standalone"
-            inst_as_hive_host_batch="localhost" # localhost would be safer...?
-            inst_as_hive_port_batch="10000"
-        else
-            local _hdfsUri="`_get_from_xml "${inst_as_hadoop_conf_dir%/}/core-site.xml" "fs.defaultFS"`" || return $?
-            # In my custom_hdp.yaml, as_hive_flavor_batch uses atscale-hive, so using batch (also spark as interactive but it often doesn't work and also not suitable for system queries)
-            if [ -z "${inst_as_hive_host_batch}" ]; then
-                if [ "${as_hive_flavor_batch}" = "hive" ]; then
-                    # TODO: at this moment, assuming HS2 is installed same node as HMS
-                    inst_as_hive_host_batch="`_get_from_xml "/etc/hive/conf/hive-site.xml" "hive.metastore.uris" | sed -r 's/.+\/\/([^:]+):.+/\1/'`"
-                    inst_as_hive_port_batch="`_get_from_xml "/etc/hive/conf/hive-site.xml" "hive.server2.thrift.port"`"
-                else
-                    inst_as_hive_host_batch="`hostname -f`"
-                fi
-            fi
-        fi
-
-        local hdfsNameNodeKerberosPrincipal="null"
-        local extraJdbcFlags="\"\""
-        if [ "${inst_as_is_kerberized}" = "true" ]; then
-            hdfsNameNodeKerberosPrincipal="\"${inst_as_hdfs_name_node_kerberos_principal}\""
-            extraJdbcFlags="\";principal=${inst_as_kerberos_hive_principal_batch}\""
-        fi
-
-        jwt="`curl -s -X GET -u admin:admin "http://$(hostname -f):10500/default/auth"`" || return $?
-
-        local _groupId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default" -H "Authorization: Bearer ${jwt}" -d '{"name":"'${_wh_name}'","connectionId":"con1","hdfsUri":"'${_hdfsUri}'","hdfsNameNodeKerberosPrincipal":'${hdfsNameNodeKerberosPrincipal}',"hdfsSecondaryUri":null,"hdfsSecondaryNameNodeKerberosPrincipal":null,"hadoopRpcProtection":null,"subgroups":[],"defaultSchema":"'${inst_as_default_schema}'"}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
-        # response example
-        # { "status" : { "code" : 0, "message" : "200 OK" }, "responseCreated" : "2018-08-03T05:19:20.779Z", "response" : { "created" : true, "id" : "e22b575e-393f-4056-b5bf-32ea44501561" } }
-        [ -z "${_groupId}" ] && return 11
-
-        local _conId="`curl -s -k "http://$(hostname -f):10502/connection-groups/orgId/default/connection-group/${_groupId}" -H "Authorization: Bearer ${jwt}" \
-        -d '{"name":"'${inst_as_hive_flavor_batch}'","hosts":"'${inst_as_hive_host_batch}'","port":'${inst_as_hive_port_batch}',"connectorType":"hive","username":"atscale","password":"atscale","extraJdbcFlags":'${extraJdbcFlags}',"queryRoles":["large_user_query_role","small_user_query_role","system_query_role","canary_query_role"],"extraProperties":{}}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
-        # Can execute next API call without conId though...
-        [ -z "${_conId}" ] && return 12
-
-        local _envId="`curl -s -k "http://$(hostname -f):10502/environments/orgId/default" -H "Authorization: Bearer ${jwt}" \
-        -d '{"name":"'${_env_name}'","connectionIds":["'${_groupId}'"],"hiveServer2Port":11111}' | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['response']['id']"`" || return $?
-        [ -z "${_envId}" ] && return 13
-
         curl -s -k "http://$(hostname -f):10500/api/1.0/org/default/setupWizard/setupComplete" -H "Authorization: Bearer ${jwt}" --data-binary 'orgId=default'
-        echo ""
     fi
+    echo ""
 }
 
 function _atscale_info() {
