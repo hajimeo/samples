@@ -460,7 +460,7 @@ function f_psql() {
 
 function f_install_hive() {
     local __doc__="Install Apache Hive (and hadoop-core) and setup for AtScale"
-    local _usr="${1:-${_ATSCALE_USER:-$USER}}"
+    local _usr="${1:-${_ATSCALE_USER}}"
     local _as_dir="${2:-${_ATSCALE_DIR}}"
     local _java_home="${3:-$JAVA_HOME}"
     local _schema_and_hadoopdir="${4:-${_SCHEMA_AND_HDFSDIR}}"
@@ -513,10 +513,7 @@ function f_install_hive() {
 </configuration>
 ' > "${_dir%/}/${_hadoop_core%/}/etc/hadoop/core-site.xml" || return $?
 
-    if [ -s "${_dir%/}/apache_hive.sh" ]; then
-        _log "INFO" "${_dir%/}/apache_hive.sh exists, so not modifying."; sleep 1
-    else
-        echo '#!/usr/bin/env bash
+    echo '#!/usr/bin/env bash
 export HIVE_HOME='${_dir%/}/${_hive}'
 export HADOOP_HOME='${_dir%/}/${_hadoop_core}'
 export JAVA_HOME='${_java_home}'
@@ -530,27 +527,43 @@ if [ "$0" = "$BASH_SOURCE" ]; then
   if [ ! -s ./metastore_db ]; then
     $HIVE_HOME/bin/schematool -dbType derby -initSchema || return $?
   fi
-  nohup $HIVE_HOME/bin/hiveserver2 "$@" &> '${_dir%/}'/hiveserver2.out &
+  $HIVE_HOME/bin/hiveserver2 "$@"
 fi
-' > ${_dir%/}/apache_hive.sh
+' > ${_dir%/}/apache_hive.sh || return $?
 
-        echo '#!/usr/bin/env bash
+    echo '#!/usr/bin/env bash
 source '${_dir%/}'/apache_hive.sh
 $HIVE_HOME/bin/beeline -u "jdbc:hive2://localhost:10000/" "$@"
-' > ${_dir%/}/hive
+' > ${_dir%/}/hive || return $?
 
-        chown ${_usr}: ${_dir%/}/{apache_hive.sh,hive}
-        chmod u+x ${_dir%/}/apache_hive.sh
-        chmod a+x ${_dir%/}/hive
-    fi
+    chown ${_usr}: ${_dir%/}/{apache_hive.sh,hive} || return $?
+    chmod u+x ${_dir%/}/apache_hive.sh || return $?
+    chmod a+x ${_dir%/}/hive || return $?
 
+    echo '[program:apache-hive]
+command='${_dir%/}/apache_hive.sh'
+process_name=%(program_name)s
+stdout_logfile='${_as_dir%}'/log/apache-hive.stdout
+redirect_stderr=true
+stopsignal=TERM
+autostart=true
+autorestart=true
+stopasgroup=true
+stopwaitsecs=10
+directory='${_dir%/}/${_hive}'
+priority=100' > ${_as_dir%}/conf/supervisor/program_apache-hive.conf
+    chown ${_usr}: ${_as_dir%}/conf/supervisor/program_apache-hive.conf
+
+    sudo -u ${_usr} ${_as_dir%}/bin/atscale_service_control reload || return $?
     _log "INFO" "Starting hiveserver2 on port 10000..."; sleep 1
-    sudo -u ${_usr} ${_dir%/}/apache_hive.sh || return $?
+    #sudo -u ${_usr} ${_dir%/}/apache_hive.sh || return $?
+    sudo -u ${_usr} ${_as_dir%}/bin/atscale_service_control restart apache-hive
     sleep 1
     for _i in {1..6}; do
         lsof -ti:10000 -s TCP:LISTEN && break
         sleep 3
     done
+    lsof -ti:10000 -s TCP:LISTEN || return $?
 
     if [ -z "${_schema_and_hadoopdir}" ]; then
         _log "WARN" "No schema name was given, so that not creating any database (schema)";sleep 3
