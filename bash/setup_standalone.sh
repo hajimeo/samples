@@ -571,8 +571,10 @@ main() {
 
                 if [ -n "$_VERSION" ]; then
                     _log "INFO" "Setting up an Application for version ${_VERSION} on ${_NAME} ..."
-                    f_as_setup "${_NAME}.${_DOMAIN#.}" "${_VERSION}" || return $?
-                    # as setup starts the app, no need f_as_start
+                    if ! f_as_setup "${_NAME}.${_DOMAIN#.}" "${_VERSION}"; then
+                        _log "ERROR" "Setting up an Application for version ${_VERSION} on ${_NAME} failed ($?)"; sleep 3
+                        return 1
+                    fi
                 fi
             fi
         fi
