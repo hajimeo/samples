@@ -549,7 +549,7 @@ main() {
                 _ports=${_PORTS}
             fi
 
-            local _image="$(docker images --format "{{.Repository}}" | grep -qE "^(${_NAME}|${_SERVICE}${_ver_num})$")"
+            local _image="$(docker images --format "{{.Repository}}" | grep -E "^(${_NAME}|${_SERVICE}${_ver_num})$")"
             if $_DOCKER_USE_TGZ; then
                 # Creating a new (empty) container
                 f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_OS_VERSION}" "${_ports}" || return $?
