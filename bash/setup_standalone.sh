@@ -424,7 +424,7 @@ function f_as_start() {
     local _share_dir="${3:-${_WORK_DIR}}"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/'${_service}'/bin/${_service}_start;sudo -u ${_service} /usr/local/apache-hive/apache_hive.sh"
+    docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/'${_service}'/bin/${_service}_start" #;sudo -u ${_service} /usr/local/apache-hive/apache_hive.sh
 }
 
 function f_as_backup() {
