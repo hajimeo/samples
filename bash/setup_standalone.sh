@@ -2,7 +2,7 @@
 # curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_standalone.sh
 
 function usage() {
-    echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>] [-s] [-l /path/to/dev-license.json]
+    echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>] [-s|-t] [-l /path/to/dev-license.json]
 
 This script is for building a docker container for standalone/sandbox for testing in dev env, and does the followings:
 
@@ -24,13 +24,22 @@ SAVE CONTAINER:
         Save this container as image, so that creating a container will be faster.
         NOTE: this operation takes time.
 
+    -t -n <container_name>
+        Instead of saving as a docker image, create a Tgz (tar.gz) file.
+        Idea is you can reuse this tgz file after just create an empty container by restoring into same location.
+        NOTE: this operation takes time.
+
 OTHERS:
     -P
-        Used with -c to use docker's port forwarding for the application
+        Use with -c to use docker's port forwarding for the application
 
     -S
-        Used with -c, -n, -v to stop any other conflicting containers.
+        Use with -c, -n, -v to stop any other conflicting containers.
         When -P is used or the host is Mac, this option would be needed.
+
+    -T
+        Use with -c and -n <name> to use \$_SERVICE_standalone_\$_NAME.tgz file to build a container.
+        NOTE: If hostname is not same, may not work.
 
     -l /path/to/dev-license.json
         A path to the software licene file
@@ -41,6 +50,8 @@ OTHERS:
     -h
         To see this message
 
+NOTES:
+    This script assumes your application is stored under /usr/local/_SERVICE.
 "
     docker stats --no-stream
 }
@@ -56,10 +67,13 @@ OTHERS:
 [ -z "${_VERSION}" ] && _VERSION="7.1.2"                # Default software version, mainly used to find the right installer file
 [ -z "${_LICENSE}" ] && _LICENSE="$(ls -1t ${_WORK_DIR%/}/${_SERVICE%/}/dev*license*.json | head -n1)" # A license file to use the _SERVICE
 [ -z "${_PORTS}" ] && _PORTS="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"  # Used by docker port forwarding
+[ -z "${_REMOTE_REPO}" ] && _REMOTE_REPO="http://192.168.6.162/${_SERVICE}/"  # Curl understandable string
 _CREATE_AND_SETUP=false
 _DOCKER_PORT_FORWARD=false
 _DOCKER_STOP_OTHER=false
 _DOCKER_SAVE=false
+_DOCKER_SAVE_AS_TGZ=false
+_DOCKER_USE_TGZ=false
 _SUDO_SED=false
 
 
@@ -220,7 +234,7 @@ function f_docker_run() {
                 local _cname="`_docker_find_by_port ${_p}`"
                 if [ -n "${_cname}" ]; then
                     _log "INFO" "Stopping ${_cname} container..."
-                    docker stop ${_cname}
+                    docker stop -t 7 ${_cname}
                 fi
             else
                 _log "ERROR" "Docker run could not use the port ${_p} as it's used by pid:${_pid}"
@@ -236,6 +250,17 @@ function f_docker_run() {
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
         -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} \
         --privileged --hostname=${_hostname} --name=${_name} ${_base} /sbin/init || return $?
+}
+
+function p_container_setup() {
+    local _name="${1:-${_NAME}}"
+    local _service="${2:-${_SERVICE}}"
+
+    _log "INFO" "Setting up ${_name} container..."
+    f_container_useradd "${_name}" "${_service}" || return $?
+    f_container_ssh_config "${_name}"   # it's OK to fail || return $?
+    f_container_misc "${_name}"         # it's OK to fail || return $?
+    return 0
 }
 
 function f_docker_start() {
@@ -256,7 +281,7 @@ function f_docker_start() {
             local _cname="`_docker_find_by_port ${_p}`"
             if [ -n "${_cname}" ]; then
                 _log "INFO" "Stopping ${_cname} container..."
-                docker stop ${_cname}
+                docker stop -t 7 ${_cname}
             fi
         done
     fi
@@ -271,9 +296,17 @@ function f_docker_start() {
     #docker exec -it ${_name} bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 &>/dev/null || ip route del ${_docker_net_addr}/16 via 0.0.0.0"
 }
 
+function f_as_log_cleanup() {
+    local _hostname="$1"    # short name is also OK
+    local _service="${2:-${_SERVICE}}"
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+    docker exec -it ${_name} bash -c 'find /usr/local/'${_service}'/{log,share/postgresql-*/data/pg_log} -type f -and \( -name "*.log*" -o -name "postgresql-2*.log" -o -name "*.stdout" \) -and -print0| xargs -0 -P3 -n1 -I {} rm -f {}'
+}
+
 function f_docker_commit() {
     local __doc__="Cleaning up unncecessary files and then save a container as an image"
     local _hostname="$1"    # short name is also OK
+    local _service="${2:-${_SERVICE}}"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
@@ -285,10 +318,12 @@ function f_docker_commit() {
         _log "INFO" "Container ${_name} is NOT running, so that not cleaning up..."; sleep 1
     fi
 
-    docker exec -it ${_name} bash -c 'find /usr/local/atscale/{log,share/postgresql-*/data/pg_log} -type f -and \( -name "*.log*" -o -name "postgresql-2*.log" -o -name "*.stdout" \) -and -print0| xargs -0 -P3 -n1 -I {} rm -f {}'
-    docker exec -it ${_name} bash -c 'rm -rf /home/atscale/atscale-*-el6.x86_64;rm -rf /home/atscale/log/*'
+    f_as_log_cleanup "${_name}"
+    # TODO: need better way, shouldn't be in docker commit function
+    docker exec -it ${_name} bash -c 'rm -rf /home/'${_service}'/'${_service}'-*-el6.x86_64;rm -rf /home/'${_service}'/log/*'
 
-    docker stop ${_name} || return $?
+    _log "INFO" "Stopping and Committing ${_name} ..."; sleep 1
+    docker stop -t 7 ${_name} || return $?
     docker commit ${_name} ${_name} || return $?
     _log "INFO" "Saving ${_name} as image was completed. Feel free to do 'docker rm ${_name}'"; sleep 1
 }
@@ -352,44 +387,93 @@ function f_as_setup() {
     local _hostname="$1"
     local _version="${2:-${_VERSION}}"
     local _license="${3:-${_LICENSE}}"
-    local _user="${4:-${_SERVICE}}"
+    local _service="${4:-${_SERVICE}}"
     local _work_dir="${5:-${_WORK_DIR}}"
     local _share_dir="${6:-${_SHARE_DIR}}"
 
-    [ ! -d "${_work_dir%/}/${_user}" ] && mkdir -p -m 777 "${_work_dir%/}${_user}"
+    [ ! -d "${_work_dir%/}/${_service%/}" ] && mkdir -p -m 777 "${_work_dir%/}${_service%/}"
 
     # Always get the latest script for now
-    f_update "${_work_dir%/}/${_user%/}/install_atscale.sh"
+    f_update "${_work_dir%/}/${_service%/}/install_atscale.sh"
 
-    if [ ! -s ${_work_dir%/}/${_user%/}/install_atscale.sh ]; then
-        _log "ERROR" "Failed to create ${_work_dir%/}/${_user%/}/install_atscale.sh"
+    if [ ! -s ${_work_dir%/}/${_service%/}/install_atscale.sh ]; then
+        _log "ERROR" "Failed to create ${_work_dir%/}/${_service%/}/install_atscale.sh"
         return 1
     fi
 
     if [ ! -s "${_license}" ]; then
-        _log "ERROR" "Please copy a license file as ${_work_dir%/}/${_user%/}/dev-vm-license.json"
+        _log "ERROR" "Please copy a license file as ${_work_dir%/}/${_service%/}/dev-vm-license.json"
         return 1
     fi
 
-    if [ ! -f "${_work_dir%/}/${_user%/}/$(basename "${_license}")" ]; then
-        cp ${_license} ${_work_dir%/}/${_user%/}/ || return 11
+    if [ ! -f "${_work_dir%/}/${_service%/}/$(basename "${_license}")" ]; then
+        cp ${_license} ${_work_dir%/}/${_service%/}/ || return 11
     fi
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
     docker exec -it ${_name} bash -c "export _STANDALONE=Y
-export _ATSCALE_LICENSE=${_share_dir%/}/${_user%/}/$(basename "${_license}")
-bash ${_share_dir%/}/${_user%/}/install_atscale.sh ${_version}"
+export _ATSCALE_LICENSE=${_share_dir%/}/${_service%/}/$(basename "${_license}")
+bash ${_share_dir%/}/${_service%/}/install_atscale.sh ${_version}"
     #ssh -q root@${_hostname} -t "export _STANDALONE=Y;bash ${_share_dir%/}${_user%/}/install_atscale.sh ${_version}"
 }
 
 function f_as_start() {
     local __doc__="Start a specific Application Service for the container"
     local _hostname="$1"
-    local _user="${2:-${_SERVICE}}"
+    local _service="${2:-${_SERVICE}}"
     local _share_dir="${3:-${_WORK_DIR}}"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    docker exec -it ${_name} bash -c "sudo -u ${_user} /usr/local/atscale/bin/atscale_start;sudo -u ${_user} /usr/local/apache-hive/apache_hive.sh"
+    docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/'${_service}'/bin/${_service}_start;sudo -u ${_service} /usr/local/apache-hive/apache_hive.sh"
+}
+
+function f_as_backup() {
+    local __doc__="Backup the application directory as tgz file"
+    local _name="${1:-${_NAME}}"
+    local _service="${2:-${_SERVICE}}"
+    local _work_dir="${3:-${_WORK_DIR}}"
+    local _share_dir="${4:-${_SHARE_DIR}}"
+
+    [ ! -d "${_work_dir%/}/${_service%/}" ] && mkdir -p -m 777 "${_work_dir%/}${_service%/}"
+
+    local _file_name="${_service}_standalone_${_name}.tgz"
+
+    if [ -s "${_work_dir%/}${_service%/}/${_file_name}" ]; then
+        _log "WARN" "${_work_dir%/}${_service%/}/${_file_name} already exists. Please remove this first."; sleep 3
+        return 1
+    fi
+
+    f_as_log_cleanup "${_name}"
+    docker exec -it ${_name} bash -c 'sudo -u '${_service}' /usr/local/'${_service}'/bin/atscale_service_control stop all;for _i in {1..4}; do lsof -ti:10520 -s TCP:LISTEN || break;sleep 3;done'
+    docker exec -it ${_name} bash -c 'cp -p /home/'${_service}'/custom.yaml /usr/local/'${_service}'/custom.bak.yaml &>/dev/null'
+    _log "INFO" "Creating '${_share_dir%/}/${_service%/}/${_file_name}' from /usr/local/${_service%/}"; sleep 1
+    docker exec -it ${_name} bash -c 'tar -chzf '${_share_dir%/}'/'${_service%/}'/'${_file_name}' -C /usr/local/ '${_service%/}''
+
+    if [ ! -s "${_work_dir%/}/${_service%/}/${_file_name}" ] || [ 2097152 -gt "`wc -c <${_work_dir%/}/${_service%/}/${_file_name}`" ]; then
+        _log "ERROR" "Backup to ${_work_dir%/}/${_service%/}/${_file_name} failed"; sleep 3
+        return 1
+    fi
+    _log "INFO" "Backup to ${_work_dir%/}/${_service%/}/${_file_name} completed"
+}
+
+function f_as_restore() {
+    local __doc__="Restore the application directory from a tgz file which filename is generated from the _name and _service"
+    local _name="${1:-${_NAME}}"
+    local _service="${2:-${_SERVICE}}"
+    local _work_dir="${3:-${_WORK_DIR}}"
+    local _share_dir="${4:-${_SHARE_DIR}}"
+
+    [ ! -d "${_work_dir%/}/${_service%/}" ] && mkdir -p -m 777 "${_work_dir%/}${_service%/}"
+
+    local _file_name="${_service}_standalone_${_name}.tgz"
+
+    if [ ! -s "${_work_dir%/}${_service%/}/${_file_name}" ] && [ -n "$_REMOTE_REPO" ]; then
+        _log "INFO" "${_work_dir%/}${_service%/}/${_file_name} does not exist, so that downloading from $_REMOTE_REPO ..."; sleep 1
+        curl --retry 3 -f -C - -o "${_work_dir%/}${_service%/}/${_file_name}" "${_REMOTE_REPO%/}/${_file_name}" || return $?
+    fi
+
+    _log "INFO" "Restoring ${_file_name} on the container"; sleep 1
+    docker exec -it ${_name} bash -c 'source '${_share_dir%/}'/'${_service%/}'/install_atscale.sh && f_atscale_restore "'${_share_dir%/}'/'${_service%/}'/'${_file_name}'"' || return $?
 }
 
 function _sed() {
@@ -404,16 +488,16 @@ function _sed() {
 function _log() {
     # At this moment, outputting to STDERR
     if [ -n "${_LOG_FILE_PATH}" ]; then
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a ${g_LOG_FILE_PATH} 1>&2
+        echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $@" | tee -a ${_LOG_FILE_PATH} 1>&2
     else
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" 1>&2
+        echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $@" 1>&2
     fi
 }
 
 
 
 main() {
-    local __doc__="Main function which accepts global variables (old dirty code should be written in here)"
+    local __doc__="Main function which accepts global variables (any dirty code should be written in here)"
 
     # Validations
     if ! which docker &>/dev/null; then
@@ -442,8 +526,9 @@ main() {
         mkdir -p -m 777 "${_WORK_DIR%/}/${_SERVICE}" || return $?
     fi
 
+    local _ver_num="$(echo "${_VERSION}" | sed 's/[^0-9]//g')"
     if [ -z "$_NAME" ] && [ -n "$_VERSION" ]; then
-        _NAME="${_SERVICE}$(echo ${_VERSION} | sed 's/[^0-9]//g')"
+        _NAME="${_SERVICE}${_ver_num}"
     fi
 
     if $_CREATE_AND_SETUP; then
@@ -457,25 +542,32 @@ main() {
         fi
 
         if [ -n "$_NAME" ]; then
-            _log "INFO" "Creating ${_NAME} (container)..."
+            _log "INFO" "Creating ${_NAME} container..."
             # It's hard to access container directly on Mac, so adding port forwarding
             local _ports="";
             if $_DOCKER_PORT_FORWARD; then
                 _ports=${_PORTS}
             fi
 
-            if docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
-                _log "INFO" "Image ${_NAME} already exists. Using this instead of ${_IMAGE_NAME}:${_OS_VERSION}..."; sleep 1
-                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_NAME}" "${_ports}" || return $?
+            local _image="$(docker images --format "{{.Repository}}" | grep -qE "^(${_NAME}|${_SERVICE}${_ver_num})$")"
+            if $_DOCKER_USE_TGZ; then
+                # Creating a new (empty) container
+                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_OS_VERSION}" "${_ports}" || return $?
                 sleep 1
-                f_as_start "${_NAME}.${_DOMAIN#.}"
+                p_container_setup "${_NAME}" || return $?
+                f_as_restore "$_NAME" || return $?
+
+            elif [ -n "${_image}" ]; then
+                _log "INFO" "Image ${_image} for ${_NAME}|${_SERVICE}${_ver_num} already exists. Using this ..."; sleep 1
+                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_image}" "${_ports}" || return $?
+                sleep 1
+                if ! $_DOCKER_SAVE && ! $_DOCKER_SAVE_AS_TGZ; then
+                    f_as_start "${_NAME}.${_DOMAIN#.}"
+                fi
             else
                 f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_OS_VERSION}" "${_ports}" || return $?
                 sleep 1
-                _log "INFO" "Setting up ${_NAME} (container)..."
-                f_container_useradd "${_NAME}" "${_SERVICE}" || return $?
-                f_container_ssh_config "${_NAME}"   # it's OK to fail || return $?
-                f_container_misc "${_NAME}"         # it's OK to fail || return $?
+                p_container_setup "${_NAME}" || return $?
 
                 if [ -n "$_VERSION" ]; then
                     _log "INFO" "Setting up an Application for version ${_VERSION} on ${_NAME} ..."
@@ -488,10 +580,18 @@ main() {
 
     if $_DOCKER_SAVE; then
         if [ -z "$_NAME" ]; then
-            _log "ERROR" "Docker save (commit) was specified but no name to save."
+            _log "ERROR" "Docker Save (commit) was specified but no name (-n or -v) to save."
             return 1
         fi
-        f_docker_commit "$_NAME"
+        f_docker_commit "$_NAME" || return $?
+    fi
+
+    if $_DOCKER_SAVE_AS_TGZ; then
+        if [ -z "$_NAME" ]; then
+            _log "ERROR" "Docker Save as Tgz was specified but no name (-n or -v) to save."
+            return 1
+        fi
+        f_as_backup "$_NAME" || return $?
     fi
 
     if [ -n "$_NAME" ]; then
@@ -525,10 +625,10 @@ main() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "cn:v:l:sPSuh" opts; do
+    while getopts "cn:v:l:stPSuh" opts; do
         case $opts in
             h)
-                usage
+                usage | less
                 exit 0
                 ;;
             u)
@@ -540,6 +640,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             s)
                 _DOCKER_SAVE=true
+                ;;
+            t)
+                _DOCKER_SAVE_AS_TGZ=true
                 ;;
             n)
                 _NAME="$OPTARG"
@@ -555,6 +658,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             S)
                 _DOCKER_STOP_OTHER=true
+                ;;
+            T)
+                _DOCKER_USE_TGZ=true
                 ;;
         esac
     done
