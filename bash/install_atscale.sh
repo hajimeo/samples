@@ -519,8 +519,8 @@ export HADOOP_HOME='${_dir%/}/${_hadoop_core}'
 export JAVA_HOME='${_java_home}'
 
 if [ "$0" = "$BASH_SOURCE" ]; then
-  if [ "${USERNAME}" != "'${_usr}'" ]; then
-    echo "Sorry, this script must be run as the '${_usr}' user but ${USERNAME} is used."
+  if [ "$(whoami)" != "'${_usr}'" ]; then
+    echo "This script must be run as the '${_usr}' user, but $(whoami) was used."
     exit 1
   fi
   cd $HIVE_HOME || return $?
