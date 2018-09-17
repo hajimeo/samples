@@ -2579,6 +2579,9 @@ function f_dnsmasq() {
         _warn "No apt-get or ssh to $_dns not allowed"
         return 1
     fi
+    # TODO: If Ubuntu 18.04 may want to stop systemd-resolved
+    #sudo systemctl stop systemd-resolved
+    #sudo systemctl disable systemd-resolved
     ssh -q $_dns apt-get -y install dnsmasq
 
     ssh -q $_dns "grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf"
@@ -3115,6 +3118,15 @@ STOP VNC:
 
     # to check
     #sudo netstat -aopen | grep 5901
+}
+
+function f_chrome() {
+    if ! grep -q "http://dl.google.com" /etc/apt/sources.list.d/google-chrome.list; then
+        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list || return $?
+    fi
+    curl -fsSL "https://dl.google.com/linux/linux_signing_key.pub" | apt-key add - || return $?
+    apt-get update || return $?
+    apt-get install google-chrome-stable -y
 }
 
 function f_x2go_setup() {
