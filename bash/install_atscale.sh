@@ -554,7 +554,7 @@ directory='${_dir%/}/${_hive}'
 priority=100' > ${_as_dir%}/conf/supervisor/program_apache-hive.conf
     chown ${_usr}: ${_as_dir%}/conf/supervisor/program_apache-hive.conf
 
-    sudo -u ${_usr} ${_as_dir%}/bin/atscale_service_control reload || return $?
+    sudo -u ${_usr} ${_as_dir%}/bin/atscale_service_control update || return $?
     _log "INFO" "Starting hiveserver2 on port 10000..."; sleep 1
     #sudo -u ${_usr} ${_dir%/}/apache_hive.sh || return $?
     sudo -u ${_usr} ${_as_dir%}/bin/atscale_service_control restart apache-hive
