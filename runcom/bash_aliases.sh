@@ -18,7 +18,7 @@ alias ht='for _f in `ls -1tr`; do echo "$_f"; head -n1 $_f | sed "s/^/  /"; tail
 alias logS="source ~/IdeaProjects/samples/bash/log_search.sh"
 # Start metabase on port: 30000
 alias mb='java -jar ~/Applications/metabase.jar'
-alias vnc='java -jar ~/Applications/tightvnc-jviewer.jar'
+alias vnc='nohup java -jar ~/Applications/tightvnc-jviewer.jar &>/tmp/tightvnc-jviewer.out &'
 # Start Jupyter Notebook with Aggregation template (and backup-ing)
 alias jn='if [ -d ~/backup/jupyter-notebook ]; then
     cp ~/backup/jupyter-notebook/Aggregation.ipynb ./ && jupyter notebook &
