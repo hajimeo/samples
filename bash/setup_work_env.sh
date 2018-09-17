@@ -3,33 +3,52 @@
 # Collection of functions to setup a desktop / work environment
 # Expecting this script works with non-root user (but sudo required)
 #
+# NOTE: This script always tries to overwrite (update)
+#
 # curl -O "https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_work_env.sh"
 #
 
-function f_setup_bash() {
-    [ -s ~/.bash_profile ] && mv ~/.bash_profile /tmp/.bash_profile_$$
-    curl -o ~/.bash_profile -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh"
-    [ -s ~/.bash_aliases ] && mv ~/.bash_aliases /tmp/.bash_aliases_$$
-    curl -o ~/.bash_aliases -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh"
+function f_setup_misc() {
+    _backup ~/.bash_profile
+    curl -f --retry 3 -o ~/.bash_profile -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh" || return $?
+    _backup ~/.bash_aliases
+    curl -f --retry 3 -o ~/.bash_aliases -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh" || return $?
 
-    sudo -i pip install data_hacks
+    # Command/scripts need for my bash_aliases.sh
+    sudo -i pip install data_hacks  # it's OK if this fails
+    if [ ! -d "~/IdeaProjects/samples/bash" ]; then
+        mkdir -p ~/IdeaProjects/samples/bash || return $?
+    fi
+    _backup ~/IdeaProjects/samples/bash/log_search.sh
+    curl -f --retry 3 -o ~/IdeaProjects/samples/bash/log_search.sh "https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh" || return $?
 }
 
 function f_setup_rg() {
     if ! which rg &>/dev/null; then
-        echo "https://github.com/BurntSushi/ripgrep/releases
-    brew install ripgrep
-or
-    curl -LO https://github.com/BurntSushi/ripgrep/releases/download/0.9.0/ripgrep_0.9.0_amd64.deb
-    sudo dpkg -i ripgrep_0.9.0_amd64.deb"
-        return 1
+        if [ "`uname`" = "Darwin" ]; then
+            if which brew &>/dev/null; then
+                brew install ripgrep || return
+            else
+                _log "WARN" "Please install 'rg' first. https://github.com/BurntSushi/ripgrep/releases"; sleep 3
+                return 1
+            fi
+        elif [ "`uname`" = "Linux" ]; then
+            if which apt-get &>/dev/null; then  # NOTE: Mac has 'apt' command
+                local _ver="0.10.0"
+                _log "INFO" "Installing rg version: ${_ver} ..."; sleep 3
+                curl -f --retry 3 -C - -o /tmp/ripgrep_${_ver}_amd64.deb -L "https://github.com/BurntSushi/ripgrep/releases/download/${_ver}/ripgrep_${_ver}_amd64.deb" || return $?
+                sudo dpkg -i /tmp/ripgrep_${_ver}_amd64.deb || return $?
+            fi
+        else
+            _log "WARN" "Please install 'rg' first. https://github.com/BurntSushi/ripgrep/releases"; sleep 3
+            return 1
+        fi
     fi
 
-    if [ ! -s ~/.rgrc ]; then
-        curl -o ~/.rgrc -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/rgrc"
-    fi
+    _backup ~/.rgrc
+    curl -f --retry 3 -o ~/.rgrc -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/rgrc" || return $?
     if ! grep -q '^export RIPGREP_CONFIG_PATH=' ~/.bash_profile; then
-        echo -e '\nexport RIPGREP_CONFIG_PATH=$HOME/.rgrc' >> ~/.bash_profile
+        echo -e '\nexport RIPGREP_CONFIG_PATH=$HOME/.rgrc' >> ~/.bash_profile || return $?
     fi
 }
 
@@ -99,10 +118,14 @@ function _install() {
 function _log() {
     # At this moment, outputting to STDERR
     if [ -n "${_LOG_FILE_PATH}" ]; then
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a ${g_LOG_FILE_PATH} 1>&2
+        echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $@" | tee -a ${_LOG_FILE_PATH} 1>&2
     else
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" 1>&2
+        echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $@" 1>&2
     fi
+}
+
+function _backup() {
+    [ -s "$1" ] && cp -p "$1" /tmp/$(basename "$1")_$(date +'%Y%m%d%H%M%S')
 }
 
 
@@ -115,7 +138,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     if [[ "$1" =~ ^f_ ]]; then
         eval "$@"
     else
-        f_setup_bash
+        f_setup_misc
         f_setup_rg
         f_setup_jupyter
     fi
