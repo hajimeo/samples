@@ -3106,10 +3106,12 @@ autocutsel -fork
 startxfce4 &" > ${HOME%/}/.vnc/xstartup
 chmod u+x ${HOME%/}/.vnc/xstartup'
     #echo "TightVNC client: https://www.tightvnc.com/download.php"
-    echo "- to start:"
-    echo "su - $_user -c 'vncserver -geometry 1600x960 -depth 8 :1'"
-    echo "- to stop:"
-    echo "su - $_user -c 'vncserver -kill :1'"
+    echo "START VNC:
+    su - $_user -c 'vncserver -geometry 1600x960 -depth 16 :1'
+NOTE: Please disable Screensaver from Settings.
+
+STOP VNC:
+    su - $_user -c 'vncserver -kill :1'"
 
     # to check
     #sudo netstat -aopen | grep 5901
