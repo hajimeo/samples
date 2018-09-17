@@ -9,10 +9,12 @@ alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
 alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
+alias ht='for _f in `ls -1tr`; do echo "$_f"; head -n1 $_f | sed "s/^/  /"; tail -n1 $_f | sed "s/^/  /"; done'
 
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
 # Load/source my log searching utility functions
+#mkdir -p ~/IdeaProjects/samples/bash; curl -o ~/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 alias logS="source ~/IdeaProjects/samples/bash/log_search.sh"
 # Start metabase on port: 30000
 alias mb='java -jar ~/Applications/metabase.jar'
@@ -103,6 +105,7 @@ function r2dh() {
 function sshs() {
     local _user_at_host="$1"
     local _session_name="${2}"
-    ssh ${_user_at_host} -t "screen -r ${_session_name}|| screen -ls"
-    [ $? -ne 0 ] && [ -n "${_session_name}" ] && ssh ${_user_at_host} -t "screen -S ${_session_name}"
+    local _cmd="screen -r || screen -ls"
+    [ -n "${_session_name}" ] && _cmd="screen -x ${_session_name} || screen -S ${_session_name}"
+    ssh ${_user_at_host} -t ${_cmd}
 }
