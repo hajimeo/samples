@@ -520,7 +520,7 @@ export JAVA_HOME='${_java_home}'
 
 if [ "$0" = "$BASH_SOURCE" ]; then
   if [ "$USER" != "'${_usr}'" ]; then
-    echo "Sorry, this script must be run as the '${_usr}' user."
+    echo "Sorry, this script must be run as the '${_usr}' user but $USER is used."
     exit 1
   fi
   cd $HIVE_HOME || return $?
@@ -549,7 +549,7 @@ stopsignal=TERM
 autostart=true
 autorestart=true
 stopasgroup=true
-stopwaitsecs=10
+stopwaitsecs=20
 directory='${_dir%/}/${_hive}'
 priority=100' > ${_as_dir%}/conf/supervisor/program_apache-hive.conf
     chown ${_usr}: ${_as_dir%}/conf/supervisor/program_apache-hive.conf
