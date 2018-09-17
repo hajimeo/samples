@@ -81,15 +81,20 @@ _SUDO_SED=false
 function f_update() {
     local __doc__="Download the latest code from git and replace"
     local _target="${1:-${BASH_SOURCE}}"
+    local _remote_repo="${2:-"https://raw.githubusercontent.com/hajimeo/samples/master/bash/"}"  # TODO: or _REMOTE_REPO
+
     local _file_name="`basename ${_target}`"
     local _backup_file="/tmp/${_file_name}_$(date +"%Y%m%d%H%M%S")"
     if [ -f "${_target}" ]; then
         cp "${_target}" "${_backup_file}" || return $?
     fi
-    curl --retry 3 "https://raw.githubusercontent.com/hajimeo/samples/master/bash/${_file_name}" -o "${_target}"
+
+    curl -f --retry 3 "${_remote_repo%/}/${_file_name}" -o "${_target}"
     if [ $? -ne 0 ]; then
-        mv -f "${_backup_file}" "${_target}"
-        return 1
+        if [ -z "${_REMOTE_REPO}" ] || ! curl -f --retry 3 "${_REMOTE_REPO%/}/${_file_name}" -o "${_target}"; then
+            mv -f "${_backup_file}" "${_target}"
+            return 1
+        fi
     fi
     if [ -f "${_backup_file}" ]; then
         local _length=`wc -c <${_target}`
@@ -393,7 +398,7 @@ function f_as_setup() {
 
     [ ! -d "${_work_dir%/}/${_service%/}" ] && mkdir -p -m 777 "${_work_dir%/}${_service%/}"
 
-    # Always get the latest script for now
+    # Always get the latest script for now and it's OK if fails if the file exists
     f_update "${_work_dir%/}/${_service%/}/install_atscale.sh"
 
     if [ ! -s ${_work_dir%/}/${_service%/}/install_atscale.sh ]; then
