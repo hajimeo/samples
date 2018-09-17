@@ -415,7 +415,11 @@ help() {
 
 function _log() {
     # At this moment, outputting to STDERR
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" >&2
+    if [ -n "${_LOG_FILE_PATH}" ]; then
+        echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $@" | tee -a ${_LOG_FILE_PATH} 1>&2
+    else
+        echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $@" 1>&2
+    fi
 }
 
 function _workdir() {

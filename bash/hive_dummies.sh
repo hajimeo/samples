@@ -36,10 +36,11 @@ function _genAddPartition4ranger() {
 }
 
 function _log() {
-    if [ -n "$g_LOG_FILE_PATH" ]; then
-        echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a $g_LOG_FILE_PATH
+    # At this moment, outputting to STDERR
+    if [ -n "${g_LOG_FILE_PATH}" ]; then
+        echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $@" | tee -a ${g_LOG_FILE_PATH} 1>&2
     else
-        echo -e "[$(date +'%Y-%m-%d %H:%M:%S')] $@" 1>&2
+        echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $@" 1>&2
     fi
 }
 

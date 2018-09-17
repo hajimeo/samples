@@ -1202,9 +1202,9 @@ function _download_and_extract() {
 function _log() {
     # At this moment, outputting to STDERR
     if [ -n "${_LOG_FILE_PATH}" ]; then
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a ${g_LOG_FILE_PATH} 1>&2
+        echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $@" | tee -a ${_LOG_FILE_PATH} 1>&2
     else
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" 1>&2
+        echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] $@" 1>&2
     fi
 }
 
