@@ -66,8 +66,8 @@ NOTES:
 [ -z "${_SERVICE}" ] && _SERVICE="atscale"              # This is used by the app installer script so shouldn't change
 [ -z "${_VERSION}" ] && _VERSION="7.1.2"                # Default software version, mainly used to find the right installer file
 [ -z "${_LICENSE}" ] && _LICENSE="$(ls -1t ${_WORK_DIR%/}/${_SERVICE%/}/dev*license*.json | head -n1)" # A license file to use the _SERVICE
-[ -z "${_PORTS}" ] && _PORTS="10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"  # Used by docker port forwarding
-[ -z "${_REMOTE_REPO}" ] && _REMOTE_REPO="http://192.168.6.162/${_SERVICE}/"  # Curl understandable string
+_PORTS="${_PORTS-"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"}"    # Used by docker port forwarding
+_REMOTE_REPO="${_REMOTE_REPO-"http://192.168.6.162/${_SERVICE}/"}"                  # Curl understandable string
 _CREATE_AND_SETUP=false
 _DOCKER_PORT_FORWARD=false
 _DOCKER_STOP_OTHER=false
