@@ -396,8 +396,8 @@ function f_as_setup() {
 
     [ ! -d "${_work_dir%/}/${_service%/}" ] && mkdir -p -m 777 "${_work_dir%/}${_service%/}"
 
-    # Always get the latest script for now and it's OK if fails if the file exists
-    f_update "${_work_dir%/}/${_service%/}/install_atscale.sh" "${_REMOTE_REPO}"
+    # Get the latest script but it's OK if fails if the file exists
+    [ -n "${_REMOTE_REPO}" ] && f_update "${_work_dir%/}/${_service%/}/install_atscale.sh" "${_REMOTE_REPO}"
 
     if [ ! -s ${_work_dir%/}/${_service%/}/install_atscale.sh ]; then
         _log "ERROR" "Failed to create ${_work_dir%/}/${_service%/}/install_atscale.sh"
