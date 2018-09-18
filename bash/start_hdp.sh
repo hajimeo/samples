@@ -1456,7 +1456,7 @@ function f_docker_stop_other() {
 
     _info "Stopping other containers which start with '${_node}' and does not match '${_node}(${_filter})'..."
     for _n in `docker ps --format "{{.Names}}" | grep "^${_node}" | grep -vE "^${_node}(${_filter})$"`; do
-        echo docker stop $_n &
+        docker stop $_n &
         sleep 1
     done
     wait
