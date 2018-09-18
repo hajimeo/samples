@@ -1449,14 +1449,14 @@ function f_docker_stop_other() {
 
     local _filter=""
     for _s in `_docker_seq "$_how_many" "$_start_from"`; do
-        _filter="${_filter}${_node}${_s}|"
+        _filter="${_filter}${_s}|"
     done
     # node9x is normally special node, so wouldn't want to stop
-    _filter="${_filter%\|}|node9[0-9]"
+    _filter="${_filter%\|}|9[0-9]"
 
-    _info "stopping other docker containers (not in ${_filter})..."
-    for _n in `docker ps --format "{{.Names}}" | grep -vE "${_filter}"`; do
-        docker stop $_n &
+    _info "Stopping other containers which start with '${_node}' and does not match '${_node}(${_filter})'..."
+    for _n in `docker ps --format "{{.Names}}" | grep "^${_node}" | grep -vE "^${_node}(${_filter})$"`; do
+        echo docker stop $_n &
         sleep 1
     done
     wait
