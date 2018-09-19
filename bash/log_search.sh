@@ -64,28 +64,29 @@ function p_support() {
     echo " "
     echo " "
 
-    echo "# config-custom.yaml for the first 20 lines"
-    _find_and_cat "config-custom.yaml" | head -n 20
+    echo "# config-custom.yaml"
+    _find_and_cat "config-custom.yaml"
     echo " "
     echo " "
 
-    echo "# config.yaml - Kerberos information"
-    _find_and_cat "config.yaml" | grep '^kerberos'
+    echo "# (deprecated) config.yaml - Kerberos|ssl information"
+    _find_and_cat "config.yaml" | grep -E '(^kerberos\.|^ssl\.|key\.path|cert\.path)'
     echo " "
     echo " "
 
-    echo "# config.yaml | grep -iE '(max|size|pool).+000$' | grep -vi 'time'"
-    # Exact config parameter(s) which would cause issue
+    #echo "# config.yaml | grep -iE '(max|size|pool).+000$' | grep -vi 'time'"
+    # Exact config parameter(s) which might cause issue
     # TODO: Aggregate Batch <UUID> failed creating a build order for rebuilding aggregates.
-    # TODO: aggregates.maxExternalRequestDuration.timeout
-    _find_and_cat "config.yaml" | grep -iE '(aggregates.batch.buildFromExisting)'
+    # TODO: aggregates.maxExternalRequestDuration.timeout|aggregates.batch.buildFromExisting'
     # Try finding parameters which value might be too big
-    _find_and_cat "config.yaml" | grep -iE '(max|size|pool).+(000|mins|hours)$' | grep -vi "time"
-    echo " "
-    echo " "
+    #_find_and_cat "config.yaml" | grep -iE '(max|size|pool).+(000|mins|hours)$' | grep -vi "time"
+    #echo " "
+    #echo " "
 
-    echo "# Connection pool"
-    _find_and_cat "pool.json"
+    echo "# Connection pool"    # TODO: use connection_groups.json
+    _find_and_cat "connection_groups.json" | python -m json.tool
+    echo "--------------------------------"
+    _find_and_cat "pool.json"   # check maxConnections, consecutiveFailures
     echo " "
     echo " "
 
