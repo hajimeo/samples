@@ -424,9 +424,10 @@ function f_as_start() {
     local __doc__="Start a specific Application Service for the container"
     local _hostname="$1"
     local _service="${2:-${_SERVICE}}"
-    local _share_dir="${3:-${_WORK_DIR}}"
+    local _restart="${3}"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
+    [[ "${_restart}" =~ ^(y|Y) ]] && docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/'${_service}'/bin/${_service}_stop -f"
     docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/'${_service}'/bin/${_service}_start" #;sudo -u ${_service} /usr/local/apache-hive/apache_hive.sh
 }
 
@@ -565,7 +566,7 @@ main() {
                 f_docker_run "${_NAME}.${_DOMAIN#.}" "${_image}" "${_ports}" || return $?
                 sleep 1
                 if ! $_DOCKER_SAVE && ! $_DOCKER_SAVE_AS_TGZ; then
-                    f_as_start "${_NAME}.${_DOMAIN#.}"
+                    f_as_start "${_NAME}.${_DOMAIN#.}" "${_SERVICE}" "Y"
                 fi
             else
                 f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_OS_VERSION}" "${_ports}" || return $?
