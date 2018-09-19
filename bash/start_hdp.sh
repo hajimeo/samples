@@ -3078,9 +3078,9 @@ function f_update_check() {
 function f_vnc_setup() {
     local __doc__="Install X and VNC Server. NOTE: this uses about 400MB space"
     # https://www.digitalocean.com/community/tutorials/how-to-install-and-configure-vnc-on-ubuntu-16-04
-    local _user="${1-$USER}"
-    local _vpass="${2-$g_DEFAULT_PASSWORD}"
-    local _pass="${3-$g_DEFAULT_PASSWORD}"
+    local _user="${1:-vncuser}"
+    local _vpass="${2:-$g_DEFAULT_PASSWORD}"
+    local _pass="${3:-$g_DEFAULT_PASSWORD}"
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
