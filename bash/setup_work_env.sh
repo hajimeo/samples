@@ -53,54 +53,76 @@ function f_setup_rg() {
 }
 
 function f_setup_jupyter() {
-    if ! which python &>/dev/null && ! _install python -y; then
-        _log "ERROR" "no python installed or not in PATH"
+    if ! which python3 &>/dev/null && ! _install python3 -y; then
+        _log "ERROR" "no python3 installed or not in PATH"
         return 1
     fi
 
-    if ! which pip &>/dev/null && ! _install python-pip -y; then
-        _log "ERROR" "no python installed or not in PATH"
+    if ! which pip3 &>/dev/null && ! _install python3-pip -y; then
+        _log "ERROR" "no pip installed or not in PATH"
         return 1
     fi
 
+    ### Pip(3) ############################################################
     # TODO: should use vertualenv?
     #virtualenv myenv && source myenv/bin/activate
-    sudo -i pip install --upgrade pip
+    sudo -i pip3 install --upgrade pip &>/dev/null
 
-    sudo -i pip install jupyter || return $?
-    sudo -i pip install jupyter_contrib_nbextensions pandas sqlalchemy ipython-sql
+    sudo -i pip3 list --o | tee /tmp/pip.log
 
-    # Enable spell checker
-    sudo -i pip install bash_kernel && sudo -i python -m bash_kernel.install
-    if [ $? -eq 0 ]; then
-        sudo -i jupyter contrib nbextension install # --user
-        sudo -i jupyter nbextension enable spellchecker/main
-    fi
+    # TODO: is jupyter deprecated?
+    sudo -i pip3 install jupyter --log /tmp/pip.log &>/dev/null || return $?
+    sudo -i pip3 install jupyterlab --log /tmp/pip.log &>/dev/null || return $?
+    # TODO: as of today no jupyter_contrib_labextensions
+    sudo -i pip3 install jupyter_contrib_nbextensions pandas sqlalchemy ipython-sql --log /tmp/pip.log &>/dev/null
+    sudo -i pip3 install bash_kernel --log /tmp/pip.log &>/dev/null && sudo -i python3 -m bash_kernel.install
+    # Enable BeakerX. NOTE: this works with only python3
+    #sudo -i pip3 install beakerx && beakerx-install
+    ### Pip(3) end ########################################################
+
+    # Enable jupyter extensions (spell checker)
+    sudo -i jupyter contrib nbextension instal && sudo -i jupyter nbextension enable spellchecker/main
+    # TODO: sudo -i jupyter labextension install @ijmbarr/jupyterlab_spellchecker
 }
 
-function f_jn(){
-    local _backup_dir="${1:-$HOME/backup/jupyter-notebook}"
-    local _sleep="${2:-300}"
-    local _port="${3:-8888}"
+function f_jp(){
+    local _id="${1}"
+    local _backup_dir="${2-$HOME/backup/jupyter-notebook}"
+    local _template="${3-Aggregation.ipynb}"
+    local _sleep="${4:-180}"
+    local _port="${5:-8889}"
+
+    if [ -n "${_backup_dir}" ] && [ ! -d "${_backup_dir}" ]; then
+        mkdir -p "${_backup_dir}" || return 11
+    fi
+
+    [ -n "${_id}" ] && _id="_${_id}"
 
     if [ -d "${_backup_dir}" ]; then
-        cp -f "${_backup_dir%/}/Aggregation.ipynb" ./
+        # http://ipython.org/ipython-doc/1/config/overview.html#startup-files
+        if [ ! -f ~/.ipython/profile_default/startup/${_template%.*}.ipy ] && [ -s ${_backup_dir%/}/${_template%.*}.ipy ]; then
+            cp ${_backup_dir%/}/${_template%.*}.ipy ~/.ipython/profile_default/startup/${_template%.*}.ipy
+        fi
+
+        [ -s "${_backup_dir%/}/${_template}" ] && cp -f "${_backup_dir%/}/${_template}" ./${_template%.*}${_id}.ipynb
         while true; do
             sleep ${_sleep}
-            local _wc="`ls -1 ./*.ipynb 2>/dev/null | wc -l`"
-            if [  "${_wc}" -gt 0 ]; then
+            if [  "`ls -1 ./*.ipynb 2>/dev/null | wc -l`" -gt 0 ]; then
                 rsync -a --exclude="Untitled.ipynb" ./*.ipynb "${_backup_dir%/}/" || break
-            else
-                break
+                # TODO: if no ipynb file to backup, should break?
             fi
-            if ! nc -z localhost ${_port} &>/dev/null; then
-                mv -f ./Aggregation.ipynb /tmp/
+            if ! lsof -ti:${_port} &>/dev/null; then
+                if [ -d ~/.Trash ]; then
+                    mv -f ${_template%.*}${_id}.ipynb ~/.Trash/
+                else
+                    mv -f ${_template%.*}${_id}.ipynb /tmp/
+                fi
                 break
             fi
         done &
     fi
 
-    jupyter notebook --ip='*' &
+    jupyter lab --ip='*' --port=${_port} --no-browser &
 }
 
 
