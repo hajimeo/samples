@@ -2486,7 +2486,7 @@ function p_host_setup() {
 
         _log "INFO" "Starting f_docker_setup"
         f_docker_setup &>> /tmp/p_host_setup.log
-        #f_sysstat_setup &>> /tmp/p_host_setup.log
+        f_sysstat_setup &>> /tmp/p_host_setup.log
         #f_ttyd &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_host_performance"
         f_host_performance &>> /tmp/p_host_setup.log
