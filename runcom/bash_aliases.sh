@@ -27,7 +27,7 @@ alias webs='cd ~/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 3808
 # List and grep some specific files from s3. NOTE: https:// requires s3-us-west-1.amazonaws.com
 
 # Work specific aliases
-alias asS3='s3cmd ls s3://files.atscale.com/installer/package/ | grep -E "atscale-[6789].+latest-el6\.x86_64\.tar\.gz$"'    # TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
+alias asS3='s3cmd ls s3://files.atscale.com/installer/package/ | grep -E "atscale-[56789].+latest-el6\.x86_64\.tar\.gz$"'    # TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
 alias asPupInst='scp -C ~/IdeaProjects/samples/atscale/install_atscale.sh root@192.168.0.31:/var/tmp/share/atscale/;scp -C ~/IdeaProjects/samples/atscale/install_atscale.sh root@192.168.6.162:/var/tmp/share/atscale/'
 
 
