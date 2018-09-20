@@ -1051,7 +1051,7 @@ function f_loadResp() {
     return 0
 }
 
-function f_setup_HAProxy() {
+function f_haproxy() {
     local __doc__="Install and setup HAProxy"
     local _master_node="${1}"
     local _slave_node="${2}"
@@ -1102,7 +1102,8 @@ backend backend_p${_p}
     done
 
     # NOTE: May need to configure rsyslog.conf for log if CentOS
-    service haproxy reload
+    service haproxy reload || return $?
+    _info "Installing/Re-configuring HAProxy completed."
 }
 
 function f_ntp() {
