@@ -45,7 +45,7 @@ class SympleWebServer(BaseHTTPRequestHandler):
                 html += u"<hr/>"
                 html += u"DateTime: " + toDateStr(o['ts']) + "<br/>\n"
                 html += u"Username:  " + o['username'] + u" (" + o['user'] + ")<br/>\n"
-                html += u"PermaLink: <a href='" + o['permalink'] + u"' target='_blank'>" + o[
+                html += u"PermaLink: <a href='" + o['permalink'].replace('/archives/', '/messages/') + u"' target='_blank'>" + o[
                     'permalink'] + u"</a><br/>\n"
                 html += u"<blockquote style='white-space:pre-wrap'><tt>" + o['text'] + u"</tt></blockquote>\n"
         # html = json.dumps(json_obj, indent=4)
