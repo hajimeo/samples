@@ -3731,15 +3731,14 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             _ask "Would you like to start setting up this host?" "Y"
             if ! _isYes; then echo "Bye"; exit; fi
             if [ -n "$r_DOCKER_KEEP_RUNNING" ]; then
-                _isYes "$r_DOCKER_KEEP_RUNNING" || f_docker_stop_all
+                _isYes "$r_DOCKER_KEEP_RUNNING" || f_docker_stop_other
             else
                 _ask "Would you like to stop all running containers now?" "Y"
                 if _isYes; then f_docker_stop_all; fi
             fi
         else
             if ! _isYes "$r_DOCKER_KEEP_RUNNING"; then
-                _info "Stopping all docker containers..."
-                f_docker_stop_all
+                f_docker_stop_other
             fi
         fi
 
