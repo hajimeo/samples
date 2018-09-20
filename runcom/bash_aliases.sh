@@ -90,6 +90,7 @@ function chromep() {
         fi
     fi
     nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir=$HOME/.chromep/${_host}_${_port} --proxy-server="socks5://${_host}:${_port}" ${_url} &>/tmp/chrome.out &
+    echo '"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir="$(mktemp -d)" --proxy-server="socks5://'${_host}':'${_port}'" '${_url}
 }
 
 # List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
