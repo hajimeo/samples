@@ -1296,7 +1296,7 @@ kdestroy"
         _error "No yarn client node found to execute 'yarn rmadmin -refreshUserToGroupsMappings'"
         return 1
     fi
-    ssh -q root@$_yarn_rm_node -t "sudo -u yarn bash -c \"kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/$(hostname -f); yarn rmadmin -refreshUserToGroupsMappings\""
+    ssh -q root@$_yarn_rm_node -t "sudo -u yarn bash -c \"kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/\$(hostname -f); yarn rmadmin -refreshUserToGroupsMappings\""
 }
 
 function f_ssl_self_signed_cert() {
