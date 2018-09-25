@@ -3669,7 +3669,7 @@ help() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "r:f:isaUh" opts; do
+    while getopts "r:f:isauUh" opts; do
         case $opts in
             a)
                 _AUTO_SETUP_HDP="Y"
@@ -3686,6 +3686,10 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             f)
                 _FUNCTION_NAME="$OPTARG"
+                ;;
+            u)
+                f_update_check
+                exit $?
                 ;;
             U)
                 _SKIP_UPDATE_CHECK="Y"
