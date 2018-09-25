@@ -1827,19 +1827,159 @@ function f_tunnel() {
 
 function f_pptpd() {
     local __doc__="Setup PPTP daemon on Ubuntu host"
+    # Ref: https://askubuntu.com/questions/891393/vpn-pptp-in-ubuntu-16-04-not-working
     local _user="${1:-pptpuser}"
     local _pass="${2:-$g_DEFAULT_PASSWORD}"
+    local _if="${3}"
+
+    local _vpn_net="10.0.0"
+    if [ -z "${_if}" ]; then
+        _if="$(ifconfig | grep `hostname -i` -B 1 | grep -oE '^e[^ ]+')"
+    fi
     # https://pupli.net/2018/01/24/setup-pptp-server-on-ubuntu-16-04/
-    apt-get isntall -y pptpd || return $?
+    apt-get install pptpd ppp pptp-linux -y || return $?
     systemctl enable pptpd
-    grep -q '^localip' /etc/pptpd.conf || echo -e 'localip 10.0.0.1\nremoteip 10.0.0.100-200' >> /etc/pptpd.conf
+    grep -q '^logwtmp' /etc/pptpd.conf || echo -e "logwtmp" >> /etc/pptpd.conf
+    grep -q '^localip' /etc/pptpd.conf || echo -e "localip ${_vpn_net}.1\nremoteip ${_vpn_net}.100-200" >> /etc/pptpd.conf
     # NOTE: not setting up DNS by editing pptpd-options, and net.ipv4.ip_forward=1 should have been done
 
     if ! grep -q "$_user" /etc/passwd; then
         f_useradd "$_user" "$_pass" || return $?
     fi
     grep -q "^${_user}" /etc/ppp/chap-secrets || echo "${_user} * ${_pass} *" >> /etc/ppp/chap-secrets
+
+    iptables -t nat -A POSTROUTING -s ${_vpn_net}.0/24 -o ${_if} -j MASQUERADE # make sure interface is correct
+    iptables -A FORWARD -p tcp --syn -s ${_vpn_net}.0/24 -j TCPMSS --set-mss 1356
+
     service pptpd restart
+}
+
+function f_l2tpd() {
+    local __doc__="Setup L2TP daemon on Ubuntu host"
+    # Ref: https://qiita.com/namoshika/items/30c348b56474d422ef64
+    local _user="${1:-l2tpuser}"
+    local _pass="${2:-$g_DEFAULT_PASSWORD}"
+    local _if="${3}"
+
+    local _vpn_net="10.0.1"
+    if [ -z "${_if}" ]; then
+        _if="$(ifconfig | grep `hostname -i` -B 1 | grep -oE '^e[^ ]+')"
+    fi
+    # https://pupli.net/2018/01/24/setup-pptp-server-on-ubuntu-16-04/
+    apt-get install strongswan xl2tpd -y || return $?
+
+
+    if [ ! -e /etc/ipsec.conf.orig ]; then
+        cp -p /etc/ipsec.conf /etc/ipsec.conf.orig || return $?
+    else
+        cp -p /etc/ipsec.conf /etc/ipsec.conf.$(date +"%Y%m%d%H%M%S")
+    fi
+    echo 'config setup
+    nat_traversal=yes
+
+conn %default
+    auto=add
+
+conn L2TP-NAT
+    type=transport
+    leftauth=psk
+    rightauth=psk' > /etc/ipsec.conf || return $?
+
+    if [ ! -e /etc/ipsec.secrets.orig ]; then
+        cp -p /etc/ipsec.secrets /etc/ipsec.secrets.orig || return $?
+    else
+        cp -p /etc/ipsec.secrets /etc/ipsec.secrets.$(date +"%Y%m%d%H%M%S")
+    fi
+    echo ': PSK "longlongpassword"' > /etc/ipsec.secrets
+
+    if [ ! -e /etc/xl2tpd/xl2tpd.conf.orig ]; then
+        cp -p /etc/xl2tpd/xl2tpd.conf /etc/xl2tpd/xl2tpd.conf.orig || return $?
+    else
+        cp -p /etc/xl2tpd/xl2tpd.conf /etc/xl2tpd/xl2tpd.conf.$(date +"%Y%m%d%H%M%S")
+    fi
+    # see "man xl2tpd.conf"
+    echo '[lns default]
+  ip range = '${_vpn_net}'.100-200
+  local ip = '${_vpn_net}'.1
+  length bit = yes                          ; * Use length bit in payload?
+  refuse pap = yes                          ; * Refuse PAP authentication
+  refuse chap = yes                         ; * Refuse CHAP authentication
+  require authentication = yes              ; * Require peer to authenticate
+  name = l2tp                               ; * Report this as our hostname
+  pppoptfile = /etc/ppp/options.l2tpd.lns   ; * ppp options file' > /etc/xl2tpd/xl2tpd.conf
+
+    if [ -f /etc/ppp/options.l2tpd.lns ]; then
+        cp -p /etc/ppp/options.l2tpd.lns /etc/ppp/options.l2tpd.lns.$(date +"%Y%m%d%H%M%S")
+    fi
+    echo 'name l2tp
+refuse-pap
+refuse-chap
+refuse-mschap
+require-mschap-v2
+nodefaultroute
+lock
+nobsdcomp
+mtu 1100
+mru 1100
+logfile /var/log/xl2tpd.log' > /etc/ppp/options.l2tpd.lns
+
+    if ! grep -q "$_user" /etc/passwd; then
+        f_useradd "$_user" "$_pass" || return $?
+    fi
+    grep -q "^${_user}" /etc/ppp/chap-secrets || echo "${_user} * ${_pass} *" >> /etc/ppp/chap-secrets
+
+    # NOTE: net.ipv4.ip_forward=1 should have been set already
+    #iptables -t nat -A POSTROUTING -s ${_vpn_net}.0/24 -o ${_if} -j MASQUERADE # make sure interface is correct
+    #iptables -A FORWARD -p tcp --syn -s ${_vpn_net}.0/24 -j TCPMSS --set-mss 1356
+
+    systemctl restart strongswan
+    systemctl restart xl2tpd
+}
+
+function f_sstpd() {
+    local __doc__="Setup sstp daemon (SoftEther) on Ubuntu host"
+    # Ref: https://www.softether.org/    https://qiita.com/t-ken/items/c43865973dc3dd5d047c
+
+    echo "TODO: This function requires your input at this moment"
+    # https://pupli.net/2018/01/24/setup-pptp-server-on-ubuntu-16-04/
+    apt-get install bridge-utils gcc make -y || return $?
+    local _tmpdir="$(mktemp -d)" || return $?
+    curl --retry 3 -o ${_tmpdir%}/softether-vpnserver-latest-linux-x64-64bit.tar.gz "http://www.softether-download.com/files/softether/v4.28-9669-beta-2018.09.11-tree/Linux/SoftEther_VPN_Server/64bit_-_Intel_x64_or_AMD64/softether-vpnserver-v4.28-9669-beta-2018.09.11-linux-x64-64bit.tar.gz" || return $?
+    tar -xv -C ${_tmpdir} -f ${_tmpdir%}/softether-vpnserver-latest-linux-x64-64bit.tar.gz || return $?
+    cd ${_tmpdir%}/vpnserver || return $?
+    make || $?
+    cd -
+    if [ -e /usr/local/vpnserver ]; then
+        _error "/usr/local/vpnserver exists"
+        return 1
+    fi
+    mv ${_tmpdir%}/vpnserver /usr/local/ || return $?
+    chmod 600 /usr/local/vpnserver/*
+    chmod 700 /usr/local/vpnserver/{vpncmd,vpnserver}
+
+    if [ -s /etc/systemd/system/vpnserver.service ]; then
+        _error "/etc/systemd/system/vpnserver.service exists"
+        return 1
+    fi
+
+    echo '[Unit]
+Description=SoftEther VPN Server
+After=network.target network-online.target
+
+[Service]
+ExecStart=/usr/local/vpnserver/vpnserver start
+ExecStop=/usr/local/vpnserver/vpnserver stop
+Type=forking
+RestartSec=3s
+
+[Install]
+WantedBy=multi-user.target' > /etc/systemd/system/vpnserver.service || return $?
+    systemctl daemon-reload
+    systemctl enable vpnserver.service
+    systemctl start vpnserver.service || return $?
+
+    # TODO
+    return 1
 }
 
 function f_ambari_agents_install() {
