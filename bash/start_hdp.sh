@@ -1856,7 +1856,7 @@ function f_pptpd() {
 
 function f_l2tpd() {
     local __doc__="Setup L2TP daemon on Ubuntu host"
-    # Ref: https://qiita.com/namoshika/items/30c348b56474d422ef64
+    # Ref: https://qiita.com/namoshika/items/30c348b56474d422ef64 (japanese)
     local _user="${1:-l2tpuser}"
     local _pass="${2:-$g_DEFAULT_PASSWORD}"
     local _if="${3}"
@@ -1865,7 +1865,6 @@ function f_l2tpd() {
     if [ -z "${_if}" ]; then
         _if="$(ifconfig | grep `hostname -i` -B 1 | grep -oE '^e[^ ]+')"
     fi
-    # https://pupli.net/2018/01/24/setup-pptp-server-on-ubuntu-16-04/
     apt-get install strongswan xl2tpd -y || return $?
 
 
