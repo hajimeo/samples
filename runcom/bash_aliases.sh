@@ -74,23 +74,21 @@ function jp() {
 }
 
 # Mac only: Start Google Chrome in incognito with proxy
-# NOTE: Below didn't work
-#open -na "Google Chrome" --args "--user-data-dir=${_tmp_dir} --proxy-server=${_proxy}"
-#open -na "Google Chrome" --args "--incognito --proxy-server=${_proxy}"
 function chromep() {
-    local _host="${1:-192.168.6.162}"
-    local _port=${2:-28081}
-    local _url=${3-$_URL}
+    local _url=${1}
+    local _host="${2:-192.168.6.162}"
+    local _port=${3:-28081}
     [ ! -d $HOME/.chromep/${_host}_${_port} ] && mkdir -p $HOME/.chromep/${_host}_${_port}
     if [ -n "${_url}" ]; then
         if [[ ! "${_url}" =~ ^http ]]; then
-            _url="--app http://${_url}"
+            _url="--app=http://${_url}"
         else
-            _url="--app ${_url}"
+            _url="--app=${_url}"
         fi
     fi
-    nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir=$HOME/.chromep/${_host}_${_port} --proxy-server="socks5://${_host}:${_port}" ${_url} &>/tmp/chrome.out &
-    echo '"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir="$(mktemp -d)" --proxy-server="socks5://'${_host}':'${_port}'" '${_url}
+    #nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir=$HOME/.chromep/${_host}_${_port} --proxy-server="socks5://${_host}:${_port}" ${_url} &>/tmp/chrome.out &
+    open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/${_host}_${_port} --proxy-server=socks5://${_host}:${_port} ${_url}
+    echo 'open -na "Google Chrome" --args --user-data-dir=$(mktemp -d) --proxy-server=socks5://'${_host}':'${_port}' '${_url}
 }
 
 # List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
