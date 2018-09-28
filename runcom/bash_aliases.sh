@@ -52,6 +52,8 @@ function jp() {
             cp ${_backup_dir%/}/${_template%.*}.py ~/.ipython/profile_default/startup/${_template%.*}.py
         fi
 
+        [ -s ./${_template%.*}${_id}.ipynb ] && [ -d ~/.Trash ] && mv ./${_template%.*}${_id}.ipynb ~/.Trash/
+
         [ -s "${_backup_dir%/}/${_template}" ] && cp -f "${_backup_dir%/}/${_template}" ./${_template%.*}${_id}.ipynb
         while true; do
             sleep ${_sleep}
