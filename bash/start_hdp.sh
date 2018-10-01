@@ -2529,6 +2529,7 @@ function _ambari_agent_wait() {
         _u=$(_ambari_query_sql "select case when (select count(*) from hoststate)=0 then -1 ELSE (select count(*) from hoststate where health_status ilike '%HEALTHY%') end;" "$_db_host")
         #curl -s --head "http://$r_AMBARI_HOST:${r_AMBARI_PORT:-${g_AMBARI_PORT}}/" | grep '200 OK'
         if [ $_how_many -le $_u ]; then
+            sleep 4
             return 0
         elif [ -1 -eq $_u ]; then
             _warn "No agent has been installed"
