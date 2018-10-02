@@ -1,5 +1,6 @@
-/** Modified ProxyAuthTest.java **/
 /**
+ * Modified ProxyAuthTest.java
+ * <p>
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -7,9 +8,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -49,17 +50,17 @@ public class HiveDelToken {
     private static boolean noClose = false;
     private static String tabDataFileName;
     private static String scriptFileName;
-    private static String [] dmlStmts;
-    private static String [] dfsStmts;
-    private static String [] selectStmts;
-    private static String [] cleanUpStmts;
+    private static String[] dmlStmts;
+    private static String[] dfsStmts;
+    private static String[] selectStmts;
+    private static String[] cleanUpStmts;
     private static InputStream inpStream = null;
     private static int tabCount = 1;
-    private static File resultFile= null;
+    private static File resultFile = null;
 
     public static void main(String[] args) throws Exception {
         if (args.length < 3) {
-            System.out.println("Usage HiveDelToken <host> <port> <server_principal> [<proxy_user>] [delete]");
+            System.out.println("Usage HiveDelToken <host> <port> <server_principal> [<proxy_user>] [<action>] [<param:token|ms>]");
             System.exit(1);
         }
 
@@ -73,31 +74,50 @@ public class HiveDelToken {
         String owner = UserGroupInformation.getCurrentUser().getShortUserName();
         String url = null;
         String action = "";
+        String token = "";
         if (args.length > 4) {
             action = args[4];
         }
 
         try {
-            if (args.length > 3) {
+            if (args.length > 3 && args[3].length() > 0) {
                 owner = args[3];
                 url = "jdbc:hive2://" + host + ":" + port + "/default;principal=" + renewer + ";hive.server2.proxy.user=" + args[3];
-            }
-            else {
+            } else {
                 url = "jdbc:hive2://" + host + ":" + port + "/default;principal=" + renewer;
             }
             con = DriverManager.getConnection(url);
             System.out.println("Connected successfully to " + url);
-            String token = ((HiveConnection) con).getDelegationToken(owner, renewer);
-            System.out.println("Got token for " + owner + " : " + token);
 
             if (action.equals("renew")) {
+                if (args.length > 5) {
+                    token = args[5];
+                }
                 ((HiveConnection) con).renewDelegationToken(token);
                 System.out.println("Renewed token: " + token);
-            }
-            else if (action.equals("delete")) {
+            } else if (action.equals("delete")) {
+                if (args.length > 5) {
+                    token = args[5];
+                }
                 ((HiveConnection) con).cancelDelegationToken(token);
                 System.out.println("Cancelled token: " + token);
+            } else if (action.equals("wait")) {
+                int wait_ms = 10000;
+                if (args.length > 5) {
+                    wait_ms = Integer.parseInt(args[5]);
+                }
+                Thread.sleep(wait_ms);
+                Statement stmt = con.createStatement();
+                ResultSet res = stmt.executeQuery("show databases");
+                if (res.next()) {
+                    System.out.println(res.getString(1));
+                }
+                System.out.println("Waited and executed a query for " + owner);
+            } else {
+                token = ((HiveConnection) con).getDelegationToken(owner, renewer);
+                System.out.println("Got token for " + owner + " : " + token);
             }
+
             con.close();
         } catch (Exception e) {
             System.out.println("*** Exception: " + e.getMessage());
