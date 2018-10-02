@@ -35,6 +35,7 @@ import org.apache.hive.beeline.BeeLine;
 import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.hive.shims.Utils;
 import org.apache.hive.service.auth.HiveAuthFactory;
+import org.apache.hadoop.security.UserGroupInformation;
 
 /**
  * export CLASSPATH=`f_classpath <PID>`:.
@@ -46,7 +47,6 @@ public class HiveDelToken {
     private static final String BEELINE_EXIT = "beeline.system.exit";
     private static Connection con = null;
     private static boolean noClose = false;
-    private static String tabName = "jdbc_test";
     private static String tabDataFileName;
     private static String scriptFileName;
     private static String [] dmlStmts;
@@ -58,8 +58,8 @@ public class HiveDelToken {
     private static File resultFile= null;
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 4) {
-            System.out.println("Usage HiveDelToken <host> <port> <server_principal> <proxy_user>");
+        if (args.length < 3) {
+            System.out.println("Usage HiveDelToken <host> <port> <server_principal> [<proxy_user>] [delete]");
             System.exit(1);
         }
 
@@ -69,26 +69,38 @@ public class HiveDelToken {
         Class.forName(driverName);
         String host = args[0];
         String port = args[1];
-        String serverPrincipal = args[2];
-        String proxyUser = args[3];
+        String renewer = args[2];
+        String owner = UserGroupInformation.getCurrentUser().getShortUserName();
         String url = null;
+        String action = "";
         if (args.length > 4) {
-            tabName = args[4];
+            action = args[4];
         }
 
         try {
-            url = "jdbc:hive2://" + host + ":" + port + "/default;principal=" + serverPrincipal
-                    + ";hive.server2.proxy.user=" + proxyUser;
+            if (args.length > 3) {
+                owner = args[3];
+                url = "jdbc:hive2://" + host + ":" + port + "/default;principal=" + renewer + ";hive.server2.proxy.user=" + args[3];
+            }
+            else {
+                url = "jdbc:hive2://" + host + ":" + port + "/default;principal=" + renewer;
+            }
             con = DriverManager.getConnection(url);
             System.out.println("Connected successfully to " + url);
-            String token = ((HiveConnection) con).getDelegationToken(proxyUser, serverPrincipal);
-            System.out.println("Got token: " + token);
+            String token = ((HiveConnection) con).getDelegationToken(owner, renewer);
+            System.out.println("Got token for " + owner + " : " + token);
 
-            ((HiveConnection) con).cancelDelegationToken(token);
-            System.out.println("Cancelled token: " + token);
+            if (action.equals("renew")) {
+                ((HiveConnection) con).renewDelegationToken(token);
+                System.out.println("Renewed token: " + token);
+            }
+            else if (action.equals("delete")) {
+                ((HiveConnection) con).cancelDelegationToken(token);
+                System.out.println("Cancelled token: " + token);
+            }
             con.close();
-        } catch (SQLException e) {
-            System.out.println("*** SQLException: " + e.getMessage() + " : " + e.getSQLState());
+        } catch (Exception e) {
+            System.out.println("*** Exception: " + e.getMessage());
             e.printStackTrace();
         }
     }
