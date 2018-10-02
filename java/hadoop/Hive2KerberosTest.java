@@ -2,16 +2,13 @@
  * HOW TO:
  *
  * 1) create login.conf file which contents is like below:
- * SampleClient {
- * com.sun.security.auth.module.Krb5LoginModule required
- * useTicketCache=true debug=true debugNative=true;
- * };
+ * echo -e 'SampleClient {\n  com.sun.security.auth.module.Krb5LoginModule required\n  useTicketCache=true debug=true debugNative=true;\n};' > ./login.conf
  *
  * 2) Copy necessary jar files in same directory as this code
  * _version=`hdp-select versions | sort -n | tail -n1`
- * cp /usr/hdp/current/hadoop-client/lib/commons-configuration-*.jar ./
+ * cp /usr/hdp/current/hadoop-client/lib/commons-{configuration,logging,collections}-*.jar ./
  * cp /usr/hdp/current/hadoop-client/{hadoop-annotations-,hadoop-auth-,hadoop-common-}*${_version}.jar ./
- * cp /usr/hdp/current/hive-client/lib/{hive-exec-,hive-jdbc-*-standalone}*.jar ./
+ * cp /usr/hdp/current/hive-client/{lib,jdbc}/{hive-exec-,hive-jdbc-*-standalone}*.jar ./
  * -- core-site.xml         # probably don't need
  *
  * May need /usr/hdp/current/hive-webhcat/share/webhcat/svr/lib/xercesImpl-2.9.1.jar for newer HDP 2.4.x
