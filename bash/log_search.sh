@@ -135,7 +135,7 @@ EOF
 f_checkResultSize "${_date_regex}" "${_glob}" "${_n}"                              > /tmp/perform_f_checkResultSize_$$.out
 f_checkMaterializeWorkers "${_date_regex}" "${_glob}" "${_n}"                      > /tmp/perform_f_checkMaterializeWorkers_$$.out
 f_failedQueries "${_date_regex}" "${_glob}" "${_n}"                                > /tmp/perform_f_failedQueries_$$.out
-f_preCheckoutDuration "${_date_regex}" "${_glob}" | sort -t'|' -nk3 | tail -n${_n} > /tmp/perform_f_preCheckoutDuration_$$.out
+f_preCheckoutDuration "${_date_regex}" "${_glob}" ${_n}                            > /tmp/perform_f_preCheckoutDuration_$$.out
 f_aggBatchKickoffSize "${_date_regex}" "${_glob}" ${_n}                            > /tmp/perform_f_aggBatchKickoffSize_$$.out
 f_count_lines                                                                      > /tmp/perform_f_count_lines_$$.out
 f_count_threads "" "${_n}"                                                         > /tmp/perform_f_count_threads_$$.out
@@ -254,11 +254,15 @@ function f_preCheckoutDuration() {
     # f_preCheckoutDuration | sort -t'|' -nk3 | tail -n 10
     local _date_regex="${1}"    # No need ^
     local _glob="${2:-engine*.log*}"
-    #local _n="${3:-20}"
+    local _n="${3:-20}"
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
     # NOTE: queryId sometime is not included
-    rg -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+preCheckout timing report:.+statementDurations=[^=]+=([0-9,.]+) (.+)\].+testDuration=[^=]+=([0-9,.]+) (.+)\]" -r '${1}|${2}${3}|${4}${5}' | _sed -r 's/([0-9]+)\.([0-9]{2})s/\1\20ms/g'# | _sed -r 's/ms//g'
+    rg -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+preCheckout timing report:.+statementDurations=[^=]+=([0-9,.]+) (.+)\].+testDuration=[^=]+=([0-9,.]+) (.+)\]" -r '${1}|${2}${3}|${4}${5}' | _sed -r 's/([0-9]+)\.([0-9]{2})s/\1\20ms/g' > /tmp/f_preCheckoutDuration_$$.out
+
+    cat /tmp/f_preCheckoutDuration_$$.out | sort -t'|' -nk3 | tail -n ${_n}
+    echo " "
+    ls -lh /tmp/f_preCheckoutDuration_$$.out
 }
 
 function f_aggBatchKickoffSize() {
@@ -364,21 +368,10 @@ function f_rg() {
     fi
     echo ' '
 
-    echo "# grep-ing -m ${_thread_num} json with formatting (len 1000)... Ctrl+c to skip" >&2
-    trap ' ' SIGINT
-    for j in $(rg ${_def_rg_opts} --no-filename -g '*.json' -l ${_rg_opts}"${_regex}"); do
-        echo "## $j"
-        rg ${_def_rg_opts} -m3 ${_rg_opts}"${_regex}" "$j" | python -c 'import sys,json
-for l in sys.stdin:
-    l2=l.strip().lstrip("[").rstrip(",]")[:1000]
-    try:
-        jo=json.loads(l2)
-        print json.dumps(jo, indent=4)
-    except ValueError:
-        print l2'
-    done
-    trap - SIGINT
+    echo "# grep-ing json for max 10 each..." >&2
+    rg ${_def_rg_opts} -H -g '*.json' ${_rg_opts} -m 10 "${_regex}"
     echo ' '
+
     echo "# generated temp files (file name    start    end    diff_sec    size)" >&2
     f_list_start_end "${_tmpfile_pfx}*.tmp"
     echo ' '
