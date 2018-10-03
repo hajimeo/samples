@@ -16,6 +16,7 @@ alias ht='for _f in `ls -1tr`; do echo "$_f"; head -n1 $_f | sed "s/^/  /"; tail
 # Load/source my log searching utility functions
 #mkdir -p ~/IdeaProjects/samples/bash; curl -o ~/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 alias logS="source ~/IdeaProjects/samples/bash/log_search.sh"
+alias xmldiff="python ~/IdeaProjects/samples/python/xml_parser.py"
 
 # Java / jar related
 alias mb='java -jar ~/Applications/metabase.jar'    # port is 3000
@@ -127,6 +128,12 @@ function jargrep() {
     which jar &>/dev/null || _cmd="less"
     find -L ${2:-./} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c ''${_cmd}' {} | grep -wi '$1' && echo {}'
 }
+function javacp() {
+    local _pid="$1"
+    local _user="`stat -c '%U' /proc/${_pid}`" || return $?
+    local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
+    sudo -u ${_user} ${_cmd_dir}/jcmd ${_pid} VM.system_properties | grep '^java.class.path=' | sed 's/\\:/:/g' | cut -d"=" -f 2
+}
 # Grep file(s) with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
     ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
@@ -137,6 +144,7 @@ function r2dh() {
     local _dh="${2:-192.168.0.31}"  # docker host IP
     if [ "Darwin" = "`uname`" ]; then
         sudo route delete -net 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 ${_dh}
+        sudo route delete -net 172.18.0.0/24 &>/dev/null;sudo route add -net 172.18.0.0/24 ${_dh}
     elif [ "Linux" = "`uname`" ]; then
         sudo ip route del 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 gw ${_dh} ens3
     else    # Assuming windows (cygwin)
