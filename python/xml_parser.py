@@ -89,7 +89,7 @@ class XmlParser:
             regex = re.compile(ignore_regex)
 
         # create a list contains unique keys
-        for k in list(set(l_dict.keys() + r_dict.keys())):
+        for k in set(l_dict.keys() + r_dict.keys()):
             if regex is not None:
                 if regex.match(k):
                     continue
