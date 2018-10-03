@@ -20,6 +20,7 @@
     "hdfs-site": {
       "properties": {
         "dfs.replication": "1",
+        "dfs.namenode.safemode.extension": "3",
         "dfs.datanode.du.reserved": "536870912"
       }
     }
