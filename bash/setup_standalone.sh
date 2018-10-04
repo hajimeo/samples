@@ -428,7 +428,8 @@ function f_as_start() {
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
     [[ "${_restart}" =~ ^(y|Y) ]] && docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/'${_service}'/bin/${_service}_stop -f"
-    docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/apache-hive/apache_hive.sh; sudo -u ${_service} /usr/local/'${_service}'/bin/${_service}_start"
+    docker exec -d ${_name} bash -c "sudo -u ${_service} /usr/local/apache-hive/apache_hive.sh"
+    docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/'${_service}'/bin/${_service}_start"
 }
 
 function f_as_backup() {
