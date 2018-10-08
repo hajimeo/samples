@@ -2861,6 +2861,7 @@ function f_host_performance() {
     if [ $? -ne 0 ]; then
         sed -i.bak '/^exit 0/i echo never > /sys/kernel/mm/transparent_hugepage/enabled\necho never > /sys/kernel/mm/transparent_hugepage/defrag\n' /etc/rc.local
     fi
+    chmod a+x /etc/rc.local
 }
 
 function f_host_misc() {
