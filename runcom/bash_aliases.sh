@@ -78,9 +78,16 @@ function jp() {
 
 # Mac only: Start Google Chrome in incognito with proxy
 function chromep() {
-    local _url=${1}
-    local _host="${2:-192.168.6.162}"
-    local _port=${3:-28081}
+    local _host_port="${1:-"192.168.6.162:28081"}"
+    local _url=${2}
+
+    local _host="${_host_port}"
+    local _port="28081"
+    if [[ "${_host_port}" =~ ^([0-9.]+):([0-9]+)$ ]]; then
+        _host="${BASH_REMATCH[1]}"
+        _port="${BASH_REMATCH[2]}"
+    fi
+        local _port=${3:-28081}
     [ ! -d $HOME/.chromep/${_host}_${_port} ] && mkdir -p $HOME/.chromep/${_host}_${_port}
     if [ -n "${_url}" ]; then
         if [[ ! "${_url}" =~ ^http ]]; then
@@ -103,7 +110,7 @@ function asftpl() {
         _name="${2}"
     fi
     #ssh -q asftp -t 'cd /home/ubuntu/upload && find . -type f -mtime -2 -size +10240k -name "'${_name}'" -ls | sort -k9,10 | tail -n'${_n}
-    ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lhtr '${_name}'| tail -n'${_n}
+    ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lhtr '${_name}'| tail -n'${_n}';date'
 }
 # Download files from hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
 function asftpd() {
@@ -157,4 +164,19 @@ function sshs() {
     local _cmd="screen -r || screen -ls"
     [ -n "${_session_name}" ] && _cmd="screen -x ${_session_name} || screen -S ${_session_name}"
     ssh ${_user_at_host} -t ${_cmd}
+}
+# backup commands
+function backupC() {
+    local _src="${1:-"$HOME/Documents/cases"}"
+    local _dst="${2:-"hosako@192.168.0.11:/cygdrive/h/hajime/cases"}"
+    [ ! -d "${_src}" ] && return 11
+    [ ! -d "$HOME/.Trash" ] && return 12
+    local _size="10000k"
+    # Delete files larger than _size (10MB) and older than one year
+    find ${_src%/} -type f -mtime +365 -size +${_size} -print0 | xargs -0 -t -n1 -I {} mv {} $HOME/.Trash/ &
+    # Delete files larger than 200MB and older than 90 days
+    find ${_src%/} -type f -mtime +90 -size +200000k -print0 | xargs -0 -t -n1 -I {} mv {} $HOME/.Trash/ &
+    # Synch all files smaller than _size (10MB)
+    rsync -Pvaz --max-size=${_size} --modify-window=1 ${_src%/}/* ${_dst%/}/
+    wait
 }
