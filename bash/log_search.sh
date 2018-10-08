@@ -119,8 +119,8 @@ function p_support() {
 }
 
 function p_performance() {
-    local _date_regex="${1}"
-    local _glob="${2}"
+    local _glob="${1}"
+    local _date_regex="${2}"
     local _n="${3:-20}"
     local _exclude_slow_one="$4"
 
@@ -181,6 +181,8 @@ EOF
         echo "# f_list_start_end (start time, end time, difference(sec), filesize)"
         f_list_start_end "${_glob}" "${_date_regex}"
     fi
+
+    # TODO: hiveserver2.log Total time spent in this metastore function was greater than
 }
 
 function f_checkResultSize() {
@@ -669,10 +671,10 @@ function f_listPerflogEnd() {
         # expecting 5th one is duration after removing start and end time
         #egrep -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k5n
         # removing start and end so that we can easily compare two PERFLOG outputs
-        egrep -wo '</PERFLOG .+>' "$_path" | _sed -r "s/ (start|end)=[0-9]+//g" | sort -t'=' -k3n
+        rg -wo '</PERFLOG .+>' "$_path" | _sed -r "s/ (start|end)=[0-9]+//g" | sort -t'=' -k3n
     else
         # sorting with start time
-        egrep -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k3n
+        rg -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k3n
     fi
 }
 
@@ -1276,7 +1278,7 @@ function _sed() {
     ${_cmd} "$@"
 }
 function _grep() {
-    local _cmd="grep"; which gsed &>/dev/null && _cmd="ggrep"
+    local _cmd="grep"; which grep &>/dev/null && _cmd="ggrep"
     ${_cmd} "$@"
 }
 function _date() {
