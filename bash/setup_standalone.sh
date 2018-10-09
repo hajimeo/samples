@@ -566,7 +566,7 @@ main() {
             elif [ -n "${_image}" ]; then
                 # Re-using existing images but renaming host
                 _log "INFO" "Image ${_image} for ${_NAME}|${_SERVICE}${_ver_num} already exists. Using this ..."; sleep 1
-                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_image}" "${_ports}" "--add-host=${_image}.${_DOMAIN#.}=127.0.0.1" || return $?
+                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_image}" "${_ports}" "--add-host=${_image}.${_DOMAIN#.}:127.0.0.1" || return $?
                 sleep 1
                 if ! $_DOCKER_SAVE && ! $_DOCKER_SAVE_AS_TGZ; then
                     f_as_start "${_NAME}.${_DOMAIN#.}" "${_SERVICE}" "Y"
