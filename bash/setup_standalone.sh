@@ -214,10 +214,11 @@ function f_docker_run() {
     local __doc__="Execute docker run with my preferred options"
     local _hostname="$1"
     local _base="$2"
-    local _ports="${3}" #"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
-    local _stop_other=${4:-${_DOCKER_STOP_OTHER}}
-    local _share_dir_from="${5:-${_WORK_DIR}}"
-    local _share_dir_to="${6:-${_SHARE_DIR}}"
+    local _ports="${3}"      #"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
+    local _extra_opts="${4}" # eg: "--add-host=imagename.standalone:127.0.0.1"
+    local _stop_other=${5:-${_DOCKER_STOP_OTHER}}
+    local _share_dir_from="${6:-${_WORK_DIR}}"
+    local _share_dir_to="${7:-${_SHARE_DIR}}"
     # NOTE: At this moment, removed _ip as it requires a custom network (see start_hdp.sh for how)
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
@@ -252,7 +253,7 @@ function f_docker_run() {
     docker run -t -i -d \
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
         -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} \
-        --privileged --hostname=${_hostname} --name=${_name} ${_base} /sbin/init || return $?
+        --privileged --hostname=${_hostname} --name=${_name} ${_extra_opts} ${_base} /sbin/init || return $?
 }
 
 function p_container_setup() {
@@ -556,20 +557,22 @@ main() {
 
             local _image="$(docker images --format "{{.Repository}}" | grep -E "^(${_NAME}|${_SERVICE}${_ver_num})$")"
             if $_DOCKER_USE_TGZ; then
-                # Creating a new (empty) container
+                # Creating a new (empty) container and restore from a backup
                 f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_OS_VERSION}" "${_ports}" || return $?
                 sleep 1
                 p_container_setup "${_NAME}" || return $?
                 f_as_restore "$_NAME" || return $?
 
             elif [ -n "${_image}" ]; then
+                # Re-using existing images but renaming host
                 _log "INFO" "Image ${_image} for ${_NAME}|${_SERVICE}${_ver_num} already exists. Using this ..."; sleep 1
-                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_image}" "${_ports}" || return $?
+                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_image}" "${_ports}" "--add-host=${_image}.${_DOMAIN#.}=127.0.0.1" || return $?
                 sleep 1
                 if ! $_DOCKER_SAVE && ! $_DOCKER_SAVE_AS_TGZ; then
                     f_as_start "${_NAME}.${_DOMAIN#.}" "${_SERVICE}" "Y"
                 fi
             else
+                # Creating a new (empty) container and install the application
                 f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_OS_VERSION}" "${_ports}" || return $?
                 sleep 1
                 p_container_setup "${_NAME}" || return $?
