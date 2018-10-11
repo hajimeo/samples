@@ -435,7 +435,7 @@ function f_as_start() {
     if [ -n "${_old_hostname}" ]; then
         # NOTE: At this moment, assuming only one postgresql version. Not using 'at' command as minimum time unit is minutes
         _log "INFO" "UPDATE engines SET host='${_hostname}' where default_engine is true AND host='${_old_hostname}'"
-        docker exec -it ${_name} bash -c "cd /usr/local/${_service}/share/postgresql-*;for _i in {1..10}; do LD_LIBRARY_PATH=./lib ./bin/pg_isready -p 10520 -q && break;sleep 2;done;sudo -u ${_service} ./bin/postgres_psql \"-c \\\"UPDATE engines SET host='${_hostname}' where host='${_old_hostname}'\\\"\""
+        docker exec -it ${_name} bash -c "cd /usr/local/${_service}/share/postgresql-*;for _i in {1..10};do sleep 2;LD_LIBRARY_PATH=./lib ./bin/pg_isready -p 10520 -q && break;done;sleep 4;sudo -u ${_service} ./bin/postgres_psql \"-c \\\"UPDATE engines SET host='${_hostname}' where host='${_old_hostname}'\\\"\""
     fi
 }
 
