@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_standalone.sh
 
 function usage() {
     echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>] [-s|-t] [-l /path/to/dev-license.json]
