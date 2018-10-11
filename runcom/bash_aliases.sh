@@ -1,4 +1,4 @@
-### Simple/generic alias commands (some need pip though) ###############################################################
+## Simple/generic alias commands (some need pip though) ################################################################
 # cd to the last modified dir
 alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
 alias urldecode='python -c "import sys, urllib as ul; print ul.unquote_plus(sys.argv[1])"'
@@ -29,10 +29,31 @@ alias webs='cd ~/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 3808
 
 # Work specific aliases
 alias asS3='s3cmd ls s3://files.atscale.com/installer/package/ | grep -E "atscale-[56789].+latest-el6\.x86_64\.tar\.gz$"'    # TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
-alias asPupInst='scp -C ~/IdeaProjects/samples/atscale/install_atscale.sh root@192.168.6.162:/var/tmp/share/atscale/ & scp -C ~/IdeaProjects/samples/atscale/install_atscale.sh root@192.168.0.31:/var/tmp/share/atscale/ & scp -C ~/IdeaProjects/samples/atscale/install_atscale.sh root@192.168.6.160:/var/tmp/share/atscale/'
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
+# Grep against jar file to find a class ($1)
+function jargrep() {
+    local _cmd="jar -tf"
+    which jar &>/dev/null || _cmd="less"
+    find -L ${2:-./} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c ''${_cmd}' {} | grep -wi '$1' && echo {}'
+}
+function javaenvs() {
+    local _port="${1}"
+    local _p=`lsof -ti:${_port}`
+    if [ -z "${_p}" ]; then
+        echo "Nothing running on port ${_port}"
+        return 11
+    fi
+    local _user="`stat -c '%U' /proc/${_p}`"
+    local _dir="$(dirname `readlink /proc/${_p}/exe` 2>/dev/null)"
+    export JAVA_HOME="$(dirname $_dir)"
+    export CLASSPATH=".:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+}
+# Grep file(s) with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
+function bar() {
+    ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
+}
 # Start Jupyter Notebook with Aggregation template (and backup-ing)
 function jp() {
     local _id="${1}"
@@ -75,7 +96,6 @@ function jp() {
 
     jupyter lab --ip='localhost' --port=${_port} &
 }
-
 # Mac only: Start Google Chrome in incognito with proxy
 function chromep() {
     local _host_port="${1:-"192.168.6.162:28081"}"
@@ -99,51 +119,6 @@ function chromep() {
     #nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir=$HOME/.chromep/${_host}_${_port} --proxy-server="socks5://${_host}:${_port}" ${_url} &>/tmp/chrome.out &
     open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/${_host}_${_port} --proxy-server=socks5://${_host}:${_port} ${_url}
     echo 'open -na "Google Chrome" --args --user-data-dir=$(mktemp -d) --proxy-server=socks5://'${_host}':'${_port}' '${_url}
-}
-
-# List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
-function asftpl() {
-    local _name="${1}"
-    local _n="${2:-20}"
-    if [[ "$1" =~ ^[0-9]+$ ]]; then
-        _n=$1
-        _name="${2}"
-    fi
-    #ssh -q asftp -t 'cd /home/ubuntu/upload && find . -type f -mtime -2 -size +10240k -name "'${_name}'" -ls | sort -k9,10 | tail -n'${_n}
-    ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lhtr '${_name}'| tail -n'${_n}';date'
-}
-# Download files from hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
-function asftpd() {
-    [ -z "$1" ] && ( asftpl; return 1 )
-    for _a in "$@"; do
-        local _ext="${_a##*.}"
-        local _rsync_opts="-Phz"
-        [[ "${_ext}" =~ ^gz|zip|tgz$ ]] && _rsync_opts="-Ph"
-        rsync ${_rsync_opts} asftp:"/home/ubuntu/upload/$_a" ./
-    done
-}
-function asDocSync() {
-    local _server="$1"
-    local _loginas="${2:-root}"
-    rsync -Phrz ${_loginas}@${_server}:/usr/local/atscale/apps/modeler/assets/modeler/public/docs/* ~/Public/atscale_latest/
-    cd ~/Public/atscale_latest/ && patch -p0 -b < ~/IdeaProjects/samples/misc/doc_index.patch
-}
-
-# Grep against jar file to find a class ($1)
-function jargrep() {
-    local _cmd="jar -tf"
-    which jar &>/dev/null || _cmd="less"
-    find -L ${2:-./} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c ''${_cmd}' {} | grep -wi '$1' && echo {}'
-}
-function javacp() {
-    local _pid="$1"
-    local _user="`stat -c '%U' /proc/${_pid}`" || return $?
-    local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
-    sudo -u ${_user} ${_cmd_dir}/jcmd ${_pid} VM.system_properties | grep '^java.class.path=' | sed 's/\\:/:/g' | cut -d"=" -f 2
-}
-# Grep file(s) with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
-function bar() {
-    ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
 }
 # Add route to dockerhost to access containers directly
 function r2dh() {
@@ -179,4 +154,40 @@ function backupC() {
     # Synch all files smaller than _size (10MB)
     rsync -Pvaz --max-size=${_size} --modify-window=1 ${_src%/}/* ${_dst%/}/
     wait
+}
+
+## Work specific functions
+# copy script(s) into linux servers
+function asPupInst() {
+    for _h in "192.168.6.160" "192.168.6.162" "192.168.0.31"; do
+        scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh root@${_h}:/var/tmp/share/atscale/ &
+    done
+    wait
+}
+# List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
+function asftpl() {
+    local _name="${1}"
+    local _n="${2:-20}"
+    if [[ "$1" =~ ^[0-9]+$ ]]; then
+        _n=$1
+        _name="${2}"
+    fi
+    #ssh -q asftp -t 'cd /home/ubuntu/upload && find . -type f -mtime -2 -size +10240k -name "'${_name}'" -ls | sort -k9,10 | tail -n'${_n}
+    ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lhtr '${_name}'| tail -n'${_n}';date'
+}
+# Download files from hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
+function asftpd() {
+    [ -z "$1" ] && ( asftpl; return 1 )
+    for _a in "$@"; do
+        local _ext="${_a##*.}"
+        local _rsync_opts="-Phz"
+        [[ "${_ext}" =~ ^gz|zip|tgz$ ]] && _rsync_opts="-Ph"
+        rsync ${_rsync_opts} asftp:"/home/ubuntu/upload/$_a" ./
+    done
+}
+function asDocSync() {
+    local _server="$1"
+    local _loginas="${2:-root}"
+    rsync -Phrz ${_loginas}@${_server}:/usr/local/atscale/apps/modeler/assets/modeler/public/docs/* ~/Public/atscale_latest/
+    cd ~/Public/atscale_latest/ && patch -p0 -b < ~/IdeaProjects/samples/misc/doc_index.patch
 }
