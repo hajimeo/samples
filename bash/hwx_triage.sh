@@ -107,7 +107,7 @@ function f_check_process() {
     fi
 
     local _user="`stat -c '%U' /proc/${_p}`"
-    local _cmd_dir="$(dirname `readlink /proc/${_p}/exe`)" 2>/dev/null
+    local _cmd_dir="$(dirname `readlink /proc/${_p}/exe` 2>/dev/null)"
     # In case, java is JRE, use JAVA_HOME
     if [ ! -x "${_cmd_dir}/jstack" ] && [ -d "$JAVA_HOME" ]; then
         _cmd_dir="$JAVA_HOME/bin" 2>/dev/null
