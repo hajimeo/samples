@@ -426,11 +426,17 @@ function f_as_start() {
     local _hostname="$1"
     local _service="${2:-${_SERVICE}}"
     local _restart="${3}"
+    local _old_hostname="${4}"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    [[ "${_restart}" =~ ^(y|Y) ]] && docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/'${_service}'/bin/${_service}_stop -f"
+    [[ "${_restart}" =~ ^(y|Y) ]] && docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_stop -f"
     docker exec -d ${_name} bash -c "sudo -u ${_service} /usr/local/apache-hive/apache_hive.sh"
-    docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/'${_service}'/bin/${_service}_start"
+    docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_start"
+    # Update hostname if old hostname is given
+    if [ -n "${_old_hostname}" ]; then
+        # NOTE: At this moment, assuming only one postgresql version
+        docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/share/postgresql-*/bin/postgres_psql \"-c \\\"UPDATE engines SET host='${_hostname}' where default_engine is true AND host='${_old_hostname}'\\\"\""
+    fi
 }
 
 function f_as_backup() {
@@ -566,10 +572,16 @@ main() {
             elif [ -n "${_image}" ]; then
                 # Re-using existing images but renaming host
                 _log "INFO" "Image ${_image} for ${_NAME}|${_SERVICE}${_ver_num} already exists. Using this ..."; sleep 1
-                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_image}" "${_ports}" "--add-host=${_image}.${_DOMAIN#.}:127.0.0.1" || return $?
+                local _add_host=""
+                local _old_hostname=""
+                if [ "${_NAME}" != "${_image}" ]; then
+                    _add_host="--add-host=${_image}.${_DOMAIN#.}:127.0.0.1"
+                    _old_hostname="${_image}.${_DOMAIN#.}"
+                fi
+                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_image}" "${_ports}" "${_add_host}" || return $?
                 sleep 1
                 if ! $_DOCKER_SAVE && ! $_DOCKER_SAVE_AS_TGZ; then
-                    f_as_start "${_NAME}.${_DOMAIN#.}" "${_SERVICE}" "Y"
+                    f_as_start "${_NAME}.${_DOMAIN#.}" "${_SERVICE}" "Y" "${_old_hostname}"
                 fi
             else
                 # Creating a new (empty) container and install the application
