@@ -85,47 +85,6 @@ function f_setup_jupyter() {
     # TODO: sudo -i jupyter labextension install @ijmbarr/jupyterlab_spellchecker
 }
 
-function f_jp(){
-    local _id="${1}"
-    local _backup_dir="${2-$HOME/backup/jupyter-notebook}"
-    local _template="${3-Aggregation.ipynb}"
-    local _sleep="${4:-180}"
-    local _port="${5:-8889}"
-
-    if [ -n "${_backup_dir}" ] && [ ! -d "${_backup_dir}" ]; then
-        mkdir -p "${_backup_dir}" || return 11
-    fi
-
-    [ -n "${_id}" ] && _id="_${_id}"
-
-    if [ -d "${_backup_dir}" ]; then
-        # http://ipython.org/ipython-doc/1/config/overview.html#startup-files
-        if [ ! -f ~/.ipython/profile_default/startup/${_template%.*}.ipy ] && [ -s ${_backup_dir%/}/${_template%.*}.ipy ]; then
-            cp ${_backup_dir%/}/${_template%.*}.ipy ~/.ipython/profile_default/startup/${_template%.*}.ipy
-        fi
-
-        [ -s "${_backup_dir%/}/${_template}" ] && cp -f "${_backup_dir%/}/${_template}" ./${_template%.*}${_id}.ipynb
-        while true; do
-            sleep ${_sleep}
-            if [  "`ls -1 ./*.ipynb 2>/dev/null | wc -l`" -gt 0 ]; then
-                rsync -a --exclude="Untitled.ipynb" ./*.ipynb "${_backup_dir%/}/" || break
-                # TODO: if no ipynb file to backup, should break?
-            fi
-            if ! lsof -ti:${_port} &>/dev/null; then
-                if [ -d ~/.Trash ]; then
-                    mv -f ${_template%.*}${_id}.ipynb ~/.Trash/
-                else
-                    mv -f ${_template%.*}${_id}.ipynb /tmp/
-                fi
-                break
-            fi
-        done &
-    fi
-
-    jupyter lab --ip='*' --port=${_port} --no-browser &
-}
-
-
 function _install() {
     if which apt-get &>/dev/null; then
         sudo apt-get install "$@" || return $?
