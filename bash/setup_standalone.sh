@@ -433,8 +433,8 @@ function f_as_start() {
     docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_start"
     # Update hostname if old hostname is given
     if [ -n "${_old_hostname}" ]; then
-        # NOTE: At this moment, assuming only one postgresql version
-        docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/share/postgresql-*/bin/postgres_psql \"-c \\\"UPDATE engines SET host='${_hostname}' where default_engine is true AND host='${_old_hostname}'\\\"\""
+        # NOTE: At this moment, assuming only one postgresql version. Not using 'at' command as minimum time unit is minutes
+        docker exec -it ${_name} bash -c "for _i in {1..10}; do lsof -ti:10520 -s TCP:LISTEN &>/dev/null && break;sleep 2;done;sudo -u ${_service} /usr/local/${_service}/share/postgresql-*/bin/postgres_psql \"-c \\\"UPDATE engines SET host='${_hostname}' where default_engine is true AND host='${_old_hostname}'\\\"\""
     fi
 }
 
