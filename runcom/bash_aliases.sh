@@ -9,6 +9,7 @@ alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
 alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
+# head and tail of currrent directory's files
 alias ht='for _f in `ls -1tr`; do echo "$_f"; head -n1 $_f | sed "s/^/  /"; tail -n1 $_f | sed "s/^/  /"; done'
 
 
@@ -54,7 +55,12 @@ function javaenvs() {
 function bar() {
     ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
 }
-# Start Jupyter Notebook with Aggregation template (and backup-ing)
+# Start Jupyter Lab as service
+function jpl() {
+    local _dir="${1:-"$HOME/Documents"}"
+    nohup jupyter lab --ip=`hostname -i` --no-browser --notebook-dir="${_dir%/}" 2>&1 | tee /tmp/jupyter_lab.out | grep -m1 -oE "http://`hostname -i`:.+token=.+" &
+}
+# Start Jupyter Lab with Aggregation template (and backup-ing)
 function jp() {
     local _id="${1}"
     local _backup_dir="${2-$HOME/backup/jupyter-notebook}"
