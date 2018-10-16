@@ -44,7 +44,6 @@ Or
 
 function p_support() {
     local __doc__="Scan a support bundle"
-    local _regex="$1"
 
     echo "# Version information"
     echo "## version files"
@@ -120,6 +119,10 @@ function p_support() {
 
     echo "# Engine start/restart"
     rg --search-zip -g 'engine*log*' 'Using AtScale Configuration'
+
+    echo " "
+    echo "# WARNs in warn.log (if exists)"
+    f_listWarns "warn.log"
 }
 
 function p_performance() {
