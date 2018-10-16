@@ -2197,7 +2197,7 @@ function f_sed_after_repo_download() {
     ls -lh ${_dir%/}/*.{repo,xml}*
     local _url="`sed -nr 's/^[^#]+(http.+'$(hostname -i)'.+)/\1/p' ${_dir%/}/*.repo | head -n1`"
     _info "Testing $_url ..."
-    curl -kIL "${_url}"
+    curl -kILf "${_url}"
 }
 
 function f_local_repo() {
