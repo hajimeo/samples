@@ -83,9 +83,9 @@ function p_support() {
     #echo " "
     #echo " "
 
-    echo "# Connection pool"    # TODO: use connection_groups.json
+    echo "# Connection group"
     _find_and_cat "connection_groups.json" | python -m json.tool
-    echo "--------------------------------"
+    echo "# Connection pool"
     _find_and_cat "pool.json"   # check maxConnections, consecutiveFailures
     echo " "
     echo " "
@@ -115,7 +115,11 @@ function p_support() {
 
     echo "# tableSizes.tsv 10 large tables (by num rows)"
     _find_and_cat "tableSizes.tsv" | sort -n -k2 | tail -n 10
+    echo "# Number of lines: "$(_find_and_cat "tableSizes.tsv" | wc -l)
     echo " "
+
+    echo "# Engine start/restart"
+    rg --search-zip -g 'engine*log*' 'Using AtScale Configuration'
 }
 
 function p_performance() {
@@ -435,7 +439,7 @@ function f_topCausedByExceptions() {
 
 function f_topErrors() {
     local __doc__="List top ERRORs. NOTE: with _date_from and without may produce different result (ex: Caused by)"
-    local _glob="${1:-engine*.log*}"        # file path which rg accepts and NEEDS double-quotes
+    local _glob="${1:-"engine*.log*"}"        # file path which rg accepts and NEEDS double-quotes
     local _date_from="$2"   # ISO format datetime
     local _date_to="$3"     # ISO format datetime
     local _regex="$4"       # to overwrite default regex to detect ERRORs
@@ -473,6 +477,21 @@ function f_topErrors() {
     fi
 
     cat "/tmp/f_topErrors.$$.tmp" | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
+}
+
+function f_listWarns() {
+    local __doc__="List warns to see the pattern difference"
+    local _glob="${1:-"warn*.log*"}"
+    local _date_4_bar="${2:-"\\d\\d\\d\\d-\\d\\d-\\d\\d \\d\\d"}"
+    local _cut_at="${3:-200}"
+    local _top_N="${4:-30}"
+
+    #rg --search-zip -c -g "${_glob}" "${_regex}"
+    rg --search-zip --no-line-number --no-filename -g "${_glob}" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d WARN .+ - (.+)" > /tmp/f_listWarns.$$.tmp
+
+    rg "WARN .+ - (.+)" -o -r '$1' /tmp/f_listWarns.$$.tmp | _replace_number | cut -c 1-${_cut_at} | sort | uniq -c | sort -n | tail -n ${_top_N}
+    echo " "
+    rg -o "^${_date_4_bar}" /tmp/f_listWarns.$$.tmp | bar_chart.py
 }
 
 function f_topSlowLogs() {
@@ -1250,6 +1269,7 @@ function _find_and_cat() {
 function _replace_number() {
     _sed -r "s/[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+/__UUID__/g" \
      | _sed -r "s/0x[0-9a-f][0-9a-f]+/0x_HEX_/g" \
+     | _sed -r "s/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]/_HEX_/g" \
      | _sed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/_DATE_ /g" \
      | _sed -r "s/[0-2][0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/_TIME_/g" \
      | _sed -r "s/-[0-9]+\]\s+\{/-N] {/g" \
