@@ -2186,8 +2186,8 @@ function f_etcs_mount() {
 
 function f_sed_after_repo_download() {
     local _dir="${1:-./}"   # /var/www/html/hdp/HDP/centos7/3.x/updates/3.0.0.0
-    local _subdir="${2:-hdp}"
-    local _web_host="${3:-`hostname -i`}"
+    local _web_host="${2:-`hostname -i`}"
+    local _subdir="${3:-hdp}"
     [ -n "${_subdir}" ] && _subdir='\/'${_subdir%/}
 
     # TODO: ambari has #json.url and below also change this url. Is it OK?
@@ -2195,13 +2195,13 @@ function f_sed_after_repo_download() {
     sed -i.$$.bak 's/public-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.repo || return $?
     sed -i.$$.bak 's/public-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.xml
     ls -lh ${_dir%/}/*.{repo,xml}*
-    local _url="`sed -nr 's/^[^#]+(http.+'$(hostname -i)'.+)/\1/p' ${_dir%/}*.repo | head -n1`"
+    local _url="`sed -nr 's/^[^#]+(http.+'$(hostname -i)'.+)/\1/p' ${_dir%/}/*.repo | head -n1`"
     _info "Testing $_url ..."
     curl -kIL "${_url}"
 }
 
 function f_local_repo() {
-    local __doc__="Setup local repo on Docker host (Ubuntu). Please populate r_HDP_REPO_TARGZ and r_HDP_REPO_UTIL_TARGZ"
+    local __doc__="Setup local repo on Docker host (Ubuntu). Please populate r_HDP_REPO_TARGZ"
     local _local_dir="${1:-${r_HDP_REPO_DIR:-/var/www/html/hdp}}"
     local _document_root="${2:-/var/www/html}"
     local _app_ver="${3:-$r_HDP_REPO_VER}"
@@ -2243,8 +2243,11 @@ function f_local_repo() {
     fi
 
     local _tar_gz_filepath="${_local_dir%/}/`basename "$r_HDP_REPO_TARGZ"`"
+    local _baseurl="$(dirname "$r_HDP_REPO_TARGZ")"
+    [[ "${_baseurl}" =~ ^https?://[^/]+(.+)$ ]]
+    local _baseurl_path="${BASH_REMATCH[1]}"
     local _has_extracted=""
-    local _hdp_dir="`find ${_local_dir%/} -type d | grep -m1 -E "/${_os_type}/.+?/${_app_ver}$"`"
+    local _hdp_dir="`find ${_local_dir%/} -type d | grep -m1 -E "/${_os_type}/.*${_app_ver}"`"
 
     if _isNotEmptyDir "$_hdp_dir"; then
         # If the final destination directory already exists, not downloading and not extracting
@@ -2270,64 +2273,32 @@ function f_local_repo() {
     fi
 
     if ! _isYes "$_has_extracted"; then
-        tar -xv -C ${_local_dir%/} -f "$_tar_gz_filepath" -C
-        _hdp_dir="`find ${_local_dir%/} -type d | grep -m1 -E "/${_os_type}/.+?/${_app_ver}$"`"
+        tar -xv -C ${_local_dir%/} -f "$_tar_gz_filepath"
+        _hdp_dir="`find ${_local_dir%/} -type d | grep -m1 -E "/${_os_type}/.*${_app_ver}"`"
         # No longer needed?
         #createrepo "$_hdp_dir" # --update
         if [ -z "${_hdp_dir}" ]; then
-            _error "Do not find '/${_os_type}/.+?/${_app_ver}' under ${_local_dir%/}"
+            _error "Do not find '/${_os_type}/.*${_app_ver}' under ${_local_dir%/}"
             return 1
         fi
     fi
 
-    if [ -n "$r_HDP_REPO_UTIL_TARGZ" ]; then
-        local _util_tar_gz_filepath="${_local_dir%/}/`basename "$r_HDP_REPO_UTIL_TARGZ"`"
-        local _util_has_extracted=""
-        # TODO: not accurate
-        local _hdp_util_dir="`find ${_local_dir%/} -type d | grep -m1 -E "/HDP-UTILS-.+?/${_os_type}$"`"
-
-        if _isNotEmptyDir "$_hdp_util_dir"; then
-            if ! _isYes "$_force_extract"; then
-                _util_has_extracted="Y"
-            fi
-            _info "$_hdp_util_dir already exists and not empty. Skipping download."
-        elif [ -s "$_util_tar_gz_filepath" ]; then
-            _info "$_util_tar_gz_filepath already exists. Skipping download."
-        else
-            curl -f -C - --retry 60 "$r_HDP_REPO_UTIL_TARGZ" -o "$_util_tar_gz_filepath" || return $?
-        fi
-
-        if ! _isYes "$_util_has_extracted"; then
-            tar -xv -C ${_local_dir%/} -f "$_util_tar_gz_filepath"
-            _hdp_util_dir="`find ${_local_dir%/} -type d | grep -m1 -E "/HDP-UTILS-.+?/${_os_type}$"`"
-            #createrepo "$_hdp_util_dir"
-            if [ -z "${_hdp_util_dir}" ]; then
-                _error "Do not find '/HDP-UTILS-.+?/${_os_type}' under ${_local_dir%/}"
-                return 1
-            fi
-        fi
-    else
-        _warn "No url set in r_HDP_REPO_UTIL_TARGZ, so not downloading UTILS"
+    # recreate symlink
+    if [ -L "${_local_dir%/}${_baseurl_path}" ]; then
+        rm -f "${_local_dir%/}${_baseurl_path}" || return $?
     fi
+    ln -s "${_hdp_dir%/}" "${_local_dir%/}${_baseurl_path}" || return $?
+
+    # Removed HDP-UTILS as it's small since .22
 
     # Just in case
     service apache2 start
 
     local _repo_host="`hostname -i`"
     [ -n "$r_DOCKER_PRIVATE_HOSTNAME" ] && _repo_host="$r_DOCKER_PRIVATE_HOSTNAME"
-    local _path_diff="${_local_dir#${_document_root}}"
-    _path_diff="/${_path_diff#/}"
-    local _repo_path="${_path_diff%/}${_hdp_dir#\.}"
-    echo "### Local Repo URL: http://${_repo_host}${_repo_path}"
-    r_HDP_REPO_URL="http://${_repo_host}${_repo_path}"
-    f_sed_after_repo_download "${_repo_path}"
-
-    if [ -n "${_hdp_util_dir}" ]; then
-        local _util_repo_path="${_path_diff%/}${_hdp_util_dir#\.}"
-        echo "### Local Repo URL: http://${_repo_host}${_util_repo_path}"
-        r_HDP_UTIL_URL="http://${_repo_host}${_util_repo_path}"
-        f_sed_after_repo_download "${_util_repo_path}"
-    fi
+    local _repo_path="${_hdp_dir#${_document_root}}"
+    r_HDP_REPO_URL="http://${_repo_host%/}${_repo_path}"
+    f_sed_after_repo_download "${_hdp_dir}" "${_repo_host}"
 }
 
 function f_ambari_set_repo() {
