@@ -59,16 +59,17 @@ function f_setup_jupyter() {
     fi
 
     if ! which pip3 &>/dev/null && ! _install python3-pip -y; then
-        _log "ERROR" "no pip installed or not in PATH"
+        _log "ERROR" "no pip installed or not in PATH (sudo easy_install pip)"
         return 1
     fi
 
     ### Pip(3) ############################################################
     # TODO: should use vertualenv?
     #virtualenv myenv && source myenv/bin/activate
-    sudo -i pip3 install --upgrade pip &>/dev/null
-
-    sudo -i pip3 list --o | tee /tmp/pip.log
+    #sudo -i pip3 install -U pip &>/dev/null
+    # outdated list
+    sudo -i pip3 list -o | tee /tmp/pip.log
+    #sudo -i pip3 list -o --format=freeze | cut -d'=' -f1 | xargs sudo -i pip3 install -U
 
     # TODO: is jupyter deprecated?
     sudo -i pip3 install jupyter --log /tmp/pip.log &>/dev/null || return $?
