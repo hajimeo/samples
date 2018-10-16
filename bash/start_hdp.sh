@@ -2201,9 +2201,13 @@ function f_sed_after_repo_download() {
 }
 
 function f_local_repo() {
-    local __doc__="TODO: Setup local repo on Docker host (Ubuntu)"
-    local _local_dir="${1-/var/www/html/hdp}"
-    local _document_root="${2-/var/www/html}"
+    local __doc__="Setup local repo on Docker host (Ubuntu). Please populate r_HDP_REPO_TARGZ and r_HDP_REPO_UTIL_TARGZ"
+    local _local_dir="${1:-${r_HDP_REPO_DIR:-/var/www/html/hdp}}"
+    local _document_root="${2:-/var/www/html}"
+    local _app_ver="${3:-$r_HDP_REPO_VER}"
+    local _os_type="${4}"   # if not set, will use centos7
+    local _app="${5:-HDP}"
+
     local _force_extract=""
     local _download_only=""
 
@@ -2214,50 +2218,51 @@ function f_local_repo() {
 
     apt-get install -y apache2 createrepo
 
-    if [ -z "$r_HDP_REPO_TARGZ" ]; then
-        _error "Please specify HDP repo *tar.gz* file URL"
+    if [ -z "${_app_ver}" ]; then
+        _error "Please specify ${_app} version (r_HDP_REPO_VER)"
         return 1
     fi
 
-    if [ -z "$_local_dir" ]; then
-        if [ -z "$r_HDP_REPO_DIR" ]; then
-            _warn "HDP local repository dirctory is not specified. Using /var/www/html/hdp"
-            _local_dir="/var/www/html/hdp"
+    if [ -z "${_os_type}" ]; then
+        if [ -n "$r_CONTAINER_OS_VER" ] && [ -n "$r_CONTAINER_OS" ]; then
+            _os_type="${r_CONTAINER_OS}${r_CONTAINER_OS_VER%%.*}"
         else
-            _local_dir="$r_HDP_REPO_DIR"
+            _os_type="centos7"
+            _warn "Using 'centos7' to set up the local repo"; sleep 3
         fi
     fi
 
-    if [ ! -d "$_local_dir" ]; then
-        # Making directory for Apache2
-        mkdir -p -m 777 $_local_dir
+    # Expecting r_HDP_REPO_TARGZ is always set, but if empty, trying to create an URL
+    if [ -z "$r_HDP_REPO_TARGZ" ]; then
+        r_HDP_REPO_TARGZ="http://public-repo-1.hortonworks.com/${_app}/${_os_type}/${_app_ver%%.*}.x/updates/${_app_ver}/${_app}-${_app_ver}-${_os_type}-rpm.tar.gz"
     fi
 
-    cd "$_local_dir" || return 1
+    if [ ! -d "${_local_dir}" ]; then
+        # Making directory for Apache2
+        mkdir -p -m 777 "${_local_dir}" || return $?
+    fi
 
-    local _tar_gz_file="`basename "$r_HDP_REPO_TARGZ"`"
+    local _tar_gz_filepath="${_local_dir%/}/`basename "$r_HDP_REPO_TARGZ"`"
     local _has_extracted=""
-    local _repo_os_ver="${r_CONTAINER_OS_VER%%.*}"
-    local _hdp_dir="`find . -type d | grep -m1 -E "/${r_CONTAINER_OS}${_repo_os_ver}/.+?/${r_HDP_REPO_VER}$"`"
+    local _hdp_dir="`find ${_local_dir%/} -type d | grep -m1 -E "/${_os_type}/.+?/${_app_ver}$"`"
 
     if _isNotEmptyDir "$_hdp_dir"; then
+        # If the final destination directory already exists, not downloading and not extracting
         if ! _isYes "$_force_extract"; then
             _has_extracted="Y"
         fi
-        _info "$_hdp_dir already exists and not empty. Skipping download."
-    elif [ -e "$_tar_gz_file" ]; then
-        _info "$_tar_gz_file already exists. Skipping download."
-    elif [ -e "${_local_dir%/}/$_tar_gz_file" ]; then
-        _info "${_local_dir%/}/$_tar_gz_file already exists. Skipping download."
-        _tar_gz_file="${_local_dir%/}/$_tar_gz_file"
+        _info "$_hdp_dir already exists and not empty. Skipping download..."
+    elif [ -s "${_tar_gz_filepath}" ]; then
+        # If the file already exists and not empty, not downloading
+        _info "${_tar_gz_filepath} already exists. Skipping download."
     else
-        if ! _isEnoughDisk "/$_local_dir" "10"; then
+        # If the file does not exist or empty, and if enough disk space, downloading (and extract later)
+        if ! _isEnoughDisk "$_local_dir" "20"; then
             _error "Not enough space to download $r_HDP_REPO_TARGZ"
             return 1
         fi
 
-        #curl --limit-rate 200K --retry 20 -C - "$r_HDP_REPO_TARGZ" -o $_tar_gz_file
-        wget -nv -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_TARGZ"
+        curl -f --retry 100 -C - "$r_HDP_REPO_TARGZ" -o "${_tar_gz_filepath}" || return $?
     fi
 
     if _isYes "$_download_only"; then
@@ -2265,50 +2270,64 @@ function f_local_repo() {
     fi
 
     if ! _isYes "$_has_extracted"; then
-        tar xzvf "$_tar_gz_file"
-        _hdp_dir="`find . -type d | grep -m1 -E "/${r_CONTAINER_OS}${_repo_os_ver}/.+?/${r_HDP_REPO_VER}$"`"
-        createrepo "$_hdp_dir" # --update
-    fi
-
-    local _util_tar_gz_file="`basename "$r_HDP_REPO_UTIL_TARGZ"`"
-    local _util_has_extracted=""
-    # TODO: not accurate
-    local _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?/${r_CONTAINER_OS}${_repo_os_ver}$"`"
-
-    if _isNotEmptyDir "$_hdp_util_dir"; then
-        if ! _isYes "$_force_extract"; then
-            _util_has_extracted="Y"
+        tar -xv -C ${_local_dir%/} -f "$_tar_gz_filepath" -C
+        _hdp_dir="`find ${_local_dir%/} -type d | grep -m1 -E "/${_os_type}/.+?/${_app_ver}$"`"
+        # No longer needed?
+        #createrepo "$_hdp_dir" # --update
+        if [ -z "${_hdp_dir}" ]; then
+            _error "Do not find '/${_os_type}/.+?/${_app_ver}' under ${_local_dir%/}"
+            return 1
         fi
-        _info "$_hdp_util_dir already exists and not empty. Skipping download."
-    elif [ -e "$_util_tar_gz_file" ]; then
-        _info "$_util_tar_gz_file already exists. Skipping download."
+    fi
+
+    if [ -n "$r_HDP_REPO_UTIL_TARGZ" ]; then
+        local _util_tar_gz_filepath="${_local_dir%/}/`basename "$r_HDP_REPO_UTIL_TARGZ"`"
+        local _util_has_extracted=""
+        # TODO: not accurate
+        local _hdp_util_dir="`find ${_local_dir%/} -type d | grep -m1 -E "/HDP-UTILS-.+?/${_os_type}$"`"
+
+        if _isNotEmptyDir "$_hdp_util_dir"; then
+            if ! _isYes "$_force_extract"; then
+                _util_has_extracted="Y"
+            fi
+            _info "$_hdp_util_dir already exists and not empty. Skipping download."
+        elif [ -s "$_util_tar_gz_filepath" ]; then
+            _info "$_util_tar_gz_filepath already exists. Skipping download."
+        else
+            curl -f -C - --retry 60 "$r_HDP_REPO_UTIL_TARGZ" -o "$_util_tar_gz_filepath" || return $?
+        fi
+
+        if ! _isYes "$_util_has_extracted"; then
+            tar -xv -C ${_local_dir%/} -f "$_util_tar_gz_filepath"
+            _hdp_util_dir="`find ${_local_dir%/} -type d | grep -m1 -E "/HDP-UTILS-.+?/${_os_type}$"`"
+            #createrepo "$_hdp_util_dir"
+            if [ -z "${_hdp_util_dir}" ]; then
+                _error "Do not find '/HDP-UTILS-.+?/${_os_type}' under ${_local_dir%/}"
+                return 1
+            fi
+        fi
     else
-        wget -nv -c -t 20 --timeout=60 --waitretry=60 "$r_HDP_REPO_UTIL_TARGZ"
+        _warn "No url set in r_HDP_REPO_UTIL_TARGZ, so not downloading UTILS"
     fi
 
-    if ! _isYes "$_util_has_extracted"; then
-        tar xzvf "$_util_tar_gz_file"
-        _hdp_util_dir="`find . -type d | grep -m1 -E "/HDP-UTILS-.+?/${r_CONTAINER_OS}${_repo_os_ver}$"`"
-        createrepo "$_hdp_util_dir"
-    fi
-
-    cd - &>/dev/null
-
+    # Just in case
     service apache2 start
 
-    if [ -n "$r_DOCKER_PRIVATE_HOSTNAME" ]; then
-        local _path_diff="${_local_dir#${_document_root}}"
-        _path_diff="/${_path_diff#/}"
-        local _repo_path="${_path_diff%/}${_hdp_dir#\.}"
-        echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}"
+    local _repo_host="`hostname -i`"
+    [ -n "$r_DOCKER_PRIVATE_HOSTNAME" ] && _repo_host="$r_DOCKER_PRIVATE_HOSTNAME"
+    local _path_diff="${_local_dir#${_document_root}}"
+    _path_diff="/${_path_diff#/}"
+    local _repo_path="${_path_diff%/}${_hdp_dir#\.}"
+    echo "### Local Repo URL: http://${_repo_host}${_repo_path}"
+    r_HDP_REPO_URL="http://${_repo_host}${_repo_path}"
+    f_sed_after_repo_download "${_repo_path}"
+
+    if [ -n "${_hdp_util_dir}" ]; then
         local _util_repo_path="${_path_diff%/}${_hdp_util_dir#\.}"
-        echo "### Local Repo URL: http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
-
-        r_HDP_REPO_URL="http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_repo_path}"
-        r_HDP_UTIL_URL="http://${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}${_util_repo_path}"
+        echo "### Local Repo URL: http://${_repo_host}${_util_repo_path}"
+        r_HDP_UTIL_URL="http://${_repo_host}${_util_repo_path}"
+        f_sed_after_repo_download "${_util_repo_path}"
     fi
-
-    _info "Please run 'f_sed_after_repo_download' with proper arguments"
 }
 
 function f_ambari_set_repo() {
