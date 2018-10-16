@@ -2192,8 +2192,8 @@ function f_sed_after_repo_download() {
 
     # TODO: ambari has #json.url and below also change this url. Is it OK?
     [ -f ${_dir%/}/index.html ] && mv ${_dir%/}/index.html ${_dir%/}/index.html.orig
-    sed -i.$$.bak 's/public-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.repo || return $?
-    sed -i.$$.bak 's/public-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.xml
+    sed -i.$(date +"%Y%m%d%H%M%S") 's/public-repo-1.hortonworks.com\/HDP\//'${_web_host}${_subdir%/}'\/HDP\//g' ${_dir%/}/*.repo || return $?
+    sed -i.$(date +"%Y%m%d%H%M%S") 's/public-repo-1.hortonworks.com\/HDP\//'${_web_host}${_subdir%/}'\/HDP\//g' ${_dir%/}/*.xml
     ls -lh ${_dir%/}/*.{repo,xml}*
     local _url="`sed -nr 's/^[^#]+(http.+'$(hostname -i)'.+)/\1/p' ${_dir%/}/*.repo | head -n1`"
     _info "Testing $_url ..."
