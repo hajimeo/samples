@@ -9,8 +9,6 @@ alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
 alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
-# head and tail of currrent directory's files
-alias ht='for _f in `ls -1tr`; do echo "$_f"; head -n1 $_f | sed "s/^/  /"; tail -n1 $_f | sed "s/^/  /"; done'
 
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
@@ -33,6 +31,29 @@ alias asS3='s3cmd ls s3://files.atscale.com/installer/package/ | grep -E "atscal
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
+# head and tail of one file
+function ht() {
+    local _f="$1"
+    local _tac="tac"
+    which gtac &>/dev/null && _tac="gtac"
+    grep -E '^[0-9]' -m 1 ${_f}
+    ${_tac} ${_f} | grep -E '^[0-9]' -m 1
+}
+
+# cat some.json | pjson | less (or vim -)
+function pjson() {
+    local _max_length="${1:-16384}"
+    local _sort_keys="False"; [[ "$2" =~ (y|Y) ]] && _sort_keys="True"
+
+    python -c 'import sys,json,encodings.idna
+for l in sys.stdin:
+    l2=l.strip().lstrip("[").rstrip(",]")[:'${_max_length}']
+    try:
+        jo=json.loads(l2)
+        print json.dumps(jo, indent=4, sort_keys='${_sort_keys}')
+    except ValueError:
+        print l2'
+}
 # Grep against jar file to find a class ($1)
 function jargrep() {
     local _cmd="jar -tf"
@@ -58,7 +79,18 @@ function bar() {
 # Start Jupyter Lab as service
 function jpl() {
     local _dir="${1:-"$HOME/Documents"}"
-    nohup jupyter lab --ip=`hostname -i` --no-browser --notebook-dir="${_dir%/}" 2>&1 | tee /tmp/jupyter_lab.out | grep -m1 -oE "http://`hostname -i`:.+token=.+" &
+    local _kernel_timeout="${2-10800}"
+    local _shutdown_timeout="${3-115200}"
+
+    local _conf="$HOME/.jupyter/jpl_tmp_config.py"
+    local _log="/tmp/jpl_${USER}_$$.out"
+    if [ ! -d "$HOME/.jupyter" ]; then mkdir "$HOME/.jupyter" || return $?; fi
+    > "${_conf}"
+    [[ "${_kernel_timeout}" =~ ^[0-9]+$ ]] && echo "c.MappingKernelManager.cull_idle_timeout = ${_kernel_timeout}" >> "${_conf}"
+    [[ "${_shutdown_timeout}" =~ ^[0-9]+$ ]] && echo "c.NotebookApp.shutdown_no_activity_timeout = ${_shutdown_timeout}" >> "${_conf}"
+
+    echo "Redirecting STDOUT / STDERR into ${_log}" >&2
+    nohup jupyter lab --ip=`hostname -i` --no-browser --config="${_conf}" --notebook-dir="${_dir%/}" 2>&1 | tee "${_log}" | grep -m1 -oE "http://`hostname -i`:.+token=.+" &
 }
 # Start Jupyter Lab with Aggregation template (and backup-ing)
 function jp() {
@@ -143,7 +175,12 @@ function sshs() {
     local _user_at_host="$1"
     local _session_name="${2}"
     local _cmd="screen -r || screen -ls"
-    [ -n "${_session_name}" ] && _cmd="screen -x ${_session_name} || screen -S ${_session_name}"
+    if [ -n "${_session_name}" ]; then
+        _cmd="screen -x ${_session_name} || screen -S ${_session_name}"
+    else
+        # if no session name specified, tries to attach it anyway (if only one session, should work)
+        _cmd="screen -x || screen -x $USER || screen -S $USER"
+    fi
     ssh ${_user_at_host} -t ${_cmd}
 }
 # backup commands
@@ -161,6 +198,7 @@ function backupC() {
     rsync -Pvaz --max-size=${_size} --modify-window=1 ${_src%/}/* ${_dst%/}/
     wait
 }
+
 
 ## Work specific functions
 # copy script(s) into linux servers
