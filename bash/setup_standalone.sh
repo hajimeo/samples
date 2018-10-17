@@ -128,6 +128,8 @@ function f_update_hosts_by_hostname() {
     # If port forwarding is used, better use localhost
     $_DOCKER_PORT_FORWARD && _container_ip="127.0.0.1"
     f_update_hosts "${_hostname}" "${_container_ip}" ||  _log "WARN" "Please update /etc/hosts to add '${_container_ip} ${_hostname}'"
+
+    which dnsmasq &>/dev/null && service dnsmasq reload
 }
 
 function f_update_hosts() {
