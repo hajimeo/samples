@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# NOTE: shouldn't use OS dependant command, such as apt-get, yum, brew etc.
 
 function usage() {
     echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>] [-s|-t] [-l /path/to/dev-license.json]
@@ -268,7 +269,7 @@ function f_docker_run() {
                     docker stop -t 7 ${_cname}
                 fi
             else
-                _log "ERROR" "Docker run could not use the port ${_p} as it's used by pid:${_pid}"
+                _log "ERROR" "Docker run could not use the port ${_p} as it's used by pid:${_pid}"docker inspect -format="{{ .NetworkSettings.IPAddress }}"
                 return 1
             fi
         fi
@@ -276,11 +277,15 @@ function f_docker_run() {
     done
     [ -n "${_port_opts}" ] && ! lsof -ti:22222 && _port_opts="${_port_opts} -p 22222:22"
 
+    local _dns=""
+    if which dnsmasq &>/dev/null; then
+        # If no custom network, docker uses 'bridge' and --format is too complicated, so using python
+        _dns="--dns=`docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Gateway'])"`"
+    fi
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
     docker run -t -i -d \
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
-        -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} \
-        --dns=`hostname -i` \
+        -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} ${_dns} \
         --privileged --hostname=${_hostname} --name=${_name} ${_extra_opts} ${_base} /sbin/init || return $?
 
     f_update_hosts_by_hostname "${_hostname}"
@@ -556,6 +561,10 @@ main() {
     if ! which python &>/dev/null; then
         _log "ERROR" "python is required for this script."
         return 1
+    fi
+    if ! which dnsmasq &>/dev/null; then
+        _log "WARN" "No dnsmasq, which may cause name resolution issue, but keep continuing..."
+        sleep 3
     fi
     if [ "`uname`" = "Darwin" ]; then
         if ! which gsed &>/dev/null; then
