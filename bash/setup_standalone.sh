@@ -278,7 +278,7 @@ function f_docker_run() {
     docker run -t -i -d \
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
         -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} \
-        --dns=`hostname -i` # for HAProxy resolvers
+        --dns=`hostname -i` \
         --privileged --hostname=${_hostname} --name=${_name} ${_extra_opts} ${_base} /sbin/init || return $?
 
     f_update_hosts_by_hostname "${_hostname}"
