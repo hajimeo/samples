@@ -113,7 +113,7 @@ function f_update_hosts_by_hostname() {
         return 1
     fi
 
-    local _container_ip="`docker exec -it ${_name} hostname -i | tr -cd "[:print:]"`"
+    local _container_ip="`docker exec -it ${_name} hostname -i | tr -cd "[:print:]"`"   # tr to remove unnecessary control characters
     if [ -z "${_container_ip}" ]; then
         _log "WARN" "${_name} is running but not returning IP. Please check and update /etc/hosts manually."
         return 1
