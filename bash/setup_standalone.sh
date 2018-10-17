@@ -104,6 +104,32 @@ function f_update() {
     _log "INFO" "Script has been updated. Backup: ${_backup_file}"
 }
 
+function f_update_hosts_by_hostname() {
+    local _hostname="${1}"
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
+    if ! docker ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
+        _log "WARN" "${_name} is NOT running. Please check and update /etc/hosts manually."
+        return 1
+    fi
+
+    local _container_ip="`docker exec -it ${_name} hostname -i | tr -cd "[:print:]"`"
+    if [ -z "${_container_ip}" ]; then
+        _log "WARN" "${_name} is running but not returning IP. Please check and update /etc/hosts manually."
+        return 1
+    fi
+
+    # If no root user, uses "sudo" in sed
+    if [ "$USER" != "root" ]; then
+        _SUDO_SED=true
+        _log "INFO" "Updating /etc/hosts. It may ask your sudo password."
+    fi
+
+    # If port forwarding is used, better use localhost
+    $_DOCKER_PORT_FORWARD && _container_ip="127.0.0.1"
+    f_update_hosts "${_hostname}" "${_container_ip}" ||  _log "WARN" "Please update /etc/hosts to add '${_container_ip} ${_hostname}'"
+}
+
 function f_update_hosts() {
     local __doc__="Update /etc/hosts for the container"
     local _hostname="$1"
@@ -253,6 +279,8 @@ function f_docker_run() {
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
         -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} \
         --privileged --hostname=${_hostname} --name=${_name} ${_extra_opts} ${_base} /sbin/init || return $?
+
+    f_update_hosts_by_hostname "${_hostname}"
 }
 
 function p_container_setup() {
@@ -297,6 +325,8 @@ function f_docker_start() {
     #local _docker_net_addr="172.17.0.0"
     #[[ "${_docker_ip}" =~ $_regex ]] && _docker_net_addr="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0.0"
     #docker exec -it ${_name} bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 &>/dev/null || ip route del ${_docker_net_addr}/16 via 0.0.0.0"
+
+    f_update_hosts_by_hostname "${_hostname}"
 }
 
 function f_as_log_cleanup() {
@@ -623,24 +653,6 @@ main() {
             f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
             sleep 1
             f_as_start "${_NAME}.${_DOMAIN#.}"
-        fi
-
-        # if name is given and running, updates /etc/hosts
-        if docker ps --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
-            local _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
-            if [ -z "${_container_ip}" ]; then
-                _log "WARN" "${_NAME} is running but not returning IP. Please check and update /etc/hosts manually."
-            else
-                # If no root user, uses "sudo" in sed
-                if [ "$USER" != "root" ]; then
-                    _SUDO_SED=true
-                    _log "INFO" "Updating /etc/hosts. It may ask your sudo password."
-                fi
-
-                # If port forwarding is used, better use localhost
-                $_DOCKER_PORT_FORWARD && _container_ip="127.0.0.1"
-                f_update_hosts "${_NAME}.${_DOMAIN#.}" "${_container_ip}" ||  _log "WARN" "Please update /etc/hosts to add '${_container_ip} ${_NAME}.${_DOMAIN#.}'"
-            fi
         fi
     fi
 }
