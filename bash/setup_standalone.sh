@@ -88,6 +88,7 @@ function f_update() {
         local _local_length=`wc -c <./${_target}`
         if [ "${_remote_length}" -lt $(( ${_local_length} / 2 )) ] || [ ${_remote_length} -eq ${_local_length} ]; then
             _log "INFO" "Not updating ${_target}"
+            return 0
         fi
 
         cp "${_target}" "${_backup_file}" || return $?
