@@ -94,7 +94,7 @@ function f_update() {
         cp "${_target}" "${_backup_file}" || return $?
     fi
 
-    curl -f --retry 3 "${_remote_repo%/}/${_file_name}" -o "${_target}"
+    curl -s -f --retry 3 "${_remote_repo%/}/${_file_name}" -o "${_target}"
     if [ $? -ne 0 ]; then
         # Restore from backup
         mv -f "${_backup_file}" "${_target}"
