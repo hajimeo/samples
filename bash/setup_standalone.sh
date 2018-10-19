@@ -2,7 +2,7 @@
 # NOTE: shouldn't use OS dependant command, such as apt-get, yum, brew etc.
 
 function usage() {
-    echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>] [-s|-t] [-l /path/to/dev-license.json]
+    echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>] [-s] [-l /path/to/dev-license.json]
 
 This script is for building a docker container for standalone/sandbox for testing in dev env, and does the followings:
 
@@ -24,22 +24,15 @@ SAVE CONTAINER:
         Save this container as image, so that creating a container will be faster.
         NOTE: this operation takes time.
 
-    -t -n <container_name>
-        Instead of saving as a docker image, create a Tgz (tar.gz) file.
-        Idea is you can reuse this tgz file after just create an empty container by restoring into same location.
-        NOTE: this operation takes time.
-
 OTHERS:
     -P
         Use with -c to use docker's port forwarding for the application
 
     -S
-        Use with -c, -n, -v to stop any other conflicting containers.
+        Use with -c, -n, -v to stop any other port conflicting containers.
         When -P is used or the host is Mac, this option would be needed.
-
-    -T
-        Use with -c and -n <name> to use \$_SERVICE_standalone_\$_NAME.tgz file to build a container.
-        NOTE: If hostname is not same, may not work.
+    -N
+        Not installing Application Service or starting
 
     -l /path/to/dev-license.json
         A path to the software licene file
@@ -72,8 +65,7 @@ _CREATE_AND_SETUP=false
 _DOCKER_PORT_FORWARD=false
 _DOCKER_STOP_OTHER=false
 _DOCKER_SAVE=false
-_DOCKER_SAVE_AS_TGZ=false
-_DOCKER_USE_TGZ=false
+_AS_NO_INSTALL_START=false
 _SUDO_SED=false
 
 
@@ -604,14 +596,7 @@ main() {
             fi
 
             local _image="$(docker images --format "{{.Repository}}" | grep -E "^(${_NAME}|${_SERVICE}${_ver_num})$")"
-            if $_DOCKER_USE_TGZ; then
-                # Creating a new (empty) container and restore from a backup
-                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_OS_VERSION}" "${_ports}" || return $?
-                sleep 1
-                p_container_setup "${_NAME}" || return $?
-                f_as_restore "$_NAME" || return $?
-
-            elif [ -n "${_image}" ]; then
+            if [ -n "${_image}" ]; then
                 # Re-using existing images but renaming host
                 _log "INFO" "Image ${_image} for ${_NAME}|${_SERVICE}${_ver_num} already exists. Using this ..."; sleep 1
                 local _add_host=""
@@ -622,7 +607,7 @@ main() {
                 fi
                 f_docker_run "${_NAME}.${_DOMAIN#.}" "${_image}" "${_ports}" "${_add_host}" || return $?
                 sleep 1
-                if ! $_DOCKER_SAVE && ! $_DOCKER_SAVE_AS_TGZ; then
+                if ! $_DOCKER_SAVE && ! $_AS_NO_INSTALL_START; then
                     f_as_start "${_NAME}.${_DOMAIN#.}" "${_SERVICE}" "Y" "${_old_hostname}"
                 fi
             else
@@ -631,7 +616,7 @@ main() {
                 sleep 1
                 p_container_setup "${_NAME}" || return $?
 
-                if [ -n "$_VERSION" ]; then
+                if [ -n "$_VERSION" ] && ! $_AS_NO_INSTALL_START; then
                     _log "INFO" "Setting up an Application for version ${_VERSION} on ${_NAME} ..."
                     if ! f_as_setup "${_NAME}.${_DOMAIN#.}" "${_VERSION}"; then
                         _log "ERROR" "Setting up an Application for version ${_VERSION} on ${_NAME} failed"; sleep 3
@@ -650,21 +635,15 @@ main() {
         f_docker_commit "$_NAME" || return $?
     fi
 
-    if $_DOCKER_SAVE_AS_TGZ; then
-        if [ -z "$_NAME" ]; then
-            _log "ERROR" "Docker Save as Tgz was specified but no name (-n or -v) to save."
-            return 1
-        fi
-        f_as_backup "$_NAME" || return $?
-    fi
-
     if [ -n "$_NAME" ]; then
         # If creating, container should be started already. If saveing, it intentionally stops the container.
         if ! $_CREATE_AND_SETUP && ! $_DOCKER_SAVE; then
             _log "INFO" "Starting container: $_NAME"
             f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
             sleep 1
-            f_as_start "${_NAME}.${_DOMAIN#.}"
+            if  ! $_AS_NO_INSTALL_START; then
+                f_as_start "${_NAME}.${_DOMAIN#.}"
+            fi
         fi
     fi
 }
@@ -687,9 +666,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             s)
                 _DOCKER_SAVE=true
                 ;;
-            t)
-                _DOCKER_SAVE_AS_TGZ=true
-                ;;
             n)
                 _NAME="$OPTARG"
                 ;;
@@ -705,8 +681,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             S)
                 _DOCKER_STOP_OTHER=true
                 ;;
-            T)
-                _DOCKER_USE_TGZ=true
+            N)
+                _AS_NO_INSTALL_START=true
                 ;;
         esac
     done
