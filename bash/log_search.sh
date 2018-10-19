@@ -68,8 +68,8 @@ function p_support() {
     echo " "
     echo " "
 
-    echo "# (deprecated) config.yaml - Kerberos|ssl information"
-    _find_and_cat "config.yaml" | grep -E '(^kerberos\.|^ssl\.|key\.path|cert\.path)'
+    echo "# config.yaml"
+    _find_and_cat "config.yaml" | grep -E '(^atscale_home|^user.name|^user.timezone|^sun.jnu.encoding)'
     echo " "
     echo " "
 
@@ -118,7 +118,7 @@ function p_support() {
     echo " "
 
     echo "# Engine start/restart"
-    rg --search-zip -g 'engine*log*' 'Using AtScale Configuration'
+    rg --search-zip -N --no-filename -g 'engine*log*' 'Using AtScale Configuration' | sort | uniq
 
     echo " "
     echo "# WARNs in warn.log (if exists)"
@@ -418,11 +418,23 @@ function f_getQueries() {
     _getAfterFirstMatch "${_path}" "queryId=${_uuid}.+ (Received|Executing) (.+) [Qq]uery" "^20\d\d-\d\d-\d\d" "Y"
 }
 
+function f_get_multilines() {
+    local _start="$1"   # Probably shouldn't use . (dot)
+    local _end="${2:-"^2\\d\\d\\d-\\d\\d-\\d\\d"}"
+    local _glob="${3-"engine.*log*"}"
+    local _file_path="${4}"
+    local _how_many="${5:-1}"   # TODO: this is not working, probably rg bug
+    [ -n "${_glob}" ] && _glob="-g ${_glob}"
+
+    # NOTE With rg 0.10.0, dotall is a bit strange. Does not work with non greedy if dot is used more than once, also -m 1 is not working.
+    rg -o "${_start}(.+?)${_end}" --multiline --multiline-dotall --no-line-number --no-filename --search-zip -m${_how_many} ${_glob} ${_file_path}
+}
+
 function f_genLdapsearch() {
     local __doc__="Generate ldapsearch command from a json file"
     _find_and_cat "directory_configurations.json" | python -c 'import sys,re,json
 a=json.loads(sys.stdin.read());l=a[0]
-p="ldaps" if l["use_ssl"] else "ldap"
+p="ldaps" if "use_ssl" in l else "ldap"
 r=re.search(r"^[^=]*?=?([^=]+?)[ ,@]", l["username"])
 u=r.group(1) if bool(r) else l["username"]
 print "LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"" % (p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u)'
