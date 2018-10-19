@@ -459,23 +459,18 @@ function f_as_start() {
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
     [[ "${_restart}" =~ ^(y|Y) ]] && docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_stop -f"
-    docker exec -d ${_name} bash -c "sudo -u ${_service} /usr/local/apache-hive/apache_hive.sh"
-    docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_start"
+    docker exec -d ${_name} bash -c "sudo -u ${_service} -i /usr/local/apache-hive/apache_hive.sh"
+    docker exec -it ${_name} bash -c "sudo -u ${_service} -i /usr/local/${_service}/bin/${_service}_start"
     # Update hostname if old hostname is given
     if [ -n "${_old_hostname}" ]; then
         # NOTE: At this moment, assuming only one postgresql version. Not using 'at' command as minimum time unit is minutes
         _log "INFO" "UPDATE engines SET host='${_hostname}' where default_engine is true AND host='${_old_hostname}'"
         docker exec -it ${_name} bash -c 'cd /usr/local/'${_service}'/share/postgresql-*
-_need_restart=Y
 for _i in {1..5}; do
   sleep 2
-  if LD_LIBRARY_PATH=./lib ./bin/pg_isready -p 10520 -q; then
-    _need_restart=""
-    break
-  fi
+  LD_LIBRARY_PATH=./lib ./bin/pg_isready -p 10520 -q && break
 done
-[ -n $_need_restart ] && sudo -u '${_service}' LD_LIBRARY_PATH=./lib PGPASSWORD=atscale ./bin/pg_ctl -D ./data restart
-sleep 4
+sleep 2
 sudo -u '${_service}' ./bin/postgres_psql "-c \"UPDATE engines SET host='${_hostname}' where host='${_old_hostname}'\""
 '
     fi
