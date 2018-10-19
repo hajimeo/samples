@@ -25,14 +25,19 @@ SAVE CONTAINER:
         NOTE: this operation takes time.
 
 OTHERS:
+    -N
+        Not installing Application Service or starting, just creating a container.
+
     -P
         Use with -c to use docker's port forwarding for the application
+
+    -R
+        Re-use the image. Default is not re-using image and create a container from base.
+        If this option is used, if similar image name exist, will create a container from that image.
 
     -S
         Use with -c, -n, -v to stop any other port conflicting containers.
         When -P is used or the host is Mac, this option would be needed.
-    -N
-        Not installing Application Service or starting
 
     -l /path/to/dev-license.json
         A path to the software licene file
@@ -65,6 +70,7 @@ _CREATE_AND_SETUP=false
 _DOCKER_PORT_FORWARD=false
 _DOCKER_STOP_OTHER=false
 _DOCKER_SAVE=false
+_DOCKER_REUSE_IMAGE=false
 _AS_NO_INSTALL_START=false
 _SUDO_SED=false
 
@@ -603,7 +609,7 @@ main() {
             fi
 
             local _image="$(docker images --format "{{.Repository}}" | grep -E "^(${_NAME}|${_SERVICE}${_ver_num})$")"
-            if [ -n "${_image}" ]; then
+            if $_DOCKER_REUSE_IMAGE && [ -n "${_image}" ]; then
                 # Re-using existing images but renaming host
                 _log "INFO" "Image ${_image} for ${_NAME}|${_SERVICE}${_ver_num} already exists. Using this ..."; sleep 1
                 local _add_host=""
@@ -653,7 +659,7 @@ main() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "chl:Nn:PSsuv:" opts; do
+    while getopts "chl:Nn:PRSsuv:" opts; do
         case $opts in
             c)
                 _CREATE_AND_SETUP=true
@@ -673,6 +679,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             P)
                 _DOCKER_PORT_FORWARD=true
+                ;;
+            R)
+                _DOCKER_REUSE_IMAGE=true
                 ;;
             S)
                 _DOCKER_STOP_OTHER=true
