@@ -86,7 +86,7 @@ function f_update() {
     if [ -f "${_target}" ]; then
         local _remote_length=`curl -m 4 -s -k -L --head "${_remote_repo%/}/${_file_name}" | grep -i '^Content-Length:' | awk '{print $2}' | tr -d '\r'`
         local _local_length=`wc -c <./${_target}`
-        if [ "${_remote_length}" -lt $(( ${_local_length} / 2 )) ] && [ ${_remote_length} -eq ${_local_length} ]; then
+        if [ "${_remote_length}" -lt $(( ${_local_length} / 2 )) ] || [ ${_remote_length} -eq ${_local_length} ]; then
             _log "INFO" "Not updating ${_target}"
         fi
 
