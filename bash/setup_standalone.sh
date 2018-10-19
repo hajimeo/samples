@@ -84,11 +84,18 @@ function f_update() {
     local _file_name="`basename ${_target}`"
     local _backup_file="/tmp/${_file_name}_$(date +"%Y%m%d%H%M%S")"
     if [ -f "${_target}" ]; then
+        local _remote_length=`curl -m 4 -s -k -L --head "${_remote_repo%/}/${_file_name}" | grep -i '^Content-Length:' | awk '{print $2}' | tr -d '\r'`
+        local _local_length=`wc -c <./${_target}`
+        if [ "${_remote_length}" -lt $(( ${_local_length} / 2 )) ] && [ ${_remote_length} -eq ${_local_length} ]; then
+            _log "INFO" "Not updating ${_target}"
+        fi
+
         cp "${_target}" "${_backup_file}" || return $?
     fi
 
     curl -f --retry 3 "${_remote_repo%/}/${_file_name}" -o "${_target}"
     if [ $? -ne 0 ]; then
+        # Restore from backup
         mv -f "${_backup_file}" "${_target}"
         return 1
     fi
