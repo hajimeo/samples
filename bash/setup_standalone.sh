@@ -635,16 +635,12 @@ main() {
         f_docker_commit "$_NAME" || return $?
     fi
 
-    if [ -n "$_NAME" ]; then
-        # If creating, container should be started already. If saveing, it intentionally stops the container.
-        if ! $_CREATE_AND_SETUP && ! $_DOCKER_SAVE; then
-            _log "INFO" "Starting container: $_NAME"
-            f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
-            sleep 1
-            if  ! $_AS_NO_INSTALL_START; then
-                f_as_start "${_NAME}.${_DOMAIN#.}"
-            fi
-        fi
+    # If creating, container should be started already. If saving, it intentionally stops the container.
+    if [ -n "$_NAME" ] && ! $_CREATE_AND_SETUP && ! $_DOCKER_SAVE; then
+        _log "INFO" "Starting container: $_NAME"
+        f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
+        sleep 1
+        $_AS_NO_INSTALL_START || f_as_start "${_NAME}.${_DOMAIN#.}"
     fi
 }
 
