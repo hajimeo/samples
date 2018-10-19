@@ -471,7 +471,7 @@ for _i in {1..5}; do
   LD_LIBRARY_PATH=./lib ./bin/pg_isready -p 10520 -q && break
 done
 sleep 2
-sudo -u '${_service}' ./bin/postgres_psql "-c \"UPDATE engines SET host='${_hostname}' where host='${_old_hostname}'\""
+sudo -u '${_service}' ./bin/postgres_psql -cl "-c \"UPDATE engines SET host='${_hostname}' where host='${_old_hostname}'\""
 '
     fi
 }
