@@ -646,30 +646,23 @@ main() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "cn:v:l:stPSuh" opts; do
+    while getopts "chl:Nn:PSsuv:" opts; do
         case $opts in
+            c)
+                _CREATE_AND_SETUP=true
+                ;;
             h)
                 usage | less
                 exit 0
                 ;;
-            u)
-                f_update
-                exit $?
+            l)
+                _LICENSE="$OPTARG"
                 ;;
-            c)
-                _CREATE_AND_SETUP=true
-                ;;
-            s)
-                _DOCKER_SAVE=true
+            N)
+                _AS_NO_INSTALL_START=true
                 ;;
             n)
                 _NAME="$OPTARG"
-                ;;
-            v)
-                _VERSION="$OPTARG"
-                ;;
-            l)
-                _LICENSE="$OPTARG"
                 ;;
             P)
                 _DOCKER_PORT_FORWARD=true
@@ -677,8 +670,15 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             S)
                 _DOCKER_STOP_OTHER=true
                 ;;
-            N)
-                _AS_NO_INSTALL_START=true
+            s)
+                _DOCKER_SAVE=true
+                ;;
+            u)
+                f_update
+                exit $?
+                ;;
+            v)
+                _VERSION="$OPTARG"
                 ;;
         esac
     done
