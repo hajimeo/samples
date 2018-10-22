@@ -62,7 +62,7 @@ NOTES:
 [ -z "${_OS_VERSION}" ] && _OS_VERSION="7.5.1804"       # Container OS version (normally CentOS version)
 [ -z "${_IMAGE_NAME}" ] && _IMAGE_NAME="hdp/base"       # Docker image name TODO: change to more appropriate image name
 [ -z "${_SERVICE}" ] && _SERVICE="atscale"              # This is used by the app installer script so shouldn't change
-[ -z "${_VERSION}" ] && _VERSION="7.1.2"                # Default software version, mainly used to find the right installer file
+[ -z "${_VERSION}" ] && _VERSION="7.3.0"                # Default software version, mainly used to find the right installer file
 [ -z "${_LICENSE}" ] && _LICENSE="$(ls -1t ${_WORK_DIR%/}/${_SERVICE%/}/dev*license*.json | head -n1)" # A license file to use the _SERVICE
 _PORTS="${_PORTS-"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"}"    # Used by docker port forwarding
 _REMOTE_REPO="${_REMOTE_REPO-"http://192.168.6.162/${_SERVICE}/"}"                  # Curl understandable string
@@ -539,6 +539,29 @@ function f_as_restore() {
     docker exec -it ${_name} bash -c 'source '${_share_dir%/}'/'${_service%/}'/install_atscale.sh && f_atscale_restore "'${_share_dir%/}'/'${_service%/}'/'${_file_name}'"' || return $?
 }
 
+function f_install_as() {
+    local _name="${1:-$_NAME}"
+    local _version="${2:-$_VERSION}"
+    local _base="$3"
+    local _ports="${4}"      #"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
+    local _extra_opts="${5}" # eg: "--add-host=imagename.standalone:127.0.0.1"
+
+    # Creating a new (empty) container and install the application
+    f_docker_run "${_name}.${_DOMAIN#.}" "${_base}" "${_ports}" "${_extra_opts}" || return $?
+    sleep 1
+    p_container_setup "${_name}" || return $?
+
+    if [ -n "$_version" ] && ! $_AS_NO_INSTALL_START; then
+        _log "INFO" "Setting up an Application for version ${_version} on ${_name} ..."
+        if ! f_as_setup "${_name}.${_DOMAIN#.}" "${_version}"; then
+            _log "ERROR" "Setting up an Application for version ${_version} on ${_name} failed"; sleep 3
+            return 1
+        fi
+    fi
+}
+
+
+
 function _sed() {
     local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
     if ${_SUDO_SED}; then
@@ -633,17 +656,7 @@ main() {
                 fi
             else
                 # Creating a new (empty) container and install the application
-                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}:${_OS_VERSION}" "${_ports}" || return $?
-                sleep 1
-                p_container_setup "${_NAME}" || return $?
-
-                if [ -n "$_VERSION" ] && ! $_AS_NO_INSTALL_START; then
-                    _log "INFO" "Setting up an Application for version ${_VERSION} on ${_NAME} ..."
-                    if ! f_as_setup "${_NAME}.${_DOMAIN#.}" "${_VERSION}"; then
-                        _log "ERROR" "Setting up an Application for version ${_VERSION} on ${_NAME} failed"; sleep 3
-                        return 1
-                    fi
-                fi
+                f_install_as "${_NAME}" "$_VERSION" "${_IMAGE_NAME}:${_OS_VERSION}" "${_ports}" || return $?
             fi
         fi
     fi
@@ -658,10 +671,19 @@ main() {
 
     # If creating, container should be started already. If saving, it intentionally stops the container.
     if [ -n "$_NAME" ] && ! $_CREATE_AND_SETUP && ! $_DOCKER_SAVE; then
-        _log "INFO" "Starting container: $_NAME"
-        f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
-        sleep 1
-        $_AS_NO_INSTALL_START || f_as_start "${_NAME}.${_DOMAIN#.}"
+        if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
+            if ! docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
+                _log "WARN" "Container does not exist"; sleep 1
+                return 1
+            fi
+            _log "INFO" "Container does not exist but image ${_NAME} exists. Using this ..."; sleep 1
+            f_install_as "${_NAME}" "$_VERSION" "${_IMAGE_NAME}:${_OS_VERSION}" "${_ports}" || return $?
+        else
+            _log "INFO" "Starting container: $_NAME"
+            f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
+            sleep 1
+            $_AS_NO_INSTALL_START || f_as_start "${_NAME}.${_DOMAIN#.}"
+        fi
     fi
 }
 
