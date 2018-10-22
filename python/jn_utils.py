@@ -10,6 +10,7 @@ import pandas as pd
 from sqlalchemy import create_engine
 import sqlite3
 
+_LAST_CONN=None
 
 def _mexec(func_and_args, num=None):
     """
@@ -219,6 +220,7 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     >>> isinstance(s, sqlite3.Connection)
     True
     """
+    global _LAST_CONN
     db = _db(dbname=dbname, dbtype=dbtype, isolation_level=isolation_level, force_sqlalchemy=force_sqlalchemy,
              echo=echo)
     if dbtype == 'sqlite':
@@ -226,12 +228,39 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
             db.text_factory = str
         else:
             db.connect().connection.connection.text_factory = str
-        return db
-    return db.connect()
+        # For 'sqlite, 'db' is the connection object because of _db()
+        conn = db
+    else:
+        conn = db.connect()
+    if bool(conn): _LAST_CONN=db
+    return conn
 
 
-def query(conn, sql):
-    return conn.execute(sql).fetchall()
+def query(sql, conn=None):
+    """
+    Call fetchall() with given query, expecting SELECT statement
+    :param sql: SELECT statement
+    :param conn: DB connection object
+    :return: fetchall() result
+    >>> import sqlite3;s = connect()
+    >>> result = query("select name from sqlite_master where type = 'table'")
+    >>> bool(result)
+    True
+    """
+    if bool(conn) is False: conn = _LAST_CONN
+    #return conn.execute(sql).fetchall()
+    return pd.read_sql(sql, conn)
+
+
+def q(sql, conn=None):
+    """
+    Alias of query
+    :param sql: SELECT statement
+    :param conn: DB connection object
+    :return: fetchall() result
+    >>> pass
+    """
+    return query(sql, conn)
 
 
 def massage_tuple_for_save(tpl, long_value="", num_cols=None):
