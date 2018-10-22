@@ -34,8 +34,6 @@ as_compute_stats: 'true'
 as_hdfs_root_dir: ''
 as_ha_enabled: 'false'
 as_ha_node_type: master
-as_ha_node_number: '1'
-as_ha_postgres_addresses: localhost
 as_ha_cluster_fqdns: %atscale_host%
 hll_enabled: 'true'
 hll_create_jar: 'true'
