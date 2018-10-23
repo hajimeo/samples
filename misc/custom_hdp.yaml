@@ -57,7 +57,7 @@ as_kerberos_short_name_batch: hive
 as_kerberos_hive_principal_interactive: hive/_HOST@%realm%
 as_kerberos_short_name_interactive: hive
 as_kerberos_hive_principal_keytab_interactive: ''
-as_kerberos_hive_metastore_principal: hive/_HOST@%hadoop_realm%
+as_kerberos_hive_metastore_principal: ''
 as_hdfs_name_node_kerberos_principal: %hdfs_principal%@%hadoop_realm%
 as_hdfs_use_tls: 'false'
 use_custom_krb5conf: 'false'
