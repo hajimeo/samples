@@ -1097,8 +1097,9 @@ frontend frontend_p${_p}
         # TODO:  option httpchk GET /ping HTTP/1.1\r\nHost:\ www
         echo "
 backend backend_p${_p}
+  option httpchk
   server first_node ${_master_node}:${_p}${_ssl_crt}" >> "${_cfg}"
-        [ -n "${_slave_node}" ] && echo "  server second_node ${_master_node}:${_p}${_ssl_crt}" >> "${_cfg}"
+        [ -n "${_slave_node}" ] && echo "  server second_node ${_slave_node}:${_p}${_ssl_crt}" >> "${_cfg}"
     done
 
     # NOTE: May need to configure rsyslog.conf for log if CentOS
