@@ -49,7 +49,7 @@ as_auth_host: ''
 as_secure_installation: 'false'
 has_custom_truststore: ''
 as_is_kerberized: '%is_kerberized%'
-as_kerberos_client_principal: atscale@%realm%
+as_kerberos_client_principal: atscale/%atscale_host%@%realm%
 as_kerberos_client_keytab_location: "/etc/security/keytabs/atscale.service.keytab"
 as_kerberos_hive_principal_batch: hive/_HOST@%realm%
 as_kerberos_hive_principal_keytab_batch: ''
