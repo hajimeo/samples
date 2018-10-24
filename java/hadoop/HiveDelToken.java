@@ -39,9 +39,9 @@ import org.apache.hive.service.auth.HiveAuthFactory;
 import org.apache.hadoop.security.UserGroupInformation;
 
 /**
- * export CLASSPATH=`f_classpath <PID>`:.
- * $JAVA_HOME/bin/javac ProxyAuthTest.java
- * $JAVA_HOME/bin/java ProxyAuthTest `hostname -f` 10000 hive/_HOST@UBUNTU.LOCALDOMAIN testuer
+ * javaenvs <port>  # in my alias
+ * $JAVA_HOME/bin/javac HiveDelToken.java
+ * $JAVA_HOME/bin/java HiveDelToken `hostname -f` 10000 hive/_HOST@UBUNTU.LOCALDOMAIN testuer
  */
 public class HiveDelToken {
     private static final String driverName = "org.apache.hive.jdbc.HiveDriver";
