@@ -94,7 +94,7 @@ function jpl() {
 }
 # Start Jupyter Lab with Aggregation template (and backup-ing)
 function jp() {
-    local _id="${1}"
+    local _id="${1}"    # eg: case id
     local _backup_dir="${2-$HOME/backup/jupyter-notebook}"
     local _template="${3-Aggregation.ipynb}"
     local _sleep="${4:-180}"
@@ -107,23 +107,25 @@ function jp() {
     [ -n "${_id}" ] && _id="_${_id}"
 
     if [ -d "${_backup_dir}" ]; then
-        # http://ipython.org/ipython-doc/1/config/overview.html#startup-files
-        if [ ! -f ~/.ipython/profile_default/startup/${_template%.*}.py ] && [ -s ${_backup_dir%/}/${_template%.*}.py ]; then
-            cp ${_backup_dir%/}/${_template%.*}.py ~/.ipython/profile_default/startup/${_template%.*}.py
+        # If I *never* setup template .py, use the backup one. see http://ipython.org/ipython-doc/1/config/overview.html#startup-files
+        if [ ! -f $HOME/.ipython/profile_default/startup/${_template%.*}.py ] && [ -s ${_backup_dir%/}/${_template%.*}.py ]; then
+            cp ${_backup_dir%/}/${_template%.*}.py $HOME/.ipython/profile_default/startup/${_template%.*}.py
         fi
 
-        [ -s ./${_template%.*}${_id}.ipynb ] && [ -d ~/.Trash ] && mv ./${_template%.*}${_id}.ipynb ~/.Trash/
-
+        # If template .ipynb file already exist and Trash is enabled, move to trash
+        [ -s ./${_template%.*}${_id}.ipynb ] && [ -d $HOME/.Trash ] && mv ./${_template%.*}${_id}.ipynb $HOME/.Trash/
+        # If A template exist in the backup dir, copy it into current directory
         [ -s "${_backup_dir%/}/${_template}" ] && cp -f "${_backup_dir%/}/${_template}" ./${_template%.*}${_id}.ipynb
+
         while true; do
             sleep ${_sleep}
-            if [  "`ls -1 ./*.ipynb 2>/dev/null | wc -l`" -gt 0 ]; then
-                rsync -a --exclude="Untitled.ipynb" ./*.ipynb "${_backup_dir%/}/" || break
+            if [ 0 -lt `ls -1 ./*.ipynb 2>/dev/null | wc -l` ]; then
+                rsync -a --exclude="Untitled.ipynb" ./*.ipynb ${_backup_dir%/}/ || break
                 # TODO: if no ipynb file to backup, should break?
             fi
             if ! lsof -ti:${_port} &>/dev/null; then
-                if [ -d ~/.Trash ]; then
-                    mv -f ${_template%.*}${_id}.ipynb ~/.Trash/
+                if [ -d $HOME/.Trash ]; then
+                    mv -f ${_template%.*}${_id}.ipynb $HOME/.Trash/
                 else
                     mv -f ${_template%.*}${_id}.ipynb /tmp/
                 fi
@@ -217,7 +219,7 @@ function asftpl() {
         _name="${2}"
     fi
     #ssh -q asftp -t 'cd /home/ubuntu/upload && find . -type f -mtime -2 -size +10240k -name "'${_name}'" -ls | sort -k9,10 | tail -n'${_n}
-    ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lhtr '${_name}'| tail -n'${_n}';date'
+    ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lhtr '${_name}' | grep -wv "telemetryonly" | tail -n'${_n}';date'
 }
 # Download files from hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
 function asftpd() {
