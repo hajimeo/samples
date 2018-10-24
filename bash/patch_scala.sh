@@ -2,8 +2,13 @@
 
 function f_setup_scala() {
     local _ver="${1:-2.12.3}"
-    local _extract_dir="${2:-/opt}}"
+    local _extract_dir="${2:-/opt}"
     local _inst_dir="${3:-/usr/local/scala}"
+
+    if [ -d "$SCALA_HOME" ]; then
+        echo "SCALA_HOME is already set so that skipping setup scala"
+        return
+    fi
 
     if [ ! -d "${_extract_dir%/}/scala-${_ver}" ]; then
         if [ ! -s "${_extract_dir%/}/scala-${_ver}.tgz" ]; then
