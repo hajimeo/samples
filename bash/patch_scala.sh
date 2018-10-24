@@ -75,6 +75,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         _CLASS_FULL_PATH="`find . -name "${_CLASS_NAME}.class" -print`"
         _CLASS_FULL_PATH_DIR="`dirname ${_CLASS_FULL_PATH}`"
         echo "Updating ${_j} ..."
-        $JAVA_HOME/bin/jar -uvf ${_j} ${_CLASS_FULL_PATH_DIR%/}/*.class
+        $JAVA_HOME/bin/jar -uvf ${_j} ${_CLASS_FULL_PATH_DIR%/}/*.class || exit $?
+        cp -f ${_j} ${_JAR_FILENAME}.patched
     done
 fi
