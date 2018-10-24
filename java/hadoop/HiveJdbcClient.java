@@ -1,5 +1,10 @@
-/**
+/*
  * https://cwiki.apache.org/confluence/display/Hive/HiveServer2+Clients#HiveServer2Clients-JDBC
+ *
+ * mkdir hadoop
+ * javaenvs 10000  # in my alias
+ * $JAVA_HOME/bin/javac hadoop/HiveJdbcClient.java
+ * $JAVA_HOME/bin/java hadoop.HiveJdbcClient "jdbc:hive2://`hostname -f`:10000/default;principal=hive/_HOST@REALM" [sql] [username] [password]
  */
 package hadoop;
 
@@ -12,7 +17,7 @@ import java.sql.DriverManager;
 public class HiveJdbcClient {
     private static String driverName = "org.apache.hive.jdbc.HiveDriver";
     private static String JDBC_DB_URL = "";
-    private static String QUERY = "show databases;";
+    private static String QUERY = "show databases";
     private static String USER = null;
     private static String PASS = null;
     /**
