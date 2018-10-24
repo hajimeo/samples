@@ -118,7 +118,7 @@ function p_support() {
     echo " "
 
     echo "# Engine start/restart"
-    rg --search-zip -N --no-filename -g 'engine*log*' 'Using AtScale Configuration' | sort | uniq
+    rg --search-zip -N --no-filename -g 'engine*log*' 'Using AtScale Configuration' | sort | uniq | tail
 
     echo " "
     echo "# WARNs in warn.log (if exists)"
@@ -419,15 +419,16 @@ function f_getQueries() {
 }
 
 function f_get_multilines() {
-    local _start="$1"   # Probably shouldn't use . (dot)
-    local _end="${2:-"^2\\d\\d\\d-\\d\\d-\\d\\d"}"
-    local _glob="${3-"engine.*log*"}"
-    local _file_path="${4}"
-    local _how_many="${5:-1}"   # TODO: this is not working, probably rg bug
-    [ -n "${_glob}" ] && _glob="-g ${_glob}"
+    local __doc__="TODO: 'rg' version of multiline search. NOTE: dot and brace can't be used. Eg: ^2018[^.]+ for dot"
+    local _keyword="$1"   # Probably shouldn't use . (dot)
+    local _file_path="${2}"
+    local _boundary_str="${3}"
+    #local _how_many="${5:-1}"   # TODO: _m N is not working, probably rg bug?
+    [ -z "${_file_path}" ] && _file_path="-g 'engine.*log*'"
+    [ -z "${_boundary_str}" ] && _boundary_str="^2\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d+"
 
     # NOTE With rg 0.10.0, dotall is a bit strange. Does not work with non greedy if dot is used more than once, also -m 1 is not working.
-    rg -o "${_start}(.+?)${_end}" --multiline --multiline-dotall --no-line-number --no-filename --search-zip -m${_how_many} ${_glob} ${_file_path}
+    rg -o "(${_boundary_str}[^.]+${_keyword}.+)${_boundary_str}" -r '$1' --multiline --multiline-dotall --no-line-number --no-filename --search-zip ${_file_path}
 }
 
 function f_genLdapsearch() {
@@ -518,7 +519,7 @@ function f_topSlowLogs() {
     local _top_N="${5:-10}" # how many result to show
 
     if [ -z "$_regex" ]; then
-        _regex="\b(Caused by|slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout|timed out|going into queue, is \[...+\] in line|rejecting)\b.+"
+        _regex="\b(slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout|timed out|going into queue, is \[...+\] in line|rejecting)\b.+"
     fi
     if [ -n "${_date_regex}" ]; then
         _regex="^${_date_regex}.+${_regex}"
@@ -1278,6 +1279,10 @@ function _date2int() {
 
 function _find_and_cat() {
     local _f="`find . -name "$1" -print`"
+    if [ -z "$_f" ]; then
+        echo "$1 does not exist"
+        return
+    fi
     cat "${_f}"
 }
 
