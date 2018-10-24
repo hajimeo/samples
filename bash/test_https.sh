@@ -25,27 +25,35 @@ function get_ciphers() {
     done
 }
 
+# convert .jks or .pkcs8 file to .key (and .crt if possible)
 function export_key() {
     local _file="$1"
-    local _pass="$2"
-    local _alias="$3"
+    local _pass="${2:-password}"
+    local _alias="${3:-$(hostname -f)}"
     local _type="$4"
-    local _out="`basename $_file`.key"
+
+    local _basename="`basename $_file`"
+    local _out_key="${_basename}.exported.key"
+    local _out_crt="${_basename}.exported.crt"
     [ -z "$_type" ] && _type="${_file##*.}"
 
     if [ "$_type" = "pkcs8" ]; then
-        openssl pkcs8 -outform PEM -in key.pkcs8 -out ${_out} -nocrypt
+        openssl pkcs8 -outform PEM -in key.pkcs8 -out ${_out_key} -nocrypt
     elif [ "$_type" = "jks" ]; then
-        keytool -importkeystore -noprompt -srckeystore ${_file} -srcstorepass "${_pass}" -srcalias ${_alias} \
-         -destkeystore /tmp/tmpkeystore_$$.p12 -deststoretype PKCS12 -deststorepass "${_pass}" -destkeypass "${_pass}" || return $?
-        openssl pkcs12 -in /tmp/tmpkeystore_$$.p12 -passin "pass:${_pass}" -nodes -nocerts -out ${_out} || return $?
-
-        if [ ! -f "`basename $_out`.crt" ]; then
-            keytool -export -rfc -keystore ${_file} -alias ${_alias} -storepass "${_pass}" -file "`basename $_out`.crt"
+        if [ ! -x "${JAVA_HOME%/}/bin/keytool" ]; then
+            echo "This function requires 'keytool' command in \$JAVA_HOME/bin."
+            return 1
         fi
-        rm -f /tmp/tmpkeystore_$$.p12
+        ${JAVA_HOME%/}/bin/keytool -importkeystore -noprompt -srckeystore ${_file} -srcstorepass "${_pass}" -srcalias ${_alias} \
+         -destkeystore ${_basename}.p12.tmp -deststoretype PKCS12 -deststorepass "${_pass}" -destkeypass "${_pass}" || return $?
+        openssl pkcs12 -in ${_basename}.p12.tmp -passin "pass:${_pass}" -nodes -nocerts -out ${_out_key}.tmp || return $?
+        openssl rsa -in ${_out_key}.tmp -out ${_out_key}
+        # 'sed' to remove Bag Attributes
+        openssl pkcs12 -in ${_basename}.p12.tmp -passin "pass:${_pass}" -nokeys -chain | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ${_out_crt} || return $?
+        rm -f ${_basename}.*.tmp
     fi
-    chmod 600 ${_out}
+    chmod 600 ${_out_key}
+    ls -l ${_basename}.*
 }
 
 function start_https() {
@@ -54,11 +62,12 @@ function start_https() {
     local _crt="$2"
     local _doc_root="${3:-./}"
     local _host="${4:-0.0.0.0}"
-    local _port="${5:-443}"
+    local _port="${5:-8443}"    # NOTE: port number lower than 1024 requires root privilege
     which python &>/dev/null || return $?
     _key="`realpath "$_key"`"
     _crt="`realpath "$_crt"`"
 
+    echo "Starting ${_host}:${_port} in background, and redirecting outputs to /tmp/start_https.out"
     cd "$_doc_root" || return $?
     nohup python -c "import BaseHTTPServer,SimpleHTTPServer,ssl
 httpd = BaseHTTPServer.HTTPServer(('${_host}', ${_port}), SimpleHTTPServer.SimpleHTTPRequestHandler)
@@ -66,11 +75,12 @@ try:
   httpd.socket = ssl.wrap_socket(httpd.socket, keyfile='${_key}', certfile='${_crt}', server_side=True, ssl_version=ssl.PROTOCOL_TLSv1_2)
 except AttributeError:
   httpd.socket = ssl.wrap_socket(httpd.socket, keyfile='${_key}', certfile='${_crt}', server_side=True, ssl_version=ssl.PROTOCOL_TLS)
-httpd.serve_forever()" &
+httpd.serve_forever()" &>/tmp/start_https.out &
     sleep 1
     cd - &>/dev/null
 }
 
+# output md5 hash of .key or .crt file
 function check_pem_file() {
     local _file=$1
     file "$_file"
@@ -79,7 +89,7 @@ function check_pem_file() {
         openssl rsa -noout -modulus -in "$_file" | openssl md5
     else
         openssl x509 -noout -modulus -in "$_file" | openssl md5
-        openssl x509 -noout -text -in "$_file"
+        openssl x509 -noout -text -in "$_file" | grep -E "Issuer:|Not Before|Not After|Subject:"
     fi
 }
 
