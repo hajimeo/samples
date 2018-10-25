@@ -11,6 +11,7 @@ function get_ciphers() {
     echo "Obtaining cipher list from $_server with $(openssl version)..."
 
     for cipher in ${ciphers[@]}; do
+        sleep ${_delay}
         result=$(echo -n | openssl s_client -cipher "$cipher" -connect $_server 2>&1)
         if [[ "$result" =~ ":error:" ]] ; then
             error=$(echo -n $result | cut -d':' -f6)
@@ -21,7 +22,23 @@ function get_ciphers() {
             echo -e "$cipher\tUNKNOWN RESPONSE" >&2
             echo $result >&2
         fi
-        sleep $_delay
+    done
+}
+
+function get_tls_versions() {
+    local _host_port="$1"
+    local _head="${2:-10}"
+    local _delay=1
+
+    for _v in ssl3 tls1 tls1_1 tls1_2; do  # 'ssl2' no longer works with openssl
+        sleep ${_delay}
+        local _output="`echo -n | openssl s_client -connect ${_host_port} -${_v} 2>/dev/null`"
+        if echo "${_output}" | grep -qE '^ *Cipher *: *0000$'; then
+            echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] INFO: '${_v}' failed."
+        else
+            echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] INFO: '${_v}' worked"
+            echo "${_output}" | head -n ${_head} | sed -nr 's/^(.+)$/    \1/gp'
+        fi
     done
 }
 
