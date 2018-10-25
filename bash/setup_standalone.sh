@@ -621,6 +621,12 @@ main() {
         _NAME="${_SERVICE}${_ver_num}"
     fi
 
+    # It's hard to access container directly on Mac, so adding port forwarding
+    local _ports="";
+    if $_DOCKER_PORT_FORWARD; then
+        _ports=${_PORTS}
+    fi
+
     if $_CREATE_AND_SETUP; then
         _log "INFO" "Creating docker image and container"
         local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_IMAGE_NAME}:${_OS_VERSION}"`"
@@ -633,12 +639,6 @@ main() {
 
         if [ -n "$_NAME" ]; then
             _log "INFO" "Creating ${_NAME} container..."
-            # It's hard to access container directly on Mac, so adding port forwarding
-            local _ports="";
-            if $_DOCKER_PORT_FORWARD; then
-                _ports=${_PORTS}
-            fi
-
             local _image="$(docker images --format "{{.Repository}}" | grep -E "^(${_NAME}|${_SERVICE}${_ver_num})$")"
             if $_DOCKER_REUSE_IMAGE && [ -n "${_image}" ]; then
                 # Re-using existing images but renaming host
@@ -677,13 +677,13 @@ main() {
                 return 1
             fi
             _log "INFO" "Container does not exist but image ${_NAME} exists. Using this ..."; sleep 1
-            f_install_as "${_NAME}" "$_VERSION" "${_IMAGE_NAME}:${_OS_VERSION}" "${_ports}" || return $?
+            f_docker_run "${_NAME}.${_DOMAIN#.}" "${_NAME}" "${_ports}" || return $?
         else
             _log "INFO" "Starting container: $_NAME"
             f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
-            sleep 1
-            $_AS_NO_INSTALL_START || f_as_start "${_NAME}.${_DOMAIN#.}"
         fi
+        sleep 1
+        $_AS_NO_INSTALL_START || f_as_start "${_NAME}.${_DOMAIN#.}"
     fi
 }
 
