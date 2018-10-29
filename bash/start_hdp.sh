@@ -2188,7 +2188,7 @@ function f_etcs_mount() {
     done
 }
 
-function f_sed_after_repo_download() {
+function f_local_repo_sed() {
     local _dir="${1:-./}"   # /var/www/html/hdp/HDP/centos7/3.x/updates/3.0.0.0
     local _web_host="${2:-`hostname -i`}"
     local _subdir="${3:-hdp}"
@@ -2302,7 +2302,7 @@ function f_local_repo() {
     [ -n "$r_DOCKER_PRIVATE_HOSTNAME" ] && _repo_host="$r_DOCKER_PRIVATE_HOSTNAME"
     local _repo_path="${_hdp_dir#${_document_root}}"
     r_HDP_REPO_URL="http://${_repo_host%/}${_repo_path}"
-    f_sed_after_repo_download "${_hdp_dir}" "${_repo_host}"
+    f_local_repo_sed "${_hdp_dir}" "${_repo_host}"
 }
 
 function f_ambari_set_repo() {
