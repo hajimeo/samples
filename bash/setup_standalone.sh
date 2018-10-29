@@ -66,6 +66,8 @@ NOTES:
 [ -z "${_LICENSE}" ] && _LICENSE="$(ls -1t ${_WORK_DIR%/}/${_SERVICE%/}/dev*license*.json | head -n1)" # A license file to use the _SERVICE
 _PORTS="${_PORTS-"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"}"    # Used by docker port forwarding
 _REMOTE_REPO="${_REMOTE_REPO-"http://192.168.6.162/${_SERVICE}/"}"                  # Curl understandable string
+#_CUSTOM_NETWORK="hdp"
+
 _CREATE_AND_SETUP=false
 _DOCKER_PORT_FORWARD=false
 _DOCKER_STOP_OTHER=false
@@ -111,72 +113,73 @@ function f_update() {
     _log "INFO" "Script has been updated. Backup: ${_backup_file}"
 }
 
-function f_update_hosts_by_hostname() {
+function f_update_hosts_file_by_fqdn() {
+    local __doc__="Update hosts file with given hostname (FQDN) and IP"
     local _hostname="${1}"
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
+    local _hosts_file="/etc/hosts"
+    which dnsmasq &>/dev/null && [ -f /etc/banner_add_hosts ] && _hosts_file="/etc/banner_add_hosts"
+
     if ! docker ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
-        _log "WARN" "${_name} is NOT running. Please check and update /etc/hosts manually."
+        _log "WARN" "${_name} is NOT running. Please check and update ${_hosts_file} manually."
         return 1
     fi
 
     local _container_ip="`docker exec -it ${_name} hostname -i | tr -cd "[:print:]"`"   # tr to remove unnecessary control characters
     if [ -z "${_container_ip}" ]; then
-        _log "WARN" "${_name} is running but not returning IP. Please check and update /etc/hosts manually."
+        _log "WARN" "${_name} is running but not returning IP. Please check and update ${_hosts_file} manually."
         return 1
     fi
 
     # If no root user, uses "sudo" in sed
     if [ "$USER" != "root" ]; then
         _SUDO_SED=true
-        _log "INFO" "Updating /etc/hosts. It may ask your sudo password."
+        _log "INFO" "Updating ${_hosts_file}. It may ask your sudo password."
     fi
 
     # If port forwarding is used, better use localhost
     $_DOCKER_PORT_FORWARD && _container_ip="127.0.0.1"
-    f_update_hosts "${_hostname}" "${_container_ip}" ||  _log "WARN" "Please update /etc/hosts to add '${_container_ip} ${_hostname}'"
+    f_update_hosts_file "${_hostname}" "${_container_ip}" "${_hosts_file}" ||  _log "WARN" "Please update ${_hosts_file} to add '${_container_ip} ${_hostname}'"
 
     which dnsmasq &>/dev/null && service dnsmasq reload
 }
 
-function f_update_hosts() {
-    local __doc__="Update /etc/hosts for the container"
-    local _hostname="$1"
-    local _container_ip="$2"
+function f_update_hosts_file() {
+    local __doc__="Update hosts file with given hostname (FQDN) and IP"
+    local _fqdn="$1"
+    local _ip="$2"
+    local _file="${3:-"/etc/hosts"}"
 
-    [ -z "${_hostname}" ] && return 12
-    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+    if [ -z "${_fqdn}" ]; then
+        _log "ERROR" "hostname is required"; return 11
+    fi
+    local _name="`echo "${_fqdn}" | cut -d"." -f1`"
 
-    if [ -z "${_container_ip}" ]; then
-        #local _ip="`docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' ${_NAME}`"
-        _container_ip="`docker exec -it ${_NAME} hostname -i | tr -cd "[:print:]"`"
-        if [ -z "${_container_ip}" ]; then
-            _log "ERROR" "No IP assigned to the container ${_NAME}"
-            return 1
-        fi
+    if [ -z "${_ip}" ]; then
+        _log "ERROR" "IP is required"; return 12
     fi
 
-    # TODO: this regex is not perfect
-    local _ip_in_hosts="$(_sed -nr "s/^([0-9.]+).*\s${_hostname}.*$/\1/p" /etc/hosts)"
-    # If a good entry is already exists.
-    [ "${_ip_in_hosts}" = "${_container_ip}" ] && return 0
+    # Checking if this combination is already in the hosts file. TODO: this regex is not perfect
+    local _ip_in_hosts="$(_sed -nr "s/^([0-9.]+).*\s${_fqdn}.*$/\1/p" ${_file})"
+    [ "${_ip_in_hosts}" = "${_ip}" ] && return 0
 
     # Take backup before modifying
-    cp /etc/hosts /tmp/hosts_$(date +"%Y%m%d%H%M%S")
+    cp ${_file} /tmp/hosts_$(date +"%Y%m%d%H%M%S")
 
     # Remove the hostname and unnecessary line
-    _sed -i -r "s/\s${_hostname} ${_name}\s?/ /" /etc/hosts
-    _sed -i -r "s/\s${_hostname}\s?/ /" /etc/hosts
-    _sed -i -r "/^${_ip_in_hosts}\s+$/d" /etc/hosts
+    _sed -i -r "s/\s${_fqdn} ${_name}\s?/ /" ${_file}
+    _sed -i -r "s/\s${_fqdn}\s?/ /" ${_file}
+    _sed -i -r "/^${_ip_in_hosts}\s+$/d" ${_file}
 
     # If IP already exists, append the hostname in the end of line
-    if grep -qE "^${_container_ip}\s+" /etc/hosts; then
-        _sed -i -r "/^${_container_ip}\s+/ s/\s*$/ ${_hostname} ${_name}/" /etc/hosts
+    if grep -qE "^${_ip}\s+" ${_file}; then
+        _sed -i -r "/^${_ip}\s+/ s/\s*$/ ${_fqdn} ${_name}/" ${_file}
         return $?
     fi
 
-    if [ -z "${_ip_in_hosts}" ] || [ "${_ip_in_hosts}" != "${_container_ip}" ]; then
-        _sed -i -e "\$a${_container_ip} ${_hostname} ${_name}" /etc/hosts
+    if [ -z "${_ip_in_hosts}" ] || [ "${_ip_in_hosts}" != "${_ip}" ]; then
+        _sed -i -e "\$a${_ip} ${_fqdn} ${_name}" ${_file}
     fi
 }
 
@@ -264,6 +267,7 @@ function f_docker_run() {
         return 0
     fi
 
+    # NOTE: to add more port, use 'docker port <container> <guest port>'
     local _port_opts=""
     for _p in $_ports; do
         local _pid="`lsof -ti:${_p} | head -n1`"
@@ -283,18 +287,25 @@ function f_docker_run() {
     done
     [ -n "${_port_opts}" ] && ! lsof -ti:22222 && _port_opts="${_port_opts} -p 22222:22"
 
+
+    local _network=""   # TODO: without specifying IP, no point of using custom network
+    #if docker network ls | grep -qw "$_CUSTOM_NETWORK"; then
+    #    _network="--network=${_CUSTOM_NETWORK}"
+    #fi
+
     local _dns=""
+    # If dnsmasq is installed, assuming it's setup correctly
     if which dnsmasq &>/dev/null; then
-        # If no custom network, docker uses 'bridge' and --format is too complicated, so using python
-        _dns="--dns=`docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Gateway'])"`"
+        _dns="--dns=`hostname -i`"
     fi
+
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
     docker run -t -i -d \
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
-        -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} ${_dns} \
+        -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} ${_network} ${_dns} \
         --privileged --hostname=${_hostname} --name=${_name} ${_extra_opts} ${_base} /sbin/init || return $?
 
-    f_update_hosts_by_hostname "${_hostname}"
+    f_update_hosts_file_by_fqdn "${_hostname}"
 }
 
 function p_container_setup() {
@@ -333,14 +344,14 @@ function f_docker_start() {
 
     docker start --attach=false ${_name}
 
-    # Somehow docker disable a container communicates outside by adding 0.0.0.0 GW, which will be problem when we test distcp
+    # Somehow docker disable a container communicates to outside by adding 0.0.0.0 GW
     #local _docker_ip="172.17.0.1"
     #local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
     #local _docker_net_addr="172.17.0.0"
     #[[ "${_docker_ip}" =~ $_regex ]] && _docker_net_addr="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0.0"
     #docker exec -it ${_name} bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 &>/dev/null || ip route del ${_docker_net_addr}/16 via 0.0.0.0"
 
-    f_update_hosts_by_hostname "${_hostname}"
+    f_update_hosts_file_by_fqdn "${_hostname}"
 }
 
 function f_as_log_cleanup() {
@@ -560,8 +571,137 @@ function f_install_as() {
     fi
 }
 
+# TODO: If Docker DHCP works with dnsmask, convert _DOMAIN_SUFFIX to _DOMAIN, and also _CUSTOM_NETWORK
+_DOMAIN_SUFFIX="$(echo `hostname -s` | sed 's/[^a-zA-Z0-9_]//g').localdomain"
+
+function f_large_file_download() {
+    local _url="${1}"
+    local _tmp_dir="${2:-"."}"
+    local _min_disk="6"
+
+    local _file_name="`basename "${_url}"`"
+
+    if [ -s "${_tmp_dir%/}/${_file_name}" ]; then
+        _log "INFO" "${_tmp_dir%/}/${_file_name} exists. Not downloading it..."
+        return
+    fi
+
+    if ! _isEnoughDisk "$_tmp_dir%/" "$_min_disk"; then
+        _log "ERROR" "Not enough space to download ${_file_name}"
+        return 1
+    fi
+
+    _log "INFO" "Executing \"cur \"${_url}\" -o ${_tmp_dir%/}/${_file_name}\""
+    curl --retry 100 -C - "${_url}" -o "${_tmp_dir%/}/${_file_name}" || return $?
+}
+
+function f_docker_image_import() {
+    local _tar_gz_file="${1}"
+    local _image_name="${2}"
+    local _tmp_dir="${3:-./}"   # To extract tar gz file
+    local _min_disk="16"
+
+    if ! which docker &>/dev/null; then
+        echo "ERROR: Please install docker - https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/"
+        echo "or "
+        echo "./start_hdp.sh -f f_docker_setup"
+        return 1
+    fi
+
+    if [ -n "${_image_name}" ]; then
+        local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_image_name}:"`"
+        if [ ! -z "$_existing_img" ]; then
+            echo "WARN: Image $_image_name already exist. Exiting."
+            echo "To rename image:
+        docker tag ${_existing_img} <new_name>:<new_tag>
+        docker rmi ${_existing_img}
+    To backup image:
+        docker save <image id> | gzip > saved_image_name.tgz
+        docker export <container id> | gzip > exported_container_name.tgz
+    To restore
+        gunzip -c saved_exported.tgz | docker load
+    "
+            return
+        fi
+    fi
+
+    if ! _isEnoughDisk "/var/lib/docker" "$_min_disk"; then
+        echo "ERROR: /var/lib/docker may not have enough space to create ${_image_name}"
+        return 1
+    fi
+
+    if [ ! -s ${_tar_gz_file} ]; then
+        echo "ERROR: file: ${_tar_gz_file} does not exist."
+        return 1
+    fi
+
+    if file ${_tar_gz_file} | grep -qi 'tar archive'; then
+        docker import ${_tar_gz_file} ${_image_name}
+    else
+        tar -xzv -C ${_tmp_dir} -f ${_tar_gz_file} || return $?
+        docker import ${_tmp_dir%/}/cloudera-quickstart-vm-*-docker/*.tar ${_image_name}
+    fi
+}
+
+function f_ssh_config() {
+    local __doc__="Copy keys and setup authorized key to a node (container)"
+    local _name="${1}"
+    local _key="$2"
+    local _pub_key="$3"
+    # ssh -q -oBatchMode=yes ${_name} echo && return 0
+
+    if [ -z "${_name}" ]; then
+        _log "ERROR" "Need a container name to setup password less ssh"
+        return 1
+    fi
+
+    if [ -z "${_key}" ] && [ -r ~/.ssh/id_rsa ]; then
+        _key=~/.ssh/id_rsa
+    fi
+
+    if [ -z "${_pub_key}" ] && [ -r ~/.ssh/id_rsa.pub ]; then
+        _pub_key=~/.ssh/id_rsa.pub
+    fi
+
+    docker exec -it ${_name} bash -c "[ -f /root/.ssh/authorized_keys ] || ( install -D -m 600 /dev/null /root/.ssh/authorized_keys && chmod 700 /root/.ssh )"
+    docker exec -it ${_name} bash -c "[ -f /root/.ssh/id_rsa.orig ] && exit; [ -f /root/.ssh/id_rsa ] && mv /root/.ssh/id_rsa /root/.ssh/id_rsa.orig; echo \"`cat ${_key}`\" > /root/.ssh/id_rsa; chmod 600 /root/.ssh/id_rsa;echo \"`cat ${_pub_key}`\" > /root/.ssh/id_rsa.pub; chmod 644 /root/.ssh/id_rsa.pub"
+    docker exec -it ${_name} bash -c "grep -q \"^`cat ${_pub_key}`\" /root/.ssh/authorized_keys || echo \"`cat ${_pub_key}`\" >> /root/.ssh/authorized_keys"
+    docker exec -it ${_name} bash -c "[ -f /root/.ssh/config ] || echo -e \"Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\" > /root/.ssh/config"
+}
+
+function f_cdh_setup() {
+    local _container_name="${1:-"sandbox-cdh"}"
+
+    docker exec -it ${_container_name} bash -c 'yum -q install openssh-server openssh-clients -y; service sshd start'
+    f_container_misc "${_container_name}"
+    f_ssh_config "${_container_name}"
+    docker exec -it ${_container_name} bash -c 'sed -i_$(date +"%Y%m%d%H%M%S") -r "/hbase-|oozie|sqoop2-server|spark-history-server|solr-server/d" /usr/bin/docker-quickstart'
+}
+
+function p_cdh_sandbox() {
+    local _container_name="${1:-"sandbox-cdh"}"
+    local _download_dir="${2:-"."}"
+
+    local _tar_gz_file="cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz"
+    local _image_name="cloudera/quickstart"
+
+    if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
+        if ! docker images --format "{{.Repository}}" | grep -qE "^${_image_name}$"; then
+            f_large_file_download "https://downloads.cloudera.com/demo_vm/docker/${_tar_gz_file}" "${_download_dir}" || return $?
+            f_docker_image_import "${_tar_gz_file}" "${_image_name}"|| return $?
+        fi
+
+        f_docker_run "${_container_name}.${_DOMAIN_SUFFIX}" "${_image_name}"|| return $?
+        f_cdh_setup "${_container_name}" || return $?
+    else
+        f_docker_start "${_container_name}.${_DOMAIN_SUFFIX}"|| return $?
+    fi
+    docker exec -d ${_container_name} bash -c '/usr/bin/docker-quickstart'
+}
 
 
+
+## Generic/reusable functions ###################################################
 function _sed() {
     local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
     if ${_SUDO_SED}; then
@@ -580,8 +720,38 @@ function _log() {
     fi
 }
 
+function _isEnoughDisk() {
+    local __doc__="Check if entire system or the given path has enough space with GB."
+    local _dir_path="${1-/}"
+    local _required_gb="$2"
+    local _available_space_gb=""
+
+    _available_space_gb=`_freeSpaceGB "${_dir_path}"`
+
+    if [ -z "$_required_gb" ]; then
+        echo "INFO: ${_available_space_gb}GB free space"
+        _required_gb=`_totalSpaceGB`
+        _required_gb="`expr $_required_gb / 10`"
+    fi
+
+    if [ $_available_space_gb -lt $_required_gb ]; then return 1; fi
+    return 0
+}
+function _freeSpaceGB() {
+    local __doc__="Output how much space for given directory path."
+    local _dir_path="$1"
+    if [ ! -d "$_dir_path" ]; then _dir_path="-l"; fi
+    df -P --total ${_dir_path} | grep -i ^total | awk '{gb=sprintf("%.0f",$4/1024/1024);print gb}'
+}
+function _totalSpaceGB() {
+    local __doc__="Output how much space for given directory path."
+    local _dir_path="$1"
+    if [ ! -d "$_dir_path" ]; then _dir_path="-l"; fi
+    df -P --total ${_dir_path} | grep -i ^total | awk '{gb=sprintf("%.0f",$2/1024/1024);print gb}'
+}
 
 
+## main ###################################################
 main() {
     local __doc__="Main function which accepts global variables (any dirty code should be written in here)"
 
