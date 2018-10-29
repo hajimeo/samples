@@ -670,8 +670,10 @@ function f_ssh_config() {
 function f_cdh_setup() {
     local _container_name="${1:-"sandbox-cdh"}"
 
+    _log "INFO" "(re)Installing SSH and other commands ..."
     docker exec -it ${_container_name} bash -c 'yum install -y openssh-server openssh-clients; service sshd start'
     docker exec -d ${_container_name} bash -c 'yum install -y yum-plugin-ovl scp curl unzip tar wget openssl python nscd yum-utils sudo which vim net-tools strace lsof tcpdump fuse sshfs nc rsync bzip2 bzip2-libs'
+    _log "INFO" "Customising ${_container_name} ..."
     f_container_misc "${_container_name}"
     f_ssh_config "${_container_name}"
     docker exec -it ${_container_name} bash -c 'sed -i_$(date +"%Y%m%d%H%M%S") -r "/hbase-|oozie|sqoop2-server|spark-history-server|solr-server|exec bash/d" /usr/bin/docker-quickstart'
@@ -679,23 +681,32 @@ function f_cdh_setup() {
 
 function p_cdh_sandbox() {
     local _container_name="${1:-"sandbox-cdh"}"
-    local _download_dir="${2:-"."}"
+    local _is_quick_starting="${2:-Y}"
+    local _download_dir="${3:-"."}"
 
     local _tar_gz_file="cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz"
     local _image_name="cloudera/quickstart"
 
     if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
         if ! docker images --format "{{.Repository}}" | grep -qE "^${_image_name}$"; then
+            _log "INFO" "Downloading ${_tar_gz_file} ..."
             f_large_file_download "https://downloads.cloudera.com/demo_vm/docker/${_tar_gz_file}" "${_download_dir}" || return $?
+            _log "INFO" "Importing ${_tar_gz_file} ..."
             f_docker_image_import "${_tar_gz_file}" "${_image_name}"|| return $?
         fi
 
+        _log "INFO" "docker run ${_container_name} ..."
         f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}"|| return $?
         f_cdh_setup "${_container_name}" || return $?
     else
         f_docker_start "${_container_name}.${_DOMAIN}"|| return $?
     fi
-    docker exec -it ${_container_name} bash /usr/bin/docker-quickstart
+    _log "INFO" "Starting CDH (Quick Start: ${_is_quick_starting}) ..."
+    if [[ "${_is_quick_starting}" =~ ^(y|Y) ]]; then
+        docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart'
+    else
+        docker exec -it ${_container_name} bash -c '/home/cloudera/cloudera-manager --express'
+    fi
 }
 
 
