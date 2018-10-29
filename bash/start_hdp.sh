@@ -3017,7 +3017,7 @@ function f_socks5_proxy() {
     local __doc__="Start Socks5 proxy (for websocket)"
     local _port="${1:-$((${r_PROXY_PORT:-28080} + 1))}"
     [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
-    lsof -i:${_port} && return 0
+    lsof -nPi:${_port} && return 0
     ssh -gC2TxnNf -D${_port} localhost &> /tmp/ssh_socks5.out
 }
 
