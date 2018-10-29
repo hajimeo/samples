@@ -670,7 +670,7 @@ function f_ssh_config() {
 function f_cdh_setup() {
     local _container_name="${1:-"sandbox-cdh"}"
 
-    docker exec -it ${_container_name} bash -c 'yum -q install openssh-server openssh-clients -y; service sshd start'
+    docker exec -it ${_container_name} bash -c 'yum install openssh-server openssh-clients -y; service sshd start'
     f_container_misc "${_container_name}"
     f_ssh_config "${_container_name}"
     docker exec -it ${_container_name} bash -c 'sed -i_$(date +"%Y%m%d%H%M%S") -r "/hbase-|oozie|sqoop2-server|spark-history-server|solr-server/d" /usr/bin/docker-quickstart'
