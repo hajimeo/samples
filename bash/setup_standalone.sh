@@ -704,6 +704,7 @@ function p_cdh_sandbox() {
         docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart'
     else
         docker exec -it ${_container_name} bash -c '/home/cloudera/cloudera-manager --express'
+        #curl 'http://`hostname -f`:7180/cmf/services/12/maintenanceMode?enter=true' -X POST
     fi
 }
 
