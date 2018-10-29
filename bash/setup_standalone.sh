@@ -681,7 +681,7 @@ function f_cdh_setup() {
 
 function p_cdh_sandbox() {
     local _container_name="${1:-"sandbox-cdh"}"
-    local _is_quick_starting="${2:-Y}"
+    local _is_using_cm="${2}"
     local _download_dir="${3:-"."}"
 
     local _tar_gz_file="cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz"
@@ -701,12 +701,13 @@ function p_cdh_sandbox() {
     else
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
     fi
-    _log "INFO" "Starting CDH (Quick Start: ${_is_quick_starting}) ..."
-    if [[ "${_is_quick_starting}" =~ ^(y|Y) ]]; then
-        docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start'
-    else
+
+    _log "INFO" "Starting CDH (Using Cloudera Manager: ${_is_using_cm}) ..."
+    if [[ "${_is_using_cm}" =~ ^(y|Y) ]]; then
         docker exec -it ${_container_name} bash -c '/home/cloudera/cloudera-manager --express'
         #curl 'http://`hostname -f`:7180/cmf/services/12/maintenanceMode?enter=true' -X POST
+    else
+        docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start'
     fi
 }
 
