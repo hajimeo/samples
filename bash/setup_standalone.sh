@@ -670,10 +670,11 @@ function f_ssh_config() {
 function f_cdh_setup() {
     local _container_name="${1:-"sandbox-cdh"}"
 
-    docker exec -it ${_container_name} bash -c 'yum install openssh-server openssh-clients -y; service sshd start'
+    docker exec -it ${_container_name} bash -c 'yum install -y openssh-server openssh-clients; service sshd start'
+    docker exec -d ${_container_name} bash -c 'yum install -y yum-plugin-ovl scp curl unzip tar wget openssl python nscd yum-utils sudo which vim net-tools strace lsof tcpdump fuse sshfs nc rsync bzip2 bzip2-libs'
     f_container_misc "${_container_name}"
     f_ssh_config "${_container_name}"
-    docker exec -it ${_container_name} bash -c 'sed -i_$(date +"%Y%m%d%H%M%S") -r "/hbase-|oozie|sqoop2-server|spark-history-server|solr-server/d" /usr/bin/docker-quickstart'
+    docker exec -it ${_container_name} bash -c 'sed -i_$(date +"%Y%m%d%H%M%S") -r "/hbase-|oozie|sqoop2-server|spark-history-server|solr-server|exec bash/d" /usr/bin/docker-quickstart'
 }
 
 function p_cdh_sandbox() {
@@ -694,7 +695,7 @@ function p_cdh_sandbox() {
     else
         f_docker_start "${_container_name}.${_DOMAIN}"|| return $?
     fi
-    docker exec -d ${_container_name} bash -c '/usr/bin/docker-quickstart &> /tmp/docker-quickstart.out'
+    docker exec -it ${_container_name} bash /usr/bin/docker-quickstart
 }
 
 
