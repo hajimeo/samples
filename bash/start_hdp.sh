@@ -62,7 +62,7 @@ How to create a node(s)
     # Create one node with Ambari Server, hostname: ambari2510.localdomain, OS ver: CentOS7.5, Network addr: 172.17.100.x
     p_ambari_node_create 'ambari2510.localdomain:8008' '172.17.100.125' '7.5.1804' [/path/to/ambari.repo] [DNS_IP]
 
-    # Create one node WITHOUT Ambari, hostname: node101.localdomain, OS ver: CentOS7.5, Network addr: 172.17.100.x
+    # Create one node WITHOUT Ambari, hostname: node99.localdomain, OS ver: CentOS7.5, Network addr: 172.17.100.x
     p_node_create 'test.ubuntu.localdomain' '172.17.100.125' '7.5.1804' [DNS_IP]
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS7.5, and Ambari is ambari2615.ubu04.localdomain
@@ -399,15 +399,18 @@ function p_ambari_node_setup() {
 
 function p_node_create() {
     local __doc__="TODO: Create one node (NOTE: no agent installation if no ambari.repo, only centos, and doesn't create docker image)"
-    local _hostname="${1}"
-    local _ip_address="${2}"
-    local _os_ver="${3-${r_CONTAINER_OS_VER:-$g_CENTOS_VERSION}}"
-    local _dns="$4"
-
-    [ -z "${_dns}" ] && _dns="${r_DNS_SERVER:-$g_DNS_SERVER}"
-    [ $_dns = "localhost" ] && _dns="`f_docker_ip`"
+    local _hostname="${1}"      # FQDN
+    local _ip_address="${2}"    # last byte is OK
+    local _os_ver="${3:-${r_CONTAINER_OS_VER:-$g_CENTOS_VERSION}}"
+    local _dns="${4:-${r_DNS_SERVER:-$g_DNS_SERVER}}"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
+    [ "${_dns}" = "localhost" ] && _dns="`f_docker_ip`"
+    if [[ "${_ip_address}" =~ ^[0-9]{1,3}$ ]]; then
+        local _docker_network_addr="$(grep -h '^r_DOCKER_NETWORK_ADDR=' *.resp | sort | uniq -c | sort -nr | head -n1 | sed -nr 's/[^"]+"([^"]+)"/\1/p')"
+        _ip_address="${_docker_network_addr%.}.${_ip_address}"
+        _info "Using IP Address ${_ip_address} ..."; sleep 1
+    fi
 
     f_dnsmasq_banner_reset "${_hostname}" "" "${_ip_address}" "${_dns}" || return $?
     _docker_run "${_hostname}" "${_ip_address}" "${g_DOCKER_BASE}:$_os_ver" "${_dns}" || return $?
