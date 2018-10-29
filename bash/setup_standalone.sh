@@ -58,6 +58,7 @@ NOTES:
 ### Default values
 [ -z "${_WORK_DIR}" ] && _WORK_DIR="/var/tmp/share"     # If Mac, may need to be /private/var/tmp/share
 [ -z "${_SHARE_DIR}" ] && _SHARE_DIR="/var/tmp/share"   # Docker container's share dir (normally same as _WORK_DIR except Mac)
+#_DOMAIN_SUFFIX="$(echo `hostname -s` | sed 's/[^a-zA-Z0-9_]//g').localdomain"
 [ -z "${_DOMAIN}" ] && _DOMAIN="standalone.localdomain" # Default container domain suffix
 [ -z "${_OS_VERSION}" ] && _OS_VERSION="7.5.1804"       # Container OS version (normally CentOS version)
 [ -z "${_IMAGE_NAME}" ] && _IMAGE_NAME="hdp/base"       # Docker image name TODO: change to more appropriate image name
@@ -571,9 +572,6 @@ function f_install_as() {
     fi
 }
 
-# TODO: If Docker DHCP works with dnsmask, convert _DOMAIN_SUFFIX to _DOMAIN, and also _CUSTOM_NETWORK
-_DOMAIN_SUFFIX="$(echo `hostname -s` | sed 's/[^a-zA-Z0-9_]//g').localdomain"
-
 function f_large_file_download() {
     local _url="${1}"
     local _tmp_dir="${2:-"."}"
@@ -691,12 +689,12 @@ function p_cdh_sandbox() {
             f_docker_image_import "${_tar_gz_file}" "${_image_name}"|| return $?
         fi
 
-        f_docker_run "${_container_name}.${_DOMAIN_SUFFIX}" "${_image_name}"|| return $?
+        f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}"|| return $?
         f_cdh_setup "${_container_name}" || return $?
     else
-        f_docker_start "${_container_name}.${_DOMAIN_SUFFIX}"|| return $?
+        f_docker_start "${_container_name}.${_DOMAIN}"|| return $?
     fi
-    docker exec -d ${_container_name} bash -c '/usr/bin/docker-quickstart'
+    docker exec -d ${_container_name} bash -c '/usr/bin/docker-quickstart &> /tmp/docker-quickstart.out'
 }
 
 
