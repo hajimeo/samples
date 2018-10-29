@@ -470,9 +470,7 @@ function f_as_setup() {
     fi
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    docker exec -it ${_name} bash -c "export _STANDALONE=Y
-export _ATSCALE_LICENSE=${_share_dir%/}/${_service%/}/$(basename "${_license}")
-bash ${_share_dir%/}/${_service%/}/install_atscale.sh ${_version}"
+    docker exec -it ${_name} bash -c "bash ${_share_dir%/}/${_service%/}/install_atscale.sh -v ${_version} -l ${_share_dir%/}/${_service%/}/$(basename "${_license}") -S"
     #ssh -q root@${_hostname} -t "export _STANDALONE=Y;bash ${_share_dir%/}${_user%/}/install_atscale.sh ${_version}"
 }
 
