@@ -699,7 +699,7 @@ function p_cdh_sandbox() {
         f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "" "--add-host=quickstart.cloudera:127.0.0.1" || return $?
         f_cdh_setup "${_container_name}" || return $?
     else
-        f_docker_start "${_container_name}.${_DOMAIN}"|| return $?
+        f_docker_start "${_container_name}.${_DOMAIN}" || return $?
     fi
     _log "INFO" "Starting CDH (Quick Start: ${_is_quick_starting}) ..."
     if [[ "${_is_quick_starting}" =~ ^(y|Y) ]]; then
