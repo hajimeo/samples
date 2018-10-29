@@ -47,8 +47,9 @@ function test_kvno() {
 
     # kvno [-c ccache] [-e etype] [-q] [-h] [-P] [-S sname] [-U for_user] service1 service2 ...
     if ! kvno -k ${_keytab} ${_principal}; then
-        KRB5_TRACE=/dev/stdout kvno -k ${_keytab} ${_principal}
+        KRB5_TRACE=/dev/stdout kvno -k ${_keytab} ${_principal} || return $?
     fi
+    echo "Success" >&2
 }
 
 function test_spnego() {    # a.k.a. gssapi
@@ -63,7 +64,7 @@ function test_spnego() {    # a.k.a. gssapi
     if ! curl -s --negotiate -u : -k -f "${_url}"; then #--trace-ascii -
         curl -v --negotiate -u : -k -f "${_url}" || return $?
     fi
-    echo "Connected" >&2
+    echo "Success" >&2
 }
 
 function test_dns_reverse_lookup() {
