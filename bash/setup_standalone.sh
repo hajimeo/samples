@@ -297,7 +297,7 @@ function f_docker_run() {
     local _dns=""
     # If dnsmasq is installed, assuming it's setup correctly
     if which dnsmasq &>/dev/null; then
-        _dns="--dns=`hostname -i`"
+        _dns="--dns=`hostname -I | awk '{print $1}'`"
     fi
 
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
