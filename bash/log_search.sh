@@ -69,7 +69,7 @@ function p_support() {
     echo " "
 
     echo "# config.yaml"
-    _find_and_cat "config.yaml" | grep -E '(^atscale_home|^user.name|^user.timezone|^sun.jnu.encoding)'
+    _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user.timezone|^sun.jnu.encoding)'
     echo " "
     echo " "
 
@@ -117,8 +117,11 @@ function p_support() {
     echo "# Number of lines: "$(_find_and_cat "tableSizes.tsv" | wc -l)
     echo " "
 
-    echo "# Engine start/restart"
+    echo "# Engine start/restart and supervisord not expected"
     rg --search-zip -N --no-filename -g 'engine*log*' 'Using AtScale Configuration' | sort | uniq | tail
+    echo " "
+    echo "# supervisord 'not expected' (NOTE: time is probably not UTC)"
+    rg --search-zip -N --no-filename -g 'atscale_service.log' 'not expected' | tail -n 20
 
     echo " "
     echo "# WARNs in warn.log (if exists)"
@@ -433,7 +436,9 @@ function f_get_multilines() {
 
 function f_genLdapsearch() {
     local __doc__="Generate ldapsearch command from a json file"
-    _find_and_cat "directory_configurations.json" | python -c 'import sys,re,json
+    local _json_str="`_find_and_cat "directory_configurations.json" 2>/dev/null`"
+    [ -z "${_json_str}" ] && return
+    echo "${_json_str}" | python -c 'import sys,re,json
 a=json.loads(sys.stdin.read());l=a[0]
 p="ldaps" if "use_ssl" in l else "ldap"
 r=re.search(r"^[^=]*?=?([^=]+?)[ ,@]", l["username"])
@@ -519,7 +524,7 @@ function f_topSlowLogs() {
     local _top_N="${5:-10}" # how many result to show
 
     if [ -z "$_regex" ]; then
-        _regex="\b(slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout|timed out|going into queue, is \[...+\] in line|rejecting)\b.+"
+        _regex="\b(slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout|timed out|going into queue, is \[...+\] in line|rejecting|Likely the pool is at capacity or a connection is down|failed to find free connection)\b.+"
     fi
     if [ -n "${_date_regex}" ]; then
         _regex="^${_date_regex}.+${_regex}"
@@ -1280,7 +1285,7 @@ function _date2int() {
 function _find_and_cat() {
     local _f="`find . -name "$1" -print`"
     if [ -z "$_f" ]; then
-        echo "$1 does not exist"
+        echo "Couldn't find $1 under current directory." >&2
         return
     fi
     cat "${_f}"
