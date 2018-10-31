@@ -40,7 +40,7 @@ OTHERS:
         When -P is used or the host is Mac, this option would be needed.
 
     -l /path/to/dev-license.json
-        A path to the software licene file
+        A path to the software licence file
 
     -u
         Update this script to the latest
