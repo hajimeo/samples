@@ -82,7 +82,7 @@ function f_setup_jupyter() {
     ### Pip(3) end ########################################################
 
     # Enable jupyter extensions (spell checker)
-    sudo -i jupyter contrib nbextension instal && sudo -i jupyter nbextension enable spellchecker/main
+    sudo -i jupyter contrib nbextension install && sudo -i jupyter nbextension enable spellchecker/main
     # TODO: sudo -i jupyter labextension install @ijmbarr/jupyterlab_spellchecker
 }
 
