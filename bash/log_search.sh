@@ -118,7 +118,7 @@ function p_support() {
     echo " "
 
     echo "# Engine start/restart and supervisord not expected"
-    rg --search-zip -N --no-filename -g 'engine*log*' 'Using AtScale Configuration' | sort | uniq | tail
+    rg --search-zip -N --no-filename -g 'engine*log*' 'Engine (actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
     echo " "
     echo "# supervisord 'not expected' (NOTE: time is probably not UTC)"
     rg --search-zip -N --no-filename -g 'atscale_service.log' 'not expected' | tail -n 20
