@@ -140,6 +140,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         eval "$@"
     else
         f_setup_misc
+        f_setup_screen
         f_setup_rg
         f_setup_jupyter
     fi
