@@ -4,6 +4,6 @@ encoding utf8 utf8
 defscrollback 10000
 #termcapinfo xterm* ti@:te@
 altscreen on
-defbce on
+#defbce on
 term xterm-256color
 shell -$SHELL
