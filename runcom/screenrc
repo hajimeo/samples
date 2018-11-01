@@ -7,3 +7,4 @@ altscreen on
 #defbce on
 term xterm-256color
 shell -$SHELL
+#shelltitle "$ |bash"
