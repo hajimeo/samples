@@ -9,21 +9,26 @@
 #
 
 function f_setup_misc() {
-    _backup ~/.bash_profile
-    curl -f --retry 3 -o ~/.bash_profile -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh" || return $?
-    _backup ~/.bash_aliases
-    curl -f --retry 3 -o ~/.bash_aliases -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh" || return $?
+    _backup $HOME/.bash_profile
+    curl -f --retry 3 -o $HOME/.bash_profile -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh" || return $?
+    _backup $HOME/.bash_aliases
+    curl -f --retry 3 -o $HOME/.bash_aliases -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh" || return $?
 
     # Command/scripts need for my bash_aliases.sh
     sudo -i pip install data_hacks  # it's OK if this fails
-    if [ ! -d "~/IdeaProjects/samples/bash" ]; then
-        mkdir -p ~/IdeaProjects/samples/bash || return $?
+    if [ ! -d "$HOME/IdeaProjects/samples/bash" ]; then
+        mkdir -p $HOME/IdeaProjects/samples/bash || return $?
     fi
-    _backup ~/IdeaProjects/samples/bash/log_search.sh
-    curl -f --retry 3 -o ~/IdeaProjects/samples/bash/log_search.sh "https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh" || return $?
+
+    _backup $HOME/.vimrc
+    curl -f --retry 3 -o $HOME/.vimrc -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/vimrc" || return $?
+
+    _backup $HOME/IdeaProjects/samples/bash/log_search.sh
+    curl -f --retry 3 -o $HOME/IdeaProjects/samples/bash/log_search.sh "https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh" || return $?
 }
 
 function f_setup_rg() {
+    # as of today, rg is not in Ubuntu repository so not using _install
     if ! which rg &>/dev/null; then
         if [ "`uname`" = "Darwin" ]; then
             if which brew &>/dev/null; then
@@ -45,11 +50,25 @@ function f_setup_rg() {
         fi
     fi
 
-    _backup ~/.rgrc
-    curl -f --retry 3 -o ~/.rgrc -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/rgrc" || return $?
-    if ! grep -q '^export RIPGREP_CONFIG_PATH=' ~/.bash_profile; then
-        echo -e '\nexport RIPGREP_CONFIG_PATH=$HOME/.rgrc' >> ~/.bash_profile || return $?
+    _backup $HOME/.rgrc
+    curl -f --retry 3 -o $HOME/.rgrc -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/rgrc" || return $?
+    if ! grep -q '^export RIPGREP_CONFIG_PATH=' $HOME/.bash_profile; then
+        echo -e '\nexport RIPGREP_CONFIG_PATH=$HOME/.rgrc' >> $HOME/.bash_profile || return $?
     fi
+}
+
+function f_setup_screen() {
+    if ! which screen &>/dev/null && ! _install screen -y; then
+        _log "ERROR" "no screen installed or not in PATH"
+        return 1
+    fi
+
+    [ -d $HOME/.byobu ] || mkdir $HOME/.byobu
+    _backup $HOME/.byobu/.screenrc
+    _backup $HOME/.screenrc
+    curl -f --retry 3 -o $HOME/.screenrc -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/screenrc" || return $?
+    [ -f $HOME/.byobu/.screenrc ] && rm -f $HOME/.byobu/.screenrc
+    ln -s $HOME/.screenrc $HOME/.byobu/.screenrc
 }
 
 function f_setup_jupyter() {
