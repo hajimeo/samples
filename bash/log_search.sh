@@ -422,16 +422,16 @@ function f_getQueries() {
 }
 
 function f_get_multilines() {
-    local __doc__="TODO: 'rg' version of multiline search. NOTE: dot and brace can't be used. Eg: ^2018[^.]+ for dot"
-    local _keyword="$1"   # Probably shouldn't use . (dot)
-    local _file_path="${2}"
-    local _boundary_str="${3}"
-    #local _how_many="${5:-1}"   # TODO: _m N is not working, probably rg bug?
-    [ -z "${_file_path}" ] && _file_path="-g 'engine.*log*'"
-    [ -z "${_boundary_str}" ] && _boundary_str="^2\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d+"
+    local __doc__="Multiline search with 'rg'. TODO: dot and brace can't be used in _keyword"
+    local _str_in_1st_line="$1"         # TODO: At this moment, grep-ing lines which *first* line contain this string
+    local _dot_alternative="${2:-"}"}"  # TODO: Using '.' with rg 0.10.0 does not work with non greedy if dot is used more than once
+    local _glob="${3:-"debug.*log*"}"   # TODO: If glob matches multiple files, the result might not be sorted in right order
+    local _boundary_str="${4:-"^2\\d\\d\\d-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d,\\d+"}"
+    local _how_many="${5:-1000}"
 
-    # NOTE With rg 0.10.0, dotall is a bit strange. Does not work with non greedy if dot is used more than once, also -m 1 is not working.
-    rg -o "(${_boundary_str}[^.]+${_keyword}.+)${_boundary_str}" -r '$1' --multiline --multiline-dotall --no-line-number --no-filename --search-zip ${_file_path}
+    rg "(${_boundary_str}[^${_dot_alternative}]+?${_str_in_1st_line}.+?)${_boundary_str}" -o -r '$1' \
+        --multiline --multiline-dotall --no-line-number --no-filename --search-zip \
+        -g "${_glob}" --sort path -m ${_how_many}
 }
 
 function f_genLdapsearch() {
