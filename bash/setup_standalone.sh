@@ -445,10 +445,11 @@ function f_as_setup() {
     local __doc__="Install/Setup a specific Application Service for the container"
     local _hostname="$1"
     local _version="${2:-${_VERSION}}"
-    local _license="${3:-${_LICENSE}}"
-    local _service="${4:-${_SERVICE}}"
-    local _work_dir="${5:-${_WORK_DIR}}"
-    local _share_dir="${6:-${_SHARE_DIR}}"
+    local _options="${3:-"-S"}"
+    local _license="${4:-${_LICENSE}}"
+    local _service="${5:-${_SERVICE}}"
+    local _work_dir="${6:-${_WORK_DIR}}"
+    local _share_dir="${7:-${_SHARE_DIR}}"
 
     [ ! -d "${_work_dir%/}/${_service%/}" ] && mkdir -p -m 777 "${_work_dir%/}${_service%/}"
 
@@ -470,7 +471,7 @@ function f_as_setup() {
     fi
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    docker exec -it ${_name} bash -c "bash ${_share_dir%/}/${_service%/}/install_atscale.sh -v ${_version} -l ${_share_dir%/}/${_service%/}/$(basename "${_license}") -S"
+    docker exec -it ${_name} bash -c "bash ${_share_dir%/}/${_service%/}/install_atscale.sh -v ${_version} -l ${_share_dir%/}/${_service%/}/$(basename "${_license}") ${_options}"
     #ssh -q root@${_hostname} -t "export _STANDALONE=Y;bash ${_share_dir%/}${_user%/}/install_atscale.sh ${_version}"
 }
 
@@ -552,9 +553,10 @@ function f_as_restore() {
 function f_install_as() {
     local _name="${1:-$_NAME}"
     local _version="${2:-$_VERSION}"
-    local _base="$3"
+    local _base="${3:-"${_IMAGE_NAME}:${_OS_VERSION}"}"
     local _ports="${4}"      #"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
     local _extra_opts="${5}" # eg: "--add-host=imagename.standalone:127.0.0.1"
+    local _install_opts="${6}"
 
     # Creating a new (empty) container and install the application
     f_docker_run "${_name}.${_DOMAIN#.}" "${_base}" "${_ports}" "${_extra_opts}" || return $?
@@ -563,7 +565,7 @@ function f_install_as() {
 
     if [ -n "$_version" ] && ! $_AS_NO_INSTALL_START; then
         _log "INFO" "Setting up an Application for version ${_version} on ${_name} ..."
-        if ! f_as_setup "${_name}.${_DOMAIN#.}" "${_version}"; then
+        if ! f_as_setup "${_name}.${_DOMAIN#.}" "${_version}" "${_install_opts}"; then
             _log "ERROR" "Setting up an Application for version ${_version} on ${_name} failed"; sleep 3
             return 1
         fi
