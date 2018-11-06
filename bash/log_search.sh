@@ -114,7 +114,8 @@ function p_support() {
 
     echo "# tableSizes.tsv 10 large tables (by num rows)"
     _find_and_cat "tableSizes.tsv" | sort -n -k2 | tail -n 10
-    echo "# Number of lines: "$(_find_and_cat "tableSizes.tsv" | wc -l)
+    echo "* Number of tables: "$(_find_and_cat "tableSizes.tsv" | wc -l)
+    echo "* Number of 0 tbls: "$(_find_and_cat "tableSizes.tsv" | grep -w 0 -c)
     echo " "
 
     echo "# Engine start/restart and supervisord not expected"
@@ -224,7 +225,7 @@ function f_checkMaterializeWorkers() {
     local _glob="${2:-debug*.log*}" # As TRACE log, needs debug log
     local _n="${3:-20}"
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
-
+    # aggregates.configuration.maximum_concurrent_materializations.default = 1 or atscale.atscale.aggregate_configurations table
     local _waiting="$(rg -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+TRACE .+ No workers available for request, adding to queue of size (\d+)" -r '${1}|${2}')"
     local _working="$(rg -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+TRACE .+ Worker .+ is available to handle request" -r '${1}|-1')"
     ( echo  "${_waiting}"; echo "${_working}" ) | awk -F"|" '{print $1"|"$2+1}' | sort -n > /tmp/f_checkMaterializeWorkers_$$.out
@@ -421,15 +422,14 @@ function f_getQueries() {
     _getAfterFirstMatch "${_path}" "queryId=${_uuid}.+ (Received|Executing) (.+) [Qq]uery" "^20\d\d-\d\d-\d\d" "Y"
 }
 
-function f_get_multilines() {
+function f_grep_multilines() {
     local __doc__="Multiline search with 'rg'. TODO: dot and brace can't be used in _keyword"
     local _str_in_1st_line="$1"         # TODO: At this moment, grep-ing lines which *first* line contain this string
-    local _dot_alternative="${2:-"}"}"  # TODO: Using '.' with rg 0.10.0 does not work with non greedy if dot is used more than once
-    local _glob="${3:-"debug.*log*"}"   # TODO: If glob matches multiple files, the result might not be sorted in right order
-    local _boundary_str="${4:-"^2\\d\\d\\d-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d,\\d+"}"
-    local _how_many="${5:-1000}"
+    local _glob="${2:-"debug.*log*"}"   # TODO: If glob matches multiple files, the result might not be sorted in right order
+    local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d,\\d+"}"
+    local _how_many="${4:-1000}"
 
-    rg "(${_boundary_str}[^${_dot_alternative}]+?${_str_in_1st_line}.+?)${_boundary_str}" -o -r '$1' \
+    rg "(${_boundary_str}[^\n]+?${_str_in_1st_line}.+?)${_boundary_str}" -o -r '$1' \
         --multiline --multiline-dotall --no-line-number --no-filename --search-zip \
         -g "${_glob}" --sort path -m ${_how_many}
 }
