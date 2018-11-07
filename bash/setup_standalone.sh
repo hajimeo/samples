@@ -11,6 +11,9 @@ CREATE IMAGE/CONTAINER:
         Create a docker image for Standalone/Sandbox
         Docker container will be created if -n <container_name> or -v <version> is provided.
         Then installs necessary service in the container.
+  OR
+    . $BASH_SOURCE
+    f_install_as <name> <version> '' '' '' <install opts>
 
 START CONTAINER:
     -n <container_name>     <<< no '-c'
@@ -250,8 +253,8 @@ function f_docker_base_create() {
 
 function f_docker_run() {
     local __doc__="Execute docker run with my preferred options"
-    local _hostname="$1"
-    local _base="$2"
+    local _fqdn="$1"
+    local _base="${2:-"${_IMAGE_NAME}:${_OS_VERSION}"}"
     local _ports="${3}"      #"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
     local _extra_opts="${4}" # eg: "--add-host=imagename.standalone:127.0.0.1"
     local _stop_other=${5:-${_DOCKER_STOP_OTHER}}
@@ -259,7 +262,7 @@ function f_docker_run() {
     local _share_dir_to="${7:-${_SHARE_DIR}}"
     # NOTE: At this moment, removed _ip as it requires a custom network (see start_hdp.sh for how)
 
-    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+    local _name="`echo "${_fqdn}" | cut -d"." -f1`"
     [ ! -d "${_share_dir_from%/}" ] && mkdir -p -m 777 "${_share_dir_from%/}"
 
     _line="`docker ps -a --format "{{.Names}}" | grep -E "^${_name}$"`"
@@ -304,17 +307,17 @@ function f_docker_run() {
     docker run -t -i -d \
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
         -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} ${_network} ${_dns} \
-        --privileged --hostname=${_hostname} --name=${_name} ${_extra_opts} ${_base} /sbin/init || return $?
+        --privileged --hostname=${_fqdn} --name=${_name} ${_extra_opts} ${_base} /sbin/init || return $?
 
-    f_update_hosts_file_by_fqdn "${_hostname}"
+    f_update_hosts_file_by_fqdn "${_fqdn}"
+    sleep 1
+    p_container_setup "${_name}" || return $?
 }
 
 function p_container_setup() {
     local _name="${1:-${_NAME}}"
-    local _service="${2:-${_SERVICE}}"
 
     _log "INFO" "Setting up ${_name} container..."
-    f_container_useradd "${_name}" "${_service}" || return $?
     f_container_ssh_config "${_name}"   # it's OK to fail || return $?
     f_container_misc "${_name}"         # it's OK to fail || return $?
     return 0
@@ -560,8 +563,7 @@ function f_install_as() {
 
     # Creating a new (empty) container and install the application
     f_docker_run "${_name}.${_DOMAIN#.}" "${_base}" "${_ports}" "${_extra_opts}" || return $?
-    sleep 1
-    p_container_setup "${_name}" || return $?
+    f_container_useradd "${_name}" "${_SERVICE}" || return $?
 
     if [ -n "$_version" ] && ! $_AS_NO_INSTALL_START; then
         _log "INFO" "Setting up an Application for version ${_version} on ${_name} ..."
