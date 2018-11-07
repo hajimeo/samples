@@ -130,7 +130,7 @@ function p_support() {
 }
 
 function p_performance() {
-    local _glob="${1}"
+    local _glob="${1:-"engine*.log*"}"
     local _date_regex="${2}"
     local _n="${3:-20}"
     local _exclude_slow_one="$4"
@@ -159,6 +159,14 @@ EOF
 
     echo "# f_checkMaterializeWorkers Materialization queue size from the engine debug log"
     cat /tmp/perform_f_checkMaterializeWorkers_$$.out
+    echo " "
+
+    echo "# Likely the pool is at capacity"
+    rg -N --no-filename -z -g "${_glob}" '(Likely the pool is at capacity|Could not establish a JDBC|Cannot connect to subgroup|Could not create ConnectionManagerActor)' | sort | uniq | tail -n ${_n}
+    echo " "
+
+    echo "# Took X secs to begin execution"
+    rg -N --no-filename -z -g "${_glob}" 'took \[[0-9.]+ s\] to begin execution' | sort | uniq | tail -n ${_n}
     echo " "
 
     echo "# f_failedQueries failed queries from the engine log (datetime, queryId, time) and top ${_n}"
@@ -524,7 +532,7 @@ function f_topSlowLogs() {
     local _top_N="${5:-10}" # how many result to show
 
     if [ -z "$_regex" ]; then
-        _regex="\b(slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout|timed out|going into queue, is \[...+\] in line|rejecting|Likely the pool is at capacity or a connection is down|failed to find free connection)\b.+"
+        _regex="\b(slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout|timed out|going into queue, is \[...+\] in line|request rejected|Likely the pool is at capacity|failed to find free connection)\b.+"
     fi
     if [ -n "${_date_regex}" ]; then
         _regex="^${_date_regex}.+${_regex}"
@@ -1199,14 +1207,16 @@ function f_count_lines() {
     local __doc__="Count lines between _search_regex of periodic.log"
     local _file="$1"
     local _search_regex="${2:-"^20\\d\\d-\\d\\d-\\d\\d .+Periodic stack trace 1"}"
+
     [ -z "${_file}" ] && _file="`find . -name periodic.log -print | head -n1`" && ls -lh ${_file}
+
     local _ext="${_file##*.}"
     if [[ "${_ext}" =~ gz ]]; then
-        local _line_num=`gunzip -c ${_file} | wc -l`
-        _grep -nP "${_search_regex}" <(gunzip -c ${_file}) | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | line_parser.py thread_num ${_line_num} | bar_chart.py -A
+        local _line_num=`gunzip -c ${_file} | wc -l | tr -d '[:space:]'`
+        rg -n --no-filename -z "${_search_regex}" ${_file} | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | line_parser.py thread_num ${_line_num} | bar_chart.py -A
     else
-        local _line_num=`wc -l ${_file}`
-        _grep -nP "${_search_regex}" ${_file} | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | line_parser.py thread_num ${_line_num} | bar_chart.py -A
+        local _line_num=`wc -l <${_file} | tr -d '[:space:]'`
+        rg -n --no-filename -z "${_search_regex}" ${_file} | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d)' -r '${2}T${3} ${1}' | line_parser.py thread_num ${_line_num} | bar_chart.py -A
     fi
 }
 
