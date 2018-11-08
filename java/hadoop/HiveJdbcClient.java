@@ -8,11 +8,7 @@
  */
 package hadoop;
 
-import java.sql.SQLException;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.Statement;
-import java.sql.DriverManager;
+import java.sql.*;
 
 public class HiveJdbcClient {
     private static String driverName = "org.apache.hive.jdbc.HiveDriver";
@@ -54,8 +50,24 @@ public class HiveJdbcClient {
         Connection con = DriverManager.getConnection(JDBC_DB_URL, USER, PASS);
         Statement stmt = con.createStatement();
         ResultSet res = stmt.executeQuery(QUERY);
-        if (res.next()) {
-            System.out.println(res.getString(1));
+        ResultSetMetaData metaData = res.getMetaData();
+        int columnCount = metaData.getColumnCount();
+
+        int r = 1;
+        while (res.next()) {
+            // columnIndex starts from 1...
+            System.out.println("=== Row " + r + " =============================");
+            for (int i = 1; i <= columnCount; i++) {
+                Object o = res.getObject(i);
+                String col = "Null";
+                if (o != null) {
+                    col = o.toString();
+                }
+                System.out.println("  " + metaData.getColumnLabel(i) + " : " + o);
+            }
+            r++;
         }
+        res.close();
+        stmt.close();
     }
 }
