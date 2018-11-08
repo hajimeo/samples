@@ -224,11 +224,12 @@ function asftpl() {
 # Download files from hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
 function asftpd() {
     [ -z "$1" ] && ( asftpl; return 1 )
+    ssh -q asftp -t "cd /home/ubuntu/upload && ls -lhtr $@"
     for _a in "$@"; do
         local _ext="${_a##*.}"
         local _rsync_opts="-Phz"
         [[ "${_ext}" =~ ^gz|zip|tgz$ ]] && _rsync_opts="-Ph"
-        rsync ${_rsync_opts} asftp:"/home/ubuntu/upload/$_a" ./
+        rsync ${_rsync_opts} asftp:"/home/ubuntu/upload/${_a}" ./
     done
 }
 function asDocSync() {
