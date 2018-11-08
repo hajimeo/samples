@@ -58,8 +58,8 @@ function p_support() {
     fi
     echo " "
 
-    echo "# settings.json last 3 settings changes"
-    _find_and_cat "settings.json" | python -c "import sys,json;a=json.loads(sys.stdin.read());print json.dumps(a[-3:], indent=4)"
+    echo "# config.yaml"
+    _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user.timezone|^sun.jnu.encoding)'
     echo " "
     echo " "
 
@@ -68,8 +68,13 @@ function p_support() {
     echo " "
     echo " "
 
-    echo "# config.yaml"
-    _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user.timezone|^sun.jnu.encoding)'
+    echo "# runtime.yaml"
+    _find_and_cat "runtime.yaml"
+    echo " "
+    echo " "
+
+    echo "# settings.json last 3 settings changes"
+    _find_and_cat "settings.json" | python -c "import sys,json;a=json.loads(sys.stdin.read());print json.dumps(a[-3:], indent=4)"
     echo " "
     echo " "
 
@@ -86,11 +91,6 @@ function p_support() {
     _find_and_cat "connection_groups.json" | python -m json.tool
     echo "# Connection pool"
     _find_and_cat "pool.json"   # check maxConnections, consecutiveFailures
-    echo " "
-    echo " "
-
-    echo "# runtime.yaml"
-    _find_and_cat "runtime.yaml"
     echo " "
     echo " "
 
@@ -114,18 +114,22 @@ function p_support() {
 
     echo "# tableSizes.tsv 10 large tables (by num rows)"
     _find_and_cat "tableSizes.tsv" | sort -n -k2 | tail -n 10
-    echo "* Number of tables: "$(_find_and_cat "tableSizes.tsv" | wc -l)
+    echo "* Number of tables: "$(_find_and_cat "tableSizes.tsv" | wc -l | tr -d '[:space:]')
     echo "* Number of 0 tbls: "$(_find_and_cat "tableSizes.tsv" | grep -w 0 -c)
     echo " "
 
     echo "# Engine start/restart and supervisord not expected"
-    rg --search-zip -N --no-filename -g 'engine*log*' 'Engine (actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
+    rg -z -N --no-filename -g 'engine\.*log*' 'Engine (actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
     echo " "
     echo "# supervisord 'not expected' (NOTE: time is probably not UTC)"
-    rg --search-zip -N --no-filename -g 'atscale_service.log' 'not expected' | tail -n 20
+    rg -z -N --no-filename -g 'atscale_service.log' 'not expected' | tail -n 20
 
     echo " "
-    echo "# WARNs in warn.log (if exists)"
+    echo "# OutOfMemoryError in engine.log*"
+    rg -z -g 'engine\.*log*' -c OutOfMemoryError
+
+    echo " "
+    echo "# WARNs (and above) in warn.log"
     f_listWarns "warn.log"
 }
 
@@ -328,7 +332,7 @@ function f_rg() {
         return 102
     fi
 
-    local _def_rg_opts="--search-zip --no-line-number" # -g '*.json' -g '*.xml' -g '*.yaml' -g '*.yml' -g '*.log*' --heading
+    local _def_rg_opts="-z --no-line-number" # -g '*.json' -g '*.xml' -g '*.yaml' -g '*.yml' -g '*.log*' --heading
     # TODO: currently only ISO format YYYY-MM-DD hh:mX:XX
     local _date_regex="^[0-9-/]+ \d\d:\d"
     local _tmpfile_pfx="./rg_"
@@ -438,7 +442,7 @@ function f_grep_multilines() {
     local _how_many="${4:-1000}"
 
     rg "(${_boundary_str}[^\n]+?${_str_in_1st_line}.+?)${_boundary_str}" -o -r '$1' \
-        --multiline --multiline-dotall --no-line-number --no-filename --search-zip \
+        --multiline --multiline-dotall --no-line-number --no-filename -z \
         -g "${_glob}" --sort path -m ${_how_many}
 }
 
@@ -493,15 +497,15 @@ function f_topErrors() {
     fi
 
     echo "# Regex = '${_regex}'"
-    #rg --search-zip -c -g "${_glob}" "${_regex}"
-    rg --search-zip --no-line-number --no-filename -g "${_glob}" -o "${_regex}" > /tmp/f_topErrors.$$.tmp
+    #rg -z -c -g "${_glob}" "${_regex}"
+    rg -z --no-line-number --no-filename -g "${_glob}" -o "${_regex}" > /tmp/f_topErrors.$$.tmp
 
     # just for fun, drawing bar chart
     if [ -n "${_date_from}" ] && which bar_chart.py &>/dev/null; then
         local _date_regex2="^[0-9-/]+ \d\d:\d"
         [ "`wc -l /tmp/f_topErrors.$$.tmp | awk '{print $1}'`" -lt 400 ] && _date_regex2="^[0-9-/]+ \d\d:\d\d"
         echo ' '
-        rg --search-zip --no-line-number --no-filename -o "${_date_regex2}" /tmp/f_topErrors.$$.tmp | sed 's/T/ /' | bar_chart.py
+        rg -z --no-line-number --no-filename -o "${_date_regex2}" /tmp/f_topErrors.$$.tmp | sed 's/T/ /' | bar_chart.py
         echo " "
     fi
 
@@ -509,16 +513,16 @@ function f_topErrors() {
 }
 
 function f_listWarns() {
-    local __doc__="List warns to see the pattern difference"
+    local __doc__="List the counts of frequent warns and also errors"
     local _glob="${1:-"warn*.log*"}"
     local _date_4_bar="${2:-"\\d\\d\\d\\d-\\d\\d-\\d\\d \\d\\d"}"
-    local _cut_at="${3:-200}"
-    local _top_N="${4:-30}"
+    local _top_N="${3:-40}"
 
-    #rg --search-zip -c -g "${_glob}" "${_regex}"
-    rg --search-zip --no-line-number --no-filename -g "${_glob}" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d WARN .+ - (.+)" > /tmp/f_listWarns.$$.tmp
+    #rg -z -c -g "${_glob}" "${_regex}"
+    rg -z --no-line-number --no-filename -g "${_glob}" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d (ERROR|FATAL|SEVERE|WARN)" > /tmp/f_listWarns.$$.tmp
 
-    rg "WARN .+ - (.+)" -o -r '$1' /tmp/f_listWarns.$$.tmp | _replace_number | cut -c 1-${_cut_at} | sort | uniq -c | sort -n | tail -n ${_top_N}
+    # count by class name and ignoring only once or twice warns
+    rg "(ERROR|FATAL|SEVERE|WARN) +\[[^]]+\] \{[^}]*\} ([^ ]+)" -o -r '$1 $2' /tmp/f_listWarns.$$.tmp | _replace_number | sort | uniq -c | sort -n | grep -vE ' +[12] WARN' | tail -n ${_top_N}
     echo " "
     rg -o "^${_date_4_bar}" /tmp/f_listWarns.$$.tmp | bar_chart.py
 }
@@ -539,12 +543,12 @@ function f_topSlowLogs() {
     fi
 
     echo "# Regex = '${_regex}'"
-    #rg --search-zip -c -g "${_glob}" -wio "${_regex}"
+    #rg -z -c -g "${_glob}" -wio "${_regex}"
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
-        rg --search-zip -N --no-filename -g "${_glob}" -io "$_regex" | sort | uniq -c | sort -n
+        rg -z -N --no-filename -g "${_glob}" -io "$_regex" | sort | uniq -c | sort -n
     else
         # ([0-9]){2,4} didn't work also (my note) sed doesn't support \d
-        rg --search-zip -N --no-filename -g "${_glob}" -io "$_regex" | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
+        rg -z -N --no-filename -g "${_glob}" -io "$_regex" | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
     fi
 }
 
@@ -949,12 +953,12 @@ function f_start_end_time_with_diff(){
     local _date_regex="${2}"
     [ -z "$_date_regex" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d"
 
-    local _start_date=`rg --search-zip -N -om1 "^$_date_regex" ${_log} | sed 's/T/ /'` || return $?
+    local _start_date=`rg -z -N -om1 "^$_date_regex" ${_log} | sed 's/T/ /'` || return $?
     local _extension="${_log##*.}"
     if [ "${_extension}" = 'gz' ]; then
         local _end_date=`gunzip -c ${_log} | _tac | rg -N -om1 "^$_date_regex" | sed 's/T/ /'` || return $?
     else
-        local _end_date=`_tac ${_log} | rg --search-zip -N -om1 "^$_date_regex" | sed 's/T/ /'` || return $?
+        local _end_date=`_tac ${_log} | rg -z -N -om1 "^$_date_regex" | sed 's/T/ /'` || return $?
     fi
     local _start_int=`_date2int "${_start_date}"`
     local _end_int=`_date2int "${_end_date}"`
