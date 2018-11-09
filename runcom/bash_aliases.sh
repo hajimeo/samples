@@ -120,7 +120,7 @@ function jp() {
         while true; do
             sleep ${_sleep}
             if [ 0 -lt `ls -1 ./*.ipynb 2>/dev/null | wc -l` ]; then
-                rsync -a --exclude="Untitled.ipynb" ./*.ipynb ${_backup_dir%/}/ || break
+                rsync -av --exclude="Untitled.ipynb" ./*.ipynb ${_backup_dir%/}/ || break
                 # TODO: if no ipynb file to backup, should break?
             fi
             if ! lsof -ti:${_port} &>/dev/null; then
