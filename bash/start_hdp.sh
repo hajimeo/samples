@@ -2565,30 +2565,27 @@ function f_sysstat_setup() {
     fi
 }
 
-function f_ttyd() {
-    # TODO: https://www.tecmint.com/shell-in-a-box-a-web-based-ssh-terminal-to-access-remote-linux-servers/
-    local __doc__="Install and set up https://tsl0922.github.io/ttyd/"
-    local _user="${1-ttyduser}"
-    local _vpass="${2-$g_DEFAULT_PASSWORD}"
-    local _pass="${3-$g_DEFAULT_PASSWORD}"
+function f_shellinabox() {
+    local __doc__="Install and set up shellinabox"
+    local _user="${1-webuser}"
+    local _pass="${2-webuser}"
 
-    if ! which apt-get &>/dev/null; then
-        _warn "No apt-get"
-        return 1
+    apt-get install -y openssl shellinabox || return $?
+
+    if ! grep -q "$_user" /etc/passwd; then
+        f_useradd "$_user" "$_pass" "Y" || return $?
+        _info "${_user}:${_pass} has been created."
     fi
 
-    if [ ! `grep "$_user" /etc/passwd` ]; then
-        f_useradd "$_user" "$_pass" || return $?
+    if ! grep -qE "^SHELLINABOX_ARGS.+${_user}" /etc/default/shellinabox; then
+        [ ! -s /etc/default/shellinabox.org ] && cp -p /etc/default/shellinabox /etc/default/shellinabox.orig
+        sed -i 's@^SHELLINABOX_ARGS=.\+@SHELLINABOX_ARGS="--no-beep -s /'${_user}':'${_user}':'${_user}':HOME:/bin/bash"@' /etc/default/shellinabox
+        service shellinabox restart
     fi
-
-    if ! which ttyd &>/dev/null; then
-        apt-get install -y software-properties-common
-        add-apt-repository ppa:tsl0922/ttyd-dev -y
-        apt-get update
-    fi
-    apt-get install -y ttyd
-
-    _info "To start ttyd: 'sudo -u $_user -i ttyd -p 7681 bash &'"
+    sleep 1
+    local _port=`sed -n -r 's/^SHELLINABOX_PORT=([0-9]+)/\1/p' /etc/default/shellinabox`
+    lsof -i:${_port}
+    _info "To access: 'https://`hostname -i`:${_port}/${_user}/'"
 }
 
 function f_vmware_tools_install() {
@@ -3302,16 +3299,17 @@ function f_useradd() {
     local __doc__="Add user on Host"
     local _user="$1"
     local _pwd="$2"
-    local _copy_id_rsa="$3"
+    local _copy_ssh_config="$3"
 
     # should specify home directory just in case?
     useradd -d "/home/$_user/" -s `which bash` -p $(echo "$_pwd" | openssl passwd -1 -stdin) "$_user"
     mkdir "/home/$_user/" && chown "$_user":"$_user" "/home/$_user/"
 
-    if _isYes "$_copy_id_rsa" && [ -f ${HOME%/}/.ssh/id_rsa ] && [ -d "/home/$_user/" ]; then
+    if _isYes "$_copy_ssh_config" && [ -f ${HOME%/}/.ssh/id_rsa ] && [ -d "/home/$_user/" ]; then
         mkdir "/home/$_user/.ssh" && chown "$_user":"$_user" "/home/$_user/.ssh"
         cp ${HOME%/}/.ssh/id_rsa* "/home/$_user/.ssh/"
-        chown "$_user":"$_user" /home/$_user/.ssh/id_rsa*
+        cp ${HOME%/}/.ssh/config "/home/$_user/.ssh/"
+        chown "$_user":"$_user" /home/$_user/.ssh/*
         chmod 600 "/home/$_user/.ssh/id_rsa"
     fi
 }
