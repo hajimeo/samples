@@ -274,7 +274,6 @@ function f_docker_run() {
         return 0
     fi
 
-    # NOTE: to add more port, use 'docker port <container> <guest port>'
     local _port_opts=""
     for _p in $_ports; do
         local _pid="`lsof -ti:${_p} | head -n1`"
