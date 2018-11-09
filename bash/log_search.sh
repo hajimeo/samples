@@ -68,7 +68,7 @@ function p_support() {
     echo " "
     echo " "
 
-    echo "# runtime.yaml"
+    echo "# runtime.yaml (usedMem = totalMemory() - freeMemory())"
     _find_and_cat "runtime.yaml"
     echo " "
     echo " "
@@ -125,8 +125,8 @@ function p_support() {
     rg -z -N --no-filename -g 'atscale_service.log' 'not expected' | tail -n 20
 
     echo " "
-    echo "# OutOfMemoryError in engine.log*"
-    rg -z -g 'engine\.*log*' -c OutOfMemoryError
+    echo "# OutOfMemoryError in all files"
+    rg -z -c OutOfMemoryError
 
     echo " "
     echo "# WARNs (and above) in warn.log"
@@ -135,12 +135,12 @@ function p_support() {
 
 function p_performance() {
     local _glob="${1:-"engine*.log*"}"
-    local _date_regex="${2}"
+    local _date_regxex="${2}"    # NOTE: Need to specify up to seconds for f_start_end_time_with_diff
     local _n="${3:-20}"
-    local _exclude_slow_one="$4"
+    local _exclude_slow_funcs="${4-Y}"
 
     # Prepare command list for _mexec (but as rg is already multi-threading, not much diff)
-    if [[ ! "${_exclude_slow_one}" =~ ^(y|Y) ]]; then
+    if [[ ! "${_exclude_slow_funcs}" =~ ^(y|Y) ]]; then
         cat << EOF > /tmp/perform_cmds.tmp
 f_topSlowLogs "^${_date_regex}" "${_glob}" "" "" "${_n}"                           > /tmp/perform_f_topSlowLogs_$$.out
 f_topErrors "${_glob}" "${_date_regex}" "" "" "${_n}"                              > /tmp/perform_f_topErrors_$$.out
@@ -190,7 +190,7 @@ EOF
     cat /tmp/perform_f_count_threads_$$.out
     echo " "
 
-    if [[ ! "${_exclude_slow_one}" =~ ^(y|Y) ]]; then
+    if [[ ! "${_exclude_slow_funcs}" =~ ^(y|Y) ]]; then
         echo "# f_topSlowLogs from engine *debug* log if no _glob, and top ${_n}"
         cat /tmp/perform_f_topSlowLogs_$$.out
         echo " "
