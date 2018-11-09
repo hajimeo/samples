@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_scala.sh
+
 
 function f_setup_scala() {
     local _ver="${1:-2.12.3}"
@@ -10,14 +12,16 @@ function f_setup_scala() {
         return
     fi
 
-    if [ ! -d "${_extract_dir%/}/scala-${_ver}" ]; then
-        if [ ! -s "${_extract_dir%/}/scala-${_ver}.tgz" ]; then
-            curl --retry 3 -C - -o "${_extract_dir%/}/scala-${_ver}.tgz" "https://downloads.lightbend.com/scala/${_ver}/scala-${_ver}.tgz" || return $?
+    if [ ! -x ${_inst_dir%/}/bin/scala ]; then
+        if [ ! -d "${_extract_dir%/}/scala-${_ver}" ]; then
+            if [ ! -s "${_extract_dir%/}/scala-${_ver}.tgz" ]; then
+                curl --retry 3 -C - -o "${_extract_dir%/}/scala-${_ver}.tgz" "https://downloads.lightbend.com/scala/${_ver}/scala-${_ver}.tgz" || return $?
+            fi
+            tar -xf "${_extract_dir%/}/scala-${_ver}.tgz" -C "${_extract_dir%/}/" || return $?
+            chmod a+x ${_extract_dir%/}/scala-${_ver}/bin/*
         fi
-        tar -xf "${_extract_dir%/}/scala-${_ver}.tgz" -C "${_extract_dir%/}/" || return $?
-        chmod a+x ${_extract_dir%/}/bin/*
+        [ -d "${_inst_dir%/}" ] || ln -s "${_extract_dir%/}/scala-${_ver}" "${_inst_dir%/}"
     fi
-    [ -d "${_inst_dir%/}" ] || ln -s "${_extract_dir%/}/scala-${_ver}" "${_inst_dir%/}"
     export SCALA_HOME=${_inst_dir%/}
     export PATH=$PATH:$SCALA_HOME/bin
 }
@@ -40,15 +44,37 @@ function f_jargrep() {
     local _path="${2:-.}"
     local _cmd="jar -tf"
     which jar &>/dev/null || _cmd="less"
-    find -L ${_path%/} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c ''${_cmd}' {} | grep -qw '${_class}' && echo {}'
+    find -L ${_path%/} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c ''${_cmd}' {} | grep -w '${_class}' >&2 && echo {}'
 }
 
+function f_update_jar() {
+    local _jar_filepath="$1"
+    local _compiled_dir_or_class_name="$2"
+
+    if [ ! -d "$JAVA_HOME" ]; then
+        echo "JAVA_HOME is not set"
+        return 1
+    fi
+
+    local _jar_filename="$(basename ${_jar_filepath})"
+    if [ ! -s "${_jar_filename}.orig" ]; then
+        cp -p ${_jar_filepath} ${_jar_filename}.orig || return $?
+    fi
+
+    if [ ! -d "${_compiled_dir_or_class_name}" ]; then
+        local _class_fullpath="`find . -name "${_compiled_dir_or_class_name}.class" -print`"
+        _compiled_dir_or_class_name="`dirname ${_class_fullpath}`"
+    fi
+    echo "Updating ${_jar_filepath} ..."
+    $JAVA_HOME/bin/jar -uvf ${_jar_filepath} ${_compiled_dir_or_class_name%/}/*.class || exit $?
+    cp -f ${_jar_filepath} ${_jar_filename}.patched
+}
 
 ### Main ###############################
 if [ "$0" = "$BASH_SOURCE" ]; then
     _PORT="$1"
     _CLASS_NAME="$2"
-    _APP_LIB_DIR="$3"
+    _APP_LIB_DIR_OR_JAR="$3"
 
     if [ -z "$_PORT" ]; then
         echo "At this moment, a port number (1st arg) is required to use this script (used to find a PID)"
@@ -58,8 +84,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         echo "At this moment, a scala class name (2nd arg) is required to use this script"
         exit 1
     fi
-    if [ ! -d "${_APP_LIB_DIR}" ]; then
-        echo "At this moment, a application lib dir path (3rd arg) is required to use this script"
+    if [ ! -e "${_APP_LIB_DIR_OR_JAR}" ]; then
+        echo "An application lib dir or a jar path (3rd arg) is required to use this script"
         exit 1
     fi
 
@@ -67,15 +93,11 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     f_javaenvs "$_PORT" || exit $?
     scalac "${_CLASS_NAME}.scala" || exit $?
 
-    for _j in `f_jargrep "${_CLASS_NAME}.class" "${_APP_LIB_DIR}"`; do
-        _JAR_FILENAME="$(basename ${_j})"
-        if [ ! -s "${_JAR_FILENAME}.orig" ]; then
-            cp -p ${_j} ${_JAR_FILENAME}.orig || exit $?
-        fi
-        _CLASS_FULL_PATH="`find . -name "${_CLASS_NAME}.class" -print`"
-        _CLASS_FULL_PATH_DIR="`dirname ${_CLASS_FULL_PATH}`"
-        echo "Updating ${_j} ..."
-        $JAVA_HOME/bin/jar -uvf ${_j} ${_CLASS_FULL_PATH_DIR%/}/*.class || exit $?
-        cp -f ${_j} ${_JAR_FILENAME}.patched
-    done
+    if [ -d "${_APP_LIB_DIR_OR_JAR}" ]; then
+        for _j in `f_jargrep "${_CLASS_NAME}.class" "${_APP_LIB_DIR_OR_JAR}"`; do
+            f_update_jar "${_j}" "${_CLASS_NAME}"
+        done
+    else
+        f_update_jar "${_APP_LIB_DIR_OR_JAR}" "${_CLASS_NAME}"
+    fi
 fi
