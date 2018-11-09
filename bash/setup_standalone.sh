@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # NOTE: shouldn't use OS dependant command, such as apt-get, yum, brew etc.
+# Recreate multiple images:
+# docker images | grep "^${_SERVICE}" | awk '{print $1}' | sed -nr "s/${_SERVICE}([0-9])([0-9])([0-9])/\1.\2.\3/p" | sort
+# for _v in `!!`; do _n=${_SERVICE}$(echo $_v | sed 's/[^0-9]//g'); docker rm -f $_n; docker rmi $_n; ./setup_standalone.sh -c -v $_v -s; done
 
 function usage() {
     echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>] [-s] [-l /path/to/dev-license.json]
@@ -52,7 +55,7 @@ OTHERS:
         To see this message
 
 NOTES:
-    This script assumes your application is stored under /usr/local/_SERVICE.
+    This script assumes your application is stored under /usr/local/_SERVICE
 "
     docker stats --no-stream
 }
