@@ -398,11 +398,12 @@ function p_ambari_node_setup() {
 }
 
 function p_node_create() {
-    local __doc__="TODO: Create one node (NOTE: no agent installation if no ambari.repo, only centos, and doesn't create docker image)"
+    local __doc__="Create one node (NOTE: no agent installation if no ambari.repo, only centos, and doesn't create docker image)"
     local _hostname="${1}"      # FQDN
     local _ip_address="${2}"    # last byte is OK
     local _os_ver="${3:-${r_CONTAINER_OS_VER:-$g_CENTOS_VERSION}}"
     local _dns="${4:-${r_DNS_SERVER:-$g_DNS_SERVER}}"
+    local _extra_opts="${5}"    # eg: "--add-host=imagename.standalone:127.0.0.1"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
     [ "${_dns}" = "localhost" ] && _dns="`f_docker_ip`"
@@ -413,7 +414,7 @@ function p_node_create() {
     fi
 
     f_dnsmasq_banner_reset "${_hostname}" "" "${_ip_address}" "${_dns}" || return $?
-    _docker_run "${_hostname}" "${_ip_address}" "${g_DOCKER_BASE}:$_os_ver" "${_dns}" || return $?
+    _docker_run "${_hostname}" "${_ip_address}" "${g_DOCKER_BASE}:$_os_ver" "${_dns}" "${_extra_opts}" || return $?
     f_docker_start_one "${_hostname}" "${_ip_address}" "${_dns}"
     sleep 1
 
@@ -1539,6 +1540,8 @@ function _docker_run() {
     local _ip_address="$2"
     local _base="$3"
     local _dns="$4"
+    local _extra_opts="${5}" # eg: "--add-host=imagename.standalone:127.0.0.1"
+
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
     _line="`docker ps -a --format "{{.Names}}" | grep -E "^${_name}$"`"
@@ -1554,9 +1557,9 @@ function _docker_run() {
 
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
     docker run -t -i -d \
-        -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
-        -v /var/tmp/share:/var/tmp/share \
-        --privileged --hostname=${_hostname} ${_options} --name=${_name} ${_base} /sbin/init
+        -v /sys/fs/cgroup:/sys/fs/cgroup:ro -v /var/tmp/share:/var/tmp/share \
+        --privileged --hostname=${_hostname} ${_options} ${_extra_opts} \
+        --name=${_name} ${_base} /sbin/init
 }
 
 function _ambari_query_sql() {
@@ -2585,6 +2588,16 @@ function f_shellinabox() {
     sleep 1
     local _port=`sed -n -r 's/^SHELLINABOX_PORT=([0-9]+)/\1/p' /etc/default/shellinabox`
     lsof -i:${_port}
+    _info "To access: 'https://`hostname -i`:${_port}/${_user}/'"
+}
+
+function f_shellinabox_in_docker() {
+    local __doc__="Install and set up shellinabox in a docker container (expecting base image is already prepared)"
+    local _hostname="${1:-"shellinabox${g_DOMAIN_SUFFIX}"}" # FQDN
+    local _ip_address="${2:-98}"    # Normally i use 99 for freeIPA
+
+    p_node_create "${_hostname}" "${_ip_address}" "" "" "-p 4200:4200"
+    ssh -q root@${_hostname} -t "yum install -y openssl shellinabox"
     _info "To access: 'https://`hostname -i`:${_port}/${_user}/'"
 }
 
