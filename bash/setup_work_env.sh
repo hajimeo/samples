@@ -103,6 +103,11 @@ function f_setup_jupyter() {
     # Enable jupyter extensions (spell checker)
     sudo -i jupyter contrib nbextension install && sudo -i jupyter nbextension enable spellchecker/main
     # TODO: sudo -i jupyter labextension install @ijmbarr/jupyterlab_spellchecker
+
+    #_install libsasl2-dev -y
+    #sudo -i pip3 install sasl thrift thrift-sasl PyHive
+    #sudo -i pip3 install JayDeBeApi
+    #sudo -i pip3 install JayDeBeApi3
 }
 
 function _install() {
