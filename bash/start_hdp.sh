@@ -413,7 +413,7 @@ function p_node_create() {
         _info "Using IP Address ${_ip_address} ..."; sleep 1
     fi
 
-    f_dnsmasq_banner_reset "${_hostname}" "" "${_ip_address}" "${_dns}" || return $?
+    f_dnsmasq_banner_reset "${_hostname}" "" "${_ip_address}" || return $?
     _docker_run "${_hostname}" "${_ip_address}" "${g_DOCKER_BASE}:$_os_ver" "${_dns}" "${_extra_opts}" || return $?
     f_docker_start_one "${_hostname}" "${_ip_address}" "${_dns}"
     sleep 1
@@ -2588,17 +2588,30 @@ function f_shellinabox() {
     sleep 1
     local _port=`sed -n -r 's/^SHELLINABOX_PORT=([0-9]+)/\1/p' /etc/default/shellinabox`
     lsof -i:${_port}
-    _info "To access: 'https://`hostname -i`:${_port}/${_user}/'"
+    _info "To access: 'https://`hostname -I | awk '{print $1}'`:${_port}/${_user}/'"
 }
 
 function f_shellinabox_in_docker() {
     local __doc__="Install and set up shellinabox in a docker container (expecting base image is already prepared)"
-    local _hostname="${1:-"shellinabox${g_DOMAIN_SUFFIX}"}" # FQDN
+    local _name="${1:-"shellinabox"}" # FQDN
     local _ip_address="${2:-98}"    # Normally i use 99 for freeIPA
+    local _user="${3-root}"
+    local _pass="${4-$g_DEFAULT_PASSWORD}"
 
-    p_node_create "${_hostname}" "${_ip_address}" "" "" "-p 4200:4200"
-    ssh -q root@${_hostname} -t "yum install -y openssl shellinabox"
-    _info "To access: 'https://`hostname -i`:${_port}/${_user}/'"
+    local _port="4200"  # and 14200
+    local _conf="/etc/sysconfig/shellinaboxd"
+    local _hostname="${1:-"${_name}${g_DOMAIN_SUFFIX}"}" # any hostname is OK as it's not exposed
+
+    p_node_create "${_hostname}" "${_ip_address}" "" "" "-p 0.0.0.0:1${_port}:${_port}" || return $?
+    ssh -q root@${_hostname} -t "yum install -y openssl shellinabox" || return $?
+    [ "${_user}" != "root" ] && ssh -q root@${_hostname} -t 'useradd '$_user' -s `which bash` -p $(echo "'$_pass'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user
+    ssh -q root@${_hostname} -t "[ ! -s ${_conf} ] && cp -p ${_conf} ${_conf}.orig"
+    ssh -q root@${_hostname} -t "sed -i 's@^USER=.\+@USER=root@' ${_conf}"
+    ssh -q root@${_hostname} -t "sed -i 's@^GROUP=.\+@GROUP=root@' ${_conf}"
+    ssh -q root@${_hostname} -t "sed -i 's@^OPTS=.\+@OPTS=\"-s /${_name}:${_user}:${_user}:HOME:/bin/bash\"@' ${_conf}"
+    ssh -q root@${_hostname} -t "service shellinaboxd restart" || return $?
+    # NOTE: config for CentOS is /etc/sysconfig/shellinaboxd
+    _info "To access: 'https://`hostname -I | awk '{print $1}'`:1${_port}/${_name}'"
 }
 
 function f_vmware_tools_install() {
@@ -2718,19 +2731,14 @@ function f_dnsmasq() {
     local __doc__="Install and set up dnsmasq"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
 
-    if [ ! `ssh $_dns which apt-get` ]; then
-        _warn "No apt-get or ssh to $_dns not allowed"
-        return 1
-    fi
     # TODO: If Ubuntu 18.04 may want to stop systemd-resolved
     #sudo systemctl stop systemd-resolved
     #sudo systemctl disable systemd-resolved
-    ssh -q $_dns apt-get -y install dnsmasq
+    apt-get -y install dnsmasq || return $?
 
-    ssh -q $_dns "grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf"
-    ssh -q $_dns "grep -q '^resolv-file=' /etc/dnsmasq.conf || (echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf; echo 'nameserver 8.8.8.8' > /etc/resolv.dnsmasq.conf)"
+    grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
+    grep -q '^resolv-file=' /etc/dnsmasq.conf || (echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf; echo 'nameserver 8.8.8.8' > /etc/resolv.dnsmasq.conf)
 
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" || return $?
 
@@ -2748,8 +2756,8 @@ function f_dnsmasq_banner_reset() {
     local _how_many="${1-$r_NUM_NODES}"             # Or hostname
     local _start_from="${2-$r_NODE_START_NUM}"
     local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"  # Or exact IP address
-    local _dns="${4}"
-    [ -z "${_dns}" ] && _dns="${r_DNS_SERVER-$g_DNS_SERVER}"
+    local _remote_dns_host="${4}"
+    local _remote_dns_user="${5:-$USER}"
 
     local _node="${r_NODE_HOSTNAME_PREFIX-$g_NODE_HOSTNAME_PREFIX}"
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
@@ -2770,7 +2778,11 @@ function f_dnsmasq_banner_reset() {
 
     # if no banner file, no point of updating it.
     if [ -s /etc/banner_add_hosts ]; then
-        scp -q $_dns:/etc/banner_add_hosts /tmp/banner_add_hosts || return $?
+        if [ -z "${_remote_dns_host}" ]; then
+            cp -pf /etc/banner_add_hosts /tmp/banner_add_hosts || return $?
+        else
+            scp -q ${_remote_dns_user}@${_remote_dns_host}:/etc/banner_add_hosts /tmp/banner_add_hosts || return $?
+        fi
     fi
 
     if [ -n "${_docker0}" ]; then
@@ -2803,8 +2815,13 @@ function f_dnsmasq_banner_reset() {
     fi
 
     # copy back and restart
-    scp -q /tmp/banner_add_hosts $_dns:/etc/
-    ssh -q $_dns "service dnsmasq reload || service dnsmasq restart"
+    if [ -z "${_remote_dns_host}" ]; then
+        cp -pf /tmp/banner_add_hosts /etc/
+        service dnsmasq reload || service dnsmasq restart
+    else
+        scp -q /tmp/banner_add_hosts ${_remote_dns_user}@${_remote_dns_host}:/etc/
+        ssh -q ${_remote_dns_user}@${_remote_dns_host} "service dnsmasq reload || service dnsmasq restart"
+    fi
 }
 
 function f_update_resolv_confs() {
@@ -2877,8 +2894,9 @@ function f_host_misc() {
         grep 'Please login as the user' $HOME/.ssh/authorized_keys && cat /home/ubuntu/.ssh/authorized_keys > $HOME/.ssh/authorized_keys
     fi
 
-    grep '^PasswordAuthentication no' /etc/ssh/sshd_config && sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config || return $?
-    grep '^PermitRootLogin without-password' /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+    # If you would like to use the default, comment PasswordAuthentication or PermitRootLogin
+    grep -q '^PasswordAuthentication no' /etc/ssh/sshd_config && sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config || return $?
+    grep -q '^PermitRootLogin ' /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin .\+/PermitRootLogin no/' /etc/ssh/sshd_config
     if [ $? -eq 0 ]; then
         service ssh restart
     fi
