@@ -1354,8 +1354,8 @@ function f_docker_start() {
 
 function f_docker_start_one() {
     local __doc__="Starting one docker container with a few customization"
-    local _hostname="$1"    # short name is OK
-    local _ip_address="$2"
+    local _hostname="$1"    # short name is OK too
+    local _ip_address="$2"  # Optional
     local _dns="$3"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
@@ -2602,15 +2602,21 @@ function f_shellinabox_in_docker() {
     local _conf="/etc/sysconfig/shellinaboxd"
     local _hostname="${1:-"${_name}${g_DOMAIN_SUFFIX}"}" # any hostname is OK as it's not exposed
 
-    p_node_create "${_hostname}" "${_ip_address}" "" "" "-p 0.0.0.0:1${_port}:${_port}" || return $?
-    ssh -q root@${_hostname} -t "yum install -y openssl shellinabox" || return $?
-    [ "${_user}" != "root" ] && ssh -q root@${_hostname} -t 'useradd '$_user' -s `which bash` -p $(echo "'$_pass'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user
-    ssh -q root@${_hostname} -t "[ ! -s ${_conf} ] && cp -p ${_conf} ${_conf}.orig"
-    ssh -q root@${_hostname} -t "sed -i 's@^USER=.\+@USER=root@' ${_conf}"
-    ssh -q root@${_hostname} -t "sed -i 's@^GROUP=.\+@GROUP=root@' ${_conf}"
-    ssh -q root@${_hostname} -t "sed -i 's@^OPTS=.\+@OPTS=\"-s /${_name}:${_user}:${_user}:HOME:/bin/bash\"@' ${_conf}"
-    ssh -q root@${_hostname} -t "service shellinaboxd restart" || return $?
-    # NOTE: config for CentOS is /etc/sysconfig/shellinaboxd
+    if docker ps -a --format "{{.Names}}" | grep -q "^${_name}$"; then
+        _info "${_name} already exists. Trying to start..."; sleep 1
+        f_docker_start_one "${_name}" || return $?
+    else
+        p_node_create "${_hostname}" "${_ip_address}" "" "" "-p 0.0.0.0:1${_port}:${_port}" || return $?
+        ssh -q root@${_hostname} -t "yum install -y openssl shellinabox" || return $?
+        [ "${_user}" != "root" ] && ssh -q root@${_hostname} -t 'useradd '$_user' -s `which bash` -p $(echo "'$_pass'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user
+        # NOTE: config for CentOS is /etc/sysconfig/shellinaboxd
+        ssh -q root@${_hostname} -t "[ ! -s ${_conf} ] && cp -p ${_conf} ${_conf}.orig"
+        ssh -q root@${_hostname} -t "sed -i 's@^USER=.\+@USER=root@' ${_conf}"
+        ssh -q root@${_hostname} -t "sed -i 's@^GROUP=.\+@GROUP=root@' ${_conf}"
+        ssh -q root@${_hostname} -t "sed -i 's@^OPTS=.\+@OPTS=\"-s /${_name}:${_user}:${_user}:HOME:/bin/bash\"@' ${_conf}"
+        ssh -q root@${_hostname} -t "service shellinaboxd restart" || return $?
+    fi
+
     _info "To access: 'https://`hostname -I | awk '{print $1}'`:1${_port}/${_name}'"
 }
 
