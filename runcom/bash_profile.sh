@@ -1,11 +1,11 @@
 # NOTE: for screen, .bashrc is needed, and in .bashrc, source .bash_profile
 # An example of usage
-#   ln -s ~/IdeaProjects/samples/runcom/bash_profile.sh ~/.bash_profile
+#   ln -s $HOME/IdeaProjects/samples/runcom/bash_profile.sh $HOME/.bash_profile
 #
-if [ -s ~/IdeaProjects/samples/runcom/bash_aliases.sh ]; then
-    source ~/IdeaProjects/samples/runcom/bash_aliases.sh
-elif [ -s ~/.bash_aliases ]; then
-    source ~/.bash_aliases
+if [ -s $HOME/IdeaProjects/samples/runcom/bash_aliases.sh ]; then
+    source $HOME/IdeaProjects/samples/runcom/bash_aliases.sh
+elif [ -s $HOME/.bash_aliases ]; then
+    source $HOME/.bash_aliases
 fi
 
 # Go/Golang related
@@ -26,8 +26,8 @@ if [ -s $HOME/.rgrc ]; then
 fi
 
 # python related
-if [ -d ~/IdeaProjects/samples/python ]; then
-    export PYTHONPATH=~/IdeaProjects/samples/python:$PYTHONPATH
+if [ -d $HOME/IdeaProjects/samples/python ]; then
+    export PYTHONPATH=$HOME/IdeaProjects/samples/python:$PYTHONPATH
 fi
 
 # java related
@@ -37,7 +37,7 @@ if [ -f /usr/libexec/java_home ]; then
 fi
 
 # iterm2
-#curl -L https://iterm2.com/shell_integration/bash -o ~/.iterm2_shell_integration.bash
-if [ -n "$ITERM_SESSION_ID" ] && [ -f ~/.iterm2_shell_integration.bash ]; then
-    source ~/.iterm2_shell_integration.bash
+#curl -L https://iterm2.com/shell_integration/bash -o $HOME/.iterm2_shell_integration.bash
+if [ -n "$ITERM_SESSION_ID" ] && [ -f $HOME/.iterm2_shell_integration.bash ]; then
+    source $HOME/.iterm2_shell_integration.bash
 fi
