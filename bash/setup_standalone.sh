@@ -9,11 +9,10 @@ function usage() {
 
 This script is for building a docker container for standalone/sandbox for testing in dev env, and does the followings:
 
-CREATE IMAGE/CONTAINER:
-    -c [-v <version>|-n <container_name>]
-        Create a docker image for Standalone/Sandbox
-        Docker container will be created if -n <container_name> or -v <version> is provided.
-        Then installs necessary service in the container.
+CREATE CONTAINER:
+    -c [-v <version>|-m <image name>] [-n <container_name>]
+        Create a docker container for Standalone/Sandbox (and the base image if not created yet)
+        Then installs a necessary service in the container.
   OR
     . $BASH_SOURCE
     f_install_as <name> <version> '' '' '' <install opts>
@@ -21,23 +20,22 @@ CREATE IMAGE/CONTAINER:
 START CONTAINER:
     -n <container_name>     <<< no '-c'
         Start a docker container of the given name (hostname), and start services in the container.
+        If *exactly* same name image exists, creates a container from that image.
 
-    -v <version>            <<< no '-c'
-        Start a docker container of this version, and start services in the container.
-
-SAVE CONTAINER:
+SAVE CONTAINER AS IMAGE:
     -s -n <container_name>
         Save this container as image, so that creating a container will be faster.
-        NOTE: this operation takes time.
+        NOTE: this option (saving) may take time.
 
 OTHERS:
     -N
-        Not installing Application Service or starting, just creating a container.
+        Not installing Application Service or starting, just creating an empty container.
 
     -P
         Use with -c to use docker's port forwarding for the application
 
     -R
+        Experimental.
         Re-use the image. Default is not re-using image and create a container from base.
         If this option is used, if similar image name exist, will create a container from that image.
 
@@ -67,7 +65,7 @@ NOTES:
 #_DOMAIN_SUFFIX="$(echo `hostname -s` | sed 's/[^a-zA-Z0-9_]//g').localdomain"
 [ -z "${_DOMAIN}" ] && _DOMAIN="standalone.localdomain" # Default container domain suffix
 [ -z "${_OS_VERSION}" ] && _OS_VERSION="7.5.1804"       # Container OS version (normally CentOS version)
-[ -z "${_IMAGE_NAME}" ] && _IMAGE_NAME="hdp/base"       # Docker image name TODO: change to more appropriate image name
+[ -z "${_BASE_IMAGE}" ] && _BASE_IMAGE="hdp/base"       # Docker image name TODO: change to more appropriate image name
 [ -z "${_SERVICE}" ] && _SERVICE="atscale"              # This is used by the app installer script so shouldn't change
 [ -z "${_VERSION}" ] && _VERSION="7.3.0"                # Default software version, mainly used to find the right installer file
 [ -z "${_LICENSE}" ] && _LICENSE="$(ls -1t ${_WORK_DIR%/}/${_SERVICE%/}/dev*license*.json | head -n1)" # A license file to use the _SERVICE
@@ -257,7 +255,7 @@ function f_docker_base_create() {
 function f_docker_run() {
     local __doc__="Execute docker run with my preferred options"
     local _fqdn="$1"
-    local _base="${2:-"${_IMAGE_NAME}:${_OS_VERSION}"}"
+    local _base="${2:-"${_BASE_IMAGE}:${_OS_VERSION}"}"
     local _ports="${3}"      #"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
     local _extra_opts="${4}" # eg: "--add-host=imagename.standalone:127.0.0.1"
     local _stop_other=${5:-${_DOCKER_STOP_OTHER}}
@@ -557,8 +555,8 @@ function f_as_restore() {
 
 function f_install_as() {
     local _name="${1:-$_NAME}"
-    local _version="${2:-$_VERSION}"
-    local _base="${3:-"${_IMAGE_NAME}:${_OS_VERSION}"}"
+    local _version="${2-$_VERSION}" # If no version, do not install(setup) the application
+    local _base="${3:-"${_BASE_IMAGE}:${_OS_VERSION}"}"
     local _ports="${4}"      #"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
     local _extra_opts="${5}" # eg: "--add-host=imagename.standalone:127.0.0.1"
     local _install_opts="${6}"
@@ -805,7 +803,9 @@ main() {
     fi
 
     local _ver_num="$(echo "${_VERSION}" | sed 's/[^0-9]//g')"
-    if [ -z "$_NAME" ] && [ -n "$_VERSION" ]; then
+    if [ -z "$_NAME" ] && [ -n "$_IMAGE_NAME" ]; then
+        _NAME="${_IMAGE_NAME}"
+    elif [ -z "$_NAME" ] && [ -n "$_VERSION" ]; then
         _NAME="${_SERVICE}${_ver_num}"
     fi
 
@@ -816,35 +816,49 @@ main() {
     fi
 
     if $_CREATE_AND_SETUP; then
-        _log "INFO" "Creating docker image and container"
-        local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_IMAGE_NAME}:${_OS_VERSION}"`"
+        _log "INFO" "Creating docker container (and the base image if it's not existed)"
+        local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_BASE_IMAGE}:${_OS_VERSION}"`"
         if [ ! -z "$_existing_img" ]; then
-            _log "INFO" "${_IMAGE_NAME} already exists so that skipping image creating part..."
+            _log "INFO" "${_BASE_IMAGE} already exists so that skipping image creating part..."
         else
-            _log "INFO" "Creating a docker image ${_IMAGE_NAME}..."
+            _log "INFO" "Creating a docker image ${_BASE_IMAGE}..."
             f_docker_base_create || return $?
         fi
 
         if [ -n "$_NAME" ]; then
             _log "INFO" "Creating ${_NAME} container..."
-            local _image="$(docker images --format "{{.Repository}}" | grep -E "^(${_NAME}|${_SERVICE}${_ver_num})$")"
-            if $_DOCKER_REUSE_IMAGE && [ -n "${_image}" ]; then
-                # Re-using existing images but renaming host
-                _log "INFO" "Image ${_image} for ${_NAME}|${_SERVICE}${_ver_num} already exists. Using this ..."; sleep 1
+
+            local _image_name_regex="^(${_NAME}|${_SERVICE}${_ver_num})$"
+            if [ -n "$_IMAGE_NAME" ]; then
+                _image_name_regex="^${_IMAGE_NAME}$"
+                _DOCKER_REUSE_IMAGE=true
+            fi
+
+            if $_DOCKER_REUSE_IMAGE; then
+                local _image="$(docker images --format "{{.Repository}}" | grep -E "^(${_NAME}|${_SERVICE}${_ver_num})$")"
+                if [ -n "${_image}" ]; then
+                    _log "ERROR" "Reusing saved image was specified but couldn't find any image with '${_image_name_regex}'."
+                    return 1
+                fi
+                _log "INFO" "Image ${_image} for ${_image_name_regex} exists. Using this ..."; sleep 1
+
+                # Re-using an existing saved image with a new hostname
                 local _add_host=""
                 local _old_hostname=""
                 if [ "${_NAME}" != "${_image}" ]; then
                     _add_host="--add-host=${_image}.${_DOMAIN#.}:127.0.0.1"
                     _old_hostname="${_image}.${_DOMAIN#.}"
                 fi
-                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_image}" "${_ports}" "${_add_host}" || return $?
+
+                # No need to install the application as using a saved image, so that no version.
+                f_install_as "${_NAME}" "" "${_image}" "${_ports}" "${_add_host}" || return $?
                 sleep 1
                 if ! $_DOCKER_SAVE && ! $_AS_NO_INSTALL_START; then
                     f_as_start "${_NAME}.${_DOMAIN#.}" "${_SERVICE}" "Y" "${_old_hostname}"
                 fi
             else
                 # Creating a new (empty) container and install the application
-                f_install_as "${_NAME}" "$_VERSION" "${_IMAGE_NAME}:${_OS_VERSION}" "${_ports}" || return $?
+                f_install_as "${_NAME}" "$_VERSION" "${_BASE_IMAGE}:${_OS_VERSION}" "${_ports}" || return $?
             fi
         fi
     fi
@@ -877,7 +891,7 @@ main() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "chl:Nn:PRSsuv:" opts; do
+    while getopts "chl:Nn:m:PRSsuv:" opts; do
         case $opts in
             c)
                 _CREATE_AND_SETUP=true
@@ -894,6 +908,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             n)
                 _NAME="$OPTARG"
+                ;;
+            m)
+                _IMAGE_NAME="$OPTARG"
                 ;;
             P)
                 _DOCKER_PORT_FORWARD=true
