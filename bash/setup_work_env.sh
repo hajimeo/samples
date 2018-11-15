@@ -71,6 +71,22 @@ function f_setup_screen() {
     ln -s $HOME/.screenrc $HOME/.byobu/.screenrc
 }
 
+function f_setup_golang() {
+    # TODO: currently only Ubuntu and hard-coding go version
+    if ! which go &>/dev/null; then
+        add-apt-repository ppa:gophers/archive -y
+        apt-get update
+        apt-get install golang-1.10-go -y || return $?
+        ln -s /usr/lib/go-1.10/bin/go /usr/bin/go
+    fi
+
+    if [ ! -d "$GOPATH" ]; then
+        echo "May need to add 'export GOPATH=$HOME/go' in profile"
+        export GOPATH=$HOME/go
+    fi
+    # Ex: go get -v -u github.com/hajimeo/docker-webui
+}
+
 function f_setup_jupyter() {
     if ! which python3 &>/dev/null && ! _install python3 -y; then
         _log "ERROR" "no python3 installed or not in PATH"
@@ -100,9 +116,14 @@ function f_setup_jupyter() {
     #sudo -i pip3 install beakerx && beakerx-install
     ### Pip(3) end ########################################################
 
-    # Enable jupyter extensions (spell checker)
+    # Enable jupyter notebook extensions (spell checker)
     sudo -i jupyter contrib nbextension install && sudo -i jupyter nbextension enable spellchecker/main
     # TODO: sudo -i jupyter labextension install @ijmbarr/jupyterlab_spellchecker
+
+    # Enable Holloviews http://holoviews.org/user_guide/Installing_and_Configuring.html
+    # Ref: http://holoviews.org/reference/index.html
+    sudo -i pip3 install 'holoviews[recommended]'
+    sudo -i jupyter labextension install @pyviz/jupyterlab_pyviz
 
     #_install libsasl2-dev -y
     #sudo -i pip3 install sasl thrift thrift-sasl PyHive
