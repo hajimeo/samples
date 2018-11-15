@@ -10,7 +10,8 @@ import pandas as pd
 from sqlalchemy import create_engine
 import sqlite3
 
-_LAST_CONN=None
+_LAST_CONN = None
+
 
 def _mexec(func_and_args, num=None):
     """
@@ -109,7 +110,8 @@ def _read(file):
         return open(file, "r")
 
 
-def load_jsons(src="./", db_conn=None, string_cols=['connectionId', 'planJson', 'json'], chunksize=None, set_to_global=False):
+def load_jsons(src="./", db_conn=None, string_cols=['connectionId', 'planJson', 'json'], chunksize=None,
+               set_to_global=False):
     """
     Find json files from current path and load as pandas dataframes object
     :param src: glob(r) source/importing directory path
@@ -232,7 +234,7 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
         conn = db
     else:
         conn = db.connect()
-    if bool(conn): _LAST_CONN=db
+    if bool(conn): _LAST_CONN = db
     return conn
 
 
@@ -248,7 +250,7 @@ def query(sql, conn=None):
     True
     """
     if bool(conn) is False: conn = _LAST_CONN
-    #return conn.execute(sql).fetchall()
+    # return conn.execute(sql).fetchall()
     return pd.read_sql(sql, conn)
 
 
@@ -443,7 +445,9 @@ def files2table(conn, file_glob, tablename=None,
     # TODO: Should use Process or Pool class to process per file
     func_and_args = []
     for f in files:
-        func_and_args += [[_read_file_and_search, {'file':f, 'line_beginning':line_beginning, 'line_matching':line_matching, 'size_regex':size_regex, 'time_regex':time_regex, 'num_cols':num_cols}]]
+        func_and_args += [[_read_file_and_search,
+                           {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching,
+                            'size_regex': size_regex, 'time_regex': time_regex, 'num_cols': num_cols}]]
     rs = _mexec(func_and_args)
     for r in rs:
         tuples = r.get()
@@ -489,13 +493,34 @@ def files2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr',
     dfs = []
     func_and_args = []
     for f in files:
-        func_and_args += [[_read_file_and_search, {'file':f, 'line_beginning':line_beginning, 'line_matching':line_matching, 'size_regex':size_regex, 'time_regex':time_regex, 'num_cols':num_fields}]]
+        func_and_args += [[_read_file_and_search,
+                           {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching,
+                            'size_regex': size_regex, 'time_regex': time_regex, 'num_cols': num_fields}]]
     rs = _mexec(func_and_args)
     for r in rs:
         tuples = r.get()
         if len(tuples) > 0:
             dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
     return pd.concat(dfs)
+
+
+def df2file(df_obj, file_path, mode="w"):
+    '''
+    Save DataFrame to a file (currently CSV format)
+    :param df_obj: Pandas Data Frame object
+    :param file_path: File Path
+    :param mode: mode used with open()
+    :return: void
+    >>> pass
+    '''
+    current_max_seq_items = pd.options.display.max_seq_items
+    if len(df_obj) > pd.options.display.max_seq_items:
+        pd.options.display.max_seq_items = len(df_obj)
+    f = open(file_path, mode)
+    f.write(df_obj.to_csv())
+    f.close()
+    pd.options.display.max_seq_items = current_max_seq_items
+
 
 
 if __name__ == '__main__':
