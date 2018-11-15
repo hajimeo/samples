@@ -127,7 +127,7 @@ function f_update_hosts_file_by_fqdn() {
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
     local _hosts_file="/etc/hosts"
-    which dnsmasq &>/dev/null && [ -f /etc/banner_add_hosts ] && _hosts_file="/etc/banner_add_hosts"
+    [ -f /etc/banner_add_hosts ] && _hosts_file="/etc/banner_add_hosts"
 
     if ! docker ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
         _log "WARN" "${_name} is NOT running. Please check and update ${_hosts_file} manually."
@@ -150,6 +150,7 @@ function f_update_hosts_file_by_fqdn() {
     $_DOCKER_PORT_FORWARD && _container_ip="127.0.0.1"
     f_update_hosts_file "${_hostname}" "${_container_ip}" "${_hosts_file}" ||  _log "WARN" "Please update ${_hosts_file} to add '${_container_ip} ${_hostname}'"
 
+    # TODO: this won't work with webuser
     which dnsmasq &>/dev/null && service dnsmasq reload
 }
 
