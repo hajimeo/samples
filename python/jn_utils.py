@@ -391,14 +391,14 @@ def _read_file_and_search(file, line_beginning, line_matching, size_regex=None, 
     return tuples
 
 
-def files2table(conn, file_glob, tablename=None,
-                col_defs=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
-                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
-                line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
-                size_regex="[sS]ize = ([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
-                max_file_num=10):
+def logs2table(conn, file_glob, tablename=None,
+               col_defs=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
+               num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
+               line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
+               size_regex="[sS]ize = ([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
+               max_file_num=10):
     """
-    Insert multiple files into one table
+    Insert multiple *log* files into one table
     :param conn:  Connection object
     :param file_glob: simple regex used in glob to select files.
     :param tablename: Table name
@@ -458,11 +458,11 @@ def files2table(conn, file_glob, tablename=None,
     return True
 
 
-def files2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
-              num_fields=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
-              line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
-              size_regex="[sS]ize =? ?([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
-              max_file_num=10):
+def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
+             num_fields=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
+             line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
+             size_regex="[sS]ize =? ?([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
+             max_file_num=10):
     """
     Convert multiple files to multiple DataFrame objects
     :param file_glob: simple regex used in glob to select files.
@@ -504,9 +504,9 @@ def files2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr',
     return pd.concat(dfs)
 
 
-def df2file(df_obj, file_path, mode="w"):
+def df2csv(df_obj, file_path, mode="w"):
     '''
-    Save DataFrame to a file (currently CSV format)
+    Save DataFrame to a CSV file
     :param df_obj: Pandas Data Frame object
     :param file_path: File Path
     :param mode: mode used with open()
@@ -521,6 +521,22 @@ def df2file(df_obj, file_path, mode="w"):
     f.close()
     pd.options.display.max_seq_items = current_max_seq_items
 
+
+def csv2df(file_path, db_conn=None, table_name=None):
+    '''
+    Load a CSV file into a DataFrame
+    :param file_path: File Path
+    :param db_conn: DB connection object. If not empty, also import into a sqlite table
+    :return: Pandas DF object
+    # TODO: add test
+    >>> pass
+    '''
+    df = pd.read_csv(file_path)
+    if bool(db_conn):
+        if bool(table_name) is False:
+            table_name, ext = os.path.splitext(os.path.basename(file_path))
+        df.to_sql(name=table_name, con=db_conn)
+    return df
 
 
 if __name__ == '__main__':
