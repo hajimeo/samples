@@ -4,7 +4,7 @@
 
 function f_setup_scala() {
     local _ver="${1:-2.12.3}"
-    local _extract_dir="${2:-/opt}"
+    local _extract_dir="${2:-/var/tmp/share}"
     local _inst_dir="${3:-/usr/local/scala}"
 
     if [ -d "$SCALA_HOME" ]; then
