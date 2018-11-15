@@ -151,7 +151,7 @@ function f_update_hosts_file_by_fqdn() {
     f_update_hosts_file "${_hostname}" "${_container_ip}" "${_hosts_file}" ||  _log "WARN" "Please update ${_hosts_file} to add '${_container_ip} ${_hostname}'"
 
     # TODO: this won't work with webuser
-    which dnsmasq &>/dev/null && service dnsmasq reload
+    [ -s /etc/init.d/dnsmasq ] && service dnsmasq reload
 }
 
 function f_update_hosts_file() {
