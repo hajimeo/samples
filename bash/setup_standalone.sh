@@ -141,7 +141,7 @@ function f_update_hosts_file_by_fqdn() {
     fi
 
     # If no root user, uses "sudo" in sed
-    if [ "$USER" != "root" ]; then
+    if [ "$USER" != "root" ] && [ ! -w "${_hosts_file}" ]; then
         _SUDO_SED=true
         _log "INFO" "Updating ${_hosts_file}. It may ask your sudo password."
     fi
