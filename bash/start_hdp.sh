@@ -2569,7 +2569,7 @@ function f_sysstat_setup() {
 }
 
 function f_shellinabox() {
-    local __doc__="Install and set up shellinabox"
+    local __doc__="Install and set up shellinabox https://code.google.com/archive/p/shellinabox/wikis/shellinaboxd_man.wiki"
     local _user="${1-webuser}"
     local _pass="${2-webuser}"
 
@@ -2583,9 +2583,22 @@ function f_shellinabox() {
 
     if ! grep -qE "^SHELLINABOX_ARGS.+${_user}" /etc/default/shellinabox; then
         [ ! -s /etc/default/shellinabox.org ] && cp -p /etc/default/shellinabox /etc/default/shellinabox.orig
-        sed -i 's@^SHELLINABOX_ARGS=.\+@SHELLINABOX_ARGS="--no-beep -s /'${_user}':'${_user}':'${_user}':HOME:/bin/bash"@' /etc/default/shellinabox
-        service shellinabox restart
+        sed -i 's@^SHELLINABOX_ARGS=.\+@SHELLINABOX_ARGS="--no-beep -s /'${_user}':'${_user}':'${_user}':HOME:/usr/local/bin/shellinabox_login.sh"@' /etc/default/shellinabox
+        service shellinabox restart || return $?
     fi
+
+    if [ ! -s /usr/local/bin/shellinabox_login.sh ]; then
+        echo '#!/usr/bin/env bash
+echo "Welcome $USER !"
+if [ "$USER" = "'${_user}'" ]; then
+  echo "The following containers (hostname) are accesible with ssh:"
+  docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sed "s/^/  ssh /g"
+fi
+echo ""
+/bin/bash' > /usr/local/bin/shellinabox_login.sh
+    fi
+    chmod a+x /usr/local/bin/shellinabox_login.sh
+
     sleep 1
     local _port=`sed -n -r 's/^SHELLINABOX_PORT=([0-9]+)/\1/p' /etc/default/shellinabox`
     lsof -i:${_port}
@@ -2752,6 +2765,10 @@ function f_dnsmasq() {
     #grep -q '^domain=' /etc/dnsmasq.conf || echo 'domain=standalone.localdomain' >> /etc/dnsmasq.conf
     grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
     grep -q '^resolv-file=' /etc/dnsmasq.conf || (echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf; echo 'nameserver 8.8.8.8' > /etc/resolv.dnsmasq.conf)
+
+    touch /etc/banner_add_hosts || return $?
+    chmod 664 /etc/banner_add_hosts
+    chown root:docker /etc/banner_add_hosts
 
     f_dnsmasq_banner_reset "$_how_many" "$_start_from" || return $?
 
