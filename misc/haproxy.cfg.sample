@@ -11,6 +11,7 @@
 ####
 global
   maxconn 256
+  ssl-server-verify none
 
 defaults
   option forwardfor except 127.0.0.1
@@ -20,7 +21,7 @@ defaults
   timeout server 2d
   # timeout tunnel needed for websockets
   timeout tunnel 3600s
-  default-server init-addr last,libc,none
+  #default-server init-addr last,libc,none
 
 ####
 # AtScale Service Frontends
@@ -59,6 +60,14 @@ frontend engine_tcp_front_11113
   mode tcp
   bind *:11113
   default_backend engine_tcp_back_11113
+frontend engine_tcp_front_11114
+  mode tcp
+  bind *:11114
+  default_backend engine_tcp_back_11114
+frontend engine_tcp_front_11115
+  mode tcp
+  bind *:11115
+  default_backend engine_tcp_back_11115
 
 ####
 # AtScale Service Backends
@@ -105,6 +114,16 @@ backend engine_tcp_back_11113
   option httpchk GET /ping HTTP/1.1\r\nHost:\ www
   server node3.support.localdomain node3.support.localdomain:11113 check port 10502
   server node4.support.localdomain node4.support.localdomain:11113 check port 10502
+backend engine_tcp_back_11114
+  mode tcp
+  option httpchk GET /ping HTTP/1.1\r\nHost:\ www
+  server node3.support.localdomain node3.support.localdomain:11114 check port 10502
+  server node4.support.localdomain node4.support.localdomain:11114 check port 10502
+backend engine_tcp_back_11115
+  mode tcp
+  option httpchk GET /ping HTTP/1.1\r\nHost:\ www
+  server node3.support.localdomain node3.support.localdomain:11115 check port 10502
+  server node4.support.localdomain node4.support.localdomain:11115 check port 10502
 
 ####
 # HAProxy Stats
