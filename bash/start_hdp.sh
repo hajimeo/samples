@@ -1060,7 +1060,7 @@ function f_haproxy() {
     local _master_node="${1}"
     local _slave_node="${2}"
     local _certificate="${3}"   # cat ./server.`hostname -d`.crt ./rootCA.pem ./server.`hostname -d`.key > certificate.pem'
-    local _ports="${4:-"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"}"
+    local _ports="${4:-"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113 11114 11115"}"
     local _haproxy_tmpl_conf="${5:-/var/tmp/share/atscale/haproxy.tmpl.cfg}"
 
     local _ssl_crt=""
@@ -1102,8 +1102,8 @@ frontend frontend_p${_p}
         echo "
 backend backend_p${_p}
   option httpchk
-  server first_node ${_master_node}:${_p}${_ssl_crt}" >> "${_cfg}"
-        [ -n "${_slave_node}" ] && echo "  server second_node ${_slave_node}:${_p}${_ssl_crt}" >> "${_cfg}"
+  server first_node ${_master_node}:${_p}${_ssl_crt} check" >> "${_cfg}"
+        [ -n "${_slave_node}" ] && echo "  server second_node ${_slave_node}:${_p}${_ssl_crt} check" >> "${_cfg}"
     done
 
     # NOTE: May need to configure rsyslog.conf for log if CentOS
@@ -2743,6 +2743,12 @@ function f_dnsmasq() {
     #sudo systemctl disable systemd-resolved
     apt-get -y install dnsmasq || return $?
 
+    # TODO: doesn't work (doesn't resolve short name)
+    #grep -q '^domain-needed' /etc/dnsmasq.conf || echo 'domain-needed' >> /etc/dnsmasq.conf
+    #grep -q '^bogus-priv' /etc/dnsmasq.conf || echo 'bogus-priv' >> /etc/dnsmasq.conf
+    #grep -q '^local=' /etc/dnsmasq.conf || echo 'local=standalone.localdomain' >> /etc/dnsmasq.conf
+    #grep -q '^expand-hosts' /etc/dnsmasq.conf || echo 'expand-hosts' >> /etc/dnsmasq.conf
+    #grep -q '^domain=' /etc/dnsmasq.conf || echo 'domain=standalone.localdomain' >> /etc/dnsmasq.conf
     grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
     grep -q '^resolv-file=' /etc/dnsmasq.conf || (echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf; echo 'nameserver 8.8.8.8' > /etc/resolv.dnsmasq.conf)
 
