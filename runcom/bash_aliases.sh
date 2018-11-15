@@ -205,9 +205,9 @@ function backupC() {
 ## Work specific functions
 # copy script(s) into linux servers
 function asPupInst() {
-    for _h in "192.168.6.160" "192.168.6.162" "192.168.0.31"; do
-        scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh root@${_h}:/var/tmp/share/atscale/ &
-    done
+    scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh root@192.168.6.160:/var/tmp/share/atscale/ &
+    scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.162:/var/tmp/share/atscale/ &
+    scp $HOME/IdeaProjects/samples/atscale/install_atscale.sh hosako@192.168.0.31:/var/tmp/share/atscale/ &
     wait
 }
 # List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
