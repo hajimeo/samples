@@ -2962,9 +2962,10 @@ function _copy_auth_keys_to_containers() {
     [ -s "$HOME/.ssh/authorized_keys" ] || return 1
     scp -q $HOME/.ssh/authorized_keys root@${_hostname}:/root/.ssh/authorized_keys && ssh -q root@${_hostname} chmod 600 /root/.ssh/authorized_keys
     if [ ! -s /tmp/ssh_config_$$ ]; then
-        echo "Host *
+        echo "Host node* atscale* *.localdomain
   StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null" > /tmp/ssh_config_$$
+  UserKnownHostsFile /dev/null
+  User root" > /tmp/ssh_config_$$
     fi
     scp -q /tmp/ssh_config_$$ root@${_hostname}:/root/.ssh/config
 }
