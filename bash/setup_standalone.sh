@@ -788,7 +788,7 @@ main() {
         _log "ERROR" "python is required for this script."
         return 1
     fi
-    if ! which dnsmasq &>/dev/null; then
+    if [ ! -s /etc/init.d/dnsmasq ]; then
         _log "WARN" "No dnsmasq, which may cause name resolution issue, but keep continuing..."
         sleep 3
     fi
