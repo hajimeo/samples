@@ -139,6 +139,10 @@ function p_performance() {
     local _n="${3:-20}"
     local _exclude_slow_funcs="${4-Y}"
 
+    if [ -s "${_glob}" ]; then
+        _exclude_slow_funcs="N"
+    fi
+
     # Prepare command list for _mexec (but as rg is already multi-threading, not much diff)
     if [[ ! "${_exclude_slow_funcs}" =~ ^(y|Y) ]]; then
         cat << EOF > /tmp/perform_cmds.tmp
@@ -252,7 +256,7 @@ function f_checkMaterializeWorkers() {
     rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)" -r '${1}T${2}' /tmp/f_checkMaterializeWorkers_$$.out | bar_chart.py
     echo ' '
     echo "### Large materialize queue size (datetime|size) ##########################################"
-    cat /tmp/f_checkMaterializeWorkers_$$.out | sort -t '|' -nk2 | tail -n${_n} | tr '|' '\t'
+    cat /tmp/f_checkMaterializeWorkers_$$.out | grep -v '|0$' | sort -t '|' -nk2 | tail -n${_n} | tr '|' '\t'
     echo " "
     ls -lh /tmp/f_checkMaterializeWorkers_$$.out
 }
@@ -472,9 +476,9 @@ function f_topCausedByExceptions() {
 
 function f_topErrors() {
     local __doc__="List top ERRORs. NOTE: with _date_from and without may produce different result (ex: Caused by)"
-    local _glob="${1:-"engine*.log*"}"        # file path which rg accepts and NEEDS double-quotes
-    local _date_from="$2"   # ISO format datetime
-    local _date_to="$3"     # ISO format datetime
+    local _glob="${1:-"engine*.log*"}"   # file path which rg accepts and NEEDS double-quotes
+    local _from_ISO_format_no_sec="$2"   # ISO format datetime, but no seconds (eg: 2018-11-05 21:00)
+    local _to_ISO_format_no_sec="$3"     # ISO format datetime, but no seconds (eg: 2018-11-05 23:00)
     local _regex="$4"       # to overwrite default regex to detect ERRORs
     local _top_N="${5:-10}" # how many result to show
 
@@ -487,12 +491,12 @@ function f_topErrors() {
         _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|[Ff]ailed)\b.+"
     fi
 
-    if [ -n "${_date_from}" ]; then
+    if [ -n "${_from_ISO_format_no_sec}" ]; then
         if ! which dateregex &>/dev/null; then
             echo "'dateregex' is required (@see https://raw.githubusercontent.com/hajimeo/samples/master/golang/dateregex.go)" >&2
             return 101
         fi
-        local _date_regex="`dateregex "${_date_from}" "${_date_to}"`" || return $?
+        local _date_regex="`dateregex "${_from_ISO_format_no_sec}" "${_to_ISO_format_no_sec}"`" || return $?
         _regex="^(${_date_regex}).+${_regex}"
     fi
 
@@ -501,7 +505,7 @@ function f_topErrors() {
     rg -z --no-line-number --no-filename -g "${_glob}" -o "${_regex}" > /tmp/f_topErrors.$$.tmp
 
     # just for fun, drawing bar chart
-    if [ -n "${_date_from}" ] && which bar_chart.py &>/dev/null; then
+    if [ -n "${_from_ISO_format_no_sec}" ] && which bar_chart.py &>/dev/null; then
         local _date_regex2="^[0-9-/]+ \d\d:\d"
         [ "`wc -l /tmp/f_topErrors.$$.tmp | awk '{print $1}'`" -lt 400 ] && _date_regex2="^[0-9-/]+ \d\d:\d\d"
         echo ' '
@@ -1213,6 +1217,7 @@ function f_count_lines() {
     local _search_regex="${2:-"^20\\d\\d-\\d\\d-\\d\\d .+Periodic stack trace 1"}"
 
     [ -z "${_file}" ] && _file="`find . -name periodic.log -print | head -n1`" && ls -lh ${_file}
+    [ ! -s "${_file}" ] && return
 
     local _ext="${_file##*.}"
     if [[ "${_ext}" =~ gz ]]; then
@@ -1229,6 +1234,8 @@ function f_count_threads() {
     local _file="$1"
     local _tail_n="${2-10}"
     [ -z "${_file}" ] &&  _file="`find . -name periodic.log -print | head -n1`" && ls -lh ${_file}
+    [ ! -s "${_file}" ] && return
+
     if [ -n "${_tail_n}" ]; then
         rg -N -o '^"([^"]+)"' -r '$1' "${_file}" | _sed -r 's/-[0-9]+$//g' | sort | uniq -c | sort -n | tail -n ${_tail_n}
     else
