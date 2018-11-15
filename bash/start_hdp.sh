@@ -2577,6 +2577,7 @@ function f_shellinabox() {
 
     if ! grep -q "$_user" /etc/passwd; then
         f_useradd "$_user" "$_pass" "Y" || return $?
+        usermod -a -G docker ${_user}
         _info "${_user}:${_pass} has been created."
     fi
 
