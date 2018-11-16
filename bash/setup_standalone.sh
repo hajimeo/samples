@@ -170,26 +170,28 @@ function f_update_hosts_file() {
     fi
 
     # Checking if this combination is already in the hosts file. TODO: this regex is not perfect
-    local _ip_in_hosts="$(_sed -nr "s/^([0-9.]+).*\s${_fqdn}.*$/\1/p" ${_file})"
-    [ "${_ip_in_hosts}" = "${_ip}" ] && return 0
+    local _old_ip="$(_sed -nr "s/^([0-9.]+).*\s${_fqdn}.*$/\1/p" ${_file})"
+    [ "${_old_ip}" = "${_ip}" ] && return 0
 
     # Take backup before modifying
-    cp ${_file} /tmp/hosts_$(date +"%Y%m%d%H%M%S")
+    cp -p ${_file} /tmp/hosts_$(date +"%Y%m%d%H%M%S") || return $?
 
-    # Remove the hostname and unnecessary line
-    _sed -i /dev/null -r "s/\s${_fqdn} ${_name}\s?/ /" ${_file}
-    _sed -i /dev/null -r "s/\s${_fqdn}\s?/ /" ${_file}
-    _sed -i /dev/null -r "/^${_ip_in_hosts}\s+$/d" ${_file}
+    # TODO: ideally should lock
+    rm -f /tmp/f_update_hosts_file.tmp
+    cp -f ${_file} /tmp/f_update_hosts_file.tmp || return $?
 
-    # If IP already exists, append the hostname in the end of line
-    if grep -qE "^${_ip}\s+" ${_file}; then
-        _sed -i /dev/null -r "/^${_ip}\s+/ s/\s*$/ ${_fqdn} ${_name}/" ${_file}
-        return $?
-    fi
+    # Remove all lines contain hostname and IP
+    _sed -i -r "/\s${_fqdn}\s+${_name}\s?/d" /tmp/f_update_hosts_file.tmp
+    _sed -i -r "/\s${_fqdn}\s?/d" /tmp/f_update_hosts_file.tmp
+    _sed -i -r "/^${_ip}\s?/d" /tmp/f_update_hosts_file.tmp
+    # This shouldn't match but just in case
+    [ -n "${_old_ip}" ] && _sed -i -r "/^${_old_ip}\s?/d" /tmp/f_update_hosts_file.tmp
 
-    if [ -z "${_ip_in_hosts}" ] || [ "${_ip_in_hosts}" != "${_ip}" ]; then
-        _sed -i /dev/null  -e "\$a${_ip} ${_fqdn} ${_name}" ${_file}
-    fi
+    # Append in the end of file
+    _sed -i -e "\$a${_ip} ${_fqdn} ${_name}" /tmp/f_update_hosts_file.tmp
+
+    # cp / mv fails if no permission on the directory
+    cat /tmp/f_update_hosts_file.tmp > ${_file}
 }
 
 function _gen_dockerFile() {
