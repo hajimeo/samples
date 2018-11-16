@@ -150,8 +150,8 @@ function f_update_hosts_file_by_fqdn() {
     $_DOCKER_PORT_FORWARD && _container_ip="127.0.0.1"
     f_update_hosts_file "${_hostname}" "${_container_ip}" "${_hosts_file}" ||  _log "WARN" "Please update ${_hosts_file} to add '${_container_ip} ${_hostname}'"
 
-    # TODO: this won't work with webuser
-    [ -s /etc/init.d/dnsmasq ] && service dnsmasq reload
+    # TODO: this won't work with webuser, but at least will ask password for super user
+    [ -s /etc/init.d/dnsmasq ] && /etc/init.d/dnsmasq reload
 }
 
 function f_update_hosts_file() {
