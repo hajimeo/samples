@@ -2591,8 +2591,11 @@ function f_shellinabox() {
         echo '#!/usr/bin/env bash
 echo "Welcome $USER !"
 if [ "$USER" = "'${_user}'" ]; then
-  echo "The following containers (hostname) are accesible with ssh:"
+  echo "To login a running container with ssh:"
   docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sed "s/^/  ssh /g"
+  echo ""
+  echo "To start|create a container:"
+  docker images --format "{{.Repository}}" | grep -E "^atscale" | sed "s/^/  ~\/setup_standalone.sh -n /g"
 fi
 echo ""
 /bin/bash' > /usr/local/bin/shellinabox_login.sh
@@ -3074,10 +3077,14 @@ function f_hostname_set() {
 
 function f_socks5_proxy() {
     local __doc__="Start Socks5 proxy (for websocket)"
-    local _port="${1:-$((${r_PROXY_PORT:-28080} + 1))}"
+    local _port="${1:-$((${r_PROXY_PORT:-28080} + 1))}" # 28081
     [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
-    lsof -nPi:${_port} && return 0
-    ssh -gC2TxnNf -D${_port} localhost &> /tmp/ssh_socks5.out
+    lsof -nPi:${_port} -s TCP:LISTEN | grep "^ssh" && return 0
+
+    f_useradd "socks5user" "socks5user" "Y" || return $?
+
+    # TODO: currently using ssh
+    ssh -4gC2TxnNf -D${_port} socks5user@localhost &> /tmp/ssh_socks5.out
 }
 
 function f_apache_proxy() {
@@ -3363,14 +3370,29 @@ function f_useradd() {
     local _pwd="$2"
     local _copy_ssh_config="$3"
 
-    # should specify home directory just in case?
-    useradd -d "/home/$_user/" -s `which bash` -p $(echo "$_pwd" | openssl passwd -1 -stdin) "$_user"
-    mkdir "/home/$_user/" && chown "$_user":"$_user" "/home/$_user/"
+    if grep -q "$_user" /etc/passwd; then
+        _info "$_user already exists. Skipping useradd command..."
+    else
+        # should specify home directory just in case?
+        useradd -d "/home/$_user/" -s `which bash` -p $(echo "$_pwd" | openssl passwd -1 -stdin) "$_user"
+        mkdir "/home/$_user/" && chown "$_user":"$_user" "/home/$_user/"
+    fi
 
-    if _isYes "$_copy_ssh_config" && [ -f ${HOME%/}/.ssh/id_rsa ] && [ -d "/home/$_user/" ]; then
+    if _isYes "$_copy_ssh_config"; then
+        if [ ! -f ${HOME%/}/.ssh/id_rsa ]; then
+            _info "${HOME%/}/.ssh/id_rsa does not exist. Not copying ssh configs ..."
+            return
+        fi
+
+        if [ ! -d "/home/$_user/" ]; then
+            _info "No /home/$_user/ . Not copying ssh configs ..."
+            return
+        fi
+
         mkdir "/home/$_user/.ssh" && chown "$_user":"$_user" "/home/$_user/.ssh"
         cp ${HOME%/}/.ssh/id_rsa* "/home/$_user/.ssh/"
         cp ${HOME%/}/.ssh/config "/home/$_user/.ssh/"
+        cp ${HOME%/}/.ssh/authorized_keys "/home/$_user/.ssh/"
         chown "$_user":"$_user" /home/$_user/.ssh/*
         chmod 600 "/home/$_user/.ssh/id_rsa"
     fi
