@@ -177,18 +177,18 @@ function f_update_hosts_file() {
     cp ${_file} /tmp/hosts_$(date +"%Y%m%d%H%M%S")
 
     # Remove the hostname and unnecessary line
-    _sed -i -r "s/\s${_fqdn} ${_name}\s?/ /" ${_file}
-    _sed -i -r "s/\s${_fqdn}\s?/ /" ${_file}
-    _sed -i -r "/^${_ip_in_hosts}\s+$/d" ${_file}
+    _sed -i /dev/null -r "s/\s${_fqdn} ${_name}\s?/ /" ${_file}
+    _sed -i /dev/null -r "s/\s${_fqdn}\s?/ /" ${_file}
+    _sed -i /dev/null -r "/^${_ip_in_hosts}\s+$/d" ${_file}
 
     # If IP already exists, append the hostname in the end of line
     if grep -qE "^${_ip}\s+" ${_file}; then
-        _sed -i -r "/^${_ip}\s+/ s/\s*$/ ${_fqdn} ${_name}/" ${_file}
+        _sed -i /dev/null -r "/^${_ip}\s+/ s/\s*$/ ${_fqdn} ${_name}/" ${_file}
         return $?
     fi
 
     if [ -z "${_ip_in_hosts}" ] || [ "${_ip_in_hosts}" != "${_ip}" ]; then
-        _sed -i -e "\$a${_ip} ${_fqdn} ${_name}" ${_file}
+        _sed -i /dev/null  -e "\$a${_ip} ${_fqdn} ${_name}" ${_file}
     fi
 }
 
