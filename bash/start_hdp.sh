@@ -2601,7 +2601,7 @@ if [ "$USER" = "'${_user}'" ]; then
   docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sort | sed "s/^/  ssh /g"
   echo ""
   if nc -z localhost '${_proxy_port}'; then
-    echo "Paste below into Mac terminal to access web UIs with Chrome:"
+    echo "Paste below into *Mac* terminal to access web UIs with Chrome:"
     echo "  open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://'`hostname -I | awk '{print $1}'`':'${_proxy_port}'"
     echo ""
   fi
