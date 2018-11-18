@@ -2589,21 +2589,26 @@ function f_shellinabox() {
     fi
 
     if [ ! -s /usr/local/bin/shellinabox_login.sh ]; then
+        # NOTE: user needs to belong to 'docker' group
+        #       need to update ~/.ssh/config to add "User root"
+        #       need to copy ~/setup_standalone.sh with execution permission
         echo '#!/usr/bin/env bash
 echo "Welcome $USER !"
 echo ""
 if [ "$USER" = "'${_user}'" ]; then
   echo "Use below to login a running container with SSH:"
-  docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sed "s/^/  ssh /g"
+  docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sort | sed "s/^/  ssh /g"
   echo ""
   if nc -z localhost '${_proxy_port}'; then
     echo "Paste below into Mac terminal to access web UIs with Chrome:"
     echo "  open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://'`hostname -I | awk '{print $1}'`':'${_proxy_port}'"
     echo ""
   fi
-  echo "Use below to start|create a container:"
-  docker images --format "{{.Repository}}" | grep -E "^atscale" | sed "s/^/  ~\/setup_standalone.sh -n /g"
-  echo ""
+  if [ -x $HOME/setup_standalone.sh ]; then
+    echo "Use below to start|create a container:"
+    docker images --format "{{.Repository}}" | grep -E "^atscale" | sort | sed "s/^/  ~\/setup_standalone.sh -n /g"
+    echo ""
+  fi
 fi
 /bin/bash' > /usr/local/bin/shellinabox_login.sh
     fi
