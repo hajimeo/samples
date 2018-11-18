@@ -2572,6 +2572,7 @@ function f_shellinabox() {
     local __doc__="Install and set up shellinabox https://code.google.com/archive/p/shellinabox/wikis/shellinaboxd_man.wiki"
     local _user="${1-webuser}"
     local _pass="${2-webuser}"
+    local _proxy_port="${3-28081}"
 
     apt-get install -y openssl shellinabox || return $?
 
@@ -2590,14 +2591,20 @@ function f_shellinabox() {
     if [ ! -s /usr/local/bin/shellinabox_login.sh ]; then
         echo '#!/usr/bin/env bash
 echo "Welcome $USER !"
+echo ""
 if [ "$USER" = "'${_user}'" ]; then
   echo "To login a running container with ssh:"
   docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sed "s/^/  ssh /g"
   echo ""
   echo "To start|create a container:"
   docker images --format "{{.Repository}}" | grep -E "^atscale" | sed "s/^/  ~\/setup_standalone.sh -n /g"
+  echo ""
+  if nc -z localhost '${_proxy_port}'; then
+    echo "Paste below into Mac terminal for Web UIs:"
+    echo "  open -na \"Google Chrome\" --args --user-data-dir=$(mktemp -d) --proxy-server=socks5://'`hostname -I | awk '{print $1}'`':'${_proxy_port}'"
+    echo ""
+  fi
 fi
-echo ""
 /bin/bash' > /usr/local/bin/shellinabox_login.sh
     fi
     chmod a+x /usr/local/bin/shellinabox_login.sh
@@ -2609,6 +2616,7 @@ echo ""
 }
 
 function f_shellinabox_in_docker() {
+    # An example to use a container for a particular service
     local __doc__="Install and set up shellinabox in a docker container (expecting base image is already prepared)"
     local _name="${1:-"shellinabox"}" # FQDN
     local _ip_address="${2:-98}"    # Normally i use 99 for freeIPA
