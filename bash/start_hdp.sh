@@ -2593,17 +2593,17 @@ function f_shellinabox() {
 echo "Welcome $USER !"
 echo ""
 if [ "$USER" = "'${_user}'" ]; then
-  echo "To login a running container with ssh:"
+  echo "Use below to login a running container with SSH:"
   docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sed "s/^/  ssh /g"
   echo ""
-  echo "To start|create a container:"
-  docker images --format "{{.Repository}}" | grep -E "^atscale" | sed "s/^/  ~\/setup_standalone.sh -n /g"
-  echo ""
   if nc -z localhost '${_proxy_port}'; then
-    echo "Paste below into Mac terminal for Web UIs:"
-    echo "  open -na \"Google Chrome\" --args --user-data-dir=$(mktemp -d) --proxy-server=socks5://'`hostname -I | awk '{print $1}'`':'${_proxy_port}'"
+    echo "Paste below into Mac terminal to access web UIs with Chrome:"
+    echo "  open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://'`hostname -I | awk '{print $1}'`':'${_proxy_port}'"
     echo ""
   fi
+  echo "Use below to start|create a container:"
+  docker images --format "{{.Repository}}" | grep -E "^atscale" | sed "s/^/  ~\/setup_standalone.sh -n /g"
+  echo ""
 fi
 /bin/bash' > /usr/local/bin/shellinabox_login.sh
     fi
