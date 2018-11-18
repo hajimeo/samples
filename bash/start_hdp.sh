@@ -2589,9 +2589,10 @@ function f_shellinabox() {
     fi
 
     if [ ! -s /usr/local/bin/shellinabox_login.sh ]; then
-        # NOTE: user needs to belong to 'docker' group
-        #       need to update ~/.ssh/config to add "User root"
-        #       need to copy ~/setup_standalone.sh with execution permission
+        # NOTE: User needs to belong to 'docker' group
+        #       Need to update ~/.ssh/config to add "User root"
+        #       Need to copy ~/setup_standalone.sh with execution permission
+        #       Assuming socks5 proxy is running on localhost 28081
         echo '#!/usr/bin/env bash
 echo "Welcome $USER !"
 echo ""
