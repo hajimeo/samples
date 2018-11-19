@@ -181,7 +181,7 @@ function f_update_hosts_file() {
 
     # TODO: ideally should lock
     rm -f /tmp/f_update_hosts_file.tmp
-    cp -f ${_file} /tmp/f_update_hosts_file.tmp || return $?
+    cp -p -f ${_file} /tmp/f_update_hosts_file.tmp || return $?
 
     # Remove all lines contain hostname and IP
     _sed -i -r "/\s${_fqdn}\s+${_name}\s?/d" /tmp/f_update_hosts_file.tmp
