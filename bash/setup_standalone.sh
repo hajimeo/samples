@@ -339,11 +339,6 @@ function f_docker_start() {
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
-    if docker ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
-        _log "INFO" "Container ${_name} is already running."
-        return
-    fi
-
     if ${_stop_other}; then
         # Probably --filter can do better...
         for _p in `docker inspect ${_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print ' '.join([l.replace('/tcp', '') for l in a[0]['Config']['ExposedPorts'].keys()])"`; do
