@@ -391,17 +391,18 @@ def _read_file_and_search(file, line_beginning, line_matching, size_regex=None, 
     return tuples
 
 
-def logs2table(conn, file_glob, tablename=None,
+def logs2table(conn, file_glob, tablename,
                col_defs=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
                line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
                size_regex="[sS]ize = ([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
                max_file_num=10):
     """
-    Insert multiple *log* files into one table
+    TODO: Super slow
+    Insert multiple log files into *one* table
     :param conn:  Connection object
     :param file_glob: simple regex used in glob to select files.
-    :param tablename: Table name
+    :param tablename: Table name. Required
     :param col_defs: Column definition list or dict (column_name1 data_type, column_name2 data_type, ...)
     :param num_cols: Number of columns in the table. Optional if col_def_str is given.
     :param line_beginning: To detect the beginning of the log entry (normally ^\d\d\d\d-\d\d-\d\d)
@@ -440,7 +441,7 @@ def logs2table(conn, file_glob, tablename=None,
     if bool(tablename) and bool(col_def_str):
         res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def_str))
         if bool(res) is False:
-            return (res, tablename, col_def_str)
+            return res
 
     # TODO: Should use Process or Pool class to process per file
     func_and_args = []
@@ -449,6 +450,7 @@ def logs2table(conn, file_glob, tablename=None,
                            {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching,
                             'size_regex': size_regex, 'time_regex': time_regex, 'num_cols': num_cols}]]
     rs = _mexec(func_and_args)
+
     for r in rs:
         tuples = r.get()
         if len(tuples) > 0:
@@ -464,6 +466,7 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
              size_regex="[sS]ize =? ?([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
              max_file_num=10):
     """
+    TODO: Super slow
     Convert multiple files to multiple DataFrame objects
     :param file_glob: simple regex used in glob to select files.
     :param col_names: Column definition list or dict (column_name1 data_type, column_name2 data_type, ...)
@@ -490,13 +493,14 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
     if len(files) > max_file_num:
         raise ValueError('Glob: %s returned too many files (%s)' % (file_glob, str(len(files))))
 
-    dfs = []
     func_and_args = []
     for f in files:
         func_and_args += [[_read_file_and_search,
                            {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching,
                             'size_regex': size_regex, 'time_regex': time_regex, 'num_cols': num_fields}]]
     rs = _mexec(func_and_args)
+
+    dfs = []
     for r in rs:
         tuples = r.get()
         if len(tuples) > 0:
