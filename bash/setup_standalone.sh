@@ -839,7 +839,7 @@ main() {
             fi
 
             if $_DOCKER_REUSE_IMAGE; then
-                local _image="$(docker images --format "{{.Repository}}" | grep -E "^(${_NAME}|${_SERVICE}${_ver_num})$")"
+                local _image="$(docker images --format "{{.Repository}}" | grep -E "^(${_image_name_regex})$")"
                 if [ -n "${_image}" ]; then
                     _log "ERROR" "Reusing saved image was specified but couldn't find any image with '${_image_name_regex}'."
                     return 1
