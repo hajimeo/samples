@@ -181,21 +181,21 @@ function f_update_hosts_file() {
     cp -p ${_file} /tmp/hosts_$(date +"%Y%m%d%H%M%S") || return $?
 
     # TODO: ideally should lock
-    rm -f /tmp/f_update_hosts_file.tmp
-    cp -p -f ${_file} /tmp/f_update_hosts_file.tmp || return $?
+    cp -p -f ${_file} /tmp/f_update_hosts_file_$$.tmp || return $?
 
     # Remove all lines contain hostname and IP
-    _sed -i -r "/\s${_fqdn}\s+${_name}\s?/d" /tmp/f_update_hosts_file.tmp
-    _sed -i -r "/\s${_fqdn}\s?/d" /tmp/f_update_hosts_file.tmp
-    _sed -i -r "/^${_ip}\s?/d" /tmp/f_update_hosts_file.tmp
+    _sed -i -r "/\s${_fqdn}\s+${_name}\s?/d" /tmp/f_update_hosts_file_$$.tmp
+    _sed -i -r "/\s${_fqdn}\s?/d" /tmp/f_update_hosts_file_$$.tmp
+    _sed -i -r "/^${_ip}\s?/d" /tmp/f_update_hosts_file_$$.tmp
     # This shouldn't match but just in case
-    [ -n "${_old_ip}" ] && _sed -i -r "/^${_old_ip}\s?/d" /tmp/f_update_hosts_file.tmp
+    [ -n "${_old_ip}" ] && _sed -i -r "/^${_old_ip}\s?/d" /tmp/f_update_hosts_file_$$.tmp
 
     # Append in the end of file
-    _sed -i -e "\$a${_ip} ${_fqdn} ${_name}" /tmp/f_update_hosts_file.tmp
+    _sed -i -e "\$a${_ip} ${_fqdn} ${_name}" /tmp/f_update_hosts_file_$$.tmp
 
     # cp / mv fails if no permission on the directory
-    cat /tmp/f_update_hosts_file.tmp > ${_file}
+    cat /tmp/f_update_hosts_file_$$.tmp > ${_file} || return $?
+    rm -f /tmp/f_update_hosts_file_$$.tmp
 }
 
 function _gen_dockerFile() {
