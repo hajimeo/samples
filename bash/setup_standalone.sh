@@ -33,6 +33,7 @@ SAVE CONTAINER AS IMAGE:
 OTHERS:
     -N
         Not installing Application Service or starting, just creating an empty container.
+        Expecting you will run installer manually.
 
     -P
         Use with -c to use docker's port forwarding for the application
