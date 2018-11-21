@@ -122,8 +122,9 @@ function f_setup_jupyter() {
 
     # Enable Holloviews http://holoviews.org/user_guide/Installing_and_Configuring.html
     # Ref: http://holoviews.org/reference/index.html
-    sudo -i pip3 install 'holoviews[recommended]'
-    sudo -i jupyter labextension install @pyviz/jupyterlab_pyviz
+    #sudo -i pip3 install 'holoviews[recommended]'
+    #sudo -i jupyter labextension install @pyviz/jupyterlab_pyviz
+    # TODO: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
 
     #_install libsasl2-dev -y
     #sudo -i pip3 install sasl thrift thrift-sasl PyHive
