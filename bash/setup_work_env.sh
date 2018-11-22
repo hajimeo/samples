@@ -9,22 +9,16 @@
 #
 
 function f_setup_misc() {
-    _backup $HOME/.bash_profile
-    curl -f --retry 3 -o $HOME/.bash_profile -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh" || return $?
-    _backup $HOME/.bash_aliases
-    curl -f --retry 3 -o $HOME/.bash_aliases -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh" || return $?
-
     # Command/scripts need for my bash_aliases.sh
     sudo -i pip install data_hacks  # it's OK if this fails
+
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh" $HOME/.bash_profile || return $?
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh" $HOME/.bash_aliases || return $?
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/vimrc" $HOME/.vimrc || return $?
     if [ ! -d "$HOME/IdeaProjects/samples/bash" ]; then
         mkdir -p $HOME/IdeaProjects/samples/bash || return $?
     fi
-
-    _backup $HOME/.vimrc
-    curl -f --retry 3 -o $HOME/.vimrc -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/vimrc" || return $?
-
-    _backup $HOME/IdeaProjects/samples/bash/log_search.sh
-    curl -f --retry 3 -o $HOME/IdeaProjects/samples/bash/log_search.sh "https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh" || return $?
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh" $HOME/IdeaProjects/samples/bash/log_search.sh || return $?
 }
 
 function f_setup_rg() {
@@ -41,7 +35,7 @@ function f_setup_rg() {
             if which apt-get &>/dev/null; then  # NOTE: Mac has 'apt' command
                 local _ver="0.10.0"
                 _log "INFO" "Installing rg version: ${_ver} ..."; sleep 3
-                curl -f --retry 3 -C - -o /tmp/ripgrep_${_ver}_amd64.deb -L "https://github.com/BurntSushi/ripgrep/releases/download/${_ver}/ripgrep_${_ver}_amd64.deb" || return $?
+                _download "https://github.com/BurntSushi/ripgrep/releases/download/${_ver}/ripgrep_${_ver}_amd64.deb"  "/tmp/ripgrep_${_ver}_amd64.deb" "Y" || return $?
                 sudo dpkg -i /tmp/ripgrep_${_ver}_amd64.deb || return $?
             fi
         else
@@ -50,8 +44,7 @@ function f_setup_rg() {
         fi
     fi
 
-    _backup $HOME/.rgrc
-    curl -f --retry 3 -o $HOME/.rgrc -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/rgrc" || return $?
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/rgrc" $HOME/.rgrc || return $?
     if ! grep -q '^export RIPGREP_CONFIG_PATH=' $HOME/.bash_profile; then
         echo -e '\nexport RIPGREP_CONFIG_PATH=$HOME/.rgrc' >> $HOME/.bash_profile || return $?
     fi
@@ -65,8 +58,7 @@ function f_setup_screen() {
 
     [ -d $HOME/.byobu ] || mkdir $HOME/.byobu
     _backup $HOME/.byobu/.screenrc
-    _backup $HOME/.screenrc
-    curl -f --retry 3 -o $HOME/.screenrc -L "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/screenrc" || return $?
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/screenrc" $HOME/.screenrc || return $?
     [ -f $HOME/.byobu/.screenrc ] && rm -f $HOME/.byobu/.screenrc
     ln -s $HOME/.screenrc $HOME/.byobu/.screenrc
 }
@@ -130,6 +122,24 @@ function f_setup_jupyter() {
     #sudo -i pip3 install sasl thrift thrift-sasl PyHive
     #sudo -i pip3 install JayDeBeApi
     #sudo -i pip3 install JayDeBeApi3
+
+    f_jupyter_util
+}
+
+function f_jupyter_util() {
+    # If we use this location, .bash_profile automatically adds PYTHONPATH
+    if [ ! -d "$HOME/IdeaProjects/samples/python" ]; then
+        mkdir -p $HOME/IdeaProjects/samples/python || return $?
+    fi
+
+    # always get the latest and wouldn't need a backup
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/jn_utils.py" "$HOME/IdeaProjects/samples/python/jn_utils.py" || return $?
+
+    if [ ! -d "$HOME/.ipython/profile_default/startup" ]; then
+        mkdir -p "$HOME/.ipython/profile_default/startup" || return $?
+    fi
+
+    echo 'import jn_utils as ju' > "$HOME/.ipython/profile_default/startup/import_ju.py"
 }
 
 function _install() {
@@ -141,6 +151,23 @@ function _install() {
         _log "ERROR" "`uname` is not supported yet to install a package"
         return 1
     fi
+}
+
+function _download() {
+    local _url="$1"
+    local _save_as="$2"
+    local _no_backup="$3"
+
+    local _cmd="curl -s -f --retry 3 -L -k '${_url}'"
+    if [ -z "${_save_as}" ]; then
+        _cmd="${_cmd} -O"
+    else
+        [[ "${_no_backup}" =~ ^(y|Y) ]] || _backup "${_save_as}"
+        _cmd="${_cmd} -o ${_save_as}"
+    fi
+
+    _log "INFO" "Downloading ${_url}..."
+    eval ${_cmd}
 }
 
 function _log() {
