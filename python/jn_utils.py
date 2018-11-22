@@ -113,7 +113,7 @@ def _read(file):
         return open(file, "r")
 
 
-def load_jsons(src="./", db_conn=1000, include_ptn='*.json', exclude_ptn='physicalPlans', chunksize=None,
+def load_jsons(src="./", db_conn=1000, include_ptn='*.json', exclude_ptn='physicalPlans|partitions', chunksize=None,
                string_cols=['connectionId', 'planJson', 'json']):
     """
     Find json files from current path and load as pandas dataframes object
@@ -129,6 +129,7 @@ def load_jsons(src="./", db_conn=1000, include_ptn='*.json', exclude_ptn='physic
     """
     names_dict = {}
     dfs = {}
+    func_and_args = []
     ex = re.compile(exclude_ptn)
 
     files = globr(include_ptn, src)
@@ -136,6 +137,8 @@ def load_jsons(src="./", db_conn=1000, include_ptn='*.json', exclude_ptn='physic
         if ex.search(os.path.basename(f)): continue
 
         f_name, f_ext = os.path.splitext(os.path.basename(f))
+        sys.stderr.write("Processing %s ...\n" % (str(f_name)))
+
         new_name = pick_new_key(f_name, names_dict, (bool(db_conn) is False))
         names_dict[new_name] = f
         df_tmp = pd.read_json(f)
@@ -143,14 +146,31 @@ def load_jsons(src="./", db_conn=1000, include_ptn='*.json', exclude_ptn='physic
             try:
                 # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
                 _force_string(df=df_tmp, string_cols=string_cols)
-                df_tmp.to_sql(name=f_name, con=db_conn, chunksize=chunksize)
+                func_and_args += [
+                    [_to_sql, {'df': df_tmp, 'tablename': f_name, 'conn': db_conn, 'chunksize': chunksize}]]
+                # df_tmp.to_sql(name=f_name, con=db_conn, chunksize=chunksize)
             # Get error message from Exception
             except Exception as e:
                 sys.stderr.write("%s: %s\n" % (str(f_name), str(e)))
                 raise
         else:
             dfs[new_name] = df_tmp
+
+    if bool(db_conn):
+        rs = _mexec(func_and_args)
+        for r in rs:
+            tablename = r.get()
+            if bool(tablename):
+                sys.stderr.write("Completed %s .\n" % (str(tablename)))
+
     return (names_dict, dfs)
+
+
+def _to_sql(df, tablename, conn=None, chunksize=1000):
+    global _LAST_CONN
+    if bool(conn) is False: conn = _LAST_CONN
+    df.to_sql(name=tablename, con=conn, chunksize=chunksize)
+    return tablename
 
 
 def pick_new_key(name, names_dict, using_1st_char=False, check_global=False):
@@ -256,6 +276,7 @@ def query(sql, conn=None):
     >>> bool(result)
     True
     """
+    global _LAST_CONN
     if bool(conn) is False: conn = _LAST_CONN
     # return conn.execute(sql).fetchall()
     return pd.read_sql(sql, conn)
