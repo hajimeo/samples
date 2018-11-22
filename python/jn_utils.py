@@ -136,13 +136,12 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physic
         if ex.search(os.path.basename(f)): continue
 
         f_name, f_ext = os.path.splitext(os.path.basename(f))
-        # sys.stderr.write("Processing %s ...\n" % (str(f_name)))
+        sys.stderr.write("Processing %s ...\n" % (str(f_name)))
         new_name = pick_new_key(f_name, names_dict, (bool(db_conn) is False))
         names_dict[new_name] = f
 
         dfs[new_name] = json2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize,
                                 json_cols=json_cols)
-        # sys.stderr.write("Completed %s .\n" % (str(f_name)))
     if bool(db_conn): return names_dict
     return (names_dict, dfs)
 
@@ -212,7 +211,7 @@ def _avoid_unsupported(df, json_cols, name=None):
             # df[k] = df[k].to_string()
             drop_cols.append(k)
     if len(drop_cols) > 0:
-        sys.stderr.write("Dropping column:%s from %s.\n" % (str(drop_cols), name))
+        sys.stderr.write(" - dropping columns:%s from %s.\n" % (str(drop_cols), name))
         return df.drop(columns=drop_cols)
     return df
 
@@ -548,12 +547,11 @@ def load_csvs(src="./", db_conn=None, include_ptn='*.csv', exclude_ptn='', chunk
         if bool(exclude_ptn) and ex.search(os.path.basename(f)): continue
 
         f_name, f_ext = os.path.splitext(os.path.basename(f))
-        # sys.stderr.write("Processing %s ...\n" % (str(f_name)))
+        sys.stderr.write("Processing %s ...\n" % (str(f_name)))
         new_name = pick_new_key(f_name, names_dict, (bool(db_conn) is False))
         names_dict[new_name] = f
 
         dfs[new_name] = csv2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize)
-        # sys.stderr.write("Completed %s .\n" % (str(f_name)))
     if bool(db_conn): return names_dict
     return (names_dict, dfs)
 
