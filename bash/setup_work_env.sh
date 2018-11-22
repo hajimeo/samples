@@ -139,7 +139,8 @@ function f_jupyter_util() {
         mkdir -p "$HOME/.ipython/profile_default/startup" || return $?
     fi
 
-    echo 'import jn_utils as ju' > "$HOME/.ipython/profile_default/startup/import_ju.py"
+    echo 'import pandas as pd
+import jn_utils as ju' > "$HOME/.ipython/profile_default/startup/import_ju.py"
 }
 
 function _install() {
