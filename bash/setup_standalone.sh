@@ -293,7 +293,7 @@ function f_docker_run() {
                     docker stop -t 7 ${_cname}
                 fi
             else
-                _log "ERROR" "Docker run could not use the port ${_p} as it's used by pid:${_pid}"docker inspect -format="{{ .NetworkSettings.IPAddress }}"
+                _log "ERROR" "Docker run could not use the port ${_p} as it's used by pid:${_pid}"
                 return 1
             fi
         fi
@@ -720,7 +720,106 @@ function p_cdh_sandbox() {
     fi
 }
 
+function f_shellinabox() {
+    local __doc__="Install and set up shellinabox https://code.google.com/archive/p/shellinabox/wikis/shellinaboxd_man.wiki"
+    local _user="${1-webuser}"
+    local _pass="${2-webuser}"
+    local _proxy_port="${3-28081}"
 
+    # TODO: currently only Ubuntu
+    apt-get install -y openssl shellinabox || return $?
+
+    if ! grep -q "$_user" /etc/passwd; then
+        _useradd "$_user" "$_pass" "Y" || return $?
+        usermod -a -G docker ${_user}
+        _log "INFO" "${_user}:${_pass} has been created."
+    fi
+
+    if ! grep -qE "^SHELLINABOX_ARGS.+${_user}" /etc/default/shellinabox; then
+        [ ! -s /etc/default/shellinabox.org ] && cp -p /etc/default/shellinabox /etc/default/shellinabox.orig
+        sed -i 's@^SHELLINABOX_ARGS=.\+@SHELLINABOX_ARGS="--no-beep -s /'${_user}':'${_user}':'${_user}':HOME:/usr/local/bin/shellinabox_login"@' /etc/default/shellinabox
+        service shellinabox restart || return $?
+    fi
+
+    if [ ! -s /usr/local/bin/shellinabox_login ]; then
+        # NOTE: Assuming socks5 proxy is running on localhost 28081
+        if [ ! -f /usr/local/bin/setup_standalone ]; then
+            cp $BASH_SOURCE /usr/local/bin/setup_standalone || return $?
+            chown root:docker /usr/local/bin/setup_standalone
+            chmod 750 /usr/local/bin/setup_standalone
+            _log "INFO" "$BASH_SOURCE is copied to /usr/local/bin/setup_standalone. To avoid confusion, please delete .sh one"
+        fi
+        # Finding Network Address from docker. Seems Mac doesn't care if IP doesn't end with .0
+        local _net_addr="`docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])"`"
+
+        echo '#!/usr/bin/env bash
+echo "Welcome $USER !"
+echo ""
+if [ "$USER" = "'${_user}'" ]; then
+  echo "Use below to login a running container with SSH:"
+  docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sort | sed "s/^/  ssh root@/g"
+  echo ""
+  if [ -x /usr/local/bin/setup_standalone ]; then
+    echo "Use below to start|create a container:"
+    docker images --format "{{.Repository}}" | grep -E "^atscale" | sort | sed "s/^/  setup_standalone -n /g"
+    echo ""
+  fi
+  if nc -z localhost '${_proxy_port}'; then
+    echo "If you are using VPN, paste below into *Mac* terminal to access web UIs:"
+    echo "  open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://'`hostname -I | awk '{print $1}'`':'${_proxy_port}'"
+    echo ""
+  elif [ -n "'${_net_addr}'" ]; then
+    echo "Route command example (Mac):"
+    echo "sudo route add -net '${_net_addr}' '`hostname -I | awk '{print $1}'`'"
+    echo ""
+  fi
+  echo "URLs (NOTE: if no proxy, routing would be required):"
+  for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sort`; do for _p in 10500 8080 7180; do if nc -z $_n $_p; then echo "  http://$_n:$_p/"; fi done done
+  echo ""
+fi
+/bin/bash' > /usr/local/bin/shellinabox_login
+    fi
+    chmod a+x /usr/local/bin/shellinabox_login
+
+    sleep 1
+    local _port=`sed -n -r 's/^SHELLINABOX_PORT=([0-9]+)/\1/p' /etc/default/shellinabox`
+    lsof -i:${_port}
+    _log "INFO" "To access: 'https://`hostname -I | awk '{print $1}'`:${_port}/${_user}/'"
+}
+
+function _useradd() {
+    local __doc__="Add user on Host"
+    local _user="$1"
+    local _pwd="$2"
+    local _copy_ssh_config="$3"
+
+    if grep -q "$_user" /etc/passwd; then
+        _log "INFO" "$_user already exists. Skipping useradd command..."
+    else
+        # should specify home directory just in case?
+        useradd -d "/home/$_user/" -s `which bash` -p $(echo "$_pwd" | openssl passwd -1 -stdin) "$_user"
+        mkdir "/home/$_user/" && chown "$_user":"$_user" "/home/$_user/"
+    fi
+
+    if [[ "$_copy_ssh_config" =~ ^(y|Y) ]]; then
+        if [ ! -f ${HOME%/}/.ssh/id_rsa ]; then
+            _log "INFO" "${HOME%/}/.ssh/id_rsa does not exist. Not copying ssh configs ..."
+            return
+        fi
+
+        if [ ! -d "/home/$_user/" ]; then
+            _log "INFO" "No /home/$_user/ . Not copying ssh configs ..."
+            return
+        fi
+
+        mkdir "/home/$_user/.ssh" && chown "$_user":"$_user" "/home/$_user/.ssh"
+        cp ${HOME%/}/.ssh/id_rsa* "/home/$_user/.ssh/"
+        cp ${HOME%/}/.ssh/config "/home/$_user/.ssh/"
+        cp ${HOME%/}/.ssh/authorized_keys "/home/$_user/.ssh/"
+        chown "$_user":"$_user" /home/$_user/.ssh/*
+        chmod 600 "/home/$_user/.ssh/id_rsa"
+    fi
+}
 
 ## Generic/reusable functions ###################################################
 function _sed() {
