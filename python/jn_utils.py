@@ -13,9 +13,9 @@ import sqlite3
 _LAST_CONN = None
 
 
-def _mexec(func_and_args, num=None):
+def _mexec(func_and_args, num=2):
     """
-    Execute multiple functions asynchronously
+    TODO: Execute multiple functions asynchronously (doesn't work with python3?)
     :param func_and_args: list of [func_obj, [args]]
     :param num: number of pool. if None, half of CPUs
     :return: List of multiprocessing.pool.ApplyResult
@@ -29,7 +29,7 @@ def _mexec(func_and_args, num=None):
     >>> rs[1].get()
     8
     """
-    if bool(num) is False: num = int(mp.cpu_count() / 2)
+    if bool(num) is False: num = int(mp.cpu_count() / 3)
     p = mp.Pool(num)
     rs = []
     for l in func_and_args:
@@ -137,32 +137,22 @@ def load_jsons(src="./", db_conn=1000, include_ptn='*.json', exclude_ptn='physic
         if ex.search(os.path.basename(f)): continue
 
         f_name, f_ext = os.path.splitext(os.path.basename(f))
-        sys.stderr.write("Processing %s ...\n" % (str(f_name)))
-
+        # sys.stderr.write("Processing %s ...\n" % (str(f_name)))
         new_name = pick_new_key(f_name, names_dict, (bool(db_conn) is False))
         names_dict[new_name] = f
         df_tmp = pd.read_json(f)
         if bool(db_conn):
             try:
                 # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
-                _force_string(df=df_tmp, string_cols=string_cols)
-                func_and_args += [
-                    [_to_sql, {'df': df_tmp, 'tablename': f_name, 'conn': db_conn, 'chunksize': chunksize}]]
-                # df_tmp.to_sql(name=f_name, con=db_conn, chunksize=chunksize)
+                df_tmp_mod = _avoid_unsupported(df=df_tmp, string_cols=string_cols, name=f_name)
+                df_tmp_mod.to_sql(name=f_name, con=db_conn, chunksize=chunksize)
             # Get error message from Exception
             except Exception as e:
                 sys.stderr.write("%s: %s\n" % (str(f_name), str(e)))
                 raise
         else:
             dfs[new_name] = df_tmp
-
-    if bool(db_conn):
-        rs = _mexec(func_and_args)
-        for r in rs:
-            tablename = r.get()
-            if bool(tablename):
-                sys.stderr.write("Completed %s .\n" % (str(tablename)))
-
+        # sys.stderr.write("Completed %s .\n" % (str(f_name)))
     return (names_dict, dfs)
 
 
@@ -202,21 +192,24 @@ def pick_new_key(name, names_dict, using_1st_char=False, check_global=False):
     return new_key
 
 
-def _force_string(df, string_cols):
+def _avoid_unsupported(df, string_cols, name=None):
     """
-    Convert some DF cols to String to workaround "<table>: Error binding parameter <N> - probably unsupported type."
+    Drop DF cols to workaround "<table>: Error binding parameter <N> - probably unsupported type."
     :param df: A *reference* of panda DataFrame
     :param string_cols: List contains column names. Ex. ['connectionId', 'planJson', 'json']
-    :return: Void
-    # TODO: at this moment, somehow it add row id(?)
-    >>> import pandas as pd;df = pd.DataFrame({'col1':'a','col2':{'s1':'v1'}, 'col3':1234});_force_string(df, ['col2'])
-    >>> df.col2.to_string()
-    u's1    s1    v1'
+    :return: Modified df
+    >>> pass
     """
     keys = df.columns.tolist()
+    drop_cols = []
     for k in keys:
         if k in string_cols or k.lower().find('json') > 0:
-            df[k] = df[k].to_string()
+            # df[k] = df[k].to_string()
+            drop_cols.append(k)
+    if len(drop_cols) > 0:
+        sys.stderr.write("Dropping column:%s from %s.\n" % (str(drop_cols), name))
+        return df.drop(columns=drop_cols)
+    return df
 
 
 ### Database/DataFrame processing functions
@@ -426,7 +419,6 @@ def logs2table(conn, file_glob, tablename,
                size_regex="[sS]ize = ([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
                max_file_num=10):
     """
-    TODO: Super slow
     Insert multiple log files into *one* table
     :param conn:  Connection object
     :param file_glob: simple regex used in glob to select files.
@@ -472,15 +464,10 @@ def logs2table(conn, file_glob, tablename,
             return res
 
     # TODO: Should use Process or Pool class to process per file
-    func_and_args = []
     for f in files:
-        func_and_args += [[_read_file_and_search,
-                           {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching,
-                            'size_regex': size_regex, 'time_regex': time_regex, 'num_cols': num_cols}]]
-    rs = _mexec(func_and_args)
-
-    for r in rs:
-        tuples = r.get()
+        sys.stderr.write("Processing %s ...\n" % (str(f)))
+        tuples = _read_file_and_search(file=f, line_beginning=line_beginning, line_matching=line_matching,
+                                       size_regex=size_regex, time_regex=time_regex, num_cols=num_cols)
         if len(tuples) > 0:
             res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
             if bool(res) is False:
@@ -494,7 +481,6 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
              size_regex="[sS]ize =? ?([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
              max_file_num=10):
     """
-    TODO: Super slow
     Convert multiple files to multiple DataFrame objects
     :param file_glob: simple regex used in glob to select files.
     :param col_names: Column definition list or dict (column_name1 data_type, column_name2 data_type, ...)
@@ -521,16 +507,12 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
     if len(files) > max_file_num:
         raise ValueError('Glob: %s returned too many files (%s)' % (file_glob, str(len(files))))
 
-    func_and_args = []
-    for f in files:
-        func_and_args += [[_read_file_and_search,
-                           {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching,
-                            'size_regex': size_regex, 'time_regex': time_regex, 'num_cols': num_fields}]]
-    rs = _mexec(func_and_args)
-
+    # TODO: Should use Process or Pool class to process per file
     dfs = []
-    for r in rs:
-        tuples = r.get()
+    for f in files:
+        sys.stderr.write("Processing %s ...\n" % (str(f)))
+        tuples = _read_file_and_search(file=f, line_beginning=line_beginning, line_matching=line_matching,
+                                       size_regex=size_regex, time_regex=time_regex, num_cols=num_fields)
         if len(tuples) > 0:
             dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
     return pd.concat(dfs)
