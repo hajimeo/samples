@@ -46,20 +46,23 @@ def _mexec(func_and_args, num=None):
     return rs
 
 
-def dict2global(d):
+def dict2global(d, scope, overwrite=False):
     """
     Iterate the given dict and create global variables (key = value)
-    :param d: Dict
-    :return: Void
-    >>> dict2global({'a':'test', 'b':'test2'})
+    NOTE: somehow this function can't be called in another function in Jupyter
+    :param d: a dict object
+    :param scope: should pass 'globals()' or 'locals()'
+    :param overwrite: If True, instead of throwing error, just overwrites with the new value
+    :return: void
+    >>> dict2global({'a':'test', 'b':'test2'}, globals(), True)
     >>> b == 'test2'
     True
     """
-    for k, v in d.iteritems():
-        # should throw KeyError?
-        if k in globals():
+    for k, v in d.items():
+        if k in scope and overwrite is False:
             raise ValueError('%s is already used' % (k))
-        globals()[k] = v
+            # continue
+        scope[k] = v
 
 
 ### Text/List processing functions
@@ -110,39 +113,43 @@ def _read(file):
         return open(file, "r")
 
 
-def load_jsons(src="./", db_conn=None, string_cols=['connectionId', 'planJson', 'json'], chunksize=None,
-               set_to_global=False):
+def load_jsons(src="./", db_conn=1000, include_ptn='*.json', exclude_ptn='physicalPlans', chunksize=None,
+               string_cols=['connectionId', 'planJson', 'json']):
     """
     Find json files from current path and load as pandas dataframes object
-    :param src: glob(r) source/importing directory path
+    :param src: source/importing directory path
     :param db_conn: If connection object is given, convert JSON to table
+    :param include_ptn: Regex string to include some file
+    :param exclude_ptn: Regex string to exclude some file
+    :param chunksize: Rows will be written in batches of this size at a time. By default, all rows will be written at once
     :param string_cols: As of today, to_sql fails if column is json, so forcing those columns to string
-    :param set_to_global: Instead of storing into a dict 'dfs', set to global variables (NOTE: this ooesn't work with Jupyter)
     :return: A tuple contain key=>file relationship and Pandas dataframes objects
     # TODO: add test
     >>> pass
     """
     names_dict = {}
     dfs = {}
+    ex = re.compile(exclude_ptn)
 
-    files = globr('*.json', src)
+    files = globr(include_ptn, src)
     for f in files:
-        new_name = pick_new_key(os.path.basename(f), names_dict, True)
+        if ex.search(os.path.basename(f)): continue
+
+        f_name, f_ext = os.path.splitext(os.path.basename(f))
+        new_name = pick_new_key(f_name, names_dict, (bool(db_conn) is False))
         names_dict[new_name] = f
-        dfs[new_name] = pd.read_json(f)
+        df_tmp = pd.read_json(f)
         if bool(db_conn):
-            f_name, f_ext = os.path.splitext(os.path.basename(f))
             try:
                 # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
-                _force_string(df=dfs[new_name], string_cols=string_cols)
-                dfs[new_name].to_sql(name=f_name, con=db_conn, chunksize=chunksize)
+                _force_string(df=df_tmp, string_cols=string_cols)
+                df_tmp.to_sql(name=f_name, con=db_conn, chunksize=chunksize)
             # Get error message from Exception
             except Exception as e:
                 sys.stderr.write("%s: %s\n" % (str(f_name), str(e)))
                 raise
-    if set_to_global:
-        dict2global(dfs)
-        dfs = None
+        else:
+            dfs[new_name] = df_tmp
     return (names_dict, dfs)
 
 
