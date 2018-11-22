@@ -76,7 +76,7 @@ def _chunks(l, n):
     >>> _chunks([1,2,3,4,5], 2)
     [[1, 2], [3, 4], [5]]
     """
-    return [l[i:i + n] for i in range(0, len(l), n)]    #xrange is replaced
+    return [l[i:i + n] for i in range(0, len(l), n)]  # xrange is replaced
 
 
 def globr(ptn='*', src='./'):
@@ -113,23 +113,22 @@ def _read(file):
         return open(file, "r")
 
 
-def load_jsons(src="./", db_conn=1000, include_ptn='*.json', exclude_ptn='physicalPlans|partitions', chunksize=None,
-               string_cols=['connectionId', 'planJson', 'json']):
+def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physicalPlans|partitions', chunksize=1000,
+               json_cols=['connectionId', 'planJson', 'json']):
     """
     Find json files from current path and load as pandas dataframes object
     :param src: source/importing directory path
     :param db_conn: If connection object is given, convert JSON to table
     :param include_ptn: Regex string to include some file
     :param exclude_ptn: Regex string to exclude some file
+    :param json_cols: to_sql() fails if column is json, so forcing those columns to string
     :param chunksize: Rows will be written in batches of this size at a time. By default, all rows will be written at once
-    :param string_cols: As of today, to_sql fails if column is json, so forcing those columns to string
     :return: A tuple contain key=>file relationship and Pandas dataframes objects
     # TODO: add test
     >>> pass
     """
     names_dict = {}
     dfs = {}
-    func_and_args = []
     ex = re.compile(exclude_ptn)
 
     files = globr(include_ptn, src)
@@ -140,27 +139,32 @@ def load_jsons(src="./", db_conn=1000, include_ptn='*.json', exclude_ptn='physic
         # sys.stderr.write("Processing %s ...\n" % (str(f_name)))
         new_name = pick_new_key(f_name, names_dict, (bool(db_conn) is False))
         names_dict[new_name] = f
-        df_tmp = pd.read_json(f)
-        if bool(db_conn):
-            try:
-                # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
-                df_tmp_mod = _avoid_unsupported(df=df_tmp, string_cols=string_cols, name=f_name)
-                df_tmp_mod.to_sql(name=f_name, con=db_conn, chunksize=chunksize)
-            # Get error message from Exception
-            except Exception as e:
-                sys.stderr.write("%s: %s\n" % (str(f_name), str(e)))
-                raise
-        else:
-            dfs[new_name] = df_tmp
+
+        dfs[new_name] = json2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize,
+                                json_cols=json_cols)
         # sys.stderr.write("Completed %s .\n" % (str(f_name)))
+    if bool(db_conn): return names_dict
     return (names_dict, dfs)
 
 
-def _to_sql(df, tablename, conn=None, chunksize=1000):
-    global _LAST_CONN
-    if bool(conn) is False: conn = _LAST_CONN
-    df.to_sql(name=tablename, con=conn, chunksize=chunksize)
-    return tablename
+def json2df(file_path, db_conn=None, tablename=None, json_cols=[], chunksize=1000):
+    """
+    Convert a json file into a DataFrame and if db_conn is given, import into a DB table
+    :param file_path: File path
+    :param db_conn:   DB connection object
+    :param tablename: table name
+    :param json_cols: to_sql() fails if column is json, so forcing those columns to string
+    :param chunksize:
+    :return: a DataFrame object
+    """
+    df = pd.read_json(file_path)
+    if bool(db_conn):
+        if bool(tablename) is False:
+            tablename, ext = os.path.splitext(os.path.basename(file_path))
+        # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
+        df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
+        df_tmp_mod.to_sql(name=tablename, con=db_conn, chunksize=chunksize)
+    return df
 
 
 def pick_new_key(name, names_dict, using_1st_char=False, check_global=False):
@@ -192,18 +196,19 @@ def pick_new_key(name, names_dict, using_1st_char=False, check_global=False):
     return new_key
 
 
-def _avoid_unsupported(df, string_cols, name=None):
+def _avoid_unsupported(df, json_cols, name=None):
     """
     Drop DF cols to workaround "<table>: Error binding parameter <N> - probably unsupported type."
     :param df: A *reference* of panda DataFrame
-    :param string_cols: List contains column names. Ex. ['connectionId', 'planJson', 'json']
+    :param json_cols: List contains column names. Ex. ['connectionId', 'planJson', 'json']
+    :param name: just for logging
     :return: Modified df
     >>> pass
     """
     keys = df.columns.tolist()
     drop_cols = []
     for k in keys:
-        if k in string_cols or k.lower().find('json') > 0:
+        if k in json_cols or k.lower().find('json') > 0:
             # df[k] = df[k].to_string()
             drop_cols.append(k)
     if len(drop_cols) > 0:
@@ -522,6 +527,54 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
     return pd.concat(dfs)
 
 
+def load_csvs(src="./", db_conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000):
+    """
+    Convert multiple CSV files to DF and DB tables
+    :param src: Source directory path
+    :param db_conn: DB connection object
+    :param include_ptn: Include pattern
+    :param exclude_ptn: Exclude pattern
+    :param chunksize: to_sql() chunk size
+    :return: A tuple contain key=>file relationship and Pandas dataframes objects
+    TODO: test
+    >>> pass
+    """
+    names_dict = {}
+    dfs = {}
+    ex = re.compile(exclude_ptn)
+
+    files = globr(include_ptn, src)
+    for f in files:
+        if bool(exclude_ptn) and ex.search(os.path.basename(f)): continue
+
+        f_name, f_ext = os.path.splitext(os.path.basename(f))
+        # sys.stderr.write("Processing %s ...\n" % (str(f_name)))
+        new_name = pick_new_key(f_name, names_dict, (bool(db_conn) is False))
+        names_dict[new_name] = f
+
+        dfs[new_name] = csv2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize)
+        # sys.stderr.write("Completed %s .\n" % (str(f_name)))
+    if bool(db_conn): return names_dict
+    return (names_dict, dfs)
+
+
+def csv2df(file_path, db_conn=None, tablename=None, chunksize=1000):
+    '''
+    Load a CSV file into a DataFrame
+    :param file_path: File Path
+    :param db_conn: DB connection object. If not empty, also import into a sqlite table
+    :return: Pandas DF object
+    # TODO: add test
+    >>> pass
+    '''
+    df = pd.read_csv(file_path)
+    if bool(db_conn):
+        if bool(tablename) is False:
+            tablename, ext = os.path.splitext(os.path.basename(file_path))
+        df.to_sql(name=tablename, con=db_conn, chunksize=chunksize)
+    return df
+
+
 def df2csv(df_obj, file_path, mode="w"):
     '''
     Save DataFrame to a CSV file
@@ -540,21 +593,25 @@ def df2csv(df_obj, file_path, mode="w"):
     pd.options.display.max_seq_items = current_max_seq_items
 
 
-def csv2df(file_path, db_conn=None, table_name=None):
-    '''
-    Load a CSV file into a DataFrame
-    :param file_path: File Path
-    :param db_conn: DB connection object. If not empty, also import into a sqlite table
-    :return: Pandas DF object
-    # TODO: add test
-    >>> pass
-    '''
-    df = pd.read_csv(file_path)
-    if bool(db_conn):
-        if bool(table_name) is False:
-            table_name, ext = os.path.splitext(os.path.basename(file_path))
-        df.to_sql(name=table_name, con=db_conn)
-    return df
+def load():
+    """
+    Try loading all list type json, and csv files
+    :return:
+    """
+    load_jsons("./engine/aggregates", connect())
+    load_csvs("./stats", connect())
+
+
+# TODO: output json (json.tool?) from a json file
+# TODO: find xml which contains UUID or caption/name
+# TODO: add help()
+def help(func_name=None):
+    if bool(func_name) is False:
+        dir()
+        # loop and remove function start with _, and function.__doc__, but remove lines start with >>>
+
+
+# TODO: display current pd.options.display dir(pd.options.display)
 
 
 if __name__ == '__main__':
