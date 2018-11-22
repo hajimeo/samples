@@ -64,7 +64,7 @@ function f_setup_screen() {
 }
 
 function f_setup_golang() {
-    # TODO: currently only Ubuntu and hard-coding go version
+    # TODO: currently only for Ubuntu and hard-coding go version
     if ! which go &>/dev/null; then
         add-apt-repository ppa:gophers/archive -y
         apt-get update
@@ -98,11 +98,11 @@ function f_setup_jupyter() {
     sudo -i pip3 list -o | tee /tmp/pip.log
     #sudo -i pip3 list -o --format=freeze | cut -d'=' -f1 | xargs sudo -i pip3 install -U
 
-    # TODO: is jupyter deprecated?
     sudo -i pip3 install jupyter --log /tmp/pip.log &>/dev/null || return $?
     sudo -i pip3 install jupyterlab --log /tmp/pip.log &>/dev/null || return $?
-    # TODO: as of today no jupyter_contrib_labextensions
-    sudo -i pip3 install jupyter_contrib_nbextensions pandas pandasql sqlalchemy ipython-sql --log /tmp/pip.log &>/dev/null
+    # TODO: as of today no jupyter_contrib_labextensions (lab)
+    # NOTE: Initially I thought pandasql looked good but it's actually using sqlite
+    sudo -i pip3 install jupyter_contrib_nbextensions pandas sqlalchemy ipython-sql --log /tmp/pip.log &>/dev/null
     sudo -i pip3 install bash_kernel --log /tmp/pip.log &>/dev/null && sudo -i python3 -m bash_kernel.install
     # Enable BeakerX. NOTE: this works with only python3
     #sudo -i pip3 install beakerx && beakerx-install
