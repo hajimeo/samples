@@ -2568,59 +2568,7 @@ function f_sysstat_setup() {
     fi
 }
 
-function f_shellinabox() {
-    local __doc__="Install and set up shellinabox https://code.google.com/archive/p/shellinabox/wikis/shellinaboxd_man.wiki"
-    local _user="${1-webuser}"
-    local _pass="${2-webuser}"
-    local _proxy_port="${3-28081}"
-
-    apt-get install -y openssl shellinabox || return $?
-
-    if ! grep -q "$_user" /etc/passwd; then
-        f_useradd "$_user" "$_pass" "Y" || return $?
-        usermod -a -G docker ${_user}
-        _info "${_user}:${_pass} has been created."
-    fi
-
-    if ! grep -qE "^SHELLINABOX_ARGS.+${_user}" /etc/default/shellinabox; then
-        [ ! -s /etc/default/shellinabox.org ] && cp -p /etc/default/shellinabox /etc/default/shellinabox.orig
-        sed -i 's@^SHELLINABOX_ARGS=.\+@SHELLINABOX_ARGS="--no-beep -s /'${_user}':'${_user}':'${_user}':HOME:/usr/local/bin/shellinabox_login.sh"@' /etc/default/shellinabox
-        service shellinabox restart || return $?
-    fi
-
-    if [ ! -s /usr/local/bin/shellinabox_login.sh ]; then
-        # NOTE: User needs to belong to 'docker' group
-        #       Need to update ~/.ssh/config to add "User root"
-        #       Need to copy ~/setup_standalone.sh with execution permission
-        #       Assuming socks5 proxy is running on localhost 28081
-        echo '#!/usr/bin/env bash
-echo "Welcome $USER !"
-echo ""
-if [ "$USER" = "'${_user}'" ]; then
-  echo "Use below to login a running container with SSH:"
-  docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sort | sed "s/^/  ssh /g"
-  echo ""
-  if nc -z localhost '${_proxy_port}'; then
-    echo "Paste below into *Mac* terminal to access web UIs with Chrome:"
-    echo "  open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://'`hostname -I | awk '{print $1}'`':'${_proxy_port}'"
-    echo ""
-  fi
-  if [ -x $HOME/setup_standalone.sh ]; then
-    echo "Use below to start|create a container:"
-    docker images --format "{{.Repository}}" | grep -E "^atscale" | sort | sed "s/^/  ~\/setup_standalone.sh -n /g"
-    echo ""
-  fi
-fi
-/bin/bash' > /usr/local/bin/shellinabox_login.sh
-    fi
-    chmod a+x /usr/local/bin/shellinabox_login.sh
-
-    sleep 1
-    local _port=`sed -n -r 's/^SHELLINABOX_PORT=([0-9]+)/\1/p' /etc/default/shellinabox`
-    lsof -i:${_port}
-    _info "To access: 'https://`hostname -I | awk '{print $1}'`:${_port}/${_user}/'"
-}
-
+# NOTE: another example is in setup_standalone.sh f_shellinabox()
 function f_shellinabox_in_docker() {
     # An example to use a container for a particular service
     local __doc__="Install and set up shellinabox in a docker container (expecting base image is already prepared)"
