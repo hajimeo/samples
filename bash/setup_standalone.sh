@@ -743,7 +743,7 @@ function f_shellinabox() {
     fi
 
     if ! grep -qE "^SHELLINABOX_ARGS.+${_user}:.+/shellinabox_login\"" /etc/default/shellinabox; then
-        [ ! -s /etc/default/shellinabox.org ] && cp -p /etc/default/shellinabox /etc/default/shellinabox.orig
+        [ ! -s /etc/default/shellinabox.orig ] && cp -p /etc/default/shellinabox /etc/default/shellinabox.orig
         sed -i 's@^SHELLINABOX_ARGS=.\+@SHELLINABOX_ARGS="--no-beep -s /'${_user}':'${_user}':'${_user}':HOME:/usr/local/bin/shellinabox_login"@' /etc/default/shellinabox
         service shellinabox restart || return $?
     fi
