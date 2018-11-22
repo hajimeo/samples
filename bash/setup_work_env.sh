@@ -110,7 +110,7 @@ function f_setup_jupyter() {
     sudo -i pip3 install jupyter --log /tmp/pip.log &>/dev/null || return $?
     sudo -i pip3 install jupyterlab --log /tmp/pip.log &>/dev/null || return $?
     # TODO: as of today no jupyter_contrib_labextensions
-    sudo -i pip3 install jupyter_contrib_nbextensions pandas sqlalchemy ipython-sql --log /tmp/pip.log &>/dev/null
+    sudo -i pip3 install jupyter_contrib_nbextensions pandas pandasql sqlalchemy ipython-sql --log /tmp/pip.log &>/dev/null
     sudo -i pip3 install bash_kernel --log /tmp/pip.log &>/dev/null && sudo -i python3 -m bash_kernel.install
     # Enable BeakerX. NOTE: this works with only python3
     #sudo -i pip3 install beakerx && beakerx-install
