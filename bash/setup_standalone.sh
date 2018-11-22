@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
-# NOTE: shouldn't use OS dependant command, such as apt-get, yum, brew etc.
-# Recreate multiple images:
 #
+# Download / setup:
+# curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_standalone.sh -o /usr/local/bin/setup_standalone
+# chown root:docker /usr/local/bin/setup_standalone
+# chmod 750 /usr/local/bin/setup_standalone
+#
+# TODO: shouldn't use OS dependant command, such as apt-get, yum, brew etc.
+#
+# To recreate multiple images:
 # _PREFIX=xxxxx
 # #docker images | grep "^${_PREFIX}" | awk '{print $1}' | sed -nr "s/${_PREFIX}([0-9])([0-9])([0-9])/\1.\2.\3/p" | sort
 # ls -1 /var/tmp/share/${_PREFIX}/${_PREFIX}-*.latest-el6.x86_64.tar.gz | sed -n -r "s/.+${_PREFIX}-([0-9]\.[0-9]\.[0-9]).+/\1/p" | sort
 # for _v in `!!`; do _n=${_PREFIX}$(echo $_v | sed 's/[^0-9]//g'); docker rm -f $_n; docker rmi $_n; ./setup_standalone.sh -c -v $_v -s || break; done
+#
 
 function usage() {
     echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>] [-s] [-l /path/to/dev-license.json]
@@ -745,10 +752,11 @@ function f_shellinabox() {
         # NOTE: Assuming socks5 proxy is running on localhost 28081
         if [ ! -f /usr/local/bin/setup_standalone ]; then
             cp $BASH_SOURCE /usr/local/bin/setup_standalone || return $?
-            chown root:docker /usr/local/bin/setup_standalone
-            chmod 750 /usr/local/bin/setup_standalone
             _log "INFO" "$BASH_SOURCE is copied to /usr/local/bin/setup_standalone. To avoid confusion, please delete .sh one"
         fi
+        chown root:docker /usr/local/bin/setup_standalone
+        chmod 750 /usr/local/bin/setup_standalone
+
         # Finding Network Address from docker. Seems Mac doesn't care if IP doesn't end with .0
         local _net_addr="`docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])"`"
 
