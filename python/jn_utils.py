@@ -76,7 +76,7 @@ def _chunks(l, n):
     >>> _chunks([1,2,3,4,5], 2)
     [[1, 2], [3, 4], [5]]
     """
-    return [l[i:i + n] for i in xrange(0, len(l), n)]
+    return [l[i:i + n] for i in range(0, len(l), n)]    #xrange is replaced
 
 
 def globr(ptn='*', src='./'):
@@ -243,6 +243,8 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     True
     """
     global _LAST_CONN
+    if bool(_LAST_CONN): return _LAST_CONN
+
     db = _db(dbname=dbname, dbtype=dbtype, isolation_level=isolation_level, force_sqlalchemy=force_sqlalchemy,
              echo=echo)
     if dbtype == 'sqlite':
@@ -254,7 +256,7 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
         conn = db
     else:
         conn = db.connect()
-    if bool(conn): _LAST_CONN = db
+    if bool(conn): _LAST_CONN = conn
     return conn
 
 
@@ -412,7 +414,7 @@ def _read_file_and_search(file, line_beginning, line_matching, size_regex=None, 
     return tuples
 
 
-def logs2table(conn, file_glob, tablename,
+def logs2table(file_glob, tablename, conn=None,
                col_defs=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
                line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
@@ -430,10 +432,13 @@ def logs2table(conn, file_glob, tablename,
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
-    :return: True or a tuple contains multiple information for debug
+    :return: Void if no error, or a tuple contains multiple information for debug
     # TODO: add test
     >>> pass
     """
+    global _LAST_CONN
+    if bool(conn) is False: conn = _LAST_CONN
+
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_cols) is False:
         num_cols = len(col_defs)
@@ -472,7 +477,6 @@ def logs2table(conn, file_glob, tablename,
             res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
             if bool(res) is False:
                 return res
-    return True
 
 
 def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
