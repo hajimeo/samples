@@ -15,56 +15,54 @@
 #
 
 function usage() {
-    echo "$BASH_SOURCE -c -v ${_VERSION} [-n <container_name>] [-s] [-l /path/to/dev-license.json]
+    echo "$BASH_SOURCE
+This script is for building a small docker container for testing an application in dev environment.
 
-This script is for building a docker container for standalone/sandbox for testing in dev env, and does the followings:
-
-CREATE CONTAINER:
-    -c [-v <version>|-m <image name>] [-n <container_name>]
-        Create a docker container for Standalone/Sandbox (and the base image if not created yet)
-        Then installs a necessary service in the container.
+CREATE CONTAINER (-c):
+    -c [-v <version>|-m <image name>] [-n <container name>]
+        -v, -m, and -n are optional
+        <version> is such as ${_VERSION}
+        <image name> is an already saved image name
+        <container name> is a container name = hostname
   OR
     . $BASH_SOURCE
     f_install_as <name> <version> '' '' '' <install opts>
 
 START CONTAINER:
-    -n <container_name>     <<< no '-c'
-        Start a docker container of the given name (hostname), and start services in the container.
-        If *exactly* same name image exists, creates a container from that image.
+    -n <container name>     <<< no '-c'
+        NOTE: If *exactly* same name image exists, even no -c, this creates a container from that image.
 
 SAVE CONTAINER AS IMAGE:
     -s -n <container_name>
         Save this container as image, so that creating a container will be faster.
-        NOTE: this option (saving) may take time.
+        NOTE: saving a container may take several time.
 
-OTHERS:
-    -N
-        Not installing Application Service or starting, just creating an empty container.
-        Expecting you will run installer manually.
+OTHERS (normally you don't need to use):
+    -u
+        Update this script to the latest version.
+
+    -l /path/to/dev-license.json
+        To specify a path of the software licence file.
+        If not specified (default), the installer script would automatically decide.
+
+    -N -n <container name>
+        Not installing anything, just creating an empty container.
 
     -P
-        Use with -c to use docker's port forwarding for the application
+        Experimental.
+        Using with -c, docker run command uses port forwarding.
 
     -R
         Experimental.
-        Re-use the image. Default is not re-using image and create a container from base.
-        If this option is used, if similar image name exist, will create a container from that image.
+        Force reusing an image. Default is not re-using image and create a container from base.
+        If this option is used, if similar image name exist, will try creating a container from that image.
 
     -S
         Use with -c, -n, -v to stop any other port conflicting containers.
-        When -P is used or the host is Mac, this option would be needed.
-
-    -l /path/to/dev-license.json
-        A path to the software licence file
-
-    -u
-        Update this script to the latest
+        When -P is used or the host is Mac, this option mgiht be required.
 
     -h
         To see this message
-
-NOTES:
-    This script assumes your application is stored under /usr/local/_SERVICE
 "
     docker stats --no-stream
 }
@@ -764,11 +762,11 @@ function f_shellinabox() {
 echo "Welcome $USER !"
 echo ""
 if [ "$USER" = "'${_user}'" ]; then
-  echo "Use below to login a running container with SSH:"
+  echo "SSH login to a running container:"
   docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sort | sed "s/^/  ssh root@/g"
   echo ""
   if [ -x /usr/local/bin/setup_standalone ]; then
-    echo "Use below to start|create a container:"
+    echo "To start a container (setup_standalone -h for help):"
     docker images --format "{{.Repository}}" | grep -E "^atscale" | sort | sed "s/^/  setup_standalone -n /g"
     echo ""
   fi
@@ -776,12 +774,13 @@ if [ "$USER" = "'${_user}'" ]; then
     echo "If you are using VPN, paste below into *Mac* terminal to access web UIs:"
     echo "  open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://'`hostname -I | awk '{print $1}'`':'${_proxy_port}'"
     echo ""
-  elif [ -n "'${_net_addr}'" ]; then
-    echo "Route command example (Mac):"
-    echo "sudo route add -net '${_net_addr}' '`hostname -I | awk '{print $1}'`'"
+  fi
+  if [ -n "'${_net_addr}'" ]; then
+    echo "If not using VPN, route command example for Mac:"
+    echo "  sudo route add -net '${_net_addr}' '`hostname -I | awk '{print $1}'`'"
     echo ""
   fi
-  echo "URLs (NOTE: if no proxy, routing would be required):"
+  echo "URLs (NOTE: need Proxy or Routing by using above command):"
   for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sort`; do for _p in 10500 8080 7180; do if nc -z $_n $_p; then echo "  http://$_n:$_p/"; fi done done
   echo ""
 fi
