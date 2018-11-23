@@ -267,29 +267,6 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     return conn
 
 
-def hive_conn(conn_str="jdbc:hive2://localhost:10000/default", user="admin", pwd="admin"):
-    """
-    Demonstrating Hive connection capability (eventually will merge into connect())
-    :param conn_str: jdbc:hive2://localhost:10000/default
-    :param user: admin
-    :param pwd:  admin
-    :return: connection (cursor) object
-    >>> pass    # TODO: implement test
-    >>> hc = hive_conn("jdbc:hive2://atscale720.standalone.localdomain:11111/Sales+Insights")
-    >>> hc.execute("select Gender from `Sales Insights`.`Internet Sales Cube`")
-    >>> hc.fetchall()
-    [('Female',), ('Male',), ('Unisex',)]
-    """
-    import jaydebeapi
-    cur_dir = os.path.dirname(os.path.abspath(__file__))
-    jar_dir = os.path.abspath(os.path.join(cur_dir, '..')) + "/java/hadoop"
-    conn = jaydebeapi.connect("org.apache.hive.jdbc.HiveDriver",
-                              conn_str, [user, pwd],
-                              [jar_dir + "/hive-jdbc-1.0.0-standalone.jar",
-                               jar_dir + "/hadoop-core-1.0.3.jar"]).cursor()
-    return conn
-
-
 def query(sql, conn=None):
     """
     Call fetchall() with given query, expecting SELECT statement
@@ -316,6 +293,66 @@ def q(sql, conn=None):
     >>> pass
     """
     return query(sql, conn)
+
+
+def desc(tablenames=None, conn=None):
+    """
+    Describe a table (SHOW CREATE TABLE) or SHOW TABLES
+    :param tablenames: If empty, get table list
+    :param conn: DB connection (cursor) object
+    :return: void with printing CREATE statement, or a DF object contains table list
+    """
+    global _LAST_CONN
+    if bool(conn) is False: conn = _LAST_CONN
+
+    if bool(tablenames):
+        if isinstance(tablenames, str): tablenames = [tablenames]
+        for t in tablenames:
+            rs = conn.execute("select sql from sqlite_master where name = '%s'" % (str(t)))
+            if bool(rs) is False: continue
+            print(rs.fetchall()[0][0])
+            # SQLite doesn't like - in a table name. need to escape with double quotes.
+            print("Rows: %s\n" % (conn.execute("SELECT count(oid) FROM \"%s\"" % (t)).fetchall()[0][0]))
+        return
+    conn.execute().fetchall()
+    return query(sql="select name, rootpage from sqlite_master where type = 'table' order by rootpage", conn=conn)
+
+
+def hive_conn(conn_str="jdbc:hive2://localhost:10000/default", user="admin", pwd="admin"):
+    """
+    Demonstrating Hive connection capability (eventually will merge into connect())
+    :param conn_str: jdbc:hive2://localhost:10000/default
+    :param user: admin
+    :param pwd:  admin
+    :return: connection (cursor) object
+    >>> pass    # TODO: implement test
+    >>> hc = hive_conn("jdbc:hive2://localhost:10000/default")
+    >>> hc.execute("SELECT 1")
+    >>> hc.fetchall()
+    [(1,)]
+    """
+    import jaydebeapi
+    cur_dir = os.path.dirname(os.path.abspath(__file__))
+    jar_dir = os.path.abspath(os.path.join(cur_dir, '..')) + "/java/hadoop"
+    conn = jaydebeapi.connect("org.apache.hive.jdbc.HiveDriver",
+                              conn_str, [user, pwd],
+                              [jar_dir + "/hive-jdbc-1.0.0-standalone.jar",
+                               jar_dir + "/hadoop-core-1.0.3.jar"]).cursor()
+    return conn
+
+
+def hive_q(sql, conn):
+    """
+    Execute a SQL query against hive connection
+    :param sql: (SELECT) SQL statement
+    :param conn: DB connection (cursor)
+    :return: Panda DataFrame
+    """
+    conn.execute(sql)
+    result = conn.fetchall()
+    if bool(result):
+        return pd.DataFrame(result)
+    return result
 
 
 def _massage_tuple_for_save(tpl, long_value="", num_cols=None):
@@ -626,6 +663,8 @@ def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
     """
     load_jsons(jsons_dir, connect())
     load_csvs(csvs_dir, connect())
+    sys.stderr.write("Completed.\n")
+
 
 
 def help(func_name=None):
@@ -661,17 +700,4 @@ def help(func_name=None):
 
 if __name__ == '__main__':
     import doctest
-
     doctest.testmod(verbose=True)
-
-    # TEST commands
-    '''
-    file_glob="debug.2018-08-23*.gz"
-    tablename="engine_debug_log"
-    conn = ju.connect()   # Using dbname will be super slow
-    res = ju.files2table(conn=conn, file_glob=file_glob, tablename=tablename)
-    print res
-    conn.execute("select name from sqlite_master where type = 'table'").fetchall()
-    conn.execute("select sql from sqlite_master where name='%s'" % (tablename)).fetchall()
-    conn.execute("SELECT MAX(oid) FROM %s" % (tablename)).fetchall()
-    '''
