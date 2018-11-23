@@ -687,10 +687,8 @@ def help(func_name=None):
     print("For a function help, use 'ju.help(\"function_name\")'.")
 
 
-# TODO: output json (json.tool?) from a json file
 # TODO: find xml which contains UUID or caption/name. get_ipython does not work in python though
-# TODO sqlite desc to get column information
-
+# TODO: output formatted json string (json.tool?) from a json file
 # TODO: Updating Jupyter/pandas default
 # if 'get_ipython' in locals():
 #    get_ipython().run_line_magic('matplotlib', 'inline')
