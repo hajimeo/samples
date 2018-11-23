@@ -3,6 +3,9 @@
 # Python Jupyter Notebook helper/utility functions
 # @author: hajime
 #
+"""
+jn_utils is Jupyter Notebook Utility script, which contains functions to convert text files to Pandas DataFrame or DB (SQLite) tables.
+"""
 
 import sys, os, fnmatch, gzip, re
 import multiprocessing as mp
@@ -46,7 +49,7 @@ def _mexec(func_and_args, num=2):
     return rs
 
 
-def dict2global(d, scope, overwrite=False):
+def _dict2global(d, scope, overwrite=False):
     """
     Iterate the given dict and create global variables (key = value)
     NOTE: somehow this function can't be called in another function in Jupyter
@@ -54,7 +57,7 @@ def dict2global(d, scope, overwrite=False):
     :param scope: should pass 'globals()' or 'locals()'
     :param overwrite: If True, instead of throwing error, just overwrites with the new value
     :return: void
-    >>> dict2global({'a':'test', 'b':'test2'}, globals(), True)
+    >>> _dict2global({'a':'test', 'b':'test2'}, globals(), True)
     >>> b == 'test2'
     True
     """
@@ -79,13 +82,13 @@ def _chunks(l, n):
     return [l[i:i + n] for i in range(0, len(l), n)]  # xrange is replaced
 
 
-def globr(ptn='*', src='./'):
+def _globr(ptn='*', src='./'):
     """
     As Python 2.7's glob does not have recursive option
     :param ptn: glob regex pattern
     :param src: source/importing directory path
     :return: list contains matched file paths
-    >>> l = globr();len(l) > 0
+    >>> l = _globr();len(l) > 0
     True
     """
     matches = []
@@ -131,13 +134,13 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physic
     dfs = {}
     ex = re.compile(exclude_ptn)
 
-    files = globr(include_ptn, src)
+    files = _globr(include_ptn, src)
     for f in files:
         if ex.search(os.path.basename(f)): continue
 
         f_name, f_ext = os.path.splitext(os.path.basename(f))
         sys.stderr.write("Processing %s ...\n" % (str(f_name)))
-        new_name = pick_new_key(f_name, names_dict, (bool(db_conn) is False))
+        new_name = _pick_new_key(f_name, names_dict, (bool(db_conn) is False))
         names_dict[new_name] = f
 
         dfs[new_name] = json2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize,
@@ -166,7 +169,7 @@ def json2df(file_path, db_conn=None, tablename=None, json_cols=[], chunksize=100
     return df
 
 
-def pick_new_key(name, names_dict, using_1st_char=False, check_global=False):
+def _pick_new_key(name, names_dict, using_1st_char=False, check_global=False):
     """
     Find a non-conflicting a dict key for given name (normally a file name/path)
     :param name: name to be saved or used as a dict key
@@ -174,9 +177,9 @@ def pick_new_key(name, names_dict, using_1st_char=False, check_global=False):
     :param using_1st_char: if new name
     :param check_global: if new name is used as a global variable
     :return: a string of a new dict key which hasn't been used
-    >>> pick_new_key('test', {'test':'aaa'}, False)
+    >>> _pick_new_key('test', {'test':'aaa'}, False)
     'test1'
-    >>> pick_new_key('test', {'test':'aaa', 't':'bbb'}, True)
+    >>> _pick_new_key('test', {'test':'aaa', 't':'bbb'}, True)
     't1'
     """
     if using_1st_char:
@@ -292,14 +295,14 @@ def q(sql, conn=None):
     return query(sql, conn)
 
 
-def massage_tuple_for_save(tpl, long_value="", num_cols=None):
+def _massage_tuple_for_save(tpl, long_value="", num_cols=None):
     """
     Massage the given tuple to convert to a DataFrame or a Table columns later
     :param tpl: Tuple which contains value of a row
     :param long_value: multi-lines log messages
     :param num_cols: Number of columns in the table to populate missing column as None/NULL
     :return: modified tuple
-    >>> massage_tuple_for_save(('a','b'), "aaaa", 4)
+    >>> _massage_tuple_for_save(('a','b'), "aaaa", 4)
     ('a', 'b', None, 'aaaa')
     """
     if bool(num_cols) and len(tpl) < num_cols:
@@ -344,7 +347,7 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
     :param line_re: Compiled regex for group match to get the (column) values
     :param size_re: An optional compiled regex to find size related value
     :param time_re: An optional compiled regex to find time related value
-    :param num_cols: Number of columns used in massage_tuple_for_save() to populate empty columns with Null
+    :param num_cols: Number of columns used in _massage_tuple_for_save() to populate empty columns with Null
     :return: (tuple, prev_matches, prev_message)
     >>> import re;line = "2018-09-04 12:23:45 test";begin_re=re.compile("^\d\d\d\d-\d\d-\d\d");line_re=re.compile("(^\d\d\d\d-\d\d-\d\d).+(test)")
     >>> _find_matching(line, None, None, begin_re, line_re)
@@ -355,7 +358,7 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
     if begin_re.search(line):
         # and if previous matches aren't empty, prev_matches is going to be saved
         if bool(prev_matches):
-            tmp_tuple = massage_tuple_for_save(tpl=prev_matches, long_value=prev_message, num_cols=num_cols)
+            tmp_tuple = _massage_tuple_for_save(tpl=prev_matches, long_value=prev_message, num_cols=num_cols)
             if bool(tmp_tuple) is False:
                 # If some error happened, returning without modifying prev_xxxx
                 return (tmp_tuple, prev_matches, prev_message)
@@ -414,7 +417,7 @@ def _read_file_and_search(file, line_beginning, line_matching, size_regex=None, 
 
     # append last message
     if bool(prev_matches):
-        tuples += [massage_tuple_for_save(tpl=prev_matches, long_value=prev_message, num_cols=num_cols)]
+        tuples += [_massage_tuple_for_save(tpl=prev_matches, long_value=prev_message, num_cols=num_cols)]
     return tuples
 
 
@@ -446,7 +449,7 @@ def logs2table(file_glob, tablename, conn=None,
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_cols) is False:
         num_cols = len(col_defs)
-    files = globr(file_glob)
+    files = _globr(file_glob)
 
     if bool(files) is False:
         return False
@@ -507,7 +510,7 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_fields) is False:
         num_fields = len(col_names)
-    files = globr(file_glob)
+    files = _globr(file_glob)
 
     if bool(files) is False:
         return False
@@ -542,13 +545,13 @@ def load_csvs(src="./", db_conn=None, include_ptn='*.csv', exclude_ptn='', chunk
     dfs = {}
     ex = re.compile(exclude_ptn)
 
-    files = globr(include_ptn, src)
+    files = _globr(include_ptn, src)
     for f in files:
         if bool(exclude_ptn) and ex.search(os.path.basename(f)): continue
 
         f_name, f_ext = os.path.splitext(os.path.basename(f))
         sys.stderr.write("Processing %s ...\n" % (str(f_name)))
-        new_name = pick_new_key(f_name, names_dict, (bool(db_conn) is False))
+        new_name = _pick_new_key(f_name, names_dict, (bool(db_conn) is False))
         names_dict[new_name] = f
 
         dfs[new_name] = csv2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize)
@@ -591,22 +594,41 @@ def df2csv(df_obj, file_path, mode="w"):
     pd.options.display.max_seq_items = current_max_seq_items
 
 
-def load():
+def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
     """
-    Try loading all list type json, and csv files
-    :return:
+    Execute load_jsons and load_csvs
+    :param jsons_dir: Path to a directory which contains JSON files
+    :param csvs_dir: Path to a directory which contains CSV files
+    :return: void
     """
-    load_jsons("./engine/aggregates", connect())
-    load_csvs("./stats", connect())
+    load_jsons(jsons_dir, connect())
+    load_csvs(csvs_dir, connect())
+
+
+def help(func_name=None):
+    import jn_utils as ju
+    if bool(func_name):
+        m = getattr(ju, func_name, None)
+        if callable(m) and hasattr(m, '__doc__') and len(str(m.__doc__)) > 0:
+            print(func_name + ":")
+            print(m.__doc__)
+        return
+    print(ju.__doc__)
+    print("Available functions:")
+    for a in dir(ju):
+        if a.startswith("_"): continue
+        # TODO: no idea why those functions matches if condition.
+        if a in ['create_engine', 'help']: continue
+        m = getattr(ju, a, None)
+        if callable(m) and hasattr(m, '__doc__') and len(str(m.__doc__)) > 0:
+            print("    " + a)
+    print("For a function help, use 'ju.help(\"function_name\")'.")
 
 
 # TODO: output json (json.tool?) from a json file
-# TODO: find xml which contains UUID or caption/name
+# TODO: find xml which contains UUID or caption/name. get_ipython does not work in python though
+# get_ipython().system("find ./engine/aggregates -name '*.json' -ls")
 # TODO: add help()
-def help(func_name=None):
-    if bool(func_name) is False:
-        dir()
-        # loop and remove function start with _, and function.__doc__, but remove lines start with >>>
 
 
 # TODO: display current pd.options.display dir(pd.options.display)
