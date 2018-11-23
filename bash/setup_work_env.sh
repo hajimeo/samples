@@ -120,8 +120,8 @@ function f_setup_jupyter() {
 
     #_install libsasl2-dev -y
     #sudo -i pip3 install sasl thrift thrift-sasl PyHive
-    #sudo -i pip3 install JayDeBeApi
-    #sudo -i pip3 install JayDeBeApi3
+    #sudo -i pip3 install pyhive[hive]
+    sudo -i pip3 install JayDeBeApi
 
     f_jupyter_util
 }
@@ -131,14 +131,18 @@ function f_jupyter_util() {
     if [ ! -d "$HOME/IdeaProjects/samples/python" ]; then
         mkdir -p $HOME/IdeaProjects/samples/python || return $?
     fi
-
     # always get the latest and wouldn't need a backup
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/jn_utils.py" "$HOME/IdeaProjects/samples/python/jn_utils.py" || return $?
+
+    if [ ! -d "$HOME/IdeaProjects/samples/java/hadoop" ]; then
+        mkdir -p "$HOME/IdeaProjects/samples/java/hadoop" || return $?
+    fi
+    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "$HOME/IdeaProjects/samples/java/hadoop/hadoop-core-1.0.3.jar" || return $?
+    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "$HOME/IdeaProjects/samples/java/hadoop/hadoop-core-1.0.3.jar" || return $?
 
     if [ ! -d "$HOME/.ipython/profile_default/startup" ]; then
         mkdir -p "$HOME/.ipython/profile_default/startup" || return $?
     fi
-
     echo "import pandas as pd
 import jn_utils as ju
 get_ipython().run_line_magic('matplotlib', 'inline')" > "$HOME/.ipython/profile_default/startup/import_ju.py"
