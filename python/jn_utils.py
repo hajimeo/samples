@@ -239,12 +239,12 @@ def _db(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalche
 
 def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalchemy=False, echo=False):
     """
-    Connect to a database
+    Connect to a database (SQLite)
     :param dbname: Database name
     :param dbtype: DB type
     :param isolation_level: Isolation level
     :param echo: True output more if sqlalchemy is used
-    :return: connection object
+    :return: connection (cursor) object
     >>> import sqlite3;s = connect()
     >>> isinstance(s, sqlite3.Connection)
     True
@@ -264,6 +264,29 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     else:
         conn = db.connect()
     if bool(conn): _LAST_CONN = conn
+    return conn
+
+
+def hive_conn(conn_str="jdbc:hive2://localhost:10000/default", user="admin", pwd="admin"):
+    """
+    Demonstrating Hive connection capability (eventually will merge into connect())
+    :param conn_str: jdbc:hive2://localhost:10000/default
+    :param user: admin
+    :param pwd:  admin
+    :return: connection (cursor) object
+    >>> pass    # TODO: implement test
+    >>> hc = hive_conn("jdbc:hive2://atscale720.standalone.localdomain:11111/Sales+Insights")
+    >>> hc.execute("select Gender from `Sales Insights`.`Internet Sales Cube`")
+    >>> hc.fetchall()
+    [('Female',), ('Male',), ('Unisex',)]
+    """
+    import jaydebeapi
+    cur_dir = os.path.dirname(os.path.abspath(__file__))
+    jar_dir = os.path.abspath(os.path.join(cur_dir, '..')) + "/java/hadoop"
+    conn = jaydebeapi.connect("org.apache.hive.jdbc.HiveDriver",
+                              conn_str, [user, pwd],
+                              [jar_dir + "/hive-jdbc-1.0.0-standalone.jar",
+                               jar_dir + "/hadoop-core-1.0.3.jar"]).cursor()
     return conn
 
 
@@ -627,12 +650,14 @@ def help(func_name=None):
 
 # TODO: output json (json.tool?) from a json file
 # TODO: find xml which contains UUID or caption/name. get_ipython does not work in python though
-# get_ipython().system("find ./engine/aggregates -name '*.json' -ls")
-# TODO: add help()
+# TODO sqlite desc to get column information
 
-
-# TODO: display current pd.options.display dir(pd.options.display)
-
+# TODO: Updating Jupyter/pandas default
+# if 'get_ipython' in locals():
+#    get_ipython().run_line_magic('matplotlib', 'inline')
+#    sys.stderr.write("matplotlib inline")
+#    # pd.options.display.xxxx
+#    # get_ipython().system("find ./engine/aggregates -name '*.json' -ls")
 
 if __name__ == '__main__':
     import doctest
