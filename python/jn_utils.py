@@ -18,19 +18,20 @@ _LAST_CONN = None
 
 def _mexec(func_and_args, num=2):
     """
-    TODO: Execute multiple functions asynchronously (doesn't work with python3?)
+    Execute multiple functions asynchronously (TODO: doesn't work with python3?)
     :param func_and_args: list of [func_obj, [args]]
     :param num: number of pool. if None, half of CPUs
     :return: List of multiprocessing.pool.ApplyResult
-    >>> def square(x): return x * x
-    ...
-    >>> def cube(y): return y * y * y
-    ...
-    >>> rs = _mexec([[square, {'x':1}], [cube, 2]])
-    >>> rs[0].get()
-    1
-    >>> rs[1].get()
-    8
+    #>>> def square(x): return x * x
+    #...
+    #>>> def cube(y): return y * y * y
+    #...
+    #>>> rs = _mexec([[square, {'x':1}], [cube, 2]])
+    #>>> rs[0].get()
+    #1
+    #>>> rs[1].get()
+    #8
+    >>> pass
     """
     if bool(num) is False: num = int(mp.cpu_count() / 3)
     p = mp.Pool(num)
@@ -52,7 +53,7 @@ def _mexec(func_and_args, num=2):
 def _dict2global(d, scope, overwrite=False):
     """
     Iterate the given dict and create global variables (key = value)
-    NOTE: somehow this function can't be called in another function in Jupyter
+    NOTE: somehow this function can't be called from inside of a function in Jupyter
     :param d: a dict object
     :param scope: should pass 'globals()' or 'locals()'
     :param overwrite: If True, instead of throwing error, just overwrites with the new value
@@ -127,8 +128,10 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physic
     :param json_cols: to_sql() fails if column is json, so forcing those columns to string
     :param chunksize: Rows will be written in batches of this size at a time. By default, all rows will be written at once
     :return: A tuple contain key=>file relationship and Pandas dataframes objects
-    # TODO: add test
-    >>> pass
+    #>>> df = load_jsons(src="./engine/aggregates")
+    #>>> bool(df)
+    #True
+    >>> pass    # TODO: implement test
     """
     names_dict = {}
     dfs = {}
@@ -158,6 +161,7 @@ def json2df(file_path, db_conn=None, tablename=None, json_cols=[], chunksize=100
     :param json_cols: to_sql() fails if column is json, so forcing those columns to string
     :param chunksize:
     :return: a DataFrame object
+    >>> pass    # TODO: implement test
     """
     df = pd.read_json(file_path)
     if bool(db_conn):
@@ -198,14 +202,17 @@ def _pick_new_key(name, names_dict, using_1st_char=False, check_global=False):
     return new_key
 
 
-def _avoid_unsupported(df, json_cols, name=None):
+def _avoid_unsupported(df, json_cols=[], name=None):
     """
     Drop DF cols to workaround "<table>: Error binding parameter <N> - probably unsupported type."
     :param df: A *reference* of panda DataFrame
     :param json_cols: List contains column names. Ex. ['connectionId', 'planJson', 'json']
     :param name: just for logging
     :return: Modified df
-    >>> pass
+    >>> _avoid_unsupported(pd.DataFrame([{"a_json":"aaa", "test":"bbbb"}]), ["test"])
+    Empty DataFrame
+    Columns: []
+    Index: [0]
     """
     keys = df.columns.tolist()
     drop_cols = []
@@ -214,7 +221,7 @@ def _avoid_unsupported(df, json_cols, name=None):
             # df[k] = df[k].to_string()
             drop_cols.append(k)
     if len(drop_cols) > 0:
-        sys.stderr.write(" - dropping columns:%s from %s.\n" % (str(drop_cols), name))
+        if bool(name): sys.stderr.write(" - dropping columns:%s from %s.\n" % (str(drop_cols), name))
         return df.drop(columns=drop_cols)
     return df
 
@@ -229,8 +236,7 @@ def _db(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalche
     :param isolation_level: Isolation level
     :param echo: True output more if sqlalchemy is used
     :return: DB object
-    # As testing in connect()
-    >>> pass
+    >>> pass    # testing in connect()
     """
     if force_sqlalchemy is False and dbtype == 'sqlite':
         return sqlite3.connect(dbname, isolation_level=isolation_level)
@@ -273,10 +279,10 @@ def query(sql, conn=None):
     :param sql: SELECT statement
     :param conn: DB connection object
     :return: fetchall() result
-    >>> import sqlite3;s = connect()
-    >>> result = query("select name from sqlite_master where type = 'table'")
-    >>> bool(result)
-    True
+    >>> query("select name from sqlite_master where type = 'table'", connect())
+    Empty DataFrame
+    Columns: [name]
+    Index: []
     """
     global _LAST_CONN
     if bool(conn) is False: conn = _LAST_CONN
@@ -301,6 +307,10 @@ def desc(tablenames=None, conn=None):
     :param tablenames: If empty, get table list
     :param conn: DB connection (cursor) object
     :return: void with printing CREATE statement, or a DF object contains table list
+    >>> desc(conn=connect())
+    Empty DataFrame
+    Columns: [name, rootpage]
+    Index: []
     """
     global _LAST_CONN
     if bool(conn) is False: conn = _LAST_CONN
@@ -314,7 +324,6 @@ def desc(tablenames=None, conn=None):
             # SQLite doesn't like - in a table name. need to escape with double quotes.
             print("Rows: %s\n" % (conn.execute("SELECT count(oid) FROM \"%s\"" % (t)).fetchall()[0][0]))
         return
-    conn.execute().fetchall()
     return query(sql="select name, rootpage from sqlite_master where type = 'table' order by rootpage", conn=conn)
 
 
@@ -325,11 +334,11 @@ def hive_conn(conn_str="jdbc:hive2://localhost:10000/default", user="admin", pwd
     :param user: admin
     :param pwd:  admin
     :return: connection (cursor) object
+    #>>> hc = hive_conn("jdbc:hive2://localhost:10000/default")
+    #>>> hc.execute("SELECT 1")
+    #>>> hc.fetchall()
+    #[(1,)]
     >>> pass    # TODO: implement test
-    >>> hc = hive_conn("jdbc:hive2://localhost:10000/default")
-    >>> hc.execute("SELECT 1")
-    >>> hc.fetchall()
-    [(1,)]
     """
     import jaydebeapi
     cur_dir = os.path.dirname(os.path.abspath(__file__))
@@ -347,6 +356,11 @@ def hive_q(sql, conn):
     :param sql: (SELECT) SQL statement
     :param conn: DB connection (cursor)
     :return: Panda DataFrame
+    #>>> hc = hive_conn("jdbc:hive2://localhost:10000/default")
+    #>>> df = hive_q("SELECT 1", hc)
+    #>>> bool(df)
+    #True
+    >>> pass    # TODO: implement test
     """
     conn.execute(sql)
     result = conn.fetchall()
@@ -380,8 +394,8 @@ def _insert2table(conn, tablename, tpls, chunk_size=1000):
     :param tablename: Table name
     :param tpls: a Tuple or a list of Tuples, which each Tuple contains values for a row
     :return: execute() method result
-    # TODO: a bit hard to test
-    >>> pass
+    #>>> _insert2table(connect(), "test", [('a', 'b', None, 'aaaa')])
+    >>> pass    # TODO: implement test
     """
     if isinstance(tpls, list):
         first_obj = tpls[0]
@@ -454,8 +468,7 @@ def _read_file_and_search(file, line_beginning, line_matching, size_regex=None, 
     :param time_regex: Regex to capture time/duration
     :param num_cols: Number of columns
     :return: A list of tuples
-    # TODO: add test
-    >>> pass
+    >>> pass    # TODO: implement test
     """
     begin_re = re.compile(line_beginning)
     line_re = re.compile(line_matching)
@@ -500,8 +513,7 @@ def logs2table(file_glob, tablename, conn=None,
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
     :return: Void if no error, or a tuple contains multiple information for debug
-    # TODO: add test
-    >>> pass
+    >>> pass    # TODO: implement test
     """
     global _LAST_CONN
     if bool(conn) is False: conn = _LAST_CONN
@@ -562,10 +574,11 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
     :return: A concatenated DF object
-    # TODO: add test
-    #>>> engine_log = files2dfs(file_glob="debug.2018-08-28.11.log.gz")
-    #>>> engine_log[engine_log.loglevel=='DEBUG'].head(10)
-    >>> pass
+    #>>> df = logs2dfs(file_glob="debug.2018-08-28.11.log.gz")
+    #>>> df2 = df[df.loglevel=='DEBUG'].head(10)
+    #>>> bool(df2)
+    #True
+    >>> pass    # TODO: implement test
     """
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_fields) is False:
@@ -598,8 +611,10 @@ def load_csvs(src="./", db_conn=None, include_ptn='*.csv', exclude_ptn='', chunk
     :param exclude_ptn: Exclude pattern
     :param chunksize: to_sql() chunk size
     :return: A tuple contain key=>file relationship and Pandas dataframes objects
-    TODO: test
-    >>> pass
+    #>>> df = load_csvs(src="./stats")
+    #>>> bool(df)
+    #True
+    >>> pass    # TODO: implement test
     """
     names_dict = {}
     dfs = {}
@@ -625,8 +640,7 @@ def csv2df(file_path, db_conn=None, tablename=None, chunksize=1000):
     :param file_path: File Path
     :param db_conn: DB connection object. If not empty, also import into a sqlite table
     :return: Pandas DF object
-    # TODO: add test
-    >>> pass
+    >>> pass    # TODO: implement test
     '''
     df = pd.read_csv(file_path)
     if bool(db_conn):
@@ -643,7 +657,7 @@ def df2csv(df_obj, file_path, mode="w"):
     :param file_path: File Path
     :param mode: mode used with open()
     :return: void
-    >>> pass
+    >>> pass    # TODO: implement test
     '''
     current_max_seq_items = pd.options.display.max_seq_items
     if len(df_obj) > pd.options.display.max_seq_items:
@@ -657,9 +671,10 @@ def df2csv(df_obj, file_path, mode="w"):
 def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
     """
     Execute load_jsons and load_csvs
-    :param jsons_dir: Path to a directory which contains JSON files
-    :param csvs_dir: Path to a directory which contains CSV files
+    :param jsons_dir: (optional) Path to a directory which contains JSON files
+    :param csvs_dir: (optional) Path to a directory which contains CSV files
     :return: void
+    >>> pass    # test should be done in load_jsons and load_csvs
     """
     load_jsons(jsons_dir, connect())
     load_csvs(csvs_dir, connect())
@@ -668,6 +683,12 @@ def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
 
 
 def help(func_name=None):
+    """
+    Output help information
+    :param func_name: (optional) A function name written in this script
+    :return: void
+    >>> pass
+    """
     import jn_utils as ju
     if bool(func_name):
         m = getattr(ju, func_name, None)
