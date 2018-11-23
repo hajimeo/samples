@@ -58,7 +58,7 @@ function p_support() {
     fi
     echo " "
 
-    echo "# config.yaml"
+    echo "# config.yaml (filtered)"
     _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user.timezone|^sun.jnu.encoding)'
     echo " "
     echo " "
@@ -75,6 +75,11 @@ function p_support() {
 
     echo "# settings.json last 3 settings changes"
     _find_and_cat "settings.json" | python -c "import sys,json;a=json.loads(sys.stdin.read());print json.dumps(a[-3:], indent=4)"
+    echo " "
+    echo " "
+
+    echo "# engine/aggregates/config.json last 3 settings changes"
+    _find_and_cat "config.json" | python -c "import sys,json;a=json.loads(sys.stdin.read());print json.dumps(a[-3:], indent=4)"
     echo " "
     echo " "
 
@@ -219,12 +224,12 @@ function f_checkResultSize() {
     local _n="${3:-20}"
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
-    rg -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ size = ([^,]+), time = ([^,]+)," -r '${1}|${2}|${3}|${4}' | sort -n | uniq > /tmp/f_checkResultSize_$$.out
+    rg -z -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ size = ([^,]+), time = ([^,]+)," -r '${1}|${2}|${3}|${4}' | sort -n | uniq > /tmp/f_checkResultSize_$$.out
     echo "### histogram (time vs query result size) #################################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_checkResultSize_$$.out | bar_chart.py -A
+    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_checkResultSize_$$.out | bar_chart.py -A
     echo ' '
     echo "### histogram (time vs query requests) ####################################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_checkResultSize_$$.out | bar_chart.py
+    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_checkResultSize_$$.out | bar_chart.py
     echo ' '
     echo "### Large size (datetime|queryId|size|time) ###############################################"
     cat /tmp/f_checkResultSize_$$.out | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
@@ -242,18 +247,18 @@ function f_checkMaterializeWorkers() {
     local _n="${3:-20}"
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
     # aggregates.configuration.maximum_concurrent_materializations.default = 1 or atscale.atscale.aggregate_configurations table
-    local _waiting="$(rg -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+TRACE .+ No workers available for request, adding to queue of size (\d+)" -r '${1}|${2}')"
-    local _working="$(rg -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+TRACE .+ Worker .+ is available to handle request" -r '${1}|-1')"
+    local _waiting="$(rg -z -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+TRACE .+ No workers available for request, adding to queue of size (\d+)" -r '${1}|${2}')"
+    local _working="$(rg -z -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+TRACE .+ Worker .+ is available to handle request" -r '${1}|-1')"
     ( echo  "${_waiting}"; echo "${_working}" ) | awk -F"|" '{print $1"|"$2+1}' | sort -n > /tmp/f_checkMaterializeWorkers_$$.out
     # Shouldn't accumulate queue size (need windowing...)
     echo "### histogram (time vs worker queue (waiting) size) #######################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)" -r '${1}T${2} ${3}' /tmp/f_checkMaterializeWorkers_$$.out | sort -n | uniq  | sort -k1,1r -k2,2nr > /tmp/f_checkMaterializeWorkers_filtered_$$.out
+    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)" -r '${1}T${2} ${3}' /tmp/f_checkMaterializeWorkers_$$.out | sort -n | uniq  | sort -k1,1r -k2,2nr > /tmp/f_checkMaterializeWorkers_filtered_$$.out
     for _dt in `cat /tmp/f_checkMaterializeWorkers_filtered_$$.out | cut -d" " -f1 | sort -n | uniq`; do
         grep -m 1 "^${_dt}" /tmp/f_checkMaterializeWorkers_filtered_$$.out
     done | bar_chart.py -A
     echo ' '
     echo "### histogram (time vs materialize request count) #########################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)" -r '${1}T${2}' /tmp/f_checkMaterializeWorkers_$$.out | bar_chart.py
+    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)" -r '${1}T${2}' /tmp/f_checkMaterializeWorkers_$$.out | bar_chart.py
     echo ' '
     echo "### Large materialize queue size (datetime|size) ##########################################"
     cat /tmp/f_checkMaterializeWorkers_$$.out | grep -v '|0$' | sort -t '|' -nk2 | tail -n${_n} | tr '|' '\t'
@@ -268,9 +273,9 @@ function f_failedQueries() {
     local _n="${3:-20}"
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
-    rg -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ Logging query failure.+ time = ([^,]+)," -r '${1}|${2}|${3}' | sort -n | uniq > /tmp/f_failedQueries_$$.out
+    rg -z -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ Logging query failure.+ time = ([^,]+)," -r '${1}|${2}|${3}' | sort -n | uniq > /tmp/f_failedQueries_$$.out
     echo "### histogram (time vs failed query count) ################################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_failedQueries_$$.out | bar_chart.py
+    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_failedQueries_$$.out | bar_chart.py
     echo ' '
     echo "### Slow failed query (datetime|queryId|time) #############################################"
     cat /tmp/f_failedQueries_$$.out | grep ' s$' | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
@@ -287,7 +292,7 @@ function f_preCheckoutDuration() {
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
     # NOTE: queryId sometime is not included
-    rg -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+preCheckout timing report:.+statementDurations=[^=]+=([0-9,.]+) (.+)\].+testDuration=[^=]+=([0-9,.]+) (.+)\]" -r '${1}|${2}${3}|${4}${5}' | _sed -r 's/([0-9]+)\.([0-9]{2})s/\1\20ms/g' > /tmp/f_preCheckoutDuration_$$.out
+    rg -z -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+preCheckout timing report:.+statementDurations=[^=]+=([0-9,.]+) (.+)\].+testDuration=[^=]+=([0-9,.]+) (.+)\]" -r '${1}|${2}${3}|${4}${5}' | _sed -r 's/([0-9]+)\.([0-9]{2})s/\1\20ms/g' > /tmp/f_preCheckoutDuration_$$.out
 
     cat /tmp/f_preCheckoutDuration_$$.out | sort -t'|' -nk3 | tail -n ${_n}
     echo " "
@@ -302,9 +307,9 @@ function f_aggBatchKickoffSize() {
     local _n="${3:-20}"
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
-    rg -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+ Kickoff batch (........-....-....-....-............) with ([0-9,]+) aggregate\(s\) and isFullBuild (.+)" -r '${1}|${2}|${3}|${4}' | sort > /tmp/f_aggBatchKickoffSize_$$.out
+    rg -z -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+ Kickoff batch (........-....-....-....-............) with ([0-9,]+) aggregate\(s\) and isFullBuild (.+)" -r '${1}|${2}|${3}|${4}' | sort > /tmp/f_aggBatchKickoffSize_$$.out
 
-    rg -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+WARN.+ Aggregate Batch.+(........-....-....-....-............).+failed with error message" -r '${1}|${2}' | sort > /tmp/f_aggBatchKickoffSize_failed_$$.out
+    rg -z -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+WARN.+ Aggregate Batch.+(........-....-....-....-............).+failed with error message" -r '${1}|${2}' | sort > /tmp/f_aggBatchKickoffSize_failed_$$.out
 
     echo "### histogram (time vs batch aggregate size) ##############################################"
     rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_aggBatchKickoffSize_$$.out | bar_chart.py -A
@@ -430,7 +435,7 @@ function f_getQueries() {
     #Logging subquery success:      , resultSize = 154, time = \d+ (ms|s),
 
     if [ -z "${_path}" ]; then
-        _path="`rg -l "queryId=${_uuid}.+ (Received|Executing) (.+) [Qq]uery" | sort | head -n1`"
+        _path="`rg -z -l "queryId=${_uuid}.+ (Received|Executing) (.+) [Qq]uery" | sort | head -n1`"
         [ -z "${_path}" ] && return 1
     fi
 
@@ -471,7 +476,7 @@ function f_topCausedByExceptions() {
     if [[ "$_is_shorter" =~ (^y|^Y) ]]; then
         _regex="Caused by.+?Exception"
     fi
-    rg -N -o "$_regex" "$_path" | sort | uniq -c | sort -n
+    rg -z -N -o "$_regex" "$_path" | sort | uniq -c | sort -n
 }
 
 function f_topErrors() {
@@ -727,10 +732,10 @@ function f_listPerflogEnd() {
         # expecting 5th one is duration after removing start and end time
         #egrep -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k5n
         # removing start and end so that we can easily compare two PERFLOG outputs
-        rg -wo '</PERFLOG .+>' "$_path" | _sed -r "s/ (start|end)=[0-9]+//g" | sort -t'=' -k3n
+        rg -z -wo '</PERFLOG .+>' "$_path" | _sed -r "s/ (start|end)=[0-9]+//g" | sort -t'=' -k3n
     else
         # sorting with start time
-        rg -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k3n
+        rg -z -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k3n
     fi
 }
 
@@ -1237,9 +1242,9 @@ function f_count_threads() {
     [ ! -s "${_file}" ] && return
 
     if [ -n "${_tail_n}" ]; then
-        rg -N -o '^"([^"]+)"' -r '$1' "${_file}" | _sed -r 's/-[0-9]+$//g' | sort | uniq -c | sort -n | tail -n ${_tail_n}
+        rg -z -N -o '^"([^"]+)"' -r '$1' "${_file}" | _sed -r 's/-[0-9]+$//g' | sort | uniq -c | sort -n | tail -n ${_tail_n}
     else
-        rg -N -o '^"([^"]+)"' -r '$1' "${_file}" | sort | uniq
+        rg -z -N -o '^"([^"]+)"' -r '$1' "${_file}" | sort | uniq
     fi
 }
 
@@ -1275,7 +1280,7 @@ function _getAfterFirstMatch() {
     local _exclude_first_line="$4"
     local _extension="${_file_path##*.}"
 
-    local _start_line_num=`rg -n -m1 "$_start_regex" "$_file_path" | cut -d ":" -f 1`
+    local _start_line_num=`rg -z -n -m1 "$_start_regex" "$_file_path" | cut -d ":" -f 1`
     if [ -n "$_start_line_num" ]; then
         local _end_line_num="\$"
         if [ -n "$_end_regex" ]; then
