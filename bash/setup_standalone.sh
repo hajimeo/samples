@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # Download / setup:
-# curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_standalone.sh -o /usr/local/bin/setup_standalone
-# chown root:docker /usr/local/bin/setup_standalone
-# chmod 750 /usr/local/bin/setup_standalone
+# curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_standalone.sh -o /usr/local/bin/setup_standalone.sh
+# chown root:docker /usr/local/bin/setup_standalone*
+# chmod 750 /usr/local/bin/setup_standalone*
 #
 # TODO: shouldn't use OS dependant command, such as apt-get, yum, brew etc.
 #
