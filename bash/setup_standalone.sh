@@ -748,12 +748,12 @@ function f_shellinabox() {
 
     if [ ! -s /usr/local/bin/shellinabox_login ]; then
         # NOTE: Assuming socks5 proxy is running on localhost 28081
-        if [ ! -f /usr/local/bin/setup_standalone ]; then
-            cp $BASH_SOURCE /usr/local/bin/setup_standalone || return $?
-            _log "INFO" "$BASH_SOURCE is copied to /usr/local/bin/setup_standalone. To avoid confusion, please delete .sh one"
+        if [ ! -f /usr/local/bin/setup_standalone.sh ]; then
+            cp $BASH_SOURCE /usr/local/bin/setup_standalone.sh || return $?
+            _log "INFO" "$BASH_SOURCE is copied to /usr/local/bin/setup_standalone.sh. To avoid confusion, please delete .sh one"
         fi
-        chown root:docker /usr/local/bin/setup_standalone
-        chmod 750 /usr/local/bin/setup_standalone
+        chown root:docker /usr/local/bin/setup_standalone*
+        chmod 750 /usr/local/bin/setup_standalone*
 
         # Finding Network Address from docker. Seems Mac doesn't care if IP doesn't end with .0
         local _net_addr="`docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])"`"
@@ -765,9 +765,9 @@ if [ "$USER" = "'${_user}'" ]; then
   echo "SSH login to a running container:"
   docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sort | sed "s/^/  ssh root@/g"
   echo ""
-  if [ -x /usr/local/bin/setup_standalone ]; then
-    echo "To start a container (setup_standalone -h for help):"
-    docker images --format "{{.Repository}}" | grep -E "^atscale" | sort | sed "s/^/  setup_standalone -n /g"
+  if [ -x /usr/local/bin/setup_standalone.sh ]; then
+    echo "To start a container (setup_standalone.sh -h for help):"
+    docker images --format "{{.Repository}}" | grep -E "^atscale" | sort | sed "s/^/  setup_standalone.sh -n /g"
     echo ""
   fi
   if nc -z localhost '${_proxy_port}'; then
