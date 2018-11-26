@@ -2648,9 +2648,11 @@ function p_host_setup() {
     _log "INFO" "Starting f_docker_base_create"
     f_docker_base_create &>> /tmp/p_host_setup.log || return $?
     _log "INFO" "Starting f_docker_run"
-    f_docker_run &>> /tmp/p_host_setup.log
-    _log "INFO" "Starting f_docker_start"
-    f_docker_start &>> /tmp/p_host_setup.log
+    # If docker run fails, it should stop, but if the script is re-runing, it should use docker start and docker run would fail.
+    if ! f_docker_run &>> /tmp/p_host_setup.log; then
+        _log "INFO" "Starting f_docker_start"
+        f_docker_start &>> /tmp/p_host_setup.log || return $?
+    fi
 
     if _isYes "$r_PROXY"; then
         _log "INFO" "Starting f_apache_proxy and Socks5 proxy"
@@ -3048,7 +3050,12 @@ function f_socks5_proxy() {
     # TODO: currently using ssh
     touch /tmp/ssh_socks5.out
     chmod 777 /tmp/ssh_socks5.out
-    ssh -4gC2TxnNf -D${_port} socks5user@localhost &> /tmp/ssh_socks5.out
+    local _cmd="ssh -4gC2TxnNf -D${_port} socks5user@localhost &> /tmp/ssh_socks5.out"
+    eval "${_cmd}"
+
+    if grep -qF "${_cmd}" /etc/rc.local; then
+        sed -i "/^exit 0/i ${_cmd}\n" /etc/rc.local
+    fi
 }
 
 function f_apache_proxy() {
