@@ -9,6 +9,8 @@ alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
 alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
+# https://dev.to/rhymes/how-to-make-python-code-concurrent-with-3-lines-of-code-2fpe
+alias gtime='gtime -f '\''%Us user %Ss system %es real %MkB mem -- %C'\'
 
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
