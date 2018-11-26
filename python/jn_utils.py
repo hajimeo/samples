@@ -754,6 +754,7 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
     remote_content = urlopen(url).read()
     with open(file, 'wb') as f:
         f.write(remote_content)
+    sys.stderr.write("%s was updated and back up is %s\n" % (filename, new_file))
     return
 
 
