@@ -700,14 +700,14 @@ def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
     sys.stderr.write("Completed.\n")
 
 
-def check_update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples/master/python"):
+def update_check(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples/master/python"):
     """
     (almost) Alias of update()
     Check if update is avaliable (actually checking file size only at this moment)
     :param file: File path string. If empty, checks for this file (jn_utils.py)
     :param baseurl: Default is https://raw.githubusercontent.com/hajimeo/samples/master/python
     :return: If update available, True and output message in stderr)
-    >>> b = check_update()
+    >>> b = update_check()
     >>> b is not False
     True
     """
