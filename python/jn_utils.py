@@ -3,11 +3,15 @@
 # Python Jupyter Notebook helper/utility functions
 # @author: hajime
 #
+# curl https://raw.githubusercontent.com/hajimeo/samples/master/python/jn_utils.py -o $HOME/IdeaProjects/samples/python/jn_utils.py
+#
 """
 jn_utils is Jupyter Notebook Utility script, which contains functions to convert text files to Pandas DataFrame or DB (SQLite) tables.
 """
 
 import sys, os, fnmatch, gzip, re
+from time import time
+from datetime import datetime, timezone
 import multiprocessing as mp
 import pandas as pd
 from sqlalchemy import create_engine
@@ -69,7 +73,6 @@ def _dict2global(d, scope, overwrite=False):
         scope[k] = v
 
 
-### Text/List processing functions
 def _chunks(l, n):
     """
     Split/Slice a list by the size 'n'
@@ -100,10 +103,9 @@ def _globr(ptn='*', src='./'):
     return matches
 
 
-### File handling functions
 def _read(file):
     """
-    Read a single normal or gz file
+    Read one text or gz file
     :param file:
     :return: file handler
     >>> f = _read(__file__);f.name == __file__
@@ -115,6 +117,21 @@ def _read(file):
         return gzip.open(file, "rt")
     else:
         return open(file, "r")
+
+
+def _timestamp(unixtimestamp=None, format="%Y%m%d%H%M%S"):
+    """
+    Format Unix Timestamp with a given format
+    :param unixtimestamp: Int (or float, but number after dot will be ignored)
+    :param format: Default is %Y%m%d%H%M%S
+    :return: Formatted string
+    >>> dt_str = _timestamp(1543189639)
+    >>> dt_str.startswith('20181125234719')
+    True
+    """
+    if bool(unixtimestamp) is False:
+        unixtimestamp = time()
+    return datetime.fromtimestamp(float(unixtimestamp), timezone.utc).strftime(format)
 
 
 def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physicalPlans|partitions', chunksize=1000,
@@ -678,8 +695,41 @@ def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
     """
     load_jsons(jsons_dir, connect())
     load_csvs(csvs_dir, connect())
+    # TODO: add more (check version, changed config etc)
     sys.stderr.write("Completed.\n")
 
+
+def check_update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples/master/python"):
+    update(file, baseurl, True)
+
+
+def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples/master/python", check_only=False):
+    try:
+        from urllib.request import urlopen, Request
+    except ImportError:
+        from urllib2 import urlopen, Request
+    if bool(file) is False:
+        file = __file__
+    # i'm assuming i do not need to concern of .pyc...
+    filename = os.path.basename(file)
+    url = baseurl.rstrip('/') + "/" + filename
+    remote_size = int(urlopen(url).headers["Content-Length"])
+    local_size = int(os.path.getsize(file))
+    if remote_size < (local_size / 2):
+        sys.stderr.write("Couldn't check the size of %s\n" % (url))
+        return
+    if check_only:
+        if int(remote_size) != int(local_size):
+            sys.stderr.write(
+                "%s size is different between remote (%s KB) and local (%s KB).\n" % (
+                    filename, int(remote_size / 1024), int(local_size / 1024)))
+            sys.stderr.write("To update, use 'ju.update()'\n")
+        return
+    new_file = "/tmp/" + filename + "_" + _timestamp()
+    os.rename(file, new_file)
+    remote_content = urlopen(url).read()
+    with open(file, 'wb') as f:
+        f.write(remote_content)
 
 
 def help(func_name=None):
@@ -719,4 +769,5 @@ def help(func_name=None):
 
 if __name__ == '__main__':
     import doctest
+
     doctest.testmod(verbose=True)
