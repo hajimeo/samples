@@ -187,7 +187,7 @@ def json2df(file_path, db_conn=None, tablename=None, json_cols=[], chunksize=100
             tablename, ext = os.path.splitext(os.path.basename(file_path))
         # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
-        df_tmp_mod.to_sql(name=tablename, con=db_conn, chunksize=chunksize)
+        df_tmp_mod.to_sql(name=tablename, con=db_conn, chunksize=chunksize, if_exists='replace')
     return df
 
 
@@ -291,11 +291,24 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     return conn
 
 
-def query(sql, conn=None):
+def q(sql, conn=None, no_history=False):
+    """
+    Alias of query
+    :param sql: SELECT statement
+    :param conn: DB connection object
+    :param no_history: not saving this query into a history file
+    :return: fetchall() result
+    >>> pass
+    """
+    return query(sql, conn)
+
+
+def query(sql, conn=None, no_history=False):
     """
     Call fetchall() with given query, expecting SELECT statement
     :param sql: SELECT statement
     :param conn: DB connection object
+    :param no_history: not saving this query into a history file
     :return: fetchall() result
     >>> query("select name from sqlite_master where type = 'table'", connect())
     Empty DataFrame
@@ -305,18 +318,68 @@ def query(sql, conn=None):
     global _LAST_CONN
     if bool(conn) is False: conn = _LAST_CONN
     # return conn.execute(sql).fetchall()
-    return pd.read_sql(sql, conn)
+    df = pd.read_sql(sql, conn)
+    if no_history is False and df.empty is False:
+        _save_query(sql)
+    return df
 
 
-def q(sql, conn=None):
+def _save_query(sql, limit=1000):
     """
-    Alias of query
-    :param sql: SELECT statement
-    :param conn: DB connection object
-    :return: fetchall() result
-    >>> pass
+    Save a sql into a history file
+    :param sql: query string
+    :param limit: How many queies stores into a history file. Default is 1000
+    :return: void
+    >>> pass    # Testing in qhistory()
     """
-    return query(sql, conn)
+    query_history_csv = os.getenv('JN_UTILS_QUERY_HISTORY', os.getenv('HOME') + os.path.sep + ".ju_qhistory")
+    # removing spaces and last ';'
+    sql = sql.strip().rstrip(';')
+    df_new = pd.DataFrame([[_timestamp(), sql]], columns=["datetime", "query"])
+    df_hist = csv2df(query_history_csv, header=None)
+    if df_hist is False:
+        df = df_new
+    else:
+        # If not empty (= same query exists), drop/remove old dupe row(s), so that time will be new.
+        df_hist.columns = ["datetime", "query"]
+        df_hist_new = df_hist[df_hist['query'].str.lower().isin([sql.lower()]) == False]
+        df = df_hist_new.append(df_new, ignore_index=True, sort=False)
+    # Currently not appending but overwriting whole file.
+    df2csv(df.tail(limit), query_history_csv, mode="w", header=False)
+
+
+def qhistory(html=True):
+    """
+    Return query histories as DataFrame (so that it will be display nicely in Jupyter)
+    :return: Pandas DataFrame contains a list of queries
+    >>> import os; os.environ["JN_UTILS_QUERY_HISTORY"] = "/tmp/text_qhistory.csv"
+    >>> _save_query("select 1")
+    >>> qhistory(False)
+             datetime     query
+    0  20181126040639  select 1
+    >>> _save_query("select 1")
+    >>> qhistory(False)
+             datetime     query
+    0  20181126040651  select 1
+    >>> _save_query("SELECT 1")
+    >>> qhistory(False)
+             datetime     query
+    0  20181126040700  SELECT 1
+    >>> os.remove("/tmp/text_qhistory.csv");
+    """
+    query_history_csv = os.getenv('JN_UTILS_QUERY_HISTORY', os.getenv('HOME') + os.path.sep + ".ju_qhistory")
+    df = csv2df(query_history_csv, header=None)
+    if df is False or df.empty:
+        return
+    df.columns = ["datetime", "query"]
+    if html is False:
+        return df
+    current_max_colwitdh = pd.get_option('display.max_colwidth')
+    pd.set_option('display.max_colwidth', -1)
+    out = df.to_html()
+    pd.set_option('display.max_colwidth', current_max_colwitdh)
+    from IPython.core.display import display, HTML
+    display(HTML(out))
 
 
 def desc(tablenames=None, conn=None):
@@ -652,38 +715,40 @@ def load_csvs(src="./", db_conn=None, include_ptn='*.csv', exclude_ptn='', chunk
     return (names_dict, dfs)
 
 
-def csv2df(file_path, db_conn=None, tablename=None, chunksize=1000):
+def csv2df(file_path, db_conn=None, tablename=None, chunksize=1000, header=0):
     '''
     Load a CSV file into a DataFrame
     :param file_path: File Path
     :param db_conn: DB connection object. If not empty, also import into a sqlite table
-    :return: Pandas DF object
-    >>> pass    # TODO: implement test
+    :return: Pandas DF object or False if file is not readable
+    >>> pass    # Testing in df2csv()
     '''
-    df = pd.read_csv(file_path)
+    if os.path.exists(file_path) is False:
+        return False
+    df = pd.read_csv(file_path, escapechar='\\', header=header)
     if bool(db_conn):
         if bool(tablename) is False:
             tablename, ext = os.path.splitext(os.path.basename(file_path))
-        df.to_sql(name=tablename, con=db_conn, chunksize=chunksize)
+        df.to_sql(name=tablename, con=db_conn, chunksize=chunksize, if_exists='replace')
     return df
 
 
-def df2csv(df_obj, file_path, mode="w"):
+def df2csv(df, file_path, mode="w", header=True):
     '''
     Save DataFrame to a CSV file
     :param df_obj: Pandas Data Frame object
     :param file_path: File Path
     :param mode: mode used with open()
     :return: void
-    >>> pass    # TODO: implement test
+    >>> import pandas as pd
+    >>> df = pd.DataFrame([{"key":"a", "val":"value"}])
+    >>> df2csv(df, '/tmp/test_df2csv.csv', 'w')
+    >>> df2 = csv2df('/tmp/test_df2csv.csv')
+    >>> df == df2
+        key   val
+    0  True  True
     '''
-    current_max_seq_items = pd.options.display.max_seq_items
-    if len(df_obj) > pd.options.display.max_seq_items:
-        pd.options.display.max_seq_items = len(df_obj)
-    f = open(file_path, mode)
-    f.write(df_obj.to_csv())
-    f.close()
-    pd.options.display.max_seq_items = current_max_seq_items
+    df.to_csv(file_path, mode=mode, header=header, index=False, escapechar='\\')
 
 
 def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
@@ -696,6 +761,16 @@ def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
     """
     load_jsons(jsons_dir, connect())
     load_csvs(csvs_dir, connect())
+
+
+def analyze():
+    """
+    Load data and does some simple analysis
+    :return: void
+    >>> pass    # test should be done in each function
+    """
+    update_check()
+    load()
     # TODO: add more (check version, changed config etc)
     sys.stderr.write("Completed.\n")
 
@@ -748,7 +823,7 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
             "%s size is different between remote (%s KB) and local (%s KB).\n" % (
                 filename, int(remote_size / 1024), int(local_size / 1024)))
         if check_only:
-            sys.stderr.write("To update, use 'ju.update()'\n")
+            sys.stderr.write("To update, use 'ju.update()'\n\n")
             return True
     new_file = "/tmp/" + filename + "_" + _timestamp()
     os.rename(file, new_file)
