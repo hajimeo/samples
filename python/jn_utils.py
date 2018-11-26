@@ -741,6 +741,7 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
         return False
     if force_update is False and int(remote_size) == int(local_size):
         # If exactly same size, not updating
+        sys.stderr.write("No need to update %s\n" % (filename))
         return
     if int(remote_size) != int(local_size):
         sys.stderr.write(
