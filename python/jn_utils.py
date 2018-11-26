@@ -7,6 +7,7 @@
 #
 """
 jn_utils is Jupyter Notebook Utility script, which contains functions to convert text files to Pandas DataFrame or DB (SQLite) tables.
+To update this script, execute "ju.update()".
 """
 
 import sys, os, fnmatch, gzip, re
@@ -700,10 +701,30 @@ def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
 
 
 def check_update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples/master/python"):
-    update(file, baseurl, True)
+    """
+    (almost) Alias of update()
+    Check if update is avaliable (actually checking file size only at this moment)
+    :param file: File path string. If empty, checks for this file (jn_utils.py)
+    :param baseurl: Default is https://raw.githubusercontent.com/hajimeo/samples/master/python
+    :return: If update available, True and output message in stderr)
+    >>> b = check_update()
+    >>> b is not False
+    True
+    """
+    return update(file, baseurl, check_only=True)
 
 
-def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples/master/python", check_only=False):
+def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples/master/python", check_only=False,
+           force_update=False):
+    """
+    Update the specified file from internet
+    :param file: File path string. If empty, updates for this file (jn_utils.py)
+    :param baseurl: Default is https://raw.githubusercontent.com/hajimeo/samples/master/python
+    :param check_only: If True, do not update but check only
+    :param force_update: Even if same size, replace the file
+    :return: None if successfully replaced or don't need to update
+    >>> pass
+    """
     try:
         from urllib.request import urlopen, Request
     except ImportError:
@@ -717,19 +738,23 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
     local_size = int(os.path.getsize(file))
     if remote_size < (local_size / 2):
         sys.stderr.write("Couldn't check the size of %s\n" % (url))
+        return False
+    if force_update is False and int(remote_size) == int(local_size):
+        # If exactly same size, not updating
         return
-    if check_only:
-        if int(remote_size) != int(local_size):
-            sys.stderr.write(
-                "%s size is different between remote (%s KB) and local (%s KB).\n" % (
-                    filename, int(remote_size / 1024), int(local_size / 1024)))
+    if int(remote_size) != int(local_size):
+        sys.stderr.write(
+            "%s size is different between remote (%s KB) and local (%s KB).\n" % (
+                filename, int(remote_size / 1024), int(local_size / 1024)))
+        if check_only:
             sys.stderr.write("To update, use 'ju.update()'\n")
-        return
+            return True
     new_file = "/tmp/" + filename + "_" + _timestamp()
     os.rename(file, new_file)
     remote_content = urlopen(url).read()
     with open(file, 'wb') as f:
         f.write(remote_content)
+    return
 
 
 def help(func_name=None):
@@ -766,6 +791,7 @@ def help(func_name=None):
 #    sys.stderr.write("matplotlib inline")
 #    # pd.options.display.xxxx
 #    # get_ipython().system("find ./engine/aggregates -name '*.json' -ls")
+
 
 if __name__ == '__main__':
     import doctest
