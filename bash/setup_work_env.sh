@@ -15,18 +15,20 @@ function f_setup_misc() {
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh" $HOME/.bash_profile || return $?
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh" $HOME/.bash_aliases || return $?
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/vimrc" $HOME/.vimrc || return $?
+
     if [ ! -d "$HOME/IdeaProjects/samples/bash" ]; then
         mkdir -p $HOME/IdeaProjects/samples/bash || return $?
     fi
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh" $HOME/IdeaProjects/samples/bash/log_search.sh || return $?
+    chmod u+x $HOME/IdeaProjects/samples/bash/log_search.sh
+
     if [ ! -d "$HOME/IdeaProjects/samples/python" ]; then
         mkdir -p $HOME/IdeaProjects/samples/python || return $?
     fi
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/line_parser.py" $HOME/IdeaProjects/samples/python/line_parser.py || return $?
-    if [ ! -e /usr/local/bin/line_parser.py ]; then
-        sudo chmod a+x $HOME/IdeaProjects/samples/python/line_parser.py
-        sudo ln -s $HOME/IdeaProjects/samples/python/line_parser.py /usr/local/bin/line_parser.py
-    fi
+    chmod a+x $HOME/IdeaProjects/samples/python/line_parser.py
+    [ -L /usr/local/bin/line_parser.py ] && sudo rm -f /usr/local/bin/line_parser.py
+    sudo ln -s $HOME/IdeaProjects/samples/python/line_parser.py /usr/local/bin/line_parser.py
 }
 
 function f_setup_rg() {
