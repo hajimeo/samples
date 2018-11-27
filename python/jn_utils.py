@@ -20,26 +20,26 @@ import sqlite3
 _LAST_CONN = None
 
 
-def _mexec(func_obj, args_list, num=None, using_process=False):
+def _mexec(func_obj, kwargs_list, num=None, using_process=False):
     """
     Execute multiple functions asynchronously
     :param func_obj: A function object to be executed
-    :param args_list: A list contains dicts of arguments
+    :param kwargs_list: A list contains dicts of arguments
     :param num: number of pool. if None, half of CPUs (NOTE: if threads, it does not matter)
     :return: list contains results. Currently result order is random (not same as args_list)
     >>> def multi(x, y): return x * y
     ...
     >>> _mexec(multi, None)
-    >>> _mexec(multi, [[1, 2]])[0]
+    >>> _mexec(multi, [{'x':1, 'y':2}])[0]
     2
-    >>> rs = _mexec(multi, [[1, 2], [2, 3]])
+    >>> rs = _mexec(multi, [{'x':1, 'y':2}, {'x':2, 'y':3}])
     >>> rs[0] + rs[1]
     8
     """
     rs = []
-    if bool(args_list) is False or bool(func_obj) is False: return None
-    if len(args_list) == 1:
-        rs.append(func_obj(*args_list[0]))
+    if bool(kwargs_list) is False or bool(func_obj) is False: return None
+    if len(kwargs_list) == 1:
+        rs.append(func_obj(**kwargs_list[0]))
         return rs
     from concurrent.futures import as_completed
     if using_process:
@@ -50,7 +50,7 @@ def _mexec(func_obj, args_list, num=None, using_process=False):
         import multiprocessing
         num = int(multiprocessing.cpu_count() / 2)
     executor = pe(max_workers=num)
-    futures = [executor.submit(func_obj, *args) for args in args_list]
+    futures = [executor.submit(func_obj, **kwargs) for kwargs in kwargs_list]
     for future in as_completed(futures):
         rs.append(future.result())
     return rs
