@@ -578,7 +578,7 @@ def logs2table(file_glob, tablename, conn=None,
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
                line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
                size_regex="[sS]ize = ([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
-               max_file_num=10):
+               max_file_num=10, multiprocessing=False):
     """
     Insert multiple log files into *one* table
     :param conn:  Connection object
@@ -591,6 +591,7 @@ def logs2table(file_glob, tablename, conn=None,
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
+    :param multiprocessing: If True, use multiple CPUs
     :return: Void if no error, or a tuple contains multiple information for debug
     >>> pass    # TODO: implement test
     """
@@ -626,14 +627,25 @@ def logs2table(file_glob, tablename, conn=None,
         if bool(res) is False:
             return res
 
-    # TODO: Should use Process or Pool class to process per file
+    if multiprocessing:
+        kwargs_list = []
+        for f in files:
+            kwargs_list.append({'file':f, 'line_beginning':line_beginning, 'line_matching':line_matching, 'size_regex':size_regex, 'time_regex':time_regex, 'num_cols':num_cols})
+        rs = _mexec(_read_file_and_search, kwargs_list, using_process=True)
+        for tuples in rs:
+            # If inserting into one table, probably no point of multiprocessing for this.
+            if len(tuples) > 0:
+                res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
+                if bool(res) is False:  # if fails once, stop
+                    return res
+        return
     for f in files:
         sys.stderr.write("Processing %s ...\n" % (str(f)))
         tuples = _read_file_and_search(file=f, line_beginning=line_beginning, line_matching=line_matching,
                                        size_regex=size_regex, time_regex=time_regex, num_cols=num_cols)
         if len(tuples) > 0:
             res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
-            if bool(res) is False:
+            if bool(res) is False:  # if fails once, stop
                 return res
 
 
@@ -641,7 +653,7 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
              num_fields=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
              line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
              size_regex="[sS]ize =? ?([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
-             max_file_num=10):
+             max_file_num=10, multiprocessing=False):
     """
     Convert multiple files to multiple DataFrame objects
     :param file_glob: simple regex used in glob to select files.
@@ -652,6 +664,7 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
+    :param multiprocessing: If True, use multiple CPUs
     :return: A concatenated DF object
     #>>> df = logs2dfs(file_glob="debug.2018-08-28.11.log.gz")
     #>>> df2 = df[df.loglevel=='DEBUG'].head(10)
@@ -670,14 +683,22 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
     if len(files) > max_file_num:
         raise ValueError('Glob: %s returned too many files (%s)' % (file_glob, str(len(files))))
 
-    # TODO: Should use Process or Pool class to process per file
     dfs = []
-    for f in files:
-        sys.stderr.write("Processing %s ...\n" % (str(f)))
-        tuples = _read_file_and_search(file=f, line_beginning=line_beginning, line_matching=line_matching,
-                                       size_regex=size_regex, time_regex=time_regex, num_cols=num_fields)
-        if len(tuples) > 0:
-            dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
+    if multiprocessing:
+        kwargs_list = []
+        for f in files:
+            kwargs_list.append({'file':f, 'line_beginning':line_beginning, 'line_matching':line_matching, 'size_regex':size_regex, 'time_regex':time_regex, 'num_cols':num_fields})
+        rs = _mexec(_read_file_and_search, kwargs_list, using_process=True)
+        for tuples in rs:
+            if len(tuples) > 0:
+                dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
+    else:
+        for f in files:
+            sys.stderr.write("Processing %s ...\n" % (str(f)))
+            tuples = _read_file_and_search(file=f, line_beginning=line_beginning, line_matching=line_matching,
+                                           size_regex=size_regex, time_regex=time_regex, num_cols=num_fields)
+            if len(tuples) > 0:
+                dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
     return pd.concat(dfs)
 
 
