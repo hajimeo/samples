@@ -19,10 +19,10 @@ def lp_thread_num(line):
         (label, start_line_num) = line.strip().split(" ", 2)
     else:
         label = ""
-        start_line_num = sys.argv[2]
+        start_line_num = sys.argv[2]    # this is the last line number (wc -l)
 
     if _PREV_COUNTER > 0:
-        print "%s %s" % (_PREV_LABEL, (int(start_line_num) - _PREV_COUNTER))
+        print("%s %s" % (_PREV_LABEL, (int(start_line_num) - _PREV_COUNTER)))
     _PREV_LABEL = label
     _PREV_COUNTER = int(start_line_num)
 
