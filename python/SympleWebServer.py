@@ -30,7 +30,7 @@ class SympleWebServer(BaseHTTPRequestHandler):
     @staticmethod
     def handle_slack_search(query_args):
         query_args['token'] = SympleWebServer._creds.slack_search_token
-        query_args['highlight'] = "true"
+        #query_args['highlight'] = "true"
         data = urllib.urlencode(query_args)
         request = urllib2.Request(SympleWebServer._creds.slack_search_baseurl + "/api/search.messages", data)
         response = urllib2.urlopen(request)
