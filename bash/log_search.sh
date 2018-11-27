@@ -47,8 +47,7 @@ function p_support() {
 
     echo "# Version information"
     echo "## version files"
-    #local _build_yaml="`find . -type f -name build.yaml -print | head -n1`"
-    find . -type f -name 'versions.*.yml' -print | tee /tmp/versions_$$.out
+    find . -type f -name 'versions.*.yml' -print | sort | tee /tmp/versions_$$.out
     local _versions_yaml="`cat /tmp/versions_$$.out | sort -n | tail -n1`"
     if [ -s "${_versions_yaml}" ]; then
         echo " "
@@ -464,7 +463,7 @@ a=json.loads(sys.stdin.read());l=a[0]
 p="ldaps" if "use_ssl" in l else "ldap"
 r=re.search(r"^[^=]*?=?([^=]+?)[ ,@]", l["username"])
 u=r.group(1) if bool(r) else l["username"]
-print "LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"" % (p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u)'
+print("LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"" % (p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u))'
 }
 
 function f_topCausedByExceptions() {
