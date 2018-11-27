@@ -12,8 +12,7 @@ To update this script, execute "ju.update()".
 
 import sys, os, fnmatch, gzip, re
 from time import time
-from datetime import datetime, timezone
-import multiprocessing as mp
+from datetime import datetime
 import pandas as pd
 from sqlalchemy import create_engine
 import sqlite3
@@ -21,37 +20,39 @@ import sqlite3
 _LAST_CONN = None
 
 
-def _mexec(func_and_args, num=2):
+def _mexec(func_obj, args_list, num=None, using_process=False):
     """
-    Execute multiple functions asynchronously (TODO: doesn't work with python3?)
-    :param func_and_args: list of [func_obj, [args]]
-    :param num: number of pool. if None, half of CPUs
-    :return: List of multiprocessing.pool.ApplyResult
-    #>>> def square(x): return x * x
-    #...
-    #>>> def cube(y): return y * y * y
-    #...
-    #>>> rs = _mexec([[square, {'x':1}], [cube, 2]])
-    #>>> rs[0].get()
-    #1
-    #>>> rs[1].get()
-    #8
-    >>> pass
+    Execute multiple functions asynchronously
+    :param func_obj: A function object to be executed
+    :param args_list: A list contains dicts of arguments
+    :param num: number of pool. if None, half of CPUs (NOTE: if threads, it does not matter)
+    :return: list contains results. Currently result order is random (not same as args_list)
+    >>> def multi(x, y): return x * y
+    ...
+    >>> _mexec(multi, None)
+    >>> _mexec(multi, [[1, 2]])[0]
+    2
+    >>> rs = _mexec(multi, [[1, 2], [2, 3]])
+    >>> rs[0] + rs[1]
+    8
     """
-    if bool(num) is False: num = int(mp.cpu_count() / 3)
-    p = mp.Pool(num)
     rs = []
-    for l in func_and_args:
-        if len(l) > 1:
-            if isinstance(l[1], dict):
-                rs += [p.apply_async(l[0], kwds=l[1])]
-            elif isinstance(l[1], list):
-                rs += [p.apply_async(l[0], args=l[1])]
-            else:
-                rs += [p.apply_async(l[0], args=[l[1]])]
-        else:
-            rs += [p.apply_async(l[0])]
-    p.close()
+    if bool(args_list) is False or bool(func_obj) is False: return None
+    if len(args_list) == 1:
+        rs.append(func_obj(*args_list[0]))
+        return rs
+    from concurrent.futures import as_completed
+    if using_process:
+        from concurrent.futures import ProcessPoolExecutor as pe
+    else:
+        from concurrent.futures import ThreadPoolExecutor as pe
+    if bool(num) is False:
+        import multiprocessing
+        num = int(multiprocessing.cpu_count() / 2)
+    executor = pe(max_workers=num)
+    futures = [executor.submit(func_obj, *args) for args in args_list]
+    for future in as_completed(futures):
+        rs.append(future.result())
     return rs
 
 
@@ -127,12 +128,13 @@ def _timestamp(unixtimestamp=None, format="%Y%m%d%H%M%S"):
     :param format: Default is %Y%m%d%H%M%S
     :return: Formatted string
     >>> dt_str = _timestamp(1543189639)
-    >>> dt_str.startswith('20181125234719')
+    >>> dt_str.startswith('2018112')
     True
     """
     if bool(unixtimestamp) is False:
         unixtimestamp = time()
-    return datetime.fromtimestamp(float(unixtimestamp), timezone.utc).strftime(format)
+    # TODO: wanted to use timezone.utc but python 2.7 doesn't work
+    return datetime.fromtimestamp(float(unixtimestamp)).strftime(format)
 
 
 def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physicalPlans|partitions', chunksize=1000,
@@ -354,18 +356,14 @@ def qhistory(html=True):
     :return: Pandas DataFrame contains a list of queries
     >>> import os; os.environ["JN_UTILS_QUERY_HISTORY"] = "/tmp/text_qhistory.csv"
     >>> _save_query("select 1")
-    >>> qhistory(False)
-             datetime     query
-    0  20181126040639  select 1
-    >>> _save_query("select 1")
-    >>> qhistory(False)
-             datetime     query
-    0  20181126040651  select 1
+    >>> df = qhistory(False)
+    >>> len(df[df['query'] == 'select 1'])
+    1
     >>> _save_query("SELECT 1")
-    >>> qhistory(False)
-             datetime     query
-    0  20181126040700  SELECT 1
-    >>> os.remove("/tmp/text_qhistory.csv");
+    >>> df = qhistory(False)
+    >>> len(df)
+    1
+    >>> os.remove("/tmp/text_qhistory.csv")
     """
     query_history_csv = os.getenv('JN_UTILS_QUERY_HISTORY', os.getenv('HOME') + os.path.sep + ".ju_qhistory")
     df = csv2df(query_history_csv, header=None)
@@ -749,6 +747,20 @@ def df2csv(df, file_path, mode="w", header=True):
     0  True  True
     '''
     df.to_csv(file_path, mode=mode, header=header, index=False, escapechar='\\')
+
+
+def gen_ldapsearch(ldap_json=None):
+    if bool(ldap_json) is False:
+        ldap_json = _globr("directory_configurations.json")[0]
+    import json
+    with open(ldap_json) as f:
+        a = json.load(f)
+    l = a[0]
+    p = "ldaps" if "use_ssl" in l else "ldap"
+    r = re.search(r"^[^=]*?=?([^=]+?)[ ,@]", l["username"])
+    u = r.group(1) if bool(r) else l["username"]
+    return "LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"" % (
+        p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u)
 
 
 def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
