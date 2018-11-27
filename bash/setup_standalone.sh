@@ -484,7 +484,11 @@ function f_as_setup() {
     fi
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    docker exec -it ${_name} bash -c "bash ${_share_dir%/}/${_service%/}/install_atscale.sh -v ${_version} -l ${_share_dir%/}/${_service%/}/$(basename "${_license}") ${_options}"
+    docker exec -it ${_name} bash -c "bash -x ${_share_dir%/}/${_service%/}/install_atscale.sh -v ${_version} -l ${_share_dir%/}/${_service%/}/$(basename "${_license}") ${_options} 2>/tmp/install.err"
+    if [ $? -ne 0 ]; then
+        _log "ERROR" "Installation/Setup failed. Please check container's /tmp/install.err for STDERR"
+        return 1
+    fi
     #ssh -q root@${_hostname} -t "export _STANDALONE=Y;bash ${_share_dir%/}${_user%/}/install_atscale.sh ${_version}"
 }
 
