@@ -3053,7 +3053,7 @@ function f_socks5_proxy() {
     local _cmd="ssh -4gC2TxnNf -D${_port} socks5user@localhost &> /tmp/ssh_socks5.out"
     eval "${_cmd}"
 
-    if grep -qF "${_cmd}" /etc/rc.local; then
+    if ! grep -qF "${_cmd}" /etc/rc.local; then
         sed -i "/^exit 0/i ${_cmd}\n" /etc/rc.local
     fi
 }
