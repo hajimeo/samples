@@ -10,7 +10,7 @@
 
 function f_setup_misc() {
     # Command/scripts need for my bash_aliases.sh
-    sudo -i pip install data_hacks  # it's OK if this fails
+    sudo -i pip install data_hacks  # it's OK if this fails NOTE: this works only with python2
 
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh" $HOME/.bash_profile || return $?
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh" $HOME/.bash_aliases || return $?
@@ -19,6 +19,13 @@ function f_setup_misc() {
         mkdir -p $HOME/IdeaProjects/samples/bash || return $?
     fi
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh" $HOME/IdeaProjects/samples/bash/log_search.sh || return $?
+    if [ ! -d "$HOME/IdeaProjects/samples/python" ]; then
+        mkdir -p $HOME/IdeaProjects/samples/python || return $?
+    fi
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/line_parser.py" $HOME/IdeaProjects/samples/python/line_parser.py || return $?
+    if [ ! -e /usr/local/bin/line_parser.py ]; then
+        sudo ln -s $HOME/IdeaProjects/samples/python/line_parser.py /usr/local/bin/line_parser.py
+    fi
 }
 
 function f_setup_rg() {
