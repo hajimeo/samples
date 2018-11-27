@@ -135,6 +135,12 @@ function p_support() {
     echo " "
     echo "# WARNs (and above) in warn.log"
     f_listWarns "warn.log"
+
+    if [ -n "${_glob}" ]; then
+        echo " "
+        echo "# f_list_start_end (start time, end time, difference(sec), filesize)"
+        f_list_start_end "${_glob}" "${_date_regex}"
+    fi
 }
 
 function p_performance() {
@@ -206,11 +212,6 @@ EOF
         echo "# f_topErrors from engine log and top ${_n}"
         cat /tmp/perform_f_topErrors_$$.out
         echo " "
-    fi
-
-    if [ -n "${_glob}" ]; then
-        echo "# f_list_start_end (start time, end time, difference(sec), filesize)"
-        f_list_start_end "${_glob}" "${_date_regex}"
     fi
 
     # TODO: hiveserver2.log Total time spent in this metastore function was greater than
