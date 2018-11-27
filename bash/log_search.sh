@@ -136,11 +136,9 @@ function p_support() {
     echo "# WARNs (and above) in warn.log"
     f_listWarns "warn.log"
 
-    if [ -n "${_glob}" ]; then
-        echo " "
-        echo "# f_list_start_end (start time, end time, difference(sec), filesize)"
-        f_list_start_end "${_glob}" "${_date_regex}"
-    fi
+    echo " "
+    echo "# engine*.log* start and end (start time, end time, difference(sec), filesize)"
+    f_list_start_end "engine*.log*"
 }
 
 function p_performance() {
