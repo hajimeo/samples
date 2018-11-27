@@ -24,6 +24,7 @@ function f_setup_misc() {
     fi
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/line_parser.py" $HOME/IdeaProjects/samples/python/line_parser.py || return $?
     if [ ! -e /usr/local/bin/line_parser.py ]; then
+        sudo chmod a+x $HOME/IdeaProjects/samples/python/line_parser.py
         sudo ln -s $HOME/IdeaProjects/samples/python/line_parser.py /usr/local/bin/line_parser.py
     fi
 }
