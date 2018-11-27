@@ -171,7 +171,6 @@ function p_interview() {
     _ask "NTP Server" "ntp.ubuntu.com" "r_NTP_SERVER" "N" "Y"
     # TODO: Changing this IP later is troublesome, so need to be careful
     local _docker_ip=`f_docker_ip "172.17.0.1"`
-    _ask "Network Mask (/16 or /24) for docker containers" "/16" "r_DOCKER_NETWORK_MASK" "N" "Y"
     _ask "IP address for docker network interface" "$_docker_ip" "r_DOCKER_HOST_IP" "N" "Y"
     local _docker_file_url="https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile6"
     if [ "x`echo $r_CONTAINER_OS_VER | cut -d. -f1`" = "x7" ]; then
@@ -1202,11 +1201,9 @@ function f_docker_setup() {
 
 function f_hdp_network_setup() {
     local __doc__="Setting IP for hdp to $r_DOCKER_HOST_IP (default)"
-    local _hdp="${1}"
-    local _mask="${2}"
+    local _hdp="${1:-"$r_DOCKER_HOST_IP"}"
+    local _mask="${2:-"16"}"
 
-    [ -z "$_hdp" ] && _hdp="$r_DOCKER_HOST_IP"
-    [ -z "$_mask" ] && _mask="$r_DOCKER_NETWORK_MASK"
     _mask="${_mask#/}"
 
     if ! ifconfig "$g_HDP_NETWORK" | grep "$_hdp" &>/dev/null ; then
@@ -1231,12 +1228,10 @@ function f_hdp_network_setup() {
 
 function f_docker0_setup() {
     local __doc__="Setting IP for docker0 to $r_DOCKER_HOST_IP (default)"
-    local _docker0="${1}"
-    local _mask="${2}"
+    local _docker0="${1:-"$r_DOCKER_HOST_IP"}"
+    local _mask="${2:-"16"}"
     local _dns_ip="${3}"
 
-    [ -z "$_docker0" ] && _docker0="$r_DOCKER_HOST_IP"
-    [ -z "$_mask" ] && _mask="${r_DOCKER_NETWORK_MASK-16}"
     _mask="${_mask#/}"
     local _netmask="255.255.0.0"
     [ "$_mask" = "24" ] && _netmask="255.255.255.0"
