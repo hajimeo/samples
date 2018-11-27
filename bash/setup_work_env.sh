@@ -85,9 +85,13 @@ function f_setup_jupyter() {
         return 1
     fi
 
-    if ! which pip3 &>/dev/null && ! _install python3-pip -y; then
-        _log "ERROR" "no pip installed or not in PATH (sudo easy_install pip)"
-        return 1
+    if ! which pip3 &>/dev/null; then
+        _log "WARN" "no pip installed or not in PATH (sudo easy_install pip). Trying to install..."
+        # NOTE: Mac's pip3 is installed by 'brew install python3'
+        # sudo python3 -m pip uninstall pip
+        # sudo apt remove python3-pip
+        curl -s -f "https://bootstrap.pypa.io/get-pip.py" -o /tmp/get-pip.py || return $?
+        sudo python3 /tmp/get-pip.py || return $?
     fi
 
     ### Pip(3) ############################################################
@@ -199,9 +203,13 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     if [[ "$1" =~ ^f_ ]]; then
         eval "$@"
     else
+        _log "INFO" "Running f_setup_misc ..."
         f_setup_misc
+        _log "INFO" "Running f_setup_screen ..."
         f_setup_screen
+        _log "INFO" "Running f_setup_rg ..."
         f_setup_rg
+        _log "INFO" "Running f_setup_jupyter ..."
         f_setup_jupyter
     fi
 fi
