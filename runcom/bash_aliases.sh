@@ -221,7 +221,7 @@ function asftpl() {
         _name="${2}"
     fi
     #ssh -q asftp -t 'cd /home/ubuntu/upload && find . -type f -mtime -2 -size +10240k -name "'${_name}'" -ls | sort -k9,10 | tail -n'${_n}
-    ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lhtr '${_name}' | grep -wv "telemetryonly" | tail -n'${_n}';date'
+    ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lhtr '${_name}' | grep -vE "(telemetryonly|image-diagnostic)" | tail -n'${_n}';date'
 }
 # Download a syngle file from hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
 function asftpd() {
