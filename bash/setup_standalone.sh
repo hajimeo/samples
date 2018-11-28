@@ -771,7 +771,7 @@ if [ "$USER" = "'${_user}'" ]; then
   echo ""
   if [ -x /usr/local/bin/setup_standalone.sh ]; then
     echo "To start a container (setup_standalone.sh -h for help):"
-    docker images --format "{{.Repository}}" | grep -E "^atscale" | sort | sed "s/^/  setup_standalone.sh -n /g"
+    (docker images --format "{{.Repository}}";docker ps -a --format "{{.Names}}" --filter "status=exited") | grep -E "^atscale" | sort | sed "s/^/  setup_standalone.sh -n /g"
     echo ""
   fi
   if nc -z localhost '${_proxy_port}'; then
