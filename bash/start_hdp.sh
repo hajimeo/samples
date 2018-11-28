@@ -63,7 +63,7 @@ How to create a node(s)
     p_ambari_node_create 'ambari2510.localdomain:8008' '172.17.100.125' '7.5.1804' [/path/to/ambari.repo] [DNS_IP]
 
     # Create one node WITHOUT Ambari, hostname: node99.localdomain, OS ver: CentOS7.5, Network addr: 172.17.100.x
-    p_node_create 'test.ubuntu.localdomain' '172.17.100.125' '7.5.1804' [DNS_IP]
+    p_node_create 'test.ubuntu.localdomain' '172.17.100.125' [7.5.1804] [DNS_IP]
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS7.5, and Ambari is ambari2615.ubu04.localdomain
     export r_DOMAIN_SUFFIX='.ubu04.localdomain'
@@ -167,7 +167,7 @@ function p_interview() {
     echo ""
     echo "=== Optional questions (hit Enter keys) =========="
     _ask "Run apt-get upgrade (docker) before setting up?" "N" "r_APTGET_UPGRADE" "N"
-    _ask "Keep running containers when you start this script with another response file?" "N" "r_DOCKER_KEEP_RUNNING" "N"
+    _ask "Keep running containers when you start this script with another response file?" "Y" "r_DOCKER_KEEP_RUNNING" "N"
     _ask "NTP Server" "ntp.ubuntu.com" "r_NTP_SERVER" "N" "Y"
     # TODO: Changing this IP later is troublesome, so need to be careful
     local _docker_ip=`f_docker_ip "172.17.0.1"`
@@ -3002,9 +3002,10 @@ function f_ssh_setup() {
     fi
 
     if [ ! -e $HOME/.ssh/config ]; then
-        echo "Host *
+        echo "Host node* atscale* *.localdomain
   StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null" > $HOME/.ssh/config
+  UserKnownHostsFile /dev/null
+  User root" > $HOME/.ssh/config
     fi
 
     # If current user isn't 'root', copy this user's ssh keys to root
