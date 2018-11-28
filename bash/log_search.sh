@@ -143,7 +143,7 @@ function p_support() {
 
 function p_performance() {
     local _glob="${1:-"engine*.log*"}"
-    local _date_regex="${2}"    # NOTE: Need to specify up to seconds for f_start_end_time_with_diff
+    local _date_regex="${2}"    # NOTE: Can't use () as it will change the order of rg -o -r
     local _exclude_slow_funcs="${3-Y}"  # empty string "" means no.
     local _num_cpu="${4:-3}"
     local _n="${5:-20}"
@@ -226,10 +226,10 @@ function f_checkResultSize() {
 
     rg -z -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ size = ([^,]+), time = ([^,]+)," -r '${1}|${2}|${3}|${4}' | sort -n | uniq > /tmp/f_checkResultSize_$$.out
     echo "### histogram (time vs query result size) #################################################"
-    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_checkResultSize_$$.out | bar_chart.py -A
+    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}?).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_checkResultSize_$$.out | bar_chart.py -A
     echo ' '
     echo "### histogram (time vs query requests) ####################################################"
-    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_checkResultSize_$$.out | bar_chart.py
+    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}?).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_checkResultSize_$$.out | bar_chart.py
     echo ' '
     echo "### Large size (datetime|queryId|size|time) ###############################################"
     cat /tmp/f_checkResultSize_$$.out | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
@@ -252,13 +252,13 @@ function f_checkMaterializeWorkers() {
     ( echo  "${_waiting}"; echo "${_working}" ) | awk -F"|" '{print $1"|"$2+1}' | sort -n > /tmp/f_checkMaterializeWorkers_$$.out
     # Shouldn't accumulate queue size (need windowing...)
     echo "### histogram (time vs worker queue (waiting) size) #######################################"
-    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)" -r '${1}T${2} ${3}' /tmp/f_checkMaterializeWorkers_$$.out | sort -n | uniq  | sort -k1,1r -k2,2nr > /tmp/f_checkMaterializeWorkers_filtered_$$.out
+    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}?).*\|([^|]+)" -r '${1}T${2} ${3}' /tmp/f_checkMaterializeWorkers_$$.out | sort -n | uniq  | sort -k1,1r -k2,2nr > /tmp/f_checkMaterializeWorkers_filtered_$$.out
     for _dt in `cat /tmp/f_checkMaterializeWorkers_filtered_$$.out | cut -d" " -f1 | sort -n | uniq`; do
         grep -m 1 "^${_dt}" /tmp/f_checkMaterializeWorkers_filtered_$$.out
     done | bar_chart.py -A
     echo ' '
     echo "### histogram (time vs materialize request count) #########################################"
-    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)" -r '${1}T${2}' /tmp/f_checkMaterializeWorkers_$$.out | bar_chart.py
+    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}?).*\|([^|]+)" -r '${1}T${2}' /tmp/f_checkMaterializeWorkers_$$.out | bar_chart.py
     echo ' '
     echo "### Large materialize queue size (datetime|size) ##########################################"
     cat /tmp/f_checkMaterializeWorkers_$$.out | grep -v '|0$' | sort -t '|' -nk2 | tail -n${_n} | tr '|' '\t'
@@ -275,7 +275,7 @@ function f_failedQueries() {
 
     rg -z -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ Logging query failure.+ time = ([^,]+)," -r '${1}|${2}|${3}' | sort -n | uniq > /tmp/f_failedQueries_$$.out
     echo "### histogram (time vs failed query count) ################################################"
-    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_failedQueries_$$.out | bar_chart.py
+    rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}?).*\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_failedQueries_$$.out | bar_chart.py
     echo ' '
     echo "### Slow failed query (datetime|queryId|time) #############################################"
     cat /tmp/f_failedQueries_$$.out | grep ' s$' | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
@@ -312,13 +312,13 @@ function f_aggBatchKickoffSize() {
     rg -z -N --no-filename -g "${_glob}" -o "^(${_date_regex}).+WARN.+ Aggregate Batch.+(........-....-....-....-............).+failed with error message" -r '${1}|${2}' | sort > /tmp/f_aggBatchKickoffSize_failed_$$.out
 
     echo "### histogram (time vs batch aggregate size) ##############################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_aggBatchKickoffSize_$$.out | bar_chart.py -A
+    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}?).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_aggBatchKickoffSize_$$.out | bar_chart.py -A
     echo ' '
     echo "### histogram (time vs batch count) #######################################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_aggBatchKickoffSize_$$.out | bar_chart.py
+    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}?).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_aggBatchKickoffSize_$$.out | bar_chart.py
     echo ' '
     echo "### histogram (time vs failed batch count) ################################################"
-    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}).*\|([^|]+)" -r '${1}T${2}' /tmp/f_aggBatchKickoffSize_failed_$$.out | bar_chart.py
+    rg -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}?).*\|([^|]+)" -r '${1}T${2}' /tmp/f_aggBatchKickoffSize_failed_$$.out | bar_chart.py
     echo ' '
     echo "### Large size (datetime|batchId|size|full) ###############################################"
     cat /tmp/f_aggBatchKickoffSize_$$.out | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
