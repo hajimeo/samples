@@ -143,7 +143,7 @@ function p_support() {
 
 function p_performance() {
     local _glob="${1:-"engine*.log*"}"
-    local _date_regex="${2}"    # NOTE: Can't use () as it will change the order of rg -o -r
+    local _date_regex="${2}"    # eg: "2018-11-26 1[01]:\d" Can't use () as it will change the order of rg -o -r
     local _exclude_slow_funcs="${3-Y}"  # empty string "" means no.
     local _num_cpu="${4}"       # if empty, use half of CPUs
     local _n="${5:-20}"
