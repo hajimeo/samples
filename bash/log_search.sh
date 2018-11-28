@@ -145,11 +145,19 @@ function p_performance() {
     local _glob="${1:-"engine*.log*"}"
     local _date_regex="${2}"    # NOTE: Can't use () as it will change the order of rg -o -r
     local _exclude_slow_funcs="${3-Y}"  # empty string "" means no.
-    local _num_cpu="${4:-3}"
+    local _num_cpu="${4}"       # if empty, use half of CPUs
     local _n="${5:-20}"
 
     if [ -s "${_glob}" ]; then
         _exclude_slow_funcs="N"
+    fi
+
+    if [ -z "${_num_cpu}" ]; then
+        if [ -e /proc/cpuinfo ]; then
+            _num_cpu=$(( `grep -c ^processor /proc/cpuinfo` / 2 ))
+        else
+            _num_cpu=$(( `sysctl -n hw.ncpu` / 2 ))
+        fi
     fi
 
     # Prepare command list for _mexec (but as rg is already multi-threading, not much diff)
