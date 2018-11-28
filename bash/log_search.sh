@@ -123,14 +123,14 @@ function p_support() {
     echo " "
 
     echo "# Engine start/restart and supervisord not expected"
-    rg -z -N --no-filename -g 'engine\.*log*' 'Engine (actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
+    rg -z -N --no-filename -g 'engine.*log*' 'Engine (actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
     echo " "
     echo "# supervisord 'not expected' (NOTE: time is probably not UTC)"
     rg -z -N --no-filename -g 'atscale_service.log' 'not expected' | tail -n 20
 
     echo " "
-    echo "# OutOfMemoryError in all files"
-    rg -z -c OutOfMemoryError
+    echo "# OutOfMemoryError in Engine logs"
+    rg -z -c 'OutOfMemoryError' -g 'engine.*log*'
 
     echo " "
     echo "# WARNs (and above) in warn.log"
@@ -178,7 +178,8 @@ EOF
     echo " "
 
     echo "# Likely the pool is at capacity"
-    rg -N --no-filename -z -g "${_glob}" '(Likely the pool is at capacity|Could not establish a JDBC|Cannot connect to subgroup|Could not create ConnectionManagerActor)' | sort | uniq | tail -n ${_n}
+    # Didn't find a request to serve
+    rg -N --no-filename -z -g "${_glob}" "(Likely the pool is at capacity|failed to find free connection|Could not establish a JDBC|Cannot connect to subgroup|Could not create ConnectionManagerActor|No connections available|No free connections)" | sort | uniq | tail -n ${_n}
     echo " "
 
     echo "# Took X secs to begin execution"
@@ -415,6 +416,12 @@ function f_rg() {
     " >&2
 }
 
+function f_list_queries() {
+    local _date_regex="$1"
+    local _glob="${2:-"engine.*log*"}"
+    rg -z -N --no-filename "^${_date_regex}.* INFO .+queryId=.+ Received (SQL|Analysis) [Qq]uery" -g "${_glob}" | sort
+}
+
 function f_getQueries() {
     local __doc__="Get Inbound and outbound queries with query ID from queries.log"
     # for _q in `cat /tmp/f_checkResultSize_$$.out | grep ' s$' | sort -t'|' -nrk4 | head -n20 | awk -F'|' '{print $2}'`; do echo "# $_q";f_getQueries $_q; done
@@ -433,7 +440,7 @@ function f_getQueries() {
     #Logging subquery success:      , resultSize = 154, time = \d+ (ms|s),
 
     if [ -z "${_path}" ]; then
-        _path="`rg -z -l "queryId=${_uuid}.+ (Received|Executing) (.+) [Qq]uery" | sort | head -n1`"
+        _path="`rg -z -l "queryId=${_uuid}.+ (Received|Executing) (.+) [Qq]uery" -g "engine.*log*" | sort | head -n1`"
         [ -z "${_path}" ] && return 1
     fi
 
