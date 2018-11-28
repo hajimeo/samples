@@ -29,6 +29,9 @@ function f_setup_misc() {
     chmod a+x $HOME/IdeaProjects/samples/python/line_parser.py
     [ -L /usr/local/bin/line_parser.py ] && sudo rm -f /usr/local/bin/line_parser.py
     sudo ln -s $HOME/IdeaProjects/samples/python/line_parser.py /usr/local/bin/line_parser.py
+
+    _download "https://github.com/hajimeo/samples/raw/master/misc/dateregex_Linux" /usr/local/bin/dateregex || return $?
+    chmod a+x /usr/local/bin/dateregex
 }
 
 function f_setup_rg() {
