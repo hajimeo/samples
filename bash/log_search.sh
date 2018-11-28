@@ -144,9 +144,8 @@ function p_support() {
 function p_performance() {
     local _glob="${1:-"engine*.log*"}"
     local _date_regex="${2}"    # eg: "2018-11-26 1[01]:\d" Can't use () as it will change the order of rg -o -r
-    local _exclude_slow_funcs="${3-Y}"  # empty string "" means no.
-    local _num_cpu="${4}"       # if empty, use half of CPUs
-    local _n="${5:-20}"
+    local _num_cpu="${3}"       # if empty, use half of CPUs
+    local _n="${4:-20}"
 
     if [ -s "${_glob}" ]; then
         _exclude_slow_funcs="N"
@@ -165,13 +164,9 @@ function p_performance() {
 
     # Prepare command list for _mexec (but as rg is already multi-threading, not much diff)
     > /tmp/perform_cmds.tmp || return $?
-    if [[ ! "${_exclude_slow_funcs}" =~ ^(y|Y) ]]; then
-        cat << EOF > /tmp/perform_cmds.tmp
+    cat << EOF > /tmp/perform_cmds.tmp
 f_topSlowLogs "^${_date_regex}" "${_glob}" "" "" "${_n}"                           > /tmp/perform_f_topSlowLogs_$$.out
 f_topErrors "${_glob}" "${_date_regex}" "" "" "${_n}"                              > /tmp/perform_f_topErrors_$$.out
-EOF
-    fi
-    cat << EOF >> /tmp/perform_cmds.tmp
 f_checkResultSize "${_date_regex}" "${_glob}" "${_n}"                              > /tmp/perform_f_checkResultSize_$$.out
 f_checkMaterializeWorkers "${_date_regex}" "" "${_n}"                              > /tmp/perform_f_checkMaterializeWorkers_$$.out
 f_failedQueries "${_date_regex}" "${_glob}" "${_n}"                                > /tmp/perform_f_failedQueries_$$.out
@@ -503,10 +498,9 @@ function f_topCausedByExceptions() {
 function f_topErrors() {
     local __doc__="List top ERRORs. NOTE: with _date_from and without may produce different result (ex: Caused by)"
     local _glob="${1:-"engine*.log*"}"   # file path which rg accepts and NEEDS double-quotes
-    local _from_ISO_format_no_sec="$2"   # ISO format datetime, but no seconds (eg: 2018-11-05 21:00)
-    local _to_ISO_format_no_sec="$3"     # ISO format datetime, but no seconds (eg: 2018-11-05 23:00)
-    local _regex="$4"       # to overwrite default regex to detect ERRORs
-    local _top_N="${5:-10}" # how many result to show
+    local _date_regex="$2"   # ISO format datetime, but no seconds (eg: 2018-11-05 21:00)
+    local _regex="$3"       # to overwrite default regex to detect ERRORs
+    local _top_N="${4:-10}" # how many result to show
 
     if ! which rg &>/dev/null; then
         echo "'rg' is required (eg: brew install rg)" >&2
@@ -517,21 +511,16 @@ function f_topErrors() {
         _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|[Ff]ailed)\b.+"
     fi
 
-    if [ -n "${_from_ISO_format_no_sec}" ]; then
-        if ! which dateregex &>/dev/null; then
-            echo "'dateregex' is required (@see https://raw.githubusercontent.com/hajimeo/samples/master/golang/dateregex.go)" >&2
-            return 101
-        fi
-        local _date_regex="`dateregex "${_from_ISO_format_no_sec}" "${_to_ISO_format_no_sec}"`" || return $?
+    if [ -n "${_date_regex}" ]; then
         _regex="^(${_date_regex}).+${_regex}"
     fi
 
     echo "# Regex = '${_regex}'"
     #rg -z -c -g "${_glob}" "${_regex}"
-    rg -z --no-line-number --no-filename -g "${_glob}" -o "${_regex}" > /tmp/f_topErrors.$$.tmp
+    rg -z -N --no-filename -g "${_glob}" -o "${_regex}" > /tmp/f_topErrors.$$.tmp
 
     # just for fun, drawing bar chart
-    if [ -n "${_from_ISO_format_no_sec}" ] && which bar_chart.py &>/dev/null; then
+    if [ -n "${_date_regex}" ] && which bar_chart.py &>/dev/null; then
         local _date_regex2="^[0-9-/]+ \d\d:\d"
         [ "`wc -l /tmp/f_topErrors.$$.tmp | awk '{print $1}'`" -lt 400 ] && _date_regex2="^[0-9-/]+ \d\d:\d\d"
         echo ' '
