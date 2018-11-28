@@ -194,15 +194,6 @@ EOF
     cat /tmp/perform_f_checkMaterializeWorkers_$$.out
     echo " "
 
-    echo "# Likely the pool is at capacity"
-    # Didn't find a request to serve
-    rg -N --no-filename -z -g "${_glob}" "(Likely the pool is at capacity|failed to find free connection|Could not establish a JDBC|Cannot connect to subgroup|Could not create ConnectionManagerActor|No connections available|No free connections)" | sort | uniq | tail -n ${_n}
-    echo " "
-
-    echo "# Took X secs to begin execution"
-    rg -N --no-filename -z -g "${_glob}" 'took \[[0-9.]+ s\] to begin execution' | sort | uniq | tail -n ${_n}
-    echo " "
-
     echo "# f_failedQueries failed queries from the engine log (datetime, queryId, time) and top ${_n}"
     cat /tmp/perform_f_failedQueries_$$.out
     echo " "
@@ -218,6 +209,14 @@ EOF
     echo "# f_count_lines and f_count_threads against the last periodic.log for top ${_n}"
     cat /tmp/perform_f_count_lines_$$.out
     cat /tmp/perform_f_count_threads_$$.out
+    echo " "
+
+    local _tmp_date_regex="${_DATE_FORMAT}.${_TIME_FMT4CHART}?"
+    [ -n "${_date_regex}" ] && _tmp_date_regex="${_date_regex}"
+
+    echo "# Connection pool failure + Took [X *s*] to begin execution"
+    # Didn't find a request to serve
+    rg -N --no-filename -z -g "${_glob}" "^(${_tmp_date_regex}).+(Likely the pool is at capacity|failed to find free connection|Could not establish a JDBC|Cannot connect to subgroup|Could not create ConnectionManagerActor|No connections available|No free connections|took \[[0-9.]+ s\] to begin execution)" -o -r '$1 $2' | sort | uniq -c | tail -n ${_n}
     echo " "
 
     if [[ ! "${_exclude_slow_funcs}" =~ ^(y|Y) ]]; then
