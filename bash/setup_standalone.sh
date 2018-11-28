@@ -372,7 +372,7 @@ function f_as_log_cleanup() {
     local _hostname="$1"    # short name is also OK
     local _service="${2:-${_SERVICE}}"
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    docker exec -it ${_name} bash -c 'find /usr/local/'${_service}'/{log,share/postgresql-*/data/pg_log} -type f -and \( -name "*.log*" -o -name "postgresql-2*.log" -o -name "*.stdout" \) -and -print0| xargs -0 -P3 -n1 -I {} rm -f {}'
+    docker exec -it ${_name} bash -c 'find /usr/local/'${_service}'/{log,share/postgresql-*/data/pg_log} -type f -and \( -name "*.log.gz" -o -name "*.log" -o -name "*.stdout" \) -and -print0 | xargs -0 -P3 -n1 -I {} rm -f {}'
 }
 
 function f_docker_commit() {
