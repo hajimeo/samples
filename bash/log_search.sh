@@ -161,6 +161,7 @@ function p_performance() {
     fi
 
     # Prepare command list for _mexec (but as rg is already multi-threading, not much diff)
+    > /tmp/perform_cmds.tmp || return $?
     if [[ ! "${_exclude_slow_funcs}" =~ ^(y|Y) ]]; then
         cat << EOF > /tmp/perform_cmds.tmp
 f_topSlowLogs "^${_date_regex}" "${_glob}" "" "" "${_n}"                           > /tmp/perform_f_topSlowLogs_$$.out
@@ -169,13 +170,17 @@ EOF
     fi
     cat << EOF >> /tmp/perform_cmds.tmp
 f_checkResultSize "${_date_regex}" "${_glob}" "${_n}"                              > /tmp/perform_f_checkResultSize_$$.out
-f_checkMaterializeWorkers "${_date_regex}" "${_glob}" "${_n}"                      > /tmp/perform_f_checkMaterializeWorkers_$$.out
+f_checkMaterializeWorkers "${_date_regex}" "" "${_n}"                              > /tmp/perform_f_checkMaterializeWorkers_$$.out
 f_failedQueries "${_date_regex}" "${_glob}" "${_n}"                                > /tmp/perform_f_failedQueries_$$.out
 f_preCheckoutDuration "${_date_regex}" "${_glob}" ${_n}                            > /tmp/perform_f_preCheckoutDuration_$$.out
 f_aggBatchKickoffSize "${_date_regex}" "${_glob}" ${_n}                            > /tmp/perform_f_aggBatchKickoffSize_$$.out
+EOF
+    if [ -z "${_date_regex}" ]; then
+        cat << EOF >> /tmp/perform_cmds.tmp
 f_count_lines                                                                      > /tmp/perform_f_count_lines_$$.out
 f_count_threads "" "${_n}"                                                         > /tmp/perform_f_count_threads_$$.out
 EOF
+    fi
     _mexec /tmp/perform_cmds.tmp "source $BASH_SOURCE;" "" "${_num_cpu}"
 
     echo "# f_checkResultSize success query size from the engine log (datetime, queryId, size, time)"
