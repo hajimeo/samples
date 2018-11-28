@@ -153,11 +153,14 @@ function p_performance() {
     fi
 
     if [ -z "${_num_cpu}" ]; then
+        local _divider=2
+        [[ "${_exclude_slow_funcs}" =~ ^(y|Y) ]] && _divider=3
         if [ -e /proc/cpuinfo ]; then
-            _num_cpu=$(( `grep -c ^processor /proc/cpuinfo` / 2 ))
+            _num_cpu=$(( `grep -c ^processor /proc/cpuinfo` / ${_divider} ))
         else
-            _num_cpu=$(( `sysctl -n hw.ncpu` / 2 ))
+            _num_cpu=$(( `sysctl -n hw.ncpu` / ${_divider} ))
         fi
+        [ 2 -gt ${_num_cpu:-0} ] && _num_cpu=2
     fi
 
     # Prepare command list for _mexec (but as rg is already multi-threading, not much diff)
