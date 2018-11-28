@@ -153,7 +153,7 @@ function p_performance() {
 
     if [ -z "${_num_cpu}" ]; then
         local _divider=2
-        [[ "${_exclude_slow_funcs}" =~ ^(y|Y) ]] && _divider=3
+        #[[ "${_exclude_slow_funcs}" =~ ^(y|Y) ]] && _divider=3
         if [ -e /proc/cpuinfo ]; then
             _num_cpu=$(( `grep -c ^processor /proc/cpuinfo` / ${_divider} ))
         else
