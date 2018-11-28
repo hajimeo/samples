@@ -144,8 +144,8 @@ function p_support() {
 function p_performance() {
     local _glob="${1:-"engine*.log*"}"
     local _date_regex="${2}"    # NOTE: Need to specify up to seconds for f_start_end_time_with_diff
-    local _n="${3:-20}"
-    local _exclude_slow_funcs="${4-Y}"
+    local _exclude_slow_funcs="${3-Y}"  # empty string "" means no.
+    local _n="${4:-20}"
 
     if [ -s "${_glob}" ]; then
         _exclude_slow_funcs="N"
