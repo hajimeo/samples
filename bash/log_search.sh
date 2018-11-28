@@ -145,7 +145,8 @@ function p_performance() {
     local _glob="${1:-"engine*.log*"}"
     local _date_regex="${2}"    # NOTE: Need to specify up to seconds for f_start_end_time_with_diff
     local _exclude_slow_funcs="${3-Y}"  # empty string "" means no.
-    local _n="${4:-20}"
+    local _num_cpu="${4:-3}"
+    local _n="${5:-20}"
 
     if [ -s "${_glob}" ]; then
         _exclude_slow_funcs="N"
@@ -167,7 +168,7 @@ f_aggBatchKickoffSize "${_date_regex}" "${_glob}" ${_n}                         
 f_count_lines                                                                      > /tmp/perform_f_count_lines_$$.out
 f_count_threads "" "${_n}"                                                         > /tmp/perform_f_count_threads_$$.out
 EOF
-    _mexec /tmp/perform_cmds.tmp "source $BASH_SOURCE;"
+    _mexec /tmp/perform_cmds.tmp "source $BASH_SOURCE;" "" "${_num_cpu}"
 
     echo "# f_checkResultSize success query size from the engine log (datetime, queryId, size, time)"
     cat /tmp/perform_f_checkResultSize_$$.out
