@@ -31,7 +31,7 @@ function f_setup_misc() {
     [ -L /usr/local/bin/line_parser.py ] && sudo rm -f /usr/local/bin/line_parser.py
     sudo ln -s $HOME/IdeaProjects/samples/python/line_parser.py /usr/local/bin/line_parser.py
 
-    #_download "https://github.com/hajimeo/samples/raw/master/misc/dateregex_Linux" /usr/local/bin/dateregex || return $?
+    #_download "https://github.com/hajimeo/samples/raw/master/misc/dateregex_Linux" /usr/local/bin/dateregex "Y" || return $?
     #chmod a+x /usr/local/bin/dateregex
 }
 
@@ -49,7 +49,7 @@ function f_setup_rg() {
             if which apt-get &>/dev/null; then  # NOTE: Mac has 'apt' command
                 local _ver="0.10.0"
                 _log "INFO" "Installing rg version: ${_ver} ..."; sleep 3
-                _download "https://github.com/BurntSushi/ripgrep/releases/download/${_ver}/ripgrep_${_ver}_amd64.deb"  "/tmp/ripgrep_${_ver}_amd64.deb" "Y" || return $?
+                _download "https://github.com/BurntSushi/ripgrep/releases/download/${_ver}/ripgrep_${_ver}_amd64.deb" "/tmp/ripgrep_${_ver}_amd64.deb" "Y" "Y" || return $?
                 sudo dpkg -i /tmp/ripgrep_${_ver}_amd64.deb || return $?
             fi
         else
