@@ -155,8 +155,8 @@ function f_jupyter_util() {
     if [ ! -d "$HOME/IdeaProjects/samples/java/hadoop" ]; then
         mkdir -p "$HOME/IdeaProjects/samples/java/hadoop" || return $?
     fi
-    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "$HOME/IdeaProjects/samples/java/hadoop/hadoop-core-1.0.3.jar" || return $?
-    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "$HOME/IdeaProjects/samples/java/hadoop/hadoop-core-1.0.3.jar" || return $?
+    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "$HOME/IdeaProjects/samples/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y" || return $?
+    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "$HOME/IdeaProjects/samples/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y" || return $?
 
     if [ ! -d "$HOME/.ipython/profile_default/startup" ]; then
         mkdir -p "$HOME/.ipython/profile_default/startup" || return $?
@@ -181,6 +181,12 @@ function _download() {
     local _url="$1"
     local _save_as="$2"
     local _no_backup="$3"
+    local _if_not_exists="$4"
+
+    if [[ "${_if_not_exists}" =~ ^(y|Y) ]] && [ -s "${_save_as}" ]; then
+        _log "INFO" "Not downloading as ${_save_as} exists."
+        return
+    fi
 
     local _cmd="curl -s -f --retry 3 -L -k '${_url}'"
     if [ -z "${_save_as}" ]; then
