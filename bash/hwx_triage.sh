@@ -84,8 +84,8 @@ function f_check_system() {
     python -c 'import socket;print socket.getfqdn()' &> ${_work_dir%/}/python_getfqdn.out
     mount &> ${_work_dir%/}/mount_df.out
     df -h &> ${_work_dir%/}/mount_df.out
-    #sar -qrbd -p -s 09:00:00 -e 12:00:00 -f /var/log/sysstat/sa26
-    sar -qrbd -p &> ${_work_dir%/}/sar_qrbd.out # if no -p, ls -l /dev/sd*
+    #sar -uqrbd -p -s 09:00:00 -e 12:00:00 -f /var/log/sysstat/sa26
+    sar -uqrbd -p &> ${_work_dir%/}/sar_qrbd.out # if no -p, ls -l /dev/sd*
     cat /proc/net/dev &> ${_work_dir%/}/net_dev.out
     cat /proc/cpuinfo &> ${_work_dir%/}/cpuinfo.out
     cat /proc/meminfo &> ${_work_dir%/}/meminfo.out
