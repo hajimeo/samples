@@ -46,7 +46,7 @@ function p_support() {
     local __doc__="Scan a support bundle"
 
     echo "# Version information"
-    echo "## version files"
+    echo "## version files (versions.*.yml or build.yaml)"
     find . -type f -name 'versions.*.yml' -print | sort | tee /tmp/versions_$$.out
     local _versions_yaml="`cat /tmp/versions_$$.out | sort -n | tail -n1`"
     if [ -s "${_versions_yaml}" ]; then
@@ -54,11 +54,13 @@ function p_support() {
         echo "## ${_versions_yaml}"
         cat "${_versions_yaml}"
         echo " "
+    else
+        _find_and_cat "build.yaml"
     fi
     echo " "
 
     echo "# config.yaml (filtered)"
-    _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user.timezone|^sun.jnu.encoding)'
+    _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user.timezone|^sun.jnu.encoding|query.result.max_rows)'
     echo " "
     echo " "
 
@@ -131,24 +133,27 @@ function p_support() {
     echo " "
     echo "# OutOfMemoryError in Engine logs"
     rg -z -c 'OutOfMemoryError' -g 'engine.*log*'
+    echo " "
+    rg -z -N --no-filename 'OutOfMemoryError' -g 'engine.*log*' -B 1 | rg "^$_DATE_FORMAT" | sort | uniq | tail -n 10
 
     echo " "
     echo "# WARNs (and above) in warn.log"
     f_listWarns "warn.log"
 
     echo " "
-    echo "# engine*.log* start and end (start time, end time, difference(sec), filesize)"
-    f_list_start_end "engine*.log*"
+    echo "# engine.*log* start and end (start time, end time, difference(sec), filesize)"
+    f_list_start_end "engine.*log*"
 }
 
 function p_performance() {
-    local _glob="${1:-"engine*.log*"}"
-    local _date_regex="${2}"    # eg: "2018-11-26 1[01]:\d" Can't use () as it will change the order of rg -o -r
-    local _num_cpu="${3}"       # if empty, use half of CPUs
+    local _glob="${1-"engine.*log*"}"   # eg: "engine.2018-11-27*log*". Empty means using default of each function.
+    local _yyyy_mm_dd_hh_d_regex="${2}" # eg: "2018-11-26 1[01]:\d". Can't use () as it will change the order of rg -o -r
+    local _num_cpu="${3}"               # if empty, use half of CPUs
     local _n="${4:-20}"
 
-    if [ -s "${_glob}" ]; then
-        _exclude_slow_funcs="N"
+    if [ -n "${_glob}" ]; then
+        # for f_checkMaterializeWorkers
+        local _tmp_glog="`echo ${_glob} | _sed 's/engine/debug/'`"  # TODO: not best way as 'warn' doesn't work
     fi
 
     if [ -z "${_num_cpu}" ]; then
@@ -165,15 +170,15 @@ function p_performance() {
     # Prepare command list for _mexec (but as rg is already multi-threading, not much diff)
     > /tmp/perform_cmds.tmp || return $?
     cat << EOF > /tmp/perform_cmds.tmp
-f_topSlowLogs "^${_date_regex}" "${_glob}" "" "" "${_n}"                           > /tmp/perform_f_topSlowLogs_$$.out
-f_topErrors "${_glob}" "${_date_regex}" "" "" "${_n}"                              > /tmp/perform_f_topErrors_$$.out
-f_checkResultSize "${_date_regex}" "${_glob}" "${_n}"                              > /tmp/perform_f_checkResultSize_$$.out
-f_checkMaterializeWorkers "${_date_regex}" "" "${_n}"                              > /tmp/perform_f_checkMaterializeWorkers_$$.out
-f_failedQueries "${_date_regex}" "${_glob}" "${_n}"                                > /tmp/perform_f_failedQueries_$$.out
-f_preCheckoutDuration "${_date_regex}" "${_glob}" ${_n}                            > /tmp/perform_f_preCheckoutDuration_$$.out
-f_aggBatchKickoffSize "${_date_regex}" "${_glob}" ${_n}                            > /tmp/perform_f_aggBatchKickoffSize_$$.out
+f_topSlowLogs "^${_yyyy_mm_dd_hh_d_regex}" "${_glob}" "" "" "${_n}"                           > /tmp/perform_f_topSlowLogs_$$.out
+f_topErrors "${_glob}" "${_yyyy_mm_dd_hh_d_regex}" "" "" "${_n}"                              > /tmp/perform_f_topErrors_$$.out
+f_checkResultSize "${_yyyy_mm_dd_hh_d_regex}" "${_glob}" "${_n}"                              > /tmp/perform_f_checkResultSize_$$.out
+f_checkMaterializeWorkers "${_yyyy_mm_dd_hh_d_regex}" "${_tmp_glog}" "${_n}"                              > /tmp/perform_f_checkMaterializeWorkers_$$.out
+f_failedQueries "${_yyyy_mm_dd_hh_d_regex}" "${_glob}" "${_n}"                                > /tmp/perform_f_failedQueries_$$.out
+f_preCheckoutDuration "${_yyyy_mm_dd_hh_d_regex}" "${_glob}" ${_n}                            > /tmp/perform_f_preCheckoutDuration_$$.out
+f_aggBatchKickoffSize "${_yyyy_mm_dd_hh_d_regex}" "${_glob}" ${_n}                            > /tmp/perform_f_aggBatchKickoffSize_$$.out
 EOF
-    if [ -z "${_date_regex}" ]; then
+    if [ -z "${_yyyy_mm_dd_hh_d_regex}" ]; then
         cat << EOF >> /tmp/perform_cmds.tmp
 f_count_lines                                                                      > /tmp/perform_f_count_lines_$$.out
 f_count_threads "" "${_n}"                                                         > /tmp/perform_f_count_threads_$$.out
@@ -207,30 +212,27 @@ EOF
     echo " "
 
     local _tmp_date_regex="${_DATE_FORMAT}.${_TIME_FMT4CHART}?"
-    [ -n "${_date_regex}" ] && _tmp_date_regex="${_date_regex}"
+    [ -n "${_yyyy_mm_dd_hh_d_regex}" ] && _tmp_date_regex="${_yyyy_mm_dd_hh_d_regex}"
 
     echo "# Connection pool failure + Took [X *s*] to begin execution"
     # Didn't find a request to serve
     rg -N --no-filename -z -g "${_glob}" "^(${_tmp_date_regex}).+(Likely the pool is at capacity|failed to find free connection|Could not establish a JDBC|Cannot connect to subgroup|Could not create ConnectionManagerActor|No connections available|No free connections|took \[[0-9.]+ s\] to begin execution)" -o -r '$1 $2' | sort | uniq -c | tail -n ${_n}
     echo " "
 
-    if [[ ! "${_exclude_slow_funcs}" =~ ^(y|Y) ]]; then
-        echo "# f_topSlowLogs from engine *debug* log if no _glob, and top ${_n}"
-        cat /tmp/perform_f_topSlowLogs_$$.out
-        echo " "
+    echo "# f_topSlowLogs from engine *debug* log if no _glob, and top ${_n}"
+    cat /tmp/perform_f_topSlowLogs_$$.out
+    echo " "
 
-        echo "# f_topErrors from engine log and top ${_n}"
-        cat /tmp/perform_f_topErrors_$$.out
-        echo " "
-    fi
-
+    echo "# f_topErrors from engine log and top ${_n}"
+    cat /tmp/perform_f_topErrors_$$.out
+    echo " "
     # TODO: hiveserver2.log Total time spent in this metastore function was greater than
 }
 
 function f_checkResultSize() {
     local __doc__="Get result sizes from the engine debug log (datetime, queryId, size, time)"
     local _date_regex="${1}"    # No need ^
-    local _glob="${2:-engine*.log*}"
+    local _glob="${2:-engine.*log*}"
     local _n="${3:-20}"
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
@@ -279,7 +281,7 @@ function f_checkMaterializeWorkers() {
 function f_failedQueries() {
     local __doc__="Get Logging query failures (datetime, queryId, time)"
     local _date_regex="${1}"    # No need ^
-    local _glob="${2:-engine*.log*}"
+    local _glob="${2:-engine.*log*}"
     local _n="${3:-20}"
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
@@ -297,7 +299,7 @@ function f_preCheckoutDuration() {
     local __doc__="Get 'preCheckout timing report' from the engine debug log (datetime, statement duration, test duration)"
     # f_preCheckoutDuration | sort -t'|' -nk3 | tail -n 10
     local _date_regex="${1}"    # No need ^
-    local _glob="${2:-engine*.log*}"
+    local _glob="${2:-engine.*log*}"
     local _n="${3:-20}"
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
@@ -313,7 +315,7 @@ function f_aggBatchKickoffSize() {
     local __doc__="Check Agg Batch Kick off count from the engine debug log (datetime, batchId, how many, isFullBuild)"
     # f_aggBatchKickoffSize | sort -t'|' -nk3 | tail -n 10
     local _date_regex="${1}"    # No need ^
-    local _glob="${2:-engine*.log*}"
+    local _glob="${2:-engine.*log*}"
     local _n="${3:-20}"
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
@@ -335,128 +337,10 @@ function f_aggBatchKickoffSize() {
     echo ' '
 }
 
-function f_rg() {
-    local __doc__="Search current directory with rg"
-    # f_rg '^2018-07-27 1[3-5]:.+"
-    local _regex="$1"
-    local _thread_num="${2:-6}"
-    local _rg_opts="$3"
-
-    if ! which rg &>/dev/null; then
-        echo "'rg' is required (eg: brew install rg)" >&2
-        return 101
-    fi
-    if [ -z "${_regex}" ]; then
-        echo "No regular expression" >&2
-        return 102
-    fi
-
-    local _def_rg_opts="-z --no-line-number" # -g '*.json' -g '*.xml' -g '*.yaml' -g '*.yml' -g '*.log*' --heading
-    # TODO: currently only ISO format YYYY-MM-DD hh:mX:XX
-    local _date_regex="^[0-9-/]+ \d\d:\d"
-    local _tmpfile_pfx="./rg_"
-    local _regex_escaped="`echo "${_regex}" | sed "s/[^[:alnum:].-]/_/g"`"
-
-    [ -n "${_rg_opts% }" ] && _rg_opts="${_rg_opts% } "
-
-    # If _regex is UUID, checking if it's query ID TODO: add more logic for other types of UUID
-    if [[ "${_regex}" =~ .{8}-.{4}-.{4}-.{12} ]]; then
-        echo "# checking if this UUID is a query ID by searching *only* queries.log files"
-        rg ${_def_rg_opts} -g 'queries.log*' "^${_DATE_FORMAT}.+${_regex}.+ (Received|Executing) (SQL|Analysis) [Qq]uery" -A 3
-        echo " "
-    fi
-
-    echo "# counting matches"
-    rg ${_def_rg_opts} -H -g '!*.ipynb' -g '!*.tmp' ${_rg_opts}-c "${_regex}"
-    echo " "
-
-    echo "# busy threads matching regex"
-    echo "# REGEX = ${_regex}" > "${_tmpfile_pfx}1_${_regex_escaped}.tmp"
-    rg ${_def_rg_opts} --no-filename -g '*.log*' ${_rg_opts}"${_regex}" \
-     | sed 's/^\([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\)T/\1 /' \
-     | sort -n | uniq >> "${_tmpfile_pfx}1_${_regex_escaped}.tmp"
-
-    if [ "`wc -l "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | awk '{print $1}'`" -gt 1 ]; then
-        rg ${_def_rg_opts} -o "\b(FATAL|ERROR|WARN|WARNING|INFO|DEBUG|TRACE) +\[[^\[]+\]" \
-         "${_tmpfile_pfx}1_${_regex_escaped}.tmp" > "/tmp/_f_rg_loglevels_threads_$$.tmp"
-        cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | sort | uniq -c | sort -rn | head -n 40
-
-        local _first_dt="`rg ${_def_rg_opts} -m 1 -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}.tmp"`"
-        local _last_cmd="tail -n1"
-        which tac &>/dev/null && _last_cmd="tac"
-        which gtac &>/dev/null && _last_cmd="gtac"
-        local _last_dt="`${_last_cmd} "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | rg ${_def_rg_opts} -m 1 -o "${_date_regex}"`"
-
-        # @see https://raw.githubusercontent.com/hajimeo/samples/master/golang/dateregex.go
-        local _date_regex_t="${_first_dt}"
-        if which dateregex &>/dev/null && [ -n "${_last_dt}" ]; then
-            local _date_regex_t="`dateregex "${_first_dt}0" "${_last_dt}9"`" || return $?
-        fi
-
-        # generating thread level logs for top _thread_num threads
-        local _threads="$(cat "/tmp/_f_rg_loglevels_threads_$$.tmp" | awk '{print $2}' | sort | uniq -c | sort -rn | head -n ${_thread_num} | awk '{print $2}' | sed 's/[][]//g')"
-        for _t in ${_threads}; do
-            echo "rg ${_def_rg_opts} --no-filename -g '*.log*' ${_rg_opts}'^(${_date_regex_t}).+\[${_t}\]' | sort -n | uniq > ${_tmpfile_pfx}2_${_t}.tmp" > /tmp/f_rg_xargs_${_t}_$$.sh
-        done
-        # seems xargs has command length limit and -s 40K didn't work
-        echo ${_threads} | xargs -n1 -P3 -I @@ bash /tmp/f_rg_xargs_@@_$$.sh
-
-        # just for fun, drawing bar chart
-        if which bar_chart.py &>/dev/null; then
-            #sudo -H python -mpip install matplotlib
-            #sudo -H pip install data_hacks
-            [ "`wc -l "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | awk '{print $1}'`" -lt 400 ] && _date_regex="^[0-9-/]+ \d\d:\d\d"
-            echo ' '
-            rg ${_def_rg_opts} -o "${_date_regex}" "${_tmpfile_pfx}1_${_regex_escaped}.tmp" | bar_chart.py # no longer needs sed 's/T/ /' as it's already done
-        fi
-    fi
-    echo ' '
-
-    echo "# grep-ing json for max 10 each..." >&2
-    rg ${_def_rg_opts} -H -g '*.json' ${_rg_opts} -m 10 "${_regex}"
-    echo ' '
-
-    echo "# generated temp files (file name    start    end    diff_sec    size)" >&2
-    f_list_start_end "${_tmpfile_pfx}*.tmp"
-    echo ' '
-    echo "# May want to also run
-        f_topErrors \"engine.*log*\" '${_first_dt}0' '${_last_dt}9'
-        f_checkResultSize '${_first_dt}'    # until ${_last_dt}
-        f_count_lines
-        f_count_threads
-    " >&2
-}
-
 function f_list_queries() {
     local _date_regex="$1"
     local _glob="${2:-"engine.*log*"}"
     rg -z -N --no-filename "^${_date_regex}.* INFO .+queryId=.+ Received (SQL|Analysis) [Qq]uery" -g "${_glob}" | sort
-}
-
-function f_getQueries() {
-    local __doc__="Get Inbound and outbound queries with query ID from queries.log"
-    # for _q in `cat /tmp/f_checkResultSize_$$.out | grep ' s$' | sort -t'|' -nrk4 | head -n20 | awk -F'|' '{print $2}'`; do echo "# $_q";f_getQueries $_q; done
-    local _uuid="$1"
-    local _path="$2"
-
-    #Logging query estimation:
-    #Logging query failure:         , time = \d+ (ms|s),
-    #Logging query part planned:
-    #Logging query planned:
-    #Logging query received:
-    #Logging query success:         , size = 154, time = \d+ (ms|s),
-    #Logging subquery failure:      , time = \d+ (ms|s),
-    #Logging subquery part planned:
-    #Logging subquery started:
-    #Logging subquery success:      , resultSize = 154, time = \d+ (ms|s),
-
-    if [ -z "${_path}" ]; then
-        _path="`rg -z -l "queryId=${_uuid}.+ (Received|Executing) (.+) [Qq]uery" -g "engine.*log*" | sort | head -n1`"
-        [ -z "${_path}" ] && return 1
-    fi
-
-    #_grep -m 1 -Pz "(?s)queryId=${_uuid}\} - Received .+?20\d\d-\d\d-\d\d" ${_path}
-    _getAfterFirstMatch "${_path}" "queryId=${_uuid}.+ (Received|Executing) (.+) [Qq]uery" "^20\d\d-\d\d-\d\d" "Y"
 }
 
 function f_grep_multilines() {
@@ -475,6 +359,7 @@ function f_genLdapsearch() {
     local __doc__="Generate ldapsearch command from a json file"
     local _json_str="`_find_and_cat "directory_configurations.json" 2>/dev/null`"
     [ -z "${_json_str}" ] && return
+    [ "${_json_str}" = "[]" ] && return
     echo "${_json_str}" | python -c 'import sys,re,json
 a=json.loads(sys.stdin.read());l=a[0]
 p="ldaps" if "use_ssl" in l else "ldap"
@@ -497,7 +382,7 @@ function f_topCausedByExceptions() {
 
 function f_topErrors() {
     local __doc__="List top ERRORs. NOTE: with _date_from and without may produce different result (ex: Caused by)"
-    local _glob="${1:-"engine*.log*"}"   # file path which rg accepts and NEEDS double-quotes
+    local _glob="${1:-"engine.*log*"}"   # file path which rg accepts and NEEDS double-quotes
     local _date_regex="$2"   # ISO format datetime, but no seconds (eg: 2018-11-05 21:00)
     local _regex="$3"       # to overwrite default regex to detect ERRORs
     local _top_N="${4:-10}" # how many result to show
@@ -569,24 +454,6 @@ function f_topSlowLogs() {
         # ([0-9]){2,4} didn't work also (my note) sed doesn't support \d
         rg -z -N --no-filename -g "${_glob}" -io "$_regex" | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
     fi
-}
-
-function f_errorsAt() {
-    local __doc__="List ERROR date and time"
-    local _path="$1"
-    local _is_showing_longer="$2"
-    local _is_including_warn="$3"
-    local _regex="(ERROR|SEVERE|FATAL)"
-
-    if [[ "$_is_including_warn" =~ (^y|^Y) ]]; then
-        _regex="(ERROR|SEVERE|FATAL|WARN)"
-    fi
-
-    if [[ "$_is_showing_longer" =~ (^y|^Y) ]]; then
-        _regex="${_regex}.+$"
-    fi
-
-    egrep -wo "^20[12].+? $_regex" "$_path" | sort
 }
 
 function f_appLogContainersAndHosts() {
@@ -723,14 +590,6 @@ function f_hdfsAuditLogCountPerUser() {
     else
         _sed -n 's:^.*\(ugi=[^ ]*\) .*$:\1:p' $_path | $_cmd
     fi
-}
-
-function f_longGC() {
-    local __doc__="List long GC (real >= 1)"
-    local _path="$1"
-    local _regex=", real=[1-9]"
-
-    egrep "$_regex" "$_path"
 }
 
 function f_listPerflogEnd() {
@@ -1459,76 +1318,5 @@ _SCRIPT_DIR="$(dirname $(realpath "$BASH_SOURCE"))"
 
 ### Main ###############################################################################################################
 if [ "$0" = "$BASH_SOURCE" ]; then
-    # parsing command options
-    while getopts "f:s:e:t:h" opts; do
-        case $opts in
-            f)
-                _FILE_PATH="$OPTARG"
-                ;;
-            s)
-                _START_DATE="$OPTARG"
-                ;;
-            e)
-                _END_DATE="$OPTARG"
-                ;;
-            t)
-                _LOG_TYPE="$OPTARG"
-                ;;
-            h)
-                usage | less
-                exit 0
-        esac
-    done
-
-    if [ -z "$_FILE_PATH" ]; then
-        usage
-        exit
-    fi
-
-    if [ ! -s "$_FILE_PATH" ]; then
-        echo "$_FILE_PATH is not a right file. (-h for help)"
-        exit 1
-    fi
-
-    _file_path="$_FILE_PATH"
-    if [ -n "$_START_DATE" ]; then
-        echo "# Extracting $_START_DATE $_END_DATE into a temp file ..." >&2
-        f_extractByDates "$_FILE_PATH" "$_START_DATE" "$_END_DATE" > /tmp/_f_extractByDates_$$.out
-        _file_path="/tmp/_f_extractByDates_$$.out"
-    fi
-    echo "# Running f_topErrors $_file_path ..." >&2
-    f_topErrors "$_file_path" > /tmp/_f_topErrors_$$.out &
-    echo "# Running f_topCausedByExceptions $_file_path ..." >&2
-    f_topCausedByExceptions "$_file_path" > /tmp/_f_topCausedByExceptions_$$.out &
-    if [ "$_LOG_TYPE" != "ya" ]; then
-        echo "# Running f_hdfsAuditLogCountPerTime $_file_path ..." >&2
-        f_hdfsAuditLogCountPerTime "$_file_path" > /tmp/_f_hdfsAuditLogCountPerTime_$$.out &
-    fi
-    wait
-
-    echo "" >&2
-    echo "============================================================================" >&2
-    echo "# f_topErrors (top 40)"
-    cat /tmp/_f_topErrors_$$.out | tail -n 40
-    echo ""
-    echo "# f_topCausedByExceptions (top 40)"
-    cat /tmp/_f_topCausedByExceptions_$$.out | tail -n 40
-    echo ""
-    if [ "$_LOG_TYPE" != "ya" ]; then
-        echo "# f_hdfsAuditLogCountPerTime (last 48 lines)"
-        cat /tmp/_f_hdfsAuditLogCountPerTime_$$.out | tail -n 48
-        echo ""
-    fi
-
-    # if app log, run f_appLogxxxxx
-    if [ "$_LOG_TYPE" = "ya" ]; then
-        echo "# f_appLogContainersAndHosts"
-        f_appLogContainersAndHosts "$_file_path" "Y"
-        echo ""
-        echo "# f_appLogJobCounters"
-        f_appLogJobCounters "$_file_path" > /tmp/f_appLogJobCounters_$$.out
-        echo "# Saved in /tmp/f_appLogJobCounters_$$.out"
-        _grep -i fail /tmp/f_appLogJobCounters_$$.out | _grep -v '=0'
-        echo ""
-    fi
+    usage | less
 fi
