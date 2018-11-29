@@ -21,6 +21,7 @@ function f_setup_misc() {
     fi
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh" $HOME/IdeaProjects/samples/bash/log_search.sh || return $?
     chmod u+x $HOME/IdeaProjects/samples/bash/log_search.sh
+    _log "TODO" "May also want to get genfile_wrapper.sh (just reminder)"
 
     if [ ! -d "$HOME/IdeaProjects/samples/python" ]; then
         mkdir -p $HOME/IdeaProjects/samples/python || return $?
@@ -86,7 +87,7 @@ function f_setup_golang() {
     fi
 
     if [ ! -d "$GOPATH" ]; then
-        echo "May need to add 'export GOPATH=$HOME/go' in profile"
+        _log "INFO" "May need to add 'export GOPATH=$HOME/go' in profile"
         export GOPATH=$HOME/go
     fi
     # Ex: go get -v -u github.com/hajimeo/docker-webui
