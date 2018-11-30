@@ -137,6 +137,10 @@ def _timestamp(unixtimestamp=None, format="%Y%m%d%H%M%S"):
     return datetime.fromtimestamp(float(unixtimestamp)).strftime(format)
 
 
+def _err(message):
+    sys.stderr.write("%s\n" % (str(message)))
+
+
 def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physicalPlans|partitions', chunksize=1000,
                json_cols=['connectionId', 'planJson', 'json']):
     """
@@ -162,7 +166,7 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physic
         if ex.search(os.path.basename(f)):
             continue
         f_name, f_ext = os.path.splitext(os.path.basename(f))
-        sys.stderr.write("Processing %s ...\n" % (str(f_name)))
+        _err("Processing %s ..." % (str(f_name)))
         new_name = _pick_new_key(f_name, names_dict, (bool(db_conn) is False))
         names_dict[new_name] = f
         dfs[new_name] = json2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize,
@@ -240,7 +244,7 @@ def _avoid_unsupported(df, json_cols=[], name=None):
             # df[k] = df[k].to_string()
             drop_cols.append(k)
     if len(drop_cols) > 0:
-        if bool(name): sys.stderr.write(" - dropping columns:%s from %s.\n" % (str(drop_cols), name))
+        if bool(name): _err(" - dropping columns:%s from %s." % (str(drop_cols), name))
         return df.drop(columns=drop_cols)
     return df
 
@@ -363,12 +367,23 @@ def draw(df, width=16, x_col=0, x_colname=None):
     :param x_colname: If column name is given, use this instead of x_col.
     :return: DF (use .tail() or .head() to limit the rows)
     """
-    height_inch = 9
-    if len(df.columns) > 3:
-        height_inch = len(df.columns) * 3
+    try:
+        import matplotlib.pyplot as plt
+        get_ipython().run_line_magic('matplotlib', 'inline')
+    except:
+        pass
+    height_inch = 8
+    if len(df.columns) > 2:
+        height_inch = len(df.columns) * 4
     if bool(x_colname) is False:
         x_colname = df.columns[x_col]
     df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)
+    # TODO: x axis doesn't show any legend
+    #if len(df) > (width * 2):
+    #    interval = int(len(df) / (width * 2))
+    #    labels = df[x_colname].tolist()
+    #    lables = labels[::interval]
+    #    plt.xticks(list(range(interval)), lables)
     return df
 
 
@@ -404,7 +419,7 @@ def qhistory(run=None, html=True):
     df.columns = ["datetime", "query"]
     if bool(run):
         sql = df.loc[run, 'query']  # .loc[row_num, column_name]
-        sys.stderr.write(sql)
+        _err(sql)
         return query(sql=sql, conn=connect(), no_history=True)  # To keep same number, history won't be updated
     if html is False:
         return df
@@ -712,7 +727,7 @@ def logs2table(file_glob, tablename, conn=None,
                     return res
         return
     for f in files:
-        sys.stderr.write("Processing %s ...\n" % (str(f)))
+        _err("Processing %s ..." % (str(f)))
         tuples = _read_file_and_search(file=f, line_beginning=line_beginning, line_matching=line_matching,
                                        size_regex=size_regex, time_regex=time_regex, num_cols=num_cols)
         if len(tuples) > 0:
@@ -768,7 +783,7 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
                 dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
     else:
         for f in files:
-            sys.stderr.write("Processing %s ...\n" % (str(f)))
+            _err("Processing %s ..." % (str(f)))
             tuples = _read_file_and_search(file=f, line_beginning=line_beginning, line_matching=line_matching,
                                            size_regex=size_regex, time_regex=time_regex, num_cols=num_fields)
             if len(tuples) > 0:
@@ -799,7 +814,7 @@ def load_csvs(src="./", db_conn=None, include_ptn='*.csv', exclude_ptn='', chunk
         if bool(exclude_ptn) and ex.search(os.path.basename(f)): continue
 
         f_name, f_ext = os.path.splitext(os.path.basename(f))
-        sys.stderr.write("Processing %s ...\n" % (str(f_name)))
+        _err("Processing %s ..." % (str(f_name)))
         new_name = _pick_new_key(f_name, names_dict, (bool(db_conn) is False))
         names_dict[new_name] = f
 
@@ -879,7 +894,7 @@ def analyze():
     update_check()
     load()
     # TODO: add more (check version, changed config etc)
-    sys.stderr.write("Completed.\n")
+    _err("Completed.")
 
 
 def update_check(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples/master/python"):
@@ -919,25 +934,24 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
     remote_size = int(urlopen(url).headers["Content-Length"])
     local_size = int(os.path.getsize(file))
     if remote_size < (local_size / 2):
-        sys.stderr.write("Couldn't check the size of %s\n" % (url))
+        _err("Couldn't check the size of %s" % (url))
         return False
     if force_update is False and int(remote_size) == int(local_size):
         # If exactly same size, not updating
-        sys.stderr.write("No need to update %s\n" % (filename))
+        _err("No need to update %s" % (filename))
         return
     if int(remote_size) != int(local_size):
-        sys.stderr.write(
-            "%s size is different between remote (%s KB) and local (%s KB).\n" % (
+        _err("%s size is different between remote (%s KB) and local (%s KB)." % (
                 filename, int(remote_size / 1024), int(local_size / 1024)))
         if check_only:
-            sys.stderr.write("To update, use 'ju.update()'\n\n")
+            _err("To update, use 'ju.update()'\n")
             return True
     new_file = "/tmp/" + filename + "_" + _timestamp()
     os.rename(file, new_file)
     remote_content = urlopen(url).read()
     with open(file, 'wb') as f:
         f.write(remote_content)
-    sys.stderr.write("%s was updated and back up is %s\n" % (filename, new_file))
+    _err("%s was updated and back up is %s" % (filename, new_file))
     return
 
 
@@ -971,8 +985,6 @@ def help(func_name=None):
 # TODO: output formatted json string (json.tool?) from a json file
 # TODO: Updating Jupyter/pandas default
 # if 'get_ipython' in locals():
-#    get_ipython().run_line_magic('matplotlib', 'inline')
-#    sys.stderr.write("matplotlib inline")
 #    # pd.options.display.xxxx
 #    # get_ipython().system("find ./engine/aggregates -name '*.json' -ls")
 
