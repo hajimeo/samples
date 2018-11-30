@@ -145,8 +145,8 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physic
     :param db_conn: If connection object is given, convert JSON to table
     :param include_ptn: Regex string to include some file
     :param exclude_ptn: Regex string to exclude some file
-    :param json_cols: to_sql() fails if column is json, so forcing those columns to string
     :param chunksize: Rows will be written in batches of this size at a time. By default, all rows will be written at once
+    :param json_cols: to_sql() fails if column is json, so forcing those columns to string
     :return: A tuple contain key=>file relationship and Pandas dataframes objects
     #>>> df = load_jsons(src="./engine/aggregates")
     #>>> bool(df)
@@ -159,13 +159,12 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physic
 
     files = _globr(include_ptn, src)
     for f in files:
-        if ex.search(os.path.basename(f)): continue
-
+        if ex.search(os.path.basename(f)):
+            continue
         f_name, f_ext = os.path.splitext(os.path.basename(f))
         sys.stderr.write("Processing %s ...\n" % (str(f_name)))
         new_name = _pick_new_key(f_name, names_dict, (bool(db_conn) is False))
         names_dict[new_name] = f
-
         dfs[new_name] = json2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize,
                                 json_cols=json_cols)
     if bool(db_conn): return names_dict
@@ -302,7 +301,7 @@ def q(sql, conn=None, no_history=False):
     :return: fetchall() result
     >>> pass
     """
-    return query(sql, conn)
+    return query(sql, conn, no_history)
 
 
 def query(sql, conn=None, no_history=False):
@@ -312,7 +311,7 @@ def query(sql, conn=None, no_history=False):
     :param conn: DB connection object
     :param no_history: not saving this query into a history file
     :return: fetchall() result
-    >>> query("select name from sqlite_master where type = 'table'", connect())
+    >>> query("select name from sqlite_master where type = 'table'", connect(), True)
     Empty DataFrame
     Columns: [name]
     Index: []
@@ -350,17 +349,27 @@ def _save_query(sql, limit=1000):
     df2csv(df.tail(limit), query_history_csv, mode="w", header=False)
 
 
-def qhistory(html=True):
+def hist(run=None, html=True):
+    return qhistory(run=run, html=html)
+
+
+def history(run=None, html=True):
+    return qhistory(run=run, html=html)
+
+
+def qhistory(run=None, html=True):
     """
     Return query histories as DataFrame (so that it will be display nicely in Jupyter)
+    :param run: Integer of DataFrame row index which will be run
+    :param html: Whether output in HTML or not
     :return: Pandas DataFrame contains a list of queries
     >>> import os; os.environ["JN_UTILS_QUERY_HISTORY"] = "/tmp/text_qhistory.csv"
     >>> _save_query("select 1")
-    >>> df = qhistory(False)
+    >>> df = qhistory(html=False)
     >>> len(df[df['query'] == 'select 1'])
     1
     >>> _save_query("SELECT 1")
-    >>> df = qhistory(False)
+    >>> df = qhistory(html=False)
     >>> len(df)
     1
     >>> os.remove("/tmp/text_qhistory.csv")
@@ -370,6 +379,10 @@ def qhistory(html=True):
     if df is False or df.empty:
         return
     df.columns = ["datetime", "query"]
+    if bool(run):
+        sql = df.loc[run, 'query']      # .loc[row_num, column_name]
+        sys.stderr.write(sql)
+        return query(sql=sql, conn=connect(), no_history=True) # To keep same number, history won't be updated
     if html is False:
         return df
     current_max_colwitdh = pd.get_option('display.max_colwidth')
@@ -380,10 +393,11 @@ def qhistory(html=True):
     display(HTML(out))
 
 
-def desc(tablenames=None, conn=None):
+def desc(tablenames=None, column=None, conn=None):
     """
     Describe a table (SHOW CREATE TABLE) or SHOW TABLES
     :param tablenames: If empty, get table list
+    :param column: column name (prefix search)
     :param conn: DB connection (cursor) object
     :return: void with printing CREATE statement, or a DF object contains table list
     >>> desc(conn=connect())
@@ -393,17 +407,39 @@ def desc(tablenames=None, conn=None):
     """
     global _LAST_CONN
     if bool(conn) is False: conn = _LAST_CONN
-
+    sql_and = ""
+    if bool(column):
+        sql_and = " and sql like '%\"" + str(column) + "%'"
     if bool(tablenames):
         if isinstance(tablenames, str): tablenames = [tablenames]
         for t in tablenames:
-            rs = conn.execute("select sql from sqlite_master where name = '%s'" % (str(t)))
-            if bool(rs) is False: continue
+            rs = conn.execute("select sql from sqlite_master where name = '%s'%s" % (str(t), sql_and))
+            if bool(rs) is False:
+                continue
             print(rs.fetchall()[0][0])
             # SQLite doesn't like - in a table name. need to escape with double quotes.
             print("Rows: %s\n" % (conn.execute("SELECT count(oid) FROM \"%s\"" % (t)).fetchall()[0][0]))
         return
-    return query(sql="select name, rootpage from sqlite_master where type = 'table' order by rootpage", conn=conn)
+    if bool(column):
+        rs = conn.execute("select distinct name from sqlite_master where 1=1%s" % (sql_and))
+        if bool(rs) is False:
+            return
+        tablenames = _get_cols(rs.fetchall(), 0)
+        return desc(tablenames=tablenames)
+    return query(sql="select distinct name, rootpage from sqlite_master where type = 'table' order by rootpage",
+                 conn=conn, no_history=True)
+
+
+def _get_cols(matrix, i):
+    """
+    Get values from a column
+    :param matrix: like SQL rows
+    :param i: column index number, starting from 0
+    :return: list contains column values
+    >>> _get_cols([[1, 2], [2, 3]], 1)
+    [2, 3]
+    """
+    return [row[i] for row in matrix]
 
 
 def hive_conn(conn_str="jdbc:hive2://localhost:10000/default", user="admin", pwd="admin"):
@@ -630,7 +666,9 @@ def logs2table(file_glob, tablename, conn=None,
     if multiprocessing:
         kwargs_list = []
         for f in files:
-            kwargs_list.append({'file':f, 'line_beginning':line_beginning, 'line_matching':line_matching, 'size_regex':size_regex, 'time_regex':time_regex, 'num_cols':num_cols})
+            kwargs_list.append(
+                {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching, 'size_regex': size_regex,
+                 'time_regex': time_regex, 'num_cols': num_cols})
         rs = _mexec(_read_file_and_search, kwargs_list, using_process=True)
         for tuples in rs:
             # If inserting into one table, probably no point of multiprocessing for this.
@@ -687,7 +725,9 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
     if multiprocessing:
         kwargs_list = []
         for f in files:
-            kwargs_list.append({'file':f, 'line_beginning':line_beginning, 'line_matching':line_matching, 'size_regex':size_regex, 'time_regex':time_regex, 'num_cols':num_fields})
+            kwargs_list.append(
+                {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching, 'size_regex': size_regex,
+                 'time_regex': time_regex, 'num_cols': num_fields})
         rs = _mexec(_read_file_and_search, kwargs_list, using_process=True)
         for tuples in rs:
             if len(tuples) > 0:
