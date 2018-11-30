@@ -380,9 +380,9 @@ def qhistory(run=None, html=True):
         return
     df.columns = ["datetime", "query"]
     if bool(run):
-        sql = df.loc[run, 'query']      # .loc[row_num, column_name]
+        sql = df.loc[run, 'query']  # .loc[row_num, column_name]
         sys.stderr.write(sql)
-        return query(sql=sql, conn=connect(), no_history=True) # To keep same number, history won't be updated
+        return query(sql=sql, conn=connect(), no_history=True)  # To keep same number, history won't be updated
     if html is False:
         return df
     current_max_colwitdh = pd.get_option('display.max_colwidth')
@@ -394,6 +394,10 @@ def qhistory(run=None, html=True):
 
 
 def desc(tablenames=None, column=None, conn=None):
+    return describe(tablenames=tablenames, column=column, conn=conn)
+
+
+def describe(tablenames=None, column=None, conn=None):
     """
     Describe a table (SHOW CREATE TABLE) or SHOW TABLES
     :param tablenames: If empty, get table list
