@@ -349,6 +349,29 @@ def _save_query(sql, limit=1000):
     df2csv(df.tail(limit), query_history_csv, mode="w", header=False)
 
 
+def draw(df, width=16, x_col=0, x_colname=None):
+    """
+    Helper function for df.plot()
+    As pandas.DataFrame.plot is a bit complicated, using simple options only if this method is used.
+    https://pandas.pydata.org/pandas-docs/stable/generated/pandas.DataFrame.plot.html
+
+    ju.draw(ju.q("select QueryHour, SumSqSqlWallTime, SumPostPlanTime, SumSqPostPlanTime from query_stats")).tail()
+
+    :param df: A DataFrame object, which first column will be the 'x' if x_col is not specified
+    :param width: This is Inch and default is 16 inch.
+    :param x_col: Column index number used for X axis.
+    :param x_colname: If column name is given, use this instead of x_col.
+    :return: DF (use .tail() or .head() to limit the rows)
+    """
+    height_inch = 9
+    if len(df.columns) > 3:
+        height_inch = len(df.columns) * 3
+    if bool(x_colname) is False:
+        x_colname = df.columns[x_col]
+    df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)
+    return df
+
+
 def hist(run=None, html=True):
     return qhistory(run=run, html=html)
 
@@ -394,6 +417,13 @@ def qhistory(run=None, html=True):
 
 
 def desc(tablenames=None, column=None, conn=None):
+    """
+    Alias of describe()
+    :param tablenames: If empty, get table list
+    :param column: column name (prefix search)
+    :param conn: DB connection (cursor) object
+    :return: void with printing CREATE statement, or a DF object contains table list
+    """
     return describe(tablenames=tablenames, column=column, conn=conn)
 
 
@@ -927,13 +957,13 @@ def help(func_name=None):
         return
     print(ju.__doc__)
     print("Available functions:")
-    for a in dir(ju):
-        if a.startswith("_"): continue
+    for attr_str in dir(ju):
+        if attr_str.startswith("_"): continue
         # TODO: no idea why those functions matches if condition.
-        if a in ['create_engine', 'help']: continue
-        m = getattr(ju, a, None)
-        if callable(m) and hasattr(m, '__doc__') and len(str(m.__doc__)) > 0:
-            print("    " + a)
+        if attr_str in ['create_engine', 'datetime', 'help']: continue
+        m = getattr(ju, attr_str, None)
+        if callable(m) and hasattr(m, '__doc__') and bool(m.__doc__):
+            print("    " + attr_str)
     print("For a function help, use 'ju.help(\"function_name\")'.")
 
 
