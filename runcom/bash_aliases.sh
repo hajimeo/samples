@@ -170,7 +170,7 @@ function chromep() {
 # Add route to dockerhost to access containers directly
 function r2dh() {
     local _3rd="${1:-100}"  # 3rd decimal in network address
-    local _dh="${2:-192.168.0.31}"  # docker host IP
+    local _dh="${2:-dh1}"  # docker host IP
     if [ "Darwin" = "`uname`" ]; then
         sudo route delete -net 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 ${_dh}
         sudo route delete -net 172.18.0.0/24 &>/dev/null;sudo route add -net 172.18.0.0/24 ${_dh}
@@ -195,7 +195,7 @@ function sshs() {
 # backup commands
 function backupC() {
     local _src="${1:-"$HOME/Documents/cases"}"
-    local _dst="${2:-"hosako@192.168.0.11:/cygdrive/h/hajime/cases"}"
+    local _dst="${2:-"hosako@z230:/cygdrive/h/hajime/cases"}"
     [ ! -d "${_src}" ] && return 11
     [ ! -d "$HOME/.Trash" ] && return 12
     local _size="10000k"
@@ -215,7 +215,7 @@ function asPupInst() {
     scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh root@192.168.6.160:/var/tmp/share/atscale/ &
     scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.162:/var/tmp/share/atscale/ &
     scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.163:/var/tmp/share/atscale/ &
-    scp $HOME/IdeaProjects/samples/atscale/install_atscale.sh hosako@192.168.0.31:/var/tmp/share/atscale/ &
+    scp $HOME/IdeaProjects/samples/atscale/install_atscale.sh hosako@dh1:/var/tmp/share/atscale/ &
     wait
 }
 # List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
