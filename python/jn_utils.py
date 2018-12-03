@@ -387,18 +387,33 @@ def draw(df, width=16, x_col=0, x_colname=None):
     return df
 
 
-def hist(run=None, html=True):
-    return qhistory(run=run, html=html)
+def hist(run=None, like=None, html=True):
+    """
+    Alias of qhistory (query history)
+    :param run: Integer of DataFrame row index which will be run
+    :param like: String used in 'like' to search 'query' column
+    :param html: Whether output in HTML or not
+    :return: Pandas DataFrame contains a list of queries
+    """
+    return qhistory(run=run, like=like, html=html)
 
 
-def history(run=None, html=True):
-    return qhistory(run=run, html=html)
+def history(run=None, like=None, html=True):
+    """
+    Alias of qhistory (query history)
+    :param run: Integer of DataFrame row index which will be run
+    :param like: String used in 'like' to search 'query' column
+    :param html: Whether output in HTML or not
+    :return: Pandas DataFrame contains a list of queries
+    """
+    return qhistory(run=run, like=like, html=html)
 
 
-def qhistory(run=None, html=True):
+def qhistory(run=None, like=None, html=True):
     """
     Return query histories as DataFrame (so that it will be display nicely in Jupyter)
     :param run: Integer of DataFrame row index which will be run
+    :param like: String used in 'like' to search 'query' column
     :param html: Whether output in HTML or not
     :return: Pandas DataFrame contains a list of queries
     >>> import os; os.environ["JN_UTILS_QUERY_HISTORY"] = "/tmp/text_qhistory.csv"
@@ -421,6 +436,8 @@ def qhistory(run=None, html=True):
         sql = df.loc[run, 'query']  # .loc[row_num, column_name]
         _err(sql)
         return query(sql=sql, conn=connect(), no_history=True)  # To keep same number, history won't be updated
+    if bool(like):
+        df = df[df['query'].str.contains(like)]
     if html is False:
         return df
     current_max_colwitdh = pd.get_option('display.max_colwidth')
@@ -431,22 +448,22 @@ def qhistory(run=None, html=True):
     display(HTML(out))
 
 
-def desc(tablenames=None, column=None, conn=None):
+def desc(tablenames=None, like=None, conn=None):
     """
     Alias of describe()
     :param tablenames: If empty, get table list
-    :param column: column name (prefix search)
+    :param like: String used in like, such as column name
     :param conn: DB connection (cursor) object
     :return: void with printing CREATE statement, or a DF object contains table list
     """
-    return describe(tablenames=tablenames, column=column, conn=conn)
+    return describe(tablenames=tablenames, like=like, conn=conn)
 
 
-def describe(tablenames=None, column=None, conn=None):
+def describe(tablenames=None, like=None, conn=None):
     """
     Describe a table (SHOW CREATE TABLE) or SHOW TABLES
     :param tablenames: If empty, get table list
-    :param column: column name (prefix search)
+    :param like: String used in like, such as column name
     :param conn: DB connection (cursor) object
     :return: void with printing CREATE statement, or a DF object contains table list
     >>> desc(conn=connect())
@@ -457,11 +474,12 @@ def describe(tablenames=None, column=None, conn=None):
     global _LAST_CONN
     if bool(conn) is False: conn = _LAST_CONN
     sql_and = ""
-    if bool(column):
-        sql_and = " and sql like '%\"" + str(column) + "%'"
+    if bool(like):
+        sql_and = " and sql like '%" + str(like) + "%'"
     if bool(tablenames):
         if isinstance(tablenames, str): tablenames = [tablenames]
         for t in tablenames:
+            # Currently searching any object as long as name matches
             rs = conn.execute("select sql from sqlite_master where name = '%s'%s" % (str(t), sql_and))
             if bool(rs) is False:
                 continue
@@ -469,8 +487,9 @@ def describe(tablenames=None, column=None, conn=None):
             # SQLite doesn't like - in a table name. need to escape with double quotes.
             print("Rows: %s\n" % (conn.execute("SELECT count(oid) FROM \"%s\"" % (t)).fetchall()[0][0]))
         return
-    if bool(column):
-        rs = conn.execute("select distinct name from sqlite_master where 1=1%s" % (sql_and))
+    if bool(like):
+        # Currently only searching table object
+        rs = conn.execute("select distinct name from sqlite_master where type = 'table'%s" % (sql_and))
         if bool(rs) is False:
             return
         tablenames = _get_cols(rs.fetchall(), 0)
