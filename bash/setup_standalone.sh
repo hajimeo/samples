@@ -788,7 +788,9 @@ if [ "$USER" = "'${_user}'" ]; then
   for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sort`; do for _p in 10500 8080 7180; do if nc -z $_n $_p; then echo "  http://$_n:$_p/"; fi done done
   echo ""
 fi
-/bin/bash' > /usr/local/bin/shellinabox_login
+if [ -z "$SHLVL" ] || [ "$SHLVL" = "1" ]; then
+  /usr/bin/env bash
+fi' > /usr/local/bin/shellinabox_login
     fi
     chmod a+x /usr/local/bin/shellinabox_login
 
