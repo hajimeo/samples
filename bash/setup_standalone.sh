@@ -707,7 +707,7 @@ function f_cdh_setup() {
     f_container_misc "${_container_name}"
     f_ssh_config "${_container_name}"
     docker exec -it ${_container_name} bash -c 'sed -i_$(date +"%Y%m%d%H%M%S") "s/cloudera-quickstart-init//" /usr/bin/docker-quickstart'
-    docker exec -it ${_container_name} bash -c 'sed -i -r "/hbase-|oozie|sqoop2-server|spark-history-server|solr-server|exec bash/d" /usr/bin/docker-quickstart'
+    docker exec -it ${_container_name} bash -c 'sed -i -r "/hbase-|oozie|sqoop2-server|solr-server|exec bash/d" /usr/bin/docker-quickstart'
     docker exec -it ${_container_name} bash -c 'sed -i "s/ start$/ \$1/g" /usr/bin/docker-quickstart'
 }
 
