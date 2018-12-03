@@ -23,6 +23,11 @@ alias xmldiff="python ~/IdeaProjects/samples/python/xml_parser.py"
 alias mb='java -jar ~/Applications/metabase.jar'    # port is 3000
 alias vnc='nohup java -jar ~/Applications/tightvnc-jviewer.jar &>/tmp/tightvnc-jviewer.out &'
 
+# Chrome aliases
+alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=socks5://dh1:28081 https://localhost:4200/webuser/'
+alias shib-spt='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/spt --proxy-server=socks5://support:28081 https://localhost:4200/webuser/'
+alias shib-haj='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/haj --proxy-server=socks5://hajime:28081 https://localhost:4200/webuser/'
+
 # Python simple http server from the specific dir
 # To setup: asDocSync <server ip>
 alias webs='cd ~/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out & nohup python ~/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &'
