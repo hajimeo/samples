@@ -610,23 +610,21 @@ function f_large_file_download() {
 }
 
 function f_docker_image_import() {
-    local _tar_gz_file="${1}"
+    local _tar_file="${1}"      # NOT gz file. if non tar file,
     local _image_name="${2}"
-    local _tmp_dir="${3:-./}"   # To extract tar gz file
-    local _min_disk="16"
+    local _min_disk="${3:-16}"
+    local _tmp_dir="${4:-${_WORK_DIR}}"   # To extract tar gz file
 
     if ! which docker &>/dev/null; then
-        echo "ERROR: Please install docker - https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/"
-        echo "or "
-        echo "./start_hdp.sh -f f_docker_setup"
+        _log "ERROR" "Please install docker - https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/"
         return 1
     fi
 
     if [ -n "${_image_name}" ]; then
         local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_image_name}:"`"
         if [ ! -z "$_existing_img" ]; then
-            echo "WARN: Image $_image_name already exist. Exiting."
-            echo "To rename image:
+            _log "WARN" "Image $_image_name already exist. Exiting.
+To rename image:
         docker tag ${_existing_img} <new_name>:<new_tag>
         docker rmi ${_existing_img}
     To backup image:
@@ -640,21 +638,37 @@ function f_docker_image_import() {
     fi
 
     if ! _isEnoughDisk "/var/lib/docker" "$_min_disk"; then
-        echo "ERROR: /var/lib/docker may not have enough space to create ${_image_name}"
+        _log "ERROR" "/var/lib/docker may not have enough space to create ${_image_name}"
         return 1
     fi
 
-    if [ ! -s ${_tar_gz_file} ]; then
-        echo "ERROR: file: ${_tar_gz_file} does not exist."
+    if [ ! -s ${_tar_file} ]; then
+        _log "ERROR" "file: ${_tar_file} does not exist."
         return 1
     fi
 
-    if file ${_tar_gz_file} | grep -qi 'tar archive'; then
-        docker import ${_tar_gz_file} ${_image_name}
-    else
-        tar -xzv -C ${_tmp_dir} -f ${_tar_gz_file} || return $?
-        docker import ${_tmp_dir%/}/cloudera-quickstart-vm-*-docker/*.tar ${_image_name}
+    # If file doesn't look like a tar file, assuming gzipped (could check 'gzip compressed data' in file command output)
+    if ! file ${_tar_file} | grep -qi 'tar archive'; then
+        local _filename="$(basename ${_tar_file})"
+        local _extract_dir="${_tmp_dir%/}/${_filename%.*}"
+        if [ ! -d "${_extract_dir}" ]; then
+            mkdir -p "${_extract_dir}" || return $?
+        fi
+        local _tmp_tar_file="`find ${_extract_dir%/} -name '*.tar' -size +1024k`"
+        if [ -s "${_tmp_tar_file}" ]; then
+            _log "INFO" "Found ${_tmp_tar_file} in ${_extract_dir%/}. Re-using..."
+        else
+            tar -xzv -C ${_extract_dir} -f ${_tar_file} || return $?
+            _tmp_tar_file="`find ${_extract_dir%/} -name '*.tar' -amin -3 -size +1024k`"
+            if [ ! -s "${_tmp_tar_file}" ]; then
+                _log "ERROR" "After extracting ${_tar_file} in ${_extract_dir%/}, couldn't find tar file."
+                return 1
+            fi
+        fi
+
+        _tar_file="${_tmp_tar_file}"
     fi
+    docker import ${_tar_file} ${_image_name}
 }
 
 function f_ssh_config() {
