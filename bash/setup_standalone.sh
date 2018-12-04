@@ -698,7 +698,7 @@ function f_ssh_config() {
 }
 
 function f_cdh_setup() {
-    local _container_name="${1:-"sandbox-cdh"}"
+    local _container_name="${1:-"atscale-cdh"}"
 
     _log "INFO" "(re)Installing SSH and other commands ..."
     docker exec -it ${_container_name} bash -c 'yum install -y openssh-server openssh-clients; service sshd start'
@@ -712,7 +712,7 @@ function f_cdh_setup() {
 }
 
 function p_cdh_sandbox() {
-    local _container_name="${1:-"sandbox-cdh"}"
+    local _container_name="${1}"    # will be atscale-cdh if emp;ty
     local _is_using_cm="${2}"
     local _download_dir="${3:-"."}"
 
