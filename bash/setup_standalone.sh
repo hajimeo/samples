@@ -712,7 +712,7 @@ function f_cdh_setup() {
 }
 
 function p_cdh_sandbox() {
-    local _container_name="${1}"    # will be atscale-cdh if emp;ty
+    local _container_name="${1:-"atscale-cdh"}"
     local _is_using_cm="${2}"
     local _download_dir="${3:-"."}"
 
