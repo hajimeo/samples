@@ -21,7 +21,7 @@ as_hive_port_batch: '21050'
 as_hive_user_batch: atscale
 as_hive_password_batch: ''
 as_install_directory: "/usr/local/atscale"
-as_local_host: atscale-cdh.standalone.localdomain
+as_local_host: %atscale_host%
 as_engine_memory: 1G
 as_hadoop_common_home: "/usr/lib/hadoop"
 as_hadoop_libexec: "/usr/lib/hadoop/libexec"
@@ -34,7 +34,7 @@ as_hdfs_root_dir: "%hdfs_root_dir%"
 as_ha_enabled: 'false'
 as_ha_node_type: master
 as_coordinator_only: 'false'
-as_ha_cluster_fqdns: atscale-cdh.standalone.localdomain
+as_ha_cluster_fqdns: %atscale_host%
 hll_enabled: 'true'
 hll_create_jar: 'true'
 as_drill_to_raw_query_limit_optional: 'false'
@@ -64,3 +64,4 @@ as_hdfs_use_tls: 'false'
 use_custom_krb5conf: 'false'
 custom_krb5conf_file: ''
 as_hive_doas: ''
+as_haproxy_dns_resolver_off: 'true'

@@ -33,6 +33,7 @@ as_compute_stats: 'true'
 as_hdfs_root_dir: "%hdfs_root_dir%"
 as_ha_enabled: 'false'
 as_ha_node_type: master
+as_coordinator_only: 'false'
 as_ha_cluster_fqdns: %atscale_host%
 hll_enabled: 'true'
 hll_create_jar: 'true'
@@ -65,3 +66,4 @@ custom_krb5conf_file: ''
 as_hive_doas: ''
 as_hdp_version: %hdp_version%
 as_hdp_major_version: '%hdp_major_version%'
+as_haproxy_dns_resolver_off: 'true'
