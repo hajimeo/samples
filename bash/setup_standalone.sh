@@ -307,16 +307,16 @@ function f_docker_run() {
     [ -n "${_port_opts}" ] && ! lsof -ti:22222 && _port_opts="${_port_opts} -p 22222:22"
 
 
-    local _network=""   # TODO: without specifying IP, no point of using custom network
+    local _network=""   # Currently not accepting an IP, so no point of using custom network
     #if docker network ls | grep -qw "$_CUSTOM_NETWORK"; then
     #    _network="--network=${_CUSTOM_NETWORK}"
     #fi
 
-    local _dns=""
+    local _dns=""       # No specific IP, no point of setting DNS
     # If dnsmasq is installed, assuming it's setup correctly
-    if which dnsmasq &>/dev/null; then
-        _dns="--dns=`hostname -I | awk '{print $1}'`"
-    fi
+    #if [ -s /etc/init.d/dnsmasq ]; then
+    #    _dns="--dns=`hostname -I | cut -d " " -f1`"
+    #fi
 
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
     docker run -t -i -d \
@@ -790,12 +790,12 @@ if [ "$USER" = "'${_user}'" ]; then
   fi
   if nc -z localhost '${_proxy_port}'; then
     echo "If you are using VPN, paste below into *Mac* terminal to access web UIs:"
-    echo "  open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://'`hostname -I | awk '{print $1}'`':'${_proxy_port}'"
+    echo "  open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://`hostname -I | cut -d" " -f1`:'${_proxy_port}'"
     echo ""
   fi
   if [ -n "'${_net_addr}'" ]; then
     echo "If not using VPN, route command example for Mac:"
-    echo "  sudo route add -net '${_net_addr}' '`hostname -I | awk '{print $1}'`'"
+    echo "  sudo route add -net '${_net_addr}' `hostname -I | cut -d" " -f1`"
     echo ""
   fi
   echo "URLs (NOTE: need Proxy or Routing by using above command):"
@@ -811,7 +811,7 @@ fi' > /usr/local/bin/shellinabox_login
     sleep 1
     local _port=`sed -n -r 's/^SHELLINABOX_PORT=([0-9]+)/\1/p' /etc/default/shellinabox`
     lsof -i:${_port}
-    _log "INFO" "To access: 'https://`hostname -I | awk '{print $1}'`:${_port}/${_user}/'"
+    _log "INFO" "To access: 'https://`hostname -I | cut -d" " -f1`:${_port}/${_user}/'"
 }
 
 function _useradd() {
