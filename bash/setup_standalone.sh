@@ -89,6 +89,7 @@ _DOCKER_SAVE=false
 _DOCKER_REUSE_IMAGE=false
 _AS_NO_INSTALL_START=false
 _SUDO_SED=false
+_URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
 
 
 ### Functions used to build and setup a container
@@ -312,13 +313,14 @@ function f_docker_run() {
     #    _network="--network=${_CUSTOM_NETWORK}"
     #fi
 
-    local _dns=""       # No specific IP, no point of setting DNS
+    local _dns=""       # in case of IP change on the host, not specifying DNS.
     # If dnsmasq is installed, assuming it's setup correctly
     #if [ -s /etc/init.d/dnsmasq ]; then
     #    _dns="--dns=`hostname -I | cut -d " " -f1`"
     #fi
 
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
+    _log "INFO" "docker run ${_name} from ${_base} ..."
     docker run -t -i -d \
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
         -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} ${_network} ${_dns} \
@@ -568,6 +570,7 @@ function f_as_restore() {
 }
 
 function f_install_as() {
+    local __doc__="Install the application from creating a container"
     local _name="${1:-$_NAME}"
     local _version="${2-$_VERSION}" # If no version, do not install(setup) the application
     local _base="${3:-"${_BASE_IMAGE}:${_OS_VERSION}"}"
@@ -589,6 +592,7 @@ function f_install_as() {
 }
 
 function f_large_file_download() {
+    local __doc__="Function for downloading a large file (checks disk space and retries)"
     local _url="${1}"
     local _tmp_dir="${2:-"."}"
     local _min_disk="6"
@@ -610,21 +614,24 @@ function f_large_file_download() {
 }
 
 function f_docker_image_import() {
-    local _tar_file="${1}"      # NOT gz file. if non tar file,
+    local __doc__="Download and Import an image"
+    local _tar_uri="${1}"       # URL to download or a path of .tar file
     local _image_name="${2}"
-    local _min_disk="${3:-16}"
-    local _tmp_dir="${4:-${_WORK_DIR}}"   # To extract tar gz file
+    local _use_load="${3}"
+    local _min_disk="${4:-16}"
+    local _tmp_dir="${5:-${_WORK_DIR}}"   # To extract tar gz file
 
     if ! which docker &>/dev/null; then
         _log "ERROR" "Please install docker - https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/"
         return 1
     fi
 
+    # If an image name is given, check if already exists.
     if [ -n "${_image_name}" ]; then
         local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_image_name}:"`"
         if [ ! -z "$_existing_img" ]; then
             _log "WARN" "Image $_image_name already exist. Exiting.
-To rename image:
+    To rename image:
         docker tag ${_existing_img} <new_name>:<new_tag>
         docker rmi ${_existing_img}
     To backup image:
@@ -637,19 +644,30 @@ To rename image:
         fi
     fi
 
+    local _tar_file_path="${_tmp_dir%/}/$(basename "${_tar_uri}")"
+    [ -s "${_tar_uri}" ] && _tar_file_path="${_tar_uri}"
+
+    if [[ "${_tar_uri}" =~ $_URL_REGEX ]]; then
+        _log "INFO" "Downloading ${_tar_uri} to ${_tmp_dir}..."; sleep 1
+        f_large_file_download "${_tar_uri}" "${_tmp_dir}" || return $?
+    elif [ ! -s "${_tar_file_path}" ]; then
+        _log "ERROR" "No URL to download and import."
+        return 1
+    fi
+
+    if [ ! -s ${_tar_file_path} ]; then
+        _log "ERROR" "file: ${_tar_file_path} does not exist."
+        return 1
+    fi
+
     if ! _isEnoughDisk "/var/lib/docker" "$_min_disk"; then
-        _log "ERROR" "/var/lib/docker may not have enough space to create ${_image_name}"
+        _log "WARN" "/var/lib/docker may not have enough space to create ${_image_name}"
         return 1
     fi
 
-    if [ ! -s ${_tar_file} ]; then
-        _log "ERROR" "file: ${_tar_file} does not exist."
-        return 1
-    fi
-
-    # If file doesn't look like a tar file, assuming gzipped (could check 'gzip compressed data' in file command output)
-    if ! file ${_tar_file} | grep -qi 'tar archive'; then
-        local _filename="$(basename ${_tar_file})"
+    # This part is for workaround-ing CDH's tar.gz file which contains another tar file.
+    if ! file ${_tar_file_path} | grep -qi 'gzip compressed data, was'; then
+        local _filename="$(basename ${_tar_file_path})"
         local _extract_dir="${_tmp_dir%/}/${_filename%.*}"
         if [ ! -d "${_extract_dir}" ]; then
             mkdir -p "${_extract_dir}" || return $?
@@ -658,17 +676,22 @@ To rename image:
         if [ -s "${_tmp_tar_file}" ]; then
             _log "INFO" "Found ${_tmp_tar_file} in ${_extract_dir%/}. Re-using..."
         else
-            tar -xzv -C ${_extract_dir} -f ${_tar_file} || return $?
+            tar -xzv -C ${_extract_dir} -f ${_tar_file_path} || return $?
             _tmp_tar_file="`find ${_extract_dir%/} -name '*.tar' -amin -3 -size +1024k`"
             if [ ! -s "${_tmp_tar_file}" ]; then
-                _log "ERROR" "After extracting ${_tar_file} in ${_extract_dir%/}, couldn't find tar file."
+                _log "ERROR" "Couldn't find any tar file in ${_extract_dir%/}."
                 return 1
             fi
         fi
-
-        _tar_file="${_tmp_tar_file}"
+        _tar_file_path="${_tmp_tar_file}"
     fi
-    docker import ${_tar_file} ${_image_name}
+
+    _log "INFO" "Importing ${_tar_file_path} as ${_image_name} (empty means using load)..."
+    if [ -z "${_image_name}" ]; then
+        docker load -i ${_tar_file_path}
+    else
+        docker import ${_tar_file_path} ${_image_name}
+    fi
 }
 
 function f_ssh_config() {
@@ -697,12 +720,12 @@ function f_ssh_config() {
     docker exec -it ${_name} bash -c "[ -f /root/.ssh/config ] || echo -e \"Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\" > /root/.ssh/config"
 }
 
-function f_cdh_setup() {
+function _cdh_setup() {
     local _container_name="${1:-"atscale-cdh"}"
 
     _log "INFO" "(re)Installing SSH and other commands ..."
     docker exec -it ${_container_name} bash -c 'yum install -y openssh-server openssh-clients; service sshd start'
-    docker exec -d ${_container_name} bash -c 'yum install -y yum-plugin-ovl scp curl unzip tar wget openssl python nscd yum-utils sudo which vim net-tools strace lsof tcpdump fuse sshfs nc rsync bzip2 bzip2-libs'
+    docker exec -dt ${_container_name} bash -c 'yum install -y yum-plugin-ovl scp curl unzip tar wget openssl python nscd yum-utils sudo which vim net-tools strace lsof tcpdump fuse sshfs nc rsync bzip2 bzip2-libs'
     _log "INFO" "Customising ${_container_name} ..."
     f_container_misc "${_container_name}"
     f_ssh_config "${_container_name}"
@@ -712,24 +735,18 @@ function f_cdh_setup() {
 }
 
 function p_cdh_sandbox() {
+    local __doc__="Setup CDH Sandbox"
     local _container_name="${1:-"atscale-cdh"}"
-    local _is_using_cm="${2}"
+    local _tar_uri="${2:-"https://downloads.cloudera.com/demo_vm/docker/cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz"}"
     local _download_dir="${3:-"."}"
+    local _is_using_cm="${4}"
 
-    local _tar_gz_file="cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz"
     local _image_name="cloudera/quickstart"
 
     if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
-        if ! docker images --format "{{.Repository}}" | grep -qE "^${_image_name}$"; then
-            _log "INFO" "Downloading ${_tar_gz_file} ..."
-            f_large_file_download "https://downloads.cloudera.com/demo_vm/docker/${_tar_gz_file}" "${_download_dir}" || return $?
-            _log "INFO" "Importing ${_tar_gz_file} ..."
-            f_docker_image_import "${_tar_gz_file}" "${_image_name}"|| return $?
-        fi
-
-        _log "INFO" "docker run ${_container_name} ..."
+        f_docker_image_import "${_tar_uri}" "${_image_name}" || return $?
         f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "" "--add-host=quickstart.cloudera:127.0.0.1" || return $?
-        f_cdh_setup "${_container_name}" || return $?
+        _cdh_setup "${_container_name}" || return $?
     else
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
     fi
@@ -740,6 +757,39 @@ function p_cdh_sandbox() {
         #curl 'http://`hostname -f`:7180/cmf/services/12/maintenanceMode?enter=true' -X POST
     else
         docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start'
+    fi
+}
+
+function _hdp_setup() {
+    local _container_name="${1:-"atscale-hdp"}"
+
+    # startup_script modify /etc/resolv.conf so removing
+    docker exec -dt ${_container_name} bash -c 'chkconfig startup_script off ; chkconfig tutorials off; chkconfig shellinaboxd off; chkconfig hue off; chkconfig httpd off'
+    docker exec -it ${_container_name} bash -c 'service startup_script stop; service tutorials stop; service shellinaboxd stop; service httpd stop; service hue stop'
+    docker exec -dt ${_container_name} bash -c 'grep -q -F "> /etc/resolv.conf" /etc/rc.d/init.d/startup_script && tar -cvzf /root/startup_script.tgz `find /etc/rc.d/ -name '*startup_script' -o -name '*tutorials'` --remove-files'
+    docker exec -dt ${_container_name} bash -c 'grep -q "^public_hostname_script" /etc/ambari-agent/conf/ambari-agent.ini && exit 0;( echo -e "#!/bin/bash\necho \`hostname -f\`" > /var/lib/ambari-agent/public_hostname.sh && chmod a+x /var/lib/ambari-agent/public_hostname.sh && sed -i.bak "/run_as_user/i public_hostname_script=/var/lib/ambari-agent/public_hostname.sh\n" /etc/ambari-agent/conf/ambari-agent.ini );ambari-agent stop;ambari-agent reset `hostname -f`;ambari-agent start'
+    docker exec -dt ${_container_name} bash -c "(set -x;[ -S /tmp/.s.PGSQL.5432 ] || (service postgresql restart;sleep 5); PGPASSWORD=bigdata psql -h localhost -Uambari -tAc \"UPDATE users SET user_password='538916f8943ec225d97a9a86a2c6ec0818c1cd400e09e03b660fdaaec4af29ddbb6f2b1033b81b00', active=1 WHERE user_name='admin' and user_type='LOCAL';UPDATE hosts set host_name='${_container_name}.${_DOMAIN}', public_host_name='${_container_name}.${_DOMAIN}' where host_id=1;\")"
+    docker exec -dt ${_container_name} bash -c '_javahome="`grep java.home /etc/ambari-server/conf/ambari.properties | cut -d "=" -f2`" && grep -q "^securerandom.source=file:/dev/random" ${_javahome%/}/jre/lib/security/java.security && sed -i.bak -e "s/^securerandom.source=file:\/dev\/random/securerandom.source=file:\/dev\/urandom/" ${_javahome%/}/jre/lib/security/java.security'
+
+    #local _dns_ip="`docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Gateway'])"`"
+    local _dns_ip="8.8.8.8"
+    docker exec -it ${_container_name} bash -c '_f=/etc/resolv.conf; grep -q "^nameserver '${_dns_ip}'" $_f && exit 0; echo "nameserver '${_dns_ip}'" > /tmp/${_f}.tmp && cat ${_f} >> /tmp/${_f}.tmp && cat /tmp/${_f}.tmp > ${_f}'
+    docker exec -it ${_container_name} bash -c 'yum install -y openssh-server openssh-clients; service sshd start' || return $?
+    docker exec -dt ${_container_name} bash -c 'yum install -y yum-plugin-ovl scp curl unzip tar wget openssl python nscd yum-utils sudo which vim net-tools strace lsof tcpdump fuse sshfs nc rsync bzip2 bzip2-libs'
+}
+
+function p_hdp_sandbox() {
+    local __doc__="Setup HDP Sandbox (up to 2.6.3 or need .tar file in local)"
+    local _container_name="${1:-"atscale-hdp"}"
+    local _tar_uri="${2:-"https://downloads-hortonworks.akamaized.net/sandbox-hdp-2.6.3/HDP_2.6.3_docker_10_11_2017.tar"}"
+    local _image_name="sandbox-hdp" # Note: when changing _tar_uri, _image_name may need to change too.
+
+    if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
+        f_docker_image_import "${_tar_uri}" "${_image_name}" "Y" || return $?
+        f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "" "--add-host=${_image_name}.hortonworks.com:127.0.0.1" || return $?
+        _hdp_setup "${_container_name}" || return $?
+    else
+        f_docker_start "${_container_name}.${_DOMAIN}" || return $?
     fi
 }
 
