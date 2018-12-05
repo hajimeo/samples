@@ -2187,17 +2187,17 @@ function f_etcs_mount() {
 }
 
 function f_local_repo_sed() {
-    local _dir="${1:-./}"   # /var/www/html/hdp/HDP/centos7/3.x/updates/3.0.0.0
-    local _web_host="${2:-`hostname -i`}"
-    local _subdir="${3:-hdp}"
+    local _dir="${1:-.}"        # /var/www/html/hdp/HDP/centos7/3.x/updates/3.0.0.0
+    local _subdir="${2:-hdp}"   # even ambari, 'hdp' is OK
+    local _web_host="${3:-`hostname -I | cut -d" " -f1`}"
     [ -n "${_subdir}" ] && _subdir='\/'${_subdir%/}
 
     # TODO: ambari has #json.url and below also change this url. Is it OK?
     [ -f ${_dir%/}/index.html ] && mv ${_dir%/}/index.html ${_dir%/}/index.html.orig
-    sed -i.$(date +"%Y%m%d%H%M%S") 's/public-repo-1.hortonworks.com\/HDP\//'${_web_host}${_subdir%/}'\/HDP\//g' ${_dir%/}/*.repo || return $?
-    sed -i.$(date +"%Y%m%d%H%M%S") 's/public-repo-1.hortonworks.com\/HDP\//'${_web_host}${_subdir%/}'\/HDP\//g' ${_dir%/}/*.xml
+    sed -i.$(date +"%Y%m%d%H%M%S") 's/public-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.repo || return $?
+    sed -i.$(date +"%Y%m%d%H%M%S") 's/public-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.xml
     ls -lh ${_dir%/}/*.{repo,xml}*
-    local _url="`sed -nr 's/^[^#]+(http.+'$(hostname -i)'.+)/\1/p' ${_dir%/}/*.repo | head -n1`"
+    local _url="`sed -nr 's/^[^#]+(http.+'${_web_host}'.+)/\1/p' ${_dir%/}/*.repo | head -n1`"
     _info "Testing $_url ..."
     curl -kILf "${_url}"
 }
