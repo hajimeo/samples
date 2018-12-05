@@ -795,20 +795,6 @@ function p_hdp_sandbox() {
     _log "INFO" "Starting Ambari ..."
     docker exec -dt ${_container_name} bash -c '/usr/sbin/ambari-agent restart'
     docker exec -it ${_container_name} bash -c '/usr/sbin/ambari-server start --skip-database-check'
-
-    local _cluster=""
-    for i in {1..10}; do
-        if ! nc -z ${_container_name}.${_DOMAIN} 8080; then
-            sleep 6
-            continue
-        fi
-        [ -z "${_cluster}" ] && _cluster="`curl -s -u admin:admin "http://${_container_name}.${_DOMAIN}:8080/api/v1/clusters" | python -c "import sys,json;a=json.loads(sys.stdin.read());print a['items'][0]['Clusters']['cluster_name']"`"
-        curl -sL -u admin:admin "http://${_container_name}.${_DOMAIN}:8080/api/v1/clusters/${_cluster}?fields=Clusters/health_report" | tee /tmp/f_ambari_wait_$$.out
-        grep -qoE '"Host/host_state/HEALTHY" : [1-9]+' /tmp/f_ambari_wait_$$.out && break
-    done
-    sleep 6
-    curl -s -u admin:admin -H "X-Requested-By:ambari" "http://${_container_name}.${_DOMAIN}:8080/api/v1/clusters/${_cluster}/hosts/${_container_name}.${_DOMAIN}/host_components?" -X PUT --data '{"RequestInfo":{"context":"Start All Host Components","operation_level":{"level":"HOST","cluster_name":"'${_cluster}'","host_names":"'${_container_name}.${_DOMAIN}'"},"query":"HostRoles/component_name.in(APP_TIMELINE_SERVER,HISTORYSERVER,HIVE_METASTORE,HIVE_SERVER,LIVY2_SERVER,MYSQL_SERVER,NODEMANAGER,RANGER_ADMIN,RANGER_TAGSYNC,RANGER_USERSYNC,RESOURCEMANAGER,SPARK2_JOBHISTORYSERVER,SPARK2_THRIFTSERVER,ZOOKEEPER_SERVER)"},"Body":{"HostRoles":{"state":"STARTED"}}}'
-    echo ""
 }
 
 function f_shellinabox() {
