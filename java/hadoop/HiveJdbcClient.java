@@ -128,7 +128,7 @@ public class HiveJdbcClient {
         Connection con = null;
         try {
             String login_config = System.getProperty("java.security.auth.login.config");
-            if (login_config.length() > 0) {
+            if (login_config != null && !login_config.isEmpty()) {
                 Subject sub = getSubject();
                 con = getConnection(sub);
             }
