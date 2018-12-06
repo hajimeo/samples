@@ -1,32 +1,33 @@
 /**
  * HOW TO:
- *
+ * <p>
  * 1) create login.conf file which contents is like below:
  * echo -e 'SampleClient {\n  com.sun.security.auth.module.Krb5LoginModule required\n  useTicketCache=true debug=true debugNative=true;\n};' > ./login.conf
- *
+ * <p>
  * 2) Copy necessary jar files in same directory as this code
  * _version=`hdp-select versions | sort -n | tail -n1`
  * cp /usr/hdp/current/hadoop-client/lib/commons-{configuration,logging,collections}-*.jar ./
  * cp /usr/hdp/current/hadoop-client/{hadoop-annotations-,hadoop-auth-,hadoop-common-}*${_version}.jar ./
  * cp /usr/hdp/current/hive-client/{lib,jdbc}/{hive-exec-,hive-jdbc-*-standalone}*.jar ./
  * -- core-site.xml         # probably don't need
- *
+ * <p>
  * May need /usr/hdp/current/hive-webhcat/share/webhcat/svr/lib/xercesImpl-2.9.1.jar for newer HDP 2.4.x
- *
+ * <p>
  * export CLASSPATH=`echo $(echo *.jar | tr ' ' ':'):.`
- *
+ * <p>
  * NOTE: HS2's jars can be used like below, but it won't help when troubleshooting classpath issue:
  * eval "export `cat /proc/$(cat /var/run/hive/hive-server.pid)/environ | tr '\0' '\n' | grep ^CLASSPATH`"
- *
+ * <p>
  * 3) Compile
- * javac Hive2KerberosTest.java
- *
+ * javac hadoop/Hive2KerberosTest.java
+ * <p>
  * 4) Run
  * (optional) kinit
- * java -Djava.security.auth.login.config=./login.conf -Dsun.security.krb5.debug=true Hive2KerberosTest "jdbc:hive2://`hostname -f`:10000/default;principal=hive/_HOST@EXAMPLE.COM"
+ * java -Djava.security.auth.login.config=./login.conf -Dsun.security.krb5.debug=true hadoop.Hive2KerberosTest "jdbc:hive2://`hostname -f`:10000/default;principal=hive/_HOST@EXAMPLE.COM"
  *
  * @see https://issues.apache.org/jira/secure/attachment/12633984/TestCase_HIVE-6486.java
  */
+package hadoop;
 
 import org.apache.hadoop.security.UserGroupInformation;
 
