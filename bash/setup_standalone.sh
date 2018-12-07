@@ -835,7 +835,7 @@ echo "Welcome $USER !"
 echo ""
 if [ "$USER" = "'${_user}'" ]; then
   echo "SSH login to a running container:"
-  docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sort | sed "s/^/  ssh root@/g"
+  docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort | sed "s/^/  ssh root@/g"
   echo ""
   if [ -x /usr/local/bin/setup_standalone.sh ]; then
     echo "To start a container (setup_standalone.sh -h for help):"
@@ -853,7 +853,7 @@ if [ "$USER" = "'${_user}'" ]; then
     echo ""
   fi
   echo "URLs (NOTE: need Proxy or Routing by using above command):"
-  for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale)" | sort`; do for _p in 10500 8080 7180; do if nc -z $_n $_p; then echo "  http://$_n:$_p/"; fi done done
+  for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort`; do for _p in 10500 8080 7180; do if nc -z $_n $_p; then echo "  http://$_n:$_p/"; fi done done
   echo ""
 fi
 if [ -z "$SHLVL" ] || [ "$SHLVL" = "1" ]; then
