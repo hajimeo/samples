@@ -44,7 +44,7 @@ function f_jargrep() {
     local _path="${2:-.}"
     local _cmd="jar -tf"
     which jar &>/dev/null || _cmd="less"
-    find -L ${_path%/} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c ''${_cmd}' {} | grep -w '${_class}' >&2 && echo {}'
+    find -L ${_path%/} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} | grep -w '${_class}' >&2 && echo {}"
 }
 
 function f_update_jar() {
