@@ -65,7 +65,7 @@ for l in sys.stdin:
 function jargrep() {
     local _cmd="jar -tf"
     which jar &>/dev/null || _cmd="less"
-    find -L ${2:-./} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c ''${_cmd}' {} | grep -wi '$1' && echo {}'
+    find -L ${2:-./} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} | grep -wi '$1' && echo {}"
 }
 function javaenvs() {
     local _port="${1}"
@@ -211,7 +211,7 @@ function backupC() {
 
 ## Work specific functions
 # copy script(s) into linux servers
-function asPupInst() {
+function asPubInst() {
     scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh root@192.168.6.160:/var/tmp/share/atscale/ &
     scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.162:/var/tmp/share/atscale/ &
     scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.163:/var/tmp/share/atscale/ &
