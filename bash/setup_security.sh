@@ -388,6 +388,7 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
     mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
     keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias hadoopAllCert -import -file ./server.${_domain_suffix#.}.crt -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD} -noprompt || return $?
     openssl pkcs12 -export -in ./server.${_domain_suffix#.}.crt -inkey ./server.${_domain_suffix#.}.key -certfile ./server.${_domain_suffix#.}.crt -out ./${g_KEYSTORE_FILE_P12} -passin "pass:${_password}" -passout "pass:${_password}" || return $?
+    [ -s ./${g_KEYSTORE_FILE} ] && mv -f ./${g_KEYSTORE_FILE} ./${g_KEYSTORE_FILE}.$$.bak
     keytool -importkeystore -srckeystore ./${g_KEYSTORE_FILE_P12} -srcstoretype pkcs12 -srcstorepass ${_password} -destkeystore ./${g_KEYSTORE_FILE} -deststoretype JKS -deststorepass ${_password} || return $?
 
     # This is for keytool
@@ -462,19 +463,20 @@ function _hadoop_ssl_config_update() {
 }
 
 function _hadoop_ssl_per_node() {
-    local _node="$1"
+    local _hostname="$1"
     local _java_home="$2"   # For ambari, using non OS java
     local _local_keystore_path="$3"
     local _domain_suffix="${4:-${r_DOMAIN_SUFFIX:-.`hostname -s`.localdomain}}"
+    local _group="${5:-hadoop}"
 
-    local _ssh="ssh -q root@${_node}"
+    local _ssh="ssh -q root@${_hostname}"
     local _keytool="keytool"
     [ -n "${_java_home}" ] && _keytool="${_java_home%/}/bin/keytool"
 
-    ${_ssh} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; groupadd hadoop &>/dev/null; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}" || return $?
+    ${_ssh} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; groupadd ${_group}; chown root:${_group} ${g_SERVER_KEY_LOCATION%/}" || return $?
     ${_ssh} "mkdir -m 755 -p ${g_CLIENT_KEY_LOCATION%/}"
-    scp ./${g_KEYSTORE_FILE} ./server.${_domain_suffix#.}.{crt,key} ./rootCA.pem root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
-    scp ./${g_CLIENT_TRUSTSTORE_FILE} root@${_node}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
+    scp ./${g_KEYSTORE_FILE} ./server.${_domain_suffix#.}.{crt,key} ./rootCA.pem root@${_hostname}:${g_SERVER_KEY_LOCATION%/}/ || return $?
+    scp ./${g_CLIENT_TRUSTSTORE_FILE} root@${_hostname}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
 
     # Step8 (optional): if the java default truststore (cacerts) path is given, also import the cert (and doesn't care if cert already exists)
     ${_ssh} "${_keytool} -delete -keystore /etc/pki/java/cacerts -alias hadoopRootCA -noprompt -storepass changeit &>/dev/null
@@ -487,43 +489,10 @@ ${_keytool} -import -keystore ${_java_home%/}/jre/lib/security/cacerts -alias ha
     # TODO: For ranger. if file exist, need to import the certificate. Also if not kerberos, two way SSL won't work because of non 'usr_client' extension
     ${_ssh} 'for l in `ls -d /usr/hdp/current/*/conf`; do ln -s '${g_CLIENT_TRUST_LOCATION%/}'/'${g_CLIENT_TRUSTSTORE_FILE}' ${l%/}/ranger-plugin-truststore.jks 2>/dev/null; done'
     ${_ssh} 'for l in `ls -d /usr/hdp/current/*/conf`; do ln -s '${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE}' ${l%/}/ranger-plugin-keystore.jks 2>/dev/null; done'
-    ${_ssh} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
+    ${_ssh} "chown root:${_group} ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
     #yum install ca-certificates -y
     ${_ssh} "which update-ca-trust && cp -f ${g_SERVER_KEY_LOCATION%/}/rootCA.pem /etc/pki/ca-trust/source/anchors/ && update-ca-trust force-enable && update-ca-trust extract && update-ca-trust check;"
     # ls -l /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt
-}
-
-function _hadoop_ssl_per_node_old() {
-    local _node="$1"
-    local _java_home="$2"
-    local _local_keystore_path="$3"
-    local _password="${4:-${g_DEFAULT_PASSWORD-hadoop}}"
-    local _ssh="ssh -q root@${_node}"
-
-    ${_ssh} "mkdir -m 750 -p ${g_SERVER_KEY_LOCATION%/}; chown root:hadoop ${g_SERVER_KEY_LOCATION%/}" || return $?
-    ${_ssh} "mkdir -m 755 -p ${g_CLIENT_KEY_LOCATION%/}"
-    scp ./${g_CLIENT_TRUSTSTORE_FILE} root@${_node}:${g_CLIENT_TRUST_LOCATION%/}/ || return $?
-
-    if [ ! -s "${_local_keystore_path}" ]; then
-        _info "${_local_keystore_path} doesn't exist in local, so that recreate and push to nodes..."
-        _hadoop_ssl_commands_per_node "$_node" "$_java_home" "${_password}"
-
-        # Step8 (optional): if the java default truststore (cacerts) path is given, also import the cert (and doesn't care if cert already exists)
-        ${_ssh} "${_java_home%/}/bin/keytool -delete -keystore /etc/pki/java/cacerts -alias hadoopRootCA -noprompt -storepass changeit;${_java_home%/}/bin/keytool -import -keystore /etc/pki/java/cacerts -alias hadoopRootCA -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
-        local _java_default_truststore_path="${_java_home%/}/jre/lib/security/cacerts"
-        if [ ! -z "${_java_default_truststore_path}" ]; then
-            ${_ssh} "${_java_home%/}/bin/keytool -delete -keystore ${_java_default_truststore_path} -alias hadoopRootCA -noprompt -storepass changeit;${_java_home%/}/bin/keytool -import -keystore ${_java_default_truststore_path} -alias hadoopRootCA -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass changeit"
-        fi
-    else
-        scp ./rootCA.pem ${_local_keystore_path} root@${_node}:${g_SERVER_KEY_LOCATION%/}/ || return $?
-    fi
-
-    # TODO: For ranger. if file exist, need to import the certificate. Also if not kerberos, two way SSL won't work because of non 'usr_client' extension
-    ${_ssh} 'for l in `ls -d /usr/hdp/current/*/conf`; do ln -s '${g_CLIENT_TRUST_LOCATION%/}'/'${g_CLIENT_TRUSTSTORE_FILE}' ${l%/}/ranger-plugin-truststore.jks 2>/dev/null; done'
-    ${_ssh} 'for l in `ls -d /usr/hdp/current/*/conf`; do ln -s '${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE}' ${l%/}/ranger-plugin-keystore.jks 2>/dev/null; done'
-    ${_ssh} "chown root:hadoop ${g_SERVER_KEY_LOCATION%/}/*;chmod 640 ${g_SERVER_KEY_LOCATION%/}/*;"
-    # yum -y install ca-certificates
-    ${_ssh} "which update-ca-trust && cp -f ${g_SERVER_KEY_LOCATION%/}/rootCA.pem /etc/pki/ca-trust/source/anchors/ && update-ca-trust force-enable && update-ca-trust extract && update-ca-trust check;"
 }
 
 function _hadoop_ssl_commands_per_node() {
