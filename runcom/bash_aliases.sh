@@ -85,7 +85,7 @@ function bar() {
 }
 # Start Jupyter Lab as service
 function jpl() {
-    local _dir="${1:-"$HOME/Documents"}"
+    local _dir="${1:-"."}"
     local _kernel_timeout="${2-10800}"
     local _shutdown_timeout="${3-115200}"
 
@@ -97,7 +97,7 @@ function jpl() {
     [[ "${_shutdown_timeout}" =~ ^[0-9]+$ ]] && echo "c.NotebookApp.shutdown_no_activity_timeout = ${_shutdown_timeout}" >> "${_conf}"
 
     echo "Redirecting STDOUT / STDERR into ${_log}" >&2
-    nohup jupyter lab --ip=`hostname -i` --no-browser --config="${_conf}" --notebook-dir="${_dir%/}" 2>&1 | tee "${_log}" | grep -m1 -oE "http://`hostname -i`:.+token=.+" &
+    nohup jupyter lab --ip=`hostname -I | cut -d ' ' -f1` --no-browser --config="${_conf}" --notebook-dir="${_dir%/}" 2>&1 | tee "${_log}" | grep -m1 -oE "http://`hostname -I | cut -d ' ' -f1`:.+token=.+" &
 }
 # Start Jupyter Lab with Aggregation template (and backup-ing)
 function jp() {
