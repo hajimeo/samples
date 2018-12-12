@@ -93,9 +93,9 @@ function p_support() {
     #echo " "
     #echo " "
 
-    echo "# Connection group"
+    echo "# Connection group (warehouse -> sql engine)"
     _find_and_cat "connection_groups.json" | python -m json.tool
-    echo "# Connection pool"
+    echo "# Connection pool (sql engine)"
     _find_and_cat "pool.json"   # check maxConnections, consecutiveFailures
     echo " "
     echo " "
@@ -131,9 +131,10 @@ function p_support() {
     rg -z -N --no-filename -g 'atscale_service.log' 'not expected' | tail -n 20
 
     echo " "
-    echo "# OutOfMemoryError in Engine logs"
-    rg -z -c 'OutOfMemoryError' -g 'engine.*log*'
+    echo "# OutOfMemoryError count in all logs"
+    rg -z -c 'OutOfMemoryError'
     echo " "
+    echo "# Last 10 OutOfMemoryError in engine logs"
     rg -z -N --no-filename 'OutOfMemoryError' -g 'engine.*log*' -B 1 | rg "^$_DATE_FORMAT" | sort | uniq | tail -n 10
 
     echo " "
@@ -350,6 +351,7 @@ function f_grep_multilines() {
     local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d,\\d+"}"
     local _how_many="${4:-1000}"
 
+    # not sure if rg sorts properly with --sort, so best effort.
     rg "(${_boundary_str}[^\n]+?${_str_in_1st_line}.+?)${_boundary_str}" -o -r '$1' \
         --multiline --multiline-dotall --no-line-number --no-filename -z \
         -g "${_glob}" --sort path -m ${_how_many}
@@ -359,7 +361,7 @@ function f_genLdapsearch() {
     local __doc__="Generate ldapsearch command from a json file"
     local _json_str="`_find_and_cat "directory_configurations.json" 2>/dev/null`"
     [ -z "${_json_str}" ] && return
-    [ "${_json_str}" = "[]" ] && return
+    [ "${_json_str}" = "[ ]" ] && return
     echo "${_json_str}" | python -c 'import sys,re,json
 a=json.loads(sys.stdin.read());l=a[0]
 p="ldaps" if "use_ssl" in l else "ldap"
@@ -454,6 +456,12 @@ function f_topSlowLogs() {
         # ([0-9]){2,4} didn't work also (my note) sed doesn't support \d
         rg -z -N --no-filename -g "${_glob}" -io "$_regex" | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
     fi
+}
+
+function f_appLogFindAppMaster() {
+    local __doc__="After yarn_app_logs_splitter, find which node was AppMaster. TODO: currently only MR and not showing host"
+    local _splitted_dir="${1:-.}"
+    rg -l 'Created MRAppMaster' "${_splitted_dir%/}/*.syslog"
 }
 
 function f_appLogContainersAndHosts() {

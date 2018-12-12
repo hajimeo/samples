@@ -379,7 +379,7 @@ def draw(df, width=16, x_col=0, x_colname=None):
         x_colname = df.columns[x_col]
     df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)
     # TODO: x axis doesn't show any legend
-    #if len(df) > (width * 2):
+    # if len(df) > (width * 2):
     #    interval = int(len(df) / (width * 2))
     #    labels = df[x_colname].tolist()
     #    lables = labels[::interval]
@@ -894,25 +894,50 @@ def gen_ldapsearch(ldap_json=None):
 
 def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
     """
-    Execute load_jsons and load_csvs
+    Execute loading functions (currently load_jsons and load_csvs)
     :param jsons_dir: (optional) Path to a directory which contains JSON files
     :param csvs_dir: (optional) Path to a directory which contains CSV files
     :return: void
     >>> pass    # test should be done in load_jsons and load_csvs
     """
+    # TODO: shouldn't have the default pathes, should separate business logic into a config file
     load_jsons(jsons_dir, connect())
     load_csvs(csvs_dir, connect())
 
 
 def analyze():
     """
-    Load data and does some simple analysis
+    TODO: Load data and does some simple analysis
+    Currently same as load()
     :return: void
     >>> pass    # test should be done in each function
     """
     update_check()
     load()
-    # TODO: add more (check version, changed config etc)
+    # TODO: find xml which contains UUID or caption/name. get_ipython does not work in python though
+    # TODO: output formatted json string (json.tool?) from a json file
+    # TODO: Updating Jupyter/pandas default
+    # if 'get_ipython' in locals():
+    #    # pd.options.display.xxxx
+    #    # get_ipython().system("find ./engine/aggregates -name '*.json' -ls")
+    # rg  'Cube name' -g 'project.xml'
+    """
+    select distinct b.cubeId, b.exceptionMessage, i.createdAt, i.updatedAt, i.id as instanceId, i.batchId, i.definitionId, i.isFullBuild, i.materializationId, i.statusId
+    , m.tableName, m.creationQueryId, d.baseType, d.planHash
+    --, ss.* 
+    from batches b 
+      join instances i on b.id = i.batchId
+      left join definitions d on d.latestInstanceId = i.id
+      left join materializations m on m.id = i.materializationId 
+    --  left join stats ss on i.id = ss.instanceId
+    --  left join statuses s on i.id=s.ownerId
+    --  left join statuses s on i.statusId=s.id 
+    where b.id = 'c4640f05-20f6-45cd-b26b-0a17d7dd9284'
+    and b.cubeId in ('0d289e63-8425-4324-4797-b3a9f7999b92')
+    and b.exceptionMessage is not NULL
+    and i.createdAt like '2018-12-09T1%'
+    order by i.updatedAt
+    """
     _err("Completed.")
 
 
@@ -961,7 +986,7 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
         return
     if int(remote_size) != int(local_size):
         _err("%s size is different between remote (%s KB) and local (%s KB)." % (
-                filename, int(remote_size / 1024), int(local_size / 1024)))
+            filename, int(remote_size / 1024), int(local_size / 1024)))
         if check_only:
             _err("To update, use 'ju.update()'\n")
             return True
@@ -972,6 +997,14 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
         f.write(remote_content)
     _err("%s was updated and back up is %s" % (filename, new_file))
     return
+
+
+def configure():
+    config_path = os.getenv('JN_UTILS_CONFIG', os.getenv('HOME') + os.path.sep + ".ju_config")
+    if os.path.exists(config_path) is False:
+        # Download the template or ask a few questions to create config file
+        pass
+    pass
 
 
 def help(func_name=None):
@@ -998,14 +1031,6 @@ def help(func_name=None):
         if callable(m) and hasattr(m, '__doc__') and bool(m.__doc__):
             print("    " + attr_str)
     print("For a function help, use 'ju.help(\"function_name\")'.")
-
-
-# TODO: find xml which contains UUID or caption/name. get_ipython does not work in python though
-# TODO: output formatted json string (json.tool?) from a json file
-# TODO: Updating Jupyter/pandas default
-# if 'get_ipython' in locals():
-#    # pd.options.display.xxxx
-#    # get_ipython().system("find ./engine/aggregates -name '*.json' -ls")
 
 
 if __name__ == '__main__':
