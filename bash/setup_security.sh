@@ -450,6 +450,7 @@ function _hadoop_ssl_config_update() {
     f_ambari_configs "mapred-site" "{\"mapreduce.jobhistory.http.policy\":\"HTTPS_ONLY\",\"mapreduce.jobhistory.webapp.https.address\":\"0.0.0.0:19888\"}" "$_ambari_host" "$_ambari_port"
     f_ambari_configs "yarn-site" "{\"yarn.http.policy\":\"HTTPS_ONLY\",\"yarn.nodemanager.webapp.https.address\":\"0.0.0.0:8044\"}" "$_ambari_host" "$_ambari_port"
     f_ambari_configs "tez-site" "{\"tez.runtime.shuffle.keep-alive.enabled\":\"true\"}" "$_ambari_host" "$_ambari_port"
+    #f_ambari_configs "hive-site" '{"hive.server2.use.SSL":"true", "hive.server2.keystore.path":"'${g_SERVER_KEY_LOCATION%/}'/'${g_KEYSTORE_FILE}'", "hive.server2.keystore.password":"'${_password}'"}' "$_ambari_host" "$_ambari_port" # Don't need to specify the truststore? also hive 1.x does not work with kerberos. HIVE-10048
 
     # TODO: https://docs.hortonworks.com/HDPDocuments/HDP2/HDP-2.6.2/bk_hdfs-administration/content/configuring_datanode_sasl.html for not using jsvc
     # If Ambari is 2.4.x or higher below works
