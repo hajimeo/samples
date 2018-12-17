@@ -45,7 +45,7 @@ if len(_ss_args) > 0:
     fi
 
     if nc -z localhost %_proxy_port%; then
-        _URL=""; [ -n "${_NAME}" ] && _URL="${_NAME}:10500"
+        _URL=""; [ -n "${_NAME}" ] && _URL="http://${_NAME}:10500"
         echo "If you are using VPN, paste below into *Mac* terminal to access web UIs:"
         echo "  open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://`hostname -I | cut -d" " -f1`:%_proxy_port% ${_URL}"
         echo ""
