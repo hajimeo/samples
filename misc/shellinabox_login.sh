@@ -25,7 +25,7 @@ for k, v in rs.iteritems():
     elif k in ["n", "v"]:
         _ss_args += "-%s %s " % (k, v[0])
 if len(_ss_args) > 0:
-    print("_SS_ARGS=\"%s\";_NAME=\"%s\"" % (_ss_args, _n))
+    print("_SS_ARGS=\\"%s\\";_NAME=\\"%s\\"" % (_ss_args, _n))
 '`"
         [ -n "${_CMD}" ] && eval "${_CMD}"
     else
