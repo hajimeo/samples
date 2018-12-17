@@ -3038,15 +3038,17 @@ function f_hostname_set() {
 function f_socks5_proxy() {
     local __doc__="Start Socks5 proxy (for websocket)"
     local _port="${1:-$((${r_PROXY_PORT:-28080} + 1))}" # 28081
+
     [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
     lsof -nPi:${_port} -s TCP:LISTEN | grep "^ssh" && return 0
 
+    apt-get install -y autossh || return $?
     f_useradd "socks5user" "socks5user" "Y" || return $?
 
     # TODO: currently using ssh
     touch /tmp/ssh_socks5.out
     chmod 777 /tmp/ssh_socks5.out
-    local _cmd="ssh -4gC2TxnNf -D${_port} socks5user@localhost &> /tmp/ssh_socks5.out"
+    local _cmd="autossh -4gC2TxnNf -D${_port} socks5user@localhost &> /tmp/ssh_socks5.out"
     eval "${_cmd}"
 
     if ! grep -qF "${_cmd}" /etc/rc.local; then
