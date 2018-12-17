@@ -216,7 +216,7 @@ function _gen_dockerFile() {
         mv -f ${_new_filepath} /tmp/${_new_filepath}.bak
     fi
 
-    curl -s --retry 3 "${_url}" -o ${_new_filepath}
+    curl -s -f --retry 3 "${_url}" -o ${_new_filepath} || return $?
 
     # make sure ssh key is set up to replace Dockerfile's _REPLACE_WITH_YOUR_PRIVATE_KEY_
     if [ -s $HOME/.ssh/id_rsa ]; then
@@ -504,7 +504,7 @@ function f_as_start() {
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
     [[ "${_restart}" =~ ^(y|Y) ]] && docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_stop -f"
     docker exec -d ${_name} bash -c "sudo -u ${_service} -i /usr/local/apache-hive/apache_hive.sh"
-    docker exec -it ${_name} bash -c "sudo -u ${_service} -i /usr/local/${_service}/bin/${_service}_start"
+    docker exec -it ${_name} bash -c "lsof -i:10516 || sudo -u ${_service} -i /usr/local/${_service}/bin/${_service}_start"
     # Update hostname if old hostname is given
     if [ -n "${_old_hostname}" ]; then
         # NOTE: At this moment, assuming only one postgresql version. Not using 'at' command as minimum time unit is minutes
@@ -610,7 +610,7 @@ function f_large_file_download() {
     fi
 
     _log "INFO" "Executing \"cur \"${_url}\" -o ${_tmp_dir%/}/${_file_name}\""
-    curl --retry 100 -C - "${_url}" -o "${_tmp_dir%/}/${_file_name}" || return $?
+    curl -f --retry 100 -C - "${_url}" -o "${_tmp_dir%/}/${_file_name}" || return $?
 }
 
 function f_docker_image_import() {
@@ -818,48 +818,21 @@ function f_shellinabox() {
         service shellinabox restart || return $?
     fi
 
-    if [ ! -s /usr/local/bin/shellinabox_login ]; then
-        # NOTE: Assuming socks5 proxy is running on localhost 28081
-        if [ ! -f /usr/local/bin/setup_standalone.sh ]; then
-            cp $BASH_SOURCE /usr/local/bin/setup_standalone.sh || return $?
-            _log "INFO" "$BASH_SOURCE is copied to /usr/local/bin/setup_standalone.sh. To avoid confusion, please delete .sh one"
-        fi
-        chown root:docker /usr/local/bin/setup_standalone*
-        chmod 750 /usr/local/bin/setup_standalone*
-
-        # Finding Network Address from docker. Seems Mac doesn't care if IP doesn't end with .0
-        local _net_addr="`docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])"`"
-
-        echo '#!/usr/bin/env bash
-echo "Welcome $USER !"
-echo ""
-if [ "$USER" = "'${_user}'" ]; then
-  echo "SSH login to a running container:"
-  docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort | sed "s/^/  ssh root@/g"
-  echo ""
-  if [ -x /usr/local/bin/setup_standalone.sh ]; then
-    echo "To start a container (setup_standalone.sh -h for help):"
-    (docker images --format "{{.Repository}}";docker ps -a --format "{{.Names}}" --filter "status=exited") | grep -E "^atscale" | sort | uniq | sed "s/^/  setup_standalone.sh -n /g"
-    echo ""
-  fi
-  if nc -z localhost '${_proxy_port}'; then
-    echo "If you are using VPN, paste below into *Mac* terminal to access web UIs:"
-    echo "  open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://`hostname -I | cut -d" " -f1`:'${_proxy_port}'"
-    echo ""
-  fi
-  if [ -n "'${_net_addr}'" ]; then
-    echo "If not using VPN, route command example for Mac:"
-    echo "  sudo route add -net '${_net_addr}' `hostname -I | cut -d" " -f1`"
-    echo ""
-  fi
-  echo "URLs (NOTE: need Proxy or Routing by using above command):"
-  for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort`; do for _p in 10500 8080 7180; do if nc -z $_n $_p; then echo "  http://$_n:$_p/"; fi done done
-  echo ""
-fi
-if [ -z "$SHLVL" ] || [ "$SHLVL" = "1" ]; then
-  /usr/bin/env bash
-fi' > /usr/local/bin/shellinabox_login
+    # NOTE: Assuming socks5 proxy is running on localhost 28081
+    if [ ! -f /usr/local/bin/setup_standalone.sh ]; then
+        cp $BASH_SOURCE /usr/local/bin/setup_standalone.sh || return $?
+        _log "INFO" "$BASH_SOURCE is copied to /usr/local/bin/setup_standalone.sh. To avoid confusion, please delete .sh one"
     fi
+    chown root:docker /usr/local/bin/setup_standalone*
+    chmod 750 /usr/local/bin/setup_standalone*
+
+    # Finding Network Address from docker. Seems Mac doesn't care if IP doesn't end with .0
+    local _net_addr="`docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])"`"
+
+    curl -s -f --retry 3 -o /usr/local/bin/shellinabox_login https://raw.githubusercontent.com/hajimeo/samples/master/misc/shellinabox_login.sh || return $?
+    sed -i "s/%_user%/${_user}/g" /usr/local/bin/shellinabox_login
+    sed -i "s/%_proxy_port%/${_proxy_port}/g" /usr/local/bin/shellinabox_login
+    sed -i "s@%_net_addr%@${_net_addr}@g" /usr/local/bin/shellinabox_login
     chmod a+x /usr/local/bin/shellinabox_login
 
     sleep 1
