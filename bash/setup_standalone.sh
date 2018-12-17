@@ -166,6 +166,7 @@ function f_update_hosts_file_by_fqdn() {
             _log "TODO" "%docker ALL=(ALL) NOPASSWD: /etc/init.d/dnsmasq reload"
             /etc/init.d/dnsmasq reload
         fi
+        sleep 1
     fi
 }
 
@@ -452,13 +453,18 @@ function f_container_ssh_config() {
     local _pub_key="$3"
 
     # ssh -q -oBatchMode=yes ${_name} echo && return 0
+    if [ -z "${_name}" ]; then
+        _log "ERROR" "Need a container name to setup password less ssh"
+        return 1
+    fi
+
     [ -z "${_key}" ] && [ -r ~/.ssh/id_rsa ] && _key=~/.ssh/id_rsa
     [ -z "${_pub_key}" ] && [ -r ~/.ssh/id_rsa.pub ] && _pub_key=~/.ssh/id_rsa.pub
 
     docker exec -it ${_name} bash -c "[ -f /root/.ssh/authorized_keys ] || ( install -D -m 600 /dev/null /root/.ssh/authorized_keys && chmod 700 /root/.ssh )"
     docker exec -it ${_name} bash -c "[ -f /root/.ssh/id_rsa.orig ] && exit; [ -f /root/.ssh/id_rsa ] && mv /root/.ssh/id_rsa /root/.ssh/id_rsa.orig; echo \"`cat ${_key}`\" > /root/.ssh/id_rsa; chmod 600 /root/.ssh/id_rsa;echo \"`cat ${_pub_key}`\" > /root/.ssh/id_rsa.pub; chmod 644 /root/.ssh/id_rsa.pub"
     docker exec -it ${_name} bash -c "grep -q \"^`cat ${_pub_key}`\" /root/.ssh/authorized_keys || echo \"`cat ${_pub_key}`\" >> /root/.ssh/authorized_keys"
-    docker exec -it ${_name} bash -c "[ -f /root/.ssh/config ] || echo -e \"Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\" > /root/.ssh/config"
+    docker exec -it ${_name} bash -c "[ -f /root/.ssh/config ] || echo -e \"Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\n  LogLevel ERROR\" > /root/.ssh/config"
 }
 
 function f_as_setup() {
@@ -699,31 +705,6 @@ function f_docker_image_import() {
     fi
 }
 
-function f_ssh_config() {
-    local __doc__="Copy keys and setup authorized key to a node (container)"
-    local _name="${1}"
-    local _key="$2"
-    local _pub_key="$3"
-    # ssh -q -oBatchMode=yes ${_name} echo && return 0
-
-    if [ -z "${_name}" ]; then
-        _log "ERROR" "Need a container name to setup password less ssh"
-        return 1
-    fi
-
-    if [ -z "${_key}" ] && [ -r ~/.ssh/id_rsa ]; then
-        _key=~/.ssh/id_rsa
-    fi
-
-    if [ -z "${_pub_key}" ] && [ -r ~/.ssh/id_rsa.pub ]; then
-        _pub_key=~/.ssh/id_rsa.pub
-    fi
-
-    docker exec -it ${_name} bash -c "[ -f /root/.ssh/authorized_keys ] || ( install -D -m 600 /dev/null /root/.ssh/authorized_keys && chmod 700 /root/.ssh )"
-    docker exec -it ${_name} bash -c "[ -f /root/.ssh/id_rsa.orig ] && exit; [ -f /root/.ssh/id_rsa ] && mv /root/.ssh/id_rsa /root/.ssh/id_rsa.orig; echo \"`cat ${_key}`\" > /root/.ssh/id_rsa; chmod 600 /root/.ssh/id_rsa;echo \"`cat ${_pub_key}`\" > /root/.ssh/id_rsa.pub; chmod 644 /root/.ssh/id_rsa.pub"
-    docker exec -it ${_name} bash -c "grep -q \"^`cat ${_pub_key}`\" /root/.ssh/authorized_keys || echo \"`cat ${_pub_key}`\" >> /root/.ssh/authorized_keys"
-    docker exec -it ${_name} bash -c "[ -f /root/.ssh/config ] || echo -e \"Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\" > /root/.ssh/config"
-}
 
 function _cdh_setup() {
     local _container_name="${1:-"atscale-cdh"}"
@@ -733,7 +714,7 @@ function _cdh_setup() {
     docker exec -dt ${_container_name} bash -c 'yum install -y yum-plugin-ovl scp curl unzip tar wget openssl python nscd yum-utils sudo which vim net-tools strace lsof tcpdump fuse sshfs nc rsync bzip2 bzip2-libs'
     _log "INFO" "Customising ${_container_name} ..."
     f_container_misc "${_container_name}"
-    f_ssh_config "${_container_name}"
+    f_container_ssh_config "${_container_name}"
     docker exec -it ${_container_name} bash -c 'sed -i_$(date +"%Y%m%d%H%M%S") "s/cloudera-quickstart-init//" /usr/bin/docker-quickstart'
     docker exec -it ${_container_name} bash -c 'sed -i -r "/hbase-|oozie|sqoop2-server|solr-server|exec bash/d" /usr/bin/docker-quickstart'
     docker exec -it ${_container_name} bash -c 'sed -i "s/ start$/ \$1/g" /usr/bin/docker-quickstart'
