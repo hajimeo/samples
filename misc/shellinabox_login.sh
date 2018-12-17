@@ -54,7 +54,7 @@ if len(_ss_args) > 0:
     print("setup_standalone.sh %s && _NAME='%s'" % (_ss_args, _n))
 '`"
     if [ -n "${_CMD}" ]; then
-      echo "${_CMD}"
+      echo "# ${_CMD}"
       eval "${_CMD}"
       if [ -n "${_NAME}" ]; then
         echo ""
