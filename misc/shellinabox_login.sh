@@ -54,10 +54,10 @@ if len(_ss_args) > 0:
     print("setup_standalone.sh %s && _NAME='%s'" % (_ss_args, _n))
 '`"
     if [ -n "${_CMD}" ]; then
-      echo ""
-      echo "Starting/Creating container ${_NAME} ..."
+      echo "${_CMD}"
       eval "${_CMD}"
       if [ -n "${_NAME}" ]; then
+        echo ""
         ssh root@${_NAME}
         exit $?
       fi
