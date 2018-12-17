@@ -26,7 +26,7 @@ if [ "$USER" = "%_user%" ]; then
   fi
 
   if [ -n "%_net_addr%" ]; then
-    echo "If not using VPN, route command example for Mac:"
+    echo "If not using VPN, a route command example for Mac:"
     echo "  sudo route add -net %_net_addr% `hostname -I | cut -d" " -f1`"
     echo ""
   fi
