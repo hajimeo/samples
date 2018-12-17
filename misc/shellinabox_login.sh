@@ -7,14 +7,16 @@ echo ""
 
 # If the logged in user is an expected user, show more information.
 if [ "$USER" = "%_user%" ]; then
-  echo "SSH login to a running container:"
-  docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort | sed "s/^/  ssh root@/g"
-  echo ""
-
-  if [ -x /usr/local/bin/setup_standalone.sh ]; then
-    echo "To start a container (setup_standalone.sh -h for help):"
-    (docker images --format "{{.Repository}}";docker ps -a --format "{{.Names}}" --filter "status=exited") | grep -E "^atscale" | sort | uniq | sed "s/^/  setup_standalone.sh -n /g"
+  if [[ ! "$SHELLINABOX_URL" =~ \? ]]; then
+    echo "SSH login to a running container:"
+    docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort | sed "s/^/  ssh root@/g"
     echo ""
+
+    if [ -x /usr/local/bin/setup_standalone.sh ]; then
+      echo "To start a container (setup_standalone.sh -h for help):"
+      (docker images --format "{{.Repository}}";docker ps -a --format "{{.Names}}" --filter "status=exited") | grep -E "^atscale" | sort | uniq | sed "s/^/  setup_standalone.sh -n /g"
+      echo ""
+    fi
   fi
 
   if nc -z localhost %_proxy_port%; then
