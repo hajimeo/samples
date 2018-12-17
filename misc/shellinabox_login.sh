@@ -31,7 +31,7 @@ if [ "$USER" = "%_user%" ]; then
     echo ""
   fi
 
-  echo "URLs (NOTE: need Proxy or Routing by using above command):"
+  echo "URLs (NOTE: need Proxy or Routing by using one of above commands):"
   for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort`; do for _p in 10500 8080 7180; do if nc -z $_n $_p; then echo "  http://$_n:$_p/"; fi done done
   echo ""
 
@@ -56,6 +56,7 @@ if len(_ss_args) > 0:
     print("setup_standalone.sh %s && _NAME='%s'" % (_ss_args, _n))
 '`"
     if [ -n "${_CMD}" ]; then
+      echo ""
       echo "# ${_CMD}"
       eval "${_CMD}"
       if [ -n "${_NAME}" ]; then
