@@ -7,35 +7,6 @@ echo ""
 
 # If the logged in user is an expected user, show more information.
 if [ "$USER" = "%_user%" ]; then
-  # Note sure if this env is officially supported, but Ubuntu's 2.19 has this
-  if [[ "$SHELLINABOX_URL" =~ \? ]]; then
-    _CMD="`python -c 'import os
-try:
-    from urllib import parse
-except ImportError:
-    import urlparse as parse
-url = os.environ["SHELLINABOX_URL"]
-rs = parse.parse_qs(parse.urlsplit(url).query)
-_ss_args = ""
-_n = ""
-for k, v in rs.iteritems():
-    if k == "n": _n=v[0]
-    if k in ["c", "N"]:
-        _ss_args += "-%s " % (k)
-    elif k in ["n", "v"]:
-        _ss_args += "-%s %s " % (k, v[0])
-if len(_ss_args) > 0:
-    print("setup_standalone.sh %s && _NAME='%s'" % (_ss_args, _n))
-'`"
-    if [ -n "${_CMD}" ]; then
-      eval "${_CMD}"
-      if [ -n "${_NAME}" ]; then
-        ssh root@${_NAME}
-        exit $?
-      fi
-    fi
-  fi
-
   echo "SSH login to a running container:"
   docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort | sed "s/^/  ssh root@/g"
   echo ""
@@ -61,6 +32,37 @@ if len(_ss_args) > 0:
   echo "URLs (NOTE: need Proxy or Routing by using above command):"
   for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort`; do for _p in 10500 8080 7180; do if nc -z $_n $_p; then echo "  http://$_n:$_p/"; fi done done
   echo ""
+
+  # Note sure if this env is officially supported, but Ubuntu's 2.19 has this
+  if [[ "$SHELLINABOX_URL" =~ \? ]]; then
+    _CMD="`python -c 'import os
+try:
+    from urllib import parse
+except ImportError:
+    import urlparse as parse
+url = os.environ["SHELLINABOX_URL"]
+rs = parse.parse_qs(parse.urlsplit(url).query)
+_ss_args = ""
+_n = ""
+for k, v in rs.iteritems():
+    if k == "n": _n=v[0]
+    if k in ["c", "N"]:
+        _ss_args += "-%s " % (k)
+    elif k in ["n", "v"]:
+        _ss_args += "-%s %s " % (k, v[0])
+if len(_ss_args) > 0:
+    print("setup_standalone.sh %s && _NAME='%s'" % (_ss_args, _n))
+'`"
+    if [ -n "${_CMD}" ]; then
+      echo ""
+      echo "Starting/Creating container ${_NAME} ..."
+      eval "${_CMD}"
+      if [ -n "${_NAME}" ]; then
+        ssh root@${_NAME}
+        exit $?
+      fi
+    fi
+  fi
 fi
 
 if [ -z "$SHLVL" ] || [ "$SHLVL" = "1" ]; then
