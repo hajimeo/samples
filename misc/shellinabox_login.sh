@@ -17,6 +17,10 @@ if [ "$USER" = "%_user%" ]; then
       (docker images --format "{{.Repository}}";docker ps -a --format "{{.Names}}" --filter "status=exited") | grep -E "^atscale" | sort | uniq | sed "s/^/  setup_standalone.sh -n /g"
       echo ""
     fi
+
+    echo "URLs (NOTE: need Proxy or Routing by using one of below commands):"
+    for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort`; do for _p in 10500 8080 7180; do if nc -z $_n $_p; then echo "  http://$_n:$_p/"; fi done done
+    echo ""
   fi
 
   if nc -z localhost %_proxy_port%; then
@@ -30,10 +34,6 @@ if [ "$USER" = "%_user%" ]; then
     echo "  sudo route add -net %_net_addr% `hostname -I | cut -d" " -f1`"
     echo ""
   fi
-
-  echo "URLs (NOTE: need Proxy or Routing by using one of above commands):"
-  for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort`; do for _p in 10500 8080 7180; do if nc -z $_n $_p; then echo "  http://$_n:$_p/"; fi done done
-  echo ""
 
   # Note sure if this env is officially supported, but Ubuntu's 2.19 has this
   if [[ "$SHELLINABOX_URL" =~ \? ]]; then
