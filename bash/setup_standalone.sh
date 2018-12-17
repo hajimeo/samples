@@ -161,7 +161,14 @@ function f_update_hosts_file_by_fqdn() {
     fi
 
     # TODO: this won't work with webuser, but at least will ask password for super user
-    [ -s /etc/init.d/dnsmasq ] && /etc/init.d/dnsmasq reload
+    if [ -s /etc/init.d/dnsmasq ]; then
+        if grep -qF 'NOPASSWD: /etc/init.d/dnsmasq reload' /etc/sudoers; then
+            sudo /etc/init.d/dnsmasq reload
+        else
+            _log "TODO" "%docker ALL=(ALL) NOPASSWD: /etc/init.d/dnsmasq reload"
+            /etc/init.d/dnsmasq reload
+        fi
+    fi
 }
 
 function f_update_hosts_file() {
