@@ -2945,6 +2945,7 @@ function _copy_auth_keys_to_containers() {
         echo "Host node* atscale* *.localdomain
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
+  LogLevel ERROR
   User root" > /tmp/ssh_config_$$
     fi
     scp -q /tmp/ssh_config_$$ root@${_hostname}:/root/.ssh/config
@@ -3005,6 +3006,7 @@ function f_ssh_setup() {
         echo "Host node* atscale* *.localdomain
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
+  LogLevel ERROR
   User root" > $HOME/.ssh/config
     fi
 
