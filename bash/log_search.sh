@@ -248,13 +248,13 @@ function f_checkResultSize() {
     cat /tmp/f_checkResultSize_$$.out | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
     echo ' '
     echo "### Slow query (datetime|queryId|size|time) ###############################################"
-    cat /tmp/f_checkResultSize_$$.out | grep ' s$' | sort -t '|' -nk4 | tail -n${_n} | tr '|' '\t'
+    (cat /tmp/f_checkResultSize_$$.out | grep ' s$' | sort -t '|' -nk4; cat /tmp/f_checkResultSize_$$.out | grep ' ks$' | sort -t '|' -nk4) | tail -n${_n} | tr '|' '\t'
     echo " "
     ls -lh /tmp/f_checkResultSize_$$.out
 }
 
 function f_checkMaterializeWorkers() {
-    local __doc__="Check Materialization worker size (datetime, queryId, size, time)"
+    local __doc__="Check Materialization worker size (datetime, size)"
     local _date_regex="${1}"    # No need ^
     local _glob="${2:-debug*.log*}" # As TRACE log, needs debug log
     local _n="${3:-20}"
@@ -277,6 +277,7 @@ function f_checkMaterializeWorkers() {
     cat /tmp/f_checkMaterializeWorkers_$$.out | grep -v '|0$' | sort -t '|' -nk2 | tail -n${_n} | tr '|' '\t'
     echo " "
     ls -lh /tmp/f_checkMaterializeWorkers_$$.out
+    # NOTE: to get the queryId: AggregateInstanceMaterializerWorker - Submitted aggregate creation query with ID: [UUID]
 }
 
 function f_failedQueries() {
@@ -286,12 +287,12 @@ function f_failedQueries() {
     local _n="${3:-20}"
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
-    rg -z -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ Logging query failure.+ time = ([^,]+)," -r '${1}|${2}|${3}' | sort -n | uniq > /tmp/f_failedQueries_$$.out
+    rg -z -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ QueryFailedEvent.+ time = ([^,]+)," -r '${1}|${2}|${3}' | sort -n | uniq > /tmp/f_failedQueries_$$.out
     echo "### histogram (time vs failed query count) ################################################"
     rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}?).*\|([^|]+)\|([^|]+)" -r '${1}T${2}' /tmp/f_failedQueries_$$.out | bar_chart.py
     echo ' '
     echo "### Slow failed query (datetime|queryId|time) #############################################"
-    cat /tmp/f_failedQueries_$$.out | grep ' s$' | sort -t '|' -nk3 | tail -n${_n} | tr '|' '\t'
+    (cat /tmp/f_failedQueries_$$.out | grep ' s$' | sort -t '|' -nk3; cat /tmp/f_failedQueries_$$.out | grep ' ks$' | sort -t '|' -nk3) | tail -n${_n} | tr '|' '\t'
     echo " "
     ls -lh /tmp/f_failedQueries_$$.out
 }
