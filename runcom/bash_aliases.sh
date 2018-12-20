@@ -99,70 +99,19 @@ function jpl() {
     echo "Redirecting STDOUT / STDERR into ${_log}" >&2
     nohup jupyter lab --ip=`hostname -I | cut -d ' ' -f1` --no-browser --config="${_conf}" --notebook-dir="${_dir%/}" 2>&1 | tee "${_log}" | grep -m1 -oE "http://`hostname -I | cut -d ' ' -f1`:.+token=.+" &
 }
-# Start Jupyter Lab with Aggregation template (and backup-ing)
-function jp() {
-    local _id="${1}"    # eg: case id
-    local _backup_dir="${2-$HOME/backup/jupyter-notebook}"
-    local _template="${3-Aggregation.ipynb}"
-    local _sleep="${4:-180}"
-    local _port="${5:-8889}"
-
-    if [ -n "${_backup_dir}" ] && [ ! -d "${_backup_dir}" ]; then
-        mkdir -p "${_backup_dir}" || return 11
-    fi
-
-    [ -n "${_id}" ] && _id="_${_id}"
-
-    if [ -d "${_backup_dir}" ]; then
-        # If I *never* setup template .py, use the backup one. see http://ipython.org/ipython-doc/1/config/overview.html#startup-files
-        if [ ! -f $HOME/.ipython/profile_default/startup/${_template%.*}.py ] && [ -s ${_backup_dir%/}/${_template%.*}.py ]; then
-            cp ${_backup_dir%/}/${_template%.*}.py $HOME/.ipython/profile_default/startup/${_template%.*}.py
-        fi
-
-        # If template .ipynb file already exist and Trash is enabled, move to trash
-        [ -s ./${_template%.*}${_id}.ipynb ] && [ -d $HOME/.Trash ] && mv ./${_template%.*}${_id}.ipynb $HOME/.Trash/
-        # If A template exist in the backup dir, copy it into current directory
-        [ -s "${_backup_dir%/}/${_template}" ] && cp -f "${_backup_dir%/}/${_template}" ./${_template%.*}${_id}.ipynb
-
-        while true; do
-            sleep ${_sleep}
-            if [ 0 -lt `ls -1 ./*.ipynb 2>/dev/null | wc -l` ]; then
-                rsync -av --exclude="Untitled.ipynb" ./*.ipynb ${_backup_dir%/}/ || break
-                # TODO: if no ipynb file to backup, should break?
-            fi
-            if ! lsof -ti:${_port} &>/dev/null; then
-                if [ -d $HOME/.Trash ]; then
-                    mv -f ${_template%.*}${_id}.ipynb $HOME/.Trash/
-                else
-                    mv -f ${_template%.*}${_id}.ipynb /tmp/
-                fi
-                break
-            fi
-        done &
-    fi
-
-    jupyter lab --ip='localhost' --port=${_port} &
-}
 # Mac only: Start Google Chrome in incognito with proxy
 function chromep() {
     local _host_port="${1:-"192.168.6.162:28081"}"
     local _url=${2}
+    local _port=${3:-28081}
 
     local _host="${_host_port}"
-    local _port="28081"
     if [[ "${_host_port}" =~ ^([0-9.]+):([0-9]+)$ ]]; then
         _host="${BASH_REMATCH[1]}"
         _port="${BASH_REMATCH[2]}"
     fi
-        local _port=${3:-28081}
     [ ! -d $HOME/.chromep/${_host}_${_port} ] && mkdir -p $HOME/.chromep/${_host}_${_port}
-    if [ -n "${_url}" ]; then
-        if [[ ! "${_url}" =~ ^http ]]; then
-            _url="--app=http://${_url}"
-        else
-            _url="--app=${_url}"
-        fi
-    fi
+    [ -n "${_url}" ] && [[ ! "${_url}" =~ ^http ]] && _url="http://${_url}"
     #nohup "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --user-data-dir=$HOME/.chromep/${_host}_${_port} --proxy-server="socks5://${_host}:${_port}" ${_url} &>/tmp/chrome.out &
     open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/${_host}_${_port} --proxy-server=socks5://${_host}:${_port} ${_url}
     echo 'open -na "Google Chrome" --args --user-data-dir=$(mktemp -d) --proxy-server=socks5://'${_host}':'${_port}' '${_url}

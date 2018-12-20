@@ -280,7 +280,7 @@ function f_checkMaterializeWorkers() {
 }
 
 function f_failedQueries() {
-    local __doc__="Get Logging query failures (datetime, queryId, time)"
+    local __doc__="Get 'Logging query failures' (datetime, queryId, time)"
     local _date_regex="${1}"    # No need ^
     local _glob="${2:-engine.*log*}"
     local _n="${3:-20}"
@@ -342,10 +342,11 @@ function f_list_queries() {
     local _date_regex="$1"
     local _glob="${2:-"engine.*log*"}"
     rg -z -N --no-filename "^${_date_regex}.* INFO .+queryId=.+ Received (SQL|Analysis) [Qq]uery" -g "${_glob}" | sort
+    # TODO: Query part core physical plan
 }
 
 function f_grep_multilines() {
-    local __doc__="Multiline search with 'rg'. TODO: dot and brace can't be used in _keyword"
+    local __doc__="Multiline search with 'rg'. TODO: dot and brace can't be used in _str_in_1st_line"
     local _str_in_1st_line="$1"         # TODO: At this moment, grep-ing lines which *first* line contain this string
     local _glob="${2:-"debug.*log*"}"   # TODO: If glob matches multiple files, the result might not be sorted in right order
     local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d,\\d+"}"

@@ -903,41 +903,6 @@ def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
     # TODO: shouldn't have the default pathes, should separate business logic into a config file
     load_jsons(jsons_dir, connect())
     load_csvs(csvs_dir, connect())
-
-
-def analyze():
-    """
-    TODO: Load data and does some simple analysis
-    Currently same as load()
-    :return: void
-    >>> pass    # test should be done in each function
-    """
-    update_check()
-    load()
-    # TODO: find xml which contains UUID or caption/name. get_ipython does not work in python though
-    # TODO: output formatted json string (json.tool?) from a json file
-    # TODO: Updating Jupyter/pandas default
-    # if 'get_ipython' in locals():
-    #    # pd.options.display.xxxx
-    #    # get_ipython().system("find ./engine/aggregates -name '*.json' -ls")
-    # rg  'Cube name' -g 'project.xml'
-    """
-    select distinct b.cubeId, b.exceptionMessage, i.createdAt, i.updatedAt, i.id as instanceId, i.batchId, i.definitionId, i.isFullBuild, i.materializationId, i.statusId
-    , m.tableName, m.creationQueryId, d.baseType, d.planHash
-    --, ss.* 
-    from batches b 
-      join instances i on b.id = i.batchId
-      left join definitions d on d.latestInstanceId = i.id
-      left join materializations m on m.id = i.materializationId 
-    --  left join stats ss on i.id = ss.instanceId
-    --  left join statuses s on i.id=s.ownerId
-    --  left join statuses s on i.statusId=s.id 
-    where b.id = 'c4640f05-20f6-45cd-b26b-0a17d7dd9284'
-    and b.cubeId in ('0d289e63-8425-4324-4797-b3a9f7999b92')
-    and b.exceptionMessage is not NULL
-    and i.createdAt like '2018-12-09T1%'
-    order by i.updatedAt
-    """
     _err("Completed.")
 
 
@@ -1000,6 +965,7 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
 
 
 def configure():
+    # TODO:
     config_path = os.getenv('JN_UTILS_CONFIG', os.getenv('HOME') + os.path.sep + ".ju_config")
     if os.path.exists(config_path) is False:
         # Download the template or ask a few questions to create config file
