@@ -111,9 +111,9 @@ g_DOMAIN_SUFFIX=".localdomain"
 g_APT_UPDATE_DONE=""
 g_HDP_NETWORK="hdp"
 g_CENTOS_VERSION="7.5.1804"
-g_AMBARI_VERSION="2.7.1.0"  # TODO: need to update Ambari version manually
+g_AMBARI_VERSION="2.7.3.0"  # TODO: need to update Ambari version manually
 g_AMBARI_PORT="8080"
-g_STACK_VERSION="2.6"       # Also need to update in case hdp_urlinfo.json doesn't work
+g_STACK_VERSION="3.0"       # Also need to update in case hdp_urlinfo.json doesn't work
 g_JDK_FILE="jdk-8u112-linux-x64.tar.gz" # Also need to update when HWX updates JDK
 
 __PID="$$"
