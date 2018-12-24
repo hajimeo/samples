@@ -18,12 +18,16 @@ function usage() {
     echo "$BASH_SOURCE
 This script is for building a small docker container for testing an application in dev environment.
 
-CREATE CONTAINER (-c):
+CREATE CONTAINER:
     -c [-v <version>|-m <image name>] [-n <container name>]
-        -v, -m, and -n are optional
-        <version> is such as ${_VERSION}
-        <image name> is an already saved image name
-        <container name> is a container name = hostname
+        Strict mode to create a container (not image). If a container exists, this script fails.
+        -v, -m, and -n are optional.
+        <version> in -v is such as ${_VERSION}.
+        <image name> in -m is an already saved image name.
+        <container name> in -n is a container name = hostname. If not specified, uses some random name.
+  OR
+    -v <version>|-m <image name>|-N -n <container name>
+        If -v or -m or -N with -n <container name>, if the container does't exist, it creates a new container.
   OR
     . $BASH_SOURCE
     f_install_as <name> <version> '' '' '' <install opts>
@@ -31,6 +35,7 @@ CREATE CONTAINER (-c):
 START CONTAINER:
     -n <container name>     <<< no '-c'
         NOTE: If *exactly* same name image exists, even no -c, this creates a container from that image.
+        Otherwise, if container does not exist and no -c, -m, -v, or -N, the script fails with error.
 
 SAVE CONTAINER AS IMAGE:
     -s -n <container_name>
@@ -51,11 +56,6 @@ OTHERS (normally you don't need to use):
     -P
         Experimental.
         Using with -c, docker run command uses port forwarding.
-
-    -R
-        Experimental.
-        Force reusing an image. Default is not re-using image and create a container from base.
-        If this option is used, if similar image name exist, will try creating a container from that image.
 
     -S
         Use with -c, -n, -v to stop any other port conflicting containers.
@@ -82,11 +82,11 @@ _PORTS="${_PORTS-"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"}"
 _REMOTE_REPO="${_REMOTE_REPO-"http://192.168.6.162/${_SERVICE}/"}"                  # Curl understandable string
 #_CUSTOM_NETWORK="hdp"
 
-_CREATE_AND_SETUP=false
+_CREATE_CONTAINER=false
+_CREATE_OR_START=false
 _DOCKER_PORT_FORWARD=false
 _DOCKER_STOP_OTHER=false
 _DOCKER_SAVE=false
-_DOCKER_REUSE_IMAGE=false
 _AS_NO_INSTALL_START=false
 _SUDO_SED=false
 _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
@@ -242,7 +242,7 @@ function f_docker_base_create() {
     local _os_ver_num="${3:-${_OS_VERSION}}"
     local _force_build="${4}"
 
-    local _base="${_IMAGE_NAME}:$_os_ver_num"
+    local _base="${_BASE_IMAGE}:$_os_ver_num"
 
     if [[ ! "$_force_build" =~ ^(y|Y) ]]; then
         local _existing_id="`docker images -q ${_base}`"
@@ -946,11 +946,14 @@ main() {
         mkdir -p -m 777 "${_WORK_DIR%/}/${_SERVICE}" || return $?
     fi
 
-    local _ver_num="$(echo "${_VERSION}" | sed 's/[^0-9]//g')"
-    if [ -z "$_NAME" ] && [ -n "$_IMAGE_NAME" ]; then
-        _NAME="${_IMAGE_NAME}"
-    elif [ -z "$_NAME" ] && [ -n "$_VERSION" ]; then
-        _NAME="${_SERVICE}${_ver_num}"
+    if [ -z "${_NAME}" ]; then
+        if [ -n "$_IMAGE_NAME" ]; then
+            _NAME="${_IMAGE_NAME}"
+        elif [ -n "$_VERSION" ]; then
+            _NAME="${_SERVICE}$(echo "${_VERSION}" | sed 's/[^0-9]//g')"
+        elif $_AS_NO_INSTALL_START; then
+            _NAME="test-$(date +"%y%m%d%H%M%S")"
+        fi
     fi
 
     # It's hard to access container directly on Mac, so adding port forwarding
@@ -959,51 +962,28 @@ main() {
         _ports=${_PORTS}
     fi
 
-    if $_CREATE_AND_SETUP; then
+    if $_CREATE_CONTAINER || $_CREATE_OR_START; then
         _log "INFO" "Creating docker container (and the base image if it's not existed)"
         local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_BASE_IMAGE}:${_OS_VERSION}"`"
         if [ ! -z "$_existing_img" ]; then
-            _log "INFO" "${_BASE_IMAGE} already exists so that skipping image creating part..."
+            _log "INFO" "Image ${_BASE_IMAGE} already exists so that skipping image creating part..."
         else
             _log "INFO" "Creating a docker image ${_BASE_IMAGE}..."
             f_docker_base_create || return $?
         fi
 
-        if [ -n "$_NAME" ]; then
+        # With -c, if no name at this point, it should fail.
+        if [ -z "${_NAME}" ]; then
+            _log "ERROR" "No container name was given or no -m or -v or -N."
+            return 1
+        fi
+
+        if $_CREATE_OR_START && docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
+            _log "INFO" "Container ${_NAME} already exists."
+        else
             _log "INFO" "Creating ${_NAME} container..."
-
-            local _image_name_regex="^(${_NAME}|${_SERVICE}${_ver_num})$"
-            if [ -n "$_IMAGE_NAME" ]; then
-                _image_name_regex="^${_IMAGE_NAME}$"
-                _DOCKER_REUSE_IMAGE=true
-            fi
-
-            if $_DOCKER_REUSE_IMAGE; then
-                local _image="$(docker images --format "{{.Repository}}" | grep -E "^(${_image_name_regex})$")"
-                if [ -z "${_image}" ]; then
-                    _log "ERROR" "Reusing saved image was specified but couldn't find any image with '${_image_name_regex}'."
-                    return 1
-                fi
-                _log "INFO" "Image ${_image} for ${_image_name_regex} exists. Using this ..."; sleep 1
-
-                # Re-using an existing saved image with a new hostname
-                local _add_host=""
-                local _old_hostname=""
-                if [ "${_NAME}" != "${_image}" ]; then
-                    _add_host="--add-host=${_image}.${_DOMAIN#.}:127.0.0.1"
-                    _old_hostname="${_image}.${_DOMAIN#.}"
-                fi
-
-                # No need to install the application as using a saved image, so that no version.
-                f_install_as "${_NAME}" "" "${_image}" "${_ports}" "${_add_host}" || return $?
-                sleep 1
-                if ! $_DOCKER_SAVE && ! $_AS_NO_INSTALL_START; then
-                    f_as_start "${_NAME}.${_DOMAIN#.}" "${_SERVICE}" "Y" "${_old_hostname}"
-                fi
-            else
-                # Creating a new (empty) container and install the application
-                f_install_as "${_NAME}" "$_VERSION" "${_BASE_IMAGE}:${_OS_VERSION}" "${_ports}" || return $?
-            fi
+            # Creating a new (empty) container and install the application
+            f_install_as "${_NAME}" "$_VERSION" "${_BASE_IMAGE}:${_OS_VERSION}" "${_ports}" || return $?
         fi
     fi
 
@@ -1015,13 +995,14 @@ main() {
         f_docker_commit "$_NAME" || return $?
     fi
 
-    # If creating, container should be started already. If saving, it intentionally stops the container.
-    if [ -n "$_NAME" ] && ! $_CREATE_AND_SETUP && ! $_DOCKER_SAVE; then
+    # If creating (-c), container should be already started so don't need to start. If saving, it intentionally stops the container.
+    if [ -n "$_NAME" ] && ! $_CREATE_CONTAINER && ! $_DOCKER_SAVE; then
         if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
             if ! docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
-                _log "WARN" "Container does not exist"; sleep 1
+                _log "WARN" "Can not start $_NAME as it does not exist."; sleep 1
                 return 1
             fi
+            # Special condition: If _NAME = an image name, create this container even no _CREATE_CONTAINER
             _log "INFO" "Container does not exist but image ${_NAME} exists. Using this ..."; sleep 1
             f_docker_run "${_NAME}.${_DOMAIN#.}" "${_NAME}" "${_ports}" || return $?
         else
@@ -1035,10 +1016,10 @@ main() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "chl:Nn:m:PRSsuv:" opts; do
+    while getopts "chl:Nn:m:PSsuv:" opts; do
         case $opts in
             c)
-                _CREATE_AND_SETUP=true
+                _CREATE_CONTAINER=true
                 ;;
             h)
                 usage | less
@@ -1049,18 +1030,17 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             N)
                 _AS_NO_INSTALL_START=true
+                _CREATE_OR_START=true
                 ;;
             n)
                 _NAME="$OPTARG"
                 ;;
             m)
                 _IMAGE_NAME="$OPTARG"
+                _CREATE_OR_START=true
                 ;;
             P)
                 _DOCKER_PORT_FORWARD=true
-                ;;
-            R)
-                _DOCKER_REUSE_IMAGE=true
                 ;;
             S)
                 _DOCKER_STOP_OTHER=true
@@ -1074,6 +1054,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             v)
                 _VERSION="$OPTARG"
+                _CREATE_OR_START=true
                 ;;
         esac
     done
