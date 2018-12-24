@@ -980,6 +980,8 @@ main() {
 
         if $_CREATE_OR_START && docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
             _log "INFO" "Container ${_NAME} already exists."
+        elif ! $_CREATE_CONTAINER && docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
+            _log "INFO" "Image ${_NAME} exists."
         else
             _log "INFO" "Creating ${_NAME} container..."
             # Creating a new (empty) container and install the application
