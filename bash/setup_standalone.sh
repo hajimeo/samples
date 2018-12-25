@@ -19,50 +19,50 @@ function usage() {
 This script is for building a small docker container for testing an application in dev environment.
 
 CREATE CONTAINER:
-    -c [-v <version>|-m <image name>] [-n <container name>]
-        Strict mode to create a container (not image). If a container exists, this script fails.
-        -v, -m, and -n are optional.
+    -c [-v <version>] [-n <container name>]
+        Strict mode to create a container. If the named container exists, this script fails.
         <version> in -v is such as ${_VERSION}.
-        <image name> in -m is an already saved image name.
-        <container name> in -n is a container name = hostname. If not specified, uses some random name.
-  OR
-    -v <version>|-m <image name>|-N -n <container name>
-        If -v or -m or -N with -n <container name>, if the container does't exist, it creates a new container.
-  OR
-    . $BASH_SOURCE
-    f_install_as <name> <version> '' '' '' <install opts>
+        <container name> in -n is a container name (= hostname).
+        If no name specified, generates some random name.
 
-START CONTAINER:
-    -n <container name>     <<< no '-c'
-        NOTE: If *exactly* same name image exists, even no -c, this creates a container from that image.
-        Otherwise, if container does not exist and no -c, -m, -v, or -N, the script fails with error.
+START/CREATE CONTAINER:
+    -n <container name> [-v <version>]     <<< no '-c'
+        NOTE: If *exactly* same name image exists or -v/-N options are used, this also creates container.
 
 SAVE CONTAINER AS IMAGE:
     -s -n <container_name>
-        Save this container as image, so that creating a container will be faster.
-        NOTE: saving a container may take several time.
+        Save this container as image, so that creating a container will be faster next time.
+        NOTE: saving a container may take a few minutes.
 
-OTHERS (normally you don't need to use):
+OTHERS (which normally you don't need to use):
     -u
         Update this script to the latest version.
+
+    -m image_name
+        Experimental.
+        To specify a image name to create a container
 
     -l /path/to/dev-license.json
         To specify a path of the software licence file.
         If not specified (default), the installer script would automatically decide.
 
-    -N -n <container name>
+    -N
         Not installing anything, just creating an empty container.
 
     -P
         Experimental.
-        Using with -c, docker run command uses port forwarding.
+        Use with -c so that docker run command includes port forwards.
 
     -S
-        Use with -c, -n, -v to stop any other port conflicting containers.
+        To stop any other port conflicting containers.
         When -P is used or the host is Mac, this option mgiht be required.
 
     -h
         To see this message
+
+Another way to create a container:
+    . $BASH_SOURCE
+    f_install_as <name> <version> '' '' '' <install opts>
 "
     docker stats --no-stream
 }
@@ -946,16 +946,6 @@ main() {
         mkdir -p -m 777 "${_WORK_DIR%/}/${_SERVICE}" || return $?
     fi
 
-    if [ -z "${_NAME}" ]; then
-        if [ -n "$_IMAGE_NAME" ]; then
-            _NAME="${_IMAGE_NAME}"
-        elif [ -n "$_VERSION" ]; then
-            _NAME="${_SERVICE}$(echo "${_VERSION}" | sed 's/[^0-9]//g')"
-        elif $_AS_NO_INSTALL_START; then
-            _NAME="test-$(date +"%y%m%d%H%M%S")"
-        fi
-    fi
-
     # It's hard to access container directly on Mac, so adding port forwarding
     local _ports="";
     if $_DOCKER_PORT_FORWARD; then
@@ -972,20 +962,31 @@ main() {
             f_docker_base_create || return $?
         fi
 
-        # With -c, if no name at this point, it should fail.
+        # If no name, generating automatically.
         if [ -z "${_NAME}" ]; then
-            _log "ERROR" "No container name was given or no -m or -v or -N."
-            return 1
+            if [ -n "$_IMAGE_NAME" ]; then
+                _NAME="$_IMAGE_NAME"
+            elif [ -n "$_VERSION" ]; then
+                _NAME="${_SERVICE}$(echo "${_VERSION}" | sed 's/[^0-9]//g')"
+            else
+                _NAME="${_SERVICE}000"
+            fi
+
+            if docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
+                _NAME="${_NAME}-$(date +"%S")"
+            fi
         fi
 
-        if $_CREATE_OR_START && docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
-            _log "INFO" "Container ${_NAME} already exists."
+        # As $_CREATE_CONTAINER and $_CREATE_OR_START both can be true, checking $_CREATE_CONTAINER.
+        if ! $_CREATE_CONTAINER && docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
+            _log "INFO" "Container ${_NAME} already exists. Not creating..."
         elif ! $_CREATE_CONTAINER && docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
-            _log "INFO" "Image ${_NAME} exists."
+            # A bit confusing but later, because of special condition, will create a container.
+            _log "TRACE" "Because of special condition, not creating ${_NAME} in here..."
         else
             _log "INFO" "Creating ${_NAME} container..."
             # Creating a new (empty) container and install the application
-            f_install_as "${_NAME}" "$_VERSION" "${_BASE_IMAGE}:${_OS_VERSION}" "${_ports}" || return $?
+            f_install_as "${_NAME}" "$_VERSION" "${_IMAGE_NAME:-"${_BASE_IMAGE}:${_OS_VERSION}"}" "${_ports}" || return $?
         fi
     fi
 
@@ -997,7 +998,9 @@ main() {
         f_docker_commit "$_NAME" || return $?
     fi
 
-    # If creating (-c), container should be already started so don't need to start. If saving, it intentionally stops the container.
+    # Finally, starts a container if _NAME is not empty
+    # If -c is used, container should be already started, so don't need to start.
+    # If -s is used, it intentionally stops the container, so don't need to start.
     if [ -n "$_NAME" ] && ! $_CREATE_CONTAINER && ! $_DOCKER_SAVE; then
         if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
             if ! docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
