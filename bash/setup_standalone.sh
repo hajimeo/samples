@@ -449,8 +449,8 @@ function f_container_useradd() {
 function f_container_ssh_config() {
     local __doc__="Copy keys and setup authorized key to a node (container)"
     local _name="${1:-${_NAME}}"
-    local _key="$2"
-    local _pub_key="$3"
+    local _key="${2:-"$HOME/.ssh/id_rsa"}"
+    local _pub_key="${3:-"$HOME/.ssh/id_rsa.pub"}"
 
     # ssh -q -oBatchMode=yes ${_name} echo && return 0
     if [ -z "${_name}" ]; then
@@ -458,8 +458,14 @@ function f_container_ssh_config() {
         return 1
     fi
 
-    [ -z "${_key}" ] && [ -r ~/.ssh/id_rsa ] && _key=~/.ssh/id_rsa
-    [ -z "${_pub_key}" ] && [ -r ~/.ssh/id_rsa.pub ] && _pub_key=~/.ssh/id_rsa.pub
+    if [ ! -r "${_key}" ]; then
+        _log "ERROR" "key: ${_key} is not readable"
+        return 1
+    fi
+    if [ ! -r "${_pub_key}" ]; then
+        _log "ERROR" "publikc key: ${_pub_key} is not readable. Use 'ssh-keygen -y -f ${_key} > ~/.ssh/id_rsa.pub'"
+        return 1
+    fi
 
     docker exec -it ${_name} bash -c "[ -f /root/.ssh/authorized_keys ] || ( install -D -m 600 /dev/null /root/.ssh/authorized_keys && chmod 700 /root/.ssh )"
     docker exec -it ${_name} bash -c "[ -f /root/.ssh/id_rsa.orig ] && exit; [ -f /root/.ssh/id_rsa ] && mv /root/.ssh/id_rsa /root/.ssh/id_rsa.orig; echo \"`cat ${_key}`\" > /root/.ssh/id_rsa; chmod 600 /root/.ssh/id_rsa;echo \"`cat ${_pub_key}`\" > /root/.ssh/id_rsa.pub; chmod 644 /root/.ssh/id_rsa.pub"
