@@ -18,6 +18,7 @@ from sqlalchemy import create_engine
 import sqlite3
 
 _LAST_CONN = None
+_DB_SCHEMA = 'db'
 
 
 def _mexec(func_obj, kwargs_list, num=None, using_process=False):
@@ -152,8 +153,8 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physic
     :param chunksize: Rows will be written in batches of this size at a time. By default, all rows will be written at once
     :param json_cols: to_sql() fails if column is json, so forcing those columns to string
     :return: A tuple contain key=>file relationship and Pandas dataframes objects
-    #>>> df = load_jsons(src="./engine/aggregates")
-    #>>> bool(df)
+    #>>> (names_dict, dfs) = load_jsons(src="./engine/aggregates")
+    #>>> bool(names_dict)
     #True
     >>> pass    # TODO: implement test
     """
@@ -166,12 +167,11 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physic
         if ex.search(os.path.basename(f)):
             continue
         f_name, f_ext = os.path.splitext(os.path.basename(f))
-        _err("Processing %s ..." % (str(f_name)))
-        new_name = _pick_new_key(f_name, names_dict, (bool(db_conn) is False))
+        new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(db_conn) is False), prefix='t_')
+        _err("Processing %s as table: %s ..." % (str(f_name), new_name))
         names_dict[new_name] = f
         dfs[new_name] = json2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize,
                                 json_cols=json_cols)
-    if bool(db_conn): return names_dict
     return (names_dict, dfs)
 
 
@@ -186,23 +186,25 @@ def json2df(file_path, db_conn=None, tablename=None, json_cols=[], chunksize=100
     :return: a DataFrame object
     >>> pass    # TODO: implement test
     """
+    global _DB_SCHEMA
     df = pd.read_json(file_path)
     if bool(db_conn):
         if bool(tablename) is False:
             tablename, ext = os.path.splitext(os.path.basename(file_path))
         # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
-        df_tmp_mod.to_sql(name=tablename, con=db_conn, chunksize=chunksize, if_exists='replace')
+        df_tmp_mod.to_sql(name=tablename, con=db_conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
     return df
 
 
-def _pick_new_key(name, names_dict, using_1st_char=False, check_global=False):
+def _pick_new_key(name, names_dict, using_1st_char=False, check_global=False, prefix=None):
     """
     Find a non-conflicting a dict key for given name (normally a file name/path)
     :param name: name to be saved or used as a dict key
     :param names_dict: list of names which already exist
     :param using_1st_char: if new name
-    :param check_global: if new name is used as a global variable
+    :param check_global: Check if new name is used as a global variable
+    :param prefix: Appending some string (eg: 'tbl_') at the beginning of the name
     :return: a string of a new dict key which hasn't been used
     >>> _pick_new_key('test', {'test':'aaa'}, False)
     'test1'
@@ -211,7 +213,10 @@ def _pick_new_key(name, names_dict, using_1st_char=False, check_global=False):
     """
     if using_1st_char:
         name = name[0]
-    new_key = name
+    if bool(prefix):
+        new_key = prefix + name
+    else:
+        new_key = name
 
     for i in range(0, 9):
         if i > 0:
@@ -353,6 +358,22 @@ def _save_query(sql, limit=1000):
     df2csv(df.tail(limit), query_history_csv, mode="w", header=False)
 
 
+def _autocomp_matcher(text):
+    """
+    TODO: doesn't work (can't register/append in matchers from 'ju' name space)
+    :param text:
+    :return:
+    """
+    global _LAST_CONN
+    conn = _LAST_CONN
+    # Currently only searching table object
+    sql_and = " and tbl_name like '" + str(text) + "%'"
+    rs = conn.execute("select distinct name from sqlite_master where type = 'table'%s" % (sql_and))
+    if bool(rs) is False:
+        return
+    return _get_cols(rs.fetchall(), 0)
+
+
 def draw(df, width=16, x_col=0, x_colname=None):
     """
     Helper function for df.plot()
@@ -371,6 +392,7 @@ def draw(df, width=16, x_col=0, x_colname=None):
         import matplotlib.pyplot as plt
         get_ipython().run_line_magic('matplotlib', 'inline')
     except:
+        _err("get_ipython().run_line_magic('matplotlib', 'inline') failed")
         pass
     height_inch = 8
     if len(df.columns) > 2:
@@ -819,8 +841,8 @@ def load_csvs(src="./", db_conn=None, include_ptn='*.csv', exclude_ptn='', chunk
     :param exclude_ptn: Exclude pattern
     :param chunksize: to_sql() chunk size
     :return: A tuple contain key=>file relationship and Pandas dataframes objects
-    #>>> df = load_csvs(src="./stats")
-    #>>> bool(df)
+    #>>> (names_dict, dfs) = load_csvs(src="./stats")
+    #>>> bool(names_dict)
     #True
     >>> pass    # TODO: implement test
     """
@@ -833,12 +855,11 @@ def load_csvs(src="./", db_conn=None, include_ptn='*.csv', exclude_ptn='', chunk
         if bool(exclude_ptn) and ex.search(os.path.basename(f)): continue
 
         f_name, f_ext = os.path.splitext(os.path.basename(f))
-        _err("Processing %s ..." % (str(f_name)))
-        new_name = _pick_new_key(f_name, names_dict, (bool(db_conn) is False))
+        new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(db_conn) is False), prefix='t_')
+        _err("Processing %s as table: %s ..." % (str(f_name), new_name))
         names_dict[new_name] = f
 
         dfs[new_name] = csv2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize)
-    if bool(db_conn): return names_dict
     return (names_dict, dfs)
 
 
@@ -850,13 +871,14 @@ def csv2df(file_path, db_conn=None, tablename=None, chunksize=1000, header=0):
     :return: Pandas DF object or False if file is not readable
     >>> pass    # Testing in df2csv()
     '''
+    global _DB_SCHEMA
     if os.path.exists(file_path) is False:
         return False
     df = pd.read_csv(file_path, escapechar='\\', header=header)
     if bool(db_conn):
         if bool(tablename) is False:
             tablename, ext = os.path.splitext(os.path.basename(file_path))
-        df.to_sql(name=tablename, con=db_conn, chunksize=chunksize, if_exists='replace')
+        df.to_sql(name=tablename, con=db_conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
     return df
 
 
@@ -900,9 +922,28 @@ def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
     :return: void
     >>> pass    # test should be done in load_jsons and load_csvs
     """
-    # TODO: shouldn't have the default pathes, should separate business logic into a config file
-    load_jsons(jsons_dir, connect())
-    load_csvs(csvs_dir, connect())
+    # TODO: shouldn't have any paths in here but should be saved into some config file.
+    (names_dict, _) = load_jsons(jsons_dir, connect())
+    try:
+        for n in names_dict.keys():
+            if n not in get_ipython().user_global_ns:
+                get_ipython().user_global_ns[n] = True
+    except:
+        pass
+    (names_dict, _) = load_csvs(csvs_dir, connect())
+    try:
+        for n in names_dict.keys():
+            if n not in get_ipython().user_global_ns:
+                get_ipython().user_global_ns[n] = True
+    except:
+        pass
+    # TODO: below does not work so that using above names_dict workaround
+    #try:
+    #    import jn_utils as ju
+    #    get_ipython().set_custom_completer(ju._autocomp_matcher)    # Completer.matchers.append
+    #except:
+    #    _err("get_ipython().set_custom_completer(ju._autocomp_matcher) failed")
+    #    pass
     _err("Completed.")
 
 
