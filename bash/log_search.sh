@@ -343,6 +343,12 @@ function f_list_queries() {
     local _date_regex="$1"
     local _glob="${2:-"engine.*log*"}"
     rg -z -N --no-filename "^${_date_regex}.* INFO .+queryId=.+ Received (SQL|Analysis) [Qq]uery" -g "${_glob}" | sort
+}
+
+function f_query_plan() {
+    local _queryId="$1"
+    local _glob="${2:-"debug.*log*"}"
+    rg -z -N --no-filename "queryId=${_queryId}.+ Final physical plan.+SqlPlan\((.+)\)" -g "${_glob}" -m 1 -o -r '$1' | pjson 100000000
     # TODO: Query part core physical plan
 }
 
