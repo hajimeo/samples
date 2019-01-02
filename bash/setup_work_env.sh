@@ -118,6 +118,8 @@ function f_setup_jupyter() {
 
     sudo -i pip3 install jupyter --log /tmp/pip.log &>/dev/null || return $?
     sudo -i pip3 install jupyterlab --log /tmp/pip.log &>/dev/null || return $?
+    # Need "-H"? eg: sudo -H pip3 uninstall -y jupyterlab && sudo -H pip3 install jupyterlab
+    # Need to add /usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin in PATH?
     # TODO: as of today no jupyter_contrib_labextensions (lab)
     # NOTE: Initially I thought pandasql looked good but it's actually using sqlite
     sudo -i pip3 install jupyter_contrib_nbextensions pandas sqlalchemy ipython-sql --log /tmp/pip.log &>/dev/null
