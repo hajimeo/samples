@@ -80,9 +80,10 @@ function javaenvs() {
     export JAVA_HOME="$(dirname $_dir)"
     export CLASSPATH=".:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
 }
-# Grep file(s) with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
+# Grep STDIN with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
-    ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
+    #ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
+    rg '^(\d\d\d\d-\d\d-\d\d).(\d\d:\d)' -o -r '${1}_${2}' | bar_chart.py
 }
 # Start Jupyter Lab as service
 function jpl() {
