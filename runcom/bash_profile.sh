@@ -26,6 +26,9 @@ if [ -s $HOME/.rgrc ]; then
 fi
 
 # python related
+if [ -d /usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin ]; then
+    export PATH=$PATH:/usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin
+fi
 if [ -d $HOME/IdeaProjects/samples/python ]; then
     export PYTHONPATH=$HOME/IdeaProjects/samples/python:$PYTHONPATH
 fi
