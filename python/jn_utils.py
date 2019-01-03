@@ -168,7 +168,7 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physic
             continue
         f_name, f_ext = os.path.splitext(os.path.basename(f))
         new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(db_conn) is False), prefix='t_')
-        _err("Processing %s as table: %s ..." % (str(f_name), new_name))
+        _err("Creating table: %s ..." % (new_name))
         names_dict[new_name] = f
         dfs[new_name] = json2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize,
                                 json_cols=json_cols)
@@ -307,7 +307,7 @@ def q(sql, conn=None, no_history=False):
     :param sql: SELECT statement
     :param conn: DB connection object
     :param no_history: not saving this query into a history file
-    :return: fetchall() result
+    :return: a DF object
     >>> pass
     """
     return query(sql, conn, no_history)
@@ -319,7 +319,7 @@ def query(sql, conn=None, no_history=False):
     :param sql: SELECT statement
     :param conn: DB connection object
     :param no_history: not saving this query into a history file
-    :return: fetchall() result
+    :return: a DF object
     >>> query("select name from sqlite_master where type = 'table'", connect(), True)
     Empty DataFrame
     Columns: [name]
@@ -360,6 +360,7 @@ def _save_query(sql, limit=1000):
 
 def _autocomp_matcher(text):
     """
+    This function is supposed to be a custom matcher for IPython Completer
     TODO: doesn't work (can't register/append in matchers from 'ju' name space)
     :param text:
     :return:
@@ -371,7 +372,25 @@ def _autocomp_matcher(text):
     rs = conn.execute("select distinct name from sqlite_master where type = 'table'%s" % (sql_and))
     if bool(rs) is False:
         return
-    return _get_cols(rs.fetchall(), 0)
+    return _get_col_vals(rs.fetchall(), 0)
+
+
+def inject_auto_comp():
+    """
+    Some hack to use autocomplete in the SQL
+    :return: Void
+    """
+    tables = desc().name.values
+    for t in tables:
+        cols = desc(t).name.values
+        try:
+            get_ipython().user_global_ns[t] = type(t, (), {})
+            for c in cols:
+                setattr(get_ipython().user_global_ns[t], c, True)
+        except:
+            _err("setattr(get_ipython().user_global_ns[%s], c, True) failed" % t)
+            pass
+
 
 
 def draw(df, width=16, x_col=0, x_colname=None):
@@ -470,20 +489,41 @@ def qhistory(run=None, like=None, html=True):
     display(HTML(out))
 
 
-def desc(tablenames=None, like=None, conn=None):
+def desc(tablename=None, colname=None, conn=None):
     """
     Alias of describe()
-    :param tablenames: If empty, get table list
-    :param like: String used in like, such as column name
+    :param tablename: If empty, get table list
+    :param colname: String used in like, such as column name
     :param conn: DB connection (cursor) object
     :return: void with printing CREATE statement, or a DF object contains table list
     """
-    return describe(tablenames=tablenames, like=like, conn=conn)
+    return describe(tablename=tablename, colname=colname, conn=conn)
 
 
-def describe(tablenames=None, like=None, conn=None):
+def describe(tablename, colname=None, conn=None):
     """
-    Describe a table (SHOW CREATE TABLE) or SHOW TABLES
+    Describe a table
+    :param tablename: Exact table name. If empty, get table list
+    :param colname: String used in like for column name
+    :param conn: DB connection (cursor) object
+    :return: a DF object contains a table information or table list
+    >>> describe(conn=connect())
+    Empty DataFrame
+    Columns: [name, rootpage]
+    Index: []
+    """
+    sql_and = ""
+    if bool(colname):
+        sql_and = " and name like '%" + str(colname) + "%'"
+    if bool(tablename):
+        # NOTE: this query is sqlite specific. names = list(map(lambda x: x[0], cursor.description))
+        return query(sql="select `name`, `type`, `notnull`, `dflt_value`, `pk` from pragma_table_info('%s') where name is not 'index' %s order by cid" % (str(tablename), sql_and), conn=conn, no_history=True)
+    return show_create_table(tablenames=None, like=colname, conn=conn)
+
+
+def show_create_table(tablenames=None, like=None, conn=None):
+    """
+    SHOW CREATE TABLE or SHOW TABLES
     :param tablenames: If empty, get table list
     :param like: String used in like, such as column name
     :param conn: DB connection (cursor) object
@@ -514,19 +554,18 @@ def describe(tablenames=None, like=None, conn=None):
         rs = conn.execute("select distinct name from sqlite_master where type = 'table'%s" % (sql_and))
         if bool(rs) is False:
             return
-        tablenames = _get_cols(rs.fetchall(), 0)
-        return desc(tablenames=tablenames)
-    return query(sql="select distinct name, rootpage from sqlite_master where type = 'table' order by rootpage",
-                 conn=conn, no_history=True)
+        tablenames = _get_col_vals(rs.fetchall(), 0)
+        return show_create_table(tablenames=tablenames)
+    return query(sql="select distinct name, rootpage from sqlite_master where type = 'table'%s order by rootpage" % (sql_and), conn=conn, no_history=True)
 
 
-def _get_cols(matrix, i):
+def _get_col_vals(matrix, i):
     """
-    Get values from a column
-    :param matrix: like SQL rows
+    Get values from the specified column (not table's column, but matrix's column)
+    :param matrix: eg: SQL result set
     :param i: column index number, starting from 0
     :return: list contains column values
-    >>> _get_cols([[1, 2], [2, 3]], 1)
+    >>> _get_col_vals([[1, 2], [2, 3]], 1)
     [2, 3]
     """
     return [row[i] for row in matrix]
@@ -856,7 +895,7 @@ def load_csvs(src="./", db_conn=None, include_ptn='*.csv', exclude_ptn='', chunk
 
         f_name, f_ext = os.path.splitext(os.path.basename(f))
         new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(db_conn) is False), prefix='t_')
-        _err("Processing %s as table: %s ..." % (str(f_name), new_name))
+        _err("Creating table: %s ..." % (new_name))
         names_dict[new_name] = f
 
         dfs[new_name] = csv2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize)
@@ -923,27 +962,17 @@ def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
     >>> pass    # test should be done in load_jsons and load_csvs
     """
     # TODO: shouldn't have any paths in here but should be saved into some config file.
-    (names_dict, _) = load_jsons(jsons_dir, connect())
-    try:
-        for n in names_dict.keys():
-            if n not in get_ipython().user_global_ns:
-                get_ipython().user_global_ns[n] = True
-    except:
-        pass
-    (names_dict, _) = load_csvs(csvs_dir, connect())
-    try:
-        for n in names_dict.keys():
-            if n not in get_ipython().user_global_ns:
-                get_ipython().user_global_ns[n] = True
-    except:
-        pass
+    load_jsons(jsons_dir, connect())
+    load_csvs(csvs_dir, connect())
     # TODO: below does not work so that using above names_dict workaround
-    #try:
+    # try:
     #    import jn_utils as ju
     #    get_ipython().set_custom_completer(ju._autocomp_matcher)    # Completer.matchers.append
-    #except:
+    # except:
     #    _err("get_ipython().set_custom_completer(ju._autocomp_matcher) failed")
     #    pass
+    _err("Populating autocomps...")
+    inject_auto_comp()
     _err("Completed.")
 
 
