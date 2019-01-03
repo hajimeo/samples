@@ -380,9 +380,9 @@ def inject_auto_comp():
     Some hack to use autocomplete in the SQL
     :return: Void
     """
-    tables = desc().name.values
+    tables = describe().name.values
     for t in tables:
-        cols = desc(t).name.values
+        cols = describe(t).name.values
         try:
             get_ipython().user_global_ns[t] = type(t, (), {})
             for c in cols:
@@ -528,7 +528,7 @@ def show_create_table(tablenames=None, like=None, conn=None):
     :param like: String used in like, such as column name
     :param conn: DB connection (cursor) object
     :return: void with printing CREATE statement, or a DF object contains table list
-    >>> desc(conn=connect())
+    >>> show_create_table(conn=connect())
     Empty DataFrame
     Columns: [name, rootpage]
     Index: []
