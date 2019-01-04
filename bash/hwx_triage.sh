@@ -81,7 +81,7 @@ function f_check_system() {
     nscd -g &> ${_work_dir%/}/nscd.out
     getent ahostsv4 `hostname -f` &> ${_work_dir%/}/getent_from_name.out
     getent hosts `hostname -I` &> ${_work_dir%/}/getent_from_ip.out
-    python -c 'import socket;print socket.getfqdn()' &> ${_work_dir%/}/python_getfqdn.out
+    python -c 'import socket as s;print s.gethostname();print s.gethostbyname(s.gethostname());print s.getfqdn()' &> ${_work_dir%/}/python_getfqdn.out
     mount &> ${_work_dir%/}/mount_df.out
     df -h &> ${_work_dir%/}/mount_df.out
     #sar -uqrbd -p -s 09:00:00 -e 12:00:00 -f /var/log/sysstat/sa26
