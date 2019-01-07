@@ -60,12 +60,12 @@ function p_support() {
     echo " "
 
     echo "# config.yaml (filtered)"
-    _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user.timezone|^sun.jnu.encoding|query.result.max_rows|^thrifty.client.protocol)'
+    _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user.timezone|^sun.jnu.encoding|query.result.max_rows|^thrifty.client.protocol)' | sort | uniq
     echo " "
     echo " "
 
     echo "# config-custom.yaml"
-    _find_and_cat "config-custom.yaml"
+    _find_and_cat "config-custom.yaml" | sort | uniq
     echo " "
     echo " "
 
@@ -1194,12 +1194,12 @@ function _date2int() {
 }
 
 function _find_and_cat() {
-    local _f="`find . -name "$1" -print`"
-    if [ -z "$_f" ]; then
-        echo "Couldn't find $1 under current directory." >&2
-        return
-    fi
-    cat "${_f}"
+    for _f in `find . -name "$1" -print`; do
+        echo "## ${_f}" >&2
+        if [ -n "${_f}" ]; then
+            cat "${_f}"
+        fi
+    done
 }
 
 function _replace_number() {
