@@ -6,7 +6,7 @@ as_default_schema: %default_schema%
 is_silent: 'true'
 as_install_sample_data: 'false'
 as_install_sample_data_omniture: 'false'
-as_target_env: other
+as_target_env: google-bigquery
 as_distro: Unknown
 as_sub_distro: Unknown
 is_adls: 'false'
