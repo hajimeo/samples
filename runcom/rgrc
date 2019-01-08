@@ -19,3 +19,4 @@ web:*.{html,css,js}*
 --search-zip
 --no-line-number
 #--no-filename
+--text
