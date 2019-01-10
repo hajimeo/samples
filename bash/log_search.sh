@@ -207,8 +207,9 @@ EOF
     cat /tmp/perform_f_aggBatchKickoffSize_$$.out
     echo " "
 
-    echo "# f_count_lines and f_count_threads against the last periodic.log for top ${_n}"
+    echo "# f_count_lines"
     cat /tmp/perform_f_count_lines_$$.out
+    echo "# f_count_threads against the last periodic.log for top ${_n}"
     cat /tmp/perform_f_count_threads_$$.out
     echo " "
 
