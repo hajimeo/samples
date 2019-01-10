@@ -26,8 +26,10 @@ if [ -s $HOME/.rgrc ]; then
 fi
 
 # python related
-if [ -d /usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin ]; then
-    export PATH=$PATH:/usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin
+if [ -d /usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`/Frameworks/Python.framework/Versions/3.7/bin ]; then
+    # Mac's brew installs pip in this directory and may not in the path
+    export PATH=/usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`/Frameworks/Python.framework/Versions/3.7/bin:$PATH
+    # Rather than above, maybe better create a symlink for pip3?
 fi
 if [ -d $HOME/IdeaProjects/samples/python ]; then
     export PYTHONPATH=$HOME/IdeaProjects/samples/python:$PYTHONPATH
