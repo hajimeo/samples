@@ -500,7 +500,7 @@ def desc(tablename=None, colname=None, conn=None):
     return describe(tablename=tablename, colname=colname, conn=conn)
 
 
-def describe(tablename, colname=None, conn=None):
+def describe(tablename=None, colname=None, conn=None):
     """
     Describe a table
     :param tablename: Exact table name. If empty, get table list
