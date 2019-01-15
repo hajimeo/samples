@@ -11,6 +11,7 @@ alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_
 alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
 # brew install gnu-time --with-default-names
 alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'
+alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
 
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
