@@ -57,7 +57,7 @@ if len(_ss_args) > 0:
         echo "If not using VPN but in same network, an example of route command for Mac:"
         echo "  sudo route add -net %_net_addr%/24 `hostname -I | cut -d" " -f1`"
         echo "For Windows (after opening a terminal as administrator):"
-        echo "  route add -net %_net_addr% 255.255.255.0 `hostname -I | cut -d" " -f1`"
+        echo "  route add -net %_net_addr% mask 255.255.255.0 `hostname -I | cut -d" " -f1`"
         echo ""
     fi
 
