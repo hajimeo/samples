@@ -48,12 +48,16 @@ if len(_ss_args) > 0:
         _URL=""; [ -n "${_NAME}" ] && _URL="http://${_NAME}:10500"
         echo "If you are using VPN, paste below into *Mac* terminal to access web UIs:"
         echo "  open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://`hostname -I | cut -d" " -f1`:%_proxy_port% ${_URL}"
+        echo "For Windows:"
+        echo '  "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://'`hostname -I | cut -d" " -f1`':%_proxy_port% '${_URL}
         echo ""
     fi
 
     if [ -n "%_net_addr%" ]; then
-        echo "If not using VPN, a route command example for Mac:"
-        echo "  sudo route add -net %_net_addr% `hostname -I | cut -d" " -f1`"
+        echo "If not using VPN but in same network, an example of route command for Mac:"
+        echo "  sudo route add -net %_net_addr%/24 `hostname -I | cut -d" " -f1`"
+        echo "For Windows (after opening a terminal as administrator):"
+        echo "  route add -net %_net_addr% 255.255.255.0 `hostname -I | cut -d" " -f1`"
         echo ""
     fi
 

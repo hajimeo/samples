@@ -820,6 +820,7 @@ function f_shellinabox() {
 
     # Finding Network Address from docker. Seems Mac doesn't care if IP doesn't end with .0
     local _net_addr="`docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])"`"
+    _net_addr="${_net_addr%1}0" # not good way but works
 
     curl -s -f --retry 3 -o /usr/local/bin/shellinabox_login https://raw.githubusercontent.com/hajimeo/samples/master/misc/shellinabox_login.sh || return $?
     sed -i "s/%_user%/${_user}/g" /usr/local/bin/shellinabox_login
