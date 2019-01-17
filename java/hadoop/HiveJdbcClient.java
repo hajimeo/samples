@@ -4,7 +4,7 @@
  * mkdir hadoop
  * javaenvs 10000  # in my alias
  * $JAVA_HOME/bin/javac hadoop/HiveJdbcClient.java
- * $JAVA_HOME/bin/java hadoop.HiveJdbcClient "jdbc:hive2://`hostname -f`:10000/default" [sql] [username] [password]
+ * $JAVA_HOME/bin/java hadoop.HiveJdbcClient "jdbc:hive2://`hostname -f`:10000/default" [queries] [username] [password]
  * $JAVA_HOME/bin/java -Djava.security.auth.login.config=/usr/local/atscale/conf/krb/atscale-jaas.conf -Dsun.security.krb5.debug=true hadoop.HiveJdbcClient "jdbc:hive2://`hostname -f`:10000/default;principal=hive/_HOST@UBUNTU.LOCALDOMAIN" [sql] [logincontext]
  *
  * TODO: support kerberos
@@ -24,9 +24,9 @@ import org.apache.hadoop.security.UserGroupInformation;
 public class HiveJdbcClient {
     private static String driverName = "org.apache.hive.jdbc.HiveDriver";
     private static String JDBC_DB_URL = "";
-    private static String QUERY = "show databases";
-    private static String USER = null;
-    private static String PASS = null;
+    private static String QUERY = "select 1";
+    private static String USER = "admin";
+    private static String PASS = "admin";
 
     // KERBEROS Related.
     static String KERBEROS_PRINCIPAL = "";
@@ -140,26 +140,37 @@ public class HiveJdbcClient {
             System.exit(1);
         }
 
-        Statement stmt = con.createStatement();
-        ResultSet res = stmt.executeQuery(QUERY);
-        ResultSetMetaData metaData = res.getMetaData();
-        int columnCount = metaData.getColumnCount();
-
-        int r = 1;
-        while (res.next()) {
-            // columnIndex starts from 1...
-            System.out.println("=== Row " + r + " =============================");
-            for (int i = 1; i <= columnCount; i++) {
-                Object o = res.getObject(i);
-                String col = "Null";
-                if (o != null) {
-                    col = o.toString();
-                }
-                System.out.println("  " + metaData.getColumnLabel(i) + " : " + o);
+        String[] queries = QUERY.split(";");
+        for (String q: queries) {
+            System.err.println("# DEBUG: Executing "+q);
+            Statement stmt = con.createStatement();
+            ResultSet res;
+            try {
+                res = stmt.executeQuery(q);
+            } catch (SQLException e) {
+                e.printStackTrace();
+                stmt.close();
+                continue;
             }
-            r++;
+            ResultSetMetaData metaData = res.getMetaData();
+            int columnCount = metaData.getColumnCount();
+
+            int r = 1;
+            while (res.next()) {
+                // columnIndex starts from 1...
+                System.out.println("=== Row " + r + " =============================");
+                for (int i = 1; i <= columnCount; i++) {
+                    Object o = res.getObject(i);
+                    String col = "Null";
+                    if (o != null) {
+                        col = o.toString();
+                    }
+                    System.out.println("  " + metaData.getColumnLabel(i) + " : " + o);
+                }
+                r++;
+            }
+            res.close();
+            stmt.close();
         }
-        res.close();
-        stmt.close();
     }
 }
