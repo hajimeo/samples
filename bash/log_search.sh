@@ -138,7 +138,12 @@ function p_support() {
     rg -z -N --no-filename 'OutOfMemoryError' -g 'engine.*log*' -B 1 | rg "^$_DATE_FORMAT" | sort | uniq | tail -n 10
 
     echo " "
-    echo "# WARNs (and above) in warn.log"
+    echo "# Count thread types from periodic.log"
+    rg -g 'periodic.log' '^"' -A 1 --no-filename | rg '^  ' | sort | uniq -c
+    #gcsplit ../hosts/*/logs/engine/periodic.log /^Stack Trace$/ {*}
+
+    echo " "
+    echo "# WARNs (and above) in warn.log (top 40)"
     f_listWarns "warn.log"
 
     echo " "
@@ -218,7 +223,7 @@ EOF
 
     echo "# Connection pool failure + Took [X *s*] to begin execution"
     # Didn't find a request to serve
-    rg -N --no-filename -z -g "${_glob}" "^(${_tmp_date_regex}).+(Likely the pool is at capacity|failed to find free connection|Could not establish a JDBC|Cannot connect to subgroup|Could not create ConnectionManagerActor|No connections available|No free connections|took \[[0-9.]+ s\] to begin execution)" -o -r '$1 $2' | sort | uniq -c | tail -n ${_n}
+    rg -N --no-filename -z -g "${_glob}" "^(${_tmp_date_regex}).+(Likely the pool is at capacity|failed to find free connection|Could not establish a JDBC|Cannot connect to subgroup|Could not create ConnectionManagerActor|No connections available|No free connections|took \[[1-9][0-9.]+ s\] to begin execution)" -o -r '$1 $2' | sort | uniq -c | tail -n ${_n}
     echo " "
 
     echo "# f_topSlowLogs from engine *debug* log if no _glob, and top ${_n}"
@@ -357,8 +362,8 @@ function f_grep_multilines() {
     local __doc__="Multiline search with 'rg'. TODO: dot and brace can't be used in _str_in_1st_line"
     local _str_in_1st_line="$1"         # TODO: At this moment, grep-ing lines which *first* line contain this string
     local _glob="${2:-"debug.*log*"}"   # TODO: If glob matches multiple files, the result might not be sorted in right order
-    local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d,\\d+"}"
-    local _how_many="${4:-1000}"
+    local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d"}"
+    local _how_many="${4:-2000}"
 
     # not sure if rg sorts properly with --sort, so best effort.
     rg "(${_boundary_str}[^\n]+?${_str_in_1st_line}.+?)${_boundary_str}" -o -r '$1' \
