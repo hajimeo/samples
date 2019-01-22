@@ -12,7 +12,7 @@ alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
 # brew install gnu-time --with-default-names
 alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'
 alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
-
+alias getElementPath='python -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(t.getelementpath(r.find(\".//\"+sys.argv[2],r.nsmap)))"'
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
 # Load/source my log searching utility functions
