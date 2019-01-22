@@ -365,10 +365,11 @@ function f_grep_multilines() {
     local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d"}"
     local _how_many="${4:-2000}"
 
-    # not sure if rg sorts properly with --sort, so best effort.
-    rg "(${_boundary_str}[^\n]+?${_str_in_1st_line}.+?)${_boundary_str}" -o -r '$1' \
+    # TODO: if next line also contains the queryId, it won't be included in the output. ("(?!^2\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d)" didn't work)
+    rg "${_boundary_str}[^\n]+?${_str_in_1st_line}.+?${_boundary_str}" \
         --multiline --multiline-dotall --no-line-number --no-filename -z \
         -g "${_glob}" --sort path -m ${_how_many}
+    # not sure if rg sorts properly with --sort, so best effort.
 }
 
 function f_genLdapsearch() {
