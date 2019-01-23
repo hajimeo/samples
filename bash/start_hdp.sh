@@ -3264,7 +3264,8 @@ function f_vnc_setup() {
         f_useradd "$_user" "$_pass" || return $?
     fi
 
-    apt-get install -y xfce4 xfce4-goodies firefox tightvncserver autocutsel
+    f_chrome
+    apt-get install -y xfce4 xfce4-goodies tightvncserver autocutsel
     # TODO: also disable screensaver and sleep (eg: /home/hajime/.xscreensaver
     su - $_user -c 'expect <<EOF
 spawn "vncpasswd"
