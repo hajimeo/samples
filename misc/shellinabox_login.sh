@@ -61,7 +61,7 @@ if len(_ss_args) > 0:
 
     _vnc_port="`ps auxwww | sed -n -r 's/^webuser.+Xtightvnc.+rfbport ([0-9]+).+/\1/p'`"
     if [ -n "${_vnc_port}" ]; then
-        echo "# VNC:"
+        echo "# Remote desktop access (VNC):"
         echo "  vnc://`hostname -I | cut -d" " -f1`:${_vnc_port}"
         echo ""
     fi
