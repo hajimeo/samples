@@ -39,14 +39,14 @@ if len(_ss_args) > 0:
             echo ""
         fi
 
-        echo "# URLs (NOTE: Chrome via Proxy or Route required):"
+        echo "# URLs (NOTE: Chrome via proxy or route or VNC is required):"
         for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort`; do for _p in 10500 8080 7180; do if nc -z $_n $_p; then echo "  http://$_n:$_p/"; fi done done
         echo ""
     fi
 
     if nc -z localhost %_proxy_port%; then
         _URL=""; [ -n "${_NAME}" ] && _URL="http://${_NAME}:10500"
-        echo "# Start Chrome via Proxy to access web UIs:"
+        echo "# Start Chrome via proxy to access web UIs:"
         echo "  Mac: open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://`hostname -I | cut -d" " -f1`:%_proxy_port% ${_URL}"
         echo '  Win: "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://'`hostname -I | cut -d" " -f1`':%_proxy_port% '${_URL}
         echo ""
