@@ -76,10 +76,10 @@ Another way to create a container:
 [ -z "${_OS_VERSION}" ] && _OS_VERSION="7.5.1804"       # Container OS version (normally CentOS version)
 [ -z "${_BASE_IMAGE}" ] && _BASE_IMAGE="hdp/base"       # Docker image name TODO: change to more appropriate image name
 [ -z "${_SERVICE}" ] && _SERVICE="atscale"              # This is used by the app installer script so shouldn't change
-[ -z "${_VERSION}" ] && _VERSION="7.3.0"                # Default software version, mainly used to find the right installer file
+[ -z "${_VERSION}" ] && _VERSION="7.3.1"                # Default software version, mainly used to find the right installer file
 [ -z "${_LICENSE}" ] && _LICENSE="$(ls -1t ${_WORK_DIR%/}/${_SERVICE%/}/dev*license*.json | head -n1)" # A license file to use the _SERVICE
 _PORTS="${_PORTS-"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"}"    # Used by docker port forwarding
-_REMOTE_REPO="${_REMOTE_REPO-"http://192.168.6.162/${_SERVICE}/"}"                  # Curl understandable string
+_REMOTE_REPO="${_REMOTE_REPO-"http://192.168.6.163/${_SERVICE}/"}"                  # Curl understandable string
 #_CUSTOM_NETWORK="hdp"
 
 _CREATE_CONTAINER=false
