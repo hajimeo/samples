@@ -476,10 +476,11 @@ def qhistory(run=None, like=None, html=True):
     if bool(run):
         sql = df.loc[run, 'query']  # .loc[row_num, column_name]
         _err(sql)
-        return query(sql=sql, conn=connect(), no_history=True)  # To keep same number, history won't be updated
+        return query(sql=sql, conn=connect())
     if bool(like):
         df = df[df['query'].str.contains(like)]
     if html is False:
+        #TODO: hist(html=False).groupby(['query']).count().sort_values(['count'])
         return df
     current_max_colwitdh = pd.get_option('display.max_colwidth')
     pd.set_option('display.max_colwidth', -1)
