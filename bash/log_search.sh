@@ -366,7 +366,9 @@ function f_grep_multilines() {
     local _how_many="${4:-2000}"
 
     # TODO: if next line also contains the queryId, it won't be included in the output. ("(?!^2\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d)" didn't work)
-    rg "${_boundary_str}[^\n]+?${_str_in_1st_line}.+?${_boundary_str}" \
+    local _regex="${_boundary_str}[^\n]+?${_str_in_1st_line}.+?${_boundary_str}"
+    echo "# regex:${_regex}" >&2
+    rg "${_regex}" \
         --multiline --multiline-dotall --no-line-number --no-filename -z \
         -g "${_glob}" --sort path -m ${_how_many}
     # not sure if rg sorts properly with --sort, so best effort.
