@@ -367,11 +367,11 @@ function f_docker_start() {
     docker start --attach=false ${_name}
 
     # Somehow docker disable a container communicates to outside by adding 0.0.0.0 GW
-    #local _docker_ip="172.17.0.1"
+    #local _docker_ip="`docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Gateway'])"`"
     #local _regex="([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+"
     #local _docker_net_addr="172.17.0.0"
     #[[ "${_docker_ip}" =~ $_regex ]] && _docker_net_addr="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.0.0"
-    #docker exec -it ${_name} bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 &>/dev/null || ip route del ${_docker_net_addr}/16 via 0.0.0.0"
+    #docker exec -it ${_name} bash -c "ip route del ${_docker_net_addr}/24 via 0.0.0.0 &>/dev/null"
 
     f_update_hosts_file_by_fqdn "${_hostname}"
 }
