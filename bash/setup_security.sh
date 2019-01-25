@@ -346,7 +346,7 @@ function f_ssl_hadoop() {
     local _no_updating_ambari_config="${8:-$r_NO_UPDATING_AMBARI_CONFIG}"
 
     if [ ! -s "${_openssl_cnf}" ]; then
-        curl -s -o "${_openssl_cnf}" https://raw.githubusercontent.com/hajimeo/samples/master/misc/openssl.cnf || return $?
+        curl -s -f -o "${_openssl_cnf}" https://raw.githubusercontent.com/hajimeo/samples/master/misc/openssl.cnf || return $?
     echo "
 [ alt_names ]
 DNS.1 = ${_domain_suffix#.}
@@ -357,7 +357,8 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
         _info "rootCA.key exists. Reusing..."
     else
         # Step1: create my root CA (key) and cert (pem) TODO: -aes256 otherwise key is not protected
-        openssl genrsa -out ./rootCA.key 2048 || return $?
+        openssl genrsa -passout "pass:${_password}" -out ./rootCA.key 2048 || return $?
+        # How to verify key: openssl rsa -in rootCA.key -check
 
         # (Optional) For Ambari 2-way SSL
         #[ -r ./ca.config ] || curl -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/ca.config
@@ -371,8 +372,8 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
         openssl req -x509 -new -sha256 -days 3650 -key ./rootCA.key -out ./rootCA.pem \
             -config ${_openssl_cnf} -extensions v3_ca \
             -subj "/CN=RootCA.${_domain_suffix#.}" \
-            -passin "pass:$_password" || return $?
-        chmod 600 ./rootCA.*
+            -passin "pass:${_password}" || return $?
+        chmod 600 ./rootCA.key
         if [ -d /usr/local/share/ca-certificates ]; then
             which update-ca-certificates && cp -f ./rootCA.pem /usr/local/share/ca-certificates && update-ca-certificates
             #openssl x509 -in /etc/ssl/certs/ca-certificates.crt -noout -subject
