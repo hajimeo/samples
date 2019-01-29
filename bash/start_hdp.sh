@@ -2194,8 +2194,8 @@ function f_local_repo_sed() {
 
     # TODO: ambari has #json.url and below also change this url. Is it OK?
     [ -f ${_dir%/}/index.html ] && mv ${_dir%/}/index.html ${_dir%/}/index.html.orig
-    sed -i.$(date +"%Y%m%d%H%M%S") 's/public-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.repo || return $?
-    sed -i.$(date +"%Y%m%d%H%M%S") 's/public-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.xml
+    sed -i.$(date +"%Y%m%d%H%M%S") -r 's/(public|private)-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.repo || return $?
+    sed -i.$(date +"%Y%m%d%H%M%S") -r 's/(public|private)-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.xml
     ls -lh ${_dir%/}/*.{repo,xml}*
     local _url="`sed -nr 's/^[^#]+(http.+'${_web_host}'.+)/\1/p' ${_dir%/}/*.repo | head -n1`"
     _info "Testing $_url ..."
@@ -3334,6 +3334,22 @@ function f_nifidemo_add() {
     # http://public-repo-1.hortonworks.com/HDF/2.1.2.0/nifi-1.1.0.2.1.2.0-10-bin.tar.gz
     ssh -q root@$r_AMBARI_HOST 'yum install git -y
 git clone https://github.com/abajwa-hw/ambari-nifi-service.git /var/lib/ambari-server/resources/stacks/HDP/'$_stack_version'/services/NIFI && service ambari-server restart'
+}
+
+function f_dbuseradd() {
+    local __doc__="Execute CREATE USER and GRANT statements to add a new database user"
+    local _mysql_host="$1"
+    local _root_pass="$2"
+    local _user="$3"
+    local _pass="$4"
+
+    ssh -q root@${_mysql_host} -t "mysql -u root -p\"${_root_pass}\" -e \"CREATE USER '${_user}'@'%' IDENTIFIED BY '${_pass}';
+GRANT ALL PRIVILEGES ON *.* TO '${_user}'@'%';
+CREATE USER '${_user}'@'localhost' IDENTIFIED BY '${_pass}';
+GRANT ALL PRIVILEGES ON *.* TO '${_user}'@'localhost';
+CREATE USER '${_user}'@'`hostname -f`' IDENTIFIED BY '${_pass}';
+GRANT ALL PRIVILEGES ON *.* TO '${_user}'@'`hostname -f`';
+FLUSH PRIVILEGES;\""
 }
 
 function f_useradd() {
