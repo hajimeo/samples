@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_scala.sh
-
+# bash ./patch_scala.sh <port> </some/path/to/filename.jar> <ClassName>
+#
+# TODO: currently the script filename needs to be "ClassName.scala" (case sensitive)
+#
 
 function f_setup_scala() {
     local _ver="${1:-2.12.3}"
@@ -44,7 +47,7 @@ function f_jargrep() {
     local _path="${2:-.}"
     local _cmd="jar -tf"
     which jar &>/dev/null || _cmd="less"
-    find -L ${_path%/} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} | grep -w '${_class}' >&2 && echo {}"
+    find -L ${_path%/} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} | grep -w '${_class}' >&2 && echo '^ Jar: {}'"
 }
 
 function f_update_jar() {
@@ -73,8 +76,8 @@ function f_update_jar() {
 ### Main ###############################
 if [ "$0" = "$BASH_SOURCE" ]; then
     _PORT="$1"
-    _CLASS_NAME="$2"
-    _APP_LIB_DIR_OR_JAR="$3"
+    _JAR_FILEPATH="$2"
+    _CLASS_NAME="$3"
 
     if [ -z "$_PORT" ]; then
         echo "At this moment, a port number (1st arg) is required to use this script (used to find a PID)"
@@ -84,20 +87,21 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         echo "At this moment, a scala class name (2nd arg) is required to use this script"
         exit 1
     fi
-    if [ ! -e "${_APP_LIB_DIR_OR_JAR}" ]; then
-        echo "An application lib dir or a jar path (3rd arg) is required to use this script"
+    if [ ! -e "${_JAR_FILEPATH}" ]; then
+        echo "A jar path (3rd arg) is required to use this script"
         exit 1
     fi
 
     f_setup_scala
     f_javaenvs "$_PORT" || exit $?
-    scalac "${_CLASS_NAME}.scala" || exit $?
 
-    if [ -d "${_APP_LIB_DIR_OR_JAR}" ]; then
-        for _j in `f_jargrep "${_CLASS_NAME}.class" "${_APP_LIB_DIR_OR_JAR}"`; do
-            f_update_jar "${_j}" "${_CLASS_NAME}"
-        done
-    else
-        f_update_jar "${_APP_LIB_DIR_OR_JAR}" "${_CLASS_NAME}"
+    if [ -d "${_JAR_FILEPATH}" ]; then
+        f_jargrep "${_CLASS_NAME}.class" "${_JAR_FILEPATH}"
+        echo "Please pick a jar file from above, and re-run the script."
+        exit 0
     fi
+
+    # to avoid Java heap space error (default seems to be set to 256m)
+    JAVA_OPTS=-Xmx1024m scalac "${_CLASS_NAME}".scala || exit $?
+    f_update_jar "${_JAR_FILEPATH}" "${_CLASS_NAME}"
 fi
