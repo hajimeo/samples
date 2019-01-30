@@ -545,8 +545,8 @@ function p_ambari_blueprint() {
 
     _info "Setting up Ambari for Blueprint (like setting up JDBC drivers, adding Postgres DB users, Removing ZK number restrictions) ..."
     ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1\`
-sudo -u postgres psql -c \"CREATE ROLE ranger WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}'\"
-grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   ranger,rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
+sudo -u postgres -i psql -c \"CREATE ROLE hive WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}';CREATE DATABASE hive;CREATE ROLE ranger WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}';CREATE DATABASE ranger;\"
+grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   hive,ranger,rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
 
     ssh -q root@${_ambari_host} '_f=/usr/lib/ambari-server/web/javascripts/app.js
@@ -3344,7 +3344,7 @@ function f_dbuseradd() {
     local _mysql_host="$1"
     local _root_pass="$2"
     local _user="$3"
-    local _pass="$4"
+    local _pass="${4:-"${_root_pass}"}"
 
     ssh -q root@${_mysql_host} -t "_tmp_pwd=\"\`sed -n -r 's/.+ A temporary password is generated for root@localhost: ([^ ]+)/\1/p' /var/log/mysqld.log\`\" || exit
 mysql -u root -p\${_tmp_pwd} --connect-expired-password -e \"SET password='${_root_pass}'\""
