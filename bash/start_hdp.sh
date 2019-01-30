@@ -129,7 +129,7 @@ function p_interview() {
     local _stack_version="${g_STACK_VERSION}"
     local _hdp_version="${_stack_version}.0.0"
 
-        local _stack_version_full="HDP-$_stack_version"
+    local _stack_version_full="HDP-$_stack_version"
     local _hdp_repo_url=""
 
     # TODO: Not good place to install package
@@ -157,12 +157,15 @@ function p_interview() {
     _ask "Ambari version" "$_ambari_version" "r_AMBARI_VER" "N" "Y"
     wget -q -t 1 http://public-repo-1.hortonworks.com/HDP/hdp_urlinfo.json -O /tmp/hdp_urlinfo.json
     if [ -s /tmp/hdp_urlinfo.json ]; then
-        _stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
-        _stack_version="`echo $_stack_version_full | cut -d'-' -f2`"
-        _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print a["'${_stack_version_full}'"]["latest"]["'${r_CONTAINER_OS}${_repo_os_ver}'"]'`"
+        local _tmp_stack_version_full="`cat /tmp/hdp_urlinfo.json | python -c "import sys,json;a=json.loads(sys.stdin.read());ks=a.keys();ks.sort();print ks[-1]"`"
+        _hdp_repo_url="`cat /tmp/hdp_urlinfo.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print a["'${_tmp_stack_version_full}'"]["latest"]["'${r_CONTAINER_OS}${_repo_os_ver}'"]'`"
         _hdp_version="`basename ${_hdp_repo_url%/}`"
     fi
     _ask "HDP Version" "$_hdp_version" "r_HDP_REPO_VER" "N" "Y"
+    if [[ "${r_HDP_REPO_VER}" =~ ([0-9]+)\.([0-9]+)\.[0-9]+\.[0-9]+ ]]; then
+        _stack_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+        _stack_version_full="HDP-${_stack_version}"
+    fi
 
     echo ""
     echo "=== Optional questions (hit Enter keys) =========="
@@ -3343,13 +3346,19 @@ function f_dbuseradd() {
     local _user="$3"
     local _pass="$4"
 
+    ssh -q root@${_mysql_host} -t "_tmp_pwd=\"\`sed -n -r 's/.+ A temporary password is generated for root@localhost: ([^ ]+)/\1/p' /var/log/mysqld.log\`\" || exit
+mysql -u root -p\${_tmp_pwd} --connect-expired-password -e \"SET password='${_root_pass}'\""
+    # NOTE: older mysql needs to hash with password() function.
+
     ssh -q root@${_mysql_host} -t "mysql -u root -p\"${_root_pass}\" -e \"CREATE USER '${_user}'@'%' IDENTIFIED BY '${_pass}';
 GRANT ALL PRIVILEGES ON *.* TO '${_user}'@'%';
 CREATE USER '${_user}'@'localhost' IDENTIFIED BY '${_pass}';
 GRANT ALL PRIVILEGES ON *.* TO '${_user}'@'localhost';
-CREATE USER '${_user}'@'`hostname -f`' IDENTIFIED BY '${_pass}';
-GRANT ALL PRIVILEGES ON *.* TO '${_user}'@'`hostname -f`';
+CREATE USER '${_user}'@'\`hostname -f\`' IDENTIFIED BY '${_pass}';
+GRANT ALL PRIVILEGES ON *.* TO '${_user}'@'\`hostname -f\`';
 FLUSH PRIVILEGES;\""
+    # Creating a db for test
+    ssh -q root@${_mysql_host} -t "mysql -u ${_user} -p\"${_pass}\" -h \`hostname -f\` -e \"CREATE DATABASE ${_user}\""
 }
 
 function f_useradd() {
