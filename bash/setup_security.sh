@@ -235,7 +235,7 @@ function f_ambari_kerberos_setup() {
 
     # Test admin principal before proceeding
     #echo -e "${_password}" | kinit -l 5m -c /tmp/krb5cc_test_$$ admin/admin@${_realm} >/dev/null || return $?
-    kadmin -s ${_kdc_server} -p kadmin/admin@${_realm} -w ${_password} -r ${_realm} -q "get_principal admin/admin@${_realm}" >/dev/null || return $?
+    kadmin -s ${_kdc_server} -p admin/admin@${_realm} -w ${_password} -r ${_realm} -q "get_principal kadmin/admin@${_realm}" || return $?
 
     local _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
     local _api_uri="http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
