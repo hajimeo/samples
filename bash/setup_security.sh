@@ -254,8 +254,9 @@ function f_ambari_kerberos_setup() {
     _info "Delete existing KERBEROS service (if exists)"
     curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X PUT "${_api_uri}" -d '{"Clusters":{"security_type":"NONE"}}'
     # TODO: if above failed, should not execute blow two. If AD is used, may get The 'krb5-conf' configuration is not available error
-    curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X DELETE "${_api_uri}/services/KERBEROS" &>/dev/null
-    curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X DELETE "${_api_uri}/artifacts/kerberos_descriptor" &>/dev/null
+    curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X DELETE "${_api_uri}/services/KERBEROS"
+    curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X DELETE "${_api_uri}/artifacts/kerberos_descriptor"
+    echo ""
     # NOTE: for Web UI, ambari-server restart might be needed
     sleep 3
 
