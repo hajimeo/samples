@@ -82,7 +82,7 @@ function f_kdc_install_on_ambari_node() {
  }\" > /etc/krb5.conf"
     ssh -q root@$_server -t "kdb5_util create -s -P $_password"
     # chkconfig krb5kdc on;chkconfig kadmin on; doesn't work with docker
-    ssh -q root@$_server -t "echo '*/admin *' > /var/kerberos/krb5kdc/kadm5.acl;service krb5kdc restart;service kadmin restart;kadmin.local -q \"add_principal -pw $_password admin/admin\""
+    ssh -q root@$_server -t "echo '*/admin *' > /var/kerberos/krb5kdc/kadm5.acl;service krb5kdc restart;service kadmin restart;kadmin.local -q \"add_principal -pw $_password admin/admin\";kadmin.local -q \"add_principal -pw $_password kadmin/admin\""
     #ssh -2CNnqTxfg -L88:$_server:88 $_server # TODO: UDP does not work. and need 749 and 464
 }
 
@@ -144,6 +144,9 @@ function f_kdc_install_on_host() {
     service krb5-kdc restart && service krb5-admin-server restart
     sleep 3
     kadmin.local -r ${_realm} -q "add_principal -pw ${_password} admin/admin@${_realm}"
+    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/admin@${_realm}"
+    # For test:
+    #kadmin -p admin/admin@${_realm} -w "${_password}"
 }
 
 function _ambari_kerberos_generate_service_config() {
@@ -232,7 +235,7 @@ function f_ambari_kerberos_setup() {
 
     # Test admin principal before proceeding
     #echo -e "${_password}" | kinit -l 5m -c /tmp/krb5cc_test_$$ admin/admin@${_realm} >/dev/null || return $?
-    kadmin -s ${_kdc_server} -p admin/admin@${_realm} -w ${_password} -r ${_realm} -q "get_principal admin/admin@${_realm}" >/dev/null || return $?
+    kadmin -s ${_kdc_server} -p kadmin/admin@${_realm} -w ${_password} -r ${_realm} -q "get_principal admin/admin@${_realm}" >/dev/null || return $?
 
     local _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
     local _api_uri="http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
