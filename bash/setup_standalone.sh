@@ -747,6 +747,7 @@ function p_cdh_sandbox() {
     if [[ "${_is_using_cm}" =~ ^(y|Y) ]]; then
         docker exec -it ${_container_name} bash -c '/home/cloudera/cloudera-manager --express'
         #curl 'http://`hostname -f`:7180/cmf/services/12/maintenanceMode?enter=true' -X POST
+        docker exec -it ${_container_name} bash -c 'service cloudera-scm-agent start; service cloudera-scm-server-db start && service cloudera-scm-server start'
     else
         docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start'
     fi
