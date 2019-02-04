@@ -106,7 +106,7 @@ function jpl() {
 }
 # Mac only: Start Google Chrome in incognito with proxy
 function chromep() {
-    local _host_port="${1:-"192.168.6.162:28081"}"
+    local _host_port="${1:-"192.168.6.163:28081"}"
     local _url=${2}
     local _port=${3:-28081}
 
