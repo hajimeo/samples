@@ -221,9 +221,17 @@ EOF
     local _tmp_date_regex="${_DATE_FORMAT}.${_TIME_FMT4CHART}?"
     [ -n "${_yyyy_mm_dd_hh_d_regex}" ] && _tmp_date_regex="${_yyyy_mm_dd_hh_d_regex}"
 
-    echo "# Connection pool failure + Took [X *s*] to begin execution"
+    # TODO: 2019-01-16 19:36:12,701 DEBUG [atscale-akka.actor.connection-pool-154790] {...} com.atscale.engine.connection.pool.ConnectionManagerActor - Current state:
+    echo "# Connection pool failures"
     # Didn't find a request to serve
-    rg -N --no-filename -z -g "${_glob}" "^(${_tmp_date_regex}).+(Likely the pool is at capacity|failed to find free connection|Could not establish a JDBC|Cannot connect to subgroup|Could not create ConnectionManagerActor|No connections available|No free connections|took \[[1-9][0-9.]+ s\] to begin execution)" -o -r '$1 $2' | sort | uniq -c | tail -n ${_n}
+    rg -N --no-filename -z -g "${_glob}" -i "^(${_tmp_date_regex}).+(Likely the pool is at capacity|failed to find free connection|Could not establish a JDBC|Cannot connect to subgroup|Could not create ConnectionManagerActor|No connections available|No free connections|Could not satisfy request|Connection warming failure for|Connection test failure|had failures. Will process queue again in)" -o -r '$1 $2' | sort | uniq -c | tail -n ${_n}
+    echo " "
+
+    echo "# Took [X ks] to begin execution + milliseconds per 10 minutes"
+    rg -N --no-filename -z -g "${_glob}" "^${_tmp_date_regex}.+took \[[0-9.]+ [^]]+\] to begin execution" | sort > /tmp/took_X_to_begin_$$.out
+    rg -N "^${_tmp_date_regex}.+took \[[1-9][0-9.]+ ks\] to begin execution" /tmp/took_X_to_begin_$$.out
+    rg -N "^(${_tmp_date_regex}).+took \[([1-9][0-9.]+) (s)\] to begin execution" -o -r '$1 $2' /tmp/took_X_to_begin_$$.out | awk '{print $1" "$2" "($3*1000)}' | sed 's/T/ /' | bar_chart.py -A
+    rg -N "^${_tmp_date_regex}" -o /tmp/took_X_to_begin_$$.out | sort | uniq -c | sort | tail -n ${_n}
     echo " "
 
     echo "# f_topSlowLogs from engine *debug* log if no _glob, and top ${_n}"
