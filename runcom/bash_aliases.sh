@@ -1,16 +1,14 @@
 ## Simple/generic alias commands (some need pip though) ################################################################
-# cd to the last modified dir
-alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
+alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"' # cd to the last modified dir
 alias urldecode='python -c "import sys, urllib as ul; print ul.unquote_plus(sys.argv[1])"'
 alias urlencode='python -c "import sys, urllib as ul; print ul.quote_plus(sys.argv[1])"'
 alias utc2int='python -c "import sys,time,dateutil.parser;print int(time.mktime(dateutil.parser.parse(sys.argv[1]).timetuple()))"'  # doesn't work with yy/mm/dd (2 digits year)
 alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\""'
-# Start python interactive after loading json object in 'pdf' (pandas dataframe)
-#alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'
+#alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'pdf' (pandas dataframe)
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
 alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
-# brew install gnu-time --with-default-names
-alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'
+alias rgm='rg -N --no-filename -z'
+alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew install gnu-time --with-default-names
 alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
 alias getElementPath='python -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(t.getelementpath(r.find(\".//\"+sys.argv[2],r.nsmap)))"'
 
