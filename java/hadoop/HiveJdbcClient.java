@@ -4,10 +4,12 @@
  * mkdir hadoop
  * javaenvs 10000  # in my alias
  * $JAVA_HOME/bin/javac hadoop/HiveJdbcClient.java
- * $JAVA_HOME/bin/java hadoop.HiveJdbcClient "jdbc:hive2://`hostname -f`:10000/default" [queries] [username] [password]
- * $JAVA_HOME/bin/java -Djava.security.auth.login.config=/usr/local/atscale/conf/krb/atscale-jaas.conf -Dsun.security.krb5.debug=true hadoop.HiveJdbcClient "jdbc:hive2://`hostname -f`:10000/default;principal=hive/_HOST@UBUNTU.LOCALDOMAIN" [sql] [logincontext]
  *
- * TODO: support kerberos
+ * Supported command arguments: -u, -e, -f, -n, -p, -l
+ *
+ * $JAVA_HOME/bin/java hadoop.HiveJdbcClient -u "jdbc:hive2://`hostname -f`:10000/default" -e [queries] -n [username] -p [password]
+ * $JAVA_HOME/bin/java -Djava.security.auth.login.config=/usr/local/atscale/conf/krb/atscale-jaas.conf -Dsun.security.krb5.debug=true \
+ *   hadoop.HiveJdbcClient -u "jdbc:hive2://`hostname -f`:10000/default;principal=hive/_HOST@UBUNTU.LOCALDOMAIN" ... -l [logincontext]
  */
 package hadoop;
 
@@ -15,16 +17,22 @@ import javax.security.auth.Subject;
 import javax.security.auth.callback.*;
 import javax.security.auth.login.LoginContext;
 import javax.security.auth.login.LoginException;
+import java.io.BufferedReader;
+import java.io.FileReader;
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
+
 import org.apache.hadoop.security.UserGroupInformation;
 
 public class HiveJdbcClient {
     private static String driverName = "org.apache.hive.jdbc.HiveDriver";
     private static String JDBC_DB_URL = "";
     private static String QUERY = "select 1";
+    private static String FILEPATH = "";
     private static String USER = "admin";
     private static String PASS = "admin";
 
@@ -61,7 +69,7 @@ public class HiveJdbcClient {
         // create a LoginContext based on the entry in the login.conf file
         LoginContext lc;
         try {
-            System.err.println("Creating LoginContext with "+LOGIN_CONTEXT_NAME);
+            System.err.println("Creating LoginContext with " + LOGIN_CONTEXT_NAME);
             lc = new LoginContext(LOGIN_CONTEXT_NAME, new HiveJdbcClient.MyCallbackHandler());
             // login (effectively populating the Subject)
             lc.login();
@@ -94,6 +102,23 @@ public class HiveJdbcClient {
         return conn;
     }
 
+    private static StringBuilder readFile(String filename) {
+        StringBuilder records = new StringBuilder();;
+        try {
+            BufferedReader reader = new BufferedReader(new FileReader(filename));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                records.append(line + System.getProperty("line.separator"));
+            }
+            reader.close();
+            return records;
+        } catch (Exception e) {
+            System.err.format("Exception occurred trying to read '%s'.", filename);
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     /**
      * @param args
      * @throws SQLException
@@ -111,17 +136,43 @@ public class HiveJdbcClient {
             System.exit(1);
         }
 
-        JDBC_DB_URL = args[0];
+        // Supported command arguments: -u, -e, -n, -p, -l
+        // TODO: no validation
+        for (int i = 0; i < args.length; i++) {
+            if (args[i].equals("-u")) {
+                i++;
+                JDBC_DB_URL = args[i];
+                continue;
+            }
+            if (args[i].equals("-e")) {
+                i++;
+                QUERY = args[i];
+                continue;
+            }
+            if (args[i].equals("-f")) {
+                i++;
+                FILEPATH = args[i];
+                continue;
+            }
+            if (args[i].equals("-n")) {
+                i++;
+                USER = args[i];
+                continue;
+            }
+            if (args[i].equals("-p")) {
+                i++;
+                PASS = args[i];
+                continue;
+            }
+            if (args[i].equals("-l")) {
+                i++;
+                LOGIN_CONTEXT_NAME = args[i];
+                continue;
+            }
+        }
 
-        if (args.length > 1) {
-            QUERY = args[1];
-        }
-        if (args.length > 2) {
-            USER = args[2];
-            LOGIN_CONTEXT_NAME = args[2];
-        }
-        if (args.length > 3) {
-            PASS = args[3];
+        if (FILEPATH.length() > 0) {
+            QUERY = readFile(FILEPATH).toString();
         }
 
 
@@ -131,8 +182,7 @@ public class HiveJdbcClient {
             if (login_config != null && !login_config.isEmpty()) {
                 Subject sub = getSubject();
                 con = getConnection(sub);
-            }
-            else {
+            } else {
                 con = DriverManager.getConnection(JDBC_DB_URL, USER, PASS);
             }
         } catch (Exception e) {
@@ -141,8 +191,8 @@ public class HiveJdbcClient {
         }
 
         String[] queries = QUERY.split(";");
-        for (String q: queries) {
-            System.err.println("# DEBUG: Executing "+q);
+        for (String q : queries) {
+            System.err.println("# DEBUG: Executing " + q);
             Statement stmt = con.createStatement();
             ResultSet res;
             try {
