@@ -48,7 +48,11 @@ function ht() {
     grep -E '^[0-9]' -m 1 ${_f}
     ${_tac} ${_f} | grep -E '^[0-9]' -m 1
 }
-
+# make a directory and cd
+function mcd() {
+    local _path="$1"
+    mkdir "${_path}" && cd "${_path}"
+}
 # cat some.json | pjson | less (or vim -)
 function pjson() {
     local _max_length="${1:-16384}"
@@ -69,6 +73,7 @@ function jargrep() {
     which jar &>/dev/null || _cmd="less"
     find -L ${2:-./} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} | grep -wi '$1' && echo {}"
 }
+# Get PID from the port number, then set JAVA_HOME and CLASSPATH
 function javaenvs() {
     local _port="${1}"
     local _p=`lsof -ti:${_port}`
@@ -165,7 +170,7 @@ function backupC() {
 # copy script(s) into linux servers
 function asPubInst() {
     scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh root@192.168.6.160:/var/tmp/share/atscale/ &
-    scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.162:/var/tmp/share/atscale/ &
+    #scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.162:/var/tmp/share/atscale/ &
     scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.163:/var/tmp/share/atscale/ &
     scp $HOME/IdeaProjects/samples/atscale/install_atscale.sh hosako@dh1:/var/tmp/share/atscale/ &
     wait
