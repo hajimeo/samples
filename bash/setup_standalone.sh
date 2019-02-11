@@ -25,6 +25,9 @@ CREATE CONTAINER:
         <container name> in -n is a container name (= hostname).
         If no name specified, generates some random name.
 
+    NOTE: To download some file from another server
+        export _REPO_URL=http://xxx.xxx.xxx.xxx/zzz/
+
 START/CREATE CONTAINER:
     -n <container name> [-v <version>]     <<< no '-c'
         NOTE: If *exactly* same name image exists or -v/-N options are used, this also creates container.
@@ -69,17 +72,16 @@ Another way to create a container:
 
 
 ### Default values
-[ -z "${_WORK_DIR}" ] && _WORK_DIR="/var/tmp/share"     # If Mac, may need to be /private/var/tmp/share
-[ -z "${_SHARE_DIR}" ] && _SHARE_DIR="/var/tmp/share"   # Docker container's share dir (normally same as _WORK_DIR except Mac)
+[ -z "${_WORK_DIR}" ] && _WORK_DIR="/var/tmp/share"     # If Mac, this will be $HOME/share. Also Check "File and Sharing".
+[ -z "${_SHARE_DIR}" ] && _SHARE_DIR="/var/tmp/share"   # *container*'s share dir (normally same as _WORK_DIR except Mac)
 #_DOMAIN_SUFFIX="$(echo `hostname -s` | sed 's/[^a-zA-Z0-9_]//g').localdomain"
 [ -z "${_DOMAIN}" ] && _DOMAIN="standalone.localdomain" # Default container domain suffix
 [ -z "${_OS_VERSION}" ] && _OS_VERSION="7.5.1804"       # Container OS version (normally CentOS version)
 [ -z "${_BASE_IMAGE}" ] && _BASE_IMAGE="hdp/base"       # Docker image name TODO: change to more appropriate image name
 [ -z "${_SERVICE}" ] && _SERVICE="atscale"              # This is used by the app installer script so shouldn't change
 [ -z "${_VERSION}" ] && _VERSION="7.3.1"                # Default software version, mainly used to find the right installer file
-[ -z "${_LICENSE}" ] && _LICENSE="$(ls -1t ${_WORK_DIR%/}/${_SERVICE%/}/dev*license*.json | head -n1)" # A license file to use the _SERVICE
-_PORTS="${_PORTS-"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"}"    # Used by docker port forwarding
-_REMOTE_REPO="${_REMOTE_REPO-"http://192.168.6.163/${_SERVICE}/"}"                  # Curl understandable string
+_PORTS="${_PORTS-"10500 10501 10502 10503 10504 10508 10516 10518 10520 11111 11112 11113"}"    # Used by docker port forwarding
+_REPO_URL="${_REPO_URL-"http://192.168.6.163/${_SERVICE}/"}"                  # Curl understandable string
 #_CUSTOM_NETWORK="hdp"
 
 _CREATE_CONTAINER=false
@@ -190,24 +192,33 @@ function f_update_hosts_file() {
     [ "${_old_ip}" = "${_ip}" ] && return 0
 
     # Take backup before modifying
-    cp -p ${_file} /tmp/hosts_$(date +"%Y%m%d%H%M%S") || return $?
+    local _backup_file="/tmp/hosts_$(date +"%Y%m%d%H%M%S")"
+    cp -p ${_file} ${_backup_file} || return $?
 
-    # TODO: ideally should lock
-    cp -p -f ${_file} /tmp/f_update_hosts_file_$$.tmp || return $?
+    local _tmp_file="${_file}"
+    if [ "`uname`" = "Darwin" ]; then
+        _log "WARN" "Updating ${_tmp_file} (backup: ${_backup_file})"; sleep 3
+    else
+        # TODO: ideally should lock
+        cp -p -f ${_file} /tmp/f_update_hosts_file_$$.tmp || return $?
+        _tmp_file="/tmp/f_update_hosts_file_$$.tmp"
+    fi
 
     # Remove all lines contain hostname and IP
-    _sed -i -r "/\s${_fqdn}\s+${_name}\s?/d" /tmp/f_update_hosts_file_$$.tmp
-    _sed -i -r "/\s${_fqdn}\s?/d" /tmp/f_update_hosts_file_$$.tmp
-    _sed -i -r "/^${_ip}\s?/d" /tmp/f_update_hosts_file_$$.tmp
+    _sed -i -r "/\s${_fqdn}\s+${_name}\s?/d" ${_tmp_file}
+    _sed -i -r "/\s${_fqdn}\s?/d" ${_tmp_file}
+    _sed -i -r "/^${_ip}\s?/d" ${_tmp_file}
     # This shouldn't match but just in case
-    [ -n "${_old_ip}" ] && _sed -i -r "/^${_old_ip}\s?/d" /tmp/f_update_hosts_file_$$.tmp
+    [ -n "${_old_ip}" ] && _sed -i -r "/^${_old_ip}\s?/d" ${_tmp_file}
 
     # Append in the end of file
-    _sed -i -e "\$a${_ip} ${_fqdn} ${_name}" /tmp/f_update_hosts_file_$$.tmp
+    _sed -i -e "\$a${_ip} ${_fqdn} ${_name}" ${_tmp_file}
 
-    # cp / mv fails if no permission on the directory
-    cat /tmp/f_update_hosts_file_$$.tmp > ${_file} || return $?
-    rm -f /tmp/f_update_hosts_file_$$.tmp
+    if [ ! "`uname`" = "Darwin" ]; then
+        # cp / mv fails if no permission on the directory
+        cat ${_tmp_file} > ${_file} || return $?
+        rm -f ${_tmp_file}
+    fi
 }
 
 function _gen_dockerFile() {
@@ -486,13 +497,14 @@ function f_as_setup() {
     [ ! -d "${_work_dir%/}/${_service%/}" ] && mkdir -p -m 777 "${_work_dir%/}${_service%/}"
 
     # Get the latest script but it's OK if fails if the file exists
-    [ -n "${_REMOTE_REPO}" ] && f_update "${_work_dir%/}/${_service%/}/install_atscale.sh" "${_REMOTE_REPO}"
+    [ -n "${_REPO_URL}" ] && f_update "${_work_dir%/}/${_service%/}/install_atscale.sh" "${_REPO_URL}"
 
     if [ ! -s ${_work_dir%/}/${_service%/}/install_atscale.sh ]; then
         _log "ERROR" "Failed to create ${_work_dir%/}/${_service%/}/install_atscale.sh"
         return 1
     fi
 
+    [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/${_SERVICE%/}/dev*license*.json | head -n1)"
     if [ ! -s "${_license}" ]; then
         _log "ERROR" "Please copy a license file as ${_work_dir%/}/${_service%/}/dev-vm-license.json"
         return 1
@@ -577,9 +589,9 @@ function f_as_restore() {
 
     local _file_name="${_service}_standalone_${_name}.tgz"
 
-    if [ ! -s "${_work_dir%/}${_service%/}/${_file_name}" ] && [ -n "$_REMOTE_REPO" ]; then
-        _log "INFO" "${_work_dir%/}${_service%/}/${_file_name} does not exist, so that downloading from $_REMOTE_REPO ..."; sleep 1
-        curl --retry 3 -f -C - -o "${_work_dir%/}${_service%/}/${_file_name}" "${_REMOTE_REPO%/}/${_file_name}" || return $?
+    if [ ! -s "${_work_dir%/}${_service%/}/${_file_name}" ] && [ -n "$_REPO_URL" ]; then
+        _log "INFO" "${_work_dir%/}${_service%/}/${_file_name} does not exist, so that downloading from $_REPO_URL ..."; sleep 1
+        curl --retry 3 -f -C - -o "${_work_dir%/}${_service%/}/${_file_name}" "${_REPO_URL%/}/${_file_name}" || return $?
     fi
 
     _log "INFO" "Restoring ${_file_name} on the container"; sleep 1
@@ -946,7 +958,7 @@ main() {
             return 1
         fi
 
-        _WORK_DIR=/private/var/tmp/share
+        _WORK_DIR=$HOME/share
         _DOCKER_PORT_FORWARD=true
     fi
 
