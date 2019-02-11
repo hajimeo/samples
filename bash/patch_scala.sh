@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_scala.sh
-# bash ./patch_scala.sh <port> </some/path/to/filename.jar> <ClassName>
+# curl -o /var/tmp/share/patch_scala.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_scala.sh
+# bash /var/tmp/share/patch_scala.sh <port> </some/path/to/filename.jar> <ClassName>
+#
+# Or
+# . /var/tmp/share/patch_scala.sh
+# f_setup_scala
 #
 # TODO: currently the script filename needs to be "ClassName.scala" (case sensitive)
 #
@@ -80,20 +84,20 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _CLASS_NAME="$3"
 
     if [ -z "$_PORT" ]; then
-        echo "At this moment, a port number (1st arg) is required to use this script (used to find a PID)"
+        echo "At this moment, a port number (1st arg) is required to use this script (used to find a PID)."
         exit 1
     fi
+    f_setup_scala
+    f_javaenvs "$_PORT" || exit $?
+
     if [ ! -s "${_CLASS_NAME}.scala" ]; then
-        echo "At this moment, a scala class name (2nd arg) is required to use this script"
+        echo "At this moment, a scala class name (2nd arg) is required to patch a scala class."
         exit 1
     fi
     if [ ! -e "${_JAR_FILEPATH}" ]; then
-        echo "A jar path (3rd arg) is required to use this script"
+        echo "A jar path (3rd arg) is required to patch a scala class."
         exit 1
     fi
-
-    f_setup_scala
-    f_javaenvs "$_PORT" || exit $?
 
     if [ -d "${_JAR_FILEPATH}" ]; then
         f_jargrep "${_CLASS_NAME}.class" "${_JAR_FILEPATH}"
