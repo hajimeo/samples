@@ -47,10 +47,12 @@ function f_setup_rg() {
             fi
         elif [ "`uname`" = "Linux" ]; then
             if which apt-get &>/dev/null; then  # NOTE: Mac has 'apt' command
-                local _ver="0.10.0"
-                _log "INFO" "Installing rg version: ${_ver} ..."; sleep 3
-                _download "https://github.com/BurntSushi/ripgrep/releases/download/${_ver}/ripgrep_${_ver}_amd64.deb" "/tmp/ripgrep_${_ver}_amd64.deb" "Y" "Y" || return $?
-                sudo dpkg -i /tmp/ripgrep_${_ver}_amd64.deb || return $?
+                if ! apt-get install ripgrep -y; then
+                    local _ver="0.10.0"
+                    _log "INFO" "Installing rg version: ${_ver} ..."; sleep 3
+                    _download "https://github.com/BurntSushi/ripgrep/releases/download/${_ver}/ripgrep_${_ver}_amd64.deb" "/tmp/ripgrep_${_ver}_amd64.deb" "Y" "Y" || return $?
+                    sudo dpkg -i /tmp/ripgrep_${_ver}_amd64.deb || return $?
+                fi
             fi
         else
             _log "WARN" "Please install 'rg' first. https://github.com/BurntSushi/ripgrep/releases"; sleep 3
