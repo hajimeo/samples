@@ -127,8 +127,11 @@ function p_support() {
     echo "# Engine start/restart and supervisord not expected"
     rg -z -N --no-filename -g 'engine.*log*' 'Engine (actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
     echo " "
+    echo "# supervisord 'engine entered RUNNING state' (NOTE: time is probably not UTC)"
+    rg -z -N --no-filename -g 'atscale_service.log' 'engine entered RUNNING state' | tail -n 10
+    echo " "
     echo "# supervisord 'not expected' (NOTE: time is probably not UTC)"
-    rg -z -N --no-filename -g 'atscale_service.log' 'not expected' | tail -n 20
+    rg -z -N --no-filename -g 'atscale_service.log' 'not expected' | tail -n 10
 
     echo " "
     echo "# OutOfMemoryError count in all logs"
@@ -140,7 +143,6 @@ function p_support() {
     echo " "
     echo "# Count thread types from periodic.log"
     rg -g 'periodic.log' '^"' -A 1 --no-filename | rg '^  ' | sort | uniq -c
-    #gcsplit ../hosts/*/logs/engine/periodic.log /^Stack Trace$/ {*}
 
     echo " "
     echo "# WARNs (and above) in warn.log (top 40)"
@@ -188,6 +190,7 @@ EOF
         cat << EOF >> /tmp/perform_cmds.tmp
 f_count_lines                                                                      > /tmp/perform_f_count_lines_$$.out
 f_count_threads "" "${_n}"                                                         > /tmp/perform_f_count_threads_$$.out
+f_count_threads_per_dump                                                           > /tmp/perform_f_count_threads_per_dump_$$.out
 EOF
     fi
     _mexec /tmp/perform_cmds.tmp "source $BASH_SOURCE;" "" "${_num_cpu}"
@@ -216,21 +219,32 @@ EOF
     cat /tmp/perform_f_count_lines_$$.out
     echo "# f_count_threads against the last periodic.log for top ${_n}"
     cat /tmp/perform_f_count_threads_$$.out
+    echo "# Also, executed 'f_count_threads_per_dump > /tmp/perform_f_count_threads_per_dump_$$.out'"
     echo " "
 
     local _tmp_date_regex="${_DATE_FORMAT}.${_TIME_FMT4CHART}?"
     [ -n "${_yyyy_mm_dd_hh_d_regex}" ] && _tmp_date_regex="${_yyyy_mm_dd_hh_d_regex}"
 
     # TODO: 2019-01-16 19:36:12,701 DEBUG [atscale-akka.actor.connection-pool-154790] {...} com.atscale.engine.connection.pool.ConnectionManagerActor - Current state:
-    echo "# Connection pool failures"
+    echo "# Connection pool failures per hour"
     # Didn't find a request to serve
     rg -N --no-filename -z -g "${_glob}" -i "^(${_tmp_date_regex}).+(Likely the pool is at capacity|failed to find free connection|Could not establish a JDBC|Cannot connect to subgroup|Could not create ConnectionManagerActor|No connections available|No free connections|Could not satisfy request|Connection warming failure for|Connection test failure|had failures. Will process queue again in)" -o -r '$1 $2' | sort | uniq -c | tail -n ${_n}
     echo " "
 
-    echo "# Took [X ks] to begin execution + milliseconds per 10 minutes"
-    rg -N --no-filename -z -g "${_glob}" "^${_tmp_date_regex}.+took \[[0-9.]+ [^]]+\] to begin execution" | sort > /tmp/took_X_to_begin_$$.out
+    rg -N --no-filename -z -g "${_glob}" "^${_tmp_date_regex}.+took \[[0-9.]+ [^]]+\] to begin execution" | sort | uniq > /tmp/took_X_to_begin_$$.out
+    echo "# Took [X *ks*] to begin execution"
     rg -N "^${_tmp_date_regex}.+took \[[1-9][0-9.]+ ks\] to begin execution" /tmp/took_X_to_begin_$$.out
+    echo " "
+
+    echo "# 'Took [X s] to begin execution' milliseconds per 10 minutes"
     rg -N "^(${_tmp_date_regex}).+took \[([1-9][0-9.]+) (s)\] to begin execution" -o -r '$1 $2' /tmp/took_X_to_begin_$$.out | awk '{print $1" "$2" "($3*1000)}' | sed 's/T/ /' | bar_chart.py -A
+    echo " "
+
+    echo "# 'Ending QueryActor'"
+    rg -N --no-filename -z -g "${_glob}" "^${_tmp_date_regex}.+Ending QueryActor" | sort | uniq
+    echo " "
+
+    echo "# count 'Took [X s] to begin execution' occurrence per 10 minutes"
     rg -N "^${_tmp_date_regex}" -o /tmp/took_X_to_begin_$$.out | sort | uniq -c | sort | tail -n ${_n}
     echo " "
 
@@ -251,7 +265,7 @@ function f_checkResultSize() {
     local _n="${3:-20}"
     [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d+"
 
-    rg -z -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+ size = ([^,]+), time = ([^,]+)," -r '${1}|${2}|${3}|${4}' | sort -n | uniq > /tmp/f_checkResultSize_$$.out
+    rg -z -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ queryId=(........-....-....-....-............).+QuerySucceededEvent.+, size = ([^,]+), time = ([^,]+)," -r '${1}|${2}|${3}|${4}' | sort -n | uniq > /tmp/f_checkResultSize_$$.out
     echo "### histogram (time vs query result size) #################################################"
     rg -z -N --no-filename "^(${_DATE_FORMAT}).(${_TIME_FMT4CHART}?).*\|([^|]+)\|([^|]+)\|([^|]+)" -r '${1}T${2} ${4}' /tmp/f_checkResultSize_$$.out | bar_chart.py -A
     echo ' '
@@ -1150,6 +1164,40 @@ function f_count_threads() {
     fi
 }
 
+function f_count_threads_per_dump() {
+    local __doc__="Split periodic (thread dump) log and count threads per dump"
+    local _file="$1"
+    local _search="${2:-"- Periodic stack trace .:"}"
+
+    [ -z "${_file}" ] &&  _file="`find . -name periodic.log -print | head -n1`" && ls -lh ${_file}
+    local _tmp_dir="/tmp/tdumps"
+    local _prefix="periodic_"
+    _file="$(realpath "${_file}")"
+
+    mkdir ${_tmp_dir} &>/dev/null
+    cd ${_tmp_dir} || return $?
+
+    local _ext="${_file##*.}"
+    if [[ "${_ext}" =~ gz ]]; then
+        gcsplit -f "${_prefix}" <(gunzip -c ${_file}) "/${_search}/" '{*}'
+    else
+        gcsplit -f "${_prefix}" ${_file} "/${_search}/" '{*}'
+    fi
+
+    if [ $? -ne 0 ]; then
+        cd -
+        return 1
+    fi
+
+    for _f in `ls -1 ${_prefix}*`; do
+        head -n 1 $_f
+        # NOTE: currently excluding thread which occurrence is only 1.
+        rg '^"([^"]+)"' -o -r '$1' $_f | gsed 's/[0-9]\+/_/g' | sort | uniq -c | grep -vE '^ +1 '
+        echo '--'
+    done
+    cd -
+}
+
 
 ### Private functions ##################################################################################################
 
@@ -1345,7 +1393,7 @@ _HOSTNAME_REGEX='^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-
 _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
 _TEST_REGEX='^\[.+\]$'
 [ -z "$_DATE_FORMAT" ] && _DATE_FORMAT="\d\d\d\d-\d\d-\d\d"
-[ -z "$_TIME_FMT4CHART" ] && _TIME_FMT4CHART="\d\d:\d"
+[ -z "$_TIME_FMT4CHART" ] && _TIME_FMT4CHART="\d\d:"
 _SCRIPT_DIR="$(dirname $(realpath "$BASH_SOURCE"))"
 
 
