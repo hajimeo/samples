@@ -199,12 +199,12 @@ EOF
     cat /tmp/perform_f_checkResultSize_$$.out
     echo " "
 
-    echo "# f_checkMaterializeWorkers Materialization queue size from the engine debug log"
-    cat /tmp/perform_f_checkMaterializeWorkers_$$.out
-    echo " "
-
     echo "# f_failedQueries failed queries from the engine log (datetime, queryId, time) and top ${_n}"
     cat /tmp/perform_f_failedQueries_$$.out
+    echo " "
+
+    echo "# f_checkMaterializeWorkers Materialization queue size from the engine debug log"
+    cat /tmp/perform_f_checkMaterializeWorkers_$$.out
     echo " "
 
     echo "# f_preCheckoutDuration from the engine debug log (datetime, statement duration, test duration) and top ${_n}"
