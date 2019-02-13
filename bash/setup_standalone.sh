@@ -65,7 +65,7 @@ OTHERS (which normally you don't need to use):
 
 Another way to create a container:
     . $BASH_SOURCE
-    f_install_as <name> <version> '' '' '' <install opts>
+    f_as_install <name> <version> '' '' '' <install opts>
 "
     docker stats --no-stream
 }
@@ -80,7 +80,7 @@ Another way to create a container:
 [ -z "${_BASE_IMAGE}" ] && _BASE_IMAGE="hdp/base"       # Docker image name TODO: change to more appropriate image name
 [ -z "${_SERVICE}" ] && _SERVICE="atscale"              # This is used by the app installer script so shouldn't change
 [ -z "${_VERSION}" ] && _VERSION="7.3.1"                # Default software version, mainly used to find the right installer file
-_PORTS="${_PORTS-"10500 10501 10502 10503 10504 10508 10516 10518 10520 11111 11112 11113"}"    # Used by docker port forwarding
+_PORTS="${_PORTS-"10500 10501 10502 10503 10504 10508 10516 10518 10520 11111 11112 11113 5005"}"    # Used by docker port forwarding
 _REPO_URL="${_REPO_URL-"http://192.168.6.163/${_SERVICE}/"}"                  # Curl understandable string
 #_CUSTOM_NETWORK="hdp"
 
@@ -530,6 +530,7 @@ function f_as_start() {
     local _restart="${3}"
     local _old_hostname="${4}"
 
+    # NOTE: To support different version, f_as_setup should create a symlink
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
     [[ "${_restart}" =~ ^(y|Y) ]] && docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_stop -f"
     docker exec -d ${_name} bash -c "sudo -u ${_service} -i /usr/local/apache-hive/apache_hive.sh"
@@ -598,7 +599,7 @@ function f_as_restore() {
     docker exec -it ${_name} bash -c 'source '${_share_dir%/}'/'${_service%/}'/install_atscale.sh && f_atscale_restore "'${_share_dir%/}'/'${_service%/}'/'${_file_name}'"' || return $?
 }
 
-function f_install_as() {
+function f_as_install() {
     local __doc__="Install the application from creating a container"
     local _name="${1:-$_NAME}"
     local _version="${2-$_VERSION}" # If no version, do not install(setup) the application
@@ -1006,7 +1007,7 @@ main() {
         else
             _log "INFO" "Creating ${_NAME} container..."
             # Creating a new (empty) container and install the application
-            f_install_as "${_NAME}" "$_VERSION" "${_IMAGE_NAME:-"${_BASE_IMAGE}:${_OS_VERSION}"}" "${_ports}" || return $?
+            f_as_install "${_NAME}" "$_VERSION" "${_IMAGE_NAME:-"${_BASE_IMAGE}:${_OS_VERSION}"}" "${_ports}" || return $?
         fi
     fi
 
