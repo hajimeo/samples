@@ -43,7 +43,11 @@ function f_javaenvs() {
     local _user="`stat -c '%U' /proc/${_p}`"
     local _dir="$(dirname `readlink /proc/${_p}/exe` 2>/dev/null)"
     export JAVA_HOME="$(dirname $_dir)"
-    export CLASSPATH=".:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+    if [ -z "$CLASSPATH" ]; then
+        export CLASSPATH=".:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+    else
+        export CLASSPATH="${CLASSPATH%:}:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+    fi
 }
 
 function f_jargrep() {
