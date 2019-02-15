@@ -45,7 +45,7 @@ function replaceUrl(details) {
             //var new_url = "https://customers.atscale.com/" + match[2];
             //var new_url = "https://customers.atscale.com/s/case/" + match[2] + "/detail";
             console.log("New URL = " + new_url);
-            chrome.tabs.update(tab_id, {url: new_url});
+            chrome.tabs.update(tab_id, {"active": true, url: new_url});
         }
     });
 }
