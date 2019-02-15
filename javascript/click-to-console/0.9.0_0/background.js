@@ -68,12 +68,12 @@ function checkFullPathRegexps(url) {
 
 // Identify if it is one of basic Gus urls such as home, console, logout etc
 function isBaseOrgUrl(url) {
-    var regexps = ["/?$","/home/home.jsp","/console","/logout.jsp",".*page/timeoutwarn.jsp"];
+    var regexps = ["/?$","/home/home.jsp","/lightning/","/logout.jsp",".*page/timeoutwarn.jsp"];
     return startsWithRegExps(url, regexps);
 }
 
 function isConsoleUrl(url) {
-    return startsWithRegExps(url, ["/console"]);
+    return startsWithRegExps(url, ["/lightning/"]);
 }
 
 function isAppUrl(url) {
@@ -85,7 +85,7 @@ function isAppUrl(url) {
 function isConsoleBookmarkableUrl(url) {
     // A bookmarkable url must contain # optionally followed by
     // tab params
-    return new RegExp("/console\\??.*#").test(url);
+    return new RegExp("/lightning/\\??.*#").test(url);
 }
 
 // URLs to simply not touch
