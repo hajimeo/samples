@@ -25,8 +25,8 @@ CREATE CONTAINER:
         <container name> in -n is a container name (= hostname).
         If no name specified, generates some random name.
 
-    NOTE: To download some file from another server
-        export _REPO_URL=http://xxx.xxx.xxx.xxx/zzz/
+    NOTE: Below location is used to download app installer
+        export _DOWNLOAD_URL=http://xxx.xxx.xxx.xxx/zzz/
 
 START/CREATE CONTAINER:
     -n <container name> [-v <version>]     <<< no '-c'
@@ -81,7 +81,7 @@ Another way to create a container:
 [ -z "${_SERVICE}" ] && _SERVICE="atscale"              # This is used by the app installer script so shouldn't change
 [ -z "${_VERSION}" ] && _VERSION="7.3.1"                # Default software version, mainly used to find the right installer file
 _PORTS="${_PORTS-"10500 10501 10502 10503 10504 10508 10516 10518 10520 11111 11112 11113 5005"}"    # Used by docker port forwarding
-_REPO_URL="${_REPO_URL-"http://192.168.6.163/${_SERVICE}/"}"                  # Curl understandable string
+_DOWNLOAD_URL="${_DOWNLOAD_URL-"http://192.168.6.163/${_SERVICE}/"}"
 #_CUSTOM_NETWORK="hdp"
 
 _CREATE_CONTAINER=false
@@ -498,7 +498,7 @@ function f_as_setup() {
     [ ! -d "${_work_dir%/}/${_service%/}" ] && mkdir -p -m 777 "${_work_dir%/}${_service%/}"
 
     # Get the latest script but it's OK if fails if the file exists
-    [ -n "${_REPO_URL}" ] && f_update "${_work_dir%/}/${_service%/}/install_atscale.sh" "${_REPO_URL}"
+    [ -n "${_DOWNLOAD_URL}" ] && f_update "${_work_dir%/}/${_service%/}/install_atscale.sh" "${_DOWNLOAD_URL}"
 
     if [ ! -s ${_work_dir%/}/${_service%/}/install_atscale.sh ]; then
         _log "ERROR" "Failed to create ${_work_dir%/}/${_service%/}/install_atscale.sh"
@@ -578,26 +578,6 @@ function f_as_backup() {
         return 1
     fi
     _log "INFO" "Backup to ${_work_dir%/}/${_service%/}/${_file_name} completed"
-}
-
-function f_as_restore() {
-    local __doc__="Restore the application directory from a tgz file which filename is generated from the _name and _service"
-    local _name="${1:-${_NAME}}"
-    local _service="${2:-${_SERVICE}}"
-    local _work_dir="${3:-${_WORK_DIR}}"
-    local _share_dir="${4:-${_SHARE_DIR}}"
-
-    [ ! -d "${_work_dir%/}/${_service%/}" ] && mkdir -p -m 777 "${_work_dir%/}${_service%/}"
-
-    local _file_name="${_service}_standalone_${_name}.tgz"
-
-    if [ ! -s "${_work_dir%/}${_service%/}/${_file_name}" ] && [ -n "$_REPO_URL" ]; then
-        _log "INFO" "${_work_dir%/}${_service%/}/${_file_name} does not exist, so that downloading from $_REPO_URL ..."; sleep 1
-        curl --retry 3 -f -C - -o "${_work_dir%/}${_service%/}/${_file_name}" "${_REPO_URL%/}/${_file_name}" || return $?
-    fi
-
-    _log "INFO" "Restoring ${_file_name} on the container"; sleep 1
-    docker exec -it ${_name} bash -c 'source '${_share_dir%/}'/'${_service%/}'/install_atscale.sh && f_atscale_restore "'${_share_dir%/}'/'${_service%/}'/'${_file_name}'"' || return $?
 }
 
 function f_as_install() {
