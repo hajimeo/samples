@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # curl -o /var/tmp/share/patch_scala.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_scala.sh
-# bash /var/tmp/share/patch_scala.sh <port> </some/path/to/filename.jar> <ClassName>
+# bash /var/tmp/share/patch_scala.sh <port> <ClassName> </some/path/to/filename.jar>
 #
 # Or
 # . /var/tmp/share/patch_scala.sh
