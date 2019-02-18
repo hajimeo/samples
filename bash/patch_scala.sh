@@ -77,15 +77,16 @@ function f_update_jar() {
         _compiled_dir_or_class_name="`dirname ${_class_fullpath}`"
     fi
     echo "Updating ${_jar_filepath} ..."
-    $JAVA_HOME/bin/jar -uvf ${_jar_filepath} ${_compiled_dir_or_class_name%/}/*.class || exit $?
+    $JAVA_HOME/bin/jar -uvf ${_jar_filepath} ${_compiled_dir_or_class_name%/}/*.class || return $?
     cp -f ${_jar_filepath} ${_jar_filename}.patched
+    return 0
 }
 
 ### Main ###############################
 if [ "$0" = "$BASH_SOURCE" ]; then
     _PORT="$1"
-    _JAR_FILEPATH="$2"
-    _CLASS_NAME="$3"
+    _CLASS_NAME="$2"
+    _JAR_FILEPATH="$3"
 
     if [ -z "$_PORT" ]; then
         echo "At this moment, a port number (1st arg) is required to use this script (used to find a PID)."
@@ -95,7 +96,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     f_javaenvs "$_PORT" || exit $?
 
     if [ ! -s "${_CLASS_NAME}.scala" ]; then
-        echo "At this moment, a scala class name (2nd arg) is required to patch a scala class."
+        echo "At this moment, a scala class name (3rd arg) is required to patch a scala class."
         exit 1
     fi
     if [ ! -e "${_JAR_FILEPATH}" ]; then
@@ -111,5 +112,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     # to avoid Java heap space error (default seems to be set to 256m)
     JAVA_OPTS=-Xmx1024m scalac "${_CLASS_NAME}".scala || exit $?
-    f_update_jar "${_JAR_FILEPATH}" "${_CLASS_NAME}"
+    f_update_jar "${_JAR_FILEPATH}" "${_CLASS_NAME}" || exit $?
+    echo "Completed. Please restart the process (current PID=`lsof -ti:${_PORT}`)."
 fi
