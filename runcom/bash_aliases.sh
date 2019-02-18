@@ -15,8 +15,9 @@ alias getElementPath='python -c "import sys;from lxml import etree;t=etree.parse
 ## Non generic (OS/host/app specific) alias commands ###################################################################
 # Load/source my log searching utility functions
 #mkdir -p ~/IdeaProjects/samples/bash; curl -o ~/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
-alias logS="source ~/IdeaProjects/samples/bash/log_search.sh"
-alias xmldiff="python ~/IdeaProjects/samples/python/xml_parser.py"
+alias logS="source $HOME/IdeaProjects/samples/bash/log_search.sh"
+alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py"
+alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 
 # Java / jar related
 alias mb='java -jar ~/Applications/metabase.jar'    # port is 3000
@@ -89,7 +90,11 @@ function javaenvs() {
 # Grep STDIN with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
     #ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
-    rg '^(\d\d\d\d-\d\d-\d\d).(\d\d:\d)' -o -r '${1}_${2}' | bar_chart.py
+    rg '^(\d\d\d\d-\d\d-\d\d).(\d\d:\d)' -o -r '${1}T${2}' | bar_chart.py
+}
+function barH() {
+    #ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
+    rg '^(\d\d\d\d-\d\d-\d\d).(\d\d)' -o -r '${1}T${2}' | bar_chart.py
 }
 # Start Jupyter Lab as service
 function jpl() {
@@ -173,6 +178,7 @@ function asPubInst() {
     #scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.162:/var/tmp/share/atscale/ &
     scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.163:/var/tmp/share/atscale/ &
     scp $HOME/IdeaProjects/samples/atscale/install_atscale.sh hosako@dh1:/var/tmp/share/atscale/ &
+    cp -f $HOME/IdeaProjects/samples/atscale/install_atscale.sh $HOME/share/atscale/
     wait
 }
 # List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
