@@ -152,7 +152,7 @@ function f_update_hosts_file_by_fqdn() {
     # If no root user, uses "sudo" in sed
     if [ "$USER" != "root" ] && [ ! -w "${_hosts_file}" ]; then
         _SUDO_SED=true
-        _log "INFO" "Updating ${_hosts_file}. It may ask your sudo password."
+        _log "INFO" "Updating ${_hosts_file}. ***It may ask your sudo password***"
     fi
 
     # If port forwarding is used, better use localhost
@@ -322,8 +322,13 @@ function f_docker_run() {
         fi
         _port_opts="${_port_opts} -p ${_p}:${_p}"
     done
-    [ -n "${_port_opts}" ] && ! lsof -ti:22222 && _port_opts="${_port_opts} -p 22222:22"
-
+    # Append SSH port forwarding, just in case
+    local _num=`echo ${_name} | sed 's/[^0-9]//g' | cut -c1-3`
+    local _ssh_pf_num=$(( 22000 + ${_num} ))
+    if ! lsof -ti:${_ssh_pf_num}; then
+        _log "INFO" "Adding SSH(22) port forward from ${_ssh_pf_num} ..."
+        _port_opts="${_port_opts} -p ${_ssh_pf_num}:22"
+    fi
 
     local _network=""   # Currently not accepting an IP, so no point of using custom network
     #if docker network ls | grep -qw "$_CUSTOM_NETWORK"; then
@@ -930,10 +935,6 @@ main() {
         _log "ERROR" "python is required for this script."
         return 1
     fi
-    if [ ! -s /etc/init.d/dnsmasq ]; then
-        _log "WARN" "No dnsmasq, which may cause name resolution issue, but keep continuing..."
-        sleep 3
-    fi
     if [ "`uname`" = "Darwin" ]; then
         if ! which gsed &>/dev/null; then
             _log "ERROR" "gsed is required for this script. (brew uninstall gnu-sed)"
@@ -948,7 +949,7 @@ main() {
         mkdir -p -m 777 "${_WORK_DIR%/}/${_SERVICE}" || return $?
     fi
 
-    # It's hard to access container directly on Mac, so adding port forwarding
+    # It's hard to access container directly on Mac, so adding port forwarding. Ref: https://docs.docker.com/docker-for-mac/networking/
     local _ports="";
     if $_DOCKER_PORT_FORWARD; then
         _ports=${_PORTS}
