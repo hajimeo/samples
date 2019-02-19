@@ -31,7 +31,10 @@ function f_setup_misc() {
     [ -L /usr/local/bin/line_parser.py ] && sudo rm -f /usr/local/bin/line_parser.py
     sudo ln -s $HOME/IdeaProjects/samples/python/line_parser.py /usr/local/bin/line_parser.py
 
-    #_download "https://github.com/hajimeo/samples/raw/master/misc/dateregex_Linux" /usr/local/bin/dateregex "Y" || return $?
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/misc/dlv_`uname`" /var/tmp/share/dlv "Y" || return $?
+    chmod a+x /var/tmp/share/dlv
+
+    #_download "https://github.com/hajimeo/samples/raw/master/misc/dateregex_`uname`" /usr/local/bin/dateregex "Y" || return $?
     #chmod a+x /usr/local/bin/dateregex
 }
 
