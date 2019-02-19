@@ -7,7 +7,7 @@
 
 function f_javaenvs() {
     local _port="${1}"
-    local _p=`lsof -ti:${_port}`
+    local _p=`lsof -ti:${_port} -s TCP:LISTEN`
     if [ -z "${_p}" ]; then
         echo "Nothing running on port ${_port}"
         return 11
@@ -84,5 +84,5 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     # to avoid Java heap space error (default seems to be set to 256m)
     JAVA_OPTS=-Xmx1024m javac "${_CLASS_NAME}".java || exit $?
     f_update_jar "${_JAR_FILEPATH}" "${_CLASS_NAME}" || exit $?
-    echo "Completed. Please restart the process (current PID=`lsof -ti:${_PORT}`)."
+    echo "Completed. Please restart the process (current PID=`lsof -ti:${_PORT} -s TCP:LISTEN`)."
 fi
