@@ -141,6 +141,10 @@ function p_support() {
     rg -z -N --no-filename 'OutOfMemoryError' -g 'engine.*log*' -B 1 | rg "^$_DATE_FORMAT" | sort | uniq | tail -n 10
 
     echo " "
+    echo "# Last 10 'Thread starvation or clock leap detected' engine logs"
+    rg -z -N --no-filename 'Thread starvation or clock leap detected' -g 'engine.*log*' | rg "^$_DATE_FORMAT" | sort | uniq | tail -n 10
+
+    echo " "
     echo "# Count thread types from periodic.log"
     rg -g 'periodic.log' '^"' -A 1 --no-filename | rg '^  ' | sort | uniq -c
 
@@ -236,7 +240,7 @@ EOF
     rg -N "^${_tmp_date_regex}.+took \[[1-9][0-9.]+ ks\] to begin execution" /tmp/took_X_to_begin_$$.out
     echo " "
 
-    echo "# 'Took [X s] to begin execution' milliseconds per 10 minutes"
+    echo "# 'Took [X s] to begin execution' milliseconds"
     rg -N "^(${_tmp_date_regex}).+took \[([1-9][0-9.]+) (s)\] to begin execution" -o -r '$1 $2' /tmp/took_X_to_begin_$$.out | awk '{print $1" "$2" "($3*1000)}' | sed 's/T/ /' | bar_chart.py -A
     echo " "
 
@@ -244,7 +248,7 @@ EOF
     rg -N --no-filename -z -g "${_glob}" "^${_tmp_date_regex}.+Ending QueryActor" | sort | uniq
     echo " "
 
-    echo "# count 'Took [X s] to begin execution' occurrence per 10 minutes"
+    echo "# count 'Took [X s] to begin execution' occurrence"
     rg -N "^${_tmp_date_regex}" -o /tmp/took_X_to_begin_$$.out | sort | uniq -c | sort | tail -n ${_n}
     echo " "
 
