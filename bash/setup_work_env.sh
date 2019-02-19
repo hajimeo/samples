@@ -31,6 +31,7 @@ function f_setup_misc() {
     [ -L /usr/local/bin/line_parser.py ] && sudo rm -f /usr/local/bin/line_parser.py
     sudo ln -s $HOME/IdeaProjects/samples/python/line_parser.py /usr/local/bin/line_parser.py
 
+    # If Mac: brew install go-delve/delve/delve
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/misc/dlv_`uname`" /var/tmp/share/dlv "Y" || return $?
     chmod a+x /var/tmp/share/dlv
 
