@@ -1,8 +1,8 @@
-// "persistent": true, is required for onBeforeRequest
-// Also https://developer.chrome.com/apps/match_patterns for url match pattern. Also '#' + '*' doesn't work as it is named alias
+// "persistent": true is required for onBeforeRequest
+// Check https://developer.chrome.com/apps/match_patterns for url match pattern. Also '#' + '*' doesn't work as it is named alias
 chrome.webRequest.onBeforeRequest.addListener(replaceUrl, {
     //urls: ['https://*/*'],  // for debug
-    urls: ['https://*.lightning.force.com/lightning/*', 'https://*.visual.force.com/*', 'https://customers.atscale.com/*'], //'https://*.salesforce.com/console*'
+    urls: ['https://*.lightning.force.com/lightning/*/Case/', 'https://*.visual.force.com/*', 'https://customers.atscale.com/*'], //'https://*.salesforce.com/console*'
     types: ["main_frame"]
 }, ["blocking"]);
 
@@ -12,9 +12,11 @@ function replaceUrl(details) {
     // Assuming ID starts with 50, and protocol + (hostname/path_to_id=) + (caseId), so that the index of groups is 2
     var caseId_regex = new RegExp("^https://(.+\.lightning\.force\.com/lightning/r/Case/|.+\.visual\.force\.com/apex/Case_Lightning.*[?&]id=|customers\.atscale\.com/s/case/)(50[^\?&/]+)");
     var tab_regex = new RegExp("^https://(.+\.lightning\.force\.com/lightning/[ro]/Case/)");
+    var ignore_regex = new RegExp("^https://.+\.lightning\.force\.com/lightning/([ro]/Case/|_classic/)");
 
-    if (tab_regex.exec(window.location.toString())) {
-        console.log('Current selected tab is the target tab (so no action required.): ', window.location.toString());
+    console.log('Current tab: ', window.location.toString());
+    if (ignore_regex.exec(window.location.toString())) {
+        console.log('Current tab is in ignore_regex (so no action required.');
         return {redirectUrl: details.url}
     }
 
