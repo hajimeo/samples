@@ -2,7 +2,7 @@
 // Check https://developer.chrome.com/apps/match_patterns for url match pattern. Also '#' + '*' doesn't work as it is named alias
 chrome.webRequest.onBeforeRequest.addListener(replaceUrl, {
     //urls: ['https://*/*'],  // for debug
-    urls: ['https://*.lightning.force.com/lightning/*/Case/', 'https://*.visual.force.com/*', 'https://customers.atscale.com/*'], //'https://*.salesforce.com/console*'
+    urls: ['https://*.lightning.force.com/lightning/*', 'https://*.visual.force.com/*', 'https://customers.atscale.com/s/case/*'], //'https://*.salesforce.com/console*'
     types: ["main_frame"]
 }, ["blocking"]);
 
@@ -32,7 +32,7 @@ function replaceUrl(details) {
             }
         });
 
-        if (tab_id) {
+        if (tab_id && tab_id != details.tabId) {
             console.log('Closing the new tab as going to re-use existing tab:', tab_id);
             chrome.tabs.remove(details.tabId, function () {
             });
