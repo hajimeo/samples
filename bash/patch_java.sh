@@ -1,9 +1,37 @@
 #!/usr/bin/env bash
 # curl -o /var/tmp/share/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
-# bash /var/tmp/share/patch_java.sh <port> <ClassName> </some/path/to/filename.jar>
+# bash /var/tmp/share/patch_java.sh <port> ./<ClassName>.[java|scala] </some/path/to/filename.jar>
 #
-# TODO: currently the script filename needs to be "ClassName.java" (case sensitive)
+# Or
+# . /var/tmp/share/patch_java.sh
+# f_setup_scala
 #
+# TODO: currently the script filename needs to be "ClassName.scala" or "ClassName.java" (case sensitive)
+#
+
+function f_setup_scala() {
+    local _ver="${1:-2.12.3}"
+    local _extract_dir="${2:-/var/tmp/share}"
+    local _inst_dir="${3:-/usr/local/scala}"
+
+    if [ -d "$SCALA_HOME" ]; then
+        echo "SCALA_HOME is already set so that skipping setup scala"
+        return
+    fi
+
+    if [ ! -x ${_inst_dir%/}/bin/scala ]; then
+        if [ ! -d "${_extract_dir%/}/scala-${_ver}" ]; then
+            if [ ! -s "${_extract_dir%/}/scala-${_ver}.tgz" ]; then
+                curl --retry 3 -C - -o "${_extract_dir%/}/scala-${_ver}.tgz" "https://downloads.lightbend.com/scala/${_ver}/scala-${_ver}.tgz" || return $?
+            fi
+            tar -xf "${_extract_dir%/}/scala-${_ver}.tgz" -C "${_extract_dir%/}/" || return $?
+            chmod a+x ${_extract_dir%/}/scala-${_ver}/bin/*
+        fi
+        [ -d "${_inst_dir%/}" ] || ln -s "${_extract_dir%/}/scala-${_ver}" "${_inst_dir%/}"
+    fi
+    export SCALA_HOME=${_inst_dir%/}
+    export PATH=$PATH:$SCALA_HOME/bin
+}
 
 function f_javaenvs() {
     local _port="${1}"
@@ -25,8 +53,12 @@ function f_javaenvs() {
 function f_jargrep() {
     local _class="${1}"
     local _path="${2:-.}"
-    local _cmd="jar -tf"
-    which jar &>/dev/null || _cmd="less"
+    local _cmd="less"
+    if [ -e $JAVA_HOME/bin/jar ]; then
+        _cmd="$JAVA_HOME/bin/jar -tf"
+    elif which jar &>/dev/null; then
+        _cmd="jar -tf"
+    fi
     find -L ${_path%/} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} | grep -w '${_class}' >&2 && echo '^ Jar: {}'"
 }
 
@@ -44,12 +76,17 @@ function f_update_jar() {
         cp -p ${_jar_filepath} ${_jar_filename}.orig || return $?
     fi
 
+    local _class_file_path="${_compiled_dir_or_class_name%/}/*.class"
     if [ ! -d "${_compiled_dir_or_class_name}" ]; then
-        local _class_fullpath="`find . -name "${_compiled_dir_or_class_name}.class" -print`"
-        _compiled_dir_or_class_name="`dirname ${_class_fullpath}`"
+        _class_file_path="`find . -name "${_compiled_dir_or_class_name}.class" -print`"
+        local _dir_path="`dirname ${_class_file_path}`"
+        if [ "${_dir_path}" = "." ] || [ -z "${_dir_path}" ]; then
+            echo "Please check 'package' of ${_compiled_dir_or_class_name} and make dir."
+            return 1
+        fi
     fi
-    echo "Updating ${_jar_filepath} ..."
-    $JAVA_HOME/bin/jar -uvf ${_jar_filepath} ${_compiled_dir_or_class_name%/}/*.class || return $?
+    echo "Updating ${_jar_filepath} with ${_class_file_path} ..."
+    $JAVA_HOME/bin/jar -uvf ${_jar_filepath} ${_class_file_path} || return $?
     cp -f ${_jar_filepath} ${_jar_filename}.patched
     return 0
 }
@@ -57,23 +94,27 @@ function f_update_jar() {
 ### Main ###############################
 if [ "$0" = "$BASH_SOURCE" ]; then
     _PORT="$1"
-    _CLASS_NAME="$2"
+    _CLASS_FILEPATH="$2"
     _JAR_FILEPATH="$3"
+
+    _CLASS_FILENAME="$(basename "${_CLASS_FILEPATH}")"
+    _CLASS_NAME="${_CLASS_FILENAME%.*}"
+    _EXT="${_CLASS_FILENAME##*.}"
 
     if [ -z "$_PORT" ]; then
         echo "At this moment, a port number (1st arg) is required to use this script (used to find a PID)."
         exit 1
     fi
-    f_javaenvs "$_PORT" || exit $?
-
-    if [ ! -s "${_CLASS_NAME}.java" ]; then
-        echo "At this moment, a java class name (3rd arg) is required to patch a java class."
+    if [ ! -s "${_CLASS_FILEPATH}" ]; then
+        echo "At this moment, a java/scala class name (3rd arg) is required to patch a class."
         exit 1
     fi
     if [ ! -e "${_JAR_FILEPATH}" ]; then
-        echo "A jar path (3rd arg) is required to patch a java class."
+        echo "A jar path (3rd arg) is required to patch a class."
         exit 1
     fi
+
+    f_javaenvs "$_PORT" || exit $?
 
     if [ -d "${_JAR_FILEPATH}" ]; then
         f_jargrep "${_CLASS_NAME}.class" "${_JAR_FILEPATH}"
@@ -81,8 +122,19 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         exit 0
     fi
 
+    if [ "${_EXT}" = "scala" ]; then
+        f_setup_scala
+    else
+        _DIR_PATH="$(dirname $($JAVA_HOME/bin/jar -tvf ${_JAR_FILEPATH} | grep -oE "[^ ]+${_CLASS_NAME}.class"))"
+        if [ ! -d "${_DIR_PATH}" ]; then
+            mkdir -p "${_DIR_PATH}" || exit $?
+        fi
+        mv -f ${_CLASS_FILEPATH} ${_DIR_PATH%/}/ || exit $?
+        _CLASS_FILEPATH=${_DIR_PATH%/}/${_CLASS_FILENAME}
+    fi
+
     # to avoid Java heap space error (default seems to be set to 256m)
-    JAVA_OPTS=-Xmx1024m javac "${_CLASS_NAME}".java || exit $?
+    JAVA_OPTS=-Xmx1024m $JAVA_HOME/bin/javac "${_CLASS_FILEPATH}" || exit $?
     f_update_jar "${_JAR_FILEPATH}" "${_CLASS_NAME}" || exit $?
     echo "Completed. Please restart the process (current PID=`lsof -ti:${_PORT} -s TCP:LISTEN`)."
 fi
