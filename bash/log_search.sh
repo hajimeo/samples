@@ -60,11 +60,11 @@ function p_support() {
     echo " "
 
     echo "# config.yaml (filtered)"
-    _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user.timezone|^sun.jnu.encoding|query.result.max_rows|^thrifty.client.protocol|^aggregates.create.invalidateMetadataOnAllSubgroups)' | sort | uniq
+    _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user.timezone|^sun.jnu.encoding|query.result.max_rows|^thrifty.client.protocol|^aggregates.create.invalidateMetadataOnAllSubgroups|^kerberos)' | sort | uniq
     echo " "
     echo " "
 
-    echo "# config-custom.yaml"
+    echo "# config-custom.yaml (may not exist in older version)"
     _find_and_cat "config-custom.yaml" | sort | uniq
     echo " "
     echo " "
