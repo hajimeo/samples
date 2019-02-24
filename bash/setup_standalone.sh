@@ -548,7 +548,7 @@ function f_as_start() {
         docker exec -it ${_name} bash -c 'cd /usr/local/'${_service}'/share/postgresql-*
 for _i in {1..9}; do
   sleep 4
-  LD_LIBRARY_PATH=./lib ./bin/pg_isready -p 10520 -q && break
+  LD_LIBRARY_PATH=./lib ./bin/pg_isready -h localhost -p 10520 -q && break
 done
 sleep 1
 sudo -u '${_service}' ./bin/postgres_psql -cl "-c \"UPDATE engines SET host='${_hostname}' where host='${_old_hostname}'\""
