@@ -39,7 +39,7 @@ function replaceUrl(details) {
         // It seems no 'break' in forEach?, so storing id into tab_id
         var tab_id = null;
         tabs.forEach(function (tab) {
-            if (tab_id === null && tab.id != details.tabId) {
+            if (tab_id === null && tab.id.toString() != details.tabId.toString()) {
                 if (tab_regex.exec(tab.url)) {
                     tab_id = tab.id;
                     console.log('The target tab is already opened and id is ', tab_id);
@@ -48,8 +48,8 @@ function replaceUrl(details) {
             }
         });
 
-        if (tab_id && tab_id != details.tabId) {
-            console.log('Closing the new tab as going to re-use existing tab:', tab_id);
+        if (tab_id && tab_id.toString() != details.tabId.toString()) {
+            console.log('Closing the new tab '+details.tabId.toString()+' as going to re-use existing tab:'+tab_id.toString());
             chrome.tabs.remove(details.tabId, function () {
             });
         } else {
