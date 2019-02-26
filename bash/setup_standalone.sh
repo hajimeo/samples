@@ -94,6 +94,15 @@ _SUDO_SED=false
 _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
 
 
+### Load config file
+if [ -s /etc/setup_standalone.conf ]; then
+    . /etc/setup_standalone.conf
+fi
+if [ -s $HOME/.setup_standalone.conf ]; then
+    . $HOME/.setup_standalone.conf
+fi
+
+
 ### Functions used to build and setup a container
 function f_update() {
     local __doc__="Download the latest code from git and replace"
