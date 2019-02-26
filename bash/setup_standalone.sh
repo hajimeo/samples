@@ -595,7 +595,7 @@ function f_as_backup() {
 }
 
 function f_as_install() {
-    local __doc__="Install the application from creating a container"
+    local __doc__="Install the application from creating a container (_AS_NO_INSTALL_START for no setup)"
     local _name="${1:-$_NAME}"
     local _version="${2-$_VERSION}" # If no version, do not install(setup) the application
     local _base="${3:-"${_BASE_IMAGE}:${_OS_VERSION}"}"
@@ -996,9 +996,10 @@ main() {
             # A bit confusing but later, because of special condition, will create a container.
             _log "TRACE" "Because of special condition, not creating ${_NAME} in here..."
         else
-            _log "INFO" "Creating ${_NAME} container..."
+            local _base="${_IMAGE_NAME:-"${_BASE_IMAGE}:${_OS_VERSION}"}"
+            _log "INFO" "Creating ${_NAME} container from ${_base} (v:${_VERSION})..."
             # Creating a new (empty) container and install the application
-            f_as_install "${_NAME}" "$_VERSION" "${_IMAGE_NAME:-"${_BASE_IMAGE}:${_OS_VERSION}"}" "${_ports}" || return $?
+            f_as_install "${_NAME}" "${_VERSION}" "${_base}" "${_ports}" || return $?
         fi
     fi
 
@@ -1027,7 +1028,11 @@ main() {
             f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
         fi
         sleep 1
-        $_AS_NO_INSTALL_START || f_as_start "${_NAME}.${_DOMAIN#.}"
+        if [ -n "$_IMAGE_NAME" ]; then
+            f_as_start "${_NAME}.${_DOMAIN#.}" "" "" "${_IMAGE_NAME}.${_DOMAIN#.}"
+        else
+            $_AS_NO_INSTALL_START || f_as_start "${_NAME}.${_DOMAIN#.}"
+        fi
     fi
 }
 
