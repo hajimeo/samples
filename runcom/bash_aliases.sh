@@ -10,9 +10,12 @@ alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
 alias rgm='rg -N --no-filename -z'
 alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew install gnu-time --with-default-names
 alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
+# Read xml file, then convert to dict, then json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
+# TODO: find with sys.argv[2] (no ".//"), then output as string
 alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(r.find(sys.argv[2],namespaces=r.nsmap))"'
-alias xml_path='python -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(t.getelementpath(r.find(\".//\"+sys.argv[2],namespaces=r.nsmap)))"'
+# Search with 2nd arg and output the path(s)
+alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();pprint.pprint([t.getelementpath(x) for x in r.findall(\".//\"+sys.argv[2],namespaces=r.nsmap)])"'
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
 # Load/source my log searching utility functions
