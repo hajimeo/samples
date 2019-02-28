@@ -153,8 +153,8 @@ function p_support() {
     f_listWarns "warn.log"
 
     echo " "
-    echo "# engine.*log* start and end (start time, end time, difference(sec), filesize)"
-    f_list_start_end "engine.*log*"
+    echo "# debug.*log* start and end (start time, end time, difference(sec), filesize)"
+    f_list_start_end "debug.*log*"
 }
 
 function p_performance() {
