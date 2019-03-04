@@ -1238,7 +1238,7 @@ function f_docker0_setup() {
     _mask="${_mask#/}"
     local _netmask="255.255.0.0"
     [ "$_mask" = "24" ] && _netmask="255.255.255.0"
-    [ -z "$_dns_ip" ] && _dns_ip="`f_docker_ip`"
+    [ -z "$_dns_ip" ] && _dns_ip="`f_docker_ip "172.17.0.1"`"
 
     if ! ifconfig docker0 | grep -q "$_docker0" ; then
         # If Ubuntu 16 or 18
@@ -1254,7 +1254,7 @@ function f_docker0_setup() {
                 fi
                 echo '{
   "bip": "'${_docker0}'/'${_mask}'",
-  "dns": ["'${_docker0}'", "8.8.8.8"]
+  "dns": ["'${_dns_ip}'", "8.8.8.8"]
 }' > /etc/docker/daemon.json && _restart_required=true
             else
                 # If multiple --bip, clean up!
