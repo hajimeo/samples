@@ -1241,20 +1241,33 @@ function f_docker0_setup() {
     [ -z "$_dns_ip" ] && _dns_ip="`f_docker_ip`"
 
     if ! ifconfig docker0 | grep -q "$_docker0" ; then
+        # If Ubuntu 16 or 18
         local _f="/lib/systemd/system/docker.service"
         if [ -f "${_f}" ] && which systemctl &>/dev/null ; then
             local _restart_required=false
-            # If multiple --bip, clean up!
-            if grep -qE -- "--bip=.+--bip=.+" ${_f} ; then
-                sed -i -e "s/--bip=[0-9.\/]\+//g" ${_f}
-            fi
 
-            # If --bip is never set up, append
-            if ! grep -qE -- '--bip=' ${_f} ; then
-                sed -i "/^ExecStart=/ s/$/ --bip=${_docker0}\/${_mask}/" ${_f} && _restart_required=true
-            # If a different --bip is used, replace
-            elif ! grep -qE -- "--bip=${_docker0}/${_mask}" ${_f} ; then
-                sed -i -e "s/--bip=[0-9.\/]\+/--bip=${_docker0}\/${_mask}/" ${_f} && _restart_required=true
+            # API version 1.39 and higher requires different way...
+            if grep -qi 'Ubuntu 18\.' /etc/issue.net; then
+                if [ -e /etc/docker/daemon.json ]; then
+                    cat /etc/docker/daemon.json
+                    cp -p /etc/docker/daemon.json /etc/docker/daemon.json_$(date +"%Y%m%d%H%M%S") || return $?
+                fi
+                echo '{
+  "bip": "172.26.0.1/16"
+}' > /etc/docker/daemon.json && _restart_required=true
+            else
+                # If multiple --bip, clean up!
+                if grep -qE -- "--bip=.+--bip=.+" ${_f} ; then
+                    sed -i -e "s/--bip=[0-9.\/]\+//g" ${_f}
+                fi
+
+                # If --bip is never set up, append
+                if ! grep -qE -- '--bip=' ${_f} ; then
+                    sed -i "/^ExecStart=/ s/$/ --bip=${_docker0}\/${_mask}/" ${_f} && _restart_required=true
+                # If a different --bip is used, replace
+                elif ! grep -qE -- "--bip=${_docker0}/${_mask}" ${_f} ; then
+                    sed -i -e "s/--bip=[0-9.\/]\+/--bip=${_docker0}\/${_mask}/" ${_f} && _restart_required=true
+                fi
             fi
 
             $_restart_required && systemctl daemon-reload && service docker restart
