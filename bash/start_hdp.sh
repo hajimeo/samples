@@ -1214,7 +1214,7 @@ function f_hdp_network_setup() {
         do
             if [ "x`docker network inspect $a |grep Subnet | sed 's/.*: \"//' | sed 's/\/.*//'`" = "x$_hdp" ]; then
                 _info "Network $a has assigned already the IP $_hdp"
-                exit 1
+                return 1
             fi
         done
         _subnet=`echo $_hdp | sed 's/[0-9]*$/0/'`
@@ -1223,7 +1223,7 @@ function f_hdp_network_setup() {
             cmd="docker network create --driver=bridge --gateway=$_hdp --subnet=$_subnet/$_mask -o "com.docker.network.bridge.name"="$g_HDP_NETWORK" -o "com.docker.network.bridge.host_binding_ipv4"="$_hdp" $g_HDP_NETWORK"
             if ! $cmd ; then
                 _error "\nCreating docker network $g_HDP_NETWORK network with address $_subnet/$_mask failed. Run manually:\n$cmd"
-                exit 1
+                return 1
             fi
         fi
     fi
@@ -2638,7 +2638,7 @@ function p_host_setup() {
     _log "INFO" "Starting f_docker0_setup"
     f_docker0_setup "172.18.0.1" "24" &>> /tmp/p_host_setup.log
     _log "INFO" "Starting f_hdp_network_setup"
-    f_hdp_network_setup &>> /tmp/p_host_setup.log
+    f_hdp_network_setup &>> /tmp/p_host_setup.log || return $?
 
     _log "INFO" "Starting f_dnsmasq"
     f_dnsmasq &>> /tmp/p_host_setup.log || return $?
