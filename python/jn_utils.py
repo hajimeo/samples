@@ -927,7 +927,7 @@ def df2csv(df, file_path, mode="w", header=True):
     Save DataFrame to a CSV file
     :param df_obj: Pandas Data Frame object
     :param file_path: File Path
-    :param mode: mode used with open()
+    :param mode: mode used with open(). Default 'w'
     :return: void
     >>> import pandas as pd
     >>> df = pd.DataFrame([{"key":"a", "val":"value"}])
