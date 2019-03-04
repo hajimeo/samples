@@ -241,7 +241,7 @@ EOF
     echo " "
 
     echo "# 'Took [X s] to begin execution' milliseconds"
-    rg -N "^(${_tmp_date_regex}).+took \[([1-9][0-9.]+) (s)\] to begin execution" -o -r '$1 $2' /tmp/took_X_to_begin_$$.out | awk '{print $1" "$2" "($3*1000)}' | sed 's/T/ /' | bar_chart.py -A
+    rg -N "^(${_tmp_date_regex}).+took \[([1-9][0-9.]+) (s|ks)\] to begin execution" -o -r '$1 $2' /tmp/took_X_to_begin_$$.out | awk '{print $1"T"$2" "($3*1000)}' | bar_chart.py -A
     echo " "
 
     echo "# 'Ending QueryActor'"
@@ -250,6 +250,11 @@ EOF
 
     echo "# count 'Took [X s] to begin execution' occurrence"
     rg -N "^${_tmp_date_regex}" -o /tmp/took_X_to_begin_$$.out | sort | uniq -c | sort | tail -n ${_n}
+    echo " "
+
+    echo "# Counting 'Getting LDAP user completed after X s' (seconds and higher only)"
+    rg -N --no-filename -z -g "${_glob}" "^(${_tmp_date_regex}).+ Getting LDAP user completed after ([0-9.]+) (s|ks)" -o -r '$1' | awk '{print $1"T"$2" 1"}' | bar_chart.py -A
+    rg -N --no-filename -z -g "${_glob}" "^(${_tmp_date_regex}).+ Getting LDAP user completed after ([0-9.]+) (s|ks)" -o -r '$1 $2 $3' | awk '{if ($4=="ks") s=$3*1000; else s=$3; print $1" "$2" "$3" s"}' | sort -nk2 | tail -n${_n}
     echo " "
 
     echo "# f_topSlowLogs from engine *debug* log if no _glob, and top ${_n}"
