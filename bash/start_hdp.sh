@@ -1253,7 +1253,8 @@ function f_docker0_setup() {
                     cp -p /etc/docker/daemon.json /etc/docker/daemon.json_$(date +"%Y%m%d%H%M%S") || return $?
                 fi
                 echo '{
-  "bip": "172.26.0.1/16"
+  "bip": "'${_docker0}'/'${_mask}'",
+  "dns": ["'${_dns_ip}'", "8.8.8.8"]
 }' > /etc/docker/daemon.json && _restart_required=true
             else
                 # If multiple --bip, clean up!
