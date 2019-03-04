@@ -1254,7 +1254,7 @@ function f_docker0_setup() {
                 fi
                 echo '{
   "bip": "'${_docker0}'/'${_mask}'",
-  "dns": ["'${_dns_ip}'", "8.8.8.8"]
+  "dns": ["'${_docker0}'", "8.8.8.8"]
 }' > /etc/docker/daemon.json && _restart_required=true
             else
                 # If multiple --bip, clean up!
