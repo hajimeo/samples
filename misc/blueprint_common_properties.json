@@ -12,6 +12,8 @@
       "properties": {
         "hadoop.proxyuser.atscale.hosts": "*",
         "hadoop.proxyuser.atscale.groups": "*",
+        "hadoop.proxyuser.hive.hosts": "*",
+        "hadoop.proxyuser.hive.groups": "*",
         "hadoop.proxyuser.*": "*"
       }
     }
