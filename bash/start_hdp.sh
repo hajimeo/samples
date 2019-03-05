@@ -2761,7 +2761,7 @@ function f_dnsmasq() {
         echo '{
     "dns": ["'${_docker_ip}'", "8.8.8.8"]
 }' > /etc/docker/daemon.json
-        _warn "service docker restart required"
+        _warn "daemon.json updated. 'systemctl daemon-reload && service docker restart' required"
     fi
 }
 
