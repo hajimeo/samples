@@ -544,8 +544,11 @@ function p_ambari_blueprint() {
     fi
 
     _info "Setting up Ambari for Blueprint (like setting up JDBC drivers, adding Postgres DB users, Removing ZK number restrictions) ..."
+    # CREATE DATABASE cannot be executed from a function or multi-command string
     ssh -q root@${_ambari_host} "ambari-server setup --jdbc-db=postgres --jdbc-driver=\`ls /usr/lib/ambari-server/postgresql-*.jar|tail -n1\`
-sudo -u postgres -i psql -c \"CREATE ROLE hive WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}';CREATE DATABASE hive;CREATE ROLE ranger WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}';CREATE DATABASE ranger;\"
+sudo -u postgres -i psql -c \"CREATE ROLE hive WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}';CREATE ROLE ranger WITH SUPERUSER LOGIN PASSWORD '${g_DEFAULT_PASSWORD}';\"
+sudo -u postgres -i psql -c \"CREATE DATABASE hive;\"
+sudo -u postgres -i psql -c \"CREATE DATABASE ranger;\"
 grep -w rangeradmin /var/lib/pgsql/data/pg_hba.conf || echo 'host  all   hive,ranger,rangeradmin,rangerlogger,rangerkms 0.0.0.0/0  md5' >> /var/lib/pgsql/data/pg_hba.conf
 service postgresql reload"
 
