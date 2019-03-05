@@ -3069,7 +3069,6 @@ function f_socks5_proxy() {
     apt-get install -y autossh || return $?
     f_useradd "socks5user" "socks5user" "Y" || return $?
 
-    # TODO: currently using ssh
     touch /tmp/ssh_socks5.out
     chmod 777 /tmp/ssh_socks5.out
     local _cmd="autossh -4gC2TxnNf -D${_port} socks5user@localhost &> /tmp/ssh_socks5.out"
