@@ -2677,6 +2677,8 @@ function p_host_setup() {
         f_node_proxy_setup &>> /tmp/p_host_setup.log
     fi
 
+    # often I got lost connection in here, so trying to workaround by adding sleep
+    sleep 5
     _log "INFO" "Starting f_commands_run_on_nodes"
     f_commands_run_on_nodes &>> /tmp/p_host_setup.log || return $?
 
