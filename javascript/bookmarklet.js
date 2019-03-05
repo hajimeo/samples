@@ -5,7 +5,7 @@ q = prompt("search word", s);
 if (q != null) {
     (function (s) {
         q = encodeURIComponent(s);
-        w.open("https://myactivity.google.com/myactivity?q=" + q, "t_myactivity");
+        w.open("https://myactivity.google.com/myactivity?product=6&q=" + q, "t_myactivity");
         w.open("https://mail.google.com/mail/u/0/#search/" + q, "t_gmail");
         w.open("https://drive.google.com/drive/search?ltmpl=drive&q=" + q, "t_drive");
         w.open("http://search.osakos.com/index.php?query=" + q + "&rows=50&submit=Search&indexes%5B%5D=hadoop&indexes%5B%5D=hajime&indexes%5B%5D=public&indexes%5B%5D=olap&adv=1", "t_search");
