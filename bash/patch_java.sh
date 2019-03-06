@@ -126,7 +126,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         f_setup_scala
 
         # to avoid Java heap space error (default seems to be set to 256m)
-        JAVA_OPTS=-Xmx1024m $JAVA_HOME/bin/scalac "${_CLASS_FILENAME}" || exit $?
+        JAVA_OPTS=-Xmx1024m scalac "${_CLASS_FILENAME}" || exit $?
     else
         _DIR_PATH="$(dirname $($JAVA_HOME/bin/jar -tvf ${_JAR_FILEPATH} | grep -oE "[^ ]+${_CLASS_NAME}.class"))"
         if [ ! -d "${_DIR_PATH}" ]; then
