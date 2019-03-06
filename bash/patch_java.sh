@@ -84,6 +84,7 @@ function f_update_jar() {
             echo "Please check 'package' of ${_compiled_dir_or_class_name} and make dir."
             return 1
         fi
+        _class_file_path="${_dir_path%/}/*.class"
     fi
     echo "Updating ${_jar_filepath} with ${_class_file_path} ..."
     $JAVA_HOME/bin/jar -uvf ${_jar_filepath} ${_class_file_path} || return $?
