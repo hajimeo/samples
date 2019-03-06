@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # curl -o /var/tmp/share/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
-# bash /var/tmp/share/patch_java.sh <port> <ClassName>.[java|scala] </some/path/to/filename.jar>
+# bash /var/tmp/share/patch_java.sh <port> <ClassName>.[java|scala] </some/path/to/filename.jar> [specific_ClassName_to_update]
 #
 # Or
 # . /var/tmp/share/patch_java.sh
@@ -64,7 +64,8 @@ function f_jargrep() {
 
 function f_update_jar() {
     local _jar_filepath="$1"
-    local _compiled_dir_or_class_name="$2"
+    local _compiled_dir="$2"
+    local _class_name="$3"
 
     if [ ! -d "$JAVA_HOME" ]; then
         echo "JAVA_HOME is not set"
@@ -76,16 +77,17 @@ function f_update_jar() {
         cp -p ${_jar_filepath} ${_jar_filename}.orig || return $?
     fi
 
-    local _class_file_path="${_compiled_dir_or_class_name%/}/*.class"
-    if [ ! -d "${_compiled_dir_or_class_name}" ]; then
-        _class_file_path="`find . -name "${_compiled_dir_or_class_name}.class" -print`"
-        local _dir_path="`dirname ${_class_file_path}`"
-        if [ "${_dir_path}" = "." ] || [ -z "${_dir_path}" ]; then
-            echo "Please check 'package' of ${_compiled_dir_or_class_name} and make dir."
+    if [ ! -d "${_compiled_dir}" ]; then
+        _compiled_dir="`dirname "$(find . -name "${_compiled_dir}.class" -print | tail -n1)"`"
+        if [ "${_compiled_dir}" = "." ] || [ -z "${_compiled_dir}" ]; then
+            echo "Please check 'package' of ${_compiled_dir} and make dir."
             return 1
         fi
-        _class_file_path="${_dir_path%/}/*.class"
     fi
+
+    local _class_file_path="${_compiled_dir%/}/*.class"
+    [ -n "${_class_name}" ] && _class_file_path="${_compiled_dir%/}/${_class_name}.class"
+
     echo "Updating ${_jar_filepath} with ${_class_file_path} ..."
     $JAVA_HOME/bin/jar -uvf ${_jar_filepath} ${_class_file_path} || return $?
     cp -f ${_jar_filepath} ${_jar_filename}.patched
@@ -97,6 +99,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _PORT="$1"
     _CLASS_FILEPATH="$2"
     _JAR_FILEPATH="$3"
+    _UPDATING_CLASSNAME="${4}"
 
     _CLASS_FILENAME="$(basename "${_CLASS_FILEPATH}")"
     _CLASS_NAME="${_CLASS_FILENAME%.*}"
@@ -140,6 +143,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         JAVA_OPTS=-Xmx1024m $JAVA_HOME/bin/javac "${_CLASS_FILENAME}" || exit $?
     fi
 
-    f_update_jar "${_JAR_FILEPATH}" "${_CLASS_NAME}" || exit $?
+    f_update_jar "${_JAR_FILEPATH}" "${_CLASS_NAME}" "${_UPDATING_CLASSNAME}" || exit $?
     echo "Completed. Please restart the process (current PID=`lsof -ti:${_PORT} -s TCP:LISTEN`)."
 fi
