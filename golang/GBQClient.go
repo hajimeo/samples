@@ -1,7 +1,12 @@
 /**
  * Ref: https://cloud.google.com/bigquery/docs/reference/libraries#client-libraries-install-go
  *  go get -u cloud.google.com/go/bigquery
+ *
+ * HOW TO RUN:
  *  export GOOGLE_APPLICATION_CREDENTIALS="/home/user/Downloads/[FILE_NAME].json"
+ *  ./GBQClient 'myfirstproject-xxxxxxx' 'SELECT * FROM `bigquery-public-data.usa_names.usa_1910_2013` LIMIT 2'
+ *
+ * NOTE Do not forget escaping quotes and backtick
  *
  * Ref: https://qiita.com/Sekky0905/items/fd6ff9113d301aaa9e1d
  *  Modified to accept arguments and Removed all non English characters
