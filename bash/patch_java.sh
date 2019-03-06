@@ -124,6 +124,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     if [ "${_EXT}" = "scala" ]; then
         f_setup_scala
+
+        # to avoid Java heap space error (default seems to be set to 256m)
+        JAVA_OPTS=-Xmx1024m $JAVA_HOME/bin/scalac "${_CLASS_FILENAME}" || exit $?
     else
         _DIR_PATH="$(dirname $($JAVA_HOME/bin/jar -tvf ${_JAR_FILEPATH} | grep -oE "[^ ]+${_CLASS_NAME}.class"))"
         if [ ! -d "${_DIR_PATH}" ]; then
@@ -131,10 +134,11 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         fi
         mv -f ${_CLASS_FILEPATH} ${_DIR_PATH%/}/ || exit $?
         _CLASS_FILEPATH=${_DIR_PATH%/}/${_CLASS_FILENAME}
+
+        # to avoid Java heap space error (default seems to be set to 256m)
+        JAVA_OPTS=-Xmx1024m $JAVA_HOME/bin/javac "${_CLASS_FILENAME}" || exit $?
     fi
 
-    # to avoid Java heap space error (default seems to be set to 256m)
-    JAVA_OPTS=-Xmx1024m $JAVA_HOME/bin/javac "${_CLASS_FILENAME}" || exit $?
     f_update_jar "${_JAR_FILEPATH}" "${_CLASS_NAME}" || exit $?
     echo "Completed. Please restart the process (current PID=`lsof -ti:${_PORT} -s TCP:LISTEN`)."
 fi
