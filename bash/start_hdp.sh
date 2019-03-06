@@ -1066,7 +1066,7 @@ function f_haproxy() {
     local _slave_node="${2}"
     local _certificate="${3}"   # cat ./server.`hostname -d`.crt ./rootCA.pem ./server.`hostname -d`.key > certificate.pem'
     local _ports="${4:-"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113 11114 11115"}"
-    local _haproxy_tmpl_conf="${5:-/var/tmp/share/atscale/haproxy.tmpl.cfg}"
+    local _haproxy_tmpl_conf="${5:-/var/tmp/share/haproxy.tmpl.cfg}"
 
     local _ssl_crt=""
     local _cfg="/etc/haproxy/haproxy.cfg"
