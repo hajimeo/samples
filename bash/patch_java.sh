@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # curl -o /var/tmp/share/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
-# bash /var/tmp/share/patch_java.sh <port> ./<ClassName>.[java|scala] </some/path/to/filename.jar>
+# bash /var/tmp/share/patch_java.sh <port> <ClassName>.[java|scala] </some/path/to/filename.jar>
 #
 # Or
 # . /var/tmp/share/patch_java.sh
@@ -134,7 +134,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
 
     # to avoid Java heap space error (default seems to be set to 256m)
-    JAVA_OPTS=-Xmx1024m $JAVA_HOME/bin/javac "${_CLASS_FILEPATH}" || exit $?
+    JAVA_OPTS=-Xmx1024m $JAVA_HOME/bin/javac "${_CLASS_FILENAME}" || exit $?
     f_update_jar "${_JAR_FILEPATH}" "${_CLASS_NAME}" || exit $?
     echo "Completed. Please restart the process (current PID=`lsof -ti:${_PORT} -s TCP:LISTEN`)."
 fi
