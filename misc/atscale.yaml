@@ -1,0 +1,27 @@
+
+installation_location: "/opt/atscale"
+service_account: "atscale"
+loadbalancer_dns_name: "###HOST#NAME###"
+
+tls:
+  enabled: false
+  certificate: "/opt/atscale/conf/server.cert"
+  key: "/opt/atscale/conf/server.key"
+
+kerberos:
+  enabled: false
+  keytab: "/opt/atscale/conf/atscale.keytab"
+  principal: "atscale/###HOST#NAME###@REALM"
+
+engine:
+  memory: "2G"
+
+hosts:
+  - name: ###HOST#NAME###
+    services:
+      - atscale
+      - coordinator
+    override:
+      coordinator:
+        id: 12
+
