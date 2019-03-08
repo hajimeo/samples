@@ -290,7 +290,7 @@ function f_docker_base_create() {
     local _build_dir="$(mktemp -d)" || return $?
     mv ${_docker_file} ${_build_dir%/}/DockerFile || return $?
     cd ${_build_dir} || return $?
-    docker build -f ${_build_dir%/}/DockerFile -t ${_base} . || return $?
+    docker build -t ${_base} . || return $?
     cd -
 }
 
@@ -715,7 +715,6 @@ function f_docker_image_import() {
         docker import ${_tar_file_path} ${_image_name}
     fi
 }
-
 
 function _cdh_setup() {
     local _container_name="${1:-"atscale-cdh"}"
