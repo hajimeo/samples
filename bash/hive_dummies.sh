@@ -53,7 +53,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _beeline_u="${2}"
 
     _cmd="hive -hiveconf hive.tez.exec.print.summary=true"
-    [ -n "${_beeline_u}" ] && _cmd="beeline --verbose=true --outputformat=tsv2 -u '${_beeline_u}' -n $USER"
+    [ -n "${_beeline_u}" ] && _cmd="beeline --verbose=true --outputformat=tsv2 --silent=true -u '${_beeline_u}' -n $USER"
     # -hiveconf hive.root.logger=DEBUG,console
     _cmd="${_cmd} -hiveconf hive.tez.exec.print.summary=true"
 
