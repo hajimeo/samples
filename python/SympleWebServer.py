@@ -30,16 +30,19 @@ class SympleWebServer(BaseHTTPRequestHandler):
     @staticmethod
     def handle_slack_search(query_args):
         query_args['token'] = SympleWebServer._creds.slack_search_token
+        # TODO: need some prettier format (eg: utilize highlight=true with replacing special characters)
         #query_args['highlight'] = "true"
+        # Note: similar to PHP, query argument can be a list
+        if 'query' in query_args and type(query_args['query']) == list and len(query_args['query']) == 1:
+            query_args['query'] = query_args['query'][0]
         data = urllib.urlencode(query_args)
+        sys.stderr.write('    data = '+str(data)+'\n')
         request = urllib2.Request(SympleWebServer._creds.slack_search_baseurl + "/api/search.messages", data)
         response = urllib2.urlopen(request)
         json_str = response.read()
-        # TODO: need more prettier format (eg: utilize highlight=true, use 'previous', unicode characters)
         json_obj = json.loads(json_str)
-        # to avoid "UnicodeEncodeError: 'ascii' codec can't encode character"
-        html = u"<h2>Hit " + str(json_obj['messages']['total']) + u"messages</h2>\n"
-        html+= u"<p>Query<code>" + str(query_args['query']) + "</code></p>\n"
+        html = u"<h2>Hit " + str(json_obj['messages']['total']) + u" messages</h2>\n"
+        html+= u"<p>Query <code>" + str(query_args['query']) + "</code></p>\n"
         if len(json_obj['messages']['matches']) > 0:
             for o in json_obj['messages']['matches']:
                 html += u"<hr/>"
@@ -48,6 +51,8 @@ class SympleWebServer(BaseHTTPRequestHandler):
                 html += u"PermaLink: <a href='" + o['permalink'].replace('/archives/', '/messages/') + u"' target='_blank'>" + o[
                     'permalink'] + u"</a><br/>\n"
                 html += u"<blockquote style='white-space:pre-wrap'><tt>" + o['text'] + u"</tt></blockquote>\n"
+        else:
+            sys.stderr.write('    response = '+str(json_str)+'\n')
         # html = json.dumps(json_obj, indent=4)
         return html
 
