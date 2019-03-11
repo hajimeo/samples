@@ -548,6 +548,7 @@ function f_as_start() {
     # NOTE: To support different version, f_as_setup should create a symlink
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
+    # Workaround to absorb path difference between versions
     docker exec -d ${_name} bash -c "[ ! -e /usr/local/${_service}/bin ] && rmdir /usr/local/${_service} || exit $?; [ -d /opt/${_service}/current/bin ] && ln -s /opt/${_service}/current /usr/local/${_service}"
 
     [[ "${_restart}" =~ ^(y|Y) ]] && docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_stop -f"
