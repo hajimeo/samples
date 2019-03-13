@@ -211,6 +211,7 @@ def _pick_new_key(name, names_dict, using_1st_char=False, check_global=False, pr
     >>> _pick_new_key('test', {'test':'aaa', 't':'bbb'}, True)
     't1'
     """
+    name = re.sub(r'\W+', '_', name)
     if using_1st_char:
         name = name[0]
     if bool(prefix):
@@ -375,12 +376,17 @@ def _autocomp_matcher(text):
     return _get_col_vals(rs.fetchall(), 0)
 
 
-def inject_auto_comp():
+def inject_auto_comp(tablename=None):
     """
     Some hack to use autocomplete in the SQL
+    :param tablename: Optional
     :return: Void
     """
-    tables = describe().name.values
+    if bool(tablename):
+        tables = [tablename]
+    else:
+        tables = describe().name.values
+
     for t in tables:
         cols = describe(t).name.values
         try:
@@ -390,7 +396,6 @@ def inject_auto_comp():
         except:
             _err("setattr(get_ipython().user_global_ns[%s], c, True) failed" % t)
             pass
-
 
 
 def draw(df, width=16, x_col=0, x_colname=None):
@@ -433,7 +438,7 @@ def hist(run=None, like=None, html=True):
     Alias of qhistory (query history)
     :param run: Integer of DataFrame row index which will be run
     :param like: String used in 'like' to search 'query' column
-    :param html: Whether output in HTML or not
+    :param html: Whether output in HTML (default) or returning dataframe object
     :return: Pandas DataFrame contains a list of queries
     """
     return qhistory(run=run, like=like, html=html)
@@ -444,7 +449,7 @@ def history(run=None, like=None, html=True):
     Alias of qhistory (query history)
     :param run: Integer of DataFrame row index which will be run
     :param like: String used in 'like' to search 'query' column
-    :param html: Whether output in HTML or not
+    :param html: Whether output in HTML (default) or returning dataframe object
     :return: Pandas DataFrame contains a list of queries
     """
     return qhistory(run=run, like=like, html=html)
@@ -455,7 +460,7 @@ def qhistory(run=None, like=None, html=True):
     Return query histories as DataFrame (so that it will be display nicely in Jupyter)
     :param run: Integer of DataFrame row index which will be run
     :param like: String used in 'like' to search 'query' column
-    :param html: Whether output in HTML or not
+    :param html: Whether output in HTML (default) or returning dataframe object
     :return: Pandas DataFrame contains a list of queries
     >>> import os; os.environ["JN_UTILS_QUERY_HISTORY"] = "/tmp/text_qhistory.csv"
     >>> _save_query("select 1")
@@ -480,7 +485,7 @@ def qhistory(run=None, like=None, html=True):
     if bool(like):
         df = df[df['query'].str.contains(like)]
     if html is False:
-        #TODO: hist(html=False).groupby(['query']).count().sort_values(['count'])
+        # TODO: hist(html=False).groupby(['query']).count().sort_values(['count'])
         return df
     current_max_colwitdh = pd.get_option('display.max_colwidth')
     pd.set_option('display.max_colwidth', -1)
@@ -518,7 +523,9 @@ def describe(tablename=None, colname=None, conn=None):
         sql_and = " and name like '%" + str(colname) + "%'"
     if bool(tablename):
         # NOTE: this query is sqlite specific. names = list(map(lambda x: x[0], cursor.description))
-        return query(sql="select `name`, `type`, `notnull`, `dflt_value`, `pk` from pragma_table_info('%s') where name is not 'index' %s order by cid" % (str(tablename), sql_and), conn=conn, no_history=True)
+        return query(
+            sql="select `name`, `type`, `notnull`, `dflt_value`, `pk` from pragma_table_info('%s') where name is not 'index' %s order by cid" % (
+                str(tablename), sql_and), conn=conn, no_history=True)
     return show_create_table(tablenames=None, like=colname, conn=conn)
 
 
@@ -557,7 +564,9 @@ def show_create_table(tablenames=None, like=None, conn=None):
             return
         tablenames = _get_col_vals(rs.fetchall(), 0)
         return show_create_table(tablenames=tablenames)
-    return query(sql="select distinct name, rootpage from sqlite_master where type = 'table'%s order by rootpage" % (sql_and), conn=conn, no_history=True)
+    return query(
+        sql="select distinct name, rootpage from sqlite_master where type = 'table'%s order by rootpage" % (sql_and),
+        conn=conn, no_history=True)
 
 
 def _get_col_vals(matrix, i):
@@ -699,14 +708,14 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
                 if _time_matches:
                     prev_matches += (_time_matches.group(1),)
     else:
-        prev_message += "" + line  # Looks like each line already has '\n'
+        prev_message = str(prev_message) + str(line)  # Looks like each line already has '\n'
     return (tmp_tuple, prev_matches, prev_message)
 
 
-def _read_file_and_search(file, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None):
+def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None):
     """
     Read a file and search each line with given regex
-    :param file: A file path
+    :param file_path: A file path
     :param line_beginning: Regex to find the beginning of the line (normally like ^2018-08-21)
     :param line_matching: Regex to capture column values
     :param size_regex: Regex to capture size
@@ -723,9 +732,11 @@ def _read_file_and_search(file, line_beginning, line_matching, size_regex=None, 
     prev_message = None
     tuples = []
 
-    f = _read(file)
+    f = _read(file_path)
     # Read lines
     for l in f:
+        if bool(l) is False: break
+        # _err("  line: %s ..." % (l[:100]))
         (tmp_tuple, prev_matches, prev_message) = _find_matching(line=l, prev_matches=prev_matches,
                                                                  prev_message=prev_message, begin_re=begin_re,
                                                                  line_re=line_re, size_re=size_re, time_re=time_re,
@@ -739,7 +750,7 @@ def _read_file_and_search(file, line_beginning, line_matching, size_regex=None, 
     return tuples
 
 
-def logs2table(file_glob, tablename, conn=None,
+def logs2table(file_name, tablename=None, conn=None,
                col_defs=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
                line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
@@ -747,9 +758,9 @@ def logs2table(file_glob, tablename, conn=None,
                max_file_num=10, multiprocessing=False):
     """
     Insert multiple log files into *one* table
-    :param conn:  Connection object
-    :param file_glob: simple regex used in glob to select files.
-    :param tablename: Table name. Required
+    :param file_name: [Required] a file name (not path) or *simple* glob regex
+    :param tablename: Table name. If empty, generated from file_name
+    :param conn:  Connection object (ju.connect())
     :param col_defs: Column definition list or dict (column_name1 data_type, column_name2 data_type, ...)
     :param num_cols: Number of columns in the table. Optional if col_def_str is given.
     :param line_beginning: To detect the beginning of the log entry (normally ^\d\d\d\d-\d\d-\d\d)
@@ -767,13 +778,13 @@ def logs2table(file_glob, tablename, conn=None,
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_cols) is False:
         num_cols = len(col_defs)
-    files = _globr(file_glob)
+    files = _globr(file_name)
 
     if bool(files) is False:
         return False
 
     if len(files) > max_file_num:
-        raise ValueError('Glob: %s returned too many files (%s)' % (file_glob, str(len(files))))
+        raise ValueError('Glob: %s returned too many files (%s)' % (file_name, str(len(files))))
 
     col_def_str = ""
     if isinstance(col_defs, dict):
@@ -787,8 +798,12 @@ def logs2table(file_glob, tablename, conn=None,
                 col_def_str += ", "
             col_def_str += "%s TEXT" % (v)
 
+    if bool(tablename) is False:
+        tablename = _pick_new_key(file_name, {}, using_1st_char=False, prefix='t_')
+
     # If not None, create a table
-    if bool(tablename) and bool(col_def_str):
+    if bool(col_def_str):
+        _err("Creating table: %s ..." % (str(tablename)))
         res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def_str))
         if bool(res) is False:
             return res
@@ -806,25 +821,26 @@ def logs2table(file_glob, tablename, conn=None,
                 res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
                 if bool(res) is False:  # if fails once, stop
                     return res
-        return
-    for f in files:
-        _err("Processing %s ..." % (str(f)))
-        tuples = _read_file_and_search(file=f, line_beginning=line_beginning, line_matching=line_matching,
-                                       size_regex=size_regex, time_regex=time_regex, num_cols=num_cols)
-        if len(tuples) > 0:
-            res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
-            if bool(res) is False:  # if fails once, stop
-                return res
+    else:
+        for f in files:
+            _err("Processing %s ..." % (str(f)))
+            tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
+                                           size_regex=size_regex, time_regex=time_regex, num_cols=num_cols)
+            if len(tuples) > 0:
+                res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
+                if bool(res) is False:  # if fails once, stop
+                    return res
+    _err("Completed.")
 
 
-def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
+def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
              num_fields=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
              line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
              size_regex="[sS]ize =? ?([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
              max_file_num=10, multiprocessing=False):
     """
     Convert multiple files to multiple DataFrame objects
-    :param file_glob: simple regex used in glob to select files.
+    :param file_name: A file name or *simple* regex used in glob to select files.
     :param col_names: Column definition list or dict (column_name1 data_type, column_name2 data_type, ...)
     :param num_fields: Number of columns in the table. Optional if col_def_str is given.
     :param line_beginning: To detect the beginning of the log entry (normally ^\d\d\d\d-\d\d-\d\d)
@@ -834,7 +850,7 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
     :param max_file_num: To avoid memory issue, setting max files to import
     :param multiprocessing: If True, use multiple CPUs
     :return: A concatenated DF object
-    #>>> df = logs2dfs(file_glob="debug.2018-08-28.11.log.gz")
+    #>>> df = logs2dfs(file_name="debug.2018-08-28.11.log.gz")
     #>>> df2 = df[df.loglevel=='DEBUG'].head(10)
     #>>> bool(df2)
     #True
@@ -843,13 +859,13 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_fields) is False:
         num_fields = len(col_names)
-    files = _globr(file_glob)
+    files = _globr(file_name)
 
     if bool(files) is False:
         return False
 
     if len(files) > max_file_num:
-        raise ValueError('Glob: %s returned too many files (%s)' % (file_glob, str(len(files))))
+        raise ValueError('Glob: %s returned too many files (%s)' % (file_name, str(len(files))))
 
     dfs = []
     if multiprocessing:
@@ -865,7 +881,7 @@ def logs2dfs(file_glob, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
     else:
         for f in files:
             _err("Processing %s ..." % (str(f)))
-            tuples = _read_file_and_search(file=f, line_beginning=line_beginning, line_matching=line_matching,
+            tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
                                            size_regex=size_regex, time_regex=time_regex, num_cols=num_fields)
             if len(tuples) > 0:
                 dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
