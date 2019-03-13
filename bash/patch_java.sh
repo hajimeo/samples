@@ -2,9 +2,10 @@
 # curl -o /var/tmp/share/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
 # bash /var/tmp/share/patch_java.sh <port> <ClassName>.[java|scala] </some/path/to/filename.jar> [specific_ClassName_to_update]
 #
-# Or
+# Or, to start scala console (REPL):
 # . /var/tmp/share/patch_java.sh
 # f_setup_scala
+# f_javaenvs 10502
 #
 # TODO: currently the script filename needs to be "ClassName.scala" or "ClassName.java" (case sensitive)
 #
