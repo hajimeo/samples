@@ -784,6 +784,8 @@ function p_hdp_sandbox() {
     local _container_name="${1:-"atscale-hdp"}"
     local _tar_uri="${2:-"https://downloads-hortonworks.akamaized.net/sandbox-hdp-2.6.3/HDP_2.6.3_docker_10_11_2017.tar"}"
     local _image_name="sandbox-hdp" # Note: when changing _tar_uri, _image_name may need to change too.
+    # Ref: https://hortonworks.com/tutorial/sandbox-deployment-and-install-guide/section/3/
+    # https://downloads-hortonworks.akamaized.net/sandbox-hdp-2.6.5/HDP_2.6.5_deploy-scripts_180624d542a25.zip
 
     if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
         f_docker_image_import "${_tar_uri}" "${_image_name}" "Y" || return $?
