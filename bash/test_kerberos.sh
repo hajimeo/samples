@@ -74,6 +74,31 @@ function test_dns_reverse_lookup() {
     fi
 }
 
+function test_with_ldapsearch() {
+    local __doc__="Test groups with ldapsearch (can use KRB5_CONFIG)"
+    local _search="$1"      # uid=testuser
+    local _binddn="$2"      # uid=admin,cn=users,cn=accounts,dc=ubuntu,dc=localdomain
+    local _searchbase="$3"  # cn=accounts,dc=ubuntu,dc=localdomain
+    local _prot="${4:-"ldaps"}"
+    local _port="${5:-"636"}"
+
+    local _conf="${KRB5_CONFIG:-"/etc/krb5.conf"}"
+    local _princ="`klist | grep '^Default principal' | awk '{print $3}'`"
+    local _uid="`echo $_princ | cut -d'@' -f 1`"
+    local _realm="`echo $_princ | cut -d'@' -f 2`"
+    local _host="`grep -Pzo '(?s)'${_realm}'\s*=[\s\S]*?\}' ${_conf} | grep -w 'kdc' | cut -d '=' -f 2 | tr -d '[:space:]'`"
+
+    if [ -n "${_binddn}" ]; then
+        [ -z "${_searchbase}" ] && _searchbase="`echo ${_binddn} | grep -oP 'dc=.+'`"
+        [ -z "${_search}" ] && _search="dn=${_binddn}"
+
+        LDAPTLS_REQCERT=never ldapsearch -x -H ${_prot}://${_host}:${_port} -D "${_binddn}" -W -b "${_searchbase}" "${_search}" | grep 'memberOf'
+    else
+        [ -z "${_search}" ] && _search="uid=${_uid}"
+        LDAPTLS_REQCERT=never ldapsearch -Y GSSAPI -H ${_prot}://${_host}:${_port} "${_search}"
+    fi
+}
+
 ### main ########################
 if [ "$0" = "$BASH_SOURCE" ]; then
     echo "source $BASH_SOURCE"
