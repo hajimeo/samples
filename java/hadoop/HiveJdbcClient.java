@@ -8,7 +8,20 @@
  * Supported command arguments: -u, -e, -f, -n, -p, -l
  *
  * $JAVA_HOME/bin/java hadoop.HiveJdbcClient -u "jdbc:hive2://`hostname -f`:10000/default" -e [queries] -n [username] -p [password]
- * $JAVA_HOME/bin/java -Djava.security.auth.login.config=/usr/local/atscale/conf/krb/atscale-jaas.conf -Dsun.security.krb5.debug=true \
+ *
+ * If SSL/TLS/HTTPS:
+ *  ;ssl=true;sslTrustStore=<trust_store_path>;trustStorePassword=<trust_store_password>
+ *
+ * If Kerberos:
+ * create "login.conf" like below (or use /usr/local/atscale/conf/krb/atscale-jaas.conf):
+
+Client {
+  com.sun.security.auth.module.Krb5LoginModule required
+  useTicketCache=true debug=true debugNative=true;
+};
+
+ * export CLASSPATH="${CLASSPATH%:}:/usr/hdp/current/hadoop-client/hadoop-auth.jar"
+ * $JAVA_HOME/bin/java -Djava.security.auth.login.config=./login.conf -Dsun.security.krb5.debug=true \
  *   hadoop.HiveJdbcClient -u "jdbc:hive2://`hostname -f`:10000/default;principal=hive/_HOST@UBUNTU.LOCALDOMAIN" ... -l [logincontext]
  */
 package hadoop;
