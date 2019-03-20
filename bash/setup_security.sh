@@ -223,9 +223,10 @@ function f_ambari_kerberos_setup() {
     local _how_many="${5-$r_NUM_NODES}"
     local _start_from="${6-$r_NODE_START_NUM}"
     local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
+    local _kdc_type="${8:-"mit-kdc"}" # TODO: Not using and MIT KDC only
 
     if [ -z "$_password" ]; then
-        _password=${g_DEFAULT_PASSWORD-hadoop}
+        _password="${g_DEFAULT_PASSWORD:-"hadoop"}"
     fi
 
     if ! which python &>/dev/null; then
@@ -244,7 +245,6 @@ function f_ambari_kerberos_setup() {
     local _request_context="Stop Service with f_ambari_kerberos_setup"
     local _version="version`date +%s`000"
 
-    #local _kdc_type="${3}" # TODO: Not using and MIT KDC only
     # Test GET method
     #response=$(curl --write-out %{http_code} -s -o /dev/null "${_api_uri}/configurations/service_config_versions?service_name=KERBEROS")
 
@@ -335,6 +335,37 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
 
     _info "Completed! Starting all services"
     curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X PUT -d "{\"RequestInfo\":{\"context\":\"Start Service with f_ambari_kerberos_setup\"},\"Body\":{\"ServiceInfo\":{\"state\":\"STARTED\"}}}" ${_api_uri}/services
+}
+
+function f_ambari_kerberos_widh_ad_setup() {
+    local __doc__="TODO: Setup Kerberos with Windows AD via Ambari APIs."
+    local _realm="${1-$g_KDC_REALM}"
+    local _kdc_server="${2-$r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
+    local _password="${3}"
+    local _ambari_host="${4-$r_AMBARI_HOST}"
+    local _how_many="${5-$r_NUM_NODES}"
+    local _start_from="${6-$r_NODE_START_NUM}"
+    local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
+
+    local _cluster_name="`f_get_cluster_name $_ambari_host`" || return 1
+    local _api_uri="http://$_ambari_host:8080/api/v1/clusters/$_cluster_name"
+
+    curl -f -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} "${_api_uri}/services/KERBEROS" -X DELETE    # It's OK to fail (404)
+    curl -f -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} "${_api_uri}/services" --data '{"ServiceInfo": { "service_name": "KERBEROS"}}' || return $?
+    curl -f -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} "${_api_uri}/services?ServiceInfo/service_name=KERBEROS" --data '{"components":[{"ServiceComponentInfo":{"component_name":"KERBEROS_CLIENT"}}]}' || return $?
+    curl -f -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} "${_api_uri}/hosts" --data '{"RequestInfo":{"query":"Hosts/host_name=node6.ubuntu.localdomain"},"Body":{"host_components":[{"HostRoles":{"component_name":"KERBEROS_CLIENT"}}]}}' || return $?
+    curl -f -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} "${_api_uri}" -X PUT --data $'[{"Clusters":{"desired_config":[{"type":"kerberos-env","properties":{"ad_create_attributes_template":"\\n{\\n  \\"objectClass\\": [\\"top\\", \\"person\\", \\"organizationalPerson\\", \\"user\\"],\\n  \\"cn\\": \\"$principal_name\\",\\n  #if( $is_service )\\n  \\"servicePrincipalName\\": \\"$principal_name\\",\\n  #end\\n  \\"userPrincipalName\\": \\"$normalized_principal\\",\\n  \\"unicodePwd\\": \\"$password\\",\\n  \\"accountExpires\\": \\"0\\",\\n  \\"userAccountControl\\": \\"66048\\"\\n}","admin_server_host":"WIN-59T24EHPKJN.hdp.localdomain","case_insensitive_username_rules":"false","container_dn":"OU=Hadoop,DC=HDP,DC=LOCALDOMAIN","create_ambari_principal":"true","encryption_types":"aes des3-cbc-sha1 rc4 des-cbc-md5","executable_search_paths":"/usr/bin, /usr/kerberos/bin, /usr/sbin, /usr/lib/mit/bin, /usr/lib/mit/sbin","install_packages":"true","ipa_user_group":"","kdc_create_attributes":"","kdc_hosts":"WIN-59T24EHPKJN.hdp.localdomain","kdc_type":"active-directory","ldap_url":"ldaps://WIN-59T24EHPKJN.hdp.localdomain","manage_auth_to_local":"true","manage_identities":"true","master_kdc":"","password_length":"20","password_min_digits":"1","password_min_lowercase_letters":"1","password_min_punctuation":"1","password_min_uppercase_letters":"1","password_min_whitespace":"0","preconfigure_services":"DEFAULT","realm":"HDP.LOCALDOMAIN","service_check_principal_name":"${cluster_name|toLower()}-${short_date}"},"service_config_version_note":"This is the initial configuration created by Enable Kerberos wizard."},{"type":"krb5-conf","properties":{"conf_dir":"/etc","content":"{#\\n# Licensed to the Apache Software Foundation (ASF) under one\\n# or more contributor license agreements.  See the NOTICE file\\n# distributed with this work for additional information\\n# regarding copyright ownership.  The ASF licenses this file\\n# to you under the Apache License, Version 2.0 (the\\n# \\"License\\"); you may not use this file except in compliance\\n# with the License.  You may obtain a copy of the License at\\n#\\n#   http://www.apache.org/licenses/LICENSE-2.0\\n#\\n# Unless required by applicable law or agreed to in writing, software\\n# distributed under the License is distributed on an \\"AS IS\\" BASIS,\\n# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\\n# See the License for the specific language governing permissions and\\n# limitations under the License.\\n#}\\n[libdefaults]\\n  renew_lifetime = 7d\\n  forwardable = true\\n  default_realm = {{realm}}\\n  ticket_lifetime = 24h\\n  dns_lookup_realm = false\\n  dns_lookup_kdc = false\\n  default_ccache_name = /tmp/krb5cc_%{uid}\\n  #default_tgs_enctypes = {{encryption_types}}\\n  #default_tkt_enctypes = {{encryption_types}}\\n  {%- if force_tcp %}\\n  udp_preference_limit = 1\\n  {%- endif -%}\\n{% if domains %}\\n[domain_realm]\\n{%- for domain in domains.split(\',\') %}\\n  {{domain|trim()}} = {{realm}}\\n{%- endfor %}\\n{% endif %}\\n[logging]\\n  default = FILE:/var/log/krb5kdc.log\\n  admin_server = FILE:/var/log/kadmind.log\\n  kdc = FILE:/var/log/krb5kdc.log\\n\\n[realms]\\n  {{realm}} = {\\n{%- if master_kdc %}\\n    master_kdc = {{master_kdc|trim()}}\\n{%- endif -%}\\n{%- if kdc_hosts > 0 -%}\\n{%- set kdc_host_list = kdc_hosts.split(\',\')  -%}\\n{%- if kdc_host_list and kdc_host_list|length > 0 %}\\n    admin_server = {{admin_server_host|default(kdc_host_list[0]|trim(), True)}}\\n{%- if kdc_host_list -%}\\n{%- if master_kdc and (master_kdc not in kdc_host_list) %}\\n    kdc = {{master_kdc|trim()}}\\n{%- endif -%}\\n{% for kdc_host in kdc_host_list %}\\n    kdc = {{kdc_host|trim()}}\\n{%- endfor -%}\\n{% endif %}\\n{%- endif %}\\n{%- endif %}\\n  }\\n\\n{# Append additional realm declarations below #}","domains":"","force_tcp":"false","manage_krb5_conf":"true"},"service_config_version_note":"This is the initial configuration created by Enable Kerberos wizard."}]}}]' || return $?
+    curl -f -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} "${_api_uri}/credentials/kdc.admin.credential" --data '{"Credential":{"principal":"administrator@hdp.localdomain","key":"'${_password}'","type":"temporary"}}' || return $?
+    curl -f -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} "${_api_uri}/services?ServiceInfo/state=INSTALLED&ServiceInfo/service_name=KERBEROS" -X PUT --data '{"RequestInfo":{"context":"Install Kerberos Service","operation_level":{"level":"CLUSTER","cluster_name":"ubuntu6"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}' || return $?
+    # Service check
+    #curl -f -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} "${_api_uri}/requests" --data '{"RequestInfo":{"context":"Kerberos Service Check","command":"KERBEROS_SERVICE_CHECK","operation_level":{"level":"CLUSTER","cluster_name":"ubuntu6"}},"Requests/resource_filters":[{"service_name":"KERBEROS"}]}' || return $?
+    #curl -f -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} "${_api_uri}/artifacts/kerberos_descriptor" --data $'{"artifact_data":{"identit...Lower()}","realm":"HDP.LOCALDOMAIN"}}}' || return $?
+    # ????
+    #curl -f -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} "${_api_uri}" -X PUT --data '{"Clusters":{"security_type":"NONE"}}' || return $?
+    curl -f -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} "${_api_uri}/services?" -X PUT --data '{"RequestInfo":{"context":"Stop services","operation_level":{"level":"CLUSTER","cluster_name":"ubuntu6"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}' || return $?
+
+    curl 'http://node6:8080/api/v1/clusters/ubuntu6/services?' -X PUT -H 'Pragma: no-cache' -H 'Origin: http://node6:8080' -H 'Accept-Encoding: gzip, deflate' -H 'Accept-Language: en-AU,en;q=0.9,ja;q=0.8' -H 'X-Requested-By: X-Requested-By' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36' -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' -H 'Accept: application/json, text/javascript, */*; q=0.01' -H 'Cache-Control: no-cache' -H 'X-Requested-With: XMLHttpRequest' -H 'Cookie: gsScrollPos-742=0; AMBARISESSIONID=node02bfv7fhc3r8413o9kjd6jkdhf4.node0' -H 'Connection: keep-alive' -H 'Referer: http://node6:8080/' --data '{"RequestInfo":{"context":"Stop services","operation_level":{"level":"CLUSTER","cluster_name":"ubuntu6"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}' --compressed
+
 }
 
 function f_ssl_hadoop() {
@@ -1148,7 +1179,7 @@ function f_sssd_setup() {
 
     # TODO: bellow requires Kerberos has been set up, also only for CentOS6 (CentOS7 uses realm command)
     # echo -n way works on CentOS6 but not on Mac
-    _cmd="echo -n '"${ad_pwd}"' | kinit ${ad_user}
+    _cmd="echo -e '${ad_pwd}' | kinit ${ad_user}
 
 adcli join -v \
   --domain-controller=${ad_dc} \
