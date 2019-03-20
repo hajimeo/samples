@@ -23,7 +23,9 @@
       "properties": {
         "dfs.replication": "1",
         "dfs.namenode.safemode.extension": "3",
-        "dfs.datanode.du.reserved": "536870912"
+        "dfs.datanode.du.reserved": "536870912",
+        "dfs.datanode.data.dir" : "/hadoop/hdfs/data",
+        "dfs.namenode.name.dir" : "/hadoop/hdfs/namenode"
       }
     }
   },
@@ -40,7 +42,9 @@
     "yarn-site": {
       "properties": {
         "yarn.scheduler.minimum-allocation-mb": "250",
-        "yarn.nodemanager.delete.debug-delay-sec": "1800"
+        "yarn.nodemanager.delete.debug-delay-sec": "1800",
+        "yarn.nodemanager.local-dirs" : "/hadoop/yarn/local",
+        "yarn.nodemanager.log-dirs" : "/hadoop/yarn/log"
       }
     }
   },
