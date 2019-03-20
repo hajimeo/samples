@@ -87,7 +87,7 @@ function f_update_jar() {
     fi
 
     local _class_file_path="${_compiled_dir%/}/*.class"
-    [ -n "${_class_name}" ] && _class_file_path="${_compiled_dir%/}/${_class_name}.class"
+    [ -n "${_class_name}" ] && _class_file_path="${_compiled_dir%/}/${_class_name}[.$]*class"
 
     echo "Updating ${_jar_filepath} with ${_class_file_path} ..."
     $JAVA_HOME/bin/jar -uvf ${_jar_filepath} ${_class_file_path} || return $?
