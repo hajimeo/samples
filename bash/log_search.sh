@@ -100,15 +100,23 @@ function p_support() {
     echo " "
     echo " "
 
-    echo "# current-status.json Cache status"
-    _find_and_cat "current-status.json"
+    echo "# akka_cluster_state.json and zkState.json To check HA"
+    _find_and_cat "akka_cluster_state.json"
+    _find_and_cat "zkState.json"
     echo " "
     echo " "
 
-    echo "# properties.json Engine properties for last 20 lines"
-    _find_and_cat "properties.json" | tail -n 20
-    echo " "
-    echo " "
+    # TODO: ./engine/cron-scheduler/jobHistories.json, ./account/account_audit_stream.json
+
+    #echo "# current-status.json Cache status"
+    #_find_and_cat "current-status.json"
+    #echo " "
+    #echo " "
+
+    #echo "# properties.json Engine properties for last 20 lines"
+    #_find_and_cat "properties.json" | tail -n 20
+    #echo " "
+    #echo " "
 
     echo "# directory_configurations.json"
     _find_and_cat "directory_configurations.json"
