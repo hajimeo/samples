@@ -124,7 +124,7 @@ function p_support() {
     echo "* Number of 0 tbls: "$(_find_and_cat "tableSizes.tsv" | grep -w 0 -c)
     echo " "
 
-    echo "# Engine start/restart and supervisord not expected"
+    echo "# Engine start/restart"
     rg -z -N --no-filename -g 'engine.*log*' 'Engine (actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
     echo " "
     echo "# supervisord 'engine entered RUNNING state' (NOTE: time is probably not UTC)"
