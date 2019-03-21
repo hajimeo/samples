@@ -2,7 +2,7 @@
 # An example of usage
 #   ln -s $HOME/IdeaProjects/samples/runcom/bash_profile.sh $HOME/.bash_profile
 #
-export HISTTIMEFORMAT="%d/%m/%y %T "
+export HISTTIMEFORMAT="%Y-%m-%d %T "
 
 if [ -s $HOME/IdeaProjects/samples/runcom/bash_aliases.sh ]; then
     source $HOME/IdeaProjects/samples/runcom/bash_aliases.sh
