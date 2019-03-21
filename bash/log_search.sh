@@ -142,7 +142,11 @@ function p_support() {
 
     echo " "
     echo "# Last 10 'Thread starvation or clock leap detected' engine logs"
-    rg -z -N --no-filename 'Thread starvation or clock leap detected' -g 'engine.*log*' | rg "^$_DATE_FORMAT" | sort | uniq | tail -n 10
+    rg -z -N --no-filename "^${_DATE_FORMAT}.+Thread starvation or clock leap detected" -g 'engine.*log*' | sort | uniq | tail -n 10
+
+    echo " "
+    echo "# Last 10 'Marshalled xxxxxxxxx characters of SOAP data in yyy s"
+    rg -z -N --no-filename "^${_DATE_FORMAT}.+ Marshalled \d\d\d\d\d\d\d\d+ characters of SOAP data" -g 'engine.*log*' | sort | uniq | tail -n 10
 
     echo " "
     echo "# Count thread types from periodic.log"
