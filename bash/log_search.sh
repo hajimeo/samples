@@ -142,8 +142,7 @@ function p_support() {
 
     echo " "
     echo "# Last 10 'Thread starvation or clock leap detected' engine logs"
-    rg -z -N --no-filename "^${_DATE_FORMAT}.+Thread starvation or clock leap detected" -g 'engine.*log*' | sort | uniq | tail -n 10
-
+    rg -z -N --no-filename "^${_DATE_FORMAT}.+(Thread starvation or clock leap detected|Scheduled sending of heartbeat was delayed)" -g 'engine.*log*' | sort | uniq | tail -n 10
     echo " "
     echo "# Last 10 'Marshalled xxxxxxxxx characters of SOAP data in yyy s"
     rg -z -N --no-filename "^${_DATE_FORMAT}.+ Marshalled \d\d\d\d\d\d\d\d+ characters of SOAP data" -g 'engine.*log*' | sort | uniq | tail -n 10
@@ -1192,9 +1191,9 @@ function f_count_threads_per_dump() {
 
     local _ext="${_file##*.}"
     if [[ "${_ext}" =~ gz ]]; then
-        gcsplit -f "${_prefix}" <(gunzip -c ${_file}) "/${_search}/" '{*}'
+        _csplit -f "${_prefix}" <(gunzip -c ${_file}) "/${_search}/" '{*}'
     else
-        gcsplit -f "${_prefix}" ${_file} "/${_search}/" '{*}'
+        _csplit -f "${_prefix}" ${_file} "/${_search}/" '{*}'
     fi
 
     if [ $? -ne 0 ]; then
@@ -1309,6 +1308,10 @@ function _search_properties() {
 
 function _sed() {
     local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
+    ${_cmd} "$@"
+}
+function _csplit() {
+    local _cmd="csplit"; which gcsplit &>/dev/null && _cmd="gcsplit"
     ${_cmd} "$@"
 }
 function _grep() {
