@@ -125,7 +125,7 @@ function p_support() {
     echo " "
 
     echo "# Engine start/restart"
-    rg -z -N --no-filename -g 'engine.*log*' 'Engine (actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
+    rg -z -N --no-filename -g 'engine.*log*' '(AtScale Engine, shutting down|Shutting down akka system|actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
     echo " "
     echo "# supervisord 'engine entered RUNNING state' (NOTE: time is probably not UTC)"
     rg -z -N --no-filename -g 'atscale_service.log' 'engine entered RUNNING state' | tail -n 10
