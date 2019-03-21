@@ -403,16 +403,16 @@ function f_query_plan() {
 function f_grep_multilines() {
     local __doc__="Multiline search with 'rg'. TODO: dot and brace can't be used in _str_in_1st_line"
     local _str_in_1st_line="$1"         # TODO: At this moment, grep-ing lines which *first* line contain this string
-    local _glob="${2:-"debug.*log*"}"   # TODO: If glob matches multiple files, the result might not be sorted in right order
+    local _glob="${2:-"debug.*log*"}"
     local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d"}"
     local _how_many="${4:-2000}"
 
-    # TODO: if next line also contains the queryId, it won't be included in the output. ("(?!^2\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d)" didn't work)
-    local _regex="${_boundary_str}[^\n]+?${_str_in_1st_line}.+?${_boundary_str}"
+    # TODO: if next line also contains the queryId, it won't be included in the output, so using -A 1 at this moment. ("(?!^2\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d)" didn't work)
+    local _regex="${_boundary_str}[^\n]+?${_str_in_1st_line}.+?(${_boundary_str}|\z)"
     echo "# regex:${_regex}" >&2
     rg "${_regex}" \
         --multiline --multiline-dotall --no-line-number --no-filename -z \
-        -g "${_glob}" --sort path -m ${_how_many}
+        -g "${_glob}" -A 1 --sort path -m ${_how_many}
     # not sure if rg sorts properly with --sort, so best effort.
 }
 
