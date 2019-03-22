@@ -331,12 +331,14 @@ function f_docker_run() {
         fi
         _port_opts="${_port_opts} -p ${_p}:${_p}"
     done
-    # Append SSH port forwarding, just in case
-    local _num=`echo ${_name} | sed 's/[^0-9]//g' | cut -c1-3`
-    local _ssh_pf_num=$(( 22000 + ${_num:-0} ))
-    if ! lsof -ti:${_ssh_pf_num}; then
-        _log "INFO" "Adding SSH(22) port forward from ${_ssh_pf_num} ..."
-        _port_opts="${_port_opts} -p ${_ssh_pf_num}:22"
+    # Only if port forwarding is in use, append SSH port forwarding, just in case
+    if [ -n "${_ports}" ]; then
+        local _num=`echo ${_name} | sed 's/[^0-9]//g' | cut -c1-3`
+        local _ssh_pf_num=$(( 22000 + ${_num:-0} ))
+        if ! lsof -ti:${_ssh_pf_num} -s TCP:LISTEN; then
+            _log "INFO" "Adding SSH(22) port forward from ${_ssh_pf_num} ..."
+            _port_opts="${_port_opts} -p ${_ssh_pf_num}:22"
+        fi
     fi
 
     local _network=""   # Currently not accepting an IP, so no point of using custom network
