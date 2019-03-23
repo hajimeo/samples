@@ -755,12 +755,12 @@ function p_cdh_sandbox() {
 
     _log "INFO" "Starting CDH (Using Cloudera Manager: ${_is_using_cm}) ..."
     if [[ "${_is_using_cm}" =~ ^(y|Y) ]]; then
-        if [ -s /home/cloudera/cloudera-manager ]; then
-            docker exec -it ${_container_name} bash -c '/home/cloudera/cloudera-manager --express'
-            #curl 'http://`hostname -f`:7180/cmf/services/12/maintenanceMode?enter=true' -X POST
-        else
-            docker exec -it ${_container_name} bash -c 'service cloudera-scm-agent start; service cloudera-scm-server-db start && service cloudera-scm-server start'
-        fi
+        #curl 'http://`hostname -f`:7180/cmf/services/12/maintenanceMode?enter=true' -X POST
+        docker exec -it ${_container_name} bash -c 'if [ -s /home/cloudera/cloudera-manager ]; then
+    /home/cloudera/cloudera-manager --express
+else
+    service cloudera-scm-agent start; service cloudera-scm-server-db start && service cloudera-scm-server start
+fi'
     else
         docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start'
     fi
