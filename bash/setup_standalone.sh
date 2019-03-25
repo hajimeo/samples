@@ -737,7 +737,7 @@ function _cdh_setup() {
 }
 
 function p_cdh_sandbox() {
-    local __doc__="Setup CDH Sandbox"
+    local __doc__="Setup CDH Sandbox (NOTE: may need to stop another container which uses previously used IP)"
     local _container_name="${1:-"atscale-cdh"}"
     local _tar_uri="${2:-"https://downloads.cloudera.com/demo_vm/docker/cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz"}"
     local _download_dir="${3:-"."}"
