@@ -945,7 +945,7 @@ function f_start_end_time_with_diff(){
     local _end_int=`_date2int "${_end_date}"`
     local _diff=$(( $_end_int - $_start_int ))
     # Filename, start datetime, enddatetime, difference, (filesize)
-    echo -e "`basename ${_log}`\t${_start_date}\t${_end_date}\t${_diff}s\t$((`wc -c <${_log}` / 1024))KB"
+    echo -e "`basename ${_log}`\t${_start_date}\t${_end_date}\t${_diff}\t$((`wc -c <${_log}` / 1024))KB"
 }
 
 function f_split_strace() {
