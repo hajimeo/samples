@@ -839,10 +839,11 @@ function f_extractByDates() {
     return $?
 }
 
-function f_splitApplog() {
-    local __doc__="Split YARN App log with yarn_app_logs_splitter.py"
+function f_appLogSprit() {
+    local __doc__="(deprecated: no longer works with Ambari 2.7.x / HDP 2.6.x) Split YARN App log with yarn_app_logs_splitter.py"
     local _app_log="$1"
-    local _out_name="containers_`basename $_app_log .log`"
+
+    local _out_dir="containers_`basename $_app_log .log`"
     # Assuming yarn_app_logs_splitter.py is in the following location
     local _script_path="$(dirname "$_SCRIPT_DIR")/misc/yarn_app_logs_splitter.py"
     if [ ! -s "$_script_path" ]; then
@@ -857,15 +858,50 @@ function f_splitApplog() {
         return 1
     fi
     #_grep -Fv "***********************************************************************" $_app_log > /tmp/${_app_log}.tmp
-    python "$_script_path" --container-log-dir $_out_name --app-log "$_app_log"
+    python "$_script_path" --container-log-dir $_out_dir --app-log "$_app_log"
 }
 
-function f_swimlane() {
+function f_appLogCSprit() {
+    local __doc__="Split YARN App log with csplit/gcsplit"
+    local _app_log="$1"
+
+    local _out_dir="`basename $_app_log .log`_containers"
+    if [ ! -r "$_app_log" ]; then
+        echo "$_app_log is not readable"
+        return 1
+    fi
+
+    if [ ! -d $_out_dir ]; then
+        mkdir -p $_out_dir || return $?
+    fi
+
+    _csplit -z -f $_out_dir/lineNo_ $_app_log "/^Container: container_/" '{*}' || return $?
+    local _new_filename=""
+    local _type=""
+    # -bash: /bin/ls: Argument list too long, also i think xargs can't use eval, also there is command length limit!
+    #find $_out_dir -type f -name 'lineNo_*' -print0 | xargs -P 3 -0 -n1 -I {} bash -c "cd $PWD; _f={};_new_filepath=\"\`head -n 1 \${_f} | grep -oE \"container_.+\" | tr ' ' '_'\`\" && mv \${_f} \"${_out_dir%/}/\${_new_filepath}.out\""
+    for _i in {0..9}; do
+        for _f in `ls -1 ${_out_dir%/}/lineNo_${_i}* 2>/dev/null`; do
+            _new_filename="`head -n 1 ${_f} | grep -oE "container_[a-z0-9_]+"`"
+            _type="`grep -m 1 '^LogType:' ${_f} | cut -d ':' -f2`"
+            if [ -n "${_new_filename}" ]; then
+                if [[ "${_type}" =~ ^.+\.dot$ ]]; then
+                    rg '^digraph.+\}' --multiline --multiline-dotall --no-filename --no-line-number ${_f} > "${_out_dir%/}/${_new_filename}.${_type}" && rm -f "${_f}"
+                else
+                    mv -v -i ${_f} "${_out_dir%/}/${_new_filename}.${_type}"
+                fi
+            fi
+        done
+    done
+}
+
+function f_appLogSwimlane() {
     local __doc__="TODO: use swimlane (but broken?)"
     local _app_log="$1"
+
     local _out_name="`basename $_app_log .log`.svg"
     local _tmp_name="`basename $_app_log .log`.tmp"
-    local _script_path="`dirname $(dirname $(dirname $BASH_SOURCE))`/tez/tez-tools/swimlanes/swimlane.py"
+    local _script_path="$(dirname "$_SCRIPT_DIR")/misc/swimlane.py"
     _grep 'HISTORY' $_app_log > ./$_tmp_name
     if [ ! -s "$_tmp_name" ]; then
         echo "$_tmp_name is empty."
