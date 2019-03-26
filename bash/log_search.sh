@@ -265,6 +265,7 @@ EOF
 
     echo "# Counting 'Getting LDAP user completed after X s' (seconds and higher only)"
     rg -N --no-filename -z -g "${_glob}" "^(${_tmp_date_regex}).+ Getting LDAP user completed after ([0-9.]+) (s|ks)" -o -r '$1' | awk '{print $1"T"$2" 1"}' | bar_chart.py -A
+    echo " "
     rg -N --no-filename -z -g "${_glob}" "^(${_tmp_date_regex}).+ Getting LDAP user completed after ([0-9.]+) (s|ks)" -o -r '$1 $2 $3' | awk '{if ($4=="ks") s=$3*1000; else s=$3; print $1" "$2" "$3" s"}' | sort -nk2 | tail -n${_n}
     echo " "
 
@@ -553,7 +554,7 @@ function f_appLogJobCounters() {
     local _line=""
     local _regex="(Final Counters for [^ :]+)[^\[]+(\[.+$)"
 
-    _grep -oP "Final Counters for .+$" "$_path" | while read -r _line ; do
+    rg --no-line-number --no-filename -z -o "Final Counters for .+$" "$_path" | while read -r _line ; do
         if [[ "$_line" =~ ${_regex} ]]; then
             echo "# ${BASH_REMATCH[1]}"
             # TODO: not clean enough. eg: [['File System Counters HDFS_BYTES_READ=1469456609',
@@ -668,10 +669,10 @@ function f_listPerflogEnd() {
         # expecting 5th one is duration after removing start and end time
         #egrep -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k5n
         # removing start and end so that we can easily compare two PERFLOG outputs
-        rg -z -wo '</PERFLOG .+>' "$_path" | _sed -r "s/ (start|end)=[0-9]+//g" | sort -t'=' -k3n
+        rg -z -wo '</PERFLOG .+>' $_path | _sed -r "s/ (start|end)=[0-9]+//g" | sort -t'=' -k3n
     else
         # sorting with start time
-        rg -z -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k3n
+        rg -z -wo '</PERFLOG .+>' $_path | sort -t'=' -k3n
     fi
 }
 
@@ -914,6 +915,29 @@ function f_appLogSwimlane() {
     python "$_script_path" -o $_out_name $_tmp_name
 }
 
+function f_appLogHISTORY() {
+    local __doc__="grep keyword from [HISTORY] line"
+    local _app_log="$1"
+    local _keyword="${2-"timeTaken"}"   # maxTaskDuration
+
+    local _hist_file="/tmp/`basename $_app_log .log`.hist"
+    [ ! -s "${_hist_file}" ] && rg -z --no-line-number --no-filename -o '\[HISTORY\].+' $_app_log > $_hist_file || return $?
+    [ -n "${_keyword}" ] && rg --no-filename --no-line-number -o "vertexName=([^,]+).+vertexId=([^,]+).+${_keyword}=([^,]+)" -r $'${2}\t${1}\t${3}' $_hist_file | sort -t$'\t' -n -k3
+
+    # TODO: rg '</PERFLOG.+duration=\d{7}+' --no-filename | sort
+}
+
+function f_appLogTransition() {
+    local __doc__="grep transitioned"
+    # f_appLogTransition "*" "" | bar
+    # f_appLogTransition "*" "RUNNING" | sort -t $'\t' -k2  # sort by vertexName
+    # rg 'VertexName: Reducer 20'
+    local _app_log="$1"
+    local _keyword="${2-"RUNNING"}"
+    # vertex_[0-9_]+
+    rg --no-filename --no-line-number -o "^(${_DATE_FORMAT}.\d\d:\d\d:\d\d).+(\[[^]]+\]) (transitioned from.+${_keyword}.+)" -r $'${1}\t${2}\t${3}' | sort | uniq
+}
+
 function f_list_start_end(){
     local __doc__="Output start time, end time, difference(sec), (filesize) from *multiple* log files"
     local _glob="${1}"
@@ -945,7 +969,7 @@ function f_start_end_time_with_diff(){
     local _end_int=`_date2int "${_end_date}"`
     local _diff=$(( $_end_int - $_start_int ))
     # Filename, start datetime, enddatetime, difference, (filesize)
-    echo -e "`basename ${_log}`\t${_start_date}\t${_end_date}\t${_diff}\t$((`wc -c <${_log}` / 1024))KB"
+    echo -e "`basename ${_log}`\t${_start_date}\t${_end_date}\t${_diff} s\t$((`wc -c <${_log}` / 1024)) KB"
 }
 
 function f_split_strace() {
