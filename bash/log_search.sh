@@ -170,7 +170,7 @@ function p_support() {
 
 function p_performance() {
     local _glob="${1-"engine.*log*"}"   # eg: "engine.2018-11-27*log*". Empty means using default of each function.
-    local _yyyy_mm_dd_hh_d_regex="${2}" # eg: "2018-11-26 1[01]:\d". Can't use () as it will change the order of rg -o -r
+    local _YYYY_MM_DD_hh_m_regex="${2}" # eg: "2018-11-26 1[01]:\d". Can't use () as it will change the order of rg -o -r
     local _num_cpu="${3}"               # if empty, use half of CPUs
     local _n="${4:-20}"
 
@@ -193,15 +193,15 @@ function p_performance() {
     # Prepare command list for _mexec (but as rg is already multi-threading, not much diff)
     > /tmp/perform_cmds.tmp || return $?
     cat << EOF > /tmp/perform_cmds.tmp
-f_topSlowLogs "^${_yyyy_mm_dd_hh_d_regex}" "${_glob}" "" "" "${_n}"                           > /tmp/perform_f_topSlowLogs_$$.out
-f_topErrors "${_glob}" "${_yyyy_mm_dd_hh_d_regex}" "" "" "${_n}"                              > /tmp/perform_f_topErrors_$$.out
-f_checkResultSize "${_yyyy_mm_dd_hh_d_regex}" "${_glob}" "${_n}"                              > /tmp/perform_f_checkResultSize_$$.out
-f_checkMaterializeWorkers "${_yyyy_mm_dd_hh_d_regex}" "${_tmp_glog}" "${_n}"                              > /tmp/perform_f_checkMaterializeWorkers_$$.out
-f_failedQueries "${_yyyy_mm_dd_hh_d_regex}" "${_glob}" "${_n}"                                > /tmp/perform_f_failedQueries_$$.out
-f_preCheckoutDuration "${_yyyy_mm_dd_hh_d_regex}" "${_glob}" ${_n}                            > /tmp/perform_f_preCheckoutDuration_$$.out
-f_aggBatchKickoffSize "${_yyyy_mm_dd_hh_d_regex}" "${_glob}" ${_n}                            > /tmp/perform_f_aggBatchKickoffSize_$$.out
+f_topSlowLogs "^${_YYYY_MM_DD_hh_m_regex}" "${_glob}" "" "" "${_n}"                           > /tmp/perform_f_topSlowLogs_$$.out
+f_topErrors "${_glob}" "${_YYYY_MM_DD_hh_m_regex}" "" "" "${_n}"                              > /tmp/perform_f_topErrors_$$.out
+f_checkResultSize "${_YYYY_MM_DD_hh_m_regex}" "${_glob}" "${_n}"                              > /tmp/perform_f_checkResultSize_$$.out
+f_checkMaterializeWorkers "${_YYYY_MM_DD_hh_m_regex}" "${_tmp_glog}" "${_n}"                              > /tmp/perform_f_checkMaterializeWorkers_$$.out
+f_failedQueries "${_YYYY_MM_DD_hh_m_regex}" "${_glob}" "${_n}"                                > /tmp/perform_f_failedQueries_$$.out
+f_preCheckoutDuration "${_YYYY_MM_DD_hh_m_regex}" "${_glob}" ${_n}                            > /tmp/perform_f_preCheckoutDuration_$$.out
+f_aggBatchKickoffSize "${_YYYY_MM_DD_hh_m_regex}" "${_glob}" ${_n}                            > /tmp/perform_f_aggBatchKickoffSize_$$.out
 EOF
-    if [ -z "${_yyyy_mm_dd_hh_d_regex}" ]; then
+    if [ -z "${_YYYY_MM_DD_hh_m_regex}" ]; then
         cat << EOF >> /tmp/perform_cmds.tmp
 f_count_lines                                                                      > /tmp/perform_f_count_lines_$$.out
 f_count_threads "" "${_n}"                                                         > /tmp/perform_f_count_threads_$$.out
@@ -238,7 +238,7 @@ EOF
     echo " "
 
     local _tmp_date_regex="${_DATE_FORMAT}.${_TIME_FMT4CHART}?"
-    [ -n "${_yyyy_mm_dd_hh_d_regex}" ] && _tmp_date_regex="${_yyyy_mm_dd_hh_d_regex}"
+    [ -n "${_YYYY_MM_DD_hh_m_regex}" ] && _tmp_date_regex="${_YYYY_MM_DD_hh_m_regex}"
 
     # TODO: 2019-01-16 19:36:12,701 DEBUG [atscale-akka.actor.connection-pool-154790] {...} com.atscale.engine.connection.pool.ConnectionManagerActor - Current state:
     echo "# Connection pool failures per hour"
