@@ -116,7 +116,8 @@ public class HiveJdbcClient {
     }
 
     private static StringBuilder readFile(String filename) {
-        StringBuilder records = new StringBuilder();;
+        StringBuilder records = new StringBuilder();
+        ;
         try {
             BufferedReader reader = new BufferedReader(new FileReader(filename));
             String line;
@@ -188,6 +189,14 @@ public class HiveJdbcClient {
             QUERY = readFile(FILEPATH).toString();
         }
 
+        /* To test just how many connections it can open.
+        List<Connection> _list = new ArrayList<Connection>();
+        for (int i = 0; i < 1000; i++) {
+            System.err.println(i);
+            _list.add(DriverManager.getConnection(JDBC_DB_URL, USER, PASS));
+            Thread.sleep(10);
+        }
+        */
 
         Connection con = null;
         try {
