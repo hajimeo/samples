@@ -214,6 +214,8 @@ public class HiveJdbcClient {
 
         String[] queries = QUERY.split(";");
         for (String q : queries) {
+            if(q.length() == 0) continue;
+
             System.err.println("# DEBUG: Executing " + q);
             Statement stmt = con.createStatement();
             ResultSet res;
