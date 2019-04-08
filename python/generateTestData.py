@@ -12,7 +12,7 @@ from datetime import datetime
 
 __author__ = 'hosako'
 LOG_LEVEL = logging.INFO    # or DEBUG
-MAX_STRING_LEN = 64
+MAX_STRING_LEN = 8
 
 def help():
     print """Generate INSERT statements or CREATE TABLE statement
@@ -28,8 +28,8 @@ How to generate CREATE TABLE statement:
     Arguments are a file path to CSV file, a table name (optional), stored as (optional)
 """ % (__file__, __file__)
 
-def randomStr(length):
-    return ''.join(random.choice(string.lowercase) for i in range(length))
+def randomStr(length, prefix=""):
+    return prefix+''.join(random.choice(string.lowercase) for i in range(length))
 
 def randomInt(length):
     return random.randint(0,length)
@@ -85,9 +85,9 @@ def printInserts(how_many_rows=0, tablename="", lines_of_create_statement=[]):
                 n = MAX_STRING_LEN
 
             if re.search('.*CHAR.*', g2[0], re.IGNORECASE):
-                tmp[col] = "'"+randomStr(n)+"'"
+                tmp[col] = "'"+randomStr(n, col+": ")+"'"
             if re.search('.*string.*', g2[0], re.IGNORECASE):
-                tmp[col] = "'"+randomStr(n)+"'"
+                tmp[col] = "'"+randomStr(n, col+": ")+"'"
             else:
                 # FIXME: assuming everything else is numeric...
                 tmp[col] = str(randomInt(n))
