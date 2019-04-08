@@ -60,7 +60,7 @@ function p_support() {
     echo " "
 
     echo "# config.yaml (filtered)"
-    _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^user.timezone|^estimator.enabled|^query.result.max_rows|^thrifty.client.protocol|^aggregates.create.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^kerberos)' | sort | uniq
+    _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^user.timezone|^estimator.enabled|^query.result.max_rows|^thrifty.client.protocol|^aggregates.create.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs.aggregates.maintainer|^kerberos)' | sort | uniq
     echo " "
     echo " "
 
