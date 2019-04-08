@@ -7,6 +7,8 @@ import random
 import string
 import logging
 import csv
+from time import time
+from datetime import datetime
 
 __author__ = 'hosako'
 LOG_LEVEL = logging.INFO    # or DEBUG
@@ -54,7 +56,7 @@ def printInserts(how_many_rows=0, tablename="", lines_of_create_statement=[]):
             r2 = re.search('([a-z0-9]+?)\s*\((\d+)', probably_col_def, re.IGNORECASE)
             if r2 is None:
                 if re.search('(DATE|TIME)', probably_col_def, re.IGNORECASE):
-                    tmp[col] = "CURRENT_TIMESTAMP"
+                    tmp[col] = "'%s'" % (datetime.fromtimestamp(float(time())).strftime("%Y-%m-%d %H:%M:%S"))
                     continue
                 elif re.search('(BOOLEAN)', probably_col_def, re.IGNORECASE):
                     tmp[col] = "FALSE"
@@ -66,7 +68,7 @@ def printInserts(how_many_rows=0, tablename="", lines_of_create_statement=[]):
                     r2 = re.search('(string|int)', probably_col_def, re.IGNORECASE)
                     log.debug("don't need to set value in here for "+line)
                 else:
-                    # FIXME: at this moment, skip unkonw column type
+                    # FIXME: at this moment, skip unknown column type
                     log.debug("couldn't identify "+str(probably_col_def)+" for "+line)
                     continue
 
