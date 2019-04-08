@@ -958,7 +958,7 @@ main() {
         fi
 
         _WORK_DIR=$HOME/share
-        _DOCKER_PORT_FORWARD=true
+        [ "x${_DOCKER_PORT_FORWARD}" == "x" ] && _DOCKER_PORT_FORWARD=true
     fi
 
     if [ ! -d "${_WORK_DIR%/}/${_SERVICE}" ]; then
