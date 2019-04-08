@@ -142,7 +142,7 @@ def _err(message):
     sys.stderr.write("%s\n" % (str(message)))
 
 
-def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physicalPlans|partitions', chunksize=1000,
+def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physicalPlans|partition|incremental|predictions', chunksize=1000,
                json_cols=['connectionId', 'planJson', 'json']):
     """
     Find json files from current path and load as pandas dataframes object
@@ -151,7 +151,7 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physic
     :param include_ptn: Regex string to include some file
     :param exclude_ptn: Regex string to exclude some file
     :param chunksize: Rows will be written in batches of this size at a time. By default, all rows will be written at once
-    :param json_cols: to_sql() fails if column is json, so forcing those columns to string
+    :param json_cols: to_sql() fails if column is json, so dropping for now (TODO)
     :return: A tuple contain key=>file relationship and Pandas dataframes objects
     #>>> (names_dict, dfs) = load_jsons(src="./engine/aggregates")
     #>>> bool(names_dict)
@@ -164,9 +164,10 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physic
 
     files = _globr(include_ptn, src)
     for f in files:
-        if ex.search(os.path.basename(f)):
-            continue
         f_name, f_ext = os.path.splitext(os.path.basename(f))
+        if ex.search(f_name):
+            _err("Excluding %s (%s)..." % (f_name, exclude_ptn))
+            continue
         new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(db_conn) is False), prefix='t_')
         _err("Creating table: %s ..." % (new_name))
         names_dict[new_name] = f
@@ -187,7 +188,7 @@ def json2df(file_path, db_conn=None, tablename=None, json_cols=[], chunksize=100
     >>> pass    # TODO: implement test
     """
     global _DB_SCHEMA
-    df = pd.read_json(file_path)
+    df = pd.read_json(file_path)    #, dtype=False (didn't help)
     if bool(db_conn):
         if bool(tablename) is False:
             tablename, ext = os.path.splitext(os.path.basename(file_path))
@@ -970,7 +971,7 @@ def gen_ldapsearch(ldap_json=None):
         p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u)
 
 
-def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
+def load(jsons_dir="./engine/aggregates", csvs_dir="./stats", exclude_ptn=None):
     """
     Execute loading functions (currently load_jsons and load_csvs)
     :param jsons_dir: (optional) Path to a directory which contains JSON files
@@ -979,8 +980,12 @@ def load(jsons_dir="./engine/aggregates", csvs_dir="./stats"):
     >>> pass    # test should be done in load_jsons and load_csvs
     """
     # TODO: shouldn't have any paths in here but should be saved into some config file.
-    load_jsons(jsons_dir, connect())
-    load_csvs(csvs_dir, connect())
+    if (exclude_ptn is None):
+        load_jsons(jsons_dir, connect())
+        load_csvs(csvs_dir, connect())
+    else:
+        load_jsons(jsons_dir, connect(), exclude_ptn=exclude_ptn)
+        load_csvs(csvs_dir, connect(), exclude_ptn=exclude_ptn)
     # TODO: below does not work so that using above names_dict workaround
     # try:
     #    import jn_utils as ju
