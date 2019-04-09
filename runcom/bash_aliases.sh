@@ -141,6 +141,7 @@ function r2dh() {
     if [ "Darwin" = "`uname`" ]; then
         sudo route delete -net 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 ${_dh}
         sudo route delete -net 172.18.0.0/24 &>/dev/null;sudo route add -net 172.18.0.0/24 ${_dh}
+        sudo route delete -net 172.17.180.0/24 &>/dev/null;sudo route add -net 172.17.180.0/24 192.168.1.32
     elif [ "Linux" = "`uname`" ]; then
         sudo ip route del 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 gw ${_dh} ens3
     else    # Assuming windows (cygwin)
