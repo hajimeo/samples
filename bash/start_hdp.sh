@@ -208,7 +208,7 @@ function p_interview() {
         # http://public-repo-1.hortonworks.com/ARTIFACTS/jdk-8u112-linux-x64.tar.gz to /var/lib/ambari-server/resources/jdk-8u112-linux-x64.tar.gz
         local _jdk="`ls -1t ./jdk-*-linux-x64*gz 2>/dev/null | head -n1`"
         if [ -z "${_jdk}" ]; then
-            nohup curl -s -O -C - --retry 4 "http://public-repo-1.hortonworks.com/ARTIFACTS/${g_JDK_FILE}" &
+            nohup curl -s -O -C - --retry 4 "http://public-repo-1.hortonworks.com/ARTIFACTS/${g_JDK_FILE}" 2>/dev/null &
             r_AMBARI_JDK_URL="./${g_JDK_FILE}"
         else
             _ask "Ambari JDK URL or path (optional)" "${_jdk}" "r_AMBARI_JDK_URL"
@@ -2741,12 +2741,11 @@ function f_dnsmasq() {
     #sudo systemctl disable systemd-resolved
     apt-get -y install dnsmasq || return $?
 
-    # TODO: doesn't work (doesn't resolve short name)
-    #grep -q '^domain-needed' /etc/dnsmasq.conf || echo 'domain-needed' >> /etc/dnsmasq.conf
-    #grep -q '^bogus-priv' /etc/dnsmasq.conf || echo 'bogus-priv' >> /etc/dnsmasq.conf
-    #grep -q '^local=' /etc/dnsmasq.conf || echo 'local=standalone.localdomain' >> /etc/dnsmasq.conf
+    grep -q '^domain-needed' /etc/dnsmasq.conf || echo 'domain-needed' >> /etc/dnsmasq.conf
+    grep -q '^bogus-priv' /etc/dnsmasq.conf || echo 'bogus-priv' >> /etc/dnsmasq.conf
+    grep -q '^local=' /etc/dnsmasq.conf || echo 'local=/localdomain/' >> /etc/dnsmasq.conf
     #grep -q '^expand-hosts' /etc/dnsmasq.conf || echo 'expand-hosts' >> /etc/dnsmasq.conf
-    #grep -q '^domain=' /etc/dnsmasq.conf || echo 'domain=standalone.localdomain' >> /etc/dnsmasq.conf
+    #grep -q '^domain=' /etc/dnsmasq.conf || echo 'domain=localdomain' >> /etc/dnsmasq.conf
     grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
     grep -q '^resolv-file=' /etc/dnsmasq.conf || (echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf; echo 'nameserver 8.8.8.8' > /etc/resolv.dnsmasq.conf)
 
