@@ -3293,6 +3293,8 @@ expect "Password:"
 send "'${_vpass}'\r"
 expect "Verify:"
 send "'${_vpass}'\r"
+expect "Would you like to enter a view-only password (y/n)?"
+send "n\r"
 expect eof
 exit
 EOF
