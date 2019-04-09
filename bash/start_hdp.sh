@@ -113,7 +113,7 @@ g_HDP_NETWORK="hdp"
 g_CENTOS_VERSION="7.5.1804"
 g_AMBARI_VERSION="2.7.3.0"  # TODO: need to update Ambari version manually
 g_AMBARI_PORT="8080"
-g_STACK_VERSION="3.0"       # Also need to update in case hdp_urlinfo.json doesn't work
+g_STACK_VERSION="3.1"       # TODO: Also need to update in case hdp_urlinfo.json doesn't work
 g_JDK_FILE="jdk-8u112-linux-x64.tar.gz" # Also need to update when HWX updates JDK
 
 __PID="$$"
@@ -663,11 +663,11 @@ function _ambari_blueprint_host_groups() {
     local _ambari_server='{"name":"AMBARI_SERVER"}'
     local _master_comps='{"name":"ZOOKEEPER_SERVER"},{"name":"NAMENODE"},{"name":"HISTORYSERVER"},{"name":"APP_TIMELINE_SERVER"},{"name":"RESOURCEMANAGER"},{"name":"MYSQL_SERVER"},{"name":"HIVE_SERVER"},{"name":"HIVE_METASTORE"},{"name":"WEBHCAT_SERVER"}'
     # YARN_REGISTRY_DNS cardinality 0-1
-    [ "${_stack_version}" = "3.0" ] && _master_comps='{"name":"ZOOKEEPER_SERVER"},{"name":"NAMENODE"},{"name":"HISTORYSERVER"},{"name":"APP_TIMELINE_SERVER"},{"name":"TIMELINE_READER"},{"name":"RESOURCEMANAGER"},{"name":"MYSQL_SERVER"},{"name":"HIVE_SERVER"},{"name":"HIVE_METASTORE"}'
+    [[ "${_stack_version}" =~ ^3\. ]] && _master_comps='{"name":"ZOOKEEPER_SERVER"},{"name":"NAMENODE"},{"name":"HISTORYSERVER"},{"name":"APP_TIMELINE_SERVER"},{"name":"TIMELINE_READER"},{"name":"RESOURCEMANAGER"},{"name":"MYSQL_SERVER"},{"name":"HIVE_SERVER"},{"name":"HIVE_METASTORE"}'
     local _standby_comps='{"name":"SECONDARY_NAMENODE"}'
     local _slave_comps='{"name":"DATANODE"},{"name" : "NODEMANAGER"}'
     local _clients='{"name":"ZOOKEEPER_CLIENT"}, {"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"HCAT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}, {"name":"SLIDER"}'
-    [ "${_stack_version}" = "3.0" ] && _clients='{"name":"ZOOKEEPER_CLIENT"}, {"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}'
+    [[ "${_stack_version}" =~ ^3\. ]] && _clients='{"name":"ZOOKEEPER_CLIENT"}, {"name":"HDFS_CLIENT"}, {"name":"MAPREDUCE2_CLIENT"}, {"name":"YARN_CLIENT"}, {"name":"TEZ_CLIENT"}, {"name":"PIG"}, {"name":"HIVE_CLIENT"}'
 
     local _security_master_comps='{"name":"HBASE_MASTER"},{"name":"ATLAS_SERVER"},{"name":"KAFKA_BROKER"},{"name":"RANGER_ADMIN"},{"name":"RANGER_USERSYNC"},{"name":"RANGER_KMS_SERVER"},{"name":"INFRA_SOLR"},{"name":"KNOX_GATEWAY"}'
     local _security_slave_comps='{"name":"RANGER_TAGSYNC"},{"name":"HBASE_REGIONSERVER"}'
@@ -1170,8 +1170,12 @@ function f_docker_setup() {
         return 1
     fi
 
-    which docker &>/dev/null
-    if [ $? -gt 0 ]; then
+    if which docker | grep -qw snap; then
+        _warn "'docker' might be installed from 'snap'. Please remove with 'snap remove docker'"
+        return 1
+    fi
+
+    if ! which docker &>/dev/null; then
         apt-get install apt-transport-https ca-certificates curl software-properties-common -y
         # if Ubuntu 18
         if grep -qi 'Ubuntu 18\.' /etc/issue.net; then
@@ -2891,11 +2895,12 @@ function f_host_performance() {
     echo never > /sys/kernel/mm/transparent_hugepage/enabled
     echo never > /sys/kernel/mm/transparent_hugepage/defrag
 
-    grep -q '^echo never > /sys/kernel/mm/transparent_hugepage/enabled' /etc/rc.local
-    if [ $? -ne 0 ]; then
-        sed -i.bak '/^exit 0/i echo never > /sys/kernel/mm/transparent_hugepage/enabled\necho never > /sys/kernel/mm/transparent_hugepage/defrag\n' /etc/rc.local
+    if [ -f /etc/rc.local ]; then
+        if grep -q '^echo never > /sys/kernel/mm/transparent_hugepage/enabled' /etc/rc.local; then
+            sed -i.bak '/^exit 0/i echo never > /sys/kernel/mm/transparent_hugepage/enabled\necho never > /sys/kernel/mm/transparent_hugepage/defrag\n' /etc/rc.local
+        fi
+        chmod a+x /etc/rc.local
     fi
-    chmod a+x /etc/rc.local
 }
 
 function f_host_misc() {
