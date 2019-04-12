@@ -111,7 +111,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         exit 1
     fi
     if [ ! -s "${_CLASS_FILEPATH}" ]; then
-        echo "At this moment, a java/scala class name (3rd arg) is required to patch a class."
+        echo "At this moment, a java/scala class name (2nd arg) is required to patch a class."
         exit 1
     fi
     if [ ! -e "${_JAR_FILEPATH}" ]; then
