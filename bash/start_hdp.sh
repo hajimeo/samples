@@ -2747,9 +2747,9 @@ function f_dnsmasq() {
 
     grep -q '^domain-needed' /etc/dnsmasq.conf || echo 'domain-needed' >> /etc/dnsmasq.conf
     grep -q '^bogus-priv' /etc/dnsmasq.conf || echo 'bogus-priv' >> /etc/dnsmasq.conf
-    grep -q '^local=' /etc/dnsmasq.conf || echo 'local=/localdomain/' >> /etc/dnsmasq.conf
+    grep -q '^local=' /etc/dnsmasq.conf || echo 'local=/'${g_DOMAIN_SUFFIX#.}'/' >> /etc/dnsmasq.conf
     #grep -q '^expand-hosts' /etc/dnsmasq.conf || echo 'expand-hosts' >> /etc/dnsmasq.conf
-    #grep -q '^domain=' /etc/dnsmasq.conf || echo 'domain=localdomain' >> /etc/dnsmasq.conf
+    #grep -q '^domain=' /etc/dnsmasq.conf || echo 'domain='${g_DOMAIN_SUFFIX#.} >> /etc/dnsmasq.conf
     grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
     grep -q '^resolv-file=' /etc/dnsmasq.conf || (echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf; echo 'nameserver 8.8.8.8' > /etc/resolv.dnsmasq.conf)
 
