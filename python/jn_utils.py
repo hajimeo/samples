@@ -434,34 +434,37 @@ def draw(df, width=16, x_col=0, x_colname=None):
     return df
 
 
-def hist(run=None, like=None, html=True):
+def hist(run=None, like=None, html=True, tail=20):
     """
     Alias of qhistory (query history)
     :param run: Integer of DataFrame row index which will be run
     :param like: String used in 'like' to search 'query' column
     :param html: Whether output in HTML (default) or returning dataframe object
+    :param tail: How many last record it displays (default 20)
     :return: Pandas DataFrame contains a list of queries
     """
-    return qhistory(run=run, like=like, html=html)
+    return qhistory(run=run, like=like, html=html, tail=tail)
 
 
-def history(run=None, like=None, html=True):
+def history(run=None, like=None, html=True, tail=20):
     """
     Alias of qhistory (query history)
     :param run: Integer of DataFrame row index which will be run
     :param like: String used in 'like' to search 'query' column
     :param html: Whether output in HTML (default) or returning dataframe object
+    :param tail: How many last record it displays (default 20)
     :return: Pandas DataFrame contains a list of queries
     """
-    return qhistory(run=run, like=like, html=html)
+    return qhistory(run=run, like=like, html=html, tail=tail)
 
 
-def qhistory(run=None, like=None, html=True):
+def qhistory(run=None, like=None, html=True, tail=20):
     """
     Return query histories as DataFrame (so that it will be display nicely in Jupyter)
     :param run: Integer of DataFrame row index which will be run
     :param like: String used in 'like' to search 'query' column
     :param html: Whether output in HTML (default) or returning dataframe object
+    :param tail: How many last record it displays (default 20)
     :return: Pandas DataFrame contains a list of queries
     >>> import os; os.environ["JN_UTILS_QUERY_HISTORY"] = "/tmp/text_qhistory.csv"
     >>> _save_query("select 1")
@@ -485,6 +488,8 @@ def qhistory(run=None, like=None, html=True):
         return query(sql=sql, conn=connect())
     if bool(like):
         df = df[df['query'].str.contains(like)]
+    if bool(tail):
+        df = df.tail(tail)
     if html is False:
         # TODO: hist(html=False).groupby(['query']).count().sort_values(['count'])
         return df
@@ -892,6 +897,7 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
 def load_csvs(src="./", db_conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000):
     """
     Convert multiple CSV files to DF and DB tables
+    Example: _=ju.load_csvs("./", ju.connect(), "tables_*.csv")
     :param src: Source directory path
     :param db_conn: DB connection object
     :param include_ptn: Include pattern
