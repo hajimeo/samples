@@ -2886,6 +2886,8 @@ function f_host_performance() {
     # also ip forwarding as well
     grep -q '^net.ipv4.ip_forward' /etc/sysctl.conf || echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
     sysctl -w net.ipv4.ip_forward=1
+    grep -q '^net.ipv4.conf.all.forwarding' /etc/sysctl.conf || echo "net.ipv4.conf.all.forwarding = 1" >> /etc/sysctl.conf
+    sysctl -w net.ipv4.conf.all.forwarding=1
 
     grep -q '^kernel.panic' /etc/sysctl.conf || echo "kernel.panic = 20" >> /etc/sysctl.conf
     sysctl -w kernel.panic=60
