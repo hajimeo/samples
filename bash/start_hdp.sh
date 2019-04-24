@@ -1261,7 +1261,7 @@ function f_docker0_setup() {
                 fi
                 echo '{
   "bip": "'${_docker0}'/'${_mask}'",
-  "dns": ["'${_dns_ip}'", "8.8.8.8"]
+  "dns": ["'${_dns_ip}'", "1.1.1.1"]
 }' > /etc/docker/daemon.json && _restart_required=true
             else
                 # If multiple --bip, clean up!
@@ -2745,13 +2745,16 @@ function f_dnsmasq() {
     #sudo systemctl disable systemd-resolved
     apt-get -y install dnsmasq || return $?
 
-    grep -q '^domain-needed' /etc/dnsmasq.conf || echo 'domain-needed' >> /etc/dnsmasq.conf
-    grep -q '^bogus-priv' /etc/dnsmasq.conf || echo 'bogus-priv' >> /etc/dnsmasq.conf
+    # For Ubuntu 18.04 name resolution slowness (ssh and sudo too)
+    grep -q '^no-resolv' /etc/dnsmasq.conf || echo 'no-resolv' >> /etc/dnsmasq.conf
+    grep -q '^server=1.1.1.1' /etc/dnsmasq.conf || echo 'server=1.1.1.1' >> /etc/dnsmasq.conf
+    #grep -q '^domain-needed' /etc/dnsmasq.conf || echo 'domain-needed' >> /etc/dnsmasq.conf
+    #grep -q '^bogus-priv' /etc/dnsmasq.conf || echo 'bogus-priv' >> /etc/dnsmasq.conf
     grep -q '^local=' /etc/dnsmasq.conf || echo 'local=/'${g_DOMAIN_SUFFIX#.}'/' >> /etc/dnsmasq.conf
     #grep -q '^expand-hosts' /etc/dnsmasq.conf || echo 'expand-hosts' >> /etc/dnsmasq.conf
     #grep -q '^domain=' /etc/dnsmasq.conf || echo 'domain='${g_DOMAIN_SUFFIX#.} >> /etc/dnsmasq.conf
     grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
-    grep -q '^resolv-file=' /etc/dnsmasq.conf || (echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf; echo 'nameserver 8.8.8.8' > /etc/resolv.dnsmasq.conf)
+    grep -q '^resolv-file=' /etc/dnsmasq.conf || (echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf; echo 'nameserver 1.1.1.1' > /etc/resolv.dnsmasq.conf)
 
     touch /etc/banner_add_hosts || return $?
     chmod 664 /etc/banner_add_hosts
@@ -2762,7 +2765,7 @@ function f_dnsmasq() {
     if [ -d /etc/docker ] && [ ! -f /etc/docker/daemon.json ]; then
         local _docker_ip=`f_docker_ip "172.17.0.1"`
         echo '{
-    "dns": ["'${_docker_ip}'", "8.8.8.8"]
+    "dns": ["'${_docker_ip}'", "1.1.1.1"]
 }' > /etc/docker/daemon.json
         _warn "daemon.json updated. 'systemctl daemon-reload && service docker restart' required"
     fi
