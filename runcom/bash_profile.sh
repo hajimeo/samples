@@ -11,8 +11,8 @@ elif [ -s $HOME/.bash_aliases ]; then
 fi
 
 # Go/Golang related
-if [ -d /usr/local/opt/go/libexec ]; then
-    export GOROOT=/usr/local/opt/go/libexec
+if which go &>/dev/null; then
+    #export GOROOT=/usr/local/opt/go/libexec
     export GOPATH=$HOME/go
     export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
 fi
