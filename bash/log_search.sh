@@ -59,14 +59,15 @@ function p_support() {
     fi
     echo " "
 
-    echo "# config.yaml (filtered)"
-    _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^user.timezone|^estimator.enabled|^query.result.max_rows|^thrifty.client.protocol|^aggregates.create.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs.aggregates.maintainer|^kerberos)' | sort | uniq
-    echo " "
-    echo " "
-
     echo "# config-custom.yaml (may not exist in older version)"
     _find_and_cat "config-custom.yaml" | sort | uniq
     echo " "
+    echo " "
+
+    echo "# config.yaml (filtered)"
+    _find_and_cat "config.yaml" | grep -E '(^AS_VERSION_DIR|^HOSTNAME|^JAVA_HOME|^user.timezone|^estimator.enabled|^query.result.max_rows|^thrifty.client.protocol|^aggregates.create.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs.aggregates.maintainer)' | sort | uniq
+    echo " "
+    f_genKinit
     echo " "
 
     echo "# runtime.yaml (usedMem = totalMemory() - freeMemory())"
@@ -415,6 +416,21 @@ function f_grep_multilines() {
         --multiline --multiline-dotall --no-line-number --no-filename -z \
         -g "${_glob}" ${_rg_extra_opt} --sort=path
     # not sure if rg sorts properly with --sort, so best effort (can not use ' | sort' as multi-lines)
+}
+
+function f_genKinit() {
+    local __doc__="Generate Kinit command from a config.yaml file"
+
+    _find_and_cat "config.yaml" 2>/dev/null | grep -E '(^user\.name|^kerberos)' | sort | uniq > /tmp/f_genKinit_$$.out
+    _load_yaml /tmp/f_genKinit_$$.out "_k_"
+    if [ -n "${_k_kerberos_service}" ]; then
+        echo "su - ${_k_user_name}"
+        if [ -n "${_k_kerberos_host}" ]; then
+            echo "kinit -kt ${_k_kerberos_keytab} ${_k_kerberos_service}/${_k_kerberos_host}@${_k_kerberos_domain}"
+        else
+            echo "kinit -kt ${_k_kerberos_keytab} ${_k_kerberos_service}@${_k_kerberos_domain}"
+        fi
+    fi
 }
 
 function f_genLdapsearch() {
@@ -1355,6 +1371,18 @@ function _replace_number() {
      | _sed -r "s/[0-2][0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/_TIME_/g" \
      | _sed -r "s/-[0-9]+\]\s+\{/-N] {/g" \
      | _sed -r "s/[0-9][0-9][0-9][0-9][0-9]+/_NUM_/g"
+}
+
+function _load_yaml() {
+    local _yaml_file="${1}"
+    local _name_space="${2}"
+    [ -s "${_yaml_file}" ] || return 1
+    local _sed="sed"
+    which gsed &> /dev/null && _sed="gsed"
+    # TODO: probably this can be done only with awk
+    #awk -F "=" '{out=$2;gsub(/[^0-9a-zA-Z_]/,"_",$1);for(i=3;i<=NF;i++){out=out"="$i};print $1"=\""$out"\""}' ${_yaml_file} > /tmp/_load_yaml.out || return $?
+    ${_sed} -n -r 's/^([^=]+)[[:space:]]+=[[:space:]]+(.+)/'${_name_space}'\1\t"\2"/p' ${_yaml_file} | awk -F "\t" '{gsub(/[^0-9a-zA-Z_]/,"_",$1); print $1"="$2}' > /tmp/_load_yaml.out || return $?
+    source /tmp/_load_yaml.out
 }
 
 function _search_properties() {
