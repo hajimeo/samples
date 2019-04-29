@@ -31,10 +31,6 @@ function f_setup_misc() {
     [ -L /usr/local/bin/line_parser.py ] && sudo rm -f /usr/local/bin/line_parser.py
     sudo ln -s $HOME/IdeaProjects/samples/python/line_parser.py /usr/local/bin/line_parser.py
 
-    # If Mac: brew install go-delve/delve/delve
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/misc/dlv_`uname`" /var/tmp/share/dlv "Y" || return $?
-    chmod a+x /var/tmp/share/dlv
-
     #_download "https://github.com/hajimeo/samples/raw/master/misc/dateregex_`uname`" /usr/local/bin/dateregex "Y" || return $?
     #chmod a+x /usr/local/bin/dateregex
 }
@@ -84,19 +80,26 @@ function f_setup_screen() {
 }
 
 function f_setup_golang() {
+    local _ver="${1:-"1.11"}"
     # TODO: currently only for Ubuntu and hard-coding go version
-    if ! which go &>/dev/null; then
-        add-apt-repository ppa:gophers/archive -y
-        apt-get update
-        apt-get install golang-1.10-go -y || return $?
-        ln -s /usr/lib/go-1.10/bin/go /usr/bin/go
+    if ! which go &>/dev/null || ! go version | grep -q "go${_ver}"; then
+        sudo add-apt-repository ppa:gophers/archive -y
+        sudo apt-get update
+        sudo apt-get install golang-${_ver}-go -y || return $?
+        [ -L /usr/bin/go ] && sudo rm /usr/bin/go
+        sudo ln -s /usr/lib/go-${_ver}/bin/go /usr/bin/go
     fi
 
     if [ ! -d "$GOPATH" ]; then
-        _log "INFO" "May need to add 'export GOPATH=$HOME/go' in profile"
+        _log "WARN" "May need to add 'export GOPATH=$HOME/go' in profile"
         export GOPATH=$HOME/go
     fi
-    # Ex: go get -v -u github.com/hajimeo/docker-webui
+    # Installing something. Ex: go get -v -u github.com/hajimeo/docker-webui
+    _log "INFO" "Installing/udating delve/dlv ..."
+    # If Mac: brew install go-delve/delve/delve
+    go get -u github.com/go-delve/delve/cmd/dlv || return $?
+    sudo cp -f $GOPATH/bin/dlv /var/tmp/share/dlv || return $?
+    chmod a+x /var/tmp/share/dlv
 }
 
 function f_setup_jupyter() {
