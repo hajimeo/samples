@@ -81,13 +81,26 @@ function f_setup_screen() {
 
 function f_setup_golang() {
     local _ver="${1:-"1.11"}"
-    # TODO: currently only for Ubuntu and hard-coding go version
+    # TODO: currently only for Ubuntu and Mac, and hard-coding go version
     if ! which go &>/dev/null || ! go version | grep -q "go${_ver}"; then
-        sudo add-apt-repository ppa:gophers/archive -y
-        sudo apt-get update
-        sudo apt-get install golang-${_ver}-go -y || return $?
-        [ -L /usr/bin/go ] && sudo rm /usr/bin/go
-        sudo ln -s /usr/lib/go-${_ver}/bin/go /usr/bin/go
+        if [ "`uname`" = "Darwin" ]; then
+            if which brew &>/dev/null; then
+                brew install go || return
+            else
+                _log "WARN" "Please install 'go'. https://golang.org/doc/install"; sleep 3
+                return 1
+            fi
+        else
+            sudo add-apt-repository ppa:gophers/archive -y
+            sudo apt-get update
+            sudo apt-get install golang-${_ver}-go -y || return $?
+
+            local _go="`which go`"
+            if [ -L "${_go}" ] && [ -s /usr/lib/go-${_ver}/bin/go ]; then
+                sudo rm "${_go}"
+                sudo ln -s /usr/lib/go-${_ver}/bin/go "${_go}"
+            fi
+        fi
     fi
 
     if [ ! -d "$GOPATH" ]; then
@@ -242,5 +255,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         f_setup_rg
         _log "INFO" "Running f_setup_jupyter ..."
         f_setup_jupyter
+        _log "INFO" "Running f_setup_golang ..."
+        f_setup_golang
     fi
 fi
