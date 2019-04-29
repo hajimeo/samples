@@ -164,7 +164,7 @@ function f_jupyter_util() {
         mkdir -p "$HOME/IdeaProjects/samples/java/hadoop" || return $?
     fi
     _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "$HOME/IdeaProjects/samples/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y" || return $?
-    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "$HOME/IdeaProjects/samples/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y" || return $?
+    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "$HOME/IdeaProjects/samples/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "Y" "Y" || return $?
 
     if [ ! -d "$HOME/.ipython/profile_default/startup" ]; then
         mkdir -p "$HOME/.ipython/profile_default/startup" || return $?
