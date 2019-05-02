@@ -34,7 +34,7 @@ alias vnc='nohup java -jar ~/Applications/tightvnc-jviewer.jar &>/tmp/tightvnc-j
 
 # Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
 alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=socks5://dh1:28081 https://192.168.1.31:4200/webuser/'
-alias shib-sth='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/spt --proxy-server=socks5://sethdesktop:28081 https://192.168.6.160:4200/webuser/'
+alias shib-spt='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/spt --proxy-server=socks5://support:28081 https://192.168.6.162:4200/webuser/'
 alias shib-haj='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/haj --proxy-server=socks5://hajime:28081 https://192.168.6.163:4200/webuser/'
 alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/hajigle https://www.blogger.com/blogger.g?blogID=9018688091574554712&pli=1#allposts'
 
@@ -185,7 +185,7 @@ function backupC() {
 # copy script(s) into linux servers
 function asPubInst() {
     scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh root@192.168.6.160:/var/tmp/share/atscale/ &
-    #scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.162:/var/tmp/share/atscale/ &
+    scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.162:/var/tmp/share/atscale/ &
     scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.163:/var/tmp/share/atscale/ &
     scp $HOME/IdeaProjects/samples/atscale/install_atscale.sh hosako@dh1:/var/tmp/share/atscale/ &
     cp -f $HOME/IdeaProjects/samples/atscale/install_atscale.sh $HOME/share/atscale/
