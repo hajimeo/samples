@@ -1207,6 +1207,12 @@ function f_docker_setup() {
     #        _warn "storage-opt dm.basesize=${_storage_size} is already set in /etc/init/docker.conf"
     #    fi
     #fi
+
+    if [ ! -f /etc/iptables.up.rules ]; then
+        _info "Updating iptables to accept all FORWARD..."
+        iptables -P FORWARD ACCEPT
+        iptables-save > /etc/iptables.up.rules
+    fi
 }
 
 function f_hdp_network_setup() {
