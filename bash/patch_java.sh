@@ -69,7 +69,7 @@ function f_update_jar() {
     local _class_name="$3"
 
     if [ ! -d "$JAVA_HOME" ]; then
-        echo "JAVA_HOME is not set"
+        echo "JAVA_HOME is not set. Use 'f_javaenvs <port>'."
         return 1
     fi
 
@@ -132,7 +132,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
         # to avoid Java heap space error (default seems to be set to 256m)
         JAVA_OPTS=-Xmx1024m scalac "${_CLASS_FILENAME}" || exit $?
-    else
+    elif [ "${_EXT}" = "java" ]; then
         _DIR_PATH="$(dirname $($JAVA_HOME/bin/jar -tvf ${_JAR_FILEPATH} | grep -oE "[^ ]+${_CLASS_NAME}.class"))"
         if [ ! -d "${_DIR_PATH}" ]; then
             mkdir -p "${_DIR_PATH}" || exit $?
