@@ -1210,8 +1210,7 @@ function f_docker_setup() {
 
     if [ ! -f /etc/iptables.up.rules ]; then
         _info "Updating iptables to accept all FORWARD..."
-        iptables -P FORWARD ACCEPT
-        iptables-save > /etc/iptables.up.rules
+        iptables -P FORWARD ACCEPT && iptables-save > /etc/iptables.up.rules
     fi
 }
 
