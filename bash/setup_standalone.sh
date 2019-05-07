@@ -164,8 +164,8 @@ function f_update_hosts_file_by_fqdn() {
         _log "INFO" "Updating ${_hosts_file}. ***It may ask your sudo password***"
     fi
 
-    # If port forwarding is used, better use localhost
-    $_DOCKER_PORT_FORWARD && _container_ip="127.0.0.1"
+    # If port forwarding is used and Mac, better use localhost
+    $_DOCKER_PORT_FORWARD && [ "`uname`" = "Darwin" ] && _container_ip="127.0.0.1"
     if ! f_update_hosts_file "${_hostname}" "${_container_ip}" "${_hosts_file}"; then
         _log "WARN" "Please update ${_hosts_file} to add '${_container_ip} ${_hostname}'"
         return 1
