@@ -144,7 +144,10 @@ function f_kdc_install_on_host() {
     service krb5-kdc restart && service krb5-admin-server restart
     sleep 3
     kadmin.local -r ${_realm} -q "add_principal -pw ${_password} admin/admin@${_realm}"
-    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/admin@${_realm}"
+    if [ -n "${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}" ]; then    # AMBARI-24869
+        kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/${_server}@${_realm}"
+    fi
+    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/admin@${_realm}" &>/dev/null    # this should exist already
     # For test:
     #kadmin -p admin/admin@${_realm} -w "${_password}"
 }
@@ -216,13 +219,13 @@ KERBEROS_CONFIG
 function f_ambari_kerberos_setup() {
     local __doc__="Setup Kerberos with Ambari APIs. TODO: MIT KDC only and it needs to be created by f_kdc_install_on_host"
     # https://cwiki.apache.org/confluence/display/AMBARI/Automated+Kerberizaton#AutomatedKerberizaton-EnablingKerberos
-    local _realm="${1-$g_KDC_REALM}"
-    local _kdc_server="${2-$r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
+    local _realm="${1:-$g_KDC_REALM}"
+    local _kdc_server="${2:-"${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"}"
     local _password="${3}"
-    local _ambari_host="${4-$r_AMBARI_HOST}"
-    local _how_many="${5-$r_NUM_NODES}"
-    local _start_from="${6-$r_NODE_START_NUM}"
-    local _domain_suffix="${7-$r_DOMAIN_SUFFIX}"
+    local _ambari_host="${4:-$r_AMBARI_HOST}"
+    local _how_many="${5:-$r_NUM_NODES}"
+    local _start_from="${6:-$r_NODE_START_NUM}"
+    local _domain_suffix="${7:-$r_DOMAIN_SUFFIX}"
     local _kdc_type="${8:-"mit-kdc"}" # TODO: Not using and MIT KDC only
 
     if [ -z "$_password" ]; then
