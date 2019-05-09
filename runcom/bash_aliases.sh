@@ -61,7 +61,7 @@ function ht() {
 # make a directory and cd
 function mcd() {
     local _path="$1"
-    mkdir "${_path}" && cd "${_path}"
+    mkdir "${_path}"; cd "${_path}"
 }
 # cat some.json | pjson | less (or vim -)
 function pjson() {
