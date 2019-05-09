@@ -48,8 +48,8 @@ class ChunkingRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         args = urlparse.parse_qs(parsed_path.query)
         ae = self.headers.get('accept-encoding') or ''
         use_gzip = 'gzip' in ae or 'gzip' in args
-        # TODO: zip doesn't work becaues mode doesn't accept wb.
-        use_zip = False #'zip' in ae or 'zip' in args
+        # TODO: zip doesn't work because mode doesn't accept wb.
+        use_zip = False  # 'zip' in ae or 'zip' in args
 
         # send some headers
         self.send_response(200)
@@ -61,7 +61,7 @@ class ChunkingRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             self.send_header('Content-Encoding', 'gzip')
             buffer = ListBuffer()
             output = gzip.GzipFile(mode='wb', fileobj=buffer)
-        #elif use_zip:
+        # elif use_zip:
         #    self.send_header('Content-type', 'application/zip')
         #    buffer = ListBuffer()
         #    output = zipfile.ZipFile(mode='wb', file=buffer)
