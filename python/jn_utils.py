@@ -434,18 +434,6 @@ def draw(df, width=16, x_col=0, x_colname=None):
     return df
 
 
-def hist(run=None, like=None, html=True, tail=20):
-    """
-    Alias of qhistory (query history)
-    :param run: Integer of DataFrame row index which will be run
-    :param like: String used in 'like' to search 'query' column
-    :param html: Whether output in HTML (default) or returning dataframe object
-    :param tail: How many last record it displays (default 20)
-    :return: Pandas DataFrame contains a list of queries
-    """
-    return qhistory(run=run, like=like, html=html, tail=tail)
-
-
 def history(run=None, like=None, html=True, tail=20):
     """
     Alias of qhistory (query history)
