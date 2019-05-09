@@ -187,7 +187,7 @@ function f_jupyter_util() {
         mkdir -p "$HOME/.ipython/profile_default/startup" || return $?
     fi
     echo "import pandas as pd
-    import pandas_profiling as pp
+import pandas_profiling as pp
 import jn_utils as ju
 get_ipython().run_line_magic('matplotlib', 'inline')" > "$HOME/.ipython/profile_default/startup/import_ju.py"
 }
