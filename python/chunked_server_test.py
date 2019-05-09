@@ -1,43 +1,21 @@
 '''
 chunked_server_test.py
+@ref: (original) https://gist.github.com/josiahcarlson/3250376
 
-Copyright August 3, 2012
-Released into the public domain
-
-This implements a chunked server using Python threads and the built-in
-BaseHTTPServer module. Enable gzip compression at your own peril - web
-browsers seem to have issues, though wget, curl, Python's urllib2, my own
-async_http library, and other command-line tools have no problems.
-
+To use gzip, -H "Accept-Encoding: gzip" or /filename?gzip=true
 '''
 
-import BaseHTTPServer
-import gzip
-import SocketServer
-import time
+import BaseHTTPServer, gzip, SocketServer, time, urlparse, os, sys, zipfile
+
 
 class ChunkingHTTPServer(SocketServer.ThreadingMixIn,
                          BaseHTTPServer.HTTPServer):
-    '''
-    This is just a proof of concept server that uses threads. You can make it
-    fork, maybe hack up a worker thread model, or even use multiprocessing.
-    That's your business. But as-is, it works reasonably well for streaming
-    chunked data from a server.
-    '''
     daemon_threads = True
 
+
 class ListBuffer(object):
-    '''
-    This little bit of code is meant to act as a buffer between the optional
-    gzip writer and the actual outgoing socket - letting us properly construct
-    the chunked output. It also lets us quickly and easily determine whether
-    we need to flush gzip in the case where a user has specified
-    'ALWAYS_SEND_SOME'.
-
-    This offers a minimal interface necessary to back a writing gzip stream.
-    '''
-
     __slots__ = 'buffer',
+
     def __init__(self):
         self.buffer = []
 
@@ -56,49 +34,57 @@ class ListBuffer(object):
         self.buffer = []
         return data
 
-class ChunkingRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
-    '''
-    Nothing is terribly magical about this code, the only thing that you need
-    to really do is tell the client that you're going to be using a chunked
-    transfer encoding.
 
-    Gzip compression works partially. See the module notes for more
-    information.
-    '''
-    ALWAYS_SEND_SOME = False
-    ALLOW_GZIP = False
+class ChunkingRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
+
     def do_GET(self):
+        parsed_path = urlparse.urlparse(self.path)
+        sys.stderr.write('    parsed_path = %s \n' % str(parsed_path))
+        if not os.path.isfile('.' + parsed_path.path):
+            sys.stderr.write('    .%s is not accessible. Ignoring... \n' % str(parsed_path.path))
+            return
+
+        args = urlparse.parse_qs(parsed_path.query)
         ae = self.headers.get('accept-encoding') or ''
-        use_gzip = 'gzip' in ae and self.ALLOW_GZIP
+        use_gzip = 'gzip' in ae or 'gzip' in args
+        # TODO: zip doesn't work becaues mode doesn't accept wb.
+        use_zip = False #'zip' in ae or 'zip' in args
 
         # send some headers
         self.send_response(200)
         self.send_header('Transfer-Encoding', 'chunked')
-        self.send_header('Content-type', 'text/plain')
 
         # use gzip as requested
         if use_gzip:
+            self.send_header('Content-type', 'text/plain')
             self.send_header('Content-Encoding', 'gzip')
             buffer = ListBuffer()
             output = gzip.GzipFile(mode='wb', fileobj=buffer)
+        #elif use_zip:
+        #    self.send_header('Content-type', 'application/zip')
+        #    buffer = ListBuffer()
+        #    output = zipfile.ZipFile(mode='wb', file=buffer)
+        else:
+            self.send_header('Content-type', 'text/plain')
 
         self.end_headers()
 
         def write_chunk():
-            tosend = '%X\r\n%s\r\n'%(len(chunk), chunk)
+            tosend = '%X\r\n%s\r\n' % (len(chunk), chunk)
             self.wfile.write(tosend)
 
-        # get some chunks
-        for chunk in chunk_generator():
+        f = open('.' + parsed_path.path, "rb")
+        while True:
+            chunk = f.read(1024 * 1024)  # 1MB
             if not chunk:
-                continue
+                break
 
             # we've got to compress the chunk
-            if use_gzip:
+            if use_gzip or use_zip:
                 output.write(chunk)
                 # we'll force some output from gzip if necessary
-                if self.ALWAYS_SEND_SOME and not buffer:
+                if not buffer:
                     output.flush()
                 chunk = buffer.getvalue()
 
@@ -108,9 +94,7 @@ class ChunkingRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
             write_chunk()
 
-        # no more chunks!
-
-        if use_gzip:
+        if use_gzip or use_zip:
             # force the ending of the gzip stream
             output.close()
             chunk = buffer.getvalue()
@@ -120,14 +104,17 @@ class ChunkingRequestHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         # send the chunked trailer
         self.wfile.write('0\r\n\r\n')
 
-def chunk_generator():
-    # generate some chunks
-    for i in xrange(10):
-        time.sleep(.1)
-        yield "this is chunk: %s\r\n"%i
 
 if __name__ == '__main__':
+    listen_host = '0.0.0.0'
+    listen_port = 38080
+
+    if len(sys.argv) > 1:
+        listen_host = sys.argv[1]
+    if len(sys.argv) > 2:
+        listen_port = int(sys.argv[2])
+
     server = ChunkingHTTPServer(
-        ('127.0.0.1', 8080), ChunkingRequestHandler)
-    print 'Starting server, use <Ctrl-C> to stop'
+        (listen_host, listen_port), ChunkingRequestHandler)
+    sys.stderr.write('Starting server on %s:%s, use <Ctrl-C> to stop. \n' % (listen_host, listen_port))
     server.serve_forever()
