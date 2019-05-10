@@ -10,6 +10,7 @@ alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
 alias rgm='rg -N --no-filename -z'
 alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew install gnu-time --with-default-names
 alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
+alias jn='jupyter-notebook &> /tmp/jupyter-notebook.out &'
 # Read xml file, then convert to dict, then json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
 # TODO: find with sys.argv[2] (no ".//"), then output as string
