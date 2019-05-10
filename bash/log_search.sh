@@ -65,7 +65,7 @@ function p_support() {
     echo " "
 
     echo "# config.yaml (filtered)"
-    _find_and_cat "config.yaml" | grep -E '(^AS_LOG_DIR|^HOSTNAME|^JAVA_HOME|^user.timezone|^estimator.enabled|^query.result.max_rows|^thrifty.client.protocol|^aggregates.create.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs.aggregates.maintainer)' | sort | uniq
+    _find_and_cat "config.yaml" | grep -E '(^AS_LOG_DIR|^HOSTNAME|^JAVA_HOME|^user.timezone|^estimator.enabled|^query.result.max_rows|^thrifty.client.protocol|^aggregates.create.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs.aggregates.maintainer|^authorization.impersonation.jdbc.enabled)' | sort | uniq
     echo " "
     f_genKinit
     echo " "
