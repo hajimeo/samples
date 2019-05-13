@@ -1117,7 +1117,7 @@ function f_ldap_client_install() {
 function f_freeipa_install() {
     local __doc__="Install freeIPA (may better create a dedicated container)"
     #p_node_create node99.support.localdomain 99 # Intentionally no Ambari install
-    local _fqdn="$1"
+    local _ipa_server_fqdn="$1"
     local _password="${2:-secret12}"    # password need to be 8 or longer
     local _force_client="${3}"
     local _how_many="${4:-$r_NUM_NODES}"
@@ -1125,29 +1125,21 @@ function f_freeipa_install() {
 
     # Used ports https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/linux_domain_identity_authentication_and_policy_guide/installing-ipa
     #ssh -q root@${_node} -t "yum update -y"
-    ssh -q root@${_fqdn} -t "yum install freeipa-server -y" || return $?
+    ssh -q root@${_ipa_server_fqdn} -t "yum install freeipa-server -y" || return $?
 
     # seems FreeIPA needs ipv6 for loopback
-    ssh -q root@${_fqdn} -t 'grep -q '^net.ipv6.conf.all.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.conf.all.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.all.disable_ipv6=0)
+    ssh -q root@${_ipa_server_fqdn} -t 'grep -q '^net.ipv6.conf.all.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.conf.all.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.all.disable_ipv6=0)
 grep -q '^net.ipv6.conf.lo.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.conf.lo.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.lo.disable_ipv6=0)'
 
     # TODO: got D-bus error when freeIPA calls systemctl (service dbus restart makes install works but makes docker slow/unstable)
     # Adding -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket in dcoker run
-    ssh -q root@${_fqdn} -t 'ipactl status || (service dbus restart;_d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U)' || return $?
-    ssh -q root@${_fqdn} -t 'grep -q "ipactl start" /etc/rc.local || echo -e "\n`which ipactl` start" >> /etc/rc.local'
-
-    local _uninstall=""
-    [[ "${_force_client}" =~ y|Y ]] && _uninstall="service dbus restart; ipa-client-install --unattended --uninstall"
+    ssh -q root@${_ipa_server_fqdn} -t 'ipactl status || (service dbus restart;_d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U)' || return $?
+    ssh -q root@${_ipa_server_fqdn} -t 'grep -q "ipactl start" /etc/rc.local || echo -e "\n`which ipactl` start" >> /etc/rc.local'
 
     #ipa ping
     #ipa config-show --all
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@node${i} -t '[ "`hostname -f`" = "'${_fqdn}'" ] && exit
-echo -n "'${_password}'" | kinit admin && exit
-_d=`hostname -d`
-yum install ipa-client -y
-'${_uninstall}'
-ipa-client-install --unattended --hostname=`hostname -f` --server='${_fqdn}' --domain=`hostname -d` --realm=${_d^^} -p admin -w '${_password}' --mkhomedir --force-join'
+        _freeipa_client_install node${i} "${_ipa_server_fqdn}" "${_password}" "${_force_client}"
     done
 
     if [[ "${_force_client}" =~ y|Y ]]; then
@@ -1155,6 +1147,26 @@ ipa-client-install --unattended --hostname=`hostname -f` --server='${_fqdn}' --d
     fi
     _warn "TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days"
 }
+
+function _freeipa_client_install() {
+    # ref: https://www.digitalocean.com/community/tutorials/how-to-configure-a-freeipa-client-on-centos-7
+    local _client_host="$1"
+    local _ipa_server_fqdn="$2"
+    local _adm_pwd="${3:-secret12}"    # password need to be 8 or longer
+    local _force_reinstall="${4}"
+
+    local _domain="${_ipa_server_fqdn#*.}"
+    local _uninstall=""
+    [[ "${_force_reinstall}" =~ y|Y ]] && _uninstall="service dbus restart; ipa-client-install --unattended --uninstall"
+
+    # Avoid installing client on IPA server (best effort)
+    ssh -q root@${_client_host} -t '[ "`hostname -f`" = "'${_ipa_server_fqdn}'" ] && exit
+echo -n "'${_adm_pwd}'" | kinit admin
+yum install ipa-client -y
+'${_uninstall}'
+ipa-client-install --unattended --hostname=`hostname -f` --server='${_ipa_server_fqdn}' --domain='${_domain}' --realm='${_domain^^}' -p admin -w '${_adm_pwd}' --mkhomedir --force-join'
+}
+
 
 function f_sssd_setup() {
     local __doc__="setup SSSD on each node (security lab) If /etc/sssd/sssd.conf exists, skip. Kerberos is required."
