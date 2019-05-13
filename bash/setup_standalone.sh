@@ -731,7 +731,8 @@ function _cdh_setup() {
     _log "INFO" "Customising ${_container_name} ..."
     f_container_misc "${_container_name}"
     f_container_ssh_config "${_container_name}"
-    #docker exec -it ${_container_name} bash -c 'sed -i_$(date +"%Y%m%d%H%M%S") "s/cloudera-quickstart-init//" /usr/bin/docker-quickstart'
+    docker exec -it ${_container_name} bash -c '[ ! -f /usr/bin/docker-quickstart.orig ] && cp -p /usr/bin/docker-quickstart /usr/bin/docker-quickstart.orig'
+    docker exec -it ${_container_name} bash -c 'sed -i_$(date +"%Y%m%d%H%M%S") "s/cloudera-quickstart-init//" /usr/bin/docker-quickstart'
     docker exec -it ${_container_name} bash -c 'sed -i -r "/hbase-|oozie|sqoop2-server|solr-server|exec bash/d" /usr/bin/docker-quickstart'
     docker exec -it ${_container_name} bash -c 'sed -i "s/ start$/ \$1/g" /usr/bin/docker-quickstart'
 }
@@ -747,7 +748,7 @@ function p_cdh_sandbox() {
 
     if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
         f_docker_image_import "${_tar_uri}" "${_image_name}" || return $?
-        f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "" "--add-host=quickstart.cloudera:127.0.0.1" || return $?
+        f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "" || return $?   # "--add-host=quickstart.cloudera:127.0.0.1"
         _cdh_setup "${_container_name}" || return $?
     else
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
@@ -767,7 +768,7 @@ fi' || return $?
     fi
 
     # Schedule refresh commands in case DataNode and NodeManager's IP has been changed
-    docker exec -it ${_container_name} bash -c 'echo "sudo -u hdfs hadoop dfsadmin -refreshNodes; sudo -u yarn rmadmin -refreshNodes" | at now +5 minutes'
+    docker exec -it ${_container_name} bash -c 'echo "sudo -u hdfs hadoop dfsadmin -refreshNodes; sudo -u yarn yarn rmadmin -refreshNodes" | at now +5 minutes'
 }
 
 function _hdp_setup() {
