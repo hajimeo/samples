@@ -763,6 +763,7 @@ else
 fi'
     else
         docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start'
+        _log "INFO" "To enable CM, run '/home/cloudera/cloudera-manager --express' as root."
     fi
 }
 
