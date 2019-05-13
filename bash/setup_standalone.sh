@@ -760,11 +760,14 @@ function p_cdh_sandbox() {
     /home/cloudera/cloudera-manager --express
 else
     service cloudera-scm-agent start; service cloudera-scm-server-db start && service cloudera-scm-server start
-fi'
+fi' || return $?
     else
-        docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start'
+        docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start' || return $?
         _log "INFO" "To enable CM, run '/home/cloudera/cloudera-manager --express' as root."
     fi
+
+    # Schedule refresh commands in case DataNode and NodeManager's IP has been changed
+    docker exec -it ${_container_name} bash -c 'echo "sudo -u hdfs hadoop dfsadmin -refreshNodes; sudo -u yarn rmadmin -refreshNodes" | at now +5 minutes'
 }
 
 function _hdp_setup() {
