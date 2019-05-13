@@ -440,7 +440,7 @@ function f_genLdapsearch() {
     [ "${_json_str}" = "[ ]" ] && return
     echo "${_json_str}" | python -c 'import sys,re,json
 a=json.loads(sys.stdin.read());l=a[0]
-p="ldaps" if "use_ssl" in l else "ldap"
+p="ldaps" if "use_ssl" in l and l["use_ssl"] else "ldap"
 r=re.search(r"^[^=]*?=?([^=]+?)[ ,@]", l["username"])
 u=r.group(1) if bool(r) else l["username"]
 print("LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"" % (p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u))'
