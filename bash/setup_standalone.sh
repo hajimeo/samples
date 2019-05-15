@@ -143,6 +143,8 @@ function f_update_hosts_file_by_fqdn() {
     local __doc__="Update hosts file with given hostname (FQDN) and IP"
     local _hostname="${1}"
     local _container_name="${2}"
+    local _append_hostname="${3}"
+
     [ -z "${_container_name}" ] && _container_name="`echo "${_hostname}" | cut -d"." -f1`"
 
     local _hosts_file="/etc/hosts"
@@ -167,7 +169,7 @@ function f_update_hosts_file_by_fqdn() {
 
     # If port forwarding is used and Mac, better use localhost
     $_DOCKER_PORT_FORWARD && [ "`uname`" = "Darwin" ] && _container_ip="127.0.0.1"
-    if ! f_update_hosts_file "${_hostname}" "${_container_ip}" "${_hosts_file}"; then
+    if ! f_update_hosts_file "${_hostname}" "${_container_ip}" "${_hosts_file}" "${_append_hostname}"; then
         _log "WARN" "Please update ${_hosts_file} to add '${_container_ip} ${_hostname}'"
         return 1
     fi
@@ -187,19 +189,26 @@ function f_update_hosts_file() {
     local _fqdn="$1"
     local _ip="$2"
     local _file="${3:-"/etc/hosts"}"
+    local _append_hostname="${4}"
 
     if [ -z "${_fqdn}" ]; then
-        _log "ERROR" "hostname is required"; return 11
+        _log "ERROR" "hostname (FQDN) is required"; return 11
     fi
     local _name="`echo "${_fqdn}" | cut -d"." -f1`"
-
-    if [ -z "${_ip}" ]; then
-        _log "ERROR" "IP is required"; return 12
-    fi
-
     # Checking if this combination is already in the hosts file. TODO: this regex is not perfect
     local _old_ip="$(_sed -nr "s/^([0-9.]+).*\s${_fqdn}.*$/\1/p" ${_file})"
-    [ "${_old_ip}" = "${_ip}" ] && return 0
+
+    if [ -z "${_ip}" ]; then
+        if [[ ! "${_append_hostname}" =~ ^(y|Y) ]] || [ -z "${_old_ip}" ]; then
+            _log "ERROR" "IP is required"; return 12
+        else
+            _log "INFO" "Using ${_old_ip} for IP"
+            _ip="${_old_ip}"
+        fi
+    else
+        # Already configured, so do nothing.
+        [ "${_old_ip}" = "${_ip}" ] && return 0
+    fi
 
     # Take backup before modifying
     local _backup_file="/tmp/hosts_$(date +"%Y%m%d%H%M%S")"
@@ -214,15 +223,23 @@ function f_update_hosts_file() {
         _tmp_file="/tmp/f_update_hosts_file_$$.tmp"
     fi
 
-    # Remove all lines contain hostname and IP
-    _sed -i -r "/\s${_fqdn}\s+${_name}\s?/d" ${_tmp_file}
-    _sed -i -r "/\s${_fqdn}\s?/d" ${_tmp_file}
-    _sed -i -r "/^${_ip}\s?/d" ${_tmp_file}
+    if [[ ! "${_append_hostname}" =~ ^(y|Y) ]]; then
+        # Remove all lines contain hostname or IP
+        _sed -i -r "/\s${_fqdn}\s+${_name}\s?/d" ${_tmp_file}
+        _sed -i -r "/\s${_fqdn}\s?/d" ${_tmp_file}
+        _sed -i -r "/^${_ip}\s?/d" ${_tmp_file}
+    fi
+
     # This shouldn't match but just in case
     [ -n "${_old_ip}" ] && _sed -i -r "/^${_old_ip}\s?/d" ${_tmp_file}
 
-    # Append in the end of file
-    _sed -i -e "\$a${_ip} ${_fqdn} ${_name}" ${_tmp_file}
+    if [[ ! "${_append_hostname}" =~ ^(y|Y) ]]; then
+        # Append in the end of file
+        _sed -i -e "\$a${_ip} ${_fqdn} ${_name}" ${_tmp_file}
+    else
+        # as append is Y, appending in the end of line
+        _sed -i "/^${_ip}/ s/$/ ${_fqdn}/" ${_tmp_file}
+    fi
 
     if [ ! "`uname`" = "Darwin" ]; then
         # cp / mv fails if no permission on the directory
@@ -755,7 +772,7 @@ function p_cdh_sandbox() {
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
     fi
 
-    f_update_hosts_file_by_fqdn "quickstart.cloudera" "${_container_name}"
+    f_update_hosts_file_by_fqdn "quickstart.cloudera" "${_container_name}" "Y"
 
     _log "INFO" "Starting CDH (Using Cloudera Manager: ${_is_using_cm}) ..."
     if [[ "${_is_using_cm}" =~ ^(y|Y) ]]; then
