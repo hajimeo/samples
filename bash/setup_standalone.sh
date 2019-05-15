@@ -142,19 +142,20 @@ function f_update() {
 function f_update_hosts_file_by_fqdn() {
     local __doc__="Update hosts file with given hostname (FQDN) and IP"
     local _hostname="${1}"
-    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+    local _container_name="${2}"
+    [ -z "${_container_name}" ] && _container_name="`echo "${_hostname}" | cut -d"." -f1`"
 
     local _hosts_file="/etc/hosts"
     [ -f /etc/banner_add_hosts ] && _hosts_file="/etc/banner_add_hosts"
 
-    if ! docker ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
-        _log "WARN" "${_name} is NOT running. Please check and update ${_hosts_file} manually."
+    if ! docker ps --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
+        _log "WARN" "${_container_name} is NOT running. Please check and update ${_hosts_file} manually."
         return 1
     fi
 
-    local _container_ip="`docker exec -it ${_name} hostname -i | tr -cd "[:print:]"`"   # tr to remove unnecessary control characters
+    local _container_ip="`docker exec -it ${_container_name} hostname -i | tr -cd "[:print:]"`"   # tr to remove unnecessary control characters
     if [ -z "${_container_ip}" ]; then
-        _log "WARN" "${_name} is running but not returning IP. Please check and update ${_hosts_file} manually."
+        _log "WARN" "${_container_name} is running but not returning IP. Please check and update ${_hosts_file} manually."
         return 1
     fi
 
@@ -754,6 +755,8 @@ function p_cdh_sandbox() {
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
     fi
 
+    f_update_hosts_file_by_fqdn "quickstart.cloudera" "${_container_name}"
+
     _log "INFO" "Starting CDH (Using Cloudera Manager: ${_is_using_cm}) ..."
     if [[ "${_is_using_cm}" =~ ^(y|Y) ]]; then
         #curl 'http://`hostname -f`:7180/cmf/services/12/maintenanceMode?enter=true' -X POST
@@ -765,10 +768,9 @@ fi' || return $?
     else
         docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start' || return $?
         _log "INFO" "To enable CM, run '/home/cloudera/cloudera-manager --express' as root."
+        # Schedule refresh commands in case DataNode and NodeManager's IP has been changed
+        #docker exec -it ${_container_name} bash -c 'echo "sudo -u hdfs hadoop dfsadmin -refreshNodes; sudo -u yarn yarn rmadmin -refreshNodes" | at now +5 minutes'
     fi
-
-    # Schedule refresh commands in case DataNode and NodeManager's IP has been changed
-    docker exec -it ${_container_name} bash -c 'echo "sudo -u hdfs hadoop dfsadmin -refreshNodes; sudo -u yarn yarn rmadmin -refreshNodes" | at now +5 minutes'
 }
 
 function _hdp_setup() {
