@@ -306,7 +306,7 @@ function f_docker_base_create() {
     fi
     # "." is not good if there are so many files/folders but https://github.com/moby/moby/issues/14339 is unclear
     local _build_dir="$(mktemp -d)" || return $?
-    mv ${_docker_file} ${_build_dir%/}/DockerFile || return $?
+    mv ${_docker_file} ${_build_dir%/}/Dockerfile || return $?
     cd ${_build_dir} || return $?
     docker build -t ${_base} . || return $?
     cd -
