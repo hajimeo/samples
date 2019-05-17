@@ -142,7 +142,7 @@ def _err(message):
     sys.stderr.write("%s\n" % (str(message)))
 
 
-def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='physicalPlans|partition|incremental|predictions', chunksize=1000,
+def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='', chunksize=1000,
                json_cols=['connectionId', 'planJson', 'json']):
     """
     Find json files from current path and load as pandas dataframes object
@@ -188,7 +188,7 @@ def json2df(file_path, db_conn=None, tablename=None, json_cols=[], chunksize=100
     >>> pass    # TODO: implement test
     """
     global _DB_SCHEMA
-    df = pd.read_json(file_path)    #, dtype=False (didn't help)
+    df = pd.read_json(file_path)  # , dtype=False (didn't help)
     if bool(db_conn):
         if bool(tablename) is False:
             tablename, ext = os.path.splitext(os.path.basename(file_path))
@@ -965,21 +965,30 @@ def gen_ldapsearch(ldap_json=None):
         p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u)
 
 
-def load(jsons_dir="./engine/aggregates", csvs_dir="./stats", exclude_ptn=None):
+def load(jsons_dir=["./engine/aggregates", "./engine/cron-scheduler"], csvs_dir="./stats",
+         exclude_ptn_json='physicalPlans|partition|incremental|predictions', exclude_ptn_csv=''):
     """
     Execute loading functions (currently load_jsons and load_csvs)
     :param jsons_dir: (optional) Path to a directory which contains JSON files
     :param csvs_dir: (optional) Path to a directory which contains CSV files
+    :param exclude_ptn_json: (optional) Regex string to exclude some table
+    :param exclude_ptn_csv: (optional) Regex string To exclude some table
     :return: void
     >>> pass    # test should be done in load_jsons and load_csvs
     """
     # TODO: shouldn't have any paths in here but should be saved into some config file.
-    if (exclude_ptn is None):
-        load_jsons(jsons_dir, connect())
-        load_csvs(csvs_dir, connect())
+    if type(jsons_dir) == list:
+        for jd in jsons_dir:
+            load_jsons(jd, connect(), exclude_ptn=exclude_ptn_json)
     else:
-        load_jsons(jsons_dir, connect(), exclude_ptn=exclude_ptn)
-        load_csvs(csvs_dir, connect(), exclude_ptn=exclude_ptn)
+        load_jsons(jsons_dir, connect(), exclude_ptn=exclude_ptn_json)
+
+    if type(csvs_dir) == list:
+        for cd in csvs_dir:
+            load_csvs(cd, connect(), exclude_ptn=exclude_ptn_csv)
+    else:
+        load_csvs(csvs_dir, connect(), exclude_ptn=exclude_ptn_csv)
+
     # TODO: below does not work so that using above names_dict workaround
     # try:
     #    import jn_utils as ju
