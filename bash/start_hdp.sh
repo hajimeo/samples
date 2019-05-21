@@ -63,7 +63,7 @@ How to create a node(s)
     p_ambari_node_create 'ambari2510.localdomain:8008' '172.17.100.125' '7.5.1804' [/path/to/ambari.repo] [DNS_IP]
 
     # Create one node WITHOUT Ambari, hostname: node99.localdomain, OS ver: CentOS7.5, Network addr: 172.17.100.x
-    p_node_create 'test.ubuntu.localdomain' '172.17.100.125' [7.5.1804] [DNS_IP]
+    p_node_create node99${r_DOMAIN_SUFFIX} 99 [7.5.1804] [DNS_IP] [-p 389:389 -p 636:636]
 
     # Create 3 node with Agent, hostname: node102.localdmain, OS ver: CentOS7.5, and Ambari is ambari2615.ubu04.localdomain
     export r_DOMAIN_SUFFIX='.ubu04.localdomain'
@@ -2216,8 +2216,9 @@ function f_etcs_mount() {
 }
 
 function f_local_repo_sed() {
+    local __doc__="Use sed to update URL to local repo"
     local _dir="${1:-.}"        # /var/www/html/hdp/HDP/centos7/3.x/updates/3.0.0.0
-    local _subdir="${2:-hdp}"   # even ambari, 'hdp' is OK
+    local _subdir="${2:-hdp}"   # even for ambari repo, 'hdp' is normally OK
     local _web_host="${3:-`hostname -I | cut -d" " -f1`}"
     [ -n "${_subdir}" ] && _subdir='\/'${_subdir%/}
 

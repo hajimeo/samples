@@ -9,7 +9,7 @@
 #
 # To recreate multiple images:
 # _PREFIX=xxxxx
-# #docker images | grep "^${_PREFIX}" | awk '{print $1}' | sort -n
+# #docker images | grep "^${_PREFIX}" | awk '{print $1}' | sed -nr "s/${_PREFIX}([67])([0-9])([0-9])/\1.\2.\3/p" | sort -n
 # ls -1 /var/tmp/share/${_PREFIX}/${_PREFIX}-*.latest-el6.x86_64.{tar.gz,rpm} | sed -n -r "s/.+${_PREFIX}-([0-9]+\.[0-9]+\.[0-9]+).+/\1/p" | sort -n
 # for _v in `!!`; do _n=${_PREFIX}$(echo $_v | sed 's/[^0-9]//g'); docker rm -f $_n; docker rmi $_n; setup_standalone.sh -c -v $_v -s || break; done
 #
@@ -175,7 +175,7 @@ function f_update_hosts_file_by_fqdn() {
     fi
 
     if [ -s /etc/init.d/dnsmasq ]; then
-        # NOTE: /etc/sudoers is visible by root only so that grep to check won't work
+        # NOTE: /etc/sudoers is visible by root only so that grep to check won't work, and get "Authentication is required to reload 'dnsmasq.service'"
         if ! sudo /etc/init.d/dnsmasq reload; then
             _log "TODO" "%docker ALL=(ALL) NOPASSWD: /etc/init.d/dnsmasq reload"
             /etc/init.d/dnsmasq reload
