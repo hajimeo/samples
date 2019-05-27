@@ -127,14 +127,24 @@ function test_https() {
 # output md5 hash of .key or .crt file
 function check_pem_file() {
     local _file=$1
-    file "$_file"
+    local _use_pyasn1=$2
 
+    file "$_file"
     if grep -qE "BEGIN.* PRIVATE KEY" "$_file"; then
         openssl rsa -noout -modulus -in "$_file" | openssl md5
     else
         openssl x509 -noout -modulus -in "$_file" | openssl md5
         openssl x509 -noout -text -in "$_file" | grep -E "Issuer:|Not Before|Not After|Subject:"
         openssl x509 -noout -fingerprint -sha1 -inform pem -in "$_file"
+    fi
+
+    # ref: https://stackoverflow.com/questions/16899247/how-can-i-decode-a-ssl-certificate-using-python
+    if [[ "${_use_pyasn1}" =~ ^(y|Y) ]]; then
+        python -c "from pyasn1_modules import pem, rfc2459
+from pyasn1.codec.der import decoder
+substrate = pem.readPemFromFile(open('${_file}'))
+cert = decoder.decode(substrate, asn1Spec=rfc2459.Certificate())[0]
+print(cert.prettyPrint())"
     fi
 }
 
