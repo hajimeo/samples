@@ -9,9 +9,6 @@
 #
 
 function f_setup_misc() {
-    # Command/scripts need for my bash_aliases.sh
-    sudo -i pip install data_hacks  # it's OK if this fails NOTE: this works only with python2
-
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh" $HOME/.bash_profile || return $?
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh" $HOME/.bash_aliases || return $?
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/vimrc" $HOME/.vimrc || return $?
@@ -115,7 +112,7 @@ function f_setup_golang() {
     chmod a+x /var/tmp/share/dlv
 }
 
-function f_setup_jupyter() {
+function f_setup_python() {
     if ! which python3 &>/dev/null && ! _install python3 -y; then
         _log "ERROR" "no python3 installed or not in PATH"
         return 1
@@ -129,6 +126,9 @@ function f_setup_jupyter() {
         curl -s -f "https://bootstrap.pypa.io/get-pip.py" -o /tmp/get-pip.py || return $?
         sudo python3 /tmp/get-pip.py || return $?
     fi
+
+    # Command/scripts need for my bash_aliases.sh NOTE: this works only with python2
+    sudo -i pip install data_hacks  # it's OK if this fails
 
     ### Pip(3) ############################################################
     # TODO: should use vertualenv?
@@ -256,7 +256,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         _log "INFO" "Running f_setup_rg ..."
         f_setup_rg
         _log "INFO" "Running f_setup_jupyter ..."
-        f_setup_jupyter
+        f_setup_python
         _log "INFO" "Running f_setup_golang ..."
         f_setup_golang
     fi
