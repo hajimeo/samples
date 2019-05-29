@@ -173,10 +173,16 @@ function backupC() {
     [ ! -d "${_src}" ] && return 11
     [ ! -d "$HOME/.Trash" ] && return 12
     local _size="10000k"
+    local _mv="mv --backup=t"
+    [ "Darwin" = "`uname`" ] && _mv="gmv --backup=t"
+
+    # Special: database directory often too large, so removing. Also checking gmv availability
+    find ${_src%/} -type d -mtime +90 -name database -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ || return $?
+
     # Delete files larger than _size (10MB) and older than one year
-    find ${_src%/} -type f -mtime +365 -size +${_size} -print0 | xargs -0 -t -n1 -I {} mv {} $HOME/.Trash/ &
+    find ${_src%/} -type f -mtime +365 -size +${_size} -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
     # Delete files larger than 200MB and older than 90 days
-    find ${_src%/} -type f -mtime +90 -size +200000k -print0 | xargs -0 -t -n1 -I {} mv {} $HOME/.Trash/ &
+    find ${_src%/} -type f -mtime +90 -size +200000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
     # Synch all files smaller than _size (10MB)
     rsync -Pvaz --max-size=${_size} --modify-window=1 ${_src%/}/* ${_dst%/}/
     wait
