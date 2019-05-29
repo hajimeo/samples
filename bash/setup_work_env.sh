@@ -12,6 +12,9 @@ function f_setup_misc() {
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh" $HOME/.bash_profile || return $?
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh" $HOME/.bash_aliases || return $?
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/vimrc" $HOME/.vimrc || return $?
+    if [ -d $HOME/.ssh ] && [ ! -s $HOME/.ssh/config ]; then
+        _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/ssh_config" $HOME/.ssh/config || return $?
+    fi
 
     if [ ! -d "$HOME/IdeaProjects/samples/bash" ]; then
         mkdir -p $HOME/IdeaProjects/samples/bash || return $?
