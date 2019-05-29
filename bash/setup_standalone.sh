@@ -1046,7 +1046,7 @@ main() {
     # If -c is used, container should be already started, so don't need to start.
     # If -s is used, it intentionally stops the container, so don't need to start.
     if [ -n "$_NAME" ] && ! $_CREATE_CONTAINER && ! $_DOCKER_SAVE; then
-        if ! docker ps --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
+        if docker ps --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
             _log "INFO" "Container ${_NAME} is already running ..."; sleep 1
         else
             if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
