@@ -1046,23 +1046,29 @@ main() {
     # If -c is used, container should be already started, so don't need to start.
     # If -s is used, it intentionally stops the container, so don't need to start.
     if [ -n "$_NAME" ] && ! $_CREATE_CONTAINER && ! $_DOCKER_SAVE; then
-        if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
-            if ! docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
-                _log "WARN" "Can not start $_NAME as it does not exist."; sleep 1
-                return 1
+        if ! docker ps --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
+            _log "INFO" "Container ${_NAME} is already running ..."; sleep 1
+        else
+            if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
+                if ! docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
+                    _log "WARN" "Can not start $_NAME as it does not exist."; sleep 1
+                    return 1
+                fi
+                # Special condition: If _NAME = an image name, create this container even no _CREATE_CONTAINER
+                _log "INFO" "Container does not exist but image ${_NAME} exists. Using this ..."; sleep 1
+                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_NAME}" "${_ports}" || return $?
+            else
+                _log "INFO" "Starting container: $_NAME"
+                f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
             fi
-            # Special condition: If _NAME = an image name, create this container even no _CREATE_CONTAINER
-            _log "INFO" "Container does not exist but image ${_NAME} exists. Using this ..."; sleep 1
-            f_docker_run "${_NAME}.${_DOMAIN#.}" "${_NAME}" "${_ports}" || return $?
-        else
-            _log "INFO" "Starting container: $_NAME"
-            f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
-        fi
-        sleep 1
-        if [ -n "$_IMAGE_NAME" ]; then
-            f_as_start "${_NAME}.${_DOMAIN#.}" "" "" "${_IMAGE_NAME}.${_DOMAIN#.}"
-        else
-            $_AS_NO_INSTALL_START || f_as_start "${_NAME}.${_DOMAIN#.}"
+            if ! $_AS_NO_INSTALL_START; then
+                _log "INFO" "Starting application/service on ${_NAME} ..."; sleep 1
+                if [ -n "$_IMAGE_NAME" ]; then
+                    f_as_start "${_NAME}.${_DOMAIN#.}" "" "" "${_IMAGE_NAME}.${_DOMAIN#.}"
+                else
+                    f_as_start "${_NAME}.${_DOMAIN#.}"
+                fi
+            fi
         fi
     fi
 }
