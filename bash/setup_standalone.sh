@@ -576,14 +576,14 @@ function f_as_start() {
 }
 
 function f_as_hostname_change() {
-    local __doc__="Changing hostname of the application side"
+    local __doc__="Scheduling hostname change of the application side"
     local _hostname="$1"
     local _old_hostname="$2"
     local _service="${3:-${_SERVICE}}"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    docker exec -it ${_name} bash -c ". ${_SHARE_DIR%/}/${_service%/}/install_atscale.sh
-f_hostname_change '${_hostname}' '${_old_hostname}'"
+    _log "INFO" "Scheduling hostname change to ${_hostname} (from ${_old_hostname})"
+    echo "docker exec -it ${_name} bash -c \". ${_SHARE_DIR%/}/${_service%/}/install_atscale.sh;f_hostname_change '${_hostname}' '${_old_hostname}'\"" | at now +1 minute
 }
 
 function f_as_backup() {
@@ -1080,7 +1080,7 @@ main() {
                 f_as_start "${_NAME}.${_DOMAIN#.}"
                 if $_hostname_rename; then
                     sleep 10
-                    f_as_hostname_change "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}.${_DOMAIN#.}"
+                    f_as_hostname_change "${_NAME}.${_DOMAIN#.}" #"${_IMAGE_NAME}.${_DOMAIN#.}"
                 fi
             fi
         fi
