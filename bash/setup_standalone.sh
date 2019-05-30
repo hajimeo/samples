@@ -1000,7 +1000,7 @@ main() {
         # Check if the base OS image exists
         local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_BASE_IMAGE}:${_OS_VERSION}"`"
         if [ -n "${_existing_img}" ]; then
-            _log "INFO" "Image ${_BASE_IMAGE} (${_existing_img}) already exists. Skipping image creating ..."
+            _log "INFO" "Image ${_existing_img} already exists. Skipping base image creating ..."
         else
             _log "INFO" "Creating a docker image ${_BASE_IMAGE}..."
             f_docker_base_create || return $?
