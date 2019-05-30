@@ -30,7 +30,7 @@ CREATE CONTAINER:
 
 START/CREATE CONTAINER:
     -n <container name> [-v <version>]     <<< no '-c'
-        NOTE: If *exactly* same name image exists or -v/-N options are used, this also creates container.
+        NOTE: If *exactly* same name image exists or -v/-N options are used, this will create a container from that image.
 
 SAVE CONTAINER AS IMAGE:
     -s -n <container_name>
@@ -742,6 +742,7 @@ function f_docker_image_import() {
 
 function _cdh_setup() {
     local _container_name="${1:-"atscale-cdh"}"
+    local _is_using_cm="${2}"
 
     _log "INFO" "(re)Installing SSH and other commands ..."
     docker exec -it ${_container_name} bash -c 'yum install -y openssh-server openssh-clients; service sshd start'
@@ -753,10 +754,19 @@ function _cdh_setup() {
     docker exec -it ${_container_name} bash -c 'sed -i_$(date +"%Y%m%d%H%M%S") "s/cloudera-quickstart-init//" /usr/bin/docker-quickstart'
     docker exec -it ${_container_name} bash -c 'sed -i -r "/hbase-|oozie|sqoop2-server|solr-server|exec bash/d" /usr/bin/docker-quickstart'
     docker exec -it ${_container_name} bash -c 'sed -i "s/ start$/ \$1/g" /usr/bin/docker-quickstart'
+
+    _log "INFO" "Starting CDH (Using Cloudera Manager: ${_is_using_cm}) ..."
+    if [[ "${_is_using_cm}" =~ ^(y|Y) ]]; then
+        #curl 'http://`hostname -f`:7180/cmf/services/12/maintenanceMode?enter=true' -X POST
+        docker exec -it ${_container_name} bash -c '/home/cloudera/cloudera-manager --express' || return $?
+    else
+        docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start' || return $?
+        _log "INFO" "To enable CM, run '/home/cloudera/cloudera-manager --express' as root."
+    fi
 }
 
 function p_cdh_sandbox() {
-    local __doc__="Setup CDH Sandbox (NOTE: may need to stop another container which uses previously used IP)"
+    local __doc__="TODO: Setup CDH Sandbox (NOTE: may need to stop another container which uses previously used IP)"
     local _container_name="${1:-"atscale-cdh"}"
     local _is_using_cm="${2}"
     local _tar_uri="${3:-"https://downloads.cloudera.com/demo_vm/docker/cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz"}"
@@ -767,27 +777,16 @@ function p_cdh_sandbox() {
     if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
         f_docker_image_import "${_tar_uri}" "${_image_name}" || return $?
         f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "" || return $?   # "--add-host=quickstart.cloudera:127.0.0.1"
-        _cdh_setup "${_container_name}" || return $?
+        _cdh_setup "${_container_name}" "${_is_using_cm}" || return $?
     else
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
     fi
 
+    # It might be using hostname "quickstart.cloudera", so just in case, updating DNS
     f_update_hosts_file_by_fqdn "quickstart.cloudera" "${_container_name}" "Y"
-
-    _log "INFO" "Starting CDH (Using Cloudera Manager: ${_is_using_cm}) ..."
-    if [[ "${_is_using_cm}" =~ ^(y|Y) ]]; then
-        #curl 'http://`hostname -f`:7180/cmf/services/12/maintenanceMode?enter=true' -X POST
-        docker exec -it ${_container_name} bash -c 'if [ -s /home/cloudera/cloudera-manager ]; then
-    /home/cloudera/cloudera-manager --express
-else
-    service cloudera-scm-agent start; service cloudera-scm-server-db start && service cloudera-scm-server start
-fi' || return $?
-    else
-        docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start' || return $?
-        _log "INFO" "To enable CM, run '/home/cloudera/cloudera-manager --express' as root."
-        # Schedule refresh commands in case DataNode and NodeManager's IP has been changed
-        #docker exec -it ${_container_name} bash -c 'echo "sudo -u hdfs hadoop dfsadmin -refreshNodes; sudo -u yarn yarn rmadmin -refreshNodes" | at now +5 minutes'
-    fi
+    docker exec -it ${_container_name} bash -c 'service cloudera-scm-agent restart; service cloudera-scm-server-db start; service cloudera-scm-server start' || return $?
+    # Schedule refresh commands in case DataNode and NodeManager's IP has been changed
+    #docker exec -it ${_container_name} bash -c 'echo "sudo -u hdfs hadoop dfsadmin -refreshNodes; sudo -u yarn yarn rmadmin -refreshNodes" | at now +5 minutes'
 }
 
 function _hdp_setup() {
@@ -995,11 +994,12 @@ main() {
         _ports=${_PORTS}
     fi
 
+    # _CREATE_CONTAINER means setting up the service/application by executing f_as_setup
     if $_CREATE_CONTAINER || $_CREATE_OR_START; then
-        _log "INFO" "Creating docker container (and the base image if it's not existed)"
+        # Check if the base OS image exists
         local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_BASE_IMAGE}:${_OS_VERSION}"`"
-        if [ ! -z "$_existing_img" ]; then
-            _log "INFO" "Image ${_BASE_IMAGE} already exists so that skipping image creating part..."
+        if [ -n "${_existing_img}" ]; then
+            _log "INFO" "Image ${_BASE_IMAGE} (${_existing_img}) already exists. Skipping image creating ..."
         else
             _log "INFO" "Creating a docker image ${_BASE_IMAGE}..."
             f_docker_base_create || return $?
@@ -1007,8 +1007,8 @@ main() {
 
         # If no name, generating automatically.
         if [ -z "${_NAME}" ]; then
-            if [ -n "$_IMAGE_NAME" ]; then
-                _NAME="$_IMAGE_NAME"
+            if [ -n "${_IMAGE_NAME}" ]; then
+                _NAME="${_IMAGE_NAME}"
             elif [ -n "$_VERSION" ]; then
                 _NAME="${_SERVICE}$(echo "${_VERSION}" | sed 's/[^0-9]//g')"
             else
@@ -1020,13 +1020,20 @@ main() {
             fi
         fi
 
-        # As $_CREATE_CONTAINER and $_CREATE_OR_START both can be true, checking $_CREATE_CONTAINER.
+        # If no "-c" and -v is given, will check if image for same name already exists.
+        if ! $_CREATE_CONTAINER && [ -n "${_SERVICE}" ] && [ -z "${_IMAGE_NAME}" ] && [ -n ${_VERSION} ]; then
+            local _tmp_image_name="${_SERVICE}$(echo "${_VERSION}" | sed 's/[^0-9]//g')"
+            if docker images --format "{{.Repository}}" | grep -qE "^${_tmp_image_name}$"; then
+                _IMAGE_NAME="${_tmp_image_name}"
+            fi
+        fi
+
         if ! $_CREATE_CONTAINER && docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
-            _log "INFO" "Container ${_NAME} already exists. Not creating..."
+            _log "INFO" "Container:${_NAME} already exists. As no -c, no f_as_install ..."
         elif ! $_CREATE_CONTAINER && docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
             # A bit confusing but later, because of special condition, will create a container.
-            _log "TRACE" "Because of special condition, not creating ${_NAME} in here..."
-        else
+            _log "INFO" "An image which same name as ${_NAME} already exists. As no -c, no f_as_install ..."
+        elif $_CREATE_CONTAINER; then
             local _base="${_IMAGE_NAME:-"${_BASE_IMAGE}:${_OS_VERSION}"}"
             _log "INFO" "Creating ${_NAME} container from ${_base} (v:${_VERSION})..."
             # Creating a new (empty) container and install the application
@@ -1049,21 +1056,25 @@ main() {
         if docker ps --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
             _log "INFO" "Container ${_NAME} is already running ..."; sleep 1
         else
+            # If the container _NAME hasn't been created,
             if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
-                if ! docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
-                    _log "WARN" "Can not start $_NAME as it does not exist."; sleep 1
-                    return 1
+                # Special condition 1: If _NAME = an image name, create this container even no _CREATE_CONTAINER
+                if docker images --format "{{.Repository}}" | grep -qE "^(${_NAME})$"; then
+                    _log "INFO" "Container does not exist but same name image:${_NAME} exists. Using this ..."; sleep 1
+                    f_docker_run "${_NAME}.${_DOMAIN#.}" "${_NAME}" "${_ports}" || return $?
                 fi
-                # Special condition: If _NAME = an image name, create this container even no _CREATE_CONTAINER
-                _log "INFO" "Container does not exist but image ${_NAME} exists. Using this ..."; sleep 1
-                f_docker_run "${_NAME}.${_DOMAIN#.}" "${_NAME}" "${_ports}" || return $?
+                # Special condition 2: If _IMAGE_NAME = an image name, create this container even no _CREATE_CONTAINER
+                if docker images --format "{{.Repository}}" | grep -qE "^(${_NAME})$"; then
+                    _log "INFO" "Container does not exist but image:${_IMAGE_NAME} exists. Using this ..."; sleep 1
+                    f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}" "${_ports}" || return $?
+                fi
             else
                 _log "INFO" "Starting container: $_NAME"
                 f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
             fi
             if ! $_AS_NO_INSTALL_START; then
                 _log "INFO" "Starting application/service on ${_NAME} ..."; sleep 1
-                if [ -n "$_IMAGE_NAME" ]; then
+                if [ -n "${_IMAGE_NAME}" ]; then
                     f_as_start "${_NAME}.${_DOMAIN#.}" "" "" "${_IMAGE_NAME}.${_DOMAIN#.}"
                 else
                     f_as_start "${_NAME}.${_DOMAIN#.}"
