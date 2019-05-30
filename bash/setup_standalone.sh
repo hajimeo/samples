@@ -1064,7 +1064,7 @@ main() {
                     f_docker_run "${_NAME}.${_DOMAIN#.}" "${_NAME}" "${_ports}" || return $?
                 fi
                 # Special condition 2: If _IMAGE_NAME = an image name, create this container even no _CREATE_CONTAINER
-                if docker images --format "{{.Repository}}" | grep -qE "^(${_NAME})$"; then
+                if docker images --format "{{.Repository}}" | grep -qE "^(${_IMAGE_NAME})$"; then
                     _log "INFO" "Container does not exist but image:${_IMAGE_NAME} exists. Using this ..."; sleep 1
                     f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}" "${_ports}" || return $?
                 fi
@@ -1072,6 +1072,7 @@ main() {
                 _log "INFO" "Starting container: $_NAME"
                 f_docker_start "${_NAME}.${_DOMAIN#.}" || return $?
             fi
+
             if ! $_AS_NO_INSTALL_START; then
                 _log "INFO" "Starting application/service on ${_NAME} ..."; sleep 1
                 if [ -n "${_IMAGE_NAME}" ]; then
