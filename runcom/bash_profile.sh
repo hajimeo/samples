@@ -12,19 +12,20 @@ fi
 
 # Go/Golang related
 if which go &>/dev/null; then
-    #export GOROOT=/usr/local/opt/go/libexec
-    export GOPATH=$HOME/go
-    export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
+    [ -z "${GOROOT}" ] && export GOROOT=/usr/local/opt/go/libexec
+    [ -z "${GOPATH}" ] && export GOPATH=$HOME/go
+    [[ ":$PATH:" != *":$PATH:$GOROOT/bin:"* ]] && export PATH=$PATH:$GOROOT/bin
+    [[ ":$PATH:" != *":$GOPATH/bin:"* ]] && export PATH=$PATH:$GOPATH/bin
 fi
 
 # Kerberos client
 if [ -s $HOME/krb5.conf ]; then
-    export KRB5_CONFIG=$HOME/krb5.conf
+    [ -z "${KRB5_CONFIG}" ] && export KRB5_CONFIG=$HOME/krb5.conf
 fi
 
 # ripgrep(rg)
 if [ -s $HOME/.rgrc ]; then
-    export RIPGREP_CONFIG_PATH=$HOME/.rgrc
+    [ -z "${RIPGREP_CONFIG_PATH}" ] && export RIPGREP_CONFIG_PATH=$HOME/.rgrc
 fi
 
 # python related
@@ -34,13 +35,14 @@ if [ -d /usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`/Frameworks/Pytho
     # Rather than above, maybe better create a symlink for pip3?
 fi
 if [ -d $HOME/IdeaProjects/samples/python ]; then
-    export PYTHONPATH=$HOME/IdeaProjects/samples/python:$PYTHONPATH
+    # Intentionally adding at the beginning
+    [[ ":$PYTHONPATH:" != *":$HOME/IdeaProjects/samples/python:"* ]] && export PYTHONPATH=$HOME/IdeaProjects/samples/python:$PYTHONPATH
 fi
 
 # java related
 if [ -f /usr/libexec/java_home ]; then
-    #export JAVA_HOME=`/usr/libexec/java_home -v 10`
-    export JAVA_HOME=`/usr/libexec/java_home -v 1.8`
+    #[ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 10`
+    [ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8`
 fi
 
 # iterm2
