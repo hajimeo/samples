@@ -576,29 +576,14 @@ function f_as_start() {
 }
 
 function f_as_hostname_change() {
-    local __doc__="Collection of commands used for changing hostname of the application side"
+    local __doc__="Changing hostname of the application side"
     local _hostname="$1"
     local _old_hostname="$2"
     local _service="${3:-${_SERVICE}}"
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-
-    # Update hostname if old hostname is given
-    if [ -n "${_old_hostname}" ]; then
-        sleep 10
-        # NOTE: At this moment, assuming only one postgresql version. Not using 'at' command as minimum time unit is minutes
-
-        _log "INFO" "UPDATE engines SET host='${_hostname}' where default_engine is true AND host='${_old_hostname}'"
-        docker exec -it ${_name} bash -c "for _i in {1..9}; do lsof -ti:10520 -s TCP:LISTEN && break;sleep 10;done
-lsof -ti:10520 -s TCP:LISTEN || exit 1
-. ${_SHARE_DIR%/}/${_service%/}/install_atscale.sh
-for _i in {1..9}; do f_psql -tc \"select pg_is_in_recovery()\" | grep -qw 'f' && break;sleep 10;done
-f_psql -c \"UPDATE engine_settings SET value='${_hostname}' where deactivated_at is null AND value ilike '${_old_hostname}'\"
-f_psql -c \"UPDATE engine_settings SET value='${_hostname}:10513' where deactivated_at is null AND value ilike '${_old_hostname}:10513'\"
-f_psql -c \"UPDATE engines SET host='${_hostname}' where default_engine is true AND host ilike '${_old_hostname}'\" || exit 1
-"
-        # NOTE: restarting engine or modeler may reset host in engines.
-    fi
+    docker exec -it ${_name} bash -c ". ${_SHARE_DIR%/}/${_service%/}/install_atscale.sh
+f_hostname_change '${_hostname}' '${_old_hostname}'"
 }
 
 function f_as_backup() {
@@ -1094,6 +1079,7 @@ main() {
                 _log "INFO" "Starting application/service on ${_NAME} ..."; sleep 1
                 f_as_start "${_NAME}.${_DOMAIN#.}"
                 if $_hostname_rename; then
+                    sleep 10
                     f_as_hostname_change "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}.${_DOMAIN#.}"
                 fi
             fi
