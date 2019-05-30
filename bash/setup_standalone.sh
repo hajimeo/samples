@@ -584,6 +584,8 @@ function f_as_start() {
 lsof -ti:10520 -s TCP:LISTEN || exit 1
 . ${_SHARE_DIR%/}/${_service%/}/install_atscale.sh
 for _i in {1..9}; do f_psql -tc \"select pg_is_in_recovery()\" | grep -qw 'f' && break;sleep 10;done
+f_psql -c \"UPDATE engine_settings SET value='${_hostname}' where deactivated_at is null AND value ilike '${_old_hostname}'\"
+f_psql -c \"UPDATE engine_settings SET value='${_hostname}:10513' where deactivated_at is null AND value ilike '${_old_hostname}:10513'\"
 f_psql -c \"UPDATE engines SET host='${_hostname}' where default_engine is true AND host='${_old_hostname}'\"
 "
     fi
