@@ -18,7 +18,6 @@ Host dh1
 
 Host asftp
   Hostname sftp.atscale.com
-  User hajime.osako
 
 Host node* atscale* *.localdomain localhost
   StrictHostKeyChecking no
