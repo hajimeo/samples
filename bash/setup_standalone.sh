@@ -563,7 +563,6 @@ function f_as_start() {
     local _hostname="$1"
     local _service="${2:-${_SERVICE}}"
     local _restart="${3}"
-    local _old_hostname="${4}"
 
     # NOTE: To support different version, f_as_setup should create a symlink
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
@@ -574,6 +573,16 @@ function f_as_start() {
     [[ "${_restart}" =~ ^(y|Y) ]] && docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_stop -f"
     docker exec -d ${_name} bash -c "sudo -u ${_service} -i /usr/local/apache-hive/apache_hive.sh"
     docker exec -it ${_name} bash -c "lsof -i:10516 || sudo -u ${_service} -i /usr/local/${_service}/bin/${_service}_start"
+}
+
+function f_as_hostname_change() {
+    local __doc__="Collection of commands used for changing hostname of the application side"
+    local _hostname="$1"
+    local _old_hostname="$2"
+    local _service="${3:-${_SERVICE}}"
+
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
     # Update hostname if old hostname is given
     if [ -n "${_old_hostname}" ]; then
         sleep 10
@@ -586,8 +595,9 @@ lsof -ti:10520 -s TCP:LISTEN || exit 1
 for _i in {1..9}; do f_psql -tc \"select pg_is_in_recovery()\" | grep -qw 'f' && break;sleep 10;done
 f_psql -c \"UPDATE engine_settings SET value='${_hostname}' where deactivated_at is null AND value ilike '${_old_hostname}'\"
 f_psql -c \"UPDATE engine_settings SET value='${_hostname}:10513' where deactivated_at is null AND value ilike '${_old_hostname}:10513'\"
-f_psql -c \"UPDATE engines SET host='${_hostname}' where default_engine is true AND host='${_old_hostname}'\"
+f_psql -c \"UPDATE engines SET host='${_hostname}' where default_engine is true AND host ilike '${_old_hostname}'\" || exit 1
 "
+        # NOTE: restarting engine or modeler may reset host in engines.
     fi
 }
 
@@ -1061,7 +1071,8 @@ main() {
         if docker ps --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
             _log "INFO" "Container ${_NAME} is already running ..."; sleep 1
         else
-            # If the container _NAME hasn't been created,
+            local _hostname_rename=false
+
             if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
                 # Special condition 1: If _NAME = an image name, create this container even no _CREATE_CONTAINER
                 if docker images --format "{{.Repository}}" | grep -qE "^(${_NAME})$"; then
@@ -1071,7 +1082,8 @@ main() {
                 # Special condition 2: If _IMAGE_NAME = an image name, create this container even no _CREATE_CONTAINER
                 if docker images --format "{{.Repository}}" | grep -qE "^(${_IMAGE_NAME})$"; then
                     _log "INFO" "Container does not exist but image:${_IMAGE_NAME} exists. Using this ..."; sleep 1
-                    f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}" "${_ports}" || return $?
+                    f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}" "${_ports}" "--add-host=${_IMAGE_NAME}.${_DOMAIN#.}:127.0.0.1" || return $?
+                    _hostname_rename=true
                 fi
             else
                 _log "INFO" "Starting container: $_NAME"
@@ -1080,10 +1092,9 @@ main() {
 
             if ! $_AS_NO_INSTALL_START; then
                 _log "INFO" "Starting application/service on ${_NAME} ..."; sleep 1
-                if [ -n "${_IMAGE_NAME}" ]; then
-                    f_as_start "${_NAME}.${_DOMAIN#.}" "" "" "${_IMAGE_NAME}.${_DOMAIN#.}"
-                else
-                    f_as_start "${_NAME}.${_DOMAIN#.}"
+                f_as_start "${_NAME}.${_DOMAIN#.}"
+                if $_hostname_rename; then
+                    f_as_hostname_change "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}.${_DOMAIN#.}"
                 fi
             fi
         fi
