@@ -578,10 +578,11 @@ function f_as_start() {
     if [ -n "${_old_hostname}" ]; then
         sleep 10
         # NOTE: At this moment, assuming only one postgresql version. Not using 'at' command as minimum time unit is minutes
+
         _log "INFO" "UPDATE engines SET host='${_hostname}' where default_engine is true AND host='${_old_hostname}'"
         docker exec -it ${_name} bash -c "for _i in {1..9}; do lsof -ti:10520 -s TCP:LISTEN && break;sleep 10;done
-sleep 1
 . ${_SHARE_DIR%/}/${_service%/}/install_atscale.sh
+for _i in {1..9}; do f_psql -tc \"select pg_is_in_recovery()\" | grep -qw 'f' && break;sleep 10;done
 f_psql -c \"UPDATE engines SET host='${_hostname}' where default_engine is true AND host='${_old_hostname}'\"
 "
     fi
