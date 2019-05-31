@@ -420,7 +420,7 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
 
     # Step2: create server key and certificate
     openssl genrsa -out ./server.${_domain_suffix#.}.key 2048 || return $?
-    openssl req -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" -extensions v3_req -sha256 -new -key ./server.${_domain_suffix#.}.key -out ./server.${_domain_suffix#.}.csr || return $?
+    openssl req -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" -extensions v3_req -sha256 -new -key ./server.${_domain_suffix#.}.key -out ./server.${_domain_suffix#.}.csr -config ${_openssl_cnf} || return $?
     openssl x509 -req -extensions v3_req -days 3650 -sha256 -in ./server.${_domain_suffix#.}.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ./server.${_domain_suffix#.}.crt -extfile ${_openssl_cnf} -passin "pass:$_password"
 
     # Step3: Create a client truststore file used by all clients/nodes and a server keystore
