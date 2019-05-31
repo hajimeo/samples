@@ -47,7 +47,7 @@ function f_setup_rg() {
             fi
         elif [ "`uname`" = "Linux" ]; then
             if which apt-get &>/dev/null; then  # NOTE: Mac has 'apt' command
-                if ! apt-get install ripgrep -y; then
+                if ! sudo apt-get install ripgrep -y; then
                     local _ver="0.10.0"
                     _log "INFO" "Installing rg version: ${_ver} ..."; sleep 3
                     _download "https://github.com/BurntSushi/ripgrep/releases/download/${_ver}/ripgrep_${_ver}_amd64.deb" "/tmp/ripgrep_${_ver}_amd64.deb" "Y" "Y" || return $?
@@ -105,7 +105,11 @@ function f_setup_golang() {
         fi
     fi
 
-    if [ ! -d "$GOPATH" ]; then
+    if [ ! -d "$HOME/go" ]; then
+        _log "ERROR" "\$HOME/go does not exist."
+        return 1
+    fi
+    if [ -z "$GOPATH" ]; then
         _log "WARN" "May need to add 'export GOPATH=$HOME/go' in profile"
         export GOPATH=$HOME/go
     fi
@@ -255,15 +259,17 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     if [[ "$1" =~ ^f_ ]]; then
         eval "$@"
     else
+        sudo echo "Starting setup ..."
         _log "INFO" "Running f_setup_misc ..."
-        f_setup_misc
+        f_setup_misc; echo "Exit code $?"
         _log "INFO" "Running f_setup_screen ..."
-        f_setup_screen
+        f_setup_screen; echo "Exit code $?"
         _log "INFO" "Running f_setup_rg ..."
-        f_setup_rg
+        f_setup_rg; echo "Exit code $?"
         _log "INFO" "Running f_setup_jupyter ..."
-        f_setup_python
+        f_setup_python; echo "Exit code $?"
         _log "INFO" "Running f_setup_golang ..."
-        f_setup_golang
+        f_setup_golang; echo "Exit code $?"
+        echo "Completed."
     fi
 fi
