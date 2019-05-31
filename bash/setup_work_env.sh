@@ -96,7 +96,9 @@ function f_setup_golang() {
             sudo apt-get install golang-${_ver}-go -y || return $?
 
             local _go="`which go`"
-            if [ -L "${_go}" ] && [ -s /usr/lib/go-${_ver}/bin/go ]; then
+            if [ -z "${_go}" ] && [ -s /usr/lib/go-${_ver}/bin/go ]; then
+                sudo ln -s /usr/lib/go-${_ver}/bin/go /usr/bin/go
+            elif [ -L "${_go}" ] && [ -s /usr/lib/go-${_ver}/bin/go ]; then
                 sudo rm "${_go}"
                 sudo ln -s /usr/lib/go-${_ver}/bin/go "${_go}"
             fi
@@ -111,8 +113,9 @@ function f_setup_golang() {
     _log "INFO" "Installing/udating delve/dlv ..."
     # If Mac: brew install go-delve/delve/delve
     go get -u github.com/go-delve/delve/cmd/dlv || return $?
+    [ ! -d /var/tmp/share ] && sudo mkdir -m 777 -p /var/tmp/share || return $?
     sudo cp -f $GOPATH/bin/dlv /var/tmp/share/dlv || return $?
-    chmod a+x /var/tmp/share/dlv
+    sudo chmod a+x /var/tmp/share/dlv
 }
 
 function f_setup_python() {
