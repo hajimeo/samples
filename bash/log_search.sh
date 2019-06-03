@@ -45,7 +45,7 @@ Or
 function p_support() {
     local __doc__="Scan a support bundle"
 
-    echo "# Version information"
+    echo "#[$(date +"%H:%M:%S")] Version information"
     echo "## version files (versions.*.yml or build.yaml)"
     find . -type f -name 'versions.*.yml' -print | sort | tee /tmp/versions_$$.out
     local _versions_yaml="`cat /tmp/versions_$$.out | sort -n | tail -n1`"
@@ -59,33 +59,33 @@ function p_support() {
     fi
     echo " "
 
-    echo "# config-custom.yaml (may not exist in older version)"
+    echo "#[$(date +"%H:%M:%S")] config-custom.yaml (may not exist in older version)"
     _find_and_cat "config-custom.yaml" | sort | uniq
     echo " "
     echo " "
 
-    echo "# config.yaml (filtered)"
+    echo "#[$(date +"%H:%M:%S")] config.yaml (filtered)"
     _find_and_cat "config.yaml" | grep -E '(^AS_LOG_DIR|^HOSTNAME|^JAVA_HOME|^user.timezone|^estimator.enabled|^query.result.max_rows|^thrifty.client.protocol|^aggregates.create.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs.aggregates.maintainer|^authorization.impersonation.jdbc.enabled)' | sort | uniq
     echo " "
     f_genKinit
     echo " "
 
-    echo "# runtime.yaml (usedMem = totalMemory() - freeMemory())"
+    echo "#[$(date +"%H:%M:%S")] runtime.yaml (usedMem = totalMemory() - freeMemory())"
     _find_and_cat "runtime.yaml"
     echo " "
     echo " "
 
-    echo "# settings.json last 3 settings changes"
+    echo "#[$(date +"%H:%M:%S")] settings.json last 3 settings changes"
     _find_and_cat "settings.json" | python -c "import sys,json;a=json.loads(sys.stdin.read());print json.dumps(a[-3:], indent=4)"
     echo " "
     echo " "
 
-    echo "# engine/aggregates/config.json last 3 settings changes"
+    echo "#[$(date +"%H:%M:%S")] engine/aggregates/config.json last 3 settings changes"
     _find_and_cat "config.json" | python -c "import sys,json;a=json.loads(sys.stdin.read());print json.dumps(a[-3:], indent=4)"
     echo " "
     echo " "
 
-    #echo "# config.yaml | grep -iE '(max|size|pool).+000$' | grep -vi 'time'"
+    #echo "#[$(date +"%H:%M:%S")] config.yaml | grep -iE '(max|size|pool).+000$' | grep -vi 'time'"
     # Exact config parameter(s) which might cause issue
     # TODO: Aggregate Batch <UUID> failed creating a build order for rebuilding aggregates.
     # TODO: aggregates.maxExternalRequestDuration.timeout|aggregates.batch.buildFromExisting'
@@ -94,14 +94,14 @@ function p_support() {
     #echo " "
     #echo " "
 
-    echo "# Connection group (warehouse -> sql engine)"
+    echo "#[$(date +"%H:%M:%S")] Connection group (warehouse -> sql engine)"
     _find_and_cat "connection_groups.json" | python -m json.tool
-    echo "# Connection pool (sql engine)"
+    echo "#[$(date +"%H:%M:%S")] Connection pool (sql engine)"
     _find_and_cat "pool.json"   # check maxConnections, consecutiveFailures
     echo " "
     echo " "
 
-    echo "# akka_cluster_state.json and zkState.json To check HA"
+    echo "#[$(date +"%H:%M:%S")] akka_cluster_state.json and zkState.json To check HA"
     _find_and_cat "akka_cluster_state.json"
     _find_and_cat "zkState.json"
     echo " "
@@ -109,17 +109,17 @@ function p_support() {
 
     # TODO: ./engine/cron-scheduler/jobHistories.json, ./account/account_audit_stream.json
 
-    #echo "# current-status.json Cache status"
+    #echo "#[$(date +"%H:%M:%S")] current-status.json Cache status"
     #_find_and_cat "current-status.json"
     #echo " "
     #echo " "
 
-    #echo "# properties.json Engine properties for last 20 lines"
+    #echo "#[$(date +"%H:%M:%S")] properties.json Engine properties for last 20 lines"
     #_find_and_cat "properties.json" | tail -n 20
     #echo " "
     #echo " "
 
-    echo "# directory_configurations.json"
+    echo "#[$(date +"%H:%M:%S")] directory_configurations.json"
     _find_and_cat "directory_configurations.json"
     echo " "
     echo " "
@@ -127,45 +127,48 @@ function p_support() {
     echo " "
     echo " "
 
-    echo "# tableSizes.tsv 10 large tables (by num rows)"
+    echo "#[$(date +"%H:%M:%S")] tableSizes.tsv 10 large tables (by num rows)"
     _find_and_cat "tableSizes.tsv" | sort -n -k2 | tail -n 10
     echo "* Number of tables: "$(_find_and_cat "tableSizes.tsv" | wc -l | tr -d '[:space:]')
     echo "* Number of 0 tbls: "$(_find_and_cat "tableSizes.tsv" | grep -w 0 -c)
     echo " "
 
-    echo "# Engine start/restart"
+    echo "#[$(date +"%H:%M:%S")] Engine start/restart"
     rg -z -N --no-filename -g 'engine.*log*' '(AtScale Engine, shutting down|Shutting down akka system|actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
     echo " "
-    echo "# supervisord 'engine entered RUNNING state' (NOTE: time is probably not UTC)"
+    echo "#[$(date +"%H:%M:%S")] supervisord 'engine entered RUNNING state' (NOTE: time is probably not UTC)"
     rg -z -N --no-filename -g 'atscale_service.log' 'engine entered RUNNING state' | tail -n 10
     echo " "
-    echo "# supervisord 'not expected' (NOTE: time is probably not UTC)"
+    echo "#[$(date +"%H:%M:%S")] supervisord 'not expected' (NOTE: time is probably not UTC)"
     rg -z -N --no-filename -g 'atscale_service.log' 'not expected' | tail -n 10
 
     echo " "
-    echo "# OutOfMemoryError count in all logs"
+    echo "#[$(date +"%H:%M:%S")] OutOfMemoryError count in all logs"
     rg -z -c 'OutOfMemoryError'
     echo " "
-    echo "# Last 10 OutOfMemoryError in engine logs"
+    echo "#[$(date +"%H:%M:%S")] Last 10 OutOfMemoryError in engine logs"
     rg -z -N --no-filename 'OutOfMemoryError' -g 'engine.*log*' -B 1 | rg "^$_DATE_FORMAT" | sort | uniq | tail -n 10
 
     echo " "
-    echo "# Last 10 'Thread starvation or clock leap detected' engine logs"
+    echo "#[$(date +"%H:%M:%S")] Last 10 'Thread starvation or clock leap detected' engine logs"
     rg -z -N --no-filename "^${_DATE_FORMAT}.+(Thread starvation or clock leap detected|Scheduled sending of heartbeat was delayed)" -g 'engine.*log*' | sort | uniq | tail -n 10
     echo " "
-    echo "# Last 10 'Marshalled xxxxxxxxx characters of SOAP data in yyy s"
+    echo "#[$(date +"%H:%M:%S")] Last 10 'Marshalled xxxxxxxxx characters of SOAP data in yyy s'"
     rg -z -N --no-filename "^${_DATE_FORMAT}.+ Marshalled \d\d\d\d\d\d\d\d+ characters of SOAP data" -g 'engine.*log*' | sort | uniq | tail -n 10
+    echo " "
+    echo "#[$(date +"%H:%M:%S")] Last 10 'WARN fsync-ing the write ahead log'"
+    rg -z -N --no-filename "^${_DATE_FORMAT}.+ WARN.+fsync-ing the write ahead log" -g 'coordinator.*stdout*' | sort | uniq | tail -n 10
 
     echo " "
-    echo "# Count thread types from periodic.log"
+    echo "#[$(date +"%H:%M:%S")] Count thread types from periodic.log"
     rg -g 'periodic.log' '^"' -A 1 --no-filename | rg '^  ' | sort | uniq -c
 
     echo " "
-    echo "# WARNs (and above) in warn.log (top 40)"
+    echo "#[$(date +"%H:%M:%S")] WARNs (and above) in warn.log (top 40)"
     f_listWarns "warn.log"
 
     echo " "
-    echo "# debug.*log* start and end (start time, end time, difference(sec), filesize)"
+    echo "#[$(date +"%H:%M:%S")] debug.*log* start and end (start time, end time, difference(sec), filesize)"
     f_list_start_end "debug.*log*"
 }
 
