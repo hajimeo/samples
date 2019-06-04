@@ -424,17 +424,23 @@ function f_docker_start() {
 function f_as_log_cleanup() {
     local _hostname="$1"    # short name is also OK
     local _service="${2:-${_SERVICE}}"
+    local _remove_installer="${3}"
+
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
     docker exec -it ${_name} bash -c 'find /usr/local/'${_service}'/{log,share/postgresql-*/data/pg_log} -type f -and \( -name "*.log.gz" -o -name "*.log" -o -name "*.stdout" \) -and -print0 2>/dev/null | xargs -0 -P3 -n1 -I {} rm -f {}'
     docker exec -it ${_name} bash -c 'find /opt/'${_service}'/log -type f -and \( -name "*.log.gz" -o -name "*.log" -o -name "*.stdout" \) -and -print0 2>/dev/null | xargs -0 -P3 -n1 -I {} rm -f {}'
+    if [[ "${_remove_installer}" =~ ^(y|Y) ]]; then
+        docker exec -it ${_name} bash -c 'rm -rf /home/'${_service}'/'${_service}'-*-el6.x86_64;rm -rf /home/'${_service}'/log/*'
+    fi
 }
 
 function f_docker_commit() {
     local __doc__="Cleaning up unncecessary files and then save a container as an image"
-    local _hostname="$1"    # short name is also OK
+    local _container_name="$1"    # FQDN is also OK
     local _service="${2:-${_SERVICE}}"
+    local _remove_log="${3-Y}"
 
-    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+    local _name="`echo "${_container_name}" | cut -d"." -f1`"
 
     if docker images --format "{{.Repository}}" | grep -qE "^${_name}$"; then
         _log "WARN" "Image ${_name} already exists. Please do 'docker rmi ${_name}' first."; sleep 1
@@ -444,9 +450,9 @@ function f_docker_commit() {
         _log "INFO" "Container ${_name} is NOT running, so that not cleaning up..."; sleep 1
     fi
 
-    f_as_log_cleanup "${_name}"
-    # TODO: need better way, shouldn't be in docker commit function
-    docker exec -it ${_name} bash -c 'rm -rf /home/'${_service}'/'${_service}'-*-el6.x86_64;rm -rf /home/'${_service}'/log/*'
+    if [[ "${_remove_log}" =~ ^(y|Y) ]]; then
+        f_as_log_cleanup "${_name}" "Y"
+    fi
 
     _log "INFO" "Stopping and Committing ${_name} ..."; sleep 1
     docker stop -t 7 ${_name} || return $?
@@ -741,7 +747,7 @@ function f_docker_image_import() {
 }
 
 function _cdh_setup() {
-    local _container_name="${1:-"atscale-cdh"}"
+    local _container_name="${1:-"node-cdh"}"
     local _is_using_cm="${2}"
 
     _log "INFO" "(re)Installing SSH and other commands ..."
@@ -767,7 +773,7 @@ function _cdh_setup() {
 
 function p_cdh_sandbox() {
     local __doc__="TODO: Setup CDH Sandbox (NOTE: may need to stop another container which uses previously used IP)"
-    local _container_name="${1:-"atscale-cdh"}"
+    local _container_name="${1:-"node-cdh"}"
     local _is_using_cm="${2}"
     local _tar_uri="${3:-"https://downloads.cloudera.com/demo_vm/docker/cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz"}"
     local _download_dir="${4:-"."}"
@@ -790,7 +796,7 @@ function p_cdh_sandbox() {
 }
 
 function _hdp_setup() {
-    local _container_name="${1:-"atscale-hdp"}"
+    local _container_name="${1:-"node-hdp"}"
 
     # startup_script modify /etc/resolv.conf so removing
     docker exec -dt ${_container_name} bash -c 'chkconfig startup_script off ; chkconfig tutorials off; chkconfig shellinaboxd off; chkconfig hue off; chkconfig httpd off'
@@ -809,7 +815,7 @@ function _hdp_setup() {
 
 function p_hdp_sandbox() {
     local __doc__="Setup HDP Sandbox (up to 2.6.3 or need .tar file in local)"
-    local _container_name="${1:-"atscale-hdp"}"
+    local _container_name="${1:-"node-hdp"}"
     local _tar_uri="${2:-"https://downloads-hortonworks.akamaized.net/sandbox-hdp-2.6.3/HDP_2.6.3_docker_10_11_2017.tar"}"
     local _image_name="sandbox-hdp" # Note: when changing _tar_uri, _image_name may need to change too.
     # Ref: https://hortonworks.com/tutorial/sandbox-deployment-and-install-guide/section/3/
@@ -826,6 +832,62 @@ function p_hdp_sandbox() {
     _log "INFO" "Starting Ambari ..."
     docker exec -dt ${_container_name} bash -c '/usr/sbin/ambari-agent restart'
     docker exec -it ${_container_name} bash -c '/usr/sbin/ambari-server start --skip-database-check'
+}
+
+function _tableau_server_setup() {
+    local _container_name="${1:-"node-ts"}"
+    local _tableau_version="${2:-"2018.2.5"}"
+    local _not_initializing="${3}"
+
+    local _tsm_user="tsm"
+    local _work_dir="${_WORK_DIR}"
+    [ ! -d "${_work_dir%/}" ] && mkdir -p -m 777 "${_work_dir%/}"
+
+    local _file_path="${_work_dir%/}/tableau-server-${_tableau_version//\./-}.x86_64.rpm"
+    if [ ! -s "${_file_path}" ]; then
+        curl -f -o "${_file_path}" -C - --retry 3 "https://downloads.tableau.com/esdalt/${_tableau_version}/tableau-server-${_tableau_version//\./-}.x86_64.rpm" || return $?
+    fi
+    local _driver_file_path="${_work_dir%/}/tableau-postgresql-odbc-09.06.0500-1.x86_64.rpm"
+    if [ ! -s "${_driver_file_path}" ]; then
+        curl -f -o "${_driver_file_path}" -C - --retry 3 "https://downloads.tableau.com/drivers/linux/yum/tableau-driver/tableau-postgresql-odbc-09.06.0500-1.x86_64.rpm" || return $?
+    fi
+
+    # TODO: not good to add NOPASSWD:ALL
+    docker exec -it ${_container_name} bash -c "grep -wq '${_tsm_user}' /etc/passwd || (adduser ${_tsm_user} && echo ${_tsm_user}:${_tsm_user} | chpasswd)"
+    docker exec -it ${_container_name} bash -c "[ ! -f /etc/sudoers.d/${_tsm_user} ] && echo '${_tsm_user} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/${_tsm_user}"
+    docker exec -it ${_container_name} bash -c "yum install -y ${_file_path} ${_driver_file_path}" || return $?
+
+    if [[ "${_not_initializing}" =~ ^(y|Y) ]]; then
+        _log "WARN" "NOT executing 'initialize-tsm'. Please run this manually."; sleep 3
+    else
+        _log "INFO" "Executing 'initialize-tsm'..."; sleep 1
+        docker exec -it ${_container_name} bash -c "cd /opt/tableau/tableau_server/packages/scripts.20* && ./initialize-tsm --accepteula -a ${_tsm_user} -p ${_tsm_user}"
+    fi
+}
+
+function p_tableau_server() {
+    local __doc__="Install Tableau Server"
+    local _container_name="${1:-"node-ts"}"
+    local _tableau_version="${2:-"2018.2.5"}"
+    local _save_container="$3"
+
+    if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
+        if lsof -ti:8000; then
+            _log "ERROR" "Port number 8000 is in use, so that can't do port forward"
+            return 1
+        fi
+        f_docker_run "${_container_name}.${_DOMAIN}" "" "8000 8850" || return $?
+        # When saving, NOT initializing
+        _tableau_server_setup "${_container_name}" "${_tableau_version}" "${_save_container}" || return $?
+        _log "WARN" "Please use port 8000 for the Gateway Port."; sleep 3
+    else
+        f_docker_start "${_container_name}.${_DOMAIN}" || return $?
+    fi
+
+    if [[ "${_save_container}" =~ ^(y|Y) ]]; then
+        f_docker_commit "${_container_name}.${_DOMAIN}" "" "N" || return $?
+        _log "INFO" "How to start: setup_standalone.sh -N -n ${_container_name}"
+    fi
 }
 
 function f_shellinabox() {
