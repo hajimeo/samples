@@ -100,8 +100,8 @@ function f_setup_golang() {
     fi
 
     if [ ! -d "$HOME/go" ]; then
-        _log "ERROR" "\$HOME/go does not exist."
-        return 1
+        _log "WARN" "\$HOME/go does not exist. Creating ..."
+        mkdir "$HOME/go" || return 1
     fi
     if [ -z "$GOPATH" ]; then
         _log "WARN" "May need to add 'export GOPATH=$HOME/go' in profile"
