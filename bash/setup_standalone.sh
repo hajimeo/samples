@@ -880,7 +880,10 @@ function p_tableau_server() {
         # When saving, NOT initializing
         _tableau_server_setup "${_container_name}" "${_tableau_version}" "${_save_container}" || return $?
         _log "WARN" "Please use port 8000 for the Gateway Port."; sleep 3
+        _log "NOTE" "After initializing from https://`hostname -I | awk '{print $1}'`:8850/ , run below:
+    'sudo -u tsm -i tabcmd initialuser --server 'localhost:8000' -u admin -p admin'"; sleep 3
     else
+        # Not sure if this works because of below TODO.
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
     fi
 
