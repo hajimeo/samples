@@ -128,6 +128,7 @@ function f_setup_python() {
         # sudo python3 -m pip uninstall pip
         # sudo apt remove python3-pip
         curl -s -f "https://bootstrap.pypa.io/get-pip.py" -o /tmp/get-pip.py || return $?
+        # @see https://github.com/pypa/get-pip/issues/43
         _install python3-distutils -y
         sudo python3 /tmp/get-pip.py || return $?
     fi
