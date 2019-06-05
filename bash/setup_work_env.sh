@@ -38,22 +38,16 @@ function f_setup_misc() {
 function f_setup_rg() {
     # as of today, rg is not in Ubuntu repository so not using _install
     if ! which rg &>/dev/null; then
-        if [ "`uname`" = "Darwin" ]; then
-            if which brew &>/dev/null; then
-                brew install ripgrep || return
-            else
+        if ! _install ripgrep -y; then
+            if [ "`uname`" = "Darwin" ]; then
                 _log "WARN" "Please install 'rg' first. https://github.com/BurntSushi/ripgrep/releases"; sleep 3
                 return 1
             fi
         elif [ "`uname`" = "Linux" ]; then
-            if which apt-get &>/dev/null; then  # NOTE: Mac has 'apt' command
-                if ! sudo apt-get install ripgrep -y; then
-                    local _ver="0.10.0"
-                    _log "INFO" "Installing rg version: ${_ver} ..."; sleep 3
-                    _download "https://github.com/BurntSushi/ripgrep/releases/download/${_ver}/ripgrep_${_ver}_amd64.deb" "/tmp/ripgrep_${_ver}_amd64.deb" "Y" "Y" || return $?
-                    sudo dpkg -i /tmp/ripgrep_${_ver}_amd64.deb || return $?
-                fi
-            fi
+            local _ver="0.10.0"
+            _log "INFO" "Installing rg version: ${_ver} ..."; sleep 3
+            _download "https://github.com/BurntSushi/ripgrep/releases/download/${_ver}/ripgrep_${_ver}_amd64.deb" "/tmp/ripgrep_${_ver}_amd64.deb" "Y" "Y" || return $?
+            sudo dpkg -i /tmp/ripgrep_${_ver}_amd64.deb || return $?
         else
             _log "WARN" "Please install 'rg' first. https://github.com/BurntSushi/ripgrep/releases"; sleep 3
             return 1
@@ -134,6 +128,7 @@ function f_setup_python() {
         # sudo python3 -m pip uninstall pip
         # sudo apt remove python3-pip
         curl -s -f "https://bootstrap.pypa.io/get-pip.py" -o /tmp/get-pip.py || return $?
+        _install python3-distutils -y
         sudo python3 /tmp/get-pip.py || return $?
     fi
 
