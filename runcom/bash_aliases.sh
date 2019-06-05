@@ -27,6 +27,7 @@ alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 
 # VM related
 # virt-manager remembers the connections, so normally would not need to start in this way.
+alias kvm_haji='virt-manager -c "qemu+ssh://root@hajime/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
 alias kvm_seth='virt-manager -c "qemu+ssh://root@sethdesktop/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
 
 # Java / jar related

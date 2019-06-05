@@ -2751,7 +2751,8 @@ function f_dnsmasq() {
     #sudo systemctl disable systemd-resolved
     apt-get -y install dnsmasq || return $?
 
-    # For Ubuntu 18.04 name resolution slowness (ssh and sudo too)
+    # For Ubuntu 18.04 name resolution slowness (ssh and sudo too).
+    # Also local hostname needs to be resolved @see: https://linuxize.com/post/how-to-change-hostname-on-ubuntu-18-04/
     grep -q '^no-resolv' /etc/dnsmasq.conf || echo 'no-resolv' >> /etc/dnsmasq.conf
     grep -q '^server=1.1.1.1' /etc/dnsmasq.conf || echo 'server=1.1.1.1' >> /etc/dnsmasq.conf
     #grep -q '^domain-needed' /etc/dnsmasq.conf || echo 'domain-needed' >> /etc/dnsmasq.conf
