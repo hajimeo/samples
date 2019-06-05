@@ -884,10 +884,11 @@ function p_tableau_server() {
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
     fi
 
-    if [[ "${_save_container}" =~ ^(y|Y) ]]; then
-        f_docker_commit "${_container_name}.${_DOMAIN}" "" "N" || return $?
-        _log "INFO" "How to start: setup_standalone.sh -N -n ${_container_name}"
-    fi
+    # TODO: Saved container fails to initialize due to "Failed to get D-Bus connection: No such file or directory"
+    #if [[ "${_save_container}" =~ ^(y|Y) ]]; then
+    #    f_docker_commit "${_container_name}.${_DOMAIN}" "" "N" || return $?
+    #    _log "INFO" "How to start: setup_standalone.sh -N -n ${_container_name}"
+    #fi
 }
 
 function f_shellinabox() {
