@@ -2767,14 +2767,26 @@ function f_dnsmasq() {
     chmod 664 /etc/banner_add_hosts
     chown root:docker /etc/banner_add_hosts
 
-    f_dnsmasq_banner_reset "$_how_many" "$_start_from" || return $?
+    if [ -n "$_how_many" ]; then
+        f_dnsmasq_banner_reset "$_how_many" "$_start_from" || return $?
+    fi
 
+    # Not sure if this is still needed
     if [ -d /etc/docker ] && [ ! -f /etc/docker/daemon.json ]; then
         local _docker_ip=`f_docker_ip "172.17.0.1"`
         echo '{
     "dns": ["'${_docker_ip}'", "1.1.1.1"]
 }' > /etc/docker/daemon.json
         _warn "daemon.json updated. 'systemctl daemon-reload && service docker restart' required"
+    fi
+
+    # @see https://bugs.launchpad.net/ubuntu/+source/systemd/+bug/1624320
+    if [ -L /etc/resolv.conf ] && grep -q '^nameserver 127.0.0.53' /etc/resolv.conf; then
+        systemctl disable systemd-resolved || return $?
+        rm -f /etc/resolv.conf
+        echo 'nameserver 127.0.0.1' > /etc/resolv.conf
+        _warn "systemctl disable systemd-resolved was run. Please reboot"
+        #reboot
     fi
 }
 
@@ -2941,17 +2953,6 @@ screen -ls' > /etc/update-motd.d/99-start-hdp
         chmod a+x /etc/update-motd.d/99-start-hdp
         run-parts --lsbsysinit /etc/update-motd.d > /run/motd.dynamic
     fi
-
-    # @see https://bugs.launchpad.net/ubuntu/+source/systemd/+bug/1624320
-    if grep -q '^nameserver 127.0.0.53' /etc/resolv.conf; then
-        systemctl disable systemd-resolved
-        mkdir -p /run/systemd/resolve
-        if ! grep -q '^nameserver 127.0.0.1' /run/systemd/resolve/stub-resolv.conf; then
-            echo 'nameserver 127.0.0.1' >> /run/systemd/resolve/stub-resolv.conf
-        fi
-        _warn "systemctl disable systemd-resolved was run. Please reboot"
-        #reboot
-    fi
 }
 
 function f_copy_auth_keys_to_containers() {
@@ -3080,21 +3081,28 @@ function f_hostname_set() {
 function f_socks5_proxy() {
     local __doc__="Start Socks5 proxy (for websocket)"
     local _port="${1:-$((${r_PROXY_PORT:-28080} + 1))}" # 28081
+    local _cmd="autossh -4gC2TxnNf -D${_port} socks5user@localhost &> /tmp/ssh_socks5.out"
 
-    [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
-    lsof -nPi:${_port} -s TCP:LISTEN | grep "^ssh" && return 0
+    if [ ! -s /etc/rc.local ]; then
+        echo "${_cmd}
+exit 0" > /etc/rc.local
+    elif ! grep -qF "${_cmd}" /etc/rc.local; then
+        sed -i "/^exit 0/i ${_cmd}\n" /etc/rc.local
+    fi
 
     apt-get install -y autossh || return $?
+    if [ ! -s $HOME/.ssh/id_rsa ]; then
+        f_ssh_setup || return $?
+    fi
     f_useradd "socks5user" "socks5user" "Y" || return $?
+    _info "Testing 'socks5user' user's ssh log in (should not ask password)..."
+    ssh -o StrictHostKeyChecking=no socks5user@localhost id || return $?
 
     touch /tmp/ssh_socks5.out
     chmod 777 /tmp/ssh_socks5.out
-    local _cmd="autossh -4gC2TxnNf -D${_port} socks5user@localhost &> /tmp/ssh_socks5.out"
+    [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
+    lsof -nPi:${_port} -s TCP:LISTEN | grep "^ssh" && return 0
     eval "${_cmd}"
-
-    if ! grep -qF "${_cmd}" /etc/rc.local; then
-        sed -i "/^exit 0/i ${_cmd}\n" /etc/rc.local
-    fi
 }
 
 function f_apache_proxy() {
@@ -3415,13 +3423,13 @@ function f_useradd() {
 
     if _isYes "$_copy_ssh_config"; then
         if [ ! -f ${HOME%/}/.ssh/id_rsa ]; then
-            _info "${HOME%/}/.ssh/id_rsa does not exist. Not copying ssh configs ..."
-            return
+            _error "${HOME%/}/.ssh/id_rsa does not exist. Not copying ssh configs ..."
+            return 1
         fi
 
         if [ ! -d "/home/$_user/" ]; then
-            _info "No /home/$_user/ . Not copying ssh configs ..."
-            return
+            _error "No /home/$_user/ . Not copying ssh configs ..."
+            return 1
         fi
 
         mkdir "/home/$_user/.ssh" && chown "$_user":"$_user" "/home/$_user/.ssh"
