@@ -776,7 +776,6 @@ function p_cdh_sandbox() {
     local _container_name="${1:-"node-cdh"}"
     local _is_using_cm="${2}"
     local _tar_uri="${3}"   # https://downloads.cloudera.com/demo_vm/docker/cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz
-    local _download_dir="${4:-"."}"
 
     local _image_name="cloudera/quickstart"
 
