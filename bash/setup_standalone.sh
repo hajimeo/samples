@@ -370,12 +370,19 @@ function f_docker_run() {
     #    _dns="--dns=`hostname -I | cut -d " " -f1`"
     #fi
 
+    # Hostname can be overwritten by _extra_opts
+    local _hostname_opt="--hostname=${_fqdn}"
+    if [[ "${_extra_opts}" =~ hostname=([^ ]+) ]]; then
+        _hostname_opt=""
+        _fqdn="${BASH_REMATCH[1]}"
+    fi
+
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
     _log "INFO" "docker run ${_name} from ${_base} ..."
     docker run -t -i -d \
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
         -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} ${_network} ${_dns} \
-        --privileged=true --hostname=${_fqdn} --name=${_name} ${_extra_opts} ${_base} /sbin/init || return $?
+        --privileged=true --name=${_name} ${_hostname_opt} ${_extra_opts} ${_base} /sbin/init || return $?
 
     f_update_hosts_file_by_fqdn "${_fqdn}"
     sleep 1
@@ -760,15 +767,6 @@ function _cdh_setup() {
     docker exec -it ${_container_name} bash -c 'sed -i_$(date +"%Y%m%d%H%M%S") "s/cloudera-quickstart-init//" /usr/bin/docker-quickstart'
     docker exec -it ${_container_name} bash -c 'sed -i -r "/hbase-|oozie|sqoop2-server|solr-server|exec bash/d" /usr/bin/docker-quickstart'
     docker exec -it ${_container_name} bash -c 'sed -i "s/ start$/ \$1/g" /usr/bin/docker-quickstart'
-
-    _log "INFO" "Starting CDH (Using Cloudera Manager: ${_is_using_cm}) ..."
-    if [[ "${_is_using_cm}" =~ ^(y|Y) ]]; then
-        #curl 'http://`hostname -f`:7180/cmf/services/12/maintenanceMode?enter=true' -X POST
-        docker exec -it ${_container_name} bash -c '/home/cloudera/cloudera-manager --express' || return $?
-    else
-        docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start' || return $?
-        _log "INFO" "To enable CM, run '/home/cloudera/cloudera-manager --express' as root."
-    fi
 }
 
 function p_cdh_sandbox() {
@@ -778,6 +776,7 @@ function p_cdh_sandbox() {
     local _tar_uri="${3}"   # https://downloads.cloudera.com/demo_vm/docker/cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz
 
     local _image_name="cloudera/quickstart"
+    local _first_time=false
 
     if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
         if [ -n "${_tar_uri}" ]; then
@@ -785,19 +784,26 @@ function p_cdh_sandbox() {
         else
             docker pull ${_image_name}:latest || return $?
         fi
-        f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "4433 7180 7182 7184 7185 7190 7191 8084 8480 8485 9994 9996 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--add-host=quickstart.cloudera:127.0.0.1" || return $?
+        # NOTE: Cloudera quickstart does not work well if hostname is different ...
+        f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "4433 7180 7182 7184 7185 7190 7191 8084 8480 8485 9994 9996 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--hostname=quickstart.cloudera" || return $?
         _cdh_setup "${_container_name}" "${_is_using_cm}" || return $?
+        _first_time=true
     else
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
-
-        if [[ "${_is_using_cm}" =~ ^(y|Y) ]]; then
-            docker exec -it ${_container_name} bash -c 'service cloudera-scm-agent restart; service cloudera-scm-server-db start; service cloudera-scm-server start' || return $?
-        else
-            docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start' || return $?
-        fi
     fi
-    # It might be using hostname "quickstart.cloudera", so just in case, updating DNS
-    f_update_hosts_file_by_fqdn "quickstart.cloudera" "${_container_name}" "Y"
+
+    _log "INFO" "Starting CDH (Using Cloudera Manager: ${_is_using_cm}) ..."
+    if [[ "${_is_using_cm}" =~ ^(y|Y) ]]; then
+        if ${_first_time}; then
+            #curl 'http://`hostname -f`:7180/cmf/services/12/maintenanceMode?enter=true' -X POST
+            docker exec -it ${_container_name} bash -c '/home/cloudera/cloudera-manager --express' || return $?
+        else
+            docker exec -it ${_container_name} bash -c 'service cloudera-scm-agent restart; service cloudera-scm-server-db start; service cloudera-scm-server start' || return $?
+        fi
+    else
+        docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start' || return $?
+        _log "INFO" "To enable CM, run '/home/cloudera/cloudera-manager --express' as *root*."
+    fi
     # Schedule refresh commands in case DataNode and NodeManager's IP has been changed
     #docker exec -it ${_container_name} bash -c 'echo "sudo -u hdfs hadoop dfsadmin -refreshNodes; sudo -u yarn yarn rmadmin -refreshNodes" | at now +5 minutes'
 }
