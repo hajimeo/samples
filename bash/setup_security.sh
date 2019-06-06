@@ -1178,33 +1178,37 @@ function f_sssd_setup() {
     local ad_dc="$4"      #ad01.lab.hortonworks.net
     local ad_root="$5"    #dc=lab,dc=hortonworks,dc=net
     local ad_ou_name="$6" #HadoopNodes
-    local _ambari_host="${7-$r_AMBARI_HOST}"
-    local _target_host="$8"
+    local _target_host="$7"
+    local _ambari_host="${8-$r_AMBARI_HOST}"
 
     local ad_ou="ou=${ad_ou_name},${ad_root}"
     local ad_realm=${ad_domain^^}
 
     # TODO: CentOS7 causes "The name com.redhat.oddjob_mkhomedir was not provided by any .service files" if oddjob and oddjob-mkhomedir is installed due to some messagebus issue
-    local _cmd='which adcli &>/dev/null || ( yum makecache fast && yum -y install epel-release; yum -y install sssd authconfig sssd-krb5 sssd-ad sssd-tools adcli oddjob-mkhomedir; yum erase -y nscd )'
+    local _cmd="which adcli &>/dev/null || ( yum makecache fast && yum -y install epel-release; yum -y install sssd authconfig sssd-krb5 sssd-ad sssd-tools adcli oddjob-mkhomedir; yum erase -y nscd )"
     if [ -z "$_target_host" ]; then
-        f_run_cmd_on_nodes "$_cmd"
+        f_run_cmd_on_nodes "$_cmd" || return $?
     else
-        ssh -q root@${_target_host} -t "$_cmd"
+        ssh -q root@${_target_host} -t "$_cmd" || return $?
     fi
 
     # TODO: bellow requires Kerberos has been set up, also only for CentOS6 (CentOS7 uses realm command)
-    # echo -n way works on CentOS6 but not on Mac
-    _cmd="echo -e '${ad_pwd}' | kinit ${ad_user}
+    local _krbcc="/tmp/krb5cc_sssd"
+    _cmd="echo -e '${ad_pwd}' | kinit -c ${_krbcc} ${ad_user}"
+    if [ -z "$_target_host" ]; then
+        f_run_cmd_on_nodes "$_cmd" || return $?
+    else
+        ssh -q root@${_target_host} -t "$_cmd" || return $?
+    fi
 
-adcli join -v \
-  --domain-controller=${ad_dc} \
-  --domain-ou=\"${ad_ou}\" \
-  --login-ccache=\"/tmp/krb5cc_0\" \
-  --login-user=\"${ad_user}\" \
-  -v \
-  --show-details
+    _cmd="adcli join -v --domain-controller=${ad_dc} --domain-ou=\"${ad_ou}\" --login-ccache=\"${_krbcc}\" --login-user=\"${ad_user}\" -v --show-details"
+    if [ -z "$_target_host" ]; then
+        f_run_cmd_on_nodes "$_cmd" || return $?
+    else
+        ssh -q root@${_target_host} -t "$_cmd" || return $?
+    fi
 
-tee /etc/sssd/sssd.conf > /dev/null <<EOF
+    _cmd="tee /etc/sssd/sssd.conf > /dev/null <<EOF
 [sssd]
 ## master & data nodes only require nss. Edge nodes require pam.
 services = nss, pam, ssh, autofs, pac
@@ -1245,7 +1249,7 @@ systemctl enable oddjobd &>/dev/null
 service oddjobd restart &>/dev/null
 
 authconfig --enablesssd --enablesssdauth --enablemkhomedir --enablelocauthorize --update
-kdestroy"
+kdestroy -c ${_krbcc}"
 
     # To test: id yourusername && groups yourusername
     if [ -z "$_target_host" ]; then
@@ -1254,21 +1258,23 @@ kdestroy"
         ssh -q root@${_target_host} -t "[ -s /etc/sssd/sssd.conf ] || ( $_cmd )"
     fi
 
-    #refresh user and group mappings
-    local _c="`f_get_cluster_name ${_ambari_host}`" || return $?
-    local _hdfs_client_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" ${_ambari_host}`"
-    if [ -z "$_hdfs_client_node" ]; then
-        _warn "No hdfs client node found to execute 'hdfs dfsadmin -refreshUserToGroupsMappings'"
-        return 1
-    fi
-    ssh -q root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfsadmin -refreshUserToGroupsMappings\""
+    #refresh user and group mappings if ambari host is given
+    if [ -n "${_ambari_host}" ]; then
+        local _c="`f_get_cluster_name ${_ambari_host}`" || return $?
+        local _hdfs_client_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" ${_ambari_host}`"
+        if [ -z "$_hdfs_client_node" ]; then
+            _warn "No hdfs client node found to execute 'hdfs dfsadmin -refreshUserToGroupsMappings'"
+            return 1
+        fi
+        ssh -q root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfsadmin -refreshUserToGroupsMappings\""
 
-    local _yarn_rm_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='RESOURCEMANAGER' and current_state='STARTED' limit 1" ${_ambari_host}`"
-    if [ -z "$_yarn_rm_node" ]; then
-        _error "No yarn client node found to execute 'yarn rmadmin -refreshUserToGroupsMappings'"
-        return 1
+        local _yarn_rm_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='RESOURCEMANAGER' and current_state='STARTED' limit 1" ${_ambari_host}`"
+        if [ -z "$_yarn_rm_node" ]; then
+            _error "No yarn client node found to execute 'yarn rmadmin -refreshUserToGroupsMappings'"
+            return 1
+        fi
+        ssh -q root@$_yarn_rm_node -t "sudo -u yarn bash -c \"kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/\$(hostname -f); yarn rmadmin -refreshUserToGroupsMappings\""
     fi
-    ssh -q root@$_yarn_rm_node -t "sudo -u yarn bash -c \"kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/\$(hostname -f); yarn rmadmin -refreshUserToGroupsMappings\""
 }
 
 function f_ssl_self_signed_cert() {
