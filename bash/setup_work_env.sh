@@ -33,6 +33,10 @@ function f_setup_misc() {
 
     #_download "https://github.com/hajimeo/samples/raw/master/misc/dateregex_`uname`" /usr/local/bin/dateregex "Y" || return $?
     #chmod a+x /usr/local/bin/dateregex
+
+    if grep -qw docker /etc/group; then
+        sudo usermod -a -G docker $USER && _log "NOTE" "Please re-login as user group has been changed."
+    fi
 }
 
 function f_setup_rg() {
