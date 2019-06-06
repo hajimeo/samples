@@ -1291,7 +1291,7 @@ function f_count_threads_per_dump() {
     for _f in `ls -1 ${_prefix}*`; do
         head -n 1 $_f
         # NOTE: currently excluding thread which occurrence is only 1.
-        rg '^"([^"]+)"' -o -r '$1' $_f | gsed 's/[0-9]\+/_/g' | sort | uniq -c | grep -vE '^ +1 '
+        rg '^"([^"]+)"' -o -r '$1' $_f | _sed 's/[0-9]\+/_/g' | sort | uniq -c | grep -vE '^ +1 '
         echo '--'
     done
     cd -
@@ -1380,11 +1380,9 @@ function _load_yaml() {
     local _yaml_file="${1}"
     local _name_space="${2}"
     [ -s "${_yaml_file}" ] || return 1
-    local _sed="sed"
-    which gsed &> /dev/null && _sed="gsed"
     # TODO: probably this can be done only with awk
     #awk -F "=" '{out=$2;gsub(/[^0-9a-zA-Z_]/,"_",$1);for(i=3;i<=NF;i++){out=out"="$i};print $1"=\""$out"\""}' ${_yaml_file} > /tmp/_load_yaml.out || return $?
-    ${_sed} -n -r 's/^([^=]+)[[:space:]]+=[[:space:]]+(.+)/'${_name_space}'\1\t"\2"/p' ${_yaml_file} | awk -F "\t" '{gsub(/[^0-9a-zA-Z_]/,"_",$1); print $1"="$2}' > /tmp/_load_yaml.out || return $?
+    _sed -n -r 's/^([^=]+)[[:space:]]+=[[:space:]]+(.+)/'${_name_space}'\1\t"\2"/p' ${_yaml_file} | awk -F "\t" '{gsub(/[^0-9a-zA-Z_]/,"_",$1); print $1"="$2}' > /tmp/_load_yaml.out || return $?
     source /tmp/_load_yaml.out
 }
 
