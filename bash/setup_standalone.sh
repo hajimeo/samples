@@ -796,6 +796,8 @@ function p_cdh_sandbox() {
             docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start' || return $?
         fi
     fi
+    # It might be using hostname "quickstart.cloudera", so just in case, updating DNS
+    f_update_hosts_file_by_fqdn "quickstart.cloudera" "${_container_name}" "Y"
     # Schedule refresh commands in case DataNode and NodeManager's IP has been changed
     #docker exec -it ${_container_name} bash -c 'echo "sudo -u hdfs hadoop dfsadmin -refreshNodes; sudo -u yarn yarn rmadmin -refreshNodes" | at now +5 minutes'
 }
