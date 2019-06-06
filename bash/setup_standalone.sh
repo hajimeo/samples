@@ -375,7 +375,7 @@ function f_docker_run() {
     docker run -t -i -d \
         -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
         -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} ${_network} ${_dns} \
-        --privileged --hostname=${_fqdn} --name=${_name} ${_extra_opts} ${_base} /sbin/init || return $?
+        --privileged=true --hostname=${_fqdn} --name=${_name} ${_extra_opts} ${_base} /sbin/init || return $?
 
     f_update_hosts_file_by_fqdn "${_fqdn}"
     sleep 1
@@ -772,25 +772,31 @@ function _cdh_setup() {
 }
 
 function p_cdh_sandbox() {
-    local __doc__="TODO: Setup CDH Sandbox (NOTE: may need to stop another container which uses previously used IP)"
+    local __doc__="Setup CDH Sandbox (NOTE: may need to stop another container which uses previously used IP)"
     local _container_name="${1:-"node-cdh"}"
     local _is_using_cm="${2}"
-    local _tar_uri="${3:-"https://downloads.cloudera.com/demo_vm/docker/cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz"}"
+    local _tar_uri="${3}"   # https://downloads.cloudera.com/demo_vm/docker/cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz
     local _download_dir="${4:-"."}"
 
     local _image_name="cloudera/quickstart"
 
     if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
-        f_docker_image_import "${_tar_uri}" "${_image_name}" || return $?
-        f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "" || return $?   # "--add-host=quickstart.cloudera:127.0.0.1"
+        if [ -n "${_tar_uri}" ]; then
+            f_docker_image_import "${_tar_uri}" "${_image_name}" || return $?
+        else
+            docker pull ${_image_name}:latest || return $?
+        fi
+        f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "" "--add-host=quickstart.cloudera:127.0.0.1" || return $?
         _cdh_setup "${_container_name}" "${_is_using_cm}" || return $?
     else
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
-    fi
 
-    # It might be using hostname "quickstart.cloudera", so just in case, updating DNS
-    f_update_hosts_file_by_fqdn "quickstart.cloudera" "${_container_name}" "Y"
-    docker exec -it ${_container_name} bash -c 'service cloudera-scm-agent restart; service cloudera-scm-server-db start; service cloudera-scm-server start' || return $?
+        if [[ "${_is_using_cm}" =~ ^(y|Y) ]]; then
+            docker exec -it ${_container_name} bash -c 'service cloudera-scm-agent restart; service cloudera-scm-server-db start; service cloudera-scm-server start' || return $?
+        else
+            docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start' || return $?
+        fi
+    fi
     # Schedule refresh commands in case DataNode and NodeManager's IP has been changed
     #docker exec -it ${_container_name} bash -c 'echo "sudo -u hdfs hadoop dfsadmin -refreshNodes; sudo -u yarn yarn rmadmin -refreshNodes" | at now +5 minutes'
 }
