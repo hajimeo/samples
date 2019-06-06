@@ -786,7 +786,7 @@ function p_cdh_sandbox() {
         else
             docker pull ${_image_name}:latest || return $?
         fi
-        f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "8480 8485 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--add-host=quickstart.cloudera:127.0.0.1" || return $?
+        f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "4433 7180 7182 7184 7185 7190 7191 8084 8480 8485 9994 9996 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--add-host=quickstart.cloudera:127.0.0.1" || return $?
         _cdh_setup "${_container_name}" "${_is_using_cm}" || return $?
     else
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
