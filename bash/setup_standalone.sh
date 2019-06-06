@@ -767,6 +767,7 @@ function _cdh_setup() {
     docker exec -it ${_container_name} bash -c 'sed -i_$(date +"%Y%m%d%H%M%S") "s/cloudera-quickstart-init//" /usr/bin/docker-quickstart'
     docker exec -it ${_container_name} bash -c 'sed -i -r "/hbase-|oozie|sqoop2-server|solr-server|exec bash/d" /usr/bin/docker-quickstart'
     docker exec -it ${_container_name} bash -c 'sed -i "s/ start$/ \$1/g" /usr/bin/docker-quickstart'
+    docker exec -it ${_container_name} bash -c 'grep -q "^net.ipv4.ip_local_reserved_ports" /etc/sysctl.conf || (echo -e "\nnet.ipv4.ip_local_reserved_ports = 50000-50099" >> /etc/sysctl.conf && sysctl -e -p /etc/sysctl.conf)'
 }
 
 function p_cdh_sandbox() {
@@ -779,15 +780,20 @@ function p_cdh_sandbox() {
     local _first_time=false
 
     if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
-        if [ -n "${_tar_uri}" ]; then
-            f_docker_image_import "${_tar_uri}" "${_image_name}" || return $?
+        if docker images --format "{{.Repository}}" | grep -qE "^${_container_name}$"; then
+            _log "INFO" "Image ${_container_name} exists. Creating a container from this image..."
+            f_docker_run "${_container_name}.${_DOMAIN}" "${_container_name}" "4433 7180 7182 7184 7185 7190 7191 8084 8480 8485 9994 9996 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--hostname=quickstart.cloudera" || return $?
         else
-            docker pull ${_image_name}:latest || return $?
+            if [ -n "${_tar_uri}" ]; then
+                f_docker_image_import "${_tar_uri}" "${_image_name}" || return $?
+            else
+                docker pull ${_image_name}:latest || return $?
+            fi
+            # NOTE: Cloudera quickstart does not work well if hostname is different ...
+            f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "4433 7180 7182 7184 7185 7190 7191 8084 8480 8485 9994 9996 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--hostname=quickstart.cloudera" || return $?
+            _cdh_setup "${_container_name}" "${_is_using_cm}" || return $?
+            _first_time=true
         fi
-        # NOTE: Cloudera quickstart does not work well if hostname is different ...
-        f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "4433 7180 7182 7184 7185 7190 7191 8084 8480 8485 9994 9996 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--hostname=quickstart.cloudera" || return $?
-        _cdh_setup "${_container_name}" "${_is_using_cm}" || return $?
-        _first_time=true
     else
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
     fi
@@ -800,7 +806,7 @@ function p_cdh_sandbox() {
             #curl 'http://`hostname -f`:7180/cmf/services/12/maintenanceMode?enter=true' -X POST
             docker exec -it ${_container_name} bash -c '/home/cloudera/cloudera-manager --express' || return $?
         else
-            docker exec -it ${_container_name} bash -c 'service cloudera-scm-agent restart; service cloudera-scm-server-db start; service cloudera-scm-server start' || return $?
+            docker exec -it ${_container_name} bash -c 'service cloudera-scm-agent start; service cloudera-scm-server-db start; service cloudera-scm-server start' || return $?
         fi
     else
         docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start' || return $?
