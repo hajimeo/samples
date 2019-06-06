@@ -339,15 +339,15 @@ function f_docker_run() {
             if ${_stop_other}; then
                 local _cname="`_docker_find_by_port ${_p}`"
                 if [ -n "${_cname}" ]; then
-                    _log "INFO" "Stopping ${_cname} container..."
+                    _log "WARN" "Stopping ${_cname} container as port ${_p} is used..."
                     docker stop -t 7 ${_cname}
                 fi
             else
-                _log "ERROR" "Docker run could not use the port ${_p} as it's used by pid:${_pid}"
-                return 1
+                _log "WARN" "Docker run could not use the port ${_p} as it's used by pid:${_pid}, so skipping..."
             fi
+        else
+            _port_opts="${_port_opts} -p ${_p}:${_p}"
         fi
-        _port_opts="${_port_opts} -p ${_p}:${_p}"
     done
     # Only if port forwarding is in use, append SSH port forwarding, just in case
     if [ -n "${_ports}" ]; then
@@ -786,7 +786,7 @@ function p_cdh_sandbox() {
         else
             docker pull ${_image_name}:latest || return $?
         fi
-        f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "" "--add-host=quickstart.cloudera:127.0.0.1" || return $?
+        f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "8480 8485 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--add-host=quickstart.cloudera:127.0.0.1" || return $?
         _cdh_setup "${_container_name}" "${_is_using_cm}" || return $?
     else
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
