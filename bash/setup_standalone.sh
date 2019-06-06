@@ -374,7 +374,7 @@ function f_docker_run() {
     local _hostname_opt="--hostname=${_fqdn}"
     if [[ "${_extra_opts}" =~ hostname=([^ ]+) ]]; then
         _hostname_opt=""
-        _fqdn="${BASH_REMATCH[1]}"
+        #_fqdn="${BASH_REMATCH[1]}"
     fi
 
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
@@ -792,6 +792,8 @@ function p_cdh_sandbox() {
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
     fi
 
+    # It might be using hostname "quickstart.cloudera", so just in case, updating DNS before starting
+    f_update_hosts_file_by_fqdn "quickstart.cloudera" "${_container_name}" "Y"
     _log "INFO" "Starting CDH (Using Cloudera Manager: ${_is_using_cm}) ..."
     if [[ "${_is_using_cm}" =~ ^(y|Y) ]]; then
         if ${_first_time}; then
