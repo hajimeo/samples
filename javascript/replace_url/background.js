@@ -62,12 +62,23 @@ function replaceUrl(details) {
                         chrome.tabs.update(target_tab.id, {"active": true});
                     } else {
                         console.log('Redirecting to url:' + new_url.toString());
-                        chrome.tabs.update(target_tab.id, {"active": true, url: new_url});
+                        chrome.tabs.update(target_tab.id, {"active": true});
+                        chrome.tabs.executeScript({
+                            code: "var a_l = document.querySelectorAll('a.tabHeader.slds-context-bar__label-action');var a = null;for (i = 0; i < a_l.length; i++) {if (a_l[i].href == '" + new_url.toString() + "') {a = a_l[i];break;}}if (a) {a.click();} else {window.location.href = '" + new_url.toString() + "';}"
+                        }, function (result) {
+                            if (chrome.runtime.lastError) {
+                                console.log("Last Error: " + chrome.runtime.lastError.toString());
+                                //chrome.tabs.update(target_tab.id, {"active": true, url: new_url});
+                            } else {
+                                console.log("Element *may* clicked !");
+                            }
+                        });
                     }
 
                     if (target_tab.id.toString() != details.tabId.toString()) {
                         console.log('Closing the newly opened tab ' + details.tabId.toString());
-                        chrome.tabs.remove(details.tabId, function () { });
+                        chrome.tabs.remove(details.tabId, function () {
+                        });
                     }
                 }
             }
