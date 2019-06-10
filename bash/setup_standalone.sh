@@ -76,8 +76,8 @@ Another way to create a container:
 [ -z "${_SHARE_DIR}" ] && _SHARE_DIR="/var/tmp/share"   # *container*'s share dir (normally same as _WORK_DIR except Mac)
 #_DOMAIN_SUFFIX="$(echo `hostname -s` | sed 's/[^a-zA-Z0-9_]//g').localdomain"
 [ -z "${_DOMAIN}" ] && _DOMAIN="standalone.localdomain" # Default container domain suffix
-[ -z "${_OS_VERSION}" ] && _OS_VERSION="7.5.1804"       # Container OS version (normally CentOS version)
-[ -z "${_BASE_IMAGE}" ] && _BASE_IMAGE="hdp/base"       # Docker image name TODO: change to more appropriate image name
+[ -z "${_OS_VERSION}" ] && _OS_VERSION="7.6.1810"       # Container OS version (normally CentOS version)
+[ -z "${_BASE_IMAGE}" ] && _BASE_IMAGE="node/base"       # Docker image name TODO: change to more appropriate image name
 [ -z "${_SERVICE}" ] && _SERVICE="atscale"              # This is used by the app installer script so shouldn't change
 [ -z "${_VERSION}" ] && _VERSION="7.3.1"                # Default software version, mainly used to find the right installer file
 _PORTS="${_PORTS-"10500 10501 10502 10503 10504 10508 10516 10518 10520 11111 11112 11113 5005"}"    # Used by docker port forwarding
