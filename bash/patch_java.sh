@@ -104,7 +104,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _NOT_COMPILING="$5"
 
     if [ -z "$_PORT" ]; then
-        echo "At this moment, a port number (1st arg) is required to use this script (used to find a PID)."
+        echo "A port number (1st arg) to find PID is required.
+2nd arg = class filepath or 3rd arg = Jar filepath is also required.
+4th arg = updating class name, 5th arg = Y for not compiling."
         exit 1
     fi
 
