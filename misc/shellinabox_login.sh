@@ -2,7 +2,8 @@
 # NOTE: replace _user, _proxy_port, _net_addr with
 #   sed -i 's/%xxx%/yyy/g' /usr/local/bin/shellinabox_login
 
-echo "Welcome $USER !"
+_HOST_IP="`hostname -I | cut -d" " -f1`"
+echo "Welcome $USER ! (You logged in ${_HOST_IP})"
 echo ""
 
 # If the logged in user is an expected user, show more information.
@@ -47,22 +48,22 @@ if len(_ss_args) > 0:
     if nc -z localhost %_proxy_port%; then
         _URL=""; [ -n "${_NAME}" ] && _URL="http://${_NAME}:10500"
         echo "# Start Chrome via proxy to access web UIs:"
-        echo "  Mac: open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://`hostname -I | cut -d" " -f1`:%_proxy_port% ${_URL}"
-        echo '  Win: "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://'`hostname -I | cut -d" " -f1`':%_proxy_port% '${_URL}
+        echo "  Mac: open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://${_HOST_IP}:%_proxy_port% ${_URL}"
+        echo '  Win: "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://'${_HOST_IP}':%_proxy_port% '${_URL}
         echo ""
     fi
 
     if [ -n "%_net_addr%" ]; then
         echo "# Route command examples (root/admin privilege required):"
-        echo "  Mac: route add -net %_net_addr%/24 `hostname -I | cut -d" " -f1`"
-        echo "  Win: route add -net %_net_addr% mask 255.255.255.0 `hostname -I | cut -d" " -f1`"
+        echo "  Mac: route add -net %_net_addr%/24 ${_HOST_IP}"
+        echo "  Win: route add -net %_net_addr% mask 255.255.255.0 ${_HOST_IP}"
         echo ""
     fi
 
     _vnc_port="`ps auxwww | sed -n -r 's/^webuser.+Xtightvnc.+rfbport ([0-9]+).+/\1/p'`"
     if [ -n "${_vnc_port}" ]; then
         echo "# Remote desktop access (VNC):"
-        echo "  vnc://`hostname -I | cut -d" " -f1`:${_vnc_port}"
+        echo "  vnc://${_HOST_IP}:${_vnc_port}"
         echo ""
     fi
 
