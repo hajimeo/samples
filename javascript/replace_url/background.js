@@ -55,22 +55,27 @@ function replaceUrl(details) {
 
                     // TODO: This is not working as SalesForce changes URL slightly (potentially salesforce bug?)
                     if (target_tab.url.toString() == new_url.toString()) {
-                        console.log('New URL is exactly same, so that just focusing. url:' + new_url.toString());
+                        console.log('New URL is exactly same, so that just focusing (TODO: should refresh). url:' + new_url.toString());
                         chrome.tabs.update(target_tab.id, {"active": true});
                     } else if (target_tab.url.toString() == details.url.toString()) {
                         console.log('URL is exactly same, so that just focusing. url:' + details.url.toString());
                         chrome.tabs.update(target_tab.id, {"active": true});
                     } else {
-                        console.log('Redirecting to url:' + new_url.toString());
-                        chrome.tabs.update(target_tab.id, {"active": true});
                         chrome.tabs.executeScript({
-                            code: "var a_l = document.querySelectorAll('a.tabHeader.slds-context-bar__label-action');var a = null;for (i = 0; i < a_l.length; i++) {if (a_l[i].href == '" + new_url.toString() + "') {a = a_l[i];break;}}if (a) {a.click();} else {window.location.href = '" + new_url.toString() + "';}"
-                        }, function (result) {
+                            code: "var a_l = document.querySelectorAll('a.tabHeader.slds-context-bar__label-action');var a = null;for (i = 0; i < a_l.length; i++) {if (a_l[i].href == '" + new_url.toString() + "') {a = a_l[i];break;}}if (a) {a.click();a.href}"
+                        }, function (results) {
+                            // results[0] should contain the clicked href
                             if (chrome.runtime.lastError) {
                                 console.log("Last Error: " + chrome.runtime.lastError.toString());
-                                //chrome.tabs.update(target_tab.id, {"active": true, url: new_url});
+                                // Should exit in here?
+                            }
+                            if (results && results.length > 0) {
+                                console.log("Element *may* clicked! " + results[0].toString());
+                                chrome.tabs.update(target_tab.id, {"active": true});
                             } else {
-                                console.log("Element *may* clicked !");
+                                // If results is empty, just change the URL.
+                                console.log('Redirecting to url:' + new_url.toString());
+                                chrome.tabs.update(target_tab.id, {"active": true, url: new_url});
                             }
                         });
                     }
