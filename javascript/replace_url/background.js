@@ -81,17 +81,33 @@ for (i = 0; i < tabs.length; i++) {
 }
 if (r) {
     r.click();
+    id;
 } else {
-    window.location.href = "https://atscale2ndorg.lightning.force.com/lightning/r/Case/" + id + "/view";
+    false;
 }
 `.trim();
                         chrome.tabs.executeScript(target_tab.id, {
                             code: inner_script
                         }, function (results) {
-                            console.log(results);
                             if (chrome.runtime.lastError) {
                                 console.log("Last Error after executeScript: " + chrome.runtime.lastError.toString());
                                 // I think it should exit in here.
+                            }
+                            // results[0] should contain the clicked or not (id or false)
+                            if (chrome.runtime.lastError) {
+                                console.log("Last Error after executeScript: " + chrome.runtime.lastError.toString());
+                                // I think it should exit in here.
+                            }
+                            if (results && results.length > 0 && results[0]) {
+                                console.log("An inner tab *may* be clicked! " + results[0].toString());
+                            } else if (results && results.length > 0 && results[0] === false) {
+                                console.log("May not find any tab, so should redirect. " + results[0].toString());
+                                chrome.tabs.update(target_tab.id, {url: new_url});
+                            } else {
+                                // If results is empty, just change the URL.
+                                console.log('Unknown executeScript result.');
+                                console.log(results);
+                                //chrome.tabs.update(target_tab.id, {url: new_url});
                             }
                         });
                     }
