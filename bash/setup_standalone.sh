@@ -54,7 +54,7 @@ OTHERS (which normally you don't need to use):
 
     -P
         Experimental.
-        Use with -c so that docker run command includes port forwards.
+        Use with -c (or when same name container doesn't exist), so that docker run command includes port forwards.
 
     -S
         To stop any other port conflicting containers.
@@ -390,6 +390,7 @@ function f_docker_run() {
 }
 
 function p_container_setup() {
+    local __doc__="various config setup (eg: ssh client)"
     local _name="${1:-${_NAME}}"
 
     _log "INFO" "Setting up ${_name} container..."
@@ -736,7 +737,7 @@ function f_docker_image_import() {
             _log "INFO" "Found ${_tmp_tar_file} in ${_extract_dir%/}. Re-using..."
         else
             tar -xzv -C ${_extract_dir} -f ${_tar_file_path} || return $?
-            _tmp_tar_file="`find ${_extract_dir%/} -name '*.tar' -amin -3 -size +1024k`"
+            _tmp_tar_file="`find ${_extract_dir%/} -name '*.tar' -amin -10 -size +1024k`"
             if [ ! -s "${_tmp_tar_file}" ]; then
                 _log "ERROR" "Couldn't find any tar file in ${_extract_dir%/}."
                 return 1
@@ -774,7 +775,8 @@ function p_cdh_sandbox() {
     local __doc__="Setup CDH Sandbox (NOTE: may need to stop another container which uses previously used IP)"
     local _container_name="${1:-"node-cdh"}"
     local _is_using_cm="${2}"
-    local _tar_uri="${3}"   # https://downloads.cloudera.com/demo_vm/docker/cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz
+    local _tar_uri="${3:-"https://downloads.cloudera.com/demo_vm/docker/cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz"}"
+    # As of this typing, quickstart:latest is using 5.7
 
     local _image_name="cloudera/quickstart"
     local _first_time=false
