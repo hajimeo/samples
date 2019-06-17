@@ -688,7 +688,7 @@ function f_docker_image_import() {
 
     # If an image name is given, check if already exists.
     if [ -n "${_image_name}" ]; then
-        local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_image_name}:"`"
+        local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -P "^${_image_name}\b"`"
         if [ ! -z "$_existing_img" ]; then
             _log "WARN" "Image $_image_name already exist. Exiting.
     To rename image:
@@ -778,7 +778,7 @@ function p_cdh_sandbox() {
     local _tar_uri="${3:-"https://downloads.cloudera.com/demo_vm/docker/cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz"}"
     # As of this typing, quickstart:latest is using 5.7
 
-    local _image_name="cloudera/quickstart"
+    local _image_name="cloudera/quickstart:latest"
     local _first_time=false
 
     if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
@@ -789,7 +789,7 @@ function p_cdh_sandbox() {
             if [ -n "${_tar_uri}" ]; then
                 f_docker_image_import "${_tar_uri}" "${_image_name}" || return $?
             else
-                docker pull ${_image_name}:latest || return $?
+                docker pull ${_image_name} || return $?
             fi
             # NOTE: Cloudera quickstart does not work well if hostname is different ...
             f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "4433 7180 7182 7184 7185 7190 7191 8084 8480 8485 9994 9996 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--hostname=quickstart.cloudera" || return $?
