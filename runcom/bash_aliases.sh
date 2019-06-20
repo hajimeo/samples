@@ -199,6 +199,7 @@ function asPubInst() {
     scp $HOME/IdeaProjects/samples/atscale/install_atscale.sh hosako@dh1:/var/tmp/share/atscale/ &
     cp -f $HOME/IdeaProjects/samples/atscale/install_atscale.sh $HOME/share/atscale/
     wait
+    date
 }
 # List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
 function asftpl() {
