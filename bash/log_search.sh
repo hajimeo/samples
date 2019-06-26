@@ -884,6 +884,7 @@ function f_appLogSplit() {
 function f_appLogCSplit() {
     local __doc__="Split YARN App log with csplit/gcsplit"
     local _app_log="$1"
+    local _no_rename="$2"
 
     local _out_dir="`basename $_app_log .log`_containers"
     if [ ! -r "$_app_log" ]; then
@@ -896,7 +897,11 @@ function f_appLogCSplit() {
     fi
 
     _csplit -z -f $_out_dir/lineNo_ $_app_log "/^Container: container_/" '{*}' || return $?
-    _appLogCSplit_rename "." "${_out_dir}"
+    if [[ "${_no_rename}" =~ ^(y|Y) ]]; then
+        echo "Not renaming 'lineNo_*' files."
+    else
+        _appLogCSplit_rename "." "${_out_dir}"
+    fi
 }
 
 function _appLogCSplit_rename() {
@@ -915,7 +920,8 @@ function _appLogCSplit_rename() {
             if [[ "${_type}" =~ ^.+\.dot$ ]]; then
                 rg '^digraph.+\}' --multiline --multiline-dotall --no-filename --no-line-number ${_f} > "${_out_dir%/}/${_new_filename}.${_type}" && rm -f "${_f}"
             else
-                mv -v -i ${_f} "${_out_dir%/}/${_new_filename}.${_type}"
+                # .${_type} is always .stderr but file contains all types for the container, so using .log
+                mv -v -i ${_f} "${_out_dir%/}/${_new_filename}.log"
             fi
         fi
     done
