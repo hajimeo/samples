@@ -136,7 +136,7 @@ function f_update() {
             return 1
         fi
     fi
-    _log "INFO" "Script has been updated. Backup: ${_backup_file}"
+    _log "INFO" "${_target} has been updated. Backup: ${_backup_file}"
 }
 
 function f_update_hosts_file_by_fqdn() {
