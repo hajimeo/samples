@@ -569,7 +569,8 @@ function f_as_setup() {
         _log "ERROR" "Installation/Setup failed. Please check container's /tmp/install.err for STDERR"
         return 1
     fi
-    #ssh -q root@${_hostname} -t "export _STANDALONE=Y;bash ${_share_dir%/}${_user%/}/install_atscale.sh ${_version}"
+    docker exec -it ${_name} bash -c "grep -E '^\[.+\] ERROR' /tmp/install.err"
+    return
 }
 
 function f_as_start() {
