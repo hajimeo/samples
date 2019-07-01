@@ -570,7 +570,7 @@ function f_as_setup() {
         return 1
     fi
     docker exec -it ${_name} bash -c "grep -E '^\[.+\] ERROR' /tmp/install.err"
-    return
+    return 0
 }
 
 function f_as_start() {
@@ -757,7 +757,6 @@ function f_docker_image_import() {
 
 function _cdh_setup() {
     local _container_name="${1:-"node-cdh"}"
-    local _is_using_cm="${2}"
 
     _log "INFO" "(re)Installing SSH and other commands ..."
     docker exec -it ${_container_name} bash -c 'yum install -y openssh-server openssh-clients; service sshd start'
@@ -794,7 +793,7 @@ function p_cdh_sandbox() {
             fi
             # NOTE: Cloudera quickstart does not work well if hostname is different ...
             f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "4433 7180 7182 7184 7185 7190 7191 8084 8480 8485 9994 9996 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--hostname=quickstart.cloudera" || return $?
-            _cdh_setup "${_container_name}" "${_is_using_cm}" || return $?
+            _cdh_setup "${_container_name}" || return $?
             _first_time=true
         fi
     else
@@ -809,7 +808,7 @@ function p_cdh_sandbox() {
             #curl 'http://`hostname -f`:7180/cmf/services/12/maintenanceMode?enter=true' -X POST
             docker exec -it ${_container_name} bash -c '/home/cloudera/cloudera-manager --express' || return $?
         else
-            docker exec -it ${_container_name} bash -c 'service cloudera-scm-agent start; service cloudera-scm-server-db start; service cloudera-scm-server start' || return $?
+            docker exec -it ${_container_name} bash -c 'service cloudera-scm-server-db start; service cloudera-scm-server start;service cloudera-scm-agent start;' || return $?
         fi
     else
         docker exec -it ${_container_name} bash -c '/usr/bin/docker-quickstart start' || return $?
@@ -817,6 +816,7 @@ function p_cdh_sandbox() {
     fi
     # Schedule refresh commands in case DataNode and NodeManager's IP has been changed
     #docker exec -it ${_container_name} bash -c 'echo "sudo -u hdfs hadoop dfsadmin -refreshNodes; sudo -u yarn yarn rmadmin -refreshNodes" | at now +5 minutes'
+    _log "INFO" "To reuse this container, 'setup_standalone.sh -s -n ${_container_name}'"
 }
 
 function _hdp_setup() {
