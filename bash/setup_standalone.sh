@@ -794,6 +794,8 @@ function p_cdh_sandbox() {
             # NOTE: Cloudera quickstart does not work well if hostname is different ...
             f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "4433 7180 7182 7184 7185 7190 7191 8084 8480 8485 9994 9996 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--hostname=quickstart.cloudera" || return $?
             _cdh_setup "${_container_name}" || return $?
+            f_container_useradd "${_container_name}" "${_SERVICE}" # || return $?
+            docker exec -it ${_container_name} bash -c 'echo "sudo -u '${_SERVICE}' impala-shell -i localhost -q \"CREATE DATABASE IF NOT EXISTS '${_SERVICE}'\";sudo -u hdfs hdfs dfs -mkdir /user/'${_SERVICE}';sudo -u hdfs hdfs dfs -chown '${_SERVICE}': /user/'${_SERVICE}'" | at now +7 minutes'
             _first_time=true
         fi
     else
