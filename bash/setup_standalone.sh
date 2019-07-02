@@ -896,18 +896,21 @@ function p_tableau_server() {
     local _container_name="${1:-"node-ts"}"
     local _tableau_version="${2:-"2018.2.5"}"
     local _save_container="$3"
+    local _gw_port="${4:-8000}"
+
+    local _tsm_port="8850"
 
     if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
-        if lsof -ti:8000; then
-            _log "ERROR" "Port number 8000 is in use, so that can't do port forward"
+        if lsof -ti:${_gw_port}; then
+            _log "ERROR" "Port number ${_gw_port} is in use, so that can't do port forward"
             return 1
         fi
-        f_docker_run "${_container_name}.${_DOMAIN}" "" "8000 8850" || return $?
+        f_docker_run "${_container_name}.${_DOMAIN}" "" "${_gw_port} ${_tsm_port}" || return $?
         # When saving, NOT initializing
         _tableau_server_setup "${_container_name}" "${_tableau_version}" "${_save_container}" || return $?
-        _log "WARN" "Please use port 8000 for the Gateway Port."; sleep 3
-        _log "NOTE" "After initializing from 'https://`hostname -I | awk '{print $1}'`:8850/', login ${_container_name} and run:
-    sudo -u tsm -i tabcmd initialuser --server 'localhost:8000' -u <admin user> -p <admin pwd>"; sleep 3
+        _log "WARN" "Please use port ${_gw_port} for the Gateway Port."; sleep 3
+        _log "NOTE" "After initializing from 'https://`hostname -I | awk '{print $1}'`:${_tsm_port}/', login ${_container_name} and run:
+    sudo -u tsm -i tabcmd initialuser --server 'localhost:${_gw_port}' -u <admin user> -p <admin pwd>"; sleep 3
     else
         # Not sure if this works because of below TODO.
         f_docker_start "${_container_name}.${_DOMAIN}" || return $?
