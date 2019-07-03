@@ -48,6 +48,13 @@ if [ -f "${BTRACE_HOME}/btrace-client.jar" ] ; then
               TOOLS_JAR="${JAVA_HOME}/lib/tools.jar"
           ;;
        esac
+
+       if [ ! -r "${TOOLS_JAR}" ]; then
+          echo "No ${TOOLS_JAR}. OpenJDK 11 may not be supported yet: https://github.com/btraceio/btrace/issues/374"
+          exit 1
+       fi
+
+       # What is dtrace.jar?
        ${JAVA_HOME}/bin/java -cp "${BTRACE_HOME}/btrace-client.jar":${TOOLS_JAR}:/usr/share/lib/java/dtrace.jar com.sun.btrace.client.Main $*
     else
        echo "Please set JAVA_HOME before running this script"
