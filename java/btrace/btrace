@@ -12,9 +12,9 @@ if [ -z "$BTRACE_HOME" -o ! -d "$BTRACE_HOME" ] ; then
   BTRACE_HOME=`cd "$BTRACE_HOME" && pwd`
 fi
 
-[ -f "${BTRACE_HOME}/btrace-client.jar" ] || curl -so ${BTRACE_HOME}/btrace-client.jar https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-client.jar
-[ -f "${BTRACE_HOME}/btrace-agent.jar" ] || curl -so ${BTRACE_HOME}/btrace-agent.jar https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-agent.jar
-[ -f "${BTRACE_HOME}/btrace-boot.jar" ] || curl -so ${BTRACE_HOME}/btrace-client.jar https://github.com/hajimeo/samples/raw/master/java/btrace/btrace-boot.jar
+[ -f "${BTRACE_HOME}/btrace-client.jar" ] || curl -sfo ${BTRACE_HOME}/btrace-client.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-client.jar
+[ -f "${BTRACE_HOME}/btrace-agent.jar" ] || curl -sfo ${BTRACE_HOME}/btrace-agent.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-agent.jar
+[ -f "${BTRACE_HOME}/btrace-boot.jar" ] || curl -sfo ${BTRACE_HOME}/btrace-client.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-boot.jar
 
 if [ -f "${BTRACE_HOME}/btrace-client.jar" ] ; then
     if [ "${JAVA_HOME}" = "" ]; then
