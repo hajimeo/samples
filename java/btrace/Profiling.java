@@ -1,8 +1,8 @@
 /**
  * Replace clazz values, and timer integer, then
  *
- * _PID=`lsof -ti:10502 -sTCP:LISTEN`
- * export JAVA_HOME="$(dirname $(dirname `readlink /proc/${_PID}/exe`))"
+ * _PID=`lsof -ti:10502 -sTCP:LISTEN` && echo ${_PID}
+ * export JAVA_HOME="$(dirname $(dirname `readlink /proc/${_PID}/exe`))" && echo $JAVA_HOME
  * ./btrace ${_PID} ./Profiling.java
  */
 
