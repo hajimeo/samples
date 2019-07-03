@@ -14,7 +14,7 @@ fi
 
 [ -f "${BTRACE_HOME}/btrace-client.jar" ] || curl -sfo ${BTRACE_HOME}/btrace-client.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-client.jar
 [ -f "${BTRACE_HOME}/btrace-agent.jar" ] || curl -sfo ${BTRACE_HOME}/btrace-agent.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-agent.jar
-[ -f "${BTRACE_HOME}/btrace-boot.jar" ] || curl -sfo ${BTRACE_HOME}/btrace-client.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-boot.jar
+[ -f "${BTRACE_HOME}/btrace-boot.jar" ] || curl -sfo ${BTRACE_HOME}/btrace-boot.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-boot.jar
 
 if [ -f "${BTRACE_HOME}/btrace-client.jar" ] ; then
     if [ "${JAVA_HOME}" = "" ]; then
