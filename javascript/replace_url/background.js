@@ -2,7 +2,8 @@
 // Check https://developer.chrome.com/apps/match_patterns for url match pattern. Also '#' + '*' doesn't work as it is named alias
 chrome.webRequest.onBeforeRequest.addListener(replaceUrl, {
     //urls: ['https://*/*'],  // for debug
-    urls: ['https://*.lightning.force.com/lightning/*', 'https://*.visual.force.com/*', 'https://customers.atscale.com/s/case/*'], //'https://*.salesforce.com/console*'
+    // NOTE: At this moment, our lightening view is broken. it fails to display many cases, so not redirecting , 'https://customers.atscale.com/s/case/*'
+    urls: ['https://*.lightning.force.com/lightning/*', 'https://*.visual.force.com/*'], //'https://*.salesforce.com/console*'
     types: ["main_frame"]
 }, ["blocking"]);
 
