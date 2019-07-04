@@ -612,253 +612,6 @@ function f_appLogFindLastSyslog() {
     fi
 }
 
-function f_hdfsAuditLogCountPerTime() {
-    local __doc__="Count a log file (eg.: HDFS audit) per 10 minutes"
-    local _path="$1"
-    local _datetime_regex="$2"
-
-    if [ -z "$_datetime_regex" ]; then
-        _datetime_regex="^${_DATE_FORMAT} \d\d:\d"
-    fi
-
-    if ! which bar_chart.py &>/dev/null; then
-        echo "### bar_chart.py is missing..."
-        echo "# sudo -H python -mpip install matplotlib"
-        echo "# sudo -H pip install data_hacks"
-        local _cmd="uniq -c"
-    else
-        local _cmd="bar_chart.py"
-    fi
-
-    _grep -oP "$_datetime_regex" $_path | $_cmd
-}
-
-function f_hdfsAuditLogCountPerCommand() {
-    local __doc__="Count HDFS audit per command for some period"
-    local _path="$1"
-    local _datetime_regex="$2"
-
-    if ! which bar_chart.py &>/dev/null; then
-        echo "## bar_chart.py is missing..."
-        local _cmd="sort | uniq -c"
-    else
-        local _cmd="bar_chart.py"
-    fi
-
-    # TODO: not sure if sed regex is good (seems to work, Mac sed / gsed doesn't like +?)、Also sed doen't support ¥d
-    if [ ! -z "$_datetime_regex" ]; then
-        _sed -n "s@\($_datetime_regex\).*\(cmd=[^ ]*\).*src=.*\$@\1,\2@p" $_path | $_cmd
-    else
-        _sed -n 's:^.*\(cmd=[^ ]*\) .*$:\1:p' $_path | $_cmd
-    fi
-}
-
-function f_hdfsAuditLogCountPerUser() {
-    local __doc__="Count HDFS audit per user for some period"
-    local _path="$1"
-    local _per_method="$2"
-    local _datetime_regex="$3"
-
-    if [ ! -z "$_datetime_regex" ]; then
-        _grep -P "$_datetime_regex" $_path > /tmp/f_hdfs_audit_count_per_user_$$.tmp
-        _path="/tmp/f_hdfs_audit_count_per_user_$$.tmp"
-    fi
-
-    if ! which bar_chart.py &>/dev/null; then
-        echo "## bar_chart.py is missing..."
-        local _cmd="sort | uniq -c"
-    else
-        local _cmd="bar_chart.py"
-    fi
-
-    # TODO: not sure if sed regex is good (seems to work, Mac sed / gsed doesn't like +?)
-    if [[ "$_per_method" =~ (^y|^Y) ]]; then
-        _sed -n 's:^.*\(ugi=[^ ]*\) .*\(cmd=[^ ]*\).*src=.*$:\1,\2:p' $_path | $_cmd
-    else
-        _sed -n 's:^.*\(ugi=[^ ]*\) .*$:\1:p' $_path | $_cmd
-    fi
-}
-
-function f_listPerflogEnd() {
-    local __doc__="_grep </PERFLOG ...> to see duration"
-    local _path="$1"
-    local _sort_by_duration="$2"
-
-    if [[ "$_sort_by_duration" =~ (^y|^Y) ]]; then
-        # expecting 5th one is duration after removing start and end time
-        #egrep -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k5n
-        # removing start and end so that we can easily compare two PERFLOG outputs
-        rg -z -wo '</PERFLOG .+>' $_path | _sed -r "s/ (start|end)=[0-9]+//g" | sort -t'=' -k3n
-    else
-        # sorting with start time
-        rg -z -wo '</PERFLOG .+>' $_path | sort -t'=' -k3n
-    fi
-}
-
-function f_getPerflog() {
-    local __doc__="Get lines between PERFLOG method=xxxxx"
-    local _path="$1"
-    local _approx_datetime="$2"
-    local _thread_id="$3"
-    local _method="${4-compile}"
-
-    _getAfterFirstMatch "$_path" "^${_approx_datetime}.+ Thread-${_thread_id}\]: .+<PERFLOG method=${_method} " "Thread-${_thread_id}\]: .+<\/PERFLOG method=${_method} " | _grep -vP ": Thread-(?!${_thread_id})\]"
-}
-
-function f_findJarByClassName() {
-    local __doc__="Find jar by class name (add .class in the name). If symlink needs to be followed, add -L in _search_path"
-    local _class_name="$1"
-    local _search_path="${2-/usr/hdp/current/*/}" # can be PID too
-
-    # if search path is an integer, treat as PID
-    if [[ $_search_path =~ ^-?[0-9]+$ ]]; then
-        lsof -nPp $_search_path | _grep -oE '/.+\.(jar|war)$' | sort | uniq | xargs -I {} bash -c "less {} | _grep -qm1 -w $_class_name && echo {}"
-        return
-    fi
-    # NOTE: some 'less' can't read jar, in that case, replace to 'jar -tvf', but may need to modify $PATH
-    find $_search_path -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "less {} | _grep -m 1 -w $_class_name > /tmp/f_findJarByClassName_$$.tmp && ( echo {}; cat /tmp/f_findJarByClassName_$$.tmp )"
-    # TODO: it won't search war file...
-}
-
-function f_searchClass() {
-    local __doc__="Find jar by *full* class name (without .class) by using PID, which means that component needs to be running, and then export CLASSPATH, and compiles if class_name.java exists"
-    local _class_name="$1"  # should be full class name but without .class
-    local _pid="$2"         # PID or directory
-
-    local _class_file_path="$( echo "${_class_name}" | sed 's/\./\//g' )"
-    local _basename="$(basename ${_class_file_path})"
-
-    if [ -d "${_pid}" ]; then
-        _grep -l -Rs "${_class_file_path}" "${_pid}"
-        return $?
-    fi
-
-    local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
-    which ${_cmd_dir}/jar &>/dev/null || return 1
-
-    if [ ! -s /tmp/f_searchClass_${_basename}_jars.out ]; then
-        ls -l /proc/${_pid}/fd | _grep -oE '/.+\.(jar|war)$' > /tmp/f_searchClass_${_pid}.out
-        cat /tmp/f_searchClass_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | _grep -E "'${_class_file_path}'.class" > /tmp/f_searchClass_'${_basename}'_tmp.out && echo {} && cat /tmp/f_searchClass_'${_basename}'_tmp.out >&2' | tee /tmp/f_searchClass_${_basename}_jars.out
-    else
-        cat /tmp/f_searchClass_${_basename}_jars.out
-    fi
-}
-
-function f_classpath() {
-    local __doc__="Ooutput classpath of the given PID"
-    local _pid="$1"
-    local _user="`stat -c '%U' /proc/${_pid}`" || return $?
-    local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
-    sudo -u ${_user} ${_cmd_dir}/jcmd ${_pid} VM.system_properties | _grep '^java.class.path=' | sed 's/\\:/:/g' | cut -d"=" -f 2
-}
-
-function f_patchJar() {
-    local __doc__="Find jar by *full* class name (without .class) by using PID, which means that component needs to be running, and then export CLASSPATH, and compiles if class_name.java exists"
-    local _class_name="$1" # should be full class name but without .class
-    local _pid="$2"
-
-    local _class_file_path="$( echo "${_class_name}" | sed 's/\./\//g' )"
-    local _basename="$(basename ${_class_file_path})"
-    local _dirname="$(dirname ${_class_file_path})"
-    local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe`)" || return $?
-    which ${_cmd_dir}/jar &>/dev/null || return 1
-    ls -l /proc/${_pid}/fd | _grep -oE '/.+\.(jar|war)$' > /tmp/f_patchJar_${_pid}.out
-
-    # If needs to compile but _jars.out exist, don't try searching as it takes long time
-    if [ ! -s /tmp/f_patchJar_${_basename}_jars.out ]; then
-        cat /tmp/f_patchJar_${_pid}.out | sort | uniq | xargs -I {} bash -c ${_cmd_dir}'/jar -tvf {} | _grep -E "'${_class_file_path}'.class" > /tmp/f_patchJar_'${_basename}'_tmp.out && echo {} && cat /tmp/f_patchJar_'${_basename}'_tmp.out >&2' | tee /tmp/f_patchJar_${_basename}_jars.out
-    else
-        echo "/tmp/f_patchJar_${_basename}_jars.out exists. Reusing..."
-    fi
-
-    if [ -e "${_cmd_dir}/jcmd" ]; then
-        local _cp="`f_classpath ${_pid}`"
-    else
-        # if wokring classpath exist, use it
-        if [ -s /tmp/f_patchJar_${_basename}_${_pid}_cp.out ]; then
-            local _cp="$(cat /tmp/f_patchJar_${_basename}_${_pid}_cp.out)"
-        else
-            local _cp=$(cat /tmp/f_patchJar_${_pid}.out | tr '\n' ':')
-        fi
-    fi
-
-    if [ -r "${_basename}.java" ]; then
-        [ -z "${_cp}" ] && return 1
-
-        if [ -z "$_CLASSPATH" ]; then
-            export CLASSPATH="${_cp%:}"
-        else
-            export CLASSPATH="${_cp%:}:$_CLASSPATH"
-        fi
-
-        # Compile
-        ${_cmd_dir}/javac "${_basename}.java" || return $?
-        # Saving workign classpath if able to compile
-        echo $CLASSPATH > /tmp/f_patchJar_${_basename}_${_pid}_cp.out
-        [ -d "${_dirname}" ] || mkdir -p ${_dirname}
-        mv -f ${_basename}*class "${_dirname%/}/" || return $?
-
-        for _j in `cat /tmp/f_patchJar_${_basename}_jars.out`; do
-            local _j_basename="$(basename ${_j})"
-            # If jar file hasn't been backed up, taking one, and if backup fails, skip this jar.
-            if [ ! -s ${_j_basename} ]; then
-                cp -p ${_j} ./${_j_basename} || continue
-            fi
-            eval "${_cmd_dir}/jar -uf ${_j} ${_dirname%/}/${_basename}*class"
-            ls -l ${_j}
-            ${_cmd_dir}/jar -tvf ${_j} | _grep -F "${_dirname%/}/${_basename}"
-        done
-    else
-        echo "${_basename}.java is not readable."
-    fi
-}
-
-# TODO: find hostname and container, splits, actual query (mr?) etc from app log
-
-function f_extractByDates() {
-    local __doc__="Grep large file with date string"
-    local _log_file_path="$1"
-    local _start_date="$2"
-    local _end_date="$3"
-    local _date_format="$4"
-    local _is_utc="$6"
-
-    local _date_regex=""
-    local _date="_date"
-
-    # in case file path includes wildcard
-    ls -1 $_log_file_path &>/dev/null
-    if [ $? -ne 0 ]; then
-        return 3
-    fi
-
-    if [ -z "$_start_date" ]; then
-        return 4
-    fi
-
-    if [ -z "$_date_format" ]; then
-        _date_format="%Y-%m-%d %H:%M:%S"
-    fi
-
-    if [[ "$_is_utc" =~ (^y|^Y) ]]; then
-        _date="_date -u"
-    fi
-
-    # if _start_date is integer, treat as from X hours ago
-    if [[ $_start_date =~ ^-?[0-9]+$ ]]; then
-        _start_date="`$_date +"$_date_format" -d "${_start_date} hours ago"`" || return 5
-    fi
-
-    # if _end_date is integer, treat as from X hours ago
-    if [[ $_end_date =~ ^-?[0-9]+$ ]]; then
-        _end_date="`$_date +"$_date_format" -d "${_start_date} ${_end_date} hours ago"`" || return 6
-    fi
-
-    eval "_getAfterFirstMatch \"$_log_file_path\" \"$_start_date\" \"$_end_date\""
-
-    return $?
-}
-
 function f_appLogSplit() {
     local __doc__="(deprecated: no longer works with Ambari 2.7.x / HDP 2.6.x) Split YARN App log with yarn_app_logs_splitter.py"
     local _app_log="$1"
@@ -967,6 +720,113 @@ function f_appLogTransition() {
     local _keyword="${2-"RUNNING"}"
     # vertex_[0-9_]+
     rg --no-filename --no-line-number -o "^(${_DATE_FORMAT}.\d\d:\d\d:\d\d).+(\[[^]]+\]) (transitioned from.+${_keyword}.+)" -r $'${1}\t${2}\t${3}' | sort | uniq
+}
+
+function f_hdfsAuditLogCountPerTime() {
+    local __doc__="Count a log file (eg.: HDFS audit) per 10 minutes"
+    local _path="$1"
+    local _datetime_regex="$2"
+
+    if [ -z "$_datetime_regex" ]; then
+        _datetime_regex="^${_DATE_FORMAT} \d\d:\d"
+    fi
+
+    if ! which bar_chart.py &>/dev/null; then
+        echo "### bar_chart.py is missing..."
+        echo "# sudo -H python -mpip install matplotlib"
+        echo "# sudo -H pip install data_hacks"
+        local _cmd="uniq -c"
+    else
+        local _cmd="bar_chart.py"
+    fi
+
+    _grep -oP "$_datetime_regex" $_path | $_cmd
+}
+
+function f_hdfsAuditLogCountPerCommand() {
+    local __doc__="Count HDFS audit per command for some period"
+    local _path="$1"
+    local _datetime_regex="$2"
+
+    if ! which bar_chart.py &>/dev/null; then
+        echo "## bar_chart.py is missing..."
+        local _cmd="sort | uniq -c"
+    else
+        local _cmd="bar_chart.py"
+    fi
+
+    # TODO: not sure if sed regex is good (seems to work, Mac sed / gsed doesn't like +?)、Also sed doen't support ¥d
+    if [ ! -z "$_datetime_regex" ]; then
+        _sed -n "s@\($_datetime_regex\).*\(cmd=[^ ]*\).*src=.*\$@\1,\2@p" $_path | $_cmd
+    else
+        _sed -n 's:^.*\(cmd=[^ ]*\) .*$:\1:p' $_path | $_cmd
+    fi
+}
+
+function f_hdfsAuditLogCountPerUser() {
+    local __doc__="Count HDFS audit per user for some period"
+    local _path="$1"
+    local _per_method="$2"
+    local _datetime_regex="$3"
+
+    if [ ! -z "$_datetime_regex" ]; then
+        _grep -P "$_datetime_regex" $_path > /tmp/f_hdfs_audit_count_per_user_$$.tmp
+        _path="/tmp/f_hdfs_audit_count_per_user_$$.tmp"
+    fi
+
+    if ! which bar_chart.py &>/dev/null; then
+        echo "## bar_chart.py is missing..."
+        local _cmd="sort | uniq -c"
+    else
+        local _cmd="bar_chart.py"
+    fi
+
+    # TODO: not sure if sed regex is good (seems to work, Mac sed / gsed doesn't like +?)
+    if [[ "$_per_method" =~ (^y|^Y) ]]; then
+        _sed -n 's:^.*\(ugi=[^ ]*\) .*\(cmd=[^ ]*\).*src=.*$:\1,\2:p' $_path | $_cmd
+    else
+        _sed -n 's:^.*\(ugi=[^ ]*\) .*$:\1:p' $_path | $_cmd
+    fi
+}
+
+function f_listPerflogEnd() {
+    local __doc__="Hive: _grep </PERFLOG ...> to see duration"
+    local _path="$1"
+    local _sort_by_duration="$2"
+
+    if [[ "$_sort_by_duration" =~ (^y|^Y) ]]; then
+        # expecting 5th one is duration after removing start and end time
+        #egrep -wo '</PERFLOG .+>' "$_path" | sort -t'=' -k5n
+        # removing start and end so that we can easily compare two PERFLOG outputs
+        rg -z -wo '</PERFLOG .+>' $_path | _sed -r "s/ (start|end)=[0-9]+//g" | sort -t'=' -k3n
+    else
+        # sorting with start time
+        rg -z -wo '</PERFLOG .+>' $_path | sort -t'=' -k3n
+    fi
+}
+
+function f_getPerflog() {
+    local __doc__="Hive: Get lines between PERFLOG method=xxxxx"
+    local _path="$1"
+    local _approx_datetime="$2"
+    local _thread_id="$3"
+    local _method="${4-compile}"
+
+    _getAfterFirstMatch "$_path" "^${_approx_datetime}.+ Thread-${_thread_id}\]: .+<PERFLOG method=${_method} " "Thread-${_thread_id}\]: .+<\/PERFLOG method=${_method} " | _grep -vP ": Thread-(?!${_thread_id})\]"
+}
+
+function f_prettifyScalaObj() {
+    local _str="$1"
+    # Assuming class starts with Capital letter
+    python -c "import re,json
+crex = re.compile(r'\b([A-Z][a-zA-Z0-9]+)\((.+)\)')
+r = crex.sub(r'{\"\1\":[\2]}', '${_str}')
+while crex.search(r):
+    r = crex.sub(r'{\"\1\":[\2]}', r)
+r = re.sub(r'(\{|\[|,|\()([a-zA-Z0-9-_]+)', r'\1\"\2', r)
+r = re.sub(r'([a-zA-Z0-9-_]+)(\}|\]|,|\(|\))', r'\1\"\2', r)
+f = re.sub(r'(\(|\))', r'', r)
+print(json.dumps(json.loads(f), indent=4))"
 }
 
 function f_list_start_end(){
