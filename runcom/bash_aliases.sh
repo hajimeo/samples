@@ -20,7 +20,7 @@ alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.pars
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
 # Load/source my log searching utility functions
-#mkdir -p ~/IdeaProjects/samples/bash; curl -o ~/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
+#mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 alias logS="source $HOME/IdeaProjects/samples/bash/log_search.sh"
 alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py"
 alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
@@ -31,8 +31,9 @@ alias kvm_haji='virt-manager -c "qemu+ssh://root@hajime/system?socket=/var/run/l
 alias kvm_seth='virt-manager -c "qemu+ssh://root@sethdesktop/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
 
 # Java / jar related
-alias mb='java -jar ~/Applications/metabase.jar'    # port is 3000
-alias vnc='nohup java -jar ~/Applications/tightvnc-jviewer.jar &>/tmp/tightvnc-jviewer.out &'
+alias mb='java -jar $HOME/Applications/metabase.jar'    # port is 3000
+#alias vnc='nohup java -jar $HOME/Applications/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
+#alias vnc='nohup java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
 
 # Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
 alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=socks5://dh1:28081 https://192.168.1.31:4200/webuser/'
@@ -43,7 +44,7 @@ alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/haji
 
 # Python simple http server from the specific dir
 # To setup: asDocSync <server ip>
-alias webs='cd ~/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out & nohup python ~/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &'
+alias webs='cd $HOME/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out & nohup python $HOME/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &'
 # List and grep some specific files from s3. NOTE: https:// requires s3-us-west-1.amazonaws.com
 
 # Work specific aliases
@@ -182,6 +183,8 @@ function backupC() {
 
     # Delete files larger than _size (10MB) and older than one year
     find ${_src%/} -type f -mtime +365 -size +${_size} -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
+    # Delete files larger than 100MB and older than 180 days
+    find ${_src%/} -type f -mtime +180 -size +100000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
     # Delete files larger than 200MB and older than 90 days
     find ${_src%/} -type f -mtime +90 -size +200000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
     # Synch all files smaller than _size (10MB)
@@ -227,6 +230,6 @@ function asftpd() {
 function asDocSync() {
     local _server="$1"
     local _loginas="${2:-root}"
-    rsync -Phrz ${_loginas}@${_server}:/usr/local/atscale/apps/modeler/assets/modeler/public/docs/* ~/Public/atscale_latest/
-    cd ~/Public/atscale_latest/ && patch -p0 -b < ~/IdeaProjects/samples/misc/doc_index.patch
+    rsync -Phrz ${_loginas}@${_server}:/usr/local/atscale/apps/modeler/assets/modeler/public/docs/* $HOME/Public/atscale_latest/
+    cd $HOME/Public/atscale_latest/ && patch -p0 -b < $HOME/IdeaProjects/samples/misc/doc_index.patch
 }
