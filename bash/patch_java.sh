@@ -60,7 +60,7 @@ function f_jargrep() {
     elif which jar &>/dev/null; then
         _cmd="jar -tf"
     fi
-    find -L ${_path%/} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} | grep -w '${_class}' >&2 && echo '^ Jar: {}'"
+    find -L ${_path%/} -type f \( -name '*.jar' -or -name '*.war' \) -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} | grep -w '${_class}' >&2 && echo '^ Jar: {}'"
 }
 
 function f_update_jar() {
