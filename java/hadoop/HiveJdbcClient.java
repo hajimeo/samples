@@ -14,15 +14,14 @@
  *
  * If Kerberos:
  * create "login.conf" like below (or use /usr/local/atscale/conf/krb/atscale-jaas.conf or /opt/atscale/current/conf/engine/jaas.conf):
-
-Client {
+echo 'Client {
   com.sun.security.auth.module.Krb5LoginModule required
   useTicketCache=true debug=true debugNative=true;
-};
+};' > ./login.conf
 
- * export CLASSPATH="${CLASSPATH%:}:/hadoop-shared/lib/impala/lib/hadoop-auth.jar"
+ * # If not in classpath: export CLASSPATH="${CLASSPATH%:}:/hadoop-shared/lib/impala/lib/hadoop-auth.jar"
  * $JAVA_HOME/bin/java -Djava.security.auth.login.config=./login.conf -Dsun.security.krb5.debug=true \
- *   hadoop.HiveJdbcClient -u "jdbc:hive2://`hostname -f`:10000/default;principal=hive/_HOST@UBUNTU.LOCALDOMAIN" ... -l [logincontext (default:Client)]
+ *   hadoop.HiveJdbcClient -u "jdbc:hive2://`hostname -f`:10000/default;principal=hive/_HOST@UBUNTU.LOCALDOMAIN" ... -l Client
  */
 package hadoop;
 
