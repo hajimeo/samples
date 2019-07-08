@@ -817,16 +817,25 @@ function f_getPerflog() {
 
 function f_prettifyScalaObj() {
     local _str="$1"
-    # Assuming class starts with Capital letter
-    python -c "import re,json
-crex = re.compile(r'\b([A-Z][a-zA-Z0-9]+)\((.+)\)')
-r = crex.sub(r'{\"\1\":[\2]}', '${_str}')
-while crex.search(r):
-    r = crex.sub(r'{\"\1\":[\2]}', r)
-r = re.sub(r'(\{|\[|,|\()([a-zA-Z0-9-_]+)', r'\1\"\2', r)
-r = re.sub(r'([a-zA-Z0-9-_]+)(\}|\]|,|\(|\))', r'\1\"\2', r)
-f = re.sub(r'(\(|\))', r'', r)
-print(json.dumps(json.loads(f), indent=4))"
+    # TODO: convert to pyparsing (or think about some good regex)
+    python -c "import sys
+s = '${_str}'
+p = 0
+for c in s:
+    if c in ['(', '[', '{']:
+        sys.stdout.write(c+'\n')
+        p += 1
+        sys.stdout.write('    ' * p)
+    elif c in [')', ']', '}']:
+        sys.stdout.write('\n')
+        p -= 1
+        sys.stdout.write('    ' * p)
+        sys.stdout.write(c)
+    elif c in [',']:
+        sys.stdout.write(c+'\n')
+        sys.stdout.write('    ' * p)
+    else:
+        sys.stdout.write(c)"
 }
 
 function f_list_start_end(){
