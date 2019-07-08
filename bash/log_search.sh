@@ -819,21 +819,20 @@ function f_prettifyScalaObj() {
     local _str="$1"
     # TODO: convert to pyparsing (or think about some good regex)
     python -c "import sys
-s = '${_str}'
-p = 0
+s = '${_str}';n = 0;p = '    '
 for c in s:
     if c in ['(', '[', '{']:
         sys.stdout.write(c+'\n')
-        p += 1
-        sys.stdout.write('    ' * p)
+        n += 1
+        sys.stdout.write(p * n)
     elif c in [')', ']', '}']:
         sys.stdout.write('\n')
-        p -= 1
-        sys.stdout.write('    ' * p)
+        n -= 1
+        sys.stdout.write(p * n)
         sys.stdout.write(c)
     elif c in [',']:
         sys.stdout.write(c+'\n')
-        sys.stdout.write('    ' * p)
+        sys.stdout.write(p * n)
     else:
         sys.stdout.write(c)"
 }
