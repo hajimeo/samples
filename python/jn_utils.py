@@ -327,8 +327,7 @@ def query(sql, conn=None, no_history=False):
     Columns: [name]
     Index: []
     """
-    global _LAST_CONN
-    if bool(conn) is False: conn = _LAST_CONN
+    if bool(conn) is False: conn = connect()
     # return conn.execute(sql).fetchall()
     df = pd.read_sql(sql, conn)
     if no_history is False and df.empty is False:
@@ -535,8 +534,7 @@ def show_create_table(tablenames=None, like=None, conn=None):
     Columns: [name, rootpage]
     Index: []
     """
-    global _LAST_CONN
-    if bool(conn) is False: conn = _LAST_CONN
+    if bool(conn) is False: conn = connect()
     sql_and = ""
     if bool(like):
         sql_and = " and sql like '%" + str(like) + "%'"
@@ -619,9 +617,9 @@ def hive_q(sql, conn):
 
 def _massage_tuple_for_save(tpl, long_value="", num_cols=None):
     """
-    Massage the given tuple to convert to a DataFrame or a Table columns later
-    :param tpl: Tuple which contains value of a row
-    :param long_value: multi-lines log messages
+    Transform the given tuple to a DataFrame (or Table columns)
+    :param tpl: Tuple which contains values of one row
+    :param long_value: multi-lines log messages, like SQL, java stacktrace etc.
     :param num_cols: Number of columns in the table to populate missing column as None/NULL
     :return: modified tuple
     >>> _massage_tuple_for_save(('a','b'), "aaaa", 4)
@@ -661,10 +659,10 @@ def _insert2table(conn, tablename, tpls, chunk_size=1000):
 
 def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=None, time_re=None, num_cols=None):
     """
-    Search a line with given regex (compiled)
+    Search one line with given regex (compiled)
     :param line: String of a log line
     :param prev_matches: A tuple which contains previously matched groups
-    :param prev_message: String contain log's long text which often multi-lines
+    :param prev_message: String contain log's long text which often multi-lines (eg: SQL, java stacktrace)
     :param begin_re: Compiled regex to find the beginning of the log line
     :param line_re: Compiled regex for group match to get the (column) values
     :param size_re: An optional compiled regex to find size related value
@@ -676,6 +674,7 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
     (None, ('2018-09-04',), 'test')
     """
     tmp_tuple = None
+    #_err(" - line: %s ." % (str(line)))
     # If current line is beginning of a new *log* line (eg: ^2018-08-\d\d...)
     if begin_re.search(line):
         # and if previous matches aren't empty, prev_matches is going to be saved
@@ -688,6 +687,7 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
             prev_matches = None
 
         _matches = line_re.search(line)
+        #_err("   _matches: %s" % (str(_matches)))
         if _matches:
             _tmp_groups = _matches.groups()
             prev_message = _tmp_groups[-1]
@@ -702,7 +702,10 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
                 if _time_matches:
                     prev_matches += (_time_matches.group(1),)
     else:
-        prev_message = str(prev_message) + str(line)  # Looks like each line already has '\n'
+        if prev_message is None:
+            prev_message = str(line)  # Looks like each line already has '\n'
+        else:
+            prev_message = str(prev_message) + str(line)  # Looks like each line already has '\n'
     return (tmp_tuple, prev_matches, prev_message)
 
 
@@ -738,14 +741,14 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
         if bool(tmp_tuple):
             tuples += [tmp_tuple]
 
-    # append last message
+    # append last message (last line)
     if bool(prev_matches):
         tuples += [_massage_tuple_for_save(tpl=prev_matches, long_value=prev_message, num_cols=num_cols)]
     return tuples
 
 
 def logs2table(file_name, tablename=None, conn=None,
-               col_defs=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
+               col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
                line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
                size_regex="[sS]ize = ([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
@@ -755,7 +758,7 @@ def logs2table(file_name, tablename=None, conn=None,
     :param file_name: [Required] a file name (not path) or *simple* glob regex
     :param tablename: Table name. If empty, generated from file_name
     :param conn:  Connection object (ju.connect())
-    :param col_defs: Column definition list or dict (column_name1 data_type, column_name2 data_type, ...)
+    :param col_names: Column definition list or dict (column_name1 data_type, column_name2 data_type, ...)
     :param num_cols: Number of columns in the table. Optional if col_def_str is given.
     :param line_beginning: To detect the beginning of the log entry (normally ^\d\d\d\d-\d\d-\d\d)
     :param line_matching: A group matching regex to separate one log lines into columns
@@ -764,14 +767,16 @@ def logs2table(file_name, tablename=None, conn=None,
     :param max_file_num: To avoid memory issue, setting max files to import
     :param multiprocessing: If True, use multiple CPUs
     :return: Void if no error, or a tuple contains multiple information for debug
+    #>>> logs2table(file_name='queries.*log*', tablename='t_queries_log', col_names=['datetime', 'jsonstr', 'message', 'extra_lines'],
+                  line_matching='^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (\{.*?\}) - ([^:]+):(.*)')
+    #True
     >>> pass    # TODO: implement test
     """
-    global _LAST_CONN
-    if bool(conn) is False: conn = _LAST_CONN
+    if bool(conn) is False: conn = connect()
 
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_cols) is False:
-        num_cols = len(col_defs)
+        num_cols = len(col_names)
     files = _globr(file_name)
 
     if bool(files) is False:
@@ -781,13 +786,13 @@ def logs2table(file_name, tablename=None, conn=None,
         raise ValueError('Glob: %s returned too many files (%s)' % (file_name, str(len(files))))
 
     col_def_str = ""
-    if isinstance(col_defs, dict):
-        for k, v in col_defs.iteritems():
+    if isinstance(col_names, dict):
+        for k, v in col_names.iteritems():
             if col_def_str != "":
                 col_def_str += ", "
             col_def_str += "%s %s" % (k, v)
     else:
-        for v in col_defs:
+        for v in col_names:
             if col_def_str != "":
                 col_def_str += ", "
             col_def_str += "%s TEXT" % (v)
@@ -824,6 +829,7 @@ def logs2table(file_name, tablename=None, conn=None,
                 res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
                 if bool(res) is False:  # if fails once, stop
                     return res
+    inject_auto_comp()
     _err("Completed.")
 
 
@@ -833,7 +839,7 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
              size_regex="[sS]ize =? ?([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
              max_file_num=10, multiprocessing=False):
     """
-    Convert multiple files to multiple DataFrame objects
+    Convert multiple files to *multiple* DataFrame objects
     :param file_name: A file name or *simple* regex used in glob to select files.
     :param col_names: Column definition list or dict (column_name1 data_type, column_name2 data_type, ...)
     :param num_fields: Number of columns in the table. Optional if col_def_str is given.
@@ -879,6 +885,9 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
                                            size_regex=size_regex, time_regex=time_regex, num_cols=num_fields)
             if len(tuples) > 0:
                 dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
+    _err("Completed.")
+    if bool(dfs) is False:
+        return None
     return pd.concat(dfs)
 
 
