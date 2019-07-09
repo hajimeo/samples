@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 function usage() {
     echo "$BASH_SOURCE hostname1 hostname2 [Y]
-    Expecting this script is used in crontab.
+    Expecting this script is used in crontab (and cron sends email to admin).
     If the 3rd argument is Y or y, this script outputs CSV and exits.
 "
 }
