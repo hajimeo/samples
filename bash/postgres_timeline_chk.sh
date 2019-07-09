@@ -40,11 +40,14 @@ function _chkTimeline() {
     local _node1="$1"
     local _node2="$2"
 
+    _role1="$(grep "^${_node1}" ${_TMP_FILE} | cut -d ',' -f 2)"
     _tl1="$(grep "^${_node1}" ${_TMP_FILE} | cut -d ',' -f 3)"
+    _role2="$(grep "^${_node2}" ${_TMP_FILE} | cut -d ',' -f 2)"
     _tl2="$(grep "^${_node2}" ${_TMP_FILE} | cut -d ',' -f 3)"
-    # TODO: add master/replica check (I think master is OK to use larger timeline than replica)
+    # TODO: add master/replica check (I think master is OK to use a larger timeline than replica, but for now, treating as error)
     [ -z "${_tl1}" ] && return 1
     [ -z "${_tl2}" ] && return 1
+    [ "${_role1}" == "${_role2}" ] && return 1
     [ "${_tl1}" != "${_tl2}" ] && return 1
     return 0
 }
