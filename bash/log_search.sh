@@ -815,7 +815,7 @@ function f_getPerflog() {
     _getAfterFirstMatch "$_path" "^${_approx_datetime}.+ Thread-${_thread_id}\]: .+<PERFLOG method=${_method} " "Thread-${_thread_id}\]: .+<\/PERFLOG method=${_method} " | _grep -vP ": Thread-(?!${_thread_id})\]"
 }
 
-function f_prettifyScalaObj() {
+function f_prettify() {
     local _str="$1"
     # TODO: convert to pyparsing (or think about some good regex)
     python -c "import sys
