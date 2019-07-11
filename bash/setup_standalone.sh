@@ -585,8 +585,8 @@ function f_as_start() {
     # Workaround to absorb path difference between versions
     docker exec -d ${_name} bash -c "[ -d /usr/local/${_service} ] && [ ! -e /usr/local/${_service}/bin ] && rmdir /usr/local/${_service}; [ -d /opt/${_service}/current/bin ] && [ ! -d /usr/local/${_service} ] && ln -s /opt/${_service}/current /usr/local/${_service}"
 
-    [[ "${_restart}" =~ ^(y|Y) ]] && docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_stop -f"
     docker exec -d ${_name} bash -c "sudo -u ${_service} -i /usr/local/apache-hive/apache_hive.sh"
+    [[ "${_restart}" =~ ^(y|Y) ]] && docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_stop -f"
     docker exec -it ${_name} bash -c "lsof -i:10516 || sudo -u ${_service} -i /usr/local/${_service}/bin/${_service}_start"
 }
 
