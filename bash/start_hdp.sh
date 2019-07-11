@@ -2953,6 +2953,14 @@ screen -ls' > /etc/update-motd.d/99-start-hdp
         chmod a+x /etc/update-motd.d/99-start-hdp
         run-parts --lsbsysinit /etc/update-motd.d > /run/motd.dynamic
     fi
+
+    if [ ! -f /etc/cron.daily/ipchk ]; then
+        echo '#!/usr/bin/env bash
+_ID="$(hostname -s | tail -c 8)"
+_IP="$(hostname -I | cut -d" " -f1)"
+curl -s -f "http://www.osakos.com/tools/info.php?id=${_ID}&LOCAL_ADDR=${_IP}"' > /etc/cron.daily/ipchk
+        chmod a+x /etc/cron.daily/ipchk
+    fi
 }
 
 function f_copy_auth_keys_to_containers() {
