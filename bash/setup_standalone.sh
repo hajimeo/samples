@@ -404,20 +404,24 @@ function f_docker_start() {
     local _hostname="$1"    # short name is also OK
     local _stop_other=${2:-${_DOCKER_STOP_OTHER}}
 
-    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+    local _container_name="`echo "${_hostname}" | cut -d"." -f1`"
 
     if ${_stop_other}; then
         # Probably --filter can do better...
-        for _p in `docker inspect ${_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print ' '.join([l.replace('/tcp', '') for l in a[0]['Config']['ExposedPorts'].keys()])"`; do
+        for _p in `docker inspect ${_container_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print ' '.join([l.replace('/tcp', '') for l in a[0]['Config']['ExposedPorts'].keys()])"`; do
             local _cname="`_docker_find_by_port ${_p}`"
             if [ -n "${_cname}" ]; then
                 _log "INFO" "Stopping ${_cname} container..."
-                docker stop -t 7 ${_cname}
+                docker stop -t 7 ${_container_name}
             fi
         done
     fi
 
-    docker start --attach=false ${_name}
+    if docker ps --format "{{.Names}}" | grep -E "^${_container_name}$"; then
+        #_log "INFO" "Container ${_container_name} is already running."; sleep 1
+        return 0
+    fi
+    docker start --attach=false ${_container_name}
 
     # Somehow docker disable a container communicates to outside by adding 0.0.0.0 GW
     #local _docker_ip="`docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Gateway'])"`"
