@@ -822,7 +822,7 @@ function p_cdh_sandbox() {
     fi
     # Schedule refresh commands in case DataNode and NodeManager's IP has been changed
     #docker exec -it ${_container_name} bash -c 'echo "sudo -u hdfs hadoop dfsadmin -refreshNodes; sudo -u yarn yarn rmadmin -refreshNodes" | at now +5 minutes'
-    _log "INFO" "To reuse this container, 'setup_standalone.sh -s -n ${_container_name}'"
+    _log "INFO" "To reuse this container: p_cdh_sandbox ${_container_name} ${_is_using_cm}"
 }
 
 function _hdp_setup() {
