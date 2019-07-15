@@ -431,7 +431,7 @@ function f_grep_multilines() {
     echo "# regex:${_regex} -g '${_glob}'" >&2
     rg "${_regex}" \
         --multiline --multiline-dotall --no-line-number --no-filename -z \
-        -g "${_glob}" -m 1000 --sort=path
+        -g "${_glob}" -m 2000 --sort=path
     # not sure if rg sorts properly with --sort, so best effort (can not use ' | sort' as multi-lines)
 }
 
@@ -833,22 +833,27 @@ function f_prettify() {
     local _str="$1"
     # TODO: convert to pyparsing (or think about some good regex)
     python -c "import sys
-s = '${_str}';n = 0;p = '    '
-for c in s:
-    if c in ['(', '[', '{']:
-        sys.stdout.write(c+'\n')
+s = '${_str}';n = 0;i=0;p = '    '
+while i < len(s):
+    if s[i] in ['(', '[', '{']:
+        if (s[i] == '(' and s[i+1] == ')') or (s[i] == '[' and s[i+1] == ']') or (s[i] == '{' and s[i+1] == '}'):
+            sys.stdout.write(s[i]+s[i+1]+'\n')
+            i += 2
+            continue
         n += 1
+        sys.stdout.write(s[i]+'\n')
         sys.stdout.write(p * n)
-    elif c in [')', ']', '}']:
-        sys.stdout.write('\n')
+    elif s[i] in [')', ']', '}']:
         n -= 1
+        sys.stdout.write('\n')
         sys.stdout.write(p * n)
-        sys.stdout.write(c)
-    elif c in [',']:
-        sys.stdout.write(c+'\n')
+        sys.stdout.write(s[i])
+    elif s[i] in [',']:
+        sys.stdout.write(s[i]+'\n')
         sys.stdout.write(p * n)
     else:
-        sys.stdout.write(c)"
+        sys.stdout.write(s[i])
+    i += 1"
 }
 
 function f_list_start_end(){
