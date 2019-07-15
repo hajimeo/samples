@@ -4,7 +4,7 @@
  *  https://qiita.com/Sekky0905/items/fd6ff9113d301aaa9e1d
  *      Modified to accept arguments and Removed all non English characters
  *
- * REQUIRED:
+ * REQUIRED (to compile):
  *  go get -u cloud.google.com/go/bigquery
  *
  * DOWNLOAD:
