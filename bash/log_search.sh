@@ -421,14 +421,14 @@ function f_query_plan() {
 }
 
 function f_grep_multilines() {
-    local __doc__="Multiline search with 'rg'. TODO: dot and brace can't be used in _str_in_1st_line"
+    local __doc__="Multiline search with 'rg' dotall TODO: dot and brace can't be used in _str_in_1st_line"
     local _str_in_1st_line="$1"
     local _glob="${2:-"debug.*log*"}"
     local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d"}"
 
     # NOTE: '\Z' to try matching the end of file returns 'unrecognized escape sequence'
     local _regex="${_str_in_1st_line}.+?(${_boundary_str}|\z)"
-    echo "# regex:${_regex} -g '${_glob}' ${_rg_extra_opt}" >&2
+    echo "# regex:${_regex} -g '${_glob}'" >&2
     rg "${_regex}" \
         --multiline --multiline-dotall --no-line-number --no-filename -z \
         -g "${_glob}" -m 1000 --sort=path
