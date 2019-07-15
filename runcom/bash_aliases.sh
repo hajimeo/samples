@@ -54,6 +54,11 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
+function xml2json() {
+    local _xml_file="$1"
+    #pip3 install xmltodict
+    python3 -c "import xmltodict,json;print(json.dumps(xmltodict.parse(open('${_xml_file}').read()), indent=4, sort_keys=True))"
+}
 # head and tail of one file
 function ht() {
     local _f="$1"
