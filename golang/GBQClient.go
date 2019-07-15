@@ -71,7 +71,7 @@ func listTables(client *bigquery.Client, datasetID string) error {
         }
         // Example output:
         // [myfirstproject-225906 ds_default dimstyle BASE TABLE YES NO 2019-05-22 14:20:11.941999912 +0000 UTC]
-        fmt.Println("  "+t.TableID)
+        fmt.Println(t)  //t.TableID
     }
     return nil
 }
