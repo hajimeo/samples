@@ -427,7 +427,7 @@ function f_grep_multilines() {
     local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d"}"
 
     # NOTE: '\Z' to try matching the end of file returns 'unrecognized escape sequence'
-    local _regex="${_str_in_1st_line}.+(${_boundary_str}|\z)"
+    local _regex="${_str_in_1st_line}.+?(${_boundary_str}|\z)"
     echo "# regex:${_regex} -g '${_glob}' ${_rg_extra_opt}" >&2
     rg "${_regex}" \
         --multiline --multiline-dotall --no-line-number --no-filename -z \
