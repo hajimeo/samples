@@ -4,8 +4,7 @@
 #
 # Or, to start scala console (REPL):
 # . /var/tmp/share/patch_java.sh
-# f_setup_scala
-# f_javaenvs 10502
+# f_scala [<port>]
 #
 # TODO: currently the script filename needs to be "ClassName.scala" or "ClassName.java" (case sensitive)
 #
@@ -49,6 +48,17 @@ function f_javaenvs() {
     else
         export CLASSPATH="${CLASSPATH%:}:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
     fi
+}
+
+function f_scala() {
+    local _port="${1}"
+    f_setup_scala
+    if [[ "${_port}" =~ ^[0-9]+$ ]]; then
+        f_javaenvs "${_port}"
+    else
+        echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";slee 3
+    fi
+    scala
 }
 
 function f_jargrep() {
