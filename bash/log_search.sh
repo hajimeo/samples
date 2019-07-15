@@ -65,7 +65,7 @@ function p_support() {
     echo " "
 
     echo "#[$(date +"%H:%M:%S")] config.yaml (filtered)"
-    _find_and_cat "config.yaml" | grep -E '(^AS_LOG_DIR|^HOSTNAME|^JAVA_HOME|^user.timezone|^estimator.enabled|^query.result.max_rows|^thrifty.client.protocol|^aggregates.create.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs.aggregates.maintainer|^authorization.impersonation.jdbc.enabled)' | sort | uniq
+    _find_and_cat "config.yaml" | rg '(^AS_LOG_DIR|^HOSTNAME|^JAVA_HOME|^user\.timezone|^connection\.pool\.testStatement|^estimator.enabled|^query\.result\.max_rows|^thrifty\.client\.protocol|^aggregates\.create\.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs\.aggregates\.maintainer|^authorization\.impersonation\.jdbc\.enabled)' | sort | uniq
     echo " "
     f_genKinit
     echo " "
@@ -422,17 +422,16 @@ function f_query_plan() {
 
 function f_grep_multilines() {
     local __doc__="Multiline search with 'rg'. TODO: dot and brace can't be used in _str_in_1st_line"
-    local _str_in_1st_line="$1"         # TODO: At this moment, grep-ing lines which *first* line contain this string
+    local _str_in_1st_line="$1"
     local _glob="${2:-"debug.*log*"}"
-    local _rg_extra_opt="${3-"-A 1 -m 2000"}"   # Accept *empty string*
-    local _boundary_str="${4:-"^2\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d"}"
+    local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d"}"
 
-    # TODO: if next line also contains the queryId, it won't be included in the output, so using -A 1 at this moment. ("(?!^2\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d)" didn't work)
-    local _regex="${_boundary_str}[^\n]+?${_str_in_1st_line}.+?(${_boundary_str}|\z)"
+    # NOTE: '\Z' to try matching the end of file returns 'unrecognized escape sequence'
+    local _regex="${_str_in_1st_line}.+(${_boundary_str}|\z)"
     echo "# regex:${_regex} -g '${_glob}' ${_rg_extra_opt}" >&2
     rg "${_regex}" \
         --multiline --multiline-dotall --no-line-number --no-filename -z \
-        -g "${_glob}" ${_rg_extra_opt} --sort=path
+        -g "${_glob}" -m 1000 --sort=path
     # not sure if rg sorts properly with --sort, so best effort (can not use ' | sort' as multi-lines)
 }
 
