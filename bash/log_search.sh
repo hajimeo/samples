@@ -283,6 +283,21 @@ EOF
     # TODO: hiveserver2.log Total time spent in this metastore function was greater than
 }
 
+function f_postgres_log() {
+    local __doc__="grep (rg) postgresql log files"
+    local _date_regex="${1}"    # No need ^
+    local _glob="${2:-postgresql-*log*}"
+    [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d"
+
+    echo "### system is ready to|timeline|redo done at|archive recovery ###############################################"
+    # log_line_prefix = %t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h (%l = Number of the log line for each session or process. No idea why -1)
+    rg -z -N --no-filename -g "${_glob}" "^${_date_regex}.+( system is ready to|timeline|redo done at|archive recovery|FATAL:|ERROR:)" | grep -v 'no pg_hba.conf entry' | sort -n | uniq
+    echo ' '
+    echo "### Slow checkpoint complete ################################################################################"
+    # With log_checkpoints = on
+    rg -z -N --sort=path -g "${_glob}" "^${_date_regex}.+ checkpoint complete:.+(longest=[^0].+|average=[^0].+)"
+}
+
 function f_checkResultSize() {
     local __doc__="Get result sizes from the engine debug log (datetime, queryId, size, time)"
     local _date_regex="${1}"    # No need ^
