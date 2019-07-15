@@ -8,6 +8,6 @@ set wildmode=list:longest,full
 set directory=.,$TEMP
 set shellcmdflag=-ic
 
-match ErrorMsg /\<FATAL\>/
-2match ErrorMsg /\<ERROR\>/
-3match WarningMsg /\<WARN\>/
+"match ErrorMsg /\<FATAL\>/
+"2match ErrorMsg /\<ERROR\>/
+"3match WarningMsg /\<WARN\>/
