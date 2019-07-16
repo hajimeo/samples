@@ -833,26 +833,29 @@ function f_prettify() {
     local _str="$1"
     # TODO: convert to pyparsing (or think about some good regex)
     python -c "import sys
-s = '${_str}';n = 0;i=0;p = '    '
+s = '${_str}';n = 0;p = '\t';f = False;
+i = 0;
 while i < len(s):
     if s[i] in ['(', '[', '{']:
-        if (s[i] == '(' and s[i+1] == ')') or (s[i] == '[' and s[i+1] == ']') or (s[i] == '{' and s[i+1] == '}'):
-            sys.stdout.write(s[i]+s[i+1]+'\n')
-            i += 2
-            continue
-        n += 1
-        sys.stdout.write(s[i]+'\n')
-        sys.stdout.write(p * n)
+        if (s[i] == '(' and s[i + 1] == ')') or (s[i] == '[' and s[i + 1] == ']') or (s[i] == '{' and s[i + 1] == '}'):
+            sys.stdout.write(s[i] + s[i + 1])
+            i += 1
+        else:
+            n += 1
+            sys.stdout.write(s[i] + '\n' + (p * n))
+            f = True
+    elif s[i] in [',']:
+        sys.stdout.write(s[i] + '\n' + (p * n))
+        f = True
     elif s[i] in [')', ']', '}']:
         n -= 1
-        sys.stdout.write('\n')
-        sys.stdout.write(p * n)
-        sys.stdout.write(s[i])
-    elif s[i] in [',']:
-        sys.stdout.write(s[i]+'\n')
-        sys.stdout.write(p * n)
+        sys.stdout.write('\n' + (p * n) + s[i])
     else:
         sys.stdout.write(s[i])
+    if f:
+        if (i + 1) < len(s) and s[i + 1] == ' ' and ((i + 2) < len(s) and s[i + 2] != ' '):
+            i += 1
+    f = False
     i += 1"
 }
 
