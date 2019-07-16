@@ -831,9 +831,10 @@ function f_getPerflog() {
 
 function f_prettify() {
     local _str="$1"
+    local _pad="${2-"    "}"
     # TODO: convert to pyparsing (or think about some good regex)
     python -c "import sys
-s = '${_str}';n = 0;p = '\t';f = False;
+s = '${_str}';n = 0;p = '${_pad}';f = False;
 i = 0;
 while i < len(s):
     if s[i] in ['(', '[', '{']:
