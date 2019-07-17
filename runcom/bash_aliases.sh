@@ -177,9 +177,10 @@ function sshs() {
 function backupC() {
     local _src="${1:-"$HOME/Documents/cases"}"
     local _dst="${2:-"hosako@z230:/cygdrive/h/hajime/cases"}"
+
     [ ! -d "${_src}" ] && return 11
     [ ! -d "$HOME/.Trash" ] && return 12
-    local _size="10000k"
+
     local _mv="mv --backup=t"
     [ "Darwin" = "`uname`" ] && _mv="gmv --backup=t"
 
@@ -187,13 +188,13 @@ function backupC() {
     find ${_src%/} -type d -mtime +90 -name database -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ || return $?
 
     # Delete files larger than _size (10MB) and older than one year
-    find ${_src%/} -type f -mtime +365 -size +${_size} -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
-    # Delete files larger than 100MB and older than 180 days
-    find ${_src%/} -type f -mtime +180 -size +100000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
-    # Delete files larger than 200MB and older than 90 days
-    find ${_src%/} -type f -mtime +90 -size +200000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
+    find ${_src%/} -type f -mtime +365 -size +10000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
+    # Delete files larger than 60MB and older than 180 days
+    find ${_src%/} -type f -mtime +180 -size +60000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
+    # Delete files larger than 100MB and older than 90 days
+    find ${_src%/} -type f -mtime +90 -size +100000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
     # Synch all files smaller than _size (10MB)
-    rsync -Pvaz --max-size=${_size} --modify-window=1 ${_src%/}/* ${_dst%/}/
+    rsync -Pvaz --max-size=10000k --modify-window=1 ${_src%/}/* ${_dst%/}/
     wait
 }
 
