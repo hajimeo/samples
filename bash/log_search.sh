@@ -461,6 +461,8 @@ function f_genJdbcConnStr() {
 def p(s, database):
   if s["connectorType"] in ("hive", "hive1", "hive1cdh5"):
     schema="hive2"
+  elif s["connectorType"] in ("impala", "impala-legacy"):
+    schema="impala"
   else:
     schema=s["connectorType"]
   print("jdbc:%s://%s:%s/%s%s" % (str(schema),str(s["hosts"]),str(s["port"]),str(database),str(s["extraJdbcFlags"])))
@@ -471,11 +473,11 @@ for o in d:
   if "subgroups" not in d[o]:
     for e in d[o]:
       for s in d[o][e]["subgroups"]:
-        print("### orgId:%s -> envId:%s" % (o, e))
+        print("### orgId:%s -> envId:%s -> name:%s" % (o, e, s["name"]))
         p(s, d[o][e]["defaultSchema"])
   else:
     for s in d[o]["subgroups"]:
-      print("### orgId:%s" % (o))
+      print("### orgId:%s -> name:%s" % (o, s["name"]))
       p(s, d[o]["aggregateSchema"])
 '
 }
