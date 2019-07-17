@@ -69,6 +69,11 @@ function p_support() {
     echo " "
     f_genKinit
     echo " "
+    f_genJdbcConnStr
+    echo " "
+    f_genLdapsearch
+    echo " "
+    echo " "
 
     echo "#[$(date +"%H:%M:%S")] runtime.yaml (usedMem = totalMemory() - freeMemory())"
     _find_and_cat "runtime.yaml"
@@ -96,6 +101,7 @@ function p_support() {
 
     echo "#[$(date +"%H:%M:%S")] Connection group (warehouse -> sql engine)"
     _find_and_cat "connection_groups.json" | python -m json.tool
+    echo " "
     echo "#[$(date +"%H:%M:%S")] Connection pool (sql engine)"
     _find_and_cat "pool.json"   # check maxConnections, consecutiveFailures
     echo " "
@@ -121,9 +127,6 @@ function p_support() {
 
     echo "#[$(date +"%H:%M:%S")] directory_configurations.json"
     _find_and_cat "directory_configurations.json"
-    echo " "
-    echo " "
-    f_genLdapsearch
     echo " "
     echo " "
 
@@ -437,8 +440,7 @@ function f_grep_multilines() {
 
 function f_genKinit() {
     local __doc__="Generate Kinit command from a config.yaml file"
-
-    _find_and_cat "config.yaml" 2>/dev/null | grep -E '(^user\.name|^kerberos)' | sort | uniq > /tmp/f_genKinit_$$.out
+    _find_and_cat "config.yaml" "Y" 2>/dev/null | grep -E '(^user\.name|^kerberos)' | sort | uniq > /tmp/f_genKinit_$$.out
     _load_yaml /tmp/f_genKinit_$$.out "_k_"
     if [ -n "${_k_kerberos_service}" ]; then
         echo "su - ${_k_user_name}"
@@ -450,11 +452,39 @@ function f_genKinit() {
     fi
 }
 
+function f_genJdbcConnStr() {
+    local __doc__="Generate JDBC connection strings (strings used after -u)"
+    local _json_str="`_find_and_cat "connection_groups.json" "Y" 2>/dev/null`"
+    [ -z "${_json_str}" ] && return
+    [ "${_json_str}" == "[ ]" ] && return
+    echo "${_json_str}" | python -c 'import sys,re,json
+def p(s, database):
+  if s["connectorType"] in ("hive", "hive1cdh5"):
+    schema="hive2"
+  else:
+    schema=s["connectorType"]
+  print("jdbc:%s://%s:%s/%s%s" % (str(schema),str(s["hosts"]),str(s["port"]),str(database),str(s["extraJdbcFlags"])))
+
+a=json.loads(sys.stdin.read());d=a[0]
+if type(d) == type([]): d={"default":d[0]}
+for o in d:
+  if "subgroups" not in d[o]:
+    for e in d[o]:
+      for s in d[o][e]["subgroups"]:
+        print("### orgId:%s -> envId:%s" % (o, e))
+        p(s, d[o][e]["defaultSchema"])
+  else:
+    for s in d[o]["subgroups"]:
+      print("### orgId:%s" % (o))
+      p(s, d[o]["aggregateSchema"])
+'
+}
+
 function f_genLdapsearch() {
     local __doc__="Generate ldapsearch command from a json file"
-    local _json_str="`_find_and_cat "directory_configurations.json" 2>/dev/null`"
+    local _json_str="`_find_and_cat "directory_configurations.json" "Y" 2>/dev/null`"
     [ -z "${_json_str}" ] && return
-    [ "${_json_str}" = "[ ]" ] && return
+    [ "${_json_str}" == "[ ]" ] && return
     echo "${_json_str}" | python -c 'import sys,re,json
 a=json.loads(sys.stdin.read());l=a[0]
 p="ldaps" if "use_ssl" in l and l["use_ssl"] else "ldap"
@@ -1261,10 +1291,14 @@ function _date2int() {
 }
 
 function _find_and_cat() {
-    for _f in `find . -name "$1" -print`; do
+    local _name="$1"
+    local _once="$2"
+    for _f in `find . -name "${_name}" -print`; do
         echo "## ${_f}" >&2
         if [ -n "${_f}" ]; then
             cat "${_f}"
+            echo ''
+            [[ "${_once}" =~ ^(y|Y) ]] && break
         fi
     done
 }
