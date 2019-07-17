@@ -459,7 +459,7 @@ function f_genJdbcConnStr() {
     [ "${_json_str}" == "[ ]" ] && return
     echo "${_json_str}" | python -c 'import sys,re,json
 def p(s, database):
-  if s["connectorType"] in ("hive", "hive1cdh5"):
+  if s["connectorType"] in ("hive", "hive1", "hive1cdh5"):
     schema="hive2"
   else:
     schema=s["connectorType"]
