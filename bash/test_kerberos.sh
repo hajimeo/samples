@@ -24,19 +24,36 @@ function check_java_flags() {
     _set_java_envs "${_port}" || return $?
     [ -z "$JAVA_USER" ] && return 1
 
-    sudo -u $JAVA_USER $JAVA_HOME/bin/jcmd $JAVA_PID VM.system_properties | grep ^java.security
+    sudo -u $JAVA_USER $JAVA_HOME/bin/jcmd $JAVA_PID VM.system_properties | tee /tmp/_java_flags_${_port}.out | grep -E '^(java|javax)\.security'
 }
 
-function test_jce_by_port() {
+function test_jce() {
     local _port="${1}"
     _set_java_envs "${_port}" || return $?
     echo "Checking JCE under $JAVA_HOME ..." >&2
     $JAVA_HOME/bin/jrunscript -e 'print (javax.crypto.Cipher.getMaxAllowedKeyLength("RC5") >= 256);'
 }
 
-function test_kvno() {
+function test_reverse_dns_lookup() {
+    local _fqdn="$1"
+    [ -z "${_fqdn}" ] && _fqdn="`hostname -f`"
+    local _resolved=1
+    for _ip in `hostname -I`; do
+        if python -c "import socket;print socket.gethostbyaddr('${_ip}')" | grep -qF "'${_fqdn}'"; then
+            echo "DEBUG: ${_ip} is not resolved to ${_fqdn}" >&2
+        else
+            echo "INFO: ${_ip} is resolved to ${_fqdn}" >&2
+            _resolved=0
+        fi
+    done
+    return ${_resolved}
+}
+
+
+function test_keytab() {
     local _keytab="$1"
 
+    ls -l "${_keytab}" || return $?
     klist -kte "${_keytab}" || return $?
 
     local _principal="`klist -k ${_keytab} | grep -m1 '@' | awk '{print $2}'`"
@@ -53,26 +70,24 @@ function test_kvno() {
     echo "Success" >&2
 }
 
+# TODO: Start web server by using JAAS or keytab/principal for SPNEGO test
 function test_spnego() {    # a.k.a. gssapi
-    local _url="$1" # eg http://`hostname -f`:8188/
+    local _url_or_port="$1" # eg http://`hostname -f`:8188/
     local _keytab="$2"
+    if [[ "${_url_or_port}" =~ ^[0-9]+$ ]]; then
+        # NOTE: if port, currently only using HTTP (no TLS/SSL)
+        _url_or_port="http://`hostname -f`:${_url_or_port}/"
+    fi
 
     if [ -s ${_keytab} ]; then
         local _principal="`klist -k ${_keytab} | grep -m1 '@' | awk '{print $2}'`"
         echo "Using principal ${_principal} ..." >&2
         kinit -kt ${_keytab} ${_principal}
     fi
-    if ! curl -s --negotiate -u : -k -f "${_url}"; then #--trace-ascii -
-        curl -v --negotiate -u : -k -f "${_url}" || return $?
+    if ! curl -s --negotiate -u : -k -f "${_url_or_port}"; then #--trace-ascii -
+        curl -v --negotiate -u : -k -f "${_url_or_port}" || return $?
     fi
     echo "Success" >&2
-}
-
-function test_dns_reverse_lookup() {
-    if ! python -c "import socket;print socket.gethostbyaddr('`hostname -i`')" | grep -F "'`hostname -f`'"; then
-        echo "Reverse lookup doesn't match with the hostname" >&2
-        return 1
-    fi
 }
 
 function test_with_ldapsearch() {
@@ -102,5 +117,32 @@ function test_with_ldapsearch() {
 
 ### main ########################
 if [ "$0" = "$BASH_SOURCE" ]; then
-    echo "source $BASH_SOURCE"
+    if [[ "$1" =~ ^[0-9]+$ ]]; then
+        echo "# Java security flags of a process which is listening on port ${1}"
+        check_java_flags "$1"
+        echo "# Test JCE on same process"
+        test_jce "$1"
+        echo "# Test this hostname's reverse lookup"
+        test_reverse_dns_lookup
+
+        _JAAS="$(cat /tmp/_java_flags_${1}.out | grep '^java.security.auth.login.config' | cut -d "=" -f 2)"
+        if [ -s "${_JAAS}" ]; then
+            echo "# Test Keytab(s) in ${_JAAS}"
+            for _kt in $(cat "${_JAAS}" | grep -owiE 'keyTab).+' | cut -d "=" -f 2); do
+                echo "## ${_kt}"
+                test_keytab ${_kt} || echo " failed!"
+            done
+
+            _CLIENT_KEYTAB="$(cat "${_JAAS}" | grep -Pzio "(?s)^Client ?\{[^}]+\}" | grep -owiE 'keyTab).+' -m 1 | cut -d "=" -f 2)"
+            if [ -s "${_CLIENT_KEYTAB}" ]; then
+                echo "# Test SPNEGO with ${_CLIENT_KEYTAB}"
+                test_spnego $1 "${_CLIENT_KEYTAB}"
+            fi
+        fi
+
+        # TODO: add test_with_ldapsearch
+    else
+        echo "source $BASH_SOURCE"
+        # typeset -F | grep -E '^declare -f (check|test)_' | cut -d' ' -f3
+    fi
 fi
