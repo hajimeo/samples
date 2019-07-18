@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+# curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/test_kerberos.sh
 
-function set_java_envs() {
+function _set_java_envs() {
     local _port="${1}"
     JAVA_PID=`lsof -ti:${_port}`
     if [ -z "${JAVA_PID}" ]; then
@@ -20,7 +21,7 @@ function set_java_envs() {
 
 function check_java_flags() {
     local _port="${1}"
-    set_java_envs "${_port}" || return $?
+    _set_java_envs "${_port}" || return $?
     [ -z "$JAVA_USER" ] && return 1
 
     sudo -u $JAVA_USER $JAVA_HOME/bin/jcmd $JAVA_PID VM.system_properties | grep ^java.security
@@ -28,7 +29,7 @@ function check_java_flags() {
 
 function test_jce_by_port() {
     local _port="${1}"
-    set_java_envs "${_port}" || return $?
+    _set_java_envs "${_port}" || return $?
     echo "Checking JCE under $JAVA_HOME ..." >&2
     $JAVA_HOME/bin/jrunscript -e 'print (javax.crypto.Cipher.getMaxAllowedKeyLength("RC5") >= 256);'
 }

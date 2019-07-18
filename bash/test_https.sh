@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/test_https.sh
 
 function get_ciphers() {
     # @see http://superuser.com/questions/109213/how-do-i-list-the-ssl-tls-cipher-suites-a-particular-website-offers
