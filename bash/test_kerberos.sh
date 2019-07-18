@@ -5,14 +5,8 @@ function _set_java_envs() {
     local _port="${1}"
     JAVA_PID=`lsof -ti:${_port}`
     if [ -z "${JAVA_PID}" ]; then
-        echo "Nothing running on port ${_port}" >&2
-        if [ -s /etc/hadoop/conf/hadoop-env.sh ]; then
-            echo "Using hadoop-env.sh instead ..." >&2
-            source /etc/hadoop/conf/hadoop-env.sh
-            return $?
-        else
-            return 1
-        fi
+        echo "ERROR: Nothing running on port ${_port}" >&2
+        return 1
     fi
     local _dir="$(dirname `readlink /proc/${JAVA_PID}/exe` 2>/dev/null)"
     JAVA_HOME="$(dirname $_dir)"
@@ -23,14 +17,13 @@ function check_java_flags() {
     local _port="${1}"
     _set_java_envs "${_port}" || return $?
     [ -z "$JAVA_USER" ] && return 1
-
     sudo -u $JAVA_USER $JAVA_HOME/bin/jcmd $JAVA_PID VM.system_properties | tee /tmp/_java_flags_${_port}.out | grep -E '^(java|javax)\.security'
 }
 
-function test_jce() {
+function check_jce() {
     local _port="${1}"
     _set_java_envs "${_port}" || return $?
-    echo "Checking JCE under $JAVA_HOME ..." >&2
+    echo "INFO: Checking JCE under $JAVA_HOME ..." >&2
     $JAVA_HOME/bin/jrunscript -e 'print (javax.crypto.Cipher.getMaxAllowedKeyLength("RC5") >= 256);'
 }
 
@@ -39,7 +32,7 @@ function test_reverse_dns_lookup() {
     [ -z "${_fqdn}" ] && _fqdn="`hostname -f`"
     local _resolved=1
     for _ip in `hostname -I`; do
-        if python -c "import socket;print socket.gethostbyaddr('${_ip}')" | grep -qF "'${_fqdn}'"; then
+        if ! python -c "import socket;print socket.gethostbyaddr('${_ip}')" | grep -qF "'${_fqdn}'"; then
             echo "DEBUG: ${_ip} is not resolved to ${_fqdn}" >&2
         else
             echo "INFO: ${_ip} is resolved to ${_fqdn}" >&2
@@ -49,15 +42,15 @@ function test_reverse_dns_lookup() {
     return ${_resolved}
 }
 
-
 function test_keytab() {
     local _keytab="$1"
+    local _principal="$2"
 
-    ls -l "${_keytab}" || return $?
+    ls -l ${_keytab} || return $?
     klist -kte "${_keytab}" || return $?
 
-    local _principal="`klist -k ${_keytab} | grep -m1 '@' | awk '{print $2}'`"
-    echo "Using principal ${_principal} ..." >&2
+    [ -z "${_principal}" ] && _principal="`klist -k ${_keytab} | grep -m1 '@' | awk '{print $2}'`"
+    echo "principal = ${_principal}" >&2
 
     if ! kinit -kt ${_keytab} ${_principal}; then
         KRB5_TRACE=/dev/stdout kinit -kt ${_keytab} ${_principal} || return $?
@@ -67,7 +60,7 @@ function test_keytab() {
     if ! kvno -k ${_keytab} ${_principal}; then
         KRB5_TRACE=/dev/stdout kvno -k ${_keytab} ${_principal} || return $?
     fi
-    echo "Success" >&2
+    return 0
 }
 
 # TODO: Start web server by using JAAS or keytab/principal for SPNEGO test
@@ -81,17 +74,18 @@ function test_spnego() {    # a.k.a. gssapi
 
     if [ -s ${_keytab} ]; then
         local _principal="`klist -k ${_keytab} | grep -m1 '@' | awk '{print $2}'`"
-        echo "Using principal ${_principal} ..." >&2
-        kinit -kt ${_keytab} ${_principal}
+        echo "principal = ${_principal}" >&2
+        kinit -kt ${_keytab} ${_principal} || return $?
     fi
-    if ! curl -s --negotiate -u : -k -f "${_url_or_port}"; then #--trace-ascii -
-        curl -v --negotiate -u : -k -f "${_url_or_port}" || return $?
+    echo "url = ${_url_or_port}" >&2
+    if ! curl -s --negotiate -u : -L -k -f "${_url_or_port}"; then #--trace-ascii -
+        curl -v --negotiate -u : -L -k -f "${_url_or_port}" || return $?
     fi
-    echo "Success" >&2
+    return 0
 }
 
-function test_with_ldapsearch() {
-    local __doc__="Test groups with ldapsearch (can use KRB5_CONFIG)"
+function check_with_ldapsearch() {
+    local __doc__="Check groups with ldapsearch (can use KRB5_CONFIG)"
     local _search="$1"      # uid=testuser
     local _binddn="$2"      # uid=admin,cn=users,cn=accounts,dc=ubuntu,dc=localdomain
     local _searchbase="$3"  # cn=accounts,dc=ubuntu,dc=localdomain
@@ -120,27 +114,36 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     if [[ "$1" =~ ^[0-9]+$ ]]; then
         echo "# Java security flags of a process which is listening on port ${1}"
         check_java_flags "$1"
-        echo "# Test JCE on same process"
-        test_jce "$1"
+        echo ""
+        check_jce "$1"
+        echo ""
+
         echo "# Test this hostname's reverse lookup"
-        test_reverse_dns_lookup
+        test_reverse_dns_lookup || echo " failed!"
+        echo ""
 
         _JAAS="$(cat /tmp/_java_flags_${1}.out | grep '^java.security.auth.login.config' | cut -d "=" -f 2)"
         if [ -s "${_JAAS}" ]; then
             echo "# Test Keytab(s) in ${_JAAS}"
-            for _kt in $(cat "${_JAAS}" | grep -owiE 'keyTab).+' | cut -d "=" -f 2); do
-                echo "## ${_kt}"
-                test_keytab ${_kt} || echo " failed!"
-            done
+            for _kt_p in $(cat "${_JAAS}" | sed -n -r "N;s/\n/,/;s/\s*\b(keyTab|principal) ?= ?['\"]?([^'\"]+)['\"]?/\2/gpI" | sort | uniq); do
+                [[ ! "${_kt_p}" =~ ^([^,]+),(.+) ]] && continue
+                _KEYTAB="${BASH_REMATCH[1]}"
+                _PRINCIPAL="${BASH_REMATCH[2]}"
 
-            _CLIENT_KEYTAB="$(cat "${_JAAS}" | grep -Pzio "(?s)^Client ?\{[^}]+\}" | grep -owiE 'keyTab).+' -m 1 | cut -d "=" -f 2)"
+                echo "## ${_kt_p}"
+                test_keytab "${_KEYTAB}" "${_PRINCIPAL}" || echo " failed!"
+            done
+            echo ""
+
+            _CLIENT_KEYTAB="$(cat "${_JAAS}" | grep -Pzio "(?s)^Client ?\{[^}]+\}" | sed -n -r "s/^\s*(keyTab) ?= ?['\"]?([^'\"]+)['\"]?/\2/pI")"
             if [ -s "${_CLIENT_KEYTAB}" ]; then
                 echo "# Test SPNEGO with ${_CLIENT_KEYTAB}"
-                test_spnego $1 "${_CLIENT_KEYTAB}"
+                test_spnego $1 "${_CLIENT_KEYTAB}" || echo " failed!"
+                echo ""
             fi
         fi
 
-        # TODO: add test_with_ldapsearch
+        # TODO: add check_with_ldapsearch
     else
         echo "source $BASH_SOURCE"
         # typeset -F | grep -E '^declare -f (check|test)_' | cut -d' ' -f3
