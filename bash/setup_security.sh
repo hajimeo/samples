@@ -1510,4 +1510,12 @@ else
         curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/$g_START_HDP_SH -o "./$g_START_HDP_SH"
     fi
     source "./$g_START_HDP_SH"
+
+    g_SETUP_HOST="_setup_host.sh"
+    # sourcing required script
+    if [ ! -s "./${g_SETUP_HOST}" ]; then
+        echo "${g_SETUP_HOST} is missing. Downloading..."
+        curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/${g_SETUP_HOST} -o ./${g_SETUP_HOST}
+    fi
+    source ./${g_SETUP_HOST}
 fi
