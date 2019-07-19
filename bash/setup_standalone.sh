@@ -927,51 +927,6 @@ function p_tableau_server() {
     #fi
 }
 
-function f_shellinabox() {
-    local __doc__="Install and set up shellinabox https://code.google.com/archive/p/shellinabox/wikis/shellinaboxd_man.wiki"
-    local _user="${1-webuser}"
-    local _pass="${2-webuser}"
-    local _proxy_port="${3-28081}"
-
-    # TODO: currently only Ubuntu
-    apt-get install -y openssl shellinabox || return $?
-
-    if ! grep -q "$_user" /etc/passwd; then
-        _useradd "$_user" "$_pass" "Y" || return $?
-        usermod -a -G docker ${_user}
-        _log "INFO" "${_user}:${_pass} has been created."
-    fi
-
-    if ! grep -qE "^SHELLINABOX_ARGS.+${_user}:.+/shellinabox_login\"" /etc/default/shellinabox; then
-        [ ! -s /etc/default/shellinabox.orig ] && cp -p /etc/default/shellinabox /etc/default/shellinabox.orig
-        sed -i 's@^SHELLINABOX_ARGS=.\+@SHELLINABOX_ARGS="--no-beep -s /'${_user}':'${_user}':'${_user}':HOME:/usr/local/bin/shellinabox_login"@' /etc/default/shellinabox
-        service shellinabox restart || return $?
-    fi
-
-    # NOTE: Assuming socks5 proxy is running on localhost 28081
-    if [ ! -f /usr/local/bin/setup_standalone.sh ]; then
-        cp $BASH_SOURCE /usr/local/bin/setup_standalone.sh || return $?
-        _log "INFO" "$BASH_SOURCE is copied to /usr/local/bin/setup_standalone.sh. To avoid confusion, please delete .sh one"
-    fi
-    chown root:docker /usr/local/bin/setup_standalone*
-    chmod 750 /usr/local/bin/setup_standalone*
-
-    # Finding Network Address from docker. Seems Mac doesn't care if IP doesn't end with .0
-    local _net_addr="`docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])"`"
-    _net_addr="`echo "${_net_addr}" | sed 's/\.[1-9]\+\/[1-9]\+/.0/'`"
-
-    curl -s -f --retry 3 -o /usr/local/bin/shellinabox_login https://raw.githubusercontent.com/hajimeo/samples/master/misc/shellinabox_login.sh || return $?
-    sed -i "s/%_user%/${_user}/g" /usr/local/bin/shellinabox_login
-    sed -i "s/%_proxy_port%/${_proxy_port}/g" /usr/local/bin/shellinabox_login
-    sed -i "s@%_net_addr%@${_net_addr}@g" /usr/local/bin/shellinabox_login
-    chmod a+x /usr/local/bin/shellinabox_login
-
-    sleep 1
-    local _port=`sed -n -r 's/^SHELLINABOX_PORT=([0-9]+)/\1/p' /etc/default/shellinabox`
-    lsof -i:${_port}
-    _log "INFO" "To access: 'https://`hostname -I | cut -d" " -f1`:${_port}/${_user}/'"
-}
-
 function _useradd() {
     local __doc__="Add user on Host"
     local _user="$1"
