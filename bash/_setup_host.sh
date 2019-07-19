@@ -50,7 +50,7 @@ function f_shellinabox() {
     # TODO: currently only Ubuntu
     apt-get install -y openssl shellinabox || return $?
 
-    if ! grep -q "$_user" /etc/passwd; then
+    if ! id -u $_user &>/dev/null; then
         _useradd "$_user" "$_pass" "Y" || return $?
         usermod -a -G docker ${_user}
         _log "INFO" "${_user}:${_pass} has been created."
@@ -174,7 +174,7 @@ function f_chrome() {
 function f_x2go_setup() {
     local __doc__="Install and setup next generation remote desktop X2Go"
     local _user="${1-$USER}"
-    local _pass="${2-$g_DEFAULT_PASSWORD}"
+    local _pass="${2:-"${_user}"}"
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
@@ -187,7 +187,7 @@ function f_x2go_setup() {
 
     _info "Please install X2Go client from http://wiki.x2go.org/doku.php/doc:installation:x2goclient"
 
-    if [ ! `grep "$_user" /etc/passwd` ]; then
+    if ! id -u $_user &>/dev/null; then
         f_useradd "$_user" "$_pass" || return $?
     fi
 }
@@ -348,15 +348,16 @@ function f_vnc_setup() {
     local __doc__="Install X and VNC Server. NOTE: this uses about 400MB space"
     # https://www.digitalocean.com/community/tutorials/how-to-install-and-configure-vnc-on-ubuntu-16-04
     local _user="${1:-vncuser}"
-    local _vpass="${2:-$g_DEFAULT_PASSWORD}"
-    local _pass="${3:-$g_DEFAULT_PASSWORD}"
+    local _vpass="${2:-${_user}}"
+    local _pass="${3:-${_user}}"
+    local _portXX="${4:-"10"}"
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
         return 1
     fi
 
-    if ! grep -q "$_user" /etc/passwd; then
+    if ! id -u $_user &>/dev/null; then
         f_useradd "$_user" "$_pass" || return $?
     fi
 
@@ -380,16 +381,19 @@ xrdb ${HOME%/}/.Xresources
 autocutsel -fork
 startxfce4 &" > ${HOME%/}/.vnc/xstartup
 chmod u+x ${HOME%/}/.vnc/xstartup'
+
+    local _host_ip="`hostname -I | cut -d" " -f1`"
     #echo "TightVNC client: https://www.tightvnc.com/download.php"
     echo "START VNC:
-    su - $_user -c 'vncserver -geometry 1600x960 -depth 16 :1'
-NOTE: Please disable Screensaver from Settings.
+    su - $_user -c 'vncserver -geometry 1600x960 -depth 16 :${_portXX}'
+    NOTE: Please disable Screensaver from Settings.
 
 STOP VNC:
-    su - $_user -c 'vncserver -kill :1'"
+    su - $_user -c 'vncserver -kill :${_portXX}'
 
-    # to check
-    #sudo netstat -aopen | grep 5901
+ACCESS VNC:
+    vnc://${_user}:${_vpass}@${_host_ip}:59${_portXX}
+"
 }
 
 function f_useradd() {
@@ -398,7 +402,7 @@ function f_useradd() {
     local _pwd="$2"
     local _copy_ssh_config="$3"
 
-    if grep -q "$_user" /etc/passwd; then
+    if id -u $_user &>/dev/null; then
         _info "$_user already exists. Skipping useradd command..."
     else
         # should specify home directory just in case?
@@ -552,7 +556,7 @@ function f_pptpd() {
     local __doc__="Setup PPTP daemon on Ubuntu host"
     # Ref: https://askubuntu.com/questions/891393/vpn-pptp-in-ubuntu-16-04-not-working
     local _user="${1:-pptpuser}"
-    local _pass="${2:-$g_DEFAULT_PASSWORD}"
+    local _pass="${2:-${_user}}"
     local _if="${3}"
 
     local _vpn_net="10.0.0"
@@ -566,7 +570,7 @@ function f_pptpd() {
     grep -q '^localip' /etc/pptpd.conf || echo -e "localip ${_vpn_net}.1\nremoteip ${_vpn_net}.100-200" >> /etc/pptpd.conf
     # NOTE: not setting up DNS by editing pptpd-options, and net.ipv4.ip_forward=1 should have been done
 
-    if ! grep -q "$_user" /etc/passwd; then
+    if ! id -u $_user &>/dev/null; then
         f_useradd "$_user" "$_pass" || return $?
     fi
     grep -q "^${_user}" /etc/ppp/chap-secrets || echo "${_user} * ${_pass} *" >> /etc/ppp/chap-secrets
@@ -581,7 +585,7 @@ function f_l2tpd() {
     local __doc__="Setup L2TP daemon on Ubuntu host"
     # Ref: https://qiita.com/namoshika/items/30c348b56474d422ef64 (japanese)
     local _user="${1:-l2tpuser}"
-    local _pass="${2:-$g_DEFAULT_PASSWORD}"
+    local _pass="${2:-${_user}}"
     local _if="${3}"
 
     local _vpn_net="10.0.1"
@@ -645,7 +649,7 @@ mtu 1100
 mru 1100
 logfile /var/log/xl2tpd.log' > /etc/ppp/options.l2tpd.lns
 
-    if ! grep -q "$_user" /etc/passwd; then
+    if ! id -u $_user &>/dev/null; then
         f_useradd "$_user" "$_pass" || return $?
     fi
     grep -q "^${_user}" /etc/ppp/chap-secrets || echo "${_user} * ${_pass} *" >> /etc/ppp/chap-secrets
@@ -746,6 +750,50 @@ function f_tunnel() {
     #iptables -t nat -L --line-numbers; iptables -t nat -D POSTROUTING 3 #iptables -t nat -F
     #iptables -t nat -A POSTROUTING -s ${_container_network_from%0}0/${_container_net_mask#/} ! -d 172.17.0.0/16 -j MASQUERADE
     #echo "Please run \"ip route del 172.17.0.0/16 via 0.0.0.0\" on all containers on both hosts."
+}
+
+function f_kvm() {
+    local __doc__="TODO: Install KVM on Ubuntu (16.04) host"
+    local _virt_user="${1-"virtuer"}"
+    local _virt_pass="${2:-"${_virt_user}"}"
+
+    apt-get -y install qemu-kvm libvirt-bin virtinst bridge-utils libosinfo-bin libguestfs-tools virt-top virt-manager qemu-system
+    if ! grep -qw "vhost_ned" /etc/modules; then
+        modprobe vhost_net
+        echo vhost_net >> /etc/modules
+        _info "You may need to reboot before using KVM."
+    fi
+
+    if [ -n "${_virt_user}" ] && ! id -u ${_virt_user} &>/dev/null; then
+        f_useradd "${_virt_user}" "${_virt_pass}" || return $?
+
+        local _group="$(getent group | grep -Ew '^(libvirt|libvirtd)' | cut -d":" -f1)"
+        if [ -z "${_group}" ]; then
+            _error "libvirt(d) group does not exist. Check the installation (groupadd --system libvirtd)"
+            return 1
+        fi
+
+        usermod -a -G ${_group} ${_virt_user}
+        #newgrp libvirt
+
+        if ! grep '^unix_sock_group' /etc/libvirt/libvirtd.conf | grep -qw ${_group}; then
+            _error "${_group} is not configured in /etc/libvirt/libvirtd.conf"
+            return 1
+            #systemctl restart libvirtd.service
+        fi
+    fi
+}
+
+function f_mac2ip() {
+    local __doc__="Try finding IP address from arp cache"
+    local _mac="$1"
+    local _xxx_xxx_xxx="$2" # ping -b takes looooooong time
+    [ -z "${_mac}" ] && return 1
+    if [ -n "${_xxx_xxx_xxx}" ]; then
+        _info "ping-ing to ${_xxx_xxx_xxx%.}.% ..."
+        echo $(seq 254) | xargs -P128 -I% -d" " ping -q -n -W 1 -c 1 ${_xxx_xxx_xxx%.}.% &>/dev/null
+    fi
+    arp -a | grep -i "${_mac}"
 }
 
 function f_vmware_tools_install() {
