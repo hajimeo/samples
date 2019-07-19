@@ -67,6 +67,9 @@ function p_support() {
     echo "#[$(date +"%H:%M:%S")] config.yaml (filtered)"
     _find_and_cat "config.yaml" | rg '(^AS_LOG_DIR|^HOSTNAME|^JAVA_HOME|^user\.timezone|^connection\.pool\.testStatement|^estimator.enabled|^query\.result\.max_rows|^thrifty\.client\.protocol|^aggregates\.create\.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs\.aggregates\.maintainer|^authorization\.impersonation\.jdbc\.enabled)' | sort | uniq
     echo " "
+    echo " "
+
+    echo "#[$(date +"%H:%M:%S")] Command examples"
     f_genKinit
     echo " "
     f_genJdbcConnStr
@@ -473,13 +476,13 @@ for o in d:
   if "subgroups" not in d[o]:
     for e in d[o]:
       for s in d[o][e]["subgroups"]:
-        print("### orgId:%s -> envId:%s -> name:%s" % (o, e, s["name"]))
+        print("## orgId:%s -> envId:%s -> name:%s" % (o, e, s["name"]))
         p(s, d[o][e]["defaultSchema"])
   else:
     for s in d[o]["subgroups"]:
-      print("### orgId:%s -> name:%s" % (o, s["name"]))
+      print("## orgId:%s -> name:%s" % (o, s["name"]))
       p(s, d[o]["aggregateSchema"])
-'
+' 2>/dev/null
 }
 
 function f_genLdapsearch() {
