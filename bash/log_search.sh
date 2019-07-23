@@ -460,7 +460,7 @@ function f_genJdbcConnStr() {
     local _json_str="`_find_and_cat "connection_groups.json" "Y" 2>/dev/null`"
     [ -z "${_json_str}" ] && return
     [ "${_json_str}" == "[ ]" ] && return
-    echo "${_json_str}" | python -c 'import sys,re,json
+    echo "${_json_str}" | python -c 'import sys,json
 def p(s, database):
   if s["connectorType"] in ("hive", "hive1", "hive1cdh5"):
     schema="hive2"
@@ -468,21 +468,24 @@ def p(s, database):
     schema="impala"
   else:
     schema=s["connectorType"]
+  if "extraJdbcFlags" not in s: s["extraJdbcFlags"] = ""
   print("jdbc:%s://%s:%s/%s%s" % (str(schema),str(s["hosts"]),str(s["port"]),str(database),str(s["extraJdbcFlags"])))
 
-a=json.loads(sys.stdin.read());d=a[0]
-if type(d) == type([]): d={"default":d[0]}
-for o in d:
-  if "subgroups" not in d[o]:
-    for e in d[o]:
-      for s in d[o][e]["subgroups"]:
-        print("## orgId:%s -> envId:%s -> name:%s" % (o, e, s["name"]))
-        p(s, d[o][e]["defaultSchema"])
+j=json.loads(sys.stdin.read());
+l=j
+if type(j[0]) == type([]): l=j[0]  # 7.4 and higher
+for o in l:
+  if "subgroups" in o:   # 7.4 and higher (no env)
+    for s in o["subgroups"]:
+      print("## orgId:%s > id:%s" % (o["name"], s["id"]))
+      p(s, o["aggregateSchema"])
   else:
-    for s in d[o]["subgroups"]:
-      print("## orgId:%s -> name:%s" % (o, s["name"]))
-      p(s, d[o]["aggregateSchema"])
-' 2>/dev/null
+    for oid in o:
+      for eid in o[oid]:
+          for s in o[oid][eid]["subgroups"]:
+            print("## orgId:%s > envId:%s > id:%s" % (oid, eid, s["id"]))
+            p(s, o[oid][eid]["defaultSchema"])
+'
 }
 
 function f_genLdapsearch() {
