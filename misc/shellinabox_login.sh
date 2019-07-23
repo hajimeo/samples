@@ -62,7 +62,7 @@ if len(_ss_args) > 0:
 
     _vnc_port="`ps auxwww | sed -n -r 's/^webuser.+Xtightvnc.+rfbport ([0-9]+).+/\1/p'`"
     if [ -n "${_vnc_port}" ]; then
-        echo "# Remote desktop access (cmd + click):"
+        echo "# Remote desktop access (VNC):"
         echo "  vnc://webuser:webuser@${_HOST_IP}:${_vnc_port}"
         echo ""
     fi
