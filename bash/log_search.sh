@@ -477,13 +477,13 @@ if type(j[0]) == type([]): l=j[0]  # 7.4 and higher
 for o in l:
   if "subgroups" in o:   # 7.4 and higher (no env)
     for s in o["subgroups"]:
-      print("## orgId:%s > id:%s" % (o["name"], s["id"]))
+      print("## orgId:%s > id:%s" % (o["organizationId"], s["id"]))
       p(s, o["aggregateSchema"])
   else:
     for oid in o:
       for eid in o[oid]:
           for s in o[oid][eid]["subgroups"]:
-            print("## orgId:%s > envId:%s > id:%s" % (oid, eid, s["id"]))
+            print("## orgId:%s > id:%s" % (oid, s["id"]))
             p(s, o[oid][eid]["defaultSchema"])
 '
 }
@@ -494,11 +494,14 @@ function f_genLdapsearch() {
     [ -z "${_json_str}" ] && return
     [ "${_json_str}" == "[ ]" ] && return
     echo "${_json_str}" | python -c 'import sys,re,json
-a=json.loads(sys.stdin.read());l=a[0]
-p="ldaps" if "use_ssl" in l and l["use_ssl"] else "ldap"
-r=re.search(r"^[^=]*?=?([^=]+?)[ ,@]", l["username"])
-u=r.group(1) if bool(r) else l["username"]
-print("LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"" % (p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u))'
+a=json.loads(sys.stdin.read())
+for l in a:
+  print("## orgId:%s" % (l["org_id"]))
+  p="ldaps" if "use_ssl" in l and l["use_ssl"] else "ldap"
+  r=re.search(r"^[^=]*?=?([^=]+?)[ ,@]", l["username"])
+  u=r.group(1) if bool(r) else l["username"]
+  print("LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"" % (p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u))
+'
 }
 
 function f_topCausedByExceptions() {
