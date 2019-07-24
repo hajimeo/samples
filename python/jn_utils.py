@@ -709,7 +709,7 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
     return (tmp_tuple, prev_matches, prev_message)
 
 
-def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None):
+def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None, replace_comma=False):
     """
     Read a file and search each line with given regex
     :param file_path: A file path
@@ -718,6 +718,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     :param size_regex: Regex to capture size
     :param time_regex: Regex to capture time/duration
     :param num_cols: Number of columns
+    :param replace_comma: Sqlite does not like comma in datetime with milliseconds
     :return: A list of tuples
     >>> pass    # TODO: implement test
     """
@@ -728,6 +729,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     prev_matches = None
     prev_message = None
     tuples = []
+    time_with_ms = re.compile('\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+')
 
     f = _read(file_path)
     # Read lines
@@ -739,6 +741,10 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
                                                                  line_re=line_re, size_re=size_re, time_re=time_re,
                                                                  num_cols=num_cols)
         if bool(tmp_tuple):
+            if replace_comma and time_with_ms.search(tmp_tuple[0]):
+                tmp_l = list(tmp_tuple)
+                tmp_l[0] = tmp_tuple[0].replace(",", ".")
+                tmp_tuple = tuple(tmp_l)
             tuples += [tmp_tuple]
 
     # append last message (last line)
@@ -750,7 +756,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
 def logs2table(file_name, tablename=None, conn=None,
                col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
-               line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
+               line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
                size_regex="[sS]ize = ([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
                max_file_num=10, multiprocessing=False):
     """
@@ -768,7 +774,7 @@ def logs2table(file_name, tablename=None, conn=None,
     :param multiprocessing: If True, use multiple CPUs
     :return: Void if no error, or a tuple contains multiple information for debug
     #>>> logs2table(file_name='queries.*log*', tablename='t_queries_log', col_names=['datetime', 'jsonstr', 'message', 'extra_lines'],
-                  line_matching='^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (\{.*?\}) - ([^:]+):(.*)')
+                  line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (\{.*?\}) - ([^:]+):(.*)')
     #True
     >>> pass    # TODO: implement test
     """
@@ -812,7 +818,7 @@ def logs2table(file_name, tablename=None, conn=None,
         for f in files:
             kwargs_list.append(
                 {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching, 'size_regex': size_regex,
-                 'time_regex': time_regex, 'num_cols': num_cols})
+                 'time_regex': time_regex, 'num_cols': num_cols, 'replace_comma':True})
         rs = _mexec(_read_file_and_search, kwargs_list, using_process=True)
         for tuples in rs:
             # If inserting into one table, probably no point of multiprocessing for this.
@@ -824,7 +830,7 @@ def logs2table(file_name, tablename=None, conn=None,
         for f in files:
             _err("Processing %s ..." % (str(f)))
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
-                                           size_regex=size_regex, time_regex=time_regex, num_cols=num_cols)
+                                           size_regex=size_regex, time_regex=time_regex, num_cols=num_cols, replace_comma=True)
             if len(tuples) > 0:
                 res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
                 if bool(res) is False:  # if fails once, stop
@@ -835,7 +841,7 @@ def logs2table(file_name, tablename=None, conn=None,
 
 def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
              num_fields=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
-             line_matching="^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
+             line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
              size_regex="[sS]ize =? ?([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
              max_file_num=10, multiprocessing=False):
     """
