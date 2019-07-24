@@ -879,7 +879,7 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
         for f in files:
             kwargs_list.append(
                 {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching, 'size_regex': size_regex,
-                 'time_regex': time_regex, 'num_cols': num_fields})
+                 'time_regex': time_regex, 'num_cols': num_fields, 'replace_comma':True})
         rs = _mexec(_read_file_and_search, kwargs_list, using_process=True)
         for tuples in rs:
             if len(tuples) > 0:
@@ -888,7 +888,7 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 
         for f in files:
             _err("Processing %s ..." % (str(f)))
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
-                                           size_regex=size_regex, time_regex=time_regex, num_cols=num_fields)
+                                           size_regex=size_regex, time_regex=time_regex, num_cols=num_fields, replace_comma=True)
             if len(tuples) > 0:
                 dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
     _err("Completed.")
