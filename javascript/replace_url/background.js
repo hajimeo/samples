@@ -2,13 +2,13 @@
 // Check https://developer.chrome.com/apps/match_patterns for url match pattern. Also '#' + '*' doesn't work as it is named alias
 chrome.webRequest.onBeforeRequest.addListener(replaceUrl, {
     //urls: ['https://*/*'],  // for debug
-    // NOTE: At this moment, our lightening view is broken. it fails to display many cases, so not redirecting , 'https://customers.atscale.com/s/case/*'
+    // NOTE: At this moment, our lightening view is broken. it fails to display many cases, so not redirecting , 'https://customers.xxxxx.com/s/case/*'
     urls: ['https://*.lightning.force.com/lightning/*', 'https://*.visual.force.com/*'], //'https://*.salesforce.com/console*'
     types: ["main_frame"]
 }, ["blocking"]);
 
 // Assuming ID starts with 50, and protocol + (hostname/path_to_id=) + (caseId), so that the index of groups is 2
-var caseId_regex = new RegExp("^https://(.+\.lightning\.force\.com/lightning/r/Case/|.+\.visual\.force\.com/apex/Case_Lightning.*[?&]id=|customers\.atscale\.com/s/case/)(50[^\?&/]+)");
+var caseId_regex = new RegExp("^https://(.+\.lightning\.force\.com/lightning/r/Case/|.+\.visual\.force\.com/apex/Case_Lightning.*[?&]id=|customers\.a.....e\.com/s/case/)(50[^\?&/]+)");
 var tab_regex = new RegExp("^https://(.+\.lightning\.force\.com/lightning/[ro]/Case/)");
 var ignore_regex = new RegExp("^https://.+\.lightning\.force\.com/lightning/(_classic/)");
 
@@ -40,8 +40,8 @@ function replaceUrl(r) {
     var id = match[2];
     var new_url = "https://atscale2ndorg.lightning.force.com/lightning/r/Case/" + id + "/view";
     //var new_url = "https://na63.salesforce.com/console#%2F" + match[2];
-    //var new_url = "https://customers.atscale.com/" + match[2];
-    //var new_url = "https://customers.atscale.com/s/case/" + match[2] + "/detail";
+    //var new_url = "https://customers.xxxxxxx.com/" + match[2];
+    //var new_url = "https://customers.xxxxxxx.com/s/case/" + match[2] + "/detail";
     console.log("New URL = " + new_url);
 
     // Get the list of currently opened tabs, to find the target/updating tab

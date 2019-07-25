@@ -325,7 +325,7 @@ function f_ssh_setup() {
     fi
 
     if [ ! -e $HOME/.ssh/config ]; then
-        echo "Host node* atscale* *.localdomain
+        echo "Host node* atscal* *.localdomain
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
   LogLevel ERROR

@@ -13,7 +13,7 @@
  *  ;ssl=true;sslTrustStore=<trust_store_path>;trustStorePassword=<trust_store_password>
  *
  * If Kerberos:
- * create "login.conf" like below (or use /usr/local/atscale/conf/krb/atscale-jaas.conf or /opt/atscale/current/conf/engine/jaas.conf):
+ * create "login.conf" like below (or use xxxx-jaas.conf or jaas.conf):
 echo 'Client {
   com.sun.security.auth.module.Krb5LoginModule required
   useTicketCache=true debug=true debugNative=true;

@@ -79,7 +79,7 @@ class KbWrapper(object):
                            '_query.documentCategories': 'on',
                            # 'query.documentCategories':'technical_documents',
                            'search-action': 'Search »'}
-        self.adminMail = "atscale@hajigle.com"
+        self.adminMail = "kbwrapper@hajigle.com"
         self.result = None
         self.lastList = None
         self.preCache = True

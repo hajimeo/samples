@@ -140,7 +140,7 @@ function p_support() {
     echo " "
 
     echo "#[$(date +"%H:%M:%S")] Engine start/restart"
-    rg -z -N --no-filename -g 'engine.*log*' '(AtScale Engine, shutting down|Shutting down akka system|actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
+    rg -z -N --no-filename -g 'engine.*log*' '(Engine, shutting down|Shutting down akka system|actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
     echo " "
     echo "#[$(date +"%H:%M:%S")] supervisord 'engine entered RUNNING state' (NOTE: time is probably not UTC)"
     rg -z -N --no-filename -g 'atscale_service.log' 'engine entered RUNNING state' | tail -n 10
@@ -250,7 +250,6 @@ EOF
     local _tmp_date_regex="${_DATE_FORMAT}.${_TIME_FMT4CHART}?"
     [ -n "${_YYYY_MM_DD_hh_m_regex}" ] && _tmp_date_regex="${_YYYY_MM_DD_hh_m_regex}"
 
-    # TODO: 2019-01-16 19:36:12,701 DEBUG [atscale-akka.actor.connection-pool-154790] {...} com.atscale.engine.connection.pool.ConnectionManagerActor - Current state:
     echo "# Connection pool failures per hour"
     # Didn't find a request to serve
     rg -N --no-filename -z -g "${_glob}" -i "^(${_tmp_date_regex}).+(Likely the pool is at capacity|failed to find free connection|Could not establish a JDBC|Cannot connect to subgroup|Could not create ConnectionManagerActor|No connections available|No free connections|Could not satisfy request|Connection warming failure for|Connection test failure|had failures. Will process queue again in)" -o -r '$1 $2' | sort | uniq -c | tail -n ${_n}
