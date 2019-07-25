@@ -89,7 +89,7 @@ def _chunks(l, n):
     return [l[i:i + n] for i in range(0, len(l), n)]  # xrange is replaced
 
 
-def _globr(ptn='*', src='./'):
+def _globr(ptn='*', src='./', loop=0):
     """
     As Python 2.7's glob does not have recursive option
     :param ptn: glob regex pattern
@@ -99,10 +99,16 @@ def _globr(ptn='*', src='./'):
     True
     """
     matches = []
+    n = 0
     for root, dirnames, filenames in os.walk(src):
         # os walk doesn't sort and almost random
         for filename in fnmatch.filter(sorted(filenames), ptn):
             matches.append(os.path.join(root, filename))
+            n = n + 1
+            if loop > 0 and n >= loop:
+                break
+        if loop > 0 and n >= loop:
+            break
     return matches
 
 
@@ -589,10 +595,15 @@ def hive_conn(conn_str="jdbc:hive2://localhost:10000/default", user="admin", pwd
     import jaydebeapi
     cur_dir = os.path.dirname(os.path.abspath(__file__))
     jar_dir = os.path.abspath(os.path.join(cur_dir, '..')) + "/java/hadoop"
+    jars = []
+    # currently using 1.x versions
+    jars += _globr(ptn="hive-jdbc-client-1.*.jar", src=jar_dir, loop=1)
+    if len(jars) == 0:
+        jars += _globr(ptn="hive-jdbc-1.*-standalone.jar", src=jar_dir, loop=1)
+        jars += _globr(ptn="hadoop-core-1.*.jar", src=jar_dir, loop=1)
+    _err("Loading jars: %s ..." % (str(jars)))
     conn = jaydebeapi.connect("org.apache.hive.jdbc.HiveDriver",
-                              conn_str, [user, pwd],
-                              [jar_dir + "/hive-jdbc-1.0.0-standalone.jar",
-                               jar_dir + "/hadoop-core-1.0.3.jar"]).cursor()
+                              conn_str, [user, pwd], jars).cursor()
     return conn
 
 
@@ -674,7 +685,7 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
     (None, ('2018-09-04',), 'test')
     """
     tmp_tuple = None
-    #_err(" - line: %s ." % (str(line)))
+    # _err(" - line: %s ." % (str(line)))
     # If current line is beginning of a new *log* line (eg: ^2018-08-\d\d...)
     if begin_re.search(line):
         # and if previous matches aren't empty, prev_matches is going to be saved
@@ -687,7 +698,7 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
             prev_matches = None
 
         _matches = line_re.search(line)
-        #_err("   _matches: %s" % (str(_matches)))
+        # _err("   _matches: %s" % (str(_matches)))
         if _matches:
             _tmp_groups = _matches.groups()
             prev_message = _tmp_groups[-1]
@@ -709,7 +720,8 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
     return (tmp_tuple, prev_matches, prev_message)
 
 
-def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None, replace_comma=False):
+def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None,
+                          replace_comma=False):
     """
     Read a file and search each line with given regex
     :param file_path: A file path
@@ -828,7 +840,7 @@ def logs2table(file_name, tablename=None, conn=None,
         for f in files:
             kwargs_list.append(
                 {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching, 'size_regex': size_regex,
-                 'time_regex': time_regex, 'num_cols': num_cols, 'replace_comma':True})
+                 'time_regex': time_regex, 'num_cols': num_cols, 'replace_comma': True})
         rs = _mexec(_read_file_and_search, kwargs_list, using_process=True)
         for tuples in rs:
             # If inserting into one table, probably no point of multiprocessing for this.
@@ -840,7 +852,8 @@ def logs2table(file_name, tablename=None, conn=None,
         for f in files:
             _err("Processing %s ..." % (str(f)))
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
-                                           size_regex=size_regex, time_regex=time_regex, num_cols=num_cols, replace_comma=True)
+                                           size_regex=size_regex, time_regex=time_regex, num_cols=num_cols,
+                                           replace_comma=True)
             if len(tuples) > 0:
                 res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
                 if bool(res) is False:  # if fails once, stop
@@ -889,7 +902,7 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'ids', 'siz
         for f in files:
             kwargs_list.append(
                 {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching, 'size_regex': size_regex,
-                 'time_regex': time_regex, 'num_cols': num_fields, 'replace_comma':True})
+                 'time_regex': time_regex, 'num_cols': num_fields, 'replace_comma': True})
         rs = _mexec(_read_file_and_search, kwargs_list, using_process=True)
         for tuples in rs:
             if len(tuples) > 0:
@@ -898,7 +911,8 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'ids', 'siz
         for f in files:
             _err("Processing %s ..." % (str(f)))
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
-                                           size_regex=size_regex, time_regex=time_regex, num_cols=num_fields, replace_comma=True)
+                                           size_regex=size_regex, time_regex=time_regex, num_cols=num_fields,
+                                           replace_comma=True)
             if len(tuples) > 0:
                 dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
     _err("Completed.")
@@ -1123,3 +1137,4 @@ if __name__ == '__main__':
     import doctest
 
     doctest.testmod(verbose=True)
+
