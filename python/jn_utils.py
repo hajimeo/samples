@@ -582,6 +582,7 @@ def _get_col_vals(matrix, i):
 def hive_conn(conn_str="jdbc:hive2://localhost:10000/default", user="admin", pwd="admin"):
     """
     Demonstrating Hive connection capability (eventually will merge into connect())
+    NOTE: This requires Java 8 (didn't work with Java 9)
     :param conn_str: jdbc:hive2://localhost:10000/default
     :param user: admin
     :param pwd:  admin
