@@ -1,8 +1,8 @@
 /*
  * https://cwiki.apache.org/confluence/display/Hive/HiveServer2+Clients#HiveServer2Clients-JDBC
  *
- * mkdir hadoop
- * javaenvs 10000  # in my alias
+ * mkdir hadoop     # Then copy jars and java file
+ * export CLASSPATH=.:./hadoop/hive-jdbc-client-1.2.1.jar
  * $JAVA_HOME/bin/javac hadoop/HiveJdbcClient.java
  *
  * Supported command arguments: -u, -e, -f, -n, -p, -l
