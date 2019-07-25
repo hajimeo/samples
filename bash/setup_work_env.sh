@@ -202,6 +202,13 @@ import jn_utils as ju
 get_ipython().run_line_magic('matplotlib', 'inline')" > "$HOME/.ipython/profile_default/startup/import_ju.py"
 }
 
+function f_setup_java() {
+    _install -y openjdk-8-jdk
+    if ! java -version 2>&1 | grep '1.8.0' -m 1; then
+        _log "WARN" "Java 8 might be required for python JayDeBeApi"
+    fi
+}
+
 function _install() {
     if which apt-get &>/dev/null; then
         sudo apt-get install "$@" || return $?
@@ -270,6 +277,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         f_setup_python; echo "Exit code $?"
         _log "INFO" "Running f_setup_golang ..."
         f_setup_golang; echo "Exit code $?"
+        _log "INFO" "Running f_setup_java ..."
+        f_setup_java; echo "Exit code $?"
         echo "Completed."
     fi
 fi
