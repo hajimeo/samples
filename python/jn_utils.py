@@ -754,11 +754,11 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
 
 
 def logs2table(file_name, tablename=None, conn=None,
-               col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
+               col_names=['datetime', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
                line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
                size_regex="[sS]ize = ([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
-               max_file_num=10, multiprocessing=False):
+               max_file_num=10, drop_first=False, multiprocessing=False):
     """
     Insert multiple log files into *one* table
     :param file_name: [Required] a file name (not path) or *simple* glob regex
@@ -771,10 +771,11 @@ def logs2table(file_name, tablename=None, conn=None,
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
+    :param drop_first: If True, use 'DROP TABLE IF EXISTS'
     :param multiprocessing: If True, use multiple CPUs
     :return: Void if no error, or a tuple contains multiple information for debug
-    #>>> logs2table(file_name='queries.*log*', tablename='t_queries_log', col_names=['datetime', 'jsonstr', 'message', 'extra_lines'],
-                  line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (\{.*?\}) - ([^:]+):(.*)')
+    #>>> logs2table(file_name='queries.*log*', tablename='t_queries_log', col_names=['datetime', 'ids', 'message', 'extra_lines'],
+                  line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (\{.*?\}) - ([^:]+):(.*)', drop_first=True)
     #True
     >>> pass    # TODO: implement test
     """
@@ -801,14 +802,23 @@ def logs2table(file_name, tablename=None, conn=None,
         for v in col_names:
             if col_def_str != "":
                 col_def_str += ", "
-            col_def_str += "%s TEXT" % (v)
+            if v == 'jsonstr':
+                col_def_str += "%s json" % (v)
+            else:
+                col_def_str += "%s TEXT" % (v)
 
     if bool(tablename) is False:
         tablename = _pick_new_key(file_name, {}, using_1st_char=False, prefix='t_')
 
     # If not None, create a table
     if bool(col_def_str):
-        _err("Creating table: %s ..." % (str(tablename)))
+        if drop_first:
+            res = conn.execute("DROP TABLE IF EXISTS %s" % (tablename))
+            if bool(res) is False:
+                return res
+            _err("Drop and Creating table: %s ..." % (str(tablename)))
+        else:
+            _err("Creating table: %s ..." % (str(tablename)))
         res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def_str))
         if bool(res) is False:
             return res
@@ -839,7 +849,7 @@ def logs2table(file_name, tablename=None, conn=None,
     _err("Completed.")
 
 
-def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'jsonstr', 'size', 'time', 'message'],
+def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
              num_fields=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
              line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
              size_regex="[sS]ize =? ?([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
