@@ -184,10 +184,11 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='', chu
 
 def json2df(file_path, db_conn=None, tablename=None, json_cols=[], chunksize=1000):
     """
-    Convert a json file into a DataFrame and if db_conn is given, import into a DB table
+    Convert a json file into a DataFrame
+    If db_conn is given, import into a DB table
     :param file_path: File path
     :param db_conn:   DB connection object
-    :param tablename: table name
+    :param tablename: If empty, table name will be the filename without extension
     :param json_cols: to_sql() fails if column is json, so forcing those columns to string
     :param chunksize:
     :return: a DataFrame object
@@ -198,6 +199,7 @@ def json2df(file_path, db_conn=None, tablename=None, json_cols=[], chunksize=100
     if bool(db_conn):
         if bool(tablename) is False:
             tablename, ext = os.path.splitext(os.path.basename(file_path))
+            _err("tablename: %s ..." % (tablename))
         # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
         df_tmp_mod.to_sql(name=tablename, con=db_conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
@@ -957,9 +959,14 @@ def load_csvs(src="./", db_conn=None, include_ptn='*.csv', exclude_ptn='', chunk
 def csv2df(file_path, db_conn=None, tablename=None, chunksize=1000, header=0):
     '''
     Load a CSV file into a DataFrame
+    If db_conn is given, import into a DB table
     :param file_path: File Path
     :param db_conn: DB connection object. If not empty, also import into a sqlite table
+    :param tablename: If empty, table name will be the filename without extension
+    :param chunksize: Rows will be written in batches of this size at a time
+    :param header: Row number(s) to use as the column names
     :return: Pandas DF object or False if file is not readable
+    #>>>
     >>> pass    # Testing in df2csv()
     '''
     global _DB_SCHEMA
@@ -969,6 +976,7 @@ def csv2df(file_path, db_conn=None, tablename=None, chunksize=1000, header=0):
     if bool(db_conn):
         if bool(tablename) is False:
             tablename, ext = os.path.splitext(os.path.basename(file_path))
+            _err("tablename: %s ..." % (tablename))
         df.to_sql(name=tablename, con=db_conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
     return df
 
