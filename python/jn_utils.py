@@ -981,13 +981,35 @@ def csv2df(file_path, db_conn=None, tablename=None, chunksize=1000, header=0):
     return df
 
 
+def obj2csv(obj, file_path, mode="w", header=True):
+    '''
+    Save a python object to a CSV file
+    :param obj: Pandas Data Frame object or list or dict
+    :param file_path: File Path
+    :param mode: mode used with open(). Default 'w'
+    :return: unknown (what to_csv returns)
+    >>> pass
+    '''
+    # [{"col1":1, "col2":2}, {"col1":3, "col2":4}]
+    if type(obj) == type([]):
+        df = pd.DataFrame(obj)
+    elif type(obj) == type({}):
+        df = pd.DataFrame.from_dict(obj)
+    elif type(obj) == pd.core.frame.DataFrame:
+        df = obj
+    else:
+        _err("Unsupported type: %s" % str(type(obj)))
+        return
+    return df2csv(df, file_path, mode=mode, header=header)
+
+
 def df2csv(df, file_path, mode="w", header=True):
     '''
     Save DataFrame to a CSV file
-    :param df_obj: Pandas Data Frame object
+    :param df: Pandas Data Frame object
     :param file_path: File Path
     :param mode: mode used with open(). Default 'w'
-    :return: void
+    :return: unknown (what to_csv returns)
     >>> import pandas as pd
     >>> df = pd.DataFrame([{"key":"a", "val":"value"}])
     >>> df2csv(df, '/tmp/test_df2csv.csv', 'w')
@@ -996,7 +1018,7 @@ def df2csv(df, file_path, mode="w", header=True):
         key   val
     0  True  True
     '''
-    df.to_csv(file_path, mode=mode, header=header, index=False, escapechar='\\')
+    return df.to_csv(file_path, mode=mode, header=header, index=False, escapechar='\\')
 
 
 def gen_ldapsearch(ldap_json=None):
@@ -1146,4 +1168,3 @@ if __name__ == '__main__':
     import doctest
 
     doctest.testmod(verbose=True)
-
