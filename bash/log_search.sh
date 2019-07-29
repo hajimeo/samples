@@ -440,6 +440,29 @@ function f_grep_multilines() {
     # not sure if rg sorts properly with --sort, so best effort (can not use ' | sort' as multi-lines)
 }
 
+function f_grep_logs() {
+    local __doc__="Grep YYYY-MM-DD.hh:mm:ss.+<something>"
+    local _str_in_1st_line="$1"
+    local _glob="${2:-"debug.*log*"}"
+    local _exclude_warn_error="${3}"
+
+    local _regex_1="${_DATE_FORMAT}.\d\d:\d\d:\d\d.+(${_str_in_1st_line})"
+    local _final_glob=""
+    for _l in `rg "${_regex_1}" -l -g "${_glob}"`; do
+        _final_glob="${_final_glob} -g ${_l}"
+    done
+    [ -z "${_final_glob}" ] && return
+
+    local _regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d.+(${_str_in_1st_line}|\bWARN\b|\bERROR\b|\b.+?Exception\b|\b[Ff]ailed\b)"
+    # It's a bit wasting resources...
+    [[ "${_exclude_warn_error}" =~ ^[yY] ]] && _regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d.+(${_str_in_1st_line})"
+
+    echo "# regex:${_regex} -g '${_glob}'" >&2
+    rg "${_regex}" \
+        --no-line-number --no-filename \
+        ${_final_glob} -m 2000 | sort -n | uniq
+}
+
 function f_genKinit() {
     local __doc__="Generate Kinit command from a config.yaml file"
     _find_and_cat "config.yaml" "Y" 2>/dev/null | grep -E '(^user\.name|^kerberos)' | sort | uniq > /tmp/f_genKinit_$$.out
@@ -1004,6 +1027,7 @@ function f_os_checklist() {
     #cat /sys/kernel/mm/transparent_hugepage/defrag
 
     # 1. check "sysctl -a" output
+    # Ref: http://www.tweaked.io/guide/kernel/
     local _props="vm.zone_reclaim_mode vm.swappiness vm.dirty_ratio vm.dirty_background_ratio kernel.shmmax vm.oom_dump_tasks net.core.somaxconn net.core.netdev_max_backlog net.core.rmem_max net.core.wmem_max net.core.rmem_default net.core.wmem_default net.ipv4.tcp_rmem net.ipv4.tcp_wmem net.ipv4.ip_local_port_range net.ipv4.tcp_mtu_probing net.ipv4.tcp_fin_timeout net.ipv4.conf.*.forwarding"
 
     _search_properties "${_conf%/}" "${_props}"
