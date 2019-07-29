@@ -37,6 +37,10 @@ function f_setup_misc() {
     if grep -qw docker /etc/group; then
         sudo usermod -a -G docker $USER && _log "NOTE" "Please re-login as user group has been changed."
     fi
+
+    if which git &>/dev/null && ! git config credential.helper | grep -qw cache; then
+        git config --global credential.helper "cache --timeout=600"
+    fi
 }
 
 function f_setup_rg() {
@@ -173,6 +177,8 @@ function f_setup_python() {
     #_install libsasl2-dev -y
     #sudo -i pip3 install sasl thrift thrift-sasl PyHive
     #sudo -i pip3 install pyhive[hive]
+    # This is for using Java 1.8 (to avoid "unsupported major.minor version 52.0")
+    sudo -i pip3 install 'JPype1==0.6.3' --force-reinstall
     sudo -i pip3 install JayDeBeApi
 
     f_jupyter_util
