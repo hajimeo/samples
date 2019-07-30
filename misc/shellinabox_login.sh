@@ -41,7 +41,17 @@ if len(_ss_args) > 0:
         fi
 
         echo "# URLs (NOTE: Chrome via proxy or route or VNC is required):"
-        for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort`; do for _p in 10500 8080 7180; do if timeout 1 curl -s -f "http://${_n}:${_p}/" &>/dev/null; then echo "  http://$_n:$_p/"; fi done done
+        for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort`; do
+            for _p in 10500 8080 7180; do
+                _hostname="$(docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])")"
+                # intentionally using different hostname due to HSTS
+                if timeout 1 curl -s -f "http://${_n}:${_p}/" &>/dev/null; then
+                    echo "  http://${_n}:${_p}/"
+                elif timeout 1 curl -s -f -k "https://${_hostname}:${_p}/" &>/dev/null; then
+                    echo "  https://${_hostname}:${_p}/"
+                fi
+            done
+        done
         echo ""
     fi
 
