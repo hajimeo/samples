@@ -515,7 +515,7 @@ function f_container_ssh_config() {
     local _name="${1:-${_NAME}}"
     local _key="${2:-"$HOME/.ssh/id_rsa"}"
     local _pub_key="${3:-"$HOME/.ssh/id_rsa.pub"}"
-    #local _global_auth_key_file="${4:-"${_SHARE_DIR%/}/.ssh/authorized_keys"}"
+    local _global_auth_key_file="${4:-"${_SHARE_DIR%/}/.ssh/authorized_keys"}"
 
     # ssh -q -oBatchMode=yes ${_name} echo && return 0
     if [ -z "${_name}" ]; then
@@ -535,13 +535,23 @@ function f_container_ssh_config() {
     docker exec -it ${_name} bash -c "[ -f /root/.ssh/authorized_keys ] || ( install -D -m 600 /dev/null /root/.ssh/authorized_keys && chmod 700 /root/.ssh )"
     docker exec -it ${_name} bash -c "[ -f /root/.ssh/id_rsa.orig ] && exit; [ -f /root/.ssh/id_rsa ] && mv /root/.ssh/id_rsa /root/.ssh/id_rsa.orig; echo \"`cat ${_key}`\" > /root/.ssh/id_rsa; chmod 600 /root/.ssh/id_rsa;echo \"`cat ${_pub_key}`\" > /root/.ssh/id_rsa.pub; chmod 644 /root/.ssh/id_rsa.pub"
     docker exec -it ${_name} bash -c "grep -q \"^`cat ${_pub_key}`\" /root/.ssh/authorized_keys || echo \"`cat ${_pub_key}`\" >> /root/.ssh/authorized_keys"
+    [ -s "${_global_auth_key_file}" ] && f_update_auth_key "${_name}" "${_global_auth_key_file}"
     #docker exec -it ${_name} bash -c "grep -q '^AuthorizedKeysFile' /etc/ssh/sshd_config && sed -i '/^AuthorizedKeysFile/ s@\$@ ${_global_auth_key_file}@' /etc/ssh/sshd_config && service sshd restart"
     docker exec -it ${_name} bash -c "[ -f /root/.ssh/config ] || echo -e \"Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\n  LogLevel ERROR\" > /root/.ssh/config"
+}
 
-    #if [ -f ${_global_auth_key_file} ]; then
-    #    chmod 700 "$(dirname "${_global_auth_key_file}")"
-    #    chmod 600 "${_global_auth_key_file}"
-    #fi
+function f_update_auth_key() {
+    local _name="${1:-${_NAME}}"
+    local _global_auth_key_file="${2:-"${_SHARE_DIR%/}/.ssh/authorized_keys"}"
+
+    if [ ! -s ${_global_auth_key_file} ]; then
+        _log "ERROR" "Please check ${_global_auth_key_file}"
+        return 1
+    fi
+
+    chmod 700 "$(dirname "${_global_auth_key_file}")"
+    chmod 600 "${_global_auth_key_file}"
+    docker exec -it ${_name} bash -c "echo \"`cat ${_global_auth_key_file}`\" >> /root/.ssh/authorized_keys && cat /root/.ssh/authorized_keys | sort | uniq > /root/.ssh/.authorized_keys.tmp && mv -f /root/.ssh/.authorized_keys.tmp /root/.ssh/authorized_keys"
 }
 
 function f_as_setup() {
