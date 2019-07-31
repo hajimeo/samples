@@ -20,3 +20,5 @@ web:*.{html,css,js}*
 --no-line-number
 #--no-filename
 --text
+# Remove below if slow
+--sort=path
