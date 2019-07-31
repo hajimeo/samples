@@ -1,5 +1,6 @@
 ## Simple/generic alias commands (some need pip though) ################################################################
 alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"' # cd to the last modified dir
+alias pjt='python -m json.tool'
 alias urldecode='python -c "import sys, urllib as ul; print ul.unquote_plus(sys.argv[1])"'
 #alias urlencode='python -c "import sys, urllib as ul; print ul.quote_plus(sys.argv[1])"'
 alias urlencode='python -c "import sys, urllib as ul; print ul.quote(sys.argv[1])"'
@@ -7,17 +8,16 @@ alias utc2int='python -c "import sys,time,dateutil.parser;print int(time.mktime(
 alias int2utc='python -c "import sys,time;print time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\""'
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'pdf' (pandas dataframe)
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
-alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
-alias rgm='rg -N --no-filename -z'
-alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew install gnu-time --with-default-names
-alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
-alias jn='jupyter-notebook &> /tmp/jupyter-notebook.out &'
 # Read xml file, then convert to dict, then json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
 # TODO: find with sys.argv[2] (no ".//"), then output as string
 alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(r.find(sys.argv[2],namespaces=r.nsmap))"'
 # Search with 2nd arg and output the path(s)
 alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();pprint.pprint([t.getelementpath(x) for x in r.findall(\".//\"+sys.argv[2],namespaces=r.nsmap)])"'
+alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
+alias jn='jupyter-notebook &> /tmp/jupyter-notebook.out &'
+alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
+alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew install gnu-time --with-default-names
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
 # Load/source my log searching utility functions
@@ -86,6 +86,42 @@ for l in sys.stdin:
         print json.dumps(jo, indent=4, sort_keys='${_sort_keys}')
     except ValueError:
         print l2'
+}
+# prettify any strings by checkinbg braces
+function prettify() {
+    local _str="$1"
+    local _pad="${2-"    "}"
+    #local _oneline="${3:-Y}"
+    #[[ "${_oneline}" =~ ^[yY] ]] && _str="$(echo "${_str}" | tr -d '\n')"
+    # TODO: convert to pyparsing (or think about some good regex)
+    python -c "import sys
+s = '${_str}';n = 0;p = '${_pad}';f = False;
+if len(s) == 0:
+    for l in sys.stdin:
+        s += l
+i = 0;
+while i < len(s):
+    if s[i] in ['(', '[', '{']:
+        if (s[i] == '(' and s[i + 1] == ')') or (s[i] == '[' and s[i + 1] == ']') or (s[i] == '{' and s[i + 1] == '}'):
+            sys.stdout.write(s[i] + s[i + 1])
+            i += 1
+        else:
+            n += 1
+            sys.stdout.write(s[i] + '\n' + (p * n))
+            f = True
+    elif s[i] in [',']:
+        sys.stdout.write(s[i] + '\n' + (p * n))
+        f = True
+    elif s[i] in [')', ']', '}']:
+        n -= 1
+        sys.stdout.write('\n' + (p * n) + s[i])
+    else:
+        sys.stdout.write(s[i])
+    if f:
+        if (i + 1) < len(s) and s[i + 1] == ' ' and ((i + 2) < len(s) and s[i + 2] != ' '):
+            i += 1
+    f = False
+    i += 1"
 }
 # Grep against jar file to find a class ($1)
 function jargrep() {
