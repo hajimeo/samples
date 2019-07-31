@@ -892,37 +892,6 @@ function f_getPerflog() {
     _getAfterFirstMatch "$_path" "^${_approx_datetime}.+ Thread-${_thread_id}\]: .+<PERFLOG method=${_method} " "Thread-${_thread_id}\]: .+<\/PERFLOG method=${_method} " | _grep -vP ": Thread-(?!${_thread_id})\]"
 }
 
-function f_prettify() {
-    local _str="$1"
-    local _pad="${2-"    "}"
-    # TODO: convert to pyparsing (or think about some good regex)
-    python -c "import sys
-s = '${_str}';n = 0;p = '${_pad}';f = False;
-i = 0;
-while i < len(s):
-    if s[i] in ['(', '[', '{']:
-        if (s[i] == '(' and s[i + 1] == ')') or (s[i] == '[' and s[i + 1] == ']') or (s[i] == '{' and s[i + 1] == '}'):
-            sys.stdout.write(s[i] + s[i + 1])
-            i += 1
-        else:
-            n += 1
-            sys.stdout.write(s[i] + '\n' + (p * n))
-            f = True
-    elif s[i] in [',']:
-        sys.stdout.write(s[i] + '\n' + (p * n))
-        f = True
-    elif s[i] in [')', ']', '}']:
-        n -= 1
-        sys.stdout.write('\n' + (p * n) + s[i])
-    else:
-        sys.stdout.write(s[i])
-    if f:
-        if (i + 1) < len(s) and s[i + 1] == ' ' and ((i + 2) < len(s) and s[i + 2] != ' '):
-            i += 1
-    f = False
-    i += 1"
-}
-
 function f_list_start_end(){
     local __doc__="Output start time, end time, difference(sec), (filesize) from *multiple* log files"
     local _glob="${1}"
