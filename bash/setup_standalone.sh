@@ -1200,7 +1200,7 @@ main() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "chl:Nn:m:PSsuv:" opts; do
+    while getopts "chl:m:Nn:PRSsuv:X" opts; do
         case $opts in
             c)
                 _CREATE_CONTAINER=true
