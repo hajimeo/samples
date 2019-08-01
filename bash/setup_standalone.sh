@@ -60,6 +60,12 @@ OTHERS (which normally you don't need to use):
         To stop any other port conflicting containers.
         When -P is used or the host is Mac, this option mgiht be required.
 
+    -X
+        Stop service only (to stop a container, use docker command)
+
+    -R
+        Restart service
+
     -h
         To see this message
 
@@ -86,6 +92,8 @@ _DOWNLOAD_URL="${_DOWNLOAD_URL-"http://192.168.6.163/${_SERVICE}/"}"
 
 _CREATE_CONTAINER=false
 _CREATE_OR_START=false
+_AS_STOP=false
+_AS_RESTART=false
 _DOCKER_PORT_FORWARD=false
 _DOCKER_STOP_OTHER=false
 _DOCKER_SAVE=false
@@ -611,6 +619,20 @@ function f_as_start() {
     docker exec -it ${_name} bash -c "lsof -i:10516 || sudo -u ${_service} -i /usr/local/${_service}/bin/${_service}_start"
 }
 
+function f_as_stop() {
+    local __doc__="Stop a specific Application Service for the container"
+    local _hostname="$1"
+    local _service="${2:-${_SERVICE}}"
+
+    # NOTE: To support different version, f_as_setup should create a symlink
+    local _name="`echo "${_hostname}" | cut -d"." -f1`"
+
+    # Workaround to absorb path difference between versions
+    docker exec -d ${_name} bash -c "[ -d /usr/local/${_service} ] && [ ! -e /usr/local/${_service}/bin ] && rmdir /usr/local/${_service}; [ -d /opt/${_service}/current/bin ] && [ ! -d /usr/local/${_service} ] && ln -s /opt/${_service}/current /usr/local/${_service}"
+    # Should stop SQL engine too?
+    docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_stop -f"
+}
+
 function f_as_hostname_change() {
     local __doc__="Scheduling hostname change of the application side"
     local _hostname="$1"
@@ -1059,6 +1081,24 @@ main() {
         mkdir -p -m 777 "${_WORK_DIR%/}/${_SERVICE}" || return $?
     fi
 
+    if ${_AS_STOP}; then
+        if [ -z "${_NAME}" ]; then
+            _log "ERROR" "To restart, need -n <name>"
+            return 1
+        fi
+        f_as_stop "${_NAME}" "${_SERVICE}"
+        return $?
+    fi
+
+    if ${_AS_RESTART}; then
+        if [ -z "${_NAME}" ]; then
+            _log "ERROR" "To restart, need -n <name>"
+            return 1
+        fi
+        f_as_start "${_NAME}" "${_SERVICE}" "Y"
+        return $?
+    fi
+
     # It's hard to access container directly on Mac, so adding port forwarding. Ref: https://docs.docker.com/docker-for-mac/networking/
     local _ports="";
     if $_DOCKER_PORT_FORWARD; then
@@ -1172,6 +1212,10 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             l)
                 _LICENSE="$OPTARG"
                 ;;
+            m)
+                _IMAGE_NAME="$OPTARG"
+                _CREATE_OR_START=true
+                ;;
             N)
                 _AS_NO_INSTALL_START=true
                 _CREATE_OR_START=true
@@ -1179,12 +1223,11 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             n)
                 _NAME="$OPTARG"
                 ;;
-            m)
-                _IMAGE_NAME="$OPTARG"
-                _CREATE_OR_START=true
-                ;;
             P)
                 _DOCKER_PORT_FORWARD=true
+                ;;
+            R)
+                _AS_RESTART=true
                 ;;
             S)
                 _DOCKER_STOP_OTHER=true
@@ -1199,6 +1242,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             v)
                 _VERSION="$OPTARG"
                 _CREATE_OR_START=true
+                ;;
+            X)
+                _AS_STOP=true
                 ;;
         esac
     done
