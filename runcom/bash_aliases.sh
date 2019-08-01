@@ -239,11 +239,13 @@ function backupC() {
 ## Work specific functions
 # copy script(s) into linux servers
 function asPubInst() {
-    scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh root@192.168.6.160:/var/tmp/share/atscale/ &
-    scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.162:/var/tmp/share/atscale/ &
-    scp -C $HOME/IdeaProjects/samples/atscale/install_atscale.sh hajime@192.168.6.163:/var/tmp/share/atscale/ &
-    scp $HOME/IdeaProjects/samples/atscale/install_atscale.sh hosako@dh1:/var/tmp/share/atscale/ &
-    cp -f $HOME/IdeaProjects/samples/atscale/install_atscale.sh $HOME/share/atscale/
+    local _service="${1:-"atscale"}"
+    scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh root@192.168.6.160:/var/tmp/share/${_service}/ &
+    scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hajime@192.168.6.162:/var/tmp/share/${_service}/ &
+    scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hajime@192.168.6.163:/var/tmp/share/${_service}/ &
+    scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hosako@dh1:/var/tmp/share/${_service}/ &
+    scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hosako@z230:/home/hosako/Public/${_service} &
+    cp -f $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh $HOME/share/${_service}/
     wait
     date
 }
