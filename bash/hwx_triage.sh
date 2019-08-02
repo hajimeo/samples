@@ -72,7 +72,8 @@ function f_check_system() {
     vmstat -d &> ${_work_dir%/}/vmstat_d.out &
     pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &
 
-    top -b -n 1 -c &> ${_work_dir%/}/top.out
+    mpstat -P ALL &> ${_work_dir%/}/top.out
+    top -b -n 1 -c &>> ${_work_dir%/}/top.out
     ps auxwwwf &> ${_work_dir%/}/ps.out
     netstat -aopen &> ${_work_dir%/}/netstat.out
     ifconfig 2>/dev/null || netstat -i &> ${_work_dir%/}/ifconfig.out
