@@ -12,7 +12,7 @@ _URLS=""                # Health check url per line
 
 function cmds() {
     local _user="${1:-${_USER}}"
-    date -u
+    echo "### START at $(date -u) ################"
     lsof -nPu ${_user} | awk '{print "PID-->"$2}' | uniq -c | sort -n | tail -5
     echo -n "# Total AtScale Usage -->";lsof -u ${_user} | wc -l
     echo -n "# Total System Usage -->";lsof | wc -l
@@ -22,6 +22,7 @@ function cmds() {
     echo "# CPU Usage --->"; mpstat -P ALL
     top -c -b -n 1 | head -n 20
     netstat -i
+    echo "### ENDED at $(date -u) ################"
     echo ""
 }
 
