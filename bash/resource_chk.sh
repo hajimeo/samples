@@ -65,7 +65,7 @@ function java_chk() {
     wait
 }
 
-if [ "$0" = "$BASH_SOURCE" ]; then
+#if [ "$0" = "$BASH_SOURCE" ]; then
     _INTERVAL=$(( 60 * 60 / ${_PER_HOUR} ))
     _PID="$(lsof -ti:${_PORT} -s TCP:LISTEN)" || exit 1
     _USER="$(stat -c '%U' /proc/${_PID})" || exit 1
@@ -87,4 +87,4 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         echo "### ENDED at $(date -u +'%Y-%m-%d %H:%M:%S') UTC ################" &>> ${_FILE_PATH}
         sleep ${_INTERVAL}
     done
-fi
+#fi
