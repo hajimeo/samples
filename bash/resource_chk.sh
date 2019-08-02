@@ -7,7 +7,9 @@ _PER_HOUR="${1:-3}"   # How often checks per hour (3 means 20 mins interval)
 _TIMEOUT_SEC="${2:-5}"  # If health check takes longer this seconds, it does extra check
 
 _PORT="10502"           # Used to determine PID
-_URLS=""                # Health check url per line
+# Health check url per line
+_URLS="http://node2.ubu18kvm2.localdomain:10502/health
+http://node3.ubu18kvm2.localdomain:10502/health"
 
 
 function cmds() {
@@ -83,7 +85,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     for i in `seq 1 ${_PER_HOUR}`; do
         cmds "${_USER}" &>> ${_FILE_PATH}
         if [ -n "${_URLS}" ]; then
-            echo "${_URLS}" | while read -r _u; do health "$_u"; done
+            echo "${_URLS}" | while read -r _u; do health "$_u" &>> ${_FILE_PATH}; done
         fi
         sleep ${_INTERVAL}
     done
