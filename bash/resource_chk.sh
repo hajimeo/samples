@@ -14,7 +14,6 @@ http://node3.ubu18kvm2.localdomain:10502/health"
 
 function cmds() {
     local _user="${1:-${_USER}}"
-    echo "### START at $(date -u) ################"
     lsof -nPu ${_user} | awk '{print "PID-->"$2}' | uniq -c | sort -n | tail -5
     echo -n "# Total AtScale Usage -->";lsof -u ${_user} | wc -l
     echo -n "# Total System Usage -->";lsof | wc -l
@@ -24,7 +23,6 @@ function cmds() {
     echo "# CPU Usage --->"; mpstat -P ALL
     top -c -b -n 1 | head -n 20
     netstat -i
-    echo "### ENDED at $(date -u) ################"
     echo ""
 }
 
@@ -82,8 +80,10 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
 
     for i in `seq 1 ${_PER_HOUR}`; do
+        echo "### START at $(date -u +'%Y-%m-%d %H:%M:%S') UTC ################" &>> ${_FILE_PATH}
         cmds "${_USER}" &>> ${_FILE_PATH}
         [ -n "${_URLS}" ] && echo "${_URLS}" | while read -r _u; do health "$_u" &>> ${_FILE_PATH}; done
+        echo "### ENDED at $(date -u +'%Y-%m-%d %H:%M:%S') UTC ################" &>> ${_FILE_PATH}
         sleep ${_INTERVAL}
     done
 fi
