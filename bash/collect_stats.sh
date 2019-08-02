@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # NOTE: This script requires "lsof", so may require root priv.
 #       Put this script under /etc/cron.hourly/ with *execution* permission.
+# curl -o /etc/cron.hourly/collect_stats.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/collect_stats.sh && chmod a+x /etc/cron.hourly/collect_stats.sh
 
 _PORT="10502"
 
@@ -18,7 +19,8 @@ function cmds() {
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
-    _DURATION="${1:-"30m"}"
+    _PER_HOUR="${1:-"3"}"
+    _INTERVAL=$(( 60 * 60 / ${_PER_HOUR} ))
 
     _PID="$(lsof -ti:${_PORT} -s TCP:LISTEN)" || exit 1
     _USER="$(stat -c '%U' /proc/${_PID})" || exit 1
@@ -33,7 +35,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         [ 86400 -lt $((${_NOW} - ${_LAST_MOD_TS})) ] && > ${_FILE_PATH}
     fi
 
-    cmds &> ${_FILE_PATH}
-    sleep ${_DURATION}
-    cmds &> ${_FILE_PATH}
+    for i in `seq 1 ${_PER_HOUR}`; do
+        cmds &> ${_FILE_PATH}
+        sleep ${_INTERVAL}
+    done
 fi
