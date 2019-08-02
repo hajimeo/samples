@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 # NOTE: This script requires "lsof", so may require root priv.
-#       Put this script in /etc/cron.hourly/ with *execution* permission.
+#       Put this script under /etc/cron.hourly/ with *execution* permission.
 
 _PORT="10502"
-_PID="$(lsof -ti:${_PORT} -s TCP:LISTEN)" || exit 1
-_USER="$(stat -c '%U' /proc/${_PID})" || exit 1
-_DIR="$(strings /proc/${_PID}/environ | sed -nr 's/^AS_LOG_DIR=(.+)/\1/p')" || exit 1
-[ ! -d "${_DIR}" ] && _DIR="/tmp"
 
 function cmds() {
     local _user="${1:-${_USER}}"
@@ -22,6 +18,12 @@ function cmds() {
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
+    _DURATION="${1:-"30m"}"
+
+    _PID="$(lsof -ti:${_PORT} -s TCP:LISTEN)" || exit 1
+    _USER="$(stat -c '%U' /proc/${_PID})" || exit 1
+    _DIR="$(strings /proc/${_PID}/environ | sed -nr 's/^AS_LOG_DIR=(.+)/\1/p')" || exit 1
+    [ ! -d "${_DIR}" ] && _DIR="/tmp"
     _FILE_PATH="${_DIR%/}/as_usage_$(date +%u).out"
 
     if [ -s "${_FILE_PATH}" ]; then
@@ -31,7 +33,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         [ 86400 -lt $((${_NOW} - ${_LAST_MOD_TS})) ] && > ${_FILE_PATH}
     fi
 
-    cmds
-    sleep 30m
-    cmds
+    cmds &> ${_FILE_PATH}
+    sleep ${_DURATION}
+    cmds &> ${_FILE_PATH}
 fi
