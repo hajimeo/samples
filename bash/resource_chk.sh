@@ -29,6 +29,7 @@ function cmds() {
 function health() {
     local _url="$1"
     local _timeout="${2:-${_TIMEOUT_SEC}}"
+    [ -z "${_url}" ] && return 1
     [[ "${_url}" =~ ^https?://([^:/]+) ]]
     local _host="${BASH_REMATCH[1]}"
     if [ -n "${_host}" ]; then
