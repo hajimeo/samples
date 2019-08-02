@@ -72,9 +72,9 @@ function java_chk() {
 
 #if [ "$0" = "$BASH_SOURCE" ]; then
     _INTERVAL=$(( 60 * 60 / ${_PER_HOUR} ))
-    _PID="$(lsof -ti:${_PORT} -s TCP:LISTEN)" || exit 1
+    _PID="$(lsof -ti:${_PORT} -s TCP:LISTEN)" || exit 0
     _USER="$(stat -c '%U' /proc/${_PID})" || exit 1
-    _DIR="$(strings /proc/${_PID}/environ | sed -nr 's/^AS_LOG_DIR=(.+)/\1/p')" || exit 1
+    _DIR="$(strings /proc/${_PID}/environ | sed -nr 's/^AS_LOG_DIR=(.+)/\1/p')"
     [ ! -d "${_DIR}" ] && _DIR="/tmp"
     _FILE_PATH="${_DIR%/}/resource_chk_$(date +%u).log"
 
