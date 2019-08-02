@@ -33,7 +33,7 @@ function health() {
     local _host="${BASH_REMATCH[1]}"
     if [ -n "${_host}" ]; then
         echo "# Ping to ${_host} check --->"
-        ping -n -W 1 -c 1 ${_host}
+        ping -W 1 -c 1 ${_host} # -n
     fi
     echo "# URL ${_url} check --->"
     if ! curl -s -m ${_timeout} --retry 1 -w " - %{time_starttransfer}\n" -f -k "${_url}"; then
