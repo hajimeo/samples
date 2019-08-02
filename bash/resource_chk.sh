@@ -14,10 +14,11 @@ http://node3.ubu18kvm2.localdomain:10502/health"
 
 function cmds() {
     local _user="${1:-${_USER}}"
-    lsof -nPu ${_user} | awk '{print "PID-->"$2}' | uniq -c | sort -n | tail -5
-    echo -n "# Total AtScale Usage -->";lsof -u ${_user} | wc -l
-    echo -n "# Total System Usage -->";lsof | wc -l
-    echo "# AtScale User processes are -->"; lsof -nPu ${_user} | awk '{print $2}' | uniq -c | sort -n | tail -5 | awk '{print $2}' |while IFS= read a_pid ; do pwdx $a_pid; done
+    lsof -nPu ${_user} > /tmp/.cmds_lsof.out
+    cat /tmp/.cmds_lsof.out | awk '{print "PID-->"$2}' | uniq -c | sort -n | tail -5
+    echo -n "# Total AtScale Usage -->";cat /tmp/.cmds_lsof.out | wc -l
+    #echo -n "# Total System Usage -->";lsof | wc -l
+    echo "# AtScale User processes are -->"; cat /tmp/.cmds_lsof.out | awk '{print $2}' | uniq -c | sort -n | tail -5 | awk '{print $2}' | while IFS= read a_pid ; do pwdx $a_pid; done
     echo "# Memory Usage --->"; free -tm
     echo "# Disk Usage --->"; df -h /
     echo "# CPU Usage --->"; mpstat -P ALL
