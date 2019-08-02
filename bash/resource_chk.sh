@@ -68,7 +68,6 @@ function java_chk() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     _INTERVAL=$(( 60 * 60 / ${_PER_HOUR} ))
-
     _PID="$(lsof -ti:${_PORT} -s TCP:LISTEN)" || exit 1
     _USER="$(stat -c '%U' /proc/${_PID})" || exit 1
     _DIR="$(strings /proc/${_PID}/environ | sed -nr 's/^AS_LOG_DIR=(.+)/\1/p')" || exit 1
@@ -84,9 +83,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     for i in `seq 1 ${_PER_HOUR}`; do
         cmds "${_USER}" &>> ${_FILE_PATH}
-        if [ -n "${_URLS}" ]; then
-            echo "${_URLS}" | while read -r _u; do health "$_u" &>> ${_FILE_PATH}; done
-        fi
+        [ -n "${_URLS}" ] && echo "${_URLS}" | while read -r _u; do health "$_u" &>> ${_FILE_PATH}; done
         sleep ${_INTERVAL}
     done
 fi
