@@ -209,9 +209,20 @@ get_ipython().run_line_magic('matplotlib', 'inline')" > "$HOME/.ipython/profile_
 }
 
 function f_setup_java() {
-    _install -y openjdk-8-jdk
-    if ! java -version 2>&1 | grep '1.8.0' -m 1; then
-        _log "WARN" "Java 8 might be required for python JayDeBeApi"
+    local _v="${1:-"8"}"    # Using 8 as JayDeBeApi uses specific version and which is for java 8
+    local _ver="${_v}"
+    [[ "${_v}" =~ ^[678]$ ]] && _ver="1.${_v}"
+
+    if [ "`uname`" = "Darwin" ]; then
+        brew tap adoptopenjdk/openjdk
+        brew cask install adoptopenjdk${_v}
+        #/usr/libexec/java_home -v ${_v}
+    else
+        _install -y openjdk-${_v}-jdk
+    fi
+
+    if ! java -version 2>&1 | grep -w "build ${_ver}" -m 1; then
+        _log "WARN" "Current Java version is not ${_ver}."
     fi
 }
 
