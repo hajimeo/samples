@@ -41,7 +41,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _USER="$(stat -c '%U' /proc/${_PID})" || exit 1
     _DIR="$(strings /proc/${_PID}/environ | sed -nr 's/^AS_LOG_DIR=(.+)/\1/p')" || exit 1
     [ ! -d "${_DIR}" ] && _DIR="/tmp"
-    _FILE_PATH="${_DIR%/}/as_usage_$(date +%u).out"
+    _FILE_PATH="${_DIR%/}/resource_chk_$(date +%u).log"
 
     if [ -s "${_FILE_PATH}" ]; then
         _LAST_MOD_TS=$(stat -c%Y ${_FILE_PATH})
@@ -51,7 +51,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
 
     for i in `seq 1 ${_PER_HOUR}`; do
-        cmds &> ${_FILE_PATH}
+        cmds "${_USER}" &> ${_FILE_PATH}
         if [ -n "${_URLS}" ]; then
             echo "${_URLS}" | while read -r _u; do health "$_u"; done
         fi
