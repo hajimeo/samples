@@ -75,7 +75,7 @@ function f_check_system() {
     top -b -n 1 -c &> ${_work_dir%/}/top.out
     ps auxwwwf &> ${_work_dir%/}/ps.out
     netstat -aopen &> ${_work_dir%/}/netstat.out
-    ifconfig &> ${_work_dir%/}/ifconfig.out
+    ifconfig 2>/dev/null || netstat -i &> ${_work_dir%/}/ifconfig.out
 
     netstat -s &> ${_work_dir%/}/netstat_s.out
     nscd -g &> ${_work_dir%/}/nscd.out
