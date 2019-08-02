@@ -37,8 +37,11 @@ function health() {
     fi
     echo "# URL ${_url} check --->"
     if ! curl -s -m ${_timeout} --retry 1 -w " - %{time_starttransfer}\n" -f -k "${_url}"; then
-        echo "# URL took more than ${_timeout} sec --->"
-        java_chk
+        # Currently, only if hostname matches, so that when remote is down, it won't spam local.
+        if [ "$(hostname -f)" == "${_host}" ]; then
+            echo "# URL took more than ${_timeout} sec --->"
+            java_chk
+        fi
     fi
 }
 
