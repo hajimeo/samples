@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 # NOTE: This script requires "lsof", so may require root priv.
 #       Put this script under /etc/cron.hourly/ with *execution* permission.
+#
 # curl -o /etc/cron.hourly/resource_chk.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/resource_chk.sh && chmod a+x /etc/cron.hourly/resource_chk.sh
+# run-parts --test /etc/cron.hourly
+# service crond status
+# cat /etc/cron.d/0hourly
+#
 
 _PER_HOUR="${1:-3}"   # How often checks per hour (3 means 20 mins interval)
 _TIMEOUT_SEC="${2:-5}"  # If health check takes longer this seconds, it does extra check
