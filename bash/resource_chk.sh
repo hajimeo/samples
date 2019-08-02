@@ -76,7 +76,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
 
     for i in `seq 1 ${_PER_HOUR}`; do
-        cmds "${_USER}" &> ${_FILE_PATH}
+        cmds "${_USER}" &>> ${_FILE_PATH}
         if [ -n "${_URLS}" ]; then
             echo "${_URLS}" | while read -r _u; do health "$_u"; done
         fi
