@@ -31,8 +31,8 @@ function cmds() {
         echo -n "OS allocated file handler --> ";cat /proc/sys/fs/file-nr   # NOTE: lsof not equal to fd/fh
     fi
     echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Memory Usage --->"; free -tm
-    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] CPU Usage --->"; mpstat -P ALL; top -c -b -n 1 | head -n 20
-    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Disk Usage --->"; df -h /; iostat -x
+    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] CPU Usage --->"; mpstat -P ALL 2>/dev/null; top -c -b -n 1 | head -n 20
+    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Disk Usage --->"; iostat -x 2>/dev/null; df -h /
     echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Network Usage --->"; netstat -i
     echo ""
 }
