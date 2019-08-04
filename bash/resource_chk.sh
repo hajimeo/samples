@@ -18,6 +18,14 @@ _FILE_PATH="${5}"       # Log file path. If empty, automatically decided by PID.
 # If no URLs give, check local's port (or please specify your URLs in here)
 [ -z "${_URLS}" ] && _URLS="http://`hostname -f`:${_PORT}/"
 
+# Global variables
+_INTERVAL=$(( 60 * 60 / ${_PER_HOUR} ))
+_PID="$(lsof -ti:${_PORT} -s TCP:LISTEN)" || exit 0
+_USER="$(stat -c '%U' /proc/${_PID})" || exit 1
+_DIR="$(strings /proc/${_PID}/environ | sed -nr 's/^AS_LOG_DIR=(.+)/\1/p')"
+[ ! -d "${_DIR}" ] && _DIR="/tmp"
+[ -z "${_FILE_PATH}" ] && _FILE_PATH="${_DIR%/}/resource_chk_$(date +%u).log"
+
 
 # OS commands which run once in hour or when health issue happens
 function cmds() {
@@ -90,13 +98,6 @@ function java_chk() {
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
-    _INTERVAL=$(( 60 * 60 / ${_PER_HOUR} ))
-    _PID="$(lsof -ti:${_PORT} -s TCP:LISTEN)" || exit 0
-    _USER="$(stat -c '%U' /proc/${_PID})" || exit 1
-    _DIR="$(strings /proc/${_PID}/environ | sed -nr 's/^AS_LOG_DIR=(.+)/\1/p')"
-    [ ! -d "${_DIR}" ] && _DIR="/tmp"
-    [ -z "${_FILE_PATH}" ] && _FILE_PATH="${_DIR%/}/resource_chk_$(date +%u).log"
-
     # If the file last modified date is older than one day, clear the contents
     if [ -s "${_FILE_PATH}" ]; then
         _LAST_MOD_TS=$(stat -c%Y ${_FILE_PATH})
