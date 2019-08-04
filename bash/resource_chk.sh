@@ -46,13 +46,14 @@ function health() {
     echo -n "# URL ${_url} check --->"; time curl -s -m ${_timeout} --retry 0 -f -L -k -o /dev/null "${_url}"
     local _rc="$?"
     if [ "${_rc}" != "0" ]; then
-        echo "# URL took more than ${_timeout} sec or failed --->"
+        echo "# URL took more than ${_timeout} sec or failed (${_rc}) --->"
+        cmds
         if [ "${_rc}" == "28" ]; then
             time curl -s -v -m 12 --retry 0 -f -L -k -o /dev/null -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n" "${_url}" &
             # Currently, only if hostname matches, so that when remote is down, it won't spam local.
             [ "$(hostname -f)" == "${_host}" ] && java_chk
+            wait
         fi
-        cmds
         if [ -n "${_host}" ]; then
             echo "# Ping to ${_host} check --->"
             # Sometimes ICMP is blocked, so not stop if ping fails
