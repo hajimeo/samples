@@ -8,8 +8,8 @@
 # cat /etc/cron.d/0hourly
 #
 
-_PER_HOUR="${1:-6}"   # How often checks per hour (3 means 20 mins interval)
-_TIMEOUT_SEC="${2:-5}"  # If health check takes longer this seconds, it does extra check
+_PER_HOUR="${1:-6}"     # How often checks per hour (6 means 10 mins interval)
+_TIMEOUT_SEC="${2:-2}"  # If health check takes longer this seconds, it does extra check
 
 _PORT="10502"           # Used to determine PID
 # Health check url per line
@@ -43,12 +43,12 @@ function health() {
     [[ "${_url}" =~ ^https?://([^:/]+) ]]
     local _host="${BASH_REMATCH[1]}"
 
-    echo "# URL ${_url} check --->"
-    curl -s -m ${_timeout} --retry 1 -w "\n  time_namelookup:  %{time_namelookup}\ntime_connect:  %{time_connect}\ntime_appconnect:  %{time_appconnect}\ntime_pretransfer:  %{time_pretransfer}\ntime_redirect:  %{time_redirect}\n time_starttransfer:  %{time_starttransfer}\n----------\ntime_total:  %{time_total}\n" -f -k "${_url}"
+    echo -n "# URL ${_url} check --->"; time curl -s -m ${_timeout} --retry 0 -f -L -k -o /dev/null "${_url}"
     local _rc="$?"
     if [ "${_rc}" != "0" ]; then
         echo "# URL took more than ${_timeout} sec or failed --->"
         if [ "${_rc}" == "28" ]; then
+            time curl -s -v -m 12 --retry 0 -f -L -k -o /dev/null -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n" "${_url}" &
             # Currently, only if hostname matches, so that when remote is down, it won't spam local.
             [ "$(hostname -f)" == "${_host}" ] && java_chk
         fi
