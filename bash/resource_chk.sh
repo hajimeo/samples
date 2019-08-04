@@ -24,10 +24,11 @@ function cmds() {
     local _user="${1:-${_USER}}"
     if [ -n "${_user}" ]; then
         lsof -nPu ${_user} > /tmp/.cmds_lsof.out
-        cat /tmp/.cmds_lsof.out | awk '{print "PID-->"$2}' | uniq -c | sort -n | tail -5
-        echo -n "# Total AtScale Usage -->";cat /tmp/.cmds_lsof.out | wc -l
-        #echo -n "# Total System Usage -->";lsof | wc -l
-        echo "# AtScale User processes are -->"; cat /tmp/.cmds_lsof.out | awk '{print $2}' | uniq -c | sort -n | tail -5 | awk '{print $2}' | while IFS= read a_pid ; do pwdx $a_pid; done
+        echo -n "AtScale User lsof count --> ";cat /tmp/.cmds_lsof.out | wc -l
+        echo "AtScale User processes (top 5) -->"
+        echo -e "COUNT\tPID: pwd"
+        cat /tmp/.cmds_lsof.out | awk '{print $2}' | uniq -c | sort -n | tail -5 | while read -r _l; do [[ "${_l}" =~ ^[[:space:]]*([0-9]+)[[:space:]]+([0-9]+) ]] && echo -e "${BASH_REMATCH[1]}\t$(pwdx ${BASH_REMATCH[2]})"; done
+        echo -n "OS allocated file handler --> ";cat /proc/sys/fs/file-nr   # NOTE: lsof not equal to fd/fh
     fi
     echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Memory Usage --->"; free -tm
     echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] CPU Usage --->"; mpstat -P ALL; top -c -b -n 1 | head -n 20
