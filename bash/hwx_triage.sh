@@ -69,7 +69,7 @@ function f_check_system() {
     iptables -t nat -nvL &>> ${_work_dir%/}/iptables.out
     (which timeout &>/dev/null && (timeout 3 time head -n 1 /dev/urandom > /dev/null;echo '-';timeout 3 time head -n 1 /dev/random > /dev/null)) &> ${_work_dir%/}/random.out
     vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
-    vmstat -d &> ${_work_dir%/}/vmstat_d.out &
+    iostat 2>/dev/null || vmstat -d &> ${_work_dir%/}/iostat.out &
     pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &
 
     mpstat -P ALL &> ${_work_dir%/}/top.out
