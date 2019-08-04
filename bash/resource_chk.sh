@@ -19,11 +19,10 @@ http://node3.ubu18kvm2.localdomain:10502/health"
 # OS commands which run once in hour or when health issue happens
 function cmds() {
     local _user="${1:-${_USER}}"
-    echo "### Start 'comds' at $(date -u +'%Y-%m-%d %H:%M:%S') UTC ################"
-    echo "# Memory Usage --->"; free -tm
-    echo "# CPU Usage --->"; mpstat -P ALL; top -c -b -n 1 | head -n 20
-    echo "# Disk Usage --->"; df -h /; iostat -x
-    echo "# Network Usage --->"; netstat -i
+    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Memory Usage --->"; free -tm
+    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] CPU Usage --->"; mpstat -P ALL; top -c -b -n 1 | head -n 20
+    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Disk Usage --->"; df -h /; iostat -x
+    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Network Usage --->"; netstat -i
     #echo -n "# Total System Usage -->";lsof | wc -l
     if [ -n "${_user}" ]; then
         lsof -nPu ${_user} > /tmp/.cmds_lsof.out
@@ -31,7 +30,6 @@ function cmds() {
         echo -n "# Total AtScale Usage -->";cat /tmp/.cmds_lsof.out | wc -l
         echo "# AtScale User processes are -->"; cat /tmp/.cmds_lsof.out | awk '{print $2}' | uniq -c | sort -n | tail -5 | awk '{print $2}' | while IFS= read a_pid ; do pwdx $a_pid; done
     fi
-    echo "### Ended 'comds' at $(date -u +'%Y-%m-%d %H:%M:%S') UTC ################"
     echo ""
 }
 
@@ -43,19 +41,20 @@ function health() {
     [[ "${_url}" =~ ^https?://([^:/]+) ]]
     local _host="${BASH_REMATCH[1]}"
 
-    echo -n "# URL ${_url} check --->"; time curl -s -m ${_timeout} --retry 0 -f -L -k -o /dev/null "${_url}"
+    echo -n "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] URL ${_url} check --->"; time curl -s -m ${_timeout} --retry 0 -f -L -k -o /dev/null "${_url}"
     local _rc="$?"
     if [ "${_rc}" != "0" ]; then
-        echo "# URL took more than ${_timeout} sec or failed (${_rc}) --->"
+        echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] URL took more than ${_timeout} sec or failed (${_rc}) --->"
         cmds
         if [ "${_rc}" == "28" ]; then
             time curl -s -v -m 12 --retry 0 -f -L -k -o /dev/null -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n" "${_url}" &
+            local _wpid=$!
             # Currently, only if hostname matches, so that when remote is down, it won't spam local.
             [ "$(hostname -f)" == "${_host}" ] && java_chk
-            wait
+            wait ${_wpid}
         fi
         if [ -n "${_host}" ]; then
-            echo "# Ping to ${_host} check --->"
+            echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Ping to ${_host} check --->"
             # Sometimes ICMP is blocked, so not stop if ping fails
             # TODO: add better network checking. eg: mtr/traceroute, iperf/iperf3?
             ping -W 1 -c 4 ${_host} # -n
@@ -77,9 +76,13 @@ function java_chk() {
     
     local _java_home="$(dirname $_cmd_dir)"
     local _pre_cmd=""; which timeout &>/dev/null && _pre_cmd="timeout 12"
-    [ -x "${_cmd_dir}/jstat" ] && $_pre_cmd sudo -u ${_user} ${_cmd_dir}/jstat -gccause ${_pid} 1000 9 &> ${_dir%}/gccause_$(date +%u).out &
-    for i in {1..3};do top -Hb -p ${_pid} | head -n 20; $_pre_cmd kill -QUIT ${_pid}; sleep 3; done &> ${_dir%}/top_thread_$(date +%u).out
-    wait
+    for i in {1..3};do echo "$(date -u +'%Y-%m-%d %H:%M:%S') UTC"; top -Hb -p ${_pid} | head -n 20; $_pre_cmd kill -QUIT ${_pid}; sleep 3; done &> /tmp/top_thread.out &
+    local _wpid1=$!
+    (echo "$(date -u +'%Y-%m-%d %H:%M:%S') UTC"; $_pre_cmd sudo -u ${_user} ${_cmd_dir}/jstat -gccause ${_pid} 1000 10) &> /tmp/gccause.out &
+    local _wpid2=$!
+    wait ${_wpid1} ${_wpid2}
+    cat /tmp/top_thread.out
+    cat /tmp/gccause.out
 }
 
 # Cron may not like below, so just in case commenting
