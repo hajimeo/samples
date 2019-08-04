@@ -15,24 +15,24 @@ _PER_HOUR="${3:-6}"     # How often checks per hour (6 means 10 mins interval)
 _TIMEOUT_SEC="${4:-2}"  # If health check takes longer this seconds, it does extra check
 _FILE_PATH="${5}"       # Log file path. If empty, automatically decided by PID.
 
-# If no URLs give, check local's port
+# If no URLs give, check local's port (or please specify your URLs in here)
 [ -z "${_URLS}" ] && _URLS="http://`hostname -f`:${_PORT}/"
 
 
 # OS commands which run once in hour or when health issue happens
 function cmds() {
     local _user="${1:-${_USER}}"
-    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Memory Usage --->"; free -tm
-    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] CPU Usage --->"; mpstat -P ALL; top -c -b -n 1 | head -n 20
-    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Disk Usage --->"; df -h /; iostat -x
-    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Network Usage --->"; netstat -i
-    #echo -n "# Total System Usage -->";lsof | wc -l
     if [ -n "${_user}" ]; then
         lsof -nPu ${_user} > /tmp/.cmds_lsof.out
         cat /tmp/.cmds_lsof.out | awk '{print "PID-->"$2}' | uniq -c | sort -n | tail -5
         echo -n "# Total AtScale Usage -->";cat /tmp/.cmds_lsof.out | wc -l
+        #echo -n "# Total System Usage -->";lsof | wc -l
         echo "# AtScale User processes are -->"; cat /tmp/.cmds_lsof.out | awk '{print $2}' | uniq -c | sort -n | tail -5 | awk '{print $2}' | while IFS= read a_pid ; do pwdx $a_pid; done
     fi
+    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Memory Usage --->"; free -tm
+    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] CPU Usage --->"; mpstat -P ALL; top -c -b -n 1 | head -n 20
+    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Disk Usage --->"; df -h /; iostat -x
+    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Network Usage --->"; netstat -i
     echo ""
 }
 
