@@ -44,7 +44,7 @@ function health() {
     local _host="${BASH_REMATCH[1]}"
 
     echo "# URL ${_url} check --->"
-    curl -s -m ${_timeout} --retry 1 -w " - %{time_starttransfer}\n" -f -k "${_url}"
+    curl -s -m ${_timeout} --retry 1 -w "\n  time_namelookup:  %{time_namelookup}\ntime_connect:  %{time_connect}\ntime_appconnect:  %{time_appconnect}\ntime_pretransfer:  %{time_pretransfer}\ntime_redirect:  %{time_redirect}\n time_starttransfer:  %{time_starttransfer}\n----------\ntime_total:  %{time_total}\n" -f -k "${_url}"
     local _rc="$?"
     if [ "${_rc}" != "0" ]; then
         echo "# URL took more than ${_timeout} sec or failed --->"
