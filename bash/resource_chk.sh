@@ -8,13 +8,16 @@
 # cat /etc/cron.d/0hourly
 #
 
-_PER_HOUR="${1:-6}"     # How often checks per hour (6 means 10 mins interval)
-_TIMEOUT_SEC="${2:-2}"  # If health check takes longer this seconds, it does extra check
+# Arguments
+_PORT="${1:-10502}"     # Used to determine the PID
+_URLS="${2}"            # Comma separated Health check URLs
+_PER_HOUR="${3:-6}"     # How often checks per hour (6 means 10 mins interval)
+_TIMEOUT_SEC="${4:-2}"  # If health check takes longer this seconds, it does extra check
+_FILE_PATH="${5}"       # Log file path. If empty, automatically decided by PID.
 
-_PORT="10502"           # Used to determine PID
-# Health check url per line (please replace "localhost" line to actual one)
-_URLS="http://`hostname -f`:${_PORT}/health
-http://localhost:10502/health"
+# If no URLs give, check local's port
+[ -z "${_URLS}" ] && _URLS="http://`hostname -f`:${_PORT}/"
+
 
 # OS commands which run once in hour or when health issue happens
 function cmds() {
@@ -85,28 +88,31 @@ function java_chk() {
     cat /tmp/gccause.out
 }
 
-# Cron may not like below, so just in case commenting
-#if [ "$0" = "$BASH_SOURCE" ]; then
+if [ "$0" = "$BASH_SOURCE" ]; then
     _INTERVAL=$(( 60 * 60 / ${_PER_HOUR} ))
     _PID="$(lsof -ti:${_PORT} -s TCP:LISTEN)" || exit 0
     _USER="$(stat -c '%U' /proc/${_PID})" || exit 1
     _DIR="$(strings /proc/${_PID}/environ | sed -nr 's/^AS_LOG_DIR=(.+)/\1/p')"
     [ ! -d "${_DIR}" ] && _DIR="/tmp"
-    _FILE_PATH="${_DIR%/}/resource_chk_$(date +%u).log"
+    [ -z "${_FILE_PATH}" ] && _FILE_PATH="${_DIR%/}/resource_chk_$(date +%u).log"
 
+    # If the file last modified date is older than one day, clear the contents
     if [ -s "${_FILE_PATH}" ]; then
         _LAST_MOD_TS=$(stat -c%Y ${_FILE_PATH})
         _NOW=$(date +%s)
-        # If older than one day, clear
         [ 86400 -lt $((${_NOW} - ${_LAST_MOD_TS})) ] && > ${_FILE_PATH}
     fi
 
     # Executing commands which should be run once per hour
+    echo "### START at $(date -u +'%Y-%m-%d %H:%M:%S') UTC ################" &>> ${_FILE_PATH}
     cmds &>> ${_FILE_PATH}
 
-    # Executing health monitoring commands
-    for i in `seq 1 ${_PER_HOUR}`; do
-        [ -n "${_URLS}" ] && echo "${_URLS}" | while read -r _u; do health "$_u" &>> ${_FILE_PATH}; done
-        sleep ${_INTERVAL}
-    done
-#fi
+    # Executing health monitoring commands if urls are given
+    if [ -n "${_URLS}" ]; then
+        for i in `seq 1 ${_PER_HOUR}`; do
+            sleep ${_INTERVAL}
+            echo "${_URLS}" | sed 's/,/\n/' | while read -r _u; do health "$_u" &>> ${_FILE_PATH}; done
+        done
+    fi
+    echo "### ENDED at $(date -u +'%Y-%m-%d %H:%M:%S') UTC ################" &>> ${_FILE_PATH}
+fi
