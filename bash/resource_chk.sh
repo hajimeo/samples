@@ -56,7 +56,7 @@ function health() {
         if [ -n "${_host}" ]; then
             echo "# Ping to ${_host} check --->"
             # Sometimes ICMP is blocked, so not stop if ping fails
-            # TODO: add better network checking. eg: traceroute
+            # TODO: add better network checking. eg: mtr/traceroute, iperf/iperf3?
             ping -W 1 -c 4 ${_host} # -n
         fi
     fi
