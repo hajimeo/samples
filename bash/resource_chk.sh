@@ -12,9 +12,9 @@ _PER_HOUR="${1:-6}"     # How often checks per hour (6 means 10 mins interval)
 _TIMEOUT_SEC="${2:-2}"  # If health check takes longer this seconds, it does extra check
 
 _PORT="10502"           # Used to determine PID
-# Health check url per line
-_URLS="http://node2.ubu18kvm2.localdomain:10502/health
-http://node3.ubu18kvm2.localdomain:10502/health"
+# Health check url per line (please replace "localhost" line to actual one)
+_URLS="http://`hostname -f`:${_PORT}/health
+http://localhost:10502/health"
 
 # OS commands which run once in hour or when health issue happens
 function cmds() {
