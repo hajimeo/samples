@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NOTE: This script requires "lsof" and "sysstat" (and iperf/iperf3).
+# NOTE: This script requires "lsof" and "sysstat".
 #       Put this script under /etc/cron.hourly/ with *execution* permission.
 #
 # curl -o /etc/cron.hourly/resource_chk.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/resource_chk.sh && chmod a+x /etc/cron.hourly/resource_chk.sh
