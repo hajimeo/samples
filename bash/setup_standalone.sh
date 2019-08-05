@@ -806,7 +806,7 @@ function _cdh_setup() {
 
     _log "INFO" "(re)Installing SSH and other commands ..."
     docker exec -it ${_container_name} bash -c 'yum install -y openssh-server openssh-clients; service sshd start'
-    docker exec -dt ${_container_name} bash -c 'yum install -y yum-plugin-ovl scp curl unzip tar wget openssl python nscd yum-utils sudo which vim net-tools strace lsof tcpdump fuse sshfs nc rsync bzip2 bzip2-libs'
+    docker exec -dt ${_container_name} bash -c 'yum install -y yum-plugin-ovl scp curl unzip tar wget openssl python nscd yum-utils sudo which vim net-tools strace lsof tcpdump fuse sshfs nc rsync bzip2 bzip2-libs krb5-workstation'
     _log "INFO" "Customising ${_container_name} ..."
     f_container_misc "${_container_name}"
     f_container_ssh_config "${_container_name}"
@@ -821,24 +821,25 @@ function p_cdh_sandbox() {
     local __doc__="Setup CDH Sandbox (NOTE: may need to stop another container which uses previously used IP)"
     local _container_name="${1:-"node-cdh"}"
     local _is_using_cm="${2}"
-    local _tar_uri="${3:-"https://downloads.cloudera.com/demo_vm/docker/cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz"}"
+    local _image_name="${3:-"node-cdh"}"
+    local _tar_uri="${4:-"https://downloads.cloudera.com/demo_vm/docker/cloudera-quickstart-vm-5.13.0-0-beta-docker.tar.gz"}"
     # As of this typing, quickstart:latest is using 5.7
 
-    local _image_name="cloudera/quickstart:latest"
+    local _base_image="cloudera/quickstart:latest"
     local _first_time=false
 
     if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
-        if docker images --format "{{.Repository}}" | grep -qE "^${_container_name}$"; then
-            _log "INFO" "Image ${_container_name} exists. Creating a container from this image..."
-            f_docker_run "${_container_name}.${_DOMAIN}" "${_container_name}" "4433 7180 7182 7184 7185 7190 7191 8084 8480 8485 9994 9996 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--hostname=quickstart.cloudera" || return $?
+        if docker images --format "{{.Repository}}" | grep -qE "^${_image_name}$"; then
+            _log "INFO" "Image ${_image_name} exists. Creating a container from this image..."
+            f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "4433 7180 7182 7184 7185 7190 7191 8084 8480 8485 9994 9996 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--hostname=quickstart.cloudera" || return $?
         else
             if [ -n "${_tar_uri}" ]; then
-                f_docker_image_import "${_tar_uri}" "${_image_name}" || return $?
+                f_docker_image_import "${_tar_uri}" "${_base_image}" || return $?
             else
-                docker pull ${_image_name} || return $?
+                docker pull ${_base_image} || return $?
             fi
             # NOTE: Cloudera quickstart does not work well if hostname is different ...
-            f_docker_run "${_container_name}.${_DOMAIN}" "${_image_name}" "4433 7180 7182 7184 7185 7190 7191 8084 8480 8485 9994 9996 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--hostname=quickstart.cloudera" || return $?
+            f_docker_run "${_container_name}.${_DOMAIN}" "${_base_image}" "4433 7180 7182 7184 7185 7190 7191 8084 8480 8485 9994 9996 9083 10000 10002 13562 21000 21050 22000 23000 23020 24000 25000 25010 25020 26000 50010 50020 50070 50075 50090" "--hostname=quickstart.cloudera" || return $?
             _cdh_setup "${_container_name}" || return $?
             f_container_useradd "${_container_name}" "${_SERVICE}" # || return $?
             docker exec -it ${_container_name} bash -c 'echo "sudo -u '${_SERVICE}' impala-shell -i localhost -q \"CREATE DATABASE IF NOT EXISTS '${_SERVICE}'\";sudo -u hdfs hdfs dfs -mkdir /user/'${_SERVICE}';sudo -u hdfs hdfs dfs -chown '${_SERVICE}': /user/'${_SERVICE}'" | at now +7 minutes'
