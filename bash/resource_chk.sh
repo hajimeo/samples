@@ -32,11 +32,11 @@ function cmds() {
     local _user="${1:-${_USER}}"
     if [ -n "${_user}" ]; then
         lsof -nPu ${_user} > /tmp/.cmds_lsof.out
-        echo -n "AtScale User lsof count --> ";cat /tmp/.cmds_lsof.out | wc -l
-        echo "AtScale User processes (top 5) -->"
+        echo -n "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] AtScale User lsof count --> ";cat /tmp/.cmds_lsof.out | wc -l
+        echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] AtScale User processes (top 5) -->"
         echo -e "COUNT\tPID: pwd"
         cat /tmp/.cmds_lsof.out | awk '{print $2}' | uniq -c | sort -n | tail -5 | while read -r _l; do [[ "${_l}" =~ ^[[:space:]]*([0-9]+)[[:space:]]+([0-9]+) ]] && echo -e "${BASH_REMATCH[1]}\t$(pwdx ${BASH_REMATCH[2]})"; done
-        echo -n "OS allocated file handler --> ";cat /proc/sys/fs/file-nr   # NOTE: lsof not equal to fd/fh
+        echo -n "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] OS allocated file handler --> ";cat /proc/sys/fs/file-nr   # NOTE: lsof not equal to fd/fh
     fi
     echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Memory Usage --->"; free -tm
     echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] CPU Usage --->"; mpstat -P ALL 2>/dev/null; top -c -b -n 1 | head -n 20
@@ -88,9 +88,9 @@ function java_chk() {
     
     local _java_home="$(dirname $_cmd_dir)"
     local _pre_cmd=""; which timeout &>/dev/null && _pre_cmd="timeout 12"
-    for i in {1..3};do echo "$(date -u +'%Y-%m-%d %H:%M:%S') UTC"; top -Hb -p ${_pid} | head -n 20; $_pre_cmd kill -QUIT ${_pid}; sleep 3; done &> /tmp/top_thread.out &
+    for i in {1..3};do echo "# $(date -u +'%Y-%m-%d %H:%M:%S') UTC"; top -Hb -p ${_pid} | head -n 20; $_pre_cmd kill -QUIT ${_pid}; sleep 3; done &> /tmp/top_thread.out &
     local _wpid1=$!
-    (echo "$(date -u +'%Y-%m-%d %H:%M:%S') UTC"; $_pre_cmd sudo -u ${_user} ${_cmd_dir}/jstat -gccause ${_pid} 1000 10) &> /tmp/gccause.out &
+    (echo "# $(date -u +'%Y-%m-%d %H:%M:%S') UTC"; $_pre_cmd sudo -u ${_user} ${_cmd_dir}/jstat -gccause ${_pid} 1000 10) &> /tmp/gccause.out &
     local _wpid2=$!
     wait ${_wpid1} ${_wpid2}
     cat /tmp/top_thread.out
