@@ -65,7 +65,9 @@ function p_support() {
     echo " "
 
     echo "#[$(date +"%H:%M:%S")] config.yaml (filtered)"
-    _find_and_cat "config.yaml" | rg '(^AS_LOG_DIR|^HOSTNAME|^JAVA_HOME|^user\.timezone|^connection\.pool\.testStatement|^estimator.enabled|^query\.result\.max_rows|^thrifty\.client\.protocol|^aggregates\.create\.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs\.aggregates\.maintainer|^authorization\.impersonation\.jdbc\.enabled)' | sort | uniq
+    _find_and_cat "config.yaml" | rg '(^AS_DEV_MODE|^AS_LOG_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user\.timezone)' | sort | uniq
+    echo " "
+    _find_and_cat "config.yaml" | rg '(^connection\.pool\.testStatement|^estimator.enabled|^query\.result\.max_rows|^thrifty\.client\.protocol|^aggregates\.create\.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs\.aggregates\.maintainer|^authorization\.impersonation\.jdbc\.enabled|^thrifty\.sasl\.kerberos\.enabled)' | sort | uniq
     echo " "
     echo " "
 
@@ -491,7 +493,7 @@ def p(s, database):
   else:
     schema=s["connectorType"]
   if "extraJdbcFlags" not in s: s["extraJdbcFlags"] = ""
-  print("jdbc:%s://%s:%s/%s%s" % (str(schema),str(s["hosts"]),str(s["port"]),str(database),str(s["extraJdbcFlags"])))
+  print("jdbc:%s://%s:%s/%s;%s" % (str(schema),str(s["hosts"]),str(s["port"]),str(database),str(s["extraJdbcFlags"]).lstrip(";")))
 
 j=json.loads(sys.stdin.read());
 l=j
