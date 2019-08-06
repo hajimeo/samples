@@ -18,6 +18,7 @@ _FILE_PATH="${5}"       # Log file path. If empty, automatically decided by PID.
 # If no URLs give, check local's port (or please specify your URLs in here)
 [ -z "${_URLS}" ] && _URLS="http://`hostname -f`:${_PORT}/"
 
+
 # Global variables
 _INTERVAL=$(( 60 * 60 / ${_PER_HOUR} ))
 _PID="$(lsof -ti:${_PORT} -s TCP:LISTEN)" || exit 0
