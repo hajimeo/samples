@@ -144,12 +144,14 @@ function javaenvs() {
 }
 # Grep STDIN with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
+    local _date="${1:-"\\d\\d\\d\\d-\\d\\d-\\d\\d"}"
     #ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
-    rg '^(\d\d\d\d-\d\d-\d\d).(\d\d:\d)' -o -r '${1}T${2}' | bar_chart.py
+    rg "^(${_date}).(\d\d:\d)" -o -r '${1}T${2}' | bar_chart.py
 }
 function barH() {
+    local _date="${1:-"\\d\\d\\d\\d-\\d\\d-\\d\\d"}"
     #ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
-    rg '^(\d\d\d\d-\d\d-\d\d).(\d\d)' -o -r '${1}T${2}' | bar_chart.py
+    rg "^(${_date}).(\d\d)" -o -r '${1}T${2}' | bar_chart.py
 }
 # Start Jupyter Lab as service
 function jpl() {
