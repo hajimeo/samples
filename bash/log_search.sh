@@ -991,15 +991,16 @@ function f_git_search() {
 }
 
 function f_os_checklist() {
-    local __doc__="Check OS kernel parameters"
+    local __doc__="Outputs some OS kernel parameters (and compare with working one)"
     local _conf="${1-./}"
 
     #cat /sys/kernel/mm/transparent_hugepage/enabled
     #cat /sys/kernel/mm/transparent_hugepage/defrag
 
     # 1. check "sysctl -a" output
-    # Ref: http://www.tweaked.io/guide/kernel/
-    local _props="vm.zone_reclaim_mode vm.swappiness vm.dirty_ratio vm.dirty_background_ratio kernel.shmmax vm.oom_dump_tasks net.core.somaxconn net.core.netdev_max_backlog net.core.rmem_max net.core.wmem_max net.core.rmem_default net.core.wmem_default net.ipv4.tcp_rmem net.ipv4.tcp_wmem net.ipv4.ip_local_port_range net.ipv4.tcp_mtu_probing net.ipv4.tcp_fin_timeout net.ipv4.conf.*.forwarding"
+    # Ref: http://www.tweaked.io/guide/kernel/ https://github.com/t3rmin4t0r/notes/wiki/Hadoop-Tuning-notes
+    # So far, removing net.ipv4.conf.*.forwarding
+    local _props="fs.file-nr vm.zone_reclaim_mode vm.overcommit_memory vm.swappiness vm.dirty_ratio vm.dirty_background_ratio kernel.shmmax kernel.shmall kernel.sem kernel.msgmni kernel.sysrq vm.oom_dump_tasks net.core.somaxconn net.core.netdev_max_backlog net.core.rmem_max net.core.wmem_max net.core.rmem_default net.core.wmem_default net.ipv4.tcp_rmem net.ipv4.tcp_wmem net.ipv4.ip_local_port_range net.ipv4.tcp_mtu_probing net.ipv4.tcp_fin_timeout net.ipv4.tcp_syncookies net.ipv4.conf.default.accept_source_route net.ipv4.tcp_tw_recycle net.ipv4.tcp_max_syn_backlog net.ipv4.conf.all.arp_filter"
 
     _search_properties "${_conf%/}" "${_props}"
 }
@@ -1340,7 +1341,7 @@ function _search_properties() {
             echo "${_p}=${BASH_REMATCH[2]}"
         else
             # Expecting hive 'set' command output or similar style (prop=value)
-            _grep -P "${_p}" ${_path}
+            _grep -P "${_p}" "${_path}"
         fi
     done
 }
