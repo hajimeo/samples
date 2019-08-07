@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # This script contains functions which are for setting up host to install and setup packages.
-# No functions which administrate docker.
-# No functions run in a docker container.
-# start_hdp.sh source this script to call the functions.
+#
+# curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/_setup_host.sh
+#
+# Do NOT add functions which administrate docker.
+# Do NOT add functions which run inside of a docker container.
+# start_hdp.sh sources this script to call the functions.
 #
 # @author hajime
 #
