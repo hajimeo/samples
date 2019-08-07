@@ -236,7 +236,15 @@ function backupC() {
     rsync -Pvaz --max-size=10000k --modify-window=1 ${_src%/}/* ${_dst%/}/
     wait
 }
-
+function push2search() {
+    # May need to configure .ssh/config to specify the private key
+    local _cmd="rsync -vrc --exclude '.git' --exclude '.idea' --exclude '*.md' $HOME/IdeaProjects/search/ search.osakos.com:~/www/search/"
+    eval "${_cmd} -n"
+    echo ""
+    read -p "Are you sure?: " "_yes"
+    echo ""
+    [[ "${_yes}" =~ ^[yY] ]] && eval "${_cmd}"
+}
 
 ## Work specific functions
 # copy script(s) into linux servers
