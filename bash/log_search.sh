@@ -65,9 +65,9 @@ function p_support() {
     echo " "
 
     echo "#[$(date +"%H:%M:%S")] config.yaml (filtered)"
-    _find_and_cat "config.yaml" | rg '(^AS_DEV_MODE|^AS_LOG_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user\.timezone)' | sort | uniq
+    _find_and_cat "config.yaml" | rg '(^AS_DEV_MODE|^AS_LOG_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user\.timezone|^thrifty\.client\.protocol)' | sort | uniq
     echo " "
-    _find_and_cat "config.yaml" | rg '(^connection\.pool\.testStatement|^estimator.enabled|^query\.result\.max_rows|^thrifty\.client\.protocol|^aggregates\.create\.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs\.aggregates\.maintainer|^authorization\.impersonation\.jdbc\.enabled|^thrifty\.sasl\.kerberos\.enabled)' | sort | uniq
+    _find_and_cat "config.yaml" 2>/dev/null | rg '(^connection\.pool\.testStatement|^estimator.enabled|^query\.result\.max_rows|^aggregates\.create\.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs\.aggregates\.maintainer|^authorization\.impersonation\.jdbc\.enabled|^thrifty\.sasl\.kerberos\.enabled)' | sort | uniq
     echo " "
     echo " "
 
@@ -158,8 +158,8 @@ function p_support() {
     rg -z -N --no-filename 'OutOfMemoryError' -g 'engine.*log*' -B 1 | rg "^$_DATE_FORMAT" | sort | uniq | tail -n 10
 
     echo " "
-    echo "#[$(date +"%H:%M:%S")] Last 10 'Thread starvation or clock leap detected' engine logs"
-    rg -z -N --no-filename "^${_DATE_FORMAT}.+(Thread starvation or clock leap detected|Scheduled sending of heartbeat was delayed)" -g 'engine.*log*' | sort | uniq | tail -n 10
+    echo "#[$(date +"%H:%M:%S")] Last 10 'Thread starvation or clock leap detected, sending of heartbeat was delayed, or heartbeat interval is growing too large' engine logs"
+    rg -z -N --no-filename "^${_DATE_FORMAT}.+(Thread starvation or clock leap detected|Scheduled sending of heartbeat was delayed|heartbeat interval is growing too large)" -g 'engine.*log*' | sort | uniq | tail -n 10
     echo " "
     echo "#[$(date +"%H:%M:%S")] Last 10 'Marshalled xxxxxxxxx characters of SOAP data in yyy s'"
     rg -z -N --no-filename "^${_DATE_FORMAT}.+ Marshalled \d\d\d\d\d\d\d\d+ characters of SOAP data" -g 'engine.*log*' | sort | uniq | tail -n 10
