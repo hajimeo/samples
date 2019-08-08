@@ -253,6 +253,7 @@ function asPubInst() {
     scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh root@192.168.6.160:/var/tmp/share/${_service}/ &
     scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hajime@192.168.6.162:/var/tmp/share/${_service}/ &
     scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hajime@192.168.6.163:/var/tmp/share/${_service}/ &
+    scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hajime@192.168.4.135:/var/tmp/share/${_service}/ & # DHCP
     scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hosako@dh1:/var/tmp/share/${_service}/ &
     scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hosako@z230:/home/hosako/Public/${_service} &
     cp -f $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh $HOME/share/${_service}/
