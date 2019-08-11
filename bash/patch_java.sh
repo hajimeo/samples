@@ -10,13 +10,14 @@ Patch one class file by compiling and updating one jar
 
 \$ bash $0 <port> <ClassName>.[java|scala] <some.jar> [specific_ClassName] [not_compile]
 
-    <port>: Port number to get a PID
-    <ClassName>.[java|scala]: A file path of your java or scala file
-    <some.jar>: A file path to your jar file which will be updated
-    [specific_ClassName]: Sometimes filename is not equal to actual classname
-    [not_compile]: If 'Y', not compiling
+    <port>: Port number to get a PID.
+    <ClassName>.[java|scala]: A file path of your java or scala file.
+    <some.jar>: A file path to your jar file which will be updated. If a dir, search jars for your class.
+    [specific_ClassName]: Sometimes filename is not equal to actual classname.
+    [not_compile]: If 'Y', not compiling.
 
 Or, to start scala console (REPL):
+
 \$ source /var/tmp/share/patch_java.sh
 \$ f_scala [<port>]
 EOS
