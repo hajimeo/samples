@@ -67,7 +67,7 @@ function p_support() {
     echo "#[$(date +"%H:%M:%S")] config.yaml (filtered)"
     _find_and_cat "config.yaml" | rg '(^AS_DEV_MODE|^AS_LOG_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user\.timezone|^thrifty\.client\.protocol)' | sort | uniq
     echo " "
-    _find_and_cat "config.yaml" 2>/dev/null | rg '(^connection\.pool\.testStatement|^estimator.enabled|^query\.result\.max_rows|^aggregates\.create\.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs\.aggregates\.maintainer|^authorization\.impersonation\.jdbc\.enabled|^thrifty\.sasl\.kerberos\.enabled)' | sort | uniq
+    _find_and_cat "config.yaml" 2>/dev/null | rg '(^connection\.pool\.testStatement|^estimator.enabled|^query\.result\.max_rows|^aggregates\.create\.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs\.aggregates\.maintainer|^authorization\.impersonation\.jdbc\.enabled|^thrifty\.sasl\.kerberos\.enabled|authorization\.query\.canary\.roleOverride)' | sort | uniq
     echo " "
     echo " "
 
@@ -414,16 +414,23 @@ function f_aggBatchKickoffSize() {
     echo ' '
 }
 
-function f_list_queries() {
-    local _date_regex="$1"
-    local _glob="${2:-"engine.*log*"}"
-    rg -z -N --no-filename "^${_date_regex}.* INFO .+queryId=.+ Received (SQL|Analysis) [Qq]uery" -g "${_glob}" | sort
+function f_get_query() {
+    local __doc__="Multiline search with 'rg' dotall TODO: dot and brace can't be used in _str_in_1st_line"
+    local _str_in_1st_line="$1"
+    local _glob="${2:-"debug.*log*"}"
+    local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d"}"
+
+    # NOTE: '\Z' to try matching the end of file returns 'unrecognized escape sequence'
+    local _regex="${_str_in_1st_line}.+? Received (SQL|Analysis) [Qq]uery.+?(${_boundary_str}|\z)"
+    rg "${_regex}" \
+        --multiline --multiline-dotall --no-line-number --no-filename -z \
+        -g "${_glob}" -m 1
 }
 
 function f_query_plan() {
     local _queryId="$1"
     local _glob="${2:-"debug.*log*"}"
-    rg -z -N --no-filename "queryId=${_queryId}.+ Final physical plan.+SqlPlan\((.+)\)" -g "${_glob}" -m 1 -o -r '$1' | pjson 100000000
+    rg -z -N --no-filename "queryId=${_queryId}.+ Final physical plan.+SqlPlan\((.+)\)" -g "${_glob}" -m 1 -o -r '$1' | python -m json.tool
     # TODO: Query part core physical plan
 }
 
