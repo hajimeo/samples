@@ -1,13 +1,26 @@
 #!/usr/bin/env bash
 # curl -o /var/tmp/share/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
-# bash /var/tmp/share/patch_java.sh <port> <ClassName>.[java|scala] </some/path/to/filename.jar> [specific_ClassName_to_update]
-#
-# Or, to start scala console (REPL):
-# . /var/tmp/share/patch_java.sh
-# f_scala [<port>]
 #
 # TODO: currently the script filename needs to be "ClassName.scala" or "ClassName.java" (case sensitive)
 #
+
+function usage() {
+    cat << EOS
+Patch one class file by compiling and updating one jar
+
+\$ bash $0 <port> <ClassName>.[java|scala] <some.jar> [specific_ClassName] [not_compile]
+
+    <port>: Port number to get a PID
+    <ClassName>.[java|scala]: A file path of your java or scala file
+    <some.jar>: A file path to your jar file which will be updated
+    [specific_ClassName]: Sometimes filename is not equal to actual classname
+    [not_compile]: If 'Y', not compiling
+
+Or, to start scala console (REPL):
+\$ source /var/tmp/share/patch_java.sh
+\$ f_scala [<port>]
+EOS
+}
 
 function f_setup_scala() {
     local _ver="${1:-2.12.3}"
@@ -114,9 +127,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _NOT_COMPILING="$5"
 
     if [ -z "$_PORT" ]; then
-        echo "A port number (1st arg) to find PID is required.
-2nd arg = class filepath or 3rd arg = Jar filepath is also required.
-4th arg = updating class name, 5th arg = Y for not compiling."
+        echo "A port number (1st arg) to find PID is required."
+        usage
         exit 1
     fi
 
@@ -132,35 +144,33 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         fi
         _EXT="${_CLASS_FILENAME##*.}"
 
-        if [ "${_EXT}" = "scala" ]; then
-            f_setup_scala
-            _CMD="scalac"
-        elif [ "${_EXT}" = "java" ]; then
-            if [ -z "${_JAR_FILEPATH}" ]; then
-                echo "To compile Java, please specify the Jar filepath."
-                exit 1
-            fi
-
-            _DIR_PATH="$(dirname $($JAVA_HOME/bin/jar -tvf ${_JAR_FILEPATH} | grep -oE "[^ ]+${_CLASS_NAME}.class"))"
-            if [ ! -d "${_DIR_PATH}" ]; then
-                mkdir -p "${_DIR_PATH}" || exit $?
-            fi
-            mv -f ${_CLASS_FILEPATH} ${_DIR_PATH%/}/ || exit $?
-            _CLASS_FILEPATH=${_DIR_PATH%/}/${_CLASS_FILENAME}
-            _CMD="$JAVA_HOME/bin/javac"
-        fi
-
-        if [ -z "${_NOT_COMPILING}" ]; then
-            # to avoid Java heap space error (default seems to be set to 256m)
-            JAVA_OPTS=-Xmx1024m ${_CMD} "${_CLASS_FILEPATH}" || exit $?
-        fi
-
         if [ -n "${_JAR_FILEPATH}" ] && [ -d "${_JAR_FILEPATH}" ]; then
             f_jargrep "${_CLASS_NAME}.class" "${_JAR_FILEPATH}"
             [ -n "${_UPDATING_CLASSNAME}" ]  && f_jargrep "${_UPDATING_CLASSNAME}.class" "${_JAR_FILEPATH}"
             echo "Please pick a jar file from above, and re-run the script:
 $0 '$1' '$2' '<jar path from above>' '$4' 'Y'"
             exit 0
+        fi
+
+        if [ "${_EXT}" = "scala" ]; then
+            f_setup_scala
+            _CMD="scalac"
+        elif [ "${_EXT}" = "java" ]; then
+            if [ -n "${_JAR_FILEPATH}" ]; then
+                _DIR_PATH="$(dirname $($JAVA_HOME/bin/jar -tvf ${_JAR_FILEPATH} | grep -oE "[^ ]+${_CLASS_NAME}.class"))"
+                if [ ! -d "${_DIR_PATH}" ]; then
+                    mkdir -p "${_DIR_PATH}" || exit $?
+                fi
+                mv -f ${_CLASS_FILEPATH} ${_DIR_PATH%/}/ || exit $?
+                _CLASS_FILEPATH=${_DIR_PATH%/}/${_CLASS_FILENAME}
+            fi
+
+            _CMD="$JAVA_HOME/bin/javac"
+        fi
+
+        if [ -z "${_NOT_COMPILING}" ]; then
+            # to avoid Java heap space error (default seems to be set to 256m)
+            JAVA_OPTS=-Xmx1024m ${_CMD} "${_CLASS_FILEPATH}" || exit $?
         fi
     fi
 
