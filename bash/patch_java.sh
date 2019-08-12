@@ -149,7 +149,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             f_jargrep "${_CLASS_NAME}.class" "${_JAR_FILEPATH}"
             [ -n "${_UPDATING_CLASSNAME}" ]  && f_jargrep "${_UPDATING_CLASSNAME}.class" "${_JAR_FILEPATH}"
             echo "Please pick a jar file from above, and re-run the script:
-$0 '$1' '$2' '<jar path from above>' '$4' 'Y'"
+$0 '$1' '$2' '<jar path from above>' '$4' [Y]"
             exit 0
         fi
 
