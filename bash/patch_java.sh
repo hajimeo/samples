@@ -66,14 +66,16 @@ function f_javaenvs() {
 
 function f_scala() {
     local _port="${1}"
+    local _cded=false
     f_setup_scala
     if [[ "${_port}" =~ ^[0-9]+$ ]]; then
         f_javaenvs "${_port}"
-        cd $(realpath /proc/$(lsof -ti:${_port} -sTCP:LISTEN)/cwd)
+        cd $(realpath /proc/$(lsof -ti:${_port} -sTCP:LISTEN)/cwd) && _cded=true
     else
         echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";slee 3
     fi
     scala
+    ${_cded} && cd -
 }
 
 function f_jargrep() {
