@@ -69,6 +69,7 @@ function f_scala() {
     f_setup_scala
     if [[ "${_port}" =~ ^[0-9]+$ ]]; then
         f_javaenvs "${_port}"
+        cd $(realpath /proc/$(lsof -ti:${_port} -sTCP:LISTEN)/cwd)
     else
         echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";slee 3
     fi
