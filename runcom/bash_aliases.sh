@@ -33,7 +33,7 @@ alias kvm_seth='virt-manager -c "qemu+ssh://root@sethdesktop/system?socket=/var/
 
 # Java / jar related
 alias mb='java -jar $HOME/Applications/metabase.jar'    # port is 3000
-#alias vnc='nohup java -jar $HOME/Applications/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
+alias vnc='nohup java -jar $HOME/Applications/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
 #alias vnc='nohup java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
 
 # Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
