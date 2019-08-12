@@ -20,6 +20,7 @@ _FILE_PATH="${5}"       # Log file path. If empty, automatically decided by PID.
 
 
 # Global variables
+_TEST_PORT=12345
 _INTERVAL=$(( 60 * 60 / ${_PER_HOUR} ))
 _PID="$(lsof -ti:${_PORT} -s TCP:LISTEN)" || exit 0
 _USER="$(stat -c '%U' /proc/${_PID})" || exit 1
@@ -46,6 +47,41 @@ function cmds() {
     echo ""
 }
 
+# To use with _curl "http://hostname:12345/test.dat"
+function _web() {
+    local _port="${1:-${_TEST_PORT:-12345}}"
+    local _file_byte="${2-40960}"
+
+    local _pid="$(lsof -ti:${_port} -sTCP:LISTEN)"
+    if [ -n "${_pid}" ]; then
+        echo "Port ${_port} is already in use by ${_pid}" >&2
+        return 1
+    fi
+
+    local _dir="$(mktemp -d)"
+    cd "${_dir}" || return $?
+
+    if which python3 &> /dev/null; then
+        nohup python3 -m http.server ${_port} &>/dev/null &
+    else
+        nohup python -m SimpleHTTPServer ${_port} &>/dev/null &
+    fi
+    sleep 1
+    if lsof -nPi:${_port} -sTCP:LISTEN &> /dev/null && [ -n "${_file_byte}" ] && [ ${_file_byte} -gt 0 ]; then
+        echo "Creating test.dat with ${_file_byte} byte size..." >&2
+        if dd if=/dev/zero of=./test.dat bs=${_file_byte} count=1 >&2; then
+            echo "TEST: _curl \"http://`hostname -f`:${_port}/test.dat\""
+        fi
+    fi
+    cd - &> /dev/null
+}
+
+function _curl() {
+    local _url="$1"
+    local _max_timeout="${2:-12}"
+    time curl -s -v -m ${_max_timeout} --retry 0 -f -L -k -o /dev/null -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n" "${_url}"
+}
+
 # Health monitoring commands which should be OK to run frequently (don't put any slow command)
 function health() {
     local _url="$1"
@@ -60,7 +96,7 @@ function health() {
         echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] URL took more than ${_timeout} sec or failed (${_rc}) --->"
         cmds
         if [ "${_rc}" == "28" ]; then
-            time curl -s -v -m 12 --retry 0 -f -L -k -o /dev/null -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n" "${_url}" &
+            _curl "${_url}" &
             local _wpid=$!
             # Currently, only if hostname matches, so that when remote is down, it won't spam local.
             [ "$(hostname -f)" == "${_host}" ] && java_chk
