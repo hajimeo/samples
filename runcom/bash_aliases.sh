@@ -237,8 +237,13 @@ function backupC() {
     wait
 }
 function push2search() {
+    local _force="$1"
     # May need to configure .ssh/config to specify the private key
     local _cmd="rsync -vrc --exclude '.git' --exclude '.idea' --exclude '*.md' $HOME/IdeaProjects/search/ search.osakos.com:~/www/search/"
+    if [[ "${_force}" =~ ^[yY] ]]; then
+        eval "${_cmd}"
+        return $?
+    fi
     eval "${_cmd} -n"
     echo ""
     read -p "Are you sure?: " "_yes"
