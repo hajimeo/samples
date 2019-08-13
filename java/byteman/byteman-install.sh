@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Ref: https://github.com/myllynen/byteman-automation-tutorial/tree/master/byteman-automation-tool
+# curl -O https://raw.githubusercontent.com/hajimeo/samples/master/java/byteman/byteman-install.sh
 #
 
 _VER="${1:-"4.0.7"}"
@@ -9,7 +10,7 @@ function f_setup() {
     local _ver="${1:-"${_VER}"}"
     local _dir="${2:-"${_WORD_DIR}"}"
 
-    which bmjava && return 0
+    [ -n "$BYTEMAN_HOME" ] && [ -d $BYTEMAN_HOME ] && return 0
 
     if [ ! -d "${_dir}" ]; then
         mkdir -p -m 777 "${_dir}" || return $?
