@@ -17,8 +17,13 @@ import pandas as pd
 from sqlalchemy import create_engine
 import sqlite3
 
+_DEBUG = False
+_LOAD_UDFS = True
+
 _LAST_CONN = None
 _DB_SCHEMA = 'db'
+_SIZE_REGEX = r"[sS]ize ?= ?([0-9]+)"
+_TIME_REGEX = r"\b([0-9.,]+) ([km]?s)\b"
 
 
 def _mexec(func_obj, kwargs_list, num=None, using_process=False):
@@ -146,6 +151,11 @@ def _timestamp(unixtimestamp=None, format="%Y%m%d%H%M%S"):
 
 def _err(message):
     sys.stderr.write("%s\n" % (str(message)))
+
+
+def _debug(message):
+    if _DEBUG:
+        sys.stderr.write("DEBUG: %s\n" % (str(message)))
 
 
 def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='', chunksize=1000,
@@ -281,6 +291,20 @@ def _db(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalche
     return create_engine(dbtype + ':///' + dbname, isolation_level=isolation_level, echo=echo)
 
 
+# Seems sqlite doesn't have regex + grouping?
+def _udf_regex(expr, item, rtn_idx=1):
+    matches = re.search(expr, item)
+    if bool(matches) is False:
+        return None
+    return matches.group(rtn_idx)
+
+
+def _register_udfs(conn):
+    if _LOAD_UDFS:
+        conn.create_function("UDF_REGEX", 2, _udf_regex)  # at this moment, number of argument is 2
+    return conn
+
+
 def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalchemy=False, echo=False):
     """
     Connect to a database (SQLite)
@@ -304,7 +328,7 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
         else:
             db.connect().connection.connection.text_factory = str
         # For 'sqlite, 'db' is the connection object because of _db()
-        conn = db
+        conn = _register_udfs(db)
     else:
         conn = db.connect()
     if bool(conn): _LAST_CONN = conn
@@ -711,16 +735,46 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
                 _size_matches = size_re.search(prev_message)
                 if _size_matches:
                     prev_matches += (_size_matches.group(1),)
+                else:
+                    prev_matches += (None,)
             if bool(time_re):
                 _time_matches = time_re.search(prev_message)
                 if _time_matches:
-                    prev_matches += (_time_matches.group(1),)
+                    # _debug(_time_matches.groups())
+                    prev_matches += (_ms(_time_matches, time_re),)
+                else:
+                    prev_matches += (None,)
     else:
         if prev_message is None:
             prev_message = str(line)  # Looks like each line already has '\n'
         else:
             prev_message = str(prev_message) + str(line)  # Looks like each line already has '\n'
     return (tmp_tuple, prev_matches, prev_message)
+
+
+def _ms(time_matches, time_re_compiled):
+    """
+    Convert regex match which used _TIME_REGEX to Milliseconds
+    :param _time_matches:
+    :param time_regex:
+    :return: integer
+    >>> import re
+    >>> time_re = re.compile(_TIME_REGEX)
+    >>> prev_message = 'withBundle request for subgroup [subgroup:some_uuid] took [1.03 s] to begin execution'
+    >>> _time_matches = time_re.search(prev_message)
+    >>> _ms(_time_matches)
+    1030.0
+    """
+    if time_re_compiled.pattern != _TIME_REGEX:
+        # If not using default regex, return as string
+        return str(time_matches.group(1))
+    # Currently not considering micro seconds
+    if time_matches.group(2) == "ms":
+        return float(time_matches.group(1))
+    if time_matches.group(2) == "s":
+        return float(time_matches.group(1)) * 1000
+    if time_matches.group(2) == "ks":
+        return float(time_matches.group(1)) * 1000 * 1000
 
 
 def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None,
@@ -772,7 +826,7 @@ def logs2table(file_name, tablename=None, conn=None,
                col_names=['datetime', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
                line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
-               size_regex="[sS]ize = ([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
+               size_regex=_SIZE_REGEX, time_regex=_TIME_REGEX,
                max_file_num=10, drop_first=False, multiprocessing=False):
     """
     Insert multiple log files into *one* table
@@ -817,8 +871,13 @@ def logs2table(file_name, tablename=None, conn=None,
         for v in col_names:
             if col_def_str != "":
                 col_def_str += ", "
+            # the column name 'jsonstr' is currently not in use.
             if v == 'jsonstr':
                 col_def_str += "%s json" % (v)
+            elif v == 'size' and size_regex == _SIZE_REGEX:
+                col_def_str += "%s INTEGER" % (v)
+            elif v == 'time' and time_regex == _TIME_REGEX:
+                col_def_str += "%s REAL" % (v)
             else:
                 col_def_str += "%s TEXT" % (v)
 
@@ -868,7 +927,7 @@ def logs2table(file_name, tablename=None, conn=None,
 def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
              num_fields=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
              line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
-             size_regex="[sS]ize =? ?([0-9]+)", time_regex="time = ([0-9.,]+ ?m?s)",
+             size_regex=_SIZE_REGEX, time_regex=_TIME_REGEX,
              max_file_num=10, multiprocessing=False):
     """
     Convert multiple files to *multiple* DataFrame objects
@@ -1127,15 +1186,6 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
         f.write(remote_content)
     _err("%s was updated and back up is %s" % (filename, new_file))
     return
-
-
-def configure():
-    # TODO:
-    config_path = os.getenv('JN_UTILS_CONFIG', os.getenv('HOME') + os.path.sep + ".ju_config")
-    if os.path.exists(config_path) is False:
-        # Download the template or ask a few questions to create config file
-        pass
-    pass
 
 
 def help(func_name=None):
