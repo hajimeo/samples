@@ -41,13 +41,16 @@ OTHERS (which normally you don't need to use):
     -u
         Update this script to the latest version.
 
-    -m image_name
+    -i Image_name
         Experimental.
         To specify a image name to create a container
 
     -l /path/to/dev-license.json
         To specify a path of the software licence file.
         If not specified (default), the installer script would automatically decide.
+
+    -M 11111
+        Monitoring port.
 
     -N
         Not installing anything, just creating an empty container.
@@ -1199,12 +1202,18 @@ main() {
                 fi
             fi
         fi
+
+        if [[ "${_MONITOR_PORT}" =~ [0-9]+ ]]; then
+            # nc might not be installed, so using curl
+            _log "INFO" "Waiting ${_NAME} ${_MONITOR_PORT} is up ..."
+            for _i in {1..20}; do curl -m 2 -k -s -o /dev/null "${_NAME}:${_MONITOR_PORT}" && break;sleep 3;done
+        fi
     fi
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "chl:m:Nn:PRSsuv:X" opts; do
+    while getopts "chi:l:M:Nn:PRSsuv:X" opts; do
         case $opts in
             c)
                 _CREATE_CONTAINER=true
@@ -1213,12 +1222,15 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 usage | less
                 exit 0
                 ;;
+            i)
+                _IMAGE_NAME="$OPTARG"
+                _CREATE_OR_START=true
+                ;;
             l)
                 _LICENSE="$OPTARG"
                 ;;
-            m)
-                _IMAGE_NAME="$OPTARG"
-                _CREATE_OR_START=true
+            M)
+                _MONITOR_PORT="$OPTARG"
                 ;;
             N)
                 _AS_NO_INSTALL_START=true
