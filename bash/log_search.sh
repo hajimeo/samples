@@ -67,7 +67,7 @@ function p_support() {
     echo "#[$(date +"%H:%M:%S")] config.yaml (filtered)"
     _find_and_cat "config.yaml" | rg '(^AS_DEV_MODE|^AS_LOG_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user\.timezone|^thrifty\.client\.protocol)' | sort | uniq
     echo " "
-    _find_and_cat "config.yaml" 2>/dev/null | rg '(^connection\.pool\.testStatement|^estimator.enabled|^query\.result\.max_rows|^aggregates\.create\.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs\.aggregates\.maintainer|^authorization\.impersonation\.jdbc\.enabled|^thrifty\.sasl\.kerberos\.enabled|authorization\.query\.canary\.roleOverride)' | sort | uniq
+    _find_and_cat "config.yaml" 2>/dev/null | rg '(^connection\.pool\.testStatement|connection\.pool\..+\.maxConnections|^estimator.enabled|^query\.result\.max_rows|^aggregates\.create\.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs\.aggregates\.maintainer|^authorization\.impersonation\.jdbc\.enabled|^thrifty\.sasl\.kerberos\.enabled|authorization\.query\.canary\.roleOverride)' | sort | uniq
     echo " "
     echo " "
 
@@ -145,10 +145,10 @@ function p_support() {
     rg -z -N --no-filename -g 'engine.*log*' '(Engine, shutting down|Shutting down akka system|actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
     echo " "
     echo "#[$(date +"%H:%M:%S")] supervisord 'engine entered RUNNING state' (NOTE: time is probably not UTC)"
-    rg -z -N --no-filename -g 'atscale_service.log' 'engine entered RUNNING state' | tail -n 10
+    rg -z -N --no-filename -g 'atscale_service.log' 'engine entered RUNNING state' | sort | uniq | tail -n 10
     echo " "
     echo "#[$(date +"%H:%M:%S")] supervisord 'not expected' (NOTE: time is probably not UTC)"
-    rg -z -N --no-filename -g 'atscale_service.log' 'not expected' | tail -n 10
+    rg -z -N --no-filename -g 'atscale_service.log' 'not expected' | sort | uniq | tail -n 10
 
     echo " "
     echo "#[$(date +"%H:%M:%S")] OutOfMemoryError count in all logs"
@@ -263,7 +263,7 @@ EOF
     echo " "
 
     echo "# 'Took [X s] to begin execution' milliseconds"
-    rg -N "^(${_tmp_date_regex}).+took \[([1-9][0-9.]+) (s|ks)\] to begin execution" -o -r '$1 $2' /tmp/took_X_to_begin_$$.out | awk '{print $1"T"$2" "($3*1000)}' | bar_chart.py -A
+    rg -N "^(${_tmp_date_regex}).+took \[([1-9][0-9.]+) (s|ks)\] to begin execution" -o -r '$1 $2' /tmp/took_X_to_begin_$$.out | awk '{print $1"."$2" "($3*1000)}' | bar_chart.py -A
     echo " "
 
     echo "# 'Ending QueryActor'"
@@ -275,7 +275,7 @@ EOF
     echo " "
 
     echo "# Counting 'Getting LDAP user completed after X s' (seconds and higher only)"
-    rg -N --no-filename -z -g "${_glob}" "^(${_tmp_date_regex}).+ Getting LDAP user completed after ([0-9.]+) (s|ks)" -o -r '$1' | awk '{print $1"T"$2" 1"}' | bar_chart.py -A
+    rg -N --no-filename -z -g "${_glob}" "^(${_tmp_date_regex}).+ Getting LDAP user completed after ([0-9.]+) (s|ks)" -o -r '$1' | awk '{print $1"."$2" 1"}' | bar_chart.py -A
     echo " "
     rg -N --no-filename -z -g "${_glob}" "^(${_tmp_date_regex}).+ Getting LDAP user completed after ([0-9.]+) (s|ks)" -o -r '$1 $2 $3' | awk '{if ($4=="ks") s=$3*1000; else s=$3; print $1" "$2" "$3" s"}' | sort -nk2 | tail -n${_n}
     echo " "
@@ -303,6 +303,24 @@ function f_postgres_log() {
     echo "### Slow checkpoint complete ################################################################################"
     # With log_checkpoints = on
     rg -z -N --sort=path -g "${_glob}" "^${_date_regex}.+ checkpoint complete:.+(longest=[^0].+|average=[^0].+)"
+}
+
+function f_checkConnPoolQueueSize() {
+    local __doc__="Grep 'going into queue'"
+    local _date_regex="${1}"    # No need ^
+    local _glob="${2:-engine.*log*}"
+    local _subgroup="${3:-"[^]]+"}"
+    local _subject="${4:-"[^]]+"}"
+    [ -z "${_date_regex}" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d"
+
+    if ! which q &>/dev/null; then
+        echo "Install 'q' ( https://github.com/harelba/q / http://harelba.github.io/q/ )"
+        return
+    fi
+    rg -z -N --no-filename -g "${_glob}" -i -o "^(${_date_regex}).+ subgroup \[subgroup:(${_subgroup})\] and subject \[(${_subject})\] going into queue, is \[#([^]]+)\] in line" -r '${1},${2},${3},${4}' | sort > /tmp/f_checkConnPoolQueueSize_$$.csv
+    q -d ',' "SELECT c1, c2, c3, sum(c4) FROM /tmp/f_checkConnPoolQueueSize_$$.csv GROUP BY c1, c2, c3" | tee /tmp/f_checkConnPoolQueueSize_$$_agged.csv
+
+    rg -z -N --no-filename "^(${_date_regex}).*,([^,]+),([^,]+),([^,]+)" -r '${1} ${4}' /tmp/f_checkConnPoolQueueSize_$$_agged.csv | bar_chart.py -A
 }
 
 function f_checkResultSize() {
