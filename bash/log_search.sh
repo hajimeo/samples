@@ -141,11 +141,12 @@ function p_support() {
     echo "* Number of 0 tbls: "$(_find_and_cat "tableSizes.tsv" | grep -w 0 -c)
     echo " "
 
+
     echo "#[$(date +"%H:%M:%S")] Engine start/restart"
     rg -z -N --no-filename -g 'engine.*log*' '(Engine, shutting down|Shutting down akka system|actor system shut down|[0-9.]+ startup complete)' | sort | uniq | tail
     echo " "
-    echo "#[$(date +"%H:%M:%S")] supervisord 'engine entered RUNNING state' (NOTE: time is probably not UTC)"
-    rg -z -N --no-filename -g 'atscale_service.log' 'engine entered RUNNING state' | sort | uniq | tail -n 10
+    echo "#[$(date +"%H:%M:%S")] supervisord 'exited: engine|success: engine' (NOTE: time is probably not UTC)"
+    rg -z -N -g 'atscale_service.log' '(exited|success): engine' 2>&1 | rg '^.*hosts/([^/]+)[^:]+:(.+)' -o -r '$2 <= $1' | sort -n | uniq | tail -n 10
     echo " "
     echo "#[$(date +"%H:%M:%S")] supervisord 'not expected' (NOTE: time is probably not UTC)"
     rg -z -N --no-filename -g 'atscale_service.log' 'not expected' | sort | uniq | tail -n 10
@@ -166,6 +167,7 @@ function p_support() {
     echo " "
     echo "#[$(date +"%H:%M:%S")] Last 10 'WARN fsync-ing the write ahead log'"
     rg -z -N --no-filename "^${_DATE_FORMAT}.+ WARN.+fsync-ing the write ahead log" -g 'coordinator.*stdout*' | sort | uniq | tail -n 10
+
 
     echo " "
     echo "#[$(date +"%H:%M:%S")] Count thread types from periodic.log"
