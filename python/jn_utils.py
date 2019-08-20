@@ -154,6 +154,7 @@ def _err(message):
 
 
 def _debug(message):
+    global _DEBUG
     if _DEBUG:
         sys.stderr.write("DEBUG: %s\n" % (str(message)))
 
@@ -182,10 +183,10 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='', chu
     for f in files:
         f_name, f_ext = os.path.splitext(os.path.basename(f))
         if ex.search(f_name):
-            _err("Excluding %s (%s)..." % (f_name, exclude_ptn))
+            _err("Excluding %s as per exclude_ptn (%d KB)..." % (f_name, os.stat(f).st_size/1024))
             continue
         new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(db_conn) is False), prefix='t_')
-        _err("Creating table: %s ..." % (new_name))
+        _err("Creating table: %s (%d KB) ..." % (new_name, os.stat(f).st_size/1024))
         names_dict[new_name] = f
         dfs[new_name] = json2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize,
                                 json_cols=json_cols)
@@ -300,6 +301,7 @@ def _udf_regex(expr, item, rtn_idx=1):
 
 
 def _register_udfs(conn):
+    global _LOAD_UDFS
     if _LOAD_UDFS:
         conn.create_function("UDF_REGEX", 2, _udf_regex)  # at this moment, number of argument is 2
     return conn
@@ -335,18 +337,6 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     return conn
 
 
-def q(sql, conn=None, no_history=False):
-    """
-    Alias of query
-    :param sql: SELECT statement
-    :param conn: DB connection object
-    :param no_history: not saving this query into a history file
-    :return: a DF object
-    >>> pass
-    """
-    return query(sql, conn, no_history)
-
-
 def query(sql, conn=None, no_history=False):
     """
     Call fetchall() with given query, expecting SELECT statement
@@ -361,10 +351,14 @@ def query(sql, conn=None, no_history=False):
     """
     if bool(conn) is False: conn = connect()
     # return conn.execute(sql).fetchall()
+    # TODO: pd.options.display.max_colwidth = col_width does not work
     df = pd.read_sql(sql, conn)
     if no_history is False and df.empty is False:
         _save_query(sql)
     return df
+
+
+q = query
 
 
 def _save_query(sql, limit=1000):
@@ -465,18 +459,6 @@ def draw(df, width=16, x_col=0, x_colname=None):
     return df
 
 
-def history(run=None, like=None, html=True, tail=20):
-    """
-    Alias of qhistory (query history)
-    :param run: Integer of DataFrame row index which will be run
-    :param like: String used in 'like' to search 'query' column
-    :param html: Whether output in HTML (default) or returning dataframe object
-    :param tail: How many last record it displays (default 20)
-    :return: Pandas DataFrame contains a list of queries
-    """
-    return qhistory(run=run, like=like, html=html, tail=tail)
-
-
 def qhistory(run=None, like=None, html=True, tail=20):
     """
     Return query histories as DataFrame (so that it will be display nicely in Jupyter)
@@ -520,15 +502,7 @@ def qhistory(run=None, like=None, html=True, tail=20):
     display(HTML(out))
 
 
-def desc(tablename=None, colname=None, conn=None):
-    """
-    Alias of describe()
-    :param tablename: If empty, get table list
-    :param colname: String used in like, such as column name
-    :param conn: DB connection (cursor) object
-    :return: void with printing CREATE statement, or a DF object contains table list
-    """
-    return describe(tablename=tablename, colname=colname, conn=conn)
+history = qhistory
 
 
 def describe(tablename=None, colname=None, conn=None):
@@ -552,6 +526,9 @@ def describe(tablename=None, colname=None, conn=None):
             sql="select `name`, `type`, `notnull`, `dflt_value`, `pk` from pragma_table_info('%s') where name is not 'index' %s order by cid" % (
                 str(tablename), sql_and), conn=conn, no_history=True)
     return show_create_table(tablenames=None, like=colname, conn=conn)
+
+
+desc = describe
 
 
 def show_create_table(tablenames=None, like=None, conn=None):
@@ -765,6 +742,7 @@ def _ms(time_matches, time_re_compiled):
     >>> _ms(_time_matches)
     1030.0
     """
+    global _TIME_REGEX
     if time_re_compiled.pattern != _TIME_REGEX:
         # If not using default regex, return as string
         return str(time_matches.group(1))
@@ -848,6 +826,8 @@ def logs2table(file_name, tablename=None, conn=None,
     #True
     >>> pass    # TODO: implement test
     """
+    global _SIZE_REGEX
+    global _TIME_REGEX
     if bool(conn) is False: conn = connect()
 
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
@@ -912,7 +892,7 @@ def logs2table(file_name, tablename=None, conn=None,
                     return res
     else:
         for f in files:
-            _err("Processing %s ..." % (str(f)))
+            _err("Processing %s (%d KB) ..." % (str(f), os.stat(f).st_size/1024))
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
                                            size_regex=size_regex, time_regex=time_regex, num_cols=num_cols,
                                            replace_comma=True)
@@ -971,7 +951,7 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'ids', 'siz
                 dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
     else:
         for f in files:
-            _err("Processing %s ..." % (str(f)))
+            _err("Processing %s (%d KB) ..." % (str(f), os.stat(f).st_size/1024))
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
                                            size_regex=size_regex, time_regex=time_regex, num_cols=num_fields,
                                            replace_comma=True)
@@ -1095,28 +1075,28 @@ def gen_ldapsearch(ldap_json=None):
 
 
 def load(jsons_dir=["./engine/aggregates", "./engine/cron-scheduler"], csvs_dir="./stats",
-         exclude_ptn_json='physicalPlans|partition|incremental|predictions', exclude_ptn_csv=''):
+         jsons_exclude_ptn='physicalPlans|partition|incremental|predictions', csvs_exclude_ptn=''):
     """
     Execute loading functions (currently load_jsons and load_csvs)
     :param jsons_dir: (optional) Path to a directory which contains JSON files
     :param csvs_dir: (optional) Path to a directory which contains CSV files
-    :param exclude_ptn_json: (optional) Regex string to exclude some table
-    :param exclude_ptn_csv: (optional) Regex string To exclude some table
+    :param jsons_exclude_ptn: (optional) Regex to exclude some tables when reading JSON files
+    :param csvs_exclude_ptn: (optional) Regex to exclude some tables when reading CSV files
     :return: void
     >>> pass    # test should be done in load_jsons and load_csvs
     """
     # TODO: shouldn't have any paths in here but should be saved into some config file.
     if type(jsons_dir) == list:
         for jd in jsons_dir:
-            load_jsons(jd, connect(), exclude_ptn=exclude_ptn_json)
+            load_jsons(jd, connect(), exclude_ptn=jsons_exclude_ptn)
     else:
-        load_jsons(jsons_dir, connect(), exclude_ptn=exclude_ptn_json)
+        load_jsons(jsons_dir, connect(), exclude_ptn=jsons_exclude_ptn)
 
     if type(csvs_dir) == list:
         for cd in csvs_dir:
-            load_csvs(cd, connect(), exclude_ptn=exclude_ptn_csv)
+            load_csvs(cd, connect(), exclude_ptn=csvs_exclude_ptn)
     else:
-        load_csvs(csvs_dir, connect(), exclude_ptn=exclude_ptn_csv)
+        load_csvs(csvs_dir, connect(), exclude_ptn=csvs_exclude_ptn)
 
     # TODO: below does not work so that using above names_dict workaround
     # try:
