@@ -158,7 +158,7 @@ function f_setup_python() {
     # Need to add /usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin in PATH?
     # TODO: as of today no jupyter_contrib_labextensions (lab)
     # NOTE: Initially I thought pandasql looked good but it's actually using sqlite. Pixiedust works only with jupyter-notebook
-    sudo -i pip3 install jupyter_contrib_nbextensions pandas pandas-profiling pixiedust sqlalchemy ipython-sql --log /tmp/pip.log &>/dev/null
+    sudo -i pip3 install jupyter_contrib_nbextensions pandas pandas-profiling pixiedust sqlalchemy ipython-sql pandas-gbq --log /tmp/pip.log &>/dev/null
     sudo -i pip3 install bash_kernel --log /tmp/pip.log &>/dev/null && sudo -i python3 -m bash_kernel.install
     # Enable BeakerX. NOTE: this works with only python3
     #sudo -i pip3 install beakerx && beakerx-install
@@ -180,6 +180,7 @@ function f_setup_python() {
     # This is for using Java 1.8 (to avoid "unsupported major.minor version 52.0")
     sudo -i pip3 install 'JPype1==0.6.3' --force-reinstall
     sudo -i pip3 install JayDeBeApi
+    sudo -i pip3 install google-cloud-bigquery
 
     f_jupyter_util
 }
