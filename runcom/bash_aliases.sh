@@ -55,6 +55,10 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
+function merge_zips() {
+    local _first_file="$1"
+    zip -FF ${_first_file} --output ${_first_file%.*}.merged.zip
+}
 function xml2json() {
     local _xml_file="$1"
     #pip3 install xmltodict
