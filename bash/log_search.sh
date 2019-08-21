@@ -6,7 +6,7 @@
 # DOWNLOAD:
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 #
-# TODO: tested on Mac only (eg: sed -E, ggrep)
+# TODO: tested on Mac only (eg: gsed, ggrep)
 # brew install ripgrep      # for rg
 # brew install grep         # 'grep' will install ggrep (may not need anymore)
 # brew install gnu-sed      # for gsed
@@ -20,12 +20,29 @@
 [ -n "$_DEBUG" ] && (set -x; set -e)
 
 usage() {
-    echo "HELP/USAGE:"
-    echo "This script contains useful functions to search log files.
+    if [ -n "$1" ]; then
+        _help "$1"
+        return $?
+    fi
+    echo "HELP/USAGE:\
+This script contains useful functions to search log files.
 
-How to use: source, then use some function
-    source ${BASH_SOURCE}
-    help f_someFunctionName
+Required commands:
+    brew install ripgrep      # for rg
+    brew install grep         # for ggrep (may not need anymore)
+    brew install gnu-sed      # for gsed
+    brew install dateutils    # for dateconv
+    brew install coreutils    # for gtac gdate
+    brew install q
+    pip install data_hacks    # for bar_chart.py
+
+Setup:
+    ln -s ${0} /usr/local/bin/log_search
+
+HOW-TO: source (.), then use some function
+    . log_search
+    # Display usage/help of one function
+    usage f_someFunctionName
 
     Examples:
     # Check what kind of caused by is most
@@ -46,7 +63,7 @@ Or
 ### Public functions ###################################################################################################
 
 function p_support() {
-    local __doc__="Scan a support bundle"
+    local __doc__="Scan bundle to collect basic information"
 
     echo "#[$(date +"%H:%M:%S")] Version information"
     echo "## version files (versions.*.yml or build.yaml)"
@@ -186,6 +203,7 @@ function p_support() {
 }
 
 function p_performance() {
+    local __doc__="Scan a support bundle to collect performance related information"
     local _glob="${1-"engine.*log*"}"   # eg: "engine.2018-11-27*log*". Empty means using default of each function.
     local _YYYY_MM_DD_hh_m_regex="${2}" # eg: "2018-11-26 1[01]:\d". Can't use () as it will change the order of rg -o -r
     local _num_cpu="${3}"               # if empty, use half of CPUs
@@ -451,6 +469,7 @@ function f_get_query() {
 }
 
 function f_query_plan() {
+    local __doc__="Output physical SQL plan of a particular query"
     local _queryId="$1"
     local _glob="${2:-"debug.*log*"}"
     rg -z -N --no-filename "queryId=${_queryId}.+ Final physical plan.+SqlPlan\((.+)\)" -g "${_glob}" -m 1 -o -r '$1' | python -m json.tool
@@ -939,7 +958,8 @@ function f_list_start_end(){
 }
 
 function f_start_end_time_with_diff(){
-    local __doc__="Output start time, end time, difference(sec), (filesize) from a log file (eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"^${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)"
+    local __doc__="Output start time, end time, difference(sec), (filesize) from a log file"
+    #eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"^${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)
     local _log="$1"
     local _date_regex="${2}"
     [ -z "$_date_regex" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d"
@@ -1401,13 +1421,14 @@ function _tac() {
 
 ### Help ###############################################################################################################
 
-help() {
+_help() {
     local _function_name="$1"
     local _show_code="$2"
     local _doc_only="$3"
 
     if [ -z "$_function_name" ]; then
-        echo "help <function name> [Y]"
+        # The workd "help" is already taken in bash
+        echo "_help <function name> [Y]"
         echo ""
         _list "func"
         echo ""
@@ -1442,7 +1463,7 @@ help() {
             echo -e "${_output}" | less
         elif [ -n "$_output" ]; then
             echo -e "${_output}"
-            echo "(\"help $_function_name y\" to show code)"
+            echo "(\"_help $_function_name y\" to show code)"
         fi
     else
         echo "Unsupported Function name '$_function_name'."
@@ -1459,7 +1480,7 @@ _list() {
     if [[ -z "$_name" ]]; then
         (for _f in `typeset -F | _grep -P '^declare -f [fp]_' | cut -d' ' -f3`; do
             #eval "echo \"--[ $_f ]\" | _sed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
-            _tmp_txt="`help "$_f" "" "Y"`"
+            _tmp_txt="`_help "$_f" "" "Y"`"
             printf "%-28s%s\n" "$_f" "$_tmp_txt"
         done)
     elif [[ "$_name" =~ ^func ]]; then
@@ -1478,9 +1499,10 @@ _IP_RANGE_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|
 _HOSTNAME_REGEX='^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
 _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
 _TEST_REGEX='^\[.+\]$'
+_SCRIPT_DIR="$(dirname $(realpath "$BASH_SOURCE"))"
+
 [ -z "$_DATE_FORMAT" ] && _DATE_FORMAT="\d\d\d\d-\d\d-\d\d"
 [ -z "$_TIME_FMT4CHART" ] && _TIME_FMT4CHART="\d\d:"
-_SCRIPT_DIR="$(dirname $(realpath "$BASH_SOURCE"))"
 
 
 ### Main ###############################################################################################################
