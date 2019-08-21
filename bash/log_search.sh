@@ -7,10 +7,13 @@
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 #
 # TODO: tested on Mac only (eg: sed -E, ggrep)
-# brew install grep     # 'grep' will install ggrep
-# brew install gnu-sed  # for gsed
-# brew install dateutils # for dateconv
-# brew install coreutils # for gtac gdate
+# brew install ripgrep      # for rg
+# brew install grep         # 'grep' will install ggrep (may not need anymore)
+# brew install gnu-sed      # for gsed
+# brew install dateutils    # for dateconv
+# brew install coreutils    # for gtac gdate
+# brew install q
+# pip install data_hacks    # for bar_chart.py
 # curl https://raw.githubusercontent.com/hajimeo/samples/master/python/line_parser.py -o /usr/local/bin/line_parser.py
 #
 
