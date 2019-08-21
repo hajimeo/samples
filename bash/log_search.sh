@@ -67,7 +67,7 @@ function p_support() {
     echo "#[$(date +"%H:%M:%S")] config.yaml (filtered)"
     _find_and_cat "config.yaml" | rg '(^AS_DEV_MODE|^AS_LOG_DIR|^HOSTNAME|^JAVA_HOME|^USER|^user\.timezone|^thrifty\.client\.protocol)' | sort | uniq
     echo " "
-    _find_and_cat "config.yaml" 2>/dev/null | rg '(^connection\.pool\.testStatement|connection\.pool\..+\.maxConnections|^estimator.enabled|^query\.result\.max_rows|^aggregates\.create\.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs\.aggregates\.maintainer|^authorization\.impersonation\.jdbc\.enabled|^thrifty\.sasl\.kerberos\.enabled|authorization\.query\.canary\.roleOverride)' | sort | uniq
+    _find_and_cat "config.yaml" 2>/dev/null | rg '(^connection\.pool\.testStatement|connection\.pool\..+\.maxConnections|^estimator.enabled|^query\.result\.max_rows|^aggregates\.create\.invalidateMetadataOnAllSubgroups|^aggregates\..+\.buildFromExisting|^jobs\.aggregates\.maintainer|^authorization\.impersonation\.jdbc\.enabled|^thrifty\.sasl\.kerberos\.enabled|^authorization\.query\.canary\.)' | sort | uniq
     echo " "
     echo " "
 
