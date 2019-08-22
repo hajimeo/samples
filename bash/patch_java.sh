@@ -62,6 +62,7 @@ function f_javaenvs() {
     else
         export CLASSPATH="${CLASSPATH%:}:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
     fi
+    export _CWD="$(realpath /proc/${_p}/cwd)"
 }
 
 function f_scala() {
@@ -70,7 +71,7 @@ function f_scala() {
     f_setup_scala
     if [[ "${_port}" =~ ^[0-9]+$ ]]; then
         f_javaenvs "${_port}"
-        cd $(realpath /proc/$(lsof -ti:${_port} -sTCP:LISTEN)/cwd) && _cded=true
+        cd "${_CWD}" && _cded=true
     else
         echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";slee 3
     fi
@@ -137,6 +138,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
 
     f_javaenvs "$_PORT" || exit $?
+    [ -z "${_JAR_FILEPATH}" ] && _JAR_FILEPATH="${_CWD}"
 
     # If _CLASS_FILEPATH is given, compiling.
     if [ -n "${_CLASS_FILEPATH}" ]; then
@@ -160,7 +162,7 @@ $0 '$1' '$2' '<jar path from above>' '$4' [Y]"
             f_setup_scala
             _CMD="scalac"
         elif [ "${_EXT}" = "java" ]; then
-            if [ -n "${_JAR_FILEPATH}" ]; then
+            if [ -n "${_JAR_FILEPATH}" ] && [ -e "${_JAR_FILEPATH}" ]; then
                 _DIR_PATH="$(dirname $($JAVA_HOME/bin/jar -tvf ${_JAR_FILEPATH} | grep -oE "[^ ]+${_CLASS_NAME}.class"))"
                 if [ ! -d "${_DIR_PATH}" ]; then
                     mkdir -p "${_DIR_PATH}" || exit $?
@@ -179,7 +181,7 @@ $0 '$1' '$2' '<jar path from above>' '$4' [Y]"
     fi
 
     # If _JAR_FILEPATH is given, updating the jar
-    if [ -n "${_JAR_FILEPATH}" ] && [ -n "${_CLASS_NAME}" ]; then
+    if [ -n "${_JAR_FILEPATH}" ] && [ -e "${_JAR_FILEPATH}" ] && [ -n "${_CLASS_NAME}" ]; then
         f_update_jar "${_JAR_FILEPATH}" "${_CLASS_NAME}" "${_UPDATING_CLASSNAME}" || exit $?
         echo "Completed. Please restart the process (current PID=`lsof -ti:${_PORT} -s TCP:LISTEN`)."
     else
