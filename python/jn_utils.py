@@ -292,9 +292,12 @@ def _db(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalche
     return create_engine(dbtype + ':///' + dbname, isolation_level=isolation_level, echo=echo)
 
 
-# Seems sqlite doesn't have regex + grouping?
-def _udf_regex(expr, item, rtn_idx=1):
+# Seems sqlite doesn't have regex (need to import pcre.so)
+def _udf_regex(expr, item, rtn_idx=0):
     matches = re.search(expr, item)
+    # If 0, return true or false (expecting to use in WHERE clause)
+    if rtn_idx == 0:
+        return bool(matches)
     if bool(matches) is False:
         return None
     return matches.group(rtn_idx)
@@ -303,7 +306,8 @@ def _udf_regex(expr, item, rtn_idx=1):
 def _register_udfs(conn):
     global _LOAD_UDFS
     if _LOAD_UDFS:
-        conn.create_function("UDF_REGEX", 2, _udf_regex)  # at this moment, number of argument is 2
+        # UDF_REGEX(regex, column, integer)
+        conn.create_function("UDF_REGEX", 3, _udf_regex)
     return conn
 
 
