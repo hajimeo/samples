@@ -826,7 +826,8 @@ def logs2table(file_name, tablename=None, conn=None,
     :param multiprocessing: If True, use multiple CPUs
     :return: Void if no error, or a tuple contains multiple information for debug
     #>>> logs2table(file_name='queries.*log*', tablename='t_queries_log', col_names=['datetime', 'ids', 'message', 'extra_lines'],
-                  line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (\{.*?\}) - ([^:]+):(.*)', size_regex=None, time_regex=None, drop_first=True)
+                  line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (\{.*?\}) - ([^:]+):(.*)',
+                  size_regex=None, time_regex=None, drop_first=True, max_file_num=20)
     #True
     >>> pass    # TODO: implement test
     """
