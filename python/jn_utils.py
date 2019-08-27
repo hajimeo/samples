@@ -521,15 +521,15 @@ def describe(tablename=None, colname=None, conn=None):
     Columns: [name, rootpage]
     Index: []
     """
-    sql_and = ""
-    if bool(colname):
-        sql_and = " and name like '%" + str(colname) + "%'"
-    if bool(tablename):
-        # NOTE: this query is sqlite specific. names = list(map(lambda x: x[0], cursor.description))
-        return query(
-            sql="select `name`, `type`, `notnull`, `dflt_value`, `pk` from pragma_table_info('%s') where name is not 'index' %s order by cid" % (
-                str(tablename), sql_and), conn=conn, no_history=True)
-    return show_create_table(tablenames=None, like=colname, conn=conn)
+    if bool(tablename) is False:
+        return show_create_table(tablenames=None, like=colname, conn=conn)
+    # NOTE: this query is sqlite specific. names = list(map(lambda x: x[0], cursor.description))
+    # NOTE2: below query does not work with SQLite older than 3.16
+    # select `name`, `type`, `notnull`, `dflt_value`, `pk` from pragma_table_info('%s') where name is not 'index' %s order by cid
+    df = query(sql="PRAGMA table_info('%s')" % (tablename), conn=conn, no_history=True)
+    if bool(colname) is False:
+        return df
+    return df.query("name.str.startswith('%s')" % (colname))
 
 
 desc = describe
