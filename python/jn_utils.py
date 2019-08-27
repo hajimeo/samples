@@ -183,10 +183,10 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='', chu
     for f in files:
         f_name, f_ext = os.path.splitext(os.path.basename(f))
         if ex.search(f_name):
-            _err("Excluding %s as per exclude_ptn (%d KB)..." % (f_name, os.stat(f).st_size/1024))
+            _err("Excluding %s as per exclude_ptn (%d KB)..." % (f_name, os.stat(f).st_size / 1024))
             continue
         new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(db_conn) is False), prefix='t_')
-        _err("Creating table: %s (%d KB) ..." % (new_name, os.stat(f).st_size/1024))
+        _err("Creating table: %s (%d KB) ..." % (new_name, os.stat(f).st_size / 1024))
         names_dict[new_name] = f
         dfs[new_name] = json2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize,
                                 json_cols=json_cols)
@@ -826,7 +826,7 @@ def logs2table(file_name, tablename=None, conn=None,
     :param multiprocessing: If True, use multiple CPUs
     :return: Void if no error, or a tuple contains multiple information for debug
     #>>> logs2table(file_name='queries.*log*', tablename='t_queries_log', col_names=['datetime', 'ids', 'message', 'extra_lines'],
-                  line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (\{.*?\}) - ([^:]+):(.*)', drop_first=True)
+                  line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (\{.*?\}) - ([^:]+):(.*)', size_regex=None, time_regex=None, drop_first=True)
     #True
     >>> pass    # TODO: implement test
     """
@@ -896,7 +896,7 @@ def logs2table(file_name, tablename=None, conn=None,
                     return res
     else:
         for f in files:
-            _err("Processing %s (%d KB) ..." % (str(f), os.stat(f).st_size/1024))
+            _err("Processing %s (%d KB) ..." % (str(f), os.stat(f).st_size / 1024))
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
                                            size_regex=size_regex, time_regex=time_regex, num_cols=num_cols,
                                            replace_comma=True)
@@ -955,7 +955,7 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'ids', 'siz
                 dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
     else:
         for f in files:
-            _err("Processing %s (%d KB) ..." % (str(f), os.stat(f).st_size/1024))
+            _err("Processing %s (%d KB) ..." % (str(f), os.stat(f).st_size / 1024))
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
                                            size_regex=size_regex, time_regex=time_regex, num_cols=num_fields,
                                            replace_comma=True)
