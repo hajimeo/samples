@@ -577,11 +577,11 @@ function f_as_setup() {
 
     [ ! -d "${_work_dir%/}/${_service%/}" ] && mkdir -p -m 777 "${_work_dir%/}${_service%/}"
 
-    # Get the latest script but it's OK if fails if the file exists
-    [ -n "${_DOWNLOAD_URL}" ] && f_update "${_work_dir%/}/${_service%/}/install_atscale.sh" "${_DOWNLOAD_URL}"
+    # Get the latest install_{service}.sh script but it's OK if fails if the file exists
+    [ -n "${_DOWNLOAD_URL}" ] && f_update "${_work_dir%/}/${_service%/}/install_${_service%/}.sh" "${_DOWNLOAD_URL}"
 
-    if [ ! -s ${_work_dir%/}/${_service%/}/install_atscale.sh ]; then
-        _log "ERROR" "Failed to create ${_work_dir%/}/${_service%/}/install_atscale.sh"
+    if [ ! -s ${_work_dir%/}/${_service%/}/install_${_service%/}.sh ]; then
+        _log "ERROR" "Failed to create ${_work_dir%/}/${_service%/}/install_${_service%/}.sh"
         return 1
     fi
 
@@ -596,7 +596,7 @@ function f_as_setup() {
     fi
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    docker exec -it ${_name} bash -c "bash -x ${_share_dir%/}/${_service%/}/install_atscale.sh -v ${_version} -l ${_share_dir%/}/${_service%/}/$(basename "${_license}") ${_options} 2>/tmp/install.err"
+    docker exec -it ${_name} bash -c "bash -x ${_share_dir%/}/${_service%/}/install_${_service%/}.sh -v ${_version} -l ${_share_dir%/}/${_service%/}/$(basename "${_license}") ${_options} 2>/tmp/install.err"
     if [ $? -ne 0 ]; then
         _log "ERROR" "Installation/Setup failed. Please check container's /tmp/install.err for STDERR"
         return 1
@@ -647,7 +647,7 @@ function f_as_hostname_change() {
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
     _log "INFO" "Scheduling hostname change to ${_hostname} (from ${_old_hostname})"
-    echo "docker exec -it ${_name} bash -c \". ${_SHARE_DIR%/}/${_service%/}/install_atscale.sh;f_hostname_change '${_hostname}' '${_old_hostname}'\"" | at now +1 minute
+    echo "docker exec -it ${_name} bash -c \". ${_SHARE_DIR%/}/${_service%/}/install_${_service%/}.sh;f_hostname_change '${_hostname}' '${_old_hostname}'\"" | at now +1 minute
 }
 
 function f_as_backup() {
@@ -667,7 +667,7 @@ function f_as_backup() {
     fi
 
     f_as_log_cleanup "${_name}"
-    docker exec -it ${_name} bash -c 'sudo -u '${_service}' /usr/local/'${_service}'/bin/atscale_service_control stop all;for _i in {1..4}; do lsof -ti:10520 -s TCP:LISTEN || break;sleep 3;done'
+    docker exec -it ${_name} bash -c 'sudo -u '${_service}' /usr/local/'${_service}'/bin/${_service%/}_service_control stop all;for _i in {1..4}; do lsof -ti:10520 -s TCP:LISTEN || break;sleep 3;done'
     docker exec -it ${_name} bash -c 'cp -p /home/'${_service}'/custom.yaml /usr/local/'${_service}'/custom.bak.yaml &>/dev/null'
     _log "INFO" "Creating '${_share_dir%/}/${_service%/}/${_file_name}' from /usr/local/${_service%/}"; sleep 1
     docker exec -it ${_name} bash -c 'tar -chzf '${_share_dir%/}'/'${_service%/}'/'${_file_name}' -C /usr/local/ '${_service%/}''

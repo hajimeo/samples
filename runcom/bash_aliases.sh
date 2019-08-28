@@ -43,13 +43,7 @@ alias shib-sth='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/s
 alias shib-haj='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/haj --proxy-server=socks5://hajime:28081 https://192.168.6.163:4200/webuser/'
 alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/hajigle https://www.blogger.com/blogger.g?blogID=9018688091574554712&pli=1#allposts'
 
-# Python simple http server from the specific dir
-# To setup: asDocSync <server ip>
-alias webs='cd $HOME/Public/atscale_latest/ && nohup python -m SimpleHTTPServer 38081 &>/tmp/python_simplehttpserver.out & nohup python $HOME/IdeaProjects/samples/python/SympleWebServer.py &>/tmp/python_simplewebserver.out &'
-# List and grep some specific files from s3. NOTE: https:// requires s3-us-west-1.amazonaws.com
-
 # Work specific aliases
-alias asS3='s3cmd ls s3://files.atscale.com/installer/package/ | grep -E "^201[89]-.+atscale-(20|[6789]).+\.x86_64\.(tar\.gz|rpm)$"'
 alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/updates/'
 # TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
 
@@ -256,45 +250,3 @@ function push2search() {
 }
 
 ## Work specific functions
-# copy script(s) into linux servers
-function asPubInst() {
-    local _service="${1:-"atscale"}"
-    scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh root@192.168.6.160:/var/tmp/share/${_service}/ &
-    scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hajime@192.168.6.162:/var/tmp/share/${_service}/ &
-    scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hajime@192.168.6.163:/var/tmp/share/${_service}/ &
-    scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hajime@192.168.4.135:/var/tmp/share/${_service}/ & # DHCP
-    scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hosako@dh1:/var/tmp/share/${_service}/ &
-    scp -C $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh hosako@z230:/home/hosako/Public/${_service} &
-    cp -f $HOME/IdeaProjects/samples/${_service}/install_${_service}.sh $HOME/share/${_service}/
-    wait
-    date
-}
-# List files against hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
-function asftpl() {
-    local _name="${1}"
-    local _n="${2:-20}"
-    if [[ "$1" =~ ^[0-9]+$ ]]; then
-        _n=$1
-        _name="${2}"
-    fi
-    #ssh -q asftp -t 'cd /home/ubuntu/upload && find . -type f -mtime -2 -size +10240k -name "'${_name}'" -ls | sort -k9,10 | tail -n'${_n}
-    ssh -q asftp -t 'cd /home/ubuntu/upload && ls -lhtr '${_name}' | grep -vE "(telemetryonly|image-diagnostic|\.dmp)" | tail -n'${_n}';date'
-}
-# Download a syngle file from hostname 'asftp'. NOTE: the hostname 'asftp' is specified in .ssh_config
-function asftpd() {
-    local _file="$1"
-    local _bwlimit_kb="$2"
-    [ -z "${_file}" ] && ( asftpl; return 1 )
-    ssh -q asftp -t "cd /home/ubuntu/upload && ls -lhtr ${_file}" || return $?
-    local _ext="${_file##*.}"
-    local _rsync_opts="-Phz"
-    [[ "${_ext}" =~ ^gz|zip|tgz$ ]] && _rsync_opts="-Ph"
-    [[ "${_bwlimit_kb}" =~ ^[0-9]+$ ]] && _rsync_opts="${_rsync_opts} --bwlimit=${_bwlimit_kb}"
-    rsync ${_rsync_opts} asftp:"/home/ubuntu/upload/${_file}" ./
-}
-function asDocSync() {
-    local _server="$1"
-    local _loginas="${2:-root}"
-    rsync -Phrz ${_loginas}@${_server}:/usr/local/atscale/apps/modeler/assets/modeler/public/docs/* $HOME/Public/atscale_latest/
-    cd $HOME/Public/atscale_latest/ && patch -p0 -b < $HOME/IdeaProjects/samples/misc/doc_index.patch
-}

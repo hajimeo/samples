@@ -16,10 +16,7 @@ Host dh1
   Hostname dockerhost1
   User hosako
 
-Host asftp
-  Hostname sftp.atscale.com
-
-Host node* atscale* *.localdomain localhost
+Host node* atscal* *.localdomain localhost
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
   #IdentityFile /path/to/root/id_rsa
