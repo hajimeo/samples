@@ -117,12 +117,12 @@ def _globr(ptn='*', src='./', loop=0):
     return matches
 
 
-def _read(file):
+def _open_file(file):
     """
-    Read one text or gz file
+    Open one text or gz file
     :param file:
     :return: file handler
-    >>> f = _read(__file__);f.name == __file__
+    >>> f = _open_file(__file__);f.name == __file__
     True
     """
     if not os.path.isfile(file):
@@ -131,6 +131,18 @@ def _read(file):
         return gzip.open(file, "rt")
     else:
         return open(file, "r")
+
+
+def _read(file):
+    """
+    Read one text or gz file
+    :param file:
+    :return: strings of contents
+    >>> s = _read(__file__);bool(s)
+    True
+    """
+    f = _open_file(file)
+    return f.read()
 
 
 def _timestamp(unixtimestamp=None, format="%Y%m%d%H%M%S"):
@@ -363,6 +375,15 @@ def query(sql, conn=None, no_history=False):
 
 
 q = query
+
+
+def _escape_query(sql):
+    """
+    TODO: would need to add more characters for escaping (eg: - in table name requires double quotes)
+    :param sql:
+    :return: string - escaped query
+    """
+    return sql.replace("'", "''")
 
 
 def _save_query(sql, limit=1000):
@@ -782,7 +803,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     tuples = []
     time_with_ms = re.compile('\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+')
 
-    f = _read(file_path)
+    f = _open_file(file_path)
     # Read lines
     for l in f:
         if bool(l) is False: break
@@ -1063,6 +1084,40 @@ def df2csv(df, file_path, mode="w", header=True):
     0  True  True
     '''
     return df.to_csv(file_path, mode=mode, header=header, index=False, escapechar='\\')
+
+
+def df2files(df, filepath_prefix, extension="", columns=None, overwriting=False, sep="="):
+    """
+    Write each line/row of a DataFrame into individual file
+    :param df: Panda DataFrame
+    :param filepath_prefix: filename will be this one + index + extension (if not empty)
+    :param extension: file extension (eg: ".txt" or just "txt")
+    :param columns: list of column names or string
+    :param overwriting: if True, the destination file will be overwritten
+    :param sep: Separator character which is used when multiple columns exist in the Series
+    :return: None/Void
+    >>> pass
+    """
+    if len(df) < 1:
+        return False
+    if type(columns) == type([]) and len(columns) > 0:
+        _df = df[columns]
+    else:
+        _df = df
+    for i, row in _df.iterrows():
+        if len(extension) > 0:
+            full_filepath = filepath_prefix + str(i) + "." + extension.lstrip(".")
+        else:
+            full_filepath = filepath_prefix + str(i)
+        if overwriting is False and os.path.exists(full_filepath):
+            _err("%s exists. Skipping ..." % (full_filepath))
+            continue
+        _err("Writing index=%s into %s ..." % (str(i), full_filepath))
+        with open(full_filepath, 'w') as f2:
+            if type(columns) == type('a'):
+                f2.write(row[columns])
+            else:
+                f2.write(row.to_csv(sep=sep))
 
 
 def gen_ldapsearch(ldap_json=None):
