@@ -20,6 +20,7 @@ alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
 alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew install gnu-time --with-default-names
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
+which mdfind &>/dev/null && alias locat="mdfind"
 # Load/source my log searching utility functions
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 alias logS="source /usr/local/bin/log_search; source $HOME/IdeaProjects/samples/bash/log_search.sh"
