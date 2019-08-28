@@ -115,69 +115,6 @@ function f_grep_logs() {
         ${_final_glob} | sort -n | uniq
 }
 
-function f_genKinit() {
-    local __doc__="Generate Kinit command from a config.yaml file"
-    _find_and_cat "config.yaml" "Y" 2>/dev/null | grep -E '(^user\.name|^kerberos)' | sort | uniq > /tmp/f_genKinit_$$.out
-    _load_yaml /tmp/f_genKinit_$$.out "_k_"
-    if [ -n "${_k_kerberos_service}" ]; then
-        echo "su - ${_k_user_name}"
-        if [ -n "${_k_kerberos_host}" ]; then
-            echo "kinit -kt ${_k_kerberos_keytab} ${_k_kerberos_service}/${_k_kerberos_host}@${_k_kerberos_domain}"
-        else
-            echo "kinit -kt ${_k_kerberos_keytab} ${_k_kerberos_service}@${_k_kerberos_domain}"
-        fi
-    fi
-}
-
-function f_genJdbcConnStr() {
-    local __doc__="Generate JDBC connection strings (strings used after -u)"
-    local _json_str="`_find_and_cat "connection_groups.json" "Y" 2>/dev/null`"
-    [ -z "${_json_str}" ] && return
-    [ "${_json_str}" == "[ ]" ] && return
-    echo "${_json_str}" | python -c 'import sys,json
-def p(s, database):
-  if s["connectorType"] in ("hive", "hive1", "hive1cdh5"):
-    schema="hive2"
-  elif s["connectorType"] in ("impala", "impala-legacy"):
-    schema="impala"
-  else:
-    schema=s["connectorType"]
-  if "extraJdbcFlags" not in s: s["extraJdbcFlags"] = ""
-  print("jdbc:%s://%s:%s/%s;%s" % (str(schema),str(s["hosts"]),str(s["port"]),str(database),str(s["extraJdbcFlags"]).lstrip(";")))
-
-j=json.loads(sys.stdin.read());
-l=j
-if type(j[0]) == type([]): l=j[0]  # 7.4 and higher
-for o in l:
-  if "subgroups" in o:   # 7.4 and higher (no env)
-    for s in o["subgroups"]:
-      print("## orgId:%s > id:%s" % (o["organizationId"], s["id"]))
-      p(s, o["aggregateSchema"])
-  else:
-    for oid in o:
-      for eid in o[oid]:
-          for s in o[oid][eid]["subgroups"]:
-            print("## orgId:%s > id:%s" % (oid, s["id"]))
-            p(s, o[oid][eid]["defaultSchema"])
-'
-}
-
-function f_genLdapsearch() {
-    local __doc__="Generate ldapsearch command from a json file"
-    local _json_str="`_find_and_cat "directory_configurations.json" "Y" 2>/dev/null`"
-    [ -z "${_json_str}" ] && return
-    [ "${_json_str}" == "[ ]" ] && return
-    echo "${_json_str}" | python -c 'import sys,re,json
-a=json.loads(sys.stdin.read())
-for l in a:
-  print("## orgId:%s" % (l["org_id"]))
-  p="ldaps" if "use_ssl" in l and l["use_ssl"] else "ldap"
-  r=re.search(r"^[^=]*?=?([^=]+?)[ ,@]", l["username"])
-  u=r.group(1) if bool(r) else l["username"]
-  print("LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"" % (p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u))
-'
-}
-
 function f_topCausedByExceptions() {
     local __doc__="List Caused By xxxxException (Requires rg)"
     local _path="$1"
