@@ -22,7 +22,8 @@ alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew i
 ## Non generic (OS/host/app specific) alias commands ###################################################################
 # Load/source my log searching utility functions
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
-alias logS="source $HOME/IdeaProjects/samples/bash/log_search.sh"
+alias logS="source /usr/local/bin/log_search"
+#alias logS="source $HOME/IdeaProjects/samples/bash/log_search.sh"
 alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py"
 alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 
