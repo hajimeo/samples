@@ -17,6 +17,7 @@ alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.pars
 alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
 alias jn='jupyter-notebook &> /tmp/jupyter-notebook.out &'
 alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
+#alias rmnewline='gsed ":a;N;$!ba;s/\n//g"'  # should not use gsed but anyway, not perfect
 alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew install gnu-time --with-default-names
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
@@ -85,6 +86,17 @@ for l in sys.stdin:
         print json.dumps(jo, indent=4, sort_keys='${_sort_keys}')
     except ValueError:
         print l2'
+}
+# supprisingly it's not easy to remove all newlines
+function rmnewline() {
+    python -c 'import sys
+for l in sys.stdin:
+   sys.stdout.write(l.rstrip("\n"))'
+}
+function rmspaces() {
+    python -c 'import sys
+for l in sys.stdin:
+   sys.stdout.write("".join(l.split()))'
 }
 # prettify any strings by checkinbg braces
 function prettify() {
