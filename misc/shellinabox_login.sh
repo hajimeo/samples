@@ -2,6 +2,7 @@
 # NOTE: replace _user, _proxy_port, _net_addr with
 #   sed -i 's/%xxx%/yyy/g' /usr/local/bin/shellinabox_login
 
+_SERVICE="atscale"
 _HOST_IP="`hostname -I | cut -d" " -f1`"
 echo "Welcome $USER ! (You logged in ${_HOST_IP})"
 echo ""
@@ -31,17 +32,17 @@ if len(_ss_args) > 0:
         [ -n "${_CMD}" ] && eval "${_CMD}"
     else
         echo "# SSH login to a running container:"
-        docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort | sed "s/^/  ssh root@/g"
+        docker ps --format "{{.Names}}" | grep -E "^(node|${_SERVICE}|cdh|hdp)" | sort | sed "s/^/  ssh root@/g"
         echo ""
 
         if [ -x /usr/local/bin/setup_standalone.sh ]; then
             echo "# To start a container (setup_standalone.sh -h for help):"
-            (docker images --format "{{.Repository}}";docker ps -a --format "{{.Names}}" --filter "status=exited") | grep -E "^atscale" | sort | uniq | sed "s/^/  setup_standalone.sh -n /g"
+            (docker images --format "{{.Repository}}";docker ps -a --format "{{.Names}}" --filter "status=exited") | grep -E "^${_SERVICE}" | sort | uniq | sed "s/^/  setup_standalone.sh -n /g"
             echo ""
         fi
 
         echo "# URLs (NOTE: Chrome via proxy or route or VNC is required):"
-        for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|atscale|cdh|hdp)" | sort`; do
+        for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|${_SERVICE}|cdh|hdp)" | sort`; do
             for _p in 10500 8080 7180; do
                 _hostname="$(docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])")"
                 # intentionally using different hostname due to HSTS
