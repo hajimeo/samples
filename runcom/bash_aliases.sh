@@ -19,6 +19,7 @@ alias jn='jupyter-notebook &> /tmp/jupyter-notebook.out &'
 alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
 #alias rmnewline='gsed ":a;N;$!ba;s/\n//g"'  # should not use gsed but anyway, not perfect
 alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew install gnu-time --with-default-names
+which tree &>/dev/null || alias tree="pwd;find . | sort | sed '1d;s/^\.//;s/\/\([^/]*\)$/|--\1/;s/\/[^/|]*/|  /g'"
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
 which mdfind &>/dev/null && alias locat="mdfind"
