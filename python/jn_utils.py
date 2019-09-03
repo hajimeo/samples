@@ -305,8 +305,16 @@ def _db(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalche
 
 
 # Seems sqlite doesn't have regex (need to import pcre.so)
-def _udf_regex(expr, item, rtn_idx=0):
-    matches = re.search(expr, item)
+def _udf_regex(regex, item, rtn_idx=0):
+    """
+    Regex UDF for SQLite
+    eg: SELECT UDF_REGEX('queryId=([0-9a-f-]+)', ids, 1) as query_id, ...
+    :param regex:   String - Regular expression
+    :param item:    String - Column name
+    :param rtn_idx: Integer - Grouping result index start from 1
+    :return:        Mixed   - Group(idx) result
+    """
+    matches = re.search(regex, item)
     # If 0, return true or false (expecting to use in WHERE clause)
     if rtn_idx == 0:
         return bool(matches)
@@ -653,6 +661,36 @@ def hive_q(sql, conn):
     if bool(result):
         return pd.DataFrame(result)
     return result
+
+
+def run_hive_queries(query_series, hive_conn, output=True):
+    """
+    Execute multiple queries in a Pandas Series against Hive
+    :param query_series: Panda Series object which contains query strings
+    :param hive_conn:   Connection object
+    :param output:      Boolean if outputs something or not
+    :return:            List of failures
+    #>>> df = ju.csv2df(file_path='queries_log_received_distinct.csv', db_conn=ju.connect())
+    #>>> #dfs = ju._chunks(df, 2500)   # May want to split if 'df' is very large, then use _mexec()
+    #>>> fails = ju.run_hive_queries(df['extra_lines'], ju.hive_conn("jdbc:hive2://hostname:port/")
+    """
+    failures = []
+    for (i, query) in query_series.iteritems():
+        if output: print("\n### "+str(i)+" ################")
+        try:
+            if bool(query) and str(query).lower() != "nan":
+                r = hive_q(query, hive_conn)
+                if output: print(r)
+                else: sys.stderr.write(".")
+        except Exception as e:
+            failures += [{'row':i, 'exception':e, 'query':query}]
+            if output:
+                print("\n# Exception happened on No.%s" % (str(i)))
+                print(query)
+                print(e)
+            else: sys.stderr.write("x")
+        if output is False and (i + 1) % 100 == 0: sys.stderr.write("\n")
+    return failures
 
 
 def _massage_tuple_for_save(tpl, long_value="", num_cols=None):
@@ -1029,9 +1067,9 @@ def csv2df(file_path, db_conn=None, tablename=None, chunksize=1000, header=0):
     :param db_conn: DB connection object. If not empty, also import into a sqlite table
     :param tablename: If empty, table name will be the filename without extension
     :param chunksize: Rows will be written in batches of this size at a time
-    :param header: Row number(s) to use as the column names
+    :param header: Row number(s) to use as the column names if not the first line (0) is not column name
     :return: Pandas DF object or False if file is not readable
-    #>>>
+    #>>> df = ju.csv2df(file_path='./slow_queries.csv', db_conn=ju.connect())
     >>> pass    # Testing in df2csv()
     '''
     global _DB_SCHEMA
