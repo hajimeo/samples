@@ -145,20 +145,23 @@ def _read(file):
     return f.read()
 
 
-def _timestamp(unixtimestamp=None, format="%Y%m%d%H%M%S"):
+def _timestamp(unixtimestamp=None, format=None):
     """
     Format Unix Timestamp with a given format
     :param unixtimestamp: Int (or float, but number after dot will be ignored)
     :param format: Default is %Y%m%d%H%M%S
     :return: Formatted string
     >>> dt_str = _timestamp(1543189639)
-    >>> dt_str.startswith('2018112')
+    >>> dt_str.startswith('2018')
     True
     """
     if bool(unixtimestamp) is False:
         unixtimestamp = time()
     # TODO: wanted to use timezone.utc but python 2.7 doesn't work
-    return datetime.fromtimestamp(float(unixtimestamp)).strftime(format)
+    dt = datetime.fromtimestamp(float(unixtimestamp))
+    if format is None:
+        return dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    return dt.strftime(format)
 
 
 def _err(message):
@@ -168,7 +171,7 @@ def _err(message):
 def _debug(message):
     global _DEBUG
     if _DEBUG:
-        sys.stderr.write("DEBUG: %s\n" % (str(message)))
+        sys.stderr.write("[%s] DEBUG: %s\n" % (_timestamp(), str(message)))
 
 
 def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='', chunksize=1000,
@@ -405,7 +408,7 @@ def _save_query(sql, limit=1000):
     query_history_csv = os.getenv('JN_UTILS_QUERY_HISTORY', os.getenv('HOME') + os.path.sep + ".ju_qhistory")
     # removing spaces and last ';'
     sql = sql.strip().rstrip(';')
-    df_new = pd.DataFrame([[_timestamp(), sql]], columns=["datetime", "query"])
+    df_new = pd.DataFrame([[_timestamp(format="%Y%m%d%H%M%S"), sql]], columns=["datetime", "query"])
     df_hist = csv2df(query_history_csv, header=None)
     if df_hist is False:
         df = df_new
@@ -663,7 +666,7 @@ def hive_q(sql, conn):
     return result
 
 
-def run_hive_queries(query_series, hive_conn, output=True):
+def run_hive_queries(query_series, hive_conn, output=False):
     """
     Execute multiple queries in a Pandas Series against Hive
     :param query_series: Panda Series object which contains query strings
@@ -676,19 +679,22 @@ def run_hive_queries(query_series, hive_conn, output=True):
     """
     failures = []
     for (i, query) in query_series.iteritems():
-        if output: print("\n### "+str(i)+" ################")
+        if output: print("\n### " + str(i) + " at " + _timestamp() + " ################")
         try:
             if bool(query) and str(query).lower() != "nan":
                 r = hive_q(query, hive_conn)
-                if output: print(r)
-                else: sys.stderr.write(".")
+                if output:
+                    print(r)
+                else:
+                    sys.stderr.write(".")
         except Exception as e:
-            failures += [{'row':i, 'exception':e, 'query':query}]
+            failures += [{'row': i, 'exception': e, 'query': query}]
             if output:
                 print("\n# Exception happened on No.%s" % (str(i)))
                 print(query)
                 print(e)
-            else: sys.stderr.write("x")
+            else:
+                sys.stderr.write("x")
         if output is False and (i + 1) % 100 == 0: sys.stderr.write("\n")
     return failures
 
@@ -1257,7 +1263,7 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
         if check_only:
             _err("To update, use 'ju.update()'\n")
             return True
-    new_file = "/tmp/" + filename + "_" + _timestamp()
+    new_file = "/tmp/" + filename + "_" + _timestamp(format="%Y%m%d%H%M%S")
     os.rename(file, new_file)
     remote_content = urlopen(url).read()
     with open(file, 'wb') as f:
