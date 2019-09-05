@@ -366,7 +366,7 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
 
 def query(sql, conn=None, no_history=False):
     """
-    Call fetchall() with given query, expecting SELECT statement
+    Call pd.read_sql() with given query, expecting SELECT statement
     :param sql: SELECT statement
     :param conn: DB connection object
     :param no_history: not saving this query into a history file
@@ -386,6 +386,26 @@ def query(sql, conn=None, no_history=False):
 
 
 q = query
+
+
+def query_execute(sql, conn):
+    """
+    Call conn.execute() then conn.fetchall() with given query, expecting SELECT statement
+    Comparing to query(), this should support more databases, such as Hive, but NOT SQLite...
+    :param sql: (SELECT) SQL statement
+    :param conn: DB connection (cursor)
+    :return: Panda DataFrame
+    #>>> hc = hive_conn("jdbc:hive2://localhost:10000/default")
+    #>>> df = query_execute("SELECT 1", hc)
+    #>>> bool(df)
+    #True
+    >>> pass    # TODO: implement test
+    """
+    conn.execute(sql)
+    result = conn.fetchall()
+    if bool(result):
+        return pd.DataFrame(result)
+    return result
 
 
 def _escape_query(sql):
@@ -647,56 +667,82 @@ def hive_conn(conn_str="jdbc:hive2://localhost:10000/default", user="admin", pwd
     return conn
 
 
-def hive_q(sql, conn):
-    """
-    Execute a SQL query against hive connection
-    :param sql: (SELECT) SQL statement
-    :param conn: DB connection (cursor)
-    :return: Panda DataFrame
-    #>>> hc = hive_conn("jdbc:hive2://localhost:10000/default")
-    #>>> df = hive_q("SELECT 1", hc)
-    #>>> bool(df)
-    #True
-    >>> pass    # TODO: implement test
-    """
-    conn.execute(sql)
-    result = conn.fetchall()
-    if bool(result):
-        return pd.DataFrame(result)
-    return result
-
-
-def run_hive_queries(query_series, hive_conn, output=False):
+def run_hive_queries(query_series, conn, output=True):
     """
     Execute multiple queries in a Pandas Series against Hive
     :param query_series: Panda Series object which contains query strings
-    :param hive_conn:   Connection object
+    :param conn:        Hive connection object (if connection string, every time new connections will be created
     :param output:      Boolean if outputs something or not
     :return:            List of failures
     #>>> df = ju.csv2df(file_path='queries_log_received_distinct.csv', db_conn=ju.connect())
     #>>> #dfs = ju._chunks(df, 2500)   # May want to split if 'df' is very large, then use _mexec()
-    #>>> fails = ju.run_hive_queries(df['extra_lines'], ju.hive_conn("jdbc:hive2://hostname:port/")
+    #>>> fails = ju.run_hive_queries(df['extra_lines'], ju.hive_conn("jdbc:hive2://hostname:port/"))
+    >>> pass
     """
     failures = []
     for (i, query) in query_series.iteritems():
-        if output: print("\n### " + str(i) + " at " + _timestamp() + " ################")
-        try:
-            if bool(query) and str(query).lower() != "nan":
-                r = hive_q(query, hive_conn)
-                if output:
-                    print(r)
-                else:
-                    sys.stderr.write(".")
-        except Exception as e:
-            failures += [{'row': i, 'exception': e, 'query': query}]
-            if output:
-                print("\n# Exception happened on No.%s" % (str(i)))
-                print(query)
-                print(e)
-            else:
-                sys.stderr.write("x")
-        if output is False and (i + 1) % 100 == 0: sys.stderr.write("\n")
+        error = hive_query_execute(query, conn, i, output)
+        if error is not None:
+            failures += [{'row': i, 'exception': error, 'query': query}]
     return failures
+
+
+def hive_query_execute(query, conn, row_num=None, output=False):
+    """
+    Run one query against Hive
+    :param query:   SQL SELECT statement
+    :param conn: Hive connection string or object
+    :param row_num: Integer, used like ID
+    :param output:  Boolean, if True, output results and error
+    :return: String: Error message
+    #>>> error = ju.hive_query_execute("SELECT 1", ju.hive_conn("jdbc:hive2://hostname:port/"))
+    >>> pass
+    """
+    _time = _timestamp()
+    _r = None
+    _error = None
+    if bool(query) and str(query).lower() != "nan":
+        # TODO: should pool the connection, and not sure if it's closing in Jupyter
+        try:
+            if type(conn) == str:
+                conn = hive_conn(conn)
+            _r = query_execute(query, conn)
+        except Exception as e:
+            _error = e
+    if output:
+        print("### %s at %s ################" % (str(row_num), _time))
+        if bool(_error):
+            print("\n# Exception happened on No.%s" % (str(row_num)))
+            print(query)
+            print(_error)
+        else:
+            print(_r)
+    else:
+        if str(row_num).isdigit() and (row_num % 100 == 0): sys.stderr.write("\n")
+        if bool(_error):
+            sys.stderr.write("x")
+        else:
+            sys.stderr.write(".")
+    return _error
+
+
+def _TODO_run_hive_queries_multi(query_series, conn_str, num_pool=None, output=False):
+    """
+    Execute multiple queries in a Pandas Series against Hive
+    :param query_series: Panda Series object which contains query strings
+    :param conn_str:    As each pool creates own connection, need String
+    :param num_pool:    Concurrency number
+    :param output:      Boolean if outputs something or not
+    :return:            List of failures
+    #>>> df = ju.csv2df(file_path='queries_log_received_distinct.csv', db_conn=ju.connect())
+    #>>> #dfs = ju._chunks(df, 2500)   # May want to split if 'df' is very large, then use _mexec()
+    #>>> fails = ju.run_hive_queries_multi(df['extra_lines'], "jdbc:hive2://hostname:port/")
+    """
+    failures = []
+    kwargs_list = []
+    for (i, query) in query_series.iteritems():
+        kwargs_list.append({'query': query, 'conn': conn_str, 'row_num': i, 'output': output})
+    return _mexec(hive_query_execute, kwargs_list, num=num_pool, using_process=True)
 
 
 def _massage_tuple_for_save(tpl, long_value="", num_cols=None):
