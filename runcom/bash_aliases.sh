@@ -1,5 +1,6 @@
 ## Simple/generic alias commands (some need pip though) ################################################################
-alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"' # cd to the last modified dir
+# 'cd' to last modified directory
+alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
 alias pjt='python -m json.tool'
 alias urldecode='python -c "import sys, urllib as ul; print ul.unquote_plus(sys.argv[1])"'
 #alias urlencode='python -c "import sys, urllib as ul; print ul.quote_plus(sys.argv[1])"'
@@ -18,8 +19,12 @@ alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
 alias jn='jupyter-notebook &> /tmp/jupyter-notebook.out &'
 alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
 #alias rmnewline='gsed ":a;N;$!ba;s/\n//g"'  # should not use gsed but anyway, not perfect
+# 'time' with format
 alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew install gnu-time --with-default-names
+# In case 'tree' is not installed
 which tree &>/dev/null || alias tree="pwd;find . | sort | sed '1d;s/^\.//;s/\/\([^/]*\)$/|--\1/;s/\/[^/|]*/|  /g'"
+# Debug network performance with curl
+alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
 which mdfind &>/dev/null && alias locat="mdfind"
@@ -52,10 +57,12 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
+# Merge split zip files to one file
 function merge_zips() {
     local _first_file="$1"
     zip -FF ${_first_file} --output ${_first_file%.*}.merged.zip
 }
+# Take a xml file and *output* as json
 function xml2json() {
     local _xml_file="$1"
     #pip3 install xmltodict
