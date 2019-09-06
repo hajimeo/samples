@@ -93,8 +93,9 @@ function f_jargrep() {
 
 function f_update_jar() {
     local _jar_filepath="$1"
-    local _compiled_dir="$2"
-    local _class_name="$3"
+    local _class_name="$2"
+    local _updating_specific_class="$3" # optional
+    local _compiled_dir="${_class_name}"
 
     if [ ! -d "$JAVA_HOME" ]; then
         echo "JAVA_HOME is not set. Use 'f_javaenvs <port>'."
@@ -107,7 +108,7 @@ function f_update_jar() {
     fi
 
     if [ ! -d "${_compiled_dir}" ]; then
-        _compiled_dir="`dirname "$(find . -name "${_compiled_dir}.class" -print | tail -n1)"`"
+        _compiled_dir="`dirname "$(find . -name "${_class_name}.class" -print | tail -n1)"`"
         if [ "${_compiled_dir}" = "." ] || [ -z "${_compiled_dir}" ]; then
             echo "Please check 'package' of ${_compiled_dir} and make dir."
             return 1
@@ -115,14 +116,15 @@ function f_update_jar() {
     fi
 
     local _class_file_path="${_compiled_dir%/}/*.class"
-    [ -n "${_class_name}" ] && _class_file_path="${_compiled_dir%/}/${_class_name}[.$]*class"
+    [ -n "${_updating_specific_class}" ] && _class_file_path="${_compiled_dir%/}/${_updating_specific_class}[.$]*class"
 
     echo "Updating ${_jar_filepath} with ${_class_file_path} ..."
-    local _updated_date="$(date | sed -r 's/[0-9][0-9]:[0-9][0-9]:[0-9][0-9].+//')"
+    #local _updated_date="$(date | sed -r 's/[0-9][0-9]:[0-9][0-9]:[0-9][0-9].+//')"
+    local _updated_time="$(date | grep -oE ' [0-9][0-9]:[0-9][0-9]:[0-9]')"
     $JAVA_HOME/bin/jar -uvf ${_jar_filepath} ${_class_file_path} || return $?
     echo "------------------------------------------------------------------------------------"
-    echo "Checking. You should not see any files in below..."
-    $JAVA_HOME/bin/jar -tvf ${_jar_filepath} | grep -w ${_class_name} | grep -v "${_updated_date}"
+    echo "Not updated class... (zip -d ${_jar_filepath} '/path/to/class')"
+    $JAVA_HOME/bin/jar -tvf ${_jar_filepath} | grep -w ${_class_name} | grep -v "${_updated_time}"
 
     cp -f ${_jar_filepath} ${_jar_filename}.patched
     return 0
