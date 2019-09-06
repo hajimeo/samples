@@ -118,7 +118,12 @@ function f_update_jar() {
     [ -n "${_class_name}" ] && _class_file_path="${_compiled_dir%/}/${_class_name}[.$]*class"
 
     echo "Updating ${_jar_filepath} with ${_class_file_path} ..."
+    local _updated_date="$(date | sed -r 's/[0-9][0-9]:[0-9][0-9]:[0-9][0-9].+//')"
     $JAVA_HOME/bin/jar -uvf ${_jar_filepath} ${_class_file_path} || return $?
+    echo "------------------------------------------------------------------------------------"
+    echo "Checking. You should not see any files in below..."
+    $JAVA_HOME/bin/jar -tvf ${_jar_filepath} | grep -w ${_class_name} | grep -v "${_updated_date}"
+
     cp -f ${_jar_filepath} ${_jar_filename}.patched
     return 0
 }
