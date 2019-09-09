@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/test_https.sh
+_TEST_PORT=34443
 
 function get_ciphers() {
     # @see http://superuser.com/questions/109213/how-do-i-list-the-ssl-tls-cipher-suites-a-particular-website-offers
@@ -80,7 +81,7 @@ function start_https() {
     local _crt="$2"
     local _doc_root="${3:-./}"
     local _host="${4:-0.0.0.0}"
-    local _port="${5:-8443}"    # NOTE: port number lower than 1024 requires root privilege
+    local _port="${5:-$_TEST_PORT}"    # NOTE: port number lower than 1024 requires root privilege
     which python &>/dev/null || return $?
     _key="`realpath "$_key"`"
     _crt="`realpath "$_crt"`"
@@ -99,7 +100,7 @@ httpd.serve_forever()" &>/tmp/start_https.out &
 }
 
 function test_https() {
-    local _host_port="${1:-"`hostname -f`:8443"}"
+    local _host_port="${1:-"`hostname -f`:$_TEST_PORT"}"
     local _ca_cert="$2"
 
     if curl -sf -L "http://${_host_port}" > /dev/null; then
@@ -159,12 +160,12 @@ function get_certificate_from_https() {
 }
 
 function gen_wildcard_cert() {
-    local _domain="${2:-`hostname -d`}"
+    local _domain="${1:-`hostname -d`}"
     [ -z "${_domain}" ] && _domain="standalone.localdomain"
 
     local _openssl_conf="./openssl.cnf"
     if [ -s "${_openssl_conf}" ]; then
-        echo "WARN: ${_openssl_conf} exists, so not recreating...." >&2; sleep 3
+        echo "INFO: ${_openssl_conf} exists, so not recreating...." >&2; sleep 3
     else
         curl -s -f -o "${_openssl_conf}" https://raw.githubusercontent.com/hajimeo/samples/master/misc/openssl.cnf
         echo "
@@ -175,7 +176,7 @@ function gen_wildcard_cert() {
 
     # Create a root key file named “rootCA.key”
     if [ -s "./rootCA.key" ]; then
-        echo "INFO: ./rootCA.key exists, so not creating..." >&2
+        echo "INFO: ./rootCA.key exists, so not creating..." >&2; sleep 3
     else
         openssl genrsa -out ./rootCA.key 2048
         # Create certificate of rootCA.key
