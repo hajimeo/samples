@@ -149,6 +149,55 @@ print(cert.prettyPrint())"
     fi
 }
 
+function get_certificate_from_https() {
+    local _host="$1"
+    local _port="${2:-443}"
+    local _dest_filepath="$3"
+    [ -z "${_dest_filepath}" ] && _dest_filepath=./${_host}_${_port}.crt
+    echo -n | openssl s_client -connect ${_host}:${_port} -showcerts > /tmp/${_host}_${_port}.tmp || return $?
+    sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp > ${_dest_filepath}
+}
+
+function gen_wildcard_cert() {
+    local _domain="${2:-`hostname -d`}"
+    [ -z "${_domain}" ] && _domain="standalone.localdomain"
+
+    local _openssl_conf="./openssl.cnf"
+    if [ -s "${_openssl_conf}" ]; then
+        echo "WARN: ${_openssl_conf} exists, so not recreating...." >&2; sleep 3
+    else
+        curl -s -f -o "${_openssl_conf}" https://raw.githubusercontent.com/hajimeo/samples/master/misc/openssl.cnf
+        echo "
+        [ alt_names ]
+        DNS.1 = ${_domain}
+        DNS.2 = *.${_domain}" >> "${_openssl_conf}"
+    fi
+
+    # Create a root key file named “rootCA.key”
+    if [ -s "./rootCA.key" ]; then
+        echo "INFO: ./rootCA.key exists, so not creating..." >&2
+    else
+        openssl genrsa -out ./rootCA.key 2048
+        # Create certificate of rootCA.key
+        openssl req -x509 -new -sha256 -days 3650 -key ./rootCA.key -out ./rootCA.pem \
+            -config "${_openssl_conf}" -extensions v3_ca \
+            -subj "/CN=RootCA.${_domain}"
+        # make sure only root user can access the key
+        chmod 600 ./rootCA.key
+        echo "INFO: Created ./rootCA.key" >&2
+    fi
+
+    # Always re-create a server (wildcard) key
+    openssl genrsa -out ./wildcard.${_domain}.key 2048
+    # Create CSR (Certificate Signed Request)
+    openssl req -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain}" -extensions v3_req -sha256 -new -key ./wildcard.${_domain}.key -out ./wildcard.${_domain}.csr -config ${_openssl_conf}
+    # Sign the server key (csr) to generate a server certificate
+    openssl x509 -req -extensions v3_req -days 3650 -sha256 -in ./wildcard.${_domain}.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ./wildcard.${_domain}.crt -extfile ${_openssl_conf}
+    # make sure server certificate and key is readable by particular user
+    #chown $USER: ./wildcard.${_domain}.{key,crt}
+    ls -ltr *.${_domain}.{key,crt,csr}
+}
+
 ### main ########################
 if [ "$0" = "$BASH_SOURCE" ]; then
     echo "source $BASH_SOURCE"
