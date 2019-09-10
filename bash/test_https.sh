@@ -83,6 +83,14 @@ function start_https() {
     local _host="${4:-0.0.0.0}"
     local _port="${5:-$_TEST_PORT}"    # NOTE: port number lower than 1024 requires root privilege
     which python &>/dev/null || return $?
+    if [ ! -s "${_key}" ]; then
+        echo "ERROR: No key file specified or unreadable" >&2
+        return 1
+    fi
+    if [ ! -s "${_crt}" ]; then
+        echo "ERROR: No crt file specified or unreadable" >&2
+        return 1
+    fi
     _key="`realpath "$_key"`"
     _crt="`realpath "$_crt"`"
 
