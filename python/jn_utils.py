@@ -1115,23 +1115,28 @@ def csv2df(file_path, db_conn=None, tablename=None, chunksize=1000, header=0):
     '''
     Load a CSV file into a DataFrame
     If db_conn is given, import into a DB table
-    :param file_path: File Path
+    :param file_path: Exact file path (not file name or glob string)
     :param db_conn: DB connection object. If not empty, also import into a sqlite table
     :param tablename: If empty, table name will be the filename without extension
     :param chunksize: Rows will be written in batches of this size at a time
     :param header: Row number(s) to use as the column names if not the first line (0) is not column name
+                   Or a list of column names
     :return: Pandas DF object or False if file is not readable
     #>>> df = ju.csv2df(file_path='./slow_queries.csv', db_conn=ju.connect())
     >>> pass    # Testing in df2csv()
     '''
     global _DB_SCHEMA
+    names = None
+    if type(header) == list:
+        names = header
+        header = None
     if os.path.exists(file_path) is False:
         return False
-    df = pd.read_csv(file_path, escapechar='\\', header=header)
+    df = pd.read_csv(file_path, escapechar='\\', header=header, names=names)
     if bool(db_conn):
         if bool(tablename) is False:
-            tablename, ext = os.path.splitext(os.path.basename(file_path))
-            _err("tablename: %s ..." % (tablename))
+            tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
+        _err("tablename: %s ..." % (tablename))
         df.to_sql(name=tablename, con=db_conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
     return df
 
@@ -1186,6 +1191,8 @@ def df2files(df, filepath_prefix, extension="", columns=None, overwriting=False,
     :param overwriting: if True, the destination file will be overwritten
     :param sep: Separator character which is used when multiple columns exist in the Series
     :return: None/Void
+    #>>> df2files(queries_df, "test_", ".sql", ['extra_lines']) # generate a="xxxxx"
+    #>>> df2files(queries_df, "test_", ".sql", "extra_lines")   # generate xxxxx
     >>> pass
     """
     if len(df) < 1:
