@@ -24,9 +24,9 @@ _TEST_PORT=12345
 _INTERVAL=$(( 60 * 60 / ${_PER_HOUR} ))
 _PID="$(lsof -ti:${_PORT} -s TCP:LISTEN)" || exit 0
 _USER="$(stat -c '%U' /proc/${_PID})" || exit 1
-_DIR="$(strings /proc/${_PID}/environ | sed -nr 's/^AS_LOG_DIR=(.+)/\1/p')"
-[ ! -d "${_DIR}" ] && _DIR="/tmp"
-[ -z "${_FILE_PATH}" ] && _FILE_PATH="${_DIR%/}/resource_chk_$(date +%u).log"
+_LOG_DIR="$(strings /proc/${_PID}/environ | sed -nr 's/^AS_LOG_DIR=(.+)/\1/p')"
+[ ! -d "${_LOG_DIR}" ] && _LOG_DIR="/tmp"
+[ -z "${_FILE_PATH}" ] && _FILE_PATH="${_LOG_DIR%/}/resource_chk_$(date +%u).log"
 
 
 # OS commands which run once in hour or when health issue happens
@@ -42,7 +42,7 @@ function cmds() {
     fi
     echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Memory Usage --->"; free -tm
     echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] CPU Usage --->"; mpstat -P ALL 2>/dev/null; top -c -b -n 1 | head -n 20
-    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Disk Usage --->"; iostat -x 2>/dev/null; df -h /
+    echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Disk Usage --->"; iostat -x 2>/dev/null; df -h $(dirname ${_LOG_DIR%/})
     echo "[$(date -u +'%Y-%m-%d %H:%M:%S') UTC] Network Usage --->"; netstat -i
     echo ""
 }
