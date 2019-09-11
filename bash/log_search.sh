@@ -827,19 +827,6 @@ function f_count_threads_per_dump() {
 
 ### Private functions ##################################################################################################
 
-function _mexec() {
-    local __doc__="Execute multple commands concurrently. NOTE: seems Mac's xargs has command length limit and no -r to ignore empty line"
-    local _cmds_list="$1"
-    local _prefix_cmd="$2"  # NOTE: no ";"
-    local _suffix_cmd="$3"  # NOTE: no ";"
-    local _num_process="${4:-3}"
-    if [ -f "${_cmds_list}" ]; then
-        cat "${_cmds_list}"
-    else
-        echo ${_cmds_list}
-    fi | tr '\n' '\0' | xargs -0 -n1 -P${_num_process} -I @@ bash -c "${_prefix_cmd}@@${_suffix_cmd}"
-}
-
 function _split() {
     local _rtn_var_name="$1"
     local _string="$2"

@@ -161,6 +161,20 @@ function javaenvs() {
     export JAVA_HOME="$(dirname $_dir)"
     export CLASSPATH=".:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
 }
+# Execute multiple commands concurrently. NOTE: seems Mac's xargs has command length limit and no -r to ignore empty line
+function _parallel() {
+    local _cmds_list="$1"   # File or strings of commands
+    local _prefix_cmd="$2"  # You may need to add ';'
+    local _suffix_cmd="$3"  # ' > test_$$.out'
+    local _num_process="${4:-3}"
+    if [ -f "${_cmds_list}" ]; then
+        cat "${_cmds_list}"
+    else
+        echo ${_cmds_list}
+    fi | sed '/^$/d' | tr '\n' '\0' | xargs -0 -n1 -P${_num_process} -I @@ bash -c "${_prefix_cmd}@@${_suffix_cmd}"
+}
+
+
 # Grep STDIN with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
     local _date="${1:-"\\d\\d\\d\\d-\\d\\d-\\d\\d"}"
