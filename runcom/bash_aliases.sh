@@ -164,14 +164,14 @@ function javaenvs() {
 # Execute multiple commands concurrently. NOTE: seems Mac's xargs has command length limit and no -r to ignore empty line
 function _parallel() {
     local _cmds_list="$1"   # File or strings of commands
-    local _prefix_cmd="$2"  # You may need to add ';'
-    local _suffix_cmd="$3"  # ' > test_$$.out'
+    local _prefix_cmd="$2"  # eg: '(date;'
+    local _suffix_cmd="$3"  # eg: ';date) &> test_$$.out'
     local _num_process="${4:-3}"
     if [ -f "${_cmds_list}" ]; then
         cat "${_cmds_list}"
     else
         echo ${_cmds_list}
-    fi | sed '/^$/d' | tr '\n' '\0' | xargs -0 -n1 -P${_num_process} -I @@ bash -c "${_prefix_cmd}@@${_suffix_cmd}"
+    fi | sed '/^$/d'| sed 's/"/\\"/g' | tr '\n' '\0' | xargs -0 -n1 -P${_num_process} -I @@ bash -c "${_prefix_cmd}@@${_suffix_cmd}"
 }
 
 
