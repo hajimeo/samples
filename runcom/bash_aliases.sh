@@ -171,7 +171,8 @@ function _parallel() {
         cat "${_cmds_list}"
     else
         echo ${_cmds_list}
-    fi | sed '/^$/d'| sed 's/"/\\"/g' | tr '\n' '\0' | xargs -0 -n1 -P${_num_process} -I @@ bash -c "${_prefix_cmd}@@${_suffix_cmd}"
+    fi | sed '/^$/d' | tr '\n' '\0' | xargs -0 -n1 -P${_num_process} -I @@ bash -c "${_prefix_cmd}@@${_suffix_cmd}"
+    # Somehow " | sed 's/"/\\"/g'" does not need... why?
 }
 
 
