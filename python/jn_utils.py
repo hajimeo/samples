@@ -986,7 +986,7 @@ def logs2table(file_name, tablename=None, conn=None,
             res = conn.execute("DROP TABLE IF EXISTS %s" % (tablename))
             if bool(res) is False:
                 return res
-            _err("Drop and Creating table: %s ..." % (str(tablename)))
+            _err("Drop if exists and Creating table: %s ..." % (str(tablename)))
         else:
             _err("Creating table: %s ..." % (str(tablename)))
         res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def_str))
