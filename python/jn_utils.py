@@ -920,7 +920,7 @@ def logs2table(file_name, tablename=None, conn=None,
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
                line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
                size_regex=_SIZE_REGEX, time_regex=_TIME_REGEX,
-               max_file_num=10, drop_first=False, multiprocessing=False):
+               max_file_num=10, appending=False, multiprocessing=False):
     """
     Insert multiple log files into *one* table
     :param file_name: [Required] a file name (not path) or *simple* glob regex
@@ -933,12 +933,12 @@ def logs2table(file_name, tablename=None, conn=None,
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
-    :param drop_first: If True, use 'DROP TABLE IF EXISTS'
+    :param appending: If True, use 'DROP TABLE IF EXISTS'
     :param multiprocessing: If True, use multiple CPUs
     :return: Void if no error, or a tuple contains multiple information for debug
     #>>> logs2table(file_name='queries.*log*', tablename='t_queries_log', col_names=['datetime', 'ids', 'message', 'extra_lines'],
                   line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (\{.*?\}) - ([^:]+):(.*)',
-                  size_regex=None, time_regex=None, drop_first=True, max_file_num=20)
+                  size_regex=None, time_regex=None, appending=False, max_file_num=20)
     #True
     >>> pass    # TODO: implement test
     """
@@ -982,7 +982,7 @@ def logs2table(file_name, tablename=None, conn=None,
 
     # If not None, create a table
     if bool(col_def_str):
-        if drop_first:
+        if appending is False:
             res = conn.execute("DROP TABLE IF EXISTS %s" % (tablename))
             if bool(res) is False:
                 return res
