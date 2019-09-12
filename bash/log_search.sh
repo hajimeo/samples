@@ -98,14 +98,14 @@ function f_grep_logs() {
     local _glob="${2:-"debug.*log*"}"
     local _exclude_warn_error="${3}"
 
-    local _regex_1="${_DATE_FORMAT}.\d\d:\d\d:\d\d.+(${_str_in_1st_line})"
+    local _regex_1="^${_DATE_FORMAT}.\d\d:\d\d:\d\d.+(${_str_in_1st_line})"
     local _final_glob=""
     for _l in `rg "${_regex_1}" -l -g "${_glob}"`; do
         _final_glob="${_final_glob} -g ${_l}"
     done
     [ -z "${_final_glob}" ] && return
 
-    local _regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d.+(${_str_in_1st_line}|\bWARN\b|\bERROR\b|\b.+?Exception\b|\b[Ff]ailed\b)"
+    local _regex="^${_DATE_FORMAT}.\d\d:\d\d:\d\d.+(${_str_in_1st_line}|\bWARN\b|\bERROR\b|\b.+?Exception\b|\b[Ff]ailed\b)"
     # It's a bit wasting resources...
     [[ "${_exclude_warn_error}" =~ ^[yY] ]] && _regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d.+(${_str_in_1st_line})"
 
