@@ -552,6 +552,7 @@ function f_container_ssh_config() {
 }
 
 function f_update_auth_key() {
+    local __doc__="Update authorized_keys file of one container from *this* host"
     local _name="${1:-${_NAME}}"
     local _global_auth_key_file="${2:-"${_SHARE_DIR%/}/.ssh/authorized_keys"}"
 
@@ -563,6 +564,24 @@ function f_update_auth_key() {
     chmod 700 "$(dirname "${_global_auth_key_file}")"
     chmod 600 "${_global_auth_key_file}"
     docker exec -it ${_name} bash -c "echo \"`cat ${_global_auth_key_file}`\" >> /root/.ssh/authorized_keys && cat /root/.ssh/authorized_keys | sort | uniq > /root/.ssh/.authorized_keys.tmp && mv -f /root/.ssh/.authorized_keys.tmp /root/.ssh/authorized_keys"
+}
+
+function f_container_add_NIC() {
+    local __doc__="Add one network interface on one container"
+    local _name="${1}"
+    local _network="${2:-bridge}"
+
+    local _before_gw="$(docker inspect ${_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['NetworkSettings']['Gateway'])")"
+    docker network connect ${_network} ${_name} || return $?
+    local _after_gw="$(docker inspect ${_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['NetworkSettings']['Gateway'])")"
+    if [ -n "${_before_gw}" ] && [ "${_before_gw}" != "${_after_gw}" ]; then
+        _log "WARN" "Gateway address has been changed (before: "${_before_gw}", after: ${_after_gw})
+     May want to execute below (please double check NIC name):
+route add default gw ${_before_gw} eth0\
+route del default gw ${_after_gw}\
+"
+    fi
+    docker exec -it ${_name} bash -c "netstat -rn"
 }
 
 function f_as_setup() {
