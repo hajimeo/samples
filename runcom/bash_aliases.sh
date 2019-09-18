@@ -25,6 +25,9 @@ alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew i
 which tree &>/dev/null || alias tree="pwd;find . | sort | sed '1d;s/^\.//;s/\/\([^/]*\)$/|--\1/;s/\/[^/|]*/|  /g'"
 # Debug network performance with curl
 alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
+# output the longest line *number* as wc|gwc -L does not show the line number
+alias wcln="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
+
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
 which mdfind &>/dev/null && alias locat="mdfind"
@@ -174,18 +177,12 @@ function _parallel() {
     fi | sed '/^$/d' | tr '\n' '\0' | xargs -t -0 -n1 -P${_num_process} -I @@ bash -c "${_prefix_cmd}@@${_suffix_cmd}"
     # Somehow " | sed 's/"/\\"/g'" does not need... why?
 }
-
-
 # Grep STDIN with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
-    local _date="${1:-"\\d\\d\\d\\d-\\d\\d-\\d\\d"}"
+    local _datetime_regex="${1}"
+    [ -z "${_datetime_regex}" ] && _datetime_regex="\d\d\d\d-\d\d-\d\d.\d\d:\d"
     #ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
-    rg "^(${_date}).(\d\d:\d)" -o -r '${1}T${2}' | bar_chart.py
-}
-function barH() {
-    local _date="${1:-"\\d\\d\\d\\d-\\d\\d-\\d\\d"}"
-    #ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
-    rg "^(${_date}).(\d\d)" -o -r '${1}T${2}' | bar_chart.py
+    rg "^${_datetime_regex}" -o | sed 's/ /./g' | bar_chart.py
 }
 # Start Jupyter Lab as service
 function jpl() {
