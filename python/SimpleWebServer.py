@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 #
 # Based on https://pymotw.com/2/BaseHTTPServer/
-#   python SimpleWebServer.py [0.0.0.0] [38080] [verbose]
+#   python ./SimpleWebServer.py 0.0.0.0 38080 verbose
+#
+# Then from browser, http://localhost:38080/slack/search?query=test
 #
 from BaseHTTPServer import BaseHTTPRequestHandler
 from BaseHTTPServer import HTTPServer
@@ -73,6 +75,8 @@ class SimpleWebServer(BaseHTTPRequestHandler):
         plain = False
         s = {}
         current_dir = os.path.dirname(__file__)
+        if bool(current_dir) is False:
+            current_dir = "."
         # if current_dir+"/.reload_cred" exist, force reloading credentials
         if bool(SimpleWebServer._creds) is True and os.path.exists(current_dir + "/.reload_cred") is False:
             return
@@ -100,7 +104,7 @@ class SimpleWebServer(BaseHTTPRequestHandler):
                 else:
                     setattr(c, p, base64.b64decode(v))
         SimpleWebServer._creds = c
-        # self._log(str(SympleWebServer._creds.__dict__))
+        # self._log(str(SimpleWebServer._creds.__dict__))
         if plain:
             f = open(credpath + ".tmp", "wb")
             for p, v in s.iteritems():
