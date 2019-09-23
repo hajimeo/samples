@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 #
 # Based on https://pymotw.com/2/BaseHTTPServer/
-#   python SympleWebServer.py 0.0.0.0 38080 verbose
+#   python SimpleWebServer.py [0.0.0.0] [38080] [verbose]
 #
 from BaseHTTPServer import BaseHTTPRequestHandler
 from BaseHTTPServer import HTTPServer
@@ -13,7 +13,7 @@ def toDateStr(ts):
     return datetime.datetime.fromtimestamp(math.floor(float(ts))).strftime('%Y-%m-%d %H:%M:%S')
 
 
-class SympleWebServer(BaseHTTPRequestHandler):
+class SimpleWebServer(BaseHTTPRequestHandler):
     '''
     REST *like* simple web server (no dependent module)
     At this moment only GET is supported
@@ -29,30 +29,31 @@ class SympleWebServer(BaseHTTPRequestHandler):
 
     @staticmethod
     def handle_slack_search(query_args):
-        query_args['token'] = SympleWebServer._creds.slack_search_token
+        query_args['token'] = SimpleWebServer._creds.slack_search_token
         # TODO: need some prettier format (eg: utilize highlight=true with replacing special characters)
-        #query_args['highlight'] = "true"
+        # query_args['highlight'] = "true"
         # Note: similar to PHP, query argument can be a list
         if 'query' in query_args and type(query_args['query']) == list and len(query_args['query']) == 1:
             query_args['query'] = query_args['query'][0]
         data = urllib.urlencode(query_args)
-        sys.stderr.write('    data = '+str(data)+'\n')
-        request = urllib2.Request(SympleWebServer._creds.slack_search_baseurl + "/api/search.messages", data)
+        sys.stderr.write('    data = ' + str(data) + '\n')
+        request = urllib2.Request(SimpleWebServer._creds.slack_search_baseurl + "/api/search.messages", data)
         response = urllib2.urlopen(request)
         json_str = response.read()
         json_obj = json.loads(json_str)
         html = u"<h2>Hit " + str(json_obj['messages']['total']) + u" messages</h2>\n"
-        html+= u"<p>Query <code>" + str(query_args['query']) + "</code></p>\n"
+        html += u"<p>Query <code>" + str(query_args['query']) + "</code></p>\n"
         if len(json_obj['messages']['matches']) > 0:
             for o in json_obj['messages']['matches']:
                 html += u"<hr/>"
                 html += u"DateTime: " + toDateStr(o['ts']) + "<br/>\n"
                 html += u"Username:  " + o['username'] + u" (" + o['user'] + ")<br/>\n"
-                html += u"PermaLink: <a href='" + o['permalink'].replace('/archives/', '/messages/') + u"' target='_blank'>" + o[
-                    'permalink'] + u"</a><br/>\n"
+                html += u"PermaLink: <a href='" + o['permalink'].replace('/archives/',
+                                                                         '/messages/') + u"' target='_blank'>" + o[
+                            'permalink'] + u"</a><br/>\n"
                 html += u"<blockquote style='white-space:pre-wrap'><tt>" + o['text'] + u"</tt></blockquote>\n"
         else:
-            sys.stderr.write('    response = '+str(json_str)+'\n')
+            sys.stderr.write('    response = ' + str(json_str) + '\n')
         # html = json.dumps(json_obj, indent=4)
         return html
 
@@ -62,7 +63,7 @@ class SympleWebServer(BaseHTTPRequestHandler):
         output = u"<html><head><meta charset='utf-8'><title>" + category.upper() + ":" + method.upper() + "</title></head><body>"
         if category.lower() == 'slack':
             if method.lower() == 'search':
-                output += SympleWebServer.handle_slack_search(args)
+                output += SimpleWebServer.handle_slack_search(args)
         output += "</body></html>"
         self.send_response(200)
         self.end_headers()
@@ -73,7 +74,7 @@ class SympleWebServer(BaseHTTPRequestHandler):
         s = {}
         current_dir = os.path.dirname(__file__)
         # if current_dir+"/.reload_cred" exist, force reloading credentials
-        if bool(SympleWebServer._creds) is True and os.path.exists(current_dir + "/.reload_cred") is False:
+        if bool(SimpleWebServer._creds) is True and os.path.exists(current_dir + "/.reload_cred") is False:
             return
         # in case of keeping reloading, removing now
         if os.path.exists(current_dir + "/.reload_cred"):
@@ -98,7 +99,7 @@ class SympleWebServer(BaseHTTPRequestHandler):
                     s[p] = base64.b64encode(v)
                 else:
                     setattr(c, p, base64.b64decode(v))
-        SympleWebServer._creds = c
+        SimpleWebServer._creds = c
         # self._log(str(SympleWebServer._creds.__dict__))
         if plain:
             f = open(credpath + ".tmp", "wb")
@@ -118,7 +119,7 @@ class SympleWebServer(BaseHTTPRequestHandler):
         return dirs[1], dirs[2], args
 
     def _debug_message(self, force=False):
-        if SympleWebServer.verbose.lower() == 'verbose' or force:
+        if SimpleWebServer.verbose.lower() == 'verbose' or force:
             parsed_path = urlparse.urlparse(self.path)
             message_parts = [
                 'CLIENT VALUES:',
@@ -144,18 +145,9 @@ class SympleWebServer(BaseHTTPRequestHandler):
             self._log(message)
 
     def _log(self, msg, level="DEBUG"):
-        if SympleWebServer.verbose.lower() == 'verbose' or level.lower() in ["error", "warn", "warning"]:
+        if SimpleWebServer.verbose.lower() == 'verbose' or level.lower() in ["error", "warn", "warning"]:
             # sys.stderr.write(level+": "+msg + '\n')
             self.log_message(level.upper() + ": %s", msg)
-
-def start_https_server(host, port, key, crt):
-    import BaseHTTPServer,SimpleHTTPServer,ssl
-    httpd = BaseHTTPServer.HTTPServer((host, port), SimpleHTTPServer.SimpleHTTPRequestHandler)
-    try:
-        httpd.socket = ssl.wrap_socket(httpd.socket, keyfile=key, certfile=crt, server_side=True, ssl_version=ssl.PROTOCOL_TLSv1_2)
-    except AttributeError:
-        httpd.socket = ssl.wrap_socket(httpd.socket, keyfile=key, certfile=crt, server_side=True, ssl_version=ssl.PROTOCOL_TLS)
-    httpd.serve_forever()
 
 
 if __name__ == '__main__':
@@ -168,10 +160,10 @@ if __name__ == '__main__':
     if len(sys.argv) > 2:
         listen_port = int(sys.argv[2])
     if len(sys.argv) > 3:
-        SympleWebServer.verbose = sys.argv[3]
+        SimpleWebServer.verbose = sys.argv[3]
         print("verbose mode is on")
     try:
-        server = HTTPServer((listen_host, listen_port), SympleWebServer)
+        server = HTTPServer((listen_host, listen_port), SimpleWebServer)
         print('Starting server, use <Ctrl-C> to stop')
         server.serve_forever()
     except (KeyboardInterrupt):
