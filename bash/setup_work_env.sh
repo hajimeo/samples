@@ -8,30 +8,32 @@
 # curl -O "https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_work_env.sh"
 #
 
+_DOWNLOAD_FROM_BASE="https://raw.githubusercontent.com/hajimeo/samples/master"
+_SOURCE_REPO_BASE="$HOME/IdeaProjects/samples"
+
 function f_setup_misc() {
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh" $HOME/.bash_profile || return $?
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh" $HOME/.bash_aliases || return $?
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/vimrc" $HOME/.vimrc || return $?
-    if [ -d $HOME/.ssh ] && [ ! -s $HOME/.ssh/config ]; then
-        _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/ssh_config" $HOME/.ssh/config || return $?
+    _symlink_or_download "runcom/bash_profile.sh" "$HOME/.bash_profile" || return $?
+    _symlink_or_download "runcom/bash_aliases.sh" "$HOME/.bash_aliases" || return $?
+    _symlink_or_download "runcom/vimrc" "$HOME/.vimrc" || return $?
+    if [ ! -d "$HOME/.ssh" ]; then
+        mkdir -p $HOME/.ssh || return $?
     fi
+    _symlink_or_download "runcom/ssh_config" "$HOME/.ssh/config" || return $?
 
     if [ ! -d "$HOME/IdeaProjects/samples/bash" ]; then
         mkdir -p $HOME/IdeaProjects/samples/bash || return $?
     fi
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh" $HOME/IdeaProjects/samples/bash/log_search.sh || return $?
+    # Need for logS alias
+    _symlink_or_download "bash/log_search.sh" "/usr/local/bin/log_search" || return $?
     chmod u+x $HOME/IdeaProjects/samples/bash/log_search.sh
-    _log "TODO" "May also want to get genfile_wrapper.sh (just reminder)"
 
     if [ ! -d "$HOME/IdeaProjects/samples/python" ]; then
         mkdir -p $HOME/IdeaProjects/samples/python || return $?
     fi
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/line_parser.py" $HOME/IdeaProjects/samples/python/line_parser.py || return $?
+    _symlink_or_download "python/line_parser.py" "/usr/local/bin/line_parser.py" || return $?
     chmod a+x $HOME/IdeaProjects/samples/python/line_parser.py
-    [ -L /usr/local/bin/line_parser.py ] && sudo rm -f /usr/local/bin/line_parser.py
-    sudo ln -s $HOME/IdeaProjects/samples/python/line_parser.py /usr/local/bin/line_parser.py
 
-    #_download "https://github.com/hajimeo/samples/raw/master/misc/dateregex_`uname`" /usr/local/bin/dateregex "Y" || return $?
+    #_symlink_or_download "misc/dateregex_`uname`" "/usr/local/bin/dateregex" "Y"
     #chmod a+x /usr/local/bin/dateregex
 
     if grep -qw docker /etc/group; then
@@ -46,7 +48,7 @@ function f_setup_misc() {
 function f_setup_rg() {
     # as of today, rg is not in Ubuntu repository so not using _install
     if ! which rg &>/dev/null; then
-        if ! _install ripgrep -y; then
+        if ! _install ripgrep; then
             if [ "`uname`" = "Darwin" ]; then
                 _log "WARN" "Please install 'rg' first. https://github.com/BurntSushi/ripgrep/releases"; sleep 3
                 return 1
@@ -62,21 +64,21 @@ function f_setup_rg() {
         fi
     fi
 
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/rgrc" $HOME/.rgrc || return $?
-    if ! grep -q '^export RIPGREP_CONFIG_PATH=' $HOME/.bash_profile; then
+    _symlink_or_download "runcom/rgrc" "$HOME/.rgrc" || return $?
+    if ! grep -qR '^export RIPGREP_CONFIG_PATH=' $HOME/.bash_profile; then
         echo -e '\nexport RIPGREP_CONFIG_PATH=$HOME/.rgrc' >> $HOME/.bash_profile || return $?
     fi
 }
 
 function f_setup_screen() {
-    if ! which screen &>/dev/null && ! _install screen -y; then
+    if ! which screen &>/dev/null && ! _install screen; then
         _log "ERROR" "no screen installed or not in PATH"
         return 1
     fi
 
     [ -d $HOME/.byobu ] || mkdir $HOME/.byobu
     _backup $HOME/.byobu/.screenrc
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/runcom/screenrc" $HOME/.screenrc || return $?
+    _symlink_or_download "runcom/screenrc" "$HOME/.screenrc" || return $?
     [ -f $HOME/.byobu/.screenrc ] && rm -f $HOME/.byobu/.screenrc
     ln -s $HOME/.screenrc $HOME/.byobu/.screenrc
 }
@@ -125,7 +127,7 @@ function f_setup_golang() {
 }
 
 function f_setup_python() {
-    if ! which python3 &>/dev/null && ! _install python3 -y; then
+    if ! which python3 &>/dev/null && ! _install python3; then
         _log "ERROR" "no python3 installed or not in PATH"
         return 1
     fi
@@ -137,7 +139,7 @@ function f_setup_python() {
         # sudo apt remove python3-pip
         curl -s -f "https://bootstrap.pypa.io/get-pip.py" -o /tmp/get-pip.py || return $?
         # @see https://github.com/pypa/get-pip/issues/43
-        _install python3-distutils -y
+        _install python3-distutils
         sudo python3 /tmp/get-pip.py || return $?
     fi
 
@@ -174,7 +176,7 @@ function f_setup_python() {
     #sudo -i jupyter labextension install @pyviz/jupyterlab_pyviz
     # TODO: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
 
-    #_install libsasl2-dev -y
+    #_install libsasl2-dev
     #sudo -i pip3 install sasl thrift thrift-sasl PyHive
     #sudo -i pip3 install pyhive[hive]
     # This is for using Java 1.8 (to avoid "unsupported major.minor version 52.0")
@@ -219,7 +221,7 @@ function f_setup_java() {
         brew cask install adoptopenjdk${_v}
         #/usr/libexec/java_home -v ${_v}
     else
-        _install -y openjdk-${_v}-jdk
+        _install openjdk-${_v}-jdk
     fi
 
     if ! java -version 2>&1 | grep -w "build ${_ver}" -m 1; then
@@ -229,12 +231,29 @@ function f_setup_java() {
 
 function _install() {
     if which apt-get &>/dev/null; then
-        sudo apt-get install "$@" || return $?
+        sudo apt-get install -y "$@" || return $?
     elif which brew &>/dev/null; then
         brew install "$@" || return $?
     else
         _log "ERROR" "`uname` is not supported yet to install a package"
         return 1
+    fi
+}
+
+
+function _symlink_or_download() {
+    local _source_filename="$1"
+    local _destination="$2"
+    local _no_backup="$3"
+    local _if_not_exists="$4"
+    if [ ! -f ${_destination} ] && [ -s ${_SOURCE_REPO_BASE%/}/${_source_filename} ]; then
+        if which realpath &>/dev/null; then
+            ln -s "$(realpath "${_SOURCE_REPO_BASE%/}/${_source_filename}")" "$(realpath "${_destination}")" || return $?
+        else
+            ln -s "${_SOURCE_REPO_BASE%/}/${_source_filename}" "${_destination}" || return $?
+        fi
+    elif [ ! -L ${_destination} ]; then
+        _download "${_DOWNLOAD_FROM_BASE%/}/${_source_filename}" "${_destination}" "${_no_backup}" "${_if_not_exists}" || return $?
     fi
 }
 
