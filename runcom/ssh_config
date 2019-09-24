@@ -20,3 +20,11 @@ Host node* *.localdomain localhost
   UserKnownHostsFile /dev/null
   #IdentityFile /path/to/root/id_rsa
   User root
+
+Host search.osakos.com
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  IdentityFile /Users/hosako/.ssh/hajime_id_rsa
+  User hajime
+  # To not show Warning: Permanently added ...
+  LogLevel QUIET
