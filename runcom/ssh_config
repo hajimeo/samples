@@ -12,11 +12,10 @@ Host *.cloudapp.net
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
 
-Host dh1
-  Hostname dockerhost1
+Host dh1 dockerhost1
   User hosako
 
-Host node* atscal* *.localdomain localhost
+Host node* *.localdomain localhost
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
   #IdentityFile /path/to/root/id_rsa
