@@ -1105,59 +1105,6 @@ function _docker_seq() {
     fi
 }
 
-function f_docker_setup() {
-    local __doc__="Install docker (if not yet) and customise for HDP test environment (TODO: Ubuntu only)"
-    # https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/
-
-    if ! which apt-get &>/dev/null; then
-        _warn "No apt-get"
-        return 1
-    fi
-
-    if which docker | grep -qw snap; then
-        _warn "'docker' might be installed from 'snap'. Please remove with 'snap remove docker'"
-        return 1
-    fi
-
-    if ! which docker &>/dev/null; then
-        apt-get install apt-transport-https ca-certificates curl software-properties-common -y
-        # if Ubuntu 18
-        if grep -qi 'Ubuntu 18\.' /etc/issue.net; then
-            apt-get purge docker docker-engine docker.io -y
-            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-            apt-key fingerprint 0EBFCD88 || return $?
-            add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-            apt-get update && apt-get install docker-ce -y
-        else
-            # Old (14.04 and 16.04) way
-            apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key for docker"
-            grep -q "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-`cat /etc/lsb-release | grep CODENAME | cut -d= -f2` main" >> /etc/apt/sources.list.d/docker.list
-            apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
-        fi
-    fi
-
-    # commenting below as newer docker wouldn't need this and docker info sometimes takes time
-    #local _storage_size="30G"
-    # This part is different by docker version, so changing only if it was 10GB or 1*.**GB
-    #docker info 2>/dev/null | grep 'Base Device Size' | grep -owP '1\d\.\d\dGB' &>/dev/null
-    #if [ $? -eq 0 ]; then
-    #    grep 'storage-opt dm.basesize=' /etc/init/docker.conf &>/dev/null
-    #    if [ $? -ne 0 ]; then
-    #        sed -i.bak -e 's/DOCKER_OPTS=$/DOCKER_OPTS=\"--storage-opt dm.basesize='${_storage_size}'\"/' /etc/init/docker.conf
-    #        _warn "Restarting docker (will stop all containers)..."
-    #        sleep 3
-    #        service docker restart
-    #    else
-    #        _warn "storage-opt dm.basesize=${_storage_size} is already set in /etc/init/docker.conf"
-    #    fi
-    #fi
-
-    if [ ! -f /etc/iptables.up.rules ]; then
-        _info "Updating iptables to accept all FORWARD..."
-        iptables -P FORWARD ACCEPT && iptables-save > /etc/iptables.up.rules
-    fi
-}
-
 function f_hdp_network_setup() {
     local __doc__="Setting IP for hdp to $r_DOCKER_HOST_IP (default)"
     local _hdp="${1:-"$r_DOCKER_HOST_IP"}"
@@ -2354,10 +2301,7 @@ function p_host_setup() {
     _log "INFO" "Starting Host setup | logfile = " "/tmp/p_host_setup.log"
     f_restart_services_just_in_case
 
-    _log "INFO" "Starting f_ssh_setup"
-    f_ssh_setup &>> /tmp/p_host_setup.log || return $?
-
-    if [ `which apt-get` ]; then
+    if which apt-get &>/dev/null; then
         _log "INFO" "Starting apt-get update"
         _isYes "$g_APT_UPDATE_DONE" || apt-get update &>> /tmp/p_host_setup.log && g_APT_UPDATE_DONE="Y"
 
@@ -2365,22 +2309,9 @@ function p_host_setup() {
             _log "INFO" "Starting apt-get -y install --only-upgrade docker-engine"
             apt-get -y install --only-upgrade docker-engine &>> /tmp/p_host_setup.log
         fi
-
-        # NOTE: psql (postgresql-client) is required
-        _log "INFO" "Starting apt-get install packages"
-        apt-get -y install sysv-rc-conf &>> /tmp/p_host_setup.log
-        apt-get -y install ntpdate curl wget sshfs tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat nscd mysql-client libmysql-java ppp at resolvconf &>> /tmp/p_host_setup.log
-        #mailutils postfix htop
-
-        _log "INFO" "Starting f_docker_setup"
-        f_docker_setup &>> /tmp/p_host_setup.log
-        f_sysstat_setup &>> /tmp/p_host_setup.log
-        #f_ttyd &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_host_performance"
-        f_host_performance &>> /tmp/p_host_setup.log
-        _log "INFO" "Starting f_host_misc"
-        f_host_misc &>> /tmp/p_host_setup.log
     fi
+
+    p_basic_setup &>> /tmp/p_host_setup.log || return $?
 
     _log "INFO" "Starting f_docker0_setup"
     f_docker0_setup "172.18.0.1" "24" &>> /tmp/p_host_setup.log
@@ -2493,38 +2424,6 @@ function f_ambari_performance() {
     # This isn't performance related but putting in here for now
     _info "Creating 'admin', 'sam', 'tom' (Knox LDAPDemo) users in each node and in HDFS..."
     for _n in admin sam tom; do f_useradd_on_nodes "$_n" "${_n}-password"; done
-}
-
-function f_host_performance() {
-    local __doc__="Performance related changes on the host. Eg: Change kernel parameters on Docker Host (Ubuntu)"
-    grep -q '^vm.swappiness' /etc/sysctl.conf || echo "vm.swappiness = 0" >> /etc/sysctl.conf
-    sysctl -w vm.swappiness=0
-
-    grep -q '^net.core.somaxconn' /etc/sysctl.conf || echo "net.core.somaxconn = 16384" >> /etc/sysctl.conf
-    sysctl -w net.core.somaxconn=16384
-
-    # also ip forwarding as well
-    grep -q '^net.ipv4.ip_forward' /etc/sysctl.conf || echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
-    sysctl -w net.ipv4.ip_forward=1
-    grep -q '^net.ipv4.conf.all.forwarding' /etc/sysctl.conf || echo "net.ipv4.conf.all.forwarding = 1" >> /etc/sysctl.conf
-    sysctl -w net.ipv4.conf.all.forwarding=1
-
-    grep -q '^kernel.panic' /etc/sysctl.conf || echo "kernel.panic = 20" >> /etc/sysctl.conf
-    sysctl -w kernel.panic=60
-    grep -q '^kernel.panic_on_oops' /etc/sysctl.conf || echo "kernel.panic_on_oops = 1" >> /etc/sysctl.conf
-    sysctl -w kernel.panic_on_oops=1
-
-    echo never > /sys/kernel/mm/transparent_hugepage/enabled
-    echo never > /sys/kernel/mm/transparent_hugepage/defrag
-
-    if [ ! -s /etc/rc.local ]; then
-        echo 'exit 0' > /etc/rc.local
-    fi
-
-    if grep -q '^echo never > /sys/kernel/mm/transparent_hugepage/enabled' /etc/rc.local; then
-        sed -i.bak '/^exit 0/i echo never > /sys/kernel/mm/transparent_hugepage/enabled\necho never > /sys/kernel/mm/transparent_hugepage/defrag\n' /etc/rc.local
-    fi
-    chmod a+x /etc/rc.local
 }
 
 function f_copy_auth_keys_to_containers() {
