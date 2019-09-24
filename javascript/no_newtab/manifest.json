@@ -1,0 +1,22 @@
+{
+  "name": "NoNewTab",
+  "version": "1.0",
+  "description": "Not opening new tabs for same URL",
+  "background": {
+    "scripts": [
+      "background.js"
+    ],
+    "persistent": true
+  },
+  "permissions": [
+    "tabs",
+    "http://*/",
+    "https://*/",
+    "webRequest",
+    "webRequestBlocking",
+    "webNavigation",
+    "cookies",
+    "storage"
+  ],
+  "manifest_version": 2
+}
