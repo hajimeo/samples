@@ -13,6 +13,8 @@
 function f_host_misc() {
     local __doc__="Misc. changes for Ubuntu OS"
 
+    [ ! -d /var/tmp/share ] && mkdir -p -m 777 /var/tmp/share
+    
     # AWS / Openstack only change
     if [ -s /home/ubuntu/.ssh/authorized_keys ] && [ ! -f $HOME/.ssh/authorized_keys.bak ]; then
         cp -p $HOME/.ssh/authorized_keys $HOME/.ssh/authorized_keys.bak
@@ -945,29 +947,29 @@ function f_install_packages() {
 }
 
 function p_basic_setup() {
-    _log "INFO" "Starting f_host_performance"
-    f_host_performance
-
-    _log "INFO" "Starting f_host_misc"
-    f_host_misc
-
-    _log "INFO" "Starting f_ssh_setup"
+    _log "INFO" "Executing f_ssh_setup"
     f_ssh_setup || return $?
 
     if which apt-get &>/dev/null; then
         # NOTE: psql (postgresql-client) is required
-        _log "INFO" "Starting apt-get install packages"
+        _log "INFO" "Executing apt-get install packages"
         f_install_packages || return $?
         #mailutils postfix htop
-        _log "INFO" "Starting f_docker_setup"
+        _log "INFO" "Executing f_docker_setup"
         f_docker_setup
-        _log "INFO" "Starting f_sysstat_setup"
+        _log "INFO" "Executing f_sysstat_setup"
         f_sysstat_setup
         #f_ttyd
 
-        _log "INFO" "Starting f_dnsmasq"
+        _log "INFO" "Executing f_dnsmasq"
         f_dnsmasq || return $?
     fi
+
+    _log "INFO" "Executing f_host_misc"
+    f_host_misc
+    
+    _log "INFO" "Executing f_host_performance"
+    f_host_performance
 }
 
 
