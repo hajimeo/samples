@@ -2318,9 +2318,6 @@ function p_host_setup() {
     _log "INFO" "Starting f_hdp_network_setup"
     f_hdp_network_setup &>> /tmp/p_host_setup.log || return $?
 
-    _log "INFO" "Starting f_dnsmasq"
-    f_dnsmasq &>> /tmp/p_host_setup.log || return $?
-
     _log "INFO" "Starting f_docker_base_create"
     f_docker_base_create &>> /tmp/p_host_setup.log || return $?
     _log "INFO" "Starting f_docker_run"

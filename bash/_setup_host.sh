@@ -556,7 +556,7 @@ function f_dnsmasq() {
 
     touch /etc/banner_add_hosts || return $?
     chmod 664 /etc/banner_add_hosts
-    chown root:docker /etc/banner_add_hosts
+    which docker &>/dev/null && chown root:docker /etc/banner_add_hosts
 
     if [ -n "$_how_many" ]; then
         f_dnsmasq_banner_reset "$_how_many" "$_start_from" || return $?
@@ -564,11 +564,13 @@ function f_dnsmasq() {
 
     # Not sure if this is still needed
     if [ -d /etc/docker ] && [ ! -f /etc/docker/daemon.json ]; then
-        local _docker_ip=`f_docker_ip "172.17.0.1"`
-        echo '{
-    "dns": ["'${_docker_ip}'", "1.1.1.1"]
+        local _docker_bridge_net="$(docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+        if [ -n "${_docker_bridge_net}" ]; then
+            echo '{
+    "dns": ["'${_docker_bridge_net}.1'", "1.1.1.1"]
 }' > /etc/docker/daemon.json
-        _warn "daemon.json updated. 'systemctl daemon-reload && service docker restart' required"
+            _warn "daemon.json updated. 'systemctl daemon-reload && service docker restart' required"
+        fi
     fi
 
     # @see https://bugs.launchpad.net/ubuntu/+source/systemd/+bug/1624320
@@ -938,7 +940,7 @@ function f_host_performance() {
 function f_install_packages() {
     which apt-get &>/dev/null || return $?
     apt-get -y install sysv-rc-conf     # Not stopping if error because Ubuntu 18 does not have this
-    apt-get -y install ntpdate curl wget sshfs tcpdump sharutils unzip postgresql-client libxml2-utils \
+    apt-get -y install python ntpdate curl wget sshfs tcpdump sharutils unzip postgresql-client libxml2-utils \
         expect netcat nscd mysql-client libmysql-java ppp at resolvconf
 }
 
@@ -962,6 +964,9 @@ function p_basic_setup() {
         _log "INFO" "Starting f_sysstat_setup"
         f_sysstat_setup
         #f_ttyd
+
+        _log "INFO" "Starting f_dnsmasq"
+        f_dnsmasq || return $?
     fi
 }
 
