@@ -25,11 +25,14 @@ if [ -s $HOME/.rgrc ]; then
     [ -z "${RIPGREP_CONFIG_PATH}" ] && export RIPGREP_CONFIG_PATH=$HOME/.rgrc
 fi
 
-# python related
-if [ -d /usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`/Frameworks/Python.framework/Versions/3.7/bin ]; then
-    # Mac's brew installs pip in this directory and may not in the path
-    export PATH=/usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`/Frameworks/Python.framework/Versions/3.7/bin:$PATH
-    # Rather than above, maybe better create a symlink for pip3?
+# Some older Mac, pip3 was not in the path, and below was the workaround
+#if [ -d /usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`*/Frameworks/Python.framework/Versions/3.7/bin ]; then
+#    # Mac's brew installs pip in this directory and may not in the path
+#    export PATH=$(ls -d /usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`*/Frameworks/Python.framework/Versions/3.7/bin):$PATH
+#fi
+if [ -d $HOME/Library/Python/3.7/bin ]; then
+    # Intentionally adding at the beginning
+    [[ ":$PATH:" != *":$HOME/Library/Python/3.7/bin:"* ]] && export PATH=$HOME/Library/Python/3.7/bin:$PATH
 fi
 if [ -d $HOME/IdeaProjects/samples/python ]; then
     # Intentionally adding at the beginning
@@ -38,6 +41,6 @@ fi
 
 # java related
 if [ -f /usr/libexec/java_home ]; then
-    #[ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 10`
-    [ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8`
+    #[ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 10 2>/dev/null`
+    [ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8 2>/dev/null`
 fi
