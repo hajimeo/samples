@@ -210,6 +210,52 @@ function f_hostname_set() {
     diff /etc/hosts.bak /etc/hosts
 }
 
+function f_ip_set() {
+    local __doc__="Set IP Address (TODO: Ubuntu 18 only)"
+    local _ip_mask="$1"
+    local _nic="$2" # ensXX
+    local _gw="$3"
+    if [[ ! "${_ip_mask}" =~ $_IP_RANGE_REGEX ]]; then
+        _log "ERROR" "${_ip_mask} is not IP address range."
+        return 1
+    fi
+    if [ -z "${_nic}" ]; then
+        _nic="$(netstat -rn | grep ^0.0.0.0 | awk '{print $8}')"
+    fi
+    if [ -z "${_nic}" ]; then
+        _log "ERROR" "No NIC name."
+        return 1
+    fi
+    if [ -z "${_gw}" ] && [[ "${_ip_mask}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\..+ ]]; then
+        _gw="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}.1"
+    fi
+    if [ -z "${_gw}" ]; then
+        _log "ERROR" "No Gateway address."
+        return 1
+    fi
+
+    local _conf_file="/etc/netplan/$(ls -1tr /etc/netplan | tail -n1)"
+    if [ -z "${_conf_file}" ]; then
+        _log "ERROR" "No netplan config file for updating found."
+        return 1
+    else
+        _backup "${_conf_file}"
+    fi
+
+    echo "network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    ${_nic}:
+     dhcp4: no
+     addresses: [${_ip_mask}]
+     gateway4: ${_gw}
+     nameservers:
+       addresses: [1.1.1.1,8.8.8.8,8.8.4.4]
+" > ${_conf_file} || return $?
+    netplan apply   #--debug apply
+}
+
 function f_socks5_proxy() {
     local __doc__="Start Socks5 proxy (for websocket)"
     local _port="${1:-$((${r_PROXY_PORT:-28080} + 1))}" # 28081
@@ -838,7 +884,7 @@ function f_vmware_tools_install() {
 ### Utility type functions #################################################
 _YES_REGEX='^(1|y|yes|true|t)$'
 _IP_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$'
-_IP_RANGE_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(/[0-3]?[0-9])?$'
+_IP_RANGE_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(/[0-3]?[0-9])$'
 _HOSTNAME_REGEX='^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
 _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
 _TEST_REGEX='^\[.+\]$'
@@ -968,11 +1014,12 @@ function _ask() {
     fi
 }
 function _backup() {
-    local __doc__="Backup the given file path into ${g_BACKUP_DIR}."
+    local __doc__="Backup the given file path into ${g_BACKUP_DIR} or /tmp."
     local _file_path="$1"
     local _force="$2"
     local _file_name="`basename $_file_path`"
     local _new_file_name=""
+    local _backup_dir="${g_BACKUP_DIR:-"/tmp"}"
 
     if [ ! -e "$_file_path" ]; then
         _warn "$FUNCNAME: Not taking a backup as $_file_path does not exist."
@@ -984,19 +1031,20 @@ function _backup() {
 
     _new_file_name="${_file_name}_${_mod_ts}"
     if ! _isYes "$_force"; then
-        if [ -e "${g_BACKUP_DIR%/}/${_new_file_name}" ]; then
+        if [ -e "${_backup_dir%/}/${_new_file_name}" ]; then
             _info "$_file_name has been already backed up. Skipping..."
             return 0
         fi
     fi
 
     _makeBackupDir
-    cp -p ${_file_path} ${g_BACKUP_DIR%/}/${_new_file_name} || _critical "$FUNCNAME: failed to backup ${_file_path}"
+    cp -p ${_file_path} ${_backup_dir%/}/${_new_file_name} || return $?
 }
 function _makeBackupDir() {
-    if [ ! -d "${g_BACKUP_DIR}" ]; then
-        mkdir -p -m 700 "${g_BACKUP_DIR}"
-        #[ -n "$SUDO_USER" ] && chown $SUDO_UID:$SUDO_GID ${g_BACKUP_DIR}
+    local _backup_dir="${g_BACKUP_DIR:-"/tmp"}"
+    if [ -n "${_backup_dir}" ] && [ ! -d "${_backup_dir}" ]; then
+        mkdir -p -m 700 "${_backup_dir}"
+        #[ -n "$SUDO_USER" ] && chown $SUDO_UID:$SUDO_GID ${_backup_dir}
     fi
 }
 function _isEnoughDisk() {
@@ -1191,7 +1239,3 @@ function _upsert() {
         return $?
     fi
 }
-
-
-
-
