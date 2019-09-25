@@ -83,7 +83,7 @@ Another way to create a container:
 
 
 ### Default values
-[ -z "${_SERVICE}" ] && (_log "WRARN" "_SERVICE env variable is missing!"; sleep 5) # This is used to select the app installer script
+[ -z "${_SERVICE}" ] && (echo "WRARN _SERVICE env variable is missing!"; sleep 5) # This is used to select the app installer script
 [ -z "${_WORK_DIR}" ] && _WORK_DIR="/var/tmp/share"     # If Mac, this will be $HOME/share. Also Check "File and Sharing".
 [ -z "${_SHARE_DIR}" ] && _SHARE_DIR="/var/tmp/share"   # *container*'s share dir (normally same as _WORK_DIR except Mac)
 #_DOMAIN_SUFFIX="$(echo `hostname -s` | sed 's/[^a-zA-Z0-9_]//g').localdomain"
