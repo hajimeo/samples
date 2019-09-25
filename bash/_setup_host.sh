@@ -13,7 +13,7 @@
 function f_host_misc() {
     local __doc__="Misc. changes for Ubuntu OS"
 
-    [ ! -d /var/tmp/share ] && mkdir -p -m 777 /var/tmp/share
+    [ ! -d ${_WORK_DIR} ] && mkdir -p -m 777 ${_WORK_DIR}
     
     # AWS / Openstack only change
     if [ -s /home/ubuntu/.ssh/authorized_keys ] && [ ! -f $HOME/.ssh/authorized_keys.bak ]; then
@@ -116,7 +116,7 @@ function f_haproxy() {
     local _slave_node="${2}"
     local _certificate="${3}"   # cat ./server.`hostname -d`.crt ./rootCA.pem ./server.`hostname -d`.key > certificate.pem'
     local _ports="${4:-"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113 11114 11115"}"
-    local _haproxy_tmpl_conf="${5:-/var/tmp/share/haproxy.tmpl.cfg}"
+    local _haproxy_tmpl_conf="${5:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
 
     local _ssl_crt=""
     local _cfg="/etc/haproxy/haproxy.cfg"
@@ -387,6 +387,11 @@ function f_ssh_setup() {
 
     # To make 'ssh root@localhost' work
     grep -q "^`cat $HOME/.ssh/id_rsa.pub`" /root/.ssh/authorized_keys || echo "`cat $HOME/.ssh/id_rsa.pub`" >> /root/.ssh/authorized_keys
+
+    if [ -d ${_WORK_DIR%/} ] && [ ! -f ${_WORK_DIR%/}/.ssh/authorized_keys ]; then
+        [ ! -d ${_WORK_DIR%/}/.ssh ] && mkdir -m 700 ${_WORK_DIR%/}/.ssh
+        ln -s /root/.ssh/authorized_keys ${_WORK_DIR%/}/.ssh/authorized_keys
+    fi
 }
 
 function f_docker_setup() {
@@ -532,6 +537,7 @@ function f_dnsmasq() {
     local __doc__="Install and set up dnsmasq"
     local _how_many="${1-$r_NUM_NODES}"
     local _start_from="${2-$r_NODE_START_NUM}"
+    local _domain_suffix="${3:-${g_DOMAIN_SUFFIX:-".localdomian"}}"
 
     # TODO: If Ubuntu 18.04 may want to stop systemd-resolved
     #sudo systemctl stop systemd-resolved
@@ -544,7 +550,7 @@ function f_dnsmasq() {
     grep -q '^server=1.1.1.1' /etc/dnsmasq.conf || echo 'server=1.1.1.1' >> /etc/dnsmasq.conf
     #grep -q '^domain-needed' /etc/dnsmasq.conf || echo 'domain-needed' >> /etc/dnsmasq.conf
     #grep -q '^bogus-priv' /etc/dnsmasq.conf || echo 'bogus-priv' >> /etc/dnsmasq.conf
-    grep -q '^local=' /etc/dnsmasq.conf || echo 'local=/'${g_DOMAIN_SUFFIX#.}'/' >> /etc/dnsmasq.conf
+    grep -q '^local=' /etc/dnsmasq.conf || echo 'local=/'${_domain_suffix#.}'/' >> /etc/dnsmasq.conf
     #grep -q '^expand-hosts' /etc/dnsmasq.conf || echo 'expand-hosts' >> /etc/dnsmasq.conf
     #grep -q '^domain=' /etc/dnsmasq.conf || echo 'domain='${g_DOMAIN_SUFFIX#.} >> /etc/dnsmasq.conf
     grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
@@ -1027,6 +1033,8 @@ _IP_RANGE_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|
 _HOSTNAME_REGEX='^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
 _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
 _TEST_REGEX='^\[.+\]$'
+
+_WORK_DIR="/var/tmp/share"
 
 function _info() {
     # At this moment, not much difference from _echo and _warn, might change later
