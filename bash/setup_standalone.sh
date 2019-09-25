@@ -5,6 +5,8 @@
 # chown root:docker /usr/local/bin/setup_standalone*
 # chmod 750 /usr/local/bin/setup_standalone*
 #
+# export _SERVICE="xxxxxxxxx"
+#
 # TODO: shouldn't use OS dependant command, such as apt-get, yum, brew etc.
 #
 # To recreate multiple images:
