@@ -2328,9 +2328,6 @@ function p_host_setup() {
     fi
 
     if _isYes "$r_PROXY"; then
-        _log "INFO" "Starting f_apache_proxy and Socks5 proxy"
-        f_apache_proxy &>> /tmp/p_host_setup.log
-        f_socks5_proxy &>> /tmp/p_host_setup.log
         _log "INFO" "Starting f_node_proxy_setup"
         f_node_proxy_setup &>> /tmp/p_host_setup.log
     fi
