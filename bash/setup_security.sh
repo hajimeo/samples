@@ -55,6 +55,7 @@ g_TRUSTSTORE_FILE="server.truststore.jks"
 g_CLIENT_KEYSTORE_FILE="client.keystore.jks"
 g_CLIENT_TRUSTSTORE_FILE="all.jks"
 g_CLIENT_TRUSTSTORE_PASSWORD="changeit"
+g_FREEIPA_DEFAULT_PWD="secret12"
 g_KDC_REALM="`hostname -s`" && g_KDC_REALM=${g_KDC_REALM^^}
 g_admin="${_ADMIN_USER-admin}"
 g_admin_pwd="${_ADMIN_PASS-admin}"
@@ -1118,7 +1119,7 @@ function f_freeipa_install() {
     local __doc__="Install freeIPA (may better create a dedicated container)"
     #p_node_create node99${r_DOMAIN_SUFFIX} 99 # Intentionally no Ambari install
     local _ipa_server_fqdn="$1"
-    local _password="${2:-secret12}"    # password need to be 8 or longer
+    local _password="${2:-$g_FREEIPA_DEFAULT_PWD}"    # password need to be 8 or longer
     local _how_many="${3:-$r_NUM_NODES}"    # Integer or client hostname
     local _start_from="${4:-$r_NODE_START_NUM}"
     local _force_client="${5}"
@@ -1154,10 +1155,11 @@ grep -q '^net.ipv6.conf.lo.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.con
 }
 
 function f_freeipa_client_install() {
+    local __doc__="Install freeIPA client on one node"
     # ref: https://www.digitalocean.com/community/tutorials/how-to-configure-a-freeipa-client-on-centos-7
     local _client_host="$1"
     local _ipa_server_fqdn="$2"
-    local _adm_pwd="${3:-secret12}"    # password need to be 8 or longer
+    local _adm_pwd="${3:-$g_FREEIPA_DEFAULT_PWD}"    # password need to be 8 or longer
     local _force_reinstall="${4}"
 
     local _domain="${_ipa_server_fqdn#*.}"
@@ -1172,6 +1174,33 @@ yum install ipa-client -y
 ipa-client-install --unattended --hostname=`hostname -f` --server='${_ipa_server_fqdn}' --domain='${_domain}' --realm='${_domain^^}' -p admin -w '${_adm_pwd}' --mkhomedir --force-join'
 }
 
+function f_freeipa_cert_update() {
+    local __doc__="Update/renew certificate (TODO: haven't tested)"
+    # @see https://www.powerupcloud.com/freeipa-server-and-client-installation-on-ubuntu-16-04-part-i/
+    local _ipa_server_fqdn="$1"
+    local _p12_file="$2"
+    local _p12_pass="${3:-${g_DEFAULT_PASSWORD-"hadoop"}}"
+    local _full_ca="${4}"   # If intermediate is used, concatenate first
+    local _adm_pwd="${5:-$g_FREEIPA_DEFAULT_PWD}"
+    # example of generating p12.
+    #openssl pkcs12 -export -chain -CAfile rootCA_standalone.crt -in standalone.localdomain.crt -inkey standalone.localdomain.key -name standalone.localdomain -out standalone.localdomain.p12 -passout pass:hadoop
+
+    if [ -s ${_full_ca} ]; then
+        ssh -q root@${_ipa_server_fqdn} -t "ipa-cacert-manage install ${_full_ca} && echo -n '${_adm_pwd}' | kinit admin; ipa-certupdate" #|| return $?
+        _info "TODO: Run 'ipa-certupdate' on each node."
+    fi
+
+    if [ -z "${_p12_file}" ]; then
+        if [ ! -s /var/tmp/share/cert/standalone.localdomain.p12 ]; then
+            curl -f -o /var/tmp/share/cert/standalone.localdomain.p12 "https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.p12" || return $?
+        fi
+        _p12_file="/var/tmp/share/cert/standalone.localdomain.p12"
+        _p12_pass="hadoop"
+    fi
+    # Should update only web server cert (no -d)?
+    scp ${_p12_file} root@${_ipa_server_fqdn}:/tmp/ || return $?
+    ssh -q root@${_ipa_server_fqdn} -t "ipa-server-certinstall -w -d /tmp/${_p12_file} --pin="${_p12_pass}" -p "${_adm_pwd}" && ipactl restart"
+}
 
 function f_sssd_setup() {
     local __doc__="setup SSSD on each node (security lab) If /etc/sssd/sssd.conf exists, skip. Kerberos is required."
