@@ -248,13 +248,16 @@ function f_update_hosts_file() {
 
     if [[ ! "${_inject_hostname}" =~ ^(y|Y) ]]; then
         # Append in the end of file
-        _sed -i -e "\$a${_ip} ${_fqdn} ${_name}" ${_tmp_file}
+        # it seems sed a (append) does not work if file is empty
+        #_sed -i -e "\$a${_ip} ${_fqdn} ${_name}" ${_tmp_file}
+        echo "${_ip} ${_fqdn} ${_name}" >> ${_tmp_file}
     else
         # as injecting is Y, adding this host before other hosts
         _sed -i "/^${_ip}\s/ s/${_ip}\s/${_ip} ${_fqdn} /" ${_tmp_file}
     fi
 
     if [ ! "`uname`" = "Darwin" ]; then
+        _log "INFO" "Updating ${_file} for ${_fqdn} ${_ip} ..."
         # cp / mv fails if no permission on the directory
         cat ${_tmp_file} > ${_file} || return $?
         rm -f ${_tmp_file}
