@@ -26,5 +26,5 @@ Host search.osakos.com
   UserKnownHostsFile /dev/null
   IdentityFile /Users/hosako/.ssh/hajime_id_rsa
   User hajime
-  # To not show Warning: Permanently added ...
-  LogLevel QUIET
+  # To not show Warning: Permanently added (QUIET?) ...
+  LogLevel ERROR
