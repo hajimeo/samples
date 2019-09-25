@@ -2448,7 +2448,7 @@ function _copy_auth_keys_to_containers() {
     [ -s "$HOME/.ssh/authorized_keys" ] || return 1
     scp -q $HOME/.ssh/authorized_keys root@${_hostname}:/root/.ssh/authorized_keys && ssh -q root@${_hostname} chmod 600 /root/.ssh/authorized_keys
     if [ ! -s /tmp/ssh_config_$$ ]; then
-        echo "Host node* *.localdomain
+        echo "Host ${r_NODE_HOSTNAME_PREFIX:-$g_NODE_HOSTNAME_PREFIX}* *.localdomain
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
   LogLevel ERROR
