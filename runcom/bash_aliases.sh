@@ -178,6 +178,11 @@ function _parallel() {
     fi | sed '/^$/d' | tr '\n' '\0' | xargs -t -0 -n1 -P${_num_process} -I @@ bash -c "${_prefix_cmd}@@${_suffix_cmd}"
     # Somehow " | sed 's/"/\\"/g'" does not need... why?
 }
+# Escape characters for Shell
+function _escape() {
+    local _string="$1"
+    printf %q "${_string}"
+}
 # Grep STDIN with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
     local _datetime_regex="${1}"
