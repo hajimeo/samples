@@ -75,6 +75,26 @@ function export_key() {
     ls -l ${_basename}.*
 }
 
+# generate .p12 (pkcs12) file
+function gen_p12() {
+    local _ca_crt="$1"
+    local _srv_crt="$2"
+    local _srv_key="$3"
+    local _pass="${4:-password}"
+    local _name="$5"
+    if [ -z "${_name}" ]; then
+        local _basename="$(basename ${_srv_crt})"
+        _name="${_basename%.*}"
+    fi
+    # NOTE: If intermediate CA is used (TODO: does order matter?)
+    #cat root.cer intermediate.cer > full_ca.cer
+    openssl pkcs12 -export -chain -CAfile ${_ca_crt} -in ${_srv_crt} -inkey ${_srv_key} -name ${_name} -out ${_name}.p12 -passout "pass:${_pass}"
+    # Verify
+    if which keytool &>/dev/null; then
+        keytool -list -keystore ${_name}.p12 -storetype PKCS12 -storepass "${_pass}"
+    fi
+}
+
 function start_https() {
     # @see https://docs.python.org/2/library/ssl.html#ssl.SSLContext.wrap_socket
     local _key="$1"
