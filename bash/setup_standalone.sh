@@ -92,7 +92,8 @@ Another way to create a container:
 [ -z "${_BASE_IMAGE}" ] && _BASE_IMAGE="node/base"       # Docker image name TODO: change to more appropriate image name
 [ -z "${_VERSION}" ] && _VERSION="7.3.1"                # Default software version, mainly used to find the right installer file
 _PORTS="${_PORTS-"10000 10500 10501 10502 10503 10504 10508 10516 10518 10520 11111 11112 11113 5005"}"    # Used by docker port forwarding
-_DOWNLOAD_URL="${_DOWNLOAD_URL-"http://192.168.6.163/${_SERVICE}/"}"
+# Expecting mounting and/or using symlink from another node but using this node's Apache2
+_DOWNLOAD_URL="${_DOWNLOAD_URL-"http://$(hostname -I | awk '{print $1}')/${_SERVICE}/"}"
 #_CUSTOM_NETWORK="hdp"
 
 _CREATE_CONTAINER=false
