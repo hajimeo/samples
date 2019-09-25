@@ -1119,9 +1119,9 @@ function f_freeipa_install() {
     #p_node_create node99${r_DOMAIN_SUFFIX} 99 # Intentionally no Ambari install
     local _ipa_server_fqdn="$1"
     local _password="${2:-secret12}"    # password need to be 8 or longer
-    local _force_client="${3}"
-    local _how_many="${4:-$r_NUM_NODES}"
-    local _start_from="${5:-$r_NODE_START_NUM}"
+    local _how_many="${3:-$r_NUM_NODES}"    # Integer or client hostname
+    local _start_from="${4:-$r_NODE_START_NUM}"
+    local _force_client="${5}"
 
     # Used ports https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/linux_domain_identity_authentication_and_policy_guide/installing-ipa
     #ssh -q root@${_node} -t "yum update -y"
@@ -1138,9 +1138,14 @@ grep -q '^net.ipv6.conf.lo.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.con
 
     #ipa ping
     #ipa config-show --all
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        _freeipa_client_install node${i} "${_ipa_server_fqdn}" "${_password}" "${_force_client}"
-    done
+    if [[ "$_how_many" =~ ^[0-9]+$ ]]; then
+        for i in `_docker_seq "$_how_many" "$_start_from"`; do
+            f_freeipa_client_install node${i} "${_ipa_server_fqdn}" "${_password}" "${_force_client}"
+        done
+    elif [ -n "${_how_many}" ]; then
+        local _client_hostname="${_how_many}"
+        f_freeipa_client_install "${_client_hostname}" "${_ipa_server_fqdn}" "${_password}" "${_force_client}"
+    fi
 
     if [[ "${_force_client}" =~ y|Y ]]; then
         _warn "Due to dbus restart, may need to stop/start containers"
@@ -1148,7 +1153,7 @@ grep -q '^net.ipv6.conf.lo.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.con
     _warn "TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days"
 }
 
-function _freeipa_client_install() {
+function f_freeipa_client_install() {
     # ref: https://www.digitalocean.com/community/tutorials/how-to-configure-a-freeipa-client-on-centos-7
     local _client_host="$1"
     local _ipa_server_fqdn="$2"
@@ -1503,14 +1508,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     f_xxxxx # or type 'help'
     "
 else
-    g_START_HDP_SH="start_hdp.sh"
-    # TODO: assuming g_SCRIPT_NAME contains a right filename or can be empty
-    if [ ! -s "./$g_START_HDP_SH" ]; then
-        echo "start_hdp.sh is missing. Downloading..."
-        curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/$g_START_HDP_SH -o "./$g_START_HDP_SH"
-    fi
-    source "./$g_START_HDP_SH"
-
     g_SETUP_HOST="_setup_host.sh"
     # sourcing required script
     if [ ! -s "./${g_SETUP_HOST}" ]; then
@@ -1518,4 +1515,12 @@ else
         curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/${g_SETUP_HOST} -o ./${g_SETUP_HOST}
     fi
     source ./${g_SETUP_HOST}
+
+    g_START_HDP_SH="start_hdp.sh"
+    # TODO: assuming g_SCRIPT_NAME contains a right filename or can be empty
+    if [ ! -s "./$g_START_HDP_SH" ]; then
+        echo "start_hdp.sh is missing. Downloading..."
+        curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/$g_START_HDP_SH -o "./$g_START_HDP_SH"
+    fi
+    source "./$g_START_HDP_SH"
 fi
