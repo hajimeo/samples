@@ -263,13 +263,6 @@ function f_socks5_proxy() {
     local _port="${1:-$((${r_PROXY_PORT:-28080} + 1))}" # 28081
     local _cmd="autossh -4gC2TxnNf -D${_port} socks5user@localhost &> /tmp/ssh_socks5.out"
 
-    if [ ! -s /etc/rc.local ]; then
-        echo "${_cmd}
-exit 0" > /etc/rc.local
-    elif ! grep -qF "${_cmd}" /etc/rc.local; then
-        sed -i "/^exit 0/i ${_cmd}\n" /etc/rc.local
-    fi
-
     apt-get install -y autossh || return $?
     if [ ! -s $HOME/.ssh/id_rsa ]; then
         f_ssh_setup || return $?
@@ -281,6 +274,7 @@ exit 0" > /etc/rc.local
     touch /tmp/ssh_socks5.out
     chmod 777 /tmp/ssh_socks5.out
     [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
+    _insert_line /etc/rc.local "${_cmd}" "exit 0"
     lsof -nPi:${_port} -s TCP:LISTEN | grep "^ssh" && return 0
     eval "${_cmd}"
 }
@@ -376,7 +370,7 @@ function f_ssh_setup() {
     fi
 
     if [ ! -e $HOME/.ssh/config ]; then
-        echo "Host node* atscal* *.localdomain
+        echo "Host node* *.localdomain
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
   LogLevel ERROR
@@ -946,6 +940,26 @@ function f_install_packages() {
         expect netcat nscd mysql-client libmysql-java ppp at resolvconf
 }
 
+function f_sshfs_mount() {
+    local __doc__="Mount sshfs. May need root priv"
+    local _remote_src="${1}"
+    local _local_dir="${2}"
+
+    if mount | grep -qw "${_local_dir%/}"; then
+        _info "Un-mounting ${_local_dir%/} ..."; sleep 3
+        umount -f "${_local_dir%/}" || return $?
+    fi
+    if [ ! -d "${_local_dir}" ]; then
+        mkdir -p -m 777 "${_local_dir}" || return $?
+    fi
+
+    _info "Mounting ${_remote_src%/}/ to ${_local_dir} ..."
+    _info "If it asks password, please stop and use ssh-copy-id."
+    local _cmd="sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks ${_remote_src%/}/ ${_local_dir%/}"
+    eval ${_cmd} || return $?
+    _insert_line /etc/rc.local "${_cmd}" "exit 0"
+}
+
 function p_basic_setup() {
     _log "INFO" "Executing f_ssh_setup"
     f_ssh_setup || return $?
@@ -956,10 +970,15 @@ function p_basic_setup() {
         f_install_packages || return $?
         #mailutils postfix htop
         _log "INFO" "Executing f_docker_setup"
-        f_docker_setup
+        f_docker_setup || return $?
         _log "INFO" "Executing f_sysstat_setup"
         f_sysstat_setup
-        #f_ttyd
+        _log "INFO" "Executing f_apache_proxy"
+        f_apache_proxy
+        _log "INFO" "Executing f_socks5_proxy"
+        f_socks5_proxy
+        _log "INFO" "Executing f_shellinabox"
+        f_shellinabox
 
         _log "INFO" "Executing f_dnsmasq"
         f_dnsmasq || return $?
@@ -1002,7 +1021,7 @@ function p_basic_setup() {
 
 
 ### Utility type functions #################################################
-_YES_REGEX='^(1|y|yes|true|t)$'
+_YES_REGEX='^(y|Y)'
 _IP_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$'
 _IP_RANGE_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(/[0-3]?[0-9])$'
 _HOSTNAME_REGEX='^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
@@ -1357,5 +1376,40 @@ function _upsert() {
         local _if_not_exist_append_after_sed="`echo "${_if_not_exist_append_after}" | sed 's/[][\.^$*\/"&]/\\\&/g'`"
         sed -i -r "0,/^(${_if_not_exist_append_after_sed}.*)$/s//\1\n${_name_esc_sed_for_val}${_between_char}${_value_esc_sed}/" ${_file_path}
         return $?
+    fi
+}
+
+function _sed_escape() {
+    # Only works with "/" delimiter
+    echo "$1" | sed -e 's/[\/&]/\\&/g'
+}
+
+function _insert_line() {
+    local __doc__="Insert a line into the given file. TODO: should escape _line for sed"
+    local _file_path="$1"
+    local _line="$2"
+    local _before="$3"
+
+    local _line_escaped="`_sed_escape "${_line}"`"
+    [ -z "${_line_escaped}" ] && return 1
+    local _before_escaped="`_sed_escape "${_before}"`"
+
+    # If no file, create and insert
+    if [ ! -s ${_file_path} ]; then
+        if [ -n "${_before}" ]; then
+            echo -e "${_line}\n${_before}" > ${_file_path}
+        else
+            echo "${_line}" > ${_file_path}
+        fi
+    elif grep -qF "${_line}" ${_file_path}; then
+        # Would need to escape special chars, so saying "almost"
+        _info "(almost) same line exists, skipping..."
+        return
+    else
+        if [ -n "${_before}" ]; then
+            sed -i "/^${_before}/i ${_line}" ${_file_path}
+        else
+            echo -e "\n${_line}" >> ${_file_path}
+        fi
     fi
 }
