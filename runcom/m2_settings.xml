@@ -4,7 +4,7 @@
       <!--This sends everything else to /public -->
       <id>nexus</id>
       <mirrorOf>*</mirrorOf>
-      <url>http://node-nxrm3.standalone.localdomain:8081/repository/maven-all/</url>
+      <url>http://node-nxrm3.standalone.localdomain:8081/repository/maven-central/</url>
     </mirror>
   </mirrors>
   <profiles>
