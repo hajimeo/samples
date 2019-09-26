@@ -40,9 +40,10 @@ function f_setup_misc() {
         sudo usermod -a -G docker $USER && _log "NOTE" "Please re-login as user group has been changed."
     fi
 
-    if which git &>/dev/null && ! git config credential.helper | grep -qw cache; then
-        git config --global credential.helper "cache --timeout=600"
-    fi
+    # TODO: below may not work with Mac (need to test)
+    #if which git &>/dev/null && ! git config credential.helper | grep -qw cache; then
+    #    git config --global credential.helper "cache --timeout=600"
+    #fi
 }
 
 function f_setup_rg() {
