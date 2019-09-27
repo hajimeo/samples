@@ -2,15 +2,14 @@
 // Check https://developer.chrome.com/apps/match_patterns for url match pattern. Also '#' + '*' doesn't work as it is named alias
 chrome.webRequest.onBeforeRequest.addListener(replaceUrl, {
     //urls: ['https://*/*'],  // for debug
-    // NOTE: At this moment, our lightening view is broken. it fails to display many cases, so not redirecting , 'https://customers.xxxxx.com/s/case/*'
-    urls: ['https://*.lightning.force.com/lightning/*', 'https://*.visual.force.com/*'], //'https://*.salesforce.com/console*'
+    urls: ['https://*.zendesk.com/agent/tickets/*'],
     types: ["main_frame"]
 }, ["blocking"]);
 
 // Assuming ID starts with 50, and protocol + (hostname/path_to_id=) + (caseId), so that the index of groups is 2
-var caseId_regex = new RegExp("^https://(.+\.lightning\.force\.com/lightning/r/Case/|.+\.visual\.force\.com/apex/Case_Lightning.*[?&]id=|customers\.a.....e\.com/s/case/)(50[^\?&/]+)");
-var tab_regex = new RegExp("^https://(.+\.lightning\.force\.com/lightning/[ro]/Case/)");
-var ignore_regex = new RegExp("^https://.+\.lightning\.force\.com/lightning/(_classic/)");
+var caseId_regex = new RegExp("^https://(.+\.zendesk\.com/agent/tickets/)([0-9]+)");
+var tab_regex = new RegExp("^https://(.+\.zendesk\.com/agent/tickets/)");
+var ignore_regex = new RegExp("^https://currently_not_in_use");
 
 function replaceUrl(r) {
     console.log("=== Start 'replaceUrl' ================================");
@@ -18,11 +17,11 @@ function replaceUrl(r) {
 
     // TODO: this is not working as expected. always extension url
     //Current URL:  chrome-extension://jmcbnjdefaolmdilieapganbfmpacnlc/_generated_background_page.html
-    console.log('Current URL: ', window.location.toString());
+    /*console.log('Current URL: ', window.location.toString());
     if (tab_regex.exec(window.location.toString())) {
         console.log('Current URL is almost same as the target URL (so no action required.');
         return {redirectUrl: r.url}
-    }
+    }*/
 
     console.log('Requested URL: ', r.url);
     if (ignore_regex.exec(r.url)) {
@@ -36,12 +35,10 @@ function replaceUrl(r) {
         console.log("no match, so returning the original URL");
         return {redirectUrl: r.url}
     }
-
     var id = match[2];
-    var new_url = "https://atscale2ndorg.lightning.force.com/lightning/r/Case/" + id + "/view";
-    //var new_url = "https://na63.salesforce.com/console#%2F" + match[2];
-    //var new_url = "https://customers.xxxxxxx.com/" + match[2];
-    //var new_url = "https://customers.xxxxxxx.com/s/case/" + match[2] + "/detail";
+    // If you need to replace the URL, edit below
+    //var new_url = "https://TODO_aaaaaaa/" + id + "/extra_path";
+    var new_url = r.url;
     console.log("New URL = " + new_url);
 
     // Get the list of currently opened tabs, to find the target/updating tab
@@ -57,12 +54,14 @@ function replaceUrl(r) {
                     console.log('and URL is ', target_tab.url);
                     chrome.tabs.update(target_tab.id, {"active": true});
 
-                    // TODO: This is not working as SalesForce changes URL slightly (potentially salesforce bug?)
                     if (target_tab.url.toString() == new_url.toString()) {
                         console.log('Newly generated URL is exactly same, so nothing to do (TODO: should refresh). url:' + new_url.toString());
                     } else if (target_tab.url.toString() == r.url.toString()) {
                         console.log('Requested URL is exactly same, so nothing to do (TODO: should refresh). url:' + r.url.toString());
                     } else {
+                        console.log('Updating ' + target_tab.id + ' with url:' + new_url.toString());
+                        chrome.tabs.update(target_tab.id, {url: new_url});
+                        /*
                         console.log('executeScript on ' + target_tab.id + ' for url:' + new_url.toString());
                         // To get active one: li.tabItem.slds-context-bar__item.slds-context-bar__item_tab.slds-is-active
                         var inner_script = `
@@ -108,9 +107,8 @@ if (r) {
                                 // If results is empty, just change the URL.
                                 console.log('Unknown executeScript result.');
                                 console.log(results);
-                                //chrome.tabs.update(target_tab.id, {url: new_url});
                             }
-                        });
+                        });*/
                     }
 
                     if (target_tab.id.toString() != r.tabId.toString()) {
