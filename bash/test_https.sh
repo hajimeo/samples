@@ -9,6 +9,12 @@ function get_ciphers() {
     local _port="${2:-443}"
     local _server=$_host:$_port
     local _delay=1
+
+    if which nmap &>/dev/null; then
+        nmap --script +ssl-enum-ciphers -p ${_port} ${_host}
+        return $?
+    fi
+
     ciphers=$(openssl ciphers 'ALL:eNULL' | sed -e 's/:/ /g')
     echo "Obtaining cipher list from $_server with $(openssl version)..." >&2
 
