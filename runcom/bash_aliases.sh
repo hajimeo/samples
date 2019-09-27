@@ -102,7 +102,7 @@ for l in sys.stdin:
     except ValueError:
         print l2'
 }
-# supprisingly it's not easy to remove all newlines
+# surprisingly it's not easy to remove all newlines
 function rmnewline() {
     python -c 'import sys
 for l in sys.stdin:
@@ -290,5 +290,7 @@ function push2search() {
     echo ""
     [[ "${_yes}" =~ ^[yY] ]] && eval "${_cmd}"
 }
-
 ## Work specific functions
+function pubS() {
+    scp -C $HOME/IdeaProjects/samples/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/
+}
