@@ -1,72 +1,59 @@
-// "persistent": true is required for onBeforeRequest
+// NOTE: "persistent": true is required for onBeforeRequest in the manifest.
 // Check https://developer.chrome.com/apps/match_patterns for url match pattern. Also '#' + '*' doesn't work as it is named alias
 chrome.webRequest.onBeforeRequest.addListener(replaceUrl, {
-  //urls: ['https://*/*'],  // for debug
   urls: ['https://*.zendesk.com/agent/tickets/*'],
   types: ["main_frame"]
 }, ["blocking"]);
 
-// Assuming ID starts with 50, and protocol + (hostname/path_to_id=) + (caseId), so that the index of groups is 2
-var caseId_regex = new RegExp("^https://(.+\.zendesk\.com/agent/tickets/)([0-9]+)");
+// Replacing the URL if below regex matches
 var tab_regex = new RegExp("^https://(.+\.zendesk\.com/agent/tickets/)");
+// Finding case|ticket id from the URL
+var id_regex = new RegExp("^https://(.+\.zendesk\.com/agent/tickets/)([0-9]+)");
+// If URL matches below, ignoring (not doing anything), but currently not using.
 var ignore_regex = new RegExp("^https://currently_not_in_use");
 
 function replaceUrl(r) {
   console.log("=== Start 'replaceUrl' ================================");
   console.log("Request: r.tabId = " + r.tabId + " | url = " + r.url);
 
-  // TODO: this is not working as expected. always extension url
-  //Current URL:  chrome-extension://jmcbnjdefaolmdilieapganbfmpacnlc/_generated_background_page.html
-  /*console.log('Current URL: ', window.location.toString());
-  if (tab_regex.exec(window.location.toString())) {
-      console.log('Current URL is almost same as the target URL (so no action required.');
-      return {redirectUrl: r.url}
-  }*/
-
-  console.log('Requested URL: ', r.url);
   if (ignore_regex.exec(r.url)) {
     console.log('Requested URL is in ignore_regex (so no action required.');
     return {redirectUrl: r.url}
   }
 
-  var match = caseId_regex.exec(r.url);
+  var match = id_regex.exec(r.url);
   console.log("matches = " + match);
   if (!match || match < 3) {
     console.log("no match, so returning the original URL");
     return {redirectUrl: r.url}
   }
+
   var id = match[2];
   // If you need to replace the URL, edit below
   //var new_url = "https://TODO_aaaaaaa/" + id + "/extra_path";
+  //console.log("New URL = " + new_url);
   var new_url = r.url;
-  console.log("New URL = " + new_url);
 
-  // Get the list of currently opened tabs, to find the target/updating tab
+  // Get the list of currently opened tabs to find the target/updating tab
   chrome.tabs.query({currentWindow: true}, function(tabs) {
-    // It seems no 'break' in forEach?, so storing the target tab.
+    // It seems no 'break' in forEach?, so using 'target_tab' to decide if it's already found or not.
     var target_tab = null;
     tabs.forEach(function(tab) {
-      //console.log('Checking id:' + tab.id + ' vs. ' + r.tabId + ' url:' + tab.url);
+      //console.log('Checking id:' + tab.id + ' vs. ' + r.tabId + ' url:' + tab.url); // This is for debugging
       if (target_tab === null) {
         if (tab_regex.exec(tab.url)) {
           target_tab = tab;
-          console.log('Found the target tab to replace URL, which id is ', target_tab.id);
-          console.log('and URL is ', target_tab.url);
+          console.log('Found the target tab for replacing, which tab id is ', target_tab.id);
+          console.log('and before-replacing-URL is ', target_tab.url);
           chrome.tabs.update(target_tab.id, {"active": true});
 
           if (target_tab.url.toString() == new_url.toString()) {
-            console.log('Newly generated URL is exactly same, so nothing to do (TODO: should refresh). url:' +
-                new_url.toString());
-          }
-          else if (target_tab.url.toString() == r.url.toString()) {
-            console.log(
-                'Requested URL is exactly same, so nothing to do (TODO: should refresh). url:' + r.url.toString());
+            console.log('New URL is exactly same as the target (TODO: should refresh|reload?): ', new_url);
           }
           else {
-            console.log('Updating ' + target_tab.id + ' with url:' + new_url.toString());
+            //console.log('Updating tab id:' + target_tab.id + ' with url: ', new_url);
             //chrome.tabs.update(target_tab.id, {url: new_url});
-            console.log('executeScript on ' + target_tab.id + ' for url:' + new_url.toString());
-            // To get active one: li.tabItem.slds-context-bar__item.slds-context-bar__item_tab.slds-is-active
+            console.log('executeScript on ' + target_tab.id + ' for url: ', new_url);
             var inner_script = `
 var id = '${id}';
 console.log("id: " + id);
@@ -84,7 +71,7 @@ document.querySelector('a.advanced-search').click();
           }
 
           if (target_tab.id.toString() != r.tabId.toString()) {
-            console.log('Closing the newly opened tab ' + r.tabId.toString());
+            console.log('Closing the newly opened tab: ', r.tabId);
             chrome.tabs.remove(r.tabId, function() {
               if (chrome.runtime.lastError) {
                 console.log("Last Error after chrome.tabs.remove: " + chrome.runtime.lastError.toString());
@@ -96,7 +83,7 @@ document.querySelector('a.advanced-search').click();
     });
 
     if (!target_tab) {
-      console.log('Could not find the target tab or tab ID is same, so using a new tab.');
+      console.log('Could not find any tab, so using the newly opened tab.');
       return {redirectUrl: r.url}
     }
   });
