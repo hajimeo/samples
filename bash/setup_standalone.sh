@@ -49,7 +49,7 @@ OTHERS (which normally you don't need to use):
 
     -l /path/to/software_license_file
         To specify a path of the software licence file.
-        If not specified (default), the installer script would automatically decide.
+        If not specified (default), the installer script (install_${_SERVICE}.sh) should decide.
 
     -M 11111
         Monitoring port.
