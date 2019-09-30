@@ -1098,6 +1098,10 @@ main() {
         [ "x${_DOCKER_PORT_FORWARD}" == "x" ] && _DOCKER_PORT_FORWARD=true
     fi
 
+    if [ -z "${_SERVICE}" ]; then
+        _log "ERROR" "The env variable '_SERVICE' is not defined."
+        return 1
+    fi
     if [ ! -d "${_WORK_DIR%/}/${_SERVICE}" ]; then
         mkdir -p -m 777 "${_WORK_DIR%/}/${_SERVICE}" || return $?
     fi
