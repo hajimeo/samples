@@ -112,20 +112,20 @@ function f_sysstat_setup() {
 
 function f_haproxy() {
     local __doc__="Install and setup HAProxy"
-    local _master_node="${1}"
-    local _slave_node="${2}"
-    local _certificate="${3}"   # cat ./server.`hostname -d`.crt ./rootCA.pem ./server.`hostname -d`.key > certificate.pem'
-    local _ports="${4:-"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113 11114 11115"}"
-    local _haproxy_tmpl_conf="${5:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
+    local _nodes="${1}"         # docker ps --format "{{.Names}}" | grep "^node-nxrm3-" | tr '\n' ' '
+    local _certificate="${2}"   # cat ./server.`hostname -d`.crt ./rootCA.pem ./server.`hostname -d`.key > certificate.pem'
+    local _ports="${3:-"8081"}" # port1 port2 port3
+    local _haproxy_tmpl_conf="${4:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
 
     local _ssl_crt=""
     local _cfg="/etc/haproxy/haproxy.cfg"
-    [ -n "${_master_node}" ] || return 1
+    [ -n "${_nodes}" ] || return 1
     apt-get install haproxy -y || return $?
 
-    local _first_port="`echo $_ports | awk '{print $1}'`"
-    if [ -n "${_certificate}" ] || openssl s_client -connect ${_master_node}:${_first_port} -quiet; then
-        _info "Seems TLS/SSL is enabled on ${_master_node}:${_first_port}"
+    local _first_node="`echo ${_nodes} | awk '{print $1}'`"
+    local _first_port="`echo ${_ports} | awk '{print $1}'`"
+    if [ -n "${_certificate}" ] || openssl s_client -connect ${_first_node}:${_first_port} -quiet; then
+        _info "Seems TLS/SSL is enabled on ${_first_node}:${_first_port}"
 
         # If certificate is given, assuming to use TLS/SSL
         if [ ! -s "${_certificate}" ]; then
@@ -147,7 +147,7 @@ function f_haproxy() {
     # append 'ssl-server-verify none' in global
     # comment out 'default-server init-addr last,libc,none'
 
-    for _p in $_ports; do
+    for _p in ${_ports}; do
         grep -qE "\s+bind\s+.+:{_p}\s*$" "${_cfg}" && continue
         echo "
 frontend frontend_p${_p}
@@ -156,9 +156,11 @@ frontend frontend_p${_p}
         # TODO:  option httpchk GET /ping HTTP/1.1\r\nHost:\ www
         echo "
 backend backend_p${_p}
-  option httpchk
-  server first_node ${_master_node}:${_p}${_ssl_crt} check" >> "${_cfg}"
-        [ -n "${_slave_node}" ] && echo "  server second_node ${_slave_node}:${_p}${_ssl_crt} check" >> "${_cfg}"
+  balance roundrobin
+  option httpchk" >> "${_cfg}"
+        for _n in ${_nodes}; do
+            echo "  server ${_n} ${_n}:${_p}${_ssl_crt} check" >> "${_cfg}"
+        done
     done
 
     # NOTE: May need to configure rsyslog.conf for log if CentOS
