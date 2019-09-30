@@ -410,9 +410,9 @@ function p_container_setup() {
     local __doc__="various config setup (eg: ssh client)"
     local _name="${1:-${_NAME}}"
 
-    _log "INFO" "Setting up ${_name} container..."
     f_container_ssh_config "${_name}"   # it's OK to fail || return $?
     f_container_misc "${_name}"         # it's OK to fail || return $?
+    _log "INFO" "Setting up ${_name} container completed."
     return 0
 }
 
@@ -703,11 +703,11 @@ function f_as_install() {
     f_container_useradd "${_name}" "${_SERVICE}" || return $?
 
     if [ -n "$_version" ] && ! $_AS_NO_INSTALL_START; then
-        _log "INFO" "Setting up an Application for version ${_version} on ${_name} ..."
         if ! f_as_setup "${_name}.${_DOMAIN#.}" "${_version}" "${_install_opts}"; then
             _log "ERROR" "Setting up an Application for version ${_version} on ${_name} failed"; sleep 3
             return 1
         fi
+        _log "INFO" "Setting up an Application for version ${_version} on ${_name} completed."
     fi
 }
 
@@ -1126,9 +1126,7 @@ main() {
     if $_CREATE_CONTAINER || $_CREATE_OR_START; then
         # Check if the base OS image exists
         local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_BASE_IMAGE}:${_OS_VERSION}"`"
-        if [ -n "${_existing_img}" ]; then
-            _log "INFO" "Image ${_existing_img} already exists. Skipping base image creating ..."
-        else
+        if [ -z "${_existing_img}" ]; then
             _log "INFO" "Creating a docker image ${_BASE_IMAGE}..."
             f_docker_base_create || return $?
         fi
