@@ -610,12 +610,16 @@ function f_as_setup() {
         return 1
     fi
 
-    if [ -n "${_license}" ] && [ ! -f "${_work_dir%/}/${_service%/}/$(basename "${_license}")" ]; then
-        cp ${_license} ${_work_dir%/}/${_service%/}/ || return 11
+    local _cmd="bash -x ${_share_dir%/}/${_service%/}/install_${_service%/}.sh -v ${_version} ${_options}"
+    if [ -n "${_license}" ]; then
+        if [ ! -f "${_work_dir%/}/${_service%/}/$(basename "${_license}")" ]; then
+            cp ${_license} ${_work_dir%/}/${_service%/}/ || return 11
+        fi
+        _cmd="${_cmd} -l ${_share_dir%/}/${_service%/}/$(basename "${_license}")"
     fi
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    docker exec -it ${_name} bash -c "bash -x ${_share_dir%/}/${_service%/}/install_${_service%/}.sh -v ${_version} -l ${_share_dir%/}/${_service%/}/$(basename "${_license}") ${_options} 2>/tmp/install.err"
+    docker exec -it ${_name} bash -c "${_cmd} 2>/tmp/install.err"
     if [ $? -ne 0 ]; then
         _log "ERROR" "Installation/Setup failed. Please check container's /tmp/install.err for STDERR"
         return 1
