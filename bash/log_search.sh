@@ -34,7 +34,7 @@ Required commands:
     brew install dateutils    # for dateconv
     brew install coreutils    # for gtac gdate
     brew install q
-    pip install data_hacks    # for bar_chart.py
+    pip3 install data_hacks    # for bar_chart.py
 
 Setup:
     ln -s ${0} /usr/local/bin/log_search
@@ -400,7 +400,7 @@ function f_hdfsAuditLogCountPerTime() {
     if ! which bar_chart.py &>/dev/null; then
         echo "### bar_chart.py is missing..."
         echo "# sudo -H python -mpip install matplotlib"
-        echo "# sudo -H pip install data_hacks"
+        echo "# sudo -H pip3 install data_hacks"
         local _cmd="uniq -c"
     else
         local _cmd="bar_chart.py"
