@@ -146,7 +146,7 @@ function f_api_update_pwd() {
     local _user="$1"
     local _pwd="$2"
     local _new_pwd="$3"
-    f_api ":8081/service/rest/beta/security/users/${_user}/change-password" "${_new_pwd}" "PUT" "${_user}" "${_pwd}" 2>/dev/null
+    f_api ":8081/service/rest/beta/security/users/${_user}/change-password" "${_new_pwd}" "PUT" "${_user}" "${_pwd}"
 }
 
 function f_api() {
@@ -170,7 +170,10 @@ function f_api() {
         curl -s -f -u "${_user_pwd}" -k "${_HTTP:-"http"}://$(hostname -f):${_port_path#:}" -X ${_method} || return $?
     else
         curl -s -f -u "${_user_pwd}" -k "${_HTTP:-"http"}://$(hostname -f):${_port_path#:}" -X ${_method} -H "${_content_type}" -d ${_data} || return $?
-    fi | python -mjson.tool
+    fi > /tmp/f_api_$$.out
+    if ! cat /tmp/f_api_$$.out | python -m json.tool 2>/dev/null; then
+        cat /tmp/f_api_$$.out
+    fi
 }
 
 function f_setup_nxrm_HA() {
