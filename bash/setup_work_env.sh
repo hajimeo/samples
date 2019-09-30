@@ -228,7 +228,21 @@ function f_setup_java() {
         if [ -z "${_v}" ]; then
             _install default-jdk
         else
-            _install openjdk-${_v}-jdk
+            # If Linux, downloading .tar.gz file and extract, so that it can be re-used in the container
+            local _java_exact_ver="$(basename $(curl -s https://github.com/AdoptOpenJDK/openjdk${_v}-binaries/releases/latest | _sed -r 's/.+"(https:[^"]+)".+/\1/p'))"
+            # NOTE: hoping the naming rule is same for different versions (eg: jdk8u222-b10_openj9-0.15.1)
+            if [[ "${_java_exact_ver}" =~ jdk([^-]+)-([^_]+).+ ]]; then
+                [ ! -d "/var/tmp/share/java" ] && mkdir -p -m 777 /var/tmp/share/java
+                local _jdk_ver="${BASH_REMATCH[1]}"     # 8u222
+                local _jdk_minor="${BASH_REMATCH[2]}"   # b10
+                _download "https://github.com/AdoptOpenJDK/openjdk8-binaries/releases/download/jdk${_jdk_ver}-${_jdk_minor}/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" "/var/tmp/share/java/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" "Y" "Y" || return $?
+                if [ -s "/var/tmp/share/java/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" ]; then
+                    tar -xf "/var/tmp/share/java/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" -C /var/tmp/share/java/ || return $?
+                    _log "INFO" "OpenJDK${_v} is extracted under '/var/tmp/share/java/jdk${_jdk_ver}-${_jdk_minor}'"
+                fi
+            else
+                _install openjdk-${_v}-jdk
+            fi
         fi
     fi
 
@@ -248,6 +262,10 @@ function _install() {
     fi
 }
 
+function _sed() {
+    local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
+    ${_cmd} "$@"
+}
 
 function _symlink_or_download() {
     local _source_filename="$1"
@@ -269,7 +287,7 @@ function _download() {
     local _url="$1"
     local _save_as="$2"
     local _no_backup="$3"
-    local _if_not_exists="$4"
+    local _if_not_exists="$4"   # default is always overwriting
 
     if [[ "${_if_not_exists}" =~ ^(y|Y) ]] && [ -s "${_save_as}" ]; then
         _log "INFO" "Not downloading as ${_save_as} exists."
