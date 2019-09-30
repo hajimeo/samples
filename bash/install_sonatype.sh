@@ -113,6 +113,7 @@ function f_install_nxrm_post_tasks() {
 }
 
 function f_start_nxrm() {
+    local __doc__="Start NXRM"
     local _base_dir="${1:-"${_BASE_DIR%/}"}"
     local _usr="${2:-${_SERVICE}}"
     local _port="${3:-8081}"
@@ -127,6 +128,7 @@ function f_start_nxrm() {
 }
 
 function f_stop_nxrm() {
+    local __doc__="Stop NXRM by using port number"
     local _port="${1:-8081}"
     local _pid="$(_pid_by_port ${_port})"
     if [ -z "${_pid}" ]; then
@@ -138,6 +140,7 @@ function f_stop_nxrm() {
 }
 
 function f_api_update_pwd() {
+    local __doc__="Update NXRM (admin) user password"
     local _user="$1"
     local _pwd="$2"
     local _new_pwd="$3"
@@ -145,7 +148,7 @@ function f_api_update_pwd() {
 }
 
 function f_api() {
-    local __doc__="NXRM API wrapper (json only)"
+    local __doc__="NXRM API wrapper"
     local _port_path="${1}"
     local _data="${2}"
     local _method="${3}"
@@ -436,8 +439,18 @@ function _list() {
 }
 
 
-### main ########################
-main() {
+### mains ########################
+function start_sonatype() {
+    local __doc__="Start services. Used by setup_standalone.sh"
+    f_start_nxrm
+}
+
+function stop_sonatype() {
+    local __doc__="Stop services. Used by setup_standalone.sh"
+    f_stop_nxrm
+}
+
+function main() {
     # TODO: need if conditions for different apps
     f_install_nxrm || return $?
     f_start_nxrm || return $?

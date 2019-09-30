@@ -631,37 +631,28 @@ function f_as_setup() {
 }
 
 function f_as_start() {
-    local __doc__="Start a specific Application Service for the container"
+    local __doc__="Start a specific Application Service for the container. Expecting install_SERVICE.sh and start_SERVICE"
     local _hostname="$1"
     local _service="${2:-${_SERVICE}}"
-    local _restart="${3}"
+    local _is_restarting="${3}"
 
     # NOTE: To support different version, f_as_setup should create a symlink
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
-    # Workaround to absorb path difference between versions
-    docker exec -d ${_name} bash -c "[ -d /usr/local/${_service} ] && [ ! -e /usr/local/${_service}/bin ] && rmdir /usr/local/${_service}; [ -d /opt/${_service}/current/bin ] && [ ! -d /usr/local/${_service} ] && ln -s /opt/${_service}/current /usr/local/${_service}"
-
-    docker exec -d ${_name} bash -c "sudo -u ${_service} -i /usr/local/apache-hive/apache_hive.sh"
-    if [[ "${_restart}" =~ ^(y|Y) ]]; then
-        docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_service_control restart all"
-        sleep 3
+    if [[ "${_is_restarting}" =~ ^(y|Y) ]]; then
+        f_as_stop || return $?
     fi
-    docker exec -it ${_name} bash -c "sudo -u ${_service} -i /usr/local/${_service}/bin/${_service}_start 2>/dev/null"
+    docker exec -it ${_name} bash -c "source ${_SHARE_DIR}/${_service}/install_${_service}.sh;start_${_service}"
 }
 
 function f_as_stop() {
-    local __doc__="Stop a specific Application Service for the container"
+    local __doc__="Stop a specific Application Service for the container. Expecting install_SERVICE.sh and stop_SERVICE"
     local _hostname="$1"
     local _service="${2:-${_SERVICE}}"
 
     # NOTE: To support different version, f_as_setup should create a symlink
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-
-    # Workaround to absorb path difference between versions
-    docker exec -d ${_name} bash -c "[ -d /usr/local/${_service} ] && [ ! -e /usr/local/${_service}/bin ] && rmdir /usr/local/${_service}; [ -d /opt/${_service}/current/bin ] && [ ! -d /usr/local/${_service} ] && ln -s /opt/${_service}/current /usr/local/${_service}"
-    # Should stop SQL engine too?
-    docker exec -it ${_name} bash -c "sudo -u ${_service} /usr/local/${_service}/bin/${_service}_stop -f"
+    docker exec -it ${_name} bash -c "source ${_SHARE_DIR}/${_service}/install_${_service}.sh;stop_${_service}"
 }
 
 function f_as_hostname_change() {
