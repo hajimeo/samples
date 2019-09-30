@@ -38,8 +38,8 @@ END
 
 
 ### Global variables #################
-[ -z "${_TMP_DIR}" ] && _TMP_DIR="/var/tmp/share"               # Temp/work directory to store various data, such as installer.tar.gz
-[ -z "${_BASE_DIR}" ] && _BASE_DIR="/opt/sonatype"
+[ -z "${_WORK_DIR}" ] && _WORK_DIR="/var/tmp/share"             # Work directory to store various data, such as installer.tar.gz
+[ -z "${_BASE_DIR}" ] && _BASE_DIR="/opt/sonatype"              # Install base directory
 [ -z "${_DEFAULT_PWD}" ] && _DEFAULT_PWD="admin"                # kadmin password, hive metastore DB password etc.
 [ -z "${_KADMIN_USR}" ] && _KADMIN_USR="admin/admin"            # Used to create service principal
 [ -z "${_KEYTAB_DIR}" ] && _KEYTAB_DIR="/etc/security/keytabs"  # Keytab default location (this is the default for HDP)
@@ -47,9 +47,11 @@ END
 [ -z "${_SERVICE}" ] && _SERVICE="sonatype"                     # Default service name|user
 [ -z "${_NXRM_PREFIX}" ] && _NXRM_PREFIX="nexus"                # Prefix of NXRM install package name
 [ -z "${_NXRM_VER}" ] && _NXRM_VER="3.18.1"                     # Version number mainly used to find the right installer file
-[ -z "${_NXRM_LICENSE}" ] && _NXRM_LICENSE="$(ls -1t ${_TMP_DIR%/}/${_SERVICE}/${_SERVICE}-*.lic 2>/dev/null | head -n1)"
-[ -z "${_HTTP}" ] && _HTTP="http"
-_DOWNLOAD_URL="${_DOWNLOAD_URL-"http://$(hostname -I | awk '{print $1}')/${_SERVICE}/"}"
+[ -z "${_NXRM_LICENSE}" ] && _NXRM_LICENSE="$(ls -1t ${_WORK_DIR%/}/${_SERVICE}/${_SERVICE}-*.lic 2>/dev/null | head -n1)"
+_TMP="${_TMP:-"/tmp"}"
+_HTTP="${_HTTP:-"http"}"
+_DOWNLOAD_URL="${_DOWNLOAD_URL-"http://$(hostname -I | awk '{print $1}')/${_SERVICE}/"}" # Not using ':-' so that can be an empty string
+
 
 # TODO: Not in use yet. Whenever new release and not using "01", update below
 declare -A _NXRM_MINOR_VERS
@@ -170,9 +172,9 @@ function f_api() {
         curl -s -f -u "${_user_pwd}" -k "${_HTTP:-"http"}://$(hostname -f):${_port_path#:}" -X ${_method} || return $?
     else
         curl -s -f -u "${_user_pwd}" -k "${_HTTP:-"http"}://$(hostname -f):${_port_path#:}" -X ${_method} -H "${_content_type}" -d ${_data} || return $?
-    fi > /tmp/f_api_$$.out
-    if ! cat /tmp/f_api_$$.out | python -m json.tool 2>/dev/null; then
-        cat /tmp/f_api_$$.out
+    fi > ${_TMP%/}/f_api_$$.out
+    if ! cat ${_TMP%/}/f_api_$$.out | python -m json.tool 2>/dev/null; then
+        cat ${_TMP%/}/f_api_$$.out
     fi
 }
 
@@ -199,7 +201,7 @@ function f_setup_nxrm_HA() {
     #[ ! -d "${_etc_dir%/}/fabric" ] && sudo -u ${_usr} mkdir "${_etc_dir%/}/fabric"
 
     _log "INFO" "Restarting NXRM..."
-    local _share_blob="${_TMP_DIR%/}/${_SERVICE}/blobs"
+    local _share_blob="${_WORK_DIR%/}/${_SERVICE}/blobs"
     if [[ "${_first_node}" =~ ^(y|Y) ]]; then
         if [ -d "${_share_blob}/default" ]; then
             _log "ERROR" "First node but '${_share_blob}/default' exits."
@@ -220,10 +222,10 @@ function f_setup_nxrm_HA() {
         cp -pR ${_dir%/}/blobs/default ${_share_blob}/ || return $?
     fi
     f_start_nxrm || return $?
-    f_api ":8081/service/rest/v1/nodes" > /tmp/f_setup_nxrm_HA_$$.json
+    f_api ":8081/service/rest/v1/nodes" > ${_TMP%/}/f_setup_nxrm_HA_$$.json
     # TODO: lazy to parse the json file
-    local _nodeIdentity_line="$(cat /tmp/f_setup_nxrm_HA_$$.json | grep "/`hostname -I | awk '{print $1}'`:" -B 1 | grep "nodeIdentity" | tr -d '[:space:]')"
-    local _socketAddress_line="$(cat /tmp/f_setup_nxrm_HA_$$.json | grep "/`hostname -I | awk '{print $1}'`:" | tr -d '[:space:]')"
+    local _nodeIdentity_line="$(cat ${_TMP%/}/f_setup_nxrm_HA_$$.json | grep "/`hostname -I | awk '{print $1}'`:" -B 1 | grep "nodeIdentity" | tr -d '[:space:]')"
+    local _socketAddress_line="$(cat ${_TMP%/}/f_setup_nxrm_HA_$$.json | grep "/`hostname -I | awk '{print $1}'`:" | tr -d '[:space:]')"
     # "nodes" api doesn't need to send entire nodes information???
     f_api ":8081/service/rest/v1/nodes" "{${_nodeIdentity_line%,},${_socketAddress_line%,},\"friendlyName\":\"`hostname -f`\"}" "PUT"
     _log "INFO" "Check ${_HTTP:-"http"}://`hostname -f`:8081/#admin/system/nodes"
@@ -234,7 +236,7 @@ function f_setup_nxrm_HA() {
 function _download_and_extract() {
     local _url="$1"
     local _extract_to="${2}"
-    local _save_dir="${3:-"${_TMP_DIR%/}/${_SERVICE}"}"
+    local _save_dir="${3:-"${_WORK_DIR%/}/${_SERVICE}"}"
     local _as_user="${4:-${_SERVICE:-$USER}}"
     local _file="$5"
     [ -z "${_file}" ] && _file="`basename "${_url}"`"
@@ -338,7 +340,7 @@ function _upsert() {
     [ ! -f "${_file_path}" ] && return 11
     # Make a backup
     local _file_name="`basename "${_file_path}"`"
-    [ ! -f "/tmp/${_file_name}.orig" ] && cp -p "${_file_path}" "/tmp/${_file_name}.orig"
+    [ ! -f "${_TMP%/}/${_file_name}.orig" ] && cp -p "${_file_path}" "${_TMP%/}/${_file_name}.orig"
 
     # If name=value is already set, all good
     grep -qP "^\s*${_name_escaped}\s*${_between_char}\s*${_value_escaped}\b" "${_file_path}" && return 0
