@@ -1159,10 +1159,10 @@ main() {
         fi
 
         if ! $_CREATE_CONTAINER && docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
-            _log "INFO" "Container:${_NAME} already exists. As no -c, no f_as_install ..."
+            _log "INFO" "Container:${_NAME} already exists and no -c, so no f_as_install ..."
         elif ! $_CREATE_CONTAINER && docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
-            # A bit confusing but later, because of special condition, will create a container.
-            _log "INFO" "An image which same name as ${_NAME} already exists. As no -c, no f_as_install ..."
+            # A bit confusing, but because of the Special Condition 1, will create a container without installing app.
+            _log "INFO" "An image which same name as ${_NAME} already exists and no -c, so no f_as_install ..."
         elif $_CREATE_CONTAINER; then
             local _base="${_IMAGE_NAME:-"${_BASE_IMAGE}:${_OS_VERSION}"}"
             _log "INFO" "Creating ${_NAME} container from ${_base} (v:${_VERSION})..."
@@ -1189,12 +1189,12 @@ main() {
             local _hostname_rename=false
 
             if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
-                # Special condition 1: If _NAME = an image name, create this container even no _CREATE_CONTAINER
+                # Special condition 1: If _NAME = some image name, create this container even no _CREATE_CONTAINER
                 if docker images --format "{{.Repository}}" | grep -qE "^(${_NAME})$"; then
                     _log "INFO" "Container does not exist but same name image:${_NAME} exists. Using this ..."; sleep 1
                     f_docker_run "${_NAME}.${_DOMAIN#.}" "${_NAME}" "${_ports}" || return $?
                 fi
-                # Special condition 2: If _IMAGE_NAME = an image name, create this container even no _CREATE_CONTAINER
+                # Special condition 2: If _IMAGE_NAME = some image name, create this container even no _CREATE_CONTAINER
                 if docker images --format "{{.Repository}}" | grep -qE "^(${_IMAGE_NAME})$"; then
                     _log "INFO" "Container does not exist but image:${_IMAGE_NAME} exists. Using this ..."; sleep 1
                     f_docker_run "${_NAME}.${_DOMAIN#.}" "${_IMAGE_NAME}" "${_ports}" "--add-host=${_IMAGE_NAME}.${_DOMAIN#.}:127.0.0.1" || return $?

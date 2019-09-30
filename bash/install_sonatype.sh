@@ -45,7 +45,7 @@ END
 [ -z "${_KEYTAB_DIR}" ] && _KEYTAB_DIR="/etc/security/keytabs"  # Keytab default location (this is the default for HDP)
 [ -z "${_REPO_URL}" ] && _REPO_URL="http://download.sonatype.com/"
 [ -z "${_SERVICE}" ] && _SERVICE="sonatype"                     # Default service name|user
-[ -z "${_NXRM_NAME}" ] && _NXRM_NAME="nexus"                    #
+[ -z "${_NXRM_PREFIX}" ] && _NXRM_PREFIX="nexus"                # Prefix of NXRM install package name
 [ -z "${_NXRM_VER}" ] && _NXRM_VER="3.18.1"                     # Version number mainly used to find the right installer file
 [ -z "${_NXRM_LICENSE}" ] && _NXRM_LICENSE="$(ls -1t ${_TMP_DIR%/}/${_SERVICE}/${_SERVICE}-*.lic 2>/dev/null | head -n1)"
 [ -z "${_HTTP}" ] && _HTTP="http"
@@ -63,7 +63,7 @@ _NXRM_MINOR_VERS[380]="02"
 ### Functions ########################
 function f_install_nxrm() {
     local __doc__="Download (if necessary) and install NXRM"
-    local _ver="${1:-${_NXRM_VER:-$_VER}}"
+    local _ver="${1:-${_NXRM_VER}}"
     local _license="${2:-${_NXRM_LICENSE}}"
     local _base_dir="${3:-"${_BASE_DIR%/}"}"
     local _usr="${4:-${_SERVICE}}"
@@ -73,8 +73,8 @@ function f_install_nxrm() {
 
     local _v="$(echo "${_ver}" | sed 's/[^0-9_]//g')"
     local _minor_ver=${_NXRM_MINOR_VERS[${_ver}]}
-    local _nxrm_dirname="${_NXRM_NAME}-${_ver}-${_minor_ver:-"01"}"
-    local _inst_dir="${_base_dir%/}/${_NXRM_NAME}-${_ver}"
+    local _nxrm_dirname="${_NXRM_PREFIX}-${_ver}-${_minor_ver:-"01"}"
+    local _inst_dir="${_base_dir%/}/${_NXRM_PREFIX}-${_ver}"
 
     if [ ! -d "${_base_dir%/}" ]; then
         mkdir -p "${_base_dir%/}"
@@ -95,18 +95,18 @@ function f_install_nxrm() {
             return 1
         fi
     else
-        _download_and_extract "${_REPO_URL%/}/${_NXRM_NAME}/${_ver%%.*}/${_nxrm_dirname}-unix.tar.gz" "${_inst_dir}" || return $?
+        _download_and_extract "${_REPO_URL%/}/${_NXRM_PREFIX}/${_ver%%.*}/${_nxrm_dirname}-unix.tar.gz" "${_inst_dir}" || return $?
     fi
 
     # Nexus doesn't need to run any install script, so after extracting, just create a symlink and exit/return
-    _symlink ${_inst_dir%/}/${_nxrm_dirname} ${_base_dir%/}/${_NXRM_NAME} || return $?
+    _symlink ${_inst_dir%/}/${_nxrm_dirname} ${_base_dir%/}/${_NXRM_PREFIX} || return $?
     _symlink ${_inst_dir%/}/sonatype-work ${_base_dir%/}/sonatype-work || return $?
 }
 
 function f_install_nxrm_post_tasks() {
     local __doc__="Misc. setups after first install"
     local _base_dir="${1:-"${_BASE_DIR%/}"}"
-    local _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/${_NXRM_NAME}* 2>/dev/null | head -n1)"
+    local _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/${_NXRM_PREFIX}* 2>/dev/null | head -n1)"
 
     _log "INFO" "Updating 'admin' password ..."
     f_api_update_pwd "admin" "$(cat ${_dir%/}/admin.password)" "${_DEFAULT_PWD}"
@@ -122,8 +122,8 @@ function f_start_nxrm() {
         _log "WARN" "PID ${_pid} is listening on ${_port}, so not starting."
         return 1
     fi
-    local _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/${_NXRM_NAME}* 2>/dev/null | head -n1)"
-    sudo -u ${_usr} nohup ${_base_dir%/}/${_NXRM_NAME}/bin/nexus run &> ${_dir%/}/log/nexus_run.out &
+    local _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/${_NXRM_PREFIX}* 2>/dev/null | head -n1)"
+    sudo -u ${_usr} nohup ${_base_dir%/}/${_NXRM_PREFIX}/bin/nexus run &> ${_dir%/}/log/nexus_run.out &
     _wait_by_port "${_port}" || return $?
 }
 
@@ -179,11 +179,11 @@ function f_setup_nxrm_HA() {
     local _base_dir="${4:-"${_BASE_DIR%/}"}"
 
     # Because of using symlink, it should be only one directory under sonatype-work dir.
-    local _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/${_NXRM_NAME}* 2>/dev/null | head -n1)" || return $?
+    local _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/${_NXRM_PREFIX}* 2>/dev/null | head -n1)" || return $?
     if [ -z "${_dir}" ] || [ ! -d "${_dir%/}/etc" ]; then
         _log "INFO" "This NXRM hasn't been initialised. Starting ..."
         f_start_nxrm || return $?
-        _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/${_NXRM_NAME}* 2>/dev/null | head -n1)" || return $?
+        _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/${_NXRM_PREFIX}* 2>/dev/null | head -n1)" || return $?
         [ -z "${_dir}" ] && return 1
     fi
 
@@ -485,9 +485,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 _UPDATING="Y"
                 ;;
             v)
-                # Planning to use _VER for other softwares
-                #_NXRM_VER="$OPTARG"
-                _VER="$OPTARG"
+                # Add other software's _XXXX_VER in here
+                _NXRM_VER="$OPTARG"
                 ;;
         esac
     done
