@@ -47,7 +47,7 @@ OTHERS (which normally you don't need to use):
         Experimental.
         To specify a image name to create a container
 
-    -l /path/to/dev-license.json
+    -l /path/to/software_license_file
         To specify a path of the software licence file.
         If not specified (default), the installer script would automatically decide.
 
@@ -610,13 +610,7 @@ function f_as_setup() {
         return 1
     fi
 
-    [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/${_SERVICE%/}/dev*license*.json | head -n1)"
-    if [ ! -s "${_license}" ]; then
-        _log "ERROR" "Please copy a license file as ${_work_dir%/}/${_service%/}/dev-vm-license.json"
-        return 1
-    fi
-
-    if [ ! -f "${_work_dir%/}/${_service%/}/$(basename "${_license}")" ]; then
+    if [ -n "${_license}" ] && [ ! -f "${_work_dir%/}/${_service%/}/$(basename "${_license}")" ]; then
         cp ${_license} ${_work_dir%/}/${_service%/}/ || return 11
     fi
 
