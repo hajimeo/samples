@@ -109,7 +109,9 @@ function f_install_nxrm_post_tasks() {
     local _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/${_NXRM_PREFIX}* 2>/dev/null | head -n1)"
 
     _log "INFO" "Updating 'admin' password ..."
-    f_api_update_pwd "admin" "$(cat ${_dir%/}/admin.password)" "${_DEFAULT_PWD}"
+    if ! f_api_update_pwd "admin" "$(cat ${_dir%/}/admin.password)" "${_DEFAULT_PWD}"; then
+        _log "WARN" "Updating 'admin' password failed."
+    fi
 }
 
 function f_start_nxrm() {
