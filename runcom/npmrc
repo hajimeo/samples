@@ -2,7 +2,3 @@ registry=http://node-nxrm3.standalone.localdomain:8081/repository/npm-group/
 email=dev@hajigle.com
 always-auth=true
 _auth="YWRtaW46YWRtaW4="
-@sonatype:registory=https://repository.sonatype.org/content/groups/npm/
-email=hosako@sonatype.com
-always-auth=true
-_auth="aG9zYWtvOmg0ajFtMy1Tb25hSmlyYQ=="
