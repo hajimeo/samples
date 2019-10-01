@@ -43,23 +43,22 @@ END
 [ -z "${_DEFAULT_PWD}" ] && _DEFAULT_PWD="admin"                # kadmin password, hive metastore DB password etc.
 [ -z "${_KADMIN_USR}" ] && _KADMIN_USR="admin/admin"            # Used to create service principal
 [ -z "${_KEYTAB_DIR}" ] && _KEYTAB_DIR="/etc/security/keytabs"  # Keytab default location (this is the default for HDP)
-[ -z "${_REPO_URL}" ] && _REPO_URL="http://download.sonatype.com/"
+[ -z "${_REPO_URL}" ] && _REPO_URL="https://download.sonatype.com/"
 [ -z "${_SERVICE}" ] && _SERVICE="sonatype"                     # Default service name|user
-[ -z "${_NXRM_PREFIX}" ] && _NXRM_PREFIX="nexus"                # Prefix of NXRM install package name
-[ -z "${_NXRM_VER}" ] && _NXRM_VER="3.18.1"                     # Version number mainly used to find the right installer file
 [ -z "${_NXRM_LICENSE}" ] && _NXRM_LICENSE="$(ls -1t ${_WORK_DIR%/}/${_SERVICE}/${_SERVICE}-*.lic 2>/dev/null | head -n1)"
 _TMP="${_TMP:-"/tmp"}"
 _HTTP="${_HTTP:-"http"}"
 _DOWNLOAD_URL="${_DOWNLOAD_URL-"http://$(hostname -I | awk '{print $1}')/${_SERVICE}/"}" # Not using ':-' so that can be an empty string
 
-
-# TODO: Not in use yet. Whenever new release and not using "01", update below
+# TODO: Whenever new version is released, update below
+_NXRM_VER="${_NXRM_VER:-"3.18.1"}"
 declare -A _NXRM_MINOR_VERS
 _NXRM_MINOR_VERS[3161]="02"
 _NXRM_MINOR_VERS[3140]="04"
 _NXRM_MINOR_VERS[3100]="04"
 _NXRM_MINOR_VERS[380]="02"
-# TODO: add more...
+_IQS_VER="${_IQS_VER:-"1.74.0"}"
+declare -A _IQS_MINOR_VERS
 
 
 ### Functions ########################
@@ -69,14 +68,13 @@ function f_install_nxrm() {
     local _license="${2:-${_NXRM_LICENSE}}"
     local _base_dir="${3:-"${_BASE_DIR%/}"}"
     local _usr="${4:-${_SERVICE}}"
-
-    local _updating="${_UPDATING}"
-    local _no_backup="${_NO_BACKUP}"
+    local _updating="${5:-${_UPDATING}}"
+    local _no_backup="${6:-${_NO_BACKUP}}"
 
     local _v="$(echo "${_ver}" | sed 's/[^0-9_]//g')"
     local _minor_ver=${_NXRM_MINOR_VERS[${_ver}]}
-    local _nxrm_dirname="${_NXRM_PREFIX}-${_ver}-${_minor_ver:-"01"}"
-    local _inst_dir="${_base_dir%/}/${_NXRM_PREFIX}-${_ver}"
+    local _name_ver="nexus-${_ver}-${_minor_ver:-"01"}"
+    local _inst_dir="${_base_dir%/}/nexus-${_ver}"
 
     if [ ! -d "${_base_dir%/}" ]; then
         mkdir -p "${_base_dir%/}"
@@ -86,32 +84,31 @@ function f_install_nxrm() {
         sudo -u ${_usr} mkdir -p "${_inst_dir}" || return $?
     fi
 
-    if [[ "${_updating}}" =~ (^y|^Y) ]]; then
-        _log "TODO" "Should update/upgrade instead of installing..."
-        return 1
-    fi
-
-    if [ -d "${_inst_dir%/}/${_nxrm_dirname}" ]; then
+    if [ -d "${_inst_dir%/}/${_name_ver}" ]; then
         if [[ ! "${_no_backup}" =~ ^(y|Y) ]]; then
-            _log "TODO" "${_inst_dir%/}/${_nxrm_dirname} exists. Stop service and should take backup..."
+            _log "TODO" "${_inst_dir%/}/${_name_ver} exists. Stop service and should take backup..."
             return 1
         fi
     else
-        _download_and_extract "${_REPO_URL%/}/${_NXRM_PREFIX}/${_ver%%.*}/${_nxrm_dirname}-unix.tar.gz" "${_inst_dir}" || return $?
+        _download_and_extract "${_REPO_URL%/}/nexus/${_ver%%.*}/${_name_ver}-unix.tar.gz" "${_inst_dir}" || return $?
     fi
 
     # Nexus doesn't need to run any install script, so after extracting, just create a symlink and exit/return
-    _symlink ${_inst_dir%/}/${_nxrm_dirname} ${_base_dir%/}/${_NXRM_PREFIX} || return $?
-    _symlink ${_inst_dir%/}/sonatype-work ${_base_dir%/}/sonatype-work || return $?
+    _symlink ${_inst_dir%/}/${_name_ver} ${_base_dir%/}/nexus || return $?
+    if [[ "${_updating}}" =~ (^y|^Y) ]]; then
+        _log "INFO" "As updating/upgrading, not changing 'sonatype-work' location..."
+    else
+        _symlink ${_inst_dir%/}/sonatype-work ${_base_dir%/}/sonatype-work || return $?
+    fi
 }
 
 function f_install_nxrm_post_tasks() {
     local __doc__="Misc. setups after first install"
     local _base_dir="${1:-"${_BASE_DIR%/}"}"
-    local _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/${_NXRM_PREFIX}* 2>/dev/null | head -n1)"
+    local _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/nexus* 2>/dev/null | head -n1)"
 
     _log "INFO" "Updating 'admin' password ..."
-    if ! f_api_update_pwd "admin" "$(cat ${_dir%/}/admin.password)" "${_DEFAULT_PWD}"; then
+    if ! f_nxrm_update_pwd "admin" "$(cat ${_dir%/}/admin.password)" "${_DEFAULT_PWD}"; then
         _log "WARN" "Updating 'admin' password failed."
     fi
 }
@@ -123,27 +120,26 @@ function f_start_nxrm() {
     local _port="${3:-8081}"
     local _pid="$(_pid_by_port ${_port})"
     if [ -n "${_pid}" ]; then
-        _log "WARN" "PID ${_pid} is listening on ${_port}, so not starting."
+        #_log "WARN" "PID ${_pid} is listening on ${_port}, so not starting."
         return 1
     fi
-    local _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/${_NXRM_PREFIX}* 2>/dev/null | head -n1)"
-    sudo -u ${_usr} nohup ${_base_dir%/}/${_NXRM_PREFIX}/bin/nexus run &> ${_dir%/}/log/nexus_run.out &
+    local _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/nexus* 2>/dev/null | head -n1)"
+    if [ ! -d "${_dir}" ]; then
+        #_log "WARN" "sonatype-work/nexus* does not exist, so not starting."
+        return 1
+    fi
+    _log "INFO" "Starting NXRM..."
+    sudo -u ${_usr} nohup ${_base_dir%/}/nexus/bin/nexus run &> ${_dir%/}/log/nexus_run.out &
     _wait_by_port "${_port}" || return $?
 }
 
 function f_stop_nxrm() {
     local __doc__="Stop NXRM by using port number"
     local _port="${1:-8081}"
-    local _pid="$(_pid_by_port ${_port})"
-    if [ -z "${_pid}" ]; then
-        _log "INFO" "Nothing listening on ${_port}."
-        return 0
-    fi
-    kill ${_pid}
-    _wait ${_pid} "Y"
+    _stop_by_port "${_port}"
 }
 
-function f_api_update_pwd() {
+function f_nxrm_update_pwd() {
     local __doc__="Update NXRM (admin) user password"
     local _user="$1"
     local _pwd="$2"
@@ -186,11 +182,11 @@ function f_setup_nxrm_HA() {
     local _base_dir="${4:-"${_BASE_DIR%/}"}"
 
     # Because of using symlink, it should be only one directory under sonatype-work dir.
-    local _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/${_NXRM_PREFIX}* 2>/dev/null | head -n1)" || return $?
+    local _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/nexus* 2>/dev/null | head -n1)" || return $?
     if [ -z "${_dir}" ] || [ ! -d "${_dir%/}/etc" ]; then
         _log "INFO" "This NXRM hasn't been initialised. Starting ..."
         f_start_nxrm || return $?
-        _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/${_NXRM_PREFIX}* 2>/dev/null | head -n1)" || return $?
+        _dir="$(ls -1dt ${_base_dir%/}/sonatype-work/nexus* 2>/dev/null | head -n1)" || return $?
         [ -z "${_dir}" ] && return 1
     fi
 
@@ -199,8 +195,8 @@ function f_setup_nxrm_HA() {
     _upsert ${_dir%/}/etc/nexus.properties "nexus.licenseFile" "${_license}" || return $?
 
     # TODO: In NXRM 3.6.1 or earlier, these changes must be applied directly to NEXUS_HOME/etc/fabric/hazelcast.xml
-    #if [ -s ${_base_dir%/}/${_NXRM_PREFIX}/etc/fabric/hazelcast-network-default.xml ] && [ ! -s ${_dir%/}/etc/fabric/hazelcast-network.xml ]; then
-    #    cp -p ${_base_dir%/}/${_NXRM_PREFIX}/etc/fabric/hazelcast-network-default.xml ${_dir%/}/etc/fabric/hazelcast-network.xml || return $?
+    #if [ -s ${_base_dir%/}/nexus/etc/fabric/hazelcast-network-default.xml ] && [ ! -s ${_dir%/}/etc/fabric/hazelcast-network.xml ]; then
+    #    cp -p ${_base_dir%/}/nexus/etc/fabric/hazelcast-network-default.xml ${_dir%/}/etc/fabric/hazelcast-network.xml || return $?
     #fi
 
     _log "INFO" "Restarting NXRM..."
@@ -236,6 +232,70 @@ function f_setup_nxrm_HA() {
     _log "INFO" "Check ${_HTTP:-"http"}://`hostname -f`:8081/#admin/system/nodes"
 }
 
+function f_install_iqs() {
+    local __doc__="Download (if necessary) and install IQ Server"
+    local _ver="${1:-${_IQS_VER}}"
+    local _license="${2:-${_IQS_LICENSE}}"
+    local _base_dir="${3:-"${_BASE_DIR%/}"}"
+    local _usr="${4:-${_SERVICE}}"
+    #local _updating="${5:-${_UPDATING}}"
+    local _no_backup="${5:-${_NO_BACKUP}}"
+
+    local _v="$(echo "${_ver}" | sed 's/[^0-9_]//g')"
+    local _minor_ver=${_IQS_MINOR_VERS[${_ver}]}
+    local _name_ver="nexus-iq-server-${_ver}-${_minor_ver:-"01"}"
+    local _inst_dir="${_base_dir%/}/nexus-iq-server-${_ver}"
+
+    if [ ! -d "${_base_dir%/}" ]; then
+        mkdir -p "${_base_dir%/}"
+        chown ${_usr}: "${_base_dir%/}" || return $?
+    fi
+    if [ ! -d "${_inst_dir}" ]; then
+        sudo -u ${_usr} mkdir -p "${_inst_dir}" || return $?
+    fi
+
+    if [ -d "${_inst_dir%/}/${_name_ver}" ]; then
+        if [[ ! "${_no_backup}" =~ ^(y|Y) ]]; then
+            _log "TODO" "${_inst_dir%/}/${_name_ver} exists. Stop service and should take backup..."
+            return 1
+        fi
+    else
+        #https://sonatype-download.global.ssl.fastly.net/repository/iq/server/nexus-iq-server-1.74.0-01-bundle.tar.gz
+        _download_and_extract "${_REPO_URL%/}/clm/server/${_name_ver}-bundle.tar.gz" "${_inst_dir}" || return $?
+    fi
+
+    # Nexus doesn't need to run any install script, so after extracting, just create a symlink and exit/return
+    _symlink ${_inst_dir%/} ${_base_dir%/}/nexus-iq-server || return $?
+}
+
+function f_start_iqs() {
+    local __doc__="Start IQ Server"
+    local _base_dir="${1:-"${_BASE_DIR%/}"}"
+    local _usr="${2:-${_SERVICE}}"
+    local _port="${3:-8070}"
+    local _pid="$(_pid_by_port ${_port})"
+    if [ -n "${_pid}" ]; then
+        #_log "WARN" "PID ${_pid} is listening on ${_port}, so not starting."
+        return 1
+    fi
+    # Expecting symlink exists
+    local _dir="${_base_dir%/}/nexus-iq-server"
+    if [ ! -d "${_dir}" ]; then
+        #_log "WARN" "${_dir} does not exist, so not starting."
+        return 1
+    fi
+    [ ! -d "${_dir%/}/log" ] && sudo -u ${_usr} mkdir "${_dir%/}/log"
+    _log "INFO" "Starting IQ Server..."
+    sudo -u ${_usr} nohup java -jar ${_dir%/}/nexus-iq-server-*.jar server ${_dir%/}/config.yml &> ${_dir%/}/log/nexus_iq_server.out &
+    _wait_by_port "${_port}" || return $?
+}
+
+function f_stop_iqs() {
+    local __doc__="Stop IQ Server by using port number"
+    local _port="${1:-8070}"
+    _stop_by_port "${_port}"
+}
+
 
 ### Reusable (non business logic) functions ##################
 function _download_and_extract() {
@@ -267,6 +327,19 @@ function _pid_by_port() {
     [ -z "${_port}" ] && return 1
     #lsof -ti:${_port} -sTCP:LISTEN
     netstat -lnp | grep -w "0.0.0.0:${_port}" | awk '{print $7}' | grep -oE '[0-9]+'
+}
+
+function _stop_by_port() {
+    local _port="${1}"
+    local _not_waiting="${2}"
+
+    local _pid="$(_pid_by_port ${_port})"
+    if [ -z "${_pid}" ]; then
+        #_log "INFO" "Nothing listening on ${_port}."
+        return 0
+    fi
+    kill ${_pid}
+    [[ "${_not_waiting}" =~ ^(y|Y) ]] || _wait ${_pid} "Y"
 }
 
 function _wait() {
@@ -455,11 +528,13 @@ function _list() {
 function start_sonatype() {
     local __doc__="Start services. Used by setup_standalone.sh"
     f_start_nxrm
+    f_start_iqs
 }
 
 function stop_sonatype() {
     local __doc__="Stop services. Used by setup_standalone.sh"
     f_stop_nxrm
+    f_stop_iqs
 }
 
 function main() {
@@ -499,6 +574,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             v)
                 # Add other software's _XXXX_VER in here
                 _NXRM_VER="$OPTARG"
+                _IQS_VER="$OPTARG"
                 ;;
         esac
     done
