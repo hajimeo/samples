@@ -128,7 +128,7 @@ function f_start_nxrm() {
         #_log "WARN" "sonatype-work/nexus* does not exist, so not starting."
         return 1
     fi
-    _log "INFO" "Starting NXRM..."
+    _log "INFO" "Starting NXRM (log:${_dir%/}/log/nexus_run.out)"
     sudo -u ${_usr} nohup ${_base_dir%/}/nexus/bin/nexus run &> ${_dir%/}/log/nexus_run.out &
     _wait_by_port "${_port}" || return $?
 }
@@ -260,7 +260,6 @@ function f_install_iqs() {
             return 1
         fi
     else
-        #https://sonatype-download.global.ssl.fastly.net/repository/iq/server/nexus-iq-server-1.74.0-01-bundle.tar.gz
         _download_and_extract "${_REPO_URL%/}/clm/server/${_name_ver}-bundle.tar.gz" "${_inst_dir}" || return $?
     fi
 
@@ -285,7 +284,7 @@ function f_start_iqs() {
         return 1
     fi
     [ ! -d "${_dir%/}/log" ] && sudo -u ${_usr} mkdir "${_dir%/}/log"
-    _log "INFO" "Starting IQ Server..."
+    _log "INFO" "Starting IQ Server (log:${_dir%/}/log/nexus_iq_server.out)"
     sudo -u ${_usr} nohup java -jar ${_dir%/}/nexus-iq-server-*.jar server ${_dir%/}/config.yml &> ${_dir%/}/log/nexus_iq_server.out &
     _wait_by_port "${_port}" || return $?
 }
