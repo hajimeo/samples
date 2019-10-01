@@ -293,4 +293,5 @@ function push2search() {
 ## Work specific functions
 function pubS() {
     scp -C $HOME/IdeaProjects/samples/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/
+    date
 }
