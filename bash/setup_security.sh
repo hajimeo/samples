@@ -341,8 +341,10 @@ with open('/tmp/${_cluster_name}_kerberos_descriptor.json', 'w') as jd:
     curl -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} -X PUT -d "{\"RequestInfo\":{\"context\":\"Start Service with f_ambari_kerberos_setup\"},\"Body\":{\"ServiceInfo\":{\"state\":\"STARTED\"}}}" ${_api_uri}/services
 }
 
-function f_ambari_kerberos_widh_ad_setup() {
+function f_ambari_kerberos_with_ad_setup() {
     local __doc__="TODO: Setup Kerberos with Windows AD via Ambari APIs."
+    return
+
     local _realm="${1-$g_KDC_REALM}"
     local _kdc_server="${2-$r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
     local _password="${3}"
@@ -368,8 +370,7 @@ function f_ambari_kerberos_widh_ad_setup() {
     #curl -f -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} "${_api_uri}" -X PUT --data '{"Clusters":{"security_type":"NONE"}}' || return $?
     curl -f -s -H "X-Requested-By:ambari" -u ${g_admin}:${g_admin_pwd} "${_api_uri}/services?" -X PUT --data '{"RequestInfo":{"context":"Stop services","operation_level":{"level":"CLUSTER","cluster_name":"ubuntu6"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}' || return $?
 
-    curl 'http://node6:8080/api/v1/clusters/ubuntu6/services?' -X PUT -H 'Pragma: no-cache' -H 'Origin: http://node6:8080' -H 'Accept-Encoding: gzip, deflate' -H 'Accept-Language: en-AU,en;q=0.9,ja;q=0.8' -H 'X-Requested-By: X-Requested-By' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36' -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' -H 'Accept: application/json, text/javascript, */*; q=0.01' -H 'Cache-Control: no-cache' -H 'X-Requested-With: XMLHttpRequest' -H 'Cookie: gsScrollPos-742=0; AMBARISESSIONID=node02bfv7fhc3r8413o9kjd6jkdhf4.node0' -H 'Connection: keep-alive' -H 'Referer: http://node6:8080/' --data '{"RequestInfo":{"context":"Stop services","operation_level":{"level":"CLUSTER","cluster_name":"ubuntu6"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}' --compressed
-
+    #curl 'http://node6:8080/api/v1/clusters/ubuntu6/services?' -X PUT -H 'Pragma: no-cache' -H 'Origin: http://node6:8080' -H 'Accept-Encoding: gzip, deflate' -H 'Accept-Language: en-AU,en;q=0.9,ja;q=0.8' -H 'X-Requested-By: X-Requested-By' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36' -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' -H 'Accept: application/json, text/javascript, */*; q=0.01' -H 'Cache-Control: no-cache' -H 'X-Requested-With: XMLHttpRequest' -H 'Cookie: gsScrollPos-742=0; AMBARISESSIONID=node02bfv7fhc3r8413o9kjd6jkdhf4.node0' -H 'Connection: keep-alive' -H 'Referer: http://node6:8080/' --data '{"RequestInfo":{"context":"Stop services","operation_level":{"level":"CLUSTER","cluster_name":"ubuntu6"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}' --compressed
 }
 
 function f_ssl_hadoop() {
