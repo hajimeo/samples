@@ -23,7 +23,7 @@ This script is for building a small docker container for testing an application 
 CREATE CONTAINER:
     -c [-v <version>] [-n <container name>]
         Strict mode to create a container. If the named container exists, this script fails.
-        <version> in -v is such as ${_VERSION}.
+        <version> in -v is such as x.x.x.
         <container name> in -n is a container name (= hostname).
         If no name specified, generates some random name.
 
@@ -89,9 +89,9 @@ Another way to create a container:
 #_DOMAIN_SUFFIX="$(echo `hostname -s` | sed 's/[^a-zA-Z0-9_]//g').localdomain"
 [ -z "${_DOMAIN}" ] && _DOMAIN="standalone.localdomain" # Default container domain suffix
 [ -z "${_OS_VERSION}" ] && _OS_VERSION="7.6.1810"       # Container OS version (normally CentOS version)
-[ -z "${_BASE_IMAGE}" ] && _BASE_IMAGE="node/base"       # Docker image name TODO: change to more appropriate image name
-[ -z "${_VERSION}" ] && _VERSION="7.3.1"                # Default software version, mainly used to find the right installer file
-_PORTS="${_PORTS-"10000 10500 10501 10502 10503 10504 10508 10516 10518 10520 11111 11112 11113 5005"}"    # Used by docker port forwarding
+[ -z "${_BASE_IMAGE}" ] && _BASE_IMAGE="node/base"      # Docker image name TODO: change to more appropriate image name
+#[ -z "${_VERSION}" ] && _VERSION=""                     # Default software version, mainly used to find the right installer file
+_PORTS="${_PORTS-"8070 8081 5005"}"                     # Used by docker port forwarding
 # Expecting mounting and/or using symlink from another node but using this node's Apache2
 _DOWNLOAD_URL="${_DOWNLOAD_URL-"http://$(hostname -I | awk '{print $1}')/${_SERVICE}/"}"
 #_CUSTOM_NETWORK="hdp"
