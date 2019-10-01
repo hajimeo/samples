@@ -38,13 +38,11 @@ END
 
 
 ### Global variables #################
+[ -z "${_SERVICE}" ] && _SERVICE="sonatype"                     # Default service name|user
+[ -z "${_DEFAULT_PWD}" ] && _DEFAULT_PWD="admin123"             # 'admin' user, kadmin password, DB password etc.
 [ -z "${_WORK_DIR}" ] && _WORK_DIR="/var/tmp/share"             # Work directory to store various data, such as installer.tar.gz
 [ -z "${_BASE_DIR}" ] && _BASE_DIR="/opt/sonatype"              # Install base directory
-[ -z "${_DEFAULT_PWD}" ] && _DEFAULT_PWD="admin"                # kadmin password, hive metastore DB password etc.
-[ -z "${_KADMIN_USR}" ] && _KADMIN_USR="admin/admin"            # Used to create service principal
-[ -z "${_KEYTAB_DIR}" ] && _KEYTAB_DIR="/etc/security/keytabs"  # Keytab default location (this is the default for HDP)
 [ -z "${_REPO_URL}" ] && _REPO_URL="https://download.sonatype.com/"
-[ -z "${_SERVICE}" ] && _SERVICE="sonatype"                     # Default service name|user
 [ -z "${_NXRM_LICENSE}" ] && _NXRM_LICENSE="$(ls -1t ${_WORK_DIR%/}/${_SERVICE}/${_SERVICE}-*.lic 2>/dev/null | head -n1)"
 _TMP="${_TMP:-"/tmp"}"
 _HTTP="${_HTTP:-"http"}"
@@ -129,6 +127,11 @@ function f_start_nxrm() {
         return 1
     fi
     _log "INFO" "Starting NXRM (log:${_dir%/}/log/nexus_run.out)"
+    if [ ! -f ${_dir%/}/log/nexus_iq_server.out ]; then
+        sudo -u ${_usr} touch ${_dir%/}/log/nexus_run.out
+    else
+        chown ${_usr}: ${_dir%/}/log/nexus_run.out
+    fi
     sudo -u ${_usr} nohup ${_base_dir%/}/nexus/bin/nexus run &> ${_dir%/}/log/nexus_run.out &
     _wait_by_port "${_port}" || return $?
 }
@@ -137,6 +140,14 @@ function f_stop_nxrm() {
     local __doc__="Stop NXRM by using port number"
     local _port="${1:-8081}"
     _stop_by_port "${_port}"
+}
+
+function f_status_nxrm() {
+    local __doc__="Status check for NXRM by using port number"
+    local _port="${1:-8081}"
+    local _pid="$(_pid_by_port ${_port})"
+    [ -z "${_pid}" ] && return 1
+    netstat -anp | grep -w "${_pid}/java"
 }
 
 function f_nxrm_update_pwd() {
@@ -285,6 +296,11 @@ function f_start_iqs() {
     fi
     [ ! -d "${_dir%/}/log" ] && sudo -u ${_usr} mkdir "${_dir%/}/log"
     _log "INFO" "Starting IQ Server (log:${_dir%/}/log/nexus_iq_server.out)"
+    if [ ! -f ${_dir%/}/log/nexus_iq_server.out ]; then
+        sudo -u ${_usr} touch ${_dir%/}/log/nexus_iq_server.out
+    else
+        chown ${_usr}: ${_dir%/}/log/nexus_iq_server.out
+    fi
     sudo -u ${_usr} nohup java -jar ${_dir%/}/nexus-iq-server-*.jar server ${_dir%/}/config.yml &> ${_dir%/}/log/nexus_iq_server.out &
     _wait_by_port "${_port}" || return $?
 }
@@ -293,6 +309,14 @@ function f_stop_iqs() {
     local __doc__="Stop IQ Server by using port number"
     local _port="${1:-8070}"
     _stop_by_port "${_port}"
+}
+
+function f_status_iqs() {
+    local __doc__="Status check for NXRM by using port number"
+    local _port="${1:-8070}"
+    local _pid="$(_pid_by_port ${_port})"
+    [ -z "${_pid}" ] && return 1
+    netstat -anp | grep -w "${_pid}/java"
 }
 
 
