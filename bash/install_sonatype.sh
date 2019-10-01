@@ -197,8 +197,11 @@ function f_setup_nxrm_HA() {
     [ ! -f ${_dir%/}/etc/nexus.properties ] && sudo -u ${_usr} touch ${_dir%/}/etc/nexus.properties
     _upsert ${_dir%/}/etc/nexus.properties "nexus.clustered" "true" || return $?
     _upsert ${_dir%/}/etc/nexus.properties "nexus.licenseFile" "${_license}" || return $?
-    # NOTE: need to customise Hazelcast?
-    #[ ! -d "${_etc_dir%/}/fabric" ] && sudo -u ${_usr} mkdir "${_etc_dir%/}/fabric"
+
+    # TODO: In NXRM 3.6.1 or earlier, these changes must be applied directly to NEXUS_HOME/etc/fabric/hazelcast.xml
+    #if [ -s ${_base_dir%/}/${_NXRM_PREFIX}/etc/fabric/hazelcast-network-default.xml ] && [ ! -s ${_dir%/}/etc/fabric/hazelcast-network.xml ]; then
+    #    cp -p ${_base_dir%/}/${_NXRM_PREFIX}/etc/fabric/hazelcast-network-default.xml ${_dir%/}/etc/fabric/hazelcast-network.xml || return $?
+    #fi
 
     _log "INFO" "Restarting NXRM..."
     local _share_blob="${_WORK_DIR%/}/${_SERVICE}/blobs"
@@ -222,6 +225,8 @@ function f_setup_nxrm_HA() {
         cp -pR ${_dir%/}/blobs/default ${_share_blob}/ || return $?
     fi
     f_start_nxrm || return $?
+
+    # Updating node name with FQDN
     f_api ":8081/service/rest/v1/nodes" > ${_TMP%/}/f_setup_nxrm_HA_$$.json
     # TODO: lazy to parse the json file
     local _nodeIdentity_line="$(cat ${_TMP%/}/f_setup_nxrm_HA_$$.json | grep "/`hostname -I | awk '{print $1}'`:" -B 1 | grep "nodeIdentity" | tr -d '[:space:]')"
