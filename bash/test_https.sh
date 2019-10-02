@@ -81,8 +81,8 @@ function export_key() {
     ls -l ${_basename}.*
 }
 
-# generate .p12 (pkcs12) file
-function gen_p12() {
+# generate .p12 (pkcs12) and .jks files from server cert/key (and CA cert)
+function gen_p12_jks() {
     local _ca_crt="$1"
     local _srv_crt="$2"
     local _srv_key="$3"
@@ -98,6 +98,8 @@ function gen_p12() {
     # Verify
     if which keytool &>/dev/null; then
         keytool -list -keystore ${_name}.p12 -storetype PKCS12 -storepass "${_pass}"
+        # Also, if .jks is needed:
+        keytool -importkeystore -srckeystore ${_name}.p12 -srcstoretype PKCS12 -srcstorepass "${_pass}" -destkeystore ${_name}.jks -deststoretype JKS -deststorepass "${_pass}"
     fi
 }
 
