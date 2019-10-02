@@ -56,7 +56,7 @@ def _mexec(func_obj, args_list, num=None):
     return rs.get()
 
 
-def _dict2global(d, scope, overwrite=False):
+def _dict2global(d, scope=None, overwrite=False):
     """
     Iterate the given dict and create global variables (key = value)
     NOTE: somehow this function can't be called from inside of a function in Jupyter
@@ -68,6 +68,8 @@ def _dict2global(d, scope, overwrite=False):
     >>> b == 'test2'
     True
     """
+    if bool(scope) is False:
+        scope = globals()
     for k, v in d.items():
         if k in scope and overwrite is False:
             raise ValueError('%s is already used' % (k))
@@ -452,9 +454,10 @@ def _autocomp_matcher(text):
     return _get_col_vals(rs.fetchall(), 0)
 
 
-def inject_auto_comp(tablename=None):
+def _autocomp_inject(tablename=None):
     """
     Some hack to use autocomplete in the SQL
+    TODO: doesn't work any more with newer jupyter lab|notebook
     :param tablename: Optional
     :return: Void
     """
@@ -465,13 +468,21 @@ def inject_auto_comp(tablename=None):
 
     for t in tables:
         cols = describe(t).name.values
+        tbl_obj = type(t, (), {})
+        for c in cols:
+            setattr(tbl_obj, c, True)
         try:
-            get_ipython().user_global_ns[t] = type(t, (), {})
-            for c in cols:
-                setattr(get_ipython().user_global_ns[t], c, True)
+            get_ipython().user_global_ns[t] = tbl_obj
         except:
-            _err("setattr(get_ipython().user_global_ns[%s], c, True) failed" % t)
+            _err("get_ipython().user_global_ns failed" % t)
             pass
+        try:
+            get_ipython().set_custom_completer(tbl_obj)
+        except:
+            _err("setattr(get_ipython().set_custom_completer failed" % t)
+            pass
+        globals()[t] = tbl_obj
+        locals()[t] = tbl_obj
 
 
 def draw(df, width=16, x_col=0, x_colname=None):
@@ -911,9 +922,9 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
 
 
 def logs2table(file_name, tablename=None, conn=None,
-               col_names=['datetime', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
+               col_names=['date_time', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
-               line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
+               line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,-]*) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
                size_regex=_SIZE_REGEX, time_regex=_TIME_REGEX,
                max_file_num=10, appending=False, multiprocessing=False):
     """
@@ -931,12 +942,14 @@ def logs2table(file_name, tablename=None, conn=None,
     :param appending: default is False. If False, use 'DROP TABLE IF EXISTS'
     :param multiprocessing: (Experimental) default is False. If True, use multiple CPUs
     :return: Void if no error, or a tuple contains multiple information for debug
-    #>>> logs2table(file_name='queries.*log*', tablename='t_queries_log', col_names=['datetime', 'ids', 'message', 'extra_lines'],
-                  line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (\{.*?\}) - ([^:]+):(.*)',
-                  size_regex=None, time_regex=None, max_file_num=20)
-    #>>> logs2table(file_name='nexus.log*', col_names=['date_time', 'level', 'thread', 'user', 'class', 'message'],
-                  line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
-                  size_regex=None, time_regex=None, max_file_num=20)
+    #>>> logs2table(file_name='queries.*log*', tablename='t_queries_log',
+         col_names=['date_time', 'ids', 'message', 'extra_lines'],
+         line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (\{.*?\}) - ([^:]+):(.*)',
+         size_regex=None, time_regex=None, max_file_num=20)
+    #>>> logs2table(file_name='nexus.log*', tablename='t_nexus_log',
+         col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
+         line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
+         size_regex=None, time_regex=None, max_file_num=20)
     >>> pass    # TODO: implement test
     """
     global _SIZE_REGEX
@@ -1013,7 +1026,7 @@ def logs2table(file_name, tablename=None, conn=None,
                 res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
                 if bool(res) is False:  # if fails once, stop
                     return res
-    inject_auto_comp()
+    #_autocomp_inject(tablename=tablename)
     _err("Completed.")
 
 
@@ -1258,8 +1271,8 @@ def load(jsons_dir=["./engine/aggregates", "./engine/cron-scheduler"], csvs_dir=
     # except:
     #    _err("get_ipython().set_custom_completer(ju._autocomp_matcher) failed")
     #    pass
-    _err("Populating autocomps...")
-    inject_auto_comp()
+    #_err("Populating autocomps...")
+    #_autocomp_inject()
     _err("Completed.")
 
 
