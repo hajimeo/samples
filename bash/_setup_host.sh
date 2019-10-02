@@ -112,7 +112,7 @@ function f_sysstat_setup() {
 
 function f_haproxy() {
     local __doc__="Install and setup HAProxy"
-    local _nodes="${1}"         # docker ps --format "{{.Names}}" | grep -E "^node-nxrm3-[0-9]+" | tr '\n' ' '
+    local _nodes="${1}"         # docker ps --format "{{.Names}}" | grep -E "^node-nxrm3-[0-9]+" | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
     local _certificate="${2}"   # cat ./server.`hostname -d`.crt ./rootCA.pem ./server.`hostname -d`.key > certificates.pem'
     local _ports="${3:-"8081 8443"}" # port1 port2 port3
     local _haproxy_tmpl_conf="${4:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
@@ -153,7 +153,8 @@ function f_haproxy() {
         local _backend_proto="http"
         local _backend_ssl_crt=""
         if [ -n "${_certificate}" ]; then
-            local _https_ver="$(curl -s -o /dev/null -k "https://${_first_node}:${_port}/" -w '%{http_version}\n')"
+            # Checking if HTTPS and H2|HTTP/2 are enabled. NOTE: -w '%{http_version}\n' does not work with older curl.
+            local _https_ver="$(curl -sI -k "https://${_first_node}:${_port}/" | sed -nr 's/^HTTP\/([12]).+/\1/p')"
             if [[ "${_https_ver}" =~ [12] ]]; then
                 _info "TLS/SSL is available on ${_first_node}:${_port}. Enabling TLS/SSL on backend."
                 _backend_proto="https"
