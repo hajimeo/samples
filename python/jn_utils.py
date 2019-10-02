@@ -464,25 +464,28 @@ def _autocomp_inject(tablename=None):
     if bool(tablename):
         tables = [tablename]
     else:
-        tables = describe().name.values
+        tables = describe().name.to_list()
 
     for t in tables:
-        cols = describe(t).name.values
-        tbl_obj = type(t, (), {})
-        for c in cols:
-            setattr(tbl_obj, c, True)
+        cols = describe(t).name.to_list()
+        tbl_cls = _gen_class(t, cols)
         try:
-            get_ipython().user_global_ns[t] = tbl_obj
+            get_ipython().user_global_ns[t] = tbl_cls
+            #globals()[t] = tbl_cls
+            #locals()[t] = tbl_cls
         except:
             _err("get_ipython().user_global_ns failed" % t)
             pass
-        try:
-            get_ipython().set_custom_completer(tbl_obj)
-        except:
-            _err("setattr(get_ipython().set_custom_completer failed" % t)
-            pass
-        globals()[t] = tbl_obj
-        locals()[t] = tbl_obj
+
+def _gen_class(name, attrs=None, def_value=True):
+    if type(attrs) == dict:
+        c = type(name, (), attrs)
+    else:
+        c = type(name, (), {})
+        if type(attrs) == list:
+            for a in attrs:
+                setattr(c, a, def_value)
+    return c
 
 
 def draw(df, width=16, x_col=0, x_colname=None):
@@ -1026,7 +1029,7 @@ def logs2table(file_name, tablename=None, conn=None,
                 res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
                 if bool(res) is False:  # if fails once, stop
                     return res
-    #_autocomp_inject(tablename=tablename)
+    _autocomp_inject(tablename=tablename)
     _err("Completed.")
 
 
@@ -1271,8 +1274,7 @@ def load(jsons_dir=["./engine/aggregates", "./engine/cron-scheduler"], csvs_dir=
     # except:
     #    _err("get_ipython().set_custom_completer(ju._autocomp_matcher) failed")
     #    pass
-    #_err("Populating autocomps...")
-    #_autocomp_inject()
+    _autocomp_inject()
     _err("Completed.")
 
 
