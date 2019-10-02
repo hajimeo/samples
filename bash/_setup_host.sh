@@ -112,26 +112,37 @@ function f_sysstat_setup() {
 
 function f_haproxy() {
     local __doc__="Install and setup HAProxy"
-    local _nodes="${1}"         # docker ps --format "{{.Names}}" | grep "^node-nxrm3-" | tr '\n' ' '
-    local _certificate="${2}"   # cat ./server.`hostname -d`.crt ./rootCA.pem ./server.`hostname -d`.key > certificate.pem'
+    local _nodes="${1}"         # docker ps --format "{{.Names}}" | grep -E "^node-nxrm3-[0-9]+" | tr '\n' ' '
+    local _certificate="${2}"   # cat ./server.`hostname -d`.crt ./rootCA.pem ./server.`hostname -d`.key > certificates.pem'
     local _ports="${3:-"8081"}" # port1 port2 port3
     local _haproxy_tmpl_conf="${4:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
 
-    local _ssl_crt=""
-    local _cfg="/etc/haproxy/haproxy.cfg"
     [ -n "${_nodes}" ] || return 1
+
+    local _cfg="/etc/haproxy/haproxy.cfg"
     apt-get install haproxy -y || return $?
 
+    local _frontend_ssl_crt=""
+    local _backend_ssl_crt=""
+    local _frontend_proto="http"
+    local _backend_proto="http"
     local _first_node="`echo ${_nodes} | awk '{print $1}'`"
     local _first_port="`echo ${_ports} | awk '{print $1}'`"
-    if [ -n "${_certificate}" ] || openssl s_client -connect ${_first_node}:${_first_port} -quiet; then
-        _info "Seems TLS/SSL is enabled on ${_first_node}:${_first_port}"
 
+    if [ -n "${_certificate}" ]; then
         # If certificate is given, assuming to use TLS/SSL
         if [ ! -s "${_certificate}" ]; then
-            _error "No ${_certificate} for TLS/SSL/HTTPS"; return 1
+            _error "No ${_certificate} for TLS/SSL/HTTPS"
+            return 1
         fi
-        _ssl_crt=' ssl crt '${_certificate}
+
+        _frontend_ssl_crt=" ssl crt ${_certificate} alpn h2,http/1.1"
+        _frontend_proto="https"
+        if openssl s_client -connect ${_first_node}:${_first_port} -quiet &>/dev/null; then
+            _info "Seems TLS/SSL is enabled on ${_first_node}:${_first_port}. Enabling TLS/SSL on backend as well."
+            _backend_ssl_crt=" ssl crt ${_certificate}"
+            _backend_proto="https"
+        fi
     fi
 
     # Always get the latest template for now
@@ -151,15 +162,19 @@ function f_haproxy() {
         grep -qE "\s+bind\s+.+:{_p}\s*$" "${_cfg}" && continue
         echo "
 frontend frontend_p${_p}
-  bind *:${_p}${_ssl_crt}
+  bind *:${_p}${_frontend_ssl_crt}
+  reqadd X-Forwarded-Proto:\ ${_frontend_proto}
   default_backend backend_p${_p}" >> "${_cfg}"
         # TODO:  option httpchk GET /ping HTTP/1.1\r\nHost:\ www
         echo "
 backend backend_p${_p}
   balance roundrobin
+  option forwardfor
+  http-request set-header X-Forwarded-Port %[dst_port]
+  http-request add-header X-Forwarded-Proto ${_backend_proto}
   option httpchk" >> "${_cfg}"
         for _n in ${_nodes}; do
-            echo "  server ${_n} ${_n}:${_p}${_ssl_crt} check" >> "${_cfg}"
+            echo "  server ${_n} ${_n}:${_p}${_backend_ssl_crt} check" >> "${_cfg}"
         done
     done
 
