@@ -26,40 +26,34 @@ _SIZE_REGEX = r"[sS]ize ?= ?([0-9]+)"
 _TIME_REGEX = r"\b([0-9.,]+) ([km]?s)\b"
 
 
-def _mexec(func_obj, kwargs_list, num=None, using_process=False):
+def _mexec(func_obj, args_list, num=None):
     """
     Execute multiple functions asynchronously
     :param func_obj: A function object to be executed
-    :param kwargs_list: A list contains dicts of arguments
+    :param args_list: A list contains tuples of arguments
     :param num: number of pool. if None, half of CPUs (NOTE: if threads, it does not matter)
     :return: list contains results. Currently result order is random (not same as args_list)
     >>> def multi(x, y): return x * y
     ...
-    >>> _mexec(multi, None)
-    >>> _mexec(multi, [{'x':1, 'y':2}])[0]
+    >>> _mexec(multi, [(1, 2)])[0]
     2
-    >>> rs = _mexec(multi, [{'x':1, 'y':2}, {'x':2, 'y':3}])
+    >>> rs = _mexec(multi, [(1,2), (2,3)])
     >>> rs[0] + rs[1]
     8
     """
     rs = []
-    if bool(kwargs_list) is False or bool(func_obj) is False: return None
-    if len(kwargs_list) == 1:
-        rs.append(func_obj(**kwargs_list[0]))
+    if bool(args_list) is False or bool(func_obj) is False:
+        return None
+    # If only one args list, no point of doing multiprocessing
+    if len(args_list) == 1:
+        rs.append(func_obj(*args_list[0]))
         return rs
-    from concurrent.futures import as_completed
-    if using_process:
-        from concurrent.futures import ProcessPoolExecutor as pe
-    else:
-        from concurrent.futures import ThreadPoolExecutor as pe
+    import multiprocessing as mp
     if bool(num) is False:
-        import multiprocessing
-        num = int(multiprocessing.cpu_count() / 2)
-    executor = pe(max_workers=num)
-    futures = [executor.submit(func_obj, **kwargs) for kwargs in kwargs_list]
-    for future in as_completed(futures):
-        rs.append(future.result())
-    return rs
+        num = int(mp.cpu_count() / 2)
+    executor = mp.Pool(processes=num)
+    rs = executor.starmap_async(func_obj, args_list)
+    return rs.get()
 
 
 def _dict2global(d, scope, overwrite=False):
@@ -726,7 +720,7 @@ def hive_query_execute(query, conn, row_num=None, output=False):
     return _error
 
 
-def _TODO_run_hive_queries_multi(query_series, conn_str, num_pool=None, output=False):
+def run_hive_queries_multi(query_series, conn_str, num_pool=None, output=False):
     """
     Execute multiple queries in a Pandas Series against Hive
     :param query_series: Panda Series object which contains query strings
@@ -739,10 +733,11 @@ def _TODO_run_hive_queries_multi(query_series, conn_str, num_pool=None, output=F
     #>>> fails = ju.run_hive_queries_multi(df['extra_lines'], "jdbc:hive2://hostname:port/")
     """
     failures = []
-    kwargs_list = []
+    args_list = []
     for (i, query) in query_series.iteritems():
-        kwargs_list.append({'query': query, 'conn': conn_str, 'row_num': i, 'output': output})
-    return _mexec(hive_query_execute, kwargs_list, num=num_pool, using_process=True)
+        # from concurrent.futures import ProcessPoolExecutor hangs in Jupyter, so can't use kwargs
+        args_list.append((query, conn_str, i, output))
+    return _mexec(hive_query_execute, args_list, num=num_pool)
 
 
 def _massage_tuple_for_save(tpl, long_value="", num_cols=None):
@@ -994,12 +989,11 @@ def logs2table(file_name, tablename=None, conn=None,
             return res
 
     if multiprocessing:
-        kwargs_list = []
+        args_list = []
         for f in files:
-            kwargs_list.append(
-                {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching, 'size_regex': size_regex,
-                 'time_regex': time_regex, 'num_cols': num_cols, 'replace_comma': True})
-        rs = _mexec(_read_file_and_search, kwargs_list, using_process=True)
+            args_list.append((f, line_beginning, line_matching, size_regex, time_regex, num_cols, True))
+        # from concurrent.futures import ProcessPoolExecutor hangs in Jupyter, so can't use kwargs
+        rs = _mexec(_read_file_and_search, args_list)
         for tuples in rs:
             # If inserting into one table, probably no point of multiprocessing for this.
             if len(tuples) > 0:
@@ -1056,12 +1050,11 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'ids', 'siz
 
     dfs = []
     if multiprocessing:
-        kwargs_list = []
+        args_list = []
         for f in files:
-            kwargs_list.append(
-                {'file': f, 'line_beginning': line_beginning, 'line_matching': line_matching, 'size_regex': size_regex,
-                 'time_regex': time_regex, 'num_cols': num_fields, 'replace_comma': True})
-        rs = _mexec(_read_file_and_search, kwargs_list, using_process=True)
+            args_list.append((f, line_beginning, line_matching, size_regex, time_regex, num_fields, True))
+        # from concurrent.futures import ProcessPoolExecutor hangs in Jupyter, so can't use kwargs
+        rs = _mexec(_read_file_and_search, args_list)
         for tuples in rs:
             if len(tuples) > 0:
                 dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
