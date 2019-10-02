@@ -4,7 +4,7 @@ alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
 alias pjt='python -m json.tool'
 alias urldecode='python -c "import sys, urllib as ul; print(ul.unquote_plus(sys.argv[1]))"'
 #alias urlencode='python -c "import sys, urllib as ul; print ul.quote_plus(sys.argv[1])"'
-alias urlencode='python -c "import sys, urllib as ul; print( )ul.quote(sys.argv[1]))"'
+alias urlencode='python -c "import sys, urllib as ul; print(ul.quote(sys.argv[1]))"'
 # base64 encode/decode (coreutils base64 or openssl base64 -e|-d)
 alias b64encode='python -c "import sys, base64; print(base64.b64encode(sys.argv[1]))"'
 alias b64decode='python -c "import sys, base64; print(base64.b64decode(sys.argv[1]))"'
