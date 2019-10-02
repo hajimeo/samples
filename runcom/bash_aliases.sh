@@ -62,6 +62,8 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 # TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
 # Slack API Search
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="cd $HOME/IdeaProjects/samples/python/ && nohup python ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
+[ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] && alias supportZip="python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py"
+
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
 # Merge split zip files to one file
