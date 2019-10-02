@@ -70,14 +70,14 @@ document.querySelector('a.advanced-search').click();
             });
           }
 
-          if (target_tab.id.toString() != r.tabId.toString()) {
+          /*if (target_tab.id.toString() != r.tabId.toString()) {
             console.log('Closing the newly opened tab: ', r.tabId);
             chrome.tabs.remove(r.tabId, function() {
               if (chrome.runtime.lastError) {
                 console.log("Last Error after chrome.tabs.remove: " + chrome.runtime.lastError.toString());
               }
             });
-          }
+          }*/
         }
       }
     });
