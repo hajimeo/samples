@@ -928,13 +928,15 @@ def logs2table(file_name, tablename=None, conn=None,
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
-    :param appending: If True, use 'DROP TABLE IF EXISTS'
-    :param multiprocessing: If True, use multiple CPUs
+    :param appending: default is False. If False, use 'DROP TABLE IF EXISTS'
+    :param multiprocessing: (Experimental) default is False. If True, use multiple CPUs
     :return: Void if no error, or a tuple contains multiple information for debug
     #>>> logs2table(file_name='queries.*log*', tablename='t_queries_log', col_names=['datetime', 'ids', 'message', 'extra_lines'],
                   line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (\{.*?\}) - ([^:]+):(.*)',
-                  size_regex=None, time_regex=None, appending=False, max_file_num=20)
-    #True
+                  size_regex=None, time_regex=None, max_file_num=20)
+    #>>> logs2table(file_name='nexus.log*', col_names=['date_time', 'level', 'thread', 'user', 'class', 'message'],
+                  line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
+                  size_regex=None, time_regex=None, max_file_num=20)
     >>> pass    # TODO: implement test
     """
     global _SIZE_REGEX
@@ -947,6 +949,7 @@ def logs2table(file_name, tablename=None, conn=None,
     files = _globr(file_name)
 
     if bool(files) is False:
+        _err("No file by searching with %s ..." % (str(file_name)))
         return False
 
     if len(files) > max_file_num:
@@ -1029,7 +1032,7 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'ids', 'siz
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
-    :param multiprocessing: If True, use multiple CPUs
+    :param multiprocessing: (Experimental) If True, use multiple CPUs
     :return: A concatenated DF object
     #>>> df = logs2dfs(file_name="debug.2018-08-28.11.log.gz")
     #>>> df2 = df[df.loglevel=='DEBUG'].head(10)
