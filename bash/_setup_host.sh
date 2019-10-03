@@ -112,10 +112,13 @@ function f_sysstat_setup() {
 
 function f_haproxy() {
     local __doc__="Install and setup HAProxy"
-    local _nodes="${1}"         # docker ps --format "{{.Names}}" | grep -E "^node-nxrm3-[0-9]+" | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
-    local _certificate="${2}"   # cat ./server.`hostname -d`.crt ./rootCA.pem ./server.`hostname -d`.key > certificates.pem'
-    local _ports="${3:-"8081 8443"}" # port1 port2 port3
-    local _haproxy_tmpl_conf="${4:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
+    # Generate hostnames: docker ps --format "{{.Names}}" | grep -E "^node-(nxrm|iqs)+" | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
+    # HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
+    local _nodes="${1}"         # Space delimited
+    local _ports="${2:-"8081 8443 8070"}" # Space delimited
+    local _certificate="${3}"   # Expecting same (concatenated) cert for front and backend
+    local _skipping_chk="${4}"  # To not check if port is reachable for each backend
+    local _haproxy_tmpl_conf="${5:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
 
     [ -n "${_nodes}" ] || return 1
 
@@ -140,7 +143,7 @@ function f_haproxy() {
     # Backup
     if [ -s "${_cfg}" ]; then
         # Seems Ubuntu 16 and CentOS 6/7 use same config path
-        mv "${_cfg}" "${_cfg}".$(date +"%Y%m%d%H%M%S") || return $?
+        mv -v "${_cfg}" "${_cfg}".$(date +"%Y%m%d%H%M%S") || return $?
         cp -f "${_haproxy_tmpl_conf}" "${_cfg}" || return $?
     fi
 
@@ -149,19 +152,6 @@ function f_haproxy() {
     local _first_node="`echo ${_nodes} | awk '{print $1}'`"
     for _port in ${_ports}; do
         grep -qE "\s+bind\s+.+:{_p}\s*$" "${_cfg}" && continue
-
-        local _backend_proto="http"
-        local _backend_ssl_crt=""
-        if [ -n "${_certificate}" ]; then
-            # Checking if HTTPS and H2|HTTP/2 are enabled. NOTE: -w '%{http_version}\n' does not work with older curl.
-            local _https_ver="$(curl -sI -k "https://${_first_node}:${_port}/" | sed -nr 's/^HTTP\/([12]).+/\1/p')"
-            if [[ "${_https_ver}" =~ [12] ]]; then
-                _info "TLS/SSL is available on ${_first_node}:${_port}. Enabling TLS/SSL on backend."
-                _backend_proto="https"
-                _backend_ssl_crt=" ssl crt "
-                [ "${_https_ver}" = "2" ] && _backend_ssl_crt="${_backend_ssl_crt} alpn h2,http/1.1"
-            fi
-        fi
 
         echo "
 frontend frontend_p${_port}
@@ -172,10 +162,33 @@ backend backend_p${_port}
   balance roundrobin
   option forwardfor
   http-request set-header X-Forwarded-Port %[dst_port]
-  http-request add-header X-Forwarded-Proto ${_backend_proto}
   option httpchk" >> "${_cfg}"
+#  http-request add-header X-Forwarded-Proto ${_backend_proto}
         for _n in ${_nodes}; do
-            echo "  server ${_n} ${_n}:${_port}${_backend_ssl_crt} check" >> "${_cfg}"
+            if [[ "${_skipping_chk}" =~ ^(y|Y) ]]; then
+                if [ -n "${_certificate}" ]; then
+                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check" >> "${_cfg}"
+                else
+                    echo "  server ${_n} ${_n}:${_port} check" >> "${_cfg}"
+                fi
+            else
+                if [ -n "${_certificate}" ]; then
+                    # Checking if HTTPS and H2|HTTP/2 are enabled. NOTE: -w '%{http_version}\n' does not work with older curl.
+                    local _https_ver="$(curl -sI -k "https://${_n}:${_port}/" | sed -nr 's/^HTTP\/([12]).+/\1/p')"
+                    if [[ "${_https_ver}" = "1" ]]; then
+                        _info "TLS/SSL is available on ${_n}:${_port}. Enabling TLS/SSL on backend."
+                        echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check" >> "${_cfg}"
+                    elif [[ "${_https_ver}" = "2" ]]; then
+                        _info "HTTP/2 is available on ${_n}:${_port}. Enabling TLS/SSL with H2 on backend."
+                        echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} alpn h2,http/1.1 check" >> "${_cfg}"
+                    elif nc -z ${_n} ${_port}; then
+                        # SSL termination
+                        echo "  server ${_n} ${_n}:${_port} check" >> "${_cfg}"
+                    fi
+                else
+                    nc -z ${_n} ${_port} && echo "  server ${_n} ${_n}:${_port} check" >> "${_cfg}"
+                fi
+            fi
         done
     done
 
