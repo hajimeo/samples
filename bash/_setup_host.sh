@@ -124,7 +124,7 @@ function f_haproxy() {
 
     local _cfg="/etc/haproxy/haproxy.cfg"
     if which haproxy &>/dev/null; then
-        _log "INFO" "HAProxy is already installed. To update, run apt-get manually."
+        _info "INFO" "HAProxy is already installed. To update, run apt-get manually."
     else
         apt-get install haproxy -y || return $?
     fi
@@ -180,10 +180,10 @@ backend backend_p${_port}
                     # Checking if HTTPS and H2|HTTP/2 are enabled. NOTE: -w '%{http_version}\n' does not work with older curl.
                     local _https_ver="$(curl -sI -k "https://${_n}:${_port}/" | sed -nr 's/^HTTP\/([12]).+/\1/p')"
                     if [[ "${_https_ver}" = "1" ]]; then
-                        _info "TLS/SSL is available on ${_n}:${_port}. Enabling TLS/SSL on backend."
+                        _info "Enabling HTTPS on backend: ${_n}:${_port} ..."
                         echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check" >> "${_cfg}"
                     elif [[ "${_https_ver}" = "2" ]]; then
-                        _info "HTTP/2 is available on ${_n}:${_port}. Enabling TLS/SSL with H2 on backend."
+                        _info "Enabling HTTP/2 on backend: ${_n}:${_port} ..."
                         echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} alpn h2,http/1.1 check" >> "${_cfg}"
                     elif nc -z ${_n} ${_port}; then
                         # SSL termination
@@ -1071,28 +1071,20 @@ _TEST_REGEX='^\[.+\]$'
 
 _WORK_DIR="/var/tmp/share"
 
+# At this moment, not much difference from _echo and _warn, might change later
 function _info() {
-    # At this moment, not much difference from _echo and _warn, might change later
-    local _msg="$1"
-    _echo "INFO : ${_msg}" "Y"
+    _log "INFO" "$@"
 }
 function _warn() {
+    _log "WARN" "$@"
     local _msg="$1"
-    _echo "WARN : ${_msg}" "Y"
 }
 function _error() {
-    local _msg="$1"
-    _echo "ERROR: ${_msg}" "Y"
+    _log "ERROR" "$@"
 }
 function _log() {
-    # At this moment, outputting to STDOUT
-    local _log_file_path="$3"
-    if [ -n "$_log_file_path" ]; then
-        g_LOG_FILE_PATH="$_log_file_path"
-        > $g_LOG_FILE_PATH
-    fi
-    if [ -n "$g_LOG_FILE_PATH" ]; then
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a $g_LOG_FILE_PATH
+    if [ -n "${g_LOG_FILE_PATH}" ]; then
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a ${g_LOG_FILE_PATH} 1>&2
     else
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" 1>&2
     fi
