@@ -123,7 +123,11 @@ function f_haproxy() {
     [ -n "${_nodes}" ] || return 1
 
     local _cfg="/etc/haproxy/haproxy.cfg"
-    apt-get install haproxy -y || return $?
+    if which haproxy &>/dev/null; then
+        _log "INFO" "HAProxy is already installed. To update, run apt-get manually."
+    else
+        apt-get install haproxy -y || return $?
+    fi
 
     local _frontend_proto="http"
     local _frontend_ssl_crt=""
