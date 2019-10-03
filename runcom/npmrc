@@ -1,4 +1,5 @@
-registry=http://node-nxrm3.standalone.localdomain:8081/repository/npm-group/
+strict-ssl=false
+registry=http://dh1:8081/repository/npm-group/
 email=dev@hajigle.com
 always-auth=true
 _auth="YWRtaW46YWRtaW4="
