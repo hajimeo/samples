@@ -64,8 +64,7 @@ function replaceUrl(r) {
       return {redirectUrl: r.url}
     }
 
-    console.log('Found the target tab for replacing, which tab id is ', target_tab.id);
-    console.log('and before-replacing-URL is ', target_tab.url);
+    console.log('Activating the target tab id: ', target_tab.id);
     chrome.tabs.update(target_tab.id, {"active": true});
 
     if (target_tab.url.toString() === new_url.toString()) {
@@ -75,6 +74,7 @@ function replaceUrl(r) {
       //console.log('Updating tab id:' + target_tab.id + ' with url: ', new_url);
       //chrome.tabs.update(target_tab.id, {url: new_url});
       console.log('executeScript on ' + target_tab.id + ' with id: ', id);
+      console.log('and before-replacing-URL is ', target_tab.url);
       var inner_script = `
 var id = '${id}';
 console.log("id: " + id);
