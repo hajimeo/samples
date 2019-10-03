@@ -47,7 +47,7 @@ function replaceUrl(r) {
           console.log('and before-replacing-URL is ', target_tab.url);
           chrome.tabs.update(target_tab.id, {"active": true});
 
-          if (target_tab.url.toString() == new_url.toString()) {
+          if (target_tab.url.toString() === new_url.toString()) {
             console.log('New URL is exactly same as the target (TODO: should refresh|reload?): ', new_url);
           }
           else {
@@ -70,14 +70,22 @@ document.querySelector('a.advanced-search').click();
             });
           }
 
-          /*if (target_tab.id.toString() != r.tabId.toString()) {
+          // TODO: If more than one zendesk tabs are opened, and updated one ticket, then zendesk reloads or replaces the URL, which triger this extension, and ended up closing this tab because of below.
+          if (target_tab.id.toString() !== r.tabId.toString()) {
+            // TODO: this may not work as it is always extension url: chrome-extension://xxxxxx/_generated_background_page.html
+            console.log('Current URL: ', window.location.toString());
+            if (tab_regex.exec(window.location.toString())) {
+              console.log('Current URL is almost same as the target URL (so no action required.');
+              return {redirectUrl: r.url}
+            }
+
             console.log('Closing the newly opened tab: ', r.tabId);
             chrome.tabs.remove(r.tabId, function() {
               if (chrome.runtime.lastError) {
                 console.log("Last Error after chrome.tabs.remove: " + chrome.runtime.lastError.toString());
               }
             });
-          }*/
+          }
         }
       }
     });
