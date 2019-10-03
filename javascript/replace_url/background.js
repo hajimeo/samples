@@ -64,32 +64,43 @@ function replaceUrl(r) {
       return {redirectUrl: r.url}
     }
 
-    console.log('Activating the target tab id: ', target_tab.id);
-    chrome.tabs.update(target_tab.id, {"active": true});
+    if (!target_is_active) {
+      console.log('Activating the target tab id: ', target_tab.id);
+      chrome.tabs.update(target_tab.id, {"active": true});
+    }
 
     if (target_tab.url.toString() === new_url.toString()) {
       console.log('New URL is exactly same as the target (TODO: should refresh|reload?): ', new_url);
+      return
     }
-    else {
-      //console.log('Updating tab id:' + target_tab.id + ' with url: ', new_url);
-      //chrome.tabs.update(target_tab.id, {url: new_url});
-      console.log('executeScript on ' + target_tab.id + ' with id: ', id);
-      console.log('and before-replacing-URL is ', target_tab.url);
-      var inner_script = `
+
+    //console.log('Updating tab id:' + target_tab.id + ' with url: ', new_url);
+    //chrome.tabs.update(target_tab.id, {url: new_url});
+    console.log('executeScript on ' + target_tab.id + ' with id: ', id);
+    console.log('and before-replacing-URL is ', target_tab.url);
+    var inner_script = `
 var id = '${id}';
 console.log("id: " + id);
 document.querySelector('a.search-icon').click();
 document.querySelector('#mn_1').value=id;
 document.querySelector('a.advanced-search').click();
+true;
 `.trim();
-      chrome.tabs.executeScript(target_tab.id, {
-        code: inner_script
-      }, function() {
-        if (chrome.runtime.lastError) {
-          console.log("Last Error after executeScript: " + chrome.runtime.lastError.toString());
-        }
-      });
-    }
+    chrome.tabs.executeScript(target_tab.id, {
+      code: inner_script
+    }, function(results) {
+      if (chrome.runtime.lastError) {
+        console.log("Last Error after executeScript: " + chrome.runtime.lastError.toString());
+        return {redirectUrl: r.url}
+      }
+      if (results && results.length > 0 && results[0]) {
+        console.log("An inner tab *may* be clicked! " + results[0].toString());
+      } else {
+        // If results is empty, just change the URL.
+        console.log('Unknown executeScript result: ', results);
+        return {redirectUrl: r.url}
+      }
+    });
 
     // If more than one tab are opened and one is active, triggering this extension may end up closing active tab because of below.
     if (!target_is_active && target_tab.id.toString() !== r.tabId.toString()) {
