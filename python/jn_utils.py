@@ -10,12 +10,15 @@ jn_utils is Jupyter Notebook Utility script, which contains functions to convert
 To update this script, execute "ju.update()".
 """
 
+# TODO: When you add a new pip package, don't forget to update setup_work.env.sh
 import sys, os, fnmatch, gzip, re
 from time import time
 from datetime import datetime
 import pandas as pd
 from sqlalchemy import create_engine
 import sqlite3
+from lxml import etree
+import json, pyjq
 
 _DEBUG = False
 _LOAD_UDFS = True
@@ -170,12 +173,12 @@ def _debug(message):
         sys.stderr.write("[%s] DEBUG: %s\n" % (_timestamp(), str(message)))
 
 
-def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='', chunksize=1000,
+def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunksize=1000,
                json_cols=['connectionId', 'planJson', 'json']):
     """
     Find json files from current path and load as pandas dataframes object
     :param src: source/importing directory path
-    :param db_conn: If connection object is given, convert JSON to table
+    :param conn: If connection object is given, convert JSON to table
     :param include_ptn: Regex string to include some file
     :param exclude_ptn: Regex string to exclude some file
     :param chunksize: Rows will be written in batches of this size at a time. By default, all rows will be written at once
@@ -196,20 +199,20 @@ def load_jsons(src="./", db_conn=None, include_ptn='*.json', exclude_ptn='', chu
         if ex.search(f_name):
             _err("Excluding %s as per exclude_ptn (%d KB)..." % (f_name, os.stat(f).st_size / 1024))
             continue
-        new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(db_conn) is False), prefix='t_')
+        new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(conn) is False), prefix='t_')
         _err("Creating table: %s (%d KB) ..." % (new_name, os.stat(f).st_size / 1024))
         names_dict[new_name] = f
-        dfs[new_name] = json2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize,
+        dfs[new_name] = json2df(file_path=f, conn=conn, tablename=new_name, chunksize=chunksize,
                                 json_cols=json_cols)
     return (names_dict, dfs)
 
 
-def json2df(file_path, db_conn=None, tablename=None, json_cols=[], chunksize=1000):
+def json2df(file_path, conn=None, tablename=None, json_cols=[], chunksize=1000):
     """
-    Convert a json file into a DataFrame
-    If db_conn is given, import into a DB table
+    Convert a json file, which contains list into a DataFrame
+    If conn is given, import into a DB table
     :param file_path: File path
-    :param db_conn:   DB connection object
+    :param conn:   DB connection object
     :param tablename: If empty, table name will be the filename without extension
     :param json_cols: to_sql() fails if column is json, so forcing those columns to string
     :param chunksize:
@@ -218,14 +221,125 @@ def json2df(file_path, db_conn=None, tablename=None, json_cols=[], chunksize=100
     """
     global _DB_SCHEMA
     df = pd.read_json(file_path)  # , dtype=False (didn't help)
-    if bool(db_conn):
+    if bool(conn):
         if bool(tablename) is False:
             tablename, ext = os.path.splitext(os.path.basename(file_path))
             _err("tablename: %s ..." % (tablename))
         # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
-        df_tmp_mod.to_sql(name=tablename, con=db_conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
+        df_tmp_mod.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
     return df
+
+
+def _json2table(filename, tablename=None, conn=None, col_name='json_text', appending=False):
+    """
+    NOT WORKING
+    """
+    pass
+    if bool(conn) is False:
+        conn = connect()
+    with open(filename) as f:
+        j_obj = json.load(f)
+    if not j_obj:
+        return False
+    j_str = json.dumps(j_obj)
+
+    if bool(tablename) is False:
+        tablename = _pick_new_key(filename, {}, using_1st_char=False, prefix='t_')
+
+    if appending is False:
+        res = conn.execute("DROP TABLE IF EXISTS %s" % (tablename))
+        if bool(res) is False:
+            return res
+        _err("Drop if exists and Creating table: %s ..." % (str(tablename)))
+    else:
+        _err("Creating table: %s ..." % (str(tablename)))
+    res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s TEXT)" % (tablename, col_name)) # JSON type not supported?
+    if bool(res) is False:
+        return res
+    return conn.executemany("INSERT INTO " + tablename + " VALUES (?)", str(j_str))
+
+
+def jq(file_path, query='.'):
+    """
+    Read a json file and query with 'jq' syntax
+    NOTE: at this moment, not caching json file contents
+    @see https://stedolan.github.io/jq/tutorial/ for query syntax
+    :param file_path: Json File path
+    :param query: 'jq' query string (looks like dict)
+    :return: whatever pyjq returns
+    >>> pass    # TODO: implement test
+    """
+    jd = json2dict(file_path)
+    result = pyjq.all(query, jd)
+    if len(result) == 1:
+        return result[0]
+    return result
+
+
+def json2dict(file_path, sort=True):
+    """
+    Read a json file and return as dict
+    :param file_path: Json File path
+    :param sort:
+    :return: Python dict
+    >>> pass    # TODO: implement test
+    """
+    with open(file_path) as f:
+        rtn = json.load(f)
+    if not rtn:
+        return {}
+    if sort:
+        rtn = json.loads(json.dumps(rtn, sort_keys=sort))
+    return rtn
+
+
+def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablename=None, chunksize=1000):
+    """
+    Convert a XML file into a DataFrame
+    If conn is given, import into a DB table
+    :param file_path: File path
+    :param row_element_name: Name of XML element which is used to find table rows
+    :param tbl_element_name: Name of XML element which is used to find tables (Optional)
+    :param conn:   DB connection object
+    :param tablename: If empty, table name will be the filename without extension
+    :param chunksize:
+    :return: a DataFrame object
+    #>>> xml2df('./nexus.xml', 'repository', conn=ju.connect())
+    >>> pass    # TODO: implement test
+    """
+    global _DB_SCHEMA
+    data = xml2dict(file_path, row_element_name, tbl_element_name)
+    df = pd.DataFrame(data)
+    if bool(conn):
+        if bool(tablename) is False:
+            tablename, ext = os.path.splitext(os.path.basename(file_path))
+            _err("tablename: %s ..." % (tablename))
+        df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
+    return df
+
+
+def xml2dict(file_path, row_element_name, tbl_element_name=None, tbl_num=0):
+    rtn = []
+    parser = etree.XMLParser(recover=True)
+    try:
+        r = etree.ElementTree(file=file_path, parser=parser).getroot()
+        if bool(tbl_element_name) is True:
+            tbls = r.findall('.//' + tbl_element_name)
+            if len(tbls) > 1:
+                _err("%s returned more than 1. Using tbl_num=%s" % (tbl_element_name, str(tbl_num)))
+            rows = tbls[tbl_num].findall(".//" + row_element_name)
+        else:
+            rows = r.findall(".//" + row_element_name)
+        _debug("rows num: %d" % (len(rows)))
+        for row in rows:
+            _row = {}
+            for col in list(row):
+                _row[col.tag] = ''.join(col.itertext()).strip()
+            rtn.append(_row)
+    except Exception as e:
+        _err(str(e))
+    return rtn
 
 
 def _pick_new_key(name, names_dict, using_1st_char=False, check_global=False, prefix=None):
@@ -471,11 +585,12 @@ def _autocomp_inject(tablename=None):
         tbl_cls = _gen_class(t, cols)
         try:
             get_ipython().user_global_ns[t] = tbl_cls
-            #globals()[t] = tbl_cls
-            #locals()[t] = tbl_cls
+            # globals()[t] = tbl_cls
+            # locals()[t] = tbl_cls
         except:
             _err("get_ipython().user_global_ns failed" % t)
             pass
+
 
 def _gen_class(name, attrs=None, def_value=True):
     if type(attrs) == dict:
@@ -682,7 +797,7 @@ def run_hive_queries(query_series, conn, output=True):
     :param conn:        Hive connection object (if connection string, every time new connections will be created
     :param output:      Boolean if outputs something or not
     :return:            List of failures
-    #>>> df = ju.csv2df(file_path='queries_log_received_distinct.csv', db_conn=ju.connect())
+    #>>> df = ju.csv2df(file_path='queries_log_received_distinct.csv', conn=ju.connect())
     #>>> #dfs = ju._chunks(df, 2500)   # May want to split if 'df' is very large, then use _mexec()
     #>>> fails = ju.run_hive_queries(df['extra_lines'], ju.hive_conn("jdbc:hive2://hostname:port/"))
     >>> pass
@@ -742,7 +857,7 @@ def run_hive_queries_multi(query_series, conn_str, num_pool=None, output=False):
     :param num_pool:    Concurrency number
     :param output:      Boolean if outputs something or not
     :return:            List of failures
-    #>>> df = ju.csv2df(file_path='queries_log_received_distinct.csv', db_conn=ju.connect())
+    #>>> df = ju.csv2df(file_path='queries_log_received_distinct.csv', conn=ju.connect())
     #>>> #dfs = ju._chunks(df, 2500)   # May want to split if 'df' is very large, then use _mexec()
     #>>> fails = ju.run_hive_queries_multi(df['extra_lines'], "jdbc:hive2://hostname:port/")
     """
@@ -924,7 +1039,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     return tuples
 
 
-def logs2table(file_name, tablename=None, conn=None,
+def logs2table(filename, tablename=None, conn=None,
                col_names=['date_time', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
                line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,-]*) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
@@ -932,8 +1047,8 @@ def logs2table(file_name, tablename=None, conn=None,
                max_file_num=10, appending=False, multiprocessing=False):
     """
     Insert multiple log files into *one* table
-    :param file_name: [Required] a file name (not path) or *simple* glob regex
-    :param tablename: Table name. If empty, generated from file_name
+    :param filename: [Required] a file name (not path) or *simple* glob regex
+    :param tablename: Table name. If empty, generated from filename
     :param conn:  Connection object (ju.connect())
     :param col_names: Column definition list or dict (column_name1 data_type, column_name2 data_type, ...)
     :param num_cols: Number of columns in the table. Optional if col_def_str is given.
@@ -945,11 +1060,11 @@ def logs2table(file_name, tablename=None, conn=None,
     :param appending: default is False. If False, use 'DROP TABLE IF EXISTS'
     :param multiprocessing: (Experimental) default is False. If True, use multiple CPUs
     :return: Void if no error, or a tuple contains multiple information for debug
-    #>>> logs2table(file_name='queries.*log*', tablename='t_queries_log',
+    #>>> logs2table(filename='queries.*log*', tablename='t_queries_log',
          col_names=['date_time', 'ids', 'message', 'extra_lines'],
          line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (\{.*?\}) - ([^:]+):(.*)',
          size_regex=None, time_regex=None, max_file_num=20)
-    #>>> logs2table(file_name='nexus.log*', tablename='t_nexus_log',
+    #>>> logs2table(filename='nexus.log*', tablename='t_nexus_log',
          col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
          line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
          size_regex=None, time_regex=None, max_file_num=20)
@@ -962,14 +1077,14 @@ def logs2table(file_name, tablename=None, conn=None,
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_cols) is False:
         num_cols = len(col_names)
-    files = _globr(file_name)
+    files = _globr(filename)
 
     if bool(files) is False:
-        _err("No file by searching with %s ..." % (str(file_name)))
+        _err("No file by searching with %s ..." % (str(filename)))
         return False
 
     if len(files) > max_file_num:
-        raise ValueError('Glob: %s returned too many files (%s)' % (file_name, str(len(files))))
+        raise ValueError('Glob: %s returned too many files (%s)' % (filename, str(len(files))))
 
     col_def_str = ""
     if isinstance(col_names, dict):
@@ -992,7 +1107,7 @@ def logs2table(file_name, tablename=None, conn=None,
                 col_def_str += "%s TEXT" % (v)
 
     if bool(tablename) is False:
-        tablename = _pick_new_key(file_name, {}, using_1st_char=False, prefix='t_')
+        tablename = _pick_new_key(filename, {}, using_1st_char=False, prefix='t_')
 
     # If not None, create a table
     if bool(col_def_str):
@@ -1033,14 +1148,14 @@ def logs2table(file_name, tablename=None, conn=None,
     _err("Completed.")
 
 
-def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
+def logs2dfs(filename, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
              num_fields=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
              line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
              size_regex=_SIZE_REGEX, time_regex=_TIME_REGEX,
              max_file_num=10, multiprocessing=False):
     """
     Convert multiple files to *multiple* DataFrame objects
-    :param file_name: A file name or *simple* regex used in glob to select files.
+    :param filename: A file name or *simple* regex used in glob to select files.
     :param col_names: Column definition list or dict (column_name1 data_type, column_name2 data_type, ...)
     :param num_fields: Number of columns in the table. Optional if col_def_str is given.
     :param line_beginning: To detect the beginning of the log entry (normally ^\d\d\d\d-\d\d-\d\d)
@@ -1050,7 +1165,7 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'ids', 'siz
     :param max_file_num: To avoid memory issue, setting max files to import
     :param multiprocessing: (Experimental) If True, use multiple CPUs
     :return: A concatenated DF object
-    #>>> df = logs2dfs(file_name="debug.2018-08-28.11.log.gz")
+    #>>> df = logs2dfs(filename="debug.2018-08-28.11.log.gz")
     #>>> df2 = df[df.loglevel=='DEBUG'].head(10)
     #>>> bool(df2)
     #True
@@ -1059,13 +1174,13 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'ids', 'siz
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_fields) is False:
         num_fields = len(col_names)
-    files = _globr(file_name)
+    files = _globr(filename)
 
     if bool(files) is False:
         return False
 
     if len(files) > max_file_num:
-        raise ValueError('Glob: %s returned too many files (%s)' % (file_name, str(len(files))))
+        raise ValueError('Glob: %s returned too many files (%s)' % (filename, str(len(files))))
 
     dfs = []
     if multiprocessing:
@@ -1091,12 +1206,12 @@ def logs2dfs(file_name, col_names=['datetime', 'loglevel', 'thread', 'ids', 'siz
     return pd.concat(dfs)
 
 
-def load_csvs(src="./", db_conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000):
+def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000):
     """
     Convert multiple CSV files to DF and DB tables
     Example: _=ju.load_csvs("./", ju.connect(), "tables_*.csv")
     :param src: Source directory path
-    :param db_conn: DB connection object
+    :param conn: DB connection object
     :param include_ptn: Include pattern
     :param exclude_ptn: Exclude pattern
     :param chunksize: to_sql() chunk size
@@ -1115,26 +1230,26 @@ def load_csvs(src="./", db_conn=None, include_ptn='*.csv', exclude_ptn='', chunk
         if bool(exclude_ptn) and ex.search(os.path.basename(f)): continue
 
         f_name, f_ext = os.path.splitext(os.path.basename(f))
-        new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(db_conn) is False), prefix='t_')
+        new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(conn) is False), prefix='t_')
         _err("Creating table: %s ..." % (new_name))
         names_dict[new_name] = f
 
-        dfs[new_name] = csv2df(file_path=f, db_conn=db_conn, tablename=new_name, chunksize=chunksize)
+        dfs[new_name] = csv2df(file_path=f, conn=conn, tablename=new_name, chunksize=chunksize)
     return (names_dict, dfs)
 
 
-def csv2df(file_path, db_conn=None, tablename=None, chunksize=1000, header=0):
+def csv2df(file_path, conn=None, tablename=None, chunksize=1000, header=0):
     '''
     Load a CSV file into a DataFrame
-    If db_conn is given, import into a DB table
+    If conn is given, import into a DB table
     :param file_path: Exact file path (not file name or glob string)
-    :param db_conn: DB connection object. If not empty, also import into a sqlite table
+    :param conn: DB connection object. If not empty, also import into a sqlite table
     :param tablename: If empty, table name will be the filename without extension
     :param chunksize: Rows will be written in batches of this size at a time
     :param header: Row number(s) to use as the column names if not the first line (0) is not column name
                    Or a list of column names
     :return: Pandas DF object or False if file is not readable
-    #>>> df = ju.csv2df(file_path='./slow_queries.csv', db_conn=ju.connect())
+    #>>> df = ju.csv2df(file_path='./slow_queries.csv', conn=ju.connect())
     >>> pass    # Testing in df2csv()
     '''
     global _DB_SCHEMA
@@ -1145,11 +1260,11 @@ def csv2df(file_path, db_conn=None, tablename=None, chunksize=1000, header=0):
     if os.path.exists(file_path) is False:
         return False
     df = pd.read_csv(file_path, escapechar='\\', header=header, names=names)
-    if bool(db_conn):
+    if bool(conn):
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
         _err("tablename: %s ..." % (tablename))
-        df.to_sql(name=tablename, con=db_conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
+        df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
     return df
 
 
