@@ -112,12 +112,13 @@ function f_sysstat_setup() {
 
 function f_haproxy() {
     local __doc__="Install and setup HAProxy"
-    # Generate hostnames: docker ps --format "{{.Names}}" | grep -E "^node-(nxrm|iqs)+" | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
+    # Generate hostnames: docker ps --format "{{.Names}}" | grep -E "^node-(nxrm|iqs)+" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
     # HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
-    local _nodes="${1}"         # Space delimited
+    local _nodes="${1}"             # Space delimited
     local _ports="${2:-"8081 8443 8070"}" # Space delimited
-    local _certificate="${3}"   # Expecting same (concatenated) cert for front and backend
-    local _skipping_chk="${4}"  # To not check if port is reachable for each backend
+    local _certificate="${3}"       # Expecting same (concatenated) cert for front and backend
+    local _ssl_term="${4}"          # If Y, use SSL termination when _certificate is given
+    local _skipping_chk="${5}"      # To not check if port is reachable for each backend
     local _haproxy_tmpl_conf="${5:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
 
     [ -n "${_nodes}" ] || return 1
@@ -129,16 +130,10 @@ function f_haproxy() {
         apt-get install haproxy -y || return $?
     fi
 
-    local _frontend_proto="http"
-    local _frontend_ssl_crt=""
-    if [ -n "${_certificate}" ]; then
-        # If certificate is given, assuming to use TLS/SSL on *frontend*
-        if [ ! -s "${_certificate}" ]; then
-            _error "No ${_certificate} for TLS/SSL/HTTPS"
-            return 1
-        fi
-        _frontend_proto="https"
-        _frontend_ssl_crt=" ssl crt ${_certificate} alpn h2,http/1.1"   # Enabling HTTP/2 as newer HAProxy supports
+    # If certificate is given, assuming to use TLS/SSL on *frontend*
+    if [ -n "${_certificate}" ] && [ ! -s "${_certificate}" ]; then
+        _error "No ${_certificate} to setup TLS/SSL/HTTPS."
+        return 1
     fi
 
     # Always get the latest template for now
@@ -153,27 +148,29 @@ function f_haproxy() {
 
     # append 'ssl-server-verify none' in global
     # comment out 'default-server init-addr last,libc,none'
-    local _first_node="`echo ${_nodes} | awk '{print $1}'`"
     for _port in ${_ports}; do
-        grep -qE "\s+bind\s+.+:{_p}\s*$" "${_cfg}" && continue
+        # If _port is already configured somehow (which shouldn't be possible), skipping
+        if grep -qE "\s+bind\s+.+:${_port}\s*$" "${_cfg}"; then
+            _info "${_port} is already configured. Skipping ..."
+            continue
+        fi
 
+        # Generating backends first
         echo "
-frontend frontend_p${_port}
-  bind *:${_port}${_frontend_ssl_crt}
-  reqadd X-Forwarded-Proto:\ ${_frontend_proto}
-  default_backend backend_p${_port}
 backend backend_p${_port}
   balance roundrobin
   option forwardfor
   http-request set-header X-Forwarded-Port %[dst_port]
-  option httpchk" >> "${_cfg}"
+  option httpchk" > /tmp/f_haproxy_backends_$$.out
 #  http-request add-header X-Forwarded-Proto ${_backend_proto}
+
+        local _backend_proto="http"
         for _n in ${_nodes}; do
             if [[ "${_skipping_chk}" =~ ^(y|Y) ]]; then
                 if [ -n "${_certificate}" ]; then
-                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check" >> "${_cfg}"
+                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check" >> /tmp/f_haproxy_backends_$$.out
                 else
-                    echo "  server ${_n} ${_n}:${_port} check" >> "${_cfg}"
+                    echo "  server ${_n} ${_n}:${_port} check" >> /tmp/f_haproxy_backends_$$.out
                 fi
             else
                 if [ -n "${_certificate}" ]; then
@@ -181,19 +178,37 @@ backend backend_p${_port}
                     local _https_ver="$(curl -sI -k "https://${_n}:${_port}/" | sed -nr 's/^HTTP\/([12]).+/\1/p')"
                     if [[ "${_https_ver}" = "1" ]]; then
                         _info "Enabling HTTPS on backend: ${_n}:${_port} ..."
-                        echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check" >> "${_cfg}"
+                        echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check" >> /tmp/f_haproxy_backends_$$.out
+                        _backend_proto="https"
                     elif [[ "${_https_ver}" = "2" ]]; then
                         _info "Enabling HTTP/2 on backend: ${_n}:${_port} ..."
-                        echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} alpn h2,http/1.1 check" >> "${_cfg}"
+                        echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} alpn h2,http/1.1 check" >> /tmp/f_haproxy_backends_$$.out
+                        _backend_proto="https"
                     elif nc -z ${_n} ${_port}; then
                         # SSL termination
-                        echo "  server ${_n} ${_n}:${_port} check" >> "${_cfg}"
+                        echo "  server ${_n} ${_n}:${_port} check" >> /tmp/f_haproxy_backends_$$.out
                     fi
                 else
-                    nc -z ${_n} ${_port} && echo "  server ${_n} ${_n}:${_port} check" >> "${_cfg}"
+                    nc -z ${_n} ${_port} && echo "  server ${_n} ${_n}:${_port} check" >> /tmp/f_haproxy_backends_$$.out
                 fi
             fi
         done
+
+        local _frontend_proto="http"
+        local _frontend_ssl_crt=""
+        if [ -n "${_certificate}" ]; then
+            if [[ "${_ssl_term}" =~ ^(y|Y) ]] || [ "${_backend_proto}" = "https" ]; then
+                _frontend_proto="https"
+                _frontend_ssl_crt=" ssl crt ${_certificate} alpn h2,http/1.1"   # Enabling HTTP/2 as newer HAProxy anyway supports
+            fi
+        fi
+
+        echo "
+frontend frontend_p${_port}
+  bind *:${_port}${_frontend_ssl_crt}
+  reqadd X-Forwarded-Proto:\ ${_frontend_proto}
+  default_backend backend_p${_port}" >> "${_cfg}"
+        cat /tmp/f_haproxy_backends_$$.out >> "${_cfg}"
     done
 
     # NOTE: May need to configure rsyslog.conf for log if CentOS
