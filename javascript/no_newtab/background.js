@@ -5,17 +5,26 @@ chrome.webRequest.onBeforeRequest.addListener(noNewTab, {
   types: ["main_frame"]
 }, ["blocking"]);
 
+// If URL matches below, ignoring (because I'm using another similar extension)
+var ignore_regex = new RegExp("^https://(.+\.zendesk\.com/agent/tickets/)");
+
 function noNewTab(req) {
   // NOTE: You can tick Show timestamp in DevTools settings
   console.log("New req:", req);
 
-  // Get the list of currently opened tabs from *all* windows.
-  chrome.tabs.query({currentWindow: false}, function(tabs) {
+  if (ignore_regex.exec(req.url)) {
+    console.log('Requested URL is in ignore_regex, so no action required.');
+    return
+  }
+
+  // Get the list of currently opened tabs from *all* windows if initiator is set.
+  var queryInfo = (req.initiator) ? {currentWindow: true} : {};
+  chrome.tabs.query(queryInfo, function(tabs) {
     // It seems no 'break' in forEach?, so using 'target_tab'.
     var target_tab = null;
     tabs.forEach(function(tab) {
-      //console.log('Checking tab:', tab);
       if (target_tab === null) {
+        //console.log('Checking id:' + tab.id + ' url:' + tab.url); // This is for debugging
         if (tab.url.toString() === req.url.toString() && tab.id.toString() !== req.tabId.toString()) {
           target_tab = tab;
         }
