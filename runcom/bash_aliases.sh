@@ -36,7 +36,7 @@ alias wcln="awk 'length > max_length { max_length = length; longest_line_num = N
 which mdfind &>/dev/null && alias locat="mdfind"
 # Load/source my log searching utility functions
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
-alias logS="source /usr/local/bin/log_search; source $HOME/IdeaProjects/samples/bash/log_search.sh"
+alias logS="source $HOME/IdeaProjects/samples/bash/log_search.sh; source $HOME/IdeaProjects/samples/work/log_search.sh"
 alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py"
 alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 
@@ -62,7 +62,8 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 # TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
 # Slack API Search
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="cd $HOME/IdeaProjects/samples/python/ && nohup python ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
-[ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] && alias supportZip="python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py"
+[ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] && alias supportBoot="python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py"
+[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py ] && alias supportZip="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py"
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
