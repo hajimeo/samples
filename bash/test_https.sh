@@ -83,23 +83,29 @@ function export_key() {
 
 # generate .p12 (pkcs12) and .jks files from server cert/key (and CA cert)
 function gen_p12_jks() {
-    local _ca_crt="$1"
+    local _srv_key="$1"
     local _srv_crt="$2"
-    local _srv_key="$3"
+    local _full_ca_crt="$3"
     local _pass="${4:-password}"
-    local _name="$5"
+    local _new_pass="${5:-${_pass}}"
+    local _name="$6"
     if [ -z "${_name}" ]; then
         local _basename="$(basename ${_srv_crt})"
         _name="${_basename%.*}"
     fi
-    # NOTE: If intermediate CA is used (TODO: does order matter?)
-    #cat root.cer intermediate.cer > full_ca.cer
-    openssl pkcs12 -export -chain -CAfile ${_ca_crt} -in ${_srv_crt} -inkey ${_srv_key} -name ${_name} -out ${_name}.p12 -passout "pass:${_pass}"
+
+    if [ -n "${_full_ca_crt}" ]; then
+        # NOTE: If intermediate CA is used (TODO: does order matter?)
+        #cat root.cer intermediate.cer > full_ca.cer
+        openssl pkcs12 -export -chain -CAfile ${_full_ca_crt} -in ${_srv_crt} -inkey ${_srv_key} -name ${_name} -out ${_name}.p12 -passin "pass:${_pass}" -passout "pass:${_new_pass}"
+    else
+        openssl pkcs12 -export -in ${_srv_crt} -inkey ${_srv_key} -name ${_name} -out ${_name}.p12 -passin "pass:${_pass}" -passout "pass:${_new_pass}"
+    fi || return $?
     # Verify
     if which keytool &>/dev/null; then
-        keytool -list -keystore ${_name}.p12 -storetype PKCS12 -storepass "${_pass}"
+        keytool -list -keystore ${_name}.p12 -storetype PKCS12 -storepass "${_new_pass}" || return $?
         # Also, if .jks is needed:
-        keytool -importkeystore -srckeystore ${_name}.p12 -srcstoretype PKCS12 -srcstorepass "${_pass}" -destkeystore ${_name}.jks -deststoretype JKS -deststorepass "${_pass}"
+        keytool -importkeystore -srckeystore ${_name}.p12 -srcstoretype PKCS12 -srcstorepass "${_new_pass}" -destkeystore ${_name}.jks -deststoretype JKS -deststorepass "${_new_pass}"
     fi
 }
 
@@ -190,8 +196,13 @@ function get_certificate_from_https() {
     local _host="$1"
     local _port="${2:-443}"
     local _dest_filepath="$3"
+    local _proxy="$4"
     [ -z "${_dest_filepath}" ] && _dest_filepath=./${_host}_${_port}.crt
-    echo -n | openssl s_client -connect ${_host}:${_port} -showcerts > /tmp/${_host}_${_port}.tmp || return $?
+    if [ -n "${_proxy}" ]; then
+        echo -n | openssl s_client -connect ${_host}:${_port} -showcerts -proxy ${_proxy}
+    else
+        echo -n | openssl s_client -connect ${_host}:${_port} -showcerts
+    fi > /tmp/${_host}_${_port}.tmp || return $?
     sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp > ${_dest_filepath}
 }
 
