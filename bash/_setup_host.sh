@@ -115,7 +115,7 @@ function f_haproxy() {
     # Generate hostnames: docker ps --format "{{.Names}}" | grep -E "^node-(nxrm|iqs)+" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
     # HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
     local _nodes="${1}"             # Space delimited
-    local _ports="${2:-"8081 8443 8070"}" # Space delimited
+    local _ports="${2:-"8081 8443 8070 8071 8444"}" # Space delimited
     local _certificate="${3}"       # Expecting same (concatenated) cert for front and backend
     local _ssl_term="${4}"          # If Y, use SSL termination when _certificate is given
     local _skipping_chk="${5}"      # To not check if port is reachable for each backend
