@@ -154,10 +154,10 @@ function f_setup_python() {
     sudo -i pip3 list -o | tee /tmp/pip.log
     #sudo -i pip3 list -o --format=freeze | cut -d'=' -f1 | xargs sudo -i pip3 install -U
 
+    sudo -i pip3 install lxml pyjq
+
     # Autocomplete doesn't work. @see https://github.com/ipython/ipython/issues/11530
-    sudo pip3 install ipython==7.1.1
-    sudo -i pip3 install jupyter --log /tmp/pip.log &>/dev/null || return $?
-    sudo -i pip3 install jupyterlab --log /tmp/pip.log &>/dev/null || return $?
+    sudo -i pip3 install ipython==7.1.1 jupyter jupyterlab --log /tmp/pip.log &>/dev/null || return $?
     # Need "-H"? eg: sudo -H pip3 uninstall -y jupyterlab && sudo -H pip3 install jupyterlab
     # Need to add /usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin in PATH?
     # TODO: as of today no jupyter_contrib_labextensions (lab)
@@ -180,11 +180,9 @@ function f_setup_python() {
 
     #_install libsasl2-dev
     #sudo -i pip3 install sasl thrift thrift-sasl PyHive
-    #sudo -i pip3 install pyhive[hive]
     # This is for using Java 1.8 (to avoid "unsupported major.minor version 52.0")
-    sudo -i pip3 install 'JPype1==0.6.3' --force-reinstall
-    sudo -i pip3 install JayDeBeApi
-    sudo -i pip3 install google-cloud-bigquery
+    sudo -i pip3 install JPype1==0.6.3 JayDeBeApi
+    #sudo -i pip3 install google-cloud-bigquery
 
     f_jupyter_util
 }
