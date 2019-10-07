@@ -4,7 +4,7 @@
       <!--This sends everything else to /public -->
       <id>nexus</id>
       <mirrorOf>*</mirrorOf>
-      <url>http://dh1:8081/repository/maven-central/</url>
+      <url>http://dh1:8081/repository/maven-public/</url>
     </mirror>
   </mirrors>
   <profiles>
@@ -46,7 +46,8 @@
     <server>
       <id>nexus</id>
       <username>admin</username>
-      <password>admin</password>
+      <!--password>{geVfoESt88cHvvQUUIMu1vDwc/PxCjMt0zlwy/8sMJo=}</password-->
+      <password>{g9UvVDAvg2YHCt6hUa4y/GxJZgXGlhl74THbWOURh0Q=}</password>
     </server>
   </servers>
 </settings>
