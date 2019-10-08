@@ -55,8 +55,10 @@ function f_javaenvs() {
         return 11
     fi
     local _user="`stat -c '%U' /proc/${_p}`"
-    local _dir="$(dirname `readlink /proc/${_p}/exe` 2>/dev/null)"
-    export JAVA_HOME="$(dirname $_dir)"
+    if [ -z "$JAVA_HOME" ]; then
+        local _dir="$(dirname `readlink /proc/${_p}/exe` 2>/dev/null)"
+        export JAVA_HOME="$(dirname ${_dir})"
+    fi
     if [ -z "$CLASSPATH" ]; then
         export CLASSPATH=".:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
     else
