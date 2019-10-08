@@ -176,7 +176,9 @@ $0 '$1' '$2' '<jar path from above>' '$4' [Y]"
                 if [ ! -d "${_DIR_PATH}" ]; then
                     mkdir -p "${_DIR_PATH}" || exit $?
                 fi
-                mv -f ${_CLASS_FILEPATH} ${_DIR_PATH%/}/ || exit $?
+                if [ "$(realpath ${_CLASS_FILEPATH})" != "$(realpath ${_DIR_PATH%/}/${_CLASS_FILENAME})" ]; then
+                    mv -f ${_CLASS_FILEPATH} ${_DIR_PATH%/}/ || exit $?
+                fi
                 _CLASS_FILEPATH=${_DIR_PATH%/}/${_CLASS_FILENAME}
             fi
 
