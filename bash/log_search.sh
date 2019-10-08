@@ -492,7 +492,7 @@ function f_list_start_end(){
     else
         local _files="`ls -1`"
     fi
-    for _f in `echo ${_files}`; do f_start_end_time_with_diff $_f "^${_date_regex}"; done | sort -t$'\t' -k${_sort}
+    for _f in `echo ${_files}`; do f_start_end_time_with_diff $_f "^${_date_regex}"; done | sort -t$'\t' -k${_sort} | column -t -s$'\t'
 }
 
 function f_start_end_time_with_diff(){
@@ -875,8 +875,8 @@ function _find_and_cat() {
     local _name="$1"
     local _once="$2"
     for _f in `find . -name "${_name}" -print`; do
-        echo "## ${_f}" >&2
         if [ -n "${_f}" ]; then
+            echo "## ${_f}" >&2
             cat "${_f}"
             echo ''
             [[ "${_once}" =~ ^(y|Y) ]] && break
@@ -919,6 +919,27 @@ function _search_properties() {
             _grep -P "${_p}" "${_path}"
         fi
     done
+}
+
+function _get_json() {
+    local _props="$1" # python list string ['xxxx','yyyy'] (no space)
+    local _key="${2:-"key"}"
+    local _val="${3:-"value"}"
+    # Requires jn_utils.py
+    python3 -c '# language=Python
+import sys,json
+_d =json.loads(sys.stdin.read())
+for _p in '${_props}':
+  if _p.startswith("'${_key}'=") and type(_d) == list:
+    (_k, _k_name) = _p.split("=", 1)
+    for _i in _d:
+      if _k in _i and _i[_k] == _k_name:
+        _d = _i["'${_val}'"]
+        break
+  elif _p in _d:
+    _d = _d[_p]
+print(_d)
+'
 }
 
 function _sed() {
