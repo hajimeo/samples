@@ -34,7 +34,7 @@ Required commands:
     brew install dateutils    # for dateconv
     brew install coreutils    # for gtac gdate
     brew install q
-    pip3 install data_hacks    # for bar_chart.py
+    pip install data_hacks    # for bar_chart.py
 
 Setup:
     ln -s ${0} /usr/local/bin/log_search
@@ -80,7 +80,7 @@ function f_postgres_log() {
 function f_grep_multilines() {
     local __doc__="Multiline search with 'rg' dotall TODO: dot and brace can't be used in _str_in_1st_line"
     local _str_in_1st_line="$1"
-    local _glob="${2:-"debug.*log*"}"
+    local _glob="${2:-"*.*log*"}"
     local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d"}"
 
     # NOTE: '\Z' to try matching the end of file returns 'unrecognized escape sequence'
@@ -95,7 +95,7 @@ function f_grep_multilines() {
 function f_grep_logs() {
     local __doc__="Grep YYYY-MM-DD.hh:mm:ss.+<something>"
     local _str_in_1st_line="$1"
-    local _glob="${2:-"debug.*log*"}"
+    local _glob="${2:-"*.*log*"}"
     local _exclude_warn_error="${3}"
 
     local _regex_1="^${_DATE_FORMAT}.\d\d:\d\d:\d\d.+(${_str_in_1st_line})"
@@ -129,7 +129,7 @@ function f_topCausedByExceptions() {
 
 function f_topErrors() {
     local __doc__="List top ERRORs. NOTE: with _date_from and without may produce different result (ex: Caused by)"
-    local _glob="${1:-"engine.*log*"}"   # file path which rg accepts and NEEDS double-quotes
+    local _glob="${1:-"*.*log*"}"   # file path which rg accepts and NEEDS double-quotes
     local _date_regex="$2"   # ISO format datetime, but no seconds (eg: 2018-11-05 21:00)
     local _regex="$3"       # to overwrite default regex to detect ERRORs
     local _top_N="${4:-10}" # how many result to show
@@ -165,15 +165,17 @@ function f_topErrors() {
 
 function f_listWarns() {
     local __doc__="List the counts of frequent warns and also errors"
-    local _glob="${1:-"warn*.log*"}"
+    local _glob="${1:-"*.*log*"}"
     local _date_4_bar="${2:-"\\d\\d\\d\\d-\\d\\d-\\d\\d \\d\\d"}"
     local _top_N="${3:-40}"
 
+    local _regex="\b(ERROR|FATAL|SEVERE|WARN|FAILED)\b"
     #rg -z -c -g "${_glob}" "${_regex}"
-    rg -z --no-line-number --no-filename -g "${_glob}" "^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d,\d\d\d (ERROR|FATAL|SEVERE|WARN)" > /tmp/f_listWarns.$$.tmp
+    rg -z -c -g "${_glob}" "^$_DATE_FORMAT.\d\d:\d\d:\d\d.+${_regex}"
+    rg -z --no-line-number --no-filename -g "${_glob}" "^$_DATE_FORMAT.\d\d:\d\d:\d\d.+${_regex}" > /tmp/f_listWarns.$$.tmp
 
     # count by class name and ignoring only once or twice warns
-    rg "(ERROR|FATAL|SEVERE|WARN) +\[[^]]+\] \{[^}]*\} ([^ ]+)" -o -r '$1 $2' /tmp/f_listWarns.$$.tmp | _replace_number | sort | uniq -c | sort -n | grep -vE ' +[12] WARN' | tail -n ${_top_N}
+    rg "${_regex}.+\[[^]]+\] \{[^}]*\} ([^ ]+)" -o -r '$1 $2' /tmp/f_listWarns.$$.tmp | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
     echo " "
     rg -o "^${_date_4_bar}" /tmp/f_listWarns.$$.tmp | bar_chart.py
 }
@@ -181,7 +183,7 @@ function f_listWarns() {
 function f_topSlowLogs() {
     local __doc__="List top performance related log entries."
     local _date_regex="$1"
-    local _glob="${2:-debug.*log*}"
+    local _glob="${2:-"*.*log*"}"
     local _regex="$3"
     local _not_hiding_number="$4"
     local _top_N="${5:-10}" # how many result to show
@@ -194,13 +196,14 @@ function f_topSlowLogs() {
     fi
 
     echo "# Regex = '${_regex}'"
+    rg -z -N --no-filename -g "${_glob}" -io "$_regex" > /tmp/f_topSlowLogs.$$.tmp
     #rg -z -c -g "${_glob}" -wio "${_regex}"
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
-        rg -z -N --no-filename -g "${_glob}" -io "$_regex" | sort | uniq -c | sort -n
+        cat /tmp/f_topSlowLogs.$$.tmp
     else
         # ([0-9]){2,4} didn't work also (my note) sed doesn't support \d
-        rg -z -N --no-filename -g "${_glob}" -io "$_regex" | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
-    fi
+        cat /tmp/f_topSlowLogs.$$.tmp | _replace_number
+    fi | sort | uniq -c | sort -n | tail -n ${_top_N}
 }
 
 function f_appLogFindAppMaster() {
