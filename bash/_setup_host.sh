@@ -121,7 +121,18 @@ function f_haproxy() {
     local _skipping_chk="${5}"      # To not check if port is reachable for each backend
     local _haproxy_tmpl_conf="${5:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
 
-    [ -n "${_nodes}" ] || return 1
+    if [ -z "${_nodes}" ]; then
+        _nodes="$(for _n in `docker ps --format "{{.Names}}" | grep -E "^node.+" | grep -v "freeipa" | sort`;do docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])"; done | tr '\n' ' ')"
+        _info "INFO" "Using '${_nodes}' ..."; sleep 3
+        if [ -z "${_certificate}" ]; then
+            _certificate="/var/tmp/share/cert/standalone.localdomain.certs.pem"
+            if [ ! -s "${_certificate}" ]; then
+                if ! curl -f -o ${_certificate} "https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.certs.pem"; then
+                    _certificate=""
+                fi
+            fi
+        fi
+    fi
 
     local _cfg="/etc/haproxy/haproxy.cfg"
     if which haproxy &>/dev/null; then
