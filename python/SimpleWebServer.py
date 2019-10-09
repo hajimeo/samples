@@ -49,11 +49,10 @@ class SimpleWebServer(BaseHTTPRequestHandler):
             for o in json_obj['messages']['matches']:
                 SimpleWebServer.log('    matchN = ' + json.dumps(o, indent=2, sort_keys=True))
                 html += u"<hr/>"
-                html += u"DateTime: " + toDateStr(o['ts']) + "<br/>\n"
-                html += u"Channel:  " + o['channel']['name'] + " | Username: " + o['username'] + u" (" + o['user'] + ")<br/>\n"
-                html += u"PermaLink: <a href='" + o['permalink'].replace('/archives/',
-                                                                         '/messages/') + u"' target='_blank'>" + o[
-                            'permalink'] + u"</a><br/>\n"
+                html += u"<pre>"
+                html += u"DATETIME : " + toDateStr(o['ts']) + " | CHANNEL: " + o['channel']['name'] + " | USERNAME: " + o['username'] + u" (" + o['user'] + ")\n"
+                html += u"PERMALINK: <a href='" + o['permalink'].replace('/archives/','/messages/') + u"' target='_blank'>" + o['permalink'] + u"</a>\n"
+                html += u"</pre>"
                 html += u"<blockquote style='white-space:pre-wrap'><tt>" + o['text'] + u"</tt></blockquote>\n"
         else:
             SimpleWebServer.log('    response = ' + str(json_str))
