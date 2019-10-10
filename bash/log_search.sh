@@ -877,7 +877,8 @@ function _date2int() {
 function _find_and_cat() {
     local _name="$1"
     local _once="$2"
-    for _f in `find . -name "${_name}" -print`; do
+    # Accept not only file name but also /<dir>/<filename>
+    for _f in `find . -type f -print | grep -w "${_name}$"`; do
         if [ -n "${_f}" ]; then
             echo "## ${_f}" >&2
             cat "${_f}"
@@ -925,16 +926,20 @@ function _search_properties() {
 }
 
 function _get_json() {
-    local _props="$1" # python list string ['xxxx','yyyy'] (no space)
-    local _key="${2:-"key"}"
-    local _val="${3:-"value"}"
+    local _props="$1" # python list string ['xxxx','yyyy','key[:=]value'] (*NO* space)
+    local _key="${2-"key"}"
+    local _val="${3-"value"}"
     # Requires jn_utils.py
-    python3 -c '# language=Python
-import sys,json
+    python3 -c 'import sys,json,re
+m = ptn_c = None
+if len("'${_key}'") > 0:
+  ptn_c = re.compile("[\"]?('${_key}')[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")
 _d =json.loads(sys.stdin.read())
 for _p in '${_props}':
-  if _p.startswith("'${_key}'=") and type(_d) == list:
-    (_k, _k_name) = _p.split("=", 1)
+  if len("'${_key}'") > 0:
+    m = ptn_c.search(_p)
+  if m and type(_d) == list:
+    (_k, _k_name) = m.groups()
     for _i in _d:
       if _k in _i and _i[_k] == _k_name:
         _d = _i["'${_val}'"]
