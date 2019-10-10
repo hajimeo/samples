@@ -3,6 +3,12 @@ colorscheme pablo
 "set nu
 set hlsearch
 set nocompatible
+"Use za (toggle), zO, zC
+set foldmethod=syntax
+set nofoldenable
+"TODO: I don't understand how below will be useful at this moment.
+"set foldnestmax=10
+"set foldlevel=2
 set wildmenu
 set wildmode=list:longest,full
 set directory=.,$TEMP
