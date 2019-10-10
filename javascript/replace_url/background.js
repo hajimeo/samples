@@ -88,7 +88,7 @@ console.log("_id: " + _id);
 document.querySelector('a.search-icon').click();
 document.querySelector('#mn_1').value=_id;
 document.querySelector('a.advanced-search').click();
-true;
+document.location.href;
 `.trim();
     chrome.tabs.executeScript(target_tab.id, {
       code: inner_script
