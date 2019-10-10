@@ -351,8 +351,9 @@ function f_apache_proxy() {
         return 1
     fi
 
-    mkdir -m 777 $_proxy_dir
-    mkdir -p -m 777 ${_cache_dir}
+    # TODO: 777...
+    [ ! -d "${_proxy_dir}" ] && mkdir -p -m 777 "${_proxy_dir}"
+    [ ! -d "${_cache_dir}" ] && mkdir -p -m 777 "${_cache_dir}"
 
     if [ -s /etc/apache2/sites-available/proxy.conf ]; then
         _info "/etc/apache2/sites-available/proxy.conf already exists. Skipping..."
@@ -375,6 +376,7 @@ function f_apache_proxy() {
     echo "    SSLEngine on
     SSLCertificateFile /etc/apache2/ssl/server.crt
     SSLCertificateKeyFile /etc/apache2/ssl/server.key
+    RequestHeader set X-Forwarded-Proto https
 " >> /etc/apache2/sites-available/proxy.conf
     fi
 
@@ -406,8 +408,73 @@ function f_apache_proxy() {
     </IfModule>
 </VirtualHost>" >> /etc/apache2/sites-available/proxy.conf
 
-    a2ensite proxy
+    a2ensite proxy || return $?
     # Due to 'ssl' module, using restart rather than reload
+    _info "restarting apache2 just in case..."
+    service apache2 restart
+}
+
+function f_apache_reverse_proxy() {
+    local __doc__="Generate reverse proxy.conf *per* port, and restart apache2"
+    local _redirect2="${1}" # http://hostname:port/path
+    local _port="${2}"
+
+    which apt-get &>/dev/null || return 1
+    [ -z "${_redirect2}" ] && return 1
+    if [ -z "${_port}" ]; then
+        if [[ "${_redirect2}" =~ .+:([0-9]+)[/]?.* ]]; then
+            _port="${BASH_REMATCH[1]}"
+            _info "No port given, so using ${_port} ..."
+        else
+            _error "No port given"
+            return 1
+        fi
+    fi
+    if netstat -ltnp | grep -E ":${_port}\s+" | grep -v apache2; then
+        _error "Port ${_port} might be in use."
+        return 1
+    fi
+
+    local _conf="/etc/apache2/sites-available/rproxy${_port}.conf"
+    if [ -s ${_conf} ]; then
+        _info "${_conf} already exists. Skipping..."
+        return 0
+    fi
+
+    apt-get install -y apache2 apache2-utils
+    a2enmod proxy proxy_http proxy_connect proxy_wstunnel ssl
+
+    grep -i "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
+
+    echo "<VirtualHost *:${_port}>
+    ServerName `hostname -f`
+    AllowEncodedSlashes NoDecode
+    LogLevel warn
+    ErrorLog \${APACHE_LOG_DIR}/proxy_error_${_port}.log
+    CustomLog \${APACHE_LOG_DIR}/proxy_access_${_port}.log combined" > ${_conf}
+
+    # TODO: Can't use proxy for SSL port
+    if [ -s /etc/apache2/ssl/server.key ]; then
+    echo "    SSLEngine on
+    SSLCertificateFile /etc/apache2/ssl/server.crt
+    SSLCertificateKeyFile /etc/apache2/ssl/server.key
+    RequestHeader set X-Forwarded-Proto https
+" >> ${_conf}
+    fi
+
+    echo "    <IfModule mod_proxy.c>
+        ProxyPass / ${_redirect2%/}/ nocanon
+        ProxyPassReverse / ${_redirect2%/}/
+        ProxyRequests Off
+        ProxyPreserveHost On
+    </IfModule>
+</VirtualHost>" >> ${_conf}
+
+    # TODO: http://www.microhowto.info/howto/configure_apache_to_use_kerberos_authentication.html
+
+    a2ensite rproxy${_port} || return $?
+    # Due to 'ssl' module, using restart rather than reload
+    _info "restarting apache2 just in case..."
     service apache2 restart
 }
 
