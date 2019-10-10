@@ -140,7 +140,7 @@ function f_topErrors() {
     fi
 
     if [ -z "$_regex" ]; then
-        _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|[Ff]ailed)\b.+"
+        _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|FAILED)\b.+"
     fi
 
     if [ -n "${_date_regex}" ]; then
@@ -940,12 +940,20 @@ for _p in '${_props}':
     m = ptn_c.search(_p)
   if m and type(_d) == list:
     (_k, _k_name) = m.groups()
+    _found = False
     for _i in _d:
       if _k in _i and _i[_k] == _k_name:
         _d = _i["'${_val}'"]
+        _found = True
         break
+    if _found is False:
+      _d = None
+      break
   elif _p in _d:
     _d = _d[_p]
+  else:
+    _d = None
+    break
 pprint.pprint(_d)
 '
 }
