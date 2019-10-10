@@ -930,7 +930,7 @@ function _get_json() {
     local _key="${2-"key"}"
     local _val="${3-"value"}"
     # Requires jn_utils.py
-    python3 -c 'import sys,json,re
+    python3 -c 'import sys,json,re,pprint
 m = ptn_c = None
 if len("'${_key}'") > 0:
   ptn_c = re.compile("[\"]?('${_key}')[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")
@@ -946,7 +946,7 @@ for _p in '${_props}':
         break
   elif _p in _d:
     _d = _d[_p]
-print(_d)
+pprint.pprint(_d)
 '
 }
 
