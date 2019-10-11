@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/test_https.sh
+# curl -o /var/tmp/share/test_https.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/test_https.sh
 _TEST_PORT=34443
 
 function get_ciphers() {
@@ -106,6 +106,8 @@ function gen_p12_jks() {
         keytool -list -keystore ${_name}.p12 -storetype PKCS12 -storepass "${_new_pass}" || return $?
         # Also, if .jks is needed:
         keytool -importkeystore -srckeystore ${_name}.p12 -srcstoretype PKCS12 -srcstorepass "${_new_pass}" -destkeystore ${_name}.jks -deststoretype JKS -deststorepass "${_new_pass}"
+        # NOTE: to convert from .jks to .p12
+        #keytool -importkeystore -srckeystore ${_name}.jks -deststoretype JKS -srcstorepass "${_new_pass}" -destkeystore ${_name}.p12 -deststoretype PKCS12 -srcstorepass "${_new_pass}"
     fi
 }
 
