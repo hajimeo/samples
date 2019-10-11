@@ -21,11 +21,13 @@ function usage() {
 This script is for building a small docker container for testing an application in dev environment.
 
 CREATE CONTAINER:
-    -c [-v <version>] [-n <container name>]
+    -c [-v <version>] [-n <container name>] [-o <install options>]
         Strict mode to create a container. If the named container exists, this script fails.
         <version> in -v is such as x.x.x.
         <container name> in -n is a container name (= hostname).
         If no name specified, generates some random name.
+    Ex:
+        setup_standalone.sh -c -n node-nxiq1740 -v 1.74.0 -o \"-t nxiq\"
 
     NOTE: Below location is used to download app installer
         export _DOWNLOAD_URL=http://xxx.xxx.xxx.xxx/zzz/
@@ -51,8 +53,8 @@ OTHERS (which normally you don't need to use):
         To specify a path of the software licence file.
         If not specified (default), the installer script (install_${_SERVICE}.sh) should decide.
 
-    -M 11111
-        Monitoring port.
+    -M 8081
+        Monitoring port. Script watis until this port will be available or timeouts.
 
     -N
         Not installing anything, just creating an empty container.
@@ -451,6 +453,7 @@ function f_docker_start() {
 }
 
 function f_as_log_cleanup() {
+    local __doc__="TODO: need to be universal"
     local _hostname="$1"    # short name is also OK
     local _service="${2:-${_SERVICE}}"
     local _remove_installer="${3}"
@@ -594,7 +597,7 @@ function f_as_setup() {
     local __doc__="Install/Setup a specific Application Service for the container"
     local _hostname="$1"
     local _version="${2:-${_VERSION}}"
-    local _options="${3:-"-S"}"
+    local _options="${3}"
     local _license="${4:-${_LICENSE}}"
     local _service="${5:-${_SERVICE}}"
     local _work_dir="${6:-${_WORK_DIR}}"
@@ -699,11 +702,11 @@ function f_as_install() {
     local _version="${2-$_VERSION}" # If no version, do not install(setup) the application
     local _base="${3:-"${_BASE_IMAGE}:${_OS_VERSION}"}"
     local _ports="${4}"      #"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
-    local _extra_opts="${5}" # eg: "--add-host=imagename.standalone:127.0.0.1"
+    local _docker_opts="${5}" # eg: "--add-host=imagename.standalone:127.0.0.1"
     local _install_opts="${6}"
 
     # Creating a new (empty) container and install the application
-    f_docker_run "${_name}.${_DOMAIN#.}" "${_base}" "${_ports}" "${_extra_opts}" || return $?
+    f_docker_run "${_name}.${_DOMAIN#.}" "${_base}" "${_ports}" "${_docker_opts}" || return $?
     f_container_useradd "${_name}" "${_SERVICE}" || return $?
 
     if [ -n "$_version" ] && ! $_AS_NO_INSTALL_START; then
@@ -1171,7 +1174,7 @@ main() {
             local _base="${_IMAGE_NAME:-"${_BASE_IMAGE}:${_OS_VERSION}"}"
             _log "INFO" "Creating ${_NAME} container from ${_base} (v:${_VERSION})..."
             # Creating a new (empty) container and install the application
-            f_as_install "${_NAME}" "${_VERSION}" "${_base}" "${_ports}" || return $?
+            f_as_install "${_NAME}" "${_VERSION}" "${_base}" "${_ports}" "" "${_INSTALL_OPTS}" || return $?
         fi
     fi
 
@@ -1229,7 +1232,7 @@ main() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "chi:l:M:Nn:PRSsuv:X" opts; do
+    while getopts "chi:l:M:Nn:o:PRSsuv:X" opts; do
         case $opts in
             c)
                 _CREATE_CONTAINER=true
@@ -1254,6 +1257,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             n)
                 _NAME="$OPTARG"
+                ;;
+            o)
+                _INSTALL_OPTS="$OPTARG"
                 ;;
             P)
                 _DOCKER_PORT_FORWARD=true
