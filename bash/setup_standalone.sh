@@ -121,7 +121,7 @@ fi
 
 ### Functions used to build and setup a container
 function f_update() {
-    local __doc__="Download the latest code from git and replace"
+    local __doc__="Download the latest code/package from the given URL (or github) and replace"
     local _target="${1:-${BASH_SOURCE}}"
     local _remote_repo="${2:-"https://raw.githubusercontent.com/hajimeo/samples/master/bash/"}"
 
@@ -453,17 +453,21 @@ function f_docker_start() {
 }
 
 function f_as_log_cleanup() {
-    local __doc__="TODO: need to be universal"
+    local __doc__="Find log|logs|tmp directories and delete non binary files older than X days"
     local _hostname="$1"    # short name is also OK
-    local _service="${2:-${_SERVICE}}"
-    local _remove_installer="${3}"
+    local _days="${2:-2}"  # NOT in use (was before)
+    local _service="${3:-${_SERVICE}}"  # NOT in use (was before)
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    docker exec -it ${_name} bash -c 'find /usr/local/'${_service}'/{log,share/postgresql-*/data/pg_log} -type f -and \( -name "*.log.gz" -o -name "*.log" -o -name "*.stdout" \) -and -print0 2>/dev/null | xargs -0 -P3 -n1 -I {} rm -f {}'
-    docker exec -it ${_name} bash -c 'find /opt/'${_service}'/log -type f -and \( -name "*.log.gz" -o -name "*.log" -o -name "*.stdout" \) -and -print0 2>/dev/null | xargs -0 -P3 -n1 -I {} rm -f {}'
-    if [[ "${_remove_installer}" =~ ^(y|Y) ]]; then
-        docker exec -it ${_name} bash -c 'rm -rf /home/'${_service}'/'${_service}'-*-el6.x86_64;rm -rf /home/'${_service}'/log/*'
-    fi
+    # Using xargs instead of -delete so that can see what's deleted. Also -mount for not checking non-local file system, and -size +0 for not deleting placeholder files.
+    docker exec -it ${_name} bash -c 'for _d in $(find /{var,opt} -mount -type d \( -name log -o -name logs -o -name tmp \) -print); do
+        if [ "tmp" == "$(basename "${_d}")" ]; then
+            find "${_d%/}" -mount -type f -size +0 -mtime +'${_days}' -print0
+        else
+            find "${_d%/}" -mount -type f -size +0 -mtime +'${_days}' \( -name '*log*' -o -name '*.out' -o -name '*.tmp' \) -exec grep -Iq . {} \; -print0
+        fi 2>/dev/null | xargs -0 -P3 -n1 -t -I {} rm -f {}
+    done'
+    docker exec -it ${_name} bash -c 'find /tmp -mount -type f -mtime +'${_days}' -delete'
 }
 
 function f_docker_commit() {
