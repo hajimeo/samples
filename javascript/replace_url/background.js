@@ -33,10 +33,10 @@ function replaceUrl(req) {
   //console.log("New URL = " + new_url);
   var new_url = req.url;
 
-  // Get the list of currently opened tabs from *all* windows if initiator is set.
-  var queryInfo = (req.initiator) ? {currentWindow: true} : {};
-  console.log("queryInfo:", queryInfo);
-  chrome.tabs.query(queryInfo, function(tabs) {
+  // Get the list of currently opened tabs from current windows.
+  //var queryInfo = (req.initiator) ? {currentWindow: true} : {};
+  //console.log("queryInfo:", queryInfo);
+  chrome.tabs.query({currentWindow: true}, function(tabs) {
     // TODO: It seems no 'break' in forEach?, so using 'target_tab' to decide if it's already found or not.
     var target_is_active = false;
     var target_tab = null;
