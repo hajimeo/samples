@@ -12,8 +12,9 @@ To update this script, execute "ju.update()".
 
 # TODO: When you add a new pip package, don't forget to update setup_work.env.sh
 import sys, os, fnmatch, gzip, re
-from time import time
+from time import time, mktime, strftime
 from datetime import datetime
+from dateutil import parser
 import pandas as pd
 from sqlalchemy import create_engine
 import sqlite3
@@ -254,7 +255,7 @@ def _json2table(filename, tablename=None, conn=None, col_name='json_text', appen
         _err("Drop if exists and Creating table: %s ..." % (str(tablename)))
     else:
         _err("Creating table: %s ..." % (str(tablename)))
-    res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s TEXT)" % (tablename, col_name)) # JSON type not supported?
+    res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s TEXT)" % (tablename, col_name))  # JSON type not supported?
     if bool(res) is False:
         return res
     return conn.executemany("INSERT INTO " + tablename + " VALUES (?)", str(j_str))
@@ -436,11 +437,38 @@ def _udf_regex(regex, item, rtn_idx=0):
     return matches.group(rtn_idx)
 
 
+def _udf_str2sqldt(date_time, format):
+    """
+    Date/Time handling UDF for SQLite
+    eg: SELECT UDF_STR2SQLDT('14/Oct/2019:00:00:05 +0800', '%d/%b/%Y:%H:%M:%S %z') as SQLite_DateTime, ...
+    :param date_time:   String - Date and Time string
+    :param format:      String - Format
+    :return:            String - SQLite accepting date time string
+    """
+    # 14/Oct/2019:00:00:05 +0800 => 2013-10-07 04:23:19.120-04:00
+    # https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior
+    d = datetime.strptime(date_time, format)
+    return d.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+
+
+def _udf_timestamp(date_time):
+    """
+    Unix timestamp handling UDF for SQLite
+    eg: SELECT UDF_TIMESTAMP(some_datetime) as unix_timestamp, ...
+    :param date_time: String or Date/Time column (but SQLite doesn't have date/time columns)
+    :return:          Integer of Unix Timestamp
+    """
+    # NOTE: SQLite way: CAST((julianday(some_datetime) - 2440587.5)*86400.0
+    return int(mktime(parser.parse(date_time).timetuple()))
+
+
 def _register_udfs(conn):
     global _LOAD_UDFS
     if _LOAD_UDFS:
         # UDF_REGEX(regex, column, integer)
         conn.create_function("UDF_REGEX", 3, _udf_regex)
+        conn.create_function("UDF_STR2SQLDT", 2, _udf_str2sqldt)
+        conn.create_function("UDF_TIMESTAMP", 1, _udf_timestamp)
     return conn
 
 
@@ -1019,9 +1047,12 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
 
     f = _open_file(file_path)
     # Read lines
+    _ln = 0
     for l in f:
+        _ln += 1
+        if (_ln % 10000) == 0:
+            _err("  Processed %s lines at %s ..." % (str(_ln), _timestamp()))
         if bool(l) is False: break
-        # _err("  line: %s ..." % (l[:100]))
         (tmp_tuple, prev_matches, prev_message) = _find_matching(line=l, prev_matches=prev_matches,
                                                                  prev_message=prev_message, begin_re=begin_re,
                                                                  line_re=line_re, size_re=size_re, time_re=time_re,
@@ -1068,6 +1099,11 @@ def logs2table(filename, tablename=None, conn=None,
          col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
          line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
          size_regex=None, time_regex=None, max_file_num=20)
+    #>>> logs2table("request.log",
+              col_names=['clientHost', 'user', 'dateTime', 'method', 'requestUrl', 'statusCode', 'contentLength',
+                         'byteSent', 'elapssedTime', 'userAgent', 'thread'],
+              line_matching='^([0-9.]+) [^ ]+ ([^ ]+) \[([^\]]+)\] "([^ ]+) ([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
+             )
     >>> pass    # TODO: implement test
     """
     global _SIZE_REGEX
