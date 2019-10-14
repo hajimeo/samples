@@ -827,6 +827,23 @@ function f_count_threads_per_dump() {
     cd -
 }
 
+function f_request2csv() {
+    local __doc__="Convert a jetty request log to a csv file"
+    local _request_file="$1"
+    local _csv="$2"
+    if [ -z "${_csv}" ]; then
+        _csv="$(basename ${_request_file} .log).csv"
+    fi
+    # NOTE: check jetty-requestlog.xml and logback-access.xml
+    if [ ! -s "${_csv}" ]; then
+        echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapssedTime","userAgent","thread"' > ${_csv}
+    else
+        echo "# Appending into ${_csv} ..."
+    fi
+    rg --no-filename -N -z \
+        '^([0-9.]+) [^ ]+ ([^ ]+) \[([^\]]+)\] "([^ ]+) ([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]' \
+        -o -r '"$1","$2","$3","$4","$5","$6","$7","$8","$9","$10","$11"' ${_request_file} >> ${_csv}
+}
 
 ### Private functions ##################################################################################################
 
