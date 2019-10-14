@@ -929,6 +929,7 @@ function _get_json() {
     local _props="$1" # python list string ['xxxx','yyyy','key[:=]value'] (*NO* space)
     local _key="${2-"key"}"
     local _val="${3-"value"}"
+    local _no_pprint="${4}"
     # Requires jn_utils.py
     python3 -c 'import sys,json,re,pprint
 m = ptn_c = None
@@ -954,7 +955,12 @@ for _p in '${_props}':
   else:
     _d = None
     break
-pprint.pprint(_d)
+if "'${_no_pprint}'".lower() == "y":
+  print(_d)
+else:
+  if type(_d) == list:
+    _d = list(dict.fromkeys(_d))
+  pprint.pprint(_d, indent=4)
 '
 }
 
