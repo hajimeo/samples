@@ -1,6 +1,7 @@
 ## Simple/generic alias commands (some need pip though) ################################################################
 # 'cd' to last modified directory
 alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
+alias fd='find . -name'
 alias pjt='python -m json.tool'
 alias urldecode='python -c "import sys, urllib as ul; print(ul.unquote_plus(sys.argv[1]))"'
 #alias urlencode='python -c "import sys, urllib as ul; print ul.quote_plus(sys.argv[1])"'
@@ -63,8 +64,6 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 # TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
 # Slack API Search
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="cd $HOME/IdeaProjects/samples/python/ && nohup python ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
-[ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] && alias supportBoot="python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py"
-[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py ] && alias supportZip="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py"
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
@@ -294,8 +293,40 @@ function push2search() {
     echo ""
     [[ "${_yes}" =~ ^[yY] ]] && eval "${_cmd}"
 }
+
+
 ## Work specific functions
 function pubS() {
     scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/
     date
+}
+function sptZip() {
+    local _zip="$1"
+    [ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py ] || return 1
+    if [ -z "${_zip}" ]; then
+        _zip="$(ls -1 ./support-20*.zip | tail -n1)" || return $?
+        echo "Using ${_zip} ..."
+    fi
+    local _name="$(basename "${_zip}" .zip)"
+    [ -d ./${_name} ] || unzip ${_zip}
+    cd ./${_name} || return $?
+    logS
+    p_support &> p_support.out &
+    cd -
+
+    python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py "./${_zip}" &> ./${_name}_zip.out || return $?
+    if which mvim &> /dev/null; then
+        mvim ./${_name}_zip.out
+    else
+        vim ./${_name}_zip.out
+    fi
+}
+function sptBoot() {
+    local _zip="$1"
+    [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
+    if [ -z "${_zip}" ]; then
+        _zip="$(ls -1 ./support-20*.zip | tail -n1)" || return $?
+        echo "Using ${_zip} ..."
+    fi
+    python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py "${_zip}" ./$(basename "${_zip}" .zip)_tmp
 }
