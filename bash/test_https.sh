@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # curl -o /var/tmp/share/test_https.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/test_https.sh
+
 _TEST_PORT=34443
+
 
 function get_ciphers() {
     # @see http://superuser.com/questions/109213/how-do-i-list-the-ssl-tls-cipher-suites-a-particular-website-offers
     # OpenSSL requires the port number.
     local _host="${1:-`hostname -f`}"
     local _port="${2:-443}"
-    local _server=$_host:$_port
+    local _host_port=$_host:$_port
     local _delay=1
 
     if which nmap &>/dev/null; then
@@ -15,12 +17,12 @@ function get_ciphers() {
         return $?
     fi
 
-    ciphers=$(openssl ciphers 'ALL:eNULL' | sed -e 's/:/ /g')
-    echo "Obtaining cipher list from $_server with $(openssl version)..." >&2
+    ciphers=$(openssl ciphers 'ALL:eNULL' | _sed -e 's/:/ /g')
+    echo "Obtaining cipher list from ${_host_port} with $(openssl version)..." >&2
 
     for cipher in ${ciphers[@]}; do
         sleep ${_delay}
-        result=$(echo -n | openssl s_client -cipher "$cipher" -connect $_server 2>&1)
+        result=$(echo -n | openssl s_client -cipher "$cipher" -connect ${_host_port} 2>&1)
         if [[ "$result" =~ ":error:" ]] ; then
             error=$(echo -n $result | cut -d':' -f6)
             echo -e "$cipher\tNO ($error)" >&2
@@ -34,18 +36,31 @@ function get_ciphers() {
 }
 
 function get_tls_versions() {
-    local _host_port="$1"
-    local _head="${2:-10}"
+    local _host="${1:-`hostname -f`}"
+    local _port="${2:-443}"
+    local _head="${3:-10}"
     local _delay=1
+    local _host_port=$_host:$_port
 
-    for _v in ssl3 tls1 tls1_1 tls1_2; do  # 'ssl2' no longer works with openssl
+    #curl -h | sed -ne '/--tlsv/p'
+    # -1, --tlsv1         Use >= TLSv1 (SSL)
+    #     --tlsv1.0       Use TLSv1.0 (SSL)
+    #     --tlsv1.1       Use TLSv1.1 (SSL)
+    #     --tlsv1.2       Use TLSv1.2 (SSL)
+    #     --tlsv1.3       Use TLSv1.3 (SSL)
+    #curl -h | sed -ne '/--sslv/p'
+    # -2, --sslv2         Use SSLv2 (SSL)
+    # -3, --sslv3         Use SSLv3 (SSL)
+
+    for _v in {0..3}; do  # 'ssl2' no longer works with openssl
         sleep ${_delay}
-        local _output="`echo -n | openssl s_client -connect ${_host_port} -${_v} 2>/dev/null`"
-        if echo "${_output}" | grep -qE '^ *Cipher *: *0000$'; then
-            echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] WARN: '${_v}' failed." >&2
+        #local _output="`echo -n | openssl s_client -connect ${_host_port} -${_v} 2>/dev/null`"
+        local _output="$(curl -k -v -o/dev/null -f "https://${_host_port}/" --tlsv1.${_v} 2>&1)"
+        if ! curl -k -v -o/dev/null -f "https://${_host_port}/" --tlsv1.${_v} &> /tmp/get_tls_versions_tlsv1.${_v}.out; then
+            echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] WARN: 'TLS v1.${_v}' failed." >&2
         else
-            echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] INFO: '${_v}' worked"
-            echo "${_output}" | head -n ${_head} | sed -nr 's/^(.+)$/    \1/gp'
+            echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] INFO: 'TLS v1.${_v}' worked"
+            grep '* SSL connection using' /tmp/get_tls_versions_tlsv1.${_v}.out
         fi
     done
 }
@@ -74,7 +89,7 @@ function export_key() {
         openssl pkcs12 -in ${_basename}.p12.tmp -passin "pass:${_pass}" -nodes -nocerts -out ${_out_key}.tmp || return $?
         openssl rsa -in ${_out_key}.tmp -out ${_out_key}
         # 'sed' to remove Bag Attributes
-        openssl pkcs12 -in ${_basename}.p12.tmp -passin "pass:${_pass}" -nokeys -chain | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ${_out_crt} || return $?
+        openssl pkcs12 -in ${_basename}.p12.tmp -passin "pass:${_pass}" -nokeys -chain | _sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ${_out_crt} || return $?
         rm -f ${_basename}.*.tmp
     fi
     chmod 600 ${_out_key}
@@ -205,7 +220,7 @@ function get_certificate_from_https() {
     else
         echo -n | openssl s_client -connect ${_host}:${_port} -showcerts
     fi > /tmp/${_host}_${_port}.tmp || return $?
-    sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp > ${_dest_filepath}
+    _sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp > ${_dest_filepath}
 }
 
 function gen_wildcard_cert() {
@@ -246,6 +261,12 @@ function gen_wildcard_cert() {
     # make sure server certificate and key is readable by particular user
     #chown $USER: ./wildcard.${_domain}.{key,crt}
     ls -ltr *.${_domain}.{key,crt,csr}
+}
+
+# To support Mac...
+function _sed() {
+    local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
+    ${_cmd} "$@"
 }
 
 ### main ########################
