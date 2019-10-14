@@ -9,7 +9,7 @@ alias urlencode='python -c "import sys, urllib as ul; print(ul.quote(sys.argv[1]
 # base64 encode/decode (coreutils base64 or openssl base64 -e|-d)
 alias b64encode='python -c "import sys, base64; print(base64.b64encode(sys.argv[1]))"'
 alias b64decode='python -c "import sys, base64; print(base64.b64decode(sys.argv[1]))"'
-alias utc2int='python -c "import sys,time,dateutil.parser;print int(time.mktime(dateutil.parser.parse(sys.argv[1]).timetuple()))"'  # doesn't work with yy/mm/dd (2 digits year)
+alias utc2int='python -c "import sys,time,dateutil.parser;print(int(time.mktime(dateutil.parser.parse(sys.argv[1]).timetuple())))"'  # doesn't work with yy/mm/dd (2 digits year)
 alias int2utc='python -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1])).strftime(\"%Y-%m-%d %H:%M:%S.%f\")[:-3]+\" UTC\")"'
 #alias int2utc='python -c "import sys,time;print(time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\")"'
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'pdf' (pandas dataframe)
