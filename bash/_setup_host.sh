@@ -184,23 +184,23 @@ backend backend_p${_port}
                     echo "  server ${_n} ${_n}:${_port} check" >> /tmp/f_haproxy_backends_$$.out
                 fi
             else
+                local _https_ver=""
                 if [ -n "${_certificate}" ]; then
                     # Checking if HTTPS and H2|HTTP/2 are enabled. NOTE: -w '%{http_version}\n' does not work with older curl.
-                    local _https_ver="$(curl -sI -k "https://${_n}:${_port}/" | sed -nr 's/^HTTP\/([12]).+/\1/p')"
-                    if [[ "${_https_ver}" = "1" ]]; then
-                        _info "Enabling HTTPS on backend: ${_n}:${_port} ..."
-                        echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check" >> /tmp/f_haproxy_backends_$$.out
-                        _backend_proto="https"
-                    elif [[ "${_https_ver}" = "2" ]]; then
-                        _info "Enabling HTTP/2 on backend: ${_n}:${_port} ..."
-                        echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} alpn h2,http/1.1 check" >> /tmp/f_haproxy_backends_$$.out
-                        _backend_proto="https"
-                    elif nc -z ${_n} ${_port}; then
-                        # SSL termination
-                        echo "  server ${_n} ${_n}:${_port} check" >> /tmp/f_haproxy_backends_$$.out
-                    fi
-                else
-                    nc -z ${_n} ${_port} && echo "  server ${_n} ${_n}:${_port} check" >> /tmp/f_haproxy_backends_$$.out
+                    _https_ver="$(curl -sI -k "https://${_n}:${_port}/" | sed -nr 's/^HTTP\/([12]).+/\1/p')"
+                fi
+                if [[ "${_https_ver}" = "1" ]]; then
+                    _info "Enabling backend: ${_n}:${_port} with HTTPS ..."
+                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check" >> /tmp/f_haproxy_backends_$$.out
+                    _backend_proto="https"
+                elif [[ "${_https_ver}" = "2" ]]; then
+                    _info "Enabling backend: ${_n}:${_port} with HTTP/2 ..."
+                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} alpn h2,http/1.1 check" >> /tmp/f_haproxy_backends_$$.out
+                    _backend_proto="https"
+                elif nc -z ${_n} ${_port}; then
+                    _info "Enabling backend: ${_n}:${_port} (no HTTPS/SSL/TLS) ..."
+                    # SSL termination
+                    echo "  server ${_n} ${_n}:${_port} check" >> /tmp/f_haproxy_backends_$$.out
                 fi
             fi
         done
