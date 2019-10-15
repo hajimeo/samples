@@ -124,13 +124,13 @@ function java_chk() {
     
     local _java_home="$(dirname $_cmd_dir)"
     local _pre_cmd=""; which timeout &>/dev/null && _pre_cmd="timeout 12"
-    for i in {1..3};do echo "#[$(date -u +'%Y-%m-%d.%H:%M:%S.%3N')z] Top per threads ${i}/3 - PID:${_pid}"; top -Hb -p ${_pid} | head -n 20; ${_pre_cmd} kill -QUIT ${_pid}; sleep 3; done &> /tmp/top_thread_${_pid}.out &
-    local _wpid1=$!
-    (echo "#[$(date -u +'%Y-%m-%d.%H:%M:%S.%3N')z] GC cause for 10 seconds - PID:${_pid}"; ${_pre_cmd} sudo -u ${_user} ${_cmd_dir}/jstat -gccause ${_pid} 500 20) &> /tmp/gccause_${_pid}.out &
-    local _wpid2=$!
-    wait ${_wpid1} ${_wpid2}
-    cat /tmp/top_thread_${_pid}.out
-    cat /tmp/gccause_${_pid}.out
+    for i in {1..3};do echo "#[$(date -u +'%Y-%m-%d.%H:%M:%S.%3N')z] Top per threads ${i}/3 - PID:${_pid}"; top -Hb -p ${_pid} | head -n 20; ${_pre_cmd} kill -QUIT ${_pid}; sleep 3; done #&> /tmp/top_thread_${_pid}.out &
+    #local _wpid1=$!
+    #(echo "#[$(date -u +'%Y-%m-%d.%H:%M:%S.%3N')z] GC cause for 10 seconds - PID:${_pid}"; ${_pre_cmd} sudo -u ${_user} ${_cmd_dir}/jstat -gccause ${_pid} 500 20) &> /tmp/gccause_${_pid}.out &
+    #local _wpid2=$!
+    #wait ${_wpid1} ${_wpid2}
+    #cat /tmp/top_thread_${_pid}.out
+    #cat /tmp/gccause_${_pid}.out
 }
 
 function off_heap_chk() {
