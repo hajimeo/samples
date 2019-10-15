@@ -116,7 +116,7 @@ function java_chk() {
     pmap -x ${_pid} > /tmp/pmap_${_pid}.out
     echo "#[$(date -u +'%Y-%m-%d.%H:%M:%S.%3N')z] pmap top 10 largest RSS - PID:${_pid}"
     cat /tmp/pmap_${_pid}.out | sort -n -k3 | tail -n 11
-    echo "#[$(date -u +'%Y-%m-%d.%H:%M:%S.%3N')z] pmap counted by Mapping (sorted Kbytes) - PID:${_pid}"
+    echo "#[$(date -u +'%Y-%m-%d.%H:%M:%S.%3N')z] pmap counted by Mapping (sort by Kbytes) - PID:${_pid}"
     cat /tmp/pmap_${_pid}.out | sort -k6 -k2nr |  uniq -c -f1 -f2 -f3 -f4 -f5 | sort -n | tail -n10
 
     local _cmd_dir="$(dirname `readlink /proc/${_pid}/exe` 2>/dev/null)"
