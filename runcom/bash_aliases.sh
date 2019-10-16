@@ -308,15 +308,17 @@ function sptZip() {
         echo "Using ${_zip} ..."
     fi
     local _name="$(basename "${_zip}" .zip)"
+
+    python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py "./${_zip}" &> ./${_name}_zip.out
+
     [ -d ./${_name} ] || unzip ${_zip}
     cd ./${_name} || return $?
-    logS
-    p_support &> p_support.out &
+    logS && p_support &> p_support.out
     cd -
 
-    python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py "./${_zip}" &> ./${_name}_zip.out || return $?
     if which mvim &> /dev/null; then
         mvim ./${_name}_zip.out
+        mvim ./${_name%/}/p_support.out
     else
         vim ./${_name}_zip.out
     fi
@@ -329,4 +331,23 @@ function sptBoot() {
         echo "Using ${_zip} ..."
     fi
     python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py "${_zip}" ./$(basename "${_zip}" .zip)_tmp
+}
+function f_patch() {
+    local _java_file="${1}"
+    local _jar_file="${2}"
+    local _base_dir="${3:-"."}"
+    if [ -z "${_java_file}" ] || [ ! -f "${_java_file}" ]; then
+        return 1
+    fi
+    if [ ! -s $HOME/IdeaProjects/samples/bash/patch_java.sh ]; then
+        return 1
+    fi
+    if [ -z "${_jar_file}" ]; then
+        _jar_file="$(find ${_base_dir%/} -type d -name system -print | head -n1)"
+    fi
+    if [ -z "${CLASSPATH}" ]; then
+        echo "old CLASSPATH=${CLASSPATH}"
+    fi
+    export CLASSPATH=`find ${_base_dir%/} -path '*/system/*' -type f -name '*.jar' | tr '\n' ':'`.
+    bash $HOME/IdeaProjects/samples/bash/patch_java.sh "" ${_java_file} ${_jar_file}0
 }
