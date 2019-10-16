@@ -3,9 +3,9 @@ colorscheme pablo
 "set nu
 set hlsearch
 set nocompatible
-"Use za (toggle), zO, zC
-set foldmethod=syntax
+"Use za (toggle), zO (open), zC (close), zR (open all?)
 set nofoldenable
+set foldmethod=indent
 "TODO: I don't understand how below will be useful at this moment.
 "set foldnestmax=10
 "set foldlevel=2
