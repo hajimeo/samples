@@ -175,7 +175,7 @@ function f_listWarns() {
     rg -z --no-line-number --no-filename -g "${_glob}" "^$_DATE_FORMAT.\d\d:\d\d:\d\d.+${_regex}" > /tmp/f_listWarns.$$.tmp
 
     # count by class name and ignoring only once or twice warns
-    rg "${_regex}.+\[[^]]+\] \{[^}]*\} ([^ ]+)" -o -r '$1 $2' /tmp/f_listWarns.$$.tmp | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
+    rg "${_regex}\s+[^ ]+\s+[^ ]+\s+[^ ]+\s+([^ ]+)" -o -r '$1 $2' /tmp/f_listWarns.$$.tmp | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
     echo " "
     rg -o "^${_date_4_bar}" /tmp/f_listWarns.$$.tmp | bar_chart.py
 }
@@ -189,7 +189,8 @@ function f_topSlowLogs() {
     local _top_N="${5:-10}" # how many result to show
 
     if [ -z "$_regex" ]; then
-        _regex="\b(slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout|timed out|going into queue, is \[...+\] in line|request rejected|Likely the pool is at capacity|failed to find free connection)\b.+"
+        # case insensitive
+        _regex="\b(slow|delay|delaying|latency|too many|not sufficient|lock held|took [1-9][0-9]+ ?ms|timeout|timed out)\b.+"
     fi
     if [ -n "${_date_regex}" ]; then
         _regex="^${_date_regex}.+${_regex}"
@@ -840,9 +841,12 @@ function f_request2csv() {
     else
         echo "# Appending into ${_csv} ..."
     fi
+    # No $2.
+    # Some version doesn't have thread information? ($12)
+    # TODO: userAgent ($11) can contain double-quotes, so added "{"
     rg --no-filename -N -z \
-        '^([0-9.]+) [^ ]+ ([^ ]+) \[([^\]]+)\] "([^ ]+) ([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]' \
-        -o -r '"$1","$2","$3","$4","$5","$6","$7","$8","$9","$10","$11"' ${_request_file} >> ${_csv}
+        '^([0-9.]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^ ]+) ([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"{]+)" *\[?([^\]]*)\]?' \
+        -o -r '"$1","$3","$4","$5","$6","$7","$8","$9","$10","$11","$12"' ${_request_file} >> ${_csv}
 }
 
 ### Private functions ##################################################################################################
@@ -943,41 +947,50 @@ function _search_properties() {
 }
 
 function _get_json() {
-    local _props="$1" # python list string ['xxxx','yyyy','key[:=]value'] (*NO* space)
-    local _key="${2-"key"}"
-    local _val="${3-"value"}"
-    local _no_pprint="${4}"
+    local _props="$1"           # python list string ['xxxx','yyyy','key[:=]value'] (*NO* space)
+    local _key="${2-"key"}"     # a key attribute name. eg: '@class' (OrientDB), 'key' (jmx.json)
+    local _attrs="${3-"value"}" # attribute1,attribute2 to return only those attributes' value
+    local _find_all="${4}"      # If Y, not stopping after finding one
+    local _no_pprint="${5}"     # no prettified output
     # Requires jn_utils.py
-    python3 -c 'import sys,json,re,pprint
+    python3 -c 'import sys,json,re
 m = ptn_c = None
 if len("'${_key}'") > 0:
-  ptn_c = re.compile("[\"]?('${_key}')[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")
-_d =json.loads(sys.stdin.read())
+    ptn_c = re.compile("[\"]?('${_key}')[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")
+attrs = []
+if len("'${_attrs}'") > 0:
+    attrs = "'${_attrs}'".split(",")
+_d = json.loads(sys.stdin.read())
 for _p in '${_props}':
-  if len("'${_key}'") > 0:
-    m = ptn_c.search(_p)
-  if m and type(_d) == list:
-    (_k, _k_name) = m.groups()
-    _found = False
-    for _i in _d:
-      if _k in _i and _i[_k] == _k_name:
-        _d = _i["'${_val}'"]
-        _found = True
+    if len("'${_key}'") > 0:
+        m = ptn_c.search(_p)
+    if m and type(_d) == list:
+        (_k, _k_name) = m.groups()
+        _tmp_d = []
+        for _i in _d:
+            if _k in _i and _i[_k] == _k_name:
+                _tmp_dd = {}
+                for _a in attrs:
+                    _tmp_dd[_a] = _i[_a]
+                _tmp_d.append(_tmp_dd)
+                if "'${_find_all}'".lower() != "y":
+                    break
+        if bool(_tmp_d) is False:
+            _d = None
+            break
+        if len(_tmp_d) == 1:
+            _d = _tmp_d[0]
+        else:
+            _d = _tmp_d
+    elif _p in _d:
+        _d = _d[_p]
+    else:
+        _d = None
         break
-    if _found is False:
-      _d = None
-      break
-  elif _p in _d:
-    _d = _d[_p]
-  else:
-    _d = None
-    break
 if "'${_no_pprint}'".lower() == "y":
-  print(_d)
+    print(_d)
 else:
-  if type(_d) == list:
-    _d = list(dict.fromkeys(_d))
-  pprint.pprint(_d, indent=4)
+    print(json.dumps(_d, indent=4))
 '
 }
 
