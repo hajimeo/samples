@@ -1101,7 +1101,7 @@ def logs2table(filename, tablename=None, conn=None,
          size_regex=None, time_regex=None, max_file_num=20)
     #>>> logs2table("request.log",
               col_names=['clientHost', 'user', 'dateTime', 'method', 'requestUrl', 'statusCode', 'contentLength',
-                         'byteSent', 'elapssedTime', 'userAgent', 'thread'],
+                         'byteSent', 'elapsedTime_ms', 'userAgent', 'thread'],
               line_matching='^([0-9.]+) [^ ]+ ([^ ]+) \[([^\]]+)\] "([^ ]+) ([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
              )
     >>> pass    # TODO: implement test
