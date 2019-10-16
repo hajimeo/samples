@@ -313,14 +313,15 @@ function sptZip() {
 
     [ -d ./${_name} ] || unzip ${_zip}
     cd ./${_name} || return $?
-    logS && p_support &> p_support.out
+    logS && p_support &> ../p_support_${_name}.out
     cd -
 
     if which mvim &> /dev/null; then
         mvim ./${_name}_zip.out
-        mvim ./${_name%/}/p_support.out
+        mvim ./p_support_${_name}.out
     else
-        vim ./${_name}_zip.out
+        open ./${_name}_zip.out
+        open ./p_support_${_name}.out
     fi
 }
 function sptBoot() {
