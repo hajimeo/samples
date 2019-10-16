@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # curl -o /var/tmp/share/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
-#
 # TODO: currently the script filename needs to be "ClassName.scala" or "ClassName.java" (case sensitive)
 #
+# export CLASSPATH=`find ./some/lib -name '*.jar' | tr '\n' ':'`.
+# javac org/something/YourClass.java
+# f_update_jar ./to/be/updated.jar YourClass
 
 function usage() {
     cat << EOS
@@ -49,6 +51,15 @@ function f_setup_scala() {
 
 function f_javaenvs() {
     local _port="${1}"
+    if [ -z "${_port}" ]; then
+        if [ -n "$JAVA_HOME" ] && [ -n "$CLASSPATH" ]; then
+            echo "No port is given but JAVA_HOME and CLASSPATH are already set."
+            return 0
+        else
+            echo "No port number to find PID. May need to set CLASSPATH manually."
+            return 10
+        fi
+    fi
     local _p=`lsof -ti:${_port} -s TCP:LISTEN`
     if [ -z "${_p}" ]; then
         echo "Nothing running on port ${_port}"
@@ -90,7 +101,7 @@ function f_jargrep() {
     elif which jar &>/dev/null; then
         _cmd="jar -tf"
     fi
-    find -L ${_path%/} -type f \( -name '*.jar' -or -name '*.war' \) -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} | grep -w '${_class}' >&2 && echo '^ Jar: {}'"
+    find -L ${_path%/} -type f \( -name '*.jar' -or -name '*.war' \) -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} 2>/dev/null | grep -w '${_class}' && echo '^ Jar: {}'" >&2
 }
 
 function f_update_jar() {
@@ -125,7 +136,7 @@ function f_update_jar() {
     local _updated_time="$(date | grep -oE ' [0-9][0-9]:[0-9][0-9]:[0-9]')"
     $JAVA_HOME/bin/jar -uvf ${_jar_filepath} ${_class_file_path} || return $?
     echo "------------------------------------------------------------------------------------"
-    echo "Not updated class... (zip -d ${_jar_filepath} '/path/to/class')"
+    echo "Checking if any non-updated class... (zip -d ${_jar_filepath} '/path/to/class')"
     $JAVA_HOME/bin/jar -tvf ${_jar_filepath} | grep -w ${_class_name} | grep -v "${_updated_time}"
 
     cp -f ${_jar_filepath} ${_jar_filename}.patched
@@ -140,7 +151,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _UPDATING_CLASSNAME="$4"
     _NOT_COMPILING="$5"
 
-    if [ -z "$_PORT" ]; then
+    if [ -z "$JAVA_HOME" ] && [ -z "$CLASSPATH" ] && [ -z "$_PORT" ]; then
         echo "A port number (1st arg) to find PID is required."
         usage
         exit 1
@@ -177,7 +188,7 @@ $0 '$1' '$2' '<jar path from above>' '$4' [Y]"
                     mkdir -p "${_DIR_PATH}" || exit $?
                 fi
                 if [ "$(realpath ${_CLASS_FILEPATH})" != "$(realpath ${_DIR_PATH%/}/${_CLASS_FILENAME})" ]; then
-                    mv -f ${_CLASS_FILEPATH} ${_DIR_PATH%/}/ || exit $?
+                    cp -f ${_CLASS_FILEPATH} ${_DIR_PATH%/}/ || exit $?
                 fi
                 _CLASS_FILEPATH=${_DIR_PATH%/}/${_CLASS_FILENAME}
             fi
@@ -194,7 +205,7 @@ $0 '$1' '$2' '<jar path from above>' '$4' [Y]"
     # If _JAR_FILEPATH is given, updating the jar
     if [ -n "${_JAR_FILEPATH}" ] && [ -e "${_JAR_FILEPATH}" ] && [ -n "${_CLASS_NAME}" ]; then
         f_update_jar "${_JAR_FILEPATH}" "${_CLASS_NAME}" "${_UPDATING_CLASSNAME}" || exit $?
-        echo "Completed. Please restart the process (current PID=`lsof -ti:${_PORT} -s TCP:LISTEN`)."
+        echo "Completed. Please restart the process (current PID=`lsof -ti:${_PORT} -s TCP:LISTEN 2>/dev/null`)."
     else
         echo "No jar filepath or class name to update."
     fi
