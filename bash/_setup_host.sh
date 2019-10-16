@@ -125,7 +125,7 @@ function f_haproxy() {
         _nodes="$(for _n in `docker ps --format "{{.Names}}" | grep -E "^node.+" | grep -v "freeipa" | sort`;do docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])"; done | tr '\n' ' ')"
         _info "INFO" "Using '${_nodes}' ..."; sleep 3
         if [ -z "${_certificate}" ]; then
-            _certificate="/var/tmp/share/cert/standalone.localdomain.certs.pem"
+            _certificate="${_WORK_DIR%/}/cert/standalone.localdomain.certs.pem"
             if [ ! -s "${_certificate}" ]; then
                 if ! curl -f -o ${_certificate} "https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.certs.pem"; then
                     _certificate=""
@@ -157,6 +157,15 @@ function f_haproxy() {
         cp -f "${_haproxy_tmpl_conf}" "${_cfg}" || return $?
     fi
 
+    local _resolver=""
+    if which dnsmasq &>/dev/null; then
+        echo "resolvers dnsmasq
+    nameserver dns1 localhost:53
+    accepted_payload_size 8192\
+" >> "${_cfg}"
+        _resolver="resolvers dnsmasq init-addr none"
+    fi
+
     # append 'ssl-server-verify none' in global
     # comment out 'default-server init-addr last,libc,none'
     for _port in ${_ports}; do
@@ -179,9 +188,9 @@ backend backend_p${_port}
         for _n in ${_nodes}; do
             if [[ "${_skipping_chk}" =~ ^(y|Y) ]]; then
                 if [ -n "${_certificate}" ]; then
-                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check" >> /tmp/f_haproxy_backends_$$.out
+                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
                 else
-                    echo "  server ${_n} ${_n}:${_port} check" >> /tmp/f_haproxy_backends_$$.out
+                    echo "  server ${_n} ${_n}:${_port} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
                 fi
             else
                 local _https_ver=""
@@ -191,16 +200,16 @@ backend backend_p${_port}
                 fi
                 if [[ "${_https_ver}" = "1" ]]; then
                     _info "Enabling backend: ${_n}:${_port} with HTTPS ..."
-                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check" >> /tmp/f_haproxy_backends_$$.out
+                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
                     _backend_proto="https"
                 elif [[ "${_https_ver}" = "2" ]]; then
                     _info "Enabling backend: ${_n}:${_port} with HTTP/2 ..."
-                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} alpn h2,http/1.1 check" >> /tmp/f_haproxy_backends_$$.out
+                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} alpn h2,http/1.1 check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
                     _backend_proto="https"
                 elif nc -z ${_n} ${_port}; then
                     _info "Enabling backend: ${_n}:${_port} (no HTTPS/SSL/TLS) ..."
                     # SSL termination
-                    echo "  server ${_n} ${_n}:${_port} check" >> /tmp/f_haproxy_backends_$$.out
+                    echo "  server ${_n} ${_n}:${_port} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
                 fi
             fi
         done
@@ -1094,6 +1103,22 @@ function f_sshfs_mount() {
     _insert_line /etc/rc.local "${_cmd}" "exit 0"
 }
 
+function f_add_cert() {
+    local _crt_file="$1"
+    local _file_name="$(basename ${_crt_file})"
+    # NOTE: /usr/share/ca-certificates didn't work
+    local _ca_dir="/usr/local/share/ca-certificates/extra"
+    if [ -s ${_ca_dir%/}/${_file_name} ]; then
+        _info "${_ca_dir%/}/${_file_name} exists."
+        return 0
+    fi
+    if [ ! -d ${_ca_dir%/} ]; then
+        mkdir -m 755 -p ${_ca_dir%/} || return $?
+    fi
+    cp -v "${_crt_file}" ${_ca_dir%/}/ || return $?
+    update-ca-certificates
+}
+
 function p_basic_setup() {
     _log "INFO" "Executing f_ssh_setup"
     f_ssh_setup || return $?
@@ -1123,6 +1148,11 @@ function p_basic_setup() {
     
     _log "INFO" "Executing f_host_performance"
     f_host_performance
+
+    if [ -s ${_WORK_DIR%/}/cert/rootCA_standalone.crt ]; then
+        _log "INFO" "Trusting rootCA_standalone.crt"
+        f_add_cert
+    fi
 }
 
 
