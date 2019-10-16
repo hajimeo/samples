@@ -837,7 +837,7 @@ function f_request2csv() {
     fi
     # NOTE: check jetty-requestlog.xml and logback-access.xml
     if [ ! -s "${_csv}" ]; then
-        echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapssedTime","userAgent","thread"' > ${_csv}
+        echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
     else
         echo "# Appending into ${_csv} ..."
     fi
@@ -910,13 +910,18 @@ function _find_and_cat() {
 }
 
 function _replace_number() {
+    local _min="${1:-5}"
+    local _N_="_NUM_"
+    [ 5 -gt ${_min} ] && _N_="*"
     _sed -r "s/[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+/__UUID__/g" \
-     | _sed -r "s/0x[0-9a-f][0-9a-f]+/0x_HEX_/g" \
-     | _sed -r "s/[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]/_HEX_/g" \
+     | _sed -r "s/0x[0-9a-f]{2,}/0x_HEX_/g" \
+     | _sed -r "s/\b[0-9a-f]{6,8}\b/__HEX__/g" \
      | _sed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/_DATE_ /g" \
      | _sed -r "s/[0-2][0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/_TIME_/g" \
-     | _sed -r "s/-[0-9]+\]\s+\{/-N] {/g" \
-     | _sed -r "s/[0-9][0-9][0-9][0-9][0-9]+/_NUM_/g"
+     | _sed -r "s/[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/_IP_ADDRESS_/g" \
+     | _sed -r "s/:[0-9]{1,5}/:_PORT_/g" \
+     | _sed -r "s/[0-9]{8,10}-[0-9]+\b/__THREAD__/g" \
+     | _sed -r "s/[0-9]{${_min},}+/${_N_}/g"
 }
 
 function _load_yaml() {
