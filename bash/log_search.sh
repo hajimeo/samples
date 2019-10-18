@@ -169,13 +169,12 @@ function f_listWarns() {
     local _date_4_bar="${2:-"\\d\\d\\d\\d-\\d\\d-\\d\\d \\d\\d"}"
     local _top_N="${3:-40}"
 
-    local _regex="\b(ERROR|FATAL|SEVERE|WARN|FAILED)\b"
-    #rg -z -c -g "${_glob}" "${_regex}"
+    local _regex="\b(WARN|ERROR|SEVERE|FATAL|FAILED)\b"
     rg -z -c -g "${_glob}" "^$_DATE_FORMAT.\d\d:\d\d:\d\d.+${_regex}"
-    rg -z --no-line-number --no-filename -g "${_glob}" "^$_DATE_FORMAT.\d\d:\d\d:\d\d.+${_regex}" > /tmp/f_listWarns.$$.tmp
+    rg -z -N --no-filename -g "${_glob}" "^$_DATE_FORMAT.\d\d:\d\d:\d\d.+${_regex}" > /tmp/f_listWarns.$$.tmp
 
     # count by class name and ignoring only once or twice warns
-    rg "${_regex}\s+[^ ]+\s+[^ ]+\s+[^ ]+\s+([^ ]+)" -o -r '$1 $2' /tmp/f_listWarns.$$.tmp | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
+    rg "${_regex}\s+.+" -o /tmp/f_listWarns.$$.tmp | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
     echo " "
     rg -o "^${_date_4_bar}" /tmp/f_listWarns.$$.tmp | bar_chart.py
 }
@@ -916,11 +915,12 @@ function _replace_number() {
     _sed -r "s/[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+/__UUID__/g" \
      | _sed -r "s/0x[0-9a-f]{2,}/0x_HEX_/g" \
      | _sed -r "s/\b[0-9a-f]{6,8}\b/__HEX__/g" \
-     | _sed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/_DATE_ /g" \
-     | _sed -r "s/[0-2][0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/_TIME_/g" \
-     | _sed -r "s/[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/_IP_ADDRESS_/g" \
+     | _sed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/___DATE___./g" \
+     | _sed -r "s/[0-2][0-9]:[0-6][0-9]:[0-6][0-9][.,0-9]*/__TIME__/g" \
+     | _sed -r "s/([+-])[0-1][0-9][03]0\b/\1_TZ_/g" \
+     | _sed -r "s/[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/__IP_ADDRESS__/g" \
      | _sed -r "s/:[0-9]{1,5}/:_PORT_/g" \
-     | _sed -r "s/[0-9]{8,10}-[0-9]+\b/__THREAD__/g" \
+     | _sed -r "s/[0-9]{8,10}-[0-9]+\b/__THREAD_ID__/g" \
      | _sed -r "s/[0-9]{${_min},}+/${_N_}/g"
 }
 
@@ -965,37 +965,45 @@ if len("'${_key}'") > 0:
 attrs = []
 if len("'${_attrs}'") > 0:
     attrs = "'${_attrs}'".split(",")
-_d = json.loads(sys.stdin.read())
-for _p in '${_props}':
-    if len("'${_key}'") > 0:
-        m = ptn_c.search(_p)
-    if m and type(_d) == list:
-        (_k, _k_name) = m.groups()
-        _tmp_d = []
-        for _i in _d:
-            if _k in _i and _i[_k] == _k_name:
-                _tmp_dd = {}
-                for _a in attrs:
-                    _tmp_dd[_a] = _i[_a]
-                _tmp_d.append(_tmp_dd)
+_in = sys.stdin.read()
+if bool(_in) is True:
+    _d = json.loads(_in)
+    for _p in '${_props}':
+        if type(_d) == list:
+            _p_name = None
+            if len("'${_key}'") > 0:
+                m = ptn_c.search(_p)
+            if m:
+                (_p, _p_name) = m.groups()
+            _tmp_d = []
+            for _i in _d:
+                if _p not in _i:
+                    continue
+                if bool(_p_name) is True and _i[_p] == _p_name:
+                    _tmp_dd = {}
+                    for _a in attrs:
+                        _tmp_dd[_a] = _i[_a]
+                    _tmp_d.append(_tmp_dd)
+                else:
+                    _tmp_d.append(_i[_p])
                 if "'${_find_all}'".lower() != "y":
                     break
-        if bool(_tmp_d) is False:
+            if bool(_tmp_d) is False:
+                _d = None
+                break
+            if len(_tmp_d) == 1:
+                _d = _tmp_d[0]
+            else:
+                _d = _tmp_d
+        elif _p in _d:
+            _d = _d[_p]
+        else:
             _d = None
             break
-        if len(_tmp_d) == 1:
-            _d = _tmp_d[0]
-        else:
-            _d = _tmp_d
-    elif _p in _d:
-        _d = _d[_p]
-    else:
-        _d = None
-        break
-if "'${_no_pprint}'".lower() == "y":
-    print(_d)
-else:
-    print(json.dumps(_d, indent=4))
+    if "'${_no_pprint}'".lower() == "y":
+        print(_d)
+    elif bool(_d) is True:
+        print(json.dumps(_d, indent=4))
 '
 }
 
@@ -1104,6 +1112,7 @@ _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&
 _TEST_REGEX='^\[.+\]$'
 _SCRIPT_DIR="$(dirname $(realpath "$BASH_SOURCE"))"
 
+#[ -z "$_DATE_FORMAT" ] && _DATE_FORMAT="\d\d.[a-zA-Z]{3}.\d\d\d\d"
 [ -z "$_DATE_FORMAT" ] && _DATE_FORMAT="\d\d\d\d-\d\d-\d\d"
 [ -z "$_TIME_FMT4CHART" ] && _TIME_FMT4CHART="\d\d:"
 
