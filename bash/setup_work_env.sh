@@ -205,6 +205,7 @@ function f_jupyter_util() {
     if [ ! -d "$HOME/.ipython/profile_default/startup" ]; then
         mkdir -p "$HOME/.ipython/profile_default/startup" || return $?
     fi
+    # How-to: pp.ProfileReport(df)
     echo "import pandas as pd
 import pandas_profiling as pp
 import jn_utils as ju
