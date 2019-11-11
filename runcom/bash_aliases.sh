@@ -315,15 +315,15 @@ function sptZip() {
 
     [ -d ./${_name} ] || unzip ${_zip}
     cd ./${_name} || return $?
-    logS && p_support &> ../p_support_${_name}.out
+    logS && p_support "nxrm" ../p_support_nxrm_${_name}.out
     cd -
 
     if which mvim &> /dev/null; then
         mvim ./${_name}_zip.out
-        mvim ./p_support_${_name}.out
+        mvim ./p_support_nxrm_${_name}.out
     else
         open ./${_name}_zip.out
-        open ./p_support_${_name}.out
+        open ./p_support_nxrm_${_name}.out
     fi
 }
 function sptBoot() {
