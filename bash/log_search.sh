@@ -979,14 +979,16 @@ if bool(_in) is True:
             for _i in _d:
                 if _p not in _i:
                     continue
-                if bool(_p_name) is True and _i[_p] == _p_name:
+                if bool(_p_name) is False:
+                    #print(_i[_p])  # for debug
+                    _tmp_d.append(_i[_p])
+                elif _i[_p] == _p_name:
                     _tmp_dd = {}
                     for _a in attrs:
                         _tmp_dd[_a] = _i[_a]
-                    _tmp_d.append(_tmp_dd)
-                else:
-                    _tmp_d.append(_i[_p])
-                if "'${_find_all}'".lower() != "y":
+                    if len(_tmp_dd) > 0:
+                        _tmp_d.append(_tmp_dd)
+                if len(_tmp_d) > 0 and "'${_find_all}'".lower() != "y":
                     break
             if bool(_tmp_d) is False:
                 _d = None
