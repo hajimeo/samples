@@ -50,7 +50,7 @@ class SimpleWebServer(BaseHTTPRequestHandler):
                 SimpleWebServer.log('    matchN = ' + json.dumps(o, indent=2, sort_keys=True))
                 html += u"<hr/>"
                 html += u"<pre>"
-                html += u"DATETIME : " + toDateStr(o['ts']) + " | CHANNEL: " + o['channel']['name'] + " | USERNAME: " + o['username'] + u" (" + o['user'] + ")\n"
+                html += u"DATETIME : " + toDateStr(o['ts']) + " | CHANNEL: " + str(o['channel']['name']) + " | USERNAME: " + str(o['username']) + " (" + str(o['user']) + ")\n"
                 html += u"PERMALINK: <a href='" + o['permalink'].replace('/archives/','/messages/') + u"' target='_blank'>" + o['permalink'] + u"</a>\n"
                 html += u"</pre>"
                 html += u"<blockquote style='white-space:pre-wrap'><tt>" + o['text'] + u"</tt></blockquote>\n"
