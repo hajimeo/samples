@@ -114,7 +114,7 @@ function f_haproxy() {
     local __doc__="Install and setup HAProxy"
     # Generate hostnames: docker ps --format "{{.Names}}" | grep -E "^node-(nxrm|iqs)+" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
     # HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
-    local _nodes="${1}"             # Space delimited
+    local _nodes="${1}"             # Space delimited. If empty, generated from 'docker ps'
     local _ports="${2:-"8081 8443 8070 8071 8444 18075"}" # Space delimited
     local _certificate="${3}"       # Expecting same (concatenated) cert for front and backend
     local _ssl_term="${4}"          # If Y, use SSL termination when _certificate is given
