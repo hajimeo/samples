@@ -121,8 +121,19 @@ function f_haproxy() {
     local _skipping_chk="${5}"      # To not check if port is reachable for each backend
     local _haproxy_tmpl_conf="${5:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
 
+    local _cfg="/etc/haproxy/haproxy.cfg"
+    if which haproxy &>/dev/null; then
+        _info "INFO" "HAProxy is already installed. To update, run apt-get manually."
+    else
+        apt-get install haproxy -y || return $?
+    fi
+
     if [ -z "${_nodes}" ]; then
         _nodes="$(for _n in `docker ps --format "{{.Names}}" | grep -E "^node.+" | grep -v "freeipa" | sort`;do docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])"; done | tr '\n' ' ')"
+        if [ -z "${_nodes}" ]; then
+            _info "WARN" "No nodes to setup/check. Exiting..."
+            return 0
+        fi
         _info "INFO" "Using '${_nodes}' ..."; sleep 3
         if [ -z "${_certificate}" ]; then
             _certificate="${_WORK_DIR%/}/cert/standalone.localdomain.certs.pem"
@@ -132,13 +143,6 @@ function f_haproxy() {
                 fi
             fi
         fi
-    fi
-
-    local _cfg="/etc/haproxy/haproxy.cfg"
-    if which haproxy &>/dev/null; then
-        _info "INFO" "HAProxy is already installed. To update, run apt-get manually."
-    else
-        apt-get install haproxy -y || return $?
     fi
 
     # If certificate is given, assuming to use TLS/SSL on *frontend*
@@ -179,6 +183,7 @@ function f_haproxy() {
         echo "
 backend backend_p${_port}
   balance roundrobin
+  cookie NXSESSIONID prefix nocache
   option forwardfor
   http-request set-header X-Forwarded-Port %[dst_port]
   option httpchk" > /tmp/f_haproxy_backends_$$.out
