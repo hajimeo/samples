@@ -152,6 +152,8 @@ function f_haproxy() {
     fi
 
     # Always get the latest template for now
+    # NOTE: 'global' in the template should have 'ssl-server-verify none'
+    #       also not using 'default-server init-addr last,libc,none' as somehow doesn't work
     curl -s --retry 3 -o ${_haproxy_tmpl_conf} "https://raw.githubusercontent.com/hajimeo/samples/master/misc/haproxy.tmpl.cfg" || return $?
 
     # Backup
@@ -161,6 +163,7 @@ function f_haproxy() {
         cp -f "${_haproxy_tmpl_conf}" "${_cfg}" || return $?
     fi
 
+    # If dnsmask is installed locally, utilise it
     local _resolver=""
     if which dnsmasq &>/dev/null; then
         echo "resolvers dnsmasq
@@ -170,8 +173,6 @@ function f_haproxy() {
         _resolver="resolvers dnsmasq init-addr none"
     fi
 
-    # append 'ssl-server-verify none' in global
-    # comment out 'default-server init-addr last,libc,none'
     for _port in ${_ports}; do
         # If _port is already configured somehow (which shouldn't be possible), skipping
         if grep -qE "\s+bind\s+.+:${_port}\s*$" "${_cfg}"; then
@@ -179,7 +180,7 @@ function f_haproxy() {
             continue
         fi
 
-        # Generating backends first
+        # Generating backend sections first
         echo "
 backend backend_p${_port}
   balance roundrobin
