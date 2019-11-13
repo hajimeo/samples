@@ -129,6 +129,7 @@ function f_haproxy() {
     fi
 
     if [ -z "${_nodes}" ]; then
+        # I'm using FreeIPA and normally that container name includes 'freeipa'
         _nodes="$(for _n in `docker ps --format "{{.Names}}" | grep -E "^node.+" | grep -v "freeipa" | sort`;do docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])"; done | tr '\n' ' ')"
         if [ -z "${_nodes}" ]; then
             _info "WARN" "No nodes to setup/check. Exiting..."
