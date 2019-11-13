@@ -828,7 +828,7 @@ function f_count_threads_per_dump() {
 }
 
 function f_request2csv() {
-    local __doc__="Convert a jetty request log to a csv file"
+    local __doc__="Convert a jetty request.log to a csv file"
     local _request_file="$1"
     local _csv="$2"
     if [ -z "${_csv}" ]; then
@@ -844,7 +844,7 @@ function f_request2csv() {
     # Some version doesn't have thread information? ($12)
     # TODO: userAgent ($11) can contain double-quotes, so added "{"
     rg --no-filename -N -z \
-        '^([0-9.]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^ ]+) ([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"{]+)" *\[?([^\]]*)\]?' \
+        '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^ ]+) ([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"{]+)" *\[?([^\]]*)\]?' \
         -o -r '"$1","$3","$4","$5","$6","$7","$8","$9","$10","$11","$12"' ${_request_file} >> ${_csv}
 }
 

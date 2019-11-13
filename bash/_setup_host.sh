@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# This script contains functions which are for setting up host to install and setup packages.
+# This script contains functions which are for setting up host (Ubuntu for now) to install and setup packages.
 #
 # curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/_setup_host.sh
 #
