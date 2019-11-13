@@ -112,7 +112,7 @@ function f_sysstat_setup() {
 
 function f_haproxy() {
     local __doc__="Install and setup HAProxy"
-    # Generate hostnames: docker ps --format "{{.Names}}" | grep -E "^node-(nxrm|iqs)+" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
+    # To generate '_nodes': docker ps --format "{{.Names}}" | grep -E "^node-(nxrm|iqs)+" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
     # HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
     local _nodes="${1}"             # Space delimited. If empty, generated from 'docker ps'
     local _ports="${2:-"8081 8443 8070 8071 8444 18075"}" # Space delimited
