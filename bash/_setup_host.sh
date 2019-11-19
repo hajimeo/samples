@@ -144,6 +144,7 @@ function f_haproxy() {
                     _certificate=""
                 fi
             fi
+            _info "INFO" "Using '${_certificate}' ..."; sleep 3
         fi
     fi
 
@@ -169,8 +170,8 @@ function f_haproxy() {
     local _resolver=""
     if which dnsmasq &>/dev/null; then
         echo "resolvers dnsmasq
-    nameserver dns1 localhost:53
-    accepted_payload_size 8192\
+  nameserver dns1 localhost:53
+  accepted_payload_size 8192\
 " >> "${_cfg}"
         _resolver="resolvers dnsmasq init-addr none"
     fi
@@ -183,15 +184,7 @@ function f_haproxy() {
         fi
 
         # Generating backend sections first
-        echo "
-backend backend_p${_port}
-  balance roundrobin
-  cookie NXSESSIONID prefix nocache
-  option forwardfor
-  http-request set-header X-Forwarded-Port %[dst_port]
-  option httpchk" > /tmp/f_haproxy_backends_$$.out
-#  http-request add-header X-Forwarded-Proto ${_backend_proto}
-
+        > /tmp/f_haproxy_backends_$$.out
         local _backend_proto="http"
         for _n in ${_nodes}; do
             if [[ "${_skipping_chk}" =~ ^(y|Y) ]]; then
@@ -222,6 +215,11 @@ backend backend_p${_port}
             fi
         done
 
+        if [ ! -s /tmp/f_haproxy_backends_$$.out ]; then
+            _info "No node found for ${_port} ..."
+            continue
+        fi
+
         local _frontend_proto="http"
         local _frontend_ssl_crt=""
         if [ -n "${_certificate}" ]; then
@@ -236,6 +234,17 @@ frontend frontend_p${_port}
   bind *:${_port}${_frontend_ssl_crt}
   reqadd X-Forwarded-Proto:\ ${_frontend_proto}
   default_backend backend_p${_port}" >> "${_cfg}"
+
+        # backend common settings
+        echo "
+backend backend_p${_port}
+  balance roundrobin
+  cookie NXSESSIONID prefix nocache
+  option forwardfor
+  http-request set-header X-Forwarded-Port %[dst_port]
+  option httpchk"  >> "${_cfg}"
+        #  http-request add-header X-Forwarded-Proto ${_backend_proto}
+
         cat /tmp/f_haproxy_backends_$$.out >> "${_cfg}"
     done
 
