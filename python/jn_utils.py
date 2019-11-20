@@ -208,20 +208,26 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     return (names_dict, dfs)
 
 
-def json2df(file_path, conn=None, tablename=None, json_cols=[], chunksize=1000):
+def json2df(file_path, jq_query="", conn=None, tablename=None, json_cols=[], chunksize=1000):
     """
     Convert a json file, which contains list into a DataFrame
     If conn is given, import into a DB table
     :param file_path: File path
+    :param jq_query: String used with ju.jq()
     :param conn:   DB connection object
     :param tablename: If empty, table name will be the filename without extension
     :param json_cols: to_sql() fails if column is json, so forcing those columns to string
     :param chunksize:
     :return: a DataFrame object
+    #>>> json2df('./export.json', '.records | map(select(.["@class"] == "quartz_job_detail" and .value_data.jobDataMap != null))[] | .value_data.jobDataMap', ju.connect(), 't_quartz_job_detail')
     >>> pass    # TODO: implement test
     """
     global _DB_SCHEMA
-    df = pd.read_json(file_path)  # , dtype=False (didn't help)
+    if bool(jq_query):
+        obj = jq(file_path, jq_query)
+        df = pd.DataFrame(obj)
+    else:
+        df = pd.read_json(file_path)  # , dtype=False (didn't help)
     if bool(conn):
         if bool(tablename) is False:
             tablename, ext = os.path.splitext(os.path.basename(file_path))
@@ -261,20 +267,24 @@ def _json2table(filename, tablename=None, conn=None, col_name='json_text', appen
     return conn.executemany("INSERT INTO " + tablename + " VALUES (?)", str(j_str))
 
 
-def jq(file_path, query='.'):
+def jq(file_path, query='.', as_string=False):
     """
     Read a json file and query with 'jq' syntax
     NOTE: at this moment, not caching json file contents
     @see https://stedolan.github.io/jq/tutorial/ for query syntax
     :param file_path: Json File path
     :param query: 'jq' query string (looks like dict)
+    :param as_string: if true, convert result to string
     :return: whatever pyjq returns
+    #>>> pd.DataFrame(ju.jq('./export.json', '.records | map(select(.value_data != null))[] | .value_data'))
     >>> pass    # TODO: implement test
     """
     jd = json2dict(file_path)
     result = pyjq.all(query, jd)
     if len(result) == 1:
-        return result[0]
+        result = result[0]
+    if as_string:
+        result = str(result)
     return result
 
 
