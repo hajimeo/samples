@@ -489,13 +489,14 @@ function f_list_start_end(){
     local _glob="${1}"
     local _date_regex="${2:-${_DATE_FORMAT}.\d\d:\d\d:\d\d}"
     local _sort="${3:-2}"
+    local _files=""
     # If no file(s) given, check current working directory
     if [ -n "${_glob}" ]; then
         _files="`find . -type f -name "${_glob}" -print`"
     else
-        local _files="`ls -1`"
+        _files="`ls -1`"
     fi
-    for _f in `echo ${_files}`; do f_start_end_time_with_diff $_f "^${_date_regex}"; done | sort -t$'\t' -k${_sort} | column -t -s$'\t'
+    for _f in `echo ${_files}`; do f_start_end_time_with_diff ${_f} "^${_date_regex}"; done | sort -t$'\t' -k${_sort} | column -t -s$'\t'
 }
 
 function f_start_end_time_with_diff(){
