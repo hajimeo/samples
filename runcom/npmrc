@@ -2,4 +2,4 @@ strict-ssl=false
 registry=http://dh1:8081/repository/npm-group/
 email=dev@hajigle.com
 always-auth=true
-_auth="YWRtaW46YWRtaW4="
+_auth="YWRtaW46YWRtaW4xMjM="
