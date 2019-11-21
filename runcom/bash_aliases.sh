@@ -317,14 +317,7 @@ function sptZip() {
     cd ./${_name} || return $?
     logS && p_support "nxrm" ../p_support_nxrm_${_name}.out
     cd -
-
-    if which mvim &> /dev/null; then
-        mvim ./${_name}_zip.out
-        mvim ./p_support_nxrm_${_name}.out
-    else
-        open ./${_name}_zip.out
-        open ./p_support_nxrm_${_name}.out
-    fi
+    ls -l ./${_name}_zip.out ./p_support_nxrm_${_name}.out
 }
 function sptBoot() {
     local _zip="$1"
@@ -333,6 +326,7 @@ function sptBoot() {
         _zip="$(ls -1 ./support-20*.zip | tail -n1)" || return $?
         echo "Using ${_zip} ..."
     fi
+    # To just re-launch|start, check relaunch-support.sh
     python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py "${_zip}" ./$(basename "${_zip}" .zip)_tmp
 }
 function f_patch() {
