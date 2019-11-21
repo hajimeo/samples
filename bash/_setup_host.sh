@@ -115,12 +115,11 @@ function f_haproxy() {
     # To generate '_nodes': docker ps --format "{{.Names}}" | grep -E "^node-(nxrm|iqs)+" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
     # HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
     local _nodes="${1}"             # Space delimited. If empty, generated from 'docker ps'
-    local _ports="${2:-"8081 8443 8070 8071 8444 18075"}" # Space delimited
+    local _ports="${2:-"8081 8443=8081 8070 8071 8444=8070 18075"}" # Space delimited
     local _certificate="${3}"       # Expecting same (concatenated) cert for front and backend
-    local _ssl_term="${4}"          # If Y, use SSL termination when _certificate is given
-    local _skipping_chk="${5}"      # To not check if port is reachable for each backend
-    local _haproxy_tmpl_conf="${6:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
-    local _domain="${7:-"standalone.localdomain"}"
+    local _skipping_chk="${4}"      # To not check if backend port is reachable for each backend
+    local _haproxy_tmpl_conf="${5:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
+    local _domain="${6:-"standalone.localdomain"}"
 
     local _cfg="/etc/haproxy/haproxy.cfg"
     if which haproxy &>/dev/null; then
@@ -176,76 +175,81 @@ function f_haproxy() {
         _resolver="resolvers dnsmasq init-addr none"
     fi
 
-    for _port in ${_ports}; do
-        # If _port is already configured somehow (which shouldn't be possible), skipping
-        if grep -qE "\s+bind\s+.+:${_port}\s*$" "${_cfg}"; then
-            _info "${_port} is already configured. Skipping ..."
-            continue
+    for _p in ${_ports}; do
+        local _frontend_proto="http"
+        local _backend_proto="http"
+        [ -n "${_certificate}" ] && _frontend_proto="https"
+
+        local _f_port=${_p}
+        local _b_port=${_p}
+        if [[ "${_p}" =~ ^([0-9]+)=([0-9]+)$ ]]; then
+            _f_port=${BASH_REMATCH[1]}
+            _b_port=${BASH_REMATCH[2]}
         fi
 
         # Generating backend sections first
         > /tmp/f_haproxy_backends_$$.out
-        local _backend_proto="http"
         for _n in ${_nodes}; do
             if [[ "${_skipping_chk}" =~ ^(y|Y) ]]; then
                 if [ -n "${_certificate}" ]; then
-                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
+                    echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
                 else
-                    echo "  server ${_n} ${_n}:${_port} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
+                    echo "  server ${_n} ${_n}:${_b_port} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
                 fi
             else
                 local _https_ver=""
                 if [ -n "${_certificate}" ]; then
                     # Checking if HTTPS and H2|HTTP/2 are enabled. NOTE: -w '%{http_version}\n' does not work with older curl.
-                    _https_ver="$(curl -sI -k "https://${_n}:${_port}/" | sed -nr 's/^HTTP\/([12]).+/\1/p')"
+                    _https_ver="$(curl -sI -k "https://${_n}:${_b_port}/" | sed -nr 's/^HTTP\/([12]).+/\1/p')"
                 fi
+
                 if [[ "${_https_ver}" = "1" ]]; then
-                    _info "Enabling backend: ${_n}:${_port} with HTTPS ..."
-                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
+                    _info "Enabling backend: ${_n}:${_b_port} with HTTPS ..."
+                    echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
                     _backend_proto="https"
                 elif [[ "${_https_ver}" = "2" ]]; then
-                    _info "Enabling backend: ${_n}:${_port} with HTTP/2 ..."
-                    echo "  server ${_n} ${_n}:${_port} ssl crt ${_certificate} alpn h2,http/1.1 check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
+                    _info "Enabling backend: ${_n}:${_b_port} with HTTP/2 ..."
+                    echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} alpn h2,http/1.1 check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
                     _backend_proto="https"
-                elif nc -z ${_n} ${_port}; then
-                    _info "Enabling backend: ${_n}:${_port} (no HTTPS/SSL/TLS) ..."
+                elif nc -z ${_n} ${_b_port}; then
+                    _info "Enabling backend: ${_n}:${_b_port} (no HTTPS/SSL/TLS) ..."
                     # SSL termination
-                    echo "  server ${_n} ${_n}:${_port} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
+                    echo "  server ${_n} ${_n}:${_b_port} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
                 fi
             fi
         done
 
         if [ ! -s /tmp/f_haproxy_backends_$$.out ]; then
-            _info "No node found for ${_port} ..."
+            _info "No backend node found for ${_p} ..."
             continue
         fi
 
-        local _frontend_proto="http"
         local _frontend_ssl_crt=""
-        if [ -n "${_certificate}" ]; then
-            if [[ "${_ssl_term}" =~ ^(y|Y) ]] || [ "${_backend_proto}" = "https" ]; then
-                _frontend_proto="https"
-                _frontend_ssl_crt=" ssl crt ${_certificate} alpn h2,http/1.1"   # Enabling HTTP/2 as newer HAProxy anyway supports
-            fi
+        if [ -n "${_certificate}" ] && [ "${_frontend_proto}" = "https" ]; then
+            _frontend_ssl_crt=" ssl crt ${_certificate} alpn h2,http/1.1"   # Enabling HTTP/2 as newer HAProxy anyway supports
         fi
 
-        echo "
-frontend frontend_p${_port}
-  bind *:${_port}${_frontend_ssl_crt}
+        # If frontend port is already configured somehow (which shouldn't be possible though), skipping
+        if ! grep -qE "^frontend frontend_p${_f_port}$" "${_cfg}"; then
+            echo "
+frontend frontend_p${_f_port}
+  bind *:${_f_port}${_frontend_ssl_crt}
   reqadd X-Forwarded-Proto:\ ${_frontend_proto}
-  default_backend backend_p${_port}" >> "${_cfg}"
+  default_backend backend_p${_b_port}" >> "${_cfg}"
+        fi
 
-        # backend common settings
-        echo "
-backend backend_p${_port}
+        # If backend port is already configured, not adding as hapxory won't start
+        if ! grep -qE "^backend backend_p${_b_port}$" "${_cfg}"; then
+            echo "
+backend backend_p${_b_port}
   balance roundrobin
   cookie NXSESSIONID prefix nocache
   option forwardfor
   http-request set-header X-Forwarded-Port %[dst_port]
   option httpchk"  >> "${_cfg}"
         #  http-request add-header X-Forwarded-Proto ${_backend_proto}
-
-        cat /tmp/f_haproxy_backends_$$.out >> "${_cfg}"
+            cat /tmp/f_haproxy_backends_$$.out >> "${_cfg}"
+        fi
     done
 
     # NOTE: May need to configure rsyslog.conf for log if CentOS
