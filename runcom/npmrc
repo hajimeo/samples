@@ -1,5 +1,5 @@
 strict-ssl=false
-registry=http://dh1:8081/repository/npm-group/
-email=dev@hajigle.com
+email=hosako@sonatype.com
+registry=http://dh1.standalone.localdomain:8081/repository/npm-proxy/
 always-auth=true
 _auth="YWRtaW46YWRtaW4xMjM="
