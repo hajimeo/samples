@@ -38,7 +38,7 @@ function f_setup_scala() {
     if [ ! -x ${_inst_dir%/}/bin/scala ]; then
         if [ ! -d "${_extract_dir%/}/scala-${_ver}" ]; then
             if [ ! -s "${_extract_dir%/}/scala-${_ver}.tgz" ]; then
-                curl --retry 3 -C - -o "${_extract_dir%/}/scala-${_ver}.tgz" "https://downloads.lightbend.com/scala/${_ver}/scala-${_ver}.tgz" || return $?
+                curl --retry 3 -C - -o "${_extract_dir%/}/scala-${_ver}.tgz" -L "https://downloads.lightbend.com/scala/${_ver}/scala-${_ver}.tgz" || return $?
             fi
             tar -xf "${_extract_dir%/}/scala-${_ver}.tgz" -C "${_extract_dir%/}/" || return $?
             chmod a+x ${_extract_dir%/}/scala-${_ver}/bin/*
@@ -47,6 +47,30 @@ function f_setup_scala() {
     fi
     export SCALA_HOME=${_inst_dir%/}
     export PATH=$PATH:$SCALA_HOME/bin
+}
+
+function f_setup_groovy() {
+    local _ver="${1:-2.5.7}"
+    local _extract_dir="${2:-/var/tmp/share}"
+    local _inst_dir="${3:-/usr/local/groovy}"
+
+    if [ -d "$GROOVY_HOME" ]; then
+        echo "GROOVY_HOME is already set so that skipping setup scala"
+        return
+    fi
+
+    if [ ! -x ${_inst_dir%/}/bin/groovysh ]; then
+        if [ ! -d "${_extract_dir%/}/groovy-${_ver}" ]; then
+            if [ ! -s "${_extract_dir%/}/apache-groovy-binary-${_ver}.zip" ]; then
+                curl --retry 3 -C - -o "${_extract_dir%/}/apache-groovy-binary-${_ver}.zip" -L "https://bintray.com/artifact/download/groovy/maven/apache-groovy-binary-${_ver}.zip" || return $?
+            fi
+            unzip "${_extract_dir%/}/apache-groovy-binary-${_ver}.zip" -d "${_extract_dir%/}/" || return $?
+            chmod a+x ${_extract_dir%/}/groovy-${_ver}/bin/*
+        fi
+        [ -d "${_inst_dir%/}" ] || ln -s "${_extract_dir%/}/groovy-${_ver}" "${_inst_dir%/}"
+    fi
+    export GROOVY_HOME=${_inst_dir%/}
+    export PATH=$PATH:$GROOVY_HOME/bin
 }
 
 function f_javaenvs() {
@@ -70,10 +94,18 @@ function f_javaenvs() {
         local _dir="$(dirname `readlink /proc/${_p}/exe` 2>/dev/null)"
         export JAVA_HOME="$(dirname ${_dir})"
     fi
-    if [ -z "$CLASSPATH" ]; then
-        export CLASSPATH=".:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+    local _jcmd="$JAVA_HOME/bin/jcmd"
+    if [ ! -x $JAVA_HOME/bin/jcmd ]; then
+        _jcmd="$(find /var/tmp/share/java -executable -name jcmd | tail -n 1)"
+    fi
+    if [ -x "${_jcmd}" ]; then
+        if [ -z "$CLASSPATH" ]; then
+            export CLASSPATH=".:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+        else
+            export CLASSPATH="${CLASSPATH%:}:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+        fi
     else
-        export CLASSPATH="${CLASSPATH%:}:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+        echo "WARN: Couldn't not set CLASSPATH because of no executable jcmd found."; sleep 3
     fi
     export _CWD="$(realpath /proc/${_p}/cwd)"
 }
@@ -86,9 +118,23 @@ function f_scala() {
         f_javaenvs "${_port}"
         cd "${_CWD}" && _cded=true
     else
-        echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";slee 3
+        echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
     fi
     scala
+    ${_cded} && cd -
+}
+
+function f_groovy() {
+    local _port="${1}"
+    local _cded=false
+    f_setup_groovy
+    if [[ "${_port}" =~ ^[0-9]+$ ]]; then
+        f_javaenvs "${_port}"
+        cd "${_CWD}" && _cded=true
+    else
+        echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
+    fi
+    groovysh
     ${_cded} && cd -
 }
 
