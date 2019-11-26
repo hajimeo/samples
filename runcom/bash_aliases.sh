@@ -118,6 +118,19 @@ function rmspaces() {
 for l in sys.stdin:
    sys.stdout.write("".join(l.split()))'
 }
+
+function tail_logs() {
+    local _log_dir="${1}"
+    local _log_file_glob="${2:-"*.log"}"
+    local _mmin="${3-"-60"}"
+    local _base_dir="${4:-"."}"
+    if [ ! -d "${_log_dir}" ]; then
+        _log_dir=$(find ${_base_dir} -type d \( -name log -o -name logs \) | tr '\n' ' ')
+    fi
+    [ -n "${_mmin}" ] && _mmin="-mmin ${_mmin}"
+    tail -n20 -f $(find ${_log_dir} -type f -name "${_log_file_glob}" ${_mmin} | tr '\n' ' ')
+}
+
 # prettify any strings by checkinbg braces
 function prettify() {
     local _str="$1"
