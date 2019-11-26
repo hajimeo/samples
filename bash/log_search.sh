@@ -487,8 +487,7 @@ function f_getPerflog() {
 function f_list_start_end(){
     local __doc__="Output start time, end time, difference(sec), (filesize) from *multiple* log files"
     local _glob="${1}"
-    local _date_regex="${2:-${_DATE_FORMAT}.\d\d:\d\d:\d\d}"
-    local _sort="${3:-2}"
+    local _sort="${2:-2}"
     local _files=""
     # If no file(s) given, check current working directory
     if [ -n "${_glob}" ]; then
@@ -496,7 +495,7 @@ function f_list_start_end(){
     else
         _files="`ls -1`"
     fi
-    for _f in `echo ${_files}`; do f_start_end_time_with_diff ${_f} "^${_date_regex}"; done | sort -t$'\t' -k${_sort} | column -t -s$'\t'
+    for _f in `echo ${_files}`; do f_start_end_time_with_diff ${_f}; done | sort -t$'\t' -k${_sort} | column -t -s$'\t'
 }
 
 function f_start_end_time_with_diff(){
@@ -504,14 +503,14 @@ function f_start_end_time_with_diff(){
     #eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"^${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)
     local _log="$1"
     local _date_regex="${2}"
-    [ -z "$_date_regex" ] && _date_regex="${_DATE_FORMAT}.\d\d:\d\d:\d\d"
+    [ -z "$_date_regex" ] && _date_regex="(^${_DATE_FORMAT}.\d\d:\d\d:\d\d|\[\d{2}[-/][a-zA-Z]{3}[-/]\d{4}.\d\d:\d\d:\d\d -\d{4}\])"
 
-    local _start_date=`rg -z -N -om1 "^$_date_regex" ${_log} | sed 's/T/ /'` || return $?
+    local _start_date="$(_date2iso "`rg -z -N -om1 "$_date_regex" ${_log}`")" || return $?
     local _extension="${_log##*.}"
     if [ "${_extension}" = 'gz' ]; then
-        local _end_date=`gunzip -c ${_log} | _tac | rg -N -om1 "^$_date_regex" | sed 's/T/ /'` || return $?
+        local _end_date="$(_date2iso "`gunzip -c ${_log} | _tac | rg -z -N -om1 "$_date_regex"`")" || return $?
     else
-        local _end_date=`_tac ${_log} | rg -z -N -om1 "^$_date_regex" | sed 's/T/ /'` || return $?
+        local _end_date="$(_date2iso "`_tac ${_log} | rg -z -N -om1 "$_date_regex"`")" || return $?
     fi
     local _start_int=`_date2int "${_start_date}"`
     local _end_int=`_date2int "${_end_date}"`
@@ -891,8 +890,19 @@ function _getAfterFirstMatch() {
 
 function _date2int() {
     local _date_str="$1"
-    [[ "${_date_str}" =~ ^[0-9][0-9]\/[0-9][0-9]\/[0-9][0-9].[0-9][0-9]:[0-9][0-9]:[0-9][0-9] ]] && _date_str="`dateconv "${_date_str}" -i "%y/%m/%d %H:%M:%S" -f "%Y-%m-%d %H:%M:%S"`"
-    _date -d "${_date_str}" +"%s"
+    _date -d "$(_date2iso "${_date_str}")" +"%s"
+}
+
+function _date2iso() {
+    local _date_str="$1"
+    if [[ "${_date_str}" =~ ([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]).([0-9][0-9]:[0-9][0-9]:[0-9][0-9]) ]]; then
+        _date_str="${BASH_REMATCH[1]} ${BASH_REMATCH[2]}"
+    elif [[ "${_date_str}" =~ ([0-9][0-9]\/[0-9][0-9]\/[0-9][0-9]).([0-9][0-9]:[0-9][0-9]:[0-9][0-9]) ]]; then
+        _date_str="`dateconv "${BASH_REMATCH[1]} ${BASH_REMATCH[2]}" -i "%y/%m/%d %H:%M:%S" -f "%Y-%m-%d %H:%M:%S"`"
+    elif [[ "${_date_str}" =~ ([0-9][0-9]\/[a-zA-Z][a-zA-Z][a-zA-Z]\/[0-9][0-9][0-9][0-9]).([0-9][0-9]:[0-9][0-9]:[0-9][0-9]) ]]; then
+        _date_str="`dateconv "${BASH_REMATCH[1]} ${BASH_REMATCH[2]}" -i "%d/%b/%Y %H:%M:%S" -f "%Y-%m-%d %H:%M:%S"`"
+    fi
+    echo "${_date_str}"
 }
 
 function _find_and_cat() {
@@ -913,7 +923,7 @@ function _replace_number() {
     local _min="${1:-5}"
     local _N_="_NUM_"
     [ 5 -gt ${_min} ] && _N_="*"
-    _sed -r "s/[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+-[0-9a-fA-F]+/__UUID__/g" \
+    _sed -r "s/[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}/___UUID___/g" \
      | _sed -r "s/0x[0-9a-f]{2,}/0x_HEX_/g" \
      | _sed -r "s/\b[0-9a-f]{6,8}\b/__HEX__/g" \
      | _sed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/___DATE___./g" \
@@ -921,6 +931,7 @@ function _replace_number() {
      | _sed -r "s/([+-])[0-1][0-9][03]0\b/\1_TZ_/g" \
      | _sed -r "s/[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/__IP_ADDRESS__/g" \
      | _sed -r "s/:[0-9]{1,5}/:_PORT_/g" \
+     | _sed -r "s/-[0-9]+\] /-_N_] /g" \
      | _sed -r "s/[0-9]{8,10}-[0-9]+\b/__THREAD_ID__/g" \
      | _sed -r "s/[0-9]{${_min},}+/${_N_}/g"
 }
