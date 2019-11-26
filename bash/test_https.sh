@@ -216,8 +216,11 @@ function get_certificate_from_https() {
     local _proxy="$4"
     [ -z "${_dest_filepath}" ] && _dest_filepath=./${_host}_${_port}.crt
     if [ -n "${_proxy}" ]; then
+        #keytool -J-Dhttps.proxyHost=<proxy_hostname> -J-Dhttps.proxyPort=<proxy_port> -printcert -rfc -sslserver <remote_host_name:remote_ssl_port>
+        #keytool -J-Djava.net.useSystemProxies=true -printcert -rfc -sslserver <remote_host_name:remote_ssl_port>
         echo -n | openssl s_client -connect ${_host}:${_port} -showcerts -proxy ${_proxy}
     else
+        #keytool -printcert -rfc -sslserver dh1.standalone.localdomain:8443
         echo -n | openssl s_client -connect ${_host}:${_port} -showcerts
     fi > /tmp/${_host}_${_port}.tmp || return $?
     _sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp > ${_dest_filepath}
