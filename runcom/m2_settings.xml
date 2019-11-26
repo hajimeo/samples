@@ -1,24 +1,38 @@
-<settings>
+<?xml version="1.0" encoding="UTF-8"?>
+
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 http://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+  <pluginGroups>
+    <!-- Plugin for Jasmine Unit test  -->
+    <pluginGroup>com.github.searls</pluginGroup>
+  </pluginGroups>
+  <proxies>
+  </proxies>
+  <servers>
+    <server>
+      <id>nexus</id>
+      <username>admin</username>
+      <!-- https://maven.apache.org/guides/mini/guide-encryption.html -->
+      <!--password>{geVfoESt88cHvvQUUIMu1vDwc/PxCjMt0zlwy/8sMJo=}</password-->
+      <password>{g9UvVDAvg2YHCt6hUa4y/GxJZgXGlhl74THbWOURh0Q=}</password>
+    </server>
+  </servers>
   <mirrors>
     <mirror>
-      <!--This sends everything else to /public -->
       <id>nexus</id>
       <mirrorOf>*</mirrorOf>
-      <url>http://dh1.standalone.localdomain:8081/repository/mvn-proxy-rso/</url>
+      <url>http://dh1.standalone.localdomain:8081/repository/maven-public/</url>
     </mirror>
   </mirrors>
   <profiles>
     <profile>
       <id>nexus</id>
-      <!--Enable snapshots for the built in central repo to direct -->
-      <!--all requests to nexus via the mirror -->
       <repositories>
         <repository>
           <id>central</id>
-          <url>http://central</url>
-          <releases>
-            <enabled>true</enabled>
-          </releases>
+          <url>http://repo1.maven.org/maven2</url>
           <snapshots>
             <enabled>true</enabled>
           </snapshots>
@@ -27,10 +41,7 @@
       <pluginRepositories>
         <pluginRepository>
           <id>central</id>
-          <url>http://central</url>
-          <releases>
-            <enabled>true</enabled>
-          </releases>
+          <url>http://repo1.maven.org/maven2</url>
           <snapshots>
             <enabled>true</enabled>
           </snapshots>
@@ -39,15 +50,6 @@
     </profile>
   </profiles>
   <activeProfiles>
-    <!--make the profile active all the time -->
     <activeProfile>nexus</activeProfile>
   </activeProfiles>
-  <servers>
-    <server>
-      <id>nexus</id>
-      <username>admin</username>
-      <!--password>{geVfoESt88cHvvQUUIMu1vDwc/PxCjMt0zlwy/8sMJo=}</password-->
-      <password>{g9UvVDAvg2YHCt6hUa4y/GxJZgXGlhl74THbWOURh0Q=}</password>
-    </server>
-  </servers>
 </settings>
