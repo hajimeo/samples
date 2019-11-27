@@ -50,6 +50,7 @@ alias kvm_seth='virt-manager -c "qemu+ssh://root@sethdesktop/system?socket=/var/
 # Java / jar related
 alias mb='java -jar $HOME/Applications/metabase.jar'    # port is 3000
 alias vnc='nohup java -jar $HOME/Applications/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
+alias samurai='java -Xmx2048m -jar $HOME/Apps/samurali/samurai.jar'
 #alias vnc='nohup java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
 
 # Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
@@ -186,6 +187,7 @@ function javaenvs() {
     export JAVA_HOME="$(dirname $_dir)"
     export CLASSPATH=".:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
 }
+
 # Execute multiple commands concurrently. NOTE: seems Mac's xargs has command length limit and no -r to ignore empty line
 function _parallel() {
     local _cmds_list="$1"   # File or strings of commands
@@ -340,9 +342,11 @@ function sptBoot() {
         echo "Using ${_zip} ..."
     fi
     # To just re-launch|start, check relaunch-support.sh
-    python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py "${_zip}" ./$(basename "${_zip}" .zip)_tmp
+    python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
 }
-function f_patch() {
+
+# To patch nexus (so that checking /system) but probably no longer using.
+function _patch() {
     local _java_file="${1}"
     local _jar_file="${2}"
     local _base_dir="${3:-"."}"
