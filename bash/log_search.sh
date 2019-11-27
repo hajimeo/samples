@@ -779,6 +779,16 @@ function f_count_lines() {
     fi
 }
 
+function f_threads() {
+    local __doc__="Split file to each thread, then output thread count"
+    local _file="$1"
+    local _search="${2:-"/^\"/"}"
+    local _prefix="${_file%%.*}_"
+    [ ! -d "./threads_tmp" ] && mkdir ./threads_tmp
+    _csplit -f "./threads_tmp/${_prefix}" ${_file} "${_search}" '{*}'
+    rg '^"' ${_file} | _replace_number 1 | sort | uniq -c | sort -n | tail -n 20
+}
+
 function f_count_threads() {
     local __doc__="Grep periodic log and count threads of periodic.log"
     local _file="$1"
@@ -924,6 +934,7 @@ function _replace_number() {
     local _N_="_NUM_"
     [ 5 -gt ${_min} ] && _N_="*"
     _sed -r "s/[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}/___UUID___/g" \
+     | _sed -r "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{8}-[0-9a-fA-F]{8}-[0-9a-fA-F]{8}-[0-9a-fA-F]{8}/___UNIQUE_ID___/g" \
      | _sed -r "s/0x[0-9a-f]{2,}/0x_HEX_/g" \
      | _sed -r "s/\b[0-9a-f]{6,8}\b/__HEX__/g" \
      | _sed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/___DATE___./g" \
@@ -964,8 +975,8 @@ function _search_properties() {
 }
 
 function _get_json() {
-    local _props="$1"           # python list string ['xxxx','yyyy','key[:=]value'] (*NO* space)
-    local _key="${2-"key"}"     # a key attribute name. eg: '@class' (OrientDB), 'key' (jmx.json)
+    local _props="$1"           # search hierarchy list string. eg: "['xxxx','yyyy','key[:=]value']" (*NO* space)
+    local _key="${2-"key"}"     # a key attribute in props. eg: '@class' (OrientDB), 'key' (jmx.json)
     local _attrs="${3-"value"}" # attribute1,attribute2 to return only those attributes' value
     local _find_all="${4}"      # If Y, not stopping after finding one
     local _no_pprint="${5}"     # no prettified output
