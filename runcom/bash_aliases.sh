@@ -120,16 +120,33 @@ for l in sys.stdin:
    sys.stdout.write("".join(l.split()))'
 }
 
-function tail_logs() {
-    local _log_dir="${1}"
-    local _log_file_glob="${2:-"*.log"}"
+function _find_recent() {
+    local __doc__="Find recent (log) files"
+    local _dir="${1}"
+    local _file_glob="${2:-"*.log"}"
     local _mmin="${3-"-60"}"
     local _base_dir="${4:-"."}"
-    if [ ! -d "${_log_dir}" ]; then
-        _log_dir=$(find ${_base_dir} -type d \( -name log -o -name logs \) | tr '\n' ' ')
+    if [ ! -d "${_dir}" ]; then
+        _dir=$(find ${_base_dir%/} -type d \( -name log -o -name logs \) | tr '\n' ' ')
     fi
     [ -n "${_mmin}" ] && _mmin="-mmin ${_mmin}"
-    tail -n20 -f $(find ${_log_dir} -type f -name "${_log_file_glob}" ${_mmin} | tr '\n' ' ')
+    find ${_dir} -type f -name "${_file_glob}" ${_mmin} | tr '\n' ' '
+}
+
+function tail_logs() {
+    local __doc__="Tail log files"
+    local _log_dir="${1}"
+    local _log_file_glob="${2:-"*.log"}"
+    tail -n20 -f $(_find_recent "${_log_dir}" "${_log_file_glob}")
+}
+
+function grep_logs() {
+    local __doc__="Grep (recent) log files"
+    local _search_regex="${1}"
+    local _log_dir="${2}"
+    local _log_file_glob="${3:-"*.log"}"
+    local _grep_opts="${4:-"-IrsP"}"
+    grep ${_grep_opts} "${_search_regex}" $(_find_recent "${_log_dir}" "${_log_file_glob}")
 }
 
 # prettify any strings by checkinbg braces
