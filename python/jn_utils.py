@@ -235,6 +235,7 @@ def json2df(file_path, jq_query="", conn=None, tablename=None, json_cols=[], chu
         # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
         df_tmp_mod.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
+        _autocomp_inject(tablename=tablename)
     return df
 
 
@@ -327,6 +328,7 @@ def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablen
             tablename, ext = os.path.splitext(os.path.basename(file_path))
             _err("tablename: %s ..." % (tablename))
         df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
+        _autocomp_inject(tablename=tablename)
     return df
 
 
@@ -1311,6 +1313,7 @@ def csv2df(file_path, conn=None, tablename=None, chunksize=1000, header=0):
             tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
         _err("tablename: %s ..." % (tablename))
         df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
+        _autocomp_inject(tablename=tablename)
     return df
 
 
