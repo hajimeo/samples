@@ -179,8 +179,9 @@ function f_setup_python() {
     #sudo -i jupyter labextension install @pyviz/jupyterlab_pyviz
     # TODO: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
 
-    sudo -i pip3 install jupyterlab_templates
-    sudo -i jupyter labextension install jupyterlab_templates && sudo -i jupyter serverextension enable --py jupyterlab_templates
+    # Not so useful?
+    #sudo -i pip3 install jupyterlab_templates
+    #sudo -i jupyter labextension install jupyterlab_templates && sudo -i jupyter serverextension enable --py jupyterlab_templates
 
     #_install libsasl2-dev
     #sudo -i pip3 install sasl thrift thrift-sasl PyHive
