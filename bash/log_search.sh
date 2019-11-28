@@ -860,7 +860,7 @@ function f_request2csv() {
     fi
     if [ ! -s "${_csv}" ]; then
         #echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
-        echo "\"$(echo ${_pattern_str} | _sed 's/"//g' | _sed 's/ /","/g')\"" > ${_csv}
+        echo "\"$(echo ${_pattern_str}| tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_csv}
     else
         echo "# Appending into ${_csv} ..."
     fi
