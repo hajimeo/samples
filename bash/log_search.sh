@@ -782,11 +782,16 @@ function f_count_lines() {
 function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
     local _file="$1"
-    local _search="${2:-"/^\"/"}"
+    local _split_search="${2:-"/^\"/"}"
     local _prefix="${_file%%.*}_"
     [ ! -d "./threads_tmp" ] && mkdir ./threads_tmp
-    _csplit -f "./threads_tmp/${_prefix}" ${_file} "${_search}" '{*}'
+    _csplit -f "./threads_tmp/${_prefix}" ${_file} "${_split_search}" '{*}' >/dev/null
+    #rg -i "ldap" ./threads_tmp/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
+    #rg '^("|\s+- .*lock)' ${_file}
+    rg -w BLOCKED -B1 ./threads_tmp/
+    rg 'waiting to lock' -A1 ./threads_tmp/
     rg '^"' ${_file} | _replace_number 1 | sort | uniq -c | sort -n | tail -n 20
+    rg '^"' ${_file} -c
 }
 
 function f_count_threads() {
@@ -841,21 +846,45 @@ function f_request2csv() {
     local __doc__="Convert a jetty request.log to a csv file"
     local _request_file="$1"
     local _csv="$2"
+    local _pattern="$3"
+    local _pattern_out="$4"
+
     if [ -z "${_csv}" ]; then
         _csv="$(basename ${_request_file} .log).csv"
     fi
     # NOTE: check jetty-requestlog.xml and logback-access.xml
+    local _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1')"
+    if [ -z "${_pattern}" ] && [ -z "${_pattern_str}" ]; then
+        echo "Cann not generate regex(pattern) ..."
+        return 1
+    fi
     if [ ! -s "${_csv}" ]; then
-        echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
+        #echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
+        echo "\"$(echo ${_pattern_str} | _sed 's/"//g' | _sed 's/ /","/g')\"" > ${_csv}
     else
         echo "# Appending into ${_csv} ..."
     fi
-    # No $2.
-    # Some version doesn't have thread information? ($12)
-    # TODO: userAgent ($11) can contain double-quotes, so added "{"
+    if [ -z "${_pattern}" ]; then
+        for _p in ${_pattern_str}; do
+            local _first_c="${_p:0:1}"
+            local _last_c="${_p: -1}"
+            if [ "${_last_c}" == "\"" ]; then
+                _pattern="${_pattern# } ${_first_c}([^\"]+)${_last_c}"
+            elif [ "${_last_c}" == "]" ]; then
+                _pattern="${_pattern# } \\${_first_c}([^\]]+)\\${_last_c}"
+            else
+                _pattern="${_pattern# } ([^ ]+)"
+            fi
+        done
+        local _num=$(( $(echo -n "${_pattern_str}" | tr -d -c ' ' | wc -m) + 1 ))
+        _pattern_out="\"\$1\""
+        for _i in `seq 2 ${_num}`; do
+            _pattern_out="${_pattern_out},\"\$${_i}\""
+        done
+    fi
     rg --no-filename -N -z \
-        '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^ ]+) ([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"{]+)" *\[?([^\]]*)\]?' \
-        -o -r '"$1","$3","$4","$5","$6","$7","$8","$9","$10","$11","$12"' ${_request_file} >> ${_csv}
+        "^${_pattern}" \
+        -o -r "${_pattern_out}" ${_request_file} >> ${_csv}
 }
 
 ### Private functions ##################################################################################################
