@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
 # Collection of functions to setup a desktop / work environment
-# Expecting this script works with non-root user (but sudo required)
 #
 # NOTE: This script always tries to overwrite (update)
+#       Using 'sudo' for pip3 and others
 #
 # curl -O "https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_work_env.sh"
 #
@@ -162,21 +162,25 @@ function f_setup_python() {
     # Need to add /usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin in PATH?
     # TODO: as of today no jupyter_contrib_labextensions (lab)
     # NOTE: Initially I thought pandasql looked good but it's actually using sqlite. Pixiedust works only with jupyter-notebook
-    sudo -i pip3 install jupyter_contrib_nbextensions pandas pandas_profiling pixiedust sqlalchemy ipython-sql pandas-gbq --log /tmp/pip.log &>/dev/null
+    sudo -i pip3 install pandas pandas_profiling pixiedust sqlalchemy ipython-sql pandas-gbq --log /tmp/pip.log &>/dev/null
     sudo -i pip3 install bash_kernel --log /tmp/pip.log &>/dev/null && sudo -i python3 -m bash_kernel.install
     # Enable BeakerX. NOTE: this works with only python3
     #sudo -i pip3 install beakerx && beakerx-install
     ### Pip(3) end ########################################################
 
     # Enable jupyter notebook extensions (spell checker)
+    sudo -i pip3 install jupyter_contrib_nbextensions
     sudo -i jupyter contrib nbextension install && sudo -i jupyter nbextension enable spellchecker/main
-    # TODO: sudo -i jupyter labextension install @ijmbarr/jupyterlab_spellchecker
+    sudo -i jupyter labextension install @ijmbarr/jupyterlab_spellchecker
 
     # Enable Holloviews http://holoviews.org/user_guide/Installing_and_Configuring.html
     # Ref: http://holoviews.org/reference/index.html
     #sudo -i pip3 install 'holoviews[recommended]'
     #sudo -i jupyter labextension install @pyviz/jupyterlab_pyviz
     # TODO: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
+
+    sudo -i pip3 install jupyterlab_templates
+    sudo -i jupyter labextension install jupyterlab_templates && sudo -i jupyter serverextension enable --py jupyterlab_templates
 
     #_install libsasl2-dev
     #sudo -i pip3 install sasl thrift thrift-sasl PyHive
