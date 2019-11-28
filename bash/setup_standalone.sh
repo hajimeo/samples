@@ -131,7 +131,7 @@ function f_update() {
         local _remote_length=`curl -m 4 -s -k -L --head "${_remote_repo%/}/${_file_name}" | grep -i '^Content-Length:' | awk '{print $2}' | tr -d '\r'`
         local _local_length=`wc -c <${_target}`
         if [ -z "${_remote_length}" ] || [ "${_remote_length}" -lt $(( ${_local_length} / 2 )) ] || [ ${_remote_length} -eq ${_local_length} ]; then
-            _log "INFO" "Not updating ${_target}"
+            #_log "INFO" "Not updating ${_target}"
             return 0
         fi
 
@@ -626,6 +626,7 @@ function f_as_setup() {
     fi
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
+    _log "INFO" "Executing '${_cmd}' ..."
     docker exec -it ${_name} bash -c "${_cmd} 2>/tmp/install.err"
     if [ $? -ne 0 ]; then
         _log "ERROR" "Installation/Setup failed. Please check container's /tmp/install.err for STDERR"
