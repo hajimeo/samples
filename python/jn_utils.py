@@ -982,8 +982,8 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
             prev_matches = None
 
         _matches = line_re.search(line)
-        _debug("_matches: %s" % (str(_matches.groups())))
         if _matches:
+            _debug("_matches: %s" % (str(_matches.groups())))
             _tmp_groups = _matches.groups()
             prev_message = _tmp_groups[-1]
             prev_matches = _tmp_groups[:(len(_tmp_groups) - 1)]
@@ -1205,7 +1205,6 @@ def logs2table(filename, tablename=None, conn=None,
                 if bool(res) is False:  # if fails once, stop
                     return res
     _autocomp_inject(tablename=tablename)
-    _err("Completed.")
 
 
 def logs2dfs(filename, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
