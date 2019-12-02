@@ -231,7 +231,7 @@ def json2df(file_path, jq_query="", conn=None, tablename=None, json_cols=[], chu
         df = pd.read_json(file_path)  # , dtype=False (didn't help)
     if bool(conn):
         if bool(tablename) is False:
-            tablename, ext = os.path.splitext(os.path.basename(file_path))
+            tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
             _err("tablename: %s ..." % (tablename))
         # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
@@ -1061,13 +1061,15 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     time_with_ms = re.compile('\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+')
 
     ttl_line = _linecount_wc(file_path)
+    tmp_counter = int(float(ttl_line)/10)
+    connter = 10000 if tmp_counter < 10000 else tmp_counter
     filename = os.path.basename(file_path)
     f = _open_file(file_path)
     # Read lines
     _ln = 0
     for l in f:
         _ln += 1
-        if (_ln % 10000) == 0:
+        if (_ln % connter) == 0:
             _err("  Processed %s/%s lines for %s (%s) ..." % (str(_ln), ttl_line, filename, _timestamp(format="%H:%M:%S")))
         if bool(l) is False: break
         (tmp_tuple, prev_matches, prev_message) = _find_matching(line=l, prev_matches=prev_matches,
@@ -1426,25 +1428,27 @@ def analyse_logs():
 
     files = _globr('audit*.json*')
     for f in files:
-        req_df = json2df(f, json_cols=['data'], conn=connect())
+        req_df = json2df(f, tablename="t_audits", json_cols=['data'], conn=connect())
         # Expecting only one audit.log => audit.json
         break
 
     files = _globr('request*.csv*')
     for f in files:
-        req_df = csv2df(f, conn=connect())
-        _ = draw(q("SELECT date, statusCode, bytesSent, elapsedTime from t_request_csv"))
+        req_df = csv2df(f, tablename="t_requests", conn=connect())
+        _ = draw(q("SELECT date, statusCode, bytesSent, elapsedTime from t_requests where elapsedTime > 1000"))
         # Expecting only one request.csv
         break
 
 
-    log_df = logs2table('nexus*.log*', col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
+    log_df = logs2table('nexus*.log*', tablename="t_logs", col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
                         line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
                         size_regex=None, time_regex=None, multiprocessing=True)
     if bool(log_df) is False:
-        log_df = logs2table('clm-server*.log*', col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
+        log_df = logs2table('clm-server*.log*', tablename="t_log", col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
                             line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
                             size_regex=None, time_regex=None, multiprocessing=True)
+
+    # TODO: analyse t_log table
 
     # TODO: below does not work so that using above names_dict workaround
     # try:
