@@ -845,13 +845,13 @@ function f_count_threads_per_dump() {
 
 function f_request2csv() {
     local __doc__="Convert a jetty request.log to a csv file"
-    local _request_file="$1"
-    local _csv="$2"
+    local _glob="${1:-"request.log"}"
+    local _out_file="$2"
     local _pattern="$3"
     local _pattern_out="$4"
 
-    if [ -z "${_csv}" ]; then
-        _csv="$(basename ${_request_file} .log).csv"
+    if [ -z "${_out_file}" ]; then
+        _out_file="$(basename ${_glob} .log).csv"
     fi
     # NOTE: check jetty-requestlog.xml and logback-access.xml
     local _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1')"
@@ -859,11 +859,11 @@ function f_request2csv() {
         echo "# Can not generate regex(pattern). Using default..."
         _pattern_str="%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime \"%header{User-Agent}\""
     fi
-    if [ ! -s "${_csv}" ]; then
+    if [ ! -s "${_out_file}" ]; then
         #echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
-        echo "\"$(echo ${_pattern_str} | tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_csv}
+        echo "\"$(echo ${_pattern_str} | tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_out_file}
     else
-        echo "# Appending into ${_csv} ..."
+        echo "# Appending into ${_out_file} ..."
     fi
     if [ -z "${_pattern}" ]; then
         for _p in ${_pattern_str}; do
@@ -885,8 +885,27 @@ function f_request2csv() {
     fi
     rg --no-filename -N -z \
         "^${_pattern}" \
-        -o -r "${_pattern_out}" ${_request_file} >> ${_csv}
+        -o -r "${_pattern_out}" -g "${_glob}" >> ${_out_file}
 }
+
+function f_audit2json() {
+    local __doc__="Convert audit.log which looks like a json but not"
+    local _glob="${1:-"audit.log"}"
+    local _out_file="$2"
+    local _pattern="$3"
+    local _pattern_out="$4"
+
+    if [ -z "${_out_file}" ]; then
+        _out_file="$(basename ${_glob} .log).json"
+    fi
+
+    rg --no-filename -N -z \
+        "^(\{.+\})$" \
+        -o -r ',$1' -g "${_glob}" > ${_out_file}
+    echo "]" >> ${_out_file}
+    _sed -i '1s/^,/[/' ${_out_file}
+}
+
 
 ### Private functions ##################################################################################################
 
@@ -942,28 +961,30 @@ function f_splitByTime() {
 
     # this may not be working
     local _tmp_n=""
-    local _date_str=""
+    local _tmp_date_str=""
     local _prev_n=""
     local _prev_date_str=""
 
     # Surprisingly, uniq recognise ":" as a delimiter
-    rg "^${_date_regex}" --no-filename -n -o ${_file} | _uniq -f1 | tr -cd '[:alnum:]:._\n' > /tmp/f_splitByTime_$$.out
+    rg "^${_date_regex}" --no-filename -n -o ${_file} | _uniq -f1 > /tmp/f_splitByTime_$$.out
     cat /tmp/f_splitByTime_$$.out | while read -r _t; do
         if [[ "${_t}" =~ ^([0-9]+):(.+) ]]; then
             _tmp_n="${BASH_REMATCH[1]}"
+            _tmp_date_str="$(echo ${BASH_REMATCH[2]} | tr -cd '[:alnum:]._\n')"
             if [ -n "${_prev_n}" ]; then
                 _sed -n "${_prev_n},$(( ${_tmp_n} - 1 ))p;${_tmp_n}q" ${_file} > ${_save_path_prefix}_${_prev_date_str}.${_extension} || return $?
             fi
             _prev_n=${_tmp_n}
-            _prev_date_str="${BASH_REMATCH[2]}"
+            _prev_date_str="${_tmp_date_str}"
         fi
     done
     # Strangely, it seems the scope of _prev_n is only in above while loop...
     #echo "# ${_prev_n}"
     if [[ "$(tail -n1 /tmp/f_splitByTime_$$.out)" =~ ^([0-9]+):(.+) ]]; then
         _tmp_n="${BASH_REMATCH[1]}"
+        _tmp_date_str="$(echo ${BASH_REMATCH[2]} | tr -cd '[:alnum:]._\n')"
         if [ ${_tmp_n} -gt 1 ]; then
-            _sed -n "${_tmp_n},\$p" ${_file} > ${_save_path_prefix}_${BASH_REMATCH[2]}.${_extension} || return $?
+            _sed -n "${_tmp_n},\$p" ${_file} > ${_save_path_prefix}_${_tmp_date_str}.${_extension} || return $?
         fi
     fi
 }
