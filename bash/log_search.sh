@@ -787,6 +787,7 @@ function f_threads() {
     [ ! -d "./threads_tmp" ] && mkdir ./threads_tmp
     _csplit -f "./threads_tmp/${_prefix}" ${_file} "${_split_search}" '{*}' >/dev/null
     #rg -i "ldap" ./threads_tmp/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
+    #rg -w BLOCKED ./threads_tmp/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
     #rg '^("|\s+- .*lock)' ${_file}
     rg -w BLOCKED -B1 ./threads_tmp/
     rg 'waiting to lock' -A1 ./threads_tmp/
@@ -855,12 +856,12 @@ function f_request2csv() {
     # NOTE: check jetty-requestlog.xml and logback-access.xml
     local _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1')"
     if [ -z "${_pattern}" ] && [ -z "${_pattern_str}" ]; then
-        echo "Cann not generate regex(pattern) ..."
-        return 1
+        echo "# Can not generate regex(pattern). Using default..."
+        _pattern_str="%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime \"%header{User-Agent}\""
     fi
     if [ ! -s "${_csv}" ]; then
         #echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
-        echo "\"$(echo ${_pattern_str}| tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_csv}
+        echo "\"$(echo ${_pattern_str} | tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_csv}
     else
         echo "# Appending into ${_csv} ..."
     fi
@@ -923,6 +924,46 @@ function _getAfterFirstMatch() {
             gunzip -c "${_file_path}" | _sed -n "${_start_line_num},${_end_line_num}p"
         else
             _sed -n "${_start_line_num},${_end_line_num}p" "${_file_path}"
+        fi
+    fi
+}
+
+function f_splitByTime() {
+    local _file="$1"
+    local _date_regex="$2"
+    local _save_to="${3:-"."}"
+
+    [ -z "${_date_regex}" ] && _date_regex="$_DATE_FORMAT.\d\d"
+    [ ! -d "${_save_to%/}" ] && mkdir -p "${_save_to%/}"
+
+    local _base_name="$(basename "${_file}")"
+    local _save_path_prefix="${_save_to%/}/${_base_name%%.*}"
+    local _extension="${_base_name##*.}"
+
+    # this may not be working
+    local _tmp_n=""
+    local _date_str=""
+    local _prev_n=""
+    local _prev_date_str=""
+
+    # Surprisingly, uniq recognise ":" as a delimiter
+    rg "^${_date_regex}" --no-filename -n -o ${_file} | _uniq -f1 | tr -cd '[:alnum:]:._\n' > /tmp/f_splitByTime_$$.out
+    cat /tmp/f_splitByTime_$$.out | while read -r _t; do
+        if [[ "${_t}" =~ ^([0-9]+):(.+) ]]; then
+            _tmp_n="${BASH_REMATCH[1]}"
+            if [ -n "${_prev_n}" ]; then
+                _sed -n "${_prev_n},$(( ${_tmp_n} - 1 ))p;${_tmp_n}q" ${_file} > ${_save_path_prefix}_${_prev_date_str}.${_extension} || return $?
+            fi
+            _prev_n=${_tmp_n}
+            _prev_date_str="${BASH_REMATCH[2]}"
+        fi
+    done
+    # Strangely, it seems the scope of _prev_n is only in above while loop...
+    #echo "# ${_prev_n}"
+    if [[ "$(tail -n1 /tmp/f_splitByTime_$$.out)" =~ ^([0-9]+):(.+) ]]; then
+        _tmp_n="${BASH_REMATCH[1]}"
+        if [ ${_tmp_n} -gt 1 ]; then
+            _sed -n "${_tmp_n},\$p" ${_file} > ${_save_path_prefix}_${BASH_REMATCH[2]}.${_extension} || return $?
         fi
     fi
 }
@@ -1079,6 +1120,10 @@ function _date() {
 }
 function _tac() {
     local _cmd="tac"; which gtac &>/dev/null && _cmd="gtac"
+    ${_cmd} "$@"
+}
+function _uniq() {
+    local _cmd="uniq"; which guniq &>/dev/null && _cmd="guniq"
     ${_cmd} "$@"
 }
 
