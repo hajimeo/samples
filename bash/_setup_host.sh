@@ -204,17 +204,17 @@ function f_haproxy() {
                 fi
 
                 if [[ "${_https_ver}" = "1" ]]; then
-                    _info "Enabling backend: ${_n}:${_b_port} with HTTPS ..."
+                    _info "Enabling ${_frontend_proto} => ${_n}:${_b_port} with HTTPS ..."
                     echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
                     _backend_proto="https"
                     [ -n "${_certificate}" ] && _frontend_proto="https"
                 elif [[ "${_https_ver}" = "2" ]]; then
-                    _info "Enabling backend: ${_n}:${_b_port} with HTTP/2 ..."
+                    _info "Enabling ${_frontend_proto} => ${_n}:${_b_port} with HTTP/2 ..."
                     echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} alpn h2,http/1.1 check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
                     _backend_proto="https"
                     [ -n "${_certificate}" ] && _frontend_proto="https"
                 elif nc -z ${_n} ${_b_port}; then
-                    _info "Enabling backend: ${_n}:${_b_port} (no HTTPS/SSL/TLS) ..."
+                    _info "Enabling ${_frontend_proto} => ${_n}:${_b_port} (no HTTPS/SSL/TLS) ..."
                     # SSL termination
                     echo "  server ${_n} ${_n}:${_b_port} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
                 fi
