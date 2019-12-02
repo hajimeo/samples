@@ -149,7 +149,7 @@ def _timestamp(unixtimestamp=None, format=None):
     """
     Format Unix Timestamp with a given format
     :param unixtimestamp: Int (or float, but number after dot will be ignored)
-    :param format: Default is %Y%m%d%H%M%S
+    :param format: Default is %Y-%m-%d %H:%M:%S.%f[:-3]
     :return: Formatted string
     >>> dt_str = _timestamp(1543189639)
     >>> dt_str.startswith('2018')
@@ -220,6 +220,7 @@ def json2df(file_path, jq_query="", conn=None, tablename=None, json_cols=[], chu
     :param chunksize:
     :return: a DataFrame object
     #>>> json2df('./export.json', '.records | map(select(.["@class"] == "quartz_job_detail" and .value_data.jobDataMap != null))[] | .value_data.jobDataMap', ju.connect(), 't_quartz_job_detail')
+    #>>> ju.json2df(file_path="./audit.json", json_cols=['data'], conn=ju.connect())
     >>> pass    # TODO: implement test
     """
     global _DB_SCHEMA
@@ -402,14 +403,14 @@ def _avoid_unsupported(df, json_cols=[], name=None):
     Index: [0]
     """
     keys = df.columns.tolist()
-    drop_cols = []
+    cols = {}
     for k in keys:
         if k in json_cols or k.lower().find('json') > 0:
             # df[k] = df[k].to_string()
-            drop_cols.append(k)
-    if len(drop_cols) > 0:
-        if bool(name): _err(" - dropping columns:%s from %s." % (str(drop_cols), name))
-        return df.drop(columns=drop_cols)
+            cols[k] = 'str'
+    if len(cols) > 0:
+        if bool(name): _err(" - converting columns:%s from %s." % (str(cols), name))
+        return df.astype(cols)
     return df
 
 
@@ -649,13 +650,13 @@ def draw(df, width=16, x_col=0, x_colname=None):
     As pandas.DataFrame.plot is a bit complicated, using simple options only if this method is used.
     https://pandas.pydata.org/pandas-docs/stable/generated/pandas.DataFrame.plot.html
 
-    ju.draw(ju.q("select QueryHour, SumSqSqlWallTime, SumPostPlanTime, SumSqPostPlanTime from query_stats")).tail()
-
     :param df: A DataFrame object, which first column will be the 'x' if x_col is not specified
     :param width: This is Inch and default is 16 inch.
     :param x_col: Column index number used for X axis.
     :param x_colname: If column name is given, use this instead of x_col.
     :return: DF (use .tail() or .head() to limit the rows)
+    #>>> draw(ju.q("SELECT date, statuscode, bytesSent, elapsedTime from t_request_csv")).tail()
+    #>>> draw(ju.q("select QueryHour, SumSqSqlWallTime, SumPostPlanTime, SumSqPostPlanTime from query_stats")).tail()
     """
     try:
         import matplotlib.pyplot as plt
@@ -927,7 +928,7 @@ def _massage_tuple_for_save(tpl, long_value="", num_cols=None):
     return tpl
 
 
-def _insert2table(conn, tablename, tpls, chunk_size=1000):
+def _insert2table(conn, tablename, tpls, chunk_size=4000):
     """
     Insert one tuple or tuples to a table
     :param conn: Connection object created by connect()
@@ -981,7 +982,7 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
             prev_matches = None
 
         _matches = line_re.search(line)
-        # _err("   _matches: %s" % (str(_matches)))
+        _debug("_matches: %s" % (str(_matches.groups())))
         if _matches:
             _tmp_groups = _matches.groups()
             prev_message = _tmp_groups[-1]
@@ -1033,6 +1034,8 @@ def _ms(time_matches, time_re_compiled):
     if time_matches.group(2) == "ks":
         return float(time_matches.group(1)) * 1000 * 1000
 
+def _linecount_wc(filepath):
+    return int(os.popen('wc -l %s' % (filepath)).read().split()[0])
 
 def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None,
                           replace_comma=False):
@@ -1057,13 +1060,15 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     tuples = []
     time_with_ms = re.compile('\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+')
 
+    ttl_line = _linecount_wc(file_path)
+    filename = os.path.basename(file_path)
     f = _open_file(file_path)
     # Read lines
     _ln = 0
     for l in f:
         _ln += 1
         if (_ln % 10000) == 0:
-            _err("  Processed %s lines at %s ..." % (str(_ln), _timestamp()))
+            _err("  Processed %s/%s lines for %s (%s) ..." % (str(_ln), ttl_line, filename, _timestamp(format="%H:%M:%S")))
         if bool(l) is False: break
         (tmp_tuple, prev_matches, prev_message) = _find_matching(line=l, prev_matches=prev_matches,
                                                                  prev_message=prev_message, begin_re=begin_re,
@@ -1075,6 +1080,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
                 tmp_l[0] = tmp_tuple[0].replace(",", ".")
                 tmp_tuple = tuple(tmp_l)
             tuples += [tmp_tuple]
+    f.close()
 
     # append last message (last line)
     if bool(prev_matches):
@@ -1090,7 +1096,7 @@ def logs2table(filename, tablename=None, conn=None,
                max_file_num=10, appending=False, multiprocessing=False):
     """
     Insert multiple log files into *one* table
-    :param filename: [Required] a file name (not path) or *simple* glob regex
+    :param filename: a file name (or path) or *simple* glob regex
     :param tablename: Table name. If empty, generated from filename
     :param conn:  Connection object (ju.connect())
     :param col_names: Column definition list or dict (column_name1 data_type, column_name2 data_type, ...)
@@ -1104,18 +1110,17 @@ def logs2table(filename, tablename=None, conn=None,
     :param multiprocessing: (Experimental) default is False. If True, use multiple CPUs
     :return: Void if no error, or a tuple contains multiple information for debug
     #>>> logs2table(filename='queries.*log*', tablename='t_queries_log',
-         col_names=['date_time', 'ids', 'message', 'extra_lines'],
-         line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (\{.*?\}) - ([^:]+):(.*)',
-         size_regex=None, time_regex=None, max_file_num=20)
+            col_names=['date_time', 'ids', 'message', 'extra_lines'],
+            line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) (\{.*?\}) - ([^:]+):(.*)',
+            size_regex=None, time_regex=None)
     #>>> logs2table(filename='nexus.log*', tablename='t_nexus_log',
          col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
-         line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
-         size_regex=None, time_regex=None, max_file_num=20)
-    #>>> logs2table("request.log",
-              col_names=['clientHost', 'user', 'dateTime', 'method', 'requestUrl', 'statusCode', 'contentLength',
-                         'byteSent', 'elapsedTime_ms', 'userAgent', 'thread'],
-              line_matching='^([0-9.]+) [^ ]+ ([^ ]+) \[([^\]]+)\] "([^ ]+) ([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
-             )
+            line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
+            size_regex=None, time_regex=None)
+    #>>> logs2table('clm-server_*.log*', tablename="t_clm_server_log", multiprocessing=True, max_file_num=20
+            col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
+            line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
+            size_regex=None, time_regex=None)
     >>> pass    # TODO: implement test
     """
     global _SIZE_REGEX
@@ -1125,7 +1130,10 @@ def logs2table(filename, tablename=None, conn=None,
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_cols) is False:
         num_cols = len(col_names)
-    files = _globr(filename)
+    if os.path.exists(filename):
+        files = [filename]
+    else:
+        files = _globr(filename)
 
     if bool(files) is False:
         _err("No file by searching with %s ..." % (str(filename)))
@@ -1155,7 +1163,8 @@ def logs2table(filename, tablename=None, conn=None,
                 col_def_str += "%s TEXT" % (v)
 
     if bool(tablename) is False:
-        tablename = _pick_new_key(filename, {}, using_1st_char=False, prefix='t_')
+        first_filename = os.path.basename(files[0])
+        tablename = _pick_new_key(first_filename, {}, using_1st_char=False, prefix='t_')
 
     # If not None, create a table
     if bool(col_def_str):
@@ -1173,15 +1182,18 @@ def logs2table(filename, tablename=None, conn=None,
     if multiprocessing:
         args_list = []
         for f in files:
+            # concurrent.futures.ProcessPoolExecutor hangs in Jupyter, so can't use kwargs
             args_list.append((f, line_beginning, line_matching, size_regex, time_regex, num_cols, True))
-        # from concurrent.futures import ProcessPoolExecutor hangs in Jupyter, so can't use kwargs
+        # file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None, replace_comma=False
         rs = _mexec(_read_file_and_search, args_list)
         for tuples in rs:
-            # If inserting into one table, probably no point of multiprocessing for this.
-            if len(tuples) > 0:
-                res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
-                if bool(res) is False:  # if fails once, stop
-                    return res
+            if bool(tuples) is False or len(tuples) == 0:
+                _err("WARN: _mexec returned empty tuple ...")
+                continue
+            res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
+            if bool(res) is False:  # if fails once, stop
+                _err("_insert2table failed to insert %d ..." % (len(tuples)))
+                return res
     else:
         for f in files:
             _err("Processing %s (%d KB) ..." % (str(f), os.stat(f).st_size / 1024))
@@ -1406,6 +1418,44 @@ def gen_ldapsearch(ldap_json=None):
     return "LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"" % (
         p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u)
 
+def analyse_logs():
+    """
+    Analyse log files (expecting request.log converted to request.csv)
+    :return: void
+    >>> pass    # test should be done in each function
+    """
+
+    files = _globr('audit*.json*')
+    for f in files:
+        req_df = json2df(f, json_cols=['data'], conn=connect())
+        # Expecting only one audit.log => audit.json
+        break
+
+    files = _globr('request*.csv*')
+    for f in files:
+        req_df = csv2df(f, conn=connect())
+        _ = draw(q("SELECT date, statusCode, bytesSent, elapsedTime from t_request_csv"))
+        # Expecting only one request.csv
+        break
+
+
+    log_df = logs2table('nexus*.log*', col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
+                        line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
+                        size_regex=None, time_regex=None, multiprocessing=True)
+    if bool(log_df) is False:
+        log_df = logs2table('clm-server*.log*', col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
+                            line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
+                            size_regex=None, time_regex=None, multiprocessing=True)
+
+    # TODO: below does not work so that using above names_dict workaround
+    # try:
+    #    import jn_utils as ju
+    #    get_ipython().set_custom_completer(ju._autocomp_matcher)    # Completer.matchers.append
+    # except:
+    #    _err("get_ipython().set_custom_completer(ju._autocomp_matcher) failed")
+    #    pass
+    #_autocomp_inject()
+    _err("Completed.")
 
 def load(jsons_dir=["./engine/aggregates", "./engine/cron-scheduler"], csvs_dir="./stats",
          jsons_exclude_ptn='physicalPlans|partition|incremental|predictions', csvs_exclude_ptn=''):
