@@ -14,7 +14,7 @@ alias int2utc='python -c "import sys,datetime;print(datetime.datetime.utcfromtim
 #alias int2utc='python -c "import sys,time;print(time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\")"'
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'pdf' (pandas dataframe)
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
-# Read xml file, then convert to dict, then json
+# Read xml file, then convert to dict, then print json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
 # TODO: find with sys.argv[2] (no ".//"), then output as string
 alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(r.find(sys.argv[2],namespaces=r.nsmap))"'
@@ -75,12 +75,7 @@ function merge_zips() {
     local _first_file="$1"
     zip -FF ${_first_file} --output ${_first_file%.*}.merged.zip
 }
-# Take a xml file and *output* as json
-function xml2json() {
-    local _xml_file="$1"
-    #pip3 install xmltodict
-    python3 -c "import xmltodict,json;print(json.dumps(xmltodict.parse(open('${_xml_file}').read()), indent=4, sort_keys=True))"
-}
+
 # head and tail of one file
 function ht() {
     local _f="$1"
