@@ -232,7 +232,7 @@ def json2df(file_path, jq_query="", conn=None, tablename=None, json_cols=[], chu
     if bool(conn):
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
-            _err("tablename: %s ..." % (tablename))
+        _err("Creating table: %s ..." % (tablename))
         # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
         df_tmp_mod.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
@@ -327,7 +327,7 @@ def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablen
     if bool(conn):
         if bool(tablename) is False:
             tablename, ext = os.path.splitext(os.path.basename(file_path))
-            _err("tablename: %s ..." % (tablename))
+        _err("Creating table: %s ..." % (tablename))
         df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
         _autocomp_inject(tablename=tablename)
     return df
@@ -409,7 +409,7 @@ def _avoid_unsupported(df, json_cols=[], name=None):
             # df[k] = df[k].to_string()
             cols[k] = 'str'
     if len(cols) > 0:
-        if bool(name): _err(" - converting columns:%s from %s." % (str(cols), name))
+        if bool(name): _err(" - converting columns:%s." % (str(cols)))
         return df.astype(cols)
     return df
 
@@ -468,10 +468,10 @@ def _udf_timestamp(date_time):
     """
     Unix timestamp handling UDF for SQLite
     eg: SELECT UDF_TIMESTAMP(some_datetime) as unix_timestamp, ...
-    :param date_time: String or Date/Time column (but SQLite doesn't have date/time columns)
+    NOTE: SQLite way: CAST((julianday(some_datetime) - 2440587.5)*86400.0 as INT)
+    :param date_time: ISO date string (or Date/Time column but SQLite doesn't have date/time columns)
     :return:          Integer of Unix Timestamp
     """
-    # NOTE: SQLite way: CAST((julianday(some_datetime) - 2440587.5)*86400.0
     return int(mktime(parser.parse(date_time).timetuple()))
 
 
@@ -1034,8 +1034,10 @@ def _ms(time_matches, time_re_compiled):
     if time_matches.group(2) == "ks":
         return float(time_matches.group(1)) * 1000 * 1000
 
+
 def _linecount_wc(filepath):
     return int(os.popen('wc -l %s' % (filepath)).read().split()[0])
+
 
 def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None,
                           replace_comma=False):
@@ -1061,7 +1063,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     time_with_ms = re.compile('\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d,\d+')
 
     ttl_line = _linecount_wc(file_path)
-    tmp_counter = int(float(ttl_line)/10)
+    tmp_counter = int(float(ttl_line) / 10)
     connter = 10000 if tmp_counter < 10000 else tmp_counter
     filename = os.path.basename(file_path)
     f = _open_file(file_path)
@@ -1070,7 +1072,8 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     for l in f:
         _ln += 1
         if (_ln % connter) == 0:
-            _err("  Processed %s/%s lines for %s (%s) ..." % (str(_ln), ttl_line, filename, _timestamp(format="%H:%M:%S")))
+            _err("  Processed %s/%s lines for %s (%s) ..." % (
+            str(_ln), ttl_line, filename, _timestamp(format="%H:%M:%S")))
         if bool(l) is False: break
         (tmp_tuple, prev_matches, prev_message) = _find_matching(line=l, prev_matches=prev_matches,
                                                                  prev_message=prev_message, begin_re=begin_re,
@@ -1138,7 +1141,7 @@ def logs2table(filename, tablename=None, conn=None,
         files = _globr(filename)
 
     if bool(files) is False:
-        _err("No file by searching with %s ..." % (str(filename)))
+        # _err("No file by searching with %s ..." % (str(filename)))
         return False
 
     if len(files) > max_file_num:
@@ -1324,7 +1327,7 @@ def csv2df(file_path, conn=None, tablename=None, chunksize=1000, header=0):
     if bool(conn):
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
-        _err("tablename: %s ..." % (tablename))
+        _err("Creating table: %s ..." % (tablename))
         df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
         _autocomp_inject(tablename=tablename)
     return df
@@ -1419,34 +1422,48 @@ def gen_ldapsearch(ldap_json=None):
     return "LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"" % (
         p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u)
 
-def analyse_logs():
+
+def analyse_logs(start_isotime=None, end_isotime=None):
     """
     Analyse log files (expecting request.log converted to request.csv)
+    :param start_isotime:
+    :param end_isotime:
     :return: void
     >>> pass    # test should be done in each function
     """
-
-    files = _globr('audit*.json*')
+    files = _globr('audit.json')
     for f in files:
-        req_df = json2df(f, tablename="t_audits", json_cols=['data'], conn=connect())
+        _ = json2df(f, tablename="t_audit_logs", json_cols=['data'], conn=connect())
         # Expecting only one audit.log => audit.json
         break
 
-    files = _globr('request*.csv*')
+    where_sql = " where elapsedTime > 1000"
+    if bool(start_isotime) is True:
+        where_sql += " and date_time >= UDF_STR2SQLDT('" + start_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
+    if bool(end_isotime) is True:
+        where_sql += " and date_time <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
+    files = _globr('request.csv')
     for f in files:
-        req_df = csv2df(f, tablename="t_requests", conn=connect())
-        _ = draw(q("SELECT date, statusCode, bytesSent, elapsedTime from t_requests where elapsedTime > 1000"))
-        # Expecting only one request.csv
+        _ = csv2df(f, tablename="t_request_logs", conn=connect())
+        _ = draw(q(
+            "SELECT * FROM (SELECT UDF_STR2SQLDT(date, '%d/%b/%Y:%H:%M:%S %z') as date_time, statusCode, bytesSent, elapsedTime from t_request_logs) as t" + where_sql))
         break
 
+    files = _globr('audit.json')
+    for f in files:
+        _ = logs2table('nexus.log', tablename="t_nexus_logs",
+                   col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
+                   line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
+                   size_regex=None, time_regex=None, multiprocessing=True)
+        break
 
-    log_df = logs2table('nexus*.log*', tablename="t_logs", col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
-                        line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
-                        size_regex=None, time_regex=None, multiprocessing=True)
-    if bool(log_df) is False:
-        log_df = logs2table('clm-server*.log*', tablename="t_log", col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
-                            line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
-                            size_regex=None, time_regex=None, multiprocessing=True)
+    files = _globr('audit.json')
+    for f in files:
+        _ = logs2table('clm-server.log', tablename="t_clmserver_logs",
+                   col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
+                   line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
+                   size_regex=None, time_regex=None, multiprocessing=True)
+        break
 
     # TODO: analyse t_log table
 
@@ -1457,8 +1474,9 @@ def analyse_logs():
     # except:
     #    _err("get_ipython().set_custom_completer(ju._autocomp_matcher) failed")
     #    pass
-    #_autocomp_inject()
+    # _autocomp_inject()
     _err("Completed.")
+
 
 def load(jsons_dir=["./engine/aggregates", "./engine/cron-scheduler"], csvs_dir="./stats",
          jsons_exclude_ptn='physicalPlans|partition|incremental|predictions', csvs_exclude_ptn=''):
