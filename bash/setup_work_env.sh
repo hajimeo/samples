@@ -154,7 +154,7 @@ function f_setup_python() {
     sudo -i pip3 list -o | tee /tmp/pip.log
     #sudo -i pip3 list -o --format=freeze | cut -d'=' -f1 | xargs sudo -i pip3 install -U
 
-    sudo -i pip3 install lxml pyjq
+    sudo -i pip3 install lxml pyjq xmltodict
 
     # Autocomplete doesn't work. @see https://github.com/ipython/ipython/issues/11530
     sudo -i pip3 install ipython==7.1.1 jupyter jupyterlab --log /tmp/pip.log &>/dev/null || return $?
