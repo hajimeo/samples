@@ -718,7 +718,7 @@ def qhistory(run=None, like=None, html=True, tail=20):
     pd.set_option('display.max_colwidth', -1)
     out = df.to_html()
     pd.set_option('display.max_colwidth', current_max_colwitdh)
-    from IPython.core.display import display, HTML
+    from IPython.display import display, HTML
     display(HTML(out))
 
 
@@ -1431,22 +1431,27 @@ def analyse_logs(start_isotime=None, end_isotime=None):
     :return: void
     >>> pass    # test should be done in each function
     """
+    from IPython.display import display, HTML
     files = _globr('audit.json')
     for f in files:
         _ = json2df(f, tablename="t_audit_logs", json_cols=['data'], conn=connect())
         # Expecting only one audit.log => audit.json
         break
 
-    where_sql = " where elapsedTime > 1000"
+    where_sql = "WHERE elapsedTime > 1000"
     if bool(start_isotime) is True:
-        where_sql += " and date_time >= UDF_STR2SQLDT('" + start_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
+        where_sql += " AND date_time >= UDF_STR2SQLDT('" + start_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
     if bool(end_isotime) is True:
-        where_sql += " and date_time <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
+        where_sql += " AND date_time <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
     files = _globr('request.csv')
     for f in files:
         _ = csv2df(f, tablename="t_request_logs", conn=connect())
-        _ = draw(q(
-            "SELECT * FROM (SELECT UDF_STR2SQLDT(date, '%d/%b/%Y:%H:%M:%S %z') as date_time, statusCode, bytesSent, elapsedTime from t_request_logs) as t" + where_sql))
+        query = "SELECT * FROM (SELECT UDF_STR2SQLDT(date, '%d/%b/%Y:%H:%M:%S %z') AS date_time, statusCode, bytesSent, elapsedTime FROM t_request_logs) t " + where_sql
+        _err("query: "+query)
+        _ = draw(q(query))
+        query = "SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d:)', date, 1) AS ten_mins, CAST(AVG(elapsedTime)/1000 AS INT) AS avg_elaps_sec, CAST(AVG(bytesSent) AS INT) AS avg_bytes, count(*) AS occurrence FROM t_request_logs "+ where_sql+ " GROUP BY 1"
+        _err("query: "+query)
+        display(q(query))
         break
 
     files = _globr('audit.json')
