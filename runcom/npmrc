@@ -2,4 +2,5 @@ strict-ssl=false
 email=hosako@sonatype.com
 registry=http://dh1.standalone.localdomain:8081/repository/npm-proxy/
 always-auth=true
+# echo -n 'username:password' | openssl base64
 _auth="YWRtaW46YWRtaW4xMjM="
