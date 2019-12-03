@@ -782,17 +782,21 @@ function f_count_lines() {
 function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
     local _file="$1"
-    local _split_search="${2:-"/^\"/"}"
+    local _split_search="${2:-"^[^ ].+"}"
+
+    [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
     local _prefix="${_file%%.*}_"
     [ ! -d "./threads_tmp" ] && mkdir ./threads_tmp
-    _csplit -f "./threads_tmp/${_prefix}" ${_file} "${_split_search}" '{*}' >/dev/null
+
+    f_splitByRegex "${_file}" "${_split_search}" "./threads_tmp"
+
     #rg -i "ldap" ./threads_tmp/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
     #rg -w BLOCKED ./threads_tmp/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
     #rg '^("|\s+- .*lock)' ${_file}
     rg -w BLOCKED -B1 ./threads_tmp/
     rg 'waiting to lock' -A1 ./threads_tmp/
-    rg '^"' ${_file} | _replace_number 1 | sort | uniq -c | sort -n | tail -n 20
-    rg '^"' ${_file} -c
+    rg '^[^ ]' ${_file} | _replace_number 1 | sort | uniq -c | sort -n | tail -n 20
+    echo "Total: `rg '^[^ ]' ${_file} -c`"
 }
 
 function f_count_threads() {
@@ -859,12 +863,8 @@ function f_request2csv() {
         echo "# Can not generate regex(pattern). Using default..."
         _pattern_str="%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime \"%header{User-Agent}\""
     fi
-    if [ ! -s "${_out_file}" ]; then
-        #echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
-        echo "\"$(echo ${_pattern_str} | tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_out_file}
-    else
-        echo "# Appending into ${_out_file} ..."
-    fi
+    #echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
+    echo "\"$(echo ${_pattern_str} | tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_out_file}
     if [ -z "${_pattern}" ]; then
         for _p in ${_pattern_str}; do
             local _first_c="${_p:0:1}"
@@ -947,12 +947,12 @@ function _getAfterFirstMatch() {
     fi
 }
 
-function f_splitByTime() {
+function f_splitByRegex() {
     local _file="$1"
-    local _date_regex="$2"
+    local _regex="$2"   # If empty, use YYYY-MM-DD.hh
     local _save_to="${3:-"."}"
 
-    [ -z "${_date_regex}" ] && _date_regex="$_DATE_FORMAT.\d\d"
+    [ -z "${_regex}" ] && _regex="^$_DATE_FORMAT.\d\d"
     [ ! -d "${_save_to%/}" ] && mkdir -p "${_save_to%/}"
 
     local _base_name="$(basename "${_file}")"
@@ -961,30 +961,30 @@ function f_splitByTime() {
 
     # this may not be working
     local _tmp_n=""
-    local _tmp_date_str=""
+    local _tmp_str=""
     local _prev_n=""
-    local _prev_date_str=""
+    local _prev_str=""
 
     # Surprisingly, uniq recognise ":" as a delimiter
-    rg "^${_date_regex}" --no-filename -n -o ${_file} | _uniq -f1 > /tmp/f_splitByTime_$$.out
-    cat /tmp/f_splitByTime_$$.out | while read -r _t; do
+    rg "${_regex}" --no-filename -n -o ${_file} | _uniq -f1 > /tmp/f_splitByRegex_$$.out
+    cat /tmp/f_splitByRegex_$$.out | while read -r _t; do
         if [[ "${_t}" =~ ^([0-9]+):(.+) ]]; then
             _tmp_n="${BASH_REMATCH[1]}"
-            _tmp_date_str="$(echo ${BASH_REMATCH[2]} | tr -cd '[:alnum:]._\n')"
+            _tmp_str="$(echo ${BASH_REMATCH[2]} | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n')"
             if [ -n "${_prev_n}" ]; then
-                _sed -n "${_prev_n},$(( ${_tmp_n} - 1 ))p;${_tmp_n}q" ${_file} > ${_save_path_prefix}_${_prev_date_str}.${_extension} || return $?
+                _sed -n "${_prev_n},$(( ${_tmp_n} - 1 ))p;${_tmp_n}q" ${_file} > ${_save_path_prefix}_${_prev_str}.${_extension} || return $?
             fi
             _prev_n=${_tmp_n}
-            _prev_date_str="${_tmp_date_str}"
+            _prev_str="${_tmp_str}"
         fi
     done
     # Strangely, it seems the scope of _prev_n is only in above while loop...
     #echo "# ${_prev_n}"
-    if [[ "$(tail -n1 /tmp/f_splitByTime_$$.out)" =~ ^([0-9]+):(.+) ]]; then
+    if [[ "$(tail -n1 /tmp/f_splitByRegex_$$.out)" =~ ^([0-9]+):(.+) ]]; then
         _tmp_n="${BASH_REMATCH[1]}"
-        _tmp_date_str="$(echo ${BASH_REMATCH[2]} | tr -cd '[:alnum:]._\n')"
+        _tmp_str="$(echo ${BASH_REMATCH[2]} | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n')"
         if [ ${_tmp_n} -gt 1 ]; then
-            _sed -n "${_tmp_n},\$p" ${_file} > ${_save_path_prefix}_${_tmp_date_str}.${_extension} || return $?
+            _sed -n "${_tmp_n},\$p" ${_file} > ${_save_path_prefix}_${_tmp_str}.${_extension} || return $?
         fi
     fi
 }
