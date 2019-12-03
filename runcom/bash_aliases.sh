@@ -347,7 +347,7 @@ function sptZip() {
 
     [ -d ./${_name} ] || unzip ${_zip}
     cd ./${_name} || return $?
-    logS && p_support "nxrm" ../p_support_nxrm_${_name}.out
+    logS && p_support "" ../p_support_nxrm_${_name}.out
     cd -
     ls -l ./${_name}_zip.out ./p_support_nxrm_${_name}.out
 }
