@@ -43,6 +43,8 @@ function f_setup_misc() {
     if which git &>/dev/null && ! git config credential.helper | grep -qw cache; then
         git config --global credential.helper "cache --timeout=600"
     fi
+
+    _install jq
 }
 
 function f_setup_rg() {
