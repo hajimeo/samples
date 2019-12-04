@@ -70,6 +70,18 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
+# Obfuscate string (encode/decode)
+function obfuscate() {
+    local _str="$1"
+    local _salt="$2"
+    echo -n "${_str}" | openssl enc -aes-128-cbc -pbkdf2 -salt -pass pass:"${_salt}"
+}
+function deobfuscate() {
+    local _str="$1"
+    local _salt="$2"
+    echo -n "${_str}" | openssl enc -aes-128-cbc -pbkdf2 -salt -pass pass:"${_salt}" -d
+}
+
 # Merge split zip files to one file
 function merge_zips() {
     local _first_file="$1"
