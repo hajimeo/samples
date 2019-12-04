@@ -208,11 +208,11 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     return (names_dict, dfs)
 
 
-def json2df(file_path, jq_query="", conn=None, tablename=None, json_cols=[], chunksize=1000):
+def json2df(filename, jq_query="", conn=None, tablename=None, json_cols=[], chunksize=1000):
     """
     Convert a json file, which contains list into a DataFrame
     If conn is given, import into a DB table
-    :param file_path: File path
+    :param filename: File path or file name or glob pattern
     :param jq_query: String used with ju.jq()
     :param conn:   DB connection object
     :param tablename: If empty, table name will be the filename without extension
@@ -220,18 +220,32 @@ def json2df(file_path, jq_query="", conn=None, tablename=None, json_cols=[], chu
     :param chunksize:
     :return: a DataFrame object
     #>>> json2df('./export.json', '.records | map(select(.["@class"] == "quartz_job_detail" and .value_data.jobDataMap != null))[] | .value_data.jobDataMap', ju.connect(), 't_quartz_job_detail')
+    #>>> json2df('audit.json', '..|select(.attributes? and .attributes.".typeId" == "db.backup")|.attributes', ju.connect(), "t_audit_attr_dbbackup_logs")
     #>>> ju.json2df(file_path="./audit.json", json_cols=['data'], conn=ju.connect())
     >>> pass    # TODO: implement test
     """
     global _DB_SCHEMA
-    if bool(jq_query):
-        obj = jq(file_path, jq_query)
-        df = pd.DataFrame(obj)
+    if os.path.exists(filename):
+        files = [filename]
     else:
-        df = pd.read_json(file_path)  # , dtype=False (didn't help)
+        files = _globr(filename)
+        if bool(files) is False:
+            _err("No file found from: %s ..." % (str(filename)))
+            return False
+    dfs = []
+    for file_path in files:
+        _err("Loading %s (%s)..." % (str(file_path), _timestamp(format="%H:%M:%S")))
+        if bool(jq_query):
+            obj = jq(file_path, jq_query)
+            dfs.append(pd.DataFrame(obj))
+        else:
+            dfs.append(pd.read_json(file_path))  # , dtype=False (didn't help)
+    if bool(dfs) is False:
+        return False
+    df = pd.concat(dfs, sort=False)
     if bool(conn):
         if bool(tablename) is False:
-            tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
+            tablename = _pick_new_key(os.path.basename(files[0]), {}, using_1st_char=False, prefix='t_')
         _err("Creating table: %s ..." % (tablename))
         # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
@@ -402,9 +416,12 @@ def _avoid_unsupported(df, json_cols=[], name=None):
     Columns: []
     Index: [0]
     """
+    if bool(json_cols) is False:
+        return df
     keys = df.columns.tolist()
     cols = {}
     for k in keys:
+        _debug("_avoid_unsupported: k = %s" % (str(k)))
         if k in json_cols or k.lower().find('json') > 0:
             # df[k] = df[k].to_string()
             cols[k] = 'str'
@@ -1073,7 +1090,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
         _ln += 1
         if (_ln % connter) == 0:
             _err("  Processed %s/%s lines for %s (%s) ..." % (
-            str(_ln), ttl_line, filename, _timestamp(format="%H:%M:%S")))
+                str(_ln), ttl_line, filename, _timestamp(format="%H:%M:%S")))
         if bool(l) is False: break
         (tmp_tuple, prev_matches, prev_message) = _find_matching(line=l, prev_matches=prev_matches,
                                                                  prev_message=prev_message, begin_re=begin_re,
@@ -1267,7 +1284,7 @@ def logs2dfs(filename, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size
     _err("Completed.")
     if bool(dfs) is False:
         return None
-    return pd.concat(dfs)
+    return pd.concat(dfs, sort=False)
 
 
 def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000):
@@ -1302,11 +1319,11 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
     return (names_dict, dfs)
 
 
-def csv2df(file_path, conn=None, tablename=None, chunksize=1000, header=0):
+def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0):
     '''
     Load a CSV file into a DataFrame
     If conn is given, import into a DB table
-    :param file_path: Exact file path (not file name or glob string)
+    :param filename: file path or file name or glob string
     :param conn: DB connection object. If not empty, also import into a sqlite table
     :param tablename: If empty, table name will be the filename without extension
     :param chunksize: Rows will be written in batches of this size at a time
@@ -1317,12 +1334,19 @@ def csv2df(file_path, conn=None, tablename=None, chunksize=1000, header=0):
     >>> pass    # Testing in df2csv()
     '''
     global _DB_SCHEMA
+    if os.path.exists(filename):
+        file_path = filename
+    else:
+        files = _globr(filename)
+        if bool(files) is False:
+            _err("No file found from: %s ..." % (str(filename)))
+            return False
+        file_path = files[0]
+
     names = None
     if type(header) == list:
         names = header
         header = None
-    if os.path.exists(file_path) is False:
-        return False
     df = pd.read_csv(file_path, escapechar='\\', header=header, names=names)
     if bool(conn):
         if bool(tablename) is False:
@@ -1432,45 +1456,34 @@ def analyse_logs(start_isotime=None, end_isotime=None):
     >>> pass    # test should be done in each function
     """
     from IPython.display import display, HTML
-    files = _globr('audit.json')
-    for f in files:
-        _ = json2df(f, tablename="t_audit_logs", json_cols=['data'], conn=connect())
-        # Expecting only one audit.log => audit.json
-        break
 
+    _ = json2df('audit.json', tablename="t_audit_logs", json_cols=['attributes','data'], conn=connect())
+
+    files = _globr('request.csv')
     where_sql = "WHERE elapsedTime > 1000"
     if bool(start_isotime) is True:
         where_sql += " AND date_time >= UDF_STR2SQLDT('" + start_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
     if bool(end_isotime) is True:
         where_sql += " AND date_time <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
-    files = _globr('request.csv')
     for f in files:
         _ = csv2df(f, tablename="t_request_logs", conn=connect())
         query = "SELECT * FROM (SELECT UDF_STR2SQLDT(date, '%d/%b/%Y:%H:%M:%S %z') AS date_time, statusCode, bytesSent, elapsedTime FROM t_request_logs) t " + where_sql
-        _err("query: "+query)
+        _err("query: " + query)
         _ = draw(q(query))
-        query = "SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d:)', date, 1) AS ten_mins, CAST(AVG(elapsedTime)/1000 AS INT) AS avg_elaps_sec, CAST(AVG(bytesSent) AS INT) AS avg_bytes, count(*) AS occurrence FROM t_request_logs "+ where_sql+ " GROUP BY 1"
-        _err("query: "+query)
+        query = "SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d:)', date, 1) AS ten_mins, CAST(AVG(elapsedTime)/1000 AS INT) AS avg_elaps_sec, CAST(AVG(bytesSent) AS INT) AS avg_bytes, count(*) AS occurrence FROM t_request_logs " + where_sql + " GROUP BY 1"
+        _err("query: " + query)
         display(q(query))
         break
 
-    files = _globr('audit.json')
-    for f in files:
-        _ = logs2table('nexus.log', tablename="t_nexus_logs",
+    _ = logs2table('nexus.log', tablename="t_nexus_logs",
                    col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
                    line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
                    size_regex=None, time_regex=None, multiprocessing=True)
-        break
-
-    files = _globr('audit.json')
-    for f in files:
-        _ = logs2table('clm-server.log', tablename="t_clmserver_logs",
+    _ = logs2table('clm-server.log', tablename="t_clmserver_logs",
                    col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
                    line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
                    size_regex=None, time_regex=None, multiprocessing=True)
-        break
-
-    # TODO: analyse t_log table
+    # TODO: analyse t_xxxxx_logs table
 
     # TODO: below does not work so that using above names_dict workaround
     # try:
