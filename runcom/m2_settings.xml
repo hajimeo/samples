@@ -23,7 +23,7 @@
     <mirror>
       <id>nexus</id>
       <mirrorOf>*</mirrorOf>
-      <url>http://dh1.standalone.localdomain:8081/repository/maven-public/</url>
+      <url>http://dh1.standalone.localdomain:8081/repository/maven-group/</url>
     </mirror>
   </mirrors>
   <profiles>
