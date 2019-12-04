@@ -47,20 +47,21 @@ function f_setup_misc() {
 
 function f_setup_rg() {
     # as of today, rg is not in Ubuntu repository so not using _install
+    local _url="https://github.com/BurntSushi/ripgrep/releases/"
     if ! which rg &>/dev/null; then
         if ! _install ripgrep; then
             if [ "`uname`" = "Darwin" ]; then
-                _log "WARN" "Please install 'rg' first. https://github.com/BurntSushi/ripgrep/releases"; sleep 3
+                _log "WARN" "Please install 'rg' first. ${_url}"; sleep 3
+                return 1
+            elif [ "`uname`" = "Linux" ]; then
+                local _ver="$(curl -sI ${_url%/}/latest | _sed -nr 's/^Location:.+\/releases\/tag\/(.+)$/\1/p' | tr -d '[:space:]')"
+                _log "INFO" "Installing rg version: ${_ver} ..."; sleep 3
+                _download "${_url%/}/download/${_ver}/ripgrep_${_ver}_amd64.deb" "/tmp/ripgrep_${_ver}_amd64.deb" "Y" "Y" || return $?
+                sudo dpkg -i /tmp/ripgrep_${_ver}_amd64.deb || return $?
+            else
+                _log "WARN" "Please install 'rg' first. ${_url}"; sleep 3
                 return 1
             fi
-        elif [ "`uname`" = "Linux" ]; then
-            local _ver="0.10.0"
-            _log "INFO" "Installing rg version: ${_ver} ..."; sleep 3
-            _download "https://github.com/BurntSushi/ripgrep/releases/download/${_ver}/ripgrep_${_ver}_amd64.deb" "/tmp/ripgrep_${_ver}_amd64.deb" "Y" "Y" || return $?
-            sudo dpkg -i /tmp/ripgrep_${_ver}_amd64.deb || return $?
-        else
-            _log "WARN" "Please install 'rg' first. https://github.com/BurntSushi/ripgrep/releases"; sleep 3
-            return 1
         fi
     fi
 
