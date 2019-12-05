@@ -19,10 +19,12 @@
       <password>{g9UvVDAvg2YHCt6hUa4y/GxJZgXGlhl74THbWOURh0Q=}</password>
     </server>
   </servers>
+  <!--localRepository>./m2_repo</localRepository-->
   <mirrors>
     <mirror>
       <id>nexus</id>
       <mirrorOf>*</mirrorOf>
+      <!--url>http://localhost:8081/repository/kotlin-dev/</url-->
       <url>http://dh1.standalone.localdomain:8081/repository/maven-group/</url>
     </mirror>
   </mirrors>
