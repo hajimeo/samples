@@ -131,13 +131,22 @@ function _find_recent() {
     local __doc__="Find recent (log) files"
     local _dir="${1}"
     local _file_glob="${2:-"*.log"}"
-    local _mmin="${3-"-60"}"
+    local _follow_symlink="${3}"
     local _base_dir="${4:-"."}"
+    local _mmin="${5-"-60"}"
     if [ ! -d "${_dir}" ]; then
-        _dir=$(find ${_base_dir%/} -type d \( -name log -o -name logs \) | tr '\n' ' ')
+        _dir=$(if [[ "${_follow_symlink}" =~ ^(y|Y) ]]; then
+            realpath $(find -L ${_base_dir%/} -type d \( -name log -o -name logs \) | tr '\n' ' ') | sort | uniq | tr '\n' ' '
+        else
+            find ${_base_dir%/} -type d \( -name log -o -name logs \)| tr '\n' ' '
+        fi 2>/dev/null | tail -n1)
     fi
     [ -n "${_mmin}" ] && _mmin="-mmin ${_mmin}"
-    find ${_dir} -type f -name "${_file_glob}" ${_mmin} | tr '\n' ' '
+    if [[ "${_follow_symlink}" =~ ^(y|Y) ]]; then
+        realpath $(find -L ${_dir} -type f -name "${_file_glob}" ${_mmin} | tr '\n' ' ') | sort | uniq | tr '\n' ' '
+    else
+        find ${_dir} -type f -name "${_file_glob}" ${_mmin} | tr '\n' ' '
+    fi
 }
 
 function tail_logs() {
