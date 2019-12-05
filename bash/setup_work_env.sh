@@ -146,7 +146,8 @@ function f_setup_python() {
         sudo python3 /tmp/get-pip.py || return $?
     fi
 
-    # Command/scripts need for my bash_aliases.sh NOTE: this works only with python2
+    # Command/scripts need for my bash_aliases.sh
+    # NOTE: this works only with python2, hence not pip3
     sudo -i pip install data_hacks  # it's OK if this fails
 
     ### Pip(3) ############################################################
@@ -157,7 +158,7 @@ function f_setup_python() {
     sudo -i pip3 list -o | tee /tmp/pip.log
     #sudo -i pip3 list -o --format=freeze | cut -d'=' -f1 | xargs sudo -i pip3 install -U
 
-    sudo -i pip3 install lxml pyjq xmltodict
+    sudo -i pip3 install lxml pyjq xmltodict pyyaml
 
     # Autocomplete doesn't work. @see https://github.com/ipython/ipython/issues/11530
     sudo -i pip3 install ipython==7.1.1 jupyter jupyterlab --log /tmp/pip.log &>/dev/null || return $?
