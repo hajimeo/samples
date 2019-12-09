@@ -377,6 +377,10 @@ function sptBoot() {
     # To just re-launch|start, check relaunch-support.sh
     python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
 }
+function iqCli() {
+    local _file="${1}"
+    java -jar /Users/hosako/Apps/iq-clis/nexus-iq-cli-1.80.0-01.jar -i "sandbox-application" -s "http://dh1.standalone.localdomain:8070/" -a "admin:admin123" -X ${_file}
+}
 
 # To patch nexus (so that checking /system) but probably no longer using.
 function _patch() {
