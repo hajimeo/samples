@@ -785,6 +785,7 @@ function f_threads() {
     local _split_search="${2:-"^[^ ].+"}"
 
     [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
+    [ -z "${_file}" ] && return 1
     local _prefix="${_file%%.*}_"
     [ ! -d "./threads_tmp" ] && mkdir ./threads_tmp
 
@@ -793,8 +794,7 @@ function f_threads() {
     #rg -i "ldap" ./threads_tmp/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
     #rg -w BLOCKED ./threads_tmp/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
     #rg '^("|\s+- .*lock)' ${_file}
-    rg -w BLOCKED -B1 ./threads_tmp/
-    rg 'waiting to lock' -A1 ./threads_tmp/
+    rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ./threads_tmp/
     rg '^[^ ]' ${_file} | _replace_number 1 | sort | uniq -c | sort -n | tail -n 20
     echo "Total: `rg '^[^ ]' ${_file} -c`"
 }
@@ -860,23 +860,15 @@ function f_request2csv() {
     # NOTE: check jetty-requestlog.xml and logback-access.xml
     local _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1')"
     if [ -z "${_pattern}" ] && [ -z "${_pattern_str}" ]; then
-        echo "# Can not generate regex(pattern). Using default..."
-        _pattern_str="%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime \"%header{User-Agent}\""
+        echo "# Can not generate regex(pattern). Using default + determine from the first line ..."
+        local _tmp_first_line="$(rg -g "${_glob}" --no-filename -m1 -w '2019')"
+        _pattern_str="%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime"
+        [ "${_tmp_first_line: -1}" == "\"" ] && _pattern_str="${_pattern_str} \"%header{User-Agent}\""
     fi
     #echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
     echo "\"$(echo ${_pattern_str} | tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_out_file}
     if [ -z "${_pattern}" ]; then
-        for _p in ${_pattern_str}; do
-            local _first_c="${_p:0:1}"
-            local _last_c="${_p: -1}"
-            if [ "${_last_c}" == "\"" ]; then
-                _pattern="${_pattern# } ${_first_c}([^\"]+)${_last_c}"
-            elif [ "${_last_c}" == "]" ]; then
-                _pattern="${_pattern# } \\${_first_c}([^\]]+)\\${_last_c}"
-            else
-                _pattern="${_pattern# } ([^ ]+)"
-            fi
-        done
+        _pattern="$(_gen_pattern "${_pattern_str}")"
         local _num=$(( $(echo -n "${_pattern_str}" | tr -d -c ' ' | wc -m) + 1 ))
         _pattern_out="\"\$1\""
         for _i in `seq 2 ${_num}`; do
@@ -886,6 +878,23 @@ function f_request2csv() {
     rg --no-filename -N -z \
         "^${_pattern}" \
         -o -r "${_pattern_out}" -g "${_glob}" >> ${_out_file}
+}
+
+function _gen_pattern() {
+    local _pattern_str="${1}"
+    local _pattern=""
+    for _p in ${_pattern_str}; do
+        local _first_c="${_p:0:1}"
+        local _last_c="${_p: -1}"
+        if [ "${_last_c}" == "\"" ]; then
+            _pattern="${_pattern# } ${_first_c}([^\"]+)${_last_c}"
+        elif [ "${_last_c}" == "]" ]; then
+            _pattern="${_pattern# } \\${_first_c}([^\]]+)\\${_last_c}"
+        else
+            _pattern="${_pattern# } ([^ ]+)"
+        fi
+    done
+    echo "${_pattern}"
 }
 
 function f_audit2json() {
@@ -970,7 +979,7 @@ function f_splitByRegex() {
     cat /tmp/f_splitByRegex_$$.out | while read -r _t; do
         if [[ "${_t}" =~ ^([0-9]+):(.+) ]]; then
             _tmp_n="${BASH_REMATCH[1]}"
-            _tmp_str="$(echo ${BASH_REMATCH[2]} | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n')"
+            _tmp_str="$(echo ${BASH_REMATCH[2]} | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-256)"
             if [ -n "${_prev_n}" ]; then
                 _sed -n "${_prev_n},$(( ${_tmp_n} - 1 ))p;${_tmp_n}q" ${_file} > ${_save_path_prefix}_${_prev_str}.${_extension} || return $?
             fi
@@ -1048,6 +1057,17 @@ function _load_yaml() {
     source /tmp/_load_yaml.out
 }
 
+function _yaml2json() {
+    local _yaml_file="${1}"
+    # pyyaml doesn't like ********
+    cat "${_yaml_file}" | _sed -r 's/\*\*+/__PASSWORD__/g' | python3 -c 'import sys, json, yaml
+try:
+    print(json.dumps(yaml.safe_load(sys.stdin), indent=4, sort_keys=True))
+except yaml.YAMLError as e:
+    sys.stderr.write(e+"\n")
+'
+}
+
 function _search_properties() {
     local _path="${1-./}"
     local _props="$2" # space separated regex
@@ -1119,7 +1139,7 @@ if bool(_in) is True:
     if "'${_no_pprint}'".lower() == "y":
         print(_d)
     elif bool(_d) is True:
-        print(json.dumps(_d, indent=4))
+        print(json.dumps(_d, indent=4, sort_keys=True))
 '
 }
 
