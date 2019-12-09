@@ -43,7 +43,7 @@ if len(_ss_args) > 0:
 
         echo "# URLs (NOTE: Chrome via proxy or route or VNC is required):"
         for _n in `docker ps --format "{{.Names}}" | grep -E "^(node|${_SERVICE}|cdh|hdp)" | sort`; do
-            for _p in 10500 8080 7180; do
+            for _p in 8081 8070 8080; do
                 _hostname="$(docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])")"
                 # intentionally using different hostname due to HSTS
                 if timeout 1 curl -s -f "http://${_n}:${_p}/" &>/dev/null; then
@@ -57,7 +57,7 @@ if len(_ss_args) > 0:
     fi
 
     if nc -z localhost %_proxy_port%; then
-        _URL=""; [ -n "${_NAME}" ] && _URL="http://${_NAME}:10500"
+        _URL=""; [ -n "${_NAME}" ] && _URL="http://${_NAME}:8081"
         echo "# Start Chrome via proxy to access web UIs:"
         echo "  Mac: open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://${_HOST_IP}:%_proxy_port% ${_URL}"
         echo '  Win: "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://'${_HOST_IP}':%_proxy_port% '${_URL}
