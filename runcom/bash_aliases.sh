@@ -375,11 +375,11 @@ function sptBoot() {
         echo "Using ${_zip} ..."
     fi
     # To just re-launch|start, check relaunch-support.sh
-    python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
+    python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp &> ./$(basename "${_zip}" .zip).out &
+    echo "Running in background (tail -f ./$(basename "${_zip}" .zip).out)"
 }
 function iqCli() {
-    local _file="${1}"
-    java -jar /Users/hosako/Apps/iq-clis/nexus-iq-cli-1.80.0-01.jar -i "sandbox-application" -s "http://dh1.standalone.localdomain:8070/" -a "admin:admin123" -X ${_file}
+    java -jar /Users/hosako/Apps/iq-clis/nexus-iq-cli-1.80.0-01.jar -i "sandbox-application" -s "http://dh1.standalone.localdomain:8070/" -a "admin:admin123" -X $@
 }
 
 # To patch nexus (so that checking /system) but probably no longer using.
