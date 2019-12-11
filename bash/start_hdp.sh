@@ -1231,7 +1231,7 @@ function f_docker_base_create() {
     local _build_dir="$(mktemp -d)" || return $?
     cp -f ${_local_docker_file} ${_build_dir%/}/Dockerfile || return $?
     cd ${_build_dir} || return $?
-    docker build -t ${_base} .
+    docker build --rm -t ${_base} .
 }
 
 function f_docker_start() {
