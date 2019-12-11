@@ -56,12 +56,13 @@ function f_shellinabox() {
     apt-get install -y openssl shellinabox || return $?
 
     if ! id -u $_user &>/dev/null; then
-        _useradd "$_user" "$_pass" "Y" || return $?
+        f_useradd "$_user" "$_pass" "Y" || return $?
         usermod -a -G docker ${_user}
         _log "INFO" "${_user}:${_pass} has been created."
     fi
 
     if ! grep -qE "^SHELLINABOX_ARGS.+${_user}:.+/shellinabox_login\"" /etc/default/shellinabox; then
+        # NOTE: disabling SSL for avoiding various errors (because too old), but it's via SSH anyway.
         [ ! -s /etc/default/shellinabox.orig ] && cp -p /etc/default/shellinabox /etc/default/shellinabox.orig
         sed -i 's@^SHELLINABOX_ARGS=.\+@SHELLINABOX_ARGS="--no-beep --disable-ssl -s /'${_user}':'${_user}':'${_user}':HOME:/usr/local/bin/shellinabox_login"@' /etc/default/shellinabox
         service shellinabox restart || return $?
@@ -88,7 +89,7 @@ function f_shellinabox() {
     sleep 1
     local _port=`sed -n -r 's/^SHELLINABOX_PORT=([0-9]+)/\1/p' /etc/default/shellinabox`
     lsof -i:${_port}
-    _log "INFO" "To access: 'https://`hostname -I | cut -d" " -f1`:${_port}/${_user}/'"
+    _log "INFO" "To access: 'http://`hostname -I | cut -d" " -f1`:${_port}/${_user}/'"
 }
 
 function f_sysstat_setup() {
