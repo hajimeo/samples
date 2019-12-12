@@ -368,6 +368,7 @@ function f_socks5_proxy() {
     touch /tmp/ssh_socks5.out
     chmod 777 /tmp/ssh_socks5.out
     [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
+    [ ! -s /etc/rc.lcoal ] && echo -e '#!/bin/bash\nexit 0' > /etc/rc.local
     _insert_line /etc/rc.local "${_cmd}" "exit 0"
     lsof -nPi:${_port} -s TCP:LISTEN | grep "^ssh" && return 0
     eval "${_cmd}"
@@ -1090,9 +1091,7 @@ function f_host_performance() {
     echo never > /sys/kernel/mm/transparent_hugepage/enabled
     echo never > /sys/kernel/mm/transparent_hugepage/defrag
 
-    if [ ! -s /etc/rc.local ]; then
-        echo 'exit 0' > /etc/rc.local
-    fi
+    [ ! -s /etc/rc.lcoal ] && echo -e '#!/bin/bash\nexit 0' > /etc/rc.local
 
     if grep -q '^echo never > /sys/kernel/mm/transparent_hugepage/enabled' /etc/rc.local; then
         sed -i.bak '/^exit 0/i echo never > /sys/kernel/mm/transparent_hugepage/enabled\necho never > /sys/kernel/mm/transparent_hugepage/defrag\n' /etc/rc.local
@@ -1124,6 +1123,7 @@ function f_sshfs_mount() {
     _info "If it asks password, please stop and use ssh-copy-id."
     local _cmd="sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks ${_remote_src%/}/ ${_local_dir%/}"
     eval ${_cmd} || return $?
+    [ ! -s /etc/rc.lcoal ] && echo -e '#!/bin/bash\nexit 0' > /etc/rc.local
     _insert_line /etc/rc.local "${_cmd}" "exit 0"
 }
 
