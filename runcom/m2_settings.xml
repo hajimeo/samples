@@ -24,7 +24,7 @@
     <mirror>
       <id>nexus</id>
       <mirrorOf>*</mirrorOf>
-      <!--url>http://localhost:8081/repository/kotlin-dev/</url-->
+      <!--url>http://localhost:8081/repository/maven-central/</url-->
       <url>http://dh1.standalone.localdomain:8081/repository/maven-group/</url>
     </mirror>
   </mirrors>
