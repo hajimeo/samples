@@ -618,7 +618,7 @@ function f_as_setup() {
         return 1
     fi
 
-    local _cmd="bash -x ${_share_dir%/}/${_service%/}/install_${_service%/}.sh -v ${_version} ${_options}"
+    local _cmd="bash -x ${_share_dir%/}/${_service%/}/install_${_service%/}.sh -v ${_version} ${_options# }"
     if [ -n "${_license}" ]; then
         if [ ! -f "${_work_dir%/}/${_service%/}/$(basename "${_license}")" ]; then
             cp ${_license} ${_work_dir%/}/${_service%/}/ || return 11
