@@ -86,6 +86,7 @@ Another way to create a container:
 
 ### Default values
 [ -z "${_SERVICE}" ] && (echo "WARN: _SERVICE env variable is missing!"; sleep 5) # This is used to select the app installer script
+[ -z "${_NAME_PREFIX}" ] && _NAME_PREFIX="node"         # If no name specified (-n), this one + type + version will be the name
 [ -z "${_WORK_DIR}" ] && _WORK_DIR="/var/tmp/share"     # If Mac, this will be $HOME/share. Also Check "File and Sharing".
 [ -z "${_SHARE_DIR}" ] && _SHARE_DIR="/var/tmp/share"   # *container*'s share dir (normally same as _WORK_DIR except Mac)
 #_DOMAIN_SUFFIX="$(echo `hostname -s` | sed 's/[^a-zA-Z0-9_]//g').localdomain"
@@ -1151,10 +1152,20 @@ main() {
         if [ -z "${_NAME}" ]; then
             if [ -n "${_IMAGE_NAME}" ]; then
                 _NAME="${_IMAGE_NAME}"
-            elif [ -n "$_VERSION" ]; then
-                _NAME="${_SERVICE}$(echo "${_VERSION}" | sed 's/[^0-9]//g')"
             else
-                _NAME="${_SERVICE}000"
+                if [ -n "${_NAME_PREFIX}" ]; then
+                    _NAME="${_NAME_PREFIX}"
+                else
+                    _NAME="${_SERVICE}"
+                fi
+                if [ -n "${_APP_TYPE}" ]; then
+                    _NAME="${_NAME}-${_APP_TYPE}"
+                fi
+                if [ -n "${_VERSION}" ]; then
+                    _NAME="${_NAME}$(echo "${_VERSION}" | sed 's/[^0-9]//g')"
+                else
+                    _NAME="${_NAME}000"
+                fi
             fi
 
             if docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
@@ -1237,7 +1248,7 @@ main() {
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     # parsing command options
-    while getopts "chi:l:M:Nn:o:PRSsuv:X" opts; do
+    while getopts "chi:l:M:Nn:o:PRSst:uv:X" opts; do
         case $opts in
             c)
                 _CREATE_CONTAINER=true
@@ -1264,7 +1275,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 _NAME="$OPTARG"
                 ;;
             o)
-                _INSTALL_OPTS="$OPTARG"
+                _INSTALL_OPTS="${_INSTALL_OPTS} $OPTARG"
                 ;;
             P)
                 _DOCKER_PORT_FORWARD=true
@@ -1277,6 +1288,10 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             s)
                 _DOCKER_SAVE=true
+                ;;
+            t)
+                _APP_TYPE="$OPTARG"
+                _INSTALL_OPTS="${_INSTALL_OPTS} -t ${_APP_TYPE}"
                 ;;
             u)
                 f_update
