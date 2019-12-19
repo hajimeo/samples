@@ -2,9 +2,16 @@
 # curl -o /var/tmp/share/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
 # TODO: currently the script filename needs to be "ClassName.scala" or "ClassName.java" (case sensitive)
 #
-# export CLASSPATH=`find ./some/lib -name '*.jar' | tr '\n' ':'`.
+# export CLASSPATH=`find . -name '*.jar' | tr '\n' ':'`.
 # javac org/something/YourClass.java
+# f_jargrep YourClass
 # f_update_jar ./to/be/updated.jar YourClass
+#
+# or
+#
+# export CLASSPATH=`find /opt/sonatype/nexus/{system,lib} -name '*.jar' | tr '\n' ':'`.
+# /var/tmp/share/patch_java.sh "" YourClass.java /opt/sonatype/nexus/system/
+#
 
 function usage() {
     cat << EOS
@@ -80,14 +87,19 @@ function f_javaenvs() {
             echo "No port is given but JAVA_HOME and CLASSPATH are already set."
             return 0
         else
-            echo "No port number to find PID. May need to set CLASSPATH manually."
+            echo "No port number to find PID. Manually set JAVA_HOME and CLASSPATH."
             return 10
         fi
     fi
     local _p=`lsof -ti:${_port} -s TCP:LISTEN`
     if [ -z "${_p}" ]; then
-        echo "Nothing running on port ${_port}"
-        return 11
+        if [ -n "$JAVA_HOME" ] && [ -n "$CLASSPATH" ]; then
+            echo "No PID found from ${_port} but JAVA_HOME and CLASSPATH are already set."
+            return 0
+        else
+            echo "Nothing running on port ${_port}. Manually set JAVA_HOME and CLASSPATH."
+            return 11
+        fi
     fi
     local _user="`stat -c '%U' /proc/${_p}`"
     if [ -z "$JAVA_HOME" ]; then
@@ -169,7 +181,7 @@ function f_update_jar() {
     if [ ! -d "${_compiled_dir}" ]; then
         _compiled_dir="`dirname "$(find . -name "${_class_name}.class" -print | tail -n1)"`"
         if [ "${_compiled_dir}" = "." ] || [ -z "${_compiled_dir}" ]; then
-            echo "Please check 'package' of ${_compiled_dir} and make dir."
+            echo "Please check 'package' of your class or check ${_class_name}.class file under ${_compiled_dir}"
             return 1
         fi
     fi
