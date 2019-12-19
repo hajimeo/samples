@@ -32,7 +32,8 @@ which tree &>/dev/null || alias tree="pwd;find . | sort | sed '1d;s/^\.//;s/\/\(
 alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
 # output the longest line *number* as wc|gwc -L does not show the line number
 alias wcln="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
-
+# 10 seconds is too short
+alias docker_stop="docker stop -t 120"
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
 which mdfind &>/dev/null && alias locat="mdfind"

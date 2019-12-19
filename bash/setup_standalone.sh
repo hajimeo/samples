@@ -68,7 +68,7 @@ OTHERS (which normally you don't need to use):
         When -P is used or the host is Mac, this option mgiht be required.
 
     -X
-        Stop service only (to stop a container, use docker command)
+        Stop service and container
 
     -R
         Restart service
@@ -1126,7 +1126,9 @@ main() {
             _log "ERROR" "To restart, need -n <name>"
             return 1
         fi
-        f_as_stop "${_NAME}" "${_SERVICE}"
+        f_as_stop "${_NAME}" "${_SERVICE}" || return $?
+        # Default 10 seconds might be a bit dangerous.
+        docker stop -t 120 ${_NAME}
         return $?
     fi
 
