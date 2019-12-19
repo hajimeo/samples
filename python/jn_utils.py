@@ -128,6 +128,7 @@ def _open_file(file):
     if not os.path.isfile(file):
         return None
     if file.endswith(".gz"):
+        _debug("opening %s" % (file))
         return gzip.open(file, "rt")
     else:
         return open(file, "r")
@@ -492,6 +493,35 @@ def _udf_timestamp(date_time):
     return int(mktime(parser.parse(date_time).timetuple()))
 
 
+def _udf_str_to_int(some_str):
+    """
+    Convert \d\d\d\d(MB|M|GB\G) to bytes etc.
+    eg: SELECT UDF_STR_TO_INT(some_string) as bytes, ...
+    :param some_str: 350M, 350MB, 350GB, 350G, 60s, 60m, 60ms, 60%
+    :return:         Integer
+    """
+    matches = re.search('([\d.\-]+) ?([a-zA-z%]+)', some_str)
+    if bool(matches) is False:
+        return some_str
+    num = float(matches.group(1))
+    unit = matches.group(2).upper()
+    if unit in ['B', 'MS', '%']:
+        return int(num)
+    if unit in ['G', 'GB']:
+        return int(num * 1024 * 1024 * 1024)
+    if unit in ['M', 'MB']:
+        return int(num * 1024 * 1024)
+    if unit in ['K', 'KB']:
+        return int(num * 1024)
+    if unit in ['S', 'SEC']:
+        return int(num * 1000)
+    if unit in ['M', 'MIN']:
+        return int(num * 1000 * 60)
+    if unit in ['H', 'HOUR']:
+        return int(num * 1000 * 60 * 60)
+    return int(num)
+
+
 def _register_udfs(conn):
     global _LOAD_UDFS
     if _LOAD_UDFS:
@@ -499,6 +529,7 @@ def _register_udfs(conn):
         conn.create_function("UDF_REGEX", 3, _udf_regex)
         conn.create_function("UDF_STR2SQLDT", 2, _udf_str2sqldt)
         conn.create_function("UDF_TIMESTAMP", 1, _udf_timestamp)
+        conn.create_function("UDF_STR_TO_INT", 1, _udf_str_to_int)
     return conn
 
 
@@ -1053,6 +1084,8 @@ def _ms(time_matches, time_re_compiled):
 
 
 def _linecount_wc(filepath):
+    if filepath.endswith(".gz"):
+        return int(os.popen('gunzip -c %s | wc -l' % (filepath)).read().strip())
     return int(os.popen('wc -l %s' % (filepath)).read().split()[0])
 
 
@@ -1086,12 +1119,14 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     f = _open_file(file_path)
     # Read lines
     _ln = 0
+    _empty = 0
     for l in f:
         _ln += 1
         if (_ln % connter) == 0:
-            _err("  Processed %s/%s lines for %s (%s) ..." % (
-                str(_ln), ttl_line, filename, _timestamp(format="%H:%M:%S")))
-        if bool(l) is False: break
+            _err("  Processed %s/%s (%s) lines for %s (%s) ..." % (
+                str(_ln), ttl_line, str(_empty), filename, _timestamp(format="%H:%M:%S")))
+        if bool(l) is False:
+            break  # most likely the end of the file
         (tmp_tuple, prev_matches, prev_message) = _find_matching(line=l, prev_matches=prev_matches,
                                                                  prev_message=prev_message, begin_re=begin_re,
                                                                  line_re=line_re, size_re=size_re, time_re=time_re,
@@ -1102,6 +1137,8 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
                 tmp_l[0] = tmp_tuple[0].replace(",", ".")
                 tmp_tuple = tuple(tmp_l)
             tuples += [tmp_tuple]
+        else:
+            _empty += 1
     f.close()
 
     # append last message (last line)
@@ -1111,10 +1148,10 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
 
 
 def logs2table(filename, tablename=None, conn=None,
-               col_names=['date_time', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
+               col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
-               line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,-]*) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
-               size_regex=_SIZE_REGEX, time_regex=_TIME_REGEX,
+               line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)",
+               size_regex=None, time_regex=None,
                max_file_num=10, appending=False, multiprocessing=False):
     """
     Insert multiple log files into *one* table
@@ -1447,7 +1484,7 @@ def gen_ldapsearch(ldap_json=None):
         p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u)
 
 
-def analyse_logs(start_isotime=None, end_isotime=None):
+def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1000):
     """
     Analyse log files (expecting request.log converted to request.csv)
     :param start_isotime:
@@ -1457,32 +1494,49 @@ def analyse_logs(start_isotime=None, end_isotime=None):
     """
     from IPython.display import display, HTML
 
-    _ = json2df('audit.json', tablename="t_audit_logs", json_cols=['attributes','data'], conn=connect())
+    _ = json2df('audit.json', tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=connect())
 
     files = _globr('request.csv')
-    where_sql = "WHERE elapsedTime > 1000"
+    where_sql = "WHERE 1=1" % (elapsed_time)
+    if bool(elapsed_time) is True:
+        where_sql += " AND elapsedTime > %d" % (elapsed_time)
     if bool(start_isotime) is True:
-        where_sql += " AND date_time >= UDF_STR2SQLDT('" + start_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
+        where_sql += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') >= UDF_STR2SQLDT('" + start_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
     if bool(end_isotime) is True:
-        where_sql += " AND date_time <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
+        where_sql += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
     for f in files:
         _ = csv2df(f, tablename="t_request_logs", conn=connect())
-        query = "SELECT * FROM (SELECT UDF_STR2SQLDT(date, '%d/%b/%Y:%H:%M:%S %z') AS date_time, statusCode, bytesSent, elapsedTime FROM t_request_logs) t " + where_sql
-        _err("query: " + query)
-        _ = draw(q(query))
-        query = "SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d:)', date, 1) AS ten_mins, CAST(AVG(elapsedTime)/1000 AS INT) AS avg_elaps_sec, CAST(AVG(bytesSent) AS INT) AS avg_bytes, count(*) AS occurrence FROM t_request_logs " + where_sql + " GROUP BY 1"
+        query = "SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d:)', `date`, 1) AS date_hour, CAST(AVG(elapsedTime)/1000 AS INT) AS avg_elaps_sec, CAST(AVG(bytesSent) AS INT) AS avg_bytes, count(*) AS occurrence FROM t_request_logs " + where_sql + " GROUP BY 1"
         _err("query: " + query)
         display(q(query))
+        query = "SELECT UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') AS date_time, statusCode, bytesSent, elapsedTime FROM t_request_logs " + where_sql
+        _err("query: " + query)
+        _ = draw(q(query))
+        break
+
+    files = _globr('health_monitor.json')
+    for f in files:
+        _ = json2df(f, tablename="t_health_monitor", conn=connect())
+        _ = draw(q("""select date_time
+        , UDF_STR_TO_INT(`physical.memory.free`) as sys_mem_free_bytes
+        , UDF_STR_TO_INT(`swap.space.free`) as swap_free_bytes
+        , UDF_STR_TO_INT(`heap.memory.used/max`) as heap_percent
+        , `major.gc.count` as majour_gc_count
+        , UDF_STR_TO_INT(`major.gc.time`) as majour_gc_msec
+        , `load.systemAverage` as sys_load_avg
+        , `thread.count` as thread_count
+        , `connection.active.count` as conn_count
+        FROM t_health_monitor_json"""))
         break
 
     _ = logs2table('nexus.log', tablename="t_nexus_logs",
                    col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
                    line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
-                   size_regex=None, time_regex=None, multiprocessing=True)
+                   size_regex=None, time_regex=None)
     _ = logs2table('clm-server.log', tablename="t_clmserver_logs",
                    col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
                    line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
-                   size_regex=None, time_regex=None, multiprocessing=True)
+                   size_regex=None, time_regex=None)
     # TODO: analyse t_xxxxx_logs table
 
     # TODO: below does not work so that using above names_dict workaround
