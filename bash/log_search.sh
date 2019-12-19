@@ -795,6 +795,7 @@ function f_threads() {
     #rg -w BLOCKED ./threads_tmp/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
     #rg '^("|\s+- .*lock)' ${_file}
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ./threads_tmp/
+    echo ""
     rg '^[^ ]' ${_file} | _replace_number 1 | sort | uniq -c | sort -n | tail -n 20
     echo "Total: `rg '^[^ ]' ${_file} -c`"
 }
@@ -861,9 +862,16 @@ function f_request2csv() {
     local _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1')"
     if [ -z "${_pattern}" ] && [ -z "${_pattern_str}" ]; then
         echo "# Can not generate regex(pattern). Using default + determine from the first line ..."
-        local _tmp_first_line="$(rg -g "${_glob}" --no-filename -m1 -w '2019')"
-        _pattern_str="%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime"
-        [ "${_tmp_first_line: -1}" == "\"" ] && _pattern_str="${_pattern_str} \"%header{User-Agent}\""
+        local _tmp_first_line="$(rg -g "${_glob}" --no-filename -m1 '\b20\d\d\b')"
+        if echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
+            _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
+        elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+)  ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
+            _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
+        elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+)  ([^ ]+) ([^ ]+) "([^"]+)"'; then
+            _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}"'
+        else
+            _pattern_str="%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime"
+        fi
     fi
     #echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
     echo "\"$(echo ${_pattern_str} | tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_out_file}
@@ -957,13 +965,14 @@ function _getAfterFirstMatch() {
 }
 
 function f_splitByRegex() {
-    local _file="$1"
+    local _file="$1"    # can't be a glob as used in sed later
     local _regex="$2"   # If empty, use YYYY-MM-DD.hh
     local _save_to="${3:-"."}"
 
     [ -z "${_regex}" ] && _regex="^$_DATE_FORMAT.\d\d"
     [ ! -d "${_save_to%/}" ] && mkdir -p "${_save_to%/}"
 
+    #_file="$(echo ${_file} | _sed 's/.\///')"
     local _base_name="$(basename "${_file}")"
     local _save_path_prefix="${_save_to%/}/${_base_name%%.*}"
     local _extension="${_base_name##*.}"
@@ -975,7 +984,7 @@ function f_splitByRegex() {
     local _prev_str=""
 
     # Surprisingly, uniq recognise ":" as a delimiter
-    rg "${_regex}" --no-filename -n -o ${_file} | _uniq -f1 > /tmp/f_splitByRegex_$$.out
+    rg "${_regex}" --no-filename -n -o "${_file}" | _uniq -f1 > /tmp/f_splitByRegex_$$.out
     cat /tmp/f_splitByRegex_$$.out | while read -r _t; do
         if [[ "${_t}" =~ ^([0-9]+):(.+) ]]; then
             _tmp_n="${BASH_REMATCH[1]}"
@@ -993,7 +1002,7 @@ function f_splitByRegex() {
         _tmp_n="${BASH_REMATCH[1]}"
         _tmp_str="$(echo ${BASH_REMATCH[2]} | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n')"
         if [ ${_tmp_n} -gt 1 ]; then
-            _sed -n "${_tmp_n},\$p" ${_file} > ${_save_path_prefix}_${_tmp_str}.${_extension} || return $?
+            _sed -n "${_tmp_n},\$p" "${_file}" > ${_save_path_prefix}_${_tmp_str}.${_extension} || return $?
         fi
     fi
 }
