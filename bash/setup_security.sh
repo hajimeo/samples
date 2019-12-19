@@ -63,7 +63,7 @@ g_admin_pwd="${_ADMIN_PASS-admin}"
 function f_kdc_install_on_ambari_node() {
     local __doc__="(Deprecated) Install KDC/kadmin service to $r_AMBARI_HOST. May need UDP port forwarder https://raw.githubusercontent.com/hajimeo/samples/master/python/udp_port_forwarder.py"
     local _realm="${1-$g_KDC_REALM}"
-    local _password="${2-$g_DEFAULT_PASSWORD}"
+    local _password="${2-${g_DEFAULT_PASSWORD:-"hadoop"}}"
     local _server="${3-$r_AMBARI_HOST}"
 
     if [ -z "$_server" ]; then
@@ -85,72 +85,6 @@ function f_kdc_install_on_ambari_node() {
     # chkconfig krb5kdc on;chkconfig kadmin on; doesn't work with docker
     ssh -q root@$_server -t "echo '*/admin *' > /var/kerberos/krb5kdc/kadm5.acl;service krb5kdc restart;service kadmin restart;kadmin.local -q \"add_principal -pw $_password admin/admin\";kadmin.local -q \"add_principal -pw $_password kadmin/admin\""
     #ssh -2CNnqTxfg -L88:$_server:88 $_server # TODO: UDP does not work. and need 749 and 464
-}
-
-function f_kdc_install_on_host() {
-    local __doc__="Install KDC server packages on Ubuntu (takes long time)"
-    local _realm="${1:-$g_KDC_REALM}"
-    local _password="${2:-$g_DEFAULT_PASSWORD}"
-    local _server="${3:-`hostname -i | awk '{print $1}'`}"
-
-    if [ -z "${_server}" ]; then
-        _error "No server IP/name for KDC"
-        return 1
-    fi
-    if [ ! `which apt-get` ]; then
-        _warn "No apt-get"
-        return 1
-    fi
-    DEBIAN_FRONTEND=noninteractive apt-get install -y krb5-kdc krb5-admin-server || return $?
-
-    if [ -s /etc/krb5kdc/kdc.conf ] && [ -s /var/lib/krb5kdc/principal_${_realm} ]; then
-        if grep -qE '^\s*'${_realm}'\b' /etc/krb5kdc/kdc.conf; then
-            _info "Realm: ${_realm} may already exit in /etc/krb5kdc/kdc.conf. Not try creating..."
-            return 0
-        fi
-    fi
-    echo '    '${_realm}' = {
-        database_name = /var/lib/krb5kdc/principal_'${_realm}'
-        admin_keytab = FILE:/etc/krb5kdc/kadm5_'${_realm}'.keytab
-        acl_file = /etc/krb5kdc/kadm5_'${_realm}'.acl
-        key_stash_file = /etc/krb5kdc/stash_'${_realm}'
-        kdc_ports = 750,88
-        max_life = 10h 0m 0s
-        max_renewable_life = 7d 0h 0m 0s
-        master_key_type = des3-hmac-sha1
-        supported_enctypes = aes256-cts:normal arcfour-hmac:normal des3-hmac-sha1:normal des-cbc-crc:normal des:normal des:v4 des:norealm des:onlyrealm des:afs3
-        default_principal_flags = +preauth
-    }
-'  > /tmp/f_kdc_install_on_host_kdc_$$.tmp
-    sed -i "/\[realms\]/r /tmp/f_kdc_install_on_host_kdc_$$.tmp" /etc/krb5kdc/kdc.conf
-
-    # KDC process seems to use default_realm, and sed needs to escape + somehow
-    cp -p /etc/krb5.conf /etc/krb5.conf.$(date +"%Y%m%d%H%M%S") || return $?
-
-    echo '[libdefaults]
-  default_realm = '${_realm}'
-  dns_lookup_realm = false
-  dns_lookup_kdc = false
-
-[realms]
-  '${_realm}' = {
-   kdc = '${_server}'
-   admin_server = '${_server}'
- }
-' > /etc/krb5.conf
-
-    kdb5_util create -r ${_realm} -s -P ${_password} || return $?  # or krb5_newrealm
-    mv /etc/krb5kdc/kadm5_${_realm}.acl /etc/krb5kdc/kadm5_${_realm}.orig &>/dev/null
-    echo '*/admin *' > /etc/krb5kdc/kadm5_${_realm}.acl
-    service krb5-kdc restart && service krb5-admin-server restart
-    sleep 3
-    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} admin/admin@${_realm}"
-    if [ -n "${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}" ]; then    # AMBARI-24869
-        kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/${_server}@${_realm}"
-    fi
-    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/admin@${_realm}" &>/dev/null    # this should exist already
-    # For test:
-    #kadmin -p admin/admin@${_realm} -w "${_password}"
 }
 
 function _ambari_kerberos_generate_service_config() {
@@ -376,7 +310,7 @@ function f_ambari_kerberos_with_ad_setup() {
 function f_ssl_hadoop() {
     local __doc__="Setup SSL for hadoop https://community.hortonworks.com/articles/92305/how-to-transfer-file-using-secure-webhdfs-in-distc.html"
     # f_ssl_hadoop "" "" "" "cdh5101.standalone.localdomain" "" ".standalone.localdomain"
-    local _password="${1:-${g_DEFAULT_PASSWORD-hadoop}}"
+    local _password="${1:-${g_DEFAULT_PASSWORD:-hadoop}}"
     local _ambari_host="${2-$r_AMBARI_HOST}"
     local _ambari_port="${3:-8080}"
     local _how_many="${4:-$r_NUM_NODES}"    # Integer or a hostname
@@ -540,7 +474,7 @@ ${_keytool} -import -keystore ${_java_home%/}/jre/lib/security/cacerts -alias ha
 function _hadoop_ssl_commands_per_node() {
     local _node="$1"
     local _java_home="$2"
-    local _password="${3:-${g_DEFAULT_PASSWORD-hadoop}}"
+    local _password="${3:-${g_DEFAULT_PASSWORD:-hadoop}}"
     local _dname_extra="${4:-OU=Lab, O=Osakos, L=Brisbane, ST=QLD, C=AU}"
 
     # TODO: assuming rootCA.xxx file names
@@ -590,7 +524,7 @@ function _hadoop_ssl_use_wildcard() {
     local _subj=""
 
     [ -z "$_domain_suffix" ] && _domain_suffix=".`hostname`"
-    [ -z "$_password" ] && _password=${g_DEFAULT_PASSWORD-hadoop}
+    [ -z "$_password" ] && _password=${g_DEFAULT_PASSWORD:-hadoop}
     [ -n "$_subject" ] && _subj="-subj ${_subject}"
 
     # Create a private key with wildcard CN and a CSR file. NOTE: -aes256 to encrypt (TODO: need SAN for chrome)
@@ -647,7 +581,7 @@ function f_spnego_hadoop() {
 function f_ssl_ambari_2way() {
     local __doc__="TODO: Setup two way SSL (run f_ssl_hadoop first)"
     local _ambari_host="$1"
-    local _password=${g_DEFAULT_PASSWORD-hadoop}
+    local _password=${g_DEFAULT_PASSWORD:-hadoop}
     local _keys_dir="/var/lib/ambari-server/keys"
     local _node="${_ambari_host}"
 
@@ -718,7 +652,7 @@ function f_ldap_ranger() {
     local _domain="${2}"
     local _basedn="${3}"
     local _binddn="${4}"
-    local _binddn_pwd="${5:-${g_DEFAULT_PASSWORD-hadoop}}" # TODO: password should be stoed in jceks file
+    local _binddn_pwd="${5:-${g_DEFAULT_PASSWORD:-hadoop}}" # TODO: password should be stoed in jceks file
     local _ad_or_ldap="${6:-AD}"
     local _ambari_host="${7:-${r_AMBARI_HOST}}"
     [ -z "${_ambari_host}" ] && return 1
@@ -879,7 +813,7 @@ function f_ldap_hadoop_groupmapping() {
     local _domain="${2}"
     local _basedn="${3}"    # dc=hadoop,dc=apache,dc=org
     local _bind_user="${4}"    # uid=admin,ou=people,${_basedn}
-    local _bind_pass="${5:-${g_DEFAULT_PASSWORD-hadoop}}" # admin-password
+    local _bind_pass="${5:-${g_DEFAULT_PASSWORD:-hadoop}}" # admin-password
     local _ad_or_ldap="${6:-AD}"
     local _ambari_host="${7:-${r_AMBARI_HOST}}"
 
@@ -958,7 +892,7 @@ function f_ldap_ambari() {
 function f_ldap_server_install_on_host() {
     local __doc__="Install LDAP server packages on Ubuntu (need to test setup)"
     local _shared_domain="$1"
-    local _password="${2-$g_DEFAULT_PASSWORD}"
+    local _password="${2-${g_DEFAULT_PASSWORD:-"hadoop"}}"
 
     if [ ! `which apt-get` ]; then
         _warn "No apt-get"
@@ -994,7 +928,7 @@ EOF
 function f_ldap_server_install_on_ambari_node() {
     local __doc__="TODO: CentOS6 only: Install LDAP server packages for sssd (security lab)"
     local _ldap_domain="$1"
-    local _password="${2-$g_DEFAULT_PASSWORD}"
+    local _password="${2-${g_DEFAULT_PASSWORD:-"hadoop"}}"
     local _server="${3-$r_AMBARI_HOST}"
 
     if [ -z "$_ldap_domain" ]; then
@@ -1010,7 +944,7 @@ function f_ldap_server_install_on_ambari_node() {
 function f_ldap_server_configure() {
     local __doc__="TODO: Configure LDAP server via SSH (requires password-less ssh)"
     local _ldap_domain="$1"
-    local _password="${2-$g_DEFAULT_PASSWORD}"
+    local _password="${2-${g_DEFAULT_PASSWORD:-"hadoop"}}"
     local _server="${3-localhost}"
 
     if [ -z "$_ldap_domain" ]; then
@@ -1181,7 +1115,7 @@ function f_freeipa_cert_update() {
     # @see https://www.powerupcloud.com/freeipa-server-and-client-installation-on-ubuntu-16-04-part-i/
     local _ipa_server_fqdn="$1"
     local _p12_file="$2"
-    local _p12_pass="${3:-${g_DEFAULT_PASSWORD-"hadoop"}}"
+    local _p12_pass="${3:-${g_DEFAULT_PASSWORD:-"hadoop"}}"
     local _full_ca="${4}"   # If intermediate is used, concatenate first
     local _adm_pwd="${5:-$g_FREEIPA_DEFAULT_PWD}"
     # example of generating p12.
@@ -1323,7 +1257,7 @@ function f_ssl_self_signed_cert() {
     local _subj=""
 
     if [ -z "$_password" ]; then
-        _password="${g_DEFAULT_PASSWORD-hadoop}"
+        _password="${g_DEFAULT_PASSWORD:-hadoop}"
     fi
     if [ -n "$_subject" ]; then
         _subj="-subj ${_subject}"
@@ -1365,7 +1299,7 @@ function f_ssl_internal_CA_setup() {
         _dname="CN=internalca${_domain_suffix}, OU=Lab, O=Osakos, L=Brisbane, ST=QLD, C=AU"
     fi
     if [ -z "$_password" ]; then
-        _password="${g_DEFAULT_PASSWORD-hadoop}"
+        _password="${g_DEFAULT_PASSWORD:-hadoop}"
     fi
 
     openssl genrsa -out ${_work_dir%/}/ca.key 4096 #8192
@@ -1398,7 +1332,7 @@ function _ssl_openssl_cnf_generate() {
 
     [ -z "$_domain_suffix" ] && _domain_suffix=".`hostname`"
     [ -z "$_dname" ] && _dname="CN=*.${_domain_suffix#.}, OU=Lab, O=Osakos, L=Brisbane, ST=QLD, C=AU"
-    [ -z "$_password" ] && _password=${g_DEFAULT_PASSWORD-hadoop}
+    [ -z "$_password" ] && _password=${g_DEFAULT_PASSWORD:-hadoop}
 
     echo [ req ] > "${_work_dir%/}/openssl.cnf"
     echo input_password = $_password >> "${_work_dir%/}/openssl.cnf"
