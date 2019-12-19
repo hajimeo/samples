@@ -405,15 +405,6 @@ function f_apache_proxy() {
     ErrorLog \${APACHE_LOG_DIR}/proxy_error.log
     CustomLog \${APACHE_LOG_DIR}/proxy_access.log combined" > /etc/apache2/sites-available/proxy.conf
 
-    # TODO: Can't use proxy for SSL port
-    if [ -s /etc/apache2/ssl/server.key ]; then
-    echo "    SSLEngine on
-    SSLCertificateFile /etc/apache2/ssl/server.crt
-    SSLCertificateKeyFile /etc/apache2/ssl/server.key
-    RequestHeader set X-Forwarded-Proto https
-" >> /etc/apache2/sites-available/proxy.conf
-    fi
-
     echo "    <IfModule mod_proxy.c>
         SSLProxyEngine On
         SSLProxyVerify none
@@ -444,19 +435,22 @@ function f_apache_proxy() {
 
     a2ensite proxy || return $?
     # Due to 'ssl' module, using restart rather than reload
-    _info "restarting apache2 just in case..."
-    service apache2 restart
+    _info "reloading ..."
+    service apache2 reload
 }
 
 function f_apache_reverse_proxy() {
     local __doc__="Generate reverse proxy.conf *per* port, and restart apache2"
-    local _redirect2="${1}" # http://hostname:port/path
+    local _redirect="${1}" # http://hostname:port/path
     local _port="${2}"
+    local _sever_host="${3:-`hostname -f`}"
+    local _ssl_ca_file="${4}"   # /var/tmp/share/cert/rootCA_standalone.crt
+    # https://help.sonatype.com/display/NXRM3/Run+Behind+a+Reverse+Proxy
 
     which apt-get &>/dev/null || return 1
-    [ -z "${_redirect2}" ] && return 1
+    [ -z "${_redirect}" ] && return 1
     if [ -z "${_port}" ]; then
-        if [[ "${_redirect2}" =~ .+:([0-9]+)[/]?.* ]]; then
+        if [[ "${_redirect}" =~ .+:([0-9]+)[/]?.* ]]; then
             _port="${BASH_REMATCH[1]}"
             _info "No port given, so using ${_port} ..."
         else
@@ -475,19 +469,18 @@ function f_apache_reverse_proxy() {
         return 0
     fi
 
-    apt-get install -y apache2 apache2-utils
-    a2enmod proxy proxy_http proxy_connect proxy_wstunnel ssl
+    apt-get install -y apache2 apache2-utils libapache2-mod-auth-kerb
+    a2enmod proxy headers proxy_http proxy_connect proxy_wstunnel ssl rewrite auth_kerb
 
     grep -i "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
 
     echo "<VirtualHost *:${_port}>
-    ServerName `hostname -f`
+    ServerName ${_sever_host}
     AllowEncodedSlashes NoDecode
     LogLevel warn
     ErrorLog \${APACHE_LOG_DIR}/proxy_error_${_port}.log
     CustomLog \${APACHE_LOG_DIR}/proxy_access_${_port}.log combined" > ${_conf}
 
-    # TODO: Can't use proxy for SSL port
     if [ -s /etc/apache2/ssl/server.key ]; then
     echo "    SSLEngine on
     SSLCertificateFile /etc/apache2/ssl/server.crt
@@ -497,19 +490,55 @@ function f_apache_reverse_proxy() {
     fi
 
     echo "    <IfModule mod_proxy.c>
-        ProxyPass / ${_redirect2%/}/ nocanon
-        ProxyPassReverse / ${_redirect2%/}/
+        SSLProxyEngine On
+        SSLProxyVerify none
+        SSLProxyCheckPeerCN off
+        SSLProxyCheckPeerName off
+        #SSLProxyCheckPeerExpire off
+
+        #connectiontimeout=5 timeout=90 retry=0
+        ProxyPass / ${_redirect%/}/ nocanon
+        ProxyPassReverse / ${_redirect%/}/
         ProxyRequests Off
         ProxyPreserveHost On
     </IfModule>
-</VirtualHost>" >> ${_conf}
+" >> ${_conf}
 
-    # TODO: http://www.microhowto.info/howto/configure_apache_to_use_kerberos_authentication.html
+    # TODO: https://stackoverflow.com/questions/7635380/apache-ssl-client-certificate-ldap-authorizations
+    if [ -s "${_ssl_ca_file}" ]; then
+        echo "
+        SSLOptions +StdEnvVars
+        SSLVerifyClient require
+        SSLCACertificateFile ${_ssl_ca_file}
+        # set header to upstream, SSL_CLIENT_S_DN_CN can change to use other identifiers
+        RequestHeader set X-SSO-USER \"%{SSL_CLIENT_S_DN_CN}\"
+" >> ${_conf}
+    elif [ -s "/etc/security/keytabs/HTTP.service.keytab" ]; then
+        # http://www.microhowto.info/howto/configure_apache_to_use_kerberos_authentication.html
+        #local _realm="`sed -n -e 's/^ *default_realm *= *\b\(.\+\)\b/\1/p' /etc/krb5.conf`"
+        local _realm="`klist -kt /etc/security/keytabs/HTTP.service.keytab | grep -m1 -oP '@.+' | sed 's/@//'`"
+        echo "    <Location />
+        AuthType Kerberos
+        AuthName \"SPNEGO Login\"
+        KrbMethodNegotiate On
+        KrbMethodK5Passwd On
+        KrbAuthRealms ${_realm}
+        #KrbLocalUserMapping On
+        Krb5KeyTab /etc/security/keytabs/HTTP.service.keytab
+        require valid-user
+        RewriteEngine On
+        RewriteCond %{REMOTE_USER} (.+)
+        RewriteRule . – [E=RU:%1]
+        RequestHeader set X-SSO-USER %{RU}e
+    </location>
+" >> ${_conf}
+    fi
+    echo "</VirtualHost>" >> ${_conf}
 
     a2ensite rproxy${_port} || return $?
     # Due to 'ssl' module, using restart rather than reload
-    _info "restarting apache2 just in case..."
-    service apache2 restart
+    _info "reloading ..."
+    service apache2 reload
 }
 
 function f_ssh_setup() {
@@ -1142,6 +1171,167 @@ function f_add_cert() {
     cp -v "${_crt_file}" ${_ca_dir%/}/ || return $?
     update-ca-certificates
 }
+
+function f_kdc_install() {
+    local __doc__="Install KDC server packages on Ubuntu (may take long time)"
+    local _realm="${1:-$g_KDC_REALM}"
+    local _password="${2:-${g_DEFAULT_PASSWORD:-"hadoop"}}"
+    local _server="${3:-`hostname -i | awk '{print $1}'`}"
+
+    if [ -z "${_realm}" ]; then
+        _realm="`hostname -s`" && _realm="${_realm^^}"
+        _info "Using ${_realm} for realm"
+    fi
+    if [ -z "${_server}" ]; then
+        _error "No server IP/name for KDC"
+        return 1
+    fi
+    if [ ! `which apt-get` ]; then
+        _warn "No apt-get"
+        return 1
+    fi
+    DEBIAN_FRONTEND=noninteractive apt-get install -y krb5-kdc krb5-admin-server libapache2-mod-auth-kerb || return $?
+
+    if [ -s /etc/krb5kdc/kdc.conf ] && [ -s /var/lib/krb5kdc/principal_${_realm} ]; then
+        if grep -qE '^\s*'${_realm}'\b' /etc/krb5kdc/kdc.conf; then
+            _info "Realm: ${_realm} may already exit in /etc/krb5kdc/kdc.conf. Not try creating..."
+            return 0
+        fi
+    fi
+    echo '    '${_realm}' = {
+        database_name = /var/lib/krb5kdc/principal_'${_realm}'
+        admin_keytab = FILE:/etc/krb5kdc/kadm5_'${_realm}'.keytab
+        acl_file = /etc/krb5kdc/kadm5_'${_realm}'.acl
+        key_stash_file = /etc/krb5kdc/stash_'${_realm}'
+        kdc_ports = 750,88
+        max_life = 10h 0m 0s
+        max_renewable_life = 7d 0h 0m 0s
+        master_key_type = des3-hmac-sha1
+        supported_enctypes = aes256-cts:normal arcfour-hmac:normal des3-hmac-sha1:normal des-cbc-crc:normal des:normal des:v4 des:norealm des:onlyrealm des:afs3
+        default_principal_flags = +preauth
+    }
+'  > /tmp/f_kdc_install_on_host_kdc_$$.tmp
+    sed -i "/\[realms\]/r /tmp/f_kdc_install_on_host_kdc_$$.tmp" /etc/krb5kdc/kdc.conf
+
+    # KDC process seems to use default_realm, and sed needs to escape + somehow
+    cp -p /etc/krb5.conf /etc/krb5.conf.$(date +"%Y%m%d%H%M%S") || return $?
+
+    echo '[libdefaults]
+  default_realm = '${_realm}'
+  dns_lookup_realm = false
+  dns_lookup_kdc = false
+
+[realms]
+  '${_realm}' = {
+   kdc = '${_server}'
+   admin_server = '${_server}'
+ }
+' > /etc/krb5.conf
+
+    kdb5_util create -r ${_realm} -s -P ${_password} || return $?  # or krb5_newrealm
+    mv /etc/krb5kdc/kadm5_${_realm}.acl /etc/krb5kdc/kadm5_${_realm}.orig &>/dev/null
+    echo '*/admin *' > /etc/krb5kdc/kadm5_${_realm}.acl
+    service krb5-kdc restart && service krb5-admin-server restart
+    sleep 3
+    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} admin/admin@${_realm}"
+    # AMBARI-24869
+    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/${_server}@${_realm}"
+    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/admin@${_realm}" &>/dev/null    # this should exist already
+    _info "Testing ..."
+    kadmin -p admin/admin@${_realm} -w "${_password}" -q "get_principal admin/admin@${_realm}"
+}
+
+function f_gen_keytab() {
+    local __doc__="Generate keytab(s)"
+    local _principal="${1}" # HTTP/`hosntame -f`@REALM
+    local _kadmin_usr="${2:-"admin/admin"}"
+    local _kadmin_pwd="${3:-${g_DEFAULT_PASSWORD:-"hadoop"}}"
+    local _keytab_dir="${4:-"/etc/security/keytabs"}"
+    local _delete_first="${5-${_DELETE_FIRST}}"    # default is just creating keytab if already exists
+    local _tmp_dir="${_WORK_DIR}"
+
+    # This function will create the following keytabs:
+    # ${_tmp_dir%/}/keytabs/${_user}.headless.keytab
+    # ${_keytab_dir%/}/${_user}.service.keytab (contains both headless and service)
+    local _service="${_principal}"
+    local _host="`hostname -f`"
+    local _realm="`sed -n -e 's/^ *default_realm *= *\b\(.\+\)\b/\1/p' /etc/krb5.conf`"
+    if [[ "${_principal}" =~ ^([^ @/]+)/([^ @]+)$ ]]; then
+        [ -n "${BASH_REMATCH[1]}" ] && _service="${BASH_REMATCH[1]}"
+        [ -n "${BASH_REMATCH[2]}" ] && _host="${BASH_REMATCH[2]}"
+    elif [[ "${_principal}" =~ ^([^ @/]+)/([^ @]+)@([^ ]+)$ ]]; then
+        [ -n "${BASH_REMATCH[1]}" ] && _service="${BASH_REMATCH[1]}"
+        [ -n "${BASH_REMATCH[2]}" ] && _host="${BASH_REMATCH[2]}"
+        [ -n "${BASH_REMATCH[3]}" ] && _realm="${BASH_REMATCH[3]}"    # NOT using at this moment
+    fi
+
+    if [ ! -d "${_tmp_dir%/}/keytabs" ]; then
+        mkdir -p ${_tmp_dir%/}/keytabs || return $?
+    fi
+
+    if [[ "${_delete_first}" =~ ^(y|Y) ]]; then
+        _log "WARN" "Deleting principals ${_service} ${_service}/${_host} ..."; sleep 3
+        kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "delete_principal -force ${_service}@${_realm}"
+        kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "delete_principal -force ${_service}/${_host}@${_realm}"
+        kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "delete_principal -force ${_principal}"
+
+        # if successfully deleted, remove keytabs too
+        if [ -s "${_tmp_dir%/}/keytabs/${_service}.headless.keytab" ]; then
+            _log "WARN" "Removing ${_tmp_dir%/}/keytabs/${_service}.headless.keytab ..."; sleep 3
+            rm -f "${_tmp_dir%/}/keytabs/${_service}.headless.keytab" || return $?
+        fi
+    fi
+
+    # Add only if not existed yet (do not want to increase kvno)
+    if ! kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "get_principal ${_service}@${_realm}" | grep -wq "${_service}"; then
+        kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "add_principal -randkey ${_service}@${_realm}"
+    fi
+    if ! kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "get_principal ${_service}/${_host}@${_realm}" | grep -wq "${_service}/${_host}"; then
+        kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "add_principal -randkey ${_service}/${_host}@${_realm}" || return $?
+    fi
+    if ! kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "get_principal ${_principal}" | grep -wq "${_principal}"; then
+        kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "add_principal -randkey ${_principal}" || return $?
+    fi
+
+    # trying not to update kvno by using a common user/headless keytab and ktutil...
+    if [ ! -s "${_tmp_dir%/}/keytabs/${_service}.headless.keytab" ]; then
+        kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "xst -k ${_tmp_dir%/}/keytabs/${_service}.headless.keytab ${_service}" || return $?
+    fi
+
+    [ ! -d "${_keytab_dir%/}" ] && mkdir -p "${_keytab_dir%/}"
+
+    # backup
+    if [ -s "${_keytab_dir%/}/${_service}.service.keytab" ] && [ ! -f "${_keytab_dir%/}/${_service}.service.keytab.orig" ]; then
+        _log "INFO" "Moving ${_keytab_dir%/}/${_service}.service.keytab to .orig ..."; sleep 1
+        mv "${_keytab_dir%/}/${_service}.service.keytab" "${_keytab_dir%/}/${_service}.service.keytab.orig" || return $?
+    fi
+    kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "xst -k ${_keytab_dir%/}/${_service}.service.keytab ${_service}/${_host}" || return $?
+
+    # backup
+    if [ -s "${_keytab_dir%/}/${_service}.combined.keytab" ] && [ ! -f "${_keytab_dir%/}/${_service}.combined.keytab.orig" ]; then
+        _log "INFO" "Moving ${_keytab_dir%/}/${_service}.combined.keytab to .orig ..."; sleep 1
+        mv "${_keytab_dir%/}/${_service}.combined.keytab" "${_keytab_dir%/}/${_service}.combined.keytab.orig" || return $?
+    fi
+    ktutil <<EOF
+rkt ${_tmp_dir%/}/keytabs/${_service}.headless.keytab
+rkt ${_keytab_dir%/}/${_service}.service.keytab
+wkt ${_keytab_dir%/}/${_service}.combined.keytab
+exit
+EOF
+
+    if [ "${_service}" == "HTTP" ]; then
+        chmod a+r ${_tmp_dir%/}/keytabs/${_service}.headless.keytab ${_keytab_dir%/}/${_service}.*
+    else
+        chown ${_service}: ${_tmp_dir%/}/keytabs/${_service}.headless.keytab ${_keytab_dir%/}/${_service}.*
+        chmod 600 ${_tmp_dir%/}/keytabs/${_service}.headless.keytab ${_keytab_dir%/}/${_service}.*
+    fi
+    _log "INFO" "Testing ..."
+    ls -l ${_keytab_dir%/}/${_service}.*
+    kinit -kt ${_keytab_dir%/}/${_service}.service.keytab ${_principal}
+    klist -eaf
+    kdestroy
+}
+
 
 function p_basic_setup() {
     _log "INFO" "Executing f_ssh_setup"
