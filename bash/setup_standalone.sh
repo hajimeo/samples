@@ -94,9 +94,9 @@ Another way to create a container:
 [ -z "${_OS_VERSION}" ] && _OS_VERSION="7.6.1810"       # Container OS version (normally CentOS version)
 [ -z "${_BASE_IMAGE}" ] && _BASE_IMAGE="node/base"      # Docker image name TODO: change to more appropriate image name
 #[ -z "${_VERSION}" ] && _VERSION=""                     # Default software version, mainly used to find the right installer file
-_PORTS="${_PORTS-"8070 8081 5005"}"                     # Used by docker port forwarding
-# Expecting mounting and/or using symlink from another node but using this node's Apache2
-_DOWNLOAD_URL="${_DOWNLOAD_URL-"http://$(hostname -I | awk '{print $1}')/${_SERVICE}/"}"
+_PORTS="${_PORTS-"8070 8071 8081 8444 8443 5005"}"                     # Used by docker port forwarding
+# Below is for storing files which I do not want to store in github. NOTE: Mac does not have "hostname -I"
+#_DOWNLOAD_URL="${_DOWNLOAD_URL-"http://$(hostname -I | awk '{print $1}')/${_SERVICE}/"}"
 #_CUSTOM_NETWORK="hdp"
 
 _CREATE_CONTAINER=false
@@ -254,7 +254,12 @@ function f_update_hosts_file() {
         # Append in the end of file
         # it seems sed a (append) does not work if file is empty
         #_sed -i -e "\$a${_ip} ${_fqdn} ${_name}" ${_tmp_file}
-        echo "${_ip} ${_fqdn} ${_name}" >> ${_tmp_file}
+        # Mac is hard to modify hosts file
+        if [ "`uname`" = "Darwin" ]; then
+            echo "${_ip} ${_fqdn} ${_name}" | sudo tee -a ${_tmp_file}
+        else
+            echo "${_ip} ${_fqdn} ${_name}" >> ${_tmp_file}
+        fi
     else
         # as injecting is Y, adding this host before other hosts
         _sed -i "/^${_ip}\s/ s/${_ip}\s/${_ip} ${_fqdn} /" ${_tmp_file}
@@ -369,12 +374,12 @@ function f_docker_run() {
             _port_opts="${_port_opts} -p ${_p}:${_p}"
         fi
     done
-    # Only if port forwarding is in use, append SSH port forwarding, just in case
-    if [ -n "${_ports}" ]; then
+    # Only if port forwarding is in use or Mac, append SSH port forwarding, just in case
+    if [ -n "${_ports}" ] || [ "`uname`" = "Darwin" ]; then
         local _num=`echo ${_name} | sed 's/[^0-9]//g' | cut -c1-3`
         local _ssh_pf_num=$(( 22000 + ${_num:-1} ))
         if ! lsof -ti:${_ssh_pf_num} -s TCP:LISTEN; then
-            _log "INFO" "Adding SSH(22) port forward from ${_ssh_pf_num} ..."
+            _log "INFO" "Adding ${_ssh_pf_num} -> 22 port forward (eg: ssh -p${_ssh_pf_num} -D28081 localhost)..."
             _port_opts="${_port_opts} -p ${_ssh_pf_num}:22"
         fi
     fi
@@ -1104,6 +1109,7 @@ main() {
         fi
 
         _WORK_DIR=$HOME/share
+        # NOTE: This was in case of empty string, but now the default is "false", so nomally it wouldn't be true.
         [ "x${_DOCKER_PORT_FORWARD}" == "x" ] && _DOCKER_PORT_FORWARD=true
     fi
 
