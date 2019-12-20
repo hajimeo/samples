@@ -1565,7 +1565,12 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1, tail_num=
     GROUP BY 1, 2""" % (where_sql)
         _err("Query: " + query)
         display(q(query))
-        query = "SELECT UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') AS date_time, statusCode, bytesSent, elapsedTime FROM t_request_logs " + where_sql
+        # To draw, may need to cast explicitly
+        query = """SELECT UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') AS date_time, 
+        CAST(statusCode AS INTEGER) AS statusCode, 
+        CAST(bytesSent AS INTEGER) AS bytesSent, 
+        CAST(elapsedTime AS INTEGER) AS elapsedTime 
+        FROM t_request_logs %s""" % (where_sql)
         _err("Query: " + query)
         _ = draw(q(query).tail(tail_num))
 
@@ -1576,11 +1581,11 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1, tail_num=
         , UDF_STR_TO_INT(`physical.memory.free`) as sys_mem_free_bytes
         , UDF_STR_TO_INT(`swap.space.free`) as swap_free_bytes
         , UDF_STR_TO_INT(`heap.memory.used/max`) as heap_percent
-        , `major.gc.count` as majour_gc_count
+        , CAST(`major.gc.count` AS INTEGER) as majour_gc_count
         , UDF_STR_TO_INT(`major.gc.time`) as majour_gc_msec
-        , `load.systemAverage` as sys_load_avg
-        , `thread.count` as thread_count
-        , `connection.active.count` as conn_count
+        , CAST(`load.systemAverage` AS REAL) as sys_load_avg
+        , CAST(`thread.count` AS INTEGER) as thread_count
+        , CAST(`connection.active.count` AS INTEGER) as conn_count
         FROM t_health_monitor_json"""))
         break
 
