@@ -1437,7 +1437,7 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0):
         # Not sure if to_sql returns some result
         df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
         _autocomp_inject(tablename=tablename)
-        return bool(df)
+        return len(df) > 0
     return df
 
 
