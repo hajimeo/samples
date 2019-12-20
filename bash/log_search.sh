@@ -861,22 +861,23 @@ function f_request2csv() {
     # NOTE: check jetty-requestlog.xml and logback-access.xml
     local _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1')"
     if [ -z "${_pattern}" ] && [ -z "${_pattern_str}" ]; then
-        echo "# Can not generate regex(pattern). Using default + determine from the first line ..."
         local _tmp_first_line="$(rg -g "${_glob}" --no-filename -m1 '\b20\d\d\b')"
-        if echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
+        if echo "${_tmp_first_line}"   | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
             _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
-        elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+)  ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
+        elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
             _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
-        elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+)  ([^ ]+) ([^ ]+) "([^"]+)"'; then
+        elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)"'; then
             _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}"'
         else
             _pattern_str="%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime"
         fi
     fi
+    echo "# pattern_str: ${_pattern_str}"
     #echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
     echo "\"$(echo ${_pattern_str} | tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_out_file}
     if [ -z "${_pattern}" ]; then
-        _pattern="$(_gen_pattern "${_pattern_str}")"
+        _pattern="^$(_gen_pattern "${_pattern_str}")"
+        echo "# pattern: ${_pattern}"
         local _num=$(( $(echo -n "${_pattern_str}" | tr -d -c ' ' | wc -m) + 1 ))
         _pattern_out="\"\$1\""
         for _i in `seq 2 ${_num}`; do
@@ -884,7 +885,7 @@ function f_request2csv() {
         done
     fi
     rg --no-filename -N -z \
-        "^${_pattern}" \
+        "${_pattern}" \
         -o -r "${_pattern_out}" -g "${_glob}" >> ${_out_file}
 }
 
