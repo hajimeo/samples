@@ -2,6 +2,7 @@
 # 'cd' to last modified directory
 alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
 alias fd='find . -name'
+alias fcv='fc -e vim'
 alias pjt='python -m json.tool'
 alias urldecode='python -c "import sys, urllib as ul; print(ul.unquote_plus(sys.argv[1]))"'
 #alias urlencode='python -c "import sys, urllib as ul; print ul.quote_plus(sys.argv[1])"'
