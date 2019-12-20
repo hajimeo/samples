@@ -11,7 +11,7 @@ To update this script, execute "ju.update()".
 """
 
 # TODO: When you add a new pip package, don't forget to update setup_work.env.sh
-import sys, os, fnmatch, gzip, re
+import sys, os, fnmatch, gzip, re, linecache, json
 from time import time, mktime, strftime
 from datetime import datetime
 from dateutil import parser
@@ -19,7 +19,7 @@ import pandas as pd
 from sqlalchemy import create_engine
 import sqlite3
 from lxml import etree
-import json, pyjq
+import pyjq
 
 _DEBUG = False
 _LOAD_UDFS = True
@@ -500,13 +500,16 @@ def _udf_str_to_int(some_str):
     :param some_str: 350M, 350MB, 350GB, 350G, 60s, 60m, 60ms, 60%
     :return:         Integer
     """
-    matches = re.search('([\d.\-]+) ?([a-zA-z%]+)', some_str)
+    matches = re.search('([\d.\-]+) ?([a-zA-z%]*)', some_str)
     if bool(matches) is False:
-        return some_str
+        return None
     num = float(matches.group(1))
-    unit = matches.group(2).upper()
+    if len(matches.groups()) > 1:
+        unit = matches.group(2).upper()
+    else:
+        return num
     if unit in ['B', 'MS', '%']:
-        return int(num)
+        return num
     if unit in ['G', 'GB']:
         return int(num * 1024 * 1024 * 1024)
     if unit in ['M', 'MB']:
@@ -519,7 +522,7 @@ def _udf_str_to_int(some_str):
         return int(num * 1000 * 60)
     if unit in ['H', 'HOUR']:
         return int(num * 1000 * 60 * 60)
-    return int(num)
+    return num
 
 
 def _register_udfs(conn):
@@ -713,6 +716,9 @@ def draw(df, width=16, x_col=0, x_colname=None):
         _err("get_ipython().run_line_magic('matplotlib', 'inline') failed")
         pass
     height_inch = 8
+    if len(df) == 0:
+        _err("No rows to draw.")
+        return
     if len(df.columns) > 2:
         height_inch = len(df.columns) * 4
     if bool(x_colname) is False:
@@ -1255,15 +1261,17 @@ def logs2table(filename, tablename=None, conn=None,
                 return res
     else:
         for f in files:
-            _err("Processing %s (%d KB) ..." % (str(f), os.stat(f).st_size / 1024))
+            _err("File: %s (%d KB) ..." % (str(f), os.stat(f).st_size / 1024))
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
                                            size_regex=size_regex, time_regex=time_regex, num_cols=num_cols,
                                            replace_comma=True)
+            _debug(("tuples len:%d" % len(tuples)))
             if len(tuples) > 0:
                 res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
                 if bool(res) is False:  # if fails once, stop
                     return res
     _autocomp_inject(tablename=tablename)
+    return True
 
 
 def logs2dfs(filename, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
@@ -1322,6 +1330,43 @@ def logs2dfs(filename, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size
     if bool(dfs) is False:
         return None
     return pd.concat(dfs, sort=False)
+
+
+def _gen_regex_for_request_logs(filename="request.log"):
+    """
+    Return a list which contains column names, and regex pattern for request.log
+    :param filename: A file name or *simple* regex used in glob to select files.
+    :return: (col_list, pattern_str)
+    """
+    files = _globr(filename)
+    if bool(files) is False:
+        return ([], "")
+    checking_line = linecache.getline(files[0], 2)  # first line can be a junk: "** TRUNCATED ** linux x64"
+    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
+               "elapsedTime", "headerUserAgent", "thread"]
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
+    if re.search(partern_str, checking_line):
+        return (columns, partern_str)
+    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
+               "elapsedTime", "headerUserAgent", "thread"]
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
+    if re.search(partern_str, checking_line):
+        return (columns, partern_str)
+    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
+               "elapsedTime", "headerUserAgent"]
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)"'
+    if re.search(partern_str, checking_line):
+        return (columns, partern_str)
+    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
+               "elapsedTime", "misc"]
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) (.+)'
+    if re.search(partern_str, checking_line):
+        return (columns, partern_str)
+    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
+               "elapsedTime"]
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+)'
+    if re.search(partern_str, checking_line):
+        return (columns, partern_str)
 
 
 def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000):
@@ -1389,8 +1434,10 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0):
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
         _err("Creating table: %s ..." % (tablename))
+        # Not sure if to_sql returns some result
         df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
         _autocomp_inject(tablename=tablename)
+        return bool(df)
     return df
 
 
@@ -1484,7 +1531,7 @@ def gen_ldapsearch(ldap_json=None):
         p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u)
 
 
-def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1000):
+def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1, tail_num=10000):
     """
     Analyse log files (expecting request.log converted to request.csv)
     :param start_isotime:
@@ -1496,23 +1543,31 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1000):
 
     _ = json2df('audit.json', tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=connect())
 
-    files = _globr('request.csv')
-    where_sql = "WHERE 1=1" % (elapsed_time)
-    if bool(elapsed_time) is True:
-        where_sql += " AND elapsedTime > %d" % (elapsed_time)
-    if bool(start_isotime) is True:
-        where_sql += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') >= UDF_STR2SQLDT('" + start_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
-    if bool(end_isotime) is True:
-        where_sql += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
-    for f in files:
-        _ = csv2df(f, tablename="t_request_logs", conn=connect())
-        query = "SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d:)', `date`, 1) AS date_hour, CAST(AVG(elapsedTime)/1000 AS INT) AS avg_elaps_sec, CAST(AVG(bytesSent) AS INT) AS avg_bytes, count(*) AS occurrence FROM t_request_logs " + where_sql + " GROUP BY 1"
-        _err("query: " + query)
+    # request.*csv* exists, use that (because it's faster), if not, logs2table, which is slower.
+    result = csv2df('request.csv', tablename="t_request_logs", conn=connect())
+    if bool(result) is False:
+        (col_names, line_matching) = _gen_regex_for_request_logs('request.log')
+        result = logs2table('request.log', tablename="t_request_logs", col_names=col_names, line_beginning="^.", line_matching=line_matching)
+    if bool(result):
+        where_sql = "WHERE 1=1"
+        if bool(elapsed_time) is True:
+            where_sql += " AND elapsedTime >= %d" % (elapsed_time)
+        if bool(start_isotime) is True:
+            where_sql += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') >= UDF_STR2SQLDT('" + start_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
+        if bool(end_isotime) is True:
+            where_sql += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
+        query = """SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d:)', `date`, 1) AS date_hour, statusCode,
+        CAST(AVG(elapsedTime)/1000 AS INT) AS avg_elaps_sec, 
+        CAST(AVG(bytesSent) AS INT) AS avg_bytes, 
+        count(*) AS occurrence
+    FROM t_request_logs
+    %s
+    GROUP BY 1, 2""" % (where_sql)
+        _err("Query: " + query)
         display(q(query))
         query = "SELECT UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') AS date_time, statusCode, bytesSent, elapsedTime FROM t_request_logs " + where_sql
-        _err("query: " + query)
-        _ = draw(q(query))
-        break
+        _err("Query: " + query)
+        _ = draw(q(query).tail(tail_num))
 
     files = _globr('health_monitor.json')
     for f in files:
