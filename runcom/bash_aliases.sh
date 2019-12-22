@@ -380,6 +380,10 @@ function sptBoot() {
     echo "Running in background (tail -f ./$(basename "${_zip}" .zip).out)"
 }
 function iqCli() {
+    if [ -z "$1" ]; then
+        iqCli "./"
+        return $?
+    fi
     java -jar /Users/hosako/Apps/iq-clis/nexus-iq-cli-1.80.0-01.jar -i "sandbox-application" -s "http://dh1.standalone.localdomain:8070/" -a "admin:admin123" -X $@
 }
 
