@@ -910,8 +910,6 @@ function f_audit2json() {
     local __doc__="Convert audit.log which looks like a json but not"
     local _glob="${1:-"audit.log"}"
     local _out_file="$2"
-    local _pattern="$3"
-    local _pattern_out="$4"
 
     if [ -z "${_out_file}" ]; then
         _out_file="$(basename ${_glob} .log).json"
@@ -920,8 +918,24 @@ function f_audit2json() {
     rg --no-filename -N -z \
         "^(\{.+\})$" \
         -o -r ',$1' -g "${_glob}" > ${_out_file}
+    if [ ! -s ${_out_file} ]; then
+        rm ${_out_file}
+        return
+    fi
     echo "]" >> ${_out_file}
     _sed -i '1s/^,/[/' ${_out_file}
+}
+
+function f_log2json() {
+    local __doc__="TODO: Convert some log text to json"
+    local _glob="${1:-"nexus.log"}"
+    local _out_file="${2:-"health_monitor.json"}"
+    rg "^($_DATE_FORMAT.\d\d:\d\d:\d\d).+INFO.+com.hazelcast.internal.diagnostics.HealthMonitor - \[([^]]+)\]:(\d+) \[([^]]+)\] \[([^]]+)\] (.+)" -r 'date_time=${1}, address=${2}:${3}, user=${4}, cluster_ver=${5}, ${6}' --no-filename -g ${_glob} > /tmp/f_log2json_$$.tmp
+    if [ -s /tmp/f_log2json_$$.tmp ]; then
+        _sed -r 's/ *([^=]+)=([^,]+),?/"\1":"\2",/g' /tmp/f_log2json_$$.tmp | _sed 's/,$/}/g' | _sed 's/^"/,{"/g' > ${_out_file}
+        echo ']' >> f_log2json_$$.json
+        _sed -i '1s/^,/[/' ${_out_file}
+    fi
 }
 
 
