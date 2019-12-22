@@ -379,7 +379,7 @@ function f_docker_run() {
         local _num=`echo ${_name} | sed 's/[^0-9]//g' | cut -c1-3`
         local _ssh_pf_num=$(( 22000 + ${_num:-1} ))
         if ! lsof -ti:${_ssh_pf_num} -s TCP:LISTEN; then
-            _log "INFO" "Adding ${_ssh_pf_num} -> 22 port forward (eg: ssh -p${_ssh_pf_num} -D28081 localhost)..."
+            _log "INFO" "Adding port forward:${_ssh_pf_num}->22 (eg: ssh -p${_ssh_pf_num} -D28081 localhost)..."
             _port_opts="${_port_opts} -p ${_ssh_pf_num}:22"
         fi
     fi
@@ -420,7 +420,7 @@ function p_container_setup() {
 
     f_container_ssh_config "${_name}"   # it's OK to fail || return $?
     f_container_misc "${_name}"         # it's OK to fail || return $?
-    _log "INFO" "Setting up ${_name} container completed."
+    #_log "INFO" "Setting up ${_name} container completed."
     return 0
 }
 
@@ -1123,11 +1123,13 @@ main() {
 
     if ${_AS_STOP}; then
         if [ -z "${_NAME}" ]; then
-            _log "ERROR" "To restart, need -n <name>"
+            _log "ERROR" "To stop|restart, need -n <name>"
             return 1
         fi
+        _log "INFO" "Stopping service (best effort)..."
         f_as_stop "${_NAME}" "${_SERVICE}" || return $?
         # Default 10 seconds might be a bit dangerous.
+        _log "INFO" "Stopping container (best effort)..."
         docker stop -t 120 ${_NAME}
         return $?
     fi
