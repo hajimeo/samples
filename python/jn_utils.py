@@ -1551,7 +1551,7 @@ def gen_ldapsearch(ldap_json=None):
         p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u)
 
 
-def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1, tail_num=10000):
+def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=100, tail_num=10000):
     """
     Analyse log files (expecting request.log converted to request.csv)
     :param start_isotime:
@@ -1577,6 +1577,8 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1, tail_num=
         if bool(end_isotime) is True:
             where_sql += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
         query = """SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d:)', `date`, 1) AS date_hour, statusCode,
+        CAST(MAX(elapsedTime)/1000 AS INT) AS max_elaps_sec, 
+        CAST(MIN(elapsedTime)/1000 AS INT) AS min_elaps_sec, 
         CAST(AVG(elapsedTime)/1000 AS INT) AS avg_elaps_sec, 
         CAST(AVG(bytesSent) AS INT) AS avg_bytes, 
         count(*) AS occurrence
@@ -1619,7 +1621,7 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1, tail_num=
                    col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
                    line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
                    size_regex=None, time_regex=None)
-    # TODO: analyse t_xxxxx_logs table
+    # TODO: analyse t_xxxxx_logs table (eg: cout ERROR|WARN)
 
     # TODO: below does not work so that using above names_dict workaround
     # try:
