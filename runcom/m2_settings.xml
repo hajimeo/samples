@@ -9,14 +9,23 @@
     <pluginGroup>com.github.searls</pluginGroup>
   </pluginGroups>
   <proxies>
+    <proxy>
+      <id>dh1-proxy</id>
+      <active>true</active>
+      <protocol>http</protocol>
+      <host>dh1.standalone.localdomain</host>
+      <port>28080</port>
+      <nonProxyHosts>*.com</nonProxyHosts>
+    </proxy>
   </proxies>
   <servers>
     <server>
       <id>nexus</id>
       <username>admin</username>
+      <password>admin123</password>
       <!-- https://maven.apache.org/guides/mini/guide-encryption.html -->
       <!--password>{geVfoESt88cHvvQUUIMu1vDwc/PxCjMt0zlwy/8sMJo=}</password-->
-      <password>{g9UvVDAvg2YHCt6hUa4y/GxJZgXGlhl74THbWOURh0Q=}</password>
+      <!--password>{g9UvVDAvg2YHCt6hUa4y/GxJZgXGlhl74THbWOURh0Q=}</password-->
     </server>
   </servers>
   <!--localRepository>./m2_repo</localRepository-->
@@ -31,6 +40,8 @@
   <profiles>
     <profile>
       <id>nexus</id>
+      <!--Enable snapshots for the built in central repo to direct -->
+      <!--all requests to nexus via the mirror -->
       <repositories>
         <repository>
           <id>central</id>
