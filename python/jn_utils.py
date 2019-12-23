@@ -696,7 +696,21 @@ def _gen_class(name, attrs=None, def_value=True):
     return c
 
 
-def draw(df, width=16, x_col=0, x_colname=None):
+def display(df):
+    """
+    Wrapper of IPython.display.display
+    :param df: A DataFrame object
+    :return Void
+    """
+    try:
+        from IPython.display import display, HTML
+        out = HTML(df.to_html())
+        display(out)
+    except:
+        print(df.to_html())
+
+
+def draw(df, width=16, x_col=0, x_colname=None, tail=10):
     """
     Helper function for df.plot()
     As pandas.DataFrame.plot is a bit complicated, using simple options only if this method is used.
@@ -706,6 +720,7 @@ def draw(df, width=16, x_col=0, x_colname=None):
     :param width: This is Inch and default is 16 inch.
     :param x_col: Column index number used for X axis.
     :param x_colname: If column name is given, use this instead of x_col.
+    :param tail: To return some sample rows.
     :return: DF (use .tail() or .head() to limit the rows)
     #>>> draw(ju.q("SELECT date, statuscode, bytesSent, elapsedTime from t_request_csv")).tail()
     #>>> draw(ju.q("select QueryHour, SumSqSqlWallTime, SumPostPlanTime, SumSqPostPlanTime from query_stats")).tail()
@@ -731,7 +746,7 @@ def draw(df, width=16, x_col=0, x_colname=None):
     #    labels = df[x_colname].tolist()
     #    lables = labels[::interval]
     #    plt.xticks(list(range(interval)), lables)
-    return df
+    return df.tail(tail)
 
 
 def qhistory(run=None, like=None, html=True, tail=20):
@@ -771,10 +786,8 @@ def qhistory(run=None, like=None, html=True, tail=20):
         return df
     current_max_colwitdh = pd.get_option('display.max_colwidth')
     pd.set_option('display.max_colwidth', -1)
-    out = df.to_html()
+    display(df)
     pd.set_option('display.max_colwidth', current_max_colwitdh)
-    from IPython.display import display, HTML
-    display(HTML(out))
 
 
 history = qhistory
@@ -1159,7 +1172,7 @@ def logs2table(filename, tablename=None, conn=None,
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
                line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)",
                size_regex=None, time_regex=None,
-               max_file_num=10, appending=False, multiprocessing=False):
+               max_file_num=10, max_file_size=(1024*1024*10), appending=False, multiprocessing=False):
     """
     Insert multiple log files into *one* table
     :param filename: a file name (or path) or *simple* glob regex
@@ -1172,6 +1185,7 @@ def logs2table(filename, tablename=None, conn=None,
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
     :param max_file_num: To avoid memory issue, setting max files to import
+    :param max_file_size: To avoid memory issue, setting max file size per file
     :param appending: default is False. If False, use 'DROP TABLE IF EXISTS'
     :param multiprocessing: (Experimental) default is False. If True, use multiple CPUs
     :return: Void if no error, or a tuple contains multiple information for debug
@@ -1248,6 +1262,9 @@ def logs2table(filename, tablename=None, conn=None,
     if multiprocessing:
         args_list = []
         for f in files:
+            if os.stat(f).st_size >= max_file_size:
+                _err("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
+                continue
             # concurrent.futures.ProcessPoolExecutor hangs in Jupyter, so can't use kwargs
             args_list.append((f, line_beginning, line_matching, size_regex, time_regex, num_cols, True))
         # file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None, replace_comma=False
@@ -1262,7 +1279,9 @@ def logs2table(filename, tablename=None, conn=None,
                 return res
     else:
         for f in files:
-            _err("File: %s (%d KB) ..." % (str(f), os.stat(f).st_size / 1024))
+            if os.stat(f).st_size >= max_file_size:
+                _err("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
+                continue
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
                                            size_regex=size_regex, time_regex=time_regex, num_cols=num_cols,
                                            replace_comma=True)
@@ -1540,15 +1559,15 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1, tail_num=
     :return: void
     >>> pass    # test should be done in each function
     """
-    from IPython.display import display, HTML
-
+    ## Audit json if exist
     _ = json2df('audit.json', tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=connect())
 
-    # request.*csv* exists, use that (because it's faster), if not, logs2table, which is slower.
+    ## Request.*csv* exists, use that (because it's faster), if not, logs2table, which is slower.
     result = csv2df('request.csv', tablename="t_request_logs", conn=connect())
     if bool(result) is False:
         (col_names, line_matching) = _gen_regex_for_request_logs('request.log')
-        result = logs2table('request.log', tablename="t_request_logs", col_names=col_names, line_beginning="^.", line_matching=line_matching)
+        result = logs2table('request.log', tablename="t_request_logs", col_names=col_names, line_beginning="^.",
+                            line_matching=line_matching)
     if bool(result):
         where_sql = "WHERE 1=1"
         if bool(elapsed_time) is True:
@@ -1566,18 +1585,18 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1, tail_num=
     GROUP BY 1, 2""" % (where_sql)
         _err("Query: " + query)
         display(q(query))
-        # To draw, may need to cast explicitly
         query = """SELECT UDF_STR2SQLDT(`date`, '%%d/%%b/%%Y:%%H:%%M:%%S %%z') AS date_time, 
         CAST(statusCode AS INTEGER) AS statusCode, 
         CAST(bytesSent AS INTEGER) AS bytesSent, 
         CAST(elapsedTime AS INTEGER) AS elapsedTime 
         FROM t_request_logs %s""" % (where_sql)
         _err("Query: " + query)
-        _ = draw(q(query).tail(tail_num))
+        display(draw(q(query).tail(tail_num)))
 
+    # Hazelcast health monitor
     result = json2df('health_monitor.json', tablename="t_health_monitor", conn=connect())
     if bool(result):
-        _ = draw(q("""select date_time
+        query="""select date_time
         , UDF_STR_TO_INT(`physical.memory.free`) as sys_mem_free_bytes
         , UDF_STR_TO_INT(`swap.space.free`) as swap_free_bytes
         , UDF_STR_TO_INT(`heap.memory.used/max`) as heap_used_percent
@@ -1588,7 +1607,9 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1, tail_num=
         , CAST(`load.systemAverage` AS REAL) as load_system_avg
         , CAST(`thread.count` AS INTEGER) as thread_count
         , CAST(`connection.active.count` AS INTEGER) as node_conn_count
-        FROM t_health_monitor"""))
+        FROM t_health_monitor"""
+        _err("Query: " + query)
+        display(draw(q(query)))
 
     _ = logs2table('nexus.log', tablename="t_nexus_logs",
                    col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
