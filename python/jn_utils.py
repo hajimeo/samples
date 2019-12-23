@@ -252,6 +252,7 @@ def json2df(filename, jq_query="", conn=None, tablename=None, json_cols=[], chun
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
         df_tmp_mod.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
         _autocomp_inject(tablename=tablename)
+        return len(df) > 0
     return df
 
 
@@ -1566,7 +1567,7 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1, tail_num=
         _err("Query: " + query)
         display(q(query))
         # To draw, may need to cast explicitly
-        query = """SELECT UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') AS date_time, 
+        query = """SELECT UDF_STR2SQLDT(`date`, '%%d/%%b/%%Y:%%H:%%M:%%S %%z') AS date_time, 
         CAST(statusCode AS INTEGER) AS statusCode, 
         CAST(bytesSent AS INTEGER) AS bytesSent, 
         CAST(elapsedTime AS INTEGER) AS elapsedTime 
@@ -1574,20 +1575,20 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=1, tail_num=
         _err("Query: " + query)
         _ = draw(q(query).tail(tail_num))
 
-    files = _globr('health_monitor.json')
-    for f in files:
-        _ = json2df(f, tablename="t_health_monitor", conn=connect())
+    result = json2df('health_monitor.json', tablename="t_health_monitor", conn=connect())
+    if bool(result):
         _ = draw(q("""select date_time
         , UDF_STR_TO_INT(`physical.memory.free`) as sys_mem_free_bytes
         , UDF_STR_TO_INT(`swap.space.free`) as swap_free_bytes
-        , UDF_STR_TO_INT(`heap.memory.used/max`) as heap_percent
+        , UDF_STR_TO_INT(`heap.memory.used/max`) as heap_used_percent
         , CAST(`major.gc.count` AS INTEGER) as majour_gc_count
         , UDF_STR_TO_INT(`major.gc.time`) as majour_gc_msec
-        , CAST(`load.systemAverage` AS REAL) as sys_load_avg
+        , CAST(`load.process` AS REAL) as load_proc_percent
+        , CAST(`load.system` AS REAL) as load_sys_percent
+        , CAST(`load.systemAverage` AS REAL) as load_system_avg
         , CAST(`thread.count` AS INTEGER) as thread_count
-        , CAST(`connection.active.count` AS INTEGER) as conn_count
-        FROM t_health_monitor_json"""))
-        break
+        , CAST(`connection.active.count` AS INTEGER) as node_conn_count
+        FROM t_health_monitor"""))
 
     _ = logs2table('nexus.log', tablename="t_nexus_logs",
                    col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
