@@ -23,16 +23,14 @@ REQUIRED:
     pip3 install pandas sqlalchemy matplotlib
 
 GLOBAL VARIABLES:
-Please overwrite (or edit this script) to change the value
-    _INSTALL_DIR=$HOME/.log_visualiser
-    _LOG_FILE_PATH=(empty)
+Please overwrite (or edit this script) to change the value.
+    _INSTALL_DIR='${_INSTALL_DIR}'
 "
     echo "FUNCTIONS:"
     _list
 }
 
 _INSTALL_DIR="$HOME/.log_visualiser"
-_LOG_FILE_PATH=""
 
 
 
@@ -68,7 +66,11 @@ function f_setup() {
         mkdir -p "${_INSTALL_DIR%/}" || return $?
     fi
     _update "${_INSTALL_DIR%/}/jn_utils.py" || return $?
-    export PYTHONPATH="${_INSTALL_DIR%/}/jn_utils.py":${PYTHONPATH#:}
+    if [ -z "$PYTHONPATH" ]; then
+        export PYTHONPATH=${_INSTALL_DIR%/}
+    elif [[ ":$PYTHONPATH:" != *":${_INSTALL_DIR%/}:"* ]]; then
+        export PYTHONPATH=${_INSTALL_DIR%/}:${PYTHONPATH#:}
+    fi
 }
 
 function f_run() {

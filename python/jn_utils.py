@@ -1716,14 +1716,14 @@ FROM t_health_monitor
         _err("Query: " + query)
         draw(q(query), name="nexus_health_monitor")
 
-    ## analyse t_logs table (eg: cout ERROR|WARN)
-    query = """SELECT UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, loglevel, count(1) 
-FROM t_logs
-%s
-  AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
-GROUP BY 1, 2""" % (where_sql)
-    _err("Query: " + query)
-    draw(q(query), name="warn_error_hourly")
+        ## analyse t_logs table (eg: cout ERROR|WARN)
+        query = """SELECT UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, loglevel, count(1) 
+    FROM t_logs
+    %s
+      AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
+    GROUP BY 1, 2""" % (where_sql)
+        _err("Query: " + query)
+        draw(q(query), name="warn_error_hourly")
     _err("Completed.")
 
 
