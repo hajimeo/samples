@@ -3,8 +3,12 @@ usage() {
     echo "PURPOSE OF THIS SCRIPT:
     Visualise *.log files under current directory ($PWD).
 
+HOW TO INSTALL:
+    Copy this script under a directory in the PATH (eg:/usr/local/bin/)
+    Then 'chmod u+x /usr/local/bin/$(basename ${0})'
+
 HOW TO EXECUTE:
-    ./$(basename ${0}) [start_ISO_datetime] [end_ISO_datetime] [elapsed_milliseconds]
+    $(basename ${0}) [start_ISO_datetime] [end_ISO_datetime] [elapsed_milliseconds]
 
 All arguments to filter data, and optional.
     start_ISO_datetime (YYYY-MM-DD hh:mm:ss)
@@ -35,7 +39,7 @@ _LOG_FILE_PATH=""
 function f_validate() {
     local __doc__="Check if python3 and required modules are installed"
     local _py_mods="pandas sqlalchemy matplotlib"
-    local _all_good=true
+    local _all_good=0
     local _missing_pymods=""
     if ! which python3 &>/dev/null; then
         _log "ERROR" "'python3' is required."
@@ -43,9 +47,9 @@ function f_validate() {
     fi
     for _m in ${_py_mods}; do
         _missing_pymods="${_missing_pymods% } `_validate_py_mods "${_m}"`"
-        [ $? -ne 0 ] && _all_good=false
+        [ $? -ne 0 ] && _all_good=$(($_all_good +1))
     done
-    if ! ${_all_good} && [ -n "${_missing_pymods}" ]; then
+    if [ ${_all_good} -ne 0 ] && [ -n "${_missing_pymods}" ]; then
         _log "ERROR" "run 'pip3 install ${_missing_pymods}'"
     fi
     return ${_all_good}
@@ -60,15 +64,19 @@ _validate_py_mods() {
 
 function f_setup() {
     local __doc__="Update necessary script and set environment variable"
+    if [ ! -d "${_INSTALL_DIR%/}" ]; then
+        mkdir -p "${_INSTALL_DIR%/}" || return $?
+    fi
     _update "${_INSTALL_DIR%/}/jn_utils.py" || return $?
     export PYTHONPATH="${_INSTALL_DIR%/}/jn_utils.py":${PYTHONPATH#:}
 }
 
 function f_run() {
+    local __doc__="Execute jn_utils:analyse_logs()"
     local _start_isotime="$1"   # YYYY-MM-DD hh:mm:ss
     local _end_isotime="$2"     # YYYY-MM-DD hh:mm:ss
     local _elapsed_time="${3:-100}"
-    python3 -c 'import jn_utils.py as ju; ju.analyse_logs(start_isotime="'${_start_isotime}'", end_isotime="'${_end_isotime}'", elapsed_time='${_elapsed_time}')'
+    python3 -c 'import jn_utils as ju; ju.analyse_logs(start_isotime="'${_start_isotime}'", end_isotime="'${_end_isotime}'", elapsed_time='${_elapsed_time}')'
 }
 
 
@@ -129,7 +137,7 @@ _help() {
 
     local _output=""
     if [[ "$_function_name" =~ ^[fp]_ ]]; then
-        local _code="$(type $_function_name 2>/dev/null | _grep -v "^${_function_name} is a function")"
+        local _code="$(type $_function_name 2>/dev/null | grep -v "^${_function_name} is a function")"
         if [ -z "$_code" ]; then
             echo "Function name '$_function_name' does not exist."
             return 1
@@ -145,7 +153,7 @@ _help() {
             fi
         fi
 
-        local _params="$(type $_function_name 2>/dev/null | _grep -iP '^\s*local _[^_].*?=.*?\$\{?[1-9]' | _grep -v awk)"
+        local _params="$(type $_function_name 2>/dev/null | grep -iE '^\s*local _[^_].*?=.*?\$\{?[1-9]' | grep -v awk)"
         if [ -n "$_params" ]; then
             _output="${_output}Parameters:\n"
             _output="${_output}${_params}\n"
@@ -170,17 +178,17 @@ _list() {
     set -o posix
 
     if [[ -z "$_name" ]]; then
-        (for _f in `typeset -F | _grep -P '^declare -f [fp]_' | cut -d' ' -f3`; do
+        (for _f in `typeset -F | grep -E '^declare -f [fp]_' | cut -d' ' -f3`; do
             #eval "echo \"--[ $_f ]\" | _sed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
             _tmp_txt="`_help "$_f" "" "Y"`"
             printf "%-28s%s\n" "$_f" "$_tmp_txt"
         done)
     elif [[ "$_name" =~ ^func ]]; then
-        typeset -F | _grep '^declare -f [fp]_' | cut -d' ' -f3
+        typeset -F | grep '^declare -f [fp]_' | cut -d' ' -f3
     elif [[ "$_name" =~ ^glob ]]; then
-        set | _grep ^[g]_
+        set | grep ^[g]_
     elif [[ "$_name" =~ ^resp ]]; then
-        set | _grep ^[r]_
+        set | grep ^[r]_
     fi
 }
 
