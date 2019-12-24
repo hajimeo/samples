@@ -933,7 +933,7 @@ function f_log2json() {
     rg "^($_DATE_FORMAT.\d\d:\d\d:\d\d).+INFO.+com.hazelcast.internal.diagnostics.HealthMonitor - \[([^]]+)\]:(\d+) \[([^]]+)\] \[([^]]+)\] (.+)" -r 'date_time=${1}, address=${2}:${3}, user=${4}, cluster_ver=${5}, ${6}' --no-filename -g ${_glob} > /tmp/f_log2json_$$.tmp
     if [ -s /tmp/f_log2json_$$.tmp ]; then
         _sed -r 's/ *([^=]+)=([^,]+),?/"\1":"\2",/g' /tmp/f_log2json_$$.tmp | _sed 's/,$/}/g' | _sed 's/^"/,{"/g' > ${_out_file}
-        echo ']' >> f_log2json_$$.json
+        echo ']' >> ${_out_file}
         _sed -i '1s/^,/[/' ${_out_file}
     fi
 }
