@@ -1037,7 +1037,7 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
     (None, ('2018-09-04',), 'test')
     """
     tmp_tuple = None
-    # _err(" - line: %s ." % (str(line)))
+    _debug(" - line: %s ." % (str(line)))
     # If current line is beginning of a new *log* line (eg: ^2018-08-\d\d...)
     if begin_re.search(line):
         # and if previous matches aren't empty, prev_matches is going to be saved
@@ -1110,7 +1110,7 @@ def _linecount_wc(filepath):
 
 
 def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None,
-                          replace_comma=False):
+                          replace_comma=False, line_from=0, line_until=0):
     """
     Read a file and search each line with given regex
     :param file_path: A file path
@@ -1120,6 +1120,8 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     :param time_regex: Regex to capture time/duration
     :param num_cols: Number of columns
     :param replace_comma: Sqlite does not like comma in datetime with milliseconds
+    :param line_from: Read line from
+    :param line_until: Read line until
     :return: A list of tuples
     >>> pass    # TODO: implement test
     """
@@ -1142,8 +1144,15 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     _empty = 0
     for l in f:
         _ln += 1
+        # _debug("  _ln=%s, line_from=%s line_until=%s ..." % (str(_ln), str(line_from), str(line_until)))
+        if bool(line_from) and _ln < line_from:
+            _empty += 1
+            continue
+        if bool(line_until) and _ln > line_until:
+            _empty += 1
+            continue
         if (_ln % connter) == 0:
-            _err("  Processed %s/%s (%s) lines for %s (%s) ..." % (
+            _err("  Processed %s/%s (skip:%s) lines for %s (%s) ..." % (
                 str(_ln), ttl_line, str(_empty), filename, _timestamp(format="%H:%M:%S")))
         if bool(l) is False:
             break  # most likely the end of the file
@@ -1172,7 +1181,9 @@ def logs2table(filename, tablename=None, conn=None,
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
                line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)",
                size_regex=None, time_regex=None,
-               max_file_num=10, max_file_size=(1024*1024*10), appending=False, multiprocessing=False):
+               line_from=0, line_until=0,
+               max_file_num=10, max_file_size=(1024 * 1024 * 10),
+               appending=False, multiprocessing=False):
     """
     Insert multiple log files into *one* table
     :param filename: a file name (or path) or *simple* glob regex
@@ -1184,11 +1195,13 @@ def logs2table(filename, tablename=None, conn=None,
     :param line_matching: A group matching regex to separate one log lines into columns
     :param size_regex: (optional) size-like regex to populate 'size' column
     :param time_regex: (optional) time/duration like regex to populate 'time' column
+    :param line_from: Read line from
+    :param line_until: Read line until
     :param max_file_num: To avoid memory issue, setting max files to import
     :param max_file_size: To avoid memory issue, setting max file size per file
     :param appending: default is False. If False, use 'DROP TABLE IF EXISTS'
     :param multiprocessing: (Experimental) default is False. If True, use multiple CPUs
-    :return: Void if no error, or a tuple contains multiple information for debug
+    :return: True if no error, or a tuple contains multiple information for debug
     #>>> logs2table(filename='queries.*log*', tablename='t_queries_log',
             col_names=['date_time', 'ids', 'message', 'extra_lines'],
             line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) (\{.*?\}) - ([^:]+):(.*)',
@@ -1263,10 +1276,12 @@ def logs2table(filename, tablename=None, conn=None,
         args_list = []
         for f in files:
             if os.stat(f).st_size >= max_file_size:
-                _err("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
+                _err("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (
+                    str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
                 continue
             # concurrent.futures.ProcessPoolExecutor hangs in Jupyter, so can't use kwargs
-            args_list.append((f, line_beginning, line_matching, size_regex, time_regex, num_cols, True))
+            args_list.append(
+                (f, line_beginning, line_matching, size_regex, time_regex, num_cols, True, line_from, line_until))
         # file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None, replace_comma=False
         rs = _mexec(_read_file_and_search, args_list)
         for tuples in rs:
@@ -1280,11 +1295,12 @@ def logs2table(filename, tablename=None, conn=None,
     else:
         for f in files:
             if os.stat(f).st_size >= max_file_size:
-                _err("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
+                _err("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (
+                    str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
                 continue
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
                                            size_regex=size_regex, time_regex=time_regex, num_cols=num_cols,
-                                           replace_comma=True)
+                                           replace_comma=True, line_from=line_from, line_until=line_until)
             _debug(("tuples len:%d" % len(tuples)))
             if len(tuples) > 0:
                 res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
@@ -1387,6 +1403,49 @@ def _gen_regex_for_request_logs(filename="request.log"):
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
+    # TODO: When can't identify from above, should this return some cols and regex?
+
+
+def _gen_regex_for_service_logs(filename="nexus.log"):
+    """
+    Return a list which contains column names, and regex pattern for nexus.log, clm-server.log, server.log
+    :param filename: A file name or *simple* regex used in glob to select files.
+    :return: (col_list, pattern_str)
+    """
+    files = _globr(filename)
+    if bool(files) is False:
+        return ([], "")
+    checking_line = linecache.getline(files[0], 2)  # first line can be a junk: "** TRUNCATED ** linux x64"
+    columns = ['date_time', 'loglevel', 'thread', 'node', 'user', 'class', 'message']
+    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]*) ([^ ]+) - (.*)'
+    if re.search(partern_str, checking_line):
+        return (columns, partern_str)
+    columns = ['date_time', 'loglevel', 'thread', 'user', 'class', 'message']
+    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)'
+    if re.search(partern_str, checking_line):
+        return (columns, partern_str)
+    # If can't identify
+    columns = ['date_time', 'loglevel', 'message']
+    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +(.+)'
+    return (columns, partern_str)
+
+
+def _gen_regex_for_hazel_health(sample):
+    """
+    Return a list which contains column names, and regex pattern for nexus.log, clm-server.log, server.log
+    :param sample: A sample line
+    :return: (col_list, pattern_str)
+    """
+    # no need to add 'date_time'
+    columns = ['ip', 'port', 'user', 'cluster_ver']
+    cols_tmp = re.findall(r'([^ ,]+)=', sample)
+    #columns += list(map(lambda x: x.replace('.', '_'), cols_tmp))
+    columns += cols_tmp
+    partern_str = '^\[([^\]]+)]:([^ ]+) \[([^\]]+)\] \[([^\]]+)\]'
+    for c in cols_tmp:
+        partern_str += " %s=([^, ]+)," % (c)
+    partern_str += "?"
+    return (columns, partern_str)
 
 
 def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000):
@@ -1595,10 +1654,28 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=100, tail_nu
         _err("Query: " + query)
         display(draw(q(query).tail(tail_num)))
 
+    (col_names, line_matching) = _gen_regex_for_service_logs('nexus.log')
+    result_nexus = logs2table('nexus.log', tablename="t_nexus_logs", col_names=col_names, line_matching=line_matching)
+    (col_names, line_matching) = _gen_regex_for_service_logs('*server.log')
+    _ = logs2table('*server.log', tablename="t_clmserver_logs", col_names=col_names, line_matching=line_matching)
+
     # Hazelcast health monitor
     result = json2df('health_monitor.json', tablename="t_health_monitor", conn=connect())
+    if bool(result) is False and bool(result_nexus):
+        _err("Generating t_health_monitor from t_nexus_logs ...")
+        df_hm = q("""select date_time, message from t_nexus_logs
+        where loglevel = 'INFO'
+        and class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
+        (col_names, line_matching) = _gen_regex_for_hazel_health(df_hm['message'][1])
+        msg_ext = df_hm['message'].str.extract(line_matching)
+        msg_ext.columns = col_names
+        df_no_msg = df_hm.drop(columns=['message'])
+        df_hm_new = df_no_msg.join(msg_ext)
+        df_hm_new.to_sql(name="t_health_monitor", con=connect(), chunksize=1000, if_exists='replace', schema=_DB_SCHEMA)
+        _autocomp_inject(tablename='t_health_monitor')
+        result = True
     if bool(result):
-        query="""select date_time
+        query = """select date_time
         , UDF_STR_TO_INT(`physical.memory.free`) as sys_mem_free_bytes
         , UDF_STR_TO_INT(`swap.space.free`) as swap_free_bytes
         , UDF_STR_TO_INT(`heap.memory.used/max`) as heap_used_percent
@@ -1613,14 +1690,6 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=100, tail_nu
         _err("Query: " + query)
         display(draw(q(query)))
 
-    _ = logs2table('nexus.log', tablename="t_nexus_logs",
-                   col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
-                   line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
-                   size_regex=None, time_regex=None)
-    _ = logs2table('clm-server.log', tablename="t_clmserver_logs",
-                   col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
-                   line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
-                   size_regex=None, time_regex=None)
     # TODO: analyse t_xxxxx_logs table (eg: cout ERROR|WARN)
 
     # TODO: below does not work so that using above names_dict workaround
