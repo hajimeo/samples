@@ -18,8 +18,22 @@ from dateutil import parser
 import pandas as pd
 from sqlalchemy import create_engine
 import sqlite3
-from lxml import etree
-import pyjq
+import matplotlib.pyplot as plt
+
+try:
+    from lxml import etree
+    import pyjq
+    import multiprocessing as mp
+    import jaydebeapi
+    import IPython
+except ImportError:
+    # Above modules are not mandatory
+    pass
+
+try:
+    from urllib.request import urlopen, Request
+except ImportError:
+    from urllib2 import urlopen, Request
 
 _DEBUG = False
 _LOAD_UDFS = True
@@ -52,7 +66,6 @@ def _mexec(func_obj, args_list, num=None):
     if len(args_list) == 1:
         rs.append(func_obj(*args_list[0]))
         return rs
-    import multiprocessing as mp
     if bool(num) is False:
         num = int(mp.cpu_count() / 2)
     executor = mp.Pool(processes=num)
@@ -681,7 +694,7 @@ def _autocomp_inject(tablename=None):
             # globals()[t] = tbl_cls
             # locals()[t] = tbl_cls
         except:
-            _err("get_ipython().user_global_ns failed" % t)
+            _debug("get_ipython().user_global_ns failed")
             pass
 
 
@@ -696,21 +709,30 @@ def _gen_class(name, attrs=None, def_value=True):
     return c
 
 
-def display(df):
+def display(df, name=""):
     """
     Wrapper of IPython.display.display
     :param df: A DataFrame object
+    :param name: Used when saving into file
     :return Void
     """
+    if bool(name) is False:
+        name = _timestamp(format="%Y%m%d%H%M%S%f")
+    is_jupyter = True
     try:
-        from IPython.display import display, HTML
-        out = HTML(df.to_html())
-        display(out)
+        get_ipython()
     except:
-        print(df.to_html())
+        is_jupyter = False
+        pass
+    if is_jupyter:
+        out = IPython.display.HTML(df.to_html())
+        IPython.display.display(out)
+    else:
+        #print(df.to_html())
+        df2csv(df=df, file_path="%s.csv" % (str(name)))
 
 
-def draw(df, width=16, x_col=0, x_colname=None, tail=10):
+def draw(df, width=16, x_col=0, x_colname=None, name="", tail=10):
     """
     Helper function for df.plot()
     As pandas.DataFrame.plot is a bit complicated, using simple options only if this method is used.
@@ -720,27 +742,34 @@ def draw(df, width=16, x_col=0, x_colname=None, tail=10):
     :param width: This is Inch and default is 16 inch.
     :param x_col: Column index number used for X axis.
     :param x_colname: If column name is given, use this instead of x_col.
+    :param name: When saving to file.
     :param tail: To return some sample rows.
     :return: DF (use .tail() or .head() to limit the rows)
     #>>> draw(ju.q("SELECT date, statuscode, bytesSent, elapsedTime from t_request_csv")).tail()
     #>>> draw(ju.q("select QueryHour, SumSqSqlWallTime, SumPostPlanTime, SumSqPostPlanTime from query_stats")).tail()
     """
+    is_jupyter = True
+    if bool(name) is False:
+        name = _timestamp(format="%Y%m%d%H%M%S%f")
     try:
-        import matplotlib.pyplot as plt
         get_ipython().run_line_magic('matplotlib', 'inline')
     except:
-        _err("get_ipython().run_line_magic('matplotlib', 'inline') failed")
+        is_jupyter = False
+        _debug("get_ipython().run_line_magic('matplotlib', 'inline') failed")
         pass
     height_inch = 8
     if len(df) == 0:
-        _err("No rows to draw.")
+        _debug("No rows to draw.")
         return
     if len(df.columns) > 2:
         height_inch = len(df.columns) * 4
     if bool(x_colname) is False:
         x_colname = df.columns[x_col]
     df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)
-    plt.show()
+    if is_jupyter:
+        plt.show()
+    else:
+        plt.savefig("%s.png" % (str(name)))
     # TODO: x axis doesn't show any legend
     # if len(df) > (width * 2):
     #    interval = int(len(df) / (width * 2))
@@ -885,7 +914,6 @@ def hive_conn(conn_str="jdbc:hive2://localhost:10000/default", user="admin", pwd
     #[(1,)]
     >>> pass    # TODO: implement test
     """
-    import jaydebeapi
     cur_dir = os.path.dirname(os.path.abspath(__file__))
     jar_dir = os.path.abspath(os.path.join(cur_dir, '..')) + "/java/hadoop"
     jars = []
@@ -894,7 +922,7 @@ def hive_conn(conn_str="jdbc:hive2://localhost:10000/default", user="admin", pwd
     if len(jars) == 0:
         jars += _globr(ptn="hive-jdbc-1.*-standalone.jar", src=jar_dir, loop=1)
         jars += _globr(ptn="hadoop-core-1.*.jar", src=jar_dir, loop=1)
-    _err("Loading jars: %s ..." % (str(jars)))
+    _debug("Loading jars: %s ..." % (str(jars)))
     conn = jaydebeapi.connect("org.apache.hive.jdbc.HiveDriver",
                               conn_str, [user, pwd], jars).cursor()
     return conn
@@ -1635,14 +1663,14 @@ FROM t_request_logs
 %s
 GROUP BY 1, 2""" % (where_sql)
         _err("Query: " + query)
-        display(q(query))
+        display(q(query), name="request_log-hourly_aggs")
         query = """SELECT UDF_STR2SQLDT(`date`, '%%d/%%b/%%Y:%%H:%%M:%%S %%z') AS date_time, 
     CAST(statusCode AS INTEGER) AS statusCode, 
     CAST(bytesSent AS INTEGER) AS bytesSent, 
     CAST(elapsedTime AS INTEGER) AS elapsedTime 
 FROM t_request_logs %s""" % (where_sql)
         _err("Query: " + query)
-        draw(q(query).tail(tail_num))
+        draw(q(query).tail(tail_num), name="request_log-status_bytesent_elapsed")
 
     ## Loading application log file(s) into database.
     (col_names, line_matching) = _gen_regex_for_service_logs('nexus.log')
@@ -1680,24 +1708,15 @@ FROM t_request_logs %s""" % (where_sql)
     , CAST(`connection.active.count` AS INTEGER) as node_conn_count
 FROM t_health_monitor"""
         _err("Query: " + query)
-        draw(q(query))
+        draw(q(query), name="nexus_health_monitor")
 
     ## analyse t_logs table (eg: cout ERROR|WARN)
-    query="""SELECT UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, loglevel, count(1) 
+    query = """SELECT UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, loglevel, count(1) 
 FROM t_logs
 WHERE loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
 GROUP BY 1, 2"""
     _err("Query: " + query)
-    draw(q(query))
-
-    # TODO: below does not work so that using above names_dict workaround
-    # try:
-    #    import jn_utils as ju
-    #    get_ipython().set_custom_completer(ju._autocomp_matcher)    # Completer.matchers.append
-    # except:
-    #    _err("get_ipython().set_custom_completer(ju._autocomp_matcher) failed")
-    #    pass
-    # _autocomp_inject()
+    draw(q(query), name="warn_error_hourly")
     _err("Completed.")
 
 
@@ -1725,14 +1744,6 @@ def load(jsons_dir=["./engine/aggregates", "./engine/cron-scheduler"], csvs_dir=
             load_csvs(cd, connect(), exclude_ptn=csvs_exclude_ptn)
     else:
         load_csvs(csvs_dir, connect(), exclude_ptn=csvs_exclude_ptn)
-
-    # TODO: below does not work so that using above names_dict workaround
-    # try:
-    #    import jn_utils as ju
-    #    get_ipython().set_custom_completer(ju._autocomp_matcher)    # Completer.matchers.append
-    # except:
-    #    _err("get_ipython().set_custom_completer(ju._autocomp_matcher) failed")
-    #    pass
     _autocomp_inject()
     _err("Completed.")
 
@@ -1762,10 +1773,6 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
     :return: None if successfully replaced or don't need to update
     >>> pass
     """
-    try:
-        from urllib.request import urlopen, Request
-    except ImportError:
-        from urllib2 import urlopen, Request
     if bool(file) is False:
         file = __file__
     # i'm assuming i do not need to concern of .pyc...
