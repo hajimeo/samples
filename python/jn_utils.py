@@ -1685,15 +1685,15 @@ FROM t_request_logs %s""" % (where_sql)
         df_hm = q("""select date_time, message from t_logs
         where loglevel = 'INFO'
         and class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
-        (col_names, line_matching) = _gen_regex_for_hazel_health(df_hm['message'][1])
-        msg_ext = df_hm['message'].str.extract(line_matching)
-        msg_ext.columns = col_names
-        # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
-        df_hm.drop(columns=['message']).join(msg_ext).to_sql(name="t_health_monitor", con=connect(), chunksize=1000,
-                                                             if_exists='replace', schema=_DB_SCHEMA)
-        _autocomp_inject(tablename='t_health_monitor')
-        result = True
-
+        if len(df_hm) > 0:
+            (col_names, line_matching) = _gen_regex_for_hazel_health(df_hm['message'][1])
+            msg_ext = df_hm['message'].str.extract(line_matching)
+            msg_ext.columns = col_names
+            # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
+            df_hm.drop(columns=['message']).join(msg_ext).to_sql(name="t_health_monitor", con=connect(), chunksize=1000,
+                                                                 if_exists='replace', schema=_DB_SCHEMA)
+            _autocomp_inject(tablename='t_health_monitor')
+            result = True
     where_sql = "WHERE 1=1"
     if bool(start_isotime) is True:
         where_sql += " AND date_time >= '" + start_isotime + "'"
