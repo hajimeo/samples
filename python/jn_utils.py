@@ -11,13 +11,12 @@ To update this script, execute "ju.update()".
 """
 
 # TODO: When you add a new pip package, don't forget to update setup_work.env.sh
-import sys, os, fnmatch, gzip, re, linecache, json
+import sys, os, fnmatch, gzip, re, linecache, json, sqlite3
 from time import time, mktime, strftime
 from datetime import datetime
 from dateutil import parser
 import pandas as pd
 from sqlalchemy import create_engine
-import sqlite3
 import matplotlib.pyplot as plt
 
 try:
@@ -1694,6 +1693,12 @@ FROM t_request_logs %s""" % (where_sql)
                                                              if_exists='replace', schema=_DB_SCHEMA)
         _autocomp_inject(tablename='t_health_monitor')
         result = True
+
+    where_sql = "WHERE 1=1"
+    if bool(start_isotime) is True:
+        where_sql += " AND date_time >= '" + start_isotime + "'"
+    if bool(end_isotime) is True:
+        where_sql += " AND date_time <= '" + end_isotime + "'"
     if bool(result):
         query = """select date_time
     , UDF_STR_TO_INT(`physical.memory.free`) as sys_mem_free_bytes
@@ -1706,15 +1711,17 @@ FROM t_request_logs %s""" % (where_sql)
     , CAST(`load.systemAverage` AS REAL) as load_system_avg
     , CAST(`thread.count` AS INTEGER) as thread_count
     , CAST(`connection.active.count` AS INTEGER) as node_conn_count
-FROM t_health_monitor"""
+FROM t_health_monitor
+%s""" % (where_sql)
         _err("Query: " + query)
         draw(q(query), name="nexus_health_monitor")
 
     ## analyse t_logs table (eg: cout ERROR|WARN)
     query = """SELECT UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, loglevel, count(1) 
 FROM t_logs
-WHERE loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
-GROUP BY 1, 2"""
+%s
+  AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
+GROUP BY 1, 2""" % (where_sql)
     _err("Query: " + query)
     draw(q(query), name="warn_error_hourly")
     _err("Completed.")
