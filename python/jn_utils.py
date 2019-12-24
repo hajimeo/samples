@@ -740,6 +740,7 @@ def draw(df, width=16, x_col=0, x_colname=None, tail=10):
     if bool(x_colname) is False:
         x_colname = df.columns[x_col]
     df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)
+    plt.show()
     # TODO: x axis doesn't show any legend
     # if len(df) > (width * 2):
     #    interval = int(len(df) / (width * 2))
@@ -1439,7 +1440,7 @@ def _gen_regex_for_hazel_health(sample):
     # no need to add 'date_time'
     columns = ['ip', 'port', 'user', 'cluster_ver']
     cols_tmp = re.findall(r'([^ ,]+)=', sample)
-    #columns += list(map(lambda x: x.replace('.', '_'), cols_tmp))
+    # columns += list(map(lambda x: x.replace('.', '_'), cols_tmp))
     columns += cols_tmp
     partern_str = '^\[([^\]]+)]:([^ ]+) \[([^\]]+)\] \[([^\]]+)\]'
     for c in cols_tmp:
@@ -1596,25 +1597,14 @@ def df2files(df, filepath_prefix, extension="", columns=None, overwriting=False,
                 f2.write(row.to_csv(sep=sep))
 
 
-def gen_ldapsearch(ldap_json=None):
-    if bool(ldap_json) is False:
-        ldap_json = _globr("directory_configurations.json")[0]
-    import json
-    with open(ldap_json) as f:
-        a = json.load(f)
-    l = a[0]
-    p = "ldaps" if "use_ssl" in l else "ldap"
-    r = re.search(r"^[^=]*?=?([^=]+?)[ ,@]", l["username"])
-    u = r.group(1) if bool(r) else l["username"]
-    return "LDAPTLS_REQCERT=never ldapsearch -H %s://%s:%s -D \"%s\" -b \"%s\" -W \"(%s=%s)\"" % (
-        p, l["host_name"], l["port"], l["username"], l["base_dn"], l["user_configuration"]["unique_id_attribute"], u)
-
-
 def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=100, tail_num=10000):
     """
-    Analyse log files (expecting request.log converted to request.csv)
+    A prototype function to analyse log files (expecting request.log converted to request.csv)
+    TODO: cleanup later
     :param start_isotime:
     :param end_isotime:
+    :param elapsed_time:
+    :param tail_num:
     :return: void
     >>> pass    # test should be done in each function
     """
@@ -1635,62 +1625,70 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=100, tail_nu
             where_sql += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') >= UDF_STR2SQLDT('" + start_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
         if bool(end_isotime) is True:
             where_sql += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
-        query = """SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d:)', `date`, 1) AS date_hour, statusCode,
-        CAST(MAX(elapsedTime)/1000 AS INT) AS max_elaps_sec, 
-        CAST(MIN(elapsedTime)/1000 AS INT) AS min_elaps_sec, 
-        CAST(AVG(elapsedTime)/1000 AS INT) AS avg_elaps_sec, 
-        CAST(AVG(bytesSent) AS INT) AS avg_bytes, 
-        count(*) AS occurrence
-    FROM t_request_logs
-    %s
-    GROUP BY 1, 2""" % (where_sql)
+        query = """SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d)', `date`, 1) AS date_hour, statusCode,
+    CAST(MAX(elapsedTime)/1000 AS INT) AS max_elaps_sec, 
+    CAST(MIN(elapsedTime)/1000 AS INT) AS min_elaps_sec, 
+    CAST(AVG(elapsedTime)/1000 AS INT) AS avg_elaps_sec, 
+    CAST(AVG(bytesSent) AS INT) AS avg_bytes, 
+    count(*) AS occurrence
+FROM t_request_logs
+%s
+GROUP BY 1, 2""" % (where_sql)
         _err("Query: " + query)
         display(q(query))
         query = """SELECT UDF_STR2SQLDT(`date`, '%%d/%%b/%%Y:%%H:%%M:%%S %%z') AS date_time, 
-        CAST(statusCode AS INTEGER) AS statusCode, 
-        CAST(bytesSent AS INTEGER) AS bytesSent, 
-        CAST(elapsedTime AS INTEGER) AS elapsedTime 
-        FROM t_request_logs %s""" % (where_sql)
+    CAST(statusCode AS INTEGER) AS statusCode, 
+    CAST(bytesSent AS INTEGER) AS bytesSent, 
+    CAST(elapsedTime AS INTEGER) AS elapsedTime 
+FROM t_request_logs %s""" % (where_sql)
         _err("Query: " + query)
-        display(draw(q(query).tail(tail_num)))
+        draw(q(query).tail(tail_num))
 
+    ## Loading application log file(s) into database.
     (col_names, line_matching) = _gen_regex_for_service_logs('nexus.log')
-    result_nexus = logs2table('nexus.log', tablename="t_nexus_logs", col_names=col_names, line_matching=line_matching)
-    (col_names, line_matching) = _gen_regex_for_service_logs('*server.log')
-    _ = logs2table('*server.log', tablename="t_clmserver_logs", col_names=col_names, line_matching=line_matching)
+    result_nexus = logs2table('nexus.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
+    if bool(result_nexus) is False:
+        (col_names, line_matching) = _gen_regex_for_service_logs('*server.log')
+        _ = logs2table('*server.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
 
     # Hazelcast health monitor
     result = json2df('health_monitor.json', tablename="t_health_monitor", conn=connect())
     if bool(result) is False and bool(result_nexus):
-        _err("Generating t_health_monitor from t_nexus_logs ...")
-        df_hm = q("""select date_time, message from t_nexus_logs
+        _err("Generating t_health_monitor from t_logs ...")
+        df_hm = q("""select date_time, message from t_logs
         where loglevel = 'INFO'
         and class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
         (col_names, line_matching) = _gen_regex_for_hazel_health(df_hm['message'][1])
         msg_ext = df_hm['message'].str.extract(line_matching)
         msg_ext.columns = col_names
-        df_no_msg = df_hm.drop(columns=['message'])
-        df_hm_new = df_no_msg.join(msg_ext)
-        df_hm_new.to_sql(name="t_health_monitor", con=connect(), chunksize=1000, if_exists='replace', schema=_DB_SCHEMA)
+        # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
+        df_hm.drop(columns=['message']).join(msg_ext).to_sql(name="t_health_monitor", con=connect(), chunksize=1000,
+                                                             if_exists='replace', schema=_DB_SCHEMA)
         _autocomp_inject(tablename='t_health_monitor')
         result = True
     if bool(result):
         query = """select date_time
-        , UDF_STR_TO_INT(`physical.memory.free`) as sys_mem_free_bytes
-        , UDF_STR_TO_INT(`swap.space.free`) as swap_free_bytes
-        , UDF_STR_TO_INT(`heap.memory.used/max`) as heap_used_percent
-        , CAST(`major.gc.count` AS INTEGER) as majour_gc_count
-        , UDF_STR_TO_INT(`major.gc.time`) as majour_gc_msec
-        , CAST(`load.process` AS REAL) as load_proc_percent
-        , CAST(`load.system` AS REAL) as load_sys_percent
-        , CAST(`load.systemAverage` AS REAL) as load_system_avg
-        , CAST(`thread.count` AS INTEGER) as thread_count
-        , CAST(`connection.active.count` AS INTEGER) as node_conn_count
-        FROM t_health_monitor"""
+    , UDF_STR_TO_INT(`physical.memory.free`) as sys_mem_free_bytes
+    , UDF_STR_TO_INT(`swap.space.free`) as swap_free_bytes
+    , UDF_STR_TO_INT(`heap.memory.used/max`) as heap_used_percent
+    , CAST(`major.gc.count` AS INTEGER) as majour_gc_count
+    , UDF_STR_TO_INT(`major.gc.time`) as majour_gc_msec
+    , CAST(`load.process` AS REAL) as load_proc_percent
+    , CAST(`load.system` AS REAL) as load_sys_percent
+    , CAST(`load.systemAverage` AS REAL) as load_system_avg
+    , CAST(`thread.count` AS INTEGER) as thread_count
+    , CAST(`connection.active.count` AS INTEGER) as node_conn_count
+FROM t_health_monitor"""
         _err("Query: " + query)
-        display(draw(q(query)))
+        draw(q(query))
 
-    # TODO: analyse t_xxxxx_logs table (eg: cout ERROR|WARN)
+    ## analyse t_logs table (eg: cout ERROR|WARN)
+    query="""SELECT UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, loglevel, count(1) 
+FROM t_logs
+WHERE loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
+GROUP BY 1, 2"""
+    _err("Query: " + query)
+    draw(q(query))
 
     # TODO: below does not work so that using above names_dict workaround
     # try:
@@ -1706,6 +1704,7 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=100, tail_nu
 def load(jsons_dir=["./engine/aggregates", "./engine/cron-scheduler"], csvs_dir="./stats",
          jsons_exclude_ptn='physicalPlans|partition|incremental|predictions', csvs_exclude_ptn=''):
     """
+    Deprecated
     Execute loading functions (currently load_jsons and load_csvs)
     :param jsons_dir: (optional) Path to a directory which contains JSON files
     :param csvs_dir: (optional) Path to a directory which contains CSV files
