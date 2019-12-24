@@ -9,8 +9,10 @@ HOW TO INSTALL:
 
 HOW TO EXECUTE:
     $(basename ${0}) [start_ISO_datetime] [end_ISO_datetime] [elapsed_milliseconds]
+    $(basename ${0})
+    $(basename ${0}) \"2019-12-23 00:00:00\" \"2019-12-23 03:00:00\" 0
 
-All arguments to filter data, and optional.
+All arguments are to filter data, and optional.
     start_ISO_datetime (YYYY-MM-DD hh:mm:ss)
         If sets, date&time older than this time will be ignored.
     end_ISO_datetime (YYYY-MM-DD hh:mm:ss)
@@ -78,7 +80,7 @@ function f_run() {
     local _start_isotime="$1"   # YYYY-MM-DD hh:mm:ss
     local _end_isotime="$2"     # YYYY-MM-DD hh:mm:ss
     local _elapsed_time="${3:-100}"
-    python3 -c 'import jn_utils as ju; ju.analyse_logs(start_isotime="'${_start_isotime}'", end_isotime="'${_end_isotime}'", elapsed_time='${_elapsed_time}')'
+    python3 -c "import jn_utils as ju; ju.analyse_logs(start_isotime='${_start_isotime}', end_isotime='${_end_isotime}', elapsed_time=${_elapsed_time})"
 }
 
 
