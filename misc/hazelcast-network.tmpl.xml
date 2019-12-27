@@ -20,7 +20,7 @@
       <member-list>
         <member>%HA_NODE_1%</member>
         <member>%HA_NODE_2%</member>
-        <member>%HA_NODE_2%</member>
+        <member>%HA_NODE_3%</member>
       </member-list>
       </tcp-ip>
       <aws enabled="false"/>
