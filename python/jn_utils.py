@@ -1673,14 +1673,14 @@ FROM t_request_logs %s""" % (where_sql)
 
     ## Loading application log file(s) into database.
     (col_names, line_matching) = _gen_regex_for_service_logs('nexus.log')
-    result_nexus = logs2table('nexus.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
-    if bool(result_nexus) is False:
+    result_logs = logs2table('nexus.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
+    if bool(result_logs) is False:
         (col_names, line_matching) = _gen_regex_for_service_logs('*server.log')
-        _ = logs2table('*server.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
+        result_logs = logs2table('*server.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
 
     # Hazelcast health monitor
     result = json2df('health_monitor.json', tablename="t_health_monitor", conn=connect())
-    if bool(result) is False and bool(result_nexus):
+    if bool(result) is False and bool(result_logs):
         _err("Generating t_health_monitor from t_logs ...")
         df_hm = q("""select date_time, message from t_logs
         where loglevel = 'INFO'
@@ -1716,6 +1716,7 @@ FROM t_health_monitor
         _err("Query: " + query)
         draw(q(query), name="nexus_health_monitor")
 
+    if bool(result_logs):
         ## analyse t_logs table (eg: cout ERROR|WARN)
         query = """SELECT UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, loglevel, count(1) 
     FROM t_logs
