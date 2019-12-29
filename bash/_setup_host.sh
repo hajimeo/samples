@@ -171,7 +171,7 @@ function f_haproxy() {
     if which dnsmasq &>/dev/null; then
         echo "resolvers dnsmasq
   nameserver dns1 localhost:53
-  accepted_payload_size 8192\
+  accepted_payload_size 8192
 " >> "${_cfg}"
         _resolver="resolvers dnsmasq init-addr none"
     fi
@@ -440,12 +440,16 @@ function f_apache_proxy() {
 }
 
 function f_apache_reverse_proxy() {
-    local __doc__="Generate reverse proxy.conf *per* port, and restart apache2"
+    local __doc__="Generate reverse proxy.conf *per* port, and restart reload"
+    # f_apache_reverse_proxy "http://node-nxiq.standalone.localdomain:8070" 18081 "dh1.standalone.localdomain" /etc/security/keytabs/HTTP.service.keytab
+    # @see: https://help.sonatype.com/display/NXRM3/Run+Behind+a+Reverse+Proxy
+    #       https://guides.sonatype.com/repo3/technical-guides/pki-auth/
+    #       https://sites.google.com/site/mrxpalmeiras/notes/configuring-splunk-with-kerberos-sso-via-apache-reverse-proxy
     local _redirect="${1}" # http://hostname:port/path
     local _port="${2}"
     local _sever_host="${3:-`hostname -f`}"
-    local _ssl_ca_file="${4}"   # /var/tmp/share/cert/rootCA_standalone.crt
-    # https://help.sonatype.com/display/NXRM3/Run+Behind+a+Reverse+Proxy
+    local _keytab_file="${4}"   # /etc/security/keytabs/HTTP.service.keytab
+    local _ssl_ca_file="${5}"   # /var/tmp/share/cert/rootCA_standalone.crt
 
     which apt-get &>/dev/null || return 1
     [ -z "${_redirect}" ] && return 1
@@ -469,70 +473,87 @@ function f_apache_reverse_proxy() {
         return 0
     fi
 
+    # How to check: apache2ctl -M
     apt-get install -y apache2 apache2-utils libapache2-mod-auth-kerb
     a2enmod proxy headers proxy_http proxy_connect proxy_wstunnel ssl rewrite auth_kerb
 
     grep -i "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
 
+    # Common settings
     echo "<VirtualHost *:${_port}>
     ServerName ${_sever_host}
     AllowEncodedSlashes NoDecode
-    LogLevel warn
+    LogLevel Debug
     ErrorLog \${APACHE_LOG_DIR}/proxy_error_${_port}.log
-    CustomLog \${APACHE_LOG_DIR}/proxy_access_${_port}.log combined" > ${_conf}
+    CustomLog \${APACHE_LOG_DIR}/proxy_access_${_port}.log combined
+    <Proxy *>
+        Order allow,deny
+        Allow from all
+    </Proxy>
+" > ${_conf}
 
+    # Proxy/Reverse Proxy related settings
+    echo "
+    #connectiontimeout=5 timeout=90 retry=0
+    ProxyPass / ${_redirect%/}/ nocanon
+    ProxyPassReverse / ${_redirect%/}/
+    #ProxyRequests Off
+    #ProxyPreserveHost On
+" >> ${_conf}
+
+    # If this apache uses https (if server.key and cert exists)
     if [ -s /etc/apache2/ssl/server.key ]; then
-    echo "    SSLEngine on
+    echo "
+    SSLEngine on
     SSLCertificateFile /etc/apache2/ssl/server.crt
     SSLCertificateKeyFile /etc/apache2/ssl/server.key
     RequestHeader set X-Forwarded-Proto https
 " >> ${_conf}
     fi
 
-    echo "    <IfModule mod_proxy.c>
-        SSLProxyEngine On
-        SSLProxyVerify none
-        SSLProxyCheckPeerCN off
-        SSLProxyCheckPeerName off
-        #SSLProxyCheckPeerExpire off
+    if [ -s "${_keytab_file}" ]; then
+        # http://www.microhowto.info/howto/configure_apache_to_use_kerberos_authentication.html
+        #local _realm="`sed -n -e 's/^ *default_realm *= *\b\(.\+\)\b/\1/p' /etc/krb5.conf`"
+        local _realm="`klist -kt ${_keytab_file} | grep -m1 -oP '@.+' | sed 's/@//'`"
+        echo "    <Location />
+        AuthType Kerberos
+        AuthName \"SPNEGO Login\"
+        KrbAuthRealms ${_realm}
+        KrbServiceName HTTP/${_sever_host}
+        Krb5KeyTab ${_keytab_file}
+        KrbMethodNegotiate On
+        KrbMethodK5Passwd On
+        #KrbLocalUserMapping On
+        require valid-user
 
-        #connectiontimeout=5 timeout=90 retry=0
-        ProxyPass / ${_redirect%/}/ nocanon
-        ProxyPassReverse / ${_redirect%/}/
-        ProxyRequests Off
-        ProxyPreserveHost On
-    </IfModule>
+        RewriteEngine On
+        # Removing chars after / and @
+        RewriteCond %{LA-U:REMOTE_USER} (^[^/@]+)
+        # Assigning above into RU
+        RewriteRule . - [E=RU:%1]
+        RequestHeader set REMOTE_USER %{RU}e
+    </location>
 " >> ${_conf}
+        # @see: https://httpd.apache.org/docs/2.4/rewrite/intro.html & https://httpd.apache.org/docs/2.4/rewrite/flags.html
+    fi
 
     # TODO: https://stackoverflow.com/questions/7635380/apache-ssl-client-certificate-ldap-authorizations
     if [ -s "${_ssl_ca_file}" ]; then
         echo "
-        SSLOptions +StdEnvVars
-        SSLVerifyClient require
-        SSLCACertificateFile ${_ssl_ca_file}
-        # set header to upstream, SSL_CLIENT_S_DN_CN can change to use other identifiers
-        RequestHeader set X-SSO-USER \"%{SSL_CLIENT_S_DN_CN}\"
-" >> ${_conf}
-    elif [ -s "/etc/security/keytabs/HTTP.service.keytab" ]; then
-        # http://www.microhowto.info/howto/configure_apache_to_use_kerberos_authentication.html
-        #local _realm="`sed -n -e 's/^ *default_realm *= *\b\(.\+\)\b/\1/p' /etc/krb5.conf`"
-        local _realm="`klist -kt /etc/security/keytabs/HTTP.service.keytab | grep -m1 -oP '@.+' | sed 's/@//'`"
-        echo "    <Location />
-        AuthType Kerberos
-        AuthName \"SPNEGO Login\"
-        KrbMethodNegotiate On
-        KrbMethodK5Passwd On
-        KrbAuthRealms ${_realm}
-        #KrbLocalUserMapping On
-        Krb5KeyTab /etc/security/keytabs/HTTP.service.keytab
-        require valid-user
-        RewriteEngine On
-        RewriteCond %{REMOTE_USER} (.+)
-        RewriteRule . – [E=RU:%1]
-        RequestHeader set X-SSO-USER %{RU}e
-    </location>
+    SSLProxyEngine On
+    SSLProxyVerify none
+    SSLProxyCheckPeerCN off
+    SSLProxyCheckPeerName off
+    #SSLProxyCheckPeerExpire off
+
+    SSLOptions +StdEnvVars
+    SSLVerifyClient require
+    SSLCACertificateFile ${_ssl_ca_file}
+    # set header to upstream, SSL_CLIENT_S_DN_CN can change to use other identifiers
+    RequestHeader set X-SSO-USER \"%{SSL_CLIENT_S_DN_CN}\"
 " >> ${_conf}
     fi
+
     echo "</VirtualHost>" >> ${_conf}
 
     a2ensite rproxy${_port} || return $?
