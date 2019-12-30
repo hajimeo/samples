@@ -451,7 +451,6 @@ function f_apache_reverse_proxy() {
     local _keytab_file="${4}"   # /etc/security/keytabs/HTTP.service.keytab
     local _ssl_ca_file="${5}"   # /var/tmp/share/cert/rootCA_standalone.crt
 
-    which apt-get &>/dev/null || return 1
     [ -z "${_redirect}" ] && return 1
     if [ -z "${_port}" ]; then
         if [[ "${_redirect}" =~ .+:([0-9]+)[/]?.* ]]; then
@@ -473,9 +472,9 @@ function f_apache_reverse_proxy() {
         return 0
     fi
 
-    # How to check: apache2ctl -M
-    apt-get install -y apache2 apache2-utils libapache2-mod-auth-kerb
-    a2enmod proxy headers proxy_http proxy_connect proxy_wstunnel ssl rewrite auth_kerb
+    # How to check loaded modules: apache2ctl -M
+    apt-get install -y apache2 apache2-utils libapache2-mod-auth-kerb || return $?
+    a2enmod proxy headers proxy_http proxy_connect proxy_wstunnel ssl rewrite auth_kerb || return $?
 
     grep -i "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
 
@@ -511,7 +510,14 @@ function f_apache_reverse_proxy() {
 " >> ${_conf}
     fi
 
-    if [ -s "${_keytab_file}" ]; then
+    if [ -n "${_keytab_file}" ] && [ ! -s "${_keytab_file}" ]; then
+        _log "INFO" "No HTTP keytab: ${_keytab_file}"
+        echo "    kadmin -p admin@\${_realm} -q 'add_principal -randkey HTTP/${_sever_host}'
+    kadmin -p admin@\${_realm} -q "xst -k ${_keytab_file} HTTP/`hostname -f`"
+    # If freeIPA, after 'kinit admin':
+    ipa-getkeytab -s node-freeipa.standalone.localdomain -p \"HTTP/${_sever_host}\" -k ${_keytab_file}
+    chmod a+r ${_keytab_file}"
+    elif [ -s "${_keytab_file}" ]; then
         # http://www.microhowto.info/howto/configure_apache_to_use_kerberos_authentication.html
         #local _realm="`sed -n -e 's/^ *default_realm *= *\b\(.\+\)\b/\1/p' /etc/krb5.conf`"
         local _realm="`klist -kt ${_keytab_file} | grep -m1 -oP '@.+' | sed 's/@//'`"
@@ -519,10 +525,11 @@ function f_apache_reverse_proxy() {
         AuthType Kerberos
         AuthName \"SPNEGO Login\"
         KrbAuthRealms ${_realm}
-        KrbServiceName HTTP/${_sever_host}
+        KrbServiceName HTTP/${_sever_host}@${_realm}
         Krb5KeyTab ${_keytab_file}
-        KrbMethodNegotiate On
         KrbMethodK5Passwd On
+        KrbSaveCredentials On
+        #KrbMethodNegotiate On
         #KrbLocalUserMapping On
         require valid-user
 
@@ -1263,7 +1270,7 @@ function f_kdc_install() {
 }
 
 function f_gen_keytab() {
-    local __doc__="Generate keytab(s)"
+    local __doc__="Generate keytab(s). NOTE: NOT for FreeIPA"
     local _principal="${1}" # HTTP/`hosntame -f`@REALM
     local _kadmin_usr="${2:-"admin/admin"}"
     local _kadmin_pwd="${3:-${g_DEFAULT_PASSWORD:-"hadoop"}}"
