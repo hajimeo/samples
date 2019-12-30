@@ -13,7 +13,7 @@
  * <p>
  * May need /usr/hdp/current/hive-webhcat/share/webhcat/svr/lib/xercesImpl-2.9.1.jar for newer HDP 2.4.x
  * <p>
- * export CLASSPATH=`echo $(echo *.jar | tr ' ' ':'):.`
+ * export CLASSPATH=$(echo *.jar | tr ' ' ':'):.
  * <p>
  * NOTE: HS2's jars can be used like below, but it won't help when troubleshooting classpath issue:
  * eval "export `cat /proc/$(cat /var/run/hive/hive-server.pid)/environ | tr '\0' '\n' | grep ^CLASSPATH`"
