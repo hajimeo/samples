@@ -661,8 +661,11 @@ function f_docker_setup() {
     #fi
 
     if [ ! -f /etc/iptables.up.rules ]; then
-        _info "Updating iptables to accept all FORWARD..."
-        iptables -P FORWARD ACCEPT && iptables-save > /etc/iptables.up.rules
+        _info "Updating iptables to accept all ..."
+        # @see: https://github.com/davesteele/comitup/issues/57
+        iptables -P INPUT ACCEPT;iptables -P FORWARD ACCEPT;iptables -P OUTPUT ACCEPT;iptables -t nat -F;iptables -t mangle -F;iptables -F;iptables -X
+        iptables-save > /etc/iptables.up.rules
+        #which docker &>/dev/null && service docker restart
     fi
 }
 
@@ -1139,6 +1142,8 @@ function f_host_performance() {
     sysctl -w net.ipv4.ip_forward=1
     grep -q '^net.ipv4.conf.all.forwarding' /etc/sysctl.conf || echo "net.ipv4.conf.all.forwarding = 1" >> /etc/sysctl.conf
     sysctl -w net.ipv4.conf.all.forwarding=1
+    grep -q '^net.bridge.bridge-nf-call-iptables' /etc/sysctl.conf || echo "net.bridge.bridge-nf-call-iptables = 0" >> /etc/sysctl.conf
+    sysctl -w net.bridge.bridge-nf-call-iptables=0
 
     grep -q '^kernel.panic' /etc/sysctl.conf || echo "kernel.panic = 20" >> /etc/sysctl.conf
     sysctl -w kernel.panic=60
