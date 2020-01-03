@@ -1110,42 +1110,41 @@ function _search_properties() {
 }
 
 function _get_json() {
-    local _props="$1"           # search hierarchy list string. eg: "['xxxx','yyyy','key[:=]value']" (*NO* space)
+    local _props="$1"           # search hierarchy list string. eg: "xxxx,yyyy,key[:=]value" (*NO* space)
     local _key="${2-"key"}"     # a key attribute in props. eg: '@class' (OrientDB), 'key' (jmx.json)
     local _attrs="${3-"value"}" # attribute1,attribute2 to return only those attributes' value
     local _find_all="${4}"      # If Y, not stopping after finding one
     local _no_pprint="${5}"     # no prettified output
-    # Requires jn_utils.py
     python3 -c 'import sys,json,re
-m = ptn_c = None
+m = ptn_k = None
 if len("'${_key}'") > 0:
-    ptn_c = re.compile("[\"]?('${_key}')[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")
+    ptn_k = re.compile("[\"]?('${_key}')[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")
+props = []
+if len("'${_props}'") > 0:
+    props = "'${_props}'".split(",")
 attrs = []
 if len("'${_attrs}'") > 0:
     attrs = "'${_attrs}'".split(",")
+#sys.stderr.write(str(attrs)+"\n") # for debug
 _in = sys.stdin.read()
 if bool(_in) is True:
     _d = json.loads(_in)
-    for _p in '${_props}':
+    for _p in props:
         if type(_d) == list:
             _p_name = None
             if len("'${_key}'") > 0:
-                m = ptn_c.search(_p)
-            if m:
-                (_p, _p_name) = m.groups()
+                m = ptn_k.search(_p)
+                if m:
+                    (_p, _p_name) = m.groups()
             _tmp_d = []
             for _i in _d:
                 if _p not in _i:
                     continue
                 if bool(_p_name) is False:
-                    #print(_i[_p])  # for debug
+                    #sys.stderr.write(str(_i[_p])+"\n") # for debug
                     _tmp_d.append(_i[_p])
-                elif _i[_p] == _p_name:
-                    _tmp_dd = {}
-                    for _a in attrs:
-                        _tmp_dd[_a] = _i[_a]
-                    if len(_tmp_dd) > 0:
-                        _tmp_d.append(_tmp_dd)
+                elif bool(_p_name) is True and _i[_p] == _p_name:
+                    _tmp_d.append(_i)
                 if len(_tmp_d) > 0 and "'${_find_all}'".lower() != "y":
                     break
             if bool(_tmp_d) is False:
@@ -1155,13 +1154,35 @@ if bool(_in) is True:
                 _d = _tmp_d[0]
             else:
                 _d = _tmp_d
+                #sys.stderr.write(str(_d)+"\n") # for debug
         elif _p in _d:
             _d = _d[_p]
         else:
             _d = None
             break
+    if type(_d) == list:
+        if bool(attrs) is True:
+            _tmp_dl = []
+            for _i in _d:
+                _tmp_dd = {}
+                for _a in attrs:
+                    if _a in _i:
+                        _tmp_dd[_a] = _i[_a]
+                if len(_tmp_dd) > 0:
+                    _tmp_dl.append(_tmp_dd)
+            _d = _tmp_dl
     if "'${_no_pprint}'".lower() == "y":
-        print(_d)
+        if type(_d) == list:
+            #_d = json.loads(json.dumps(_d, sort_keys=True))
+            print("[")
+            for _i, _e in enumerate(_d):
+                if len(_d) == (_i + 1):
+                    print("    %s" % json.dumps(_e))
+                else:
+                    print("    %s," % json.dumps(_e))
+            print("]")
+        else:
+            print(_d)
     elif bool(_d) is True:
         print(json.dumps(_d, indent=4, sort_keys=True))
 '
