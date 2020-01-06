@@ -920,7 +920,7 @@ EOF
     DEBIAN_FRONTEND=noninteractive apt-get install -y slapd ldap-utils
 
     if [ "$_shared_domain" == "example.com" ]; then
-        curl curl -H "accept-encoding: gzip" https://raw.githubusercontent.com/hajimeo/samples/master/misc/example.ldif -o /tmp/example.ldif || return $?
+        curl -H "accept-encoding: gzip" https://raw.githubusercontent.com/hajimeo/samples/master/misc/example.ldif -o /tmp/example.ldif || return $?
         ldapadd -x -D cn=admin,dc=example,dc=com -w hadoop -f /tmp/example.ldif
     fi
 }
