@@ -981,10 +981,10 @@ function _getAfterFirstMatch() {
 
 function f_splitByRegex() {
     local _file="$1"    # can't be a glob as used in sed later
-    local _regex="$2"   # If empty, use YYYY-MM-DD.hh
+    local _regex="$2"   # If empty, use (YYYY-MM-DD).(hh). For request.log '(\d\d/[a-zA-Z]{3}/\d\d\d\d).(\d\d)'
     local _save_to="${3:-"."}"
 
-    [ -z "${_regex}" ] && _regex="^$_DATE_FORMAT.\d\d"
+    [ -z "${_regex}" ] && _regex="^($_DATE_FORMAT).(\d\d)"
     [ ! -d "${_save_to%/}" ] && mkdir -p "${_save_to%/}"
 
     #_file="$(echo ${_file} | _sed 's/.\///')"
@@ -995,31 +995,18 @@ function f_splitByRegex() {
     # this may not be working
     local _tmp_n=""
     local _tmp_str=""
-    local _prev_n=""
-    local _prev_str=""
+    local _prev_n="1"
 
-    # Surprisingly, uniq recognise ":" as a delimiter
-    rg "${_regex}" --no-filename -n -o "${_file}" | _uniq -f1 > /tmp/f_splitByRegex_$$.out
-    cat /tmp/f_splitByRegex_$$.out | while read -r _t; do
+    # NOTE: Surprisingly, uniq -f1 recognises ":" as a delimiter but may break later, so not using
+    rg "${_regex}" --no-filename -n -o "${_file}" -r '${1}.${2}' > /tmp/f_splitByRegex_$$.out
+    awk -F":" '{if(a[$2] < $1)a[$2]=$1;}END{for(i in a){print a[i],i;}}' OFS=: /tmp/f_splitByRegex_$$.out | sort -n | while read -r _t; do
         if [[ "${_t}" =~ ^([0-9]+):(.+) ]]; then
             _tmp_n="${BASH_REMATCH[1]}"
             _tmp_str="$(echo ${BASH_REMATCH[2]} | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-256)"
-            if [ -n "${_prev_n}" ]; then
-                _sed -n "${_prev_n},$(( ${_tmp_n} - 1 ))p;${_tmp_n}q" ${_file} > ${_save_path_prefix}_${_prev_str}.${_extension} || return $?
-            fi
-            _prev_n=${_tmp_n}
-            _prev_str="${_tmp_str}"
+            _sed -n "${_prev_n},${_tmp_n}p;$(( ${_tmp_n} + 1 ))q" ${_file} > ${_save_path_prefix}_${_tmp_str}.${_extension} || return $?
+            _prev_n=$(( ${_tmp_n} + 1 ))
         fi
     done
-    # Strangely, it seems the scope of _prev_n is only in above while loop...
-    #echo "# ${_prev_n}"
-    if [[ "$(tail -n1 /tmp/f_splitByRegex_$$.out)" =~ ^([0-9]+):(.+) ]]; then
-        _tmp_n="${BASH_REMATCH[1]}"
-        _tmp_str="$(echo ${BASH_REMATCH[2]} | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n')"
-        if [ ${_tmp_n} -gt 1 ]; then
-            _sed -n "${_tmp_n},\$p" "${_file}" > ${_save_path_prefix}_${_tmp_str}.${_extension} || return $?
-        fi
-    fi
 }
 
 function _date2int() {
