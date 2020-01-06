@@ -113,7 +113,7 @@ function f_sysstat_setup() {
 
 function f_haproxy() {
     local __doc__="Install and setup HAProxy"
-    # To generate '_nodes': docker ps --format "{{.Names}}" | grep -E "^node-(nxrm|nxiq)+" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
+    # To generate '_nodes': docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq)$" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
     # HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
     local _nodes="${1}"             # Space delimited. If empty, generated from 'docker ps'
     local _ports="${2:-"8081 8443=8081 8070 8071 8444=8070"}" # Space delimited # 18082=18082 18079=18079 18075=18075
@@ -131,7 +131,7 @@ function f_haproxy() {
 
     if [ -z "${_nodes}" ]; then
         # I'm using FreeIPA and normally that container name includes 'freeipa'
-        _nodes="$(for _n in `docker ps --format "{{.Names}}" | grep -E "^node.+" | grep -v "freeipa" | sort`;do docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])"; done | tr '\n' ' ')"
+        _nodes="$(for _n in `docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq)$" | sort`;do docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])"; done | tr '\n' ' ')"
         if [ -z "${_nodes}" ]; then
             _info "WARN" "No nodes to setup/check. Exiting..."
             return 0
