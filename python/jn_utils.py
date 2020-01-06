@@ -129,6 +129,19 @@ def _globr(ptn='*', src='./', loop=0):
     return matches
 
 
+def _is_numeric(some_num):
+    """
+    Python's isnumeric return False for float!!!
+    :param some_num:
+    :return: boolean
+    """
+    try:
+        float(some_num)
+        return True
+    except:
+        return False
+
+
 def _open_file(file):
     """
     Open one text or gz file
@@ -156,6 +169,15 @@ def _read(file):
     """
     f = _open_file(file)
     return f.read()
+
+
+def _generator(obj):
+    """
+    Return generator so that don't need to worry about List or Dict for looping
+    :param obj: dict or list
+    :return: Generator object
+    """
+    return obj if isinstance(obj, dict) else (i for i, v in enumerate(obj))
 
 
 def _timestamp(unixtimestamp=None, format=None):
@@ -509,7 +531,7 @@ def _udf_timestamp(date_time):
 def _udf_str_to_int(some_str):
     """
     Convert \d\d\d\d(MB|M|GB\G) to bytes etc.
-    eg: SELECT UDF_STR_TO_INT(some_string) as bytes, ...
+    eg: SELECT UDF_STR_TO_INT(some_string) as xxxx, ...
     :param some_str: 350M, 350MB, 350GB, 350G, 60s, 60m, 60ms, 60%
     :return:         Integer
     """
@@ -536,6 +558,58 @@ def _udf_str_to_int(some_str):
     if unit in ['H', 'HOUR']:
         return int(num * 1000 * 60 * 60)
     return num
+
+
+def _udf_num_human_readable(some_numeric, base_unit):
+    """
+    Convert integer|float|decimal to human readable string.
+    eg: SELECT UDF_NUM_HUMAN_READABLE(some_numeric, 'byte') as xxxx, ...
+    :param some_numeric: 100, 123.45
+    :param base_unit: 'byte' or 'bytes' or 'sec' or 'seconds'
+    :return: string
+    """
+    if _is_numeric(some_numeric):
+        return _human_readable_num(some_numeric, base_unit)
+    else:
+        return some_numeric
+
+
+def _human_readable_num(some_numeric, base_unit="byte", r=2):
+    """
+    Convert integer|float|decimal to human readable string.
+    eg: SELECT UDF_NUM_HUMAN_READABLE(some_numeric, 'byte') as xxxx, ...
+    :param some_numeric: 100, 123.45
+    :param base_unit: 'byte' or 'bytes' or 'msec' or 'milliseconds'
+    :param r: used in round function
+    :return: string|object
+    >>> _human_readable_num("1234567890123.756")
+    '1.23 TB'
+    >>> [dict, list]("1234567890.756", "msec")
+    '14.29 h'
+    """
+    # If some_numeric is not string or not number, loop object and return the object
+    if type(some_numeric) in [dict, list]:
+        for k in _generator(some_numeric):
+            some_numeric[k] = _human_readable_num(some_numeric[k], base_unit)
+        return some_numeric
+    elif _is_numeric(some_numeric):
+        n = float(some_numeric)
+        if base_unit in ['byte', 'bytes']:
+            units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+            u_idx = int((len(str(int(abs(n)))) - 1) / 3)
+            if u_idx == 0:
+                return str(round(n, r)) + " " + units[u_idx]
+            return str(round(n / (1000 ** u_idx), r)) + " " + units[u_idx]
+        elif base_unit in ['msec', 'milliseconds']:
+            #base = list(reversed([1000, 60000, 3600000, 86400000]))
+            base = [86400000, 3600000, 60000, 1000]
+            units = ['d', 'h', 'm', 's', 'ms']
+            # Need to be reverse order for time
+            for i in _generator(base):
+                if abs(n) > base[i]:
+                    return str(round(n / base[i], r)) + " " + units[1]
+    # Not numeric and not iterable, so no idea
+    return some_numeric
 
 
 def _register_udfs(conn):
@@ -727,7 +801,7 @@ def display(df, name=""):
         out = IPython.display.HTML(df.to_html())
         IPython.display.display(out)
     else:
-        #print(df.to_html())
+        # print(df.to_html())
         df2csv(df=df, file_path="%s.csv" % (str(name)))
 
 
@@ -1065,7 +1139,7 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
     (None, ('2018-09-04',), 'test')
     """
     tmp_tuple = None
-    _debug(" - line: %s ." % (str(line)))
+    #_debug(" - line: %s ." % (str(line)))
     # If current line is beginning of a new *log* line (eg: ^2018-08-\d\d...)
     if begin_re.search(line):
         # and if previous matches aren't empty, prev_matches is going to be saved
@@ -1079,7 +1153,7 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
 
         _matches = line_re.search(line)
         if _matches:
-            _debug("_matches: %s" % (str(_matches.groups())))
+            #_debug("_matches: %s" % (str(_matches.groups())))
             _tmp_groups = _matches.groups()
             prev_message = _tmp_groups[-1]
             prev_matches = _tmp_groups[:(len(_tmp_groups) - 1)]
@@ -1210,7 +1284,7 @@ def logs2table(filename, tablename=None, conn=None,
                line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)",
                size_regex=None, time_regex=None,
                line_from=0, line_until=0,
-               max_file_num=10, max_file_size=(1024 * 1024 * 10),
+               max_file_num=10, max_file_size=(1024 * 1024 * 50),
                appending=False, multiprocessing=False):
     """
     Insert multiple log files into *one* table
@@ -1434,16 +1508,31 @@ def _gen_regex_for_request_logs(filename="request.log"):
     # TODO: When can't identify from above, should this return some cols and regex?
 
 
-def _gen_regex_for_service_logs(filename="nexus.log"):
+def _gen_regex_for_app_logs(filename="nexus.log"):
     """
     Return a list which contains column names, and regex pattern for nexus.log, clm-server.log, server.log
     :param filename: A file name or *simple* regex used in glob to select files.
+    :param checking_line: Based on this line, columns and regex will be decided
     :return: (col_list, pattern_str)
+    2020-01-03 00:00:38,357-0600 WARN  [qtp1359575796-407871] anonymous org.sonatype.nexus.proxy.maven.maven2.M2GroupRepository - IOException during parse of metadata UID="oracle:/junit/junit-dep/maven-metadata.xml", will be skipped from aggregation!
     """
     files = _globr(filename)
     if bool(files) is False:
         return ([], "")
-    checking_line = linecache.getline(files[0], 2)  # first line can be a junk: "** TRUNCATED ** linux x64"
+
+    # Default and in case can't be identified
+    columns = ['date_time', 'loglevel', 'message']
+    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +(.+)'
+
+    for i in range(1, 10):
+        checking_line = linecache.getline(files[0], i)
+        if re.search('^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*)', checking_line):
+            break
+    if bool(checking_line) is False:
+        _err("Could not determine columns and pattern_str. Using default.")
+        return (columns, partern_str)
+    _debug(checking_line)
+
     columns = ['date_time', 'loglevel', 'thread', 'node', 'user', 'class', 'message']
     partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]*) ([^ ]+) - (.*)'
     if re.search(partern_str, checking_line):
@@ -1452,9 +1541,6 @@ def _gen_regex_for_service_logs(filename="nexus.log"):
     partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
-    # If can't identify
-    columns = ['date_time', 'loglevel', 'message']
-    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +(.+)'
     return (columns, partern_str)
 
 
@@ -1624,7 +1710,7 @@ def df2files(df, filepath_prefix, extension="", columns=None, overwriting=False,
                 f2.write(row.to_csv(sep=sep))
 
 
-def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=100, tail_num=10000):
+def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=10000):
     """
     A prototype function to analyse log files (expecting request.log converted to request.csv)
     TODO: cleanup later
@@ -1642,7 +1728,7 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=100, tail_nu
     result = csv2df('request.csv', tablename="t_request_logs", conn=connect())
     if bool(result) is False:
         (col_names, line_matching) = _gen_regex_for_request_logs('request.log')
-        result = logs2table('request.log', tablename="t_request_logs", col_names=col_names, line_beginning="^.",
+        result = logs2table('request_03Jan2020.1*.log', tablename="t_request_logs", col_names=col_names, line_beginning="^.",
                             line_matching=line_matching)
     if bool(result):
         where_sql = "WHERE 1=1"
@@ -1672,10 +1758,10 @@ FROM t_request_logs %s""" % (where_sql)
         draw(q(query).tail(tail_num), name="request_log-status_bytesent_elapsed")
 
     ## Loading application log file(s) into database.
-    (col_names, line_matching) = _gen_regex_for_service_logs('nexus.log')
+    (col_names, line_matching) = _gen_regex_for_app_logs('nexus.log')
     result_logs = logs2table('nexus.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
     if bool(result_logs) is False:
-        (col_names, line_matching) = _gen_regex_for_service_logs('*server.log')
+        (col_names, line_matching) = _gen_regex_for_app_logs('*server.log')
         result_logs = logs2table('*server.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
 
     # Hazelcast health monitor
