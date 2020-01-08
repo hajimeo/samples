@@ -1082,8 +1082,9 @@ function f_tunnel() {
 
 function f_kvm() {
     local __doc__="TODO: Install KVM on Ubuntu (16.04) host"
-    local _virt_user="${1-"virtuer"}"
+    local _virt_user="${1-"virtuser"}"
     local _virt_pass="${2:-"${_virt_user}"}"
+    # @see: https://computingforgeeks.com/use-virt-manager-as-non-root-user/
 
     apt-get -y install qemu-kvm libvirt-bin virtinst bridge-utils libosinfo-bin libguestfs-tools virt-top virt-manager qemu-system
     if ! grep -qw "vhost_ned" /etc/modules; then
@@ -1107,8 +1108,12 @@ function f_kvm() {
         if ! grep '^unix_sock_group' /etc/libvirt/libvirtd.conf | grep -qw ${_group}; then
             _error "${_group} is not configured in /etc/libvirt/libvirtd.conf"
             return 1
-            #systemctl restart libvirtd.service
         fi
+
+        if ! grep '^unix_sock_rw_perms' /etc/libvirt/libvirtd.conf | grep -q "770"; then
+            _warn "unix_sock_rw_perms may not be 0770"
+        fi
+        _info "Execute 'systemctl restart libvirtd.service' if all good."
     fi
 }
 
