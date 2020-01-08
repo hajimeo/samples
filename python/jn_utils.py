@@ -8,6 +8,20 @@
 """
 jn_utils is Jupyter Notebook Utility script, which contains functions to convert text files to Pandas DataFrame or DB (SQLite) tables.
 To update this script, execute "ju.update()".
+
+== Pandas tips (which I often forget) ==================================
+To show more strings in the truncated rows:
+    pd.options.display.max_rows = 1000      (default is 60)
+To show more strings in a column:
+    pd.options.display.max_colwidth = 1000  (default is 50. -1 to disable = show everything)
+To show the first 3 rows and the last 3 rows:
+    df.iloc[[0,1,2,-3,-2,-1]]
+Convert one row to dict:
+    row = df[:1].to_dict(orient='records')[0]
+Convert Unix timestamp with milliseconds to datetime
+    DATETIME(ROUND(dateColumn / 1000), 'unixepoch')
+Convert current time to Unix timestamp
+    STRFTIME('%s', 'NOW')
 """
 
 # TODO: When you add a new pip package, don't forget to update setup_work.env.sh
@@ -248,7 +262,7 @@ def json2df(filename, jq_query="", conn=None, tablename=None, json_cols=[], chun
     Convert a json file, which contains list into a DataFrame
     If conn is given, import into a DB table
     :param filename: File path or file name or glob pattern
-    :param jq_query: String used with ju.jq()
+    :param jq_query: String used with ju.jq(), to filter json record
     :param conn:   DB connection object
     :param tablename: If empty, table name will be the filename without extension
     :param json_cols: to_sql() fails if column is json, so forcing those columns to string
@@ -279,6 +293,11 @@ def json2df(filename, jq_query="", conn=None, tablename=None, json_cols=[], chun
         return False
     df = pd.concat(dfs, sort=False)
     if bool(conn):
+        if bool(json_cols) is False:
+            row = df[:1].to_dict(orient='records')[0]
+            for k in row:
+                if type(row[k]) is dict:
+                    json_cols.append(k)
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(files[0]), {}, using_1st_char=False, prefix='t_')
         _err("Creating table: %s ..." % (tablename))
@@ -519,6 +538,7 @@ def _udf_str2sqldt(date_time, format):
 
 def _udf_timestamp(date_time):
     """
+    @Deprecated: use STRFTIME('%s', 'NOW')
     Unix timestamp handling UDF for SQLite
     eg: SELECT UDF_TIMESTAMP(some_datetime) as unix_timestamp, ...
     NOTE: SQLite way: CAST((julianday(some_datetime) - 2440587.5)*86400.0 as INT)
@@ -618,7 +638,7 @@ def _register_udfs(conn):
         # UDF_REGEX(regex, column, integer)
         conn.create_function("UDF_REGEX", 3, _udf_regex)
         conn.create_function("UDF_STR2SQLDT", 2, _udf_str2sqldt)
-        conn.create_function("UDF_TIMESTAMP", 1, _udf_timestamp)
+        #conn.create_function("UDF_TIMESTAMP", 1, _udf_timestamp)
         conn.create_function("UDF_STR_TO_INT", 1, _udf_str_to_int)
     return conn
 
@@ -1811,6 +1831,19 @@ FROM t_health_monitor
     GROUP BY 1, 2""" % (where_sql)
         _err("Query: " + query)
         draw(q(query), name="warn_error_hourly")
+
+    # TODO: analyse db job triggers
+    #q("""SELECT description, fireInstanceId
+    #, nextFireTime
+    #, DATETIME(ROUND(nextFireTime / 1000), 'unixepoch') as NextAt
+    #, DATETIME(ROUND(previousFireTime / 1000), 'unixepoch') as PrevAt
+    #, DATETIME(ROUND(startTime / 1000), 'unixepoch') as startAt
+    #, jobDataMap, cronEx
+    #FROM t_db_job_triggers_json
+    #WHERE nextFireTime is NOT NULL
+    #  AND nextFireTime > 1578290830000
+    #ORDER BY nextFireTime
+    #""")
     _err("Completed.")
 
 
