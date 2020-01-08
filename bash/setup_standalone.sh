@@ -94,7 +94,7 @@ Another way to create a container:
 [ -z "${_OS_VERSION}" ] && _OS_VERSION="7.6.1810"       # Container OS version (normally CentOS version)
 [ -z "${_BASE_IMAGE}" ] && _BASE_IMAGE="node/base"      # Docker image name TODO: change to more appropriate image name
 #[ -z "${_VERSION}" ] && _VERSION=""                     # Default software version, mainly used to find the right installer file
-_PORTS="${_PORTS-"8070 8071 8081 8444 8443 5005"}"                     # Used by docker port forwarding
+_PORTS="${_PORTS-"8070 8071 8081 8444 8443 5005"}"       # Used by -P (docker port forwarding). for _p in ${_PORTS}; do lsof -i:${_p}; done
 # Below is for storing files which I do not want to store in github. NOTE: Mac does not have "hostname -I"
 #_DOWNLOAD_URL="${_DOWNLOAD_URL-"http://$(hostname -I | awk '{print $1}')/${_SERVICE}/"}"
 #_CUSTOM_NETWORK="hdp"
