@@ -993,18 +993,24 @@ function f_splitByRegex() {
     local _extension="${_base_name##*.}"
 
     # this may not be working
-    local _tmp_n=""
     local _tmp_str=""
-    local _prev_n="1"
+    local _prev_n=1
+    local _prev_str=""
 
-    # NOTE: Surprisingly, uniq -f1 recognises ":" as a delimiter but may break later, so not using
-    rg "${_regex}" --no-filename -n -o "${_file}" -r '${1}.${2}' > /tmp/f_splitByRegex_$$.out
-    awk -F":" '{if(a[$2] < $1)a[$2]=$1;}END{for(i in a){print a[i],i;}}' OFS=: /tmp/f_splitByRegex_$$.out | sort -n | while read -r _t; do
+    # NOTE: Surprisingly, uniq -f1 recognises ":" as a delimiter but may break later, so not using (also seems awk is faster somehow)
+    rg "${_regex}" --no-filename -n -o "${_file}" > /tmp/f_splitByRegex_$$.out
+    # Sometimes the match contains ":" (like request.log's date&time, which breaks awk or uniq -f1
+    _sed -i 's/:/./2' /tmp/f_splitByRegex_$$.out
+    #awk -F":" '{if(a[$2] < $1)a[$2]=$1;}END{for(i in a){print a[i],i;}}' OFS=: /tmp/f_splitByRegex_$$.out | sort -n
+    cat /tmp/f_splitByRegex_$$.out | while read -r _t; do
         if [[ "${_t}" =~ ^([0-9]+):(.+) ]]; then
-            _tmp_n="${BASH_REMATCH[1]}"
-            _tmp_str="$(echo ${BASH_REMATCH[2]} | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-256)"
-            _sed -n "${_prev_n},${_tmp_n}p;$(( ${_tmp_n} + 1 ))q" ${_file} > ${_save_path_prefix}_${_tmp_str}.${_extension} || return $?
-            _prev_n=$(( ${_tmp_n} + 1 ))
+            [ ${_prev_n} == ${BASH_REMATCH[1]} ] && continue
+            [ -n "${_prev_str}" ] && [ "${_prev_str}" == "${BASH_REMATCH[2]}" ] && continue
+            # Found new value (next date, next thread etc.)
+            _tmp_str="$(echo ${_prev_str} | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-256)"
+            _sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}_${_tmp_str}.${_extension} || return $?
+            _prev_str="${BASH_REMATCH[2]}"  # Used for the file name and detecting a new value
+            _prev_n=${BASH_REMATCH[1]}
         fi
     done
 }
