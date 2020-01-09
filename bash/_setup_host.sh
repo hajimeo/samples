@@ -116,7 +116,7 @@ function f_haproxy() {
     # To generate '_nodes': docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq)$" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
     # HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
     local _nodes="${1}"             # Space delimited. If empty, generated from 'docker ps'
-    local _ports="${2:-"8081 8443=8081 8070 8071 8444=8070"}" # Space delimited # 18082=18082 18079=18079 18075=18075
+    local _ports="${2:-"8081 8443=8081 8070 8071 8444=8070 5005"}" # Space delimited # 18082=18082 18079=18079 18075=18075
     local _certificate="${3}"       # Expecting same (concatenated) cert for front and backend
     local _skipping_chk="${4}"      # To not check if backend port is reachable for each backend
     local _haproxy_tmpl_conf="${5:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
@@ -169,7 +169,8 @@ function f_haproxy() {
     # If dnsmask is installed locally, utilise it
     local _resolver=""
     if which dnsmasq &>/dev/null; then
-        echo "resolvers dnsmasq
+        echo "
+resolvers dnsmasq
   nameserver dns1 localhost:53
   accepted_payload_size 8192
 " >> "${_cfg}"
