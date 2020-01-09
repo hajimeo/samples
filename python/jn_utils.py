@@ -1748,7 +1748,7 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
     result = csv2df('request.csv', tablename="t_request_logs", conn=connect())
     if bool(result) is False:
         (col_names, line_matching) = _gen_regex_for_request_logs('request.log')
-        result = logs2table('request_03Jan2020.1*.log', tablename="t_request_logs", col_names=col_names, line_beginning="^.",
+        result = logs2table('request.log', tablename="t_request_logs", col_names=col_names, line_beginning="^.",
                             line_matching=line_matching)
     if bool(result):
         where_sql = "WHERE 1=1"
