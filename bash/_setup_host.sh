@@ -116,27 +116,29 @@ function f_haproxy() {
     # To generate '_nodes': docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq)$" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
     # HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
     local _nodes="${1}"             # Space delimited. If empty, generated from 'docker ps'
-    local _ports="${2:-"8081 8443=8081 8070 8071 8444=8070 5005"}" # Space delimited # 18082=18082 18079=18079 18075=18075
-    local _certificate="${3}"       # Expecting same (concatenated) cert for front and backend
-    local _skipping_chk="${4}"      # To not check if backend port is reachable for each backend
-    local _haproxy_tmpl_conf="${5:-"${_WORK_DIR%/}/haproxy.tmpl.cfg"}"
-    local _domain="${6:-"standalone.localdomain"}"
+    local _ports="${2:-"8081 8443=8081 8070 8071 8444=8070 18079=8081"}" # Space delimited # 18082=18082 18079=18079 18075=18075
+    local _skipping_chk="${3}"      # Not to check each backend port (handy when you will start backend later)
+    local _certificate="${4}"       # Expecting same (concatenated) cert for front and backend
+    local _haproxy_custom_cfg_dir="${5:-"${_WORK_DIR%/}/haproxy"}" # Under this directory, create haproxy.PORT.cfg file
+    local _domain="${6:-"standalone.localdomain"}"  # `hostname -d`
+    #local _haproxy_tmpl_conf="${_WORK_DIR%/}/haproxy.tmpl.cfg}"
 
     local _cfg="/etc/haproxy/haproxy.cfg"
     if which haproxy &>/dev/null; then
-        _info "INFO" "HAProxy is already installed. To update, run apt-get manually."
+        _info "INFO" "HAProxy is already installed. To update, run apt-get|yum manually."
     else
         apt-get install haproxy -y || return $?
     fi
 
     if [ -z "${_nodes}" ]; then
-        # I'm using FreeIPA and normally that container name includes 'freeipa'
+        # I'm using FreeIPA and that container name includes 'freeipa'
         _nodes="$(for _n in `docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq)$" | sort`;do docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])"; done | tr '\n' ' ')"
         if [ -z "${_nodes}" ]; then
             _info "WARN" "No nodes to setup/check. Exiting..."
             return 0
         fi
-        _info "INFO" "Using '${_nodes}' ..."; sleep 3
+        _info "INFO" "Using '${_nodes}' ..."
+
         if [ -z "${_certificate}" ]; then
             _certificate="${_WORK_DIR%/}/cert/${_domain}.certs.pem"
             if [ ! -s "${_certificate}" ]; then
@@ -144,7 +146,7 @@ function f_haproxy() {
                     _certificate=""
                 fi
             fi
-            _info "INFO" "Using '${_certificate}' ..."; sleep 3
+            _info "INFO" "Using '${_certificate}' ..."
         fi
     fi
 
@@ -154,29 +156,44 @@ function f_haproxy() {
         return 1
     fi
 
-    # Always get the latest template for now
-    # NOTE: 'global' in the template should have 'ssl-server-verify none'
-    #       also not using 'default-server init-addr last,libc,none' as somehow doesn't work
-    curl -s --retry 3 -o ${_haproxy_tmpl_conf} "https://raw.githubusercontent.com/hajimeo/samples/master/misc/haproxy.tmpl.cfg" || return $?
-
-    # Backup
+    # Backup config file
     if [ -s "${_cfg}" ]; then
-        # Seems Ubuntu 16 and CentOS 6/7 use same config path
-        mv -v "${_cfg}" "${_cfg}".$(date +"%Y%m%d%H%M%S") || return $?
-        cp -f "${_haproxy_tmpl_conf}" "${_cfg}" || return $?
+        mv -v "${_cfg}" "/tmp/`basename ${_cfg}`".$(date +"%Y%m%d%H%M%S") || return $?
     fi
 
-    # If dnsmask is installed locally, utilise it
+    # HAProxy config 'global', 'defaults', and 'stats' sections
+    echo "global
+  maxconn 256
+  ssl-server-verify none
+
+defaults
+  option forwardfor except 127.0.0.1
+  mode http
+  timeout connect 5000ms
+  timeout client 2d
+  timeout server 2d
+  # timeout tunnel needed for websockets
+  timeout tunnel 3600s
+  #default-server init-addr last,libc,none
+
+listen stats
+  bind *:1080
+  stats enable
+  stats uri /
+  stats auth admin:admin
+" > ${_cfg}
+
+    # If dnsmask is installed, utilise it
     local _resolver=""
     if which dnsmasq &>/dev/null; then
-        echo "
-resolvers dnsmasq
+        echo "resolvers dnsmasq
   nameserver dns1 localhost:53
   accepted_payload_size 8192
 " >> "${_cfg}"
         _resolver="resolvers dnsmasq init-addr none"
     fi
 
+    # Check each port and append to config
     for _p in ${_ports}; do
         local _frontend_proto="http"
         local _backend_proto="http"
@@ -190,69 +207,71 @@ resolvers dnsmasq
         fi
 
         # Generating backend sections first
-        > /tmp/f_haproxy_backends_$$.out
         for _n in ${_nodes}; do
             if [[ "${_skipping_chk}" =~ ^(y|Y) ]]; then
                 if [ -n "${_certificate}" ]; then
-                    echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
+                    echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} check ${_resolver}"
                 else
-                    echo "  server ${_n} ${_n}:${_b_port} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
+                    echo "  server ${_n} ${_n}:${_b_port} check ${_resolver}"
                 fi
             else
+                # Checking if HTTPS and H2|HTTP/2 are enabled. NOTE: -w '%{http_version}\n' does not work with older curl.
                 local _https_ver=""
-                if [ -n "${_certificate}" ]; then
-                    # Checking if HTTPS and H2|HTTP/2 are enabled. NOTE: -w '%{http_version}\n' does not work with older curl.
-                    _https_ver="$(curl -sI -k "https://${_n}:${_b_port}/" | sed -nr 's/^HTTP\/([12]).+/\1/p')"
-                fi
+                [ -n "${_certificate}" ] && _https_ver="$(curl -sI -k "https://${_n}:${_b_port}/" | sed -nr 's/^HTTP\/([12]).+/\1/p')"
 
-                if [[ "${_https_ver}" = "1" ]]; then
+                if [ "${_https_ver}" == "1" ]; then
                     _info "Enabling ${_frontend_proto} => ${_n}:${_b_port} with HTTPS ..."
-                    echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
+                    echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} check ${_resolver}"
                     _backend_proto="https"
                     [ -n "${_certificate}" ] && _frontend_proto="https"
-                elif [[ "${_https_ver}" = "2" ]]; then
+                elif [ "${_https_ver}" == "2" ]; then
                     _info "Enabling ${_frontend_proto} => ${_n}:${_b_port} with HTTP/2 ..."
-                    echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} alpn h2,http/1.1 check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
+                    echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} alpn h2,http/1.1 check ${_resolver}"
                     _backend_proto="https"
                     [ -n "${_certificate}" ] && _frontend_proto="https"
                 elif nc -z ${_n} ${_b_port}; then
                     _info "Enabling ${_frontend_proto} => ${_n}:${_b_port} (no HTTPS/SSL/TLS) ..."
                     # SSL termination
-                    echo "  server ${_n} ${_n}:${_b_port} check ${_resolver}" >> /tmp/f_haproxy_backends_$$.out
+                    echo "  server ${_n} ${_n}:${_b_port} check ${_resolver}"
                 fi
             fi
-        done
+        done > /tmp/f_haproxy_backends_$$.out
 
         if [ ! -s /tmp/f_haproxy_backends_$$.out ]; then
-            _info "No backend node found for ${_p} ..."
+            _info "No backend servers found for ${_p} ..."
             continue
         fi
 
-        local _frontend_ssl_crt=""
-        if [ -n "${_certificate}" ] && [ "${_frontend_proto}" = "https" ]; then
-            _frontend_ssl_crt=" ssl crt ${_certificate} alpn h2,http/1.1"   # Enabling HTTP/2 as newer HAProxy anyway supports
-        fi
-
-        # If frontend port is already configured somehow (which shouldn't be possible though), skipping
-        if ! grep -qE "^frontend frontend_p${_f_port}$" "${_cfg}"; then
-            echo "
-frontend frontend_p${_f_port}
+        if [ -s "${_haproxy_custom_cfg_dir%/}/haproxy.${_f_port}.cfg" ]; then
+            _info "Found ${_haproxy_custom_cfg_dir%/}/haproxy.${_f_port}.cfg. Appending ..."
+            cat "${_haproxy_custom_cfg_dir%/}/haproxy.${_f_port}.cfg" >> "${_cfg}"
+            cat /tmp/f_haproxy_backends_$$.out >> "${_cfg}"
+            echo "" >> "${_cfg}"
+        else
+            # If frontend port is already configured somehow (which shouldn't be possible though), skipping
+            if ! grep -qE "^frontend frontend_p${_f_port}$" "${_cfg}"; then
+                local _frontend_ssl_crt=""
+                # NOTE: Enabling HTTP/2 as newer HAProxy supports.
+                [ -n "${_certificate}" ] && [ "${_frontend_proto}" = "https" ] && _frontend_ssl_crt=" ssl crt ${_certificate} alpn h2,http/1.1"
+                echo "frontend frontend_p${_f_port}
   bind *:${_f_port}${_frontend_ssl_crt}
   reqadd X-Forwarded-Proto:\ ${_frontend_proto}
   default_backend backend_p${_b_port}" >> "${_cfg}"
-        fi
+                echo "" >> "${_cfg}"
+            fi
 
-        # If backend port is already configured, not adding as hapxory won't start
-        if ! grep -qE "^backend backend_p${_b_port}$" "${_cfg}"; then
-            echo "
-backend backend_p${_b_port}
+            # If backend port is already configured, not adding as hapxory won't start
+            if ! grep -qE "^backend backend_p${_b_port}$" "${_cfg}"; then
+                echo "backend backend_p${_b_port}
   balance roundrobin
   cookie NXSESSIONID prefix nocache
   option forwardfor
   http-request set-header X-Forwarded-Port %[dst_port]
-  option httpchk"  >> "${_cfg}"
-        #  http-request add-header X-Forwarded-Proto ${_backend_proto}
-            cat /tmp/f_haproxy_backends_$$.out >> "${_cfg}"
+  option httpchk" >> "${_cfg}"
+            #  http-request add-header X-Forwarded-Proto ${_backend_proto}
+                cat /tmp/f_haproxy_backends_$$.out >> "${_cfg}"
+                echo "" >> "${_cfg}"
+            fi
         fi
     done
 
@@ -1193,6 +1212,36 @@ function f_sshfs_mount() {
     eval ${_cmd} || return $?
     [ ! -s /etc/rc.lcoal ] && echo -e '#!/bin/bash\nexit 0' > /etc/rc.local
     _insert_line /etc/rc.local "${_cmd}" "exit 0"
+}
+
+function f_port_forward() {
+    local __doc__="Port forwarding a local port to a container port"
+    local _local_port="$1"
+    local _remote_host="$2"
+    local _remote_port="$3"
+    local _kill_process="$4"
+
+    if [ -z "$_local_port" ] || [ -z "$_remote_host" ] || [ -z "$_remote_port" ]; then
+        _error "Local Port or Remote Host or Remote Port is missing."
+        return 1
+    fi
+    local _pid="`lsof -ti:$_local_port`"
+    if [ -n "$_pid" ] ; then
+        _warn "Local port $_local_port is already used by PID $_pid."
+        if _isYes "$_kill_process" ; then
+            kill $_pid || return 3
+            _info "Killed $_pid."
+        else
+            return 0
+        fi
+    fi
+
+    #if ! which socat &>/dev/null ; then
+    #    _warn "No socat. Installing"; apt-get install socat -y || return 2
+    #fi
+    #nohup socat tcp4-listen:$_local_port,reuseaddr,fork tcp:$_remote_host:$_remote_port & TODO: which is better, socat or ssh?
+    _info "port-forwarding -L$_local_port:$_remote_host:$_remote_port ..."
+    ssh -2CNnqTxfg -L$_local_port:$_remote_host:$_remote_port $_remote_host
 }
 
 function f_add_cert() {
