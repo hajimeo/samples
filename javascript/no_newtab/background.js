@@ -17,10 +17,8 @@ function noNewTab(req) {
     return
   }
 
-  // Get the list of currently opened tabs from *all* windows if initiator is set.
-  var queryInfo = (req.initiator) ? {currentWindow: true} : {};
-  queryInfo.url = req.url;
-  chrome.tabs.query(queryInfo, function(tabs) {
+  // Get the list of opened tabs from currentWindow windows
+  chrome.tabs.query({currentWindow: true, url:req.url}, function(tabs) {
     // It seems no 'break' in forEach?, so using 'target_tab'.
     var target_tab = null;
     tabs.forEach(function(tab) {
