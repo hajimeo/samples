@@ -203,38 +203,34 @@ listen stats
         if [[ "${_p}" =~ ^([0-9]+)=([0-9]+)$ ]]; then
             _f_port=${BASH_REMATCH[1]}
             _b_port=${BASH_REMATCH[2]}
+            # if frontend port is different from backend port or _p includes "=" + certificate is given, frontend uses https
             [ -n "${_certificate}" ] && _frontend_proto="https"
         fi
 
         # Generating backend sections first
         for _n in ${_nodes}; do
-            if [[ "${_skipping_chk}" =~ ^(y|Y) ]]; then
+            local _https_opts=""
+            if [[ ! "${_skipping_chk}" =~ ^(y|Y) ]]; then
+                # Checking if reachable and if HTTPS and H2|HTTP/2 are enabled.
+                nc -z ${_n} ${_b_port} || continue
+                # NOTE: curl -w '%{http_version}\n' does not work with older curl.
                 if [ -n "${_certificate}" ]; then
-                    echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} check ${_resolver}"
-                else
-                    echo "  server ${_n} ${_n}:${_b_port} check ${_resolver}"
+                    local _https_ver="$(curl -m 1 -sI -k "https://${_n}:${_b_port}/" | sed -nr 's/^HTTP\/([12]).+/\1/p')"
+                    if [ "${_https_ver}" == "1" ]; then
+                        _https_opts=" ssl crt ${_certificate}"
+                        _backend_proto="https"
+                    elif [ "${_https_ver}" == "2" ]; then
+                        _https_opts=" ssl crt ${_certificate} alpn h2,http/1.1"
+                        _backend_proto="https"
+                    fi
+                    # If backend is using https, make sure front is also https
+                    [ -n "${_https_ver}" ] && _frontend_proto="https"
                 fi
             else
-                # Checking if HTTPS and H2|HTTP/2 are enabled. NOTE: -w '%{http_version}\n' does not work with older curl.
-                local _https_ver=""
-                [ -n "${_certificate}" ] && _https_ver="$(curl -sI -k "https://${_n}:${_b_port}/" | sed -nr 's/^HTTP\/([12]).+/\1/p')"
-
-                if [ "${_https_ver}" == "1" ]; then
-                    _info "Enabling ${_frontend_proto} => ${_n}:${_b_port} with HTTPS ..."
-                    echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} check ${_resolver}"
-                    _backend_proto="https"
-                    [ -n "${_certificate}" ] && _frontend_proto="https"
-                elif [ "${_https_ver}" == "2" ]; then
-                    _info "Enabling ${_frontend_proto} => ${_n}:${_b_port} with HTTP/2 ..."
-                    echo "  server ${_n} ${_n}:${_b_port} ssl crt ${_certificate} alpn h2,http/1.1 check ${_resolver}"
-                    _backend_proto="https"
-                    [ -n "${_certificate}" ] && _frontend_proto="https"
-                elif nc -z ${_n} ${_b_port}; then
-                    _info "Enabling ${_frontend_proto} => ${_n}:${_b_port} (no HTTPS/SSL/TLS) ..."
-                    # SSL termination
-                    echo "  server ${_n} ${_n}:${_b_port} check ${_resolver}"
-                fi
+                # If skipping the check, then certificate is given, populate https options
+                [ -n "${_certificate}" ] && _https_opts=" ssl crt ${_certificate}${_https_opts}"
             fi
+            echo "  server ${_n} ${_n}:${_b_port}${_https_opts} check ${_resolver}"  # not using 'cookie' for now.
         done > /tmp/f_haproxy_backends_$$.out
 
         if [ ! -s /tmp/f_haproxy_backends_$$.out ]; then
@@ -262,9 +258,10 @@ listen stats
 
             # If backend port is already configured, not adding as hapxory won't start
             if ! grep -qE "^backend backend_p${_b_port}$" "${_cfg}"; then
+                # NOTE: not using 'roundrobin' as I'm not sure if sticky session with cookie is working.
+                #       so, also removed 'cookie NXSESSIONID prefix nocache' and 'cookie' from server line
                 echo "backend backend_p${_b_port}
-  balance roundrobin
-  cookie NXSESSIONID prefix nocache
+  balance source
   option forwardfor
   http-request set-header X-Forwarded-Port %[dst_port]
   option httpchk" >> "${_cfg}"
