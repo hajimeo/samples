@@ -458,7 +458,8 @@ function f_apache_proxy() {
 
 function f_apache_reverse_proxy() {
     local __doc__="Generate reverse proxy.conf *per* port, and restart reload"
-    # f_apache_reverse_proxy "http://node-nxiq.standalone.localdomain:8070" 18081 "dh1.standalone.localdomain" /etc/security/keytabs/HTTP.service.keytab
+    # f_apache_reverse_proxy "http://node-nxiq.standalone.localdomain:8070" 18070 "dh1.standalone.localdomain" /etc/security/keytabs/HTTP.service.keytab
+    # f_apache_reverse_proxy "http://node-nxrm-ha1.standalone.localdomain:8081" 18081 "dh1.standalone.localdomain" /etc/security/keytabs/HTTP.service.keytab
     # @see: https://help.sonatype.com/display/NXRM3/Run+Behind+a+Reverse+Proxy
     #       https://guides.sonatype.com/repo3/technical-guides/pki-auth/
     #       https://sites.google.com/site/mrxpalmeiras/notes/configuring-splunk-with-kerberos-sso-via-apache-reverse-proxy
