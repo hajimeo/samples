@@ -144,7 +144,7 @@ function f_topErrors() {
     fi
 
     if [ -n "${_date_regex}" ]; then
-        _regex="^(${_date_regex}).+${_regex}"
+        _regex="^${_date_regex}.+${_regex}"
     fi
 
     echo "# Regex = '${_regex}'"
@@ -166,12 +166,12 @@ function f_topErrors() {
 function f_listWarns() {
     local __doc__="List the counts of frequent warns and also errors"
     local _glob="${1:-"*.*log*"}"
-    local _date_4_bar="${2:-"\\d\\d\\d\\d-\\d\\d-\\d\\d \\d\\d"}"
+    local _date_4_bar="${2:-"\\d\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d"}"
     local _top_N="${3:-40}"
 
     local _regex="\b(WARN|ERROR|SEVERE|FATAL|FAILED)\b"
-    rg -z -c -g "${_glob}" "^$_DATE_FORMAT.\d\d:\d\d:\d\d.+${_regex}"
-    rg -z -N --no-filename -g "${_glob}" "^$_DATE_FORMAT.\d\d:\d\d:\d\d.+${_regex}" > /tmp/f_listWarns.$$.tmp
+    rg -z -c -g "${_glob}" "^${_date_4_bar}.+${_regex}"
+    rg -z -N --no-filename -g "${_glob}" "^${_date_4_bar}.+${_regex}" > /tmp/f_listWarns.$$.tmp
 
     # count by class name and ignoring only once or twice warns
     rg "${_regex}\s+.+" -o /tmp/f_listWarns.$$.tmp | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
@@ -181,8 +181,8 @@ function f_listWarns() {
 
 function f_topSlowLogs() {
     local __doc__="List top performance related log entries."
-    local _date_regex="$1"
-    local _glob="${2:-"*.*log*"}"
+    local _glob="${1:-"*.*log*"}"
+    local _date_regex="$2"
     local _regex="$3"
     local _not_hiding_number="$4"
     local _top_N="${5:-10}" # how many result to show
@@ -196,7 +196,7 @@ function f_topSlowLogs() {
     fi
 
     echo "# Regex = '${_regex}'"
-    rg -z -N --no-filename -g "${_glob}" -io "$_regex" > /tmp/f_topSlowLogs.$$.tmp
+    rg -z -N --no-filename -g "${_glob}" -i -o "$_regex" > /tmp/f_topSlowLogs.$$.tmp
     #rg -z -c -g "${_glob}" -wio "${_regex}"
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
         cat /tmp/f_topSlowLogs.$$.tmp
@@ -794,6 +794,9 @@ function f_threads() {
     #rg -i "ldap" ./threads_tmp/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
     #rg -w BLOCKED ./threads_tmp/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
     #rg '^("|\s+- .*lock)' ${_file}
+    # Listening ports
+    rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
+    echo ""
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ./threads_tmp/
     echo ""
     rg '^[^ ]' ${_file} | _replace_number 1 | sort | uniq -c | sort -n | tail -n 20
