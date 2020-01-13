@@ -48,7 +48,6 @@ alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 # VM related
 # virt-manager remembers the connections, so normally would not need to start in this way.
 alias kvm_haji='virt-manager -c "qemu+ssh://root@hajime/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
-alias kvm_seth='virt-manager -c "qemu+ssh://root@sethdesktop/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
 
 # Java / jar related
 alias mb='java -jar $HOME/Applications/metabase.jar'    # port is 3000
@@ -57,8 +56,9 @@ alias samurai='java -Xmx2048m -jar $HOME/Apps/samurali/samurai.jar'
 #alias vnc='nohup java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
 
 # Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
-alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
-alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=socks5://dh1:28081 http://192.168.1.31:4200/webuser/'
+#alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
+#alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=socks5://dh1:28081 http://192.168.1.31:4200/webuser/'
+alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=http://dh1:28080 http://192.168.1.31:4200/webuser/'
 alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/hajigle https://www.blogger.com/blogger.g?blogID=9018688091574554712&pli=1#allposts'
 
 # Work specific aliases
@@ -352,23 +352,6 @@ function pubS() {
     cp -f $HOME/IdeaProjects/work/bash/install_sonatype.sh $HOME/share/sonatype/
     date
 }
-function sptZip() {
-    local _zip="$1"
-    [ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py ] || return 1
-    if [ -z "${_zip}" ]; then
-        _zip="$(ls -1 ./support-20*.zip | tail -n1)" || return $?
-        echo "Using ${_zip} ..."
-    fi
-    local _name="$(basename "${_zip}" .zip)"
-
-    python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py "./${_zip}" &> ./${_name}_zip.out
-
-    [ -d ./${_name} ] || unzip ${_zip}
-    cd ./${_name} || return $?
-    logS && p_support "" ../p_support_nxrm_${_name}.out
-    cd -
-    ls -l ./${_name}_zip.out ./p_support_nxrm_${_name}.out
-}
 function sptBoot() {
     local _zip="$1"
     [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
@@ -376,9 +359,8 @@ function sptBoot() {
         _zip="$(ls -1 ./support-20*.zip | tail -n1)" || return $?
         echo "Using ${_zip} ..."
     fi
-    # To just re-launch|start, check relaunch-support.sh
-    python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp &> ./$(basename "${_zip}" .zip).out &
-    echo "Running in background (tail -f ./$(basename "${_zip}" .zip).out)"
+    echo "To just re-launch or start, check relaunch-support.sh"
+    python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
 }
 function iqCli() {
     if [ -z "$1" ]; then
