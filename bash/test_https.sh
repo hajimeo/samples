@@ -71,6 +71,7 @@ function get_tls_versions() {
         "${JAVA_HOME%/}/bin/jrunscript" -e 'var ps = javax.net.ssl.SSLContext.getDefault().createSSLEngine().getSupportedProtocols(); for (var i in ps) println(ps[i])'
         echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] INFO: Java client side Enabled protocols"
         "${JAVA_HOME%/}/bin/jrunscript" -e 'var ps = javax.net.ssl.SSLContext.getDefault().createSSLEngine().getEnabledProtocols(); for (var i in ps) println(ps[i])'
+        # TODO: "${JAVA_HOME%/}/bin/jrunscript" -e 'var ni = java.net.NetworkInterface.getNetworkInterfaces();for (var i in ni) println(ni[i].getInetAddresses().toString())'
     fi
 }
 
