@@ -38,7 +38,7 @@ function f_setup_scala() {
     local _inst_dir="${3:-/usr/local/scala}"
 
     if [ -d "$SCALA_HOME" ]; then
-        echo "SCALA_HOME is already set so that skipping setup scala"
+        echo "SCALA_HOME is already set so that skipping setup."
         return
     fi
 
@@ -48,8 +48,8 @@ function f_setup_scala() {
                 curl --retry 3 -C - -o "${_extract_dir%/}/scala-${_ver}.tgz" -L "https://downloads.lightbend.com/scala/${_ver}/scala-${_ver}.tgz" || return $?
             fi
             tar -xf "${_extract_dir%/}/scala-${_ver}.tgz" -C "${_extract_dir%/}/" || return $?
-            chmod a+x ${_extract_dir%/}/scala-${_ver}/bin/*
         fi
+        chmod a+x ${_extract_dir%/}/scala-${_ver}/bin/*
         [ -d "${_inst_dir%/}" ] || ln -s "${_extract_dir%/}/scala-${_ver}" "${_inst_dir%/}"
     fi
     export SCALA_HOME=${_inst_dir%/}
@@ -62,7 +62,7 @@ function f_setup_groovy() {
     local _inst_dir="${3:-/usr/local/groovy}"
 
     if [ -d "$GROOVY_HOME" ]; then
-        echo "GROOVY_HOME is already set so that skipping setup scala"
+        echo "GROOVY_HOME is already set so that skipping setup."
         return
     fi
 
@@ -72,12 +72,36 @@ function f_setup_groovy() {
                 curl --retry 3 -C - -o "${_extract_dir%/}/apache-groovy-binary-${_ver}.zip" -L "https://bintray.com/artifact/download/groovy/maven/apache-groovy-binary-${_ver}.zip" || return $?
             fi
             unzip "${_extract_dir%/}/apache-groovy-binary-${_ver}.zip" -d "${_extract_dir%/}/" || return $?
-            chmod a+x ${_extract_dir%/}/groovy-${_ver}/bin/*
         fi
+        chmod a+x ${_extract_dir%/}/groovy-${_ver}/bin/*
         [ -d "${_inst_dir%/}" ] || ln -s "${_extract_dir%/}/groovy-${_ver}" "${_inst_dir%/}"
     fi
     export GROOVY_HOME=${_inst_dir%/}
     export PATH=$PATH:$GROOVY_HOME/bin
+}
+
+function f_setup_spring_boot_cli() {
+    local _ver="${1:-2.2.2}"
+    local _extract_dir="${2:-/var/tmp/share}"
+    local _inst_dir="${3:-/usr/local/spring-boot-cli}"
+
+    if [ -d "$SPRING_BOOT_CLI_HOME" ]; then
+        echo "SPRING_BOOT_CLI_HOME is already set so that skipping setup."
+        return
+    fi
+
+    if [ ! -x ${_inst_dir%/}/bin/spring ]; then
+        if [ ! -d "${_extract_dir%/}/spring-${_ver}.RELEASE" ]; then
+            if [ ! -s "${_extract_dir%/}/spring-boot-cli-${_ver}.RELEASE-bin.tar.gz" ]; then
+                curl --retry 3 -C - -o "${_extract_dir%/}/spring-boot-cli-${_ver}.RELEASE-bin.tar.gz" -L "https://repo.spring.io/release/org/springframework/boot/spring-boot-cli/${_ver}.RELEASE/spring-boot-cli-${_ver}.RELEASE-bin.tar.gz" || return $?
+            fi
+            tar -xf "${_extract_dir%/}/spring-boot-cli-${_ver}.RELEASE-bin.tar.gz" -C "${_extract_dir%/}/" || return $?
+        fi
+        chmod a+x ${_extract_dir%/}/spring-${_ver}.RELEASE/bin/*
+        [ -d "${_inst_dir%/}" ] || ln -s "${_extract_dir%/}/spring-${_ver}.RELEASE" "${_inst_dir%/}"
+    fi
+    export SPRING_BOOT_CLI_HOME=${_inst_dir%/}
+    export PATH=$PATH:${SPRING_BOOT_CLI_HOME}/bin
 }
 
 function f_javaenvs() {
@@ -147,6 +171,20 @@ function f_groovy() {
         echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
     fi
     groovysh
+    ${_cded} && cd -
+}
+
+function f_spring_boot_cli() {
+    local _port="${1}"
+    local _cded=false
+    f_setup_spring_boot_cli
+    if [[ "${_port}" =~ ^[0-9]+$ ]]; then
+        f_javaenvs "${_port}"
+        cd "${_CWD}" && _cded=true
+    else
+        echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
+    fi
+    spring shell
     ${_cded} && cd -
 }
 
