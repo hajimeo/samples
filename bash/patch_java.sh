@@ -53,7 +53,7 @@ function f_setup_scala() {
         [ -d "${_inst_dir%/}" ] || ln -s "${_extract_dir%/}/scala-${_ver}" "${_inst_dir%/}"
     fi
     export SCALA_HOME=${_inst_dir%/}
-    export PATH=$PATH:$SCALA_HOME/bin
+    [[ ":$PATH:" != *":${SCALA_HOME}/bin:"* ]] && export PATH=$PATH:${SCALA_HOME}/bin
 }
 
 function f_setup_groovy() {
@@ -77,16 +77,16 @@ function f_setup_groovy() {
         [ -d "${_inst_dir%/}" ] || ln -s "${_extract_dir%/}/groovy-${_ver}" "${_inst_dir%/}"
     fi
     export GROOVY_HOME=${_inst_dir%/}
-    export PATH=$PATH:$GROOVY_HOME/bin
+    [[ ":$PATH:" != *":${GROOVY_HOME}/bin:"* ]] && export PATH=$PATH:${GROOVY_HOME}/bin
 }
 
-function f_setup_spring_boot_cli() {
+function f_setup_spring_cli() {
     local _ver="${1:-2.2.2}"
     local _extract_dir="${2:-/var/tmp/share}"
     local _inst_dir="${3:-/usr/local/spring-boot-cli}"
 
-    if [ -d "$SPRING_BOOT_CLI_HOME" ]; then
-        echo "SPRING_BOOT_CLI_HOME is already set so that skipping setup."
+    if [ -d "$SPRING_CLI_HOME" ]; then
+        echo "SPRING_CLI_HOME is already set so that skipping setup."
         return
     fi
 
@@ -100,8 +100,8 @@ function f_setup_spring_boot_cli() {
         chmod a+x ${_extract_dir%/}/spring-${_ver}.RELEASE/bin/*
         [ -d "${_inst_dir%/}" ] || ln -s "${_extract_dir%/}/spring-${_ver}.RELEASE" "${_inst_dir%/}"
     fi
-    export SPRING_BOOT_CLI_HOME=${_inst_dir%/}
-    export PATH=$PATH:${SPRING_BOOT_CLI_HOME}/bin
+    export SPRING_CLI_HOME=${_inst_dir%/}
+    [[ ":$PATH:" != *":${SPRING_CLI_HOME}/bin:"* ]] && export PATH=$PATH:${SPRING_CLI_HOME}/bin
 }
 
 function f_javaenvs() {
@@ -174,10 +174,10 @@ function f_groovy() {
     ${_cded} && cd -
 }
 
-function f_spring_boot_cli() {
+function f_spring_cli() {
     local _port="${1}"
     local _cded=false
-    f_setup_spring_boot_cli
+    f_setup_spring_cli
     if [[ "${_port}" =~ ^[0-9]+$ ]]; then
         f_javaenvs "${_port}"
         cd "${_CWD}" && _cded=true
