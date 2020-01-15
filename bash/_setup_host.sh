@@ -46,6 +46,22 @@ curl -s -f "http://www.osakos.com/tools/info.php?id=${_ID}&LOCAL_ADDR=${_IP}"' >
     fi
 }
 
+function f_del_log_cron() {
+    local __doc__="Add a *daily* cron for deleting 'log' files."
+    local _dir="${1:-"/var/tmp/share/*/logs"}"
+    local _days="${2:-"7"}"
+    local _name="del-${_dir//[^[:alnum:]]/_}-${_days}_days"
+    if [ -s /etc/cron.daily/${_name}.cron ]; then
+        echo "/etc/cron.daily/${_name}.cron exists"
+        return 1
+    fi
+    # NOTE: I'm using -print to output what will be deleted into STDOUT, which may generate cron email to root
+    echo '#!/bin/bash
+find '${_dir%/}' -type f -name "*log*" -mtime +'${_days}' -print -delete
+exit $?' > /etc/cron.daily/${_name}.cron
+    chmod a+x /etc/cron.daily/${_name}.cron
+}
+
 function f_shellinabox() {
     local __doc__="Install and set up shellinabox https://code.google.com/archive/p/shellinabox/wikis/shellinaboxd_man.wiki"
     local _user="${1-webuser}"
