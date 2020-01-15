@@ -44,20 +44,22 @@ _IP="$(hostname -I | cut -d" " -f1)"
 curl -s -f "http://www.osakos.com/tools/info.php?id=${_ID}&LOCAL_ADDR=${_IP}"' > /etc/cron.daily/ipchk
         chmod a+x /etc/cron.daily/ipchk
     fi
+
+    f_del_log_cron "${_WORK_DIR%/}/*/logs" "28"
 }
 
 function f_del_log_cron() {
     local __doc__="Add a *daily* cron for deleting 'log' files."
-    local _dir="${1:-"/var/tmp/share/*/logs"}"
+    local _dir="${1:-"${_WORK_DIR%/}/*/logs"}"
     local _days="${2:-"7"}"
     local _name="del-${_dir//[^[:alnum:]]/_}-${_days}_days"
     if [ -s /etc/cron.daily/${_name}.cron ]; then
         echo "/etc/cron.daily/${_name}.cron exists"
         return 1
     fi
-    # NOTE: I'm using -print to output what will be deleted into STDOUT, which may generate cron email to root
+    # NOTE: I'm using -print to output what will be deleted into STDOUT (but hiding error), which may generate cron email to root
     echo '#!/bin/bash
-find '${_dir%/}' -type f -name "*log*" -mtime +'${_days}' -print -delete
+find '${_dir%/}' -type f -name "*log*" -mtime +'${_days}' -print -delete 2>/dev/null
 exit $?' > /etc/cron.daily/${_name}.cron
     chmod a+x /etc/cron.daily/${_name}.cron
 }
