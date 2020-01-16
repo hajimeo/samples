@@ -1510,13 +1510,16 @@ def _gen_regex_for_request_logs(filename="request.log"):
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)"'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
+    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "headerUserAgent"]
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)"'
+    if re.search(partern_str, checking_line):
+        return (columns, partern_str)
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
                "elapsedTime", "misc"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) (.+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
-    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
-               "elapsedTime"]
+    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "misc"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
@@ -1754,10 +1757,10 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
         if bool(end_isotime) is True:
             where_sql += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
         query = """SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d)', `date`, 1) AS date_hour, statusCode,
-    CAST(MAX(elapsedTime)/1000 AS INT) AS max_elaps_sec, 
-    CAST(MIN(elapsedTime)/1000 AS INT) AS min_elaps_sec, 
-    CAST(AVG(elapsedTime)/1000 AS INT) AS avg_elaps_sec, 
-    CAST(AVG(bytesSent) AS INT) AS avg_bytes, 
+    CAST(MAX(CAST(elapsedTime AS INT))/1000 AS INT) AS max_elaps_sec, 
+    CAST(MIN(CAST(elapsedTime AS INT))/1000 AS INT) AS min_elaps_sec, 
+    CAST(AVG(CAST(elapsedTime AS INT))/1000 AS INT) AS avg_elaps_sec, 
+    CAST(AVG(CAST(bytesSent AS INT)) AS INT) AS avg_bytes, 
     count(*) AS occurrence
 FROM t_request_logs
 %s
