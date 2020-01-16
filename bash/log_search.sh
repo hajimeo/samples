@@ -1111,6 +1111,7 @@ function _get_json() {
     local _attrs="${3-"value"}" # attribute1,attribute2 to return only those attributes' value
     local _find_all="${4}"      # If Y, not stopping after finding one
     local _no_pprint="${5}"     # no prettified output
+    # language=Python
     python3 -c 'import sys,json,re
 m = ptn_k = None
 if len("'${_key}'") > 0:
