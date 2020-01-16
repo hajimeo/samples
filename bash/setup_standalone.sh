@@ -60,8 +60,8 @@ OTHERS (which normally you don't need to use):
         Not installing anything, just creating an empty container.
 
     -P
-        Experimental.
         Use with -c (or when same name container doesn't exist), so that docker run command includes port forwards.
+        Use _PORTS environment variable to set port numbers
 
     -S
         To stop any other port conflicting containers.
@@ -341,7 +341,7 @@ function f_docker_run() {
     local __doc__="Execute docker run with my preferred options"
     local _fqdn="$1"
     local _base="${2:-"${_BASE_IMAGE}:${_OS_VERSION}"}"
-    local _ports="${3}"      #"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
+    local _ports="${3}"      #"8081 8070 20888=88 20749=749"
     local _extra_opts="${4}" # eg: "--add-host=imagename.standalone:127.0.0.1"
     local _stop_other=${5:-${_DOCKER_STOP_OTHER}}
     local _share_dir_from="${6:-${_WORK_DIR}}"
@@ -359,19 +359,25 @@ function f_docker_run() {
 
     local _port_opts=""
     for _p in $_ports; do
-        local _pid="`lsof -ti:${_p} | head -n1`"
+        loccal _host_port=${_p}
+        loccal _cont_port=${_p}
+        if [[ "${_p}" =~ ([0-9]+)=([0-9]+) ]]; then
+            _host_port=${BASH_REMATCH[1]}
+            _cont_port=${BASH_REMATCH[2]}
+        fi
+        local _pid="`lsof -ti:${_host_port} | head -n1`"
         if [ -n "${_pid}" ]; then
             if ${_stop_other}; then
-                local _cname="`_docker_find_by_port ${_p}`"
+                local _cname="`_docker_find_by_port ${_host_port}`"
                 if [ -n "${_cname}" ]; then
-                    _log "WARN" "Stopping ${_cname} container as port ${_p} is used..."
+                    _log "WARN" "Stopping ${_cname} container as port ${_host_port} is used..."
                     docker stop -t 7 ${_cname}
                 fi
             else
-                _log "WARN" "Docker run could not use the port ${_p} as it's used by pid:${_pid}, so skipping..."
+                _log "WARN" "Docker run could not use the port ${_host_port} as it's used by pid:${_pid}, so skipping..."
             fi
         else
-            _port_opts="${_port_opts} -p ${_p}:${_p}"
+            _port_opts="${_port_opts} -p ${_host_port}:${_cont_port}"
         fi
     done
     # Only if port forwarding is in use or Mac, append SSH port forwarding, just in case
