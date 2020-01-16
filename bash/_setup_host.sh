@@ -651,7 +651,7 @@ function f_ssh_setup() {
 
 function f_docker_setup() {
     local __doc__="Install docker (if not yet) and customise for HDP test environment (TODO: Ubuntu only)"
-    # https://docs.docker.com/engine/installation/linux/docker-ce/ubuntu/
+    # https://docs.docker.com/install/linux/docker-ce/ubuntu/
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
@@ -664,14 +664,14 @@ function f_docker_setup() {
     fi
 
     if ! which docker &>/dev/null; then
-        apt-get install apt-transport-https ca-certificates curl software-properties-common -y
+        apt-get install -y apt-transport-https ca-certificates curl gnupg-agent software-properties-common || return $?
         # if Ubuntu 18
         if grep -qi 'Ubuntu 18\.' /etc/issue.net; then
-            apt-get purge docker docker-engine docker.io -y
+            apt-get remove -y docker docker-engine docker.io containerd runc || return $?
             curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
             apt-key fingerprint 0EBFCD88 || return $?
             add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
-            apt-get update && apt-get install docker-ce -y
+            apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io
         else
             # Old (14.04 and 16.04) way
             apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key for docker"
@@ -1204,6 +1204,7 @@ function f_host_performance() {
 
 function f_install_packages() {
     which apt-get &>/dev/null || return $?
+    apt-get update || return $?
     apt-get -y install sysv-rc-conf     # Not stopping if error because Ubuntu 18 does not have this
     apt-get -y install python ntpdate curl wget sshfs tcpdump sharutils unzip postgresql-client libxml2-utils \
         expect netcat nscd mysql-client libmysql-java ppp at resolvconf
