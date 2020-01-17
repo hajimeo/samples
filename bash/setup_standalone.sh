@@ -380,8 +380,8 @@ function f_docker_run() {
             _port_opts="${_port_opts} -p ${_host_port}:${_cont_port}"
         fi
     done
-    # Only if port forwarding is in use or Mac, append SSH port forwarding, just in case
-    if [ -n "${_ports}" ] || [ "`uname`" = "Darwin" ]; then
+    # Only if Mac, append SSH port forwarding, just in case
+    if [ "`uname`" = "Darwin" ]; then
         local _num=`echo ${_name} | sed 's/[^0-9]//g' | cut -c1-3`
         local _ssh_pf_num=$(( 22000 + ${_num:-1} ))
         if ! lsof -ti:${_ssh_pf_num} -s TCP:LISTEN; then
