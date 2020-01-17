@@ -787,17 +787,17 @@ function f_threads() {
     [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
     [ -z "${_file}" ] && return 1
     local _prefix="${_file%%.*}_"
-    [ ! -d "./threads_tmp" ] && mkdir ./threads_tmp
+    [ ! -d "./_threads" ] && mkdir ./_threads
 
-    f_splitByRegex "${_file}" "${_split_search}" "./threads_tmp"
+    f_splitByRegex "${_file}" "${_split_search}" "./_threads"
 
-    #rg -i "ldap" ./threads_tmp/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
-    #rg -w BLOCKED ./threads_tmp/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
+    #rg -i "ldap" ./_threads/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
+    #rg -w BLOCKED ./_threads/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
     #rg '^("|\s+- .*lock)' ${_file}
     # Listening ports
     rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
     echo ""
-    rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ./threads_tmp/
+    rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ./_threads/
     echo ""
     rg '^[^ ]' ${_file} | _replace_number 1 | sort | uniq -c | sort -n | tail -n 20
     echo "Total: `rg '^[^ ]' ${_file} -c`"
