@@ -20,8 +20,9 @@ Convert one row to dict:
     row = df[:1].to_dict(orient='records')[0]
 Convert Unix timestamp with milliseconds to datetime
     DATETIME(ROUND(dateColumn / 1000), 'unixepoch')
-Convert current time to Unix timestamp
+Convert current time or string date to Unix timestamp
     STRFTIME('%s', 'NOW')
+    STRFTIME('%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1))
 """
 
 # TODO: When you add a new pip package, don't forget to update setup_work.env.sh
@@ -1757,38 +1758,39 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
         if bool(end_isotime) is True:
             where_sql += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
         query = """SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d)', `date`, 1) AS date_hour, statusCode,
-    CAST(MAX(CAST(elapsedTime AS INT))/1000 AS INT) AS max_elaps_sec, 
-    CAST(MIN(CAST(elapsedTime AS INT))/1000 AS INT) AS min_elaps_sec, 
-    CAST(AVG(CAST(elapsedTime AS INT))/1000 AS INT) AS avg_elaps_sec, 
+    CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
+    CAST(MIN(CAST(elapsedTime AS INT)) AS INT) AS min_elaps, 
+    CAST(AVG(CAST(elapsedTime AS INT)) AS INT) AS avg_elaps, 
     CAST(AVG(CAST(bytesSent AS INT)) AS INT) AS avg_bytes, 
     count(*) AS occurrence
 FROM t_request_logs
 %s
 GROUP BY 1, 2""" % (where_sql)
-        _err("Query: " + query)
-        display(q(query), name="request_log-hourly_aggs")
+        name = "request_log-hourly_aggs"
+        _err("Query (%s): \n%s" % (name,query))
+        display(q(query), name=name)
         query = """SELECT UDF_STR2SQLDT(`date`, '%%d/%%b/%%Y:%%H:%%M:%%S %%z') AS date_time, 
     CAST(statusCode AS INTEGER) AS statusCode, 
     CAST(bytesSent AS INTEGER) AS bytesSent, 
     CAST(elapsedTime AS INTEGER) AS elapsedTime 
 FROM t_request_logs %s""" % (where_sql)
-        _err("Query: " + query)
-        draw(q(query).tail(tail_num), name="request_log-status_bytesent_elapsed")
+        name = "request_log-status_bytesent_elapsed"
+        _err("Query (%s): \n%s" % (name,query))
+        draw(q(query).tail(tail_num), name=name)
 
     ## Loading application log file(s) into database.
     (col_names, line_matching) = _gen_regex_for_app_logs('nexus.log')
-    result_logs = logs2table('nexus.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
-    if bool(result_logs) is False:
-        (col_names, line_matching) = _gen_regex_for_app_logs('*server.log')
-        result_logs = logs2table('*server.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
+    nxrm_logs = logs2table('nexus.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
+    (col_names, line_matching) = _gen_regex_for_app_logs('*server.log')
+    nxiq_logs = logs2table('*server.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
 
     # Hazelcast health monitor
-    result = json2df('health_monitor.json', tablename="t_health_monitor", conn=connect())
-    if bool(result) is False and bool(result_logs):
+    #result = json2df('health_monitor.json', tablename="t_health_monitor", conn=connect())
+    if bool(nxrm_logs):
         _err("Generating t_health_monitor from t_logs ...")
         df_hm = q("""select date_time, message from t_logs
-        where loglevel = 'INFO'
-        and class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
+    where loglevel = 'INFO'
+    and class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
         if len(df_hm) > 0:
             (col_names, line_matching) = _gen_regex_for_hazel_health(df_hm['message'][1])
             msg_ext = df_hm['message'].str.extract(line_matching)
@@ -1798,13 +1800,13 @@ FROM t_request_logs %s""" % (where_sql)
                                                                  if_exists='replace', schema=_DB_SCHEMA)
             _autocomp_inject(tablename='t_health_monitor')
             result = True
-    where_sql = "WHERE 1=1"
-    if bool(start_isotime) is True:
-        where_sql += " AND date_time >= '" + start_isotime + "'"
-    if bool(end_isotime) is True:
-        where_sql += " AND date_time <= '" + end_isotime + "'"
-    if bool(result):
-        query = """select date_time
+        if bool(result):
+            where_sql = "WHERE 1=1"
+            if bool(start_isotime) is True:
+                where_sql += " AND date_time >= '" + start_isotime + "'"
+            if bool(end_isotime) is True:
+                where_sql += " AND date_time <= '" + end_isotime + "'"
+            query = """select date_time
     , UDF_STR_TO_INT(`physical.memory.free`) as sys_mem_free_bytes
     , UDF_STR_TO_INT(`swap.space.free`) as swap_free_bytes
     , UDF_STR_TO_INT(`heap.memory.used/max`) as heap_used_percent
@@ -1817,18 +1819,55 @@ FROM t_request_logs %s""" % (where_sql)
     , CAST(`connection.active.count` AS INTEGER) as node_conn_count
 FROM t_health_monitor
 %s""" % (where_sql)
-        _err("Query: " + query)
-        draw(q(query), name="nexus_health_monitor")
+            name = "nexus_health_monitor"
+            _err("Query (%s): \n%s" % (name,query))
+            draw(q(query), name=name)
 
-    if bool(result_logs):
+    # Nexus IQ
+    if bool(nxiq_logs):
+        # below queries are not so good, so not executing at this moment.
+        query = """SELECT thread, min(date_time), max(date_time), 
+    STRFTIME('%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1))
+  - STRFTIME('%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', min(date_time), 1)) as diff,
+    count(*)
+FROM t_logs
+WHERE thread LIKE 'PolicyEvaluateService%'
+GROUP BY 1
+ORDER BY diff, thread"""
+        name = "nxiq_log-policy_scan_aggs"
+        #_err("Query (%s): \n%s" % (name,query))
+        #display(q(query), name=name)
+        query = """SELECT date_time, 
+  UDF_REGEX(' in (\d+) ms', message, 1) as ms,
+  UDF_REGEX('ms. (\d+)$', message, 1) as status
+FROM t_logs
+WHERE t_logs.class = 'com.sonatype.insight.brain.hds.HdsClient'
+  AND t_logs.message LIKE 'Completed request%'"""
+        name = "nxiq_log-hdfsclient_results"
+        #_err("Query (%s): \n%s" % (name,query))
+        #display(q(query), name=name)
+
+        query = """SELECT date_time, thread,
+    UDF_REGEX(' scan id ([^ ]+),', message, 1) as scan_id,
+    CAST(UDF_REGEX(' in (\d+) ms', message, 1) as INT) as ms 
+FROM t_logs
+WHERE t_logs.message like 'Evaluated policy for%'
+ORDER BY ms DESC
+LIMIT 10"""
+        name = "nxiq_log-top10_slow_scan"
+        _err("Query (%s): \n%s" % (name,query))
+        display(q(query), name="nxiq_log-top10_slow_scan")
+
+    if bool(nxrm_logs) or bool(nxiq_logs):
         ## analyse t_logs table (eg: cout ERROR|WARN)
         query = """SELECT UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, loglevel, count(1) 
     FROM t_logs
     %s
       AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
     GROUP BY 1, 2""" % (where_sql)
-        _err("Query: " + query)
-        draw(q(query), name="warn_error_hourly")
+        name = "warn_error_hourly"
+        _err("Query (%s): \n%s" % (name,query))
+        draw(q(query), name=name)
 
     # TODO: analyse db job triggers
     #q("""SELECT description, fireInstanceId
