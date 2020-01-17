@@ -432,7 +432,7 @@ function f_apache_proxy() {
     apt-get install -y apache2 apache2-utils
     a2enmod proxy proxy_http proxy_connect proxy_wstunnel cache cache_disk ssl
 
-    grep -i "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
+    grep -qi "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
 
     echo "<VirtualHost *:${_port}>
     DocumentRoot ${_proxy_dir}
@@ -508,11 +508,11 @@ function f_apache_reverse_proxy() {
         return 0
     fi
 
-    # How to check loaded modules: apache2ctl -M
+    # How to check loaded modules: apache2ctl -M and/or check mods-available/ and mods-enabled/
     apt-get install -y apache2 apache2-utils libapache2-mod-auth-kerb || return $?
     a2enmod proxy headers proxy_http proxy_connect proxy_wstunnel ssl rewrite auth_kerb || return $?
 
-    grep -i "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
+    grep -qi "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
 
     # Common settings
     echo "<VirtualHost *:${_port}>
@@ -557,7 +557,7 @@ function f_apache_reverse_proxy() {
         # http://www.microhowto.info/howto/configure_apache_to_use_kerberos_authentication.html
         #local _realm="`sed -n -e 's/^ *default_realm *= *\b\(.\+\)\b/\1/p' /etc/krb5.conf`"
         local _realm="`klist -kt ${_keytab_file} | grep -m1 -oP '@.+' | sed 's/@//'`"
-        echo "    <Location />
+        echo "    <Location \"/\">
         AuthType Kerberos
         AuthName \"SPNEGO Login\"
         KrbAuthRealms ${_realm}
@@ -603,6 +603,84 @@ function f_apache_reverse_proxy() {
     # Due to 'ssl' module, using restart rather than reload
     _info "reloading ..."
     service apache2 reload
+}
+
+function f_apache_kdcproxy() {
+    local __doc__="Generate proxy.conf for KdcPorxy"
+    local _port="${1}"
+    local _sever_host="${2:-`hostname -f`}"
+    # @see https://www.dragonsreach.it/2014/10/24/kerberos-over-http-on-a-firewalled-network/
+
+    if netstat -ltnp | grep -E ":${_port}\s+" | grep -v apache2; then
+        _error "Port ${_port} might be in use."
+        return 1
+    fi
+
+    local _conf="/etc/apache2/sites-available/rproxy${_port}.conf"
+    if [ -s ${_conf} ]; then
+        _info "${_conf} already exists. Skipping..."
+        return 0
+    fi
+
+    # How to check loaded modules: apache2ctl -M and/or check mods-available/ and mods-enabled/
+    apt-get install -y apache2 apache2-utils python-kdcproxy libapache2-mod-wsgi || return $?
+    a2enmod proxy headers proxy_http proxy_connect proxy_wstunnel ssl rewrite wsgi || return $?
+
+    grep -qi "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
+
+    # Common settings
+    echo "<VirtualHost *:${_port}>
+    ServerName ${_sever_host}
+    AllowEncodedSlashes NoDecode
+    LogLevel Debug
+    ErrorLog \${APACHE_LOG_DIR}/proxy_error_${_port}.log
+    CustomLog \${APACHE_LOG_DIR}/proxy_access_${_port}.log combined
+    <Proxy *>
+        Order allow,deny
+        Allow from all
+    </Proxy>
+" > ${_conf}
+
+    # If this apache uses https (if server.key and cert exists)
+    local _proto="https"
+    if [ ! -s /etc/apache2/ssl/server.key ]; then
+        _warn "No /etc/apache2/ssl/server.key (= no https)"
+        _proto="http"
+    else
+        echo "
+    SSLEngine on
+    SSLCertificateFile /etc/apache2/ssl/server.crt
+    SSLCertificateKeyFile /etc/apache2/ssl/server.key
+" >> ${_conf}
+    fi
+
+    local _kdcproxy_dir="/usr/lib/python2.7/dist-packages/kdcproxy"
+    if [ ! -s ${_kdcproxy_dir%/}/__init__.py ]; then
+        _error "${_kdcproxy_dir%/}/__init__.py does not exists."
+        return 1
+    fi
+    echo "    WSGIDaemonProcess kdcproxy processes=2 threads=15 maximum-requests=1000 display-name=%{GROUP}
+    WSGIImportScript ${_kdcproxy_dir%/}/__init__.py process-group=kdcproxy application-group=kdcproxy
+    WSGIScriptAlias /KdcProxy ${_kdcproxy_dir%/}/__init__.py
+    WSGIScriptReloading Off
+
+    <Location \"/\">
+        Satisfy Any
+        Order Deny,Allow
+        Allow from all
+        WSGIProcessGroup kdcproxy
+        WSGIApplicationGroup kdcproxy
+    </Location>
+" >> ${_conf}
+    echo "</VirtualHost>" >> ${_conf}
+
+    a2ensite rproxy${_port} || return $?
+    # Due to 'ssl' module, using restart rather than reload
+    _info "reloading ..."
+    service apache2 reload || return $?
+    echo "Completed! Add below in the kdc5.conf:
+  kdc = ${_proto}://${_sever_host}:${_port}/
+  kpasswd_server = ${_proto}://${_sever_host}:${_port}/"
 }
 
 function f_ssh_setup() {
@@ -722,8 +800,9 @@ function f_vnc_setup() {
         f_useradd "$_user" "$_pass" || return $?
     fi
 
+    apt-get install -y xfce4 xfce4-goodies tightvncserver autocutsel || return $?
     f_chrome
-    apt-get install -y xfce4 xfce4-goodies tightvncserver autocutsel
+
     # TODO: also disable screensaver and sleep (eg: /home/hajime/.xscreensaver
     su - $_user -c 'expect <<EOF
 spawn "vncpasswd"
