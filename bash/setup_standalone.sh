@@ -359,8 +359,8 @@ function f_docker_run() {
 
     local _port_opts=""
     for _p in $_ports; do
-        loccal _host_port=${_p}
-        loccal _cont_port=${_p}
+        local _host_port=${_p}
+        local _cont_port=${_p}
         if [[ "${_p}" =~ ([0-9]+)=([0-9]+) ]]; then
             _host_port=${BASH_REMATCH[1]}
             _cont_port=${BASH_REMATCH[2]}
