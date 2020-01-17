@@ -1055,13 +1055,18 @@ function f_freeipa_install() {
     #p_node_create node99${r_DOMAIN_SUFFIX} 99 # Intentionally no Ambari install
     local _ipa_server_fqdn="$1"
     local _password="${2:-$g_FREEIPA_DEFAULT_PWD}"    # password need to be 8 or longer
-    local _how_many="${3:-$r_NUM_NODES}"    # Integer or client hostname
-    local _start_from="${4:-$r_NODE_START_NUM}"
+    local _how_many="${3-$r_NUM_NODES}"    # Integer or client hostname
+    local _start_from="${4-$r_NODE_START_NUM}"
     local _force_client="${5}"
 
     # Used ports https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/linux_domain_identity_authentication_and_policy_guide/installing-ipa
     #ssh -q root@${_node} -t "yum update -y"
     ssh -q root@${_ipa_server_fqdn} -t "yum install freeipa-server -y" || return $?
+
+    local _domain="${_ipa_server_fqdn#.}"
+    if [ "${_domain}" == "standalone.localdomain" ]; then
+        f_freeipa_cert_update "${_ipa_server_fqdn}"
+    fi
 
     # seems FreeIPA needs ipv6 for loopback
     ssh -q root@${_ipa_server_fqdn} -t 'grep -q '^net.ipv6.conf.all.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.conf.all.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.all.disable_ipv6=0)
@@ -1113,10 +1118,10 @@ ipa-client-install --unattended --hostname=`hostname -f` --server='${_ipa_server
 function f_freeipa_cert_update() {
     local __doc__="Update/renew certificate (TODO: haven't tested)"
     # @see https://www.powerupcloud.com/freeipa-server-and-client-installation-on-ubuntu-16-04-part-i/
-    local _ipa_server_fqdn="$1"
-    local _p12_file="$2"
-    local _p12_pass="${3:-${g_DEFAULT_PASSWORD:-"hadoop"}}"
-    local _full_ca="${4}"   # If intermediate is used, concatenate first
+    local _ipa_server_fqdn="${1}"
+    local _p12_file="${2}"
+    local _full_ca="${3}"   # If intermediate is used, concatenate first
+    local _p12_pass="${4:-${g_DEFAULT_PASSWORD:-"hadoop"}}"
     local _adm_pwd="${5:-$g_FREEIPA_DEFAULT_PWD}"
     # example of generating p12.
     #openssl pkcs12 -export -chain -CAfile rootCA_standalone.crt -in standalone.localdomain.crt -inkey standalone.localdomain.key -name standalone.localdomain -out standalone.localdomain.p12 -passout pass:hadoop
