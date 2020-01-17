@@ -1057,40 +1057,46 @@ function f_freeipa_install() {
     local _password="${2:-$g_FREEIPA_DEFAULT_PWD}"    # password need to be 8 or longer
     local _how_many="${3-$r_NUM_NODES}"    # Integer or client hostname
     local _start_from="${4-$r_NODE_START_NUM}"
-    local _force_client="${5}"
+    local _force="${5}"
 
     # Used ports https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/linux_domain_identity_authentication_and_policy_guide/installing-ipa
-    #ssh -q root@${_node} -t "yum update -y"
+    ssh -q root@${_node} -t "yum update -y"
     ssh -q root@${_ipa_server_fqdn} -t "yum install freeipa-server -y" || return $?
-
-    local _domain="${_ipa_server_fqdn#.}"
-    if [ "${_domain}" == "standalone.localdomain" ]; then
-        f_freeipa_cert_update "${_ipa_server_fqdn}"
-    fi
 
     # seems FreeIPA needs ipv6 for loopback
     ssh -q root@${_ipa_server_fqdn} -t 'grep -q '^net.ipv6.conf.all.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.conf.all.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.all.disable_ipv6=0)
 grep -q '^net.ipv6.conf.lo.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.conf.lo.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.lo.disable_ipv6=0)'
 
+    _warn "#########################################################"
+    _warn " YOU MIGHT WANT TO RESTART OS/CONTAINTER NOW (sleep 10)  "
+    _warn "#########################################################"
+    sleep 10
+
     # TODO: got D-bus error when freeIPA calls systemctl (service dbus restart makes install works but makes docker slow/unstable)
+    [[ "${_force}" =~ ^(y|Y) ]] && ssh -q root@${_ipa_server_fqdn} -t 'ipa-server-install --uninstall --ignore-topology-disconnect --ignore-last-of-role'
     # Adding -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket in dcoker run
-    ssh -q root@${_ipa_server_fqdn} -t 'ipactl status || (service dbus restart;_d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U)' || return $?
+    ssh -q root@${_ipa_server_fqdn} -t '_d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U'
+    if [ $? -ne 0 ]; then
+        _error "ipa-server-install failed. You might want to run 'service dbus restart' and/or restart the OS (container), and uninstall then re-install"
+        return 1
+    fi
     ssh -q root@${_ipa_server_fqdn} -t '[ ! -s /etc/rc.lcoal ] && echo -e "#!/bin/bash\nexit 0" > /etc/rc.local'
     ssh -q root@${_ipa_server_fqdn} -t 'grep -q "ipactl start" /etc/rc.local || echo -e "\n`which ipactl` start" >> /etc/rc.local'
+
+    local _domain="${_ipa_server_fqdn#*.}"
+    if [ "${_domain}" == "standalone.localdomain" ]; then
+        f_freeipa_cert_update "${_ipa_server_fqdn}"
+    fi
 
     #ipa ping
     #ipa config-show --all
     if [[ "$_how_many" =~ ^[0-9]+$ ]]; then
         for i in `_docker_seq "$_how_many" "$_start_from"`; do
-            f_freeipa_client_install node${i} "${_ipa_server_fqdn}" "${_password}" "${_force_client}"
+            f_freeipa_client_install node${i} "${_ipa_server_fqdn}" "${_password}" "${_force}"
         done
     elif [ -n "${_how_many}" ]; then
         local _client_hostname="${_how_many}"
-        f_freeipa_client_install "${_client_hostname}" "${_ipa_server_fqdn}" "${_password}" "${_force_client}"
-    fi
-
-    if [[ "${_force_client}" =~ y|Y ]]; then
-        _warn "Due to dbus restart, may need to stop/start containers"
+        f_freeipa_client_install "${_client_hostname}" "${_ipa_server_fqdn}" "${_password}" "${_force}"
     fi
     _warn "TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days"
 }
@@ -1126,21 +1132,27 @@ function f_freeipa_cert_update() {
     # example of generating p12.
     #openssl pkcs12 -export -chain -CAfile rootCA_standalone.crt -in standalone.localdomain.crt -inkey standalone.localdomain.key -name standalone.localdomain -out standalone.localdomain.p12 -passout pass:hadoop
 
-    if [ -s ${_full_ca} ]; then
-        ssh -q root@${_ipa_server_fqdn} -t "ipa-cacert-manage install ${_full_ca} && echo -n '${_adm_pwd}' | kinit admin; ipa-certupdate" #|| return $?
-        _info "TODO: Run 'ipa-certupdate' on each node."
-    fi
-
     if [ -z "${_p12_file}" ]; then
         if [ ! -s /var/tmp/share/cert/standalone.localdomain.p12 ]; then
             curl -f -o /var/tmp/share/cert/standalone.localdomain.p12 "https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.p12" || return $?
         fi
         _p12_file="/var/tmp/share/cert/standalone.localdomain.p12"
-        _p12_pass="hadoop"
+        _p12_pass="password"
+        if [ -z ${_full_ca} ]; then
+            if [ ! -s /var/tmp/share/cert/rootCA_standalone.crt ]; then
+                curl -f -o /var/tmp/share/cert/rootCA_standalone.crt "https://github.com/hajimeo/samples/raw/master/misc/rootCA_standalone.crt" || return $?
+            fi
+            _full_ca=/var/tmp/share/cert/rootCA_standalone.crt
+        fi
     fi
+    if [ -s ${_full_ca} ]; then
+        ssh -q root@${_ipa_server_fqdn} -t "ipa-cacert-manage install ${_full_ca} && echo -n '${_adm_pwd}' | kinit admin && ipa-certupdate" #|| return $?
+        _info "TODO: Run 'ipa-certupdate' on each node."
+    fi
+
     # Should update only web server cert (no -d)?
     scp ${_p12_file} root@${_ipa_server_fqdn}:/tmp/ || return $?
-    ssh -q root@${_ipa_server_fqdn} -t "ipa-server-certinstall -w -d /tmp/${_p12_file} --pin="${_p12_pass}" -p "${_adm_pwd}" && ipactl restart"
+    ssh -q root@${_ipa_server_fqdn} -t "ipa-server-certinstall -w -d /tmp/$(basename ${_p12_file}) --pin="${_p12_pass}" -p "${_adm_pwd}" && ipactl restart"
 }
 
 function f_sssd_setup() {
