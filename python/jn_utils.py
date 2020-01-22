@@ -1799,8 +1799,6 @@ FROM t_request_logs %s""" % (where_sql)
             df_hm.drop(columns=['message']).join(msg_ext).to_sql(name="t_health_monitor", con=connect(), chunksize=1000,
                                                                  if_exists='replace', schema=_DB_SCHEMA)
             _autocomp_inject(tablename='t_health_monitor')
-            result = True
-        if bool(result):
             where_sql = "WHERE 1=1"
             if bool(start_isotime) is True:
                 where_sql += " AND date_time >= '" + start_isotime + "'"
