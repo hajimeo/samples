@@ -282,7 +282,7 @@ function chromep() {
 }
 # Add route to dockerhost to access containers directly
 function r2dh() {
-    local _dh="${1:-dh1}"  # docker host IP
+    local _dh="${1:-dh1}"  # docker host IP or L2TP 10.0.1.1
     local _3rd="${2:-100}"  # 3rd decimal in network address
     if [ "Darwin" = "`uname`" ]; then
         sudo route delete -net 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 ${_dh}
