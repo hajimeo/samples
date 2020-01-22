@@ -24,6 +24,7 @@ function f_host_misc() {
     # If you would like to use the default, comment PasswordAuthentication or PermitRootLogin
     grep -q '^PasswordAuthentication no' /etc/ssh/sshd_config && sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config || return $?
     grep -q '^PermitRootLogin ' /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin .\+/PermitRootLogin no/' /etc/ssh/sshd_config
+    _upsert "/etc/ssh/sshd_config" "GatewayPorts" "yes" "" " "
     if [ $? -eq 0 ]; then
         service ssh restart
     fi
@@ -550,7 +551,7 @@ function f_apache_reverse_proxy() {
         _log "INFO" "No HTTP keytab: ${_keytab_file}"
         echo "    kadmin -p admin@\${_realm} -q 'add_principal -randkey HTTP/${_sever_host}'
     kadmin -p admin@\${_realm} -q "xst -k ${_keytab_file} HTTP/`hostname -f`"
-    # If freeIPA, after 'kinit admin':
+    # If freeIPA, after adding host and service from UI, 'kinit admin':
     ipa-getkeytab -s node-freeipa.standalone.localdomain -p \"HTTP/${_sever_host}\" -k ${_keytab_file}
     chmod a+r ${_keytab_file}"
     elif [ -s "${_keytab_file}" ]; then
@@ -910,6 +911,7 @@ function f_dnsmasq() {
 }' > /etc/docker/daemon.json
             _warn "daemon.json updated. 'systemctl daemon-reload && service docker restart' required"
         fi
+        # TODO: also add live-restore https://docs.docker.com/config/containers/live-restore/
     fi
 
     # @see https://bugs.launchpad.net/ubuntu/+source/systemd/+bug/1624320
@@ -1080,13 +1082,13 @@ conn L2TP-NAT
     if [ -f /etc/ppp/options.l2tpd.lns ]; then
         cp -p /etc/ppp/options.l2tpd.lns /etc/ppp/options.l2tpd.lns.$(date +"%Y%m%d%H%M%S")
     fi
+    # In file /etc/ppp/options.l2tpd.lns: unrecognized option 'lock'
     echo 'name l2tp
 refuse-pap
 refuse-chap
 refuse-mschap
 require-mschap-v2
 nodefaultroute
-lock
 nobsdcomp
 mtu 1100
 mru 1100
