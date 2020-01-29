@@ -487,7 +487,7 @@ function f_getPerflog() {
 function f_list_start_end(){
     local __doc__="Output start time, end time, difference(sec), (filesize) from *multiple* log files"
     local _glob="${1}"
-    local _sort="${2:-2}"
+    local _sort="${2:-3}"   # Sort by end time
     local _files=""
     # If no file(s) given, check current working directory
     if [ -n "${_glob}" ]; then
@@ -503,7 +503,7 @@ function f_start_end_time_with_diff(){
     #eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"^${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)
     local _log="$1"
     local _date_regex="${2}"
-    [ -z "$_date_regex" ] && _date_regex="(^${_DATE_FORMAT}.\d\d:\d\d:\d\d|\[\d{2}[-/][a-zA-Z]{3}[-/]\d{4}.\d\d:\d\d:\d\d -\d{4}\])"
+    [ -z "$_date_regex" ] && _date_regex="(^${_DATE_FORMAT}.\d\d:\d\d:\d\d|\[\d{2}[-/][a-zA-Z]{3}[-/]\d{4}.\d\d:\d\d:\d\d)"
 
     local _start_date="$(_date2iso "`rg -z -N -om1 "$_date_regex" ${_log}`")" || return $?
     local _extension="${_log##*.}"
@@ -789,7 +789,7 @@ function f_threads() {
     local _prefix="${_file%%.*}_"
     [ ! -d "./_threads" ] && mkdir ./_threads
 
-    f_splitByRegex "${_file}" "${_split_search}" "./_threads"
+    f_splitByRegex "${_file}" "${_split_search}" "./_threads" ""
 
     #rg -i "ldap" ./_threads/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
     #rg -w BLOCKED ./_threads/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
@@ -986,13 +986,15 @@ function f_splitByRegex() {
     local _file="$1"    # can't be a glob as used in sed later
     local _regex="$2"   # If empty, use (YYYY-MM-DD).(hh). For request.log '(\d\d/[a-zA-Z]{3}/\d\d\d\d).(\d\d)'
     local _save_to="${3:-"."}"
+    local _prefix="${4-"*None*"}"   # Can be an empty string
 
     [ -z "${_regex}" ] && _regex="^($_DATE_FORMAT).(\d\d)"
     [ ! -d "${_save_to%/}" ] && mkdir -p "${_save_to%/}"
 
     #_file="$(echo ${_file} | _sed 's/.\///')"
     local _base_name="$(basename "${_file}")"
-    local _save_path_prefix="${_save_to%/}/${_base_name%%.*}"
+    [ "${_prefix}" == "*None*" ] && _prefix="${_base_name%%.*}_"
+    local _save_path_prefix="${_save_to%/}/${_prefix}"
     local _extension="${_base_name##*.}"
 
     # this may not be working
@@ -1010,8 +1012,8 @@ function f_splitByRegex() {
             [ ${_prev_n} == ${BASH_REMATCH[1]} ] && continue
             [ -n "${_prev_str}" ] && [ "${_prev_str}" == "${BASH_REMATCH[2]}" ] && continue
             # Found new value (next date, next thread etc.)
-            _tmp_str="$(echo ${_prev_str} | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-256)"
-            _sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}_${_tmp_str}.${_extension} || return $?
+            _tmp_str="$(echo ${_prev_str} | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-128)"
+            _sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}${_tmp_str}.${_extension} || return $?
             _prev_str="${BASH_REMATCH[2]}"  # Used for the file name and detecting a new value
             _prev_n=${BASH_REMATCH[1]}
         fi
