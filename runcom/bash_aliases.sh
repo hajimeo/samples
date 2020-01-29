@@ -36,6 +36,8 @@ alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{t
 alias wcln="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
 # 10 seconds is too short
 alias docker_stop="docker stop -t 120"
+# maven/mvn get/download
+alias mvn-get="mvn dependency:get -Dartifact="
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
 which mdfind &>/dev/null && alias locat="mdfind"
@@ -282,7 +284,7 @@ function chromep() {
 }
 # Add route to dockerhost to access containers directly
 function r2dh() {
-    local _dh="${1:-dh1}"  # docker host IP or L2TP 10.0.1.1
+    local _dh="${1:-"10.0.1.1"}"  # docker host IP or L2TP 10.0.1.1
     local _3rd="${2:-100}"  # 3rd decimal in network address
     if [ "Darwin" = "`uname`" ]; then
         sudo route delete -net 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 ${_dh}
@@ -317,8 +319,8 @@ function backupC() {
     local _mv="mv --backup=t"
     [ "Darwin" = "`uname`" ] && _mv="gmv --backup=t"
 
-    # Special: database directory often too large, so removing. Also checking gmv availability
-    find ${_src%/} -type d -mtime +90 -name database -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ || return $?
+    ## Special: database directory often too large, so removing. Also checking gmv availability
+    #find ${_src%/} -type d -mtime +90 -name database -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ || return $?
 
     # Delete files larger than _size (10MB) and older than one year
     find ${_src%/} -type f -mtime +365 -size +10000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
@@ -326,9 +328,9 @@ function backupC() {
     find ${_src%/} -type f -mtime +180 -size +60000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
     # Delete files larger than 100MB and older than 90 days
     find ${_src%/} -type f -mtime +90 -size +100000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
-    # Synch all files smaller than _size (10MB)
-    rsync -Pvaz --max-size=10000k --modify-window=1 ${_src%/}/* ${_dst%/}/
     wait
+    # Synch all files smaller than _size (10MB)
+    rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 ${_src%/}/ ${_dst%/}/
 }
 function push2search() {
     local _force="$1"
