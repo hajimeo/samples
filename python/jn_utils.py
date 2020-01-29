@@ -622,7 +622,7 @@ def _human_readable_num(some_numeric, base_unit="byte", r=2):
                 return str(round(n, r)) + " " + units[u_idx]
             return str(round(n / (1000 ** u_idx), r)) + " " + units[u_idx]
         elif base_unit in ['msec', 'milliseconds']:
-            #base = list(reversed([1000, 60000, 3600000, 86400000]))
+            # base = list(reversed([1000, 60000, 3600000, 86400000]))
             base = [86400000, 3600000, 60000, 1000]
             units = ['d', 'h', 'm', 's', 'ms']
             # Need to be reverse order for time
@@ -639,7 +639,7 @@ def _register_udfs(conn):
         # UDF_REGEX(regex, column, integer)
         conn.create_function("UDF_REGEX", 3, _udf_regex)
         conn.create_function("UDF_STR2SQLDT", 2, _udf_str2sqldt)
-        #conn.create_function("UDF_TIMESTAMP", 1, _udf_timestamp)
+        # conn.create_function("UDF_TIMESTAMP", 1, _udf_timestamp)
         conn.create_function("UDF_STR_TO_INT", 1, _udf_str_to_int)
     return conn
 
@@ -690,6 +690,9 @@ def query(sql, conn=None, no_history=False):
     # return conn.execute(sql).fetchall()
     # TODO: pd.options.display.max_colwidth = col_width does not work
     df = pd.read_sql(sql, conn)
+    # TODO: Trying to set td tags alignment to left but not working
+    #dfStyler = df.style.set_properties(**{'text-align': 'left'})
+    #dfStyler.set_table_styles([dict(selector='td', props=[('text-align', 'left')])])
     if no_history is False and df.empty is False:
         _save_query(sql)
     return df
@@ -1160,9 +1163,10 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
     (None, ('2018-09-04',), 'test')
     """
     tmp_tuple = None
-    #_debug(" - line: %s ." % (str(line)))
+    _debug(" - line: %s" % (str(line)))
     # If current line is beginning of a new *log* line (eg: ^2018-08-\d\d...)
     if begin_re.search(line):
+        _debug("   matched.")
         # and if previous matches aren't empty, prev_matches is going to be saved
         if bool(prev_matches):
             tmp_tuple = _massage_tuple_for_save(tpl=prev_matches, long_value=prev_message, num_cols=num_cols)
@@ -1174,7 +1178,7 @@ def _find_matching(line, prev_matches, prev_message, begin_re, line_re, size_re=
 
         _matches = line_re.search(line)
         if _matches:
-            #_debug("_matches: %s" % (str(_matches.groups())))
+            # _debug("_matches: %s" % (str(_matches.groups())))
             _tmp_groups = _matches.groups()
             prev_message = _tmp_groups[-1]
             prev_matches = _tmp_groups[:(len(_tmp_groups) - 1)]
@@ -1248,6 +1252,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     :return: A list of tuples
     >>> pass    # TODO: implement test
     """
+    _debug(f"line_beginning: {line_beginning}")
     begin_re = re.compile(line_beginning)
     line_re = re.compile(line_matching)
     size_re = re.compile(size_regex) if bool(size_regex) else None
@@ -1267,7 +1272,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     _empty = 0
     for l in f:
         _ln += 1
-        # _debug("  _ln=%s, line_from=%s line_until=%s ..." % (str(_ln), str(line_from), str(line_until)))
+        #_debug("  _ln=%s, line_from=%s line_until=%s ..." % (str(_ln), str(line_from), str(line_until)))
         if bool(line_from) and _ln < line_from:
             _empty += 1
             continue
@@ -1299,13 +1304,23 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     return tuples
 
 
+def threads2table(filename="threads.txt", tablename=None, conn=None, date_time=None):
+    # TODO: date_time (should use file modified time? but not trust-able)
+    # TODO: waiting on | locked
+    return logs2table(filename=filename, tablename=tablename, conn=conn,
+                  col_names=['thread_name', 'id', 'state', 'stacktrace'],
+                  line_beginning="^\"",
+                  line_matching='^"([^"]+)" id=([^ ]+) state=(\w+)(.*)',
+                  size_regex=None, time_regex=None)
+
+
 def logs2table(filename, tablename=None, conn=None,
                col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
                line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)",
                size_regex=None, time_regex=None,
                line_from=0, line_until=0,
-               max_file_num=10, max_file_size=(1024 * 1024 * 50),
+               max_file_num=10, max_file_size=(1024 * 1024 * 100),
                appending=False, multiprocessing=False):
     """
     Insert multiple log files into *one* table
@@ -1424,7 +1439,8 @@ def logs2table(filename, tablename=None, conn=None,
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
                                            size_regex=size_regex, time_regex=time_regex, num_cols=num_cols,
                                            replace_comma=True, line_from=line_from, line_until=line_until)
-            _debug(("tuples len:%d" % len(tuples)))
+            if bool(tuples):
+                _debug(("tuples len:%d" % len(tuples)))
             if len(tuples) > 0:
                 res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
                 if bool(res) is False:  # if fails once, stop
@@ -1511,7 +1527,8 @@ def _gen_regex_for_request_logs(filename="request.log"):
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)"'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
-    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "headerUserAgent"]
+    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime",
+               "headerUserAgent"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)"'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
@@ -1767,7 +1784,7 @@ FROM t_request_logs
 %s
 GROUP BY 1, 2""" % (where_sql)
         name = "request_log-hourly_aggs"
-        _err("Query (%s): \n%s" % (name,query))
+        _err("Query (%s): \n%s" % (name, query))
         display(q(query), name=name)
         query = """SELECT UDF_STR2SQLDT(`date`, '%%d/%%b/%%Y:%%H:%%M:%%S %%z') AS date_time, 
     CAST(statusCode AS INTEGER) AS statusCode, 
@@ -1775,7 +1792,7 @@ GROUP BY 1, 2""" % (where_sql)
     CAST(elapsedTime AS INTEGER) AS elapsedTime 
 FROM t_request_logs %s""" % (where_sql)
         name = "request_log-status_bytesent_elapsed"
-        _err("Query (%s): \n%s" % (name,query))
+        _err("Query (%s): \n%s" % (name, query))
         draw(q(query).tail(tail_num), name=name)
 
     ## Loading application log file(s) into database.
@@ -1785,7 +1802,7 @@ FROM t_request_logs %s""" % (where_sql)
     nxiq_logs = logs2table('*server.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
 
     # Hazelcast health monitor
-    #result = json2df('health_monitor.json', tablename="t_health_monitor", conn=connect())
+    # result = json2df('health_monitor.json', tablename="t_health_monitor", conn=connect())
     if bool(nxrm_logs):
         _err("Generating t_health_monitor from t_logs ...")
         df_hm = q("""select date_time, message from t_logs
@@ -1818,7 +1835,7 @@ FROM t_request_logs %s""" % (where_sql)
 FROM t_health_monitor
 %s""" % (where_sql)
             name = "nexus_health_monitor"
-            _err("Query (%s): \n%s" % (name,query))
+            _err("Query (%s): \n%s" % (name, query))
             draw(q(query), name=name)
 
     # Nexus IQ
@@ -1833,8 +1850,8 @@ WHERE thread LIKE 'PolicyEvaluateService%'
 GROUP BY 1
 ORDER BY diff, thread"""
         name = "nxiq_log-policy_scan_aggs"
-        #_err("Query (%s): \n%s" % (name,query))
-        #display(q(query), name=name)
+        # _err("Query (%s): \n%s" % (name,query))
+        # display(q(query), name=name)
         query = """SELECT date_time, 
   UDF_REGEX(' in (\d+) ms', message, 1) as ms,
   UDF_REGEX('ms. (\d+)$', message, 1) as status
@@ -1842,8 +1859,8 @@ FROM t_logs
 WHERE t_logs.class = 'com.sonatype.insight.brain.hds.HdsClient'
   AND t_logs.message LIKE 'Completed request%'"""
         name = "nxiq_log-hdfsclient_results"
-        #_err("Query (%s): \n%s" % (name,query))
-        #display(q(query), name=name)
+        # _err("Query (%s): \n%s" % (name,query))
+        # display(q(query), name=name)
 
         query = """SELECT date_time, thread,
     UDF_REGEX(' scan id ([^ ]+),', message, 1) as scan_id,
@@ -1853,7 +1870,7 @@ WHERE t_logs.message like 'Evaluated policy for%'
 ORDER BY ms DESC
 LIMIT 10"""
         name = "nxiq_log-top10_slow_scan"
-        _err("Query (%s): \n%s" % (name,query))
+        _err("Query (%s): \n%s" % (name, query))
         display(q(query), name="nxiq_log-top10_slow_scan")
 
     if bool(nxrm_logs) or bool(nxiq_logs):
@@ -1864,21 +1881,21 @@ LIMIT 10"""
       AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
     GROUP BY 1, 2""" % (where_sql)
         name = "warn_error_hourly"
-        _err("Query (%s): \n%s" % (name,query))
+        _err("Query (%s): \n%s" % (name, query))
         draw(q(query), name=name)
 
     # TODO: analyse db job triggers
-    #q("""SELECT description, fireInstanceId
-    #, nextFireTime
-    #, DATETIME(ROUND(nextFireTime / 1000), 'unixepoch') as NextAt
-    #, DATETIME(ROUND(previousFireTime / 1000), 'unixepoch') as PrevAt
-    #, DATETIME(ROUND(startTime / 1000), 'unixepoch') as startAt
-    #, jobDataMap, cronEx
-    #FROM t_db_job_triggers_json
-    #WHERE nextFireTime is NOT NULL
+    # q("""SELECT description, fireInstanceId
+    # , nextFireTime
+    # , DATETIME(ROUND(nextFireTime / 1000), 'unixepoch') as NextAt
+    # , DATETIME(ROUND(previousFireTime / 1000), 'unixepoch') as PrevAt
+    # , DATETIME(ROUND(startTime / 1000), 'unixepoch') as startAt
+    # , jobDataMap, cronEx
+    # FROM t_db_job_triggers_json
+    # WHERE nextFireTime is NOT NULL
     #  AND nextFireTime > 1578290830000
-    #ORDER BY nextFireTime
-    #""")
+    # ORDER BY nextFireTime
+    # """)
     _err("Completed.")
 
 
