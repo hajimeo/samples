@@ -239,9 +239,9 @@ function f_setup_java() {
             _install default-jdk
         else
             # If Linux, downloading .tar.gz file and extract, so that it can be re-used in the container
-            local _java_exact_ver="$(basename $(curl -s https://github.com/AdoptOpenJDK/openjdk${_v}-binaries/releases/latest | _sed -r 's/.+"(https:[^"]+)".+/\1/p'))"
+            local _java_exact_ver="$(basename $(curl -s https://github.com/AdoptOpenJDK/openjdk${_v}-binaries/releases/latest | _sed -nr 's/.+"(https:[^"]+)".+/\1/p'))"
             # NOTE: hoping the naming rule is same for different versions (eg: jdk8u222-b10_openj9-0.15.1)
-            if [[ "${_java_exact_ver}" =~ jdk([^-]+)-([^_]+).+ ]]; then
+            if [[ "${_java_exact_ver}" =~ jdk([^-]+)-([^_]+) ]]; then
                 [ ! -d "/var/tmp/share/java" ] && mkdir -p -m 777 /var/tmp/share/java
                 local _jdk_ver="${BASH_REMATCH[1]}"     # 8u222
                 local _jdk_minor="${BASH_REMATCH[2]}"   # b10
