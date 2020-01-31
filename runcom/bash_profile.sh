@@ -11,8 +11,8 @@ export HISTTIMEFORMAT="%Y-%m-%d %T "
 if which go &>/dev/null; then
     [ -z "${GOROOT}" ] && export GOROOT=/usr/local/opt/go/libexec
     [ -z "${GOPATH}" ] && export GOPATH=$HOME/go
-    [[ ":$PATH:" != *":$PATH:$GOROOT/bin:"* ]] && export PATH=$PATH:$GOROOT/bin
-    [[ ":$PATH:" != *":$GOPATH/bin:"* ]] && export PATH=$PATH:$GOPATH/bin
+    [[ ":$PATH:" != *":$PATH:$GOROOT/bin:"* ]] && export PATH=${PATH%:}:$GOROOT/bin
+    [[ ":$PATH:" != *":$GOPATH/bin:"* ]] && export PATH=${PATH%:}:$GOPATH/bin
 fi
 
 # Kerberos client
@@ -32,7 +32,11 @@ fi
 #fi
 if [ -d $HOME/Library/Python/3.7/bin ]; then
     # Intentionally adding at the beginning
-    [[ ":$PATH:" != *":$HOME/Library/Python/3.7/bin:"* ]] && export PATH=$HOME/Library/Python/3.7/bin:$PATH
+    [[ ":$PATH:" != *":$HOME/Library/Python/3.7/bin:"* ]] && export PATH=$HOME/Library/Python/3.7/bin:${PATH#:}
+fi
+if [ -d /usr/local/sbin ]; then
+    # Intentionally adding at the beginning
+    [[ ":$PATH:" != *":/usr/local/sbin:"* ]] && export PATH=${PATH%:}:/usr/local/sbin
 fi
 if [ -d $HOME/IdeaProjects/samples/python ]; then
     # Intentionally adding at the beginning
