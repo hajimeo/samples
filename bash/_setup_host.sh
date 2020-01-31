@@ -1033,7 +1033,7 @@ function f_l2tpd() {
     local _pass="${2:-${_user}}"
     local _if="${3}"
 
-    local _vpn_net="10.0.1"
+    local _vpn_net="172.31.0"
     if [ -z "${_if}" ]; then
         _if="$(ifconfig | grep `hostname -i` -B 1 | grep -oE '^e[^ ]+')"
     fi
