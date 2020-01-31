@@ -284,16 +284,19 @@ function chromep() {
 }
 # Add route to dockerhost to access containers directly
 function r2dh() {
-    local _dh="${1:-"10.0.1.1"}"  # docker host IP or L2TP 10.0.1.1
-    local _3rd="${2:-100}"  # 3rd decimal in network address
+    local _dh="${1}"  # docker host IP or L2TP 10.0.1.1
+    local _3rd="${2-100}"  # 3rd decimal in network address
+    [ -z "${_dh}" ] && _dh="$(ifconfig ppp0 | grep -oE 'inet .+' | awk '{print $4}')" 2>/dev/null
+    [ -z "${_dh}" ] && _dh="dh1"
+
     if [ "Darwin" = "`uname`" ]; then
-        sudo route delete -net 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 ${_dh}
+        [ -n "${_3rd}" ] && ( sudo route delete -net 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 ${_dh} )
         sudo route delete -net 172.17.0.0/24 &>/dev/null;sudo route add -net 172.17.0.0/24 ${_dh}
         sudo route delete -net 172.18.0.0/24 &>/dev/null;sudo route add -net 172.18.0.0/24 ${_dh}
     elif [ "Linux" = "`uname`" ]; then
-        sudo ip route del 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 gw ${_dh} ens3
+        [ -n "${_3rd}" ] && ( sudo ip route del 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 gw ${_dh} ens3 )
     else    # Assuming windows (cygwin)
-        route delete 172.17.${_3rd}.0 &>/dev/null;route add 172.17.${_3rd}.0 mask 255.255.255.0 ${_dh};
+        [ -n "${_3rd}" ] && ( route delete 172.17.${_3rd}.0 &>/dev/null;route add 172.17.${_3rd}.0 mask 255.255.255.0 ${_dh} )
     fi
 }
 function sshs() {
@@ -353,6 +356,11 @@ function pubS() {
     scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/
     cp -f $HOME/IdeaProjects/work/bash/install_sonatype.sh $HOME/share/sonatype/
     date
+}
+function sync_nexus_binaries() {
+    # Currently only IQ ...
+    rsync -rcv $HOME/.nexus_executable_cache/nexus-iq-server-*.tar.gz root@dh1:/var/tmp/share/sonatype/
+    rsync -rcv root@dh1:/var/tmp/share/sonatype/nexus-iq-server-*.tar.gz $HOME/.nexus_executable_cache/
 }
 function sptBoot() {
     local _zip="$1"
