@@ -307,17 +307,12 @@ function f_ambari_kerberos_with_ad_setup() {
     #curl 'http://node6:8080/api/v1/clusters/ubuntu6/services?' -X PUT -H 'Pragma: no-cache' -H 'Origin: http://node6:8080' -H 'Accept-Encoding: gzip, deflate' -H 'Accept-Language: en-AU,en;q=0.9,ja;q=0.8' -H 'X-Requested-By: X-Requested-By' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36' -H 'Content-Type: application/x-www-form-urlencoded; charset=UTF-8' -H 'Accept: application/json, text/javascript, */*; q=0.01' -H 'Cache-Control: no-cache' -H 'X-Requested-With: XMLHttpRequest' -H 'Cookie: gsScrollPos-742=0; AMBARISESSIONID=node02bfv7fhc3r8413o9kjd6jkdhf4.node0' -H 'Connection: keep-alive' -H 'Referer: http://node6:8080/' --data '{"RequestInfo":{"context":"Stop services","operation_level":{"level":"CLUSTER","cluster_name":"ubuntu6"}},"Body":{"ServiceInfo":{"state":"INSTALLED"}}}' --compressed
 }
 
-function f_ssl_hadoop() {
-    local __doc__="Setup SSL for hadoop https://community.hortonworks.com/articles/92305/how-to-transfer-file-using-secure-webhdfs-in-distc.html"
-    # f_ssl_hadoop "" "" "" "cdh5101.standalone.localdomain" "" ".standalone.localdomain"
+function f_ssl_setup() {
+    local __doc__="Setup SSL (wildcard) certificate for f_ssl_hadoop"
+    # f_ssl_setup "" ".standalone.localdomain"
     local _password="${1:-${g_DEFAULT_PASSWORD:-hadoop}}"
-    local _ambari_host="${2-$r_AMBARI_HOST}"
-    local _ambari_port="${3:-8080}"
-    local _how_many="${4:-$r_NUM_NODES}"    # Integer or a hostname
-    local _start_from="${5:-$r_NODE_START_NUM}"
-    local _domain_suffix="${6:-${r_DOMAIN_SUFFIX:-.`hostname -s`.localdomain}}"
-    local _openssl_cnf="${7:-./openssl.cnf}"
-    local _no_updating_ambari_config="${8:-$r_NO_UPDATING_AMBARI_CONFIG}"
+    local _domain_suffix="${2:-"`hostname -s`.localdomain"}}"
+    local _openssl_cnf="${3:-./openssl.cnf}"
 
     if [ ! -s "${_openssl_cnf}" ]; then
         curl -s -f -o "${_openssl_cnf}" https://raw.githubusercontent.com/hajimeo/samples/master/misc/openssl.cnf || return $?
@@ -365,6 +360,21 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
     openssl pkcs12 -export -in ./server.${_domain_suffix#.}.crt -inkey ./server.${_domain_suffix#.}.key -certfile ./server.${_domain_suffix#.}.crt -out ./${g_KEYSTORE_FILE_P12} -passin "pass:${_password}" -passout "pass:${_password}" || return $?
     [ -s ./${g_KEYSTORE_FILE} ] && mv -f ./${g_KEYSTORE_FILE} ./${g_KEYSTORE_FILE}.$$.bak
     keytool -importkeystore -srckeystore ./${g_KEYSTORE_FILE_P12} -srcstoretype pkcs12 -srcstorepass ${_password} -destkeystore ./${g_KEYSTORE_FILE} -deststoretype JKS -deststorepass ${_password} || return $?
+}
+
+function f_ssl_hadoop() {
+    local __doc__="Setup SSL for hadoop https://community.hortonworks.com/articles/92305/how-to-transfer-file-using-secure-webhdfs-in-distc.html"
+    # f_ssl_hadoop "" "" "" "cdh5101.standalone.localdomain" "" ".standalone.localdomain"
+    local _password="${1:-${g_DEFAULT_PASSWORD:-hadoop}}"
+    local _ambari_host="${2-$r_AMBARI_HOST}"
+    local _ambari_port="${3:-8080}"
+    local _how_many="${4:-$r_NUM_NODES}"    # Integer or a hostname
+    local _start_from="${5:-$r_NODE_START_NUM}"
+    local _domain_suffix="${6:-${r_DOMAIN_SUFFIX:-.`hostname -s`.localdomain}}"
+    local _openssl_cnf="${7:-./openssl.cnf}"
+    local _no_updating_ambari_config="${8:-$r_NO_UPDATING_AMBARI_CONFIG}"
+
+    f_ssl_setup "${_password}" "${_domain_suffix}" "${_openssl_cnf}"
 
     # This is for keytool
     local _java_home=""
