@@ -410,6 +410,15 @@ function f_socks5_proxy() {
     eval "${_cmd}"
 }
 
+function _apache_install() {
+    # NOTE: how to check loaded modules: apache2ctl -M and/or check mods-available/ and mods-enabled/
+    apt-get install -y apache2 apache2-utils || return $?
+    a2enmod proxy proxy_http proxy_connect proxy_wstunnel cache cache_disk ssl || return $?
+    apt-get install -y libapache2-mod-auth-kerb || return $?
+    a2enmod headers rewrite auth_kerb || return $?
+    service apache2 restart || return $?    # Disabling proxy_connect needed restart, so just in case restarting
+}
+
 function f_apache_proxy() {
     local __doc__="Generate proxy.conf and restart apache2"
     local _proxy_dir="/var/www/proxy"
@@ -430,9 +439,7 @@ function f_apache_proxy() {
         return 0
     fi
 
-    apt-get install -y apache2 apache2-utils
-    a2enmod proxy proxy_http proxy_connect proxy_wstunnel cache cache_disk ssl
-
+    _apache_install || return $?
     grep -qi "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
 
     echo "<VirtualHost *:${_port}>
@@ -509,10 +516,7 @@ function f_apache_reverse_proxy() {
         return 0
     fi
 
-    # How to check loaded modules: apache2ctl -M and/or check mods-available/ and mods-enabled/
-    apt-get install -y apache2 apache2-utils libapache2-mod-auth-kerb || return $?
-    a2enmod proxy headers proxy_http proxy_connect proxy_wstunnel ssl rewrite auth_kerb || return $?
-
+    _apache_install || return $?
     grep -qi "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
 
     # Common settings
@@ -581,7 +585,7 @@ function f_apache_reverse_proxy() {
         # @see: https://httpd.apache.org/docs/2.4/rewrite/intro.html & https://httpd.apache.org/docs/2.4/rewrite/flags.html
     fi
 
-    # TODO: https://stackoverflow.com/questions/7635380/apache-ssl-client-certificate-ldap-authorizations
+    # TODO: https://stackoverflow.com/questions/7635380/apache-ssl-client-certificate-ldap-authorizations   (2-way)
     if [ -s "${_ssl_ca_file}" ]; then
         echo "
     SSLProxyEngine On
@@ -592,6 +596,7 @@ function f_apache_reverse_proxy() {
 
     SSLOptions +StdEnvVars
     SSLVerifyClient require
+    SSLVerifyDepth 10
     SSLCACertificateFile ${_ssl_ca_file}
     # set header to upstream, SSL_CLIENT_S_DN_CN can change to use other identifiers
     RequestHeader set X-SSO-USER \"%{SSL_CLIENT_S_DN_CN}\"
