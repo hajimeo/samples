@@ -779,6 +779,16 @@ function f_count_lines() {
     fi
 }
 
+function f_strip_html() {
+    local __doc__="Remove HTML tag and convert html entities"
+    # language=Python
+    python3 -c "import sys,html,re
+_c_rx = re.compile(r'<[^>]+>')
+_str = sys.stdin.read()
+_str = _c_rx.sub('', _str)
+print(html.unescape(_str))"
+}
+
 function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
     local _file="$1"
