@@ -36,8 +36,6 @@ alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{t
 alias wcln="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
 # 10 seconds is too short
 alias docker_stop="docker stop -t 120"
-# maven/mvn get/download
-alias mvn-get="mvn dependency:get -Dartifact="
 
 ## Non generic (OS/host/app specific) alias commands ###################################################################
 which mdfind &>/dev/null && alias locat="mdfind"
@@ -245,9 +243,9 @@ function _escape() {
 # Grep STDIN with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
     local _datetime_regex="${1}"
-    [ -z "${_datetime_regex}" ] && _datetime_regex="\d\d\d\d-\d\d-\d\d.\d\d:\d"
+    [ -z "${_datetime_regex}" ] && _datetime_regex="^(\d\d\d\d-\d\d-\d\d.\d\d:\d)"
     #ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
-    rg "^${_datetime_regex}" -o | sed 's/ /./g' | bar_chart.py
+    rg "${_datetime_regex}" -o -r '$1' | sed 's/ /./g' | bar_chart.py
 }
 # Start Jupyter Lab as service
 function jpl() {
@@ -373,11 +371,20 @@ function sptBoot() {
     python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
 }
 function iqCli() {
+    https://help.sonatype.com/display/NXI/Nexus+IQ+CLI
     if [ -z "$1" ]; then
         iqCli "./"
         return $?
     fi
     java -jar /Users/hosako/Apps/iq-clis/nexus-iq-cli-1.80.0-01.jar -i "sandbox-application" -s "http://dh1.standalone.localdomain:8070/" -a "admin:admin123" -X $@
+}
+function iqMvn() {
+    # https://help.sonatype.com/display/NXI/Sonatype+CLM+for+Maven
+    mvn com.sonatype.clm:clm-maven-plugin:evaluate -Dclm.additionalScopes=test,provided,system -Dclm.applicationId=sandbox-application -Dclm.serverUrl=http://dh1.standalone.localdomain:8070/ -Dclm.username=admin -Dclm.password=admin123
+}
+function mvn-get() {
+    # maven/mvn get/download
+    mvn dependency:get -Dartifact=$@
 }
 
 # To patch nexus (so that checking /system) but probably no longer using.
