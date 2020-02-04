@@ -1913,6 +1913,15 @@ function f_local_repo_sed() {
     local _web_host="${3:-`hostname -I | cut -d" " -f1`}"
     [ -n "${_subdir}" ] && _subdir='\/'${_subdir%/}
 
+    # Example
+    #[HDP-UTILS-1.1.0.22]
+    #name=HDP-UTILS Version - HDP-UTILS-1.1.0.22
+    #baseurl=http://public-repo-1.hortonworks.com/HDP-UTILS-1.1.0.22/repos/centos7
+    #gpgcheck=1
+    #gpgkey=http://public-repo-1.hortonworks.com/HDP/centos7/3.x/updates/3.1.0.0/RPM-GPG-KEY/RPM-GPG-KEY-Jenkins
+    #enabled=1
+    #priority=1
+
     # TODO: ambari has #json.url and below also change this url. Is it OK?
     [ -f ${_dir%/}/index.html ] && mv ${_dir%/}/index.html ${_dir%/}/index.html.orig
     sed -i.$(date +"%Y%m%d%H%M%S") -r 's/(public|private)-repo-1.hortonworks.com/'${_web_host}${_subdir%/}'/g' ${_dir%/}/*.repo || return $?
