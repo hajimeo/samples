@@ -371,7 +371,7 @@ function sptBoot() {
     python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
 }
 function iqCli() {
-    https://help.sonatype.com/display/NXI/Nexus+IQ+CLI
+    # https://help.sonatype.com/display/NXI/Nexus+IQ+CLI
     if [ -z "$1" ]; then
         iqCli "./"
         return $?
