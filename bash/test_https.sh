@@ -206,7 +206,8 @@ function check_pem_file() {
     else
         openssl x509 -noout -modulus -in "$_file" | openssl md5
         openssl x509 -noout -text -in "$_file" | grep -E "Issuer:|Not Before|Not After|Subject:"
-        openssl x509 -noout -fingerprint -sha1 -inform pem -in "$_file"
+        #openssl x509 -noout -fingerprint -sha1 -inform pem -in "$_file"
+        openssl x509 -noout -fingerprint -sha256 -inform pem -in "$_file"
     fi
 
     # ref: https://stackoverflow.com/questions/16899247/how-can-i-decode-a-ssl-certificate-using-python
