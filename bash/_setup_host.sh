@@ -456,6 +456,7 @@ function f_apache_proxy() {
         SSLProxyCheckPeerExpire off
 
         ProxyRequests On
+        AllowCONNECT 443 8443 8444
         <Proxy *>
             AddDefaultCharset off
             Order deny,allow
@@ -587,6 +588,7 @@ function f_apache_reverse_proxy() {
 
     # TODO: https://stackoverflow.com/questions/7635380/apache-ssl-client-certificate-ldap-authorizations   (2-way)
     if [ -s "${_ssl_ca_file}" ]; then
+        chown www-data: ${_ssl_ca_file}
         echo "
     SSLProxyEngine On
     SSLProxyVerify none
@@ -599,7 +601,7 @@ function f_apache_reverse_proxy() {
     SSLVerifyDepth 10
     SSLCACertificateFile ${_ssl_ca_file}
     # set header to upstream, SSL_CLIENT_S_DN_CN can change to use other identifiers
-    RequestHeader set X-SSO-USER \"%{SSL_CLIENT_S_DN_CN}\"
+    RequestHeader set REMOTE_USER \"%{SSL_CLIENT_S_DN_CN}s\"
 " >> ${_conf}
     fi
 
