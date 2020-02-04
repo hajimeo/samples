@@ -330,12 +330,12 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
         # How to verify key: openssl rsa -in rootCA.key -check
 
         # (Optional) For Ambari 2-way SSL
-        #[ -r ./ca.config ] || curl -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/ca.config
-        #mkdir -p ./db/certs
-        #mkdir -p ./db/newcerts
-        #openssl req -passin pass:${_password} -new -key ./rootCA.key -out ./rootCA.csr -batch
-        #openssl ca -out rootCA.crt -days 1095 -keyfile rootCA.key -key ${_password} -selfsign -extensions jdk7_ca -config ./ca.config -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.localdomain" -batch -infiles ./rootCA.csr
-        #openssl pkcs12 -export -in ./rootCA.crt -inkey ./rootCA.key -certfile ./rootCA.crt -out ./keystore.p12 -password pass:${_password} -passin pass:${_password}
+        [ -r ./ca.config ] || curl -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/ca.config
+        mkdir -p ./db/certs
+        mkdir -p ./db/newcerts
+        openssl req -passin pass:${_password} -new -key ./rootCA.key -out ./rootCA.csr -batch
+        openssl ca -out rootCA.crt -days 1095 -keyfile rootCA.key -key ${_password} -selfsign -extensions jdk7_ca -config ./ca.config -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.localdomain" -batch -infiles ./rootCA.csr
+        openssl pkcs12 -export -in ./rootCA.crt -inkey ./rootCA.key -certfile ./rootCA.crt -out ./keystore.p12 -password pass:${_password} -passin pass:${_password}
 
         # ref: https://stackoverflow.com/questions/50788043/how-to-trust-self-signed-localhost-certificates-on-linux-chrome-and-firefox
         openssl req -x509 -new -sha256 -days 3650 -key ./rootCA.key -out ./rootCA.pem \
