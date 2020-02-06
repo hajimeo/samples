@@ -83,8 +83,8 @@ function export_key() {
     local _type="$4"
 
     local _basename="`basename $_file`"
-    local _out_key="${_basename}.exported.key"
-    local _out_crt="${_basename}.exported.crt"
+    local _out_key="${_basename}.${_alias}.key"
+    local _out_crt="${_basename}.${_alias}.crt"
     [ -z "$_type" ] && _type="${_file##*.}"
 
     if [ "$_type" = "pkcs8" ]; then
@@ -103,6 +103,26 @@ function export_key() {
         rm -f ${_basename}.*.tmp
     fi
     chmod 600 ${_out_key}
+    ls -l ${_basename}.*
+}
+
+# export one certificate from jks/p12
+function export_cert() {
+    local _file="$1"
+    local _pass="${2:-password}"
+    local _alias="${3:-$(hostname -f)}"
+    local _type="$4"
+
+    local _basename="`basename $_file`"
+    local _out_crt="${_basename}.${_alias}.crt"
+    [ -z "$_type" ] && _type="${_file##*.}"
+
+    if [ ! -x "${JAVA_HOME%/}/bin/keytool" ]; then
+        echo "This function requires 'keytool' command in \$JAVA_HOME/bin." >&2
+        return 1
+    fi
+    #  -storetype ${_type}
+    ${JAVA_HOME%/}/bin/keytool -export -noprompt -keystore ${_file} -storepass "${_pass}" -alias ${_alias} -file ${_out_crt} || return $?
     ls -l ${_basename}.*
 }
 
@@ -227,6 +247,8 @@ function get_certificate_from_https() {
     local _proxy="$4"
     [ -z "${_dest_filepath}" ] && _dest_filepath=./${_host}_${_port}.crt
     if [ -n "${_proxy}" ]; then
+        # use -rfc to generate PEM format
+        # Also -J-Djavax.net.debug=ssl,keymanager for debug.
         #keytool -J-Dhttps.proxyHost=<proxy_hostname> -J-Dhttps.proxyPort=<proxy_port> -printcert -rfc -sslserver <remote_host_name:remote_ssl_port>
         #keytool -J-Djava.net.useSystemProxies=true -printcert -rfc -sslserver <remote_host_name:remote_ssl_port>
         echo -n | openssl s_client -connect ${_host}:${_port} -showcerts -proxy ${_proxy}
