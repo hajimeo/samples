@@ -74,7 +74,9 @@ function f_check_system() {
     pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &
 
     mpstat -P ALL &> ${_work_dir%/}/top.out
-    top -b -n 1 -c &>> ${_work_dir%/}/top.out
+    #top -b -n1 -c -o +%MEM  # '+' (default) for reverse order (opposite of 'ps')
+    top -b -n1 -c &>> ${_work_dir%/}/top.out
+    #ps aux --sort uid,-vsz # '-' for reverse (opposite of 'top')
     ps auxwwwf &> ${_work_dir%/}/ps.out
     netstat -aopen &> ${_work_dir%/}/netstat.out
     ifconfig 2>/dev/null || netstat -i &> ${_work_dir%/}/ifconfig.out
