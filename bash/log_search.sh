@@ -148,7 +148,7 @@ function f_topErrors() {
     fi
 
     echo "# Regex = '${_regex}'"
-    #rg -z -c -g "${_glob}" "${_regex}"
+    rg -z -c -g "${_glob}" "${_regex}" && echo " "
     rg -z -N --no-filename -g "${_glob}" -o "${_regex}" > /tmp/f_topErrors.$$.tmp
     cat "/tmp/f_topErrors.$$.tmp" | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
 
@@ -194,8 +194,8 @@ function f_topSlowLogs() {
     fi
 
     echo "# Regex = '${_regex}'"
-    rg -z -N --no-filename -g "${_glob}" -i -o "$_regex" > /tmp/f_topSlowLogs.$$.tmp
     #rg -z -c -g "${_glob}" -wio "${_regex}"
+    rg -z -N --no-filename -g "${_glob}" -i -o "$_regex" > /tmp/f_topSlowLogs.$$.tmp
     if [[ "$_not_hiding_number" =~ (^y|^Y) ]]; then
         cat /tmp/f_topSlowLogs.$$.tmp
     else
