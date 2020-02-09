@@ -53,16 +53,20 @@ function f_del_log_cron() {
     local __doc__="Add a *daily* cron for deleting 'log' files."
     local _dir="${1:-"${_WORK_DIR%/}/*/logs"}"
     local _days="${2:-"7"}"
+    # run-parts --test /etc/cron.daily
+    # service cron status  # if fails service --status-all (or maybe crond)
+    # Do not use any extension
+
     local _name="del-${_dir//[^[:alnum:]]/_}-${_days}_days"
-    if [ -s /etc/cron.daily/${_name}.cron ]; then
-        echo "/etc/cron.daily/${_name}.cron exists"
+    if [ -s /etc/cron.daily/${_name} ]; then
+        echo "/etc/cron.daily/${_name} exists"
         return 1
     fi
     # NOTE: I'm using -print to output what will be deleted into STDOUT (but hiding error), which may generate cron email to root
     echo '#!/bin/bash
 find '${_dir%/}' -type f -name "*log*" -mtime +'${_days}' -print -delete 2>/dev/null
-exit $?' > /etc/cron.daily/${_name}.cron
-    chmod a+x /etc/cron.daily/${_name}.cron
+exit $?' > /etc/cron.daily/${_name}
+    chmod a+x /etc/cron.daily/${_name}
 }
 
 function f_shellinabox() {
@@ -249,7 +253,7 @@ listen stats
                 # If skipping the check, then certificate is given, populate https options
                 [ -n "${_certificate}" ] && _https_opts=" ssl crt ${_certificate}${_https_opts}"
             fi
-            echo "  server ${_n} ${_n}:${_b_port}${_https_opts} check ${_resolver}"  # not using 'cookie' for now.
+            echo "  server ${_n} ${_n}:${_b_port}${_https_opts} check inter 30s ${_resolver}"  # not using 'cookie' for now.
         done > /tmp/f_haproxy_backends_$$.out
 
         if [ ! -s /tmp/f_haproxy_backends_$$.out ]; then
