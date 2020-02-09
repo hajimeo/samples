@@ -4,7 +4,7 @@
 #
 # curl -o /etc/cron.hourly/resource_chk.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/resource_chk.sh && chmod a+x /etc/cron.hourly/resource_chk.sh
 # run-parts --test /etc/cron.hourly
-# service crond status
+# service crond status  # if fails service --status-all
 # cat /etc/cron.d/0hourly
 #
 
