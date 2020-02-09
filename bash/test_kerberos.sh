@@ -24,7 +24,7 @@ function check_jce() {
     local _port="${1}"
     _set_java_envs "${_port}" || return $?
     echo "INFO: Checking JCE under $JAVA_HOME ..." >&2
-    $JAVA_HOME/bin/jrunscript -e 'print (javax.crypto.Cipher.getMaxAllowedKeyLength("RC5") >= 256);'
+    $JAVA_HOME/bin/jrunscript -e 'print(javax.crypto.Cipher.getMaxAllowedKeyLength("RC5") >= 256);'
 }
 
 function test_reverse_dns_lookup() {
@@ -39,6 +39,9 @@ function test_reverse_dns_lookup() {
             _resolved=0
         fi
     done
+    # one hostname to IP addresses
+    # language=JavaScript
+    [ -n "$JAVA_HOME" ] && $JAVA_HOME/bin/jrunscript -e "var ips = java.net.InetAddress.getAllByName('`hostname -f`'); for (var i in ips) println(ips[i]);"
     return ${_resolved}
 }
 
