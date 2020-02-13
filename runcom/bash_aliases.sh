@@ -66,8 +66,9 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 # TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
 # Slack API Search
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="cd $HOME/IdeaProjects/samples/python/ && nohup python ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
-[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py ] && alias supportZip="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py"
-[ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] && alias supportBoot="python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py"
+#[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py ] && alias supportZip="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py"
+#[ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] && alias supportBoot="python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py"
+[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/dump_nxrm3_groovy_scripts.py ] && alias sptDumpScript="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/dump_nxrm3_groovy_scripts.py"
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
@@ -384,7 +385,9 @@ function iqMvn() {
 }
 function mvn-get() {
     # maven/mvn get/download
-    mvn dependency:get -Dartifact=$@
+    local _gav="$1"
+    # -Dmaven.repo.local=./repo_local
+    mvn dependency:get -Dtransitive=false -Dartifact=$@ -X
 }
 
 # To patch nexus (so that checking /system) but probably no longer using.
