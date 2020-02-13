@@ -790,25 +790,35 @@ print(html.unescape(_str))"
 function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
     local _file="$1"
-    local _split_search="${2:-"^[^ ].+"}"
+    local _split_search="${2:-"^\".+"}"
+    local _running_thread_search_re="${3-"\.sonatype\."}"
+    local _dir="./_threads"
 
     [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
     [ -z "${_file}" ] && return 1
     local _prefix="${_file%%.*}_"
-    [ ! -d "./_threads" ] && mkdir ./_threads
+    [ ! -d "${_dir%/}" ] && mkdir ${_dir%/}
 
-    f_splitByRegex "${_file}" "${_split_search}" "./_threads" ""
+    f_splitByRegex "${_file}" "${_split_search}" "${_dir%/}" ""
 
-    #rg -i "ldap" ./_threads/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
-    #rg -w BLOCKED ./_threads/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
+    #rg -i "ldap" ${_dir%/}/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
+    #rg -w BLOCKED ${_dir%/}/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
     #rg '^("|\s+- .*lock)' ${_file}
     # Listening ports
     rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
-    echo ""
-    rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ./_threads/
-    echo ""
-    rg '^[^ ]' ${_file} | _replace_number 1 | sort | uniq -c | sort -n | tail -n 20
-    echo "Total: `rg '^[^ ]' ${_file} -c`"
+    echo "## Finding BLOCKED or waiting to lock lines"
+    rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ${_dir%/}/
+    echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
+    rg -H "${_running_thread_search_re}" -m1 -g '*RUNNABLE*' -g '*runnable*' ${_dir%/}/
+    echo " "
+    rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | tail -n 20
+    echo "Total: `rg '^"' ${_file} -c`"
+    echo " "
+    if grep -q 'state=' ${_file}; then
+        rg -iw 'state=(.+)' -o -r '$1' --no-filename ${_file} | sort -r | uniq -c
+    else
+        rg -iw 'nid=0x[a-z0-9]+ ([^\[]+)' -o -r '$1' --no-filename ${_file} | sort -r | uniq -c
+    fi
 }
 
 function f_count_threads() {
@@ -926,15 +936,11 @@ function f_audit2json() {
         _out_file="$(basename ${_glob} .log).json"
     fi
 
-    rg --no-filename -N -z \
-        "^(\{.+\})$" \
-        -o -r ',$1' -g "${_glob}" > ${_out_file}
-    if [ ! -s ${_out_file} ]; then
-        rm ${_out_file}
-        return
+    rg --no-filename -N -z "^(\{.+\})\s*$" -o -r ',$1' -g "${_glob}" > ${_out_file}
+    if [ -s ${_out_file} ]; then
+        echo "]" >> ${_out_file}
+        _sed -i '1s/^,/[/' ${_out_file}
     fi
-    echo "]" >> ${_out_file}
-    _sed -i '1s/^,/[/' ${_out_file}
 }
 
 function f_log2json() {
@@ -1135,7 +1141,12 @@ if len("'${_attrs}'") > 0:
 #sys.stderr.write(str(attrs)+"\n") # for debug
 _in = sys.stdin.read()
 if bool(_in) is True:
-    _d = json.loads(_in)
+    try:
+        _d = json.loads(_in)
+    except json.decoder.JSONDecodeError:
+        sys.stderr.write("JsonDecodeError\n")
+        _d = None
+if bool(_d) is True:
     for _p in props:
         if type(_d) == list:
             _p_name = None
