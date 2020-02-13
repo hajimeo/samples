@@ -21,6 +21,11 @@ Host node* *.localdomain localhost
   #IdentityFile /path/to/root/id_rsa
   User root
 
+Host *.compute.amazonaws.com
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  IdentityFile /Users/hosako/.ssh/aws_hosako-kp.pem
+
 Host search.osakos.com
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
