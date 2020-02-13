@@ -50,21 +50,24 @@ curl -s -f "http://www.osakos.com/tools/info.php?id=${_ID}&LOCAL_ADDR=${_IP}"' >
 }
 
 function f_del_log_cron() {
-    local __doc__="Add a *daily* cron for deleting 'log' files."
-    local _dir="${1:-"${_WORK_DIR%/}/*/logs"}"
+    local __doc__="Add a *daily* cron for deleting 'log' and backup files."
+    local _parent_dir="${1:-"${_WORK_DIR%/}/*"}"
     local _days="${2:-"7"}"
     # run-parts --test /etc/cron.daily
     # service cron status  # if fails service --status-all (or maybe crond)
-    # Do not use any extension
+    # Do not use any extension (.sh, .cron etc.)
 
-    local _name="del-${_dir//[^[:alnum:]]/_}-${_days}_days"
+    # It's OK if _parent_dir doesn't exist, but date should be number
+    [[ "${_days}" =~ [1-9][0-9]* ]] || return 11
+    local _name="del-${_parent_dir//[^[:alnum:]]/_}-${_days}_days"
     if [ -s /etc/cron.daily/${_name} ]; then
         echo "/etc/cron.daily/${_name} exists"
         return 1
     fi
     # NOTE: I'm using -print to output what will be deleted into STDOUT (but hiding error), which may generate cron email to root
     echo '#!/bin/bash
-find '${_dir%/}' -type f -name "*log*" -mtime +'${_days}' -print -delete 2>/dev/null
+find '${_parent_dir%/}'/logs -type f -name "*log*" -mtime +'${_days}' -print -delete 2>/dev/null
+find '${_parent_dir%/}'/backups -type f -mtime +'$((${_days} * 5))' -print -delete
 exit $?' > /etc/cron.daily/${_name}
     chmod a+x /etc/cron.daily/${_name}
 }
