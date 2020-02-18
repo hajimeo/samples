@@ -13,6 +13,8 @@ alias b64decode='python -c "import sys, base64; print(base64.b64decode(sys.argv[
 alias utc2int='python -c "import sys,time,dateutil.parser;print(int(time.mktime(dateutil.parser.parse(sys.argv[1]).timetuple())))"'  # doesn't work with yy/mm/dd (2 digits year)
 alias int2utc='python -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1][0:10])).strftime(\"%Y-%m-%d %H:%M:%S\")+\".\"+sys.argv[1][10:13]+\" UTC\")"'
 #alias int2utc='python -c "import sys,time;print(time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\")"'
+alias dec2hex='printf "%x\n"'
+alias hex2dec='printf "%d\n"'
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'pdf' (pandas dataframe)
 alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
 # Read xml file, then convert to dict, then print json
@@ -386,8 +388,13 @@ function iqMvn() {
 function mvn-get() {
     # maven/mvn get/download
     local _gav="$1"
+    local _repo="$2"
+    local _localrepo="$3"
+    local _options="-Dtransitive=false"
     # -Dmaven.repo.local=./repo_local
-    mvn dependency:get -Dtransitive=false -Dartifact=$@ -X
+    [ -n "${_repo}" ] && _options="${_options% } -Dmaven.repo.remote=${_repo}"
+    [ -n "${_localrepo}" ] && _options="${_options% } -Dmaven.repo.local=${_localrepo}"
+    mvn dependency:get ${_options} -Dartifact=$@ -X
 }
 
 # To patch nexus (so that checking /system) but probably no longer using.
