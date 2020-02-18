@@ -106,6 +106,8 @@ function f_setup_spring_cli() {
 
 function f_javaenvs() {
     local _port="${1}"
+    local _extra_dir="${2}"
+
     if [ -z "${_port}" ]; then
         if [ -n "$JAVA_HOME" ] && [ -n "$CLASSPATH" ]; then
             echo "No port is given but JAVA_HOME and CLASSPATH are already set."
@@ -132,13 +134,23 @@ function f_javaenvs() {
     fi
     local _jcmd="$JAVA_HOME/bin/jcmd"
     if [ ! -x $JAVA_HOME/bin/jcmd ]; then
-        _jcmd="$(find /var/tmp/share/java -executable -name jcmd | tail -n 1)"
+        _jcmd="$(find /var/tmp/share/java -executable -name jcmd | grep -vw archives | tail -n 1)"
+        if [ -n "${_jcmd}" ]; then
+            export JAVA_HOME="$(dirname $(dirname ${_jcmd}))"
+        fi
     fi
     if [ -x "${_jcmd}" ]; then
         if [ -z "$CLASSPATH" ]; then
             export CLASSPATH=".:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+            # using extra_dir only when no CLASSPATH set, otherwise, CLASSPATH can be super long
+            if [ -d "${_extra_dir}" ]; then
+                # It might contain another groovy jar but different version, so excluding in find.
+                local _extra_classpath=$(find ${_extra_dir%/} -name '*.jar' -not -name 'groovy-*.jar' -print | tr '\n' ':')
+                export CLASSPATH="${_extra_classpath%:}:${CLASSPATH%:}"
+            fi
         else
-            export CLASSPATH="${CLASSPATH%:}:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+            echo "WARN: CLASSPATH is already set, so not overwriting/appending."
+            #export CLASSPATH="${CLASSPATH%:}:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
         fi
     else
         echo "WARN: Couldn't not set CLASSPATH because of no executable jcmd found."; sleep 3
@@ -162,10 +174,11 @@ function f_scala() {
 
 function f_groovy() {
     local _port="${1}"
+    local _extra_dir="${2}"
     local _cded=false
     f_setup_groovy
     if [[ "${_port}" =~ ^[0-9]+$ ]]; then
-        f_javaenvs "${_port}"
+        f_javaenvs "${_port}" "${_extra_dir}"
         cd "${_CWD}" && _cded=true
     else
         echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
