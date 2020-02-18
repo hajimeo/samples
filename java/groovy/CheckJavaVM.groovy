@@ -6,11 +6,13 @@ import java.lang.management.ManagementFactory
 import com.sun.tools.attach.VirtualMachine
 import com.codahale.metrics.jvm.ThreadDump
 
-def vmid = ManagementFactory.runtimeMXBean.name[0..<name.indexOf('@')]
-def vm = VirtualMachine.attach(vmid)
-def tmxbean = ManagementFactory.getThreadMXBean();
+name = ManagementFactory.runtimeMXBean.name
+vmid = name[0..<name.indexOf('@')]
+vm = VirtualMachine.attach(vmid)
+tmxbean = ManagementFactory.getThreadMXBean();
 
 def heapHisto(vm) {
+  //histo = vm.heapHisto("-live").text  # This hangs and '[{"-live"}]' does not work.
   histo = vm.heapHisto().text
   vm.detach()
   return histo
@@ -24,5 +26,5 @@ def threadDump(tmxbean) {
   return out
 }
 
-def hist_string = heapHisto(vm)
-def threads_string = threadDump(tmxbean)
+hist_string = heapHisto(vm)
+threads_string = threadDump(tmxbean)
