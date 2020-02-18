@@ -174,7 +174,7 @@ function f_listWarns() {
     # count by class name and ignoring only once or twice warns
     rg "${_regex}\s+.+" -o /tmp/f_listWarns.$$.tmp | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
     echo " "
-    rg -o "^${_date_4_bar}" /tmp/f_listWarns.$$.tmp | bar_chart.py
+    rg -o "^${_date_4_bar}" /tmp/f_listWarns.$$.tmp | bar_chart.py 2>/dev/null
 }
 
 function f_topSlowLogs() {
@@ -486,12 +486,14 @@ function f_list_start_end(){
     local __doc__="Output start time, end time, difference(sec), (filesize) from *multiple* log files"
     local _glob="${1}"
     local _sort="${2:-3}"   # Sort by end time
+    local _tail_n="${3:-100}"   # Sort by end time
     local _files=""
     # If no file(s) given, check current working directory
     if [ -n "${_glob}" ]; then
-        _files="`find . -type f -name "${_glob}" -print`"
+        _files="`find . -type f -name "${_glob}" -size +0 -print | tail -n ${_tail_n}`"
     else
-        _files="`ls -1`"
+        _files="`find . -type f -size +0 -print | tail -n ${_tail_n}`"
+        #_files="`ls -1 | tail -n ${_tail_n}`"
     fi
     for _f in `echo ${_files}`; do f_start_end_time_with_diff ${_f}; done | sort -t$'\t' -k${_sort} | column -t -s$'\t'
 }
@@ -501,6 +503,7 @@ function f_start_end_time_with_diff(){
     #eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"^${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)
     local _log="$1"
     local _date_regex="${2}"
+    # NOTE: not including milliseconds as some log wouldn't have
     [ -z "$_date_regex" ] && _date_regex="(^${_DATE_FORMAT}.\d\d:\d\d:\d\d|\[\d{2}[-/][a-zA-Z]{3}[-/]\d{4}.\d\d:\d\d:\d\d)"
 
     local _start_date="$(_date2iso "`rg -z -N -om1 "$_date_regex" ${_log}`")" || return $?
@@ -514,7 +517,7 @@ function f_start_end_time_with_diff(){
     local _end_int=`_date2int "${_end_date}"`
     local _diff=$(( $_end_int - $_start_int ))
     # Filename, start datetime, enddatetime, difference, (filesize)
-    echo -e "`basename ${_log}`\t${_start_date}\t${_end_date}\t${_diff} s\t$((`wc -c <${_log}` / 1024)) KB"
+    echo -e "`basename ${_log}`\t${_start_date}\t${_end_date}\t${_diff} s\t$(bc <<< "scale=1;$(wc -c <${_log}) / 1024") KB"
 }
 
 function f_split_strace() {
@@ -792,7 +795,7 @@ function f_threads() {
     local _file="$1"
     local _split_search="${2:-"^\".+"}"
     local _running_thread_search_re="${3-"\.sonatype\."}"
-    local _dir="./_threads"
+    local _dir="${4:-"./_threads"}"
 
     [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
     [ -z "${_file}" ] && return 1
@@ -1140,12 +1143,14 @@ if len("'${_attrs}'") > 0:
     attrs = "'${_attrs}'".split(",")
 #sys.stderr.write(str(attrs)+"\n") # for debug
 _in = sys.stdin.read()
+_d = None
 if bool(_in) is True:
     try:
         _d = json.loads(_in)
-    except json.decoder.JSONDecodeError:
-        sys.stderr.write("JsonDecodeError\n")
+    except Exception as e:
+        #sys.stderr.write(e+"\n")
         _d = None
+        pass
 if bool(_d) is True:
     for _p in props:
         if type(_d) == list:
