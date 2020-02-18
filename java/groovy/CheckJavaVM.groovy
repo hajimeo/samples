@@ -2,12 +2,11 @@
 
 package groovy
 
-import java.lang.management.*
+import java.lang.management.ManagementFactory
 import com.sun.tools.attach.VirtualMachine
 import com.codahale.metrics.jvm.ThreadDump
 
-def name = ManagementFactory.runtimeMXBean.name
-def vmid = name[0..<name.indexOf('@')]
+def vmid = ManagementFactory.runtimeMXBean.name[0..<name.indexOf('@')]
 def vm = VirtualMachine.attach(vmid)
 def tmxbean = ManagementFactory.getThreadMXBean();
 
