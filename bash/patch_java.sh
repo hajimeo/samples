@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# curl -o /var/tmp/share/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
+# curl -o /var/tmp/share/java/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
 # TODO: currently the script filename needs to be "ClassName.scala" or "ClassName.java" (case sensitive)
 #
 # export CLASSPATH=`find . -name '*.jar' | tr '\n' ':'`.
