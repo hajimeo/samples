@@ -87,12 +87,12 @@ function f_setup_screen() {
 }
 
 function f_setup_golang() {
-    local _ver="${1:-"1.11"}"
+    local _ver="${1:-"1.13"}"
     # TODO: currently only for Ubuntu and Mac, and hard-coding go version
     if ! which go &>/dev/null || ! go version | grep -q "go${_ver}"; then
         if [ "`uname`" = "Darwin" ]; then
             if which brew &>/dev/null; then
-                brew install go || return
+                brew install go || return $?  # as of 1.13.8, --with-cgo does not work.
             else
                 _log "WARN" "Please install 'go'. https://golang.org/doc/install"; sleep 3
                 return 1
@@ -304,7 +304,7 @@ function _download() {
         return
     fi
 
-    local _cmd="curl -s -f --retry 3 -L -k '${_url}'"
+    local _cmd="curl -s -f --retry 3 -C - -L -k '${_url}'"
     if [ -z "${_save_as}" ]; then
         _cmd="${_cmd} -O"
     else
