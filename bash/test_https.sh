@@ -75,6 +75,23 @@ function get_tls_versions() {
     fi
 }
 
+# extract/export rsa private key and certificateS from pem file
+function extract_key_certs() {
+    # https://serverfault.com/questions/391396/how-to-split-a-pem-file
+    local _file="$1"
+    local _base_name="$(basename ${_file} .pem)"
+    if [ -s "${_base_name}.pkey.pem" ]; then
+        echo "${_base_name}.pkey.pem exists."
+    else
+        openssl pkey -in ${_file} -out ${_base_name}.pkey.pem && chmod 400 ${_base_name}.pkey.pem
+    fi
+    if [ -s "${_base_name}.certs.pem" ]; then
+        echo "${_base_name}.certs.pem exists."
+    else
+        openssl crl2pkcs7 -nocrl -certfile ${_file} | openssl pkcs7 -print_certs -out ${_base_name}.certs.pem
+    fi
+}
+
 # convert .jks or .pkcs8 file to .key (and .crt if possible)
 function export_key() {
     local _file="$1"
@@ -131,20 +148,22 @@ function gen_p12_jks() {
     local _srv_key="$1"
     local _srv_crt="$2"
     local _full_ca_crt="$3"
-    local _pass="${4:-password}"
-    local _new_pass="${5:-${_pass}}"
+    local _pass="${4-password}" # in file password can be empty
+    local _new_pass="${5:-${_pass:-"password"}}"
     local _name="$6"
     if [ -z "${_name}" ]; then
         local _basename="$(basename ${_srv_crt})"
         _name="${_basename%.*}"
     fi
 
+    local _pass_arg=""
+    [ -n "${_pass}" ] && _pass_arg="-passin 'pass:${_pass}'"
     if [ -n "${_full_ca_crt}" ]; then
         # NOTE: If intermediate CA is used (TODO: does order matter?)
         #cat root.cer intermediate.cer > full_ca.cer
-        openssl pkcs12 -export -chain -CAfile ${_full_ca_crt} -in ${_srv_crt} -inkey ${_srv_key} -name ${_name} -out ${_name}.p12 -passin "pass:${_pass}" -passout "pass:${_new_pass}"
+        openssl pkcs12 -export -chain -CAfile ${_full_ca_crt} -in ${_srv_crt} -inkey ${_srv_key} -name ${_name} -out ${_name}.p12 ${_pass_arg} -passout "pass:${_new_pass}"
     else
-        openssl pkcs12 -export -in ${_srv_crt} -inkey ${_srv_key} -name ${_name} -out ${_name}.p12 -passin "pass:${_pass}" -passout "pass:${_new_pass}"
+        openssl pkcs12 -export -in ${_srv_crt} -inkey ${_srv_key} -name ${_name} -out ${_name}.p12 ${_pass_arg} -passout "pass:${_new_pass}"
     fi || return $?
     # Verify
     if which keytool &>/dev/null; then
