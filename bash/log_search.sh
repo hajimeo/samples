@@ -958,6 +958,17 @@ function f_log2json() {
     fi
 }
 
+function f_start_h2() {
+    local _baseDir="${1}"
+    if [ -z "${_baseDir}" ]; then
+        if [ -d ./sonatype-work/clm-server/data ]; then
+            _baseDir="./sonatype-work/clm-server/data/"
+        else
+            _baseDir="."
+        fi
+    fi
+    java -cp $HOME/IdeaProjects/external-libs/h2-1.4.200.jar org.h2.tools.Server -baseDir "${_baseDir}"
+}
 
 ### Private functions ##################################################################################################
 
