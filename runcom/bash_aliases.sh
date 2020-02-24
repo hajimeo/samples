@@ -16,7 +16,8 @@ alias int2utc='python -c "import sys,datetime;print(datetime.datetime.utcfromtim
 alias dec2hex='printf "%x\n"'
 alias hex2dec='printf "%d\n"'
 #alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'pdf' (pandas dataframe)
-alias pandas='python -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);")'
+alias pandas='python3 -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);print(pdf)")'
+alias json2csv='python3 -c "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);pdf.to_csv(sys.argv[1]+\".csv\", header=True, index=False)"'
 # Read xml file, then convert to dict, then print json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
 alias printjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
@@ -36,6 +37,8 @@ which tree &>/dev/null || alias tree="pwd;find . | sort | sed '1d;s/^\.//;s/\/\(
 alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
 # output the longest line *number* as wc|gwc -L does not show the line number
 alias wcln="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
+# Sum integer in a column by using paste (which concatenates files or characters(+))
+alias sumcol="gpaste -sd+ | bc"
 # 10 seconds is too short
 alias docker_stop="docker stop -t 120"
 
@@ -323,8 +326,8 @@ function backupC() {
     local _mv="mv --backup=t"
     [ "Darwin" = "`uname`" ] && _mv="gmv --backup=t"
 
-    ## Special: database directory often too large, so removing. Also checking gmv availability
-    #find ${_src%/} -type d -mtime +90 -name database -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ || return $?
+    ## Special: support_tmp directory wouldn't need to backup
+    find ${_src%/} -type d -mtime +30 -name '*_tmp' -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ || return $?
 
     # Delete files larger than _size (10MB) and older than one year
     find ${_src%/} -type f -mtime +365 -size +10000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
@@ -360,8 +363,8 @@ function pubS() {
 }
 function sync_nexus_binaries() {
     # Currently only IQ ...
-    rsync -rcv $HOME/.nexus_executable_cache/nexus-iq-server-*.tar.gz root@dh1:/var/tmp/share/sonatype/
-    rsync -rcv root@dh1:/var/tmp/share/sonatype/nexus-iq-server-*.tar.gz $HOME/.nexus_executable_cache/
+    rsync -Prc root@dh1:/var/tmp/share/sonatype/nexus-iq-server-*-bundle.tar.gz $HOME/.nexus_executable_cache/
+    rsync -Prc $HOME/.nexus_executable_cache/nexus-iq-server-*-bundle.tar.gz root@dh1:/var/tmp/share/sonatype/
 }
 function sptBoot() {
     local _zip="$1"
@@ -371,15 +374,18 @@ function sptBoot() {
         echo "Using ${_zip} ..."
     fi
     echo "To just re-launch or start, check relaunch-support.sh"
+    echo "To use docker with https:\
+    cp $HOME/IdeaProjects/samples/misc/standalone.localdomain.jks ./$(basename "${_zip}" .zip)_tmp/sonatype-work/nexus3/etc/ssl/keystore.jks"
     python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
 }
 function iqCli() {
     # https://help.sonatype.com/display/NXI/Nexus+IQ+CLI
+    local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
     if [ -z "$1" ]; then
         iqCli "./"
         return $?
     fi
-    java -jar /Users/hosako/Apps/iq-clis/nexus-iq-cli-1.80.0-01.jar -i "sandbox-application" -s "http://dh1.standalone.localdomain:8070/" -a "admin:admin123" -X $@
+    java -jar /Users/hosako/Apps/iq-clis/nexus-iq-cli.jar -i "sandbox-application" -s "${_iq_url}" -a "admin:admin123" -X $@
 }
 function iqMvn() {
     # https://help.sonatype.com/display/NXI/Sonatype+CLM+for+Maven
