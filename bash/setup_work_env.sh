@@ -150,7 +150,7 @@ function f_setup_python() {
     # NOTE: this works only with python2, hence not pip3
     sudo -i pip install data_hacks  # it's OK if this fails
 
-    ### Pip(3) ############################################################
+    ### pip3 not pip from here ############################################################
     # TODO: should use vertualenv?
     #virtualenv myenv && source myenv/bin/activate
     #sudo -i pip3 install -U pip &>/dev/null
@@ -158,22 +158,26 @@ function f_setup_python() {
     sudo -i pip3 list -o | tee /tmp/pip.log
     #sudo -i pip3 list -o --format=freeze | cut -d'=' -f1 | xargs sudo -i pip3 install -U
 
-    sudo -i pip3 install lxml pyjq xmltodict pyyaml
+    # My favourite/essential packages
+    sudo -i pip3 install -U lxml pyjq xmltodict pyyaml
 
-    # Autocomplete doesn't work. @see https://github.com/ipython/ipython/issues/11530
-    sudo -i pip3 install ipython==7.1.1 jupyter jupyterlab --log /tmp/pip.log &>/dev/null || return $?
+    # Jupyter related
+    # NOTE: Autocomplete doesn't work if diff version is used. @see https://github.com/ipython/ipython/issues/11530
+    sudo -i pip3 install ipython==7.1.1
+    sudo -i pip3 install -U jupyter jupyterlab --log /tmp/pip.log &>/dev/null || return $?
     # Need "-H"? eg: sudo -H pip3 uninstall -y jupyterlab && sudo -H pip3 install jupyterlab
     # Need to add /usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin in PATH?
-    # TODO: as of today no jupyter_contrib_labextensions (lab)
-    # NOTE: Initially I thought pandasql looked good but it's actually using sqlite. Pixiedust works only with jupyter-notebook
-    sudo -i pip3 install pandas pandas_profiling pixiedust sqlalchemy ipython-sql pandas-gbq --log /tmp/pip.log &>/dev/null
-    sudo -i pip3 install bash_kernel --log /tmp/pip.log &>/dev/null && sudo -i python3 -m bash_kernel.install
-    # Enable BeakerX. NOTE: this works with only python3
-    #sudo -i pip3 install beakerx && beakerx-install
-    ### Pip(3) end ########################################################
 
+    # NOTE: Initially I thought pandasql looked good but it's actually using sqlite. Pixiedust works only with jupyter-notebook
+    sudo -i pip3 install -U pandas pandas_profiling pixiedust sqlalchemy ipython-sql pandas-gbq --log /tmp/pip.log &>/dev/null
+    # NOTE: In case I might use jupyter notebook, still installing this
+    sudo -i pip3 install -U bash_kernel --log /tmp/pip.log &>/dev/null && sudo -i python3 -m bash_kernel.install
+    # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3
+    #sudo -i pip3 install beakerx && beakerx-install
+
+    # TODO: as of today no jupyter_contrib_labextensions (lab)
     # Enable jupyter notebook extensions (spell checker)
-    sudo -i pip3 install jupyter_contrib_nbextensions
+    sudo -i pip3 install -U jupyter_contrib_nbextensions
     sudo -i jupyter contrib nbextension install && sudo -i jupyter nbextension enable spellchecker/main
     sudo -i jupyter labextension install @ijmbarr/jupyterlab_spellchecker
 
