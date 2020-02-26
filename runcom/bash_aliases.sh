@@ -58,7 +58,9 @@ alias kvm_haji='virt-manager -c "qemu+ssh://root@hajime/system?socket=/var/run/l
 alias mb='java -jar $HOME/Applications/metabase.jar'    # port is 3000
 alias vnc='nohup java -jar $HOME/Applications/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
 alias samurai='java -Xmx2048m -jar $HOME/Apps/samurali/samurai.jar'
+alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar'
 #alias vnc='nohup java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
+alias groovyi='groovysh -e ":set interpreterMode true"'
 
 # Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
 #alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
@@ -327,16 +329,18 @@ function backupC() {
     [ "Darwin" = "`uname`" ] && _mv="gmv --backup=t"
 
     ## Special: support_tmp directory wouldn't need to backup
-    find ${_src%/} -type d -mtime +30 -name '*_tmp' -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ || return $?
+    find ${_src%/} -type d -mtime +30 -name '*_tmp' -print0 | xargs -0 -t -n1 -I {} ${_mv} "{}" $HOME/.Trash/
 
     # Delete files larger than _size (10MB) and older than one year
-    find ${_src%/} -type f -mtime +365 -size +10000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
+    find ${_src%/} -type f -mtime +365 -size +10000k -print0 | xargs -0 -t -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     # Delete files larger than 60MB and older than 180 days
-    find ${_src%/} -type f -mtime +180 -size +60000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
+    find ${_src%/} -type f -mtime +180 -size +60000k -print0 | xargs -0 -t -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     # Delete files larger than 100MB and older than 90 days
-    find ${_src%/} -type f -mtime +90 -size +100000k -print0 | xargs -0 -t -n1 -I {} ${_mv} {} $HOME/.Trash/ &
+    find ${_src%/} -type f -mtime +90 -size +100000k -print0 | xargs -0 -t -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    # Delete files larger than 500MB and older than 60 days
+    find ${_src%/} -type f -mtime +60 -size +500000k -print0 | xargs -0 -t -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     wait
-    # Synch all files smaller than _size (10MB)
+    # Sync all files smaller than _size (10MB)
     rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 ${_src%/}/ ${_dst%/}/
 }
 function push2search() {
