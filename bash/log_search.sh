@@ -958,7 +958,7 @@ function f_log2json() {
     fi
 }
 
-function f_start_h2() {
+function f_h2_start() {
     local _baseDir="${1}"
     if [ -z "${_baseDir}" ]; then
         if [ -d ./sonatype-work/clm-server/data ]; then
@@ -968,6 +968,18 @@ function f_start_h2() {
         fi
     fi
     java -cp $HOME/IdeaProjects/external-libs/h2-1.4.200.jar org.h2.tools.Server -baseDir "${_baseDir}"
+}
+
+function f_h2_shell() {
+    local _db_file="${1}"
+    local _query_file="${2}"
+    local _Xmx="${3:-"2g"}"
+
+    _db_file="$(realpath ${_db_file})"
+    local _url="jdbc:h2:${_db_file/.h2.db/};SCHEMA=insight_brain_ods;IFEXISTS=true;DATABASE_TO_UPPER=FALSE;MV_STORE=FALSE"
+    local _options=""
+    [ -s "${_query_file}" ] && _options="-script ${_query_file}"
+    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.200.jar org.h2.tools.Shell -url ${_url} -user sa -password "" -driver org.h2.Driver ${_options}
 }
 
 ### Private functions ##################################################################################################
