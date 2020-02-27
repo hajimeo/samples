@@ -1,76 +1,122 @@
 #!/usr/bin/env groovy
 /**
- * ./Json2Db.groovy "../support-20200224-010636-1/db" \
- *    ["jdbc:h2:./sonatype-work/clm-server/data/ods;SCHEMA=insight_brain_ods;IFEXISTS=true;DATABASE_TO_UPPER=FALSE;
- *    MV_STORE=FALSE"]
+ *  groovy -DjsonDir="<dir which contains .json files>" [-Durl="jdbc:h2:xxxxx"] ./Json2Db.groovy
  *
- * NOTE: ('x' means not needed at this moment)
- *  x This script requires nexus-iq-server-*.jar in the CLASSPATH to convert the filename into H2 table name.
- *    This script does NOT create any table.
- *    This script does NOT check or stop the application which might be using the h2 file.
+ *    -Dorg.slf4j.simpleLogger.defaultLogLevel=INFO
  */
 
 @GrabConfig(systemClassLoader = true)
-@Grab(group = 'com.h2database', module = 'h2', version = '1.4.200')
-import java.util.logging.Logger
+@Grab('org.slf4j:slf4j-log4j12:1.7.30')
+@Grab("ch.qos.logback:logback-classic:1.2.3")
+@Grab('com.h2database:h2:1.4.196')
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import ch.qos.logback.classic.Level
+
 import groovy.sql.Sql
 import groovy.json.JsonSlurper
 
-def logger = Logger.getLogger("J2D")
+//LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME).level = Level.DEBUG
+log = LoggerFactory.getLogger("-")
 
-// Update below variables (or should use args), TODO: should do some validation.
-def json_dirs = "../support-20200224-010636-1/db"
-// Example
-if (args.size() > 0) {
-  json_dirs = args[0]
-}
-//def url = "jdbc:h2:./sonatype-work/clm-server/data/ods;SCHEMA=insight_brain_ods;IFEXISTS=true;
-// DATABASE_TO_UPPER=FALSE;MV_STORE=FALSE"
-def url = ""
-if (args.size() > 1) {
-  url = args[1]
-}
-logger.info("JSON dir = ${json_dirs}")
-logger.info("URL = ${url}")
+/**
+ * Old style main
+ * @param args
+ */
+def main() {
+  log.debug(System.properties.toString())
+  // Defaults
+  def jsonDir = System.properties.getProperty('jsonDir', "./")
+  def url = System.properties.getProperty('url', "")
+  def outputPath = System.properties.getProperty('outputPath', "./json2db.sql")
+  def dbUser = System.properties.getProperty('dbUser', "sa")
+  def dbPwd = System.properties.getProperty('dbPwd', "")
 
-def files = new File(json_dirs).listFiles().findAll { it.file && it.name.endsWith('.json') }
-logger.info("Found ${files.size()} json files")
-
-if (files.size() > 0) {
-  def sql
-  if (url.size() > 0) {
-    sql = Sql.newInstance(url, 'sa', '', "org.h2.Driver")
+  log.info("JSON dir = ${jsonDir}")
+  log.info("URL = ${url}")
+  def f = new File(outputPath)
+  if (f.exists() && f.length() > 0) {
+    log.error("${outputPath} exists and not empty.")
+    return false
   }
+  def result = generateSqlStmts(jsonDir, f)
 
-  // NOTE: files[0].getClass() => java.io.File
-  def jser = new JsonSlurper()
-  for (file in files) {
-    def js = jser.parse(file)
-    //def fileBase = (js.keySet() as List)[0].toString()
-    def fileBase = file.name.replaceFirst(~/\.json$/, '')
-    def tableName = fileBase.replaceAll(~/([A-Z])/, '_$1').toLowerCase()
-    def query_t = "TRUNCATE TABLE ${tableName};"
-    println(query_t)
-    if (sql) {
-      sql.execute(query_t)
-    }
-    def row_num = js[fileBase].size()
-    logger.info("Num rows = ${row_num}")
-    def cols_str_h2 = ":" + (js[fileBase][0].keySet() as List).join(', :')
-    def cols_str = (js[fileBase][0].keySet() as List).join(', ')
-    def query_prefix = "INSERT INTO ${tableName} (${cols_str_h2}) VALUES "
-    logger.info(query_prefix)
+  if (result && f.exists() && f.length() > 0 && url.size() > 0) {
+    result = updateDb(f, url, dbUser, dbPwd)
+  }
+  return result
+}
 
-    for (row in js[fileBase]) {
-      try {
-        sql.withTransaction {
-          sql.execute(query_prefix, row)
+/**
+ * Generate a file which contains SQL statements
+ * @param jsonDir String Path to a directory which contains JSON files (.json)
+ * @param fileObj File Statements will be written into this file
+ * @return Boolean
+ */
+def generateSqlStmts(jsonDir, fileObj) {
+  def files = new File(jsonDir).listFiles().findAll { it.file && it.name.endsWith('.json') }
+  log.info("Found ${files.size()} json files")
+
+  if (files.size() > 0) {
+    // NOTE: files[0].getClass() => java.io.File
+    def jser = new JsonSlurper()
+    for (file in files) {
+      def js = jser.parse(file)
+      //def fileBase = (js.keySet() as List)[0].toString()
+      def fileBase = file.name.replaceFirst(~/\.json$/, '')
+      def tableName = fileBase.replaceAll(~/([A-Z])/, '_$1').toLowerCase()
+      log.info("File base ${fileBase} / Table name = ${tableName}")
+
+      fileObj.append("TRUNCATE TABLE ${tableName};\n")
+
+      def rows = js[fileBase]
+      log.trace(rows.getClass().toString())
+      if (rows instanceof Map) {
+        log.warn("${fileBase} is not List.")
+        continue
+      }
+      def row_num = rows.size()
+      log.info("Num rows = ${row_num}")
+      if (row_num == 0) {
+        log.debug("${fileBase} is empty, so skipping.")
+        continue
+      }
+
+      def cols = (rows[0].keySet() as List)
+      def cols_str = cols.join(', ')
+      def query_prefix = "INSERT INTO ${tableName} (${cols_str}) VALUES"
+
+      rows.eachWithIndex { row, i ->
+        def vals = row.collect { cel -> cel.value } as List
+        if (vals.size() == 0) {
+          log.warn("Index ${i} is empty.")
+        }
+        else {
+          def vals_str = vals.join("','")
+          log.trace("values: '${vals_str}'")
+          fileObj.append("${query_prefix} ('${vals_str}');\n")
         }
       }
-      catch (e) {
-        logger.info("row = ${row.toString()}")
-        logger.warning(e.message)
-      }
     }
   }
+  return true
 }
+
+/**
+ * Read file and execute (but with one execute statement...)
+ * @param fileObj
+ * @param url
+ * @param dbUser
+ * @param dbPwd
+ * @return
+ */
+def updateDb(fileObj, url, dbUser, dbPwd) {
+  def sql = Sql.newInstance(url, dbUser, dbPwd, "org.h2.Driver")
+  String sqlString = fileObj.text
+  sql.execute(sqlString)
+  sql.close()
+}
+
+log.debug("Calling main ...")
+main()
