@@ -340,7 +340,7 @@ function backupC() {
     # Delete files larger than 500MB and older than 60 days
     find ${_src%/} -type f -mtime +60 -size +500000k -print0 | xargs -0 -t -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     wait
-    # Sync all files smaller than _size (10MB)
+    # Sync all files smaller than _size (10MB), means *NO* backup for files over 10MB.
     rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 ${_src%/}/ ${_dst%/}/
 }
 function push2search() {

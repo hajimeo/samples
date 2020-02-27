@@ -781,7 +781,7 @@ function f_count_lines() {
 }
 
 function f_strip_html() {
-    local __doc__="Remove HTML tag and convert html entities"
+    local __doc__="Remove HTML tag and convert html entities for jmx.log"
     # language=Python
     python3 -c "import sys,html,re
 _c_rx = re.compile(r'<[^>]+>')
@@ -967,7 +967,8 @@ function f_h2_start() {
             _baseDir="."
         fi
     fi
-    java -cp $HOME/IdeaProjects/external-libs/h2-1.4.200.jar org.h2.tools.Server -baseDir "${_baseDir}"
+    # NOTE: 1.4.200 causes org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException
+    java -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.Server -baseDir "${_baseDir}"
 }
 
 function f_h2_shell() {
@@ -976,10 +977,10 @@ function f_h2_shell() {
     local _Xmx="${3:-"2g"}"
 
     _db_file="$(realpath ${_db_file})"
-    local _url="jdbc:h2:${_db_file/.h2.db/};SCHEMA=insight_brain_ods;IFEXISTS=true;DATABASE_TO_UPPER=FALSE;MV_STORE=FALSE"
+    local _url="jdbc:h2:${_db_file/.h2.db/};IFEXISTS=true;DATABASE_TO_UPPER=FALSE;MV_STORE=FALSE;SCHEMA=insight_brain_ods"
     local _options=""
     [ -s "${_query_file}" ] && _options="-script ${_query_file}"
-    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.200.jar org.h2.tools.Shell -url ${_url} -user sa -password "" -driver org.h2.Driver ${_options}
+    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.Shell -url ${_url} -user sa -password "" -driver org.h2.Driver ${_options}
 }
 
 ### Private functions ##################################################################################################
