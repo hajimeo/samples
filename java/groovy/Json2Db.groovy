@@ -1,8 +1,10 @@
 #!/usr/bin/env groovy
 /**
- *  groovy -DjsonDir="<dir which contains .json files>" [-Durl="jdbc:h2:xxxxx"] ./Json2Db.groovy
+ *  groovy -DjsonDir="<dir which contains .json files>" ./Json2Db.groovy
  *
- *    -Dorg.slf4j.simpleLogger.defaultLogLevel=INFO
+ *  Optionals:
+ *    -Durl="jdbc:h2:${_sonatypeWork%/}/data/ods;DATABASE_TO_UPPER=FALSE"
+ *    -Dorg.slf4j.simpleLogger.defaultLogLevel=DEBUG
  */
 
 @GrabConfig(systemClassLoader = true)
@@ -27,11 +29,13 @@ log = LoggerFactory.getLogger("-")
 def main() {
   log.debug(System.properties.toString())
   // Defaults
+  def dbSchema = System.properties.getProperty('dbSchema', "insight_brain_ods")
   def jsonDir = System.properties.getProperty('jsonDir', "./")
   def url = System.properties.getProperty('url', "")
   def outputPath = System.properties.getProperty('outputPath', "./json2db.sql")
   def dbUser = System.properties.getProperty('dbUser', "sa")
   def dbPwd = System.properties.getProperty('dbPwd', "")
+  def sql = (url.isEmpty()) ? null : Sql.newInstance("${url};SCHEMA=${dbSchema}", dbUser, dbPwd, "org.h2.Driver")
 
   log.info("JSON dir = ${jsonDir}")
   log.info("URL = ${url}")
@@ -40,7 +44,7 @@ def main() {
     log.error("${outputPath} exists and not empty.")
     return false
   }
-  def result = generateSqlStmts(jsonDir, f)
+  def result = generateSqlStmts(jsonDir, f, dbSchema, sql)
 
   if (result && f.exists() && f.length() > 0 && url.size() > 0) {
     result = updateDb(f, url, dbUser, dbPwd)
@@ -52,13 +56,19 @@ def main() {
  * Generate a file which contains SQL statements
  * @param jsonDir String Path to a directory which contains JSON files (.json)
  * @param fileObj File Statements will be written into this file
+ * @param dbSchema DB Schema
+ * @param sql DB connection object
  * @return Boolean
  */
-def generateSqlStmts(jsonDir, fileObj) {
+def generateSqlStmts(jsonDir, fileObj, dbSchema, sql = null) {
   def files = new File(jsonDir).listFiles().findAll { it.file && it.name.endsWith('.json') }
   log.info("Found ${files.size()} json files")
 
   if (files.size() > 0) {
+    //fileObj.append("SET DATABASE_TO_UPPER FALSE;\n")
+    execute("SET REFERENTIAL_INTEGRITY FALSE;", fileObj, sql)
+    //execute("SET SCHEMA ${dbSchema};", fileObj, sql)
+
     // NOTE: files[0].getClass() => java.io.File
     def jser = new JsonSlurper()
     for (file in files) {
@@ -68,7 +78,7 @@ def generateSqlStmts(jsonDir, fileObj) {
       def tableName = fileBase.replaceAll(~/([A-Z])/, '_$1').toLowerCase()
       log.info("File base ${fileBase} / Table name = ${tableName}")
 
-      fileObj.append("TRUNCATE TABLE ${tableName};\n")
+      //execute("DELETE FROM :mytable;", fileObj, sql, [mytable: "${dbSchema}."])
 
       def rows = js[fileBase]
       log.trace(rows.getClass().toString())
@@ -83,19 +93,21 @@ def generateSqlStmts(jsonDir, fileObj) {
         continue
       }
 
-      def cols = (rows[0].keySet() as List)
-      def cols_str = cols.join(', ')
-      def query_prefix = "INSERT INTO ${tableName} (${cols_str}) VALUES"
+      // TODO: 'id' column to 'table_id'
+      def cols_str = (rows[0].keySet() as List).join(', ')
+      def query_prefix = "INSERT INTO \"${dbSchema}\".\"${tableName}\" VALUES"
+      if (sql) {
+        cols_str = ":" + (rows[0].keySet() as List).join(', :')
+        query_prefix = "INSERT INTO ${tableName} VALUES (${cols_str})"
+      }
 
       rows.eachWithIndex { row, i ->
-        def vals = row.collect { cel -> cel.value } as List
-        if (vals.size() == 0) {
+        if (row.isEmpty()) {
           log.warn("Index ${i} is empty.")
         }
         else {
-          def vals_str = vals.join("','")
-          log.trace("values: '${vals_str}'")
-          fileObj.append("${query_prefix} ('${vals_str}');\n")
+          //row['table'] = "${tableName}"
+          execute(query_prefix, fileObj, sql, row)
         }
       }
     }
@@ -103,20 +115,30 @@ def generateSqlStmts(jsonDir, fileObj) {
   return true
 }
 
-/**
- * Read file and execute (but with one execute statement...)
- * @param fileObj
- * @param url
- * @param dbUser
- * @param dbPwd
- * @return
- */
-def updateDb(fileObj, url, dbUser, dbPwd) {
-  def sql = Sql.newInstance(url, dbUser, dbPwd, "org.h2.Driver")
-  String sqlString = fileObj.text
-  sql.execute(sqlString)
-  sql.close()
+def execute(queryTmpl, file = null, sql = null, row = null) {
+  if (sql) {
+    if (row) {
+      log.debug("Query: ${queryTmpl} with ${row.toString()}")
+      sql.execute(queryTmpl, row)
+    }
+    else {
+      log.debug("Query: ${queryTmpl}")
+      sql.execute(queryTmpl)
+    }
+  }
+  else if (file) {
+    if (row) {
+      def vals = row.collect { cel -> cel.value } as List
+      def vals_str = vals.join("','")
+      log.debug("values: '${vals_str}'")
+      file.append("${queryTmpl} ('${vals_str}');\n")
+    }
+    else {
+      file.append("${queryTmpl}\n")
+    }
+  }
 }
+
 
 log.debug("Calling main ...")
 main()
