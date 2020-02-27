@@ -267,7 +267,7 @@ function get_certificate_from_https() {
     [ -z "${_dest_filepath}" ] && _dest_filepath=./${_host}_${_port}.crt
     if [ -n "${_proxy}" ]; then
         # use -rfc to generate PEM format
-        # Also -J-Djavax.net.debug=ssl,keymanager for debug.
+        # To DEBUG, -J-Djavax.net.debug=ssl,keymanager or -Djavax.net.debug=ssl:handshake:verbose
         #keytool -J-Dhttps.proxyHost=<proxy_hostname> -J-Dhttps.proxyPort=<proxy_port> -printcert -rfc -sslserver <remote_host_name:remote_ssl_port>
         #keytool -J-Djava.net.useSystemProxies=true -printcert -rfc -sslserver <remote_host_name:remote_ssl_port>
         echo -n | openssl s_client -connect ${_host}:${_port} -showcerts -proxy ${_proxy}
