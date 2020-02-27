@@ -431,6 +431,8 @@ function f_apache_proxy() {
     local _proxy_dir="/var/www/proxy"
     local _cache_dir="/var/cache/apache2/mod_cache_disk"
     local _port="${r_PROXY_PORT-28080}"
+    # NOTE: to disable weak TLS/SSL versions, edit /etc/apache2/mods-available/ssl.conf with:
+    #SSLProtocol all -SSLv2 -SSLv3 -TLSv1 -TLSv1.1
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
@@ -455,6 +457,8 @@ function f_apache_proxy() {
     ErrorLog \${APACHE_LOG_DIR}/proxy_error.log
     CustomLog \${APACHE_LOG_DIR}/proxy_access.log combined" > /etc/apache2/sites-available/proxy.conf
 
+    #export HISTCONTROL=ignore-space
+    # echo -n 'proxypwd' | htpasswd -i -c /etc/apache2/passwd-nospecial proxyuser
     echo "    <IfModule mod_proxy.c>
         SSLProxyEngine On
         SSLProxyVerify none
@@ -465,9 +469,14 @@ function f_apache_proxy() {
         ProxyRequests On
         AllowCONNECT 443 8443 8444
         <Proxy *>
-            AddDefaultCharset off
             Order deny,allow
             Allow from all
+            AddDefaultCharset off
+            #AuthType Basic
+            #AuthName 'Authentication Required'
+            #AuthUserFile /etc/apache2/passwd-nospecial
+            #Require user proxyuser
+            #Require valid-user
         </Proxy>
 
         ProxyVia On
