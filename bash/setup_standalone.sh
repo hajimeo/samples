@@ -57,7 +57,7 @@ OTHERS (which normally you don't need to use):
         Monitoring port. Script watis until this port will be available or timeouts.
 
     -N
-        Not installing anything, just creating an empty container.
+        Not installing / starting, just creat an empty container or start -n node.
 
     -P
         Use with -c (or when same name container doesn't exist), so that docker run command includes port forwards.
