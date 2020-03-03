@@ -780,16 +780,8 @@ function f_count_lines() {
     fi
 }
 
-function f_strip_html() {
-    local __doc__="Remove HTML tag and convert html entities for jmx.log"
-    # language=Python
-    python3 -c "import sys,html,re
-_c_rx = re.compile(r'<[^>]+>')
-_str = sys.stdin.read()
-_str = _c_rx.sub('', _str)
-print(html.unescape(_str))"
-}
-
+# If a thread dump file contains multiple thread dumps:
+# f_splitByRegex jvm.txt "^${_DATE_FORMAT}.+"
 function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
     local _file="$1"
@@ -977,10 +969,12 @@ function f_h2_shell() {
     local _Xmx="${3:-"2g"}"
 
     _db_file="$(realpath ${_db_file})"
-    local _url="jdbc:h2:${_db_file/.h2.db/};IFEXISTS=true;DATABASE_TO_UPPER=FALSE;MV_STORE=FALSE;SCHEMA=insight_brain_ods"
-    local _options=""
-    [ -s "${_query_file}" ] && _options="-script ${_query_file}"
-    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.Shell -url ${_url} -user sa -password "" -driver org.h2.Driver ${_options}
+    local _url="jdbc:h2:${_db_file/.h2.db/};DATABASE_TO_UPPER=FALSE;SCHEMA=insight_brain_ods;IFEXISTS=true;DB_CLOSE_ON_EXIT=FALSE;MV_STORE=FALSE"
+    if [ -s "${_query_file}" ]; then
+        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.RunScript -url "${_url};TRACE_LEVEL_SYSTEM_OUT=3" -user sa -password "" -driver org.h2.Driver -script "${_query_file}"
+    else
+        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.Shell -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver
+    fi
 }
 
 ### Private functions ##################################################################################################
