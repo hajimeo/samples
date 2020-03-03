@@ -25,6 +25,9 @@ alias printjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys
 alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(r.find(sys.argv[2],namespaces=r.nsmap))"'
 # Search with 2nd arg and output the path(s)
 alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();pprint.pprint([t.getelementpath(x) for x in r.findall(\".//\"+sys.argv[2],namespaces=r.nsmap)])"'
+# Strip XML / HTML to get text (TODO: maybe </br> without new line should add new line)
+# language=Python
+alias xml2text='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))"'
 alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
 alias jn='jupyter-notebook &> /tmp/jupyter-notebook.out &'
 alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
