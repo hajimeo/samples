@@ -1802,7 +1802,10 @@ FROM t_request_logs %s""" % (where_sql)
     nxiq_logs = logs2table('*server.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
 
     # Hazelcast health monitor
-    # result = json2df('health_monitor.json', tablename="t_health_monitor", conn=connect())
+    # if "health_monitor.json" exists:
+    #   result = ju.json2df('health_monitor.json', tablename="t_health_monitor", conn=ju.connect())
+    #   query = """select date_time, xxxx from t_health_monitor"""
+    #   ju.draw(ju.q(query))
     if bool(nxrm_logs):
         _err("Generating t_health_monitor from t_logs ...")
         df_hm = q("""select date_time, message from t_logs
@@ -1823,7 +1826,8 @@ FROM t_request_logs %s""" % (where_sql)
                 where_sql += " AND date_time <= '" + end_isotime + "'"
             query = """select date_time
     , UDF_STR_TO_INT(`physical.memory.free`) as sys_mem_free_bytes
-    , UDF_STR_TO_INT(`swap.space.free`) as swap_free_bytes
+    --, UDF_STR_TO_INT(`swap.space.free`) as swap_free_bytes
+    , CAST(`swap.space.free` AS INTEGER) as swap_free_bytes
     , UDF_STR_TO_INT(`heap.memory.used/max`) as heap_used_percent
     , CAST(`major.gc.count` AS INTEGER) as majour_gc_count
     , UDF_STR_TO_INT(`major.gc.time`) as majour_gc_msec
