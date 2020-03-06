@@ -20,7 +20,9 @@ alias pandas='python3 -i <(echo "import sys,json;import pandas as pd;pdf=pd.read
 alias json2csv='python3 -c "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);pdf.to_csv(sys.argv[1]+\".csv\", header=True, index=False)"'
 # Read xml file, then convert to dict, then print json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
-alias printjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
+alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
+# Pretty print XML (xmllint --format)
+alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);print(etree.tostring(t,pretty_print=True))"'
 # TODO: find with sys.argv[2] (no ".//"), then output as string
 alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(r.find(sys.argv[2],namespaces=r.nsmap))"'
 # Search with 2nd arg and output the path(s)
@@ -381,8 +383,12 @@ function sptBoot() {
         echo "Using ${_zip} ..."
     fi
     echo "To just re-launch or start, check relaunch-support.sh"
-    echo "To use docker with https:\
-    cp $HOME/IdeaProjects/samples/misc/standalone.localdomain.jks ./$(basename "${_zip}" .zip)_tmp/sonatype-work/nexus3/etc/ssl/keystore.jks"
+    if [ ! -s $HOME/.nexus_executable_cache/ssl/keystore.jks.orig ]; then
+        echo "Replacing keystore.jks ..."
+        mv $HOME/.nexus_executable_cache/ssl/keystore.jks $HOME/.nexus_executable_cache/ssl/keystore.jks.orig
+        cp $HOME/IdeaProjects/samples/misc/standalone.localdomain.jks $HOME/.nexus_executable_cache/ssl/keystore.jks
+        echo "Append 'local.standalone.localdomain' in 127.0.0.1 line in /etc/hosts."
+    fi
     python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
 }
 function iqCli() {
