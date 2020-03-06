@@ -106,7 +106,7 @@ function f_setup_spring_cli() {
 
 function f_javaenvs() {
     local _port="${1}"
-    local _extra_dir="${2}"
+    local _extra_lib="${2-${_EXTRA_LIB}}"
 
     if [ -z "${_port}" ]; then
         if [ -n "$JAVA_HOME" ] && [ -n "$CLASSPATH" ]; then
@@ -127,7 +127,11 @@ function f_javaenvs() {
             return 11
         fi
     fi
-    local _user="`stat -c '%U' /proc/${_p}`"
+    local _user="`stat -c '%U' /proc/${_p} 2>/dev/null`"
+    if [ -z "${_user}" ]; then
+        _user="$USER"
+        echo "Couldn't find _user from PID ${_p}, so using ${_user} ..."
+    fi
     if [ -z "$JAVA_HOME" ]; then
         local _dir="$(dirname `readlink /proc/${_p}/exe` 2>/dev/null)"
         export JAVA_HOME="$(dirname ${_dir})"
@@ -141,21 +145,28 @@ function f_javaenvs() {
     fi
     if [ -x "${_jcmd}" ]; then
         if [ -z "$CLASSPATH" ]; then
-            export CLASSPATH=".:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+            export CLASSPATH=".:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
             # using extra_dir only when no CLASSPATH set, otherwise, CLASSPATH can be super long
-            if [ -d "${_extra_dir}" ]; then
+            if [ -d "${_extra_lib}" ]; then
                 # It might contain another groovy jar but different version, so excluding in find.
-                local _extra_classpath=$(find ${_extra_dir%/} -name '*.jar' -not -name 'groovy-*.jar' -print | tr '\n' ':')
+                local _extra_classpath=$(find ${_extra_lib%/} -name '*.jar' -not -name 'groovy-*.jar' -print | tr '\n' ':')
                 export CLASSPATH="${_extra_classpath%:}:${CLASSPATH%:}"
             fi
         else
             echo "WARN: CLASSPATH is already set, so not overwriting/appending."
-            #export CLASSPATH="${CLASSPATH%:}:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+            #export CLASSPATH="${CLASSPATH%:}:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
         fi
     else
         echo "WARN: Couldn't not set CLASSPATH because of no executable jcmd found."; sleep 3
     fi
-    export _CWD="$(realpath /proc/${_p}/cwd)"
+    export _CWD="$(realpath /proc/${_p}/cwd 2>/dev/null)"
+}
+
+function f_set_classpath() {
+    local _dir="${1:-"."}"
+    //local _exclude="${2:-"/(tmp|cache)/"}"
+    local _all_jars="$(find ${_dir%/} -type f -name "*.jar" -not \( -path "*/tmp/*" -o -path "*/cache/*" \) -print | tr '\n' ':')"
+    export CLASSPATH="${_all_jars%:}:${CLASSPATH%:}"
 }
 
 function f_scala() {
@@ -174,11 +185,11 @@ function f_scala() {
 
 function f_groovy() {
     local _port="${1}"
-    local _extra_dir="${2}"
+    local _extra_lib="${2}"
     local _cded=false
     f_setup_groovy
     if [[ "${_port}" =~ ^[0-9]+$ ]]; then
-        f_javaenvs "${_port}" "${_extra_dir}"
+        f_javaenvs "${_port}" "${_extra_lib}"
         cd "${_CWD}" && _cded=true
     else
         echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
@@ -241,7 +252,7 @@ function f_update_jar() {
     [ -n "${_updating_specific_class}" ] && _class_file_path="${_compiled_dir%/}/${_updating_specific_class}[.$]*class"
 
     echo "Updating ${_jar_filepath} with ${_class_file_path} ..."
-    #local _updated_date="$(date | sed -r 's/[0-9][0-9]:[0-9][0-9]:[0-9][0-9].+//')"
+    #local _updated_date="$(date | _sed -r 's/[0-9][0-9]:[0-9][0-9]:[0-9][0-9].+//')"
     local _updated_time="$(date | grep -oE ' [0-9][0-9]:[0-9][0-9]:[0-9]')"
     $JAVA_HOME/bin/jar -uvf ${_jar_filepath} ${_class_file_path} || return $?
     echo "------------------------------------------------------------------------------------"
@@ -252,6 +263,16 @@ function f_update_jar() {
     return 0
 }
 
+function _sed() {
+    local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
+    if ${_SUDO_SED}; then
+        sudo ${_cmd} "$@"
+    else
+        ${_cmd} "$@"
+    fi
+}
+
+
 ### Main ###############################
 if [ "$0" = "$BASH_SOURCE" ]; then
     _PORT="$1"
@@ -260,7 +281,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _UPDATING_CLASSNAME="$4"
     _NOT_COMPILING="$5"
 
-    if [ -z "$JAVA_HOME" ] && [ -z "$CLASSPATH" ] && [ -z "$_PORT" ]; then
+    if [ "$#" -eq 0 ]; then
         echo "A port number (1st arg) to find PID is required."
         usage
         exit 1
