@@ -46,7 +46,7 @@ HOW-TO: source (.), then use some function
 
     Examples:
     # Check what kind of caused by is most
-    f_topCausedByExceptions ./yarn_application.log | tail -n 10
+    f_topCausedByExceptions yarn_application.log | tail -n 10
 
     # Check what kind of ERROR is most
     f_topErrors ./yarn_application.log | tail -n 10
@@ -117,14 +117,14 @@ function f_grep_logs() {
 
 function f_topCausedByExceptions() {
     local __doc__="List Caused By xxxxException (Requires rg)"
-    local _path="$1"
+    local _glob="${1:-"*.log"}"
     local _is_shorter="$2"
     local _regex="Caused by.+Exception"
 
     if [[ "$_is_shorter" =~ (^y|^Y) ]]; then
         _regex="Caused by.+?Exception"
     fi
-    rg -z -N -o "$_regex" "$_path" | sort | uniq -c | sort -n
+    rg -z -N -o "$_regex" -g "$_glob" | sort | uniq -c | sort -nr | head -n40
 }
 
 function f_topErrors() {
@@ -788,11 +788,25 @@ function f_threads() {
     local _split_search="${2:-"^\".+"}"
     local _running_thread_search_re="${3-"\.sonatype\."}"
     local _dir="${4:-"./_threads"}"
+    local _not_split_by_date="${5:-${_NOT_SPLIT_BY_DATE}}"
 
     [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
     [ -z "${_file}" ] && return 1
     local _prefix="${_file%%.*}_"
-    [ ! -d "${_dir%/}" ] && mkdir ${_dir%/}
+    [ ! -d "${_dir%/}" ] && mkdir -p ${_dir%/}
+
+    if [[ ! "${_not_split_by_date}" =~ ^(y|Y) ]]; then
+        local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$' -c ${_file})
+        if [ 1 -lt ${_how_many_threads:-0} ]; then
+            local _tmp_dir="$(mktemp -d)"
+            f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "${_tmp_dir%/}" ""
+            for _f in `ls ${_tmp_dir%/}`; do
+                echo "Saving outputs into f_thread_${_f%.*}.out ..."
+                f_threads "${_tmp_dir%/}/${_f}" "${_split_search}" "${_running_thread_search_re}" "${_dir%/}/${_f%.*}" "Y" > ./f_thread_${_f%.*}.out
+            done
+            return $?
+        fi
+    fi
 
     f_splitByRegex "${_file}" "${_split_search}" "${_dir%/}" ""
 
@@ -800,6 +814,7 @@ function f_threads() {
     #rg -w BLOCKED ${_dir%/}/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
     #rg '^("|\s+- .*lock)' ${_file}
     # Listening ports
+    echo "## Listening ports"
     rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
     echo "## Finding BLOCKED or waiting to lock lines"
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ${_dir%/}/
@@ -871,13 +886,16 @@ function f_request2csv() {
     local _pattern="$3"
     local _pattern_out="$4"
 
+    local _g_opt="-g"
+    [ -s "${_glob}" ] && _g_opt=""
+
     if [ -z "${_out_file}" ]; then
         _out_file="$(basename ${_glob} .log).csv"
     fi
     # NOTE: check jetty-requestlog.xml and logback-access.xml
     local _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1')"
     if [ -z "${_pattern}" ] && [ -z "${_pattern_str}" ]; then
-        local _tmp_first_line="$(rg -g "${_glob}" --no-filename -m1 '\b20\d\d\b')"
+        local _tmp_first_line="$(rg ${_g_opt} "${_glob}" --no-filename -m1 '\b20\d\d\b')"
         if echo "${_tmp_first_line}"   | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
             _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
         elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
@@ -902,7 +920,7 @@ function f_request2csv() {
     fi
     rg --no-filename -N -z \
         "${_pattern}" \
-        -o -r "${_pattern_out}" -g "${_glob}" >> ${_out_file}
+        -o -r "${_pattern_out}" ${_g_opt} "${_glob}" >> ${_out_file}
 }
 
 function _gen_pattern() {
@@ -938,7 +956,7 @@ function f_audit2json() {
     fi
 }
 
-function f_log2json() {
+function f_healthlog2json() {
     local __doc__="TODO: Convert some log text to json"
     local _glob="${1:-"nexus.log"}"
     local _out_file="${2:-"health_monitor.json"}"
@@ -1037,20 +1055,26 @@ function f_splitByRegex() {
     local _prev_n=1
     local _prev_str=""
 
-    # NOTE: Surprisingly, uniq -f1 recognises ":" as a delimiter but may break later, so not using (also seems awk is faster somehow)
     rg "${_regex}" --no-filename -n -o "${_file}" > /tmp/f_splitByRegex_$$.out
-    # Sometimes the match contains ":" (like request.log's date&time, which breaks awk or uniq -f1
-    _sed -i 's/:/./2' /tmp/f_splitByRegex_$$.out
-    #awk -F":" '{if(a[$2] < $1)a[$2]=$1;}END{for(i in a){print a[i],i;}}' OFS=: /tmp/f_splitByRegex_$$.out | sort -n
+    echo "END_OF_FILE" >> /tmp/f_splitByRegex_$$.out
+    # NOTE scope is strange. _prev_str can't be used outside of while loop.
     cat /tmp/f_splitByRegex_$$.out | while read -r _t; do
         if [[ "${_t}" =~ ^([0-9]+):(.+) ]]; then
-            [ ${_prev_n} == ${BASH_REMATCH[1]} ] && continue
+            # Skip if this number is already processed
+            if [ ${_prev_n} == ${BASH_REMATCH[1]} ]; then
+                _prev_str="${BASH_REMATCH[2]}"  # Used for the file name and detecting a new value
+                continue
+            fi
+            # At this moment, Skip if the previous key is same as current key. Expecting key is unique...
             [ -n "${_prev_str}" ] && [ "${_prev_str}" == "${BASH_REMATCH[2]}" ] && continue
             # Found new value (next date, next thread etc.)
-            _tmp_str="$(echo ${_prev_str} | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-128)"
+            _tmp_str="$(echo "${_prev_str}" | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-128)"
             _sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}${_tmp_str}.${_extension} || return $?
             _prev_str="${BASH_REMATCH[2]}"  # Used for the file name and detecting a new value
             _prev_n=${BASH_REMATCH[1]}
+        elif [ "${_t}" == "END_OF_FILE" ] && [ -n "${_prev_str}" ]; then
+            _tmp_str="$(echo "${_prev_str}" | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-128)"
+            _sed -n "${_prev_n},\$p" ${_file} > ${_save_path_prefix}${_tmp_str}.${_extension} || return $?
         fi
     done
 }
