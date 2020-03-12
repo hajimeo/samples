@@ -21,8 +21,9 @@ alias json2csv='python3 -c "import sys,json;import pandas as pd;pdf=pd.read_json
 # Read xml file, then convert to dict, then print json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
 alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
-# Pretty print XML (xmllint --format)
-alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);print(etree.tostring(t,pretty_print=True))"'
+# Pretty print XML
+#alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);print(etree.tostring(t,pretty_print=True))"'
+alias prettyxml='xmllint --format'
 # TODO: find with sys.argv[2] (no ".//"), then output as string
 alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(r.find(sys.argv[2],namespaces=r.nsmap))"'
 # Search with 2nd arg and output the path(s)
@@ -54,6 +55,7 @@ which mdfind &>/dev/null && alias locat="mdfind"
 alias logS="source $HOME/IdeaProjects/samples/bash/log_search.sh; source $HOME/IdeaProjects/work/bash/log_search.sh"
 alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py"
 alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
+alias qcsv='q -H -O -d"," -T --disable-double-double-quoting'
 
 # VM related
 # virt-manager remembers the connections, so normally would not need to start in this way.
@@ -103,7 +105,7 @@ function merge_zips() {
 }
 
 # head and tail of one file
-function ht() {
+function headtail() {
     local _f="$1"
     local _tac="tac"
     which gtac &>/dev/null && _tac="gtac"
@@ -115,7 +117,7 @@ function mcd() {
     local _path="$1"
     mkdir "${_path}"; cd "${_path}"
 }
-# cat some.json | pjson | less (or vim -)
+# cat some.json | pjson | less (or vim -)       Obfuscated??? I'm using prettyjson now.
 function pjson() {
     local _max_length="${1:-16384}"
     local _sort_keys="False"; [[ "$2" =~ (y|Y) ]] && _sort_keys="True"
@@ -129,6 +131,14 @@ for l in sys.stdin:
     except ValueError:
         print l2'
 }
+function jsondiff() {
+    local _f1="$(echo $1 | sed -e 's/^.\///' -e 's/[/]/_/g')"
+    local _f2="$(echo $2 | sed -e 's/^.\///' -e 's/[/]/_/g')"
+    prettyjson $1 > "/tmp/${_f1}"
+    prettyjson $2 > "/tmp/${_f2}"
+    vimdiff "/tmp/${_f1}" "/tmp/${_f2}"
+}
+
 # surprisingly it's not easy to remove all newlines
 function rmnewline() {
     python -c 'import sys
@@ -379,7 +389,7 @@ function sptBoot() {
     local _zip="$1"
     [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
     if [ -z "${_zip}" ]; then
-        _zip="$(ls -1 ./support-20*.zip | tail -n1)" || return $?
+        _zip="$(ls -1 ./*-202?????-??????-*.zip | tail -n1)" || return $?
         echo "Using ${_zip} ..."
     fi
     echo "To just re-launch or start, check relaunch-support.sh"
