@@ -11,6 +11,8 @@ web:*.{html,css,js}*
 --glob=!git/*
 --glob=!*.ipynb
 --glob=!*.tmp
+--glob=!*.zip
+--glob=!*_tmp
 # Set the colors.
 #--colors=line:none
 #--colors=line:style:bold
