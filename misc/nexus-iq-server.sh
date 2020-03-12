@@ -27,7 +27,7 @@ do_start()
 {
     cd $NEXUS_IQ_SERVER_HOME
     # Original uses su -m which can inherits almost all env of current user (eg: root), not sure if it was intentional
-    sudo -u $RUN_AS_USER java $JAVA_OPTIONS -jar ./nexus-iq-server-*.jar server ./config.yml &> ./log/nexus_iq_server.out &
+    sudo -u $RUN_AS_USER java $JAVA_OPTIONS -jar ./nexus-iq-server-*.jar server ./config.yml &> /tmp/nexus_iq_server.out &
     echo "Started nexus-iq-server"
 }
 
@@ -41,7 +41,7 @@ do_stop()
 {
     local pid=$(ps -o pid,command -u sonatype -U sonatype | grep -m1 -P '^java .+/nexus-iq-server.*jar server\b' | awk '{print $1}')
     if [ -n "${pid}" ]; then
-        kill $pid
+        kill $pid || return $?
         echo "Killed nexus-iq-server - PID $pid"
     fi
 }
