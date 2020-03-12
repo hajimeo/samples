@@ -420,6 +420,8 @@ function f_socks5_proxy() {
 function _apache_install() {
     # NOTE: how to check loaded modules: apache2ctl -M and/or check mods-available/ and mods-enabled/
     apt-get install -y apache2 apache2-utils || return $?
+    # https://www.cyberciti.biz/faq/apache-mod_dumpio-log-post-data/
+    #a2enmod dump_io || return $?   # To log request headers but may log too much
     a2enmod proxy proxy_http proxy_connect proxy_wstunnel cache cache_disk ssl || return $?
     apt-get install -y libapache2-mod-auth-kerb || return $?
     a2enmod headers rewrite auth_kerb || return $?
@@ -433,6 +435,8 @@ function f_apache_proxy() {
     local _port="${r_PROXY_PORT-28080}"
     # NOTE: to disable weak TLS/SSL versions, edit /etc/apache2/mods-available/ssl.conf with:
     #SSLProtocol all -SSLv2 -SSLv3 -TLSv1 -TLSv1.1
+    # NOTE: To configure docker to use proxy: https://medium.com/@airman604/getting-docker-to-work-with-a-proxy-server-fadec841194e
+    # systemctl show --property=Environment docker
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
@@ -455,7 +459,12 @@ function f_apache_proxy() {
     DocumentRoot ${_proxy_dir}
     LogLevel warn
     ErrorLog \${APACHE_LOG_DIR}/proxy_error.log
-    CustomLog \${APACHE_LOG_DIR}/proxy_access.log combined" > /etc/apache2/sites-available/proxy.conf
+    CustomLog \${APACHE_LOG_DIR}/proxy_access.log combined
+    # Log request headers (but too much)
+    #DumpIOInput On
+    #DumpIOOutput On
+    #LogLevel dumpio:trace7
+    " > /etc/apache2/sites-available/proxy.conf
 
     #export HISTCONTROL=ignore-space
     # echo -n 'proxypwd' | htpasswd -i -c /etc/apache2/passwd-nospecial proxyuser
@@ -467,7 +476,7 @@ function f_apache_proxy() {
         SSLProxyCheckPeerExpire off
 
         ProxyRequests On
-        AllowCONNECT 443 8443 8444
+        AllowCONNECT 443 1025-60000
         <Proxy *>
             Order deny,allow
             Allow from all
