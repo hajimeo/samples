@@ -87,15 +87,17 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
 # Obfuscate string (encode/decode)
+# echo -n "your secret word" | obfuscate "your salt"
 function obfuscate() {
-    local _str="$1"
-    local _salt="$2"
-    echo -n "${_str}" | openssl enc -aes-128-cbc -pbkdf2 -salt -pass pass:"${_salt}"
+    local _salt="$1"
+    # -pbkdf2 does not work with 1.0.2 on CentOS. Should use -aes-256-cbc?
+    # 2>/dev/null to hide WARNING : deprecated key derivation used.
+    openssl enc -aes-128-cbc -md sha256 -salt -pass pass:"${_salt}" 2>/dev/null
 }
+# cat /your/secret/file | deobfuscate "your salt"
 function deobfuscate() {
-    local _str="$1"
-    local _salt="$2"
-    echo -n "${_str}" | openssl enc -aes-128-cbc -pbkdf2 -salt -pass pass:"${_salt}" -d
+    local _salt="$1"
+    openssl enc -aes-128-cbc -md sha256 -salt -pass pass:"${_salt}" -d 2>/dev/null
 }
 
 # Merge split zip files to one file
@@ -423,7 +425,7 @@ function mvn-get() {
     # -Dmaven.repo.local=./repo_local
     [ -n "${_repo}" ] && _options="${_options% } -Dmaven.repo.remote=${_repo}"
     [ -n "${_localrepo}" ] && _options="${_options% } -Dmaven.repo.local=${_localrepo}"
-    mvn dependency:get ${_options} -Dartifact=$@ -X
+    mvn dependency:get ${_options} -Dartifact=$@ -U -X
 }
 
 # To patch nexus (so that checking /system) but probably no longer using.
