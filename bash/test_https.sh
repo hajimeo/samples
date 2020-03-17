@@ -278,6 +278,14 @@ function get_certificate_from_https() {
     _sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp > ${_dest_filepath}
 }
 
+# for SAML X509Certificate
+function gen_cert_from_one_line_str() {
+    local _str="$1"
+    echo "-----BEGIN CERTIFICATE-----"
+    fold -w 64 -s <(echo "${_str}")
+    echo "-----END CERTIFICATE-----"
+}
+
 function gen_wildcard_cert() {
     local _domain="${1:-`hostname -d`}"
     [ -z "${_domain}" ] && _domain="standalone.localdomain"
