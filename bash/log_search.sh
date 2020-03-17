@@ -820,8 +820,8 @@ function f_threads() {
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ${_dir%/}/
     echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
     rg -H "${_running_thread_search_re}" -m1 -g '*RUNNABLE*' -g '*runnable*' ${_dir%/}/
-    echo " "
-    rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | tail -n 20
+    echo "## Counting NOT waiting threads"
+    rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | tail -n 40
     echo "Total: `rg '^"' ${_file} -c`"
     echo " "
     if grep -q 'state=' ${_file}; then
@@ -987,7 +987,8 @@ function f_h2_shell() {
     local _Xmx="${3:-"2g"}"
 
     _db_file="$(realpath ${_db_file})"
-    local _url="jdbc:h2:${_db_file/.h2.db/};DATABASE_TO_UPPER=FALSE;SCHEMA=insight_brain_ods;IFEXISTS=true;DB_CLOSE_ON_EXIT=FALSE;MV_STORE=FALSE"
+    # DB_CLOSE_ON_EXIT=FALSE; may have some bug: https://github.com/h2database/h2database/issues/1259
+    local _url="jdbc:h2:${_db_file/.h2.db/};DATABASE_TO_UPPER=FALSE;SCHEMA=insight_brain_ods;IFEXISTS=true;MV_STORE=FALSE"
     if [ -s "${_query_file}" ]; then
         java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.RunScript -url "${_url};TRACE_LEVEL_SYSTEM_OUT=3" -user sa -password "" -driver org.h2.Driver -script "${_query_file}"
     else
@@ -1048,7 +1049,8 @@ function f_splitByRegex() {
     local _base_name="$(basename "${_file}")"
     [ "${_prefix}" == "*None*" ] && _prefix="${_base_name%%.*}_"
     local _save_path_prefix="${_save_to%/}/${_prefix}"
-    local _extension="${_base_name##*.}"
+    local _extension="out"
+    #local _extension="${_base_name##*.}"
 
     # this may not be working
     local _tmp_str=""
@@ -1068,12 +1070,12 @@ function f_splitByRegex() {
             # At this moment, Skip if the previous key is same as current key. Expecting key is unique...
             [ -n "${_prev_str}" ] && [ "${_prev_str}" == "${BASH_REMATCH[2]}" ] && continue
             # Found new value (next date, next thread etc.)
-            _tmp_str="$(echo "${_prev_str}" | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-128)"
+            _tmp_str="$(echo "${_prev_str}" | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-192)"
             _sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}${_tmp_str}.${_extension} || return $?
             _prev_str="${BASH_REMATCH[2]}"  # Used for the file name and detecting a new value
             _prev_n=${BASH_REMATCH[1]}
         elif [ "${_t}" == "END_OF_FILE" ] && [ -n "${_prev_str}" ]; then
-            _tmp_str="$(echo "${_prev_str}" | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-128)"
+            _tmp_str="$(echo "${_prev_str}" | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-192)"
             _sed -n "${_prev_n},\$p" ${_file} > ${_save_path_prefix}${_tmp_str}.${_extension} || return $?
         fi
     done
