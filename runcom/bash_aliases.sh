@@ -136,8 +136,10 @@ for l in sys.stdin:
 function jsondiff() {
     local _f1="$(echo $1 | sed -e 's/^.\///' -e 's/[/]/_/g')"
     local _f2="$(echo $2 | sed -e 's/^.\///' -e 's/[/]/_/g')"
-    prettyjson $1 > "/tmp/${_f1}"
-    prettyjson $2 > "/tmp/${_f2}"
+    # alternative https://json-delta.readthedocs.io/en/latest/json_diff.1.html
+    python3 -c "import sys,json;print(json.dumps(json.load(open('${_f1}')), indent=4, sort_keys=True))" > "/tmp/${_f1}"
+    python3 -c "import sys,json;print(json.dumps(json.load(open('${_f2}')), indent=4, sort_keys=True))" > "/tmp/${_f2}"
+    #prettyjson $2 > "/tmp/${_f2}"
     vimdiff "/tmp/${_f1}" "/tmp/${_f2}"
 }
 
@@ -389,6 +391,8 @@ function sync_nexus_binaries() {
 }
 function sptBoot() {
     local _zip="$1"
+    local _jdb="$2"
+
     [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
     if [ -z "${_zip}" ]; then
         _zip="$(ls -1 ./*-202?????-??????-*.zip | tail -n1)" || return $?
@@ -401,7 +405,11 @@ function sptBoot() {
         cp $HOME/IdeaProjects/samples/misc/standalone.localdomain.jks $HOME/.nexus_executable_cache/ssl/keystore.jks
         echo "Append 'local.standalone.localdomain' in 127.0.0.1 line in /etc/hosts."
     fi
-    python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
+    if [[ "${_jdb}" =~ ^(y|Y) ]]; then
+        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py --remote-debug -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
+    else
+        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
+    fi
 }
 function iqCli() {
     # https://help.sonatype.com/display/NXI/Nexus+IQ+CLI
