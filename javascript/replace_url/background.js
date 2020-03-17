@@ -11,9 +11,15 @@ var tab_regex = new RegExp("^https?://.+\.zendesk\.com/agent/");
 var id_regex = new RegExp("^https?://(.+\.zendesk\.com/agent/tickets/)([0-9]+)");
 // If URL matches below, ignoring (not doing anything), but currently not using.
 var ignore_regex = new RegExp("^https?://currently_not_in_use");
+var initiator_regex = new RegExp("^https?://.+\.zendesk\.com");
 
 function replaceUrl(req) {
   console.log("New req:", req);
+
+  if (req.initiator && initiator_regex.exec(req.initiator)) {
+    console.log('Initiator is Zendesk.');
+    return
+  }
 
   if (ignore_regex.exec(req.url)) {
     console.log('Requested URL is in ignore_regex, so no action required.');
@@ -24,6 +30,7 @@ function replaceUrl(req) {
   console.log("matches:", match);
   if (!match || match < 3) {
     console.log("no match, so returning the original URL.");
+    console.log('redirectUrl:', req.url);
     return {redirectUrl: req.url}
   }
 
@@ -64,6 +71,7 @@ function replaceUrl(req) {
 
     if (!target_tab) {
       console.log('Could not find any tab, so using the newly opened tab.');
+      console.log('redirectUrl:', req.url);
       return {redirectUrl: req.url}
     }
 
@@ -82,12 +90,14 @@ function replaceUrl(req) {
     //console.log('Updating tab id:' + target_tab.id + ' with url: ', new_url);
     //chrome.tabs.update(target_tab.id, {url: new_url});
     console.log('executeScript on ' + target_tab.id + ' with the match id: ', id);
+    // TODO: using document.location.href might be slower than previous way
     var inner_script = `
 var _id = '${id}';
 console.log("_id: " + _id);
-document.querySelector('a.search-icon').click();
-document.querySelector('#mn_1').value=_id;
-document.querySelector('a.advanced-search').click();
+//document.querySelector('a.search-icon').click();
+//document.querySelector('#mn_1').value=_id;
+//document.querySelector('a.advanced-search').click();
+document.location.href='https://sonatype.zendesk.com/agent/tickets/'+_id;
 document.location.href;
 `.trim();
     chrome.tabs.executeScript(target_tab.id, {
@@ -98,7 +108,7 @@ document.location.href;
         return {redirectUrl: req.url}
       }
       if (results && results.length > 0 && results[0]) {
-        console.log("An inner tab *may* be clicked!", results);
+        console.log("The 'inner_script' was *probably* worked.", results);
       }
       else {
         // If results is empty, just change the URL.
