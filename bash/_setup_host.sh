@@ -1266,6 +1266,35 @@ function f_kvm() {
     fi
 }
 
+function f_postfix() {
+    local __doc__="Install SMTP package (postfix) and configure."
+    local _redirect_mail="${1}" # useful for SMTP testing
+    local _relay_host="${2}"
+    local _conf_file="/etc/postfix/main.cf"
+
+    DEBIAN_FRONTEND=noninteractive apt-get -y install postfix mailutils || return $?
+
+    touch /etc/postfix/generic || return $?
+    _upsert "${_conf_file}" "smtp_generic_maps" "hash:/etc/postfix/generic"
+    if [ -n "${_relay_host}" ]; then
+        _upsert "${_conf_file}" "relayhost" "${_relay_host}"
+    fi
+    if [ -n "${_redirect_mail}" ]; then
+        if grep -qw "${_redirect_mail}" /etc/postfix/recipient_canonical_map; then
+            _log "WARN" "${_redirect_mail} exists in /etc/postfix/recipient_canonical_map, so not setting up the redirection.";sleep 3
+        else
+            echo "/./ ${_redirect_mail}" >> /etc/postfix/recipient_canonical_map || return $?
+            _upsert "${_conf_file}" "recipient_canonical_classes" "envelope_recipient"
+            _upsert "${_conf_file}" "recipient_canonical_maps" "regexp:/etc/postfix/recipient_canonical_map"
+        fi
+    fi
+
+    postmap /etc/postfix/generic || return $?
+    service postfix restart || return $?
+    #postconf -n
+    #mail --debug-level=9 -a "FROM:test@hajigle.com" -s "test mail" admin@osakos.com </dev/null
+}
+
 function f_mac2ip() {
     local __doc__="Try finding IP address from arp cache"
     local _mac="$1"
@@ -1559,7 +1588,6 @@ function p_basic_setup() {
         # NOTE: psql (postgresql-client) is required
         _log "INFO" "Executing apt-get install packages"
         f_install_packages || return $?
-        #mailutils postfix htop
         _log "INFO" "Executing f_docker_setup"
         f_docker_setup || return $?
         _log "INFO" "Executing f_sysstat_setup"
