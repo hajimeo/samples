@@ -55,7 +55,7 @@ which mdfind &>/dev/null && alias locat="mdfind"
 alias logS="source $HOME/IdeaProjects/samples/bash/log_search.sh; source $HOME/IdeaProjects/work/bash/log_search.sh"
 alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py"
 alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
-alias qcsv='q -H -O -d"," -T --disable-double-double-quoting'
+alias qcsv='q -O -d"," -T --disable-double-double-quoting'
 
 # VM related
 # virt-manager remembers the connections, so normally would not need to start in this way.
@@ -64,7 +64,7 @@ alias kvm_haji='virt-manager -c "qemu+ssh://root@hajime/system?socket=/var/run/l
 # Java / jar related
 alias mb='java -jar $HOME/Applications/metabase.jar'    # port is 3000
 alias vnc='nohup java -jar $HOME/Applications/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
-alias samurai='java -Xmx2048m -jar $HOME/Apps/samurali/samurai.jar'
+alias samurai='java -Xmx4096m -jar $HOME/Apps/samurali/samurai.jar'
 alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar'
 #alias vnc='nohup java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
 alias groovyi='groovysh -e ":set interpreterMode true"'
