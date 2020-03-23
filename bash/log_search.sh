@@ -798,6 +798,10 @@ function f_threads() {
     if [[ ! "${_not_split_by_date}" =~ ^(y|Y) ]]; then
         local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$' -c ${_file})
         if [ 1 -lt ${_how_many_threads:-0} ]; then
+            # Only when checking multiple thread dumps
+            echo "## Long running threads (exclude: GC threads, waiting on condition)"
+            rg '^"' --no-filename ${_file} | rg -v '(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread)' | sort | uniq -c | sort -nr | rg "^\s+${_how_many_threads}\s" | rg -vw 'waiting on condition'
+
             local _tmp_dir="$(mktemp -d)"
             f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "${_tmp_dir%/}" ""
             for _f in `ls ${_tmp_dir%/}`; do
@@ -818,6 +822,8 @@ function f_threads() {
     rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
     echo "## Finding BLOCKED or waiting to lock lines"
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ${_dir%/}/
+    echo "## Counting 'waiting to lock' etc. (exclude: parking to wait for)"
+    rg '^\s+\-' --no-filename ${_dir%/}/ | rg -v '(- locked|- parking to wait for)' |  sort | uniq -c | sort -nr | head -n20
     echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
     rg -H "${_running_thread_search_re}" -m1 -g '*RUNNABLE*' -g '*runnable*' ${_dir%/}/
     echo "## Counting NOT waiting threads"
