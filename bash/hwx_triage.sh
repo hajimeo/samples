@@ -61,6 +61,8 @@ function f_check_system() {
 
     uname -a &> ${_work_dir%/}/uname-a.out
     lsb_release -a &>> ${_work_dir%/}/uname-a.out
+    localectl status &> ${_work_dir%/}/locale.out
+    locale &>> ${_work_dir%/}/locale.out
     dmesg | grep 'link up' &> ${_work_dir%/}/dmesg_link_up.out
     hdp-select &> ${_work_dir%/}/hdp-select.out
     ls -l /usr/hdp/current/ >> ${_work_dir%/}/hdp-select.out
