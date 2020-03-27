@@ -778,7 +778,7 @@ function f_docker_image_import() {
     To rename image:
         docker tag ${_existing_img} <new_name>:<new_tag>
         docker rmi ${_existing_img}
-    To backup image:
+    To backup image ('export' is for no history = smaller):
         docker save <image id> | gzip > saved_image_name.tgz
         docker export <container id> | gzip > exported_container_name.tgz
     To restore
