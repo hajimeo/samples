@@ -62,11 +62,11 @@ alias qcsv='q -O -d"," -T --disable-double-double-quoting'
 alias kvm_haji='virt-manager -c "qemu+ssh://root@hajime/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
 
 # Java / jar related
-alias mb='java -jar $HOME/Applications/metabase.jar'    # port is 3000
+alias mb='nohup java -jar $HOME/Applications/metabase.jar &'    # port is 3000
 alias vnc='nohup java -jar $HOME/Applications/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
-alias samurai='java -Xmx4096m -jar $HOME/Apps/samurali/samurai.jar'
-alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar'
 #alias vnc='nohup java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
+alias samurai='nohup java -Xmx4096m -jar $HOME/Apps/samurali/samurai.jar &'
+alias gcviewer='nohup java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar &'
 alias groovyi='groovysh -e ":set interpreterMode true"'
 
 # Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
@@ -409,7 +409,11 @@ function sptBoot() {
         python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py --remote-debug -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
     else
         python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
-    fi
+    fi || echo "NOTE: If error was port already in use, you might need to run below:
+    . ~/IdeaProjects/work/bash/install_sonatype.sh
+    f_sql_nxrm \"config\" \"SELECT attributes['docker']['httpPort'] FROM repository WHERE attributes['docker']['httpPort'] IS NOT NULL\" \".\" \"\$USER\"
+If ports conflict, edit nexus.properties is easier. eg:8080.
+"
 }
 function iqCli() {
     # https://help.sonatype.com/display/NXI/Nexus+IQ+CLI
@@ -430,10 +434,9 @@ function mvn-get() {
     local _repo="$2"
     local _localrepo="$3"
     local _options="-Dtransitive=false"
-    # -Dmaven.repo.local=./repo_local
-    [ -n "${_repo}" ] && _options="${_options% } -Dmaven.repo.remote=${_repo}"
+    [ -n "${_repo}" ] && _options="${_options% } -DremoteRepositories=${_repo}"
     [ -n "${_localrepo}" ] && _options="${_options% } -Dmaven.repo.local=${_localrepo}"
-    mvn dependency:get ${_options} -Dartifact=$@ -U -X
+    mvn -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS dependency:get ${_options} -Dartifact=$@ -U -X
 }
 
 # To patch nexus (so that checking /system) but probably no longer using.
