@@ -26,8 +26,11 @@ CREATE CONTAINER:
         <version> in -v is such as x.x.x.
         <container name> in -n is a container name (= hostname).
         If no name specified, generates some random name.
-    Ex:
+
+    Ex1: Install NXIQ
         setup_standalone.sh -c -n node-nxiq1740 -v 1.74.0 -o \"-t nxiq\"
+    Ex2: Install NXRM but not starting and no post tasks
+        setup_standalone.sh -c -v 3.22.0 -o \"-S\"
 
     NOTE: Below location is used to download app installer
         export _DOWNLOAD_URL=http://xxx.xxx.xxx.xxx/zzz/
