@@ -395,7 +395,7 @@ function sptBoot() {
 
     [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
     if [ -z "${_zip}" ]; then
-        _zip="$(ls -1 ./*-202?????-??????-*.zip | tail -n1)" || return $?
+        _zip="$(ls -1 ./*-202?????-??????*.zip | tail -n1)" || return $?
         echo "Using ${_zip} ..."
     fi
     echo "To just re-launch or start, check relaunch-support.sh"
