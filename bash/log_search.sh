@@ -150,7 +150,7 @@ function f_topErrors() {
     echo "# Regex = '${_regex}'"
     rg -z -c -g "${_glob}" "${_regex}" && echo " "
     rg -z -N --no-filename -g "${_glob}" -o "${_regex}" > /tmp/f_topErrors.$$.tmp
-    cat "/tmp/f_topErrors.$$.tmp" | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
+    cat "/tmp/f_topErrors.$$.tmp" | _replace_number | sort | uniq -c | sort -nr | head -n ${_top_N}
 
     # just for fun, drawing bar chart
     if [ -n "${_date_regex}" ] && which bar_chart.py &>/dev/null; then
@@ -169,10 +169,10 @@ function f_listWarns() {
 
     local _regex="\b(WARN|ERROR|SEVERE|FATAL|FAILED)\b"
     rg -z -c -g "${_glob}" "^${_date_4_bar}.+${_regex}"
+    echo " "
     rg -z -N --no-filename -g "${_glob}" "^${_date_4_bar}.+${_regex}" > /tmp/f_listWarns.$$.tmp
-
     # count by class name and ignoring only once or twice warns
-    rg "${_regex}\s+.+" -o /tmp/f_listWarns.$$.tmp | _replace_number | sort | uniq -c | sort -n | tail -n ${_top_N}
+    rg "${_regex}\s+.+" -o /tmp/f_listWarns.$$.tmp | _replace_number | sort | uniq -c | sort -nr | head -n ${_top_N}
     echo " "
     rg -o "^${_date_4_bar}" /tmp/f_listWarns.$$.tmp | bar_chart.py 2>/dev/null
 }
@@ -201,7 +201,7 @@ function f_topSlowLogs() {
     else
         # ([0-9]){2,4} didn't work also (my note) sed doesn't support \d
         cat /tmp/f_topSlowLogs.$$.tmp | _replace_number
-    fi | sort | uniq -c | sort -n | tail -n ${_top_N}
+    fi | sort | uniq -c | sort -nr | head -n ${_top_N}
 }
 
 function f_appLogFindAppMaster() {
@@ -822,12 +822,12 @@ function f_threads() {
     rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
     echo "## Finding BLOCKED or waiting to lock lines"
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ${_dir%/}/
-    echo "## Counting 'waiting to lock' etc. (exclude: parking to wait for)"
-    rg '^\s+\-' --no-filename ${_dir%/}/ | rg -v '(- locked|- parking to wait for)' |  sort | uniq -c | sort -nr | head -n20
+    echo "## Counting 'waiting to lock' etc. (exclude: 'parking to wait for' and None)"
+    rg '^\s+\-' --no-filename ${_dir%/}/ | rg -v '(- locked|- parking to wait for|- None)' |  sort | uniq -c | sort -nr | head -n20
     echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
     rg -H "${_running_thread_search_re}" -m1 -g '*RUNNABLE*' -g '*runnable*' ${_dir%/}/
     echo "## Counting NOT waiting threads"
-    rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | tail -n 40
+    rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | head -n 40
     echo "Total: `rg '^"' ${_file} -c`"
     echo " "
     if grep -q 'state=' ${_file}; then
@@ -845,7 +845,7 @@ function f_count_threads() {
     [ ! -s "${_file}" ] && return
 
     if [ -n "${_tail_n}" ]; then
-        rg -z -N -o '^"([^"]+)"' -r '$1' "${_file}" | _sed -r 's/-[0-9]+$//g' | sort | uniq -c | sort -n | tail -n ${_tail_n}
+        rg -z -N -o '^"([^"]+)"' -r '$1' "${_file}" | _sed -r 's/-[0-9]+$//g' | sort | uniq -c | sort -nr | head -n ${_tail_n}
     else
         rg -z -N -o '^"([^"]+)"' -r '$1' "${_file}" | sort | uniq
     fi
@@ -972,6 +972,19 @@ function f_healthlog2json() {
         echo ']' >> ${_out_file}
         _sed -i '1s/^,/[/' ${_out_file}
     fi
+}
+
+function f_get_pems_from_xml() {
+    local _file="$1"
+    # language=Python
+    python3 -c "import sys,xmltodict,json
+j = xmltodict.parse(open('${_file}').read())
+for c in j['capabilitiesConfiguration']['capabilities']['capability']:
+    if c['typeId'] == 'smartproxy.security.trust':
+        f_name = c['notes'] + '.pem'
+        with open(f_name, 'w') as f:
+            f.write(c['properties']['property']['value'])
+"
 }
 
 function f_h2_start() {
