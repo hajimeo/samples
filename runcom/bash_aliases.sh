@@ -15,21 +15,21 @@ alias int2utc='python -c "import sys,datetime;print(datetime.datetime.utcfromtim
 #alias int2utc='python -c "import sys,time;print(time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\")"'
 alias dec2hex='printf "%x\n"'
 alias hex2dec='printf "%d\n"'
-#alias pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'pdf' (pandas dataframe)
-alias pandas='python3 -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);print(pdf)")'
+#alias python_i_with_pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'pdf' (pandas dataframe)
+alias python_i_with_pandas='python3 -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);print(pdf)")'        # to convert list/dict pdf.values.tolist()
+alias python_i_with_json='python3 -i <(echo "import sys,json;jso=json.load(open(sys.argv[1]))")'
 alias json2csv='python3 -c "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);pdf.to_csv(sys.argv[1]+\".csv\", header=True, index=False)"'
 # Read xml file, then convert to dict, then print json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
 alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
-# Pretty print XML
-#alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);print(etree.tostring(t,pretty_print=True))"'
-alias prettyxml='xmllint --format'
+# Pretty print XML. NOTE: without encoding, etree.tostring returns bytes, which does not work with print()
+alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1].encode(\"utf-8\"));print(etree.tostring(t,encoding=\"unicode\",pretty_print=True))"'
+#alias prettyxml='xmllint --format'
 # TODO: find with sys.argv[2] (no ".//"), then output as string
 alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(r.find(sys.argv[2],namespaces=r.nsmap))"'
 # Search with 2nd arg and output the path(s)
 alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();pprint.pprint([t.getelementpath(x) for x in r.findall(\".//\"+sys.argv[2],namespaces=r.nsmap)])"'
 # Strip XML / HTML to get text (TODO: maybe </br> without new line should add new line)
-# language=Python
 alias xml2text='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))"'
 alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
 alias jn='jupyter-notebook &> /tmp/jupyter-notebook.out &'
@@ -297,7 +297,7 @@ function chromep() {
     local _port=${3:-28081}
 
     local _host="${_host_port}"
-    if [[ "${_host_port}" =~ ^([0-9.]+):([0-9]+)$ ]]; then
+    if [[ "${_host_port}" =~ ^([a-zA-Z0-9.-]+):([0-9]+)$ ]]; then
         _host="${BASH_REMATCH[1]}"
         _port="${BASH_REMATCH[2]}"
     fi
