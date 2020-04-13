@@ -31,14 +31,14 @@ do_start()
 {
     cd ${NEXUS_IQ_SONATYPEWORK}
     # Original uses su -m which can inherits almost all env of current user (eg: root), not sure if it was intentional
-    sudo -u ${RUN_AS_USER} ${_JAVA} ${JAVA_OPTIONS} -jar ${NEXUS_IQ_SERVER_HOME%/}/nexus-iq-server-*.jar server ${NEXUS_IQ_SERVER_HOME%/}/config.yml &> /tmp/nexus_iq_server.out &
+    sudo -u ${RUN_AS_USER} -i ${_JAVA} ${JAVA_OPTIONS} -jar ${NEXUS_IQ_SERVER_HOME%/}/nexus-iq-server-*.jar server ${NEXUS_IQ_SERVER_HOME%/}/config.yml &> /tmp/nexus_iq_server.out &
     echo "Started nexus-iq-server"
 }
 
 do_console()
 {
     cd ${NEXUS_IQ_SONATYPEWORK}
-    sudo -u ${RUN_AS_USER} ${_JAVA} ${JAVA_OPTIONS} -jar ${NEXUS_IQ_SERVER_HOME%/}/nexus-iq-server-*.jar server ${NEXUS_IQ_SERVER_HOME%/}/config.yml
+    sudo -u ${RUN_AS_USER} -i ${_JAVA} ${JAVA_OPTIONS} -jar ${NEXUS_IQ_SERVER_HOME%/}/nexus-iq-server-*.jar server ${NEXUS_IQ_SERVER_HOME%/}/config.yml
 }
 
 do_stop()
