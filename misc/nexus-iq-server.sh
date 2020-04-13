@@ -24,18 +24,21 @@ _XMX="${_NXIQ_HEAPSIZE:-"2G"}"
 # _JAVA_OPTIONS should be appended in the last to overwrite
 JAVA_OPTIONS="-Xms${_XMX} -Xmx${_XMX} -XX:+UseG1GC -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:./log/gc.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=1024k -XX:+PrintClassHistogramBeforeFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading ${_JAVA_OPTIONS}"
 
+_JAVA="java"
+[ -n "${JAVA_HOME}" ] && _JAVA="${JAVA_HOME%/}/bin/java"
+
 do_start()
 {
     cd ${NEXUS_IQ_SONATYPEWORK}
     # Original uses su -m which can inherits almost all env of current user (eg: root), not sure if it was intentional
-    sudo -u ${RUN_AS_USER} java ${JAVA_OPTIONS} -jar ${NEXUS_IQ_SERVER_HOME%/}/nexus-iq-server-*.jar server ${NEXUS_IQ_SERVER_HOME%/}/config.yml &> /tmp/nexus_iq_server.out &
+    sudo -u ${RUN_AS_USER} ${_JAVA} ${JAVA_OPTIONS} -jar ${NEXUS_IQ_SERVER_HOME%/}/nexus-iq-server-*.jar server ${NEXUS_IQ_SERVER_HOME%/}/config.yml &> /tmp/nexus_iq_server.out &
     echo "Started nexus-iq-server"
 }
 
 do_console()
 {
     cd ${NEXUS_IQ_SONATYPEWORK}
-    sudo -u ${RUN_AS_USER} java ${JAVA_OPTIONS} -jar ${NEXUS_IQ_SERVER_HOME%/}/nexus-iq-server-*.jar server ${NEXUS_IQ_SERVER_HOME%/}/config.yml
+    sudo -u ${RUN_AS_USER} ${_JAVA} ${JAVA_OPTIONS} -jar ${NEXUS_IQ_SERVER_HOME%/}/nexus-iq-server-*.jar server ${NEXUS_IQ_SERVER_HOME%/}/config.yml
 }
 
 do_stop()
