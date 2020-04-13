@@ -26,7 +26,7 @@ Host *.compute.amazonaws.com
   UserKnownHostsFile /dev/null
   IdentityFile /Users/hosako/.ssh/aws_hosako-kp.pem
 
-Host *.osakos.com
+Host osakos.com *.osakos.com
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
   IdentityFile /Users/hosako/.ssh/hajime_id_rsa
