@@ -1246,17 +1246,26 @@ if bool(_d) is True:
         else:
             _d = None
             break
-    if type(_d) == list:
-        if bool(attrs) is True:
+    if bool(attrs) is True:
+        #sys.stderr.write(str(type(_d))+"\n") # for debug
+        if type(_d) == list:
             _tmp_dl = []
             for _i in _d:
                 _tmp_dd = {}
+                #sys.stderr.write(str(_tmp_dd)+"\n") # for debug
                 for _a in attrs:
                     if _a in _i:
                         _tmp_dd[_a] = _i[_a]
                 if len(_tmp_dd) > 0:
                     _tmp_dl.append(_tmp_dd)
             _d = _tmp_dl
+        elif type(_d) == dict:
+            _tmp_dd = {}
+            #sys.stderr.write(str(_d)+"\n") # for debug
+            for _a in attrs:
+                if _a in _d:
+                    _tmp_dd[_a] = _d[_a]
+            _d = _tmp_dd
     if "'${_no_pprint}'".lower() == "y":
         if type(_d) == list:
             #_d = json.loads(json.dumps(_d, sort_keys=True))
