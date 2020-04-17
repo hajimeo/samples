@@ -1635,7 +1635,7 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0):
     Load a CSV file into a DataFrame
     If conn is given, import into a DB table
     :param filename: file path or file name or glob string
-    :param conn: DB connection object. If not empty, also import into a sqlite table
+    :param conn: DB connection object. If not empty, import into a sqlite table
     :param tablename: If empty, table name will be the filename without extension
     :param chunksize: Rows will be written in batches of this size at a time
     :param header: Row number(s) to use as the column names if not the first line (0) is not column name
@@ -1659,6 +1659,8 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0):
         names = header
         header = None
     df = pd.read_csv(file_path, escapechar='\\', header=header, names=names)
+    if bool(tablename) and bool(conn) is False:
+        conn = connect()
     if bool(conn):
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
