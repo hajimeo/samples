@@ -466,8 +466,9 @@ function f_apache_proxy() {
     #LogLevel dumpio:trace7
     " > /etc/apache2/sites-available/proxy.conf
 
-    #export HISTCONTROL=ignore-space
-    # echo -n 'proxypwd' | htpasswd -i -c /etc/apache2/passwd-nospecial proxyuser
+    if grep -qE '^proxyuser:' /etc/apache2/passwd-nospecial; then
+        echo -n 'proxypwd' | htpasswd -i -c /etc/apache2/passwd-nospecial proxyuser
+    fi
     echo "    <IfModule mod_proxy.c>
         SSLProxyEngine On
         SSLProxyVerify none
@@ -481,11 +482,11 @@ function f_apache_proxy() {
             Order deny,allow
             Allow from all
             AddDefaultCharset off
-            #AuthType Basic
-            #AuthName 'Authentication Required'
-            #AuthUserFile /etc/apache2/passwd-nospecial
-            #Require user proxyuser
-            #Require valid-user
+            AuthType Basic
+            AuthName 'Authentication Required'
+            AuthUserFile /etc/apache2/passwd-nospecial
+            Require user proxyuser
+            Require valid-user
         </Proxy>
 
         ProxyVia On
