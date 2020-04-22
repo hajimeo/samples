@@ -23,15 +23,18 @@ RUN_AS_USER="${_NXIQ_USER:-"sonatype"}"
 _SUDO="sudo -u ${RUN_AS_USER}"
 [ "${RUN_AS_USER}" == "${USER}" ] && _SUDO = ""
 
-_XMX="${_NXIQ_HEAPSIZE:-"2G"}"
-# _JAVA_OPTIONS should be appended in the last to overwrite
-# java 8
-#JAVA_OPTIONS="-Xms${_XMX} -Xmx${_XMX} -XX:+UseG1GC -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:${NEXUS_IQ_SONATYPEWORK}/log/gc.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=1024k -XX:+PrintClassHistogramBeforeFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading ${_JAVA_OPTIONS}"
-# java 11
-JAVA_OPTIONS="-Xms${_XMX} -Xmx${_XMX} -XX:+UseG1GC -Xlog:gc*:file=${NEXUS_IQ_SONATYPEWORK}/log/gc.log:time,uptime:filecount=10,filesize=1024k ${_JAVA_OPTIONS}"
-
 _JAVA="java"
 [ -n "${JAVA_HOME}" ] && _JAVA="${JAVA_HOME%/}/bin/java"
+
+_XMX="${_NXIQ_HEAPSIZE:-"2G"}"
+# _JAVA_OPTIONS should be appended in the last to overwrite
+if ${_JAVA} -XX:+PrintFlagsFinal -version 2>/dev/null | grep -q PrintClassHistogramBeforeFullGC; then
+    # probably java 8
+    JAVA_OPTIONS="-Xms${_XMX} -Xmx${_XMX} -XX:+UseG1GC -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:${NEXUS_IQ_SONATYPEWORK}/log/gc.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=1024k -XX:+PrintClassHistogramBeforeFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading ${_JAVA_OPTIONS}"
+else
+    # default, expecting java 11
+    JAVA_OPTIONS="-Xms${_XMX} -Xmx${_XMX} -XX:+UseG1GC -Xlog:gc*:file=${NEXUS_IQ_SONATYPEWORK}/log/gc.log:time,uptime:filecount=10,filesize=1024k ${_JAVA_OPTIONS}"
+fi
 
 do_start()
 {
