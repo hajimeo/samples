@@ -368,7 +368,8 @@ function f_docker_run() {
             _host_port=${BASH_REMATCH[1]}
             _cont_port=${BASH_REMATCH[2]}
         fi
-        local _pid="`lsof -ti:${_host_port} | head -n1`"
+        # TODO: "fuser -4 ${_port}/tcp" is faster, but fuser needs port
+        local _pid="`lsof -ti:${_host_port} -sTCP:LISTEN | head -n1`"
         if [ -n "${_pid}" ]; then
             if ${_stop_other}; then
                 local _cname="`_docker_find_by_port ${_host_port}`"
@@ -387,6 +388,7 @@ function f_docker_run() {
     if [ "`uname`" = "Darwin" ]; then
         local _num=`echo ${_name} | sed 's/[^0-9]//g' | cut -c1-3`
         local _ssh_pf_num=$(( 22000 + ${_num:-1} ))
+        # TODO: "fuser -4 ${_ssh_pf_num}/tcp" is faster
         if ! lsof -ti:${_ssh_pf_num} -s TCP:LISTEN; then
             _log "INFO" "Adding port forward:${_ssh_pf_num}->22 (eg: ssh -p${_ssh_pf_num} -D28081 localhost)..."
             _port_opts="${_port_opts} -p ${_ssh_pf_num}:22"
@@ -687,35 +689,6 @@ function f_as_hostname_change() {
     echo "docker exec -it ${_name} bash -c \". ${_SHARE_DIR%/}/${_service%/}/install_${_service%/}.sh;f_hostname_change '${_hostname}' '${_old_hostname}'\"" | at now +1 minute
 }
 
-function f_as_backup() {
-    local __doc__="Backup the application directory as tgz file"
-    local _name="${1:-${_NAME}}"
-    local _service="${2:-${_SERVICE}}"
-    local _work_dir="${3:-${_WORK_DIR}}"
-    local _share_dir="${4:-${_SHARE_DIR}}"
-
-    [ ! -d "${_work_dir%/}/${_service%/}" ] && mkdir -p -m 777 "${_work_dir%/}${_service%/}"
-
-    local _file_name="${_service}_standalone_${_name}.tgz"
-
-    if [ -s "${_work_dir%/}${_service%/}/${_file_name}" ]; then
-        _log "WARN" "${_work_dir%/}${_service%/}/${_file_name} already exists. Please remove this first."; sleep 3
-        return 1
-    fi
-
-    f_as_log_cleanup "${_name}"
-    docker exec -it ${_name} bash -c 'sudo -u '${_service}' /usr/local/'${_service}'/bin/${_service%/}_service_control stop all;for _i in {1..4}; do lsof -ti:10520 -s TCP:LISTEN || break;sleep 3;done'
-    docker exec -it ${_name} bash -c 'cp -p /home/'${_service}'/custom.yaml /usr/local/'${_service}'/custom.bak.yaml &>/dev/null'
-    _log "INFO" "Creating '${_share_dir%/}/${_service%/}/${_file_name}' from /usr/local/${_service%/}"; sleep 1
-    docker exec -it ${_name} bash -c 'tar -chzf '${_share_dir%/}'/'${_service%/}'/'${_file_name}' -C /usr/local/ '${_service%/}''
-
-    if [ ! -s "${_work_dir%/}/${_service%/}/${_file_name}" ] || [ 2097152 -gt "`wc -c <${_work_dir%/}/${_service%/}/${_file_name}`" ]; then
-        _log "ERROR" "Backup to ${_work_dir%/}/${_service%/}/${_file_name} failed"; sleep 3
-        return 1
-    fi
-    _log "INFO" "Backup to ${_work_dir%/}/${_service%/}/${_file_name} completed"
-}
-
 function f_as_install() {
     local __doc__="Install the application from creating a container (_AS_NO_INSTALL_START for no setup)"
     local _name="${1:-$_NAME}"
@@ -988,7 +961,7 @@ function p_tableau_server() {
     local _tsm_port="8850"
 
     if ! docker ps -a --format "{{.Names}}" | grep -qE "^${_container_name}$"; then
-        if lsof -ti:${_gw_port}; then
+        if fuser -s -4 ${_gw_port}/tcp; then
             _log "ERROR" "Port number ${_gw_port} is in use, so that can't do port forward"
             return 1
         fi
@@ -1103,6 +1076,7 @@ main() {
         _log "ERROR" "docker is required for this script. (https://docs.docker.com/install/)"
         return 1
     fi
+    # TODO: "fuser -4 ${_port}/tcp" is faster
     if ! which lsof &>/dev/null; then
         _log "ERROR" "lsof is required for this script."
         return 1
