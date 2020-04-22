@@ -238,7 +238,7 @@ function jargrep() {
 # Get PID from the port number, then set JAVA_HOME and CLASSPATH
 function javaenvs() {
     local _port="${1}"
-    local _p=`lsof -ti:${_port}`
+    local _p=`lsof -ti:${_port}`    # TODO: fuser -4 ${_port}/tcp is faster
     if [ -z "${_p}" ]; then
         echo "Nothing running on port ${_port}"
         return 11
