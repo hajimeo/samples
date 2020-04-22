@@ -8,16 +8,6 @@
     <!-- Plugin for Jasmine Unit test  -->
     <pluginGroup>com.github.searls</pluginGroup>
   </pluginGroups>
-  <proxies>
-    <proxy>
-      <id>dh1-proxy</id>
-      <active>true</active>
-      <protocol>http</protocol>
-      <host>dh1.standalone.localdomain</host>
-      <port>28080</port>
-      <nonProxyHosts>*.com</nonProxyHosts>
-    </proxy>
-  </proxies>
   <servers>
     <server>
       <id>nexus</id>
