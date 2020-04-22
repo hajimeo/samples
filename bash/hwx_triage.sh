@@ -97,7 +97,7 @@ function f_check_system() {
     cat /proc/meminfo &> ${_work_dir%/}/meminfo.out
     numactl -H &> ${_work_dir%/}/numa.out
 
-    #sysctl kernel.pid_max fs.file-max # For Too many open files
+    #sysctl kernel.pid_max fs.file-max fs.file-nr # max is OS limit (Too many open files)
     sysctl -a &> ${_work_dir%/}/sysctl.out
     sar -A &> ${_work_dir%/}/sar_A.out
     env &> ${_work_dir%/}/env.out  # to check PATH, LD_LIBRARY_PATH, JAVA_HOME, CLASSPATH
