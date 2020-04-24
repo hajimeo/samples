@@ -53,6 +53,7 @@ which mdfind &>/dev/null && alias locat="mdfind"
 # Load/source my log searching utility functions
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 alias logS="source $HOME/IdeaProjects/samples/bash/log_search.sh; source $HOME/IdeaProjects/work/bash/log_search.sh"
+alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
 alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py"
 alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 alias qcsv='q -O -d"," -T --disable-double-double-quoting'
@@ -362,6 +363,7 @@ function backupC() {
     # Sync all files smaller than _size (10MB), means *NO* backup for files over 10MB.
     rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 ${_src%/}/ ${_dst%/}/
 }
+# synchronising my search.osakos.com
 function push2search() {
     local _force="$1"
     # May need to configure .ssh/config to specify the private key
