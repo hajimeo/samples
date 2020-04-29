@@ -33,24 +33,53 @@ function f_setup_maven() {
     if ! _does_repo_exist "maven-hosted"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"default","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"maven-hosted","format":"","type":"","url":"","online":true,"recipe":"maven2-hosted"}],"type":"rpc"}'
     fi
-
     # add some data for xxxx-hosted
     _upload_test "maven-hosted" -F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
 }
+
+function f_setup_pypi() {
+    # If no xxxx-proxy, create it
+    if ! _does_repo_exist "pypi-proxy"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://pypi.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"default","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"pypi-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"pypi-proxy"}],"type":"rpc"}'
+    fi
+    # add some data for xxxx-proxy
+    _proxy_test "pypi-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz" "${_TMP%/}/Unit-0.2.2.tar.gz" || return $?
+
+    # If no xxxx-hosted, create it
+    if ! _does_repo_exist "pypi-hosted"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"default","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"pypi-hosted","format":"","type":"","url":"","online":true,"recipe":"pypi-hosted"}],"type":"rpc"}'
+    fi
+    # add some data for xxxx-hosted
+    _upload_test "pypi-hosted" -F "pypi.asset=@${_TMP%/}/Unit-0.2.2.tar.gz"
+}
+
+
 
 function _proxy_test() {
     local _repo="$1"
     local _path="$2"
     local _out_path="${3:-"/dev/null"}"
     local _base_url="${_NEXUS_URL}"
-    curl -f -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -k "${_base_url%/}/repository/${_repo%/}/${_path#/}"
+    curl -sf -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -k "${_base_url%/}/repository/${_repo%/}/${_path#/}"
+    local _rc=$?
+    if [ ${_rc} -ne 0 ]; then
+        _log "ERROR" "Failed to get ${_base_url%/}/repository/${_repo%/}/${_path#/} (${_rc})"
+        cat ${_TMP%/}/_proxy_test_header_$$.out >&2
+        return ${_rc}
+    fi
 }
 
 function _upload_test() {
     local _repo="$1"
         local _forms=${@:2} #-F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
     local _base_url="${_NEXUS_URL}"
-    curl -f -D ${_TMP%/}/_upload_test_header_$$.out -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -X POST "${_base_url%/}/service/rest/v1/components?repository=${_repo}" ${_forms}
+    curl -sf -D ${_TMP%/}/_upload_test_header_$$.out -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_base_url%/}/service/rest/v1/components?repository=${_repo}" ${_forms}
+    local _rc=$?
+    if [ ${_rc} -ne 0 ]; then
+        _log "ERROR" "Failed to post to ${_base_url%/}/service/rest/v1/components?repository=${_repo} (${_rc})"
+        cat ${_TMP%/}/_upload_test_header_$$.out >&2
+        return ${_rc}
+    fi
 }
 
 function _does_repo_exist() {
@@ -64,6 +93,17 @@ function _does_repo_exist() {
     fi
 }
 
+function _log() {
+    # At this moment, outputting to STDERR
+    if [ -n "${_LOG_FILE_PATH}" ]; then
+        echo "[$(date -u +'%Y-%m-%dT%H:%M:%Sz')] $@" | tee -a ${_LOG_FILE_PATH} 1>&2
+    else
+        echo "[$(date -u +'%Y-%m-%dT%H:%M:%Sz')] $@" 1>&2
+    fi
+}
+
+
+
 function f_add_nxrm_repos() {
     local __doc__="Add/populate NXRM repositories"
     local _usr="${1:-${_USER}}"
@@ -71,8 +111,6 @@ function f_add_nxrm_repos() {
     _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.npmjs.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"default","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"npm-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc"}'
     _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"default","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"npm-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}'
     # pypi
-    _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://pypi.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"default","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"pypi-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"pypi-proxy"}],"type":"rpc"}'
-    _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"default","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"pypi-hosted","format":"","type":"","url":"","online":true,"recipe":"pypi-hosted"}],"type":"rpc"}'
     _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"default","strictContentTypeValidation":true},"group":{"memberNames":["pypi-hosted","pypi-proxy"]}},"name":"pypi-group","format":"","type":"","url":"","online":true,"recipe":"pypi-group"}],"type":"rpc"}'
     # docker
     _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://registry-1.docker.io","contentMaxAge":1440,"metadataMaxAge":1440},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"default","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"docker-proxy","format":"","type":"","url":"","online":true,"undefined":[false,false],"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}'
@@ -87,9 +125,6 @@ function f_add_nxrm_repos() {
     _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"default","strictContentTypeValidation":true},"group":{"memberNames":["gems-hosted","gems-proxy"]}},"name":"gems-group","format":"","type":"","url":"","online":true,"recipe":"rubygems-group"}],"type":"rpc"}'
     # raw
     _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"default","strictContentTypeValidation":false,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"raw-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}'
-
-    _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"default","strictContentTypeValidation":true},"group":{"memberNames":['${_memberNames_mvn}']}},"name":"maven-group","format":"","type":"","url":"","online":true,"recipe":"maven2-group"}],"type":"rpc"}'
-    _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"default","strictContentTypeValidation":true},"group":{"memberNames":['${_memberNames_npm}']}},"name":"npm-group","format":"","type":"","url":"","online":true,"recipe":"npm-group"}],"type":"rpc"}'
 }
 
 function _b64_url_enc() {
@@ -186,6 +221,7 @@ function _sed() {
 
 main() {
     f_setup_maven
+    f_setup_pypi
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
