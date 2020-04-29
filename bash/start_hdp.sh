@@ -2,7 +2,7 @@
 # This script setups docker, then create a container(s), and install ambari-server
 #
 # Steps:
-# 1. Install OS. Recommend Ubuntu 14.x
+# 1. Install OS. Recommend Ubuntu 18.04.x
 # 2. sudo -i    (TODO: only root works at this moment)
 # 3. (optional) screen
 # 4. curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/start_hdp.sh
