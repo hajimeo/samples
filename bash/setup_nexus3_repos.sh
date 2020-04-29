@@ -76,9 +76,14 @@ function _upload_test() {
     curl -sf -D ${_TMP%/}/_upload_test_header_$$.out -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_base_url%/}/service/rest/v1/components?repository=${_repo}" ${_forms}
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
-        _log "ERROR" "Failed to post to ${_base_url%/}/service/rest/v1/components?repository=${_repo} (${_rc})"
-        cat ${_TMP%/}/_upload_test_header_$$.out >&2
-        return ${_rc}
+        if grep -qE '^HTTP/1.1 [45]' ${_TMP%/}/_upload_test_header_$$.out; then
+            _log "ERROR" "Failed to post to ${_base_url%/}/service/rest/v1/components?repository=${_repo} (${_rc})"
+            cat ${_TMP%/}/_upload_test_header_$$.out >&2
+            return ${_rc}
+        else
+            _log "WARN" "May failed to post to ${_base_url%/}/service/rest/v1/components?repository=${_repo} (${_rc})"
+            cat ${_TMP%/}/_upload_test_header_$$.out >&2
+        fi
     fi
 }
 
