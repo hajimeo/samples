@@ -2,26 +2,60 @@
 
 function usage() {
     echo "Main purpose of this script is injecting components into various repositories.
-REPOSITORY NAMING RULE:
+This script should be safe to run multiple times.
+Ref: https://github.com/sonatype/nexus-toolbox/tree/master/prime-repos
+
+Repository Naming Rules:
     <format>_(proxy|hosted|group)
-    NOTE: <format> for 'maven2' is maven.
+    Except, <format> for 'maven2' is 'maven'.
+
+REQIOREMENTS / DEPENDENCY:
+    If Mac, 'gsed' is required.
 "
 }
 
 # Global variables
+_DEFAULT_USER="${_DEFAULT_USER:-"admin"}"
 _DEFAULT_PWD="${_DEFAULT_PWD:-"admin123"}"
 _NEXUS_URL="${_NEXUS_URL:-"http://`hostname -f`:8081"}"
 _TID="${_TID:-80}"
 _TMP="${_TMP:-"/tmp"}"
 
 function f_setup_maven() {
+    # If no xxxx-proxy, create it
     if ! _does_repo_exist "maven-proxy"; then
-    _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"https://repo1.maven.org/maven2/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"default","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"maven-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}'
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"https://repo1.maven.org/maven2/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"default","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"maven-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}'
     fi
+    # add some data for xxxx-proxy
+    _proxy_test "maven-proxy" "junit/junit/4.12/junit-4.12.jar" "${_TMP%/}/junit-4.12.jar" || return $?
+
+    # If no xxxx-hosted, create it
+    if ! _does_repo_exist "maven-hosted"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"default","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"maven-hosted","format":"","type":"","url":"","online":true,"recipe":"maven2-hosted"}],"type":"rpc"}'
+    fi
+
+    # add some data for xxxx-hosted
+    _upload_test "maven-hosted" -F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
+}
+
+function _proxy_test() {
+    local _repo="$1"
+    local _path="$2"
+    local _out_path="${3:-"/dev/null"}"
+    local _base_url="${_NEXUS_URL}"
+    curl -f -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -k "${_base_url%/}/repository/${_repo%/}/${_path#/}"
+}
+
+function _upload_test() {
+    local _repo="$1"
+        local _forms=${@:2} #-F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
+    local _base_url="${_NEXUS_URL}"
+    curl -f -D ${_TMP%/}/_upload_test_header_$$.out -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -X POST "${_base_url%/}/service/rest/v1/components?repository=${_repo}" ${_forms}
 }
 
 function _does_repo_exist() {
     local _repo_name="$1"
+    # At this moment, not always checking
     if [ ! -s ${_TMP%/}/f_get_repo_names_$$.out ]; then
         _api "/service/rest/v1/repositories" | grep '"name":' > ${_TMP%/}/f_get_repo_names_$$.out
     fi
@@ -67,7 +101,7 @@ function _apiS() {
     local __doc__="NXRM (not really API but) API wrapper with session"
     local _data="${1}"
     local _method="${2}"
-    local _usr="${3:-admin}"
+    local _usr="${3:-${_DEFAULT_USER}}"
     local _pwd="${4-${_DEFAULT_PWD}}"   # Accept an empty password
     local _nexus_url="${5:-${_NEXUS_URL}}"
 
@@ -77,7 +111,8 @@ function _apiS() {
     [ -n "${_data}" ] && [ -z "${_method}" ] && _method="POST"
     [ -z "${_method}" ] && _method="GET"
 
-    find ${_TMP%/} -type f -name .nxrm_c_$$ -mmin +30 -delete
+    # Mac's /tmp is symlink so without the ending "/", needs -L
+    find -L /tmp -type f -name '.nxrm_c_*' -mmin +10 -delete
     local _c="${_TMP%/}/.nxrm_c_$$"
     if [ ! -s ${_c} ]; then
         curl -f -s -b ${_c} -c ${_c} -o /dev/null -k "${_nexus_url%/}/service/rapture/session" -d "${_user_pwd}"
@@ -88,7 +123,7 @@ function _apiS() {
         fi
     fi
     # TODO: not sure if this is needed. seems cookie works with 3.19.1 but not sure about older version
-    local _H="NXSESSIONID: $(sed -nr 's/.+\sNXSESSIONID\s+([0-9a-f]+)/\1/p' ${_c})"
+    local _H="NXSESSIONID: $(_sed -nr 's/.+\sNXSESSIONID\s+([0-9a-f]+)/\1/p' ${_c})"
     local _content_type="Content-Type: application/json"
     if [ "${_data:0:1}" != "{" ]; then
         _content_type="Content-Type: text/plain"
@@ -113,7 +148,7 @@ function _api() {
     local _path="${1}"
     local _data="${2}"
     local _method="${3}"
-    local _usr="${4:-admin}"
+    local _usr="${4:-${_DEFAULT_USER}}"
     local _pwd="${5-${_DEFAULT_PWD}}"   # If explicitly empty string, curl command will ask password (= may hang)
     local _nexus_url="${6:-${_NEXUS_URL}}"
 
@@ -137,10 +172,20 @@ function _api() {
     fi
 }
 
+# To support Mac...
+function _sed() {
+    local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
+    ${_cmd} "$@"
+}
+
+# pypi
+# https://files.pythonhosted.org/packages/24/44/38f25717a71df9992d5bd065fa3e7f85a2673af2ccee56caedf60386de5e/Unit-0.2.2.tar.gz
+# https://files.pythonhosted.org/packages/cf/43/977e6d6f0d59449e77407bf4fa01b4d97c59136cdc615663256e78e9af74/Unit-0.2.2-py3-none-any.whl
+
 
 
 main() {
-    echo "Not implemented yet"
+    f_setup_maven
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
