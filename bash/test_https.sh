@@ -279,11 +279,18 @@ function get_certificate_from_https() {
 }
 
 # for SAML X509Certificate
-function gen_cert_from_one_line_str() {
+function gen_cert_from_str() {
     local _str="$1"
-    echo "-----BEGIN CERTIFICATE-----"
-    fold -w 64 -s <(echo "${_str}")
-    echo "-----END CERTIFICATE-----"
+    local _filename="$2"
+    local _tmp_file=$(mktemp)
+    echo "-----BEGIN CERTIFICATE-----" > ${_tmp_file}
+    fold -w 64 -s <(echo "${_str}" | tr -d "\n") >> ${_tmp_file}
+    echo -e "\n-----END CERTIFICATE-----" >> ${_tmp_file}
+    if [ -z "${_filename}" ]; then
+        cat ${_tmp_file}
+    else
+        cat ${_tmp_file} > ${_filename}
+    fi
 }
 
 function gen_wildcard_cert() {
