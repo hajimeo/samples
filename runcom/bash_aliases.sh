@@ -47,8 +47,10 @@ alias wcln="awk 'length > max_length { max_length = length; longest_line_num = N
 alias sumcol="gpaste -sd+ | bc"
 # 10 seconds is too short
 alias docker_stop="docker stop -t 120"
+alias qcsv='q -O -d"," -T --disable-double-double-quoting'
+alias pgbg='pgbadger --timezone 0'
 
-## Non generic (OS/host/app specific) alias commands ###################################################################
+## Non generic (OS/host/script specific) alias commands ###################################################################
 which mdfind &>/dev/null && alias locat="mdfind"
 # Load/source my log searching utility functions
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
@@ -56,7 +58,6 @@ alias logS="source $HOME/IdeaProjects/samples/bash/log_search.sh; source $HOME/I
 alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
 alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py"
 alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
-alias qcsv='q -O -d"," -T --disable-double-double-quoting'
 
 # VM related
 # virt-manager remembers the connections, so normally would not need to start in this way.
