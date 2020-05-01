@@ -1,5 +1,9 @@
 /*
  * Test DB connection with a simple code
+ *
+ * curl -O https://raw.githubusercontent.com/hajimeo/samples/master/java/TestDBConn.java
+ * javac TestDBConn.java
+ * java -cp .:/some_jar_include_driver.jar TestDBConn org.postgresql.Driver jdbc:postgresql://`hostname -f`:5432/schema username password "select * from database.table where 1 = 1"
  */
 
 import java.sql.*;
