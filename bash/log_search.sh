@@ -1190,7 +1190,7 @@ function _search_properties() {
 function _get_json() {
     local _props="$1"           # search hierarchy list string. eg: "xxxx,yyyy,key[:=]value" (*NO* space)
     local _key="${2-"key"}"     # a key attribute in props. eg: '@class' (OrientDB), 'key' (jmx.json)
-    local _attrs="${3-"value"}" # attribute1,attribute2 to return only those attributes' value
+    local _attrs="${3-"value"}" # attribute1,attribute2,attr3.subattr3 to return only those attributes' value
     local _find_all="${4}"      # If Y, not stopping after finding one
     local _no_pprint="${5}"     # no prettified output
     # language=Python
@@ -1254,7 +1254,14 @@ if bool(_d) is True:
                 _tmp_dd = {}
                 #sys.stderr.write(str(_tmp_dd)+"\n") # for debug
                 for _a in attrs:
-                    if _a in _i:
+                    if "\." not in _a and _a.find(".") > 0:
+                        # TODO: should be recursive
+                        (_a0, _a1) = _a.split(".", 2)
+                        if _a0 in _i and _a1 in _i[_a0]:
+                            if _a0 not in _tmp_dd:
+                                _tmp_dd[_a0] = {}
+                            _tmp_dd[_a0][_a1] = _i[_a0][_a1]
+                    elif _a in _i:
                         _tmp_dd[_a] = _i[_a]
                 if len(_tmp_dd) > 0:
                     _tmp_dl.append(_tmp_dd)
