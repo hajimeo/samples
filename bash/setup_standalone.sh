@@ -544,9 +544,9 @@ function f_container_useradd() {
 
     docker exec -it ${_name} bash -c 'grep -q "^'$_user':" /etc/passwd && exit 0; useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
 
-    if [ "`uname`" = "Linux" ]; then
-        which kadmin.local &>/dev/null && kadmin.local -q "add_principal -pw $_password $_user"
-        # it's ok if kadmin.local, fails
+    if [ "`uname`" = "Linux" ] && which kadmin.local &>/dev/null; then
+        kadmin.local -q "add_principal -pw $_password $_user" 2>/dev/null
+        # it's ok if kadmin.local, fails. (if not root, because no sudo, it will fail)
         return 0
     fi
 }
