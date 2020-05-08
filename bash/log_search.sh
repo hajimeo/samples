@@ -787,12 +787,15 @@ function f_threads() {
     local _file="$1"
     local _split_search="${2:-"^\".+"}"
     local _running_thread_search_re="${3-"\.sonatype\."}"
-    local _dir="${4:-"./_threads"}"
+    local _dir="${4}"
     local _not_split_by_date="${5:-${_NOT_SPLIT_BY_DATE}}"
 
     [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
     [ -z "${_file}" ] && return 1
-    local _prefix="${_file%%.*}_"
+    if [ -z "${_dir}" ]; then
+        local _filename=$(basename ${_file})
+        _dir="_${_filename%%.*}"
+    fi
     [ ! -d "${_dir%/}" ] && mkdir -p ${_dir%/}
 
     if [[ ! "${_not_split_by_date}" =~ ^(y|Y) ]]; then
@@ -801,7 +804,7 @@ function f_threads() {
             # Only when checking multiple thread dumps
             echo "## Long running threads (exclude: GC threads, waiting on condition)"
             rg '^"' --no-filename ${_file} | rg -v '(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread)' | sort | uniq -c | sort -nr | rg "^\s+${_how_many_threads}\s" | rg -vw 'waiting on condition'
-
+            echo " "
             local _tmp_dir="$(mktemp -d)"
             f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "${_tmp_dir%/}" ""
             for _f in `ls ${_tmp_dir%/}`; do
@@ -817,15 +820,18 @@ function f_threads() {
     #rg -i "ldap" ${_dir%/}/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
     #rg -w BLOCKED ${_dir%/}/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
     #rg '^("|\s+- .*lock)' ${_file}
-    # Listening ports
     echo "## Listening ports"
     rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
+    echo " "
     echo "## Finding BLOCKED or waiting to lock lines"
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ${_dir%/}/
+    echo " "
     echo "## Counting 'waiting to lock' etc. (exclude: 'parking to wait for' and None)"
     rg '^\s+\-' --no-filename ${_dir%/}/ | rg -v '(- locked|- parking to wait for|- None)' |  sort | uniq -c | sort -nr | head -n20
+    echo " "
     echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
     rg -H "${_running_thread_search_re}" -m1 -g '*RUNNABLE*' -g '*runnable*' ${_dir%/}/
+    echo " "
     echo "## Counting NOT waiting threads"
     rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | head -n 40
     echo "Total: `rg '^"' ${_file} -c`"
@@ -989,6 +995,7 @@ for c in j['capabilitiesConfiguration']['capabilities']['capability']:
 
 function f_h2_start() {
     local _baseDir="${1}"
+    local _Xmx="${2:-"2g"}"
     if [ -z "${_baseDir}" ]; then
         if [ -d ./sonatype-work/clm-server/data ]; then
             _baseDir="./sonatype-work/clm-server/data/"
@@ -997,7 +1004,7 @@ function f_h2_start() {
         fi
     fi
     # NOTE: 1.4.200 causes org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException
-    java -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.Server -baseDir "${_baseDir}"
+    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.Server -baseDir "${_baseDir}"
 }
 
 function f_h2_shell() {
@@ -1102,7 +1109,7 @@ function f_splitByRegex() {
 
 function _date2int() {
     local _date_str="$1"
-    _date -d "$(_date2iso "${_date_str}")" +"%s"
+    _date -u -d "$(_date2iso "${_date_str}")" +"%s"
 }
 
 function _date2iso() {
