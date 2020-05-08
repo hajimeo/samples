@@ -10,7 +10,7 @@ alias urlencode='python -c "import sys, urllib as ul; print(ul.quote(sys.argv[1]
 # base64 encode/decode (coreutils base64 or openssl base64 -e|-d)
 alias b64encode='python -c "import sys, base64; print(base64.b64encode(sys.argv[1]))"'
 alias b64decode='python -c "import sys, base64; print(base64.b64decode(sys.argv[1]))"'
-alias utc2int='python -c "import sys,time,dateutil.parser;print(int(time.mktime(dateutil.parser.parse(sys.argv[1]).timetuple())))"'  # doesn't work with yy/mm/dd (2 digits year)
+alias utc2int='python3 -c "import sys,time,dateutil.parser;from datetime import timezone;print(int(dateutil.parser.parse(sys.argv[1]).replace(tzinfo=timezone.utc).timestamp()))"'  # doesn't work with yy/mm/dd (2 digits year)
 alias int2utc='python -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1][0:10])).strftime(\"%Y-%m-%d %H:%M:%S\")+\".\"+sys.argv[1][10:13]+\" UTC\")"'
 #alias int2utc='python -c "import sys,time;print(time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\")"'
 alias dec2hex='printf "%x\n"'
@@ -83,7 +83,7 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 # Slack API Search
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="cd $HOME/IdeaProjects/samples/python/ && nohup python ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
 [ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py ] && alias sptZip3="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py"
-[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus2-support-zip.py ] && alias sptZip2="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py"
+[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus2-support-zip.py ] && alias sptZip2="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus2-support-zip.py"
 [ -s $HOME/IdeaProjects/nexus-toolbox/scripts/dump_nxrm3_groovy_scripts.py ] && alias sptDumpScript="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/dump_nxrm3_groovy_scripts.py"
 
 
@@ -440,6 +440,15 @@ function mvn-get() {
     [ -n "${_repo}" ] && _options="${_options% } -DremoteRepositories=${_repo}"
     [ -n "${_localrepo}" ] && _options="${_options% } -Dmaven.repo.local=${_localrepo}"
     mvn -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS dependency:get ${_options} -Dartifact=$@ -U -X
+}
+function mvn-resolve() {
+    # maven/mvn resolve dependency only
+    local _repo="$1"
+    local _localrepo="$2"
+    local _options=""
+    [ -n "${_repo}" ] && _options="${_options% } -DremoteRepositories=${_repo}"
+    [ -n "${_localrepo}" ] && _options="${_options% } -Dmaven.repo.local=${_localrepo}"
+    mvn -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS dependency:resolve ${_options} -U -X
 }
 
 # To patch nexus (so that checking /system) but probably no longer using.
