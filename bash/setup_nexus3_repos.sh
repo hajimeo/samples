@@ -95,7 +95,7 @@ function f_setup_npm() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"npm-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group ("." in groupdId should be changed to "/")
-    _get_test "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz" "${_TMP%/}/grunt-1.1.0.tgz" || return $?
+    _get_test "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz" || return $?
 }
 
 function f_setup_docker() {
@@ -146,7 +146,7 @@ function f_setup_yum() {
 
     # If no xxxx-hosted, create it
     if ! _does_repo_exist "${_prefix}-hosted"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"yum":{"repodataDepth":1,"deployPolicy":"STRICT"},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"yum-hosted"}],"type":"rpc"}' || return $?
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"yum":{"repodataDepth":1,"deployPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"yum-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     local _upload_file="$(find ${_TMP%/} -type f -size +1k -name "dos2unix-*.el7.x86_64.rpm" | tail -n1)"
@@ -155,7 +155,7 @@ function f_setup_yum() {
     else
         _log "WARN" "No rpm file for upload test."
     fi
-    #curl -v --user 'admin:admin123' --upload-file ./test.rpm http://localhost:8081/repository/yum-hosted/test.rpm
+    #curl -u 'admin:admin123' --upload-file /etc/pki/rpm-gpg/RPM-GPG-KEY-pmanager ${_NEXUS_URL%/}/repository/yum-hosted/RPM-GPG-KEY-pmanager
 
     # If no xxxx-group, create it
     if ! _does_repo_exist "${_prefix}-group"; then
