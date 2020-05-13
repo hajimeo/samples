@@ -499,7 +499,7 @@ function f_list_start_end(){
 }
 
 function f_start_end_time_with_diff(){
-    local __doc__="Output start time, end time, difference(sec), (filesize) from a log file"
+    local __doc__="Output start time, end time, difference(sec), (filesize) from one log or log.gz"
     #eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"^${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)
     local _log="$1"
     local _date_regex="${2}"
@@ -1064,11 +1064,11 @@ function _getAfterFirstMatch() {
 
 function f_splitByRegex() {
     local _file="$1"    # can't be a glob as used in sed later
-    local _regex="$2"   # If empty, use (YYYY-MM-DD).(hh). For request.log '(\d\d/[a-zA-Z]{3}/\d\d\d\d).(\d\d)'
+    local _line_regex="$2"   # If empty, use (YYYY-MM-DD).(hh). For request.log '(\d\d/[a-zA-Z]{3}/\d\d\d\d).(\d\d)'
     local _save_to="${3:-"."}"
     local _prefix="${4-"*None*"}"   # Can be an empty string
 
-    [ -z "${_regex}" ] && _regex="^($_DATE_FORMAT).(\d\d)"
+    [ -z "${_line_regex}" ] && _line_regex="^($_DATE_FORMAT).(\d\d)"
     [ ! -d "${_save_to%/}" ] && mkdir -p "${_save_to%/}"
 
     #_file="$(echo ${_file} | _sed 's/.\///')"
@@ -1083,7 +1083,7 @@ function f_splitByRegex() {
     local _prev_n=1
     local _prev_str=""
 
-    rg "${_regex}" --no-filename -n -o "${_file}" > /tmp/f_splitByRegex_$$.out
+    rg "${_line_regex}" --no-filename -n -o "${_file}" > /tmp/f_splitByRegex_$$.out
     echo "END_OF_FILE" >> /tmp/f_splitByRegex_$$.out
     # NOTE scope is strange. _prev_str can't be used outside of while loop.
     cat /tmp/f_splitByRegex_$$.out | while read -r _t; do
