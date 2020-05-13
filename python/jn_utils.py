@@ -18,11 +18,17 @@ To show the first 3 rows and the last 3 rows:
     df.iloc[[0,1,2,-3,-2,-1]]
 Convert one row to dict:
     row = df[:1].to_dict(orient='records')[0]
+
+== Sqlite tips (which I often forget) ==================================
 Convert Unix timestamp with milliseconds to datetime
     DATETIME(ROUND(dateColumn / 1000), 'unixepoch')
 Convert current time or string date to Unix timestamp
     STRFTIME('%s', 'NOW')
     STRFTIME('%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1))
+    $ q "select (julianday('2020-05-01 00:10:00') - 2440587.5)*86400.0"
+    1588291800.0000045
+    $ q "select CAST((julianday('2020-05-01 00:10:00') - julianday('2020-05-01 00:00:00')) * 8640000 AS INT)" <<< milliseconds
+    600.0000044703484
 """
 
 # TODO: When you add a new pip package, don't forget to update setup_work.env.sh
@@ -691,8 +697,8 @@ def query(sql, conn=None, no_history=False):
     # TODO: pd.options.display.max_colwidth = col_width does not work
     df = pd.read_sql(sql, conn)
     # TODO: Trying to set td tags alignment to left but not working
-    #dfStyler = df.style.set_properties(**{'text-align': 'left'})
-    #dfStyler.set_table_styles([dict(selector='td', props=[('text-align', 'left')])])
+    # dfStyler = df.style.set_properties(**{'text-align': 'left'})
+    # dfStyler.set_table_styles([dict(selector='td', props=[('text-align', 'left')])])
     if no_history is False and df.empty is False:
         _save_query(sql)
     return df
@@ -812,6 +818,7 @@ def display(df, name=""):
     :param df: A DataFrame object
     :param name: Used when saving into file
     :return Void
+    >>> pass
     """
     if bool(name) is False:
         name = _timestamp(format="%Y%m%d%H%M%S%f")
@@ -829,7 +836,7 @@ def display(df, name=""):
         df2csv(df=df, file_path="%s.csv" % (str(name)))
 
 
-def draw(df, width=16, x_col=0, x_colname=None, name="", tail=10):
+def draw(df, width=8, x_col=0, x_colname=None, name="", tail=10):
     """
     Helper function for df.plot()
     As pandas.DataFrame.plot is a bit complicated, using simple options only if this method is used.
@@ -844,6 +851,7 @@ def draw(df, width=16, x_col=0, x_colname=None, name="", tail=10):
     :return: DF (use .tail() or .head() to limit the rows)
     #>>> draw(ju.q("SELECT date, statuscode, bytesSent, elapsedTime from t_request_csv")).tail()
     #>>> draw(ju.q("select QueryHour, SumSqSqlWallTime, SumPostPlanTime, SumSqPostPlanTime from query_stats")).tail()
+    >>> pass    # TODO: implement test
     """
     is_jupyter = True
     if bool(name) is False:
@@ -863,16 +871,62 @@ def draw(df, width=16, x_col=0, x_colname=None, name="", tail=10):
     if bool(x_colname) is False:
         x_colname = df.columns[x_col]
     df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)
+    if len(name) > 0:
+        plt.savefig("%s.png" % (str(name)))
     if is_jupyter:
         plt.show()
-    else:
-        plt.savefig("%s.png" % (str(name)))
     # TODO: x axis doesn't show any legend
     # if len(df) > (width * 2):
     #    interval = int(len(df) / (width * 2))
     #    labels = df[x_colname].tolist()
     #    lables = labels[::interval]
     #    plt.xticks(list(range(interval)), lables)
+    return df.tail(tail)
+
+
+def gantt(df, index_col="", start_col="min_dt", end_col="max_dt", width=8, name="", tail=10):
+    """
+    Helper function for plt.hlines()
+    based on https://stackoverflow.com/questions/31820578/how-to-plot-stacked-event-duration-gantt-charts-using-python-pandas
+
+    :param df: A DataFrame object, which first column will be the 'x' if x_col is not specified
+    :param index_col: index column name. default: df.index
+    :param start_col: start column name. default: 'min_dt'
+    :param end_col: end column name. default: 'max_dt'
+    :param width: This is Inch and default is 16 inch.
+    :param name: When saving to file.
+    :param tail: To return some sample rows.
+    :return: DF (use .tail() or .head() to limit the rows)
+    >>> pass    # TODO: implement test
+    """
+    is_jupyter = True
+    if bool(name) is False:
+        name = _timestamp(format="%Y%m%d%H%M%S%f")
+    try:
+        get_ipython().run_line_magic('matplotlib', 'inline')
+    except:
+        is_jupyter = False
+        _debug("get_ipython().run_line_magic('matplotlib', 'inline') failed")
+        pass
+    if len(df) == 0:
+        _debug("No rows to draw.")
+        return
+    df[start_col] = pd.to_datetime(df[start_col])
+    df[end_col] = pd.to_datetime(df[end_col])
+    fig = plt.figure(figsize=(width, int(len(df) / 3)))
+    # TODO: don't know how to change this https://matplotlib.org/3.1.0/api/_as_gen/matplotlib.figure.Figure.html#matplotlib.figure.Figure.add_subplot
+    ax = fig.add_subplot(111)
+    ax = ax.xaxis_date()
+    if index_col is False:
+        y = df.index
+    else:
+        y = df[index_col]
+    import matplotlib.dates as mdt
+    ax = plt.hlines(y=y, xmin=mdt.date2num(df[start_col]), xmax=mdt.date2num(df[end_col]))
+    if len(name) > 0:
+        plt.savefig("%s.png" % (str(name)))
+    if is_jupyter:
+        plt.show()
     return df.tail(tail)
 
 
@@ -1272,7 +1326,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     _empty = 0
     for l in f:
         _ln += 1
-        #_debug("  _ln=%s, line_from=%s line_until=%s ..." % (str(_ln), str(line_from), str(line_until)))
+        # _debug("  _ln=%s, line_from=%s line_until=%s ..." % (str(_ln), str(line_from), str(line_until)))
         if bool(line_from) and _ln < line_from:
             _empty += 1
             continue
@@ -1308,10 +1362,10 @@ def threads2table(filename="threads.txt", tablename=None, conn=None, date_time=N
     # TODO: date_time (should use file modified time? but not trust-able)
     # TODO: waiting on | locked
     return logs2table(filename=filename, tablename=tablename, conn=conn,
-                  col_names=['thread_name', 'id', 'state', 'stacktrace'],
-                  line_beginning="^\"",
-                  line_matching='^"([^"]+)" id=([^ ]+) state=(\w+)(.*)',
-                  size_regex=None, time_regex=None)
+                      col_names=['thread_name', 'id', 'state', 'stacktrace'],
+                      line_beginning="^\"",
+                      line_matching='^"([^"]+)" id=([^ ]+) state=(\w+)(.*)',
+                      size_regex=None, time_regex=None)
 
 
 def logs2table(filename, tablename=None, conn=None,
