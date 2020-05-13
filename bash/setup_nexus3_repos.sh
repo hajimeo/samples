@@ -5,6 +5,8 @@ function usage() {
 This script should be safe to run multiple times.
 Ref: https://github.com/sonatype/nexus-toolbox/tree/master/prime-repos
 
+curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh
+
 Repository Naming Rules:
     <format>_(proxy|hosted|group)
     Except, <format> for 'maven2' is 'maven'.
