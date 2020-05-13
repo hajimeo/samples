@@ -437,6 +437,8 @@ function f_apache_proxy() {
     #SSLProtocol all -SSLv2 -SSLv3 -TLSv1 -TLSv1.1
     # NOTE: To configure docker to use proxy: https://medium.com/@airman604/getting-docker-to-work-with-a-proxy-server-fadec841194e
     # systemctl show --property=Environment docker
+    # NOTE: To configure java to use proxy (https://docs.oracle.com/javase/6/docs/technotes/guides/net/proxies.html)
+    # -Dhttp.proxyHost=192.168.1.31 -Dhttp.proxyPort=28080 -Dhttp.proxyUser=proxyuser -Dhttp.proxyPassword=proxypwd
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
