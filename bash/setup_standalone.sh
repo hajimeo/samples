@@ -415,10 +415,9 @@ function f_docker_run() {
 
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
     _log "INFO" "docker run ${_name} from ${_base} ..."
-    docker run -t -i -d \
-        -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
-        -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} ${_network} ${_dns} \
-        --privileged=true --name=${_name} ${_hostname_opt} ${_extra_opts} ${_base} /sbin/init || return $?
+    docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true \
+        -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} ${_network} ${_dns} ${_hostname_opt} ${_extra_opts} \
+        --name=${_name} ${_base} /sbin/init || return $?
 
     f_update_hosts_file_by_fqdn "${_fqdn}"
     sleep 1
