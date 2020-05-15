@@ -30,11 +30,9 @@ alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.a
 # Search with 2nd arg and output the path(s)
 alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();pprint.pprint([t.getelementpath(x) for x in r.findall(\".//\"+sys.argv[2],namespaces=r.nsmap)])"'
 # Strip XML / HTML to get text (TODO: maybe </br> without new line should add new line)
-alias xml2text='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))"'
+alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))"'
 alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
 alias jn='jupyter-notebook &> /tmp/jupyter-notebook.out &'
-alias rmcomma='sed "s/,$//g; s/^\[//g; s/\]$//g"'
-#alias rmnewline='gsed ":a;N;$!ba;s/\n//g"'  # should not use gsed but anyway, not perfect
 # 'time' with format
 alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew install gnu-time --with-default-names
 # In case 'tree' is not installed
@@ -44,15 +42,14 @@ alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{t
 # output the longest line *number* as wc|gwc -L does not show the line number
 alias wcln="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
 # Sum integer in a column by using paste (which concatenates files or characters(+))
-alias sumcol="gpaste -sd+ | bc"
+alias sum_cols="gpaste -sd+ | bc"
 # 10 seconds is too short
 alias docker_stop="docker stop -t 120"
 alias qcsv='q -O -d"," -T --disable-double-double-quoting'
 alias pgbg='pgbadger --timezone 0'
 
-## Non generic (OS/host/script specific) alias commands ###################################################################
-which mdfind &>/dev/null && alias locat="mdfind"
-# Load/source my log searching utility functions
+## Non default (need to install an app or develop script) alias commands ###################################################################
+# Load/source my own searching utility functions / scripts
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 alias logS="source $HOME/IdeaProjects/samples/bash/log_search.sh; source $HOME/IdeaProjects/work/bash/log_search.sh"
 alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
@@ -108,14 +105,13 @@ function deobfuscate() {
     local _salt="$1"
     openssl enc -aes-128-cbc -md sha256 -salt -pass pass:"${_salt}" -d 2>/dev/null
 }
-
 # Merge split zip files to one file
 function merge_zips() {
     local _first_file="$1"
     zip -FF ${_first_file} --output ${_first_file%.*}.merged.zip
 }
 # head and tail of one file
-function headtail() {
+function head_tail() {
     local _f="$1"
     local _tac="tac"
     which gtac &>/dev/null && _tac="gtac"
@@ -127,20 +123,6 @@ function mcd() {
     local _path="$1"
     mkdir "${_path}"; cd "${_path}"
 }
-# cat some.json | pjson | less (or vim -)       Obfuscated??? I'm using prettyjson now.
-function pjson() {
-    local _max_length="${1:-16384}"
-    local _sort_keys="False"; [[ "$2" =~ (y|Y) ]] && _sort_keys="True"
-
-    python -c 'import sys,json,encodings.idna
-for l in sys.stdin:
-    l2=l.strip().lstrip("[").rstrip(",]")[:'${_max_length}']
-    try:
-        jo=json.loads(l2)
-        print json.dumps(jo, indent=4, sort_keys='${_sort_keys}')
-    except ValueError:
-        print l2'
-}
 function jsondiff() {
     local _f1="$(echo $1 | sed -e 's/^.\///' -e 's/[/]/_/g')"
     local _f2="$(echo $2 | sed -e 's/^.\///' -e 's/[/]/_/g')"
@@ -150,19 +132,14 @@ function jsondiff() {
     #prettyjson $2 > "/tmp/${_f2}"
     vimdiff "/tmp/${_f1}" "/tmp/${_f2}"
 }
-# surprisingly it's not easy to remove all newlines
+# surprisingly it's not easy to remove all newlines with bash
 function rmnewline() {
     python -c 'import sys
 for l in sys.stdin:
    sys.stdout.write(l.rstrip("\n"))'
 }
-function rmspaces() {
-    python -c 'import sys
-for l in sys.stdin:
-   sys.stdout.write("".join(l.split()))'
-}
+# Find recently modified (log) files
 function _find_recent() {
-    local __doc__="Find recent (log) files"
     local _dir="${1}"
     local _file_glob="${2:-"*.log"}"
     local _follow_symlink="${3}"
@@ -182,21 +159,20 @@ function _find_recent() {
         find ${_dir} -type f -name "${_file_glob}" ${_mmin} | tr '\n' ' '
     fi
 }
+# Tail recnetly modified log files
 function tail_logs() {
-    local __doc__="Tail log files"
     local _log_dir="${1}"
     local _log_file_glob="${2:-"*.log"}"
     tail -n20 -f $(_find_recent "${_log_dir}" "${_log_file_glob}")
 }
+# Grep only recently modified files (TODO: should check if ggrep or rg is available)
 function grep_logs() {
-    local __doc__="Deprecated (should use rg): Grep (recent) log files"
     local _search_regex="${1}"
     local _log_dir="${2}"
     local _log_file_glob="${3:-"*.log"}"
     local _grep_opts="${4:-"-IrsP"}"
     grep ${_grep_opts} "${_search_regex}" $(_find_recent "${_log_dir}" "${_log_file_glob}")
 }
-
 # prettify any strings by checkinbg braces
 function prettify() {
     local _str="$1"
@@ -451,7 +427,6 @@ function mvn-resolve() {
     [ -n "${_localrepo}" ] && _options="${_options% } -Dmaven.repo.local=${_localrepo}"
     mvn -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS dependency:resolve ${_options} -U -X
 }
-
 # To patch nexus (so that checking /system) but probably no longer using.
 function _patch() {
     local _java_file="${1}"
