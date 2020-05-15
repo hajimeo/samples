@@ -24,6 +24,12 @@ _BLOB_NAME="${_BLOB_NAME:-"default"}"
 _TID="${_TID:-80}"
 _TMP="${_TMP:-"/tmp"}"
 
+_DOCKER_CMD="${_DOCKER_CMD-""}"
+_DOCKER_PROXY="${_DOCKER_PROXY-""}"     #dh1.standalone.localdomain:18079
+_DOCKER_HOSTED="${_DOCKER_HOSTED-""}"   #dh1.standalone.localdomain:18082
+_DOCKER_GROUP="${_DOCKER_GROUP-""}"
+
+
 function f_setup_maven() {
     local _prefix="${1:-"maven"}"
     # If no xxxx-proxy, create it
@@ -102,26 +108,52 @@ function f_setup_npm() {
 
 function f_setup_docker() {
     local _prefix="${1:-"docker"}"
+    local _tag_name="${2:-"alpine:3.7"}"
+    local _cmd="${3:-"${_DOCKER_CMD}"}"
+    if [ -z "${_cmd}" ]; then
+        which docker &>/dev/null && _cmd="docker"
+        # podman is better in my opinion
+        which podman &>/dev/null && _cmd="podman"
+    fi
+
     # If no xxxx-proxy, create it
     if ! _does_repo_exist "${_prefix}-proxy"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://registry-1.docker.io","contentMaxAge":1440,"metadataMaxAge":1440},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"undefined":[false,false],"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    #_get_test "${_prefix}-proxy" "lodash/-/lodash-4.17.4.tgz" "${_TMP%/}/lodash-4.17.15.tgz" || return $?
+    if [ -z "${_cmd}" ]; then
+        _log "WARN" "No docker or podman command, so no get test"
+    elif [ -z "${_DOCKER_PROXY}" ]; then
+        _log "WARN" "No _DOCKER_PROXY (hostname:port) is set, so no get test"
+    else
+        local _image_name="$(docker images --format "{{.Repository}}" | grep -w "${_tag_name}")"
+        if [ -n "${_image_name}" ]; then
+            _log "WARN" "Deleting ${_image_name} (wait for 5 secs)";sleep 5
+            ${_cmd} rmi ${_image_name} || return $?
+        fi
+        ${_cmd} login ${_DOCKER_PROXY} --username ${_DEFAULT_USER} --password ${_DEFAULT_PWD} || return $?
+        ${_cmd} pull ${_DOCKER_PROXY}/${_tag_name} || return $?
+    fi
 
     # If no xxxx-hosted, create it
     if ! _does_repo_exist "${_prefix}-hosted"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    local _tmp_dir=$(mktemp -d)
-    cd ${_tmp_dir} || return $?
-    # https://hub.docker.com/_/alpine
-    echo "FROM alpine:3.7" > Dockerfile || return $?
-    docker build --rm -t alpine:3.7 .; local _rc=$?
-    cd -
-    [ ${_rc} -ne 0 ] && return ${_rc}
-    # TODO: _upload_test "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/lodash-4.17.15.tgz"
+    if [ -z "${_cmd}" ]; then
+        _log "WARN" "No docker or podman command, so no get test"
+    elif [ -z "${_DOCKER_HOSTED}" ]; then
+        # NOTE: docker hosted does not have Upload UI.
+        _log "WARN" "No _DOCKER_HOSTED (hostname:port) is set, so no upload test"
+    else
+        ${_cmd} login ${_DOCKER_HOSTED} --username ${_DEFAULT_USER} --password ${_DEFAULT_PWD} || return $?
+        # In proxy test, the image should be already pulled, so not building
+        if ! ${_cmd} tag ${_DOCKER_PROXY:-"localhost"}/${_tag_name} ${_DOCKER_HOSTED}/${_tag_name}; then
+            ${_cmd} build --rm -t ${_tag_name} -f <(echo -e "FROM ${_tag_name}\n") || return $?
+            ${_cmd} tag localhost/${_tag_name} ${_DOCKER_HOSTED}/${_tag_name} || return $?
+        fi
+        ${_cmd} push ${_DOCKER_HOSTED}/${_tag_name} || return $?
+    fi
 
     # TODO: If no xxxx-group, create it
     if ! _does_repo_exist "${_prefix}-group"; then
