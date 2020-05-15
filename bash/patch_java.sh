@@ -194,7 +194,7 @@ function f_groovy() {
     else
         echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
     fi
-    groovysh
+    groovysh -e ":set interpreterMode true"
     ${_cded} && cd -
 }
 
