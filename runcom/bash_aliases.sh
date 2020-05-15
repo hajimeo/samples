@@ -88,8 +88,15 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
+function calcDate () {
+    local _d_opt="$1"    #eg: 17:15:02.123 -262.708 seconds
+    local _d_mft="${2:-"%Y-%m-%d %H:%M:%S.%3N"}"    #%d/%b/%Y:%H:%M:%S
+    local _cmd="date"
+    which gdate &>/dev/null && _cmd="gdate"
+    ${_cmd} -u  +"${_d_mft}" -d"${_d_opt}"
+}
 # Obfuscate string (encode/decode)
-# echo -n "your secret word" | obfuscate "your salt"
+# How-to: echo -n "your secret word" | obfuscate "your salt"
 function obfuscate() {
     local _salt="$1"
     # -pbkdf2 does not work with 1.0.2 on CentOS. Should use -aes-256-cbc?
@@ -107,7 +114,6 @@ function merge_zips() {
     local _first_file="$1"
     zip -FF ${_first_file} --output ${_first_file%.*}.merged.zip
 }
-
 # head and tail of one file
 function headtail() {
     local _f="$1"
@@ -144,7 +150,6 @@ function jsondiff() {
     #prettyjson $2 > "/tmp/${_f2}"
     vimdiff "/tmp/${_f1}" "/tmp/${_f2}"
 }
-
 # surprisingly it's not easy to remove all newlines
 function rmnewline() {
     python -c 'import sys
@@ -156,7 +161,6 @@ function rmspaces() {
 for l in sys.stdin:
    sys.stdout.write("".join(l.split()))'
 }
-
 function _find_recent() {
     local __doc__="Find recent (log) files"
     local _dir="${1}"
@@ -178,16 +182,14 @@ function _find_recent() {
         find ${_dir} -type f -name "${_file_glob}" ${_mmin} | tr '\n' ' '
     fi
 }
-
 function tail_logs() {
     local __doc__="Tail log files"
     local _log_dir="${1}"
     local _log_file_glob="${2:-"*.log"}"
     tail -n20 -f $(_find_recent "${_log_dir}" "${_log_file_glob}")
 }
-
 function grep_logs() {
-    local __doc__="Grep (recent) log files"
+    local __doc__="Deprecated (should use rg): Grep (recent) log files"
     local _search_regex="${1}"
     local _log_dir="${2}"
     local _log_file_glob="${3:-"*.log"}"
@@ -250,7 +252,6 @@ function javaenvs() {
     export JAVA_HOME="$(dirname $_dir)"
     export CLASSPATH=".:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
 }
-
 # Execute multiple commands concurrently. NOTE: seems Mac's xargs has command length limit and no -r to ignore empty line
 function _parallel() {
     local _cmds_list="$1"   # File or strings of commands
