@@ -485,8 +485,9 @@ function f_getPerflog() {
 function f_list_start_end(){
     local __doc__="Output start time, end time, difference(sec), (filesize) from *multiple* log files"
     local _glob="${1}"
-    local _sort="${2:-3}"   # Sort by end time
-    local _tail_n="${3:-100}"   # Sort by end time
+    local _date_regex="${2}"
+    local _sort="${3:-3}"   # Sort by end time
+    local _tail_n="${4:-100}"   # Sort by end time
     local _files=""
     # If no file(s) given, check current working directory
     if [ -n "${_glob}" ]; then
@@ -495,23 +496,23 @@ function f_list_start_end(){
         _files="`find . -type f -size +0 -print | tail -n ${_tail_n}`"
         #_files="`ls -1 | tail -n ${_tail_n}`"
     fi
-    for _f in `echo ${_files}`; do f_start_end_time_with_diff ${_f}; done | sort -t$'\t' -k${_sort} | column -t -s$'\t'
+    for _f in `echo ${_files}`; do f_start_end_time_with_diff "${_f}" "${_date_regex}"; done | sort -t$'\t' -k${_sort} | column -t -s$'\t'
 }
 
 function f_start_end_time_with_diff(){
     local __doc__="Output start time, end time, difference(sec), (filesize) from one log or log.gz"
     #eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"^${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)
     local _log="$1"
-    local _date_regex="${2}"
+    local _date_regex="${2}"    # Use (). See below line for example
     # NOTE: not including milliseconds as some log wouldn't have
-    [ -z "$_date_regex" ] && _date_regex="(^${_DATE_FORMAT}.\d\d:\d\d:\d\d|\[\d{2}[-/][a-zA-Z]{3}[-/]\d{4}.\d\d:\d\d:\d\d)"
+    [ -z "$_date_regex" ] && _date_regex="^(${_DATE_FORMAT}.\d\d:\d\d:\d\d|\[\d{2}[-/][a-zA-Z]{3}[-/]\d{4}.\d\d:\d\d:\d\d)"
 
-    local _start_date="$(_date2iso "`rg -z -N -om1 "$_date_regex" ${_log}`")" || return $?
+    local _start_date="$(_date2iso "`rg -z -N -om1 -r '$1' "$_date_regex" ${_log}`")" || return $?
     local _extension="${_log##*.}"
     if [ "${_extension}" = 'gz' ]; then
-        local _end_date="$(_date2iso "`gunzip -c ${_log} | _tac | rg -z -N -om1 "$_date_regex"`")" || return $?
+        local _end_date="$(_date2iso "`gunzip -c ${_log} | _tac | rg -z -N -om1 -r '$1' "$_date_regex"`")" || return $?
     else
-        local _end_date="$(_date2iso "`_tac ${_log} | rg -z -N -om1 "$_date_regex"`")" || return $?
+        local _end_date="$(_date2iso "`_tac ${_log} | rg -z -N -om1 -r '$1' "$_date_regex"`")" || return $?
     fi
     local _start_int=`_date2int "${_start_date}"`
     local _end_int=`_date2int "${_end_date}"`
@@ -533,13 +534,13 @@ function f_split_strace() {
     fi
 
     [ ! -d "${_save_dir%/}" ] && ( mkdir -p "${_save_dir%/}" || return $? )
-    if [ ! -s "${_save_dir%/}/_pid_list.tmp" ]; then
-        awk '{print $1}' "${_strace_file}" | sort -n | uniq > "${_save_dir%/}/_pid_list.tmp"
+    if [ ! -s "${_save_dir%/}/._pid_list.tmp" ]; then
+        awk '{print $1}' "${_strace_file}" | sort -n | uniq > "${_save_dir%/}/._pid_list.tmp"
     else
-        echo "${_save_dir%/}/_pid_list.tmp exists. Reusing..." 1>&2
+        echo "${_save_dir%/}/._pid_list.tmp exists. Reusing..." 1>&2
     fi
 
-    for _p in `${_cat} "${_save_dir%/}/_pid_list.tmp"`
+    for _p in `${_cat} "${_save_dir%/}/._pid_list.tmp"`
     do
         if [ -s "${_save_dir%/}/${_p}.out" ]; then
             if [[ "${_reverse}" =~ (^y|^Y) ]]; then
@@ -551,6 +552,7 @@ function f_split_strace() {
         fi
         _grep "^${_p} " "${_strace_file}" > "${_save_dir%/}/.${_p}.out" && mv -f "${_save_dir%/}/.${_p}.out" "${_save_dir%/}/${_p}.out"
     done
+    echo "Done. You might want to run: f_list_start_end '*.out' '^\d+\s+(\d\d:\d\d:\d\d.\d+)'" >&2
 }
 
 
