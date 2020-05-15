@@ -935,7 +935,7 @@ function f_request2csv() {
         -o -r "${_pattern_out}" ${_g_opt} "${_glob}" >> ${_out_file}
 }
 
-#f_log2csv "(Starting|Finished) upload to key (.+) in bucket" nexus.log ",\"\$6\",\"\$7\"" ",\"\$6\",\"\$7\"" ",start_end,key" > ./s3_upload.csv
+#f_log2csv "(Starting|Finished) upload to key (.+) in bucket" nexus.log ",\"\$6\",\"\$7\"" ",start_end,key" > ./s3_upload.csv
 #qcsv -H "SELECT min(datetime) as min_dt, max(datetime) as max_dt, CAST((julianday(max(datetime)) - julianday(min(datetime))) * 86400000 AS INT) as duration_ms, SUM(CASE WHEN start_end = 'Starting' THEN 1 WHEN start_end = 'Finished' THEN -1 ELSE -99999 END) as sum_start_end, key FROM ./s3_upload.csv GROUP BY key HAVING sum_start_end = 0 ORDER BY min_dt"
 function f_log2csv() {
     local _log_regex="$1"
