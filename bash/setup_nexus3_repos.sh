@@ -164,7 +164,6 @@ function f_setup_docker() {
     if [ -z "${_cmd}" ]; then
         _log "WARN" "No docker or podman command, so no get test"
     elif [ -z "${_DOCKER_GROUP}" ]; then
-        # NOTE: docker hosted does not have Upload UI.
         _log "WARN" "No _DOCKER_GROUP (hostname:port) is set, so no get test"
     else
         local _image_name="$(docker images --format "{{.Repository}}" | grep -w "hello-world")"
