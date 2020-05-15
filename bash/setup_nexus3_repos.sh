@@ -77,7 +77,7 @@ function f_setup_pypi() {
         # Hosted first
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"pypi-group"}],"type":"rpc"}' || return $?
     fi
-    # add some data for xxxx-group ("." in groupdId should be changed to "/")
+    # add some data for xxxx-group
     _get_test "${_prefix}-group" "packages/pyyaml/5.3.1/PyYAML-5.3.1.tar.gz" || return $?
 }
 
@@ -102,7 +102,7 @@ function f_setup_npm() {
         # Hosted first
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"npm-group"}],"type":"rpc"}' || return $?
     fi
-    # add some data for xxxx-group ("." in groupdId should be changed to "/")
+    # add some data for xxxx-group
     _get_test "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz" || return $?
 }
 
@@ -155,13 +155,26 @@ function f_setup_docker() {
         ${_cmd} push ${_DOCKER_HOSTED}/${_tag_name} || return $?
     fi
 
-    # TODO: If no xxxx-group, create it
+    # If no xxxx-group, create it
     if ! _does_repo_exist "${_prefix}-group"; then
-        # Hosted first
-        echo "Haven't done yet"
+        #
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":false},"group":{"memberNames":["docker-hosted","docker-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' || return $?
     fi
-    # add some data for xxxx-group ("." in groupdId should be changed to "/")
-    #_get_test "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz" "${_TMP%/}/grunt-1.1.0.tgz" || return $?
+    # add some data for xxxx-group
+    if [ -z "${_cmd}" ]; then
+        _log "WARN" "No docker or podman command, so no get test"
+    elif [ -z "${_DOCKER_GROUP}" ]; then
+        # NOTE: docker hosted does not have Upload UI.
+        _log "WARN" "No _DOCKER_GROUP (hostname:port) is set, so no get test"
+    else
+        local _image_name="$(docker images --format "{{.Repository}}" | grep -w "hello-world")"
+        if [ -n "${_image_name}" ]; then
+            _log "WARN" "Deleting ${_image_name} (wait for 5 secs)";sleep 5
+            ${_cmd} rmi ${_image_name} || return $?
+        fi
+        ${_cmd} login ${_DOCKER_GROUP} --username ${_DEFAULT_USER} --password ${_DEFAULT_PWD} || return $?
+        ${_cmd} pull ${_DOCKER_GROUP}/hello-world || return $?
+    fi
 }
 
 function f_setup_yum() {
