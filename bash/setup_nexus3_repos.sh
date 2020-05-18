@@ -207,7 +207,7 @@ function f_setup_yum() {
     if ! _does_repo_exist "${_prefix}-group"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"yum-group"}],"type":"rpc"}' || return $?
     fi
-    # add some data for xxxx-group ("." in groupdId should be changed to "/")
+    # add some data for xxxx-group
     _get_test "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
 }
 function _nexus_test_repo() {
@@ -224,17 +224,42 @@ gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
 priority=1' > ${_out_file}
 }
 
+function f_setup_rubygem() {
+    local _prefix="${1:-"rubygem"}"
+    # If no xxxx-proxy, create it
+    if ! _does_repo_exist "${_prefix}-proxy"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://rubygems.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"rubygems-proxy"}],"type":"rpc"}' || return $?
+    fi
+    # TODO: add some data for xxxx-proxy
 
-function f_add_nxrm_repos() {
-    local __doc__="TODO: Add/populate NXRM repositories"
-    # docker
-    # yum
-    # gems
-    _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://rubygems.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"gems-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"rubygems-proxy"}],"type":"rpc"}'
-    _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"gems-hosted","format":"","type":"","url":"","online":true,"recipe":"rubygems-hosted"}],"type":"rpc"}'
-    _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"group":{"memberNames":["gems-hosted","gems-proxy"]}},"name":"gems-group","format":"","type":"","url":"","online":true,"recipe":"rubygems-group"}],"type":"rpc"}'
-    # raw
-    _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"raw-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}'
+    # If no xxxx-hosted, create it
+    if ! _does_repo_exist "${_prefix}-hosted"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"rubygems-hosted"}],"type":"rpc"}' || return $?
+    fi
+    # TODO: add some data for xxxx-hosted
+
+    # If no xxxx-group, create it
+    if ! _does_repo_exist "${_prefix}-group"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"group":{"memberNames":["gems-hosted","gems-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"rubygems-group"}],"type":"rpc"}' || return $?
+    fi
+    # TODO: add some data for xxxx-group
+    _get_test "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
+}
+
+
+function f_setup_raw() {
+    local _prefix="${1:-"raw"}"
+    # TODO: If no xxxx-proxy, create it
+    # TODO: add some data for xxxx-proxy
+
+    # If no xxxx-hosted, create it
+    if ! _does_repo_exist "${_prefix}-hosted"; then
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}'
+    fi
+    # TODO: add some data for xxxx-hosted
+
+    # TODO: If no xxxx-group, create it
+    # TODO: add some data for xxxx-group
 }
 
 
