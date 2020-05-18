@@ -405,6 +405,9 @@ main() {
     f_setup_pypi
     f_setup_npm
     f_setup_docker
+    f_setup_yum
+    f_setup_rubygem
+    f_setup_raw
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
