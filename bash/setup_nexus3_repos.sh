@@ -5,7 +5,7 @@ function usage() {
 This script should be safe to run multiple times.
 Ref: https://github.com/sonatype/nexus-toolbox/tree/master/prime-repos
 
-curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh
+curl -o/var/tmp/share/sonatype/setup_nexus3_repos.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh
 
 Repository Naming Rules:
     <format>_(proxy|hosted|group)
@@ -149,8 +149,15 @@ function f_setup_docker() {
         ${_cmd} login ${_DOCKER_HOSTED} --username ${_DEFAULT_USER} --password ${_DEFAULT_PWD} || return $?
         # In proxy test, the image should be already pulled, so not building
         if ! ${_cmd} tag ${_DOCKER_PROXY:-"localhost"}/${_tag_name} ${_DOCKER_HOSTED}/${_tag_name}; then
-            ${_cmd} build --rm -t ${_tag_name} -f <(echo -e "FROM ${_tag_name}\n") || return $?
-            ${_cmd} tag localhost/${_tag_name} ${_DOCKER_HOSTED}/${_tag_name} || return $?
+            # "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nENTRYPOINT [\"mysql\"]"
+            # NOTE docker build -f does not work (bug?)
+            local _build_dir="$(mktemp -d)" || return $?
+            cd ${_build_dir} || return $?
+            echo -e "FROM ${_tag_name}\n" > Dockerfile && ${_cmd} build --rm -t ${_tag_name} .
+            cd -    # should check the previous return code.
+            if ! ${_cmd} tag localhost/${_tag_name} ${_DOCKER_HOSTED}/${_tag_name}; then
+                ${_cmd} tag ${_tag_name} ${_DOCKER_HOSTED}/${_tag_name} || return $?
+            fi
         fi
         ${_cmd} push ${_DOCKER_HOSTED}/${_tag_name} || return $?
     fi
