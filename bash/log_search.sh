@@ -505,7 +505,7 @@ function f_start_end_time_with_diff(){
     local _log="$1"
     local _date_regex="${2}"    # Use (). See below line for example
     # NOTE: not including milliseconds as some log wouldn't have
-    [ -z "$_date_regex" ] && _date_regex="^(${_DATE_FORMAT}.\d\d:\d\d:\d\d|\[\d{2}[-/][a-zA-Z]{3}[-/]\d{4}.\d\d:\d\d:\d\d)"
+    [ -z "$_date_regex" ] && _date_regex="(^${_DATE_FORMAT}.\d\d:\d\d:\d\d|\[\d{2}[-/][a-zA-Z]{3}[-/]\d{4}.\d\d:\d\d:\d\d)"
 
     local _start_date="$(_date2iso "`rg -z -N -om1 -r '$1' "$_date_regex" ${_log}`")" || return $?
     local _extension="${_log##*.}"
@@ -804,8 +804,11 @@ function f_threads() {
         local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$' -c ${_file})
         if [ 1 -lt ${_how_many_threads:-0} ]; then
             # Only when checking multiple thread dumps
-            echo "## Long running threads (exclude: GC threads, waiting on condition)"
-            rg '^"' --no-filename ${_file} | rg -v '(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread)' | sort | uniq -c | sort -nr | rg "^\s+${_how_many_threads}\s" | rg -vw 'waiting on condition'
+            local _excludes="(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|\bwaiting on condition\b|VM Thread)"
+            echo "## Long running threads (threads:${_how_many_threads}, exclude: GC threads, waiting on condition)"
+            rg '^"' --no-filename ${_file} | rg -v "${_excludes}" | sort | uniq -c | sort -nr | rg "^\s+${_how_many_threads}\s"
+            #echo "## Long running threads by checking nid only"
+            #rg '^".+ nid=0x[0-9a-f]+' -o --no-filename ${_file} | rg -v "${_excludes}" | sort | uniq -c | sort -nr | rg "^\s+${_how_many_threads}\s"
             echo " "
             local _tmp_dir="$(mktemp -d)"
             f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "${_tmp_dir%/}" ""
@@ -1182,16 +1185,6 @@ function _load_yaml() {
     source /tmp/_load_yaml.out
 }
 
-function _yaml2json() {
-    local _yaml_file="${1}"
-    # pyyaml doesn't like ********
-    cat "${_yaml_file}" | _sed -r 's/\*\*+/__PASSWORD__/g' | python3 -c 'import sys, json, yaml
-try:
-    print(json.dumps(yaml.safe_load(sys.stdin), indent=4, sort_keys=True))
-except yaml.YAMLError as e:
-    sys.stderr.write(e+"\n")
-'
-}
 
 function _search_properties() {
     local _path="${1-./}"
