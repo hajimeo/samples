@@ -29,7 +29,7 @@ alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.parse(sys
 alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(r.find(sys.argv[2],namespaces=r.nsmap))"'
 # Search with 2nd arg and output the path(s)
 alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();pprint.pprint([t.getelementpath(x) for x in r.findall(\".//\"+sys.argv[2],namespaces=r.nsmap)])"'
-# Strip XML / HTML to get text (TODO: maybe </br> without new line should add new line)
+# Strip XML / HTML to get text. NOTE: using sys.stdin.read. (TODO: maybe </br> without new line should add new line)
 alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))"'
 alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
 alias jn='jupyter-notebook &> /tmp/jupyter-notebook.out &'
@@ -48,7 +48,7 @@ alias docker_stop="docker stop -t 120"
 alias qcsv='q -O -d"," -T --disable-double-double-quoting'
 alias pgbg='pgbadger --timezone 0'
 
-## Non default (need to install an app or develop script) alias commands ###################################################################
+## Non default (need to install an app or develop script) alias commands ###############################################
 # Load/source my own searching utility functions / scripts
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 alias logS="source $HOME/IdeaProjects/samples/bash/log_search.sh; source $HOME/IdeaProjects/work/bash/log_search.sh"
@@ -132,6 +132,17 @@ function jsondiff() {
     #prettyjson $2 > "/tmp/${_f2}"
     vimdiff "/tmp/${_f1}" "/tmp/${_f2}"
 }
+# Convert yml|yaml file to a sorted json. Can be used to validate yaml file
+function yaml2json() {
+    local _yaml_file="${1}"
+    # pyyaml doesn't like ********
+    cat "${_yaml_file}" | sed 's/\*\*+/__PASSWORD__/g' | python3 -c 'import sys, json, yaml
+try:
+    print(json.dumps(yaml.safe_load(sys.stdin), indent=4, sort_keys=True))
+except yaml.YAMLError as e:
+    sys.stderr.write(e+"\n")
+'
+}
 # surprisingly it's not easy to remove all newlines with bash
 function rmnewline() {
     python -c 'import sys
@@ -214,19 +225,6 @@ function jargrep() {
     local _cmd="jar -tf"
     which jar &>/dev/null || _cmd="less"
     find -L ${2:-./} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} | grep -wi '$1' && echo {}"
-}
-# Get PID from the port number, then set JAVA_HOME and CLASSPATH
-function javaenvs() {
-    local _port="${1}"
-    local _p=`lsof -ti:${_port}`    # TODO: fuser -4 ${_port}/tcp is faster
-    if [ -z "${_p}" ]; then
-        echo "Nothing running on port ${_port}"
-        return 11
-    fi
-    local _user="`stat -c '%U' /proc/${_p}`"
-    local _dir="$(dirname `readlink /proc/${_p}/exe` 2>/dev/null)"
-    export JAVA_HOME="$(dirname $_dir)"
-    export CLASSPATH=".:`sudo -u ${_user} $JAVA_HOME/bin/jcmd ${_p} VM.system_properties | sed -nr 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
 }
 # Execute multiple commands concurrently. NOTE: seems Mac's xargs has command length limit and no -r to ignore empty line
 function _parallel() {
@@ -446,4 +444,15 @@ function _patch() {
     fi
     export CLASSPATH=`find ${_base_dir%/} -path '*/system/*' -type f -name '*.jar' | tr '\n' ':'`.
     bash $HOME/IdeaProjects/samples/bash/patch_java.sh "" ${_java_file} ${_jar_file}0
+}
+function _patch_remote() {
+    # TODO: not working?
+    local _java_file="${1}"
+    local _jar_file="${2}"  # To step faster
+    local _port="${3:-8081}"
+    local _base_dir="${4:-"/opt/sonatype/nexus"}"
+    local _host="${5:-"root@dh1"}"
+    local _path="${6:-"/var/tmp/share/sonatype/workspace"}"
+    scp -C ${_java_file} ${_host%:}:${_path%/}/ || return $?
+    ssh ${_host} "export CLASSPATH=\$(find -L ${_base_dir%/} -path '*/system/*' -type f -name '*.jar' | tr '\n' ':')/var/tmp/share/java/lib/*:.;bash -x /var/tmp/share/java/patch_java.sh ${_port} \"${_path%/}/$(basename ${_java_file})\" \"${_jar_file}\""
 }
