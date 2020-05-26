@@ -1287,8 +1287,23 @@ function f_postfix() {
             _log "WARN" "${_redirect_mail} exists in /etc/postfix/recipient_canonical_map, so not setting up the redirection.";sleep 3
         else
             echo "/./ ${_redirect_mail}" >> /etc/postfix/recipient_canonical_map || return $?
+            _upsert "${_conf_file}" "inet_protocols" "ipv4"
             _upsert "${_conf_file}" "recipient_canonical_classes" "envelope_recipient"
             _upsert "${_conf_file}" "recipient_canonical_maps" "regexp:/etc/postfix/recipient_canonical_map"
+            _upsert "${_conf_file}" "smtpd_tls_security_level" "may"
+            # Ubuntu's postfix uses /etc/ssl/private/ssl-cert-snakeoil.key so actually don't need below
+            if [ -s /var/tmp/share/cert/standalone.localdomain.key ]; then
+                _upsert "${_conf_file}" "smtpd_tls_key_file" "/var/tmp/share/cert/standalone.localdomain.key"
+                _upsert "${_conf_file}" "smtpd_tls_cert_file" "/var/tmp/share/cert/standalone.localdomain.crt"
+            fi
+            _log "INFO" "openssl s_client -host localhost -port 25 -starttls smtp"  # -debug
+            echo -n | openssl s_client -host localhost:25 -starttls smtp -crlf
+            # To connect with starttls, like telnet:
+            #openssl s_client -connect localhost:25 -starttls smtp -crlf
+            #ehlo localhost
+            #mail from:sender@domain.com
+            #rcpt to:recipient@remotedomain.com
+            #data   # hit enter then type something and '.' enter, Ctrl+D to exit.
         fi
     fi
 
