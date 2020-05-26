@@ -19,11 +19,12 @@ REQIOREMENTS / DEPENDENCY:
 # Global variables
 _DEFAULT_USER="${_DEFAULT_USER:-"admin"}"
 _DEFAULT_PWD="${_DEFAULT_PWD:-"admin123"}"
-_NEXUS_URL="${_NEXUS_URL:-"http://`hostname -f`:8081"}"
+_NEXUS_URL="${_NEXUS_URL:-"http://`hostname -f`:8081"}" #NXRM2: http://node-nxrm2.standalone.localdomain:8081/nexus/
 _BLOB_NAME="${_BLOB_NAME:-"default"}"
 _TID="${_TID:-80}"
 _TMP="${_TMP:-"/tmp"}"
 
+# for f_setup_docker()
 _DOCKER_CMD="${_DOCKER_CMD-""}"
 _DOCKER_PROXY="${_DOCKER_PROXY-""}"     #dh1.standalone.localdomain:18079
 _DOCKER_HOSTED="${_DOCKER_HOSTED-""}"   #dh1.standalone.localdomain:18082
@@ -37,6 +38,7 @@ function f_setup_maven() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"https://repo1.maven.org/maven2/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
+    # If NXRM2: _get_test2 "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar"
     _get_test "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar" "${_TMP%/}/junit-4.12.jar" || return $?
 
     # If no xxxx-hosted, create it
@@ -280,6 +282,20 @@ function _get_test() {
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
         _log "ERROR" "Failed to get ${_base_url%/}/repository/${_repo%/}/${_path#/} (${_rc})"
+        cat ${_TMP%/}/_proxy_test_header_$$.out >&2
+        return ${_rc}
+    fi
+}
+# For NXRM2
+function _get_test2() {
+    local _repo="$1"
+    local _path="$2"
+    local _out_path="${3:-"/dev/null"}"
+    local _base_url="${_NEXUS_URL}"
+    curl -sf -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -k "${_base_url%/}/content/repository/${_repo%/}/${_path#/}"
+    local _rc=$?
+    if [ ${_rc} -ne 0 ]; then
+        _log "ERROR" "Failed to get ${_base_url%/}/content/repository/${_repo%/}/${_path#/} (${_rc})"
         cat ${_TMP%/}/_proxy_test_header_$$.out >&2
         return ${_rc}
     fi
