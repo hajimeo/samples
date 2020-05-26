@@ -791,6 +791,7 @@ function f_threads() {
     local _running_thread_search_re="${3-"\.sonatype\."}"
     local _dir="${4}"
     local _not_split_by_date="${5:-${_NOT_SPLIT_BY_DATE}}"
+    local _tmp_dir="$(mktemp -d)"
 
     [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
     [ -z "${_file}" ] && return 1
@@ -810,7 +811,6 @@ function f_threads() {
             #echo "## Long running threads by checking nid only"
             #rg '^".+ nid=0x[0-9a-f]+' -o --no-filename ${_file} | rg -v "${_excludes}" | sort | uniq -c | sort -nr | rg "^\s+${_how_many_threads}\s"
             echo " "
-            local _tmp_dir="$(mktemp -d)"
             f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "${_tmp_dir%/}" ""
             for _f in `ls ${_tmp_dir%/}`; do
                 echo "Saving outputs into f_thread_${_f%.*}.out ..."
@@ -832,20 +832,27 @@ function f_threads() {
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ${_dir%/}/
     echo " "
     echo "## Counting 'waiting to lock' etc. (exclude: 'parking to wait for' and None)"
-    rg '^\s+\-' --no-filename ${_dir%/}/ | rg -v '(- locked|- parking to wait for|- None)' |  sort | uniq -c | sort -nr | head -n20
+    rg '^\s+\-' --no-filename ${_dir%/}/ | rg -v '(- locked|- parking to wait for|- None)' |  sort | uniq -c | sort -nr | head -n20 | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out
     echo " "
+    # At least more than 10 waitings:
+    local _most_waiting="$(rg -m 1 '^\s*\d\d+\s+.*waiting.+(0x[0-9a-f]+)' -o -r '$1' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
+    if [ -n "${_most_waiting}" ]; then
+        echo "## Finding thread(s) locked '${_most_waiting} (excluding smaller than 1k)"
+        rg "locked.+${_most_waiting}" -l `find ${_dir%/} -type f -size +1k` | xargs -I {} rg -H '(java.lang.Thread.State:| state=)' {}
+        echo " "
+    fi
     echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
-    rg -H "${_running_thread_search_re}" -m1 -g '*RUNNABLE*' -g '*runnable*' ${_dir%/}/
+    rg -l -w RUNNABLE ${_dir%/}/ | xargs -I {} rg -H -w "${_running_thread_search_re}" {}
     echo " "
     echo "## Counting NOT waiting threads"
     rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | head -n 40
-    echo "Total: `rg '^"' ${_file} -c`"
     echo " "
     if grep -q 'state=' ${_file}; then
         rg -iw 'state=(.+)' -o -r '$1' --no-filename ${_file} | sort -r | uniq -c
     else
         rg -iw 'nid=0x[a-z0-9]+ ([^\[]+)' -o -r '$1' --no-filename ${_file} | sort -r | uniq -c
     fi
+    echo "Total: `rg '^"' ${_file} -c`"
 }
 
 function f_count_threads() {
@@ -1126,6 +1133,21 @@ function f_splitByRegex() {
     done
 }
 
+function f_extractFromLog() {
+    local _file="$1"    # can't be a glob as used in sed later
+    local _regex_from="$2"
+    local _regex_to="$3"
+
+    local _n1="$(rg "${_regex_from}" --no-filename -m1 -n -o "${_file}" | cut -d':' -f1)"
+    [ -z "${_n1}" ] && return 11
+    local _n2="\$"
+    if [ -n "${_regex_to}" ]; then
+        _n2="$(rg "${_regex_to}" --no-filename -m1 -n -o "${_file}" | cut -d':' -f1)"
+        [ -z "${_n2}" ] && return 12
+    fi
+    _sed -n "${_n1},${_n2}p;" ${_file}
+}
+
 function _date2int() {
     local _date_str="$1"
     _date -u -d "$(_date2iso "${_date_str}")" +"%s"
@@ -1161,8 +1183,8 @@ function _replace_number() {
     local _min="${1:-5}"
     local _N_="_NUM_"
     [ 5 -gt ${_min} ] && _N_="*"
-    _sed -r "s/[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}/___UUID___/g" \
-     | _sed -r "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{8}-[0-9a-fA-F]{8}-[0-9a-fA-F]{8}-[0-9a-fA-F]{8}/___UNIQUE_ID___/g" \
+    _sed -r "s/[0-9a-fA-F]{40,}/___SHA*___/g" \
+     | _sed -r "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4,8}-[0-9a-fA-F]{4,8}-[0-9a-fA-F]{4,8}-[0-9a-fA-F]{8,12}/___UUID___/g" \
      | _sed -r "s/0x[0-9a-f]{2,}/0x_HEX_/g" \
      | _sed -r "s/\b[0-9a-f]{6,8}\b/__HEX__/g" \
      | _sed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/___DATE___./g" \
@@ -1170,7 +1192,9 @@ function _replace_number() {
      | _sed -r "s/([+-])[0-1][0-9][03]0\b/\1_TZ_/g" \
      | _sed -r "s/[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/__IP_ADDRESS__/g" \
      | _sed -r "s/:[0-9]{1,5}/:_PORT_/g" \
+     | _sed -r "s/#[0-9]+/#_N_/g" \
      | _sed -r "s/-[0-9]+\] /-_N_] /g" \
+     | _sed -r "s/-[0-9]+\//-_N_\//g" \
      | _sed -r "s/[0-9]{8,10}-[0-9]+\b/__THREAD_ID__/g" \
      | _sed -r "s/[0-9]{${_min},}+/${_N_}/g"
 }
@@ -1415,9 +1439,10 @@ _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&
 _TEST_REGEX='^\[.+\]$'
 _SCRIPT_DIR="$(dirname $(realpath "$BASH_SOURCE"))"
 
-#[ -z "$_DATE_FORMAT" ] && _DATE_FORMAT="\d\d.[a-zA-Z]{3}.\d\d\d\d"
 [ -z "$_DATE_FORMAT" ] && _DATE_FORMAT="\d\d\d\d-\d\d-\d\d"
-[ -z "$_TIME_FMT4CHART" ] && _TIME_FMT4CHART="\d\d:"
+[ -z "$_DATE_FMT_REQ" ] && _DATE_FMT_REQ="\d\d.[a-zA-Z]{3}.\d\d\d\d"
+[ -z "$_DT_FMT" ] && _DT_FMT="${_DATE_FORMAT}.\d\d:\d\d:\d\d.\d+"
+[ -z "$_DT_FMT_REQ" ] && _DT_FMT_REQ="${_DATE_FMT_REQ}.\d\d:\d\d:\d\d"
 
 
 ### Main ###############################################################################################################
