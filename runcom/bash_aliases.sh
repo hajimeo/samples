@@ -247,9 +247,9 @@ function _escape() {
 # Grep STDIN with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
     local _datetime_regex="${1}"
-    [ -z "${_datetime_regex}" ] && _datetime_regex="^(\d\d\d\d-\d\d-\d\d.\d\d:\d)"
+    [ -z "${_datetime_regex}" ] && _datetime_regex="^\d\d\d\d-\d\d-\d\d.\d\d:\d"
     #ggrep -oP "${2:-^\d\d\d\d-\d\d-\d\d.\d\d:\d}" ${1-./*} | bar_chart.py
-    rg "${_datetime_regex}" -o -r '$1' | sed 's/ /./g' | bar_chart.py
+    rg "${_datetime_regex}" -o | sed 's/ /./g' | bar_chart.py
 }
 # Start Jupyter Lab as service
 function jpl() {
@@ -376,7 +376,7 @@ function sptBoot() {
         _zip="$(ls -1 ./*-202?????-??????*.zip | tail -n1)" || return $?
         echo "Using ${_zip} ..."
     fi
-    echo "To just re-launch or start, check relaunch-support.sh"
+    #echo "To just re-launch or start, check relaunch-support.sh"
     if [ ! -s $HOME/.nexus_executable_cache/ssl/keystore.jks.orig ]; then
         echo "Replacing keystore.jks ..."
         mv $HOME/.nexus_executable_cache/ssl/keystore.jks $HOME/.nexus_executable_cache/ssl/keystore.jks.orig
@@ -393,6 +393,16 @@ function sptBoot() {
 If ports conflict, edit nexus.properties is easier. eg:8080.
 "
 }
+# To start local (on Mac) IQ server
+function iqStart() {
+    local _base_dir="${1:-"."}"
+    local _jar_file="$(find ${_base_dir%/} -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
+    local _cfg_file="$(dirname "${_jar_file}")/config.yml"
+    grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
+    grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.bak -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
+    java -Xmx2g -jar "${_jar_file}" server "${_cfg_file}"
+}
+
 function iqCli() {
     # https://help.sonatype.com/display/NXI/Nexus+IQ+CLI
     local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
