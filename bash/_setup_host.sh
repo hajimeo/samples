@@ -1612,8 +1612,8 @@ function p_basic_setup() {
         f_sysstat_setup
         _log "INFO" "Executing f_apache_proxy"
         f_apache_proxy
-        _log "INFO" "Executing f_socks5_proxy"
-        f_socks5_proxy
+        #_log "INFO" "Executing f_socks5_proxy"
+        #f_socks5_proxy
         #_log "INFO" "Executing f_shellinabox" (this will create 'webuser' which can login to any container as root)
         #f_shellinabox
 
