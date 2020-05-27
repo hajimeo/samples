@@ -417,6 +417,21 @@ function f_socks5_proxy() {
     eval "${_cmd}"
 }
 
+function f_squid_proxy() {
+    local _port="${1:-28082}"
+    local _conf="/etc/squid/squid.conf"
+    apt-get install squid -y|| return $?
+    _backup ${_conf} || return $?
+cat << EOF > ${_conf}
+acl docker dst 172.17.0.0/16
+acl docker dst 172.18.0.0/16
+http_access allow docker
+forwarded_for delete
+http_port 0.0.0.0:${_port}
+EOF
+    service squid restart
+}
+
 function _apache_install() {
     # NOTE: how to check loaded modules: apache2ctl -M and/or check mods-available/ and mods-enabled/
     apt-get install -y apache2 apache2-utils || return $?
@@ -1612,6 +1627,8 @@ function p_basic_setup() {
         f_sysstat_setup
         _log "INFO" "Executing f_apache_proxy"
         f_apache_proxy
+        _log "INFO" "Executing f_squid_proxy"
+        f_squid_proxy
         #_log "INFO" "Executing f_socks5_proxy"
         #f_socks5_proxy
         #_log "INFO" "Executing f_shellinabox" (this will create 'webuser' which can login to any container as root)
