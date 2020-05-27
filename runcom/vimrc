@@ -13,6 +13,7 @@ set wildmenu
 set wildmode=list:longest,full
 set directory=.,$TEMP
 set shellcmdflag=-ic
+autocmd QuickFixCmdPost *grep* cwindow
 
 "match ErrorMsg /\<FATAL\>/
 "2match ErrorMsg /\<ERROR\>/
