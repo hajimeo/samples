@@ -5,7 +5,7 @@ function usage() {
 This script should be safe to run multiple times.
 Ref: https://github.com/sonatype/nexus-toolbox/tree/master/prime-repos
 
-curl -o/var/tmp/share/sonatype/setup_nexus3_repos.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh
+curl -o /var/tmp/share/sonatype/setup_nexus3_repos.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh
 
 Repository Naming Rules:
     <format>_(proxy|hosted|group)
@@ -29,7 +29,7 @@ _DOCKER_CMD="${_DOCKER_CMD-""}"
 _DOCKER_PROXY="${_DOCKER_PROXY-""}"     #dh1.standalone.localdomain:18079
 _DOCKER_HOSTED="${_DOCKER_HOSTED-""}"   #dh1.standalone.localdomain:18082
 _DOCKER_GROUP="${_DOCKER_GROUP-""}"
-
+_IS_NXRM2=${_IS_NXRM2:-"N"}
 
 function f_setup_maven() {
     local _prefix="${1:-"maven"}"
@@ -38,8 +38,8 @@ function f_setup_maven() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"https://repo1.maven.org/maven2/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    # If NXRM2: _get_test2 "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar"
-    _get_test "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar" "${_TMP%/}/junit-4.12.jar" || return $?
+    # If NXRM2: _get_asset_NXRM2 "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar"
+    _get_asset "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar" "${_TMP%/}/junit-4.12.jar" || return $?
 
     # If no xxxx-hosted, create it
     if ! _does_repo_exist "${_prefix}-hosted"; then
@@ -47,7 +47,7 @@ function f_setup_maven() {
     fi
     # add some data for xxxx-hosted
     #mvn deploy:deploy-file -DgroupId=junit -DartifactId=junit -Dversion=4.21 -DgeneratePom=true -Dpackaging=jar -DrepositoryId=nexus -Durl=${_NEXUS_URL}/repository/${_prefix}-hosted -Dfile=${_TMP%/}/junit-4.12.jar
-    _upload_test "${_prefix}-hosted" -F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
+    _upload_asset "${_prefix}-hosted" -F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
 
     # If no xxxx-group, create it
     if ! _does_repo_exist "${_prefix}-group"; then
@@ -55,7 +55,7 @@ function f_setup_maven() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"maven2-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group ("." in groupdId should be changed to "/")
-    _get_test "${_prefix}-group" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar" || return $?
+    _get_asset "${_prefix}-group" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar" || return $?
 }
 
 function f_setup_pypi() {
@@ -65,14 +65,14 @@ function f_setup_pypi() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://pypi.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"pypi-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    _get_test "${_prefix}-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz" "${_TMP%/}/Unit-0.2.2.tar.gz" || return $?
+    _get_asset "${_prefix}-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz" "${_TMP%/}/Unit-0.2.2.tar.gz" || return $?
 
     # If no xxxx-hosted, create it
     if ! _does_repo_exist "${_prefix}-hosted"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"pypi-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    _upload_test "${_prefix}-hosted" -F "pypi.asset=@${_TMP%/}/Unit-0.2.2.tar.gz"
+    _upload_asset "${_prefix}-hosted" -F "pypi.asset=@${_TMP%/}/Unit-0.2.2.tar.gz"
 
     # If no xxxx-group, create it
     if ! _does_repo_exist "${_prefix}-group"; then
@@ -80,7 +80,7 @@ function f_setup_pypi() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"pypi-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    _get_test "${_prefix}-group" "packages/pyyaml/5.3.1/PyYAML-5.3.1.tar.gz" || return $?
+    _get_asset "${_prefix}-group" "packages/pyyaml/5.3.1/PyYAML-5.3.1.tar.gz" || return $?
 }
 
 function f_setup_npm() {
@@ -90,14 +90,14 @@ function f_setup_npm() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.npmjs.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    _get_test "${_prefix}-proxy" "lodash/-/lodash-4.17.4.tgz" "${_TMP%/}/lodash-4.17.15.tgz" || return $?
+    _get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.4.tgz" "${_TMP%/}/lodash-4.17.15.tgz" || return $?
 
     # If no xxxx-hosted, create it
     if ! _does_repo_exist "${_prefix}-hosted"; then
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    _upload_test "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/lodash-4.17.15.tgz"
+    _upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/lodash-4.17.15.tgz"
 
     # If no xxxx-group, create it
     if ! _does_repo_exist "${_prefix}-group"; then
@@ -105,7 +105,7 @@ function f_setup_npm() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"npm-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    _get_test "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz" || return $?
+    _get_asset "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz" || return $?
 }
 
 function f_setup_docker() {
@@ -196,7 +196,7 @@ function f_setup_yum() {
         _nexus_test_repo "${_prefix}-proxy"
         yum --disablerepo="*" --enablerepo="nexusrepo" install --downloadonly --downloaddir=${_TMP%/} dos2unix || return $?
     else
-        _get_test "${_prefix}-proxy" "7/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm" || return $?
+        _get_asset "${_prefix}-proxy" "7/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm" || return $?
     fi
 
     # If no xxxx-hosted, create it
@@ -206,7 +206,7 @@ function f_setup_yum() {
     # add some data for xxxx-hosted
     local _upload_file="$(find ${_TMP%/} -type f -size +1k -name "dos2unix-*.el7.x86_64.rpm" | tail -n1)"
     if [ -s "${_upload_file}" ]; then
-        _upload_test "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=/7/os/x86_64/Packages" || return $?
+        _upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=/7/os/x86_64/Packages" || return $?
     else
         _log "WARN" "No rpm file for upload test."
     fi
@@ -217,7 +217,7 @@ function f_setup_yum() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"yum-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    _get_test "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
+    _get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
 }
 function _nexus_test_repo() {
     local _repo="${1:-"yum-group"}"
@@ -252,7 +252,7 @@ function f_setup_rubygem() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"group":{"memberNames":["gems-hosted","gems-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"rubygems-group"}],"type":"rpc"}' || return $?
     fi
     # TODO: add some data for xxxx-group
-    _get_test "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
+    _get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
 }
 
 
@@ -271,13 +271,39 @@ function f_setup_raw() {
     # TODO: add some data for xxxx-group
 }
 
+function f_get_and_upload_jars() {
+    local _prefix="${1:-"maven"}"
+    local _group_id="$2"
+    local _artifact_id="$3"
+    local _versions="$4"
+    local _base_url="${4:-"${_NEXUS_URL}"}"
 
+    for _v in ${_versions}; do
+        # TODO: currently only maven / maven2, and doesn't work with non usual filenames
+        #local _path="$(echo "${_path_with_VAR}" | sed "s/<VAR>/${_v}/g")"  # junit/junit/<VAR>/junit-<VAR>.jar
+        local _path="${_group_id%/}/${_artifact_id%/}/${_v}/${_artifact_id%/}-${_v}.jar"
+        local _out_path="${_TMP%/}/$(basename ${_path})"
+        _log "INFO" "Downloading \"${_path}\" from \"${_prefix}-proxy\" ..."
+        f_get_asset "${_prefix}-proxy" "${_path}" "${_out_path}" "${_base_url}"
 
-function _get_test() {
+        _log "INFO" "Uploading \"${_out_path}\" to \"${_prefix}-hosted\" ..."
+        _upload_asset "${_prefix}-hosted" -F maven2.groupId=${_group_id%/} -F maven2.artifactId=${_artifact_id%/} -F maven2.version=${_v} -F maven2.asset1=@${_out_path} -F maven2.asset1.extension=jar
+    done
+}
+
+function f_get_asset() {
+    if [[ "${_IS_NXRM2}" =~ ^[yY] ]]; then
+        _get_asset_NXRM2 $@
+    else
+        _get_asset $@
+    fi
+}
+
+function _get_asset() {
     local _repo="$1"
     local _path="$2"
     local _out_path="${3:-"/dev/null"}"
-    local _base_url="${_NEXUS_URL}"
+    local _base_url="${4:-"${_NEXUS_URL}"}"
     curl -sf -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -k "${_base_url%/}/repository/${_repo%/}/${_path#/}"
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
@@ -287,11 +313,11 @@ function _get_test() {
     fi
 }
 # For NXRM2
-function _get_test2() {
+function _get_asset_NXRM2() {
     local _repo="$1"
     local _path="$2"
     local _out_path="${3:-"/dev/null"}"
-    local _base_url="${_NEXUS_URL}"
+    local _base_url="${4:-"${_NEXUS_URL}"}"
     curl -sf -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -k "${_base_url%/}/content/repository/${_repo%/}/${_path#/}"
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
@@ -300,7 +326,7 @@ function _get_test2() {
         return ${_rc}
     fi
 }
-function _upload_test() {
+function _upload_asset() {
     local _repo="$1"
         local _forms=${@:2} #-F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
     local _base_url="${_NEXUS_URL}"
@@ -369,7 +395,7 @@ function _apiS() {
         curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H}" || return $?
     else
         curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H}" -H "${_content_type}" -d ${_data} || return $?
-    fi > ${_TMP%/}/_apiS_nxrm$$.out
+    fi > ${_TMP%/}/_apiS_nxrm$$.out || cat ${_TMP%/}/_apiS_header_$$.out >&2
     if ! cat ${_TMP%/}/_apiS_nxrm$$.out | python -m json.tool 2>/dev/null; then
         cat ${_TMP%/}/_apiS_nxrm$$.out
     fi
@@ -396,7 +422,7 @@ function _api() {
         curl -sf -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method} || return $?
     else
         curl -sf -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method} -H "${_content_type}" -d "${_data}" || return $?
-    fi > ${_TMP%/}/f_api_nxrm_$$.out
+    fi > ${_TMP%/}/f_api_nxrm_$$.out || cat ${_TMP%/}/_api_header_$$.out >&2
     if ! cat ${_TMP%/}/f_api_nxrm_$$.out | python -m json.tool 2>/dev/null; then
         echo -n `cat ${_TMP%/}/f_api_nxrm_$$.out`
         echo ""
