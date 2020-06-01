@@ -271,7 +271,7 @@ function f_setup_raw() {
     # TODO: add some data for xxxx-group
 }
 
-#f_get_and_upload_jars "maven" "junit" "junit" "4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 4.10 4.11 4.12"
+# f_get_and_upload_jars "maven" "junit" "junit" "4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 4.10 4.11 4.12"
 function f_get_and_upload_jars() {
     local _prefix="${1:-"maven"}"
     local _group_id="$2"
@@ -292,6 +292,17 @@ function f_get_and_upload_jars() {
     done
 }
 
+# f_move_jars "maven-hosted" "maven-releases" "junit"
+function f_move_jars() {
+    local _from_repo="$1"
+    local _to_repo="$2"
+    local _group="$3"
+    local _artifact="${4:-"*"}"
+    local _version="${5:-"*"}"
+    [ -z "${_group}" ] && return 11
+    _api "/service/rest/v1/staging/move/${_to_repo}?repository=${_from_repo}&group=${_group}&name=${_artifact}&version=${_version}" "" "POST"
+}
+
 function f_get_asset() {
     if [[ "${_IS_NXRM2}" =~ ^[yY] ]]; then
         _get_asset_NXRM2 $@
@@ -299,7 +310,6 @@ function f_get_asset() {
         _get_asset $@
     fi
 }
-
 function _get_asset() {
     local _repo="$1"
     local _path="$2"
@@ -393,9 +403,9 @@ function _apiS() {
 
     if [ -z "${_data}" ]; then
         # GET and DELETE *can not* use Content-Type json
-        curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H}" || return $?
+        curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H}"
     else
-        curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H}" -H "${_content_type}" -d ${_data} || return $?
+        curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H}" -H "${_content_type}" -d ${_data}
     fi > ${_TMP%/}/_apiS_nxrm$$.out || cat ${_TMP%/}/_apiS_header_$$.out >&2
     if ! cat ${_TMP%/}/_apiS_nxrm$$.out | python -m json.tool 2>/dev/null; then
         cat ${_TMP%/}/_apiS_nxrm$$.out
@@ -420,9 +430,9 @@ function _api() {
 
     if [ -z "${_data}" ]; then
         # GET and DELETE *can not* use Content-Type json
-        curl -sf -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method} || return $?
+        curl -sf -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method}
     else
-        curl -sf -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method} -H "${_content_type}" -d "${_data}" || return $?
+        curl -sf -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method} -H "${_content_type}" -d "${_data}"
     fi > ${_TMP%/}/f_api_nxrm_$$.out || cat ${_TMP%/}/_api_header_$$.out >&2
     if ! cat ${_TMP%/}/f_api_nxrm_$$.out | python -m json.tool 2>/dev/null; then
         echo -n `cat ${_TMP%/}/f_api_nxrm_$$.out`
