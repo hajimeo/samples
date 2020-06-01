@@ -271,12 +271,13 @@ function f_setup_raw() {
     # TODO: add some data for xxxx-group
 }
 
+#f_get_and_upload_jars "maven" "junit" "junit" "4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 4.10 4.11 4.12"
 function f_get_and_upload_jars() {
     local _prefix="${1:-"maven"}"
     local _group_id="$2"
     local _artifact_id="$3"
     local _versions="$4"
-    local _base_url="${4:-"${_NEXUS_URL}"}"
+    local _base_url="${5:-"${_NEXUS_URL}"}"
 
     for _v in ${_versions}; do
         # TODO: currently only maven / maven2, and doesn't work with non usual filenames
