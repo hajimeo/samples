@@ -85,12 +85,19 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
-function calcDate () {
-    local _d_opt="$1"    #eg: 17:15:02.123 -262.708 seconds
+#eg: calcDate "17:15:02.123 -262.708 seconds"
+function calcDate() {
+    local _d_opt="$1"
     local _d_mft="${2:-"%Y-%m-%d %H:%M:%S.%3N"}"    #%d/%b/%Y:%H:%M:%S
     local _cmd="date"
     which gdate &>/dev/null && _cmd="gdate"
     ${_cmd} -u  +"${_d_mft}" -d"${_d_opt}"
+}
+function time_-_ms() {
+    local _time="$1"    #hh:mm:ss.sss
+    local _ms="$2"
+    local _sec=`bc <<< "scale=3; ${_ms} / 1000"`
+    calcDate "${_time} -${_sec} seconds"
 }
 # Obfuscate string (encode/decode)
 # How-to: echo -n "your secret word" | obfuscate "your salt"
@@ -424,7 +431,7 @@ function mvn-get() {
     local _options="-Dtransitive=false"
     [ -n "${_repo}" ] && _options="${_options% } -DremoteRepositories=${_repo}"
     [ -n "${_localrepo}" ] && _options="${_options% } -Dmaven.repo.local=${_localrepo}"
-    mvn -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS dependency:get ${_options} -Dartifact=$@ -U -X
+    mvn -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS dependency:get ${_options} -Dartifact=${_gav} -Dtransitive=false -U -X
 }
 function mvn-resolve() {
     # maven/mvn resolve dependency only
