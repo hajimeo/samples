@@ -406,7 +406,12 @@ function _apiS() {
         curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H}"
     else
         curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H}" -H "${_content_type}" -d ${_data}
-    fi > ${_TMP%/}/_apiS_nxrm$$.out || cat ${_TMP%/}/_apiS_header_$$.out >&2
+    fi > ${_TMP%/}/_apiS_nxrm$$.out
+    local _rc=$?
+    if [ ${_rc} -ne 0 ]; then
+        cat ${_TMP%/}/_apiS_header_$$.out >&2
+        return ${_rc}
+    fi
     if ! cat ${_TMP%/}/_apiS_nxrm$$.out | python -m json.tool 2>/dev/null; then
         cat ${_TMP%/}/_apiS_nxrm$$.out
     fi
@@ -433,7 +438,12 @@ function _api() {
         curl -sf -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method}
     else
         curl -sf -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method} -H "${_content_type}" -d "${_data}"
-    fi > ${_TMP%/}/f_api_nxrm_$$.out || cat ${_TMP%/}/_api_header_$$.out >&2
+    fi > ${_TMP%/}/f_api_nxrm_$$.out
+    local _rc=$?
+    if [ ${_rc} -ne 0 ]; then
+        cat ${_TMP%/}/_api_header_$$.out >&2
+        return ${_rc}
+    fi
     if ! cat ${_TMP%/}/f_api_nxrm_$$.out | python -m json.tool 2>/dev/null; then
         echo -n `cat ${_TMP%/}/f_api_nxrm_$$.out`
         echo ""
