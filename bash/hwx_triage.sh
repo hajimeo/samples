@@ -124,7 +124,11 @@ function f_check_process() {
     echo "INFO" "Collecting PID related information..." >&2
     su - $_user -c 'klist -eaf' &> ${_work_dir%/}/klist_${_user}.out
 
-    cat /proc/${_p}/limits &> ${_work_dir%/}/proc_limits_${_p}.out
+    if which prlimit &>/dev/null; then
+        prlimit -p ${_p} &> ${_work_dir%/}/proc_limits_${_p}.out
+    else
+        cat /proc/${_p}/limits &> ${_work_dir%/}/proc_limits_${_p}.out
+    fi
     cat /proc/${_p}/status &> ${_work_dir%/}/proc_status_${_p}.out
     date > ${_work_dir%/}/proc_io_${_p}.out; cat /proc/${_p}/io >> ${_work_dir%/}/proc_io_${_p}.out
     cat /proc/${_p}/environ | tr '\0' '\n' > ${_work_dir%/}/proc_environ_${_p}.out
