@@ -1,5 +1,17 @@
 #!/usr/bin/env bash
 # curl -o /var/tmp/share/test_https.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/test_https.sh
+# Useful Java flags (NOTE: based on java 8)
+#   -Dcom.sun.jndi.ldap.object.disableEndpointIdentification=true # for LDAPS
+#   -Dcom.sun.net.ssl.checkRevocation=false
+#   -Djavax.net.ssl.trustStoreType=WINDOWS-ROOT"
+#
+#   -Dhttps.proxyHost=<proxy_hostname> -Dhttps.proxyPort=
+#   -Djava.net.useSystemProxies=true
+#
+# To DEBUG:
+#   -Djavax.net.debug=ssl,keymanager
+
+
 
 _TEST_PORT=34443
 
