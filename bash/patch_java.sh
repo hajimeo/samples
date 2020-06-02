@@ -106,52 +106,40 @@ function f_setup_spring_cli() {
 
 function f_javaenvs() {
     local _port="${1}"
-    local _extra_lib="${2-${_EXTRA_LIB}}"
+
+    if [ -n "$JAVA_HOME" ] && [ -n "$CLASSPATH" ]; then
+        echo "JAVA_HOME and CLASSPATH are already set. Skipping f_javaenvs..."
+        return 0
+    fi
 
     if [ -z "${_port}" ]; then
-        if [ -n "$JAVA_HOME" ] && [ -n "$CLASSPATH" ]; then
-            echo "No port is given but JAVA_HOME and CLASSPATH are already set."
-            return 0
-        else
-            echo "No port number to find PID. Manually set JAVA_HOME and CLASSPATH."
-            return 10
-        fi
+        echo "No port number to find PID. Manually set JAVA_HOME and CLASSPATH."
+        return 10
     fi
+
     local _p=`lsof -ti:${_port} -s TCP:LISTEN`
     if [ -z "${_p}" ]; then
-        if [ -n "$JAVA_HOME" ] && [ -n "$CLASSPATH" ]; then
-            echo "No PID found from ${_port} but JAVA_HOME and CLASSPATH are already set."
-            return 0
-        else
-            echo "Nothing running on port ${_port}. Manually set JAVA_HOME and CLASSPATH."
-            return 11
-        fi
+        echo "Nothing running on port ${_port}. Manually set JAVA_HOME and CLASSPATH."
+        return 11
     fi
     local _user="`stat -c '%U' /proc/${_p} 2>/dev/null`"
     if [ -z "${_user}" ]; then
         _user="$USER"
         echo "Couldn't find _user from PID ${_p}, so using ${_user} ..."
     fi
-    if [ -z "$JAVA_HOME" ]; then
-        local _dir="$(dirname `readlink /proc/${_p}/exe` 2>/dev/null)"
-        export JAVA_HOME="$(dirname ${_dir})"
+
+    local _jcmd="$(_find_jcmd "${_port}")"
+    if [ -n "${_jcmd}" ]; then
+        export JAVA_HOME="$(dirname $(dirname ${_jcmd}))"
+    else
+        echo "WARN: Couldn't not find jcmd. Please set JAVA_HOME."
+        return 1
     fi
-    local _jcmd="$JAVA_HOME/bin/jcmd"
-    if [ ! -x $JAVA_HOME/bin/jcmd ]; then
-        _jcmd="$(find /var/tmp/share/java -executable -name jcmd | grep -vw archives | tail -n 1)"
-        if [ -n "${_jcmd}" ]; then
-            export JAVA_HOME="$(dirname $(dirname ${_jcmd}))"
-        fi
-    fi
+
     if [ -x "${_jcmd}" ]; then
         if [ -z "$CLASSPATH" ]; then
             export CLASSPATH=".:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
-            # using extra_dir only when no CLASSPATH set, otherwise, CLASSPATH can be super long
-            if [ -d "${_extra_lib}" ]; then
-                # It might contain another groovy jar but different version, so excluding in find.
-                local _extra_classpath=$(find ${_extra_lib%/} -name '*.jar' -not -name 'groovy-*.jar' -print | tr '\n' ':')
-                export CLASSPATH="${_extra_classpath%:}:${CLASSPATH%:}"
-            fi
+            _set_classpath "${_port}"
         else
             echo "WARN: CLASSPATH is already set, so not overwriting/appending."
             #export CLASSPATH="${CLASSPATH%:}:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
@@ -159,7 +147,57 @@ function f_javaenvs() {
     else
         echo "WARN: Couldn't not set CLASSPATH because of no executable jcmd found."; sleep 3
     fi
+
     export _CWD="$(realpath /proc/${_p}/cwd 2>/dev/null)"
+}
+
+function _find_jcmd() {
+    # _set_java_home 8081 "/var/tmp/share/java"
+    local _port="${1}"
+    local _search_path="${2:-"/var/tmp/share/java"}"
+    local _java_home="${JAVA_HOME}"
+
+    local _p=`lsof -ti:${_port} -s TCP:LISTEN`
+    if [ -z "${_java_home}" ]; then
+        local _dir="$(dirname `readlink /proc/${_p}/exe` 2>/dev/null)"
+        _java_home="$(dirname ${_dir})"
+    fi
+
+    local _jcmd="${_java_home}/bin/jcmd"
+    if [ ! -x "${_jcmd}" ]; then
+        _jcmd=""
+        local _java_ver_str="$(/proc/${_p}/exe -version 2>&1 | grep -oE ' version .+')"
+        if [ -n "${_java_ver_str}" ]; then
+            # Somehow the scope of "while" is local...
+            for _j in $(find ${_search_path%/} -executable -name jcmd | grep -vw archives); do
+                if $(dirname $_j)/java -version 2>&1 | grep -q "${_java_ver_str}"; then
+                    _jcmd="$_j"
+                    break
+                fi
+            done
+        fi
+    fi
+    echo "${_jcmd}"
+}
+
+function _set_classpath() {
+    # _set_classpath 8081 "/var/tmp/share/java/lib"
+    # _EXTRA_LIB="/var/tmp/share/java/lib" _set_classpath 8081
+    local _port="${1}"
+    local _extra_lib="${2-${_EXTRA_LIB}}"
+
+    if [ "${_port}" == "8081" ] && [ -d "/opt/sonatype/nexus/system" ]; then
+        # At this moment, not considering dups
+        local _classpath="${CLASSPATH%:}:$(find /opt/sonatype/nexus/system -type f -name '*.jar' | tr '\n' ':')"
+        export CLASSPATH="${_classpath%:}"
+    fi
+
+    # using extra_dir only when no CLASSPATH set, otherwise, CLASSPATH can be super long
+    if [ -d "${_extra_lib}" ]; then
+        # It might contain another groovy jar but different version, so excluding in find.
+        local _extra_classpath=$(find ${_extra_lib%/} -name '*.jar' -not -name 'groovy-*.jar' -print | tr '\n' ':')
+        export CLASSPATH="${_extra_classpath%:}:${CLASSPATH%:}"
+    fi
 }
 
 function f_set_classpath() {
@@ -236,8 +274,9 @@ function f_update_jar() {
     fi
 
     local _jar_filename="$(basename ${_jar_filepath})"
+    cp -p ${_jar_filepath} ./${_jar_filename} || return $?
     if [ ! -s "${_jar_filename}.orig" ]; then
-        cp -p ${_jar_filepath} ${_jar_filename}.orig || return $?
+        cp -p ${_jar_filepath} ./${_jar_filename}.orig || return $?
     fi
 
     if [ ! -d "${_compiled_dir}" ]; then
@@ -251,15 +290,18 @@ function f_update_jar() {
     local _class_file_path="${_compiled_dir%/}/*.class"
     [ -n "${_updating_specific_class}" ] && _class_file_path="${_compiled_dir%/}/${_updating_specific_class}[.$]*class"
 
-    echo "Updating ${_jar_filepath} with ${_class_file_path} ..."
+    echo "Updating ./${_jar_filename} with ${_class_file_path} ..."
     #local _updated_date="$(date | _sed -r 's/[0-9][0-9]:[0-9][0-9]:[0-9][0-9].+//')"
     local _updated_time="$(date | grep -oE ' [0-9][0-9]:[0-9][0-9]:[0-9]')"
-    $JAVA_HOME/bin/jar -uvf ${_jar_filepath} ${_class_file_path} || return $?
+    $JAVA_HOME/bin/jar -uvf ./${_jar_filename} ${_class_file_path} || return $?
     echo "------------------------------------------------------------------------------------"
     echo "Checking if any non-updated class... (zip -d ${_jar_filepath} '/path/to/class')"
-    $JAVA_HOME/bin/jar -tvf ${_jar_filepath} | grep -w ${_class_name} | grep -v "${_updated_time}"
+    $JAVA_HOME/bin/jar -tvf ./${_jar_filename} | grep -w ${_class_name} | grep -v "${_updated_time}"
 
-    cp -f ${_jar_filepath} ${_jar_filename}.patched
+    cp -p -f ./${_jar_filename} ${_jar_filename}.patched || return $?
+    echo "Moving ./${_jar_filename} to ${_jar_filepath} (may ask yes or no) ..."
+    ls -l ./${_jar_filename} ${_jar_filepath} || return $?
+    mv ./${_jar_filename} ${_jar_filepath} || return $?
     return 0
 }
 
