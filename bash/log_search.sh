@@ -2,20 +2,12 @@
 #
 # Bunch of grep functions to search log files
 # Don't use complex one, so that each function can be easily copied and pasted
+# TODO: tested on Mac only (eg: gsed, ggrep)
 #
 # DOWNLOAD:
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
-#
-# TODO: tested on Mac only (eg: gsed, ggrep)
-# brew install ripgrep      # for rg
-# brew install grep         # 'grep' will install ggrep (may not need anymore)
-# brew install gnu-sed      # for gsed
-# brew install dateutils    # for dateconv
-# brew install coreutils    # for gtac gdate
-# brew install q
-# pip install data_hacks    # for bar_chart.py
-# curl https://raw.githubusercontent.com/hajimeo/samples/master/python/line_parser.py -o /usr/local/bin/line_parser.py
-#
+#   (optional)
+#   curl https://raw.githubusercontent.com/hajimeo/samples/master/python/line_parser.py -o /usr/local/bin/line_parser.py
 
 [ -n "$_DEBUG" ] && (set -x; set -e)
 
@@ -29,11 +21,11 @@ This script contains useful functions to search log files.
 
 Required commands:
     brew install ripgrep      # for rg
-    brew install grep         # for ggrep (may not need anymore)
     brew install gnu-sed      # for gsed
     brew install dateutils    # for dateconv
     brew install coreutils    # for gtac gdate
-    brew install q
+    brew install q            # To query a csv file
+    brew install grep         # Do not need anymore, but ggrep is faster than Mac's grep
     pip install data_hacks    # for bar_chart.py
 
 Setup:
@@ -496,12 +488,12 @@ function f_list_start_end(){
         _files="`find . -type f -size +0 -print | tail -n ${_tail_n}`"
         #_files="`ls -1 | tail -n ${_tail_n}`"
     fi
-    for _f in `echo ${_files}`; do f_start_end_time_with_diff "${_f}" "${_date_regex}"; done | sort -t$'\t' -k${_sort} | column -t -s$'\t'
+    for _f in `echo ${_files}`; do f_start_end_time "${_f}" "${_date_regex}"; done | sort -t$'\t' -k${_sort} | column -t -s$'\t'
 }
 
-function f_start_end_time_with_diff(){
-    local __doc__="Output start time, end time, difference(sec), (filesize) from one log or log.gz"
-    #eg: for _f in \`ls\`; do f_start_end_time_with_diff \$_f \"^${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)
+function f_start_end_time(){
+    local __doc__="Output start time, end time, duration(sec), (filesize) from one log or log.gz"
+    #eg: for _f in \`ls\`; do f_start_end_time \$_f \"^${_DATE_FORMAT}.\d\d:\d\d:\d\d,\d\d\d\"; done | sort -t$'\\t' -k2)
     local _log="$1"
     local _date_regex="${2}"    # Use (). See below line for example
     # NOTE: not including milliseconds as some log wouldn't have
@@ -555,6 +547,13 @@ function f_split_strace() {
     echo "Done. You might want to run: f_list_start_end '*.out' '^\d+\s+(\d\d:\d\d:\d\d.\d+)'" >&2
 }
 
+function f_find_size_sort_by_basename() {
+    local __doc__="Find (xml) files then sort by the basename and list with the file size"
+    local _name="${1:-"*.xml"}"
+    local _dir="${2:-"."}"
+    # awk part may work with specific OS only
+    find ${_dir%/} -type f -name "${_name}" -ls | awk '{printf("%10s %s\n", $7, $11)}' | rg '^(\s+\d+) (.+)/(.+)$' -o -r '$1 $2/ $3' | sort -k3
+}
 
 function f_git_search() {
     local __doc__="Grep git comments to find matching branch or tag"
@@ -804,18 +803,17 @@ function f_threads() {
     if [[ ! "${_not_split_by_date}" =~ ^(y|Y) ]]; then
         local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$' -c ${_file})
         if [ 1 -lt ${_how_many_threads:-0} ]; then
-            # Only when checking multiple thread dumps
-            local _excludes="(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|\bwaiting on condition\b|VM Thread)"
-            echo "## Long running threads (threads:${_how_many_threads}, exclude: GC threads, waiting on condition)"
-            rg '^"' --no-filename ${_file} | rg -v "${_excludes}" | sort | uniq -c | sort -nr | rg "^\s+${_how_many_threads}\s"
-            #echo "## Long running threads by checking nid only"
-            #rg '^".+ nid=0x[0-9a-f]+' -o --no-filename ${_file} | rg -v "${_excludes}" | sort | uniq -c | sort -nr | rg "^\s+${_how_many_threads}\s"
-            echo " "
             f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "${_tmp_dir%/}" ""
             for _f in `ls ${_tmp_dir%/}`; do
                 echo "Saving outputs into f_thread_${_f%.*}.out ..."
                 f_threads "${_tmp_dir%/}/${_f}" "${_split_search}" "${_running_thread_search_re}" "${_dir%/}/${_f%.*}" "Y" > ./f_thread_${_f%.*}.out
             done
+            echo " "
+            # Only when checking multiple thread dumps
+            echo "## Long running threads including '${_running_thread_search_re}' (threads:${_how_many_threads})"
+            rg -l "${_running_thread_search_re}" ${_dir%/}/ | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s+${_how_many_threads}\s+.+ ([^ ]+$)" -o -r '$1' | sort
+            #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
+            echo " "
             return $?
         fi
     fi
@@ -831,21 +829,21 @@ function f_threads() {
     echo "## Finding BLOCKED or waiting to lock lines"
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ${_dir%/}/
     echo " "
-    echo "## Counting 'waiting to lock' etc. (exclude: 'parking to wait for' and None)"
-    rg '^\s+\-' --no-filename ${_dir%/}/ | rg -v '(- locked|- parking to wait for|- None)' |  sort | uniq -c | sort -nr | head -n20 | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out
+    echo "## Counting 'waiting to lock|waiting on|parking to wait' etc. (exclude: 'parking to wait for' and None)"
+    rg '^\s+\- [^<]' --no-filename ${_dir%/}/ | rg -v '(- locked|- None)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n20
     echo " "
-    # At least more than 10 waitings:
-    local _most_waiting="$(rg -m 1 '^\s*\d\d+\s+.*waiting.+(0x[0-9a-f]+)' -o -r '$1' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
+    # At least more than 10 waiting:
+    local _most_waiting="$(rg -m 1 '^\s*\d\d+\s+.+(0x[0-9a-f]+)' -o -r '$1' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
     if [ -n "${_most_waiting}" ]; then
-        echo "## Finding thread(s) locked '${_most_waiting} (excluding smaller than 1k)"
+        echo "## Finding thread(s) locked '${_most_waiting}' (excluding smaller than 1k threads)"
         rg "locked.+${_most_waiting}" -l `find ${_dir%/} -type f -size +1k` | xargs -I {} rg -H '(java.lang.Thread.State:| state=)' {}
         echo " "
     fi
     echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
-    rg -l -w RUNNABLE ${_dir%/}/ | xargs -I {} rg -H -w "${_running_thread_search_re}" {}
+    rg -l -w RUNNABLE ${_dir%/}/ | xargs -I {} rg -H "${_running_thread_search_re}" {}
     echo " "
-    echo "## Counting NOT waiting threads"
-    rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | head -n 40
+    echo "## Counting NOT waiting threads (top 20)"
+    rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | head -n 20
     echo " "
     if grep -q 'state=' ${_file}; then
         rg -iw 'state=(.+)' -o -r '$1' --no-filename ${_file} | sort -r | uniq -c
