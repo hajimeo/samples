@@ -1,17 +1,9 @@
 #!/usr/bin/env bash
+# DOWNLOAD:
 # curl -o /var/tmp/share/java/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
-# TODO: currently the script filename needs to be "ClassName.scala" or "ClassName.java" (case sensitive)
 #
-# export CLASSPATH=`find . -name '*.jar' | tr '\n' ':'`.
-# javac org/something/YourClass.java
-# f_jargrep YourClass
-# f_update_jar ./to/be/updated.jar YourClass
-#
-# or
-#
-# export CLASSPATH=`find /opt/sonatype/nexus/{system,lib} -name '*.jar' | tr '\n' ':'`.
-# /var/tmp/share/patch_java.sh "" YourClass.java /opt/sonatype/nexus/system/
-#
+
+_BASE_DIR="${_BASE_DIR:-"/var/tmp/share/java"}"
 
 function usage() {
     cat << EOS
@@ -27,14 +19,14 @@ Patch one class file by compiling and updating one jar
 
 Or, to start scala console (REPL):
 
-\$ source /var/tmp/share/patch_java.sh
+\$ source ${_BASE_DIR}/patch_java.sh
 \$ f_scala [<port>]
 EOS
 }
 
 function f_setup_scala() {
     local _ver="${1:-2.12.3}"
-    local _extract_dir="${2:-/var/tmp/share}"
+    local _extract_dir="${2:-"${_BASE_DIR}"}"
     local _inst_dir="${3:-/usr/local/scala}"
 
     if [ -d "$SCALA_HOME" ]; then
@@ -58,7 +50,7 @@ function f_setup_scala() {
 
 function f_setup_groovy() {
     local _ver="${1:-2.5.7}"
-    local _extract_dir="${2:-/var/tmp/share}"
+    local _extract_dir="${2:-"${_BASE_DIR}"}"
     local _inst_dir="${3:-/usr/local/groovy}"
 
     if [ -d "$GROOVY_HOME" ]; then
@@ -82,7 +74,7 @@ function f_setup_groovy() {
 
 function f_setup_spring_cli() {
     local _ver="${1:-2.2.2}"
-    local _extract_dir="${2:-/var/tmp/share}"
+    local _extract_dir="${2:-"${_BASE_DIR}"}"
     local _inst_dir="${3:-/usr/local/spring-boot-cli}"
 
     if [ -d "$SPRING_CLI_HOME" ]; then
@@ -154,7 +146,7 @@ function f_javaenvs() {
 function _find_jcmd() {
     # _set_java_home 8081 "/var/tmp/share/java"
     local _port="${1}"
-    local _search_path="${2:-"/var/tmp/share/java"}"
+    local _search_path="${2:-"${_BASE_DIR}"}"
     local _java_home="${JAVA_HOME}"
 
     local _p=`lsof -ti:${_port} -s TCP:LISTEN`
