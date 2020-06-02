@@ -360,7 +360,7 @@ $0 '$1' '$2' '<jar path from above>' '$4' [Y]"
                     mkdir -p "${_DIR_PATH}" || exit $?
                 fi
                 if [ "$(realpath ${_CLASS_FILEPATH})" != "$(realpath ${_DIR_PATH%/}/${_CLASS_FILENAME})" ]; then
-                    cp -f ${_CLASS_FILEPATH} ${_DIR_PATH%/}/ || exit $?
+                    cp -p -f ${_CLASS_FILEPATH} ${_DIR_PATH%/}/ || exit $?
                 fi
                 _CLASS_FILEPATH=${_DIR_PATH%/}/${_CLASS_FILENAME}
             fi
