@@ -288,6 +288,7 @@ listen stats
                 #       so, also removed 'cookie NXSESSIONID prefix nocache' and 'cookie' from server line
                 echo "backend backend_p${_b_port}
   balance source
+  hash-type consistent
   option forwardfor
   http-request set-header X-Forwarded-Port %[dst_port]
   option httpchk" >> "${_cfg}"
