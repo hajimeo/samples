@@ -412,12 +412,13 @@ function iqStart() {
 
 function iqCli() {
     # https://help.sonatype.com/display/NXI/Nexus+IQ+CLI
+    local _iq_app="${_IQ_APP:-"sandbox-application"}"
     local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
     if [ -z "$1" ]; then
         iqCli "./"
         return $?
     fi
-    java -jar /Users/hosako/Apps/iq-clis/nexus-iq-cli.jar -i "sandbox-application" -s "${_iq_url}" -a "admin:admin123" -X $@
+    java -jar /Users/hosako/Apps/iq-clis/nexus-iq-cli.jar -i "${_iq_app}" -s "${_iq_url}" -a "admin:admin123" -X $@
 }
 function iqMvn() {
     # https://help.sonatype.com/display/NXI/Sonatype+CLM+for+Maven
