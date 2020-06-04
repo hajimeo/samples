@@ -551,8 +551,9 @@ function f_find_size_sort_by_basename() {
     local __doc__="Find (xml) files then sort by the basename and list with the file size"
     local _name="${1:-"*.xml"}"
     local _dir="${2:-"."}"
+    local _maxdepth="${3:-"5"}"
     # awk part may work with specific OS only
-    find ${_dir%/} -type f -name "${_name}" -ls | awk '{printf("%10s %s\n", $7, $11)}' | rg '^(\s+\d+) (.+)/(.+)$' -o -r '$1 $2/ $3' | sort -k3
+    find ${_dir%/} -maxdepth ${_maxdepth} -type f -name "${_name}" -ls | awk '{printf("%10s %s\n", $7, $11)}' | rg '^(\s+\d+) (.+)/(.+)$' -o -r '$1 $2/ $3' | sort -k3
 }
 
 function f_git_search() {
@@ -840,7 +841,7 @@ function f_threads() {
         echo " "
     fi
     echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
-    rg -l -w RUNNABLE ${_dir%/}/ | xargs -I {} rg -H "${_running_thread_search_re}" {}
+    rg -l -w RUNNABLE ${_dir%/}/ | xargs -I {} rg -H -m1 "${_running_thread_search_re}" {}
     echo " "
     echo "## Counting NOT waiting threads (top 20)"
     rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | head -n 20
