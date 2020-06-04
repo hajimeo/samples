@@ -153,7 +153,7 @@ function f_haproxy() {
     if which haproxy &>/dev/null; then
         _info "INFO" "HAProxy is already installed. To update, run apt-get|yum manually."
     else
-        apt-get install haproxy -y || return $?
+        apt-get install haproxy rsyslog -y || return $?
     fi
 
     if [ -z "${_nodes}" ]; then
@@ -300,6 +300,12 @@ listen stats
     done
 
     # NOTE: May need to configure rsyslog.conf for log if CentOS
+    if [ -s /etc/rsyslog.conf ]; then
+        _upsert /etc/rsyslog.conf '$ModLoad' 'imudp' "" " "
+        _upsert /etc/rsyslog.conf '$UDPServerAddress' '127.0.0.1' "" " "
+        _upsert /etc/rsyslog.conf '$UDPServerRun' '514' "" " "
+        service rsyslog restart
+    fi
     service haproxy reload || return $?
     _info "Installing/Re-configuring HAProxy completed."
 }
@@ -2021,7 +2027,9 @@ function _upsert() {
 
     # If name= is not set and no _if_not_exist_append_after, just append in the end of line (TODO: it might add extra newline)
     if [ -z "${_if_not_exist_append_after}" ]; then
-        echo -e "\n${_name}${_between_char}${_value}" >> ${_file_path}
+        local _last_c="$(tail -c1 ${_file_path})"
+        [ "${_last_c}" != "" ] && echo -e '\n' >> ${_file_path}
+        echo "${_name}${_between_char}${_value}" >> ${_file_path}
         return $?
     fi
 
