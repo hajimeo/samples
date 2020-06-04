@@ -57,6 +57,11 @@ function f_setup_maven() {
     fi
     # add some data for xxxx-group ("." in groupdId should be changed to "/")
     _get_asset "${_prefix}-group" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar" || return $?
+
+    # Another test for get from proxy, then upload to hosted, then get from hosted
+    #_get_asset "${_prefix}-proxy" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar" "${_TMP%/}/httpclient-4.5.12.jar"
+    #_upload_asset "${_prefix}-hosted" -F maven2.groupId=org.apache.httpcomponents -F maven2.artifactId=httpclient -F maven2.version=4.5.12 -F maven2.asset1=@${_TMP%/}/httpclient-4.5.12.jar -F maven2.asset1.extension=jar
+    #_get_asset "${_prefix}-hosted" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar"
 }
 
 function f_setup_pypi() {
@@ -253,7 +258,7 @@ function f_setup_rubygem() {
         _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"group":{"memberNames":["gems-hosted","gems-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"rubygems-group"}],"type":"rpc"}' || return $?
     fi
     # TODO: add some data for xxxx-group
-    _get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
+    #_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
 }
 
 
