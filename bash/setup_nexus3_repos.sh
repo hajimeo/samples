@@ -30,6 +30,7 @@ _DOCKER_PROXY="${_DOCKER_PROXY-""}"     #dh1.standalone.localdomain:18079
 _DOCKER_HOSTED="${_DOCKER_HOSTED-""}"   #dh1.standalone.localdomain:18082
 _DOCKER_GROUP="${_DOCKER_GROUP-""}"
 _IS_NXRM2=${_IS_NXRM2:-"N"}
+_NO_DATA=${_NO_DATA:-"N"}
 
 function f_setup_maven() {
     local _prefix="${1:-"maven"}"
@@ -315,6 +316,9 @@ function _get_asset() {
     local _path="$2"
     local _out_path="${3:-"/dev/null"}"
     local _base_url="${4:-"${_NEXUS_URL}"}"
+    if [[ "${_NO_DATA}" =~ ^[yY] ]]; then
+        _log "INFO" "_NO_DATA is set so no action."; return 0
+    fi
     curl -sf -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -k "${_base_url%/}/repository/${_repo%/}/${_path#/}"
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
@@ -329,6 +333,9 @@ function _get_asset_NXRM2() {
     local _path="$2"
     local _out_path="${3:-"/dev/null"}"
     local _base_url="${4:-"${_NEXUS_URL}"}"
+    if [[ "${_NO_DATA}" =~ ^[yY] ]]; then
+        _log "INFO" "_NO_DATA is set so no action."; return 0
+    fi
     curl -sf -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -k "${_base_url%/}/content/repository/${_repo%/}/${_path#/}"
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
@@ -341,6 +348,9 @@ function _upload_asset() {
     local _repo="$1"
         local _forms=${@:2} #-F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
     local _base_url="${_NEXUS_URL}"
+    if [[ "${_NO_DATA}" =~ ^[yY] ]]; then
+        _log "INFO" "_NO_DATA is set so no action."; return 0
+    fi
     curl -sf -D ${_TMP%/}/_upload_test_header_$$.out -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_base_url%/}/service/rest/v1/components?repository=${_repo}" ${_forms}
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
