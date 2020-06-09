@@ -1228,8 +1228,8 @@ function _search_properties() {
 
 function _get_json() {
     local _props="$1"           # search hierarchy list string. eg: "xxxx,yyyy,key[:=]value" (*NO* space)
-    local _key="${2-"key"}"     # a key attribute in props. eg: '@class' (OrientDB), 'key' (jmx.json)
-    local _attrs="${3-"value"}" # attribute1,attribute2,attr3.subattr3 to return only those attributes' value
+    local _key="${2}"           # a key attribute in props. eg: '@class' (OrientDB), 'key' (jmx.json)
+    local _attrs="${3}"         # attribute1,attribute2,attr3.subattr3 to return only those attributes' value
     local _find_all="${4}"      # If Y, not stopping after finding one
     local _no_pprint="${5}"     # no prettified output
     # language=Python
@@ -1282,10 +1282,15 @@ if bool(_d) is True:
                 #sys.stderr.write(str(_d)+"\n") # for debug
         elif _p in _d:
             _d = _d[_p]
+            #sys.stderr.write(_p+" is in _d (dict)\n")
+            continue
         else:
             _d = None
+            #sys.stderr.write(_p+" is NOT in _d (dict)\n")
             break
+    #sys.stderr.write(str(_d)+"\n")
     if bool(attrs) is True:
+        #sys.stderr.write("attrs is True\n")
         #sys.stderr.write(str(type(_d))+"\n") # for debug
         if type(_d) == list:
             _tmp_dl = []
@@ -1313,6 +1318,7 @@ if bool(_d) is True:
                     _tmp_dd[_a] = _d[_a]
             _d = _tmp_dd
     if "'${_no_pprint}'".lower() == "y":
+        #sys.stderr.write("_no_pprint is Yes\n")
         if type(_d) == list:
             #_d = json.loads(json.dumps(_d, sort_keys=True))
             print("[")
@@ -1325,6 +1331,7 @@ if bool(_d) is True:
         else:
             print(_d)
     elif bool(_d) is True:
+        #sys.stderr.write("_d is True\n")
         print(json.dumps(_d, indent=4, sort_keys=True))
 '
 }
