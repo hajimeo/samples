@@ -215,6 +215,10 @@ function f_update_hosts_file() {
         _log "ERROR" "hostname (FQDN) is required"; return 11
     fi
     local _name="`echo "${_fqdn}" | cut -d"." -f1`"
+    if [  "${_name}" == "${_fqdn}" ]; then
+        _log "INFO" "Host short name is same as FQDN: ${_fqdn}. Appending ${_DOMAIN}..."
+        _fqdn="${_name}.${_DOMAIN}"
+    fi
     # Checking if this combination is already in the hosts file. TODO: this regex is not perfect
     local _old_ip="$(_sed -nr "s/^([0-9.]+).*\s${_fqdn}.*$/\1/p" ${_file})"
 
