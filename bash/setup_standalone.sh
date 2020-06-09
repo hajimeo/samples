@@ -529,7 +529,7 @@ function f_container_misc() {
     local _password="${2-$_SERVICE}"  # Optional. If empty, will be _SERVICE
 
     # https://access.redhat.com/discussions/4321031 "System is booting up. See pam_nologin(8)"
-    docker exec -it ${_name} bash -c "ls /{var/run,etc,run}/nologin && rm /{var/run,etc,run}/nologin"
+    #docker exec -it ${_name} bash -c "ls /{var/run,etc,run}/nologin && rm /{var/run,etc,run}/nologin"
     docker exec -it ${_name} bash -c "chpasswd <<< root:${_password}"
     docker exec -it ${_name} bash -c "echo -e '\nexport TERM=xterm-256color' >> /etc/profile"
 }
