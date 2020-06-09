@@ -199,7 +199,7 @@ function f_setup_yum() {
     fi
     # add some data for xxxx-proxy
     if which yum &>/dev/null; then
-        _nexus_test_repo "${_prefix}-proxy"
+        _nexus_yum_repo "${_prefix}-proxy"
         yum --disablerepo="*" --enablerepo="nexusrepo" install --downloadonly --downloaddir=${_TMP%/} dos2unix || return $?
     else
         _get_asset "${_prefix}-proxy" "7/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm" || return $?
@@ -225,7 +225,7 @@ function f_setup_yum() {
     # add some data for xxxx-group
     _get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
 }
-function _nexus_test_repo() {
+function _nexus_yum_repo() {
     local _repo="${1:-"yum-group"}"
     local _out_file="${2:-"/etc/yum.repos.d/nexus-yum-test.repo"}"
 
@@ -372,13 +372,25 @@ function _upload_asset() {
 function _does_repo_exist() {
     local _repo_name="$1"
     # At this moment, not always checking
-    find ${_TMP%/}/ -type f -name 'f_get_repo_names_*.out' -mmin +5 -delete
-    if [ ! -s ${_TMP%/}/f_get_repo_names_$$.out ]; then
-        _api "/service/rest/v1/repositories" | grep '"name":' > ${_TMP%/}/f_get_repo_names_$$.out
+    find ${_TMP%/}/ -type f -name '_does_repo_exist*.out' -mmin +5 -delete
+    if [ ! -s ${_TMP%/}/_does_repo_exist$$.out ]; then
+        _api "/service/rest/v1/repositories" | grep '"name":' > ${_TMP%/}/_does_repo_exist$$.out
     fi
     if [ -n "${_repo_name}" ]; then
         # case insensitive
-        grep -iq "\"${_repo_name}\"" ${_TMP%/}/f_get_repo_names_$$.out
+        grep -iq "\"${_repo_name}\"" ${_TMP%/}/_does_repo_exist$$.out
+    fi
+}
+function _does_blob_exist() {
+    local _blob_name="$1"
+    # At this moment, not always checking
+    find ${_TMP%/}/ -type f -name '_does_blob_exist*.out' -mmin +5 -delete
+    if [ ! -s ${_TMP%/}/_does_blob_exist$$.out ]; then
+        _api "/service/rest/beta/blobstores" | grep '"name":' > ${_TMP%/}/_does_blob_exist$$.out
+    fi
+    if [ -n "${_blob_name}" ]; then
+        # case insensitive
+        grep -iq "\"${_blob_name}\"" ${_TMP%/}/_does_blob_exist$$.out
     fi
 }
 function _apiS() {
@@ -486,6 +498,15 @@ function _log() {
 
 
 main() {
+    if ! _does_blob_exist "${_BLOB_NAME}"; then
+        if [ -s ${_TMP%/}/_does_blob_exist$$.out ]; then
+            _log "ERROR" "Blobstore ${_BLOB_NAME} does not exist."
+            return 1
+        else
+            _log "WARN" "Blobstore ${_BLOB_NAME} *may* not exist, but keep continuing..."
+            sleep 5
+        fi
+    fi
     f_setup_maven
     f_setup_pypi
     f_setup_npm
