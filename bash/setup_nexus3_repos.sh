@@ -324,6 +324,9 @@ function _get_asset() {
     if [[ "${_NO_DATA}" =~ ^[yY] ]]; then
         _log "INFO" "_NO_DATA is set so no action."; return 0
     fi
+    if [ -d "${_out_path}" ]; then
+        _out_path="${_out_path%/}/$(basename ${_path})"
+    fi
     curl -sf -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_DEFAULT_USER}:${_DEFAULT_PWD} -k "${_base_url%/}/repository/${_repo%/}/${_path#/}"
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
