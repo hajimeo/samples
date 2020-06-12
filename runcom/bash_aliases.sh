@@ -88,10 +88,10 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 #eg: calcDate "17:15:02.123 -262.708 seconds"
 function calcDate() {
     local _d_opt="$1"
-    local _d_mft="${2:-"%Y-%m-%d %H:%M:%S.%3N"}"    #%d/%b/%Y:%H:%M:%S
+    local _d_fmt="${2:-"%Y-%m-%d %H:%M:%S.%3N"}"    #%d/%b/%Y:%H:%M:%S
     local _cmd="date"
     which gdate &>/dev/null && _cmd="gdate"
-    ${_cmd} -u  +"${_d_mft}" -d"${_d_opt}"
+    ${_cmd} -u  +"${_d_fmt}" -d"${_d_opt}"
 }
 function time_-_ms() {
     local _time="$1"    #hh:mm:ss.sss
@@ -120,10 +120,16 @@ function merge_zips() {
 # head and tail of one file
 function head_tail() {
     local _f="$1"
-    local _tac="tac"
-    which gtac &>/dev/null && _tac="gtac"
-    grep -E '^[0-9]' -m 1 ${_f}
-    ${_tac} ${_f} | grep -E '^[0-9]' -m 1
+    local _n="${2:-1}"
+    if [[ "${_f}" =~ \.(log|csv) ]]; then
+        local _tac="tac"
+        which gtac &>/dev/null && _tac="gtac"
+        rg '(^\d\d\d\d-\d\d-\d\d|\d\d.[a-zA-Z]{3}.\d\d\d\d).\d\d:\d\d:\d\d' -m ${_n} ${_f}
+        ${_tac} ${_f} | rg '(^\d\d\d\d-\d\d-\d\d|\d\d.[a-zA-Z]{3}.\d\d\d\d).\d\d:\d\d:\d\d' -m ${_n}
+    else
+        head -n ${_n} "${_f}"
+        tail -n ${_n} "${_f}"
+    fi
 }
 # make a directory and cd
 function mcd() {
@@ -403,22 +409,22 @@ If ports conflict, edit nexus.properties is easier. eg:8080.
 # To start local (on Mac) IQ server
 function iqStart() {
     local _base_dir="${1:-"."}"
+    local _java_opts=${2}
+    #local _java_opts=${@:2}
     local _jar_file="$(find ${_base_dir%/} -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
     local _cfg_file="$(dirname "${_jar_file}")/config.yml"
     grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
     grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.bak -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
-    java -Xmx2g -jar "${_jar_file}" server "${_cfg_file}"
+    java -Xmx2g ${_java_opts} -jar "${_jar_file}" server "${_cfg_file}"
 }
 
 function iqCli() {
-    # https://help.sonatype.com/display/NXI/Nexus+IQ+CLI
-    local _iq_app="${_IQ_APP:-"sandbox-application"}"
-    local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
+    local __doc__="https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
     if [ -z "$1" ]; then
         iqCli "./"
         return $?
     fi
-    java -jar /Users/hosako/Apps/iq-clis/nexus-iq-cli.jar -i "${_iq_app}" -s "${_iq_url}" -a "admin:admin123" -X $@
+    java -jar /Users/hosako/Apps/iq-clis/nexus-iq-cli.jar -i "${_IQ_APP:-"sandbox-application"}" -s "${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}" -a "admin:admin123" -r ./iq_result_$(date +'%Y%m%d%H%M%S').json -X $@
 }
 function iqMvn() {
     # https://help.sonatype.com/display/NXI/Sonatype+CLM+for+Maven
