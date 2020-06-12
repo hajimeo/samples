@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 
 function usage() {
-    echo "Main purpose of this script is injecting components into various NXRM3 repositories.
-This script should be safe to run multiple times.
-Ref: https://github.com/sonatype/nexus-toolbox/tree/master/prime-repos
+    echo "Main purpose of this script is to populate sample components into various NXRM3 repositories.
+This script also creates repositories if one does not exist.
 
 curl -o /var/tmp/share/sonatype/setup_nexus3_repos.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh
 
 Repository Naming Rules:
     <format>_(proxy|hosted|group)
-    Except, <format> for 'maven2' is 'maven'.
+    Except 'maven2', which uses 'maven'
 
-REQIOREMENTS / DEPENDENCY:
+REQUIREMENTS / DEPENDENCIES:
     If Mac, 'gsed' is required.
 "
 }
@@ -21,16 +20,19 @@ _DEFAULT_USER="${_DEFAULT_USER:-"admin"}"
 _DEFAULT_PWD="${_DEFAULT_PWD:-"admin123"}"
 _NEXUS_URL="${_NEXUS_URL:-"http://`hostname -f`:8081"}" #NXRM2: http://node-nxrm2.standalone.localdomain:8081/nexus/
 _BLOB_NAME="${_BLOB_NAME:-"default"}"
-_TID="${_TID:-80}"
 _TMP="${_TMP:-"/tmp"}"
 
-# for f_setup_docker()
+## for f_setup_docker()
 _DOCKER_CMD="${_DOCKER_CMD-""}"
 _DOCKER_PROXY="${_DOCKER_PROXY-""}"     #dh1.standalone.localdomain:18079
 _DOCKER_HOSTED="${_DOCKER_HOSTED-""}"   #dh1.standalone.localdomain:18082
 _DOCKER_GROUP="${_DOCKER_GROUP-""}"
 _IS_NXRM2=${_IS_NXRM2:-"N"}
 _NO_DATA=${_NO_DATA:-"N"}
+
+## Misc.
+_TID="${_TID:-80}"
+
 
 function f_setup_maven() {
     local _prefix="${1:-"maven"}"
