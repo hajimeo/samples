@@ -156,7 +156,7 @@ except yaml.YAMLError as e:
     sys.stderr.write(e+"\n")
 '
 }
-# surprisingly it's not easy to remove all newlines with bash
+# surprisingly it's not easy to trim|remove all newlines with bash
 function rmnewline() {
     python -c 'import sys
 for l in sys.stdin:
@@ -434,11 +434,16 @@ function mvn-get() {
     # maven/mvn get/download
     local _gav="$1"
     local _repo="$2"
-    local _localrepo="$3"
-    local _options="-Dtransitive=false"
-    [ -n "${_repo}" ] && _options="${_options% } -DremoteRepositories=${_repo}"
+    local _localrepo="${3-"./local_repo"}"
+    local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -Dtransitive=false -U -X"}"
+    local _settings_xml="$(find . -maxdepth 2 -name '*settings*.xml' -print | tail -n1)"
+    if [ -n "${_settings_xml}" ]; then
+        echo "Using ${_settings_xml}..." >&2; sleep 3
+        _options="${_options% } -s ${_settings_xml}"
+    fi
     [ -n "${_localrepo}" ] && _options="${_options% } -Dmaven.repo.local=${_localrepo}"
-    mvn -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS dependency:get ${_options} -Dartifact=${_gav} -Dtransitive=false -U -X
+    #[ -n "${_repo}" ] && _options="${_options% } -DremoteRepositories=${_repo}"    # Doesn't work
+    mvn dependency:get -Dartifact=${_gav} ${_options}
 }
 function mvn-resolve() {
     # maven/mvn resolve dependency only
