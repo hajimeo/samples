@@ -2,7 +2,8 @@
 
 function usage() {
     echo "Main purpose of this script is to populate sample components into various NXRM3 repositories.
-This script also creates repositories if one does not exist.
+Also this script can be used for testing downloads and some uploads.
+This script also creates repositories if it does not exist.
 
 curl -o /var/tmp/share/sonatype/setup_nexus3_repos.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh
 
@@ -369,7 +370,7 @@ function _upload_asset() {
             cat ${_TMP%/}/_upload_test_header_$$.out >&2
             return ${_rc}
         else
-            _log "WARN" "May failed to post to ${_base_url%/}/service/rest/v1/components?repository=${_repo} (${_rc})"
+            _log "WARN" "Post to ${_base_url%/}/service/rest/v1/components?repository=${_repo} might have been failed (${_rc})"
             cat ${_TMP%/}/_upload_test_header_$$.out >&2
         fi
     fi
