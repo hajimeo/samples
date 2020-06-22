@@ -373,12 +373,14 @@ function push2search() {
 function pubS() {
     scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/
     cp -f $HOME/IdeaProjects/work/bash/install_sonatype.sh $HOME/share/sonatype/
+    sync_nexus_binaries &
     date
 }
 function sync_nexus_binaries() {
-    # Currently only IQ ...
-    rsync -Prc root@dh1:/var/tmp/share/sonatype/nexus-iq-server-*-bundle.tar.gz $HOME/.nexus_executable_cache/
-    rsync -Prc $HOME/.nexus_executable_cache/nexus-iq-server-*-bundle.tar.gz root@dh1:/var/tmp/share/sonatype/
+    local _host="${1:-"dh1"}"
+    echo "Synchronising IQ binaries from/to ${_host} ..." >&2
+    rsync -Phrvc root@${_host}:/var/tmp/share/sonatype/nexus-iq-server-*-bundle.tar.gz $HOME/.nexus_executable_cache/
+    rsync -Phrvc $HOME/.nexus_executable_cache/nexus-iq-server-*-bundle.tar.gz root@${_host}:/var/tmp/share/sonatype/
 }
 function sptBoot() {
     local _zip="$1"
