@@ -1,3 +1,6 @@
+// DEPRECATED
+// Use:https://github.com/hajimeo/work/tree/master/javascript/zendesk-extension
+
 // NOTE: "persistent": true is required for onBeforeRequest in the manifest.
 // Check https://developer.chrome.com/apps/match_patterns for url match pattern. Also '#' + '*' doesn't work as it is named alias
 chrome.webRequest.onBeforeRequest.addListener(replaceUrl, {
