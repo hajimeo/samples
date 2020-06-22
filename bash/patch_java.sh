@@ -180,7 +180,7 @@ function _set_classpath() {
 
     if [ "${_port}" == "8081" ] && [ -d "/opt/sonatype/nexus/system" ]; then
         # At this moment, not considering dups
-        local _classpath="${CLASSPATH%:}:$(find /opt/sonatype/nexus/system -type f -name '*.jar' | tr '\n' ':')"
+        local _classpath="${CLASSPATH%:}:$(find /opt/sonatype/nexus/system -type f -name '*.jar' | grep -vw groovy | tr '\n' ':')"
         export CLASSPATH="${_classpath%:}"
     fi
 
@@ -215,16 +215,15 @@ function f_scala() {
 
 function f_groovy() {
     local _port="${1}"
-    local _extra_lib="${2}"
     local _cded=false
     f_setup_groovy
     if [[ "${_port}" =~ ^[0-9]+$ ]]; then
-        f_javaenvs "${_port}" "${_extra_lib}"
+        f_javaenvs "${_port}"
         cd "${_CWD}" && _cded=true
     else
         echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
     fi
-    groovysh -e ":set interpreterMode true"
+    groovysh -e ":set interpreterMode true" # -cp $CLASSPATH
     ${_cded} && cd -
 }
 
