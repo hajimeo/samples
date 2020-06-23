@@ -25,9 +25,9 @@ _TMP="${_TMP:-"/tmp"}"
 
 ## for f_setup_docker()
 _DOCKER_CMD="${_DOCKER_CMD-""}"
-_DOCKER_PROXY="${_DOCKER_PROXY-""}"     #dh1.standalone.localdomain:18079
-_DOCKER_HOSTED="${_DOCKER_HOSTED-""}"   #dh1.standalone.localdomain:18082
-_DOCKER_GROUP="${_DOCKER_GROUP-""}"
+_DOCKER_PROXY="${_DOCKER_PROXY-""}"     #_DOCKER_PROXY="node-nxrm-ha1.standalone.localdomain:18079"
+_DOCKER_HOSTED="${_DOCKER_HOSTED-""}"   #_DOCKER_HOSTED="node-nxrm-ha1.standalone.localdomain:18082"
+_DOCKER_GROUP="${_DOCKER_GROUP-""}"     #_DOCKER_GROUP="node-nxrm-ha1.standalone.localdomain:18075"
 _IS_NXRM2=${_IS_NXRM2:-"N"}
 _NO_DATA=${_NO_DATA:-"N"}
 
@@ -121,43 +121,56 @@ function f_setup_docker() {
     local _prefix="${1:-"docker"}"
     local _tag_name="${2:-"alpine:3.7"}"
     local _cmd="${3:-"${_DOCKER_CMD}"}"
+
+    local _opts=""
     if [ -z "${_cmd}" ]; then
-        which docker &>/dev/null && _cmd="docker"
         # podman is better in my opinion
-        which podman &>/dev/null && _cmd="podman"
+        if which podman &>/dev/null; then
+            _cmd="podman"
+            _opts="--tls-verify=false"
+        elif which docker &>/dev/null; then
+            _cmd="docker"
+        fi
     fi
 
     # If no xxxx-proxy, create it
     if ! _does_repo_exist "${_prefix}-proxy"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://registry-1.docker.io","contentMaxAge":1440,"metadataMaxAge":1440},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"undefined":[false,false],"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
+        # "httpPort":18078 - 18079
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18078,"httpsPort":18079,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://registry-1.docker.io","contentMaxAge":1440,"metadataMaxAge":1440},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"undefined":[false,false],"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
     if [ -z "${_cmd}" ]; then
         _log "WARN" "No docker or podman command, so no get test"
-    elif [ -z "${_DOCKER_PROXY}" ]; then
-        _log "WARN" "No _DOCKER_PROXY (hostname:port) is set, so no get test"
     else
+         if [ -z "${_DOCKER_PROXY}" ]; then
+            _log "INFO" "No _DOCKER_PROXY (hostname:port) is set, so try with localhost:18078 (httpPort)"
+            _DOCKER_PROXY="localhost:18078"
+        fi
+        ${_cmd} login ${_DOCKER_PROXY} --username ${_DEFAULT_USER} --password ${_DEFAULT_PWD} ${_opts} || return $?
+
         local _image_name="$(docker images --format "{{.Repository}}" | grep -w "${_tag_name}")"
         if [ -n "${_image_name}" ]; then
             _log "WARN" "Deleting ${_image_name} (wait for 5 secs)";sleep 5
             ${_cmd} rmi ${_image_name} || return $?
         fi
-        ${_cmd} login ${_DOCKER_PROXY} --username ${_DEFAULT_USER} --password ${_DEFAULT_PWD} || return $?
-        ${_cmd} pull ${_DOCKER_PROXY}/${_tag_name} || return $?
+        ${_cmd} pull ${_DOCKER_PROXY}/${_tag_name} ${_opts} || return $?
     fi
 
     # If no xxxx-hosted, create it
     if ! _does_repo_exist "${_prefix}-hosted"; then
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-hosted"}],"type":"rpc"}' || return $?
+        # Using "httpPort":18081 - 18082,
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18081,"httpsPort":18082,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     if [ -z "${_cmd}" ]; then
         _log "WARN" "No docker or podman command, so no get test"
-    elif [ -z "${_DOCKER_HOSTED}" ]; then
-        # NOTE: docker hosted does not have Upload UI.
-        _log "WARN" "No _DOCKER_HOSTED (hostname:port) is set, so no upload test"
     else
-        ${_cmd} login ${_DOCKER_HOSTED} --username ${_DEFAULT_USER} --password ${_DEFAULT_PWD} || return $?
+        if [ -z "${_DOCKER_HOSTED}" ]; then
+            _log "INFO" "No _DOCKER_HOSTED (hostname:port) is set, so try with localhost:18081 (httpPort)"
+            _DOCKER_HOSTED="localhost:18081"
+        fi
+        ${_cmd} login ${_DOCKER_HOSTED} --username ${_DEFAULT_USER} --password ${_DEFAULT_PWD} ${_opts} || return $?
+
         # In proxy test, the image should be already pulled, so not building
         if ! ${_cmd} tag ${_DOCKER_PROXY:-"localhost"}/${_tag_name} ${_DOCKER_HOSTED}/${_tag_name}; then
             # "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nENTRYPOINT [\"mysql\"]"
@@ -170,27 +183,30 @@ function f_setup_docker() {
                 ${_cmd} tag ${_tag_name} ${_DOCKER_HOSTED}/${_tag_name} || return $?
             fi
         fi
-        ${_cmd} push ${_DOCKER_HOSTED}/${_tag_name} || return $?
+        ${_cmd} push ${_DOCKER_HOSTED}/${_tag_name} ${_opts} || return $?
     fi
 
     # If no xxxx-group, create it
     if ! _does_repo_exist "${_prefix}-group"; then
-        #
-        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":false},"group":{"memberNames":["docker-hosted","docker-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' || return $?
+        # Using "httpPort":18074 - 18075
+        _apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18074,"httpsPort":18075,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_BLOB_NAME}'","strictContentTypeValidation":false},"group":{"memberNames":["docker-hosted","docker-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
     if [ -z "${_cmd}" ]; then
         _log "WARN" "No docker or podman command, so no get test"
-    elif [ -z "${_DOCKER_GROUP}" ]; then
-        _log "WARN" "No _DOCKER_GROUP (hostname:port) is set, so no get test"
     else
-        local _image_name="$(docker images --format "{{.Repository}}" | grep -w "hello-world")"
+        if [ -z "${_DOCKER_GROUP}" ]; then
+            _log "INFO" "No _DOCKER_GROUP (hostname:port) is set, so try with localhost:18074 (httpPort)"
+            _DOCKER_GROUP="localhost:18074"
+        fi
+        ${_cmd} login ${_DOCKER_GROUP} --username ${_DEFAULT_USER} --password ${_DEFAULT_PWD} ${_opts} || return $?
+
+        local _image_name="$(${_cmd} images --format "{{.Repository}}" | grep -w "hello-world")"
         if [ -n "${_image_name}" ]; then
             _log "WARN" "Deleting ${_image_name} (wait for 5 secs)";sleep 5
             ${_cmd} rmi ${_image_name} || return $?
         fi
-        ${_cmd} login ${_DOCKER_GROUP} --username ${_DEFAULT_USER} --password ${_DEFAULT_PWD} || return $?
-        ${_cmd} pull ${_DOCKER_GROUP}/hello-world || return $?
+        ${_cmd} pull ${_DOCKER_GROUP}/hello-world ${_opts} || return $?
     fi
 }
 
