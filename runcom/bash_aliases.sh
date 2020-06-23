@@ -85,19 +85,23 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
-#eg: calcDate "17:15:02.123 -262.708 seconds"
-function calcDate() {
+#eg: date_calc "17:15:02.123 -262.708 seconds"
+function date_calc() {
     local _d_opt="$1"
     local _d_fmt="${2:-"%Y-%m-%d %H:%M:%S.%3N"}"    #%d/%b/%Y:%H:%M:%S
     local _cmd="date"
     which gdate &>/dev/null && _cmd="gdate"
     ${_cmd} -u  +"${_d_fmt}" -d"${_d_opt}"
 }
-function time_-_ms() {
+#eg: time_calc_ms "02:30:00" 39381000 to add milliseconds to the hh:mm:ss
+function time_calc_ms() {
     local _time="$1"    #hh:mm:ss.sss
     local _ms="$2"
     local _sec=`bc <<< "scale=3; ${_ms} / 1000"`
-    calcDate "${_time} -${_sec} seconds"
+    if [[ ! "${_sec}" =~ ^[+-] ]]; then
+        _sec="+${_sec}"
+    fi
+    date_calc "${_time} ${_sec} seconds"
 }
 # Obfuscate string (encode/decode)
 # How-to: echo -n "your secret word" | obfuscate "your salt"
