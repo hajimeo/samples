@@ -1226,6 +1226,12 @@ function _search_properties() {
     done
 }
 
+function _json_dump() {
+    # escaping "," for _get_json is hard so another function
+    local _dict_keys="$1"   # eg: ['com.sonatype.nexus.hazelcast.internal.cluster:name=nexus,type=ClusterDetails']['ClusterDetail']
+    python3 -c "import sys,json;a=json.loads(sys.stdin.read());print(json.dumps(a${_dict_keys},indent=2,sort_keys=True))"
+}
+
 function _get_json() {
     local _props="$1"           # search hierarchy list string. eg: "xxxx,yyyy,key[:=]value" (*NO* space)
     local _key="${2}"           # a key attribute in props. eg: '@class' (OrientDB), 'key' (jmx.json)
