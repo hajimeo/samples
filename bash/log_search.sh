@@ -553,7 +553,7 @@ function f_find_size_sort_by_basename() {
     local _dir="${2:-"."}"
     local _maxdepth="${3:-"5"}"
     # awk part may work with specific OS only
-    find ${_dir%/} -maxdepth ${_maxdepth} -type f -name "${_name}" -ls | awk '{printf("%10s %s\n", $7, $11)}' | rg '^(\s+\d+) (.+)/(.+)$' -o -r '$1 $2/ $3' | sort -k3
+    find ${_dir%/} -maxdepth ${_maxdepth} -type f -name "${_name}" -ls | awk '{printf("%10s %s\n", $7, $11)}' | rg '^(\s+\d+) (.+)/(.+)$' -o -r '$1 $2/ $3' | sort -k3 | _sed 's@/ @/@g'
 }
 
 function f_git_search() {
@@ -1255,11 +1255,15 @@ if bool(_in) is True:
         pass
 if bool(_d) is True:
     for _p in props:
+        #sys.stderr.write(str(_p)+"\n") # for debug
         if type(_d) == list:
+            #sys.stderr.write("List! \n") # for debug
             _p_name = None
             if len("'${_key}'") > 0:
+                #sys.stderr.write(str(_p)+"\n") # for debug
                 m = ptn_k.search(_p)
                 if m:
+                    #sys.stderr.write(str(m)+"\n") # for debug
                     (_p, _p_name) = m.groups()
             _tmp_d = []
             for _i in _d:
