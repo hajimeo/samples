@@ -546,7 +546,6 @@ function f_apache_reverse_proxy() {
     local _keytab_file="${4}"   # /etc/security/keytabs/HTTP.service.keytab
     local _ssl_ca_file="${5}"   # /var/tmp/share/cert/rootCA_standalone.crt
 
-    [ -z "${_redirect}" ] && return 1
     if [ -z "${_port}" ]; then
         if [[ "${_redirect}" =~ .+:([0-9]+)[/]?.* ]]; then
             _port="${BASH_REMATCH[1]}"
@@ -584,17 +583,25 @@ function f_apache_reverse_proxy() {
 " > ${_conf}
 
     # Proxy/Reverse Proxy related settings
-    echo "
+    if [ -n "${_redirect%/}" ]; then
+        echo "
     #connectiontimeout=5 timeout=90 retry=0
     ProxyPass / ${_redirect%/}/ nocanon
     ProxyPassReverse / ${_redirect%/}/
     #ProxyRequests Off
     #ProxyPreserveHost On
 " >> ${_conf}
+    else
+        local _proxy_dir="/var/www/proxy"
+        [ ! -d "${_proxy_dir}" ] && mkdir -p -m 777 "${_proxy_dir}"
+        echo "
+    DocumentRoot ${_proxy_dir}
+" >> ${_conf}
+    fi
 
     # If this apache uses https (if server.key and cert exists)
     if [ -s /etc/apache2/ssl/server.key ]; then
-    echo "
+        echo "
     SSLEngine on
     SSLCertificateFile /etc/apache2/ssl/server.crt
     SSLCertificateKeyFile /etc/apache2/ssl/server.key
@@ -636,7 +643,8 @@ function f_apache_reverse_proxy() {
         # @see: https://httpd.apache.org/docs/2.4/rewrite/intro.html & https://httpd.apache.org/docs/2.4/rewrite/flags.html
     fi
 
-    # TODO: https://stackoverflow.com/questions/7635380/apache-ssl-client-certificate-ldap-authorizations   (2-way)
+    # 2-way SSL | Client Certificate Authentication
+    # TODO: Get username and integ with LDAP https://stackoverflow.com/questions/7635380/apache-ssl-client-certificate-ldap-authorizations
     if [ -s "${_ssl_ca_file}" ]; then
         chown www-data: ${_ssl_ca_file}
         echo "
