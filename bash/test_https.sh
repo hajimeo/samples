@@ -222,6 +222,8 @@ httpd.serve_forever()" &>/tmp/start_https.out &
 function test_https() {
     local _host_port="${1:-"`hostname -f`:$_TEST_PORT"}"
     local _ca_cert="$2"
+    local _cert_with_pwd="$3"
+    local _cert_type="${4:-"p12"}"
 
     if curl -sf -L "http://${_host_port}" > /dev/null; then
         echo "INFO: http (not https) works on ${_host_port}" >&2
@@ -237,13 +239,16 @@ function test_https() {
     fi
 
     if [ -n "${_ca_cert}" ]; then
-        if ! curl -sSf --cacert "${_ca_cert}" -f -L "https://${_host_port}" > /dev/null; then
+        if ! curl -vIf --cacert "${_ca_cert}" -L "https://${_host_port}"; then
             echo "WARN: Can't connect to https://${_host_port} with cacert:${_ca_cert}" >&2
         else
             echo "INFO: Can connect to https://${_host_port} with cacert:${_ca_cert}" >&2
         fi
     fi
-    # TODO: 2 way SSL with --cert and --key
+    # 2-way SSL (client certificate authentication) with --cert with p12 file
+    if [ -n "${_cert_with_pwd}" ];then
+        curl -vIf --cert "${_cert_with_pwd}" --cert-type ${_cert_type} "https://${_host_port}"
+    fi
 }
 
 # output md5 hash of .key or .crt file
@@ -271,6 +276,11 @@ print(cert.prettyPrint())"
     fi
 }
 
+# TODO: Keytool list -v check (certificate chain, subject, common name, valid from / to)
+function check_keytool_v_output() {
+    echo "TODO"
+}
+
 function get_certificate_from_https() {
     local _host="$1"
     local _port="${2:-443}"
@@ -278,13 +288,15 @@ function get_certificate_from_https() {
     local _proxy="$4"
     [ -z "${_dest_filepath}" ] && _dest_filepath=./${_host}_${_port}.crt
     if [ -n "${_proxy}" ]; then
-        # use -rfc to generate PEM format
+        # Keytool
         # To DEBUG, -J-Djavax.net.debug=ssl,keymanager or -Djavax.net.debug=ssl:handshake:verbose
-        #keytool -J-Dhttps.proxyHost=<proxy_hostname> -J-Dhttps.proxyPort=<proxy_port> -printcert -rfc -sslserver <remote_host_name:remote_ssl_port>
+        # With proxy
+        #keytool -J-Dhttps.proxyHost=<proxy_hostname> -J-Dhttps.proxyPort=<proxy_port> -printcert -sslserver <remote_host_name:remote_ssl_port>
+        # Without system proxy, and use -rfc to generate PEM format
         #keytool -J-Djava.net.useSystemProxies=true -printcert -rfc -sslserver <remote_host_name:remote_ssl_port>
         echo -n | openssl s_client -connect ${_host}:${_port} -showcerts -proxy ${_proxy}
     else
-        #keytool -printcert -rfc -sslserver dh1.standalone.localdomain:8443
+        #keytool -printcert -sslserver dh1.standalone.localdomain:8443  # -rfc # to get PEM format
         echo -n | openssl s_client -connect ${_host}:${_port} -showcerts
     fi > /tmp/${_host}_${_port}.tmp || return $?
     _sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp > ${_dest_filepath}
