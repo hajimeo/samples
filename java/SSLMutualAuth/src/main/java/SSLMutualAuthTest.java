@@ -1,5 +1,27 @@
 // @see: https://www.snaplogic.com/glossary/two-way-ssl-java-example
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStreamReader;
+import java.net.Socket;
+import java.security.KeyStore;
+import java.util.Map;
+
+import javax.net.ssl.SSLContext;
+
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.ssl.PrivateKeyDetails;
+import org.apache.http.ssl.PrivateKeyStrategy;
+import org.apache.http.ssl.SSLContexts;
+import org.apache.http.ssl.SSLContextBuilder;
+import org.json.JSONObject;
+
 public class SSLMutualAuthTest
 {
   public SSLMutualAuthTest() {
@@ -10,7 +32,7 @@ public class SSLMutualAuthTest
 
     System.out.println("MagicDude4Eva 2-way / mutual SSL-authentication test");
     try {
-      String CERT_ALIAS = "myalias", CERT_PASSWORD = "mypassword";
+      final String CERT_ALIAS = "myalias", CERT_PASSWORD = "mypassword";
       KeyStore identityKeyStore = KeyStore.getInstance("jks");
       FileInputStream identityKeyStoreFile = new FileInputStream(new File("identity.jks"));
       identityKeyStore.load(identityKeyStoreFile, CERT_PASSWORD.toCharArray());
