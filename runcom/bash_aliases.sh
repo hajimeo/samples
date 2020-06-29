@@ -377,8 +377,9 @@ function push2search() {
 function pubS() {
     scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/
     cp -f $HOME/IdeaProjects/work/bash/install_sonatype.sh $HOME/share/sonatype/
-    sync_nexus_binaries &
+    scp -C $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh dh1:/var/tmp/share/sonatype/
     date
+    sync_nexus_binaries
 }
 function sync_nexus_binaries() {
     local _host="${1:-"dh1"}"
