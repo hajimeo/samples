@@ -1,0 +1,4 @@
+:verbose: :really
+:disable_default_gem_server: true
+:sources:
+- http://admin:admin123@localhost:8081/nexus/content/repositories/rubygems/
