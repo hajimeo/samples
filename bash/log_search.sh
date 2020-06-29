@@ -548,12 +548,13 @@ function f_split_strace() {
 }
 
 function f_find_size_sort_by_basename() {
-    local __doc__="Find (xml) files then sort by the basename and list with the file size"
+    local __doc__="Find (xml) files then sort by the basename and list with the file size (CSV format)"
     local _name="${1:-"*.xml"}"
     local _dir="${2:-"."}"
     local _maxdepth="${3:-"5"}"
     # awk part may work with specific OS only
-    find ${_dir%/} -maxdepth ${_maxdepth} -type f -name "${_name}" -ls | awk '{printf("%10s %s\n", $7, $11)}' | rg '^(\s+\d+) (.+)/(.+)$' -o -r '$1 $2/ $3' | sort -k3 | _sed 's@/ @/@g'
+    # ex: add padding with awk: awk '{printf("%10s %s\n", $7, $11)}'
+    find ${_dir%/} -maxdepth ${_maxdepth} -type f -name "${_name}" -ls | awk '{printf("%s %s\n", $7, $11)}' | rg '^(\d+) (.+)/(.+)$' -o -r '$1,"$2/$3","$3"'
 }
 
 function f_git_search() {
@@ -1229,7 +1230,12 @@ function _search_properties() {
 function _json_dump() {
     # escaping "," for _get_json is hard so another function
     local _dict_keys="$1"   # eg: ['com.sonatype.nexus.hazelcast.internal.cluster:name=nexus,type=ClusterDetails']['ClusterDetail']
-    python3 -c "import sys,json;a=json.loads(sys.stdin.read());print(json.dumps(a${_dict_keys},indent=2,sort_keys=True))"
+    local _indent="${2}"
+    if [ -n "${_indent}" ]; then
+        python3 -c "import sys,json;a=json.loads(sys.stdin.read());print(json.dumps(a${_dict_keys},indent=2,sort_keys=True))"
+    else
+        python3 -c "import sys,json;a=json.loads(sys.stdin.read());print(a${_dict_keys})"
+    fi
 }
 
 function _get_json() {
