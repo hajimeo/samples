@@ -45,8 +45,7 @@ import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 
 /**
- * Class used to add the server's certificate to the KeyStore
- * with your trusted certificates.
+ * Class used to add the server's certificate into the KeyStore (TrustStore).
  */
 public class InstallCert {
 

@@ -53,31 +53,30 @@ import java.security.KeyStore;
  * the firewall by following SSLSocketClientWithTunneling.java.
  *
  * curl -O https://raw.githubusercontent.com/hajimeo/samples/master/java/testkeys
- * java -Djavax.net.debug=ssl,keymanager -Djavax.net.ssl.trustStore=ranger-plugin-truststore.jks SSLSocketClientWithClientAuth 127.0.0.1 6182 /service/plugins/policies/download/Sandbox_hadoop
+ * java -Djavax.net.debug=ssl,keymanager -Djavax.net.ssl.trustStore=some_truststore_to_trust_remote.jks \
+ *     SSLSocketClientWithClientAuth ./idStore.jks password 127.0.0.1 6182 /path/to/request
  */
 public class SSLSocketClientWithClientAuth {
 
     public static void main(String[] args) throws Exception {
-        String host = null;
-        int port = -1;
-        String path = null;
-        for (int i = 0; i < args.length; i++)
-            System.out.println(args[i]);
-
-        if (args.length < 3) {
-            System.out.println(
-                    "USAGE: java SSLSocketClientWithClientAuth " +
-                            "host port requestedfilepath");
-            System.exit(-1);
-        }
+        String keyPath="";
+        String password="";
+        String host="";
+        int port=-1;
+        String path="";
+        // For troubleshooting
+        //for (int i = 0; i < args.length; i++)
+        //    System.out.println(args[i]);
 
         try {
-            host = args[0];
-            port = Integer.parseInt(args[1]);
-            path = args[2];
+            keyPath = args[0];
+            password = args[1];
+            host = args[2];
+            host = args[3];
+            port = Integer.parseInt(args[4]);
+            path = args[5];
         } catch (IllegalArgumentException e) {
-            System.out.println("USAGE: java SSLSocketClientWithClientAuth " +
-                    "host port requestedfilepath");
+            System.out.println("USAGE: java SSLSocketClientWithClientAuth idStore.jks passphrase host port /path/to/request");
             System.exit(-1);
         }
 
@@ -93,13 +92,12 @@ public class SSLSocketClientWithClientAuth {
                 SSLContext ctx;
                 KeyManagerFactory kmf;
                 KeyStore ks;
-                char[] passphrase = "passphrase".toCharArray();
+                char[] passphrase = password.toCharArray();
 
                 ctx = SSLContext.getInstance("TLS");
                 kmf = KeyManagerFactory.getInstance("SunX509");
                 ks = KeyStore.getInstance("JKS");
-
-                ks.load(new FileInputStream("testkeys"), passphrase);
+                ks.load(new FileInputStream(new File(keyPath)), passphrase);
 
                 kmf.init(ks, passphrase);
                 ctx.init(kmf.getKeyManagers(), null, null);

@@ -3,8 +3,11 @@
  *
  * @see: https://www.snaplogic.com/glossary/two-way-ssl-java-example
  *
- * Example output
- * $ java -jar target/SSLMutualAuth-1.0-SNAPSHOT.jar https://dh1.standalone.localdomain:28070/ ../../misc/standalone.localdomain.jks "standalone.localdomain" "password"
+ * Example with output:
+ * =================================================
+ * $ java -Djavax.net.debug=ssl,keymanager -Djavax.net.ssl.trustStore="../../misc/standalone.localdomain.jks" \
+ *    -Djavax.net.ssl.keyStore="../../misc/standalone.localdomain.jks" -Djavax.net.ssl.keyStorePassword="password" \
+ *    -jar target/SSLMutualAuth-1.0-SNAPSHOT.jar "standalone.localdomain" https://dh1.standalone.localdomain:28070/
  * MagicDude4Eva 2-way / mutual SSL-authentication test
  * Calling URL: https://dh1.standalone.localdomain:28070/
  * **POST** request Url: https://dh1.standalone.localdomain:28070/
@@ -13,7 +16,7 @@
  * Content:-
  *
  * hello
- *
+ * =================================================
  */
 
 import java.io.BufferedReader;
@@ -49,19 +52,23 @@ public class SSLMutualAuthTest
   public static void main(String[] args) {
     log("MagicDude4Eva 2-way / mutual SSL-authentication test");
     try {
-      String aEndPointURL = args[0];
-      String idStorePath = args[1]; // Currently using as TrustStore as well
-      String certAlias = args[2];
-      String idStorePwd = args[3];
+      String certAlias = args[0];
+      String aEndPointURL = args[1];
       String[] supportedProtocols = {"TLSv1.2", "TLSv1.1"};
 
+      String idStorePath = System.getProperty("javax.net.ssl.keyStore");
+      String idStorePwd = System.getProperty("javax.net.ssl.keyStorePassword", "changeit");
+      String trustStorePath = System.getProperty("javax.net.ssl.trustStore", idStorePath);
+      String trustStorePwd = System.getProperty("javax.net.ssl.trustStorePassword", idStorePwd);
+      String storeType = System.getProperty("javax.net.ssl.keyStoreType", "jks");
+
       SSLMutualAuthTest.CERT_ALIAS = certAlias;
-      KeyStore identityKeyStore = KeyStore.getInstance("jks");
+      KeyStore identityKeyStore = KeyStore.getInstance(storeType);
       FileInputStream identityKeyStoreFile = new FileInputStream(new File(idStorePath));
       identityKeyStore.load(identityKeyStoreFile, idStorePwd.toCharArray());
-      KeyStore trustKeyStore = KeyStore.getInstance("jks");
-      FileInputStream trustKeyStoreFile = new FileInputStream(new File(idStorePath));
-      trustKeyStore.load(trustKeyStoreFile, idStorePwd.toCharArray());
+      KeyStore trustKeyStore = KeyStore.getInstance(storeType);
+      FileInputStream trustKeyStoreFile = new FileInputStream(new File(trustStorePath));
+      trustKeyStore.load(trustKeyStoreFile, trustStorePwd.toCharArray());
 
       SSLContext sslContext = SSLContexts.custom()
           .loadKeyMaterial(identityKeyStore, idStorePwd.toCharArray(), new PrivateKeyStrategy()
@@ -89,6 +96,11 @@ public class SSLMutualAuthTest
     catch (Exception ex) {
       log("Exception: " + ex.getMessage());
       ex.printStackTrace();
+      log("USAGE:" +
+          "java -Djavax.net.debug=ssl,keymanager -Djavax.net.ssl.trustStore=some_truststore_to_trust_remote.jks \\\n" +
+          "   -Djavax.net.ssl.keyStore=\"/path/to/yourIdStore.jks\" -Djavax.net.ssl.keyStorePassword=\"password\" \\\n" +
+          "   -jar target/SSLMutualAuth-1.0-SNAPSHOT.jar \"certificate-alias-name\" https://some-sever-fqdn:port/");
+      System.exit(1);
     }
   }
 
