@@ -1,4 +1,20 @@
-// @see: https://www.snaplogic.com/glossary/two-way-ssl-java-example
+/*
+ * Testing 2-way SSL (Client Certificate Authentication)
+ *
+ * @see: https://www.snaplogic.com/glossary/two-way-ssl-java-example
+ *
+ * Example output
+ * $ java -jar target/SSLMutualAuth-1.0-SNAPSHOT.jar https://dh1.standalone.localdomain:28070/ ../../misc/standalone.localdomain.jks "standalone.localdomain" "password"
+ * MagicDude4Eva 2-way / mutual SSL-authentication test
+ * Calling URL: https://dh1.standalone.localdomain:28070/
+ * **POST** request Url: https://dh1.standalone.localdomain:28070/
+ * Parameters : {}
+ * Response Code: 200
+ * Content:-
+ *
+ * hello
+ *
+ */
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -28,76 +44,81 @@ public class SSLMutualAuthTest
     // TODO Auto-generated constructor stub
   }
 
-  public static void main(String[] args) {
+  static String CERT_ALIAS;
 
-    System.out.println("MagicDude4Eva 2-way / mutual SSL-authentication test");
+  public static void main(String[] args) {
+    log("MagicDude4Eva 2-way / mutual SSL-authentication test");
     try {
-      final String CERT_ALIAS = "myalias", CERT_PASSWORD = "mypassword";
+      String aEndPointURL = args[0];
+      String idStorePath = args[1]; // Currently using as TrustStore as well
+      String certAlias = args[2];
+      String idStorePwd = args[3];
+      String[] supportedProtocols = {"TLSv1.2", "TLSv1.1"};
+
+      SSLMutualAuthTest.CERT_ALIAS = certAlias;
       KeyStore identityKeyStore = KeyStore.getInstance("jks");
-      FileInputStream identityKeyStoreFile = new FileInputStream(new File("identity.jks"));
-      identityKeyStore.load(identityKeyStoreFile, CERT_PASSWORD.toCharArray());
+      FileInputStream identityKeyStoreFile = new FileInputStream(new File(idStorePath));
+      identityKeyStore.load(identityKeyStoreFile, idStorePwd.toCharArray());
       KeyStore trustKeyStore = KeyStore.getInstance("jks");
-      FileInputStream trustKeyStoreFile = new FileInputStream(new File("truststore.jks"));
-      trustKeyStore.load(trustKeyStoreFile, CERT_PASSWORD.toCharArray());
+      FileInputStream trustKeyStoreFile = new FileInputStream(new File(idStorePath));
+      trustKeyStore.load(trustKeyStoreFile, idStorePwd.toCharArray());
 
       SSLContext sslContext = SSLContexts.custom()
-          // load identity keystore
-          .loadKeyMaterial(identityKeyStore, CERT_PASSWORD.toCharArray(), new PrivateKeyStrategy()
+          .loadKeyMaterial(identityKeyStore, idStorePwd.toCharArray(), new PrivateKeyStrategy()
           {
             @Override
             public String chooseAlias(Map<String, PrivateKeyDetails> aliases, Socket socket) {
-              return CERT_ALIAS;
+              return SSLMutualAuthTest.CERT_ALIAS;
             }
           })
           // load trust keystore
           .loadTrustMaterial(trustKeyStore, null)
           .build();
 
-      SSLConnectionSocketFactory sslConnectionSocketFactory = new SSLConnectionSocketFactory(sslContext,
-          new String[]{"TLSv1.2", "TLSv1.1"},
-          null,
-          SSLConnectionSocketFactory.getDefaultHostnameVerifier());
+      SSLConnectionSocketFactory sslConnectionSocketFactory =
+          new SSLConnectionSocketFactory(sslContext, supportedProtocols, null,
+              SSLConnectionSocketFactory.getDefaultHostnameVerifier());
 
       CloseableHttpClient client = HttpClients.custom()
           .setSSLSocketFactory(sslConnectionSocketFactory)
           .build();
 
       // Call a SSL-endpoint
-      callEndPoint(client, "https://secure.server.com/endpoint",
-          new JSONObject()
-              .put("param1", "value1")
-              .put("param2", "value2")
-      );
+      callEndPoint(client, aEndPointURL, new JSONObject());
     }
     catch (Exception ex) {
-      System.out.println("Boom, we failed: " + ex);
+      log("Exception: " + ex.getMessage());
       ex.printStackTrace();
     }
   }
 
   private static void callEndPoint(CloseableHttpClient aHTTPClient, String aEndPointURL, JSONObject aPostParams) {
     try {
-      System.out.println("Calling URL: " + aEndPointURL);
+      log("Calling URL: " + aEndPointURL);
       HttpPost post = new HttpPost(aEndPointURL);
       post.setHeader("Accept", "application/json");
       post.setHeader("Content-type", "application/json");
       StringEntity entity = new StringEntity(aPostParams.toString());
       post.setEntity(entity);
-      System.out.println("**POST** request Url: " + post.getURI());
-      System.out.println("Parameters : " + aPostParams);
+      log("**POST** request Url: " + post.getURI());
+      log("Parameters : " + aPostParams);
       HttpResponse response = aHTTPClient.execute(post);
       int responseCode = response.getStatusLine().getStatusCode();
-      System.out.println("Response Code: " + responseCode);
-      System.out.println("Content:-\n");
+      log("Response Code: " + responseCode);
+      log("Content:-\n");
       BufferedReader rd = new BufferedReader(new InputStreamReader(response.getEntity().getContent()));
       String line = "";
       while ((line = rd.readLine()) != null) {
-        System.out.println(line);
+        log(line);
       }
     }
     catch (Exception ex) {
-      System.out.println("Boom, we failed: " + ex);
+      log("Exception: " + ex.getMessage());
       ex.printStackTrace();
     }
+  }
+
+  private static void log(String msg) {
+    System.err.println(msg);
   }
 }
