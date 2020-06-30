@@ -1,20 +1,16 @@
 /*
  * Testing 2-way SSL (Client Certificate Authentication)
- *
  * @see: https://www.snaplogic.com/glossary/two-way-ssl-java-example
  *
- * Example with output:
+ * Example command with output:
  * =================================================
  * $ java -Djavax.net.debug=ssl,keymanager -Djavax.net.ssl.trustStore="../../misc/standalone.localdomain.jks" \
  *    -Djavax.net.ssl.keyStore="../../misc/standalone.localdomain.jks" -Djavax.net.ssl.keyStorePassword="password" \
  *    -jar target/SSLMutualAuth-1.0-SNAPSHOT.jar "standalone.localdomain" https://dh1.standalone.localdomain:28070/
- * MagicDude4Eva 2-way / mutual SSL-authentication test
- * Calling URL: https://dh1.standalone.localdomain:28070/
- * **POST** request Url: https://dh1.standalone.localdomain:28070/
- * Parameters : {}
+ * POST request Url: https://dh1.standalone.localdomain:28070/
+ *  with parameters: {}
  * Response Code: 200
- * Content:-
- *
+ *       Content: (below)
  * hello
  * =================================================
  */
@@ -50,7 +46,6 @@ public class SSLMutualAuthTest
   static String CERT_ALIAS;
 
   public static void main(String[] args) {
-    log("MagicDude4Eva 2-way / mutual SSL-authentication test");
     try {
       String certAlias = args[0];
       String aEndPointURL = args[1];
@@ -106,18 +101,17 @@ public class SSLMutualAuthTest
 
   private static void callEndPoint(CloseableHttpClient aHTTPClient, String aEndPointURL, JSONObject aPostParams) {
     try {
-      log("Calling URL: " + aEndPointURL);
       HttpPost post = new HttpPost(aEndPointURL);
       post.setHeader("Accept", "application/json");
       post.setHeader("Content-type", "application/json");
       StringEntity entity = new StringEntity(aPostParams.toString());
       post.setEntity(entity);
-      log("**POST** request Url: " + post.getURI());
-      log("Parameters : " + aPostParams);
+      log("POST request Url: " + post.getURI());
+      log(" with parameters: " + aPostParams);
       HttpResponse response = aHTTPClient.execute(post);
       int responseCode = response.getStatusLine().getStatusCode();
       log("Response Code: " + responseCode);
-      log("Content:-\n");
+      log("      Content: (below)");
       BufferedReader rd = new BufferedReader(new InputStreamReader(response.getEntity().getContent()));
       String line = "";
       while ((line = rd.readLine()) != null) {
