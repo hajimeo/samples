@@ -377,15 +377,18 @@ function push2search() {
 function pubS() {
     scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/
     cp -f $HOME/IdeaProjects/work/bash/install_sonatype.sh $HOME/share/sonatype/
+    scp -C $HOME/IdeaProjects/samples/bash/utils.sh dh1:/var/tmp/share/sonatype/
+    cp -f $HOME/IdeaProjects/samples/bash/utils.sh $HOME/share/sonatype/
     scp -C $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh dh1:/var/tmp/share/sonatype/
+    cp -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/share/sonatype/
     date
-    sync_nexus_binaries
+    sync_nexus_binaries &>/dev/null &
 }
 function sync_nexus_binaries() {
     local _host="${1:-"dh1"}"
     echo "Synchronising IQ binaries from/to ${_host} ..." >&2
-    rsync -Phrvc root@${_host}:/var/tmp/share/sonatype/nexus-iq-server-*-bundle.tar.gz $HOME/.nexus_executable_cache/
-    rsync -Phrvc $HOME/.nexus_executable_cache/nexus-iq-server-*-bundle.tar.gz root@${_host}:/var/tmp/share/sonatype/
+    rsync -Prc root@${_host}:/var/tmp/share/sonatype/nexus-iq-server-*-bundle.tar.gz $HOME/.nexus_executable_cache/
+    rsync -Prc $HOME/.nexus_executable_cache/nexus-iq-server-*-bundle.tar.gz root@${_host}:/var/tmp/share/sonatype/
 }
 function sptBoot() {
     local _zip="$1"
