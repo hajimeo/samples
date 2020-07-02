@@ -115,8 +115,8 @@ function f_ambari_wait() {
     local _host="${1-$_HOSTNAME}"
     local _port="${2-8080}"
     local _cluster="${3}"
-    local _times="${3-30}"
-    local _interval="${4-10}"
+    local _times="${4-30}"
+    local _interval="${5-10}"
 
     # NOTE: --retry-connrefused is from curl v 7.52.0
     for i in `seq 1 $_times`; do
