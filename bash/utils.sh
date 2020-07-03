@@ -134,12 +134,12 @@ function _pid_by_port() {
 function _wait_url() {
     local _url="${1}"
     local _times="${2:-30}"
-    local _interval="${3:-6}"
+    local _interval="${3:-10}"
     [ -z "${_url}" ] && return 99
 
     for i in `seq 1 ${_times}`; do
         # NOTE: --retry-connrefused is from curl v 7.52.0
-        if curl -f -s -I -L -k -m1 --retry=0 "${_url}" &>/dev/null; then
+        if curl -f -s -I -L -k -m1 --retry 0 "${_url}" &>/dev/null; then
             return 0
         fi
         _log "DEBUG" "${_url} is unreachable. Waiting for ${_interval} secs ($i/${_times})..."
@@ -258,7 +258,7 @@ function _backup() {
     local _backup_dir="${3:-"${__TMP%/}"}"
 
     if [ ! -e "${_file_path}" ]; then
-        _log "WARN" "No backup created as $_file_path does not exist."
+        _log "DEBUG" "No backup created as $_file_path does not exist."
         return 0
     fi
 
