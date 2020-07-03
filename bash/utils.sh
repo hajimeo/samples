@@ -56,9 +56,10 @@ function _check_update() {
 function _save_resp() {
     local __doc__="Save current responses(answers) in memory into a file."
     local _file_path="${1}"
+    local _prefix="${2:-"$(hostname -s)"}"
 
     if [ -z "${_file_path}" ]; then
-        local _default_file_path="./$(basename "$BASH_SOURCE" ".sh")_$(date +'%Y%m%d%H%M%S').resp"
+        local _default_file_path="./${_prefix}_$(date +'%Y%m%d%H%M%S').resp"
         _ask "Response file path" "${_default_file_path}" "_file_path"
     fi
 
@@ -86,7 +87,7 @@ function _load_resp() {
     local _file_path="${1}"
 
     if [ -z "${_file_path}" ]; then
-        _log "Available response files:
+        echo "Available response files under current directory:
 $(ls -1t ./*.resp)"
         local _default_file_path="$(ls -1t ./*.resp | head -n1)"
         _file_path=""
@@ -99,7 +100,7 @@ $(ls -1t ./*.resp)"
     fi
 
     # Note: somehow "source <(...)" does noe work, so that created tmp file.
-    grep -P -o '^r_.+[^\s]=\".*?\"' ${_file_path} > .${FUNCNAME}_${__PID}.tmp || return $?
+    grep -oE '^r_.+[^\s]=\".*?\"' ${_file_path} > .${FUNCNAME}_${__PID}.tmp || return $?
     source .${FUNCNAME}_${__PID}.tmp || return $?
     rm -f .${FUNCNAME}_${__PID}.tmp  # clean up the temp file
     touch ${_file_path} # To update modified datetime
@@ -109,6 +110,11 @@ $(ls -1t ./*.resp)"
 function _b64_url_enc() {
     python -c "import base64, urllib; print(urllib.quote(base64.urlsafe_b64encode('$1')))"
     #python3 -c "import base64, urllib.parse; print(urllib.parse.quote(base64.urlsafe_b64encode('$1'.encode('utf-8')), safe=''))"
+}
+
+function _trim() {
+    local _string="$1"
+    echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
 }
 
 function _sed() {
@@ -230,6 +236,15 @@ function _ask() {
         fi
     fi
 }
+function _isValidateFunc() {
+    local _function_name="$1"
+    # FIXME: not good way
+    if [[ "$_function_name" =~ ^_is ]]; then
+        typeset -F | grep "^declare -f ${_function_name}$" &>/dev/null
+        return $?
+    fi
+    return 1
+}
 function _isYes() {
     local _answer="$1"
     [ $# -eq 0 ] && _answer="${__LAST_ANSWER}"
@@ -275,8 +290,8 @@ function _log() {
     [ "$1" == "DEBUG" ] && ! ${_DEBUG} && return
     # At this moment, outputting to STDERR
     if [ -n "${_LOG_FILE_PATH}" ]; then
-        echo "[$(date -u +'%Y-%m-%dT%H:%M:%Sz')] $@" | tee -a ${_LOG_FILE_PATH}
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a ${_LOG_FILE_PATH}
     else
-        echo "[$(date -u +'%Y-%m-%dT%H:%M:%Sz')] $@"
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@"
     fi 1>&2
 }
