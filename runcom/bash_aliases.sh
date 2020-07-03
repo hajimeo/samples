@@ -442,9 +442,9 @@ function iqMvn() {
 }
 function mvn-get() {
     # maven/mvn get/download
-    local _gav="$1"
-    local _repo="$2"
-    local _localrepo="${3-"./local_repo"}"
+    local _gav="$1" # eg: junit:junit:4.12
+    local _localrepo="${2-"./local_repo"}"
+    #local _repo="$3"
     local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -Dtransitive=false -U -X"}"
     local _settings_xml="$(find . -maxdepth 2 -name '*settings*.xml' -print | tail -n1)"
     if [ -n "${_settings_xml}" ]; then
