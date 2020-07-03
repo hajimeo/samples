@@ -184,8 +184,8 @@ function f_setup_docker() {
 
     # If no xxxx-proxy, create it
     if ! _does_repo_exist "${_prefix}-proxy"; then
-        # "httpPort":18078 - 18079
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18078,"httpsPort":18079,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://registry-1.docker.io","contentMaxAge":1440,"metadataMaxAge":1440},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"undefined":[false,false],"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' > ${__TMP%/}/f_apiS_last.out || return $?
+        # "httpPort":18178 - 18179
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18178,"httpsPort":18179,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://registry-1.docker.io","contentMaxAge":1440,"metadataMaxAge":1440},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"undefined":[false,false],"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' > ${__TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${__TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-proxy
@@ -193,8 +193,8 @@ function f_setup_docker() {
 
     # If no xxxx-hosted, create it
     if ! _does_repo_exist "${_prefix}-hosted"; then
-        # Using "httpPort":18081 - 18082,
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18081,"httpsPort":18082,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-hosted"}],"type":"rpc"}' > ${__TMP%/}/f_apiS_last.out || return $?
+        # Using "httpPort":18181 - 18182,
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18181,"httpsPort":18182,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-hosted"}],"type":"rpc"}' > ${__TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${__TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-hosted
@@ -202,12 +202,12 @@ function f_setup_docker() {
 
     # If no xxxx-group, create it
     if ! _does_repo_exist "${_prefix}-group"; then
-        # Using "httpPort":18074 - 18075
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18084,"httpsPort":18085,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false},"group":{"memberNames":["docker-hosted","docker-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' > ${__TMP%/}/f_apiS_last.out || return $?
+        # Using "httpPort":18174 - 18175
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18184,"httpsPort":18185,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false},"group":{"memberNames":["docker-hosted","docker-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' > ${__TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${__TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-group
-    _docker_proxy "hello-world" "${r_DOCKER_GROUP}" "18085 18084"
+    _docker_proxy "hello-world" "${r_DOCKER_GROUP}" "18185 18184"
 }
 function _docker_login() {
     local _host_port="${1}"
@@ -241,7 +241,7 @@ function _docker_login() {
 function _docker_proxy() {
     local _tag_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_PROXY}"}"
-    local _backup_ports="${3:-"18079 18078"}"
+    local _backup_ports="${3:-"18179 18178"}"
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}")" || return $?
 
@@ -256,7 +256,7 @@ function _docker_proxy() {
 function _docker_hosted() {
     local _tag_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_HOSTED}"}"
-    local _backup_ports="${3:-"18082 18081"}"
+    local _backup_ports="${3:-"18182 18181"}"
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}")" || return $?
 
@@ -747,8 +747,8 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype*.lic" "" "r_NEXUS_LIC
     fi
 
     _ask "Nexus base URL" "http://`hostname -f`:${r_NEXUS_CONTAINER_PORT1:-"8081"}/" "r_NEXUS_URL" "N" "Y"
-    local _nexus_hostname="$(hostname -f)"
-    [[ "${r_NEXUS_URL}" =~ ^https?://([^:/]+).+$ ]] && _nexus_hostname="${BASH_REMATCH[1]}"
+    local _host="$(hostname -f)"
+    [[ "${r_NEXUS_URL}" =~ ^https?://([^:/]+).+$ ]] && _host="${BASH_REMATCH[1]}"
     _ask "Blob store name" "default" "r_BLOB_NAME" "N" "Y"
     _ask "Admin username" "${_ADMIN_USER}" "r_ADMIN_USER" "N" "Y"
     _ask "Admin password" "${_ADMIN_PWD}" "r_ADMIN_PWD" "Y" "Y"
@@ -756,15 +756,41 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype*.lic" "" "r_NEXUS_LIC
 
     ## for f_setup_docker()
     if [ -n "${r_DOCKER_CMD}" ]; then
-        #r_DOCKER_PROXY="node-nxrm-ha1.standalone.localdomain:18079"
-        #r_DOCKER_HOSTED="node-nxrm-ha1.standalone.localdomain:18082"
-        #r_DOCKER_GROUP="node-nxrm-ha1.standalone.localdomain:18085"
         _ask "Docker command for pull/push sample ('docker' or 'podman')" "${r_DOCKER_CMD}" "r_DOCKER_CMD" "N" "N"
-        _ask "Docker Proxy repo hostname:port" "${_nexus_hostname}:18079" "r_DOCKER_PROXY" "N" "N"
-        [[ "${r_DOCKER_PROXY}" =~ ^\s*([^:]+).+$ ]] && _nexus_hostname="${BASH_REMATCH[1]}"
-        _ask "Docker Hosted repo hostname:port" "${_nexus_hostname}:18082" "r_DOCKER_HOSTED" "N" "N"
-        _ask "Docker Group repo hostname:port" "${_nexus_hostname}:18085" "r_DOCKER_GROUP" "N" "N"
+        _host="$(_q_docker_repos "Proxy" "${_host}" "18179")"
+        _host="$(_q_docker_repos "Hosted" "${_host}" "18182")"
+        _host="$(_q_docker_repos "Group" "${_host}" "18185")"
     fi
+}
+_q_docker_repos() {
+    local _repo_type="$1"
+    local _def_host="$2"
+    local _def_port="$3"
+    local _is_installing="${4:-"${r_NEXUS_INSTALL}"}"
+    local _repo_CAP="$( echo ${_repo_type} | awk '{print toupper($0)}' )"
+
+    local _repo_var_name="r_DOCKER_${_repo_CAP}"
+    local _q="Docker ${_repo_type} repo hostname:port"
+    while true; do
+        _ask "${_q}" "${_def_host}:${_def_port}" "${_repo_var_name}" "N" "N"
+        if [[ "${!_repo_var_name}" =~ ^\s*([^:]+):([0-9]+)\s*$ ]]; then
+            _def_host="${BASH_REMATCH[1]}"
+            _def_port="${BASH_REMATCH[2]}"
+            if _isYes "${_is_installing}" && nc -z ${_def_host} ${_def_port}; then
+                _ask "The port in ${_def_host}:${_def_port} might be in use. Is this OK?" "Y"
+                if _isYes ; then break; fi
+            elif ! _isYes "${_is_installing}" && ! nc -z ${_def_host} ${_def_port}; then
+                _ask "The port in ${_def_host}:${_def_port} might not be reachable. Is this OK?" "Y"
+                if _isYes ; then break; fi
+            else
+                break
+            fi
+        else
+            # hmm, actually the regex always should match..
+            break
+        fi
+    done
+    echo "${_def_host}"
 }
 _cancelInterview() {
     echo ""
