@@ -252,6 +252,7 @@ function _isValidateFunc() {
 function _isYes() {
     local _answer="$1"
     [ $# -eq 0 ] && _answer="${__LAST_ANSWER}"
+    [[ "${_answer}" = "true" ]] && return 0
     [[ "${_answer}" =~ ^[yY] ]] && return 0
     return 1
 }

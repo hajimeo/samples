@@ -825,6 +825,7 @@ _cancelInterview() {
 }
 
 prepare() {
+    # NOTE: if _AUTO, not checking updates to be safe.
     if [ ! -d "${_UTIL_DIR%/}" ]; then
         mkdir -p "${_UTIL_DIR%/}" || exit $?
     fi
@@ -832,15 +833,19 @@ prepare() {
         if [ ! -f "${_WORK_DIR%/}/utils.sh" ]; then
             curl -s -f -m 3 --retry 0 -L "https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh" -o "${_UTIL_DIR%/}/utils.sh" || return $?
         else
+            # At this moment, not updating _WORK_DIR one for myself
             #_check_update "${_WORK_DIR%/}/utils.sh"
             source "${_WORK_DIR%/}/utils.sh"
             return $?
         fi
     else
         source "${_UTIL_DIR%/}/utils.sh"
-        _check_update "${_UTIL_DIR%/}/utils.sh"
+        _log "DEBUG" "_check_update ${_UTIL_DIR%/}/utils.sh with"
+        ${_AUTO} || _check_update "${_UTIL_DIR%/}/utils.sh"
     fi
     source "${_UTIL_DIR%/}/utils.sh"
+    _log "DEBUG" "_check_update $BASH_SOURCE with force:N"
+    ${_AUTO} || _check_update "$BASH_SOURCE" "" "N"
 }
 
 main() {
@@ -893,7 +898,6 @@ main() {
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
-    _check_update "$BASH_SOURCE" "" "N"
     if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]] || [[ "$1" == "help" ]]; then
         usage | less
         exit 0
