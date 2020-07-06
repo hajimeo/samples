@@ -77,6 +77,7 @@ __TMP="/tmp"
 # Variables which used by command arguments
 _AUTO=false
 _DEBUG=false
+_RESP_FILE=""
 
 
 function f_setup_maven() {
@@ -689,8 +690,12 @@ interview() {
     _log "INFO" "Ask a few questions to setup this Nexus.
 You can stop this interview anytime by pressing 'Ctrl+c' (except while typing secret/password).
 "
-    _ask "Would you like to load your response file?" "Y" "" "N" "N"
-    _isYes && _load_resp
+    if [ -s "${_RESP_FILE}" ];then
+        _load_resp "${_RESP_FILE}"
+    else
+        _ask "Would you like to load your response file?" "Y" "" "N" "N"
+        _isYes && _load_resp
+    fi
 
     trap '_cancelInterview' SIGINT
     while true; do
@@ -849,7 +854,6 @@ prepare() {
 }
 
 main() {
-    # If no arguments, at this moment, display usage(), then main()
     if ! ${_AUTO}; then
         interview
         _ask "Interview completed. Would like you like to setup?" "Y" "" "N" "N"
@@ -918,7 +922,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 r_REPO_FORMATS="$OPTARG"
                 ;;
             r)
-                _load_resp "$OPTARG"
+                _RESP_FILE="$OPTARG"
                 ;;
             v)
                 r_NEXUS_VERSION="$OPTARG"
