@@ -761,7 +761,7 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype*.lic" "" "r_NEXUS_LIC
     fi
 
     if _isYes "${r_NEXUS_INSTALL}"; then
-        _ask "Nexus base URL" "http://localhsot:${r_NEXUS_CONTAINER_PORT1:-"8081"}/" "r_NEXUS_URL" "N" "Y"
+        _ask "Nexus base URL" "http://localhost:${r_NEXUS_CONTAINER_PORT1:-"8081"}/" "r_NEXUS_URL" "N" "Y"
     else
         _ask "Nexus base URL" "" "r_NEXUS_URL" "N" "Y"
     fi
