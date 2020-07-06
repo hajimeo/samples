@@ -299,7 +299,7 @@ function f_setup_yum() {
         _log "DEBUG" "$(cat ${__TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-hosted
-    local _upload_file="$(find ${__TMP%/} -type f -size +1k -name "dos2unix-*.el7.x86_64.rpm" | tail -n1)"
+    local _upload_file="$(find ${__TMP%/} -type f -size +1k -name "dos2unix-*.el7.x86_64.rpm" 2>/dev/null | tail -n1)"
     if [ -s "${_upload_file}" ]; then
         f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=/7/os/x86_64/Packages" || return $?
     else
@@ -525,7 +525,7 @@ function f_upload_asset() {
 function _does_repo_exist() {
     local _repo_name="$1"
     # At this moment, not always checking
-    find ${__TMP%/}/ -type f -name '_does_repo_exist*.out' -mmin +5 -delete
+    find ${__TMP%/}/ -type f -name '_does_repo_exist*.out' -mmin +5 -delete 2>/dev/null
     if [ ! -s ${__TMP%/}/_does_repo_exist$$.out ]; then
         f_api "/service/rest/v1/repositories" | grep '"name":' > ${__TMP%/}/_does_repo_exist$$.out
     fi
@@ -537,7 +537,7 @@ function _does_repo_exist() {
 function _does_blob_exist() {
     local _blob_name="$1"
     # At this moment, not always checking
-    find ${__TMP%/}/ -type f -name '_does_blob_exist*.out' -mmin +5 -delete
+    find ${__TMP%/}/ -type f -name '_does_blob_exist*.out' -mmin +5 -delete 2>/dev/null
     if [ ! -s ${__TMP%/}/_does_blob_exist$$.out ]; then
         f_api "/service/rest/beta/blobstores" | grep '"name":' > ${__TMP%/}/_does_blob_exist$$.out
     fi
@@ -562,7 +562,7 @@ function f_apiS() {
     [ -z "${_method}" ] && _method="GET"
 
     # Mac's /tmp is symlink so without the ending "/", would needs -L but does not work with -delete
-    find ${__TMP%/}/ -type f -name '.nxrm_c_*' -mmin +10 -delete
+    find ${__TMP%/}/ -type f -name '.nxrm_c_*' -mmin +10 -delete 2>/dev/null
     local _c="${__TMP%/}/.nxrm_c_$$"
     if [ ! -s ${_c} ]; then
         curl -sf -D ${__TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -o/dev/null -k "${_nexus_url%/}/service/rapture/session" -d "${_user_pwd}"

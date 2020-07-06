@@ -17,8 +17,8 @@ function _check_update() {
     local _tmp_file="${__TMP%/}/${_file_name}_$(date +"%Y%m%d%H%M%S")"
     if [ -f "${_file_path}" ]; then
         if [[ "${_mins_old}" =~ ^[0-9]+$ ]]; then
-            # stat is different between Mac and Linux
-            _file_path="$(find ${_file_path} -mmin +${_mins_old} -print)"
+            # stat is different between Mac and Linux, and 2>/dev/null is for hiding "Permission denied" errors
+            _file_path="$(find ${_file_path} -mmin +${_mins_old} -print 2>/dev/null)"
             if [ -z "${_file_path}" ]; then
                 _log "DEBUG" "${_file_path} is not older than ${_mins_old} minutes"
                 return 0
