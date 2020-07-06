@@ -711,11 +711,10 @@ Would you like to save your response?" "Y"
 }
 _questions() {
     if [ -z "${r_DOCKER_CMD}" ]; then
-        # I prefer podman, so checking podman first
-        if which podman &>/dev/null; then
-            r_DOCKER_CMD="podman"
-        elif which docker &>/dev/null; then
+        if which docker &>/dev/null; then
             r_DOCKER_CMD="docker"
+        elif which podman &>/dev/null; then
+            r_DOCKER_CMD="podman"
         fi
     fi
 
