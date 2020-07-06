@@ -698,18 +698,18 @@ You can stop this interview anytime by pressing 'Ctrl+c' (except while typing se
         echo "=================================================================="
         _ask "Interview completed.
 Would you like to save your response?" "Y"
-        if ! _isYes; then
+        if _isYes; then
+            _save_resp "" "${r_NEXUS_CONTAINER_NAME}"
+            break
+        else
             _ask "Would you like to re-do the interview?" "Y"
             if ! _isYes; then
-                _echo "Continuing without saving..."
+                echo "Continuing without saving..."
                 break
             fi
-        else
-            break
         fi
     done
     trap - SIGINT
-    _save_resp "" "${r_NEXUS_CONTAINER_NAME}"
 }
 _questions() {
     if [ -z "${r_DOCKER_CMD}" ]; then

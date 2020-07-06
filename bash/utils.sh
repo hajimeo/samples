@@ -41,7 +41,6 @@ function _check_update() {
     fi
 
     if ! _isYes "${_force}"; then
-        local _shall_update=""
         _ask "New file is available. Would you like to update ${_file_path}?" "Y"
         if ! _isYes; then
             [ -s "${_file_path}" ] && touch ${_file_path}
