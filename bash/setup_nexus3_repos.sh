@@ -829,7 +829,7 @@ _cancelInterview() {
     exit
 }
 
-prepare() {
+bootstrap() {
     # NOTE: if _AUTO, not checking updates to be safe.
     if [ ! -d "${_UTIL_DIR%/}" ]; then
         mkdir -p "${_UTIL_DIR%/}" || exit $?
@@ -930,6 +930,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         esac
     done
 
-    prepare
+    bootstrap   # at this moment, if bootstrap fails, keeps going.
     main
 fi
