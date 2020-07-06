@@ -8,7 +8,7 @@ __TMP="/tmp"
 
 # To test: touch -d "9 hours ago" xxxxx.sh
 function _check_update() {
-    local _file_path="${1:-${BASH_SOURCE}}"
+    local _file_path="${1}"
     local _remote_repo="${2:-"https://raw.githubusercontent.com/hajimeo/samples/master/bash/"}"
     local _force="${3:-"Y"}"        # Currently default is force
     local _mins_old="${4-"480"}"    # 8 hours
