@@ -654,6 +654,7 @@ function _docker_run() {
 
         if [ ! -d "${r_NEXUS_MOUNT_DIR%/}/etc/jetty" ]; then
             mkdir -p ${r_NEXUS_MOUNT_DIR%/}/etc/jetty || return $?
+            chmod -R a+w ${r_NEXUS_MOUNT_DIR%/}
         else
             _log "WARN" "Mount directory: ${r_NEXUS_MOUNT_DIR%/} already exists. Reusing...";sleep 3
         fi
@@ -676,7 +677,7 @@ function _docker_run() {
     fi
 
     [ -z "${INSTALL4J_ADD_VM_PARAMS}" ] && INSTALL4J_ADD_VM_PARAMS="-Xms1g -Xmx2g -XX:MaxDirectMemorySize=1g"
-    local _full_cmd="${_cmd} run -t -i -d  --privileged=true ${_p} --name=${r_NEXUS_CONTAINER_NAME} --hostname=${r_NEXUS_CONTAINER_NAME}.standalone.localdomain \\
+    local _full_cmd="${_cmd} run -t -d ${_p} --name=${r_NEXUS_CONTAINER_NAME} --hostname=${r_NEXUS_CONTAINER_NAME}.standalone.localdomain \\
         ${_v_opt} \\
         -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\" \\
         sonatype/nexus3:${r_NEXUS_VERSION}"
@@ -822,7 +823,7 @@ _cancelInterview() {
         _save_resp
     fi
     # To get out from the trap, it seems I need to use exit.
-    echo "Exiting ..."
+    echo "Exiting ... (NOTE: -h or --help for help/usage)"
     exit
 }
 
@@ -851,6 +852,7 @@ bootstrap() {
 }
 
 main() {
+    # If _RESP_FILE is popurated by -r xxxxx.resp, load it
     if [ -s "${_RESP_FILE}" ];then
         _load_resp "${_RESP_FILE}"
     elif ! ${_AUTO}; then
