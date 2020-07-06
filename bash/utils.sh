@@ -35,9 +35,6 @@ function _check_update() {
             _log "DEBUG" "Remote length(size) is same or suspicious: ${_remote_length} (vs. ${_local_length}). Ignoring this remote."
             return 0
         fi
-
-        # If can't take a backup, not proceeding.
-        _backup "${_file_path}" || return $?
     fi
 
     if ! _isYes "${_force}"; then
@@ -49,6 +46,9 @@ function _check_update() {
     fi
     if curl -s -k -L -f --retry 3 "${_remote_repo}" -o "${_tmp_file}"; then
         if [ -f "${_file_path}" ]; then
+            # If can't take a backup, not proceeding.
+            _backup "${_file_path}" || return $?
+
             chmod --reference=${_file_path} ${_tmp_file}
             chown --reference=${_file_path} ${_tmp_file}
         fi

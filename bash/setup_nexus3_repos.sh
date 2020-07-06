@@ -756,8 +756,8 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype*.lic" "" "r_NEXUS_LIC
                     break
                 fi
             done
-            _ask "Nexus container exposing port1 (for 8081)" "${_port1}" "r_NEXUS_CONTAINER_PORT1" "N" "Y"
-            _ask "Nexus container exposing port2 (for 8443)" "${_port2}" "r_NEXUS_CONTAINER_PORT2" "N" "N"
+            _ask "Nexus container exposing port for HTTP (for 8081)" "${_port1}" "r_NEXUS_CONTAINER_PORT1" "N" "Y"
+            _ask "Nexus container exposing port for HTTPS (for 8443)" "${_port2}" "r_NEXUS_CONTAINER_PORT2" "N" "N"
         fi
     fi
 
@@ -892,7 +892,6 @@ main() {
     done
 }
 
-prepare
 if [ "$0" = "$BASH_SOURCE" ]; then
     _check_update "$BASH_SOURCE" "" "N"
     if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]] || [[ "$1" == "help" ]]; then
@@ -923,5 +922,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         esac
     done
 
+    prepare
     main
 fi
