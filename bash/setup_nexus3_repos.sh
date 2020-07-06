@@ -676,7 +676,7 @@ function _docker_run() {
     fi
 
     [ -z "${INSTALL4J_ADD_VM_PARAMS}" ] && INSTALL4J_ADD_VM_PARAMS="-Xms1g -Xmx2g -XX:MaxDirectMemorySize=1g"
-    local _full_cmd="${_cmd} run -d ${_p} --name=${r_NEXUS_CONTAINER_NAME} --hostname=${r_NEXUS_CONTAINER_NAME}.standalone.localdomain \\
+    local _full_cmd="${_cmd} run -t -i -d  --privileged=true ${_p} --name=${r_NEXUS_CONTAINER_NAME} --hostname=${r_NEXUS_CONTAINER_NAME}.standalone.localdomain \\
         ${_v_opt} \\
         -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\" \\
         sonatype/nexus3:${r_NEXUS_VERSION}"
@@ -690,13 +690,6 @@ interview() {
     _log "INFO" "Ask a few questions to setup this Nexus.
 You can stop this interview anytime by pressing 'Ctrl+c' (except while typing secret/password).
 "
-    if [ -s "${_RESP_FILE}" ];then
-        _load_resp "${_RESP_FILE}"
-    else
-        _ask "Would you like to load your response file?" "Y" "" "N" "N"
-        _isYes && _load_resp
-    fi
-
     trap '_cancelInterview' SIGINT
     while true; do
         _questions
@@ -743,7 +736,7 @@ _questions() {
             _ask "Nexus license file path if you have:
 If empty, it will try finding from ${_WORK_DIR%/}/sonatype*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_check_license_path"
             _ask "Would you like to mount SonatypeWork directory?" "Y" "r_NEXUS_MOUNT" "N" "N"
-            if _isYes; then
+            if _isYes "${r_NEXUS_MOUNT}"; then
                 _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}" "r_NEXUS_MOUNT_DIR" "N" "Y"
             fi
 
@@ -766,7 +759,11 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype*.lic" "" "r_NEXUS_LIC
         fi
     fi
 
-    _ask "Nexus base URL" "http://`hostname -f`:${r_NEXUS_CONTAINER_PORT1:-"8081"}/" "r_NEXUS_URL" "N" "Y"
+    if _isYes "${r_NEXUS_INSTALL}"; then
+        _ask "Nexus base URL" "http://localhsot:${r_NEXUS_CONTAINER_PORT1:-"8081"}/" "r_NEXUS_URL" "N" "Y"
+    else
+        _ask "Nexus base URL" "" "r_NEXUS_URL" "N" "Y"
+    fi
     local _host="$(hostname -f)"
     [[ "${r_NEXUS_URL}" =~ ^https?://([^:/]+).+$ ]] && _host="${BASH_REMATCH[1]}"
     _ask "Blob store name" "default" "r_BLOB_NAME" "N" "Y"
@@ -854,6 +851,13 @@ bootstrap() {
 }
 
 main() {
+    if [ -s "${_RESP_FILE}" ];then
+        _load_resp "${_RESP_FILE}"
+    elif ! ${_AUTO}; then
+        _ask "Would you like to load your response file?" "Y" "" "N" "N"
+        _isYes && _load_resp
+    fi
+
     if ! ${_AUTO}; then
         interview
         _ask "Interview completed. Would like you like to setup?" "Y" "" "N" "N"
@@ -864,6 +868,7 @@ main() {
     fi
 
     if _isYes "${r_NEXUS_INSTALL}"; then
+        _log "INFO" "Creating a container for Nexus."
         _docker_run || return $?
         _log "INFO" "Creating 'testuser' it it hasn't been created."
         f_testuser &>/dev/null  # it's OK if this fails
@@ -871,9 +876,9 @@ main() {
         ${r_DOCKER_CMD} start ${r_NEXUS_CONTAINER_NAME} || return $?
     fi
 
-    local _base_url="${r_NEXUS_URL:-"http://localhost:8081/"}"
-    if ! _wait_url "${_base_url}"; then
-        _log "ERROR" "${_base_url} is unreachable"
+    # 'main' requires "r_NEXUS_URL"
+    if [ -z "${r_NEXUS_URL}" ] || ! _wait_url "${r_NEXUS_URL}"; then
+        _log "ERROR" "${r_NEXUS_URL} is unreachable"
         return 1
     fi
 
