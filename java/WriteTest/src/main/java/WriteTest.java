@@ -1,8 +1,10 @@
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+
 import com.google.common.io.ByteStreams;
 
 public class WriteTest
@@ -15,11 +17,15 @@ public class WriteTest
 
     try {
       InputStream input = Files.newInputStream(Paths.get(inPath));
-      OutputStream output = Files.newOutputStream(Paths.get(outPath), StandardOpenOption.CREATE_NEW);
-      ByteStreams.copy(input, output);
+      try (final OutputStream output = Files.newOutputStream(Paths.get(outPath), StandardOpenOption.CREATE_NEW)) {
+        ByteStreams.copy(input, output);
+      }
+      catch (IOException e) {
+        e.printStackTrace();
+      }
+      input.close();
     }
-    catch (Exception e) {
-      System.err.println(e.getMessage());
+    catch (IOException e) {
       e.printStackTrace();
     }
   }
