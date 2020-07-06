@@ -236,7 +236,7 @@ function _docker_login() {
     fi
 
     _log "DEBUG" "${_cmd} login ${_host_port} --username ${_user} --password ********"
-    ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} || return $?
+    ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} &>/dev/null || return $?
     echo "${_host_port}"
 }
 function _docker_proxy() {
@@ -246,11 +246,12 @@ function _docker_proxy() {
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}")" || return $?
 
-    local _image_name="$(${_cmd} images --format "{{.Repository}}" | grep -w "${_tag_name}")"
-    if [ -n "${_image_name}" ]; then
-        _log "WARN" "Deleting ${_image_name} (wait for 5 secs)";sleep 5
-        ${_cmd} rmi ${_image_name} || return $?
-    fi
+    for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_tag_name}"); do
+        _log "WARN" "Deleting ${_imn} (wait for 5 secs)";sleep 5
+        if ! ${_cmd} rmi ${_imn}; then
+            _log "WARN" "Deleting ${_imn} failed but keep continuing..."
+        fi
+    done
     _log "DEBUG" "${_cmd} pull ${_host_port}/${_tag_name}"
     ${_cmd} pull ${_host_port}/${_tag_name} || return $?
 }
