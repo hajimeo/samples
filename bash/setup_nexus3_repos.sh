@@ -401,6 +401,11 @@ function f_setup_conan() {
 }
 
 
+function f_testuser() {
+    f_apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"default","id":"test-role","name":"testRole","description":"test role","privileges":["nx-repository-admin-*-*-*"],"roles":[]}],"type":"rpc"}'
+    f_apiS '{"action":"coreui_User","method":"create","data":[{"userId":"testuser","version":"","firstName":"test","lastName":"user","email":"testuser@example.com","status":"active","roles":["test-role"],"password":"testuser"}],"type":"rpc"}'
+}
+
 
 ### Misc. functions / utility type functions #################################################################
 # f_get_and_upload_jars "maven" "junit" "junit" "3.8 4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 4.10 4.11 4.12"
@@ -506,6 +511,15 @@ function f_upload_asset() {
             cat ${__TMP%/}/_upload_test_header_$$.out >&2
         fi
     fi
+    # If going to migrate from NXRM2 or some exported repository
+    #_sample=maven-hosted/com/example/nexus-proxy/1.0.1-SNAPSHOT/maven-metadata.xml
+    #if [[ "${_sample}" =~ ^\.?/?([^/]+)/(.+)/([^/]+)/([^/]+)/(.+)$ ]]; then
+    #    echo ${BASH_REMATCH[1]}   # repo name
+    #    echo ${BASH_REMATCH[2]} | sed 's|/|.|g'   # group id
+    #    echo ${BASH_REMATCH[3]}   # artifact id
+    #    echo ${BASH_REMATCH[4]}   # version string
+    #    echo ${BASH_REMATCH[5]}   # filename
+    #fi
 }
 
 function _does_repo_exist() {
@@ -633,32 +647,36 @@ function _docker_run() {
         _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
     fi
 
-    if [ ! -d "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}/etc/jetty" ]; then
-        mkdir -p ${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}/etc/jetty || return $?
-    else
-        _log "WARN" "SonatypeWork: ${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME} already exists. Reusing...";sleep 3
-    fi
+    local _v_opt="-v ${_WORK_DIR%/}:${_WORK_DIR%/}"
+    if _isYes "${r_NEXUS_MOUNT}" && [ -n "${r_NEXUS_MOUNT_DIR}" ]; then
+        _v_opt="${_v_opt% } -v ${r_NEXUS_MOUNT_DIR%/}:/nexus-data"
 
-    if [ ! -s ${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}/etc/nexus.properties ]; then
-        # default: nexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-requestlog.xml
-        echo 'ssl.etc=${karaf.data}/etc/jetty
-nexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-requestlog.xml,${ssl.etc}/jetty-https.xml
-application-port-ssl=8443
-nexus.onboarding.enabled=false
-nexus.scripts.allowCreation=true' > ${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}/etc/nexus.properties || return $?
+        if [ ! -d "${r_NEXUS_MOUNT_DIR%/}/etc/jetty" ]; then
+            mkdir -p ${r_NEXUS_MOUNT_DIR%/}/etc/jetty || return $?
+        else
+            _log "WARN" "Mount directory: ${r_NEXUS_MOUNT_DIR%/} already exists. Reusing...";sleep 3
+        fi
 
-        local _license="${r_NEXUS_LICENSE_FILE}"
-        [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype-*.lic 2>/dev/null | head -n1)"
-        [ -n "${_license}" ] && echo "nexus.licenseFile=${_license}" >> ${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}/etc/nexus.properties
+        if [ ! -s "${r_NEXUS_MOUNT_DIR%/}/etc/nexus.properties" ]; then
+            # default: nexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-requestlog.xml
+            echo 'ssl.etc=${karaf.data}/etc/jetty
+    nexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-requestlog.xml,${ssl.etc}/jetty-https.xml
+    application-port-ssl=8443
+    nexus.onboarding.enabled=false
+    nexus.scripts.allowCreation=true' > ${r_NEXUS_MOUNT_DIR%/}/etc/nexus.properties || return $?
 
-        [ ! -s "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}/etc/jetty/jetty-https.xml" ] && curl -s -f -L -o "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}/etc/jetty/jetty-https.xml" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/nexus-jetty-https.xml"
-        [ ! -s "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}/etc/jetty/keystore.jks" ] && curl -s -f -L -o "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}/etc/jetty/keystore.jks" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.jks"
+            local _license="${r_NEXUS_LICENSE_FILE}"
+            [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype-*.lic 2>/dev/null | head -n1)"
+            [ -n "${_license}" ] && echo "nexus.licenseFile=${_license}" >> ${r_NEXUS_MOUNT_DIR%/}/etc/nexus.properties
+
+            [ ! -s "${r_NEXUS_MOUNT_DIR%/}/etc/jetty/jetty-https.xml" ] && curl -s -f -L -o "${r_NEXUS_MOUNT_DIR%/}/etc/jetty/jetty-https.xml" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/nexus-jetty-https.xml"
+            [ ! -s "${r_NEXUS_MOUNT_DIR%/}/etc/jetty/keystore.jks" ] && curl -s -f -L -o "${r_NEXUS_MOUNT_DIR%/}/etc/jetty/keystore.jks" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.jks"
+        fi
     fi
 
     [ -z "${INSTALL4J_ADD_VM_PARAMS}" ] && INSTALL4J_ADD_VM_PARAMS="-Xms1g -Xmx2g -XX:MaxDirectMemorySize=1g"
     local _full_cmd="${_cmd} run -d ${_p} --name=${r_NEXUS_CONTAINER_NAME} --hostname=${r_NEXUS_CONTAINER_NAME}.standalone.localdomain \\
-        -v ${_WORK_DIR%/}:${_WORK_DIR%/} \\
-        -v ${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME}:/nexus-data \\
+        ${_v_opt} \\
         -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\" \\
         sonatype/nexus3:${r_NEXUS_VERSION}"
     _log "DEBUG" "${_full_cmd}"
@@ -715,18 +733,15 @@ _questions() {
                 _ask "Container name '${r_NEXUS_CONTAINER_NAME}' already exists. Would you like to reuse this one?" "Y" "r_NEXUS_START" "N" "N"
                 _isYes && r_NEXUS_INSTALL="N"
             fi
-            _ask "Nexus license file path if you have:
-If empty, it will try finding from ${_WORK_DIR%/}/sonatype*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N"
-            if [ -n "${r_NEXUS_LICENSE_FILE}" ] && [ ! -s "${r_NEXUS_LICENSE_FILE}" ]; then
-                while true; do
-                    _ask "${r_NEXUS_LICENSE_FILE} does not exist. Would you like to re-type?" "Y"
-                    if ! _isYes ; then break; fi
-                    _ask "Nexus license file path" "" "r_NEXUS_LICENSE_FILE" "N" "N"
-                 done
-            fi
         fi
-
         if _isYes "${r_NEXUS_INSTALL}"; then
+            _ask "Nexus license file path if you have:
+If empty, it will try finding from ${_WORK_DIR%/}/sonatype*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_check_license_path"
+            _ask "Would you like to mount SonatypeWork directory?" "Y" "r_NEXUS_MOUNT" "N" "N"
+            if _isYes; then
+                _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}" "r_NEXUS_MOUNT_DIR" "N" "Y"
+            fi
+
             local _port1=""
             for _p in 8081 8181 8082; do
                 if ! _pid_by_port "${_p}" &>/dev/null; then
@@ -760,6 +775,11 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype*.lic" "" "r_NEXUS_LIC
         _host="$(_q_docker_repos "Proxy" "${_host}" "18179")"
         _host="$(_q_docker_repos "Hosted" "${_host}" "18182")"
         _host="$(_q_docker_repos "Group" "${_host}" "18185")"
+    fi
+}
+_check_license_path() {
+    if [ -n "$1" ] && [ ! -s "$1" ]; then
+        echo "$1 does not exist." >&2
     fi
 }
 _q_docker_repos() {
@@ -836,6 +856,8 @@ main() {
 
     if _isYes "${r_NEXUS_INSTALL}"; then
         _docker_run || return $?
+        _log "INFO" "Creating 'testuser' it it hasn't been created."
+        f_testuser &>/dev/null  # it's OK if this fails
     elif _isYes "${r_NEXUS_START}" && [ -n "${r_DOCKER_CMD}" ] && [ -n "${r_NEXUS_CONTAINER_NAME}" ]; then
         ${r_DOCKER_CMD} start ${r_NEXUS_CONTAINER_NAME} || return $?
     fi
@@ -846,9 +868,11 @@ main() {
         return 1
     fi
 
-    if [ -s "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}/admin.password" ]; then
-        # I thnk it's ok to type 'admin' in this
-        f_api "/service/rest/beta/security/users/admin/change-password" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "PUT" "admin" "$(cat "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}/admin.password")"
+    # If admin.password is accessible from this host, update with the default password.
+    if [ -n "${r_NEXUS_MOUNT_DIR}" ] && [ -s "${r_NEXUS_MOUNT_DIR%/}/admin.password" ]; then
+        # I think it's ok to type 'admin' in here
+        _log "INFO" "Updating 'admin' user's password..."
+        f_api "/service/rest/beta/security/users/admin/change-password" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "PUT" "admin" "$(cat "${r_NEXUS_MOUNT_DIR%/}/admin.password")"
     fi
 
     if ! _does_blob_exist "${r_BLOB_NAME}"; then
