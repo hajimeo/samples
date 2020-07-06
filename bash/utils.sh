@@ -6,6 +6,7 @@ __PID="$$"
 __LAST_ANSWER=""
 __TMP="/tmp"
 
+# To test: touch -d "9 hours ago" xxxxx.sh
 function _check_update() {
     local _file_path="${1:-${BASH_SOURCE}}"
     local _remote_repo="${2:-"https://raw.githubusercontent.com/hajimeo/samples/master/bash/"}"
@@ -31,7 +32,7 @@ function _check_update() {
         local _local_length=`wc -c <${_file_path}`
         # If the remote file size is suspiciously different, not taking it
         if [ -z "${_remote_length}" ] || [ "${_remote_length}" -lt $(( ${_local_length} / 2 )) ] || [ ${_remote_length} -eq ${_local_length} ]; then
-            _log "DEBUG" "Remote length(size) is suspicious: ${_remote_length} (vs. ${_local_length}). Ignoring this remote."
+            _log "DEBUG" "Remote length(size) is same or suspicious: ${_remote_length} (vs. ${_local_length}). Ignoring this remote."
             return 0
         fi
 
@@ -41,13 +42,17 @@ function _check_update() {
 
     if ! _isYes "${_force}"; then
         local _shall_update=""
-        _ask "New file is available. Would you like to update ${_file_path}?" "Y" "_shall_update"
+        _ask "New file is available. Would you like to update ${_file_path}?" "Y"
         if ! _isYes; then
             [ -s "${_file_path}" ] && touch ${_file_path}
             return 0
         fi
     fi
     if curl -s -k -L -f --retry 3 "${_remote_repo}" -o "${_tmp_file}"; then
+        if [ -f "${_file_path}" ]; then
+            chmod --reference=${_file_path} ${_tmp_file}
+            chown --reference=${_file_path} ${_tmp_file}
+        fi
         mv -f "${_tmp_file}" "${_file_path}" || return $?
     fi
     _log "INFO" "${_file_path} has been updated. (if not new file) a backup is under ${__TMP%/}/."

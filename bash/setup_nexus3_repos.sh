@@ -681,7 +681,7 @@ function _docker_run() {
         sonatype/nexus3:${r_NEXUS_VERSION}"
     _log "DEBUG" "${_full_cmd}"
     eval "${_full_cmd}" || return $?
-    _log "INFO" "\"${_cmd} run\" executed. Check progress with \"docker logs -f ${r_NEXUS_CONTAINER_NAME}\""
+    _log "INFO" "\"${_cmd} run\" executed. Check progress with \"${_cmd} logs -f ${r_NEXUS_CONTAINER_NAME}\""
 }
 
 
@@ -894,7 +894,7 @@ main() {
 
 prepare
 if [ "$0" = "$BASH_SOURCE" ]; then
-    _check_update "" "" "N"
+    _check_update "$BASH_SOURCE" "" "N"
     if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]] || [[ "$1" == "help" ]]; then
         usage | less
         exit 0
