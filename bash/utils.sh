@@ -232,7 +232,7 @@ function _ask() {
         if _isValidateFunc "$_validation_func" ; then
             $_validation_func "${!_var_name}"
             if [ $? -ne 0 ]; then
-                _ask "Given value does not look like correct. Would you like to re-type?" "Y"
+                _ask "Would you like to re-type?" "Y"
                 if _isYes; then
                     _ask "$@"
                 fi
