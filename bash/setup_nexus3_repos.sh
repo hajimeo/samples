@@ -735,12 +735,17 @@ nexus.hazelcast.discovery.isEnabled=false' >> ${_mount%/}/etc/nexus.properties |
                     done
                 fi
 
-                local _license="${r_NEXUS_LICENSE_FILE}"
-                [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype-*.lic 2>/dev/null | head -n1)"
-                [ -n "${_license}" ] && echo "nexus.licenseFile=${_license}" >> ${_mount%/}/etc/nexus.properties
-
                 [ ! -s "${_mount%/}/etc/jetty/jetty-https.xml" ] && curl -s -f -L -o "${_mount%/}/etc/jetty/jetty-https.xml" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/nexus-jetty-https.xml"
                 [ ! -s "${_mount%/}/etc/jetty/keystore.jks" ] && curl -s -f -L -o "${_mount%/}/etc/jetty/keystore.jks" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.jks"
+
+                local _license="${r_NEXUS_LICENSE_FILE}"
+                [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype-*.lic 2>/dev/null | head -n1)"
+                if [ -n "${_license}" ]; then
+                    echo "nexus.licenseFile=${_license}" >> ${_mount%/}/etc/nexus.properties
+                elif _isYes "${r_NEXUS_INSTALL_HAC}"; then
+                    _log "ERROR" "HA-C is requested but no license."
+                    return 1
+                fi
             fi
         fi
     fi
@@ -815,7 +820,7 @@ function questions() {
                 _ask "Nexus container exposing port for HTTPS (for 8443)" "8443" "r_NEXUS_CONTAINER_PORT2" "N" "N" "_check_port"
             fi
             _ask "Nexus license file path if you have:
-If empty, it will try finding from ${_WORK_DIR%/}/sonatype*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_check_license_path"
+If empty, it will try finding from ${_WORK_DIR%/}/sonatype-*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_check_license_path"
         fi
     fi
 
@@ -853,6 +858,12 @@ function _check_license_path() {
     if [ -n "$1" ] && [ ! -s "$1" ]; then
         echo "$1 does not exist." >&2
         return 1
+    elif _isYes "${r_NEXUS_INSTALL_HAC}"; then
+        _license="$(ls -1t ${_WORK_DIR%/}/sonatype-*.lic 2>/dev/null | head -n1)"
+        if [ -z "${_license}" ]; then
+            echo "HA-C is requested but no license with 'ls ${_WORK_DIR%/}/sonatype-*.lic'." >&2
+            return 1
+        fi
     fi
 }
 function _check_url_reachability() {
