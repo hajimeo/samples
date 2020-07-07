@@ -189,7 +189,7 @@ function _pid_by_port() {
     [ -z "${_port}" ] && return 1
     # Some Linux doesn't have 'lsof'
     #lsof -ti:${_port} -sTCP:LISTEN
-    netstat -t4lnp | grep -w "0.0.0.0:${_port}" | awk '{print $7}' | grep -oE '[0-9]+'
+    netstat -t4lnp 2>/dev/null | grep -w "0.0.0.0:${_port}" | awk '{print $7}' | grep -m1 -oE '[0-9]+' | head -n1
 }
 
 function _wait_url() {
@@ -279,20 +279,17 @@ function _ask() {
     fi
 
     # if empty value, check if this is a mandatory field.
-    if [ -z "${!_var_name}" ]; then
-        if _isYes "$_is_mandatory" ; then
-            echo "'${_var_name}' is a mandatory parameter."
-            _ask "$@"
-        fi
-    else
-        # if not empty and if a validation function is given, use function to check it.
-        if _isValidateFunc "$_validation_func" ; then
-            $_validation_func "${!_var_name}"
-            if [ $? -ne 0 ]; then
-                _ask "Would you like to re-type?" "Y"
-                if _isYes; then
-                    _ask "$@"
-                fi
+    if [ -z "${!_var_name}" ] && _isYes "$_is_mandatory" ; then
+        echo "'${_var_name}' is a mandatory parameter."
+        _ask "$@"
+    fi
+    # if not empty and if a validation function is given, use function to check it.
+    if _isValidateFunc "$_validation_func" ; then
+        $_validation_func "${!_var_name}"
+        if [ $? -ne 0 ]; then
+            _ask "Would you like to re-type?" "Y"
+            if _isYes; then
+                _ask "$@"
             fi
         fi
     fi

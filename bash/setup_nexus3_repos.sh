@@ -637,6 +637,7 @@ function f_api() {
     fi
 }
 
+# To test name resolution (no nslookup,ping,nc): docker exec -ti nexus3240-1 curl -I http://nexus3240-3.standalone.localdomain:8081/
 function f_update_hosts_for_container() {
     local _container_name="${1}"
     local _hostname="${2}"  # Optional
@@ -656,7 +657,25 @@ function f_update_hosts_for_container() {
         _log "WARN" "Please update hosts file to add '${_container_ip} ${_hostname}'"
         return 1
     fi
-    _log "INFO" "Updated hosts file with '${_container_ip} ${_hostname}'"
+    _log "DEBUG" "Updated hosts file with '${_container_ip} ${_hostname}'"
+}
+
+function f_socks5_proxy() {
+    local _port="${1:-"48484"}"
+    local _cmd="ssh -4gC2TxnNf -D${_port} localhost &>/dev/null &"
+    [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
+    local _pid="$(_pid_by_port "${_port}")"
+    if [ -n "${_pid}" ]; then
+        _log "WARN" "The Socks port ${_port} is already used by the PID ${_pid}"
+        return 1
+    fi
+    eval "${_cmd}" || return $?
+
+    local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
+    _log "INFO" "Started socks proxy on \"${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}\".
+Use this in your web browser's proxy setting. For example, if Chrome:
+Mac: open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}
+Win: \"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe\" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}"
 }
 
 
@@ -673,7 +692,6 @@ function _docker_run_or_start() {
         _docker_run "${_name}" "${_mount}" || return $?
         _log "INFO" "\"${_cmd} run\" executed. Check progress with \"${_cmd} logs -f ${_name}\""
     fi
-    # To test name resolution (no nslookup,ping,nc): docker exec -ti nexus3240-1 curl -I http://nexus3240-3.standalone.localdomain:8081/
     f_update_hosts_for_container "${_name}"
 }
 function _docker_run() {
@@ -750,8 +768,10 @@ nexus.hazelcast.discovery.isEnabled=false' >> ${_mount%/}/etc/nexus.properties |
         fi
     fi
 
+    [ -z "${_INTERNAL_DNS}" ] && _INTERNAL_DNS="$(docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+').1"
+
     [ -z "${INSTALL4J_ADD_VM_PARAMS}" ] && INSTALL4J_ADD_VM_PARAMS="-Xms1g -Xmx2g -XX:MaxDirectMemorySize=1g"
-    local _full_cmd="${_cmd} run -t -d ${_p} --name=${_name} --hostname=${_name}.${_DOMAIN#.} \\
+    local _full_cmd="${_cmd} run -t -d ${_p} --name=${_name} --hostname=${_name}.${_DOMAIN#.} --dns=${_INTERNAL_DNS} \\
         ${_v_opt} \\
         -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\" \\
         sonatype/nexus3:${r_NEXUS_VERSION}"
@@ -801,7 +821,7 @@ function questions() {
             _ask "Would you like to build HA-C?" "N" "r_NEXUS_INSTALL_HAC" "N" "N"
             if _isYes "${r_NEXUS_INSTALL_HAC}"; then
                 echo "NOTE: You may need to set up a reverse proxy."
-                echo "      Also sudo password may be required."
+                echo "      Also sudo password may be required."; sleep 3
                 # NOTE: mounting a volume to sonatype-work is mandatory for HA-C
                 r_NEXUS_MOUNT="Y"
                 for _i in {1..3}; do
@@ -810,6 +830,10 @@ function questions() {
                     _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/nexus-data_${!_tmp_v_name}" "r_NEXUS_MOUNT_DIR_${_i}" "N" "Y" "_check_dir_or_file_exists"
                 done
                 _ask "Mount path for shared blobstore" "${_WORK_DIR%/}/nexus-data_nexus${_ver_num}_shared_blobs" "r_NEXUS_MOUNT_DIR_SHARED" "N" "Y" "_check_dir_or_file_exists"
+                _ask "Would you like to start a Socks proxy (if you do not have a reverse proxy)" "N" "r_SOCKS_PROXY"
+                if _isYes "${r_SOCKS_PROXY}"; then
+                    _ask "Socks proxy port" "48484" "r_SOCKS_PROXY_PORT"
+                fi
             else
                 _ask "Nexus container name" "nexus${_ver_num}" "r_NEXUS_CONTAINER_NAME" "N" "N" "_check_container_name"
                 _ask "Would you like to mount SonatypeWork directory?" "Y" "r_NEXUS_MOUNT" "N" "N"
@@ -977,6 +1001,7 @@ main() {
                 local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
                 _docker_run_or_start "${!_v_name}" "${!_v_name_m}" || return $?
                 # If HA-C, needs to wait the first node starts (TODO: what if not 8081?)
+                _log "INFO" "Waiting for starting ${!_v_name} ..."
                 if ! _wait_url "http://${!_v_name}.${_DOMAIN#.}:8081/"; then
                     _log "ERROR" "${!_v_name}.${_DOMAIN#.} is unreachable"
                     return 1
@@ -1017,6 +1042,10 @@ main() {
             _log "ERROR" "Executing setup for format:${_f} failed."
         fi
     done
+
+    if _isYes "${r_SOCKS_PROXY}"; then
+        f_socks5_proxy "${r_SOCKS_PROXY_PORT}"
+    fi
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
