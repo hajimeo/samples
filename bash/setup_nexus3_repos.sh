@@ -62,10 +62,13 @@ _ADMIN_USER="admin"
 _ADMIN_PWD="admin123"
 _REPO_FORMATS="maven,pypi,npm,docker,yum,rubygem,raw,conan"
 
-## Misc.
+## Updatable variables
 _IS_NXRM2=${_IS_NXRM2:-"N"}
 _NO_DATA=${_NO_DATA:-"N"}
 _TID="${_TID:-80}"
+
+## Misc.
+_DOMAIN="standalone.localdomain"
 _UTIL_DIR="$HOME/.bash_utils"
 if [ "`uname`" = "Darwin" ]; then
     _WORK_DIR="$HOME/share/sonatype"
@@ -224,7 +227,7 @@ function _docker_login() {
 
     if [ -z "${_host_port}" ] && [ -n "${_backup_ports}" ]; then
         for __p in ${_backup_ports}; do
-            nc -z localhost ${__p} && _host_port="localhost:${__p}" && break
+            nc -z localhost ${__p} && _host_port="localhost:${__p}" 2>/dev/null && break
         done
         if [ -n "${_host_port}" ]; then
             _log "INFO" "No hostname:port for $FUNCNAME is set, so try with ${_host_port}"
@@ -588,7 +591,7 @@ function f_apiS() {
         # GET and DELETE *can not* use Content-Type json
         curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H}"
     else
-        curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H}" -H "${_content_type}" -d ${_data}
+        curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H}" -H "${_content_type}" -d "${_data}"
     fi > ${_TMP%/}/_apiS_nxrm$$.out
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
@@ -633,52 +636,115 @@ function f_api() {
     fi
 }
 
+function f_update_hosts_for_container() {
+    local _container_name="${1}"
+    local _hostname="${2}"  # Optional
+    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
+
+    [ -z "${_container_name}" ] && _container_name="`echo "${_hostname}" | cut -d"." -f1`"
+    [ -z "${_container_name}" ] && return 1
+    [ -z "${_hostname}" ] && _hostname="${_container_name}.${_DOMAIN#.}"
+
+    local _container_ip="`${_cmd} exec -it ${_container_name} hostname -i | tr -cd "[:print:]"`"   # remove unnecessary control characters
+    if [ -z "${_container_ip}" ]; then
+        _log "WARN" "${_container_name} is not returning IP. Please update hosts file manually."
+        return 1
+    fi
+
+    if ! _update_hosts_file "${_hostname}" "${_container_ip}"; then
+        _log "WARN" "Please update hosts file to add '${_container_ip} ${_hostname}'"
+        return 1
+    fi
+    _log "INFO" "Updated hosts file with '${_container_ip} ${_hostname}'"
+}
+
+
+function _docker_run_or_start() {
+    local _name="$1"
+    local _mount="$2"
+    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
+    if ${_cmd} ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
+        _log "WARN" "Container:'${_name}' already exists. So that starting instead of docker run...";sleep 3
+        ${_cmd} start ${_name} || return $?
+    else
+        _log "INFO" "Creating Container:${_name} for Nexus."
+        # TODO: normally container fails after a few minutes, so checking the exit code of docker run is useless
+        _docker_run "${_name}" "${_mount}" || return $?
+        _log "INFO" "\"${_cmd} run\" executed. Check progress with \"${_cmd} logs -f ${_name}\""
+    fi
+    f_update_hosts_for_container "${_name}"
+}
 function _docker_run() {
     # TODO: shouldn't use any global variables in a function.
-    local _cmd="${1:-"${r_DOCKER_CMD:-"docker"}"}"
+    local _name="$1"
+    local _mount="$2"
+    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
+
     local _p=""
-    [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT1}:8081"
-    [ -n "${r_NEXUS_CONTAINER_PORT2}" ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT2}:8443"
-    if [[ "${r_DOCKER_PROXY}" =~ :([0-9]+)$ ]]; then
-        _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
-    fi
-    if [[ "${r_DOCKER_HOSTED}" =~ :([0-9]+)$ ]]; then
-        _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
-    fi
-    if [[ "${r_DOCKER_GROUP}" =~ :([0-9]+)$ ]]; then
-        _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
+    if ! _isYes "${r_NEXUS_INSTALL_HAC}"; then
+        [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT1}:8081"
+        [ -n "${r_NEXUS_CONTAINER_PORT2}" ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT2}:8443"
+        if [[ "${r_DOCKER_PROXY}" =~ :([0-9]+)$ ]]; then
+            _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
+        fi
+        if [[ "${r_DOCKER_HOSTED}" =~ :([0-9]+)$ ]]; then
+            _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
+        fi
+        if [[ "${r_DOCKER_GROUP}" =~ :([0-9]+)$ ]]; then
+            _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
+        fi
     fi
 
     local _v_opt="-v ${_WORK_DIR%/}:${_WORK_DIR%/}"
-    if _isYes "${r_NEXUS_MOUNT}" && [ -n "${r_NEXUS_MOUNT_DIR}" ]; then
-        _v_opt="${_v_opt% } -v ${r_NEXUS_MOUNT_DIR%/}:/nexus-data"
+    if _isYes "${r_NEXUS_MOUNT}"; then
+        if [ -n "${_mount}" ]; then
+            _v_opt="${_v_opt% } -v ${_mount%/}:/nexus-data"
+            if _isYes "${r_NEXUS_INSTALL_HAC}" && [ -n "${r_NEXUS_MOUNT_DIR_SHARED}" ]; then
+                if [ ! -d "${r_NEXUS_MOUNT_DIR_SHARED}" ]; then
+                    mkdir -m 777 -p ${r_NEXUS_MOUNT_DIR_SHARED%/} || return $?
+                fi
+                _v_opt="${_v_opt% } -v ${r_NEXUS_MOUNT_DIR_SHARED%/}:/nexus-data/blobs"
+            fi
 
-        if [ ! -d "${r_NEXUS_MOUNT_DIR%/}/etc/jetty" ]; then
-            mkdir -p ${r_NEXUS_MOUNT_DIR%/}/etc/jetty || return $?
-            chmod -R a+w ${r_NEXUS_MOUNT_DIR%/}
-        else
-            _log "WARN" "Mount directory: ${r_NEXUS_MOUNT_DIR%/} already exists. Reusing...";sleep 3
-        fi
+            if [ ! -d "${_mount%/}/etc/jetty" ]; then
+                mkdir -p ${_mount%/}/etc/jetty || return $?
+                chmod -R a+w ${_mount%/}
+            else
+                _log "WARN" "Mount directory:${_mount%/} already exists. Reusing...";sleep 3
+            fi
 
-        if [ ! -s "${r_NEXUS_MOUNT_DIR%/}/etc/nexus.properties" ]; then
-            # default: nexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-requestlog.xml
-            echo 'ssl.etc=${karaf.data}/etc/jetty
-    nexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-requestlog.xml,${ssl.etc}/jetty-https.xml
-    application-port-ssl=8443
-    nexus.onboarding.enabled=false
-    nexus.scripts.allowCreation=true' > ${r_NEXUS_MOUNT_DIR%/}/etc/nexus.properties || return $?
+            if [ ! -s "${_mount%/}/etc/nexus.properties" ]; then
+                # default: nexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-requestlog.xml
+                echo 'ssl.etc=${karaf.data}/etc/jetty
+nexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-requestlog.xml,${ssl.etc}/jetty-https.xml
+application-port-ssl=8443
+nexus.onboarding.enabled=false
+nexus.scripts.allowCreation=true' > ${_mount%/}/etc/nexus.properties || return $?
+                if _isYes "${r_NEXUS_INSTALL_HAC}"; then
+                    echo 'nexus.clustered=true
+nexus.log.cluster.enabled=false
+nexus.hazelcast.discovery.isEnabled=false' >> ${_mount%/}/etc/nexus.properties || return $?
+                    [ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && mv -f ${_mount%/}/etc/fabric/hazelcast-network.xml{,bak}
+                    [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
+                    curl -s -f -m 7 --retry 2 -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+                    for _i in {1..3}; do
+                        local _tmp_v_name="r_NEXUS_CONTAINER_NAME_${_i}"
+                        _sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${!_tmp_v_name}.${_DOMAIN#.}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+                    done
+                fi
 
-            local _license="${r_NEXUS_LICENSE_FILE}"
-            [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype-*.lic 2>/dev/null | head -n1)"
-            [ -n "${_license}" ] && echo "nexus.licenseFile=${_license}" >> ${r_NEXUS_MOUNT_DIR%/}/etc/nexus.properties
+                local _license="${r_NEXUS_LICENSE_FILE}"
+                [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype-*.lic 2>/dev/null | head -n1)"
+                [ -n "${_license}" ] && echo "nexus.licenseFile=${_license}" >> ${_mount%/}/etc/nexus.properties
 
-            [ ! -s "${r_NEXUS_MOUNT_DIR%/}/etc/jetty/jetty-https.xml" ] && curl -s -f -L -o "${r_NEXUS_MOUNT_DIR%/}/etc/jetty/jetty-https.xml" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/nexus-jetty-https.xml"
-            [ ! -s "${r_NEXUS_MOUNT_DIR%/}/etc/jetty/keystore.jks" ] && curl -s -f -L -o "${r_NEXUS_MOUNT_DIR%/}/etc/jetty/keystore.jks" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.jks"
+                [ ! -s "${_mount%/}/etc/jetty/jetty-https.xml" ] && curl -s -f -L -o "${_mount%/}/etc/jetty/jetty-https.xml" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/nexus-jetty-https.xml"
+                [ ! -s "${_mount%/}/etc/jetty/keystore.jks" ] && curl -s -f -L -o "${_mount%/}/etc/jetty/keystore.jks" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.jks"
+            fi
         fi
     fi
 
     [ -z "${INSTALL4J_ADD_VM_PARAMS}" ] && INSTALL4J_ADD_VM_PARAMS="-Xms1g -Xmx2g -XX:MaxDirectMemorySize=1g"
-    local _full_cmd="${_cmd} run -t -d ${_p} --name=${r_NEXUS_CONTAINER_NAME} --hostname=${r_NEXUS_CONTAINER_NAME}.standalone.localdomain \\
+    local _full_cmd="${_cmd} run -t -d ${_p} --name=${_name} --hostname=${_name}.${_DOMAIN#.} \\
         ${_v_opt} \\
         -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\" \\
         sonatype/nexus3:${r_NEXUS_VERSION}"
@@ -686,14 +752,13 @@ function _docker_run() {
     eval "${_full_cmd}" || return $?
 }
 
-
-interview() {
+function interview() {
     _log "INFO" "Ask a few questions to setup this Nexus.
 You can stop this interview anytime by pressing 'Ctrl+c' (except while typing secret/password).
 "
     trap '_cancelInterview' SIGINT
     while true; do
-        _questions
+        questions
         echo "=================================================================="
         _ask "Interview completed.
 Would you like to save your response?" "Y"
@@ -710,7 +775,7 @@ Would you like to save your response?" "Y"
     done
     trap - SIGINT
 }
-_questions() {
+function questions() {
     if [ -z "${r_DOCKER_CMD}" ]; then
         if which docker &>/dev/null; then
             r_DOCKER_CMD="docker"
@@ -726,41 +791,38 @@ _questions() {
             local _nexus_version=""
             _ask "Nexus version" "latest" "r_NEXUS_VERSION" "N" "Y"
             local _ver_num=$(echo "${r_NEXUS_VERSION}" | sed 's/[^0-9]//g')
-            _ask "Nexus container name" "nexus${_ver_num}" "r_NEXUS_CONTAINER_NAME" "N" "N"
-            if ${r_DOCKER_CMD} ps --format "{{.Names}}" | grep -qE "^${r_NEXUS_CONTAINER_NAME}$"; then
-                _ask "Container name '${r_NEXUS_CONTAINER_NAME}' already exists. Would you like to reuse this one?" "Y" "r_NEXUS_START" "N" "N"
-                _isYes && r_NEXUS_INSTALL="N"
+            _ask "Would you like to build HA-C?" "N" "r_NEXUS_INSTALL_HAC" "N" "N"
+            if _isYes "${r_NEXUS_INSTALL_HAC}"; then
+                echo "NOTE: You may need to set up a reverse proxy."
+                echo "      Also sudo password may be required."
+                # NOTE: mounting a volume to sonatype-work is mandatory for HA-C
+                r_NEXUS_MOUNT="Y"
+                for _i in {1..3}; do
+                    _ask "Nexus container name ${_i}" "nexus${_ver_num}-${_i}" "r_NEXUS_CONTAINER_NAME_${_i}" "N" "N" "_check_container_name"
+                    local _tmp_v_name="r_NEXUS_CONTAINER_NAME_${_i}"
+                    _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/nexus-data_${!_tmp_v_name}" "r_NEXUS_MOUNT_DIR_${_i}" "N" "Y" "_check_dir_or_file_exists"
+                done
+                _ask "Mount path for shared blobstore" "${_WORK_DIR%/}/nexus-data_nexus${_ver_num}_shared_blobs" "r_NEXUS_MOUNT_DIR_SHARED" "N" "Y" "_check_dir_or_file_exists"
+            else
+                _ask "Nexus container name" "nexus${_ver_num}" "r_NEXUS_CONTAINER_NAME" "N" "N" "_check_container_name"
+                _ask "Would you like to mount SonatypeWork directory?" "Y" "r_NEXUS_MOUNT" "N" "N"
+                if _isYes "${r_NEXUS_MOUNT}"; then
+                    _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}" "r_NEXUS_MOUNT_DIR" "N" "Y" "_check_dir_or_file_exists"
+                fi
+                _ask "Nexus container exposing port for HTTP (for 8081)" "8081" "r_NEXUS_CONTAINER_PORT1" "N" "Y" "_check_port"
+                _ask "Nexus container exposing port for HTTPS (for 8443)" "8443" "r_NEXUS_CONTAINER_PORT2" "N" "N" "_check_port"
             fi
-        fi
-        if _isYes "${r_NEXUS_INSTALL}"; then
             _ask "Nexus license file path if you have:
 If empty, it will try finding from ${_WORK_DIR%/}/sonatype*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_check_license_path"
-            _ask "Would you like to mount SonatypeWork directory?" "Y" "r_NEXUS_MOUNT" "N" "N"
-            if _isYes "${r_NEXUS_MOUNT}"; then
-                _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}" "r_NEXUS_MOUNT_DIR" "N" "Y"
-            fi
-
-            local _port1=""
-            for _p in 8081 8181 8082; do
-                if ! _pid_by_port "${_p}" &>/dev/null; then
-                    _port1=${_p}
-                    break
-                fi
-            done
-            local _port2=""
-            for _p in 8443 8543 8444; do
-                if ! _pid_by_port "${_p}" &>/dev/null; then
-                    _port2=${_p}
-                    break
-                fi
-            done
-            _ask "Nexus container exposing port for HTTP (for 8081)" "${_port1}" "r_NEXUS_CONTAINER_PORT1" "N" "Y"
-            _ask "Nexus container exposing port for HTTPS (for 8443)" "${_port2}" "r_NEXUS_CONTAINER_PORT2" "N" "N"
         fi
     fi
 
     if _isYes "${r_NEXUS_INSTALL}"; then
-        _ask "Nexus base URL" "http://localhost:${r_NEXUS_CONTAINER_PORT1:-"8081"}/" "r_NEXUS_URL" "N" "Y"
+        if _isYes "${r_NEXUS_INSTALL_HAC}"; then
+            _ask "Nexus base URL (normally reverse proxy)" "http://${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}:8081/" "r_NEXUS_URL" "N" "Y"
+        else
+            _ask "Nexus base URL" "http://localhost:${r_NEXUS_CONTAINER_PORT1:-"8081"}/" "r_NEXUS_URL" "N" "Y"
+        fi
     else
         _ask "Nexus base URL" "" "r_NEXUS_URL" "N" "Y" "_check_url_reachability"
     fi
@@ -779,17 +841,38 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype*.lic" "" "r_NEXUS_LIC
         r_DOCKER_GROUP="$(_q_docker_repos "Group" "${_host}" "18185")"
     fi
 }
-_check_license_path() {
+function _check_container_name() {
+    if ${r_DOCKER_CMD} ps --format "{{.Names}}" | grep -qE "^${1}$"; then
+        echo "Container:'${1}' already exists." >&2
+        return 1
+    fi
+}
+function _check_license_path() {
     if [ -n "$1" ] && [ ! -s "$1" ]; then
         echo "$1 does not exist." >&2
+        return 1
     fi
 }
-_check_url_reachability() {
+function _check_url_reachability() {
     if [ -n "$1" ]; then
         curl -f -s -I -L -k -m1 --retry 0 "$1"
+        echo "$1 is not reachable." >&2
+        return 1
     fi
 }
-_q_docker_repos() {
+function _check_port() {
+    if [ -n "$1" ] && _pid_by_port "$1" &>/dev/null; then
+        echo "Port $1 is already in use." >&2
+        return 1
+    fi
+}
+function _check_dir_or_file_exists() {
+    if [ -n "$1" ] && [ -e "$1" ]; then
+        echo "$1 already exists." >&2
+        return 1
+    fi
+}
+function _q_docker_repos() {
     local _repo_type="$1"
     local _def_host="$2"
     local _def_port="$3"
@@ -803,10 +886,10 @@ _q_docker_repos() {
         if [[ "${_tmp_host_port}" =~ ^\s*([^:]+):([0-9]+)\s*$ ]]; then
             _def_host="${BASH_REMATCH[1]}"
             _def_port="${BASH_REMATCH[2]}"
-            if _isYes "${_is_installing}" && nc -z ${_def_host} ${_def_port}; then
+            if _isYes "${_is_installing}" && nc -z ${_def_host} ${_def_port} 2>/dev/null; then
                 _ask "The port in ${_def_host}:${_def_port} might be in use. Is this OK?" "Y"
                 if _isYes ; then break; fi
-            elif ! _isYes "${_is_installing}" && ! nc -z ${_def_host} ${_def_port}; then
+            elif ! _isYes "${_is_installing}" && ! nc -z ${_def_host} ${_def_port} 2>/dev/null; then
                 _ask "The port in ${_def_host}:${_def_port} might not be reachable. Is this OK?" "Y"
                 if _isYes ; then break; fi
             else
@@ -819,7 +902,7 @@ _q_docker_repos() {
     done
     echo "${_def_host}:${_def_port}"
 }
-_cancelInterview() {
+function _cancelInterview() {
     echo ""
     echo ""
     _ask "Before exiting, would you like to save your current responses?" "N"
@@ -832,6 +915,7 @@ _cancelInterview() {
 }
 
 bootstrap() {
+    local _no_update="${1-${_AUTO}}"
     # NOTE: if _AUTO, not checking updates to be safe.
     if [ ! -d "${_UTIL_DIR%/}" ]; then
         mkdir -p "${_UTIL_DIR%/}" || exit $?
@@ -848,11 +932,11 @@ bootstrap() {
     else
         source "${_UTIL_DIR%/}/utils.sh"
         _log "DEBUG" "_check_update ${_UTIL_DIR%/}/utils.sh with"
-        ${_AUTO} || _check_update "${_UTIL_DIR%/}/utils.sh"
+        ${_no_update} || _check_update "${_UTIL_DIR%/}/utils.sh"
     fi
     source "${_UTIL_DIR%/}/utils.sh"
     _log "DEBUG" "_check_update $BASH_SOURCE with force:N"
-    ${_AUTO} || _check_update "$BASH_SOURCE" "" "N"
+    ${_no_update} || _check_update "$BASH_SOURCE" "" "N"
 }
 
 main() {
@@ -874,27 +958,27 @@ main() {
     fi
 
     if _isYes "${r_NEXUS_INSTALL}"; then
-        if ${r_DOCKER_CMD} ps --format "{{.Names}}" | grep -qE "^${r_NEXUS_CONTAINER_NAME}$"; then
-            _log "INFO" "Container name '${r_NEXUS_CONTAINER_NAME}' already exists. So that starting instead of docker run...";sleep 3
-            ${r_DOCKER_CMD} start ${r_NEXUS_CONTAINER_NAME} || return $?
+        if _isYes "${r_NEXUS_INSTALL_HAC}"; then
+            for _i in {1..3}; do
+                local _v_name="r_NEXUS_CONTAINER_NAME_${_i}"
+                local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
+                _docker_run_or_start "${!_v_name}" "${!_v_name_m}" || return $?
+                # If HA-C, needs to wait the first node starts (TODO: what if not 8081?)
+                if ! _wait_url "http://${!_v_name}.${_DOMAIN#.}:8081/"; then
+                    _log "ERROR" "${!_v_name}.${_DOMAIN#.} is unreachable"
+                    return 1
+                fi
+            done
+            r_NEXUS_MOUNT_DIR="${r_NEXUS_MOUNT_DIR_1}"
         else
-            _log "INFO" "Creating a container for Nexus."
-            # TODO: normally container fails after a few minutes, so checking the exit code of docker run is useless
-            _docker_run || return $?
-            _log "INFO" "\"${r_DOCKER_CMD} run\" executed. Check progress with \"${r_DOCKER_CMD} logs -f ${r_NEXUS_CONTAINER_NAME}\""
+            _docker_run_or_start "${r_NEXUS_CONTAINER_NAME}"
+            # 'main' requires "r_NEXUS_URL"
+            if [ -z "${r_NEXUS_URL}" ] || ! _wait_url "${r_NEXUS_URL}"; then
+                _log "ERROR" "${r_NEXUS_URL} is unreachable"
+                return 1
+            fi
         fi
-    elif _isYes "${r_NEXUS_START}" && [ -n "${r_DOCKER_CMD}" ] && [ -n "${r_NEXUS_CONTAINER_NAME}" ]; then
-        ${r_DOCKER_CMD} start ${r_NEXUS_CONTAINER_NAME} || return $?
     fi
-
-    # 'main' requires "r_NEXUS_URL"
-    if [ -z "${r_NEXUS_URL}" ] || ! _wait_url "${r_NEXUS_URL}"; then
-        _log "ERROR" "${r_NEXUS_URL} is unreachable"
-        return 1
-    fi
-
-    _log "INFO" "Creating 'testuser' it it hasn't been created."
-    f_testuser &>/dev/null  # it's OK if this fails
 
     # If admin.password is accessible from this host, update with the default password.
     if [ -n "${r_NEXUS_MOUNT_DIR}" ] && [ -s "${r_NEXUS_MOUNT_DIR%/}/admin.password" ]; then
@@ -903,14 +987,16 @@ main() {
         f_api "/service/rest/beta/security/users/admin/change-password" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "PUT" "admin" "$(cat "${r_NEXUS_MOUNT_DIR%/}/admin.password")"
     fi
 
+    _log "INFO" "Creating 'testuser' it it hasn't been created."
+    f_testuser &>/dev/null  # it's OK if this fails
+
     if ! _does_blob_exist "${r_BLOB_NAME}"; then
-        if [ -s ${_TMP%/}/_does_blob_exist$$.out ]; then
+        if ! f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${r_BLOB_NAME}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${r_BLOB_NAME}'"}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
             _log "ERROR" "Blobstore ${r_BLOB_NAME} does not exist."
+            _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
             return 1
-        else
-            _log "WARN" "Blobstore ${r_BLOB_NAME} *may* not exist, but keep continuing..."
-            sleep 5
         fi
+        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     for _f in `echo "${r_REPO_FORMATS:-"${_REPO_FORMATS}"}" | sed 's/,/ /g'`; do
         _log "DEBUG" "Executing f_setup_${_f} ..."
@@ -951,4 +1037,6 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
     bootstrap   # at this moment, if bootstrap fails, keeps going.
     main
+else
+    bootstrap true
 fi

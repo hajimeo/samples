@@ -91,10 +91,11 @@ function _load_resp() {
     local _file_path="${1}"
 
     if [ -z "${_file_path}" ]; then
-        echo "Available response files under current directory:
+        local _default_file_path="$(ls -1t ./*.resp 2>/dev/null | head -n1)"
+        if [ -n "${_default_file_path}" ]; then
+            echo "Available response files under current directory:
 $(ls -1t ./*.resp)"
-        local _default_file_path="$(ls -1t ./*.resp | head -n1)"
-        _file_path=""
+        fi
         _ask "Type a response file path" "$_default_file_path" "_file_path" "N" "Y"
     fi
 
@@ -109,6 +110,62 @@ $(ls -1t ./*.resp)"
     rm -f .${FUNCNAME}_${__PID}.tmp  # clean up the temp file
     touch ${_file_path} # To update modified datetime
     _log "INFO" "Loaded $_file_path"
+}
+
+function _update_hosts_file() {
+    local _fqdn="$1"
+    local _ip="$2"
+    local _file="${3:-"/etc/hosts"}"
+    local _is_beginning="${4}"
+
+    if [ -z "${_fqdn}" ]; then
+        _log "ERROR" "hostname (FQDN) is required"; return 11
+    fi
+    local _name="`echo "${_fqdn}" | cut -d"." -f1`"
+    # Checking if this combination is already in the hosts file. TODO: this regex is not perfect
+    local _old_ip="$(_sed -nr "s/^([0-9.]+).*\s${_fqdn}.*$/\1/p" ${_file})"
+
+    if [ -z "${_ip}" ]; then
+        if [[ ! "${_is_beginning}" =~ ^(y|Y) ]] || [ -z "${_old_ip}" ]; then
+            _log "ERROR" "IP is required"; return 12
+        else
+            _log "INFO" "Using ${_old_ip} for IP"
+            _ip="${_old_ip}"
+        fi
+    else
+        # Already configured, so do nothing.
+        [ "${_old_ip}" = "${_ip}" ] && return 0
+    fi
+
+    # Take backup before modifying
+    _backup ${_file} || return $?
+
+    local _tmp_file="`mktemp`"
+    cp -f ${_file} ${_tmp_file} || return $?
+
+    if [[ ! "${_is_beginning}" =~ ^(y|Y) ]]; then
+        # Remove all lines contain hostname or IP. NOTE: sudo _sed won't work
+        _sed -i -r "/\s${_fqdn}\s+${_name}\s?/d" ${_tmp_file}
+        _sed -i -r "/\s${_fqdn}\s?/d" ${_tmp_file}
+        _sed -i -r "/^${_ip}\s?/d" ${_tmp_file}
+    fi
+
+    # This shouldn't match but just in case
+    [ -n "${_old_ip}" ] && _sed -i -r "/^${_old_ip}\s?/d" ${_tmp_file}
+
+    if [[ ! "${_is_beginning}" =~ ^(y|Y) ]]; then
+        # Append in the end of file
+        # it seems sed a (append) does not work if file is empty
+        #_sed -i -e "\$a${_ip} ${_fqdn} ${_name}" ${_tmp_file}
+        echo "${_ip} ${_fqdn} ${_name}" >> ${_tmp_file}
+    else
+        # as _is_beginning is Y, adding this host before other hosts
+        _sed -i "/^${_ip}\s/ s/${_ip}\s/${_ip} ${_fqdn} /" ${_tmp_file}
+    fi
+
+    _log "INFO" "Updating ${_file} for ${_fqdn} ${_ip} (may require 'sudo' password) ..."
+    # Some OS such as Mac is hard to modify /etc/hosts file but seems below works
+    cat ${_tmp_file} | sudo tee ${_file} >/dev/null
 }
 
 function _b64_url_enc() {
@@ -289,6 +346,53 @@ function _backup() {
     fi
     cp -p ${_file_path} ${_backup_dir%/}/${_new_file_name} || return $?
     _log "DEBUG" "Backup-ed ${_file_path} to ${_backup_dir%/}/${_new_file_name}"
+}
+
+function _upsert() {
+    local __doc__="Modify the given file with given name and value."
+    local _file_path="$1"
+    local _name="$2"
+    local _value="$3"
+    local _if_not_exist_append_after="$4"    # This needs to be a beginning of a line, not search keyword
+    local _between_char="${5-"="}"
+    local _comment_char="${6-"#"}"
+    # NOTE & TODO: Not sure why /\\\&/ works, should be /\\&/ ...
+    local _name_esc_sed=`echo "${_name}" | _sed 's/[][\.^$*\/"&-]/\\\&/g'`
+    local _name_esc_sed_for_val=`echo "${_name}" | _sed 's/[\/]/\\\&/g'`
+    local _name_escaped=`printf %q "${_name}"`
+    local _value_esc_sed=`echo "${_value}" | _sed 's/[\/]/\\\&/g'`
+    local _value_escaped=`printf %q "${_value}"`
+
+    [ ! -f "${_file_path}" ] && return 11
+    # Make a backup
+    local _file_name="`basename "${_file_path}"`"
+    [ ! -f "${_TMP%/}/${_file_name}.orig" ] && cp -p "${_file_path}" "${_TMP%/}/${_file_name}.orig"
+
+    # If name=value is already set, all good
+    grep -qP "^\s*${_name_escaped}\s*${_between_char}\s*${_value_escaped}\b" "${_file_path}" && return 0
+
+    # If name= is already set, replace all with /g
+    if grep -qP "^\s*${_name_escaped}\s*${_between_char}" "${_file_path}"; then
+        _sed -i -r "s/^([[:space:]]*${_name_esc_sed})([[:space:]]*${_between_char}[[:space:]]*)[^${_comment_char} ]*(.*)$/\1\2${_value_esc_sed}\3/g" "${_file_path}"
+        return $?
+    fi
+
+    # If name= is not set and no _if_not_exist_append_after, just append in the end of line
+    if [ -z "${_if_not_exist_append_after}" ]; then
+        if [ ! -s "${_file_path}" ] || [ -z "$(tail -c 1 "${_file_path}")" ]; then
+            echo -e "${_name}${_between_char}${_value}" >> ${_file_path}
+        else
+            echo -e "\n${_name}${_between_char}${_value}" >> ${_file_path}
+        fi
+        return $?
+    fi
+
+    # If name= is not set and _if_not_exist_append_after is set, inserting
+    if [ -n "${_if_not_exist_append_after}" ]; then
+        local _if_not_exist_append_after_sed="`echo "${_if_not_exist_append_after}" | _sed 's/[][\.^$*\/"&]/\\\&/g'`"
+        _sed -i -r "0,/^(${_if_not_exist_append_after_sed}.*)$/s//\1\n${_name_esc_sed_for_val}${_between_char}${_value_esc_sed}/" ${_file_path}
+        return $?
+    fi
 }
 
 function _log() {
