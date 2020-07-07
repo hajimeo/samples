@@ -63,6 +63,7 @@ _ADMIN_PWD="admin123"
 _REPO_FORMATS="maven,pypi,npm,docker,yum,rubygem,raw,conan"
 
 ## Updatable variables
+_NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
 _IS_NXRM2=${_IS_NXRM2:-"N"}
 _NO_DATA=${_NO_DATA:-"N"}
 _TID="${_TID:-80}"
@@ -324,7 +325,7 @@ function _nexus_yum_repo() {
     local _repo="${1:-"yum-group"}"
     local _out_file="${2:-"/etc/yum.repos.d/nexus-yum-test.repo"}"
     local _blob_name="${3:-"${r_BLOB_NAME:-"default"}"}"
-    local _base_url="${r_NEXUS_URL:-"http://localhost:8081/"}"
+    local _base_url="${r_NEXUS_URL:-"${_NEXUS_URL}"}"
 
     local _repo_url="${_base_url%/}/repository/${_repo}"
 echo '[nexusrepo]
@@ -419,7 +420,7 @@ function f_get_and_upload_jars() {
     local _group_id="$2"
     local _artifact_id="$3"
     local _versions="$4"
-    local _base_url="${5:-"${r_NEXUS_URL:-"http://localhost:8081/"}"}"
+    local _base_url="${5:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
 
     for _v in ${_versions}; do
         # TODO: currently only maven / maven2, and doesn't work with non usual filenames
@@ -456,7 +457,7 @@ function _get_asset() {
     local _repo="$1"
     local _path="$2"
     local _out_path="${3:-"/dev/null"}"
-    local _base_url="${4:-"${r_NEXUS_URL:-"http://localhost:8081/"}"}"
+    local _base_url="${4:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     local _user="${5:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"
     local _pwd="${6:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
     if [[ "${_NO_DATA}" =~ ^[yY] ]]; then
@@ -473,19 +474,19 @@ function _get_asset() {
         return ${_rc}
     fi
 }
-# For NXRM2
+# For NXRM2. TODO: may not work with some repo
 function _get_asset_NXRM2() {
     local _repo="$1"
     local _path="$2"
     local _out_path="${3:-"/dev/null"}"
-    local _base_url="${4:-"${r_NEXUS_URL:-"http://localhost:8081/"}"}"
+    local _base_url="${4:-"${r_NEXUS_URL:-"${_NEXUS_URL%/}/nexus/"}"}"
     local _usr="${4:-${r_ADMIN_USER:-"${_ADMIN_USER}"}}"
     local _pwd="${5-${r_ADMIN_PWD:-"${_ADMIN_PWD}"}}"   # If explicitly empty string, curl command will ask password (= may hang)
 
     if [[ "${_NO_DATA}" =~ ^[yY] ]]; then
         _log "INFO" "_NO_DATA is set so no action."; return 0
     fi
-    curl -sf -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_usr}:${_pwd} -k "${_base_url%/}/content/repository/${_repo%/}/${_path#/}"
+    curl -sf -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_usr}:${_pwd} -k "${_base_url%/}/content/repositories/${_repo%/}/${_path#/}"
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
         _log "ERROR" "Failed to get ${_base_url%/}/content/repository/${_repo%/}/${_path#/} (${_rc})"
@@ -500,7 +501,7 @@ function f_upload_asset() {
     # NOTE: Because _forms takes all arguments except first one, can't assign any other arguments
     local _usr="${r_ADMIN_USER:-"${_ADMIN_USER}"}"
     local _pwd="${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"   # If explicitly empty string, curl command will ask password (= may hang)
-    local _base_url="${r_NEXUS_URL:-"http://localhost:8081/"}"
+    local _base_url="${r_NEXUS_URL:-"${_NEXUS_URL}"}"
     if [[ "${_NO_DATA}" =~ ^[yY] ]]; then
         _log "INFO" "_NO_DATA is set so no action."; return 0
     fi
@@ -558,7 +559,7 @@ function f_apiS() {
     local _method="${2}"
     local _usr="${3:-${r_ADMIN_USER:-"${_ADMIN_USER}"}}"
     local _pwd="${4-${r_ADMIN_PWD:-"${_ADMIN_PWD}"}}"   # Accept an empty password
-    local _nexus_url="${5:-${r_NEXUS_URL:-"http://localhost:8081/"}}"
+    local _nexus_url="${5:-${r_NEXUS_URL:-"${_NEXUS_URL}"}}"
 
     local _usr_b64="$(_b64_url_enc "${_usr}")"
     local _pwd_b64="$(_b64_url_enc "${_pwd}")"
@@ -609,7 +610,7 @@ function f_api() {
     local _method="${3}"
     local _usr="${4:-${r_ADMIN_USER:-"${_ADMIN_USER}"}}"
     local _pwd="${5-${r_ADMIN_PWD:-"${_ADMIN_PWD}"}}"   # If explicitly empty string, curl command will ask password (= may hang)
-    local _nexus_url="${6:-"${r_NEXUS_URL:-"http://localhost:8081/"}"}"
+    local _nexus_url="${6:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
 
     local _user_pwd="${_usr}"
     [ -n "${_pwd}" ] && _user_pwd="${_usr}:${_pwd}"
@@ -672,6 +673,7 @@ function _docker_run_or_start() {
         _docker_run "${_name}" "${_mount}" || return $?
         _log "INFO" "\"${_cmd} run\" executed. Check progress with \"${_cmd} logs -f ${_name}\""
     fi
+    # To test name resolution (no nslookup,ping,nc): docker exec -ti nexus3240-1 curl -I http://nexus3240-3.standalone.localdomain:8081/
     f_update_hosts_for_container "${_name}"
 }
 function _docker_run() {
@@ -981,13 +983,13 @@ main() {
     fi
 
     # If admin.password is accessible from this host, update with the default password.
-    if [ -n "${r_NEXUS_MOUNT_DIR}" ] && [ -s "${r_NEXUS_MOUNT_DIR%/}/admin.password" ]; then
+    if [ -n "${r_NEXUS_MOUNT_DIR:-${r_NEXUS_MOUNT_DIR_1}}" ] && [ -s "${r_NEXUS_MOUNT_DIR:-${r_NEXUS_MOUNT_DIR_1}}/admin.password" ]; then
         # I think it's ok to type 'admin' in here
         _log "INFO" "Updating 'admin' user's password..."
-        f_api "/service/rest/beta/security/users/admin/change-password" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "PUT" "admin" "$(cat "${r_NEXUS_MOUNT_DIR%/}/admin.password")"
+        f_api "/service/rest/beta/security/users/admin/change-password" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "PUT" "admin" "$(cat "${r_NEXUS_MOUNT_DIR:-${r_NEXUS_MOUNT_DIR_1}}/admin.password")"
     fi
 
-    _log "INFO" "Creating 'testuser' it it hasn't been created."
+    _log "INFO" "Creating 'testuser' if it hasn't been created."
     f_testuser &>/dev/null  # it's OK if this fails
 
     if ! _does_blob_exist "${r_BLOB_NAME}"; then
