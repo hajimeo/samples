@@ -64,6 +64,7 @@ _REPO_FORMATS="maven,pypi,npm,docker,yum,rubygem,raw,conan"
 
 ## Updatable variables
 _NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
+_DOCKER_NETWORK_NAME=${_DOCKER_NETWORK_NAME:-"nexus"}
 _IS_NXRM2=${_IS_NXRM2:-"N"}
 _NO_DATA=${_NO_DATA:-"N"}
 _TID="${_TID:-80}"
@@ -77,6 +78,7 @@ else
     _WORK_DIR="/var/tmp/share/sonatype"
 fi
 _TMP="$(mktemp -d)"  # for downloading/uploading assets
+_LOG_FILE_PATH="/tmp/setup_nexus3_repos.log"
 
 # Variables which used by command arguments
 _AUTO=false
@@ -89,7 +91,7 @@ function f_setup_maven() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
 
     # If no xxxx-proxy, create it
-    if ! _does_repo_exist "${_prefix}-proxy"; then
+    if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"https://repo1.maven.org/maven2/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
@@ -98,7 +100,7 @@ function f_setup_maven() {
     _get_asset "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar" "${_TMP%/}/junit-4.12.jar" || return $?
 
     # If no xxxx-hosted, create it
-    if ! _does_repo_exist "${_prefix}-hosted"; then
+    if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"maven2-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
@@ -107,7 +109,7 @@ function f_setup_maven() {
     f_upload_asset "${_prefix}-hosted" -F maven2.groupId=junit -F maven2.artifactId=junit -F maven2.version=4.21 -F maven2.asset1=@${_TMP%/}/junit-4.12.jar -F maven2.asset1.extension=jar
 
     # If no xxxx-group, create it
-    if ! _does_repo_exist "${_prefix}-group"; then
+    if ! _is_repo_available "${_prefix}-group"; then
         # Hosted first
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"maven2-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
@@ -126,7 +128,7 @@ function f_setup_pypi() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
 
     # If no xxxx-proxy, create it
-    if ! _does_repo_exist "${_prefix}-proxy"; then
+    if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://pypi.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"pypi-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
@@ -134,7 +136,7 @@ function f_setup_pypi() {
     _get_asset "${_prefix}-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz" "${_TMP%/}/Unit-0.2.2.tar.gz" || return $?
 
     # If no xxxx-hosted, create it
-    if ! _does_repo_exist "${_prefix}-hosted"; then
+    if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"pypi-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
@@ -142,7 +144,7 @@ function f_setup_pypi() {
     f_upload_asset "${_prefix}-hosted" -F "pypi.asset=@${_TMP%/}/Unit-0.2.2.tar.gz"
 
     # If no xxxx-group, create it
-    if ! _does_repo_exist "${_prefix}-group"; then
+    if ! _is_repo_available "${_prefix}-group"; then
         # Hosted first
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"pypi-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
@@ -156,7 +158,7 @@ function f_setup_npm() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
 
     # If no xxxx-proxy, create it
-    if ! _does_repo_exist "${_prefix}-proxy"; then
+    if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.npmjs.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
@@ -164,7 +166,7 @@ function f_setup_npm() {
     _get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.4.tgz" "${_TMP%/}/lodash-4.17.15.tgz" || return $?
 
     # If no xxxx-hosted, create it
-    if ! _does_repo_exist "${_prefix}-hosted"; then
+    if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
@@ -172,7 +174,7 @@ function f_setup_npm() {
     f_upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/lodash-4.17.15.tgz"
 
     # If no xxxx-group, create it
-    if ! _does_repo_exist "${_prefix}-group"; then
+    if ! _is_repo_available "${_prefix}-group"; then
         # Hosted first
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"npm-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
@@ -188,33 +190,33 @@ function f_setup_docker() {
     #local _opts="--tls-verify=false"    # TODO: only for podman. need an *easy* way to use http for 'docker'
 
     # If no xxxx-proxy, create it
-    if ! _does_repo_exist "${_prefix}-proxy"; then
+    if ! _is_repo_available "${_prefix}-proxy"; then
         # "httpPort":18178 - 18179
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18178,"httpsPort":18179,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://registry-1.docker.io","contentMaxAge":1440,"metadataMaxAge":1440},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"undefined":[false,false],"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-proxy
-    _docker_proxy
+    f_populate_docker_proxy
 
     # If no xxxx-hosted, create it
-    if ! _does_repo_exist "${_prefix}-hosted"; then
+    if ! _is_repo_available "${_prefix}-hosted"; then
         # Using "httpPort":18181 - 18182,
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18181,"httpsPort":18182,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-hosted
-    _docker_hosted
+    f_populate_docker_hosted
 
     # If no xxxx-group, create it
-    if ! _does_repo_exist "${_prefix}-group"; then
+    if ! _is_repo_available "${_prefix}-group"; then
         # Using "httpPort":18174 - 18175
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18184,"httpsPort":18185,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false},"group":{"memberNames":["docker-hosted","docker-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-group
-    _docker_proxy "hello-world" "${r_DOCKER_GROUP}" "18185 18184"
+    f_populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "18185 18184"
 }
-function _docker_login() {
+function f_docker_login() {
     local _host_port="${1}"
     local _backup_ports="${2}"
     local _user="${3:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"
@@ -243,12 +245,12 @@ function _docker_login() {
     ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} &>/dev/null || return $?
     echo "${_host_port}"
 }
-function _docker_proxy() {
+function f_populate_docker_proxy() {
     local _tag_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_PROXY}"}"
     local _backup_ports="${3:-"18179 18178"}"
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
-    _host_port="$(_docker_login "${_host_port}" "${_backup_ports}")" || return $?
+    _host_port="$(f_docker_login "${_host_port}" "${_backup_ports}")" || return $?
 
     for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_tag_name}"); do
         _log "WARN" "Deleting ${_imn} (wait for 5 secs)";sleep 5
@@ -259,12 +261,12 @@ function _docker_proxy() {
     _log "DEBUG" "${_cmd} pull ${_host_port}/${_tag_name}"
     ${_cmd} pull ${_host_port}/${_tag_name} || return $?
 }
-function _docker_hosted() {
+function f_populate_docker_hosted() {
     local _tag_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_HOSTED}"}"
     local _backup_ports="${3:-"18182 18181"}"
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
-    _host_port="$(_docker_login "${_host_port}" "${_backup_ports}")" || return $?
+    _host_port="$(f_docker_login "${_host_port}" "${_backup_ports}")" || return $?
 
     # In _docker_proxy, the image might be already pulled.
     if ! ${_cmd} tag ${_host_port:-"localhost"}/${_tag_name} ${_host_port}/${_tag_name}; then
@@ -287,20 +289,20 @@ function f_setup_yum() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
 
     # If no xxxx-proxy, create it
-    if ! _does_repo_exist "${_prefix}-proxy"; then
+    if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"http://mirror.centos.org/centos/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-proxy
     if which yum &>/dev/null; then
-        _nexus_yum_repo "${_prefix}-proxy"
+        f_generate_yum_repo_file "${_prefix}-proxy"
         yum --disablerepo="*" --enablerepo="nexusrepo" install --downloadonly --downloaddir=${_TMP%/} dos2unix || return $?
     else
         _get_asset "${_prefix}-proxy" "7/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm" || return $?
     fi
 
     # If no xxxx-hosted, create it
-    if ! _does_repo_exist "${_prefix}-hosted"; then
+    if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"yum":{"repodataDepth":1,"deployPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"yum-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
@@ -314,14 +316,14 @@ function f_setup_yum() {
     #curl -u 'admin:admin123' --upload-file /etc/pki/rpm-gpg/RPM-GPG-KEY-pmanager ${r_NEXUS_URL%/}/repository/yum-hosted/RPM-GPG-KEY-pmanager
 
     # If no xxxx-group, create it
-    if ! _does_repo_exist "${_prefix}-group"; then
+    if ! _is_repo_available "${_prefix}-group"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"yum-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-group
     _get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
 }
-function _nexus_yum_repo() {
+function f_generate_yum_repo_file() {
     local _repo="${1:-"yum-group"}"
     local _out_file="${2:-"/etc/yum.repos.d/nexus-yum-test.repo"}"
     local _blob_name="${3:-"${r_BLOB_NAME:-"default"}"}"
@@ -342,21 +344,21 @@ function f_setup_rubygem() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
 
     # If no xxxx-proxy, create it
-    if ! _does_repo_exist "${_prefix}-proxy"; then
+    if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://rubygems.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"rubygems-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # TODO: add some data for xxxx-proxy
 
     # If no xxxx-hosted, create it
-    if ! _does_repo_exist "${_prefix}-hosted"; then
+    if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"rubygems-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # TODO: add some data for xxxx-hosted
 
     # If no xxxx-group, create it
-    if ! _does_repo_exist "${_prefix}-group"; then
+    if ! _is_repo_available "${_prefix}-group"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["gems-hosted","gems-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"rubygems-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
@@ -372,7 +374,7 @@ function f_setup_raw() {
     # TODO: add some data for xxxx-proxy
 
     # If no xxxx-hosted, create it
-    if ! _does_repo_exist "${_prefix}-hosted"; then
+    if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
@@ -388,7 +390,7 @@ function f_setup_conan() {
     # NOTE: If you disabled Anonymous access, then it is needed to enable the Conan Bearer Token Realm (via Administration > Security > Realms):
 
     # If no xxxx-proxy, create it (No HA, but seems to work with HA???)
-    if ! _does_repo_exist "${_prefix}-proxy"; then
+    if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://conan.bintray.com","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conan-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
@@ -528,7 +530,7 @@ function f_upload_asset() {
     #fi
 }
 
-function _does_repo_exist() {
+function _is_repo_available() {
     local _repo_name="$1"
     # At this moment, not always checking
     find ${_TMP%/}/ -type f -name '_does_repo_exist*.out' -mmin +5 -delete 2>/dev/null
@@ -540,7 +542,7 @@ function _does_repo_exist() {
         grep -iq "\"${_repo_name}\"" ${_TMP%/}/_does_repo_exist$$.out
     fi
 }
-function _does_blob_exist() {
+function _is_blob_available() {
     local _blob_name="$1"
     # At this moment, not always checking
     find ${_TMP%/}/ -type f -name '_does_blob_exist*.out' -mmin +5 -delete 2>/dev/null
@@ -647,7 +649,7 @@ function f_update_hosts_for_container() {
     [ -z "${_container_name}" ] && return 1
     [ -z "${_hostname}" ] && _hostname="${_container_name}.${_DOMAIN#.}"
 
-    local _container_ip="`${_cmd} exec -it ${_container_name} hostname -i | tr -cd "[:print:]"`"   # remove unnecessary control characters
+    local _container_ip="`f_get_container_ip "${_container_name}" "${_cmd}"`"
     if [ -z "${_container_ip}" ]; then
         _log "WARN" "${_container_name} is not returning IP. Please update hosts file manually."
         return 1
@@ -678,27 +680,34 @@ Mac: open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --prox
 Win: \"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe\" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}"
 }
 
-
-function _docker_run_or_start() {
+function f_docker_run_or_start() {
     local _name="$1"
     local _mount="$2"
-    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
+    local _ip="$3"
+    local _add_hosts="$4"
+    local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
+
     if ${_cmd} ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
         _log "WARN" "Container:'${_name}' already exists. So that starting instead of docker run...";sleep 3
         ${_cmd} start ${_name} || return $?
     else
         _log "INFO" "Creating Container:${_name} for Nexus."
         # TODO: normally container fails after a few minutes, so checking the exit code of docker run is useless
-        _docker_run "${_name}" "${_mount}" || return $?
+        f_docker_run "${_name}" "${_mount}" "${_ip}" "${_add_hosts}" || return $?
         _log "INFO" "\"${_cmd} run\" executed. Check progress with \"${_cmd} logs -f ${_name}\""
     fi
+    sleep 3
+    # Even specifying --ip, get IP from the container in below function
     f_update_hosts_for_container "${_name}"
 }
-function _docker_run() {
+
+function f_docker_run() {
     # TODO: shouldn't use any global variables in a function.
     local _name="$1"
     local _mount="$2"
-    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
+    local _ip="$3"
+    local _add_hosts="$4"
+    local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
 
     local _p=""
     if ! _isYes "${r_NEXUS_INSTALL_HAC}"; then
@@ -768,22 +777,85 @@ nexus.hazelcast.discovery.isEnabled=false' >> ${_mount%/}/etc/nexus.properties |
         fi
     fi
 
-    [ -z "${_INTERNAL_DNS}" ] && _INTERNAL_DNS="$(docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+').1"
-
+    #[ -z "${_INTERNAL_DNS}" ] && _INTERNAL_DNS="$(docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+').1"
     [ -z "${INSTALL4J_ADD_VM_PARAMS}" ] && INSTALL4J_ADD_VM_PARAMS="-Xms1g -Xmx2g -XX:MaxDirectMemorySize=1g"
-    local _full_cmd="${_cmd} run -t -d ${_p} --name=${_name} --hostname=${_name}.${_DOMAIN#.} --dns=${_INTERNAL_DNS} \\
+    local _full_cmd="${_cmd} run -t -d ${_p} --name=${_name} --hostname=${_name}.${_DOMAIN#.} \\
         ${_v_opt} \\
+        --network=${_DOCKER_NETWORK_NAME} --ip=${_ip} ${_add_hosts} \\
         -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\" \\
         sonatype/nexus3:${r_NEXUS_VERSION}"
     _log "DEBUG" "${_full_cmd}"
     eval "${_full_cmd}" || return $?
 }
 
+function f_docker_network() {
+    local _network_name="${1:-"${_DOCKER_NETWORK_NAME}"}"
+    local _cmd="${2:-"${r_DOCKER_CMD:-"docker"}"}"
+
+    docker network ls --format "{{.Name}}" | grep -qE "^${_network_name}$" && return 0
+    # Let docker decide the Gateway and Subnet.
+    ${_cmd} network create ${_network_name} || return $?
+}
+
+function f_get_available_container_ip() {
+    local _hostname="${1}"  # optional
+    local _check_file="${2:-"/etc/hosts"}"  # or /etc/banner_add_hosts
+    local _subnet="${3}"    # 172.18.0.0
+    local _network_name="${4:-${_DOCKER_NETWORK_NAME:-"bridge"}}"
+    local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
+
+    [ -z "${_subnet}" ] && _subnet="$(${_cmd} inspect ${_network_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')"
+    local _subnet_24="$(echo "${_subnet}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+
+    if [ -n "${_hostname}" ]; then
+        local _short_name="`echo "${_hostname}" | cut -d"." -f1`"
+        [ "${_short_name}" == "${_hostname}" ] && _hostname="${_short_name}.${_DOMAIN#.}"
+
+        # If the IP is in the /etc/hosts, reuse it
+        local _ip="$(grep -E "^${_subnet_24%.}\.[0-9]+\s+${_hostname}\s*" ${_check_file} | awk '{print $1}')"
+        if [ -n "${_ip}" ]; then
+            echo "${_ip}"
+            return 0
+        fi
+    fi
+
+    ${_cmd} network inspect ${_network_name} | grep '"IPv4Address"' > ${_TMP%/}/${_cmd}_network_${_network_name}_IPs.out
+    # Using the range 101 - 199
+    for _i in {101..199}; do
+        if ! grep -q "\"${_subnet_24%.}.${_i}/" ${_TMP%/}/${_cmd}_network_${_network_name}_IPs.out; then
+            echo "${_subnet_24%.}.${_i}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+function f_generate_hazelcast_xml() {
+    curl -s -f -m 7 --retry 2 -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/hazelcast-network.tmpl.xml" -o "${_TMP%/}/hazelcast-network.xml" || return $?
+    for _i in {1..3}; do
+        local _v_name="r_NEXUS_CONTAINER_NAME_${_i}"
+        local _container_ip="`f_get_container_ip "${_container_name}" "${_cmd}"`"
+        _sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_container_ip}<\/member>/" "${_TMP%/}/hazelcast-network.xml" || return $?
+    done
+    for _i in {1..3}; do
+        local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
+        [ ! -d "${!_v_name_m}/etc/fabric" ] && mkdir -p "${!_v_name_m}/etc/fabric"
+        [ -s "${!_v_name_m}/etc/fabric/hazelcast-network.xml" ] && _backup "${!_v_name_m}/etc/fabric/hazelcast-network.xml"
+        cat "${_TMP%/}/hazelcast-network.xml" > "${!_v_name_m}/etc/fabric/hazelcast-network.xml" || return $?
+    done
+}
+
+function f_get_container_ip() {
+    local _container_name="$1"
+    local _cmd="${2:-"${r_DOCKER_CMD:-"docker"}"}"
+    ${_cmd} exec -it ${_container_name} hostname -i | tr -cd "[:print:]"   # remove unnecessary control characters
+}
+
 function interview() {
     _log "INFO" "Ask a few questions to setup this Nexus.
 You can stop this interview anytime by pressing 'Ctrl+c' (except while typing secret/password).
 "
-    trap '_cancelInterview' SIGINT
+    trap 'interview_cancel_handler' SIGINT
     while true; do
         questions
         echo "=================================================================="
@@ -825,26 +897,26 @@ function questions() {
                 # NOTE: mounting a volume to sonatype-work is mandatory for HA-C
                 r_NEXUS_MOUNT="Y"
                 for _i in {1..3}; do
-                    _ask "Nexus container name ${_i}" "nexus${_ver_num}-${_i}" "r_NEXUS_CONTAINER_NAME_${_i}" "N" "N" "_check_container_name"
+                    _ask "Nexus container name ${_i}" "nexus${_ver_num}-${_i}" "r_NEXUS_CONTAINER_NAME_${_i}" "N" "N" "_is_container_name"
                     local _tmp_v_name="r_NEXUS_CONTAINER_NAME_${_i}"
-                    _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/nexus-data_${!_tmp_v_name}" "r_NEXUS_MOUNT_DIR_${_i}" "N" "Y" "_check_dir_or_file_exists"
+                    _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/nexus-data_${!_tmp_v_name}" "r_NEXUS_MOUNT_DIR_${_i}" "N" "Y" "_is_existed"
                 done
-                _ask "Mount path for shared blobstore" "${_WORK_DIR%/}/nexus-data_nexus${_ver_num}_shared_blobs" "r_NEXUS_MOUNT_DIR_SHARED" "N" "Y" "_check_dir_or_file_exists"
+                _ask "Mount path for shared blobstore" "${_WORK_DIR%/}/nexus-data_nexus${_ver_num}_shared_blobs" "r_NEXUS_MOUNT_DIR_SHARED" "N" "Y" "_is_existed"
                 _ask "Would you like to start a Socks proxy (if you do not have a reverse proxy)" "N" "r_SOCKS_PROXY"
                 if _isYes "${r_SOCKS_PROXY}"; then
                     _ask "Socks proxy port" "48484" "r_SOCKS_PROXY_PORT"
                 fi
             else
-                _ask "Nexus container name" "nexus${_ver_num}" "r_NEXUS_CONTAINER_NAME" "N" "N" "_check_container_name"
+                _ask "Nexus container name" "nexus${_ver_num}" "r_NEXUS_CONTAINER_NAME" "N" "N" "_is_container_name"
                 _ask "Would you like to mount SonatypeWork directory?" "Y" "r_NEXUS_MOUNT" "N" "N"
                 if _isYes "${r_NEXUS_MOUNT}"; then
-                    _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}" "r_NEXUS_MOUNT_DIR" "N" "Y" "_check_dir_or_file_exists"
+                    _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}" "r_NEXUS_MOUNT_DIR" "N" "Y" "_is_existed"
                 fi
-                _ask "Nexus container exposing port for HTTP (for 8081)" "8081" "r_NEXUS_CONTAINER_PORT1" "N" "Y" "_check_port"
-                _ask "Nexus container exposing port for HTTPS (for 8443)" "8443" "r_NEXUS_CONTAINER_PORT2" "N" "N" "_check_port"
+                _ask "Nexus container exposing port for HTTP (for 8081)" "8081" "r_NEXUS_CONTAINER_PORT1" "N" "Y" "_is_port_available"
+                _ask "Nexus container exposing port for HTTPS (for 8443)" "8443" "r_NEXUS_CONTAINER_PORT2" "N" "N" "_is_port_available"
             fi
             _ask "Nexus license file path if you have:
-If empty, it will try finding from ${_WORK_DIR%/}/sonatype-*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_check_license_path"
+If empty, it will try finding from ${_WORK_DIR%/}/sonatype-*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_is_license_path"
         fi
     fi
 
@@ -855,7 +927,7 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype-*.lic" "" "r_NEXUS_LI
             _ask "Nexus base URL" "http://localhost:${r_NEXUS_CONTAINER_PORT1:-"8081"}/" "r_NEXUS_URL" "N" "Y"
         fi
     else
-        _ask "Nexus base URL" "" "r_NEXUS_URL" "N" "Y" "_check_url_reachability"
+        _ask "Nexus base URL" "" "r_NEXUS_URL" "N" "Y" "_is_url_reachable"
     fi
     local _host="$(hostname -f)"
     [[ "${r_NEXUS_URL}" =~ ^https?://([^:/]+).+$ ]] && _host="${BASH_REMATCH[1]}"
@@ -867,18 +939,20 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype-*.lic" "" "r_NEXUS_LI
     ## for f_setup_docker()
     if [ -n "${r_DOCKER_CMD}" ]; then
         _ask "Docker command for pull/push sample ('docker' or 'podman')" "${r_DOCKER_CMD}" "r_DOCKER_CMD" "N" "N"
-        r_DOCKER_PROXY="$(_q_docker_repos "Proxy" "${_host}" "18179")"
-        r_DOCKER_HOSTED="$(_q_docker_repos "Hosted" "${_host}" "18182")"
-        r_DOCKER_GROUP="$(_q_docker_repos "Group" "${_host}" "18185")"
+        r_DOCKER_PROXY="$(questions_docker_repos "Proxy" "${_host}" "18179")"
+        r_DOCKER_HOSTED="$(questions_docker_repos "Hosted" "${_host}" "18182")"
+        r_DOCKER_GROUP="$(questions_docker_repos "Group" "${_host}" "18185")"
     fi
 }
-function _check_container_name() {
+
+## Validate functions for interview. NOTE: needs to start with _is.
+function _is_container_name() {
     if ${r_DOCKER_CMD} ps --format "{{.Names}}" | grep -qE "^${1}$"; then
         echo "Container:'${1}' already exists." >&2
         return 1
     fi
 }
-function _check_license_path() {
+function _is_license_path() {
     if [ -n "$1" ] && [ ! -s "$1" ]; then
         echo "$1 does not exist." >&2
         return 1
@@ -890,26 +964,27 @@ function _check_license_path() {
         fi
     fi
 }
-function _check_url_reachability() {
+function _is_url_reachable() {
     if [ -n "$1" ]; then
         curl -f -s -I -L -k -m1 --retry 0 "$1"
         echo "$1 is not reachable." >&2
         return 1
     fi
 }
-function _check_port() {
+function _is_port_available() {
     if [ -n "$1" ] && _pid_by_port "$1" &>/dev/null; then
         echo "Port $1 is already in use." >&2
         return 1
     fi
 }
-function _check_dir_or_file_exists() {
+function _is_existed() {
     if [ -n "$1" ] && [ -e "$1" ]; then
         echo "$1 already exists." >&2
         return 1
     fi
 }
-function _q_docker_repos() {
+
+function questions_docker_repos() {
     local _repo_type="$1"
     local _def_host="$2"
     local _def_port="$3"
@@ -939,7 +1014,8 @@ function _q_docker_repos() {
     done
     echo "${_def_host}:${_def_port}"
 }
-function _cancelInterview() {
+
+function interview_cancel_handler() {
     echo ""
     echo ""
     _ask "Before exiting, would you like to save your current responses?" "N"
@@ -996,20 +1072,33 @@ main() {
 
     if _isYes "${r_NEXUS_INSTALL}"; then
         if _isYes "${r_NEXUS_INSTALL_HAC}"; then
+            f_docker_network || return $?
+
+            local _ip_1="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}")" || return $?
+            local _ip_2="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}")" || return $?
+            local _ip_3="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}")" || return $?
+            local _add_hosts="--add-host ${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}:${_ip_1}"
+            _add_hosts="${_add_hosts} --add-host ${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}:${_ip_2}"
+            _add_hosts="${_add_hosts} --add-host ${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}:${_ip_3}"
+
             for _i in {1..3}; do
                 local _v_name="r_NEXUS_CONTAINER_NAME_${_i}"
                 local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
-                _docker_run_or_start "${!_v_name}" "${!_v_name_m}" || return $?
-                # If HA-C, needs to wait the first node starts (TODO: what if not 8081?)
-                _log "INFO" "Waiting for starting ${!_v_name} ..."
-                if ! _wait_url "http://${!_v_name}.${_DOMAIN#.}:8081/"; then
-                    _log "ERROR" "${!_v_name}.${_DOMAIN#.} is unreachable"
-                    return 1
+                local _v_name_ip="_ip_${_i}"
+                f_docker_run_or_start "${!_v_name}" "${!_v_name_m}" "${!_v_name_ip}" ${_add_hosts} || return $?
+                if [ "${!_v_name}" == "${r_NEXUS_CONTAINER_NAME_1}" ]; then
+                    _log "INFO" "Waiting for ${r_NEXUS_CONTAINER_NAME_1} started ..."
+                    # If HA-C, needs to wait the first node starts (TODO: what if not 8081?)
+                    if ! _wait_url "http://${!_v_name}.${_DOMAIN#.}:8081/"; then
+                        _log "ERROR" "${!_v_name}.${_DOMAIN#.} is unreachable"
+                        return 1
+                    fi
                 fi
             done
+            #f_generate_hazelcast_xml   # Not using at this moment as this requires restarting.
             r_NEXUS_MOUNT_DIR="${r_NEXUS_MOUNT_DIR_1}"
         else
-            _docker_run_or_start "${r_NEXUS_CONTAINER_NAME}"
+            f_docker_run_or_start "${r_NEXUS_CONTAINER_NAME}"
             # 'main' requires "r_NEXUS_URL"
             if [ -z "${r_NEXUS_URL}" ] || ! _wait_url "${r_NEXUS_URL}"; then
                 _log "ERROR" "${r_NEXUS_URL} is unreachable"
@@ -1028,7 +1117,7 @@ main() {
     _log "INFO" "Creating 'testuser' if it hasn't been created."
     f_testuser &>/dev/null  # it's OK if this fails
 
-    if ! _does_blob_exist "${r_BLOB_NAME}"; then
+    if ! _is_blob_available "${r_BLOB_NAME}"; then
         if ! f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${r_BLOB_NAME}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${r_BLOB_NAME}'"}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
             _log "ERROR" "Blobstore ${r_BLOB_NAME} does not exist."
             _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
