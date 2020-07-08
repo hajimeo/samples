@@ -49,13 +49,12 @@ Using previously saved response file and NO interviews:
     ${_filename} -a -r ./my_saved_YYYYMMDDhhmmss.resp
 
 NOTE:
-An example of creating a docker container *manually*:
-    # NOTE: To expose sonatype-work directory, add -v ${_WORK_DIR%/}/nexus-data:/nexus-data
-    docker run -d -p 8081:8081 --name=nexus-3240 -v ${_WORK_DIR%/}:${_WORK_DIR%/} \\
-        -e INSTALL4J_ADD_VM_PARAMS='-Dnexus.licenseFile=${_WORK_DIR%/}/sonatype-license.lic' \\
-        sonatype/nexus3:3.24.0
+For fresh install with same container name:
+    docker rm -f <container>
+    sudo mv ${_WORK_DIR%/}/<mounting-volume> /tmp/  # or rm -rf
 
-Also, when you delete and re-create, not only 'docker rm -f <container>', but also 'mv /the-mounted-volume /tmp/'.
+To upgrade, if /nexus-data is a mounted volume, just reuse same response file but with newer Nexus version.
+If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from node-2 and node-3.
 "
 }
 
