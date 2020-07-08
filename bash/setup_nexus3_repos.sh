@@ -664,27 +664,31 @@ function f_update_hosts_for_container() {
 
 function f_socks5_proxy() {
     local _port="${1:-"48484"}"
-    local _cmd="ssh -4gC2TxnNf -D${_port} localhost &>/dev/null &"
     [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
+
+    local _cmd="ssh -4gC2TxnNf -D${_port} localhost &>/dev/null &"
+    local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
+
     local _pid="$(_pid_by_port "${_port}")"
     if [ -n "${_pid}" ]; then
         local _ps_comm="$(ps -o comm= -p ${_pid})"
         ps -Fwww -p ${_pid}
         if [ "${_ps_comm}" == "ssh" ]; then
             _log "INFO" "The Socks proxy might be already running (${_pid})"
-            return 0
         else
             _log "WARN" "The port:${_port} is used by PID:${_pid}. Please stop this PID or use different port."
             return 1
         fi
+    else
+        eval "${_cmd}" || return $?
+        _log "INFO" "Started socks proxy on \"${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}\"."
     fi
-    eval "${_cmd}" || return $?
 
-    local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
-    _log "INFO" "Started socks proxy on \"${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}\".
-Use this in your web browser's proxy setting. For example, if Chrome:
-Mac: open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port} ${r_NEXUS_URL}
-Win: \"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe\" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}" ${r_NEXUS_URL}
+    echo "NOTE: Below command starts Chrome with this Socks5 proxy:
+# Mac:
+open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port} ${r_NEXUS_URL}
+# Win:
+\"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe\" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}" ${r_NEXUS_URL}
 }
 
 function f_docker_run_or_start() {
