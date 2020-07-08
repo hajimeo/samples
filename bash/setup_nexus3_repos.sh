@@ -55,22 +55,21 @@ An example of creating a docker container *manually*:
         -e INSTALL4J_ADD_VM_PARAMS='-Dnexus.licenseFile=${_WORK_DIR%/}/sonatype-license.lic' \\
         sonatype/nexus3:3.24.0
 
-Also, when you delete and re-create, not only docker rm -f <contaner>, may want to mv the-mounted-volume /tmp/.
+Also, when you delete and re-create, not only 'docker rm -f <container>', but also 'mv /the-mounted-volume /tmp/'.
 "
 }
+
 
 # Global variables
 _ADMIN_USER="admin"
 _ADMIN_PWD="admin123"
 _REPO_FORMATS="maven,pypi,npm,docker,yum,rubygem,raw,conan"
-
 ## Updatable variables
 _NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
 _DOCKER_NETWORK_NAME=${_DOCKER_NETWORK_NAME:-"nexus"}
 _IS_NXRM2=${_IS_NXRM2:-"N"}
 _NO_DATA=${_NO_DATA:-"N"}
 _TID="${_TID:-80}"
-
 ## Misc.
 _DOMAIN="standalone.localdomain"
 _UTIL_DIR="$HOME/.bash_utils"
@@ -81,13 +80,13 @@ else
 fi
 _TMP="$(mktemp -d)"  # for downloading/uploading assets
 _LOG_FILE_PATH="/tmp/setup_nexus3_repos.log"
-
 # Variables which used by command arguments
 _AUTO=false
 _DEBUG=false
 _RESP_FILE=""
 
 
+### Repository setup functions ################################################################################
 function f_setup_maven() {
     local _prefix="${1:-"maven"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
@@ -411,13 +410,13 @@ function f_setup_conan() {
 }
 
 
+### Misc. functions / utility type functions #################################################################
+# Create a test user and test role
 function f_testuser() {
     f_apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"default","id":"test-role","name":"testRole","description":"test role","privileges":["nx-repository-admin-*-*-*"],"roles":[]}],"type":"rpc"}'
     f_apiS '{"action":"coreui_User","method":"create","data":[{"userId":"testuser","version":"","firstName":"test","lastName":"user","email":"testuser@example.com","status":"active","roles":["test-role"],"password":"testuser"}],"type":"rpc"}'
 }
 
-
-### Misc. functions / utility type functions #################################################################
 # f_get_and_upload_jars "maven" "junit" "junit" "3.8 4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 4.10 4.11 4.12"
 function f_get_and_upload_jars() {
     local _prefix="${1:-"maven"}"
@@ -641,7 +640,7 @@ function f_api() {
     fi
 }
 
-# To test name resolution (no nslookup,ping,nc): docker exec -ti nexus3240-1 curl -I http://nexus3240-3.standalone.localdomain:8081/
+# NOTE: To test name resolution as no nslookup,ping,nc, docker exec -ti nexus3240-1 curl -v -I http://nexus3240-3.standalone.localdomain:8081/
 function f_update_hosts_for_container() {
     local _container_name="${1}"
     local _hostname="${2}"  # Optional
@@ -855,27 +854,14 @@ function f_get_available_container_ip() {
     echo "${_ip}"
 }
 
-function f_generate_hazelcast_xml() {
-    curl -s -f -m 7 --retry 2 -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/hazelcast-network.tmpl.xml" -o "${_TMP%/}/hazelcast-network.xml" || return $?
-    for _i in {1..3}; do
-        local _v_name="r_NEXUS_CONTAINER_NAME_${_i}"
-        local _container_ip="`f_get_container_ip "${_container_name}" "${_cmd}"`"
-        _sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_container_ip}<\/member>/" "${_TMP%/}/hazelcast-network.xml" || return $?
-    done
-    for _i in {1..3}; do
-        local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
-        [ ! -d "${!_v_name_m}/etc/fabric" ] && mkdir -p "${!_v_name_m}/etc/fabric"
-        [ -s "${!_v_name_m}/etc/fabric/hazelcast-network.xml" ] && _backup "${!_v_name_m}/etc/fabric/hazelcast-network.xml"
-        cat "${_TMP%/}/hazelcast-network.xml" > "${!_v_name_m}/etc/fabric/hazelcast-network.xml" || return $?
-    done
-}
-
 function f_get_container_ip() {
     local _container_name="$1"
     local _cmd="${2:-"${r_DOCKER_CMD:-"docker"}"}"
     ${_cmd} exec -it ${_container_name} hostname -i | tr -cd "[:print:]"   # remove unnecessary control characters
 }
 
+
+### Interview / questions related functions ###################################################################
 function interview() {
     _log "INFO" "Ask a few questions to setup this Nexus.
 You can stop this interview anytime by pressing 'Ctrl+c' (except while typing secret/password).
@@ -899,6 +885,18 @@ Would you like to save your response?" "Y"
     done
     trap - SIGINT
 }
+function interview_cancel_handler() {
+    echo ""
+    echo ""
+    _ask "Before exiting, would you like to save your current responses?" "N"
+    if _isYes; then
+        _save_resp
+    fi
+    # To get out from the trap, it seems I need to use exit.
+    echo "Exiting ... (NOTE: -h or --help for help/usage)"
+    exit
+}
+
 function questions() {
     if [ -z "${r_DOCKER_CMD}" ]; then
         if which docker &>/dev/null; then
@@ -969,8 +967,38 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype-*.lic" "" "r_NEXUS_LI
         r_DOCKER_GROUP="$(questions_docker_repos "Group" "${_host}" "18185")"
     fi
 }
+function questions_docker_repos() {
+    local _repo_type="$1"
+    local _def_host="$2"
+    local _def_port="$3"
+    local _is_installing="${4:-"${r_NEXUS_INSTALL}"}"
+    local _repo_CAP="$( echo ${_repo_type} | awk '{print toupper($0)}' )"
 
-## Validate functions for interview. NOTE: needs to start with _is.
+    local _q="Docker ${_repo_type} repo hostname:port"
+    while true; do
+        local _tmp_host_port=""
+        _ask "${_q}" "${_def_host}:${_def_port}" "_tmp_host_port" "N" "N"
+        if [[ "${_tmp_host_port}" =~ ^\s*([^:]+):([0-9]+)\s*$ ]]; then
+            _def_host="${BASH_REMATCH[1]}"
+            _def_port="${BASH_REMATCH[2]}"
+            if _isYes "${_is_installing}" && nc -w1 -z ${_def_host} ${_def_port} 2>/dev/null; then
+                _ask "The port in ${_def_host}:${_def_port} might be in use. Is this OK?" "Y"
+                if _isYes ; then break; fi
+            elif ! _isYes "${_is_installing}" && ! nc -w1 -z ${_def_host} ${_def_port} 2>/dev/null; then
+                _ask "The port in ${_def_host}:${_def_port} might not be reachable. Is this OK?" "Y"
+                if _isYes ; then break; fi
+            else
+                break
+            fi
+        else
+            # hmm, actually the regex always should match..
+            break
+        fi
+    done
+    echo "${_def_host}:${_def_port}"
+}
+
+# Validate functions for interview/questions. NOTE: needs to start with _is.
 function _is_container_name() {
     if ${r_DOCKER_CMD} ps --format "{{.Names}}" | grep -qE "^${1}$"; then
         echo "Container:'${1}' already exists." >&2
@@ -1009,49 +1037,8 @@ function _is_existed() {
     fi
 }
 
-function questions_docker_repos() {
-    local _repo_type="$1"
-    local _def_host="$2"
-    local _def_port="$3"
-    local _is_installing="${4:-"${r_NEXUS_INSTALL}"}"
-    local _repo_CAP="$( echo ${_repo_type} | awk '{print toupper($0)}' )"
 
-    local _q="Docker ${_repo_type} repo hostname:port"
-    while true; do
-        local _tmp_host_port=""
-        _ask "${_q}" "${_def_host}:${_def_port}" "_tmp_host_port" "N" "N"
-        if [[ "${_tmp_host_port}" =~ ^\s*([^:]+):([0-9]+)\s*$ ]]; then
-            _def_host="${BASH_REMATCH[1]}"
-            _def_port="${BASH_REMATCH[2]}"
-            if _isYes "${_is_installing}" && nc -w1 -z ${_def_host} ${_def_port} 2>/dev/null; then
-                _ask "The port in ${_def_host}:${_def_port} might be in use. Is this OK?" "Y"
-                if _isYes ; then break; fi
-            elif ! _isYes "${_is_installing}" && ! nc -w1 -z ${_def_host} ${_def_port} 2>/dev/null; then
-                _ask "The port in ${_def_host}:${_def_port} might not be reachable. Is this OK?" "Y"
-                if _isYes ; then break; fi
-            else
-                break
-            fi
-        else
-            # hmm, actually the regex always should match..
-            break
-        fi
-    done
-    echo "${_def_host}:${_def_port}"
-}
-
-function interview_cancel_handler() {
-    echo ""
-    echo ""
-    _ask "Before exiting, would you like to save your current responses?" "N"
-    if _isYes; then
-        _save_resp
-    fi
-    # To get out from the trap, it seems I need to use exit.
-    echo "Exiting ... (NOTE: -h or --help for help/usage)"
-    exit
-}
-
+### Main #######################################################################################################
 bootstrap() {
     local _no_update="${1-${_AUTO}}"
     # NOTE: if _AUTO, not checking updates to be safe.
@@ -1122,7 +1109,6 @@ main() {
                     fi
                 fi
             done
-            #f_generate_hazelcast_xml   # Not using at this moment as this requires restarting.
             r_NEXUS_MOUNT_DIR="${r_NEXUS_MOUNT_DIR_1}"
         else
             f_docker_run_or_start "${r_NEXUS_CONTAINER_NAME}"
