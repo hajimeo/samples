@@ -163,9 +163,9 @@ function _update_hosts_file() {
         _sed -i "/^${_ip}\s/ s/${_ip}\s/${_ip} ${_fqdn} /" ${_tmp_file}
     fi
 
-    _log "DEBUG" "Updating ${_file} for ${_fqdn} ${_ip} (may require 'sudo' password) ..."
     # Some OS such as Mac is hard to modify /etc/hosts file but seems below works
     cat ${_tmp_file} | sudo tee ${_file} >/dev/null
+    _log "DEBUG" "Updated ${_file} with ${_fqdn} ${_ip}"
 }
 
 function _b64_url_enc() {
@@ -328,7 +328,7 @@ function _backup() {
     local _new_file_name="${_file_name}_${_mod_ts}"
     if ! _isYes "${_force}"; then
         if [ -e "${_backup_dir%/}/${_new_file_name}" ]; then
-            _log "WARN" "No new backup as $_file_name already exists."
+            _log "DEBUG" "No new backup created as $_file_name already exists."
             return 0
         fi
     fi

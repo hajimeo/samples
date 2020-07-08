@@ -54,6 +54,8 @@ An example of creating a docker container *manually*:
     docker run -d -p 8081:8081 --name=nexus-3240 -v ${_WORK_DIR%/}:${_WORK_DIR%/} \\
         -e INSTALL4J_ADD_VM_PARAMS='-Dnexus.licenseFile=${_WORK_DIR%/}/sonatype-license.lic' \\
         sonatype/nexus3:3.24.0
+
+Also, when you delete and re-create, not only docker rm -f <contaner>, may want to mv the-mounted-volume /tmp/.
 "
 }
 
@@ -230,7 +232,7 @@ function f_docker_login() {
 
     if [ -z "${_host_port}" ] && [ -n "${_backup_ports}" ]; then
         for __p in ${_backup_ports}; do
-            nc -z localhost ${__p} && _host_port="localhost:${__p}" 2>/dev/null && break
+            nc -w1 -z localhost ${__p} && _host_port="localhost:${__p}" 2>/dev/null && break
         done
         if [ -n "${_host_port}" ]; then
             _log "INFO" "No hostname:port for $FUNCNAME is set, so try with ${_host_port}"
@@ -668,32 +670,39 @@ function f_socks5_proxy() {
     [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
     local _pid="$(_pid_by_port "${_port}")"
     if [ -n "${_pid}" ]; then
-        _log "WARN" "The Socks port ${_port} is already used by the PID ${_pid}"
-        return 1
+        local _ps_comm="$(ps -o comm= -p ${_pid})"
+        ps -Fwww -p ${_pid}
+        if [ "${_ps_comm}" == "ssh" ]; then
+            _log "INFO" "The Socks proxy might be already running (${_pid})"
+            return 0
+        else
+            _log "WARN" "The port:${_port} is used by PID:${_pid}. Please stop this PID or use different port."
+            return 1
+        fi
     fi
     eval "${_cmd}" || return $?
 
     local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
     _log "INFO" "Started socks proxy on \"${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}\".
 Use this in your web browser's proxy setting. For example, if Chrome:
-Mac: open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}
-Win: \"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe\" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}"
+Mac: open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port} ${r_NEXUS_URL}
+Win: \"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe\" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}" ${r_NEXUS_URL}
 }
 
 function f_docker_run_or_start() {
     local _name="$1"
     local _mount="$2"
     local _ip="$3"
-    local _add_hosts="$4"
+    local _ext_opts="$4"
     local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
 
     if ${_cmd} ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
         _log "WARN" "Container:'${_name}' already exists. So that starting instead of docker run...";sleep 3
         ${_cmd} start ${_name} || return $?
     else
-        _log "INFO" "Creating Container:${_name} for Nexus."
+        _log "DEBUG" "Creating Container with \"${_name}\" \"${_mount}\" \"${_ip}\" \"${_ext_opts}\""
         # TODO: normally container fails after a few minutes, so checking the exit code of docker run is useless
-        f_docker_run "${_name}" "${_mount}" "${_ip}" "${_add_hosts}" || return $?
+        f_docker_run "${_name}" "${_mount}" "${_ip}" "${_ext_opts}" || return $?
         _log "INFO" "\"${_cmd} run\" executed. Check progress with \"${_cmd} logs -f ${_name}\""
     fi
     sleep 3
@@ -706,7 +715,7 @@ function f_docker_run() {
     local _name="$1"
     local _mount="$2"
     local _ip="$3"
-    local _add_hosts="$4"
+    local _ext_opts="$4"
     local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
 
     local _p=""
@@ -724,6 +733,7 @@ function f_docker_run() {
         fi
     fi
 
+    # Nexus specific config update/creation
     local _v_opt="-v ${_WORK_DIR%/}:${_WORK_DIR%/}"
     if _isYes "${r_NEXUS_MOUNT}"; then
         if [ -n "${_mount}" ]; then
@@ -781,7 +791,7 @@ nexus.hazelcast.discovery.isEnabled=false' >> ${_mount%/}/etc/nexus.properties |
     [ -z "${INSTALL4J_ADD_VM_PARAMS}" ] && INSTALL4J_ADD_VM_PARAMS="-Xms1g -Xmx2g -XX:MaxDirectMemorySize=1g"
     local _full_cmd="${_cmd} run -t -d ${_p} --name=${_name} --hostname=${_name}.${_DOMAIN#.} \\
         ${_v_opt} \\
-        --network=${_DOCKER_NETWORK_NAME} --ip=${_ip} ${_add_hosts} \\
+        --network=${_DOCKER_NETWORK_NAME} --ip=${_ip} ${_ext_opts} \\
         -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\" \\
         sonatype/nexus3:${r_NEXUS_VERSION}"
     _log "DEBUG" "${_full_cmd}"
@@ -790,44 +800,59 @@ nexus.hazelcast.discovery.isEnabled=false' >> ${_mount%/}/etc/nexus.properties |
 
 function f_docker_network() {
     local _network_name="${1:-"${_DOCKER_NETWORK_NAME}"}"
-    local _cmd="${2:-"${r_DOCKER_CMD:-"docker"}"}"
+    local _subnet_16="${2:-"172.100"}"
+    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
 
-    docker network ls --format "{{.Name}}" | grep -qE "^${_network_name}$" && return 0
-    # Let docker decide the Gateway and Subnet.
-    ${_cmd} network create ${_network_name} || return $?
+    ${_cmd} network ls --format "{{.Name}}" | grep -qE "^${_network_name}$" && return 0
+    # TODO: add validation if subnet is already taken. --subnet is required to specify IP.
+    ${_cmd} network create --driver=bridge --subnet=${_subnet_16}.0.0/16 --gateway=${_subnet_16}.0.1 ${_network_name} || return $?
+    _log "DEBUG" "${_cmd} network '${_network_name}' created with subnet:${_subnet_16}.0.0"
 }
 
 function f_get_available_container_ip() {
     local _hostname="${1}"  # optional
-    local _check_file="${2:-"/etc/hosts"}"  # or /etc/banner_add_hosts
+    local _check_file="${2}"  # /etc/hosts or /etc/banner_add_hosts
     local _subnet="${3}"    # 172.18.0.0
     local _network_name="${4:-${_DOCKER_NETWORK_NAME:-"bridge"}}"
     local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
 
+    local _ip=""
     [ -z "${_subnet}" ] && _subnet="$(${_cmd} inspect ${_network_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')"
     local _subnet_24="$(echo "${_subnet}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+    ${_cmd} network inspect ${_network_name} | grep '"IPv4Address"' > ${_TMP%/}/${_cmd}_network_${_network_name}_IPs.out
 
     if [ -n "${_hostname}" ]; then
         local _short_name="`echo "${_hostname}" | cut -d"." -f1`"
         [ "${_short_name}" == "${_hostname}" ] && _hostname="${_short_name}.${_DOMAIN#.}"
 
-        # If the IP is in the /etc/hosts, reuse it
-        local _ip="$(grep -E "^${_subnet_24%.}\.[0-9]+\s+${_hostname}\s*" ${_check_file} | awk '{print $1}')"
-        if [ -n "${_ip}" ]; then
-            echo "${_ip}"
-            return 0
-        fi
+        # Not perfect but... if the IP is in the /etc/hosts, then reuse it
+        _ip="$(grep -E "^${_subnet_24%.}\.[0-9]+\s+${_hostname}\s*" ${_check_file} | awk '{print $1}' | tail -n1)"
     fi
 
-    ${_cmd} network inspect ${_network_name} | grep '"IPv4Address"' > ${_TMP%/}/${_cmd}_network_${_network_name}_IPs.out
-    # Using the range 101 - 199
-    for _i in {101..199}; do
-        if ! grep -q "\"${_subnet_24%.}.${_i}/" ${_TMP%/}/${_cmd}_network_${_network_name}_IPs.out; then
-            echo "${_subnet_24%.}.${_i}"
-            return 0
+    if [ -z "${_ip}" ]; then
+        # Using the range 101 - 199
+        for _i in {101..199}; do
+            if [ -s "${_check_file}" ] && grep -qE "^${_subnet_24%.}\.${_i}\s+" ${_check_file}; then
+                _log "DEBUG" "${_subnet_24%.}\.${_i} exists in ${_check_file}. Skipping..."
+                continue
+            fi
+            if ! grep -q "\"${_subnet_24%.}.${_i}/" ${_TMP%/}/${_cmd}_network_${_network_name}_IPs.out; then
+                _log "DEBUG" "Using ${_subnet_24%.}\.${_i} as it does not exist in ${_cmd}_network_${_network_name}_IPs.out."
+                _ip="${_subnet_24%.}.${_i}"
+                break
+            fi
+        done
+    fi
+    [ -z "${_ip}" ] && return 111
+
+    if [ -n "${_hostname}" ] && [ -s "${_check_file}" ]; then
+        # To reserve this IP, updating the check_file
+        if _update_hosts_file "${_hostname}" "${_ip}" "${_check_file}"; then
+            _log "DEBUG" "Updated ${_check_file} with \"${_hostname}\" \"${_ip}\""
         fi
-    done
-    return 1
+    fi
+    _log "DEBUG" "IP:${_ip} ($@)"
+    echo "${_ip}"
 }
 
 function f_generate_hazelcast_xml() {
@@ -998,10 +1023,10 @@ function questions_docker_repos() {
         if [[ "${_tmp_host_port}" =~ ^\s*([^:]+):([0-9]+)\s*$ ]]; then
             _def_host="${BASH_REMATCH[1]}"
             _def_port="${BASH_REMATCH[2]}"
-            if _isYes "${_is_installing}" && nc -z ${_def_host} ${_def_port} 2>/dev/null; then
+            if _isYes "${_is_installing}" && nc -w1 -z ${_def_host} ${_def_port} 2>/dev/null; then
                 _ask "The port in ${_def_host}:${_def_port} might be in use. Is this OK?" "Y"
                 if _isYes ; then break; fi
-            elif ! _isYes "${_is_installing}" && ! nc -z ${_def_host} ${_def_port} 2>/dev/null; then
+            elif ! _isYes "${_is_installing}" && ! nc -w1 -z ${_def_host} ${_def_port} 2>/dev/null; then
                 _ask "The port in ${_def_host}:${_def_port} might not be reachable. Is this OK?" "Y"
                 if _isYes ; then break; fi
             else
@@ -1074,18 +1099,20 @@ main() {
         if _isYes "${r_NEXUS_INSTALL_HAC}"; then
             f_docker_network || return $?
 
-            local _ip_1="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}")" || return $?
-            local _ip_2="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}")" || return $?
-            local _ip_3="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}")" || return $?
+            local _ip_1="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}" "/etc/hosts")" || return $?
+            local _ip_2="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}" "/etc/hosts")" || return $?
+            local _ip_3="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}" "/etc/hosts")" || return $?
             local _add_hosts="--add-host ${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}:${_ip_1}"
             _add_hosts="${_add_hosts} --add-host ${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}:${_ip_2}"
             _add_hosts="${_add_hosts} --add-host ${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}:${_ip_3}"
+            # TODO: it should exclude own host:ip, otherwise, container's hosts file has two lines for own host:ip
+            _log "DEBUG" "_add_hosts: ${_add_hosts}"
 
             for _i in {1..3}; do
                 local _v_name="r_NEXUS_CONTAINER_NAME_${_i}"
                 local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
                 local _v_name_ip="_ip_${_i}"
-                f_docker_run_or_start "${!_v_name}" "${!_v_name_m}" "${!_v_name_ip}" ${_add_hosts} || return $?
+                f_docker_run_or_start "${!_v_name}" "${!_v_name_m}" "${!_v_name_ip}" "${_add_hosts}" || return $?
                 if [ "${!_v_name}" == "${r_NEXUS_CONTAINER_NAME_1}" ]; then
                     _log "INFO" "Waiting for ${r_NEXUS_CONTAINER_NAME_1} started ..."
                     # If HA-C, needs to wait the first node starts (TODO: what if not 8081?)
@@ -1126,7 +1153,7 @@ main() {
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     for _f in `echo "${r_REPO_FORMATS:-"${_REPO_FORMATS}"}" | sed 's/,/ /g'`; do
-        _log "DEBUG" "Executing f_setup_${_f} ..."
+        _log "INFO" "Executing f_setup_${_f} ..."
         if ! f_setup_${_f}; then
             _log "ERROR" "Executing setup for format:${_f} failed."
         fi
