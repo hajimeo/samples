@@ -1162,6 +1162,7 @@ main() {
     if _isYes "${r_SOCKS_PROXY}"; then
         f_socks5_proxy "${r_SOCKS_PROXY_PORT}"
     fi
+    _log "INFO" "Setup completed. (log:${_LOG_FILE_PATH})"
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
