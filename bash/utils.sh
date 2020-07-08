@@ -163,7 +163,7 @@ function _update_hosts_file() {
         _sed -i "/^${_ip}\s/ s/${_ip}\s/${_ip} ${_fqdn} /" ${_tmp_file}
     fi
 
-    _log "INFO" "Updating ${_file} for ${_fqdn} ${_ip} (may require 'sudo' password) ..."
+    _log "DEBUG" "Updating ${_file} for ${_fqdn} ${_ip} (may require 'sudo' password) ..."
     # Some OS such as Mac is hard to modify /etc/hosts file but seems below works
     cat ${_tmp_file} | sudo tee ${_file} >/dev/null
 }
@@ -393,11 +393,11 @@ function _upsert() {
 }
 
 function _log() {
-    [ "$1" == "DEBUG" ] && ! ${_DEBUG} && return
-    # At this moment, outputting to STDERR
-    if [ -n "${_LOG_FILE_PATH}" ]; then
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a ${_LOG_FILE_PATH}
+    local _log_file="${_LOG_FILE_PATH:-"/dev/null"}"
+    local _is_debug="${_DEBUG:-false}"
+    if [ "$1" == "DEBUG" ] && ! ${_is_debug}; then
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" >> ${_log_file}
     else
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@"
-    fi 1>&2
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a ${_log_file}
+    fi 1>&2 # At this moment, outputting to STDERR
 }
