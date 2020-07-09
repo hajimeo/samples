@@ -426,7 +426,7 @@ function f_trust_ca() {
         fi
     fi
     # Test
-    local _CN="$(openssl x509 -in "${_ca_pem}" -noout -subject | grep -oE "/CN=.+" | cut -d"=" -f2)"
+    local _CN="$(openssl x509 -in "${_ca_pem}" -noout -subject | grep -oE "CN\s*=.+" | cut -d"=" -f2 | xargs)"  # somehow xargs trim spaces
     if [ -z "${_CN}" ]; then
         _log "ERROR" "No common name found from ${_ca_pem}"
         return 1

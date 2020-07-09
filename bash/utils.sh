@@ -175,7 +175,7 @@ function _b64_url_enc() {
 
 function _trim() {
     local _string="$1"
-    echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
+    echo "${_string}" | _sed -e 's/^ *//g' -e 's/ *$//g'
 }
 
 function _sed() {
