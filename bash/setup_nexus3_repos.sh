@@ -449,7 +449,7 @@ function f_trust_ca() {
     fi
 
     if [ ! -d "${_ca_dir}" ]; then
-        _log "ERROR" "Couldn't detect the method/directory to trust CA cert."
+        _log "ERROR" "Couldn't find 'update-ca-trust' or 'update-ca-certificates' command or directory to install CA cert."
         return 1
     fi
 
