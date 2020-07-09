@@ -436,7 +436,7 @@ function f_trust_ca() {
     local _ca_cmd=""
     if which update-ca-trust &>/dev/null; then
         _ca_cmd="update-ca-trust"
-        _ca_dir="/usr/local/share/ca-certificates/extra"
+        _ca_dir="/etc/pki/ca-trust/source/anchors"
     elif which update-ca-certificates &>/dev/null; then
         _ca_cmd="update-ca-certificates"
         _ca_dir="/usr/local/share/ca-certificates/extra"
