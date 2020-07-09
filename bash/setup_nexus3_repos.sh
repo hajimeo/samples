@@ -1181,7 +1181,7 @@ main() {
                 local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
                 local _v_name_ip="_ip_${_i}"
                 [ -n "${!_v_name_ip}" ] && _ext_opts="--ip=${!_v_name_ip} ${_ext_opts}"
-                f_docker_run_or_start "${!_v_name}" "${!_v_name_m}" "${!_v_name_ip}" "${_ext_opts}" || return $?
+                f_docker_run_or_start "${!_v_name}" "${!_v_name_m}" "${_ext_opts}" || return $?
                 if [ "${!_v_name}" == "${r_NEXUS_CONTAINER_NAME_1}" ]; then
                     _log "INFO" "Waiting for ${r_NEXUS_CONTAINER_NAME_1} started ..."
                     # If HA-C, needs to wait the first node starts (TODO: what if not 8081?)
