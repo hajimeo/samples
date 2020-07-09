@@ -749,7 +749,7 @@ function f_docker_run_or_start() {
         _log "WARN" "Container:'${_name}' already exists. So that starting instead of docker run...";sleep 3
         ${_cmd} start ${_name} || return $?
     else
-        _log "DEBUG" "Creating Container with \"${_name}\" \"${_mount}\" \"${_ip}\" \"${_ext_opts}\""
+        _log "DEBUG" "Creating Container with \"${_name}\" \"${_mount}\" \"${_ext_opts}\""
         # TODO: normally container fails after a few minutes, so checking the exit code of docker run is useless
         f_docker_run "${_name}" "${_mount}" "${_ext_opts}" || return $?
         _log "INFO" "\"${_cmd} run\" executed. Check progress with \"${_cmd} logs -f ${_name}\""
@@ -1135,6 +1135,9 @@ bootstrap() {
 }
 
 main() {
+    # Clear the log file if not empty
+    [ -s "${_LOG_FILE_PATH}" ] && cat /dev/null > "${_LOG_FILE_PATH}" &>/dev/null
+
     # Checking requirements (so far only a few commands)
     if [ "`uname`" = "Darwin" ]; then
         if which gsed &>/dev/null && which ggrep &>/dev/null; then
@@ -1180,8 +1183,9 @@ main() {
                 local _v_name="r_NEXUS_CONTAINER_NAME_${_i}"
                 local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
                 local _v_name_ip="_ip_${_i}"
-                [ -n "${!_v_name_ip}" ] && _ext_opts="--ip=${!_v_name_ip} ${_ext_opts}"
-                f_docker_run_or_start "${!_v_name}" "${!_v_name_m}" "${_ext_opts}" || return $?
+                local _tmp_ext_opts="${_ext_opts}"
+                [ -n "${!_v_name_ip}" ] && _tmp_ext_opts="--ip=${!_v_name_ip} ${_ext_opts}"
+                f_docker_run_or_start "${!_v_name}" "${!_v_name_m}" "${_tmp_ext_opts}" || return $?
                 if [ "${!_v_name}" == "${r_NEXUS_CONTAINER_NAME_1}" ]; then
                     _log "INFO" "Waiting for ${r_NEXUS_CONTAINER_NAME_1} started ..."
                     # If HA-C, needs to wait the first node starts (TODO: what if not 8081?)
