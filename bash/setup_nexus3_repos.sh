@@ -13,7 +13,8 @@ DOWNLOADS:
          -o ${_WORK_DIR%/}/setup_nexus3_repos.sh
 
 REQUIREMENTS / DEPENDENCIES:
-    If Mac, 'gsed' is required.
+    If Mac, 'gsed' and 'ggrep' are required.
+    brew install gnu-sed ggrep
 
 COMMAND OPTIONS:
     -A
@@ -416,6 +417,53 @@ function f_testuser() {
     f_apiS '{"action":"coreui_User","method":"create","data":[{"userId":"testuser","version":"","firstName":"test","lastName":"user","email":"testuser@example.com","status":"active","roles":["test-role"],"password":"testuser"}],"type":"rpc"}'
 }
 
+function f_trust_ca() {
+    local _ca_pem="$1"
+    if [ -z "${_ca_pem}" ]; then
+        _ca_pem="${_WORK_DIR%/}/rootCA_standalone.crt"
+        if [ ! -s "${_ca_pem}" ]; then
+            curl -s -f -m 7 --retry 2 -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/rootCA_standalone.crt" -o ${_WORK_DIR%/}/rootCA_standalone.crt || return $?
+        fi
+    fi
+    # Test
+    local _CN="$(openssl x509 -in "${_ca_pem}" -noout -subject | grep -oE "/CN=.+" | cut -d"=" -f2)"
+    if [ -z "${_CN}" ]; then
+        _log "ERROR" "No common name found from ${_ca_pem}"
+        return 1
+    fi
+    local _file_name="$(basename "${_ca_pem}")"
+    local _ca_dir=""
+    local _ca_cmd=""
+    if which update-ca-trust &>/dev/null; then
+        _ca_cmd="update-ca-trust"
+        _ca_dir="/usr/local/share/ca-certificates/extra"
+    elif which update-ca-certificates &>/dev/null; then
+        _ca_cmd="update-ca-certificates"
+        _ca_dir="/usr/local/share/ca-certificates/extra"
+    elif which security &>/dev/null && [ -d $HOME/Library/Keychains ]; then
+        # If we know the common name, and if exists, no change.
+        security find-certificate -c "${_CN}" $HOME/Library/Keychains/login.keychain-db && return 0
+        # NOTE: -d for add to admin cert store (and not sure what this means)
+        sudo security add-trusted-cert -d -r trustRoot -k $HOME/Library/Keychains/login.keychain-db "${_ca_pem}"
+        return $?
+    fi
+
+    if [ ! -d "${_ca_dir}" ]; then
+        _log "ERROR" "Couldn't detect the method/directory to trust CA cert."
+        return 1
+    fi
+
+    if [ -s ${_ca_dir%/}/${_file_name} ]; then
+        _log "DEBUG" "${_ca_dir%/}/${_file_name} already exists."
+        return 0
+    fi
+
+    cp "${_ca_pem}" ${_ca_dir%/}/ || return $?
+    _log "DEBUG" "Copied \"${_ca_pem}\" into ${_ca_dir%/}/"
+    ${_ca_cmd} || return $?
+    _log "DEBUG" "Executed ${_ca_cmd}"
+}
+
 # f_get_and_upload_jars "maven" "junit" "junit" "3.8 4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 4.10 4.11 4.12"
 function f_get_and_upload_jars() {
     local _prefix="${1:-"maven"}"
@@ -694,9 +742,8 @@ open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-ser
 function f_docker_run_or_start() {
     local _name="$1"
     local _mount="$2"
-    local _ip="$3"
-    local _ext_opts="$4"
-    local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
+    local _ext_opts="$3"
+    local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
 
     if ${_cmd} ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
         _log "WARN" "Container:'${_name}' already exists. So that starting instead of docker run...";sleep 3
@@ -704,7 +751,7 @@ function f_docker_run_or_start() {
     else
         _log "DEBUG" "Creating Container with \"${_name}\" \"${_mount}\" \"${_ip}\" \"${_ext_opts}\""
         # TODO: normally container fails after a few minutes, so checking the exit code of docker run is useless
-        f_docker_run "${_name}" "${_mount}" "${_ip}" "${_ext_opts}" || return $?
+        f_docker_run "${_name}" "${_mount}" "${_ext_opts}" || return $?
         _log "INFO" "\"${_cmd} run\" executed. Check progress with \"${_cmd} logs -f ${_name}\""
     fi
     sleep 3
@@ -716,9 +763,8 @@ function f_docker_run() {
     # TODO: shouldn't use any global variables in a function.
     local _name="$1"
     local _mount="$2"
-    local _ip="$3"
-    local _ext_opts="$4"
-    local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
+    local _ext_opts="$3"
+    local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
 
     local _p=""
     if ! _isYes "${r_NEXUS_INSTALL_HAC}"; then
@@ -754,37 +800,26 @@ function f_docker_run() {
                 _log "WARN" "Mount directory:${_mount%/} already exists. Reusing...";sleep 3
             fi
 
+            # If the file exists, at this moment, not adding misc. nexus properties
             if [ ! -s "${_mount%/}/etc/nexus.properties" ]; then
-                # default: nexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-requestlog.xml
-                echo 'ssl.etc=${karaf.data}/etc/jetty
-nexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-requestlog.xml,${ssl.etc}/jetty-https.xml
-application-port-ssl=8443
-nexus.onboarding.enabled=false
+                echo 'nexus.onboarding.enabled=false
 nexus.scripts.allowCreation=true' > ${_mount%/}/etc/nexus.properties || return $?
-                if _isYes "${r_NEXUS_INSTALL_HAC}"; then
-                    echo 'nexus.clustered=true
-nexus.log.cluster.enabled=false
-nexus.hazelcast.discovery.isEnabled=false' >> ${_mount%/}/etc/nexus.properties || return $?
-                    [ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && mv -f ${_mount%/}/etc/fabric/hazelcast-network.xml{,bak}
-                    [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
-                    curl -s -f -m 7 --retry 2 -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
-                    for _i in {1..3}; do
-                        local _tmp_v_name="r_NEXUS_CONTAINER_NAME_${_i}"
-                        _sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${!_tmp_v_name}.${_DOMAIN#.}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
-                    done
-                fi
+            fi
 
-                [ ! -s "${_mount%/}/etc/jetty/jetty-https.xml" ] && curl -s -f -L -o "${_mount%/}/etc/jetty/jetty-https.xml" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/nexus-jetty-https.xml"
-                [ ! -s "${_mount%/}/etc/jetty/keystore.jks" ] && curl -s -f -L -o "${_mount%/}/etc/jetty/keystore.jks" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.jks"
+            # HTTPS/SSL/TLS setup
+            f_nexus_https_config "${_mount%/}" || return $?
+            # HA-C related setup
+            if _isYes "${r_NEXUS_INSTALL_HAC}"; then
+                f_nexus_ha_config "${_mount%/}" || return $?
+            fi
 
-                local _license="${r_NEXUS_LICENSE_FILE}"
-                [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype-*.lic 2>/dev/null | head -n1)"
-                if [ -n "${_license}" ]; then
-                    echo "nexus.licenseFile=${_license}" >> ${_mount%/}/etc/nexus.properties
-                elif _isYes "${r_NEXUS_INSTALL_HAC}"; then
-                    _log "ERROR" "HA-C is requested but no license."
-                    return 1
-                fi
+            local _license="${r_NEXUS_LICENSE_FILE}"
+            [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype-*.lic 2>/dev/null | head -n1)"
+            if [ -n "${_license}" ]; then
+                _upsert ${_mount%/}/etc/nexus.properties "nexus.licenseFile" "${_license}" || return $?
+            elif _isYes "${r_NEXUS_INSTALL_HAC}"; then
+                _log "ERROR" "HA-C is requested but no license."
+                return 1
             fi
         fi
     fi
@@ -793,11 +828,42 @@ nexus.hazelcast.discovery.isEnabled=false' >> ${_mount%/}/etc/nexus.properties |
     [ -z "${INSTALL4J_ADD_VM_PARAMS}" ] && INSTALL4J_ADD_VM_PARAMS="-Xms1g -Xmx2g -XX:MaxDirectMemorySize=1g"
     local _full_cmd="${_cmd} run -t -d ${_p} --name=${_name} --hostname=${_name}.${_DOMAIN#.} \\
         ${_v_opt} \\
-        --network=${_DOCKER_NETWORK_NAME} --ip=${_ip} ${_ext_opts} \\
+        --network=${_DOCKER_NETWORK_NAME} ${_ext_opts} \\
         -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\" \\
         sonatype/nexus3:${r_NEXUS_VERSION}"
     _log "DEBUG" "${_full_cmd}"
     eval "${_full_cmd}" || return $?
+}
+
+function f_nexus_https_config() {
+    local _mount="$1"
+    _upsert ${_mount%/}/etc/nexus.properties "ssl.etc" "\${karaf.data}/etc/jetty" || return $?
+    _upsert ${_mount%/}/etc/nexus.properties "nexus-args" "\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-http.xml,\${jetty.etc}/jetty-requestlog.xml,\${ssl.etc}/jetty-https.xml" || return $?
+    _upsert ${_mount%/}/etc/nexus.properties "application-port-ssl" "8443" || return $?
+
+    if [ ! -s "${_mount%/}/etc/jetty/jetty-https.xml" ]; then
+        curl -s -f -L -o "${_mount%/}/etc/jetty/jetty-https.xml" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/nexus-jetty-https.xml" || return $?
+    fi
+    if [ ! -s "${_mount%/}/etc/jetty/keystore.jks" ]; then
+        curl -s -f -L -o "${_mount%/}/etc/jetty/keystore.jks" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.jks" || return $?
+    fi
+    f_trust_ca || return $?
+    _log "DEBUG" "HTTPS configured against config files under ${_mount}"
+}
+
+function f_nexus_ha_config() {
+    local _mount="$1"
+    _upsert ${_mount%/}/etc/nexus.properties "nexus.clustered" "true" || return $?
+    _upsert ${_mount%/}/etc/nexus.properties "nexus.log.cluster.enabled" "false" || return $?
+    _upsert ${_mount%/}/etc/nexus.properties "nexus.hazelcast.discovery.isEnabled" "false" || return $?
+    [ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && mv -f ${_mount%/}/etc/fabric/hazelcast-network.xml{,bak}
+    [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
+    curl -s -f -m 7 --retry 2 -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+    for _i in {1..3}; do
+        local _tmp_v_name="r_NEXUS_CONTAINER_NAME_${_i}"
+        _sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${!_tmp_v_name}.${_DOMAIN#.}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+    done
+    _log "DEBUG" "HA-C configured against config files under ${_mount}"
 }
 
 function f_docker_network() {
@@ -913,13 +979,13 @@ function questions() {
     if [ -n "${r_DOCKER_CMD}" ]; then
         _ask "Would you like to install Nexus in a docker container?" "Y" "r_NEXUS_INSTALL" "N" "N"
         if _isYes "${r_NEXUS_INSTALL}"; then
+            echo "NOTE: sudo password may be required."; sleep 2
             local _nexus_version=""
             _ask "Nexus version" "latest" "r_NEXUS_VERSION" "N" "Y"
             local _ver_num=$(echo "${r_NEXUS_VERSION}" | sed 's/[^0-9]//g')
             _ask "Would you like to build HA-C?" "N" "r_NEXUS_INSTALL_HAC" "N" "N"
             if _isYes "${r_NEXUS_INSTALL_HAC}"; then
-                echo "NOTE: You may need to set up a reverse proxy."
-                echo "      Also sudo password may be required."; sleep 3
+                echo "NOTE: You may also need to set up a reverse proxy."; sleep 2
                 # NOTE: mounting a volume to sonatype-work is mandatory for HA-C
                 r_NEXUS_MOUNT="Y"
                 for _i in {1..3}; do
@@ -968,6 +1034,7 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype-*.lic" "" "r_NEXUS_LI
         r_DOCKER_PROXY="$(questions_docker_repos "Proxy" "${_host}" "18179")"
         r_DOCKER_HOSTED="$(questions_docker_repos "Hosted" "${_host}" "18182")"
         r_DOCKER_GROUP="$(questions_docker_repos "Group" "${_host}" "18185")"
+        # NOTE: Above would require insecure-registry settings by editing daemon.json, but Mac doesn't have (=can't automate)
     fi
 }
 function questions_docker_repos() {
@@ -1068,6 +1135,16 @@ bootstrap() {
 }
 
 main() {
+    # Checking requirements (so far only a few commands)
+    if [ "`uname`" = "Darwin" ]; then
+        if which gsed &>/dev/null && which ggrep &>/dev/null; then
+            _log "DEBUG" "gsed and ggrep are available."
+        else
+            _log "ERROR" "gsed and ggrep are required (brew install gnu-sed ggrep)"
+            return 1
+        fi
+    fi
+
     # If _RESP_FILE is popurated by -r xxxxx.resp, load it
     if [ -s "${_RESP_FILE}" ];then
         _load_resp "${_RESP_FILE}"
@@ -1086,23 +1163,25 @@ main() {
     fi
 
     if _isYes "${r_NEXUS_INSTALL}"; then
+        echo "If 'password' is asked, please type 'sudo' password." >&2;sleep 2
+        sudo echo "Starting Nexus installation..." >&2
+        f_docker_network || return $?
         if _isYes "${r_NEXUS_INSTALL_HAC}"; then
-            f_docker_network || return $?
-
             local _ip_1="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}" "/etc/hosts")" || return $?
             local _ip_2="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}" "/etc/hosts")" || return $?
             local _ip_3="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}" "/etc/hosts")" || return $?
-            local _add_hosts="--add-host ${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}:${_ip_1}"
-            _add_hosts="${_add_hosts} --add-host ${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}:${_ip_2}"
-            _add_hosts="${_add_hosts} --add-host ${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}:${_ip_3}"
+            local _ext_opts="--add-host ${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}:${_ip_1}"
+            _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}:${_ip_2}"
+            _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}:${_ip_3}"
             # TODO: it should exclude own host:ip, otherwise, container's hosts file has two lines for own host:ip
-            _log "DEBUG" "_add_hosts: ${_add_hosts}"
+            _log "DEBUG" "_add_hosts: ${_ext_opts}"
 
             for _i in {1..3}; do
                 local _v_name="r_NEXUS_CONTAINER_NAME_${_i}"
                 local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
                 local _v_name_ip="_ip_${_i}"
-                f_docker_run_or_start "${!_v_name}" "${!_v_name_m}" "${!_v_name_ip}" "${_add_hosts}" || return $?
+                [ -n "${!_v_name_ip}" ] && _ext_opts="--ip=${!_v_name_ip} ${_ext_opts}"
+                f_docker_run_or_start "${!_v_name}" "${!_v_name_m}" "${!_v_name_ip}" "${_ext_opts}" || return $?
                 if [ "${!_v_name}" == "${r_NEXUS_CONTAINER_NAME_1}" ]; then
                     _log "INFO" "Waiting for ${r_NEXUS_CONTAINER_NAME_1} started ..."
                     # If HA-C, needs to wait the first node starts (TODO: what if not 8081?)
@@ -1114,7 +1193,7 @@ main() {
             done
             r_NEXUS_MOUNT_DIR="${r_NEXUS_MOUNT_DIR_1}"
         else
-            f_docker_run_or_start "${r_NEXUS_CONTAINER_NAME}"
+            f_docker_run_or_start "${r_NEXUS_CONTAINER_NAME}" "${r_NEXUS_MOUNT_DIR}"
             # 'main' requires "r_NEXUS_URL"
             if [ -z "${r_NEXUS_URL}" ] || ! _wait_url "${r_NEXUS_URL}"; then
                 _log "ERROR" "${r_NEXUS_URL} is unreachable"
