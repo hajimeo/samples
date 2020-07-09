@@ -184,6 +184,44 @@ function f_setup_npm() {
     _get_asset "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz" || return $?
 }
 
+function f_setup_nuget() {
+    local _prefix="${1:-"nuget"}"
+    local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
+
+    # If no xxxx-proxy, create it
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://www.nuget.org/api/v2/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
+        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+    fi
+    # Even older version, just creating V3 repo should work
+    # TODO: check if HA with curl -u admin:admin123 -X GET http://localhost:8081/service/rest/v1/nodes
+    if ! _is_repo_available "${_prefix}-v3-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://api.nuget.org/v3/index.json","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
+        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+    fi
+    # add some data for xxxx-proxy
+    _get_asset "${_prefix}-v3-proxy" "Test/2.0.1.1" "${_TMP%/}/test.2.0.1.1.nupkg"  # This one may fail on some Nexus version
+    _get_asset "${_prefix}-proxy" "Test/2.0.1.1" "${_TMP%/}/test.2.0.1.1.nupkg" || return $?
+
+    # Nexus should have nuget-group and nuget-hosted, so creating only v3 one
+    # If no xxxx-hosted, create it
+    if ! _is_repo_available "${_prefix}-v3-hosted"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-hosted","format":"","type":"","url":"","online":true,"recipe":"nuget-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
+        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+    fi
+    # TODO: add some data for xxxx-hosted
+
+    # If no xxxx-group, create it
+    if ! _is_repo_available "${_prefix}-v3-group"; then
+        # Hosted first
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-v3-hosted","'${_prefix}'-v3-proxy"]}},"name":"'${_prefix}'-v3-group","format":"","type":"","url":"","online":true,"recipe":"nuget-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
+        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+    fi
+    # add some data for xxxx-group
+    _get_asset "${_prefix}-v3-group" "jQuery/3.5.1" "${_TMP%/}/jquery.3.5.1.nupkg"  # this one may fail on some Nexus version
+    _get_asset "${_prefix}-group" "jQuery/3.5.1" "${_TMP%/}/jquery.3.5.1.nupkg" || return $?
+}
+
 function f_setup_docker() {
     local _prefix="${1:-"docker"}"
     local _tag_name="${2:-"alpine:3.7"}"
@@ -516,7 +554,9 @@ function _get_asset() {
     if [ -d "${_out_path}" ]; then
         _out_path="${_out_path%/}/$(basename ${_path})"
     fi
-    curl -sf -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_user}:${_pwd} -k "${_base_url%/}/repository/${_repo%/}/${_path#/}"
+    local _curl="curl -s"
+    ${_DEBUG} && _curl="curl -v"
+    ${_curl} -f -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_user}:${_pwd} -k "${_base_url%/}/repository/${_repo%/}/${_path#/}"
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
         _log "ERROR" "Failed to get ${_base_url%/}/repository/${_repo%/}/${_path#/} (${_rc})"
@@ -536,7 +576,9 @@ function _get_asset_NXRM2() {
     if [[ "${_NO_DATA}" =~ ^[yY] ]]; then
         _log "INFO" "_NO_DATA is set so no action."; return 0
     fi
-    curl -sf -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_usr}:${_pwd} -k "${_base_url%/}/content/repositories/${_repo%/}/${_path#/}"
+    local _curl="curl -s"
+    ${_DEBUG} && _curl="curl -v"
+    ${_curl} -f -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_usr}:${_pwd} -k "${_base_url%/}/content/repositories/${_repo%/}/${_path#/}"
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
         _log "ERROR" "Failed to get ${_base_url%/}/content/repository/${_repo%/}/${_path#/} (${_rc})"
@@ -555,7 +597,9 @@ function f_upload_asset() {
     if [[ "${_NO_DATA}" =~ ^[yY] ]]; then
         _log "INFO" "_NO_DATA is set so no action."; return 0
     fi
-    curl -sf -D ${_TMP%/}/_upload_test_header_$$.out -u ${_usr}:${_pwd} -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_base_url%/}/service/rest/v1/components?repository=${_repo}" ${_forms}
+    local _curl="curl -s"
+    ${_DEBUG} && _curl="curl -v"
+    ${_curl} -f -D ${_TMP%/}/_upload_test_header_$$.out -u ${_usr}:${_pwd} -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_base_url%/}/service/rest/v1/components?repository=${_repo}" ${_forms}
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
         if grep -qE '^HTTP/1.1 [45]' ${_TMP%/}/_upload_test_header_$$.out; then
@@ -670,11 +714,13 @@ function f_api() {
     local _content_type="Content-Type: application/json"
     [ "${_data:0:1}" != "{" ] && _content_type="Content-Type: text/plain"
 
+    local _curl="curl -s"
+    ${_DEBUG} && _curl="curl -v"
     if [ -z "${_data}" ]; then
         # GET and DELETE *can not* use Content-Type json
-        curl -sf -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method}
+        ${_curl} -f -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method}
     else
-        curl -sf -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method} -H "${_content_type}" -d "${_data}"
+        ${_curl} -f -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method} -H "${_content_type}" -d "${_data}"
     fi > ${_TMP%/}/f_api_nxrm_$$.out
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
