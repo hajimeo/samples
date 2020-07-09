@@ -1361,7 +1361,7 @@ function _csplit() {
     ${_cmd} "$@"
 }
 function _grep() {
-    local _cmd="grep"; which grep &>/dev/null && _cmd="ggrep"
+    local _cmd="grep"; which ggrep &>/dev/null && _cmd="ggrep"
     ${_cmd} "$@"
 }
 function _date() {
