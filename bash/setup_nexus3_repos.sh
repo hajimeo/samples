@@ -926,7 +926,7 @@ function f_get_available_container_ip() {
 function f_get_container_ip() {
     local _container_name="$1"
     local _cmd="${2:-"${r_DOCKER_CMD:-"docker"}"}"
-    ${_cmd} exec -it ${_container_name} hostname -i | tr -cd "[:print:]"   # remove unnecessary control characters
+    ${_cmd} exec -it ${_container_name} hostname -i | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' -m1 -o | tr -cd "[:print:]"   # remove unnecessary control characters
 }
 
 
