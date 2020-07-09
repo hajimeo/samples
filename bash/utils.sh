@@ -179,17 +179,22 @@ function _trim() {
 }
 
 function _sed() {
-    # To support Mac...
     local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
     ${_cmd} "$@"
 }
-
+function _grep() {
+    local _cmd="grep"; which grep &>/dev/null && _cmd="ggrep"
+    ${_cmd} "$@"
+}
 function _pid_by_port() {
     local _port="$1"
     [ -z "${_port}" ] && return 1
-    # Some Linux doesn't have 'lsof'
-    #lsof -ti:${_port} -sTCP:LISTEN
-    netstat -t4lnp 2>/dev/null | grep -w "0.0.0.0:${_port}" | awk '{print $7}' | grep -m1 -oE '[0-9]+' | head -n1
+    # Some Linux doesn't have 'lsof' and Mac's netstat is different...
+    if which lsof &>/dev/null; then
+        lsof -ti:${_port} -sTCP:LISTEN
+    else
+        netstat -t4lnp 2>/dev/null | grep -w "0.0.0.0:${_port}" | awk '{print $7}' | grep -m1 -oE '[0-9]+' | head -n1
+    fi
 }
 
 function _wait_url() {
@@ -366,10 +371,10 @@ function _upsert() {
     [ ! -f "${_TMP%/}/${_file_name}.orig" ] && cp -p "${_file_path}" "${_TMP%/}/${_file_name}.orig"
 
     # If name=value is already set, all good
-    grep -qP "^\s*${_name_escaped}\s*${_between_char}\s*${_value_escaped}\b" "${_file_path}" && return 0
+    _grep -qP "^\s*${_name_escaped}\s*${_between_char}\s*${_value_escaped}\b" "${_file_path}" && return 0
 
     # If name= is already set, replace all with /g
-    if grep -qP "^\s*${_name_escaped}\s*${_between_char}" "${_file_path}"; then
+    if _grep -qP "^\s*${_name_escaped}\s*${_between_char}" "${_file_path}"; then
         _sed -i -r "s/^([[:space:]]*${_name_esc_sed})([[:space:]]*${_between_char}[[:space:]]*)[^${_comment_char} ]*(.*)$/\1\2${_value_esc_sed}\3/g" "${_file_path}"
         return $?
     fi
