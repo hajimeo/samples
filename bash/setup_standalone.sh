@@ -21,22 +21,22 @@ function usage() {
 This script is for building a small docker container for testing an application in dev environment.
 
 CREATE CONTAINER:
-    -c [-v <version>] [-n <container name>] [-o <install options>]
+    -C [-v <version>] [-n <container name>] [-o <install options>]
         Strict mode to create a container. If the named container exists, this script fails.
         <version> in -v is such as x.x.x.
         <container name> in -n is a container name (= hostname).
         If no name specified, generates some random name.
 
     Ex1: Install NXIQ
-        setup_standalone.sh -c -n node-nxiq1740 -v 1.74.0 -o \"-t nxiq\"
+        setup_standalone.sh -C -n node-nxiq1740 -v 1.74.0 -o \"-t nxiq\"
     Ex2: Install NXRM but not starting and no post tasks
-        setup_standalone.sh -c -v 3.22.0 -o \"-S\"
+        setup_standalone.sh -C -v 3.22.0 -o \"-S\"
 
     NOTE: Below location is used to download app installer
         export _DOWNLOAD_URL=http://xxx.xxx.xxx.xxx/zzz/
 
 START/CREATE CONTAINER:
-    -n <container name> [-v <version>]     <<< no '-c'
+    -n <container name> [-v <version>]     <<< no '-C'
         NOTE: If *exactly* same name image exists or -v/-N options are used, this will create a container from that image.
 
 SAVE CONTAINER AS IMAGE:
@@ -63,7 +63,7 @@ OTHERS (which normally you don't need to use):
         Not installing / starting, just creat an empty container or start -n node.
 
     -P
-        Use with -c (or when same name container doesn't exist), so that docker run command includes port forwards.
+        Use with -C (or when same name container doesn't exist), so that docker run command includes port forwards.
         Use _PORTS environment variable to set port numbers
 
     -S
@@ -215,7 +215,7 @@ function f_update_hosts_file() {
         _log "ERROR" "hostname (FQDN) is required"; return 11
     fi
     local _name="`echo "${_fqdn}" | cut -d"." -f1`"
-    if [  "${_name}" == "${_fqdn}" ]; then
+    if [ "${_name}" == "${_fqdn}" ]; then
         _log "INFO" "Host short name is same as FQDN: ${_fqdn}. Appending ${_DOMAIN}..."
         _fqdn="${_name}.${_DOMAIN}"
     fi
@@ -1245,15 +1245,15 @@ main() {
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
+    if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]] || [[ "$1" == "help" ]]; then
+        usage | less
+        exit 0
+    fi
     # parsing command options
-    while getopts "chi:l:M:Nn:o:PRSst:uv:X" opts; do
+    while getopts "Ci:l:M:Nn:o:PRSst:uv:X" opts; do
         case $opts in
-            c)
+            C)
                 _CREATE_CONTAINER=true
-                ;;
-            h)
-                usage | less
-                exit 0
                 ;;
             i)
                 _IMAGE_NAME="$OPTARG"
