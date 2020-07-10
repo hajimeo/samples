@@ -776,7 +776,7 @@ function f_socks5_proxy() {
     local _port="${1:-"48484"}"
     [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
 
-    local _hash="$(cat .ssh/id_rsa.pub 2>/dev/null | awk '{print $2}')"
+    local _hash="$(cat $HOME/.ssh/id_rsa.pub 2>/dev/null | awk '{print $2}')"
     if [ -z "${_hash}" ]; then
         _log "ERROR" "$FUNCNAME requires ssh password-less login."
         return 1
@@ -785,7 +785,7 @@ function f_socks5_proxy() {
         cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys || return $?
     fi
 
-    local _cmd="ssh -4gC2TxnNf -D${_port} localhost &>${_LOG_FILE_PATH:-"/dev/null"} &"
+    local _cmd="ssh -4gC2TxnNf -D${_port} localhost &>>${_LOG_FILE_PATH:-"/dev/null"} &"
     local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
 
     local _pid="$(_pid_by_port "${_port}")"
