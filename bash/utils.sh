@@ -54,7 +54,7 @@ function _check_update() {
         fi
         mv -f "${_tmp_file}" "${_file_path}" || return $?
     fi
-    _log "INFO" "${_file_path} has been updated. (if not new file) a backup is under ${__TMP%/}/."
+    _isYes "${_force}" || _log "INFO" "${_file_path} has been updated. If this is not a new file, a backup is under ${__TMP%/}/."
 }
 
 function _save_resp() {
@@ -177,6 +177,10 @@ function _trim() {
     local _string="$1"
     echo "${_string}" | _sed -e 's/^ *//g' -e 's/ *$//g'
 }
+function _escape() {
+    local _string="$1"
+    printf %q "${_string}"
+}
 
 function _sed() {
     local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
@@ -196,7 +200,6 @@ function _pid_by_port() {
         netstat -t4lnp 2>/dev/null | grep -w "0.0.0.0:${_port}" | awk '{print $7}' | grep -m1 -oE '[0-9]+' | head -n1
     fi
 }
-
 function _wait_url() {
     local _url="${1}"
     local _times="${2:-30}"
@@ -212,6 +215,18 @@ function _wait_url() {
         sleep ${_interval}
     done
     return 1
+}
+function _parallel() {
+    local _cmds_list="$1"   # File or strings of commands
+    local _prefix_cmd="$2"  # eg: '(date;'
+    local _suffix_cmd="$3"  # eg: ';date) &> test_$$.out'
+    local _num_process="${4:-3}"
+    if [ -f "${_cmds_list}" ]; then
+        cat "${_cmds_list}"
+    else
+        echo ${_cmds_list}
+    fi | sed '/^$/d' | tr '\n' '\0' | xargs -t -0 -n1 -P${_num_process} -I @@ bash -c "${_prefix_cmd}@@${_suffix_cmd}"
+    # Somehow " | sed 's/"/\\"/g'" does not need... why?
 }
 
 function _ask() {
