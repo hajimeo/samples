@@ -63,7 +63,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 # Global variables
 _ADMIN_USER="admin"
 _ADMIN_PWD="admin123"
-_REPO_FORMATS="maven,pypi,npm,docker,yum,rubygem,raw,conan"
+_REPO_FORMATS="maven,pypi,npm,nuget,docker,yum,rubygem,raw,conan"
 ## Updatable variables
 _NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
 _DOCKER_NETWORK_NAME=${_DOCKER_NETWORK_NAME:-"nexus"}
@@ -98,7 +98,7 @@ function f_setup_maven() {
     fi
     # add some data for xxxx-proxy
     # If NXRM2: _get_asset_NXRM2 "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar"
-    _get_asset "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar" "${_TMP%/}/junit-4.12.jar" || return $?
+    _get_asset "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar" "${_TMP%/}/junit-4.12.jar"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
@@ -116,7 +116,7 @@ function f_setup_maven() {
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-group ("." in groupdId should be changed to "/")
-    _get_asset "${_prefix}-group" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar" || return $?
+    _get_asset "${_prefix}-group" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar"
 
     # Another test for get from proxy, then upload to hosted, then get from hosted
     #_get_asset "${_prefix}-proxy" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar" "${_TMP%/}/httpclient-4.5.12.jar"
@@ -134,7 +134,7 @@ function f_setup_pypi() {
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-proxy
-    _get_asset "${_prefix}-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz" "${_TMP%/}/Unit-0.2.2.tar.gz" || return $?
+    _get_asset "${_prefix}-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz" "${_TMP%/}/Unit-0.2.2.tar.gz"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
@@ -151,7 +151,7 @@ function f_setup_pypi() {
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-group
-    _get_asset "${_prefix}-group" "packages/pyyaml/5.3.1/PyYAML-5.3.1.tar.gz" || return $?
+    _get_asset "${_prefix}-group" "packages/pyyaml/5.3.1/PyYAML-5.3.1.tar.gz"
 }
 
 function f_setup_npm() {
@@ -164,7 +164,7 @@ function f_setup_npm() {
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-proxy
-    _get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.4.tgz" "${_TMP%/}/lodash-4.17.15.tgz" || return $?
+    _get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.4.tgz" "${_TMP%/}/lodash-4.17.15.tgz"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
@@ -181,7 +181,7 @@ function f_setup_npm() {
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-group
-    _get_asset "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz" || return $?
+    _get_asset "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz"
 }
 
 function f_setup_nuget() {
@@ -201,7 +201,7 @@ function f_setup_nuget() {
     fi
     # add some data for xxxx-proxy
     _get_asset "${_prefix}-v3-proxy" "Test/2.0.1.1" "${_TMP%/}/test.2.0.1.1.nupkg"  # This one may fail on some Nexus version
-    _get_asset "${_prefix}-proxy" "Test/2.0.1.1" "${_TMP%/}/test.2.0.1.1.nupkg" || return $?
+    _get_asset "${_prefix}-proxy" "Test/2.0.1.1" "${_TMP%/}/test.2.0.1.1.nupkg"
 
     # Nexus should have nuget-group and nuget-hosted, so creating only v3 one
     # If no xxxx-hosted, create it
@@ -219,7 +219,7 @@ function f_setup_nuget() {
     fi
     # add some data for xxxx-group
     _get_asset "${_prefix}-v3-group" "jQuery/3.5.1" "${_TMP%/}/jquery.3.5.1.nupkg"  # this one may fail on some Nexus version
-    _get_asset "${_prefix}-group" "jQuery/3.5.1" "${_TMP%/}/jquery.3.5.1.nupkg" || return $?
+    _get_asset "${_prefix}-group" "jQuery/3.5.1" "${_TMP%/}/jquery.3.5.1.nupkg"
 }
 
 function f_setup_docker() {
@@ -335,9 +335,9 @@ function f_setup_yum() {
     # add some data for xxxx-proxy
     if which yum &>/dev/null; then
         f_generate_yum_repo_file "${_prefix}-proxy"
-        yum --disablerepo="*" --enablerepo="nexusrepo" install --downloadonly --downloaddir=${_TMP%/} dos2unix || return $?
+        yum --disablerepo="*" --enablerepo="nexusrepo" install --downloadonly --downloaddir=${_TMP%/} dos2unix
     else
-        _get_asset "${_prefix}-proxy" "7/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm" || return $?
+        _get_asset "${_prefix}-proxy" "7/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm"
     fi
 
     # If no xxxx-hosted, create it
@@ -348,7 +348,7 @@ function f_setup_yum() {
     # add some data for xxxx-hosted
     local _upload_file="$(find ${_TMP%/} -type f -size +1k -name "dos2unix-*.el7.x86_64.rpm" 2>/dev/null | tail -n1)"
     if [ -s "${_upload_file}" ]; then
-        f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=/7/os/x86_64/Packages" || return $?
+        f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=/7/os/x86_64/Packages"
     else
         _log "WARN" "No rpm file for upload test."
     fi
@@ -360,7 +360,7 @@ function f_setup_yum() {
         _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # add some data for xxxx-group
-    _get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
+    _get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})"
 }
 function f_generate_yum_repo_file() {
     local _repo="${1:-"yum-group"}"
