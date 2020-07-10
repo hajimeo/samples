@@ -1140,7 +1140,7 @@ function questions_docker_repos() {
 }
 function questions_cleanup() {
     local _clean_cmds_file="${_TMP%/}/clean_cmds.sh"
-    > ${_clean_cmds_file}
+    > ${_clean_cmds_file} || return $?
     if [ -n "${r_NEXUS_CONTAINER_NAME}" ]; then
         _questions_cleanup_inner "${r_NEXUS_CONTAINER_NAME}" "${r_NEXUS_MOUNT_DIR}" "${_clean_cmds_file}"
     else
@@ -1155,7 +1155,7 @@ function questions_cleanup() {
         _questions_cleanup_inner_inner "sudo rm -rf ${r_NEXUS_MOUNT_DIR_SHARED}" "${_clean_cmds_file}"
     fi
     echo "======================================"
-    cat ${_clean_cmds_file}
+    cat ${_clean_cmds_file} || return $?
     echo "======================================"
     if ! ${_AUTO}; then
         _ask "Are you sure to execute above? ('sudo' password may be asked)" "N"
@@ -1164,7 +1164,7 @@ function questions_cleanup() {
             return 0
         fi
     fi
-    bash -x ${_clean_cmds_file}
+    [ -s "${_clean_cmds_file}" ] && bash -x ${_clean_cmds_file}
 }
 function _questions_cleanup_inner() {
     local _name="$1"
