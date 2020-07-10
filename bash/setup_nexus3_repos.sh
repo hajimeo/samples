@@ -27,6 +27,10 @@ COMMAND OPTIONS:
     -v <nexus version>
         Create Nexus container if version number (eg: 3.24.0) is given and 'docker' command is available.
 
+    -C [-r /path/to/existing/response-file.resp]
+        *DANGER*
+        Delete the container and sonatype-work directory for fresh installation.
+
 EXAMPLE COMMANDS:
 Start script with interview mode:
     ${_filename}
@@ -83,6 +87,7 @@ _LOG_FILE_PATH="/tmp/setup_nexus3_repos.log"
 # Variables which used by command arguments
 _AUTO=false
 _DEBUG=false
+_CLEAN=false
 _RESP_FILE=""
 
 
@@ -449,6 +454,17 @@ function f_setup_conan() {
 
 
 ### Misc. functions / utility type functions #################################################################
+# Set admin password after initial installation
+function f_adminpwd() {
+    local _container_name="${1:-"${r_NEXUS_CONTAINER_NAME_1:-"${r_NEXUS_CONTAINER_NAME}"}"}"
+    local _new_pwd="${2:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
+    local _current_pwd="${3}"
+    [ -z "${_container_name}" ] && return 110
+    [ -z "${_current_pwd}" ] && _current_pwd="$(docker exec -ti ${_container_name} cat /nexus-data/admin.password | tr -cd "[:print:]")"
+    [ -z "${_current_pwd}" ] && return 112
+    f_api "/service/rest/beta/security/users/admin/change-password" "${_new_pwd}" "PUT" "admin" "${_current_pwd}"
+}
+
 # Create a test user and test role
 function f_testuser() {
     f_apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"default","id":"test-role","name":"testRole","description":"test role","privileges":["nx-repository-admin-*-*-*"],"roles":[]}],"type":"rpc"}'
@@ -480,7 +496,7 @@ function f_trust_ca() {
         _ca_dir="/usr/local/share/ca-certificates/extra"
     elif which security &>/dev/null && [ -d $HOME/Library/Keychains ]; then
         # If we know the common name, and if exists, no change.
-        security find-certificate -c "${_CN}" $HOME/Library/Keychains/login.keychain-db && return 0
+        security find-certificate -c "${_CN}" $HOME/Library/Keychains/login.keychain-db &>/dev/null && return 0
         # NOTE: -d for add to admin cert store (and not sure what this means)
         sudo security add-trusted-cert -d -r trustRoot -k $HOME/Library/Keychains/login.keychain-db "${_ca_pem}"
         return $?
@@ -760,7 +776,16 @@ function f_socks5_proxy() {
     local _port="${1:-"48484"}"
     [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
 
-    local _cmd="ssh -4gC2TxnNf -D${_port} localhost &>/dev/null &"
+    local _hash="$(cat .ssh/id_rsa.pub 2>/dev/null | awk '{print $2}')"
+    if [ -z "${_hash}" ]; then
+        _log "ERROR" "$FUNCNAME requires ssh password-less login."
+        return 1
+    fi
+    if ! grep -q "${_hash}" $HOME/.ssh/authorized_keys; then
+        cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys || return $?
+    fi
+
+    local _cmd="ssh -4gC2TxnNf -D${_port} localhost &>${_LOG_FILE_PATH:-"/dev/null"} &"
     local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
 
     local _pid="$(_pid_by_port "${_port}")"
@@ -1113,6 +1138,56 @@ function questions_docker_repos() {
     done
     echo "${_def_host}:${_def_port}"
 }
+function questions_cleanup() {
+    local _clean_cmds_file="${_TMP%/}/clean_cmds.sh"
+    > ${_clean_cmds_file}
+    if [ -n "${r_NEXUS_CONTAINER_NAME}" ]; then
+        _questions_cleanup_inner "${r_NEXUS_CONTAINER_NAME}" "${r_NEXUS_MOUNT_DIR}" "${_clean_cmds_file}"
+    else
+        for _i in {1..3}; do
+            local _v_name="r_NEXUS_CONTAINER_NAME_${_i}"
+            local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
+            _questions_cleanup_inner "${!_v_name}" "${!_v_name_m}" "${_clean_cmds_file}"
+        done
+    fi
+    # Only if the mount path is under _WORK_DIR to be safe.
+    if [ -n "${r_NEXUS_MOUNT_DIR_SHARED}" ] && [ -n "${_WORK_DIR%/}" ] && [[ "${r_NEXUS_MOUNT_DIR_SHARED}" =~ ^${_WORK_DIR%/}/ ]]; then
+        _questions_cleanup_inner_inner "sudo rm -rf ${r_NEXUS_MOUNT_DIR_SHARED}" "${_clean_cmds_file}"
+    fi
+    echo "======================================"
+    cat ${_clean_cmds_file}
+    echo "======================================"
+    if ! ${_AUTO}; then
+        _ask "Are you sure to execute above? ('sudo' password may be asked)" "N"
+        if ! _isYes; then
+            echo "Aborting..."
+            return 0
+        fi
+    fi
+    bash -x ${_clean_cmds_file}
+}
+function _questions_cleanup_inner() {
+    local _name="$1"
+    local _mount="$2"
+    local _tmp_file="$3"
+    if [ -n "${_name}" ]; then
+        _questions_cleanup_inner_inner "docker rm -f ${_name}" "${_tmp_file}"
+    fi
+    # Only if the mount path is under _WORK_DIR to be safe.
+    if [ -n "${_mount}" ] && [ -n "${_WORK_DIR%/}" ] && [[ "${_mount}" =~ ^${_WORK_DIR%/}/ ]]; then
+        _questions_cleanup_inner_inner "sudo rm -rf ${_mount}" "${_tmp_file}"
+    fi
+}
+function _questions_cleanup_inner_inner() {
+    local _cmd="$1"
+    local _tmp_file="$2"
+    if ! ${_AUTO}; then
+        _ask "Would you like to run '${_cmd}'" "N"
+        _isYes && echo "${_cmd}" >> ${_tmp_file}
+    else
+        echo "${_cmd}" >> ${_tmp_file}
+    fi
+}
 
 # Validate functions for interview/questions. NOTE: needs to start with _is.
 function _is_container_name() {
@@ -1202,12 +1277,17 @@ main() {
         _isYes && _load_resp
     fi
 
+    if ${_CLEAN}; then
+        _log "WARN" "CLEAN-UP (DELETE) mode is selected.";sleep 3
+        questions_cleanup
+        return $?
+    fi
     if ! ${_AUTO}; then
         interview
         _ask "Interview completed. Would like you like to setup?" "Y" "" "N" "N"
         if ! _isYes; then
             echo 'Bye!'
-            exit 0
+            return
         fi
     fi
 
@@ -1241,7 +1321,6 @@ main() {
                     fi
                 fi
             done
-            r_NEXUS_MOUNT_DIR="${r_NEXUS_MOUNT_DIR_1}"
         else
             f_docker_run_or_start "${r_NEXUS_CONTAINER_NAME}" "${r_NEXUS_MOUNT_DIR}"
             # 'main' requires "r_NEXUS_URL"
@@ -1256,7 +1335,7 @@ main() {
     if [ -n "${r_NEXUS_MOUNT_DIR:-${r_NEXUS_MOUNT_DIR_1}}" ] && [ -s "${r_NEXUS_MOUNT_DIR:-${r_NEXUS_MOUNT_DIR_1}}/admin.password" ]; then
         # I think it's ok to type 'admin' in here
         _log "INFO" "Updating 'admin' user's password..."
-        f_api "/service/rest/beta/security/users/admin/change-password" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "PUT" "admin" "$(cat "${r_NEXUS_MOUNT_DIR:-${r_NEXUS_MOUNT_DIR_1}}/admin.password")"
+        f_adminpwd
     fi
 
     _log "INFO" "Creating 'testuser' if it hasn't been created."
@@ -1292,10 +1371,13 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     # TODO: check if update is available if current file is older than X hours
 
     # parsing command options
-    while getopts "ADf:r:v:" opts; do
+    while getopts "ACDf:r:v:" opts; do
         case $opts in
             A)
                 _AUTO=true
+                ;;
+            C)
+                _CLEAN=true
                 ;;
             D)
                 _DEBUG=true
