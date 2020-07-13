@@ -1,0 +1,50 @@
+FROM centos:7.6.1810
+
+# Set up Yum repo file (replace "_REPLACE_WITH_YUM_REPO_URL_")
+RUN echo '[nexusrepo]
+name=Nexus Repository
+baseurl=_REPLACE_WITH_YUM_REPO_URL_/$releasever/os/$basearch/
+enabled=1
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+priority=1' > /etc/yum.repos.d/nexus-yum-test.repo
+# sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@http://dh1.standalone.localdomain:8081/repository/yum-proxy@1" /etc/yum.repos.d/nexus-yum-test.repo
+
+# Install software/tools used by nexus users
+RUN yum --disablerepo="*" --enablerepo="nexusrepo" install -y sudo scp curl unzip tar wget openssl which net-tools strace lsof tcpdump openssh-server openssh-clients openldap-clients nc rsync \
+ python python3 maven rubygems; \
+curl -sL https://rpm.nodesource.com/setup_10.x | bash - && yum install -y nodejs; \
+rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm; yum install -y aspnetcore-runtime-3.1; \
+pip3 install conan; \
+yum install -y epel-release && yum --disablerepo="*" --enablerepo="nexusrepo" --enablerepo="epel" install -y golang
+
+# Disable iptables and SeLinux, setup ssh (replace "_REPLACE_WITH_YOUR_PRIVATE_KEY_")
+RUN setenforce 0 || echo ko;\
+systemctl disable firewalld.service || echo ko;\
+mkdir -m 600 /root/.ssh;\
+echo -e '_REPLACE_WITH_YOUR_PRIVATE_KEY_' > /root/.ssh/id_rsa;\
+chmod 400 /root/.ssh/id_rsa;\
+ssh-keygen -y -f /root/.ssh/id_rsa > /root/.ssh/id_rsa.pub;\
+cat /root/.ssh/id_rsa.pub >> /root/.ssh/authorized_keys;\
+chmod 600 /root/.ssh/authorized_keys;\
+chown -R root:root /root/.ssh;\
+( grep ^PermitRootLogin /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config ) || echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config;\
+( grep ^GSSAPIAuthentication /etc/ssh/sshd_config && sed -i 's/^GSSAPIAuthentication yes/GSSAPIAuthentication no/' /etc/ssh/sshd_config ) || echo 'GSSAPIAuthentication no' >> /etc/ssh/sshd_config;\
+( grep ^UseDNS /etc/ssh/sshd_config && sed -i 's/^UseDNS yes/UseDNS no/' /etc/ssh/sshd_config ) || echo 'UseDNS no' >> /etc/ssh/sshd_config;\
+umask 022
+
+# Centos 7 customizations, by default leave only sshd enabled
+ENV container docker
+RUN (cd /lib/systemd/system/sysinit.target.wants/; for i in *; do [ $i == \
+systemd-tmpfiles-setup.service ] || rm -f $i; done); \
+rm -f /lib/systemd/system/multi-user.target.wants/*;\
+rm -f /etc/systemd/system/*.wants/*;\
+rm -f /lib/systemd/system/local-fs.target.wants/*; \
+rm -f /lib/systemd/system/sockets.target.wants/*udev*; \
+rm -f /lib/systemd/system/sockets.target.wants/*initctl*; \
+rm -f /lib/systemd/system/basic.target.wants/*;\
+rm -f /lib/systemd/system/anaconda.target.wants/*;\
+systemctl enable sshd;
+
+VOLUME [ "/sys/fs/cgroup" ]
+CMD ["/usr/sbin/init"]
