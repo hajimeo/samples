@@ -452,6 +452,82 @@ function f_setup_conan() {
     #_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
 }
 
+# Using Nexus to create a container which installs python, npm, mvn, nuget, rubygem, conan ...
+function p_client_container() {
+    local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
+    local _centos_ver="${2:-"7.6.1810"}"
+    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
+
+    local _image_name="nexus-client:latest"
+    local _existing_id="`${_cmd} images -q ${_image_name}`"
+    if [ -n "${_existing_id}" ]; then
+        _log "INFO" "Image ${_image_name} (${_existing_id}) already exists. Running / Starting a container..."; sleep 3
+    fi
+    local _build_dir="$(mktemp -d)" || return $?
+    local _repo_url="${_base_url%/}/repository/yum-proxy"   # Expecting yum-proxy exists
+    # To check NXRM3 repo reachability, needs to end with '/'
+    _is_url_reachable "${_repo_url%/}/" || return 1
+    local _dockerfile="${_build_dir%/}/Dockerfile"
+
+    # Expecting f_setup_yum and f_setup_docker have been run
+    curl -s -f -m 7 --retry 2 "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile_Nexus" -o ${_dockerfile} || return $?
+
+    local _os_and_ver="centos:${_centos_ver}"
+    if [ -n "${r_DOCKER_PROXY}" ]; then
+        f_docker_login "${r_DOCKER_PROXY}" || return $?
+        _os_and_ver="${r_DOCKER_PROXY}/centos:${_centos_ver}"
+    fi
+    _sed -i -r "s@^FROM centos.*@FROM ${_os_and_ver}@1" ${_dockerfile} || return $?
+    _sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@${_repo_url%/}@1" ${_dockerfile} || return $?
+    if [ -s $HOME/.ssh/id_rsa ]; then
+        local _pkey="`_sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
+        _sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ${_dockerfile} || return $?
+    fi
+    _log "DEBUG" "$(cat ${_dockerfile})"
+
+    cd ${_build_dir} || return $?
+    _log "INFO" "Building ${_image_name} ... (outputs:${_LOG_FILE_PATH})"
+    ${_cmd} build --rm -t ${_image_name} . &>>${_LOG_FILE_PATH} || return $?
+    cd -
+
+    _log "INFO" "Running or Starting 'nexus-client'"
+    # TODO: not right way to use 3rd and 4th arguments.
+    _NO_PORT_FORWARD="Y" f_docker_run_or_start "nexus-client" "" "-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true" "${_image_name} /sbin/init" || return $?
+
+    # Create a test user if hasn't created (testuser:testuser123)
+    f_container_useradd "nexus-client" "testuser"
+    # Setup clients' config files
+    f_container_client_configs "nexus-client" "testuser"
+}
+
+function f_container_useradd() {
+    local _name="${1}"
+    local _user="${2:-"$USER"}"
+    local _password="${3:-"${_user}123"}"
+    docker exec -it ${_name} bash -c 'grep -q "^'$_user':" /etc/passwd && exit 0; useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
+    docker exec -it ${_name} bash -c 'if [ ! -f /root/.ssh/authorized_keys ]; then mkdir /home/'$_user'/.ssh &>/dev/null; ssh-keygen -q -N "" -f /home/'$_user'/.ssh/id_rsa; cp /root/.ssh/authorized_keys /home/'$_user'/.ssh/; chown -R '$_user': /home/'$_user'/.ssh; fi' || return $?
+
+    if ! grep -q -w "nexus-client" $HOME/.ssh/confg; then
+        echo '
+Host nexus-client
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  User '${_user} >> $HOME/.ssh/config
+    fi
+}
+
+function f_container_client_configs() {
+    local _name="${1}"
+    local _user="${2:-"$USER"}"
+    local _base_url="${3:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
+    local _usr="${4:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"
+    local _pwd="${5:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
+    # mvn
+    docker exec -it ${_name} bash -c '_f=/home/'${_user}'/settings.xml; if [ ! -s ${_f} ]; then mkdir /home/'${_user}' &>/dev/null; curl -s -o ${_f} -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_base_url%/}'/repository/maven-group/@1" ${_f}; chown '${_user}' ${_f}; fi' || return $?
+    # npm
+    docker exec -it ${_name} bash -c 'sudo -i -u '${_user}' npm config set registry '${_base_url%/}'/repository/npm-group/' || return $?
+    # TODO: add other client configs.
+}
 
 ### Misc. functions / utility type functions #################################################################
 # Set admin password after initial installation
@@ -814,7 +890,8 @@ function f_docker_run_or_start() {
     local _name="$1"
     local _mount="$2"
     local _ext_opts="$3"
-    local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
+    local _image_name="$4"
+    local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
 
     if ${_cmd} ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
         _log "WARN" "Container:'${_name}' already exists. So that starting instead of docker run...";sleep 3
@@ -822,7 +899,7 @@ function f_docker_run_or_start() {
     else
         _log "DEBUG" "Creating Container with \"${_name}\" \"${_mount}\" \"${_ext_opts}\""
         # TODO: normally container fails after a few minutes, so checking the exit code of docker run is useless
-        f_docker_run "${_name}" "${_mount}" "${_ext_opts}" || return $?
+        f_docker_run "${_name}" "${_mount}" "${_ext_opts}" "${_image_name}" || return $?
         _log "INFO" "\"${_cmd} run\" executed. Check progress with \"${_cmd} logs -f ${_name}\""
     fi
     sleep 3
@@ -835,10 +912,11 @@ function f_docker_run() {
     local _name="$1"
     local _mount="$2"
     local _ext_opts="$3"
-    local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
+    local _image_name="${4:-"sonatype/nexus3:${r_NEXUS_VERSION:-"latest"}"}"
+    local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
 
     local _p=""
-    if ! _isYes "${r_NEXUS_INSTALL_HAC}"; then
+    if ! _isYes "${r_NEXUS_INSTALL_HAC}" && ! _isYes "${_NO_PORT_FORWARD}"; then
         [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT1}:8081"
         [ -n "${r_NEXUS_CONTAINER_PORT2}" ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT2}:8443"
         if [[ "${r_DOCKER_PROXY}" =~ :([0-9]+)$ ]]; then
@@ -901,7 +979,7 @@ nexus.scripts.allowCreation=true' > ${_mount%/}/etc/nexus.properties || return $
         ${_v_opt} \\
         --network=${_DOCKER_NETWORK_NAME} ${_ext_opts} \\
         -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\" \\
-        sonatype/nexus3:${r_NEXUS_VERSION}"
+        ${_image_name}"
     _log "DEBUG" "${_full_cmd}"
     eval "${_full_cmd}" || return $?
 }
@@ -1081,6 +1159,7 @@ function questions() {
             _ask "Nexus license file path if you have:
 If empty, it will try finding from ${_WORK_DIR%/}/sonatype-*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_is_license_path"
         fi
+        _ask "Would you like to install a container which has python, npm, mvn etc.?" "Y" "r_NEXUS_CLIENT_INSTALL" "N" "N"
     fi
 
     if _isYes "${r_NEXUS_INSTALL}"; then
@@ -1209,8 +1288,8 @@ function _is_license_path() {
     fi
 }
 function _is_url_reachable() {
-    if [ -n "$1" ]; then
-        curl -f -s -I -L -k -m1 --retry 0 "$1"
+    # As I'm checking the reachability, not using -f
+    if [ -n "$1" ] && ! curl -s -I -L -k -m1 --retry 0 "$1" &>/dev/null; then
         echo "$1 is not reachable." >&2
         return 1
     fi
@@ -1329,6 +1408,9 @@ main() {
                 return 1
             fi
         fi
+    fi
+    if _isYes "${r_NEXUS_CLIENT_INSTALL}"; then
+        p_client_container
     fi
 
     # If admin.password is accessible from this host, update with the default password.
