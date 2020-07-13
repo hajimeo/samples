@@ -72,7 +72,7 @@ function _mvn_settings() {
     echo "Using ${_settings_xml}..." >&2; sleep 3
     if [ -n "${_remote_repo}" ]; then
         # TODO: this substitute is not good
-        sed -i -E "s@<url>http.+/repository/.+</url>@<url>${_remote_repo}</url>@" ${_settings_xml}
+        sed -i -E "s@<url>http.+/(content|repository)/.+</url>@<url>${_remote_repo}</url>@1" ${_settings_xml}
     fi
     echo "-s ${_settings_xml}"
 }
