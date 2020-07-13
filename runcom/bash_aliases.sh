@@ -48,7 +48,7 @@ alias docker_stop="docker stop -t 120"
 alias qcsv='q -O -d"," -T --disable-double-double-quoting'
 alias pgbg='pgbadger --timezone 0'
 
-## Non default (need to install an app or develop script) alias commands ###############################################
+## Non default (need to install some complex software and/or develop script) alias commands ############################
 # Load/source my own searching utility functions / scripts
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 alias logS="source $HOME/IdeaProjects/samples/bash/log_search.sh; source $HOME/IdeaProjects/work/bash/log_search.sh"
@@ -243,23 +243,16 @@ function jargrep() {
     which jar &>/dev/null || _cmd="less"
     find -L ${2:-./} -type f -name '*.jar' -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} | grep -wi '$1' && echo {}"
 }
-# Execute multiple commands concurrently. NOTE: seems Mac's xargs has command length limit and no -r to ignore empty line
-function _parallel() {
-    local _cmds_list="$1"   # File or strings of commands
-    local _prefix_cmd="$2"  # eg: '(date;'
-    local _suffix_cmd="$3"  # eg: ';date) &> test_$$.out'
-    local _num_process="${4:-3}"
-    if [ -f "${_cmds_list}" ]; then
-        cat "${_cmds_list}"
+function mov2gif() {
+    local _in="$1"
+    local _out="$2"
+    # based on https://gist.github.com/dergachev/4627207
+    [ -z "${_out}" ] && _out="$(basename "${_in}" ".mov").gif"
+    if which gifsicle &>/dev/null; then
+        ffmpeg -i "${_in}" -pix_fmt rgb24 -r 6 -f gif - | gifsicle --optimize=3 --delay=5 > "${_out}"
     else
-        echo ${_cmds_list}
-    fi | sed '/^$/d' | tr '\n' '\0' | xargs -t -0 -n1 -P${_num_process} -I @@ bash -c "${_prefix_cmd}@@${_suffix_cmd}"
-    # Somehow " | sed 's/"/\\"/g'" does not need... why?
-}
-# Escape characters for Shell
-function _escape() {
-    local _string="$1"
-    printf %q "${_string}"
+        ffmpeg -i "${_in}" -pix_fmt rgb24 -r 6 -f gif "${_out}"
+    fi
 }
 # Grep STDIN with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
