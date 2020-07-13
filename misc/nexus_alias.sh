@@ -52,7 +52,7 @@ function mvn-resolve() {
 }
 function _mvn_settings() {
     local _remote_repo="$1"
-    local _settings_xml="$(find . -maxdepth 2 -name '*settings*.xml' -print | tail -n1)"
+    local _settings_xml="$(find . -maxdepth 2 -name '*settings*.xml' -not -path "./.m2/*" -print | tail -n1)"
     if [ -z "${_settings_xml}" ] && [ -s $HOME/.m2/settings.xml ]; then
         _settings_xml="./m2_settings.xml"
         cp $HOME/.m2/settings.xml ${_settings_xml}
