@@ -1,3 +1,5 @@
+# source <(curl https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh)
+
 ## Simple/generic alias commands (some need pip though) ################################################################
 # 'cd' to last modified directory
 alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
