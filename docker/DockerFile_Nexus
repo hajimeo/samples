@@ -5,7 +5,7 @@ RUN echo -e '[nexusrepo]\nname=Nexus Repository\nbaseurl=_REPLACE_WITH_YUM_REPO_
 # sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@http://dh1.standalone.localdomain:8081/repository/yum-proxy@1" /etc/yum.repos.d/nexus-yum-test.repo
 
 # Install software/tools used by nexus users
-RUN yum --disablerepo="*" --enablerepo="nexusrepo" install -y sudo bind-utils scp curl unzip tar wget openssl which net-tools strace lsof tcpdump openssh-server openssh-clients openldap-clients nc rsync \
+RUN yum --disablerepo="*" --enablerepo="nexusrepo" install -y sudo bind-utils net-tools scp curl unzip tar wget openssl which net-tools strace lsof tcpdump openssh-server openssh-clients openldap-clients nc rsync \
  python python3 maven rubygems; \
 curl -sL https://rpm.nodesource.com/setup_10.x | bash - && yum install -y nodejs; \
 rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm; yum install -y aspnetcore-runtime-3.1; \
