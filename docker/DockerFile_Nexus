@@ -24,6 +24,7 @@ chmod 600 /root/.ssh/authorized_keys;\
 chown -R root:root /root/.ssh;\
 ( grep ^PermitRootLogin /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config ) || echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config;\
 ( grep ^GSSAPIAuthentication /etc/ssh/sshd_config && sed -i 's/^GSSAPIAuthentication yes/GSSAPIAuthentication no/' /etc/ssh/sshd_config ) || echo 'GSSAPIAuthentication no' >> /etc/ssh/sshd_config;\
+( grep ^UsePAM /etc/ssh/sshd_config && sed -i 's/^UsePAM yes/UsePAM no/' /etc/ssh/sshd_config ) || echo 'UsePAM no' >> /etc/ssh/sshd_config;\
 ( grep ^UseDNS /etc/ssh/sshd_config && sed -i 's/^UseDNS yes/UseDNS no/' /etc/ssh/sshd_config ) || echo 'UseDNS no' >> /etc/ssh/sshd_config;\
 umask 022
 
