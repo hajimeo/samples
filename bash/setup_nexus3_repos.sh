@@ -523,7 +523,7 @@ function f_container_client_configs() {
     local _usr="${4:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"
     local _pwd="${5:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
     # mvn
-    docker exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; if [ ! -s ${_f} ]; then mkdir /home/'${_user}'/.m2 &>/dev/null; curl -s -o ${_f} -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_base_url%/}'/repository/maven-group/@1" ${_f}; chown '${_user}' ${_f}; fi' || return $?
+    docker exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; if [ ! -s ${_f} ]; then mkdir /home/'${_user}'/.m2 &>/dev/null; curl -s -o ${_f} -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_base_url%/}'/repository/maven-group/@1" ${_f}; chown -R '${_user}': /home/'${_user}'/.m2; fi' || return $?
     # npm
     docker exec -it ${_name} bash -c 'sudo -i -u '${_user}' npm config set registry '${_base_url%/}'/repository/npm-group/' || return $?
     # TODO: add other client configs.
