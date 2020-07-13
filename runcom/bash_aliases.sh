@@ -369,6 +369,9 @@ function push2search() {
 
 
 ## Work specific functions
+if [ -s $HOME/IdeaProjects/samples/misc/nexus_alias.sh ]; then
+    source $HOME/IdeaProjects/samples/misc/nexus_alias.sh
+fi
 function pubS() {
     scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/ &
     scp -C $HOME/IdeaProjects/samples/bash/utils.sh dh1:/var/tmp/share/sonatype/ &
@@ -426,57 +429,7 @@ function iqStart() {
     java -Xmx2g ${_java_opts} -jar "${_jar_file}" server "${_cfg_file}"
 }
 
-function iqCli() {
-    local __doc__="https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
-    if [ -z "$1" ]; then
-        iqCli "./"
-        return $?
-    fi
-    java -jar /Users/hosako/Apps/iq-clis/nexus-iq-cli.jar -i "${_IQ_APP:-"sandbox-application"}" -s "${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}" -a "admin:admin123" -r ./iq_result_$(date +'%Y%m%d%H%M%S').json -X $@
-}
-function iqMvn() {
-    # https://help.sonatype.com/display/NXI/Sonatype+CLM+for+Maven
-    mvn com.sonatype.clm:clm-maven-plugin:evaluate -Dclm.additionalScopes=test,provided,system -Dclm.applicationId=sandbox-application -Dclm.serverUrl=http://dh1.standalone.localdomain:8070/ -Dclm.username=admin -Dclm.password=admin123
-}
-function mvn-arch-gen() {
-    # https://maven.apache.org/guides/getting-started/maven-in-five-minutes.html
-    local _gav="${1:-"com.example:my-app:1.0"}"
-    local _repo="$2"
-    local _localrepo="${3-"./local_repo"}"
-    local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
-    local _type="${5:-"maven-archetype-quickstart"}"
 
-    [ -n "${_repo}" ] && _options="${_options% } -DremoteRepositories=${_repo}"    # Doesn't work
-    if [[ "${_gav}" =~ ^([^:]+):([^:]+):([^:]+)$ ]]; then
-        local _g="${BASH_REMATCH[1]}"
-        local _a="${BASH_REMATCH[2]}"
-        local _v="${BASH_REMATCH[3]}"
-        [ -n "${_localrepo}" ] && _options="${_options% } -Dmaven.repo.local=${_localrepo}"
-        mvn archetype:generate -DgroupId=${_g} -DartifactId=${_a} -DarchetypeArtifactId=${_type} -DarchetypeVersion=${_v} -DinteractiveMode=false ${_options}
-    fi
-}
-function mvn-get() {
-    # maven/mvn get/download
-    local _gav="$1" # eg: junit:junit:4.12
-    local _localrepo="${2-"./local_repo"}"
-    local _options="${3-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -Dtransitive=false -U -X"}"
-    local _settings_xml="$(find . -maxdepth 2 -name '*settings*.xml' -print | tail -n1)"
-    if [ -n "${_settings_xml}" ]; then
-        echo "Using ${_settings_xml}..." >&2; sleep 3
-        _options="${_options% } -s ${_settings_xml}"
-    fi
-    [ -n "${_localrepo}" ] && _options="${_options% } -Dmaven.repo.local=${_localrepo}"
-    mvn dependency:get -Dartifact=${_gav} ${_options}
-}
-function mvn-resolve() {
-    # maven/mvn resolve dependency only
-    local _repo="$1"
-    local _localrepo="$2"
-    local _options=""
-    [ -n "${_repo}" ] && _options="${_options% } -DremoteRepositories=${_repo}"
-    [ -n "${_localrepo}" ] && _options="${_options% } -Dmaven.repo.local=${_localrepo}"
-    mvn -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS dependency:resolve ${_options} -U -X
-}
 # To patch nexus (so that checking /system) but probably no longer using.
 function _patch() {
     local _java_file="${1}"
