@@ -1,13 +1,7 @@
 FROM centos:7.6.1810
 
 # Set up Yum repo file (replace "_REPLACE_WITH_YUM_REPO_URL_")
-RUN echo '[nexusrepo]
-name=Nexus Repository
-baseurl=_REPLACE_WITH_YUM_REPO_URL_/$releasever/os/$basearch/
-enabled=1
-gpgcheck=1
-gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
-priority=1' > /etc/yum.repos.d/nexus-yum-test.repo
+RUN echo -e '[nexusrepo]\nname=Nexus Repository\nbaseurl=_REPLACE_WITH_YUM_REPO_URL_/$releasever/os/$basearch/\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7\npriority=1' > /etc/yum.repos.d/nexus-yum-test.repo
 # sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@http://dh1.standalone.localdomain:8081/repository/yum-proxy@1" /etc/yum.repos.d/nexus-yum-test.repo
 
 # Install software/tools used by nexus users
