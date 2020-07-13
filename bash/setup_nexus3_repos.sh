@@ -512,7 +512,7 @@ function p_client_container() {
     f_container_useradd "nexus-client" "testuser"
     # Setup clients' config files
     f_container_client_configs "nexus-client" "testuser"
-    _log "INFO" "Completed $FUNCNAME"
+    _log "INFO" "Completed $FUNCNAME (may need to run 'f_docker_add_NIC_to_container \"nexus-client\"')"
 }
 
 function f_container_useradd() {
