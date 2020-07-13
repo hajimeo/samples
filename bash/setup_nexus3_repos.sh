@@ -462,42 +462,57 @@ function p_client_container() {
     local _existing_id="`${_cmd} images -q ${_image_name}`"
     if [ -n "${_existing_id}" ]; then
         _log "INFO" "Image ${_image_name} (${_existing_id}) already exists. Running / Starting a container..."; sleep 3
-    fi
-    local _build_dir="$(mktemp -d)" || return $?
-    local _repo_url="${_base_url%/}/repository/yum-proxy"   # Expecting yum-proxy exists
-    # To check NXRM3 repo reachability, needs to end with '/'
-    _is_url_reachable "${_repo_url%/}/" || return 1
-    local _dockerfile="${_build_dir%/}/Dockerfile"
+    else
+        local _build_dir="$(mktemp -d)" || return $?
+        local _repo_url="${_base_url%/}/repository/yum-proxy"   # Expecting yum-proxy exists
+        # To check NXRM3 repo reachability, needs to end with '/'
+        _is_url_reachable "${_repo_url%/}/" || return 1
+        local _dockerfile="${_build_dir%/}/Dockerfile"
 
-    # Expecting f_setup_yum and f_setup_docker have been run
-    curl -s -f -m 7 --retry 2 "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile_Nexus" -o ${_dockerfile} || return $?
+        # Expecting f_setup_yum and f_setup_docker have been run
+        curl -s -f -m 7 --retry 2 "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile_Nexus" -o ${_dockerfile} || return $?
 
-    local _os_and_ver="centos:${_centos_ver}"
-    if [ -n "${r_DOCKER_PROXY}" ]; then
-        f_docker_login "${r_DOCKER_PROXY}" || return $?
-        _os_and_ver="${r_DOCKER_PROXY}/centos:${_centos_ver}"
-    fi
-    _sed -i -r "s@^FROM centos.*@FROM ${_os_and_ver}@1" ${_dockerfile} || return $?
-    _sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@${_repo_url%/}@1" ${_dockerfile} || return $?
-    if [ -s $HOME/.ssh/id_rsa ]; then
-        local _pkey="`_sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
-        _sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ${_dockerfile} || return $?
-    fi
-    _log "DEBUG" "$(cat ${_dockerfile})"
+        local _os_and_ver="centos:${_centos_ver}"
+        if [ -n "${r_DOCKER_PROXY}" ]; then
+            f_docker_login "${r_DOCKER_PROXY}" || return $?
+            _os_and_ver="${r_DOCKER_PROXY}/centos:${_centos_ver}"
+        fi
+        _sed -i -r "s@^FROM centos.*@FROM ${_os_and_ver}@1" ${_dockerfile} || return $?
+        _sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@${_repo_url%/}@1" ${_dockerfile} || return $?
+        if [ -s $HOME/.ssh/id_rsa ]; then
+            local _pkey="`_sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
+            _sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ${_dockerfile} || return $?
+        fi
+        _log "DEBUG" "$(cat ${_dockerfile})"
 
-    cd ${_build_dir} || return $?
-    _log "INFO" "Building ${_image_name} ... (outputs:${_LOG_FILE_PATH})"
-    ${_cmd} build --rm -t ${_image_name} . &>>${_LOG_FILE_PATH} || return $?
-    cd -
+        cd ${_build_dir} || return $?
+        _log "INFO" "Building ${_image_name} ... (outputs:${_LOG_FILE_PATH})"
+        ${_cmd} build --rm -t ${_image_name} . &>>${_LOG_FILE_PATH} || return $?
+        cd -
+    fi
+
+    local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true"
+    # If dnsmasq or some dns is locally installed, assuming it's setup correctly
+    if grep -qE '^nameserver\s+127\.' /etc/resolv.conf; then
+        _ext_opts="${_ext_opts} --dns=`hostname -I | cut -d " " -f1`"
+    fi
+    # add one more if set
+    local _another_dns="$(grep -m1 -E '^nameserver\s+[0-9]+\.' /etc/resolv.conf | grep -vE '^nameserver\s+127\.')"
+    if [ -n "${_another_dns}" ]; then
+        _ext_opts="${_ext_opts} --dns=${_another_dns}"
+    else
+        _ext_opts="${_ext_opts} --dns=127.0.0.11"   # adding back the local DNS
+    fi
 
     _log "INFO" "Running or Starting 'nexus-client'"
     # TODO: not right way to use 3rd and 4th arguments.
-    _NO_PORT_FORWARD="Y" f_docker_run_or_start "nexus-client" "" "-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true" "${_image_name} /sbin/init" || return $?
+    _NO_PORT_FORWARD="Y" f_docker_run_or_start "nexus-client" "" "${_ext_opts}" "${_image_name} /sbin/init" || return $?
 
     # Create a test user if hasn't created (testuser:testuser123)
     f_container_useradd "nexus-client" "testuser"
     # Setup clients' config files
     f_container_client_configs "nexus-client" "testuser"
+    _log "INFO" "Completed $FUNCNAME"
 }
 
 function f_container_useradd() {
@@ -505,9 +520,9 @@ function f_container_useradd() {
     local _user="${2:-"$USER"}"
     local _password="${3:-"${_user}123"}"
     docker exec -it ${_name} bash -c 'grep -q "^'$_user':" /etc/passwd && exit 0; useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
-    docker exec -it ${_name} bash -c 'if [ ! -f /root/.ssh/authorized_keys ]; then mkdir /home/'$_user'/.ssh &>/dev/null; ssh-keygen -q -N "" -f /home/'$_user'/.ssh/id_rsa; cp /root/.ssh/authorized_keys /home/'$_user'/.ssh/; chown -R '$_user': /home/'$_user'/.ssh; fi' || return $?
+    docker exec -it ${_name} bash -c 'if [ -f /root/.ssh/authorized_keys ]; then mkdir /home/'$_user'/.ssh &>/dev/null; [ ! -s /home/'$_user'/.ssh/id_rsa ] && ssh-keygen -q -N "" -f /home/'$_user'/.ssh/id_rsa; cp /root/.ssh/authorized_keys /home/'$_user'/.ssh/; chown -R '$_user': /home/'$_user'/.ssh; fi' || return $?
 
-    if ! grep -q -w "nexus-client" $HOME/.ssh/confg; then
+    if ! grep -q -w "nexus-client" $HOME/.ssh/config; then
         echo '
 Host nexus-client
   StrictHostKeyChecking no
@@ -1026,6 +1041,24 @@ function f_docker_network() {
     _log "DEBUG" "${_cmd} network '${_network_name}' created with subnet:${_subnet_16}.0.0"
 }
 
+function f_docker_add_NIC_to_container() {
+    local _name="${1}"
+    local _network="${2:-bridge}"
+    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
+
+    local _before_gw="$(${_cmd} inspect ${_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['NetworkSettings']['Gateway'])")"
+    ${_cmd} network connect ${_network} ${_name} || return $?
+    local _after_gw="$(${_cmd} inspect ${_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['NetworkSettings']['Gateway'])")"
+    if [ -n "${_before_gw}" ] && [ "${_before_gw}" != "${_after_gw}" ]; then
+        _log "WARN" "Gateway address has been changed (before: "${_before_gw}", after: ${_after_gw})
+     May want to execute below (please double check NIC name):
+route add default gw ${_before_gw} eth0\
+route del default gw ${_after_gw}\
+"
+    fi
+    ${_cmd} exec -it ${_name} bash -c "netstat -rn"
+}
+
 function f_get_available_container_ip() {
     local _hostname="${1}"  # optional
     local _check_file="${2}"  # /etc/hosts or /etc/banner_add_hosts
@@ -1043,7 +1076,7 @@ function f_get_available_container_ip() {
         [ "${_short_name}" == "${_hostname}" ] && _hostname="${_short_name}.${_DOMAIN#.}"
 
         # Not perfect but... if the IP is in the /etc/hosts, then reuse it
-        _ip="$(grep -E "^${_subnet_24%.}\.[0-9]+\s+${_hostname}\s*" ${_check_file} | awk '{print $1}' | tail -n1)"
+        [ -s "${_check_file}" ] && _ip="$(grep -E "^${_subnet_24%.}\.[0-9]+\s+${_hostname}\s*" ${_check_file} | awk '{print $1}' | tail -n1)"
     fi
 
     if [ -z "${_ip}" ]; then
