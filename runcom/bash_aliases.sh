@@ -439,10 +439,10 @@ function iqMvn() {
 function mvn-arch-gen() {
     # https://maven.apache.org/guides/getting-started/maven-in-five-minutes.html
     local _gav="${1:-"com.example:my-app:1.0"}"
-    local _type="${2:-"maven-archetype-quickstart"}"
-    local _repo="$3"
+    local _repo="$2"
     local _localrepo="${3-"./local_repo"}"
     local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
+    local _type="${5:-"maven-archetype-quickstart"}"
 
     [ -n "${_repo}" ] && _options="${_options% } -DremoteRepositories=${_repo}"    # Doesn't work
     if [[ "${_gav}" =~ ^([^:]+):([^:]+):([^:]+)$ ]]; then
