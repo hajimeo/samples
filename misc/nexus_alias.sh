@@ -1,3 +1,5 @@
+# source <(curl https://raw.githubusercontent.com/hajimeo/samples/master/misc/nexus_alias.sh)
+
 function iqCli() {
     local __doc__="https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
     if [ -z "$1" ]; then
