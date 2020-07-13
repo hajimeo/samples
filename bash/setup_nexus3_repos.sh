@@ -496,8 +496,8 @@ function p_client_container() {
 
     # Create a test user if hasn't created (testuser:testuser123)
     f_container_useradd "nexus-client" "testuser"
-    # Setup clients' config files
-    f_container_client_configs "nexus-client" "testuser"
+    # TODO: Setup clients' config files
+    #f_container_client_configs "nexus-client" "testuser"
 }
 
 function f_container_useradd() {
