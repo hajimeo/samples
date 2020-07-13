@@ -440,8 +440,11 @@ function mvn-arch-gen() {
     # https://maven.apache.org/guides/getting-started/maven-in-five-minutes.html
     local _gav="${1:-"com.example:my-app:1.0"}"
     local _type="${2:-"maven-archetype-quickstart"}"
+    local _repo="$3"
     local _localrepo="${3-"./local_repo"}"
     local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
+
+    [ -n "${_repo}" ] && _options="${_options% } -DremoteRepositories=${_repo}"    # Doesn't work
     if [[ "${_gav}" =~ ^([^:]+):([^:]+):([^:]+)$ ]]; then
         local _g="${BASH_REMATCH[1]}"
         local _a="${BASH_REMATCH[2]}"
@@ -454,15 +457,13 @@ function mvn-get() {
     # maven/mvn get/download
     local _gav="$1" # eg: junit:junit:4.12
     local _localrepo="${2-"./local_repo"}"
-    #local _repo="$3"
-    local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -Dtransitive=false -U -X"}"
+    local _options="${3-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -Dtransitive=false -U -X"}"
     local _settings_xml="$(find . -maxdepth 2 -name '*settings*.xml' -print | tail -n1)"
     if [ -n "${_settings_xml}" ]; then
         echo "Using ${_settings_xml}..." >&2; sleep 3
         _options="${_options% } -s ${_settings_xml}"
     fi
     [ -n "${_localrepo}" ] && _options="${_options% } -Dmaven.repo.local=${_localrepo}"
-    #[ -n "${_repo}" ] && _options="${_options% } -DremoteRepositories=${_repo}"    # Doesn't work
     mvn dependency:get -Dartifact=${_gav} ${_options}
 }
 function mvn-resolve() {
