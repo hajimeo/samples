@@ -1186,7 +1186,7 @@ function questions() {
             _ask "Nexus license file path if you have:
 If empty, it will try finding from ${_WORK_DIR%/}/sonatype-*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_is_license_path"
         fi
-        _ask "Would you like to install a container which has python, npm, mvn etc.?" "Y" "r_NEXUS_CLIENT_INSTALL" "N" "N"
+        _ask "Would you like to create another container with python, npm, mvn etc. client commands?" "Y" "r_NEXUS_CLIENT_INSTALL" "N" "N"
     fi
 
     if _isYes "${r_NEXUS_INSTALL}"; then
