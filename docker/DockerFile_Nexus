@@ -6,11 +6,11 @@ RUN echo -e '[nexusrepo]\nname=Nexus Repository\nbaseurl=_REPLACE_WITH_YUM_REPO_
 
 # Install software/tools used by nexus users (in case of changing / adding client tools, separating layers)
 RUN yum --disablerepo="*" --enablerepo="nexusrepo" install -y sudo bind-utils net-tools scp curl unzip tar wget openssl which vim strace lsof tcpdump openssh-server openssh-clients openldap-clients nc rsync python python3 maven rubygems
-RUN yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && yum install -y ripgrep
-RUN curl -sL https://rpm.nodesource.com/setup_10.x | bash - && yum install -y nodejs
-RUN rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm && yum install -y aspnetcore-runtime-3.1
-RUN pip3 install conan
-RUN yum install -y epel-release && yum --disablerepo="*" --enablerepo="nexusrepo" --enablerepo="epel" install -y golang
+RUN yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && yum install -y ripgrep || echo ko
+RUN curl -sL https://rpm.nodesource.com/setup_10.x | bash - && yum install -y nodejs && npm install yarn -g || echo ko
+RUN rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm && yum install -y aspnetcore-runtime-3.1 || echo ko
+RUN pip3 install conan || echo ko
+RUN yum install -y epel-release && yum --disablerepo="*" --enablerepo="nexusrepo" --enablerepo="epel" install -y golang || echo ko
 
 # Disable iptables and SeLinux, setup ssh (replace "_REPLACE_WITH_YOUR_PRIVATE_KEY_")
 RUN setenforce 0 || echo ko;\
