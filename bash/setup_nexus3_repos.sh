@@ -534,30 +534,21 @@ function f_container_client_configs() {
     local _pwd="${5:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
     local _cmd="${6:-"${r_DOCKER_CMD:-"docker"}"}"
 
-    local _repo_url="${_base_url%/}/repository/yum-proxy"   # Expecting yum-proxy exists
-    # NOTE: To check NXRM3 repo reachability, needs to end with '/'
-    if _is_url_reachable "${_repo_url%/}/"; then
-        _log "INFO" "${_repo_url%/}/ is reachable. Using for yum command ..."
-        ${_cmd} exec -it ${_name} bash -c 'echo -e "[nexusrepo]\nname=Nexus Repository\nbaseurl='${_repo_url%/}'/$releasever/os/$basearch/\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7\npriority=1" > /etc/yum.repos.d/nexus-yum-test.repo'
-        # sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@http://dh1.standalone.localdomain:8081/repository/yum-proxy@1" /etc/yum.repos.d/nexus-yum-test.repo
-    fi
-
-    _repo_url="${_base_url%/}/repository/maven-group"   # Expecting yum-proxy exists
-    if _is_url_reachable "${_repo_url%/}/"; then
-        _log "INFO" "${_repo_url%/}/ is reachable. Using for mvn command ..."
-        ${_cmd} exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; if [ ! -s ${_f} ]; then mkdir /home/'${_user}'/.m2 &>/dev/null; curl -s -o ${_f} -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_repo_url%/}'/@1" ${_f}; chown -R '${_user}': /home/'${_user}'/.m2; fi'
-    fi
-
-    _repo_url="${_base_url%/}/repository/npm-group"   # Expecting yum-proxy exists
-    if _is_url_reachable "${_repo_url%/}/"; then
-        _log "INFO" "${_repo_url%/}/ is reachable. Using for npm command ..."
-        ${_cmd} exec -it ${_name} bash -c 'sudo -i -u '${_user}' npm config set registry '${_base_url%/}'/repository/npm-group/'
-    fi
-    # TODO: add other client configs.
-
     if [ -n "${_IQ_CLI_VER}" ]; then
-        ${_cmd} exec -d ${_name} bash -c '_f=/home/'${_user}'/nexus-iq-cli-${_IQ_CLI_VER}.jar; [ ! -s "${_f}" ] && curl -sf -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_IQ_CLI_VER}.jar" -o "${_f}" && chown ${_user}: ${_f}'
+        ${_cmd} exec -d ${_name} bash -c '_f=/home/'${_user}'/nexus-iq-cli-'${_IQ_CLI_VER}'.jar; [ ! -s "${_f}" ] && curl -sf -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-'${_IQ_CLI_VER}'.jar" -o "${_f}" && chown '${_user}': ${_f}'
     fi
+
+    local _repo_url="${_base_url%/}/repository/yum-group"
+    ${_cmd} exec -it ${_name} bash -c 'echo -e "[nexusrepo]\nname=Nexus Repository\nbaseurl='${_repo_url%/}'/$releasever/os/$basearch/\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7\npriority=1" > /etc/yum.repos.d/nexus-yum-test.repo'
+    # sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@http://dh1.standalone.localdomain:8081/repository/yum-proxy@1" /etc/yum.repos.d/nexus-yum-test.repo
+
+    _repo_url="${_base_url%/}/repository/maven-group"
+    ${_cmd} exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null; curl -s -o ${_f} -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_repo_url%/}'/@1" ${_f}; chown -R '${_user}': /home/'${_user}'/.m2'
+
+    _repo_url="${_base_url%/}/repository/npm-group"
+    ${_cmd} exec -it ${_name} bash -c 'sudo -i -u '${_user}' npm config set registry '${_repo_url%/}'/'
+
+    # TODO: add other client configs.
 }
 
 ### Misc. functions / utility type functions #################################################################
