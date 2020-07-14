@@ -794,7 +794,11 @@ function f_apiS() {
         cat ${_TMP%/}/_apiS_header_$$.out >&2
         return ${_rc}
     fi
-    if ! cat ${_TMP%/}/_apiS_nxrm$$.out | python -m json.tool 2>/dev/null; then
+    if [ "${_method}" == "GET" ]; then
+        if ! cat ${_TMP%/}/_apiS_nxrm$$.out | python -m json.tool 2>/dev/null; then
+            cat ${_TMP%/}/_apiS_nxrm$$.out
+        fi
+    else
         _log "DEBUG" "$(cat ${_TMP%/}/_apiS_nxrm$$.out)"
     fi
 }
