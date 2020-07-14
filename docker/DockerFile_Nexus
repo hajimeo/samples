@@ -4,13 +4,13 @@ FROM centos:7.6.1810
 RUN echo -e '[nexusrepo]\nname=Nexus Repository\nbaseurl=_REPLACE_WITH_YUM_REPO_URL_/$releasever/os/$basearch/\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7\npriority=1' > /etc/yum.repos.d/nexus-yum-test.repo
 # sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@http://dh1.standalone.localdomain:8081/repository/yum-proxy@1" /etc/yum.repos.d/nexus-yum-test.repo
 
-# Install software/tools used by nexus users
-RUN yum --disablerepo="*" --enablerepo="nexusrepo" install -y sudo bind-utils net-tools scp curl unzip tar wget openssl which net-tools strace lsof tcpdump openssh-server openssh-clients openldap-clients nc rsync \
- python python3 maven rubygems; \
-curl -sL https://rpm.nodesource.com/setup_10.x | bash - && yum install -y nodejs; \
-rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm; yum install -y aspnetcore-runtime-3.1; \
-pip3 install conan; \
-yum install -y epel-release && yum --disablerepo="*" --enablerepo="nexusrepo" --enablerepo="epel" install -y golang
+# Install software/tools used by nexus users (in case of changing / adding client tools, separating layers)
+RUN yum --disablerepo="*" --enablerepo="nexusrepo" install -y sudo bind-utils net-tools scp curl unzip tar wget openssl which vim strace lsof tcpdump openssh-server openssh-clients openldap-clients nc rsync python python3 maven rubygems
+RUN yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && yum install -y ripgrep
+RUN curl -sL https://rpm.nodesource.com/setup_10.x | bash - && yum install -y nodejs
+RUN rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm && yum install -y aspnetcore-runtime-3.1
+RUN pip3 install conan
+RUN yum install -y epel-release && yum --disablerepo="*" --enablerepo="nexusrepo" --enablerepo="epel" install -y golang
 
 # Disable iptables and SeLinux, setup ssh (replace "_REPLACE_WITH_YOUR_PRIVATE_KEY_")
 RUN setenforce 0 || echo ko;\
