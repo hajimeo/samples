@@ -1440,9 +1440,6 @@ main() {
             fi
         fi
     fi
-    if _isYes "${r_NEXUS_CLIENT_INSTALL}"; then
-        p_client_container
-    fi
 
     # If admin.password is accessible from this host, update with the default password.
     if [ -n "${r_NEXUS_MOUNT_DIR:-${r_NEXUS_MOUNT_DIR_1}}" ] && [ -s "${r_NEXUS_MOUNT_DIR:-${r_NEXUS_MOUNT_DIR_1}}/admin.password" ]; then
@@ -1468,6 +1465,11 @@ main() {
             _log "ERROR" "Executing setup for format:${_f} failed."
         fi
     done
+
+    if _isYes "${r_NEXUS_CLIENT_INSTALL}"; then
+        _log "INFO" "Installing a client container ..."
+        p_client_container
+    fi
 
     if _isYes "${r_SOCKS_PROXY}"; then
         f_socks5_proxy "${r_SOCKS_PROXY_PORT}"
