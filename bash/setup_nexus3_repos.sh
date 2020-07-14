@@ -70,6 +70,7 @@ _ADMIN_PWD="admin123"
 _REPO_FORMATS="maven,pypi,npm,nuget,docker,yum,rubygem,raw,conan"
 ## Updatable variables
 _NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
+_IQ_CLI_VER="${_IQ_CLI_VER-"1.95.0-01"}"    # If empty, not download CLI jar
 _DOCKER_NETWORK_NAME=${_DOCKER_NETWORK_NAME:-"nexus"}
 _IS_NXRM2=${_IS_NXRM2:-"N"}
 _NO_DATA=${_NO_DATA:-"N"}
@@ -270,7 +271,7 @@ function f_docker_login() {
     fi
 
     _log "DEBUG" "${_cmd} login ${_host_port} --username ${_user} --password ********"
-    ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} &>/dev/null || return $?
+    ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} &>>${_LOG_FILE_PATH:-"/dev/null"} || return $?
     echo "${_host_port}"
 }
 function f_populate_docker_proxy() {
@@ -438,7 +439,7 @@ function f_setup_conan() {
     #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
 }
 
-# Using Nexus to create a container which installs python, npm, mvn, nuget, rubygem, conan ...
+# Create a container which installs python, npm, mvn, nuget, etc.
 function p_client_container() {
     local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     local _centos_ver="${2:-"7.6.1810"}"
@@ -450,21 +451,23 @@ function p_client_container() {
         _log "INFO" "Image ${_image_name} (${_existing_id}) already exists. Running / Starting a container..."; sleep 3
     else
         local _build_dir="$(mktemp -d)" || return $?
-        local _repo_url="${_base_url%/}/repository/yum-proxy"   # Expecting yum-proxy exists
-        # To check NXRM3 repo reachability, needs to end with '/'
-        _is_url_reachable "${_repo_url%/}/" || return 1
         local _dockerfile="${_build_dir%/}/Dockerfile"
 
         # Expecting f_setup_yum and f_setup_docker have been run
         curl -s -f -m 7 --retry 2 "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile_Nexus" -o ${_dockerfile} || return $?
 
         local _os_and_ver="centos:${_centos_ver}"
-        if [ -n "${r_DOCKER_PROXY}" ]; then
-            f_docker_login "${r_DOCKER_PROXY}" || return $?
-            _os_and_ver="${r_DOCKER_PROXY}/centos:${_centos_ver}"
+        # If docker-group or docker-proxy host:port is provided, trying to use it.
+        if [ -n "${r_DOCKER_GROUP:-"${r_DOCKER_PROXY}"}" ]; then
+            if ! f_docker_login "${r_DOCKER_GROUP}"; then
+                if f_docker_login "${r_DOCKER_PROXY}"; then
+                    _os_and_ver="${r_DOCKER_PROXY}/centos:${_centos_ver}"
+                fi
+            else
+                _os_and_ver="${r_DOCKER_GROUP}/centos:${_centos_ver}"
+            fi
         fi
         _sed -i -r "s@^FROM centos.*@FROM ${_os_and_ver}@1" ${_dockerfile} || return $?
-        _sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@${_repo_url%/}@1" ${_dockerfile} || return $?
         if [ -s $HOME/.ssh/id_rsa ]; then
             local _pkey="`_sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
             _sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ${_dockerfile} || return $?
@@ -530,11 +533,31 @@ function f_container_client_configs() {
     local _usr="${4:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"
     local _pwd="${5:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
     local _cmd="${6:-"${r_DOCKER_CMD:-"docker"}"}"
-    # mvn
-    ${_cmd} exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; if [ ! -s ${_f} ]; then mkdir /home/'${_user}'/.m2 &>/dev/null; curl -s -o ${_f} -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_base_url%/}'/repository/maven-group/@1" ${_f}; chown -R '${_user}': /home/'${_user}'/.m2; fi' || return $?
-    # npm
-    ${_cmd} exec -it ${_name} bash -c 'sudo -i -u '${_user}' npm config set registry '${_base_url%/}'/repository/npm-group/' || return $?
+
+    local _repo_url="${_base_url%/}/repository/yum-proxy"   # Expecting yum-proxy exists
+    # NOTE: To check NXRM3 repo reachability, needs to end with '/'
+    if _is_url_reachable "${_repo_url%/}/"; then
+        _log "INFO" "${_repo_url%/}/ is reachable. Using for yum command ..."
+        ${_cmd} exec -it ${_name} bash -c 'echo -e "[nexusrepo]\nname=Nexus Repository\nbaseurl='${_repo_url%/}'/$releasever/os/$basearch/\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7\npriority=1" > /etc/yum.repos.d/nexus-yum-test.repo'
+        # sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@http://dh1.standalone.localdomain:8081/repository/yum-proxy@1" /etc/yum.repos.d/nexus-yum-test.repo
+    fi
+
+    _repo_url="${_base_url%/}/repository/maven-group"   # Expecting yum-proxy exists
+    if _is_url_reachable "${_repo_url%/}/"; then
+        _log "INFO" "${_repo_url%/}/ is reachable. Using for mvn command ..."
+        ${_cmd} exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; if [ ! -s ${_f} ]; then mkdir /home/'${_user}'/.m2 &>/dev/null; curl -s -o ${_f} -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_repo_url%/}'/@1" ${_f}; chown -R '${_user}': /home/'${_user}'/.m2; fi'
+    fi
+
+    _repo_url="${_base_url%/}/repository/npm-group"   # Expecting yum-proxy exists
+    if _is_url_reachable "${_repo_url%/}/"; then
+        _log "INFO" "${_repo_url%/}/ is reachable. Using for npm command ..."
+        ${_cmd} exec -it ${_name} bash -c 'sudo -i -u '${_user}' npm config set registry '${_base_url%/}'/repository/npm-group/'
+    fi
     # TODO: add other client configs.
+
+    if [ -n "${_IQ_CLI_VER}" ]; then
+        ${_cmd} exec -d ${_name} bash -c '_f=/home/'${_user}'/nexus-iq-cli-${_IQ_CLI_VER}.jar; [ ! -s "${_f}" ] && curl -sf -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_IQ_CLI_VER}.jar" -o "${_f}" && chown ${_user}: ${_f}'
+    fi
 }
 
 ### Misc. functions / utility type functions #################################################################
