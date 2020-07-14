@@ -1,4 +1,4 @@
-# source <(curl https://raw.githubusercontent.com/hajimeo/samples/master/misc/nexus_alias.sh)
+# source <(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/nexus_alias.sh)
 
 # Start iq CLI
 function iqCli() {
@@ -7,7 +7,9 @@ function iqCli() {
         iqCli "./"
         return $?
     fi
-    java -jar /Users/hosako/Apps/iq-clis/nexus-iq-cli.jar -i "${_IQ_APP:-"sandbox-application"}" -s "${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}" -a "admin:admin123" -r ./iq_result_$(date +'%Y%m%d%H%M%S').json -X $@
+    local _jar="$(find /var/tmp/share/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)" || return $?
+    echo "Using ${_jar} ..." >&2
+    java -jar ${_jar} -i "${_IQ_APP:-"sandbox-application"}" -s "${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}" -a "admin:admin123" -r ./iq_result_$(date +'%Y%m%d%H%M%S').json -X $@
 }
 
 # Start "mvn" with IQ plugin
