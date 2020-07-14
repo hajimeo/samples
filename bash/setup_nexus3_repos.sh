@@ -98,17 +98,15 @@ function f_setup_maven() {
 
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"https://repo1.maven.org/maven2/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"https://repo1.maven.org/maven2/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
     # If NXRM2: _get_asset_NXRM2 "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar"
-    _get_asset "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar" "${_TMP%/}/junit-4.12.jar"
+    f_get_asset "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar" "${_TMP%/}/junit-4.12.jar"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"maven2-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"maven2-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     #mvn deploy:deploy-file -DgroupId=junit -DartifactId=junit -Dversion=4.21 -DgeneratePom=true -Dpackaging=jar -DrepositoryId=nexus -Durl=${r_NEXUS_URL}/repository/${_prefix}-hosted -Dfile=${_TMP%/}/junit-4.12.jar
@@ -117,16 +115,15 @@ function f_setup_maven() {
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
         # Hosted first
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"maven2-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"maven2-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group ("." in groupdId should be changed to "/")
-    _get_asset "${_prefix}-group" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar"
+    f_get_asset "${_prefix}-group" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar"
 
     # Another test for get from proxy, then upload to hosted, then get from hosted
-    #_get_asset "${_prefix}-proxy" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar" "${_TMP%/}/httpclient-4.5.12.jar"
+    #f_get_asset "${_prefix}-proxy" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar" "${_TMP%/}/httpclient-4.5.12.jar"
     #_upload_asset "${_prefix}-hosted" -F maven2.groupId=org.apache.httpcomponents -F maven2.artifactId=httpclient -F maven2.version=4.5.12 -F maven2.asset1=@${_TMP%/}/httpclient-4.5.12.jar -F maven2.asset1.extension=jar
-    #_get_asset "${_prefix}-hosted" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar"
+    #f_get_asset "${_prefix}-hosted" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar"
 }
 
 function f_setup_pypi() {
@@ -135,16 +132,14 @@ function f_setup_pypi() {
 
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://pypi.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"pypi-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://pypi.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"pypi-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    _get_asset "${_prefix}-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz" "${_TMP%/}/Unit-0.2.2.tar.gz"
+    f_get_asset "${_prefix}-proxy" "packages/unit/0.2.2/Unit-0.2.2.tar.gz" "${_TMP%/}/Unit-0.2.2.tar.gz"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"pypi-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"pypi-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     f_upload_asset "${_prefix}-hosted" -F "pypi.asset=@${_TMP%/}/Unit-0.2.2.tar.gz"
@@ -152,11 +147,10 @@ function f_setup_pypi() {
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
         # Hosted first
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"pypi-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"pypi-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    _get_asset "${_prefix}-group" "packages/pyyaml/5.3.1/PyYAML-5.3.1.tar.gz"
+    f_get_asset "${_prefix}-group" "packages/pyyaml/5.3.1/PyYAML-5.3.1.tar.gz"
 }
 
 function f_setup_npm() {
@@ -165,16 +159,14 @@ function f_setup_npm() {
 
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.npmjs.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.npmjs.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    _get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.4.tgz" "${_TMP%/}/lodash-4.17.15.tgz"
+    f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.4.tgz" "${_TMP%/}/lodash-4.17.15.tgz"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     f_upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/lodash-4.17.15.tgz"
@@ -182,11 +174,10 @@ function f_setup_npm() {
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
         # Hosted first
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"npm-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"npm-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    _get_asset "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz"
+    f_get_asset "${_prefix}-group" "grunt/-/grunt-1.1.0.tgz"
 }
 
 function f_setup_nuget() {
@@ -195,36 +186,32 @@ function f_setup_nuget() {
 
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://www.nuget.org/api/v2/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://www.nuget.org/api/v2/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}' || return $?
     fi
     # Even older version, just creating V3 repo should work
     # TODO: check if HA with curl -u admin:admin123 -X GET http://localhost:8081/service/rest/v1/nodes
     if ! _is_repo_available "${_prefix}-v3-proxy"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://api.nuget.org/v3/index.json","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://api.nuget.org/v3/index.json","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    _get_asset "${_prefix}-v3-proxy" "Test/2.0.1.1" "${_TMP%/}/test.2.0.1.1.nupkg"  # This one may fail on some Nexus version
-    _get_asset "${_prefix}-proxy" "Test/2.0.1.1" "${_TMP%/}/test.2.0.1.1.nupkg"
+    f_get_asset "${_prefix}-v3-proxy" "Test/2.0.1.1" "${_TMP%/}/test.2.0.1.1.nupkg"  # This one may fail on some Nexus version
+    f_get_asset "${_prefix}-proxy" "Test/2.0.1.1" "${_TMP%/}/test.2.0.1.1.nupkg"
 
     # Nexus should have nuget-group and nuget-hosted, so creating only v3 one
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-v3-hosted"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-hosted","format":"","type":"","url":"","online":true,"recipe":"nuget-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-hosted","format":"","type":"","url":"","online":true,"recipe":"nuget-hosted"}],"type":"rpc"}' || return $?
     fi
     # TODO: add some data for xxxx-hosted
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-v3-group"; then
         # Hosted first
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-v3-hosted","'${_prefix}'-v3-proxy"]}},"name":"'${_prefix}'-v3-group","format":"","type":"","url":"","online":true,"recipe":"nuget-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-v3-hosted","'${_prefix}'-v3-proxy"]}},"name":"'${_prefix}'-v3-group","format":"","type":"","url":"","online":true,"recipe":"nuget-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    _get_asset "${_prefix}-v3-group" "jQuery/3.5.1" "${_TMP%/}/jquery.3.5.1.nupkg"  # this one may fail on some Nexus version
-    _get_asset "${_prefix}-group" "jQuery/3.5.1" "${_TMP%/}/jquery.3.5.1.nupkg"
+    f_get_asset "${_prefix}-v3-group" "jQuery/3.5.1" "${_TMP%/}/jquery.3.5.1.nupkg"  # this one may fail on some Nexus version
+    f_get_asset "${_prefix}-group" "jQuery/3.5.1" "${_TMP%/}/jquery.3.5.1.nupkg"
 }
 
 function f_setup_docker() {
@@ -236,8 +223,7 @@ function f_setup_docker() {
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         # "httpPort":18178 - 18179
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18178,"httpsPort":18179,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://registry-1.docker.io","contentMaxAge":1440,"metadataMaxAge":1440},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"undefined":[false,false],"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18178,"httpsPort":18179,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://registry-1.docker.io","contentMaxAge":1440,"metadataMaxAge":1440},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"undefined":[false,false],"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
     f_populate_docker_proxy
@@ -245,8 +231,7 @@ function f_setup_docker() {
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
         # Using "httpPort":18181 - 18182,
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18181,"httpsPort":18182,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18181,"httpsPort":18182,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     f_populate_docker_hosted
@@ -254,8 +239,7 @@ function f_setup_docker() {
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
         # Using "httpPort":18174 - 18175
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18184,"httpsPort":18185,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false},"group":{"memberNames":["docker-hosted","docker-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18184,"httpsPort":18185,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false},"group":{"memberNames":["docker-hosted","docker-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
     f_populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "18185 18184"
@@ -334,21 +318,19 @@ function f_setup_yum() {
 
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"http://mirror.centos.org/centos/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"http://mirror.centos.org/centos/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
     if which yum &>/dev/null; then
         f_generate_yum_repo_file "${_prefix}-proxy"
         yum --disablerepo="*" --enablerepo="nexusrepo" install --downloadonly --downloaddir=${_TMP%/} dos2unix
     else
-        _get_asset "${_prefix}-proxy" "7/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm"
+        f_get_asset "${_prefix}-proxy" "7/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm"
     fi
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"yum":{"repodataDepth":1,"deployPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"yum-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"yum":{"repodataDepth":1,"deployPolicy":"PERMISSIVE"},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"yum-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     local _upload_file="$(find ${_TMP%/} -type f -size +1k -name "dos2unix-*.el7.x86_64.rpm" 2>/dev/null | tail -n1)"
@@ -361,11 +343,10 @@ function f_setup_yum() {
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"yum-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"yum-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    _get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})"
+    f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})"
 }
 function f_generate_yum_repo_file() {
     local _repo="${1:-"yum-group"}"
@@ -389,43 +370,49 @@ function f_setup_rubygem() {
 
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://rubygems.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"rubygems-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://rubygems.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"rubygems-proxy"}],"type":"rpc"}' || return $?
     fi
     # TODO: add some data for xxxx-proxy
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"rubygems-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"rubygems-hosted"}],"type":"rpc"}' || return $?
     fi
     # TODO: add some data for xxxx-hosted
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"group":{"memberNames":["gems-hosted","gems-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"rubygems-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
     fi
     # TODO: add some data for xxxx-group
-    #_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
+    #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
 }
 
 function f_setup_raw() {
     local _prefix="${1:-"raw"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
 
-    # TODO: If no xxxx-proxy, create it
-    # TODO: add some data for xxxx-proxy
+    # If no xxxx-proxy, create it
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"http://releases.mozilla.org/pub/firefox/releases/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"raw-proxy"}],"type":"rpc"}' || return $?
+    fi
+    # add some data for xxxx-proxy
+    f_get_asset "${_prefix}-proxy" "latest/README.txt" "${_TMP%/}/README.txt"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
     fi
-    # TODO: add some data for xxxx-hosted
+    if [ -s "${_TMP%/}/README.txt" ]; then
+        f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/README.txt -F raw.asset1.filename=README.txt
+    fi
 
-    # TODO: If no xxxx-group, create it
-    # TODO: add some data for xxxx-group
+    # If no xxxx-group, create it
+    if ! _is_repo_available "${_prefix}-group"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false},"group":{"memberNames":["raw-hosted","raw-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"raw-group"}],"type":"rpc"}' || return $?
+    fi
+    # add some data for xxxx-group
+    f_get_asset "${_prefix}-group" "latest-beta/README.txt"
 }
 
 function f_setup_conan() {
@@ -435,8 +422,7 @@ function f_setup_conan() {
 
     # If no xxxx-proxy, create it (No HA, but seems to work with HA???)
     if ! _is_repo_available "${_prefix}-proxy"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://conan.bintray.com","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conan-proxy"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://conan.bintray.com","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conan-proxy"}],"type":"rpc"}' || return $?
     fi
     # TODO: add some data for xxxx-proxy
 
@@ -449,7 +435,7 @@ function f_setup_conan() {
     #if ! _does_repo_exist "${_prefix}-group"; then
     #fi
     # TODO: add some data for xxxx-group
-    #_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
+    #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
 }
 
 # Using Nexus to create a container which installs python, npm, mvn, nuget, rubygem, conan ...
@@ -511,7 +497,7 @@ function p_client_container() {
     # Create a test user if hasn't created (testuser:testuser123)
     f_container_useradd "nexus-client" "testuser"
     # Setup clients' config files
-    f_container_client_configs "nexus-client" "testuser"
+    f_container_client_configs "nexus-client" "testuser" "${_base_url}"
     _log "INFO" "Completed $FUNCNAME (may need to run 'f_docker_add_NIC_to_container \"nexus-client\"')"
 }
 
@@ -519,8 +505,14 @@ function f_container_useradd() {
     local _name="${1}"
     local _user="${2:-"$USER"}"
     local _password="${3:-"${_user}123"}"
-    docker exec -it ${_name} bash -c 'grep -q "^'$_user':" /etc/passwd && exit 0; useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
-    docker exec -it ${_name} bash -c 'if [ -f /root/.ssh/authorized_keys ]; then mkdir /home/'$_user'/.ssh &>/dev/null; [ ! -s /home/'$_user'/.ssh/id_rsa ] && ssh-keygen -q -N "" -f /home/'$_user'/.ssh/id_rsa; cp /root/.ssh/authorized_keys /home/'$_user'/.ssh/; chown -R '$_user': /home/'$_user'/.ssh; fi' || return $?
+    local _sudoer="${4}"
+    local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
+
+    ${_cmd} exec -it ${_name} bash -c 'grep -q "^'$_user':" /etc/passwd && exit 0; useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
+    ${_cmd} exec -it ${_name} bash -c 'if [ -f /root/.ssh/authorized_keys ]; then mkdir /home/'$_user'/.ssh &>/dev/null; [ ! -s /home/'$_user'/.ssh/id_rsa ] && ssh-keygen -q -N "" -f /home/'$_user'/.ssh/id_rsa; cp /root/.ssh/authorized_keys /home/'$_user'/.ssh/; chown -R '$_user': /home/'$_user'/.ssh; fi' || return $?
+    if _isYes "${_sudoer}"; then
+        ${_cmd} exec -it ${_name} bash -c "[ ! -f /etc/sudoers.d/${_user} ] && echo '${_user} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/${_user}"
+    fi
 
     if ! grep -q -w "nexus-client" $HOME/.ssh/config; then
         echo '
@@ -537,10 +529,11 @@ function f_container_client_configs() {
     local _base_url="${3:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     local _usr="${4:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"
     local _pwd="${5:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
+    local _cmd="${6:-"${r_DOCKER_CMD:-"docker"}"}"
     # mvn
-    docker exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; if [ ! -s ${_f} ]; then mkdir /home/'${_user}'/.m2 &>/dev/null; curl -s -o ${_f} -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_base_url%/}'/repository/maven-group/@1" ${_f}; chown -R '${_user}': /home/'${_user}'/.m2; fi' || return $?
+    ${_cmd} exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; if [ ! -s ${_f} ]; then mkdir /home/'${_user}'/.m2 &>/dev/null; curl -s -o ${_f} -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_base_url%/}'/repository/maven-group/@1" ${_f}; chown -R '${_user}': /home/'${_user}'/.m2; fi' || return $?
     # npm
-    docker exec -it ${_name} bash -c 'sudo -i -u '${_user}' npm config set registry '${_base_url%/}'/repository/npm-group/' || return $?
+    ${_cmd} exec -it ${_name} bash -c 'sudo -i -u '${_user}' npm config set registry '${_base_url%/}'/repository/npm-group/' || return $?
     # TODO: add other client configs.
 }
 
@@ -772,6 +765,7 @@ function f_apiS() {
     find ${_TMP%/}/ -type f -name '.nxrm_c_*' -mmin +10 -delete 2>/dev/null
     local _c="${_TMP%/}/.nxrm_c_$$"
     if [ ! -s ${_c} ]; then
+        # NOTE: no stdout
         curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -o/dev/null -k "${_nexus_url%/}/service/rapture/session" -d "${_user_pwd}"
         local _rc=$?
         if [ "${_rc}" != "0" ] ; then
@@ -801,7 +795,7 @@ function f_apiS() {
         return ${_rc}
     fi
     if ! cat ${_TMP%/}/_apiS_nxrm$$.out | python -m json.tool 2>/dev/null; then
-        cat ${_TMP%/}/_apiS_nxrm$$.out
+        _log "DEBUG" "$(cat ${_TMP%/}/_apiS_nxrm$$.out)"
     fi
 }
 function f_api() {
@@ -850,7 +844,7 @@ function f_update_hosts_for_container() {
     [ -z "${_container_name}" ] && return 1
     [ -z "${_hostname}" ] && _hostname="${_container_name}.${_DOMAIN#.}"
 
-    local _container_ip="`f_get_container_ip "${_container_name}" "${_cmd}"`"
+    local _container_ip="`f_container_ip "${_container_name}" "${_cmd}"`"
     if [ -z "${_container_ip}" ]; then
         _log "WARN" "${_container_name} is not returning IP. Please update hosts file manually."
         return 1
@@ -1059,7 +1053,7 @@ route del default gw ${_after_gw}\
     ${_cmd} exec -it ${_name} bash -c "netstat -rn"
 }
 
-function f_get_available_container_ip() {
+function f_container_available_ip() {
     local _hostname="${1}"  # optional
     local _check_file="${2}"  # /etc/hosts or /etc/banner_add_hosts
     local _subnet="${3}"    # 172.18.0.0
@@ -1105,7 +1099,7 @@ function f_get_available_container_ip() {
     echo "${_ip}"
 }
 
-function f_get_container_ip() {
+function f_container_ip() {
     local _container_name="$1"
     local _cmd="${2:-"${r_DOCKER_CMD:-"docker"}"}"
     ${_cmd} exec -it ${_container_name} hostname -i | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' -m1 -o | tr -cd "[:print:]"   # remove unnecessary control characters
@@ -1408,9 +1402,9 @@ main() {
         sudo echo "Starting Nexus installation..." >&2
         f_docker_network || return $?
         if _isYes "${r_NEXUS_INSTALL_HAC}"; then
-            local _ip_1="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}" "/etc/hosts")" || return $?
-            local _ip_2="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}" "/etc/hosts")" || return $?
-            local _ip_3="$(f_get_available_container_ip "${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}" "/etc/hosts")" || return $?
+            local _ip_1="$(f_container_available_ip "${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}" "/etc/hosts")" || return $?
+            local _ip_2="$(f_container_available_ip "${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}" "/etc/hosts")" || return $?
+            local _ip_3="$(f_container_available_ip "${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}" "/etc/hosts")" || return $?
             local _ext_opts="--add-host ${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}:${_ip_1}"
             _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}:${_ip_2}"
             _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}:${_ip_3}"
