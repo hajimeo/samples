@@ -41,7 +41,7 @@ function test_reverse_dns_lookup() {
     done
     # one hostname to IP addresses
     # language=JavaScript
-    [ -n "$JAVA_HOME" ] && $JAVA_HOME/bin/jrunscript -e "var ips = java.net.InetAddress.getAllByName('`hostname -f`'); for (var i in ips) println(ips[i]);"
+    [ -n "$JAVA_HOME" ] && $JAVA_HOME/bin/jrunscript -Dnetworkaddress.cache.ttl=0 -e "var ips = java.net.InetAddress.getAllByName('`hostname -f`'); for (var i in ips) println(ips[i]);"
     return ${_resolved}
 }
 

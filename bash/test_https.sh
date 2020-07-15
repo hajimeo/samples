@@ -29,7 +29,7 @@ function get_ciphers() {
         return $?
     fi
 
-    ciphers=$(openssl ciphers 'ALL:eNULL' | _sed -e 's/:/ /g')
+    ciphers=$(openssl ciphers 'ALL:eNULL' | sed -e 's/:/ /g')
     echo "Obtaining cipher list from ${_host_port} with $(openssl version)..." >&2
 
     for cipher in ${ciphers[@]}; do
@@ -113,7 +113,7 @@ function export_key() {
 
     local _basename="`basename $_file`"
     local _out_key="${_basename}.${_alias}.key"
-    local _out_crt="${_basename}.${_alias}.crt"
+    local _out_crt="${_basename}.${_alias}.pem"
     [ -z "$_type" ] && _type="${_file##*.}"
 
     if [ "$_type" = "pkcs8" ]; then
@@ -128,14 +128,14 @@ function export_key() {
         openssl pkcs12 -in ${_basename}.p12.tmp -passin "pass:${_pass}" -nodes -nocerts -out ${_out_key}.tmp || return $?
         openssl rsa -in ${_out_key}.tmp -out ${_out_key}
         # 'sed' to remove Bag Attributes
-        openssl pkcs12 -in ${_basename}.p12.tmp -passin "pass:${_pass}" -nokeys -chain | _sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ${_out_crt} || return $?
+        openssl pkcs12 -in ${_basename}.p12.tmp -passin "pass:${_pass}" -nokeys -chain | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ${_out_crt} || return $?
         rm -f ${_basename}.*.tmp
     fi
     chmod 600 ${_out_key}
     ls -l ${_basename}.*
 }
 
-# export one certificate from jks/p12
+# export one certificate from jks/p12 as PEM format
 function export_cert() {
     local _file="$1"
     local _pass="${2:-password}"
@@ -143,7 +143,7 @@ function export_cert() {
     local _type="$4"
 
     local _basename="`basename $_file`"
-    local _out_crt="${_basename}.${_alias}.crt"
+    local _out_crt="${_basename}.${_alias}.pem"
     [ -z "$_type" ] && _type="${_file##*.}"
 
     if [ ! -x "${JAVA_HOME%/}/bin/keytool" ]; then
@@ -151,7 +151,7 @@ function export_cert() {
         return 1
     fi
     #  -storetype ${_type}
-    ${JAVA_HOME%/}/bin/keytool -export -noprompt -keystore ${_file} -storepass "${_pass}" -alias ${_alias} -file ${_out_crt} || return $?
+    ${JAVA_HOME%/}/bin/keytool -export -noprompt -keystore ${_file} -storepass "${_pass}" -alias ${_alias} | openssl x509 -inform der -text | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ${_out_crt} || return $?
     ls -l ${_basename}.*
 }
 
@@ -286,20 +286,34 @@ function get_certificate_from_https() {
     local _port="${2:-443}"
     local _dest_filepath="$3"
     local _proxy="$4"
-    [ -z "${_dest_filepath}" ] && _dest_filepath=./${_host}_${_port}.crt
+    [ -z "${_dest_filepath}" ] && _dest_filepath=./${_host}_${_port}.pem
+    local _keytool="$(which keytool 2>/dev/null)"
+    [ -x "${JAVA_HOME%/}/bin/keytool" ] && _keytool="${JAVA_HOME%/}/bin/keytool"
+
     if [ -n "${_proxy}" ]; then
-        # Keytool
-        # To DEBUG, -J-Djavax.net.debug=ssl,keymanager or -Djavax.net.debug=ssl:handshake:verbose
-        # With proxy
-        #keytool -J-Dhttps.proxyHost=<proxy_hostname> -J-Dhttps.proxyPort=<proxy_port> -printcert -sslserver <remote_host_name:remote_ssl_port>
-        # Without system proxy, and use -rfc to generate PEM format
-        #keytool -J-Djava.net.useSystemProxies=true -printcert -rfc -sslserver <remote_host_name:remote_ssl_port>
-        echo -n | openssl s_client -connect ${_host}:${_port} -showcerts -proxy ${_proxy}
+        if [ -n "${_keytool}" ]; then
+            local _proxy_host="${_proxy}"
+            local _proxy_port="443"
+            if [[ "${_proxy}" =~ ^([^:]+):([0-9]+)$ ]]; then
+                _proxy_host="${BASH_REMATCH[1]}"
+                _proxy_port="${BASH_REMATCH[2]}"
+            fi
+            # To DEBUG, -J-Djavax.net.debug=ssl,keymanager or -Djavax.net.debug=ssl:handshake:verbose, and without system proxy: -J-Djava.net.useSystemProxies=true
+            keytool -J-Dhttps.proxyHost=${_proxy_host} -J-Dhttps.proxyPort=${_proxy_port} -printcert -rfc -sslserver ${_host}:${_port}
+        else
+            echo -n | openssl s_client -connect ${_host}:${_port} -showcerts -proxy ${_proxy}
+        fi
     else
-        #keytool -printcert -sslserver dh1.standalone.localdomain:8443  # -rfc # to get PEM format
-        echo -n | openssl s_client -connect ${_host}:${_port} -showcerts
+        # Trying keytool first as some https server doesn't return cert with openssl (CONNECT_CR_SRVR_HELLO:wrong version number)
+        if [ -n "${_keytool}" ]; then
+            # NOTE: It seems exporting cert with keytool may not work in Windows PowerShell
+            keytool -printcert -rfc -sslserver ${_host}:${_port}  # -rfc to get PEM format
+        else
+            # -showcerts to show all chained certs
+            echo -n | openssl s_client -showcerts -connect ${_host}:${_port}
+        fi
     fi > /tmp/${_host}_${_port}.tmp || return $?
-    _sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp > ${_dest_filepath}
+    sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp > ${_dest_filepath}
 }
 
 # for SAML X509Certificate
