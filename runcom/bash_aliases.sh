@@ -369,8 +369,8 @@ function push2search() {
 
 
 ## Work specific functions
-if [ -s $HOME/IdeaProjects/samples/misc/nexus_alias.sh ]; then
-    source $HOME/IdeaProjects/samples/bash/nexus_alias.sh
+if [ -s $HOME/IdeaProjects/samples/runcom/nexus_alias.sh ]; then
+    source $HOME/IdeaProjects/samples/runcom/nexus_alias.sh
 fi
 function pubS() {
     scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/ &

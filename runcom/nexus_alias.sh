@@ -1,15 +1,36 @@
-# source <(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/nexus_alias.sh)
+# source <(curl https://raw.githubusercontent.com/hajimeo/samples/master/runcom/nexus_alias.sh)
+
+if [ -z "${_WORK_DIR}" ]; then
+    if [ "`uname`" = "Darwin" ]; then
+        _WORK_DIR="$HOME/share/sonatype"
+    else
+        _WORK_DIR="/var/tmp/share/sonatype"
+    fi
+fi
 
 # Start iq CLI
 function iqCli() {
     local __doc__="https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
+    # overwritable global variables
+    local _iq_cli_ver="${_IQ_CLI_VER:-"1.95.0-01"}"
+    local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/nexus-iq-cli-${_iq_cli_ver}.jar"}"
+    local _iq_app_id="${_IQ_APP_ID:-"sandbox-application"}"
+    local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
+
     if [ -z "$1" ]; then
         iqCli "./"
         return $?
     fi
-    local _jar="$(find /var/tmp/share/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)" || return $?
-    echo "Using ${_jar} ..." >&2
-    java -jar ${_jar} -i "${_IQ_APP:-"sandbox-application"}" -s "${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}" -a "admin:admin123" -r ./iq_result_$(date +'%Y%m%d%H%M%S').json -X $@
+    if [ ! -s "${_iq_cli_jar}" ]; then
+        local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/} -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
+        if [ -z "${_tmp_iq_cli_jar}" ]; then
+            curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
+        else
+            _iq_cli_jar="${_tmp_iq_cli_jar}"
+        fi
+    fi
+    echo "Using ${_iq_cli_jar} ..." >&2
+    java -jar ${_iq_cli_jar} -i "${_iq_app_id}" -s "${_iq_url}" -a "admin:admin123" -r ./iq_result_$(date +'%Y%m%d%H%M%S').json -X $@
 }
 
 # Start "mvn" with IQ plugin
@@ -44,11 +65,6 @@ function mvn-get() {
     local _remote_repo="$2"
     local _local_repo="${3-"./local_repo"}"
     local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -Dtransitive=false -U -X"}"
-    local _settings_xml="$(find . -maxdepth 2 -name '*settings*.xml' -print | tail -n1)"
-    if [ -n "${_settings_xml}" ]; then
-        echo "Using ${_settings_xml}..." >&2; sleep 3
-        _options="${_options% } -s ${_settings_xml}"
-    fi
     [ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
     mvn `_mvn_settings "${_remote_repo}"` dependency:get -Dartifact=${_gav} ${_options}
 }
