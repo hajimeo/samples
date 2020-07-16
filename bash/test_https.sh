@@ -180,7 +180,7 @@ function gen_p12_jks() {
     # Verify
     if which keytool &>/dev/null; then
         keytool -list -keystore ${_name}.p12 -storetype PKCS12 -storepass "${_new_pass}" || return $?
-        # Also, if .jks is needed:
+        # Also, if .jks is needed, converting p12 to jks with importkeystore:
         keytool -importkeystore -srckeystore ${_name}.p12 -srcstoretype PKCS12 -srcstorepass "${_new_pass}" -destkeystore ${_name}.jks -deststoretype JKS -deststorepass "${_new_pass}"
         # NOTE: to convert from .jks to .p12
         #keytool -importkeystore -srckeystore ${_name}.jks -deststoretype JKS -srcstorepass "${_new_pass}" -destkeystore ${_name}.p12 -deststoretype PKCS12 -srcstorepass "${_new_pass}"
