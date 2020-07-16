@@ -5,7 +5,9 @@
 # For local test:
 #   import() { source /var/tmp/share/sonatype/$1; } && export -f import
 #
-type import &>/dev/null || import() { source <(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/$1); }
+_DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
+type import &>/dev/null || import() { source <(curl -s --compressed "${_DL_URL%/}/bash/$1"); }
+
 import "utils.sh"
 import "utils_container.sh"
 
@@ -15,7 +17,7 @@ function usage() {
 Also functions in this script can be used for testing downloads and uploads.
 
 DOWNLOADS:
-    curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh \\
+    curl ${_DL_URL%/}/bash/setup_nexus3_repos.sh \\
          -o ${_WORK_DIR%/}/setup_nexus3_repos.sh
 
 REQUIREMENTS / DEPENDENCIES:
@@ -646,7 +648,7 @@ function p_client_container() {
         local _dockerfile="${_build_dir%/}/Dockerfile"
 
         # Expecting f_setup_yum and f_setup_docker have been run
-        curl -s -f -m 7 --retry 2 "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile_Nexus" -o ${_dockerfile} || return $?
+        curl -s -f -m 7 --retry 2 "${_DL_URL%/}/docker/DockerFile_Nexus" -o ${_dockerfile} || return $?
 
         local _os_and_ver="centos:${_centos_ver}"
         # If docker-group or docker-proxy host:port is provided, trying to use it.
@@ -703,7 +705,7 @@ function f_reset_client_configs() {
     # sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@http://dh1.standalone.localdomain:8081/repository/yum-proxy@1" /etc/yum.repos.d/nexus-yum-test.repo
 
     _repo_url="${_base_url%/}/repository/maven-group"
-    ${_cmd} exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null; curl -s -o ${_f} -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_repo_url%/}'/@1" ${_f}; chown -R '${_user}': /home/'${_user}'/.m2'
+    ${_cmd} exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null; curl -s -o ${_f} -L '${_DL_URL%/}'/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_repo_url%/}'/@1" ${_f}; chown -R '${_user}': /home/'${_user}'/.m2'
 
     _repo_url="${_base_url%/}/repository/npm-group"
     ${_cmd} exec -it ${_name} bash -c 'sudo -i -u '${_user}' npm config set registry '${_repo_url%/}'/'
@@ -737,14 +739,14 @@ function f_nexus_https_config() {
     _upsert ${_mount%/}/etc/nexus.properties "application-port-ssl" "8443" || return $?
 
     if [ ! -s "${_mount%/}/etc/jetty/jetty-https.xml" ]; then
-        curl -s -f -L -o "${_mount%/}/etc/jetty/jetty-https.xml" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/nexus-jetty-https.xml" || return $?
+        curl -s -f -L -o "${_mount%/}/etc/jetty/jetty-https.xml" "${_DL_URL%/}/misc/nexus-jetty-https.xml" || return $?
     fi
     if [ ! -s "${_mount%/}/etc/jetty/keystore.jks" ]; then
-        curl -s -f -L -o "${_mount%/}/etc/jetty/keystore.jks" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.jks" || return $?
+        curl -s -f -L -o "${_mount%/}/etc/jetty/keystore.jks" "${_DL_URL%/}/misc/standalone.localdomain.jks" || return $?
     fi
 
     if [ ! -s "${_ca_pem}" ]; then
-        curl -s -f -m 7 --retry 2 -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/rootCA_standalone.crt" -o ${_WORK_DIR%/}/rootCA_standalone.crt || return $?
+        curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/rootCA_standalone.crt" -o ${_WORK_DIR%/}/rootCA_standalone.crt || return $?
         _ca_pem="${_WORK_DIR%/}/rootCA_standalone.crt"
         _log "INFO" "No CA cert specified. Using ${_ca_pem}"
     fi
@@ -759,7 +761,7 @@ function f_nexus_ha_config() {
     _upsert ${_mount%/}/etc/nexus.properties "nexus.hazelcast.discovery.isEnabled" "false" || return $?
     [ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && mv -f ${_mount%/}/etc/fabric/hazelcast-network.xml{,bak}
     [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
-    curl -s -f -m 7 --retry 2 -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+    curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     for _i in {1..3}; do
         local _tmp_v_name="r_NEXUS_CONTAINER_NAME_${_i}"
         _sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${!_tmp_v_name}.${_DOMAIN#.}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
