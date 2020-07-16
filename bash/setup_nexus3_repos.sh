@@ -75,7 +75,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 ## Global variables
 _ADMIN_USER="admin"
 _ADMIN_PWD="admin123"
-_REPO_FORMATS="maven,pypi,npm,nuget,docker,yum,rubygem,raw,conan"
+_REPO_FORMATS="maven,pypi,npm,nuget,docker,yum,rubygem,conan,bower,raw"
 ## Updatable variables
 _NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
 _IQ_CLI_VER="${_IQ_CLI_VER-"1.95.0-01"}"    # If empty, not download CLI jar
@@ -303,7 +303,7 @@ function f_setup_yum() {
     fi
     # add some data for xxxx-proxy
     if which yum &>/dev/null; then
-        f_generate_yum_repo_file "${_prefix}-proxy"
+        f_echo_yum_repo_file "${_prefix}-proxy" > /etc/yum.repos.d/nexus-yum-test.repo
         yum --disablerepo="*" --enablerepo="nexusrepo" install --downloadonly --downloaddir=${_TMP%/} dos2unix
     else
         f_get_asset "${_prefix}-proxy" "7/os/x86_64/Packages/dos2unix-6.0.3-7.el7.x86_64.rpm" "${_TMP%/}/dos2unix-6.0.3-7.el7.x86_64.rpm"
@@ -329,12 +329,9 @@ function f_setup_yum() {
     # add some data for xxxx-group
     f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})"
 }
-function f_generate_yum_repo_file() {
+function f_echo_yum_repo_file() {
     local _repo="${1:-"yum-group"}"
-    local _out_file="${2:-"/etc/yum.repos.d/nexus-yum-test.repo"}"
-    local _blob_name="${3:-"${r_BLOB_NAME:-"default"}"}"
-    local _base_url="${r_NEXUS_URL:-"${_NEXUS_URL}"}"
-
+    local _base_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     local _repo_url="${_base_url%/}/repository/${_repo}"
 echo '[nexusrepo]
 name=Nexus Repository
@@ -342,7 +339,7 @@ baseurl='${_repo_url%/}'/$releasever/os/$basearch/
 enabled=1
 gpgcheck=1
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
-priority=1' > ${_out_file}
+priority=1'
 }
 
 function f_setup_rubygem() {
@@ -367,6 +364,19 @@ function f_setup_rubygem() {
     fi
     # TODO: add some data for xxxx-group
     #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
+}
+
+function f_setup_bower() {
+    local _prefix="${1:-"raw"}"
+    local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
+
+    # If no xxxx-proxy, create it
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"bower":{"rewritePackageUrls":true},"proxy":{"remoteUrl":"https://registry.bower.io","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"bower-proxy"}],"type":"rpc"}' || return $?
+    fi
+    # add some data for xxxx-proxy
+    f_get_asset "${_prefix}-proxy" "/jquery/versions.json" "${_TMP%/}/bowser_jquery_versions.json"
+    # TODO: hosted and group
 }
 
 function f_setup_raw() {
@@ -669,8 +679,8 @@ function p_client_container() {
         _log "DEBUG" "$(cat ${_dockerfile})"
 
         cd ${_build_dir} || return $?
-        _log "INFO" "Building ${_image_name} ... (outputs:${_LOG_FILE_PATH})"
-        ${_cmd} build --rm -t ${_image_name} . &>>${_LOG_FILE_PATH} || return $?
+        _log "INFO" "Building ${_image_name} ... (outputs:${_LOG_FILE_PATH:-"/dev/null"})"
+        ${_cmd} build --rm -t ${_image_name} . &>>${_LOG_FILE_PATH:-"/dev/null"} || return $?
         cd -
     fi
 
@@ -687,7 +697,7 @@ function p_client_container() {
     _log "INFO" "Completed $FUNCNAME"
 }
 
-# Re-set client configs with given Nexus base URL
+# Setup or Re-set client configs with given Nexus base URL
 function f_reset_client_configs() {
     local _name="${1}"
     local _user="${2:-"$USER"}"
@@ -696,21 +706,67 @@ function f_reset_client_configs() {
     local _pwd="${5:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
     local _cmd="${6:-"${r_DOCKER_CMD:-"docker"}"}"
 
-    if [ -n "${_IQ_CLI_VER}" ]; then
-        ${_cmd} exec -d ${_name} bash -c '_f=/home/'${_user}'/nexus-iq-cli-'${_IQ_CLI_VER}'.jar; [ ! -s "${_f}" ] && curl -sf -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-'${_IQ_CLI_VER}'.jar" -o "${_f}" && chown '${_user}': ${_f}'
+    f_container_iq_cli "${_name}" "${_user}" "${_IQ_CLI_VER}" "${_cmd}"
+
+    local _yum_install="yum install -y"
+    local _repo_url="${_base_url%/}/repository/yum-group"
+    f_echo_yum_repo_file "yum-group" "${_base_url}" > ${_TMP%/}/nexus-yum-test.repo
+    if ${_cmd} cp ${_TMP%/}/nexus-yum-test.repo ${_name}:/etc/yum.repos.d/nexus-yum-test.repo && _is_url_reachable "${_repo_url}"; then
+        _yum_install="yum --disablerepo='base' --enablerepo='nexusrepo' install -y"
+    fi
+    ${_cmd} exec -it ${_name} bash -c "${_yum_install} epel-release && curl -sL https://rpm.nodesource.com/setup_10.x | bash - && rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm && ${_yum_install} python3 maven nodejs rubygems aspnetcore-runtime-3.1 golang" >>${_LOG_FILE_PATH:-"/dev/null"}
+    #yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && ${_yum_install} ripgrep
+    if [ $? -ne 0 ]; then
+        _log "ERROR" "installing packages with yum failed. Check ${_LOG_FILE_PATH}"
+        return 1
     fi
 
-    local _repo_url="${_base_url%/}/repository/yum-group"
-    ${_cmd} exec -it ${_name} bash -c 'echo -e "[nexusrepo]\nname=Nexus Repository\nbaseurl='${_repo_url%/}'/$releasever/os/$basearch/\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7\npriority=1" > /etc/yum.repos.d/nexus-yum-test.repo'
-    # sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@http://dh1.standalone.localdomain:8081/repository/yum-proxy@1" /etc/yum.repos.d/nexus-yum-test.repo
+    _repo_url="${_base_url%/}/repository/npm-group"
+    local _cred="$(python -c "import sys, base64; print(base64.b64encode('${_usr}:${_pwd}'))")"
+    echo "strict-ssl=false
+registry=${_repo_url%/}
+_auth=\"${_cred}\"" > ${_TMP%/}/npmrc
+    if ${_cmd} cp ${_TMP%/}/npmrc ${_name}:/root/.npmrc &&
+        ${_cmd} cp ${_TMP%/}/npmrc ${_name}:/home/${_user}/.npmrc &&
+        ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.npmrc &&
+        _is_url_reachable "${_repo_url}";
+    then
+        ${_cmd} exec -it ${_name} bash -c "npm install -g yarn;npm install -g bower" &>>${_LOG_FILE_PATH:-"/dev/null"}
+    fi
+
+    _repo_url="${_base_url%/}/repository/pypi-group"
+    echo "[distutils]
+index-servers =
+  nexus-group
+
+[nexus-group]
+repository: ${_repo_url%/}
+username: ${_usr}
+password: ${_pwd}" > ${_TMP%/}/pypirc
+    if ${_cmd} cp ${_TMP%/}/pypirc ${_name}:/root/.pypirc &&
+        ${_cmd} cp ${_TMP%/}/pypirc ${_name}:/home/${_user}/.pypirc &&
+        ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.pypirc &&
+        _is_url_reachable "${_repo_url}";
+    then
+        ${_cmd} exec -it ${_name} bash -c "pip3 install conan" &>>${_LOG_FILE_PATH:-"/dev/null"}
+    fi
 
     _repo_url="${_base_url%/}/repository/maven-group"
-    ${_cmd} exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null; curl -s -o ${_f} -L '${_DL_URL%/}'/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_repo_url%/}'/@1" ${_f}; chown -R '${_user}': /home/'${_user}'/.m2'
-
-    _repo_url="${_base_url%/}/repository/npm-group"
-    ${_cmd} exec -it ${_name} bash -c 'sudo -i -u '${_user}' npm config set registry '${_repo_url%/}'/'
-
+    curl -s -o ${_TMP%/}/settings.xml -L ${_DL_URL%/}/misc/m2_settings.tmpl.xml && \
+    sed -i -e "s@_REPLACE_MAVEN_USERNAME_@${_usr}@1" -e "s@_REPLACE_MAVEN_USER_PWD_@${_pwd}@1" -e "s@_REPLACE_MAVEN_REPO_URL_@${_repo_url%/}/@1" ${_TMP%/}/settings.xml && \
+    ${_cmd} exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null' && \
+    ${_cmd} cp ${_TMP%/}/settings.xml ${_name}:/home/${_user}/.m2/settings.xml && \
+    ${_cmd} exec -it ${_name} chown -R ${_user}: /home/${_user}/.m2
     # TODO: add other client configs.
+}
+
+function f_container_iq_cli() {
+    local _name="${1}"
+    local _user="${2:-"$USER"}"
+    local _iq_cli_ver="${3:-"${_IQ_CLI_VER}"}"
+    local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
+    [ -z "${_iq_cli_ver}" ] && return 99
+    ${_cmd} exec -d ${_name} bash -c '_f=/home/'${_user}'/nexus-iq-cli-'${_iq_cli_ver}'.jar; [ ! -s "${_f}" ] && curl -sf -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-'${_iq_cli_ver}'.jar" -o "${_f}" && chown '${_user}': ${_f}'
 }
 
 # Set admin password after initial installation
