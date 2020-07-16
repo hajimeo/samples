@@ -2,6 +2,9 @@
 # BASH script to setup NXRM3 repositories.
 # Based on functions in start_hdp.sh from 'samples' and install_sonatype.sh from 'work'.
 #
+type import &>/dev/null || import() { source <(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/$1); }
+import "utils.sh"
+import "utils_container.sh"
 
 function usage() {
     local _filename="$(basename $BASH_SOURCE)"
@@ -64,7 +67,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 }
 
 
-# Global variables
+## Global variables
 _ADMIN_USER="admin"
 _ADMIN_PWD="admin123"
 _REPO_FORMATS="maven,pypi,npm,nuget,docker,yum,rubygem,raw,conan"
@@ -72,20 +75,20 @@ _REPO_FORMATS="maven,pypi,npm,nuget,docker,yum,rubygem,raw,conan"
 _NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
 _IQ_CLI_VER="${_IQ_CLI_VER-"1.95.0-01"}"    # If empty, not download CLI jar
 _DOCKER_NETWORK_NAME=${_DOCKER_NETWORK_NAME:-"nexus"}
+_DOMAIN="${_DOMAIN:-"standalone.localdomain"}"
 _IS_NXRM2=${_IS_NXRM2:-"N"}
 _NO_DATA=${_NO_DATA:-"N"}
 _TID="${_TID:-80}"
 ## Misc.
-_DOMAIN="standalone.localdomain"
 _UTIL_DIR="$HOME/.bash_utils"
 if [ "`uname`" = "Darwin" ]; then
     _WORK_DIR="$HOME/share/sonatype"
 else
     _WORK_DIR="/var/tmp/share/sonatype"
 fi
-_TMP="$(mktemp -d)"  # for downloading/uploading assets
 _LOG_FILE_PATH="/tmp/setup_nexus3_repos.log"
-# Variables which used by command arguments
+_TMP="$(mktemp -d)"  # for downloading/uploading assets
+## Variables which used by command arguments
 _AUTO=false
 _DEBUG=false
 _CLEAN=false
@@ -245,41 +248,13 @@ function f_setup_docker() {
     # add some data for xxxx-group
     f_populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "18185 18184"
 }
-function f_docker_login() {
-    local _host_port="${1}"
-    local _backup_ports="${2}"
-    local _user="${3:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"
-    local _pwd="${4:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
-    local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
 
-    if [ -z "${_cmd}" ] || ! which ${_cmd} &>/dev/null; then
-        _log "WARN" "No docker command specified (docker or podman) for $FUNCNAME, so exiting"
-        return 0
-    fi
-
-    if [ -z "${_host_port}" ] && [ -n "${_backup_ports}" ]; then
-        for __p in ${_backup_ports}; do
-            nc -w1 -z localhost ${__p} && _host_port="localhost:${__p}" 2>/dev/null && break
-        done
-        if [ -n "${_host_port}" ]; then
-            _log "INFO" "No hostname:port for $FUNCNAME is set, so try with ${_host_port}"
-        fi
-    fi
-    if [ -z "${_host_port}" ]; then
-        _log "WARN" "No hostname:port for $FUNCNAME, so exiting"
-        return 0
-    fi
-
-    _log "DEBUG" "${_cmd} login ${_host_port} --username ${_user} --password ********"
-    ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} &>>${_LOG_FILE_PATH:-"/dev/null"} || return $?
-    echo "${_host_port}"
-}
 function f_populate_docker_proxy() {
     local _tag_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_PROXY}"}"
     local _backup_ports="${3:-"18179 18178"}"
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
-    _host_port="$(f_docker_login "${_host_port}" "${_backup_ports}")" || return $?
+    _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
 
     for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_tag_name}"); do
         _log "WARN" "Deleting ${_imn} (wait for 5 secs)";sleep 5
@@ -295,7 +270,7 @@ function f_populate_docker_hosted() {
     local _host_port="${2:-"${r_DOCKER_HOSTED}"}"
     local _backup_ports="${3:-"18182 18181"}"
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
-    _host_port="$(f_docker_login "${_host_port}" "${_backup_ports}")" || return $?
+    _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
 
     # In _docker_proxy, the image might be already pulled.
     if ! ${_cmd} tag ${_host_port:-"localhost"}/${_tag_name} ${_host_port}/${_tag_name}; then
@@ -448,7 +423,7 @@ function p_client_container() {
     local _image_name="nexus-client:latest"
     local _existing_id="`${_cmd} images -q ${_image_name}`"
     if [ -n "${_existing_id}" ]; then
-        _log "INFO" "Image ${_image_name} (${_existing_id}) already exists. Running / Starting a container..."; sleep 3
+        _log "INFO" "Image ${_image_name} (${_existing_id}) already exists. Running / Starting a container..."
     else
         local _build_dir="$(mktemp -d)" || return $?
         local _dockerfile="${_build_dir%/}/Dockerfile"
@@ -459,8 +434,8 @@ function p_client_container() {
         local _os_and_ver="centos:${_centos_ver}"
         # If docker-group or docker-proxy host:port is provided, trying to use it.
         if [ -n "${r_DOCKER_GROUP:-"${r_DOCKER_PROXY}"}" ]; then
-            if ! f_docker_login "${r_DOCKER_GROUP}"; then
-                if f_docker_login "${r_DOCKER_PROXY}"; then
+            if ! _docker_login "${r_DOCKER_GROUP}" "" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"; then
+                if _docker_login "${r_DOCKER_PROXY}" "" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"; then
                     _os_and_ver="${r_DOCKER_PROXY}/centos:${_centos_ver}"
                 fi
             else
@@ -481,52 +456,20 @@ function p_client_container() {
     fi
 
     local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true"
-    # If dnsmasq or some dns is locally installed, assuming it's setup correctly
-    if grep -qE '^nameserver\s+127\.' /etc/resolv.conf; then
-        _ext_opts="${_ext_opts} --dns=`hostname -I | cut -d " " -f1`"
-    fi
-    # add one more if set
-    local _another_dns="$(grep -m1 -E '^nameserver\s+[0-9]+\.' /etc/resolv.conf | grep -vE '^nameserver\s+127\.')"
-    if [ -n "${_another_dns}" ]; then
-        _ext_opts="${_ext_opts} --dns=${_another_dns}"
-    else
-        _ext_opts="${_ext_opts} --dns=127.0.0.11"   # adding back the local DNS
-    fi
-
     _log "INFO" "Running or Starting 'nexus-client'"
     # TODO: not right way to use 3rd and 4th arguments.
-    _NO_PORT_FORWARD="Y" f_docker_run_or_start "nexus-client" "" "${_ext_opts}" "${_image_name} /sbin/init" || return $?
+    _docker_run_or_start "nexus-client" "${_ext_opts}" "${_image_name} /sbin/init" "${r_DOCKER_CMD}" || return $?
+    _container_add_NIC "nexus-client" "bridge" "${r_DOCKER_CMD}"
 
     # Create a test user if hasn't created (testuser:testuser123)
-    f_container_useradd "nexus-client" "testuser"
+    _container_useradd "nexus-client" "testuser" "" "Y" "${r_DOCKER_CMD}"
     # Setup clients' config files
-    f_container_client_configs "nexus-client" "testuser" "${_base_url}"
-    _log "INFO" "Completed $FUNCNAME (may need to run 'f_docker_add_NIC_to_container \"nexus-client\"')"
+    f_reset_client_configs "nexus-client" "testuser" "${_base_url}"
+    _log "INFO" "Completed $FUNCNAME"
 }
 
-function f_container_useradd() {
-    local _name="${1}"
-    local _user="${2:-"$USER"}"
-    local _password="${3:-"${_user}123"}"
-    local _sudoer="${4}"
-    local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
-
-    ${_cmd} exec -it ${_name} bash -c 'grep -q "^'$_user':" /etc/passwd && exit 0; useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
-    ${_cmd} exec -it ${_name} bash -c 'if [ -f /root/.ssh/authorized_keys ]; then mkdir /home/'$_user'/.ssh &>/dev/null; [ ! -s /home/'$_user'/.ssh/id_rsa ] && ssh-keygen -q -N "" -f /home/'$_user'/.ssh/id_rsa; cp /root/.ssh/authorized_keys /home/'$_user'/.ssh/; chown -R '$_user': /home/'$_user'/.ssh; fi' || return $?
-    if _isYes "${_sudoer}"; then
-        ${_cmd} exec -it ${_name} bash -c "[ ! -f /etc/sudoers.d/${_user} ] && echo '${_user} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/${_user}"
-    fi
-
-    if ! grep -q -w "nexus-client" $HOME/.ssh/config; then
-        echo '
-Host nexus-client
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-  User '${_user} >> $HOME/.ssh/config
-    fi
-}
-
-function f_container_client_configs() {
+# Re-set client configs with given Nexus base URL
+function f_reset_client_configs() {
     local _name="${1}"
     local _user="${2:-"$USER"}"
     local _base_url="${3:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
@@ -567,53 +510,6 @@ function f_adminpwd() {
 function f_testuser() {
     f_apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"default","id":"test-role","name":"testRole","description":"test role","privileges":["nx-repository-admin-*-*-*"],"roles":[]}],"type":"rpc"}'
     f_apiS '{"action":"coreui_User","method":"create","data":[{"userId":"testuser","version":"","firstName":"test","lastName":"user","email":"testuser@example.com","status":"active","roles":["test-role"],"password":"testuser"}],"type":"rpc"}'
-}
-
-function f_trust_ca() {
-    local _ca_pem="$1"
-    if [ -z "${_ca_pem}" ]; then
-        _ca_pem="${_WORK_DIR%/}/rootCA_standalone.crt"
-        if [ ! -s "${_ca_pem}" ]; then
-            curl -s -f -m 7 --retry 2 -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/rootCA_standalone.crt" -o ${_WORK_DIR%/}/rootCA_standalone.crt || return $?
-        fi
-    fi
-    # Test
-    local _CN="$(openssl x509 -in "${_ca_pem}" -noout -subject | grep -oE "CN\s*=.+" | cut -d"=" -f2 | xargs)"  # somehow xargs trim spaces
-    if [ -z "${_CN}" ]; then
-        _log "ERROR" "No common name found from ${_ca_pem}"
-        return 1
-    fi
-    local _file_name="$(basename "${_ca_pem}")"
-    local _ca_dir=""
-    local _ca_cmd=""
-    if which update-ca-trust &>/dev/null; then
-        _ca_cmd="update-ca-trust"
-        _ca_dir="/etc/pki/ca-trust/source/anchors"
-    elif which update-ca-certificates &>/dev/null; then
-        _ca_cmd="update-ca-certificates"
-        _ca_dir="/usr/local/share/ca-certificates/extra"
-    elif which security &>/dev/null && [ -d $HOME/Library/Keychains ]; then
-        # If we know the common name, and if exists, no change.
-        security find-certificate -c "${_CN}" $HOME/Library/Keychains/login.keychain-db &>/dev/null && return 0
-        # NOTE: -d for add to admin cert store (and not sure what this means)
-        sudo security add-trusted-cert -d -r trustRoot -k $HOME/Library/Keychains/login.keychain-db "${_ca_pem}"
-        return $?
-    fi
-
-    if [ ! -d "${_ca_dir}" ]; then
-        _log "ERROR" "Couldn't find 'update-ca-trust' or 'update-ca-certificates' command or directory to install CA cert."
-        return 1
-    fi
-
-    if [ -s ${_ca_dir%/}/${_file_name} ]; then
-        _log "DEBUG" "${_ca_dir%/}/${_file_name} already exists."
-        return 0
-    fi
-
-    cp "${_ca_pem}" ${_ca_dir%/}/ || return $?
-    _log "DEBUG" "Copied \"${_ca_pem}\" into ${_ca_dir%/}/"
-    ${_ca_cmd} || return $?
-    _log "DEBUG" "Executed ${_ca_cmd}"
 }
 
 # f_get_and_upload_jars "maven" "junit" "junit" "3.8 4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 4.10 4.11 4.12"
@@ -852,167 +748,10 @@ function f_api() {
     fi
 }
 
-# NOTE: To test name resolution as no nslookup,ping,nc, docker exec -ti nexus3240-1 curl -v -I http://nexus3240-3.standalone.localdomain:8081/
-function f_update_hosts_for_container() {
-    local _container_name="${1}"
-    local _hostname="${2}"  # Optional
-    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
-
-    [ -z "${_container_name}" ] && _container_name="`echo "${_hostname}" | cut -d"." -f1`"
-    [ -z "${_container_name}" ] && return 1
-    [ -z "${_hostname}" ] && _hostname="${_container_name}.${_DOMAIN#.}"
-
-    local _container_ip="`f_container_ip "${_container_name}" "${_cmd}"`"
-    if [ -z "${_container_ip}" ]; then
-        _log "WARN" "${_container_name} is not returning IP. Please update hosts file manually."
-        return 1
-    fi
-
-    if ! _update_hosts_file "${_hostname}" "${_container_ip}"; then
-        _log "WARN" "Please update hosts file to add '${_container_ip} ${_hostname}'"
-        return 1
-    fi
-    _log "DEBUG" "Updated hosts file with '${_container_ip} ${_hostname}'"
-}
-
-function f_socks5_proxy() {
-    local _port="${1:-"48484"}"
-    [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
-
-    local _hash="$(cat $HOME/.ssh/id_rsa.pub 2>/dev/null | awk '{print $2}')"
-    if [ -z "${_hash}" ]; then
-        _log "ERROR" "$FUNCNAME requires ssh password-less login."
-        return 1
-    fi
-    if ! grep -q "${_hash}" $HOME/.ssh/authorized_keys; then
-        cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys || return $?
-    fi
-
-    local _cmd="ssh -4gC2TxnNf -D${_port} localhost &>>${_LOG_FILE_PATH:-"/dev/null"} &"
-    local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
-
-    local _pid="$(_pid_by_port "${_port}")"
-    if [ -n "${_pid}" ]; then
-        local _ps_comm="$(ps -o comm= -p ${_pid})"
-        ps -Fwww -p ${_pid}
-        if [ "${_ps_comm}" == "ssh" ]; then
-            _log "INFO" "The Socks proxy might be already running (${_pid})"
-        else
-            _log "WARN" "The port:${_port} is used by PID:${_pid}. Please stop this PID or use different port."
-            return 1
-        fi
-    else
-        eval "${_cmd}" || return $?
-        _log "INFO" "Started socks proxy on \"${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}\"."
-    fi
-
-    echo "NOTE: Below command starts Chrome with this Socks5 proxy:
-# Mac:
-open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port} ${r_NEXUS_URL}
-# Win:
-\"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe\" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}" ${r_NEXUS_URL}
-}
-
-function f_docker_run_or_start() {
-    local _name="$1"
-    local _mount="$2"
-    local _ext_opts="$3"
-    local _image_name="$4"
-    local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
-
-    if ${_cmd} ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
-        _log "WARN" "Container:'${_name}' already exists. So that starting instead of docker run...";sleep 3
-        ${_cmd} start ${_name} || return $?
-    else
-        _log "DEBUG" "Creating Container with \"${_name}\" \"${_mount}\" \"${_ext_opts}\""
-        # TODO: normally container fails after a few minutes, so checking the exit code of docker run is useless
-        f_docker_run "${_name}" "${_mount}" "${_ext_opts}" "${_image_name}" || return $?
-        _log "INFO" "\"${_cmd} run\" executed. Check progress with \"${_cmd} logs -f ${_name}\""
-    fi
-    sleep 3
-    # Even specifying --ip, get IP from the container in below function
-    f_update_hosts_for_container "${_name}"
-}
-
-function f_docker_run() {
-    # TODO: shouldn't use any global variables in a function.
-    local _name="$1"
-    local _mount="$2"
-    local _ext_opts="$3"
-    local _image_name="${4:-"sonatype/nexus3:${r_NEXUS_VERSION:-"latest"}"}"
-    local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
-
-    local _p=""
-    if ! _isYes "${r_NEXUS_INSTALL_HAC}" && ! _isYes "${_NO_PORT_FORWARD}"; then
-        [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT1}:8081"
-        [ -n "${r_NEXUS_CONTAINER_PORT2}" ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT2}:8443"
-        if [[ "${r_DOCKER_PROXY}" =~ :([0-9]+)$ ]]; then
-            _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
-        fi
-        if [[ "${r_DOCKER_HOSTED}" =~ :([0-9]+)$ ]]; then
-            _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
-        fi
-        if [[ "${r_DOCKER_GROUP}" =~ :([0-9]+)$ ]]; then
-            _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
-        fi
-    fi
-
-    # Nexus specific config update/creation
-    local _v_opt="-v ${_WORK_DIR%/}:${_WORK_DIR%/}"
-    if _isYes "${r_NEXUS_MOUNT}"; then
-        if [ -n "${_mount}" ]; then
-            _v_opt="${_v_opt% } -v ${_mount%/}:/nexus-data"
-            if _isYes "${r_NEXUS_INSTALL_HAC}" && [ -n "${r_NEXUS_MOUNT_DIR_SHARED}" ]; then
-                if [ ! -d "${r_NEXUS_MOUNT_DIR_SHARED}" ]; then
-                    mkdir -m 777 -p ${r_NEXUS_MOUNT_DIR_SHARED%/} || return $?
-                fi
-                _v_opt="${_v_opt% } -v ${r_NEXUS_MOUNT_DIR_SHARED%/}:/nexus-data/blobs"
-            fi
-
-            if [ ! -d "${_mount%/}/etc/jetty" ]; then
-                mkdir -p ${_mount%/}/etc/jetty || return $?
-                chmod -R a+w ${_mount%/}
-            else
-                _log "WARN" "Mount directory:${_mount%/} already exists. Reusing...";sleep 3
-            fi
-
-            # If the file exists, at this moment, not adding misc. nexus properties
-            if [ ! -s "${_mount%/}/etc/nexus.properties" ]; then
-                echo 'nexus.onboarding.enabled=false
-nexus.scripts.allowCreation=true' > ${_mount%/}/etc/nexus.properties || return $?
-            fi
-
-            # HTTPS/SSL/TLS setup
-            f_nexus_https_config "${_mount%/}" || return $?
-            # HA-C related setup
-            if _isYes "${r_NEXUS_INSTALL_HAC}"; then
-                f_nexus_ha_config "${_mount%/}" || return $?
-            fi
-
-            local _license="${r_NEXUS_LICENSE_FILE}"
-            [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype-*.lic 2>/dev/null | head -n1)"
-            if [ -n "${_license}" ]; then
-                _upsert ${_mount%/}/etc/nexus.properties "nexus.licenseFile" "${_license}" || return $?
-            elif _isYes "${r_NEXUS_INSTALL_HAC}"; then
-                _log "ERROR" "HA-C is requested but no license."
-                return 1
-            fi
-        fi
-    fi
-
-    #[ -z "${_INTERNAL_DNS}" ] && _INTERNAL_DNS="$(docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+').1"
-    [ -z "${INSTALL4J_ADD_VM_PARAMS}" ] && INSTALL4J_ADD_VM_PARAMS="-Xms1g -Xmx2g -XX:MaxDirectMemorySize=1g"
-    local _full_cmd="${_cmd} run -t -d ${_p} --name=${_name} --hostname=${_name}.${_DOMAIN#.} \\
-        ${_v_opt} \\
-        --network=${_DOCKER_NETWORK_NAME} ${_ext_opts} \\
-        -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\" \\
-        ${_image_name}"
-    _log "DEBUG" "${_full_cmd}"
-    eval "${_full_cmd}" || return $?
-}
-
 function f_nexus_https_config() {
     local _mount="$1"
+    local _ca_pem="${2}"
+
     _upsert ${_mount%/}/etc/nexus.properties "ssl.etc" "\${karaf.data}/etc/jetty" || return $?
     _upsert ${_mount%/}/etc/nexus.properties "nexus-args" "\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-http.xml,\${jetty.etc}/jetty-requestlog.xml,\${ssl.etc}/jetty-https.xml" || return $?
     _upsert ${_mount%/}/etc/nexus.properties "application-port-ssl" "8443" || return $?
@@ -1023,7 +762,13 @@ function f_nexus_https_config() {
     if [ ! -s "${_mount%/}/etc/jetty/keystore.jks" ]; then
         curl -s -f -L -o "${_mount%/}/etc/jetty/keystore.jks" "https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.jks" || return $?
     fi
-    f_trust_ca || return $?
+
+    if [ ! -s "${_ca_pem}" ]; then
+        curl -s -f -m 7 --retry 2 -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/rootCA_standalone.crt" -o ${_WORK_DIR%/}/rootCA_standalone.crt || return $?
+        _ca_pem="${_WORK_DIR%/}/rootCA_standalone.crt"
+        _log "INFO" "No CA cert specified. Using ${_ca_pem}"
+    fi
+    _trust_ca "${_ca_pem}" || return $?
     _log "DEBUG" "HTTPS configured against config files under ${_mount}"
 }
 
@@ -1042,85 +787,54 @@ function f_nexus_ha_config() {
     _log "DEBUG" "HA-C configured against config files under ${_mount}"
 }
 
-function f_docker_network() {
-    local _network_name="${1:-"${_DOCKER_NETWORK_NAME}"}"
-    local _subnet_16="${2:-"172.100"}"
-    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
-
-    ${_cmd} network ls --format "{{.Name}}" | grep -qE "^${_network_name}$" && return 0
-    # TODO: add validation if subnet is already taken. --subnet is required to specify IP.
-    ${_cmd} network create --driver=bridge --subnet=${_subnet_16}.0.0/16 --gateway=${_subnet_16}.0.1 ${_network_name} || return $?
-    _log "DEBUG" "${_cmd} network '${_network_name}' created with subnet:${_subnet_16}.0.0"
-}
-
-function f_docker_add_NIC_to_container() {
-    local _name="${1}"
-    local _network="${2:-bridge}"
-    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
-
-    local _before_gw="$(${_cmd} inspect ${_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['NetworkSettings']['Gateway'])")"
-    ${_cmd} network connect ${_network} ${_name} || return $?
-    local _after_gw="$(${_cmd} inspect ${_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['NetworkSettings']['Gateway'])")"
-    if [ -n "${_before_gw}" ] && [ "${_before_gw}" != "${_after_gw}" ]; then
-        _log "WARN" "Gateway address has been changed (before: "${_before_gw}", after: ${_after_gw})
-     May want to execute below (please double check NIC name):
-route add default gw ${_before_gw} eth0\
-route del default gw ${_after_gw}\
-"
-    fi
-    ${_cmd} exec -it ${_name} bash -c "netstat -rn"
-}
-
-function f_container_available_ip() {
-    local _hostname="${1}"  # optional
-    local _check_file="${2}"  # /etc/hosts or /etc/banner_add_hosts
-    local _subnet="${3}"    # 172.18.0.0
-    local _network_name="${4:-${_DOCKER_NETWORK_NAME:-"bridge"}}"
-    local _cmd="${5:-"${r_DOCKER_CMD:-"docker"}"}"
-
-    local _ip=""
-    [ -z "${_subnet}" ] && _subnet="$(${_cmd} inspect ${_network_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')"
-    local _subnet_24="$(echo "${_subnet}" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
-    ${_cmd} network inspect ${_network_name} | grep '"IPv4Address"' > ${_TMP%/}/${_cmd}_network_${_network_name}_IPs.out
-
-    if [ -n "${_hostname}" ]; then
-        local _short_name="`echo "${_hostname}" | cut -d"." -f1`"
-        [ "${_short_name}" == "${_hostname}" ] && _hostname="${_short_name}.${_DOMAIN#.}"
-
-        # Not perfect but... if the IP is in the /etc/hosts, then reuse it
-        [ -s "${_check_file}" ] && _ip="$(grep -E "^${_subnet_24%.}\.[0-9]+\s+${_hostname}\s*" ${_check_file} | awk '{print $1}' | tail -n1)"
-    fi
-
-    if [ -z "${_ip}" ]; then
-        # Using the range 101 - 199
-        for _i in {101..199}; do
-            if [ -s "${_check_file}" ] && grep -qE "^${_subnet_24%.}\.${_i}\s+" ${_check_file}; then
-                _log "DEBUG" "${_subnet_24%.}\.${_i} exists in ${_check_file}. Skipping..."
-                continue
+function f_nexus_mount_volume() {
+    local _mount="$1"
+    local _v=""
+    if [ -n "${_mount}" ]; then
+        _v="${_v% } -v ${_mount%/}:/nexus-data"
+        if _isYes "${r_NEXUS_INSTALL_HAC}" && [ -n "${r_NEXUS_MOUNT_DIR_SHARED}" ]; then
+            if [ ! -d "${r_NEXUS_MOUNT_DIR_SHARED}" ]; then
+                mkdir -m 777 -p ${r_NEXUS_MOUNT_DIR_SHARED%/} || return $?
             fi
-            if ! grep -q "\"${_subnet_24%.}.${_i}/" ${_TMP%/}/${_cmd}_network_${_network_name}_IPs.out; then
-                _log "DEBUG" "Using ${_subnet_24%.}\.${_i} as it does not exist in ${_cmd}_network_${_network_name}_IPs.out."
-                _ip="${_subnet_24%.}.${_i}"
-                break
-            fi
-        done
-    fi
-    [ -z "${_ip}" ] && return 111
-
-    if [ -n "${_hostname}" ] && [ -s "${_check_file}" ]; then
-        # To reserve this IP, updating the check_file
-        if _update_hosts_file "${_hostname}" "${_ip}" "${_check_file}"; then
-            _log "DEBUG" "Updated ${_check_file} with \"${_hostname}\" \"${_ip}\""
+            _v="${_v% } -v ${r_NEXUS_MOUNT_DIR_SHARED%/}:/nexus-data/blobs"
         fi
     fi
-    _log "DEBUG" "IP:${_ip} ($@)"
-    echo "${_ip}"
+    echo "${_v}"
 }
 
-function f_container_ip() {
-    local _container_name="$1"
-    local _cmd="${2:-"${r_DOCKER_CMD:-"docker"}"}"
-    ${_cmd} exec -it ${_container_name} hostname -i | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' -m1 -o | tr -cd "[:print:]"   # remove unnecessary control characters
+#    if _isYes "${r_NEXUS_MOUNT}"; then
+function f_nexus_init_properties() {
+    local _sonatype_work="$1"
+    [ -z "${_sonatype_work}" ] && return 0  # Nothing to do
+
+    if [ ! -d "${_sonatype_work%/}/etc/jetty" ]; then
+        mkdir -p ${_sonatype_work%/}/etc/jetty || return $?
+        chmod -R a+w ${_sonatype_work%/}
+    else
+        _log "INFO" "Mount directory:${_sonatype_work%/} already exists. Reusing..."
+    fi
+
+    # If the file exists, at this moment, not adding misc. nexus properties
+    if [ ! -s "${_sonatype_work%/}/etc/nexus.properties" ]; then
+        echo 'nexus.onboarding.enabled=false
+nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || return $?
+    fi
+
+    # HTTPS/SSL/TLS setup
+    f_nexus_https_config "${_sonatype_work%/}" || return $?
+    # HA-C related setup
+    if _isYes "${r_NEXUS_INSTALL_HAC}"; then
+        f_nexus_ha_config "${_sonatype_work%/}" || return $?
+    fi
+
+    local _license="${r_NEXUS_LICENSE_FILE}"
+    [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype-*.lic 2>/dev/null | head -n1)"
+    if [ -n "${_license}" ]; then
+        _upsert ${_sonatype_work%/}/etc/nexus.properties "nexus.licenseFile" "${_license}" || return $?
+    elif _isYes "${r_NEXUS_INSTALL_HAC}"; then
+        _log "ERROR" "HA-C is requested but no license."
+        return 1
+    fi
 }
 
 
@@ -1173,13 +887,13 @@ function questions() {
     if [ -n "${r_DOCKER_CMD}" ]; then
         _ask "Would you like to install Nexus in a docker container?" "Y" "r_NEXUS_INSTALL" "N" "N"
         if _isYes "${r_NEXUS_INSTALL}"; then
-            echo "NOTE: sudo password may be required."; sleep 2
+            echo "NOTE: sudo password may be required."
             local _nexus_version=""
             _ask "Nexus version" "latest" "r_NEXUS_VERSION" "N" "Y"
             local _ver_num=$(echo "${r_NEXUS_VERSION}" | sed 's/[^0-9]//g')
             _ask "Would you like to build HA-C?" "N" "r_NEXUS_INSTALL_HAC" "N" "N"
             if _isYes "${r_NEXUS_INSTALL_HAC}"; then
-                echo "NOTE: You may also need to set up a reverse proxy."; sleep 2
+                echo "NOTE: You may also need to set up a reverse proxy."
                 # NOTE: mounting a volume to sonatype-work is mandatory for HA-C
                 r_NEXUS_MOUNT="Y"
                 for _i in {1..3}; do
@@ -1278,15 +992,17 @@ function questions_cleanup() {
     if [ -n "${r_NEXUS_MOUNT_DIR_SHARED}" ] && [ -n "${_WORK_DIR%/}" ] && [[ "${r_NEXUS_MOUNT_DIR_SHARED}" =~ ^${_WORK_DIR%/}/ ]]; then
         _questions_cleanup_inner_inner "sudo rm -rf ${r_NEXUS_MOUNT_DIR_SHARED}" "${_clean_cmds_file}"
     fi
-    echo "======================================"
+    echo "=== Commands which will be run: ==================================="
     cat ${_clean_cmds_file} || return $?
-    echo "======================================"
+    echo "==================================================================="
     if ! ${_AUTO}; then
         _ask "Are you sure to execute above? ('sudo' password may be asked)" "N"
         if ! _isYes; then
             echo "Aborting..."
             return 0
         fi
+    else
+        sleep 5
     fi
     [ -s "${_clean_cmds_file}" ] && bash -x ${_clean_cmds_file}
 }
@@ -1354,34 +1070,9 @@ function _is_existed() {
 
 
 ### Main #######################################################################################################
-bootstrap() {
-    local _no_update="${1-${_AUTO}}"
-    # NOTE: if _AUTO, not checking updates to be safe.
-    if [ ! -d "${_UTIL_DIR%/}" ]; then
-        mkdir -p "${_UTIL_DIR%/}" || exit $?
-    fi
-    if [ ! -f "${_UTIL_DIR%/}/utils.sh" ]; then
-        if [ ! -f "${_WORK_DIR%/}/utils.sh" ]; then
-            curl -s -f -m 3 --retry 0 -L "https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh" -o "${_UTIL_DIR%/}/utils.sh" || return $?
-        else
-            # At this moment, not updating _WORK_DIR one for myself
-            #_check_update "${_WORK_DIR%/}/utils.sh"
-            source "${_WORK_DIR%/}/utils.sh"
-            return $?
-        fi
-    else
-        source "${_UTIL_DIR%/}/utils.sh"
-        _log "DEBUG" "_check_update ${_UTIL_DIR%/}/utils.sh with"
-        ${_no_update} || _check_update "${_UTIL_DIR%/}/utils.sh"
-    fi
-    source "${_UTIL_DIR%/}/utils.sh"
-    _log "DEBUG" "_check_update $BASH_SOURCE with force:N"
-    ${_no_update} || _check_update "$BASH_SOURCE" "" "N"
-}
-
 main() {
     # Clear the log file if not empty
-    [ -s "${_LOG_FILE_PATH}" ] && cat /dev/null > "${_LOG_FILE_PATH}" &>/dev/null
+    [ -s "${_LOG_FILE_PATH}" ] && gzip -S "_$(date +'%Y%m%d%H%M%S').gz" "${_LOG_FILE_PATH}" &>/dev/null
 
     # Checking requirements (so far only a few commands)
     if [ "`uname`" = "Darwin" ]; then
@@ -1393,6 +1084,11 @@ main() {
         fi
     fi
 
+    if ! ${_AUTO}; then
+        _log "DEBUG" "_check_update $BASH_SOURCE with force:N"
+        _check_update "$BASH_SOURCE" "" "N"
+    fi
+
     # If _RESP_FILE is popurated by -r xxxxx.resp, load it
     if [ -s "${_RESP_FILE}" ];then
         _load_resp "${_RESP_FILE}"
@@ -1402,7 +1098,7 @@ main() {
     fi
 
     if ${_CLEAN}; then
-        _log "WARN" "CLEAN-UP (DELETE) mode is selected.";sleep 3
+        _log "WARN" "CLEAN-UP (DELETE) mode is selected."
         questions_cleanup
         return $?
     fi
@@ -1416,13 +1112,14 @@ main() {
     fi
 
     if _isYes "${r_NEXUS_INSTALL}"; then
-        echo "If 'password' is asked, please type 'sudo' password." >&2;sleep 2
+        echo "NOTE: If 'password' is asked, please type 'sudo' password." >&2
         sudo echo "Starting Nexus installation..." >&2
-        f_docker_network || return $?
+        _docker_add_network "${_DOCKER_NETWORK_NAME}" "" "${r_DOCKER_CMD}" || return $?
+
         if _isYes "${r_NEXUS_INSTALL_HAC}"; then
-            local _ip_1="$(f_container_available_ip "${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}" "/etc/hosts")" || return $?
-            local _ip_2="$(f_container_available_ip "${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}" "/etc/hosts")" || return $?
-            local _ip_3="$(f_container_available_ip "${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}" "/etc/hosts")" || return $?
+            local _ip_1="$(_container_available_ip "${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}" "/etc/hosts")" || return $?
+            local _ip_2="$(_container_available_ip "${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}" "/etc/hosts")" || return $?
+            local _ip_3="$(_container_available_ip "${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}" "/etc/hosts")" || return $?
             local _ext_opts="--add-host ${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}:${_ip_1}"
             _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}:${_ip_2}"
             _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}:${_ip_3}"
@@ -1434,8 +1131,13 @@ main() {
                 local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
                 local _v_name_ip="_ip_${_i}"
                 local _tmp_ext_opts="${_ext_opts}"
-                [ -n "${!_v_name_ip}" ] && _tmp_ext_opts="--ip=${!_v_name_ip} ${_ext_opts}"
-                f_docker_run_or_start "${!_v_name}" "${!_v_name_m}" "${_tmp_ext_opts}" || return $?
+                local _tmp_ext_opts="${_tmp_ext_opts} -v ${_WORK_DIR%/}:${_WORK_DIR%/}"
+                if _isYes "${r_NEXUS_MOUNT}"; then
+                    _tmp_ext_opts="${_tmp_ext_opts} $(f_nexus_mount_volume "${!_v_name_m}")" || return $?
+                    f_nexus_init_properties "${!_v_name_m}" || return $?
+                fi
+                [ -n "${!_v_name_ip}" ] && _tmp_ext_opts="${_tmp_ext_opts} --ip=${!_v_name_ip}"
+                _docker_run_or_start "${!_v_name}" "${_tmp_ext_opts}" "sonatype/nexus3:${r_NEXUS_VERSION:-"latest"}" "${r_DOCKER_CMD}" || return $?
                 if [ "${!_v_name}" == "${r_NEXUS_CONTAINER_NAME_1}" ]; then
                     _log "INFO" "Waiting for ${r_NEXUS_CONTAINER_NAME_1} started ..."
                     # If HA-C, needs to wait the first node starts (TODO: what if not 8081?)
@@ -1446,7 +1148,26 @@ main() {
                 fi
             done
         else
-            f_docker_run_or_start "${r_NEXUS_CONTAINER_NAME}" "${r_NEXUS_MOUNT_DIR}"
+            # Port forwarding for Nexus Single Node (obviously can't do same for HA as port will conflict)
+            local _p=""
+            [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT1}:8081"
+            [ -n "${r_NEXUS_CONTAINER_PORT2}" ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT2}:8443"
+            if [[ "${r_DOCKER_PROXY}" =~ :([0-9]+)$ ]]; then
+                _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
+            fi
+            if [[ "${r_DOCKER_HOSTED}" =~ :([0-9]+)$ ]]; then
+                _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
+            fi
+            if [[ "${r_DOCKER_GROUP}" =~ :([0-9]+)$ ]]; then
+                _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
+            fi
+            local _tmp_ext_opts="${_p}"
+            local _tmp_ext_opts="${_tmp_ext_opts} -v ${_WORK_DIR%/}:${_WORK_DIR%/}"
+            if _isYes "${r_NEXUS_MOUNT}"; then
+                _tmp_ext_opts="${_tmp_ext_opts} $(f_nexus_mount_volume "${r_NEXUS_MOUNT_DIR}")" || return $?
+                f_nexus_init_properties "${r_NEXUS_MOUNT_DIR}" || return $?
+            fi
+            _docker_run_or_start "${r_NEXUS_CONTAINER_NAME}" "${_tmp_ext_opts}" "sonatype/nexus3:${r_NEXUS_VERSION:-"latest"}"  "${r_DOCKER_CMD}"
             # 'main' requires "r_NEXUS_URL"
             if [ -z "${r_NEXUS_URL}" ] || ! _wait_url "${r_NEXUS_URL}"; then
                 _log "ERROR" "${r_NEXUS_URL} is unreachable"
@@ -1486,7 +1207,7 @@ main() {
     fi
 
     if _isYes "${r_SOCKS_PROXY}"; then
-        f_socks5_proxy "${r_SOCKS_PROXY_PORT}"
+        _socks5_proxy "${r_SOCKS_PROXY_PORT}" "${r_NEXUS_URL}"
     fi
     _log "INFO" "Setup completed. (log:${_LOG_FILE_PATH})"
 }
@@ -1523,8 +1244,5 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         esac
     done
 
-    bootstrap   # at this moment, if bootstrap fails, keeps going.
     main
-else
-    bootstrap true
 fi

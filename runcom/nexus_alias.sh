@@ -1,4 +1,4 @@
-# source <(curl https://raw.githubusercontent.com/hajimeo/samples/master/runcom/nexus_alias.sh)
+# source <(curl https://raw.githubusercontent.com/hajimeo/samples/master/runcom/nexus_alias.sh --compressed)
 
 if [ -z "${_WORK_DIR}" ]; then
     if [ "`uname`" = "Darwin" ]; then

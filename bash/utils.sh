@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Utility type / reusable functions
-# NOTE: Overwriting sourced function in bash is hard, so need to be careful when add a new function.
+#
+#type import &>/dev/null || import() { source <(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/$1); }
+#import "utils.sh"
 
 __PID="$$"
 __LAST_ANSWER=""
-__TMP="/tmp"
+__TMP=${__TMP:-"/tmp"}
 
 # To test: touch -d "9 hours ago" xxxxx.sh
 function _check_update() {
@@ -361,7 +363,7 @@ function _backup() {
             return 1
         fi
     fi
-    cp -p ${_file_path} ${_backup_dir%/}/${_new_file_name} || return $?
+    gzip -c ${_file_path} > ${_backup_dir%/}/${_new_file_name}.gz || return $?
     _log "DEBUG" "Backup-ed ${_file_path} to ${_backup_dir%/}/${_new_file_name}"
 }
 
@@ -420,4 +422,86 @@ function _log() {
     else
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a ${_log_file}
     fi 1>&2 # At this moment, outputting to STDERR
+}
+
+function _socks5_proxy() {
+    local _port="${1:-"48484"}"
+    local _default_URL="${2}"   # optional: used in the usage.
+    [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
+
+    local _hash="$(cat $HOME/.ssh/id_rsa.pub 2>/dev/null | awk '{print $2}')"
+    if [ -z "${_hash}" ]; then
+        _log "ERROR" "$FUNCNAME requires ssh password-less login."
+        return 1
+    fi
+    if ! grep -q "${_hash}" $HOME/.ssh/authorized_keys; then
+        cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys || return $?
+    fi
+
+    local _cmd="ssh -4gC2TxnNf -D${_port} localhost &>>${_LOG_FILE_PATH:-"/dev/null"} &"
+    local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
+
+    local _pid="$(_pid_by_port "${_port}")"
+    if [ -n "${_pid}" ]; then
+        local _ps_comm="$(ps -o comm= -p ${_pid})"
+        ps -Fwww -p ${_pid}
+        if [ "${_ps_comm}" == "ssh" ]; then
+            _log "INFO" "The Socks proxy might be already running (${_pid})"
+        else
+            _log "WARN" "The port:${_port} is used by PID:${_pid}. Please stop this PID or use different port."
+            return 1
+        fi
+    else
+        eval "${_cmd}" || return $?
+        _log "INFO" "Started socks proxy on \"${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}\"."
+    fi
+
+    echo "NOTE: Below command starts Chrome with this Socks5 proxy:
+# Mac:
+open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port} ${_default_URL}
+# Win:
+\"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe\" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}" ${_default_URL}
+}
+
+function _trust_ca() {
+    local _ca_pem="$1"
+    [ -s "${_ca_pem}" ] || return 1
+    # Test
+    local _CN="$(openssl x509 -in "${_ca_pem}" -noout -subject | grep -oE "CN\s*=.+" | cut -d"=" -f2 | xargs)"  # somehow xargs trim spaces
+    if [ -z "${_CN}" ]; then
+        _log "ERROR" "No common name found from ${_ca_pem}"
+        return 1
+    fi
+    local _file_name="$(basename "${_ca_pem}")"
+    local _ca_dir=""
+    local _ca_cmd=""
+    # If Ubuntu / Debian
+    if which update-ca-trust &>/dev/null; then
+        _ca_cmd="update-ca-trust"
+        _ca_dir="/etc/pki/ca-trust/source/anchors"
+    # If RHEL / CentOS
+    elif which update-ca-certificates &>/dev/null; then
+        _ca_cmd="update-ca-certificates"
+        _ca_dir="/usr/local/share/ca-certificates/extra"
+    # If Mac
+    elif which security &>/dev/null && [ -d $HOME/Library/Keychains ]; then
+        # If we know the common name, and if exists, no change.
+        security find-certificate -c "${_CN}" $HOME/Library/Keychains/login.keychain-db &>/dev/null && return 0
+        # NOTE: -d for add to admin cert store (and not sure what this means)
+        sudo security add-trusted-cert -d -r trustRoot -k $HOME/Library/Keychains/login.keychain-db "${_ca_pem}"
+        return $?
+    fi
+
+    if [ ! -d "${_ca_dir}" ]; then
+        _log "ERROR" "Couldn't find 'update-ca-trust' or 'update-ca-certificates' command or directory to install CA cert."
+        return 1
+    fi
+    if [ -s ${_ca_dir%/}/${_file_name} ]; then
+        _log "DEBUG" "${_ca_dir%/}/${_file_name} already exists."
+        return 0
+    fi
+    cp "${_ca_pem}" ${_ca_dir%/}/ || return $?
+    _log "DEBUG" "Copied \"${_ca_pem}\" into ${_ca_dir%/}/"
+    ${_ca_cmd} || return $?
+    _log "DEBUG" "Executed ${_ca_cmd}"
 }
