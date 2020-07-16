@@ -253,7 +253,7 @@ function f_setup_docker() {
 function f_populate_docker_proxy() {
     local _tag_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_PROXY}"}"
-    local _backup_ports="${3:-"18179 18178"}"
+    local _backup_ports="${3-"18179 18178"}"
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
 
@@ -269,7 +269,7 @@ function f_populate_docker_proxy() {
 function f_populate_docker_hosted() {
     local _tag_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_HOSTED}"}"
-    local _backup_ports="${3:-"18182 18181"}"
+    local _backup_ports="${3-"18182 18181"}"
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
 
@@ -415,104 +415,6 @@ function f_setup_conan() {
     #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
 }
 
-# Create a container which installs python, npm, mvn, nuget, etc.
-function p_client_container() {
-    local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
-    local _centos_ver="${2:-"7.6.1810"}"
-    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
-
-    local _image_name="nexus-client:latest"
-    local _existing_id="`${_cmd} images -q ${_image_name}`"
-    if [ -n "${_existing_id}" ]; then
-        _log "INFO" "Image ${_image_name} (${_existing_id}) already exists. Running / Starting a container..."
-    else
-        local _build_dir="$(mktemp -d)" || return $?
-        local _dockerfile="${_build_dir%/}/Dockerfile"
-
-        # Expecting f_setup_yum and f_setup_docker have been run
-        curl -s -f -m 7 --retry 2 "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile_Nexus" -o ${_dockerfile} || return $?
-
-        local _os_and_ver="centos:${_centos_ver}"
-        # If docker-group or docker-proxy host:port is provided, trying to use it.
-        if [ -n "${r_DOCKER_GROUP:-"${r_DOCKER_PROXY}"}" ]; then
-            if ! _docker_login "${r_DOCKER_GROUP}" "" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"; then
-                if _docker_login "${r_DOCKER_PROXY}" "" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"; then
-                    _os_and_ver="${r_DOCKER_PROXY}/centos:${_centos_ver}"
-                fi
-            else
-                _os_and_ver="${r_DOCKER_GROUP}/centos:${_centos_ver}"
-            fi
-        fi
-        _sed -i -r "s@^FROM centos.*@FROM ${_os_and_ver}@1" ${_dockerfile} || return $?
-        if [ -s $HOME/.ssh/id_rsa ]; then
-            local _pkey="`_sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
-            _sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ${_dockerfile} || return $?
-        fi
-        _log "DEBUG" "$(cat ${_dockerfile})"
-
-        cd ${_build_dir} || return $?
-        _log "INFO" "Building ${_image_name} ... (outputs:${_LOG_FILE_PATH})"
-        ${_cmd} build --rm -t ${_image_name} . &>>${_LOG_FILE_PATH} || return $?
-        cd -
-    fi
-
-    local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true"
-    _log "INFO" "Running or Starting 'nexus-client'"
-    # TODO: not right way to use 3rd and 4th arguments.
-    _docker_run_or_start "nexus-client" "${_ext_opts}" "${_image_name} /sbin/init" "${r_DOCKER_CMD}" || return $?
-    _container_add_NIC "nexus-client" "bridge" "${r_DOCKER_CMD}"
-
-    # Create a test user if hasn't created (testuser:testuser123)
-    _container_useradd "nexus-client" "testuser" "" "Y" "${r_DOCKER_CMD}"
-    # Setup clients' config files
-    f_reset_client_configs "nexus-client" "testuser" "${_base_url}"
-    _log "INFO" "Completed $FUNCNAME"
-}
-
-# Re-set client configs with given Nexus base URL
-function f_reset_client_configs() {
-    local _name="${1}"
-    local _user="${2:-"$USER"}"
-    local _base_url="${3:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
-    local _usr="${4:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"
-    local _pwd="${5:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
-    local _cmd="${6:-"${r_DOCKER_CMD:-"docker"}"}"
-
-    if [ -n "${_IQ_CLI_VER}" ]; then
-        ${_cmd} exec -d ${_name} bash -c '_f=/home/'${_user}'/nexus-iq-cli-'${_IQ_CLI_VER}'.jar; [ ! -s "${_f}" ] && curl -sf -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-'${_IQ_CLI_VER}'.jar" -o "${_f}" && chown '${_user}': ${_f}'
-    fi
-
-    local _repo_url="${_base_url%/}/repository/yum-group"
-    ${_cmd} exec -it ${_name} bash -c 'echo -e "[nexusrepo]\nname=Nexus Repository\nbaseurl='${_repo_url%/}'/$releasever/os/$basearch/\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7\npriority=1" > /etc/yum.repos.d/nexus-yum-test.repo'
-    # sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@http://dh1.standalone.localdomain:8081/repository/yum-proxy@1" /etc/yum.repos.d/nexus-yum-test.repo
-
-    _repo_url="${_base_url%/}/repository/maven-group"
-    ${_cmd} exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null; curl -s -o ${_f} -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_repo_url%/}'/@1" ${_f}; chown -R '${_user}': /home/'${_user}'/.m2'
-
-    _repo_url="${_base_url%/}/repository/npm-group"
-    ${_cmd} exec -it ${_name} bash -c 'sudo -i -u '${_user}' npm config set registry '${_repo_url%/}'/'
-
-    # TODO: add other client configs.
-}
-
-### Misc. functions / utility type functions #################################################################
-# Set admin password after initial installation
-function f_adminpwd() {
-    local _container_name="${1:-"${r_NEXUS_CONTAINER_NAME_1:-"${r_NEXUS_CONTAINER_NAME}"}"}"
-    local _new_pwd="${2:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
-    local _current_pwd="${3}"
-    [ -z "${_container_name}" ] && return 110
-    [ -z "${_current_pwd}" ] && _current_pwd="$(docker exec -ti ${_container_name} cat /nexus-data/admin.password | tr -cd "[:print:]")"
-    [ -z "${_current_pwd}" ] && return 112
-    f_api "/service/rest/beta/security/users/admin/change-password" "${_new_pwd}" "PUT" "admin" "${_current_pwd}"
-}
-
-# Create a test user and test role
-function f_testuser() {
-    f_apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"default","id":"test-role","name":"testRole","description":"test role","privileges":["nx-repository-admin-*-*-*"],"roles":[]}],"type":"rpc"}'
-    f_apiS '{"action":"coreui_User","method":"create","data":[{"userId":"testuser","version":"","firstName":"test","lastName":"user","email":"testuser@example.com","status":"active","roles":["test-role"],"password":"testuser"}],"type":"rpc"}'
-}
-
 # f_get_and_upload_jars "maven" "junit" "junit" "3.8 4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 4.10 4.11 4.12"
 function f_get_and_upload_jars() {
     local _prefix="${1:-"maven"}"
@@ -633,31 +535,8 @@ function f_upload_asset() {
     #fi
 }
 
-function _is_repo_available() {
-    local _repo_name="$1"
-    # At this moment, not always checking
-    find ${_TMP%/}/ -type f -name '_does_repo_exist*.out' -mmin +5 -delete 2>/dev/null
-    if [ ! -s ${_TMP%/}/_does_repo_exist$$.out ]; then
-        f_api "/service/rest/v1/repositories" | grep '"name":' > ${_TMP%/}/_does_repo_exist$$.out
-    fi
-    if [ -n "${_repo_name}" ]; then
-        # case insensitive
-        grep -iq "\"${_repo_name}\"" ${_TMP%/}/_does_repo_exist$$.out
-    fi
-}
-function _is_blob_available() {
-    local _blob_name="$1"
-    # At this moment, not always checking
-    find ${_TMP%/}/ -type f -name '_does_blob_exist*.out' -mmin +5 -delete 2>/dev/null
-    if [ ! -s ${_TMP%/}/_does_blob_exist$$.out ]; then
-        f_api "/service/rest/beta/blobstores" | grep '"name":' > ${_TMP%/}/_does_blob_exist$$.out
-    fi
-    if [ -n "${_blob_name}" ]; then
-        # case insensitive
-        grep -iq "\"${_blob_name}\"" ${_TMP%/}/_does_blob_exist$$.out
-    fi
-}
 
+### Nexus related Misc. functions #################################################################
 function f_apiS() {
     local __doc__="NXRM (not really API but) API wrapper with session"
     local _data="${1}"
@@ -713,6 +592,7 @@ function f_apiS() {
         _log "DEBUG" "$(cat ${_TMP%/}/_apiS_nxrm$$.out)"
     fi
 }
+
 function f_api() {
     local __doc__="NXRM3 API wrapper"
     local _path="${1}"
@@ -747,6 +627,103 @@ function f_api() {
         echo -n `cat ${_TMP%/}/f_api_nxrm_$$.out`
         echo ""
     fi
+}
+
+# Create a container which installs python, npm, mvn, nuget, etc.
+function p_client_container() {
+    local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
+    local _centos_ver="${2:-"7.6.1810"}"
+    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
+
+    local _image_name="nexus-client:latest"
+    local _existing_id="`${_cmd} images -q ${_image_name}`"
+    if [ -n "${_existing_id}" ]; then
+        _log "INFO" "Image ${_image_name} (${_existing_id}) already exists. Running / Starting a container..."
+    else
+        local _build_dir="$(mktemp -d)" || return $?
+        local _dockerfile="${_build_dir%/}/Dockerfile"
+
+        # Expecting f_setup_yum and f_setup_docker have been run
+        curl -s -f -m 7 --retry 2 "https://raw.githubusercontent.com/hajimeo/samples/master/docker/DockerFile_Nexus" -o ${_dockerfile} || return $?
+
+        local _os_and_ver="centos:${_centos_ver}"
+        # If docker-group or docker-proxy host:port is provided, trying to use it.
+        if [ -n "${r_DOCKER_GROUP:-"${r_DOCKER_PROXY}"}" ]; then
+            if ! _docker_login "${r_DOCKER_GROUP}" "" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"; then
+                if _docker_login "${r_DOCKER_PROXY}" "" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"; then
+                    _os_and_ver="${r_DOCKER_PROXY}/centos:${_centos_ver}"
+                fi
+            else
+                _os_and_ver="${r_DOCKER_GROUP}/centos:${_centos_ver}"
+            fi
+        fi
+        _sed -i -r "s@^FROM centos.*@FROM ${_os_and_ver}@1" ${_dockerfile} || return $?
+        if [ -s $HOME/.ssh/id_rsa ]; then
+            local _pkey="`_sed ':a;N;$!ba;s/\n/\\\\\\\n/g' $HOME/.ssh/id_rsa`"
+            _sed -i "s@_REPLACE_WITH_YOUR_PRIVATE_KEY_@${_pkey}@1" ${_dockerfile} || return $?
+        fi
+        _log "DEBUG" "$(cat ${_dockerfile})"
+
+        cd ${_build_dir} || return $?
+        _log "INFO" "Building ${_image_name} ... (outputs:${_LOG_FILE_PATH})"
+        ${_cmd} build --rm -t ${_image_name} . &>>${_LOG_FILE_PATH} || return $?
+        cd -
+    fi
+
+    local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true"
+    _log "INFO" "Running or Starting 'nexus-client'"
+    # TODO: not right way to use 3rd and 4th arguments.
+    _docker_run_or_start "nexus-client" "${_ext_opts}" "${_image_name} /sbin/init" "${r_DOCKER_CMD}" || return $?
+    _container_add_NIC "nexus-client" "bridge" "${r_DOCKER_CMD}"
+
+    # Create a test user if hasn't created (testuser:testuser123)
+    _container_useradd "nexus-client" "testuser" "" "Y" "${r_DOCKER_CMD}"
+    # Setup clients' config files
+    f_reset_client_configs "nexus-client" "testuser" "${_base_url}"
+    _log "INFO" "Completed $FUNCNAME"
+}
+
+# Re-set client configs with given Nexus base URL
+function f_reset_client_configs() {
+    local _name="${1}"
+    local _user="${2:-"$USER"}"
+    local _base_url="${3:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
+    local _usr="${4:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"
+    local _pwd="${5:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
+    local _cmd="${6:-"${r_DOCKER_CMD:-"docker"}"}"
+
+    if [ -n "${_IQ_CLI_VER}" ]; then
+        ${_cmd} exec -d ${_name} bash -c '_f=/home/'${_user}'/nexus-iq-cli-'${_IQ_CLI_VER}'.jar; [ ! -s "${_f}" ] && curl -sf -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-'${_IQ_CLI_VER}'.jar" -o "${_f}" && chown '${_user}': ${_f}'
+    fi
+
+    local _repo_url="${_base_url%/}/repository/yum-group"
+    ${_cmd} exec -it ${_name} bash -c 'echo -e "[nexusrepo]\nname=Nexus Repository\nbaseurl='${_repo_url%/}'/$releasever/os/$basearch/\nenabled=1\ngpgcheck=1\ngpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7\npriority=1" > /etc/yum.repos.d/nexus-yum-test.repo'
+    # sed -i "s@_REPLACE_WITH_YUM_REPO_URL_@http://dh1.standalone.localdomain:8081/repository/yum-proxy@1" /etc/yum.repos.d/nexus-yum-test.repo
+
+    _repo_url="${_base_url%/}/repository/maven-group"
+    ${_cmd} exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null; curl -s -o ${_f} -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/m2_settings.tmpl.xml && sed -i "s@_REPLACE_MAVEN_USERNAME_@'${_usr}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_USER_PWD_@'${_pwd}'@1" ${_f} && sed -i "s@_REPLACE_MAVEN_REPO_URL_@'${_repo_url%/}'/@1" ${_f}; chown -R '${_user}': /home/'${_user}'/.m2'
+
+    _repo_url="${_base_url%/}/repository/npm-group"
+    ${_cmd} exec -it ${_name} bash -c 'sudo -i -u '${_user}' npm config set registry '${_repo_url%/}'/'
+
+    # TODO: add other client configs.
+}
+
+# Set admin password after initial installation
+function f_nexus_admin_pwd() {
+    local _container_name="${1:-"${r_NEXUS_CONTAINER_NAME_1:-"${r_NEXUS_CONTAINER_NAME}"}"}"
+    local _new_pwd="${2:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
+    local _current_pwd="${3}"
+    [ -z "${_container_name}" ] && return 110
+    [ -z "${_current_pwd}" ] && _current_pwd="$(docker exec -ti ${_container_name} cat /nexus-data/admin.password | tr -cd "[:print:]")"
+    [ -z "${_current_pwd}" ] && return 112
+    f_api "/service/rest/beta/security/users/admin/change-password" "${_new_pwd}" "PUT" "admin" "${_current_pwd}"
+}
+
+# Create a test user and test role
+function f_nexus_testuser() {
+    f_apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"default","id":"test-role","name":"testRole","description":"test role","privileges":["nx-repository-admin-*-*-*"],"roles":[]}],"type":"rpc"}'
+    f_apiS '{"action":"coreui_User","method":"create","data":[{"userId":"testuser","version":"","firstName":"test","lastName":"user","email":"testuser@example.com","status":"active","roles":["test-role"],"password":"testuser"}],"type":"rpc"}'
 }
 
 function f_nexus_https_config() {
@@ -1030,7 +1007,32 @@ function _questions_cleanup_inner_inner() {
     fi
 }
 
-# Validate functions for interview/questions. NOTE: needs to start with _is.
+
+### Validation functions (NOTE: needs to start with _is) #######################################
+function _is_repo_available() {
+    local _repo_name="$1"
+    # At this moment, not always checking
+    find ${_TMP%/}/ -type f -name '_does_repo_exist*.out' -mmin +5 -delete 2>/dev/null
+    if [ ! -s ${_TMP%/}/_does_repo_exist$$.out ]; then
+        f_api "/service/rest/v1/repositories" | grep '"name":' > ${_TMP%/}/_does_repo_exist$$.out
+    fi
+    if [ -n "${_repo_name}" ]; then
+        # case insensitive
+        grep -iq "\"${_repo_name}\"" ${_TMP%/}/_does_repo_exist$$.out
+    fi
+}
+function _is_blob_available() {
+    local _blob_name="$1"
+    # At this moment, not always checking
+    find ${_TMP%/}/ -type f -name '_does_blob_exist*.out' -mmin +5 -delete 2>/dev/null
+    if [ ! -s ${_TMP%/}/_does_blob_exist$$.out ]; then
+        f_api "/service/rest/beta/blobstores" | grep '"name":' > ${_TMP%/}/_does_blob_exist$$.out
+    fi
+    if [ -n "${_blob_name}" ]; then
+        # case insensitive
+        grep -iq "\"${_blob_name}\"" ${_TMP%/}/_does_blob_exist$$.out
+    fi
+}
 function _is_container_name() {
     if ${r_DOCKER_CMD} ps --format "{{.Names}}" | grep -qE "^${1}$"; then
         echo "Container:'${1}' already exists." >&2
@@ -1181,11 +1183,11 @@ main() {
     if [ -n "${r_NEXUS_MOUNT_DIR:-${r_NEXUS_MOUNT_DIR_1}}" ] && [ -s "${r_NEXUS_MOUNT_DIR:-${r_NEXUS_MOUNT_DIR_1}}/admin.password" ]; then
         # I think it's ok to type 'admin' in here
         _log "INFO" "Updating 'admin' user's password..."
-        f_adminpwd
+        f_nexus_admin_pwd
     fi
 
     _log "INFO" "Creating 'testuser' if it hasn't been created."
-    f_testuser &>/dev/null  # it's OK if this fails
+    f_nexus_testuser &>/dev/null  # it's OK if this fails
 
     if ! _is_blob_available "${r_BLOB_NAME}"; then
         if ! f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${r_BLOB_NAME}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${r_BLOB_NAME}'"}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
