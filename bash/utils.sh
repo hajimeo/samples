@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Utility type / reusable functions
 #
-#type import &>/dev/null || import() { source <(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/$1); }
-#import "utils.sh"
+# Example of usage (NOTE: "export -f import" to overwrite):
+#   type import &>/dev/null || import() { source <(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/$1); }
+#   import "utils.sh"
 
 __PID="$$"
 __LAST_ANSWER=""

@@ -374,11 +374,11 @@ if [ -s $HOME/IdeaProjects/samples/runcom/nexus_alias.sh ]; then
 fi
 function pubS() {
     scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/ &
-    scp -C $HOME/IdeaProjects/samples/bash/utils.sh dh1:/var/tmp/share/sonatype/ &
+    scp -C $HOME/IdeaProjects/samples/bash/utils*.sh dh1:/var/tmp/share/sonatype/ &
     scp -C $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh dh1:/var/tmp/share/sonatype/ &
 
     cp -f $HOME/IdeaProjects/work/bash/install_sonatype.sh $HOME/share/sonatype/
-    cp -f $HOME/IdeaProjects/samples/bash/utils.sh $HOME/share/sonatype/
+    cp -f $HOME/IdeaProjects/samples/bash/utils*.sh $HOME/share/sonatype/
     cp -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/share/sonatype/
     cp -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/IdeaProjects/nexus-toolbox/scripts/
     wait
