@@ -3,8 +3,7 @@
 # Based on functions in start_hdp.sh from 'samples' and install_sonatype.sh from 'work'.
 #
 # For local test:
-#   import() { source /var/tmp/share/sonatype/$1; }
-#   export -f import
+#   import() { source /var/tmp/share/sonatype/$1; } && export -f import
 #
 type import &>/dev/null || import() { source <(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/$1); }
 import "utils.sh"
