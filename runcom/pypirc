@@ -2,7 +2,7 @@
 index-servers =
   nexus
 
-[nexus-proxy]
+[nexus]
 repository: http://dh1.standalone.localdomain:8081/repository/pypi-proxy/
 username: admin
 password: admin123
