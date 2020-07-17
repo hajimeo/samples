@@ -167,6 +167,7 @@ function _update_hosts_file() {
     fi
 
     # Some OS such as Mac is hard to modify /etc/hosts file but seems below works
+    sudo -n true    # this outputs 'sudo: a password is required'
     cat ${_tmp_file} | sudo tee ${_file} >/dev/null
     _log "DEBUG" "Updated ${_file} with ${_fqdn} ${_ip}"
 }
@@ -489,6 +490,7 @@ function _trust_ca() {
         # If we know the common name, and if exists, no change.
         security find-certificate -c "${_CN}" $HOME/Library/Keychains/login.keychain-db &>/dev/null && return 0
         # NOTE: -d for add to admin cert store (and not sure what this means)
+        sudo -n true
         sudo security add-trusted-cert -d -r trustRoot -k $HOME/Library/Keychains/login.keychain-db "${_ca_pem}"
         return $?
     fi

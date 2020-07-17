@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# source <(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_container.sh);
+# source <(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh)
+# source <(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_container.sh)
 
 _DOCKER_CMD=${_DOCKER_CMD:-"docker"}    # To support podman
 _DOMAIN="${_DOMAIN:-"standalone.localdomain"}"
@@ -140,6 +141,10 @@ function _docker_login() {
     echo "${_host_port}"
 }
 
+# Install NXRM3 OSS
+#   _docker_run_or_start "nexus3-oss" "-p 8181:8081" "sonatype/nexus3:3.24.0"
+# Install NXRM2 OSS
+#   _docker_run_or_start "nexus2-oss" "-p 8181:8081" "sonatype/nexus:2.14.18-01"
 function _docker_run_or_start() {
     local _name="$1"
     local _ext_opts="$2"
@@ -147,15 +152,15 @@ function _docker_run_or_start() {
     local _cmd="${4:-"${_DOCKER_CMD}"}"
 
     if ${_cmd} ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
-        _log "INFO" "Container:'${_name}' already exists. So that starting instead of docker run..."
+        _log "INFO" "Container:'${_name}' already exists. Executing ${_cmd} start ${_name} ..."
         ${_cmd} start ${_name} || return $?
     else
         _log "DEBUG" "Creating a container with \"$@\""
         # TODO: normally container fails after a few minutes, so checking the exit code of below is not so useful.
         _docker_run "${_name}" "${_ext_opts}" "${_image_name}" "${_cmd}" || return $?
-        _log "INFO" "\"${_cmd} run\" executed. Check progress with \"${_cmd} logs -f ${_name}\""
     fi
     sleep 3
+    _log "INFO" "Container started (progress: \"${_cmd} logs -f ${_name}\") Updating hosts ..."
     # Even specifying --ip, get IP from the container in below function
     _update_hosts_for_container "${_name}" "" "${_cmd}"
 }
@@ -183,10 +188,8 @@ function _docker_run() {
     fi
 
     # NXRM3 specific (TODO: below shouldn't be in this function)
-    [ -z "${INSTALL4J_ADD_VM_PARAMS}" ] && INSTALL4J_ADD_VM_PARAMS="-Xms1g -Xmx2g -XX:MaxDirectMemorySize=1g"
-    _ext_opts="${_ext_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\""
+    _ext_opts="${_ext_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS:-"-Xms1g -Xmx2g -XX:MaxDirectMemorySize=1g"}\""
 
-    #[ -z "${_INTERNAL_DNS}" ] && _INTERNAL_DNS="$(docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+').1"
     local _full_cmd="${_cmd} run -t -d --name=${_name} --hostname=${_name}.${_DOMAIN#.} \\
         ${_ext_opts} \\
         ${_image_name}"
@@ -210,10 +213,10 @@ function _update_hosts_for_container() {
         return 1
     fi
 
-    if ! _update_hosts_file "${_fqdn}" "${_container_ip}"; then
-        _log "WARN" "Please update hosts file to add '${_container_ip} ${_fqdn}'"
+    if ! _update_hosts_file "${_fqdn}" "${_container_ip}" "/etc/hosts"; then
+        _log "WARN" "Please update /etc/hosts file to add '${_container_ip} ${_fqdn}'"
         return 1
     fi
     [ -n "${_DNS_RELOAD}" ] && eval "${_DNS_RELOAD}"
-    _log "DEBUG" "Updated hosts file with '${_container_ip} ${_fqdn}'"
+    _log "DEBUG" "Updated /etc/hosts file with '${_container_ip} ${_fqdn}'"
 }
