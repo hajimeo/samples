@@ -324,6 +324,9 @@ function sshs() {
     fi
     ssh ${_user_at_host} -t ${_cmd}
 }
+# My personal dirty ssh shortcut (cd /var/tmp/share/sonatype/logs/node-nxiq_nxiq)
+alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
+
 # backup commands
 function backupC() {
     local _src="${1:-"$HOME/Documents/cases"}"
