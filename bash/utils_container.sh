@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# source <(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_container.sh);
 
 _DOCKER_CMD=${_DOCKER_CMD:-"docker"}    # To support podman
 _DOMAIN="${_DOMAIN:-"standalone.localdomain"}"
@@ -166,22 +167,28 @@ function _docker_run() {
     local _image_name="${3}"
     local _cmd="${4:-"${_DOCKER_CMD}"}"
 
+    # Add --network (is this a bit inconsistent way to add extra options?)
+    if [ -n "${_DOCKER_NETWORK_NAME}" ]; then
+        _ext_opts="--network=${_DOCKER_NETWORK_NAME} ${_ext_opts}"
+    fi
     # If dnsmasq or some dns is locally installed, assuming it's setup correctly
     if grep -qE '^nameserver\s+127\.' /etc/resolv.conf; then
-        _ext_opts="${_ext_opts} --dns=`hostname -I | cut -d " " -f1`"
+        _ext_opts="--dns=`hostname -I | cut -d " " -f1` ${_ext_opts}"
     fi
     # add one more if set
     local _another_dns="$(grep -m1 -E '^nameserver\s+[0-9]+\.' /etc/resolv.conf | grep -vE '^nameserver\s+127\.')"
     if [ -n "${_another_dns}" ]; then
-        #_ext_opts="${_ext_opts} --dns=127.0.0.11"   # adding back the default DNS 127.0.0.11 generates WARNING
-        _ext_opts="${_ext_opts} --dns=${_another_dns}"
+        # REMINDER: adding back the default DNS 127.0.0.11 generates WARNING
+        _ext_opts="--dns=${_another_dns} ${_ext_opts}"
     fi
 
-    #[ -z "${_INTERNAL_DNS}" ] && _INTERNAL_DNS="$(docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+').1"
+    # NXRM3 specific (TODO: below shouldn't be in this function)
     [ -z "${INSTALL4J_ADD_VM_PARAMS}" ] && INSTALL4J_ADD_VM_PARAMS="-Xms1g -Xmx2g -XX:MaxDirectMemorySize=1g"
+    _ext_opts="${_ext_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\""
+
+    #[ -z "${_INTERNAL_DNS}" ] && _INTERNAL_DNS="$(docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+').1"
     local _full_cmd="${_cmd} run -t -d --name=${_name} --hostname=${_name}.${_DOMAIN#.} \\
-        --network=${_DOCKER_NETWORK_NAME} ${_ext_opts} \\
-        -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\" \\
+        ${_ext_opts} \\
         ${_image_name}"
     _log "DEBUG" "${_full_cmd}"
     eval "${_full_cmd}" || return $?

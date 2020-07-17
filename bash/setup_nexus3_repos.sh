@@ -693,6 +693,7 @@ function p_client_container() {
     # Create a test user if hasn't created (testuser:testuser123)
     _container_useradd "nexus-client" "testuser" "" "Y" "${r_DOCKER_CMD}"
     # Setup clients' config files
+    _log "INFO" "Setting up various client commands (outputs:${_LOG_FILE_PATH:-"/dev/null"})"
     f_reset_client_configs "nexus-client" "testuser" "${_base_url}"
     _log "INFO" "Completed $FUNCNAME"
 }
