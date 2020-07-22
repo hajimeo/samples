@@ -258,7 +258,8 @@ function mov2gif() {
 }
 # Grep STDIN with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
-    local _datetime_regex="${1:-"^\d\d\d\d-\d\d-\d\d.\d\d:\d"}"
+    local _datetime_regex="${1}"    # Below line was intentional as \ will be removed in ":-"
+    [ -z "${_datetime_regex}" ] && _datetime_regex="^\d\d\d\d-\d\d-\d\d.\d\d:\d"
     #ggrep -oP "${_datetime_regex}" | sed 's/ /./g' | bar_chart.py
     rg "${_datetime_regex}" -o | sed 's/ /./g' | bar_chart.py
 }
