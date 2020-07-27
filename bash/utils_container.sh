@@ -151,7 +151,7 @@ function _docker_run_or_start() {
     local _image_name="$3"
     local _cmd="${4:-"${_DOCKER_CMD}"}"
 
-    if ${_cmd} ps --format "{{.Names}}" | grep -qE "^${_name}$"; then
+    if ${_cmd} ps -a --format "{{.Names}}" | grep -qE "^${_name}$"; then
         _log "INFO" "Container:'${_name}' already exists. Executing ${_cmd} start ${_name} ..."
         ${_cmd} start ${_name} || return $?
     else
