@@ -998,12 +998,22 @@ function f_healthlog2json() {
     local __doc__="TODO: Convert some log text to json"
     local _glob="${1:-"nexus.log"}"
     local _out_file="${2:-"health_monitor.json"}"
-    rg "^($_DATE_FORMAT.\d\d:\d\d:\d\d).+INFO.+com.hazelcast.internal.diagnostics.HealthMonitor - \[([^]]+)\]:(\d+) \[([^]]+)\] \[([^]]+)\] (.+)" -r 'date_time=${1}, address=${2}:${3}, user=${4}, cluster_ver=${5}, ${6}' --no-filename -g ${_glob} > /tmp/f_log2json_$$.tmp
+    rg "^($_DATE_FORMAT.\d\d:\d\d:\d\d).(\d+).+INFO.+com.hazelcast.internal.diagnostics.HealthMonitor - \[([^]]+)\]:(\d+) \[([^]]+)\] \[([^]]+)\] (.+)" -r 'date_time=${1}.${2}, address=${3}:${4}, user=${5}, cluster_ver=${6}, ${7}' --no-filename -g ${_glob} > /tmp/f_log2json_$$.tmp
     if [ -s /tmp/f_log2json_$$.tmp ]; then
         _sed -r 's/ *([^=]+)=([^,]+),?/"\1":"\2",/g' /tmp/f_log2json_$$.tmp | _sed 's/,$/}/g' | _sed 's/^"/,{"/g' > ${_out_file}
         echo ']' >> ${_out_file}
         _sed -i '1s/^,/[/' ${_out_file}
     fi
+}
+
+function f_healthlog2csv() {
+    local __doc__="TODO: Convert some log text to csv. Requires python3 and pandas"
+    local _glob="${1:-"nexus.log"}"
+    local _out_file="${2:-"health_monitor.csv"}"
+    f_healthlog2json "${_glob}" "/tmp/_health_monitor.json" || return $?
+    [ -s "/tmp/_health_monitor.json" ] || return 1
+    # language=Python
+    python3 -c "import pandas as pd;import csv;df=pd.read_json('/tmp/_health_monitor.json');df.to_csv('${_out_file}', mode='w', header=True, index=False, escapechar='\\\', quoting=csv.QUOTE_NONNUMERIC)"
 }
 
 function f_get_pems_from_xml() {
@@ -1168,8 +1178,9 @@ function _date2iso() {
 function _find_and_cat() {
     local _name="$1"
     local _once="$2"
+    local _max_depth="${3:-"5"}"
     # Accept not only file name but also /<dir>/<filename>
-    for _f in `find . -type f -print | grep -w "${_name}$"`; do
+    for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
         if [ -n "${_f}" ]; then
             echo "## ${_f}" >&2
             cat "${_f}"
