@@ -11,6 +11,7 @@ type import &>/dev/null || import() { source <(curl -s --compressed "${_DL_URL%/
 import "utils.sh"
 import "utils_container.sh"
 
+
 function usage() {
     local _filename="$(basename $BASH_SOURCE)"
     echo "Main purpose of this script is to create repositories with some sample components.
@@ -108,6 +109,11 @@ function f_setup_maven() {
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"https://repo1.maven.org/maven2/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}' || return $?
+        # NOTE: if IQ: Audit and Quarantine is needed to be setup
+        #f_iq_quarantine "${_prefix}-proxy"
+        # NOTE: jackson-databind-2.9.3 should be quarantined if IQ is configured. May need to delete the component first
+        #f_get_asset "${_prefix}-proxy" "com/fasterxml/jackson/core/jackson-databind/2.9.3/jackson-databind-2.9.3.jar" "test.jar"
+        #_get_asset_NXRM2 central "com/fasterxml/jackson/core/jackson-databind/2.9.3/jackson-databind-2.9.3.jar" "test.jar"
     fi
     # add some data for xxxx-proxy
     # If NXRM2: _get_asset_NXRM2 "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar"
@@ -128,11 +134,6 @@ function f_setup_maven() {
     fi
     # add some data for xxxx-group ("." in groupdId should be changed to "/")
     f_get_asset "${_prefix}-group" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar"
-
-    # Another test for get from proxy, then upload to hosted, then get from hosted
-    #f_get_asset "${_prefix}-proxy" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar" "${_TMP%/}/httpclient-4.5.12.jar"
-    #_upload_asset "${_prefix}-hosted" -F maven2.groupId=org.apache.httpcomponents -F maven2.artifactId=httpclient -F maven2.version=4.5.12 -F maven2.asset1=@${_TMP%/}/httpclient-4.5.12.jar -F maven2.asset1.extension=jar
-    #f_get_asset "${_prefix}-hosted" "org/apache/httpcomponents/httpclient/4.5.12/httpclient-4.5.12.jar"
 }
 
 function f_setup_pypi() {
@@ -379,6 +380,29 @@ function f_setup_bower() {
     # TODO: hosted and group
 }
 
+function f_setup_conan() {
+    local _prefix="${1:-"conan"}"
+    local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
+    # NOTE: If you disabled Anonymous access, then it is needed to enable the Conan Bearer Token Realm (via Administration > Security > Realms):
+
+    # If no xxxx-proxy, create it (No HA, but seems to work with HA???)
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://conan.bintray.com","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conan-proxy"}],"type":"rpc"}' || return $?
+    fi
+    # TODO: add some data for xxxx-proxy
+
+    # TODO: If no xxxx-hosted, create it (Not implemented yet: https://issues.sonatype.org/browse/NEXUS-23629)
+    #if ! _does_repo_exist "${_prefix}-hosted"; then
+    #fi
+    # TODO: add some data for xxxx-hosted
+
+    # TODO: If no xxxx-group, create it (As no hosted, probably no group)
+    #if ! _does_repo_exist "${_prefix}-group"; then
+    #fi
+    # TODO: add some data for xxxx-group
+    #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
+}
+
 function f_setup_raw() {
     local _prefix="${1:-"raw"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
@@ -406,28 +430,17 @@ function f_setup_raw() {
     f_get_asset "${_prefix}-group" "latest-beta/README.txt"
 }
 
-function f_setup_conan() {
-    local _prefix="${1:-"conan"}"
-    local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
-    # NOTE: If you disabled Anonymous access, then it is needed to enable the Conan Bearer Token Realm (via Administration > Security > Realms):
-
-    # If no xxxx-proxy, create it (No HA, but seems to work with HA???)
-    if ! _is_repo_available "${_prefix}-proxy"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://conan.bintray.com","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conan-proxy"}],"type":"rpc"}' || return $?
+function f_iq_quarantine() {
+    local _repo_name="$1"
+    if [ -n "${_IQ_HOST}" ] && nc -z ${_IQ_HOST} ${_IQ_PORT:-"8070"}; then
+        _log "INFO" "Setting up IQ capability ..."
+        f_apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":true,"url":"'${_HTTP:-"http"}'://'${_IQ_HOST}':'${_IQ_PORT}'","authenticationType":"USER","username":"admin","password":"admin123","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}' || return $?
     fi
-    # TODO: add some data for xxxx-proxy
-
-    # TODO: If no xxxx-hosted, create it (Not implemented yet: https://issues.sonatype.org/browse/NEXUS-23629)
-    #if ! _does_repo_exist "${_prefix}-hosted"; then
-    #fi
-    # TODO: add some data for xxxx-hosted
-
-    # TODO: If no xxxx-group, create it (As no hosted, probably no group)
-    #if ! _does_repo_exist "${_prefix}-group"; then
-    #fi
-    # TODO: add some data for xxxx-group
-    #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
+    # To create IQ: Audit and Quarantine for this repository:
+    f_apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"firewall.audit","notes":"","enabled":true,"properties":{"repository":"'${_repo_name}'","quarantine":"true"}}],"type":"rpc"}' || return $?
+    _log "INFO" "IQ: Audit and Quarantine for ${_repo_name} completed."
 }
+
 
 # f_get_and_upload_jars "maven" "junit" "junit" "3.8 4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 4.10 4.11 4.12"
 function f_get_and_upload_jars() {
