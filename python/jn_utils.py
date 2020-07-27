@@ -1763,7 +1763,8 @@ def df2csv(df, file_path, mode="w", header=True):
         key   val
     0  True  True
     '''
-    return df.to_csv(file_path, mode=mode, header=header, index=False, escapechar='\\')
+    import csv
+    return df.to_csv(file_path, mode=mode, header=header, index=False, escapechar='\\', quoting=csv.QUOTE_NONNUMERIC)
 
 
 def df2files(df, filepath_prefix, extension="", columns=None, overwriting=False, sep="="):
