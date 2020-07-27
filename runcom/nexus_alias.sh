@@ -16,11 +16,16 @@ function iqCli() {
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/nexus-iq-cli-${_iq_cli_ver}.jar"}"
     local _iq_app_id="${_IQ_APP_ID:-"sandbox-application"}"
     local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
+    local _iq_stage="${_IQ_STAGE:-"build"}"
+    local _iq_tmp="${_IQ_TMP:-"./tmp"}"
 
     if [ -z "$1" ]; then
         iqCli "./"
         return $?
     fi
+
+    [ ! -d "${_iq_tmp}" ] && mkdir -p "${_iq_tmp}"
+
     if [ ! -s "${_iq_cli_jar}" ]; then
         local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/} -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
         if [ -z "${_tmp_iq_cli_jar}" ]; then
@@ -29,8 +34,8 @@ function iqCli() {
             _iq_cli_jar="${_tmp_iq_cli_jar}"
         fi
     fi
-    echo "Using ${_iq_cli_jar} ..." >&2
-    java -jar ${_iq_cli_jar} -i "${_iq_app_id}" -s "${_iq_url}" -a "admin:admin123" -r ./iq_result_$(date +'%Y%m%d%H%M%S').json -X $@
+    echo "Executing: java -jar ${_iq_cli_jar} -s "${_iq_url}" -a \"admin:admin123\" -i \"${_iq_app_id}\" -t \"${_iq_stage}\" $@" >&2
+    java -Djava.io.tmpdir="${_iq_tmp}" -jar ${_iq_cli_jar} -s "${_iq_url}" -a "admin:admin123" -i "${_iq_app_id}" -t "${_iq_stage}" -r ./iq_result_$(date +'%Y%m%d%H%M%S').json -X $@
 }
 
 # Start "mvn" with IQ plugin
