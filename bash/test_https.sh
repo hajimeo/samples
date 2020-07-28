@@ -314,6 +314,7 @@ function get_certificate_from_https() {
             echo -n | openssl s_client -showcerts -connect ${_host}:${_port}
         fi
     fi > /tmp/${_host}_${_port}.tmp || return $?
+    #gcsplit -f cert -s /tmp/${_host}_${_port}.tmp '/BEGIN CERTIFICATE/' '{*}'
     sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp > ${_dest_filepath}
 }
 
