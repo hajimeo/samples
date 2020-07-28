@@ -11,21 +11,19 @@ fi
 # Start iq CLI
 function iqCli() {
     local __doc__="https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
-    # overwritable global variables
+    # overwrite-able global variables
     local _iq_cli_ver="${_IQ_CLI_VER:-"1.95.0-01"}"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/nexus-iq-cli-${_iq_cli_ver}.jar"}"
     local _iq_app_id="${_IQ_APP_ID:-"sandbox-application"}"
     local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
-    local _iq_stage="${_IQ_STAGE:-"build"}"
+    local _iq_stage="${_IQ_STAGE:-"build"}" #develop|build|stage-release|release|operate
     local _iq_tmp="${_IQ_TMP:-"./tmp"}"
 
     if [ -z "$1" ]; then
         iqCli "./"
         return $?
     fi
-
-    [ ! -d "${_iq_tmp}" ] && mkdir -p "${_iq_tmp}"
-
+    #[ ! -d "${_iq_tmp}" ] && mkdir -p "${_iq_tmp}"
     if [ ! -s "${_iq_cli_jar}" ]; then
         local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/} -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
         if [ -z "${_tmp_iq_cli_jar}" ]; then
