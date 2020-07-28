@@ -1161,6 +1161,33 @@ main() {
         fi
     fi
 
+    # Command line arguments should be stronger than response file
+    local _repo_formats=""
+    local _nexus_version=""
+    # parsing command options (help is handled before calling 'main')
+    while getopts "ACDf:r:v:" opts; do
+        case $opts in
+            A)
+                _AUTO=true
+                ;;
+            C)
+                _CLEAN=true
+                ;;
+            D)
+                _DEBUG=true
+                ;;
+            f)
+                _repo_formats="$OPTARG"
+                ;;
+            r)
+                _RESP_FILE="$OPTARG"
+                ;;
+            v)
+                _nexus_version="$OPTARG"
+                ;;
+        esac
+    done
+
     if ! ${_AUTO}; then
         _log "DEBUG" "_check_update $BASH_SOURCE with force:N"
         _check_update "$BASH_SOURCE" "" "N"
@@ -1173,6 +1200,9 @@ main() {
         _ask "Would you like to load your response file?" "Y" "" "N" "N"
         _isYes && _load_resp
     fi
+    # Command line arguments are stronger than response file
+    [ -n "${_repo_formats}" ] && r_REPO_FORMATS="${_repo_formats}"
+    [ -n "${_nexus_version}" ] && r_NEXUS_VERSION="${_nexus_version}"
 
     if ${_CLEAN}; then
         _log "WARN" "CLEAN-UP (DELETE) mode is selected."
@@ -1294,32 +1324,5 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         usage | less
         exit 0
     fi
-
-    # TODO: check if update is available if current file is older than X hours
-
-    # parsing command options
-    while getopts "ACDf:r:v:" opts; do
-        case $opts in
-            A)
-                _AUTO=true
-                ;;
-            C)
-                _CLEAN=true
-                ;;
-            D)
-                _DEBUG=true
-                ;;
-            f)
-                r_REPO_FORMATS="$OPTARG"
-                ;;
-            r)
-                _RESP_FILE="$OPTARG"
-                ;;
-            v)
-                r_NEXUS_VERSION="$OPTARG"
-                ;;
-        esac
-    done
-
     main
 fi
