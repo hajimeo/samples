@@ -11,7 +11,7 @@
 </head>
 <body>
 <!-- ==== copy from below ============================================ --><pre>
-<b># Misc (common):.</b>
+<b>=== Misc (common) ===</b>
 du -Shx / | sort -h | tail    # -S not to include the size of subdirectories
 du -ah -d1 | sort -h | tail    # -a to show all. -d1 for depth 1
 tail -f *-`date -u +"%Y-%m-%d"`.log
@@ -68,7 +68,7 @@ rsync -Phz --bwlimit=80 user@hostname:/tmp/backup.tar /tmp/backups/
 # Remove all control characters, except \n
 tr -cd "[:print:]\n" input_file.txt > output_file.txt
 
-<b># BASH:</b>
+<b>=== BASH ===</b>
 Ref: https://ss64.com/bash/syntax-keyboard.html
 Ctrl + w : Delete the word before the cursor
 Ctrl + d : delete character under the cursor
@@ -108,7 +108,7 @@ Mon Feb  5 15:16:26 AEST 2018
 $ date -d '1970/01/01 UTC 1309749054 sec'
 Mon Jul  4 12:10:54 JST 2011
 
-<b># SED:</b>
+<b>=== SED ===</b>
 sed -i_$(date +"%Y%m%d%H%M%S").bak 's/guest/devlb.net/' /etc/dnsmasq.conf && service dnsmasq restart
 ( grep ^PermitRootLogin /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config ) || echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config
 sed -n '$=' large_file_to_count_line
@@ -125,7 +125,7 @@ cat jaas.conf | sed -n -r "N;s/\n/,/;s/\s*\b(keyTab|principal) ?= ?['\"]?([^'\"]
 sed -i -r '$!N;s/^(tls:\n +enabled: *)(false)/\1true/;P;D' ./test.yaml
 sed -n -r "N;s/\n/,/;s/\s*\b(keyTab|principal) ?= ?['\"]?([^'\"]+)['\"]?/\2/gpI" ./some_jass.conf
 
-<b># VIM:</b>
+<b>=== VIM ===</b>
 w	jump by start of words
 W	jump by words
 b	jump backward by words
@@ -165,7 +165,7 @@ Ctrl-w q			# to close one
 To start recording, press q in normal mode followed by a letter (a to z). That starts recording keystrokes to the specified register. Vim displays recording in the status line. Type any normal mode commands, or enter insert mode and type text. To stop recording, again press q while in normal mode.
 To playback your keystrokes, press @ followed by the letter previously chosen. Typing @@ repeats the last playback.
 
-<b># Screen:</b>
+<b>=== Screen ===</b>
 Start screen : screen -S [name]
 List screen  : screen -ls
 List screens : Ctrl+a, " (or Ctrl+a, w)
@@ -181,7 +181,7 @@ Copy mode    : Ctrl+a, Esc or ] (then work like 'vi')
 To copy      : space, move cursor, space
 To paste     : Ctrl+a, ] or Ctrl+]
 
-<b># Network:</b>
+<b>=== Network ===</b>
 # Add route
 ## Mac:
 sudo route delete -net 172.17.100.0/24 192.168.8.31;sudo route add -net 172.17.100.0/24 192.168.8.31
@@ -190,11 +190,11 @@ ip route del 0/0 && route add -net 192.168.8.0/24 gw 172.17.0.1 eth0
 ## Windows 10
 route add 172.17.100.0 mask 255.255.255.0 192.168.8.31
 
-<b># CentOS|RHEL|YUM:</b>
+<b>=== CentOS|RHEL|YUM ===</b>
 # Search which package has a command
 yum whatprovides gem
 
-<b># Git/Github:</b>
+<b>=== Git/Github ===</b>
 # checkout a remote branch to switch branch
 $ git checkout -b HDP-2.6.3.1 origin/HDP-2.6.3.1
 
@@ -236,7 +236,7 @@ git show COMMIT^ COMMIT
 # show a file history
 git log --follow -p ./common/src/main/java/org/apache/xxxxx/XxxxFactory.java
 
-<b># PHP:</b>
+<b>=== PHP ===</b>
 To display all errors:
 error_reporting(E_ALL);
 ini_set("display_errors",1);
@@ -249,7 +249,7 @@ Start xdebug:
 CLI: XDEBUG_CONFIG="idekey=xxxx" php ./myclass.php      # or use 'export'
 Web: ?&XDEBUG_SESSION_START=xxxx
 
-<b># Python:</b>
+<b>=== Python ===</b>
 dir() will give you the list of in scope variables:
 globals() will give you a dictionary of global variables
 locals() will give you a dictionary of local variables
@@ -277,7 +277,7 @@ list(map(func_takes_two_args_return_calc_result, [1, 4, 7], [2, 5, 8]))
 list(filter(func_take_one_arg_return_bool, [1, 2, 3, 4, 5]))
 
 
-<b># JAVA:</b>
+<b>=== JAVA ===</b>
 # User same classpath as some process
 eval "export `cat /proc/3515/environ | tr '\0' '\n' | grep ^CLASSPATH`"
 javac HCatDropTable.java
@@ -303,17 +303,17 @@ export CLASSPATH=....:...
 # to check
 /usr/jdk64/jdk1.8.0_60/bin/jar tvf dummy.jar
 
-<b># Scala:</b>
+<b>=== Scala ===</b>
 # Convert unix timestamp to date string
 scala > new java.sql.Timestamp(1470042021876L)
 res1: java.sql.Timestamp = 2016-08-01 19:00:21.876
 
-<b># Redis:</b>
+<b>=== Redis ===</b>
 redis-cli monitor
 config set slowlog-log-slower-than 0
 slowlog get
 
-<b># MongoDB:</b>
+<b>=== MongoDB ===</b>
 show dbs
 show collections
 x == y	 find( { x : y } );
@@ -354,13 +354,13 @@ Monitor:
 mongostat --discover --host some_ip
 echo 'db.currentOp().inprog.forEach(function(op){if(op.desc.indexOf("repl writer worker")!=0 && op.secs_running > 5) printjson(op);})' | mongo some_ip
 
-<b># SQLite:</b>
+<b>=== SQLite ===</b>
 -- String date to Unix timestamp
 (julianday('now') - 2440587.5)*86400.0
 -- String date to various format. NOTE: no comma in milliseconds
 strftime('%Y-%m-%d %H', '2019-07-22 00:01:30.695')
 
-<b># PostgreSQL:</b>
+<b>=== PostgreSQL ===</b>
 -- Create a user (role)
 DROP ROLE IF EXISTS ambari;
 CREATE ROLE ambari  WITH LOGIN PASSWORD 'bigdata';
@@ -375,7 +375,7 @@ SET search_path TO "$user", public, ambari;
 -- Save as csv (COPY TO needs superuser, -t is for suppress row count)
 psql -AtF',' -c "SELECT xxxxx;" > output.csv
 
-<b># MySQL:</b>
+<b>=== MySQL ===</b>
 -- Create a new root/admin user
 mysql> create user 'admin'@'%' IDENTIFIED BY '********';
 mysql> GRANT ALL PRIVILEGES ON *.* TO user1@"%"
@@ -414,7 +414,7 @@ SET GLOBAL log_output = "FILE"; which is set by default.
 SET GLOBAL general_log_file = "/path/to/your/logfile.log";
 SET GLOBAL general_log = 'ON';
 
-<b># SQL Server:</b>
+<b>=== SQL Server ===</b>
 declare @interim_dividend as money = 0;
 declare @source as varchar(64) = 'NSW';
 
@@ -509,7 +509,7 @@ WHERE s.is_user_process = 1;
 -- Find object
 select top 10 * from sys.all_objects WHERE [object_id] in (select parent_object_id from sys.all_objects where [name] like 'Something%');
 
-<b># Oracle/sqlplus:</b>
+<b>=== Oracle/sqlplus ===</b>
 sqlplus username/password@connection_id (DB alias) [as SYSDBA] [/NOLOG]
 
 conn USERNAME
@@ -555,7 +555,7 @@ Tablespace = one or mode datafiles
 Datafile = Physical structures associated with only one tablespace, contains table, index etc.
 http://docs.oracle.com/cd/B28359_01/server.111/b28318/physical.htm
 
-<b># Node.js:</b>
+<b>=== Node.js ===</b>
 # Clean reinstall|update (ubuntu):
 sudo npm cache clean -f
 sudo npm install -g n
