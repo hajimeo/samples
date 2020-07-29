@@ -782,7 +782,7 @@ export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.s
     ${_cmd} cp ${_TMP%/}/rh-ruby23.sh ${_name}:/etc/profile.d/rh-ruby23.sh
     if ! _is_url_reachable "${_repo_url}"; then
         # If repo is not reachable, install cocoapods *first* (Note: as of today, newest cocoapods fails with "Failed to build gem native extension")
-        ${_cmd} exec -it ${_name} bash -l -c "scl enable rh-ruby23 bash && gem install cocoapods -v 1.8.4" >>${_LOG_FILE_PATH:-"/dev/null"}
+        ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods -v 1.8.4" >>${_LOG_FILE_PATH:-"/dev/null"}
     fi
     local _repo_url_without_http="${_repo_url}"
     [[ "${_repo_url}" =~ ^https?://(.+)$ ]] && _repo_url_without_http="${BASH_REMATCH[1]}"
@@ -795,7 +795,7 @@ export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.s
         ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.gemrc &&
         _is_url_reachable "${_repo_url}";
     then
-        ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods" >>${_LOG_FILE_PATH:-"/dev/null"}
+        ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods -v 1.8.4" >>${_LOG_FILE_PATH:-"/dev/null"}
     fi
 
     # Using Nexus maven repository if available
