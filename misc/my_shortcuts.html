@@ -1,0 +1,565 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <base href="http://search.osakos.com/">
+  <link rel="shortcut icon" href="favicon.ico" >
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="css/default.css" rel="stylesheet" type="text/css">
+  <script type="text/javascript" src="js/View.js"></script>
+  <title>My shortcuts (backup)</title>
+</head>
+<body>
+<!-- ==== copy from below ============================================ --><pre>
+<b># Misc (common):.</b>
+du -Shx / | sort -h | tail    # -S not to include the size of subdirectories
+du -ah -d1 | sort -h | tail    # -a to show all. -d1 for depth 1
+tail -f *-`date -u +"%Y-%m-%d"`.log
+ssh root@myvm "echo \"`cat ~/.ssh/id_rsa.pub`\" >> ~/.ssh/authorized_keys"
+# sort by multiple columns and count non-first column
+pmap -x ${_pid} | sort -k6 -k2nr |  uniq -c -f1 -f2 -f3 -f4 -f5 | sort -n | tail -n10
+
+find . -newer /some/file/path -ls
+find . -xdev -name "*.bak" -print0 | xargs -0 -t -p -n1 -I {} mv {} ~/old.files    # -t for showing code, -p for prompt
+find . -xdev -type f -mtime +60 -size +10000k -print0 | xargs -0 -t -n1 -I {} mv {} ~/.Trash/
+grep -lIisr --null 'some_search_word' * | xargs -0 -I {} grep -l -w 'second_search_word' {}
+grep -lIis --null 'xxxxx@gmail.com' ./*/.mailfilter | xargs -0 -I {} sed -i '' 's/^exit$//g' {}
+grep ^Thread jstack_no_l.out | grep -v BLOCKED | while read -r s; do grep "^$s" jstack_no_l.out -A 5; done
+# multi-process grep - NOTE "-n1" in xargs and "-H" in grep, and -t in xargs to see the command (TODO: with "split -l 10000 file")
+find . -type f -print0 | xargs -0 -n1 -P 4 grep -H -wE '(ERROR |FATAL|Caused by|Stack trace)' -c
+
+while true;do _c=`ls -l /tmp/some.log | awk '{print $5}'`;expr $_c - $_p;_p=$_c;sleep 1;done
+curl -ks 'https://url/api/1/' | python -m json.tool | less
+curl --limit-rate 200K --retry 100 -C - "http://some_url/some_file.tar.gz" -o some_file.tar.gz
+for x in `seq 1 100`; do curl --limit-rate 200K -C - "http://some_url/some_file.tar.gz" -o some_file.tar.gz && break; sleep 5; done
+
+# proxy test. Using "-I" might be misleading as it ends with 403, hence -o
+curl -v --proxy http://localhost:28080/ --proxy-basic -U proxyuser:proxypwd -k -L https://anaconda.org/
+
+# exclude futex and epoll_wait (-e) and output datetime (t) and time spent by system call (T)
+strace -f -s 400 -ttT -e 'trace=!futex,epoll_wait' -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-namenode.pid`
+# save per process
+mkdir /tmp/stracedir.$$ && strace -ff -o /tmp/stracedir.$$/nn -s 400 -tt -p `cat /var/run/hadoop/hdfs/hadoop-hdfs-namenode.pid`
+
+# network monitor/capture (-nn for no hostname port resolution)
+tcpdump -vvv -i any -nn -s 0 -A "port 10502 and host 172.18.0.2"   # or instead of -A, -w xxxx.pcap to write into a file
+strace -v -f -s 1000 -tt -e poll,select,connect,recvfrom,sendto -o ./strace.out nc www.news.com 80
+strace -f -s 1024 -ttT -e 'trace=network,open,close,read,write' -o ./strace.out -p `cat /var/run/ambari-metrics-monitor/ambari-metrics-monitor.pid`
+
+# netcat commands to check network connectivity and performance
+nc -vz IP_Address Port
+## start Receiver (server)
+nc -v -v -n -l 2222 >/dev/null    # -k for keeping listening but may not be reliable
+## start Sender (client)
+time yes|nc -v -v -n 192.168.0.8 2222 >/dev/null
+
+# disk usage for slowness/performance issue
+dstat -ta --top-io-adv --top-bio-adv --top-cpu-adv 5
+pidstat -dl [ -u] 5 1    # in sysstat package, and running as user (not root) is better
+
+# discover|list hostnames and IPs of a domain by using AXFR (Asynchronous xfer)
+dig @8.8.8.8 -t AXFR somedomain.com   # Often or no longer works?
+# find name server of a domain
+dig @8.8.8.8 +short NS somedomain.com
+
+# copy large file from remote with progress, retry-able, compressed
+rsync -Phz --bwlimit=80 user@hostname:/tmp/backup.tar /tmp/backups/
+
+# Remove all control characters, except \n
+tr -cd "[:print:]\n" input_file.txt > output_file.txt
+
+<b># BASH:</b>
+Ref: https://ss64.com/bash/syntax-keyboard.html
+Ctrl + w : Delete the word before the cursor
+Ctrl + d : delete character under the cursor
+Ctrl + h : delete character before the cursor (Same as backspace)
+Ctrl + l : Clears the Screen, similar to 'clear'
+Ctrl + t : Swap the last two characters on the cursor and before (and moves the cursor one right)
+Ctrl + y: Paste the last thing to be cut (yank)
+
+Esc + t : Swap the last two words before the cursor
+
+Alt|Esc + F : Move cursor forward one word
+Alt|Esc + B : Move cursor backward one word
+
+Get previous argument:
+[root@node1 ~]# echo "test"
+test
+[root@node1 ~]# echo !:1
+echo "test"
+test
+
+!! – run last command
+!blah – run the most recent command that starts with ‘blah’ (e.g. !ls)
+!blah:p – print out the command that !blah would run (also adds it as the latest command in the command history)
+!$ – the last word of the previous command (same as Alt + .)
+!$:p – print out the word that !$ would substitute
+!* – the previous command except for the *first* word
+!*:p – print out what !* would substitute
+
+Check process environment variables:
+cat /proc/68621/environ | tr '\000' '\n'
+
+Convert Unix timestamp to date or date to Unix time stamp:
+$ date '+%s' -d'2018-02-05 15:16:26'    # need -u if the date string is already UTC
+1517807786
+$ date -d @1517807786      # Mac (BSD): date -r 1517807786
+Mon Feb  5 15:16:26 AEST 2018
+$ date -d '1970/01/01 UTC 1309749054 sec'
+Mon Jul  4 12:10:54 JST 2011
+
+<b># SED:</b>
+sed -i_$(date +"%Y%m%d%H%M%S").bak 's/guest/devlb.net/' /etc/dnsmasq.conf && service dnsmasq restart
+( grep ^PermitRootLogin /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin without-password/PermitRootLogin yes/' /etc/ssh/sshd_config ) || echo 'PermitRootLogin yes' >> /etc/ssh/sshd_config
+sed -n '$=' large_file_to_count_line
+sed -n '1,10000p' large_file_to_show_lines
+# if "searchstring" in a line, replace "mystring" to 1 otherwise 0
+sed -i -r '/searchstring/ s/mystring/1/ ; /searchstring/! s/mystring/0/' some_file
+# if "searchstring" exist, tries to replace with "new_string", otherwise append
+grep -q "searchstring" some_file && sed -i -r 's/searchstring/new_string/' file || echo 'new_string' >> some_file
+# or, delete existing line(s) and append in the end of the file, rather than search & replace/append
+_l="log4j.logger.org.apache.ambari.view"; sed -i.bak -r "/^${_l}=.\+/d ; \$a ${_l}=DEBUG" /etc/ambari-server/conf/log4j.properties
+# Search two lines ('N' joins next line, then 's/\n/ /' makes one line, then with 'g' finding two types)
+cat jaas.conf | sed -n -r "N;s/\n/,/;s/\s*\b(keyTab|principal) ?= ?['\"]?([^'\"]+)['\"]?/\2/gpI"
+# Find a line, then search/replace/substitute the next line
+sed -i -r '$!N;s/^(tls:\n +enabled: *)(false)/\1true/;P;D' ./test.yaml
+sed -n -r "N;s/\n/,/;s/\s*\b(keyTab|principal) ?= ?['\"]?([^'\"]+)['\"]?/\2/gpI" ./some_jass.conf
+
+<b># VIM:</b>
+w	jump by start of words
+W	jump by words
+b	jump backward by words
+B	jump backward by words
+V	Select whole line (Visual mode), then d to cut, y to copy, and p for paste
+
+# Select a code block and indent
+Ctrl+v,select lines,i,[tab],esc
+
+# Fold/unfold (expand/collapse)
+# Use za (toggle), zO (open), zC (close), zR (open all?)
+set nofoldenable
+set foldmethod=indent  "or syntax
+
+:vim {pattern} % | cw    # Search like / with vimgrep. Also Ctrl+w, w to switch window
+:%!python -m json.tool
+:%!tidy -xml -q -i      (or -html)
+:set list           # display tab/white space
+:e .                  # show list of files in current directory (.) to select
+:tabnew          # Open a newtab
+
+press 'y' to copy (not 'c')
+ctrl+r              Redo
+gt or :tabn	move to next tab
+gT or :tabp	move to previous tab
+
+Ctrl-W 10 n		# open a new window with 10 lines hight
+Ctrl-W 3 {+-<>}	# moving divider 3
+Ctrl-W s			# for horizontal splitting for same file
+Ctrl-W v 			# for vertical splitting for same file
+Ctrl-W CTRL-W	# switch between windows
+Ctrl-w q			# to close one
+:sp filename		# or :new filename for a horizontal split
+:vsp filename		# or :vs filename for a vertical split
+
+# record and playback
+To start recording, press q in normal mode followed by a letter (a to z). That starts recording keystrokes to the specified register. Vim displays recording in the status line. Type any normal mode commands, or enter insert mode and type text. To stop recording, again press q while in normal mode.
+To playback your keystrokes, press @ followed by the letter previously chosen. Typing @@ repeats the last playback.
+
+<b># Screen:</b>
+Start screen : screen -S [name]
+List screen  : screen -ls
+List screens : Ctrl+a, " (or Ctrl+a, w)
+Create new   : Ctrl+a, c
+Change screen: Ctrl+a, (number)
+Next screen  : Ctrl+a, space or Ctrl+n
+Detach screen: Ctrl+a, Ctrl+d
+Attach screen: screen -r pid
+Quit a screen: Ctrl+d (like normal terminal)
+Rename title: Ctrl+a, A, then replace the name
+
+Copy mode    : Ctrl+a, Esc or ] (then work like 'vi')
+To copy      : space, move cursor, space
+To paste     : Ctrl+a, ] or Ctrl+]
+
+<b># Network:</b>
+# Add route
+## Mac:
+sudo route delete -net 172.17.100.0/24 192.168.8.31;sudo route add -net 172.17.100.0/24 192.168.8.31
+## CentOS6
+ip route del 0/0 && route add -net 192.168.8.0/24 gw 172.17.0.1 eth0
+## Windows 10
+route add 172.17.100.0 mask 255.255.255.0 192.168.8.31
+
+<b># CentOS|RHEL|YUM:</b>
+# Search which package has a command
+yum whatprovides gem
+
+<b># Git/Github:</b>
+# checkout a remote branch to switch branch
+$ git checkout -b HDP-2.6.3.1 origin/HDP-2.6.3.1
+
+# Git typical life cycle
+$ git branch -a
+$ git checkout develop
+error: Your local changes to the following files would be overwritten by checkout:
+tests/unit/api/classes/XXXTest.php
+Please, commit your changes or stash them before you can switch branches.
+Aborting
+$ git checkout -- tests/unit/api/classes/XXXTest.php
+$ git fetch origin --progress --prune
+$ git pull origin --progress
+$ git diff
+$ git diff --stat --cached remotes/origin/YOURBRANCH
+$ git commit --all --message "blah"
+
+$ git push --progress --dry-run --porcelain origin develop:develop
+
+# revert local changes
+$ git fetch --all
+$ git reset --hard origin/branch_name_or_master
+
+# Searches
+## List tags and filter with 2.3.2
+git tag -l *2.3.2*
+## Search log against a tag
+git log XXX-2.3.2.0-tag | grep 2629
+## Search all with a word
+git log --all --grep='XXXXX-11405'
+
+# find branches or tags which contains a commit
+_SEARCH='AMBARI-13437'
+for c in `git log --all --grep "$_SEARCH" | grep ^commit | cut -d ' ' -f 2`; do git branch -r --contains $c; done
+for c in `git log --all --grep "$_SEARCH" | grep ^commit | cut -d ' ' -f 2`; do git tag --contains $c; done
+
+# diff between this commit and ancestor
+git show COMMIT^ COMMIT
+# show a file history
+git log --follow -p ./common/src/main/java/org/apache/xxxxx/XxxxFactory.java
+
+<b># PHP:</b>
+To display all errors:
+error_reporting(E_ALL);
+ini_set("display_errors",1);
+ini_set("html_errors",1);
+
+PHP print backtrace in php log:
+ob_start();debug_print_backtrace();error_log(ob_get_clean());
+
+Start xdebug:
+CLI: XDEBUG_CONFIG="idekey=xxxx" php ./myclass.php      # or use 'export'
+Web: ?&XDEBUG_SESSION_START=xxxx
+
+<b># Python:</b>
+dir() will give you the list of in scope variables:
+globals() will give you a dictionary of global variables
+locals() will give you a dictionary of local variables
+str(vars()) to convert object/class instance to string but not recursive
+
+# Print exception and move on
+try:
+xxxxx
+except Exception as e: print(e)
+
+# Parse JSON
+myVal="`curl -s "http://some.site.returns.json" | python -c "import sys,json,pprint;a=json.loads(sys.stdin.read());print a['Token']['urlString']"`"
+
+# Parse test file (stdin) line by line
+for line in sys.stdin:
+# do something against line, eg: line = line.strip()
+print line
+
+# Dump text/string/object into a file eg: stactrace
+import os, pprint, traceback
+with open("/tmp/"+os.path.basename(__file__)+".tmp", "w") as _f: _f.write(pprint.pformat(traceback.format_stack()))
+
+# Map|filter (python3 needs list)
+list(map(func_takes_two_args_return_calc_result, [1, 4, 7], [2, 5, 8]))
+list(filter(func_take_one_arg_return_bool, [1, 2, 3, 4, 5]))
+
+
+<b># JAVA:</b>
+# User same classpath as some process
+eval "export `cat /proc/3515/environ | tr '\0' '\n' | grep ^CLASSPATH`"
+javac HCatDropTable.java
+java HCatDropTable arg1 arg2
+
+# Find class for ClassNotFound
+find /usr/hdp/ -type f -name '*.jar' -print0 | xargs -0 -I {} -t bash -c "/usr/jdk64/jdk1.8.0_40/bin/jar tvf {} | grep -w Configuration"
+
+# Utilities
+jmap -histo `cat /var/run/hive/hive-server.pid` &> jmap_histo_$(hostname)_$(date +"%Y%m%d%H%M%S").out
+jstat -gccause PID 5000
+
+https://docs.oracle.com/javase/jp/8/docs/technotes/guides/troubleshoot/tooldescr006.html
+jcmd PID VM.system_properties                  # java.class.path for actual classpath
+jcmd PID GC.heap_dump filename=Myheapdump
+jcmd PID GC.class_histogram filename=Myheaphistogram
+jcmd PID PerfCounter.print
+
+# compile and create a jar file
+export CLASSPATH=....:...
+/usr/jdk64/jdk1.8.0_60/bin/javac dummy/*.java
+/usr/jdk64/jdk1.8.0_60/bin/jar cvf dummy.jar dummy/*.class
+# to check
+/usr/jdk64/jdk1.8.0_60/bin/jar tvf dummy.jar
+
+<b># Scala:</b>
+# Convert unix timestamp to date string
+scala > new java.sql.Timestamp(1470042021876L)
+res1: java.sql.Timestamp = 2016-08-01 19:00:21.876
+
+<b># Redis:</b>
+redis-cli monitor
+config set slowlog-log-slower-than 0
+slowlog get
+
+<b># MongoDB:</b>
+show dbs
+show collections
+x == y	 find( { x : y } );
+x > y	 find( { x : { $gt : y } } );
+x < y	 find( { x : { $lt : y } } );
+x >= y	 find( { x : { $gte : y } } );
+x <= y	 find( { x : { $lte : y } } );
+x != y	 find( { x : { $ne : y } } );
+x == y and y == z	 find( { x : y , y : z } );
+x == y or y == z	 find( { $or : [ { x : y }, { y : z } ] } );
+x == y not or y == z	 find( { $nor : [ { x : y }, { y : z } ] } );
+exists( x )	 find( { x : { $exists : true } } );
+not exists( x )	 find( { x : { $exists : false } } );
+x % y == z	 find( { x : { $mod : [ y, z ] } } );
+w in ( x, y, z )	 find( { w : { $in : [ x, y, z ] } } );
+w not in ( x, y, z )	 find( { w : { $nin : [ x, y, z ] } } );
+
+Query/Change history:
+use local
+#db.printReplicationInfo()
+db.oplog.rs.find({ns:"=DATABASE=.=COLLECTION="}).sort({$natural: -1}).limit(10).pretty()
+#new Date(=unix_timestamp=);
+
+Run javascript:
+mongo remote_ip/database_name --eval 'printjson(db.stats())'
+echo 'db.stats()' | mongo remote_ip/database_name
+Advanced Queries:
+db.some_collection.find({some_column1:'Open', some_column2:/^2014-04-0.*/, some_column3: { $gte: new Date() }}}).sort({some_column3:-1}).limit(10).pretty()
+db.some_collection.find().forEach(function(d) { d.some_field = d.another_field; db.some_collection.save(d); } );
+
+Analyze:
+db.setProfilingLevel(1,20)
+system.profile.find()
+db.colleciton.find({some_filter}).explain()
+db.collection.getIndexes()
+
+Monitor:
+mongostat --discover --host some_ip
+echo 'db.currentOp().inprog.forEach(function(op){if(op.desc.indexOf("repl writer worker")!=0 && op.secs_running > 5) printjson(op);})' | mongo some_ip
+
+<b># SQLite:</b>
+-- String date to Unix timestamp
+(julianday('now') - 2440587.5)*86400.0
+-- String date to various format. NOTE: no comma in milliseconds
+strftime('%Y-%m-%d %H', '2019-07-22 00:01:30.695')
+
+<b># PostgreSQL:</b>
+-- Create a user (role)
+DROP ROLE IF EXISTS ambari;
+CREATE ROLE ambari  WITH LOGIN PASSWORD 'bigdata';
+
+-- After creating a new DB or connecting a new DB
+grant all privileges on database dbname to dbuser;
+-- GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO myuser;
+
+SHOW search_path;
+SET search_path TO "$user", public, ambari;
+
+-- Save as csv (COPY TO needs superuser, -t is for suppress row count)
+psql -AtF',' -c "SELECT xxxxx;" > output.csv
+
+<b># MySQL:</b>
+-- Create a new root/admin user
+mysql> create user 'admin'@'%' IDENTIFIED BY '********';
+mysql> GRANT ALL PRIVILEGES ON *.* TO user1@"%"
+->  IDENTIFIED BY '********' WITH GRANT OPTION;
+mysql>  GRANT ALL PRIVILEGES ON *.* TO user1@localhost
+->  IDENTIFIED BY '********' WITH GRANT OPTION;    -- is this necessary?
+mysql>  FLUSH PRIVILEGES;
+
+-- Table row count:
+SELECT Table_ROWS FROM INFORMATION_SCHEMA.TABLES where Table_schema = 'some database' AND Table_Name = 'some table name';
+
+-- (Long) running query:
+show processlist;   # FULL PROCESSLIST shows entire query
+
+-- InnoDB health check
+SHOW ENGINE INNODB STATUS\G
+
+-- Lock/Blocked/Blocking query
+show open tables WHERE In_use > 0
+
+-- list table status for table 'hive'
+show table status from hive;
+
+-- check if table/index need to be rebuild
+CHECK TABLE tbl_name
+
+-- search variables
+mysql -e 'show global variables;' | grep slow
+mysql> show global variables like 'general_log%';
+
+-- table status for a database
+SHOW TABLE STATUS FROM database_name ;
+
+-- log query history
+SET GLOBAL log_output = "FILE"; which is set by default.
+SET GLOBAL general_log_file = "/path/to/your/logfile.log";
+SET GLOBAL general_log = 'ON';
+
+<b># SQL Server:</b>
+declare @interim_dividend as money = 0;
+declare @source as varchar(64) = 'NSW';
+
+-- Table row count:
+SELECT sc.name +'.'+ ta.name TableName, SUM(pa.rows) RowCnt
+FROM sys.tables ta
+INNER JOIN sys.partitions pa ON pa.OBJECT_ID = ta.OBJECT_ID
+INNER JOIN sys.schemas sc ON ta.schema_id = sc.schema_id
+WHERE ta.is_ms_shipped = 0 AND pa.index_id IN (1,0)
+GROUP BY sc.name,ta.name
+ORDER BY SUM(pa.rows) DESC;
+
+-- Long running query:
+select
+p.spid
+,   right(convert(varchar,
+dateadd(ms, datediff(ms, P.last_batch, getdate()), '1900-01-01'),
+121), 12) as 'batch_duration'
+,   P.last_batch
+,   P.program_name
+,   P.hostname
+,   P.loginame
+,   P.status
+,   qt.text
+from master.dbo.sysprocesses P
+CROSS APPLY sys.dm_exec_sql_text(p.sql_handle) qt
+where P.spid > 50
+and      P.status not in ('background', 'sleeping')
+and      P.cmd not in ('AWAITING COMMAND'
+,'MIRROR HANDLER'
+,'LAZY WRITER'
+,'CHECKPOINT SLEEP'
+,'RA MANAGER')
+order by batch_duration desc;
+
+-- Slow Query:
+SELECT TOP 20
+qt.text,
+qs.total_worker_time / qs.execution_count as ms_per_query,
+qs.execution_count,
+qs.total_worker_time,
+qs.total_elapsed_time, qs.last_elapsed_time,
+qs.min_elapsed_time, qs.max_elapsed_time,
+qs.total_logical_reads, qs.last_logical_reads,
+qs.min_logical_reads, qs.max_logical_reads,
+qs.last_execution_time,
+qp.query_plan
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) qt
+CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
+WHERE qt.encrypted=0
+--ORDER BY qs.total_logical_reads DESC
+--ORDER BY qs.execution_count DESC
+--ORDER BY qs.total_worker_time / qs.execution_count DESC
+ORDER BY qs.execution_count DESC;
+
+-- Big Query:
+SELECT session_id, num_writes, st.text AS statement_text
+FROM sys.dm_exec_connections AS ec
+CROSS APPLY sys.dm_exec_sql_text(ec.most_recent_sql_handle) AS st
+ORDER BY num_writes DESC;
+
+-- Query history (dm_exec_cached_plans doesn't look like having all queries and no date column):
+SELECT top 10 last_execution_time, qs.sql_handle, qs.plan_handle, [text]
+from sys.dm_exec_query_stats qs
+cross apply sys.dm_exec_sql_text(qs.sql_handle) qt
+where qt.[text] like '%insert into %'
+order by qs.last_execution_time desc;
+SELECT query_plan FROM sys.dm_exec_query_plan(convert(varbinary, 0x06000A000F0A161640811AF00C0000000000000000000000));
+
+-- Lock/Blocked/Blocking query
+USE [master];
+SELECT   w.session_id
+,w.wait_duration_ms
+,w.wait_type
+,w.blocking_session_id
+,w.resource_description
+,s.host_name
+,s.program_name
+,t.text
+,t.dbid
+,s.cpu_time
+,s.memory_usage
+FROM sys.dm_os_waiting_tasks w
+INNER JOIN sys.dm_exec_sessions s
+ON w.session_id = s.session_id
+INNER JOIN sys.dm_exec_requests r
+ON s.session_id = r.session_id
+OUTER APPLY sys.dm_exec_sql_text (r.sql_handle) t
+WHERE s.is_user_process = 1;
+
+-- Find object
+select top 10 * from sys.all_objects WHERE [object_id] in (select parent_object_id from sys.all_objects where [name] like 'Something%');
+
+<b># Oracle/sqlplus:</b>
+sqlplus username/password@connection_id (DB alias) [as SYSDBA] [/NOLOG]
+
+conn USERNAME
+alter session set current_schema = test;   -- change schema/database like 'use test;'
+
+define _EDITOR=vi (or export EDITOR=vi)
+set pause on|off
+set numwidth 10
+set long 10
+set time on|off
+
+lsnrctl status
+tnsping '(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=h-surface)(PORT=1521)))'
+
+-- Similar to show databases; (as SYSDBA)
+select * From v$instance;
+
+-- Check oracle version (above plus below:)
+select * from v$version;
+select comp_name, schema, status, substr(version,1,10) as version from dba_registry;
+
+-- Check/search table/DDL
+select * from dba_tables where table_name like '%ETL%'
+select * from dict where table_name like '%CONSTRAINT%';
+describe dba_constraints
+select constraint_name from dba_constraints where table_name = 'DEVICES';
+
+-- Create a superuser
+CREATE USER ranger IDENTIFIED BY hadoop default tablespace USERS temporary tablespace TEMP;
+GRANT CONNECT,RESOURCE TO ranger;
+GRANT ALL PRIVILEGES TO ranger;
+--GRANT DBA TO ranger WITH ADMIN OPTION';
+
+-- Terminologies
+SID = SID(system identifier) is a unique name for an Oracle database instance, and *usually* used to connect from local
+DB Name(database name) = Name of the database (database can be shared between multiple instances )
+Instance Name = it is same as Oracle SID.
+service name = SERVICE NAMES specifies one or more names for the database service to which this instance connects. (used by listener)
+TNS Names / Net Service Names = Used to connect to SERVICE_NAMES (used by listener)
+
+Database = contains one or more Tablespaces
+Tablespace = one or mode datafiles
+Datafile = Physical structures associated with only one tablespace, contains table, index etc.
+http://docs.oracle.com/cd/B28359_01/server.111/b28318/physical.htm
+
+<b># Node.js:</b>
+# Clean reinstall|update (ubuntu):
+sudo npm cache clean -f
+sudo npm install -g n
+sudo n stable
+</pre><!-- ==== copy up to above ============================================ -->
+</body>
+</html>
