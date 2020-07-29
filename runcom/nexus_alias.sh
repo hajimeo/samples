@@ -12,10 +12,10 @@ fi
 function iqCli() {
     local __doc__="https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
     # overwrite-able global variables
+    local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
     local _iq_cli_ver="${_IQ_CLI_VER:-"1.95.0-01"}"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/nexus-iq-cli-${_iq_cli_ver}.jar"}"
     local _iq_app_id="${_IQ_APP_ID:-"sandbox-application"}"
-    local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
     local _iq_stage="${_IQ_STAGE:-"build"}" #develop|build|stage-release|release|operate
     local _iq_tmp="${_IQ_TMP:-"./tmp"}"
 
@@ -23,17 +23,21 @@ function iqCli() {
         iqCli "./"
         return $?
     fi
+
+    if [ -z "${_IQ_URL}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
+        _iq_url="http://localhost:8070/"
+    fi
     #[ ! -d "${_iq_tmp}" ] && mkdir -p "${_iq_tmp}"
     if [ ! -s "${_iq_cli_jar}" ]; then
         local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/} -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
-        if [ -z "${_tmp_iq_cli_jar}" ]; then
-            curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
-        else
+        if [ -z "${_IQ_CLI_VER}" ] && [ -n "${_tmp_iq_cli_jar}" ]; then
             _iq_cli_jar="${_tmp_iq_cli_jar}"
+        else
+            curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
         fi
     fi
     echo "Executing: java -jar ${_iq_cli_jar} -s "${_iq_url}" -a \"admin:admin123\" -i \"${_iq_app_id}\" -t \"${_iq_stage}\" $@" >&2
-    java -Djava.io.tmpdir="${_iq_tmp}" -jar ${_iq_cli_jar} -s "${_iq_url}" -a "admin:admin123" -i "${_iq_app_id}" -t "${_iq_stage}" -r ./iq_result_$(date +'%Y%m%d%H%M%S').json -X $@
+    java -Djava.io.tmpdir="${_iq_tmp}" -jar ${_iq_cli_jar} -s "${_iq_url}" -a "admin:admin123" -i "${_iq_app_id}" -t "${_iq_stage}" -r ${_iq_tmp%/}/iq_result_$(date +'%Y%m%d%H%M%S').json -X $@
 }
 
 # Start "mvn" with IQ plugin
