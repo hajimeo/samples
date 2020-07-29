@@ -102,6 +102,7 @@ _RESP_FILE=""
 
 
 ### Repository setup functions ################################################################################
+# Eg: r_NEXUS_URL="http://dh1.standalone.localdomain:8081/" f_setup_xxxxx
 function f_setup_maven() {
     local _prefix="${1:-"maven"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
@@ -657,6 +658,7 @@ function f_api() {
 }
 
 # Create a container which installs python, npm, mvn, nuget, etc.
+#docker rm -f nexus-client; p_client_container "http://dh1.standalone.localdomain:8081/"
 function p_client_container() {
     local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     local _centos_ver="${2:-"7.6.1810"}"
@@ -712,6 +714,7 @@ function p_client_container() {
 }
 
 # Setup or Re-set client configs with given Nexus base URL
+#f_reset_client_configs "nexus-client" "testuser" "http://dh1.standalone.localdomain:8081/"
 function f_reset_client_configs() {
     local _name="${1}"
     local _user="${2:-"$USER"}"
@@ -722,19 +725,21 @@ function f_reset_client_configs() {
 
     f_container_iq_cli "${_name}" "${_user}" "${_IQ_CLI_VER}" "${_cmd}"
 
-    local _yum_install="yum install -y"
+    # Using Nexus yum repository if available
     local _repo_url="${_base_url%/}/repository/yum-group"
+    local _yum_install="yum install -y"
     f_echo_yum_repo_file "yum-group" "${_base_url}" > ${_TMP%/}/nexus-yum-test.repo
     if ${_cmd} cp ${_TMP%/}/nexus-yum-test.repo ${_name}:/etc/yum.repos.d/nexus-yum-test.repo && _is_url_reachable "${_repo_url}"; then
-        _yum_install="yum --disablerepo='base' --enablerepo='nexusrepo' install -y"
+        _yum_install="yum --disablerepo=base --enablerepo=nexusrepo install -y"
     fi
-    ${_cmd} exec -it ${_name} bash -c "${_yum_install} epel-release && curl -sL https://rpm.nodesource.com/setup_10.x | bash - && rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm && ${_yum_install} python3 maven nodejs rubygems aspnetcore-runtime-3.1 golang" >>${_LOG_FILE_PATH:-"/dev/null"}
+    ${_cmd} exec -it ${_name} bash -c "${_yum_install} epel-release && curl -sL https://rpm.nodesource.com/setup_10.x | bash - && rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm;${_yum_install} centos-release-scl-rh centos-release-scl && ${_yum_install} python3 maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang" >>${_LOG_FILE_PATH:-"/dev/null"}
     #yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && ${_yum_install} ripgrep
     if [ $? -ne 0 ]; then
         _log "ERROR" "installing packages with yum failed. Check ${_LOG_FILE_PATH}"
         return 1
     fi
 
+    # Using Nexus npm repository if available
     _repo_url="${_base_url%/}/repository/npm-group"
     local _cred="$(python -c "import sys, base64; print(base64.b64encode('${_usr}:${_pwd}'))")"
     echo "strict-ssl=false
@@ -745,9 +750,10 @@ _auth=\"${_cred}\"" > ${_TMP%/}/npmrc
         ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.npmrc &&
         _is_url_reachable "${_repo_url}";
     then
-        ${_cmd} exec -it ${_name} bash -c "npm install -g yarn;npm install -g bower" &>>${_LOG_FILE_PATH:-"/dev/null"}
+        ${_cmd} exec -it ${_name} bash -l -c "npm install -g yarn;npm install -g bower" &>>${_LOG_FILE_PATH:-"/dev/null"}
     fi
 
+    # Using Nexus pypi repository if available
     _repo_url="${_base_url%/}/repository/pypi-group"
     echo "[distutils]
 index-servers =
@@ -762,16 +768,45 @@ password: ${_pwd}" > ${_TMP%/}/pypirc
         ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.pypirc &&
         _is_url_reachable "${_repo_url}";
     then
-        ${_cmd} exec -it ${_name} bash -c "pip3 install conan" &>>${_LOG_FILE_PATH:-"/dev/null"}
+        ${_cmd} exec -it ${_name} bash -l -c "pip3 install conan" &>>${_LOG_FILE_PATH:-"/dev/null"}
     fi
 
+    # Using Nexus rubygem repository if available (not sure if rubygem-group is supported in some versions, so using proxy)
+    _repo_url="${_base_url%/}/repository/rubygem-proxy"
+    # @see: https://www.server-world.info/en/note?os=CentOS_7&p=ruby23
+    #       Also need git newer than 1.8.8, but https://github.com/iusrepo/git216/issues/5
+    ${_cmd} exec -it ${_name} bash -c "yum remove -y git*;yum install https://centos7.iuscommunity.org/ius-release.rpm && yum --enablerepo=ius-archive -y install git2u"
+    echo '#!/bin/bash
+source /opt/rh/rh-ruby23/enable
+export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.sh
+    ${_cmd} cp ${_TMP%/}/rh-ruby23.sh ${_name}:/etc/profile.d/rh-ruby23.sh
+    if ! _is_url_reachable "${_repo_url}"; then
+        # If repo is not reachable, install cocoapods *first* (Note: as of today, newest cocoapods fails with "Failed to build gem native extension")
+        ${_cmd} exec -it ${_name} bash -l -c "scl enable rh-ruby23 bash && gem install cocoapods -v 1.8.4" >>${_LOG_FILE_PATH:-"/dev/null"}
+    fi
+    local _repo_url_without_http="${_repo_url}"
+    [[ "${_repo_url}" =~ ^https?://(.+)$ ]] && _repo_url_without_http="${BASH_REMATCH[1]}"
+    echo ":verbose: :really
+:disable_default_gem_server: true
+:sources:
+- http://${_usr}:${_pwd}@${_repo_url_without_http%/}/" > ${_TMP%/}/gemrc
+    if ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/root/.gemrc &&
+        ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/home/${_user}/.gemrc &&
+        ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.gemrc &&
+        _is_url_reachable "${_repo_url}";
+    then
+        ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods" >>${_LOG_FILE_PATH:-"/dev/null"}
+    fi
+
+    # Using Nexus maven repository if available
     _repo_url="${_base_url%/}/repository/maven-group"
     curl -s -o ${_TMP%/}/settings.xml -L ${_DL_URL%/}/misc/m2_settings.tmpl.xml && \
     sed -i -e "s@_REPLACE_MAVEN_USERNAME_@${_usr}@1" -e "s@_REPLACE_MAVEN_USER_PWD_@${_pwd}@1" -e "s@_REPLACE_MAVEN_REPO_URL_@${_repo_url%/}/@1" ${_TMP%/}/settings.xml && \
-    ${_cmd} exec -it ${_name} bash -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null' && \
+    ${_cmd} exec -it ${_name} bash -l -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null' && \
     ${_cmd} cp ${_TMP%/}/settings.xml ${_name}:/home/${_user}/.m2/settings.xml && \
     ${_cmd} exec -it ${_name} chown -R ${_user}: /home/${_user}/.m2
-    # TODO: add other client configs.
+
+    # TODO: add other client configs (eg: cocoapads is installed but not configured)
 }
 
 function f_container_iq_cli() {
