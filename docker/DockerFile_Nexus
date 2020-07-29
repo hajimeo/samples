@@ -1,7 +1,7 @@
 FROM centos:7.6.1810
 
 # Install software/tools used by nexus users
-RUN yum install -y sudo bind-utils net-tools scp curl unzip tar wget openssl which vim strace lsof tcpdump openssh-server openssh-clients openldap-clients nc rsync python
+RUN yum install -y sudo bind-utils net-tools scp curl unzip tar wget openssl which file vim strace lsof tcpdump openssh-server openssh-clients openldap-clients nc rsync python
 # Below line installs client tools, but as this is for testing Nexus, not installing in the Dockerfile.
 #python3 maven rubygems && yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && yum install -y ripgrep && curl -sL https://rpm.nodesource.com/setup_10.x | bash - && yum install -y nodejs && npm install yarn -g && rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm && yum install -y aspnetcore-runtime-3.1 && pip3 install conan && yum install -y epel-release && yum install -y golang
 
