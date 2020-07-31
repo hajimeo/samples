@@ -4,7 +4,20 @@
 # 'cd' to last modified directory
 alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
 alias fd='find . -name'
+alias sha1R='find . -type f -exec sha1sum "{}" \;'
 alias fcv='fc -e vim'
+# 'time' with format
+alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew install gnu-time --with-default-names
+# In case 'tree' is not installed
+which tree &>/dev/null || alias tree="pwd;find . | sort | sed '1d;s/^\.//;s/\/\([^/]*\)$/|--\1/;s/\/[^/|]*/|  /g'"
+# Debug network performance with curl
+alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
+# output the longest line *number* as wc|gwc -L does not show the line number
+alias wcln="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
+# Sum integer in a column by using paste (which concatenates files or characters(+))
+alias sum_cols="gpaste -sd+ | bc"
+
+## Python ###########################################################################################################
 alias pjt='python -m json.tool'
 alias urldecode='python -c "import sys, urllib as ul; print(ul.unquote_plus(sys.argv[1]))"'
 #alias urlencode='python -c "import sys, urllib as ul; print ul.quote_plus(sys.argv[1])"'
@@ -35,16 +48,8 @@ alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.pars
 alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))"'
 alias jp='jupyter-lab &> /tmp/jupyter-lab.out &'
 alias jn='jupyter-notebook &> /tmp/jupyter-notebook.out &'
-# 'time' with format
-alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew install gnu-time --with-default-names
-# In case 'tree' is not installed
-which tree &>/dev/null || alias tree="pwd;find . | sort | sed '1d;s/^\.//;s/\/\([^/]*\)$/|--\1/;s/\/[^/|]*/|  /g'"
-# Debug network performance with curl
-alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
-# output the longest line *number* as wc|gwc -L does not show the line number
-alias wcln="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
-# Sum integer in a column by using paste (which concatenates files or characters(+))
-alias sum_cols="gpaste -sd+ | bc"
+
+## Common software/command but need to install #######################################################################
 # 10 seconds is too short
 alias docker_stop="docker stop -t 120"
 alias qcsv='q -O -d"," -T --disable-double-double-quoting'
