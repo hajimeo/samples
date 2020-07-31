@@ -1001,8 +1001,10 @@ function questions() {
                 if _isYes "${r_NEXUS_MOUNT}"; then
                     _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}" "r_NEXUS_MOUNT_DIR" "N" "Y" "_is_existed"
                 fi
-                _ask "Nexus container exposing port for HTTP (for 8081)" "8081" "r_NEXUS_CONTAINER_PORT1" "N" "Y" "_is_port_available"
-                _ask "Nexus container exposing port for HTTPS (for 8443)" "8443" "r_NEXUS_CONTAINER_PORT2" "N" "N" "_is_port_available"
+                _ask "Nexus container exposing port for 8081 ('0' to disable docker port forward)" "8081" "r_NEXUS_CONTAINER_PORT1" "N" "Y" "_is_port_available"
+                if [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
+                    _ask "Nexus container exposing port for 8443 (HTTPS)" "8443" "r_NEXUS_CONTAINER_PORT2" "N" "N" "_is_port_available"
+                fi
             fi
             _ask "Nexus license file path if you have:
 If empty, it will try finding from ${_WORK_DIR%/}/sonatype-*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_is_license_path"
@@ -1298,21 +1300,22 @@ main() {
                 fi
             done
         else
+            local _tmp_ext_opts="-v ${_WORK_DIR%/}:${_WORK_DIR%/}"
             # Port forwarding for Nexus Single Node (obviously can't do same for HA as port will conflict)
-            local _p=""
-            [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT1}:8081"
-            [ -n "${r_NEXUS_CONTAINER_PORT2}" ] && [ "${r_NEXUS_CONTAINER_PORT2}" -gt 0 ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT2}:8443"
-            if [[ "${r_DOCKER_PROXY}" =~ :([0-9]+)$ ]]; then
-                _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
+            if [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
+                local _p="-p ${r_NEXUS_CONTAINER_PORT1}:8081"
+                [ -n "${r_NEXUS_CONTAINER_PORT2}" ] && [ "${r_NEXUS_CONTAINER_PORT2}" -gt 0 ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT2}:8443"
+                if [[ "${r_DOCKER_PROXY}" =~ :([0-9]+)$ ]]; then
+                    _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
+                fi
+                if [[ "${r_DOCKER_HOSTED}" =~ :([0-9]+)$ ]]; then
+                    _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
+                fi
+                if [[ "${r_DOCKER_GROUP}" =~ :([0-9]+)$ ]]; then
+                    _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
+                fi
+                _tmp_ext_opts="${_p} ${_tmp_ext_opts}"
             fi
-            if [[ "${r_DOCKER_HOSTED}" =~ :([0-9]+)$ ]]; then
-                _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
-            fi
-            if [[ "${r_DOCKER_GROUP}" =~ :([0-9]+)$ ]]; then
-                _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
-            fi
-            local _tmp_ext_opts="${_p}"
-            local _tmp_ext_opts="${_tmp_ext_opts} -v ${_WORK_DIR%/}:${_WORK_DIR%/}"
             if _isYes "${r_NEXUS_MOUNT}"; then
                 _tmp_ext_opts="${_tmp_ext_opts} $(f_nexus_mount_volume "${r_NEXUS_MOUNT_DIR}")" || return $?
                 f_nexus_init_properties "${r_NEXUS_MOUNT_DIR}" || return $?
