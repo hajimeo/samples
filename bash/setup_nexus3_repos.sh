@@ -661,10 +661,11 @@ function f_api() {
 #docker rm -f nexus-client; p_client_container "http://dh1.standalone.localdomain:8081/"
 function p_client_container() {
     local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
-    local _centos_ver="${2:-"7.6.1810"}"
-    local _cmd="${3:-"${r_DOCKER_CMD:-"docker"}"}"
+    local _name="${2:-"nexus-client"}"
+    local _centos_ver="${3:-"7.6.1810"}"
+    local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
 
-    local _image_name="nexus-client:latest"
+    local _image_name="${_name}:latest"
     local _existing_id="`${_cmd} images -q ${_image_name}`"
     if [ -n "${_existing_id}" ]; then
         _log "INFO" "Image ${_image_name} (${_existing_id}) already exists. Running / Starting a container..."
@@ -700,17 +701,18 @@ function p_client_container() {
     fi
 
     local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true"
-    _log "INFO" "Running or Starting 'nexus-client'"
+    _log "INFO" "Running or Starting '${_name}'"
     # TODO: not right way to use 3rd and 4th arguments.
-    _docker_run_or_start "nexus-client" "${_ext_opts}" "${_image_name} /sbin/init" "${r_DOCKER_CMD}" || return $?
-    _container_add_NIC "nexus-client" "bridge" "${r_DOCKER_CMD}"
+    _docker_run_or_start "${_name}" "${_ext_opts}" "${_image_name} /sbin/init" "${r_DOCKER_CMD}" || return $?
+    _container_add_NIC "${_name}" "bridge" "${r_DOCKER_CMD}"
 
     # Create a test user if hasn't created (testuser:testuser123)
-    _container_useradd "nexus-client" "testuser" "" "Y" "${r_DOCKER_CMD}"
+    _container_useradd "${_name}" "testuser" "" "Y" "${r_DOCKER_CMD}"
     # Setup clients' config files
     _log "INFO" "Setting up various client commands (outputs:${_LOG_FILE_PATH:-"/dev/null"})"
-    f_reset_client_configs "nexus-client" "testuser" "${_base_url}"
-    _log "INFO" "Completed $FUNCNAME"
+    f_reset_client_configs "${_name}" "testuser" "${_base_url}"
+    _log "INFO" "Completed $FUNCNAME
+To save as image: docker stop ${_name}; docker commit ${_name} ${_name}"
 }
 
 # Setup or Re-set client configs with given Nexus base URL
@@ -1012,7 +1014,13 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype-*.lic" "" "r_NEXUS_LI
         if _isYes "${r_NEXUS_INSTALL_HAC}"; then
             _ask "Nexus base URL (normally reverse proxy)" "http://${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}:8081/" "r_NEXUS_URL" "N" "Y"
         else
-            _ask "Nexus base URL" "http://localhost:${r_NEXUS_CONTAINER_PORT1:-"8081"}/" "r_NEXUS_URL" "N" "Y"
+            if [ -z "${r_NEXUS_CONTAINER_PORT1}" ] || [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
+                _ask "Nexus base URL" "http://localhost:${r_NEXUS_CONTAINER_PORT1:-"8081"}/" "r_NEXUS_URL" "N" "Y"
+            elif [ -n "${r_NEXUS_CONTAINER_NAME}" ]; then
+                _ask "Nexus base URL" "http://${r_NEXUS_CONTAINER_NAME}.${_DOMAIN#.}:8081/" "r_NEXUS_URL" "N" "Y"
+            else
+                _ask "Nexus base URL" "" "r_NEXUS_URL" "N" "Y"
+            fi
         fi
     else
         _ask "Nexus base URL" "" "r_NEXUS_URL" "N" "Y" "_is_url_reachable"
@@ -1292,8 +1300,8 @@ main() {
         else
             # Port forwarding for Nexus Single Node (obviously can't do same for HA as port will conflict)
             local _p=""
-            [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT1}:8081"
-            [ -n "${r_NEXUS_CONTAINER_PORT2}" ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT2}:8443"
+            [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT1}:8081"
+            [ -n "${r_NEXUS_CONTAINER_PORT2}" ] && [ "${r_NEXUS_CONTAINER_PORT2}" -gt 0 ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT2}:8443"
             if [[ "${r_DOCKER_PROXY}" =~ :([0-9]+)$ ]]; then
                 _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
             fi
