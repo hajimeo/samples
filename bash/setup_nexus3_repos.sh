@@ -977,7 +977,6 @@ function questions() {
         _ask "Would you like to install Nexus in a docker container?" "Y" "r_NEXUS_INSTALL" "N" "N"
         if _isYes "${r_NEXUS_INSTALL}"; then
             echo "NOTE: sudo password may be required."
-            local _nexus_version=""
             _ask "Nexus version" "latest" "r_NEXUS_VERSION" "N" "Y"
             local _ver_num=$(echo "${r_NEXUS_VERSION}" | sed 's/[^0-9]//g')
             _ask "Would you like to build HA-C?" "N" "r_NEXUS_INSTALL_HAC" "N" "N"
@@ -1206,33 +1205,6 @@ main() {
         fi
     fi
 
-    # Command line arguments should be stronger than response file
-    local _repo_formats=""
-    local _nexus_version=""
-    # parsing command options (help is handled before calling 'main')
-    while getopts "ACDf:r:v:" opts; do
-        case $opts in
-            A)
-                _AUTO=true
-                ;;
-            C)
-                _CLEAN=true
-                ;;
-            D)
-                _DEBUG=true
-                ;;
-            f)
-                _repo_formats="$OPTARG"
-                ;;
-            r)
-                _RESP_FILE="$OPTARG"
-                ;;
-            v)
-                _nexus_version="$OPTARG"
-                ;;
-        esac
-    done
-
     if ! ${_AUTO}; then
         _log "DEBUG" "_check_update $BASH_SOURCE with force:N"
         _check_update "$BASH_SOURCE" "" "N"
@@ -1246,8 +1218,8 @@ main() {
         _isYes && _load_resp
     fi
     # Command line arguments are stronger than response file
-    [ -n "${_repo_formats}" ] && r_REPO_FORMATS="${_repo_formats}"
-    [ -n "${_nexus_version}" ] && r_NEXUS_VERSION="${_nexus_version}"
+    [ -n "${_REPO_FORMATS_FROM_ARGS}" ] && r_REPO_FORMATS="${_REPO_FORMATS_FROM_ARGS}"
+    [ -n "${_NEXUS_VERSION_FROM_ARGS}" ] && r_NEXUS_VERSION="${_NEXUS_VERSION_FROM_ARGS}"
 
     if ${_CLEAN}; then
         _log "WARN" "CLEAN-UP (DELETE) mode is selected."
@@ -1370,5 +1342,32 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         usage | less
         exit 0
     fi
+    
+    # parsing command options (help is handled before calling 'main')
+    _REPO_FORMATS_FROM_ARGS=""
+    _NEXUS_VERSION_FROM_ARGS=""
+    while getopts "ACDf:r:v:" opts; do
+        case $opts in
+            A)
+                _AUTO=true
+                ;;
+            C)
+                _CLEAN=true
+                ;;
+            D)
+                _DEBUG=true
+                ;;
+            f)
+                _REPO_FORMATS_FROM_ARGS="$OPTARG"
+                ;;
+            r)
+                _RESP_FILE="$OPTARG"
+                ;;
+            v)
+                _NEXUS_VERSION_FROM_ARGS="$OPTARG"
+                ;;
+        esac
+    done
+    
     main
 fi
