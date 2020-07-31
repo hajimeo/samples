@@ -2,9 +2,9 @@
 
 if [ -z "${_WORK_DIR}" ]; then
     if [ "`uname`" = "Darwin" ]; then
-        _WORK_DIR="$HOME/share/sonatype"
+        _WORK_DIR="$HOME/share"
     else
-        _WORK_DIR="/var/tmp/share/sonatype"
+        _WORK_DIR="/var/tmp/share"
     fi
 fi
 
@@ -13,11 +13,11 @@ function iqCli() {
     local __doc__="https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
     # overwrite-able global variables
     local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
-    local _iq_cli_ver="${_IQ_CLI_VER:-"1.95.0-01"}"
-    local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/nexus-iq-cli-${_iq_cli_ver}.jar"}"
     local _iq_app_id="${_IQ_APP_ID:-"sandbox-application"}"
     local _iq_stage="${_IQ_STAGE:-"build"}" #develop|build|stage-release|release|operate
     local _iq_tmp="${_IQ_TMP:-"./tmp"}"
+    local _iq_cli_ver="${_IQ_CLI_VER:-"1.95.0-01"}"
+    local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/nexus-iq-cli-${_iq_cli_ver}.jar"}"
 
     if [ -z "$1" ]; then
         iqCli "./"
@@ -26,11 +26,20 @@ function iqCli() {
 
     if [ -z "${_IQ_URL}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
         _iq_url="http://localhost:8070/"
+    elif [ -n "${_iq_url}" ] && [[ ! "${_iq_url}" =~ ^http.+ ]]; then
+        _iq_url="http://${_iq_url}:8070/"
     fi
     #[ ! -d "${_iq_tmp}" ] && mkdir -p "${_iq_tmp}"
+    # If no preference about CLI version, search local in case of Support boot
+    local _tmp_iq_cli_jar="$(find . -maxdepth 3 -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
+    if [ -z "${_IQ_CLI_VER}" ] && [ -z "${_IQ_CLI_JAR}" ] && [ -n "${_tmp_iq_cli_jar}" ]; then
+        _iq_cli_jar="${_tmp_iq_cli_jar}"
+    fi
+
     if [ ! -s "${_iq_cli_jar}" ]; then
-        local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/} -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
-        if [ -z "${_IQ_CLI_VER}" ] && [ -n "${_tmp_iq_cli_jar}" ]; then
+        # If the file does not exist, trying to get the latest version from the _WORK_DIR
+        local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/}/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
+        if [ -n "${_tmp_iq_cli_jar}" ]; then
             _iq_cli_jar="${_tmp_iq_cli_jar}"
         else
             curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
@@ -42,8 +51,17 @@ function iqCli() {
 
 # Start "mvn" with IQ plugin
 function iqMvn() {
-    # https://help.sonatype.com/display/NXI/Sonatype+CLM+for+Maven
-    mvn com.sonatype.clm:clm-maven-plugin:evaluate -Dclm.additionalScopes=test,provided,system -Dclm.applicationId=sandbox-application -Dclm.serverUrl=http://dh1.standalone.localdomain:8070/ -Dclm.username=admin -Dclm.password=admin123
+    local __doc__="https://help.sonatype.com/display/NXI/Sonatype+CLM+for+Maven"
+    local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
+    local _iq_app_id="${_IQ_APP_ID:-"sandbox-application"}"
+    local _iq_stage="${_IQ_STAGE:-"build"}" #develop|build|stage-release|release|operate
+    local _iq_mvn_ver="${_IQ_MVN_VER}"  # empty = latest
+    [ -n "${_iq_mvn_ver}" ] && _iq_mvn_ver=":${_iq_mvn_ver}"
+    if [ -z "${_IQ_URL}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
+        _iq_url="http://localhost:8070/"
+    fi
+    #local _iq_tmp="${_IQ_TMP:-"./tmp"}"
+    mvn com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -U -X $@
 }
 
 # mvn archetype:generate wrapper to use a remote repo
@@ -51,7 +69,7 @@ function mvn-arch-gen() {
     # https://maven.apache.org/guides/getting-started/maven-in-five-minutes.html
     local _gav="${1:-"com.example:my-app:1.0"}"
     local _remote_repo="$2"
-    local _local_repo="${3-"./local_repo"}"
+    local _local_repo="${3}"    # Not using local repo for this command
     local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
     local _type="${5:-"maven-archetype-quickstart"}"
 
@@ -59,8 +77,8 @@ function mvn-arch-gen() {
         local _g="${BASH_REMATCH[1]}"
         local _a="${BASH_REMATCH[2]}"
         local _v="${BASH_REMATCH[3]}"
-        #[ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"  # or -DremoteRepositories both doesn't work
-        [ -n "${_remote_repo}" ] && _options="${_options% } -Dmaven.repo.remote=${_remote_repo}"
+        [ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
+        [ -n "${_remote_repo}" ] && _options="${_options% } -Dmaven.repo.remote=${_remote_repo}"  # Probably this one or -DremoteRepositories both is NOT working.
         mvn `_mvn_settings "${_remote_repo}"` archetype:generate -DgroupId=${_g} -DartifactId=${_a} -DarchetypeArtifactId=${_type} -DarchetypeVersion=${_v} -DinteractiveMode=false ${_options}
     fi
 }
