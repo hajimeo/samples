@@ -312,6 +312,7 @@ function r2dh() {
         [ -n "${_3rd}" ] && ( sudo route delete -net 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 ${_dh} )
         sudo route delete -net 172.17.0.0/24 &>/dev/null;sudo route add -net 172.17.0.0/24 ${_dh}
         sudo route delete -net 172.18.0.0/24 &>/dev/null;sudo route add -net 172.18.0.0/24 ${_dh}
+        sudo route delete -net 172.100.0.0/24 &>/dev/null;sudo route add -net 172.100.0.0/24 ${_dh}
     elif [ "Linux" = "`uname`" ]; then
         [ -n "${_3rd}" ] && ( sudo ip route del 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 gw ${_dh} ens3 )
     else    # Assuming windows (cygwin)
