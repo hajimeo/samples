@@ -272,6 +272,8 @@ function f_populate_docker_proxy() {
     _log "DEBUG" "${_cmd} pull ${_host_port}/${_tag_name}"
     ${_cmd} pull ${_host_port}/${_tag_name} || return $?
 }
+#ssh -2CNnqTxfg -L18182:localhost:18182 node3250    #ps aux | grep 2CNnqTxfg
+#f_populate_docker_hosted "" "localhost:18182"
 function f_populate_docker_hosted() {
     local _tag_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_HOSTED}"}"
