@@ -9,6 +9,87 @@ __PID="$$"
 __LAST_ANSWER=""
 __TMP=${__TMP:-"/tmp"}
 
+function _log() {
+    local _log_file="${_LOG_FILE_PATH:-"/dev/null"}"
+    local _is_debug="${_DEBUG:-false}"
+    if [ "$1" == "DEBUG" ] && ! ${_is_debug}; then
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >> ${_log_file}
+    else
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a ${_log_file}
+    fi 1>&2 # At this moment, outputting to STDERR
+}
+
+function _help() {
+    local _function_name="$1"
+    local _show_code="$2"
+    local _doc_only="$3"
+
+    if [ -z "$_function_name" ]; then
+        echo "_help <function name> [Y]"
+        echo ""
+        _list "func"
+        echo ""
+        return
+    fi
+
+    local _output=""
+    if [[ "$_function_name" =~ ^[fp]_ ]]; then
+        local _code="$(type $_function_name 2>/dev/null | grep -v "^${_function_name} is a function")"
+        if [ -z "$_code" ]; then
+            echo "Function name '$_function_name' does not exist."
+            return 1
+        fi
+
+        eval "$(echo -e "${_code}" | awk '/__doc__=/,/;/')"
+        if [ -z "$__doc__" ]; then
+            _output="(No help information in function name '$_function_name')\n"
+        else
+            _output="$__doc__"
+        fi
+
+        if [[ "${_doc_only}" =~ (^y|^Y) ]]; then
+            echo -e "${_output}"; return
+        fi
+
+        local _params="$(type $_function_name 2>/dev/null | grep -iP '^\s*local _[^_].*?=.*?\$\{?[1-9]' | grep -v awk)"
+        if [ -n "$_params" ]; then
+            _output="${_output}Parameters:\n"
+            _output="${_output}${_params}\n\n"
+        fi
+        if [[ "${_show_code}" =~ (^y|^Y) ]] ; then
+            _output="${_output}${_code}\n"
+            echo -e "${_output}" | less
+        else
+            [ -n "$_output" ] && echo -e "${_output}"
+        fi
+    else
+        echo "Unsupported Function name '$_function_name'."
+        return 1
+    fi
+}
+
+function _list() {
+    local _name="$1"
+    #local _width=$(( $(tput cols) - 2 ))
+    local _tmp_txt=""
+    # TODO: restore to original posix value
+    set -o posix
+
+    if [[ -z "$_name" ]]; then
+        (for _f in `typeset -F | grep -P '^declare -f [fp]_' | cut -d' ' -f3`; do
+            #eval "echo \"--[ $_f ]\" | gsed -e :a -e 's/^.\{1,${_width}\}$/&-/;ta'"
+            _tmp_txt="`_help "$_f" "" "Y"`"
+            printf "%-28s%s\n" "$_f" "$_tmp_txt"
+        done)
+    elif [[ "$_name" =~ ^func ]]; then
+        typeset -F | grep '^declare -f [fp]_' | cut -d' ' -f3
+    elif [[ "$_name" =~ ^glob ]]; then
+        set | grep "^[g]_"
+    elif [[ "$_name" =~ ^resp ]]; then
+        set | grep "^[r]_"
+    fi
+}
+
 # To test: touch -d "9 hours ago" xxxxx.sh
 function _check_update() {
     local _file_path="${1}"
@@ -172,9 +253,20 @@ function _update_hosts_file() {
     _log "DEBUG" "Updated ${_file} with ${_fqdn} ${_ip}"
 }
 
+function _url_enc() {
+    python -c "import urllib; print(urllib.quote('$1'))"
+    #python3 -c "import urllib.parse; print(urllib.parse.quote('$1', safe=''))"
+}
+
 function _b64_url_enc() {
     python -c "import base64, urllib; print(urllib.quote(base64.urlsafe_b64encode('$1')))"
     #python3 -c "import base64, urllib.parse; print(urllib.parse.quote(base64.urlsafe_b64encode('$1'.encode('utf-8')), safe=''))"
+}
+
+function _deob() {
+    local _f="$1"
+    local _u="${2:-"${USER}"}"
+    cat ${_f} | openssl enc -aes-128-cbc -md sha256 -salt -pass pass:${_u} -d 2>/dev/null
 }
 
 function _trim() {
@@ -220,6 +312,59 @@ function _wait_url() {
     done
     return 1
 }
+
+function _wait_by_port() {
+    local _port="$1"
+    local _pid="$2"     # If this PID is no longer running, no point of waiting
+    local _is_stopping="$3"
+    local _times="${4:-30}"
+    local _interval="${5:-5}"   # 5 secs x 30 times = 150 secs
+
+    [ -z "${_port}" ] && return 1
+    for i in `seq 1 ${_times}`; do
+        local _tmp_pid="$(_pid_by_port "${_port}")"
+        # Starting ...
+        if [[ ! "${_is_stopping}" =~ ^(y|Y) ]]; then
+            [ -n "${_pid}" ] && [ ! -e /proc/${_pid} ] && return 1
+            if [ -n "${_tmp_pid}" ]; then
+                sleep 1 # just in case...
+                return 0
+            fi
+        # Stopping ...
+        else
+            [ -n "${_pid}" ] && [ ! -e /proc/${_pid} ] && return 0
+            if [ -z "${_tmp_pid}" ]; then
+                sleep 1 # just in case...
+                return 0
+            fi
+        fi
+        sleep ${_interval}
+    done
+    return 1
+}
+
+function _wait() {
+    local _pid="$1"
+    local _is_stopping="$2"
+    local _times="${3:-10}"
+    local _interval="${4:-5}"
+
+    [ -z "${_pid}" ] && return 1
+    for i in `seq 1 ${_times}`; do
+        # TODO: this works with only Linux because of checking /proc
+        if [[ "${_is_stopping}" =~ ^(y|Y) ]] && [ ! -d /proc/${_pid} ]; then
+            sleep 1 # just in case...
+            return 0
+        fi
+        if [[ ! "${_is_stopping}" =~ ^(y|Y) ]] && [ -d /proc/${_pid} ]; then
+            sleep 1 # just in case...
+            return 0
+        fi
+        sleep ${_interval}
+    done
+    return 1
+}
+
 function _parallel() {
     local _cmds_list="$1"   # File or strings of commands
     local _prefix_cmd="$2"  # eg: '(date;'
@@ -414,16 +559,6 @@ function _upsert() {
         _sed -i -r "0,/^(${_if_not_exist_append_after_sed}.*)$/s//\1\n${_name_esc_sed_for_val}${_between_char}${_value_esc_sed}/" ${_file_path}
         return $?
     fi
-}
-
-function _log() {
-    local _log_file="${_LOG_FILE_PATH:-"/dev/null"}"
-    local _is_debug="${_DEBUG:-false}"
-    if [ "$1" == "DEBUG" ] && ! ${_is_debug}; then
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" >> ${_log_file}
-    else
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a ${_log_file}
-    fi 1>&2 # At this moment, outputting to STDERR
 }
 
 function _socks5_proxy() {
