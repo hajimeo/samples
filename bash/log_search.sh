@@ -1252,7 +1252,7 @@ function _json_dump() {
 function _get_json() {
     local _props="$1"           # search hierarchy list string. eg: "xxxx,yyyy,key[:=]value" (*NO* space)
     local _key="${2}"           # a key attribute in props. eg: '@class' (OrientDB), 'key' (jmx.json)
-    local _attrs="${3}"         # attribute1,attribute2,attr3.subattr3 to return only those attributes' value
+    local _attrs="${3}"         # attribute1,attribute2,attr3.*subattr3* (using dot) to return only those attributes' value
     local _find_all="${4}"      # If Y, not stopping after finding one
     local _no_pprint="${5}"     # no prettified output
     # language=Python
@@ -1332,8 +1332,14 @@ if bool(_d) is True:
                             if _a0 not in _tmp_dd:
                                 _tmp_dd[_a0] = {}
                             _tmp_dd[_a0][_a1] = _i[_a0][_a1]
+                    elif "\." in _a:
+                        _tmp_a = _a.replace("\\", "")
+                        _tmp_dd[_tmp_a] = _i[_tmp_a]
                     elif _a in _i:
                         _tmp_dd[_a] = _i[_a]
+                        #sys.stderr.write(str(_a)+"\n") # for debug
+                    #else:
+                    #    sys.stderr.write(str(_a)+" not in _i\n") # for debug
                 if len(_tmp_dd) > 0:
                     _tmp_dl.append(_tmp_dd)
             _d = _tmp_dl
