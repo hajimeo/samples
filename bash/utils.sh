@@ -289,11 +289,11 @@ function _grep() {
 function _pid_by_port() {
     local _port="$1"
     [ -z "${_port}" ] && return 1
-    # Some Linux doesn't have 'lsof' and Mac's netstat is different...
-    if which lsof &>/dev/null; then
+    # Some Linux doesn't have 'lsof' + no root user can't see all. Also Mac's netstat is very different ...
+    if [ "`uname`" = "Darwin" ]; then
         lsof -ti:${_port} -sTCP:LISTEN
     else
-        netstat -t4lnp 2>/dev/null | grep -w "0.0.0.0:${_port}" | awk '{print $7}' | grep -m1 -oE '[0-9]+' | head -n1
+        netstat -t4lnp 2>/dev/null | grep -w "0.0.0.0:${_port}" | awk '{print $7}' | grep -m1 -oE '[0-9-]+' | head -n1
     fi
 }
 function _wait_url() {
