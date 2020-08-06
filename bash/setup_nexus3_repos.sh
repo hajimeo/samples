@@ -19,7 +19,7 @@ Also functions in this script can be used for testing downloads and uploads.
 
 DOWNLOADS:
     curl ${_DL_URL%/}/bash/setup_nexus3_repos.sh \\
-         -o ${_WORK_DIR%/}/setup_nexus3_repos.sh
+         -o ${_WORK_DIR%/}/sonatype/setup_nexus3_repos.sh
 
 REQUIREMENTS / DEPENDENCIES:
     If Mac, 'gsed' and 'ggrep' are required.
@@ -65,7 +65,7 @@ Using previously saved response file and NO interviews:
 NOTE:
 For fresh install with same container name:
     docker rm -f <container>
-    sudo mv ${_WORK_DIR%/}/<mounting-volume> /tmp/  # or rm -rf
+    sudo mv ${_WORK_DIR%/}/sonatype/<mounting-volume> /tmp/  # or rm -rf
 
 To upgrade, if /nexus-data is a mounted volume, just reuse same response file but with newer Nexus version.
 If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from node-2 and node-3.
@@ -88,9 +88,9 @@ _TID="${_TID:-80}"
 ## Misc.
 _UTIL_DIR="$HOME/.bash_utils"
 if [ "`uname`" = "Darwin" ]; then
-    _WORK_DIR="$HOME/share/sonatype"
+    _WORK_DIR="$HOME/share"
 else
-    _WORK_DIR="/var/tmp/share/sonatype"
+    _WORK_DIR="/var/tmp/share"
 fi
 _LOG_FILE_PATH="/tmp/setup_nexus3_repos.log"
 _TMP="$(mktemp -d)"  # for downloading/uploading assets
@@ -703,7 +703,7 @@ function p_client_container() {
         cd -
     fi
 
-    local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true"
+    local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true -v ${_WORK_DIR%/}:/var/tmp/share"
     _log "INFO" "Running or Starting '${_name}'"
     # TODO: not right way to use 3rd and 4th arguments.
     _docker_run_or_start "${_name}" "${_ext_opts}" "${_image_name} /sbin/init" "${r_DOCKER_CMD}" || return $?
@@ -853,8 +853,10 @@ function f_nexus_https_config() {
     fi
 
     if [ ! -s "${_ca_pem}" ]; then
-        curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/rootCA_standalone.crt" -o ${_WORK_DIR%/}/rootCA_standalone.crt || return $?
-        _ca_pem="${_WORK_DIR%/}/rootCA_standalone.crt"
+        if [ ! -s "${_WORK_DIR%/}/cert/rootCA_standalone.crt" ]; then
+            curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/rootCA_standalone.crt" -o ${_WORK_DIR%/}/cert/rootCA_standalone.crt || return $?
+        fi
+        _ca_pem="${_WORK_DIR%/}/cert/rootCA_standalone.crt"
         _log "INFO" "No CA cert specified. Using ${_ca_pem}"
     fi
     _trust_ca "${_ca_pem}" || return $?
@@ -917,7 +919,7 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
     fi
 
     local _license="${r_NEXUS_LICENSE_FILE}"
-    [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype-*.lic 2>/dev/null | head -n1)"
+    [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype/sonatype-*.lic 2>/dev/null | head -n1)"
     if [ -n "${_license}" ]; then
         _upsert ${_sonatype_work%/}/etc/nexus.properties "nexus.licenseFile" "${_license}" || return $?
     elif _isYes "${r_NEXUS_INSTALL_HAC}"; then
@@ -987,9 +989,9 @@ function questions() {
                 for _i in {1..3}; do
                     _ask "Nexus container name ${_i}" "nexus${_ver_num}-${_i}" "r_NEXUS_CONTAINER_NAME_${_i}" "N" "N" "_is_container_name"
                     local _tmp_v_name="r_NEXUS_CONTAINER_NAME_${_i}"
-                    _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/nexus-data_${!_tmp_v_name}" "r_NEXUS_MOUNT_DIR_${_i}" "N" "Y" "_is_existed"
+                    _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/sonatype/nexus-data_${!_tmp_v_name}" "r_NEXUS_MOUNT_DIR_${_i}" "N" "Y" "_is_existed"
                 done
-                _ask "Mount path for shared blobstore" "${_WORK_DIR%/}/nexus-data_nexus${_ver_num}_shared_blobs" "r_NEXUS_MOUNT_DIR_SHARED" "N" "Y" "_is_existed"
+                _ask "Mount path for shared blobstore" "${_WORK_DIR%/}/sonatype/nexus-data_nexus${_ver_num}_shared_blobs" "r_NEXUS_MOUNT_DIR_SHARED" "N" "Y" "_is_existed"
                 _ask "Would you like to start a Socks proxy (if you do not have a reverse proxy)" "N" "r_SOCKS_PROXY"
                 if _isYes "${r_SOCKS_PROXY}"; then
                     _ask "Socks proxy port" "48484" "r_SOCKS_PROXY_PORT"
@@ -998,7 +1000,7 @@ function questions() {
                 _ask "Nexus container name" "nexus${_ver_num}" "r_NEXUS_CONTAINER_NAME" "N" "N" "_is_container_name"
                 _ask "Would you like to mount SonatypeWork directory?" "Y" "r_NEXUS_MOUNT" "N" "N"
                 if _isYes "${r_NEXUS_MOUNT}"; then
-                    _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/nexus-data_${r_NEXUS_CONTAINER_NAME%/}" "r_NEXUS_MOUNT_DIR" "N" "Y" "_is_existed"
+                    _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/sonatype/nexus-data_${r_NEXUS_CONTAINER_NAME%/}" "r_NEXUS_MOUNT_DIR" "N" "Y" "_is_existed"
                 fi
                 _ask "Nexus container exposing port for 8081 ('0' to disable docker port forward)" "8081" "r_NEXUS_CONTAINER_PORT1" "N" "Y" "_is_port_available"
                 if [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
@@ -1006,7 +1008,7 @@ function questions() {
                 fi
             fi
             _ask "Nexus license file path if you have:
-If empty, it will try finding from ${_WORK_DIR%/}/sonatype-*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_is_license_path"
+If empty, it will try finding from ${_WORK_DIR%/}/sonatype/sonatype-*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_is_license_path"
         fi
         _ask "Would you like to create another container with python, npm, mvn etc. client commands?" "N" "r_NEXUS_CLIENT_INSTALL" "N" "N"
     fi
@@ -1084,8 +1086,8 @@ function questions_cleanup() {
             _questions_cleanup_inner "${!_v_name}" "${!_v_name_m}" "${_clean_cmds_file}"
         done
     fi
-    # Only if the mount path is under _WORK_DIR to be safe.
-    if [ -n "${r_NEXUS_MOUNT_DIR_SHARED}" ] && [ -n "${_WORK_DIR%/}" ] && [[ "${r_NEXUS_MOUNT_DIR_SHARED}" =~ ^${_WORK_DIR%/}/ ]]; then
+    # Only if the mount path is under ${_WORK_DIR%/}/sonatype to be safe.
+    if [ -n "${r_NEXUS_MOUNT_DIR_SHARED}" ] && [ -n "${_WORK_DIR%/}" ] && [[ "${r_NEXUS_MOUNT_DIR_SHARED}" =~ ^${_WORK_DIR%/}/sonatype ]]; then
         _questions_cleanup_inner_inner "sudo rm -rf ${r_NEXUS_MOUNT_DIR_SHARED}" "${_clean_cmds_file}"
     fi
     echo "=== Commands which will be run: ==================================="
@@ -1110,7 +1112,7 @@ function _questions_cleanup_inner() {
         _questions_cleanup_inner_inner "docker rm -f ${_name}" "${_tmp_file}"
     fi
     # Only if the mount path is under _WORK_DIR to be safe.
-    if [ -n "${_mount}" ] && [ -n "${_WORK_DIR%/}" ] && [[ "${_mount}" =~ ^${_WORK_DIR%/}/ ]]; then
+    if [ -n "${_mount}" ] && [ -n "${_WORK_DIR%/}" ] && [[ "${_mount}" =~ ^${_WORK_DIR%/}/sonatype ]]; then
         _questions_cleanup_inner_inner "sudo rm -rf ${_mount}" "${_tmp_file}"
     fi
 }
@@ -1162,9 +1164,9 @@ function _is_license_path() {
         echo "$1 does not exist." >&2
         return 1
     elif _isYes "${r_NEXUS_INSTALL_HAC}"; then
-        _license="$(ls -1t ${_WORK_DIR%/}/sonatype-*.lic 2>/dev/null | head -n1)"
+        _license="$(ls -1t ${_WORK_DIR%/}/sonatype/sonatype-*.lic 2>/dev/null | head -n1)"
         if [ -z "${_license}" ]; then
-            echo "HA-C is requested but no license with 'ls ${_WORK_DIR%/}/sonatype-*.lic'." >&2
+            echo "HA-C is requested but no license with 'ls ${_WORK_DIR%/}/sonatype/sonatype-*.lic'." >&2
             return 1
         fi
     fi
@@ -1255,7 +1257,7 @@ main() {
                 local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
                 local _v_name_ip="_ip_${_i}"
                 local _tmp_ext_opts="${_ext_opts}"
-                local _tmp_ext_opts="${_tmp_ext_opts} -v ${_WORK_DIR%/}:${_WORK_DIR%/}"
+                local _tmp_ext_opts="${_tmp_ext_opts} -v ${_WORK_DIR%/}:/var/tmp/share"
                 if _isYes "${r_NEXUS_MOUNT}"; then
                     _tmp_ext_opts="${_tmp_ext_opts} $(f_nexus_mount_volume "${!_v_name_m}")" || return $?
                     f_nexus_init_properties "${!_v_name_m}" || return $?
@@ -1272,7 +1274,7 @@ main() {
                 fi
             done
         else
-            local _tmp_ext_opts="-v ${_WORK_DIR%/}:${_WORK_DIR%/}"
+            local _tmp_ext_opts="-v ${_WORK_DIR%/}:/var/tmp/share"
             # Port forwarding for Nexus Single Node (obviously can't do same for HA as port will conflict)
             if [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
                 local _p="-p ${r_NEXUS_CONTAINER_PORT1}:8081"
