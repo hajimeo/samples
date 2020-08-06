@@ -38,7 +38,7 @@ COMMAND OPTIONS:
 
     -C [-r /path/to/existing/response-file.resp]
         *DANGER*
-        Delete the container and sonatype-work directory for fresh installation.
+        Cleaning/deleting a container and sonatype-work directory for fresh installation.
 
 EXAMPLE COMMANDS:
 Start script with interview mode:
@@ -655,7 +655,7 @@ function f_api() {
 }
 
 # Create a container which installs python, npm, mvn, nuget, etc.
-#docker rm -f nexus-client; p_client_container "http://dh1.standalone.localdomain:8081/"
+#docker rm -f nexus-client; sudo p_client_container "http://dh1.standalone.localdomain:8081/"
 # shellcheck disable=SC2120
 function p_client_container() {
     local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
@@ -784,7 +784,7 @@ password: ${_pwd}" > ${_TMP%/}/pypirc
     _repo_url="${_base_url%/}/repository/rubygem-proxy"
     # @see: https://www.server-world.info/en/note?os=CentOS_7&p=ruby23
     #       Also need git newer than 1.8.8, but https://github.com/iusrepo/git216/issues/5
-    ${_cmd} exec -it ${_name} bash -c "yum remove -y git*; yum -y install https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm && ${_yum_install} git"
+    ${_cmd} exec -it ${_name} bash -c "yum remove -y git*; yum -y install https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm && ${_yum_install} git" &>>${_LOG_FILE_PATH:-"/dev/null"}
     echo '#!/bin/bash
 source /opt/rh/rh-ruby23/enable
 export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.sh
@@ -800,8 +800,7 @@ export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.s
     - http://${_usr}:${_pwd}@${_repo_url_without_http%/}/" > ${_TMP%/}/gemrc
         ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/root/.gemrc && ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/home/${_user}/.gemrc && ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.gemrc;
     fi
-    _log "NOTE" "Installing cocoapods even though 'pod' command won't work because of no Xcode project ..."
-    ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods -v 1.8.4" >>${_LOG_FILE_PATH:-"/dev/null"}
+    ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods -v 1.8.4" &>>${_LOG_FILE_PATH:-"/dev/null"}
     # Need Xcode on Mac?: https://download.developer.apple.com/Developer_Tools/Xcode_10.3/Xcode_10.3.xip (or https://developer.apple.com/download/more/)
     curl -s -f -o ${_TMP%/}/cocoapods-test.tgz -L https://github.com/hajimeo/samples/raw/master/misc/cocoapods-test.tgz && \
     ${_cmd} cp ${_TMP%/}/cocoapods-test.tgz ${_name}:/home/${_user}/cocoapods-test.tgz && \
@@ -1196,6 +1195,7 @@ function _is_existed() {
 main() {
     # Clear the log file if not empty
     [ -s "${_LOG_FILE_PATH}" ] && gzip -S "_$(date +'%Y%m%d%H%M%S').gz" "${_LOG_FILE_PATH}" &>/dev/null
+    [ -n "${_LOG_FILE_PATH}" ] && touch ${_LOG_FILE_PATH} && chmod a+w ${_LOG_FILE_PATH}
 
     # Checking requirements (so far only a few commands)
     if [ "`uname`" = "Darwin" ]; then
