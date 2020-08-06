@@ -86,9 +86,6 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 # TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
 # Slack API Search
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="cd $HOME/IdeaProjects/samples/python/ && nohup python ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
-[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py ] && alias sptZip3="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py"
-[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus2-support-zip.py ] && alias sptZip2="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus2-support-zip.py"
-[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/dump_nxrm3_groovy_scripts.py ] && alias sptDumpScript="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/dump_nxrm3_groovy_scripts.py"
 
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
@@ -399,43 +396,6 @@ function sync_nexus_binaries() {
     echo "Synchronising IQ binaries from/to ${_host} ..." >&2
     rsync -Prc root@${_host}:/var/tmp/share/sonatype/nexus-iq-server-*-bundle.tar.gz $HOME/.nexus_executable_cache/
     rsync -Prc $HOME/.nexus_executable_cache/nexus-iq-server-*-bundle.tar.gz root@${_host}:/var/tmp/share/sonatype/
-}
-function sptBoot() {
-    local _zip="$1"
-    local _jdb="$2"
-
-    [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
-    if [ -z "${_zip}" ]; then
-        _zip="$(ls -1 ./*-202?????-??????*.zip | tail -n1)" || return $?
-        echo "Using ${_zip} ..."
-    fi
-    #echo "To just re-launch or start, check relaunch-support.sh"
-    if [ ! -s $HOME/.nexus_executable_cache/ssl/keystore.jks.orig ]; then
-        echo "Replacing keystore.jks ..."
-        mv $HOME/.nexus_executable_cache/ssl/keystore.jks $HOME/.nexus_executable_cache/ssl/keystore.jks.orig
-        cp $HOME/IdeaProjects/samples/misc/standalone.localdomain.jks $HOME/.nexus_executable_cache/ssl/keystore.jks
-        echo "Append 'local.standalone.localdomain' in 127.0.0.1 line in /etc/hosts."
-    fi
-    if [[ "${_jdb}" =~ ^(y|Y) ]]; then
-        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py --remote-debug -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
-    else
-        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
-    fi || echo "NOTE: If error was port already in use, you might need to run below:
-    . ~/IdeaProjects/work/bash/install_sonatype.sh
-    f_sql_nxrm \"config\" \"SELECT attributes['docker']['httpPort'] FROM repository WHERE attributes['docker']['httpPort'] IS NOT NULL\" \".\" \"\$USER\"
-If ports conflict, edit nexus.properties is easier. eg:8080.
-"
-}
-# To start local (on Mac) IQ server
-function iqStart() {
-    local _base_dir="${1:-"."}"
-    local _java_opts=${2}
-    #local _java_opts=${@:2}
-    local _jar_file="$(find ${_base_dir%/} -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
-    local _cfg_file="$(dirname "${_jar_file}")/config.yml"
-    grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
-    grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.bak -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
-    java -Xmx2g ${_java_opts} -jar "${_jar_file}" server "${_cfg_file}"
 }
 
 
