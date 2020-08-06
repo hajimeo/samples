@@ -76,7 +76,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 ## Global variables
 _ADMIN_USER="admin"
 _ADMIN_PWD="admin123"
-_REPO_FORMATS="maven,pypi,npm,nuget,docker,yum,rubygem,conan,bower,raw"
+_REPO_FORMATS="maven,pypi,npm,nuget,docker,yum,rubygem,conan,cocoapods,bower,raw"
 ## Updatable variables
 _NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
 _IQ_CLI_VER="${_IQ_CLI_VER-"1.95.0-01"}"    # If empty, not download CLI jar
@@ -86,12 +86,6 @@ _IS_NXRM2=${_IS_NXRM2:-"N"}
 _NO_DATA=${_NO_DATA:-"N"}
 _TID="${_TID:-80}"
 ## Misc.
-_UTIL_DIR="$HOME/.bash_utils"
-if [ "`uname`" = "Darwin" ]; then
-    _WORK_DIR="$HOME/share"
-else
-    _WORK_DIR="/var/tmp/share"
-fi
 _LOG_FILE_PATH="/tmp/setup_nexus3_repos.log"
 _TMP="$(mktemp -d)"  # for downloading/uploading assets
 ## Variables which used by command arguments
@@ -393,17 +387,18 @@ function f_setup_conan() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://conan.bintray.com","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conan-proxy"}],"type":"rpc"}' || return $?
     fi
     # TODO: add some data for xxxx-proxy
+}
 
-    # TODO: If no xxxx-hosted, create it (Not implemented yet: https://issues.sonatype.org/browse/NEXUS-23629)
-    #if ! _does_repo_exist "${_prefix}-hosted"; then
-    #fi
-    # TODO: add some data for xxxx-hosted
+function f_setup_cocoapods() {
+    local _prefix="${1:-"cocoapods"}"
+    local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
+    # NOTE: If you disabled Anonymous access, then it is needed to enable the Conan Bearer Token Realm (via Administration > Security > Realms):
 
-    # TODO: If no xxxx-group, create it (As no hosted, probably no group)
-    #if ! _does_repo_exist "${_prefix}-group"; then
-    #fi
-    # TODO: add some data for xxxx-group
-    #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
+    # If no xxxx-proxy, create it (No HA, but seems to work with HA???)
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://cdn.cocoapods.org/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"cocoapods-proxy"}],"type":"rpc"}' || return $?
+    fi
+    # TODO: add some data for xxxx-proxy
 }
 
 function f_setup_raw() {
@@ -711,11 +706,20 @@ function p_client_container() {
 
     # Create a test user if hasn't created (testuser:testuser123)
     _container_useradd "${_name}" "testuser" "" "Y" "${r_DOCKER_CMD}"
+
+    # Trust default CA certificate
+    if [[ "${_base_url}" =~ \.standalone\.localdomain ]] && [ -s "${_WORK_DIR%/}/cert/rootCA_standalone.crt" ]; then
+        ${_cmd} cp ${_WORK_DIR%/}/cert/rootCA_standalone.crt ${_name}:/etc/pki/ca-trust/source/anchors/ && \
+        ${_cmd} exec -it ${_name} update-ca-trust
+    fi
+
     # Setup clients' config files
     _log "INFO" "Setting up various client commands (outputs:${_LOG_FILE_PATH:-"/dev/null"})"
     f_reset_client_configs "${_name}" "testuser" "${_base_url}"
-    _log "INFO" "Completed $FUNCNAME
-To save as image: docker stop ${_name}; docker commit ${_name} ${_name}"
+    _log "INFO" "Completed $FUNCNAME .
+To save as image: docker stop ${_name}; docker commit ${_name} ${_name}
+To login: ssh ${_name}
+"
 }
 
 # Setup or Re-set client configs with given Nexus base URL
@@ -798,17 +802,20 @@ export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.s
     fi
     _log "NOTE" "Installing cocoapods even though 'pod' command won't work because of no Xcode project ..."
     ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods -v 1.8.4" >>${_LOG_FILE_PATH:-"/dev/null"}
-    _log "NOTE" "Need Xcode on Mac?: https://download.developer.apple.com/Developer_Tools/Xcode_10.3/Xcode_10.3.xip (or https://developer.apple.com/download/more/)"
+    # Need Xcode on Mac?: https://download.developer.apple.com/Developer_Tools/Xcode_10.3/Xcode_10.3.xip (or https://developer.apple.com/download/more/)
+    curl -s -f -o ${_TMP%/}/cocoapods-test.tgz -L https://github.com/hajimeo/samples/raw/master/misc/cocoapods-test.tgz && \
+    ${_cmd} cp ${_TMP%/}/cocoapods-test.tgz ${_name}:/home/${_user}/cocoapods-test.tgz && \
+    ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/cocoapods-test.tgz
 
     # Using Nexus maven repository if available
     _repo_url="${_base_url%/}/repository/maven-group"
-    curl -s -o ${_TMP%/}/settings.xml -L ${_DL_URL%/}/misc/m2_settings.tmpl.xml && \
+    curl -s -f -o ${_TMP%/}/settings.xml -L ${_DL_URL%/}/misc/m2_settings.tmpl.xml && \
     sed -i -e "s@_REPLACE_MAVEN_USERNAME_@${_usr}@1" -e "s@_REPLACE_MAVEN_USER_PWD_@${_pwd}@1" -e "s@_REPLACE_MAVEN_REPO_URL_@${_repo_url%/}/@1" ${_TMP%/}/settings.xml && \
     ${_cmd} exec -it ${_name} bash -l -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null' && \
     ${_cmd} cp ${_TMP%/}/settings.xml ${_name}:/home/${_user}/.m2/settings.xml && \
     ${_cmd} exec -it ${_name} chown -R ${_user}: /home/${_user}/.m2
 
-    # TODO: add other client configs (eg: cocoapads is installed but not configured)
+    # TODO: add other client configs (eg: cocoapods is installed but not configured)
 }
 
 function f_container_iq_cli() {
@@ -838,7 +845,7 @@ function f_nexus_testuser() {
 }
 
 function f_nexus_https_config() {
-    local _mount="$1"
+    local _mount="${1}"
     local _ca_pem="${2}"
 
     _upsert ${_mount%/}/etc/nexus.properties "ssl.etc" "\${karaf.data}/etc/jetty" || return $?
@@ -852,13 +859,6 @@ function f_nexus_https_config() {
         curl -s -f -L -o "${_mount%/}/etc/jetty/keystore.jks" "${_DL_URL%/}/misc/standalone.localdomain.jks" || return $?
     fi
 
-    if [ ! -s "${_ca_pem}" ]; then
-        if [ ! -s "${_WORK_DIR%/}/cert/rootCA_standalone.crt" ]; then
-            curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/rootCA_standalone.crt" -o ${_WORK_DIR%/}/cert/rootCA_standalone.crt || return $?
-        fi
-        _ca_pem="${_WORK_DIR%/}/cert/rootCA_standalone.crt"
-        _log "INFO" "No CA cert specified. Using ${_ca_pem}"
-    fi
     _trust_ca "${_ca_pem}" || return $?
     _log "DEBUG" "HTTPS configured against config files under ${_mount}"
 }

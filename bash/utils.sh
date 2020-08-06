@@ -8,6 +8,11 @@
 __PID="$$"
 __LAST_ANSWER=""
 __TMP=${__TMP:-"/tmp"}
+if [ "`uname`" = "Darwin" ] && [ -z "${_WORK_DIR}" ]; then
+    _WORK_DIR="$HOME/share"
+else
+    _WORK_DIR="/var/tmp/share"
+fi
 
 function _log() {
     local _log_file="${_LOG_FILE_PATH:-"/dev/null"}"
@@ -128,7 +133,7 @@ function _check_update() {
             return 0
         fi
     fi
-    if curl -s -k -L -f --retry 3 "${_remote_repo}" -o "${_tmp_file}"; then
+    if curl -s -k -L -f --retry 3 --compressed "${_remote_repo}" -o "${_tmp_file}"; then
         if [ -f "${_file_path}" ]; then
             # If can't take a backup, not proceeding.
             _backup "${_file_path}" || return $?
@@ -602,7 +607,14 @@ open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-ser
 
 function _trust_ca() {
     local _ca_pem="$1"
-    [ -s "${_ca_pem}" ] || return 1
+    if [ ! -s "${_ca_pem}" ]; then
+        if [ ! -s "${_WORK_DIR%/}/cert/rootCA_standalone.crt" ]; then
+            curl -s -f -m 7 --retry 2 --compressed -L "${_DL_URL%/}/misc/rootCA_standalone.crt" -o ${_WORK_DIR%/}/cert/rootCA_standalone.crt || return $?
+        fi
+        _ca_pem="${_WORK_DIR%/}/cert/rootCA_standalone.crt"
+        _log "INFO" "No CA cert specified. Using ${_ca_pem}"
+    fi
+
     # Test
     local _CN="$(openssl x509 -in "${_ca_pem}" -noout -subject | grep -oE "CN\s*=.+" | cut -d"=" -f2 | xargs)"  # somehow xargs trim spaces
     if [ -z "${_CN}" ]; then
@@ -612,7 +624,7 @@ function _trust_ca() {
     local _file_name="$(basename "${_ca_pem}")"
     local _ca_dir=""
     local _ca_cmd=""
-    # If Ubuntu / Debian
+    # If Ubuntu / Debian / CentOS 7
     if which update-ca-trust &>/dev/null; then
         _ca_cmd="update-ca-trust"
         _ca_dir="/etc/pki/ca-trust/source/anchors"
