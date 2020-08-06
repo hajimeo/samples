@@ -173,14 +173,14 @@ function f_setup_npm() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://registry.npmjs.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.4.tgz" "${_TMP%/}/lodash-4.17.15.tgz"
+    f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.19.tgz" "${_TMP%/}/lodash-4.17.19.tgz"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    f_upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/lodash-4.17.15.tgz"
+    f_upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/lodash-4.17.19.tgz"
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
@@ -1179,7 +1179,7 @@ function _is_url_reachable() {
     fi
 }
 function _is_port_available() {
-    if [ -n "$1" ] && _pid_by_port "$1" &>/dev/null; then
+    if [ -n "$1" ] && nc -w1 -z localhost $1 2>/dev/null; then
         echo "Port $1 is already in use." >&2
         return 1
     fi
