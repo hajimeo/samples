@@ -718,7 +718,7 @@ function p_client_container() {
     f_reset_client_configs "${_name}" "testuser" "${_base_url}"
     _log "INFO" "Completed $FUNCNAME .
 To save : docker stop ${_name}; docker commit ${_name} ${_name}
-To login: ssh ${_name}"
+To login: ssh testuser@${_name}"
 }
 
 # Setup or Re-set client configs with given Nexus base URL
