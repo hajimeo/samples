@@ -661,6 +661,7 @@ function f_api() {
 
 # Create a container which installs python, npm, mvn, nuget, etc.
 #docker rm -f nexus-client; p_client_container "http://dh1.standalone.localdomain:8081/"
+# shellcheck disable=SC2120
 function p_client_container() {
     local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     local _name="${2:-"nexus-client"}"
@@ -779,28 +780,25 @@ password: ${_pwd}" > ${_TMP%/}/pypirc
     _repo_url="${_base_url%/}/repository/rubygem-proxy"
     # @see: https://www.server-world.info/en/note?os=CentOS_7&p=ruby23
     #       Also need git newer than 1.8.8, but https://github.com/iusrepo/git216/issues/5
-    ${_cmd} exec -it ${_name} bash -c "yum remove -y git*;yum install https://centos7.iuscommunity.org/ius-release.rpm && yum --enablerepo=ius-archive -y install git2u"
+    ${_cmd} exec -it ${_name} bash -c "yum remove -y git*; yum -y install https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm && ${_yum_install} git"
     echo '#!/bin/bash
 source /opt/rh/rh-ruby23/enable
 export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.sh
     ${_cmd} cp ${_TMP%/}/rh-ruby23.sh ${_name}:/etc/profile.d/rh-ruby23.sh
-    if ! _is_url_reachable "${_repo_url}"; then
-        # If repo is not reachable, install cocoapods *first* (Note: as of today, newest cocoapods fails with "Failed to build gem native extension")
-        ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods -v 1.8.4" >>${_LOG_FILE_PATH:-"/dev/null"}
+
+    # If repo is reachable, install cocoapods *first* (Note: as of today, newest cocoapods fails with "Failed to build gem native extension")
+    if _is_url_reachable "${_repo_url}"; then
+        local _repo_url_without_http="${_repo_url}"
+        [[ "${_repo_url}" =~ ^https?://(.+)$ ]] && _repo_url_without_http="${BASH_REMATCH[1]}"
+        echo ":verbose: :really
+    :disable_default_gem_server: true
+    :sources:
+    - http://${_usr}:${_pwd}@${_repo_url_without_http%/}/" > ${_TMP%/}/gemrc
+        ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/root/.gemrc && ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/home/${_user}/.gemrc && ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.gemrc;
     fi
-    local _repo_url_without_http="${_repo_url}"
-    [[ "${_repo_url}" =~ ^https?://(.+)$ ]] && _repo_url_without_http="${BASH_REMATCH[1]}"
-    echo ":verbose: :really
-:disable_default_gem_server: true
-:sources:
-- http://${_usr}:${_pwd}@${_repo_url_without_http%/}/" > ${_TMP%/}/gemrc
-    if ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/root/.gemrc &&
-        ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/home/${_user}/.gemrc &&
-        ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.gemrc &&
-        _is_url_reachable "${_repo_url}";
-    then
-        ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods -v 1.8.4" >>${_LOG_FILE_PATH:-"/dev/null"}
-    fi
+    _log "NOTE" "Installing cocoapods even though 'pod' command won't work because of no Xcode project ..."
+    ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods -v 1.8.4" >>${_LOG_FILE_PATH:-"/dev/null"}
+    _log "NOTE" "Need Xcode on Mac?: https://download.developer.apple.com/Developer_Tools/Xcode_10.3/Xcode_10.3.xip (or https://developer.apple.com/download/more/)"
 
     # Using Nexus maven repository if available
     _repo_url="${_base_url%/}/repository/maven-group"
