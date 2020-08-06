@@ -23,10 +23,11 @@ function _docker_add_network() {
 function _container_add_NIC() {
     local _name="${1}"
     local _network="${2:-"bridge"}"
-    local _cmd="${3:-"${_DOCKER_CMD}"}"
+    local _keep_gw="${3}"
+    local _cmd="${4:-"${_DOCKER_CMD}"}"
 
     local _net_names="$(${_cmd} inspect ${_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(json.dumps(a[0]['NetworkSettings']['Networks'].keys()))")"
-    if [[ "${_net_names}" =~ "${_network}" ]]; then
+    if [[ "${_net_names}" =~ \"${_network}\" ]]; then
         _log "INFO" "The network '${_network}' is already set (${_net_names})"
         return 0
     fi
@@ -34,11 +35,11 @@ function _container_add_NIC() {
     ${_cmd} network connect ${_network} ${_name} || return $?
     local _after_gw="$(${_cmd} inspect ${_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['NetworkSettings']['Gateway'])")"
     if [ -n "${_before_gw}" ] && [ "${_before_gw}" != "${_after_gw}" ]; then
-        _log "WARN" "Gateway address has been changed (before: "${_before_gw}", after: ${_after_gw})
-     May want to execute below (please double check NIC name):
-route add default gw ${_before_gw} eth0\
-route del default gw ${_after_gw}\
-"
+        if _isYes "${_keep_gw}"; then
+            ${_cmd} exec -it ${_name} bash -c "route add default gw ${_before_gw} eth0; route del default gw ${_after_gw}"
+        else
+            _log "WARN" "Gateway address has been changed (before: ${_before_gw}, after: ${_after_gw})"
+        fi
     fi
     ${_cmd} exec -it ${_name} bash -c "netstat -rn"
 }

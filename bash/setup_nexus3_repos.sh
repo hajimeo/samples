@@ -707,7 +707,7 @@ function p_client_container() {
     _log "INFO" "Running or Starting '${_name}'"
     # TODO: not right way to use 3rd and 4th arguments.
     _docker_run_or_start "${_name}" "${_ext_opts}" "${_image_name} /sbin/init" "${r_DOCKER_CMD}" || return $?
-    _container_add_NIC "${_name}" "bridge" "${r_DOCKER_CMD}"
+    _container_add_NIC "${_name}" "bridge" "Y" "${r_DOCKER_CMD}"
 
     # Create a test user if hasn't created (testuser:testuser123)
     _container_useradd "${_name}" "testuser" "" "Y" "${r_DOCKER_CMD}"
