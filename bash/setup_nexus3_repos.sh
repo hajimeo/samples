@@ -42,25 +42,25 @@ COMMAND OPTIONS:
 
 EXAMPLE COMMANDS:
 Start script with interview mode:
-    ${_filename}
+    sudo ${_filename}
 
 Using default values and NO interviews:
-    ${_filename} -a
+    sudo ${_filename} -a
 
 Create Nexus 3.24.0 container and setup available formats:
-    ${_filename} -v 3.24.0 [-a]
+    sudo ${_filename} -v 3.24.0 [-a]
 
 Setup docker repositories only (and populate some data if 'docker' command is available):
-    ${_filename} -f docker [-a]
+    sudo ${_filename} -f docker [-a]
 
 Setup maven,npm repositories only:
-    ${_filename} -f maven,npm [-a]
+    sudo ${_filename} -f maven,npm [-a]
 
 Using previously saved response file and review your answers:
-    ${_filename} -r ./my_saved_YYYYMMDDhhmmss.resp
+    sudo ${_filename} -r ./my_saved_YYYYMMDDhhmmss.resp
 
 Using previously saved response file and NO interviews:
-    ${_filename} -a -r ./my_saved_YYYYMMDDhhmmss.resp
+    sudo ${_filename} -a -r ./my_saved_YYYYMMDDhhmmss.resp
 
 NOTE:
 For fresh install with same container name:
