@@ -1195,6 +1195,8 @@ main() {
     # Clear the log file if not empty
     [ -s "${_LOG_FILE_PATH}" ] && gzip -S "_$(date +'%Y%m%d%H%M%S').gz" "${_LOG_FILE_PATH}" &>/dev/null
     [ -n "${_LOG_FILE_PATH}" ] && touch ${_LOG_FILE_PATH} && chmod a+w ${_LOG_FILE_PATH}
+    # Just in case, creating the work directory
+    [ -n "${_WORK_DIR}" ] && [ ! -d "${_WORK_DIR}/sonatype" ] && mkdir -p -m 777 ${_WORK_DIR}/sonatype
 
     # Checking requirements (so far only a few commands)
     if [ "`uname`" = "Darwin" ]; then
