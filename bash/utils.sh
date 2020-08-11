@@ -50,8 +50,8 @@ function _find_recent() {
 
 function _tail_logs() {
     local __doc__="Tail log files"
-    local _log_dir="${1}"
-    local _log_file_glob="${2:-"*.log"}"
+    local _log_file_glob="${1:-"*.log"}"
+    local _log_dir="${2}"
     local _files_oneline=$(_find_recent "${_log_dir}" "${_log_file_glob}")
     if [ -z "${_files_oneline}" ]; then
         _log "WARN" "No files to tail with $@"
