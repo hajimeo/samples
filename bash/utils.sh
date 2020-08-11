@@ -24,6 +24,52 @@ function _log() {
     fi 1>&2 # At this moment, outputting to STDERR
 }
 
+
+function _find_recent() {
+    local __doc__="Find recent (log) files"
+    local _dir="${1}"
+    local _file_glob="${2:-"*.log"}"
+    local _follow_symlink="${3:-"Y"}"
+    local _base_dir="${4:-"${_BASE_DIR:-"."}"}" # the global env variable _BASE_DIR is set, using.
+    local _mmin="${5-"-60"}"
+    if [ ! -d "${_dir}" ]; then
+        _dir=$(if [[ "${_follow_symlink}" =~ ^(y|Y) ]]; then
+            realpath $(find -L ${_base_dir%/} -type d \( -name log -o -name logs \) | tr '\n' ' ') | sort | uniq | tr '\n' ' '
+        else
+            find ${_base_dir%/} -type d \( -name log -o -name logs \)| tr '\n' ' '
+        fi 2>/dev/null | tail -n1)
+    fi
+    [ -n "${_mmin}" ] && _mmin="-mmin ${_mmin}"
+    if [[ "${_follow_symlink}" =~ ^(y|Y) ]]; then
+        local _files_oneline="$(find -L ${_dir} -type f -name "${_file_glob}" ${_mmin} | tr '\n' ' ')"
+        [ -n "${_files_oneline}" ] && realpath ${_files_oneline} | sort | uniq | tr '\n' ' '
+    else
+        find ${_dir} -type f -name "${_file_glob}" ${_mmin} | tr '\n' ' '
+    fi
+}
+
+function _tail_logs() {
+    local __doc__="Tail log files"
+    local _log_dir="${1}"
+    local _log_file_glob="${2:-"*.log"}"
+    local _files_oneline=$(_find_recent "${_log_dir}" "${_log_file_glob}")
+    if [ -z "${_files_oneline}" ]; then
+        _log "WARN" "No files to tail with $@"
+        return 0
+    fi
+    tail -n20 -f $(_find_recent "${_log_dir}" "${_log_file_glob}")
+}
+
+function _grep_logs() {
+    local __doc__="Grep (recent) log files"
+    local _search_regex="${1}"
+    local _log_dir="${2}"
+    local _log_file_glob="${3:-"*.log"}"
+    local _grep_opts="${4:-"-IrsP"}"
+    grep ${_grep_opts} "${_search_regex}" $(_find_recent "${_log_dir}" "${_log_file_glob}")
+}
+
+
 function _help() {
     local _function_name="$1"
     local _show_code="$2"
