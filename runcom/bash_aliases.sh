@@ -37,9 +37,11 @@ alias json2csv='python3 -c "import sys,json;import pandas as pd;pdf=pd.read_json
 # Read xml file, then convert to dict, then print json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
 alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
-# Pretty print XML. NOTE: without encoding, etree.tostring returns bytes, which does not work with print()
+# Pretty|Tidy print XML. NOTE: without encoding, etree.tostring returns bytes, which does not work with print()
+alias tidyjson=prettyjson
 alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1].encode(\"utf-8\"));print(etree.tostring(t,encoding=\"unicode\",pretty_print=True))"'
 #alias prettyxml='xmllint --format'
+alias tidyxml=prettyxml
 # TODO: find with sys.argv[2] (no ".//"), then output as string
 alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(r.find(sys.argv[2],namespaces=r.nsmap))"'
 # Search with 2nd arg and output the path(s)
@@ -68,8 +70,8 @@ alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 alias kvm_haji='virt-manager -c "qemu+ssh://root@hajime/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
 
 # Java / jar related
-alias mb='nohup java -jar $HOME/Applications/metabase.jar &'    # port is 3000
-alias vnc='nohup java -jar $HOME/Applications/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
+alias mb='nohup java -jar $HOME/Apps/metabase.jar &>/tmp/metabase.out &'    # port is 3000
+alias vnc='nohup java -jar $HOME/Apps/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
 #alias vnc='nohup java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
 alias samurai='nohup java -Xmx4096m -jar $HOME/Apps/samurali/samurai.jar &'
 alias gcviewer='nohup java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar &'
@@ -330,6 +332,18 @@ function sshs() {
 }
 # My personal dirty ssh shortcut (cd /var/tmp/share/sonatype/logs/node-nxiq_nxiq)
 alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
+
+function pgStart() {
+    local _pg_data="${1:-"/usr/local/var/postgres"}"
+    local _log_path="${2:-"$HOME/postgresql.log"}"
+    local _cmd="${3:-"start"}"
+    if [ -s "${_log_path}" ]; then
+        gzip -S "_$(date +'%Y%m%d%H%M%S').gz" "${_log_path}" &>/dev/null
+        mv "${_log_path}_*.gz" /tmp/
+    fi
+    pg_ctl -D ${_pg_data} -l ${_log_path} ${_cmd}
+    # To connect: psql template1
+}
 
 # backup commands
 function backupC() {
