@@ -8,6 +8,7 @@
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 #   (optional)
 #   curl https://raw.githubusercontent.com/hajimeo/samples/master/python/line_parser.py -o /usr/local/bin/line_parser.py
+#
 
 [ -n "$_DEBUG" ] && (set -x; set -e)
 
@@ -24,7 +25,8 @@ Required commands:
     brew install gnu-sed      # for gsed
     brew install dateutils    # for dateconv
     brew install coreutils    # for gtac gdate
-    brew install q            # To query a csv file
+    brew install q            # To query csv files
+    brew install jq           # To query json files
     brew install grep         # Do not need anymore, but ggrep is faster than Mac's grep
     pip install data_hacks    # for bar_chart.py
 
@@ -1257,6 +1259,26 @@ function _get_json() {
     local _no_pprint="${5}"     # no prettified output
     # language=Python
     python3 -c 'import sys,json,re
+def update_dict_with_key(k, d, tmp_d):
+    if "\." not in k and k.find(".") > 0:
+        # TODO: should be recursive
+        (_k0, _k1) = k.split(".", 2)
+        if _k0 in d and _k1 in d[_k0]:
+            if _k0 not in tmp_d:
+                tmp_d[_k0] = {}
+            tmp_d[_k0][_k1] = d[_k0][_k1]
+        #sys.stderr.write(str(k) + " does not have backslash dot.\n") # for debug
+    elif "\." in k:
+        _tmp_k = k.replace("\\", "")
+        tmp_d[_tmp_k] = d[_tmp_k]
+        #sys.stderr.write(str(k) + " has backslash dot. ("+ str(_tmp_k) +"\n") # for debug
+    elif k in d:
+        tmp_d[k] = d[k]
+        #sys.stderr.write(str(k) + "\n") # for debug
+    #else:
+    #    sys.stderr.write(str(k) + " not in dict\n") # for debug
+    return tmp_d
+
 m = ptn_k = None
 if len("'${_key}'") > 0:
     ptn_k = re.compile("[\"]?('${_key}')[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")
@@ -1276,6 +1298,7 @@ if bool(_in) is True:
         #sys.stderr.write(e+"\n")
         _d = None
         pass
+#sys.stderr.write(str(type(_d))+"\n") # for debug
 if bool(_d) is True:
     for _p in props:
         #sys.stderr.write(str(_p)+"\n") # for debug
@@ -1289,14 +1312,14 @@ if bool(_d) is True:
                     #sys.stderr.write(str(m)+"\n") # for debug
                     (_p, _p_name) = m.groups()
             _tmp_d = []
-            for _i in _d:
-                if _p not in _i:
+            for _dd in _d:
+                if _p not in _dd:
                     continue
                 if bool(_p_name) is False:
-                    #sys.stderr.write(str(_i[_p])+"\n") # for debug
-                    _tmp_d.append(_i[_p])
-                elif bool(_p_name) is True and _i[_p] == _p_name:
-                    _tmp_d.append(_i)
+                    #sys.stderr.write(str(_dd[_p])+"\n") # for debug
+                    _tmp_d.append(_dd[_p])
+                elif bool(_p_name) is True and _dd[_p] == _p_name:
+                    _tmp_d.append(_dd)
                 if len(_tmp_d) > 0 and "'${_find_all}'".lower() != "y":
                     break
             if bool(_tmp_d) is False:
@@ -1321,25 +1344,11 @@ if bool(_d) is True:
         #sys.stderr.write(str(type(_d))+"\n") # for debug
         if type(_d) == list:
             _tmp_dl = []
-            for _i in _d:
+            for _dd in _d:
                 _tmp_dd = {}
                 #sys.stderr.write(str(_tmp_dd)+"\n") # for debug
                 for _a in attrs:
-                    if "\." not in _a and _a.find(".") > 0:
-                        # TODO: should be recursive
-                        (_a0, _a1) = _a.split(".", 2)
-                        if _a0 in _i and _a1 in _i[_a0]:
-                            if _a0 not in _tmp_dd:
-                                _tmp_dd[_a0] = {}
-                            _tmp_dd[_a0][_a1] = _i[_a0][_a1]
-                    elif "\." in _a:
-                        _tmp_a = _a.replace("\\", "")
-                        _tmp_dd[_tmp_a] = _i[_tmp_a]
-                    elif _a in _i:
-                        _tmp_dd[_a] = _i[_a]
-                        #sys.stderr.write(str(_a)+"\n") # for debug
-                    #else:
-                    #    sys.stderr.write(str(_a)+" not in _i\n") # for debug
+                    _tmp_dd = update_dict_with_key(_a, _dd, _tmp_dd)
                 if len(_tmp_dd) > 0:
                     _tmp_dl.append(_tmp_dd)
             _d = _tmp_dl
@@ -1347,8 +1356,7 @@ if bool(_d) is True:
             _tmp_dd = {}
             #sys.stderr.write(str(_d)+"\n") # for debug
             for _a in attrs:
-                if _a in _d:
-                    _tmp_dd[_a] = _d[_a]
+                _tmp_dd = update_dict_with_key(_a, _d, _tmp_dd)
             _d = _tmp_dd
     if "'${_no_pprint}'".lower() == "y":
         #sys.stderr.write("_no_pprint is Yes\n")
@@ -1364,9 +1372,8 @@ if bool(_d) is True:
         else:
             print(_d)
     elif bool(_d) is True:
-        #sys.stderr.write("_d is True\n")
-        print(json.dumps(_d, indent=4, sort_keys=True))
-'
+        #sys.stderr.write("_d is True\n") # for debug
+        print(json.dumps(_d, indent=4, sort_keys=True))'
 }
 
 function _sed() {
