@@ -146,6 +146,22 @@ function mvn-dep-file() {
     fi
 }
 
+# Get one jar (file) by GAV
+function get_jar() {
+    local _gav="$1" # eg: junit:junit:4.12
+    local _repo_url="${2:-"http://dh1.standalone.localdomain:8081/repository/maven-public/"}"
+    local _user="${3:-"admin"}"
+    local _pwd="${4:-"admin123"}"
+    if [[ "${_gav}" =~ ^([^:]+):([^:]+):([^:]+)$ ]]; then
+        local _g="${BASH_REMATCH[1]}"
+        local _a="${BASH_REMATCH[2]}"
+        local _v="${BASH_REMATCH[3]}"
+        local _path="$(echo "${_g}" | sed "s@\.@/@g")/${_a}/${_v}/${_a}-${_v}.jar"
+
+        curl -v -O -J -L -f -u ${_user}:${_pwd} -k "${_repo_url%/}/${_path#/}" || return $?
+    fi
+}
+
 # mvn devendency:get wrapper to use remote repo
 function mvn-get() {
     # maven/mvn get/download
