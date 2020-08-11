@@ -1251,6 +1251,7 @@ function _json_dump() {
     fi
 }
 
+# NOTE: utils.sh has same function
 function _get_json() {
     local _props="$1"           # search hierarchy list string. eg: "xxxx,yyyy,key[:=]value" (*NO* space)
     local _key="${2}"           # a key attribute in props. eg: '@class' (OrientDB), 'key' (jmx.json)
