@@ -1,24 +1,27 @@
 #!/usr/bin/env bash
 # curl -o /var/tmp/share/test_https.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/test_https.sh
+#
 # Useful Java flags (NOTE: based on java 8)
-#   -Dcom.sun.jndi.ldap.object.disableEndpointIdentification=true # for LDAPS
-#   -Dcom.sun.net.ssl.checkRevocation=false
-#   -Djavax.net.ssl.trustStoreType=WINDOWS-ROOT"
+#   -Dcom.sun.net.ssl.checkRevocation=false                         # to avoid hostname error
+#   -Dcom.sun.jndi.ldap.object.disableEndpointIdentification=true   # for LDAPS
+#   -Djavax.net.ssl.trustStoreType=WINDOWS-ROOT"                    # to use Windows OS truststore
+#   ‑Djdk.tls.client.protocols="TLSv1,TLSv1.1,TLSv1.2"             # to specify client protocol
 #
 #   -Dhttps.proxyHost=<proxy_hostname> -Dhttps.proxyPort=
 #   -Djava.net.useSystemProxies=true
 #
 # To DEBUG:
 #   -Djavax.net.debug=ssl,keymanager
+#   -Djavax.net.debug=ssl:handshake:verbose
+#
 
-
-
+# port number used by a test web server
 _TEST_PORT=34443
 
-
+# List supported ciphers of a web server
+# NOTE: If unexpected result, may want to check "jdk.tls.disabledAlgorithms" in $JAVA_HOME/jre/lib/security/java.security
 function get_ciphers() {
     # @see http://superuser.com/questions/109213/how-do-i-list-the-ssl-tls-cipher-suites-a-particular-website-offers
-    # OpenSSL requires the port number.
     local _host="${1:-`hostname -f`}"
     local _port="${2:-443}"
     local _host_port=$_host:$_port
@@ -47,7 +50,8 @@ function get_ciphers() {
     done
 }
 
-# Get (actually testing) enabled (not supported) TLS protocols
+# Get (actually testing) enabled and not supported TLS protocols
+# NOTE: If unexpected result, may want to check "jdk.tls.disabledAlgorithms" in $JAVA_HOME/jre/lib/security/java.security
 function get_tls_versions() {
     local _host="${1:-`hostname -f`}"
     local _port="${2:-443}"
@@ -333,6 +337,7 @@ function gen_cert_from_str() {
     fi
 }
 
+# example of how to generate a wildcard certificate
 function gen_wildcard_cert() {
     local _domain="${1:-`hostname -d`}"
     [ -z "${_domain}" ] && _domain="standalone.localdomain"
