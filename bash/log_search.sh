@@ -1260,25 +1260,48 @@ function _get_json() {
     local _no_pprint="${5}"     # no prettified output
     # language=Python
     python3 -c 'import sys,json,re
-def update_dict_with_key(k, d, tmp_d):
+def update_dict_with_key(k, d, rtn_d):
+    """
+    Update the rtn_d (dit) with the given d (dict) by filtering with k (string) key|attribute
+    >>> k = "attributes.checksum.sha1"
+    >>> d = {"attributes" : {"checksum" : {"sha1" : "you found me" }}}
+    >>> rtn_d = {"att_should_remain" : "aaaaa"}
+    >>> update_dict_with_key(k, d, rtn_d)
+    {"att_should_remain": "aaaaa", "attributes": {"checksum": {"sha1": "you found me"}}}
+    """
+    if bool(rtn_d) is False:
+        rtn_d = {}  # initialising
     if "\." not in k and k.find(".") > 0:
-        # TODO: should be recursive
-        (_k0, _k1) = k.split(".", 2)
-        if _k0 in d and _k1 in d[_k0]:
-            if _k0 not in tmp_d:
-                tmp_d[_k0] = {}
-            tmp_d[_k0][_k1] = d[_k0][_k1]
+        #sys.stderr.write(str(k) + "\n") # for debug
+        # returning the value only if all keys in _kNs exist
+        tmp_d = d
+        _kNs = k.split(".")
+        for _kN in _kNs:
+            if _kN in tmp_d:
+                tmp_d = tmp_d[_kN]
+                continue
+        value_to_store = tmp_d
+        tmp_d = {}
+        # trying to create tmp_d[_k0][_k1][_k2] ...
+        for _kN in reversed(_kNs):
+            if bool(tmp_d) is False:    # initialising
+                tmp_d[_kN] = value_to_store
+            else:
+                tmp_tmp_d = tmp_d.copy()
+                tmp_d.clear()
+                tmp_d[_kN] = tmp_tmp_d
+        rtn_d.update(tmp_d)
         #sys.stderr.write(str(k) + " does not have backslash dot.\n") # for debug
     elif "\." in k:
         _tmp_k = k.replace("\\", "")
-        tmp_d[_tmp_k] = d[_tmp_k]
+        rtn_d[_tmp_k] = d[_tmp_k]
         #sys.stderr.write(str(k) + " has backslash dot. ("+ str(_tmp_k) +"\n") # for debug
     elif k in d:
-        tmp_d[k] = d[k]
+        rtn_d[k] = d[k]
         #sys.stderr.write(str(k) + "\n") # for debug
     #else:
     #    sys.stderr.write(str(k) + " not in dict\n") # for debug
-    return tmp_d
+    return rtn_d
 
 m = ptn_k = None
 if len("'${_key}'") > 0:
