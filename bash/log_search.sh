@@ -1267,7 +1267,8 @@ def update_dict_with_key(k, d, rtn_d):
     >>> d = {"attributes" : {"checksum" : {"sha1" : "you found me" }}}
     >>> rtn_d = {"att_should_remain" : "aaaaa"}
     >>> update_dict_with_key(k, d, rtn_d)
-    {"att_should_remain": "aaaaa", "attributes": {"checksum": {"sha1": "you found me"}}}
+    #{"att_should_remain": "aaaaa", "attributes": {"checksum": {"sha1": "you found me"}}}
+    {"att_should_remain": "aaaaa", "attributes.checksum.sha1": "you found me"}
     """
     if bool(rtn_d) is False:
         rtn_d = {}  # initialising
@@ -1280,17 +1281,19 @@ def update_dict_with_key(k, d, rtn_d):
             if _kN in tmp_d:
                 tmp_d = tmp_d[_kN]
                 continue
-        value_to_store = tmp_d
-        tmp_d = {}
-        # trying to create tmp_d[_k0][_k1][_k2] ...
-        for _kN in reversed(_kNs):
-            if bool(tmp_d) is False:    # initialising
-                tmp_d[_kN] = value_to_store
-            else:
-                tmp_tmp_d = tmp_d.copy()
-                tmp_d.clear()
-                tmp_d[_kN] = tmp_tmp_d
-        rtn_d.update(tmp_d)
+        # Trying to create tmp_d[_k0][_k1][_k2] ...
+        #value_to_store = tmp_d
+        #tmp_d = {}
+        #for _kN in reversed(_kNs):
+        #    if bool(tmp_d) is False:
+        #        tmp_d[_kN] = value_to_store
+        #    else:
+        #        tmp_tmp_d = tmp_d.copy()
+        #        tmp_d.clear()
+        #        tmp_d[_kN] = tmp_tmp_d
+        #rtn_d.update(tmp_d)
+        # At this moment, using the given k as key rather than above
+        rtn_d[k] = tmp_d
         #sys.stderr.write(str(k) + " does not have backslash dot.\n") # for debug
     elif "\." in k:
         _tmp_k = k.replace("\\", "")
