@@ -51,8 +51,9 @@ function iqCli() {
             curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
         fi
     fi
-    echo "Executing: java -jar ${_iq_cli_jar} -s "${_iq_url}" -a \"admin:admin123\" -i \"${_iq_app_id}\" -t \"${_iq_stage}\" $@" >&2
-    java -Djava.io.tmpdir="${_iq_tmp}" -jar ${_iq_cli_jar} -s "${_iq_url}" -a "admin:admin123" -i "${_iq_app_id}" -t "${_iq_stage}" -r ${_iq_tmp%/}/iq_result_$(date +'%Y%m%d%H%M%S').json -X $@
+    local _cmd="java -Djava.io.tmpdir="${_iq_tmp}" -jar ${_iq_cli_jar} -s "${_iq_url}" -a "admin:admin123" -i "${_iq_app_id}" -t "${_iq_stage}" -r ${_iq_tmp%/}/iq_result_$(date +'%Y%m%d%H%M%S').json -X $@"
+    echo "Executing: ${_cmd}" >&2
+    eval "${_cmd}"
 }
 
 # Start "mvn" with IQ plugin
@@ -67,7 +68,9 @@ function iqMvn() {
         _iq_url="http://localhost:8070/"
     fi
     #local _iq_tmp="${_IQ_TMP:-"./tmp"}"
-    mvn com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -U -X $@
+    local _cmd="mvn com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -U -X $@"
+    echo "Executing: ${_cmd}" >&2
+    eval "${_cmd}"
 }
 
 function sptBoot() {
@@ -128,12 +131,14 @@ function mvn-arch-gen() {
 }
 
 # mvn archetype:generate wrapper to use a remote repo
+#mvn-dep-file httpclient-4.5.1.jar "com.example:my-app:1.0" "http://local.standalone.localdomain:8081/repository/maven-hosted/"
+#get_by_gav "com.example:my-app:1.0" "http://local.standalone.localdomain:8081/repository/repo_maven_hosted/"
 function mvn-dep-file() {
     local __doc__="https://maven.apache.org/plugins/maven-deploy-plugin/usage.html"
     local _file="${1}"
     local _gav="${2:-"com.example:my-app:1.0"}"
     local _remote_repo="$3"
-    local _server_id="$4"
+    local _server_id="${4:-"nexus"}"
     local _options="${5-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
 
     if [[ "${_gav}" =~ ^([^:]+):([^:]+):([^:]+)$ ]]; then
@@ -142,12 +147,12 @@ function mvn-dep-file() {
         local _v="${BASH_REMATCH[3]}"
         [ -n "${_remote_repo}" ] && _options="${_options% } -Durl=${_remote_repo}"
         [ -n "${_server_id}" ] && _options="${_options% } -DrepositoryId=${_server_id}"
-        mvn `_mvn_settings "${_remote_repo}"` deploy:deploy-file -DgroupId=${_g} -DartifactId=${_a} -Dversion=${_v} -Dfile=${_file} ${_options}
+        mvn `_mvn_settings "${_remote_repo}"` deploy:deploy-file -DgroupId=${_g} -DartifactId=${_a} -Dversion=${_v} -DgeneratePom=true -Dfile=${_file} ${_options}
     fi
 }
 
 # Get one jar (file) by GAV
-function get_jar() {
+function get_by_gav() {
     local _gav="$1" # eg: junit:junit:4.12
     local _repo_url="${2:-"http://dh1.standalone.localdomain:8081/repository/maven-public/"}"
     local _user="${3:-"admin"}"
@@ -195,7 +200,7 @@ function _mvn_settings() {
     echo "Using ${_settings_xml}..." >&2; sleep 3
     if [ -n "${_remote_repo}" ]; then
         # TODO: this substitute is not good
-        sed -i -E "s@<url>http.+/(content|repository)/.+</url>@<url>${_remote_repo}</url>@1" ${_settings_xml}
+        sed -i.bak -E "s@<url>http.+/(content|repository)/.+</url>@<url>${_remote_repo}</url>@1" ${_settings_xml}
     fi
     echo "-s ${_settings_xml}"
 }
