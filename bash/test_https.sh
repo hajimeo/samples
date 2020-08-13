@@ -191,6 +191,14 @@ function gen_p12_jks() {
     fi
 }
 
+# NOTE: this will ask a store password
+function rename_alias() {
+    local _keystore="$1"
+    local _crt_alias="$2"
+    local _new_alias="$3"
+    keytool -changealias -keystore "${_keystore}" -alias "${_crt_alias}" -destalias "${_new_alias}"
+}
+
 function start_https() {
     # @see https://docs.python.org/2/library/ssl.html#ssl.SSLContext.wrap_socket
     local _key="$1"
