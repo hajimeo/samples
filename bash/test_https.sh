@@ -322,7 +322,7 @@ function get_certificate_from_https() {
             # NOTE: It seems exporting cert with keytool may not work in Windows PowerShell
             keytool -printcert -rfc -sslserver ${_host}:${_port}  # -rfc to get PEM format
         else
-            # -showcerts to show all chained certs
+            # NOTE: openssl is better than keytool as it shows cert and more information
             echo -n | openssl s_client -showcerts -connect ${_host}:${_port}
         fi
     fi > /tmp/${_host}_${_port}.tmp || return $?
