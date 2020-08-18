@@ -70,11 +70,11 @@ alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 alias kvm_haji='virt-manager -c "qemu+ssh://root@hajime/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
 
 # Java / jar related
-alias mb='nohup java -jar $HOME/Apps/metabase.jar &>/tmp/metabase.out &'    # port is 3000
-alias vnc='nohup java -jar $HOME/Apps/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
-#alias vnc='nohup java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
-alias samurai='nohup java -Xmx4096m -jar $HOME/Apps/samurali/samurai.jar &'
-alias gcviewer='nohup java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar &'
+#alias mb='java -jar $HOME/Apps/metabase.jar &>/tmp/metabase.out &'    # port is 3000
+alias vnc='java -Xmx2g -jar $HOME/Apps/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
+#alias vnc='java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
+alias samurai='java -Xmx4g -jar $HOME/Apps/samurali/samurai.jar &>/tmp/samurai.out &'
+alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar &>/tmp/gcviewer.out &'
 alias groovyi='groovysh -e ":set interpreterMode true"'
 
 # Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
