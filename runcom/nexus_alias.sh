@@ -21,7 +21,7 @@ function iqCli() {
     local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
     local _iq_app_id="${_IQ_APP_ID:-"sandbox-application"}"
     local _iq_stage="${_IQ_STAGE:-"build"}" #develop|build|stage-release|release|operate
-    local _iq_tmp="${_IQ_TMP:-"./tmp"}"
+    local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}"
     local _iq_cli_ver="${_IQ_CLI_VER:-"1.95.0-01"}"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/nexus-iq-cli-${_iq_cli_ver}.jar"}"
 
@@ -98,6 +98,19 @@ function sptBoot() {
     f_sql_nxrm \"config\" \"SELECT attributes['docker']['httpPort'] FROM repository WHERE attributes['docker']['httpPort'] IS NOT NULL\" \".\" \"\$USER\"
 If ports conflict, edit nexus.properties is easier. eg:8080.
 "
+}
+
+# To start local (on Mac) IQ server
+function rmStart() {
+    local _base_dir="${1:-"."}"
+    local _java_opts=${2}
+    local _mode=${3:-"run"} # if NXRM2, not run
+    #local _java_opts=${@:2}
+    local _nexus_file="$(find ${_base_dir%/} -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
+    local _cfg_file="$(find ${_base_dir%/} -path '*/sonatype-work/nexus3/etc/*' -type f -name 'nexus.properties' 2>/dev/null | sort | tail -n1)"
+    grep -qE '^\s*nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
+    [ -n "${_java_opts}" ] && [[ ! "${INSTALL4J_ADD_VM_PARAMS}" =~ "${_java_opts}" ]] && export INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}"
+    ${_nexus_file} ${_mode}
 }
 
 # To start local (on Mac) IQ server
