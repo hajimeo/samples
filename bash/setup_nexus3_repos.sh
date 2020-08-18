@@ -409,15 +409,16 @@ function f_setup_raw() {
     if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"http://releases.mozilla.org/pub/firefox/releases/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"raw-proxy"}],"type":"rpc"}' || return $?
     fi
-    # add some data for xxxx-proxy
+    # add some data for xxxx-proxy TODO: is this working?
     f_get_asset "${_prefix}-proxy" "latest/README.txt" "${_TMP%/}/README.txt"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false,"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
     fi
-    if [ -s "${_TMP%/}/README.txt" ]; then
-        f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/README.txt -F raw.asset1.filename=README.txt
+    dd if=/dev/zero of=${_TMP%/}/test_1k.img bs=1 count=0 seek=1024
+    if [ -s "${_TMP%/}/test_1k.img" ]; then
+        f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
     fi
 
     # If no xxxx-group, create it
@@ -425,7 +426,7 @@ function f_setup_raw() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false},"group":{"memberNames":["raw-hosted","raw-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"raw-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
-    f_get_asset "${_prefix}-group" "latest-beta/README.txt"
+    f_get_asset "${_prefix}-group" "test/test_1k.img"
 }
 
 function f_iq_quarantine() {
