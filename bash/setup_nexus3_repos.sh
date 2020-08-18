@@ -18,8 +18,7 @@ function usage() {
 Also functions in this script can be used for testing downloads and uploads.
 
 DOWNLOADS:
-    curl ${_DL_URL%/}/bash/setup_nexus3_repos.sh \\
-         -o ${_WORK_DIR%/}/sonatype/setup_nexus3_repos.sh
+    curl ${_DL_URL%/}/bash/setup_nexus3_repos.sh -o ${_WORK_DIR%/}/sonatype/setup_nexus3_repos.sh
 
 REQUIREMENTS / DEPENDENCIES:
     If Mac, 'gsed' and 'ggrep' are required.
