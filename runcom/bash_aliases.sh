@@ -305,13 +305,12 @@ function r2dh() {
     local _dh="${1}"  # docker host IP or L2TP 10.0.1.1
     local _3rd="${2-100}"  # 3rd decimal in network address
     [ -z "${_dh}" ] && _dh="$(ifconfig ppp0 | grep -oE 'inet .+' | awk '{print $4}')" 2>/dev/null
-    [ -z "${_dh}" ] && _dh="dh1"
+    [ -z "${_dh}" ] && _dh="192.168.1.31"
 
     if [ "Darwin" = "`uname`" ]; then
         [ -n "${_3rd}" ] && ( sudo route delete -net 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 ${_dh} )
-        sudo route delete -net 172.17.0.0/24 &>/dev/null;sudo route add -net 172.17.0.0/24 ${_dh}
-        sudo route delete -net 172.18.0.0/24 &>/dev/null;sudo route add -net 172.18.0.0/24 ${_dh}
-        sudo route delete -net 172.100.0.0/24 &>/dev/null;sudo route add -net 172.100.0.0/24 ${_dh}
+        sudo route delete -net 172.17.0.0/16 &>/dev/null;sudo route add -net 172.17.0.0/16 ${_dh}
+        sudo route delete -net 172.18.0.0/16 &>/dev/null;sudo route add -net 172.18.0.0/16 ${_dh}
     elif [ "Linux" = "`uname`" ]; then
         [ -n "${_3rd}" ] && ( sudo ip route del 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 gw ${_dh} ens3 )
     else    # Assuming windows (cygwin)
@@ -393,6 +392,7 @@ if [ -s $HOME/IdeaProjects/samples/runcom/nexus_alias.sh ]; then
     source $HOME/IdeaProjects/samples/runcom/nexus_alias.sh
 fi
 function pubS() {
+    scp -C $HOME/IdeaProjects/samples/bash/setup_standalone.sh root@dh1:/usr/local/bin/setup_standalone.sh &
     scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/ &
     scp -C $HOME/IdeaProjects/samples/bash/utils*.sh dh1:/var/tmp/share/sonatype/ &
     scp -C $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh dh1:/var/tmp/share/sonatype/ &
