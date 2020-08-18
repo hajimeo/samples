@@ -648,13 +648,12 @@ function f_as_setup() {
     fi
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    _log "INFO" "Executing '${_cmd}' ..."
-    docker exec -it ${_name} bash -c "${_cmd} 2>/tmp/install.err"
+    _log "INFO" "Executing '${_cmd}' &>/tmp/install_${_name}.out ..."
+    docker exec -it ${_name} bash -c "${_cmd}" &>/tmp/install_${_name}.out
     if [ $? -ne 0 ]; then
-        _log "ERROR" "Installation/Setup failed. Please check container's /tmp/install.err for STDERR"
+        _log "ERROR" "Installation/Setup failed. Please check /tmp/install_${_name}.out"
         return 1
     fi
-    docker exec -it ${_name} bash -c "grep -E '^\[.+\] ERROR' /tmp/install.err"
     return 0
 }
 
