@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # https://success.docker.com/article/how-do-i-authenticate-with-the-v2-api
 
+# https://docs.docker.com/registry/spec/auth/token/
+#curl -u admin:admin123  https://dh1.standalone.localdomain:18082/v2/token
+#{"token":"DockerToken.eeb18364-f2a5-31f3-9006-5daf80ceebfd"}           << doesn't look like a bearer token
+
+
 # TODO: still not working!!!!
 
 set -e
