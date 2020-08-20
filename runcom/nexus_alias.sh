@@ -17,41 +17,31 @@ fi
 # Start iq CLI
 function iqCli() {
     local __doc__="https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
+    local _path="${1:-"./"}"
     # overwrite-able global variables
-    local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
-    local _iq_app_id="${_IQ_APP_ID:-"sandbox-application"}"
-    local _iq_stage="${_IQ_STAGE:-"build"}" #develop|build|stage-release|release|operate
+    local _iq_app_id="${2:-${_IQ_APP_ID:-"sandbox-application"}}"
+    local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
+    local _iq_url="${4:-${_IQ_URL}}"
+    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.95.0-01"}}"
+    local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
     local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}"
-    local _iq_cli_ver="${_IQ_CLI_VER:-"1.95.0-01"}"
-    local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/nexus-iq-cli-${_iq_cli_ver}.jar"}"
 
-    if [ -z "$1" ]; then
-        iqCli "./"
-        return $?
-    fi
-
-    if [ -z "${_IQ_URL}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
+    if [ -z "${_iq_url}" ] && [ -z "${_IQ_URL}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
         _iq_url="http://localhost:8070/"
-    elif [ -n "${_iq_url}" ] && [[ ! "${_iq_url}" =~ ^http.+ ]]; then
+    elif [ -n "${_iq_url}" ] && [[ ! "${_iq_url}" =~ ^https?://.+:[0-9]+ ]]; then   # Provided hostname only
         _iq_url="http://${_iq_url}:8070/"
+    elif [ -z "${_iq_url}" ]; then  # default
+        _iq_url="http://dh1.standalone.localdomain:8070/"
     fi
     #[ ! -d "${_iq_tmp}" ] && mkdir -p "${_iq_tmp}"
-    # If no preference about CLI version, search local in case of Support boot
-    local _tmp_iq_cli_jar="$(find . -maxdepth 3 -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
-    if [ -z "${_IQ_CLI_VER}" ] && [ -z "${_IQ_CLI_JAR}" ] && [ -n "${_tmp_iq_cli_jar}" ]; then
-        _iq_cli_jar="${_tmp_iq_cli_jar}"
-    fi
 
     if [ ! -s "${_iq_cli_jar}" ]; then
-        # If the file does not exist, trying to get the latest version from the _WORK_DIR
-        local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/}/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
-        if [ -n "${_tmp_iq_cli_jar}" ]; then
-            _iq_cli_jar="${_tmp_iq_cli_jar}"
-        else
-            curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
-        fi
+        #local _tmp_iq_cli_jar="$(find ${_WORK_DIR%/}/sonatype -name 'nexus-iq-cli*.jar' 2>/dev/null | sort -r | head -n1)"
+        local _cli_dir="$(dirname "${_iq_cli_jar}")"
+        [ ! -d "${_cli_dir}" ] && mkdir -p "${_cli_dir}"
+        curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
     fi
-    local _cmd="java -Djava.io.tmpdir="${_iq_tmp}" -jar ${_iq_cli_jar} -s "${_iq_url}" -a "admin:admin123" -i "${_iq_app_id}" -t "${_iq_stage}" -r ${_iq_tmp%/}/iq_result_$(date +'%Y%m%d%H%M%S').json -X $@"
+    local _cmd="java -Djava.io.tmpdir=\"${_iq_tmp}\" -jar ${_iq_cli_jar} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r \"${_iq_tmp%/}/iq_result_$(date +'%Y%m%d%H%M%S').json\" -X ${_path}"
     echo "Executing: ${_cmd}" >&2
     eval "${_cmd}"
 }
