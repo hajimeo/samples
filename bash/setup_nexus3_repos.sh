@@ -75,7 +75,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 ## Global variables
 _ADMIN_USER="admin"
 _ADMIN_PWD="admin123"
-_REPO_FORMATS="maven,pypi,npm,nuget,docker,yum,rubygem,conan,cocoapods,bower,raw"
+_REPO_FORMATS="maven,pypi,npm,nuget,docker,yum,rubygem,conan,cocoapods,bower,go,raw"
 ## Updatable variables
 _NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
 _IQ_CLI_VER="${_IQ_CLI_VER-"1.95.0-01"}"    # If empty, not download CLI jar
@@ -381,7 +381,7 @@ function f_setup_conan() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
     # NOTE: If you disabled Anonymous access, then it is needed to enable the Conan Bearer Token Realm (via Administration > Security > Realms):
 
-    # If no xxxx-proxy, create it (No HA, but seems to work with HA???)
+    # If no xxxx-proxy, create it (NOTE: No HA, but seems to work with HA???)
     if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://conan.bintray.com","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conan-proxy"}],"type":"rpc"}' || return $?
     fi
@@ -393,9 +393,26 @@ function f_setup_cocoapods() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
     # NOTE: If you disabled Anonymous access, then it is needed to enable the Conan Bearer Token Realm (via Administration > Security > Realms):
 
-    # If no xxxx-proxy, create it (No HA, but seems to work with HA???)
+    # If no xxxx-proxy, create it (NOTE: No HA, but seems to work with HA???)
     if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://cdn.cocoapods.org/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"cocoapods-proxy"}],"type":"rpc"}' || return $?
+    fi
+    # TODO: add some data for xxxx-proxy
+}
+
+function f_setup_go() {
+    local _prefix="${1:-"go"}"
+    local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
+    # NOTE: If you disabled Anonymous access, then it is needed to enable the Conan Bearer Token Realm (via Administration > Security > Realms):
+
+    # If no xxxx-proxy, create it (NOTE: No HA support)
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://gonexus.dev/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"go-proxy"}],"type":"rpc"}' || return $?
+    fi
+    # Workaround for https://issues.sonatype.org/browse/NEXUS-21642
+    if ! _is_repo_available "gosum-raw-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"raw":{"contentDisposition":"ATTACHMENT"},"proxy":{"remoteUrl":"https://sum.golang.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"gosum-raw-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"raw-proxy"}],"type":"rpc"}' || return $?
+        _log "INFO" "May need to set 'GOSUMDB=\"sum.golang.org ${r_NEXUS_URL:-"${_NEXUS_URL}"}/repository/gosum-raw-proxy\"'"
     fi
     # TODO: add some data for xxxx-proxy
 }
@@ -740,7 +757,7 @@ function f_reset_client_configs() {
     if ${_cmd} cp ${_TMP%/}/nexus-yum-test.repo ${_name}:/etc/yum.repos.d/nexus-yum-test.repo && _is_url_reachable "${_repo_url}"; then
         _yum_install="yum --disablerepo=base --enablerepo=nexusrepo install -y"
     fi
-    ${_cmd} exec -it ${_name} bash -c "${_yum_install} epel-release && curl -sL https://rpm.nodesource.com/setup_10.x | bash - && rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm;${_yum_install} centos-release-scl-rh centos-release-scl && ${_yum_install} python3 maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang" >>${_LOG_FILE_PATH:-"/dev/null"}
+    ${_cmd} exec -it ${_name} bash -c "${_yum_install} epel-release && curl -sL https://rpm.nodesource.com/setup_10.x | bash -;rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm;yum install -y centos-release-scl-rh centos-release-scl;${_yum_install} python3 maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang" >>${_LOG_FILE_PATH:-"/dev/null"}
     #yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && ${_yum_install} ripgrep
     if [ $? -ne 0 ]; then
         _log "ERROR" "installing packages with yum failed. Check ${_LOG_FILE_PATH}"
@@ -788,15 +805,18 @@ password: ${_pwd}" > ${_TMP%/}/pypirc
 source /opt/rh/rh-ruby23/enable
 export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.sh
     ${_cmd} cp ${_TMP%/}/rh-ruby23.sh ${_name}:/etc/profile.d/rh-ruby23.sh
-
-    # If repo is reachable, install cocoapods *first* (Note: as of today, newest cocoapods fails with "Failed to build gem native extension")
+    # If rubygem repo is reachable, install cocoapods *first* (Note: as of today, newest cocoapods fails with "Failed to build gem native extension")
     if _is_url_reachable "${_repo_url}"; then
+        local _protocol="http"
         local _repo_url_without_http="${_repo_url}"
-        [[ "${_repo_url}" =~ ^https?://(.+)$ ]] && _repo_url_without_http="${BASH_REMATCH[1]}"
+        if [[ "${_repo_url}" =~ ^(https?)://(.+)$ ]]; then
+            _protocol="${BASH_REMATCH[1]}"
+            _repo_url_without_http="${BASH_REMATCH[2]}"
+        fi
         echo ":verbose: :really
-    :disable_default_gem_server: true
-    :sources:
-    - http://${_usr}:${_pwd}@${_repo_url_without_http%/}/" > ${_TMP%/}/gemrc
+:disable_default_gem_server: true
+:sources:
+    - ${_protocol}://${_usr}:${_pwd}@${_repo_url_without_http%/}/" > ${_TMP%/}/gemrc
         ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/root/.gemrc && ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/home/${_user}/.gemrc && ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.gemrc;
     fi
     ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods -v 1.8.4" &>>${_LOG_FILE_PATH:-"/dev/null"}
@@ -804,6 +824,22 @@ export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.s
     curl -s -f -o ${_TMP%/}/cocoapods-test.tgz -L https://github.com/hajimeo/samples/raw/master/misc/cocoapods-test.tgz && \
     ${_cmd} cp ${_TMP%/}/cocoapods-test.tgz ${_name}:/home/${_user}/cocoapods-test.tgz && \
     ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/cocoapods-test.tgz
+
+    # If repo is reachable, setup GOPROXY env
+    _repo_url="${_base_url%/}/repository/go-proxy"
+    if _is_url_reachable "${_repo_url}"; then
+        #local _protocol="http"
+        #local _repo_url_without_http="${_repo_url}"
+        #if [[ "${_repo_url}" =~ ^(https?)://(.+)$ ]]; then
+        #    _protocol="${BASH_REMATCH[1]}"
+        #    _repo_url_without_http="${BASH_REMATCH[2]}"
+        #fi
+        #GOPROXY=${_protocol}://${_usr}:${_pwd}@${_repo_url_without_http%/}
+        echo "export GO111MODULE=on
+export GOPROXY=${_repo_url}" > ${_TMP%/}/go-proxy.sh
+        # Or: go env -w GOPROXY=${_repo_url}
+        ${_cmd} cp ${_TMP%/}/go-proxy.sh ${_name}:/etc/profile.d/go-proxy.sh
+    fi
 
     # Using Nexus maven repository if available
     _repo_url="${_base_url%/}/repository/maven-group"
