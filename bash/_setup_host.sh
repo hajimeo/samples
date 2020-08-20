@@ -451,10 +451,10 @@ function _apache_install() {
 }
 
 function f_apache_proxy() {
-    local __doc__="Generate proxy.conf and restart apache2"
+    local __doc__="Setup content cache proxy. @see:https://www.digitalocean.com/community/tutorials/how-to-configure-apache-content-caching-on-ubuntu-14-04#standard-http-caching"
     local _proxy_dir="/var/www/proxy"
-    local _cache_dir="/var/cache/apache2/mod_cache_disk"
-    local _port="${r_PROXY_PORT-28080}"
+    local _conf="/etc/apache2/sites-available/proxy.conf"
+    local _port="${r_PROXY_PORT:-28080}"
     # NOTE: to disable weak TLS/SSL versions, edit /etc/apache2/mods-available/ssl.conf with:
     #SSLProtocol all -SSLv2 -SSLv3 -TLSv1 -TLSv1.1
     # NOTE: To configure docker to use proxy: https://medium.com/@airman604/getting-docker-to-work-with-a-proxy-server-fadec841194e
@@ -462,17 +462,12 @@ function f_apache_proxy() {
     # NOTE: To configure java to use proxy (https://docs.oracle.com/javase/6/docs/technotes/guides/net/proxies.html)
     # -Dhttp.proxyHost=192.168.1.31 -Dhttp.proxyPort=28080 -Dhttp.proxyUser=proxyuser -Dhttp.proxyPassword=proxypwd
 
-    if ! which apt-get &>/dev/null; then
-        _warn "No apt-get"
-        return 1
-    fi
-
     # TODO: 777...
     [ ! -d "${_proxy_dir}" ] && mkdir -p -m 777 "${_proxy_dir}"
-    [ ! -d "${_cache_dir}" ] && mkdir -p -m 777 "${_cache_dir}"
+    #[ ! -d "${_cache_dir}" ] && mkdir -p -m 777 "${_cache_dir}"
 
-    if [ -s /etc/apache2/sites-available/proxy.conf ]; then
-        _info "/etc/apache2/sites-available/proxy.conf already exists. Skipping..."
+    if [ -s "${_conf}" ]; then
+        _info "${_conf} already exists. Skipping..."
         return 0
     fi
 
@@ -484,53 +479,58 @@ function f_apache_proxy() {
     LogLevel warn
     ErrorLog \${APACHE_LOG_DIR}/proxy_error.log
     CustomLog \${APACHE_LOG_DIR}/proxy_access.log combined
-    # Log request headers (but too much)
+    # NOTE: Log request headers (but too much information)
     #DumpIOInput On
     #DumpIOOutput On
-    #LogLevel dumpio:trace7
-    " > /etc/apache2/sites-available/proxy.conf
+    #LogLevel dumpio:trace7" > "${_conf}"
 
     if grep -qE '^proxyuser:' /etc/apache2/passwd-nospecial; then
         echo -n 'proxypwd' | htpasswd -i -c /etc/apache2/passwd-nospecial proxyuser
     fi
-    echo "    <IfModule mod_proxy.c>
-        SSLProxyEngine On
-        SSLProxyVerify none
-        SSLProxyCheckPeerCN off
-        SSLProxyCheckPeerName off
-        SSLProxyCheckPeerExpire off
+    echo "
+    SSLProxyEngine On
+    SSLProxyVerify none
+    SSLProxyCheckPeerCN off
+    SSLProxyCheckPeerName off
+    SSLProxyCheckPeerExpire off
 
-        ProxyRequests On
-        AllowCONNECT 443 1025-60000
-        <Proxy *>
-            Order deny,allow
-            Allow from all
-            AddDefaultCharset off
-            AuthType Basic
-            AuthName 'Authentication Required'
-            AuthUserFile /etc/apache2/passwd-nospecial
-            Require user proxyuser
-            Require valid-user
-        </Proxy>
+    ProxyRequests On
+    AllowCONNECT 443 1025-60000
+    <Proxy *>
+        Order deny,allow
+        Allow from all
+        AddDefaultCharset off
+        # NOTE: Use below to test authentication
+        #AuthType Basic
+        #AuthName 'Authentication Required'
+        #AuthUserFile /etc/apache2/passwd-nospecial
+        #Require user proxyuser
+        #Require valid-user
+    </Proxy>
 
-        ProxyVia On
+    ProxyVia On
 
-        <IfModule mod_cache_disk.c>
-            CacheRoot ${_cache_dir}
-            CacheIgnoreCacheControl On
-            CacheEnable disk /
-            CacheEnable disk http://
-            CacheDirLevels 2
-            CacheDirLength 1
-            CacheMaxFileSize 256000000
-        </IfModule>
-    </IfModule>
-</VirtualHost>" >> /etc/apache2/sites-available/proxy.conf
+    #<IfModule mod_cache_disk.c>
+    # NOTE: changing CacheRoot may require to change HTCACHECLEAN_PATH
+    CacheRoot /var/cache/apache2/mod_cache_disk
+    CacheDirLevels 2
+    CacheDirLength 1
+    CacheMaxFileSize 536870912
+    CacheMinFileSize 1024
+    CacheIgnoreCacheControl On
+    CacheEnable disk /
+    CacheHeader On
+</VirtualHost>" >> "${_conf}"
 
     a2ensite proxy || return $?
     # Due to 'ssl' module, using restart rather than reload
     _info "reloading ..."
-    service apache2 reload
+    service apache2 reload || return $?
+    echo "# Example commands to mount cache dir:
+service apache2 stop
+rm -rf /var/cache/apache2/mod_cache_disk/*
+sshfs -o allow_other,uid=0,gid=0,umask=000,reconnect,follow_symlinks USER@REMOTE-HOST:/apache2/cache /var/cache/apache2/mod_cache_disk
+service apache2 start"
 }
 
 function f_apache_reverse_proxy() {
