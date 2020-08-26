@@ -1,8 +1,8 @@
 import boto3
 accessKey = "*********"
 secretKey = "*********"
-s3_bucket = "apac-support-bucket"
-s3_prefix = "node-nxrm-haX"
+s3_bucket = "xxxxxx"
+s3_prefix = "yyyyyy"
 
 s3 = boto3.client('s3', aws_access_key_id=accessKey, aws_secret_access_key=secretKey)
 
