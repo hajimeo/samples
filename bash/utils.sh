@@ -626,7 +626,7 @@ function _socks5_proxy() {
         cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys || return $?
     fi
 
-    local _cmd="ssh -4gC2TxnNf -D${_port} localhost &>>${_LOG_FILE_PATH:-"/dev/null"} &"
+    local _cmd="ssh -4gC2TxnNf -D${_port} localhost 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"} &"
     local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
 
     local _pid="$(_pid_by_port "${_port}")"

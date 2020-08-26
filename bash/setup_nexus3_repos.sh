@@ -711,7 +711,7 @@ function p_client_container() {
 
         cd ${_build_dir} || return $?
         _log "INFO" "Building ${_image_name} ... (outputs:${_LOG_FILE_PATH:-"/dev/null"})"
-        ${_cmd} build --rm -t ${_image_name} . &>>${_LOG_FILE_PATH:-"/dev/null"} || return $?
+        ${_cmd} build --rm -t ${_image_name} . 2>&1 >>${_LOG_FILE_PATH:-"/dev/null"} || return $?
         cd -
     fi
 
@@ -793,14 +793,14 @@ password: ${_pwd}" > ${_TMP%/}/pypirc
         ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.pypirc &&
         _is_url_reachable "${_repo_url}";
     then
-        ${_cmd} exec -it ${_name} bash -l -c "pip3 install conan" &>>${_LOG_FILE_PATH:-"/dev/null"}
+        ${_cmd} exec -it ${_name} bash -l -c "pip3 install conan" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
     fi
 
     # Using Nexus rubygem repository if available (not sure if rubygem-group is supported in some versions, so using proxy)
     _repo_url="${_base_url%/}/repository/rubygem-proxy"
     # @see: https://www.server-world.info/en/note?os=CentOS_7&p=ruby23
     #       Also need git newer than 1.8.8, but https://github.com/iusrepo/git216/issues/5
-    ${_cmd} exec -it ${_name} bash -c "yum remove -y git*; yum -y install https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm && ${_yum_install} git" &>>${_LOG_FILE_PATH:-"/dev/null"}
+    ${_cmd} exec -it ${_name} bash -c "yum remove -y git*; yum -y install https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm && ${_yum_install} git" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
     echo '#!/bin/bash
 source /opt/rh/rh-ruby23/enable
 export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.sh
@@ -819,7 +819,7 @@ export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.s
     - ${_protocol}://${_usr}:${_pwd}@${_repo_url_without_http%/}/" > ${_TMP%/}/gemrc
         ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/root/.gemrc && ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/home/${_user}/.gemrc && ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.gemrc;
     fi
-    ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods -v 1.8.4" &>>${_LOG_FILE_PATH:-"/dev/null"}
+    ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods -v 1.8.4" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
     # Need Xcode on Mac?: https://download.developer.apple.com/Developer_Tools/Xcode_10.3/Xcode_10.3.xip (or https://developer.apple.com/download/more/)
     curl -s -f -o ${_TMP%/}/cocoapods-test.tgz -L https://github.com/hajimeo/samples/raw/master/misc/cocoapods-test.tgz && \
     ${_cmd} cp ${_TMP%/}/cocoapods-test.tgz ${_name}:/home/${_user}/cocoapods-test.tgz && \

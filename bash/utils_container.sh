@@ -138,7 +138,7 @@ function _docker_login() {
     fi
 
     _log "DEBUG" "${_cmd} login ${_host_port} --username ${_user} --password ********"
-    ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} &>>${_LOG_FILE_PATH:-"/dev/null"} || return $?
+    ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"} || return $?
     echo "${_host_port}"
 }
 
