@@ -655,6 +655,7 @@ function _trust_ca() {
     local _ca_pem="$1"
     if [ ! -s "${_ca_pem}" ]; then
         if [ ! -s "${_WORK_DIR%/}/cert/rootCA_standalone.crt" ]; then
+            [ ! -d "${_WORK_DIR%/}/cert" ] && mkdir -p "${_WORK_DIR%/}/cert"
             curl -s -f -m 7 --retry 2 --compressed -L "${_DL_URL%/}/misc/rootCA_standalone.crt" -o ${_WORK_DIR%/}/cert/rootCA_standalone.crt || return $?
         fi
         _ca_pem="${_WORK_DIR%/}/cert/rootCA_standalone.crt"

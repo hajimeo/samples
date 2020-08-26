@@ -1070,7 +1070,7 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype/sonatype-*.lic" "" "r
     _ask "Formats to setup (comma separated)" "${_REPO_FORMATS}" "r_REPO_FORMATS" "N" "Y"
 
     ## for f_setup_docker()
-    if [ -n "${r_DOCKER_CMD}" ]; then
+    if [ -n "${r_DOCKER_CMD}" ] && [[ "${r_REPO_FORMATS}" =~ docker ]]; then
         _ask "Docker command for pull/push sample ('docker' or 'podman')" "${r_DOCKER_CMD}" "r_DOCKER_CMD" "N" "N"
         r_DOCKER_PROXY="$(questions_docker_repos "Proxy" "${_host}" "18179")"
         r_DOCKER_HOSTED="$(questions_docker_repos "Hosted" "${_host}" "18182")"
