@@ -775,7 +775,7 @@ _auth=\"${_cred}\"" > ${_TMP%/}/npmrc
         ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.npmrc &&
         _is_url_reachable "${_repo_url}";
     then
-        ${_cmd} exec -it ${_name} bash -l -c "npm install -g yarn;npm install -g bower" &>>${_LOG_FILE_PATH:-"/dev/null"}
+        ${_cmd} exec -it ${_name} bash -l -c "npm install -g yarn;npm install -g bower" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
     fi
 
     # Using Nexus pypi repository if available
