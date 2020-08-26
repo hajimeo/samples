@@ -182,7 +182,7 @@ function _docker_run() {
         _ext_opts="--dns=`hostname -I | cut -d " " -f1` ${_ext_opts}"
     fi
     # add one more if set
-    local _another_dns="$(grep -m1 -E '^nameserver\s+[0-9]+\.' /etc/resolv.conf | grep -vE '^nameserver\s+127\.')"
+    local _another_dns="$(grep -m1 -E '^nameserver +[0-9]+\.' /etc/resolv.conf | grep -vE '^nameserver\s+127\.' | sed -E 's/^nameserver +//')"
     if [ -n "${_another_dns}" ]; then
         # REMINDER: adding back the default DNS 127.0.0.11 generates WARNING
         _ext_opts="--dns=${_another_dns} ${_ext_opts}"
