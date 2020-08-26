@@ -509,9 +509,9 @@ function _get_asset() {
     if [ -d "${_out_path}" ]; then
         _out_path="${_out_path%/}/$(basename ${_path})"
     fi
-    local _curl="curl -s"
-    ${_DEBUG} && _curl="curl -v"
-    ${_curl} -f -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_user}:${_pwd} -k "${_base_url%/}/repository/${_repo%/}/${_path#/}"
+    local _curl="curl -sf"
+    ${_DEBUG} && _curl="curl -fv"
+    ${_curl} -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_user}:${_pwd} -k "${_base_url%/}/repository/${_repo%/}/${_path#/}"
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
         _log "ERROR" "Failed to get ${_base_url%/}/repository/${_repo%/}/${_path#/} (${_rc})"
@@ -531,9 +531,9 @@ function _get_asset_NXRM2() {
     if [[ "${_NO_DATA}" =~ ^[yY] ]]; then
         _log "INFO" "_NO_DATA is set so no action."; return 0
     fi
-    local _curl="curl -s"
-    ${_DEBUG} && _curl="curl -v"
-    ${_curl} -f -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_usr}:${_pwd} -k "${_base_url%/}/content/repositories/${_repo%/}/${_path#/}"
+    local _curl="curl -sf"
+    ${_DEBUG} && _curl="curl -fv"
+    ${_curl} -D ${_TMP%/}/_proxy_test_header_$$.out -o ${_out_path} -u ${_usr}:${_pwd} -k "${_base_url%/}/content/repositories/${_repo%/}/${_path#/}"
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
         _log "ERROR" "Failed to get ${_base_url%/}/content/repository/${_repo%/}/${_path#/} (${_rc})"
@@ -552,9 +552,9 @@ function f_upload_asset() {
     if [[ "${_NO_DATA}" =~ ^[yY] ]]; then
         _log "INFO" "_NO_DATA is set so no action."; return 0
     fi
-    local _curl="curl -s"
-    ${_DEBUG} && _curl="curl -v"
-    ${_curl} -f -D ${_TMP%/}/_upload_test_header_$$.out -u ${_usr}:${_pwd} -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_base_url%/}/service/rest/v1/components?repository=${_repo}" ${_forms}
+    local _curl="curl -sf"
+    ${_DEBUG} && _curl="curl -fv"
+    ${_curl} -D ${_TMP%/}/_upload_test_header_$$.out -u ${_usr}:${_pwd} -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_base_url%/}/service/rest/v1/components?repository=${_repo}" ${_forms}
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
         if grep -qE '^HTTP/1.1 [45]' ${_TMP%/}/_upload_test_header_$$.out; then
@@ -652,13 +652,13 @@ function f_api() {
     local _content_type="Content-Type: application/json"
     [ "${_data:0:1}" != "{" ] && _content_type="Content-Type: text/plain"
 
-    local _curl="curl -s"
-    ${_DEBUG} && _curl="curl -v"
+    local _curl="curl -sf"
+    ${_DEBUG} && _curl="curl -fv"
     if [ -z "${_data}" ]; then
         # GET and DELETE *can not* use Content-Type json
-        ${_curl} -f -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method}
+        ${_curl} -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method}
     else
-        ${_curl} -f -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method} -H "${_content_type}" -d "${_data}"
+        ${_curl} -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method} -H "${_content_type}" -d "${_data}"
     fi > ${_TMP%/}/f_api_nxrm_$$.out
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
