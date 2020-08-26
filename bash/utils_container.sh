@@ -173,10 +173,6 @@ function _docker_run() {
     local _image_name="${3}"
     local _cmd="${4:-"${_DOCKER_CMD}"}"
 
-    # Add --network (is this a bit inconsistent way to add extra options?)
-    if [ -n "${_DOCKER_NETWORK_NAME}" ]; then
-        _ext_opts="--network=${_DOCKER_NETWORK_NAME} ${_ext_opts}"
-    fi
     # If dnsmasq or some dns is locally installed, assuming it's setup correctly
     if grep -qE '^nameserver\s+127\.' /etc/resolv.conf; then
         _ext_opts="--dns=`hostname -I | cut -d " " -f1` ${_ext_opts}"

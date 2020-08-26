@@ -717,6 +717,7 @@ function p_client_container() {
     fi
 
     local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true -v ${_WORK_DIR%/}:${_DOCKER_CONTAINER_SHARE_DIR}"
+    [ -n "${_DOCKER_NETWORK_NAME}" ] && _ext_opts="--network=${_DOCKER_NETWORK_NAME} ${_ext_opts}"
     _log "INFO" "Running or Starting '${_name}'"
     # TODO: not right way to use 3rd and 4th arguments.
     _docker_run_or_start "${_name}" "${_ext_opts}" "${_image_name} /sbin/init" "${r_DOCKER_CMD}" || return $?
@@ -1018,7 +1019,12 @@ function questions() {
             echo "NOTE: sudo password may be required."
             _ask "Nexus version" "latest" "r_NEXUS_VERSION" "N" "Y"
             local _ver_num=$(echo "${r_NEXUS_VERSION}" | sed 's/[^0-9]//g')
-            _ask "Would you like to build HA-C?" "N" "r_NEXUS_INSTALL_HAC" "N" "N"
+            if [ "`uname`" = "Darwin" ]; then
+                # TODO: Mac's docker containers do not look like able to communicate each other.
+                r_NEXUS_INSTALL_HAC=N
+            else
+                _ask "Would you like to build HA-C?" "N" "r_NEXUS_INSTALL_HAC" "N" "N"
+            fi
             if _isYes "${r_NEXUS_INSTALL_HAC}"; then
                 echo "NOTE: You may also need to set up a reverse proxy."
                 # NOTE: mounting a volume to sonatype-work is mandatory for HA-C
@@ -1280,24 +1286,33 @@ main() {
     if _isYes "${r_NEXUS_INSTALL}"; then
         echo "NOTE: If 'password' is asked, please type 'sudo' password." >&2
         sudo echo "Starting Nexus installation..." >&2
-        _docker_add_network "${_DOCKER_NETWORK_NAME}" "" "${r_DOCKER_CMD}" || return $?
+        # TODO: Mac's docker doesn't work well with extra network interface (or I do not know how to configure)
+        if [ "`uname`" = "Darwin" ]; then
+            unset _DOCKER_NETWORK_NAME
+        else
+            _docker_add_network "${_DOCKER_NETWORK_NAME}" "" "${r_DOCKER_CMD}" || return $?
+        fi
 
         if _isYes "${r_NEXUS_INSTALL_HAC}"; then
-            local _ip_1="$(_container_available_ip "${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}" "/etc/hosts")" || return $?
-            local _ip_2="$(_container_available_ip "${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}" "/etc/hosts")" || return $?
-            local _ip_3="$(_container_available_ip "${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}" "/etc/hosts")" || return $?
-            local _ext_opts="--add-host ${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}:${_ip_1}"
-            _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}:${_ip_2}"
-            _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}:${_ip_3}"
-            # TODO: it should exclude own host:ip, otherwise, container's hosts file has two lines for own host:ip
-            _log "DEBUG" "_add_hosts: ${_ext_opts}"
+            local _ext_opts=""
+            if [ -n "${_DOCKER_NETWORK_NAME}" ]; then
+                _ext_opts="--network=${_DOCKER_NETWORK_NAME}"
+                local _ip_1="$(_container_available_ip "${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}" "/etc/hosts")" || return $?
+                local _ip_2="$(_container_available_ip "${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}" "/etc/hosts")" || return $?
+                local _ip_3="$(_container_available_ip "${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}" "/etc/hosts")" || return $?
+                _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}:${_ip_1}"
+                _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}:${_ip_2}"
+                _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}:${_ip_3}"
+                # TODO: it should exclude own host:ip, otherwise, container's hosts file has two lines for own host:ip
+                _log "DEBUG" "_add_hosts: ${_ext_opts}"
+            fi
 
             for _i in {1..3}; do
                 local _v_name="r_NEXUS_CONTAINER_NAME_${_i}"
                 local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
                 local _v_name_ip="_ip_${_i}"
                 local _tmp_ext_opts="${_ext_opts}"
-                local _tmp_ext_opts="${_tmp_ext_opts} -v ${_WORK_DIR%/}:${_DOCKER_CONTAINER_SHARE_DIR}"
+                _tmp_ext_opts="${_tmp_ext_opts} -v ${_WORK_DIR%/}:${_DOCKER_CONTAINER_SHARE_DIR}"
                 if _isYes "${r_NEXUS_MOUNT}"; then
                     _tmp_ext_opts="${_tmp_ext_opts} $(f_nexus_mount_volume "${!_v_name_m}")" || return $?
                     f_nexus_init_properties "${!_v_name_m}" || return $?
