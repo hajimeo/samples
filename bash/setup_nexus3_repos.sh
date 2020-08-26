@@ -80,6 +80,7 @@ _REPO_FORMATS="maven,pypi,npm,nuget,docker,yum,rubygem,conan,cocoapods,bower,go,
 _NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
 _IQ_CLI_VER="${_IQ_CLI_VER-"1.95.0-01"}"    # If empty, not download CLI jar
 _DOCKER_NETWORK_NAME=${_DOCKER_NETWORK_NAME:-"nexus"}
+_DOCKER_CONTAINER_SHARE_DIR=${_DOCKER_CONTAINER_SHARE_DIR:-"/var/tmp/share"}
 _DOMAIN="${_DOMAIN:-"standalone.localdomain"}"
 _IS_NXRM2=${_IS_NXRM2:-"N"}
 _NO_DATA=${_NO_DATA:-"N"}
@@ -715,7 +716,7 @@ function p_client_container() {
         cd -
     fi
 
-    local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true -v ${_WORK_DIR%/}:/var/tmp/share"
+    local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true -v ${_WORK_DIR%/}:${_DOCKER_CONTAINER_SHARE_DIR}"
     _log "INFO" "Running or Starting '${_name}'"
     # TODO: not right way to use 3rd and 4th arguments.
     _docker_run_or_start "${_name}" "${_ext_opts}" "${_image_name} /sbin/init" "${r_DOCKER_CMD}" || return $?
@@ -952,10 +953,12 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
         f_nexus_ha_config "${_sonatype_work%/}" || return $?
     fi
 
+    # A license file in local
     local _license="${r_NEXUS_LICENSE_FILE}"
     [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype/sonatype-*.lic 2>/dev/null | head -n1)"
-    if [ -n "${_license}" ]; then
-        _upsert ${_sonatype_work%/}/etc/nexus.properties "nexus.licenseFile" "${_license}" || return $?
+    if [ -s "${_license}" ]; then
+        [ -d "${_DOCKER_CONTAINER_SHARE_DIR}" ] && cp -f "${_license}" "${_DOCKER_CONTAINER_SHARE_DIR%/}/sonatype/"
+        _upsert ${_sonatype_work%/}/etc/nexus.properties "nexus.licenseFile" "${_DOCKER_CONTAINER_SHARE_DIR%/}/sonatype/$(basename "${_license}")" || return $?
     elif _isYes "${r_NEXUS_INSTALL_HAC}"; then
         _log "ERROR" "HA-C is requested but no license."
         return 1
@@ -1294,7 +1297,7 @@ main() {
                 local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
                 local _v_name_ip="_ip_${_i}"
                 local _tmp_ext_opts="${_ext_opts}"
-                local _tmp_ext_opts="${_tmp_ext_opts} -v ${_WORK_DIR%/}:/var/tmp/share"
+                local _tmp_ext_opts="${_tmp_ext_opts} -v ${_WORK_DIR%/}:${_DOCKER_CONTAINER_SHARE_DIR}"
                 if _isYes "${r_NEXUS_MOUNT}"; then
                     _tmp_ext_opts="${_tmp_ext_opts} $(f_nexus_mount_volume "${!_v_name_m}")" || return $?
                     f_nexus_init_properties "${!_v_name_m}" || return $?
@@ -1311,7 +1314,7 @@ main() {
                 fi
             done
         else
-            local _tmp_ext_opts="-v ${_WORK_DIR%/}:/var/tmp/share"
+            local _tmp_ext_opts="-v ${_WORK_DIR%/}:${_DOCKER_CONTAINER_SHARE_DIR}"
             # Port forwarding for Nexus Single Node (obviously can't do same for HA as port will conflict)
             if [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
                 local _p="-p ${r_NEXUS_CONTAINER_PORT1}:8081"

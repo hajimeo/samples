@@ -218,6 +218,6 @@ function _update_hosts_for_container() {
         _log "WARN" "Please update /etc/hosts file to add '${_container_ip} ${_fqdn}'"
         return 1
     fi
-    [ -n "${_DNS_RELOAD}" ] && eval "${_DNS_RELOAD}"
+    [ -n "${_DNS_RELOAD}" ] && eval "${_DNS_RELOAD}" 2>/dev/null
     _log "DEBUG" "Updated /etc/hosts file with '${_container_ip} ${_fqdn}'"
 }
