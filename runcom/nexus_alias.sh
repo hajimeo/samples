@@ -93,7 +93,7 @@ If ports conflict, edit nexus.properties is easier. eg:8080.
 # To start local (on Mac) IQ server
 function rmStart() {
     local _base_dir="${1:-"."}"
-    local _java_opts=${2}
+    local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"}
     local _mode=${3:-"run"} # if NXRM2, not run
     #local _java_opts=${@:2}
     local _nexus_file="$(find ${_base_dir%/} -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
@@ -106,7 +106,7 @@ function rmStart() {
 # To start local (on Mac) IQ server
 function iqStart() {
     local _base_dir="${1:-"."}"
-    local _java_opts=${2}
+    local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"}
     #local _java_opts=${@:2}
     local _jar_file="$(find ${_base_dir%/} -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
     local _cfg_file="$(dirname "${_jar_file}")/config.yml"
@@ -131,6 +131,17 @@ function mvn-arch-gen() {
         [ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
         mvn `_mvn_settings "${_remote_repo}"` archetype:generate -DgroupId=${_g} -DartifactId=${_a} -DarchetypeArtifactId=${_type} -DarchetypeVersion=${_v} -DinteractiveMode=false ${_options}
     fi
+}
+
+function mvn-add-snapshot-repo-in-pom() {
+    # TODO:
+  echo "<distributionManagement>
+    <snapshotRepository>
+      <id>nexus</id>
+      <name>maven-snapshots</name>
+      <url>https://local.standalone.localdomain:8443/repository/snapshots/</url>
+    </snapshotRepository>
+  </distributionManagement>"
 }
 
 # mvn archetype:generate wrapper to use a remote repo
