@@ -180,6 +180,7 @@ function get_by_gav() {
         curl -v -O -J -L -f -u ${_user}:${_pwd} -k "${_repo_url%/}/${_path#/}" || return $?
     fi
 }
+alias mvn-get_by_gav="get_by_gav"
 
 # mvn devendency:get wrapper to use remote repo
 function mvn-get() {
