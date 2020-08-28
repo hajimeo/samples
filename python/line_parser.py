@@ -41,7 +41,7 @@ def lp_time_diff(line):
     """
     Read log files and print the time difference between previous line in Milliseconds
     Expected line format: ^YYYY-MM-DD hh:mm:ss,sss some_text (space between date and time)
-    :param line: String - currently reading line
+    :param line: String - current reading line
     :return: void
     """
     global _PREV_VALUE
@@ -70,7 +70,6 @@ def lp_time_diff(line):
             print("\"%s\",%s" % (label, (current_timestamp_in_ms - int(_PREV_VALUE))))
     _PREV_LABEL = label
     _PREV_VALUE = current_timestamp_in_ms
-
 
 if __name__ == '__main__':
     func_name = sys.argv[1]
