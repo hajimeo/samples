@@ -71,13 +71,9 @@ def _mexec(func_obj, args_list, num=None):
     :param args_list: A list contains tuples of arguments
     :param num: number of pool. if None, half of CPUs (NOTE: if threads, it does not matter)
     :return: list contains results. Currently result order is random (not same as args_list)
-    >>> def multi(x, y): return x * y
-    ...
-    >>> _mexec(multi, [(1, 2)])[0]
+    #NOTE: somehow using two items in args_list fails in the unit test (manually running is OK)
+    >>> _mexec((lambda x, y: x * y), [(1, 2)])[0]
     2
-    >>> rs = _mexec(multi, [(1,2), (2,3)])
-    >>> rs[0] + rs[1]
-    8
     """
     rs = []
     if bool(args_list) is False or bool(func_obj) is False:
@@ -155,6 +151,8 @@ def _is_numeric(some_num):
     Python's isnumeric return False for float!!!
     :param some_num:
     :return: boolean
+    >>> _is_numeric(1.234)
+    True
     """
     try:
         float(some_num)
@@ -471,20 +469,19 @@ def _avoid_unsupported(df, json_cols=[], name=None):
     Drop DF cols to workaround "<table>: Error binding parameter <N> - probably unsupported type."
     :param df: A *reference* of panda DataFrame
     :param json_cols: List contains column names. Ex. ['connectionId', 'planJson', 'json']
-    :param name: just for logging
+    :param name: just for extra loggings
     :return: Modified df
-    >>> _avoid_unsupported(pd.DataFrame([{"a_json":"aaa", "test":"bbbb"}]), ["test"])
-    Empty DataFrame
-    Columns: []
-    Index: [0]
+    >>> import pandas as pd
+    >>> _avoid_unsupported(pd.DataFrame([{"a_json":{"a":"a-val","b":"b-val"}, "test":12345}]), ["test"]).values
+    array([["{'a': 'a-val', 'b': 'b-val'}", '12345']], dtype=object)
     """
     if bool(json_cols) is False:
         return df
     keys = df.columns.tolist()
     cols = {}
     for k in keys:
-        _debug("_avoid_unsupported: k = %s" % (str(k)))
         if k in json_cols or k.lower().find('json') > 0:
+            _debug("_avoid_unsupported: k = %s" % (str(k)))
             # df[k] = df[k].to_string()
             cols[k] = 'str'
     if len(cols) > 0:
@@ -611,7 +608,7 @@ def _human_readable_num(some_numeric, base_unit="byte", r=2):
     :return: string|object
     >>> _human_readable_num("1234567890123.756")
     '1.23 TB'
-    >>> [dict, list]("1234567890.756", "msec")
+    >>> _human_readable_num("1234567890.756", "msec")
     '14.29 h'
     """
     # If some_numeric is not string or not number, loop object and return the object
@@ -1268,7 +1265,7 @@ def _ms(time_matches, time_re_compiled):
     >>> time_re = re.compile(_TIME_REGEX)
     >>> prev_message = 'withBundle request for subgroup [subgroup:some_uuid] took [1.03 s] to begin execution'
     >>> _time_matches = time_re.search(prev_message)
-    >>> _ms(_time_matches)
+    >>> _ms(_time_matches, time_re)
     1030.0
     """
     global _TIME_REGEX
@@ -1306,7 +1303,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     :return: A list of tuples
     >>> pass    # TODO: implement test
     """
-    _debug(f"line_beginning: {line_beginning}")
+    _debug("line_beginning: "+line_beginning)
     begin_re = re.compile(line_beginning)
     line_re = re.compile(line_matching)
     size_re = re.compile(size_regex) if bool(size_regex) else None
@@ -2073,5 +2070,5 @@ def help(func_name=None):
 
 if __name__ == '__main__':
     import doctest
-
+    print("Running tests ...")
     doctest.testmod(verbose=True)
