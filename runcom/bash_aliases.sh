@@ -40,11 +40,13 @@ alias json2csv='python3 -c "import sys,json;import pandas as pd;pdf=pd.read_json
 # Read xml file, then convert to dict, then print json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
 alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
+# echo "json like string" | tidyjson
+alias tidyjson='python3 -c "import sys,json;print(json.dumps(json.loads(sys.stdin.read()), indent=4, sort_keys=True))"'
 # Pretty|Tidy print XML. NOTE: without encoding, etree.tostring returns bytes, which does not work with print()
-alias tidyjson=prettyjson
 alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1].encode(\"utf-8\"));print(etree.tostring(t,encoding=\"unicode\",pretty_print=True))"'
 #alias prettyxml='xmllint --format'
-alias tidyxml=prettyxml
+# echo "xml like string" | tidyxml
+alias tidyxml='python3 -c "import sys;from lxml import etree;t=etree.fromstring(sys.stdin.read());print(etree.tostring(t,encoding=\"unicode\",pretty_print=True))"'
 # TODO: find with sys.argv[2] (no ".//"), then output as string
 alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(r.find(sys.argv[2],namespaces=r.nsmap))"'
 # Search with 2nd arg and output the path(s)
@@ -90,6 +92,7 @@ alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/haji
 alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/updates/'
 # TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
 # Slack API Search
+# python3 -m http.server
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="cd $HOME/IdeaProjects/samples/python/ && nohup python ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
 
 
