@@ -1675,12 +1675,14 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
     for f in files:
         if bool(exclude_ptn) and ex.search(os.path.basename(f)): continue
 
+        _debug("Processing %s" % (f))
+        tablename = _pick_new_key(os.path.basename(f), {}, using_1st_char=False, prefix='t_')
         f_name, f_ext = os.path.splitext(os.path.basename(f))
         new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(conn) is False), prefix='t_')
         _err("Creating table: %s ..." % (new_name))
         names_dict[new_name] = f
 
-        dfs[new_name] = csv2df(file_path=f, conn=conn, tablename=new_name, chunksize=chunksize)
+        dfs[new_name] = csv2df(filename=f, conn=conn, tablename=new_name, chunksize=chunksize)
     return (names_dict, dfs)
 
 
@@ -1841,7 +1843,7 @@ FROM t_request_logs
 %s
 GROUP BY 1, 2""" % (where_sql)
         name = "request_log-hourly_aggs"
-        _err("Query (%s): \n%s" % (name, query))
+        _err("\n# Query (%s): \n%s" % (name, query))
         display(q(query), name=name)
         query = """SELECT UDF_STR2SQLDT(`date`, '%%d/%%b/%%Y:%%H:%%M:%%S %%z') AS date_time, 
     CAST(statusCode AS INTEGER) AS statusCode, 
@@ -1849,7 +1851,7 @@ GROUP BY 1, 2""" % (where_sql)
     CAST(elapsedTime AS INTEGER) AS elapsedTime 
 FROM t_request_logs %s""" % (where_sql)
         name = "request_log-status_bytesent_elapsed"
-        _err("Query (%s): \n%s" % (name, query))
+        _err("\n# Query (%s): \n%s" % (name, query))
         draw(q(query).tail(tail_num), name=name)
 
     ## Loading application log file(s) into database.
@@ -1896,7 +1898,7 @@ FROM t_request_logs %s""" % (where_sql)
 FROM t_health_monitor
 %s""" % (where_sql)
             name = "nexus_health_monitor"
-            _err("Query (%s): \n%s" % (name, query))
+            _err("\n# Query (%s): \n%s" % (name, query))
             draw(q(query), name=name)
 
     # Nexus IQ
@@ -1911,7 +1913,7 @@ WHERE thread LIKE 'PolicyEvaluateService%'
 GROUP BY 1
 ORDER BY diff, thread"""
         name = "nxiq_log-policy_scan_aggs"
-        # _err("Query (%s): \n%s" % (name,query))
+        # _err("\n# Query (%s): \n%s" % (name,query))
         # display(q(query), name=name)
         query = """SELECT date_time, 
   UDF_REGEX(' in (\d+) ms', message, 1) as ms,
@@ -1920,7 +1922,7 @@ FROM t_logs
 WHERE t_logs.class = 'com.sonatype.insight.brain.hds.HdsClient'
   AND t_logs.message LIKE 'Completed request%'"""
         name = "nxiq_log-hdfsclient_results"
-        # _err("Query (%s): \n%s" % (name,query))
+        # _err("\n# Query (%s): \n%s" % (name,query))
         # display(q(query), name=name)
 
         query = """SELECT date_time, thread,
@@ -1931,7 +1933,7 @@ WHERE t_logs.message like 'Evaluated policy for%'
 ORDER BY ms DESC
 LIMIT 10"""
         name = "nxiq_log-top10_slow_scan"
-        _err("Query (%s): \n%s" % (name, query))
+        _err("\n: \n%s" % (name, query))
         display(q(query), name="nxiq_log-top10_slow_scan")
 
     if bool(nxrm_logs) or bool(nxiq_logs):
@@ -1942,7 +1944,7 @@ LIMIT 10"""
       AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
     GROUP BY 1, 2""" % (where_sql)
         name = "warn_error_hourly"
-        _err("Query (%s): \n%s" % (name, query))
+        _err("\n# Query (%s): \n%s" % (name, query))
         draw(q(query), name=name)
 
     # TODO: analyse db job triggers
@@ -1957,8 +1959,9 @@ LIMIT 10"""
     #  AND nextFireTime > 1578290830000
     # ORDER BY nextFireTime
     # """)
+    _err("Available Tables:")
+    display(desc(), name="available_tables")
     _err("Completed.")
-
 
 def load(jsons_dir=["./engine/aggregates", "./engine/cron-scheduler"], csvs_dir="./stats",
          jsons_exclude_ptn='physicalPlans|partition|incremental|predictions', csvs_exclude_ptn=''):
