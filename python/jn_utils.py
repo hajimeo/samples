@@ -255,7 +255,6 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
             _err("Excluding %s as per exclude_ptn (%d KB)..." % (f_name, os.stat(f).st_size / 1024))
             continue
         new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(conn) is False), prefix='t_')
-        _err("Creating table: %s (%d KB) ..." % (new_name, os.stat(f).st_size / 1024))
         names_dict[new_name] = f
         dfs[new_name] = json2df(file_path=f, conn=conn, tablename=new_name, chunksize=chunksize,
                                 json_cols=json_cols)
@@ -305,9 +304,9 @@ def json2df(filename, jq_query="", conn=None, tablename=None, json_cols=[], chun
                     json_cols.append(k)
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(files[0]), {}, using_1st_char=False, prefix='t_')
-        _err("Creating table: %s ..." % (tablename))
         # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
+        _err("Creating table: %s ..." % (tablename))
         df_tmp_mod.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
         _autocomp_inject(tablename=tablename)
         return len(df) > 0
@@ -319,7 +318,7 @@ def _json2table(filename, tablename=None, conn=None, col_name='json_text', appen
     NOT WORKING
     """
     pass
-    if bool(conn) is False:
+    if conn is None:
         conn = connect()
     with open(filename) as f:
         j_obj = json.load(f)
@@ -689,7 +688,8 @@ def query(sql, conn=None, no_history=False):
     Columns: [name]
     Index: []
     """
-    if bool(conn) is False: conn = connect()
+    if conn is None:
+        conn = connect()
     # return conn.execute(sql).fetchall()
     # TODO: pd.options.display.max_colwidth = col_width does not work
     df = pd.read_sql(sql, conn)
@@ -1009,7 +1009,8 @@ def show_create_table(tablenames=None, like=None, conn=None):
     Columns: [name, rootpage]
     Index: []
     """
-    if bool(conn) is False: conn = connect()
+    if conn is None:
+        conn = connect()
     sql_and = ""
     if bool(like):
         sql_and = " and sql like '%" + str(like) + "%'"
@@ -1407,8 +1408,8 @@ def logs2table(filename, tablename=None, conn=None,
     """
     global _SIZE_REGEX
     global _TIME_REGEX
-    if bool(conn) is False: conn = connect()
-
+    if conn is None:
+        conn = connect()
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_cols) is False:
         num_cols = len(col_names)
@@ -1416,14 +1417,11 @@ def logs2table(filename, tablename=None, conn=None,
         files = [filename]
     else:
         files = _globr(filename)
-
     if bool(files) is False:
         # _err("No file by searching with %s ..." % (str(filename)))
         return False
-
     if len(files) > max_file_num:
         raise ValueError('Glob: %s returned too many files (%s)' % (filename, str(len(files))))
-
     col_def_str = ""
     if isinstance(col_names, dict):
         for k, v in col_names.iteritems():
@@ -1667,19 +1665,19 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
     names_dict = {}
     dfs = {}
     ex = re.compile(exclude_ptn)
-
+    if conn is None:
+        conn = connect()
     files = _globr(include_ptn, src)
     for f in files:
-        if bool(exclude_ptn) and ex.search(os.path.basename(f)): continue
-
+        if bool(exclude_ptn) and ex.search(os.path.basename(f)):
+            continue
         _debug("Processing %s" % (f))
-        tablename = _pick_new_key(os.path.basename(f), {}, using_1st_char=False, prefix='t_')
+        if os.stat(f).st_size == 0:
+            continue
         f_name, f_ext = os.path.splitext(os.path.basename(f))
-        new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(conn) is False), prefix='t_')
-        _err("Creating table: %s ..." % (new_name))
-        names_dict[new_name] = f
-
-        dfs[new_name] = csv2df(filename=f, conn=conn, tablename=new_name, chunksize=chunksize)
+        tablename = _pick_new_key(f_name, names_dict, using_1st_char=(bool(conn) is False), prefix='t_')
+        names_dict[tablename] = f
+        dfs[tablename] = csv2df(filename=f, conn=conn, tablename=tablename, chunksize=chunksize)
     return (names_dict, dfs)
 
 
@@ -1712,7 +1710,7 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0):
         names = header
         header = None
     df = pd.read_csv(file_path, escapechar='\\', header=header, names=names)
-    if bool(tablename) and bool(conn) is False:
+    if bool(tablename) and conn is None:
         conn = connect()
     if bool(conn):
         if bool(tablename) is False:
