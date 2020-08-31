@@ -159,7 +159,7 @@ function export_cert() {
     ls -l ${_basename}.*
 }
 
-# generate .p12 (pkcs12) and .jks files from server cert/key (and CA cert)
+# generate .p12 (pkcs12|pfx) and .jks files from server cert/key (and CA cert)
 function gen_p12_jks() {
     local _srv_key="$1"
     local _srv_crt="$2"
