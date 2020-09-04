@@ -485,7 +485,7 @@ function f_list_start_end(){
     local _files=""
     # If no file(s) given, check current working directory
     if [ -n "${_glob}" ]; then
-        _files="`find . -type f -name "${_glob}" -size +0 -print | tail -n ${_tail_n}`"
+        _files="`find . -type f \( -name "${_glob}" -o -name "${_glob}.gz" \) -size +0 -print | tail -n ${_tail_n}`"
     else
         _files="`find . -type f -size +0 -print | tail -n ${_tail_n}`"
         #_files="`ls -1 | tail -n ${_tail_n}`"
