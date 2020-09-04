@@ -66,6 +66,7 @@ function iqMvn() {
 function sptBoot() {
     local _zip="$1"
     local _jdb="$2"
+    source $HOME/.pyvenv/bin/activate
 
     [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
     if [ -z "${_zip}" ]; then
@@ -96,9 +97,12 @@ function rmStart() {
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"}
     local _mode=${3:-"run"} # if NXRM2, not run
     #local _java_opts=${@:2}
-    local _nexus_file="$(find ${_base_dir%/} -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
-    local _cfg_file="$(find ${_base_dir%/} -path '*/sonatype-work/nexus3/etc/*' -type f -name 'nexus.properties' 2>/dev/null | sort | tail -n1)"
+    local _nexus_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
+    local _cfg_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/sonatype-work/nexus3/etc/*' -type f -name 'nexus.properties' 2>/dev/null | sort | tail -n1)"
+    local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
     grep -qE '^\s*nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
+    # TODO: version check as below breaks older nexus versions.
+    sed -i.bak 's@class="org.eclipse.jetty.util.ssl.SslContextFactory"@class="org.eclipse.jetty.util.ssl.SslContextFactory$Server"@g' ${_jetty_https}
     [ -n "${_java_opts}" ] && [[ ! "${INSTALL4J_ADD_VM_PARAMS}" =~ "${_java_opts}" ]] && export INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}"
     ${_nexus_file} ${_mode}
 }
@@ -144,9 +148,24 @@ function mvn-add-snapshot-repo-in-pom() {
   </distributionManagement>"
 }
 
+#cd my-app; mvn-deploy "http://dh1.standalone.localdomain:8081/repository/maven-snapshots-s3/" "nexus"
+#Test: get_by_gav "com.example:my-app:1.0" "http://dh1.standalone.localdomain:8081/repository/maven-snapshots-s3/"
+function mvn-deploy() {
+    local __doc__="https://stackoverflow.com/questions/13547358/maven-deploydeploy-using-daltdeploymentrepository"
+    local _alt_repo="${1}"
+    local _remote_repo="${2}"
+    local _server_id="${3:-"nexus"}"
+    local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
+    if [ -n "${_alt_repo}" ]; then
+        _options="-DaltDeploymentRepository=${_server_id}::default::${_alt_repo} ${_options}"
+    fi
+    #[ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
+    mvn `_mvn_settings "${_remote_repo}"` clean package deploy ${_options}
+}
+
 # mvn archetype:generate wrapper to use a remote repo
 #mvn-dep-file httpclient-4.5.1.jar "com.example:my-app:1.0" "http://local.standalone.localdomain:8081/repository/maven-hosted/"
-#get_by_gav "com.example:my-app:1.0" "http://local.standalone.localdomain:8081/repository/repo_maven_hosted/"
+#Test: get_by_gav "com.example:my-app:1.0" "http://local.standalone.localdomain:8081/repository/repo_maven_hosted/"
 function mvn-dep-file() {
     local __doc__="https://maven.apache.org/plugins/maven-deploy-plugin/usage.html"
     local _file="${1}"
