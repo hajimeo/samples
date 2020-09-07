@@ -888,6 +888,10 @@ function f_nexus_https_config() {
     _upsert ${_mount%/}/etc/nexus.properties "nexus-args" "\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-http.xml,\${jetty.etc}/jetty-requestlog.xml,\${ssl.etc}/jetty-https.xml" || return $?
     _upsert ${_mount%/}/etc/nexus.properties "application-port-ssl" "8443" || return $?
 
+    if [ ! -d "${_mount%/}/etc/jetty" ]; then
+        # Should change the permission/ownership?
+        mkdir -p "${_mount%/}/etc/jetty" || return $?
+    fi
     if [ ! -s "${_mount%/}/etc/jetty/jetty-https.xml" ]; then
         curl -s -f -L -o "${_mount%/}/etc/jetty/jetty-https.xml" "${_DL_URL%/}/misc/nexus-jetty-https.xml" || return $?
     fi
