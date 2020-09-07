@@ -130,11 +130,11 @@ function f_setup_golang() {
 }
 
 function f_setup_python() {
-    if ! which python3 &>/dev/null && ! _install python3; then
+    local _python="${1:-"`which python3`"}"
+    if [ ! -s "${_python}" ] && ! _install python3; then
         _log "ERROR" "no python3 installed or not in PATH"
         return 1
     fi
-
     if ! which pip3 &>/dev/null; then
         _log "WARN" "no pip installed or not in PATH (sudo easy_install pip). Trying to install..."
         # NOTE: Mac's pip3 is installed by 'brew install python3'
@@ -143,59 +143,64 @@ function f_setup_python() {
         curl -s -f "https://bootstrap.pypa.io/get-pip.py" -o /tmp/get-pip.py || return $?
         # @see https://github.com/pypa/get-pip/issues/43
         _install python3-distutils
-        sudo python3 /tmp/get-pip.py || return $?
+        "${_python}" /tmp/get-pip.py || return $?
     fi
 
-    # Command/scripts need for my bash_aliases.sh
-    # NOTE: this works only with python2, hence not pip3
-    sudo -i pip install data_hacks  # it's OK if this fails
+    # TODO: this works only with python2, hence not pip3 and not in virtualenv, and eventually will stop working
+    deactivate &>/dev/null
+    sudo -i pip install -U data_hacks  # it's OK if this fails
 
-    ### pip3 not pip from here ############################################################
-    # TODO: should use vertualenv?
-    #virtualenv myenv && source myenv/bin/activate
-    #sudo -i pip3 install -U pip &>/dev/null
+    ${_python} -m pip3 install -U virtualenv || return $?
+
+    # When python version is changed, need to run virtualenv command again
+    virtualenv -p "${_python}" $HOME/.pyvenv || return $?
+    source $HOME/.pyvenv/bin/activate || return $?
+
+    ### pip3 (not pip) from here ############################################################
+    #${_python} -m pip3 install -U pip &>/dev/null
     # outdated list
-    sudo -i pip3 list -o | tee /tmp/pip.log
-    #sudo -i pip3 list -o --format=freeze | cut -d'=' -f1 | xargs sudo -i pip3 install -U
+    ${_python} -m pip3 list -o | tee /tmp/pip.log
+    #${_python} -m pip3 list -o --format=freeze | cut -d'=' -f1 | xargs ${_python} -m pip3 install -U
 
     # My favourite/essential packages
-    sudo -i pip3 install -U lxml pyjq xmltodict pyyaml
+    ${_python} -m pip3 install -U lxml xmltodict pyyaml
+    ${_python} -m pip3 install -U pyjq    # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
     # Jupyter related
     # NOTE: Autocomplete doesn't work if diff version is used. @see https://github.com/ipython/ipython/issues/11530
-    sudo -i pip3 install ipython==7.1.1
-    sudo -i pip3 install -U jupyter jupyterlab --log /tmp/pip.log &>/dev/null || return $?
-    # Need "-H"? eg: sudo -H pip3 uninstall -y jupyterlab && sudo -H pip3 install jupyterlab
+    #${_python} -m pip3 install ipython==7.1.1
+    ${_python} -m pip3 install -U jupyter jupyterlab --log /tmp/pip.log &>/dev/null || return $?
+    # Need "-H"? eg: sudo -H ${_python} -m pip3 uninstall -y jupyterlab && sudo -H ${_python} -m pip3 install jupyterlab
     # Need to add /usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin in PATH?
 
     # NOTE: Initially I thought pandasql looked good but it's actually using sqlite. Pixiedust works only with jupyter-notebook
-    sudo -i pip3 install -U pandas pandas_profiling pixiedust sqlalchemy ipython-sql pandas-gbq --log /tmp/pip.log &>/dev/null
+    ${_python} -m pip3 install -U pandas pandas_profiling pixiedust sqlalchemy ipython-sql pandas-gbq --log /tmp/pip.log &>/dev/null
     # NOTE: In case I might use jupyter notebook, still installing this
-    sudo -i pip3 install -U bash_kernel --log /tmp/pip.log &>/dev/null && sudo -i python3 -m bash_kernel.install
+    ${_python} -m pip3 install -U bash_kernel --log /tmp/pip.log &>/dev/null && python3 -m bash_kernel.install
     # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3
-    #sudo -i pip3 install beakerx && beakerx-install
+    #${_python} -m pip3 install beakerx && beakerx-install
 
     # TODO: as of today no jupyter_contrib_labextensions (lab)
     # Enable jupyter notebook extensions (spell checker)
-    sudo -i pip3 install -U jupyter_contrib_nbextensions
-    sudo -i jupyter contrib nbextension install && sudo -i jupyter nbextension enable spellchecker/main
-    sudo -i jupyter labextension install @ijmbarr/jupyterlab_spellchecker
+    ${_python} -m pip3 install -U jupyter_contrib_nbextensions
+    jupyter contrib nbextension install && jupyter nbextension enable spellchecker/main
+    jupyter labextension install @ijmbarr/jupyterlab_spellchecker
 
     # Enable Holloviews http://holoviews.org/user_guide/Installing_and_Configuring.html
     # Ref: http://holoviews.org/reference/index.html
-    #sudo -i pip3 install 'holoviews[recommended]'
-    #sudo -i jupyter labextension install @pyviz/jupyterlab_pyviz
+    #${_python} -m pip3 install 'holoviews[recommended]'
+    #jupyter labextension install @pyviz/jupyterlab_pyviz
     # TODO: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
 
     # Not so useful?
-    #sudo -i pip3 install jupyterlab_templates
-    #sudo -i jupyter labextension install jupyterlab_templates && sudo -i jupyter serverextension enable --py jupyterlab_templates
+    ${_python} -m pip3 install jupyterlab_templates
+    #jupyter labextension install jupyterlab_templates && jupyter serverextension enable --py jupyterlab_templates
 
     #_install libsasl2-dev
-    #sudo -i pip3 install sasl thrift thrift-sasl PyHive
+    #${_python} -m pip3 install sasl thrift thrift-sasl PyHive
     # This is for using Java 1.8 (to avoid "unsupported major.minor version 52.0")
-    sudo -i pip3 install JPype1==0.6.3 JayDeBeApi
-    #sudo -i pip3 install google-cloud-bigquery
+    ${_python} -m pip3 install JPype1==0.6.3 JayDeBeApi
+    #${_python} -m pip3 install google-cloud-bigquery
 
     f_jupyter_util
 }
@@ -205,12 +210,10 @@ function f_jupyter_util() {
     if [ ! -d "$HOME/IdeaProjects/samples/python" ]; then
         mkdir -p $HOME/IdeaProjects/samples/python || return $?
     fi
-    # always get the latest and wouldn't need a backup
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/jn_utils.py" "$HOME/IdeaProjects/samples/python/jn_utils.py" || return $?
-
     if [ ! -d "$HOME/IdeaProjects/samples/java/hadoop" ]; then
         mkdir -p "$HOME/IdeaProjects/samples/java/hadoop" || return $?
     fi
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/jn_utils.py" "$HOME/IdeaProjects/samples/python/jn_utils.py" "Y" "Y" || return $?
     #_download "https://public-xxxxxxx.s3.amazonaws.com/hive-jdbc-client-1.2.1.jar" "$HOME/IdeaProjects/samples/java/hadoop/hive-jdbc-client-1.2.1.jar" "Y" "Y" || return $?
     _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "$HOME/IdeaProjects/samples/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y" || return $?
     _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "$HOME/IdeaProjects/samples/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "Y" "Y" || return $?
