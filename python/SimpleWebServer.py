@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
 # Based on https://pymotw.com/2/BaseHTTPServer/
@@ -6,9 +6,19 @@
 #
 # Then from browser, http://localhost:38080/slack/search?query=test
 #
-from BaseHTTPServer import BaseHTTPRequestHandler
-from BaseHTTPServer import HTTPServer
-import urllib, urllib2, urlparse, sys, os, imp, json, traceback, base64, datetime, math
+from http.server import BaseHTTPRequestHandler
+from http.server import HTTPServer
+import urllib, sys, os, json, traceback, base64, datetime, math
+import imp  # TODO: Deprecated
+
+try:
+    from urllib.request import urlopen, Request
+except ImportError:
+    from urllib2 import urlopen, Request
+try:
+    from urllib import parse
+except ImportError:
+    import urlparse as parse
 
 
 def toDateStr(ts):
@@ -39,8 +49,8 @@ class SimpleWebServer(BaseHTTPRequestHandler):
             query_args['query'] = query_args['query'][0]
         data = urllib.urlencode(query_args)
         SimpleWebServer.log('    data = ' + str(data))
-        request = urllib2.Request(SimpleWebServer._creds.slack_search_baseurl + "/api/search.messages", data)
-        response = urllib2.urlopen(request)
+        request = Request(SimpleWebServer._creds.slack_search_baseurl + "/api/search.messages", data)
+        response = urlopen(request)
         json_str = response.read()
         json_obj = json.loads(json_str)
         html = u"<h2>Hit " + str(json_obj['messages']['total']) + u" messages</h2>\n"
@@ -50,8 +60,11 @@ class SimpleWebServer(BaseHTTPRequestHandler):
                 SimpleWebServer.log('    matchN = ' + json.dumps(o, indent=2, sort_keys=True))
                 html += u"<hr/>"
                 html += u"<pre>"
-                html += u"DATETIME : " + toDateStr(o['ts']) + " | CHANNEL: " + str(o['channel']['name']) + " | USERNAME: " + str(o['username']) + " (" + str(o['user']) + ")\n"
-                html += u"PERMALINK: <a href='" + o['permalink'].replace('/archives/','/messages/') + u"' target='_blank'>" + o['permalink'] + u"</a>\n"
+                html += u"DATETIME : " + toDateStr(o['ts']) + " | CHANNEL: " + str(
+                    o['channel']['name']) + " | USERNAME: " + str(o['username']) + " (" + str(o['user']) + ")\n"
+                html += u"PERMALINK: <a href='" + o['permalink'].replace('/archives/',
+                                                                         '/messages/') + u"' target='_blank'>" + o[
+                            'permalink'] + u"</a>\n"
                 html += u"</pre>"
                 html += u"<blockquote style='white-space:pre-wrap'><tt>" + o['text'] + u"</tt></blockquote>\n"
         else:
@@ -116,15 +129,15 @@ class SimpleWebServer(BaseHTTPRequestHandler):
             self._log(credpath + " should be deleted", "WARN")
 
     def _get_category_method_and_args_from_path(self):
-        parsed_path = urlparse.urlparse(self.path)
-        args = urlparse.parse_qs(parsed_path.query)
+        parsed_path = parse.urlparse(self.path)
+        args = parse.parse_qs(parsed_path.query)
         dirs = parsed_path.path.split("/")
         if len(dirs) < 3: return "", "", args
         return dirs[1], dirs[2], args
 
     def _debug_message(self, force=False):
         if SimpleWebServer.verbose.lower() == 'verbose' or force:
-            parsed_path = urlparse.urlparse(self.path)
+            parsed_path = parse.urlparse(self.path)
             message_parts = [
                 'CLIENT VALUES:',
                 'client_address=%s (%s)' % (self.client_address,
