@@ -310,8 +310,11 @@ function _download() {
         _log "INFO" "Not downloading as ${_save_as} exists."
         return
     fi
-    # NOTE: if the file already exists, "-C -" may work properly
     local _cmd="curl -s -f --retry 3 --compressed -L -k '${_url}'"
+    # NOTE: if the file already exists, "-C -" may do something unexpected for text files
+    if [ -s "${_save_as}" ] && ! file "${_save_as}" | grep -qwi "text"; then
+        _cmd="${_cmd} -C -"
+    fi
     if [ -z "${_save_as}" ]; then
         _cmd="${_cmd} -O"
     else
