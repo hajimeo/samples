@@ -229,8 +229,8 @@ get_ipython().run_line_magic('matplotlib', 'inline')" > "$HOME/.ipython/profile_
 }
 
 function f_setup_java() {
-    local _v="${1-"8"}"    # Using 8 as JayDeBeApi uses specific version and which is for java 8
-    local _ver="${_v}"
+    local _v="${1-"8"}" # Using 8 as JayDeBeApi uses specific version and which is for java 8
+    local _ver="${_v}"  # Java version can be "9" or "1.8"
     [[ "${_v}" =~ ^[678]$ ]] && _ver="1.${_v}"
 
     if [ "`uname`" = "Darwin" ]; then
@@ -310,8 +310,8 @@ function _download() {
         _log "INFO" "Not downloading as ${_save_as} exists."
         return
     fi
-
-    local _cmd="curl -s -f --retry 3 -C - -L -k '${_url}'"
+    # NOTE: if the file already exists, "-C -" may work properly
+    local _cmd="curl -s -f --retry 3 --compressed -L -k '${_url}'"
     if [ -z "${_save_as}" ]; then
         _cmd="${_cmd} -O"
     else
