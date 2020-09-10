@@ -2,7 +2,7 @@
 <module type="JAVA_MODULE" version="4">
   <component name="FacetManager">
     <facet type="Python" name="Python">
-      <configuration sdkName="Python 3.7" />
+      <configuration sdkName="Python 3.8" />
     </facet>
   </component>
   <component name="NewModuleRootManager" inherit-compiler-output="true">
@@ -22,6 +22,6 @@
     <orderEntry type="library" name="sal-core-4.0.0-490c946" level="project" />
     <orderEntry type="library" name="groovy-2.5.8" level="application" />
     <orderEntry type="library" name="h2-1.4.200" level="application" />
-    <orderEntry type="library" name="Python 3.7 interpreter library" level="application" />
+    <orderEntry type="library" name="Python 3.8 interpreter library" level="application" />
   </component>
 </module>

@@ -57,7 +57,7 @@ function iqMvn() {
     if [ -z "${_IQ_URL}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
         _iq_url="http://localhost:8070/"
     fi
-    #local _iq_tmp="${_IQ_TMP:-"./tmp"}"
+    #local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}" # does not generate anything
     local _cmd="mvn com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -U -X $@"
     echo "Executing: ${_cmd}" >&2
     eval "${_cmd}"
