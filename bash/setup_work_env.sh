@@ -135,7 +135,7 @@ function f_setup_python() {
         _log "ERROR" "no python3 installed or not in PATH"
         return 1
     fi
-    if ! which pip3 &>/dev/null; then
+    if ! which pip &>/dev/null; then
         _log "WARN" "no pip installed or not in PATH (sudo easy_install pip). Trying to install..."
         # NOTE: Mac's pip3 is installed by 'brew install python3'
         # sudo python3 -m pip uninstall pip
@@ -148,59 +148,63 @@ function f_setup_python() {
 
     # TODO: this works only with python2, hence not pip3 and not in virtualenv, and eventually will stop working
     deactivate &>/dev/null
-    sudo -i pip install -U data_hacks  # it's OK if this fails
+    if which python2 &>/dev/null; then
+        sudo -i python2 -m pip install -U data_hacks
+    else
+        sudo -i pip install -U data_hacks
+    fi  # it's OK if this fails
 
-    ${_python} -m pip3 install -U virtualenv || return $?
+    ${_python} -m pip install -U virtualenv || return $?
 
     # When python version is changed, need to run virtualenv command again
     virtualenv -p "${_python}" $HOME/.pyvenv || return $?
     source $HOME/.pyvenv/bin/activate || return $?
 
     ### pip3 (not pip) from here ############################################################
-    #${_python} -m pip3 install -U pip &>/dev/null
+    #${_python} -m pip install -U pip &>/dev/null
     # outdated list
-    ${_python} -m pip3 list -o | tee /tmp/pip.log
-    #${_python} -m pip3 list -o --format=freeze | cut -d'=' -f1 | xargs ${_python} -m pip3 install -U
+    ${_python} -m pip list -o | tee /tmp/pip.log
+    #${_python} -m pip list -o --format=freeze | cut -d'=' -f1 | xargs ${_python} -m pip install -U
 
     # My favourite/essential packages
-    ${_python} -m pip3 install -U lxml xmltodict pyyaml
-    ${_python} -m pip3 install -U pyjq    # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
+    ${_python} -m pip install -U lxml xmltodict pyyaml
+    ${_python} -m pip install -U pyjq    # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
     # Jupyter related
     # NOTE: Autocomplete doesn't work if diff version is used. @see https://github.com/ipython/ipython/issues/11530
-    #${_python} -m pip3 install ipython==7.1.1
-    ${_python} -m pip3 install -U jupyter jupyterlab --log /tmp/pip.log &>/dev/null || return $?
-    # Need "-H"? eg: sudo -H ${_python} -m pip3 uninstall -y jupyterlab && sudo -H ${_python} -m pip3 install jupyterlab
+    #${_python} -m pip install ipython==7.1.1
+    ${_python} -m pip install -U jupyter jupyterlab --log /tmp/pip.log &>/dev/null || return $?
+    # Need "-H"? eg: sudo -H ${_python} -m pip uninstall -y jupyterlab && sudo -H ${_python} -m pip install jupyterlab
     # Need to add /usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin in PATH?
 
     # NOTE: Initially I thought pandasql looked good but it's actually using sqlite. Pixiedust works only with jupyter-notebook
-    ${_python} -m pip3 install -U pandas pandas_profiling pixiedust sqlalchemy ipython-sql pandas-gbq --log /tmp/pip.log &>/dev/null
+    ${_python} -m pip install -U pandas pandas_profiling pixiedust sqlalchemy ipython-sql pandas-gbq --log /tmp/pip.log &>/dev/null
     # NOTE: In case I might use jupyter notebook, still installing this
-    ${_python} -m pip3 install -U bash_kernel --log /tmp/pip.log &>/dev/null && python3 -m bash_kernel.install
+    ${_python} -m pip install -U bash_kernel --log /tmp/pip.log &>/dev/null && python3 -m bash_kernel.install
     # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3
-    #${_python} -m pip3 install beakerx && beakerx-install
+    #${_python} -m pip install beakerx && beakerx-install
 
     # TODO: as of today no jupyter_contrib_labextensions (lab)
     # Enable jupyter notebook extensions (spell checker)
-    ${_python} -m pip3 install -U jupyter_contrib_nbextensions
+    ${_python} -m pip install -U jupyter_contrib_nbextensions
     jupyter contrib nbextension install && jupyter nbextension enable spellchecker/main
     jupyter labextension install @ijmbarr/jupyterlab_spellchecker
 
     # Enable Holloviews http://holoviews.org/user_guide/Installing_and_Configuring.html
     # Ref: http://holoviews.org/reference/index.html
-    #${_python} -m pip3 install 'holoviews[recommended]'
+    #${_python} -m pip install 'holoviews[recommended]'
     #jupyter labextension install @pyviz/jupyterlab_pyviz
     # TODO: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
 
     # Not so useful?
-    ${_python} -m pip3 install jupyterlab_templates
+    ${_python} -m pip install jupyterlab_templates
     #jupyter labextension install jupyterlab_templates && jupyter serverextension enable --py jupyterlab_templates
 
     #_install libsasl2-dev
-    #${_python} -m pip3 install sasl thrift thrift-sasl PyHive
+    #${_python} -m pip install sasl thrift thrift-sasl PyHive
     # This is for using Java 1.8 (to avoid "unsupported major.minor version 52.0")
-    ${_python} -m pip3 install JPype1==0.6.3 JayDeBeApi
-    #${_python} -m pip3 install google-cloud-bigquery
+    ${_python} -m pip install JPype1==0.6.3 JayDeBeApi
+    #${_python} -m pip install google-cloud-bigquery
 
     f_jupyter_util
 }
