@@ -47,14 +47,14 @@ class SimpleWebServer(BaseHTTPRequestHandler):
         # Note: similar to PHP, query argument can be a list
         if 'query' in query_args and type(query_args['query']) == list and len(query_args['query']) == 1:
             query_args['query'] = query_args['query'][0]
-        data = urllib.urlencode(query_args)
+        data = parse.urlencode(query_args)
         SimpleWebServer.log('    data = ' + str(data))
-        request = Request(SimpleWebServer._creds.slack_search_baseurl + "/api/search.messages", data)
+        request = Request(SimpleWebServer._creds.slack_search_baseurl + "/api/search.messages", data.encode("utf-8"))
         response = urlopen(request)
         json_str = response.read()
         json_obj = json.loads(json_str)
         html = u"<h2>Hit " + str(json_obj['messages']['total']) + u" messages</h2>\n"
-        html += u"<p>Query <code>" + query_args['query'].decode('utf-8') + "</code></p>\n"
+        html += u"<p>Query <code>" + query_args['query'] + "</code></p>\n"
         if len(json_obj['messages']['matches']) > 0:
             for o in json_obj['messages']['matches']:
                 SimpleWebServer.log('    matchN = ' + json.dumps(o, indent=2, sort_keys=True))
@@ -110,17 +110,19 @@ class SimpleWebServer(BaseHTTPRequestHandler):
         except ImportError:
             c = imp.load_source("*", credpath)
             plain = True
-        for p, v in vars(c).iteritems():
+        for p, v in vars(c).items():
+            self._log("p " + str(p))
+            self._log("v " + str(v))
             if not p.startswith('__'):
                 if plain:
-                    s[p] = base64.b64encode(v)
+                    s[p] = base64.b64encode(v.encode("utf-8"))
                 else:
                     setattr(c, p, base64.b64decode(v))
         SimpleWebServer._creds = c
         # self._log(str(SimpleWebServer._creds.__dict__))
         if plain:
             f = open(credpath + ".tmp", "wb")
-            for p, v in s.iteritems():
+            for p, v in s.items():
                 f.write(p + "='" + v + "'\n")
             f.close()
             import py_compile
