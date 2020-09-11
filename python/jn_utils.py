@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # Python Jupyter Notebook helper/utility functions
 # @author: hajime
@@ -32,7 +32,7 @@ Convert current time or string date to Unix timestamp
 """
 
 # TODO: When you add a new pip package, don't forget to update setup_work.env.sh
-import sys, os, fnmatch, gzip, re, linecache, json, sqlite3
+import sys, os, io, fnmatch, gzip, re, linecache, json, sqlite3
 from time import time, mktime, strftime
 from datetime import datetime
 from dateutil import parser
@@ -42,7 +42,6 @@ import matplotlib.pyplot as plt
 
 try:
     from lxml import etree
-    import pyjq
     import multiprocessing as mp
     import jaydebeapi
     import IPython
@@ -161,6 +160,15 @@ def _is_numeric(some_num):
         return False
 
 
+def _is_jupyter():
+    is_jupyter = True
+    try:
+        get_ipython()
+    except:
+        is_jupyter = False
+    return is_jupyter
+
+
 def _open_file(file):
     """
     Open one text or gz file
@@ -218,8 +226,12 @@ def _timestamp(unixtimestamp=None, format=None):
     return dt.strftime(format)
 
 
-def _err(message):
+def _info(message):
     sys.stderr.write("%s\n" % (str(message)))
+
+
+def _err(message):
+    sys.stderr.write("[%s] ERROR: %s\n" % (_timestamp(), str(message)))
 
 
 def _debug(message):
@@ -252,7 +264,7 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     for f in files:
         f_name, f_ext = os.path.splitext(os.path.basename(f))
         if ex.search(f_name):
-            _err("Excluding %s as per exclude_ptn (%d KB)..." % (f_name, os.stat(f).st_size / 1024))
+            _info("Excluding %s as per exclude_ptn (%d KB)..." % (f_name, os.stat(f).st_size / 1024))
             continue
         new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(conn) is False), prefix='t_')
         names_dict[new_name] = f
@@ -287,7 +299,7 @@ def json2df(filename, jq_query="", conn=None, tablename=None, json_cols=[], chun
             return False
     dfs = []
     for file_path in files:
-        _err("Loading %s (%s)..." % (str(file_path), _timestamp(format="%H:%M:%S")))
+        _info("Loading %s (%s)..." % (str(file_path), _timestamp(format="%H:%M:%S")))
         if bool(jq_query):
             obj = jq(file_path, jq_query)
             dfs.append(pd.DataFrame(obj))
@@ -306,7 +318,7 @@ def json2df(filename, jq_query="", conn=None, tablename=None, json_cols=[], chun
             tablename = _pick_new_key(os.path.basename(files[0]), {}, using_1st_char=False, prefix='t_')
         # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
-        _err("Creating table: %s ..." % (tablename))
+        _info("Creating table: %s ..." % (tablename))
         df_tmp_mod.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
         _autocomp_inject(tablename=tablename)
         return len(df) > 0
@@ -333,9 +345,9 @@ def _json2table(filename, tablename=None, conn=None, col_name='json_text', appen
         res = conn.execute("DROP TABLE IF EXISTS %s" % (tablename))
         if bool(res) is False:
             return res
-        _err("Drop if exists and Creating table: %s ..." % (str(tablename)))
+        _info("Drop if exists and Creating table: %s ..." % (str(tablename)))
     else:
-        _err("Creating table: %s ..." % (str(tablename)))
+        _info("Creating table: %s ..." % (str(tablename)))
     res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s TEXT)" % (tablename, col_name))  # JSON type not supported?
     if bool(res) is False:
         return res
@@ -354,6 +366,11 @@ def jq(file_path, query='.', as_string=False):
     #>>> pd.DataFrame(ju.jq('./export.json', '.records | map(select(.value_data != null))[] | .value_data'))
     >>> pass    # TODO: implement test
     """
+    try:
+        import pyjq
+    except ImportError:
+        _err("importing pyjq failed")
+        return
     jd = json2dict(file_path)
     result = pyjq.all(query, jd)
     if len(result) == 1:
@@ -400,7 +417,7 @@ def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablen
     if bool(conn):
         if bool(tablename) is False:
             tablename, ext = os.path.splitext(os.path.basename(file_path))
-        _err("Creating table: %s ..." % (tablename))
+        _info("Creating table: %s ..." % (tablename))
         df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
         _autocomp_inject(tablename=tablename)
     return df
@@ -414,7 +431,7 @@ def xml2dict(file_path, row_element_name, tbl_element_name=None, tbl_num=0):
         if bool(tbl_element_name) is True:
             tbls = r.findall('.//' + tbl_element_name)
             if len(tbls) > 1:
-                _err("%s returned more than 1. Using tbl_num=%s" % (tbl_element_name, str(tbl_num)))
+                _info("%s returned more than 1. Using tbl_num=%s" % (tbl_element_name, str(tbl_num)))
             rows = tbls[tbl_num].findall(".//" + row_element_name)
         else:
             rows = r.findall(".//" + row_element_name)
@@ -484,7 +501,7 @@ def _avoid_unsupported(df, json_cols=[], name=None):
             # df[k] = df[k].to_string()
             cols[k] = 'str'
     if len(cols) > 0:
-        if bool(name): _err(" - converting columns:%s." % (str(cols)))
+        if bool(name): _info(" - converting columns:%s." % (str(cols)))
         return df.astype(cols)
     return df
 
@@ -819,18 +836,59 @@ def display(df, name=""):
     """
     if bool(name) is False:
         name = _timestamp(format="%Y%m%d%H%M%S%f")
-    is_jupyter = True
-    try:
-        get_ipython()
-    except:
-        is_jupyter = False
-        pass
-    if is_jupyter:
-        out = IPython.display.HTML(df.to_html())
-        IPython.display.display(out)
+    if _is_jupyter():
+        _display(df.to_html())
     else:
         # print(df.to_html())
         df2csv(df=df, file_path="%s.csv" % (str(name)))
+
+
+def _display(html):
+    """
+    Wrapper of IPython.display.display
+    :param html: HTML string
+    :return Void
+    >>> pass
+    """
+    IPython.display.display(IPython.display.HTML(html))
+
+
+def pivot(df, output_prefix="pivottable", output_dir="./", rows=None, cols=None, chunk_size=100000):
+    """
+    Helper function for pivottablejs https://pypi.org/project/pivottablejs/
+    https://github.com/nicolaskruchten/pivottable/wiki/Parameters#options-object-for-pivotui
+
+    :param df: A DataFrame object
+    :param rows: row list
+    :param cols: column list
+    :return: void
+    >>> pass    # TODO: implement test
+    """
+    if rows is None:
+        rows = []
+    if cols is None:
+        cols = []
+    dfs = _chunks(df, chunk_size)
+    for i, _df in enumerate(dfs):
+        outfile_path = output_dir.rstrip("/") + "/" + output_prefix + str(i + 1) + ".html"
+        _pivot_ui(_df, outfile_path=outfile_path, rows=rows, cols=cols)
+
+
+def _pivot_ui(df, outfile_path="pivottablejs.html", **kwargs):
+    try:
+        from pivottablejs import TEMPLATE
+        from pivottablejs import pivot_ui
+    except ImportError:
+        _err("importing pivottablejs failed")
+        return
+    with io.open(outfile_path, 'wt', encoding='utf8') as outfile:
+        csv = df.to_csv(encoding='utf8')
+        if hasattr(csv, 'decode'):
+            csv = csv.decode('utf8')
+        html = TEMPLATE % dict(csv=csv, kwargs=json.dumps(kwargs))
+        outfile.write(html)
+    # TODO: pivottablejs.IFrame and ju._display() do not work from another function
+    _info("%s is created." % outfile_path)
 
 
 def draw(df, width=8, x_col=0, x_colname=None, name="", tail=10):
@@ -850,15 +908,8 @@ def draw(df, width=8, x_col=0, x_colname=None, name="", tail=10):
     #>>> draw(ju.q("select QueryHour, SumSqSqlWallTime, SumPostPlanTime, SumSqPostPlanTime from query_stats")).tail()
     >>> pass    # TODO: implement test
     """
-    is_jupyter = True
     if bool(name) is False:
         name = _timestamp(format="%Y%m%d%H%M%S%f")
-    try:
-        get_ipython().run_line_magic('matplotlib', 'inline')
-    except:
-        is_jupyter = False
-        _debug("get_ipython().run_line_magic('matplotlib', 'inline') failed")
-        pass
     height_inch = 8
     if len(df) == 0:
         _debug("No rows to draw.")
@@ -870,7 +921,7 @@ def draw(df, width=8, x_col=0, x_colname=None, name="", tail=10):
     df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)
     if len(name) > 0:
         plt.savefig("%s.png" % (str(name)))
-    if is_jupyter:
+    if _is_jupyter():
         plt.show()
     # TODO: x axis doesn't show any legend
     # if len(df) > (width * 2):
@@ -896,15 +947,8 @@ def gantt(df, index_col="", start_col="min_dt", end_col="max_dt", width=8, name=
     :return: DF (use .tail() or .head() to limit the rows)
     >>> pass    # TODO: implement test
     """
-    is_jupyter = True
     if bool(name) is False:
         name = _timestamp(format="%Y%m%d%H%M%S%f")
-    try:
-        get_ipython().run_line_magic('matplotlib', 'inline')
-    except:
-        is_jupyter = False
-        _debug("get_ipython().run_line_magic('matplotlib', 'inline') failed")
-        pass
     if len(df) == 0:
         _debug("No rows to draw.")
         return
@@ -918,11 +962,15 @@ def gantt(df, index_col="", start_col="min_dt", end_col="max_dt", width=8, name=
         y = df.index
     else:
         y = df[index_col]
-    import matplotlib.dates as mdt
+    try:
+        import matplotlib.dates as mdt
+    except ImportError:
+        _err("importing matplotlib failed")
+        return
     ax = plt.hlines(y=y, xmin=mdt.date2num(df[start_col]), xmax=mdt.date2num(df[end_col]))
     if len(name) > 0:
         plt.savefig("%s.png" % (str(name)))
-    if is_jupyter:
+    if _is_jupyter():
         plt.show()
     return df.tail(tail)
 
@@ -953,7 +1001,7 @@ def qhistory(run=None, like=None, html=True, tail=20):
     df.columns = ["datetime", "query"]
     if bool(run):
         sql = df.loc[run, 'query']  # .loc[row_num, column_name]
-        _err(sql)
+        _info(sql)
         return query(sql=sql, conn=connect())
     if bool(like):
         df = df[df['query'].str.contains(like)]
@@ -1304,7 +1352,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     :return: A list of tuples
     >>> pass    # TODO: implement test
     """
-    _debug("line_beginning: "+line_beginning)
+    _debug("line_beginning: " + line_beginning)
     begin_re = re.compile(line_beginning)
     line_re = re.compile(line_matching)
     size_re = re.compile(size_regex) if bool(size_regex) else None
@@ -1332,7 +1380,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
             _empty += 1
             continue
         if (_ln % connter) == 0:
-            _err("  Processed %s/%s (skip:%s) lines for %s (%s) ..." % (
+            _info("  Processed %s/%s (skip:%s) lines for %s (%s) ..." % (
                 str(_ln), ttl_line, str(_empty), filename, _timestamp(format="%H:%M:%S")))
         if bool(l) is False:
             break  # most likely the end of the file
@@ -1452,9 +1500,9 @@ def logs2table(filename, tablename=None, conn=None,
             res = conn.execute("DROP TABLE IF EXISTS %s" % (tablename))
             if bool(res) is False:
                 return res
-            _err("Drop if exists and Creating table: %s ..." % (str(tablename)))
+            _info("Drop if exists and Creating table: %s ..." % (str(tablename)))
         else:
-            _err("Creating table: %s ..." % (str(tablename)))
+            _info("Creating table: %s ..." % (str(tablename)))
         res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def_str))
         if bool(res) is False:
             return res
@@ -1463,7 +1511,7 @@ def logs2table(filename, tablename=None, conn=None,
         args_list = []
         for f in files:
             if os.stat(f).st_size >= max_file_size:
-                _err("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (
+                _info("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (
                     str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
                 continue
             # concurrent.futures.ProcessPoolExecutor hangs in Jupyter, so can't use kwargs
@@ -1473,7 +1521,7 @@ def logs2table(filename, tablename=None, conn=None,
         rs = _mexec(_read_file_and_search, args_list)
         for tuples in rs:
             if bool(tuples) is False or len(tuples) == 0:
-                _err("WARN: _mexec returned empty tuple ...")
+                _info("WARN: _mexec returned empty tuple ...")
                 continue
             res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
             if bool(res) is False:  # if fails once, stop
@@ -1482,7 +1530,7 @@ def logs2table(filename, tablename=None, conn=None,
     else:
         for f in files:
             if os.stat(f).st_size >= max_file_size:
-                _err("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (
+                _info("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (
                     str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
                 continue
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
@@ -1544,13 +1592,13 @@ def logs2dfs(filename, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size
                 dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
     else:
         for f in files:
-            _err("Processing %s (%d KB) ..." % (str(f), os.stat(f).st_size / 1024))
+            _info("Processing %s (%d KB) ..." % (str(f), os.stat(f).st_size / 1024))
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
                                            size_regex=size_regex, time_regex=time_regex, num_cols=num_fields,
                                            replace_comma=True)
             if len(tuples) > 0:
                 dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
-    _err("Completed.")
+    _info("Completed.")
     if bool(dfs) is False:
         return None
     return pd.concat(dfs, sort=False)
@@ -1567,15 +1615,18 @@ def _gen_regex_for_request_logs(filename="request.log"):
         return ([], "")
     checking_line = linecache.getline(files[0], 2)  # first line can be a junk: "** TRUNCATED ** linux x64"
     # @see: samples/bash/log_search.sh:f_request2csv()
-    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent", "elapsedTime", "headerUserAgent", "thread"]
+    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
+               "elapsedTime", "headerUserAgent", "thread"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
-    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "headerUserAgent", "thread"]
+    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime",
+               "headerUserAgent", "thread"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
-    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "headerUserAgent"]
+    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime",
+               "headerUserAgent"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
@@ -1589,7 +1640,7 @@ def _gen_regex_for_request_logs(filename="request.log"):
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
     else:
-        _err("Can not determine the log format for %s . Using last one." % (str(files[0])))
+        _info("Can not determine the log format for %s . Using last one." % (str(files[0])))
         return (columns, partern_str)
 
 
@@ -1614,7 +1665,7 @@ def _gen_regex_for_app_logs(filename="nexus.log"):
         if re.search('^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*)', checking_line):
             break
     if bool(checking_line) is False:
-        _err("Could not determine columns and pattern_str. Using default.")
+        _info("Could not determine columns and pattern_str. Using default.")
         return (columns, partern_str)
     _debug(checking_line)
 
@@ -1681,7 +1732,7 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
     return (names_dict, dfs)
 
 
-def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0):
+def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exists=None):
     '''
     Load a CSV file into a DataFrame
     If conn is given, import into a DB table
@@ -1689,8 +1740,10 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0):
     :param conn: DB connection object. If not empty, import into a sqlite table
     :param tablename: If empty, table name will be the filename without extension
     :param chunksize: Rows will be written in batches of this size at a time
-    :param header: Row number(s) to use as the column names if not the first line (0) is not column name
+    :param header: interger or list
+                   Row number(s) to use as the column names
                    Or a list of column names
+    :param if_exists: {‘fail’, ‘replace’, ‘append’}
     :return: Pandas DF object or False if file is not readable
     #>>> df = ju.csv2df(file_path='./slow_queries.csv', conn=ju.connect())
     >>> pass    # Testing in df2csv()
@@ -1704,7 +1757,11 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0):
             _err("No file found from: %s ..." % (str(filename)))
             return False
         file_path = files[0]
-
+    if if_exists is None:
+        if header is None:
+            if_exists = 'append'
+        else:
+            if_exists = 'fail'
     names = None
     if type(header) == list:
         names = header
@@ -1715,9 +1772,9 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0):
     if bool(conn):
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
-        _err("Creating table: %s ..." % (tablename))
+        _info("Creating table: %s ..." % (tablename))
         # Not sure if to_sql returns some result
-        df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
+        df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=_DB_SCHEMA)
         _autocomp_inject(tablename=tablename)
         return len(df) > 0
     return df
@@ -1790,9 +1847,9 @@ def df2files(df, filepath_prefix, extension="", columns=None, overwriting=False,
         else:
             full_filepath = filepath_prefix + str(i)
         if overwriting is False and os.path.exists(full_filepath):
-            _err("%s exists. Skipping ..." % (full_filepath))
+            _info("%s exists. Skipping ..." % (full_filepath))
             continue
-        _err("Writing index=%s into %s ..." % (str(i), full_filepath))
+        _info("Writing index=%s into %s ..." % (str(i), full_filepath))
         with open(full_filepath, 'w') as f2:
             if type(columns) == type('a'):
                 f2.write(row[columns])
@@ -1838,7 +1895,7 @@ FROM t_request_logs
 %s
 GROUP BY 1, 2""" % (where_sql)
         name = "request_log-hourly_aggs"
-        _err("\n# Query (%s): \n%s" % (name, query))
+        _info("\n# Query (%s): \n%s" % (name, query))
         display(q(query), name=name)
         query = """SELECT UDF_STR2SQLDT(`date`, '%%d/%%b/%%Y:%%H:%%M:%%S %%z') AS date_time, 
     CAST(statusCode AS INTEGER) AS statusCode, 
@@ -1846,7 +1903,7 @@ GROUP BY 1, 2""" % (where_sql)
     CAST(elapsedTime AS INTEGER) AS elapsedTime 
 FROM t_request_logs %s""" % (where_sql)
         name = "request_log-status_bytesent_elapsed"
-        _err("\n# Query (%s): \n%s" % (name, query))
+        _info("\n# Query (%s): \n%s" % (name, query))
         draw(q(query).tail(tail_num), name=name)
 
     ## Loading application log file(s) into database.
@@ -1861,7 +1918,7 @@ FROM t_request_logs %s""" % (where_sql)
     #   query = """select date_time, xxxx from t_health_monitor"""
     #   ju.draw(ju.q(query))
     if bool(nxrm_logs):
-        _err("Generating t_health_monitor from t_logs ...")
+        _info("Generating t_health_monitor from t_logs ...")
         df_hm = q("""select date_time, message from t_logs
     where loglevel = 'INFO'
     and class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
@@ -1893,7 +1950,7 @@ FROM t_request_logs %s""" % (where_sql)
 FROM t_health_monitor
 %s""" % (where_sql)
             name = "nexus_health_monitor"
-            _err("\n# Query (%s): \n%s" % (name, query))
+            _info("\n# Query (%s): \n%s" % (name, query))
             draw(q(query), name=name)
 
     # Nexus IQ
@@ -1908,7 +1965,7 @@ WHERE thread LIKE 'PolicyEvaluateService%'
 GROUP BY 1
 ORDER BY diff, thread"""
         name = "nxiq_log-policy_scan_aggs"
-        # _err("\n# Query (%s): \n%s" % (name,query))
+        # _info("\n# Query (%s): \n%s" % (name,query))
         # display(q(query), name=name)
         query = """SELECT date_time, 
   UDF_REGEX(' in (\d+) ms', message, 1) as ms,
@@ -1917,7 +1974,7 @@ FROM t_logs
 WHERE t_logs.class = 'com.sonatype.insight.brain.hds.HdsClient'
   AND t_logs.message LIKE 'Completed request%'"""
         name = "nxiq_log-hdfsclient_results"
-        # _err("\n# Query (%s): \n%s" % (name,query))
+        # _info("\n# Query (%s): \n%s" % (name,query))
         # display(q(query), name=name)
 
         query = """SELECT date_time, thread,
@@ -1928,7 +1985,7 @@ WHERE t_logs.message like 'Evaluated policy for%'
 ORDER BY ms DESC
 LIMIT 10"""
         name = "nxiq_log-top10_slow_scan"
-        _err("\n: \n%s" % (name, query))
+        _info("\n: \n%s" % (name, query))
         display(q(query), name="nxiq_log-top10_slow_scan")
 
     if bool(nxrm_logs) or bool(nxiq_logs):
@@ -1939,7 +1996,7 @@ LIMIT 10"""
       AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
     GROUP BY 1, 2""" % (where_sql)
         name = "warn_error_hourly"
-        _err("\n# Query (%s): \n%s" % (name, query))
+        _info("\n# Query (%s): \n%s" % (name, query))
         draw(q(query), name=name)
 
     # TODO: analyse db job triggers
@@ -1954,9 +2011,10 @@ LIMIT 10"""
     #  AND nextFireTime > 1578290830000
     # ORDER BY nextFireTime
     # """)
-    _err("Available Tables:")
+    _info("Available Tables:")
     display(desc(), name="available_tables")
-    _err("Completed.")
+    _info("Completed.")
+
 
 def load(jsons_dir=["./engine/aggregates", "./engine/cron-scheduler"], csvs_dir="./stats",
          jsons_exclude_ptn='physicalPlans|partition|incremental|predictions', csvs_exclude_ptn=''):
@@ -1983,7 +2041,7 @@ def load(jsons_dir=["./engine/aggregates", "./engine/cron-scheduler"], csvs_dir=
     else:
         load_csvs(csvs_dir, connect(), exclude_ptn=csvs_exclude_ptn)
     _autocomp_inject()
-    _err("Completed.")
+    _info("Completed.")
 
 
 def update_check(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples/master/python"):
@@ -2023,20 +2081,20 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
         return False
     if force_update is False and int(remote_size) == int(local_size):
         # If exactly same size, not updating
-        _err("No need to update %s" % (filename))
+        _info("No need to update %s" % (filename))
         return
     if int(remote_size) != int(local_size):
-        _err("%s size is different between remote (%s KB) and local (%s KB)." % (
+        _info("%s size is different between remote (%s KB) and local (%s KB)." % (
             filename, int(remote_size / 1024), int(local_size / 1024)))
         if check_only:
-            _err("To update, use 'ju.update()'\n")
+            _info("To update, use 'ju.update()'\n")
             return True
     new_file = "/tmp/" + filename + "_" + _timestamp(format="%Y%m%d%H%M%S")
     os.rename(file, new_file)
     remote_content = urlopen(url).read()
     with open(file, 'wb') as f:
         f.write(remote_content)
-    _err("%s was updated and back up is %s" % (filename, new_file))
+    _info("%s was updated and back up is %s" % (filename, new_file))
     return
 
 
@@ -2068,5 +2126,6 @@ def help(func_name=None):
 
 if __name__ == '__main__':
     import doctest
+
     print("Running tests ...")
     doctest.testmod(verbose=True)
