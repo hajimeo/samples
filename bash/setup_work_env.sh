@@ -166,7 +166,7 @@ function f_setup_python() {
     ${_python} -m pip list -o | tee /tmp/pip.log
     #${_python} -m pip list -o --format=freeze | cut -d'=' -f1 | xargs ${_python} -m pip install -U
 
-    # My favourite/essential packages
+    # My favourite/essential python packages
     ${_python} -m pip install -U lxml xmltodict pyyaml
     ${_python} -m pip install -U pyjq    # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
@@ -178,7 +178,7 @@ function f_setup_python() {
     # Need to add /usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin in PATH?
 
     # NOTE: Initially I thought pandasql looked good but it's actually using sqlite. Pixiedust works only with jupyter-notebook
-    ${_python} -m pip install -U pandas pandas_profiling pixiedust sqlalchemy ipython-sql pandas-gbq --log /tmp/pip.log &>/dev/null
+    ${_python} -m pip install -U pandas pandas_profiling pixiedust sqlalchemy ipython-sql pandas-gbq pivottablejs --log /tmp/pip.log &>/dev/null
     # NOTE: In case I might use jupyter notebook, still installing this
     ${_python} -m pip install -U bash_kernel --log /tmp/pip.log &>/dev/null && python3 -m bash_kernel.install
     # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3
