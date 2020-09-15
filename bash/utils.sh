@@ -574,9 +574,10 @@ function _upsert() {
     local _between_char="${5-"="}"
     local _comment_char="${6-"#"}"
     # NOTE & TODO: Not sure why /\\\&/ works, should be /\\&/ ...
-    local _name_esc_sed=`echo "${_name}" | _sed 's/[][\.^$*\/"&-]/\\\&/g'`
+    local _name_esc_sed=`echo "${_name}" | _sed 's/[][+\.^$*\/"&-]/\\\&/g'`
     local _name_esc_sed_for_val=`echo "${_name}" | _sed 's/[\/]/\\\&/g'`
-    local _name_escaped=`printf %q "${_name}"`
+    #local _name_escaped=`printf %q "${_name}"`
+    local _name_escaped=`echo "${_name}" | _sed 's/[][+\.^$*"-]/\\\&/g'`
     local _value_esc_sed=`echo "${_value}" | _sed 's/[\/]/\\\&/g'`
     local _value_escaped=`printf %q "${_value}"`
 
@@ -586,10 +587,10 @@ function _upsert() {
     [ ! -f "${_TMP%/}/${_file_name}.orig" ] && cp -p "${_file_path}" "${_TMP%/}/${_file_name}.orig"
 
     # If name=value is already set, all good
-    _grep -qP "^\s*${_name_escaped}\s*${_between_char}\s*${_value_escaped}\b" "${_file_path}" && return 0
+    _grep -qP "^\s*${_name_escaped}\s*${_between_char}\s*${_value_escaped}\s*" "${_file_path}" && return 0
 
     # If name= is already set, replace all with /g
-    if _grep -qP "^\s*${_name_escaped}\s*${_between_char}" "${_file_path}"; then
+    if _grep -qP "^\s*${_name_escaped}\s*" "${_file_path}"; then
         _sed -i -r "s/^([[:space:]]*${_name_esc_sed})([[:space:]]*${_between_char}[[:space:]]*)[^${_comment_char} ]*(.*)$/\1\2${_value_esc_sed}\3/g" "${_file_path}"
         return $?
     fi
