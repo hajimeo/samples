@@ -890,12 +890,13 @@ function f_container_iq_cli() {
     ${_cmd} exec -d ${_name} bash -c '_f=/home/'${_user}'/nexus-iq-cli-'${_iq_cli_ver}'.jar; [ ! -s "${_f}" ] && curl -sf -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-'${_iq_cli_ver}'.jar" -o "${_f}" && chown '${_user}': ${_f}'
 }
 
-# Set admin password after initial installation
+# Set admin password after initial installation. If no 'admin.password' file, no error message and silently fail.
 function f_nexus_admin_pwd() {
     local _container_name="${1:-"${r_NEXUS_CONTAINER_NAME_1:-"${r_NEXUS_CONTAINER_NAME}"}"}"
     local _new_pwd="${2:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
     local _current_pwd="${3}"
     [ -z "${_container_name}" ] && return 110
+    [ -z "${_current_pwd}" ] && _current_pwd="$(docker exec -ti ${_container_name} cat /opt/sonatype/sonatype-work/nexus3/admin.password | tr -cd "[:print:]")"
     [ -z "${_current_pwd}" ] && _current_pwd="$(docker exec -ti ${_container_name} cat /nexus-data/admin.password | tr -cd "[:print:]")"
     [ -z "${_current_pwd}" ] && return 112
     f_api "/service/rest/beta/security/users/admin/change-password" "${_new_pwd}" "PUT" "admin" "${_current_pwd}"
@@ -1389,13 +1390,8 @@ main() {
         fi
     fi
 
-    # If admin.password is accessible from this host, update with the default password.
-    if [ -n "${r_NEXUS_MOUNT_DIR:-${r_NEXUS_MOUNT_DIR_1}}" ] && [ -s "${r_NEXUS_MOUNT_DIR:-${r_NEXUS_MOUNT_DIR_1}}/admin.password" ]; then
-        # I think it's ok to type 'admin' in here
-        _log "INFO" "Updating 'admin' user's password..."
-        f_nexus_admin_pwd
-    fi
-
+    _log "INFO" "Updating 'admin' user's password (may fail if already updated) ..."
+    f_nexus_admin_pwd
     _log "INFO" "Creating 'testuser' if it hasn't been created."
     f_nexus_testuser &>/dev/null  # it's OK if this fails
 
