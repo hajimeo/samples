@@ -126,7 +126,7 @@ function _docker_login() {
 
     if [ -z "${_host_port}" ] && [ -n "${_backup_ports}" ]; then
         for __p in ${_backup_ports}; do
-            nc -w1 -z localhost ${__p} 2>/dev/null && _host_port="localhost:${__p}" && break
+            nc -w1 -z localhost ${__p} &>/dev/null && _host_port="localhost:${__p}" && break
         done
         if [ -n "${_host_port}" ]; then
             _log "DEBUG" "No hostname:port is given, so trying with ${_host_port}"
@@ -138,7 +138,7 @@ function _docker_login() {
     fi
 
     _log "DEBUG" "${_cmd} login ${_host_port} --username ${_user} --password ********"
-    ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"} || return $?
+    ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} >&2 || return $?
     echo "${_host_port}"
 }
 
