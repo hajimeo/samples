@@ -519,7 +519,9 @@ function f_apache_proxy() {
     CacheMinFileSize 1024
     CacheIgnoreCacheControl On
     CacheEnable disk /
-    CacheHeader On
+    CacheEnable disk http://
+    CacheEnable disk https://
+    #</IfModule>
 </VirtualHost>" >> "${_conf}"
 
     a2ensite proxy || return $?
