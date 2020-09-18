@@ -310,6 +310,40 @@ listen stats
     _info "Installing/Re-configuring HAProxy completed."
 }
 
+function f_nfs_server() {
+    local __doc__="Install and setup NFS/NFSd on Ubuntu"
+    # @see: https://www.digitalocean.com/community/tutorials/how-to-set-up-an-nfs-mount-on-ubuntu-18-04
+    local _dir="${1-"/var/tmp/share"}"
+    local _network="${2:-"172.0.0.0/8"}"
+    local _options="${3:-"rw,sync,no_root_squash,no_subtree_check"}"
+    apt-get install nfs-kernel-server nfs-common -y
+
+    if [ -n "${_dir}" ]; then
+        if [ ! -d "${_dir}" ]; then
+            mkdir -p -m 777 "${_dir%/}" || return $?
+        fi
+        chown nobody:nogroup "${_dir%/}" || return $?
+
+        if [ -f /etc/exports ]; then
+            # Intentionally not using ^
+            if ! grep -qE "${_dir%/}\s+" /etc/exports; then
+                echo "${_dir%/} ${_network}(${_options}) `hostname -i`(${_options})" >> /etc/exports || return $?
+            fi
+        fi
+        service nfs-kernel-server restart || return $?
+        #exportfs -ra   # to reload /etc/exports without restarting
+    fi
+    #rpcinfo -p `hostname`  # list NFS versions, ports, services but a bit too long
+    rpcinfo -s              # list NFS information
+    #nfsstat -v             # -v = -o all Display Server and Client stats
+    showmount -e `hostname`
+    _info "Test (after making /mnt/nfs):"
+    cat << EOF
+    mount -t nfs4 -o proto=tcp,nolock,noacl,sync,noatime `hostname`:${_dir%/} /mnt/nfs
+    umount -f -l /mnt/nfs
+EOF
+}
+
 function f_chrome() {
     local __doc__="Install Google Chrome on Ubuntu"
     if ! grep -q "http://dl.google.com" /etc/apt/sources.list.d/google-chrome.list; then
@@ -1395,6 +1429,7 @@ function f_host_performance() {
 }
 
 function f_install_packages() {
+    local __doc__="Install utility/common packages I frequently use"
     which apt-get &>/dev/null || return $?
     apt-get update || return $?
     apt-get -y install sysv-rc-conf     # Not stopping if error because Ubuntu 18 does not have this
