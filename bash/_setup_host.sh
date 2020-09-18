@@ -314,7 +314,7 @@ function f_nfs_server() {
     local __doc__="Install and setup NFS/NFSd on Ubuntu"
     # @see: https://www.digitalocean.com/community/tutorials/how-to-set-up-an-nfs-mount-on-ubuntu-18-04
     local _dir="${1-"/var/tmp/share"}"
-    local _network="${2:-"172.0.0.0/8"}"
+    local _network="${2:-"172.0.0.0/8"}"    # docker containers only
     local _options="${3:-"rw,sync,no_root_squash,no_subtree_check"}"
     apt-get install nfs-kernel-server nfs-common -y
 
@@ -327,7 +327,7 @@ function f_nfs_server() {
         if [ -f /etc/exports ]; then
             # Intentionally not using ^
             if ! grep -qE "${_dir%/}\s+" /etc/exports; then
-                echo "${_dir%/} ${_network}(${_options}) `hostname -i`(${_options})" >> /etc/exports || return $?
+                echo "${_dir%/} ${_network}(${_options}) 127.0.0.1(${_options})" >> /etc/exports || return $?
             fi
         fi
         service nfs-kernel-server restart || return $?
@@ -339,7 +339,7 @@ function f_nfs_server() {
     showmount -e `hostname`
     _info "Test (after making /mnt/nfs):"
     cat << EOF
-    mount -t nfs4 -o proto=tcp,nolock,noacl,sync,noatime `hostname`:${_dir%/} /mnt/nfs
+    mount -t nfs4 -vvv -o proto=tcp,nolock,noacl,sync,noatime `hostname`:${_dir%/} /mnt/nfs
     umount -f -l /mnt/nfs
 EOF
 }
