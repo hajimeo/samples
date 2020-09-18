@@ -81,6 +81,8 @@ alias vnc='java -Xmx2g -jar $HOME/Apps/tightvnc-jviewer.jar &>/tmp/vnc-java-view
 #alias vnc='java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
 alias samurai='java -Xmx4g -jar $HOME/Apps/samurali/samurai.jar &>/tmp/samurai.out &'
 alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar &>/tmp/gcviewer.out &'
+#curl -O -v -L  https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
+alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'
 alias groovyi='groovysh -e ":set interpreterMode true"'
 
 # Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
