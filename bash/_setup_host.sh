@@ -338,8 +338,11 @@ function f_nfs_server() {
     #nfsstat -v             # -v = -o all Display Server and Client stats
     showmount -e `hostname`
     _info "Test (after making /mnt/nfs):"
+    # https://docs.aws.amazon.com/efs/latest/ug/mounting-fs-nfs-mount-settings.html https://www.cyberciti.biz/faq/linux-unix-tuning-nfs-server-client-performance/
+    # TODO: how about ,proto=tcp,nolock,sync
     cat << EOF
-    mount -t nfs4 -vvv -o proto=tcp,nolock,noacl,sync,noatime `hostname`:${_dir%/} /mnt/nfs
+    mount -t nfs4 -vvv -o vers=4.1,rsize=1048576,wsize=1048576,timeo=600,retrans=2,hard,noacl,noatime,nodiratime `hostname`:${_dir%/} /mnt/nfs
+    time dd if=/dev/zero of=/mnt/nfs/test.img bs=100M count=1 oflag=dsync
     umount -f -l /mnt/nfs
 EOF
 }
