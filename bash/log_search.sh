@@ -905,6 +905,29 @@ function f_count_threads_per_dump() {
     cd -
 }
 
+#f_last_tid_in_log "" ../support-20200915-143729-1/log/request.log "15/Sep/2020:08:" > f_last_tid_in_log.csv 2> f_last_tid_in_log.err
+#qcsv "select * from f_last_tid_in_log.csv order by c4 limit 1"
+function f_last_tid_in_log() {
+    local __doc__="Get thread IDs from the tread dump, then find the *last* match from the log"
+    local _file="$1"
+    local _log="$2"
+    local _extra_rx="${3}"
+    local _tid_rx="${4:-"\"(qtp[0-9]+-[0-9]+)"}"
+    [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
+    [ -z "${_file}" ] && return 1
+    [ -z "${_log}" ] && _log="$(find . -type f -name request.log 2>/dev/null | grep '/request.log$' -m 1)"
+    [ -z "${_log}" ] && return 1
+    _tac "${_log}" > /tmp/f_last_tid_in_log_$$.log || return $?
+    rg "${_tid_rx}" -o -r '$1' "${_file}" | while read -r _tid; do
+        if ! rg -w -m 1 "${_extra_rx}.*[\[\"]${_tid}[\]\"]" /tmp/f_last_tid_in_log_$$.log; then
+            echo "# No match for '${_tid}'" >&2
+            if [ -d ./_threads ]; then
+                find ./_threads -name "*${_tid}[_-]*" -ls >&2
+            fi
+        fi
+    done
+}
+
 function f_request2csv() {
     local __doc__="Convert a jetty request.log to a csv file"
     local _glob="${1:-"request.log"}"
@@ -1012,8 +1035,8 @@ function f_healthlog2csv() {
     local __doc__="TODO: Convert some log text to csv. Requires python3 and pandas"
     local _glob="${1:-"nexus.log"}"
     local _out_file="${2:-"health_monitor.csv"}"
-    f_healthlog2json "${_glob}" "/tmp/_health_monitor.json" || return $?
-    [ -s "/tmp/_health_monitor.json" ] || return 1
+    f_healthlog2json "${_glob}" "/tmp/_health_monitor_$$.json" || return $?
+    [ -s "/tmp/_health_monitor_$$.json" ] || return 1
     # language=Python
     python3 -c "import pandas as pd;import csv;df=pd.read_json('/tmp/_health_monitor.json');df.to_csv('${_out_file}', mode='w', header=True, index=False, escapechar='\\\', quoting=csv.QUOTE_NONNUMERIC)"
 }
@@ -1134,12 +1157,12 @@ function f_splitByRegex() {
             # At this moment, Skip if the previous key is same as current key. Expecting key is unique...
             [ -n "${_prev_str}" ] && [ "${_prev_str}" == "${BASH_REMATCH[2]}" ] && continue
             # Found new value (next date, next thread etc.)
-            _tmp_str="$(echo "${_prev_str}" | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-192)"
+            _tmp_str="$(echo "${_prev_str}" | _sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192)"
             _sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}${_tmp_str}.${_extension} || return $?
             _prev_str="${BASH_REMATCH[2]}"  # Used for the file name and detecting a new value
             _prev_n=${BASH_REMATCH[1]}
         elif [ "${_t}" == "END_OF_FILE" ] && [ -n "${_prev_str}" ]; then
-            _tmp_str="$(echo "${_prev_str}" | _sed "s/[ =-]/_/g" | tr -cd '[:alnum:]._\n' | cut -c1-192)"
+            _tmp_str="$(echo "${_prev_str}" | _sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192)"
             _sed -n "${_prev_n},\$p" ${_file} > ${_save_path_prefix}${_tmp_str}.${_extension} || return $?
         fi
     done
