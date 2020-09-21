@@ -277,6 +277,8 @@ function f_populate_docker_hosted() {
 
     # In _docker_proxy, the image might be already pulled.
     if ! ${_cmd} tag ${_host_port:-"localhost"}/${_tag_name} ${_host_port}/${_tag_name}; then
+        # Example commands to create layers
+        # "FROM alpine:3.7\nCMD echo 'hello world'"
         # "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nENTRYPOINT [\"mysql\"]"
         # NOTE docker build -f does not work (bug?)
         local _build_dir="$(mktemp -d)" || return $?
