@@ -24,10 +24,11 @@ function get_ciphers() {
     # @see http://superuser.com/questions/109213/how-do-i-list-the-ssl-tls-cipher-suites-a-particular-website-offers
     local _host="${1:-`hostname -f`}"
     local _port="${2:-443}"
+    local _use_nmap="${3}"
     local _host_port=$_host:$_port
     local _delay=1
 
-    if which nmap &>/dev/null; then
+    if [[ "${_use_nmap}" =~ ^(y|Y) ]] && which nmap &>/dev/null; then
         nmap --script +ssl-enum-ciphers -p ${_port} ${_host}
         return $?
     fi
