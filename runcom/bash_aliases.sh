@@ -20,7 +20,17 @@ alias sum_cols="gpaste -sd+ | bc"
 alias diffY="diff -wy --suppress-common-lines"
 which mdfind &>/dev/null && alias mdfindL="mdfind kMDItemFSName="
 
-## Python ###########################################################################################################
+## Git #################################################################################################################
+# Show current tag
+alias get_tag='git describe --tags'
+# find branches or tags which contains a commit
+function get_search() {
+    local _search="$1"
+    for c in `git log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2`; do git branch -r --contains $c; done
+    for c in `git log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2`; do git tag --contains $c; done
+}
+
+## Python ##############################################################################################################
 alias pyv='source $HOME/.pyvenv/bin/activate'
 alias pjt='python -m json.tool'
 alias urldecode='python -c "import sys, urllib as ul; print(ul.unquote_plus(sys.argv[1]))"'
@@ -36,7 +46,7 @@ alias dec2hex='printf "%x\n"'
 alias hex2dec='printf "%d\n"'
 #alias python_i_with_pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'pdf' (pandas dataframe)
 alias python_i_with_pandas='python3 -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);print(pdf)")'        # to convert list/dict pdf.values.tolist()
-alias python_i_with_json='python3 -i <(echo "import sys,json;jso=json.load(open(sys.argv[1]))")'
+alias python_i_with_json='python3 -i <(echo "import sys,json;jso=json.load(open(sys.argv[1]));print(jso.keys())")'
 alias json2csv='python3 -c "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);pdf.to_csv(sys.argv[1]+\".csv\", header=True, index=False)"'
 # Read xml file, then convert to dict, then print json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
