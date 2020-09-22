@@ -81,13 +81,14 @@ function sptBoot() {
         echo "Append 'local.standalone.localdomain' in 127.0.0.1 line in /etc/hosts."
     fi
     if [[ "${_jdb}" =~ ^(y|Y) ]]; then
-        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py --remote-debug -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
+        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py --remote-debug "${_zip}" ./$(basename "${_zip}" .zip)_tmp
     else
-        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py -cr "${_zip}" ./$(basename "${_zip}" .zip)_tmp
+        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py "${_zip}" ./$(basename "${_zip}" .zip)_tmp
     fi || echo "NOTE: If error was port already in use, you might need to run below:
     . ~/IdeaProjects/work/bash/install_sonatype.sh
     f_sql_nxrm \"config\" \"SELECT attributes['docker']['httpPort'] FROM repository WHERE attributes['docker']['httpPort'] IS NOT NULL\" \".\" \"\$USER\"
 If ports conflict, edit nexus.properties is easier. eg:8080.
+If community repositories are used, add --convert-repos (-cr) flag.
 "
 }
 
