@@ -73,9 +73,9 @@ function f_check_system() {
     (which timeout &>/dev/null && (timeout 3 time head -n 1 /dev/./urandom > /dev/null;echo '-';timeout 3 time head -n 1 /dev/random > /dev/null)) &> ${_work_dir%/}/random.out
     vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
     iostat -x 2>/dev/null || vmstat -d &> ${_work_dir%/}/iostat.out &
-    pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &
+    pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &   # current disk stats per PID
 
-    mpstat -P ALL &> ${_work_dir%/}/top.out
+    mpstat -P ALL &> ${_work_dir%/}/top.out     # CPU stats (-P)
     #top -b -n1 -c -o +%MEM  # '+' (default) for reverse order (opposite of 'ps')
     top -b -n1 -c &>> ${_work_dir%/}/top.out
     #ps aux --sort uid,-vsz # '-' for reverse (opposite of 'top')
@@ -99,7 +99,7 @@ function f_check_system() {
 
     #sysctl kernel.pid_max fs.file-max fs.file-nr # max is OS limit (Too many open files)
     sysctl -a &> ${_work_dir%/}/sysctl.out
-    sar -A &> ${_work_dir%/}/sar_A.out
+    #sar -A &> ${_work_dir%/}/sar_A.out
     env &> ${_work_dir%/}/env.out  # to check PATH, LD_LIBRARY_PATH, JAVA_HOME, CLASSPATH
     wait
 }
