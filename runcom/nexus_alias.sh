@@ -63,6 +63,20 @@ function iqMvn() {
     eval "${_cmd}"
 }
 
+function iqHds() {
+    local _component_identifier="$1"
+    local _fp="${2:-"${_NEXUS_FP}"}"    #~/.bashrc
+    [ -z "${_fp}" ] && return 11
+    if [[ "${_component_identifier}" =~ ^([^:]+):([^:]+):([^:]+)$ ]]; then
+        # NOTE: do not need to do ${BASH_REMATCH[1]//.//}
+        _component_identifier="{\"format\":\"maven\",\"coordinates\":{\"groupId\":\"${BASH_REMATCH[1]}\",\"artifactId\":\"${BASH_REMATCH[2]}\",\"version\":\"${BASH_REMATCH[3]}\",\"classifier\":\"\",\"extension\":\"jar\"}}"
+    fi
+    local _curl_opt="-sf"
+    [[ "${_DEBUG}" =~ ^(y|Y) ]] && _curl_opt="-fv"
+    curl ${_curl_opt} -H "X-CLM-Token: ${_fp}" "https://clm.sonatype.com/rest/ci/componentDetails" \
+        -G --data-urlencode "componentIdentifier=${_component_identifier}" | python -m json.tool
+}
+
 function sptBoot() {
     local _zip="$1"
     local _jdb="$2"
@@ -124,22 +138,22 @@ function iqStart() {
 function mvn-arch-gen() {
     local __doc__="https://maven.apache.org/guides/getting-started/maven-in-five-minutes.html"
     local _gav="${1:-"com.example:my-app:1.0"}"
-    local _output_dir="$2"
-    local _remote_repo="$3"
-    local _local_repo="${4}"    # Not using local repo for this command
-    local _options="${5-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
-    local _type="${6:-"maven-archetype-quickstart"}"
+    #local _output_dir="$2"
+    local _remote_repo="$2"
+    local _local_repo="${3}"    # Not using local repo for this command
+    local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
+    local _type="${5:-"maven-archetype-quickstart"}"
 
     if [[ "${_gav}" =~ ^([^:]+):([^:]+):([^:]+)$ ]]; then
         local _g="${BASH_REMATCH[1]}"
         local _a="${BASH_REMATCH[2]}"
         local _v="${BASH_REMATCH[3]}"
         [ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
-        if [ -z "${_output_dir}" ]; then
-            _options="${_options% } -DoutputDirectory=${_a}"
-        else
-            _options="${_options% } -DoutputDirectory=${_output_dir}"
-        fi
+        #if [ -z "${_output_dir}" ]; then
+        #    _options="${_options% } -DoutputDirectory=${_a}"
+        #else
+        #    _options="${_options% } -DoutputDirectory=${_output_dir}"
+        #fi
         mvn `_mvn_settings "${_remote_repo}"` archetype:generate -DgroupId=${_g} -DartifactId=${_a} -DarchetypeArtifactId=${_type} -DarchetypeVersion=${_v} -DinteractiveMode=false ${_options}
     fi
 }
@@ -238,7 +252,7 @@ function _mvn_settings() {
         cp $HOME/.m2/settings.xml ${_settings_xml}
     fi
     [ -z "${_settings_xml}" ] && return 1
-    echo "Using ${_settings_xml}..." >&2; sleep 3
+    echo "Using ${_settings_xml}..." >&2
     if [ -n "${_remote_repo}" ]; then
         # TODO: this substitute is not good
         sed -i.bak -E "s@<url>http.+/(content|repository)/.+</url>@<url>${_remote_repo}</url>@1" ${_settings_xml}
