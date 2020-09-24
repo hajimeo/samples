@@ -4,8 +4,9 @@
 #
 export HISTTIMEFORMAT="%Y-%m-%d %T "
 
-[ -s $HOME/IdeaProjects/samples/runcom/bash_aliases.sh ] && source $HOME/IdeaProjects/samples/runcom/bash_aliases.sh
+[ -s $HOME/.bashrc ] && source $HOME/.bashrc
 [ -s $HOME/.bash_aliases ] && source $HOME/.bash_aliases
+#[ -s $HOME/IdeaProjects/samples/runcom/bash_aliases.sh ] && source $HOME/IdeaProjects/samples/runcom/bash_aliases.sh
 
 # Go/Golang related
 if which go &>/dev/null; then
