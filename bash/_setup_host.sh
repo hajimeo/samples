@@ -347,6 +347,32 @@ function f_nfs_server() {
 EOF
 }
 
+function f_s3fs() {
+    local __doc__="Install and setup NFS/NFSd on Ubuntu"
+    # @see: https://github.com/s3fs-fuse/s3fs-fuse/blob/master/README.md
+    local _secret="$1"
+    local _bucket="$2"
+    local _mnt_dir="$3"
+    apt-get install s3fs -y || return $?
+
+    if [ -n "${_secret}" ]; then
+        if [ -s "$HOME/.passwd-s3fs" ]; then
+            _log "INFO" "$HOME/.passwd-s3fs already exists, so not updating."
+        else
+            echo "${_secret}" > "$HOME/.passwd-s3fs" || return $?
+            chmod 600 "$HOME/.passwd-s3fs" || return $?
+        fi
+    fi
+    [ -z "${_bucket}" ] && return 0
+    [ -n "${_mnt_dir}" ] && [ ! -d "${_mnt_dir}" ] && mkdir -p -m 777 "${_mnt_dir}"
+    cat << EOF
+# Example mount command:
+s3fs ${_bucket} ${_mnt_dir} -o endpoint=ap-southeast-2 \\
+  -o cipher_suites=AESGCM,kernel_cache,max_background=1000,max_stat_cache_size=100000,multipart_size=52,parallel_count=30,multireq_max=30 \\
+  -o dbglevel=warn
+EOF
+}
+
 function f_chrome() {
     local __doc__="Install Google Chrome on Ubuntu"
     if ! grep -q "http://dl.google.com" /etc/apt/sources.list.d/google-chrome.list; then
