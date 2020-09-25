@@ -59,44 +59,54 @@ function f_check_system() {
     [ -z "$_work_dir" ] && _work_dir="."
     echo "INFO" "Collecting OS related information..." >&2
 
+    # System information
     uname -a &> ${_work_dir%/}/uname-a.out
     lsb_release -a &>> ${_work_dir%/}/uname-a.out
     localectl status &> ${_work_dir%/}/locale.out
     locale &>> ${_work_dir%/}/locale.out
+    cat /proc/cpuinfo &> ${_work_dir%/}/cpuinfo.out
+    cat /proc/meminfo &> ${_work_dir%/}/meminfo.out
+    numactl -H &> ${_work_dir%/}/numa.out
     dmesg | grep 'link up' &> ${_work_dir%/}/dmesg_link_up.out
-    hdp-select &> ${_work_dir%/}/hdp-select.out
-    ls -l /usr/hdp/current/ >> ${_work_dir%/}/hdp-select.out
-    ls -l /etc/security/keytabs/ &> ${_work_dir%/}/ls-keytabs.out
     getenforce &> ${_work_dir%/}/getenforce.out
     iptables -nvL --line-number &> ${_work_dir%/}/iptables.out
     iptables -t nat -nvL --line-number &>> ${_work_dir%/}/iptables.out
     (which timeout &>/dev/null && (timeout 3 time head -n 1 /dev/./urandom > /dev/null;echo '-';timeout 3 time head -n 1 /dev/random > /dev/null)) &> ${_work_dir%/}/random.out
-    vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
-    iostat -x 2>/dev/null || vmstat -d &> ${_work_dir%/}/iostat.out &
-    pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &   # current disk stats per PID
 
-    mpstat -P ALL &> ${_work_dir%/}/top.out     # CPU stats (-P)
     #top -b -n1 -c -o +%MEM  # '+' (default) for reverse order (opposite of 'ps')
     top -b -n1 -c &>> ${_work_dir%/}/top.out
     #ps aux --sort uid,-vsz # '-' for reverse (opposite of 'top')
     ps auxwwwf &> ${_work_dir%/}/ps.out
     netstat -aopen &> ${_work_dir%/}/netstat.out
-    ifconfig 2>/dev/null || netstat -i &> ${_work_dir%/}/ifconfig.out
+    mpstat -P ALL &> ${_work_dir%/}/top.out     # CPU stats (-P)
 
-    netstat -s &> ${_work_dir%/}/netstat_s.out
+    # Name resolution
     nscd -g &> ${_work_dir%/}/nscd.out
     getent ahostsv4 `hostname -f` &> ${_work_dir%/}/getent_from_name.out
     getent hosts `hostname -I` &> ${_work_dir%/}/getent_from_ip.out
     python -c 'import socket as s;print s.gethostname();print s.gethostbyname(s.gethostname());print s.getfqdn()' &> ${_work_dir%/}/python_getfqdn.out
+
+    # Disk
     mount &> ${_work_dir%/}/mount_df.out
     df -h &> ${_work_dir%/}/mount_df.out
+    vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
+    iostat -x 2>/dev/null || vmstat -d &> ${_work_dir%/}/iostat.out &
+    pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &   # current disk stats per PID
     #sar -uqrbd -p -s 09:00:00 -e 12:00:00 -f /var/log/sysstat/sa26
     sar -uqrbd -p &> ${_work_dir%/}/sar_qrbd.out # if no -p, ls -l /dev/sd*
-    cat /proc/net/dev &> ${_work_dir%/}/net_dev.out
-    cat /proc/cpuinfo &> ${_work_dir%/}/cpuinfo.out
-    cat /proc/meminfo &> ${_work_dir%/}/meminfo.out
-    numactl -H &> ${_work_dir%/}/numa.out
 
+    # NFS related
+    showmount -e `hostname` &> ${_work_dir%/}/nfs.out
+    #rpcinfo -s &>> ${_work_dir%/}/nfs.out              # list NFS summary information
+    rpcinfo -p `hostname` &>> ${_work_dir%/}/nfs.out    # list NFS versions, ports, services but a bit too long
+    nfsstat -v &>> ${_work_dir%/}/nfs.out               # -v = -o all Display Server and Client stats
+
+    # Network
+    ifconfig 2>/dev/null || netstat -i &> ${_work_dir%/}/ifconfig.out
+    netstat -s &> ${_work_dir%/}/netstat_s.out
+    cat /proc/net/dev &> ${_work_dir%/}/net_dev.out
+
+    # Misc.
     #sysctl kernel.pid_max fs.file-max fs.file-nr # max is OS limit (Too many open files)
     sysctl -a &> ${_work_dir%/}/sysctl.out
     #sar -A &> ${_work_dir%/}/sar_A.out

@@ -333,10 +333,10 @@ function f_nfs_server() {
         service nfs-kernel-server restart || return $?
         #exportfs -ra   # to reload /etc/exports without restarting
     fi
+    showmount -e `hostname`
     #rpcinfo -p `hostname`  # list NFS versions, ports, services but a bit too long
     rpcinfo -s              # list NFS information
     #nfsstat -v             # -v = -o all Display Server and Client stats
-    showmount -e `hostname`
     _info "Test (after making /mnt/nfs):"
     # https://docs.aws.amazon.com/efs/latest/ug/mounting-fs-nfs-mount-settings.html https://www.cyberciti.biz/faq/linux-unix-tuning-nfs-server-client-performance/
     # TODO: how about ,proto=tcp,nolock,sync
