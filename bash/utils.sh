@@ -305,13 +305,21 @@ function _update_hosts_file() {
 }
 
 function _url_enc() {
-    python -c "import urllib; print(urllib.quote('$1'))"
-    #python3 -c "import urllib.parse; print(urllib.parse.quote('$1', safe=''))"
+    python -c "try:
+    from urllib import parse
+except ImportError:
+    import urlparse as parse
+print(parse.quote('$1'))"
 }
 
 function _b64_url_enc() {
-    python -c "import base64, urllib; print(urllib.quote(base64.urlsafe_b64encode('$1')))"
-    #python3 -c "import base64, urllib.parse; print(urllib.parse.quote(base64.urlsafe_b64encode('$1'.encode('utf-8')), safe=''))"
+    python -c "import base64
+try:
+    from urllib import parse
+    print(parse.quote(base64.urlsafe_b64encode('$1'.encode('utf-8')), safe=''))
+except ImportError:
+    import urlparse as parse
+    print(parse.quote(base64.urlsafe_b64encode('$1')))"
 }
 
 function _deob() {
