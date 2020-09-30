@@ -276,7 +276,7 @@ function f_populate_docker_hosted() {
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
 
     # In _docker_proxy, the image might be already pulled.
-    if ! ${_cmd} tag ${_host_port:-"localhost"}/${_tag_name} ${_host_port}/${_tag_name}; then
+    if ! ${_cmd} tag ${_host_port:-"localhost"}/${_tag_name} ${_host_port}/${_tag_name} 2>/dev/null; then
         # Example commands to create layers
         # "FROM alpine:3.7\nCMD echo 'hello world'"
         # "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nENTRYPOINT [\"mysql\"]"
@@ -779,6 +779,11 @@ function f_reset_client_configs() {
         _log "ERROR" "installing packages with yum failed. Check ${_LOG_FILE_PATH}"
         return 1
     fi
+
+    # Skopeo (instead of podman) https://github.com/containers/skopeo/blob/master/install.md
+    # NOTE: may need Deployment policy = allow redeployment
+    # skopeo --debug copy --src-creds=admin:admin123 --dest-creds=admin:admin123 docker://dh1.standalone.localdomain:18082/alpine:3.7 docker://dh1.standalone.localdomain:18082/alpine:test
+    ${_cmd} exec -it ${_name} bash -c "curl -L -o /etc/yum.repos.d/devel:kubic:libcontainers:stable.repo https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/CentOS_7/devel:kubic:libcontainers:stable.repo && yum -y install skopeo" >>${_LOG_FILE_PATH:-"/dev/null"}
 
     # Using Nexus npm repository if available
     _repo_url="${_base_url%/}/repository/npm-group"
