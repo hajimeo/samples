@@ -23,8 +23,27 @@ which mdfind &>/dev/null && alias mdfindL="mdfind kMDItemFSName="
 ## Git #################################################################################################################
 # Show current tag
 alias get_tag='git describe --tags'
+# compare tags
+function git_comp_tags() {
+    local _tag1="$1"
+    local _tag2="$2"
+    local _diff="$3"
+    local _fetched="$(find . -maxdepth 3 -type f -name "FETCH_HEAD" -mmin -60 -print 2>/dev/null)"
+    if [ -z "${_fetched}" ]; then
+        git fetch
+    fi
+    if [ -z "${_tag2}" ]; then
+        git tag --list ${_tag1} | tail
+    else
+        if [[ "${_diff}" =~ ^[yY] ]]; then
+            git diff ${_tag1} ${_tag2}
+        else
+            git log ${_tag1} ${_tag2}
+        fi
+    fi
+}
 # find branches or tags which contains a commit
-function get_search() {
+function git_search() {
     local _search="$1"
     for c in `git log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2`; do git branch -r --contains $c; done
     for c in `git log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2`; do git tag --contains $c; done
