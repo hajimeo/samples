@@ -1415,9 +1415,9 @@ def threads2table(filename="threads.txt", tablename=None, conn=None, date_time=N
 
 
 def logs2table(filename, tablename=None, conn=None,
-               col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
+               col_names=['date_time', 'loglevel', 'thread', 'node', 'user', 'class', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
-               line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)",
+               line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]*) ([^ ]+) - (.*)",
                size_regex=None, time_regex=None,
                line_from=0, line_until=0,
                max_file_num=10, max_file_size=(1024 * 1024 * 100),
@@ -1445,8 +1445,8 @@ def logs2table(filename, tablename=None, conn=None,
             line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) (\{.*?\}) - ([^:]+):(.*)',
             size_regex=None, time_regex=None)
     #>>> logs2table(filename='nexus.log*', tablename='t_nexus_log',
-         col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
-            line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
+         col_names=['date_time', 'loglevel', 'thread', 'node', 'user', 'class', 'message'],
+            line_matching='^(\\d\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d[^ ]*) +([^ ]+) +\\[([^]]+)\\] ([^ ]*) ([^ ]*) ([^ ]+) - (.*)',
             size_regex=None, time_regex=None)
     #>>> logs2table('clm-server_*.log*', tablename="t_clm_server_log", multiprocessing=True, max_file_num=20
             col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
@@ -1466,7 +1466,7 @@ def logs2table(filename, tablename=None, conn=None,
     else:
         files = _globr(filename)
     if bool(files) is False:
-        # _err("No file by searching with %s ..." % (str(filename)))
+        _err("No file by searching with %s ..." % (str(filename)))
         return False
     if len(files) > max_file_num:
         raise ValueError('Glob: %s returned too many files (%s)' % (filename, str(len(files))))
