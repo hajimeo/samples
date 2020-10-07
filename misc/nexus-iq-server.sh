@@ -27,7 +27,7 @@ _JAVA="java"
 [ -n "${JAVA_HOME}" ] && _JAVA="${JAVA_HOME%/}/bin/java"
 
 _XMX="${_NXIQ_HEAPSIZE:-"2G"}"
-JAVA_OPTIONS="-Xms${_XMX} -Xmx${_XMX} -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=${NEXUS_IQ_SONATYPEWORK}/log/jvm.log"
+JAVA_OPTIONS="-XX:ActiveProcessorCount=2 -Xms${_XMX} -Xmx${_XMX} -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=${NEXUS_IQ_SONATYPEWORK}/log/jvm.log"
 # GC log related options are different by Java version.
 if ${_JAVA} -XX:+PrintFlagsFinal -version 2>/dev/null | grep -q PrintClassHistogramBeforeFullGC; then
     # probably java 8

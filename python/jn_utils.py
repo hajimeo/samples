@@ -241,6 +241,7 @@ def _debug(message):
 
 
 def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunksize=1000,
+               list_only=False,
                json_cols=['connectionId', 'planJson', 'json']):
     """
     Find json files from current path and load as pandas dataframes object
@@ -249,6 +250,7 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     :param include_ptn: Regex string to include some file
     :param exclude_ptn: Regex string to exclude some file
     :param chunksize: Rows will be written in batches of this size at a time. By default, all rows will be written at once
+    :param list_only: If true, find the first list object and import/convert
     :param json_cols: to_sql() fails if column is json, so dropping for now (TODO)
     :return: A tuple contain key=>file relationship and Pandas dataframes objects
     #>>> (names_dict, dfs) = load_jsons(src="./engine/aggregates")
@@ -258,35 +260,39 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     """
     names_dict = {}
     dfs = {}
-    ex = re.compile(exclude_ptn)
+    ex = None
+    if bool(exclude_ptn):
+        ex = re.compile(exclude_ptn)
 
     files = _globr(include_ptn, src)
     for f in files:
         f_name, f_ext = os.path.splitext(os.path.basename(f))
-        if ex.search(f_name):
+        if ex is not None and ex.search(f_name):
             _info("Excluding %s as per exclude_ptn (%d KB)..." % (f_name, os.stat(f).st_size / 1024))
             continue
-        new_name = _pick_new_key(f_name, names_dict, using_1st_char=(bool(conn) is False), prefix='t_')
+        # Used to be f not converting to the DB tables, using t_X type name with 'using_1st_char=(bool(conn) is False)'
+        new_name = _pick_new_key(f_name, names_dict, prefix='t_')
         names_dict[new_name] = f
-        dfs[new_name] = json2df(file_path=f, conn=conn, tablename=new_name, chunksize=chunksize,
+        dfs[new_name] = json2df(filename=f, conn=conn, tablename=new_name, chunksize=chunksize, list_only=list_only,
                                 json_cols=json_cols)
     return (names_dict, dfs)
 
 
-def json2df(filename, jq_query="", conn=None, tablename=None, json_cols=[], chunksize=1000):
+def json2df(filename, tablename=None, conn=None, jq_query="", list_only=False, json_cols=[], chunksize=1000):
     """
     Convert a json file, which contains list into a DataFrame
     If conn is given, import into a DB table
     :param filename: File path or file name or glob pattern
-    :param jq_query: String used with ju.jq(), to filter json record
-    :param conn:   DB connection object
     :param tablename: If empty, table name will be the filename without extension
+    :param conn:   DB connection object
+    :param jq_query: String used with ju.jq(), to filter json record
+    :param list_only: If true, find the first list object and import/convert. Not used if jq_query is given
     :param json_cols: to_sql() fails if column is json, so forcing those columns to string
     :param chunksize:
     :return: a DataFrame object
     #>>> json2df('./export.json', '.records | map(select(.["@class"] == "quartz_job_detail" and .value_data.jobDataMap != null))[] | .value_data.jobDataMap', ju.connect(), 't_quartz_job_detail')
     #>>> json2df('audit.json', '..|select(.attributes? and .attributes.".typeId" == "db.backup")|.attributes', ju.connect(), "t_audit_attr_dbbackup_logs")
-    #>>> ju.json2df(file_path="./audit.json", json_cols=['data'], conn=ju.connect())
+    #>>> ju.json2df(filename="./audit.json", json_cols=['data'], conn=ju.connect())
     >>> pass    # TODO: implement test
     """
     global _DB_SCHEMA
@@ -304,7 +310,15 @@ def json2df(filename, jq_query="", conn=None, tablename=None, json_cols=[], chun
             obj = jq(file_path, jq_query)
             dfs.append(pd.DataFrame(obj))
         else:
-            dfs.append(pd.read_json(file_path))  # , dtype=False (didn't help)
+            if list_only:
+                # TODO: read file and find the first list, then convert to _df
+                pass
+            else:
+                try:
+                    _df = pd.read_json(file_path)
+                except UnicodeDecodeError:
+                    _df = pd.read_json(file_path, encoding="iso-8859-1")
+            dfs.append(_df)  # , dtype=False (didn't help)
     if bool(dfs) is False:
         return False
     df = pd.concat(dfs, sort=False)
@@ -1801,6 +1815,10 @@ def obj2csv(obj, file_path, mode="w", header=True):
         return
     return df2csv(df, file_path, mode=mode, header=header)
 
+def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace'):
+    if conn is None:
+        conn = connect()
+    df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=_DB_SCHEMA)
 
 def df2csv(df, file_path, mode="w", header=True):
     '''

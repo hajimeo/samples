@@ -3,5 +3,9 @@
 		{
 			"path": "."
 		}
-	]
+	],
+	"settings": {
+		"nexusiq.url": "http://dh1.standalone.localdomain:8070/",
+		"nexusExplorer.dataSource": "iqServer"
+	}
 }
