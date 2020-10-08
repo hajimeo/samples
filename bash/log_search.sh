@@ -790,7 +790,7 @@ function f_count_lines() {
 function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
     local _file="$1"
-    local _split_search="${2:-"^\".+"}"
+    local _split_search="${2:-"^\".+"}" # If NXRM2, "^[a-zA-Z].+"
     local _running_thread_search_re="${3-"\.sonatype\."}"
     local _dir="${4}"
     local _not_split_by_date="${5:-${_NOT_SPLIT_BY_DATE}}"
