@@ -308,7 +308,7 @@ function _url_enc() {
     python -c "try:
     from urllib import parse
 except ImportError:
-    import urlparse as parse
+    import urllib as parse
 print(parse.quote('$1'))"
 }
 
@@ -318,7 +318,7 @@ try:
     from urllib import parse
     print(parse.quote(base64.urlsafe_b64encode('$1'.encode('utf-8')), safe=''))
 except ImportError:
-    import urlparse as parse
+    import urllib as parse
     print(parse.quote(base64.urlsafe_b64encode('$1')))"
 }
 
