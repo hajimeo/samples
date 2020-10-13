@@ -605,7 +605,7 @@ function _download_and_extract() {
     local _extract_to="${2}"
     local _save_dir="${3:-"${_WORK_DIR%/}/downloads"}"
     local _file="$4"
-    local _as_user="${5:-"${USER}"}"
+    local _as_user="${5}"
     [ -z "${_file}" ] && _file="`basename "${_url}"`"
 
     _download "${_url}" "${_save_dir%/}/${_file}" "Y" "Y" || return $?
@@ -614,11 +614,15 @@ function _download_and_extract() {
     if [ -n "${_extract_to}" ]; then
         if [ ! -d "${_extract_to}" ]; then
             mkdir -p "${_extract_to}" || return $?
-            chown ${_as_user}: "${_extract_to}"
+            [ -n "${_as_user}" ] && chown ${_as_user}: "${_extract_to}"
         fi
         #local _extension="${_file##*.}"
         #if [[ "${_extension}" =~ \.(tar|gz|tgz|zip)$ ]]; then
-        sudo -u ${_as_user} tar -xf ${_save_dir%/}/${_file} -C ${_extract_to%/}/ || return $?
+        if [ -n "${_as_user}" ]; then
+            sudo -u ${_as_user} tar -xf ${_save_dir%/}/${_file} -C ${_extract_to%/}/ || return $?
+        else
+            tar -xf ${_save_dir%/}/${_file} -C ${_extract_to%/}/ || return $?
+        fi
         _log "INFO" "Extracted ${_file} into ${_extract_to}"; sleep 1
         #fi
     fi
