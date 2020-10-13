@@ -2,7 +2,8 @@
 # Utility type / reusable functions
 #
 # Example of usage (NOTE: "export -f _import" to overwrite):
-#   type _import &>/dev/null || _import() { source <(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/$1); }
+#   _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
+#   type _import &>/dev/null || _import() { curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/$1 && . /tmp/$1; }
 #   _import "utils.sh"
 
 __PID="$$"
@@ -571,6 +572,32 @@ function _backup() {
     fi
     gzip -c ${_file_path} > ${_backup_dir%/}/${_new_file_name}.gz || return $?
     _log "DEBUG" "Backup-ed ${_file_path} to ${_backup_dir%/}/${_new_file_name}"
+}
+
+function _download() {
+    local _url="$1"
+    local _save_as="$2"
+    local _no_backup="$3"
+    local _if_not_exists="$4"   # default is always overwriting
+
+    if [[ "${_if_not_exists}" =~ ^(y|Y) ]] && [ -s "${_save_as}" ]; then
+        _log "INFO" "Not downloading as ${_save_as} exists."
+        return
+    fi
+    local _cmd="curl -s -f --retry 3 --compressed -L -k '${_url}'"
+    # NOTE: if the file already exists, "-C -" may do something unexpected for text files
+    if [ -s "${_save_as}" ] && ! file "${_save_as}" | grep -qwi "text"; then
+        _cmd="${_cmd} -C -"
+    fi
+    if [ -z "${_save_as}" ]; then
+        _cmd="${_cmd} -O"
+    else
+        [[ "${_no_backup}" =~ ^(y|Y) ]] || _backup "${_save_as}"
+        _cmd="${_cmd} -o ${_save_as}"
+    fi
+
+    _log "INFO" "Downloading ${_url}..."
+    eval ${_cmd}
 }
 
 function _upsert() {
