@@ -10,6 +10,11 @@
 # @author hajime
 #
 
+_DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
+type _import &>/dev/null || _import() { curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/$1 && . /tmp/$1; }
+_import "utils.sh"
+
+
 function f_host_misc() {
     local __doc__="Misc. changes for Ubuntu OS"
 
@@ -511,6 +516,7 @@ function _apache_install() {
     apt-get install -y libapache2-mod-auth-kerb || return $?
     a2enmod headers rewrite auth_kerb || return $?
     service apache2 restart || return $?    # Disabling proxy_connect needed restart, so just in case restarting
+    apachectl -t -D DUMP_VHOSTS
 }
 
 function f_apache_proxy() {
@@ -1691,6 +1697,11 @@ EOF
     kinit -kt ${_keytab_dir%/}/${_service}.service.keytab ${_principal}
     klist -eaf
     kdestroy
+}
+
+function f_crowd() {
+    local _ver="${1:-"4.1.2"}"
+    https://product-downloads.atlassian.com/software/crowd/downloads/atlassian-crowd-${_ver}.tar.gz
 }
 
 
