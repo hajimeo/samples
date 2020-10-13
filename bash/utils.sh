@@ -600,6 +600,30 @@ function _download() {
     eval ${_cmd}
 }
 
+function _download_and_extract() {
+    local _url="$1"
+    local _extract_to="${2}"
+    local _save_dir="${3:-"${_WORK_DIR%/}/downloads"}"
+    local _file="$4"
+    local _as_user="${5:-"${USER}"}"
+    [ -z "${_file}" ] && _file="`basename "${_url}"`"
+
+    _download "${_url}" "${_save_dir%/}/${_file}" "Y" "Y" || return $?
+
+    # If no extract directory, just download.
+    if [ -n "${_extract_to}" ]; then
+        if [ ! -d "${_extract_to}" ]; then
+            mkdir -p "${_extract_to}" || return $?
+            chown ${_as_user}: "${_extract_to}"
+        fi
+        #local _extension="${_file##*.}"
+        #if [[ "${_extension}" =~ \.(tar|gz|tgz|zip)$ ]]; then
+        sudo -u ${_as_user} tar -xf ${_save_dir%/}/${_file} -C ${_extract_to%/}/ || return $?
+        _log "INFO" "Extracted ${_file} into ${_extract_to}"; sleep 1
+        #fi
+    fi
+}
+
 function _upsert() {
     local __doc__="Modify the given file with given name and value."
     local _file_path="$1"
