@@ -413,8 +413,10 @@ function backupC() {
 }
 # synchronising my search.osakos.com
 function push2search() {
-    local _force="$1"
     # May need to configure .ssh/config to specify the private key
+    local _force="$1"
+    # 'indexes' and 'cache' are optional
+    rsync -vrc -n --exclude 'indexes' --exclude 'cache' --exclude 'tmp' --exclude '.git' --exclude '.idea' search.osakos.com:~/www/search/ $HOME/IdeaProjects/search/
     local _cmd="rsync -vrc --exclude '.git' --exclude '.idea' --exclude '*.md' $HOME/IdeaProjects/search/ search.osakos.com:~/www/search/"
     if [[ "${_force}" =~ ^[yY] ]]; then
         eval "${_cmd}"
