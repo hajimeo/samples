@@ -1701,9 +1701,16 @@ EOF
 
 function f_crowd() {
     local _ver="${1:-"4.1.2"}"
-    https://product-downloads.atlassian.com/software/crowd/downloads/atlassian-crowd-${_ver}.tar.gz
-}
+    _download_and_extract "https://product-downloads.atlassian.com/software/crowd/downloads/atlassian-crowd-${_ver}.tar.gz" "/opt/crowd" || return $?
+    if grep -q "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties" 
+    _upsert "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties" "crowd.home" "/var/crowd-home" || return $?
 
+    # TODO: currently running as current user, which is most likely root
+    bash /opt/crowd/atlassian-crowd-${_ver}/start_crowd.sh || return $?
+    _log "INFO" "Access http://`hostname -f`:8095/
+For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
+Then, '3 hour expiration for all Atlassian host products'"
+}
 
 function p_basic_setup() {
     _log "INFO" "Executing f_ssh_setup"
