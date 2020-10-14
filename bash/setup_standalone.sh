@@ -45,7 +45,7 @@ SAVE CONTAINER AS IMAGE:
         NOTE: saving a container may take a few minutes.
 
 OTHERS (which normally you don't need to use):
-    -u
+    -U
         Update this script to the latest version.
 
     -i Image_name
@@ -1249,7 +1249,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         exit 0
     fi
     # parsing command options
-    while getopts "Ci:l:M:Nn:o:PRSst:uv:X" opts; do
+    while getopts "Ci:l:M:Nn:o:PRSst:Uv:X" opts; do
         case $opts in
             C)
                 _CREATE_CONTAINER=true
@@ -1290,7 +1290,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 _APP_TYPE="$OPTARG"
                 _INSTALL_OPTS="${_INSTALL_OPTS} -t ${_APP_TYPE}"
                 ;;
-            u)
+            U)
                 f_update
                 exit $?
                 ;;
