@@ -653,8 +653,12 @@ function _upsert() {
     _grep -qP "^\s*${_name_escaped}\s*${_between_char}\s*${_value_escaped}\s*" "${_file_path}" && return 0
 
     # If name= is already set, replace all with /g
-    if _grep -qP "^\s*${_name_escaped}\s*" "${_file_path}"; then
-        _sed -i -r "s/^([[:space:]]*${_name_esc_sed})([[:space:]]*${_between_char}[[:space:]]*)[^${_comment_char} ]*(.*)$/\1\2${_value_esc_sed}\3/g" "${_file_path}"
+    if _grep -qP "^\s*${_name_escaped}\s*${_between_char}\s*" "${_file_path}"; then
+        if [ -n "${_comment_char}" ] && _grep -qP "^\s*${_name_escaped}\s*${_between_char}.*${_comment_char}" "${_file_path}"; then
+            _sed -i -r "s/^([[:space:]]*${_name_esc_sed})([[:space:]]*${_between_char}[[:space:]]*).+([[:space:]]*${_comment_char}.*)$/\1\2${_value_esc_sed} \3/g" "${_file_path}"
+        else
+            _sed -i -r "s/^([[:space:]]*${_name_esc_sed})([[:space:]]*${_between_char}[[:space:]]*).*$/\1\2${_value_esc_sed}/g" "${_file_path}"
+        fi
         return $?
     fi
 
