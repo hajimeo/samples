@@ -107,7 +107,7 @@ function f_setup_maven() {
         # NOTE: if IQ: Audit and Quarantine is needed to be setup
         #f_iq_quarantine "${_prefix}-proxy"
         # NOTE: jackson-databind-2.9.3 should be quarantined if IQ is configured. May need to delete the component first
-        #f_get_asset "${_prefix}-proxy" "com/fasterxml/jackson/core/jackson-databind/2.9.3/jackson-databind-2.9.3.jar" "test.jar"
+        #f_get_asset "maven-proxy" "com/fasterxml/jackson/core/jackson-databind/2.9.3/jackson-databind-2.9.3.jar" "test.jar"
         #_get_asset_NXRM2 central "com/fasterxml/jackson/core/jackson-databind/2.9.3/jackson-databind-2.9.3.jar" "test.jar"
     fi
     # add some data for xxxx-proxy
@@ -207,7 +207,9 @@ function f_setup_nuget() {
     if ! _is_repo_available "${_prefix}-v3-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-hosted","format":"","type":"","url":"","online":true,"recipe":"nuget-hosted"}],"type":"rpc"}' || return $?
     fi
-    # TODO: add some data for xxxx-hosted
+    # add some data for xxxx-hosted
+    f_upload_asset "${_prefix}-hosted" -F "nuget.asset=@${_TMP%/}/test.2.0.1.1.nupkg"
+
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-v3-group"; then
@@ -462,6 +464,42 @@ function f_setup_raw() {
     f_get_asset "${_prefix}-group" "test/test_1k.img"
 }
 
+
+### Nexus related Misc. functions #################################################################
+function f_create_file_blobstore() {
+    local _blob_name="$1"
+    if ! f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${_blob_name}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${_blob_name}'"}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
+        _log "ERROR" "Blobstore ${_blob_name} does not exist."
+        _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        return 1
+    fi
+    _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+}
+
+function f_create_s3_blobstore() {
+    local _blob_name="${1:-"s3-test"}"
+    local _bucket="${2:-"apac-support-bucket"}"
+    local _region="${3:-"ap-southeast-2"}"
+    local _ak="${4:-${_AWS_ACCESS_KEY}}"
+    local _sk="${5:-${_AWS_SECRET_KEY}}"
+    local _prefix="${6:-$(hostname -s)}"    # cat /etc/machine-id is not perfect if docker container
+    # NOTE 3.27 has ',"state":""'
+    if ! f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_blob_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix}'","expiration":"2","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
+        _log "ERROR" "Blobstore ${_blob_name} does not exist."
+        _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        return 1
+    fi
+    _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+    # As an example, creating docker-hosted-s3 repo
+    #f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"s3-test","strictContentTypeValidation":false,"writePolicy":"ALLOW","latestPolicy":false},"cleanup":{"policyName":[]}},"name":"docker-hosted-s3","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-hosted"}],"type":"rpc"}'
+    _log "INFO" "To browse / search:
+aws s3 ls s3://${_bucket}/${_prefix}/content/ # --recursive
+aws s3api list-objects --bucket ${_bucket} --query \"Contents[?contains(Key, 'f062f002-88f0-4b53-aeca-7324e9609329.properties')]\"
+aws s3api get-object-tagging --bucket ${_bucket} --key \"${_prefix}/content/vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties\"
+aws s3 cp s3://${_bucket}/${_prefix}/content/vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties -
+"
+}
+
 function f_iq_quarantine() {
     local _repo_name="$1"
     if [ -n "${_IQ_HOST}" ] && nc -z ${_IQ_HOST} ${_IQ_PORT:-"8070"}; then
@@ -472,7 +510,6 @@ function f_iq_quarantine() {
     f_apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"firewall.audit","notes":"","enabled":true,"properties":{"repository":"'${_repo_name}'","quarantine":"true"}}],"type":"rpc"}' || return $?
     _log "INFO" "IQ: Audit and Quarantine for ${_repo_name} completed."
 }
-
 
 # f_get_and_upload_jars "maven" "junit" "junit" "3.8 4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 4.10 4.11 4.12"
 function f_get_and_upload_jars() {
@@ -595,7 +632,7 @@ function f_upload_asset() {
 }
 
 
-### Nexus related Misc. functions #################################################################
+### Utility/Misc. functions #################################################################
 function f_apiS() {
     local __doc__="NXRM (not really API but) API wrapper with session"
     local _data="${1}"
@@ -692,6 +729,7 @@ function f_api() {
 #docker rm -f nexus-client; sudo p_client_container "http://dh1.standalone.localdomain:8081/"
 # shellcheck disable=SC2120
 function p_client_container() {
+    local __doc__="Create / start a docker container to install various client commands. Also calls f_reset_client_configs"
     local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     local _name="${2:-"nexus-client"}"
     local _centos_ver="${3:-"7.6.1810"}"
@@ -801,7 +839,7 @@ _auth=\"${_cred}\"" > ${_TMP%/}/npmrc
         ${_cmd} exec -it ${_name} bash -l -c "npm install -g yarn;npm install -g bower" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
     fi
 
-    # Using Nexus pypi repository if available
+    # Using Nexus pypi repository if available, also install conan
     _repo_url="${_base_url%/}/repository/pypi-group"
     echo "[distutils]
 index-servers =
@@ -864,20 +902,33 @@ export GOPROXY=${_repo_url}" > ${_TMP%/}/go-proxy.sh
         ${_cmd} cp ${_TMP%/}/go-proxy.sh ${_name}:/etc/profile.d/go-proxy.sh
     fi
 
-    # If repo is reachable, setup conda/anaconda/miniconda env
+    # Install Conda, and if repo is reachable, setup conda/anaconda/miniconda env
+    curl -o ${_TMP%/}/Miniconda3-latest-Linux-x86_64.sh --compressed https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh &&
+        ${_cmd} cp ${_TMP%/}/Miniconda3-latest-Linux-x86_64.sh ${_name}:/home/${_user}/Miniconda3-latest-Linux-x86_64.sh && \
+        ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/Miniconda3-latest-Linux-x86_64.sh &&
+        ${_cmd} exec -it ${_name} -u ${_user} bash /home/${_user}/Miniconda3-latest-Linux-x86_64.sh -b -p /home/${_user}/miniconda3 &&
+        ${_cmd} exec -it ${_name} -u ${_user} bash -c "mkdir /home/${_user}/bin; ln -s /home/${_user}/miniconda3/bin/conda /home/${_user}/bin/conda"
     _repo_url="${_base_url%/}/repository/conda-proxy"
     if _is_url_reachable "${_repo_url}"; then
-        curl -o ${_TMP%/}/Miniconda3-latest-Linux-x86_64.sh --compressed https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh &&
-            ${_cmd} cp ${_TMP%/}/Miniconda3-latest-Linux-x86_64.sh ${_name}:/home/${_user}/Miniconda3-latest-Linux-x86_64.sh && \
-            ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/Miniconda3-latest-Linux-x86_64.sh &&
-            ${_cmd} exec -it ${_name} -u ${_user} bash /home/${_user}/Miniconda3-latest-Linux-x86_64.sh -b -p /home/${_user}/miniconda3 &&
-            ${_cmd} exec -it ${_name} -u ${_user} bash -c "mkdir /home/${_user}/bin; ln -s /home/${_user}/miniconda3/bin/conda /home/${_user}/bin/conda"
         #local _pwd_encoded="$(python -c \"import sys, urllib as ul; print(ul.quote('${_pwd}'))\")"
         echo "channels:
   - ${_repo_url%/}
   - defaults" > ${_TMP%/}/condarc
         ${_cmd} cp ${_TMP%/}/condarc ${_name}:/home/${_user}/.condarc && ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.condarc
     fi
+
+    # Regardless of repo availability, setup helm
+    curl -fsSL -o ${_TMP%/}/get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+    if [ -s ${_TMP%/}/get_helm.sh ]; then
+        ${_cmd} cp ${_TMP%/}/get_helm.sh ${_name}:/home/ && \
+        ${_cmd} exec -it ${_name} chown -R ${_user}: /home/${_user}/get_helm.sh && \
+        ${_cmd} exec -it -u ${_user} ${_name} /home/${_user}/get_helm.sh
+    fi
+
+    sed -i -e "s@_REPLACE_MAVEN_USERNAME_@${_usr}@1" -e "s@_REPLACE_MAVEN_USER_PWD_@${_pwd}@1" -e "s@_REPLACE_MAVEN_REPO_URL_@${_repo_url%/}/@1" ${_TMP%/}/settings.xml && \
+    ${_cmd} exec -it ${_name} bash -l -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null' && \
+    ${_cmd} cp ${_TMP%/}/settings.xml ${_name}:/home/${_user}/.m2/settings.xml && \
+    ${_cmd} exec -it ${_name} chown -R ${_user}: /home/${_user}/.m2
 
     # Using Nexus maven repository if available
     _repo_url="${_base_url%/}/repository/maven-group"
@@ -1405,12 +1456,7 @@ main() {
     f_nexus_testuser &>/dev/null  # it's OK if this fails
 
     if ! _is_blob_available "${r_BLOB_NAME}"; then
-        if ! f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${r_BLOB_NAME}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${r_BLOB_NAME}'"}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
-            _log "ERROR" "Blobstore ${r_BLOB_NAME} does not exist."
-            _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
-            return 1
-        fi
-        _log "DEBUG" "$(cat ${_TMP%/}/f_apiS_last.out)"
+        f_create_file_blobstore || return $?
     fi
     for _f in `echo "${r_REPO_FORMATS:-"${_REPO_FORMATS}"}" | sed 's/,/ /g'`; do
         _log "INFO" "Executing f_setup_${_f} ..."
