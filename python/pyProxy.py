@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# Tiny proxy for testing connection
+# Tiny proxy for testing connection (only python2)
 # Based on https://code.google.com/p/python-proxy/
 #
 
@@ -26,23 +26,26 @@ class ConnectionHandler:
         self.client.close()
         self.target.close()
 
+    def log(self, msg):
+        sys.stdout.write('[%s] %s\n' % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), str(msg))) #debug
+        sys.stdout.flush()
+    
     def get_base_header(self):
         while 1:
             self.client_buffer += self.client.recv(BUFLEN)
             end = self.client_buffer.find('\n')
             if end!=-1:
                 break
-        ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        sys.stdout.write('[%s] %s\n' % (ts, self.client_buffer[:end])) #debug
-        sys.stdout.flush()
+        self.log(self.client_buffer)
         data = (self.client_buffer[:end+1]).split()
         self.client_buffer = self.client_buffer[end+1:]
         return data
 
     def method_CONNECT(self):
         self._connect_target(self.path)
-        self.client.send(HTTPVER+' 200 Connection established\n'+
-                         'Proxy-agent: %s\n\n'%VERSION)
+        _str = HTTPVER+' 200 Connection established\n'+'Proxy-agent: %s\n\n'%VERSION
+        self.client.send(_str)
+        self.log(_str)
         self.client_buffer = ''
         self._read_write()
 
@@ -52,8 +55,8 @@ class ConnectionHandler:
         host = self.path[:i]
         path = self.path[i:]
         self._connect_target(host)
-        self.target.send('%s %s %s\n'%(self.method, path, self.protocol)+
-                         self.client_buffer)
+        _str = '%s %s %s\n'%(self.method, path, self.protocol)+self.client_buffer
+        self.log(_str)
         self.client_buffer = ''
         self._read_write()
 
@@ -87,6 +90,7 @@ class ConnectionHandler:
                         out = self.client
                     if data:
                         out.send(data)
+                        self.log(data[:200])
                         count = 0
             if count == time_out_max:
                 break
