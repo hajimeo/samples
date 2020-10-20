@@ -206,7 +206,7 @@ function mvn-dep-file() {
 }
 
 # Get one jar (file) by GAV
-function get_by_gav() {
+function mvn-get-file() {
     local _gav="$1" # eg: junit:junit:4.12
     local _repo_url="${2:-"http://dh1.standalone.localdomain:8081/repository/maven-public/"}"
     local _user="${3:-"admin"}"
@@ -218,9 +218,9 @@ function get_by_gav() {
         local _path="$(echo "${_g}" | sed "s@\.@/@g")/${_a}/${_v}/${_a}-${_v}.jar"
 
         curl -v -O -J -L -f -u ${_user}:${_pwd} -k "${_repo_url%/}/${_path#/}" || return $?
+        echo "$(basename "${_path}")"
     fi
 }
-alias mvn-curl="get_by_gav"
 
 # mvn devendency:get wrapper to use remote repo
 function mvn-get() {
@@ -231,6 +231,22 @@ function mvn-get() {
     local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -Dtransitive=false -U -X"}"
     [ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
     mvn `_mvn_settings "${_remote_repo}"` dependency:get -Dartifact=${_gav} ${_options}
+}
+
+function mvn-get-then-deploy() {
+    local _gav="${1:-"junit:junit:4.12"}"
+    local _get_repo="${2:-"http://localhost:8081/repository/maven-public/"}"
+    local _dep_repo="${3:-"http://localhost:8081/repository/maven-snapshots/"}" # layout policy: strict may make request fail.
+    local _is_snapshot="${4-"Y"}"
+    local _file="$(mvn-get-file "${_gav}" "${_get_repo}")" || return $?
+    if [ -n "${_file}" ]; then
+        if [[ "${_is_snapshot}" =~ ^(y|Y) ]] && [[ ! "${_file}" =~ SNAPSHOT ]]; then
+            mv ${_file} "$(basename ${_file} .jar)-SNAPSHOT.jar" || return $?
+            _file="$(basename ${_file} .jar)-SNAPSHOT.jar"
+            _gav="${_gav}-SNAPSHOT"
+        fi
+        mvn-dep-file "${_file}" "${_gav}" "${_dep_repo}"
+    fi
 }
 
 # mvn devendency:resolve wrapper to use remote repo
