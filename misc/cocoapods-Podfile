@@ -1,9 +1,10 @@
+# curl -o Podfile "https://raw.githubusercontent.com/hajimeo/samples/master/misc/cocoapods-Podfile"
 project './cocoapods-test.xcodeproj/'
 
 # Uncomment the next line to define a global platform for your project
 # platform :ios, '9.0'
 # NOTE: need to use https
-source 'https://dh1.standalone.localdomain:8543/repository/cocoapods-proxy/'
+source 'https://dh1.standalone.localdomain:8443/repository/cocoapods-proxy/'
 
 target 'cocoapods-test' do
   # Comment the next line if you don't want to use dynamic frameworks
