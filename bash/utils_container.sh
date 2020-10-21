@@ -185,7 +185,7 @@ function _docker_run() {
     fi
 
     # NXRM3 specific (TODO: below shouldn't be in this function)
-    _ext_opts="${_ext_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS:-"-Xms1g -Xmx2g -XX:MaxDirectMemorySize=1g"}\""
+    [ -n "${INSTALL4J_ADD_VM_PARAMS}" ] && _ext_opts="${_ext_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\""
 
     local _full_cmd="${_cmd} run -t -d --name=${_name} --hostname=${_name}.${_DOMAIN#.} \\
         ${_ext_opts} \\
