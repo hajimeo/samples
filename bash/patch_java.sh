@@ -179,6 +179,12 @@ function _set_classpath() {
     local _extra_lib="${2-${_EXTRA_LIB}}"
     local _classpath=""
 
+    if [ "${_port}" == "8081" ] && [ -d "/usr/tmp/share/java/lib" ]; then
+        # At this moment, not considering dups
+        _classpath="${CLASSPATH%:}:$(find /usr/tmp/share/java/lib -type f -name '*.jar' | grep -vw groovy | tr '\n' ':')"
+        export CLASSPATH="${_classpath%:}"
+    fi
+
     if [ "${_port}" == "8081" ] && [ -d "/opt/sonatype/nexus/system" ]; then
         # At this moment, not considering dups
         _classpath="${CLASSPATH%:}:$(find /opt/sonatype/nexus/system -type f -name '*.jar' | grep -vw groovy | tr '\n' ':')"
