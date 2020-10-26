@@ -1702,8 +1702,9 @@ EOF
 function f_crowd() {
     local _ver="${1:-"4.1.2"}"
     _download_and_extract "https://product-downloads.atlassian.com/software/crowd/downloads/atlassian-crowd-${_ver}.tar.gz" "/opt/crowd" || return $?
-    if grep -q "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties" 
-    _upsert "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties" "crowd.home" "/var/crowd-home" || return $?
+    if grep -q "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties"; then
+        _upsert "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties" "crowd.home" "/var/crowd-home" || return $?
+    fi
 
     # TODO: currently running as current user, which is most likely root
     bash /opt/crowd/atlassian-crowd-${_ver}/start_crowd.sh || return $?
