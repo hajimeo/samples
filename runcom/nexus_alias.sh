@@ -107,7 +107,7 @@ If community repositories are used, add --convert-repos (-cr) flag.
 }
 
 # To start local (on Mac) IQ server
-function rmStart() {
+function nxrmStart() {
     local _base_dir="${1:-"."}"
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"}
     local _mode=${3:-"run"} # if NXRM2, not run
@@ -122,6 +122,28 @@ function rmStart() {
     ${_nexus_file} ${_mode}
 }
 
+#nxrmDocker "nxrm3-test" "" "8181" "8543" "--read-only -v /tmp/nxrm3-test:/tmp"
+function nxrmDocker() {
+    local _name="${1:-"nxrm3"}"
+    local _tag="${2:-"latest"}"
+    local _port="${3:-"8081"}"
+    local _port_ssl="${4:-"8443"}"
+    local _extra_opts="${5}"    # such as -Djava.util.prefs.userRoot=/some-other-dir
+
+    local _nexus_data="/var/tmp/share/sonatype/${_name}-data"
+    if [ ! -d "${_nexus_data%/}" ]; then
+        mkdir -p -m 777 "${_nexus_data%/}" || return $?
+    fi
+    local _opts="--name=${_name}"
+    [ -n "${INSTALL4J_ADD_VM_PARAMS}" ] && _opts="${_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\""
+    [ -d /var/tmp/share ] && _opts="${_opts} -v /var/tmp/share:/var/tmp/share"
+    [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/nexus-data"
+    [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
+    local _cmd="docker run -d -p ${_port}:8081 -p ${_port_ssl}:8443 ${_opts} sonatype/nexus3:${_tag}"
+    echo "${_cmd}"
+    eval "${_cmd}"
+}
+
 # To start local (on Mac) IQ server
 function iqStart() {
     local _base_dir="${1:-"."}"
@@ -132,6 +154,37 @@ function iqStart() {
     grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
     grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.bak -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
     java -Xmx2g ${_java_opts} -jar "${_jar_file}" server "${_cfg_file}"
+}
+
+#iqDocker "nxiq-test" "" "8170" "8171" "8544" "--read-only -v /tmp/nxiq-test:/tmp"
+function iqDocker() {
+    local _name="${1:-"nxiq"}"
+    local _tag="${2:-"latest"}"
+    local _port="${3:-"8070"}"
+    local _port2="${4:-"8071"}"
+    local _port_ssl="${5:-"8444"}"
+    local _extra_opts="${6}"
+    local _license="${7}"
+
+    local _nexus_data="/var/tmp/share/sonatype/${_name}-data"
+    [ ! -d "${_nexus_data%/}" ] && mkdir -p -m 777 "${_nexus_data%/}"
+    [ ! -d "${_nexus_data%/}/etc" ] && mkdir -p -m 777 "${_nexus_data%/}/etc"
+    [ ! -d "${_nexus_data%/}/log" ] && mkdir -p -m 777 "${_nexus_data%/}/log"
+    local _opts="--name=${_name}"
+    local _java_opts=""
+    [ -z "${_license}" ] && [ -d /var/tmp/share/sonatype ] && _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
+    [ -s "${_license}" ] && _java_opts="-Ddw.licenseFile=${_license}"
+    [ -n "${JAVA_OPTS}" ] && _java_opts="${_java_opts} ${JAVA_OPTS}"
+    [ -n "${_java_opts}" ] && _opts="${_opts} -e JAVA_OPTS=\"${_java_opts}\""
+    [ -d /var/tmp/share ] && _opts="${_opts} -v /var/tmp/share:/var/tmp/share"
+    [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/sonatype-work"
+    [ -s "${_nexus_data%/}/etc/config.yml" ] && _opts="${_opts} -v ${_nexus_data%/}/etc:/etc/nexus-iq-server"
+    [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/var/log/nexus-iq-server"
+    [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/opt/sonatype/nexus-iq-server/log" # due to audit.log
+    [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
+    local _cmd="docker run -d -p ${_port}:8070 -p ${_port2}:8071 -p ${_port_ssl}:8444 ${_opts} sonatype/nexus-iq-server:${_tag}"
+    echo "${_cmd}"
+    eval "${_cmd}"
 }
 
 # mvn archetype:generate wrapper to use a remote repo
@@ -169,8 +222,17 @@ function mvn-add-snapshot-repo-in-pom() {
   </distributionManagement>"
 }
 
-#cd my-app; mvn-deploy "http://dh1.standalone.localdomain:8081/repository/maven-snapshots-s3/" "nexus"
-#Test: get_by_gav "com.example:my-app:1.0" "http://dh1.standalone.localdomain:8081/repository/maven-snapshots-s3/"
+# Example
+cat << EOF >/dev/null
+mvn-arch-gen
+cd my-app
+#mvn-deploy "http://dh1.standalone.localdomain:8081/repository/maven-snapshots-s3/" "nexus"
+for i in {1..10}; do
+  sed -i.tmp -E "s@<groupId>com.example.*</groupId>@<groupId>com.example${i}</groupId>@" pom.xml
+  sed -i.tmp -E "s@<artifactId>my-app.*</artifactId>@<artifactId>my-app${i}</artifactId>@" pom.xml
+  mvn-deploy "http://dh1.standalone.localdomain:8081/repository/maven-snapshots-s3/" "nexus"
+done
+EOF
 function mvn-deploy() {
     local __doc__="https://stackoverflow.com/questions/13547358/maven-deploydeploy-using-daltdeploymentrepository"
     local _alt_repo="${1}"
@@ -276,11 +338,14 @@ function _mvn_settings() {
     echo "-s ${_settings_xml}"
 }
 
-# npm-init might be already used
+# basically same as npm init -y but adding lodash 4.17.4 :-)
 function npmInit() {
+    local _name="${1:-"lodash-vulnerable"}"
+    mkdir "${_name}"
+    cd "${_name}"
     cat << EOF > ./package.json
 {
-  "name": "45674",
+  "name": "${_name}",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
