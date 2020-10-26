@@ -15,7 +15,8 @@ alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{t
 # output the longest line *number* as wc|gwc -L does not show the line number
 alias wcln="awk 'length > max_length { max_length = length; longest_line_num = NR } END { print longest_line_num }'"
 # Sum integer in a column by using paste (which concatenates files or characters(+))
-alias sum_cols="gpaste -sd+ | bc"
+#alias sum_cols="gpaste -sd+ | bc"
+alias sum_cols="paste -sd+ - | bc"
 # diff side-by-side ignoring whitespace diff
 alias diffY="diff -wy --suppress-common-lines"
 which mdfind &>/dev/null && alias mdfindL="mdfind kMDItemFSName="
