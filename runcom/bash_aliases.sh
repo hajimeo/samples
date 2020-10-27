@@ -59,7 +59,7 @@ alias urlencode='python -c "import sys, urllib as ul; print(ul.quote(sys.argv[1]
 # base64 encode/decode (coreutils base64 or openssl base64 -e|-d)
 alias b64encode='python3 -c "import sys, base64; print(base64.b64encode(sys.argv[1].encode(\"utf-8\")).decode())"'
 #alias b64encode='python -c "import sys, base64; print(base64.b64encode(sys.argv[1]))"'
-alias b64decode='python3 -c "import sys, base64; print(base64.b64decode(sys.argv[1]))"'
+alias b64decode='python3 -c "import sys, base64; print(base64.b64decode(sys.argv[1]).decode())"'    # .decode() to remove "b'xxxx"
 alias utc2int='python3 -c "import sys,time,dateutil.parser;from datetime import timezone;print(int(dateutil.parser.parse(sys.argv[1]).replace(tzinfo=timezone.utc).timestamp()))"'  # doesn't work with yy/mm/dd (2 digits year)
 alias int2utc='python -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1][0:10])).strftime(\"%Y-%m-%d %H:%M:%S\")+\".\"+sys.argv[1][10:13]+\" UTC\")"'
 #alias int2utc='python -c "import sys,time;print(time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\")"'
@@ -343,21 +343,20 @@ function chromep() {
 # Add route to dockerhost to access containers directly
 function r2dh() {
     local _dh="${1}"  # docker host IP or L2TP 10.0.1.1
-    local _3rd="${2-100}"  # 3rd decimal in network address
+    local _network_addrs="${2:-"172.17.0.0 172.18.0.0 172.17.100.0 10.152.183.0"}"
     [ -z "${_dh}" ] && _dh="$(ifconfig ppp0 | grep -oE 'inet .+' | awk '{print $4}')" 2>/dev/null
     [ -z "${_dh}" ] && _dh="192.168.1.31"
 
-    if [ "Darwin" = "`uname`" ]; then
-        # NOTE: using /24 because L2TP VPN assigns IP 172.31.0.x
-        [ -n "${_3rd}" ] && ( sudo route delete -net 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 ${_dh} )
-        sudo route delete -net 172.17.0.0/24 &>/dev/null;sudo route add -net 172.17.0.0/24 ${_dh}
-        sudo route delete -net 172.18.0.0/24 &>/dev/null;sudo route add -net 172.18.0.0/24 ${_dh}
-        sudo route delete -net 172.100.0.0/24 &>/dev/null;sudo route add -net 172.100.0.0/24 ${_dh}
-    elif [ "Linux" = "`uname`" ]; then
-        [ -n "${_3rd}" ] && ( sudo ip route del 172.17.${_3rd}.0/24 &>/dev/null;sudo route add -net 172.17.${_3rd}.0/24 gw ${_dh} ens3 )
-    else    # Assuming windows (cygwin)
-        [ -n "${_3rd}" ] && ( route delete 172.17.${_3rd}.0 &>/dev/null;route add 172.17.${_3rd}.0 mask 255.255.255.0 ${_dh} )
-    fi
+    for _addr in ${_network_addrs}; do
+        if [ "Darwin" = "`uname`" ]; then
+            # NOTE: Always using /24 because L2TP VPN assigns IP 172.31.0.x to this PC
+            sudo route delete -net ${_addr}/24 &>/dev/null;sudo route add -net ${_addr}/24 ${_dh}
+        elif [ "Linux" = "`uname`" ]; then
+            sudo ip route del ${_addr}/24 &>/dev/null;sudo route add -net ${_addr}/24 gw ${_dh} ens3
+        else    # Assuming windows (cygwin)
+            route delete ${_addr} &>/dev/null;route add ${_addr} mask 255.255.255.0 ${_dh}
+        fi
+    done
 }
 function sshs() {
     local _user_at_host="$1"
