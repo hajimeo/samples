@@ -14,16 +14,15 @@ _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
 type _import &>/dev/null || _import() { curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/$1 && . /tmp/$1; }
 _import "utils.sh"
 
-
 function f_host_misc() {
     local __doc__="Misc. changes for Ubuntu OS"
 
     [ ! -d ${_WORK_DIR} ] && mkdir -p -m 777 ${_WORK_DIR}
-    
+
     # AWS / Openstack only change
     if [ -s /home/ubuntu/.ssh/authorized_keys ] && [ ! -f $HOME/.ssh/authorized_keys.bak ]; then
         cp -p $HOME/.ssh/authorized_keys $HOME/.ssh/authorized_keys.bak
-        grep 'Please login as the user' $HOME/.ssh/authorized_keys && cat /home/ubuntu/.ssh/authorized_keys > $HOME/.ssh/authorized_keys
+        grep 'Please login as the user' $HOME/.ssh/authorized_keys && cat /home/ubuntu/.ssh/authorized_keys >$HOME/.ssh/authorized_keys
     fi
 
     # If you would like to use the default, comment PasswordAuthentication or PermitRootLogin
@@ -38,16 +37,16 @@ function f_host_misc() {
         echo '#!/bin/bash
 ls -lt ~/*.resp
 docker ps
-screen -ls' > /etc/update-motd.d/99-start-hdp
+screen -ls' >/etc/update-motd.d/99-start-hdp
         chmod a+x /etc/update-motd.d/99-start-hdp
-        run-parts --lsbsysinit /etc/update-motd.d > /run/motd.dynamic
+        run-parts --lsbsysinit /etc/update-motd.d >/run/motd.dynamic
     fi
 
     if [ ! -f /etc/cron.daily/ipchk ]; then
         echo '#!/usr/bin/env bash
 _ID="$(hostname -s | tail -c 8)"
 _IP="$(hostname -I | cut -d" " -f1)"
-curl -s -f "http://www.osakos.com/tools/info.php?id=${_ID}&LOCAL_ADDR=${_IP}"' > /etc/cron.daily/ipchk
+curl -s -f "http://www.osakos.com/tools/info.php?id=${_ID}&LOCAL_ADDR=${_IP}"' >/etc/cron.daily/ipchk
         chmod a+x /etc/cron.daily/ipchk
     fi
 
@@ -73,7 +72,7 @@ function f_del_log_cron() {
     echo '#!/bin/bash
 find '${_parent_dir%/}'/logs -type f -name "*log*" -mtime +'${_days}' -print -delete 2>/dev/null
 find '${_parent_dir%/}'/backups -type f -mtime +'$((${_days} * 5))' -print -delete
-exit $?' > /etc/cron.daily/${_name}
+exit $?' >/etc/cron.daily/${_name}
     chmod a+x /etc/cron.daily/${_name}
 }
 
@@ -108,8 +107,8 @@ function f_shellinabox() {
     chmod 750 /usr/local/bin/setup_standalone*
 
     # Finding Network Address from docker. Seems Mac doesn't care if IP doesn't end with .0
-    local _net_addr="`docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])"`"
-    _net_addr="`echo "${_net_addr}" | sed 's/\.[1-9]\+\/[1-9]\+/.0/'`"
+    local _net_addr="$(docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])")"
+    _net_addr="$(echo "${_net_addr}" | sed 's/\.[1-9]\+\/[1-9]\+/.0/')"
 
     curl -s -f --retry 3 -o /usr/local/bin/shellinabox_login https://raw.githubusercontent.com/hajimeo/samples/master/misc/shellinabox_login.sh || return $?
     sed -i "s/%_user%/${_user}/g" /usr/local/bin/shellinabox_login
@@ -118,9 +117,9 @@ function f_shellinabox() {
     chmod a+x /usr/local/bin/shellinabox_login
 
     sleep 1
-    local _port=`sed -n -r 's/^SHELLINABOX_PORT=([0-9]+)/\1/p' /etc/default/shellinabox`
+    local _port=$(sed -n -r 's/^SHELLINABOX_PORT=([0-9]+)/\1/p' /etc/default/shellinabox)
     lsof -i:${_port}
-    _log "INFO" "To access: 'http://`hostname -I | cut -d" " -f1`:${_port}/${_user}/'"
+    _log "INFO" "To access: 'http://$(hostname -I | cut -d" " -f1):${_port}/${_user}/'"
 }
 
 function f_sysstat_setup() {
@@ -146,12 +145,12 @@ function f_haproxy() {
     local __doc__="Install and setup HAProxy"
     # To generate '_nodes': docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq)$" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
     # HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
-    local _nodes="${1}"             # Space delimited. If empty, generated from 'docker ps'
+    local _nodes="${1}"                                                  # Space delimited. If empty, generated from 'docker ps'
     local _ports="${2:-"8081 8443=8081 8070 8071 8444=8070 18079=8081"}" # Space delimited # 18082=18082 18079=18079 18075=18075
-    local _skipping_chk="${3}"      # Not to check each backend port (handy when you will start backend later)
-    local _certificate="${4}"       # Expecting same (concatenated) cert for front and backend
-    local _haproxy_custom_cfg_dir="${5:-"${_WORK_DIR%/}/haproxy"}" # Under this directory, create haproxy.PORT.cfg file
-    local _domain="${6:-"standalone.localdomain"}"  # `hostname -d`
+    local _skipping_chk="${3}"                                           # Not to check each backend port (handy when you will start backend later)
+    local _certificate="${4}"                                            # Expecting same (concatenated) cert for front and backend
+    local _haproxy_custom_cfg_dir="${5:-"${_WORK_DIR%/}/haproxy"}"       # Under this directory, create haproxy.PORT.cfg file
+    local _domain="${6:-"standalone.localdomain"}"                       # `hostname -d`
     #local _haproxy_tmpl_conf="${_WORK_DIR%/}/haproxy.tmpl.cfg}"
 
     local _cfg="/etc/haproxy/haproxy.cfg"
@@ -163,7 +162,7 @@ function f_haproxy() {
 
     if [ -z "${_nodes}" ]; then
         # I'm using FreeIPA and that container name includes 'freeipa'
-        _nodes="$(for _n in `docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq)$" | sort`;do docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])"; done | tr '\n' ' ')"
+        _nodes="$(for _n in $(docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq)$" | sort); do docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])"; done | tr '\n' ' ')"
         if [ -z "${_nodes}" ]; then
             _info "WARN" "No nodes to setup/check. Exiting..."
             return 0
@@ -189,7 +188,7 @@ function f_haproxy() {
 
     # Backup config file
     if [ -s "${_cfg}" ]; then
-        mv -v "${_cfg}" "/tmp/`basename ${_cfg}`".$(date +"%Y%m%d%H%M%S") || return $?
+        mv -v "${_cfg}" "/tmp/$(basename ${_cfg})".$(date +"%Y%m%d%H%M%S") || return $?
     fi
 
     # HAProxy config 'global', 'defaults', and 'stats' sections
@@ -212,7 +211,7 @@ listen stats
   stats enable
   stats uri /
   stats auth admin:admin
-" > ${_cfg}
+" >${_cfg}
 
     # If dnsmask is installed, utilise it
     local _resolver=""
@@ -220,7 +219,7 @@ listen stats
         echo "resolvers dnsmasq
   nameserver dns1 localhost:53
   accepted_payload_size 8192
-" >> "${_cfg}"
+" >>"${_cfg}"
         _resolver="resolvers dnsmasq init-addr none"
     fi
 
@@ -261,8 +260,8 @@ listen stats
                 # If skipping the check, then certificate is given, populate https options
                 [ -n "${_certificate}" ] && _https_opts=" ssl crt ${_certificate}${_https_opts}"
             fi
-            echo "  server ${_n} ${_n}:${_b_port}${_https_opts} check inter 30s ${_resolver}"  # not using 'cookie' for now.
-        done > /tmp/f_haproxy_backends_$$.out
+            echo "  server ${_n} ${_n}:${_b_port}${_https_opts} check inter 30s ${_resolver}" # not using 'cookie' for now.
+        done >/tmp/f_haproxy_backends_$$.out
 
         if [ ! -s /tmp/f_haproxy_backends_$$.out ]; then
             _info "No backend servers found for ${_p} ..."
@@ -271,9 +270,9 @@ listen stats
 
         if [ -s "${_haproxy_custom_cfg_dir%/}/haproxy.${_f_port}.cfg" ]; then
             _info "Found ${_haproxy_custom_cfg_dir%/}/haproxy.${_f_port}.cfg. Appending ..."
-            cat "${_haproxy_custom_cfg_dir%/}/haproxy.${_f_port}.cfg" >> "${_cfg}"
-            cat /tmp/f_haproxy_backends_$$.out >> "${_cfg}"
-            echo "" >> "${_cfg}"
+            cat "${_haproxy_custom_cfg_dir%/}/haproxy.${_f_port}.cfg" >>"${_cfg}"
+            cat /tmp/f_haproxy_backends_$$.out >>"${_cfg}"
+            echo "" >>"${_cfg}"
         else
             # If frontend port is already configured somehow (which shouldn't be possible though), skipping
             if ! grep -qE "^frontend frontend_p${_f_port}$" "${_cfg}"; then
@@ -283,8 +282,8 @@ listen stats
                 echo "frontend frontend_p${_f_port}
   bind *:${_f_port}${_frontend_ssl_crt}
   reqadd X-Forwarded-Proto:\ ${_frontend_proto}
-  default_backend backend_p${_b_port}" >> "${_cfg}"
-                echo "" >> "${_cfg}"
+  default_backend backend_p${_b_port}" >>"${_cfg}"
+                echo "" >>"${_cfg}"
             fi
 
             # If backend port is already configured, not adding as hapxory won't start
@@ -296,10 +295,10 @@ listen stats
   hash-type consistent
   option forwardfor
   http-request set-header X-Forwarded-Port %[dst_port]
-  option httpchk" >> "${_cfg}"
-            #  http-request add-header X-Forwarded-Proto ${_backend_proto}
-                cat /tmp/f_haproxy_backends_$$.out >> "${_cfg}"
-                echo "" >> "${_cfg}"
+  option httpchk" >>"${_cfg}"
+                #  http-request add-header X-Forwarded-Proto ${_backend_proto}
+                cat /tmp/f_haproxy_backends_$$.out >>"${_cfg}"
+                echo "" >>"${_cfg}"
             fi
         fi
     done
@@ -319,7 +318,7 @@ function f_nfs_server() {
     local __doc__="Install and setup NFS/NFSd on Ubuntu"
     # @see: https://www.digitalocean.com/community/tutorials/how-to-set-up-an-nfs-mount-on-ubuntu-18-04
     local _dir="${1-"/var/tmp/share"}"
-    local _network="${2:-"172.0.0.0/8"}"    # docker containers only
+    local _network="${2:-"172.0.0.0/8"}" # docker containers only
     local _options="${3:-"rw,sync,no_root_squash,no_subtree_check"}"
     apt-get install nfs-kernel-server nfs-common -y
 
@@ -332,21 +331,21 @@ function f_nfs_server() {
         if [ -f /etc/exports ]; then
             # Intentionally not using ^
             if ! grep -qE "${_dir%/}\s+" /etc/exports; then
-                echo "${_dir%/} ${_network}(${_options}) 127.0.0.1(${_options})" >> /etc/exports || return $?
+                echo "${_dir%/} ${_network}(${_options}) 127.0.0.1(${_options})" >>/etc/exports || return $?
             fi
         fi
         service nfs-kernel-server restart || return $?
         #exportfs -ra   # to reload /etc/exports without restarting
     fi
-    showmount -e `hostname`
+    showmount -e $(hostname)
     #rpcinfo -p `hostname`  # list NFS versions, ports, services but a bit too long
-    rpcinfo -s              # list NFS information
+    rpcinfo -s # list NFS information
     #nfsstat -v             # -v = -o all Display Server and Client stats
     _info "Test (after making /mnt/nfs):"
     # https://docs.aws.amazon.com/efs/latest/ug/mounting-fs-nfs-mount-settings.html https://www.cyberciti.biz/faq/linux-unix-tuning-nfs-server-client-performance/
     # TODO: how about ,proto=tcp,nolock,sync
-    cat << EOF
-    mount -t nfs4 -vvv -o vers=4.1,rsize=1048576,wsize=1048576,timeo=600,retrans=2,hard,noacl,noatime,nodiratime `hostname`:${_dir%/} /mnt/nfs
+    cat <<EOF
+    mount -t nfs4 -vvv -o vers=4.1,rsize=1048576,wsize=1048576,timeo=600,retrans=2,hard,noacl,noatime,nodiratime $(hostname):${_dir%/} /mnt/nfs
     time dd if=/dev/zero of=/mnt/nfs/test.img bs=100M count=1 oflag=dsync
     umount -f -l /mnt/nfs
 EOF
@@ -364,13 +363,13 @@ function f_s3fs() {
         if [ -s "$HOME/.passwd-s3fs" ]; then
             _log "INFO" "$HOME/.passwd-s3fs already exists, so not updating."
         else
-            echo "${_secret}" > "$HOME/.passwd-s3fs" || return $?
+            echo "${_secret}" >"$HOME/.passwd-s3fs" || return $?
             chmod 600 "$HOME/.passwd-s3fs" || return $?
         fi
     fi
     [ -z "${_bucket}" ] && return 0
     [ -n "${_mnt_dir}" ] && [ ! -d "${_mnt_dir}" ] && mkdir -p -m 777 "${_mnt_dir}"
-    cat << EOF
+    cat <<EOF
 # Example mount command:
 s3fs ${_bucket} ${_mnt_dir} -o endpoint=ap-southeast-2 \\
   -o cipher_suites=AESGCM,kernel_cache,max_background=1000,max_stat_cache_size=100000,multipart_size=52,parallel_count=30,multireq_max=30 \\
@@ -381,7 +380,7 @@ EOF
 function f_chrome() {
     local __doc__="Install Google Chrome on Ubuntu"
     if ! grep -q "http://dl.google.com" /etc/apt/sources.list.d/google-chrome.list; then
-        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list || return $?
+        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >>/etc/apt/sources.list.d/google-chrome.list || return $?
     fi
     curl -fsSL "https://dl.google.com/linux/linux_signing_key.pub" | apt-key add - || return $?
     apt-get update || return $?
@@ -413,13 +412,13 @@ function f_hostname_set() {
     local __doc__="Set hostname"
     local _new_name="$1"
     if [ -z "$_new_name" ]; then
-      _error "no hostname"
-      return 1
+        _error "no hostname"
+        return 1
     fi
 
-    local _current="`cat /etc/hostname`"
+    local _current="$(cat /etc/hostname)"
     hostname $_new_name
-    echo "$_new_name" > /etc/hostname
+    echo "$_new_name" >/etc/hostname
     sed -i.bak "s/\b${_current}\b/${_new_name}/g" /etc/hosts
     diff /etc/hosts.bak /etc/hosts
 }
@@ -466,8 +465,8 @@ function f_ip_set() {
      gateway4: ${_gw}
      nameservers:
        addresses: [1.1.1.1,8.8.8.8,8.8.4.4]
-" > ${_conf_file} || return $?
-    netplan apply   #--debug apply
+" >${_conf_file} || return $?
+    netplan apply #--debug apply
 }
 
 function f_socks5_proxy() {
@@ -486,7 +485,7 @@ function f_socks5_proxy() {
     touch /tmp/ssh_socks5.out
     chmod 777 /tmp/ssh_socks5.out
     [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
-    [ ! -s /etc/rc.lcoal ] && echo -e '#!/bin/bash\nexit 0' > /etc/rc.local
+    [ ! -s /etc/rc.lcoal ] && echo -e '#!/bin/bash\nexit 0' >/etc/rc.local
     _insert_line /etc/rc.local "${_cmd}" "exit 0"
     lsof -nPi:${_port} -s TCP:LISTEN | grep "^ssh" && return 0
     eval "${_cmd}"
@@ -495,9 +494,9 @@ function f_socks5_proxy() {
 function f_squid_proxy() {
     local _port="${1:-28082}"
     local _conf="/etc/squid/squid.conf"
-    apt-get install squid -y|| return $?
+    apt-get install squid -y || return $?
     _backup ${_conf} || return $?
-cat << EOF > ${_conf}
+    cat <<EOF >${_conf}
 acl docker dst 172.17.0.0/16
 acl docker dst 172.18.0.0/16
 http_access allow docker
@@ -515,7 +514,7 @@ function _apache_install() {
     a2enmod proxy proxy_http proxy_connect proxy_wstunnel cache cache_disk ssl || return $?
     apt-get install -y libapache2-mod-auth-kerb || return $?
     a2enmod headers rewrite auth_kerb || return $?
-    service apache2 restart || return $?    # Disabling proxy_connect needed restart, so just in case restarting
+    service apache2 restart || return $? # Disabling proxy_connect needed restart, so just in case restarting
     apachectl -t -D DUMP_VHOSTS
 }
 
@@ -541,7 +540,7 @@ function f_apache_proxy() {
     fi
 
     _apache_install || return $?
-    grep -qi "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
+    grep -qi "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >>/etc/apache2/ports.conf
 
     echo "<VirtualHost *:${_port}>
     DocumentRoot ${_proxy_dir}
@@ -551,7 +550,7 @@ function f_apache_proxy() {
     # NOTE: Log request headers (but too much information)
     #DumpIOInput On
     #DumpIOOutput On
-    #LogLevel dumpio:trace7" > "${_conf}"
+    #LogLevel dumpio:trace7" >"${_conf}"
 
     if grep -qE '^proxyuser:' /etc/apache2/passwd-nospecial; then
         echo -n 'proxypwd' | htpasswd -i -c /etc/apache2/passwd-nospecial proxyuser
@@ -591,7 +590,7 @@ function f_apache_proxy() {
     CacheEnable disk http://
     CacheEnable disk https://
     #</IfModule>
-</VirtualHost>" >> "${_conf}"
+</VirtualHost>" >>"${_conf}"
 
     a2ensite proxy || return $?
     # Due to 'ssl' module, using restart rather than reload
@@ -613,9 +612,9 @@ function f_apache_reverse_proxy() {
     #       https://sites.google.com/site/mrxpalmeiras/notes/configuring-splunk-with-kerberos-sso-via-apache-reverse-proxy
     local _redirect="${1}" # http://hostname:port/path
     local _port="${2}"
-    local _sever_host="${3:-`hostname -f`}"
-    local _keytab_file="${4}"   # /etc/security/keytabs/HTTP.service.keytab
-    local _ssl_ca_file="${5}"   # /var/tmp/share/cert/rootCA_standalone.crt
+    local _sever_host="${3:-$(hostname -f)}"
+    local _keytab_file="${4}" # /etc/security/keytabs/HTTP.service.keytab
+    local _ssl_ca_file="${5}" # /var/tmp/share/cert/rootCA_standalone.crt
 
     if [ -z "${_port}" ]; then
         if [[ "${_redirect}" =~ .+:([0-9]+)[/]?.* ]]; then
@@ -638,7 +637,7 @@ function f_apache_reverse_proxy() {
     fi
 
     _apache_install || return $?
-    grep -qi "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
+    grep -qi "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >>/etc/apache2/ports.conf
 
     # Common settings
     echo "<VirtualHost *:${_port}>
@@ -651,7 +650,7 @@ function f_apache_reverse_proxy() {
         Order allow,deny
         Allow from all
     </Proxy>
-" > ${_conf}
+" >${_conf}
 
     # Proxy/Reverse Proxy related settings
     if [ -n "${_redirect%/}" ]; then
@@ -661,13 +660,13 @@ function f_apache_reverse_proxy() {
     ProxyPassReverse / ${_redirect%/}/
     #ProxyRequests Off
     #ProxyPreserveHost On
-" >> ${_conf}
+" >>${_conf}
     else
         local _proxy_dir="/var/www/proxy"
         [ ! -d "${_proxy_dir}" ] && mkdir -p -m 777 "${_proxy_dir}"
         echo "
     DocumentRoot ${_proxy_dir}
-" >> ${_conf}
+" >>${_conf}
     fi
 
     # If this apache uses https (if server.key and cert exists)
@@ -677,20 +676,20 @@ function f_apache_reverse_proxy() {
     SSLCertificateFile /etc/apache2/ssl/server.crt
     SSLCertificateKeyFile /etc/apache2/ssl/server.key
     RequestHeader set X-Forwarded-Proto https
-" >> ${_conf}
+" >>${_conf}
     fi
 
     if [ -n "${_keytab_file}" ] && [ ! -s "${_keytab_file}" ]; then
         _log "INFO" "No HTTP keytab: ${_keytab_file}"
         echo "    kadmin -p admin@\${_realm} -q 'add_principal -randkey HTTP/${_sever_host}'
-    kadmin -p admin@\${_realm} -q "xst -k ${_keytab_file} HTTP/`hostname -f`"
+    kadmin -p admin@\${_realm} -q "xst -k ${_keytab_file} HTTP/$(hostname -f)"
     # If freeIPA, after adding host and service from UI, 'kinit admin':
     ipa-getkeytab -s node-freeipa.standalone.localdomain -p \"HTTP/${_sever_host}\" -k ${_keytab_file}
     chmod a+r ${_keytab_file}"
     elif [ -s "${_keytab_file}" ]; then
         # http://www.microhowto.info/howto/configure_apache_to_use_kerberos_authentication.html
         #local _realm="`sed -n -e 's/^ *default_realm *= *\b\(.\+\)\b/\1/p' /etc/krb5.conf`"
-        local _realm="`klist -kt ${_keytab_file} | grep -m1 -oP '@.+' | sed 's/@//'`"
+        local _realm="$(klist -kt ${_keytab_file} | grep -m1 -oP '@.+' | sed 's/@//')"
         echo "    <Location \"/\">
         AuthType Kerberos
         AuthName \"SPNEGO Login\"
@@ -710,7 +709,7 @@ function f_apache_reverse_proxy() {
         RewriteRule . - [E=RU:%1]
         RequestHeader set REMOTE_USER %{RU}e
     </location>
-" >> ${_conf}
+" >>${_conf}
         # @see: https://httpd.apache.org/docs/2.4/rewrite/intro.html & https://httpd.apache.org/docs/2.4/rewrite/flags.html
     fi
 
@@ -731,10 +730,10 @@ function f_apache_reverse_proxy() {
     SSLCACertificateFile ${_ssl_ca_file}
     # set header to upstream, SSL_CLIENT_S_DN_CN can change to use other identifiers
     RequestHeader set REMOTE_USER \"%{SSL_CLIENT_S_DN_CN}s\"
-" >> ${_conf}
+" >>${_conf}
     fi
 
-    echo "</VirtualHost>" >> ${_conf}
+    echo "</VirtualHost>" >>${_conf}
 
     a2ensite rproxy${_port} || return $?
     # Due to 'ssl' module, using restart rather than reload
@@ -745,7 +744,7 @@ function f_apache_reverse_proxy() {
 function f_apache_kdcproxy() {
     local __doc__="Generate proxy.conf for KdcPorxy"
     local _port="${1}"
-    local _sever_host="${2:-`hostname -f`}"
+    local _sever_host="${2:-$(hostname -f)}"
     # @see https://www.dragonsreach.it/2014/10/24/kerberos-over-http-on-a-firewalled-network/
 
     if netstat -ltnp | grep -E ":${_port}\s+" | grep -v apache2; then
@@ -763,7 +762,7 @@ function f_apache_kdcproxy() {
     apt-get install -y apache2 apache2-utils python-kdcproxy libapache2-mod-wsgi || return $?
     a2enmod proxy headers proxy_http proxy_connect proxy_wstunnel ssl rewrite wsgi || return $?
 
-    grep -qi "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >> /etc/apache2/ports.conf
+    grep -qi "^Listen ${_port}" /etc/apache2/ports.conf || echo "Listen ${_port}" >>/etc/apache2/ports.conf
 
     # Common settings
     echo "<VirtualHost *:${_port}>
@@ -776,7 +775,7 @@ function f_apache_kdcproxy() {
         Order allow,deny
         Allow from all
     </Proxy>
-" > ${_conf}
+" >${_conf}
 
     # If this apache uses https (if server.key and cert exists)
     local _proto="https"
@@ -788,7 +787,7 @@ function f_apache_kdcproxy() {
     SSLEngine on
     SSLCertificateFile /etc/apache2/ssl/server.crt
     SSLCertificateKeyFile /etc/apache2/ssl/server.key
-" >> ${_conf}
+" >>${_conf}
     fi
 
     local _kdcproxy_dir="/usr/lib/python2.7/dist-packages/kdcproxy"
@@ -808,8 +807,8 @@ function f_apache_kdcproxy() {
         WSGIProcessGroup kdcproxy
         WSGIApplicationGroup kdcproxy
     </Location>
-" >> ${_conf}
-    echo "</VirtualHost>" >> ${_conf}
+" >>${_conf}
+    echo "</VirtualHost>" >>${_conf}
 
     a2ensite rproxy${_port} || return $?
     # Due to 'ssl' module, using restart rather than reload
@@ -829,13 +828,13 @@ function f_ssh_setup() {
     fi
 
     if [ ! -e $HOME/.ssh/id_rsa.pub ]; then
-        ssh-keygen -y -f $HOME/.ssh/id_rsa > $HOME/.ssh/id_rsa.pub || return 12
+        ssh-keygen -y -f $HOME/.ssh/id_rsa >$HOME/.ssh/id_rsa.pub || return 12
     fi
 
-    _key="`cat $HOME/.ssh/id_rsa.pub | awk '{print $2}'`"
+    _key="$(cat $HOME/.ssh/id_rsa.pub | awk '{print $2}')"
     grep "$_key" $HOME/.ssh/authorized_keys &>/dev/null
-    if [ $? -ne 0 ] ; then
-        cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys && chmod 600 $HOME/.ssh/authorized_keys
+    if [ $? -ne 0 ]; then
+        cat $HOME/.ssh/id_rsa.pub >>$HOME/.ssh/authorized_keys && chmod 600 $HOME/.ssh/authorized_keys
         [ $? -ne 0 ] && return 13
     fi
 
@@ -844,7 +843,7 @@ function f_ssh_setup() {
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
   LogLevel ERROR
-  User root" > $HOME/.ssh/config
+  User root" >$HOME/.ssh/config
     fi
 
     # If current user isn't 'root', copy this user's ssh keys to root
@@ -856,7 +855,7 @@ function f_ssh_setup() {
     fi
 
     # To make 'ssh root@localhost' work
-    grep -q "^`cat $HOME/.ssh/id_rsa.pub`" /root/.ssh/authorized_keys || echo "`cat $HOME/.ssh/id_rsa.pub`" >> /root/.ssh/authorized_keys
+    grep -q "^$(cat $HOME/.ssh/id_rsa.pub)" /root/.ssh/authorized_keys || echo "$(cat $HOME/.ssh/id_rsa.pub)" >>/root/.ssh/authorized_keys
 
     if [ -d ${_WORK_DIR%/} ] && [ ! -f ${_WORK_DIR%/}/.ssh/authorized_keys ]; then
         [ ! -d ${_WORK_DIR%/}/.ssh ] && mkdir -m 700 ${_WORK_DIR%/}/.ssh
@@ -890,8 +889,9 @@ function f_docker_setup() {
         else
             # Old (14.04 and 16.04) way
             apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key for docker"
-            grep -q "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-`cat /etc/lsb-release | grep CODENAME | cut -d= -f2` main" >> /etc/apt/sources.list.d/docker.list
-            apt-get update && apt-get purge lxc-docker*; apt-get install docker-engine -y
+            grep -q "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-$(cat /etc/lsb-release | grep CODENAME | cut -d= -f2) main" >>/etc/apt/sources.list.d/docker.list
+            apt-get update && apt-get purge lxc-docker*
+            apt-get install docker-engine -y
         fi
     fi
 
@@ -914,10 +914,40 @@ function f_docker_setup() {
     if [ ! -f /etc/iptables.up.rules ]; then
         _info "Updating iptables to accept all ..."
         # @see: https://github.com/davesteele/comitup/issues/57
-        iptables -P INPUT ACCEPT;iptables -P FORWARD ACCEPT;iptables -P OUTPUT ACCEPT;iptables -t nat -F;iptables -t mangle -F;iptables -F;iptables -X
-        iptables-save > /etc/iptables.up.rules
+        iptables -P INPUT ACCEPT
+        iptables -P FORWARD ACCEPT
+        iptables -P OUTPUT ACCEPT
+        iptables -t nat -F
+        iptables -t mangle -F
+        iptables -F
+        iptables -X
+        iptables-save >/etc/iptables.up.rules
         #which docker &>/dev/null && service docker restart
     fi
+}
+
+function f_microk8s() {
+    # @see: https://ubuntu.com/tutorials/install-a-local-kubernetes-with-microk8s#1-overview
+    snap install microk8s --classic || return $?
+    ufw allow in on cni0 && sudo ufw allow out on cni0
+    ufw default allow routed
+    microk8s enable dns dashboard storage helm3
+    # (a kind of) test
+    microk8s kubectl get all --all-namespaces | grep service/kubernetes-dashboard
+    token=$(microk8s kubectl -n kube-system get secret | grep default-token | cut -d " " -f1)
+    microk8s kubectl -n kube-system describe secret $token
+    echo "# Command examples:
+    microk8s helm3 repo add sonatype https://sonatype.github.io/helm3-charts/
+    microk8s helm3 install nexus-repo sonatype/nexus-repository-manager -f your.yml
+    microk8s kubectl get services          # or deployments to check the NAME
+    microk8s kubectl expose deployment nexus --type=LoadBalancer --port=8081
+    microk8s kubectl get pods              # get a pod name to login
+    microk8s kubectl describe pod nexus-xxxxxxxx
+    microk8s kubectl describe pvc nexus-repo-nexus-iq-server-data
+    microk8s kubectl exec nexus-xxxxxxxx -ti -- bash
+    microk8s helm3 uninstall nexus-repo
+    microk8s stop"
+    # TODO: replace the dashboard certificate
 }
 
 function f_vnc_setup() {
@@ -959,7 +989,7 @@ autocutsel -fork
 startxfce4 &" > ${HOME%/}/.vnc/xstartup
 chmod u+x ${HOME%/}/.vnc/xstartup'
 
-    local _host_ip="`hostname -I | cut -d" " -f1`"
+    local _host_ip="$(hostname -I | cut -d" " -f1)"
     #echo "TightVNC client: https://www.tightvnc.com/download.php"
     echo "START VNC:
     su - $_user -c 'vncserver -geometry 1600x960 -depth 16 :${_portXX}'
@@ -983,7 +1013,7 @@ function f_useradd() {
         _info "$_user already exists. Skipping useradd command..."
     else
         # should specify home directory just in case?
-        useradd -d "/home/$_user/" -s `which bash` -p $(echo "$_pwd" | openssl passwd -1 -stdin) "$_user"
+        useradd -d "/home/$_user/" -s $(which bash) -p $(echo "$_pwd" | openssl passwd -1 -stdin) "$_user"
         mkdir "/home/$_user/" && chown "$_user":"$_user" "/home/$_user/"
     fi
 
@@ -1020,15 +1050,18 @@ function f_dnsmasq() {
 
     # For Ubuntu 18.04 name resolution slowness (ssh and sudo too).
     # Also local hostname needs to be resolved @see: https://linuxize.com/post/how-to-change-hostname-on-ubuntu-18-04/
-    grep -q '^no-resolv' /etc/dnsmasq.conf || echo 'no-resolv' >> /etc/dnsmasq.conf
-    grep -q '^server=1.1.1.1' /etc/dnsmasq.conf || echo 'server=1.1.1.1' >> /etc/dnsmasq.conf
+    grep -q '^no-resolv' /etc/dnsmasq.conf || echo 'no-resolv' >>/etc/dnsmasq.conf
+    grep -q '^server=1.1.1.1' /etc/dnsmasq.conf || echo 'server=1.1.1.1' >>/etc/dnsmasq.conf
     #grep -q '^domain-needed' /etc/dnsmasq.conf || echo 'domain-needed' >> /etc/dnsmasq.conf
     #grep -q '^bogus-priv' /etc/dnsmasq.conf || echo 'bogus-priv' >> /etc/dnsmasq.conf
-    grep -q '^local=' /etc/dnsmasq.conf || echo 'local=/'${_domain_suffix#.}'/' >> /etc/dnsmasq.conf
+    grep -q '^local=' /etc/dnsmasq.conf || echo 'local=/'${_domain_suffix#.}'/' >>/etc/dnsmasq.conf
     #grep -q '^expand-hosts' /etc/dnsmasq.conf || echo 'expand-hosts' >> /etc/dnsmasq.conf
     #grep -q '^domain=' /etc/dnsmasq.conf || echo 'domain='${g_DOMAIN_SUFFIX#.} >> /etc/dnsmasq.conf
-    grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >> /etc/dnsmasq.conf
-    grep -q '^resolv-file=' /etc/dnsmasq.conf || (echo 'resolv-file=/etc/resolv.dnsmasq.conf' >> /etc/dnsmasq.conf; echo 'nameserver 1.1.1.1' > /etc/resolv.dnsmasq.conf)
+    grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >>/etc/dnsmasq.conf
+    grep -q '^resolv-file=' /etc/dnsmasq.conf || (
+        echo 'resolv-file=/etc/resolv.dnsmasq.conf' >>/etc/dnsmasq.conf
+        echo 'nameserver 1.1.1.1' >/etc/resolv.dnsmasq.conf
+    )
 
     touch /etc/banner_add_hosts || return $?
     chmod 664 /etc/banner_add_hosts
@@ -1044,7 +1077,7 @@ function f_dnsmasq() {
         if [ -n "${_docker_bridge_net}" ]; then
             echo '{
     "dns": ["'${_docker_bridge_net}.1'", "1.1.1.1"]
-}' > /etc/docker/daemon.json
+}' >/etc/docker/daemon.json
             _warn "daemon.json updated. 'systemctl daemon-reload && service docker restart' required"
         fi
         # TODO: also add live-restore https://docs.docker.com/config/containers/live-restore/
@@ -1054,7 +1087,7 @@ function f_dnsmasq() {
     if [ -L /etc/resolv.conf ] && grep -q '^nameserver 127.0.0.53' /etc/resolv.conf; then
         systemctl disable systemd-resolved || return $?
         rm -f /etc/resolv.conf
-        echo 'nameserver 127.0.0.1' > /etc/resolv.conf
+        echo 'nameserver 127.0.0.1' >/etc/resolv.conf
         _warn "systemctl disable systemd-resolved was run. Please reboot"
         #reboot
     fi
@@ -1062,9 +1095,9 @@ function f_dnsmasq() {
 
 function f_dnsmasq_banner_reset() {
     local __doc__="Regenerate /etc/banner_add_hosts"
-    local _how_many="${1-$r_NUM_NODES}"             # Or hostname
+    local _how_many="${1-$r_NUM_NODES}" # Or hostname
     local _start_from="${2-$r_NODE_START_NUM}"
-    local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}"  # Or exact IP address
+    local _ip_prefix="${3-$r_DOCKER_NETWORK_ADDR}" # Or exact IP address
     local _remote_dns_host="${4}"
     local _remote_dns_user="${5:-$USER}"
 
@@ -1072,7 +1105,7 @@ function f_dnsmasq_banner_reset() {
     local _domain="${r_DOMAIN_SUFFIX-$g_DOMAIN_SUFFIX}"
     local _base="${g_DOCKER_BASE}:$_os_ver"
 
-    local _docker0="`f_docker_ip`"
+    local _docker0="$(f_docker_ip)"
     # TODO: the first IP can be wrong one
     if [ -n "$r_DOCKER_HOST_IP" ]; then
         _docker0="$r_DOCKER_HOST_IP"
@@ -1097,29 +1130,29 @@ function f_dnsmasq_banner_reset() {
     if [ -n "${_docker0}" ]; then
         # If an empty file
         if [ ! -s /tmp/banner_add_hosts ]; then
-            echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" > /tmp/banner_add_hosts
+            echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" >/tmp/banner_add_hosts
         else
-            grep -vE "$_docker0|${r_DOCKER_PRIVATE_HOSTNAME}${_domain}" /tmp/banner_add_hosts > /tmp/banner
-            echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" >> /tmp/banner
-            cat /tmp/banner > /tmp/banner_add_hosts
+            grep -vE "$_docker0|${r_DOCKER_PRIVATE_HOSTNAME}${_domain}" /tmp/banner_add_hosts >/tmp/banner
+            echo "$_docker0     ${r_DOCKER_PRIVATE_HOSTNAME}${_domain} ${r_DOCKER_PRIVATE_HOSTNAME}" >>/tmp/banner
+            cat /tmp/banner >/tmp/banner_add_hosts
         fi
     fi
 
     if ! [[ "$_how_many" =~ ^[0-9]+$ ]]; then
         local _hostname="$_how_many"
         local _ip_address="${_ip_prefix}"
-        local _shortname="`echo "${_hostname}" | cut -d"." -f1`"
-        grep -vE "${_hostname}|${_ip_address}" /tmp/banner_add_hosts > /tmp/banner
-        echo "${_ip_address}    ${_hostname} ${_shortname}" >> /tmp/banner
-        cat /tmp/banner > /tmp/banner_add_hosts
+        local _shortname="$(echo "${_hostname}" | cut -d"." -f1)"
+        grep -vE "${_hostname}|${_ip_address}" /tmp/banner_add_hosts >/tmp/banner
+        echo "${_ip_address}    ${_hostname} ${_shortname}" >>/tmp/banner
+        cat /tmp/banner >/tmp/banner_add_hosts
     else
-        for _n in `_docker_seq "$_how_many" "$_start_from"`; do
+        for _n in $(_docker_seq "$_how_many" "$_start_from"); do
             local _hostname="${_node}${_n}${_domain}"
             local _ip_address="${_ip_prefix%\.}.${_n}"
             local _shortname="${_node}${_n}"
-        grep -vE "${_hostname}|${_ip_address}" /tmp/banner_add_hosts > /tmp/banner
-            echo "${_ip_address}    ${_hostname} ${_shortname}" >> /tmp/banner
-            cat /tmp/banner > /tmp/banner_add_hosts
+            grep -vE "${_hostname}|${_ip_address}" /tmp/banner_add_hosts >/tmp/banner
+            echo "${_ip_address}    ${_hostname} ${_shortname}" >>/tmp/banner
+            cat /tmp/banner >/tmp/banner_add_hosts
         done
     fi
 
@@ -1142,19 +1175,19 @@ function f_pptpd() {
 
     local _vpn_net="10.0.0"
     if [ -z "${_if}" ]; then
-        _if="$(ifconfig | grep `hostname -i` -B 1 | grep -oE '^e[^ ]+')"
+        _if="$(ifconfig | grep $(hostname -i) -B 1 | grep -oE '^e[^ ]+')"
     fi
     # https://pupli.net/2018/01/24/setup-pptp-server-on-ubuntu-16-04/
     apt-get install pptpd ppp pptp-linux -y || return $?
     systemctl enable pptpd
-    grep -q '^logwtmp' /etc/pptpd.conf || echo -e "logwtmp" >> /etc/pptpd.conf
-    grep -q '^localip' /etc/pptpd.conf || echo -e "localip ${_vpn_net}.1\nremoteip ${_vpn_net}.100-200" >> /etc/pptpd.conf
+    grep -q '^logwtmp' /etc/pptpd.conf || echo -e "logwtmp" >>/etc/pptpd.conf
+    grep -q '^localip' /etc/pptpd.conf || echo -e "localip ${_vpn_net}.1\nremoteip ${_vpn_net}.100-200" >>/etc/pptpd.conf
     # NOTE: not setting up DNS by editing pptpd-options, and net.ipv4.ip_forward=1 should have been done
 
     if ! id -u $_user &>/dev/null; then
         f_useradd "$_user" "$_pass" || return $?
     fi
-    grep -q "^${_user}" /etc/ppp/chap-secrets || echo "${_user} * ${_pass} *" >> /etc/ppp/chap-secrets
+    grep -q "^${_user}" /etc/ppp/chap-secrets || echo "${_user} * ${_pass} *" >>/etc/ppp/chap-secrets
 
     iptables -t nat -A POSTROUTING -s ${_vpn_net}.0/24 -o ${_if} -j MASQUERADE # make sure interface is correct
     iptables -A FORWARD -p tcp --syn -s ${_vpn_net}.0/24 -j TCPMSS --set-mss 1356
@@ -1171,10 +1204,9 @@ function f_l2tpd() {
 
     local _vpn_net="172.31.0"
     if [ -z "${_if}" ]; then
-        _if="$(ifconfig | grep `hostname -i` -B 1 | grep -oE '^e[^ ]+')"
+        _if="$(ifconfig | grep $(hostname -i) -B 1 | grep -oE '^e[^ ]+')"
     fi
     apt-get install strongswan xl2tpd -y || return $?
-
 
     if [ ! -e /etc/ipsec.conf.orig ]; then
         cp -p /etc/ipsec.conf /etc/ipsec.conf.orig || return $?
@@ -1190,14 +1222,14 @@ conn %default
 conn L2TP-NAT
     type=transport
     leftauth=psk
-    rightauth=psk' > /etc/ipsec.conf || return $?
+    rightauth=psk' >/etc/ipsec.conf || return $?
 
     if [ ! -e /etc/ipsec.secrets.orig ]; then
         cp -p /etc/ipsec.secrets /etc/ipsec.secrets.orig || return $?
     else
         cp -p /etc/ipsec.secrets /etc/ipsec.secrets.$(date +"%Y%m%d%H%M%S")
     fi
-    echo ': PSK "longlongpassword"' > /etc/ipsec.secrets
+    echo ': PSK "longlongpassword"' >/etc/ipsec.secrets
 
     if [ ! -e /etc/xl2tpd/xl2tpd.conf.orig ]; then
         cp -p /etc/xl2tpd/xl2tpd.conf /etc/xl2tpd/xl2tpd.conf.orig || return $?
@@ -1213,7 +1245,7 @@ conn L2TP-NAT
   refuse chap = yes                         ; * Refuse CHAP authentication
   require authentication = yes              ; * Require peer to authenticate
   name = l2tp                               ; * Report this as our hostname
-  pppoptfile = /etc/ppp/options.l2tpd.lns   ; * ppp options file' > /etc/xl2tpd/xl2tpd.conf
+  pppoptfile = /etc/ppp/options.l2tpd.lns   ; * ppp options file' >/etc/xl2tpd/xl2tpd.conf
 
     if [ -f /etc/ppp/options.l2tpd.lns ]; then
         cp -p /etc/ppp/options.l2tpd.lns /etc/ppp/options.l2tpd.lns.$(date +"%Y%m%d%H%M%S")
@@ -1228,12 +1260,12 @@ nodefaultroute
 nobsdcomp
 mtu 1100
 mru 1100
-logfile /var/log/xl2tpd.log' > /etc/ppp/options.l2tpd.lns
+logfile /var/log/xl2tpd.log' >/etc/ppp/options.l2tpd.lns
 
     if ! id -u $_user &>/dev/null; then
         f_useradd "$_user" "$_pass" || return $?
     fi
-    grep -q "^${_user}" /etc/ppp/chap-secrets || echo "${_user} * ${_pass} *" >> /etc/ppp/chap-secrets
+    grep -q "^${_user}" /etc/ppp/chap-secrets || echo "${_user} * ${_pass} *" >>/etc/ppp/chap-secrets
 
     # NOTE: net.ipv4.ip_forward=1 should have been set already
     #iptables -t nat -A POSTROUTING -s ${_vpn_net}.0/24 -o ${_if} -j MASQUERADE # make sure interface is correct
@@ -1280,7 +1312,7 @@ Type=forking
 RestartSec=3s
 
 [Install]
-WantedBy=multi-user.target' > /etc/systemd/system/vpnserver.service || return $?
+WantedBy=multi-user.target' >/etc/systemd/system/vpnserver.service || return $?
     systemctl daemon-reload
     systemctl enable vpnserver.service
     systemctl start vpnserver.service || return $?
@@ -1291,7 +1323,7 @@ WantedBy=multi-user.target' > /etc/systemd/system/vpnserver.service || return $?
 
 function f_tunnel() {
     local __doc__="TODO: Create a tunnel between this host and a target host. Requires ppp and password-less SSH"
-    local _connecting_to="$1" # Remote host IP
+    local _connecting_to="$1"        # Remote host IP
     local _container_network_to="$2" # ex: 172.17.140.0 or 172.17.140.
     local _container_network_from="${3-${r_DOCKER_NETWORK_ADDR%.}.0}"
     local _container_net_mask="${4-24}"
@@ -1299,7 +1331,7 @@ function f_tunnel() {
 
     # NOTE: normally below should be OK but doesn't work with our VMs in the lab
     #[ -z "$_connecting_from" ] && _connecting_from="`hostname -i`"
-    local _connecting_from="`ifconfig ${_outside_nic_name} | grep -oP 'inet addr:\d+\.\d+\.\d+\.\d+' | cut -d":" -f2`"
+    local _connecting_from="$(ifconfig ${_outside_nic_name} | grep -oP 'inet addr:\d+\.\d+\.\d+\.\d+' | cut -d":" -f2)"
 
     [ -z "$_connecting_to" ] && return 11
     [ -z "$_container_network_to" ] && return 12
@@ -1315,10 +1347,10 @@ function f_tunnel() {
     for i in {1..10}; do
         if ! ifconfig | grep -qw "${_network_prefix}$i"; then
             _tunnel_nic_from_ip="${_network_prefix}$i"
-            break;
+            break
         fi
     done
-    if [ -z "$_tunnel_nic_from_ip" ];then
+    if [ -z "$_tunnel_nic_from_ip" ]; then
         ps auxwww | grep -w pppd | grep -v grep
         return 21
     fi
@@ -1342,7 +1374,7 @@ function f_kvm() {
     apt-get -y install qemu-kvm libvirt-bin virtinst bridge-utils libosinfo-bin libguestfs-tools virt-top virt-manager qemu-system
     if ! grep -qw "vhost_ned" /etc/modules; then
         modprobe vhost_net
-        echo vhost_net >> /etc/modules
+        echo vhost_net >>/etc/modules
         _info "You may need to reboot before using KVM."
     fi
 
@@ -1385,9 +1417,10 @@ function f_postfix() {
     fi
     if [ -n "${_redirect_mail}" ]; then
         if grep -qw "${_redirect_mail}" /etc/postfix/recipient_canonical_map; then
-            _log "WARN" "${_redirect_mail} exists in /etc/postfix/recipient_canonical_map, so not setting up the redirection.";sleep 3
+            _log "WARN" "${_redirect_mail} exists in /etc/postfix/recipient_canonical_map, so not setting up the redirection."
+            sleep 3
         else
-            echo "/./ ${_redirect_mail}" >> /etc/postfix/recipient_canonical_map || return $?
+            echo "/./ ${_redirect_mail}" >>/etc/postfix/recipient_canonical_map || return $?
             _upsert "${_conf_file}" "inet_protocols" "ipv4"
             _upsert "${_conf_file}" "recipient_canonical_classes" "envelope_recipient"
             _upsert "${_conf_file}" "recipient_canonical_maps" "regexp:/etc/postfix/recipient_canonical_map"
@@ -1397,7 +1430,7 @@ function f_postfix() {
                 _upsert "${_conf_file}" "smtpd_tls_key_file" "/var/tmp/share/cert/standalone.localdomain.key"
                 _upsert "${_conf_file}" "smtpd_tls_cert_file" "/var/tmp/share/cert/standalone.localdomain.crt"
             fi
-            _log "INFO" "openssl s_client -host localhost -port 25 -starttls smtp"  # -debug
+            _log "INFO" "openssl s_client -host localhost -port 25 -starttls smtp" # -debug
             echo -n | openssl s_client -host localhost:25 -starttls smtp -crlf
             # To connect with starttls, like telnet:
             #openssl s_client -connect localhost:25 -starttls smtp -crlf
@@ -1428,34 +1461,35 @@ function f_mac2ip() {
 
 function f_vmware_tools_install() {
     local __doc__="Install VMWare Tools in Ubuntu host"
-    mkdir /media/cdrom; mount /dev/cdrom /media/cdrom && cd /media/cdrom && cp VMwareTools-*.tar.gz /tmp/ && cd /tmp/ && tar xzvf VMwareTools-*.tar.gz && cd vmware-tools-distrib/ && ./vmware-install.pl -d
+    mkdir /media/cdrom
+    mount /dev/cdrom /media/cdrom && cd /media/cdrom && cp VMwareTools-*.tar.gz /tmp/ && cd /tmp/ && tar xzvf VMwareTools-*.tar.gz && cd vmware-tools-distrib/ && ./vmware-install.pl -d
 }
 
 function f_host_performance() {
     local __doc__="Performance related changes on the host. Eg: Change kernel parameters on Docker Host (Ubuntu)"
-    grep -q '^vm.swappiness' /etc/sysctl.conf || echo "vm.swappiness = 0" >> /etc/sysctl.conf
+    grep -q '^vm.swappiness' /etc/sysctl.conf || echo "vm.swappiness = 0" >>/etc/sysctl.conf
     sysctl -w vm.swappiness=0
 
-    grep -q '^net.core.somaxconn' /etc/sysctl.conf || echo "net.core.somaxconn = 16384" >> /etc/sysctl.conf
+    grep -q '^net.core.somaxconn' /etc/sysctl.conf || echo "net.core.somaxconn = 16384" >>/etc/sysctl.conf
     sysctl -w net.core.somaxconn=16384
 
     # also ip forwarding as well
-    grep -q '^net.ipv4.ip_forward' /etc/sysctl.conf || echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
+    grep -q '^net.ipv4.ip_forward' /etc/sysctl.conf || echo "net.ipv4.ip_forward = 1" >>/etc/sysctl.conf
     sysctl -w net.ipv4.ip_forward=1
-    grep -q '^net.ipv4.conf.all.forwarding' /etc/sysctl.conf || echo "net.ipv4.conf.all.forwarding = 1" >> /etc/sysctl.conf
+    grep -q '^net.ipv4.conf.all.forwarding' /etc/sysctl.conf || echo "net.ipv4.conf.all.forwarding = 1" >>/etc/sysctl.conf
     sysctl -w net.ipv4.conf.all.forwarding=1
-    grep -q '^net.bridge.bridge-nf-call-iptables' /etc/sysctl.conf || echo "net.bridge.bridge-nf-call-iptables = 0" >> /etc/sysctl.conf
+    grep -q '^net.bridge.bridge-nf-call-iptables' /etc/sysctl.conf || echo "net.bridge.bridge-nf-call-iptables = 0" >>/etc/sysctl.conf
     sysctl -w net.bridge.bridge-nf-call-iptables=0
 
-    grep -q '^kernel.panic' /etc/sysctl.conf || echo "kernel.panic = 20" >> /etc/sysctl.conf
+    grep -q '^kernel.panic' /etc/sysctl.conf || echo "kernel.panic = 20" >>/etc/sysctl.conf
     sysctl -w kernel.panic=60
-    grep -q '^kernel.panic_on_oops' /etc/sysctl.conf || echo "kernel.panic_on_oops = 1" >> /etc/sysctl.conf
+    grep -q '^kernel.panic_on_oops' /etc/sysctl.conf || echo "kernel.panic_on_oops = 1" >>/etc/sysctl.conf
     sysctl -w kernel.panic_on_oops=1
 
-    echo never > /sys/kernel/mm/transparent_hugepage/enabled
-    echo never > /sys/kernel/mm/transparent_hugepage/defrag
+    echo never >/sys/kernel/mm/transparent_hugepage/enabled
+    echo never >/sys/kernel/mm/transparent_hugepage/defrag
 
-    [ ! -s /etc/rc.lcoal ] && echo -e '#!/bin/bash\nexit 0' > /etc/rc.local
+    [ ! -s /etc/rc.lcoal ] && echo -e '#!/bin/bash\nexit 0' >/etc/rc.local
 
     if grep -q '^echo never > /sys/kernel/mm/transparent_hugepage/enabled' /etc/rc.local; then
         sed -i.bak '/^exit 0/i echo never > /sys/kernel/mm/transparent_hugepage/enabled\necho never > /sys/kernel/mm/transparent_hugepage/defrag\n' /etc/rc.local
@@ -1467,7 +1501,7 @@ function f_install_packages() {
     local __doc__="Install utility/common packages I frequently use"
     which apt-get &>/dev/null || return $?
     apt-get update || return $?
-    apt-get -y install sysv-rc-conf     # Not stopping if error because Ubuntu 18 does not have this
+    apt-get -y install sysv-rc-conf # Not stopping if error because Ubuntu 18 does not have this
     apt-get -y install python ntpdate curl wget sshfs tcpdump sharutils unzip postgresql-client libxml2-utils \
         expect netcat nscd mysql-client libmysql-java ppp at resolvconf
 }
@@ -1478,7 +1512,8 @@ function f_sshfs_mount() {
     local _local_dir="${2}"
 
     if mount | grep -qw "${_local_dir%/}"; then
-        _info "Un-mounting ${_local_dir%/} ..."; sleep 3
+        _info "Un-mounting ${_local_dir%/} ..."
+        sleep 3
         umount -f "${_local_dir%/}" || return $?
     fi
     if [ ! -d "${_local_dir}" ]; then
@@ -1489,7 +1524,7 @@ function f_sshfs_mount() {
     _info "If it asks password, please stop and use ssh-copy-id."
     local _cmd="sshfs -o allow_other,uid=0,gid=0,umask=002,reconnect,follow_symlinks ${_remote_src%/}/ ${_local_dir%/}"
     eval ${_cmd} || return $?
-    [ ! -s /etc/rc.lcoal ] && echo -e '#!/bin/bash\nexit 0' > /etc/rc.local
+    [ ! -s /etc/rc.lcoal ] && echo -e '#!/bin/bash\nexit 0' >/etc/rc.local
     _insert_line /etc/rc.local "${_cmd}" "exit 0"
 }
 
@@ -1504,10 +1539,10 @@ function f_port_forward() {
         _error "Local Port or Remote Host or Remote Port is missing."
         return 1
     fi
-    local _pid="`lsof -ti:$_local_port`"
-    if [ -n "$_pid" ] ; then
+    local _pid="$(lsof -ti:$_local_port)"
+    if [ -n "$_pid" ]; then
         _warn "Local port $_local_port is already used by PID $_pid."
-        if _isYes "$_kill_process" ; then
+        if _isYes "$_kill_process"; then
             kill $_pid || return 3
             _info "Killed $_pid."
         else
@@ -1543,17 +1578,17 @@ function f_kdc_install() {
     local __doc__="Install KDC server packages on Ubuntu (may take long time)"
     local _realm="${1:-$g_KDC_REALM}"
     local _password="${2:-${g_DEFAULT_PASSWORD:-"hadoop"}}"
-    local _server="${3:-`hostname -i | awk '{print $1}'`}"
+    local _server="${3:-$(hostname -i | awk '{print $1}')}"
 
     if [ -z "${_realm}" ]; then
-        _realm="`hostname -s`" && _realm="${_realm^^}"
+        _realm="$(hostname -s)" && _realm="${_realm^^}"
         _info "Using ${_realm} for realm"
     fi
     if [ -z "${_server}" ]; then
         _error "No server IP/name for KDC"
         return 1
     fi
-    if [ ! `which apt-get` ]; then
+    if [ ! $(which apt-get) ]; then
         _warn "No apt-get"
         return 1
     fi
@@ -1577,7 +1612,7 @@ function f_kdc_install() {
         supported_enctypes = aes256-cts:normal arcfour-hmac:normal des3-hmac-sha1:normal des-cbc-crc:normal des:normal des:v4 des:norealm des:onlyrealm des:afs3
         default_principal_flags = +preauth
     }
-'  > /tmp/f_kdc_install_on_host_kdc_$$.tmp
+' >/tmp/f_kdc_install_on_host_kdc_$$.tmp
     sed -i "/\[realms\]/r /tmp/f_kdc_install_on_host_kdc_$$.tmp" /etc/krb5kdc/kdc.conf
 
     # KDC process seems to use default_realm, and sed needs to escape + somehow
@@ -1593,17 +1628,17 @@ function f_kdc_install() {
    kdc = '${_server}'
    admin_server = '${_server}'
  }
-' > /etc/krb5.conf
+' >/etc/krb5.conf
 
-    kdb5_util create -r ${_realm} -s -P ${_password} || return $?  # or krb5_newrealm
+    kdb5_util create -r ${_realm} -s -P ${_password} || return $? # or krb5_newrealm
     mv /etc/krb5kdc/kadm5_${_realm}.acl /etc/krb5kdc/kadm5_${_realm}.orig &>/dev/null
-    echo '*/admin *' > /etc/krb5kdc/kadm5_${_realm}.acl
+    echo '*/admin *' >/etc/krb5kdc/kadm5_${_realm}.acl
     service krb5-kdc restart && service krb5-admin-server restart
     sleep 3
     kadmin.local -r ${_realm} -q "add_principal -pw ${_password} admin/admin@${_realm}"
     # AMBARI-24869
     kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/${_server}@${_realm}"
-    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/admin@${_realm}" &>/dev/null    # this should exist already
+    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/admin@${_realm}" &>/dev/null # this should exist already
     _info "Testing ..."
     kadmin -p admin/admin@${_realm} -w "${_password}" -q "get_principal admin/admin@${_realm}"
 }
@@ -1614,22 +1649,22 @@ function f_gen_keytab() {
     local _kadmin_usr="${2:-"admin/admin"}"
     local _kadmin_pwd="${3:-${g_DEFAULT_PASSWORD:-"hadoop"}}"
     local _keytab_dir="${4:-"/etc/security/keytabs"}"
-    local _delete_first="${5-${_DELETE_FIRST}}"    # default is just creating keytab if already exists
+    local _delete_first="${5-${_DELETE_FIRST}}" # default is just creating keytab if already exists
     local _tmp_dir="${_WORK_DIR}"
 
     # This function will create the following keytabs:
     # ${_tmp_dir%/}/keytabs/${_user}.headless.keytab
     # ${_keytab_dir%/}/${_user}.service.keytab (contains both headless and service)
     local _service="${_principal}"
-    local _host="`hostname -f`"
-    local _realm="`sed -n -e 's/^ *default_realm *= *\b\(.\+\)\b/\1/p' /etc/krb5.conf`"
+    local _host="$(hostname -f)"
+    local _realm="$(sed -n -e 's/^ *default_realm *= *\b\(.\+\)\b/\1/p' /etc/krb5.conf)"
     if [[ "${_principal}" =~ ^([^ @/]+)/([^ @]+)$ ]]; then
         [ -n "${BASH_REMATCH[1]}" ] && _service="${BASH_REMATCH[1]}"
         [ -n "${BASH_REMATCH[2]}" ] && _host="${BASH_REMATCH[2]}"
     elif [[ "${_principal}" =~ ^([^ @/]+)/([^ @]+)@([^ ]+)$ ]]; then
         [ -n "${BASH_REMATCH[1]}" ] && _service="${BASH_REMATCH[1]}"
         [ -n "${BASH_REMATCH[2]}" ] && _host="${BASH_REMATCH[2]}"
-        [ -n "${BASH_REMATCH[3]}" ] && _realm="${BASH_REMATCH[3]}"    # NOT using at this moment
+        [ -n "${BASH_REMATCH[3]}" ] && _realm="${BASH_REMATCH[3]}" # NOT using at this moment
     fi
 
     if [ ! -d "${_tmp_dir%/}/keytabs" ]; then
@@ -1637,14 +1672,16 @@ function f_gen_keytab() {
     fi
 
     if [[ "${_delete_first}" =~ ^(y|Y) ]]; then
-        _log "WARN" "Deleting principals ${_service} ${_service}/${_host} ..."; sleep 3
+        _log "WARN" "Deleting principals ${_service} ${_service}/${_host} ..."
+        sleep 3
         kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "delete_principal -force ${_service}@${_realm}"
         kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "delete_principal -force ${_service}/${_host}@${_realm}"
         kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "delete_principal -force ${_principal}"
 
         # if successfully deleted, remove keytabs too
         if [ -s "${_tmp_dir%/}/keytabs/${_service}.headless.keytab" ]; then
-            _log "WARN" "Removing ${_tmp_dir%/}/keytabs/${_service}.headless.keytab ..."; sleep 3
+            _log "WARN" "Removing ${_tmp_dir%/}/keytabs/${_service}.headless.keytab ..."
+            sleep 3
             rm -f "${_tmp_dir%/}/keytabs/${_service}.headless.keytab" || return $?
         fi
     fi
@@ -1669,14 +1706,16 @@ function f_gen_keytab() {
 
     # backup
     if [ -s "${_keytab_dir%/}/${_service}.service.keytab" ] && [ ! -f "${_keytab_dir%/}/${_service}.service.keytab.orig" ]; then
-        _log "INFO" "Moving ${_keytab_dir%/}/${_service}.service.keytab to .orig ..."; sleep 1
+        _log "INFO" "Moving ${_keytab_dir%/}/${_service}.service.keytab to .orig ..."
+        sleep 1
         mv "${_keytab_dir%/}/${_service}.service.keytab" "${_keytab_dir%/}/${_service}.service.keytab.orig" || return $?
     fi
     kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "xst -k ${_keytab_dir%/}/${_service}.service.keytab ${_service}/${_host}" || return $?
 
     # backup
     if [ -s "${_keytab_dir%/}/${_service}.combined.keytab" ] && [ ! -f "${_keytab_dir%/}/${_service}.combined.keytab.orig" ]; then
-        _log "INFO" "Moving ${_keytab_dir%/}/${_service}.combined.keytab to .orig ..."; sleep 1
+        _log "INFO" "Moving ${_keytab_dir%/}/${_service}.combined.keytab to .orig ..."
+        sleep 1
         mv "${_keytab_dir%/}/${_service}.combined.keytab" "${_keytab_dir%/}/${_service}.combined.keytab.orig" || return $?
     fi
     ktutil <<EOF
@@ -1709,7 +1748,7 @@ function f_crowd() {
 
     # TODO: currently running as current user, which is most likely root
     bash /opt/crowd/atlassian-crowd-${_ver}/start_crowd.sh || return $?
-    _log "INFO" "Access http://`hostname -f`:8095/
+    _log "INFO" "Access http://$(hostname -f):8095/
 For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
 Then, '3 hour expiration for all Atlassian host products'"
 }
@@ -1741,7 +1780,7 @@ function p_basic_setup() {
 
     _log "INFO" "Executing f_host_misc"
     f_host_misc
-    
+
     _log "INFO" "Executing f_host_performance"
     f_host_performance
 
@@ -1750,35 +1789,6 @@ function p_basic_setup() {
         f_add_cert
     fi
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ### Utility type functions #################################################
 _YES_REGEX='^(y|Y)'
@@ -1812,7 +1822,7 @@ function _echo() {
     local _msg="$1"
     local _stderr="$2"
 
-    if _isYes "$_stderr" ; then
+    if _isYes "$_stderr"; then
         echo -e "$_msg" 1>&2
     else
         echo -e "$_msg"
@@ -1839,32 +1849,34 @@ function _ask() {
 
     # currently only checking previous value of the variable name starting with "r_"
     if [[ "${_var_name}" =~ ^r_ ]]; then
-        _previous_answer=`_trim "${!_var_name}"`
+        _previous_answer=$(_trim "${!_var_name}")
         if [ -n "${_previous_answer}" ]; then _default="${_previous_answer}"; fi
     fi
 
     if [ -n "${_default}" ]; then
-        if _isYes "$_is_secret" ; then
+        if _isYes "$_is_secret"; then
             _full_question="${_question} [*******]"
         else
             _full_question="${_question} [${_default}]"
         fi
     fi
 
-    if _isYes "$_is_secret" ; then
+    if _isYes "$_is_secret"; then
         local _temp_secret=""
 
-        while true ; do
-            read -p "${_full_question}: " -s "${_var_name}"; echo ""
+        while true; do
+            read -p "${_full_question}: " -s "${_var_name}"
+            echo ""
 
             if [ -z "${!_var_name}" -a -n "${_default}" ]; then
                 eval "${_var_name}=\"${_default}\""
-                break;
+                break
             else
-                read -p "${_question} (again): " -s "_temp_secret"; echo ""
+                read -p "${_question} (again): " -s "_temp_secret"
+                echo ""
 
                 if [ "${!_var_name}" = "${_temp_secret}" ]; then
-                    break;
+                    break
                 else
                     echo "1st value and 2nd value do not match."
                 fi
@@ -1873,7 +1885,7 @@ function _ask() {
     else
         read -p "${_full_question}: " "${_var_name}"
 
-        _trimmed_answer=`_trim "${!_var_name}"`
+        _trimmed_answer=$(_trim "${!_var_name}")
 
         if [ -z "${_trimmed_answer}" -a -n "${_default}" ]; then
             # if new value was only space, use original default value instead of previous value
@@ -1889,13 +1901,13 @@ function _ask() {
 
     # if empty value, check if this is a mandatory field.
     if [ -z "${!_var_name}" ]; then
-        if _isYes "$_is_mandatory" ; then
+        if _isYes "$_is_mandatory"; then
             echo "'${_var_name}' is a mandatory parameter."
             _ask "$@"
         fi
     else
         # if not empty and if a validation function is given, use function to check it.
-        if _isValidateFunc "$_validation_func" ; then
+        if _isValidateFunc "$_validation_func"; then
             $_validation_func "${!_var_name}"
             if [ $? -ne 0 ]; then
                 _ask "Given value does not look like correct. Would you like to re-type?" "Y"
@@ -1910,7 +1922,7 @@ function _backup() {
     local __doc__="Backup the given file path into ${g_BACKUP_DIR} or /tmp."
     local _file_path="$1"
     local _force="$2"
-    local _file_name="`basename $_file_path`"
+    local _file_name="$(basename $_file_path)"
     local _new_file_name=""
     local _backup_dir="${g_BACKUP_DIR:-"/tmp"}"
 
@@ -1919,8 +1931,8 @@ function _backup() {
         return 1
     fi
 
-    local _mod_dt="`stat -c%y $_file_path`"
-    local _mod_ts=`date -d "${_mod_dt}" +"%Y%m%d-%H%M%S"`
+    local _mod_dt="$(stat -c%y $_file_path)"
+    local _mod_ts=$(date -d "${_mod_dt}" +"%Y%m%d-%H%M%S")
 
     _new_file_name="${_file_name}_${_mod_ts}"
     if ! _isYes "$_force"; then
@@ -1946,12 +1958,12 @@ function _isEnoughDisk() {
     local _required_gb="$2"
     local _available_space_gb=""
 
-    _available_space_gb=`_freeSpaceGB "${_dir_path}"`
+    _available_space_gb=$(_freeSpaceGB "${_dir_path}")
 
     if [ -z "$_required_gb" ]; then
         echo "${_available_space_gb}GB free space"
-        _required_gb=`_totalSpaceGB`
-        _required_gb="`expr $_required_gb / 10`"
+        _required_gb=$(_totalSpaceGB)
+        _required_gb="$(expr $_required_gb / 10)"
     fi
 
     if [ $_available_space_gb -lt $_required_gb ]; then return 1; fi
@@ -1988,10 +2000,10 @@ function _port_wait() {
         return 1
     fi
 
-    for i in `seq 1 $_times`; do
-      nc -z $_host $_port && return 0
-      _info "$_host:$_port is unreachable. Waiting..."
-      sleep $_interval
+    for i in $(seq 1 $_times); do
+        nc -z $_host $_port && return 0
+        _info "$_host:$_port is unreachable. Waiting..."
+        sleep $_interval
     done
     _warn "$_host:$_port is unreachable."
     return 1
@@ -2016,7 +2028,7 @@ function _isYes() {
 function _isCmd() {
     local _cmd="$1"
 
-    if command -v "$_cmd" &>/dev/null ; then
+    if command -v "$_cmd" &>/dev/null; then
         return 0
     else
         return 1
@@ -2053,11 +2065,11 @@ function _isUrl() {
 function _isUrlButNotReachable() {
     local _url="$1"
 
-    if ! _isUrl "$_url" ; then
+    if ! _isUrl "$_url"; then
         return 1
     fi
 
-    if curl --output /dev/null --silent --head --fail "$_url" ; then
+    if curl --output /dev/null --silent --head --fail "$_url"; then
         return 1
     fi
 
@@ -2095,19 +2107,19 @@ function _upsert() {
     local _file_path="$1"
     local _name="$2"
     local _value="$3"
-    local _if_not_exist_append_after="$4"    # This needs to be a line, not search keyword
+    local _if_not_exist_append_after="$4" # This needs to be a line, not search keyword
     local _between_char="${5-=}"
     local _comment_char="${6-#}"
     # NOTE & TODO: Not sure why /\\\&/ works, should be /\\&/ ...
-    local _name_esc_sed=`echo "${_name}" | sed 's/[][\.^$*\/"&]/\\\&/g'`
-    local _name_esc_sed_for_val=`echo "${_name}" | sed 's/[\/]/\\\&/g'`
-    local _name_escaped=`printf %q "${_name}"`
-    local _value_esc_sed=`echo "${_value}" | sed 's/[\/]/\\\&/g'`
-    local _value_escaped=`printf %q "${_value}"`
+    local _name_esc_sed=$(echo "${_name}" | sed 's/[][\.^$*\/"&]/\\\&/g')
+    local _name_esc_sed_for_val=$(echo "${_name}" | sed 's/[\/]/\\\&/g')
+    local _name_escaped=$(printf %q "${_name}")
+    local _value_esc_sed=$(echo "${_value}" | sed 's/[\/]/\\\&/g')
+    local _value_escaped=$(printf %q "${_value}")
 
     [ ! -f "${_file_path}" ] && return 11
     # Make a backup
-    local _file_name="`basename "${_file_path}"`"
+    local _file_name="$(basename "${_file_path}")"
     [ ! -f "/tmp/${_file_name}.orig" ] && cp -p "${_file_path}" "/tmp/${_file_name}.orig"
 
     # If name=value is already set, all good
@@ -2122,14 +2134,14 @@ function _upsert() {
     # If name= is not set and no _if_not_exist_append_after, just append in the end of line (TODO: it might add extra newline)
     if [ -z "${_if_not_exist_append_after}" ]; then
         local _last_c="$(tail -c1 ${_file_path})"
-        [ "${_last_c}" != "" ] && echo -e '\n' >> ${_file_path}
-        echo "${_name}${_between_char}${_value}" >> ${_file_path}
+        [ "${_last_c}" != "" ] && echo -e '\n' >>${_file_path}
+        echo "${_name}${_between_char}${_value}" >>${_file_path}
         return $?
     fi
 
     # If name= is not set and _if_not_exist_append_after is set, inserting
     if [ -n "${_if_not_exist_append_after}" ]; then
-        local _if_not_exist_append_after_sed="`echo "${_if_not_exist_append_after}" | sed 's/[][\.^$*\/"&]/\\\&/g'`"
+        local _if_not_exist_append_after_sed="$(echo "${_if_not_exist_append_after}" | sed 's/[][\.^$*\/"&]/\\\&/g')"
         sed -i -r "0,/^(${_if_not_exist_append_after_sed}.*)$/s//\1\n${_name_esc_sed_for_val}${_between_char}${_value_esc_sed}/" ${_file_path}
         return $?
     fi
@@ -2146,16 +2158,16 @@ function _insert_line() {
     local _line="$2"
     local _before="$3"
 
-    local _line_escaped="`_sed_escape "${_line}"`"
+    local _line_escaped="$(_sed_escape "${_line}")"
     [ -z "${_line_escaped}" ] && return 1
-    local _before_escaped="`_sed_escape "${_before}"`"
+    local _before_escaped="$(_sed_escape "${_before}")"
 
     # If no file, create and insert
     if [ ! -s ${_file_path} ]; then
         if [ -n "${_before}" ]; then
-            echo -e "${_line}\n${_before}" > ${_file_path}
+            echo -e "${_line}\n${_before}" >${_file_path}
         else
-            echo "${_line}" > ${_file_path}
+            echo "${_line}" >${_file_path}
         fi
     elif grep -qF "${_line}" ${_file_path}; then
         # Would need to escape special chars, so saying "almost"
@@ -2165,7 +2177,7 @@ function _insert_line() {
         if [ -n "${_before}" ]; then
             sed -i "/^${_before}/i ${_line}" ${_file_path}
         else
-            echo -e "\n${_line}" >> ${_file_path}
+            echo -e "\n${_line}" >>${_file_path}
         fi
     fi
 }
