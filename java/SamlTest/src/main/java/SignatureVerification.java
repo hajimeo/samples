@@ -7,6 +7,7 @@
  *  https://stackoverflow.com/questions/42540485/how-to-stop-maven-shade-plugin-from-blocking-java-util-serviceloader-initializat
  *
  *  export CLASSPATH=$(echo $PWD/lib/*.jar | tr ' ' ':'):$PWD/target/SamlTest-1.0-SNAPSHOT.jar:.
+ *  java SignatureVerification ./cert3.crt ./test2.xml
  */
 
 import org.opensaml.Configuration;
@@ -31,8 +32,8 @@ import java.security.spec.X509EncodedKeySpec;
 public class SignatureVerification {
     public static void main(String[] args) {
         try {
-            String cert_path = args[0];
-            String saml_xml = args[1];
+            String idp_cert_path = args[0];
+            String saml_resp_path = args[1];
 
             DocumentBuilderFactory builderFactory = DocumentBuilderFactory.newInstance();
             builderFactory.setNamespaceAware(true);       // Set namespace aware
@@ -41,7 +42,7 @@ public class SignatureVerification {
             DocumentBuilder builder = null;
             builder = builderFactory.newDocumentBuilder();  // Create the parser
 
-            File samlXmlFile = new File(saml_xml);
+            File samlXmlFile = new File(saml_resp_path);
             Document document = builder.parse(samlXmlFile);
 
             DefaultBootstrap.bootstrap();
@@ -53,7 +54,7 @@ public class SignatureVerification {
 
             //Get Public Key
             BasicX509Credential publicCredential = new BasicX509Credential();
-            File publicKeyFile = new File(cert_path);
+            File publicKeyFile = new File(idp_cert_path);
 
             CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
             InputStream fileStream = new FileInputStream(publicKeyFile);
@@ -66,7 +67,7 @@ public class SignatureVerification {
 
             //Validate Public Key against Signature
             if (key == null) {
-                System.err.println(cert_path + " is not a correct X.509 certificate");
+                System.err.println(idp_cert_path + " is not a correct X.509 certificate");
                 return;
             }
 
@@ -76,12 +77,16 @@ public class SignatureVerification {
             if (signature == null) {
                 signature = response.getAssertions().get(0).getSignature();
             }
-            System.err.println("signature: "+signature.getCanonicalizationAlgorithm());
+            if (signature == null) {
+                System.err.println("signature from the SAML response is null");
+                return;
+            }
             signatureValidator.validate(signature);
 
             // No error meas all good
             System.out.println("All good.");
         } catch (Exception e) {
+            System.out.println("Not good.");
             e.printStackTrace();
         }
     }
