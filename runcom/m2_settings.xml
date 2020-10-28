@@ -23,7 +23,7 @@
       <mirrorOf>*</mirrorOf>
       <!--url>http://localhost:8081/repository/maven-central</url-->
       <!--url>http://dh1.standalone.localdomain:8081/repository/maven-group-rso</url-->
-      <url>http://dh1.standalone.localdomain:8081/repository/maven-group</url>
+      <url>http://dh1.standalone.localdomain:8081/repository/maven-central</url>
     </mirror>
   </mirrors>
   <profiles>
