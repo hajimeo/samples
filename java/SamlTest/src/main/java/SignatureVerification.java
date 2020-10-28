@@ -6,19 +6,26 @@
  *  Invalid signature file digest for Manifest main attributes
  *  https://stackoverflow.com/questions/42540485/how-to-stop-maven-shade-plugin-from-blocking-java-util-serviceloader-initializat
  *
+ *  http://xacmlinfo.org/2015/04/02/saml2-signature-validation-tool-for-saml2-response-and-assertion/
+ *
  *  export CLASSPATH=$(echo $PWD/lib/*.jar | tr ' ' ':'):$PWD/target/SamlTest-1.0-SNAPSHOT.jar:.
- *  java SignatureVerification ./cert3.crt ./test2.xml
+ *  java -Dorg.slf4j.simpleLogger.defaultLogLevel=debug SignatureVerification ./cert3.crt ./test2.xml
  */
 
+import org.apache.xml.security.signature.XMLSignature;
 import org.opensaml.Configuration;
 import org.opensaml.DefaultBootstrap;
+import org.opensaml.saml2.core.Assertion;
 import org.opensaml.saml2.core.Response;
+import org.opensaml.xml.XMLObject;
 import org.opensaml.xml.io.Unmarshaller;
 import org.opensaml.xml.io.UnmarshallerFactory;
 import org.opensaml.xml.security.x509.BasicX509Credential;
 import org.opensaml.xml.signature.Signature;
 import org.opensaml.xml.signature.SignatureValidator;
+import org.opensaml.xml.signature.impl.SignatureImpl;
 import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -28,66 +35,87 @@ import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Scanner;
 
 public class SignatureVerification {
     public static void main(String[] args) {
         try {
-            String idp_cert_path = args[0];
-            String saml_resp_path = args[1];
+            String saml_resp_path = args[0];
+            String idp_cert_path = null;
+            if (args.length > 1) {
+                idp_cert_path = args[1];
+            }
 
-            DocumentBuilderFactory builderFactory = DocumentBuilderFactory.newInstance();
-            builderFactory.setNamespaceAware(true);       // Set namespace aware
-            builderFactory.setValidating(true);           // and validating parser feaures
-            builderFactory.setIgnoringElementContentWhitespace(true);
-            DocumentBuilder builder = null;
-            builder = builderFactory.newDocumentBuilder();  // Create the parser
-
-            File samlXmlFile = new File(saml_resp_path);
-            Document document = builder.parse(samlXmlFile);
+            String saml = readfile(saml_resp_path);
+            //System.err.println(saml);
 
             DefaultBootstrap.bootstrap();
-            UnmarshallerFactory unmarshallerFactory = Configuration.getUnmarshallerFactory();
-            Unmarshaller unmarshaller = unmarshallerFactory.getUnmarshaller(document.getDocumentElement());
-            Response response = (Response) unmarshaller.unmarshall(document.getDocumentElement());
-            //System.err.println("response: "+response.getDOM().getTextContent());
-            //System.err.println("response: "+response.isSigned());
+            XMLObject xmlObject = unmarshall(new String(saml.getBytes()));
+            Assertion assertion = null;
+            if (xmlObject instanceof Response) {
+                assertion = ((Response) xmlObject).getAssertions().get(0);
+            } else if (xmlObject instanceof Assertion) {
+                assertion = (Assertion) xmlObject;
+            }
 
-            //Get Public Key
-            BasicX509Credential publicCredential = new BasicX509Credential();
-            File publicKeyFile = new File(idp_cert_path);
+            Signature signature = assertion.getSignature();
+            System.err.println("Assertion SignatureAlgorithm: " + signature.getSignatureAlgorithm());
+            XMLSignature xmlSignature = ((SignatureImpl) signature).getXMLSignature();
 
-            CertificateFactory certificateFactory = CertificateFactory.getInstance("X.509");
-            InputStream fileStream = new FileInputStream(publicKeyFile);
-            X509Certificate certificate = (X509Certificate) certificateFactory.generateCertificate(fileStream);
-            fileStream.close();
+            X509Certificate certificate = null;
+            if (idp_cert_path != null) {
+                System.err.println("Using " + idp_cert_path);
+                InputStream fileStream = new FileInputStream(new File(idp_cert_path));
+                certificate = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(fileStream);
+                fileStream.close();
+            } else {
+                certificate = xmlSignature.getKeyInfo().getX509Certificate();
+            }
+            System.err.println("Certificate SigAlgName: " + certificate.getSigAlgName());
+            //boolean validate = xmlSignature.checkSignatureValue(certificate);
+            //if (!validate) {
+            //    System.out.println("xmlSignature.checkSignatureValue is false.");
+            //}
 
             X509EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(certificate.getPublicKey().getEncoded());
             KeyFactory keyFactory = KeyFactory.getInstance("RSA");
             PublicKey key = keyFactory.generatePublic(publicKeySpec);
-
-            //Validate Public Key against Signature
-            if (key == null) {
-                System.err.println(idp_cert_path + " is not a correct X.509 certificate");
-                return;
-            }
-
+            BasicX509Credential publicCredential = new BasicX509Credential();
             publicCredential.setPublicKey(key);
             SignatureValidator signatureValidator = new SignatureValidator(publicCredential);
-            Signature signature = response.getSignature();
-            if (signature == null) {
-                signature = response.getAssertions().get(0).getSignature();
-            }
-            if (signature == null) {
-                System.err.println("signature from the SAML response is null");
-                return;
-            }
             signatureValidator.validate(signature);
 
             // No error meas all good
             System.out.println("All good.");
         } catch (Exception e) {
-            System.out.println("Not good.");
+            System.err.println("=== Exception ========================");
             e.printStackTrace();
         }
+    }
+
+    private static String readfile(String filePath) throws FileNotFoundException {
+        Scanner scanner = new Scanner(new File(filePath));
+        scanner.useDelimiter("\\Z");
+        String contents = scanner.next();
+        scanner.close();
+        return contents;
+    }
+
+    private static XMLObject unmarshall(String samlString) {
+        DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
+        documentBuilderFactory.setNamespaceAware(true);
+        try {
+            DocumentBuilder docBuilder = documentBuilderFactory.newDocumentBuilder();
+            ByteArrayInputStream is = new ByteArrayInputStream(samlString.getBytes());
+            Document document = docBuilder.parse(is);
+            Element element = document.getDocumentElement();
+            UnmarshallerFactory unmarshallerFactory = Configuration.getUnmarshallerFactory();
+            Unmarshaller unmarshaller = unmarshallerFactory.getUnmarshaller(element);
+            return unmarshaller.unmarshall(element);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return null;
     }
 }
