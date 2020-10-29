@@ -787,64 +787,78 @@ function f_count_lines() {
 
 # If a thread dump file contains multiple thread dumps:
 # f_splitByRegex jvm.txt "^${_DATE_FORMAT}.+"
+# If NXRM2, f_threads "" "^[a-zA-Z].+"
 function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
-    local _file="$1"
-    local _split_search="${2:-"^\".+"}" # If NXRM2, "^[a-zA-Z].+"
+    local _file="$1"    # Or dir contains thread_xxxx.txt files
+    local _split_search="${2:-"^\".+"}"
     local _running_thread_search_re="${3-"\.sonatype\."}"
-    local _dir="${4}"
+    local _save_dir="${4}"
     local _not_split_by_date="${5:-${_NOT_SPLIT_BY_DATE}}"
-    local _tmp_dir="$(mktemp -d)"
 
     [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
     [ -z "${_file}" ] && return 1
-    if [ -z "${_dir}" ]; then
-        local _filename=$(basename ${_file})
-        _dir="_${_filename%%.*}"
+    if [ -z "${_save_dir}" ]; then
+        if [ -d "${_file}" ]; then
+            _save_dir="_threads"
+        else
+            local _filename=$(basename ${_file})
+            _save_dir="_${_filename%%.*}"
+        fi
     fi
-    [ ! -d "${_dir%/}" ] && mkdir -p ${_dir%/}
+    [ ! -d "${_save_dir%/}" ] && mkdir -p ${_save_dir%/}
+    local _tmp_dir="$(mktemp -d)"
 
-    if [[ ! "${_not_split_by_date}" =~ ^(y|Y) ]]; then
+    if [ ! -d "${_file}" ] && [[ ! "${_not_split_by_date}" =~ ^(y|Y) ]]; then
         local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$' -c ${_file})
         if [ 1 -lt ${_how_many_threads:-0} ]; then
-            f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "${_tmp_dir%/}" ""
-            for _f in `ls ${_tmp_dir%/}`; do
-                echo "Saving outputs into f_thread_${_f%.*}.out ..."
-                f_threads "${_tmp_dir%/}/${_f}" "${_split_search}" "${_running_thread_search_re}" "${_dir%/}/${_f%.*}" "Y" > ./f_thread_${_f%.*}.out
-            done
-            echo " "
-            # Only when checking multiple thread dumps
-            echo "## Long running threads including '${_running_thread_search_re}' (threads:${_how_many_threads})"
-            rg -l "${_running_thread_search_re}" ${_dir%/}/ | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s+${_how_many_threads}\s+.+ ([^ ]+$)" -o -r '$1' | sort
-            #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
-            echo " "
-            return $?
+            f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "${_tmp_dir%/}" "" || return $?
+            _file="${_tmp_dir%/}"
         fi
     fi
 
-    f_splitByRegex "${_file}" "${_split_search}" "${_dir%/}" ""
+    if [ -d "${_file}" ]; then
+        local _count=0
+        # _count doesn't work with while
+        #find ${_file%/} -type f -name 'threads*.txt' 2>/dev/null | while read -r _f; do
+        for _f in $(find ${_file%/} -type f -name 'threads*.txt' -print 2>/dev/null); do
+            local _filename=$(basename ${_f})
+            echo "Saving outputs into f_thread_${_filename%.*}.out ..."
+            f_threads "${_file%/}/${_f}" "${_split_search}" "${_running_thread_search_re}" "${_save_dir%/}/${_filename%.*}" "Y" > ./f_thread_${_filename%.*}.out
+            _count=$(( ${_count} + 1 ))
+        done
+        echo " "
+        # Only when checking multiple thread dumps
+        echo "## Long running threads including '${_running_thread_search_re}' (threads:${_count})"
+        rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
+        #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
+        echo " "
+        return $?
+    fi
 
-    #rg -i "ldap" ${_dir%/}/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
-    #rg -w BLOCKED ${_dir%/}/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
+    f_splitByRegex "${_file}" "${_split_search}" "${_save_dir%/}" ""
+
+    #rg -i "ldap" ${_save_dir%/}/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
+    #rg -w BLOCKED ${_save_dir%/}/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
     #rg '^("|\s+- .*lock)' ${_file}
     echo "## Listening ports"
     rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
     echo " "
     echo "## Finding BLOCKED or waiting to lock lines"
-    rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ${_dir%/}/
+    rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ${_save_dir%/}/
     echo " "
     echo "## Counting 'waiting to lock|waiting on|parking to wait' etc. (exclude: 'parking to wait for' and None)"
-    rg '^\s+\- [^<]' --no-filename ${_dir%/}/ | rg -v '(- locked|- None)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n20
+    rg '^\s+\- [^<]' --no-filename ${_save_dir%/}/ | rg -v '(- locked|- None)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n20
     echo " "
     # At least more than 10 waiting:
     local _most_waiting="$(rg -m 1 '^\s*\d\d+\s+.+(0x[0-9a-f]+)' -o -r '$1' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
     if [ -n "${_most_waiting}" ]; then
         echo "## Finding thread(s) locked '${_most_waiting}' (excluding smaller than 1k threads)"
-        rg "locked.+${_most_waiting}" -l `find ${_dir%/} -type f -size +1k` | xargs -I {} rg -H '(java.lang.Thread.State:| state=)' {}
+        rg "locked.+${_most_waiting}" -l `find ${_save_dir%/} -type f -size +1k` | xargs -I {} rg -H '(java.lang.Thread.State:| state=)' {}
         echo " "
     fi
     echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
-    rg -l -w RUNNABLE ${_dir%/}/ | xargs -I {} rg -H -m1 "${_running_thread_search_re}" {}
+    rg -l -w RUNNABLE ${_save_dir%/}/ | xargs -I {} rg -H -m1 "${_running_thread_search_re}" {}
     echo " "
     echo "## Counting NOT waiting threads (top 20)"
     rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | head -n 20
