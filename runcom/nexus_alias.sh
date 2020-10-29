@@ -79,7 +79,7 @@ function iqHds() {
 
 function sptBoot() {
     local _zip="$1"
-    local _jdb="$2"
+    local _opts="$2"    # --remote-debug --convert-repos
     source $HOME/.pyvenv/bin/activate
 
     [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
@@ -94,11 +94,7 @@ function sptBoot() {
         cp $HOME/IdeaProjects/samples/misc/standalone.localdomain.jks $HOME/.nexus_executable_cache/ssl/keystore.jks
         echo "Append 'local.standalone.localdomain' in 127.0.0.1 line in /etc/hosts."
     fi
-    if [[ "${_jdb}" =~ ^(y|Y) ]]; then
-        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py --remote-debug "${_zip}" ./$(basename "${_zip}" .zip)_tmp
-    else
-        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py "${_zip}" ./$(basename "${_zip}" .zip)_tmp
-    fi || echo "NOTE: If error was port already in use, you might need to run below:
+    python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ${_opts} "${_zip}" ./$(basename "${_zip}" .zip)_tmp || echo "NOTE: If error was port already in use, you might need to run below:
     . ~/IdeaProjects/work/bash/install_sonatype.sh
     f_sql_nxrm \"config\" \"SELECT attributes['docker']['httpPort'] FROM repository WHERE attributes['docker']['httpPort'] IS NOT NULL\" \".\" \"\$USER\"
 If ports conflict, edit nexus.properties is easier. eg:8080.
@@ -116,6 +112,7 @@ function nxrmStart() {
     local _cfg_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/sonatype-work/nexus3/etc/*' -type f -name 'nexus.properties' 2>/dev/null | sort | tail -n1)"
     local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
     grep -qE '^\s*nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
+    grep -qE '^\s*nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
     # TODO: version check as below breaks older nexus versions.
     sed -i.bak 's@class="org.eclipse.jetty.util.ssl.SslContextFactory"@class="org.eclipse.jetty.util.ssl.SslContextFactory$Server"@g' ${_jetty_https}
     [ -n "${_java_opts}" ] && [[ ! "${INSTALL4J_ADD_VM_PARAMS}" =~ "${_java_opts}" ]] && export INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}"

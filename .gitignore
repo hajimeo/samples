@@ -8,9 +8,6 @@ backup/*
 *.class
 *.original
 *.pyc
-java/SyntaxTest.class
-java/SSLMutualAuth/target/*
-java/WriteTest/dependency-reduced-pom.xml
-java/WriteTest/WriteTest.iml
-java/WriteTest/target/*
+java/*.class
+java/*/target/*
 java/groovy/*.jar
