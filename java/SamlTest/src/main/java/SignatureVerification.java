@@ -9,7 +9,7 @@
  *  http://xacmlinfo.org/2015/04/02/saml2-signature-validation-tool-for-saml2-response-and-assertion/
  *
  *  export CLASSPATH=$(echo $PWD/lib/*.jar | tr ' ' ':'):$PWD/target/SamlTest-1.0-SNAPSHOT.jar:.
- *  java -Dorg.slf4j.simpleLogger.defaultLogLevel=debug SignatureVerification ./cert3.crt ./test2.xml
+ *  java -Dorg.slf4j.simpleLogger.defaultLogLevel=debug SignatureVerification ./NOT_formatted_SAML_resp.xml [idp_cert.pem]
  */
 
 import org.apache.xml.security.signature.XMLSignature;
@@ -35,6 +35,7 @@ import java.security.PublicKey;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Arrays;
 import java.util.Scanner;
 
 public class SignatureVerification {
@@ -72,11 +73,12 @@ public class SignatureVerification {
                 certificate = xmlSignature.getKeyInfo().getX509Certificate();
             }
             System.err.println("Certificate SigAlgName: " + certificate.getSigAlgName());
-            //boolean validate = xmlSignature.checkSignatureValue(certificate);
-            //if (!validate) {
-            //    System.out.println("xmlSignature.checkSignatureValue is false.");
-            //}
+            boolean validate = xmlSignature.checkSignatureValue(certificate);
+            if (!validate) {
+                System.out.println("xmlSignature.checkSignatureValue is false.");
+            }
 
+            //System.out.println(Arrays.toString(certificate.getPublicKey().getEncoded()));
             X509EncodedKeySpec publicKeySpec = new X509EncodedKeySpec(certificate.getPublicKey().getEncoded());
             KeyFactory keyFactory = KeyFactory.getInstance("RSA");
             PublicKey key = keyFactory.generatePublic(publicKeySpec);
