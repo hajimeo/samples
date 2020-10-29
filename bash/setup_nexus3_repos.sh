@@ -341,7 +341,7 @@ echo '[nexusrepo]
 name=Nexus Repository
 baseurl='${_repo_url%/}'/$releasever/os/$basearch/
 enabled=1
-gpgcheck=1
+gpgcheck=0
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
 priority=1'
 }
@@ -1274,7 +1274,7 @@ function _questions_cleanup_inner_inner() {
 }
 
 
-### Validation functions (NOTE: needs to start with _is) #######################################
+### Validation functions (NOTE: needs to start with _is because of _ask()) #######################################
 function _is_repo_available() {
     local _repo_name="$1"
     # At this moment, not always checking
