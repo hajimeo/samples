@@ -411,6 +411,27 @@ function backupC() {
     # Sync all files smaller than _size (10MB), means *NO* backup for files over 10MB.
     rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 ${_src%/}/ ${_dst%/}/
 }
+# accessed time doesn't seem to work with directory, so using _name to check files
+function mv_not_accessed() {
+    local _dir="${1:-"."}"
+    local _atime="${2:-100}"    # 100 days
+    local _name="${3}"          # "*.pom"
+    local _do_it="${4}"
+    if [ -n "${_name}" ]; then
+        find ${_dir%/} -amin +${_atime} -name "${_name}" -print0
+    else
+        find ${_dir%/} -amin +${_atime} -print0
+    fi | xargs -0 -n1 -I {} dirname {} | LC_ALL=C sort -r | uniq > /tmp/gen_mv_cmd_for_not_accessed_$$.out
+    cat /tmp/gen_mv_cmd_for_not_accessed_$$.out | while read _f; do
+        local _dist_name="$(echo ${_f//\//_} | sed 's/^\._//')"
+        if [[ "${_do_it}" =~ ^[yY] ]]; then
+            # May want to use $RANDOM to avoid "Directory not empty" as often directory name is just a version string.
+            mv -v ${_f%/} $HOME/.Trash/${_dist_name}
+        else
+            echo "mv -v ${_f%/} $HOME/.Trash/${_dist_name}"
+        fi
+    done
+}
 # synchronising my search.osakos.com
 function push2search() {
     # May need to configure .ssh/config to specify the private key
