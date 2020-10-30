@@ -58,5 +58,39 @@
         <SOURCES />
       </library>
     </orderEntry>
+    <orderEntry type="module-library">
+      <library>
+        <CLASSES>
+          <root url="jar://$MODULE_DIR$/../../external-libs/h2-1.4.196.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/h2-1.4.200.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/esapi-2.0.1.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/openws-1.5.4.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/velocity-1.7.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/xmlsec-1.5.7.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/joda-time-2.2.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/opensaml-2.6.4.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/commons-lang-2.6.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/slf4j-api-1.7.30.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/xmltooling-1.4.4.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/commons-codec-1.7.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/bcprov-jdk15on-1.51.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/slf4j-simple-1.7.30.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/license-bundle-1.5.0.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/commons-logging-1.1.1.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/nexus-audit-3.21.2-03.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/commons-httpclient-3.1.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/nexus-common-3.21.2-03.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/cloudbees-credentials-3.3.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/commons-collections-3.2.1.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/not-yet-commons-ssl-0.3.9.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/nexus-iq-diagnostics-1.87.0-02.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/insight-brain-service-1.86.0-02.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/provisio-jenkins-runtime-0.1.40.jar!/" />
+          <root url="jar://$MODULE_DIR$/../../external-libs/support-zip-loader-1.0-SNAPSHOT.jar!/" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
   </component>
 </module>
