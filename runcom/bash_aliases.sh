@@ -385,10 +385,14 @@ function pgStart() {
     # To connect: psql template1
 }
 
-# backup commands
+# backup & cleanup (backing up files smaller than 10MB only)
 function backupC() {
     local _src="${1:-"$HOME/Documents/cases"}"
     local _dst="${2:-"hosako@z230:/cygdrive/h/hajime/cases"}"
+
+    if which code && [ -d "$HOME/backup" ]; then
+        code --list-extensions | xargs -L 1 echo code --install-extension > $HOME/backup/vscode_install_extensions.sh
+    fi
 
     [ ! -d "${_src}" ] && return 11
     [ ! -d "$HOME/.Trash" ] && return 12
@@ -396,33 +400,44 @@ function backupC() {
     local _mv="mv --backup=t"
     [ "Darwin" = "`uname`" ] && _mv="gmv --backup=t"
 
-    ## Special: support_tmp directory wouldn't need to backup
-    find ${_src%/} -type d -mtime +30 -name '*_tmp' -print0 | xargs -0 -t -n1 -I {} ${_mv} "{}" $HOME/.Trash/
+    ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
+    # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory'
+    find ${_src%/} -type d -mtime +30 -name '*_tmp' -delete
+    find ${_src%/} -type f -mtime +30 -name '*.tmp' -delete
+    find ${_src%/} -type f -mtime +90 -name '*.out' -delete
 
     # Delete files larger than _size (10MB) and older than one year
-    find ${_src%/} -type f -mtime +365 -size +10000k -print0 | xargs -0 -t -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    # Delete files larger than 60MB and older than 180 days
-    find ${_src%/} -type f -mtime +180 -size +60000k -print0 | xargs -0 -t -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    find ${_src%/} -type f -mtime +365 -size +10000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    # Delete files larger than 30MB and older than 180 days
+    find ${_src%/} -type f -mtime +180 -size +30000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     # Delete files larger than 100MB and older than 90 days
-    find ${_src%/} -type f -mtime +90 -size +100000k -print0 | xargs -0 -t -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    # Delete files larger than 500MB and older than 60 days
-    find ${_src%/} -type f -mtime +60 -size +500000k -print0 | xargs -0 -t -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    find ${_src%/} -type f -mtime +90 -size +100000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    # Delete files larger than 500MB and older than 45 days
+    find ${_src%/} -type f -mtime +45 -size +500000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     wait
+
     # Sync all files smaller than _size (10MB), means *NO* backup for files over 10MB.
     rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 ${_src%/}/ ${_dst%/}/
+
+    if [ "Darwin" = "`uname`" ]; then
+        echo "# mdfind 'kMDItemFSSize > 1073741824' | LC_ALL=C sort # Files larger than 1G"
+        mdfind 'kMDItemFSSize > 1073741824' | LC_ALL=C sort
+    fi
 }
 # accessed time doesn't seem to work with directory, so using _name to check files
+#mv_not_accessed "." "30" "*.pom" "Y"
 function mv_not_accessed() {
     local _dir="${1:-"."}"
     local _atime="${2:-100}"    # 100 days
     local _name="${3}"          # "*.pom"
     local _do_it="${4}"
+    #find -L /tmp -type f -name "${FUNCNAME[0]}_$$.out" -mmin -3 | grep -q "${FUNCNAME[0]}_$$.out"
     if [ -n "${_name}" ]; then
         find ${_dir%/} -amin +${_atime} -name "${_name}" -print0
     else
         find ${_dir%/} -amin +${_atime} -print0
-    fi | xargs -0 -n1 -I {} dirname {} | LC_ALL=C sort -r | uniq > /tmp/gen_mv_cmd_for_not_accessed_$$.out
-    cat /tmp/gen_mv_cmd_for_not_accessed_$$.out | while read _f; do
+    fi | xargs -0 -n1 -I {} dirname {} | LC_ALL=C sort -r | uniq > /tmp/${FUNCNAME[0]}_$$.out
+    cat /tmp/${FUNCNAME[0]}_$$.out | while read _f; do
         local _dist_name="$(echo ${_f//\//_} | sed 's/^\._//')"
         if [[ "${_do_it}" =~ ^[yY] ]]; then
             # May want to use $RANDOM to avoid "Directory not empty" as often directory name is just a version string.
