@@ -8,8 +8,7 @@
  *
  *  http://xacmlinfo.org/2015/04/02/saml2-signature-validation-tool-for-saml2-response-and-assertion/
  *
- *  export CLASSPATH=$(echo $PWD/lib/*.jar | tr ' ' ':'):$PWD/target/SamlTest-1.0-SNAPSHOT.jar:.
- *  java -Dorg.slf4j.simpleLogger.defaultLogLevel=debug SignatureVerification ./NOT_formatted_SAML_resp.xml [idp_cert.pem]
+ *  java -cp ./SamlTest-1.0-SNAPSHOT-jar-with-dependencies.jar SignatureVerification ./NOT_formatted_SAML_resp.xml [idp_cert.pem]
  */
 
 import org.apache.xml.security.signature.XMLSignature;
