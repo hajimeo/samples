@@ -31,7 +31,7 @@ Convert current time or string date to Unix timestamp
     600.0000044703484
 """
 
-# TODO: When you add a new pip package, don't forget to update setup_work.env.sh
+# TODO: When you add a new pip package, don't forget to update setup_work_env.sh
 import sys, os, io, fnmatch, gzip, re, linecache, json, sqlite3
 from time import time, mktime, strftime
 from datetime import datetime
@@ -219,7 +219,6 @@ def _timestamp(unixtimestamp=None, format=None):
     """
     if bool(unixtimestamp) is False:
         unixtimestamp = time()
-    # TODO: wanted to use timezone.utc but python 2.7 doesn't work
     dt = datetime.fromtimestamp(float(unixtimestamp))
     if format is None:
         return dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
@@ -275,6 +274,10 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
         names_dict[new_name] = f
         dfs[new_name] = json2df(filename=f, conn=conn, tablename=new_name, chunksize=chunksize, list_only=list_only,
                                 json_cols=json_cols)
+    if bool(conn):
+        del(names_dict)
+        del(dfs)
+        return None
     return (names_dict, dfs)
 
 
@@ -822,8 +825,9 @@ def _autocomp_inject(tablename=None):
         tbl_cls = _gen_class(t, cols)
         try:
             get_ipython().user_global_ns[t] = tbl_cls
-            # globals()[t] = tbl_cls
-            # locals()[t] = tbl_cls
+            #globals()[t] = tbl_cls
+            #locals()[t] = tbl_cls
+            #_info("added %s with %s" % (t, str(globals()[t])))
         except:
             _debug("get_ipython().user_global_ns failed")
             pass
@@ -1714,10 +1718,10 @@ def _gen_regex_for_hazel_health(sample):
 
 def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000):
     """
-    Convert multiple CSV files to DF and DB tables
+    Convert multiple CSV files to DF *or* DB tables
     Example: _=ju.load_csvs("./", ju.connect(), "tables_*.csv")
     :param src: Source directory path
-    :param conn: DB connection object
+    :param conn: DB connection object. If None, use Pandas DF otherwise, DB tables
     :param include_ptn: Include pattern
     :param exclude_ptn: Exclude pattern
     :param chunksize: to_sql() chunk size
@@ -1730,8 +1734,6 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
     names_dict = {}
     dfs = {}
     ex = re.compile(exclude_ptn)
-    if conn is None:
-        conn = connect()
     files = _globr(include_ptn, src)
     for f in files:
         if bool(exclude_ptn) and ex.search(os.path.basename(f)):
@@ -1743,6 +1745,10 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
         tablename = _pick_new_key(f_name, names_dict, using_1st_char=(bool(conn) is False), prefix='t_')
         names_dict[tablename] = f
         dfs[tablename] = csv2df(filename=f, conn=conn, tablename=tablename, chunksize=chunksize)
+    if bool(conn):
+        del(names_dict)
+        del(dfs)
+        return None
     return (names_dict, dfs)
 
 
@@ -1875,7 +1881,7 @@ def df2files(df, filepath_prefix, extension="", columns=None, overwriting=False,
                 f2.write(row.to_csv(sep=sep))
 
 
-def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=10000):
+def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=10000, load_only=False):
     """
     A prototype function to analyse log files (expecting request.log converted to request.csv)
     TODO: cleanup later
@@ -1913,17 +1919,19 @@ FROM t_request_logs
 %s
 GROUP BY 1, 2""" % (where_sql)
         name = "request_log-hourly_aggs"
-        _info("\n# Query (%s): \n%s" % (name, query))
-        display(q(query), name=name)
+        if load_only is False:
+            _info("\n# Query (%s): \n%s" % (name, query))
+            display(q(query), name=name)
         query = """SELECT UDF_STR2SQLDT(`date`, '%%d/%%b/%%Y:%%H:%%M:%%S %%z') AS date_time, 
     CAST(statusCode AS INTEGER) AS statusCode, 
     CAST(bytesSent AS INTEGER) AS bytesSent, 
     CAST(elapsedTime AS INTEGER) AS elapsedTime 
 FROM t_request_logs %s""" % (where_sql)
         name = "request_log-status_bytesent_elapsed"
-        _info("\n# Query (%s): \n%s" % (name, query))
-        draw(q(query).tail(tail_num), name=name)
-
+        if load_only is False:
+            _info("\n# Query (%s): \n%s" % (name, query))
+            draw(q(query).tail(tail_num), name=name)
+    
     ## Loading application log file(s) into database.
     (col_names, line_matching) = _gen_regex_for_app_logs('nexus.log')
     nxrm_logs = logs2table('nexus.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
@@ -1968,8 +1976,9 @@ FROM t_request_logs %s""" % (where_sql)
 FROM t_health_monitor
 %s""" % (where_sql)
             name = "nexus_health_monitor"
-            _info("\n# Query (%s): \n%s" % (name, query))
-            draw(q(query), name=name)
+            if load_only is False:
+                _info("\n# Query (%s): \n%s" % (name, query))
+                draw(q(query), name=name)
 
     # Nexus IQ
     if bool(nxiq_logs):
@@ -2003,8 +2012,9 @@ WHERE t_logs.message like 'Evaluated policy for%'
 ORDER BY ms DESC
 LIMIT 10"""
         name = "nxiq_log-top10_slow_scan"
-        _info("\n: \n%s" % (name, query))
-        display(q(query), name="nxiq_log-top10_slow_scan")
+        if load_only is False:
+            _info("\n: \n%s" % (name, query))
+            display(q(query), name="nxiq_log-top10_slow_scan")
 
     if bool(nxrm_logs) or bool(nxiq_logs):
         ## analyse t_logs table (eg: cout ERROR|WARN)
@@ -2014,8 +2024,9 @@ LIMIT 10"""
       AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
     GROUP BY 1, 2""" % (where_sql)
         name = "warn_error_hourly"
-        _info("\n# Query (%s): \n%s" % (name, query))
-        draw(q(query), name=name)
+        if load_only is False:
+            _info("\n# Query (%s): \n%s" % (name, query))
+            draw(q(query), name=name)
 
     # TODO: analyse db job triggers
     # q("""SELECT description, fireInstanceId
@@ -2029,7 +2040,7 @@ LIMIT 10"""
     #  AND nextFireTime > 1578290830000
     # ORDER BY nextFireTime
     # """)
-    _info("Available Tables:")
+    _info("# Available Tables:")
     display(desc(), name="available_tables")
     _info("Completed.")
 
