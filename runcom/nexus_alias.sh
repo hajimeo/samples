@@ -219,15 +219,15 @@ function mvn-add-snapshot-repo-in-pom() {
   </distributionManagement>"
 }
 
-# Example
+# Example to generate 10 versions / snapshots
 cat << EOF >/dev/null
-mvn-arch-gen
-cd my-app
-#mvn-deploy "http://dh1.standalone.localdomain:8081/repository/maven-snapshots-s3/" "nexus"
-for i in {1..10}; do
-  sed -i.tmp -E "s@<groupId>com.example.*</groupId>@<groupId>com.example${i}</groupId>@" pom.xml
-  sed -i.tmp -E "s@<artifactId>my-app.*</artifactId>@<artifactId>my-app${i}</artifactId>@" pom.xml
-  mvn-deploy "http://dh1.standalone.localdomain:8081/repository/maven-snapshots-s3/" "nexus"
+mvn-arch-gen; cd my-app
+#mvn-deploy "http://dh1.standalone.localdomain:8081/repository/maven-snapshots-s3/" "" "nexus"
+for i in {1..4}; do
+  #sed -i.tmp -E "s@<groupId>com.example.*</groupId>@<groupId>com.example${i}</groupId>@" pom.xml
+  #sed -i.tmp -E "s@<artifactId>my-app.*</artifactId>@<artifactId>my-app${i}</artifactId>@" pom.xml
+  sed -i.tmp -E "s@^  <version>.*</version>@  <version>0.${i}.0-${i}</version>@" pom.xml    # generating lower than 1.0.0-SNAPSHOT
+  mvn-deploy "http://node3211.standalone.localdomain:8081/repository/maven-snapshots2/" "" "nexus" "" || break
 done
 EOF
 function mvn-deploy() {
