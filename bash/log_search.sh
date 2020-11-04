@@ -969,12 +969,12 @@ function f_request2csv() {
             _pattern_str="%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime"
         fi
     fi
-    echo "# pattern_str: ${_pattern_str}"
+    echo "# pattern_str: ${_pattern_str}" >&2
     #echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
     echo "\"$(echo ${_pattern_str} | tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_out_file}
     if [ -z "${_pattern}" ]; then
         _pattern="^$(_gen_pattern "${_pattern_str}")"
-        echo "# pattern: ${_pattern}"
+        echo "# pattern: ${_pattern}" >&2
         local _num=$(( $(echo -n "${_pattern_str}" | tr -d -c ' ' | wc -m) + 1 ))
         _pattern_out="\"\$1\""
         for _i in `seq 2 ${_num}`; do
@@ -1216,15 +1216,14 @@ function _date2iso() {
 
 function _find_and_cat() {
     local _name="$1"
-    local _once="$2"
+    local _find_all="$2"
     local _max_depth="${3:-"5"}"
     # Accept not only file name but also /<dir>/<filename>
     for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
         if [ -n "${_f}" ]; then
-            echo "## ${_f}" >&2
             cat "${_f}"
+            [[ "${_find_all}" =~ ^(y|Y) ]] || break
             echo ''
-            [[ "${_once}" =~ ^(y|Y) ]] && break
         fi
     done
 }

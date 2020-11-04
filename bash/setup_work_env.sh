@@ -10,7 +10,7 @@
 
 _DOWNLOAD_FROM_BASE="https://raw.githubusercontent.com/hajimeo/samples/master"
 _SOURCE_REPO_BASE="$HOME/IdeaProjects/samples"
-type _import &>/dev/null || _import() { curl -sf --compressed "${_DOWNLOAD_FROM_BASE%/}/bash/$1" -o /tmp/$1 && . /tmp/$1; }
+type _import &>/dev/null || _import() { [ ! -s /tmp/${1}_$$ ] && curl -sf --compressed "${_DOWNLOAD_FROM_BASE%/}/bash/$1" -o /tmp/${1}_$$; . /tmp/${1}_$$; }
 _import "utils.sh"
 
 

@@ -6,7 +6,7 @@
 #   _import() { source /var/tmp/share/sonatype/$1; } && export -f _import
 #
 _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
-type _import &>/dev/null || _import() { curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/$1 && . /tmp/$1; }
+type _import &>/dev/null || _import() { [ ! -s /tmp/${1}_$$ ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1}_$$; . /tmp/${1}_$$; }
 
 _import "utils.sh"
 _import "utils_container.sh"
