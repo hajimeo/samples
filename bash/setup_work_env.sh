@@ -167,7 +167,7 @@ function f_setup_python() {
     #${_python} -m pip install -U pip &>/dev/null
     # outdated list
     ${_python} -m pip list -o | tee /tmp/pip.log
-    #${_python} -m pip list -o --format=freeze | cut -d'=' -f1 | xargs ${_python} -m pip install -U
+    #python -m pip list -o --format=freeze | cut -d'=' -f1 | xargs python -m pip install -U
 
     # My favourite/essential python packages
     ${_python} -m pip install -U lxml xmltodict pyyaml
@@ -176,7 +176,8 @@ function f_setup_python() {
     # Jupyter related
     # TODO: Autocomplete doesn't work if different version is used. @see https://github.com/ipython/ipython/issues/11530
     #       However, using 7.1.1 with python 3.8 may cause TypeError: required field "type_ignores" missing from Module
-    ${_python} -m pip install ipython==7.1.1 prettytable==0.7.2
+    #       Fix? https://github.com/EarthCubeInGeo/resen-core/issues/53 (jedi 0.17.2)
+    #${_python} -m pip install ipython==7.1.1 prettytable==0.7.2
     ${_python} -m pip install -U ipython jupyter jupyterlab --log /tmp/pip.log &>/dev/null || return $?
     # Need "-H"? eg: sudo -H ${_python} -m pip uninstall -y jupyterlab && sudo -H ${_python} -m pip install jupyterlab
     # Need to add /usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin in PATH?
