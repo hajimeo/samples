@@ -174,11 +174,10 @@ function f_setup_python() {
     ${_python} -m pip install -U pyjq    # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
     # Jupyter related
-    # TODO: Autocomplete doesn't work if different version is used. @see https://github.com/ipython/ipython/issues/11530
+    # TODO: Autocomplete doesn't work with Lab if different version is used. @see https://github.com/ipython/ipython/issues/11530
     #       However, using 7.1.1 with python 3.8 may cause TypeError: required field "type_ignores" missing from Module
-    #       Fix? https://github.com/EarthCubeInGeo/resen-core/issues/53 (jedi 0.17.2)
-    #${_python} -m pip install ipython==7.1.1 prettytable==0.7.2
-    ${_python} -m pip install -U ipython jupyter jupyterlab --log /tmp/pip.log &>/dev/null || return $?
+    ${_python} -m pip install ipython==7.1.1 #prettytable==0.7.2
+    ${_python} -m pip install -U jupyter --log /tmp/pip.log &>/dev/null || return $?
     # Need "-H"? eg: sudo -H ${_python} -m pip uninstall -y jupyterlab && sudo -H ${_python} -m pip install jupyterlab
     # Need to add /usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin in PATH?
 
@@ -191,9 +190,9 @@ function f_setup_python() {
 
     # TODO: as of today no jupyter_contrib_labextensions (lab)
     # Enable jupyter notebook extensions (spell checker)
-    ${_python} -m pip install -U jupyter_contrib_nbextensions
-    jupyter contrib nbextension install && jupyter nbextension enable spellchecker/main
-    jupyter labextension install @ijmbarr/jupyterlab_spellchecker
+    ${_python} -m pip install -U jupyter-contrib-nbextensions jupyter-nbextensions-configurator
+    jupyter contrib nbextension install && jupyter nbextensions_configurator enable && jupyter nbextension enable spellchecker/main
+    #jupyter labextension install @ijmbarr/jupyterlab_spellchecker
 
     # Enable Holloviews http://holoviews.org/user_guide/Installing_and_Configuring.html
     # Ref: http://holoviews.org/reference/index.html
@@ -202,7 +201,7 @@ function f_setup_python() {
     # TODO: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
 
     # Not so useful?
-    ${_python} -m pip install jupyterlab_templates
+    #${_python} -m pip install jupyterlab_templates
     #jupyter labextension install jupyterlab_templates && jupyter serverextension enable --py jupyterlab_templates
 
     #_install libsasl2-dev
