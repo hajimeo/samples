@@ -1754,7 +1754,7 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
 
 def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exists=None):
     '''
-    Load a CSV file into a DataFrame
+    Load a CSV file into a DataFrame *or* database table if conn is given
     If conn is given, import into a DB table
     :param filename: file path or file name or glob string
     :param conn: DB connection object. If not empty, import into a sqlite table
@@ -1787,8 +1787,6 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
         names = header
         header = None
     df = pd.read_csv(file_path, escapechar='\\', header=header, names=names)
-    if bool(tablename) and conn is None:
-        conn = connect()
     if bool(conn):
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
@@ -1883,8 +1881,8 @@ def df2files(df, filepath_prefix, extension="", columns=None, overwriting=False,
 
 def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=10000, load_only=False):
     """
-    A prototype function to analyse log files (expecting request.log converted to request.csv)
-    TODO: cleanup later
+    A prototype function to analyse hard-coded log files
+    TODO: cleanup later. The log file names should not be hard-coded.
     :param start_isotime:
     :param end_isotime:
     :param elapsed_time:
@@ -1892,23 +1890,57 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
     :return: void
     >>> pass    # test should be done in each function
     """
-    ## Audit json if exist
+    # Audit json if audit.json file exists
     _ = json2df('audit.json', tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=connect())
 
-    ## Request.*csv* exists, use that (because it's faster), if not, logs2table, which is slower.
-    result = csv2df('request.csv', tablename="t_request_logs", conn=connect())
-    if bool(result) is False:
+    # If request.*csv* exists, use that (because it's faster), if not, logs2table, which is slower.
+    request_logs = csv2df('request.csv', tablename="t_request_logs", conn=connect(), if_exists="replace")
+    if bool(request_logs) is False:
         (col_names, line_matching) = _gen_regex_for_request_logs('request.log')
-        result = logs2table('request.log', tablename="t_request_logs", col_names=col_names, line_beginning="^.",
+        request_logs = logs2table('request.log', tablename="t_request_logs", col_names=col_names, line_beginning="^.",
                             line_matching=line_matching)
-    if bool(result):
-        where_sql = "WHERE 1=1"
+
+    # Loading application log file(s) into database.
+    (col_names, line_matching) = _gen_regex_for_app_logs('nexus.log')
+    nxrm_logs = logs2table('nexus.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
+    (col_names, line_matching) = _gen_regex_for_app_logs('clm-server.log')
+    nxiq_logs = logs2table('clm-server.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
+
+    # Hazelcast health monitor
+    health_monitor = csv2df('log_hazelcast_monitor.csv', tablename="t_health_monitor", conn=connect())
+    if bool(health_monitor) is False and bool(nxrm_logs):
+        #_info("Generating t_health_monitor from t_logs ...")
+        df_hm = q("""select date_time, message from t_logs where loglevel = 'INFO' and class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
+        if len(df_hm) > 0:
+            (col_names, line_matching) = _gen_regex_for_hazel_health(df_hm['message'][1])
+            msg_ext = df_hm['message'].str.extract(line_matching)
+            msg_ext.columns = col_names
+            # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
+            df_hm.drop(columns=['message']).join(msg_ext).to_sql(name="t_health_monitor", con=connect(), chunksize=1000, if_exists='replace', schema=_DB_SCHEMA)
+            health_monitor = True
+            _autocomp_inject(tablename='t_health_monitor')
+
+    _info("# Available Tables:")
+    display(desc(), name="available_tables")
+    if load_only:
+        return
+
+    where_sql = "WHERE 1=1"
+    if bool(start_isotime) is True:
+        where_sql += " AND date_time >= '" + start_isotime + "'"
+    if bool(end_isotime) is True:
+        where_sql += " AND date_time <= '" + end_isotime + "'"
+
+    if bool(request_logs):
+        display_name = "request_log-hourly_aggs"
+        # Can't use above where_sql for this query
+        where_sql2 = "WHERE 1=1"
         if bool(elapsed_time) is True:
-            where_sql += " AND elapsedTime >= %d" % (elapsed_time)
+            where_sql2 += " AND elapsedTime >= %d" % (elapsed_time)
         if bool(start_isotime) is True:
-            where_sql += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') >= UDF_STR2SQLDT('" + start_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
+            where_sql2 += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') >= UDF_STR2SQLDT('" + start_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
         if bool(end_isotime) is True:
-            where_sql += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
+            where_sql2 += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
         query = """SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d)', `date`, 1) AS date_hour, statusCode,
     CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
     CAST(MIN(CAST(elapsedTime AS INT)) AS INT) AS min_elaps, 
@@ -1917,51 +1949,22 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
     count(*) AS occurrence
 FROM t_request_logs
 %s
-GROUP BY 1, 2""" % (where_sql)
-        name = "request_log-hourly_aggs"
-        if load_only is False:
-            _info("\n# Query (%s): \n%s" % (name, query))
-            display(q(query), name=name)
+GROUP BY 1, 2""" % (where_sql2)
+        _info("# Query (%s): \n%s" % (display_name, query))
+        display(q(query), name=display_name)
+
+        display_name = "request_log-status_bytesent_elapsed"
         query = """SELECT UDF_STR2SQLDT(`date`, '%%d/%%b/%%Y:%%H:%%M:%%S %%z') AS date_time, 
     CAST(statusCode AS INTEGER) AS statusCode, 
     CAST(bytesSent AS INTEGER) AS bytesSent, 
     CAST(elapsedTime AS INTEGER) AS elapsedTime 
 FROM t_request_logs %s""" % (where_sql)
-        name = "request_log-status_bytesent_elapsed"
-        if load_only is False:
-            _info("\n# Query (%s): \n%s" % (name, query))
-            draw(q(query).tail(tail_num), name=name)
-    
-    ## Loading application log file(s) into database.
-    (col_names, line_matching) = _gen_regex_for_app_logs('nexus.log')
-    nxrm_logs = logs2table('nexus.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
-    (col_names, line_matching) = _gen_regex_for_app_logs('*server.log')
-    nxiq_logs = logs2table('*server.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
+        _info("# Query (%s): \n%s" % (display_name, query))
+        draw(q(query).tail(tail_num), name=display_name)
 
-    # Hazelcast health monitor
-    # if "health_monitor.json" exists:
-    #   result = ju.json2df('health_monitor.json', tablename="t_health_monitor", conn=ju.connect())
-    #   query = """select date_time, xxxx from t_health_monitor"""
-    #   ju.draw(ju.q(query))
-    if bool(nxrm_logs):
-        _info("Generating t_health_monitor from t_logs ...")
-        df_hm = q("""select date_time, message from t_logs
-    where loglevel = 'INFO'
-    and class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
-        if len(df_hm) > 0:
-            (col_names, line_matching) = _gen_regex_for_hazel_health(df_hm['message'][1])
-            msg_ext = df_hm['message'].str.extract(line_matching)
-            msg_ext.columns = col_names
-            # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
-            df_hm.drop(columns=['message']).join(msg_ext).to_sql(name="t_health_monitor", con=connect(), chunksize=1000,
-                                                                 if_exists='replace', schema=_DB_SCHEMA)
-            _autocomp_inject(tablename='t_health_monitor')
-            where_sql = "WHERE 1=1"
-            if bool(start_isotime) is True:
-                where_sql += " AND date_time >= '" + start_isotime + "'"
-            if bool(end_isotime) is True:
-                where_sql += " AND date_time <= '" + end_isotime + "'"
-            query = """select date_time
+    if bool(health_monitor):
+        display_name = "nexus_health_monitor"
+        query = """select date_time
     , UDF_STR_TO_INT(`physical.memory.free`) as sys_mem_free_bytes
     --, UDF_STR_TO_INT(`swap.space.free`) as swap_free_bytes
     , CAST(`swap.space.free` AS INTEGER) as swap_free_bytes
@@ -1975,14 +1978,12 @@ FROM t_request_logs %s""" % (where_sql)
     , CAST(`connection.active.count` AS INTEGER) as node_conn_count
 FROM t_health_monitor
 %s""" % (where_sql)
-            name = "nexus_health_monitor"
-            if load_only is False:
-                _info("\n# Query (%s): \n%s" % (name, query))
-                draw(q(query), name=name)
+        _info("# Query (%s): \n%s" % (display_name, query))
+        draw(q(query), name=display_name)
 
     # Nexus IQ
     if bool(nxiq_logs):
-        # below queries are not so good, so not executing at this moment.
+        display_name = "nxiq_log-policy_scan_aggs"
         query = """SELECT thread, min(date_time), max(date_time), 
     STRFTIME('%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1))
   - STRFTIME('%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', min(date_time), 1)) as diff,
@@ -1991,19 +1992,20 @@ FROM t_logs
 WHERE thread LIKE 'PolicyEvaluateService%'
 GROUP BY 1
 ORDER BY diff, thread"""
-        name = "nxiq_log-policy_scan_aggs"
-        # _info("\n# Query (%s): \n%s" % (name,query))
-        # display(q(query), name=name)
+        _info("# Query (%s): \n%s" % (display_name, query))
+        display(q(query), name=display_name)
+        
+        display_name = "nxiq_log-hdfsclient_results"
         query = """SELECT date_time, 
   UDF_REGEX(' in (\d+) ms', message, 1) as ms,
   UDF_REGEX('ms. (\d+)$', message, 1) as status
 FROM t_logs
 WHERE t_logs.class = 'com.sonatype.insight.brain.hds.HdsClient'
   AND t_logs.message LIKE 'Completed request%'"""
-        name = "nxiq_log-hdfsclient_results"
-        # _info("\n# Query (%s): \n%s" % (name,query))
-        # display(q(query), name=name)
+        _info("# Query (%s): \n%s" % (display_name, query))
+        display(q(query), name=display_name)
 
+        display_name = "nxiq_log-top10_slow_scan"
         query = """SELECT date_time, thread,
     UDF_REGEX(' scan id ([^ ]+),', message, 1) as scan_id,
     CAST(UDF_REGEX(' in (\d+) ms', message, 1) as INT) as ms 
@@ -2011,22 +2013,19 @@ FROM t_logs
 WHERE t_logs.message like 'Evaluated policy for%'
 ORDER BY ms DESC
 LIMIT 10"""
-        name = "nxiq_log-top10_slow_scan"
-        if load_only is False:
-            _info("\n: \n%s" % (name, query))
-            display(q(query), name="nxiq_log-top10_slow_scan")
+        _info("\n: \n%s" % (display_name, query))
+        display(q(query), name=display_name)
 
     if bool(nxrm_logs) or bool(nxiq_logs):
-        ## analyse t_logs table (eg: cout ERROR|WARN)
+        # analyse t_logs table (eg: count ERROR|WARN)
+        display_name = "warn_error_hourly"
         query = """SELECT UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, loglevel, count(1) 
     FROM t_logs
     %s
       AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
     GROUP BY 1, 2""" % (where_sql)
-        name = "warn_error_hourly"
-        if load_only is False:
-            _info("\n# Query (%s): \n%s" % (name, query))
-            draw(q(query), name=name)
+        _info("# Query (%s): \n%s" % (display_name, query))
+        draw(q(query), name=display_name)
 
     # TODO: analyse db job triggers
     # q("""SELECT description, fireInstanceId
@@ -2040,9 +2039,6 @@ LIMIT 10"""
     #  AND nextFireTime > 1578290830000
     # ORDER BY nextFireTime
     # """)
-    _info("# Available Tables:")
-    display(desc(), name="available_tables")
-    _info("Completed.")
 
 
 def load(jsons_dir=["./engine/aggregates", "./engine/cron-scheduler"], csvs_dir="./stats",
