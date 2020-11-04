@@ -18,6 +18,8 @@ To show the first 3 rows and the last 3 rows:
     df.iloc[[0,1,2,-3,-2,-1]]
 Convert one row to dict:
     row = df[:1].to_dict(orient='records')[0]
+Styling:
+    https://pandas.pydata.org/pandas-docs/stable/user_guide/style.html
 
 == Sqlite tips (which I often forget) ==================================
 Convert Unix timestamp with milliseconds to datetime
@@ -848,14 +850,18 @@ def display(df, name=""):
     """
     Wrapper of IPython.display.display
     :param df: A DataFrame object
-    :param name: Used when saving into file
+    :param name: Caption and also used when saving into file
     :return Void
     >>> pass
     """
+    name_html = ""
     if bool(name) is False:
         name = _timestamp(format="%Y%m%d%H%M%S%f")
+    else:
+        #df.style.set_caption(name)
+        name_html = "<h4>"+name+"</h4>"
     if _is_jupyter():
-        _display(df.to_html())
+        _display(name_html+df.to_html())
     else:
         # print(df.to_html())
         df2csv(df=df, file_path="%s.csv" % (str(name)))
@@ -1920,8 +1926,7 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
             health_monitor = True
             _autocomp_inject(tablename='t_health_monitor')
 
-    _info("# Available Tables:")
-    display(desc(), name="available_tables")
+    display(desc(), name="Available_Tables")
     if load_only:
         return
 
@@ -1932,7 +1937,7 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
         where_sql += " AND date_time <= '" + end_isotime + "'"
 
     if bool(request_logs):
-        display_name = "request_log-hourly_aggs"
+        display_name = "RequestLog_Hourly_aggs"
         # Can't use above where_sql for this query
         where_sql2 = "WHERE 1=1"
         if bool(elapsed_time) is True:
@@ -1953,7 +1958,7 @@ GROUP BY 1, 2""" % (where_sql2)
         _info("# Query (%s): \n%s" % (display_name, query))
         display(q(query), name=display_name)
 
-        display_name = "request_log-status_bytesent_elapsed"
+        display_name = "RequestLog_Status_ByteSent_Elapsed"
         query = """SELECT UDF_STR2SQLDT(`date`, '%%d/%%b/%%Y:%%H:%%M:%%S %%z') AS date_time, 
     CAST(statusCode AS INTEGER) AS statusCode, 
     CAST(bytesSent AS INTEGER) AS bytesSent, 
@@ -1963,7 +1968,7 @@ FROM t_request_logs %s""" % (where_sql)
         draw(q(query).tail(tail_num), name=display_name)
 
     if bool(health_monitor):
-        display_name = "nexus_health_monitor"
+        display_name = "NexusLog_Health_Monitor"
         query = """select date_time
     , UDF_STR_TO_INT(`physical.memory.free`) as sys_mem_free_bytes
     --, UDF_STR_TO_INT(`swap.space.free`) as swap_free_bytes
@@ -1983,7 +1988,7 @@ FROM t_health_monitor
 
     # Nexus IQ
     if bool(nxiq_logs):
-        display_name = "nxiq_log-policy_scan_aggs"
+        display_name = "NxiqLog_Policy_Scan_aggs"
         query = """SELECT thread, min(date_time), max(date_time), 
     STRFTIME('%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1))
   - STRFTIME('%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', min(date_time), 1)) as diff,
@@ -1995,7 +2000,7 @@ ORDER BY diff, thread"""
         _info("# Query (%s): \n%s" % (display_name, query))
         display(q(query), name=display_name)
         
-        display_name = "nxiq_log-hdfsclient_results"
+        display_name = "NxiqLog_HDS_Client_Requests"
         query = """SELECT date_time, 
   UDF_REGEX(' in (\d+) ms', message, 1) as ms,
   UDF_REGEX('ms. (\d+)$', message, 1) as status
@@ -2005,7 +2010,7 @@ WHERE t_logs.class = 'com.sonatype.insight.brain.hds.HdsClient'
         _info("# Query (%s): \n%s" % (display_name, query))
         display(q(query), name=display_name)
 
-        display_name = "nxiq_log-top10_slow_scan"
+        display_name = "NxiqLog_Top10_Slow_Scans"
         query = """SELECT date_time, thread,
     UDF_REGEX(' scan id ([^ ]+),', message, 1) as scan_id,
     CAST(UDF_REGEX(' in (\d+) ms', message, 1) as INT) as ms 
@@ -2018,7 +2023,7 @@ LIMIT 10"""
 
     if bool(nxrm_logs) or bool(nxiq_logs):
         # analyse t_logs table (eg: count ERROR|WARN)
-        display_name = "warn_error_hourly"
+        display_name = "WarnsErros_Hourly"
         query = """SELECT UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, loglevel, count(1) 
     FROM t_logs
     %s
