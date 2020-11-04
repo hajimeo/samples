@@ -10,9 +10,11 @@
 
 _DOWNLOAD_FROM_BASE="https://raw.githubusercontent.com/hajimeo/samples/master"
 _SOURCE_REPO_BASE="$HOME/IdeaProjects/samples"
-type _import &>/dev/null || _import() { [ ! -s /tmp/${1}_$$ ] && curl -sf --compressed "${_DOWNLOAD_FROM_BASE%/}/bash/$1" -o /tmp/${1}_$$; . /tmp/${1}_$$; }
+type _import &>/dev/null || _import() {
+    [ ! -s /tmp/${1}_$$ ] && curl -sf --compressed "${_DOWNLOAD_FROM_BASE%/}/bash/$1" -o /tmp/${1}_$$
+    . /tmp/${1}_$$
+}
 _import "utils.sh"
-
 
 function f_setup_misc() {
     _symlink_or_download "runcom/bash_profile.sh" "$HOME/.bash_profile" || return $?
@@ -55,16 +57,19 @@ function f_setup_rg() {
     local _url="https://github.com/BurntSushi/ripgrep/releases/"
     if ! which rg &>/dev/null; then
         if ! _install ripgrep; then
-            if [ "`uname`" = "Darwin" ]; then
-                _log "WARN" "Please install 'rg' first. ${_url}"; sleep 3
+            if [ "$(uname)" = "Darwin" ]; then
+                _log "WARN" "Please install 'rg' first. ${_url}"
+                sleep 3
                 return 1
-            elif [ "`uname`" = "Linux" ]; then
+            elif [ "$(uname)" = "Linux" ]; then
                 local _ver="$(curl -sI ${_url%/}/latest | _sed -nr 's/^Location:.+\/releases\/tag\/(.+)$/\1/p' | tr -d '[:space:]')"
-                _log "INFO" "Installing rg version: ${_ver} ..."; sleep 3
+                _log "INFO" "Installing rg version: ${_ver} ..."
+                sleep 3
                 _download "${_url%/}/download/${_ver}/ripgrep_${_ver}_amd64.deb" "/tmp/ripgrep_${_ver}_amd64.deb" "Y" "Y" || return $?
                 sudo dpkg -i /tmp/ripgrep_${_ver}_amd64.deb || return $?
             else
-                _log "WARN" "Please install 'rg' first. ${_url}"; sleep 3
+                _log "WARN" "Please install 'rg' first. ${_url}"
+                sleep 3
                 return 1
             fi
         fi
@@ -72,7 +77,7 @@ function f_setup_rg() {
 
     _symlink_or_download "runcom/rgrc" "$HOME/.rgrc" || return $?
     if ! grep -qR '^export RIPGREP_CONFIG_PATH=' $HOME/.bash_profile; then
-        echo -e '\nexport RIPGREP_CONFIG_PATH=$HOME/.rgrc' >> $HOME/.bash_profile || return $?
+        echo -e '\nexport RIPGREP_CONFIG_PATH=$HOME/.rgrc' >>$HOME/.bash_profile || return $?
     fi
 }
 
@@ -93,11 +98,12 @@ function f_setup_golang() {
     local _ver="${1:-"1.13"}"
     # TODO: currently only for Ubuntu and Mac, and hard-coding go version
     if ! which go &>/dev/null || ! go version | grep -q "go${_ver}"; then
-        if [ "`uname`" = "Darwin" ]; then
+        if [ "$(uname)" = "Darwin" ]; then
             if which brew &>/dev/null; then
-                brew install go || return $?  # as of 1.13.8, --with-cgo does not work.
+                brew install go || return $? # as of 1.13.8, --with-cgo does not work.
             else
-                _log "WARN" "Please install 'go'. https://golang.org/doc/install"; sleep 3
+                _log "WARN" "Please install 'go'. https://golang.org/doc/install"
+                sleep 3
                 return 1
             fi
         else
@@ -105,7 +111,7 @@ function f_setup_golang() {
             sudo apt-get update
             sudo apt-get install golang-${_ver}-go -y || return $?
 
-            local _go="`which go`"
+            local _go="$(which go)"
             if [ -z "${_go}" ] && [ -s /usr/lib/go-${_ver}/bin/go ]; then
                 sudo ln -s /usr/lib/go-${_ver}/bin/go /usr/bin/go
             elif [ -L "${_go}" ] && [ -s /usr/lib/go-${_ver}/bin/go ]; then
@@ -133,82 +139,83 @@ function f_setup_golang() {
 }
 
 function f_setup_python() {
-    local _python="${1:-"`which python3`"}"
-    if [ ! -s "${_python}" ] && ! _install python3; then
+    if ! which python3 &>/dev/null && ! _install python3; then
         _log "ERROR" "no python3 installed or not in PATH"
         return 1
     fi
-    if ! which pip &>/dev/null; then
-        _log "WARN" "no pip installed or not in PATH (sudo easy_install pip). Trying to install..."
+
+    if ! sudo which pip &>/dev/null || ! pip -V; then
+        _log "WARN" "no pip (for python2) installed or not in PATH (sudo easy_install pip). Trying to install..."
         # NOTE: Mac's pip3 is installed by 'brew install python3'
         # sudo python3 -m pip uninstall pip
         # sudo apt remove python3-pip
         curl -s -f "https://bootstrap.pypa.io/get-pip.py" -o /tmp/get-pip.py || return $?
         # @see https://github.com/pypa/get-pip/issues/43
         _install python3-distutils
-        "${_python}" /tmp/get-pip.py || return $?
+        python3 /tmp/get-pip.py || return $?
     fi
-
     # TODO: this works only with python2, hence not pip3 and not in virtualenv, and eventually will stop working
-    deactivate &>/dev/null
     if which python2 &>/dev/null; then
         sudo -i python2 -m pip install -U data_hacks
     else
         sudo -i pip install -U data_hacks
-    fi  # it's OK if this fails
+    fi # it's OK if this fails
 
-    ${_python} -m pip install -U virtualenv || return $?
-
+    deactivate &>/dev/null
+    python3 -m pip install -U virtualenv
     # When python version is changed, need to run virtualenv command again
-    virtualenv -p "${_python}" $HOME/.pyvenv || return $?
+    virtualenv -p python3 $HOME/.pyvenv || return $?
     source $HOME/.pyvenv/bin/activate || return $?
 
     ### pip3 (not pip) from here ############################################################
-    #${_python} -m pip install -U pip &>/dev/null
+    #python3 -m pip install -U pip &>/dev/null
     # outdated list
-    ${_python} -m pip list -o | tee /tmp/pip.log
+    python3 -m pip list -o | tee /tmp/pip.log
     #python -m pip list -o --format=freeze | cut -d'=' -f1 | xargs python -m pip install -U
 
     # My favourite/essential python packages
-    ${_python} -m pip install -U lxml xmltodict pyyaml
-    ${_python} -m pip install -U pyjq    # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
+    python3 -m pip install -U lxml xmltodict pyyaml
+    python3 -m pip install -U pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
-    # Jupyter related
-    # TODO: Autocomplete doesn't work with Lab if different version is used. @see https://github.com/ipython/ipython/issues/11530
+    # Important packages (Jupyter and pandas)
+    # TODO: Autocomplete doesn't work with Lab and NB if different version is used. @see https://github.com/ipython/ipython/issues/11530
     #       However, using 7.1.1 with python 3.8 may cause TypeError: required field "type_ignores" missing from Module
-    ${_python} -m pip install ipython==7.1.1 #prettytable==0.7.2
-    ${_python} -m pip install -U jupyter --log /tmp/pip.log &>/dev/null || return $?
-    # Need "-H"? eg: sudo -H ${_python} -m pip uninstall -y jupyterlab && sudo -H ${_python} -m pip install jupyterlab
-    # Need to add /usr/local/Cellar/python/3.7.1/Frameworks/Python.framework/Versions/3.7/bin in PATH?
+    #python3 -m pip install ipython==7.1.1 #prettytable==0.7.2
+    python3 -m pip install -U ipython jupyter jupyterlab pandas --log /tmp/pip.log || return $?
+    # Reinstall: python3 -m pip uninstall -y jupyterlab && python3 -m pip install jupyterlab
+    # If not using python venv, may need to use jupyterlab_templates "sudo -H"
 
-    # NOTE: Initially I thought pandasql looked good but it's actually using sqlite. Pixiedust works only with jupyter-notebook
-    ${_python} -m pip install -U pandas pandas_profiling pixiedust sqlalchemy ipython-sql pandas-gbq pivottablejs --log /tmp/pip.log &>/dev/null
+    # NOTE: Initially I thought pandasql looked good but it's actually using sqlite.
+    python3 -m pip install -U sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip.log
+    # pandas_profiling fails at this moment. Pixiedust works only with jupyter-notebook
+    #python3 -m pip install -U pandas_profiling pandas-gbq pixiedust --log /tmp/pip.log
     # NOTE: In case I might use jupyter notebook, still installing this
-    ${_python} -m pip install -U bash_kernel --log /tmp/pip.log &>/dev/null && python3 -m bash_kernel.install
+    python3 -m pip install -U bash_kernel --log /tmp/pip.log && python3 -m bash_kernel.install
     # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3
-    #${_python} -m pip install beakerx && beakerx-install
+    #python3 -m pip install beakerx && beakerx-install
 
     # TODO: as of today no jupyter_contrib_labextensions (lab)
     # Enable jupyter notebook extensions (spell checker)
-    ${_python} -m pip install -U jupyter-contrib-nbextensions jupyter-nbextensions-configurator
+    python3 -m pip install -U jupyter-contrib-nbextensions jupyter-nbextensions-configurator
     jupyter contrib nbextension install && jupyter nbextensions_configurator enable && jupyter nbextension enable spellchecker/main
+    # Not working...?
     #jupyter labextension install @ijmbarr/jupyterlab_spellchecker
 
     # Enable Holloviews http://holoviews.org/user_guide/Installing_and_Configuring.html
     # Ref: http://holoviews.org/reference/index.html
-    #${_python} -m pip install 'holoviews[recommended]'
+    #python3 -m pip install 'holoviews[recommended]'
     #jupyter labextension install @pyviz/jupyterlab_pyviz
     # TODO: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
 
     # Not so useful?
-    #${_python} -m pip install jupyterlab_templates
+    #python3 -m pip install jupyterlab_templates
     #jupyter labextension install jupyterlab_templates && jupyter serverextension enable --py jupyterlab_templates
 
     #_install libsasl2-dev
-    #${_python} -m pip install sasl thrift thrift-sasl PyHive
+    #python3 -m pip install sasl thrift thrift-sasl PyHive
     # This is for using Java 1.8 (to avoid "unsupported major.minor version 52.0")
-    ${_python} -m pip install JPype1==0.6.3 JayDeBeApi
-    #${_python} -m pip install google-cloud-bigquery
+    python3 -m pip install JPype1==0.6.3 JayDeBeApi
+    #python3 -m pip install google-cloud-bigquery
 
     f_jupyter_util
 }
@@ -229,11 +236,13 @@ function f_jupyter_util() {
     if [ ! -d "$HOME/.ipython/profile_default/startup" ]; then
         mkdir -p "$HOME/.ipython/profile_default/startup" || return $?
     fi
-    # How-to: pp.ProfileReport(df)
+    # As pandas_profiling can't be installed, No "import pandas_profiling as pp"
+    #   How-to: pp.ProfileReport(df)
+    # How to get the startup directory location:
+    #   get_ipython().profile_dir.startup_dir
     echo "import pandas as pd
-import pandas_profiling as pp
 import jn_utils as ju
-get_ipython().run_line_magic('matplotlib', 'inline')" > "$HOME/.ipython/profile_default/startup/import_ju.py"
+get_ipython().run_line_magic('matplotlib', 'inline')" >"$HOME/.ipython/profile_default/startup/import_ju.py"
 }
 
 function f_setup_java() {
@@ -241,7 +250,7 @@ function f_setup_java() {
     local _ver="${_v}"  # Java version can be "9" or "1.8"
     [[ "${_v}" =~ ^[678]$ ]] && _ver="1.${_v}"
 
-    if [ "`uname`" = "Darwin" ]; then
+    if [ "$(uname)" = "Darwin" ]; then
         brew tap adoptopenjdk/openjdk
         if [ -z "${_v}" ]; then
             brew cask install java
@@ -258,8 +267,8 @@ function f_setup_java() {
             # NOTE: hoping the naming rule is same for different versions (eg: jdk8u222-b10_openj9-0.15.1)
             if [[ "${_java_exact_ver}" =~ jdk([^-]+)-([^_]+) ]]; then
                 [ ! -d "/var/tmp/share/java" ] && mkdir -p -m 777 /var/tmp/share/java
-                local _jdk_ver="${BASH_REMATCH[1]}"     # 8u222
-                local _jdk_minor="${BASH_REMATCH[2]}"   # b10
+                local _jdk_ver="${BASH_REMATCH[1]}"   # 8u222
+                local _jdk_minor="${BASH_REMATCH[2]}" # b10
                 _download "https://github.com/AdoptOpenJDK/openjdk8-binaries/releases/download/jdk${_jdk_ver}-${_jdk_minor}/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" "/var/tmp/share/java/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" "Y" "Y" || return $?
                 if [ -s "/var/tmp/share/java/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" ]; then
                     tar -xf "/var/tmp/share/java/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" -C /var/tmp/share/java/ || return $?
@@ -282,7 +291,7 @@ function _install() {
     elif which brew &>/dev/null; then
         brew install "$@" || return $?
     else
-        _log "ERROR" "`uname` is not supported yet to install a package"
+        _log "ERROR" "$(uname) is not supported yet to install a package"
         return 1
     fi
 }
@@ -303,10 +312,8 @@ function _symlink_or_download() {
     fi
 }
 
-
 # TODO: setup (not install) below
 #s3cmd
-
 
 ### Main ###############################################################################################################
 if [ "$0" = "$BASH_SOURCE" ]; then
@@ -315,17 +322,23 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     else
         sudo echo "Starting setup ..."
         _log "INFO" "Running f_setup_misc ..."
-        f_setup_misc; echo "Exit code $?"
+        f_setup_misc
+        echo "Exit code $?"
         _log "INFO" "Running f_setup_screen ..."
-        f_setup_screen; echo "Exit code $?"
+        f_setup_screen
+        echo "Exit code $?"
         _log "INFO" "Running f_setup_rg ..."
-        f_setup_rg; echo "Exit code $?"
+        f_setup_rg
+        echo "Exit code $?"
         _log "INFO" "Running f_setup_jupyter ..."
-        f_setup_python; echo "Exit code $?"
+        f_setup_python
+        echo "Exit code $?"
         _log "INFO" "Running f_setup_golang ..."
-        f_setup_golang; echo "Exit code $?"
+        f_setup_golang
+        echo "Exit code $?"
         _log "INFO" "Running f_setup_java ..."
-        f_setup_java; echo "Exit code $?"
+        f_setup_java
+        echo "Exit code $?"
         echo "Completed."
     fi
 fi
