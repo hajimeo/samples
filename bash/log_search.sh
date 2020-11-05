@@ -122,36 +122,29 @@ function f_topCausedByExceptions() {
 }
 
 function f_topErrors() {
-    local __doc__="List top ERRORs. NOTE: with _date_from and without may produce different result (ex: Caused by)"
+    local __doc__="List top X ERRORs but removing 1 or 2 occurences"
     local _glob="${1:-"*.*log*"}"   # file path which rg accepts and NEEDS double-quotes
-    local _date_regex="$2"   # ISO format datetime, but no seconds (eg: 2018-11-05 21:00)
+    local _date_4_bar="$2"  # For bar_chart.py ISO format datetime, but no seconds (eg: 2018-11-05 21:00)
     local _regex="$3"       # to overwrite default regex to detect ERRORs
-    local _top_N="${4:-10}" # how many result to show
+    local _top_N="${4:-40}" # how many result to show (but excluding 1 or 2 occurences)
 
-    if ! which rg &>/dev/null; then
-        echo "'rg' is required (eg: brew install rg)" >&2
-        return 101
-    fi
-
-    if [ -z "$_regex" ]; then
-        _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|FAILED)\b.+"
-    fi
-
-    if [ -n "${_date_regex}" ]; then
-        _regex="^${_date_regex}.+${_regex}"
-    fi
-
-    echo "# Regex = '${_regex}'"
+    [ -z "$_regex" ] && _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|FAILED)\b.+"
     rg -z -c -g "${_glob}" "${_regex}" && echo " "
-    rg -z -N --no-filename -g "${_glob}" -o "${_regex}" > /tmp/f_topErrors.$$.tmp
-    cat "/tmp/f_topErrors.$$.tmp" | _replace_number | sort | uniq -c | sort -nr | head -n ${_top_N}
+    rg -z --no-line-number --no-filename -g "${_glob}" "${_regex}" > /tmp/${FUNCNAME}_$$.tmp
+    cat "/tmp/${FUNCNAME}_$$.tmp" | _replace_number | sort | uniq -c | sort -nr | head -n ${_top_N} | rg -v '^\s+[12]\s'
 
     # just for fun, drawing bar chart
-    if [ -n "${_date_regex}" ] && which bar_chart.py &>/dev/null; then
-        local _date_regex2="^[0-9-/]+ \d\d:\d"
-        [ "`wc -l /tmp/f_topErrors.$$.tmp | awk '{print $1}'`" -lt 400 ] && _date_regex2="^[0-9-/]+ \d\d:\d\d"
+    if which bar_chart.py &>/dev/null; then
         echo " "
-        rg -z --no-line-number --no-filename -o "${_date_regex2}" /tmp/f_topErrors.$$.tmp | sed 's/T/ /' | bar_chart.py
+        if [ -z "${_date_4_bar}" ]; then
+            local _num="$(rg -z --no-line-number --no-filename -o '^\d\d\d\d-\d\d-\d\d.\d\d:\d' ./log/nexus.log | sort | uniq | wc -l | tr -d '[:space:]')"
+            if [ "${_num}" -lt 30 ]; then
+                _date_4_bar="^\d\d\d\d-\d\d-\d\d.\d\d:\d"
+            else
+                _date_4_bar="^\d\d\d\d-\d\d-\d\d.\d\d"
+            fi
+        fi
+        rg -z --no-line-number --no-filename -o "${_date_4_bar}" /tmp/${FUNCNAME}_$$.tmp | sed 's/T/ /' | bar_chart.py
     fi
 }
 
@@ -1294,149 +1287,26 @@ function _get_json() {
     local _attrs="${3}"         # attribute1,attribute2,attr3.*subattr3* (using dot) to return only those attributes' value
     local _find_all="${4}"      # If Y, not stopping after finding one
     local _no_pprint="${5}"     # no prettified output
+    local _isTrue="False"
+    [[ "${_find_all}" =~ ^(y|Y) ]] && _isTrue="True"
     # language=Python
-    python3 -c 'import sys,json,re
-def update_dict_with_key(k, d, rtn_d):
-    """
-    Update the rtn_d (dit) with the given d (dict) by filtering with k (string) key|attribute
-    >>> k = "attributes.checksum.sha1"
-    >>> d = {"attributes" : {"checksum" : {"sha1" : "you found me" }}}
-    >>> rtn_d = {"att_should_remain" : "aaaaa"}
-    >>> update_dict_with_key(k, d, rtn_d)
-    #{"att_should_remain": "aaaaa", "attributes": {"checksum": {"sha1": "you found me"}}}
-    {"att_should_remain": "aaaaa", "attributes.checksum.sha1": "you found me"}
-    """
-    if bool(rtn_d) is False:
-        rtn_d = {}  # initialising
-    if "\." not in k and k.find(".") > 0:
-        #sys.stderr.write(str(k) + "\n") # for debug
-        # returning the value only if all keys in _kNs exist
-        tmp_d = d
-        _kNs = k.split(".")
-        for _kN in _kNs:
-            if _kN in tmp_d:
-                tmp_d = tmp_d[_kN]
-                continue
-        # Trying to create tmp_d[_k0][_k1][_k2] ...
-        #value_to_store = tmp_d
-        #tmp_d = {}
-        #for _kN in reversed(_kNs):
-        #    if bool(tmp_d) is False:
-        #        tmp_d[_kN] = value_to_store
-        #    else:
-        #        tmp_tmp_d = tmp_d.copy()
-        #        tmp_d.clear()
-        #        tmp_d[_kN] = tmp_tmp_d
-        #rtn_d.update(tmp_d)
-        # At this moment, using the given k as key rather than above
-        rtn_d[k] = tmp_d
-        #sys.stderr.write(str(k) + " does not have backslash dot.\n") # for debug
-    elif "\." in k:
-        _tmp_k = k.replace("\\", "")
-        rtn_d[_tmp_k] = d[_tmp_k]
-        #sys.stderr.write(str(k) + " has backslash dot. ("+ str(_tmp_k) +"\n") # for debug
-    elif k in d:
-        rtn_d[k] = d[k]
-        #sys.stderr.write(str(k) + "\n") # for debug
-    #else:
-    #    sys.stderr.write(str(k) + " not in dict\n") # for debug
-    return rtn_d
-
-m = ptn_k = None
-if len("'${_key}'") > 0:
-    ptn_k = re.compile("[\"]?('${_key}')[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")
-props = []
-if len("'${_props}'") > 0:
-    props = "'${_props}'".split(",")
-attrs = []
-if len("'${_attrs}'") > 0:
-    attrs = "'${_attrs}'".split(",")
-#sys.stderr.write(str(attrs)+"\n") # for debug
+    python3 -c "import sys,json,re
+import jn_utils as ju
 _in = sys.stdin.read()
-_d = None
-if bool(_in) is True:
-    try:
-        _d = json.loads(_in)
-    except Exception as e:
-        #sys.stderr.write(e+"\n")
-        _d = None
-        pass
-#sys.stderr.write(str(type(_d))+"\n") # for debug
-if bool(_d) is True:
-    for _p in props:
-        #sys.stderr.write(str(_p)+"\n") # for debug
-        if type(_d) == list:
-            #sys.stderr.write("List! \n") # for debug
-            _p_name = None
-            if len("'${_key}'") > 0:
-                #sys.stderr.write(str(_p)+"\n") # for debug
-                m = ptn_k.search(_p)
-                if m:
-                    #sys.stderr.write(str(m)+"\n") # for debug
-                    (_p, _p_name) = m.groups()
-            _tmp_d = []
-            for _dd in _d:
-                if _p not in _dd:
-                    continue
-                if bool(_p_name) is False:
-                    #sys.stderr.write(str(_dd[_p])+"\n") # for debug
-                    _tmp_d.append(_dd[_p])
-                elif bool(_p_name) is True and _dd[_p] == _p_name:
-                    _tmp_d.append(_dd)
-                if len(_tmp_d) > 0 and "'${_find_all}'".lower() != "y":
-                    break
-            if bool(_tmp_d) is False:
-                _d = None
-                break
-            if len(_tmp_d) == 1:
-                _d = _tmp_d[0]
+_d = ju.get_json(json_str=_in, search_props='${_props}', key_name='${_key}', rtn_attrs='${_attrs}', find_all=${_isTrue})
+if '${_no_pprint}'.lower() == 'y':
+    if type(_d) == list:
+        print('[')
+        for _i, _e in enumerate(_d):
+            if len(_d) == (_i + 1):
+                print('    %s' % json.dumps(_e))
             else:
-                _d = _tmp_d
-                #sys.stderr.write(str(_d)+"\n") # for debug
-        elif _p in _d:
-            _d = _d[_p]
-            #sys.stderr.write(_p+" is in _d (dict)\n")
-            continue
-        else:
-            _d = None
-            #sys.stderr.write(_p+" is NOT in _d (dict)\n")
-            break
-    #sys.stderr.write(str(_d)+"\n")
-    if bool(attrs) is True:
-        #sys.stderr.write("attrs is True\n")
-        #sys.stderr.write(str(type(_d))+"\n") # for debug
-        if type(_d) == list:
-            _tmp_dl = []
-            for _dd in _d:
-                _tmp_dd = {}
-                #sys.stderr.write(str(_tmp_dd)+"\n") # for debug
-                for _a in attrs:
-                    _tmp_dd = update_dict_with_key(_a, _dd, _tmp_dd)
-                if len(_tmp_dd) > 0:
-                    _tmp_dl.append(_tmp_dd)
-            _d = _tmp_dl
-        elif type(_d) == dict:
-            _tmp_dd = {}
-            #sys.stderr.write(str(_d)+"\n") # for debug
-            for _a in attrs:
-                _tmp_dd = update_dict_with_key(_a, _d, _tmp_dd)
-            _d = _tmp_dd
-    if "'${_no_pprint}'".lower() == "y":
-        #sys.stderr.write("_no_pprint is Yes\n")
-        if type(_d) == list:
-            #_d = json.loads(json.dumps(_d, sort_keys=True))
-            print("[")
-            for _i, _e in enumerate(_d):
-                if len(_d) == (_i + 1):
-                    print("    %s" % json.dumps(_e))
-                else:
-                    print("    %s," % json.dumps(_e))
-            print("]")
-        else:
-            print(_d)
-    elif bool(_d) is True:
-        #sys.stderr.write("_d is True\n") # for debug
-        print(json.dumps(_d, indent=4, sort_keys=True))'
+                print('    %s,' % json.dumps(_e))
+        print(']')
+    else:
+        print(_d)
+elif bool(_d) is True:
+    print(json.dumps(_d, indent=4, sort_keys=True))"
 }
 
 function _sed() {
