@@ -433,7 +433,7 @@ function p_container_setup() {
     local _name="${1:-${_NAME}}"
 
     f_container_ssh_config "${_name}"   # it's OK to fail || return $?
-    f_container_misc "${_name}"         # it's OK to fail || return $?
+    f_container_setup_misc "${_name}"         # it's OK to fail || return $?
     #_log "INFO" "Setting up ${_name} container completed."
     return 0
 }
@@ -528,7 +528,14 @@ function _docker_find_by_port() {
 }
 
 function f_container_misc() {
-    local __doc__="Add user in a node (container)"
+    local __doc__="Misc. command to workaround container issues"
+    local _name="${1:-${_NAME}}"
+    # Can't make crond run all the time
+    docker exec -it ${_name} bash -c "systemctl start crond.service" &>/dev/null
+}
+
+function f_container_setup_misc() {
+    local __doc__="Misc commands used only once when a container setup"
     local _name="${1:-${_NAME}}"
     local _password="${2-$_SERVICE}"  # Optional. If empty, will be _SERVICE
 
@@ -669,7 +676,8 @@ function f_as_start() {
     if [[ "${_is_restarting}" =~ ^(y|Y) ]]; then
         f_as_stop || return $?
     fi
-    docker exec -it ${_name} bash -c "source ${_SHARE_DIR}/${_service}/install_${_service}.sh;start_${_service}"
+    docker exec -it ${_name} bash -c "source ${_SHARE_DIR}/${_service}/install_${_service}.sh;start_${_service}" || return $?
+    f_container_misc "${_name}"
 }
 
 function f_as_stop() {
@@ -825,7 +833,7 @@ function _cdh_setup() {
     docker exec -it ${_container_name} bash -c 'yum install -y openssh-server openssh-clients; service sshd start'
     docker exec -dt ${_container_name} bash -c 'yum install -y yum-plugin-ovl scp curl unzip tar wget openssl python nscd yum-utils sudo which vim net-tools strace lsof tcpdump fuse sshfs nc rsync bzip2 bzip2-libs krb5-workstation'
     _log "INFO" "Customising ${_container_name} ..."
-    f_container_misc "${_container_name}"
+    f_container_setup_misc "${_container_name}"
     f_container_ssh_config "${_container_name}"
     docker exec -it ${_container_name} bash -c '[ ! -f /usr/bin/docker-quickstart.orig ] && cp -p /usr/bin/docker-quickstart /usr/bin/docker-quickstart.orig'
     docker exec -it ${_container_name} bash -c 'sed -i_$(date +"%Y%m%d%H%M%S") "s/cloudera-quickstart-init//" /usr/bin/docker-quickstart'
