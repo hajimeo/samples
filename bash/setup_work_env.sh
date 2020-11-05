@@ -139,6 +139,7 @@ function f_setup_golang() {
 }
 
 function f_setup_python() {
+    local _no_venv="$1"
     if ! which python3 &>/dev/null && ! _install python3; then
         _log "ERROR" "no python3 installed or not in PATH"
         return 1
@@ -161,11 +162,13 @@ function f_setup_python() {
         sudo -i pip install -U data_hacks
     fi # it's OK if this fails
 
-    deactivate &>/dev/null
-    python3 -m pip install -U virtualenv
-    # When python version is changed, need to run virtualenv command again
-    virtualenv -p python3 $HOME/.pyvenv || return $?
-    source $HOME/.pyvenv/bin/activate || return $?
+    if [[ ! "${_no_venv}" =~ ^(y|Y) ]]; then
+        deactivate &>/dev/null
+        python3 -m pip install -U virtualenv
+        # When python version is changed, need to run virtualenv command again
+        virtualenv -p python3 $HOME/.pyvenv || return $?
+        source $HOME/.pyvenv/bin/activate || return $?
+    fi
 
     ### pip3 (not pip) from here ############################################################
     #python3 -m pip install -U pip &>/dev/null
@@ -174,7 +177,7 @@ function f_setup_python() {
     #python -m pip list -o --format=freeze | cut -d'=' -f1 | xargs python -m pip install -U
 
     # My favourite/essential python packages
-    python3 -m pip install -U lxml xmltodict pyyaml
+    python3 -m pip install -U lxml xmltodict pyyaml markdown
     python3 -m pip install -U pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
     # Important packages (Jupyter and pandas)
@@ -187,15 +190,14 @@ function f_setup_python() {
 
     # NOTE: Initially I thought pandasql looked good but it's actually using sqlite.
     python3 -m pip install -U sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip.log
-    # pandas_profiling fails at this moment. Pixiedust works only with jupyter-notebook
-    #python3 -m pip install -U pandas_profiling pandas-gbq pixiedust --log /tmp/pip.log
+    # Not installing below as pandas_profiling fails at this moment. Pixiedust works only with jupyter-notebook
+    #python3 -m pip install -U pandas_profiling pixiedust --log /tmp/pip.log
     # NOTE: In case I might use jupyter notebook, still installing this
     python3 -m pip install -U bash_kernel --log /tmp/pip.log && python3 -m bash_kernel.install
     # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3
     #python3 -m pip install beakerx && beakerx-install
 
-    # TODO: as of today no jupyter_contrib_labextensions (lab)
-    # Enable jupyter notebook extensions (spell checker)
+    # Enable jupyter Notebook extensions (not Lab)
     python3 -m pip install -U jupyter-contrib-nbextensions jupyter-nbextensions-configurator
     jupyter contrib nbextension install && jupyter nbextensions_configurator enable && jupyter nbextension enable spellchecker/main
     # Not working...?
@@ -205,17 +207,19 @@ function f_setup_python() {
     # Ref: http://holoviews.org/reference/index.html
     #python3 -m pip install 'holoviews[recommended]'
     #jupyter labextension install @pyviz/jupyterlab_pyviz
-    # TODO: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
-
+    # NOTE: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
     # Not so useful?
     #python3 -m pip install jupyterlab_templates
     #jupyter labextension install jupyterlab_templates && jupyter serverextension enable --py jupyterlab_templates
 
+    # For SASL test
     #_install libsasl2-dev
     #python3 -m pip install sasl thrift thrift-sasl PyHive
-    # This is for using Java 1.8 (to avoid "unsupported major.minor version 52.0")
+
+    # JDBC wrapper and 0.6.3 is for using Java 1.8 (to avoid "unsupported major.minor version 52.0")
     python3 -m pip install JPype1==0.6.3 JayDeBeApi
-    #python3 -m pip install google-cloud-bigquery
+    # For Google BigQuery (actually one of below)
+    #python3 -m pip install google-cloud-bigquery pandas-gbq
 
     f_jupyter_util
 }
