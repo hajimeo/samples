@@ -226,6 +226,137 @@ def _timestamp(unixtimestamp=None, format=None):
         return dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
     return dt.strftime(format)
 
+def _update_dict_with_key(k, d, rtn_d):
+    """
+    Update the rtn_d (dit) with the given d (dict) by filtering with k (string) key|attribute
+    >>> k = "attributes.checksum.sha1"
+    >>> d = {"attributes" : {"checksum" : {"sha1" : "you found me" }}}
+    >>> rtn_d = {"att_should_remain" : "aaaaa"}
+    >>> _update_dict_with_key(k, d, rtn_d)
+    {"att_should_remain": "aaaaa", "attributes.checksum.sha1": "you found me"}
+    """
+    if bool(rtn_d) is False:
+        rtn_d = {}  # initialising
+    if "\." not in k and k.find(".") > 0:
+        #sys.stderr.write(str(k) + "\n") # for debug
+        # returning the value only if all keys in _kNs exist
+        tmp_d = d
+        _kNs = k.split(".")
+        for _kN in _kNs:
+            if _kN in tmp_d:
+                tmp_d = tmp_d[_kN]
+                continue
+        # Trying to create tmp_d[_k0][_k1][_k2] ...
+        #value_to_store = tmp_d
+        #tmp_d = {}
+        #for _kN in reversed(_kNs):
+        #    if bool(tmp_d) is False:
+        #        tmp_d[_kN] = value_to_store
+        #    else:
+        #        tmp_tmp_d = tmp_d.copy()
+        #        tmp_d.clear()
+        #        tmp_d[_kN] = tmp_tmp_d
+        #rtn_d.update(tmp_d)
+        # At this moment, using the given k as key rather than above
+        rtn_d[k] = tmp_d
+        #sys.stderr.write(str(k) + " does not have backslash dot.\n") # for debug
+    elif "\." in k:
+        _tmp_k = k.replace("\\", "")
+        rtn_d[_tmp_k] = d[_tmp_k]
+        #sys.stderr.write(str(k) + " has backslash dot. ("+ str(_tmp_k) +"\n") # for debug
+    elif k in d:
+        rtn_d[k] = d[k]
+        #sys.stderr.write(str(k) + "\n") # for debug
+    #else:
+    #    sys.stderr.write(str(k) + " not in dict\n") # for debug
+    return rtn_d
+
+
+def get_json(filepath="", json_str="", search_props=None, key_name=None, rtn_attrs=None, find_all=False):
+    """
+    Return JSON object by searching search_prop specified properties
+    :param filepath: a file path string
+    :param json_str: (long) json string
+    :param search_props: search hierarchy string. eg: "xxxx,yyyy,key[:=]value" (*NO* space)
+    :param key_name: a key attribute in props. eg: '@class' (OrientDB), 'key' (jmx.json)
+    :param rtn_attrs: attribute1,attribute2,attr3.*subattr3* (using dot) to return only those attributes' value
+    :param find_all: If True, not stopping after finding one
+    :return: a dict (JSON) object
+    >>> get_json("", "{\"test\":\"test_result\"}", "test", "", "test")
+    'test_result'
+    """
+    m = ptn_k = None
+    if bool(search_props) and type(search_props) != list:
+        search_props = search_props.split(",")
+    if bool(key_name):
+        ptn_k = re.compile("[\"]?("+key_name+")[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")
+    if bool(rtn_attrs) and type(rtn_attrs) != list:
+        rtn_attrs = rtn_attrs.split(",")
+    _d = None
+    try:
+        if len(filepath) > 0:
+            with open(filepath) as f:
+                _d = json.load(f)
+        else:
+            _d = json.loads(json_str)
+    except Exception as e:
+        _err("No JSON file found from: %s ..." % (str(filepath)))
+        pass
+    _debug("len(_d) = " + str(len(_d)))
+    if bool(_d) is False:
+        return None
+    _debug("search_props = " + str(search_props))
+    for _p in search_props:
+        if type(_d) == list:
+            _debug("type _d is list when _p is " + _p)
+            _p_name = None
+            if bool(ptn_k):
+                # searching "key_name" : "some value"
+                m = ptn_k.search(_p)
+                if m:
+                    _debug("%s matches with %s" % (_p, key_name))
+                    (_p, _p_name) = m.groups()
+            _tmp_d = []
+            for _dd in _d:
+                if _p not in _dd:
+                    continue
+                if bool(_p_name) is False:
+                    _tmp_d.append(_dd[_p])
+                elif bool(_p_name) is True and _dd[_p] == _p_name:
+                    _tmp_d.append(_dd)
+                if len(_tmp_d) > 0 and bool(find_all) is False:
+                    break
+            if bool(_tmp_d) is False:
+                _d = None
+                break
+            if len(_tmp_d) == 1:
+                _d = _tmp_d[0]
+            else:
+                _d = _tmp_d
+        elif _p in _d:
+            _debug("%s is in _d" % _p)
+            _d = _d[_p]
+            continue
+        else:
+            _d = None
+            break
+    if bool(rtn_attrs) is True:
+        if type(_d) == list:
+            _tmp_dl = []
+            for _dd in _d:
+                _tmp_dd = {}
+                for _a in rtn_attrs:
+                    _tmp_dd = _update_dict_with_key(_a, _dd, _tmp_dd)
+                if len(_tmp_dd) > 0:
+                    _tmp_dl.append(_tmp_dd)
+            _d = _tmp_dl
+        elif type(_d) == dict:
+            _tmp_dd = {}
+            for _a in rtn_attrs:
+                _tmp_dd = _update_dict_with_key(_a, _d, _tmp_dd)
+            _d = _tmp_dd
+    return _d
+
 
 def _info(message):
     sys.stderr.write("%s\n" % (str(message)))
@@ -235,9 +366,9 @@ def _err(message):
     sys.stderr.write("[%s] ERROR: %s\n" % (_timestamp(), str(message)))
 
 
-def _debug(message):
+def _debug(message, dbg=False):
     global _DEBUG
-    if _DEBUG:
+    if _DEBUG or dbg:
         sys.stderr.write("[%s] DEBUG: %s\n" % (_timestamp(), str(message)))
 
 
@@ -594,6 +725,8 @@ def _udf_str_to_int(some_str):
     :param some_str: 350M, 350MB, 350GB, 350G, 60s, 60m, 60ms, 60%
     :return:         Integer
     """
+    if some_str is None:
+        return None
     matches = re.search('([\d.\-]+) ?([a-zA-z%]*)', some_str)
     if bool(matches) is False:
         return None
@@ -1704,6 +1837,7 @@ def _gen_regex_for_app_logs(filename="nexus.log"):
     return (columns, partern_str)
 
 
+# TODO: should create one function does all
 def _gen_regex_for_hazel_health(sample):
     """
     Return a list which contains column names, and regex pattern for nexus.log, clm-server.log, server.log
@@ -1716,6 +1850,24 @@ def _gen_regex_for_hazel_health(sample):
     # columns += list(map(lambda x: x.replace('.', '_'), cols_tmp))
     columns += cols_tmp
     partern_str = '^\[([^\]]+)]:([^ ]+) \[([^\]]+)\] \[([^\]]+)\]'
+    for c in cols_tmp:
+        partern_str += " %s=([^, ]+)," % (c)
+    partern_str += "?"
+    return (columns, partern_str)
+
+
+def _gen_regex_for_elastic_jvm(sample):
+    """
+    Return a list which contains column names, and regex pattern for nexus.log, clm-server.log, server.log
+    :param sample: A sample line
+    :return: (col_list, pattern_str)
+    """
+    # no need to add 'date_time'
+    columns = ["duration","total_time","mem_before","mem_after","memory"]
+    cols_tmp = re.findall(r'([^ ,]+)=', sample)
+    # columns += list(map(lambda x: x.replace('.', '_'), cols_tmp))
+    columns += cols_tmp
+    partern_str = ' total \[([^]]+)\]/\[([^]]+)\], memory \[([^]]+)\]->\[([^]]+)\]/\[([^]]+)\]'
     for c in cols_tmp:
         partern_str += " %s=([^, ]+)," % (c)
     partern_str += "?"
@@ -1885,7 +2037,7 @@ def df2files(df, filepath_prefix, extension="", columns=None, overwriting=False,
                 f2.write(row.to_csv(sep=sep))
 
 
-def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=10000, load_only=False):
+def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=10000, max_file_size=(1024 * 1024 * 100), load_only=False):
     """
     A prototype function to analyse hard-coded log files
     TODO: cleanup later. The log file names should not be hard-coded.
@@ -1904,19 +2056,18 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
     if bool(request_logs) is False:
         (col_names, line_matching) = _gen_regex_for_request_logs('request.log')
         request_logs = logs2table('request.log', tablename="t_request_logs", col_names=col_names, line_beginning="^.",
-                            line_matching=line_matching)
+                            line_matching=line_matching, max_file_size=max_file_size)
 
     # Loading application log file(s) into database.
     (col_names, line_matching) = _gen_regex_for_app_logs('nexus.log')
-    nxrm_logs = logs2table('nexus.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
+    nxrm_logs = logs2table('nexus.log', tablename="t_logs", col_names=col_names, line_matching=line_matching, max_file_size=max_file_size)
     (col_names, line_matching) = _gen_regex_for_app_logs('clm-server.log')
-    nxiq_logs = logs2table('clm-server.log', tablename="t_logs", col_names=col_names, line_matching=line_matching)
+    nxiq_logs = logs2table('clm-server.log', tablename="t_logs", col_names=col_names, line_matching=line_matching, max_file_size=max_file_size)
 
     # Hazelcast health monitor
-    health_monitor = csv2df('log_hazelcast_monitor.csv', tablename="t_health_monitor", conn=connect())
+    health_monitor = csv2df('log_hazelcast_monitor.csv', tablename="t_health_monitor", conn=connect(), if_exists="replace")
     if bool(health_monitor) is False and bool(nxrm_logs):
-        #_info("Generating t_health_monitor from t_logs ...")
-        df_hm = q("""select date_time, message from t_logs where loglevel = 'INFO' and class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
+        df_hm = q("""select date_time, message from t_logs where class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
         if len(df_hm) > 0:
             (col_names, line_matching) = _gen_regex_for_hazel_health(df_hm['message'][1])
             msg_ext = df_hm['message'].str.extract(line_matching)
@@ -1925,6 +2076,19 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
             df_hm.drop(columns=['message']).join(msg_ext).to_sql(name="t_health_monitor", con=connect(), chunksize=1000, if_exists='replace', schema=_DB_SCHEMA)
             health_monitor = True
             _autocomp_inject(tablename='t_health_monitor')
+
+    # Elastic JVM monitor
+    elastic_monitor = csv2df('log_elastic_jvm_monitor.csv', tablename="t_elastic_jvm_monitor", conn=connect(), if_exists="replace")
+    if bool(elastic_monitor) is False and bool(nxrm_logs):
+        df_em = q("""select date_time, message from t_logs where class = 'org.elasticsearch.monitor.jvm'""")
+        if len(df_em) > 0:
+            (col_names, line_matching) = _gen_regex_for_elastic_jvm(df_em['message'][1])
+            msg_ext = df_em['message'].str.extract(line_matching)
+            msg_ext.columns = col_names
+            # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
+            df_em.drop(columns=['message']).join(msg_ext).to_sql(name="t_elastic_jvm_monitor", con=connect(), chunksize=1000, if_exists='replace', schema=_DB_SCHEMA)
+            health_monitor = True
+            _autocomp_inject(tablename='t_elastic_jvm_monitor')
 
     display(desc(), name="Available_Tables")
     if load_only:
@@ -1937,7 +2101,7 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
         where_sql += " AND date_time <= '" + end_isotime + "'"
 
     if bool(request_logs):
-        display_name = "RequestLog_Hourly_aggs"
+        display_name = "RequestLog_StatusCode_Hourly_aggs"
         # Can't use above where_sql for this query
         where_sql2 = "WHERE 1=1"
         if bool(elapsed_time) is True:
@@ -1986,7 +2150,18 @@ FROM t_health_monitor
         _info("# Query (%s): \n%s" % (display_name, query))
         draw(q(query), name=display_name)
 
-    # Nexus IQ
+    if bool(elastic_monitor):
+        display_name = "NexusLog_ElasticJvm_Monitor"
+        query = """select date_time
+    , UDF_STR_TO_INT(duration) as duration_ms
+    , UDF_STR_TO_INT(total_time) as total_time_ms
+    , UDF_STR_TO_INT(mem_before) as mem_before_bytes
+    , UDF_STR_TO_INT(mem_after) as mem_after_bytes
+FROM t_elastic_jvm_monitor
+%s""" % (where_sql)
+        _info("# Query (%s): \n%s" % (display_name, query))
+        draw(q(query), name=display_name)
+
     if bool(nxiq_logs):
         display_name = "NxiqLog_Policy_Scan_aggs"
         query = """SELECT thread, min(date_time), max(date_time), 
