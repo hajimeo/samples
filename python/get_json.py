@@ -2,19 +2,6 @@ import json
 import re
 import sys
 
-_DEBUG = False
-
-
-def _err(message):
-    sys.stderr.write("ERROR: %s\n" % (str(message)))
-
-
-def _debug(message, dbg=False):
-    global _DEBUG
-    if _DEBUG or dbg:
-        sys.stderr.write("DEBUG: %s\n" % (str(message)))
-
-
 def _update_dict_with_key(k, d, rtn_d):
     """
     Update the rtn_d (dit) with the given d (dict) by filtering with k (string) key|attribute
@@ -89,21 +76,17 @@ def get_json(filepath="", json_str="", search_props=None, key_name=None, rtn_att
         else:
             _d = json.loads(json_str)
     except Exception as e:
-        _err("No JSON file found from: %s ..." % (str(filepath)))
+        sys.stderr.write("No JSON file found from: %s ...\n" % (str(filepath)))
         pass
-    _debug("len(_d) = " + str(len(_d)))
     if bool(_d) is False:
         return None
-    _debug("search_props = " + str(search_props))
     for _p in search_props:
         if type(_d) == list:
-            _debug("type _d is list when _p is " + _p)
             _p_name = None
             if bool(ptn_k):
                 # searching "key_name" : "some value"
                 m = ptn_k.search(_p)
                 if m:
-                    _debug("%s matches with %s" % (_p, key_name))
                     (_p, _p_name) = m.groups()
             _tmp_d = []
             for _dd in _d:
@@ -123,7 +106,6 @@ def get_json(filepath="", json_str="", search_props=None, key_name=None, rtn_att
             else:
                 _d = _tmp_d
         elif _p in _d:
-            _debug("%s is in _d" % _p)
             _d = _d[_p]
             continue
         else:
@@ -147,35 +129,36 @@ def get_json(filepath="", json_str="", search_props=None, key_name=None, rtn_att
     return _d
 
 
-search_props = None
-if len(sys.argv) > 1:
-    search_props = sys.argv[1]
-key_name = None
-if len(sys.argv) > 2:
-    key_name = sys.argv[2]
-rtn_attrs = None
-if len(sys.argv) > 3:
-    rtn_attrs = sys.argv[3]
-find_all = False
-if len(sys.argv) > 4:
-    find_all = sys.argv[4]
-_no_pprint = False
-if len(sys.argv) > 5:
-    _no_pprint = sys.argv[5]
+if __name__ == '__main__':
+    search_props = None
+    if len(sys.argv) > 1:
+        search_props = sys.argv[1]
+    key_name = None
+    if len(sys.argv) > 2:
+        key_name = sys.argv[2]
+    rtn_attrs = None
+    if len(sys.argv) > 3:
+        rtn_attrs = sys.argv[3]
+    find_all = False
+    if len(sys.argv) > 4:
+        find_all = sys.argv[4]
+    _no_pprint = False
+    if len(sys.argv) > 5:
+        _no_pprint = sys.argv[5]
 
-_in = sys.stdin.read()
-_d = get_json(json_str=_in, search_props=search_props, key_name=key_name, rtn_attrs=rtn_attrs, find_all=find_all)
+    _in = sys.stdin.read()
+    _d = get_json(json_str=_in, search_props=search_props, key_name=key_name, rtn_attrs=rtn_attrs, find_all=find_all)
 
-if bool(_no_pprint):
-    if type(_d) == list:
-        print('[')
-        for _i, _e in enumerate(_d):
-            if len(_d) == (_i + 1):
-                print('    %s' % json.dumps(_e))
-            else:
-                print('    %s,' % json.dumps(_e))
-        print(']')
-    else:
-        print(_d)
-elif bool(_d) is True:
-    print(json.dumps(_d, indent=4, sort_keys=True))
+    if bool(_no_pprint):
+        if type(_d) == list:
+            print('[')
+            for _i, _e in enumerate(_d):
+                if len(_d) == (_i + 1):
+                    print('    %s' % json.dumps(_e))
+                else:
+                    print('    %s,' % json.dumps(_e))
+            print(']')
+        else:
+            print(_d)
+    elif bool(_d) is True:
+        print(json.dumps(_d, indent=4, sort_keys=True))
