@@ -80,7 +80,7 @@ function iqHds() {
 function sptBoot() {
     local _zip="$1"
     local _opts="$2"    # --remote-debug --convert-repos
-    source $HOME/.pyvenv/bin/activate
+    pyenv activate mypyvenv
 
     [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
     if [ -z "${_zip}" ]; then

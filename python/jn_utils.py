@@ -1807,7 +1807,7 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
     else:
         files = _globr(filename)
         if bool(files) is False:
-            _err("No file found from: %s ..." % (str(filename)))
+            _err("No file found from: %s" % (str(filename)))
             return False
         file_path = files[0]
     if if_exists is None:
@@ -1819,7 +1819,12 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
     if type(header) == list:
         names = header
         header = None
-    df = pd.read_csv(file_path, escapechar='\\', header=header, names=names)
+    try:
+        # read_csv file fails if file is empty
+        df = pd.read_csv(file_path, escapechar='\\', header=header, names=names)
+    except pd.errors.EmptyDataError:
+        _err("File %s is empty" % (str(filename)))
+        return False
     if bool(conn):
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
