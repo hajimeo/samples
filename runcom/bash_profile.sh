@@ -50,4 +50,23 @@ if [ -f /usr/libexec/java_home ]; then
     [ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8 2>/dev/null`
 fi
 
+if [ -d "$HOME/.pyenv/bin" ]; then
+    export PATH="$HOME/.pyenv/bin:$PATH"
+    eval "$(pyenv init -)"
+    eval "$(pyenv virtualenv-init -)"
+fi
+
+if [ -d "$HOME/IdeaProjects/grumpy/build" ]; then
+    # https://github.com/google/grumpy
+    # make
+    export PATH="$HOME/IdeaProjects/grumpy/build/bin:$PATH"
+    export GRUMPYPATH="$HOME/IdeaProjects/grumpy/build"
+    #export GOPATH="$GRUMPYPATH:$GOPATH" # TODO: not sure if this is OK for other golang code
+    #export PYTHONPATH="$HOME/IdeaProjects/grumpy/build/lib/python2.7/site-packages:$PYTHONPATH"
+    # echo 'some python code' | GOPATH=GRUMPYPATH grumprun
+    # TODO: below causes get_json.bin: line 1: syntax error near unexpected token `newline'
+    #grumpc -modname=get_json ./get_json.py > ./get_json/module.go
+    #go build -o get_json_`uname` ./get_json
+fi
+
 export _SERVICE="sonatype"
