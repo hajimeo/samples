@@ -1287,26 +1287,7 @@ function _get_json() {
     local _attrs="${3}"         # attribute1,attribute2,attr3.*subattr3* (using dot) to return only those attributes' value
     local _find_all="${4}"      # If Y, not stopping after finding one
     local _no_pprint="${5}"     # no prettified output
-    local _isTrue="False"
-    [[ "${_find_all}" =~ ^(y|Y) ]] && _isTrue="True"
-    # language=Python
-    python3 -c "import sys,json,re
-import jn_utils as ju
-_in = sys.stdin.read()
-_d = ju.get_json(json_str=_in, search_props='${_props}', key_name='${_key}', rtn_attrs='${_attrs}', find_all=${_isTrue})
-if '${_no_pprint}'.lower() == 'y':
-    if type(_d) == list:
-        print('[')
-        for _i, _e in enumerate(_d):
-            if len(_d) == (_i + 1):
-                print('    %s' % json.dumps(_e))
-            else:
-                print('    %s,' % json.dumps(_e))
-        print(']')
-    else:
-        print(_d)
-elif bool(_d) is True:
-    print(json.dumps(_d, indent=4, sort_keys=True))"
+    python $HOME/IdeaProjects/samples/python/get_json.py $@
 }
 
 function _sed() {
