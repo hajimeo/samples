@@ -138,12 +138,37 @@ function f_setup_golang() {
     sudo chmod a+x /var/tmp/share/dlv
 }
 
+function f_setup_pyenv() {
+    local _ver="$1"
+    _install openssl readline sqlite3 xz zlib
+    # At this moment, not sure if below is needed 
+    #if [ "$(uname)" = "Darwin" ]; then
+    #    sudo installer -pkg /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg -target /
+    #fi
+    if which pyenv || grep -q -w pyenv $HOME/.bashrc || grep -q -w pyenv $HOME/.bash_profile; then
+        echo "Seems pyenv is configured (or intentionally disabled in .bashrc / .bash_profile)"
+    else
+        curl https://pyenv.run | bash || return $?
+        cat << EOF >> $HOME/.bash_profile
+export PATH="\$HOME/.pyenv/bin:\$PATH"
+eval "\$(pyenv init -)"
+eval "\$(pyenv virtualenv-init -)"
+EOF
+    fi
+    # shell script wouldn't read .bash_profile?
+    source $HOME/.bash_profile || return $?
+    if [ -n "${_ver}" ]; then
+        if [ ! -d "$HOME/.pyenv/versions/${_ver}" ]; then
+            pyenv install ${_ver} || return $?
+        fi
+        pyenv local ${_ver}
+        python3 -V | grep -iq "Python ${_ver}"
+    fi
+}
+
 function f_setup_python() {
     local _no_venv="$1"
-    if ! which python3 &>/dev/null && ! _install python3; then
-        _log "ERROR" "no python3 installed or not in PATH"
-        return 1
-    fi
+    local _ver="${2:-"3.7.9"}"  # For jupyter autocompletion issue, using 3.7.9...
 
     if ! sudo which pip &>/dev/null || ! pip -V; then
         _log "WARN" "no pip (for python2) installed or not in PATH (sudo easy_install pip). Trying to install..."
@@ -155,6 +180,9 @@ function f_setup_python() {
         _install python3-distutils
         python3 /tmp/get-pip.py || return $?
     fi
+    
+    f_setup_pyenv "${_ver}" || return $?
+
     # TODO: this works only with python2, hence not pip3 and not in virtualenv, and eventually will stop working
     if which python2 &>/dev/null; then
         sudo -i python2 -m pip install -U data_hacks
@@ -164,10 +192,14 @@ function f_setup_python() {
 
     if [[ ! "${_no_venv}" =~ ^(y|Y) ]]; then
         deactivate &>/dev/null
-        python3 -m pip install -U virtualenv
+        pyenv deactivate &>/dev/null    # Or pyenv local system
+
+        #python3 -m pip install -U virtualenv
         # When python version is changed, need to run virtualenv command again
-        virtualenv -p python3 $HOME/.pyvenv || return $?
-        source $HOME/.pyvenv/bin/activate || return $?
+        #virtualenv -p python3 $HOME/.pyvenv || return $?
+        #source $HOME/.pyvenv/bin/activate || return $?
+        pyenv virtualenv ${_ver} mypyvenv || return $?
+        pyenv activate mypyvenv || return $?
     fi
 
     ### pip3 (not pip) from here ############################################################
@@ -183,7 +215,9 @@ function f_setup_python() {
     # Important packages (Jupyter and pandas)
     # TODO: Autocomplete doesn't work with Lab and NB if different version is used. @see https://github.com/ipython/ipython/issues/11530
     #       However, using 7.1.1 with python 3.8 may cause TypeError: required field "type_ignores" missing from Module
-    #python3 -m pip install ipython==7.1.1 #prettytable==0.7.2
+    if python3 -V | grep -iq "Python 3.7"; then
+        python3 -m pip install ipython==7.1.1 #prettytable==0.7.2
+    fi
     python3 -m pip install -U ipython jupyter jupyterlab pandas --log /tmp/pip.log || return $?
     # Reinstall: python3 -m pip uninstall -y jupyterlab && python3 -m pip install jupyterlab
     # If not using python venv, may need to use jupyterlab_templates "sudo -H"
@@ -232,7 +266,10 @@ function f_jupyter_util() {
     if [ ! -d "$HOME/IdeaProjects/samples/java/hadoop" ]; then
         mkdir -p "$HOME/IdeaProjects/samples/java/hadoop" || return $?
     fi
+    # TODO: If not local test, would like to always overwrite ...
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/jn_utils.py" "$HOME/IdeaProjects/samples/python/jn_utils.py" "Y" "Y" || return $?
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/get_json.py" "$HOME/IdeaProjects/samples/python/get_json.py" "Y" "Y" || return $?
+
     #_download "https://public-xxxxxxx.s3.amazonaws.com/hive-jdbc-client-1.2.1.jar" "$HOME/IdeaProjects/samples/java/hadoop/hive-jdbc-client-1.2.1.jar" "Y" "Y" || return $?
     _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "$HOME/IdeaProjects/samples/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y" || return $?
     _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "$HOME/IdeaProjects/samples/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "Y" "Y" || return $?
@@ -316,33 +353,37 @@ function _symlink_or_download() {
     fi
 }
 
-# TODO: setup (not install) below
+# TODO: setup below (not installing at this moment)
 #s3cmd
+
+main() {
+    sudo echo "Starting setup ..."
+    _log "INFO" "Running f_setup_misc ..."
+    f_setup_misc
+    echo "Exit code $?"
+    _log "INFO" "Running f_setup_screen ..."
+    f_setup_screen
+    echo "Exit code $?"
+    _log "INFO" "Running f_setup_rg ..."
+    f_setup_rg
+    echo "Exit code $?"
+    _log "INFO" "Running f_setup_jupyter ..."
+    f_setup_python
+    echo "Exit code $?"
+    _log "INFO" "Running f_setup_golang ..."
+    f_setup_golang
+    echo "Exit code $?"
+    _log "INFO" "Running f_setup_java ..."
+    f_setup_java
+    echo "Exit code $?"
+}
 
 ### Main ###############################################################################################################
 if [ "$0" = "$BASH_SOURCE" ]; then
     if [[ "$1" =~ ^f_ ]]; then
         eval "$@"
     else
-        sudo echo "Starting setup ..."
-        _log "INFO" "Running f_setup_misc ..."
-        f_setup_misc
-        echo "Exit code $?"
-        _log "INFO" "Running f_setup_screen ..."
-        f_setup_screen
-        echo "Exit code $?"
-        _log "INFO" "Running f_setup_rg ..."
-        f_setup_rg
-        echo "Exit code $?"
-        _log "INFO" "Running f_setup_jupyter ..."
-        f_setup_python
-        echo "Exit code $?"
-        _log "INFO" "Running f_setup_golang ..."
-        f_setup_golang
-        echo "Exit code $?"
-        _log "INFO" "Running f_setup_java ..."
-        f_setup_java
-        echo "Exit code $?"
+        main
         echo "Completed."
     fi
 fi
