@@ -814,10 +814,10 @@ function f_threads() {
         local _count=0
         # _count doesn't work with while
         #find ${_file%/} -type f -name 'threads*.txt' 2>/dev/null | while read -r _f; do
-        for _f in $(find ${_file%/} -type f -name 'threads*.txt' -print 2>/dev/null); do
+        for _f in $(find ${_file%/} -type f \( -name 'threads*.txt' -o -name '20*.out' \) -print 2>/dev/null); do
             local _filename=$(basename ${_f})
             echo "Saving outputs into f_thread_${_filename%.*}.out ..."
-            f_threads "${_file%/}/${_f}" "${_split_search}" "${_running_thread_search_re}" "${_save_dir%/}/${_filename%.*}" "Y" > ./f_thread_${_filename%.*}.out
+            f_threads "${_f}" "${_split_search}" "${_running_thread_search_re}" "${_save_dir%/}/${_filename%.*}" "Y" > ./f_thread_${_filename%.*}.out
             _count=$(( ${_count} + 1 ))
         done
         echo " "
@@ -1287,7 +1287,7 @@ function _get_json() {
     local _attrs="${3}"         # attribute1,attribute2,attr3.*subattr3* (using dot) to return only those attributes' value
     local _find_all="${4}"      # If Y, not stopping after finding one
     local _no_pprint="${5}"     # no prettified output
-    python $HOME/IdeaProjects/samples/python/get_json.py $@
+    python3 $HOME/IdeaProjects/samples/python/get_json.py "${_props}" "${_key}" "${_attrs}" "${_find_all}" "${_no_pprint}"
 }
 
 function _sed() {
