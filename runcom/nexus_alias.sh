@@ -79,7 +79,7 @@ function iqHds() {
 
 function sptBoot() {
     local _zip="$1"
-    local _opts="$2"    # --remote-debug --convert-repos
+    local _opts="${2-"--noboot --convert-repos"}"    # --remote-debug
     pyenv activate mypyvenv
 
     [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
@@ -94,24 +94,22 @@ function sptBoot() {
         cp $HOME/IdeaProjects/samples/misc/standalone.localdomain.jks $HOME/.nexus_executable_cache/ssl/keystore.jks
         echo "Append 'local.standalone.localdomain' in 127.0.0.1 line in /etc/hosts."
     fi
-    python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ${_opts} "${_zip}" ./$(basename "${_zip}" .zip)_tmp || echo "NOTE: If error was port already in use, you might need to run below:
-    . ~/IdeaProjects/work/bash/install_sonatype.sh
-    f_sql_nxrm \"config\" \"SELECT attributes['docker']['httpPort'] FROM repository WHERE attributes['docker']['httpPort'] IS NOT NULL\" \".\" \"\$USER\"
-If ports conflict, edit nexus.properties is easier. eg:8080.
-If community repositories are used, add --convert-repos (-cr) flag.
-"
+    local _dir="./$(basename "${_zip}" .zip)_tmp"
+    python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ${_opts} "${_zip}" "${_dir}" || return $?
+    nxrmStart "${_dir}" ""
 }
 
 # To start local (on Mac) IQ server
 function nxrmStart() {
     local _base_dir="${1:-"."}"
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"}
-    local _mode=${3:-"run"} # if NXRM2, not run
+    local _mode=${3:-"run"} # if NXRM2, not run but start
     #local _java_opts=${@:2}
     local _nexus_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
     local _cfg_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/sonatype-work/nexus3/etc/*' -type f -name 'nexus.properties' 2>/dev/null | sort | tail -n1)"
     local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
     grep -qE '^\s*nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
+    # NOTE: this would not work if elasticsearch directory is empty
     grep -qE '^\s*nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
     # TODO: version check as below breaks older nexus versions.
     sed -i.bak 's@class="org.eclipse.jetty.util.ssl.SslContextFactory"@class="org.eclipse.jetty.util.ssl.SslContextFactory$Server"@g' ${_jetty_https}
@@ -266,7 +264,7 @@ function mvn-dep-file() {
 
 # Get one jar (file) by GAV
 function mvn-get-file() {
-    local _gav="$1" # eg: junit:junit:4.12
+    local _gav="${1:-"junit:junit:4.12"}"
     local _repo_url="${2:-"http://dh1.standalone.localdomain:8081/repository/maven-public/"}"
     local _user="${3:-"admin"}"
     local _pwd="${4:-"admin123"}"
@@ -284,7 +282,7 @@ function mvn-get-file() {
 # mvn devendency:get wrapper to use remote repo
 function mvn-get() {
     # maven/mvn get/download
-    local _gav="$1" # eg: junit:junit:4.12
+    local _gav="${1:-"junit:junit:4.12"}"
     local _remote_repo="$2"
     local _local_repo="${3-"./local_repo"}"
     local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -Dtransitive=false -U -X"}"
