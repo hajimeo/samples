@@ -85,17 +85,21 @@ function sptBoot() {
     [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
     if [ -z "${_zip}" ]; then
         _zip="$(ls -1 ./*-202?????-??????*.zip | tail -n1)" || return $?
-        echo "Using ${_zip} ..."
+        echo "# Using ${_zip} ..."
     fi
     #echo "To just re-launch or start, check relaunch-support.sh"
     if [ ! -s $HOME/.nexus_executable_cache/ssl/keystore.jks.orig ]; then
-        echo "Replacing keystore.jks ..."
+        echo "# Replacing keystore.jks ..."
         mv $HOME/.nexus_executable_cache/ssl/keystore.jks $HOME/.nexus_executable_cache/ssl/keystore.jks.orig
         cp $HOME/IdeaProjects/samples/misc/standalone.localdomain.jks $HOME/.nexus_executable_cache/ssl/keystore.jks
-        echo "Append 'local.standalone.localdomain' in 127.0.0.1 line in /etc/hosts."
+        echo "# Append 'local.standalone.localdomain' in 127.0.0.1 line in /etc/hosts."
     fi
     local _dir="./$(basename "${_zip}" .zip)_tmp"
-    python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ${_opts} "${_zip}" "${_dir}" || return $?
+    if [ ! -d "${_dir}" ]; then
+        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ${_opts} "${_zip}" "${_dir}" || return $?
+    else
+        echo "# ${_dir} already exists. so just starting ..."
+    fi
     nxrmStart "${_dir}" ""
 }
 
@@ -103,16 +107,23 @@ function sptBoot() {
 function nxrmStart() {
     local _base_dir="${1:-"."}"
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"}
-    local _mode=${3:-"run"} # if NXRM2, not run but start
+    local _mode=${3} # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
     local _nexus_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
     local _cfg_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/sonatype-work/nexus3/etc/*' -type f -name 'nexus.properties' 2>/dev/null | sort | tail -n1)"
     local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
-    grep -qE '^\s*nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
-    # NOTE: this would not work if elasticsearch directory is empty
-    grep -qE '^\s*nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
-    # TODO: version check as below breaks older nexus versions.
-    sed -i.bak 's@class="org.eclipse.jetty.util.ssl.SslContextFactory"@class="org.eclipse.jetty.util.ssl.SslContextFactory$Server"@g' ${_jetty_https}
+    if [ -n "${_cfg_file}" ]; then
+        grep -qE '^\s*nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
+        # NOTE: this would not work if elasticsearch directory is empty
+        grep -qE '^\s*nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
+        [ -z "${_mode}" ] && _mode="run"
+    else
+        [ -z "${_mode}" ] && _mode="console"
+    fi
+    if [ -n "${_jetty_https}" ]; then
+        # TODO: version check as below breaks older nexus versions.
+        sed -i.bak 's@class="org.eclipse.jetty.util.ssl.SslContextFactory"@class="org.eclipse.jetty.util.ssl.SslContextFactory$Server"@g' ${_jetty_https}
+    fi
     [ -n "${_java_opts}" ] && [[ ! "${INSTALL4J_ADD_VM_PARAMS}" =~ "${_java_opts}" ]] && export INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}"
     ${_nexus_file} ${_mode}
 }
