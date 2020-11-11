@@ -295,7 +295,7 @@ listen stats
   hash-type consistent
   option forwardfor
   http-request set-header X-Forwarded-Port %[dst_port]
-  option httpchk" >>"${_cfg}"
+  option httpchk OPTIONS /" >>"${_cfg}"
                 #  http-request add-header X-Forwarded-Proto ${_backend_proto}
                 cat /tmp/f_haproxy_backends_$$.out >>"${_cfg}"
                 echo "" >>"${_cfg}"
