@@ -946,7 +946,9 @@ function f_request2csv() {
     local _g_opt="-g"
     [ -s "${_glob}" ] && _g_opt=""
 
-    if [ -z "${_out_file}" ]; then
+    if [ -d "${_out_file}" ]; then
+        _out_file="${_out_file%/}/$(basename ${_glob} .log).csv"
+    elif [ -z "${_out_file}" ]; then
         _out_file="$(basename ${_glob} .log).csv"
     fi
     # NOTE: check jetty-requestlog.xml and logback-access.xml
@@ -1016,7 +1018,9 @@ function f_audit2json() {
     local _glob="${1:-"audit.log"}"
     local _out_file="$2"
 
-    if [ -z "${_out_file}" ]; then
+    if [ -d "${_out_file}" ]; then
+        _out_file="${_out_file%/}/$(basename ${_glob} .log).json"
+    elif [ -z "${_out_file}" ]; then
         _out_file="$(basename ${_glob} .log).json"
     fi
 
