@@ -51,6 +51,7 @@ def _update_dict_with_key(k, d, rtn_d):
 def get_json(filepath="", json_str="", search_props=None, key_name=None, rtn_attrs=None, find_all=False):
     """
     Return JSON object by searching search_prop specified properties
+    TODO: dirty and probably ineffcient
     :param filepath: a file path string
     :param json_str: (long) json string
     :param search_props: search hierarchy string. eg: "xxxx,yyyy,key[:=]value" (*NO* space)
