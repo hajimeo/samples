@@ -6,6 +6,7 @@
 #
 # DOWNLOAD:
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
+#   source /dev/stdin <<< "$(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh)"
 #   (optional)
 #   curl https://raw.githubusercontent.com/hajimeo/samples/master/python/line_parser.py -o /usr/local/bin/line_parser.py
 #
@@ -893,7 +894,7 @@ function f_count_threads_per_dump() {
 
     local _ext="${_file##*.}"
     if [[ "${_ext}" =~ gz ]]; then
-        _csplit -f "${_prefix}" <(gunzip -c ${_file}) "/${_search}/" '{*}'
+        gunzip -c ${_file} | _csplit -f "${_prefix}" - "/${_search}/" '{*}'
     else
         _csplit -f "${_prefix}" ${_file} "/${_search}/" '{*}'
     fi
