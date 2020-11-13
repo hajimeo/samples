@@ -34,8 +34,8 @@ Convert current time or string date to Unix timestamp
 """
 
 # TODO: When you add a new pip package, don't forget to update setup_work_env.sh
-import sys, os, io, fnmatch, gzip, re, linecache, json, sqlite3
-from time import time, mktime, strftime
+import sys, os, io, fnmatch, gzip, re, json, sqlite3
+from time import time, mktime
 from datetime import datetime
 from dateutil import parser
 import pandas as pd
@@ -94,27 +94,6 @@ def _mexec(func_obj, args_list, num=None):
     executor = mp.Pool(processes=num)
     rs = executor.starmap_async(func_obj, args_list)
     return rs.get()
-
-
-def _dict2global(d, scope=None, overwrite=False):
-    """
-    Iterate the given dict and create global variables (key = value)
-    NOTE: somehow this function can't be called from inside of a function in Jupyter
-    :param d: a dict object
-    :param scope: should pass 'globals()' or 'locals()'
-    :param overwrite: If True, instead of throwing error, just overwrites with the new value
-    :return: void
-    >>> _dict2global({'a':'test', 'b':'test2'}, globals(), True)
-    >>> b == 'test2'
-    True
-    """
-    if bool(scope) is False:
-        scope = globals()
-    for k, v in d.items():
-        if k in scope and overwrite is False:
-            raise ValueError('%s is already used' % (k))
-            # continue
-        scope[k] = v
 
 
 def _chunks(l, n):
@@ -812,15 +791,6 @@ def query_execute(sql, conn):
     return result
 
 
-def _escape_query(sql):
-    """
-    TODO: would need to add more characters for escaping (eg: - in table name requires double quotes)
-    :param sql:
-    :return: string - escaped query
-    """
-    return sql.replace("'", "''")
-
-
 def _save_query(sql, limit=1000):
     """
     Save a sql into a history file
@@ -865,7 +835,7 @@ def _autocomp_matcher(text):
 def _autocomp_inject(tablename=None):
     """
     Some hack to use autocomplete in the SQL
-    TODO: doesn't work any more with newer jupyter lab|notebook
+    NOTE: Only works with python 3.7 and older ipython
     :param tablename: Optional
     :return: Void
     """
@@ -1480,16 +1450,6 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     return tuples
 
 
-def threads2table(filename="threads.txt", tablename=None, conn=None, date_time=None):
-    # TODO: date_time (should use file modified time? but not trust-able)
-    # TODO: waiting on | locked
-    return logs2table(filename=filename, tablename=tablename, conn=conn,
-                      col_names=['thread_name', 'id', 'state', 'stacktrace'],
-                      line_beginning="^\"",
-                      line_matching='^"([^"]+)" id=([^ ]+) state=(\w+)(.*)',
-                      size_regex=None, time_regex=None)
-
-
 def logs2table(filename, tablename=None, conn=None,
                col_names=['date_time', 'loglevel', 'thread', 'node', 'user', 'class', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
@@ -1678,122 +1638,6 @@ def logs2dfs(filename, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size
     if bool(dfs) is False:
         return None
     return pd.concat(dfs, sort=False)
-
-
-def _gen_regex_for_request_logs(filename="request.log"):
-    """
-    Return a list which contains column names, and regex pattern for request.log
-    :param filename: A file name or *simple* regex used in glob to select files.
-    :return: (col_list, pattern_str)
-    """
-    files = _globr(filename)
-    if bool(files) is False:
-        return ([], "")
-    checking_line = linecache.getline(files[0], 2)  # first line can be a junk: "** TRUNCATED ** linux x64"
-    # @see: samples/bash/log_search.sh:f_request2csv()
-    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
-               "elapsedTime", "headerUserAgent", "thread"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
-    if re.search(partern_str, checking_line):
-        return (columns, partern_str)
-    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime",
-               "headerUserAgent", "thread"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
-    if re.search(partern_str, checking_line):
-        return (columns, partern_str)
-    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime",
-               "headerUserAgent"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)'
-    if re.search(partern_str, checking_line):
-        return (columns, partern_str)
-    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([0-9]+)'
-    if re.search(partern_str, checking_line):
-        return (columns, partern_str)
-
-    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "misc"]
-    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'
-    if re.search(partern_str, checking_line):
-        return (columns, partern_str)
-    else:
-        _info("Can not determine the log format for %s . Using last one." % (str(files[0])))
-        return (columns, partern_str)
-
-
-def _gen_regex_for_app_logs(filepath=""):
-    """
-    Return a list which contains column names, and regex pattern for nexus.log, clm-server.log, server.log
-    :param filepath: A file path or a file name or *simple* pattern used in glob to select files.
-    :param checking_line: Based on this line, columns and regex will be decided
-    :return: (col_list, pattern_str)
-    2020-01-03 00:00:38,357-0600 WARN  [qtp1359575796-407871] anonymous org.sonatype.nexus.proxy.maven.maven2.M2GroupRepository - IOException during parse of metadata UID="oracle:/junit/junit-dep/maven-metadata.xml", will be skipped from aggregation!
-    """
-    if bool(_get_filesize(filepath)) is False:
-        files = _globr(filepath)
-        if bool(files) is False:
-            return ([], "")
-        filepath = files[0]
-
-    # Default and in case can't be identified
-    columns = ['date_time', 'loglevel', 'message']
-    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +(.+)'
-
-    checking_line = None
-    for i in range(1, 10):
-        checking_line = linecache.getline(filepath, i)
-        if re.search('^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*)', checking_line):
-            break
-    if bool(checking_line) is False:
-        _info("Could not determine columns and pattern_str. Using default.")
-        return (columns, partern_str)
-    _debug(checking_line)
-
-    columns = ['date_time', 'loglevel', 'thread', 'node', 'user', 'class', 'message']
-    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]*) ([^ ]+) - (.*)'
-    if re.search(partern_str, checking_line):
-        return (columns, partern_str)
-    columns = ['date_time', 'loglevel', 'thread', 'user', 'class', 'message']
-    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)'
-    if re.search(partern_str, checking_line):
-        return (columns, partern_str)
-    return (columns, partern_str)
-
-
-# TODO: should create one function does all
-def _gen_regex_for_hazel_health(sample):
-    """
-    Return a list which contains column names, and regex pattern for nexus.log, clm-server.log, server.log
-    :param sample: A sample line
-    :return: (col_list, pattern_str)
-    """
-    # no need to add 'date_time'
-    columns = ['ip', 'port', 'user', 'cluster_ver']
-    cols_tmp = re.findall(r'([^ ,]+)=', sample)
-    # columns += list(map(lambda x: x.replace('.', '_'), cols_tmp))
-    columns += cols_tmp
-    partern_str = '^\[([^\]]+)]:([^ ]+) \[([^\]]+)\] \[([^\]]+)\]'
-    for c in cols_tmp:
-        partern_str += " %s=([^, ]+)," % (c)
-    partern_str += "?"
-    return (columns, partern_str)
-
-
-def _gen_regex_for_elastic_jvm(sample):
-    """
-    Return a list which contains column names, and regex pattern for nexus.log, clm-server.log, server.log
-    :param sample: A sample line
-    :return: (col_list, pattern_str)
-    """
-    # no need to add 'date_time'
-    columns = ["duration","total_time","mem_before","mem_after","memory"]
-    cols_tmp = re.findall(r'([^ ,]+)=', sample)
-    # columns += list(map(lambda x: x.replace('.', '_'), cols_tmp))
-    columns += cols_tmp
-    partern_str = ' total \[([^]]+)\]/\[([^]]+)\], memory \[([^]]+)\]->\[([^]]+)\]/\[([^]]+)\]'
-    for c in cols_tmp:
-        partern_str += " %s=([^, ]+)," % (c)
-    partern_str += "?"
-    return (columns, partern_str)
 
 
 def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000, useRegex=False):
