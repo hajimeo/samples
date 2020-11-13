@@ -162,7 +162,7 @@ function iqStart() {
     java -Xmx2g ${_java_opts} -jar "${_jar_file}" server "${_cfg_file}"
 }
 
-#iqDocker "nxiq-test" "" "8170" "8171" "8544" "--read-only -v /tmp/nxiq-test:/tmp"
+#iqDocker "nxiq-test" "" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
 function iqDocker() {
     local _name="${1:-"nxiq"}"
     local _tag="${2:-"latest"}"
