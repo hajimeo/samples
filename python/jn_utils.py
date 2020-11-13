@@ -356,7 +356,7 @@ def json2df(filename, tablename=None, conn=None, jq_query="", list_only=False, j
     else:
         files = _globr(filename)
         if bool(files) is False:
-            _err("No file found from: %s ..." % (str(filename)))
+            _info("No file named: %s ..." % (str(filename)))
             return False
     dfs = []
     for file_path in files:
@@ -1542,7 +1542,7 @@ def logs2table(filename, tablename=None, conn=None,
     else:
         files = _globr(filename)
     if bool(files) is False:
-        _err("No file by searching with %s ..." % (str(filename)))
+        _info("No file named: %s ..." % (str(filename)))
         return False
     if len(files) > max_file_num:
         raise ValueError('Glob: %s returned too many files (%s)' % (filename, str(len(files))))
@@ -1854,7 +1854,7 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
     else:
         files = _globr(filename)
         if bool(files) is False:
-            _err("No file found from: %s" % (str(filename)))
+            _info("No file named: %s ..." % (str(filename)))
             return False
         file_path = files[0]
     if if_exists is None:
