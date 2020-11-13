@@ -804,9 +804,9 @@ function f_threads() {
     local _tmp_dir="$(mktemp -d)"
 
     if [ ! -d "${_file}" ] && [[ ! "${_not_split_by_date}" =~ ^(y|Y) ]]; then
-        local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$' -c ${_file})
+        local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -c ${_file})
         if [ 1 -lt ${_how_many_threads:-0} ]; then
-            f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d$" "${_tmp_dir%/}" "" || return $?
+            f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d" "${_tmp_dir%/}" "" || return $?
             _file="${_tmp_dir%/}"
         fi
     fi
@@ -823,8 +823,10 @@ function f_threads() {
         done
         echo " "
         # Only when checking multiple thread dumps
-        echo "## Long running threads including '${_running_thread_search_re}' (threads:${_count})"
+        echo "## Long running and no-change (same hash) threads contain '${_running_thread_search_re}' (threads:${_count})"
         rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
+        echo "## Long running threads contain '${_running_thread_search_re}' (threads:${_count})"
+        rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
         #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
         echo " "
         return $?
