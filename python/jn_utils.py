@@ -878,7 +878,7 @@ def _system(command):
 
 def display(df, name="", desc=""):
     """
-    Wrapper of IPython.display.display
+    Wrapper of IPython.display.display for DataFrame object
     :param df: A DataFrame object
     :param name: Caption and also used when saving into file
     :param desc: Optional description (eg: SQL statement)
@@ -892,7 +892,7 @@ def display(df, name="", desc=""):
         #df.style.set_caption(name)
         name_html += "<h4>"+name+"</h4>"
         if bool(desc):
-            name_html += "<p>"+desc+"</p>"
+            name_html += "<pre>"+desc+"</pre>"
     if _is_jupyter():
         _display(name_html+df.to_html())
     else:
@@ -948,7 +948,7 @@ def _pivot_ui(df, outfile_path="pivottablejs.html", **kwargs):
     _info("%s is created." % outfile_path)
 
 
-def draw(df, width=8, x_col=0, x_colname=None, name="", desc="", tail=10):
+def draw(df, width=8, x_col=0, x_colname=None, name=None, desc="", tail=10):
     """
     Helper function for df.plot()
     As pandas.DataFrame.plot is a bit complicated, using simple options only if this method is used.
@@ -966,8 +966,6 @@ def draw(df, width=8, x_col=0, x_colname=None, name="", desc="", tail=10):
     #>>> draw(ju.q("select QueryHour, SumSqSqlWallTime, SumPostPlanTime, SumSqPostPlanTime from query_stats")).tail()
     >>> pass    # TODO: implement test
     """
-    if bool(name) is False:
-        name = _timestamp(format="%Y%m%d%H%M%S%f")
     height_inch = 8
     if len(df) == 0:
         _debug("No rows to draw.")
@@ -976,10 +974,19 @@ def draw(df, width=8, x_col=0, x_colname=None, name="", desc="", tail=10):
         height_inch = len(df.columns) * 4
     if bool(x_colname) is False:
         x_colname = df.columns[x_col]
-    df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)
-    if len(name) > 0:
-        plt.savefig("%s.png" % (str(name)))
+    df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)  #, title=name
+    if bool(name) is False:
+        name = _timestamp(format="%Y%m%d%H%M%S%f")
+    plt.savefig("%s.png" % (str(name)))
     if _is_jupyter():
+        _html = ""
+        if bool(name):
+            _html += "<h4>"+name+"</h4>"
+        if bool(desc):
+            _html += "<pre>"+desc+"</pre>"
+        if len(_html) > 0:
+            _display(_html)
+        # Force displaying, otherwise, name (titile) and desc won't show in expected order
         plt.show()
     # TODO: x axis doesn't show any legend
     # if len(df) > (width * 2):

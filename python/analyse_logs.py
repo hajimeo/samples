@@ -69,7 +69,7 @@ def _gen_regex_for_app_logs(filepath=""):
     if bool(checking_line) is False:
         ju._info("Could not determine columns and pattern_str. Using default.")
         return (columns, partern_str)
-    ju.__debug(checking_line)
+    ju._debug(checking_line)
 
     columns = ['date_time', 'loglevel', 'thread', 'node', 'user', 'class', 'message']
     partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]*) ([^ ]+) - (.*)'
@@ -139,11 +139,9 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
     :return: void
     >>> pass    # test should be done in each function
     """
-    # TODO: should support non jupyter
-    if ju._is_jupyter:
-        get_ipython().system('[ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh')
-        get_ipython().system('[ ! -d _filtered ] && mkdir _filtered')
-        get_ipython().system('source /tmp/log_search.sh && f_request2csv "" _filtered && f_audit2json "" _filtered')
+    # At this moment, using system commands only when ./_filtered does not exist
+    ju._system('[ ! -d ./_filtered ] && [ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh')
+    ju._system('[ ! -d ./_filtered ] && mkdir ./_filtered && source /tmp/log_search.sh && f_request2csv "" _filtered && f_audit2json "" _filtered')
 
     # Audit json if audit.json file exists
     _ = ju.json2df('audit.json', tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=ju.connect())
@@ -151,14 +149,14 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
     # If request.*csv* exists, use that (because it's faster), if not, logs2table, which is slower.
     request_logs = ju.csv2df('request.csv', tablename="t_request_logs", conn=ju.connect(), if_exists="replace")
     if bool(request_logs) is False:
-        (col_names, line_matching) = ju._gen_regex_for_request_logs('request.log')
+        (col_names, line_matching) = _gen_regex_for_request_logs('request.log')
         request_logs = ju.logs2table('request.log', tablename="t_request_logs", col_names=col_names, line_beginning="^.",
                                      line_matching=line_matching, max_file_size=max_file_size)
 
     # Loading application log file(s) into database.
-    (col_names, line_matching) = ju._gen_regex_for_app_logs('nexus.log')
+    (col_names, line_matching) = _gen_regex_for_app_logs('nexus.log')
     nxrm_logs = ju.logs2table('nexus.log', tablename="t_logs", col_names=col_names, line_matching=line_matching, max_file_size=max_file_size)
-    (col_names, line_matching) = ju._gen_regex_for_app_logs('clm-server.log')
+    (col_names, line_matching) = _gen_regex_for_app_logs('clm-server.log')
     nxiq_logs = ju.logs2table('clm-server.log', tablename="t_logs", col_names=col_names, line_matching=line_matching, max_file_size=max_file_size)
 
     # Hazelcast health monitor
@@ -166,7 +164,7 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
     if bool(health_monitor) is False and bool(nxrm_logs):
         df_hm = ju.q("""select date_time, message from t_logs where class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
         if len(df_hm) > 0:
-            (col_names, line_matching) = ju._gen_regex_for_hazel_health(df_hm['message'][1])
+            (col_names, line_matching) = _gen_regex_for_hazel_health(df_hm['message'][1])
             msg_ext = df_hm['message'].str.extract(line_matching)
             msg_ext.columns = col_names
             # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
@@ -179,7 +177,7 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
     if bool(elastic_monitor) is False and bool(nxrm_logs):
         df_em = ju.q("""select date_time, message from t_logs where class = 'org.elasticsearch.monitor.jvm'""")
         if len(df_em) > 0:
-            (col_names, line_matching) = ju._gen_regex_for_elastic_jvm(df_em['message'][1])
+            (col_names, line_matching) = _gen_regex_for_elastic_jvm(df_em['message'][1])
             msg_ext = df_em['message'].str.extract(line_matching)
             msg_ext.columns = col_names
             # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
@@ -216,8 +214,7 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
 FROM t_request_logs
 %s
 GROUP BY 1, 2""" % (where_sql2)
-        ju._info("# Query (%s): \n%s" % (display_name, query))
-        ju.display(ju.q(query), name=display_name)
+        ju.display(ju.q(query), name=display_name, desc=query)
 
         display_name = "RequestLog_Status_ByteSent_Elapsed"
         query = """SELECT UDF_STR2SQLDT(`date`, '%%d/%%b/%%Y:%%H:%%M:%%S %%z') AS date_time, 
@@ -225,8 +222,7 @@ GROUP BY 1, 2""" % (where_sql2)
     CAST(bytesSent AS INTEGER) AS bytesSent, 
     CAST(elapsedTime AS INTEGER) AS elapsedTime 
 FROM t_request_logs %s""" % (where_sql)
-        ju._info("# Query (%s): \n%s" % (display_name, query))
-        ju.draw(ju.q(query).tail(tail_num), name=display_name)
+        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
     if bool(health_monitor):
         display_name = "NexusLog_Health_Monitor"
@@ -244,8 +240,7 @@ FROM t_request_logs %s""" % (where_sql)
     , CAST(`connection.active.count` AS INTEGER) as node_conn_count
 FROM t_health_monitor
 %s""" % (where_sql)
-        ju._info("# Query (%s): \n%s" % (display_name, query))
-        ju.draw(ju.q(query), name=display_name)
+        ju.draw(ju.q(query), name=display_name, desc=query)
 
     if bool(elastic_monitor):
         display_name = "NexusLog_ElasticJvm_Monitor"
@@ -256,8 +251,7 @@ FROM t_health_monitor
     , UDF_STR_TO_INT(mem_after) as mem_after_bytes
 FROM t_elastic_jvm_monitor
 %s""" % (where_sql)
-        ju._info("# Query (%s): \n%s" % (display_name, query))
-        ju.draw(ju.q(query), name=display_name)
+        ju.draw(ju.q(query), name=display_name, desc=query)
 
     if bool(nxiq_logs):
         display_name = "NxiqLog_Policy_Scan_aggs"
@@ -269,8 +263,7 @@ FROM t_logs
 WHERE thread LIKE 'PolicyEvaluateService%'
 GROUP BY 1
 ORDER BY diff, thread"""
-        ju._info("# Query (%s): \n%s" % (display_name, query))
-        ju.display(ju.q(query), name=display_name)
+        ju.display(ju.q(query), name=display_name, desc=query)
 
         display_name = "NxiqLog_HDS_Client_Requests"
         query = """SELECT date_time, 
@@ -279,8 +272,7 @@ ORDER BY diff, thread"""
 FROM t_logs
 WHERE t_logs.class = 'com.sonatype.insight.brain.hds.HdsClient'
   AND t_logs.message LIKE 'Completed request%'"""
-        ju._info("# Query (%s): \n%s" % (display_name, query))
-        ju.display(ju.q(query), name=display_name)
+        ju.display(ju.q(query), name=display_name, desc=query)
 
         display_name = "NxiqLog_Top10_Slow_Scans"
         query = """SELECT date_time, thread,
@@ -290,8 +282,7 @@ FROM t_logs
 WHERE t_logs.message like 'Evaluated policy for%'
 ORDER BY ms DESC
 LIMIT 10"""
-        ju._info("\n: \n%s" % (display_name, query))
-        ju.display(ju.q(query), name=display_name)
+        ju.display(ju.q(query), name=display_name, desc=query)
 
     if bool(nxrm_logs) or bool(nxiq_logs):
         # analyse t_logs table (eg: count ERROR|WARN)
@@ -301,9 +292,7 @@ LIMIT 10"""
     %s
       AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
     GROUP BY 1, 2""" % (where_sql)
-        ju._info("# Query (%s): \n%s" % (display_name, query))
-        ju.draw(ju.q(query), name=display_name)
-
+        ju.draw(ju.q(query), name=display_name, desc=query)
     # TODO: analyse db job triggers
     # q("""SELECT description, fireInstanceId
     # , nextFireTime
