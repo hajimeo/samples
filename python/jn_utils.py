@@ -367,7 +367,7 @@ def json2df(filename, tablename=None, conn=None, jq_query="", list_only=False, j
         # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
         _info("Creating table: %s ..." % (tablename))
-        df_tmp_mod.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
+        df2table(df=df_tmp_mod, tablename=tablename, conn=conn, chunksize=chunksize, if_exists='replace')
         _autocomp_inject(tablename=tablename)
         return len(df) > 0
     return df
@@ -466,7 +466,7 @@ def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablen
         if bool(tablename) is False:
             tablename, ext = os.path.splitext(os.path.basename(file_path))
         _info("Creating table: %s ..." % (tablename))
-        df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists='replace', schema=_DB_SCHEMA)
+        df2table(df=df, tablename=tablename, conn=conn, chunksize=chunksize, if_exists='replace')
         _autocomp_inject(tablename=tablename)
     return df
 
@@ -868,11 +868,20 @@ def _gen_class(name, attrs=None, def_value=True):
     return c
 
 
-def display(df, name=""):
+def _system(command):
+    if _is_jupyter:
+        get_ipython().system(command)
+    else:
+        # TODO: don't need to escaple?
+        os.system(command)
+
+
+def display(df, name="", desc=""):
     """
     Wrapper of IPython.display.display
     :param df: A DataFrame object
     :param name: Caption and also used when saving into file
+    :param desc: Optional description (eg: SQL statement)
     :return Void
     >>> pass
     """
@@ -881,7 +890,9 @@ def display(df, name=""):
         name = _timestamp(format="%Y%m%d%H%M%S%f")
     else:
         #df.style.set_caption(name)
-        name_html = "<h4>"+name+"</h4>"
+        name_html += "<h4>"+name+"</h4>"
+        if bool(desc):
+            name_html += "<p>"+desc+"</p>"
     if _is_jupyter():
         _display(name_html+df.to_html())
     else:
@@ -937,7 +948,7 @@ def _pivot_ui(df, outfile_path="pivottablejs.html", **kwargs):
     _info("%s is created." % outfile_path)
 
 
-def draw(df, width=8, x_col=0, x_colname=None, name="", tail=10):
+def draw(df, width=8, x_col=0, x_colname=None, name="", desc="", tail=10):
     """
     Helper function for df.plot()
     As pandas.DataFrame.plot is a bit complicated, using simple options only if this method is used.
@@ -948,6 +959,7 @@ def draw(df, width=8, x_col=0, x_colname=None, name="", tail=10):
     :param x_col: Column index number used for X axis.
     :param x_colname: If column name is given, use this instead of x_col.
     :param name: When saving to file.
+    :param desc: TODO: Optional description (eg: SQL statement)
     :param tail: To return some sample rows.
     :return: DF (use .tail() or .head() to limit the rows)
     #>>> draw(ju.q("SELECT date, statuscode, bytesSent, elapsedTime from t_request_csv")).tail()
@@ -1712,7 +1724,7 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
         header = None
     try:
         # read_csv file fails if file is empty
-        df = pd.read_csv(file_path, escapechar='\\', header=header, names=names)
+        df = pd.read_csv(file_path, escapechar='\\', header=header, names=names, index_col=False)
     except pd.errors.EmptyDataError:
         _err("File %s is empty" % (str(filename)))
         return False
@@ -1720,8 +1732,7 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
         _info("Creating table: %s ..." % (tablename))
-        # Not sure if to_sql returns some result
-        df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=_DB_SCHEMA)
+        df2table(df=df, tablename=tablename, conn=conn, chunksize=chunksize, if_exists=if_exists)
         _autocomp_inject(tablename=tablename)
         return len(df) > 0
     return df
@@ -1749,9 +1760,18 @@ def obj2csv(obj, file_path, mode="w", header=True):
     return df2csv(df, file_path, mode=mode, header=header)
 
 def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace'):
+    """
+    Convert df to a DB table
+    :param df:
+    :param tablename:
+    :param conn:
+    :param chunksize:
+    :param if_exists:
+    :return: void (looks like to_sql doesn't return anything)
+    """
     if conn is None:
         conn = connect()
-    df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=_DB_SCHEMA)
+    df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=_DB_SCHEMA, index=False)
 
 def df2csv(df, file_path, mode="w", header=True):
     '''
