@@ -7,7 +7,7 @@ alias fd='find . -name'
 alias sha1R='find . -type f -exec sha1sum "{}" \;'
 alias fcv='fc -e vim'
 # 'time' with format
-alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"'    # brew install gnu-time --with-default-names
+alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"' # brew install gnu-time --with-default-names
 # In case 'tree' is not installed
 which tree &>/dev/null || alias tree="pwd;find . | sort | sed '1d;s/^\.//;s/\/\([^/]*\)$/|--\1/;s/\/[^/|]*/|  /g'"
 # Debug network performance with curl
@@ -46,11 +46,12 @@ function git_comp_tags() {
 # find branches or tags which contains a commit
 function git_search() {
     local _search="$1"
-    for c in `git log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2`; do git branch -r --contains $c; done
-    for c in `git log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2`; do git tag --contains $c; done
+    for c in $(git log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2); do git branch -r --contains $c; done
+    for c in $(git log --all --grep "$_search" | grep ^commit | cut -d ' ' -f 2); do git tag --contains $c; done
 }
 
 ## Python ##############################################################################################################
+#virtualenv -p python3 $HOME/.pyvenv
 #alias pyv='source $HOME/.pyvenv/bin/activate'
 alias pyv='pyenv activate mypyvenv'
 alias pjt='sed "s/,$//" | python -m json.tool'
@@ -60,14 +61,14 @@ alias urlencode='python2 -c "import sys, urllib as ul; print(ul.quote(sys.argv[1
 # base64 encode/decode (coreutils base64 or openssl base64 -e|-d)
 alias b64encode='python3 -c "import sys, base64; print(base64.b64encode(sys.argv[1].encode(\"utf-8\")).decode())"'
 #alias b64encode='python -c "import sys, base64; print(base64.b64encode(sys.argv[1]))"'
-alias b64decode='python3 -c "import sys, base64; print(base64.b64decode(sys.argv[1]).decode())"'    # .decode() to remove "b'xxxx"
-alias utc2int='python3 -c "import sys,time,dateutil.parser;from datetime import timezone;print(int(dateutil.parser.parse(sys.argv[1]).replace(tzinfo=timezone.utc).timestamp()))"'  # doesn't work with yy/mm/dd (2 digits year)
+alias b64decode='python3 -c "import sys, base64; print(base64.b64decode(sys.argv[1]).decode())"'                                                                                   # .decode() to remove "b'xxxx"
+alias utc2int='python3 -c "import sys,time,dateutil.parser;from datetime import timezone;print(int(dateutil.parser.parse(sys.argv[1]).replace(tzinfo=timezone.utc).timestamp()))"' # doesn't work with yy/mm/dd (2 digits year)
 alias int2utc='python -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1][0:10])).strftime(\"%Y-%m-%d %H:%M:%S\")+\".\"+sys.argv[1][10:13]+\" UTC\")"'
 #alias int2utc='python -c "import sys,time;print(time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\")"'
 alias dec2hex='printf "%x\n"'
 alias hex2dec='printf "%d\n"'
 #alias python_i_with_pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);pdf=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'pdf' (pandas dataframe)
-alias python_i_with_pandas='python3 -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);print(pdf)")'        # to convert list/dict pdf.values.tolist()
+alias python_i_with_pandas='python3 -i <(echo "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);print(pdf)")' # to convert list/dict pdf.values.tolist()
 alias python_i_with_json='python3 -i <(echo "import sys,json;jso=json.load(open(sys.argv[1]));print(jso.keys())")'
 alias json2csv='python3 -c "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);pdf.to_csv(sys.argv[1]+\".csv\", header=True, index=False)"'
 # Read xml file, then convert to dict, then print json
@@ -130,21 +131,20 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 # python3 -m http.server
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="pyv && cd $HOME/IdeaProjects/samples/python/ && python3 ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
 
-
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
 #eg: date_calc "17:15:02.123 -262.708 seconds"
 function date_calc() {
     local _d_opt="$1"
-    local _d_fmt="${2:-"%Y-%m-%d %H:%M:%S.%3N"}"    #%d/%b/%Y:%H:%M:%S
+    local _d_fmt="${2:-"%Y-%m-%d %H:%M:%S.%3N"}" #%d/%b/%Y:%H:%M:%S
     local _cmd="date"
     which gdate &>/dev/null && _cmd="gdate"
-    ${_cmd} -u  +"${_d_fmt}" -d"${_d_opt}"
+    ${_cmd} -u +"${_d_fmt}" -d"${_d_opt}"
 }
 #eg: time_calc_ms "02:30:00" 39381000 to add milliseconds to the hh:mm:ss
 function time_calc_ms() {
-    local _time="$1"    #hh:mm:ss.sss
+    local _time="$1" #hh:mm:ss.sss
     local _ms="$2"
-    local _sec=`bc <<< "scale=3; ${_ms} / 1000"`
+    local _sec=$(bc <<<"scale=3; ${_ms} / 1000")
     if [[ ! "${_sec}" =~ ^[+-] ]]; then
         _sec="+${_sec}"
     fi
@@ -185,14 +185,15 @@ function head_tail() {
 # make a directory and cd
 function mcd() {
     local _path="$1"
-    mkdir "${_path}"; cd "${_path}"
+    mkdir "${_path}"
+    cd "${_path}"
 }
 function jsondiff() {
     local _f1="$(echo $1 | sed -e 's/^.\///' -e 's/[/]/_/g')"
     local _f2="$(echo $2 | sed -e 's/^.\///' -e 's/[/]/_/g')"
     # alternative https://json-delta.readthedocs.io/en/latest/json_diff.1.html
-    python3 -c "import sys,json;print(json.dumps(json.load(open('${_f1}')), indent=4, sort_keys=True))" > "/tmp/${_f1}"
-    python3 -c "import sys,json;print(json.dumps(json.load(open('${_f2}')), indent=4, sort_keys=True))" > "/tmp/${_f2}"
+    python3 -c "import sys,json;print(json.dumps(json.load(open('${_f1}')), indent=4, sort_keys=True))" >"/tmp/${_f1}"
+    python3 -c "import sys,json;print(json.dumps(json.load(open('${_f2}')), indent=4, sort_keys=True))" >"/tmp/${_f2}"
     #prettyjson $2 > "/tmp/${_f2}"
     vimdiff "/tmp/${_f1}" "/tmp/${_f2}"
 }
@@ -224,7 +225,7 @@ function _find_recent() {
         _dir=$(if [[ "${_follow_symlink}" =~ ^(y|Y) ]]; then
             realpath $(find -L ${_base_dir%/} -type d \( -name log -o -name logs \) | tr '\n' ' ') | sort | uniq | tr '\n' ' '
         else
-            find ${_base_dir%/} -type d \( -name log -o -name logs \)| tr '\n' ' '
+            find ${_base_dir%/} -type d \( -name log -o -name logs \) | tr '\n' ' '
         fi 2>/dev/null | tail -n1)
     fi
     [ -n "${_mmin}" ] && _mmin="-mmin ${_mmin}"
@@ -296,14 +297,14 @@ function mov2gif() {
     # based on https://gist.github.com/dergachev/4627207
     [ -z "${_out}" ] && _out="$(basename "${_in}" ".mov").gif"
     if which gifsicle &>/dev/null; then
-        ffmpeg -i "${_in}" -pix_fmt rgb24 -r 6 -f gif - | gifsicle --optimize=3 --delay=5 > "${_out}"
+        ffmpeg -i "${_in}" -pix_fmt rgb24 -r 6 -f gif - | gifsicle --optimize=3 --delay=5 >"${_out}"
     else
         ffmpeg -i "${_in}" -pix_fmt rgb24 -r 6 -f gif "${_out}"
     fi
 }
 # Grep STDIN with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
-    local _datetime_regex="${1}"    # Below line was intentional as \ will be removed in ":-"
+    local _datetime_regex="${1}" # Below line was intentional as \ will be removed in ":-"
     [ -z "${_datetime_regex}" ] && _datetime_regex="^\d\d\d\d-\d\d-\d\d.\d\d:\d"
     #ggrep -oP "${_datetime_regex}" | sed 's/ /./g' | bar_chart.py
     rg "${_datetime_regex}" -o | sed 's/ /./g' | bar_chart.py
@@ -317,12 +318,12 @@ function jpl() {
     local _conf="$HOME/.jupyter/jpl_tmp_config.py"
     local _log="/tmp/jpl_${USER}_$$.out"
     if [ ! -d "$HOME/.jupyter" ]; then mkdir "$HOME/.jupyter" || return $?; fi
-    > "${_conf}"
-    [[ "${_kernel_timeout}" =~ ^[0-9]+$ ]] && echo "c.MappingKernelManager.cull_idle_timeout = ${_kernel_timeout}" >> "${_conf}"
-    [[ "${_shutdown_timeout}" =~ ^[0-9]+$ ]] && echo "c.NotebookApp.shutdown_no_activity_timeout = ${_shutdown_timeout}" >> "${_conf}"
+    >"${_conf}"
+    [[ "${_kernel_timeout}" =~ ^[0-9]+$ ]] && echo "c.MappingKernelManager.cull_idle_timeout = ${_kernel_timeout}" >>"${_conf}"
+    [[ "${_shutdown_timeout}" =~ ^[0-9]+$ ]] && echo "c.NotebookApp.shutdown_no_activity_timeout = ${_shutdown_timeout}" >>"${_conf}"
 
     echo "Redirecting STDOUT / STDERR into ${_log}" >&2
-    nohup jupyter lab --ip=`hostname -I | cut -d ' ' -f1` --no-browser --config="${_conf}" --notebook-dir="${_dir%/}" 2>&1 | tee "${_log}" | grep -m1 -oE "http://`hostname -I | cut -d ' ' -f1`:.+token=.+" &
+    nohup jupyter lab --ip=$(hostname -I | cut -d ' ' -f1) --no-browser --config="${_conf}" --notebook-dir="${_dir%/}" 2>&1 | tee "${_log}" | grep -m1 -oE "http://$(hostname -I | cut -d ' ' -f1):.+token=.+" &
 }
 # Mac only: Start Google Chrome in incognito with proxy
 function chromep() {
@@ -343,19 +344,22 @@ function chromep() {
 }
 # Add route to dockerhost to access containers directly
 function r2dh() {
-    local _dh="${1}"  # docker host IP or L2TP 10.0.1.1
+    local _dh="${1}" # docker host IP or L2TP 10.0.1.1
     local _network_addrs="${2:-"172.17.0.0 172.18.0.0 172.17.100.0 10.152.183.0"}"
     [ -z "${_dh}" ] && _dh="$(ifconfig ppp0 | grep -oE 'inet .+' | awk '{print $4}')" 2>/dev/null
     [ -z "${_dh}" ] && _dh="192.168.1.31"
 
     for _addr in ${_network_addrs}; do
-        if [ "Darwin" = "`uname`" ]; then
+        if [ "Darwin" = "$(uname)" ]; then
             # NOTE: Always using /24 because L2TP VPN assigns IP 172.31.0.x to this PC
-            sudo route delete -net ${_addr}/24 &>/dev/null;sudo route add -net ${_addr}/24 ${_dh}
-        elif [ "Linux" = "`uname`" ]; then
-            sudo ip route del ${_addr}/24 &>/dev/null;sudo route add -net ${_addr}/24 gw ${_dh} ens3
-        else    # Assuming windows (cygwin)
-            route delete ${_addr} &>/dev/null;route add ${_addr} mask 255.255.255.0 ${_dh}
+            sudo route delete -net ${_addr}/24 &>/dev/null
+            sudo route add -net ${_addr}/24 ${_dh}
+        elif [ "Linux" = "$(uname)" ]; then
+            sudo ip route del ${_addr}/24 &>/dev/null
+            sudo route add -net ${_addr}/24 gw ${_dh} ens3
+        else # Assuming windows (cygwin)
+            route delete ${_addr} &>/dev/null
+            route add ${_addr} mask 255.255.255.0 ${_dh}
         fi
     done
 }
@@ -392,14 +396,14 @@ function backupC() {
     local _dst="${2:-"hosako@z230:/cygdrive/h/hajime/cases"}"
 
     if which code && [ -d "$HOME/backup" ]; then
-        code --list-extensions | xargs -L 1 echo code --install-extension > $HOME/backup/vscode_install_extensions.sh
+        code --list-extensions | xargs -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh
     fi
 
     [ ! -d "${_src}" ] && return 11
     [ ! -d "$HOME/.Trash" ] && return 12
 
     local _mv="mv --backup=t"
-    [ "Darwin" = "`uname`" ] && _mv="gmv --backup=t"
+    [ "Darwin" = "$(uname)" ] && _mv="gmv --backup=t"
 
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory'
@@ -420,7 +424,7 @@ function backupC() {
     # Sync all files smaller than _size (10MB), means *NO* backup for files over 10MB.
     rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 ${_src%/}/ ${_dst%/}/
 
-    if [ "Darwin" = "`uname`" ]; then
+    if [ "Darwin" = "$(uname)" ]; then
         echo "# mdfind 'kMDItemFSSize > 1073741824' | LC_ALL=C sort # Files larger than 1G"
         mdfind 'kMDItemFSSize > 1073741824' | LC_ALL=C sort
     fi
@@ -429,15 +433,15 @@ function backupC() {
 #mv_not_accessed "." "30" "*.pom" "Y"
 function mv_not_accessed() {
     local _dir="${1:-"."}"
-    local _atime="${2:-100}"    # 100 days
-    local _name="${3}"          # "*.pom"
+    local _atime="${2:-100}" # 100 days
+    local _name="${3}"       # "*.pom"
     local _do_it="${4}"
     #find -L /tmp -type f -name "${FUNCNAME[0]}_$$.out" -mmin -3 | grep -q "${FUNCNAME[0]}_$$.out"
     if [ -n "${_name}" ]; then
         find ${_dir%/} -amin +${_atime} -name "${_name}" -print0
     else
         find ${_dir%/} -amin +${_atime} -print0
-    fi | xargs -0 -n1 -I {} dirname {} | LC_ALL=C sort -r | uniq > /tmp/${FUNCNAME[0]}_$$.out
+    fi | xargs -0 -n1 -I {} dirname {} | LC_ALL=C sort -r | uniq >/tmp/${FUNCNAME[0]}_$$.out
     cat /tmp/${FUNCNAME[0]}_$$.out | while read _f; do
         local _dist_name="$(echo ${_f//\//_} | sed 's/^\._//')"
         if [[ "${_do_it}" =~ ^[yY] ]]; then
@@ -466,7 +470,6 @@ function push2search() {
     [[ "${_yes}" =~ ^[yY] ]] && eval "${_cmd}"
 }
 
-
 ## Work specific functions
 if [ -s $HOME/IdeaProjects/samples/runcom/nexus_alias.sh ]; then
     source $HOME/IdeaProjects/samples/runcom/nexus_alias.sh
@@ -492,7 +495,6 @@ function sync_nexus_binaries() {
     rsync -Prc $HOME/.nexus_executable_cache/nexus-iq-server-*-bundle.tar.gz root@${_host}:/var/tmp/share/sonatype/
 }
 
-
 # To patch nexus (so that checking /system) but probably no longer using.
 function _patch() {
     local _java_file="${1}"
@@ -510,13 +512,13 @@ function _patch() {
     if [ -z "${CLASSPATH}" ]; then
         echo "old CLASSPATH=${CLASSPATH}"
     fi
-    export CLASSPATH=`find ${_base_dir%/} -path '*/system/*' -type f -name '*.jar' | tr '\n' ':'`.
+    export CLASSPATH=$(find ${_base_dir%/} -path '*/system/*' -type f -name '*.jar' | tr '\n' ':').
     bash $HOME/IdeaProjects/samples/bash/patch_java.sh "" ${_java_file} ${_jar_file}0
 }
 function _patch_remote() {
     # TODO: not working?
     local _java_file="${1}"
-    local _jar_file="${2}"  # To step faster
+    local _jar_file="${2}" # To step faster
     local _port="${3:-8081}"
     local _base_dir="${4:-"/opt/sonatype/nexus"}"
     local _host="${5:-"root@dh1"}"
