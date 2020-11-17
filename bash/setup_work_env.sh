@@ -17,6 +17,7 @@ type _import &>/dev/null || _import() {
 _import "utils.sh"
 
 function f_setup_misc() {
+    _install sudo curl
     _symlink_or_download "runcom/bash_profile.sh" "$HOME/.bash_profile" || return $?
     _symlink_or_download "runcom/bash_aliases.sh" "$HOME/.bash_aliases" || return $?
     _symlink_or_download "runcom/vimrc" "$HOME/.vimrc" || return $?
@@ -139,8 +140,9 @@ function f_setup_golang() {
 }
 
 function f_setup_pyenv() {
+    # @see: https://github.com/pyenv/pyenv/wiki/Common-build-problems
     local _ver="$1"
-    _install openssl readline sqlite3 xz zlib
+    _install make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python-openssl
     # At this moment, not sure if below is needed 
     #if [ "$(uname)" = "Darwin" ]; then
     #    sudo installer -pkg /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg -target /
@@ -328,7 +330,7 @@ function f_setup_java() {
 
 function _install() {
     if which apt-get &>/dev/null; then
-        sudo apt-get install -y "$@" || return $?
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" || return $?
     elif which brew &>/dev/null; then
         brew install "$@" || return $?
     else
