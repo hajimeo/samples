@@ -336,6 +336,7 @@ function f_setup_yum() {
 function f_echo_yum_repo_file() {
     local _repo="${1:-"yum-group"}"
     local _base_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
+    # At this moment, Nexus yum repositories require anonymous, so not modifying the url with "https://admin:admin123@HOST:PORT/repository/..."
     local _repo_url="${_base_url%/}/repository/${_repo}"
 echo '[nexusrepo]
 name=Nexus Repository
