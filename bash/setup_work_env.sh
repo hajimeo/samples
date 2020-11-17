@@ -147,18 +147,20 @@ function f_setup_pyenv() {
     #if [ "$(uname)" = "Darwin" ]; then
     #    sudo installer -pkg /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg -target /
     #fi
-    if which pyenv || grep -q -w pyenv $HOME/.bashrc || grep -q -w pyenv $HOME/.bash_profile; then
+    if ! which pyenv; then
+        curl https://pyenv.run | bash || return $?
+    fi
+    if grep -q -w pyenv $HOME/.bashrc || grep -q -w pyenv $HOME/.bash_profile; then
         echo "Seems pyenv is configured (or intentionally disabled in .bashrc / .bash_profile)"
     else
-        curl https://pyenv.run | bash || return $?
-        cat << EOF >> $HOME/.bash_profile
+        cat << EOF >> $HOME/.bashrc
 export PATH="\$HOME/.pyenv/bin:\$PATH"
 eval "\$(pyenv init -)"
 eval "\$(pyenv virtualenv-init -)"
 EOF
     fi
     # shell script wouldn't read .bash_profile?
-    source $HOME/.bash_profile || return $?
+    source $HOME/.bashrc || return $?
     if [ -n "${_ver}" ]; then
         if [ ! -d "$HOME/.pyenv/versions/${_ver}" ]; then
             pyenv install ${_ver} || return $?
