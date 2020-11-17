@@ -9,10 +9,13 @@
 : ${_USER:=""}
 : ${_PWD:=""}
 : ${_IMAGE:="ratelimitpreview/test"}
+: ${_TAG:="latest"}
 : ${_TOKEN_SERVER_URL:="https://auth.docker.io/token?service=registry.docker.io"}
 : ${_DOCKER_REGISTRY_URL:="https://registry-1.docker.io"}
 
 _curl="curl -sf -D /dev/stderr --compressed"
+
+echo "### Requesting '${_TOKEN_SERVER_URL}&scope=repository:${_IMAGE}:pull'" >&2
 _TOKEN="$(if [ -n "${_USER}" ] && [ -z "${_PWD}" ]; then
   ${_curl} -u "${_USER}" "${_TOKEN_SERVER_URL}&scope=repository:${_IMAGE}:pull"
 elif [ -n "${_USER}" ] && [ -z "${_PWD}" ]; then
@@ -22,11 +25,12 @@ else
 fi | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['token'])")"
 
 if [ -n "${_TOKEN}" ]; then
-  if which jwt; then
+  if which jwt &>/dev/null; then
+    echo "### Decoding JWT" >&2
     jwt decode "${_TOKEN}"
   fi
 
   # NOTE: curl with -I (HEAD) does not return RateLimit-Limit or RateLimit-Remaining
-  echo "GET '${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/latest'"
-  ${_curl} -H "Authorization: Bearer ${_TOKEN}" "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/latest" | python -m json.tool
+  echo "### Requesting '${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}'" >&2
+  ${_curl} -H "Authorization: Bearer ${_TOKEN}" "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}" | python -m json.tool
 fi
