@@ -271,6 +271,7 @@ function f_jupyter_util() {
     # TODO: If not local test, would like to always overwrite ...
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/jn_utils.py" "$HOME/IdeaProjects/samples/python/jn_utils.py" "Y" "Y" || return $?
     _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/get_json.py" "$HOME/IdeaProjects/samples/python/get_json.py" "Y" "Y" || return $?
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/analyse_logs.py" "$HOME/IdeaProjects/samples/python/analyse_logs.py" "Y" "Y" || return $?
 
     #_download "https://public-xxxxxxx.s3.amazonaws.com/hive-jdbc-client-1.2.1.jar" "$HOME/IdeaProjects/samples/java/hadoop/hive-jdbc-client-1.2.1.jar" "Y" "Y" || return $?
     _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "$HOME/IdeaProjects/samples/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y" || return $?
@@ -363,21 +364,21 @@ main() {
     _log "INFO" "Running f_setup_misc ..."
     f_setup_misc
     echo "Exit code $?"
-    _log "INFO" "Running f_setup_screen ..."
-    f_setup_screen
-    echo "Exit code $?"
+    #_log "INFO" "Running f_setup_screen ..."
+    #f_setup_screen
+    #echo "Exit code $?"
     _log "INFO" "Running f_setup_rg ..."
     f_setup_rg
     echo "Exit code $?"
     _log "INFO" "Running f_setup_jupyter ..."
     f_setup_python
     echo "Exit code $?"
-    _log "INFO" "Running f_setup_golang ..."
-    f_setup_golang
-    echo "Exit code $?"
-    _log "INFO" "Running f_setup_java ..."
-    f_setup_java
-    echo "Exit code $?"
+    #_log "INFO" "Running f_setup_golang ..."
+    #f_setup_golang
+    #echo "Exit code $?"
+    #_log "INFO" "Running f_setup_java ..."
+    #f_setup_java
+    #echo "Exit code $?"
 }
 
 ### Main ###############################################################################################################
