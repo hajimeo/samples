@@ -17,7 +17,7 @@ type _import &>/dev/null || _import() {
 _import "utils.sh"
 
 function f_setup_misc() {
-    _install sudo curl
+    _install sudo curl jq git
     _symlink_or_download "runcom/bash_profile.sh" "$HOME/.bash_profile" || return $?
     _symlink_or_download "runcom/bash_aliases.sh" "$HOME/.bash_aliases" || return $?
     _symlink_or_download "runcom/vimrc" "$HOME/.vimrc" || return $?
@@ -49,8 +49,6 @@ function f_setup_misc() {
     if which git &>/dev/null && ! git config credential.helper | grep -qw cache; then
         git config --global credential.helper "cache --timeout=600"
     fi
-
-    _install jq
 }
 
 function f_setup_rg() {
