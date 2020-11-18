@@ -954,7 +954,7 @@ function f_request2csv() {
         _out_file="$(basename ${_glob} .log).csv"
     fi
     # NOTE: check jetty-requestlog.xml and logback-access.xml
-    local _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1')"
+    local _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1' | sort | uniq | tail -n1)"
     if [ -z "${_pattern}" ] && [ -z "${_pattern_str}" ]; then
         local _tmp_first_line="$(rg --no-filename -m1 '\b20\d\d\b' ${_g_opt} "${_glob}")"
         if echo "${_tmp_first_line}"   | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
