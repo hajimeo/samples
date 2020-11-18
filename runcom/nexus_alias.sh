@@ -80,7 +80,7 @@ function iqHds() {
 function sptBoot() {
     local _zip="$1"
     local _opts="${2-"--noboot --convert-repos"}"    # --remote-debug
-    pyenv activate mypyvenv
+    pyv
 
     [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
     if [ -z "${_zip}" ]; then
@@ -114,6 +114,7 @@ function nxrmStart() {
     local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
     if [ -n "${_cfg_file}" ]; then
         grep -qE '^\s*nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
+        grep -qE '^\s*nexus.browse.component.tree.automaticRebuild' "${_cfg_file}" || echo "nexus.browse.component.tree.automaticRebuild=false" >> "${_cfg_file}"
         # NOTE: this would not work if elasticsearch directory is empty
         grep -qE '^\s*nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
         [ -z "${_mode}" ] && _mode="run"
