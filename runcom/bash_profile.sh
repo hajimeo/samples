@@ -26,35 +26,39 @@ if [ -s $HOME/.rgrc ]; then
     [ -z "${RIPGREP_CONFIG_PATH}" ] && export RIPGREP_CONFIG_PATH=$HOME/.rgrc
 fi
 
-# Some older Mac, pip3 was not in the path, and below was the workaround
-#if [ -d /usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`*/Frameworks/Python.framework/Versions/3.7/bin ]; then
-#    # Mac's brew installs pip in this directory and may not in the path
-#    export PATH=$(ls -d /usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`*/Frameworks/Python.framework/Versions/3.7/bin):$PATH
+if [ "$(uname)" = "Darwin" ]; then
+    # Some older Mac, pip3 was not in the path, and below was the workaround
+    #if [ -d /usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`*/Frameworks/Python.framework/Versions/3.7/bin ]; then
+    #    # Mac's brew installs pip in this directory and may not in the path
+    #    export PATH=$(ls -d /usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`*/Frameworks/Python.framework/Versions/3.7/bin):$PATH
+    #fi
+    # Use Brew one first
+    ___python37bin="$(ls -1d /usr/local/Cellar/python@3.7/3.7*/bin | tail -n1)"
+    if [ -n "${___python37bin}" ]; then
+        [[ ":$PATH:" != *":${___python37bin%/}:"* ]] && export PATH=${___python37bin%/}:${PATH#:}
+    elif [ -d $HOME/Library/Python/3.7/bin ]; then
+        [[ ":$PATH:" != *":$HOME/Library/Python/3.7/bin:"* ]] && export PATH=$HOME/Library/Python/3.7/bin:${PATH#:}
+    fi
+    if [ -d /usr/local/sbin ]; then
+        # Intentionally adding at the beginning
+        [[ ":$PATH:" != *":/usr/local/sbin:"* ]] && export PATH=${PATH%:}:/usr/local/sbin
+    fi
+    if [ -d $HOME/IdeaProjects/samples/python ]; then
+        # Intentionally adding at the beginning
+        [[ ":$PYTHONPATH:" != *":$HOME/IdeaProjects/samples/python:"* ]] && export PYTHONPATH=$HOME/IdeaProjects/samples/python:$PYTHONPATH
+    fi
+    # java related
+    if [ -f /usr/libexec/java_home ]; then
+        #[ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 10 2>/dev/null`
+        [ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8 2>/dev/null`
+    fi
+fi
+
+#if [ -d "$HOME/.pyenv/bin" ]; then
+#    export PATH="$HOME/.pyenv/bin:$PATH"
+#    eval "$(pyenv init -)"
+#    eval "$(pyenv virtualenv-init -)"
 #fi
-if [ -d $HOME/Library/Python/3.7/bin ]; then
-    # Intentionally adding at the beginning
-    [[ ":$PATH:" != *":$HOME/Library/Python/3.7/bin:"* ]] && export PATH=$HOME/Library/Python/3.7/bin:${PATH#:}
-fi
-if [ -d /usr/local/sbin ]; then
-    # Intentionally adding at the beginning
-    [[ ":$PATH:" != *":/usr/local/sbin:"* ]] && export PATH=${PATH%:}:/usr/local/sbin
-fi
-if [ -d $HOME/IdeaProjects/samples/python ]; then
-    # Intentionally adding at the beginning
-    [[ ":$PYTHONPATH:" != *":$HOME/IdeaProjects/samples/python:"* ]] && export PYTHONPATH=$HOME/IdeaProjects/samples/python:$PYTHONPATH
-fi
-
-# java related
-if [ -f /usr/libexec/java_home ]; then
-    #[ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 10 2>/dev/null`
-    [ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8 2>/dev/null`
-fi
-
-if [ -d "$HOME/.pyenv/bin" ]; then
-    export PATH="$HOME/.pyenv/bin:$PATH"
-    eval "$(pyenv init -)"
-    eval "$(pyenv virtualenv-init -)"
-fi
 
 if [ -d "$HOME/IdeaProjects/grumpy/build" ]; then
     # https://github.com/google/grumpy
