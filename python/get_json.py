@@ -126,7 +126,7 @@ def get_json(filepath="", json_str="", search_props=None, key_name=None, rtn_att
             #sys.stderr.write("DEBUG: _p = %s is not in _d and _d is not a list \n" % (str(_p)))
             _d = None
             break
-    if bool(rtn_attrs) is True:
+    if bool(rtn_attrs):
         if type(_d) == list:
             _tmp_dl = []
             for _dd in _d:
@@ -174,7 +174,7 @@ if __name__ == '__main__':
                 else:
                     print('    %s,' % json.dumps(_e))
             print(']')
-        else:
+        elif _d is not None:
             print(_d)
-    elif bool(_d) is True:
+    elif _d is not None:
         print(json.dumps(_d, indent=4, sort_keys=True))
