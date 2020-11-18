@@ -4,6 +4,8 @@
  * curl -O https://raw.githubusercontent.com/hajimeo/samples/master/java/TestDBConn.java
  * javac TestDBConn.java
  * java -cp .:/some_jar_include_driver.jar TestDBConn org.postgresql.Driver jdbc:postgresql://`hostname -f`:5432/schema username password "select * from database.table where 1 = 1"
+ *
+ * java -jar ./target/TestDBConn-1.0-SNAPSHOT.jar org.postgresql.Driver jdbc:postgresql://node-nxiq.standalone.localdomain:5432/sonatype sonatype admin123 "select * from insight_brain_ods.schema_version"
  */
 
 import java.sql.*;
