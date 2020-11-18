@@ -16,8 +16,37 @@ type _import &>/dev/null || _import() {
 }
 _import "utils.sh"
 
+function f_prepare() {
+    # commands which may require sudo, but minimum (not including screen)
+    _install sudo curl jq  screen python3.7
+    # Below is for pyenv and not using at this moment
+    #_install make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python-openssl git
+    f_install_rg
+
+    if ! sudo which pip &>/dev/null || ! pip -V; then
+        _log "WARN" "no pip (for python2) installed or not in PATH (sudo easy_install pip). Trying to install..."
+        # NOTE: Mac's pip3 is installed by 'brew install python3'
+        # sudo python3 -m pip uninstall pip
+        # sudo apt remove python3-pip
+        curl -s -f "https://bootstrap.pypa.io/get-pip.py" -o /tmp/get-pip.py || return $?
+        # @see https://github.com/pypa/get-pip/issues/43
+        _install python3-distutils
+        sudo python3.7 /tmp/get-pip.py || return $?
+    fi
+
+    # TODO: this works only with python2, hence not pip3 and not in virtualenv, and eventually will stop working
+    if which python2 &>/dev/null; then
+        sudo -i python2 -m pip install -U data_hacks
+    else
+        sudo -i pip install -U data_hacks
+    fi # it's OK if this fails
+
+    if grep -qw docker /etc/group; then
+        sudo usermod -a -G docker $USER && _log "NOTE" "Please re-login as user group has been changed."
+    fi
+}
+
 function f_setup_misc() {
-    _install sudo curl jq git
     _symlink_or_download "runcom/bash_profile.sh" "$HOME/.bash_profile" || return $?
     _symlink_or_download "runcom/bash_aliases.sh" "$HOME/.bash_aliases" || return $?
     _symlink_or_download "runcom/vimrc" "$HOME/.vimrc" || return $?
@@ -42,38 +71,30 @@ function f_setup_misc() {
     #_symlink_or_download "misc/dateregex_`uname`" "/usr/local/bin/dateregex" "Y"
     #chmod a+x /usr/local/bin/dateregex
 
-    if grep -qw docker /etc/group; then
-        sudo usermod -a -G docker $USER && _log "NOTE" "Please re-login as user group has been changed."
-    fi
-
     if which git &>/dev/null && ! git config credential.helper | grep -qw cache; then
         git config --global credential.helper "cache --timeout=600"
     fi
 }
 
-function f_setup_rg() {
+function f_install_rg() {
     # as of today, rg is not in Ubuntu repository so not using _install
-    local _url="https://github.com/BurntSushi/ripgrep/releases/"
-    if ! which rg &>/dev/null; then
-        if ! _install ripgrep; then
-            if [ "$(uname)" = "Darwin" ]; then
-                _log "WARN" "Please install 'rg' first. ${_url}"
-                sleep 3
-                return 1
-            elif [ "$(uname)" = "Linux" ]; then
-                local _ver="$(curl -sI ${_url%/}/latest | _sed -nr 's/^Location:.+\/releases\/tag\/(.+)$/\1/p' | tr -d '[:space:]')"
-                _log "INFO" "Installing rg version: ${_ver} ..."
-                sleep 3
-                _download "${_url%/}/download/${_ver}/ripgrep_${_ver}_amd64.deb" "/tmp/ripgrep_${_ver}_amd64.deb" "Y" "Y" || return $?
-                sudo dpkg -i /tmp/ripgrep_${_ver}_amd64.deb || return $?
-            else
-                _log "WARN" "Please install 'rg' first. ${_url}"
-                sleep 3
-                return 1
-            fi
+    if ! which rg &>/dev/null && ! _install ripgrep; then
+        # If Linux, try installing from the github
+        if [ "$(uname)" = "Linux" ]; then
+            local _url="https://github.com/BurntSushi/ripgrep/releases/"
+            local _ver="$(curl -sI ${_url%/}/latest | _sed -nr 's/^Location:.+\/releases\/tag\/(.+)$/\1/p' | tr -d '[:space:]')"
+            _log "INFO" "Installing rg version: ${_ver} ..."
+            sleep 3
+            _download "${_url%/}/download/${_ver}/ripgrep_${_ver}_amd64.deb" "/tmp/ripgrep_${_ver}_amd64.deb" "Y" "Y" || return $?
+            sudo dpkg -i /tmp/ripgrep_${_ver}_amd64.deb || return $?
+        else
+            _log "ERROR" "rg install failed."
+            return 1
         fi
     fi
+}
 
+function f_setup_rg() {
     _symlink_or_download "runcom/rgrc" "$HOME/.rgrc" || return $?
     if ! grep -qR '^export RIPGREP_CONFIG_PATH=' $HOME/.bash_profile; then
         echo -e '\nexport RIPGREP_CONFIG_PATH=$HOME/.rgrc' >>$HOME/.bash_profile || return $?
@@ -81,7 +102,7 @@ function f_setup_rg() {
 }
 
 function f_setup_screen() {
-    if ! which screen &>/dev/null && ! _install screen; then
+    if ! which screen &>/dev/null; then
         _log "ERROR" "no screen installed or not in PATH"
         return 1
     fi
@@ -93,7 +114,7 @@ function f_setup_screen() {
     ln -s $HOME/.screenrc $HOME/.byobu/.screenrc
 }
 
-function f_setup_golang() {
+function f_install_golang() {
     local _ver="${1:-"1.13"}"
     # TODO: currently only for Ubuntu and Mac, and hard-coding go version
     if ! which go &>/dev/null || ! go version | grep -q "go${_ver}"; then
@@ -119,6 +140,11 @@ function f_setup_golang() {
             fi
         fi
     fi
+}
+
+function f_setup_golang() {
+    local _ver="${1:-"1.13"}"
+    f_install_golang "${_ver}"
 
     if [ ! -d "$HOME/go" ]; then
         _log "WARN" "\$HOME/go does not exist. Creating ..."
@@ -137,11 +163,11 @@ function f_setup_golang() {
     sudo chmod a+x /var/tmp/share/dlv
 }
 
+# Currently NOT using as it cause some slowness in the shell
 function f_setup_pyenv() {
     # @see: https://github.com/pyenv/pyenv/wiki/Common-build-problems
-    local _ver="$1"
-    _install make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python-openssl
-    # At this moment, not sure if below is needed 
+    local _ver="${1:-"3.7.9"}"
+    # At this moment, not sure if below is needed
     #if [ "$(uname)" = "Darwin" ]; then
     #    sudo installer -pkg /Library/Developer/CommandLineTools/Packages/macOS_SDK_headers_for_macOS_10.14.pkg -target /
     #fi
@@ -170,92 +196,75 @@ EOF
 
 function f_setup_python() {
     local _no_venv="$1"
-    local _ver="${2:-"3.7.9"}"  # For jupyter autocompletion issue, using 3.7.9...
-
-    if ! sudo which pip &>/dev/null || ! pip -V; then
-        _log "WARN" "no pip (for python2) installed or not in PATH (sudo easy_install pip). Trying to install..."
-        # NOTE: Mac's pip3 is installed by 'brew install python3'
-        # sudo python3 -m pip uninstall pip
-        # sudo apt remove python3-pip
-        curl -s -f "https://bootstrap.pypa.io/get-pip.py" -o /tmp/get-pip.py || return $?
-        # @see https://github.com/pypa/get-pip/issues/43
-        _install python3-distutils
-        python3 /tmp/get-pip.py || return $?
+    if ! which python3.7 &>/dev/null; then
+        echo "FIXME: Due to Jupyter autocomplete bug, python 3.7 is required."
+        return 1
     fi
-    
-    f_setup_pyenv "${_ver}" || return $?
-
-    # TODO: this works only with python2, hence not pip3 and not in virtualenv, and eventually will stop working
-    if which python2 &>/dev/null; then
-        sudo -i python2 -m pip install -U data_hacks
-    else
-        sudo -i pip install -U data_hacks
-    fi # it's OK if this fails
 
     if [[ ! "${_no_venv}" =~ ^(y|Y) ]]; then
         deactivate &>/dev/null
-        pyenv deactivate &>/dev/null    # Or pyenv local system
-
-        #python3 -m pip install -U virtualenv
+        #python3.7 -m pip install -U virtualenv
         # When python version is changed, need to run virtualenv command again
-        #virtualenv -p python3 $HOME/.pyvenv || return $?
-        #source $HOME/.pyvenv/bin/activate || return $?
-        pyenv virtualenv ${_ver} mypyvenv || return $?
-        pyenv activate mypyvenv || return $?
+        echo "Activating virtualenv: $HOME/.pyvenv ..."
+        virtualenv -p python3.7 $HOME/.pyvenv || return $?
+        source $HOME/.pyvenv/bin/activate || return $?
+        # NOTE: Currently not using pyenv
+        #pyenv deactivate &>/dev/null    # Or pyenv local system
+        #f_setup_pyenv
+        #pyenv virtualenv ${_ver} mypyvenv || return $?
+        #pyenv activate mypyvenv || return $?
     fi
 
     ### pip3 (not pip) from here ############################################################
-    #python3 -m pip install -U pip &>/dev/null
+    #python3.7 -m pip install -U pip &>/dev/null
     # outdated list
-    python3 -m pip list -o | tee /tmp/pip.log
+    python3.7 -m pip list -o | tee /tmp/pip.log
     #python -m pip list -o --format=freeze | cut -d'=' -f1 | xargs python -m pip install -U
 
     # My favourite/essential python packages
-    python3 -m pip install -U lxml xmltodict pyyaml markdown
-    python3 -m pip install -U pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
+    python3.7 -m pip install -U lxml xmltodict pyyaml markdown
+    python3.7 -m pip install -U pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
     # Important packages (Jupyter and pandas)
     # TODO: Autocomplete doesn't work with Lab and NB if different version is used. @see https://github.com/ipython/ipython/issues/11530
     #       However, using 7.1.1 with python 3.8 may cause TypeError: required field "type_ignores" missing from Module
-    if python3 -V | grep -iq "Python 3.7"; then
-        python3 -m pip install ipython==7.1.1 || return $?  #prettytable==0.7.2
-    fi
-    python3 -m pip install -U ipython jupyter jupyterlab pandas --log /tmp/pip.log || return $?
-    # Reinstall: python3 -m pip uninstall -y jupyterlab && python3 -m pip install jupyterlab
+    python3.7 -m pip install ipython==7.1.1 || return $?  #prettytable==0.7.2
+    python3.7 -m pip install -U ipython jupyter jupyterlab pandas --log /tmp/pip.log || return $?
+    # Reinstall: python3.7 -m pip uninstall -y jupyterlab && python3.7 -m pip install jupyterlab
     # If not using python venv, may need to use jupyterlab_templates "sudo -H"
 
     # NOTE: Initially I thought pandasql looked good but it's actually using sqlite.
-    python3 -m pip install -U sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip.log
+    python3.7 -m pip install -U sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip.log
     # Not installing below as pandas_profiling fails at this moment. Pixiedust works only with jupyter-notebook
-    #python3 -m pip install -U pandas_profiling pixiedust --log /tmp/pip.log
+    #python3.7 -m pip install -U pandas_profiling pixiedust --log /tmp/pip.log
     # NOTE: In case I might use jupyter notebook, still installing this
-    python3 -m pip install -U bash_kernel --log /tmp/pip.log && python3 -m bash_kernel.install
-    # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3
-    #python3 -m pip install beakerx && beakerx-install
+    python3.7 -m pip install -U bash_kernel --log /tmp/pip.log && python3.7 -m bash_kernel.install
+    # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3.7
+    #python3.7 -m pip install beakerx && beakerx-install
 
     # Enable jupyter Notebook extensions (not Lab)
-    python3 -m pip install -U jupyter-contrib-nbextensions jupyter-nbextensions-configurator
+    python3.7 -m pip install -U jupyter-contrib-nbextensions jupyter-nbextensions-configurator
     jupyter contrib nbextension install && jupyter nbextensions_configurator enable && jupyter nbextension enable spellchecker/main
     # Not working...?
     #jupyter labextension install @ijmbarr/jupyterlab_spellchecker
 
     # Enable Holloviews http://holoviews.org/user_guide/Installing_and_Configuring.html
     # Ref: http://holoviews.org/reference/index.html
-    #python3 -m pip install 'holoviews[recommended]'
+    #python3.7 -m pip install 'holoviews[recommended]'
     #jupyter labextension install @pyviz/jupyterlab_pyviz
     # NOTE: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
     # Not so useful?
-    #python3 -m pip install jupyterlab_templates
+    #python3.7 -m pip install jupyterlab_templates
     #jupyter labextension install jupyterlab_templates && jupyter serverextension enable --py jupyterlab_templates
 
     # For SASL test
     #_install libsasl2-dev
-    #python3 -m pip install sasl thrift thrift-sasl PyHive
+    #python3.7 -m pip install sasl thrift thrift-sasl PyHive
 
     # JDBC wrapper and 0.6.3 is for using Java 1.8 (to avoid "unsupported major.minor version 52.0")
-    python3 -m pip install JPype1==0.6.3 JayDeBeApi
+    python3.7 -m pip install JPype1==0.6.3 JayDeBeApi
     # For Google BigQuery (actually one of below)
-    #python3 -m pip install google-cloud-bigquery pandas-gbq
+    #python3.7 -m pip install google-cloud-bigquery pandas-gbq
 
     f_jupyter_util
 }
@@ -333,7 +342,12 @@ function _install() {
     if which apt-get &>/dev/null; then
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" || return $?
     elif which brew &>/dev/null; then
-        brew install "$@" || return $?
+        # TODO: ugly hack for brew and python specific version istallation
+        if [[ "$@" =~ ^(.*)python([0-9]\.[0-9]+)(.*)$ ]]; then
+            brew install ${BASH_REMATCH[1]}python@${BASH_REMATCH[2]}${BASH_REMATCH[3]}
+        else
+            brew install "$@" || return $?
+        fi
     else
         _log "ERROR" "$(uname) is not supported yet to install a package"
         return 1
@@ -361,16 +375,17 @@ function _symlink_or_download() {
 
 main() {
     sudo echo "Starting setup ..."
+    #f_prepare
     _log "INFO" "Running f_setup_misc ..."
     f_setup_misc
     echo "Exit code $?"
-    #_log "INFO" "Running f_setup_screen ..."
-    #f_setup_screen
-    #echo "Exit code $?"
+    _log "INFO" "Running f_setup_screen ..."
+    f_setup_screen
+    echo "Exit code $?"
     _log "INFO" "Running f_setup_rg ..."
     f_setup_rg
     echo "Exit code $?"
-    _log "INFO" "Running f_setup_jupyter ..."
+    _log "INFO" "Running f_setup_python ..."
     f_setup_python
     echo "Exit code $?"
     #_log "INFO" "Running f_setup_golang ..."
@@ -379,6 +394,7 @@ main() {
     #_log "INFO" "Running f_setup_java ..."
     #f_setup_java
     #echo "Exit code $?"
+    echo "Completed."
 }
 
 ### Main ###############################################################################################################
@@ -387,6 +403,5 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         eval "$@"
     else
         main
-        echo "Completed."
     fi
 fi
