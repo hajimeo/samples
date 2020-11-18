@@ -52,8 +52,8 @@ function git_search() {
 
 ## Python ##############################################################################################################
 #virtualenv -p python3 $HOME/.pyvenv
-#alias pyv='source $HOME/.pyvenv/bin/activate'
-alias pyv='pyenv activate mypyvenv'
+alias pyv='source $HOME/.pyvenv/bin/activate'
+#alias pyv='pyenv activate mypyvenv'    # I felt pyenv is slow, so not using
 alias pjt='sed "s/,$//" | python -m json.tool'
 alias urldecode='python2 -c "import sys, urllib as ul; print(ul.unquote_plus(sys.argv[1]))"'
 #alias urlencode='python -c "import sys, urllib as ul; print ul.quote_plus(sys.argv[1])"'
@@ -87,8 +87,8 @@ alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.a
 alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();pprint.pprint([t.getelementpath(x) for x in r.findall(\".//\"+sys.argv[2],namespaces=r.nsmap)])"'
 # Strip XML / HTML to get text. NOTE: using sys.stdin.read. (TODO: maybe </br> without new line should add new line)
 alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))"'
-alias jp='pyenv activate mypyvenv && jupyter-lab &> /tmp/jupyter-lab.out &'
-alias jn='pyenv activate mypyvenv && jupyter-notebook &> /tmp/jupyter-notebook.out &'
+alias jp='pyv && jupyter-lab &> /tmp/jupyter-lab.out &'
+alias jn='pyv && jupyter-notebook &> /tmp/jupyter-notebook.out &'
 
 ## Common software/command but need to install #######################################################################
 # 10 seconds is too short
@@ -99,7 +99,7 @@ alias pgbg='pgbadger --timezone 0'
 ## Non default (need to install some complex software and/or develop script) alias commands ############################
 # Load/source my own searching utility functions / scripts
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
-alias logS="pyenv activate mypyvenv; source $HOME/IdeaProjects/work/bash/log_search.sh"
+alias logS="pyv; source $HOME/IdeaProjects/work/bash/log_search.sh"
 alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
 alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py"
 alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
