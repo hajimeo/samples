@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# JAVA_HOME=... brace <PID> <btrace script>
+#
 # To download the latest script:
 #   curl -OL https://github.com/hajimeo/samples/raw/master/java/btrace/btrace
 #
