@@ -24,6 +24,8 @@ Styling:
 == Sqlite tips (which I often forget) ==================================
 Convert Unix timestamp with milliseconds to datetime
     DATETIME(ROUND(dateColumn / 1000), 'unixepoch')
+Get date_hour
+    UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1)
 Convert current time or string date to Unix timestamp
     STRFTIME('%s', 'NOW')
     STRFTIME('%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1))
