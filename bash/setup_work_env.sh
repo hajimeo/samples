@@ -270,21 +270,23 @@ function f_setup_python() {
 }
 
 function f_jupyter_util() {
+    local _dir="${1:-"$HOME/IdeaProjects/samples/python"}"
     # If we use this location, .bash_profile automatically adds PYTHONPATH
-    if [ ! -d "$HOME/IdeaProjects/samples/python" ]; then
-        mkdir -p $HOME/IdeaProjects/samples/python || return $?
+    if [ ! -d "${_dir%/}" ]; then
+        mkdir -p ${_dir%/} || return $?
     fi
-    if [ ! -d "$HOME/IdeaProjects/samples/java/hadoop" ]; then
-        mkdir -p "$HOME/IdeaProjects/samples/java/hadoop" || return $?
+    local _parent_dir="$(dirname "${_dir%/}")"
+    if [ ! -d "${_parent_dir%/}/java/hadoop" ]; then
+        mkdir -p "${_parent_dir%/}/java/hadoop" || return $?
     fi
     # TODO: If not local test, would like to always overwrite ...
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/jn_utils.py" "$HOME/IdeaProjects/samples/python/jn_utils.py" "Y" "Y" || return $?
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/get_json.py" "$HOME/IdeaProjects/samples/python/get_json.py" "Y" "Y" || return $?
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/analyse_logs.py" "$HOME/IdeaProjects/samples/python/analyse_logs.py" "Y" "Y" || return $?
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/jn_utils.py" "${_dir%/}/jn_utils.py" "Y" "Y" || return $?
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/get_json.py" "${_dir%/}/get_json.py" "Y" "Y" || return $?
+    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/analyse_logs.py" "${_dir%/}/analyse_logs.py" "Y" "Y" || return $?
 
-    #_download "https://public-xxxxxxx.s3.amazonaws.com/hive-jdbc-client-1.2.1.jar" "$HOME/IdeaProjects/samples/java/hadoop/hive-jdbc-client-1.2.1.jar" "Y" "Y" || return $?
-    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "$HOME/IdeaProjects/samples/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y" || return $?
-    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "$HOME/IdeaProjects/samples/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "Y" "Y" || return $?
+    #_download "https://public-xxxxxxx.s3.amazonaws.com/hive-jdbc-client-1.2.1.jar" "${_parent_dir%/}/java/hadoop/hive-jdbc-client-1.2.1.jar" "Y" "Y" || return $?
+    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "${_parent_dir%/}/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y" || return $?
+    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "${_parent_dir%/}/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "Y" "Y" || return $?
 
     if [ ! -d "$HOME/.ipython/profile_default/startup" ]; then
         mkdir -p "$HOME/.ipython/profile_default/startup" || return $?
@@ -293,8 +295,13 @@ function f_jupyter_util() {
     #   How-to: pp.ProfileReport(df)
     # How to get the startup directory location:
     #   get_ipython().profile_dir.startup_dir
-    echo "import pandas as pd
+    echo "import sys
+if '${_dir%/}' not in sys.path:
+    sys.path.append('${_dir%/}')
+import pandas as pd
+import get_json
 import jn_utils as ju
+import analyse_logs as al
 get_ipython().run_line_magic('matplotlib', 'inline')" >"$HOME/.ipython/profile_default/startup/import_ju.py"
 }
 
