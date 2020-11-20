@@ -286,12 +286,21 @@ LIMIT 10"""
 
     if bool(nxrm_logs) or bool(nxiq_logs):
         # analyse t_logs table (eg: count ERROR|WARN)
-        display_name = "WarnsErros_Hourly"
-        query = """SELECT UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, loglevel, count(1) 
+        display_name = "WarnsErrors_Hourly"
+        query = """SELECT UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, loglevel, count(*) as num 
     FROM t_logs
     %s
       AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
     GROUP BY 1, 2""" % (where_sql)
+        ju.draw(ju.q(query), name=display_name, desc=query)
+        # count unique threads per hour
+        display_name = "Unique_Threads_Hourly"
+        query = """SELECT date_hour, count(*) as num 
+    FROM (SELECT distinct UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, thread 
+        FROM t_logs
+        %s
+    ) tt
+    GROUP BY 1""" % (where_sql)
         ju.draw(ju.q(query), name=display_name, desc=query)
     # TODO: analyse db job triggers
     # q("""SELECT description, fireInstanceId
