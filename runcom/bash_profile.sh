@@ -45,7 +45,11 @@ if [ "$(uname)" = "Darwin" ]; then
     fi
     if [ -d $HOME/IdeaProjects/samples/python ]; then
         # Intentionally adding at the beginning
-        [[ ":$PYTHONPATH:" != *":$HOME/IdeaProjects/samples/python:"* ]] && export PYTHONPATH=$HOME/IdeaProjects/samples/python:$PYTHONPATH
+        if [ -z "$PYTHONPATH" ]; then
+            export PYTHONPATH=$HOME/IdeaProjects/samples/python
+        elif [[ ":$PYTHONPATH:" != *":$HOME/IdeaProjects/samples/python:"* ]]; then
+            export PYTHONPATH=$HOME/IdeaProjects/samples/python:$PYTHONPATH
+        fi
     fi
     # java related
     if [ -f /usr/libexec/java_home ]; then
