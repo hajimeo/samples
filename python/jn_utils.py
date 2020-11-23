@@ -45,12 +45,6 @@ from sqlalchemy import create_engine
 import matplotlib.pyplot as plt
 
 try:
-    import get_json
-except ImportError:
-    sys.stderr.write("[%s] WARN: No get_json\n")
-    pass
-
-try:
     from lxml import etree
     import multiprocessing as mp
     import jaydebeapi
