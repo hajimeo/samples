@@ -100,10 +100,30 @@ function sptBoot() {
     else
         echo "# ${_dir} already exists. so just starting ..."
     fi
-    nxrmStart "${_dir}" ""
+    # NXRM2 HTTPS/SSL/TLS
+    local _nxiq="$(ls -d1 ${_dir%/}/nexus-iq-server-1* | tail -n1)"
+    if [ -n "${_nxiq}" ]; then
+        iqStart "${_dir}" ""
+    else
+        local _nxrm2="$(ls -d1 ${_dir%/}/nexus-professional-2* | tail -n1)"
+        if [ -d "${_nxrm2%/}/conf" ] && [ ! -d "${_nxrm2%/}/conf/ssl" ] && [ -s $HOME/.nexus_executable_cache/ssl/keystore.jks ]; then
+            mkdir "${_nxrm2%/}/conf/ssl"
+            cp $HOME/.nexus_executable_cache/ssl/keystore.jks ${_nxrm2%/}/conf/ssl/
+
+            if [ ! -s "${_nxrm2%/}/conf/jetty-https.xml.orig" ]; then
+                cp -p "${_nxrm2%/}/conf/jetty-https.xml" "${_nxrm2%/}/conf/jetty-https.xml.orig"
+            fi
+            sed -i.bak 's/OBF:1v2j1uum1xtv1zej1zer1xtn1uvk1v1v/password/g' "${_nxrm2%/}/conf/jetty-https.xml"
+            if ! grep -q 'wrapper.app.parameter.3' "${_nxrm2%/}/bin/jsw/conf/wrapper.conf"; then
+                sed -i.bak '/wrapper.app.parameter.2/a wrapper.app.parameter.3=./conf/jetty-https.xml' "${_nxrm2%/}/bin/jsw/conf/wrapper.conf"
+            fi
+            grep -q "application-port-ssl" "${_nxrm2%/}/conf/nexus.properties" || echo "application-port-ssl=8443" >> "${_nxrm2%/}/conf/nexus.properties"
+        fi
+        nxrmStart "${_dir}" ""
+    fi
 }
 
-# To start local (on Mac) IQ server
+# To start local (on Mac) NXRM2 or NXRM3 server
 function nxrmStart() {
     local _base_dir="${1:-"."}"
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"}
