@@ -14,6 +14,11 @@ if [ "`uname`" = "Darwin" ] && [ -z "${_WORK_DIR}" ]; then
 else
     _WORK_DIR="/var/tmp/share"
 fi
+_IP_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$'
+_IP_RANGE_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(/[0-3]?[0-9])$'
+_HOSTNAME_REGEX='^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
+_URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
+
 
 function _log() {
     local _log_file="${_LOG_FILE_PATH:-"/dev/null"}"
@@ -24,7 +29,6 @@ function _log() {
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a ${_log_file}
     fi 1>&2 # At this moment, outputting to STDERR
 }
-
 
 function _find_recent() {
     local __doc__="Find recent (log) files"
@@ -333,6 +337,13 @@ function _trim() {
     local _string="$1"
     echo "${_string}" | _sed -e 's/^ *//g' -e 's/ *$//g'
 }
+
+function _split() {
+    local _string="$1"
+    local _delimiter="${2:-" "}"
+    echo ${_string} | sed "s/${_delimiter}/$IFS/g"}
+}
+
 function _escape() {
     local _string="$1"
     printf %q "${_string}"
@@ -342,10 +353,12 @@ function _sed() {
     local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
     ${_cmd} "$@"
 }
+
 function _grep() {
     local _cmd="grep"; which ggrep &>/dev/null && _cmd="ggrep"
     ${_cmd} "$@"
 }
+
 function _pid_by_port() {
     local _port="$1"
     [ -z "${_port}" ] && return 1
@@ -523,6 +536,7 @@ function _ask() {
         fi
     fi
 }
+# Checking if the _function_name is the validate type function (isXxxxYyyy)
 function _isValidateFunc() {
     local _function_name="$1"
     # FIXME: not good way
@@ -532,12 +546,19 @@ function _isValidateFunc() {
     fi
     return 1
 }
+
 function _isYes() {
     local _answer="$1"
     [ $# -eq 0 ] && _answer="${__LAST_ANSWER}"
     [[ "${_answer}" = "true" ]] && return 0
     [[ "${_answer}" =~ ^[yY] ]] && return 0
     return 1
+}
+
+# Using 'which' is not recommended
+function _isCmd() {
+    local _cmd="$1"
+    command -v "${_cmd}" &>/dev/null
 }
 
 function _backup() {
@@ -572,6 +593,48 @@ function _backup() {
     fi
     gzip -c ${_file_path} > ${_backup_dir%/}/${_new_file_name}.gz || return $?
     _log "DEBUG" "Backup-ed ${_file_path} to ${_backup_dir%/}/${_new_file_name}"
+}
+
+function _isEnoughDisk() {
+    local __doc__="Check if entire system or the given path has enough space with GB."
+    local _dir_path="${1-/}"
+    local _required_gb="$2"
+    local _available_space_gb=""
+
+    _available_space_gb=$(_freeSpaceGB "${_dir_path}")
+
+    if [ -z "$_required_gb" ]; then
+        echo "${_available_space_gb}GB free space"
+        _required_gb=$(_totalSpaceGB)
+        _required_gb="$(expr $_required_gb / 10)"
+    fi
+
+    if [ $_available_space_gb -lt $_required_gb ]; then return 1; fi
+    return 0
+}
+function _freeSpaceGB() {
+    local __doc__="Output how much space for given directory path."
+    local _dir_path="$1"
+    if [ ! -d "$_dir_path" ]; then _dir_path="-l"; fi
+    df -P --total ${_dir_path} | grep -i ^total | awk '{gb=sprintf("%.0f",$4/1024/1024);print gb}'
+}
+function _totalSpaceGB() {
+    local __doc__="Output how much space for given directory path."
+    local _dir_path="$1"
+    if [ ! -d "$_dir_path" ]; then _dir_path="-l"; fi
+    df -P --total ${_dir_path} | grep -i ^total | awk '{gb=sprintf("%.0f",$2/1024/1024);print gb}'
+}
+function _isNotEmptyDir() {
+    local _dir_path="$1"
+    # If path is not directory, treat as eampty
+    [ ! -d "${_dir_path}" ] && return 1
+    [ "$(ls -A ${_dir_path})" ]
+}
+
+function _isUrl() {
+    local _url="$1"
+    [ -z "${_url}" ] && return 1
+    [[ "${_url}" =~ $_URL_REGEX ]]
 }
 
 function _download() {

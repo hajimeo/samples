@@ -1,4 +1,5 @@
 #!/bin/bash
+# @DEPRECATED Use utils.sh
 #
 # Require: expect,ssh,openssl
 # Reserved variable name: r_passphrase

@@ -1006,15 +1006,15 @@ ACCESS VNC:
 function f_useradd() {
     local __doc__="Add user on *Host*"
     local _user="$1"
-    local _pwd="$2"
+    local _pwd="${2:-""}"
     local _copy_ssh_config="$3"
 
-    if id -u $_user &>/dev/null; then
-        _info "$_user already exists. Skipping useradd command..."
+    if id -u ${_user} &>/dev/null; then
+        _info "${_user} already exists. Skipping useradd command..."
     else
         # should specify home directory just in case?
-        useradd -d "/home/$_user/" -s $(which bash) -p $(echo "$_pwd" | openssl passwd -1 -stdin) "$_user"
-        mkdir "/home/$_user/" && chown "$_user":"$_user" "/home/$_user/"
+        useradd -d "/home/${_user}/" -s "$(which bash)" -p "$(echo "${_pwd}" | openssl passwd -1 -stdin)" "${_user}"
+        mkdir "/home/${_user}/" && chown "${_user}":"${_user}" "/home/${_user}/"
     fi
 
     if _isYes "$_copy_ssh_config"; then
@@ -1023,17 +1023,23 @@ function f_useradd() {
             return 1
         fi
 
-        if [ ! -d "/home/$_user/" ]; then
-            _error "No /home/$_user/ . Not copying ssh configs ..."
+        if [ ! -d "/home/${_user}/" ]; then
+            _error "No /home/${_user}/ . Not copying ssh configs ..."
             return 1
         fi
 
-        mkdir "/home/$_user/.ssh" && chown "$_user":"$_user" "/home/$_user/.ssh"
-        cp ${HOME%/}/.ssh/id_rsa* "/home/$_user/.ssh/"
-        cp ${HOME%/}/.ssh/config "/home/$_user/.ssh/"
-        cp ${HOME%/}/.ssh/authorized_keys "/home/$_user/.ssh/"
-        chown "$_user":"$_user" /home/$_user/.ssh/*
-        chmod 600 "/home/$_user/.ssh/id_rsa"
+        if [ ! -d "/home/${_user}/.ssh" ]; then
+            sudo -u ${_user} mkdir "/home/${_user}/.ssh" || return $?
+        fi
+        if [ ! -s "/home/${_user}/.ssh/id_rsa" ]; then
+            #cp ${HOME%/}/.ssh/id_rsa* "/home/${_user}/.ssh/"
+            sudo -u ${_user} ssh-keygen -f /home/${_user}/.ssh/id_rsa -q -N ""
+            #chmod 600 "/home/${_user}/.ssh/id_rsa"
+        fi
+        # Copy (overwrite) same config and authorized keys if doesn't exist
+        [ -s "${HOME%/}/.ssh/config" ] && cp -f -v ${HOME%/}/.ssh/config "/home/${_user}/.ssh/"
+        [ -s "${HOME%/}/.ssh/authorized_keys" ] && cp -f -v  ${HOME%/}/.ssh/authorized_keys "/home/${_user}/.ssh/"
+        chown -R "${_user}":"${_user}" /home/${_user}/.ssh
     fi
 }
 
@@ -1791,14 +1797,6 @@ function p_basic_setup() {
 }
 
 ### Utility type functions #################################################
-_YES_REGEX='^(y|Y)'
-_IP_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$'
-_IP_RANGE_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(/[0-3]?[0-9])$'
-_HOSTNAME_REGEX='^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$'
-_URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
-_TEST_REGEX='^\[.+\]$'
-
-_WORK_DIR="/var/tmp/share"
 
 # At this moment, not much difference from _echo and _warn, might change later
 function _info() {
@@ -1811,176 +1809,8 @@ function _warn() {
 function _error() {
     _log "ERROR" "$@"
 }
-function _log() {
-    if [ -n "${g_LOG_FILE_PATH}" ]; then
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" | tee -a ${g_LOG_FILE_PATH} 1>&2
-    else
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" 1>&2
-    fi
-}
-function _echo() {
-    local _msg="$1"
-    local _stderr="$2"
 
-    if _isYes "$_stderr"; then
-        echo -e "$_msg" 1>&2
-    else
-        echo -e "$_msg"
-    fi
-}
-function _ask() {
-    local _question="$1"
-    local _default="$2"
-    local _var_name="$3"
-    local _is_secret="$4"
-    local _is_mandatory="$5"
-    local _validation_func="$6"
 
-    local _default_orig="$_default"
-    local _cmd=""
-    local _full_question="${_question}"
-    local _trimmed_answer=""
-    local _previous_answer=""
-
-    if [ -z "${_var_name}" ]; then
-        __LAST_ANSWER=""
-        _var_name="__LAST_ANSWER"
-    fi
-
-    # currently only checking previous value of the variable name starting with "r_"
-    if [[ "${_var_name}" =~ ^r_ ]]; then
-        _previous_answer=$(_trim "${!_var_name}")
-        if [ -n "${_previous_answer}" ]; then _default="${_previous_answer}"; fi
-    fi
-
-    if [ -n "${_default}" ]; then
-        if _isYes "$_is_secret"; then
-            _full_question="${_question} [*******]"
-        else
-            _full_question="${_question} [${_default}]"
-        fi
-    fi
-
-    if _isYes "$_is_secret"; then
-        local _temp_secret=""
-
-        while true; do
-            read -p "${_full_question}: " -s "${_var_name}"
-            echo ""
-
-            if [ -z "${!_var_name}" -a -n "${_default}" ]; then
-                eval "${_var_name}=\"${_default}\""
-                break
-            else
-                read -p "${_question} (again): " -s "_temp_secret"
-                echo ""
-
-                if [ "${!_var_name}" = "${_temp_secret}" ]; then
-                    break
-                else
-                    echo "1st value and 2nd value do not match."
-                fi
-            fi
-        done
-    else
-        read -p "${_full_question}: " "${_var_name}"
-
-        _trimmed_answer=$(_trim "${!_var_name}")
-
-        if [ -z "${_trimmed_answer}" -a -n "${_default}" ]; then
-            # if new value was only space, use original default value instead of previous value
-            if [ -n "${!_var_name}" ]; then
-                eval "${_var_name}=\"${_default_orig}\""
-            else
-                eval "${_var_name}=\"${_default}\""
-            fi
-        else
-            eval "${_var_name}=\"${_trimmed_answer}\""
-        fi
-    fi
-
-    # if empty value, check if this is a mandatory field.
-    if [ -z "${!_var_name}" ]; then
-        if _isYes "$_is_mandatory"; then
-            echo "'${_var_name}' is a mandatory parameter."
-            _ask "$@"
-        fi
-    else
-        # if not empty and if a validation function is given, use function to check it.
-        if _isValidateFunc "$_validation_func"; then
-            $_validation_func "${!_var_name}"
-            if [ $? -ne 0 ]; then
-                _ask "Given value does not look like correct. Would you like to re-type?" "Y"
-                if _isYes; then
-                    _ask "$@"
-                fi
-            fi
-        fi
-    fi
-}
-function _backup() {
-    local __doc__="Backup the given file path into ${g_BACKUP_DIR} or /tmp."
-    local _file_path="$1"
-    local _force="$2"
-    local _file_name="$(basename $_file_path)"
-    local _new_file_name=""
-    local _backup_dir="${g_BACKUP_DIR:-"/tmp"}"
-
-    if [ ! -e "$_file_path" ]; then
-        _warn "$FUNCNAME: Not taking a backup as $_file_path does not exist."
-        return 1
-    fi
-
-    local _mod_dt="$(stat -c%y $_file_path)"
-    local _mod_ts=$(date -d "${_mod_dt}" +"%Y%m%d-%H%M%S")
-
-    _new_file_name="${_file_name}_${_mod_ts}"
-    if ! _isYes "$_force"; then
-        if [ -e "${_backup_dir%/}/${_new_file_name}" ]; then
-            _info "$_file_name has been already backed up. Skipping..."
-            return 0
-        fi
-    fi
-
-    _makeBackupDir
-    cp -p ${_file_path} ${_backup_dir%/}/${_new_file_name} || return $?
-}
-function _makeBackupDir() {
-    local _backup_dir="${g_BACKUP_DIR:-"/tmp"}"
-    if [ -n "${_backup_dir}" ] && [ ! -d "${_backup_dir}" ]; then
-        mkdir -p -m 700 "${_backup_dir}"
-        #[ -n "$SUDO_USER" ] && chown $SUDO_UID:$SUDO_GID ${_backup_dir}
-    fi
-}
-function _isEnoughDisk() {
-    local __doc__="Check if entire system or the given path has enough space with GB."
-    local _dir_path="${1-/}"
-    local _required_gb="$2"
-    local _available_space_gb=""
-
-    _available_space_gb=$(_freeSpaceGB "${_dir_path}")
-
-    if [ -z "$_required_gb" ]; then
-        echo "${_available_space_gb}GB free space"
-        _required_gb=$(_totalSpaceGB)
-        _required_gb="$(expr $_required_gb / 10)"
-    fi
-
-    if [ $_available_space_gb -lt $_required_gb ]; then return 1; fi
-    return 0
-}
-function _freeSpaceGB() {
-    local __doc__="Output how much space for given directory path."
-    local _dir_path="$1"
-    if [ ! -d "$_dir_path" ]; then _dir_path="-l"; fi
-    df -P --total ${_dir_path} | grep -i ^total | awk '{gb=sprintf("%.0f",$4/1024/1024);print gb}'
-}
-function _totalSpaceGB() {
-    local __doc__="Output how much space for given directory path."
-    local _dir_path="$1"
-    if [ ! -d "$_dir_path" ]; then _dir_path="-l"; fi
-    df -P --total ${_dir_path} | grep -i ^total | awk '{gb=sprintf("%.0f",$2/1024/1024);print gb}'
-}
 function _port_wait() {
     local _host="$1"
     local _port="$2"
@@ -2008,144 +1838,7 @@ function _port_wait() {
     _warn "$_host:$_port is unreachable."
     return 1
 }
-function _isYes() {
-    # Unlike other languages, 0 is nearly same as True in shell script
-    local _answer="$1"
 
-    if [ $# -eq 0 ]; then
-        _answer="${__LAST_ANSWER}"
-    fi
-
-    if [[ "${_answer}" =~ $_YES_REGEX ]]; then
-        #_log "$FUNCNAME: \"${_answer}\" matchs."
-        return 0
-    elif [[ "${_answer}" =~ $_TEST_REGEX ]]; then
-        eval "${_answer}" && return 0
-    fi
-
-    return 1
-}
-function _isCmd() {
-    local _cmd="$1"
-
-    if command -v "$_cmd" &>/dev/null; then
-        return 0
-    else
-        return 1
-    fi
-}
-function _isNotEmptyDir() {
-    local _dir_path="$1"
-
-    # If path is empty, treat as eampty
-    if [ -z "$_dir_path" ]; then return 1; fi
-
-    # If path is not directory, treat as eampty
-    if [ ! -d "$_dir_path" ]; then return 1; fi
-
-    if [ "$(ls -A ${_dir_path})" ]; then
-        return 0
-    else
-        return 1
-    fi
-}
-function _isUrl() {
-    local _url="$1"
-
-    if [ -z "$_url" ]; then
-        return 1
-    fi
-
-    if [[ "$_url" =~ $_URL_REGEX ]]; then
-        return 0
-    fi
-
-    return 1
-}
-function _isUrlButNotReachable() {
-    local _url="$1"
-
-    if ! _isUrl "$_url"; then
-        return 1
-    fi
-
-    if curl --output /dev/null --silent --head --fail "$_url"; then
-        return 1
-    fi
-
-    # Return true only if URL is NOT reachable
-    return 0
-}
-function _isValidateFunc() {
-    local _function_name="$1"
-
-    # FIXME: not good way
-    if [[ "$_function_name" =~ ^_is ]]; then
-        typeset -F | grep "^declare -f $_function_name$" &>/dev/null
-        return $?
-    fi
-    return 1
-}
-
-# Deprecated: use sed, like for _s in `echo "HDFS MR2 YARN" | sed 's/ /\n/g'`; do echo $_s "Y"; done
-function _split() {
-    local _rtn_var_name="$1"
-    local _string="$2"
-    local _delimiter="${3-,}"
-    local _original_IFS="$IFS"
-    eval "IFS=\"$_delimiter\" read -a $_rtn_var_name <<< \"$_string\""
-    IFS="$_original_IFS"
-}
-
-function _trim() {
-    local _string="$1"
-    echo "${_string}" | sed -e 's/^ *//g' -e 's/ *$//g'
-}
-
-function _upsert() {
-    local __doc__="Modify the given file with given parameter name and value."
-    local _file_path="$1"
-    local _name="$2"
-    local _value="$3"
-    local _if_not_exist_append_after="$4" # This needs to be a line, not search keyword
-    local _between_char="${5-=}"
-    local _comment_char="${6-#}"
-    # NOTE & TODO: Not sure why /\\\&/ works, should be /\\&/ ...
-    local _name_esc_sed=$(echo "${_name}" | sed 's/[][\.^$*\/"&]/\\\&/g')
-    local _name_esc_sed_for_val=$(echo "${_name}" | sed 's/[\/]/\\\&/g')
-    local _name_escaped=$(printf %q "${_name}")
-    local _value_esc_sed=$(echo "${_value}" | sed 's/[\/]/\\\&/g')
-    local _value_escaped=$(printf %q "${_value}")
-
-    [ ! -f "${_file_path}" ] && return 11
-    # Make a backup
-    local _file_name="$(basename "${_file_path}")"
-    [ ! -f "/tmp/${_file_name}.orig" ] && cp -p "${_file_path}" "/tmp/${_file_name}.orig"
-
-    # If name=value is already set, all good
-    grep -qP "^\s*${_name_escaped}\s*${_between_char}\s*${_value_escaped}\b" "${_file_path}" && return 0
-
-    # If name= is already set, replace all with /g
-    if grep -qP "^\s*${_name_escaped}\s*${_between_char}" "${_file_path}"; then
-        sed -i -r "s/^([[:space:]]*${_name_esc_sed})([[:space:]]*${_between_char}[[:space:]]*)[^${_comment_char} ]*(.*)$/\1\2${_value_esc_sed}\3/g" "${_file_path}"
-        return $?
-    fi
-
-    # If name= is not set and no _if_not_exist_append_after, just append in the end of line (TODO: it might add extra newline)
-    if [ -z "${_if_not_exist_append_after}" ]; then
-        local _last_c="$(tail -c1 ${_file_path})"
-        [ "${_last_c}" != "" ] && echo -e '\n' >>${_file_path}
-        echo "${_name}${_between_char}${_value}" >>${_file_path}
-        return $?
-    fi
-
-    # If name= is not set and _if_not_exist_append_after is set, inserting
-    if [ -n "${_if_not_exist_append_after}" ]; then
-        local _if_not_exist_append_after_sed="$(echo "${_if_not_exist_append_after}" | sed 's/[][\.^$*\/"&]/\\\&/g')"
-        sed -i -r "0,/^(${_if_not_exist_append_after_sed}.*)$/s//\1\n${_name_esc_sed_for_val}${_between_char}${_value_esc_sed}/" ${_file_path}
-        return $?
-    fi
-}
 
 function _sed_escape() {
     # Only works with "/" delimiter
