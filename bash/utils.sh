@@ -341,7 +341,7 @@ function _trim() {
 function _split() {
     local _string="$1"
     local _delimiter="${2:-" "}"
-    echo ${_string} | sed "s/${_delimiter}/$IFS/g"}
+    echo ${_string} | sed "s/${_delimiter}/$IFS/g"
 }
 
 function _escape() {
@@ -641,7 +641,8 @@ function _download() {
     local _url="$1"
     local _save_as="$2"
     local _no_backup="$3"
-    local _if_not_exists="$4"   # default is always overwriting
+    local _if_not_exists="$4"   # default is always overwriting if older_than_X_mins
+    local _older_than_mins="$5"
 
     if [[ "${_if_not_exists}" =~ ^(y|Y) ]] && [ -s "${_save_as}" ]; then
         _log "INFO" "Not downloading as ${_save_as} exists."
