@@ -279,10 +279,10 @@ function f_jupyter_util() {
     if [ ! -d "${_parent_dir%/}/java/hadoop" ]; then
         mkdir -p "${_parent_dir%/}/java/hadoop" || return $?
     fi
-    # TODO: If not local test, would like to always overwrite ...
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/jn_utils.py" "${_dir%/}/jn_utils.py" "Y" "Y" || return $?
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/get_json.py" "${_dir%/}/get_json.py" "Y" "Y" || return $?
-    _download "https://raw.githubusercontent.com/hajimeo/samples/master/python/analyse_logs.py" "${_dir%/}/analyse_logs.py" "Y" "Y" || return $?
+    # If not local test, would like to always overwrite ...
+    _check_update "${_dir%/}/jn_utils.py" "" "Y" || return $?
+    _check_update "${_dir%/}/get_json.py" "" "Y" || return $?
+    _check_update "${_dir%/}/analyse_logs.py" "" "Y" || return $?
 
     #_download "https://public-xxxxxxx.s3.amazonaws.com/hive-jdbc-client-1.2.1.jar" "${_parent_dir%/}/java/hadoop/hive-jdbc-client-1.2.1.jar" "Y" "Y" || return $?
     _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "${_parent_dir%/}/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y" || return $?
