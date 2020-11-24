@@ -302,8 +302,8 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
         dfs[new_name] = json2df(filename=f, conn=conn, tablename=new_name, chunksize=chunksize, list_only=list_only,
                                 json_cols=json_cols)
     if bool(conn):
-        del(names_dict)
-        del(dfs)
+        del (names_dict)
+        del (dfs)
         return None
     return (names_dict, dfs)
 
@@ -739,13 +739,14 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     return conn
 
 
-def query(sql, conn=None, no_history=False):
+def query(sql, conn=None, no_history=False, show=False):
     """
     Call pd.read_sql() with given query, expecting SELECT statement
     :param sql: SELECT statement
     :param conn: DB connection object
     :param no_history: not saving this query into a history file
-    :return: a DF object
+    :param show: Use display() to draw HTML (NOTE: Not using this and using Jupyter is fast)
+    :return: a DF object or void
     >>> query("select name from sqlite_master where type = 'table'", connect(), True)
     Empty DataFrame
     Columns: [name]
@@ -761,6 +762,9 @@ def query(sql, conn=None, no_history=False):
     # dfStyler.set_table_styles([dict(selector='td', props=[('text-align', 'left')])])
     if no_history is False and df.empty is False:
         _save_query(sql)
+    if show:
+        display(df)
+        return
     return df
 
 
@@ -845,9 +849,9 @@ def _autocomp_inject(tablename=None):
         tbl_cls = _gen_class(t, cols)
         try:
             get_ipython().user_global_ns[t] = tbl_cls
-            #globals()[t] = tbl_cls
-            #locals()[t] = tbl_cls
-            #_info("added %s with %s" % (t, str(globals()[t])))
+            # globals()[t] = tbl_cls
+            # locals()[t] = tbl_cls
+            # _info("added %s with %s" % (t, str(globals()[t])))
         except:
             _debug("get_ipython().user_global_ns failed")
             pass
@@ -874,7 +878,8 @@ def _system(command):
 
 def display(df, name="", desc=""):
     """
-    Wrapper of IPython.display.display for DataFrame object
+    Wrapper of IPython.display.display for *DataFrame* object
+    This function also change the table cel (th, td) alignments.
     :param df: A DataFrame object
     :param name: Caption and also used when saving into file
     :param desc: Optional description (eg: SQL statement)
@@ -885,24 +890,26 @@ def display(df, name="", desc=""):
     if bool(name) is False:
         name = _timestamp(format="%Y%m%d%H%M%S%f")
     else:
-        #df.style.set_caption(name)
-        name_html += "<h4>"+name+"</h4>"
+        # df.style.set_caption(name)
+        name_html += "<h4>" + name + "</h4>"
         if bool(desc):
-            name_html += "<pre>"+desc+"</pre>"
+            name_html += "<pre>" + desc + "</pre>"
     if _is_jupyter():
-        _display(name_html+df.to_html())
+        df_styler = df.style.set_properties(**{'text-align': 'left'})
+        df_styler = df_styler.set_table_styles([
+            dict(selector='th', props=[('text-align', 'left'), ('vertical-align', 'top')]),
+            dict(selector='td', props=[('white-space', 'pre'), ('vertical-align', 'top')])
+        ])
+        _display(name_html + '\n' + df_styler.render())
     else:
         # print(df.to_html())
         df2csv(df=df, file_path="%s.csv" % (str(name)))
 
 
+show = s = p = display
+
+
 def _display(html):
-    """
-    Wrapper of IPython.display.display
-    :param html: HTML string
-    :return Void
-    >>> pass
-    """
     IPython.display.display(IPython.display.HTML(html))
 
 
@@ -970,16 +977,16 @@ def draw(df, width=8, x_col=0, x_colname=None, name=None, desc="", tail=10):
         height_inch = len(df.columns) * 4
     if bool(x_colname) is False:
         x_colname = df.columns[x_col]
-    df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)  #, title=name
+    df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)  # , title=name
     if bool(name) is False:
         name = _timestamp(format="%Y%m%d%H%M%S%f")
     plt.savefig("%s.png" % (str(name)))
     if _is_jupyter():
         _html = ""
         if bool(name):
-            _html += "<h4>"+name+"</h4>"
+            _html += "<h4>" + name + "</h4>"
         if bool(desc):
-            _html += "<pre>"+desc+"</pre>"
+            _html += "<pre>" + desc + "</pre>"
         if len(_html) > 0:
             _display(_html)
         # Force displaying, otherwise, name (titile) and desc won't show in expected order
@@ -1685,8 +1692,8 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
         names_dict[tablename] = f
         dfs[tablename] = csv2df(filename=f, conn=conn, tablename=tablename, chunksize=chunksize)
     if bool(conn):
-        del(names_dict)
-        del(dfs)
+        del (names_dict)
+        del (dfs)
         return None
     return (names_dict, dfs)
 
@@ -1762,6 +1769,7 @@ def obj2csv(obj, file_path, mode="w", header=True):
         return
     return df2csv(df, file_path, mode=mode, header=header)
 
+
 def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace'):
     """
     Convert df to a DB table
@@ -1775,6 +1783,7 @@ def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace'):
     if conn is None:
         conn = connect()
     df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=_DB_SCHEMA, index=False)
+
 
 def df2csv(df, file_path, mode="w", header=True):
     '''
