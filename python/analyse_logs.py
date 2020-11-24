@@ -119,25 +119,30 @@ def _gen_regex_for_elastic_jvm(sample):
     return (columns, partern_str)
 
 
-def threads2table(filename="threads.txt", tablename=None, conn=None, date_time=None):
-    # TODO: date_time (should use file modified time? but not trust-able)
-    # TODO: waiting on | locked
+def threads2table(filename="threads.txt", tablename=None, conn=None,
+                  line_beginning="^\"", line_matching='^"?([^"]+)"? id=([^ ]+) state=(\w+)(.*)'):
+    """
+    Load the threads.txt file to table
+    :param filename: String for a filename for glob or a file path.
+    :param tablename: String for the table name
+    :param conn: Optional DB connection object. If None, a new connetion will be created.
+    :param line_beginning: Regex string for finding the beginning of a record
+    :param line_matching: Regex string for finding columns
+    :return: logs2table result
+    """
+    #
     return ju.logs2table(filename=filename, tablename=tablename, conn=conn,
                       col_names=['thread_name', 'id', 'state', 'stacktrace'],
-                      line_beginning="^\"",
-                      line_matching='^"([^"]+)" id=([^ ]+) state=(\w+)(.*)',
+                      line_beginning=line_beginning,
+                      line_matching=line_matching,
                       size_regex=None, time_regex=None)
 
 
-def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=10000, max_file_size=(1024 * 1024 * 100), load_only=False):
+def etl(max_file_size=(1024 * 1024 * 100)):
     """
-    A prototype / demonstration function to analyse log files
-    :param start_isotime:
-    :param end_isotime:
-    :param elapsed_time:
-    :param tail_num:
-    :return: void
-    >>> pass    # test should be done in each function
+    Extract data and transform and load
+    :param max_file_size:
+    :return:
     """
     # At this moment, using system commands only when ./_filtered does not exist
     ju._system('[ ! -d ./_filtered ] && [ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh')
@@ -186,8 +191,19 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
             ju._autocomp_inject(tablename='t_elastic_jvm_monitor')
 
     ju.display(ju.desc(), name="Available_Tables")
-    if load_only:
-        return
+
+
+def analyse_logs(start_isotime=None, end_isotime=None, tail_num=10000, max_file_size=(1024 * 1024 * 100)):
+    """
+    A prototype / demonstration function for extracting then analyse log files
+    :param start_isotime: YYYY-MM-DD hh:mm:ss,sss
+    :param end_isotime: YYYY-MM-DD hh:mm:ss,sss
+    :param tail_num: How many rows/records to display. Default is 10K
+    :param max_file_size: File smaller than this size will be skipped.
+    :return: void
+    >>> pass    # test should be done in each function
+    """
+    etl(max_file_size=max_file_size)
 
     where_sql = "WHERE 1=1"
     if bool(start_isotime) is True:
@@ -199,8 +215,6 @@ def analyse_logs(start_isotime=None, end_isotime=None, elapsed_time=0, tail_num=
         display_name = "RequestLog_StatusCode_Hourly_aggs"
         # Can't use above where_sql for this query
         where_sql2 = "WHERE 1=1"
-        if bool(elapsed_time) is True:
-            where_sql2 += " AND elapsedTime >= %d" % (elapsed_time)
         if bool(start_isotime) is True:
             where_sql2 += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') >= UDF_STR2SQLDT('" + start_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
         if bool(end_isotime) is True:
@@ -221,7 +235,7 @@ GROUP BY 1, 2""" % (where_sql2)
     CAST(statusCode AS INTEGER) AS statusCode, 
     CAST(bytesSent AS INTEGER) AS bytesSent, 
     CAST(elapsedTime AS INTEGER) AS elapsedTime 
-FROM t_request_logs %s""" % (where_sql)
+FROM t_request_logs %s""" % (where_sql2)
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
     if bool(health_monitor):
@@ -240,7 +254,7 @@ FROM t_request_logs %s""" % (where_sql)
     , CAST(`connection.active.count` AS INTEGER) as node_conn_count
 FROM t_health_monitor
 %s""" % (where_sql)
-        ju.draw(ju.q(query), name=display_name, desc=query)
+        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
     if bool(elastic_monitor):
         display_name = "NexusLog_ElasticJvm_Monitor"
@@ -251,7 +265,7 @@ FROM t_health_monitor
     , UDF_STR_TO_INT(mem_after) as mem_after_bytes
 FROM t_elastic_jvm_monitor
 %s""" % (where_sql)
-        ju.draw(ju.q(query), name=display_name, desc=query)
+        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
     if bool(nxiq_logs):
         display_name = "NxiqLog_Policy_Scan_aggs"
@@ -263,7 +277,7 @@ FROM t_logs
 WHERE thread LIKE 'PolicyEvaluateService%'
 GROUP BY 1
 ORDER BY diff, thread"""
-        ju.display(ju.q(query), name=display_name, desc=query)
+        ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
         display_name = "NxiqLog_HDS_Client_Requests"
         query = """SELECT date_time, 
@@ -272,7 +286,7 @@ ORDER BY diff, thread"""
 FROM t_logs
 WHERE t_logs.class = 'com.sonatype.insight.brain.hds.HdsClient'
   AND t_logs.message LIKE 'Completed request%'"""
-        ju.display(ju.q(query), name=display_name, desc=query)
+        ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
         display_name = "NxiqLog_Top10_Slow_Scans"
         query = """SELECT date_time, thread,
@@ -282,7 +296,7 @@ FROM t_logs
 WHERE t_logs.message like 'Evaluated policy for%'
 ORDER BY ms DESC
 LIMIT 10"""
-        ju.display(ju.q(query), name=display_name, desc=query)
+        ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
     if bool(nxrm_logs) or bool(nxiq_logs):
         # analyse t_logs table (eg: count ERROR|WARN)
@@ -292,7 +306,7 @@ LIMIT 10"""
     %s
       AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
     GROUP BY 1, 2""" % (where_sql)
-        ju.draw(ju.q(query), name=display_name, desc=query)
+        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
         # count unique threads per hour
         display_name = "Unique_Threads_Hourly"
         query = """SELECT date_hour, count(*) as num 
@@ -301,7 +315,7 @@ LIMIT 10"""
         %s
     ) tt
     GROUP BY 1""" % (where_sql)
-        ju.draw(ju.q(query), name=display_name, desc=query)
+        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
     # TODO: analyse db job triggers
     # q("""SELECT description, fireInstanceId
     # , nextFireTime
