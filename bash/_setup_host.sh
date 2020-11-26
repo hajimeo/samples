@@ -1006,9 +1006,10 @@ ACCESS VNC:
 function f_useradd() {
     local __doc__="Add user on *Host*"
     local _user="$1"
-    local _pwd="${2:-""}"
+    local _pwd="${2:-"${_user}123"}"
     local _copy_ssh_config="$3"
 
+    [ -z "${_user}" ] && return 1
     if id -u ${_user} &>/dev/null; then
         _info "${_user} already exists. Skipping useradd command..."
     else

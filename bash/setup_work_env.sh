@@ -18,7 +18,14 @@ _import "utils.sh"
 
 function f_prepare() {
     # commands which may require sudo, but minimum (not including screen)
-    _install sudo curl jq  screen python3.7
+    if ! which brew &>/dev/null; then
+        if ! which add-apt-repository &>/dev/null; then
+            _install software-properties-common
+            add-apt-repository ppa:deadsnakes/ppa -y
+            apt-get update
+        fi
+    fi
+    _install sudo curl jq screen python3.7
     # Below is for pyenv and not using at this moment
     #_install make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python-openssl git
     f_install_rg
@@ -33,8 +40,10 @@ function f_prepare() {
         _install python3-distutils
         sudo python3.7 /tmp/get-pip.py || return $?
     fi
+    # python 3.7 does not have virtualenv?
+    python3.7 -m pip install -U virtualenv
 
-    # TODO: this works only with python2, hence not pip3 and not in virtualenv, and eventually will stop working
+    # TODO: this works only with python2, hence no pip3 (and not in virtualenv), and eventually will stop working
     if which python2 &>/dev/null; then
         sudo -i python2 -m pip install -U data_hacks
     else
@@ -203,12 +212,11 @@ function f_setup_python() {
 
     if [[ ! "${_no_venv}" =~ ^(y|Y) ]]; then
         deactivate &>/dev/null
-        #python3.7 -m pip install -U virtualenv
-        # When python version is changed, need to run virtualenv command again
+        # NOTE: when python version is changed, need to run virtualenv command again
         echo "Activating virtualenv: $HOME/.pyvenv ..."
-        virtualenv -p python3.7 $HOME/.pyvenv || return $?
+        python3.7 -m virtualenv -p python3.7 $HOME/.pyvenv || return $?
         source $HOME/.pyvenv/bin/activate || return $?
-        # NOTE: Currently not using pyenv
+        # NOTE: Currently not using pyenv (below) as it makes shell slower
         #pyenv deactivate &>/dev/null    # Or pyenv local system
         #f_setup_pyenv
         #pyenv virtualenv ${_ver} mypyvenv || return $?
@@ -232,8 +240,8 @@ function f_setup_python() {
     python3.7 -m pip install -U jupyter jupyterlab pandas --log /tmp/pip.log || return $?   #ipython
     # Reinstall: python3.7 -m pip uninstall -y jupyterlab && python3.7 -m pip install jupyterlab
 
-    # NOTE: Initially I thought pandasql looked good but it's actually using sqlite.
-    python3.7 -m pip install -U sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip.log
+    # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite.
+    python3.7 -m pip install -U jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip.log
     # Not installing below as pandas_profiling fails at this moment. Pixiedust works only with jupyter-notebook
     #python3.7 -m pip install -U pandas_profiling pixiedust --log /tmp/pip.log
     # NOTE: In case I might use jupyter notebook, still installing this
@@ -348,7 +356,7 @@ function _install() {
     if which apt-get &>/dev/null; then
         sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" || return $?
     elif which brew &>/dev/null; then
-        # TODO: ugly hack for brew and python specific version istallation
+        # TODO: ugly hack for brew and python specific version installation
         if [[ "$@" =~ ^(.*)python([0-9]\.[0-9]+)(.*)$ ]]; then
             brew install ${BASH_REMATCH[1]}python@${BASH_REMATCH[2]}${BASH_REMATCH[3]}
         else

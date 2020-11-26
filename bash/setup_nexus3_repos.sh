@@ -434,7 +434,6 @@ function f_setup_cocoapods() {
 function f_setup_go() {
     local _prefix="${1:-"go"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
-    # NOTE: If you disabled Anonymous access, then it is needed to enable the Conan Bearer Token Realm (via Administration > Security > Realms):
 
     # If no xxxx-proxy, create it (NOTE: No HA support)
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -446,6 +445,19 @@ function f_setup_go() {
         _log "INFO" "May need to set 'GOSUMDB=\"sum.golang.org ${r_NEXUS_URL:-"${_NEXUS_URL}"}/repository/gosum-raw-proxy\"'"
     fi
     # TODO: add some data for xxxx-proxy
+}
+
+function f_setup_apt() {
+    local _prefix="${1:-"apt"}"
+    local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
+
+    # If no xxxx-proxy, create it (NOTE: No HA support)
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        # distribution should be focal, bionic, etc, but it seems any string is OK.
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"apt":{"distribution":"ubuntu","flat":false},"proxy":{"remoteUrl":"http://archive.ubuntu.com/ubuntu/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"apt-proxy"}],"type":"rpc"}' || return $?
+    fi
+    # TODO: add some data for xxxx-proxy
+    # TODO: add hosted
 }
 
 function f_setup_raw() {
