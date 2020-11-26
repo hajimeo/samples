@@ -249,10 +249,10 @@ function f_setup_python() {
     # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3.7
     #python3.7 -m pip install beakerx && beakerx-install
 
-    # Enable jupyter Notebook extensions (not Lab)
-    python3.7 -m pip install -U jupyter-contrib-nbextensions jupyter-nbextensions-configurator
-    jupyter contrib nbextension install && jupyter nbextensions_configurator enable && jupyter nbextension enable spellchecker/main
-    # Not working...?
+    # Enable jupyter *Notebook* extensions NOTE: somehow this uses /usr/local/share/jupyter so may need sudo
+    #sudo python3.7 -m pip install -U jupyter-contrib-nbextensions jupyter-nbextensions-configurator
+    #jupyter contrib nbextension install && jupyter nbextensions_configurator enable && jupyter nbextension enable spellchecker/main
+    # Spellchecker for Jupyter Lab but not working...?
     #jupyter labextension install @ijmbarr/jupyterlab_spellchecker
 
     # Enable Holloviews http://holoviews.org/user_guide/Installing_and_Configuring.html
@@ -268,8 +268,8 @@ function f_setup_python() {
     #_install libsasl2-dev
     #python3.7 -m pip install sasl thrift thrift-sasl PyHive
 
-    # JDBC wrapper and 0.6.3 is for using Java 1.8 (to avoid "unsupported major.minor version 52.0")
-    python3.7 -m pip install JPype1==0.6.3 JayDeBeApi
+    # JDBC wrapper. "0.6.3" is for using Java 1.8 also this requires GCC
+    #python3.7 -m pip install JPype1==0.6.3 JayDeBeApi
     # For Google BigQuery (actually one of below)
     #python3.7 -m pip install google-cloud-bigquery pandas-gbq
 
@@ -290,10 +290,6 @@ function f_jupyter_util() {
     _check_update "${_dir%/}/jn_utils.py" "" "Y" || return $?
     _check_update "${_dir%/}/get_json.py" "" "Y" || return $?
     _check_update "${_dir%/}/analyse_logs.py" "" "Y" || return $?
-
-    #_download "https://public-xxxxxxx.s3.amazonaws.com/hive-jdbc-client-1.2.1.jar" "${_parent_dir%/}/java/hadoop/hive-jdbc-client-1.2.1.jar" "Y" "Y" || return $?
-    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "${_parent_dir%/}/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y" || return $?
-    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "${_parent_dir%/}/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "Y" "Y" || return $?
 
     if [ ! -d "$HOME/.ipython/profile_default/startup" ]; then
         mkdir -p "$HOME/.ipython/profile_default/startup" || return $?
@@ -346,6 +342,11 @@ function f_setup_java() {
             fi
         fi
     fi
+
+    # Below can be used with JayDeBeApi (which requires java 8), and it's OK if fails so no || return $?
+    #_download "https://public-xxxxxxx.s3.amazonaws.com/hive-jdbc-client-1.2.1.jar" "${_parent_dir%/}/java/hadoop/hive-jdbc-client-1.2.1.jar" "Y" "Y"
+    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "${_parent_dir%/}/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y"
+    _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "${_parent_dir%/}/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "Y" "Y"
 
     if ! java -version 2>&1 | grep -w "build ${_ver}" -m 1; then
         _log "WARN" "Current Java version is not ${_ver}."
