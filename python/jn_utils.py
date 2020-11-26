@@ -1736,7 +1736,7 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
         # read_csv file fails if file is empty
         df = pd.read_csv(file_path, escapechar='\\', header=header, names=names, index_col=False)
     except pd.errors.EmptyDataError:
-        _err("File %s is empty" % (str(filename)))
+        _info("File %s is empty" % (str(filename)))
         return False
     if bool(conn):
         if bool(tablename) is False:
