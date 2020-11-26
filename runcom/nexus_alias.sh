@@ -42,8 +42,9 @@ function iqCli() {
         curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
     fi
     local _cmd="java -Djava.io.tmpdir=\"${_iq_tmp}\" -jar ${_iq_cli_jar} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r \"${_iq_tmp%/}/iq_result_$(date +'%Y%m%d%H%M%S').json\" -X ${_path}"
-    echo "Executing: ${_cmd}" >&2
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
 }
 
 # Start "mvn" with IQ plugin
@@ -59,8 +60,9 @@ function iqMvn() {
     fi
     #local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}" # does not generate anything
     local _cmd="mvn com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -U -X $@"
-    echo "Executing: ${_cmd}" >&2
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
 }
 
 function iqHds() {
@@ -94,6 +96,7 @@ function sptBoot() {
         cp $HOME/IdeaProjects/samples/misc/standalone.localdomain.jks $HOME/.nexus_executable_cache/ssl/keystore.jks
         echo "# Append 'local.standalone.localdomain' in 127.0.0.1 line in /etc/hosts."
     fi
+
     local _dir="./$(basename "${_zip}" .zip)_tmp"
     if [ ! -d "${_dir}" ]; then
         python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ${_opts} "${_zip}" "${_dir}" || return $?
@@ -103,6 +106,8 @@ function sptBoot() {
     # NXRM2 HTTPS/SSL/TLS
     local _nxiq="$(ls -d1 ${_dir%/}/nexus-iq-server-1* | tail -n1)"
     if [ -n "${_nxiq}" ]; then
+        # TODO: this way does not work with "--noboot" because without boot, not loading json files
+        #-cp nexus-iq-server-1.100.0-01.jar:support-zip-loader-1.0-SNAPSHOT.jar -Dclm.disableJreCheck=true com.sonatype.insight.brain.supportloader.SupportLoader --supportzip ./support-20201119-173315-9-zip-extract --config-iq config.yml --skip-system-exit
         iqStart "${_dir}" ""
     else
         local _nxrm2="$(ls -d1 ${_dir%/}/nexus-professional-2* | tail -n1)"
@@ -119,6 +124,7 @@ function sptBoot() {
             fi
             grep -q "application-port-ssl" "${_nxrm2%/}/conf/nexus.properties" || echo "application-port-ssl=8443" >> "${_nxrm2%/}/conf/nexus.properties"
         fi
+        #export INSTALL4J_ADD_VM_PARAMS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"
         nxrmStart "${_dir}" ""
     fi
 }
@@ -176,11 +182,15 @@ function iqStart() {
     local _base_dir="${1:-"."}"
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"}
     #local _java_opts=${@:2}
-    local _jar_file="$(find ${_base_dir%/} -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
-    local _cfg_file="$(dirname "${_jar_file}")/config.yml"
+    local _jar_file="$(realpath "$(find ${_base_dir%/} -maxdepth 1 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)")"
+    [ -z "${_jar_file}" ] && return 11
+    local _cfg_file="$(realpath "$(dirname "${_jar_file}")/config.yml")"
+    [ -z "${_cfg_file}" ] && return 12
     grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
     grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.bak -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
+    cd "${_base_dir}"
     java -Xmx2g ${_java_opts} -jar "${_jar_file}" server "${_cfg_file}"
+    cd -
 }
 
 #iqDocker "nxiq-test" "" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
