@@ -282,15 +282,28 @@ function f_jupyter_util() {
     if [ ! -d "${_dir%/}" ]; then
         mkdir -p ${_dir%/} || return $?
     fi
-    local _parent_dir="$(dirname "${_dir%/}")"
-    if [ ! -d "${_parent_dir%/}/java/hadoop" ]; then
-        mkdir -p "${_parent_dir%/}/java/hadoop" || return $?
-    fi
     # If not local test, would like to always overwrite ...
     _check_update "${_dir%/}/jn_utils.py" "" "Y" || return $?
     _check_update "${_dir%/}/get_json.py" "" "Y" || return $?
     _check_update "${_dir%/}/analyse_logs.py" "" "Y" || return $?
 
+    #$ jupyter-lab --generate-config
+    #Writing default config to: /home/loganalyser/.jupyter/jupyter_notebook_config.py
+    if [ ! -d "$HOME/.jupyter" ]; then
+        mkdir -p "$HOME/.jupyter" || return $?
+    fi
+    cat << EOF > "$HOME/.jupyter/jupyter_notebook_config.py"
+c.NotebookApp.ip = '0.0.0.0'  #default= localhost
+#c.NotebookApp.port = 7000     #default=8888
+EOF
+    #jupyter notebook password
+    cat << EOF > "$HOME/.jupyter/jupyter_notebook_config.json"
+{
+  "NotebookApp": {
+    "password": "argon2:\$argon2id\$v=19\$m=10240,t=10,p=8\$Tl4BoHvV2K/psj76uDuNiA\$q78aIxoeLkxBX0kySiaaiA"
+  }
+}
+EOF
     if [ ! -d "$HOME/.ipython/profile_default/startup" ]; then
         mkdir -p "$HOME/.ipython/profile_default/startup" || return $?
     fi
@@ -298,14 +311,16 @@ function f_jupyter_util() {
     #   How-to: pp.ProfileReport(df)
     # How to get the startup directory location:
     #   get_ipython().profile_dir.startup_dir
-    echo "import sys
-if '${_dir%/}' not in sys.path:
-    sys.path.append('${_dir%/}')
+    cat << EOF > "$HOME/.ipython/profile_default/startup/import_ju.py"
+import sys
+if "${_dir%/}" not in sys.path:
+    sys.path.append("${_dir%/}")
 import pandas as pd
 import get_json as gs
 import jn_utils as ju
 import analyse_logs as al
-get_ipython().run_line_magic('matplotlib', 'inline')" >"$HOME/.ipython/profile_default/startup/import_ju.py"
+get_ipython().run_line_magic("matplotlib", "inline")
+EOF
 }
 
 function f_setup_java() {
@@ -343,7 +358,9 @@ function f_setup_java() {
         fi
     fi
 
-    # Below can be used with JayDeBeApi (which requires java 8), and it's OK if fails so no || return $?
+    # Below lines are for JayDeBeApi (which requires java 8), and it's OK if fails, so no || return $?
+    local _parent_dir="$HOME/IdeaProjects/samples"
+    [ ! -d "${_parent_dir%/}/java/hadoop" ] && mkdir -p "${_parent_dir%/}/java/hadoop"
     #_download "https://public-xxxxxxx.s3.amazonaws.com/hive-jdbc-client-1.2.1.jar" "${_parent_dir%/}/java/hadoop/hive-jdbc-client-1.2.1.jar" "Y" "Y"
     _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "${_parent_dir%/}/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y"
     _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "${_parent_dir%/}/java/hadoop/hive-jdbc-1.0.0-standalone.jar" "Y" "Y"
