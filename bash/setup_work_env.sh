@@ -231,7 +231,6 @@ function f_setup_python() {
     python3.7 -m pip install ipython==7.1.1 || return $?  #prettytable==0.7.2
     python3.7 -m pip install -U jupyter jupyterlab pandas --log /tmp/pip.log || return $?   #ipython
     # Reinstall: python3.7 -m pip uninstall -y jupyterlab && python3.7 -m pip install jupyterlab
-    # If not using python venv, may need to use jupyterlab_templates "sudo -H"
 
     # NOTE: Initially I thought pandasql looked good but it's actually using sqlite.
     python3.7 -m pip install -U sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip.log
@@ -253,7 +252,7 @@ function f_setup_python() {
     #python3.7 -m pip install 'holoviews[recommended]'
     #jupyter labextension install @pyviz/jupyterlab_pyviz
     # NOTE: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
-    # Not so useful?
+    # Not so useful? (may need sudo if installing)
     #python3.7 -m pip install jupyterlab_templates
     #jupyter labextension install jupyterlab_templates && jupyter serverextension enable --py jupyterlab_templates
 

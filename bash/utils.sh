@@ -150,7 +150,7 @@ function _list() {
 function _check_update() {
     local _file_path="${1}"
     local _remote_repo="${2:-"https://raw.githubusercontent.com/hajimeo/samples/master/bash/"}"
-    local _force="${3:-"Y"}"        # Currently default is force
+    local _force="${3:-"Y"}"        # Currently default is force (not asking)
     local _mins_old="${4-"480"}"    # 8 hours
 
     local _file_name="`basename ${_file_path}`"
@@ -641,8 +641,7 @@ function _download() {
     local _url="$1"
     local _save_as="$2"
     local _no_backup="$3"
-    local _if_not_exists="$4"   # default is always overwriting if older_than_X_mins
-    local _older_than_mins="$5"
+    local _if_not_exists="$4"   # default is always overwriting
 
     if [[ "${_if_not_exists}" =~ ^(y|Y) ]] && [ -s "${_save_as}" ]; then
         _log "INFO" "Not downloading as ${_save_as} exists."
