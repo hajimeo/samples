@@ -151,8 +151,8 @@ function nxrmStart() {
         # TODO: version check as below breaks older nexus versions.
         sed -i.bak 's@class="org.eclipse.jetty.util.ssl.SslContextFactory"@class="org.eclipse.jetty.util.ssl.SslContextFactory$Server"@g' ${_jetty_https}
     fi
-    [ -n "${_java_opts}" ] && [[ ! "${INSTALL4J_ADD_VM_PARAMS}" =~ "${_java_opts}" ]] && export INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}"
-    ${_nexus_file} ${_mode}
+    # For java options, latter values are used, so appending
+    INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}" ${_nexus_file} ${_mode}
 }
 
 #nxrmDocker "nxrm3-test" "" "8181" "8543" "--read-only -v /tmp/nxrm3-test:/tmp"
