@@ -1142,6 +1142,7 @@ function f_splitByRegex() {
     local _line_regex="$2"   # If empty, use (YYYY-MM-DD).(hh). For request.log '(\d\d/[a-zA-Z]{3}/\d\d\d\d).(\d\d)'
     local _save_to="${3:-"."}"
     local _prefix="${4-"*None*"}"   # Can be an empty string
+    local _out_ext="${5:-"out"}"
 
     [ -z "${_line_regex}" ] && _line_regex="^($_DATE_FORMAT).(\d\d)"
     [ ! -d "${_save_to%/}" ] && mkdir -p "${_save_to%/}"
@@ -1150,17 +1151,16 @@ function f_splitByRegex() {
     local _base_name="$(basename "${_file}")"
     [ "${_prefix}" == "*None*" ] && _prefix="${_base_name%%.*}_"
     local _save_path_prefix="${_save_to%/}/${_prefix}"
-    local _extension="out"
-    #local _extension="${_base_name##*.}"
+    local _orig_ext="${_base_name##*.}"
 
     # this may not be working
     local _tmp_str=""
     local _prev_n=1
     local _prev_str=""
 
-    rg "${_line_regex}" --no-filename -n -o "${_file}" > /tmp/f_splitByRegex_$$.out
+    rg "${_line_regex}" --search-zip --no-filename -n -o "${_file}" > /tmp/f_splitByRegex_$$.out
     echo "END_OF_FILE" >> /tmp/f_splitByRegex_$$.out
-    # NOTE scope is strange. _prev_str can't be used outside of while loop.
+    # NOTE: scope of variable in BASH is strange. _prev_str can't be used outside of while loop.
     cat /tmp/f_splitByRegex_$$.out | while read -r _t; do
         if [[ "${_t}" =~ ^([0-9]+):(.+) ]]; then
             # Skip if this number is already processed
@@ -1171,13 +1171,21 @@ function f_splitByRegex() {
             # At this moment, Skip if the previous key is same as current key. Expecting key is unique...
             [ -n "${_prev_str}" ] && [ "${_prev_str}" == "${BASH_REMATCH[2]}" ] && continue
             # Found new value (next date, next thread etc.)
-            _tmp_str="$(echo "${_prev_str}" | _sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192)"
-            _sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}${_tmp_str}.${_extension} || return $?
+            _tmp_str="$(echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192)"
+            if [ "${_orig_ext}" == 'gz' ]; then
+                gunzip -c "${_file}" | sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
+            else
+                sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
+            fi
             _prev_str="${BASH_REMATCH[2]}"  # Used for the file name and detecting a new value
             _prev_n=${BASH_REMATCH[1]}
         elif [ "${_t}" == "END_OF_FILE" ] && [ -n "${_prev_str}" ]; then
-            _tmp_str="$(echo "${_prev_str}" | _sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192)"
-            _sed -n "${_prev_n},\$p" ${_file} > ${_save_path_prefix}${_tmp_str}.${_extension} || return $?
+            _tmp_str="$(echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192)"
+            if [ "${_orig_ext}" == 'gz' ]; then
+                gunzip -c "${_file}" | sed -n "${_prev_n},\$p" ${_file} > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
+            else
+                sed -n "${_prev_n},\$p" ${_file} > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
+            fi
         fi
     done
 }
