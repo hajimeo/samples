@@ -226,6 +226,12 @@ def _read(file):
     return f.read()
 
 
+def _extract_zip(zipfile, dest="."):
+    from zipfile import ZipFile
+    with ZipFile(zipfile, 'r') as zf:
+        zf.extractall(dest)
+
+
 def _generator(obj):
     """
     Return generator so that don't need to worry about List or Dict for looping
@@ -869,11 +875,11 @@ def _gen_class(name, attrs=None, def_value=True):
 
 
 def _system(command):
-    if _is_jupyter:
-        get_ipython().system(command)
-    else:
-        # TODO: don't need to escaple?
-        os.system(command)
+    #if _is_jupyter:
+    #    get_ipython().system(command)
+    # Above require shell
+    # TODO: don't need to escape?
+    os.system(command)
 
 
 def display(df, name="", desc=""):
