@@ -292,11 +292,12 @@ function f_jupyter_util() {
     if [ ! -d "$HOME/.jupyter" ]; then
         mkdir -p "$HOME/.jupyter" || return $?
     fi
+    # Port also can be specified with --port=xxxx
     cat << EOF > "$HOME/.jupyter/jupyter_notebook_config.py"
 c.NotebookApp.ip = '0.0.0.0'  #default= localhost
-#c.NotebookApp.port = 7000     #default=8888
+#c.NotebookApp.port = 8888     #default=8888
 EOF
-    #jupyter notebook password
+    # To reset: jupyter notebook password
     cat << EOF > "$HOME/.jupyter/jupyter_notebook_config.json"
 {
   "NotebookApp": {
