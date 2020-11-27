@@ -211,15 +211,9 @@ function f_setup_python() {
         return 1
     fi
     # Currently expecting anonymous is allowed.
-    if [ -n "${_pypi_proxy_url}" ]; then
-    cat << EOF > $HOME/.pypirc
-    echo "[distutils]
-index-servers =
-  nexus-pypi-repo
-
-[nexus-pypi-repo]
-repository: ${_pypi_proxy_url%/}
-EOF
+    local _i_opt=""
+    if [ -n "${_pypi_proxy_url}" ] && [[ "${_pypi_proxy_url}" =~ ^https?://([^:/]+) ]]; then
+        _i_opt="-i ${_pypi_proxy_url%/}/simple --trusted-host ${BASH_REMATCH[1]}"
     fi
 
     if [[ ! "${_no_venv}" =~ ^(y|Y) ]]; then
@@ -236,54 +230,54 @@ EOF
     fi
 
     ### pip3 (not pip) from here ############################################################
-    #python3.7 -m pip install -U pip &>/dev/null
+    #python3.7 -m pip install -U pip ${_i_opt} &>/dev/null
     # outdated list
-    python3.7 -m pip list -o | tee /tmp/pip.log
-    #python -m pip list -o --format=freeze | cut -d'=' -f1 | xargs python -m pip install -U
+    python3.7 -m pip list -o ${_i_opt} | tee /tmp/pip.log
+    #python -m pip list -o --format=freeze ${_i_opt} | cut -d'=' -f1 | xargs python -m pip install -U
 
     # My favourite/essential python packages
-    python3.7 -m pip install -U lxml xmltodict pyyaml markdown
-    python3.7 -m pip install -U pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
+    python3.7 -m pip install -U ${_i_opt} lxml xmltodict pyyaml markdown
+    python3.7 -m pip install -U ${_i_opt} pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
     # Important packages (Jupyter and pandas)
     # TODO: Autocomplete doesn't work with Lab and NB if different version is used. @see https://github.com/ipython/ipython/issues/11530
     #       However, using 7.1.1 with python 3.8 may cause TypeError: required field "type_ignores" missing from Module
-    python3.7 -m pip install ipython==7.1.1 || return $?  #prettytable==0.7.2
-    python3.7 -m pip install -U jupyter jupyterlab pandas --log /tmp/pip.log || return $?   #ipython
+    python3.7 -m pip install -U ${_i_opt} ipython==7.1.1 || return $?  #prettytable==0.7.2
+    python3.7 -m pip install -U ${_i_opt} jupyter jupyterlab pandas --log /tmp/pip.log || return $?   #ipython
     # Reinstall: python3.7 -m pip uninstall -y jupyterlab && python3.7 -m pip install jupyterlab
 
     # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite.
-    python3.7 -m pip install -U jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip.log
+    python3.7 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip.log
     # Not installing below as pandas_profiling fails at this moment. Pixiedust works only with jupyter-notebook
-    #python3.7 -m pip install -U pandas_profiling pixiedust --log /tmp/pip.log
+    #python3.7 -m pip install -U ${_i_opt} pandas_profiling pixiedust --log /tmp/pip.log
     # NOTE: In case I might use jupyter notebook, still installing this
-    python3.7 -m pip install -U bash_kernel --log /tmp/pip.log && python3.7 -m bash_kernel.install
+    python3.7 -m pip install -U ${_i_opt} bash_kernel --log /tmp/pip.log && python3.7 -m bash_kernel.install
     # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3.7
-    #python3.7 -m pip install beakerx && beakerx-install
+    #python3.7 -m pip install -U ${_i_opt} beakerx && beakerx-install
 
     # Enable jupyter *Notebook* extensions NOTE: somehow this uses /usr/local/share/jupyter so may need sudo
-    #sudo python3.7 -m pip install -U jupyter-contrib-nbextensions jupyter-nbextensions-configurator
+    #sudo python3.7 -m pip install -U ${_i_opt} jupyter-contrib-nbextensions jupyter-nbextensions-configurator
     #jupyter contrib nbextension install && jupyter nbextensions_configurator enable && jupyter nbextension enable spellchecker/main
     # Spellchecker for Jupyter Lab but not working...?
     #jupyter labextension install @ijmbarr/jupyterlab_spellchecker
 
     # Enable Holloviews http://holoviews.org/user_guide/Installing_and_Configuring.html
     # Ref: http://holoviews.org/reference/index.html
-    #python3.7 -m pip install 'holoviews[recommended]'
+    #python3.7 -m pip install ${_i_opt} 'holoviews[recommended]'
     #jupyter labextension install @pyviz/jupyterlab_pyviz
     # NOTE: Above causes ValueError: Please install nodejs 5+ and npm before continuing installation.
     # Not so useful? (may need sudo if installing)
-    #python3.7 -m pip install jupyterlab_templates
+    #python3.7 -m pip install ${_i_opt} jupyterlab_templates
     #jupyter labextension install jupyterlab_templates && jupyter serverextension enable --py jupyterlab_templates
 
     # For SASL test
     #_install libsasl2-dev
-    #python3.7 -m pip install sasl thrift thrift-sasl PyHive
+    #python3.7 -m pip install ${_i_opt} sasl thrift thrift-sasl PyHive
 
     # JDBC wrapper. "0.6.3" is for using Java 1.8 also this requires GCC
-    #python3.7 -m pip install JPype1==0.6.3 JayDeBeApi
+    #python3.7 -m pip install ${_i_opt} JPype1==0.6.3 JayDeBeApi
     # For Google BigQuery (actually one of below)
-    #python3.7 -m pip install google-cloud-bigquery pandas-gbq
+    #python3.7 -m pip install ${_i_opt} google-cloud-bigquery pandas-gbq
 
     f_jupyter_util
 }
