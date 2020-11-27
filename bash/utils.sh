@@ -155,6 +155,8 @@ function _check_update() {
 
     local _file_name="`basename ${_file_path}`"
     local _tmp_file="${__TMP%/}/${_file_name}_$(date +"%Y%m%d%H%M%S")"
+    # If URL ends with / , append the filename
+    [ "${_remote_repo: -1}" == "/" ] && _remote_repo="${_remote_repo%/}/${_file_name}"
     if [ -f "${_file_path}" ]; then
         if [[ "${_mins_old}" =~ ^[0-9]+$ ]]; then
             # stat is different between Mac and Linux, and 2>/dev/null is for hiding "Permission denied" errors
@@ -165,8 +167,6 @@ function _check_update() {
             fi
         fi
 
-        # If URL ends with / , append the filename
-        [ "${_remote_repo: -1}" == "/" ] && _remote_repo="${_remote_repo%/}/${_file_name}"
         # Currently max timeout is set to 3 seconds
         local _remote_length=`curl -m 3 -s -k -L --head "${_remote_repo}" | grep -i '^Content-Length:' | awk '{print $2}' | tr -d '\r'`
         local _local_length=`wc -c <${_file_path}`
