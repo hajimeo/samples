@@ -124,9 +124,10 @@ function _docker_login() {
     local _pwd="${4}"
     local _cmd="${5:-"${_DOCKER_CMD}"}"
 
-    if [ -z "${_host_port}" ] && [ -n "${_backup_ports}" ]; then
+    if [[ "${_host_port}" =~ .+:.+ ]] && [ -n "${_backup_ports}" ]; then
+        local _test_host="${_host_port:-"localhost"}"
         for __p in ${_backup_ports}; do
-            nc -w1 -z localhost ${__p} &>/dev/null && _host_port="localhost:${__p}" && break
+            nc -w1 -z ${_test_host} ${__p} &>/dev/null && _host_port="${_test_host}:${__p}" && break
         done
         if [ -n "${_host_port}" ]; then
             _log "DEBUG" "No hostname:port is given, so trying with ${_host_port}"
