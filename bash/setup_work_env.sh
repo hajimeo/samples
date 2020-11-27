@@ -8,8 +8,8 @@
 # curl -O "https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_work_env.sh"
 #
 
-_DOWNLOAD_FROM_BASE="https://raw.githubusercontent.com/hajimeo/samples/master"
-_SOURCE_REPO_BASE="$HOME/IdeaProjects/samples"
+_DOWNLOAD_FROM_BASE="https://raw.githubusercontent.com/hajimeo/samples/master/"
+_SOURCE_REPO_BASE="${HOME%/}/IdeaProjects/samples"
 type _import &>/dev/null || _import() {
     [ ! -s /tmp/${1}_$$ ] && curl -sf --compressed "${_DOWNLOAD_FROM_BASE%/}/bash/$1" -o /tmp/${1}_$$
     . /tmp/${1}_$$
@@ -64,18 +64,18 @@ function f_setup_misc() {
     fi
     _symlink_or_download "runcom/ssh_config" "$HOME/.ssh/config" || return $?
 
-    if [ ! -d "$HOME/IdeaProjects/samples/bash" ]; then
-        mkdir -p $HOME/IdeaProjects/samples/bash || return $?
+    if [ ! -d "${_SOURCE_REPO_BASE%/}/bash" ]; then
+        mkdir -p ${_SOURCE_REPO_BASE%/}/bash || return $?
     fi
     # Need for logS alias
     _symlink_or_download "bash/log_search.sh" "/usr/local/bin/log_search" || return $?
-    chmod u+x $HOME/IdeaProjects/samples/bash/log_search.sh
+    chmod u+x ${_SOURCE_REPO_BASE%/}/bash/log_search.sh
 
-    if [ ! -d "$HOME/IdeaProjects/samples/python" ]; then
-        mkdir -p $HOME/IdeaProjects/samples/python || return $?
+    if [ ! -d "${_SOURCE_REPO_BASE%/}/python" ]; then
+        mkdir -p ${_SOURCE_REPO_BASE%/}/python || return $?
     fi
     _symlink_or_download "python/line_parser.py" "/usr/local/bin/line_parser.py" || return $?
-    chmod a+x $HOME/IdeaProjects/samples/python/line_parser.py
+    chmod a+x ${_SOURCE_REPO_BASE%/}/python/line_parser.py
 
     #_symlink_or_download "misc/dateregex_`uname`" "/usr/local/bin/dateregex" "Y"
     #chmod a+x /usr/local/bin/dateregex
@@ -283,15 +283,15 @@ function f_setup_python() {
 }
 
 function f_jupyter_util() {
-    local _dir="${1:-"$HOME/IdeaProjects/samples/python"}"
+    local _dir="${1:-"${_SOURCE_REPO_BASE%/}/python"}"
     # If we use this location, .bash_profile automatically adds PYTHONPATH
     if [ ! -d "${_dir%/}" ]; then
         mkdir -p ${_dir%/} || return $?
     fi
     # If not local test, would like to always overwrite ...
-    _check_update "${_dir%/}/jn_utils.py" "" "Y" || return $?
-    _check_update "${_dir%/}/get_json.py" "" "Y" || return $?
-    _check_update "${_dir%/}/analyse_logs.py" "" "Y" || return $?
+    _check_update "${_dir%/}/jn_utils.py" "${_DOWNLOAD_FROM_BASE%/}/python/" "Y" || return $?
+    _check_update "${_dir%/}/get_json.py" "${_DOWNLOAD_FROM_BASE%/}/python/" "Y" || return $?
+    _check_update "${_dir%/}/analyse_logs.py" "${_DOWNLOAD_FROM_BASE%/}/python/" "Y" || return $?
 
     #$ jupyter-lab --generate-config
     #Writing default config to: /home/loganalyser/.jupyter/jupyter_notebook_config.py
@@ -366,7 +366,7 @@ function f_setup_java() {
     fi
 
     # Below lines are for JayDeBeApi (which requires java 8), and it's OK if fails, so no || return $?
-    local _parent_dir="$HOME/IdeaProjects/samples"
+    local _parent_dir="${_SOURCE_REPO_BASE%/}"
     [ ! -d "${_parent_dir%/}/java/hadoop" ] && mkdir -p "${_parent_dir%/}/java/hadoop"
     #_download "https://public-xxxxxxx.s3.amazonaws.com/hive-jdbc-client-1.2.1.jar" "${_parent_dir%/}/java/hadoop/hive-jdbc-client-1.2.1.jar" "Y" "Y"
     _download "https://github.com/hajimeo/samples/raw/master/java/hadoop/hadoop-core-1.0.3.jar" "${_parent_dir%/}/java/hadoop/hadoop-core-1.0.3.jar" "Y" "Y"
