@@ -75,7 +75,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 ## Global variables
 _ADMIN_USER="admin"
 _ADMIN_PWD="admin123"
-_REPO_FORMATS="maven,pypi,npm,nuget,docker,helm,yum,rubygem,conan,conda,cocoapods,bower,go,raw"
+_REPO_FORMATS="maven,pypi,npm,nuget,docker,helm,yum,rubygem,conan,conda,cocoapods,bower,go,apt,raw"
 ## Updatable variables
 _NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
 _IQ_CLI_VER="${_IQ_CLI_VER-"1.95.0-01"}"    # If empty, not download CLI jar
@@ -254,7 +254,7 @@ function f_setup_docker() {
 
 function f_populate_docker_proxy() {
     local _tag_name="${1:-"alpine:3.7"}"
-    local _host_port="${2:-"${r_DOCKER_PROXY}"}"
+    local _host_port="${2:-"${r_DOCKER_PROXY:-"${_NEXUS_URL}"}"}"
     local _backup_ports="${3-"18179 18178"}"
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
@@ -272,7 +272,7 @@ function f_populate_docker_proxy() {
 #f_populate_docker_hosted "" "localhost:18182"
 function f_populate_docker_hosted() {
     local _tag_name="${1:-"alpine:3.7"}"
-    local _host_port="${2:-"${r_DOCKER_HOSTED}"}"
+    local _host_port="${2:-"${r_DOCKER_PROXY:-"${_NEXUS_URL}"}"}"
     local _backup_ports="${3-"18182 18181"}"
     local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
@@ -303,8 +303,8 @@ function f_setup_yum() {
     if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"http://mirror.centos.org/centos/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"yum-proxy"}],"type":"rpc"}' || return $?
     fi
-    # add some data for xxxx-proxy
-    if which yum &>/dev/null; then
+    # add some data for xxxx-proxy (Ubuntu has "yum" command)
+    if which yum &>/dev/null && [ -d /etc/yum.repos.d ]; then
         f_echo_yum_repo_file "${_prefix}-proxy" > /etc/yum.repos.d/nexus-yum-test.repo
         yum --disablerepo="*" --enablerepo="nexusrepo" install --downloadonly --downloaddir=${_TMP%/} dos2unix
     else
@@ -569,9 +569,9 @@ function f_move_jars() {
 
 function f_get_asset() {
     if [[ "${_IS_NXRM2}" =~ ^[yY] ]]; then
-        _get_asset_NXRM2 $@
+        _get_asset_NXRM2 "$@"
     else
-        _get_asset $@
+        _get_asset "$@"
     fi
 }
 function _get_asset() {
