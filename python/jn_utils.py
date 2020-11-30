@@ -942,6 +942,7 @@ show = s = p = display
 
 
 def _display(html):
+    import IPython
     IPython.display.display(IPython.display.HTML(html))
 
 
@@ -1111,7 +1112,7 @@ def qhistory(run=None, like=None, html=True, tail=20):
         # TODO: hist(html=False).groupby(['query']).count().sort_values(['count'])
         return df
     current_max_colwitdh = pd.get_option('display.max_colwidth')
-    pd.set_option('display.max_colwidth', -1)
+    pd.set_option('display.max_colwidth', None)
     display(df)
     pd.set_option('display.max_colwidth', current_max_colwitdh)
 
