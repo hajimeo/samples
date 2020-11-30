@@ -123,14 +123,14 @@ def update():
     ju.update(file=__file__)
 
 
-def etl(path=".", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
+def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
     """
     Extract data and transform and load
     :param path
     :param max_file_size:
     :return:
     """
-    #cur_dir = os.getcwd() # TODO: should chdir to the original path?
+    cur_dir = os.getcwd() # chdir to the original path later
     if os.path.isfile(path) and path.endswith(".zip"):
         dir = ju._extract_zip(path)
         os.chdir(dir)
@@ -138,68 +138,72 @@ def etl(path=".", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
     elif os.path.isdir(path):
         os.chdir(path)
 
-    # At this moment, using system commands only when ./_filtered does not exist
-    ju._system('[ ! -d ' + dist + ' ] && [ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh', direct=True)
-    ju._system('[ ! -d ' + dist + ' ] && mkdir ' + dist + ' && . /tmp/log_search.sh && f_request2csv "" "' + dist + '" 2>/dev/null; f_audit2json "" "' + dist +'" 2>/dev/null', direct=True)
+    try:
+        # At this moment, using system commands only when ./_filtered does not exist
+        ju._system('[ ! -d ' + dist + ' ] && [ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh', direct=True)
+        ju._system('[ ! -d ' + dist + ' ] && mkdir ' + dist + ' && . /tmp/log_search.sh && f_request2csv "" "' + dist + '" 2>/dev/null; f_audit2json "" "' + dist +'" 2>/dev/null', direct=True)
 
-    # Audit json if audit.json file exists
-    _ = ju.json2df('audit.json', tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=ju.connect())
+        # Audit json if audit.json file exists
+        _ = ju.json2df('audit.json', tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=ju.connect())
 
-    # If request.*csv* exists, use that (because it's faster), if not, logs2table, which is slower.
-    request_logs = ju.csv2df('request.csv', tablename="t_request_logs", conn=ju.connect(), if_exists="replace")
-    if bool(request_logs) is False:
-        (col_names, line_matching) = _gen_regex_for_request_logs('request.log')
-        request_logs = ju.logs2table('request.log', tablename="t_request_logs", col_names=col_names,
-                                     line_beginning="^.",
-                                     line_matching=line_matching, max_file_size=max_file_size)
+        # If request.*csv* exists, use that (because it's faster), if not, logs2table, which is slower.
+        request_logs = ju.csv2df('request.csv', tablename="t_request_logs", conn=ju.connect(), if_exists="replace")
+        if bool(request_logs) is False:
+            (col_names, line_matching) = _gen_regex_for_request_logs('request.log')
+            request_logs = ju.logs2table('request.log', tablename="t_request_logs", col_names=col_names,
+                                         line_beginning="^.",
+                                         line_matching=line_matching, max_file_size=max_file_size)
 
-    # Loading application log file(s) into database.
-    (col_names, line_matching) = _gen_regex_for_app_logs('nexus.log')
-    nxrm_logs = ju.logs2table('nexus.log', tablename="t_nxrm_logs", col_names=col_names, line_matching=line_matching,
-                              max_file_size=max_file_size)
-    (col_names, line_matching) = _gen_regex_for_app_logs('clm-server.log')
-    clm_logs = ju.logs2table('clm-server.log', tablename="t_iq_logs", col_names=col_names, line_matching=line_matching,
-                             max_file_size=max_file_size)
+        # Loading application log file(s) into database.
+        (col_names, line_matching) = _gen_regex_for_app_logs('nexus.log')
+        nxrm_logs = ju.logs2table('nexus.log', tablename="t_nxrm_logs", col_names=col_names, line_matching=line_matching,
+                                  max_file_size=max_file_size)
+        (col_names, line_matching) = _gen_regex_for_app_logs('clm-server.log')
+        clm_logs = ju.logs2table('clm-server.log', tablename="t_iq_logs", col_names=col_names, line_matching=line_matching,
+                                 max_file_size=max_file_size)
 
-    # Hazelcast health monitor
-    health_monitor = ju.csv2df('log_hazelcast_monitor.csv', tablename="t_health_monitor", conn=ju.connect(),
-                               if_exists="replace")
-    if bool(health_monitor) is False and bool(nxrm_logs):
-        df_hm = ju.q(
-            """select date_time, message from t_nxrm_logs where class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
-        if len(df_hm) > 0:
-            (col_names, line_matching) = _gen_regex_for_hazel_health(df_hm['message'][1])
-            msg_ext = df_hm['message'].str.extract(line_matching)
-            msg_ext.columns = col_names
-            # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
-            df_hm.drop(columns=['message']).join(msg_ext).to_sql(name="t_health_monitor", con=ju.connect(),
-                                                                 chunksize=1000, if_exists='replace',
-                                                                 schema=ju._DB_SCHEMA)
-            health_monitor = True
-            ju._autocomp_inject(tablename='t_health_monitor')
+        # Hazelcast health monitor
+        health_monitor = ju.csv2df('log_hazelcast_monitor.csv', tablename="t_health_monitor", conn=ju.connect(),
+                                   if_exists="replace")
+        if bool(health_monitor) is False and bool(nxrm_logs):
+            df_hm = ju.q(
+                """select date_time, message from t_nxrm_logs where class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
+            if len(df_hm) > 0:
+                (col_names, line_matching) = _gen_regex_for_hazel_health(df_hm['message'][1])
+                msg_ext = df_hm['message'].str.extract(line_matching)
+                msg_ext.columns = col_names
+                # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
+                df_hm.drop(columns=['message']).join(msg_ext).to_sql(name="t_health_monitor", con=ju.connect(),
+                                                                     chunksize=1000, if_exists='replace',
+                                                                     schema=ju._DB_SCHEMA)
+                health_monitor = True
+                ju._autocomp_inject(tablename='t_health_monitor')
 
-    # Elastic JVM monitor
-    elastic_monitor = ju.csv2df('log_elastic_jvm_monitor.csv', tablename="t_elastic_jvm_monitor", conn=ju.connect(),
-                                if_exists="replace")
-    if bool(elastic_monitor) is False and bool(nxrm_logs):
-        df_em = ju.q("""select date_time, message from t_nxrm_logs where class = 'org.elasticsearch.monitor.jvm'""")
-        if len(df_em) > 0:
-            (col_names, line_matching) = _gen_regex_for_elastic_jvm(df_em['message'][1])
-            msg_ext = df_em['message'].str.extract(line_matching)
-            msg_ext.columns = col_names
-            # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
-            df_em.drop(columns=['message']).join(msg_ext).to_sql(name="t_elastic_jvm_monitor", con=ju.connect(),
-                                                                 chunksize=1000, if_exists='replace',
-                                                                 schema=ju._DB_SCHEMA)
-            health_monitor = True
-            ju._autocomp_inject(tablename='t_elastic_jvm_monitor')
+        # Elastic JVM monitor
+        elastic_monitor = ju.csv2df('log_elastic_jvm_monitor.csv', tablename="t_elastic_jvm_monitor", conn=ju.connect(),
+                                    if_exists="replace")
+        if bool(elastic_monitor) is False and bool(nxrm_logs):
+            df_em = ju.q("""select date_time, message from t_nxrm_logs where class = 'org.elasticsearch.monitor.jvm'""")
+            if len(df_em) > 0:
+                (col_names, line_matching) = _gen_regex_for_elastic_jvm(df_em['message'][1])
+                msg_ext = df_em['message'].str.extract(line_matching)
+                msg_ext.columns = col_names
+                # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
+                df_em.drop(columns=['message']).join(msg_ext).to_sql(name="t_elastic_jvm_monitor", con=ju.connect(),
+                                                                     chunksize=1000, if_exists='replace',
+                                                                     schema=ju._DB_SCHEMA)
+                health_monitor = True
+                ju._autocomp_inject(tablename='t_elastic_jvm_monitor')
 
-    threads = ju.logs2table(filename="threads.txt", tablename="t_threads", conn=ju.connect(),
-                            col_names=['thread_name', 'id', 'state', 'stacktrace'],
-                            line_beginning="^[^ ]",
-                            line_matching='^"?([^"]+)"? id=([^ ]+) state=(\w+)(.*)',
-                            size_regex=None, time_regex=None)
-
+        threads = ju.logs2table(filename="threads.txt", tablename="t_threads", conn=ju.connect(),
+                                col_names=['thread_name', 'id', 'state', 'stacktrace'],
+                                line_beginning="^[^ ]",
+                                line_matching='^"?([^"]+)"? id=([^ ]+) state=(\w+)(.*)',
+                                size_regex=None, time_regex=None)
+    except:
+        raise
+    finally:
+        os.chdir(cur_dir)
     ju.display(ju.desc(), name="Available_Tables")
 
 
