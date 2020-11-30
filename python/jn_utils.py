@@ -923,7 +923,7 @@ def display(df, name="", desc="", tail=1000):
         if bool(desc):
             name_html += "<pre>" + desc + "</pre>"
     if _is_jupyter():
-        if df.index.bool() and len(df.index) > tail:
+        if df.empty is False and df.index.empty is False and len(df.index) > tail:
             orig_length = len(df.index)
             df = df.tail(tail)
             name_html += "<pre>Displaying last " + str(tail) + " records (total: " + str(orig_length) + "</pre>"
