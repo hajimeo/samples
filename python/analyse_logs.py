@@ -131,10 +131,10 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
     :return:
     """
     cur_dir = os.getcwd() # chdir to the original path later
+    dist = os.path.realpath(dist)
     if os.path.isfile(path) and path.endswith(".zip"):
         dir = ju._extract_zip(path)
         os.chdir(dir)
-        dist = os.path.realpath(dist)
     elif os.path.isdir(path):
         os.chdir(path)
 
