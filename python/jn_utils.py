@@ -751,7 +751,7 @@ def query(sql, conn=None, no_history=False, show=False):
     :param sql: SELECT statement
     :param conn: DB connection object
     :param no_history: not saving this query into a history file
-    :param show: Use display() to draw HTML (NOTE: Not using this and using Jupyter is fast)
+    :param show: True/False or integer to draw HTML (NOTE: False is faster)
     :return: a DF object or void
     >>> query("select name from sqlite_master where type = 'table'", connect(), True)
     Empty DataFrame
@@ -768,8 +768,14 @@ def query(sql, conn=None, no_history=False, show=False):
     # dfStyler.set_table_styles([dict(selector='td', props=[('text-align', 'left')])])
     if no_history is False and df.empty is False:
         _save_query(sql)
-    if show:
-        display(df)
+    if bool(show):
+        show_num = 1000
+        try:
+            if show is not True:
+                show_num = int(show)
+        except ValueError:
+            pass
+        display(df, tail=show_num)
         return
     return df
 
@@ -874,21 +880,30 @@ def _gen_class(name, attrs=None, def_value=True):
     return c
 
 
-def _system(command):
-    #if _is_jupyter:
-    #    get_ipython().system(command)
-    # Above require shell
-    # TODO: don't need to escape?
-    os.system(command)
+def _system(command, no_jupyter=False):
+    if no_jupyter is False and _is_jupyter:
+        get_ipython().system(command)
+    else:
+        import subprocess
+        # TODO: don't need to escape?
+        p = subprocess.Popen(command, shell=True,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        (out, err) = p.communicate()
+        if len(err) > 0:
+            sys.stderr.write(err + "\n")
+        if len(out) > 0:
+            sys.stdout.write(out + "\n")
 
 
-def display(df, name="", desc=""):
+def display(df, name="", desc="", tail=1000):
     """
     Wrapper of IPython.display.display for *DataFrame* object
     This function also change the table cel (th, td) alignments.
     :param df: A DataFrame object
     :param name: Caption and also used when saving into file
     :param desc: Optional description (eg: SQL statement)
+    :param tail: How many rows from the last to display (not for csv)
     :return Void
     >>> pass
     """
@@ -901,6 +916,10 @@ def display(df, name="", desc=""):
         if bool(desc):
             name_html += "<pre>" + desc + "</pre>"
     if _is_jupyter():
+        orig_length = len(df.index)
+        if df.index and orig_length > tail:
+            df = df.tail(tail)
+            name_html += "<pre>Displaying last " + str(tail) + " records (total: " + str(orig_length) + "</pre>"
         df_styler = df.style.set_properties(**{'text-align': 'left'})
         df_styler = df_styler.set_table_styles([
             dict(selector='th', props=[('text-align', 'left'), ('vertical-align', 'top')]),
