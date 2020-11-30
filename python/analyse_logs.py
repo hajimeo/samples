@@ -126,10 +126,17 @@ def update():
 def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
     """
     Extract data and transform and load
-    :param path
-    :param max_file_size:
-    :return:
+    :param path: To specify a zip file
+    :param dist: Path to save the extracted data (default ./_filtered)
+    :param max_file_size: Larger than this size will be skipped (default 100MB)
+    :return: void
     """
+    if bool(path) is False:
+        maybe_zips = ju._globr("*support*.zip", depth=1)
+        if len(maybe_zips) > 0:
+            path = maybe_zips[-1:][0]
+            ju._info("'path' is not specified and found zip file: %s . Using this one..." % path)
+
     cur_dir = os.getcwd() # chdir to the original path later
     dist = os.path.realpath(dist)
     if os.path.isfile(path) and path.endswith(".zip"):
@@ -207,7 +214,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
     ju.display(ju.desc(), name="Available_Tables")
 
 
-def analyse_logs(start_isotime=None, end_isotime=None, tail_num=10000, max_file_size=(1024 * 1024 * 100)):
+def analyse_logs(path="", start_isotime=None, end_isotime=None, tail_num=10000, max_file_size=(1024 * 1024 * 100)):
     """
     A prototype / demonstration function for extracting then analyse log files
     :param start_isotime: YYYY-MM-DD hh:mm:ss,sss
@@ -217,7 +224,7 @@ def analyse_logs(start_isotime=None, end_isotime=None, tail_num=10000, max_file_
     :return: void
     >>> pass    # test should be done in each function
     """
-    etl(max_file_size=max_file_size)
+    etl(path=path, max_file_size=max_file_size)
 
     where_sql = "WHERE 1=1"
     if bool(start_isotime) is True:
