@@ -130,11 +130,17 @@ def etl(path=".", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
     :param max_file_size:
     :return:
     """
+    #cur_dir = os.getcwd() # TODO: should chdir to the original path?
+    if os.path.isfile(path) and path.endswith(".zip"):
+        dir = ju._extract_zip(path)
+        os.chdir(dir)
+        dist = os.path.realpath(dist)
+    elif os.path.isdir(path):
+        os.chdir(path)
+
     # At this moment, using system commands only when ./_filtered does not exist
-    ju._system(
-        '[ ! -d ' + dist + ' ] && [ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh')
-    ju._system(
-        '[ ! -d ' + dist + ' ] && mkdir ' + dist + ' && . /tmp/log_search.sh && f_request2csv "" ' + dist + ' && f_audit2json "" ' + dist)
+    ju._system('[ ! -d ' + dist + ' ] && [ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh', direct=True)
+    ju._system('[ ! -d ' + dist + ' ] && mkdir ' + dist + ' && . /tmp/log_search.sh && f_request2csv "" "' + dist + '" 2>/dev/null; f_audit2json "" "' + dist +'" 2>/dev/null', direct=True)
 
     # Audit json if audit.json file exists
     _ = ju.json2df('audit.json', tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=ju.connect())
