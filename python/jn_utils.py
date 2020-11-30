@@ -885,14 +885,15 @@ def _gen_class(name, attrs=None, def_value=True):
     return c
 
 
-def _system(command, direct=False):
-    global _SH_EXECUTABLE
+def _system(command, direct=False, direct_executable=_SH_EXECUTABLE):
     if direct is False and _is_jupyter:
         get_ipython().system(command)
     else:
         import subprocess
+        if os.access(direct_executable, os.X_OK) is False:
+            direct_executable = None
         # TODO: don't need to escape?
-        p = subprocess.Popen(command, shell=True, executable=_SH_EXECUTABLE,
+        p = subprocess.Popen(command, shell=True, executable=direct_executable,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = p.communicate()
         # Above returns byte objects which are encoded with utf-8. Without decoding, it outputs "b" and "\n".
