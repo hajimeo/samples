@@ -221,6 +221,7 @@ function f_setup_nuget() {
     f_get_asset "${_prefix}-group" "jQuery/3.5.1" "${_TMP%/}/jquery.3.5.1.nupkg"
 }
 
+#_NEXUS_URL=http://node3281.standalone.localdomain:8081/ f_setup_docker
 function f_setup_docker() {
     local _prefix="${1:-"docker"}"
     local _tag_name="${2:-"alpine:3.7"}"
