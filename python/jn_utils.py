@@ -579,7 +579,7 @@ def _db(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalche
 
 
 # Seems sqlite doesn't have regex (need to import pcre.so)
-def _udf_regex(regex, item, rtn_idx=0):
+def udf_regex(regex, item, rtn_idx=0):
     """
     Regex UDF for SQLite
     eg: SELECT UDF_REGEX('queryId=([0-9a-f-]+)', ids, 1) as query_id, ...
@@ -597,7 +597,7 @@ def _udf_regex(regex, item, rtn_idx=0):
     return matches.group(rtn_idx)
 
 
-def _udf_str2sqldt(date_time, format):
+def udf_str2sqldt(date_time, format):
     """
     Date/Time handling UDF for SQLite
     eg: SELECT UDF_STR2SQLDT('14/Oct/2019:00:00:05 +0800', '%d/%b/%Y:%H:%M:%S %z') as SQLite_DateTime, ...
@@ -611,7 +611,7 @@ def _udf_str2sqldt(date_time, format):
     return d.strftime("%Y-%m-%d %H:%M:%S.%f%z")
 
 
-def _udf_timestamp(date_time):
+def udf_timestamp(date_time):
     """
     @Deprecated: use STRFTIME('%s', 'NOW')
     Unix timestamp handling UDF for SQLite
@@ -623,7 +623,7 @@ def _udf_timestamp(date_time):
     return int(mktime(parser.parse(date_time).timetuple()))
 
 
-def _udf_str_to_int(some_str):
+def udf_str_to_int(some_str):
     """
     Convert \d\d\d\d(MB|M|GB\G) to bytes etc.
     eg: SELECT UDF_STR_TO_INT(some_string) as xxxx, ...
@@ -657,9 +657,9 @@ def _udf_str_to_int(some_str):
     return num
 
 
-def _udf_num_human_readable(some_numeric, base_unit):
+def udf_num_human_readable(some_numeric, base_unit):
     """
-    Convert integer|float|decimal to human readable string.
+    TODO: Convert integer|float|decimal to human readable string.
     eg: SELECT UDF_NUM_HUMAN_READABLE(some_numeric, 'byte') as xxxx, ...
     :param some_numeric: 100, 123.45
     :param base_unit: 'byte' or 'bytes' or 'sec' or 'seconds'
@@ -710,13 +710,20 @@ def _human_readable_num(some_numeric, base_unit="byte", r=2):
 
 
 def _register_udfs(conn):
+    """
+    Register all UDFs (NOTE: do not forget to udpate this function when a new one is created)
+    How to check: SELECT * FROM pragma_function_list WHERE name like 'UDF_%';
+    :param conn:
+    :return:
+    """
     global _LOAD_UDFS
     if _LOAD_UDFS:
         # UDF_REGEX(regex, column, integer)
-        conn.create_function("UDF_REGEX", 3, _udf_regex)
-        conn.create_function("UDF_STR2SQLDT", 2, _udf_str2sqldt)
-        # conn.create_function("UDF_TIMESTAMP", 1, _udf_timestamp)
-        conn.create_function("UDF_STR_TO_INT", 1, _udf_str_to_int)
+        conn.create_function("UDF_REGEX", 3, udf_regex)
+        conn.create_function("UDF_STR2SQLDT", 2, udf_str2sqldt)
+        conn.create_function("UDF_TIMESTAMP", 1, udf_timestamp)
+        conn.create_function("UDF_STR_TO_INT", 1, udf_str_to_int)
+        conn.create_function("UDF_NUM_HUMAN_READABLE", 1, udf_num_human_readable)
     return conn
 
 
