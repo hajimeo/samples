@@ -65,6 +65,7 @@ _LAST_CONN = None
 _DB_SCHEMA = 'db'
 _SIZE_REGEX = r"[sS]ize ?= ?([0-9]+)"
 _TIME_REGEX = r"\b([0-9.,]+) ([km]?s)\b"
+_SH_EXECUTABLE="/bin/bash"
 
 
 def _mexec(func_obj, args_list, num=None):
@@ -226,10 +227,14 @@ def _read(file):
     return f.read()
 
 
-def _extract_zip(zipfile, dest="."):
+def _extract_zip(zipfile, dest=None):
+    if bool(dest) is False:
+        import tempfile
+        dest = tempfile.mkdtemp()
     from zipfile import ZipFile
     with ZipFile(zipfile, 'r') as zf:
         zf.extractall(dest)
+    return dest
 
 
 def _generator(obj):
@@ -880,20 +885,21 @@ def _gen_class(name, attrs=None, def_value=True):
     return c
 
 
-def _system(command, no_jupyter=False):
-    if no_jupyter is False and _is_jupyter:
+def _system(command, direct=False):
+    global _SH_EXECUTABLE
+    if direct is False and _is_jupyter:
         get_ipython().system(command)
     else:
         import subprocess
         # TODO: don't need to escape?
-        p = subprocess.Popen(command, shell=True,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE)
-        (out, err) = p.communicate()
+        p = subprocess.Popen(command, shell=True, executable=_SH_EXECUTABLE,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+        # Above returns byte objects which are encoded with utf-8. Without decoding, it outputs "b" and "\n".
         if len(err) > 0:
-            sys.stderr.write(err + "\n")
+            sys.stderr.write(err.decode() + "\n")
         if len(out) > 0:
-            sys.stdout.write(out + "\n")
+            sys.stdout.write(out.decode() + "\n")
 
 
 def display(df, name="", desc="", tail=1000):
