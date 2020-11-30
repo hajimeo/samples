@@ -119,6 +119,10 @@ def _gen_regex_for_elastic_jvm(sample):
     return (columns, partern_str)
 
 
+def update():
+    ju.update(file=__file__)
+
+
 def etl(path=".", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
     """
     Extract data and transform and load
@@ -128,9 +132,9 @@ def etl(path=".", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
     """
     # At this moment, using system commands only when ./_filtered does not exist
     ju._system(
-        '[ ! -d '+dist+' ] && [ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh')
+        '[ ! -d ' + dist + ' ] && [ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh')
     ju._system(
-        '[ ! -d '+dist+' ] && mkdir '+dist+' && . /tmp/log_search.sh && f_request2csv "" '+dist+' && f_audit2json "" '+dist)
+        '[ ! -d ' + dist + ' ] && mkdir ' + dist + ' && . /tmp/log_search.sh && f_request2csv "" ' + dist + ' && f_audit2json "" ' + dist)
 
     # Audit json if audit.json file exists
     _ = ju.json2df('audit.json', tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=ju.connect())
