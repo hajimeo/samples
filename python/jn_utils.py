@@ -1922,7 +1922,7 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
     remote_content = urlopen(url).read()
     with open(file, 'wb') as f:
         f.write(remote_content)
-    _info("%s was updated and back up is %s" % (filename, new_file))
+    _info("%s was updated (reload/restart required) back up: %s" % (filename, new_file))
     return
 
 
