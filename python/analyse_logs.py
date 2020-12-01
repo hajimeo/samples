@@ -237,9 +237,9 @@ def analyse_logs(path="", start_isotime=None, end_isotime=None, tail_num=10000, 
         # Can't use above where_sql for this query
         where_sql2 = "WHERE 1=1"
         if bool(start_isotime) is True:
-            where_sql2 += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') >= UDF_STR2SQLDT('" + start_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
+            where_sql2 += " AND UDF_STR2SQLDT(`date`) >= UDF_STR2SQLDT('" + start_isotime + " +0000')"
         if bool(end_isotime) is True:
-            where_sql2 += " AND UDF_STR2SQLDT(`date`, '%d/%b/%Y:%H:%M:%S %z') <= UDF_STR2SQLDT('" + end_isotime + " +0000','%Y-%m-%d %H:%M:%S %z')"
+            where_sql2 += " AND UDF_STR2SQLDT(`date`) <= UDF_STR2SQLDT('" + end_isotime + " +0000')"
         query = """SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d)', `date`, 1) AS date_hour, statusCode,
     CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
     CAST(MIN(CAST(elapsedTime AS INT)) AS INT) AS min_elaps, 
@@ -252,7 +252,7 @@ GROUP BY 1, 2""" % (where_sql2)
         ju.display(ju.q(query), name=display_name, desc=query)
 
         display_name = "RequestLog_Status_ByteSent_Elapsed"
-        query = """SELECT UDF_STR2SQLDT(`date`, '%%d/%%b/%%Y:%%H:%%M:%%S %%z') AS date_time, 
+        query = """SELECT UDF_STR2SQLDT(`date`) AS date_time, 
     CAST(statusCode AS INTEGER) AS statusCode, 
     CAST(bytesSent AS INTEGER) AS bytesSent, 
     CAST(elapsedTime AS INTEGER) AS elapsedTime 
