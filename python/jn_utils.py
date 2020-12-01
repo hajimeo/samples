@@ -40,6 +40,7 @@ import sys, os, io, fnmatch, gzip, re, json, sqlite3
 from time import time, mktime
 from datetime import datetime
 from dateutil import parser
+
 import pandas as pd
 from sqlalchemy import create_engine
 import matplotlib.pyplot as plt
@@ -412,7 +413,7 @@ def _json2table(filename, tablename=None, conn=None, col_name='json_text', appen
 def jq(file_path, query='.', as_string=False):
     """
     Read a json file and query with 'jq' syntax
-    NOTE: at this moment, not caching json file contents
+    NOTE: Requires 'pyjq' package.
     @see https://stedolan.github.io/jq/tutorial/ for query syntax
     :param file_path: Json File path
     :param query: 'jq' query string (looks like dict)
@@ -587,6 +588,8 @@ def udf_regex(regex, item, rtn_idx=0):
     :param item:    String - Column name
     :param rtn_idx: Integer - Grouping result index start from 1
     :return:        Mixed   - Group(idx) result
+    >>> udf_regex('(\d\d\d\d-\d\d-\d\d.\d\d)', "2019-10-14 00:00:05", 1)
+    '2019-10-14 00'
     """
     matches = re.search(regex, item)
     # If 0, return true or false (expecting to use in WHERE clause)
@@ -597,29 +600,40 @@ def udf_regex(regex, item, rtn_idx=0):
     return matches.group(rtn_idx)
 
 
-def udf_str2sqldt(date_time, format):
+def udf_str2sqldt(date_time):
     """
-    Date/Time handling UDF for SQLite
+    Convert date_time string to SQLite friendly ISO date_time string with "." milliseconds, instead of ","
     eg: SELECT UDF_STR2SQLDT('14/Oct/2019:00:00:05 +0800', '%d/%b/%Y:%H:%M:%S %z') as SQLite_DateTime, ...
+    "2019-10-14 00:00:05.000000+0800"
     :param date_time:   String - Date and Time string
-    :param format:      String - Format
     :return:            String - SQLite accepting date time string
+    >>> udf_str2sqldt("14/Oct/2019:00:00:05 +0800")
+    '2019-10-14 00:00:05.000000+0800'
     """
     # 14/Oct/2019:00:00:05 +0800 => 2013-10-07 04:23:19.120-04:00
     # https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior
-    d = datetime.strptime(date_time, format)
-    return d.strftime("%Y-%m-%d %H:%M:%S.%f%z")
+    if date_time.count(":") >= 3:
+        # assuming the format is "%d/%b/%Y:%H:%M:%S %z"
+        date_str, time_str = date_time.split(":", 1)
+        date_time = date_str+" "+time_str
+    return parser.parse(date_time).strftime("%Y-%m-%d %H:%M:%S.%f%z")
 
 
 def udf_timestamp(date_time):
     """
-    @Deprecated: use STRFTIME('%s', 'NOW')
-    Unix timestamp handling UDF for SQLite
-    eg: SELECT UDF_TIMESTAMP(some_datetime) as unix_timestamp, ...
+    Sqlite UDF for converting date_time string to Unix timestamp
+    NOTE: SQLite's STRFTIME('%s', 'DATE-TIME string') also return same
+    eg: SELECT UDF_TIMESTAMP(some_datetime, NULL) as unix_timestamp, ...
     NOTE: SQLite way: CAST((julianday(some_datetime) - 2440587.5)*86400.0 as INT)
     :param date_time: ISO date string (or Date/Time column but SQLite doesn't have date/time columns)
     :return:          Integer of Unix Timestamp
+    >>> udf_timestamp("14/Oct/2019:00:00:05 +0800")
+    1570975205
     """
+    if date_time.count(":") >= 3:
+        # assuming the format is "%d/%b/%Y:%H:%M:%S %z"
+        date_str, time_str = date_time.split(":", 1)
+        date_time = date_str+" "+time_str
     return int(mktime(parser.parse(date_time).timetuple()))
 
 
@@ -720,7 +734,7 @@ def _register_udfs(conn):
     if _LOAD_UDFS:
         # UDF_REGEX(regex, column, integer)
         conn.create_function("UDF_REGEX", 3, udf_regex)
-        conn.create_function("UDF_STR2SQLDT", 2, udf_str2sqldt)
+        conn.create_function("UDF_STR2SQLDT", 1, udf_str2sqldt)
         conn.create_function("UDF_TIMESTAMP", 1, udf_timestamp)
         conn.create_function("UDF_STR_TO_INT", 1, udf_str_to_int)
         conn.create_function("UDF_NUM_HUMAN_READABLE", 1, udf_num_human_readable)
@@ -1053,6 +1067,9 @@ def gantt(df, index_col="", start_col="min_dt", end_col="max_dt", width=8, name=
     :param name: When saving to file.
     :param tail: To return some sample rows.
     :return: DF (use .tail() or .head() to limit the rows)
+    #>>> # Gantt chart for threads (not useful but just an example)
+    #>>> df = q("SELECT thread, UDF_STR2SQLDT(MIN(date)) as min_dt, UDF_STR2SQLDT(MAX(date)) as max_dt FROM t_request_logs GROUP BY date_hour, thread")
+    #>>> gantt(df, index_col="thread")
     >>> pass    # TODO: implement test
     """
     if bool(name) is False:
@@ -1066,7 +1083,7 @@ def gantt(df, index_col="", start_col="min_dt", end_col="max_dt", width=8, name=
     # TODO: don't know how to change this https://matplotlib.org/3.1.0/api/_as_gen/matplotlib.figure.Figure.html#matplotlib.figure.Figure.add_subplot
     ax = fig.add_subplot(111)
     ax = ax.xaxis_date()
-    if index_col is False:
+    if bool(index_col) is False:
         y = df.index
     else:
         y = df[index_col]
@@ -1107,7 +1124,7 @@ def qhistory(run=None, like=None, html=True, tail=20):
     if df is False or df.empty:
         return
     df.columns = ["datetime", "query"]
-    if bool(run):
+    if type(run) == int:
         sql = df.loc[run, 'query']  # .loc[row_num, column_name]
         _info(sql)
         return query(sql=sql, conn=connect())
