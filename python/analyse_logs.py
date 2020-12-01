@@ -150,7 +150,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
         cddir = "cd %s;" % extracted_dir if extracted_dir else ""
         # Somehow Jupyter started as service uses 'sh', so forcing 'bash'
         ju._system(ju._SH_EXECUTABLE + " -c '[ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh; [ ! -d \"%s\" ] && mkdir \"%s\"'" % (dist, dist))
-        ju._system(ju._SH_EXECUTABLE + " -c '%s[ -d \"%s\" ] && . /tmp/log_search.sh && f_request2csv \"\" \"%s\" && f_audit2json \"\" \"%s\"'" % (cddir, dist, dist, dist))
+        ju._system(ju._SH_EXECUTABLE + " -c '%s[ -d \"%s\" ] && . /tmp/log_search.sh && f_request2csv \"\" \"%s\" 2>/dev/null && f_audit2json \"\" \"%s\"'" % (cddir, dist, dist, dist))
 
         # Audit json if audit.json file exists
         _ = ju.json2df(dist+"/audit.json", tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=ju.connect())
