@@ -127,7 +127,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
     """
     Extract data and transform and load
     :param path: To specify a zip file
-    :param dist: Path to save the extracted data (default ./_filtered)
+    :param dist: Directory path to save the extracted data (default ./_filtered)
     :param max_file_size: Larger than this size will be skipped (default 100MB)
     :return: void
     """
@@ -139,21 +139,24 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
 
     cur_dir = os.getcwd()  # chdir to the original path later
     dist = os.path.realpath(dist)
+    extracted_dir = None
     if os.path.isfile(path) and path.endswith(".zip"):
-        dir = ju._extract_zip(path)
-        os.chdir(dir)
+        extracted_dir = ju._extract_zip(path)
+        os.chdir(extracted_dir)
     elif os.path.isdir(path):
         os.chdir(path)
 
     try:
-        ju._system("[ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh; [ ! -d \"%s\" ] && mkdir \"%s\"" % (dist, dist), direct=True)
-        ju._system("[ -d \"%s\" ] && . /tmp/log_search.sh; f_request2csv \"\" \"%s\" 2>/dev/null; f_audit2json \"\" \"%s\" 2>/dev/null" % (dist, dist, dist), direct=True)
+        cddir = "cd %s;" % extracted_dir if extracted_dir else ""
+        # Somehow Jupyter started as service uses 'sh', so forcing 'bash'
+        ju._system(ju._SH_EXECUTABLE + " -c '[ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh; [ ! -d \"%s\" ] && mkdir \"%s\"'" % (dist, dist))
+        ju._system(ju._SH_EXECUTABLE + " -c '%s[ -d \"%s\" ] && . /tmp/log_search.sh && f_request2csv \"\" \"%s\" && f_audit2json \"\" \"%s\"'" % (cddir, dist, dist, dist))
 
         # Audit json if audit.json file exists
-        _ = ju.json2df('audit.json', tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=ju.connect())
+        _ = ju.json2df(dist+"/audit.json", tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=ju.connect())
 
         # If request.*csv* exists, use that (because it's faster), if not, logs2table, which is slower.
-        request_logs = ju.csv2df('request.csv', tablename="t_request_logs", conn=ju.connect(), if_exists="replace")
+        request_logs = ju.csv2df(dist+"/request.csv", tablename="t_request_logs", conn=ju.connect(), if_exists="replace")
         if bool(request_logs) is False:
             (col_names, line_matching) = _gen_regex_for_request_logs('request.log')
             request_logs = ju.logs2table('request.log', tablename="t_request_logs", col_names=col_names,
