@@ -231,11 +231,11 @@ def _read(file):
 def _extract_zip(zipfile, dest=None):
     if bool(dest) is False:
         import tempfile
-        dest = tempfile.TemporaryDirectory()
+        dest = tempfile.TemporaryDirectory().name
     from zipfile import ZipFile
     with ZipFile(zipfile, 'r') as zf:
         zf.extractall(dest)
-    return dest.name
+    return dest
 
 
 def _generator(obj):
