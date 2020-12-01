@@ -137,7 +137,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
             path = maybe_zips[-1:][0]
             ju._info("'path' is not specified and found zip file: %s . Using this one..." % path)
 
-    cur_dir = os.getcwd() # chdir to the original path later
+    cur_dir = os.getcwd()  # chdir to the original path later
     dist = os.path.realpath(dist)
     if os.path.isfile(path) and path.endswith(".zip"):
         dir = ju._extract_zip(path)
@@ -146,9 +146,8 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
         os.chdir(path)
 
     try:
-        # At this moment, using system commands only when ./_filtered does not exist
-        ju._system('[ ! -d ' + dist + ' ] && [ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh', direct=True)
-        ju._system('[ ! -d ' + dist + ' ] && mkdir ' + dist + ' && . /tmp/log_search.sh && f_request2csv "" "' + dist + '" 2>/dev/null; f_audit2json "" "' + dist +'" 2>/dev/null', direct=True)
+        ju._system("[ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh; [ ! -d \"%s\" ] && mkdir \"%s\"" % (dist, dist), direct=True)
+        ju._system("[ -d \"%s\" ] && . /tmp/log_search.sh; f_request2csv \"\" \"%s\" 2>/dev/null; f_audit2json \"\" \"%s\" 2>/dev/null" % (dist, dist, dist), direct=True)
 
         # Audit json if audit.json file exists
         _ = ju.json2df('audit.json', tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=ju.connect())
@@ -163,10 +162,12 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
 
         # Loading application log file(s) into database.
         (col_names, line_matching) = _gen_regex_for_app_logs('nexus.log')
-        nxrm_logs = ju.logs2table('nexus.log', tablename="t_nxrm_logs", col_names=col_names, line_matching=line_matching,
+        nxrm_logs = ju.logs2table('nexus.log', tablename="t_nxrm_logs", col_names=col_names,
+                                  line_matching=line_matching,
                                   max_file_size=max_file_size)
         (col_names, line_matching) = _gen_regex_for_app_logs('clm-server.log')
-        clm_logs = ju.logs2table('clm-server.log', tablename="t_iq_logs", col_names=col_names, line_matching=line_matching,
+        clm_logs = ju.logs2table('clm-server.log', tablename="t_iq_logs", col_names=col_names,
+                                 line_matching=line_matching,
                                  max_file_size=max_file_size)
 
         # Hazelcast health monitor

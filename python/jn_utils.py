@@ -971,7 +971,6 @@ def pivot(df, output_prefix="pivottable", output_dir="./", rows=None, cols=None,
     """
     Helper function for pivottablejs https://pypi.org/project/pivottablejs/
     https://github.com/nicolaskruchten/pivottable/wiki/Parameters#options-object-for-pivotui
-
     :param df: A DataFrame object
     :param rows: row list
     :param cols: column list
