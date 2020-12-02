@@ -207,7 +207,7 @@ function f_setup_python() {
     local _pypi_proxy_url="$1"
     local _no_venv="$2"
     if ! which python3.7 &>/dev/null; then
-        echo "FIXME: Due to Jupyter autocomplete bug, python 3.7 is required."
+        echo "FIXME: Due to Jupyter autocomplete bug, python 3.7 is required (use f_prepare to install)"
         return 1
     fi
     # Currently expecting anonymous is allowed.
