@@ -229,13 +229,21 @@ def _read(file):
 
 
 def _extract_zip(zipfile, dest=None):
+    """
+    Extract a zip file into the destination or a temp directory
+    :param zipfile: String for the zip file path
+    :param dest:    String for the destination path
+    :return: None or TemporaryDirectory object
+    """
+    tempObj=None
     if bool(dest) is False:
         import tempfile
-        dest = tempfile.TemporaryDirectory().name
+        tempObj = tempfile.TemporaryDirectory()
+        dest = tempObj.name
     from zipfile import ZipFile
     with ZipFile(zipfile, 'r') as zf:
         zf.extractall(dest)
-    return dest
+    return tempObj
 
 
 def _generator(obj):
@@ -1902,10 +1910,8 @@ def update_check(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/s
     Check if update is avaliable (actually checking file size only at this moment)
     :param file: File path string. If empty, checks for this file (jn_utils.py)
     :param baseurl: Default is https://raw.githubusercontent.com/hajimeo/samples/master/python
-    :return: If update available, True and output message in stderr)
-    >>> b = update_check()
-    >>> b is not False
-    True
+    :return: If update available, True and output message in stderr
+    >>> pass
     """
     return update(file, baseurl, check_only=True)
 
@@ -1919,7 +1925,9 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
     :param check_only: If True, do not update but check only
     :param force_update: Even if same size, replace the file
     :return: None if successfully replaced or don't need to update
-    >>> pass
+    >>> b = update(check_only=True)
+    >>> b is not False
+    True
     """
     if bool(file) is False:
         file = __file__

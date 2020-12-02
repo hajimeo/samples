@@ -139,9 +139,11 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
 
     cur_dir = os.getcwd()  # chdir to the original path later
     dist = os.path.realpath(dist)
+    tmpObj = None
     extracted_dir = None
     if os.path.isfile(path) and path.endswith(".zip"):
-        extracted_dir = ju._extract_zip(path)
+        tmpObj = ju._extract_zip(path)
+        extracted_dir = tmpObj.name
         os.chdir(extracted_dir)
     elif os.path.isdir(path):
         os.chdir(path)
@@ -215,6 +217,9 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
         raise
     finally:
         os.chdir(cur_dir)
+        if tmpObj:
+            tmpObj.cleanup()
+
     ju.display(ju.desc(), name="Available_Tables")
 
 
