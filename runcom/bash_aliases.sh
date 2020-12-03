@@ -163,7 +163,7 @@ function deobfuscate() {
     local _salt="$1"
     openssl enc -aes-128-cbc -md sha256 -salt -pass pass:"${_salt}" -d 2>/dev/null
 }
-# Merge split zip files to one file
+# Merge split/multiple zip files to one file
 function merge_zips() {
     local _first_file="$1"
     zip -FF ${_first_file} --output ${_first_file%.*}.merged.zip
@@ -399,6 +399,7 @@ function sshs() {
 # My personal dirty ssh shortcut (cd /var/tmp/share/sonatype/logs/node-nxiq_nxiq)
 alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
 
+# Start PostgreSQL (on Mac)
 function pgStart() {
     local _pg_data="${1:-"/usr/local/var/postgres"}"
     local _log_path="${2:-"$HOME/postgresql.log"}"
@@ -409,6 +410,16 @@ function pgStart() {
     fi
     pg_ctl -D ${_pg_data} -l ${_log_path} ${_cmd}
     # To connect: psql template1
+}
+
+# Start a dummy web server
+function ncWeb() {
+    local _port="${1:-"2222"}"
+    local _http_status="${2:-"200 OK"}" # 400 Bad Request
+    local _last_mod="$(date --rfc-2822)"
+    while true; do
+        echo -e "HTTP/1.1 ${_http_status}\nDate: $(date --rfc-2822)\nServer: ncWeb\nLast-Modified: ${_last_mod}\nContent-Length: 0\n\n" | nc -v -v -l -p ${_port}
+    done
 }
 
 # backup & cleanup (backing up files smaller than 10MB only)
