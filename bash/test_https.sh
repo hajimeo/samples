@@ -312,11 +312,13 @@ function get_certificate_from_https() {
                 _proxy_port="${BASH_REMATCH[2]}"
             fi
             # To DEBUG, -J-Djavax.net.debug=ssl,keymanager or -Djavax.net.debug=ssl:handshake:verbose, and without system proxy: -J-Djava.net.useSystemProxies=true
+            # To pass proxyuser and proxypwd, -J-Dhttps.proxyHost=proxyuser:proxypwd@${_proxy_host}
             keytool -J-Dhttps.proxyHost=${_proxy_host} -J-Dhttps.proxyPort=${_proxy_port} -printcert -sslserver ${_host}:${_port} # -rfc
         else
             # very old openssl version may fail with -proxy (Mac and modern Linux works) TODO: username and password
             echo -n | openssl s_client -showcerts -proxy ${_proxy} -connect ${_host}:${_port}
-        fi
+        fi || echo "curl -sfv -p -x ${_proxy} --proxy-basic -U proxyuser:proxypwd -k -L https://${_host}:${_port}/ 2>&1 | grep 'Server certificate:' -A10"
+        # Curl example in case above openssl or keytool doesn't work.
     else
         # Trying keytool first as some https server doesn't return cert with openssl (CONNECT_CR_SRVR_HELLO:wrong version number)
         if [ -n "${_keytool}" ]; then
