@@ -641,9 +641,9 @@ function _download() {
     local _url="$1"
     local _save_as="$2"
     local _no_backup="$3"
-    local _if_not_exists="$4"   # default is always overwriting
+    local _skip_if_exist="$4"   # default is always continuing or overwriting
 
-    if [[ "${_if_not_exists}" =~ ^(y|Y) ]] && [ -s "${_save_as}" ]; then
+    if [[ "${_skip_if_exist}" =~ ^(y|Y) ]] && [ -s "${_save_as}" ]; then
         _log "INFO" "Not downloading as ${_save_as} exists."
         return
     fi
@@ -659,7 +659,7 @@ function _download() {
         _cmd="${_cmd} -o ${_save_as}"
     fi
 
-    _log "INFO" "Downloading ${_url}..."
+    _log "INFO" "Downloading ${_url} ..."
     eval ${_cmd}
 }
 
