@@ -212,7 +212,7 @@ function f_setup_python() {
     fi
     # Currently expecting anonymous is allowed.
     local _i_opt=""
-    if _isUrl "${_pypi_proxy_url}" "Y"; then
+    if _isUrl "${_pypi_proxy_url}" "Y" && [[ "${_pypi_proxy_url}" =~ ^https?://([^:/]+) ]]; then
         _i_opt="-i ${_pypi_proxy_url%/}/simple --trusted-host ${BASH_REMATCH[1]}"
     fi
 
