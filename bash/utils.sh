@@ -633,10 +633,17 @@ function _isNotEmptyDir() {
 
 function _isUrl() {
     local _url="$1"
+    local _check_reachability="$2"
     [ -z "${_url}" ] && return 1
-    [[ "${_url}" =~ $_URL_REGEX ]]
+    if [[ "${_url}" =~ ${_URL_REGEX} ]]; then
+        if _isYes "${_check_reachability}"; then
+            curl -s -I -L -k -m2 --retry 0 "$1" &>/dev/null
+            return $?
+        fi
+        return 0
+    fi
+    return 1
 }
-
 function _download() {
     local _url="$1"
     local _save_as="$2"

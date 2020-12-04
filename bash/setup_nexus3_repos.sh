@@ -1350,6 +1350,7 @@ function _is_existed() {
         return 1
     fi
 }
+# NOTE: Above  can't be moved into utils.sh as it might be used in _ask
 
 
 ### Main #######################################################################################################
