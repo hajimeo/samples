@@ -117,6 +117,7 @@ alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar &>/tmp/gc
 #curl -O -v -L  https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
 alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'
 alias groovyi='groovysh -e ":set interpreterMode true"'
+alias jenkins='java -jar $HOME/Apps/jenkins.war &>/tmp/jenkins.out &'  #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.263.1/jenkins.war
 
 # Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
 #alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
@@ -516,6 +517,7 @@ function pubS() {
     cp -f $HOME/IdeaProjects/samples/bash/utils*.sh $HOME/share/sonatype/
     cp -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/share/sonatype/
     cp -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/IdeaProjects/nexus-toolbox/scripts/
+    cp -f IdeaProjects/work/nexus-groovy/src2/TrustStoreConverter.groovy $HOME/IdeaProjects/nexus-toolbox/scripts/
     wait
     date
     sync_nexus_binaries &>/dev/null &
