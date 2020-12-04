@@ -127,12 +127,12 @@ function f_topErrors() {
     local _glob="${1:-"*.*log*"}"   # file path which rg accepts and NEEDS double-quotes
     local _date_4_bar="$2"  # For bar_chart.py ISO format datetime, but no seconds (eg: 2018-11-05 21:00)
     local _regex="$3"       # to overwrite default regex to detect ERRORs
-    local _top_N="${4:-40}" # how many result to show (but excluding 1 or 2 occurences)
+    local _top_N="${4:-20}"
 
     [ -z "$_regex" ] && _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|FAILED)\b.+"
     rg -z -c -g "${_glob}" "${_regex}" && echo " "
     rg -z --no-line-number --no-filename -g "${_glob}" "${_regex}" > /tmp/${FUNCNAME}_$$.tmp
-    cat "/tmp/${FUNCNAME}_$$.tmp" | _replace_number | sort | uniq -c | sort -nr | head -n ${_top_N} | rg -v '^\s+[12]\s'
+    cat "/tmp/${FUNCNAME}_$$.tmp" | _replace_number | sort | uniq -c | sort -nr | head -n ${_top_N}
 
     # just for fun, drawing bar chart
     if which bar_chart.py &>/dev/null; then
