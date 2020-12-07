@@ -819,7 +819,7 @@ To save : docker stop ${_name}; docker commit ${_name} ${_name}
 To login: ssh testuser@${_name}"
 }
 
-# Setup or Re-set client configs with given Nexus base URL
+# Setup (reset) client configs against a CentOS container
 #f_reset_client_configs "nexus-client" "testuser" "http://dh1.standalone.localdomain:8081/"
 function f_reset_client_configs() {
     local _name="${1}"
@@ -882,7 +882,7 @@ password: ${_pwd}" > ${_TMP%/}/pypirc
         ${_cmd} exec -it ${_name} bash -l -c "pip3 install conan" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
     fi
 
-    # Using Nexus rubygem repository if available (not sure if rubygem-group is supported in some versions, so using proxy)
+    # Using Nexus rubygem/cocoapods repository if available (not sure if rubygem-group is supported in some versions, so using proxy)
     _repo_url="${_base_url%/}/repository/rubygem-proxy"
     # @see: https://www.server-world.info/en/note?os=CentOS_7&p=ruby23
     #       Also need git newer than 1.8.8, but https://github.com/iusrepo/git216/issues/5
@@ -910,6 +910,8 @@ export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.s
     curl -s -f -o ${_TMP%/}/cocoapods-test.tgz -L https://github.com/hajimeo/samples/raw/master/misc/cocoapods-test.tgz && \
     ${_cmd} cp ${_TMP%/}/cocoapods-test.tgz ${_name}:/home/${_user}/cocoapods-test.tgz && \
     ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/cocoapods-test.tgz
+    # TODO: cocoapods is installed but not configured properly
+    #https://raw.githubusercontent.com/hajimeo/samples/master/misc/cocoapods-Podfile
 
     # If repo is reachable, setup GOPROXY env
     _repo_url="${_base_url%/}/repository/go-proxy"
@@ -962,8 +964,6 @@ export GOPROXY=${_repo_url}" > ${_TMP%/}/go-proxy.sh
     ${_cmd} exec -it ${_name} bash -l -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null' && \
     ${_cmd} cp ${_TMP%/}/settings.xml ${_name}:/home/${_user}/.m2/settings.xml && \
     ${_cmd} exec -it ${_name} chown -R ${_user}: /home/${_user}/.m2
-
-    # TODO: add other client configs (eg: cocoapods is installed but not configured)
 }
 
 function f_container_iq_cli() {
