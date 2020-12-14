@@ -1,8 +1,8 @@
 /*
  * @see: https://gist.github.com/giautm/d79994acd796f3065903eccbc8d6e09b
  * 	env GOOS=linux GOARCH=amd64 go build blobpath.go
- * 	curl -o /usr/local/bin/blobpath -L https://github.com/hajimeo/samples/raw/master/misc/blobpath_Linux
- * 	chmod a+x /usr/local/bin/blobpath
+ * 	sudo curl -o /usr/local/bin/blobpath -L https://github.com/hajimeo/samples/raw/master/misc/blobpath_$(uname)
+ * 	sudo chmod a+x /usr/local/bin/blobpath
  */
 package main
 
