@@ -1,6 +1,8 @@
 /*
  * @see: https://gist.github.com/giautm/d79994acd796f3065903eccbc8d6e09b
  * 	env GOOS=linux GOARCH=amd64 go build blobpath.go
+ * 	curl -o /usr/local/bin/blobpath -L https://github.com/hajimeo/samples/raw/master/misc/blobpath_Linux
+ * 	chmod a+x /usr/local/bin/blobpath
  */
 package main
 
@@ -49,7 +51,7 @@ func main() {
 	}
 	hashInt := hashCode(blobId)
 	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
-	vol := math.Mod(math.Abs(float64(hashInt)), 43) + 1
-	chap := math.Mod(math.Abs(float64(hashInt)), 46) + 1
+	vol := math.Abs(math.Mod(float64(hashInt), 43)) + 1
+	chap := math.Abs(math.Mod(float64(hashInt), 47)) + 1
 	fmt.Printf("vol-%02d/chap-%02d/%s%s\n", int(vol), int(chap), blobId, ext)
 }
