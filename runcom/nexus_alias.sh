@@ -89,7 +89,8 @@ function sptBoot() {
         _zip="$(ls -1 ./*-202?????-??????*.zip | tail -n1)" || return $?
         echo "# Using ${_zip} ..."
     fi
-    #echo "To just re-launch or start, check relaunch-support.sh"
+
+    # some mods for HTTPS
     if [ ! -s $HOME/.nexus_executable_cache/ssl/keystore.jks.orig ]; then
         echo "# Replacing keystore.jks ..."
         mv $HOME/.nexus_executable_cache/ssl/keystore.jks $HOME/.nexus_executable_cache/ssl/keystore.jks.orig
@@ -99,17 +100,18 @@ function sptBoot() {
 
     local _dir="./$(basename "${_zip}" .zip)_tmp"
     if [ ! -d "${_dir}" ]; then
+        # My iqStart does not work with "--noboot" because without boot, not loading any json files, so currently if IQ, clearing _opts
+        unzip -t "${_zip}" | grep -q config.yml && _opts=""
         python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ${_opts} "${_zip}" "${_dir}" || return $?
     else
         echo "# ${_dir} already exists. so just starting ..."
     fi
-    # NXRM2 HTTPS/SSL/TLS
+
     local _nxiq="$(ls -d1 ${_dir%/}/nexus-iq-server-1* | tail -n1)"
     if [ -n "${_nxiq}" ]; then
-        # TODO: this way does not work with "--noboot" because without boot, not loading json files
-        #-cp nexus-iq-server-1.100.0-01.jar:support-zip-loader-1.0-SNAPSHOT.jar -Dclm.disableJreCheck=true com.sonatype.insight.brain.supportloader.SupportLoader --supportzip ./support-20201119-173315-9-zip-extract --config-iq config.yml --skip-system-exit
         iqStart "${_dir}" ""
     else
+        # Mods for NXRM2 HTTPS/SSL/TLS
         local _nxrm2="$(ls -d1 ${_dir%/}/nexus-professional-2* | tail -n1)"
         if [ -d "${_nxrm2%/}/conf" ] && [ ! -d "${_nxrm2%/}/conf/ssl" ] && [ -s $HOME/.nexus_executable_cache/ssl/keystore.jks ]; then
             mkdir "${_nxrm2%/}/conf/ssl"
