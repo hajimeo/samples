@@ -28,11 +28,13 @@ function f_search_soft_deleted_blobs() {
     local _repo_name="${2}"
     if [ -n "${_repo_name}" ]; then
         # NOTE: intentionally, not using double quotes for _content_dir, in case it contains "*"
+        #grep -l --include='*.properties' -IRs "^deleted=true" ${_content_dir} --null | xargs -0 -P2 grep -l -E '^@BlobStore.blob-name=(name1|name2)$'
         grep -l --include='*.properties' -IRs "^deleted=true" ${_content_dir} --null | xargs -0 -P2 grep -l -E '^@Bucket.repo-name=maven-group$'
     else
         grep -l --include='*.properties' -IRs "^deleted=true" ${_content_dir} --null
     fi
     #grep -E '^(size=|deletedDateTime=|deletedReason=|@BlobStore.blob-name=)' `cat soft-deleted.list`
+    # TODO: utilse 'blobpath' command
 }
 
 # TODO: search and sum the size per repo / per blob store, from file and/or DB.
