@@ -25,7 +25,7 @@ function f_prepare() {
             apt-get update
         fi
     fi
-    _install sudo curl jq screen python3.7
+    _install sudo curl screen jq python3.7  #netcat
     # Below is for pyenv and not using at this moment
     #_install make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python-openssl git
     f_install_rg
