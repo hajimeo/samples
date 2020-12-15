@@ -113,9 +113,9 @@ alias kvm_haji='virt-manager -c "qemu+ssh://root@hajime/system?socket=/var/run/l
 alias vnc='java -Xmx2g -jar $HOME/Apps/tightvnc-jviewer.jar &>/tmp/vnc-java-viewer.out &'
 #alias vnc='java -jar $HOME/Applications/VncViewer-1.9.0.jar &>/tmp/vnc-java-viewer.out &'
 alias samurai='java -Xmx4g -jar $HOME/Apps/samurali/samurai.jar &>/tmp/samurai.out &'
+alias tda='java -Xmx4g -jar $HOME/Apps/tda-bin-2.4/tda.jar &>/tmp/tda.out &'    #https://github.com/irockel/tda/releases/latest
 alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar &>/tmp/gcviewer.out &'
-#curl -O -v -L  https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
-alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'
+alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'   #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
 alias groovyi='groovysh -e ":set interpreterMode true"'
 alias jenkins='java -jar $HOME/Apps/jenkins.war &>/tmp/jenkins.out &'  #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.263.1/jenkins.war
 
