@@ -75,7 +75,7 @@ func fullpath(outDir string, blobName string, path string) string {
 	outDir = strings.Trim(outDir, "/")
 	blobName = strings.Trim(blobName, "/")
 	path = strings.Trim(path, "/")
-	return fmt.Sprintf("%s/content/%s/%s", outDir, blobName, path)
+	return fmt.Sprintf("%s/%s/content/%s", outDir, blobName, path)
 }
 
 func createDummyBlob(path string, size int64) {
@@ -133,26 +133,28 @@ func main() {
 			`#%s,000+0000
 #Mon Jan 01 00:00:00 UTC 2020
 @BlobStore.created-by=%s
-size=%s
+size=%d
 @Bucket.repo-name=%s
 creationTime=%s
 @BlobStore.created-by-ip=%s
 @BlobStore.content-type=%s
 @BlobStore.blob-name=%s
 sha1=%s
-`, js["last_updated"], js["created_by"], js["size"], js["repository_name"], js["blob_created"], js["created_by_ip"], js["content_type"], js["name"], js["sha1"])
+`, js["last_updated"], js["created_by"], int64(int(js["size"].(float64))), js["repository_name"], js["blob_created"], js["created_by_ip"], js["content_type"], js["name"], js["sha1"])
 		os.MkdirAll(finalPath, os.ModePerm)
 		err2 := ioutil.WriteFile(finalPath+"/"+blobId+".properties", []byte(propsStr), 0644)
 		if err2 != nil {
 			fmt.Println(err2)
 			os.Exit(4)
 		}
+
 		blobSize := int64(0)
 		if useRealSzie {
-			blobSize = js["size"].(int64)
+			blobSize = int64(int(js["size"].(float64)))
 		}
 		// It's OK if fails
 		createDummyBlob(finalPath+"/"+blobId+".bytes", blobSize)
+		fmt.Fprintln(os.Stderr, "Created "+finalPath+"/"+blobId+".properties")
 	}
 
 }
