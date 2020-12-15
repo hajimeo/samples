@@ -9,10 +9,23 @@ __TMP=${__TMP:-"/tmp"}
 #_LOG_FILE_PATH=""
 
 
+function _docker_cmd() {
+    # Checking in my prefered order
+    #TODO: if which skopeo &>/dev/null; then
+    #    echo "skopeo"
+    if which docker &>/dev/null; then
+        echo "docker"
+    elif which podman &>/dev/null; then
+        echo "podman"
+    fi
+}
+
 function _docker_add_network() {
     local _network_name="${1}"
     local _subnet_16="${2:-"172.100"}"
-    local _cmd="${3:-"${_DOCKER_CMD}"}"
+    local _cmd="${3-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
+    [ -z "${_cmd}" ] && return 1
 
     ${_cmd} network ls --format "{{.Name}}" | grep -qE "^${_network_name}$" && return 0
     # TODO: add validation of the subnet. --subnet is needed to specify an IP in 'docker run'.
@@ -24,7 +37,9 @@ function _container_add_NIC() {
     local _name="${1}"
     local _network="${2:-"bridge"}"
     local _keep_gw="${3}"
-    local _cmd="${4:-"${_DOCKER_CMD}"}"
+    local _cmd="${4-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
+    [ -z "${_cmd}" ] && return 1
 
     local _net_names="$(${_cmd} inspect ${_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(json.dumps(a[0]['NetworkSettings']['Networks'].keys()))")"
     if [[ "${_net_names}" =~ \"${_network}\" ]]; then
@@ -49,7 +64,9 @@ function _container_available_ip() {
     local _check_file="${2}"    # /etc/hosts or /etc/banner_add_hosts
     local _subnet="${3}"        # 172.18.0.0
     local _network_name="${4:-${_DOCKER_NETWORK_NAME:-"bridge"}}"
-    local _cmd="${5:-"${_DOCKER_CMD}"}"
+    local _cmd="${5-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
+    [ -z "${_cmd}" ] && return 1
 
     local _ip=""
     [ -z "${_subnet}" ] && _subnet="$(${_cmd} inspect ${_network_name} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')"
@@ -100,7 +117,9 @@ function _container_useradd() {
     local _user="${2:-"$USER"}"
     local _password="${3:-"${_user}123"}"
     local _sudoer="${4}"
-    local _cmd="${5:-"${_DOCKER_CMD}"}"
+    local _cmd="${5-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
+    [ -z "${_cmd}" ] && return 1
 
     ${_cmd} exec -it ${_name} bash -c 'grep -q "^'$_user':" /etc/passwd && exit 0; useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
     ${_cmd} exec -it ${_name} bash -c 'if [ -f /root/.ssh/authorized_keys ]; then mkdir /home/'$_user'/.ssh &>/dev/null; [ ! -s /home/'$_user'/.ssh/id_rsa ] && ssh-keygen -q -N "" -f /home/'$_user'/.ssh/id_rsa; cp /root/.ssh/authorized_keys /home/'$_user'/.ssh/; chown -R '$_user': /home/'$_user'/.ssh; fi' || return $?
@@ -122,7 +141,9 @@ function _docker_login() {
     local _backup_ports="${2}"
     local _user="${3}"
     local _pwd="${4}"
-    local _cmd="${5:-"${_DOCKER_CMD}"}"
+    local _cmd="${5-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
+    [ -z "${_cmd}" ] && return 1
 
     if [ -n "${_backup_ports}" ]; then
         if [ -z "${_host_port}" ] || [[ "${_host_port}" =~ ^https?://([^:/]+) ]]; then
@@ -154,7 +175,9 @@ function _docker_run_or_start() {
     local _name="$1"
     local _ext_opts="$2"
     local _image_name="$3"
-    local _cmd="${4:-"${_DOCKER_CMD}"}"
+    local _cmd="${4-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
+    [ -z "${_cmd}" ] && return 1
 
     if ${_cmd} ps -a --format "{{.Names}}" | grep -qE "^${_name}$"; then
         _log "INFO" "Container:'${_name}' already exists. Executing ${_cmd} start ${_name} ..."
@@ -175,7 +198,9 @@ function _docker_run() {
     local _name="$1"
     local _ext_opts="$2"
     local _image_name="${3}"
-    local _cmd="${4:-"${_DOCKER_CMD}"}"
+    local _cmd="${4-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
+    [ -z "${_cmd}" ] && return 1
 
     # If dnsmasq or some dns is locally installed, assuming it's setup correctly
     if grep -qE '^nameserver\s+127\.' /etc/resolv.conf; then
@@ -202,7 +227,9 @@ function _docker_run() {
 function _update_hosts_for_container() {
     local _container_name="${1}"
     local _fqdn="${2}"  # Optional
-    local _cmd="${3:-"${_DOCKER_CMD}"}"
+    local _cmd="${3-"${_DOCKER_CMD}"}"  # blank means auto-detect
+    [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
+    [ -z "${_cmd}" ] && return 1
 
     [ -z "${_container_name}" ] && _container_name="`echo "${_fqdn}" | cut -d"." -f1`"
     [ -z "${_container_name}" ] && return 1
