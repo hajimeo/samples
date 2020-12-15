@@ -257,7 +257,9 @@ function f_populate_docker_proxy() {
     local _tag_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${_NEXUS_URL}"}"}"
     local _backup_ports="${3-"18179 18178"}"
-    local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
+    local _cmd="${4-"${r_DOCKER_CMD}"}"
+    [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
+    [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
 
     for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_tag_name}"); do
@@ -275,7 +277,9 @@ function f_populate_docker_hosted() {
     local _tag_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${_NEXUS_URL}"}"}"
     local _backup_ports="${3-"18182 18181"}"
-    local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
+    local _cmd="${4-"${r_DOCKER_CMD}"}"
+    [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
+    [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
 
     # In _docker_proxy, the image might be already pulled.
@@ -882,7 +886,7 @@ password: ${_pwd}" > ${_TMP%/}/pypirc
         ${_cmd} exec -it ${_name} bash -l -c "pip3 install conan" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
     fi
 
-    # Using Nexus rubygem/cocoapods repository if available (not sure if rubygem-group is supported in some versions, so using proxy)
+    # Using Nexus rubygem/cocoapods(pod) repository if available (not sure if rubygem-group is supported in some versions, so using proxy)
     _repo_url="${_base_url%/}/repository/rubygem-proxy"
     # @see: https://www.server-world.info/en/note?os=CentOS_7&p=ruby23
     #       Also need git newer than 1.8.8, but https://github.com/iusrepo/git216/issues/5
@@ -912,6 +916,7 @@ export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.s
     ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/cocoapods-test.tgz
     # TODO: cocoapods is installed but not configured properly
     #https://raw.githubusercontent.com/hajimeo/samples/master/misc/cocoapods-Podfile
+    # (probably) how to retry pod install: cd $HOME/cocoapods-test && rm -rf $HOME/Library/Caches Pods Podfile.lock cocoapods-test.xcworkspace
 
     # If repo is reachable, setup GOPROXY env
     _repo_url="${_base_url%/}/repository/go-proxy"
@@ -1121,13 +1126,8 @@ function interview_cancel_handler() {
 }
 
 function questions() {
-    if [ -z "${r_DOCKER_CMD}" ]; then
-        if which docker &>/dev/null; then
-            r_DOCKER_CMD="docker"
-        elif which podman &>/dev/null; then
-            r_DOCKER_CMD="podman"
-        fi
-    fi
+    [ -z "${r_DOCKER_CMD}" ] && r_DOCKER_CMD="$(_docker_cmd)"
+    [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
 
     # Ask if install nexus docker container if docker command is available
     if [ -n "${r_DOCKER_CMD}" ]; then
