@@ -51,9 +51,9 @@ class LoggingProxy(ProxyBase):
         """
         log.msg("Request => " + repr(request))
         log.msg("Response => " + repr(response))
-        # cache only ldaptor.protocols.pureldap.LDAPSearchResultEntry?
-        if type(response) == LDAPSearchResultEntry:
-            self.save_cache(self.hashing(request), response)
+        # Should cache only ldaptor.protocols.pureldap.LDAPSearchResultEntry?
+        #if type(response) == LDAPSearchResultEntry:
+        self.save_cache(self.hashing(request), response)
         return defer.succeed(response)
 
     def hashing(self, obj):
