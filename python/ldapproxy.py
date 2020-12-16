@@ -4,7 +4,7 @@
 #
 # python3 -m pip install ldaptor
 # curl -O -L https://raw.githubusercontent.com/hajimeo/samples/master/python/ldapproxy.py
-# python3 ./ldapproxy.py 10389 node-freeipa.standalone.localdomain 389
+# python3 ./ldapproxy.py 10389 node-freeipa.standalone.localdomain 389 # or 636 ssl
 
 from ldaptor.protocols import pureldap
 from ldaptor.protocols.ldap import ldaperrors
@@ -129,20 +129,23 @@ if __name__ == '__main__':
 
     port = 10389
     ldap_host = 'localhost'
-    ldap_port = '389'
+    ldap_port = '389'  # or '636' with 'ssl' below
+    ldap_protocol = 'tcp'  # or 'ssl'
+    if (len(sys.argv) > 1):
+        port = sys.argv[1]
+    if (len(sys.argv) > 2):
+        ldap_host = sys.argv[2]
     if (len(sys.argv) > 3):
-        port = sys.argv[1]
-        ldap_host = sys.argv[2]
         ldap_port = sys.argv[3]
-    elif (len(sys.argv) > 2):
-        port = sys.argv[1]
-        ldap_host = sys.argv[2]
-    elif (len(sys.argv) > 1):
-        port = sys.argv[1]
+    if (len(sys.argv) > 4):
+        ldap_protocol = sys.argv[4]
 
     factory = protocol.ServerFactory()
-    proxiedEndpointStr = 'tcp:host=%s:port=%s' % (ldap_host, ldap_port)
+    proxiedEndpointStr = '%s:host=%s:port=%s' % (ldap_protocol, ldap_host, ldap_port)
     use_tls = False
+    if ldap_protocol == 'ssl':
+        ldap_protocol = True
+
     clientConnector = partial(
         connectToLDAPEndpoint,
         reactor,
