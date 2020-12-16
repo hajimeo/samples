@@ -2,12 +2,16 @@
 # @see: https://ldaptor.readthedocs.io/en/latest/cookbook/ldap-proxy.html
 #       https://github.com/twisted/ldaptor
 #
-#       python3 -m pip install ldaptor
+# python3 -m pip install ldaptor
+# curl -O -L https://raw.githubusercontent.com/hajimeo/samples/master/python/ldapproxy.py
+# python3 ./ldapproxy.py 10389 node-freeipa.standalone.localdomain 389
 
 from ldaptor.protocols import pureldap
+from ldaptor.protocols.ldap import ldaperrors
 from ldaptor.protocols.ldap.ldapclient import LDAPClient
 from ldaptor.protocols.ldap.ldapconnector import connectToLDAPEndpoint
 from ldaptor.protocols.ldap.proxybase import ProxyBase
+from ldaptor.protocols.pureldap import LDAPSearchResultEntry
 from twisted.internet import defer, protocol, reactor
 from twisted.python import log
 from functools import partial
@@ -17,6 +21,7 @@ from time import time
 
 
 class LoggingProxy(ProxyBase):
+    simple_cache_enabled = True
     simple_cache = OrderedDict()
     simple_cache_size = 10
     simple_cache_ttl_sec = 300
@@ -32,7 +37,11 @@ class LoggingProxy(ProxyBase):
         """
         response = self.read_cache(self.hashing(request))
         if response is not None:
+            log.msg("Request => " + repr(request))
+            log.msg("Response => " + repr(response))
             reply(response)
+            if type(response) == LDAPSearchResultEntry:
+                reply(pureldap.LDAPSearchResultDone(ldaperrors.Success.resultCode))
             return defer.succeed(None)
         return defer.succeed((request, controls))
 
@@ -42,40 +51,58 @@ class LoggingProxy(ProxyBase):
         """
         log.msg("Request => " + repr(request))
         log.msg("Response => " + repr(response))
-        self.save_cache(self.hashing(request), response)
+        # cache only ldaptor.protocols.pureldap.LDAPSearchResultEntry?
+        if type(response) == LDAPSearchResultEntry:
+            self.save_cache(self.hashing(request), response)
         return defer.succeed(response)
 
-    @staticmethod
-    def hashing(text):
-        return abs(hash(repr(text))) % (10 ** 8)
+    def hashing(self, obj):
+        # TODO: If obj is dict, causes TypeError: unhashable type: 'dict', and not sure if below is correct
+        if type(obj) == dict:
+            return hash(tuple(obj))
+        return hash(obj)
 
     def maintain_cache(self):
+        if self.simple_cache_enabled is False:
+            return None
         current_size = len(self.simple_cache)
-        for hash, d in self.simple_cache.items():
+        copy_simple_cache = self.simple_cache.copy()
+        for cKey, d in copy_simple_cache.items():
             # Check the size of objects, and delete old one (with popitem()?)
             if len(self.simple_cache) > self.simple_cache_size:
-                del self.simple_cache[hash]
+                del self.simple_cache[cKey]
                 continue
             # Check the time of items and delete old one
             for ts, data in d.items():
                 if ts < time() - self.simple_cache_ttl_sec:
-                    del self.simple_cache[hash]
+                    del self.simple_cache[cKey]
+        del copy_simple_cache
         log.msg("maintain_cache-ed from %d to %d" % (current_size, len(self.simple_cache)))
 
-    def save_cache(self, hash, data):
+    def save_cache(self, cKey, data):
+        if self.simple_cache_enabled is False:
+            return None
         ts = time()
         if data is not None:
-            self.simple_cache[hash] = {ts: data}
+            self.simple_cache[cKey] = {ts: data}
+            log.msg("save_cache-ed for %s : type %s" % (str(cKey), str(type(data))))
         # If None is given, delete this item
-        elif hash in self.simple_cache:
-            del self.simple_cache[hash]
+        elif cKey in self.simple_cache:
+            del self.simple_cache[cKey]
 
-    def read_cache(self, hash):
+    def read_cache(self, cKey):
+        if self.simple_cache_enabled is False:
+            return None
         # maintain cache before reading to delete obsolete data
         self.maintain_cache()
-        if hash in self.simple_cache:
+        if cKey in self.simple_cache:
+            if len(self.simple_cache[cKey]) != 1:
+                log.msg("read_cache: size of %s is %d" % (str(cKey), len(self.simple_cache[cKey])))
+                return None
             # as it should contain only one dict, returning the first value from the dict_values
-            return next(iter(self.simple_cache[hash].values()))
+            for ts, data in self.simple_cache[cKey].items():
+                log.msg("read_cache-ed for %s : ts %s : type %s" % (str(cKey), str(ts), str(type(data))))
+                return data
         # Returning None means no match
         return None
 
@@ -131,5 +158,5 @@ if __name__ == '__main__':
 
 
     factory.protocol = buildProtocol
-    reactor.listenTCP(port, factory)
+    reactor.listenTCP(int(port), factory)
     reactor.run()
