@@ -146,7 +146,7 @@ if __name__ == '__main__':
 
     if (len(sys.argv) == 3):
         host=sys.argv[1]
-        port=sys.argv[2]
+        port=int(sys.argv[2])
     elif (len(sys.argv) == 2):
         if (sys.argv[1] == "cron"):
             cron()
