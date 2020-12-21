@@ -21,6 +21,10 @@ class BlobPath
 {
   public static final Pattern BLOB_REF_PATTERN = Pattern.compile("([^@]+)@([^:]+):(.*)");
 
+  public static boolean outputOnly = false;
+
+  public static boolean useRealSize = false;
+
   // f3fb8f3a-1cd4-494d-855f-75820aabbf2a
   public static final Pattern BLOB_ID_PATTERN =
       Pattern.compile("^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$");
@@ -34,17 +38,20 @@ class BlobPath
     }
 
     String outDir = ".";
-    boolean useRealSize = false;
     if (args.length > 0) {
       outDir = args[0];
 
+      if (Arrays.asList(args).contains("--output-only") && !Arrays.asList(args).contains("--output-only=false")) {
+        BlobPath.outputOnly = true;
+      }
+
       if (Arrays.asList(args).contains("--use-real-size") && !Arrays.asList(args).contains("--use-real-size=false")) {
-        useRealSize = true;
+        BlobPath.useRealSize = true;
       }
     }
 
     try {
-      processInputs(System.in, outDir, useRealSize);
+      processInputs(System.in, outDir);
     }
     catch (IOException e) {
       e.printStackTrace();
@@ -64,29 +71,37 @@ class BlobPath
     return String.format("vol-%02d/chap-%02d/%s", t1, t2, blobId);
   }
 
-  private static void processInputs(InputStream is, String outDir, boolean useRealSize) throws IOException {
+  private static void processInputs(InputStream is, String outDir) throws IOException {
     Scanner scanner = new Scanner(is);
     // At this moment, one exception stops the loop (no try/catch)
     while (scanner.hasNextLine()) {
       JsonObject js = new JsonParser().parse(scanner.nextLine()).getAsJsonObject();
-      saveJs(js, outDir, useRealSize);
+      saveJs(js, outDir);
     }
   }
 
-  private static void saveJs(JsonObject js, String outDir, boolean useRealSize) throws IOException {
+  private static void saveJs(JsonObject js, String outDir) throws IOException {
     String blobRef = get(js, "blob_ref");
     Matcher matcher = BLOB_REF_PATTERN.matcher(blobRef);
     String blobName = matcher.group(1);
     String blobId = matcher.group(3);
-    String propContent = genPropertiesContent(js);
     String filePathBase = StringUtils.stripEnd(outDir, "/") + "/" + blobName + "/content";
+
+    if (BlobPath.outputOnly) {
+      System.out.println(filePathBase + "/" + blobPath(blobId) + ".properties");
+      System.out.println(filePathBase + "/" + blobPath(blobId) + ".bytes");
+      return;
+    }
+
     File contentDir = new File(filePathBase);
     if (!contentDir.exists()) {
       contentDir.mkdirs();
     }
+
+    String propContent = genPropertiesContent(js);
     save(filePathBase + "/" + blobPath(blobId) + ".properties", propContent);
     int sizeByte = 0;
-    if (useRealSize) {
+    if (BlobPath.useRealSize) {
       sizeByte = Integer.parseInt(get(js, "size"));
     }
     genDummy(filePathBase + "/" + blobPath(blobId) + ".bytes", sizeByte);
