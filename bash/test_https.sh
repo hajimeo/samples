@@ -4,8 +4,8 @@
 # Useful Java flags (NOTE: based on java 8)
 #   -Dcom.sun.net.ssl.checkRevocation=false                         # to avoid hostname error
 #   -Dcom.sun.jndi.ldap.object.disableEndpointIdentification=true   # for LDAPS
-#   -Djavax.net.ssl.trustStoreType=WINDOWS-ROOT"                    # to use Windows OS truststore
-#   ‑Djdk.tls.client.protocols="TLSv1,TLSv1.1,TLSv1.2"             # to specify client protocol
+#   -Djavax.net.ssl.trustStoreType=WINDOWS-ROOT                     # to use Windows OS truststore
+#   ‑Djdk.tls.client.protocols="TLSv1,TLSv1.1,TLSv1.2"              # to specify client protocol
 #
 #   -Dhttps.proxyHost=<proxy_hostname> -Dhttps.proxyPort=
 #   -Djava.net.useSystemProxies=true
