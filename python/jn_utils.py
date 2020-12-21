@@ -336,7 +336,7 @@ def json2df(filename, tablename=None, conn=None, jq_query="", list_only=False, j
     :param tablename: If empty, table name will be the filename without extension
     :param conn:   DB connection object
     :param jq_query: String used with ju.jq(), to filter json record
-    :param list_only: If true, find the first list object and import/convert. Not used if jq_query is given
+    :param list_only: TODO: If true, find the first list object and import/convert. Not used if jq_query is given
     :param json_cols: to_sql() fails if column is json, so forcing those columns to string
     :param chunksize:
     :return: a DataFrame object

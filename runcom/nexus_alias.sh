@@ -9,9 +9,11 @@ if [ -z "${_WORK_DIR}" ]; then
 fi
 
 
-[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py ] && alias sptZip3="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py"
-[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus2-support-zip.py ] && alias sptZip2="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus2-support-zip.py"
+[ -s $HOME/IdeaProjects/nexus-toolbox/analyzer/analyze.py ] && alias sptZip="python3 $HOME/IdeaProjects/nexus-toolbox/analyzer/analyze.py"
+#[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py ] && alias sptZip3="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py"
+#[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus2-support-zip.py ] && alias sptZip2="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus2-support-zip.py"
 [ -s $HOME/IdeaProjects/nexus-toolbox/scripts/dump_nxrm3_groovy_scripts.py ] && alias sptDumpScript="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/dump_nxrm3_groovy_scripts.py"
+[ -s $HOME/IdeaProjects/samples/misc/blobpath.jar ] && alias blobpath="java -jar $HOME/IdeaProjects/samples/misc/blobpath.jar"
 
 
 # Start iq CLI
