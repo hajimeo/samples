@@ -82,8 +82,8 @@ function iqHds() {
 }
 
 function sptBoot() {
-    local _zip="$1"
-    local _opts="${2-"--noboot --convert-repos"}"    # --remote-debug
+    local _zip="${1}"
+    local _opts="${2}"    # If empty and NXRM, using "--noboot --convert-repos" (not --remote-debug)
     pyv
 
     [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
@@ -102,11 +102,23 @@ function sptBoot() {
 
     local _dir="./$(basename "${_zip}" .zip)_tmp"
     if [ ! -d "${_dir}" ]; then
-        # My iqStart does not work with "--noboot" because without boot, not loading any json files, so currently if IQ, clearing _opts
-        unzip -t "${_zip}" | grep -q config.yml && _opts=""
-        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ${_opts} "${_zip}" "${_dir}" || return $?
+        local _final_opts="${_opts}"
+        if unzip -t "${_zip}" | grep -q config.yml; then
+            # My iqStart does not work with "--noboot" because without boot, not loading any json files, so currently if IQ, may need to clear _opts
+            #_final_opts=""
+            echo "Probably IQ ..."
+        elif [ -z "${_opts}" ]; then
+            # If empty and NXRM, using "--noboot --convert-repos"
+            _final_opts="--noboot --convert-repos"
+        fi
+        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ${_final_opts} "${_zip}" "${_dir}" || return $?
     else
         echo "# ${_dir} already exists. so just starting ..."
+    fi
+
+    if [[ "${_opts}" =~ noboot ]]; then
+        echo "# 'noboot' is specified, so not starting ..."
+        return
     fi
 
     local _nxiq="$(ls -d1 ${_dir%/}/nexus-iq-server-1* | tail -n1)"
