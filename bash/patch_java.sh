@@ -3,7 +3,7 @@
 # curl -o /var/tmp/share/java/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
 #
 
-_BASE_DIR="${_BASE_DIR:-"/var/tmp/share/java"}"
+_JAVA_DIR="${_JAVA_DIR:-"/var/tmp/share/java"}"
 
 function usage() {
     cat << EOS
@@ -19,14 +19,14 @@ Patch one class file by compiling and updating one jar
 
 Or, to start scala console (REPL):
 
-\$ source ${_BASE_DIR}/patch_java.sh
+\$ source ./patch_java.sh
 \$ f_scala [<port>]
 EOS
 }
 
 function f_setup_scala() {
     local _ver="${1:-2.12.3}"
-    local _extract_dir="${2:-"${_BASE_DIR}"}"
+    local _extract_dir="${2:-"${_JAVA_DIR}"}"
     local _inst_dir="${3:-/usr/local/scala}"
 
     if [ -d "$SCALA_HOME" ]; then
@@ -49,8 +49,8 @@ function f_setup_scala() {
 }
 
 function f_setup_groovy() {
-    local _ver="${1:-2.5.7}"
-    local _extract_dir="${2:-"${_BASE_DIR}"}"
+    local _ver="${1:-2.4.17}"   # This version is for NXRM3
+    local _extract_dir="${2:-"${_JAVA_DIR}"}"
     local _inst_dir="${3:-/usr/local/groovy}"
 
     if [ -d "$GROOVY_HOME" ]; then
@@ -74,7 +74,7 @@ function f_setup_groovy() {
 
 function f_setup_spring_cli() {
     local _ver="${1:-2.2.2}"
-    local _extract_dir="${2:-"${_BASE_DIR}"}"
+    local _extract_dir="${2:-"${_JAVA_DIR}"}"
     local _inst_dir="${3:-/usr/local/spring-boot-cli}"
 
     if [ -d "$SPRING_CLI_HOME" ]; then
@@ -146,7 +146,7 @@ function f_javaenvs() {
 function _find_jcmd() {
     # _set_java_home 8081 "/var/tmp/share/java"
     local _port="${1}"
-    local _search_path="${2:-"${_BASE_DIR}"}"
+    local _search_path="${2:-"${_JAVA_DIR}"}"   # Extra search location in case JAVA_HOME doesn't work
     local _java_home="${JAVA_HOME}"
 
     local _p=`lsof -ti:${_port} -s TCP:LISTEN`
@@ -181,26 +181,27 @@ function _set_classpath() {
 
     if [ "${_port}" == "8081" ] && [ -d "/usr/tmp/share/java/lib" ]; then
         # At this moment, not considering dups
-        _classpath="${CLASSPATH%:}:$(find /usr/tmp/share/java/lib -type f -name '*.jar' | grep -vw groovy | tr '\n' ':')"
+        _classpath="${CLASSPATH%:}:$(find /usr/tmp/share/java/lib -type f -name '*.jar' | tr '\n' ':')"
         export CLASSPATH="${_classpath%:}"
     fi
 
     if [ "${_port}" == "8081" ] && [ -d "/opt/sonatype/nexus/system" ]; then
         # At this moment, not considering dups
-        _classpath="${CLASSPATH%:}:$(find /opt/sonatype/nexus/system -type f -name '*.jar' | grep -vw groovy | tr '\n' ':')"
+        _classpath="${CLASSPATH%:}:$(find /opt/sonatype/nexus/system -type f -name '*.jar' | tr '\n' ':')"
         export CLASSPATH="${_classpath%:}"
     fi
 
     if [ "${_port}" == "8081" ] && [ -d "/opt/sonatype/nexus/lib" ]; then
         # At this moment, not considering dups
-        _classpath="${CLASSPATH%:}:$(find /opt/sonatype/nexus/lib -type f -name '*.jar' | grep -vw groovy | tr '\n' ':')"
+        _classpath="${CLASSPATH%:}:$(find /opt/sonatype/nexus/lib -type f -name '*.jar' | tr '\n' ':')"
         export CLASSPATH="${_classpath%:}"
     fi
 
     # using extra_dir only when no CLASSPATH set, otherwise, CLASSPATH can be super long
     if [ -d "${_extra_lib}" ]; then
-        # It might contain another groovy jar but different version, so excluding in find.
-        local _extra_classpath=$(find ${_extra_lib%/} -name '*.jar' -not -name 'groovy-*.jar' -print | tr '\n' ':')
+        # It might contain another groovy jar but might be a different version, but as it should be using 2.4, should be OK
+        #local _extra_classpath=$(find ${_extra_lib%/} -name '*.jar' -not -name 'groovy-*.jar' -print | tr '\n' ':')
+        local _extra_classpath=$(find ${_extra_lib%/} -name '*.jar' -print | tr '\n' ':')
         export CLASSPATH="${_extra_classpath%:}:${CLASSPATH%:}"
     fi
 }
