@@ -386,7 +386,7 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=False, jso
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(files[0]), {}, using_1st_char=False, prefix='t_')
         _info("Creating table: %s ..." % (tablename))
-        # Temp workaround: "<table>: Error binding parameter <colN> - probably unsupported type."
+        # Temp workaround: "<table>: Error binding parameter <N> - probably unsupported type."
         # Temp workadound2: if flatten is true, converting to str for all columns...
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, all_str=flatten, name=tablename)
         df2table(df=df_tmp_mod, tablename=tablename, conn=conn, chunksize=chunksize, if_exists='replace')
@@ -552,9 +552,10 @@ def _pick_new_key(name, names_dict, using_1st_char=False, check_global=False, pr
 
 def _avoid_unsupported(df, json_cols=[], all_str=False, name=None):
     """
-    Convert DF cols for workarounding "<table>: Error binding parameter <colN> - probably unsupported type."
+    Convert DF cols for workarounding "<table>: Error binding parameter <N> - probably unsupported type."
     :param df: A *reference* of panda DataFrame
     :param json_cols: List contains column names. Ex. ['connectionId', 'planJson', 'json']
+    :param all_str: If True and df is not too large, convert all columns to string
     :param name: just for extra loggings
     :return: Modified df
     >>> import pandas as pd
@@ -570,14 +571,14 @@ def _avoid_unsupported(df, json_cols=[], all_str=False, name=None):
             _debug("_avoid_unsupported: k = %s" % (str(k)))
             # df[k] = df[k].to_string()
             cols[k] = 'str'
-        elif all_str:
+        elif all_str and len(df) < 10000:   # don't want to convert huge df
             cols[k] = 'str'
     if len(cols) > 0:
         if bool(name):
             if all_str is False:
                 _info(" - converting columns:%s." % (str(cols)))
             else:
-                _info(" - converting all columns (%d) to string columns." % (len(cols)))
+                _info(" - converting all columns (%d) to string." % (len(cols)))
         return df.astype(cols)
     return df
 
@@ -1865,6 +1866,7 @@ def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace'):
         res = re.search('Error binding parameter ([0-9]+) - probably unsupported type', str(e))
         if res:
             _err(e)
+            # TODO: Not using this at this moment as don't know how to link with the binding parameter.
             return res.group(1)
         else:
             raise
