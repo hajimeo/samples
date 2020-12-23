@@ -175,6 +175,6 @@ if __name__ == '__main__':
                     print('    %s,' % json.dumps(_e))
             print(']')
         elif _d is not None:
-            print(_d)
+            print(json.dumps(_d))
     elif _d is not None:
         print(json.dumps(_d, indent=4, sort_keys=True))
