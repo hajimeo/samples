@@ -14,13 +14,18 @@ EOS
 
 # Overridable global variables
 : ${_WORK_DIR:="/var/tmp/share"}
-: ${_BASE_DIR:="${_WORK_DIR%/}/java"}
+: ${_JAVA_DIR:="${_WORK_DIR%/}/java"}
 
 function f_search_blobs() {
-    local _content_dir="${1:-"./vol-*"}"    # /var/tmp/share/sonatype/blobs/default/content/vol-*
-    local _grep_opts="$2"   # eg: -Pz "(?s)^deleted=true.*^@Bucket.repo-name="
-    # -H or -l
-    grep -H --include='*.properties' -IRs ${_grep_opts} ${_content_dir}
+    local _content_dir="${1:-"."}"    # /var/tmp/share/sonatype/blobs/default/content/vol-*
+    local _grep_args="${2}"   # eg: -lPz "(?s)^deleted=true.*^@Bucket.repo-name="
+    [ -z "${_grep_args}" ] && return 1
+    # find + xargs is faster than grep with --include
+    #grep -H --include='*.properties' -IRs ${_grep_args} ${_content_dir}    # -H or -l
+    # NOTE: find -L makes this command a bit slower, and -P would be helpful onlly for slow store.
+    #       Also, redirecting to a file is faster in the console.
+    find ${_content_dir} -type f -name '*.properties' -print0 | xargs -0 -P 2 grep ${_grep_args} > /tmp/$FUNCNAME.out
+    cat /tmp/$FUNCNAME.out
 }
 
 function f_search_soft_deleted_blobs() {
