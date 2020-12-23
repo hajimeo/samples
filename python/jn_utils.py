@@ -44,6 +44,7 @@ from dateutil import parser
 import pandas as pd
 from sqlalchemy import create_engine
 import matplotlib.pyplot as plt
+from sqlite3.dbapi2 import InterfaceError
 
 try:
     from lxml import etree
@@ -328,7 +329,7 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     return (names_dict, dfs)
 
 
-def json2df(filename, tablename=None, conn=None, jq_query="", list_only=False, json_cols=[], chunksize=1000):
+def json2df(filename, tablename=None, conn=None, jq_query="", flatten=False, json_cols=[], chunksize=1000):
     """
     Convert a json file, which contains list into a DataFrame
     If conn is given, import into a DB table
@@ -336,7 +337,7 @@ def json2df(filename, tablename=None, conn=None, jq_query="", list_only=False, j
     :param tablename: If empty, table name will be the filename without extension
     :param conn:   DB connection object
     :param jq_query: String used with ju.jq(), to filter json record
-    :param list_only: TODO: If true, find the first list object and import/convert. Not used if jq_query is given
+    :param flatten: If true, use json_normalize()
     :param json_cols: to_sql() fails if column is json, so forcing those columns to string
     :param chunksize:
     :return: a DataFrame object
@@ -360,9 +361,11 @@ def json2df(filename, tablename=None, conn=None, jq_query="", list_only=False, j
             obj = jq(file_path, jq_query)
             dfs.append(pd.DataFrame(obj))
         else:
-            if list_only:
-                # TODO: read file and find the first list, then convert to _df
-                pass
+            if flatten:
+                with open(file_path) as f:
+                    j_obj = json.load(f)
+                # 'fillna' is for workarounding "probably unsupported type."
+                _df = pd.json_normalize(j_obj).fillna("")
             else:
                 try:
                     _df = pd.read_json(file_path)
@@ -372,17 +375,20 @@ def json2df(filename, tablename=None, conn=None, jq_query="", list_only=False, j
     if bool(dfs) is False:
         return False
     df = pd.concat(dfs, sort=False)
+    if bool(tablename) and conn is None:
+        conn = connect()
     if bool(conn):
         if bool(json_cols) is False:
-            row = df[:1].to_dict(orient='records')[0]
-            for k in row:
-                if type(row[k]) is dict:
+            first_row = df[:1].to_dict(orient='records')[0]
+            for k in first_row:
+                if type(first_row[k]) is dict or type(first_row[k]) is list:
                     json_cols.append(k)
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(files[0]), {}, using_1st_char=False, prefix='t_')
-        # TODO: Temp workaround "<table>: Error binding parameter <N> - probably unsupported type."
-        df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, name=tablename)
         _info("Creating table: %s ..." % (tablename))
+        # Temp workaround: "<table>: Error binding parameter <colN> - probably unsupported type."
+        # Temp workadound2: if flatten is true, converting to str for all columns...
+        df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, all_str=flatten, name=tablename)
         df2table(df=df_tmp_mod, tablename=tablename, conn=conn, chunksize=chunksize, if_exists='replace')
         _autocomp_inject(tablename=tablename)
         return len(df) > 0
@@ -544,9 +550,9 @@ def _pick_new_key(name, names_dict, using_1st_char=False, check_global=False, pr
     return new_key
 
 
-def _avoid_unsupported(df, json_cols=[], name=None):
+def _avoid_unsupported(df, json_cols=[], all_str=False, name=None):
     """
-    Drop DF cols to workaround "<table>: Error binding parameter <N> - probably unsupported type."
+    Convert DF cols for workarounding "<table>: Error binding parameter <colN> - probably unsupported type."
     :param df: A *reference* of panda DataFrame
     :param json_cols: List contains column names. Ex. ['connectionId', 'planJson', 'json']
     :param name: just for extra loggings
@@ -555,7 +561,7 @@ def _avoid_unsupported(df, json_cols=[], name=None):
     >>> _avoid_unsupported(pd.DataFrame([{"a_json":{"a":"a-val","b":"b-val"}, "test":12345}]), ["test"]).values
     array([["{'a': 'a-val', 'b': 'b-val'}", '12345']], dtype=object)
     """
-    if bool(json_cols) is False:
+    if bool(json_cols) is False and all_str is False:
         return df
     keys = df.columns.tolist()
     cols = {}
@@ -564,8 +570,14 @@ def _avoid_unsupported(df, json_cols=[], name=None):
             _debug("_avoid_unsupported: k = %s" % (str(k)))
             # df[k] = df[k].to_string()
             cols[k] = 'str'
+        elif all_str:
+            cols[k] = 'str'
     if len(cols) > 0:
-        if bool(name): _info(" - converting columns:%s." % (str(cols)))
+        if bool(name):
+            if all_str is False:
+                _info(" - converting columns:%s." % (str(cols)))
+            else:
+                _info(" - converting all columns (%d) to string columns." % (len(cols)))
         return df.astype(cols)
     return df
 
@@ -1842,11 +1854,20 @@ def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace'):
     :param conn:
     :param chunksize:
     :param if_exists:
-    :return: void (looks like to_sql doesn't return anything)
+    :return: None if no issue because isinstance() return True if True, or error column number if error.
     """
     if conn is None:
         conn = connect()
-    df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=_DB_SCHEMA, index=False)
+    try:
+        df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=_DB_SCHEMA, index=False)
+        return None
+    except InterfaceError as e:
+        res = re.search('Error binding parameter ([0-9]+) - probably unsupported type', str(e))
+        if res:
+            _err(e)
+            return res.group(1)
+        else:
+            raise
 
 
 def df2csv(df, file_path, mode="w", header=True):
