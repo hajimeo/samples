@@ -172,8 +172,9 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
         # system-filestores from sysinfo.json
         _save_json("sysinfo\.json", "%s/system-filestores.json" % dist, "system-filestores")
         # extracting from DB export.json files
-        _save_json("config/export\.json", "%s/http_client.json" % dist, "records,@class=http_client" "@class" "connection,proxy")
-        saml_config = _save_json("config/export\.json", "", "records,@class:saml" "@class" "entityId,idpMetadata,mapping,keyStoreBytes,keyStorePassword" "Y")
+        _save_json("config/export\.json", "%s/http_client.json" % dist, "records,@class=http_client", "@class", "connection,proxy")
+        _save_json("config/export\.json", "%s/db_repo.json" % dist, "records,@class=repository", "@class", "recipe_name,repository_name,online,attributes", True)
+        saml_config = _save_json("config/export\.json", "", "records,@class:saml", "@class", "entityId,idpMetadata,mapping,keyStoreBytes,keyStorePassword", True)
         if bool(saml_config):
             db_saml_idp_metadata = ""
             from lxml import etree as ET
@@ -185,7 +186,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
             if len(db_saml_idp_metadata) > 0:
                 with open("%s/db_saml_idp_metadata.xml" % dist, 'w') as f:
                     f.write(db_saml_idp_metadata)
-        _save_json("security/export\.json", "%s/db_saml_user.json" % dist, "records,@class=saml_user" "@class" "id,status,roles" "Y")
+        _save_json("security/export\.json", "%s/db_saml_user.json" % dist, "records,@class=saml_user", "@class", "id,status,roles", True)
         # TODO: add more
         
         ### Transform & Load ###################################################
