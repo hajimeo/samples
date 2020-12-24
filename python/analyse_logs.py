@@ -125,7 +125,7 @@ def update():
 
 def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
     """
-    Extract data and transform and load
+    Extract data, transform and load (to DB)
     :param path: To specify a zip file
     :param dist: Directory path to save the extracted data (default ./_filtered)
     :param max_file_size: Larger than this size will be skipped (default 100MB)
@@ -149,19 +149,23 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
         os.chdir(path)
 
     try:
-        cddir = "cd %s;" % extracted_dir if extracted_dir else ""
+        ### Extract ############################################################
         # Somehow Jupyter started as service uses 'sh', so forcing 'bash'
         ju._system(ju._SH_EXECUTABLE + " -c '[ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh; [ ! -d \"%s\" ] && mkdir \"%s\"'" % (dist, dist))
-        ju._system(ju._SH_EXECUTABLE + " -c '%s[ -d \"%s\" ] && . /tmp/log_search.sh && f_request2csv \"\" \"%s\" 2>/dev/null && f_audit2json \"\" \"%s\"'" % (cddir, dist, dist, dist))
+        ju._system(ju._SH_EXECUTABLE + " -c '%s[ -d \"%s\" ] && . /tmp/log_search.sh && f_request2csv \"\" \"%s\" 2>/dev/null && f_audit2json \"\" \"%s\"'" % ("cd %s;" % extracted_dir if extracted_dir else "", dist, dist, dist))
 
-        # Audit json if audit.json file exists
-        _ = ju.json2df(dist+"/audit.json", tablename="t_audit_logs", json_cols=['attributes', 'data'], conn=ju.connect())
+        ### Transform & Load ###################################################
+        # db_xxxxx.json
+        _ = ju.load_jsons(src=dist, include_ptn="db_*.json", flatten=True)
+        # If audit.json file exists
+        _ = ju.json2df(dist+"/audit.json", tablename="t_audit_logs", flatten=True)
+        # xxxxx.csv
+        _ = ju.load_csvs(src="./_filtered/", include_ptn="*.csv")
 
         # If request.*csv* exists, use that (because it's faster), if not, logs2table, which is slower.
-        request_logs = ju.csv2df(dist+"/request.csv", tablename="t_request_logs", conn=ju.connect(), if_exists="replace")
-        if bool(request_logs) is False:
+        if ju.exists("t_request") is False:
             (col_names, line_matching) = _gen_regex_for_request_logs('request.log')
-            request_logs = ju.logs2table('request.log', tablename="t_request_logs", col_names=col_names,
+            request_logs = ju.logs2table('request.log', tablename="t_request", col_names=col_names,
                                          line_beginning="^.",
                                          line_matching=line_matching, max_file_size=max_file_size)
 
@@ -176,9 +180,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
                                  max_file_size=max_file_size)
 
         # Hazelcast health monitor
-        health_monitor = ju.csv2df('log_hazelcast_monitor.csv', tablename="t_health_monitor", conn=ju.connect(),
-                                   if_exists="replace")
-        if bool(health_monitor) is False and bool(nxrm_logs):
+        if ju.exists("t_log_hazelcast_monitor") is False and bool(nxrm_logs):
             df_hm = ju.q(
                 """select date_time, message from t_nxrm_logs where class = 'com.hazelcast.internal.diagnostics.HealthMonitor'""")
             if len(df_hm) > 0:
@@ -186,28 +188,27 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
                 msg_ext = df_hm['message'].str.extract(line_matching)
                 msg_ext.columns = col_names
                 # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
-                df_hm.drop(columns=['message']).join(msg_ext).to_sql(name="t_health_monitor", con=ju.connect(),
+                df_hm.drop(columns=['message']).join(msg_ext).to_sql(name="t_log_hazelcast_monitor", con=ju.connect(),
                                                                      chunksize=1000, if_exists='replace',
                                                                      schema=ju._DB_SCHEMA)
                 health_monitor = True
-                ju._autocomp_inject(tablename='t_health_monitor')
+                ju._autocomp_inject(tablename='t_log_hazelcast_monitor')
 
         # Elastic JVM monitor
-        elastic_monitor = ju.csv2df('log_elastic_jvm_monitor.csv', tablename="t_elastic_jvm_monitor", conn=ju.connect(),
-                                    if_exists="replace")
-        if bool(elastic_monitor) is False and bool(nxrm_logs):
+        if ju.exists("t_log_elastic_jvm_monitor") is False and bool(nxrm_logs):
             df_em = ju.q("""select date_time, message from t_nxrm_logs where class = 'org.elasticsearch.monitor.jvm'""")
             if len(df_em) > 0:
                 (col_names, line_matching) = _gen_regex_for_elastic_jvm(df_em['message'][1])
                 msg_ext = df_em['message'].str.extract(line_matching)
                 msg_ext.columns = col_names
                 # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
-                df_em.drop(columns=['message']).join(msg_ext).to_sql(name="t_elastic_jvm_monitor", con=ju.connect(),
+                df_em.drop(columns=['message']).join(msg_ext).to_sql(name="t_log_elastic_jvm_monitor", con=ju.connect(),
                                                                      chunksize=1000, if_exists='replace',
                                                                      schema=ju._DB_SCHEMA)
                 health_monitor = True
-                ju._autocomp_inject(tablename='t_elastic_jvm_monitor')
+                ju._autocomp_inject(tablename='t_log_elastic_jvm_monitor')
 
+        # Thread dump
         threads = ju.logs2table(filename="threads.txt", tablename="t_threads", conn=ju.connect(),
                                 col_names=['thread_name', 'id', 'state', 'stacktrace'],
                                 line_beginning="^[^ ]",
@@ -241,7 +242,7 @@ def analyse_logs(path="", start_isotime=None, end_isotime=None, tail_num=10000, 
     if bool(end_isotime) is True:
         where_sql += " AND date_time <= '" + end_isotime + "'"
 
-    if len(ju.describe("t_request_logs")) > 0:
+    if ju.exists("t_request"):
         display_name = "RequestLog_StatusCode_Hourly_aggs"
         # Can't use above where_sql for this query
         where_sql2 = "WHERE 1=1"
@@ -255,7 +256,7 @@ def analyse_logs(path="", start_isotime=None, end_isotime=None, tail_num=10000, 
     CAST(AVG(CAST(elapsedTime AS INT)) AS INT) AS avg_elaps, 
     CAST(AVG(CAST(bytesSent AS INT)) AS INT) AS avg_bytes, 
     count(*) AS occurrence
-FROM t_request_logs
+FROM t_request
 %s
 GROUP BY 1, 2""" % (where_sql2)
         ju.display(ju.q(query), name=display_name, desc=query)
@@ -265,10 +266,10 @@ GROUP BY 1, 2""" % (where_sql2)
     CAST(statusCode AS INTEGER) AS statusCode, 
     CAST(bytesSent AS INTEGER) AS bytesSent, 
     CAST(elapsedTime AS INTEGER) AS elapsedTime 
-FROM t_request_logs %s""" % (where_sql2)
+FROM t_request %s""" % (where_sql2)
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
-    if len(ju.describe("t_health_monitor")) > 0:
+    if ju.exists("t_log_hazelcast_monitor"):
         display_name = "NexusLog_Health_Monitor"
         query = """SELECT date_time
     , UDF_STR_TO_INT(`physical.memory.free`) as sys_mem_free_bytes
@@ -282,22 +283,22 @@ FROM t_request_logs %s""" % (where_sql2)
     , CAST(`load.systemAverage` AS REAL) as load_system_avg
     , CAST(`thread.count` AS INTEGER) as thread_count
     , CAST(`connection.active.count` AS INTEGER) as node_conn_count
-FROM t_health_monitor
+FROM t_log_hazelcast_monitor
 %s""" % (where_sql)
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
-    if len(ju.describe("t_elastic_jvm_monitor")) > 0:
+    if ju.exists("t_log_elastic_jvm_monitor"):
         display_name = "NexusLog_ElasticJvm_Monitor"
         query = """SELECT date_time
     , UDF_STR_TO_INT(duration) as duration_ms
     , UDF_STR_TO_INT(total_time) as total_time_ms
     , UDF_STR_TO_INT(mem_before) as mem_before_bytes
     , UDF_STR_TO_INT(mem_after) as mem_after_bytes
-FROM t_elastic_jvm_monitor
+FROM t_log_elastic_jvm_monitor
 %s""" % (where_sql)
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
-    if len(ju.describe("t_iq_logs")) > 0:
+    if ju.exists("t_iq_logs"):
         display_name = "NxiqLog_Policy_Scan_aggs"
         query = """SELECT thread, min(date_time), max(date_time), 
     STRFTIME('%%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1))
@@ -332,9 +333,9 @@ LIMIT 10""" % (where_sql)
         ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
     log_table_name = None
-    if len(ju.describe("t_nxrm_logs")) > 0:
+    if ju.exists("t_nxrm_logs"):
         log_table_name = "t_nxrm_logs"
-    elif len(ju.describe("t_iq_logs")) > 0:
+    elif ju.exists("t_iq_logs"):
         log_table_name = "t_iq_logs"
     if bool(log_table_name):
         # analyse t_logs table (eg: count ERROR|WARN)
@@ -355,7 +356,7 @@ LIMIT 10""" % (where_sql)
     GROUP BY 1""" % (log_table_name, where_sql)
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
-    if len(ju.describe("t_threads")) > 0:
+    if ju.exists("t_threads"):
         display_name = "Blocked_Threads"
         query = """SELECT * FROM t_threads
 WHERE thread_name not like '%InstrumentedSelectChannelConnector%'

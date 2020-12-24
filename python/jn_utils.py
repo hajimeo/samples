@@ -44,7 +44,9 @@ from dateutil import parser
 import pandas as pd
 from sqlalchemy import create_engine
 import matplotlib.pyplot as plt
+
 from sqlite3.dbapi2 import InterfaceError
+from json.decoder import JSONDecodeError
 
 try:
     from lxml import etree
@@ -262,6 +264,7 @@ def _generator(obj):
 def _timestamp(unixtimestamp=None, format=None):
     """
     Format Unix Timestamp with a given format
+    NOTE: '%f' is used as miliseconds
     :param unixtimestamp: Int (or float, but number after dot will be ignored)
     :param format: Default is %Y-%m-%d %H:%M:%S.%f[:-3]
     :return: Formatted string
@@ -274,25 +277,31 @@ def _timestamp(unixtimestamp=None, format=None):
     dt = datetime.fromtimestamp(float(unixtimestamp))
     if format is None:
         return dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+    if format.endswith('%f'):
+        return dt.strftime(format)[:-3]
     return dt.strftime(format)
 
 
+def _log(level, message, format="%H:%M:%S.%f"):
+    sys.stderr.write("[%s] %-5s %s\n" % (_timestamp(format=format), level, str(message)))
+
+
 def _info(message):
-    sys.stderr.write("%s\n" % (str(message)))
+    _log("INFO", message)
 
 
 def _err(message):
-    sys.stderr.write("[%s] ERROR: %s\n" % (_timestamp(), str(message)))
+    _log("ERROR", message)
 
 
 def _debug(message, dbg=False):
     global _DEBUG
     if _DEBUG or dbg:
-        sys.stderr.write("[%s] DEBUG: %s\n" % (_timestamp(), str(message)))
+        _log("DEBUG", message)
 
 
 def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunksize=1000,
-               list_only=False, json_cols=['connectionId', 'planJson', 'json'], useRegex=False):
+               json_cols=[], flatten=None, useRegex=False):
     """
     Find json files from current path and load as pandas dataframes object
     :param src: source/importing directory path
@@ -300,8 +309,9 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     :param include_ptn: Regex string to include some file
     :param exclude_ptn: Regex string to exclude some file
     :param chunksize: Rows will be written in batches of this size at a time. By default, all rows will be written at once
-    :param list_only: If true, find the first list object and import/convert
-    :param json_cols: to_sql() fails if column is json, so dropping for now (TODO)
+    :param json_cols: to_sql() fails if column is json, so do some workaround against those columns
+    :param flatten: If true, use json_normalize()
+    :param useRegex: whether use regex or not to find json files
     :return: A tuple contain key=>file relationship and Pandas dataframes objects
     #>>> (names_dict, dfs) = load_jsons(src="./engine/aggregates")
     #>>> bool(names_dict)
@@ -320,11 +330,9 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
         if ex is not None and ex.search(f_name):
             _info("Excluding %s as per exclude_ptn (%d KB)..." % (f_name, _get_filesize(f) / 1024))
             continue
-        # Used to be f not converting to the DB tables, using t_X type name with 'using_1st_char=(bool(conn) is False)'
         new_name = _pick_new_key(f_name, names_dict, prefix='t_')
         names_dict[new_name] = f
-        dfs[new_name] = json2df(filename=f, conn=conn, tablename=new_name, chunksize=chunksize, list_only=list_only,
-                                json_cols=json_cols)
+        dfs[new_name] = json2df(filename=f, conn=conn, tablename=new_name, chunksize=chunksize, json_cols=json_cols, flatten=flatten)
     if bool(conn):
         del (names_dict)
         del (dfs)
@@ -332,7 +340,7 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     return (names_dict, dfs)
 
 
-def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json_cols=[], chunksize=1000):
+def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json_cols=[], chunksize=1000, if_exists='replace'):
     """
     Convert a json file, which contains list into a DataFrame
     If conn is given, import into a DB table
@@ -342,7 +350,8 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
     :param jq_query: String used with ju.jq(), to filter json record
     :param flatten: If true, use json_normalize()
     :param json_cols: to_sql() fails if column is json, so forcing those columns to string
-    :param chunksize:
+    :param chunksize: to split the data
+    :param if_exists: 'fail', 'replace', or 'append'
     :return: a DataFrame object
     #>>> json2df('./export.json', '.records | map(select(.["@class"] == "quartz_job_detail" and .value_data.jobDataMap != null))[] | .value_data.jobDataMap', ju.connect(), 't_quartz_job_detail')
     #>>> json2df('audit.json', '..|select(.attributes? and .attributes.".typeId" == "db.backup")|.attributes', ju.connect(), "t_audit_attr_dbbackup_logs")
@@ -367,16 +376,20 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
     
     dfs = []
     for file_path in files:
-        _info("Loading %s (%s)..." % (str(file_path), _timestamp(format="%H:%M:%S")))
+        _info("Loading %s ..." % (str(file_path)))
         if bool(jq_query):
             obj = jq(file_path, jq_query)
             dfs.append(pd.DataFrame(obj))
         else:
             if flatten is True:
-                with open(file_path) as f:
-                    j_obj = json.load(f)
-                # 'fillna' is for workarounding "probably unsupported type."
-                _df = pd.json_normalize(j_obj).fillna("")
+                try:
+                    with open(file_path) as f:
+                        j_obj = json.load(f)
+                    # 'fillna' is for workarounding "probably unsupported type."
+                    _df = pd.json_normalize(j_obj).fillna("")
+                except JSONDecodeError as e:
+                    _err("%s for %s" % (str(e), file_path))
+                    continue
             else:
                 try:
                     _df = pd.read_json(file_path)
@@ -396,12 +409,12 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
                     json_cols.append(k)
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(files[0]), {}, using_1st_char=False, prefix='t_')
-        _info("Creating table: %s ..." % (tablename))
         # Temp workaround: "<table>: Error binding parameter <N> - probably unsupported type."
         # Temp workadound2: if flatten is true, converting to str for all columns...
         df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, all_str=flatten, name=tablename)
-        df2table(df=df_tmp_mod, tablename=tablename, conn=conn, chunksize=chunksize, if_exists='replace')
-        _autocomp_inject(tablename=tablename)
+        if df2table(df=df_tmp_mod, tablename=tablename, conn=conn, chunksize=chunksize, if_exists=if_exists) is True:
+            _info("Created table: %s " % (tablename))
+            _autocomp_inject(tablename=tablename)
         return len(df) > 0
     return df
 
@@ -426,13 +439,14 @@ def _json2table(filename, tablename=None, conn=None, col_name='json_text', appen
         res = conn.execute("DROP TABLE IF EXISTS %s" % (tablename))
         if bool(res) is False:
             return res
-        _info("Drop if exists and Creating table: %s ..." % (str(tablename)))
-    else:
-        _info("Creating table: %s ..." % (str(tablename)))
+        _debug("DROP-ed TABLE IF EXISTS %s" % (tablename))
     res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s TEXT)" % (tablename, col_name))  # JSON type not supported?
     if bool(res) is False:
         return res
-    return conn.executemany("INSERT INTO " + tablename + " VALUES (?)", str(j_str))
+    rtn = conn.executemany("INSERT INTO " + tablename + " VALUES (?)", str(j_str))
+    if bool(rtn):
+        _info("Created table: %s" % (tablename))
+    return rtn
 
 
 def jq(file_path, query='.', as_string=False):
@@ -478,7 +492,7 @@ def json2dict(file_path, sort=True):
     return rtn
 
 
-def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablename=None, chunksize=1000):
+def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablename=None, chunksize=1000, if_exists='replace'):
     """
     Convert a XML file into a DataFrame
     If conn is given, import into a DB table
@@ -487,7 +501,8 @@ def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablen
     :param tbl_element_name: Name of XML element which is used to find tables (Optional)
     :param conn:   DB connection object
     :param tablename: If empty, table name will be the filename without extension
-    :param chunksize:
+    :param chunksize: to split the data
+    :param if_exists: 'fail', 'replace', or 'append'
     :return: a DataFrame object
     #>>> xml2df('./nexus.xml', 'repository', conn=ju.connect())
     >>> pass    # TODO: implement test
@@ -498,9 +513,9 @@ def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablen
     if bool(conn):
         if bool(tablename) is False:
             tablename, ext = os.path.splitext(os.path.basename(file_path))
-        _info("Creating table: %s ..." % (tablename))
-        df2table(df=df, tablename=tablename, conn=conn, chunksize=chunksize, if_exists='replace')
-        _autocomp_inject(tablename=tablename)
+        if df2table(df=df, tablename=tablename, conn=conn, chunksize=chunksize, if_exists=if_exists) is True:
+            _info("Created table: %s" % (tablename))
+            _autocomp_inject(tablename=tablename)
     return df
 
 
@@ -587,9 +602,9 @@ def _avoid_unsupported(df, json_cols=[], all_str=False, name=None):
     if len(cols) > 0:
         if bool(name):
             if all_str is False:
-                _info(" - converting columns:%s." % (str(cols)))
+                _debug(" - converting columns:%s." % (str(cols)))
             else:
-                _info(" - converting all columns (%d) to string." % (len(cols)))
+                _debug(" - converting all columns (%d) to string." % (len(cols)))
         return df.astype(cols)
     return df
 
@@ -963,7 +978,7 @@ def display(df, name="", desc="", tail=1000):
     :param df: A DataFrame object
     :param name: Caption and also used when saving into file
     :param desc: Optional description (eg: SQL statement)
-    :param tail: How many rows from the last to display (not for csv)
+    :param tail: How many rows from the last to display (not for df2csv)
     :return Void
     >>> pass
     """
@@ -992,7 +1007,7 @@ def display(df, name="", desc="", tail=1000):
         df2csv(df=df, file_path="%s.csv" % (str(name)))
 
 
-show = s = p = display
+show = s = d = display
 
 
 def _display(html):
@@ -1200,6 +1215,10 @@ def describe(tablename=None, colname=None, conn=None):
 
 
 desc = describe
+
+
+def exists(tablename, conn=None):
+    return len(describe(tablename=tablename, conn=conn)) > 0
 
 
 def show_create_table(tablenames=None, like=None, conn=None):
@@ -1649,9 +1668,7 @@ def logs2table(filename, tablename=None, conn=None,
             res = conn.execute("DROP TABLE IF EXISTS %s" % (tablename))
             if bool(res) is False:
                 return res
-            _info("Drop if exists and Creating table: %s ..." % (str(tablename)))
-        else:
-            _info("Creating table: %s ..." % (str(tablename)))
+            _info("DROP-ed TABLE IF EXISTS: %s" % (tablename))
         res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def_str))
         if bool(res) is False:
             return res
@@ -1691,6 +1708,7 @@ def logs2table(filename, tablename=None, conn=None,
                 res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
                 if bool(res) is False:  # if fails once, stop
                     return res
+    _info("Created table: %s" % (tablename))
     _autocomp_inject(tablename=tablename)
     return True
 
@@ -1753,7 +1771,7 @@ def logs2dfs(filename, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size
     return pd.concat(dfs, sort=False)
 
 
-def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000, useRegex=False):
+def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000, if_exists='replace', useRegex=False):
     """
     Convert multiple CSV files to DF *or* DB tables
     Example: _=ju.load_csvs("./", ju.connect(), "tables_*.csv")
@@ -1762,6 +1780,8 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
     :param include_ptn: Include pattern
     :param exclude_ptn: Exclude pattern
     :param chunksize: to_sql() chunk size
+    :param if_exists: {‘fail’, ‘replace’, ‘append’}
+    :param useRegex: whether use regex or not to find json files
     :return: A tuple contain key=>file relationship and Pandas dataframes objects
     #>>> (names_dict, dfs) = load_csvs(src="./stats")
     #>>> bool(names_dict)
@@ -1779,9 +1799,9 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
         if os.stat(f).st_size == 0:
             continue
         f_name, f_ext = os.path.splitext(os.path.basename(f))
-        tablename = _pick_new_key(f_name, names_dict, using_1st_char=(bool(conn) is False), prefix='t_')
+        tablename = _pick_new_key(f_name, names_dict, prefix='t_')
         names_dict[tablename] = f
-        dfs[tablename] = csv2df(filename=f, conn=conn, tablename=tablename, chunksize=chunksize)
+        dfs[tablename] = csv2df(filename=f, conn=conn, tablename=tablename, chunksize=chunksize, if_exists=if_exists)
     if bool(conn):
         del (names_dict)
         del (dfs)
@@ -1789,7 +1809,7 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
     return (names_dict, dfs)
 
 
-def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exists=None):
+def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exists='replace'):
     '''
     Load a CSV file into a DataFrame *or* database table if conn is given
     If conn is given, import into a DB table
@@ -1806,6 +1826,8 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
     >>> pass    # Testing in df2csv()
     '''
     global _DB_SCHEMA
+    if bool(tablename) and conn is None:
+        conn = connect()
     if os.path.exists(filename):
         file_path = filename
     else:
@@ -1814,6 +1836,7 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
             _debug("No %s. Skipping ..." % (str(filename)))
             return None
         file_path = files[0]
+    # special logic for 'csv': if no header, most likely 'append' is better
     if if_exists is None:
         if header is None:
             if_exists = 'append'
@@ -1832,9 +1855,9 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
     if bool(conn):
         if bool(tablename) is False:
             tablename = _pick_new_key(os.path.basename(file_path), {}, using_1st_char=False, prefix='t_')
-        _info("Creating table: %s ..." % (tablename))
-        df2table(df=df, tablename=tablename, conn=conn, chunksize=chunksize, if_exists=if_exists)
-        _autocomp_inject(tablename=tablename)
+        if df2table(df=df, tablename=tablename, conn=conn, chunksize=chunksize, if_exists=if_exists) is True:
+            _info("Created table: %s" % (tablename))
+            _autocomp_inject(tablename=tablename)
         return len(df) > 0
     return df
 
@@ -1864,26 +1887,26 @@ def obj2csv(obj, file_path, mode="w", header=True):
 def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace'):
     """
     Convert df to a DB table
-    :param df:
-    :param tablename:
-    :param conn:
-    :param chunksize:
-    :param if_exists:
-    :return: None if no issue because isinstance() return True if True, or error column number if error.
+    :param df: A dataframe object
+    :param tablename: table name
+    :param conn: database connection object
+    :param chunksize: to split the data
+    :param if_exists: 'fail', 'replace', or 'append'
+    :return: True, or False or error column number if error.
     """
     if conn is None:
         conn = connect()
     try:
         df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=_DB_SCHEMA, index=False)
-        return None
     except InterfaceError as e:
         res = re.search('Error binding parameter ([0-9]+) - probably unsupported type', str(e))
+        _err(e)
         if res:
-            _err(e)
             # TODO: Not using this at this moment as don't know how to link with the binding parameter.
             return res.group(1)
         else:
-            raise
+            return False
+    return True
 
 
 def df2csv(df, file_path, mode="w", header=True):
