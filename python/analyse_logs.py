@@ -1,5 +1,6 @@
 import jn_utils as ju
-import linecache, re, os
+import get_json as gj
+import linecache, re, os, json
 
 
 def _gen_regex_for_request_logs(filename="request.log"):
@@ -119,6 +120,21 @@ def _gen_regex_for_elastic_jvm(sample):
     return (columns, partern_str)
 
 
+def _save_json(file_regex, save_path="", search_props=None, key_name=None, rtn_attrs=None, find_all=False):
+    file_paths = ju._globr(file_regex, useRegex=True)
+    if bool(file_paths) is False:
+        ju._info("No file found by using regex:%s" % file_regex)
+        return False
+    js_obj = gj.get_json(file_paths[0], search_props=search_props, key_name=key_name, rtn_attrs=rtn_attrs, find_all=find_all)
+    if bool(js_obj) is False:
+        ju._info("No JSON returned by searching with %s and %s" % (str(search_props), file_regex))
+        return False
+    if bool(save_path) is False:
+        return js_obj
+    with open(save_path, 'w') as f:
+        f.write(json.dumps(js_obj))
+
+
 def update():
     ju.update(file=__file__)
 
@@ -153,7 +169,25 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
         # Somehow Jupyter started as service uses 'sh', so forcing 'bash'
         ju._system(ju._SH_EXECUTABLE + " -c '[ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh; [ ! -d \"%s\" ] && mkdir \"%s\"'" % (dist, dist))
         ju._system(ju._SH_EXECUTABLE + " -c '%s[ -d \"%s\" ] && . /tmp/log_search.sh && f_request2csv \"\" \"%s\" 2>/dev/null && f_audit2json \"\" \"%s\"'" % ("cd %s;" % extracted_dir if extracted_dir else "", dist, dist, dist))
-
+        # system-filestores from sysinfo.json
+        _save_json("sysinfo\.json", "%s/system-filestores.json" % dist, "system-filestores")
+        # extracting from DB export.json files
+        _save_json("config/export\.json", "%s/http_client.json" % dist, "records,@class=http_client" "@class" "connection,proxy")
+        saml_config = _save_json("config/export\.json", "", "records,@class:saml" "@class" "entityId,idpMetadata,mapping,keyStoreBytes,keyStorePassword" "Y")
+        if bool(saml_config):
+            db_saml_idp_metadata = ""
+            from lxml import etree as ET
+            if 'idpMetadata' in saml_config:
+                t=ET.fromstring(saml_config['idpMetadata'].encode('utf-8'))
+                db_saml_idp_metadata += ET.tostring(t,pretty_print=True,encoding='unicode') + "\n"
+            if 'mapping' in saml_config:
+                db_saml_idp_metadata += saml_config['mapping']
+            if len(db_saml_idp_metadata) > 0:
+                with open("%s/db_saml_idp_metadata.xml" % dist, 'w') as f:
+                    f.write(db_saml_idp_metadata)
+        _save_json("security/export\.json", "%s/db_saml_user.json" % dist, "records,@class=saml_user" "@class" "id,status,roles" "Y")
+        # TODO: add more
+        
         ### Transform & Load ###################################################
         # db_xxxxx.json
         _ = ju.load_jsons(src=dist, include_ptn="db_*.json", flatten=True)
