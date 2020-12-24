@@ -323,7 +323,7 @@ import sys
 if "${_dir%/}" not in sys.path:
     sys.path.append("${_dir%/}")
 import pandas as pd
-import get_json as gs
+import get_json as gj
 import jn_utils as ju
 import analyse_logs as al
 get_ipython().run_line_magic("matplotlib", "inline")
