@@ -69,6 +69,9 @@ _SIZE_REGEX = r"[sS]ize ?= ?([0-9]+)"
 _TIME_REGEX = r"\b([0-9.,]+) ([km]?s)\b"
 _SH_EXECUTABLE="/bin/bash"
 
+# If the HTML string contains '$', Jupyter renders as Italic.
+pd.options.display.html.use_mathjax = False
+
 
 def _mexec(func_obj, args_list, num=None):
     """
@@ -329,7 +332,7 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     return (names_dict, dfs)
 
 
-def json2df(filename, tablename=None, conn=None, jq_query="", flatten=False, json_cols=[], chunksize=1000):
+def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json_cols=[], chunksize=1000):
     """
     Convert a json file, which contains list into a DataFrame
     If conn is given, import into a DB table
@@ -347,13 +350,21 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=False, jso
     >>> pass    # TODO: implement test
     """
     global _DB_SCHEMA
+    # If flatten is not specified but going to import into Sqlite, changing flatten to true so that less errror in DB
+    if flatten is None and (tablename is not None or conn is not None):
+        flatten = True
+    # If table name is specified but no conn object, create it
+    if bool(tablename) and conn is None:
+        conn = connect()
+    
     if os.path.exists(filename):
         files = [filename]
     else:
         files = _globr(filename)
         if bool(files) is False:
-            _info("No file named: %s ..." % (str(filename)))
-            return False
+            _debug("No %s. Skipping ..." % (str(filename)))
+            return None
+    
     dfs = []
     for file_path in files:
         _info("Loading %s (%s)..." % (str(file_path), _timestamp(format="%H:%M:%S")))
@@ -361,7 +372,7 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=False, jso
             obj = jq(file_path, jq_query)
             dfs.append(pd.DataFrame(obj))
         else:
-            if flatten:
+            if flatten is True:
                 with open(file_path) as f:
                     j_obj = json.load(f)
                 # 'fillna' is for workarounding "probably unsupported type."
@@ -372,11 +383,11 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=False, jso
                 except UnicodeDecodeError:
                     _df = pd.read_json(file_path, encoding="iso-8859-1")
             dfs.append(_df)  # , dtype=False (didn't help)
+    
     if bool(dfs) is False:
         return False
+    
     df = pd.concat(dfs, sort=False)
-    if bool(tablename) and conn is None:
-        conn = connect()
     if bool(conn):
         if bool(json_cols) is False:
             first_row = df[:1].to_dict(orient='records')[0]
@@ -972,8 +983,9 @@ def display(df, name="", desc="", tail=1000):
         df_styler = df.style.set_properties(**{'text-align': 'left'})
         df_styler = df_styler.set_table_styles([
             dict(selector='th', props=[('text-align', 'left'), ('vertical-align', 'top')]),
-            dict(selector='td', props=[('white-space', 'pre'), ('vertical-align', 'top')])
+            dict(selector='td', props=[('white-space', 'pre-wrap'), ('vertical-align', 'top')])
         ])
+        #pd.options.display.html.use_mathjax = False    # Now this is set in global
         _display(name_html + '\n' + df_styler.render())
     else:
         # print(df.to_html())
@@ -1517,18 +1529,19 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
     _empty = 0
     for l in f:
         _ln += 1
-        # _debug("  _ln=%s, line_from=%s line_until=%s ..." % (str(_ln), str(line_from), str(line_until)))
         if bool(line_from) and _ln < line_from:
             _empty += 1
+            _debug("  _ln=%s, line_from=%s" % (str(_ln), str(line_from)))
             continue
         if bool(line_until) and _ln > line_until:
             _empty += 1
+            _debug("  _ln=%s, line_until=%s" % (str(_ln), str(line_until)))
             continue
         if (_ln % connter) == 0:
             _info("  Processed %s/%s (skip:%s) lines for %s (%s) ..." % (
                 str(_ln), ttl_line, str(_empty), filename, _timestamp(format="%H:%M:%S")))
         if bool(l) is False:
-            break  # most likely the end of the file
+            break  # most likely the end of the file?
         (tmp_tuple, prev_matches, prev_message) = _find_matching(line=l, prev_matches=prev_matches,
                                                                  prev_message=prev_message, begin_re=begin_re,
                                                                  line_re=line_re, size_re=size_re, time_re=time_re,
@@ -1540,7 +1553,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
                 tmp_tuple = tuple(tmp_l)
             tuples += [tmp_tuple]
         else:
-            _empty += 1
+            _debug("  _ln=%s, l=%s" % (str(_ln), str(l)[0:100]))
     f.close()
 
     # append last message (last line)
@@ -1601,8 +1614,9 @@ def logs2table(filename, tablename=None, conn=None,
     else:
         files = _globr(filename)
     if bool(files) is False:
-        _info("No file named: %s ..." % (str(filename)))
-        return False
+        _debug("No %s. Skipping ..." % (str(filename)))
+        return None
+    
     if len(files) > max_file_num:
         raise ValueError('Glob: %s returned too many files (%s)' % (filename, str(len(files))))
     col_def_str = ""
@@ -1797,8 +1811,8 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
     else:
         files = _globr(filename)
         if bool(files) is False:
-            _info("No file named: %s ..." % (str(filename)))
-            return False
+            _debug("No %s. Skipping ..." % (str(filename)))
+            return None
         file_path = files[0]
     if if_exists is None:
         if header is None:
