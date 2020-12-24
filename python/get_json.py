@@ -79,7 +79,7 @@ def get_json(filepath="", json_str="", search_props=None, key_name=None, rtn_att
     except Exception as e:
         sys.stderr.write("No JSON file found from: %s ...\n" % (str(filepath)))
         pass
-    if bool(_d) is False:
+    if bool(_d) is False or bool(search_props) is False:
         return None
     #sys.stderr.write("DEBUG: search_props = %s \n" % (str(search_props)))
     for _p in search_props:
