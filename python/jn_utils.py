@@ -113,7 +113,7 @@ def _chunks(l, n):
     return [l[i:i + n] for i in range(0, len(l), n)]  # xrange is replaced
 
 
-def _globr(ptn='*', src='./', loop=0, depth=5, min_size=0, max_size=(1024 * 1024 * 1000), useRegex=False):
+def _globr(ptn='*', src='./', loop=0, depth=5, min_size=0, max_size=(1024 * 1024 * 1000), useRegex=False, ignoreHidden=True):
     """
     As Python 2.7's glob does not have recursive option
     :param ptn: glob *regex* pattern (usually glob pattern is not regex)
@@ -134,6 +134,8 @@ def _globr(ptn='*', src='./', loop=0, depth=5, min_size=0, max_size=(1024 * 1024
     n = 0
     start_depth = src.count(os.sep)
     for root, dirnames, filenames in os.walk(src):
+        if ignoreHidden and '/.' in root:
+            continue
         current_depth = root.count(os.sep) - start_depth + 1
         if root != src and depth > 0 and current_depth >= depth:
             # TODO: os.walk still checks children directories
