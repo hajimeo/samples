@@ -1119,6 +1119,8 @@ function f_dnsmasq() {
         _warn "systemctl disable systemd-resolved was run. Please reboot"
         #reboot
     fi
+    # To avoid "Ignoring query from non-local network" message:
+    grep 'local-service' /etc/init.d/dnsmasq
 }
 
 function f_dnsmasq_banner_reset() {
@@ -1621,6 +1623,7 @@ function f_kdc_install() {
         _warn "No apt-get"
         return 1
     fi
+    # TODO: with 20.04, noninteractive does not work if no _realm is given.
     DEBIAN_FRONTEND=noninteractive apt-get install -y krb5-kdc krb5-admin-server libapache2-mod-auth-kerb || return $?
 
     if [ -s /etc/krb5kdc/kdc.conf ] && [ -s /var/lib/krb5kdc/principal_${_realm} ]; then
