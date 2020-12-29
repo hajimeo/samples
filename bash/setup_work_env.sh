@@ -21,9 +21,9 @@ function f_prepare() {
     if ! which brew &>/dev/null; then
         if ! which add-apt-repository &>/dev/null; then
             _install software-properties-common
-            add-apt-repository ppa:deadsnakes/ppa -y
-            apt-get update
         fi
+        add-apt-repository ppa:deadsnakes/ppa -y
+        apt-get update
     fi
     _install sudo curl screen jq python3.7  #netcat
     # Below is for pyenv and not using at this moment
