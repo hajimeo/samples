@@ -392,6 +392,7 @@ function f_x2go_setup() {
     local __doc__="Install and setup next generation remote desktop X2Go"
     local _user="${1-$USER}"
     local _pass="${2:-"${_user}"}"
+    local _install_xfce="$3"
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
@@ -400,7 +401,10 @@ function f_x2go_setup() {
 
     apt-add-repository ppa:x2go/stable -y
     apt-get update
-    apt-get install xfce4 xfce4-goodies firefox x2goserver x2goserver-xsession -y || return $?
+    if [[ "${_install_xfce}" =~ ^(y|Y) ]]; then
+        apt-get install xfce4 xfce4-goodies -y || return $?
+    fi
+    apt-get install x2goserver x2goserver-xsession -y || return $?
 
     _info "Please install X2Go client from http://wiki.x2go.org/doku.php/doc:installation:x2goclient"
 
@@ -426,7 +430,7 @@ function f_hostname_set() {
 
 function f_ip_set() {
     local __doc__="Set IP Address (TODO: Ubuntu 18 only)"
-    local _ip_mask="$1"
+    local _ip_mask="$1" # eg: 192.168.1.31/24
     local _nic="$2" # ensXX
     local _gw="$3"
     if [[ ! "${_ip_mask}" =~ $_IP_RANGE_REGEX ]]; then
@@ -448,7 +452,7 @@ function f_ip_set() {
         return 1
     fi
 
-    local _conf_file="/etc/netplan/$(ls -1tr /etc/netplan | tail -n1)"
+    local _conf_file="$(ls -1tr /etc/netplan/* | tail -n1)"
     if [ -z "${_conf_file}" ]; then
         _log "ERROR" "No netplan config file for updating found."
         return 1
@@ -864,6 +868,14 @@ function f_ssh_setup() {
     fi
 }
 
+function f_virtualbox() {
+    local __doc__="Install the latest virtualbox from https://www.virtualbox.org/wiki/Linux_Downloads"
+    #apt-get autoremove 'virtualbox*'
+    curl -fsSL https://www.virtualbox.org/download/oracle_vbox_2016.asc | sudo apt-key add - || return $?
+    add-apt-repository "deb [arch=amd64] https://download.virtualbox.org/virtualbox/debian $(lsb_release -cs) contrib" || return $?
+    sudo apt-get update && sudo apt-get install virtualbox-6.1 -y
+}
+
 function f_docker_setup() {
     local __doc__="Install docker (if not yet) and customise for HDP test environment (TODO: Ubuntu only)"
     # https://docs.docker.com/install/linux/docker-ce/ubuntu/
@@ -881,14 +893,14 @@ function f_docker_setup() {
     if ! which docker &>/dev/null; then
         apt-get install -y apt-transport-https ca-certificates curl gnupg-agent software-properties-common || return $?
         # if Ubuntu 18
-        if grep -qi 'Ubuntu 18\.' /etc/issue.net; then
-            apt-get remove -y docker docker-engine docker.io containerd runc || return $?
+        if grep -qiP 'Ubuntu (18|20)\.' /etc/issue.net; then
+            apt-get remove -y docker docker-engine docker.io containerd runc
             curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-            apt-key fingerprint 0EBFCD88 || return $?
+            #apt-key fingerprint 0EBFCD88 || return $?  # probably no longer needed?
             add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
             apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io
         else
-            # Old (14.04 and 16.04) way
+            # Old (14.04 and 16.04) way (TODO: apt.dockerproject.org no longer works)
             apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key for docker"
             grep -q "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-$(cat /etc/lsb-release | grep CODENAME | cut -d= -f2) main" >>/etc/apt/sources.list.d/docker.list
             apt-get update && apt-get purge lxc-docker*
@@ -952,12 +964,13 @@ function f_microk8s() {
 }
 
 function f_vnc_setup() {
-    local __doc__="Install X and VNC Server. NOTE: this uses about 400MB space"
+    local __doc__="Install X and VNC Server. NOTE: this may use about 400MB space"
     # https://www.digitalocean.com/community/tutorials/how-to-install-and-configure-vnc-on-ubuntu-16-04
     local _user="${1:-vncuser}"
     local _vpass="${2:-${_user}}"
     local _pass="${3:-${_user}}"
     local _portXX="${4:-"10"}"
+    local _install_xfce="$5"
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
@@ -968,8 +981,12 @@ function f_vnc_setup() {
         f_useradd "$_user" "$_pass" || return $?
     fi
 
-    apt-get install -y xfce4 xfce4-goodies tightvncserver autocutsel || return $?
-    f_chrome
+    if [[ "${_install_xfce}" =~ ^(y|Y) ]]; then
+        apt-get install xfce4 xfce4-goodies -y || return $?
+    fi
+    #f_chrome
+    #apt-get install -y tightvncserver autocutsel || return $?
+    apt-get install -y tigervnc-standalone-server || return $?
 
     # TODO: also disable screensaver and sleep (eg: /home/hajime/.xscreensaver
     su - $_user -c 'expect <<EOF
@@ -992,8 +1009,9 @@ chmod u+x ${HOME%/}/.vnc/xstartup'
 
     local _host_ip="$(hostname -I | cut -d" " -f1)"
     #echo "TightVNC client: https://www.tightvnc.com/download.php"
+    # NOTE: -depth 16 does not work any more?
     echo "START VNC:
-    su - $_user -c 'vncserver -geometry 1600x960 -depth 16 :${_portXX}'
+    su - $_user -c 'vncserver -localhost no -geometry 1600x960 :${_portXX}'
     NOTE: Please disable Screensaver from Settings.
 
 STOP VNC:
@@ -1051,9 +1069,11 @@ function f_dnsmasq() {
     local _start_from="${2-$r_NODE_START_NUM}"
     local _domain_suffix="${3:-${g_DOMAIN_SUFFIX:-".localdomian"}}"
 
-    # TODO: If Ubuntu 18.04 may want to stop systemd-resolved
-    #sudo systemctl stop systemd-resolved
-    #sudo systemctl disable systemd-resolved
+    # If Ubuntu 18.04 or 20.04 may want to stop systemd-resolved
+    if grep -qiP 'Ubuntu (18|20)\.' /etc/issue.net; then
+        sudo systemctl stop systemd-resolved
+        sudo systemctl disable systemd-resolved
+    fi
     apt-get -y install dnsmasq || return $?
 
     # For Ubuntu 18.04 name resolution slowness (ssh and sudo too).
@@ -1093,7 +1113,7 @@ function f_dnsmasq() {
 
     # @see https://bugs.launchpad.net/ubuntu/+source/systemd/+bug/1624320
     if [ -L /etc/resolv.conf ] && grep -q '^nameserver 127.0.0.53' /etc/resolv.conf; then
-        systemctl disable systemd-resolved || return $?
+        systemctl disable systemd-resolved
         rm -f /etc/resolv.conf
         echo 'nameserver 127.0.0.1' >/etc/resolv.conf
         _warn "systemctl disable systemd-resolved was run. Please reboot"
@@ -1510,7 +1530,9 @@ function f_install_packages() {
     which apt-get &>/dev/null || return $?
     apt-get update || return $?
     apt-get -y install sysv-rc-conf # Not stopping if error because Ubuntu 18 does not have this
-    apt-get -y install openssh-server python ntpdate curl wget sshfs tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat nscd mysql-client libmysql-java ppp at resolvconf
+    apt-get -y install python2 python3 # Not stopping if error because Ubuntu 18 does not have this
+    #apt-get -y install postgresql-client mysql-client libmysql-java    # Probably no longer need to install these all the time
+    apt-get -y install vim openssh-server screen ntpdate curl wget sshfs tcpdump sharutils unzip libxml2-utils expect netcat nscd ppp at resolvconf
 }
 
 function f_sshfs_mount() {
@@ -1761,11 +1783,7 @@ Then, '3 hour expiration for all Atlassian host products'"
 }
 
 function p_basic_setup() {
-    _log "INFO" "Executing f_ssh_setup"
-    f_ssh_setup || return $?
-
     if which apt-get &>/dev/null; then
-        # NOTE: psql (postgresql-client) is required
         _log "INFO" "Executing apt-get install packages"
         f_install_packages || return $?
         _log "INFO" "Executing f_docker_setup"
@@ -1774,8 +1792,8 @@ function p_basic_setup() {
         f_sysstat_setup
         _log "INFO" "Executing f_apache_proxy"
         f_apache_proxy
-        _log "INFO" "Executing f_squid_proxy"
-        f_squid_proxy
+        #_log "INFO" "Executing f_squid_proxy"
+        #f_squid_proxy
         #_log "INFO" "Executing f_socks5_proxy"
         #f_socks5_proxy
         #_log "INFO" "Executing f_shellinabox" (this will create 'webuser' which can login to any container as root)
@@ -1785,16 +1803,21 @@ function p_basic_setup() {
         f_dnsmasq || return $?
     fi
 
+    _log "INFO" "Executing f_ssh_setup"
+    f_ssh_setup || return $?
+
     _log "INFO" "Executing f_host_misc"
     f_host_misc
 
     _log "INFO" "Executing f_host_performance"
     f_host_performance
 
-    if [ -s ${_WORK_DIR%/}/cert/rootCA_standalone.crt ]; then
-        _log "INFO" "Trusting rootCA_standalone.crt"
-        f_add_cert
+    if [ ! -s ${_WORK_DIR%/}/cert/rootCA_standalone.crt ]; then
+        [ ! -d "${_WORK_DIR%/}/cert" ] && mkdir -v -p "${_WORK_DIR%/}/cert"
+        curl -o ${_WORK_DIR%/}/cert/rootCA_standalone.crt -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/rootCA_standalone.crt"
     fi
+    _log "INFO" "Trusting rootCA_standalone.crt"
+    f_add_cert "${_WORK_DIR%/}/cert/rootCA_standalone.crt"
 }
 
 ### Utility type functions #################################################
