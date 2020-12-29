@@ -1074,13 +1074,11 @@ function f_freeipa_install() {
     ssh -q root@${_ipa_server_fqdn} -t "yum install freeipa-server -y" || return $?
 
     # seems FreeIPA needs ipv6 for loopback
-    ssh -q root@${_ipa_server_fqdn} -t 'grep -q '^net.ipv6.conf.all.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.conf.all.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.all.disable_ipv6=0)
-grep -q '^net.ipv6.conf.lo.disable_ipv6' /etc/sysctl.conf || (echo "net.ipv6.conf.lo.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.lo.disable_ipv6=0)'
+    ssh -q root@${_ipa_server_fqdn} -t 'grep -q "^net.ipv6.conf.all.disable_ipv6" /etc/sysctl.conf || (echo "net.ipv6.conf.all.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.all.disable_ipv6=0);grep -q "^net.ipv6.conf.lo.disable_ipv6" /etc/sysctl.conf || (echo "net.ipv6.conf.lo.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.lo.disable_ipv6=0)'
+    ssh -q root@${_ipa_server_fqdn} -t 'sysctl -a 2>/dev/null | grep "^net.ipv6.conf.lo.disable_ipv6 = 1"' && return $?
 
-    _warn "#########################################################"
-    _warn " YOU MIGHT WANT TO RESTART OS/CONTAINTER NOW (sleep 10)  "
-    _warn "#########################################################"
-    sleep 10
+    #_warn " YOU MIGHT WANT TO RESTART OS/CONTAINTER NOW (sleep 10)  "
+    #sleep 10
 
     # TODO: got D-bus error when freeIPA calls systemctl (service dbus restart makes install works but makes docker slow/unstable)
     [[ "${_force}" =~ ^(y|Y) ]] && ssh -q root@${_ipa_server_fqdn} -t 'ipa-server-install --uninstall --ignore-topology-disconnect --ignore-last-of-role'
