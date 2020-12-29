@@ -1119,7 +1119,7 @@ function f_dnsmasq() {
         _warn "systemctl disable systemd-resolved was run. Please reboot"
         #reboot
     fi
-    # To avoid "Ignoring query from non-local network" message:
+    # TODO: To avoid "Ignoring query from non-local network" message:
     grep 'local-service' /etc/init.d/dnsmasq
 }
 
