@@ -663,6 +663,7 @@ function f_upload_asset() {
 
 ### Utility/Misc. functions #################################################################
 function f_apiS() {
+    # NOTE: may require nexus.security.anticsrftoken.enabled=false (NEXUS-23735)
     local __doc__="NXRM (not really API but) API wrapper with session"
     local _data="${1}"
     local _method="${2}"
@@ -677,11 +678,10 @@ function f_apiS() {
     [ -z "${_method}" ] && _method="GET"
 
     # Mac's /tmp is symlink so without the ending "/", would needs -L but does not work with -delete
-    find ${_TMP%/}/ -type f -name '.nxrm_c_*' -mmin +10 -delete 2>/dev/null
+    find ${_TMP%/}/ -type f -name '.nxrm_c_*' -mmin +1 -delete 2>/dev/null
     local _c="${_TMP%/}/.nxrm_c_$$"
     if [ ! -s ${_c} ]; then
-        # NOTE: no stdout
-        curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -o/dev/null -k "${_nexus_url%/}/service/rapture/session" -d "${_user_pwd}"
+        curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -o ${_TMP%/}/_apiS_$$.out -k "${_nexus_url%/}/service/rapture/session" -d "${_user_pwd}"
         local _rc=$?
         if [ "${_rc}" != "0" ] ; then
             rm -f ${_c}
@@ -689,7 +689,9 @@ function f_apiS() {
         fi
     fi
     # TODO: not sure if this is needed. seems cookie works with 3.19.1 but not sure about older version
-    local _H="NXSESSIONID: $(_sed -nr 's/.+\sNXSESSIONID\s+([0-9a-f]+)/\1/p' ${_c})"
+    local _H_sess="NXSESSIONID: $(_sed -nr 's/.+\sNXSESSIONID\s+([0-9a-f]+)/\1/p' ${_c})"
+    local _H_anti="NX-ANTI-CSRF-TOKEN: test"
+    local _C="Cookie: NX-ANTI-CSRF-TOKEN=test; NXSESSIONID=$(_sed -nr 's/.+\sNXSESSIONID\s+([0-9a-f]+)/\1/p' ${_c})"
     local _content_type="Content-Type: application/json"
     if [ "${_data:0:1}" != "{" ]; then
         _content_type="Content-Type: text/plain"
@@ -700,13 +702,14 @@ function f_apiS() {
 
     if [ -z "${_data}" ]; then
         # GET and DELETE *can not* use Content-Type json
-        curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H}"
+        curl -sf -D ${_TMP%/}/_apiS_header_$$.out -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H_anti}" -H "${_H_sess}" -H "${_C}"
     else
-        curl -sf -D ${_TMP%/}/_apiS_header_$$.out -b ${_c} -c ${_c} -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H}" -H "${_content_type}" -d "${_data}"
+        curl -sf -D ${_TMP%/}/_apiS_header_$$.out -k "${_nexus_url%/}/service/extdirect" -X ${_method} -H "${_H_anti}" -H "${_H_sess}" -H "${_C}" -H "${_content_type}" -d "${_data}"
     fi > ${_TMP%/}/_apiS_nxrm$$.out
     local _rc=$?
     if [ ${_rc} -ne 0 ]; then
         cat ${_TMP%/}/_apiS_header_$$.out >&2
+        rm -f ${_c}
         return ${_rc}
     fi
     if [ "${_method}" == "GET" ]; then
