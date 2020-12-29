@@ -74,6 +74,9 @@ function iqHds() {
     if [[ "${_component_identifier}" =~ ^([^:]+):([^:]+):([^:]+)$ ]]; then
         # NOTE: do not need to do ${BASH_REMATCH[1]//.//}
         _component_identifier="{\"format\":\"maven\",\"coordinates\":{\"groupId\":\"${BASH_REMATCH[1]}\",\"artifactId\":\"${BASH_REMATCH[2]}\",\"version\":\"${BASH_REMATCH[3]}\",\"classifier\":\"\",\"extension\":\"jar\"}}"
+    elif [[ "${_component_identifier}" =~ ^([^ ]+)" "\(([^\)]+)\)" "([^ ]+)" "\(\.(whl)\)$ ]]; then
+        #pymongo (cp26-cp26mu-manylinux1_x86_64) 3.6.1 (.whl)
+        _component_identifier="{\"format\":\"pypi\",\"coordinates\":{\"name\":\"${BASH_REMATCH[1]}\",\"qualifier\":\"${BASH_REMATCH[2]}\",\"version\":\"${BASH_REMATCH[3]}\",\"extension\":\"${BASH_REMATCH[4]}\"}}"
     fi
     local _curl_opt="-sf"
     [[ "${_DEBUG}" =~ ^(y|Y) ]] && _curl_opt="-fv"

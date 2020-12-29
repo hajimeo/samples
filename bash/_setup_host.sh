@@ -25,6 +25,7 @@ function f_host_misc() {
         grep 'Please login as the user' $HOME/.ssh/authorized_keys && cat /home/ubuntu/.ssh/authorized_keys >$HOME/.ssh/authorized_keys
     fi
 
+    # apt-get instll openssh-server
     # If you would like to use the default, comment PasswordAuthentication or PermitRootLogin
     grep -q '^PasswordAuthentication no' /etc/ssh/sshd_config && sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config || return $?
     grep -q '^PermitRootLogin ' /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin .\+/PermitRootLogin no/' /etc/ssh/sshd_config
@@ -1509,8 +1510,7 @@ function f_install_packages() {
     which apt-get &>/dev/null || return $?
     apt-get update || return $?
     apt-get -y install sysv-rc-conf # Not stopping if error because Ubuntu 18 does not have this
-    apt-get -y install python ntpdate curl wget sshfs tcpdump sharutils unzip postgresql-client libxml2-utils \
-        expect netcat nscd mysql-client libmysql-java ppp at resolvconf
+    apt-get -y install openssh-server python ntpdate curl wget sshfs tcpdump sharutils unzip postgresql-client libxml2-utils expect netcat nscd mysql-client libmysql-java ppp at resolvconf
 }
 
 function f_sshfs_mount() {
