@@ -4,8 +4,7 @@
 # curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_standalone.sh -o /usr/local/bin/setup_standalone.sh
 # chown root:docker /usr/local/bin/setup_standalone*
 # chmod 750 /usr/local/bin/setup_standalone*
-#
-# export _SERVICE="xxxxxxxxx"
+# echo 'export _SERVICE="xxxxxxxxx"' > /etc/profile.d/setup_standalone.sh   # need to be .sh
 #
 # TODO: shouldn't use OS dependant command, such as apt-get, yum, brew etc.
 #
