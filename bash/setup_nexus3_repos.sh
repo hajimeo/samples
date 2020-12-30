@@ -664,7 +664,7 @@ function f_upload_asset() {
 ### Utility/Misc. functions #################################################################
 function f_apiS() {
     # NOTE: may require nexus.security.anticsrftoken.enabled=false (NEXUS-23735)
-    local __doc__="NXRM (not really API but) API wrapper with session"
+    local __doc__="NXRM (not really API but) API wrapper with session against /service/extdirect"
     local _data="${1}"
     local _method="${2}"
     local _usr="${3:-${r_ADMIN_USER:-"${_ADMIN_USER}"}}"
@@ -688,7 +688,6 @@ function f_apiS() {
             return ${_rc}
         fi
     fi
-    # TODO: not sure if this is needed. seems cookie works with 3.19.1 but not sure about older version
     local _H_sess="NXSESSIONID: $(_sed -nr 's/.+\sNXSESSIONID\s+([0-9a-f]+)/\1/p' ${_c})"
     local _H_anti="NX-ANTI-CSRF-TOKEN: test"
     local _C="Cookie: NX-ANTI-CSRF-TOKEN=test; NXSESSIONID=$(_sed -nr 's/.+\sNXSESSIONID\s+([0-9a-f]+)/\1/p' ${_c})"
