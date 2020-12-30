@@ -645,7 +645,9 @@ function f_as_setup() {
         return 1
     fi
 
-    local _cmd="bash -x ${_share_dir%/}/${_service%/}/install_${_service%/}.sh -v ${_version} ${_options# }"
+    local _v=""
+    [ -n "${_version}" ] && _v="-v ${_version}"
+    local _cmd="bash -x ${_share_dir%/}/${_service%/}/install_${_service%/}.sh ${_v} ${_options# }"
     if [ -n "${_license}" ]; then
         if [ ! -f "${_work_dir%/}/${_service%/}/$(basename "${_license}")" ]; then
             cp ${_license} ${_work_dir%/}/${_service%/}/ || return 11
@@ -703,7 +705,7 @@ function f_as_hostname_change() {
 function f_as_install() {
     local __doc__="Install the application from creating a container (_AS_NO_INSTALL_START for no setup)"
     local _name="${1:-$_NAME}"
-    local _version="${2-$_VERSION}" # If no version, do not install(setup) the application
+    local _version="${2-$_VERSION}" # At this moment if no version, do not install(setup) the application (why?)
     local _base="${3:-"${_BASE_IMAGE}:${_OS_VERSION}"}"
     local _ports="${4}"      #"10500 10501 10502 10503 10504 10508 10516 11111 11112 11113"
     local _docker_opts="${5}" # eg: "--add-host=imagename.standalone:127.0.0.1"

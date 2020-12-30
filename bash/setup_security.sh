@@ -1076,6 +1076,8 @@ function f_freeipa_install() {
     # seems FreeIPA needs ipv6 for loopback
     ssh -q root@${_ipa_server_fqdn} -t 'grep -q "^net.ipv6.conf.all.disable_ipv6" /etc/sysctl.conf || (echo "net.ipv6.conf.all.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.all.disable_ipv6=0);grep -q "^net.ipv6.conf.lo.disable_ipv6" /etc/sysctl.conf || (echo "net.ipv6.conf.lo.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.lo.disable_ipv6=0)'
     ssh -q root@${_ipa_server_fqdn} -t 'sysctl -a 2>/dev/null | grep "^net.ipv6.conf.lo.disable_ipv6 = 1"' && return $?
+    # https://bugzilla.redhat.com/show_bug.cgi?id=1677027
+    ssh -q root@${_ipa_server_fqdn} -t 'sysctl -w fs.protected_regular=0'
 
     #_warn " YOU MIGHT WANT TO RESTART OS/CONTAINTER NOW (sleep 10)  "
     #sleep 10
@@ -1106,6 +1108,8 @@ function f_freeipa_install() {
         local _client_hostname="${_how_many}"
         f_freeipa_client_install "${_client_hostname}" "${_ipa_server_fqdn}" "${_password}" "${_force}"
     fi
+
+    f_freeipa_cert_update "${_ipa_server_fqdn}"
     _warn "TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days"
 }
 
@@ -1142,13 +1146,13 @@ function f_freeipa_cert_update() {
 
     if [ -z "${_p12_file}" ]; then
         if [ ! -s /var/tmp/share/cert/standalone.localdomain.p12 ]; then
-            curl -f -o /var/tmp/share/cert/standalone.localdomain.p12 "https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.p12" || return $?
+            curl -f -o /var/tmp/share/cert/standalone.localdomain.p12 -L "https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.p12" || return $?
         fi
         _p12_file="/var/tmp/share/cert/standalone.localdomain.p12"
         _p12_pass="password"
         if [ -z ${_full_ca} ]; then
             if [ ! -s /var/tmp/share/cert/rootCA_standalone.crt ]; then
-                curl -f -o /var/tmp/share/cert/rootCA_standalone.crt "https://github.com/hajimeo/samples/raw/master/misc/rootCA_standalone.crt" || return $?
+                curl -f -o /var/tmp/share/cert/rootCA_standalone.crt -L "https://github.com/hajimeo/samples/raw/master/misc/rootCA_standalone.crt" || return $?
             fi
             _full_ca=/var/tmp/share/cert/rootCA_standalone.crt
         fi
@@ -1158,9 +1162,9 @@ function f_freeipa_cert_update() {
         _info "TODO: Run 'ipa-certupdate' on each node."
     fi
 
-    # Should update only web server cert (no -d)?
     scp ${_p12_file} root@${_ipa_server_fqdn}:/tmp/ || return $?
-    ssh -q root@${_ipa_server_fqdn} -t "ipa-server-certinstall -w -d /tmp/$(basename ${_p12_file}) --pin="${_p12_pass}" -p "${_adm_pwd}" && ipactl restart"
+    # Should update only web server cert (no -d)?
+    ssh -q root@${_ipa_server_fqdn} -t "ipa-server-certinstall -v -w -d /tmp/$(basename ${_p12_file}) --pin="${_p12_pass}" -p "${_adm_pwd}" && ipactl restart"
 }
 
 function f_sssd_setup() {

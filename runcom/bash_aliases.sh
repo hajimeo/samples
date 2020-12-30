@@ -369,7 +369,7 @@ function r2dh() {
     local _dh="${1}" # docker host IP or L2TP 10.0.1.1
     local _network_addrs="${2:-"172.17.0.0 172.18.0.0 172.17.100.0 10.152.183.0"}"
     [ -z "${_dh}" ] && _dh="$(ifconfig ppp0 | grep -oE 'inet .+' | awk '{print $4}')" 2>/dev/null
-    [ -z "${_dh}" ] && _dh="192.168.1.31"
+    [ -z "${_dh}" ] && _dh="dh1.standalone.localdomain"
 
     for _addr in ${_network_addrs}; do
         if [ "Darwin" = "$(uname)" ]; then
@@ -508,7 +508,7 @@ if [ -s $HOME/IdeaProjects/samples/runcom/nexus_alias.sh ]; then
     source $HOME/IdeaProjects/samples/runcom/nexus_alias.sh
 fi
 function pubS() {
-    scp -C $HOME/IdeaProjects/samples/bash/setup_standalone.sh root@dh1:/usr/local/bin/setup_standalone.sh &
+    #scp -C $HOME/IdeaProjects/samples/bash/setup_standalone.sh root@dh1:/usr/local/bin/setup_standalone.sh &
     scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/ &
     scp -C $HOME/IdeaProjects/samples/bash/utils*.sh dh1:/var/tmp/share/sonatype/ &
     scp -C $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh dh1:/var/tmp/share/sonatype/ &
@@ -526,8 +526,8 @@ function pubS() {
 function sync_nexus_binaries() {
     local _host="${1:-"dh1"}"
     echo "Synchronising IQ binaries from/to ${_host} ..." >&2
-    rsync -Prc root@${_host}:/var/tmp/share/sonatype/nexus-iq-server-*-bundle.tar.gz $HOME/.nexus_executable_cache/
-    rsync -Prc $HOME/.nexus_executable_cache/nexus-iq-server-*-bundle.tar.gz root@${_host}:/var/tmp/share/sonatype/
+    rsync -Prc ${_host}:/var/tmp/share/sonatype/nexus-iq-server-*-bundle.tar.gz $HOME/.nexus_executable_cache/
+    rsync -Prc $HOME/.nexus_executable_cache/nexus-iq-server-*-bundle.tar.gz ${_host}:/var/tmp/share/sonatype/
 }
 
 # To patch nexus (so that checking /system) but probably no longer using.
