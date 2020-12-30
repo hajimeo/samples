@@ -1167,6 +1167,60 @@ function f_freeipa_cert_update() {
     ssh -q root@${_ipa_server_fqdn} -t "ipa-server-certinstall -v -w -d /tmp/$(basename ${_p12_file}) --pin="${_p12_pass}" -p "${_adm_pwd}" && ipactl restart"
 }
 
+function f_simplesamlphp() {
+    local __doc__="TODO: Setup Simple SAML PHP on a container"
+    local _host="${1}"
+
+    # TODO: Is it OK to use -y in the  yum install -y php as 5.6 is too old
+    ssh -q root@${_host} -t "yum install -y httpd mod_ssl && \
+yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm && \
+yum install -y http://rpms.remirepo.net/enterprise/remi-release-7.rpm && \
+yum install -y yum-utils && \
+yum-config-manager --enable remi-php56 && \
+yum install -y php php-mbstring php-xml php-curl php-memcache php-ldap" || return $?
+    ssh -q root@${_host} -t "[ ! -s /etc/httpd/conf.d/saml.conf ] && cp -pf /etc/httpd/conf.d/ssl.conf /etc/httpd/conf.d/saml.conf; \
+[ ! -s /etc/httpd/conf.d/ssl.conf.orig ] && mv /etc/httpd/conf.d/ssl.conf /etc/httpd/conf.d/ssl.conf.orig; \
+curl -o /etc/pki/tls/certs/localhost.crt -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.crt; \
+curl -o /etc/pki/tls/private/localhost.key -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.key"
+    ssh -q root@${_host} -t "patch /etc/httpd/conf.d/saml.conf <(echo '--- /etc/httpd/conf.d/ssl.conf  2020-11-16 14:44:03.000000000 +0000
++++ /etc/httpd/conf.d/saml.conf 2020-12-30 01:24:06.813189424 +0000
+@@ -2,7 +2,7 @@
+ # When we also provide SSL we have to listen to the
+ # the HTTPS port in addition.
+ #
+-Listen 443 https
++Listen 8444 https
+
+ ##
+ ##  SSL Global Context
+@@ -53,7 +53,18 @@
+ ## SSL Virtual Host Context
+ ##
+
+-<VirtualHost _default_:443>
++<VirtualHost _default_:8444>
++  # changes for SimpleSamlPHP
++  SetEnv SIMPLESAMLPHP_CONFIG_DIR /var/www/simplesaml/config
++  DocumentRoot /var/www/simplesaml/www
++  Alias /simplesaml /var/www/simplesaml/www
++  Alias /sample /var/www/sample/
++  ServerName node-freeipa.standalone.localdomain:8444
++  <Directory /var/www/simplesaml/www>
++    <IfModule mod_authz_core.c>
++      Require all granted
++    </IfModule>
++  </Directory>
+
+ # General setup for the virtual host, inherited from global configuration
+ #DocumentRoot \"/var/www/html\"')"
+    ssh -q root@${_host} -t "systemctl enable httpd && systemctl restart httpd" || return $?
+    # TODO: configure Simple SAML PHP
+#curl -O -J -L https://simplesamlphp.org/download?latest
+#tar -xvf simplesamlphp-1.*.tar.gz
+#mv simplesamlphp-1.18.8 /var/www/simplesaml
+#vim /var/www/simplesaml/config/config.php ...
+}
+
 function f_sssd_setup() {
     local __doc__="setup SSSD on each node (security lab) If /etc/sssd/sssd.conf exists, skip. Kerberos is required."
     # https://github.com/HortonworksUniversity/Security_Labs#install-solrcloud
