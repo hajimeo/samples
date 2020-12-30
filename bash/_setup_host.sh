@@ -214,7 +214,7 @@ listen stats
   stats auth admin:admin
 " >${_cfg}
 
-    # If dnsmask is installed, utilise it
+    # If dnsmasq is installed, utilise it
     local _resolver=""
     if which dnsmasq &>/dev/null; then
         echo "resolvers dnsmasq
@@ -392,18 +392,16 @@ function f_x2go_setup() {
     local __doc__="Install and setup next generation remote desktop X2Go"
     local _user="${1-$USER}"
     local _pass="${2:-"${_user}"}"
-    local _install_xfce="$3"
 
     if ! which apt-get &>/dev/null; then
         _warn "No apt-get"
         return 1
     fi
 
-    apt-add-repository ppa:x2go/stable -y
-    apt-get update
-    if [[ "${_install_xfce}" =~ ^(y|Y) ]]; then
-        apt-get install xfce4 xfce4-goodies -y || return $?
-    fi
+    apt-add-repository ppa:x2go/stable -y || return $?
+    apt-get update || return $?
+    # GNOME does not work well so installing XFCE
+    apt-get install xfce4 xfce4-goodies -y || return $?
     apt-get install x2goserver x2goserver-xsession -y || return $?
 
     _info "Please install X2Go client from http://wiki.x2go.org/doku.php/doc:installation:x2goclient"
@@ -1099,8 +1097,8 @@ function f_dnsmasq() {
         f_dnsmasq_banner_reset "$_how_many" "$_start_from" || return $?
     fi
 
-    # Not sure if this is still needed
-    if [ -d /etc/docker ] && [ ! -f /etc/docker/daemon.json ]; then
+    # Without below, DNS (resolv.conf) in containers will be 8.8.8.8
+    if [ -d /etc/docker ] && [ ! -s /etc/docker/daemon.json ]; then
         local _docker_bridge_net="$(docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
         if [ -n "${_docker_bridge_net}" ]; then
             echo '{
@@ -1117,7 +1115,6 @@ function f_dnsmasq() {
         rm -f /etc/resolv.conf
         echo 'nameserver 127.0.0.1' >/etc/resolv.conf
         _warn "systemctl disable systemd-resolved was run. Please reboot"
-        #reboot
     fi
     # TODO: To avoid "Ignoring query from non-local network" message:
     grep 'local-service' /etc/init.d/dnsmasq
@@ -1302,6 +1299,7 @@ logfile /var/log/xl2tpd.log' >/etc/ppp/options.l2tpd.lns
     #iptables -A FORWARD -p tcp --syn -s ${_vpn_net}.0/24 -j TCPMSS --set-mss 1356
 
     systemctl restart strongswan
+    systemctl restart strongswan-starter
     systemctl restart xl2tpd
 }
 
