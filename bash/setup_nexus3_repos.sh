@@ -757,8 +757,9 @@ function f_api() {
 }
 
 # Create a container which installs python, npm, mvn, nuget, etc.
-#docker rm -f nexus-client; sudo p_client_container "http://dh1.standalone.localdomain:8081/"
-# shellcheck disable=SC2120
+#usermod -a -G docker $USER (then relogin)
+#docker rm -f nexus-client; p_client_container "http://dh1.standalone.localdomain:8081/"
+#shellcheck disable=SC2120
 function p_client_container() {
     local __doc__="Create / start a docker container to install various client commands. Also calls f_reset_client_configs"
     local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
@@ -801,15 +802,19 @@ function p_client_container() {
         cd -
     fi
 
+    if [ -n "${_cmd}" ] && ! ${_cmd} network list --format "{{.Name}}" | grep -q "^${_DOCKER_NETWORK_NAME}$"; then
+        _docker_add_network "${_DOCKER_NETWORK_NAME}" "" "${_cmd}" || return $?
+    fi
+
     local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true -v ${_WORK_DIR%/}:${_DOCKER_CONTAINER_SHARE_DIR}"
     [ -n "${_DOCKER_NETWORK_NAME}" ] && _ext_opts="--network=${_DOCKER_NETWORK_NAME} ${_ext_opts}"
     _log "INFO" "Running or Starting '${_name}'"
     # TODO: not right way to use 3rd and 4th arguments.
-    _docker_run_or_start "${_name}" "${_ext_opts}" "${_image_name} /sbin/init" "${r_DOCKER_CMD}" || return $?
-    _container_add_NIC "${_name}" "bridge" "Y" "${r_DOCKER_CMD}"
+    _docker_run_or_start "${_name}" "${_ext_opts}" "${_image_name} /sbin/init" "${_cmd}" || return $?
+    _container_add_NIC "${_name}" "bridge" "Y" "${_cmd}"
 
     # Create a test user if hasn't created (testuser:testuser123)
-    _container_useradd "${_name}" "testuser" "" "Y" "${r_DOCKER_CMD}"
+    _container_useradd "${_name}" "testuser" "" "Y" "${_cmd}"
 
     # Trust default CA certificate
     if [[ "${_base_url}" =~ \.standalone\.localdomain ]] && [ -s "${_WORK_DIR%/}/cert/rootCA_standalone.crt" ]; then
