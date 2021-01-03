@@ -388,7 +388,7 @@ function f_setup_helm() {
 }
 
 function f_setup_bower() {
-    local _prefix="${1:-"raw"}"
+    local _prefix="${1:-"bower"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"default"}"}"
 
     # If no xxxx-proxy, create it
