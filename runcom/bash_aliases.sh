@@ -91,10 +91,10 @@ alias jp='pyv && jupyter-lab &> /tmp/jupyter-lab.out &'
 alias jn='pyv && jupyter-notebook &> /tmp/jupyter-notebook.out &'
 
 ## Common software/command but need to install #######################################################################
-# 10 seconds is too short
-alias docker_stop="docker stop -t 120"
-alias qcsv='q -O -d"," -T --disable-double-double-quoting'
-alias pgbg='pgbadger --timezone 0'
+which docker &>/dev/null && alias docker_stop="docker stop -t 120"  # 10 seconds is too short
+which q &>/dev/null && alias qcsv='q -O -d"," -T --disable-double-double-quoting'
+which pgbadger &>/dev/null && alias pgbg='pgbadger --timezone 0'
+which microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 
 ## Non default (need to install some complex software and/or develop script) alias commands ############################
 # Load/source my own searching utility functions / scripts
@@ -455,7 +455,7 @@ function backupC() {
     wait
 
     # Sync all files smaller than _size (10MB), means *NO* backup for files over 10MB.
-    rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 ${_src%/}/ ${_dst%/}/
+    #TODO: rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 ${_src%/}/ ${_dst%/}/
 
     if [ "Darwin" = "$(uname)" ]; then
         echo "# mdfind 'kMDItemFSSize > 1073741824' | LC_ALL=C sort # Files larger than 1G"
