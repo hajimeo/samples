@@ -25,7 +25,7 @@ class LoggingProxy(ProxyBase):
     simple_cache = OrderedDict()
     simple_cache_size = 10      # -1 is unlimited size. 0 is no cache and always use remote.
     simple_cache_ttl_sec = 300  # 0 or lower also disable cache
-    is_dummy_response = True   # If True, return some dummy responses TODO: need more work.
+    is_dummy_response = False   # If True, return some dummy responses TODO: need more work.
 
     def handleBeforeForwardRequest(self, request, controls, reply):
         """
