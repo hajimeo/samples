@@ -961,7 +961,7 @@ function f_microk8s() {
         - --tls-key-file=/standalone.localdomain.key"
 
         local _dboard_ip="$(microk8s kubectl -n kube-system get service kubernetes-dashboard -ojson | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['spec']['clusterIP'])")"
-        if [ -n "${_dboard_ip}" ] || [ ! -s /var/tmp/share/sonatype/utils.sh ]; then
+        if [ -z "${_dboard_ip}" ] || [ ! -s /var/tmp/share/sonatype/utils.sh ]; then
             _info "Update /etc/hosts or equivalent file for ${_dboard_ip}"
         else
             source /var/tmp/share/sonatype/utils.sh
