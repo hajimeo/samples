@@ -146,12 +146,12 @@ function f_haproxy() {
     local __doc__="Install and setup HAProxy"
     # To generate '_nodes': docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq)$" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
     # HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
-    local _nodes="${1}"                                                  # Space delimited. If empty, generated from 'docker ps'
-    local _ports="${2:-"8081 8443=8081 8070 8071 8444=8070 18079=8081"}" # Space delimited # 18082=18082 18079=18079 18075=18075
-    local _skipping_chk="${3}"                                           # Not to check each backend port (handy when you will start backend later)
-    local _certificate="${4}"                                            # Expecting same (concatenated) cert for front and backend
-    local _haproxy_custom_cfg_dir="${5:-"${_WORK_DIR%/}/haproxy"}"       # Under this directory, create haproxy.PORT.cfg file
-    local _domain="${6:-"standalone.localdomain"}"                       # `hostname -d`
+    local _nodes="${1}"                                                     # Space delimited. If empty, generated from 'docker ps'
+    local _ports="${2:-"8081 8443=8081 8070 8071 8444=8070 18185=18184"}"   # Space delimited # 18082=18082 18079=18079 18075=18075
+    local _skipping_chk="${3}"                                              # Not to check each backend port (handy when you will start backend later)
+    local _certificate="${4}"                                               # Expecting same (concatenated) cert for front and backend
+    local _haproxy_custom_cfg_dir="${5:-"${_WORK_DIR%/}/haproxy"}"          # Under this directory, create haproxy.PORT.cfg file
+    local _domain="${6:-"standalone.localdomain"}"                          # `hostname -d`
     #local _haproxy_tmpl_conf="${_WORK_DIR%/}/haproxy.tmpl.cfg}"
 
     local _cfg="/etc/haproxy/haproxy.cfg"
@@ -938,19 +938,42 @@ function f_docker_setup() {
 }
 
 function f_microk8s() {
+    local __doc__="Install microk8s (kubernetes|k8s) (TODO: Ubuntu only)"
     # @see: https://ubuntu.com/tutorials/install-a-local-kubernetes-with-microk8s#1-overview
     snap install microk8s --classic || return $?
     ufw allow in on cni0 && sudo ufw allow out on cni0
     ufw default allow routed
     microk8s enable dns dashboard storage helm3
+    microk8s.start
+
     # (a kind of) test
-    microk8s kubectl get all --all-namespaces | grep service/kubernetes-dashboard
-    token=$(microk8s kubectl -n kube-system get secret | grep default-token | cut -d " " -f1)
-    microk8s kubectl -n kube-system describe secret $token
+    microk8s kubectl get all --all-namespaces
+    microk8s kubectl -n kube-system describe secret $(microk8s kubectl -n kube-system get secret | grep -oP '^default-token[^ ]+')
+    # Replace the dashboard certificate
+    if [ -s /var/tmp/share/cert/standalone.localdomain.key ]; then
+        microk8s kubectl -n kube-system delete secret kubernetes-dashboard-certs || return $?
+        cd /var/tmp/share/cert/ || return $?
+        microk8s kubectl -n kube-system create secret generic kubernetes-dashboard-certs --from-file=standalone.localdomain.crt --from-file=standalone.localdomain.key
+        cd -
+        echo "microk8s kubectl -n kube-system edit deploy kubernetes-dashboard -o yaml
+# Then, append below lines after '- args:'
+        - --tls-cert-file=/standalone.localdomain.crt
+        - --tls-key-file=/standalone.localdomain.key"
+
+        local _dboard_ip="$(microk8s kubectl -n kube-system get service kubernetes-dashboard -ojson | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['spec']['clusterIP'])")"
+        if [ -n "${_dboard_ip}" ] || [ ! -s /var/tmp/share/sonatype/utils.sh ]; then
+            _info "Update /etc/hosts or equivalent file for ${_dboard_ip}"
+        else
+            source /var/tmp/share/sonatype/utils.sh
+            local _host_file=/etc/hosts
+            [ -f /etc/banner_add_hosts ] && _host_file=/etc/banner_add_hosts
+            _update_hosts_file k8sboard.standalone.localdomain ${_dboard_ip} ${_host_file}
+        fi
+    fi
     echo "# Command examples:
     microk8s helm3 repo add sonatype https://sonatype.github.io/helm3-charts/
     microk8s helm3 install nexus-repo sonatype/nexus-repository-manager -f your.yml
-    microk8s kubectl get services          # or deployments to check the NAME
+    microk8s kubectl get services          # or all, or deployments to check the NAME
     microk8s kubectl expose deployment nexus --type=LoadBalancer --port=8081
     microk8s kubectl get pods              # get a pod name to login
     microk8s kubectl describe pod nexus-xxxxxxxx
@@ -958,7 +981,6 @@ function f_microk8s() {
     microk8s kubectl exec nexus-xxxxxxxx -ti -- bash
     microk8s helm3 uninstall nexus-repo
     microk8s stop"
-    # TODO: replace the dashboard certificate
 }
 
 function f_vnc_setup() {
