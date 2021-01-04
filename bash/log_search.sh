@@ -781,17 +781,24 @@ function f_count_lines() {
 
 # If a thread dump file contains multiple thread dumps:
 # f_splitByRegex jvm.txt "^${_DATE_FORMAT}.+"
-# If NXRM2, f_threads "" "^[a-zA-Z].+"
 function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
     local _file="$1"    # Or dir contains thread_xxxx.txt files
-    local _split_search="${2:-"^\".+"}"
+    local _split_search="${2}"  # "^\".+" or if NXRM2, "^[a-zA-Z].+"
     local _running_thread_search_re="${3-"\.sonatype\."}"
     local _save_dir="${4}"
     local _not_split_by_date="${5:-${_NOT_SPLIT_BY_DATE}}"
 
     [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
     [ -z "${_file}" ] && return 1
+    if [ -z "${_split_search}" ]; then
+        if rg -q "^\".+" "${_file}"; then
+            _split_search="^\".+"
+        else
+            _split_search="^[a-zA-Z].+"
+        fi
+    fi
+
     if [ -z "${_save_dir}" ]; then
         if [ -d "${_file}" ]; then
             _save_dir="_threads"
@@ -800,6 +807,7 @@ function f_threads() {
             _save_dir="_${_filename%%.*}"
         fi
     fi
+
     [ ! -d "${_save_dir%/}" ] && mkdir -p ${_save_dir%/}
     local _tmp_dir="$(mktemp -d)"
 
