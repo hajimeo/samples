@@ -17,6 +17,8 @@ function usage() {
     echo "Main purpose of this script is to create repositories with some sample components.
 Also functions in this script can be used for testing downloads and uploads.
 
+_NEXUS_URL='http://node-nxrm-ha1.standalone.localdomain:8081/' ./${_filename} -A
+
 DOWNLOADS:
     curl ${_DL_URL%/}/bash/setup_nexus3_repos.sh -o ${_WORK_DIR%/}/sonatype/setup_nexus3_repos.sh
 
