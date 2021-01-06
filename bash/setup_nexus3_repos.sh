@@ -198,7 +198,7 @@ function f_setup_nuget() {
     # Even older version, just creating V3 repo should work
     # TODO: check if HA with curl -u admin:admin123 -X GET http://localhost:8081/service/rest/v1/nodes
     if ! _is_repo_available "${_prefix}-v3-proxy"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://api.nuget.org/v3/index.json","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}' || return $?
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"nugetVersion":"V3","queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://api.nuget.org/v3/index.json","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
     f_get_asset "${_prefix}-v3-proxy" "Test/2.0.1.1" "${_TMP%/}/test.2.0.1.1.nupkg"  # This one may fail on some Nexus version
@@ -862,6 +862,13 @@ function f_reset_client_configs() {
     # NOTE: may need Deployment policy = allow redeployment
     # skopeo --debug copy --src-creds=admin:admin123 --dest-creds=admin:admin123 docker://dh1.standalone.localdomain:18082/alpine:3.7 docker://dh1.standalone.localdomain:18082/alpine:test
     ${_cmd} exec -it ${_name} bash -c "curl -L -o /etc/yum.repos.d/devel:kubic:libcontainers:stable.repo https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/CentOS_7/devel:kubic:libcontainers:stable.repo && yum -y install skopeo" >>${_LOG_FILE_PATH:-"/dev/null"}
+
+    # Install nuget.exe regardless of Nexus nuget repository availability
+    ${_cmd} exec -it ${_name} bash -l -c "yum install -y nuget && yum remove -y nuget && curl -o /usr/local/bin/nuget.exe 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe'" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
+    echo 'if [ -s /usr/local/bin/nuget.exe ]; then
+  alias nuget="mono /usr/local/bin/nuget.exe"
+fi' > ${_TMP%/}/nuget.sh
+    ${_cmd} cp ${_TMP%/}/nuget.sh ${_name}:/etc/profile.d/nuget.sh
 
     # Using Nexus npm repository if available
     _repo_url="${_base_url%/}/repository/npm-group"
