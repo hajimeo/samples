@@ -358,6 +358,13 @@ function f_setup_java() {
                 if [ -s "/var/tmp/share/java/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" ]; then
                     tar -xf "/var/tmp/share/java/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" -C /var/tmp/share/java/ || return $?
                     _log "INFO" "OpenJDK${_v} is extracted under '/var/tmp/share/java/jdk${_jdk_ver}-${_jdk_minor}'"
+                    if [ -d /etc/profile.d ] && [ ! -f /etc/profile.d/java.sh ]; then
+                        _log "INFO" "Creating /etc/profile.d/java.sh ... (sudo required)"
+                        cat << EOF > /tmp/java.sh
+[[ "\$PATH" != *"/var/tmp/share/java/"* ]] && export PATH=/var/tmp/share/java/jdk${_jdk_ver}-${_jdk_minor}/bin:\${PATH#:}
+[ -z "\${JAVA_HOME}" ] && export JAVA_HOME=/var/tmp/share/java/jdk${_jdk_ver}-${_jdk_minor}
+EOF
+                    sudo mv /tmp/java.sh /etc/profile.d/java.sh
                 fi
             else
                 _install openjdk-${_v}-jdk
