@@ -343,30 +343,40 @@ function f_setup_java() {
             brew cask install adoptopenjdk${_v}
         fi
         #/usr/libexec/java_home -v ${_v}
+    elif [ -z "${_v}" ]; then
+        _log "INFO" "Version is not specified, so installing default-jdk ... (sudo required)"
+        _install default-jdk
     else
-        if [ -z "${_v}" ]; then
-            _install default-jdk
-        else
-            # If Linux, downloading .tar.gz file and extract, so that it can be re-used in the container
-            local _java_exact_ver="$(basename $(curl -s https://github.com/AdoptOpenJDK/openjdk${_v}-binaries/releases/latest | _sed -nr 's/.+"(https:[^"]+)".+/\1/p'))"
-            # NOTE: hoping the naming rule is same for different versions (eg: jdk8u222-b10_openj9-0.15.1)
-            if [[ "${_java_exact_ver}" =~ jdk([^-]+)-([^_]+) ]]; then
-                [ ! -d "/var/tmp/share/java" ] && mkdir -p -m 777 /var/tmp/share/java
-                local _jdk_ver="${BASH_REMATCH[1]}"   # 8u222
-                local _jdk_minor="${BASH_REMATCH[2]}" # b10
-                _download "https://github.com/AdoptOpenJDK/openjdk8-binaries/releases/download/jdk${_jdk_ver}-${_jdk_minor}/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" "/var/tmp/share/java/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" "Y" "Y" || return $?
-                if [ -s "/var/tmp/share/java/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" ]; then
-                    tar -xf "/var/tmp/share/java/OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_jdk_minor}.tar.gz" -C /var/tmp/share/java/ || return $?
-                    _log "INFO" "OpenJDK${_v} is extracted under '/var/tmp/share/java/jdk${_jdk_ver}-${_jdk_minor}'"
-                    if [ -d /etc/profile.d ] && [ ! -f /etc/profile.d/java.sh ]; then
-                        _log "INFO" "Creating /etc/profile.d/java.sh ... (sudo required)"
-                        cat << EOF > /tmp/java.sh
-[[ "\$PATH" != *"/var/tmp/share/java/"* ]] && export PATH=/var/tmp/share/java/jdk${_jdk_ver}-${_jdk_minor}/bin:\${PATH#:}
-[ -z "\${JAVA_HOME}" ] && export JAVA_HOME=/var/tmp/share/java/jdk${_jdk_ver}-${_jdk_minor}
+        # If Linux, downloading .tar.gz file and extract, so that it can be re-used in the container
+        # NOTE: with grep or sed, without --compressed is faster
+        #local _java_exact_ver="$(basename $(curl -s https://github.com/AdoptOpenJDK/openjdk${_v}-binaries/releases/latest | _sed -nr 's/.+"(https:[^"]+)".+/\1/p'))"
+        local _java_exact_ver="$(curl -s -L "https://api.adoptopenjdk.net/v3/assets/latest/${_v}/hotspot?release=latest&jvm_impl=hotspot&vendor=adoptopenjdk" | grep -m1 -E '"release_name": "jdk-?'${_v}'.[^"]+"' | grep -oE 'jdk-?'${_v}'[^"]+')"
+        # NOTE: hoping the naming rule is same for different versions (eg: jdk8u275-b01, jdk-11.0.9.1+1)
+        if [[ "${_java_exact_ver}" =~ (jdk-?)([^-+]+)([-+])([^_]+) ]]; then
+            [ ! -d "/var/tmp/share/java" ] && mkdir -p -m 777 /var/tmp/share/java
+            local _jdk="${BASH_REMATCH[1]}"         # jdk- or jdk
+            local _jdk_ver="${BASH_REMATCH[2]}"     # 8u275 or 11.0.9.1
+            local _ver_sep="${BASH_REMATCH[3]}"     # - or +
+            local _jdk_minor="${BASH_REMATCH[4]}"   # b01 or 1
+            local _ver_sep2=""
+            [ "${_ver_sep}" == "+" ] && _ver_sep2="_"
+            #https://github.com/AdoptOpenJDK/openjdk8-binaries/releases/download/jdk8u275-b01/OpenJDK8U-jdk_x64_linux_hotspot_8u275b01.tar.gz
+            #https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.9.1%2B1/OpenJDK11U-jdk_x64_linux_hotspot_11.0.9.1_1.tar.gz
+            local _fname="OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_ver_sep2}${_jdk_minor}.tar.gz"
+            _download "https://github.com/AdoptOpenJDK/openjdk${_v}-binaries/releases/download/${_jdk}${_jdk_ver}${_ver_sep}${_jdk_minor}/${_fname}" "/var/tmp/share/java/${_fname}" "Y" "Y" || return $?
+            if [ -s "/var/tmp/share/java/${_fname}" ]; then
+                tar -xf "/var/tmp/share/java/${_fname}" -C /var/tmp/share/java/ || return $?
+                _log "INFO" "OpenJDK${_v} is extracted under '/var/tmp/share/java/${_java_exact_ver}'"
+                if [ -d /etc/profile.d ] && [ ! -f /etc/profile.d/java.sh ]; then
+                    _log "INFO" "Creating /etc/profile.d/java.sh ... (sudo required)"
+                    cat << EOF > /tmp/java.sh
+[[ "\$PATH" != *"/var/tmp/share/java/"* ]] && export PATH=/var/tmp/share/java/${_java_exact_ver}/bin:\${PATH#:}
+[ -z "\${JAVA_HOME}" ] && export JAVA_HOME=/var/tmp/share/java/${_java_exact_ver}
 EOF
                     sudo mv /tmp/java.sh /etc/profile.d/java.sh
                 fi
             else
+                _log "INFO" "Could not download ${_fname} so installing openjdk-${_v}-jdk ... (sudo required)"
                 _install openjdk-${_v}-jdk
             fi
         fi
