@@ -138,7 +138,7 @@ function f_topErrors() {
     if which bar_chart.py &>/dev/null; then
         echo " "
         if [ -z "${_date_4_bar}" ]; then
-            local _num="$(rg -z --no-line-number --no-filename -o '^\d\d\d\d-\d\d-\d\d.\d\d:\d' ./log/nexus.log | sort | uniq | wc -l | tr -d '[:space:]')"
+            local _num="$(rg -z --no-line-number --no-filename -o '^\d\d\d\d-\d\d-\d\d.\d\d:\d' -g "${_glob}" | sort | uniq | wc -l | tr -d '[:space:]')"
             if [ "${_num}" -lt 30 ]; then
                 _date_4_bar="^\d\d\d\d-\d\d-\d\d.\d\d:\d"
             else
