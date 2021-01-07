@@ -17,7 +17,6 @@ import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
 import net.lingala.zip4j.ZipFile;
 import org.jline.reader.*;
-import org.jline.reader.impl.DefaultHighlighter;
 import org.jline.reader.impl.completer.StringsCompleter;
 import org.jline.reader.impl.history.DefaultHistory;
 import org.jline.terminal.Terminal;
@@ -117,7 +116,7 @@ public class Main {
 
     private static Set<String> genAutoCompWords(String fileName) {
         // at this moment, not considering some slowness by the file size as DEFAULT_HISTORY_SIZE should take care
-        Set<String> wordSet = new HashSet<>(Arrays.asList("CREATE", "SELECT", "UPDATE", "INSERT INTO", "DELETE", "FROM", "WHERE", "BETWEEN", "AND", "DISTINCT", "DISTINCT", "LIKE", "LIMIT", "NOT"));
+        Set<String> wordSet = new HashSet<>(Arrays.asList("CREATE", "SELECT FROM", "UPDATE", "INSERT INTO", "DELETE FROM", "FROM", "WHERE", "BETWEEN", "AND", "DISTINCT", "DISTINCT", "LIKE", "LIMIT", "NOT"));
         try (BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(fileName)))) {
             String line;
             while ((line = br.readLine()) != null) {
