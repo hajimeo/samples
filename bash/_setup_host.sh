@@ -144,10 +144,10 @@ function f_sysstat_setup() {
 
 function f_haproxy() {
     local __doc__="Install and setup HAProxy"
-    # To generate '_nodes': docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq)$" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
-    # HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
+    # NOTE: HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
+    # To generate '_nodes': docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq|freeipa)$" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
     local _nodes="${1}"                                                     # Space delimited. If empty, generated from 'docker ps'
-    local _ports="${2:-"8081 8443=8081 8070 8071 8444=8070 18185=18184"}"   # Space delimited # 18082=18082 18079=18079 18075=18075
+    local _ports="${2:-"8444 8081 8443=8081 8070 8071 8470=8070 18185=18184"}" # Space delimited and accept '='
     local _skipping_chk="${3}"                                              # Not to check each backend port (handy when you will start backend later)
     local _certificate="${4}"                                               # Expecting same (concatenated) cert for front and backend
     local _haproxy_custom_cfg_dir="${5:-"${_WORK_DIR%/}/haproxy"}"          # Under this directory, create haproxy.PORT.cfg file
@@ -163,7 +163,7 @@ function f_haproxy() {
 
     if [ -z "${_nodes}" ]; then
         # I'm using FreeIPA and that container name includes 'freeipa'
-        _nodes="$(for _n in $(docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq)$" | sort); do docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])"; done | tr '\n' ' ')"
+        _nodes="$(for _n in $(docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq|freeipa)$" | sort); do docker inspect ${_n} | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['Config']['Hostname'])"; done | tr '\n' ' ')"
         if [ -z "${_nodes}" ]; then
             _info "WARN" "No nodes to setup/check. Exiting..."
             return 0
@@ -296,7 +296,7 @@ listen stats
   hash-type consistent
   option forwardfor
   http-request set-header X-Forwarded-Port %[dst_port]
-  option httpchk OPTIONS /" >>"${_cfg}"
+  option tcp-check" >>"${_cfg}" # option httpchk OPTIONS /
                 #  http-request add-header X-Forwarded-Proto ${_backend_proto}
                 cat /tmp/f_haproxy_backends_$$.out >>"${_cfg}"
                 echo "" >>"${_cfg}"
