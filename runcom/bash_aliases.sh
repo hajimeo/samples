@@ -118,7 +118,7 @@ alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar &>/tmp/gc
 alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'   #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
 alias groovyi='groovysh -e ":set interpreterMode true"'
 alias jenkins='java -jar $HOME/Apps/jenkins.war &>/tmp/jenkins.out &'  #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.263.1/jenkins.war
-[ -f /var/tmp/share/orient-console.jar ] && alias orient-console="java -jar /var/tmp/share/orient-console.jar"
+[ -f /var/tmp/share/java/orient-console.jar ] && alias orient-console="java -jar /var/tmp/share/java/orient-console.jar"
 
 # Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
 #alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
