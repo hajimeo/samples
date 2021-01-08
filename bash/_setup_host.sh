@@ -147,7 +147,7 @@ function f_haproxy() {
     # NOTE: HAProxy needs a concatenated cert: cat ./server.crt ./rootCA.pem ./server.key > certificates.pem'
     # To generate '_nodes': docker ps --format "{{.Names}}" | grep -E "^node-(nxrm-ha.|nxiq|freeipa)$" | sort | sed 's/$/.standalone.localdomain/' | tr '\n' ' '
     local _nodes="${1}"                                                     # Space delimited. If empty, generated from 'docker ps'
-    local _ports="${2:-"8444 8081 8443=8081 8070 8071 8470=8070 18185=18184"}" # Space delimited and accept '='
+    local _ports="${2:-"389 8444 8081 8443=8081 8070 8071 8470=8070 18185=18184"}" # Space delimited and accept '='
     local _skipping_chk="${3}"                                              # Not to check each backend port (handy when you will start backend later)
     local _certificate="${4}"                                               # Expecting same (concatenated) cert for front and backend
     local _haproxy_custom_cfg_dir="${5:-"${_WORK_DIR%/}/haproxy"}"          # Under this directory, create haproxy.PORT.cfg file
