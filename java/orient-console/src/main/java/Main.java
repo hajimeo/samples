@@ -2,6 +2,7 @@
  * Simple OrientDB client
  * Limitation: only standard SQLs. No "info classes" etc.
  * TODO: add tests
+ * TODO: Replace jline3
  *
  * java -jar orient-console.jar <directory path|.bak file path> [permanent extract dir]
  * or
@@ -30,9 +31,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
+
 public class Main {
     static final String PROMPT = "=> ";
     static Terminal terminal;
+    static History history;
+    static String historyPath;
 
     private Main() {
     }
@@ -49,7 +53,7 @@ public class Main {
     }
 
     private static void printListAsJson(List<ODocument> oDocs) {
-        if (oDocs.isEmpty()) {
+        if (oDocs == null || oDocs.isEmpty()) {
             terminal.writer().println("\n[]");
             terminal.flush();
             return;
@@ -67,12 +71,12 @@ public class Main {
         terminal.flush();
     }
 
-    private static void execQueries(String query, ODatabaseDocumentTx db) {
-        List<String> queries = Arrays.asList(query.split(";"));
+    private static void execQueries(String input, ODatabaseDocumentTx db) {
+        List<String> queries = Arrays.asList(input.split(";"));
         for (int i = 0; i < queries.size(); i++) {
             try {
                 String q = queries.get(i);
-                if (q.isEmpty()) {
+                if (q == null || q.isEmpty()) {
                     continue;
                 }
                 Instant start = Instant.now();
@@ -82,8 +86,45 @@ public class Main {
                 long timeElapsed = Duration.between(start, finish).toMillis();
                 System.err.printf("Elapsed: %d ms\n", timeElapsed);
             } catch (OCommandExecutorNotFoundException | OCommandSQLParsingException ex) {
-                System.err.println(ex.getMessage());
-                // NO continue;
+                // TODO: why it's so hard to remove the last history with jline3? items should be exposed.
+                removeLine(input);
+                history.load();
+            }
+        }
+    }
+
+    private static void removeLine(String inputToRemove) {
+        BufferedReader reader = null;
+        BufferedWriter writer = null;
+
+        try {
+            File inputFile = new File(historyPath);
+            File tempFile = Files.createTempFile(null, null).toFile();
+
+            reader = new BufferedReader(new FileReader(inputFile));
+            writer = new BufferedWriter(new FileWriter(tempFile));
+            String currentLine;
+
+            while((currentLine = reader.readLine()) != null) {
+                if (currentLine.matches("^[0-9]+:"+inputToRemove+"$")) continue;
+                writer.write(currentLine + System.getProperty("line.separator"));
+            }
+            tempFile.renameTo(inputFile);
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+        finally {
+            try {
+                if (writer != null) {
+                    writer.close();
+                }
+                if (reader != null) {
+                    reader.close();
+                }
+            }
+            catch (IOException e) {
+                e.printStackTrace();
             }
         }
     }
@@ -150,6 +191,20 @@ public class Main {
                 });
     }
 
+    private static LineReader setupReader() throws IOException {
+        terminal = TerminalBuilder
+            .builder()
+            .system(true)
+            .build();
+        history = new DefaultHistory();
+        historyPath = System.getProperty("user.home") + "/.orient-console_history";
+        System.err.println("history path: " + historyPath);
+        Set<String> words = genAutoCompWords(historyPath);
+        LineReader lr = LineReaderBuilder.builder().terminal(terminal).history(history).completer(new StringsCompleter(words)).variable(LineReader.HISTORY_FILE, new File(historyPath)).build();
+        history.attach(lr);
+        return lr;
+    }
+
     public static void main(final String[] args) throws IOException {
         if (args.length < 1) {
             System.err.println("Usage: java -jar orient-console.jar <directory path|.bak file path> [permanent extract dir]");
@@ -163,6 +218,10 @@ public class Main {
 
         // Preparing data (extracting zip if necessary)
         if ((new File(path)).isDirectory()) {
+            if (!path.endsWith("/")) {
+                // Somehow without ending /, OStorageException happens
+                path = path + "/";
+            }
             connStr = "plocal:" + path + " admin admin";
         } else {
             if (args.length > 1) {
@@ -202,18 +261,9 @@ public class Main {
                 System.exit(1);
             }
         }
-        System.err.println("# connection string = " + connStr);
 
-        terminal = TerminalBuilder
-                .builder()
-                .system(true)
-                .build();
-        History history = new DefaultHistory();
-        String historyPath = System.getProperty("user.home") + "/.orient-console_history";
-        Set<String> words = genAutoCompWords(historyPath);
-        StringsCompleter sqlComps = new StringsCompleter(words);
-        LineReader lr = LineReaderBuilder.builder().terminal(terminal).history(history).completer(sqlComps).variable(LineReader.HISTORY_FILE, new File(historyPath)).build();
-        history.attach(lr);
+        System.err.println("# connection string = " + connStr);
+        LineReader lr = setupReader();
 
         Orient.instance().getRecordConflictStrategy().registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
         try (ODatabaseDocumentTx db = new ODatabaseDocumentTx(connStr)) {
