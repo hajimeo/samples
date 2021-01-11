@@ -4,6 +4,7 @@
  * TODO: add tests
  * TODO: Replace jline3
  *
+ * curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar"
  * java -jar orient-console.jar <directory path|.bak file path> [permanent extract dir]
  * or
  * echo "query1;query2" | java -jar orient-console.jar <directory path|.bak file path>
@@ -131,7 +132,9 @@ public class Main {
 
     private static void readLineLoop(ODatabaseDocumentTx db, LineReader reader) {
         // TODO: highlight (.highlighter(new DefaultHighlighter()))
-        // TODO: prompt is always stdout which is annoying when redirects to file.
+        // TODO: prompt and queries from STDIN are always printed in STDOUT which is a bit annoying when redirects to a file.
+        //System.err.print(PROMPT);
+        //String input = reader.readLine((String) null);
         String input = reader.readLine(PROMPT);
         while (input != null && !input.equalsIgnoreCase("exit")) {
             try {
@@ -194,7 +197,7 @@ public class Main {
     private static LineReader setupReader() throws IOException {
         terminal = TerminalBuilder
             .builder()
-            .system(true)
+            .dumb(true)
             .build();
         history = new DefaultHistory();
         historyPath = System.getProperty("user.home") + "/.orient-console_history";
