@@ -852,11 +852,13 @@ function f_reset_client_configs() {
         _yum_install="yum --disablerepo=base --enablerepo=nexusrepo install -y"
     fi
     ${_cmd} exec -it ${_name} bash -c "${_yum_install} epel-release && curl -sL https://rpm.nodesource.com/setup_10.x | bash -;rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm;yum install -y centos-release-scl-rh centos-release-scl;${_yum_install} python3 maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang" >>${_LOG_FILE_PATH:-"/dev/null"}
-    #yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && ${_yum_install} ripgrep
     if [ $? -ne 0 ]; then
         _log "ERROR" "installing packages with yum failed. Check ${_LOG_FILE_PATH}"
         return 1
     fi
+
+    # rg|ripgrep
+    ${_cmd} exec -it ${_name} bash -c "yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && sudo yum install -y ripgrep" >>${_LOG_FILE_PATH:-"/dev/null"}
 
     # Skopeo (instead of podman) https://github.com/containers/skopeo/blob/master/install.md
     # NOTE: may need Deployment policy = allow redeployment
