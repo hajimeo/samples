@@ -253,7 +253,7 @@ function mvn-arch-gen() {
     local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
     local _type="${5:-"maven-archetype-quickstart"}"
 
-    if [[ "${_gav}" =~ ^([^:]+):([^:]+):([^:]+)$ ]]; then
+    if [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
         local _g="${BASH_REMATCH[1]}"
         local _a="${BASH_REMATCH[2]}"
         local _v="${BASH_REMATCH[3]}"
@@ -313,7 +313,7 @@ function mvn-dep-file() {
     local _server_id="${4:-"nexus"}"
     local _options="${5-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
 
-    if [[ "${_gav}" =~ ^([^:]+):([^:]+):([^:]+)$ ]]; then
+    if [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
         local _g="${BASH_REMATCH[1]}"
         local _a="${BASH_REMATCH[2]}"
         local _v="${BASH_REMATCH[3]}"
@@ -329,7 +329,7 @@ function mvn-get-file() {
     local _repo_url="${2:-"http://dh1.standalone.localdomain:8081/repository/maven-public/"}"
     local _user="${3:-"admin"}"
     local _pwd="${4:-"admin123"}"
-    if [[ "${_gav}" =~ ^([^:]+):([^:]+):([^:]+)$ ]]; then
+    if [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
         local _g="${BASH_REMATCH[1]}"
         local _a="${BASH_REMATCH[2]}"
         local _v="${BASH_REMATCH[3]}"
