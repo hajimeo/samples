@@ -52,16 +52,25 @@ function iqCli() {
 # Start "mvn" with IQ plugin
 function iqMvn() {
     local __doc__="https://help.sonatype.com/display/NXI/Sonatype+CLM+for+Maven"
-    local _iq_url="${_IQ_URL:-"http://dh1.standalone.localdomain:8070/"}"
-    local _iq_app_id="${_IQ_APP_ID:-"sandbox-application"}"
-    local _iq_stage="${_IQ_STAGE:-"build"}" #develop|build|stage-release|release|operate
+    # overwrite-able global variables
+    local _iq_app_id="${1:-${_IQ_APP_ID:-"sandbox-application"}}"
+    local _iq_stage="${2:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
+    local _iq_url="${3:-${_IQ_URL}}"
+    local _mvn_opts="${4:-"-X"}"    # no -U
+    #local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}" # does not generate anything
+
     local _iq_mvn_ver="${_IQ_MVN_VER}"  # empty = latest
     [ -n "${_iq_mvn_ver}" ] && _iq_mvn_ver=":${_iq_mvn_ver}"
-    if [ -z "${_IQ_URL}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
+
+    if [ -z "${_iq_url}" ] && [ -z "${_IQ_URL}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
         _iq_url="http://localhost:8070/"
+    elif [ -n "${_iq_url}" ] && [[ ! "${_iq_url}" =~ ^https?://.+:[0-9]+ ]]; then   # Provided hostname only
+        _iq_url="http://${_iq_url}:8070/"
+    elif [ -z "${_iq_url}" ]; then  # default
+        _iq_url="http://dh1.standalone.localdomain:8070/"
     fi
-    #local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}" # does not generate anything
-    local _cmd="mvn com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -U -X $@"
+
+    local _cmd="mvn com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 ${_mvn_opts}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
