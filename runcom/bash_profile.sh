@@ -32,7 +32,7 @@ if [ "$(uname)" = "Darwin" ]; then
     #    # Mac's brew installs pip in this directory and may not in the path
     #    export PATH=$(ls -d /usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`*/Frameworks/Python.framework/Versions/3.7/bin):$PATH
     #fi
-    # Use Brew one first
+    # Use Brew one first (Using 3.7 for jupyter related dependency)
     ___python37bin="$(ls -1d /usr/local/Cellar/python@3.7/3.7*/bin | tail -n1)"
     if [ -n "${___python37bin}" ]; then
         [[ ":$PATH:" != *":${___python37bin%/}:"* ]] && export PATH=${___python37bin%/}:${PATH#:}
