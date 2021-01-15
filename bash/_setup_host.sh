@@ -46,7 +46,7 @@ screen -ls' >/etc/update-motd.d/99-start-hdp
     if [ ! -f /etc/cron.daily/ipchk ]; then
         echo '#!/usr/bin/env bash
 _ID="$(hostname -s | tail -c 8)"
-_IP="$(hostname -I | cut -d" " -f1)"
+_IP="$(ip route get 1 | sed -nr \"s/^.* src ([^ ]+) .*$/\1/p\")"
 curl -s -f "http://www.osakos.com/tools/info.php?id=${_ID}&LOCAL_ADDR=${_IP}"' >/etc/cron.daily/ipchk
         chmod a+x /etc/cron.daily/ipchk
     fi
@@ -120,7 +120,7 @@ function f_shellinabox() {
     sleep 1
     local _port=$(sed -n -r 's/^SHELLINABOX_PORT=([0-9]+)/\1/p' /etc/default/shellinabox)
     lsof -i:${_port}
-    _log "INFO" "To access: 'http://$(hostname -I | cut -d" " -f1):${_port}/${_user}/'"
+    _log "INFO" "To access: 'http://$(ip route get 1 | sed -nr 's/^.* src ([^ ]+) .*$/\1/p'):${_port}/${_user}/'"
 }
 
 function f_sysstat_setup() {
@@ -980,7 +980,13 @@ function f_microk8s() {
     microk8s kubectl describe pvc nexus-repo-nexus-iq-server-data
     microk8s kubectl exec nexus-xxxxxxxx -ti -- bash
     microk8s helm3 uninstall nexus-repo
-    microk8s stop"
+    microk8s stop
+    systemctl stop snap.microk8s.daemon-containerd.service
+    systemctl stop snap.microk8s.daemon-scheduler.service
+    systemctl stop snap.microk8s.daemon-apiserver.service
+    systemctl stop snap.microk8s.daemon-controller-manager.service
+    systemctl stop snap.microk8s.daemon-proxy.service
+"
 }
 
 function f_vnc_setup() {
@@ -1416,22 +1422,32 @@ function f_tunnel() {
 }
 
 function f_kvm() {
-    local __doc__="TODO: Install KVM on Ubuntu (16.04) host"
+    local __doc__="Install KVM on Ubuntu (20.04) host"
     local _virt_user="${1-"virtuser"}"
     local _virt_pass="${2:-"${_virt_user}"}"
-    # @see: https://computingforgeeks.com/use-virt-manager-as-non-root-user/
-
-    apt-get -y install qemu-kvm libvirt-bin virtinst bridge-utils libosinfo-bin libguestfs-tools virt-top virt-manager qemu-system
-    if ! grep -qw "vhost_ned" /etc/modules; then
-        modprobe vhost_net
-        echo vhost_net >>/etc/modules
-        _info "You may need to reboot before using KVM."
+    local _cpu_num=$(grep -Eoc '(vmx|svm)' /proc/cpuinfo)
+    if [ -z "${_cpu_num}" ] || [[ 1 -gt ${_cpu_num} ]]; then
+        _error "Hardware virtualization may not be supported."
+        return 1
     fi
 
+    if grep -qiP 'Ubuntu (18|20)\.' /etc/issue.net; then
+        apt-get install -y qemu-kvm libvirt-daemon-system libvirt-clients bridge-utils virtinst virt-manager || return $?
+        systemctl is-active libvirtd || return $?
+    else    # for 16.04
+        apt-get -y install qemu-kvm libvirt-bin virtinst bridge-utils libosinfo-bin libguestfs-tools virt-top virt-manager qemu-system || return $?
+        if ! grep -qw "vhost_net" /etc/modules; then
+            modprobe vhost_net
+            echo vhost_net >>/etc/modules
+            _warn "You may need to reboot before using KVM."
+        fi
+    fi
+
+    # @see: https://computingforgeeks.com/use-virt-manager-as-non-root-user/
     if [ -n "${_virt_user}" ] && ! id -u ${_virt_user} &>/dev/null; then
         f_useradd "${_virt_user}" "${_virt_pass}" || return $?
 
-        local _group="$(getent group | grep -Ew '^(libvirt|libvirtd)' | cut -d":" -f1)"
+        local _group="$(getent group | grep -E '^(libvirt|libvirtd):' | cut -d":" -f1)"
         if [ -z "${_group}" ]; then
             _error "libvirt(d) group does not exist. Check the installation (groupadd --system libvirtd)"
             return 1
@@ -1450,6 +1466,8 @@ function f_kvm() {
         fi
         _info "Execute 'systemctl restart libvirtd.service' if all good."
     fi
+    _info "To connect (need to configure ssh password-less access):
+    virt-manager -c 'qemu+ssh://${_virt_user:-"root"}@$(ip route get 1 | sed -nr 's/^.* src ([^ ]+) .*$/\1/p')/system?socket=/var/run/libvirt/libvirt-sock'"
 }
 
 function f_postfix() {
