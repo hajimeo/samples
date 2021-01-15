@@ -106,7 +106,7 @@ alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 
 # VM related
 # virt-manager remembers the connections, so normally would not need to start in this way.
-alias kvm_haji='virt-manager -c "qemu+ssh://root@hajime/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
+alias kvm='virt-manager -c "qemu+ssh://virtuser@dh1/system?socket=/var/run/libvirt/libvirt-sock" &>/tmp/virt-manager.out &'
 
 # Java / jar related
 #alias mb='java -jar $HOME/Apps/metabase.jar &>/tmp/metabase.out &'    # port is 3000
@@ -427,7 +427,8 @@ function ncWeb() {
 # backup & cleanup (backing up files smaller than 10MB only)
 function backupC() {
     local _src="${1:-"$HOME/Documents/cases"}"
-    local _dst="${2:-"hosako@z230:/cygdrive/h/hajime/cases"}"
+    local _dst="${2:-"/Volumes/D512/hajime/cases"}"
+    #local _dst="${2:-"hosako@z230:/cygdrive/h/hajime/cases"}"
 
     if which code && [ -d "$HOME/backup" ]; then
         code --list-extensions | xargs -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh
@@ -456,7 +457,13 @@ function backupC() {
     wait
 
     # Sync all files smaller than _size (10MB), means *NO* backup for files over 10MB.
-    #TODO: rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 ${_src%/}/ ${_dst%/}/
+    if [[ "${_dst}" =~ @ ]]; then
+        rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
+    elif [ "${_dst:0:1}" == "/" ]; then
+        [ -d "${_dst%/}" ] || return 1  #mkdir -p "${_dst%/}"
+        # if (looks like) local disk, slightly larger size, and no -z, no --bwlimit
+        rsync -Pva --max-size=30000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
+    fi
 
     if [ "Darwin" = "$(uname)" ]; then
         echo "# mdfind 'kMDItemFSSize > 1073741824' | LC_ALL=C sort # Files larger than 1G"
