@@ -871,6 +871,8 @@ function f_reset_client_configs() {
   alias nuget="mono /usr/local/bin/nuget.exe"
 fi' > ${_TMP%/}/nuget.sh
     ${_cmd} cp ${_TMP%/}/nuget.sh ${_name}:/etc/profile.d/nuget.sh
+    # And PowerShell for Linux... (note: using /rhel/ is correct)
+    ${_cmd} exec -it ${_name} bash -l -c "curl -o /etc/yum.repos.d/microsoft-prod.repo https://packages.microsoft.com/config/rhel/7/prod.repo;yum install -y powershell" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
 
     # Using Nexus npm repository if available
     _repo_url="${_base_url%/}/repository/npm-group"
