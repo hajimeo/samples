@@ -981,11 +981,11 @@ function f_microk8s() {
     microk8s kubectl exec nexus-xxxxxxxx -ti -- bash
     microk8s helm3 uninstall nexus-repo
     microk8s stop
-    systemctl stop snap.microk8s.daemon-containerd.service
-    systemctl stop snap.microk8s.daemon-scheduler.service
-    systemctl stop snap.microk8s.daemon-apiserver.service
-    systemctl stop snap.microk8s.daemon-controller-manager.service
-    systemctl stop snap.microk8s.daemon-proxy.service
+    #systemctl stop snap.microk8s.daemon-containerd.service
+    #systemctl stop snap.microk8s.daemon-scheduler.service
+    #systemctl stop snap.microk8s.daemon-apiserver.service
+    #systemctl stop snap.microk8s.daemon-controller-manager.service
+    #systemctl stop snap.microk8s.daemon-proxy.service
 "
 }
 
