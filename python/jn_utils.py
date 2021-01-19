@@ -36,7 +36,7 @@ Convert current time or string date to Unix timestamp
 """
 
 # TODO: When you add a new pip package, don't forget to update setup_work_env.sh
-import sys, os, io, fnmatch, gzip, re, json, sqlite3
+import sys, os, io, fnmatch, gzip, re, json, sqlite3, ast
 from time import time, mktime
 from datetime import datetime
 from dateutil import parser
@@ -69,7 +69,7 @@ _LAST_CONN = None
 _DB_SCHEMA = 'db'
 _SIZE_REGEX = r"[sS]ize ?= ?([0-9]+)"
 _TIME_REGEX = r"\b([0-9.,]+) ([km]?s)\b"
-_SH_EXECUTABLE="/bin/bash"
+_SH_EXECUTABLE = "/bin/bash"
 
 # If the HTML string contains '$', Jupyter renders as Italic.
 pd.options.display.html.use_mathjax = False
@@ -113,7 +113,8 @@ def _chunks(l, n):
     return [l[i:i + n] for i in range(0, len(l), n)]  # xrange is replaced
 
 
-def _globr(ptn='*', src='./', loop=0, depth=5, min_size=0, max_size=(1024 * 1024 * 1000), useRegex=False, ignoreHidden=True):
+def _globr(ptn='*', src='./', loop=0, depth=5, min_size=0, max_size=(1024 * 1024 * 1000), useRegex=False,
+           ignoreHidden=True):
     """
     As Python 2.7's glob does not have recursive option
     :param ptn: glob *regex* pattern (usually glob pattern is not regex)
@@ -243,7 +244,7 @@ def _extract_zip(zipfile, dest=None):
     :param dest:    String for the destination path
     :return: None or TemporaryDirectory object
     """
-    tempObj=None
+    tempObj = None
     if bool(dest) is False:
         import tempfile
         tempObj = tempfile.TemporaryDirectory()
@@ -334,7 +335,8 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
             continue
         new_name = _pick_new_key(f_name, names_dict, prefix='t_')
         names_dict[new_name] = f
-        dfs[new_name] = json2df(filename=f, conn=conn, tablename=new_name, chunksize=chunksize, json_cols=json_cols, flatten=flatten)
+        dfs[new_name] = json2df(filename=f, conn=conn, tablename=new_name, chunksize=chunksize, json_cols=json_cols,
+                                flatten=flatten)
     if bool(conn):
         del (names_dict)
         del (dfs)
@@ -342,7 +344,8 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     return (names_dict, dfs)
 
 
-def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json_cols=[], chunksize=1000, if_exists='replace'):
+def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json_cols=[], chunksize=1000,
+            if_exists='replace'):
     """
     Convert a json file, which contains list into a DataFrame
     If conn is given, import into a DB table
@@ -367,7 +370,7 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
     # If table name is specified but no conn object, create it
     if bool(tablename) and conn is None:
         conn = connect()
-    
+
     if os.path.exists(filename):
         files = [filename]
     else:
@@ -375,7 +378,7 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
         if bool(files) is False:
             _debug("No %s. Skipping ..." % (str(filename)))
             return None
-    
+
     dfs = []
     for file_path in files:
         _info("Loading %s ..." % (str(file_path)))
@@ -398,10 +401,10 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
                 except UnicodeDecodeError:
                     _df = pd.read_json(file_path, encoding="iso-8859-1")
             dfs.append(_df)  # , dtype=False (didn't help)
-    
+
     if bool(dfs) is False:
         return False
-    
+
     df = pd.concat(dfs, sort=False)
     if bool(conn):
         if bool(json_cols) is False:
@@ -494,7 +497,8 @@ def json2dict(file_path, sort=True):
     return rtn
 
 
-def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablename=None, chunksize=1000, if_exists='replace'):
+def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablename=None, chunksize=1000,
+           if_exists='replace'):
     """
     Convert a XML file into a DataFrame
     If conn is given, import into a DB table
@@ -599,7 +603,7 @@ def _avoid_unsupported(df, json_cols=[], all_str=False, name=None):
             _debug("_avoid_unsupported: k = %s" % (str(k)))
             # df[k] = df[k].to_string()
             cols[k] = 'str'
-        elif all_str and len(df) < 10000:   # don't want to convert huge df
+        elif all_str and len(df) < 10000:  # don't want to convert huge df
             cols[k] = 'str'
     if len(cols) > 0:
         if bool(name):
@@ -664,7 +668,7 @@ def udf_str2sqldt(date_time):
     if date_time.count(":") >= 3:
         # assuming the format is "%d/%b/%Y:%H:%M:%S %z"
         date_str, time_str = date_time.split(":", 1)
-        date_time = date_str+" "+time_str
+        date_time = date_str + " " + time_str
     return parser.parse(date_time).strftime("%Y-%m-%d %H:%M:%S.%f%z")
 
 
@@ -682,7 +686,7 @@ def udf_timestamp(date_time):
     if date_time.count(":") >= 3:
         # assuming the format is "%d/%b/%Y:%H:%M:%S %z"
         date_str, time_str = date_time.split(":", 1)
-        date_time = date_str+" "+time_str
+        date_time = date_str + " " + time_str
     return int(mktime(parser.parse(date_time).timetuple()))
 
 
@@ -1002,7 +1006,7 @@ def display(df, name="", desc="", tail=1000):
             dict(selector='th', props=[('text-align', 'left'), ('vertical-align', 'top')]),
             dict(selector='td', props=[('white-space', 'pre-wrap'), ('vertical-align', 'top')])
         ])
-        #pd.options.display.html.use_mathjax = False    # Now this is set in global
+        # pd.options.display.html.use_mathjax = False    # Now this is set in global
         _display(name_html + '\n' + df_styler.render())
     else:
         # print(df.to_html())
@@ -1147,6 +1151,53 @@ def gantt(df, index_col="", start_col="min_dt", end_col="max_dt", width=8, name=
     if _is_jupyter():
         plt.show()
     return df.tail(tail)
+
+
+def treeFromDf(df, name_id, member_id, current="", level=0, indent=4, pad=" ", prefix="* ", mini=False):
+    """
+    Output tree like strings to stdout
+    :param df: DataFrame object
+    :param name_id: column name, which is used to display the object name
+    :param member_id: column name, which value contains members in python list like *strings*
+    :param current:
+    :param level:
+    :param indent:
+    :param pad:
+    :param prefix:
+    :param mini: Do not output first level lines which do not have any members
+    :return: void
+    #>>> df = ju.q("select recipe_name, repository_name, `attributes.group.memberNames` from t_db_repo")
+    >>> d = [{"recipe_name":"nuget-group", "repository_name":"nuget-group", "attributes.group.memberNames":"['nuget-hosted']"}, {"recipe_name":"nuget-hosted", "repository_name":"nuget-hosted"}]
+    >>> df = pd.DataFrame(data=d)
+    >>> treeFromDf(df, "repository_name", "attributes.group.memberNames", pad="_", prefix="")
+    nuget-group
+    ____nuget-hosted
+    nuget-hosted
+    """
+    if level > 10:
+        _err("Too many levels (max:10)")
+        return
+    if bool(current):
+        df_copy = df.loc[df[name_id] == current]
+    else:
+        df_copy = df
+    for index, row in df_copy.iterrows():
+        try:
+            members = []
+            opt_info = ""
+            if len(row[member_id]) > 0:
+                # members = json.loads(row[member_id])   # does not work with single-quotes
+                members = ast.literal_eval(row[member_id])
+                if len(members) > 0:
+                    opt_info = " (" + str(len(members)) + ")"
+            elif mini and level == 0:
+                continue
+            print(pad * level * indent + prefix + row[name_id] + opt_info)  # + " (" + row[member_id] + ")"
+            for member in members:
+                treeFromDf(df=df, name_id=name_id, member_id=member_id, current=member, level=level + 1, indent=indent,
+                           pad=pad, prefix=prefix, mini=mini)
+        except (KeyError, TypeError):
+            continue
 
 
 def qhistory(run=None, like=None, html=True, tail=20):
@@ -1637,7 +1688,7 @@ def logs2table(filename, tablename=None, conn=None,
     if bool(files) is False:
         _debug("No %s. Skipping ..." % (str(filename)))
         return None
-    
+
     if len(files) > max_file_num:
         raise ValueError('Glob: %s returned too many files (%s)' % (filename, str(len(files))))
     col_def_str = ""
@@ -1773,7 +1824,8 @@ def logs2dfs(filename, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size
     return pd.concat(dfs, sort=False)
 
 
-def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000, if_exists='replace', useRegex=False):
+def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000, if_exists='replace',
+              useRegex=False):
     """
     Convert multiple CSV files to DF *or* DB tables
     Example: _=ju.load_csvs("./", ju.connect(), "tables_*.csv")
