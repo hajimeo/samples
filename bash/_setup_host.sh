@@ -941,7 +941,12 @@ function f_microk8s() {
     local __doc__="Install microk8s (kubernetes|k8s) (TODO: Ubuntu only)"
     # @see: https://ubuntu.com/tutorials/install-a-local-kubernetes-with-microk8s#1-overview
     snap install microk8s --classic || return $?
-    ufw allow in on cni0 && sudo ufw allow out on cni0
+    if ! type kubectl &>/dev/null && [ ! -f /etc/profile.d/microk8s.sh ]; then
+        echo 'alias kubectl="microk8s kubectl"' > /etc/profile.d/microk8s.sh
+        echo 'alias helm3="microk8s helm3"' >> /etc/profile.d/microk8s.sh
+    fi
+
+    ufw allow in on cni0 && ufw allow out on cni0
     ufw default allow routed
     microk8s enable dns dashboard storage helm3
     microk8s.start
@@ -972,13 +977,17 @@ function f_microk8s() {
     fi
     echo "# Command examples:
     microk8s helm3 repo add sonatype https://sonatype.github.io/helm3-charts/
-    microk8s helm3 install nexus-repo sonatype/nexus-repository-manager -f your.yml
+    microk8s helm3 install nexus-repo sonatype/nexus-repository-manager -f values.yml
+    microk8s kubectl create -f your_deployment.yml
     microk8s kubectl get services          # or all, or deployments to check the NAME
-    microk8s kubectl expose deployment nexus --type=LoadBalancer --port=8081
+    microk8s kubectl get deploy <deployment-name> -o yaml   # to export the deployment yaml
+    microk8s kubectl expose deployment <deployment-name> --type=LoadBalancer --port=8081
+    microk8s kubectl port-forward --address 0.0.0.0 <pod-name> 18081:8081 & # this command runs in foreground
     microk8s kubectl get pods              # get a pod name to login
-    microk8s kubectl describe pod nexus-xxxxxxxx
-    microk8s kubectl describe pvc nexus-repo-nexus-iq-server-data
-    microk8s kubectl exec nexus-xxxxxxxx -ti -- bash
+    microk8s kubectl logs <pod-name>
+    microk8s kubectl describe pod <pod-name>
+    microk8s kubectl describe pvc <pvc-name>
+    microk8s kubectl exec <pod-name> -ti -- bash
     microk8s helm3 uninstall nexus-repo
     microk8s stop
     #systemctl stop snap.microk8s.daemon-containerd.service
