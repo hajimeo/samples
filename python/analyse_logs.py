@@ -285,7 +285,8 @@ def analyse_logs(path="", start_isotime=None, end_isotime=None, tail_num=10000, 
             where_sql2 += " AND UDF_STR2SQLDT(`date`) >= UDF_STR2SQLDT('" + start_isotime + " +0000')"
         if bool(end_isotime) is True:
             where_sql2 += " AND UDF_STR2SQLDT(`date`) <= UDF_STR2SQLDT('" + end_isotime + " +0000')"
-        query = """SELECT UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d)', `date`, 1) AS date_hour, statusCode,
+        # UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d)', `date`, 1)
+        query = """SELECT substr(`date`, 1, 14) AS date_hour, substr(statusCode, 1, 1) || 'xx' as status_code,
     CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
     CAST(MIN(CAST(elapsedTime AS INT)) AS INT) AS min_elaps, 
     CAST(AVG(CAST(elapsedTime AS INT)) AS INT) AS avg_elaps, 
@@ -298,7 +299,7 @@ GROUP BY 1, 2""" % (where_sql2)
 
         display_name = "RequestLog_Status_ByteSent_Elapsed"
         query = """SELECT UDF_STR2SQLDT(`date`) AS date_time, 
-    CAST(statusCode AS INTEGER) AS statusCode, 
+    CAST(substr(statusCode, 1, 1) AS INTEGER) AS status_1stChar, 
     CAST(bytesSent AS INTEGER) AS bytesSent, 
     CAST(elapsedTime AS INTEGER) AS elapsedTime 
 FROM t_request %s""" % (where_sql2)
@@ -335,9 +336,10 @@ FROM t_log_elastic_jvm_monitor
 
     if ju.exists("t_iq_logs"):
         display_name = "NxiqLog_Policy_Scan_aggs"
+        # UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1)
         query = """SELECT thread, min(date_time), max(date_time), 
-    STRFTIME('%%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1))
-  - STRFTIME('%%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', min(date_time), 1)) as diff,
+    STRFTIME('%s', substr(max(date_time), 1, 23))
+  - STRFTIME('%s', substr(min(date_time), 1, 23)) as diff,
     count(*)
 FROM t_iq_logs
 %s
@@ -375,7 +377,8 @@ LIMIT 10""" % (where_sql)
     if bool(log_table_name):
         # analyse t_logs table (eg: count ERROR|WARN)
         display_name = "WarnsErrors_Hourly"
-        query = """SELECT UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, loglevel, count(*) as num 
+        # UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1)
+        query = """SELECT substr(`date_time`, 1, 13) as date_hour, loglevel, count(*) as num 
     FROM %s
     %s
       AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
@@ -384,7 +387,7 @@ LIMIT 10""" % (where_sql)
         # count unique threads per hour
         display_name = "Unique_Threads_Hourly"
         query = """SELECT date_hour, count(*) as num 
-    FROM (SELECT distinct UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1) as date_hour, thread 
+    FROM (SELECT distinct substr(`date_time`, 1, 13) as date_hour, thread 
         FROM %s
         %s
     ) tt
@@ -395,6 +398,7 @@ LIMIT 10""" % (where_sql)
         display_name = "Blocked_Threads"
         query = """SELECT * FROM t_threads
 WHERE thread_name not like '%InstrumentedSelectChannelConnector%'
+  AND (thread_name NOT like '%-ServerConnector%')
   AND (state like 'BLOCK%' or state like 'block%')"""
         ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
