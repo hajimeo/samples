@@ -21,7 +21,7 @@ NEXUS_IQ_SONATYPEWORK=/opt/sonatype/sonatype-work/clm-server
 # # IMPORTANT - Make sure that the user has the required privileges to write into the IQ Server work directory.
 RUN_AS_USER="${_NXIQ_USER:-"sonatype"}"
 _SUDO="sudo -u ${RUN_AS_USER}"
-[ "${RUN_AS_USER}" == "${USER}" ] && _SUDO = ""
+[ "${RUN_AS_USER}" == "${USER}" ] && _SUDO=""
 
 _JAVA="java"
 [ -n "${JAVA_HOME}" ] && _JAVA="${JAVA_HOME%/}/bin/java"
