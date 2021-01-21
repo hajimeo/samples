@@ -1153,11 +1153,11 @@ def gantt(df, index_col="", start_col="min_dt", end_col="max_dt", width=8, name=
     return df.tail(tail)
 
 
-def treeFromDf(df, name_id, member_id, current="", level=0, indent=4, pad=" ", prefix="* ", mini=False):
+def treeFromDf(df, name_ids, member_id, current="", level=0, indent=4, pad=" ", prefix="* ", mini=False):
     """
     Output tree like strings to stdout
     :param df: DataFrame object
-    :param name_id: column name, which is used to display the object name
+    :param name_ids: column name(s), which is used to display the object name
     :param member_id: column name, which value contains members in python list like *strings*
     :param current:
     :param level:
@@ -1170,34 +1170,43 @@ def treeFromDf(df, name_id, member_id, current="", level=0, indent=4, pad=" ", p
     >>> d = [{"recipe_name":"nuget-group", "repository_name":"nuget-group", "attributes.group.memberNames":"['nuget-hosted']"}, {"recipe_name":"nuget-hosted", "repository_name":"nuget-hosted"}]
     >>> df = pd.DataFrame(data=d)
     >>> treeFromDf(df, "repository_name", "attributes.group.memberNames", pad="_", prefix="")
-    nuget-group
+    nuget-group (member:1)
     ____nuget-hosted
     nuget-hosted
     """
     if level > 10:
         _err("Too many levels (max:10)")
         return
+    name_ids_list = name_ids.split(",")
+    name_id = name_ids_list[0]
     if bool(current):
         df_copy = df.loc[df[name_id] == current]
     else:
         df_copy = df
     for index, row in df_copy.iterrows():
-        try:
-            members = []
-            opt_info = ""
-            if len(row[member_id]) > 0:
-                # members = json.loads(row[member_id])   # does not work with single-quotes
-                members = ast.literal_eval(row[member_id])
-                if len(members) > 0:
-                    opt_info = " (" + str(len(members)) + ")"
-            elif mini and level == 0:
-                continue
-            print(pad * level * indent + prefix + row[name_id] + opt_info)  # + " (" + row[member_id] + ")"
-            for member in members:
-                treeFromDf(df=df, name_id=name_id, member_id=member_id, current=member, level=level + 1, indent=indent,
-                           pad=pad, prefix=prefix, mini=mini)
-        except (KeyError, TypeError):
+        if name_id not in row:
             continue
+        members = []
+        opt_info = ""
+        if len(name_ids_list) > 1:
+            opt_info += " ("
+            for i in range(len(name_ids_list)):
+                if i == 0:
+                    continue
+                if name_ids_list[i] in row:
+                    opt_info += row[name_ids_list[i]]
+            opt_info += ")"
+        if member_id in row and len(str(row[member_id])) > 0 and str(row[member_id]) != "nan":
+            # members = json.loads(row[member_id])   # does not work with single-quotes
+            members = ast.literal_eval(row[member_id])
+            if len(members) > 0:
+                opt_info += " (member:" + str(len(members)) + ")"
+        elif mini and level == 0:
+            continue
+        print(pad * level * indent + prefix + row[name_id] + opt_info)  # + " (" + row[member_id] + ")"
+        for member in members:
+            treeFromDf(df=df, name_ids=name_ids, member_id=member_id, current=member, level=level + 1, indent=indent,
+                       pad=pad, prefix=prefix, mini=mini)
 
 
 def qhistory(run=None, like=None, html=True, tail=20):
