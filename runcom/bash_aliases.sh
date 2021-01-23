@@ -400,6 +400,17 @@ function sshs() {
 }
 # My personal dirty ssh shortcut (cd /var/tmp/share/sonatype/logs/node-nxiq_nxiq)
 alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
+function s5proxy() {
+    local _user_at_host="$1"
+    local _port="${2:-"18080"}"
+    local _cmd="ssh"
+    if type autossh &>/dev/null; then
+        _cmd="autossh"
+        echo "Using autossh ..." >&2
+    fi
+    echo "tail -f /tmp/ssh_socks5.out ..." >&2
+    eval "${_cmd} -4gC2TxnNf -D${_port} ${_user_at_host} &> /tmp/ssh_socks5.out & tail -f /tmp/ssh_socks5.out"
+}
 
 # Start PostgreSQL (on Mac)
 function pgStart() {

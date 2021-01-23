@@ -29,7 +29,8 @@ Host *.compute.amazonaws.com
 Host osakos.com *.osakos.com
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
-  IdentityFile /Users/hosako/.ssh/hajime_id_rsa
+  # NOTE: $HOME wouldn't work
+  IdentityFile ~/.ssh/hajime_id_rsa
   User hajime
   # To not show Warning: Permanently added (QUIET?) ...
   LogLevel ERROR
