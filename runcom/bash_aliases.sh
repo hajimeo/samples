@@ -401,6 +401,7 @@ function sshs() {
 # My personal dirty ssh shortcut (cd /var/tmp/share/sonatype/logs/node-nxiq_nxiq)
 alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
 function s5proxy() {
+    # NOTE: You need to configure ~/.ssh/config
     local _user_at_host="$1"
     local _port="${2:-"18080"}"
     local _cmd="ssh"
