@@ -20,6 +20,8 @@ alias sum_cols="paste -sd+ - | bc"
 # diff side-by-side ignoring whitespace diff
 alias diffY="diff -wy --suppress-common-lines"
 which mdfind &>/dev/null && alias mdfindL="mdfind kMDItemFSName="
+# Configure .ssh/config. Not using -f and autossh
+alias s5proxy='netstat -tln | grep -E ":38080\s+" || ssh -4gC2TxnN -D38080'
 
 ## Git #################################################################################################################
 # Show current tag
@@ -400,18 +402,6 @@ function sshs() {
 }
 # My personal dirty ssh shortcut (cd /var/tmp/share/sonatype/logs/node-nxiq_nxiq)
 alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
-function s5proxy() {
-    # NOTE: You need to configure ~/.ssh/config
-    local _user_at_host="$1"
-    local _port="${2:-"18080"}"
-    local _cmd="ssh"
-    if type autossh &>/dev/null; then
-        _cmd="autossh"
-        echo "Using autossh ..." >&2
-    fi
-    echo "tail -f /tmp/ssh_socks5.out ..." >&2
-    eval "${_cmd} -4gC2TxnNf -D${_port} ${_user_at_host} &> /tmp/ssh_socks5.out & tail -f /tmp/ssh_socks5.out"
-}
 
 # Start PostgreSQL (on Mac)
 function pgStart() {
