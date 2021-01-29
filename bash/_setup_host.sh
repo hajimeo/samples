@@ -318,8 +318,9 @@ listen stats
 function f_nfs_server() {
     local __doc__="Install and setup NFS/NFSd on Ubuntu"
     # @see: https://www.digitalocean.com/community/tutorials/how-to-set-up-an-nfs-mount-on-ubuntu-18-04
-    local _dir="${1-"/var/tmp/share"}"
-    local _network="${2:-"172.0.0.0/8"}" # docker containers only
+    #       https://help.ubuntu.com/community/NFSv4Howto
+    local _dir="${1:-"/var/tmp/share"}"     # exposing this directory
+    local _network="${2:-"172.0.0.0/8"}"    # docker containers only
     local _options="${3:-"rw,sync,no_root_squash,no_subtree_check"}"
     apt-get install nfs-kernel-server nfs-common -y
 
@@ -338,18 +339,26 @@ function f_nfs_server() {
         service nfs-kernel-server restart || return $?
         #exportfs -ra   # to reload /etc/exports without restarting
     fi
+
+    # NFS checking commands:
     showmount -e $(hostname)
     #rpcinfo -p `hostname`  # list NFS versions, ports, services but a bit too long
     rpcinfo -s # list NFS information
     #nfsstat -v             # -v = -o all Display Server and Client stats
-    _info "Test (after making /mnt/nfs):"
-    # https://docs.aws.amazon.com/efs/latest/ug/mounting-fs-nfs-mount-settings.html https://www.cyberciti.biz/faq/linux-unix-tuning-nfs-server-client-performance/
-    # TODO: how about ,proto=tcp,nolock,sync
-    cat <<EOF
-    mount -t nfs4 -vvv -o vers=4.1,rsize=1048576,wsize=1048576,timeo=600,retrans=2,hard,noacl,noatime,nodiratime $(hostname):${_dir%/} /mnt/nfs
-    time dd if=/dev/zero of=/mnt/nfs/test.img bs=100M count=1 oflag=dsync
-    umount -f -l /mnt/nfs
-EOF
+
+    mkdir -m 777 /mnt/nfs &>/dev/null
+    _info "Test:"
+    # https://docs.aws.amazon.com/efs/latest/ug/mounting-fs-nfs-mount-settings.html
+    # https://www.cyberciti.biz/faq/linux-unix-tuning-nfs-server-client-performance/
+    # Trying vers=4.2 automatically falls back to a lower version if not supported
+    # TODO: how about ,hard,noacl,noatime,nodiratime (and ,proto=tcp,nolock,sync)
+echo '    _NFSP="/mnt/nfs"
+    dd if=/dev/zero of=/tmp/test.img bs=2M count=1 oflag=dsync
+    mount -t nfs -vvv -o vers=3,rsize=1048576,wsize=1048576,timeo=600,retrans=2 '$(hostname)':'${_dir%/}' ${_NFSP%/}
+    mount -t nfs -vvv -o vers=4.2,rsize=1048576,wsize=1048576,timeo=600,retrans=2 '$(hostname)':'${_dir%/}' ${_NFSP%/}
+    grep -wE "(nfs|nfs4)" /proc/mounts # to check the nfs version
+    time (for i in {1..100}; do bash -c "cp -v /tmp/test.img ${_NFSP%/}/test_${i}.img && mv -v ${_NFSP%/}/test_${i}.img ${_NFSP%/}/test_${i}_deleting.img && rm -v -f ${_NFSP%/}/test_${i}_deleting.img" & done; wait)
+    umount -f -l ${_NFSP%/}'
 }
 
 function f_s3fs() {
