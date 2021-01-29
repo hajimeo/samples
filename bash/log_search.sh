@@ -779,8 +779,9 @@ function f_count_lines() {
     fi
 }
 
-# If a thread dump file contains multiple thread dumps:
+# If would like to split the dumps even though this script can handle:
 # f_splitByRegex jvm.txt "^${_DATE_FORMAT}.+"
+# Also, f_last_tid_in_log would be useful.
 function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
     local _file="$1"    # Or dir contains thread_xxxx.txt files
@@ -788,6 +789,7 @@ function f_threads() {
     local _running_thread_search_re="${3-"\.sonatype\."}"
     local _save_dir="${4}"
     local _not_split_by_date="${5:-${_NOT_SPLIT_BY_DATE}}"
+    local _thread_file_glob="${6:-${_THREAD_FILE_GLOB:-"threads*.txt*"}}"
 
     [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
     [ -z "${_file}" ] && return 1
@@ -823,7 +825,7 @@ function f_threads() {
         local _count=0
         # _count doesn't work with while
         #find ${_file%/} -type f -name 'threads*.txt' 2>/dev/null | while read -r _f; do
-        for _f in $(find ${_file%/} -type f \( -name 'threads*.txt' -o -name '20*.out' \) -print 2>/dev/null); do
+        for _f in $(find ${_file%/} -type f \( -name "${_thread_file_glob}" -o -name '20*.out' \) -print 2>/dev/null); do
             local _filename=$(basename ${_f})
             echo "Saving outputs into f_thread_${_filename%.*}.out ..."
             f_threads "${_f}" "${_split_search}" "${_running_thread_search_re}" "${_save_dir%/}/${_filename%.*}" "Y" > ./f_thread_${_filename%.*}.out
@@ -848,11 +850,14 @@ function f_threads() {
     echo "## Listening ports"
     rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
     echo " "
-    echo "## Finding BLOCKED or waiting to lock lines"
-    rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename ${_save_dir%/}/
+    echo "## Finding BLOCKED or waiting to lock lines (excluding '-acceptor-')"
+    rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename -g '!*-acceptor-*' ${_save_dir%/}/
     echo " "
-    echo "## Counting 'waiting to lock|waiting on|parking to wait' etc. (exclude: 'parking to wait for' and None)"
-    rg '^\s+\- [^<]' --no-filename ${_save_dir%/}/ | rg -v '(- locked|- None)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n20
+    #echo "## Counting 2nd lines from .out files (top 20)"
+    #awk 'FNR == 2' ${_save_dir%/}/*.out | sort | uniq -c | sort -r | head -n 20
+    #echo " "
+    echo "## Counting 'waiting to lock|waiting on|parking to wait' etc. (excluding smaller than 1k threads, 'parking to wait for' and 'None', and top 20)"
+    rg '^\s+\- [^<]' --no-filename `find ${_save_dir%/} -type f -size +1k` | rg -v '(- locked|- None)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n 20
     echo " "
     # At least more than 10 waiting:
     local _most_waiting="$(rg -m 1 '^\s*\d\d+\s+.+(0x[0-9a-f]+)' -o -r '$1' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
@@ -864,7 +869,8 @@ function f_threads() {
     echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
     rg -l -w RUNNABLE ${_save_dir%/}/ | xargs -I {} rg -H -m1 "${_running_thread_search_re}" {}
     echo " "
-    echo "## Counting NOT waiting threads (top 20)"
+
+    echo "## Counting thread types excluding WAITING (top 20)"
     rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | head -n 20
     echo " "
     if grep -q 'state=' ${_file}; then
@@ -873,54 +879,6 @@ function f_threads() {
         rg -iw 'nid=0x[a-z0-9]+ ([^\[]+)' -o -r '$1' --no-filename ${_file} | sort -r | uniq -c
     fi
     echo "Total: `rg '^"' ${_file} -c`"
-}
-
-function f_count_threads() {
-    local __doc__="Grep periodic log and count threads of periodic.log"
-    local _file="$1"
-    local _tail_n="${2-10}"
-    [ -z "${_file}" ] &&  _file="`find . -name periodic.log -print | head -n1`" && ls -lh ${_file}
-    [ ! -s "${_file}" ] && return
-
-    if [ -n "${_tail_n}" ]; then
-        rg -z -N -o '^"([^"]+)"' -r '$1' "${_file}" | _sed -r 's/-[0-9]+$//g' | sort | uniq -c | sort -nr | head -n ${_tail_n}
-    else
-        rg -z -N -o '^"([^"]+)"' -r '$1' "${_file}" | sort | uniq
-    fi
-}
-
-function f_count_threads_per_dump() {
-    local __doc__="Split periodic (thread dump) log and count threads per dump"
-    local _file="$1"
-    local _search="${2:-"- Periodic stack trace .:"}"
-
-    [ -z "${_file}" ] &&  _file="`find . -name periodic.log -print | head -n1`" && ls -lh ${_file}
-    local _tmp_dir="/tmp/tdumps"
-    local _prefix="periodic_"
-    _file="$(realpath "${_file}")"
-
-    mkdir ${_tmp_dir} &>/dev/null
-    cd ${_tmp_dir} || return $?
-
-    local _ext="${_file##*.}"
-    if [[ "${_ext}" =~ gz ]]; then
-        gunzip -c ${_file} | _csplit -f "${_prefix}" - "/${_search}/" '{*}'
-    else
-        _csplit -f "${_prefix}" ${_file} "/${_search}/" '{*}'
-    fi
-
-    if [ $? -ne 0 ]; then
-        cd -
-        return 1
-    fi
-
-    for _f in `ls -1 ${_prefix}*`; do
-        head -n 1 $_f
-        # NOTE: currently excluding thread which occurrence is only 1.
-        rg '^"([^"]+)"' -o -r '$1' $_f | _sed 's/[0-9]\+/_/g' | sort | uniq -c | grep -vE '^ +1 '
-        echo '--'
-    done
-    cd -
 }
 
 #f_last_tid_in_log "" ../support-20200915-143729-1/log/request.log "15/Sep/2020:08:" > f_last_tid_in_log.csv 2> f_last_tid_in_log.err
@@ -1146,8 +1104,8 @@ function _getAfterFirstMatch() {
 }
 
 function f_splitByRegex() {
-    local _file="$1"    # can't be a glob as used in sed later
-    local _line_regex="$2"   # If empty, use (YYYY-MM-DD).(hh). For request.log '(\d\d/[a-zA-Z]{3}/\d\d\d\d).(\d\d)'
+    local _file="$1"        # can't be a glob as used in sed later
+    local _line_regex="$2"  # Entire line regex. If empty, use (YYYY-MM-DD).(hh). For request.log '(\d\d/[a-zA-Z]{3}/\d\d\d\d).(\d\d)'
     local _save_to="${3:-"."}"
     local _prefix="${4-"*None*"}"   # Can be an empty string
     local _out_ext="${5:-"out"}"
@@ -1160,7 +1118,11 @@ function f_splitByRegex() {
     [ "${_prefix}" == "*None*" ] && _prefix="${_base_name%%.*}_"
     local _save_path_prefix="${_save_to%/}/${_prefix}"
     local _orig_ext="${_base_name##*.}"
-
+    local _tmp_file="/tmp/$(basename "${_file}" .${_orig_ext})"
+    if [ "${_orig_ext}" == 'gz' ]; then
+        gunzip -c "${_file}" > "${_tmp_file}" || return $?
+        _file="${_tmp_file}"
+    fi
     # this may not be working
     local _tmp_str=""
     local _prev_n=1
@@ -1180,22 +1142,17 @@ function f_splitByRegex() {
             [ -n "${_prev_str}" ] && [ "${_prev_str}" == "${BASH_REMATCH[2]}" ] && continue
             # Found new value (next date, next thread etc.)
             _tmp_str="$(echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192)"
-            if [ "${_orig_ext}" == 'gz' ]; then
-                gunzip -c "${_file}" | sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
-            else
-                sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
-            fi
+            sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
             _prev_str="${BASH_REMATCH[2]}"  # Used for the file name and detecting a new value
             _prev_n=${BASH_REMATCH[1]}
         elif [ "${_t}" == "END_OF_FILE" ] && [ -n "${_prev_str}" ]; then
             _tmp_str="$(echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192)"
-            if [ "${_orig_ext}" == 'gz' ]; then
-                gunzip -c "${_file}" | sed -n "${_prev_n},\$p" ${_file} > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
-            else
-                sed -n "${_prev_n},\$p" ${_file} > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
-            fi
+            sed -n "${_prev_n},\$p" ${_file} > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
         fi
     done
+    if [ -n "${_tmp_file}" ] && [ -f "${_tmp_file}" ]; then
+        rm -f ${_tmp_file}
+    fi
 }
 
 function f_extractFromLog() {
