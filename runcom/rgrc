@@ -10,9 +10,10 @@ web:*.{html,css,js}*
 # Using glob patterns to include/exclude files or folders
 --glob=!git/*
 --glob=!*.ipynb
---glob=!*.tmp
+--glob=!*tmp
+--glob=!*.swp
 --glob=!*.zip
---glob=!*_tmp
+--glob=!*.tgz
 # Set the colors.
 #--colors=line:none
 #--colors=line:style:bold
