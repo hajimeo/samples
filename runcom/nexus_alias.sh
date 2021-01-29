@@ -287,15 +287,16 @@ function mvn-add-snapshot-repo-in-pom() {
   </distributionManagement>"
 }
 
-# Example to generate 10 versions / snapshots
-cat << EOF >/dev/null
+# Example to generate 10 versions / snapshots (NOTE: in bash heredoc, 'EOF' and just EOF is different)
+: <<'EOF'
 mvn-arch-gen; cd my-app
-#mvn-deploy "http://dh1.standalone.localdomain:8081/repository/maven-snapshots-s3/" "" "nexus"
-for i in {1..4}; do
-  #sed -i.tmp -E "s@<groupId>com.example.*</groupId>@<groupId>com.example${i}</groupId>@" pom.xml
-  #sed -i.tmp -E "s@<artifactId>my-app.*</artifactId>@<artifactId>my-app${i}</artifactId>@" pom.xml
-  sed -i.tmp -E "s@^  <version>.*</version>@  <version>0.${i}.0-${i}</version>@" pom.xml    # generating lower than 1.0.0-SNAPSHOT
-  mvn-deploy "http://node3211.standalone.localdomain:8081/repository/maven-snapshots2/" "" "nexus" "" || break
+_REPO_URL="http://node3290.standalone.localdomain:8081/repository/maven-hosted/"
+#mvn-deploy "${_REPO_URL}" "" "nexus"
+  #sed -i.tmp -E "s@<groupId>com.example.*</groupId>@<groupId>com.example${i}</groupId>@" pom.xml   # If need to change groupId
+  #sed -i.tmp -E "s@<artifactId>my-app.*</artifactId>@<artifactId>my-app${i}</artifactId>@" pom.xml # If need to change artifactId
+for i in {1..5000}; do
+  sed -i.tmp -E "s@^  <version>.*</version>@  <version>1.${i}-SNAPSHOT</version>@" pom.xml
+  mvn-deploy "${_REPO_URL}" "" "nexus" "" || break
 done
 EOF
 function mvn-deploy() {
