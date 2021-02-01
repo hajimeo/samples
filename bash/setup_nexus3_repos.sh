@@ -315,7 +315,7 @@ function f_setup_yum() {
     # add some data for xxxx-proxy (Ubuntu has "yum" command)
     if which yum &>/dev/null && [ -d /etc/yum.repos.d ]; then
         f_echo_yum_repo_file "${_prefix}-proxy" > /etc/yum.repos.d/nexus-yum-test.repo
-        yum --disablerepo="*" --enablerepo="nexusrepo" install --downloadonly --downloaddir=${_TMP%/} dos2unix
+        yum --disablerepo="*" --enablerepo="nexusrepo-test" install --downloadonly --downloaddir=${_TMP%/} dos2unix
     else
         # NOTE: due to the known limitation, not sure below get works, as yum repo works with anonymous.
         # https://support.sonatype.com/hc/en-us/articles/213464848-Authenticated-Access-to-Nexus-from-Yum-Doesn-t-Work
@@ -859,9 +859,9 @@ function f_reset_client_configs() {
     local _yum_install="yum install -y"
     f_echo_yum_repo_file "yum-group" "${_base_url}" > ${_TMP%/}/nexus-yum-test.repo
     if ${_cmd} cp ${_TMP%/}/nexus-yum-test.repo ${_name}:/etc/yum.repos.d/nexus-yum-test.repo && _is_url_reachable "${_repo_url}"; then
-        _yum_install="yum --disablerepo=base --enablerepo=nexusrepo install -y"
+        _yum_install="yum --disablerepo=base --enablerepo=nexusrepo-test install -y"
     fi
-    ${_cmd} exec -it ${_name} bash -c "${_yum_install} epel-release && curl -sL https://rpm.nodesource.com/setup_10.x | bash -;rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm;yum install -y centos-release-scl-rh centos-release-scl;${_yum_install} python3 maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang" >>${_LOG_FILE_PATH:-"/dev/null"}
+    ${_cmd} exec -it ${_name} bash -c "${_yum_install} epel-release && curl -sL https://rpm.nodesource.com/setup_10.x | bash -;rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm;yum install -y centos-release-scl-rh centos-release-scl;${_yum_install} python3 maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang git" >>${_LOG_FILE_PATH:-"/dev/null"}
     if [ $? -ne 0 ]; then
         _log "ERROR" "installing packages with yum failed. Check ${_LOG_FILE_PATH}"
         return 1
@@ -982,15 +982,10 @@ export GOPROXY=${_repo_url}" > ${_TMP%/}/go-proxy.sh
     # Regardless of repo availability, setup helm
     curl -fsSL -o ${_TMP%/}/get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
     if [ -s ${_TMP%/}/get_helm.sh ]; then
-        ${_cmd} cp ${_TMP%/}/get_helm.sh ${_name}:/home/ && \
+        ${_cmd} cp ${_TMP%/}/get_helm.sh ${_name}:/home/${_user%/}/ && \
         ${_cmd} exec -it ${_name} chown -R ${_user}: /home/${_user}/get_helm.sh && \
         ${_cmd} exec -it -u ${_user} ${_name} /home/${_user}/get_helm.sh
     fi
-
-    sed -i -e "s@_REPLACE_MAVEN_USERNAME_@${_usr}@1" -e "s@_REPLACE_MAVEN_USER_PWD_@${_pwd}@1" -e "s@_REPLACE_MAVEN_REPO_URL_@${_repo_url%/}/@1" ${_TMP%/}/settings.xml && \
-    ${_cmd} exec -it ${_name} bash -l -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null' && \
-    ${_cmd} cp ${_TMP%/}/settings.xml ${_name}:/home/${_user}/.m2/settings.xml && \
-    ${_cmd} exec -it ${_name} chown -R ${_user}: /home/${_user}/.m2
 
     # Using Nexus maven repository if available
     _repo_url="${_base_url%/}/repository/maven-group"
