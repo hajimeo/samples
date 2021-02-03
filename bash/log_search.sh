@@ -130,15 +130,25 @@ function f_topErrors() {
     local _top_N="${4:-20}"
 
     [ -z "$_regex" ] && _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|FAILED)\b.+"
-    rg -z -c -g "${_glob}" "${_regex}" && echo " "
-    rg -z --no-line-number --no-filename -g "${_glob}" "${_regex}" > /tmp/${FUNCNAME}_$$.tmp
-    cat "/tmp/${FUNCNAME}_$$.tmp" | _replace_number | sort | uniq -c | sort -nr | head -n ${_top_N}
+    if [ -f "${_glob}" ]; then
+        rg -z -c "${_regex}" -H "${_glob}" && echo " "
+        rg -z --no-line-number --no-filename "${_regex}" "${_glob}" > /tmp/${FUNCNAME}_$$.tmp
+    else
+        rg -z -c -g "${_glob}" "${_regex}" && echo " "
+        rg -z --no-line-number --no-filename -g "${_glob}" "${_regex}" > /tmp/${FUNCNAME}_$$.tmp
+    fi
+    cat /tmp/${FUNCNAME}_$$.tmp | _replace_number | sort | uniq -c | sort -nr | head -n ${_top_N}
 
     # just for fun, drawing bar chart
     if which bar_chart.py &>/dev/null; then
         echo " "
         if [ -z "${_date_4_bar}" ]; then
-            local _num="$(rg -z --no-line-number --no-filename -o '^\d\d\d\d-\d\d-\d\d.\d\d:\d' -g "${_glob}" | sort | uniq | wc -l | tr -d '[:space:]')"
+            if [ -f "${_glob}" ]; then
+                rg -z --no-line-number --no-filename -o '^\d\d\d\d-\d\d-\d\d.\d\d:\d' "${_glob}" > /tmp/${FUNCNAME}_2_$$.tmp
+            else
+                rg -z --no-line-number --no-filename -o '^\d\d\d\d-\d\d-\d\d.\d\d:\d' -g "${_glob}" > /tmp/${FUNCNAME}_2_$$.tmp
+            fi
+            local _num=$(cat /tmp/${FUNCNAME}_2_$$.tmp | sort | uniq | wc -l | tr -d '[:space:]')
             if [ "${_num}" -lt 30 ]; then
                 _date_4_bar="^\d\d\d\d-\d\d-\d\d.\d\d:\d"
             else
@@ -847,8 +857,10 @@ function f_threads() {
     #rg -i "ldap" ${_save_dir%/}/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
     #rg -w BLOCKED ${_save_dir%/}/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
     #rg '^("|\s+- .*lock)' ${_file}
-    echo "## Listening ports"
-    rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
+    echo "## Listening ports (acceptor)"
+    # Sometimes this can be a hostname
+    #rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
+    rg '^[^ ].+\-acceptor\-.+:\d+\}' --no-filename "${_file}" | sort | uniq
     echo " "
     echo "## Finding BLOCKED or waiting to lock lines (excluding '-acceptor-')"
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename -g '!*-acceptor-*' ${_save_dir%/}/
@@ -856,7 +868,7 @@ function f_threads() {
     #echo "## Counting 2nd lines from .out files (top 20)"
     #awk 'FNR == 2' ${_save_dir%/}/*.out | sort | uniq -c | sort -r | head -n 20
     #echo " "
-    echo "## Counting 'waiting to lock|waiting on|parking to wait' etc. (excluding smaller than 1k threads, 'parking to wait for' and 'None', and top 20)"
+    echo "## Counting 'waiting to lock|waiting on|parking to wait' etc. basically hung processes (excluding smaller than 1k threads, 'parking to wait for' and 'None', and top 20)"
     rg '^\s+\- [^<]' --no-filename `find ${_save_dir%/} -type f -size +1k` | rg -v '(- locked|- None)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n 20
     echo " "
     # At least more than 10 waiting:
@@ -866,8 +878,15 @@ function f_threads() {
         rg "locked.+${_most_waiting}" -l `find ${_save_dir%/} -type f -size +1k` | xargs -I {} rg -H '(java.lang.Thread.State:| state=)' {}
         echo " "
     fi
+    echo "## 'locked' objects or id excluding synchronizers (top 20)"
+    rg ' locked [^ @]+' -o --no-filename ${_save_dir%/}/ | rg -vw synchronizers | sort | uniq -c | sort -nr | head -n 20
+    echo " "
     echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
     rg -l -w RUNNABLE ${_save_dir%/}/ | xargs -I {} rg -H -m1 "${_running_thread_search_re}" {}
+    echo " "
+
+    echo "## Counting *probably* waiting for connection pool by checking 'getConnection'"
+    rg -m1 -w getConnection ${_save_dir%/}/ -g '*WAITING*' --no-filename | sort | uniq -c
     echo " "
 
     echo "## Counting thread types excluding WAITING (top 20)"
@@ -884,18 +903,20 @@ function f_threads() {
 #f_last_tid_in_log "" ../support-20200915-143729-1/log/request.log "15/Sep/2020:08:" > f_last_tid_in_log.csv 2> f_last_tid_in_log.err
 #qcsv "select * from f_last_tid_in_log.csv order by c4 limit 1"
 function f_last_tid_in_log() {
-    local __doc__="Get thread IDs from the tread dump, then find the *last* match from the log"
-    local _file="$1"
-    local _log="$2"
-    local _extra_rx="${3}"
-    local _tid_rx="${4:-"\"(qtp[0-9]+-[0-9]+)"}"
-    [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
-    [ -z "${_file}" ] && return 1
+    local __doc__="Get thread IDs (starts with \") from the tread dump, then find the *last* match from the log"
+    local _threads_file="$1"
+    local _log="$2"     # NOTE: deafult is request.log but some request.log does not have tid at all.
+    local _log_rx="${3}"
+    local _tid_rx="${4:-"^\"([^\" ]+)"}"    # TODO: shouldn't include space but tedious if space is included
+    [ -z "${_threads_file}" ] && _threads_file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
+    [ -z "${_threads_file}" ] && return 1
     [ -z "${_log}" ] && _log="$(find . -type f -name request.log 2>/dev/null | grep '/request.log$' -m 1)"
     [ -z "${_log}" ] && return 1
-    _tac "${_log}" > /tmp/f_last_tid_in_log_$$.log || return $?
-    rg "${_tid_rx}" -o -r '$1' "${_file}" | while read -r _tid; do
-        if ! rg -w -m 1 "${_extra_rx}.*[\[\"]${_tid}[\]\"]" /tmp/f_last_tid_in_log_$$.log; then
+    _tac "${_log}" > /tmp/f_last_tid_in_log.log || return $?    # Not using $$ as it can be large
+    rg "${_tid_rx}" -o -r '$1' "${_threads_file}" | rg -v -- '-acceptor-' | sort | uniq | while read -r _tid; do
+        #echo "# Checking '${_tid}' ..." >&2
+        # expecting tid is surrounded by [] or ""
+        if ! rg -w -m 1 "${_log_rx}.*[\[\"]${_tid}[\]\"]" /tmp/f_last_tid_in_log.log; then
             echo "# No match for '${_tid}'" >&2
             if [ -d ./_threads ]; then
                 find ./_threads -name "*${_tid}[_-]*" -ls >&2
@@ -1018,7 +1039,7 @@ function f_healthlog2csv() {
     f_healthlog2json "${_glob}" "/tmp/_health_monitor_$$.json" || return $?
     [ -s "/tmp/_health_monitor_$$.json" ] || return 1
     # language=Python
-    python3 -c "import pandas as pd;import csv;df=pd.read_json('/tmp/_health_monitor.json');df.to_csv('${_out_file}', mode='w', header=True, index=False, escapechar='\\\', quoting=csv.QUOTE_NONNUMERIC)"
+    python3 -c "import pandas as pd;import csv;df=pd.read_json('/tmp/_health_monitor_$$.json');df.to_csv('${_out_file}', mode='w', header=True, index=False, escapechar='\\\', quoting=csv.QUOTE_NONNUMERIC)"
 }
 
 function f_get_pems_from_xml() {
