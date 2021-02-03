@@ -235,7 +235,7 @@ function f_setup_python() {
     python3.7 -m pip list -o ${_i_opt} | tee /tmp/pip.log
     #python -m pip list -o --format=freeze ${_i_opt} | cut -d'=' -f1 | xargs python -m pip install -U
 
-    # My favourite/essential python packages
+    # My favourite/essential python packages (except jupyter and pandas related)
     python3.7 -m pip install -U ${_i_opt} lxml xmltodict pyyaml markdown
     python3.7 -m pip install -U ${_i_opt} pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
@@ -303,11 +303,12 @@ function f_jupyter_util() {
 c.NotebookApp.ip = '0.0.0.0'  #default= localhost
 #c.NotebookApp.port = 8888     #default=8888
 EOF
-    # To reset: jupyter notebook password
-    cat << EOF > "$HOME/.jupyter/jupyter_notebook_config.json"
+    # Jupyter 3.0.x way
+    # To reset: source $HOME/.pyvenv/bin/activate; jupyter-lab password
+    cat << EOF > "$HOME/.jupyter/jupyter_server_config.json"
 {
-  "NotebookApp": {
-    "password": "argon2:\$argon2id\$v=19\$m=10240,t=10,p=8\$Tl4BoHvV2K/psj76uDuNiA\$q78aIxoeLkxBX0kySiaaiA"
+  "ServerApp": {
+    "password": "sha1:80d886d09dd4:3f7f3075356e065192c9e55457792e282b421b1d"
   }
 }
 EOF
