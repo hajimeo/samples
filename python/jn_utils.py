@@ -1058,7 +1058,7 @@ def _pivot_ui(df, outfile_path="pivottablejs.html", **kwargs):
     _info("%s is created." % outfile_path)
 
 
-def draw(df, width=8, x_col=0, x_colname=None, name=None, desc="", tail=10):
+def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10):
     """
     Helper function for df.plot()
     As pandas.DataFrame.plot is a bit complicated, using simple options only if this method is used.
