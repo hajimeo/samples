@@ -859,10 +859,10 @@ function f_threads() {
     echo "## Listening ports (acceptor)"
     # Sometimes this can be a hostname
     #rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
-    rg '^[^ ].+\-acceptor\-.+:\d+\}' --no-filename "${_file}" | sort | uniq
+    rg '^[^ ].+(\-acceptor\-| Acceptor\d+).+:\d+[\} ]' --no-filename "${_file}" | sort | uniq
     echo " "
     echo "## Finding BLOCKED or waiting to lock lines (excluding '-acceptor-')"
-    rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename -g '!*-acceptor-*' ${_save_dir%/}/
+    rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename -g '!*-acceptor-*' -g '!*_Acceptor' ${_save_dir%/}/
     echo " "
     #echo "## Counting 2nd lines from .out files (top 20)"
     #awk 'FNR == 2' ${_save_dir%/}/*.out | sort | uniq -c | sort -r | head -n 20
@@ -1126,6 +1126,7 @@ function _getAfterFirstMatch() {
 }
 
 function f_splitByRegex() {
+    # TODO: this doesn't work with Ubuntu?
     local _file="$1"        # can't be a glob as used in sed later
     local _line_regex="$2"  # Entire line regex. If empty, use (YYYY-MM-DD).(hh). For request.log '(\d\d/[a-zA-Z]{3}/\d\d\d\d).(\d\d)'
     local _save_to="${3:-"."}"
