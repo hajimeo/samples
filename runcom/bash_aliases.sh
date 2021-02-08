@@ -431,8 +431,8 @@ function ncWeb() {
 # backup & cleanup (backing up files smaller than 10MB only)
 function backupC() {
     local _src="${1:-"$HOME/Documents/cases"}"
-    local _dst="${2:-"/Volumes/D512/hajime/cases"}"
-    #local _dst="${2:-"hosako@z230:/cygdrive/h/hajime/cases"}"
+    local _dst="${2-"/Volumes/D512/hajime/cases"}"  # if not specified, delete only
+    #local _dst="${2-"hosako@z230:/cygdrive/h/hajime/cases"}"
 
     if which code && [ -d "$HOME/backup" ]; then
         code --list-extensions | xargs -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh
@@ -448,25 +448,24 @@ function backupC() {
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory'
     find ${_src%/} -type d -mtime +30 -name '*_tmp' -delete
     find ${_src%/} -type f -mtime +30 -name '*.tmp' -delete
-    find ${_src%/} -type f -mtime +90 -name '*.out' -delete
+    #find ${_src%/} -type f -mtime +365 -name '*.out' -delete
 
-    # Delete files larger than _size (10MB) and older than one year
-    find ${_src%/} -type f -mtime +365 -size +10000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    # Delete files larger than 30MB and older than 180 days
-    find ${_src%/} -type f -mtime +180 -size +30000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    # Delete files larger than 100MB and older than 90 days
-    find ${_src%/} -type f -mtime +90 -size +100000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    # Delete files larger than 500MB and older than 45 days
-    find ${_src%/} -type f -mtime +45 -size +500000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    find ${_src%/} -type f -mtime +365 -size +1024k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    find ${_src%/} -type f -mtime +180 -size +10240k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    find ${_src%/} -type f -mtime +90 -size +30720k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    find ${_src%/} -type f -mtime +45 -size +102400k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    find ${_src%/} -type f -mtime +14 -size +512000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     wait
 
     # Sync all files smaller than _size (10MB), means *NO* backup for files over 10MB.
-    if [[ "${_dst}" =~ @ ]]; then
-        rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
-    elif [ "${_dst:0:1}" == "/" ]; then
-        [ -d "${_dst%/}" ] || return 1  #mkdir -p "${_dst%/}"
-        # if (looks like) local disk, slightly larger size, and no -z, no --bwlimit
-        rsync -Pva --max-size=30000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
+    if [ -n "${_dst}" ]; then
+        if [[ "${_dst}" =~ @ ]]; then
+            rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
+        elif [ "${_dst:0:1}" == "/" ]; then
+            [ -d "${_dst%/}" ] || return 1  #mkdir -p "${_dst%/}"
+            # if (looks like) local disk, slightly larger size, and no -z, no --bwlimit
+            rsync -Pva --max-size=30000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
+        fi
     fi
 
     if [ "Darwin" = "$(uname)" ]; then
