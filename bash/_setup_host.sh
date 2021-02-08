@@ -1123,7 +1123,8 @@ function f_dnsmasq() {
     # For Ubuntu 18.04 name resolution slowness (ssh and sudo too).
     # Also local hostname needs to be resolved @see: https://linuxize.com/post/how-to-change-hostname-on-ubuntu-18-04/
     grep -q '^no-resolv' /etc/dnsmasq.conf || echo 'no-resolv' >>/etc/dnsmasq.conf
-    grep -q '^server=1.1.1.1' /etc/dnsmasq.conf || echo 'server=1.1.1.1' >>/etc/dnsmasq.conf
+    # I might use 8.8.8.8
+    grep -q '^server=' /etc/dnsmasq.conf || echo 'server=1.1.1.1' >>/etc/dnsmasq.conf
     #grep -q '^domain-needed' /etc/dnsmasq.conf || echo 'domain-needed' >> /etc/dnsmasq.conf
     #grep -q '^bogus-priv' /etc/dnsmasq.conf || echo 'bogus-priv' >> /etc/dnsmasq.conf
     grep -q '^local=' /etc/dnsmasq.conf || echo 'local=/'${_domain_suffix#.}'/' >>/etc/dnsmasq.conf
@@ -1134,6 +1135,10 @@ function f_dnsmasq() {
         echo 'resolv-file=/etc/resolv.dnsmasq.conf' >>/etc/dnsmasq.conf
         echo 'nameserver 1.1.1.1' >/etc/resolv.dnsmasq.conf
     )
+    #if [ -d "/etc/resolvconf/resolv.conf.d" ] && [ ! -f "/etc/resolvconf/resolv.conf.d/tail" ]; then
+    #    echo "nameserver 127.0.0.1" > /etc/resolvconf/resolv.conf.d/tail
+    #fi
+    _warn "You might need to edit /etc/resolv.conf to add 'nameserver 127.0.0.1'"
 
     touch /etc/banner_add_hosts || return $?
     chmod 664 /etc/banner_add_hosts
