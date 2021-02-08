@@ -26,7 +26,7 @@ Required commands:
     brew install gnu-sed      # for gsed
     brew install dateutils    # for dateconv
     brew install coreutils    # for gtac gdate
-    brew install q            # To query csv files
+    brew install q            # To query csv files https://github.com/harelba/q/releases/download/2.0.19/q-text-as-data_2.0.19-2_amd64.deb
     brew install jq           # To query json files
     brew install grep         # Do not need anymore, but ggrep is faster than Mac's grep
     pip install data_hacks    # for bar_chart.py
