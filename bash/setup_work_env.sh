@@ -25,7 +25,7 @@ function f_prepare() {
         add-apt-repository ppa:deadsnakes/ppa -y
         apt-get update
     fi
-    _install sudo curl screen jq python3.7  #netcat
+    _install sudo curl screen jq python3.7 #netcat
     # Below is for pyenv and not using at this moment
     #_install make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python-openssl git
     f_install_rg
@@ -43,7 +43,7 @@ function f_prepare() {
     # python 3.7 does not have virtualenv?
     python3.7 -m pip install -U virtualenv
 
-    # TODO: this works only with python2, hence no pip3 (and not in virtualenv), and eventually will stop working
+    # For bar_chart.py  TODO: this works only with python2, hence no pip3 (and not in virtualenv), and eventually will stop working
     if which python2 &>/dev/null; then
         sudo -i python2 -m pip install -U data_hacks
     else
