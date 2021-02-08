@@ -24,7 +24,6 @@ This script contains useful functions to search log files.
 Required commands:
     brew install ripgrep      # for rg
     brew install gnu-sed      # for gsed
-    brew install dateutils    # for dateconv
     brew install coreutils    # for gtac gdate
     brew install q            # To query csv files https://github.com/harelba/q/releases/download/2.0.19/q-text-as-data_2.0.19-2_amd64.deb
     brew install jq           # To query json files
@@ -1195,17 +1194,26 @@ function f_extractFromLog() {
 
 function _date2int() {
     local _date_str="$1"
-    _date -u -d "$(_date2iso "${_date_str}")" +"%s"
+    _date -u -d "$(__extractdate "${_date_str}")" +"%s"
 }
 
 function _date2iso() {
     local _date_str="$1"
+    # --rfc-3339=seconds outputs timezone
+    _date -d "$(__extractdate "${_date_str}")" +'%Y-%m-%d %H:%M:%S'
+}
+
+function __extractdate() {
+    local _date_str="$1"
+    # if YYYY-MM-DD.hh:mm:ss
     if [[ "${_date_str}" =~ ([0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]).([0-9][0-9]:[0-9][0-9]:[0-9][0-9]) ]]; then
         _date_str="${BASH_REMATCH[1]} ${BASH_REMATCH[2]}"
+    # if DD/Mon/YYYY.hh:mm:ss
+    elif [[ "${_date_str}" =~ ([0-9][0-9])\/([a-zA-Z][a-zA-Z][a-zA-Z])\/([0-9][0-9][0-9][0-9]).([0-9][0-9]:[0-9][0-9]:[0-9][0-9]) ]]; then
+        _date_str="${BASH_REMATCH[1]} ${BASH_REMATCH[2]} ${BASH_REMATCH[3]} ${BASH_REMATCH[4]}"
+    # if YY/MM/DD.hh:mm:ss
     elif [[ "${_date_str}" =~ ([0-9][0-9]\/[0-9][0-9]\/[0-9][0-9]).([0-9][0-9]:[0-9][0-9]:[0-9][0-9]) ]]; then
-        _date_str="`dateconv "${BASH_REMATCH[1]} ${BASH_REMATCH[2]}" -i "%y/%m/%d %H:%M:%S" -f "%Y-%m-%d %H:%M:%S"`"
-    elif [[ "${_date_str}" =~ ([0-9][0-9]\/[a-zA-Z][a-zA-Z][a-zA-Z]\/[0-9][0-9][0-9][0-9]).([0-9][0-9]:[0-9][0-9]:[0-9][0-9]) ]]; then
-        _date_str="`dateconv "${BASH_REMATCH[1]} ${BASH_REMATCH[2]}" -i "%d/%b/%Y %H:%M:%S" -f "%Y-%m-%d %H:%M:%S"`"
+        _date_str="20${BASH_REMATCH[1]} ${BASH_REMATCH[2]}"
     fi
     echo "${_date_str}"
 }
