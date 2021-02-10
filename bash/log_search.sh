@@ -853,14 +853,30 @@ function f_threads() {
 
     f_splitByRegex "${_file}" "${_split_search}" "${_save_dir%/}" ""
 
-    #rg -i "ldap" ${_save_dir%/}/ -l | while read -r f; do _grep -Hn -wE 'BLOCKED|waiting' $f; done
-    #rg -w BLOCKED ${_save_dir%/}/ -l | while read -r _f; do rg -Hn -w 'h2' ${_f}; done
-    #rg '^("|\s+- .*lock)' ${_file}
-    echo "## Listening ports (acceptor)"
-    # Sometimes this can be a hostname
-    #rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
-    rg '^[^ ].+(\-acceptor\-| Acceptor\d+).+:\d+[\} ]' --no-filename "${_file}" | sort | uniq
-    echo " "
+
+    if [[ "${_running_thread_search_re}" =~ .*sonatype.* ]]; then
+        echo "## Listening ports (acceptor)"
+        # Sometimes this can be a hostname
+        #rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
+        rg '^[^ ].+(\-acceptor\-| Acceptor\d+).+:\d+[\} ]' --no-filename "${_file}" | sort | uniq
+        echo " "
+
+        echo "## Counting 'QueuedThreadPool.runJob' for Jetty pool"
+        echo "BLOCKED: $(rg -w 'QueuedThreadPool.runJob' ${_save_dir%/}/ -l -g '*BLOCKED*' | wc -l)"
+        echo "RUNNABLE:$(rg -w 'QueuedThreadPool.runJob' ${_save_dir%/}/ -l -g '*RUNNABLE*' | wc -l)"
+        echo "WAITING: $(rg -w 'QueuedThreadPool.runJob' ${_save_dir%/}/ -l -g '*WAITING*' | wc -l)"
+        echo " "
+
+        echo "## Counting 'Pool.acquire' for OrientDB pool"
+        rg -i 'Pool\.acquire\b' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
+        echo " "
+
+        echo "## Counting 'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin"
+        # https://support.sonatype.com/hc/en-us/articles/213464998-How-to-disable-the-System-Feeds-nexus-timeline-plugin-feature-to-improve-Nexus-performance
+        rg 'DefaultTimelineIndexer' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
+        echo " "
+    fi
+
     echo "## Finding BLOCKED or waiting to lock lines (excluding '-acceptor-')"
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename -g '!*-acceptor-*' -g '!*_Acceptor' ${_save_dir%/}/
     echo " "
@@ -880,9 +896,12 @@ function f_threads() {
     echo "## 'locked' objects or id excluding synchronizers (top 20)"
     rg ' locked [^ @]+' -o --no-filename ${_save_dir%/}/ | rg -vw synchronizers | sort | uniq -c | sort -nr | head -n 20
     echo " "
-    echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
-    rg -l -w RUNNABLE ${_save_dir%/}/ | xargs -I {} rg -H -m1 "${_running_thread_search_re}" {}
-    echo " "
+
+    if [ -n "${_running_thread_search_re}" ]; then
+        echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
+        rg -l -w RUNNABLE ${_save_dir%/}/ | xargs -I {} rg -H -m1 "${_running_thread_search_re}" {}
+        echo " "
+    fi
 
     echo "## Counting *probably* waiting for connection pool by checking 'getConnection'"
     rg -m1 -w getConnection ${_save_dir%/}/ -g '*WAITING*' --no-filename | sort | uniq -c
