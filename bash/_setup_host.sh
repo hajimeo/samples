@@ -352,13 +352,13 @@ function f_nfs_server() {
     # https://www.cyberciti.biz/faq/linux-unix-tuning-nfs-server-client-performance/
     # Trying vers=4.2 automatically falls back to a lower version if not supported
     # TODO: how about ,hard,noacl,noatime,nodiratime (and ,proto=tcp,nolock,sync)
-echo '    _NFSP="/mnt/nfs"
-    dd if=/dev/zero of=/tmp/test.img bs=2M count=1 oflag=dsync
-    mount -t nfs -vvv -o vers=3,rsize=1048576,wsize=1048576,timeo=600,retrans=2 '$(hostname)':'${_dir%/}' ${_NFSP%/}
-    mount -t nfs -vvv -o vers=4.2,rsize=1048576,wsize=1048576,timeo=600,retrans=2 '$(hostname)':'${_dir%/}' ${_NFSP%/}
-    grep -wE "(nfs|nfs4)" /proc/mounts # to check the nfs version
-    time (for i in {1..100}; do bash -c "cp -v /tmp/test.img ${_NFSP%/}/test_${i}.img && mv -v ${_NFSP%/}/test_${i}.img ${_NFSP%/}/test_${i}_deleting.img && rm -v -f ${_NFSP%/}/test_${i}_deleting.img" & done; wait)
-    umount -f -l ${_NFSP%/}'
+echo '_DIR="/mnt/nfs"
+dd if=/dev/zero of=/tmp/test.img bs=33M count=1 oflag=dsync
+mount -t nfs -vvv -o vers=3,rsize=1048576,wsize=1048576,timeo=600,retrans=2 '$(hostname)':'${_dir%/}' ${_DIR%/}
+mount -t nfs -vvv -o vers=4.2,rsize=1048576,wsize=1048576,timeo=600,retrans=2 '$(hostname)':'${_dir%/}' ${_DIR%/}
+grep -wE "(nfs|nfs4)" /proc/mounts # to check the nfs version
+time (for i in {1..100}; do bash -c "cp -v /tmp/test.img ${_DIR%/}/test_${i}.img && mv -v ${_DIR%/}/test_${i}.img ${_DIR%/}/test_${i}_deleting.img && rm -v -f ${_DIR%/}/test_${i}_deleting.img" & done; wait)
+umount -f -l ${_DIR%/}'
 }
 
 function f_s3fs() {
