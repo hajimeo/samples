@@ -337,11 +337,12 @@ function f_setup_java() {
     [[ "${_v}" =~ ^[678]$ ]] && _ver="1.${_v}"
 
     if [ "$(uname)" = "Darwin" ]; then
-        brew tap adoptopenjdk/openjdk
         if [ -z "${_v}" ]; then
-            brew cask install java
+            brew install java
         else
-            brew cask install adoptopenjdk${_v}
+            brew tap adoptopenjdk/openjdk
+            #brew search adoptopenjdk
+            brew install adoptopenjdk${_v}
         fi
         #/usr/libexec/java_home -v ${_v}
     elif [ -z "${_v}" ]; then
