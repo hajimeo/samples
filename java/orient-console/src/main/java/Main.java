@@ -10,10 +10,19 @@
  * echo "query1;query2" | java -jar orient-console.jar <directory path|.bak file path>
  */
 
+/*
+TODO: => DELETE FROM healthcheckconfig WHERE @rid in (SELECT rid FROM (SELECT MIN(@rid) as rid, property_name, COUNT(*) as c FROM healthcheckconfig GROUP BY property_name) WHERE c > 1)
+ java.lang.ClassCastException: java.lang.Integer cannot be cast to java.util.List
+	at Main.execQueries(Main.java:84)
+	at Main.readLineLoop(Main.java:141)
+	at Main.main(Main.java:277)
+ */
+
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.command.OCommandExecutorNotFoundException;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
+import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
@@ -75,18 +84,23 @@ public class Main {
     private static void execQueries(String input, ODatabaseDocumentTx db) {
         List<String> queries = Arrays.asList(input.split(";"));
         for (int i = 0; i < queries.size(); i++) {
+            Instant start = Instant.now();
             try {
                 String q = queries.get(i);
                 if (q == null || q.isEmpty()) {
                     continue;
                 }
-                Instant start = Instant.now();
                 final List<ODocument> results = db.command(new OCommandSQL(q)).execute();
-                Instant finish = Instant.now();
                 printListAsJson(results);
+                Instant finish = Instant.now();
+                long timeElapsed = Duration.between(start, finish).toMillis();
+                System.err.printf("Rows: %d, Elapsed: %d ms\n", results.size(), timeElapsed);
+            } catch (java.lang.ClassCastException e) {
+                System.err.println(e.getMessage());
+                Instant finish = Instant.now();
                 long timeElapsed = Duration.between(start, finish).toMillis();
                 System.err.printf("Elapsed: %d ms\n", timeElapsed);
-            } catch (OCommandExecutorNotFoundException | OCommandSQLParsingException ex) {
+            } catch (OCommandSQLParsingException | OCommandExecutionException ex) {
                 // TODO: why it's so hard to remove the last history with jline3? items should be exposed.
                 removeLine(input);
                 history.load();
@@ -197,7 +211,8 @@ public class Main {
     private static LineReader setupReader() throws IOException {
         terminal = TerminalBuilder
             .builder()
-            .dumb(true)
+            .system(true)
+            //.dumb(true)
             .build();
         history = new DefaultHistory();
         historyPath = System.getProperty("user.home") + "/.orient-console_history";
