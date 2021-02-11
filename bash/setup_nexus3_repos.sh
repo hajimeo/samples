@@ -516,7 +516,7 @@ function f_create_s3_blobstore() {
     local _region="${3:-"ap-southeast-2"}"
     local _ak="${4:-${_AWS_ACCESS_KEY}}"
     local _sk="${5:-${_AWS_SECRET_KEY}}"
-    local _prefix="${6:-$(hostname -s)}"    # cat /etc/machine-id is not perfect if docker container
+    local _prefix="${6:-"$(hostname -s)_${_blob_name}"}"    # cat /etc/machine-id is not perfect if docker container
     # NOTE 3.27 has ',"state":""'
     if ! f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_blob_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix}'","expiration":"2","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
         _log "ERROR" "Blobstore ${_blob_name} does not exist."
