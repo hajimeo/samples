@@ -462,9 +462,11 @@ function backupC() {
         if [[ "${_dst}" =~ @ ]]; then
             rsync -Pvaz --bwlimit=10240 --max-size=10000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
         elif [ "${_dst:0:1}" == "/" ]; then
-            [ -d "${_dst%/}" ] || return 1  #mkdir -p "${_dst%/}"
-            # if (looks like) local disk, slightly larger size, and no -z, no --bwlimit
-            rsync -Pva --max-size=30000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
+            #mkdir -p "${_dst%/}"
+            if [ -d "${_dst%/}" ]; then
+                # if (looks like) local disk, slightly larger size, and no -z, no --bwlimit
+                rsync -Pva --max-size=30000k --modify-window=1 --exclude '*_tmp' --exclude '_*' ${_src%/}/ ${_dst%/}/
+            fi
         fi
     fi
 
