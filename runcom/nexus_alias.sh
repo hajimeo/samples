@@ -77,7 +77,7 @@ function iqMvn() {
 }
 
 function iqHds() {
-    local _component_identifier="$1"
+    local _component_identifier="$1"    # {"format":"pypi","coordinates":{"extension":"zip","name":"apache-beam","qualifier":"","version":"2.8.0"}}
     local _fp="${2:-"${_NEXUS_FP}"}"    #~/.bashrc
     [ -z "${_fp}" ] && return 11
     if [[ "${_component_identifier}" =~ ^([^:]+):([^:]+):([^:]+)$ ]]; then
