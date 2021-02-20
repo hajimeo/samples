@@ -3,5 +3,5 @@ strict-ssl=false
 email=npmtest@example.com
 registry=http://dh1.standalone.localdomain:8081/repository/npm-group/
 ;always-auth=true
-;base64 of admin admin123
+; _auth needs to use base64, so for example, admin admin123
 _auth="YWRtaW46YWRtaW4xMjM="
