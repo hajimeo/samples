@@ -1,9 +1,7 @@
+;npmrc example
 strict-ssl=false
-email=hosako@sonatype.com
+email=npmtest@example.com
 registry=http://dh1.standalone.localdomain:8081/repository/npm-group/
 ;always-auth=true
+;base64 of admin admin123
 _auth="YWRtaW46YWRtaW4xMjM="
-; Nexus User Token (hosako)
-;_auth="R2tYWnN1WWQ6Q2U0UHk2TjZiUnpIZzFjdnV5SEM3ZDg4SzJ6QW1vckRHZlBMcnRTYXVMR3Y="
-; npm adduser | npm login (npm bearer token)
-;//dh1.standalone.localdomain:8081/repository/npm-group/:_authToken=NpmToken.d9009f09-292c-37c8-99f5-e97023ea8b12
