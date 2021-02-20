@@ -21,16 +21,3 @@ Host node* *.localdomain localhost
   #IdentityFile /path/to/root/id_rsa
   User root
 
-Host *.compute.amazonaws.com
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-  IdentityFile /Users/hosako/.ssh/aws_hosako-kp.pem
-
-Host osakos.com *.osakos.com
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-  # NOTE: $HOME wouldn't work
-  IdentityFile ~/.ssh/hajime_id_rsa
-  User hajime
-  # To not show Warning: Permanently added (QUIET?) ...
-  LogLevel ERROR
