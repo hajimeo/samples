@@ -7,6 +7,7 @@ Host 10.* 172.* 192.168.* *.localdomain node* localhost
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
   User root
-  #IdentityFile /path/to/root/id_rsa
+  # example of identity file path. $HOME didn't work
+  #IdentityFile ~/.ssh/id_rsa
   # To not show "Warning: Permanently added ..." (is QUIET better?)
   LogLevel ERROR
