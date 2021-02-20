@@ -12,8 +12,7 @@
       <username>admin</username>
       <password>admin123</password>
       <!-- https://maven.apache.org/guides/mini/guide-encryption.html -->
-      <!--password>{geVfoESt88cHvvQUUIMu1vDwc/PxCjMt0zlwy/8sMJo=}</password-->
-      <!--password>{g9UvVDAvg2YHCt6hUa4y/GxJZgXGlhl74THbWOURh0Q=}</password-->
+      <!--password>{curly_braces+some base64 strings}</password-->
     </server>
   </servers>
   <!--localRepository>./m2_repo</localRepository-->
@@ -21,8 +20,6 @@
     <mirror>
       <id>nexus</id>
       <mirrorOf>*</mirrorOf>
-      <!--url>http://localhost:8081/repository/maven-central</url-->
-      <!--url>http://dh1.standalone.localdomain:8081/repository/maven-group-rso</url-->
       <url>http://dh1.standalone.localdomain:8081/repository/maven-central</url>
     </mirror>
   </mirrors>
