@@ -1,23 +1,12 @@
 Host *
+  # example of keeping pinging server (eg: Azure)
   ServerAliveInterval 20
 
 Host 10.* 172.* 192.168.* *.localdomain node* localhost
   #ForwardAgent yes
   StrictHostKeyChecking no
   UserKnownHostsFile /dev/null
-  LogLevel QUIET
-
-Host *.cloudapp.net
-  ServerAliveInterval 20
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-
-Host dh1 dockerhost1
-  User hosako
-
-Host node* *.localdomain localhost
-  StrictHostKeyChecking no
-  UserKnownHostsFile /dev/null
-  #IdentityFile /path/to/root/id_rsa
   User root
-
+  #IdentityFile /path/to/root/id_rsa
+  # To not show "Warning: Permanently added ..." (is QUIET better?)
+  LogLevel ERROR
