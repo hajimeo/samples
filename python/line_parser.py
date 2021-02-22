@@ -4,7 +4,10 @@
 # line_parser.py func_name_without_lb_ [args] < some_file.txt
 # echo 'YYYY-MM-DDThh:mm:ss,sss current_line_num' | line_parser.py thread_num ${_last_line_num} | bar_chart.py -A
 # echo 'YYYY-MM-DD hh:mm:ss,sss some_log_text' | line_parser.py time_diff
-# rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d).+ (some log msg.+)' -o -r '$1 $2' some_file.log | line_parser.py time_diff > time_diff.csv
+#
+# Example: measuring AWS (PUT) request:
+# rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d).+com.amazonaws.request - (Sending Request:|Received)' ./log/tasks/some_task.log > aws_requets.log
+# rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d).+com.amazonaws.request - Sending Request: ([^ ]+)' -o -r '$1 $2' ./aws_requets.log | line_parser.py time_diff > time_diff.csv
 #
 # All functions need to use "lp_" prefix
 # TODO: should be a class
