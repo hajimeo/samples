@@ -6,14 +6,13 @@
 # echo 'YYYY-MM-DD hh:mm:ss,sss some_log_text' | line_parser.py time_diff
 #
 # Example: measuring AWS (PUT) request:
-# rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d).+com.amazonaws.request - (Sending Request:|Received)' ./log/tasks/some_task.log > aws_requets.log
-# rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d).+com.amazonaws.request - Sending Request: ([^ ]+)' -o -r '$1 $2' ./aws_requets.log | line_parser.py time_diff > time_diff.csv
+# rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d).+com.amazonaws.request - (Sending Request: [^ ]+|Received)' ./log/tasks/some_task.log -o -r '$1 $2' | line_parser.py time_diff "Y" > time_diff.csv
 #
 # All functions need to use "lp_" prefix
 # TODO: should be a class
 #
 
-import sys,dateutil.parser
+import sys,re,dateutil.parser
 from datetime import datetime
 
 _PREV_VALUE = ""
@@ -23,6 +22,7 @@ def lp_thread_num(line):
     """
     Read thread dumps generated from Scala and print the line number of <label>
     Expected line format: YYYY-MM-DDThh:mm:ss,sss current_line_num
+    NOTE: This method reads sys.argv[2] for the start_line_num
     :param line: String - currently reading line
     :return: void
     """
@@ -42,37 +42,48 @@ def lp_thread_num(line):
 
 def lp_time_diff(line):
     """
-    Read log files and print the time difference between previous line in Milliseconds
+    Read log files and print the time difference between *previous* line in Milliseconds
     Expected line format: ^YYYY-MM-DD hh:mm:ss,sss some_text (space between date and time)
     :param line: String - current reading line
     :return: void
     """
     global _PREV_VALUE
     global _PREV_LABEL
+    global _PREV_COL2
 
     if bool(line) is False:
         return
     #sys.stderr.write(line+"\n")
-    cols = line.strip().split(" ", 2)   # maxsplit 2 means cols length is 3...
+    cols = line.strip().split(" ", 2)   # NOTE: maxsplit 2 means cols length is 3...
     if len(cols) < 2:
         return
+
+    # False works when current line's col[2] contains good message.
+    flip_col2 = False
+    if (len(sys.argv) > 2) and bool(sys.argv[2]):
+        flip_col2 = True
+
     # Ignoring timezone
-    label = cols[0]+" "+cols[1]
-    label = label.split("+")[0] # removing "+\d\d\d\d"
+    date_time = cols[0]+" "+cols[1]
+    date_time = date_time.split("+")[0] # removing timezone "+\d\d\d\d"
     #sys.stderr.write(str(label)+"\n")
-    dt_obj = datetime.strptime(label, '%Y-%m-%d %H:%M:%S,%f')
-    current_timestamp_in_ms = int(dt_obj.timestamp() * 1000)
+    dt_obj = datetime.strptime(date_time, '%Y-%m-%d %H:%M:%S,%f')
+    timestamp_in_ms = int(dt_obj.timestamp() * 1000)
     #sys.stderr.write(str(_PREV_VALUE)+"\n")
     #sys.stderr.write(str(current_timestamp_in_ms)+"\n")
 
     if bool(_PREV_VALUE):
         if len(cols) > 2:
-            # TODO: cols[2] should escape doublequotes
-            print("\"%s\",%s,\"%s\"" % (label, (current_timestamp_in_ms - int(_PREV_VALUE)), cols[2].replace('"', '\\"')))
+            # should escape double-quotes on cols[2]
+            if flip_col2:
+                print("\"%s\",\"%s\",%s,\"%s\"" % (str(_PREV_LABEL), date_time, (timestamp_in_ms - int(_PREV_VALUE)), _PREV_COL2.replace('"', '\\"')))
+            else:
+                print("\"%s\",\"%s\",%s,\"%s\"" % (str(_PREV_LABEL), date_time, (timestamp_in_ms - int(_PREV_VALUE)), cols[2].replace('"', '\\"')))
         else:
-            print("\"%s\",%s" % (label, (current_timestamp_in_ms - int(_PREV_VALUE))))
-    _PREV_LABEL = label
-    _PREV_VALUE = current_timestamp_in_ms
+            print("\"%s\",\"%s\",%s" % (str(_PREV_LABEL), date_time, (timestamp_in_ms - int(_PREV_VALUE))))
+    _PREV_LABEL = date_time
+    _PREV_VALUE = timestamp_in_ms
+    _PREV_COL2 = cols[2]
 
 if __name__ == '__main__':
     func_name = sys.argv[1]
