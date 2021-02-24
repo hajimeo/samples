@@ -148,7 +148,13 @@ function sptBoot() {
             fi
             sed -i.bak 's/OBF:1v2j1uum1xtv1zej1zer1xtn1uvk1v1v/password/g' "${_nxrm2%/}/conf/jetty-https.xml"
             if ! grep -q 'wrapper.app.parameter.3' "${_nxrm2%/}/bin/jsw/conf/wrapper.conf"; then
-                sed -i.bak '/wrapper.app.parameter.2/a wrapper.app.parameter.3=./conf/jetty-https.xml' "${_nxrm2%/}/bin/jsw/conf/wrapper.conf"
+                if type _sed &>/dev/null; then
+                    _sed -i.bak '/wrapper.app.parameter.2/a wrapper.app.parameter.3=./conf/jetty-https.xml' "${_nxrm2%/}/bin/jsw/conf/wrapper.conf"
+                elif which gsed &>/dev/null; then
+                    gsed -i.bak '/wrapper.app.parameter.2/a wrapper.app.parameter.3=./conf/jetty-https.xml' "${_nxrm2%/}/bin/jsw/conf/wrapper.conf"
+                else
+                    sed -i.bak '/wrapper.app.parameter.2/a wrapper.app.parameter.3=./conf/jetty-https.xml' "${_nxrm2%/}/bin/jsw/conf/wrapper.conf"
+                fi
             fi
             grep -q "application-port-ssl" "${_nxrm2%/}/conf/nexus.properties" || echo "application-port-ssl=8443" >> "${_nxrm2%/}/conf/nexus.properties"
         fi
@@ -287,6 +293,14 @@ function mvn-add-snapshot-repo-in-pom() {
   </distributionManagement>"
 }
 
+function mvn-publish() {
+    local _remote_repo="${1}"
+    local _local_repo="${2}"
+    local _options="${3-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
+    [ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
+    mvn `_mvn_settings "${_remote_repo}"` clean package ${_options}
+}
+
 # Example to generate 10 versions / snapshots (NOTE: in bash heredoc, 'EOF' and just EOF is different)
 : <<'EOF'
 mvn-arch-gen; cd my-app
@@ -385,6 +399,16 @@ function mvn-resolve() {
     local _options=""
     [ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
     mvn `_mvn_settings "${_remote_repo}"` -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS dependency:resolve ${_options} -U -X
+}
+
+# mvn devendency:tree wrapper to use remote repo (not tested)
+function mvn-tree() {
+    # maven/mvn resolve dependency only
+    local _remote_repo="$1"
+    local _local_repo="$2"
+    local _options="-Dverbose"
+    [ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
+    mvn `_mvn_settings "${_remote_repo}"` -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS dependency:tree ${_options} -U -X
 }
 
 function _mvn_settings() {
