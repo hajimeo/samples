@@ -2,7 +2,8 @@
 # curl -o /var/tmp/share/test_https.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/test_https.sh
 #
 # Useful Java flags (NOTE: based on java 8)
-#   -Dcom.sun.net.ssl.checkRevocation=false                         # to avoid hostname error
+#   -Dcom.sun.net.ssl.checkRevocation=false                         # to avoid hostname error (not same as curl -k)
+#
 #   -Dcom.sun.jndi.ldap.object.disableEndpointIdentification=true   # for LDAPS
 #   -Djavax.net.ssl.trustStoreType=WINDOWS-ROOT                     # to use Windows OS truststore
 #   ‑Djdk.tls.client.protocols="TLSv1,TLSv1.1,TLSv1.2"              # to specify client protocol
@@ -165,8 +166,8 @@ function gen_p12_jks() {
     local _srv_key="$1"
     local _srv_crt="$2"
     local _full_ca_crt="$3"
-    local _pass="${4-password}" # in file password can be empty
-    local _new_pass="${5:-${_pass:-"password"}}"
+    local _pass="${4-"password"}" # in file password can be empty
+    local _store_pass="${5:-"password"}"
     local _name="$6"
     if [ -z "${_name}" ]; then
         local _basename="$(basename ${_srv_crt})"
@@ -174,22 +175,26 @@ function gen_p12_jks() {
     fi
 
     local _pass_arg=""
-    [ -n "${_pass}" ] && _pass_arg="-passin 'pass:${_pass}'"
-    if [ -n "${_full_ca_crt}" ]; then
-        # NOTE: If intermediate CA is used (TODO: does order matter?)
-        #cat root.cer intermediate.cer > full_ca.cer
-        openssl pkcs12 -export -chain -CAfile ${_full_ca_crt} -in ${_srv_crt} -inkey ${_srv_key} -name ${_name} -out ${_name}.p12 ${_pass_arg} -passout "pass:${_new_pass}"
-    else
-        openssl pkcs12 -export -in ${_srv_crt} -inkey ${_srv_key} -name ${_name} -out ${_name}.p12 ${_pass_arg} -passout "pass:${_new_pass}"
-    fi || return $?
-    # Verify
-    if which keytool &>/dev/null; then
-        keytool -list -keystore ${_name}.p12 -storetype PKCS12 -storepass "${_new_pass}" || return $?
-        # Also, if .jks is needed, converting p12 to jks with importkeystore:
-        keytool -importkeystore -srckeystore ${_name}.p12 -srcstoretype PKCS12 -srcstorepass "${_new_pass}" -destkeystore ${_name}.jks -deststoretype JKS -deststorepass "${_new_pass}"
-        # NOTE: to convert from .jks to .p12
-        #keytool -importkeystore -srckeystore ${_name}.jks -deststoretype JKS -srcstorepass "${_new_pass}" -destkeystore ${_name}.p12 -deststoretype PKCS12 -srcstorepass "${_new_pass}"
+    [ -n "${_pass}" ] && _pass_arg="-passin \"pass:${_pass}\""
+    local _chain=""
+    [ -n "${_full_ca_crt}" ] && _chain="-chain -CAfile ${_full_ca_crt}"
+    # NOTE: If intermediate CA is used, cat root.cer intermediate.cer > full_ca.cer (TODO: does order matter?)
+    # TODO: at this moment, the password sets on .key file will be lost.
+    local _cmd="openssl pkcs12 -export ${_chain} -in ${_srv_crt} -inkey ${_srv_key} -name ${_name} -out ${_name}.p12 ${_pass_arg} -passout \"pass:${_store_pass}\""
+    eval "${_cmd}" || return $?
+    if ! which keytool &>/dev/null; then
+        echo "To generate JKS, require keytool"
+        return 1
     fi
+
+    # Test / verify P12:
+    keytool -list -keystore ${_name}.p12 -storetype PKCS12 -storepass "${_store_pass}" || return $?
+    # Also, if .jks is needed, converting p12 to jks with importkeystore:
+    keytool -importkeystore -srckeystore ${_name}.p12 -srcstoretype PKCS12 -srcstorepass "${_store_pass}" -destkeystore ${_name}.jks -deststoretype JKS -deststorepass "${_store_pass}"
+    # NOTE: to convert from .jks to .p12
+    #keytool -importkeystore -srckeystore ${_name}.jks -deststoretype JKS -srcstorepass "${_store_pass}" -destkeystore ${_name}.p12 -deststoretype PKCS12 -srcstorepass "${_store_pass}"
+    # Test / verify JKS:
+    keytool -list -keystore ${_name}.jks -storetype JKS -storepass "${_store_pass}" -keypass "${_pass:-${_store_pass}}" # -alias <value_of_certAlias>
 }
 
 # NOTE: this will ask a store password
@@ -198,6 +203,27 @@ function rename_alias() {
     local _crt_alias="$2"
     local _new_alias="$3"
     keytool -changealias -keystore "${_keystore}" -alias "${_crt_alias}" -destalias "${_new_alias}"
+}
+
+function change_storepassword() {
+    local _keystore="$1"
+    local _crt_pwd="$2"
+    local _new_pwd="$3"
+    # TODO: does this work with keypass?
+    keytool -storepasswd -keystore "${_keystore}" -storepass "${_crt_pwd}" -new "${_new_pwd}"
+}
+
+function change_rsa_key_password() {
+    local _rsa_pem_file="$1"
+    local _new_file="$2"
+    local _crt_pwd="$3"
+    local _new_pwd="$4"
+    local _pass_arg=""
+    [ -n "${_crt_pwd}" ] && _pass_arg="-passin 'pass:${_crt_pwd}'"
+    openssl rsa -aes256 -in "${_rsa_pem_file}" -out "${_new_file}" ${_pass_arg} -passout "pass:${_new_pwd}"
+    # test
+    ls -l ${_new_file}
+    openssl rsa -in "${_new_file}" -passin "pass:${_new_pwd}"
 }
 
 function start_https() {
@@ -289,9 +315,13 @@ print(cert.prettyPrint())"
     fi
 }
 
-# TODO: Keytool list -v check (certificate chain, subject, common name, valid from / to)
+# TODO: read keytool list -v to check/verify certificate chain, subject, common name, valid from / to
 function check_keytool_v_output() {
-    echo "TODO"
+    local _keytool="$(which keytool 2>/dev/null)"
+    [ -x "${JAVA_HOME%/}/bin/keytool" ] && _keytool="${JAVA_HOME%/}/bin/keytool"
+    echo "TODO
+    ${_keytool} -list -v -keystore <value_of_KeyStorePath> -storetype JKS -storepass <value_of_KeyStorePassword> -keypass <value_of_KeyManagerPassword> -alias <value_of_certAlias>
+    "
 }
 
 function get_certificate_from_https() {
