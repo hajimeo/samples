@@ -80,7 +80,7 @@ _ADMIN_PWD="admin123"
 _REPO_FORMATS="maven,pypi,npm,nuget,docker,helm,yum,rubygem,conan,conda,cocoapods,bower,go,apt,raw"
 ## Updatable variables
 _NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
-_IQ_CLI_VER="${_IQ_CLI_VER-"1.95.0-01"}"    # If empty, not download CLI jar
+_IQ_CLI_VER="${_IQ_CLI_VER-"1.106.0-01"}"    # If empty, not download CLI jar
 _DOCKER_NETWORK_NAME=${_DOCKER_NETWORK_NAME:-"nexus"}
 _DOCKER_CONTAINER_SHARE_DIR=${_DOCKER_CONTAINER_SHARE_DIR:-"/var/tmp/share"}
 _DOMAIN="${_DOMAIN:-"standalone.localdomain"}"
