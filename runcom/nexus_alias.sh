@@ -93,76 +93,6 @@ function iqHds() {
         -G --data-urlencode "componentIdentifier=${_component_identifier}" | python -m json.tool
 }
 
-function sptBoot() {
-    local _zip="${1}"
-    local _opts="${2}"    # If empty and NXRM, using "--noboot --convert-repos" (not --remote-debug)
-    pyv
-
-    [ -s $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ] || return 1
-    if [ -z "${_zip}" ]; then
-        _zip="$(ls -1 ./*-202?????-??????*.zip | tail -n1)" || return $?
-        echo "# Using ${_zip} ..."
-    fi
-
-    # some mods for HTTPS
-    if [ ! -s $HOME/.nexus_executable_cache/ssl/keystore.jks.orig ]; then
-        echo "# Replacing keystore.jks ..."
-        mv $HOME/.nexus_executable_cache/ssl/keystore.jks $HOME/.nexus_executable_cache/ssl/keystore.jks.orig
-        cp $HOME/IdeaProjects/samples/misc/standalone.localdomain.jks $HOME/.nexus_executable_cache/ssl/keystore.jks
-        echo "# Append 'local.standalone.localdomain' in 127.0.0.1 line in /etc/hosts."
-    fi
-
-    local _dir="./$(basename "${_zip}" .zip)_tmp"
-    if [ ! -d "${_dir}" ]; then
-        local _final_opts="${_opts}"
-        if unzip -t "${_zip}" | grep -q config.yml; then
-            # My iqStart does not work with "--noboot" because without boot, not loading any json files, so currently if IQ, may need to clear _opts
-            #_final_opts=""
-            echo "Probably IQ ..."
-        elif [ -z "${_opts}" ]; then
-            # If empty and NXRM, using "--noboot --convert-repos"
-            _final_opts="--noboot --convert-repos"
-        fi
-        python3 $HOME/IdeaProjects/nexus-toolbox/support-zip-booter/boot_support_zip.py ${_final_opts} "${_zip}" "${_dir}" || return $?
-    else
-        echo "# ${_dir} already exists. so just starting ..."
-    fi
-
-    if [[ "${_opts}" =~ noboot ]]; then
-        echo "# 'noboot' is specified, so not starting ..."
-        return
-    fi
-
-    local _nxiq="$(ls -d1 ${_dir%/}/nexus-iq-server-1* | tail -n1)"
-    if [ -n "${_nxiq}" ]; then
-        iqStart "${_dir}" ""
-    else
-        # Mods for NXRM2 HTTPS/SSL/TLS
-        local _nxrm2="$(ls -d1 ${_dir%/}/nexus-professional-2* | tail -n1)"
-        if [ -d "${_nxrm2%/}/conf" ] && [ ! -d "${_nxrm2%/}/conf/ssl" ] && [ -s $HOME/.nexus_executable_cache/ssl/keystore.jks ]; then
-            mkdir "${_nxrm2%/}/conf/ssl"
-            cp $HOME/.nexus_executable_cache/ssl/keystore.jks ${_nxrm2%/}/conf/ssl/
-
-            if [ ! -s "${_nxrm2%/}/conf/jetty-https.xml.orig" ]; then
-                cp -p "${_nxrm2%/}/conf/jetty-https.xml" "${_nxrm2%/}/conf/jetty-https.xml.orig"
-            fi
-            sed -i.bak 's/OBF:1v2j1uum1xtv1zej1zer1xtn1uvk1v1v/password/g' "${_nxrm2%/}/conf/jetty-https.xml"
-            if ! grep -q 'wrapper.app.parameter.3' "${_nxrm2%/}/bin/jsw/conf/wrapper.conf"; then
-                if type _sed &>/dev/null; then
-                    _sed -i.bak '/wrapper.app.parameter.2/a wrapper.app.parameter.3=./conf/jetty-https.xml' "${_nxrm2%/}/bin/jsw/conf/wrapper.conf"
-                elif which gsed &>/dev/null; then
-                    gsed -i.bak '/wrapper.app.parameter.2/a wrapper.app.parameter.3=./conf/jetty-https.xml' "${_nxrm2%/}/bin/jsw/conf/wrapper.conf"
-                else
-                    sed -i.bak '/wrapper.app.parameter.2/a wrapper.app.parameter.3=./conf/jetty-https.xml' "${_nxrm2%/}/bin/jsw/conf/wrapper.conf"
-                fi
-            fi
-            grep -q "application-port-ssl" "${_nxrm2%/}/conf/nexus.properties" || echo "application-port-ssl=8443" >> "${_nxrm2%/}/conf/nexus.properties"
-        fi
-        #export INSTALL4J_ADD_VM_PARAMS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"
-        nxrmStart "${_dir}" ""
-    fi
-}
-
 # To start local (on Mac) NXRM2 or NXRM3 server
 function nxrmStart() {
     local _base_dir="${1:-"."}"
@@ -278,7 +208,8 @@ function mvn-arch-gen() {
         #else
         #    _options="${_options% } -DoutputDirectory=${_output_dir}"
         #fi
-        mvn `_mvn_settings "${_remote_repo}"` archetype:generate -DgroupId=${_g} -DartifactId=${_a} -DarchetypeArtifactId=${_type} -DarchetypeVersion=${_v} -DinteractiveMode=false ${_options}
+        mvn `_mvn_settings "${_remote_repo}"` archetype:generate -DgroupId=${_g} -DartifactId=${_a} -DarchetypeArtifactId=${_type} -DarchetypeVersion=${_v} -DinteractiveMode=false ${_options} || return $?
+        cd ${_a}
     fi
 }
 
@@ -293,7 +224,7 @@ function mvn-add-snapshot-repo-in-pom() {
   </distributionManagement>"
 }
 
-function mvn-publish() {
+function mvn-package() {
     local _remote_repo="${1}"
     local _local_repo="${2}"
     local _options="${3-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
@@ -326,7 +257,7 @@ function mvn-deploy() {
     mvn `_mvn_settings "${_remote_repo}"` clean package deploy ${_options}
 }
 
-# mvn archetype:generate wrapper to use a remote repo
+#mvn-arch-gen && cd
 #mvn-dep-file httpclient-4.5.1.jar "com.example:my-app:1.0" "http://local.standalone.localdomain:8081/repository/maven-hosted/"
 #Test: get_by_gav "com.example:my-app:1.0" "http://local.standalone.localdomain:8081/repository/repo_maven_hosted/"
 function mvn-dep-file() {
