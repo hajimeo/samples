@@ -1,4 +1,4 @@
-# source <(curl https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh)
+# source <(curl https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_aliases.sh --compressed)
 
 ## Simple/generic alias commands (some need pip though) ################################################################
 # 'cd' to last modified directory

@@ -139,6 +139,7 @@ function nxrmDocker() {
     local _cmd="docker run -d -p ${_port}:8081 -p ${_port_ssl}:8443 ${_opts} sonatype/nexus3:${_tag}"
     echo "${_cmd}"
     eval "${_cmd}"
+    docker logs -f ${_name}
 }
 
 # To start local (on Mac) IQ server
