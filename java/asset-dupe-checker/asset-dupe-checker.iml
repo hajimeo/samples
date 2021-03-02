@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module org.jetbrains.idea.maven.project.MavenProjectsManager.isMavenModule="true" type="JAVA_MODULE" version="4">
+  <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_1_8">
+    <output url="file://$MODULE_DIR$/../asset-dupe-checker/target/classes" />
+    <output-test url="file://$MODULE_DIR$/../asset-dupe-checker/target/test-classes" />
+    <content url="file://$MODULE_DIR$/../asset-dupe-checker">
+      <sourceFolder url="file://$MODULE_DIR$/../asset-dupe-checker/src/main/java" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/../asset-dupe-checker/src/main/resources" type="java-resource" />
+      <sourceFolder url="file://$MODULE_DIR$/../asset-dupe-checker/src/test/java" isTestSource="true" />
+      <excludeFolder url="file://$MODULE_DIR$/../asset-dupe-checker/target" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="library" name="Maven: org.jline:jline:3.1.3" level="project" />
+    <orderEntry type="library" name="Maven: net.lingala.zip4j:zip4j:2.6.4" level="project" />
+    <orderEntry type="library" name="Maven: com.orientechnologies:orientdb-core:2.2.36" level="project" />
+    <orderEntry type="library" name="Maven: org.xerial.snappy:snappy-java:1.1.0.1" level="project" />
+    <orderEntry type="library" name="Maven: net.java.dev.jna:jna:4.5.0" level="project" />
+    <orderEntry type="library" name="Maven: net.java.dev.jna:jna-platform:4.5.0" level="project" />
+    <orderEntry type="library" name="Maven: com.googlecode.concurrentlinkedhashmap:concurrentlinkedhashmap-lru:1.4.2" level="project" />
+    <orderEntry type="library" scope="TEST" name="Maven: org.junit.jupiter:junit-jupiter-api:5.4.0" level="project" />
+    <orderEntry type="library" scope="TEST" name="Maven: org.apiguardian:apiguardian-api:1.0.0" level="project" />
+    <orderEntry type="library" scope="TEST" name="Maven: org.opentest4j:opentest4j:1.1.1" level="project" />
+    <orderEntry type="library" scope="TEST" name="Maven: org.junit.platform:junit-platform-commons:1.4.0" level="project" />
+  </component>
+</module>
