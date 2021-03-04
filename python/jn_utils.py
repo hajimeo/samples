@@ -1156,17 +1156,18 @@ def gantt(df, index_col="", start_col="min_dt", end_col="max_dt", width=8, name=
 def treeFromDf(df, name_ids, member_id, current="", level=0, indent=4, pad=" ", prefix="* ", mini=False):
     """
     Output tree like strings to stdout
-    :param df: DataFrame object
+    :param df: expecting DataFrame object, TODO: but list / dict should work too
     :param name_ids: column name(s), which is used to display the object name
     :param member_id: column name, which value contains members in python list like *strings*
-    :param current:
-    :param level:
-    :param indent:
-    :param pad:
-    :param prefix:
+    :param current: checking *from* particular name_id value
+    :param level: To avoid performance issue. 0 is unlimitted.
+    :param indent: for displaying
+    :param pad: character used for indent
+    :param prefix: strings used before line
     :param mini: Do not output first level lines which do not have any members
     :return: void
     #>>> df = ju.q("select recipe_name, repository_name, `attributes.group.memberNames` from t_db_repo")
+    #>>> treeFromDf(df, name_ids="repository_name,recipe_name", member_id="attributes.group.memberNames", pad=" ", prefix="- ")
     >>> d = [{"recipe_name":"nuget-group", "repository_name":"nuget-group", "attributes.group.memberNames":"['nuget-hosted']"}, {"recipe_name":"nuget-hosted", "repository_name":"nuget-hosted"}]
     >>> df = pd.DataFrame(data=d)
     >>> treeFromDf(df, "repository_name", "attributes.group.memberNames", pad="_", prefix="")
@@ -1189,13 +1190,13 @@ def treeFromDf(df, name_ids, member_id, current="", level=0, indent=4, pad=" ", 
         members = []
         opt_info = ""
         if len(name_ids_list) > 1:
-            opt_info += " ("
+            opt_info += " ["
             for i in range(len(name_ids_list)):
                 if i == 0:
                     continue
                 if name_ids_list[i] in row:
                     opt_info += row[name_ids_list[i]]
-            opt_info += ")"
+            opt_info += "]"
         if member_id in row and len(str(row[member_id])) > 0 and str(row[member_id]) != "nan":
             # members = json.loads(row[member_id])   # does not work with single-quotes
             members = ast.literal_eval(row[member_id])
