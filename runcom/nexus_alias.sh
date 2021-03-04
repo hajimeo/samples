@@ -8,14 +8,6 @@ if [ -z "${_WORK_DIR}" ]; then
     fi
 fi
 
-
-[ -s $HOME/IdeaProjects/nexus-toolbox/analyzer/analyze.py ] && alias sptZip="python3 $HOME/IdeaProjects/nexus-toolbox/analyzer/analyze.py"
-#[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py ] && alias sptZip3="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus3-support-zip.py"
-#[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus2-support-zip.py ] && alias sptZip2="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/analyze-nexus2-support-zip.py"
-[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/dump_nxrm3_groovy_scripts.py ] && alias sptDumpScript="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/dump_nxrm3_groovy_scripts.py"
-[ -s $HOME/IdeaProjects/samples/misc/blobpath.jar ] && alias blobpath="java -jar $HOME/IdeaProjects/samples/misc/blobpath.jar"
-
-
 # Start iq CLI
 function iqCli() {
     local __doc__="https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
@@ -24,7 +16,7 @@ function iqCli() {
     local _iq_app_id="${2:-${_IQ_APP_ID:-"sandbox-application"}}"
     local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
     local _iq_url="${4:-${_IQ_URL}}"
-    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.95.0-01"}}"
+    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.106.0-01"}}"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
     local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}"
 
@@ -139,7 +131,9 @@ function nxrmDocker() {
     local _cmd="docker run -d -p ${_port}:8081 -p ${_port_ssl}:8443 ${_opts} sonatype/nexus3:${_tag}"
     echo "${_cmd}"
     eval "${_cmd}"
-    docker logs -f ${_name}
+    echo "
+    docker exec -ti ${_name} cat /nexus-data/admin.password
+    docker logs -f ${_name}"
 }
 
 # To start local (on Mac) IQ server
