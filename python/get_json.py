@@ -170,7 +170,7 @@ if __name__ == '__main__':
     _in = sys.stdin.read()
     _debug("len(_in) %s " % (len(_in)))
     _d = get_json(json_str=_in, search_props=search_props, key_name=key_name, rtn_attrs=rtn_attrs, find_all=find_all)
-    _debug("len(_d) %s " % (len(_d)))
+    #_debug("len(_d) %s " % (len(_d)))
 
     if bool(_no_pprint):
         if type(_d) == list:
