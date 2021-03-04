@@ -25,7 +25,7 @@
       </tcp-ip>
       <aws enabled="false"/>
       <discovery-strategies>
-        <discovery-strategy enabled="true" class="com.hazelcast.spi.discovery.multicast.MulticastDiscoveryStrategy">
+        <discovery-strategy enabled="false" class="com.hazelcast.spi.discovery.multicast.MulticastDiscoveryStrategy">
           <properties>
             <property name="group">224.2.2.3</property>
             <property name="port">54327</property>
