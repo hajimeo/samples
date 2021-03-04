@@ -182,7 +182,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
                 t=ET.fromstring(saml_config['idpMetadata'].encode('utf-8'))
                 db_saml_idp_metadata += ET.tostring(t,pretty_print=True,encoding='unicode') + "\n"
             if 'mapping' in saml_config:
-                db_saml_idp_metadata += saml_config['mapping']
+                db_saml_idp_metadata += "<!-- mapping \n"+str(saml_config['mapping'])+"\n-->"
             if len(db_saml_idp_metadata) > 0:
                 with open("%s/db_saml_idp_metadata.xml" % dist, 'w') as f:
                     f.write(db_saml_idp_metadata)
