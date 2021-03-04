@@ -2,6 +2,10 @@ import json
 import re
 import sys
 
+def _debug(msg):
+    #sys.stderr.write("DEBUG: %s \n" % (str(msg)))
+    return
+
 def _update_dict_with_key(k, d, rtn_d):
     """
     Update the rtn_d (dit) with the given d (dict) by filtering with k (string) key|attribute
@@ -14,7 +18,7 @@ def _update_dict_with_key(k, d, rtn_d):
     if bool(rtn_d) is False:
         rtn_d = {}  # initialising
     if "\." not in k and k.find(".") > 0:
-        # sys.stderr.write(str(k) + "\n") # for debug
+        _debug(str(k) + "\n")
         # returning the value only if all keys in _kNs exist
         tmp_d = d
         _kNs = k.split(".")
@@ -35,20 +39,20 @@ def _update_dict_with_key(k, d, rtn_d):
         # rtn_d.update(tmp_d)
         # At this moment, using the given k as key rather than above
         rtn_d[k] = tmp_d
-        # sys.stderr.write(str(k) + " does not have backslash dot.\n") # for debug
+        _debug(str(k) + " does not have backslash dot.\n")
     elif "\." in k:
         _tmp_k = k.replace("\\", "")
         rtn_d[_tmp_k] = d[_tmp_k]
-        # sys.stderr.write(str(k) + " has backslash dot. ("+ str(_tmp_k) +"\n") # for debug
+        _debug(str(k) + " has backslash dot. ("+ str(_tmp_k) +"\n")
     elif k in d:
         rtn_d[k] = d[k]
-        # sys.stderr.write(str(k) + "\n") # for debug
+        _debug(str(k) + "\n")
     # else:
-    #    sys.stderr.write(str(k) + " not in dict\n") # for debug
+    #    _debug(str(k) + " not in dict")
     return rtn_d
 
 
-def get_json(filepath="", json_str="", search_props=None, key_name=None, rtn_attrs=None, find_all=False):
+def get_json(filepath="", json_str="", search_props=[], key_name=None, rtn_attrs=None, find_all=False):
     """
     Return JSON object by searching search_prop specified properties
     TODO: dirty and probably ineffcient
@@ -62,7 +66,7 @@ def get_json(filepath="", json_str="", search_props=None, key_name=None, rtn_att
     >>> get_json("", "{\"test\":\"test_result\"}", "test", "", "test")
     'test_result'
     """
-    m = ptn_k = None
+    ptn_k = None
     if bool(search_props) and type(search_props) != list:
         search_props = search_props.split(",")
     if bool(key_name):
@@ -76,42 +80,44 @@ def get_json(filepath="", json_str="", search_props=None, key_name=None, rtn_att
                 _d = json.load(f)
         else:
             _d = json.loads(json_str)
+            _debug("len(_d) = %d" % (len(_d)))
     except Exception as e:
-        sys.stderr.write("No JSON file found from: %s ...\n" % (str(filepath)))
+        _debug("No JSON file found from: %s ..." % (str(filepath)))
         pass
-    if bool(_d) is False or bool(search_props) is False:
+    if bool(_d) is False:
+        _debug("bool(_d) = %s" % (str(bool(_d))))
         return None
-    #sys.stderr.write("DEBUG: search_props = %s \n" % (str(search_props)))
+    _debug("search_props = %s " % (str(search_props)))
     for _p in search_props:
         if bool(_p) is False:
             continue
         if type(_d) == list:
-            #sys.stderr.write("DEBUG: _p = %s and _d is list \n" % (str(_p)))
+            _debug("_p = %s and _d is list " % (str(_p)))
             _p_name = None
             if bool(ptn_k):
                 # searching "key_name" : "some value"
-                #sys.stderr.write("DEBUG: _p = %s and regex = %s \n" % (str(_p), str("[\"]?(" + key_name + ")[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")))
+                _debug("_p = %s and regex = %s " % (str(_p), str("[\"]?(" + key_name + ")[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")))
                 m = ptn_k.search(_p)
                 if m:
                     _p_name = m.groups()[0]
                     _p = key_name
-                    #sys.stderr.write("DEBUG: _p = %s and _p_name = %s \n" % (str(_p), str(_p_name)))
+                    _debug("_p = %s and _p_name = %s " % (str(_p), str(_p_name)))
             _tmp_d = []
             for _dd in _d:
                 if _p not in _dd:
                     continue
-                ##sys.stderr.write("DEBUG:   _p = %s is in _dd and _dd[_p] = %s \n" % (str(_p), str(_dd[_p])))
+                _debug("  _p = %s is in _dd and _dd[_p] = %s " % (str(_p), str(_dd[_p])))
                 if bool(_p_name) is False:
-                    ##sys.stderr.write("DEBUG:   _p = %s is in _dd and _dd[_p] = %s and _p_name is False \n" % (str(_p), str(_dd[_p])))
+                    _debug("  _p = %s is in _dd and _dd[_p] = %s and _p_name is False " % (str(_p), str(_dd[_p])))
                     _tmp_d.append(_dd[_p])
                 elif _dd[_p] == _p_name:
-                    #sys.stderr.write("DEBUG:   _p = %s and _dd[_p] is _p_name (%s) \n" % (str(_p), str(_p_name)))
+                    _debug("  _p = %s and _dd[_p] is _p_name (%s) " % (str(_p), str(_p_name)))
                     _tmp_d.append(_dd)
                 if len(_tmp_d) > 0 and bool(find_all) is False:
-                    #sys.stderr.write("DEBUG: len(_tmp_d) = %s and find_all is False \n" % (str(len(_tmp_d))))
+                    _debug("len(_tmp_d) = %s and find_all is False " % (str(len(_tmp_d))))
                     break
             if bool(_tmp_d) is False:
-                #sys.stderr.write("DEBUG: bool(_tmp_d) is False \n")
+                _debug("bool(_tmp_d) is False ")
                 _d = None
                 break
             if len(_tmp_d) == 1:
@@ -119,11 +125,11 @@ def get_json(filepath="", json_str="", search_props=None, key_name=None, rtn_att
             else:
                 _d = _tmp_d
         elif _p in _d:
-            #sys.stderr.write("DEBUG: _p = %s is in _d \n" % (str(_p)))
+            _debug("_p = %s is in _d " % (str(_p)))
             _d = _d[_p]
             continue
         else:
-            #sys.stderr.write("DEBUG: _p = %s is not in _d and _d is not a list \n" % (str(_p)))
+            _debug("_p = %s is not in _d and _d is not a list " % (str(_p)))
             _d = None
             break
     if bool(rtn_attrs):
@@ -162,8 +168,9 @@ if __name__ == '__main__':
         _no_pprint = sys.argv[5]
 
     _in = sys.stdin.read()
+    _debug("len(_in) %s " % (len(_in)))
     _d = get_json(json_str=_in, search_props=search_props, key_name=key_name, rtn_attrs=rtn_attrs, find_all=find_all)
-    ##sys.stderr.write("DEBUG: len(_d) %s \n" % (len(_d)))
+    _debug("len(_d) %s " % (len(_d)))
 
     if bool(_no_pprint):
         if type(_d) == list:
