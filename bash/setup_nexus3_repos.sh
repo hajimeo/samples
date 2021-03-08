@@ -178,6 +178,13 @@ function f_setup_npm() {
     # add some data for xxxx-hosted
     f_upload_asset "${_prefix}-hosted" -F "npm.asset=@${_TMP%/}/lodash-4.17.19.tgz"
 
+    # If no xxxx-prop-hosted (proprietary), create it (from 3.30)
+    # https://help.sonatype.com/integrations/iq-server-and-repository-management/iq-server-and-nxrm-3.x/preventing-namespace-confusion
+    # https://help.sonatype.com/iqserver/managing/policy-management/reference-policy-set-v6
+    if ! _is_repo_available "${_prefix}-prop-hosted"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW_ONCE"},"component":{"proprietaryComponents":true},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-prop-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' && f_iq_quarantine "${_prefix}-proxy" # || return $? # this would fail if version is not 3.30
+    fi
+
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
         # Hosted first
