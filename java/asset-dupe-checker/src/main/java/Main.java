@@ -1,9 +1,12 @@
-/**
- * Simple Asset record duplicate checker
- * <p>
- * curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/asset-dupe-checker.jar" java -jar
- * asset-dupe-checker.jar <directory path|.bak file path> [permanent extract dir]
- * <p>
+/*
+ * Simple duplicate checker for Asset records
+ *
+ * curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/asset-dupe-checker.jar"
+ * java [-DextractDir=....] [-DrepoNames=xxx,yyy,zzz] -jar asset-dupe-checker.jar <directory path|.bak file path>
+ *
+ *    extractDir is the path string used when .bak file is given. If extractDir is empty, use tmp directory.
+ *    repoNames is the comma separated repository names to check these repositories only.
+ *
  * TODO: add tests
  */
 
@@ -20,6 +23,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 public class Main
@@ -27,9 +32,13 @@ public class Main
   private Main() {
   }
 
+  private static String getCurrentLocalDateTimeStamp() {
+    return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"));
+  }
+
   private static void log(String msg) {
     // TODO: proper logging
-    System.err.println(msg);
+    System.err.println("[" + getCurrentLocalDateTimeStamp() + "] " + msg);
   }
 
   private static void out(String msg) {
@@ -60,6 +69,7 @@ public class Main
       log(dirPath + " is not empty.");
       return false;
     }
+    // TODO: check if dirPath has enough space
     return true;
   }
 
@@ -109,12 +119,12 @@ public class Main
       System.exit(1);
     }
 
+    log("main() started.");
     String path = args[0];
     String connStr = "";
     String extDir = "";
     Path tmpDir = null;
 
-    // Preparing data (extracting zip if necessary)
     if ((new File(path)).isDirectory()) {
       if (!path.endsWith("/")) {
         // Somehow without ending /, OStorageException happens
@@ -123,8 +133,8 @@ public class Main
       connStr = "plocal:" + path + " admin admin";
     }
     else {
-      if (args.length > 1) {
-        extDir = args[1];
+      extDir = System.getProperty("extractDir", "");
+      if (!extDir.trim().isEmpty()) {
         if (!prepareDir(extDir)) {
           System.exit(1);
         }
@@ -140,8 +150,8 @@ public class Main
         }
       }
 
-      log("# unzip-ing " + path + " to " + extDir);
       try {
+        log("Unzip-ing " + path + " to " + extDir);
         unzip(path, extDir);
         if (!extDir.endsWith("/")) {
           // Somehow without ending /, OStorageException happens
@@ -164,39 +174,86 @@ public class Main
         db.open("admin", "admin");
         List<ODocument> docs = null;
 
+        // At this moment, probably not interested in the component count
         //docs = execQueries(db, "select count(*) as c from component");
         //out("Component count: " + docs.get(0).field("c"));
+
         docs = execQueries(db, "select count(*) as c from asset");
         Long ac = docs.get(0).field("c");
         out("Asset count: " + ac.toString());
+
+        // Just in case, counting browse_node
         docs = execQueries(db, "select count(*) as c from browse_node");
         out("Browse_node count: " + docs.get(0).field("c"));
         docs = execQueries(db,
-            "select name, indexDefinition from (select expand(indexes) from metadata:indexmanager) where name like '%_idx'");
-        out("Index length: " + docs.size() + " / 16");
-        docs = execQueries(db,
-            "select name, indexDefinition from (select expand(indexes) from metadata:indexmanager) where name like '%_idx'");
-        out("Index length: " + docs.size() + " / 16");
+            "select name, indexDefinition from (select expand(indexes) from metadata:indexmanager) where name like '%_idx' ORDER BY name");
+        out("Index count: " + docs.size() + " / 16");
 
-        boolean asset_checked = false;
-
-        // Looping to output the index names and sizes (count)
+        // Counting Indexes.
+        Long abn_idx_c = 0L;
+        Long abcn_idx_c = 0L;
         for (ODocument idx : docs) {
           String iname = idx.field("name");
           //out(idx.toString());
           List<ODocument> _idx_c = execQueries(db, "select count(*) as c from index:" + iname);
-          Long ic = _idx_c.get(0).field("c");
-          out("Index: " + iname + " count: " + ic.toString());
+          if (iname.equals("asset_bucket_name_idx")) {
+            abn_idx_c = _idx_c.get(0).field("c");
+          }
+          else if (iname.equals("asset_bucket_component_name_idx")) {
+            abcn_idx_c = _idx_c.get(0).field("c");
+          }
+          out("Index: " + iname + " count: " + _idx_c.get(0).field("c").toString());
+        }
 
-          if (!asset_checked && ((ODocument) idx.field("indexDefinition")).field("className").toString().equals("asset") && !ac.equals(ic)) {
-            List<ODocument> bkts = execQueries(db, "select from bucket");
-            for (ODocument bkt : bkts) {
-              String bname = bkt.field("repository_name");
-              log("Dupe check query started for bucket: " + bname);
-              List<ODocument> dups = execQueries(db,"SELECT FROM (SELECT list(@rid) as dupe_rids, max(@rid) as keep_rid, COUNT(*) as c FROM asset WHERE bucket.repository_name like '" + bname + "' GROUP BY bucket, component, name) WHERE c > 1 LIMIT 1000;");
-              log("Dupe check query completed for bucket: "+ bname);
+        // Current limitation/restriction: asset_bucket_name_idx is required (accept 10% difference as this is for estimation).
+        if (abn_idx_c > 0 && (abn_idx_c * 1.1) < ac) {
+          out("ERROR: asset_bucket_name_idx count is too small for this tool. Please rebuild asset_bucket_name_idx first.");
+          System.exit(1);
+        }
+
+        // Counting records per repository (alphabetical order)
+        List<ODocument> bkts =
+            execQueries(db, "select @rid as r, repository_name from bucket ORDER BY repository_name");
+        List<String> repo_names = Arrays.asList(System.getProperty("repoNames", "").split(","));
+
+        if (repo_names.size() == 0) {
+          long maxBytes = Runtime.getRuntime().maxMemory();
+          for (ODocument bkt : bkts) {
+            String q =
+                "select count(*) as c from index:asset_bucket_name_idx where key = [" +
+                    ((ODocument) bkt.field("r")).getIdentity().toString() + "]";
+            List<ODocument> c_per_bkt = execQueries(db, q);
+            String repoName = bkt.field("repository_name");
+            Long c = c_per_bkt.get(0).field("c");
+            out("Repository: " + bkt.field("repository_name") + " count: " + c.toString());
+            // super rough estimate. Just guessing one record uses 2kb. If asset_bucket_name_idx is broken, less accurate.
+            if (maxBytes < (c * 1024 * 2)) {
+              out("WARN: Heap size:" + maxBytes + " may not be enough so not checking " + repoName);
             }
-            asset_checked = true;
+            else if (c == 0) {
+              log("No record for " + repoName + ", so skipping.");
+            }
+            else {
+              repo_names.add(repoName);
+            }
+          }
+        }
+        else {
+          log("Repository names: " + repo_names.toString() +
+              " are provided so that not checking the record counts per repo.");
+        }
+
+        if (!ac.equals(abcn_idx_c)) {
+          for (String repo_name : repo_names) {
+            log("Dupe check query started for repository: " + repo_name);
+            List<ODocument> dups = execQueries(db,
+                "SELECT FROM (SELECT list(@rid) as dupe_rids, max(@rid) as keep_rid, COUNT(*) as c FROM asset WHERE bucket.repository_name like '" +
+                    repo_name + "' GROUP BY bucket, component, name) WHERE c > 1 LIMIT 1000;");
+            log("Dupe check query completed for repository: " + repo_name + " with the result size: " + dups.size());
+            for (ODocument doc : dups) {
+              log(doc.toJSON());
+              // TODO: output TRUNCATE RECORD statements. May need to use .getIdentity().toString()
+            }
           }
         }
       }
@@ -205,6 +262,7 @@ public class Main
       }
     }
 
+    log("main() completed.");
     // Cleaning up the temp dir if used
     delR(tmpDir);
   }
