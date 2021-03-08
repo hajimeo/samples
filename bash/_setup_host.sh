@@ -1166,6 +1166,7 @@ function f_dnsmasq() {
         rm -f /etc/resolv.conf
         echo 'nameserver 127.0.0.1' >/etc/resolv.conf
         _warn "systemctl disable systemd-resolved was run. Please reboot"
+        [ -s /etc/rc.local ] && _insert_line /etc/rc.local "sed -i 's/127.0.0.53/127.0.0.1/' /etc/resolv.conf" "exit 0"
     fi
     # TODO: To avoid "Ignoring query from non-local network" message:
     grep 'local-service' /etc/init.d/dnsmasq
