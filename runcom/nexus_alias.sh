@@ -145,6 +145,7 @@ function iqStart() {
     [ -z "${_jar_file}" ] && return 11
     local _cfg_file="$(realpath "$(dirname "${_jar_file}")/config.yml")"
     [ -z "${_cfg_file}" ] && return 12
+    grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://localhost:8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
     grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.bak -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
     cd "${_base_dir}"
