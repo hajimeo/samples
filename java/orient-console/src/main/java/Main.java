@@ -84,26 +84,28 @@ public class Main {
     private static void execQueries(String input, ODatabaseDocumentTx db) {
         List<String> queries = Arrays.asList(input.split(";"));
         for (int i = 0; i < queries.size(); i++) {
+            String q = queries.get(i);
+            if (q == null || q.isEmpty()) {
+                continue;
+            }
+
             Instant start = Instant.now();
             try {
-                String q = queries.get(i);
-                if (q == null || q.isEmpty()) {
-                    continue;
-                }
                 final List<ODocument> results = db.command(new OCommandSQL(q)).execute();
                 printListAsJson(results);
-                Instant finish = Instant.now();
-                long timeElapsed = Duration.between(start, finish).toMillis();
-                System.err.printf("Rows: %d, Elapsed: %d ms\n", results.size(), timeElapsed);
+                System.err.printf("Rows: %d, ", results.size());
             } catch (java.lang.ClassCastException e) {
+                // TODO: 'EXPLAIN' causes com.orientechnologies.orient.core.record.impl.ODocument cannot be cast to java.util.List
                 System.err.println(e.getMessage());
-                Instant finish = Instant.now();
-                long timeElapsed = Duration.between(start, finish).toMillis();
-                System.err.printf("Elapsed: %d ms\n", timeElapsed);
+                e.printStackTrace();
             } catch (OCommandSQLParsingException | OCommandExecutionException ex) {
                 // TODO: why it's so hard to remove the last history with jline3? items should be exposed.
                 removeLine(input);
                 history.load();
+            } finally {
+                Instant finish = Instant.now();
+                long timeElapsed = Duration.between(start, finish).toMillis();
+                System.err.printf("Elapsed: %d ms\n", timeElapsed);
             }
         }
     }
