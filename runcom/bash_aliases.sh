@@ -22,6 +22,7 @@ alias diffY="diff -wy --suppress-common-lines"
 which mdfind &>/dev/null && alias mdfindL="mdfind kMDItemFSName="
 # Configure .ssh/config. Not using -f and autossh
 alias s5proxy='netstat -tln | grep -E ":38080\s+" || ssh -4gC2TxnN -D38080'
+alias noalnum='tr -cd "[:alnum:]._-"'
 
 ## Git #################################################################################################################
 # Show current tag
@@ -418,7 +419,7 @@ function pgStart() {
     # To connect: psql template1
 }
 
-# Start a dummy web server
+# Start a dummy web server (can be used as webhook receiver (TODO: return is not right))
 function ncWeb() {
     local _port="${1:-"2222"}"
     local _http_status="${2:-"200 OK"}" # 400 Bad Request
