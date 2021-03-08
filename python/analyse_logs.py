@@ -49,7 +49,7 @@ def _gen_regex_for_app_logs(filepath=""):
     :param filepath: A file path or a file name or *simple* pattern used in glob to select files.
     :param checking_line: Based on this line, columns and regex will be decided
     :return: (col_list, pattern_str)
-    2020-01-03 00:00:38,357-0600 WARN  [qtp1359575796-407871] anonymous org.sonatype.nexus.proxy.maven.maven2.M2GroupRepository - IOException during parse of metadata UID="oracle:/junit/junit-dep/maven-metadata.xml", will be skipped from aggregation!
+    NOTE: TODO: gz file such as request-2021-03-02.log.gz won't be recognised.
     """
     # If filepath is not empty but not exist, assuming it as a glob pattern
     if bool(filepath) and os.path.isfile(filepath) is False:
@@ -60,12 +60,12 @@ def _gen_regex_for_app_logs(filepath=""):
 
     # Default and in case can't be identified
     columns = ['date_time', 'loglevel', 'message']
-    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +(.+)'
+    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +(.+)'
 
     checking_line = None
-    for i in range(1, 10):
+    for i in range(1, 100): # 10 was not enough
         checking_line = linecache.getline(filepath, i)
-        if re.search('^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*)', checking_line):
+        if re.search('^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d)', checking_line):
             break
     if bool(checking_line) is False:
         ju._info("Could not determine columns and pattern_str. Using default.")
@@ -73,11 +73,11 @@ def _gen_regex_for_app_logs(filepath=""):
     ju._debug(checking_line)
 
     columns = ['date_time', 'loglevel', 'thread', 'node', 'user', 'class', 'message']
-    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]*) ([^ ]+) - (.*)'
+    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]*) ([^ ]+) - (.*)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
     columns = ['date_time', 'loglevel', 'thread', 'user', 'class', 'message']
-    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)'
+    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
     return (columns, partern_str)
@@ -414,3 +414,6 @@ WHERE thread_name not like '%InstrumentedSelectChannelConnector%'
     #  AND nextFireTime > 1578290830000
     # ORDER BY nextFireTime
     # """)
+
+    # Join requests with nexus.log
+    #ju.q("""SELECT * FROM t_request JOIN (SELECT '02/Mar/2021:'||strftime('%H:%M:%S', date_time)||' -0800' as req_datetime, thread FROM t_nxrm_logs where message like '%Connection reset by peer%') t ON t_request.date = t.req_datetime and t_request.thread = t.thread""")
