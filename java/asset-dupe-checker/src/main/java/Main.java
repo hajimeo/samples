@@ -243,7 +243,7 @@ public class Main
             Long c = c_per_bkt.get(0).field("c");
             log("Repository: " + bkt.field("repository_name") + " estimated count: " + c.toString());
             // super rough estimate. Just guessing one record would use 3KB (+1GB).
-            long estimateMb = (c * 3 * 1024) + 1024;
+            long estimateMb = (c * 3) / 1024 + 1024;
             if (maxMb < estimateMb) {
               out("-- [WARN] Heap: " + maxMb + "MB may not be enough for " + repoName + " (estimate: " + estimateMb +"MB).");
               repo_names_skipped.add(repoName);
