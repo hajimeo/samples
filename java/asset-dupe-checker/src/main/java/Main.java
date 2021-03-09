@@ -229,7 +229,7 @@ public class Main
             System.exit(1);
           }
 
-          long maxBytes = Runtime.getRuntime().maxMemory();
+          long maxMb = Runtime.getRuntime().maxMemory() / 1024 / 1024;
           for (ODocument bkt : bkts) {
             String q =
                 "select count(*) as c from index:asset_bucket_name_idx where key = [" +
@@ -238,9 +238,10 @@ public class Main
             String repoName = bkt.field("repository_name");
             Long c = c_per_bkt.get(0).field("c");
             log("Repository: " + bkt.field("repository_name") + " estimated count: " + c.toString());
-            // super rough estimate. Just guessing one record uses 2KB (+1GB).
-            if (maxBytes < ((c * 2048) + (1024 * 1024 * 1024))) {
-              log("[WARN] Skipping " + repoName + " as Heap size:" + maxBytes + " may not be enough.");
+            // super rough estimate. Just guessing one record would use 3KB (+1GB).
+            long estimateMb = (c * 3 * 1024) + 1024;
+            if (maxMb < estimateMb) {
+              out("-- [WARN] Heap: " + maxMb + "MB may not be enough for " + repoName + " (estimate: " + estimateMb +"MB).");
               repo_names_skipped.add(repoName);
             }
             else if (c == 0) {
@@ -271,7 +272,7 @@ public class Main
               List<ORecordId> dupe_rids = doc.field("dupe_rids");
               for (ORecordId dr : dupe_rids) {
                 if (!dr.getIdentity().toString().equals(keep_rid.getIdentity().toString())) {
-                  out("TRUNCATE RECORD " + dr +";");
+                  out("TRUNCATE RECORD " + dr + ";");
                   is_dupe_found = true;
                 }
               }
@@ -285,7 +286,8 @@ public class Main
         }
 
         if (repo_names_skipped.size() > 0) {
-          out("-- [WARN] Skipped repositories: "+repo_names_skipped.toString());
+          out("-- [WARN] Skipped repositories: " + repo_names_skipped.toString() +
+              ".\nTo force, rerun with -Xmx*g -DrepoNames=xxx,yyy,zzz");
         }
       }
       catch (Exception e) {
