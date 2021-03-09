@@ -3,11 +3,11 @@
  *
  * java [-DextractDir=....] [-DrepoNames=xxx,yyy,zzz] -jar asset-dupe-checker.jar <directory path|.bak file path> | tee sset-dupe-checker.out
  *
- *    extractDir is the path used when a .bak file is given. If extractDir is empty, use the tmp directory and the extracted data will be deleted on exit.
- *    repoNames is a comma separated repository names to check these repositories only.
  *    This command outputs fixing SQL statements in STDOUT.
+ *    "extractDir" is the path used when a .bak file is given. If extractDir is empty, use the tmp directory and the extracted data will be deleted on exit.
+ *    "repoNames" is a comma separated repository names to check these repositories only.
  *
- * TODO: add tests. Cleanup the code (main)...
+ * TODO: add tests. Cleanup the code (main)..., convert to Groovy.
  */
 
 import com.orientechnologies.orient.core.Orient;
