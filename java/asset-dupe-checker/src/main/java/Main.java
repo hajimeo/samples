@@ -1,6 +1,7 @@
 /*
  * (PoC) Simple duplicate checker for Asset records
  *
+ * curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/asset-dupe-checker.jar"
  * java -Xmx4g -XX:MaxDirectMemorySize=4g [-DextractDir=./path] [-DrepoNames=xxx,yyy,zzz] -jar asset-dupe-checker.jar <component directory path|.bak file path> | tee asset-dupe-checker.sql
  *
  *    This command outputs fixing SQL statements in STDOUT.
@@ -8,9 +9,6 @@
  *    "repoNames" is a comma separated repository names to check these repositories only.
  *
  * TODO: add tests. Cleanup the code (main)..., convert to Groovy.
- *
- * Optional JVM flags:
- *  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=/tmp/  # for troubleshooting OOME.
  */
 
 import com.orientechnologies.orient.core.Orient;
