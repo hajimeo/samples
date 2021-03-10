@@ -1,7 +1,7 @@
 /*
  * (PoC) Simple duplicate checker for Asset records
  *
- * java -Xmx4g -XX:MaxDirectMemorySize=4g [-DextractDir=./path] [-DrepoNames=xxx,yyy,zzz] -jar asset-dupe-checker.jar <directory path|.bak file path> | tee asset-dupe-checker.sql
+ * java -Xmx4g -XX:MaxDirectMemorySize=4g [-DextractDir=./path] [-DrepoNames=xxx,yyy,zzz] -jar asset-dupe-checker.jar <component directory path|.bak file path> | tee asset-dupe-checker.sql
  *
  *    This command outputs fixing SQL statements in STDOUT.
  *    "extractDir" is the path used when a .bak file is given. If extractDir is empty, use the tmp directory and the extracted data will be deleted on exit.
@@ -119,51 +119,43 @@ public class Main
 
   public static void main(final String[] args) throws IOException {
     if (args.length < 1) {
-      System.out.println("Usage: java -jar asset-dupe-checker.jar <directory path|.bak file path> [extract dir]");
+      System.out.println(
+          "Usage: java -Xmx4g -XX:MaxDirectMemorySize=4g -jar asset-dupe-checker.jar <component directory path> | tee asset-dupe-checker.sql");
       System.exit(1);
     }
 
-    log("main() started.");
     String path = args[0];
     String connStr = "";
     Path tmpDir = null;
     String extDir = System.getProperty("extractDir", "");
     String repoNames = System.getProperty("repoNames", "");
+    List<ODocument> docs = null;
+    Long abn_idx_c = 0L;
+    Long abcn_idx_c = 0L;
+    boolean is_dupe_found = false;
+    List<String> repo_names = new ArrayList<String>();
+    List<String> repo_names_skipped = new ArrayList<String>();
 
-    if ((new File(path)).isDirectory()) {
-      if (!path.endsWith("/")) {
-        // Somehow without ending /, OStorageException happens
-        path = path + "/";
-      }
-      connStr = "plocal:" + path + " admin admin";
-    }
-    else {
-      if (!extDir.trim().isEmpty()) {
-        if (!prepareDir(extDir)) {
-          System.exit(1);
+    log("main() started.");
+
+    if (!(new File(path)).isDirectory()) {
+      try {
+        if (!extDir.trim().isEmpty()) {
+          if (!prepareDir(extDir)) {
+            System.exit(1);
+          }
         }
-      }
-      else {
-        try {
+        else {
           tmpDir = Files.createTempDirectory(null);
           tmpDir.toFile().deleteOnExit();
           extDir = tmpDir.toString();
         }
-        catch (IOException e) {
-          throw new RuntimeException(e);
-        }
-      }
 
-      try {
         log("Unzip-ing " + path + " to " + extDir);
         unzip(path, extDir);
-        if (!extDir.endsWith("/")) {
-          // Somehow without ending /, OStorageException happens
-          extDir = extDir + "/";
-        }
-        connStr = "plocal:" + extDir + " admin admin";
+        path = extDir;
       }
-      catch (IOException e) {
+      catch (Exception e) {
         log(path + " is not a right archive.");
         log(e.getMessage());
         delR(tmpDir);
@@ -171,42 +163,43 @@ public class Main
       }
     }
 
+    // Somehow without an ending /, OStorageException happens
+    if (!path.endsWith("/")) {
+      path = path + "/";
+    }
+    connStr = "plocal:" + path + " admin admin";
+
     Orient.instance().getRecordConflictStrategy()
         .registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
     try (ODatabaseDocumentTx tx = new ODatabaseDocumentTx(connStr)) {
       try {
         tx.open("admin", "admin");
-        List<ODocument> docs = null;
-        Long abn_idx_c = 0L;
-        Long abcn_idx_c = 0L;
-        boolean is_dupe_found = false;
-
-        // At this moment, probably not interested in the component count
-        //docs = execQueries(tx, "select count(*) as c from component");
-        //log("Component count: " + docs.get(0).field("c"));
 
         docs = execQueries(tx, "select count(*) as c from asset");
         Long ac = docs.get(0).field("c");
+        if (ac == 0) {
+          log("Asset table/class is empty.");
+          System.exit(1);
+        }
         log("Asset count: " + ac.toString());
 
-        // Just in case, counting browse_node
-        docs = execQueries(tx, "select count(*) as c from browse_node");
-        log("Browse_node count: " + docs.get(0).field("c"));
-        if (!ac.equals(docs.get(0).field("c"))) {
-          out("-- [WARN] may need to execute 'TRUNCATE CLASS browse_node;'");
-        }
-
-        // Counting records per repository (alphabetical order)
-        List<ODocument> bkts =
-            execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
-        List<String> repo_names = new ArrayList<String>();
-        List<String> repo_names_skipped = new ArrayList<String>();
         if (!repoNames.trim().isEmpty()) {
-          repo_names = Arrays.asList(System.getProperty("repoNames", "").split(","));
+          repo_names = Arrays.asList(repoNames.split(","));
           log("Repository names: " + repo_names.toString() +
               " are provided so that not checking the record counts per repo.");
         }
         else {
+          // At this moment, probably not interested in the component count
+          //docs = execQueries(tx, "select count(*) as c from component");
+          //log("Component count: " + docs.get(0).field("c"));
+
+          // Just in case, counting browse_node (should count per repo?)
+          docs = execQueries(tx, "select count(*) as c from browse_node");
+          log("Browse_node count: " + docs.get(0).field("c"));
+          if (!ac.equals(docs.get(0).field("c"))) {
+            out("-- [WARN] may need to execute 'TRUNCATE CLASS browse_node;'");
+          }
+
           // Counting Indexes.
           docs = execQueries(tx,
               "select name, indexDefinition from (select expand(indexes) from metadata:indexmanager) where name like '%_idx' ORDER BY name");
@@ -232,7 +225,12 @@ public class Main
             System.exit(1);
           }
 
+          // Get repository names to count records per repos with alphabetical order
+          List<ODocument> bkts =
+              execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
+
           long maxMb = Runtime.getRuntime().maxMemory() / 1024 / 1024;
+
           for (ODocument bkt : bkts) {
             String q =
                 "select count(*) as c from index:asset_bucket_name_idx where key = [" +
@@ -244,7 +242,8 @@ public class Main
             // super rough estimate. Just guessing one record would use 3KB (+1GB).
             long estimateMb = (c * 3) / 1024 + 1024;
             if (maxMb < estimateMb) {
-              out("-- [WARN] Heap: " + maxMb + "MB may not be enough for " + repoName + " (estimate: " + estimateMb +"MB).");
+              out("-- [WARN] Heap: " + maxMb + "MB may not be enough for " + repoName + " (estimate: " + estimateMb +
+                  "MB).");
               repo_names_skipped.add(repoName);
             }
             else if (c == 0) {
@@ -258,7 +257,7 @@ public class Main
           log("Repository names to check: " + repo_names.toString());
         }
 
-        if (ac > 0 && !ac.equals(abcn_idx_c)) {
+        if (!ac.equals(abcn_idx_c)) {
           for (String repo_name : repo_names) {
             if (repo_name.trim().isEmpty()) {
               continue;
@@ -268,6 +267,9 @@ public class Main
                 "SELECT FROM (SELECT list(@rid) as dupe_rids, max(@rid) as keep_rid, COUNT(*) as c FROM asset WHERE bucket.repository_name like '" +
                     repo_name + "' GROUP BY bucket, component, name) WHERE c > 1 LIMIT 1000;");
             log("Dupe check query completed for repository: " + repo_name + " with the result size: " + dups.size());
+            if (dups.size() > 0) {
+              out("-- Repository: " + repo_name);
+            }
             for (ODocument doc : dups) {
               log(doc.toJSON());
               // output TRUNCATE RECORD statements
@@ -284,13 +286,14 @@ public class Main
         }
 
         if (is_dupe_found) {
+          out("-- REPAIR DATABASE --fix-links;");
           out("REBUILD INDEX asset_bucket_component_name_idx;");
           out("-- REBUILD INDEX *;");
         }
 
         if (repo_names_skipped.size() > 0) {
           out("-- [WARN] Skipped repositories: " + repo_names_skipped.toString() +
-                ".\n--        To force, rerun with -Xmx*g -DrepoNames=xxx,yyy,zzz");
+              ".\n--        To force, rerun with -Xmx*g -DrepoNames=xxx,yyy,zzz");
         }
       }
       catch (Exception e) {
