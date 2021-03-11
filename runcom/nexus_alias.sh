@@ -68,23 +68,6 @@ function iqMvn() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
 }
 
-function iqHds() {
-    local _component_identifier="$1"    # {"format":"pypi","coordinates":{"extension":"zip","name":"apache-beam","qualifier":"","version":"2.8.0"}}
-    local _fp="${2:-"${_NEXUS_FP}"}"    #~/.bashrc
-    [ -z "${_fp}" ] && return 11
-    if [[ "${_component_identifier}" =~ ^([^:]+):([^:]+):([^:]+)$ ]]; then
-        # NOTE: do not need to do ${BASH_REMATCH[1]//.//}
-        _component_identifier="{\"format\":\"maven\",\"coordinates\":{\"groupId\":\"${BASH_REMATCH[1]}\",\"artifactId\":\"${BASH_REMATCH[2]}\",\"version\":\"${BASH_REMATCH[3]}\",\"classifier\":\"\",\"extension\":\"jar\"}}"
-    elif [[ "${_component_identifier}" =~ ^([^ ]+)" "\(([^\)]+)\)" "([^ ]+)" "\(\.(whl)\)$ ]]; then
-        #pymongo (cp26-cp26mu-manylinux1_x86_64) 3.6.1 (.whl)
-        _component_identifier="{\"format\":\"pypi\",\"coordinates\":{\"name\":\"${BASH_REMATCH[1]}\",\"qualifier\":\"${BASH_REMATCH[2]}\",\"version\":\"${BASH_REMATCH[3]}\",\"extension\":\"${BASH_REMATCH[4]}\"}}"
-    fi
-    local _curl_opt="-sf"
-    [[ "${_DEBUG}" =~ ^(y|Y) ]] && _curl_opt="-fv"
-    curl ${_curl_opt} -H "X-CLM-Token: ${_fp}" "https://clm.sonatype.com/rest/ci/componentDetails" \
-        -G --data-urlencode "componentIdentifier=${_component_identifier}" | python -m json.tool
-}
-
 # To start local (on Mac) NXRM2 or NXRM3 server
 function nxrmStart() {
     local _base_dir="${1:-"."}"
