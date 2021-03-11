@@ -520,46 +520,6 @@ function _hadoop_ssl_commands_per_node() {
     ${_ssh} "${_keytool} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias rootCA -import -file ${g_SERVER_KEY_LOCATION%/}/rootCA.pem -noprompt -storepass ${_password};${_keytool} -keystore ${g_CLIENT_KEY_LOCATION%/}/${g_CLIENT_KEYSTORE_FILE} -alias ${_node} -import -file ${g_CLIENT_KEY_LOCATION%/}/${_node}-client.crt -noprompt -storepass ${_password}"
 }
 
-function _hadoop_ssl_use_wildcard() {
-    local __doc__="TODO: Create a self-signed wildcard certificate with openssl command."
-    local _domain_suffix="${1-$r_DOMAIN_SUFFIX}"
-    local _CA_key="${2}"
-    local _CA_cert="${3}"
-    local _base_name="${4-selfsignwildcard}"
-    local _password="$5"
-    local _key_strength="${6-2048}"
-    local _work_dir="${7-./}"
-
-    local _subject="/C=AU/ST=QLD/L=Brisbane/O=Osakos/OU=Lab/CN=*.${_domain_suffix#.}"
-    local _subj=""
-
-    [ -z "$_domain_suffix" ] && _domain_suffix=".`hostname`"
-    [ -z "$_password" ] && _password=${g_DEFAULT_PASSWORD:-hadoop}
-    [ -n "$_subject" ] && _subj="-subj ${_subject}"
-
-    # Create a private key with wildcard CN and a CSR file. NOTE: -aes256 to encrypt (TODO: need SAN for chrome)
-    openssl req -nodes -newkey rsa:$_key_strength -keyout ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.csr $_subj
-    # Signing a cert with two years expiration
-    if [ ! -s "$_CA_key" ]; then
-        _info "TODO: No root CA key file ($_CA_key), so signing by itself (not sure if works)..."
-        openssl x509 -sha256 -req -in ${_work_dir%/}/${_base_name}.csr -signkey ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.crt -days 730 -passin "pass:$_password" || return $?
-    else
-        openssl x509 -sha256 -req -in ${_work_dir%/}/${_base_name}.csr -CA ${_CA_cert} -CAkey ${_CA_key} -CAcreateserial -out ${_work_dir%/}/${_base_name}.crt -days 730 -passin "pass:$_password" || return $?
-    fi
-
-    # Combine a wildcard key and cert, and convert to p12, so that can convert to a jks file
-    openssl pkcs12 -export -in ${_work_dir%/}/${_base_name}.crt -inkey ${_work_dir%/}/${_base_name}.key -out ${_work_dir%/}/${_base_name}.p12 -name ${_base_name} -passout pass:$_password || return $?
-    # Convert p12 to jks
-    keytool -importkeystore -deststorepass $_password -destkeypass $_password -destkeystore ${_work_dir%/}/${_base_name}.jks -srckeystore ${_work_dir%/}/${_base_name}.p12 -srcstoretype PKCS12 -srcstorepass $_password -alias ${_base_name} || return $?
-
-    if [ ! -s "$_CA_cert" ]; then
-        keytool -keystore ${_work_dir%/}/${_base_name}.jks -alias rootCA -import -file "$_CA_cert" -noprompt -storepass ${_password}
-    fi
-
-    chmod 600 ${_work_dir%/}/${_base_name}.{key,jks}
-    # NOTE: a truststore needs to import this cert or root CA cert.
-}
-
 function f_spnego_hadoop() {
     local __doc__="set up HTTP Authentication for HDFS, YARN, MapReduce2, HBase, Oozie, Falcon and Storm"
     # http://docs.hortonworks.com/HDPDocuments/Ambari-2.4.2.0/bk_ambari-security/content/configuring_http_authentication_for_HDFS_YARN_MapReduce2_HBase_Oozie_Falcon_and_Storm.html
