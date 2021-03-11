@@ -59,7 +59,7 @@ public class Main
     new ZipFile(source.toFile()).extractAll(destPath);
   }
 
-  private static boolean prepareDir(String dirPath) throws IOException {
+  private static boolean prepareDir(String dirPath, String zipFilePath) throws IOException {
     File destDir = new File(dirPath);
     if (!destDir.exists()) {
       if (!destDir.mkdirs()) {
@@ -71,7 +71,14 @@ public class Main
       log(dirPath + " is not empty.");
       return false;
     }
-    // TODO: check if dirPath has enough space
+    // TODO: check if dirPath has enough space properly (currently just requesting 10 times of .bak file).
+    long usable_space = Files.getFileStore(new File(dirPath).toPath()).getUsableSpace();
+    long zip_file_size = (new File(zipFilePath)).length();
+    if (zip_file_size * 10 > usable_space) {
+      log(dirPath + " (usable:" + usable_space + ") may not be enough for extracting " + zipFilePath + " (size:" +
+          zip_file_size + ")");
+      return false;
+    }
     return true;
   }
 
@@ -115,6 +122,25 @@ public class Main
     return results;
   }
 
+  public static void printMissingIndex(List<ODocument> docs) {
+    List<String> expected_idxs = Arrays
+        .asList("asset_bucket_component_name_idx", "asset_bucket_name_idx", "asset_component_idx", "asset_name_ci_idx",
+            "bucket_repository_name_idx", "component_bucket_group_name_version_idx",
+            "component_bucket_name_version_idx", "component_ci_name_ci_idx", "component_group_name_version_ci_idx",
+            "browse_node_asset_id_idx", "browse_node_component_id_idx",
+            "browse_node_repository_name_parent_path_name_idx", "component_tags_idx",
+            "docker_foreign_layers_digest_idx", "statushealthcheck_node_id_idx", "tag_name_idx");
+    List<String> current_idxs = new ArrayList<String>();
+    for (ODocument doc : docs) {
+      current_idxs.add(doc.field("name").toString());
+    }
+    for (String idx : expected_idxs) {
+      if(!current_idxs.contains(idx)) {
+        out("-- Missing index: " + idx);
+      }
+    }
+  }
+
   public static void main(final String[] args) throws IOException {
     if (args.length < 1) {
       System.out.println(
@@ -127,10 +153,8 @@ public class Main
     Path tmpDir = null;
     String extDir = System.getProperty("extractDir", "");
     String repoNames = System.getProperty("repoNames", "");
-    List<ODocument> docs = null;
     Long abn_idx_c = 0L;
     Long abcn_idx_c = 0L;
-    boolean is_dupe_found = false;
     List<String> repo_names = new ArrayList<String>();
     List<String> repo_names_skipped = new ArrayList<String>();
 
@@ -139,7 +163,7 @@ public class Main
     if (!(new File(path)).isDirectory()) {
       try {
         if (!extDir.trim().isEmpty()) {
-          if (!prepareDir(extDir)) {
+          if (!prepareDir(extDir, path)) {
             System.exit(1);
           }
         }
@@ -173,7 +197,7 @@ public class Main
       try {
         tx.open("admin", "admin");
 
-        docs = execQueries(tx, "select count(*) as c from asset");
+        List<ODocument> docs = execQueries(tx, "select count(*) as c from asset");
         Long ac = docs.get(0).field("c");
         if (ac == 0) {
           log("Asset table/class is empty.");
@@ -193,18 +217,25 @@ public class Main
 
           // Just in case, counting browse_node (should count per repo?)
           docs = execQueries(tx, "select count(*) as c from browse_node");
-          log("Browse_node count: " + docs.get(0).field("c"));
-          if (!ac.equals(docs.get(0).field("c"))) {
-            out("-- [WARN] may need to execute 'TRUNCATE CLASS browse_node;'");
+          long bnc = docs.get(0).field("c");
+          log("Browse_node count: " + bnc);
+          double ratio = (double) bnc / (double) ac;
+          if (ac > 0 && bnc > 0 && (ratio < 0.8 || ratio > 1.2)) {
+            out("-- [WARN] may need 'TRUNCATE CLASS browse_node;'");
           }
 
           // Counting Indexes.
           docs = execQueries(tx,
-              "select name, indexDefinition from (select expand(indexes) from metadata:indexmanager) where name like '%_idx' ORDER BY name");
-          log("Index count: " + docs.size() + " / 16");
-          if (docs.size() < 16) {
-            out("-- [WARN] Indexes size is less then expected. Some Index might be missing.");
+              "select name from (select expand(indexes) from metadata:indexmanager) where name like '%_idx' ORDER BY name");
+          long idx_size = docs.size();
+          if (idx_size < 16) {
+            log("[WARN] Indexes size (" + idx_size + ") is less then expected (16). Some Index might be missing.");
+            printMissingIndex(docs);
           }
+          if (idx_size != 16) {
+            log(docs.toString());
+          }
+
           for (ODocument idx : docs) {
             String iname = idx.field("name");
             List<ODocument> _idx_c = execQueries(tx, "select count(*) as c from index:" + iname);
@@ -240,13 +271,12 @@ public class Main
             // super rough estimate. Just guessing one record would use 3KB (+1GB).
             long estimateMb = (c * 3) / 1024 + 1024;
             if (maxMb < estimateMb) {
-              out("-- [WARN] Heap: " + maxMb + "MB may not be enough for " + repoName + " (estimate: " + estimateMb +
-                  "MB).");
+              log("Heap: " + maxMb + " MB may not be enough for " + repoName + " (estimate: " + estimateMb + " MB).");
               repo_names_skipped.add(repoName);
             }
             else if (c == 0) {
               log("No record for " + repoName + ", so skipping.");
-              repo_names_skipped.add(repoName);
+              //repo_names_skipped.add(repoName); but not adding into repo_names_skipped
             }
             else {
               repo_names.add(repoName);
@@ -256,6 +286,7 @@ public class Main
         }
 
         if (!ac.equals(abcn_idx_c)) {
+          boolean is_dupe_found = false;
           for (String repo_name : repo_names) {
             if (repo_name.trim().isEmpty()) {
               continue;
@@ -281,17 +312,22 @@ public class Main
               }
             }
           }
-        }
 
-        if (is_dupe_found) {
-          out("-- REPAIR DATABASE --fix-links;");
-          out("REBUILD INDEX asset_bucket_component_name_idx;");
-          out("-- REBUILD INDEX *;");
-        }
+          if (is_dupe_found) {
+            out("-- REPAIR DATABASE --fix-links;");
+            out("REBUILD INDEX asset_bucket_component_name_idx;");
+            out("-- REBUILD INDEX *;");
+          }
 
-        if (repo_names_skipped.size() > 0) {
-          out("-- [WARN] Skipped repositories: " + repo_names_skipped.toString() +
-              ".\n--        To force, rerun with -Xmx*g -DrepoNames=xxx,yyy,zzz");
+          if (repo_names_skipped.size() > 0) {
+            out("-- [WARN] Skipped repositories: " + repo_names_skipped.toString() +
+                "\n--        To force, rerun with -Xmx*g -DrepoNames=xxx,yyy,zzz");
+          }
+        }
+        else {
+          log("Asset count (" + ac.toString() +
+              ") is equal to the asset_bucket_component_name_idx count, so not checking duplicates." +
+              "\n To force, rerun with -DrepoNames=xxx,yyy,zzz");
         }
       }
       catch (Exception e) {
