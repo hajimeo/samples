@@ -472,8 +472,8 @@ function backupC() {
     fi
 
     if [ "Darwin" = "$(uname)" ]; then
-        echo "# mdfind 'kMDItemFSSize > 1073741824' | LC_ALL=C sort # Files larger than 1G"
-        mdfind 'kMDItemFSSize > 1073741824' | LC_ALL=C sort
+        echo "#mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-604800)' | LC_ALL=C sort"
+        mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-604800)' -onlyin "${_src}" | LC_ALL=C sort
     fi
 }
 # accessed time doesn't seem to work with directory, so using _name to check files
