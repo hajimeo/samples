@@ -809,11 +809,12 @@ function _trust_ca() {
     local _file_name="$(basename "${_ca_pem}")"
     local _ca_dir=""
     local _ca_cmd=""
-    # If Ubuntu / Debian / CentOS 7
+    # Took file to find the install command: apt-get install -y ca-certificates
+    # If Ubuntu / CentOS 7
     if which update-ca-trust &>/dev/null; then
         _ca_cmd="update-ca-trust"
         _ca_dir="/etc/pki/ca-trust/source/anchors"
-    # If RHEL / CentOS
+    # If RHEL / CentOS / Debian
     elif which update-ca-certificates &>/dev/null; then
         _ca_cmd="update-ca-certificates"
         _ca_dir="/usr/local/share/ca-certificates/extra"
