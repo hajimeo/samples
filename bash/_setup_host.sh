@@ -359,6 +359,7 @@ mount -t nfs -vvv -o vers=4.2,rsize=1048576,wsize=1048576,timeo=600,retrans=2 '$
 grep -wE "(nfs|nfs4)" /proc/mounts # to check the nfs version
 time (for i in {1..100}; do bash -c "cp -v /tmp/test.img ${_DIR%/}/test_${i}.img && mv -v ${_DIR%/}/test_${i}.img ${_DIR%/}/test_${i}_deleting.img && rm -v -f ${_DIR%/}/test_${i}_deleting.img" & done; wait)
 umount -f -l ${_DIR%/}'
+    # Somehow Mac requires '-o resvport,rw'
 }
 
 function f_s3fs() {
