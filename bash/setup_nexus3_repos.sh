@@ -969,6 +969,9 @@ export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.s
 export GOPROXY=${_repo_url}" > ${_TMP%/}/go-proxy.sh
         # Or: go env -w GOPROXY=${_repo_url}
         ${_cmd} cp ${_TMP%/}/go-proxy.sh ${_name}:/etc/profile.d/go-proxy.sh
+        ${_cmd} exec -it ${_name} bash -c "rpm --import https://mirror.go-repo.io/centos/RPM-GPG-KEY-GO-REPO && curl -s https://mirror.go-repo.io/centos/go-repo.repo > /etc/yum.repos.d/go-repo.repo && yum install golang"
+        # Testing proxy repo (and for go debug: $HOME/go/bin/dlv)
+        ${_cmd} exec -it ${_name} -u ${_user} bash -c "go get github.com/go-delve/delve/cmd/dlv"
     fi
 
     # Install Conda, and if repo is reachable, setup conda/anaconda/miniconda env
@@ -990,7 +993,8 @@ export GOPROXY=${_repo_url}" > ${_TMP%/}/go-proxy.sh
     curl -fsSL -o ${_TMP%/}/get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
     if [ -s ${_TMP%/}/get_helm.sh ]; then
         ${_cmd} cp ${_TMP%/}/get_helm.sh ${_name}:/home/${_user%/}/ && \
-        ${_cmd} exec -it ${_name} chown -R ${_user}: /home/${_user}/get_helm.sh && \
+        ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/get_helm.sh && \
+        ${_cmd} exec -it ${_name} chmod u+x /home/${_user}/get_helm.sh && \
         ${_cmd} exec -it -u ${_user} ${_name} /home/${_user}/get_helm.sh
     fi
 
