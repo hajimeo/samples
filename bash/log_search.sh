@@ -842,8 +842,8 @@ function f_threads() {
         done
         echo " "
         # Only when checking multiple thread dumps
-        echo "## Long running and no-change (same hash) threads contain '${_running_thread_search_re}' (threads:${_count})"
-        rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
+        echo "## Long *RUN*ning and no-change (same hash) threads contain '${_running_thread_search_re}' (threads:${_count})"
+        rg -l "${_running_thread_search_re}" -g '*run*.out' -g '*RUN*.out' ${_save_dir%/}/ | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
         echo "## Long running threads contain '${_running_thread_search_re}' (threads:${_count})"
         rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
         #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
@@ -883,8 +883,9 @@ function f_threads() {
     #echo "## Counting 2nd lines from .out files (top 20)"
     #awk 'FNR == 2' ${_save_dir%/}/*.out | sort | uniq -c | sort -r | head -n 20
     #echo " "
-    echo "## Counting 'waiting to lock|waiting on|parking to wait' etc. basically hung processes (excluding smaller than 1k threads, 'parking to wait for' and 'None', and top 20)"
-    rg '^\s+\- [^<]' --no-filename `find ${_save_dir%/} -type f -size +1k` | rg -v '(- locked|- None)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n 20
+    echo "## Counting 'waiting to lock|waiting on|waiting to lock' etc. basically hung processes (excluding smaller than 1k threads, 'parking to wait for' and 'None', and top 20)"
+    # Could not remember why I decided to check 'parking to wait for'.
+    rg '^\s+\- [^<]' --no-filename `find ${_save_dir%/} -type f -size +1k` | rg -v '(- locked|- None|parking to wait for)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n 20
     echo " "
     # At least more than 10 waiting:
     local _most_waiting="$(rg -m 1 '^\s*\d\d+\s+.+(0x[0-9a-f]+)' -o -r '$1' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
