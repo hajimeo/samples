@@ -878,7 +878,7 @@ function f_threads() {
     fi
 
     echo "## Finding BLOCKED or waiting to lock lines (excluding '-acceptor-')"
-    rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename -g '!*-acceptor-*' -g '!*_Acceptor' ${_save_dir%/}/
+    rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename -g '!*-acceptor-*' -g '!*_Acceptor*' ${_save_dir%/}/
     echo " "
     #echo "## Counting 2nd lines from .out files (top 20)"
     #awk 'FNR == 2' ${_save_dir%/}/*.out | sort | uniq -c | sort -r | head -n 20
@@ -887,6 +887,9 @@ function f_threads() {
     # Could not remember why I decided to check 'parking to wait for'.
     rg '^\s+\- [^<]' --no-filename `find ${_save_dir%/} -type f -size +1k` | rg -v '(- locked|- None|parking to wait for)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n 20
     echo " "
+    echo "## Checking 'parking to wait for' qtp threads, because it may indicate the pool exhaustion issue (eg:NEXUS-17896) (excluding smaller than 1k threads)"
+    rg '(parking to wait for)' -l `find ${_save_dir%/} -type f -size +1k` | rg '.*/(qtp[^/]+)$' -o -r '$1' | wc -l
+    echo " "
     # At least more than 10 waiting:
     local _most_waiting="$(rg -m 1 '^\s*\d\d+\s+.+(0x[0-9a-f]+)' -o -r '$1' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
     if [ -n "${_most_waiting}" ]; then
@@ -894,7 +897,7 @@ function f_threads() {
         rg "locked.+${_most_waiting}" -l `find ${_save_dir%/} -type f -size +1k` | xargs -I {} rg -H '(java.lang.Thread.State:| state=)' {}
         echo " "
     fi
-    echo "## 'locked' objects or id excluding synchronizers (top 20)"
+    echo "## 'locked' objects or id excluding synchronizers (top 20 and more than once)"    # | rg -v '^\s+1\s'
     rg ' locked [^ @]+' -o --no-filename ${_save_dir%/}/ | rg -vw synchronizers | sort | uniq -c | sort -nr | head -n 20
     echo " "
 
@@ -998,7 +1001,7 @@ function f_request2csv() {
 #rg SocketTimeoutException -B1 ./log/nexus.log | rg '^2021-03-11' > nexus_filtered.log
 #f_log2csv "" "nexus_filtered.log" > nexus_filtered.csv
 # NOTE: change date and timezone. Also not perfect as not considering duration.
-#q -O -d"," -D"," -H "SELECT '10/Mar/2021:'||strftime('%H:%M:%S', date_time)||' +0800' as req_datetime, thread, message FROM ./nexus_filtered.csv" > nexus_filtered_req.csv
+#q -O -d"," -D"," -H "SELECT '18/Mar/2021:'||strftime('%H:%M:%S', date_time)||' -0700' as req_datetime, thread, message FROM ./nexus_filtered.csv" > nexus_filtered_req.csv
 #qcsv -H "SELECT r.*, n.message FROM ./_filtered/request.csv r JOIN nexus_filtered_req.csv n ON r.date = n.req_datetime and r.thread = n.thread"
 function f_log2csv() {
     local _log_regex="${1:-"- (.*)"}"
