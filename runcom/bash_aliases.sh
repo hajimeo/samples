@@ -59,7 +59,7 @@ alias pyv='source $HOME/.pyvenv/bin/activate'
 #alias pyv='pyenv activate mypyvenv'    # I felt pyenv is slow, so not using
 alias pjt='sed "s/,$//" | python -m json.tool'
 alias urldecode='python2 -c "import sys, urllib as ul; print(ul.unquote_plus(sys.argv[1]))"'
-#alias urlencode='python -c "import sys, urllib as ul; print ul.quote_plus(sys.argv[1])"'
+alias urlencode3='python3 -c "import sys;from urllib import parse; print(parse.quote(sys.argv[1]))"'
 alias urlencode='python2 -c "import sys, urllib as ul; print(ul.quote(sys.argv[1]))"'
 # base64 encode/decode (coreutils base64 or openssl base64 -e|-d)
 alias b64encode='python3 -c "import sys, base64; print(base64.b64encode(sys.argv[1].encode(\"utf-8\")).decode())"'
