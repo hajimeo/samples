@@ -353,10 +353,10 @@ function f_nfs_server() {
     # Trying vers=4.2 automatically falls back to a lower version if not supported
     # TODO: how about ,hard,noacl,noatime,nodiratime (and ,proto=tcp,nolock,sync)
 echo '_DIR="/mnt/nfs"
-dd if=/dev/zero of=/tmp/test.img bs=33M count=1 oflag=dsync
 mount -t nfs -vvv -o vers=3,rsize=1048576,wsize=1048576,timeo=600,retrans=2 '$(hostname)':'${_dir%/}' ${_DIR%/}
 mount -t nfs -vvv -o vers=4.2,rsize=1048576,wsize=1048576,timeo=600,retrans=2 '$(hostname)':'${_dir%/}' ${_DIR%/}
 grep -wE "(nfs|nfs4)" /proc/mounts # to check the nfs version
+dd if=/dev/zero of=/tmp/test.img bs=33M count=1 oflag=dsync
 time (for i in {1..100}; do bash -c "cp -v /tmp/test.img ${_DIR%/}/test_${i}.img && mv -v ${_DIR%/}/test_${i}.img ${_DIR%/}/test_${i}_deleting.img && rm -v -f ${_DIR%/}/test_${i}_deleting.img" & done; wait)
 umount -f -l ${_DIR%/}'
     # Somehow Mac requires '-o resvport,rw'
@@ -955,6 +955,8 @@ function f_microk8s() {
         echo 'alias kubectl="microk8s kubectl"' > /etc/profile.d/microk8s.sh
         echo 'alias helm3="microk8s helm3"' >> /etc/profile.d/microk8s.sh
     fi
+    # https://stackoverflow.com/questions/63803171/how-to-change-microk8s-kubernetes-storage-location
+    # edit /var/snap/microk8s/current/args/containerd
 
     ufw allow in on cni0 && ufw allow out on cni0
     ufw default allow routed
@@ -963,6 +965,7 @@ function f_microk8s() {
 
     # (a kind of) test
     microk8s kubectl get all --all-namespaces
+    # output token
     microk8s kubectl -n kube-system describe secret $(microk8s kubectl -n kube-system get secret | grep -oP '^default-token[^ ]+')
     # Replace the dashboard certificate
     if [ -s /var/tmp/share/cert/standalone.localdomain.key ]; then
@@ -986,8 +989,9 @@ function f_microk8s() {
         fi
     fi
     echo "# Command examples:
-    microk8s helm3 repo add sonatype https://sonatype.github.io/helm3-charts/
-    microk8s helm3 install nexus-repo sonatype/nexus-repository-manager -f values.yml
+    microk8s helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
+    microk8s helm3 search repo iq
+    microk8s helm3 install nexus-repo nxrm3/nexus-repository-manager -f values.yml
     microk8s kubectl create -f your_deployment.yml
     microk8s kubectl get services          # or all, or deployments to check the NAME
     microk8s kubectl get deploy <deployment-name> -o yaml   # to export the deployment yaml
@@ -1450,10 +1454,27 @@ function f_kvm() {
     local __doc__="Install KVM on Ubuntu (20.04) host"
     local _virt_user="${1-"virtuser"}"
     local _virt_pass="${2:-"${_virt_user}"}"
+    local _image_dir="${3}"
+    # https://linuxconfig.org/configure-default-kvm-virtual-storage-on-redhat-linux
     local _cpu_num=$(grep -Eoc '(vmx|svm)' /proc/cpuinfo)
     if [ -z "${_cpu_num}" ] || [[ 1 -gt ${_cpu_num} ]]; then
         _error "Hardware virtualization may not be supported."
         return 1
+    fi
+
+    if [ -n "${_image_dir}" ]; then
+        if [ -f "/var/lib/libvirt/images" ]; then
+            mv -v /var/lib/libvirt/images /var/lib/libvirt/images_orig || return $?
+        fi
+        if [ ! -d "${_image_dir}" ]; then
+            mkdir -m 777 -p "${_image_dir}" || return $?
+            if [ -d "/var/lib/libvirt/images_orig" ]; then
+                _info "Created ${_image_dir}. copying images from /var/lib/libvirt/images_orig ..."
+                cp -v -r -p /var/lib/libvirt/images_orig/* ${_image_dir%/}/
+            fi
+        fi
+
+        ln -s ${_image_dir%/} /var/lib/libvirt/images || return $?
     fi
 
     if grep -qiP 'Ubuntu (18|20)\.' /etc/issue.net; then
@@ -1491,8 +1512,16 @@ function f_kvm() {
         fi
         _info "Execute 'systemctl restart libvirtd.service' if all good."
     fi
+
+    # TODO: create a bridge interface (br0) https://www.cyberciti.biz/faq/how-to-add-network-bridge-with-nmcli-networkmanager-on-linux/
+    # Well, docker0 NIC works... (and TODO: netsh winhttp set proxy proxy-server="http=172.17.0.1:28080;https=172.17.0.1:28080"
+    #nmcli con add ifname br0 type bridge con-name br0 && nmcli con add type bridge-slave ifname eno1 master br0 && nmcli con modify br0 bridge.stp no && nmcli con up br0
+    #nmcli connection show
+    #nmcli -f bridge con show br0
     _info "To connect (need to configure ssh password-less access):
     virt-manager -c 'qemu+ssh://${_virt_user:-"root"}@$(ip route get 1 | sed -nr 's/^.* src ([^ ]+) .*$/\1/p')/system?socket=/var/run/libvirt/libvirt-sock'"
+    # To check DHCP IP addresses
+    #virsh net-dhcp-leases default
 }
 
 function f_postfix() {
