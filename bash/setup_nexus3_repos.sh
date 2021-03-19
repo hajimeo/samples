@@ -828,7 +828,7 @@ function p_client_container() {
     local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true -v ${_WORK_DIR%/}:${_DOCKER_CONTAINER_SHARE_DIR}"
     [ -n "${_DOCKER_NETWORK_NAME}" ] && _ext_opts="--network=${_DOCKER_NETWORK_NAME} ${_ext_opts}"
     _log "INFO" "Running or Starting '${_name}'"
-    # TODO: not right way to use 3rd and 4th arguments.
+    # TODO: not right way to use 3rd and 4th arguments. Also if two IPs are configured, below might update /etc/hosts with 2nd IP.
     _docker_run_or_start "${_name}" "${_ext_opts}" "${_image_name} /sbin/init" "${_cmd}" || return $?
     _container_add_NIC "${_name}" "bridge" "Y" "${_cmd}"
 
