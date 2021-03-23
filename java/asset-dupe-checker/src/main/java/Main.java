@@ -135,10 +135,54 @@ public class Main
       current_idxs.add(doc.field("name").toString());
     }
     for (String idx : expected_idxs) {
-      if(!current_idxs.contains(idx)) {
+      if (!current_idxs.contains(idx)) {
         out("-- Missing index: " + idx);
       }
     }
+  }
+
+  public static boolean checkDupes(ODatabaseDocumentTx tx, List<String> repoNames) {
+    boolean is_dupe_found = false;
+    StringBuilder where = new StringBuilder();
+    if (repoNames != null && repoNames.size() > 0) {
+      // Can't use " in ['...','...'] when we suspect asset_bucket_component_name_idx
+      where = new StringBuilder("WHERE (");
+      for (int i = 0; i < repoNames.size(); i++) {
+        if (i > 0) {
+          where.append(" OR ");
+        }
+        where.append("bucket.repository_name like '").append(repoNames.get(i)).append("'");
+      }
+      where.append(")");
+    }
+
+    List<ODocument> dups = execQueries(tx,
+        "SELECT FROM (SELECT list(@rid) as dupe_rids, max(@rid) as keep_rid, COUNT(*) as c FROM asset " + where +
+            " GROUP BY bucket, component, name) WHERE c > 1 LIMIT 1000;");
+
+    if (dups.size() > 0 && repoNames != null && repoNames.size() > 0) {
+      out("-- Repositories: " + repoNames.toString());
+    }
+
+    for (ODocument doc : dups) {
+      log(doc.toJSON());
+      // output TRUNCATE RECORD statements
+      ODocument keep_rid = doc.field("keep_rid");
+      List<ORecordId> dupe_rids = doc.field("dupe_rids");
+      for (ORecordId dr : dupe_rids) {
+        if (!dr.getIdentity().toString().equals(keep_rid.getIdentity().toString())) {
+          // TODO: not good idea to output SQLs in a function.
+          out("TRUNCATE RECORD " + dr + ";");
+          is_dupe_found = true;
+        }
+      }
+    }
+
+    return is_dupe_found;
+  }
+
+  public static long estimateSize(long c) {
+    return (c * 3) / 1024 + 1024;
   }
 
   public static void main(final String[] args) throws IOException {
@@ -157,6 +201,9 @@ public class Main
     Long abcn_idx_c = 0L;
     List<String> repo_names = new ArrayList<String>();
     List<String> repo_names_skipped = new ArrayList<String>();
+    Map<String, Long> repo_counts = new HashMap<String, Long>();
+
+    long maxMb = Runtime.getRuntime().maxMemory() / 1024 / 1024;
 
     log("main() started.");
 
@@ -205,10 +252,17 @@ public class Main
         }
         log("Asset count: " + ac.toString());
 
+        long estimateMb = estimateSize(ac);
+        boolean check_all_repo = false;
+
         if (!repoNames.trim().isEmpty()) {
           repo_names = Arrays.asList(repoNames.split(","));
           log("Repository names: " + repo_names.toString() +
               " are provided so that not checking the record counts per repo.");
+        }
+        else if (maxMb > estimateMb) {
+          log("Asset count is small, so not checking each repositories.");
+          check_all_repo = true;
         }
         else {
           // At this moment, probably not interested in the component count
@@ -258,8 +312,6 @@ public class Main
           List<ODocument> bkts =
               execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
 
-          long maxMb = Runtime.getRuntime().maxMemory() / 1024 / 1024;
-
           for (ODocument bkt : bkts) {
             String q =
                 "select count(*) as c from index:asset_bucket_name_idx where key = [" +
@@ -269,7 +321,7 @@ public class Main
             Long c = c_per_bkt.get(0).field("c");
             log("Repository: " + bkt.field("repository_name") + " estimated count: " + c.toString());
             // super rough estimate. Just guessing one record would use 3KB (+1GB).
-            long estimateMb = (c * 3) / 1024 + 1024;
+            estimateMb = estimateSize(c);
             if (maxMb < estimateMb) {
               log("Heap: " + maxMb + " MB may not be enough for " + repoName + " (estimate: " + estimateMb + " MB).");
               repo_names_skipped.add(repoName);
@@ -280,6 +332,7 @@ public class Main
             }
             else {
               repo_names.add(repoName);
+              repo_counts.put(repoName, c);
             }
           }
           log("Repository names to check: " + repo_names.toString());
@@ -287,29 +340,29 @@ public class Main
 
         if (!ac.equals(abcn_idx_c)) {
           boolean is_dupe_found = false;
-          for (String repo_name : repo_names) {
-            if (repo_name.trim().isEmpty()) {
-              continue;
-            }
-            log("Dupe check query started for repository: " + repo_name);
-            List<ODocument> dups = execQueries(tx,
-                "SELECT FROM (SELECT list(@rid) as dupe_rids, max(@rid) as keep_rid, COUNT(*) as c FROM asset WHERE bucket.repository_name like '" +
-                    repo_name + "' GROUP BY bucket, component, name) WHERE c > 1 LIMIT 1000;");
-            log("Dupe check query completed for repository: " + repo_name + " with the result size: " + dups.size());
-            if (dups.size() > 0) {
-              out("-- Repository: " + repo_name);
-            }
-            for (ODocument doc : dups) {
-              log(doc.toJSON());
-              // output TRUNCATE RECORD statements
-              ODocument keep_rid = doc.field("keep_rid");
-              List<ORecordId> dupe_rids = doc.field("dupe_rids");
-              for (ORecordId dr : dupe_rids) {
-                if (!dr.getIdentity().toString().equals(keep_rid.getIdentity().toString())) {
-                  out("TRUNCATE RECORD " + dr + ";");
+
+          if (check_all_repo) {
+            is_dupe_found = checkDupes(tx, null);
+          }
+          else {
+            long current_ttl = 0L;
+            List<String> sub_repo_names = new ArrayList<String>();
+
+            for (String repo_name : repo_names) {
+              if (repo_name.trim().isEmpty()) {
+                continue;
+              }
+
+              if (estimateSize(current_ttl) > maxMb) {
+                if (checkDupes(tx, sub_repo_names)) {
                   is_dupe_found = true;
                 }
+                current_ttl = 0;
+                sub_repo_names = new ArrayList<String>();
               }
+
+              sub_repo_names.add(repo_name);
+              current_ttl += repo_counts.get(repo_name);
             }
           }
 
