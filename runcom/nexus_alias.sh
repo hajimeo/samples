@@ -236,8 +236,9 @@ function mvn-deploy() {
     mvn `_mvn_settings "${_remote_repo}"` clean package deploy ${_options}
 }
 
-#mvn-arch-gen && cd
-#mvn-dep-file httpclient-4.5.1.jar "com.example:my-app:1.0" "http://local.standalone.localdomain:8081/repository/maven-hosted/"
+#mvn-arch-gen
+#mvn-get-file "org.apache.httpcomponents:httpclient:4.5.13"
+#mvn-dep-file httpclient-4.5.13.jar "com.example:my-app:1.0" "http://dh1.standalone.localdomain:8081/repository/maven-hosted/" "" "-Dclassifier=bin"
 #Test: get_by_gav "com.example:my-app:1.0" "http://local.standalone.localdomain:8081/repository/repo_maven_hosted/"
 function mvn-dep-file() {
     local __doc__="https://maven.apache.org/plugins/maven-deploy-plugin/usage.html"
