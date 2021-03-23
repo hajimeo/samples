@@ -1516,6 +1516,7 @@ function f_kvm() {
     # TODO: create a bridge interface (br0) https://www.cyberciti.biz/faq/how-to-add-network-bridge-with-nmcli-networkmanager-on-linux/
     # Well, docker0 NIC works... (and TODO: netsh winhttp set proxy proxy-server="http=172.17.0.1:28080;https=172.17.0.1:28080"
     #nmcli con add ifname br0 type bridge con-name br0 && nmcli con add type bridge-slave ifname eno1 master br0 && nmcli con modify br0 bridge.stp no && nmcli con up br0
+    #nmcli connection modify br0 ipv4.addresses 192.168.52.31/24 && nmcli connection modify br0 ipv4.dns && nmcli connection modify br0 ipv4.method manual
     #nmcli connection show
     #nmcli -f bridge con show br0
     _info "To connect (need to configure ssh password-less access):
