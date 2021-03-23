@@ -353,7 +353,9 @@ public class Main
                 continue;
               }
 
-              if (estimateSize(current_ttl) > maxMb) {
+              // if adding this may be going to exceed the limit
+              current_ttl += repo_counts.get(repo_name);
+              if (sub_repo_names.size() > 0 && estimateSize(current_ttl) > maxMb) {
                 if (checkDupes(tx, sub_repo_names)) {
                   is_dupe_found = true;
                 }
@@ -362,7 +364,12 @@ public class Main
               }
 
               sub_repo_names.add(repo_name);
-              current_ttl += repo_counts.get(repo_name);
+            }
+
+            if (sub_repo_names.size() > 0) {
+              if (checkDupes(tx, sub_repo_names)) {
+                is_dupe_found = true;
+              }
             }
           }
 
