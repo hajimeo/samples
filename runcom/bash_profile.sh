@@ -18,6 +18,12 @@ if which go &>/dev/null; then
     [[ ":$PATH:" != *":$GOPATH/bin:"* ]] && export PATH=${PATH%:}:$GOPATH/bin
 fi
 
+# Haskell related
+if [ -d "$HOME/.local/bin" ]; then
+    [[ ":$PATH:" != *":$PATH:$HOME/.local/bin:"* ]] && export PATH=${PATH%:}:$HOME/.local/bin
+fi
+type stack &>/dev/null && alias ghci="stack ghci"
+
 # Kerberos client
 if [ -s $HOME/krb5.conf ]; then
     [ -z "${KRB5_CONFIG}" ] && export KRB5_CONFIG=$HOME/krb5.conf
