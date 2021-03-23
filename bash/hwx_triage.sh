@@ -94,6 +94,8 @@ function f_check_system() {
     pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &   # current disk stats per PID
     #sar -uqrbd -p -s 09:00:00 -e 12:00:00 -f /var/log/sysstat/sa26
     sar -uqrbd -p &> ${_work_dir%/}/sar_qrbd.out # if no -p, ls -l /dev/sd*
+    #ioping -c 12 . # check latency on current dir 12 times.
+    #ioping -RL /dev/sda1
 
     # NFS related
     showmount -e `hostname` &> ${_work_dir%/}/nfs.out
