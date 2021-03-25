@@ -2,13 +2,16 @@
  * (PoC) Simple duplicate checker for Asset records
  *
  * curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/asset-dupe-checker.jar"
- * java -Xmx4g -XX:MaxDirectMemorySize=4g [-DextractDir=./path] [-DrepoNames=xxx,yyy,zzz] -jar asset-dupe-checker.jar <component directory path|.bak file path> | tee asset-dupe-checker.sql
+ * java -Xmx4g -XX:MaxDirectMemorySize=4g [-Ddebug=true] [-DextractDir=./path] [-DrepoNames=xxx,yyy,zzz] -jar asset-dupe-checker.jar <component directory path|.bak file path> | tee asset-dupe-checker.sql
  *
  *    This command outputs fixing SQL statements in STDOUT.
  *    "extractDir" is the path used when a .bak file is given. If extractDir is empty, use the tmp directory and the extracted data will be deleted on exit.
  *    "repoNames" is a comma separated repository names to check these repositories only.
  *
  * TODO: add tests. Cleanup the code (main)..., convert to Groovy.
+ *
+ * My note:
+ *  mvn clean package && cp -v ./target/asset-dupe-checker-1.0-SNAPSHOT-jar-with-dependencies.jar ../../misc/asset-dupe-checker.jar
  */
 
 import com.orientechnologies.orient.core.Orient;
@@ -31,8 +34,11 @@ import java.util.*;
 
 public class Main
 {
-  private Main() {
-  }
+  private static long maxMb;
+
+  private static boolean isDebug;
+
+  private Main() {}
 
   private static String getCurrentLocalDateTimeStamp() {
     return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"));
@@ -41,6 +47,12 @@ public class Main
   private static void log(String msg) {
     // TODO: proper logging
     System.err.println(getCurrentLocalDateTimeStamp() + " " + msg);
+  }
+
+  private static void debug(String msg) {
+    if (isDebug) {
+      log(msg);
+    }
   }
 
   private static void out(String msg) {
@@ -117,7 +129,7 @@ public class Main
     }
     finally {
       Instant finish = Instant.now();
-      log("Query: " + input + " elapsed: " + Duration.between(start, finish).toMillis() + " ms");
+      debug("Query: " + input + " elapsed: " + Duration.between(start, finish).toMillis() + " ms");
     }
     return results;
   }
@@ -155,14 +167,11 @@ public class Main
       }
       where.append(")");
     }
-
+    // Not expecting more than 1000 duplicates per repository / repositories
     List<ODocument> dups = execQueries(tx,
-        "SELECT FROM (SELECT list(@rid) as dupe_rids, max(@rid) as keep_rid, COUNT(*) as c FROM asset " + where +
+        "SELECT FROM (SELECT bucket.repository_name as repo_name, component, name, list(@rid) as dupe_rids, max(@rid) as keep_rid, COUNT(*) as c FROM asset " +
+            where +
             " GROUP BY bucket, component, name) WHERE c > 1 LIMIT 1000;");
-
-    if (dups.size() > 0 && repoNames != null && repoNames.size() > 0) {
-      out("-- Repositories: " + repoNames.toString());
-    }
 
     for (ODocument doc : dups) {
       log(doc.toJSON());
@@ -181,6 +190,47 @@ public class Main
     return is_dupe_found;
   }
 
+  public static boolean checkDupesForRepos(
+      ODatabaseDocumentTx tx,
+      List<String> repoNames,
+      Map<String, Long> repoCounts)
+  {
+    boolean is_dupe_found = false;
+    long current_ttl = 0L;
+    List<String> sub_repo_names = new ArrayList<String>();
+
+    for (String repo_name : repoNames) {
+      if (repo_name.trim().isEmpty()) {
+        continue;
+      }
+
+      // if adding this may be going to exceed the limit
+      current_ttl += repoCounts.get(repo_name);
+      long est = estimateSize(current_ttl);
+      debug(
+          "Adding " + repoCounts.get(repo_name) + " for " + repo_name + " = " + current_ttl + " (estimate_size:" + est +
+              " / " + maxMb + ", sub_repo_names.size:" + sub_repo_names.size() + ")");
+      if (sub_repo_names.size() > 0 && est > maxMb) {
+        log("Checking (" + sub_repo_names.size() + "): " + sub_repo_names.toString());
+        if (checkDupes(tx, sub_repo_names)) {
+          is_dupe_found = true;
+        }
+        current_ttl = 0;
+        sub_repo_names = new ArrayList<String>();
+      }
+
+      sub_repo_names.add(repo_name);
+    }
+
+    if (sub_repo_names.size() > 0) {
+      log("Checking (" + sub_repo_names.size() + "): " + sub_repo_names.toString());
+      if (checkDupes(tx, sub_repo_names)) {
+        is_dupe_found = true;
+      }
+    }
+    return is_dupe_found;
+  }
+
   public static long estimateSize(long c) {
     return (c * 3) / 1024 + 1024;
   }
@@ -192,18 +242,20 @@ public class Main
       System.exit(1);
     }
 
+    String extDir = System.getProperty("extractDir", "");
+    String repoNames = System.getProperty("repoNames", "");
+    isDebug = Boolean.getBoolean("debug");
+
     String path = args[0];
     String connStr = "";
     Path tmpDir = null;
-    String extDir = System.getProperty("extractDir", "");
-    String repoNames = System.getProperty("repoNames", "");
     Long abn_idx_c = 0L;
     Long abcn_idx_c = 0L;
     List<String> repo_names = new ArrayList<String>();
     List<String> repo_names_skipped = new ArrayList<String>();
     Map<String, Long> repo_counts = new HashMap<String, Long>();
 
-    long maxMb = Runtime.getRuntime().maxMemory() / 1024 / 1024;
+    maxMb = Runtime.getRuntime().maxMemory() / 1024 / 1024;
 
     log("main() started.");
 
@@ -258,7 +310,7 @@ public class Main
         if (!repoNames.trim().isEmpty()) {
           repo_names = Arrays.asList(repoNames.split(","));
           log("Repository names: " + repo_names.toString() +
-              " are provided so that not checking the record counts per repo.");
+              " are provided, so that not checking the record counts per repo.");
         }
         else if (maxMb > estimateMb) {
           log("Asset count is small, so not checking each repositories.");
@@ -323,11 +375,11 @@ public class Main
             // super rough estimate. Just guessing one record would use 3KB (+1GB).
             estimateMb = estimateSize(c);
             if (maxMb < estimateMb) {
-              log("Heap: " + maxMb + " MB may not be enough for " + repoName + " (estimate: " + estimateMb + " MB).");
+              debug("Heap: " + maxMb + " MB may not be enough for " + repoName + " (estimate: " + estimateMb + " MB).");
               repo_names_skipped.add(repoName);
             }
             else if (c == 0) {
-              log("No record for " + repoName + ", so skipping.");
+              debug("No record for " + repoName + ", so skipping.");
               //repo_names_skipped.add(repoName); but not adding into repo_names_skipped
             }
             else {
@@ -335,42 +387,23 @@ public class Main
               repo_counts.put(repoName, c);
             }
           }
-          log("Repository names to check: " + repo_names.toString());
+          log("Repository names to check (" + repo_names.size() + "):\n" + repo_names.toString());
         }
 
-        if (!ac.equals(abcn_idx_c)) {
+        if (ac.equals(abcn_idx_c)) {
+          // TODO: Not so good logic. Currently if -DrepoNames is given, abcn_idx_c is 0 (if ac is 0, already exit)
+          log("Asset count (" + ac.toString() +
+              ") is equal to the asset_bucket_component_name_idx count, so not checking duplicates." +
+              "\nTo force, rerun with -DrepoNames=xxx,yyy,zzz");
+        }
+        else {
           boolean is_dupe_found = false;
 
           if (check_all_repo) {
             is_dupe_found = checkDupes(tx, null);
           }
           else {
-            long current_ttl = 0L;
-            List<String> sub_repo_names = new ArrayList<String>();
-
-            for (String repo_name : repo_names) {
-              if (repo_name.trim().isEmpty()) {
-                continue;
-              }
-
-              // if adding this may be going to exceed the limit
-              current_ttl += repo_counts.get(repo_name);
-              if (sub_repo_names.size() > 0 && estimateSize(current_ttl) > maxMb) {
-                if (checkDupes(tx, sub_repo_names)) {
-                  is_dupe_found = true;
-                }
-                current_ttl = 0;
-                sub_repo_names = new ArrayList<String>();
-              }
-
-              sub_repo_names.add(repo_name);
-            }
-
-            if (sub_repo_names.size() > 0) {
-              if (checkDupes(tx, sub_repo_names)) {
-                is_dupe_found = true;
-              }
-            }
+            is_dupe_found = checkDupesForRepos(tx, repo_names, repo_counts);
           }
 
           if (is_dupe_found) {
@@ -383,11 +416,6 @@ public class Main
             out("-- [WARN] Skipped repositories: " + repo_names_skipped.toString() +
                 "\n--        To force, rerun with -Xmx*g -DrepoNames=xxx,yyy,zzz");
           }
-        }
-        else {
-          log("Asset count (" + ac.toString() +
-              ") is equal to the asset_bucket_component_name_idx count, so not checking duplicates." +
-              "\n To force, rerun with -DrepoNames=xxx,yyy,zzz");
         }
       }
       catch (Exception e) {
