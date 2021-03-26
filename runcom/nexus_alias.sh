@@ -213,7 +213,7 @@ function mvn-package() {
 
 # Example to generate 10 versions / snapshots (NOTE: in bash heredoc, 'EOF' and just EOF is different)
 : <<'EOF'
-mvn-arch-gen; cd my-app
+mvn-arch-gen
 _REPO_URL="http://node3290.standalone.localdomain:8081/repository/maven-hosted/"
 #mvn-deploy "${_REPO_URL}" "" "nexus"
   #sed -i.tmp -E "s@<groupId>com.example.*</groupId>@<groupId>com.example${i}</groupId>@" pom.xml   # If need to change groupId
