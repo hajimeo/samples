@@ -368,19 +368,20 @@ EOF
 
 # NOTE: filter the output before passing function would be faster
 #zgrep "2021:10:1" request-2021-01-08.log.gz | replayGets "/nexus/content/repositories/central/([^/]+/.+)" "http://localhost:8081/repository/maven-central"
-#rg -z "2021:\d\d:\d.+ \"GET /repository/maven-central/" request-2021-01-08.log.gz | replayGets "/repository/maven-central/([^/]+/.+)" "http://localhost:8081/repository/maven-central/"
+#rg -z "2021:\d\d:\d.+ \"GET /repository/maven-central/" request-2021-01-08.log.gz | replayGets "/repository/maven-central/([^/]+/.+)" "http://dh1:8081/repository/maven-central/"
 function replayGets() {
     local _path_match="$1"  # Need (...) eg: "/nexus/content/repositories/central/([^/]+/.+)"
     local _url_path="$2"    # http://localhost:8081/repository/maven-central
     [[ "${_url_path}" =~ ^http ]] || return 1
     [[ "${_path_match}" =~ .*\(.+\).* ]] || return 2
 
+    local _regex=".+\"GET ${_path_match} HTTP/[0-9.]+\" 2[0-9][0-9].+"
     if which rg &>/dev/null; then
-        rg -s "\"GET ${_path_match} HTTP/[0-9.]+\" 2\d\d" -o -r '$1'
+        rg -s "${_regex}" -o -r '$1'
     else
         # rg is easier and faster but for the portability ...
-        sed -nr "s@.+\"GET ${_path_match} HTTP/[0-9.]+\" 2[0-9][0-9].+@\1@p"
+        sed -nE "s|${_regex}|\1|p"
     fi | sort | uniq | while read -r _p; do
-            curl -sf -o /dev/null -w "%{http_code} ${_url_path%/}/${_p#/}\n" --head "${_url_path%/}/${_p#/}"
+            curl -sf -o /dev/null -w "%{http_code} /${_p#/}\n" --head "${_url_path%/}/${_p#/}"
         done
 }
