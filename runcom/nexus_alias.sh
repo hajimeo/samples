@@ -362,3 +362,27 @@ function npmInit() {
 }
 EOF
 }
+
+
+### Misc.   #################################
+function replayGets() {
+    local _file_path="$1"   # Order might matter so not supporting multiple files with -g
+    local _path_match="$2"  # Need (...) eg: "/nexus/content/repositories/central/([^ ]+)"
+    local _time_filter="$3" # Optional. eg: 25/Mar/2021:00:1
+    local _url_path="$4"    # http://localhost:8081/repository/maven-central
+    [ -s "${_file_path}" ] || return 1
+    [[ "${_path_match}" =~ .*\(.+\).* ]] || return 2
+
+    if which rg &>/dev/null; then
+        rg -z -s "${_time_filter}.+\"GET ${_path_match} HTTP/[0-9.]+\" 2\d\d" -o -r '$1' "${_file_path}"
+    else
+        # rg is easier and faster but for the portability ...
+        if file "${_file_path}" | grep -q "gzip compressed"; then
+            gunzip -c "${_file_path}"
+        else
+            cat "${_file_path}"
+        fi | sed -nr "s@.*${_time_filter}.+\"GET ${_path_match} HTTP/[0-9.]+\" 2[0-9][0-9].+@\1@p"
+    fi | while read -r _p; do
+            echo curl -s -o /dev/null -w "%{http_code}\n" -X HEAD "${_url_path%/}/${_p#/}"
+        done
+}
