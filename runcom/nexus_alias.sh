@@ -374,14 +374,6 @@ function replayGets() {
     local _url_path="$2"    # http://localhost:8081/repository/maven-central
     [[ "${_url_path}" =~ ^http ]] || return 1
     [[ "${_path_match}" =~ .*\(.+\).* ]] || return 2
-
-    local _regex=".+\"GET ${_path_match} HTTP/[0-9.]+\" 2[0-9][0-9].+"
-    if which rg &>/dev/null; then
-        rg -s "${_regex}" -o -r '$1'
-    else
-        # rg is easier and faster but for the portability ...
-        sed -nE "s|${_regex}|\1|p"
-    fi | sort | uniq | while read -r _p; do
-            curl -sf -o /dev/null -w "%{http_code} /${_p#/}\n" --head "${_url_path%/}/${_p#/}"
-        done
+    # rg is easier and faster but for the portability ...
+    sed -nE "s|.+\"GET ${_path_match} HTTP/[0-9.]+\" 2[0-9][0-9].+|${_url_path%/}/\1|p" | sort | uniq | xargs -n1 -P4 -I {} curl -sf --head -o /dev/null -w "%{http_code} {}\n" "{}"
 }
