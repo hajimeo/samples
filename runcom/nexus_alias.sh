@@ -365,24 +365,22 @@ EOF
 
 
 ### Misc.   #################################
+
+# NOTE: filter the output before passing function would be faster
+#zgrep "2021:10:1" request-2021-01-08.log.gz | replayGets "/nexus/content/repositories/central/([^/]+/.+)" "http://localhost:8081/repository/maven-central"
+#rg -z "2021:\d\d:\d.+ \"GET /repository/maven-central/" request-2021-01-08.log.gz | replayGets "/repository/maven-central/([^/]+/.+)" "http://localhost:8081/repository/maven-central/"
 function replayGets() {
-    local _file_path="$1"   # Order might matter so not supporting multiple files with -g
-    local _path_match="$2"  # Need (...) eg: "/nexus/content/repositories/central/([^ ]+)"
-    local _time_filter="$3" # Optional. eg: 25/Mar/2021:00:1
-    local _url_path="$4"    # http://localhost:8081/repository/maven-central
-    [ -s "${_file_path}" ] || return 1
+    local _path_match="$1"  # Need (...) eg: "/nexus/content/repositories/central/([^/]+/.+)"
+    local _url_path="$2"    # http://localhost:8081/repository/maven-central
+    [[ "${_url_path}" =~ ^http ]] || return 1
     [[ "${_path_match}" =~ .*\(.+\).* ]] || return 2
 
     if which rg &>/dev/null; then
-        rg -z -s "${_time_filter}.+\"GET ${_path_match} HTTP/[0-9.]+\" 2\d\d" -o -r '$1' "${_file_path}"
+        rg -s "\"GET ${_path_match} HTTP/[0-9.]+\" 2\d\d" -o -r '$1'
     else
         # rg is easier and faster but for the portability ...
-        if file "${_file_path}" | grep -q "gzip compressed"; then
-            gunzip -c "${_file_path}"
-        else
-            cat "${_file_path}"
-        fi | sed -nr "s@.*${_time_filter}.+\"GET ${_path_match} HTTP/[0-9.]+\" 2[0-9][0-9].+@\1@p"
-    fi | while read -r _p; do
-            echo curl -s -o /dev/null -w "%{http_code}\n" -X HEAD "${_url_path%/}/${_p#/}"
+        sed -nr "s@.+\"GET ${_path_match} HTTP/[0-9.]+\" 2[0-9][0-9].+@\1@p"
+    fi | sort | uniq | while read -r _p; do
+            curl -sf -o /dev/null -w "%{http_code} ${_url_path%/}/${_p#/}\n" --head "${_url_path%/}/${_p#/}"
         done
 }
