@@ -4,8 +4,14 @@
 # Tiny proxy for testing connection (only python2)
 # Based on https://code.google.com/p/python-proxy/
 #
-
-import sys, socket, thread, select, datetime, os
+import argparse, sys, socket, select, datetime, os
+try:
+    # TODO: this script does not work with python3
+    import _thread as thread
+    from urllib.parse import urlparse, parse_qs
+except ImportError:
+    import thread
+    from urlparse import urlparse, parse_qs
 from socket import errno
 
 __version__ = '0.1.0 Draft 1 +modified by Hajime'
@@ -15,6 +21,9 @@ HTTPVER = 'HTTP/1.1'
 
 
 class ConnectionHandler:
+    reverse_url = ""
+    _debug = False
+
     def __init__(self, connection, address, timeout):
         self.client = connection
         self.client_buffer = ''
@@ -28,12 +37,18 @@ class ConnectionHandler:
         self.target.close()
 
     def log(self, msg):
-        sys.stdout.write('[%s] %s\n' % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), str(msg)))  # debug
+        sys.stdout.write('[%s] %s\n' % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), str(msg)))
+        sys.stdout.flush()
+
+    def debug(self, msg):
+        if self._debug is False:
+            return
+        sys.stdout.write('[%s] DEBUG %s\n' % (datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), str(msg)))
         sys.stdout.flush()
 
     def get_base_header(self):
         while 1:
-            self.client_buffer += self.client.recv(BUFLEN)
+            self.client_buffer += str(self.client.recv(BUFLEN))
             end = self.client_buffer.find('\n')
             if end != -1:
                 break
@@ -53,8 +68,18 @@ class ConnectionHandler:
     def method_others(self):
         self.path = self.path[7:]
         i = self.path.find('/')
+        # protocol = self.protocol   # TODO: https?
         host = self.path[:i]
         path = self.path[i:]
+        # TODO: not working
+        if len(self.reverse_url) > 0:
+            parsed_url = urlparse(self.reverse_url)
+            self.protocol = parsed_url.scheme
+            host = parsed_url.netloc
+            trimed_path = parsed_url.path.strip("/")
+            if len(trimed_path) > 0:
+                path = "/" + trimed_path + "/" + path.lstrip("/")
+            self.log(host+path)
         self._connect_target(host)
         _str = '%s %s %s\n' % (self.method, path, self.protocol) + self.client_buffer
         self.log(_str)
@@ -69,7 +94,8 @@ class ConnectionHandler:
         else:
             port = 80
         # (soc_family, _, _, _, address) = socket.getaddrinfo(host, port)[0]
-        (soc_family, _, _, _, address) = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM, socket.SOL_TCP)[0]
+        (soc_family, _, _, _, address) = \
+            socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM, socket.SOL_TCP)[0]
         self.target = socket.socket(soc_family)
         self.target.connect(address)
 
@@ -97,27 +123,25 @@ class ConnectionHandler:
                 break
 
 
-def start_server(host='localhost', port=8080, IPv6=False, timeout=60, handler=ConnectionHandler):
+def start_server(host='localhost', port=8080, IPv6=False, timeout=60, reverse_url="", handler=ConnectionHandler):
     if IPv6 == True:
         soc_type = socket.AF_INET6
     else:
         soc_type = socket.AF_INET
-
     soc = socket.socket(soc_type)
     ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
     try:
         soc.bind((host, port))
     except socket.error as e:
         if e[0] == errno.EADDRINUSE:
             sys.stdout.write("[%s] Port %d in use. Do nothing...\n" % (ts, port))
             sys.stdout.flush()
-            sys.exit(0)
+            return 0
         else:
             raise
-
-    print
-    "[%s] Serving on %s:%d" % (ts, host, port)  # debug
+    if len(reverse_url) > 0:
+        handler.reverse_url = reverse_url
+    print("[%s] Serving on %s:%d" % (ts, host, port))  # debug
     soc.listen(0)
     while 1:
         try:
@@ -126,37 +150,24 @@ def start_server(host='localhost', port=8080, IPv6=False, timeout=60, handler=Co
             ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             sys.stdout.write("[%s] Keyboard Interrupted (ctrl-c). Exiting ...\n" % (ts))
             sys.stdout.flush()
-            sys.exit(0)
+            return 0
         except:
             raise
 
 
-def cron():
-    cron_script_path = "/etc/cron.d/pyProxy"
-    script_full_path = os.path.abspath(__file__)
-    os.chmod(script_full_path, 0755)
-    if (os.path.isfile(cron_script_path)):
-        sys.stdout.write("\"%s\" already exists. Skipping...\n")
-        sys.stdout.flush()
-        sys.exit(0)
-    file = open(cron_script_path, "w")
-    file.write("*/10 * * * * root %s >> /var/log/pyproxy.log\n" % script_full_path)
-    file.close()
-    sys.exit(0)
+def main():
+    parser = argparse.ArgumentParser(description='Simple Proxy / Reverse proxy')
+    parser.add_argument('--host', required=False, default="0.0.0.0", help='Listening IP or hostname (default 0.0.0.0)')
+    parser.add_argument('--port', required=False, default="8080", help='Listening port number (default 8080)')
+    parser.add_argument('--r_url', required=False, default="", help='Reverse Proxy destination URL')
+    parser.add_argument('--timeout', required=False, default="60", help='socket timeout (default 60)')
+    args = parser.parse_args()
+    host = args.host
+    port = int(args.port)
+    r_url = args.r_url
+    timeout = int(args.timeout)
+    return start_server(host=host, port=port, timeout=timeout, reverse_url=r_url)
 
 
 if __name__ == '__main__':
-    host = '0.0.0.0'
-    port = 8080
-
-    if (len(sys.argv) == 3):
-        host = sys.argv[1]
-        port = int(sys.argv[2])
-    elif (len(sys.argv) == 2):
-        if (sys.argv[1] == "cron"):
-            cron()
-        else:
-            host = sys.argv[1]
-            port = 8080
-
-    start_server(host=host, port=port)
+    main()
