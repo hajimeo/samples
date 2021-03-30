@@ -2074,7 +2074,12 @@ def update(file=None, baseurl="https://raw.githubusercontent.com/hajimeo/samples
             _info("To update, use 'ju.update()'\n")
             return True
     new_file = "/tmp/" + filename + "_" + _timestamp(format="%Y%m%d%H%M%S")
-    os.rename(file, new_file)
+    try:
+        os.rename(file, new_file)
+    except:
+        if force_update is False:
+            _info("Taking backup to /tmp/ failed. Retry with force_update=True.")
+            return False
     remote_content = urlopen(url).read()
     with open(file, 'wb') as f:
         f.write(remote_content)
