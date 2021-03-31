@@ -167,6 +167,18 @@ function iqDocker() {
     eval "${_cmd}"
 }
 
+
+
+function mvn-purge-local() {
+    local __doc__="https://maven.apache.org/plugins/maven-dependency-plugin/examples/purging-local-repository.html"
+    local actTransitively="${1:-"false"}"
+    local _local_repo="${2}"
+    local _remote_repo="${3}"
+    local _options="${4-"-X"}"
+    [ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
+    mvn `_mvn_settings "${_remote_repo}"` dependency:purge-local-repository -DactTransitively=${actTransitively} ${_options}
+}
+
 # mvn archetype:generate wrapper to use a remote repo
 function mvn-arch-gen() {
     local __doc__="https://maven.apache.org/guides/getting-started/maven-in-five-minutes.html"
