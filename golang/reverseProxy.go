@@ -1,6 +1,6 @@
 /**
  * Based on https://gist.github.com/JalfResi/6287706
- *          https://hackernoon.com/writing-a-reverse-proxy-in-just-one-line-with-go-c1edfa78c84b
+ *          https://qiita.com/convto/items/64e8f090198a4cf7a4fc (japanese)
  */
 package main
 
@@ -16,60 +16,103 @@ import (
 func help() {
 	fmt.Println(`
 Simple reverse proxy server for troubleshooting.
+Output REQUEST and RESPONSE headers.
 
 DOWNLOAD and INSTALL:
     sudo curl -o /usr/local/bin/reverseproxy -L https://github.com/hajimeo/samples/raw/master/misc/reverseproxy_$(uname)
     sudo chmod a+x /usr/local/bin/reverseproxy
     
 USAGE EXAMPLE:
-    reverseproxy 0.0.0.0:8080 http://remote_url:port/path [/]
+    reverseproxy <listening address:port> <listening pattern> <remote-URL> [certFile] [keyFile] 
+    reverseproxy $(hostname -f):8080 / http://search.osakos.com/
+
+Also reads _DUMP_BODY environment variable. (TODO)
 `)
 }
 
+var server_addr string
 var proxy_pass string
+var scheme string
+var dump_body bool
 
 func handler(p *httputil.ReverseProxy) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rd, err := httputil.DumpRequest(r, true)
+		r.URL.Host = server_addr
+		r.URL.Scheme = scheme
+		r.Header.Set("X-Real-IP", r.RemoteAddr)
+		//r.Header.Set("X-Forwarded-For", r.RemoteAddr)	// TODO: not sure which value to use
+		r.Header.Set("X-Forwarded-Proto", scheme)
+		reqHeader, err := httputil.DumpRequest(r, dump_body)
 		if err != nil {
-			log.Printf("DumpRequest error: %s", err)
+			log.Printf("DumpRequest error: %s\n", err)
 		} else {
-			log.Printf("proxy_url: %s\nrequest: %s\n", proxy_pass, string(rd))
+			log.Printf("REQUEST to: %s\n%s\n", proxy_pass, string(reqHeader))
 		}
-		//w.Header().Set("X-Forwarded-Host", r.Header.Get("Host"))
-		//w.Header().Set("X-Real-IP", r.RemoteAddr)
-		//w.Header().Set("X-Forwarded-For", r.RemoteAddr)
-		//w.Header().Set("X-Forwarded-Proto", r.URL.Scheme)
 		p.ServeHTTP(w, r)
 	}
 }
 
+func logResponseHeader(resp *http.Response) (err error) {
+	respHeader, err := httputil.DumpResponse(resp, dump_body)
+	if err != nil {
+		log.Printf("DumpResponse error: %s\n", err)
+	} else {
+		log.Printf("RESPONSE from: %s\n%s\n", proxy_pass, string(respHeader))
+	}
+	return nil
+}
+
 func main() {
-	if len(os.Args) < 2 || os.Args[1] == "-h" || os.Args[1] == "--help" {
+	// Not enough args or help is asked, show help()
+	if len(os.Args) < 4 || os.Args[1] == "-h" || os.Args[1] == "--help" {
 		help()
 		os.Exit(0)
 	}
+	// using microseconds (couldn't find how-to for milliseconds)
+	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
-	port := "0.0.0.0:8080"
+	// handling args
 	if len(os.Args) > 1 {
-		port = os.Args[1]
-	}
-	if len(os.Args) > 2 {
-		proxy_pass = os.Args[2]
+		server_addr = os.Args[1]
 	}
 	ptn := "/"
+	if len(os.Args) > 2 {
+		ptn = os.Args[2]
+	}
 	if len(os.Args) > 3 {
-		ptn = os.Args[3]
+		proxy_pass = os.Args[3]
+	}
+	certFile := ""
+	if len(os.Args) > 4 {
+		certFile = os.Args[4]
+	}
+	keyFile := ""
+	if len(os.Args) > 5 {
+		keyFile = os.Args[5]
+	}
+	dump_body = false
+	if os.Getenv("_DUMP_BODY") == "true" {
+		dump_body = true
+		log.Printf("dump_body is set to true.\n")
 	}
 
+	// start reverse proxy
 	remote, err := url.Parse(proxy_pass)
 	if err != nil {
 		panic(err)
 	}
-
 	proxy := httputil.NewSingleHostReverseProxy(remote)
+	proxy.ModifyResponse = logResponseHeader
+	// registering handler function for this pattern
 	http.HandleFunc(ptn, handler(proxy))
-	err = http.ListenAndServe(port, nil)
+	log.Printf("Starting listener on %s\n\n", server_addr)
+	if len(keyFile) > 0 {
+		scheme = "https"
+		err = http.ListenAndServeTLS(server_addr, certFile, keyFile, nil)
+	} else {
+		scheme = "http"
+		err = http.ListenAndServe(server_addr, nil)
+	}
 	if err != nil {
 		panic(err)
 	}
