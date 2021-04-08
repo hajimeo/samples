@@ -71,20 +71,31 @@ function f_postgres_log() {
     rg -z -N --sort=path -g "${_glob}" "^${_date_regex}.+ checkpoint complete:.+(longest=[^0].+|average=[^0].+)"
 }
 
+#f_grep_multilines top_2021-03-31_17-49-17.out "" "Active Internet connections" > threads_2021-03-31_17-49-17.out
 function f_grep_multilines() {
     local __doc__="Multiline search with 'rg' dotall TODO: dot and brace can't be used in _str_in_1st_line"
-    local _str_in_1st_line="$1"
-    local _glob="${2:-"*.*log*"}"
+    local _file="${1}" # -g "*.*log*" may work too
+    local _str_in_1st_line="${2:-"^2\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d"}"
     local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d"}"
 
     # NOTE: '\Z' to try matching the end of file returns 'unrecognized escape sequence'
     local _regex="${_str_in_1st_line}.+?(${_boundary_str}|\z)"
-    echo "# regex:${_regex} -g '${_glob}'" >&2
+    echo "# regex:${_regex} ${_file}" >&2
     rg "${_regex}" \
         --multiline --multiline-dotall --no-line-number --no-filename -z \
-        -g "${_glob}" -m 2000 --sort=path
+        -m 2000 --sort=path ${_file} | grep -v "${_boundary_str}" | tr -d '\000'
     # not sure if rg sorts properly with --sort, so best effort (can not use ' | sort' as multi-lines)
 }
+
+# in case no rg
+function _grep_multilines() {
+    # requires ggrep
+    local _file="${1}"
+    local _start="${2:-"202\\d-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d"}"
+    local _end="${3:-"Active Internet connections"}"
+    _grep -Pzo "(?s)${_start}[\s\S]*?${_end}.+?\n" "${_file}" | grep -v "${_end}" | tr -d '\000'
+}
+
 
 function f_grep_logs() {
     local __doc__="Grep YYYY-MM-DD.hh:mm:ss.+<something>"
@@ -762,7 +773,7 @@ function f_gc_before_after_check() {
     -XX:+PrintClassHistogramBeforeFullGC -XX:+PrintClassHistogramAfterFullGC \
     -XX:+TraceClassLoading -XX:+TraceClassUnloading \
     -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps \
-    -Xloggc:${JAVA_GC_LOG_DIR}/gc.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=1024k"
+    -Xloggc:${JAVA_GC_LOG_DIR}/gc.%t.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=1024k"
 }
 
 function f_validate_siro_ini() {
@@ -786,6 +797,19 @@ function f_count_lines() {
         local _line_num=`wc -l <${_file} | tr -d '[:space:]'`
         rg -n --no-filename -z "${_search_regex}" ${_file} | rg -o '^(\d+):(2\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d,\d\d\d)' -r '${2}T${3} ${1}' | line_parser.py thread_num ${_line_num} | bar_chart.py -A
     fi
+}
+
+#_get_hextids top_2021-03-31_16-31-43.out | sort | uniq -c
+#_get_hextids top_2021-03-31_16-31-43.out | tr '\n' '|'
+#ls -1 top_2021-03-31_*.out | while read -r _f;do (echo "# ${_f}"; _get_hextids ${_f} | xargs -I {} grep 'nid={} run' ${_f}); done &> result.out
+function _get_hextids() {
+    # grep top output and return PID (currently over 90% CUP one) for the user, then use printf to convert to hex
+    local _file="${1}"
+    local _user="${2:-"nexus"}" # [^ ]+
+    local _n="${3:-10}"
+    rg '^(  PID|top )' -A ${_n} "${_file}" | rg "^(top |\s*\d+ +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d+|9)\d.\d+ +)" > /tmp/${FUNCNAME}_$$.tmp || return $?
+    cat /tmp/${FUNCNAME}_$$.tmp >&2
+    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d+|9)\d.\d+ +" -o -r '$1' | xargs printf "0x%x\n"
 }
 
 # If would like to split the dumps even though this script can handle:
@@ -858,7 +882,7 @@ function f_threads() {
         echo "## Listening ports (acceptor)"
         # Sometimes this can be a hostname
         #rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
-        rg '^[^ ].+(\-acceptor\-| Acceptor\d+).+:\d+[\} ]' --no-filename "${_file}" | sort | uniq
+        rg '^[^ ].+(\-acceptor\-| Acceptor\d+).+:\d+[\} "]' --no-filename "${_file}" | sort | uniq
         echo " "
 
         echo "## Counting 'QueuedThreadPool.runJob' for Jetty pool"
@@ -1291,7 +1315,6 @@ function _load_yaml() {
     _sed -n -r 's/^([^=]+)[[:space:]]+=[[:space:]]+(.+)/'${_name_space}'\1\t"\2"/p' ${_yaml_file} | awk -F "\t" '{gsub(/[^0-9a-zA-Z_]/,"_",$1); print $1"="$2}' > /tmp/_load_yaml.out || return $?
     source /tmp/_load_yaml.out
 }
-
 
 function _search_properties() {
     local _path="${1-./}"
