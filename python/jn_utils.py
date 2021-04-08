@@ -26,6 +26,8 @@ Convert Unix timestamp with milliseconds to datetime
     DATETIME(ROUND(dateColumn / 1000), 'unixepoch')
 Get date_hour
     UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1)
+or faster way to get 10mis from the request.log:
+    substr(date, 1, 16)
 Convert current time or string date to Unix timestamp
     STRFTIME('%s', 'NOW')
     STRFTIME('%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1))
@@ -824,6 +826,25 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     return conn
 
 
+def execute(sql, conn=None, no_history=False):
+    """
+    Execute a SQL statement (updte|insert into|delete
+    :param sql: SQL statement
+    :param conn: DB connection object
+    :param no_history: not saving this query into a history file
+    :return: result or void
+    >>> r = execute("UPDATE sqlite_master SET name = name where type = 'testtesttesttest'", connect(), True)
+    >>> bool(r)
+    True
+    """
+    if conn is None:
+        conn = connect()
+    result = conn.execute(sql)
+    if no_history is False and bool(result):
+        _save_query(sql)
+    return result
+
+
 def query(sql, conn=None, no_history=False, show=False):
     """
     Call pd.read_sql() with given query, expecting SELECT statement
@@ -1167,7 +1188,7 @@ def treeFromDf(df, name_ids, member_id, current="", level=0, indent=4, pad=" ", 
     :param mini: Do not output first level lines which do not have any members
     :return: void
     #>>> df = ju.q("select recipe_name, repository_name, `attributes.group.memberNames` from t_db_repo")
-    #>>> treeFromDf(df, name_ids="repository_name,recipe_name", member_id="attributes.group.memberNames", pad=" ", prefix="- ")
+    #>>> ju.treeFromDf(df, name_ids="repository_name,recipe_name", member_id="attributes.group.memberNames", pad=" ", prefix="- ")
     >>> d = [{"recipe_name":"nuget-group", "repository_name":"nuget-group", "attributes.group.memberNames":"['nuget-hosted']"}, {"recipe_name":"nuget-hosted", "repository_name":"nuget-hosted"}]
     >>> df = pd.DataFrame(data=d)
     >>> treeFromDf(df, "repository_name", "attributes.group.memberNames", pad="_", prefix="")
@@ -1628,6 +1649,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
                                                                  prev_message=prev_message, begin_re=begin_re,
                                                                  line_re=line_re, size_re=size_re, time_re=time_re,
                                                                  num_cols=num_cols)
+        # TODO: am i casting all values to string?
         if bool(tmp_tuple):
             if replace_comma and time_with_ms.search(tmp_tuple[0]):
                 tmp_l = list(tmp_tuple)
