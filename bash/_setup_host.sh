@@ -51,7 +51,7 @@ curl -s -f "http://www.osakos.com/tools/info.php?id=${_ID}&LOCAL_ADDR=${_IP}"' >
         chmod a+x /etc/cron.daily/ipchk
     fi
 
-    f_del_log_cron "${_WORK_DIR%/}/*/logs" "28"
+    f_del_log_cron "${_WORK_DIR%/}/*" "28"
 }
 
 function f_del_log_cron() {
