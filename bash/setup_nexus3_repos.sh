@@ -30,7 +30,7 @@ COMMAND OPTIONS:
     -A
         Automatically setup Nexus (best effort)
     -r <response_file_path>
-        Specify your saved response file. Without -a, you can review your responses.
+        Specify your saved response file. Without -A, you can review your responses.
     -f <format1,format2,...>
         Comma separated repository formats.
         Default: ${_REPO_FORMATS}
@@ -46,22 +46,22 @@ Start script with interview mode:
     sudo ${_filename}
 
 Using default values and NO interviews:
-    sudo ${_filename} -a
+    sudo ${_filename} -A
 
 Create Nexus 3.24.0 container and setup available formats:
-    sudo ${_filename} -v 3.24.0 [-a]
+    sudo ${_filename} -v 3.24.0 [-A]
 
 Setup docker repositories only (and populate some data if 'docker' command is available):
-    sudo ${_filename} -f docker [-a]
+    sudo ${_filename} -f docker [-A]
 
 Setup maven,npm repositories only:
-    sudo ${_filename} -f maven,npm [-a]
+    sudo ${_filename} -f maven,npm [-A]
 
 Using previously saved response file and review your answers:
     sudo ${_filename} -r ./my_saved_YYYYMMDDhhmmss.resp
 
 Using previously saved response file and NO interviews:
-    sudo ${_filename} -a -r ./my_saved_YYYYMMDDhhmmss.resp
+    sudo ${_filename} -A -r ./my_saved_YYYYMMDDhhmmss.resp
 
 NOTE:
 For fresh install with same container name:
