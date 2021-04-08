@@ -27,15 +27,15 @@ _JAVA="java"
 [ -n "${JAVA_HOME}" ] && _JAVA="${JAVA_HOME%/}/bin/java"
 
 _XMX="${_NXIQ_HEAPSIZE:-"2G"}"
-JAVA_OPTIONS="-XX:ActiveProcessorCount=2 -Xms${_XMX} -Xmx${_XMX} -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=${NEXUS_IQ_SONATYPEWORK}/log/jvm.log"
+JAVA_OPTIONS="-Xms${_XMX} -Xmx${_XMX} -XX:ActiveProcessorCount=2 -XX:-OmitStackTraceInFastThrow -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=${NEXUS_IQ_SONATYPEWORK}/log/jvm.log"
 # GC log related options are different by Java version.
 if ${_JAVA} -XX:+PrintFlagsFinal -version 2>/dev/null | grep -q PrintClassHistogramBeforeFullGC; then
     # probably java 8
-    JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+UseG1GC -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:${NEXUS_IQ_SONATYPEWORK}/log/gc.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=1024k -XX:+PrintClassHistogramBeforeFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading"
+    JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+UseG1GC -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=1024k -XX:+PrintClassHistogramBeforeFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading"
     JAVA_OPTIONS="${JAVA_OPTIONS} -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=6786 -Dcom.sun.management.jmxremote.local.only=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
 else
     # default, expecting java 11
-    JAVA_OPTIONS="${JAVA_OPTIONS} -Xlog:gc*:file=${NEXUS_IQ_SONATYPEWORK}/log/gc.log:time,uptime:filecount=10,filesize=1024k"
+    JAVA_OPTIONS="${JAVA_OPTIONS} -Xlog:gc*:file=${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log:time,uptime:filecount=10,filesize=1024k"
 fi
 # _JAVA_OPTIONS should be appended in the last to overwrite
 [ -n "${_JAVA_OPTIONS}" ] && JAVA_OPTIONS="${JAVA_OPTIONS} ${_JAVA_OPTIONS}"
