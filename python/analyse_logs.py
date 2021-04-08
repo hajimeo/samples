@@ -3,16 +3,18 @@ import get_json as gj
 import linecache, re, os, json
 
 
-def _gen_regex_for_request_logs(filename="request.log"):
+def _gen_regex_for_request_logs(filepath="request.log"):
     """
     Return a list which contains column names, and regex pattern for request.log
-    :param filename: A file name or *simple* regex used in glob to select files.
+    :param filepath: A file path or *simple* regex used in glob to select files.
     :return: (col_list, pattern_str)
     """
-    files = ju._globr(filename)
-    if bool(files) is False:
-        return ([], "")
-    checking_line = linecache.getline(files[0], 2)  # first line can be a junk: "** TRUNCATED ** linux x64"
+    if os.path.isfile(filepath) is False:
+        files = ju._globr(filepath)
+        if bool(files) is False:
+            return ([], "")
+        filepath = files[0]
+    checking_line = linecache.getline(filepath, 2)  # first line can be a junk: "** TRUNCATED ** linux x64"
     # @see: samples/bash/log_search.sh:f_request2csv()
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
                "elapsedTime", "headerUserAgent", "thread"]
@@ -39,7 +41,7 @@ def _gen_regex_for_request_logs(filename="request.log"):
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
     else:
-        ju._info("Can not determine the log format for %s . Using last one." % (str(files[0])))
+        ju._info("Can not determine the log format for %s . Using default one." % (str(filepath)))
         return (columns, partern_str)
 
 
@@ -52,7 +54,7 @@ def _gen_regex_for_app_logs(filepath=""):
     NOTE: TODO: gz file such as request-2021-03-02.log.gz won't be recognised.
     """
     # If filepath is not empty but not exist, assuming it as a glob pattern
-    if bool(filepath) and os.path.isfile(filepath) is False:
+    if os.path.isfile(filepath) is False:
         files = ju._globr(filepath)
         if bool(files) is False:
             return ([], "")
@@ -200,9 +202,8 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
         # If request.*csv* exists, use that (because it's faster), if not, logs2table, which is slower.
         if ju.exists("t_request") is False:
             (col_names, line_matching) = _gen_regex_for_request_logs('request.log')
-            request_logs = ju.logs2table('request.log', tablename="t_request", col_names=col_names,
-                                         line_beginning="^.",
-                                         line_matching=line_matching, max_file_size=max_file_size)
+            request_logs = ju.logs2table('request.log', tablename="t_request", line_beginning="^.",
+                                         col_names=col_names, line_matching=line_matching, max_file_size=max_file_size)
 
         # Loading application log file(s) into database.
         (col_names, line_matching) = _gen_regex_for_app_logs('nexus.log')
