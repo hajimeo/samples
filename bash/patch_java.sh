@@ -131,7 +131,7 @@ function f_javaenvs() {
     if [ -x "${_jcmd}" ]; then
         if [ -z "$CLASSPATH" ]; then
             export CLASSPATH=".:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
-            _set_classpath "${_port}"
+            _set_extra_classpath "${_port}"
         else
             echo "WARN: CLASSPATH is already set, so not overwriting/appending."
             #export CLASSPATH="${CLASSPATH%:}:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
@@ -172,9 +172,9 @@ function _find_jcmd() {
     echo "${_jcmd}"
 }
 
-function _set_classpath() {
-    # _set_classpath 8081 "/var/tmp/share/java/lib"
-    # _EXTRA_LIB="/var/tmp/share/java/lib" _set_classpath 8081
+function _set_extra_classpath() {
+    # _set_extra_classpath 8081 "/var/tmp/share/java/lib"
+    # _EXTRA_LIB="/var/tmp/share/java/lib" _set_extra_classpath 8081
     local _port="${1}"
     local _extra_lib="${2-${_EXTRA_LIB}}"
     local _classpath=""
@@ -335,7 +335,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
 
     f_javaenvs "$_PORT" || exit $?
-    [ -z "${_JAR_FILEPATH}" ] && _JAR_FILEPATH="${_CWD}"
+    [ -z "${_JAR_FILEPATH}" ] && _JAR_FILEPATH="${_CWD:="."}"
 
     # If _CLASS_FILEPATH is given, compiling.
     if [ -n "${_CLASS_FILEPATH}" ]; then
@@ -360,7 +360,8 @@ $0 '$1' '$2' '<jar path from above>' '$4' [Y]"
             _CMD="scalac"
         elif [ "${_EXT}" = "java" ]; then
             if [ -n "${_JAR_FILEPATH}" ] && [ -e "${_JAR_FILEPATH}" ]; then
-                _DIR_PATH="$(dirname $($JAVA_HOME/bin/jar -tvf ${_JAR_FILEPATH} | grep -oE "[^ ]+${_CLASS_NAME}.class"))"
+                # TODO: not sure adding "/" before _CLASS_NAME is OK
+                _DIR_PATH="$(dirname $($JAVA_HOME/bin/jar -tvf ${_JAR_FILEPATH} | grep -oE "[^ ]+/${_CLASS_NAME}.class"))"
                 if [ ! -d "${_DIR_PATH}" ]; then
                     mkdir -p "${_DIR_PATH}" || exit $?
                 fi
