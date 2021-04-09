@@ -546,34 +546,9 @@ function sync_nexus_binaries() {
     rsync -Prc $HOME/.nexus_executable_cache/nexus-iq-server-*-bundle.tar.gz ${_host}:/var/tmp/share/sonatype/
 }
 
-# To patch nexus (so that checking /system) but probably no longer using.
-function _patch() {
-    local _java_file="${1}"
-    local _jar_file="${2}"
-    local _base_dir="${3:-"."}"
-    if [ -z "${_java_file}" ] || [ ! -f "${_java_file}" ]; then
-        return 1
-    fi
-    if [ ! -s $HOME/IdeaProjects/samples/bash/patch_java.sh ]; then
-        return 1
-    fi
-    if [ -z "${_jar_file}" ]; then
-        _jar_file="$(find ${_base_dir%/} -type d -name system -print | head -n1)"
-    fi
-    if [ -z "${CLASSPATH}" ]; then
-        echo "old CLASSPATH=${CLASSPATH}"
-    fi
-    export CLASSPATH=$(find ${_base_dir%/} -path '*/system/*' -type f -name '*.jar' | tr '\n' ':').
-    bash $HOME/IdeaProjects/samples/bash/patch_java.sh "" ${_java_file} ${_jar_file}0
-}
-function _patch_remote() {
-    # TODO: not working?
-    local _java_file="${1}"
-    local _jar_file="${2}" # To step faster
-    local _port="${3:-8081}"
-    local _base_dir="${4:-"/opt/sonatype/nexus"}"
-    local _host="${5:-"root@dh1"}"
-    local _path="${6:-"/var/tmp/share/sonatype/workspace"}"
-    scp -C ${_java_file} ${_host%:}:${_path%/}/ || return $?
-    ssh ${_host} "export CLASSPATH=\$(find -L ${_base_dir%/} -path '*/system/*' -type f -name '*.jar' | tr '\n' ':')/var/tmp/share/java/lib/*:.;bash -x /var/tmp/share/java/patch_java.sh ${_port} \"${_path%/}/$(basename ${_java_file})\" \"${_jar_file}\""
+function set_classpath() {
+    local _port="${1}"
+    local _p=`lsof -ti:${_port} -s TCP:LISTEN` || return $?
+    # requires jcmd in the path
+    export CLASSPATH=".:`jcmd ${_p} VM.system_properties | sed -E -n 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
 }
