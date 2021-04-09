@@ -261,7 +261,7 @@ listen stats
                 # If skipping the check, then certificate is given, populate https options
                 [ -n "${_certificate}" ] && _https_opts=" ssl crt ${_certificate}${_https_opts}"
             fi
-            echo "  server ${_n} ${_n}:${_b_port}${_https_opts} check inter 30s ${_resolver}" # not using 'cookie' for now.
+            echo "  server ${_n} ${_n}:${_b_port}${_https_opts} check inter 5s ${_resolver}" # not using 'cookie' for now.
         done >/tmp/f_haproxy_backends_$$.out
 
         if [ ! -s /tmp/f_haproxy_backends_$$.out ]; then
