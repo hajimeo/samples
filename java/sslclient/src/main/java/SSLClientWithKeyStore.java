@@ -2,8 +2,8 @@
  * Original: https://stackoverflow.com/questions/21223084/how-do-i-use-an-ssl-client-certificate-with-apache-httpclient
  *
  * java -Djavax.net.debug=ssl,keymanager -Djavax.net.ssl.trustStore=some_truststore_to_trust_remote.jks \
- *      -DkeyStore=./some_test_keystore.jks -DkeyStoreType=JKS -DkeyStorePassword=password \
- *      SSLSocketClientWithClientAuth https://127.0.0.1:6182/path/to/request [true]
+ *      -Ddebug=true -DkeyStore=./some_test_keystore.jks -DkeyStoreType=JKS -DkeyStorePassword=password \
+ *      SSLSocketClientWithClientAuth https://127.0.0.1:6182/path/to/request [ignore]
  */
 
 import java.io.FileInputStream;
@@ -32,7 +32,9 @@ public class SSLClientWithKeyStore
     return keyStore;
   }
 
-  public static void performClientRequest(String url, String keypath, String keypwd, String keytype, boolean ignore) throws Exception {
+  public static void performClientRequest(String url, String keypath, String keypwd, String keytype, boolean ignore)
+      throws Exception
+  {
     KeyStore keyStore = readStore(keypath, keypwd, keytype);
     SSLContext sslContext = org.apache.http.ssl.SSLContexts.custom()
         .loadKeyMaterial(keyStore, keypwd.toCharArray())
@@ -45,9 +47,10 @@ public class SSLClientWithKeyStore
     HttpResponse response = httpClient.execute(new HttpGet(url));
     HttpEntity entity = response.getEntity();
 
-    System.out.println("----------------------------------------");
-    System.out.println(response.getStatusLine());
-    EntityUtils.consume(entity);
+    System.err.println("# " + response.getStatusLine());
+    //EntityUtils.consume(entity);
+    String respBody = EntityUtils.toString(entity);
+    System.out.println(respBody);
   }
 
   private static void disableSSLValidation(SSLContext sslContext, KeyStore keyStore, String keypwd) throws Exception {
@@ -78,7 +81,12 @@ public class SSLClientWithKeyStore
   }
 
   public static void main(String[] args) throws Exception {
-    System.setProperty("org.apache.http", "debug");
+    String debug = System.getProperty("debug", "false");
+    if (debug.equalsIgnoreCase("true")) {
+      System.setProperty("org.apache.commons.logging.Log", "org.apache.commons.logging.impl.SimpleLog");
+      System.setProperty("org.apache.commons.logging.simplelog.showdatetime", "true");
+      System.setProperty("org.apache.commons.logging.simplelog.log.org.apache.http", "debug");
+    }
 
     boolean ignore = false;
     String keypath = System.getProperty("keyStore", "./keystore.p12");
