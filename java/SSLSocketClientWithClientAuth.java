@@ -37,12 +37,13 @@
  * maintenance of any nuclear facility.
  */
 
-
 import java.net.*;
 import java.io.*;
+
 import javax.net.ssl.*;
-import javax.security.cert.X509Certificate;
+
 import java.security.KeyStore;
+import java.security.cert.X509Certificate;
 
 /*
  * This example shows how to set up a key manager to do client
@@ -52,102 +53,133 @@ import java.security.KeyStore;
  * The application can be modified to connect to a server outside
  * the firewall by following SSLSocketClientWithTunneling.java.
  *
- * curl -O https://raw.githubusercontent.com/hajimeo/samples/master/java/testkeys
  * java -Djavax.net.debug=ssl,keymanager -Djavax.net.ssl.trustStore=some_truststore_to_trust_remote.jks \
- *     SSLSocketClientWithClientAuth ./idStore.jks password 127.0.0.1 6182 /path/to/request
+ *     SSLSocketClientWithClientAuth ./some_test_keystore.jks password 127.0.0.1 6182 /path/to/request [true]
  */
-public class SSLSocketClientWithClientAuth {
+public class SSLSocketClientWithClientAuth
+{
+  private static void disableSSLValidation(SSLContext sslContext, KeyManagerFactory kmf) throws Exception {
+    X509TrustManager customTm = new X509TrustManager() {
+      @Override
+      public void checkClientTrusted(final java.security.cert.X509Certificate[] chain, final String authType)
+      {
 
-    public static void main(String[] args) throws Exception {
-        String keyPath="";
-        String password="";
-        String host="";
-        int port=-1;
-        String path="";
-        // For troubleshooting
-        //for (int i = 0; i < args.length; i++)
-        //    System.out.println(args[i]);
+      }
 
-        try {
-            keyPath = args[0];
-            password = args[1];
-            host = args[2];
-            host = args[3];
-            port = Integer.parseInt(args[4]);
-            path = args[5];
-        } catch (IllegalArgumentException e) {
-            System.out.println("USAGE: java SSLSocketClientWithClientAuth idStore.jks passphrase host port /path/to/request");
-            System.exit(-1);
-        }
+      @Override
+      public void checkServerTrusted(final java.security.cert.X509Certificate[] chain, final String authType)
+      {
 
-        try {
+      }
 
-            /*
-             * Set up a key manager for client authentication
-             * if asked by the server.  Use the implementation's
-             * default TrustStore and secureRandom routines.
-             */
-            SSLSocketFactory factory = null;
-            try {
-                SSLContext ctx;
-                KeyManagerFactory kmf;
-                KeyStore ks;
-                char[] passphrase = password.toCharArray();
+      @Override
+      public X509Certificate[] getAcceptedIssuers() {
+        return new X509Certificate[0];
+      }
+    };
 
-                ctx = SSLContext.getInstance("TLS");
-                kmf = KeyManagerFactory.getInstance("SunX509");
-                ks = KeyStore.getInstance("JKS");
-                ks.load(new FileInputStream(new File(keyPath)), passphrase);
+    sslContext.init(kmf.getKeyManagers(), new X509TrustManager[]{customTm}, null);
 
-                kmf.init(ks, passphrase);
-                ctx.init(kmf.getKeyManagers(), null, null);
+    HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+    HttpsURLConnection.setDefaultHostnameVerifier(new HostnameVerifier()
+    {
+      public boolean verify(String hostname, SSLSession session) {
+        return true;
+      }
+    });
+  }
 
-                factory = ctx.getSocketFactory();
-            } catch (Exception e) {
-                throw new IOException(e.getMessage());
-            }
+  public static void main(String[] args) throws Exception {
+    String keyPath = "";
+    String password = "";
+    String host = "";
+    int port = -1;
+    String path = "";
+    boolean ignore = false;
 
-            SSLSocket socket = (SSLSocket)factory.createSocket(host, port);
-
-            /*
-             * send http request
-             *
-             * See SSLSocketClient.java for more information about why
-             * there is a forced handshake here when using PrintWriters.
-             */
-            socket.startHandshake();
-
-            PrintWriter out = new PrintWriter(
-                    new BufferedWriter(
-                            new OutputStreamWriter(
-                                    socket.getOutputStream())));
-            out.println("GET " + path + " HTTP/1.0");
-            out.println();
-            out.flush();
-
-            /*
-             * Make sure there were no surprises
-             */
-            if (out.checkError())
-                System.out.println(
-                        "SSLSocketClient: java.io.PrintWriter error");
-
-            /* read response */
-            BufferedReader in = new BufferedReader(
-                    new InputStreamReader(
-                            socket.getInputStream()));
-
-            String inputLine;
-
-            while ((inputLine = in.readLine()) != null)
-                System.out.println(inputLine);
-
-            in.close();
-            out.close();
-            socket.close();
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+    try {
+      keyPath = args[0];
+      password = args[1];
+      host = args[2];
+      port = Integer.parseInt(args[3]);
+      path = args[4];
+      if (args.length > 5) {
+        ignore = true;
+      }
     }
+    catch (IllegalArgumentException e) {
+      System.out.println("USAGE: java SSLSocketClientWithClientAuth idStore.jks passphrase host port /path/to/request");
+      System.exit(-1);
+    }
+
+    try {
+      /*
+       * Set up a key manager for client authentication
+       * if asked by the server.  Use the implementation's
+       * default TrustStore and secureRandom routines.
+       */
+      SSLSocketFactory factory = null;
+      SSLContext ctx;
+      KeyManagerFactory kmf;
+      KeyStore ks;
+      char[] passphrase = password.toCharArray();
+
+      ctx = SSLContext.getInstance("TLS");
+      kmf = KeyManagerFactory.getInstance("SunX509");
+      ks = KeyStore.getInstance("JKS");
+      ks.load(new FileInputStream(new File(keyPath)), passphrase);
+      kmf.init(ks, passphrase);
+      if (ignore) {
+        disableSSLValidation(ctx, kmf);
+      }
+      else {
+        ctx.init(kmf.getKeyManagers(), null, null);
+      }
+      factory = ctx.getSocketFactory();
+
+      SSLSocket socket = (SSLSocket) factory.createSocket(host, port);
+
+      /*
+       * send http request
+       *
+       * See SSLSocketClient.java for more information about why
+       * there is a forced handshake here when using PrintWriters.
+       */
+      socket.startHandshake();
+
+      PrintWriter out = new PrintWriter(
+          new BufferedWriter(
+              new OutputStreamWriter(
+                  socket.getOutputStream())));
+      out.println("GET " + path + " HTTP/1.0");
+      out.println();
+      out.flush();
+
+      /*
+       * Make sure there were no surprises
+       */
+      if (out.checkError()) {
+        System.out.println(
+            "SSLSocketClient: java.io.PrintWriter error");
+      }
+
+      /* read response */
+      BufferedReader in = new BufferedReader(
+          new InputStreamReader(
+              socket.getInputStream()));
+
+      String inputLine;
+
+      while ((inputLine = in.readLine()) != null) {
+        System.out.println(inputLine);
+      }
+
+      in.close();
+      out.close();
+      socket.close();
+    }
+    catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
 }
