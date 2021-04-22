@@ -127,7 +127,7 @@ public class SSLSocketClientWithClientAuth
       ctx = SSLContext.getInstance("TLS");
       kmf = KeyManagerFactory.getInstance("SunX509");
       ks = KeyStore.getInstance("JKS");
-      ks.load(new FileInputStream(new File(keyPath)), passphrase);
+      ks.load(new FileInputStream(keyPath), passphrase);
       kmf.init(ks, passphrase);
       if (ignore) {
         disableSSLValidation(ctx, kmf);
@@ -137,6 +137,7 @@ public class SSLSocketClientWithClientAuth
       }
       factory = ctx.getSocketFactory();
 
+      System.err.println("# Connecting " + host + ":" + port);
       SSLSocket socket = (SSLSocket) factory.createSocket(host, port);
 
       /*
@@ -151,6 +152,7 @@ public class SSLSocketClientWithClientAuth
           new BufferedWriter(
               new OutputStreamWriter(
                   socket.getOutputStream())));
+      System.err.println("# GET " + path + " HTTP/1.0");
       out.println("GET " + path + " HTTP/1.0");
       out.println();
       out.flush();
@@ -159,8 +161,7 @@ public class SSLSocketClientWithClientAuth
        * Make sure there were no surprises
        */
       if (out.checkError()) {
-        System.out.println(
-            "SSLSocketClient: java.io.PrintWriter error");
+        System.err.println("ERROR: SSLSocketClient: java.io.PrintWriter error");
       }
 
       /* read response */
