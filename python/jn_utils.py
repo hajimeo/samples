@@ -31,15 +31,22 @@ or faster way to get 10mis from the request.log:
 Convert current time or string date to Unix timestamp
     STRFTIME('%s', 'NOW')
     STRFTIME('%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1))
+or
+    UDF_TIMESTAMP('some date like string')
+or
     $ q "select (julianday('2020-05-01 00:10:00') - 2440587.5)*86400.0"
     1588291800.0000045
     $ q "select CAST((julianday('2020-05-01 00:10:00') - julianday('2020-05-01 00:00:00')) * 8640000 AS INT)" <<< milliseconds
     600.0000044703484
+Get the started time by concatenating today and the time string from 'date' column, then convert to Unix-timestamp
+    TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time
+or  (4*60*60) is for the timezone offst -0400
+    TIME(UDF_TIMESTAMP(date) - CAST(elapsedTime/1000 AS INT) - (4*60*60), 'unixepoch') as started_time
 """
 
 # TODO: When you add a new pip package, don't forget to update setup_work_env.sh
 import sys, os, io, fnmatch, gzip, re, json, sqlite3, ast
-from time import time, mktime
+from time import time
 from datetime import datetime
 from dateutil import parser
 
@@ -677,19 +684,25 @@ def udf_str2sqldt(date_time):
 def udf_timestamp(date_time):
     """
     Sqlite UDF for converting date_time string to Unix timestamp
-    NOTE: SQLite's STRFTIME('%s', 'DATE-TIME string') also return same
-    eg: SELECT UDF_TIMESTAMP(some_datetime, NULL) as unix_timestamp, ...
-    NOTE: SQLite way: CAST((julianday(some_datetime) - 2440587.5)*86400.0 as INT)
+    eg: SELECT UDF_TIMESTAMP(some_datetime) as unix_timestamp, ...
+
+    NOTE: SQLite's STRFTIME('%s', 'YYYY-MM-DD hh:mm:ss') also return same.
+          or CAST((julianday(some_datetime) - 2440587.5)*86400.0 as INT)
     :param date_time: ISO date string (or Date/Time column but SQLite doesn't have date/time columns)
     :return:          Integer of Unix Timestamp
-    >>> udf_timestamp("14/Oct/2019:00:00:05 +0800")
-    1570975205
+    >>> udf_timestamp("14/Apr/2021:06:39:42 +0000")
+    1618382382
+    >>> udf_timestamp("14/Apr/2021:06:39:42 -0400")
+    1618396782
+    >>> udf_timestamp("2021-04-14 06:39:42+0000")
+    1618382382
     """
     if date_time.count(":") >= 3:
-        # assuming the format is "%d/%b/%Y:%H:%M:%S %z"
+        # assuming the date_time uses "%d/%b/%Y:%H:%M:%S %z". This format doesn't work with parse, so changing.
         date_str, time_str = date_time.split(":", 1)
         date_time = date_str + " " + time_str
-    return int(mktime(parser.parse(date_time).timetuple()))
+    # Seems mktime calculates offset string unnecessarily, so don't use mktime
+    return int(parser.parse(date_time).timestamp())
 
 
 def udf_str_to_int(some_str):
