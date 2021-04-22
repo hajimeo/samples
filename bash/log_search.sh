@@ -867,7 +867,12 @@ function f_threads() {
         echo " "
         # Only when checking multiple thread dumps
         echo "## Long *RUN*ning and no-change (same hash) threads contain '${_running_thread_search_re}' (threads:${_count})"
-        rg -l "${_running_thread_search_re}" -g '*run*.out' -g '*RUN*.out' ${_save_dir%/}/ | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
+        rg -l "${_running_thread_search_re}" -g '*run*.out' -g '*RUN*.out' ${_save_dir%/}/ | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort | tee /tmp/${FUNCNAME}_$$.tmp
+        if [ ! -s /tmp/${FUNCNAME}_$$.tmp ] && [ 2 -lt ${_count} ]; then
+            local __count=$(( ${_count} - 1 ))
+            rg -l "${_running_thread_search_re}" -g '*run*.out' -g '*RUN*.out' ${_save_dir%/}/ | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s+${__count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
+        fi
+        # TODO: also check similar file sizes (wc -c?)
         echo "## Long running threads contain '${_running_thread_search_re}' (threads:${_count})"
         rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
         #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
@@ -885,10 +890,10 @@ function f_threads() {
         rg '^[^ ].+(\-acceptor\-| Acceptor\d+).+:\d+[\} "]' --no-filename "${_file}" | sort | uniq
         echo " "
 
-        echo "## Counting 'QueuedThreadPool.runJob' for Jetty pool"
-        echo "BLOCKED: $(rg -w 'QueuedThreadPool.runJob' ${_save_dir%/}/ -l -g '*BLOCKED*' | wc -l)"
-        echo "RUNNABLE:$(rg -w 'QueuedThreadPool.runJob' ${_save_dir%/}/ -l -g '*RUNNABLE*' | wc -l)"
-        echo "WAITING: $(rg -w 'QueuedThreadPool.runJob' ${_save_dir%/}/ -l -g '*WAITING*' | wc -l)"
+        echo "## Counting 'QueuedThreadPool.*\.run' for Jetty pool (QueuedThreadPool.runJob may not work with older NXRM2)"
+        echo "BLOCKED: $(rg '\bQueuedThreadPool.*\.run' ${_save_dir%/}/ -l -g '*BLOCKED*' -g '*blocked*' | wc -l)"
+        echo "RUNNABLE:$(rg '\bQueuedThreadPool.*\.run' ${_save_dir%/}/ -l -g '*RUNNABLE*' -g '*runnable*' | wc -l)"
+        echo "WAITING: $(rg '\bQueuedThreadPool.*\.run' ${_save_dir%/}/ -l -g '*WAITING*' -g '*waiting*' | wc -l)"
         echo " "
 
         echo "## Counting 'Pool.acquire' for OrientDB pool"
@@ -1132,7 +1137,9 @@ function f_h2_shell() {
     # DB_CLOSE_ON_EXIT=FALSE; may have some bug: https://github.com/h2database/h2database/issues/1259
     local _url="jdbc:h2:${_db_file/.h2.db/};DATABASE_TO_UPPER=FALSE;SCHEMA=insight_brain_ods;IFEXISTS=true;MV_STORE=FALSE"
     if [ -s "${_query_file}" ]; then
-        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.RunScript -url "${_url};TRACE_LEVEL_SYSTEM_OUT=3" -user sa -password "" -driver org.h2.Driver -script "${_query_file}"
+        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.RunScript -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver -script "${_query_file}"
+    elif [ -n "${_query_file}" ]; then  # probably SQL statement
+        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.RunScript -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver -script <(echo "${_query_file}")
     else
         java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.Shell -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver
     fi
