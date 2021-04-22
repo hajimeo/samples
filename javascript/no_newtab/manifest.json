@@ -11,12 +11,7 @@
   "permissions": [
     "tabs",
     "http://*/",
-    "https://*/",
-    "webRequest",
-    "webRequestBlocking",
-    "webNavigation",
-    "cookies",
-    "storage"
+    "https://*/"
   ],
   "manifest_version": 2
 }
