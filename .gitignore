@@ -8,6 +8,7 @@ backup/*
 *.class
 *.original
 *.pyc
+*.p12
 java/*.class
 java/*/target/*
 java/groovy/*.jar
