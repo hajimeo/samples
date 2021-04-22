@@ -16,7 +16,8 @@ function iqCli() {
     local _iq_app_id="${2:-${_IQ_APP_ID:-"sandbox-application"}}"
     local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
     local _iq_url="${4:-${_IQ_URL}}"
-    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.106.0-01"}}"
+    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.111.0-01"}}"
+    local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
     local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}"
 
@@ -35,7 +36,7 @@ function iqCli() {
         [ ! -d "${_cli_dir}" ] && mkdir -p "${_cli_dir}"
         curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
     fi
-    local _cmd="java -Djava.io.tmpdir=\"${_iq_tmp}\" -jar ${_iq_cli_jar} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r \"${_iq_tmp%/}/iq_result_$(date +'%Y%m%d%H%M%S').json\" -X ${_path}"
+    local _cmd="java -Djava.io.tmpdir=\"${_iq_tmp}\" -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r \"${_iq_tmp%/}/iq_result_$(date +'%Y%m%d%H%M%S').json\" -X ${_path}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
@@ -239,12 +240,13 @@ function mvn-deploy() {
     local __doc__="https://stackoverflow.com/questions/13547358/maven-deploydeploy-using-daltdeploymentrepository"
     local _alt_repo="${1}"
     local _remote_repo="${2}"
-    local _server_id="${3:-"nexus"}"
-    local _options="${4-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
+    local _local_repo="${3}"
+    local _server_id="${4:-"nexus"}"
+    local _options="${5-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
     if [ -n "${_alt_repo}" ]; then
         _options="-DaltDeploymentRepository=${_server_id}::default::${_alt_repo} ${_options}"
     fi
-    #[ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
+    [ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
     mvn `_mvn_settings "${_remote_repo}"` clean package deploy ${_options}
 }
 
