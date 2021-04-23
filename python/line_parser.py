@@ -5,18 +5,19 @@
 # echo 'YYYY-MM-DDThh:mm:ss,sss current_line_num' | line_parser.py thread_num ${_last_line_num} | bar_chart.py -A
 # echo 'YYYY-MM-DD hh:mm:ss,sss some_log_text' | line_parser.py time_diff
 #
-# Example: measuring AWS (PUT) request:
-# rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d).+com.amazonaws.request - (Sending Request: [^ ]+|Received)' ./log/tasks/some_task.log -o -r '$1 $2' | line_parser.py time_diff "Y" > time_diff.csv
+# Example: measuring AWS (PUT) request (expecting some_task.log is Single thread):
+# rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d).+com.amazonaws.request - (Sending Request: [^ ]+|Received)' ./log/tasks/some_task.log -o -r '$1 $2 $3' | line_parser.py time_diff "Sending" > time_diff.csv
+# rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ com.amazonaws.request - (Sending Request: [^ ]+|Received)' ./log/nexus.log -o -r '$1 $2 $3 $4' | line_parser.py time_diff "Sending" 3 > time_diff.csv
 #
 # All functions need to use "lp_" prefix
 # TODO: should be a class
 #
 
-import sys,re,dateutil.parser
+import sys, re, dateutil.parser
 from datetime import datetime
 
-_PREV_VALUE = ""
-_PREV_LABEL = ""
+_PREV_VALUE = _PREV_LABEL = _PREV_MSG = None
+
 
 def lp_thread_num(line):
     """
@@ -33,64 +34,97 @@ def lp_thread_num(line):
         (label, start_line_num) = line.strip().split(" ", 2)
     else:
         label = ""
-        start_line_num = sys.argv[2]    # this is the last line number (wc -l)
+        start_line_num = sys.argv[2]  # this is the last line number (wc -l)
 
     if _PREV_VALUE > 0:
         print("\"%s\",%s" % (_PREV_LABEL, (int(start_line_num) - int(_PREV_VALUE))))
     _PREV_LABEL = label
     _PREV_VALUE = int(start_line_num)
 
+
 def lp_time_diff(line):
     """
     Read log files and print the time difference between *previous* line in Milliseconds
     Expected line format: ^YYYY-MM-DD hh:mm:ss,sss some_text (space between date and time)
+    NOTE: This method reads sys.argv[2] for specifying starting value
+    NOTE: This method reads sys.argv[3] for max split number = count of space character
     :param line: String - current reading line
     :return: void
     """
     global _PREV_VALUE
     global _PREV_LABEL
-    global _PREV_COL2
+    global _PREV_MSG
+
+    # initialising
+    if bool(_PREV_VALUE) is False:
+        _PREV_VALUE = {}
+    if bool(_PREV_LABEL) is False:
+        _PREV_LABEL = {}
+    if bool(_PREV_MSG) is False:
+        _PREV_MSG = {}
 
     if bool(line) is False:
         return
-    #sys.stderr.write(line+"\n")
-    cols = line.strip().split(" ", 2)   # NOTE: maxsplit 2 means cols length is 3...
+    # sys.stderr.write(line+"\n")
+    # False works when *current* line's col[2] contains good message.
+    starting_message = ""
+    if (len(sys.argv) > 2) and bool(sys.argv[2]):
+        starting_message = sys.argv[2]
+    # False works when *current* line's col[2] contains good message.
+    _split_num = 2
+    if (len(sys.argv) > 3) and bool(sys.argv[3]):
+        _split_num = int(sys.argv[3])
+    # "date time value" or "date time thread value"
+    cols = line.strip().split(" ", _split_num)
     if len(cols) < 2:
         return
 
-    # False works when current line's col[2] contains good message.
-    flip_col2 = False
-    if (len(sys.argv) > 2) and bool(sys.argv[2]):
-        flip_col2 = True
-
     # Ignoring timezone
-    date_time = cols[0]+" "+cols[1]
-    date_time = date_time.split("+")[0] # removing timezone "+\d\d\d\d"
-    #sys.stderr.write(str(label)+"\n")
-    dt_obj = datetime.strptime(date_time, '%Y-%m-%d %H:%M:%S,%f')
+    crt_date_time = cols[0] + " " + cols[1]
+    crt_date_time = crt_date_time.split("+")[0]  # removing timezone "+\d\d\d\d"
+    # sys.stderr.write(str(label)+"\n")
+    dt_obj = datetime.strptime(crt_date_time, '%Y-%m-%d %H:%M:%S,%f')
     timestamp_in_ms = int(dt_obj.timestamp() * 1000)
-    #sys.stderr.write(str(_PREV_VALUE)+"\n")
-    #sys.stderr.write(str(current_timestamp_in_ms)+"\n")
+    # sys.stderr.write(str(_PREV_VALUE)+"\n")
+    # sys.stderr.write(str(current_timestamp_in_ms)+"\n")
+    if len(cols) > 3:
+        message = cols[3]
+        thread = cols[2]
+    else:
+        message = cols[2]
+        thread = "none"
 
-    if bool(_PREV_VALUE):
-        if len(cols) > 2:
-            # should escape double-quotes on cols[2]
-            if flip_col2:
-                print("\"%s\",\"%s\",%s,\"%s\"" % (str(_PREV_LABEL), date_time, (timestamp_in_ms - int(_PREV_VALUE)), _PREV_COL2.replace('"', '\\"')))
-            else:
-                print("\"%s\",\"%s\",%s,\"%s\"" % (str(_PREV_LABEL), date_time, (timestamp_in_ms - int(_PREV_VALUE)), cols[2].replace('"', '\\"')))
+    if thread in _PREV_VALUE and bool(_PREV_VALUE[thread]):
+        _prev_value = _PREV_VALUE[thread]
+        _prev_label = ""
+        if thread in _PREV_LABEL and bool(_PREV_LABEL[thread]):
+            _prev_label = _PREV_LABEL[thread]
+        if thread in _PREV_LABEL and bool(_PREV_MSG[thread]) and bool(starting_message) and _PREV_MSG[thread].startswith(starting_message):
+            _final_message = _PREV_MSG[thread].replace('"', '\\"')
         else:
-            print("\"%s\",\"%s\",%s" % (str(_PREV_LABEL), date_time, (timestamp_in_ms - int(_PREV_VALUE))))
-    _PREV_LABEL = date_time
-    _PREV_VALUE = timestamp_in_ms
-    _PREV_COL2 = cols[2]
+            _final_message = message.replace('"', '\\"')
+
+        # TODO: should use _split_num
+        if len(cols) > 3:
+            # should escape double-quotes on cols[2]
+            print("\"%s\",\"%s\",%s,\"%s\",\"%s\"" % (
+            _prev_label, crt_date_time, (timestamp_in_ms - _prev_value), _final_message, thread))
+        elif len(cols) > 2:
+            # should escape double-quotes on cols[2]
+            print("\"%s\",\"%s\",%s,\"%s\"" % (
+            _prev_label, crt_date_time, (timestamp_in_ms - _prev_value), _final_message))
+        else:
+            print("\"%s\",\"%s\",%s" % (_prev_label, crt_date_time, (timestamp_in_ms - _prev_value)))
+    if (bool(starting_message) and thread not in _PREV_LABEL and message.startswith(starting_message)) or bool(starting_message) is False or thread in _PREV_LABEL:
+        _PREV_LABEL[thread] = crt_date_time
+        _PREV_VALUE[thread] = timestamp_in_ms
+        _PREV_MSG[thread] = message
 
 if __name__ == '__main__':
     func_name = sys.argv[1]
 
     for line in sys.stdin:
-        globals()['lp_'+func_name](line)
+        globals()['lp_' + func_name](line)
 
     # Some function needs to be called with empty line
-    globals()['lp_'+func_name]("")
-
+    globals()['lp_' + func_name]("")
