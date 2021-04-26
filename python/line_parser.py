@@ -7,7 +7,7 @@
 #
 # Example: measuring AWS (PUT) request (expecting some_task.log is Single thread):
 # rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d).+com.amazonaws.request - (Sending Request: [^ ]+|Received)' ./log/tasks/some_task.log -o -r '$1 $2 $3' | line_parser.py time_diff "Sending" > time_diff.csv
-# rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ com.amazonaws.request - (Sending Request: [^ ]+|Received)' ./log/nexus.log -o -r '$1 $2 $3 $4' | line_parser.py time_diff "Sending" 3 > time_diff.csv
+# rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ com.amazonaws.request - (Sending Request: [^ ]+|Received)' --no-filename --sort=path -g nexus.log -o -r '$1 $2 $3 $4' | line_parser.py time_diff "Sending" 3 > time_diff.csv
 #
 # All functions need to use "lp_" prefix
 # TODO: should be a class
@@ -46,7 +46,7 @@ def lp_time_diff(line):
     """
     Read log files and print the time difference between *previous* line in Milliseconds
     Expected line format: ^YYYY-MM-DD hh:mm:ss,sss some_text (space between date and time)
-    NOTE: This method reads sys.argv[2] for specifying starting value
+    NOTE: This method reads sys.argv[2] for specifying starting message string
     NOTE: This method reads sys.argv[3] for max split number = count of space character
     :param line: String - current reading line
     :return: void
@@ -99,22 +99,25 @@ def lp_time_diff(line):
         _prev_label = ""
         if thread in _PREV_LABEL and bool(_PREV_LABEL[thread]):
             _prev_label = _PREV_LABEL[thread]
-        if thread in _PREV_LABEL and bool(_PREV_MSG[thread]) and bool(starting_message) and _PREV_MSG[thread].startswith(starting_message):
-            _final_message = _PREV_MSG[thread].replace('"', '\\"')
+        _final_message = None
+        if thread in _PREV_LABEL and bool(_PREV_MSG[thread]) and bool(starting_message):
+            if _PREV_MSG[thread].startswith(starting_message):
+                _final_message = _PREV_MSG[thread].replace('"', '\\"')
         else:
             _final_message = message.replace('"', '\\"')
 
-        # TODO: should use _split_num
-        if len(cols) > 3:
-            # should escape double-quotes on cols[2]
-            print("\"%s\",\"%s\",%s,\"%s\",\"%s\"" % (
-            _prev_label, crt_date_time, (timestamp_in_ms - _prev_value), _final_message, thread))
-        elif len(cols) > 2:
-            # should escape double-quotes on cols[2]
-            print("\"%s\",\"%s\",%s,\"%s\"" % (
-            _prev_label, crt_date_time, (timestamp_in_ms - _prev_value), _final_message))
-        else:
-            print("\"%s\",\"%s\",%s" % (_prev_label, crt_date_time, (timestamp_in_ms - _prev_value)))
+        if _final_message is not None:
+            # TODO: should use _split_num
+            if len(cols) > 3:
+                # should escape double-quotes on cols[2]
+                print("\"%s\",\"%s\",%s,\"%s\",\"%s\"" % (
+                _prev_label, crt_date_time, (timestamp_in_ms - _prev_value), _final_message, thread))
+            elif len(cols) > 2:
+                # should escape double-quotes on cols[2]
+                print("\"%s\",\"%s\",%s,\"%s\"" % (
+                _prev_label, crt_date_time, (timestamp_in_ms - _prev_value), _final_message))
+            else:
+                print("\"%s\",\"%s\",%s" % (_prev_label, crt_date_time, (timestamp_in_ms - _prev_value)))
     if (bool(starting_message) and thread not in _PREV_LABEL and message.startswith(starting_message)) or bool(starting_message) is False or thread in _PREV_LABEL:
         _PREV_LABEL[thread] = crt_date_time
         _PREV_VALUE[thread] = timestamp_in_ms
