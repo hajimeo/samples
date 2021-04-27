@@ -1,4 +1,5 @@
-# source <(curl https://raw.githubusercontent.com/hajimeo/samples/master/runcom/nexus_alias.sh --compressed)
+#_import() { curl -sf --compressed "https://raw.githubusercontent.com/hajimeo/samples/master/$1" -o /tmp/_i;. /tmp/_i; }
+#_import "runcom/nexus_alias.sh"
 
 if [ -z "${_WORK_DIR}" ]; then
     if [ "`uname`" = "Darwin" ]; then
@@ -233,7 +234,7 @@ _REPO_URL="http://node3290.standalone.localdomain:8081/repository/maven-hosted/"
   #sed -i.tmp -E "s@<artifactId>my-app.*</artifactId>@<artifactId>my-app${i}</artifactId>@" pom.xml # If need to change artifactId
 for i in {1..5000}; do
   sed -i.tmp -E "s@^  <version>.*</version>@  <version>1.${i}-SNAPSHOT</version>@" pom.xml
-  mvn-deploy "${_REPO_URL}" "" "nexus" "" || break
+  mvn-deploy "${_REPO_URL}" "" "" "nexus" "" || break
 done
 EOF
 function mvn-deploy() {
@@ -242,7 +243,7 @@ function mvn-deploy() {
     local _remote_repo="${2}"
     local _local_repo="${3}"
     local _server_id="${4:-"nexus"}"
-    local _options="${5-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
+    local _options="${5-"-DskipTests -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
     if [ -n "${_alt_repo}" ]; then
         _options="-DaltDeploymentRepository=${_server_id}::default::${_alt_repo} ${_options}"
     fi
