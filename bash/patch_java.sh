@@ -130,11 +130,10 @@ function f_javaenvs() {
 
     if [ -x "${_jcmd}" ]; then
         if [ -z "$CLASSPATH" ]; then
-            export CLASSPATH=".:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
+            f_set_classpath "${_port}" "${_user}"
             _set_extra_classpath "${_port}"
         else
             echo "WARN: CLASSPATH is already set, so not overwriting/appending."
-            #export CLASSPATH="${CLASSPATH%:}:`sudo -u ${_user} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
         fi
     else
         echo "WARN: Couldn't not set CLASSPATH because of no executable jcmd found."; sleep 3
@@ -172,6 +171,15 @@ function _find_jcmd() {
     echo "${_jcmd}"
 }
 
+function f_set_classpath() {
+    local _port="${1}"
+    local _p=`lsof -ti:${_port} -s TCP:LISTEN` || return $?
+    local _user="`stat -c '%U' /proc/${_p} 2>/dev/null`"
+    local _jcmd="$(_find_jcmd "${_port}")" || return $?
+    # requires jcmd in the path
+    export CLASSPATH=".:`sudo -u ${_user:-"$USER"} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
+}
+
 function _set_extra_classpath() {
     # _set_extra_classpath 8081 "/var/tmp/share/java/lib"
     # _EXTRA_LIB="/var/tmp/share/java/lib" _set_extra_classpath 8081
@@ -204,55 +212,6 @@ function _set_extra_classpath() {
         local _extra_classpath=$(find ${_extra_lib%/} -name '*.jar' -print | tr '\n' ':')
         export CLASSPATH="${_extra_classpath%:}:${CLASSPATH%:}"
     fi
-}
-
-function f_set_classpath() {
-    local _dir="${1:-"."}"
-    //local _exclude="${2:-"/(tmp|cache)/"}"
-    local _all_jars="$(find ${_dir%/} -type f -name "*.jar" -not \( -path "*/tmp/*" -o -path "*/cache/*" \) -print | tr '\n' ':')"
-    export CLASSPATH="${_all_jars%:}:${CLASSPATH%:}"
-}
-
-function f_scala() {
-    local _port="${1}"
-    local _cded=false
-    f_setup_scala
-    if [[ "${_port}" =~ ^[0-9]+$ ]]; then
-        f_javaenvs "${_port}"
-        cd "${_CWD}" && _cded=true
-    else
-        echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
-    fi
-    scala
-    ${_cded} && cd -
-}
-
-function f_groovy() {
-    local _port="${1}"
-    local _cded=false
-    f_setup_groovy
-    if [[ "${_port}" =~ ^[0-9]+$ ]]; then
-        f_javaenvs "${_port}"
-        cd "${_CWD}" && _cded=true
-    else
-        echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
-    fi
-    groovysh -e ":set interpreterMode true" # -cp $CLASSPATH
-    ${_cded} && cd -
-}
-
-function f_spring_cli() {
-    local _port="${1}"
-    local _cded=false
-    f_setup_spring_cli
-    if [[ "${_port}" =~ ^[0-9]+$ ]]; then
-        f_javaenvs "${_port}"
-        cd "${_CWD}" && _cded=true
-    else
-        echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
-    fi
-    spring shell
-    ${_cded} && cd -
 }
 
 function f_jargrep() {
@@ -308,6 +267,60 @@ function f_update_jar() {
     ls -l ./${_jar_filename} ${_jar_filepath} || return $?
     mv ./${_jar_filename} ${_jar_filepath} || return $?
     return 0
+}
+
+# https://hadoop-and-hdp.blogspot.com/2016/11/jcmd-managementagent.html
+function f_jcmd_agent() {
+    local _port="${1}"
+    local _agent_port="${2:-"1099"}"
+    local _p=`lsof -ti:${_port} -s TCP:LISTEN` || return $?
+    local _user="`stat -c '%U' /proc/${_p} 2>/dev/null`"
+    local _jcmd="$(_find_jcmd "${_port}")" || return $?
+    sudo -u ${_user:-"$USER"} ${_jcmd} ${_p} ManagementAgent.start jmxremote.port=${_agent_port} jmxremote.authenticate=false jmxremote.ssl=false || return $?
+    sudo -u ${_user:-"$USER"} $(dirname "${_jcmd}")/jstat -J-Djstat.showUnsupported=true -snap ${_p} | grep '\.remoteAddress=' || return $?
+    echo "# To stop: 'sudo -u ${_user:-"$USER"} ${_jcmd} ${_p} ManagementAgent.stop'"
+}
+
+function f_scala() {
+    local _port="${1}"
+    local _cded=false
+    f_setup_scala
+    if [[ "${_port}" =~ ^[0-9]+$ ]]; then
+        f_javaenvs "${_port}"
+        cd "${_CWD}" && _cded=true
+    else
+        echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
+    fi
+    scala
+    ${_cded} && cd -
+}
+
+function f_groovy() {
+    local _port="${1}"
+    local _cded=false
+    f_setup_groovy
+    if [[ "${_port}" =~ ^[0-9]+$ ]]; then
+        f_javaenvs "${_port}"
+        cd "${_CWD}" && _cded=true
+    else
+        echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
+    fi
+    groovysh -e ":set interpreterMode true" # -cp $CLASSPATH
+    ${_cded} && cd -
+}
+
+function f_spring_cli() {
+    local _port="${1}"
+    local _cded=false
+    f_setup_spring_cli
+    if [[ "${_port}" =~ ^[0-9]+$ ]]; then
+        f_javaenvs "${_port}"
+        cd "${_CWD}" && _cded=true
+    else
+        echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
+    fi
+    spring shell
+    ${_cded} && cd -
 }
 
 function _sed() {
