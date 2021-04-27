@@ -292,7 +292,7 @@ listen stats
                 # NOTE: not using 'roundrobin' as I'm not sure if sticky session with cookie is working.
                 #       so, also removed 'cookie NXSESSIONID prefix nocache' and 'cookie' from server line
                 echo "backend backend_p${_b_port}
-  balance source
+  balance first
   hash-type consistent
   option forwardfor
   http-request set-header X-Forwarded-Port %[dst_port]
