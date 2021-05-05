@@ -369,7 +369,7 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
     :return: a DataFrame object
     #>>> json2df('./export.json', '.records | map(select(.["@class"] == "quartz_job_detail" and .value_data.jobDataMap != null))[] | .value_data.jobDataMap', ju.connect(), 't_quartz_job_detail')
     #>>> json2df('audit.json', '..|select(.attributes? and .attributes.".typeId" == "db.backup")|.attributes', ju.connect(), "t_audit_attr_dbbackup_logs")
-    #>>> ju.json2df(filename="./audit.json", json_cols=['data'], conn=ju.connect())
+    #>>> ju.json2df(filename="./audit.json", json_cols=['data', 'data.roleMembers', 'data.policyConstraints', 'data.applicationCategories', 'data.licenseNames'], conn=ju.connect())
     >>> pass    # TODO: implement test
     """
     global _DB_SCHEMA
@@ -429,7 +429,6 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
         if df2table(df=df_tmp_mod, tablename=tablename, conn=conn, chunksize=chunksize, if_exists=if_exists) is True:
             _info("Created table: %s " % (tablename))
             _autocomp_inject(tablename=tablename)
-        return len(df) > 0
     return df
 
 
@@ -2001,10 +2000,9 @@ def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace'):
         res = re.search('Error binding parameter ([0-9]+) - probably unsupported type', str(e))
         _err(e)
         if res:
-            # TODO: Not using this at this moment as don't know how to link with the binding parameter.
-            return res.group(1)
-        else:
-            return False
+            _cnum = int(res.group(1))
+            _err(df.columns[_cnum])
+        return False
     return True
 
 
