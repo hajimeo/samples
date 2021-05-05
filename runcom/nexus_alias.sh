@@ -1,8 +1,9 @@
 #_import() { curl -sf --compressed "https://raw.githubusercontent.com/hajimeo/samples/master/$1" -o /tmp/_i;. /tmp/_i; }
 #_import "runcom/nexus_alias.sh"
 
-if [ -z "${_WORK_DIR}" ]; then
+if [ -z "${_WORK_DIR%/}" ]; then
     if [ "`uname`" = "Darwin" ]; then
+        # dovker -v does not work with symlink
         _WORK_DIR="$HOME/share"
     else
         _WORK_DIR="/var/tmp/share"
@@ -103,17 +104,18 @@ function nxrmDocker() {
     local _port="${3:-"8081"}"
     local _port_ssl="${4:-"8443"}"
     local _extra_opts="${5}"    # such as -Djava.util.prefs.userRoot=/some-other-dir
+    local _docker_host="${_DOCKER_HOST:-"dh1.standalone.localdomain:18185"}"
 
-    local _nexus_data="/var/tmp/share/sonatype/${_name}-data"
+    local _nexus_data="${_WORK_DIR%/}/sonatype/${_name}-data"
     if [ ! -d "${_nexus_data%/}" ]; then
         mkdir -p -m 777 "${_nexus_data%/}" || return $?
     fi
     local _opts="--name=${_name}"
     [ -n "${INSTALL4J_ADD_VM_PARAMS}" ] && _opts="${_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\""
-    [ -d /var/tmp/share ] && _opts="${_opts} -v /var/tmp/share:/var/tmp/share"
+    [ -d ${_WORK_DIR%/} ] && _opts="${_opts} -v ${_WORK_DIR%/}:/var/tmp/share"
     [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/nexus-data"
     [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
-    local _cmd="docker run -d -p ${_port}:8081 -p ${_port_ssl}:8443 ${_opts} sonatype/nexus3:${_tag}"
+    local _cmd="docker run -d -p ${_port}:8081 -p ${_port_ssl}:8443 ${_opts} ${_docker_host%/}/sonatype/nexus3:${_tag}"
     echo "${_cmd}"
     eval "${_cmd}"
     echo "
@@ -147,24 +149,25 @@ function iqDocker() {
     local _port_ssl="${5:-"8444"}"
     local _extra_opts="${6}"
     local _license="${7}"
+    local _docker_host="${_DOCKER_HOST:-"dh1.standalone.localdomain:18185"}"
 
-    local _nexus_data="/var/tmp/share/sonatype/${_name}-data"
+    local _nexus_data="${_WORK_DIR%/}/sonatype/${_name}-data"
     [ ! -d "${_nexus_data%/}" ] && mkdir -p -m 777 "${_nexus_data%/}"
     [ ! -d "${_nexus_data%/}/etc" ] && mkdir -p -m 777 "${_nexus_data%/}/etc"
     [ ! -d "${_nexus_data%/}/log" ] && mkdir -p -m 777 "${_nexus_data%/}/log"
     local _opts="--name=${_name}"
     local _java_opts=""
-    [ -z "${_license}" ] && [ -d /var/tmp/share/sonatype ] && _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
+    [ -z "${_license}" ] && [ -d ${_WORK_DIR%/}/sonatype ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype/*.lic 2>/dev/null | head -n1)"
     [ -s "${_license}" ] && _java_opts="-Ddw.licenseFile=${_license}"
     [ -n "${JAVA_OPTS}" ] && _java_opts="${_java_opts} ${JAVA_OPTS}"
     [ -n "${_java_opts}" ] && _opts="${_opts} -e JAVA_OPTS=\"${_java_opts}\""
-    [ -d /var/tmp/share ] && _opts="${_opts} -v /var/tmp/share:/var/tmp/share"
+    [ -d ${_WORK_DIR%/} ] && _opts="${_opts} -v ${_WORK_DIR%/}:/var/tmp/share"
     [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/sonatype-work"
     [ -s "${_nexus_data%/}/etc/config.yml" ] && _opts="${_opts} -v ${_nexus_data%/}/etc:/etc/nexus-iq-server"
     [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/var/log/nexus-iq-server"
     [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/opt/sonatype/nexus-iq-server/log" # due to audit.log => fixed from v104
     [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
-    local _cmd="docker run -d -p ${_port}:8070 -p ${_port2}:8071 -p ${_port_ssl}:8444 ${_opts} sonatype/nexus-iq-server:${_tag}"
+    local _cmd="docker run -d -p ${_port}:8070 -p ${_port2}:8071 -p ${_port_ssl}:8444 ${_opts} ${_docker_host%/}/sonatype/nexus-iq-server:${_tag}"
     echo "${_cmd}"
     eval "${_cmd}"
 }
