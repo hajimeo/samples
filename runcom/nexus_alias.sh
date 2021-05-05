@@ -124,7 +124,7 @@ function nxrmDocker() {
 # To start local (on Mac) IQ server
 function iqStart() {
     local _base_dir="${1:-"."}"
-    local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"}
+    local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5006"}
     #local _java_opts=${@:2}
     local _jar_file="$(realpath "$(find ${_base_dir%/} -maxdepth 1 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)")"
     [ -z "${_jar_file}" ] && return 11
