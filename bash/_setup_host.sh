@@ -1156,12 +1156,16 @@ function f_dnsmasq() {
     # Without below, DNS (resolv.conf) in containers will be 8.8.8.8
     if [ -d /etc/docker ] && [ ! -s /etc/docker/daemon.json ]; then
         local _docker_bridge_net="$(docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+        local _daemon_json=""
+        #_daemon_json="${_daemon_json%,},\n\"hosts\": [\"tcp://0.0.0.0:2375\", \"unix:///var/run/docker.sock\"]"
         if [ -n "${_docker_bridge_net}" ]; then
-            echo '{
-    "dns": ["'${_docker_bridge_net}.1'", "1.1.1.1"]
-}' >/etc/docker/daemon.json
-            _warn "daemon.json updated. 'systemctl daemon-reload && service docker restart' required"
+            _daemon_json="${_daemon_json%,},\n\"dns\": [\"${_docker_bridge_net}.1\", \"1.1.1.1\"]"
         fi
+        echo -e "{${_daemon_json}\n}" > /etc/docker/daemon.json
+        _warn "daemon.json updated. 'systemctl daemon-reload && service docker restart' required"
+        #mkdir -p /etc/systemd/system/docker.service.d
+        #echo -e '[Service]\nExecStart=\nExecStart=/usr/bin/dockerd' > /etc/systemd/system/docker.service.d/override.conf
+        #_warn "Port 2375 is exposed. 'systemctl daemon-reload && service docker restart' required"
         # TODO: also add live-restore https://docs.docker.com/config/containers/live-restore/
     fi
 
