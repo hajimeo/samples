@@ -157,7 +157,7 @@ function iqDocker() {
     [ ! -d "${_nexus_data%/}/log" ] && mkdir -p -m 777 "${_nexus_data%/}/log"
     local _opts="--name=${_name}"
     local _java_opts=""
-    [ -z "${_license}" ] && [ -d ${_WORK_DIR%/}/sonatype ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype/*.lic 2>/dev/null | head -n1)"
+    [ -z "${_license}" ] && [ -d ${_WORK_DIR%/}/sonatype ] && _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
     [ -s "${_license}" ] && _java_opts="-Ddw.licenseFile=${_license}"
     [ -n "${JAVA_OPTS}" ] && _java_opts="${_java_opts} ${JAVA_OPTS}"
     [ -n "${_java_opts}" ] && _opts="${_opts} -e JAVA_OPTS=\"${_java_opts}\""
