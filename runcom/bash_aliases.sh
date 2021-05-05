@@ -95,6 +95,8 @@ alias jn='pyv && jupyter-notebook &> /tmp/jupyter-notebook.out &'
 
 ## Common software/command but need to install #######################################################################
 which docker &>/dev/null && alias docker_stop="docker stop -t 120"  # 10 seconds is too short
+#alias rdocker="DOCKER_HOST='tcp://dh1:2375' docker"
+alias rdocker="ssh dh1 docker"
 which q &>/dev/null && alias qcsv='q -O -d"," -T --disable-double-double-quoting'
 which pgbadger &>/dev/null && alias pgbg='pgbadger --timezone 0'
 which microk8s &>/dev/null && alias kubectl="microk8s kubectl"
