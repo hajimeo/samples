@@ -28,7 +28,7 @@ CREATE CONTAINER:
 
     Ex1: Install NXIQ
         setup_standalone.sh -C -n node-nxiq1740 -v 1.74.0 -o \"-t nxiq\"
-    Ex2: Install NXRM but not starting and no post tasks
+    Ex2: Install NXRM but not starting so that no post install tasks
         setup_standalone.sh -C -v 3.22.0 -o \"-S\"
 
     NOTE: Below location is used to download app installer
