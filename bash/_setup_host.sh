@@ -947,6 +947,30 @@ function f_docker_setup() {
     fi
 }
 
+function f_minikube4kvm() {
+    local __doc__="Install minikube (kubernetes|k8s) for KVM"
+    # @see: https://computingforgeeks.com/how-to-run-minikube-on-kvm/
+    local _user="${1:-"virtuser"}"  # NOTE: expecting this user is already created
+    apt-get install apt-transport-https -y
+    curl -fL -o /usr/local/bin/minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 || return $?
+    chmod a+x /usr/local/bin/minikube
+    /usr/local/bin/minikube version || return $?
+    curl -fL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" || return $?
+    chmod a+x /usr/local/bin/kubectl
+    /usr/local/bin/kubectl version -o json  # not checking return code as if no 8080, it returns 1
+
+    usermod -aG libvirt ${_user}
+    #newgrp libvirt
+    sudo -u ${_user} minikube config set vm-driver kvm2 || return $?
+    sudo -u ${_user} minikube start || return $?
+    _info "May want to move below file(s) to a faster drive."
+    sudo -u ${_user} bash -c 'ls -l ${HOME%/}/.minikube/machines/minikube/*.rawdisk'
+    sudo -u ${_user} kubectl config view
+    _info "May want to set up Port-forwarding k8s API requests to minikube's host-only network IP:8443."
+    # my favourite SSH option: -2CNnqTxfg
+    echo "ssh -g -o StrictHostKeyChecking=no -i /home/${_user}/.minikube/machines/minikube/id_rsa docker@\$(minikube ip) -L 18443:localhost:8443"
+}
+
 function f_microk8s() {
     local __doc__="Install microk8s (kubernetes|k8s) (TODO: Ubuntu only)"
     # @see: https://ubuntu.com/tutorials/install-a-local-kubernetes-with-microk8s#1-overview
