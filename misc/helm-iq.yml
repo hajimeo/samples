@@ -110,6 +110,7 @@ persistence:
 configYaml:
   baseUrl: http://iq-server.demo
   sonatypeWork: /sonatype-work
+  #TODO: licenseFile:
   server:
     applicationConnectors:
       - type: http
@@ -127,6 +128,7 @@ configYaml:
           logFormat: "%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime \"%header{User-Agent}\""
 
   createSampleData: true
+  enableDefaultPasswordWarning: false
 
   logging:
     # The default level of all loggers. Can be OFF, ERROR, WARN, INFO, DEBUG, TRACE, or ALL.
@@ -163,3 +165,11 @@ configYaml:
         currentLogFilename: ./log/nexus-iq-server/clm-server.log
         archivedLogFilenamePattern: ./log/nexus-iq-server/clm-server-%d.log.gz
         archivedFileCount: 50
+
+  # TODO: database:
+  #  type: postgresql
+  #  hostname: postgres.k8s.standalone.localdomain
+  #  port: 5432
+  #  name: sonatype
+  #  username: sonatype
+  #  password: ********
