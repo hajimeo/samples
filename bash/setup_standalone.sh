@@ -1146,7 +1146,7 @@ main() {
     fi
 
     # _CREATE_CONTAINER means setting up the service/application by executing f_as_setup
-    if $_CREATE_CONTAINER || $_CREATE_OR_START; then
+    if ${_CREATE_CONTAINER} || ${_CREATE_OR_START}; then
         # Check if the base OS image exists
         local _existing_img="`docker images --format "{{.Repository}}:{{.Tag}}" | grep -m 1 -E "^${_BASE_IMAGE}:${_OS_VERSION}"`"
         if [ -z "${_existing_img}" ]; then
@@ -1177,10 +1177,15 @@ main() {
             if docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
                 _NAME="${_NAME}-$(date +"%S")"
             fi
+
+            # If no _NAME originally, and if _CREATE_CONTAINER, and if _DOCKER_SAVE is not set, trying to save
+            if ${_CREATE_CONTAINER} && [ -z "${_DOCKER_SAVE}" ]; then
+                _DOCKER_SAVE=true
+            fi
         fi
 
         # If no "-c" and -v is given, will check if image for same name already exists.
-        if ! $_CREATE_CONTAINER && [ -n "${_SERVICE}" ] && [ -z "${_IMAGE_NAME}" ] && [ -n ${_VERSION} ]; then
+        if ! ${_CREATE_CONTAINER} && [ -n "${_SERVICE}" ] && [ -z "${_IMAGE_NAME}" ] && [ -n "${_VERSION}" ]; then
             local _tmp_image_name="${_SERVICE}$(echo "${_VERSION}" | sed 's/[^0-9]//g')"
             if docker images --format "{{.Repository}}" | grep -qE "^${_tmp_image_name}$"; then
                 _IMAGE_NAME="${_tmp_image_name}"
@@ -1200,18 +1205,18 @@ main() {
         fi
     fi
 
-    if $_DOCKER_SAVE; then
-        if [ -z "$_NAME" ]; then
+    if ${_DOCKER_SAVE}; then
+        if [ -z "${_NAME}" ]; then
             _log "ERROR" "Docker Save (commit) was specified but no name (-n or -v) to save."
             return 1
         fi
-        f_docker_commit "$_NAME" || return $?
+        f_docker_commit "${_NAME}" || return $?
     fi
 
     # Finally, starts a container if _NAME is not empty
     # If -c is used, container should be already started, so don't need to start.
     # If -s is used, it intentionally stops the container, so don't need to start.
-    if [ -n "$_NAME" ] && ! $_CREATE_CONTAINER && ! $_DOCKER_SAVE; then
+    if [ -n "${_NAME}" ] && ! ${_CREATE_CONTAINER} && ! ${_DOCKER_SAVE}; then
         if docker ps --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
             _log "INFO" "Container ${_NAME} is already running ..."; sleep 1
         else
