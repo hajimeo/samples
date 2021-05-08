@@ -1178,8 +1178,8 @@ main() {
                 _NAME="${_NAME}-$(date +"%S")"
             fi
 
-            # If no _NAME originally, and if _CREATE_CONTAINER, and if _DOCKER_SAVE is not set, trying to save
-            if ${_CREATE_CONTAINER} && [ -z "${_DOCKER_SAVE}" ]; then
+            # If no _NAME originally, and if _CREATE_CONTAINER, (TODO: and if _DOCKER_SAVE is not set), trying to save
+            if ${_CREATE_CONTAINER}; then
                 _DOCKER_SAVE=true
             fi
         fi
