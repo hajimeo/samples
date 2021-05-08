@@ -90,7 +90,7 @@ function f_check_system() {
     mount &> ${_work_dir%/}/mount_df.out
     df -h &> ${_work_dir%/}/mount_df.out
     vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
-    iostat -x 2>/dev/null || vmstat -d &> ${_work_dir%/}/iostat.out &
+    iostat -x 1 3 2>/dev/null || vmstat -d 1 3 &> ${_work_dir%/}/iostat.out &
     pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &   # current disk stats per PID
     #sar -uqrbd -p -s 09:00:00 -e 12:00:00 -f /var/log/sysstat/sa26
     sar -uqrbd -p &> ${_work_dir%/}/sar_qrbd.out # if no -p, ls -l /dev/sd*
