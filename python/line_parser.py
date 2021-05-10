@@ -8,6 +8,7 @@
 # Example: measuring AWS (PUT) request (expecting some_task.log is Single thread):
 # rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d).+com.amazonaws.request - (Sending Request: [^ ]+|Received)' ./log/tasks/some_task.log -o -r '$1 $2 $3' | line_parser.py time_diff "Sending" > time_diff.csv
 # rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ com.amazonaws.request - (Sending Request: [^ ]+|Received)' --no-filename --sort=path -g nexus.log -o -r '$1 $2 $3 $4' | line_parser.py time_diff "Sending" 3 > time_diff.csv
+# rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.http.impl.conn.PoolingHttpClientConnectionManager - (Connection request:.+|Connection released:.+)' --no-filename --sort=path -g nexus.log -o -r '$1 $2 $3 $4' | line_parser.py time_diff "Connection request" 3 > time_diff.csv
 #
 # All functions need to use "lp_" prefix
 # TODO: should be a class
@@ -81,9 +82,9 @@ def lp_time_diff(line):
 
     # Ignoring timezone
     crt_date_time = cols[0] + " " + cols[1]
-    crt_date_time = crt_date_time.split("+")[0]  # removing timezone "+\d\d\d\d"
+    crt_date_time = crt_date_time.split("+")[0].replace(',', '.')  # removing timezone "+\d\d\d\d" and replacing , to . for SQLite
     # sys.stderr.write(str(label)+"\n")
-    dt_obj = datetime.strptime(crt_date_time, '%Y-%m-%d %H:%M:%S,%f')
+    dt_obj = datetime.strptime(crt_date_time, '%Y-%m-%d %H:%M:%S.%f')
     timestamp_in_ms = int(dt_obj.timestamp() * 1000)
     # sys.stderr.write(str(_PREV_VALUE)+"\n")
     # sys.stderr.write(str(current_timestamp_in_ms)+"\n")
