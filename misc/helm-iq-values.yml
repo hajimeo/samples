@@ -4,7 +4,7 @@ statefulset:
 replicaCount: 1
 image:
   # TODO: Sonatype Official Public Image or specify NXRM3 one
-  repository: dh1.standalone.localdomain:18185/sonatype/nexus-iq-server
+  repository: sonatype/nexus-iq-server
   tag: 1.113.0
   pullPolicy: IfNotPresent
 
@@ -122,10 +122,11 @@ configYaml:
     requestLog:
       appenders:
         #All appenders set to console
-        - type: console
-          # Do not display log statements below this threshold to stdout.
-          threshold: INFO
+        - type: file
+          currentLogFilename: ./log/request.log
           logFormat: "%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime \"%header{User-Agent}\""
+          archivedLogFilenamePattern: ./log/request-%d.log.gz
+          archivedFileCount: 50
 
   createSampleData: true
   enableDefaultPasswordWarning: false
