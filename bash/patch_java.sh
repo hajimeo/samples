@@ -2,6 +2,8 @@
 # DOWNLOAD:
 # curl -o /var/tmp/share/java/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
 #
+# NOTE: each function should be usable by just copying & pasting (no external function)
+#
 
 _JAVA_DIR="${_JAVA_DIR:-"/var/tmp/share/java"}"
 
@@ -24,6 +26,53 @@ Or, to start scala console (REPL):
 EOS
 }
 
+# copied from setup_work.env.sh and modified
+function f_setup_java() {
+    local _v="${1:-"8"}" # Using 8 as JayDeBeApi uses specific version and which is for java 8
+    local _ver="${_v}"  # Java version can be "9" or "1.8"
+    [[ "${_v}" =~ ^[678]$ ]] && _ver="1.${_v}"
+    [ ! -d "${_JAVA_DIR%/}" ] && mkdir -p -m 777 ${_JAVA_DIR%/}
+
+    # If Linux, downloading .tar.gz file and extract, so that it can be re-used in the container
+    # NOTE: with grep or sed, without --compressed is faster
+    #local _java_exact_ver="$(basename $(curl -s https://github.com/AdoptOpenJDK/openjdk${_v}-binaries/releases/latest | _sed -nr 's/.+"(https:[^"]+)".+/\1/p'))"
+    local _java_exact_ver="$(curl -sf -L "https://api.adoptopenjdk.net/v3/assets/latest/${_v}/hotspot?release=latest&jvm_impl=hotspot&vendor=adoptopenjdk" | grep -m1 -E '"release_name": "jdk-?'${_v}'.[^"]+"' | grep -oE 'jdk-?'${_v}'[^"]+')"
+    # NOTE: hoping the naming rule is same for different versions (eg: jdk8u275-b01, jdk-11.0.9.1+1)
+    if [[ ! "${_java_exact_ver}" =~ (jdk-?)([^-+]+)([-+])([^_]+) ]]; then
+        echo "Could not determine the download-able version by using ${_v}."
+        return 1
+    fi
+
+    local _jdk="${BASH_REMATCH[1]}"         # jdk- or jdk
+    local _jdk_ver="${BASH_REMATCH[2]}"     # 8u275 or 11.0.9.1
+    local _ver_sep="${BASH_REMATCH[3]}"     # - or +
+    local _jdk_minor="${BASH_REMATCH[4]}"   # b01 or 1
+    local _ver_sep2=""
+    [ "${_ver_sep}" == "+" ] && _ver_sep2="_"
+    #https://github.com/AdoptOpenJDK/openjdk8-binaries/releases/download/jdk8u275-b01/OpenJDK8U-jdk_x64_linux_hotspot_8u275b01.tar.gz
+    #https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.9.1%2B1/OpenJDK11U-jdk_x64_linux_hotspot_11.0.9.1_1.tar.gz
+    local _fname="OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_ver_sep2}${_jdk_minor}.tar.gz"
+    if [ ! -s "${_JAVA_DIR%/}/${_fname}" ]; then
+        curl --retry 3 -C - -o "${_JAVA_DIR%/}/${_fname}" -f -L "https://github.com/AdoptOpenJDK/openjdk${_v}-binaries/releases/download/${_jdk}${_jdk_ver}${_ver_sep}${_jdk_minor}/${_fname}" || return $?
+    fi
+
+    tar -xf "${_JAVA_DIR%/}/${_fname}" -C ${_JAVA_DIR%/}/ || return $?
+    echo "OpenJDK${_v} is extracted under '${_JAVA_DIR%/}/${_java_exact_ver}'"
+
+    if [ -d /etc/profile.d ] && [ ! -f /etc/profile.d/java.sh ]; then
+        echo "Creating /etc/profile.d/java.sh ... (sudo required)"
+        cat << EOF > /tmp/java.sh
+[[ "\$PATH" != *"${_JAVA_DIR%/}/"* ]] && export PATH=${_JAVA_DIR%/}/${_java_exact_ver}/bin:\${PATH#:}
+[ -z "\${JAVA_HOME}" ] && export JAVA_HOME=${_JAVA_DIR%/}/${_java_exact_ver}
+EOF
+        sudo mv /tmp/java.sh /etc/profile.d/java.sh && source /etc/profile.d/java.sh
+        if ! java -version 2>&1 | grep -w "build ${_ver}" -m 1; then
+            echo "WARN Current Java version is not ${_ver}."
+            return 1
+        fi
+    fi
+}
+
 function f_setup_scala() {
     local _ver="${1:-2.12.3}"
     local _extract_dir="${2:-"${_JAVA_DIR}"}"
@@ -37,7 +86,7 @@ function f_setup_scala() {
     if [ ! -x ${_inst_dir%/}/bin/scala ]; then
         if [ ! -d "${_extract_dir%/}/scala-${_ver}" ]; then
             if [ ! -s "${_extract_dir%/}/scala-${_ver}.tgz" ]; then
-                curl --retry 3 -C - -o "${_extract_dir%/}/scala-${_ver}.tgz" -L "https://downloads.lightbend.com/scala/${_ver}/scala-${_ver}.tgz" || return $?
+                curl --retry 3 -C - -o "${_extract_dir%/}/scala-${_ver}.tgz" -f -L "https://downloads.lightbend.com/scala/${_ver}/scala-${_ver}.tgz" || return $?
             fi
             tar -xf "${_extract_dir%/}/scala-${_ver}.tgz" -C "${_extract_dir%/}/" || return $?
         fi
@@ -61,7 +110,7 @@ function f_setup_groovy() {
     if [ ! -x ${_inst_dir%/}/bin/groovysh ]; then
         if [ ! -d "${_extract_dir%/}/groovy-${_ver}" ]; then
             if [ ! -s "${_extract_dir%/}/apache-groovy-binary-${_ver}.zip" ]; then
-                curl --retry 3 -C - -o "${_extract_dir%/}/apache-groovy-binary-${_ver}.zip" -L "https://bintray.com/artifact/download/groovy/maven/apache-groovy-binary-${_ver}.zip" || return $?
+                curl --retry 3 -C - -o "${_extract_dir%/}/apache-groovy-binary-${_ver}.zip" -f -L "https://bintray.com/artifact/download/groovy/maven/apache-groovy-binary-${_ver}.zip" || return $?
             fi
             unzip "${_extract_dir%/}/apache-groovy-binary-${_ver}.zip" -d "${_extract_dir%/}/" || return $?
         fi
@@ -85,7 +134,7 @@ function f_setup_spring_cli() {
     if [ ! -x ${_inst_dir%/}/bin/spring ]; then
         if [ ! -d "${_extract_dir%/}/spring-${_ver}.RELEASE" ]; then
             if [ ! -s "${_extract_dir%/}/spring-boot-cli-${_ver}.RELEASE-bin.tar.gz" ]; then
-                curl --retry 3 -C - -o "${_extract_dir%/}/spring-boot-cli-${_ver}.RELEASE-bin.tar.gz" -L "https://repo.spring.io/release/org/springframework/boot/spring-boot-cli/${_ver}.RELEASE/spring-boot-cli-${_ver}.RELEASE-bin.tar.gz" || return $?
+                curl --retry 3 -C - -o "${_extract_dir%/}/spring-boot-cli-${_ver}.RELEASE-bin.tar.gz" -f -L "https://repo.spring.io/release/org/springframework/boot/spring-boot-cli/${_ver}.RELEASE/spring-boot-cli-${_ver}.RELEASE-bin.tar.gz" || return $?
             fi
             tar -xf "${_extract_dir%/}/spring-boot-cli-${_ver}.RELEASE-bin.tar.gz" -C "${_extract_dir%/}/" || return $?
         fi
@@ -143,7 +192,7 @@ function f_javaenvs() {
 }
 
 function _find_jcmd() {
-    # _set_java_home 8081 "/var/tmp/share/java"
+    # _set_java_home 8081 "${_JAVA_DIR%/}"
     local _port="${1}"
     local _search_path="${2:-"${_JAVA_DIR}"}"   # Extra search location in case JAVA_HOME doesn't work
     local _java_home="${JAVA_HOME}"
@@ -181,8 +230,8 @@ function f_set_classpath() {
 }
 
 function _set_extra_classpath() {
-    # _set_extra_classpath 8081 "/var/tmp/share/java/lib"
-    # _EXTRA_LIB="/var/tmp/share/java/lib" _set_extra_classpath 8081
+    # _set_extra_classpath 8081 "${_JAVA_DIR%/}/lib"
+    # _EXTRA_LIB="${_JAVA_DIR%/}/lib" _set_extra_classpath 8081
     local _port="${1}"
     local _extra_lib="${2-${_EXTRA_LIB}}"
     local _classpath=""
