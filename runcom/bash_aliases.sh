@@ -130,6 +130,7 @@ alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -aut
 #alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
 #alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=socks5://dh1:28081 http://192.168.1.31:4200/webuser/'
 alias shib-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/dh1 --proxy-server=http://dh1:28080 http://192.168.1.31:4200/webuser/'
+alias k8s-dh1='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/k8s-dh1 --proxy-server=socks5://dh1:38081'
 alias hblog='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/hajigle https://www.blogger.com/blogger.g?blogID=9018688091574554712&pli=1#allposts'
 # pretending windows chrome on Linux
 alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --proxy-server=socks5://localhost:38080  --user-agent="Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36"'
@@ -450,9 +451,11 @@ function backupC() {
 
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory'
-    find ${_src%/} -type d -mtime +30 -name '*_tmp' -delete
-    find ${_src%/} -type f -mtime +30 -name '*.tmp' -delete
-    #find ${_src%/} -type f -mtime +365 -name '*.out' -delete
+    find ${_src%/} -type d -mtime +14 -name '*_tmp' -delete &
+    find ${_src%/} -type f -mtime +14 -name '*.tmp' -delete &
+    find ${_src%/} -type f -mtime +90 -size +128000k \( -name "nexus.log" -o -name "request.log" -o -name "clm-server.log" -o -name "audit.log" \) -delete &
+    find ${_src%/} -type f -mtime +180 -name '*.out' -delete &
+    wait
 
     find ${_src%/} -type f -mtime +360 -size +100k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     find ${_src%/} -type f -mtime +270 -size +10240k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
@@ -475,8 +478,8 @@ function backupC() {
     fi
 
     if [ "Darwin" = "$(uname)" ]; then
-        echo "#mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-604800)' | LC_ALL=C sort"
-        mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-604800)' -onlyin "${_src}" | LC_ALL=C sort
+        echo "#mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-2419200)' | LC_ALL=C sort"
+        mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-2419200)' | LC_ALL=C sort   # -onlyin "${_src}"
     fi
 }
 # accessed time doesn't seem to work with directory, so using _name to check files
