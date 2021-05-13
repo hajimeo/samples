@@ -812,8 +812,7 @@ function _get_hextids() {
     cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d+|9)\d.\d+ +" -o -r '$1' | xargs printf "0x%x\n"
 }
 
-# If would like to split the dumps even though this script can handle:
-# f_splitByRegex jvm.txt "^${_DATE_FORMAT}.+"
+# f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
 # Also, f_last_tid_in_log would be useful.
 function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
@@ -995,7 +994,7 @@ function f_request2csv() {
     local _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1' | sort | uniq | tail -n1)"
     [ -n "${_pattern_str}" ] && echo "# found _pattern_str with rg -g logback-access.xml -g jetty-requestlog.xml" >&2
     if [ -z "${_pattern}" ] && [ -z "${_pattern_str}" ]; then
-        local _tmp_first_line="$(rg --no-filename -m1 '\b20\d\d.\d\d.\d\d' ${_g_opt} "${_glob}")"
+        local _tmp_first_line="$(rg --no-filename -m1 -z '\b20\d\d.\d\d.\d\d' ${_g_opt} "${_glob}")"
         #echo "# first line: ${_tmp_first_line}" >&2
         if echo "${_tmp_first_line}"   | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
             _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
@@ -1189,16 +1188,16 @@ function f_splitByRegex() {
     # TODO: this doesn't work with Ubuntu?
     local _file="$1"        # can't be a glob as used in sed later
     local _line_regex="$2"  # Entire line regex. If empty, use (YYYY-MM-DD).(hh). For request.log '(\d\d/[a-zA-Z]{3}/\d\d\d\d).(\d\d)'
-    local _save_to="${3:-"."}"
+    local _save_to="${3}"
     local _prefix="${4-"*None*"}"   # Can be an empty string
     local _out_ext="${5:-"out"}"
-
-    [ -z "${_line_regex}" ] && _line_regex="^($_DATE_FORMAT).(\d\d)"
-    [ ! -d "${_save_to%/}" ] && mkdir -p "${_save_to%/}"
+    [ -z "${_line_regex}" ] && _line_regex="^(${_DATE_FORMAT}).(\d\d)"
 
     #_file="$(echo ${_file} | _sed 's/.\///')"
     local _base_name="$(basename "${_file}")"
     [ "${_prefix}" == "*None*" ] && _prefix="${_base_name%%.*}_"
+    [ -z "${_save_to}" ] && _save_to="_split_${_prefix%_}"
+    [ ! -d "${_save_to%/}" ] && mkdir -p "${_save_to%/}"
     local _save_path_prefix="${_save_to%/}/${_prefix}"
     local _orig_ext="${_base_name##*.}"
     local _tmp_file="/tmp/$(basename "${_file}" .${_orig_ext})"
@@ -1211,10 +1210,11 @@ function f_splitByRegex() {
     local _prev_n=1
     local _prev_str=""
 
-    rg "${_line_regex}" --search-zip --no-filename -n -o "${_file}" > /tmp/f_splitByRegex_$$.out
-    echo "END_OF_FILE" >> /tmp/f_splitByRegex_$$.out
+    # TODO: Using ' | sort -u -t":" -k2' is faster but doesn't generate accurate result
+    rg "${_line_regex}" --search-zip --no-filename -n -o "${_file}" > /tmp/${FUNCNAME}_$$.out
+    echo "END_OF_FILE:ZZZ" >> /tmp/${FUNCNAME}_$$.out
     # NOTE: scope of variable in BASH is strange. _prev_str can't be used outside of while loop.
-    cat /tmp/f_splitByRegex_$$.out | while read -r _t; do
+    cat /tmp/${FUNCNAME}_$$.out | while read -r _t; do
         if [[ "${_t}" =~ ^([0-9]+):(.+) ]]; then
             # Skip if this number is already processed
             if [ ${_prev_n} == ${BASH_REMATCH[1]} ]; then
@@ -1228,7 +1228,7 @@ function f_splitByRegex() {
             sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
             _prev_str="${BASH_REMATCH[2]}"  # Used for the file name and detecting a new value
             _prev_n=${BASH_REMATCH[1]}
-        elif [ "${_t}" == "END_OF_FILE" ] && [ -n "${_prev_str}" ]; then
+        elif [ "${_t}" == "END_OF_FILE:ZZZ" ] && [ -n "${_prev_str}" ]; then
             _tmp_str="$(echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192)"
             sed -n "${_prev_n},\$p" ${_file} > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
         fi
