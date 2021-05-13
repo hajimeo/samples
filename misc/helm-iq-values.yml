@@ -105,7 +105,7 @@ affinity: {}
 persistence:
   enabled: true
   accessMode: ReadWriteOnce
-  storageSize: 1Gi
+  storageSize: 2Gi
 
 configYaml:
   baseUrl: http://iq-server.demo
@@ -123,10 +123,10 @@ configYaml:
       appenders:
         #All appenders set to console
         - type: file
-          currentLogFilename: ./log/request.log
+          currentLogFilename: /var/log/nexus-iq-server/request.log
           logFormat: "%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime \"%header{User-Agent}\""
-          archivedLogFilenamePattern: ./log/request-%d.log.gz
-          archivedFileCount: 50
+          archivedLogFilenamePattern: /var/log/nexus-iq-server/request-%d.log.gz
+          archivedFileCount: 10
 
   createSampleData: true
   enableDefaultPasswordWarning: false
@@ -147,9 +147,9 @@ configYaml:
       "com.sonatype.insight.audit":
         appenders:
         - type: file
-          currentLogFilename: ./log/audit.log
-          archivedLogFilenamePattern: ./log/audit-%d.log.gz
-          archivedFileCount: 50
+          currentLogFilename: /var/log/nexus-iq-server/log/audit.log
+          archivedLogFilenamePattern: /sonatype-work/log/audit-%d.log.gz
+          archivedFileCount: 10
       #"com.sonatype.insight.policy.violation":
       #  appenders:
       #    - type: console
@@ -163,9 +163,9 @@ configYaml:
       - type: file
         threshold: ALL
         logFormat: "%d{'yyyy-MM-dd HH:mm:ss,SSSZ'} %level [%thread] %X{username} %logger - %msg%n"
-        currentLogFilename: ./log/nexus-iq-server/clm-server.log
-        archivedLogFilenamePattern: ./log/nexus-iq-server/clm-server-%d.log.gz
-        archivedFileCount: 50
+        currentLogFilename: /var/log/nexus-iq-server/log/clm-server.log
+        archivedLogFilenamePattern: /var/log/nexus-iq-server/log/clm-server-%d.log.gz
+        archivedFileCount: 10
 
   # TODO: database:
   #  type: postgresql
