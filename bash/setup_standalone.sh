@@ -490,7 +490,7 @@ function f_as_log_cleanup() {
 }
 
 function f_docker_commit() {
-    local __doc__="Cleaning up unncecessary files and then save a container as an image"
+    local __doc__="Cleaning up unnecessary files and then save a container as an image"
     local _container_name="$1"    # FQDN is also OK
     local _service="${2:-${_SERVICE}}"
     local _remove_log="${3-Y}"
