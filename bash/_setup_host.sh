@@ -968,7 +968,7 @@ function f_minikube4kvm() {
     sudo -u ${_user} kubectl config view
     _info "May want to set up Port-forwarding k8s API requests to minikube's host-only network IP:8443."
     # my favourite SSH option: -2CNnqTxfg
-    echo "ssh -g -o StrictHostKeyChecking=no -i /home/${_user}/.minikube/machines/minikube/id_rsa docker@\$(minikube ip) -L 18443:localhost:8443"
+    echo "ssh -2CNnqTxfg -D38081 -o StrictHostKeyChecking=no -i /home/${_user}/.minikube/machines/minikube/id_rsa docker@\$(minikube ip) -L 38443:localhost:8443"
 }
 
 function f_microk8s() {
