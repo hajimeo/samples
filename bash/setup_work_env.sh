@@ -247,7 +247,7 @@ function f_setup_python() {
     # Reinstall: python3.7 -m pip uninstall -y jupyterlab && python3.7 -m pip install jupyterlab
 
     # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite.
-    python3.7 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip.log
+    python3.7 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib psycopg2 --log /tmp/pip.log
     # Not installing below as pandas_profiling fails at this moment. Pixiedust works only with jupyter-notebook
     #python3.7 -m pip install -U ${_i_opt} pandas_profiling pixiedust --log /tmp/pip.log
     # NOTE: In case I might use jupyter notebook, still installing this
