@@ -108,6 +108,7 @@ _AS_RESTART=false
 _DOCKER_PORT_FORWARD=false
 _DOCKER_STOP_OTHER=false
 _DOCKER_SAVE=false
+_IS_DOCKER_SAVE_SPECIFIED=false
 _AS_NO_INSTALL_START=false
 _SUDO_SED=false
 _URL_REGEX='(https?|ftp|file|svn)://[-A-Za-z0-9\+&@#/%?=~_|!:,.;]*[-A-Za-z0-9\+&@#/%=~_|]'
@@ -493,7 +494,8 @@ function f_docker_commit() {
     local __doc__="Cleaning up unnecessary files and then save a container as an image"
     local _container_name="$1"    # FQDN is also OK
     local _service="${2:-${_SERVICE}}"
-    local _remove_log="${3-Y}"
+    local _remove_log="${3:-"Y"}"
+    local _start_after_save="${4}"
 
     local _name="`echo "${_container_name}" | cut -d"." -f1`"
 
@@ -512,7 +514,12 @@ function f_docker_commit() {
     _log "INFO" "Stopping and Committing ${_name} ..."; sleep 1
     docker stop -t 7 ${_name} || return $?
     docker commit ${_name} ${_name} || return $?
-    _log "INFO" "Saving ${_name} as image was completed. Feel free to do 'docker rm ${_name}'"; sleep 1
+    if [[ "${_start_after_save}" =~ ^(y|Y) ]]; then
+        _log "INFO" "Re-starting ${_name} ..."; sleep 1
+        f_docker_start "${_name}"
+    else
+        _log "INFO" "Saving ${_name} as image was completed. Feel free to do 'docker rm ${_name}'"; sleep 1
+    fi
 }
 
 function _docker_find_by_port() {
@@ -1178,8 +1185,8 @@ main() {
                 _NAME="${_NAME}-$(date +"%S")"
             fi
 
-            # If no _NAME originally, and if _CREATE_CONTAINER, (TODO: and if _DOCKER_SAVE is not set), trying to save
-            if ${_CREATE_CONTAINER}; then
+            # If no _NAME originally, and if _CREATE_CONTAINER, and if _DOCKER_SAVE is not set, trying to save
+            if ${_CREATE_CONTAINER} && ! ${_IS_DOCKER_SAVE_SPECIFIED}; then
                 _DOCKER_SAVE=true
             fi
         fi
@@ -1210,7 +1217,7 @@ main() {
             _log "ERROR" "Docker Save (commit) was specified but no name (-n or -v) to save."
             return 1
         fi
-        f_docker_commit "${_NAME}" || return $?
+        f_docker_commit "${_NAME}" "" "" "Y" || return $?
     fi
 
     # Finally, starts a container if _NAME is not empty
@@ -1299,6 +1306,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             s)
                 _DOCKER_SAVE=true
+                _IS_DOCKER_SAVE_SPECIFIED=true
                 ;;
             t)
                 _APP_TYPE="$OPTARG"
