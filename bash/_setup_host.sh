@@ -963,11 +963,12 @@ function f_minikube4kvm() {
     #newgrp libvirt
     sudo -u ${_user} minikube config set vm-driver kvm2 || return $?
     sudo -u ${_user} minikube start || return $?
+    curl -k https://$(minikube ip):8443/livez?verbose   # health check
     _info "May want to move below file(s) to a faster drive."
     sudo -u ${_user} bash -c 'ls -l ${HOME%/}/.minikube/machines/minikube/*.rawdisk'
     sudo -u ${_user} kubectl config view
     _info "May want to set up Port-forwarding k8s API requests to minikube's host-only network IP:8443."
-    # my favourite SSH option: -2CNnqTxfg
+    echo "ssh-keygen -f /home/${_user}/.ssh/known_hosts -R \$(minikube ip)"
     echo "ssh -2CNnqTxfg -D38081 -o StrictHostKeyChecking=no -i /home/${_user}/.minikube/machines/minikube/id_rsa docker@\$(minikube ip) -L 38443:localhost:8443"
 }
 
@@ -975,10 +976,10 @@ function f_microk8s() {
     local __doc__="Install microk8s (kubernetes|k8s) (TODO: Ubuntu only)"
     # @see: https://ubuntu.com/tutorials/install-a-local-kubernetes-with-microk8s#1-overview
     snap install microk8s --classic || return $?
-    if ! type kubectl &>/dev/null && [ ! -f /etc/profile.d/microk8s.sh ]; then
-        echo 'alias kubectl="microk8s kubectl"' > /etc/profile.d/microk8s.sh
-        echo 'alias helm3="microk8s helm3"' >> /etc/profile.d/microk8s.sh
-    fi
+    #if ! type kubectl &>/dev/null && [ ! -f /etc/profile.d/microk8s.sh ]; then
+    #    echo 'alias kubectl="microk8s kubectl"' > /etc/profile.d/microk8s.sh
+    #    echo 'alias helm3="microk8s helm3"' >> /etc/profile.d/microk8s.sh
+    #fi
     # https://stackoverflow.com/questions/63803171/how-to-change-microk8s-kubernetes-storage-location
     # edit /var/snap/microk8s/current/args/containerd
 
@@ -1016,6 +1017,7 @@ function f_microk8s() {
     microk8s helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
     microk8s helm3 search repo iq
     microk8s helm3 install nexus-repo nxrm3/nexus-repository-manager -f values.yml
+    microk8s kubectl cluster-info #dump
     microk8s kubectl create -f your_deployment.yml
     microk8s kubectl get services          # or all, or deployments to check the NAME
     microk8s kubectl get deploy <deployment-name> -o yaml   # to export the deployment yaml
