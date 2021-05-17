@@ -1187,11 +1187,18 @@ function _getAfterFirstMatch() {
 function f_splitByRegex() {
     # TODO: this doesn't work with Ubuntu?
     local _file="$1"        # can't be a glob as used in sed later
-    local _line_regex="$2"  # Entire line regex. If empty, use (YYYY-MM-DD).(hh). For request.log '(\d\d/[a-zA-Z]{3}/\d\d\d\d).(\d\d)'
+    local _line_regex="$2"  # Entire line regex. If empty, split by hourly. NOTE: For request.log use '(\d\d/[a-zA-Z]{3}/\d\d\d\d).(\d\d)'
     local _save_to="${3}"
     local _prefix="${4-"*None*"}"   # Can be an empty string
     local _out_ext="${5:-"out"}"
-    [ -z "${_line_regex}" ] && _line_regex="^(${_DATE_FORMAT}).(\d\d)"
+    local _sort="${6:-"${_SPLIT_BY_REGEX_SORT}"}"   # When _line_regex is date/time like regex, better sort first
+    if [ -z "${_line_regex}" ]; then
+        _line_regex="^${_DATE_FORMAT}.\d\d"
+        if [[ "${_file}" =~ request.*log ]]; then
+            _line_regex="${_DATE_FMT_REQ}:\d\d"
+        fi
+        [ -z "${_SPLIT_BY_REGEX_SORT}" ] && _SPLIT_BY_REGEX_SORT="Y"
+    fi
 
     #_file="$(echo ${_file} | _sed 's/.\///')"
     local _base_name="$(basename "${_file}")"
@@ -1210,8 +1217,12 @@ function f_splitByRegex() {
     local _prev_n=1
     local _prev_str=""
 
-    # TODO: Using ' | sort -u -t":" -k2' is faster but doesn't generate accurate result
-    rg "${_line_regex}" --search-zip --no-filename -n -o "${_file}" > /tmp/${FUNCNAME}_$$.out
+    if [[ "${_sort}" =~ ^(y|Y) ]]; then
+        # somehow this magically works with request.log date:hour
+        rg "${_line_regex}" --search-zip --no-filename -n -o "${_file}" | sort -u -t":" -k2
+    else
+        rg "${_line_regex}" --search-zip --no-filename -n -o "${_file}"
+    fi > /tmp/${FUNCNAME}_$$.out
     echo "END_OF_FILE:ZZZ" >> /tmp/${FUNCNAME}_$$.out
     # NOTE: scope of variable in BASH is strange. _prev_str can't be used outside of while loop.
     cat /tmp/${FUNCNAME}_$$.out | while read -r _t; do
