@@ -75,7 +75,8 @@ _DEBUG = False
 _LOAD_UDFS = True
 
 _LAST_CONN = None
-_DB_SCHEMA = 'db'
+_DB_TYPE = 'sqlite'
+_DB_SCHEMA = 'public'
 _SIZE_REGEX = r"[sS]ize ?= ?([0-9]+)"
 _TIME_REGEX = r"\b([0-9.,]+) ([km]?s)\b"
 _SH_EXECUTABLE = "/bin/bash"
@@ -372,7 +373,6 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
     #>>> ju.json2df(filename="./audit.json", json_cols=['data', 'data.roleMembers', 'data.policyConstraints', 'data.applicationCategories', 'data.licenseNames'], conn=ju.connect())
     >>> pass    # TODO: implement test
     """
-    global _DB_SCHEMA
     # If flatten is not specified but going to import into Sqlite, changing flatten to true so that less errror in DB
     if flatten is None and (tablename is not None or conn is not None):
         flatten = True
@@ -521,7 +521,6 @@ def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablen
     #>>> xml2df('./nexus.xml', 'repository', conn=ju.connect())
     >>> pass    # TODO: implement test
     """
-    global _DB_SCHEMA
     data = xml2dict(file_path, row_element_name, tbl_element_name)
     df = pd.DataFrame(data)
     if bool(conn):
@@ -625,19 +624,29 @@ def _avoid_unsupported(df, json_cols=[], all_str=False, name=None):
 
 ### Database/DataFrame processing functions
 # NOTE: without sqlalchemy is faster
-def _db(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalchemy=False, echo=False):
+def _db(conn_str=':memory:', dbtype='sqlite', isolation_level=None, use_sqlalchemy=False, echo=False):
     """
     Create a DB object. For performance purpose, currently not using sqlalchemy if dbtype is sqlite
-    :param dbname: Database name
+    :param conn_str: Database connection string after "//"
+                    For example, "<hostname>:<port>/<database>?<arg1>=<val1>"
     :param dbtype: DB type
     :param isolation_level: Isolation level
+    :param use_sqlalchemy: Use sqlalchemy
     :param echo: True output more if sqlalchemy is used
     :return: DB object
     >>> pass    # testing in connect()
     """
-    if force_sqlalchemy is False and dbtype == 'sqlite':
-        return sqlite3.connect(dbname, isolation_level=isolation_level)
-    return create_engine(dbtype + ':///' + dbname, isolation_level=isolation_level, echo=echo)
+    global _DB_TYPE
+    _DB_TYPE=dbtype
+    if use_sqlalchemy is False and dbtype == 'sqlite':
+        return sqlite3.connect(conn_str, isolation_level=isolation_level)
+    if dbtype == 'sqlite':
+        conn_str = dbtype + ':///' + conn_str
+    elif dbtype == 'hive':
+        return hive_conn("jdbc:hive2://"+conn_str)
+    else:
+        conn_str = dbtype + '://' + conn_str
+    return create_engine(conn_str, isolation_level=isolation_level, echo=echo)
 
 
 # Seems sqlite doesn't have regex (need to import pcre.so)
@@ -808,13 +817,14 @@ def _register_udfs(conn):
     return conn
 
 
-def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqlalchemy=False, echo=False):
+def connect(conn_str=':memory:', dbtype='sqlite', isolation_level=None, use_sqlalchemy=False, echo=False):
     """
     Connect to a database (SQLite)
-    :param dbname: Database name
-    :param dbtype: DB type
+    :param conn_str: Database name
+    :param dbtype: DB type sqlite or postgres
     :param isolation_level: Isolation level
-    :param echo: True output more if sqlalchemy is used
+    :param use_sqlalchemy: Use sqlalchemy
+    :param echo: True outputs more if sqlalchemy is used
     :return: connection (cursor) object
     >>> import sqlite3;s = connect()
     >>> isinstance(s, sqlite3.Connection)
@@ -823,15 +833,18 @@ def connect(dbname=':memory:', dbtype='sqlite', isolation_level=None, force_sqla
     global _LAST_CONN
     if bool(_LAST_CONN): return _LAST_CONN
 
-    db = _db(dbname=dbname, dbtype=dbtype, isolation_level=isolation_level, force_sqlalchemy=force_sqlalchemy,
+    db = _db(conn_str=conn_str, dbtype=dbtype, isolation_level=isolation_level, use_sqlalchemy=use_sqlalchemy,
              echo=echo)
     if dbtype == 'sqlite':
-        if force_sqlalchemy is False:
+        if use_sqlalchemy is False:
             db.text_factory = str
         else:
             db.connect().connection.connection.text_factory = str
         # For 'sqlite, 'db' is the connection object because of _db()
         conn = _register_udfs(db)
+    #elif dbtype == 'postgres':
+    #    _debug("TODO: do something")
+    #    conn = db.connect()
     else:
         conn = db.connect()
     if bool(conn): _LAST_CONN = conn
@@ -1923,7 +1936,6 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
     #>>> df = ju.csv2df(file_path='./slow_queries.csv', conn=ju.connect())
     >>> pass    # Testing in df2csv()
     '''
-    global _DB_SCHEMA
     if bool(tablename) and conn is None:
         conn = connect()
     if os.path.exists(filename):
@@ -1982,7 +1994,7 @@ def obj2csv(obj, file_path, mode="w", header=True):
     return df2csv(df, file_path, mode=mode, header=header)
 
 
-def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace'):
+def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace', schema=None):
     """
     Convert df to a DB table
     :param df: A dataframe object
@@ -1995,7 +2007,10 @@ def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace'):
     if conn is None:
         conn = connect()
     try:
-        df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=_DB_SCHEMA, index=False)
+        if bool(schema) is False:
+            global _DB_SCHEMA
+            schema=_DB_SCHEMA
+        df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=schema, index=False)
     except InterfaceError as e:
         res = re.search('Error binding parameter ([0-9]+) - probably unsupported type', str(e))
         _err(e)
