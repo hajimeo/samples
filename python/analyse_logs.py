@@ -289,9 +289,9 @@ def analyse_logs(path="", start_isotime=None, end_isotime=None, tail_num=10000, 
         # UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d)', `date`, 1)
         query = """SELECT substr(`date`, 1, 14) AS date_hour, substr(statusCode, 1, 1) || 'xx' as status_code,
     CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
-    CAST(MIN(CAST(elapsedTime AS INT)) AS INT) AS min_elaps, 
     CAST(AVG(CAST(elapsedTime AS INT)) AS INT) AS avg_elaps, 
     CAST(AVG(CAST(bytesSent AS INT)) AS INT) AS avg_bytes, 
+    CAST(AVG(CAST(bytesSent AS INT) / (CAST(elapsedTime AS INT) / 1000)) AS INT) AS avg_bps, 
     count(*) AS occurrence
 FROM t_request
 %s
