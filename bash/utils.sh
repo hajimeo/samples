@@ -362,13 +362,25 @@ function _grep() {
 function _pid_by_port() {
     local _port="$1"
     [ -z "${_port}" ] && return 1
-    # Some Linux doesn't have 'lsof' + no root user can't see all. Also Mac's netstat is very different ...
+    # Some Linux doesn't have 'lsof' + no root user can't see all, but Mac's netstat is very different so using only if Mac...
     if [ "`uname`" = "Darwin" ]; then
-        lsof -ti:${_port} -sTCP:LISTEN
+        lsof -ti:${_port} -sTCP:LISTEN | head -n1
     else
-        netstat -t4lnp 2>/dev/null | grep -w "0.0.0.0:${_port}" | awk '{print $7}' | grep -m1 -oE '[0-9-]+' | head -n1
+        netstat -t4lnp 2>/dev/null | grep -wE "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:${_port}" | awk '{print $7}' | grep -m1 -oE '[0-9-]+' | head -n1
     fi
 }
+
+function _user_by_port() {
+    local _port="$1"
+    [ -z "${_port}" ] && return 1
+    # Some Linux doesn't have 'lsof' + no root user can't see all, but Mac's netstat is very different so using only if Mac...
+    if [ "`uname`" = "Darwin" ]; then
+        lsof -i:${_port} -sTCP:LISTEN | grep -v '^COMMAND' | awk '{print $3}' | head -n1
+    else
+        netstat -t4le 2>/dev/null | grep -w "0.0.0.0:${_port}" | awk '{print $7}' | head -n1
+    fi
+}
+
 function _wait_url() {
     local _url="${1}"
     local _times="${2:-30}"
@@ -717,7 +729,7 @@ function _upsert() {
     [ ! -f "${_file_path}" ] && return 11
     # Make a backup
     local _file_name="`basename "${_file_path}"`"
-    [ ! -f "${_TMP%/}/${_file_name}.orig" ] && cp -p "${_file_path}" "${_TMP%/}/${_file_name}.orig"
+    [ ! -f "${__TMP%/}/${_file_name}.orig" ] && cp -p "${_file_path}" "${__TMP%/}/${_file_name}.orig"
 
     # If name=value is already set, all good
     _grep -qP "^\s*${_name_escaped}\s*${_between_char}\s*${_value_escaped}\s*" "${_file_path}" && return 0
@@ -840,4 +852,134 @@ function _trust_ca() {
     _log "DEBUG" "Copied \"${_ca_pem}\" into ${_ca_dir%/}/"
     ${_ca_cmd} || return $?
     _log "DEBUG" "Executed ${_ca_cmd}"
+}
+
+function _postgresql_configure() {
+    local __doc__="Update postgresql.conf and pg_hba.conf"
+    local _verbose_logging="${1}"
+    local _wal_archive_dir="${2}"   # Automatically decided if empty
+    local _postgresql_conf="${3}"  # Automatically detected if empty. "/var/lib/pgsql/data" or "/etc/postgresql/10/main" or /var/lib/pgsql/12/data/
+    local _port="${4:-"5432"}"
+    local _postgres="${5}"
+
+    if [ -z "${_postgres}" ]; then
+        if [ "`uname`" = "Darwin" ]; then
+            _postgres="$USER"
+        else
+            _postgres="$(_user_by_port "${_port}")"
+            [ -z "${_postgres}" ] && _postgres="postgres"
+        fi
+    fi
+
+    if [ ! -f "${_postgresql_conf}" ]; then
+        _postgresql_conf="$(sudo -u ${_postgres} -i psql -tAc 'SHOW config_file')" || return $?
+    fi
+
+    if [ -z "${_postgresql_conf}" ] || [ ! -s "${_postgresql_conf}" ]; then
+        _log "ERROR" "No postgresql config file specified."
+        return 1
+    fi
+
+    [ ! -s "${__TMP%/}/postgresql.conf.orig" ] && cp -f "${_postgresql_conf}" "${__TMP%/}/postgresql.conf.orig"
+
+    _log "INFO" "Updating ${_postgresql_conf} ..."
+    # Performance tuning (so not mandatory). Expecting the server has at least 4GB
+    # @see: https://www.enterprisedb.com/postgres-tutorials/how-tune-postgresql-memory
+    _upsert ${_postgresql_conf} "shared_buffers" "1024MB"    # 4GB * 25%
+    _upsert ${_postgresql_conf} "work_mem" "12MB" "#work_mem" # 4GB * 25% / max_connections (100) + extra
+    _upsert ${_postgresql_conf} "max_connections" "400" "#max_connections"   # nxrm3 uses a lot (100 per datastore)
+    _upsert ${_postgresql_conf} "listen_addresses" "'*'" "#listen_addresses"
+    [ ! -d /var/log/postgresql ] && mkdir -p -m 777 /var/log/postgresql
+    _upsert ${_postgresql_conf} "log_directory" "'/var/log/postgresql' " "#log_directory"
+
+    if [ -z "${_wal_archive_dir}" ]; then
+        _wal_archive_dir="${_WORK_DIR%/}/${_postgres}/backups/${_save_dir%/}/`hostname -s`_wal"
+    fi
+    if [ ! -d "${_wal_archive_dir}" ]; then
+        sudo -u "${_postgres}" mkdir -v -p "${_wal_archive_dir}" || return $?
+    fi
+
+    # @see: https://www.postgresql.org/docs/current/continuous-archiving.html https://www.postgresql.org/docs/current/runtime-config-wal.html
+    _upsert ${_postgresql_conf} "archive_mode" "on"
+    _upsert ${_postgresql_conf} "archive_command" "'test ! -f ${_wal_archive_dir%/}/%f && cp %p ${_wal_archive_dir%/}/%f'" # this is asynchronous
+    #TODO: use recovery_min_apply_delay = '1h'
+    # For wal/replication/pg_rewind, better save log files outside of _postgresql_conf
+
+    _upsert ${_postgresql_conf} "log_error_verbosity" "default" "#log_error_verbosity"
+    _upsert ${_postgresql_conf} "log_line_prefix" "'%m [%p]: user=%u,db=%d,app=%a,client=%h '" "#log_line_prefix"
+    if [[ "${_verbose_logging}" =~ (y|Y) ]]; then
+        # @see: https://github.com/darold/pgbadger#POSTGRESQL-CONFIGURATION (brew install pgbadger)
+        # To log the SQL statements
+        _upsert ${_postgresql_conf} "log_min_duration_statement" "0" "#log_min_duration_statement"
+        _upsert ${_postgresql_conf} "log_checkpoints" "on" "#log_checkpoints"
+        _upsert ${_postgresql_conf} "log_connections" "on" "#log_connections"
+        _upsert ${_postgresql_conf} "log_disconnections" "on" "#log_disconnections"
+        _upsert ${_postgresql_conf} "log_lock_waits" "on" "#log_lock_waits"
+        _upsert ${_postgresql_conf} "log_temp_files" "0" "#log_temp_files"
+        _upsert ${_postgresql_conf} "log_autovacuum_min_duration" "0" "#log_autovacuum_min_duration"
+    else
+        _upsert ${_postgresql_conf} "log_min_duration_statement" "1000" "#log_min_duration_statement"
+    fi
+
+    if sudo -u ${_postgres} -i psql -d template1 -c "CREATE EXTENSION pg_buffercache;CREATE EXTENSION pg_prewarm;"; then
+        _upsert ${_postgresql_conf} "shared_preload_libraries" "'pg_prewarm'" "#shared_preload_libraries"
+        # select pg_prewarm('<tablename>', 'buffer');
+    fi
+
+    diff -wu ${__TMP%/}/postgresql.conf.orig ${_postgresql_conf}
+    _log "INFO" "Updated postgresql config. Please restart (or reload) the service."
+}
+
+function _postgresql_create_dbuser() {
+    local __doc__="Create DB user/role/schema/database"
+    local _dbusr="${1}"
+    local _dbpwd="${2:-"${_dbusr}"}"
+    local _dbname="${3:-"${_dbusr}"}"
+    local _schema="${4}"
+    local _postgres="${5}"
+
+    if [ -z "${_postgres}" ]; then
+        if [ "`uname`" = "Darwin" ]; then
+            _postgres="$USER"
+        else
+            _postgres="$(_user_by_port "${_port}")"
+            [ -z "${_postgres}" ] && _postgres="postgres"
+        fi
+    fi
+    local _psql_as_admin="sudo -u ${_postgres} -i psql"
+
+    local _pg_hba_conf="$(sudo -u ${_postgres} -i psql -tAc 'SHOW hba_file')"
+    if [ -f "${_pg_hba_conf}" ]; then
+        _log "WARN" "No pg_hba.conf file found."
+        return 1
+    fi
+
+    # NOTE: Use 'hostssl all all 0.0.0.0/0 cert clientcert=1' for 2-way | client certificate authentication
+    #       To do that, also need to utilise database.parameters.some_key:value in config.yml
+    grep -E "host\s+${_dbname}\s+${_dbusr}\s+" "${_pg_hba_conf}" || echo "host ${_dbname} ${_dbusr} 0.0.0.0/0 md5" >> "${_pg_hba_conf}" || return $?
+    sudo -u ${_postgres} -i psql -tAc 'SELECT pg_reload_conf()' || return $?
+    [ "${_dbusr}" == "all" ] && return 0
+
+    _log "INFO" "Creating Role:${_dbusr} and Database:${_dbname} ..."
+    # NOTE: need to be superuser and 'usename' is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
+    ${_psql_as_admin} -d template1 -tA -c "SELECT usename FROM pg_shadow" | grep -q "^${_dbusr}$" || ${_psql_as_admin} -c "CREATE ROLE ${_dbusr} WITH LOGIN PASSWORD '${_dbpwd}';"    # not SUPERUSER
+    ${_psql_as_admin} -d template1 -ltA  -F',' | grep -q "^${_dbname}," || ${_psql_as_admin} -c "CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';"
+    # Below two lines are not needed. for testing purpose to avoid unnecessary permission errors.
+    ${_psql_as_admin} -d template1 -c "GRANT ALL ON DATABASE ${_dbname} TO ${_dbusr};"
+    ${_psql_as_admin} -d ${_dbname} -c "GRANT ALL ON SCHEMA public TO ${_dbusr};"
+
+    if [ -n "${_schema}" ]; then
+        local _search_path="${_dbusr},public"
+        for _s in ${_schema}; do
+            ${_psql_as_admin} -d ${_dbname} -c "CREATE SCHEMA ${_s} AUTHORIZATION ${_dbusr};"
+            _search_path="${_search_path},${_s}"
+        done
+        ${_psql_as_admin} -d template1 -c "ALTER ROLE ${_dbusr} SET search_path = ${_search_path};"
+    fi
+
+    # test
+    local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
+    local _cmd="psql -U ${_dbusr} -h ${_host_ip} -d ${_dbname} -c \"\l ${_dbname}\""
+    _log "INFO" "Testing connection with ${_cmd} ..."
+    eval "PGPASSWORD=\"${_dbpwd}\" ${_cmd}" || return $?
 }
