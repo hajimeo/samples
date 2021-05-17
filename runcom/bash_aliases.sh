@@ -179,10 +179,18 @@ function merge_zips() {
     local _first_file="$1"
     zip -FF ${_first_file} --output ${_first_file%.*}.merged.zip
 }
-# head and tail of one file
+# head and tail of one file or multiple files "aaaa-*.log" (need quotes)
 function head_tail() {
+    local _f="${1}"
+    local _n="${2:-"1"}"
+    for _ff in ls -1 ${_f}; do
+        echo "# ${_ff}" >&2
+        _head_tail "${_ff}" "${_n}"
+    done
+}
+function _head_tail() {
     local _f="$1"
-    local _n="${2:-1}"
+    local _n="${2:-"1"}"
     if [[ "${_f}" =~ \.(log|csv) ]]; then
         local _tac="tac"
         which gtac &>/dev/null && _tac="gtac"
@@ -528,7 +536,7 @@ if [ -s $HOME/IdeaProjects/samples/runcom/nexus_alias.sh ]; then
     source $HOME/IdeaProjects/samples/runcom/nexus_alias.sh
 fi
 function pubS() {
-    #scp -C $HOME/IdeaProjects/samples/bash/setup_standalone.sh root@dh1:/usr/local/bin/setup_standalone.sh &
+    scp -C $HOME/IdeaProjects/samples/bash/setup_standalone.sh dh1:/usr/local/bin/setup_standalone.sh &
     scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/ &
     scp -C $HOME/IdeaProjects/samples/bash/utils*.sh dh1:/var/tmp/share/ &
     scp -C $HOME/IdeaProjects/samples/bash/_setup_host.sh dh1:/var/tmp/share/ &
