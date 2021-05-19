@@ -372,6 +372,25 @@ function f_spring_cli() {
     ${_cded} && cd -
 }
 
+# Start Java Shell (available from Java 9)
+function f_jshell() {
+    local _port="${1}"
+    if [[ "${_port}" =~ ^[0-9]+$ ]]; then
+        f_javaenvs "${_port}"
+    else
+        echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
+    fi
+
+    if [ -d "${JAVA_HOME}" ] && [ -x "${JAVA_HOME%/}/bin/jshell" ]; then
+        eval "${JAVA_HOME%/}/bin/jshell"
+    elif type jshell &>/dev/null; then
+        jshell
+    else
+        local _jshell="$(find ${_JAVA_DIR%/} -maxdepth 3 -name jshell | sort | tail -n1)" || return $?
+        [ -x "${_jshell}" ] && eval "${_jshell}"
+    fi
+}
+
 function _sed() {
     local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
     if ${_SUDO_SED}; then
