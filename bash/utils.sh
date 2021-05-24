@@ -666,8 +666,11 @@ function _download() {
         _log "INFO" "Not downloading as ${_save_as} exists."
         return
     fi
-    local _cmd="curl -s -f --retry 3 --compressed -L -k '${_url}'"
+    local _cmd="curl -s -f --retry 3 -L -k '${_url}'"
     # NOTE: if the file already exists, "-C -" may do something unexpected for text files
+    if [[ ! "${_save_as}" =~ (\.gz|.zip|.tar|.tgz) ]]; then
+        _cmd="${_cmd} --compressed"
+    fi
     if [ -s "${_save_as}" ] && ! file "${_save_as}" | grep -qwi "text"; then
         _cmd="${_cmd} -C -"
     fi
@@ -689,6 +692,9 @@ function _download_and_extract() {
     local _file="$4"
     local _as_user="${5}"
     [ -z "${_file}" ] && _file="`basename "${_url}"`"
+    if [ -d "${_save_dir}" ]; then
+        mkdir -v -p "${_save_dir}" || return $?
+    fi
 
     _download "${_url}" "${_save_dir%/}/${_file}" "Y" "Y" || return $?
 
