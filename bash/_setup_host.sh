@@ -1013,6 +1013,8 @@ function f_microk8s() {
             _update_hosts_file k8sboard.standalone.localdomain ${_dboard_ip} ${_host_file}
         fi
     fi
+    ls -l /var/snap/microk8s/common/
+
     echo "# Command examples:
     microk8s helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
     microk8s helm3 search repo iq
