@@ -969,7 +969,7 @@ function f_minikube4kvm() {
     sudo -u ${_user} kubectl config view
     _info "May want to set up Port-forwarding k8s API requests to minikube's host-only network IP:8443."
     echo "ssh-keygen -f /home/${_user}/.ssh/known_hosts -R \$(minikube ip)"
-    echo "ssh -2CNnqTxfg -D38081 -o StrictHostKeyChecking=no -i /home/${_user}/.minikube/machines/minikube/id_rsa docker@\$(minikube ip) -L 38443:localhost:8443"
+    echo "ssh -2CNnqTxfg -D38081 -i /home/${_user}/.minikube/machines/minikube/id_rsa docker@\$(minikube ip) -L 38443:localhost:8443"   # -o StrictHostKeyChecking=no
 }
 
 function f_microk8s() {
@@ -1019,6 +1019,7 @@ function f_microk8s() {
     microk8s helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
     microk8s helm3 search repo iq
     microk8s helm3 install nexus-repo nxrm3/nexus-repository-manager -f values.yml
+    microk8s kubectl config get-contexts    # list available kubectl configs
     microk8s kubectl cluster-info #dump
     microk8s kubectl create -f your_deployment.yml
     microk8s kubectl get services          # or all, or deployments to check the NAME
@@ -1897,15 +1898,34 @@ EOF
 
 function f_crowd() {
     local _ver="${1:-"4.1.2"}"
-    # rm -rf /var/crowd/* /var/crowd-home/*
+    local _user="${2-"crowd"}"
+    # rm -rf /opt/crowd/* /var/crowd/* /var/crowd-home/*
     _download_and_extract "https://product-downloads.atlassian.com/software/crowd/downloads/atlassian-crowd-${_ver}.tar.gz" "/opt/crowd" || return $?
     if ! grep -q "^crowd.home" "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties"; then
         _upsert "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties" "crowd.home" "/var/crowd-home" || return $?
     fi
-
-    # TODO: currently running as current user, which is most likely root
-    bash /opt/crowd/atlassian-crowd-${_ver}/start_crowd.sh || return $?
+    if [ -n "${_user}" ]; then
+        f_useradd "${_user}" || return $?
+    fi
+    sudo -u "${_user:-$USER}" bash /opt/crowd/atlassian-crowd-${_ver}/start_crowd.sh || return $?
     _log "INFO" "Access http://$(hostname -f):8095/
+For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
+Then, '3 hour expiration for all Atlassian host products'"
+}
+
+function f_jira() {
+    local _ver="${1:-"8.14.1"}"
+    local _user="${2-"jira"}"
+    # rm -rf /opt/jira/* /var/jira-home/*
+    _download_and_extract "https://product-downloads.atlassian.com/software/jira/downloads/atlassian-jira-software-${_ver}.tar.gz" "/opt/jira" || return $?
+    if ! grep -qE "^jira.home *= *[^ ]+" "/opt/jira/atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties"; then
+        _upsert "/opt/jira/atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties" "jira.home" "/var/jira-home" || return $?
+    fi
+    if [ -n "${_user}" ]; then
+        f_useradd "${_user}" || return $?
+    fi
+    sudo -u "${_user:-$USER}" bash /opt/jira/atlassian-jira-software-${_ver}-standalone/bin/start-jira.sh || return $?
+    _log "INFO" "Access http://$(hostname -f):8080/
 For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
 Then, '3 hour expiration for all Atlassian host products'"
 }
