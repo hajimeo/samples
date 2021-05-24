@@ -1717,10 +1717,8 @@ def logs2table(filename, tablename=None, conn=None,
     :param appending: default is False. If False, use 'DROP TABLE IF EXISTS'
     :param multiprocessing: (Experimental) default is False. If True, use multiple CPUs
     :return: True if no error, or a tuple contains multiple information for debug
-    #>>> logs2table(filename='queries.*log*', tablename='t_queries_log',
-            col_names=['date_time', 'ids', 'message', 'extra_lines'],
-            line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) (\{.*?\}) - ([^:]+):(.*)',
-            size_regex=None, time_regex=None)
+    #>>> (col_names, line_matching) = al._gen_regex_for_request_logs('request.log')
+         ju.logs2table('request.log', tablename="t_request", line_beginning="^.", col_names=col_names, line_matching=line_matching)
     #>>> logs2table(filename='nexus.log*', tablename='t_nexus_log',
          col_names=['date_time', 'loglevel', 'thread', 'node', 'user', 'class', 'message'],
             line_matching='^(\\d\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d[^ ]*) +([^ ]+) +\\[([^]]+)\\] ([^ ]*) ([^ ]*) ([^ ]+) - (.*)',
