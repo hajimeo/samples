@@ -20,9 +20,10 @@ alias sum_cols="paste -sd+ - | bc"
 # diff side-by-side ignoring whitespace diff
 alias diffY="diff -wy --suppress-common-lines"
 which mdfind &>/dev/null && alias mdfindL="mdfind kMDItemFSName="
+alias noalnum='tr -cd "[:alnum:]._-"'
+alias gzipk='gzip -k'
 # Configure .ssh/config. Not using -f and autossh
 alias s5proxy='netstat -tln | grep -E ":38080\s+" || ssh -4gC2TxnN -D38080'
-alias noalnum='tr -cd "[:alnum:]._-"'
 
 ## Git #################################################################################################################
 # Show current tag
@@ -76,6 +77,7 @@ alias python_i_with_json='python3 -i <(echo "import sys,json;js=json.load(open(s
 alias json2csv='python3 -c "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);pdf.to_csv(sys.argv[1]+\".csv\", header=True, index=False)"'
 # Read xml file, then convert to dict, then print json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
+# this one is from a file
 alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
 # echo "json like string" | tidyjson
 alias tidyjson='python3 -c "import sys,json;print(json.dumps(json.loads(sys.stdin.read()), indent=4, sort_keys=True))"'
@@ -181,11 +183,9 @@ function merge_zips() {
 }
 # head and tail of one file or multiple files "aaaa-*.log" (need quotes)
 function head_tail() {
-    local _f="${1}"
-    local _n="${2:-"1"}"
-    for _ff in ls -1 ${_f}; do
-        echo "# ${_ff}" >&2
-        _head_tail "${_ff}" "${_n}"
+    for _f in "$@"; do
+        echo "# ${_f}" >&2
+        _head_tail "${_f}" "1"
     done
 }
 function _head_tail() {
@@ -536,20 +536,14 @@ if [ -s $HOME/IdeaProjects/samples/runcom/nexus_alias.sh ]; then
     source $HOME/IdeaProjects/samples/runcom/nexus_alias.sh
 fi
 function pubS() {
-    scp -C $HOME/IdeaProjects/samples/bash/setup_standalone.sh dh1:/usr/local/bin/setup_standalone.sh &
-    scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/ &
-    scp -C $HOME/IdeaProjects/samples/bash/utils*.sh dh1:/var/tmp/share/ &
-    scp -C $HOME/IdeaProjects/samples/bash/_setup_host.sh dh1:/var/tmp/share/ &
-    scp -C $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh dh1:/var/tmp/share/sonatype/ &
-    scp -C $HOME/IdeaProjects/samples/bash/patch_java.sh dh1:/var/tmp/share/java/ &
-
-    cp -f $HOME/IdeaProjects/work/bash/install_sonatype.sh $HOME/share/sonatype/
-    cp -f $HOME/IdeaProjects/samples/bash/utils*.sh $HOME/share/sonatype/
-    cp -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/share/sonatype/
-    cp -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/IdeaProjects/nexus-toolbox/scripts/
+    [ $HOME/IdeaProjects/work/bash/install_sonatype.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/ && cp -f $HOME/IdeaProjects/work/bash/install_sonatype.sh $HOME/share/sonatype/
+    [ $HOME/IdeaProjects/samples/bash/setup_standalone.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/setup_standalone.sh dh1:/usr/local/bin/
+    [ $HOME/IdeaProjects/samples/bash/utils.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/utils.sh dh1:/var/tmp/share/ && cp -f $HOME/IdeaProjects/samples/bash/utils.sh $HOME/share/sonatype/
+    [ $HOME/IdeaProjects/samples/bash/_setup_host.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/_setup_host.sh dh1:/var/tmp/share/
+    [ $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh dh1:/var/tmp/share/sonatype/ && cp -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/share/sonatype/ && cp -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/IdeaProjects/nexus-toolbox/scripts/
+    [ $HOME/IdeaProjects/samples/bash/patch_java.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/patch_java.sh dh1:/var/tmp/share/java/
     #cp -f $HOME/IdeaProjects/work/nexus-groovy/src2/TrustStoreConverter.groovy $HOME/IdeaProjects/nexus-toolbox/scripts/
-    wait
-    date
+    date | tee /tmp/pubS.last
     sync_nexus_binaries &>/dev/null &
 }
 function sync_nexus_binaries() {
