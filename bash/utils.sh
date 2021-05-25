@@ -656,6 +656,7 @@ function _isUrl() {
     fi
     return 1
 }
+
 function _download() {
     local _url="$1"
     local _save_as="$2"
@@ -694,6 +695,7 @@ function _download_and_extract() {
     [ -z "${_file}" ] && _file="`basename "${_url}"`"
     if [ -d "${_save_dir}" ]; then
         mkdir -v -p "${_save_dir}" || return $?
+        [ -n "${_as_user}" ] && chown ${_as_user}: "${_save_dir}"
     fi
 
     _download "${_url}" "${_save_dir%/}/${_file}" "Y" "Y" || return $?
@@ -872,13 +874,18 @@ function _postgresql_configure() {
         if [ "`uname`" = "Darwin" ]; then
             _postgres="$USER"
         else
-            _postgres="$(_user_by_port "${_port}")"
+            _postgres="$(_user_by_port "${_port}" 2>/dev/null)"
             [ -z "${_postgres}" ] && _postgres="postgres"
         fi
     fi
+    local _psql_as_admin="sudo -u ${_postgres} -i psql"
+    if ! grep -q "^${_postgres}" /etc/passwd; then
+        # This will ask the password everytime, but you can use PGPASSWORD
+        _psql_as_admin="psql -U ${_postgres}"
+    fi
 
     if [ ! -f "${_postgresql_conf}" ]; then
-        _postgresql_conf="$(sudo -u ${_postgres} -i psql -tAc 'SHOW config_file')" || return $?
+        _postgresql_conf="$(${_psql_as_admin} -tAc 'SHOW config_file')" || return $?
     fi
 
     if [ -z "${_postgresql_conf}" ] || [ ! -s "${_postgresql_conf}" ]; then
@@ -927,7 +934,7 @@ function _postgresql_configure() {
         _upsert ${_postgresql_conf} "log_min_duration_statement" "1000" "#log_min_duration_statement"
     fi
 
-    if sudo -u ${_postgres} -i psql -d template1 -c "CREATE EXTENSION pg_buffercache;CREATE EXTENSION pg_prewarm;"; then
+    if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION pg_buffercache;CREATE EXTENSION pg_prewarm;"; then
         _upsert ${_postgresql_conf} "shared_preload_libraries" "'pg_prewarm'" "#shared_preload_libraries"
         # select pg_prewarm('<tablename>', 'buffer');
     fi
@@ -948,14 +955,18 @@ function _postgresql_create_dbuser() {
         if [ "`uname`" = "Darwin" ]; then
             _postgres="$USER"
         else
-            _postgres="$(_user_by_port "${_port}")"
+            _postgres="$(_user_by_port "${_port}" 2>/dev/null)"
             [ -z "${_postgres}" ] && _postgres="postgres"
         fi
     fi
     local _psql_as_admin="sudo -u ${_postgres} -i psql"
+    if ! grep -q "^${_postgres}" /etc/passwd; then
+        # This will ask the password everytime, but you can use PGPASSWORD
+        _psql_as_admin="psql -U ${_postgres}"
+    fi
 
-    local _pg_hba_conf="$(sudo -u ${_postgres} -i psql -tAc 'SHOW hba_file')"
-    if [ -f "${_pg_hba_conf}" ]; then
+    local _pg_hba_conf="$(${_psql_as_admin} -tAc 'SHOW hba_file')"
+    if [ ! -f "${_pg_hba_conf}" ]; then
         _log "WARN" "No pg_hba.conf file found."
         return 1
     fi
@@ -963,7 +974,7 @@ function _postgresql_create_dbuser() {
     # NOTE: Use 'hostssl all all 0.0.0.0/0 cert clientcert=1' for 2-way | client certificate authentication
     #       To do that, also need to utilise database.parameters.some_key:value in config.yml
     grep -E "host\s+${_dbname}\s+${_dbusr}\s+" "${_pg_hba_conf}" || echo "host ${_dbname} ${_dbusr} 0.0.0.0/0 md5" >> "${_pg_hba_conf}" || return $?
-    sudo -u ${_postgres} -i psql -tAc 'SELECT pg_reload_conf()' || return $?
+    ${_psql_as_admin} -tAc 'SELECT pg_reload_conf()' || return $?
     [ "${_dbusr}" == "all" ] && return 0
 
     _log "INFO" "Creating Role:${_dbusr} and Database:${_dbname} ..."
