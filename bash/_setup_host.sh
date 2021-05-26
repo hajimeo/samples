@@ -961,12 +961,12 @@ function f_minikube4kvm() {
 
     usermod -aG libvirt ${_user}
     #newgrp libvirt
-    sudo -u ${_user} minikube config set vm-driver kvm2 || return $?
-    sudo -u ${_user} minikube start || return $?
+    sudo -i -u ${_user} minikube config set vm-driver kvm2 || return $?
+    sudo -i -u ${_user} minikube start || return $?
     curl -k https://$(minikube ip):8443/livez?verbose   # health check
     _info "May want to move below file(s) to a faster drive."
-    sudo -u ${_user} bash -c 'ls -l ${HOME%/}/.minikube/machines/minikube/*.rawdisk'
-    sudo -u ${_user} kubectl config view
+    sudo -i -u ${_user} bash -c 'ls -l ${HOME%/}/.minikube/machines/minikube/*.rawdisk'
+    sudo -i -u ${_user} kubectl config view
     _info "May want to set up Port-forwarding k8s API requests to minikube's host-only network IP:8443."
     echo "ssh-keygen -f /home/${_user}/.ssh/known_hosts -R \$(minikube ip)"
     echo "ssh -2CNnqTxfg -D38081 -i /home/${_user}/.minikube/machines/minikube/id_rsa docker@\$(minikube ip) -L 38443:localhost:8443"   # -o StrictHostKeyChecking=no
@@ -1013,9 +1013,11 @@ function f_microk8s() {
             _update_hosts_file k8sboard.standalone.localdomain ${_dboard_ip} ${_host_file}
         fi
     fi
-    ls -l /var/snap/microk8s/common/
+    # Image location
+    ls -l /var/snap/microk8s/common/var/lib/containerd/
 
     echo "# Command examples:
+    microk8s config     # to output the config
     microk8s helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
     microk8s helm3 search repo iq
     microk8s helm3 install nexus-repo nxrm3/nexus-repository-manager -f values.yml
@@ -1902,12 +1904,13 @@ function f_crowd() {
     # rm -rf /opt/crowd/* /var/crowd/* /var/crowd-home/*
     _download_and_extract "https://product-downloads.atlassian.com/software/crowd/downloads/atlassian-crowd-${_ver}.tar.gz" "/opt/crowd" || return $?
     if ! grep -q "^crowd.home" "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties"; then
-        _upsert "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties" "crowd.home" "/var/crowd-home" || return $?
+        _upsert "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties" "crowd.home" "/var/crowd-home/${_ver}" || return $?
     fi
+    [ -d "/var/crowd-home" ] || mkdir -p -m 777 /var/crowd-home
     if [ -n "${_user}" ]; then
         f_useradd "${_user}" || return $?
     fi
-    sudo -u "${_user:-$USER}" bash /opt/crowd/atlassian-crowd-${_ver}/start_crowd.sh || return $?
+    sudo -i -u "${_user:-$USER}" bash /opt/crowd/atlassian-crowd-${_ver}/start_crowd.sh || return $?
     _log "INFO" "Access http://$(hostname -f):8095/
 For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
 Then, '3 hour expiration for all Atlassian host products'"
@@ -1919,12 +1922,14 @@ function f_jira() {
     # rm -rf /opt/jira/* /var/jira-home/*
     _download_and_extract "https://product-downloads.atlassian.com/software/jira/downloads/atlassian-jira-software-${_ver}.tar.gz" "/opt/jira" || return $?
     if ! grep -qE "^jira.home *= *[^ ]+" "/opt/jira/atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties"; then
-        _upsert "/opt/jira/atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties" "jira.home" "/var/jira-home" || return $?
+        _upsert "/opt/jira/atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties" "jira.home" "/var/jira-home/${_ver}" || return $?
     fi
+    [ -d "/var/jira-home" ] || mkdir -p -m 777 /var/jira-home
     if [ -n "${_user}" ]; then
+        chown -R "${_user}:" /opt/jira/atlassian-jira-software-${_ver}-standalone
         f_useradd "${_user}" || return $?
     fi
-    sudo -u "${_user:-$USER}" bash /opt/jira/atlassian-jira-software-${_ver}-standalone/bin/start-jira.sh || return $?
+    sudo -i -u "${_user:-$USER}" bash /opt/jira/atlassian-jira-software-${_ver}-standalone/bin/start-jira.sh || return $?
     _log "INFO" "Access http://$(hostname -f):8080/
 For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
 Then, '3 hour expiration for all Atlassian host products'"
