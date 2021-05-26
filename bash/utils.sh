@@ -961,6 +961,7 @@ function _postgresql_create_dbuser() {
     fi
     local _psql_as_admin="sudo -u ${_postgres} -i psql"
     if ! grep -q "^${_postgres}" /etc/passwd; then
+        _log "WARN" "'${_postgres}' OS user does not exist. May require to set PGPASSWORD variable."
         # This will ask the password everytime, but you can use PGPASSWORD
         _psql_as_admin="psql -U ${_postgres}"
     fi
@@ -973,8 +974,10 @@ function _postgresql_create_dbuser() {
 
     # NOTE: Use 'hostssl all all 0.0.0.0/0 cert clientcert=1' for 2-way | client certificate authentication
     #       To do that, also need to utilise database.parameters.some_key:value in config.yml
-    grep -E "host\s+${_dbname}\s+${_dbusr}\s+" "${_pg_hba_conf}" || echo "host ${_dbname} ${_dbusr} 0.0.0.0/0 md5" >> "${_pg_hba_conf}" || return $?
-    ${_psql_as_admin} -tAc 'SELECT pg_reload_conf()' || return $?
+    if ! grep -E "host\s+${_dbname}\s+${_dbusr}\s+" "${_pg_hba_conf}"; then
+        echo "host ${_dbname} ${_dbusr} 0.0.0.0/0 md5" >> "${_pg_hba_conf}" || return $?
+        ${_psql_as_admin} -tAc 'SELECT pg_reload_conf()' || return $?
+    fi
     [ "${_dbusr}" == "all" ] && return 0
 
     _log "INFO" "Creating Role:${_dbusr} and Database:${_dbname} ..."
