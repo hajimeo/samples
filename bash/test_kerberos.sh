@@ -29,19 +29,29 @@ function check_jce() {
 
 function test_reverse_dns_lookup() {
     local _fqdn="$1"
+    local _IPs="$2"
     [ -z "${_fqdn}" ] && _fqdn="`hostname -f`"
+    [ -z "${_IPs}" ] && _IPs="`hostname -I`"
     local _resolved=1
-    for _ip in `hostname -I`; do
-        if ! python -c "import socket;print socket.gethostbyaddr('${_ip}')" | grep -qF "'${_fqdn}'"; then
-            echo "DEBUG: ${_ip} is not resolved to ${_fqdn}" >&2
+    echo "INFO: resolving hostname:${_fqdn} to IP(s) ..." >&2
+    if [ -e "$JAVA_HOME/bin/jrunscript" ]; then
+        $JAVA_HOME/bin/jrunscript -Dnetworkaddress.cache.ttl=0 -e "var ips = java.net.InetAddress.getAllByName('${_fqdn}');for (var i in ips) println(ips[i].getHostName()+' / '+ips[i].getHostAddress());"
+    else
+        python -c "import socket;print(socket.gethostbyname('${_fqdn}'))"
+    fi
+
+    echo "INFO: resolving IP(s):${_IPs} to hostname(s) ..." >&2
+    for _ip in ${_IPs}; do
+        [ -z "${_ip}" ] && continue
+        if [ -e "$JAVA_HOME/bin/jrunscript" ]; then
+            $JAVA_HOME/bin/jrunscript -Dnetworkaddress.cache.ttl=0 -e "var ips = java.net.InetAddress.getAllByName('${_ip}');for (var i in ips) println(ips[i].getHostName()+' / '+ips[i].getHostAddress());"
         else
-            echo "INFO: ${_ip} is resolved to ${_fqdn}" >&2
-            _resolved=0
-        fi
+            python -c "import socket;print socket.gethostbyaddr('${_ip}')"
+        fi | grep -wF "${_fqdn}" && _resolved=0
+        #if [ $? -ne 0 ]; then
+        #    echo "DEBUG: ${_ip} is not resolved to ${_fqdn}" >&2
+        #fi
     done
-    # one hostname to IP addresses
-    # language=JavaScript
-    [ -n "$JAVA_HOME" ] && $JAVA_HOME/bin/jrunscript -Dnetworkaddress.cache.ttl=0 -e "var ips = java.net.InetAddress.getAllByName('`hostname -f`'); for (var i in ips) println(ips[i]);"
     return ${_resolved}
 }
 
