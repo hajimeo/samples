@@ -1,11 +1,11 @@
-apiVersion: networking.k8s.io/v1
+apiVersion: networking-k8s.io/v1
 kind: Ingress
 metadata:
   name: nexus-ingress
   namespace: default
 spec:
   rules:
-    - host: nxrm3.k8s.standalone.localdomain
+    - host: nxrm3-k8s.standalone.localdomain
       http:
         paths:
           - backend:
@@ -16,7 +16,7 @@ spec:
                   number: 8081
             pathType: Prefix
             path: /
-    - host: docker.k8s.standalone.localdomain
+    - host: docker-k8s.standalone.localdomain
       http:
         paths:
           - backend:
@@ -27,7 +27,7 @@ spec:
                   number: 5000
             pathType: Prefix
             path: /
-    - host: nxiq.k8s.standalone.localdomain
+    - host: nxiq-k8s.standalone.localdomain
       http:
         paths:
           - backend:
