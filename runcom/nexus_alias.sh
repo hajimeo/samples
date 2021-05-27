@@ -279,19 +279,25 @@ function mvn-dep-file() {
 
 # Get one jar (file) by GAV
 function mvn-get-file() {
-    local _gav="${1:-"junit:junit:4.12"}"
+    local _gav="${1:-"junit:junit:4.12"}"   # or org.yaml:snakeyaml:jar:1.23
     local _repo_url="${2:-"http://dh1.standalone.localdomain:8081/repository/maven-public/"}"
     local _user="${3:-"admin"}"
     local _pwd="${4:-"admin123"}"
+    local _path=""
     if [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
         local _g="${BASH_REMATCH[1]}"
         local _a="${BASH_REMATCH[2]}"
         local _v="${BASH_REMATCH[3]}"
-        local _path="$(echo "${_g}" | sed "s@\.@/@g")/${_a}/${_v}/${_a}-${_v}.jar"
-
-        curl -v -O -J -L -f -u ${_user}:${_pwd} -k "${_repo_url%/}/${_path#/}" || return $?
-        echo "$(basename "${_path}")"
+        _path="$(echo "${_g}" | sed "s@\.@/@g")/${_a}/${_v}/${_a}-${_v}.jar"
+    elif [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
+        local _g="${BASH_REMATCH[1]}"
+        local _a="${BASH_REMATCH[2]}"
+        local _v="${BASH_REMATCH[4]}"
+        _path="$(echo "${_g}" | sed "s@\.@/@g")/${_a}/${_v}/${_a}-${_v}.jar"
     fi
+    [ -z "${_path}" ] && return 11
+    curl -v -O -J -L -f -u ${_user}:${_pwd} -k "${_repo_url%/}/${_path#/}" || return $?
+    echo "$(basename "${_path}")"
 }
 
 # mvn devendency:get wrapper to use remote repo
