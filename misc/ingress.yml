@@ -30,7 +30,8 @@ spec:
         paths:
           - backend:
               service:
-                name: nexus3
+                # TODO: Need to make sure the service name is correct
+                name: nexus3-nexus-repository-manager
                 port:
                   number: 5000
             pathType: Prefix
