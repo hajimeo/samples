@@ -1,0 +1,47 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nxiq-ingress
+  namespace: default
+spec:
+  rules:
+    - host: dh1.standalone.localdomain
+      http:
+        paths:
+          - backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000
+            pathType: Prefix
+            path: /
+    - host: nxrm3.k8s.standalone.localdomain
+      http:
+        paths:
+          - backend:
+              service:
+                name: nexus3
+                port:
+                  number: 8081
+            pathType: Prefix
+            path: /
+    - host: docker.k8s.standalone.localdomain
+      http:
+        paths:
+          - backend:
+              service:
+                name: nexus3
+                port:
+                  number: 5000
+            pathType: Prefix
+            path: /
+    - host: nxiq.k8s.standalone.localdomain
+      http:
+        paths:
+          - backend:
+              service:
+                name: nexus-iq-nexus-iq-server
+                port:
+                  number: 8070
+            pathType: Prefix
+            path: /
