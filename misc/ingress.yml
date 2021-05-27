@@ -5,16 +5,6 @@ metadata:
   namespace: default
 spec:
   rules:
-    - host: dh1.standalone.localdomain
-      http:
-        paths:
-          - backend:
-              service:
-                name: grafana
-                port:
-                  number: 3000
-            pathType: Prefix
-            path: /
     - host: nxrm3.k8s.standalone.localdomain
       http:
         paths:
