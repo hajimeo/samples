@@ -985,8 +985,15 @@ function f_microk8s() {
 
     ufw allow in on cni0 && ufw allow out on cni0
     ufw default allow routed
-    microk8s enable dns dashboard storage helm3
-    microk8s.start
+    microk8s enable dns dashboard storage helm3 || return $?
+    # optional services/addons
+    microk8s enable ingress #metallb prometheus
+    # To replace nginx SSL/HTTPS certificate
+    #microk8s kubectl create secret tls standalone.localdomain --key /var/tmp/share/cert/standalone.localdomain.key --cert /var/tmp/share/cert/standalone.localdomain.crt
+    #microk8s kubectl edit -n ingress daemonsets nginx-ingress-microk8s-controller
+    # then add below line in the containers.args:
+    #        - --default-ssl-certificate=default/standalone.localdomain
+    microk8s.start || return $?
 
     # (a kind of) test
     microk8s kubectl get all --all-namespaces
@@ -1017,6 +1024,7 @@ function f_microk8s() {
     ls -l /var/snap/microk8s/common/var/lib/containerd/
 
     echo "# Command examples:
+    microk8s status --wait-ready    # list enabled/disabled addons
     microk8s config     # to output the config
     microk8s helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
     microk8s helm3 search repo iq
