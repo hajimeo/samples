@@ -455,21 +455,27 @@ function backupC() {
     [ ! -d "${_src}" ] && return 11
     [ ! -d "$HOME/.Trash" ] && return 12
 
-    local _mv="mv --backup=t"
-    [ "Darwin" = "$(uname)" ] && _mv="gmv --backup=t"
-
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory'
     find ${_src%/} -type d -mtime +14 -name '*_tmp' -delete &
     find ${_src%/} -type f -mtime +14 -name '*.tmp' -delete &
     find ${_src%/} -type f -mtime +90 -size +128000k \( -name "nexus.log" -o -name "request.log" -o -name "clm-server.log" -o -name "audit.log" \) -delete &
-    find ${_src%/} -type f -mtime +180 -name '*.out' -delete &
+    find ${_src%/} -type f -mtime +180  \( -name "*.log" -o -name "*.out" -o -name "*.log.gz" \) -delete &
+    find ${_src%/} -type f -mtime +360 -delete &
+    # NOTE: this find command requires "/*"
+    if [ "Darwin" = "$(uname)" ]; then
+        gfind ${_src%/}/* -type d -mtime +2 -empty -delete &
+    else
+        find ${_src%/}/* -type d -mtime +2 -empty -delete &
+    fi
     wait
 
-    find ${_src%/} -type f -mtime +360 -size +100k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    find ${_src%/} -type f -mtime +270 -size +10240k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    find ${_src%/} -type f -mtime +180 -size +1024000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    find ${_src%/} -type f -mtime +90  -size +2048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #local _mv="mv --backup=t"
+    #[ "Darwin" = "$(uname)" ] && _mv="gmv --backup=t"
+    #find ${_src%/} -type f -mtime +360 -size +100k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #find ${_src%/} -type f -mtime +270 -size +10240k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #find ${_src%/} -type f -mtime +180 -size +1024000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #find ${_src%/} -type f -mtime +90  -size +2048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     #find ${_src%/} -type f -mtime +45 -size +4048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     wait
 
@@ -486,9 +492,7 @@ function backupC() {
         fi
     fi
 
-    # NOTE: this find command requires "/*"
     if [ "Darwin" = "$(uname)" ]; then
-        [ -n "${_src%/}" ] && gfind ${_src%/}/* -type d -mtime +7 -empty -delete
         echo "#mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-2419200)' | LC_ALL=C sort"   # -onlyin "${_src}"
         mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-2419200)' | LC_ALL=C sort | while read -r _l;do ls -lh "${_l}"; done | sort -k5 -h | tail -n20
     fi
