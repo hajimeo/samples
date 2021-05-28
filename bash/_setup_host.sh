@@ -985,9 +985,9 @@ function f_microk8s() {
 
     ufw allow in on cni0 && ufw allow out on cni0
     ufw default allow routed
-    microk8s enable dns dashboard storage helm3 || return $?
+    microk8s enable dns storage helm3 || return $?
     # optional services/addons
-    microk8s enable ingress #metallb prometheus
+    microk8s enable ingress #metallb dashboard prometheus
     # To replace nginx SSL/HTTPS certificate
     #microk8s kubectl create secret tls standalone.localdomain --key /var/tmp/share/cert/standalone.localdomain.key --cert /var/tmp/share/cert/standalone.localdomain.crt
     #microk8s kubectl edit -n ingress daemonsets nginx-ingress-microk8s-controller
@@ -1041,7 +1041,8 @@ function f_microk8s() {
     microk8s kubectl describe pod <pod-name>
     microk8s kubectl describe pvc <pvc-name>
     microk8s kubectl exec <pod-name> -ti -- bash
-    microk8s helm3 uninstall nexus-repo
+    microk8s kubectl scale --replicas=0 deployment <deployment-name>    # stop all pods temporarily (if no HPA)
+    microk8s helm3 uninstall nexus-repo     # to delete everything
     microk8s stop
     #systemctl stop snap.microk8s.daemon-containerd.service
     #systemctl stop snap.microk8s.daemon-scheduler.service
