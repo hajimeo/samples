@@ -32,8 +32,19 @@ spec:
         paths:
           - backend:
               service:
-                name: nexus-iq-nexus-iq-server
+                name: nxiq-nexus-iq-server
                 port:
                   number: 8070
+            pathType: Prefix
+            path: /
+    # TODO: do i need to expose this?
+    - host: nxiq-admin-k8s.standalone.localdomain
+      http:
+        paths:
+          - backend:
+              service:
+                name: nxiq-nexus-iq-server
+                port:
+                  number: 8071
             pathType: Prefix
             path: /

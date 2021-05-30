@@ -5,12 +5,12 @@ replicaCount: 1
 image:
   # TODO: Sonatype Official Public Image or specify NXRM3 one
   repository: sonatype/nexus-iq-server
-  tag: 1.113.0
+  tag: 1.114.0
   pullPolicy: IfNotPresent
 
 iq:
-  name: nexus-iq
-  hostname: iq-server.demo
+  name: nxiq
+  hostname: nxiq-k8s.standalone.localdomain
   applicationPort: 8070
   adminPort: 8071
   memory: 1Gi
@@ -77,9 +77,9 @@ ingress:
     # kubernetes.io/ingress.class: nginx
   # kubernetes.io/tls-acme: "true"
   # TODO: do not want to use static hostnames
-  hostUI: iq-server.k8s.standalone.localdomain
+  hostUI: nxiq-k8s.standalone.localdomain
   hostUIPath: /
-  hostAdmin: admin.iq-server.k8s.standalone.localdomain
+  hostAdmin: nxiq-admin-k8s.standalone.localdomain
   hostAdminPath: /
 
   tls: []
@@ -105,10 +105,10 @@ affinity: {}
 persistence:
   enabled: true
   accessMode: ReadWriteOnce
-  storageSize: 2Gi
+  storageSize: 1Gi
 
 configYaml:
-  baseUrl: http://iq-server.demo
+  baseUrl: http://nxiq-k8s.standalone.localdomain
   sonatypeWork: /sonatype-work
   #TODO: licenseFile:
   server:

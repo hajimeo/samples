@@ -9,7 +9,7 @@ alias fcv='fc -e vim'
 # 'time' with format
 alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"' # brew install gnu-time --with-default-names
 # In case 'tree' is not installed
-type tree &>/dev/null || alias tree="pwd;find . | sort | sed '1d;s/^\.//;s/\/\([^/]*\)$/|--\1/;s/\/[^/|]*/|  /g'"
+type tree &>/dev/null || alias tree="pwd;find . | sort | sed '1d;s/^\.//;s/\/\([^/]*\)$/|-- \1/;s/\/[^/|]*/|  /g'"
 # Debug network performance with curl
 alias curld='curl -w "\ntime_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
 # output the longest line *number* as wc|gwc -L does not show the line number
