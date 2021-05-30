@@ -1,3 +1,4 @@
+# Example of .ssh/config (NOTE: ssh checks ownership and permissions of this file)
 Host *
   # example of keeping pinging server (eg: Azure)
   ServerAliveInterval 20
