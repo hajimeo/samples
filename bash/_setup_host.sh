@@ -1026,9 +1026,14 @@ function f_microk8s() {
     echo "# Command examples:
     microk8s status --wait-ready    # list enabled/disabled addons
     microk8s config     # to output the config
+
     microk8s helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
     microk8s helm3 search repo iq
-    microk8s helm3 install nexus-repo nxrm3/nexus-repository-manager -f values.yml
+    # after creating the namespace 'sonatype'
+    microk8s helm3 install --debug nxiq helm-sonatype-proxy/nexus-iq-server -n sonatype -f ./helm-iq-values.yml
+    microk8s helm3 install --debug nxrm3 helm-sonatype-proxy/nexus-repository-manager -n sonatype
+    microk8s helm3 uninstall nxrm3     # to delete everything
+
     microk8s kubectl config get-contexts    # list available kubectl configs
     microk8s kubectl cluster-info #dump
     microk8s kubectl create -f your_deployment.yml
@@ -1042,7 +1047,7 @@ function f_microk8s() {
     microk8s kubectl describe pvc <pvc-name>
     microk8s kubectl exec <pod-name> -ti -- bash
     microk8s kubectl scale --replicas=0 deployment <deployment-name>    # stop all pods temporarily (if no HPA)
-    microk8s helm3 uninstall nexus-repo     # to delete everything
+
     microk8s stop
     #systemctl stop snap.microk8s.daemon-containerd.service
     #systemctl stop snap.microk8s.daemon-scheduler.service
