@@ -147,8 +147,8 @@ configYaml:
       "com.sonatype.insight.audit":
         appenders:
         - type: file
-          currentLogFilename: /var/log/nexus-iq-server/log/audit.log
-          archivedLogFilenamePattern: /sonatype-work/log/audit-%d.log.gz
+          currentLogFilename: /var/log/nexus-iq-server/audit.log
+          archivedLogFilenamePattern: /var/log/nexus-iq-server/audit-%d.log.gz
           archivedFileCount: 10
       #"com.sonatype.insight.policy.violation":
       #  appenders:
@@ -163,8 +163,8 @@ configYaml:
       - type: file
         threshold: ALL
         logFormat: "%d{'yyyy-MM-dd HH:mm:ss,SSSZ'} %level [%thread] %X{username} %logger - %msg%n"
-        currentLogFilename: /var/log/nexus-iq-server/log/clm-server.log
-        archivedLogFilenamePattern: /var/log/nexus-iq-server/log/clm-server-%d.log.gz
+        currentLogFilename: /var/log/nexus-iq-server/clm-server.log
+        archivedLogFilenamePattern: /var/log/nexus-iq-server/clm-server-%d.log.gz
         archivedFileCount: 10
 
   # TODO: database:
