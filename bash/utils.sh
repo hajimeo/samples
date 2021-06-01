@@ -931,6 +931,7 @@ function _postgresql_configure() {
         _upsert ${_postgresql_conf} "log_temp_files" "0" "#log_temp_files"
         _upsert ${_postgresql_conf} "log_autovacuum_min_duration" "0" "#log_autovacuum_min_duration"
     else
+        _upsert ${_postgresql_conf} "log_statement" "'mod'" "#log_statement"
         _upsert ${_postgresql_conf} "log_min_duration_statement" "1000" "#log_min_duration_statement"
     fi
 
