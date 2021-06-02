@@ -6,4 +6,4 @@ spec:
         lifecycle:
           preStop:
             exec:
-              command: ["/bin/sh", "-c", "/usr/bin/kill `cat /sonatype-work/lock | cut -d@ -f1`"]
+              command: ['/bin/sh', '-c', '/usr/bin/kill `cat /sonatype-work/lock | cut -d@ -f1`']
