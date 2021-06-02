@@ -1,0 +1,9 @@
+spec:
+  template:
+    spec:
+      containers:
+      - name: nexus-iq-server
+        lifecycle:
+          preStop:
+            exec:
+              command: ["/usr/bin/kill", "$(cat /sonatype-work/lock | cut -d'@' -f1)"]
