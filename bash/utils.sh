@@ -867,8 +867,8 @@ function _postgresql_configure() {
     local _verbose_logging="${1}"
     local _wal_archive_dir="${2}"   # Automatically decided if empty
     local _postgresql_conf="${3}"  # Automatically detected if empty. "/var/lib/pgsql/data" or "/etc/postgresql/10/main" or /var/lib/pgsql/12/data/
-    local _port="${4:-"5432"}"
-    local _postgres="${5}"
+    local _postgres="${4}"
+    local _port="${5:-"5432"}"
 
     if [ -z "${_postgres}" ]; then
         if [ "`uname`" = "Darwin" ]; then
@@ -920,13 +920,14 @@ function _postgresql_configure() {
 
     _upsert ${_postgresql_conf} "log_error_verbosity" "default" "#log_error_verbosity"
     _upsert ${_postgresql_conf} "log_line_prefix" "'%m [%p]: user=%u,db=%d,app=%a,client=%h '" "#log_line_prefix"
+    _upsert ${_postgresql_conf} "log_connections" "on" "#log_connections"
+    _upsert ${_postgresql_conf} "log_disconnections" "on" "#log_disconnections"
+
     if [[ "${_verbose_logging}" =~ (y|Y) ]]; then
         # @see: https://github.com/darold/pgbadger#POSTGRESQL-CONFIGURATION (brew install pgbadger)
         # To log the SQL statements
         _upsert ${_postgresql_conf} "log_min_duration_statement" "0" "#log_min_duration_statement"
         _upsert ${_postgresql_conf} "log_checkpoints" "on" "#log_checkpoints"
-        _upsert ${_postgresql_conf} "log_connections" "on" "#log_connections"
-        _upsert ${_postgresql_conf} "log_disconnections" "on" "#log_disconnections"
         _upsert ${_postgresql_conf} "log_lock_waits" "on" "#log_lock_waits"
         _upsert ${_postgresql_conf} "log_temp_files" "0" "#log_temp_files"
         _upsert ${_postgresql_conf} "log_autovacuum_min_duration" "0" "#log_autovacuum_min_duration"
@@ -951,6 +952,7 @@ function _postgresql_create_dbuser() {
     local _dbname="${3:-"${_dbusr}"}"
     local _schema="${4}"
     local _postgres="${5}"
+    local _port="${6:-"5432"}"
 
     if [ -z "${_postgres}" ]; then
         if [ "`uname`" = "Darwin" ]; then
@@ -1003,4 +1005,49 @@ function _postgresql_create_dbuser() {
     local _cmd="psql -U ${_dbusr} -h ${_host_ip} -d ${_dbname} -c \"\l ${_dbname}\""
     _log "INFO" "Testing connection with ${_cmd} ..."
     eval "PGPASSWORD=\"${_dbpwd}\" ${_cmd}" || return $?
+}
+
+function _postgres_pitr() {
+    local __doc__="Point In Time Recovery for PostgreSQL *12* (not tested with other versions)"
+    # @see: https://www.postgresql.org/docs/12/continuous-archiving.html#BACKUP-PITR-RECOVERY
+    # NOTE: this function doesn't do any assumption. almost all arguments need to be specified.
+    local _data_dir="${1}"              # /var/lib/pgsql/data, /var/lib/pgsql/12/data or /usr/local/var/postgres (Mac)
+    local _base_backup_tgz="${2}"       # File path. eg: .../node-nxiq1960_base_20201105T091218z/base.tar.gz
+    local _wal_archive_dir="${3}"       # ${_WORK_DIR%/}/${_SERVICE%/}/backups/`hostname -s`_wal
+    local _target_ISO_datetime="${4}"   # yyyy-mm-dd hh:mm:ss (optional)
+    local _postgres="${5:-"postgres"}"  # DB OS user
+    local _port="${6:-"5432"}"          # PostgreSQL port number
+
+    if [ ! -d "${_data_dir}" ]; then
+        _log "ERROR" "No PostgreSQL data dir provided: ${_data_dir}"
+    fi
+    if [ ! -s "${_base_backup_tgz}" ]; then
+        _log "ERROR" "No base backup file: ${_base_backup_tgz}"
+        return 1
+    fi
+    local _pid="$(_pid_by_port "${_port}")"
+    if [ -n "${_pid}" ]; then
+        _log "ERROR" "Please stop postgresql first: ${_pid}"
+        return 1
+    fi
+
+    mv -v ${_data_dir%/} ${_data_dir%/}_$(date +"%Y%m%d%H%M%S") || return $?
+    sudo -u ${_postgres} -i mkdir -m 700 -p ${_data_dir%/} || return $?
+    tar -xvf "${_base_backup_tgz}" -C "${_data_dir%/}" || return $?
+    sudo -u ${_postgres} -i touch ${_data_dir%/}/recovery.signal || return $?
+    #mv -v ${_data_dir%/}/pg_wal/* ${_TMP%/}/ || return $?
+    if [ -s "$(dirname "${_base_backup_tgz}")/pg_wal.tar.gz" ]; then
+        tar -xvf "$(dirname "${_base_backup_tgz}")/pg_wal.tar.gz" -C "${_data_dir%/}/pg_wal"
+    fi
+
+    # NOTE: From PostgreSQL 12, no recovery.conf
+    if [ ! -s ${_data_dir%/}/postgresql.conf.bak ]; then
+        cp -p ${_data_dir%/}/postgresql.conf ${_data_dir%/}/postgresql.conf.bak || return $?
+    fi
+    _upsert ${_data_dir%/}/postgresql.conf "restore_command" "'cp ${_wal_archive_dir%/}/%f "%p"'" "#restore_command "
+    _upsert ${_data_dir%/}/postgresql.conf "recovery_target_action" "'promote'" "#recovery_target_action "
+    [ -n "${_target_ISO_datetime}" ] && _upsert ${_data_dir%/}/postgresql.conf "recovery_target_time" "'${_target_ISO_datetime}'" "#recovery_target_time "
+    diff -u ${_data_dir%/}/postgresql.conf.bak ${_data_dir%/}/postgresql.conf
+    _log "INFO" "postgresql.conf has been updated. Please start PostgreSQL for recovery then 'promote'."
+    # Upon completion of the recovery process, the server will remove recovery.signal (to prevent accidentally re-entering recovery mode later) and then commence normal database operations.
 }
