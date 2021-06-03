@@ -113,8 +113,8 @@ function extract_key_certs() {
 # convert .jks or .pkcs8 file to .key (and .crt if possible)
 function export_key() {
     local _file="$1"
-    local _pass="${2:-password}"
-    local _alias="${3:-$(hostname -f)}"
+    local _pass="${2:-"password"}"
+    local _alias="${3:-"$(hostname -f)"}"
     local _type="$4"
 
     local _basename="`basename $_file`"
@@ -417,6 +417,17 @@ function gen_wildcard_cert() {
     # make sure server certificate and key is readable by particular user
     #chown $USER: ./wildcard.${_domain}.{key,crt}
     ls -ltr *.${_domain}.{key,crt,csr}
+}
+
+function gen_wildcard_cert_with_keytool() {
+    local _name="$1"
+    local _domain="${2:-`hostname -d`}"
+    local _pass="${3:-"password"}"
+    local _keystore_file="${4:-"keystore.jks"}"
+    # TODO: do I need to specify SAN=DNS:<FQDN>?
+    keytool -genkeypair -keystore "${_keystore_file}" -storepass "${_pass}" -alias "${_name}" -keyalg RSA -keysize 2048 -validity 3650 -keypass "${_pass}" -dname "CN=*.${_domain#.}, O=HajimeTest, ST=QLD, C=AU" -ext "BC=ca:true" -ext "SAN=DNS:${_name}.${_domain#.}" || return $?
+    keytool -exportcert -keystore "${_keystore_file}" -alias "${_name}" -storepass "${_pass}" -file "${_name}.crt"
+    ls -l "${_keystore_file}" "${_name}.crt"
 }
 
 # To support Mac...
