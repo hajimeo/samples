@@ -149,7 +149,7 @@ function iqDocker() {
     local _port_ssl="${5:-"8444"}"
     local _extra_opts="${6}"
     local _license="${7}"
-    local _docker_host="${_DOCKER_HOST:-"dh1.standalone.localdomain:18185"}"
+    local _docker_host="${_DOCKER_HOST:-"dh1.standalone.localdomain:5000"}"
 
     local _nexus_data="${_WORK_DIR%/}/sonatype/${_name}-data"
     [ ! -d "${_nexus_data%/}" ] && mkdir -p -m 777 "${_nexus_data%/}"
@@ -171,6 +171,20 @@ function iqDocker() {
     local _cmd="docker run -d -p ${_port}:8070 -p ${_port2}:8071 -p ${_port_ssl}:8444 ${_opts} ${_docker_host%/}/sonatype/nexus-iq-server:${_tag}"
     echo "${_cmd}"
     eval "${_cmd}"
+    echo "/opt/sonatype/nexus-iq-server/start.sh may need to be replaced to trap SIGTERM"
+    if ! docker cp nxiq-test:/opt/sonatype/nexus-iq-server/start.sh - | grep -qa TERM; then
+        cat << EOF > /tmp/start_$$.sh
+_term() {
+  echo "Received signal: SIGTERM"
+  kill -TERM "$(cat /sonatype-work/lock | cut -d"@" -f1)"
+  sleep 10
+}
+trap _term SIGTERM
+/usr/bin/java ${JAVA_OPTS} -jar nexus-iq-server-*.jar server /etc/nexus-iq-server/config.yml &
+wait
+EOF
+        docker cp /tmp/start_$$.sh nxiq-test:/opt/sonatype/nexus-iq-server/start.sh
+    fi
 }
 
 
