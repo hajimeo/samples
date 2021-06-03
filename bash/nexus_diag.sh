@@ -16,9 +16,11 @@ EOS
 : ${_WORK_DIR:="/var/tmp/share"}
 : ${_JAVA_DIR:="${_WORK_DIR%/}/java"}
 
+# NOTE: the attribute order is not consistent. also with -z, ^ or $ does not work.
+#find ./vol-* -type f -name '*.properties' -print0 | xargs -0 -I{} -P3 grep -lPz "(?s)deleted=true.*@Bucket.repo-name=npm-proxy\b" {}
 function f_search_blobs() {
     local _content_dir="${1:-"."}"    # /var/tmp/share/sonatype/blobs/default/content/vol-*
-    local _grep_args="${2}"   # eg: -lPz "(?s)^deleted=true.*^@Bucket.repo-name="
+    local _grep_args="${2}"   # eg: -lPz "(?s)deleted=true.*@Bucket.repo-name=" NOTE: with -z, ^ or $ does not work.
     [ -z "${_grep_args}" ] && return 1
     # find + xargs is faster than grep with --include
     #grep -H --include='*.properties' -IRs ${_grep_args} ${_content_dir}    # -H or -l
