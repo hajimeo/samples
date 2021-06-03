@@ -480,6 +480,14 @@ function f_setup_apt() {
         # distribution should be focal, bionic, etc, but it seems any string is OK.
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"apt":{"distribution":"ubuntu","flat":false},"proxy":{"remoteUrl":"http://archive.ubuntu.com/ubuntu/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"apt-proxy"}],"type":"rpc"}' || return $?
     fi
+    if ! _is_repo_available "${_prefix}-debian-proxy"; then
+        # distribution should be focal, bionic, etc, but it seems any string is OK.
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"apt":{"distribution":"debian","flat":false},"proxy":{"remoteUrl":"http://deb.debian.org/debian","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-debian-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"apt-proxy"}],"type":"rpc"}' || return $?
+    fi
+    if ! _is_repo_available "${_prefix}-debian-sec-proxy"; then
+        # distribution should be focal, bionic, etc, but it seems any string is OK.
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"apt":{"distribution":"debian","flat":false},"proxy":{"remoteUrl":"http://security.debian.org/debian-security","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-debian-sec-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"apt-proxy"}],"type":"rpc"}' || return $?
+    fi
     # TODO: add some data for xxxx-proxy
     # TODO: add hosted
 }
