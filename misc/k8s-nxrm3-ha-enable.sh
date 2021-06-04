@@ -13,7 +13,7 @@ function f_nexus_ha_config() {
     local _members="$2"
     _upsert "${_mount%/}/etc/nexus.properties" "nexus.clustered" "true" || return $?
     _upsert "${_mount%/}/etc/nexus.properties" "nexus.log.cluster.enabled" "false" || return $?
-    _upsert "${_mount%/}/etc/nexus.properties" "nexus.hazelcast.discovery.isEnabled" "true" || return $?
+    _upsert "${_mount%/}/etc/nexus.properties" "nexus.hazelcast.discovery.isEnabled" "false" || return $?
     [ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && mv -f ${_mount%/}/etc/fabric/hazelcast-network.xml{,.bak}
     # TODO: TCP IP discover somehow does not work
     #[ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
