@@ -1,0 +1,22 @@
+spec:
+  ports:
+    - name: nexus-ha-5701
+      protocol: TCP
+      port: 5701
+      targetPort: 5701
+    - name: nexus-ha-5702
+      protocol: TCP
+      port: 5702
+      targetPort: 5702
+    - name: nexus-ha-5703
+      protocol: TCP
+      port: 5703
+      targetPort: 5703
+    - name: nexus-ha-2424
+      protocol: TCP
+      port: 2424
+      targetPort: 2424
+    - name: nexus-ha-2434
+      protocol: TCP
+      port: 2434
+      targetPort: 2434
