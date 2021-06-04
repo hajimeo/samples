@@ -16,9 +16,17 @@ function f_nexus_ha_config() {
     _upsert "${_mount%/}/etc/nexus.properties" "nexus.hazelcast.discovery.isEnabled" "false" || return $?
     [ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && mv -f ${_mount%/}/etc/fabric/hazelcast-network.xml{,bak}
     [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
+
     curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+    local _my_hostname="$(hostname -f)"
+    local _my_ipaddress="$(hostname -i)"    # this may not be accurate but should be OK for NXRM3 Pod
+    local _member=""
     for _m in ${_members}; do
-        sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}-${_HELM_NAME}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+        _member="${_m}-${_HELM_NAME}"
+        if [[ "${_my_hostname}" =~ ^${_m} ]]; then
+            _member="${_my_ipaddress}"
+        fi
+        sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_member}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     done
     _log "INFO" "HA-C configured against config files under ${_mount}"
 }
