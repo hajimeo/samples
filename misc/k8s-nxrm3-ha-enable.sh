@@ -33,9 +33,9 @@ function f_nexus_license_config() {
         _log "ERROR" "No license file: ${_license_file}"
         return 1
     fi
-    if ! grep -q "${_mount%/}/etc/nexus.properties" "${_license_file}"; then
-        _upsert "${_license_file}" "${_mount%/}/etc/nexus.properties" "${_license_file}" || return $?
-        _log "INFO" "License file is specified in  ${_mount}"
+    if ! grep -q "nexus.licenseFile" "${_mount%/}/etc/nexus.properties"; then
+        _upsert "${_mount%/}/etc/nexus.properties" "nexus.licenseFile" "${_license_file}" || return $?
+        _log "INFO" "License file is specified in ${_mount%/}/etc/nexus.properties"
     fi
 }
 
