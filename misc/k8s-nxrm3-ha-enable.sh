@@ -3,8 +3,8 @@ _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
 _import() { [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1};. /tmp/${1}; }
 _import "utils.sh"
 
-_NODE_MEMBERS="${1:-"nxrm3-ha1 nxrm3-ha2 nxrm3-ha3"}"
-_SHARE_DIR="$2" # Just for checking product license
+_SHARE_DIR="$1" # Just for checking product license
+_NODE_MEMBERS="${2-"nxrm3-ha1 nxrm3-ha2 nxrm3-ha3"}"
 _SONATYPE_WORK=${_SONATYPE_WORK:-"/nexus-data"}
 _HELM_NAME="nexus-repository-manager"
 
