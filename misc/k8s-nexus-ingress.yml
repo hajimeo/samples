@@ -2,9 +2,40 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: nexus-ingress
-  namespace: default
+  # NOTE: don't forget to change below
+  namespace: sonatype
 spec:
   rules:
+    - host: nxrm3-ha1-k8s.standalone.localdomain
+      http:
+        paths:
+          - backend:
+              service:
+                name: nxrm3-ha1-nexus-repository-manager
+                port:
+                  number: 8081
+            pathType: Prefix
+            path: /
+    - host: nxrm3-ha2-k8s.standalone.localdomain
+      http:
+        paths:
+          - backend:
+              service:
+                name: nxrm3-ha2-nexus-repository-manager
+                port:
+                  number: 8081
+            pathType: Prefix
+            path: /
+    - host: nxrm3-ha3-k8s.standalone.localdomain
+      http:
+        paths:
+          - backend:
+              service:
+                name: nxrm3-ha3-nexus-repository-manager
+                port:
+                  number: 8081
+            pathType: Prefix
+            path: /
     - host: nxrm3-k8s.standalone.localdomain
       http:
         paths:
