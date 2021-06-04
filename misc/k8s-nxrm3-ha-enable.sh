@@ -30,6 +30,7 @@ function f_nexus_ha_config() {
     #done
     cp -v -f /opt/sonatype/nexus/etc/fabric/hazelcast-network-default.xml ${_mount%/}/etc/fabric/hazelcast-network.xml || return $?
     sed -i 's/<multicast enabled="false"/<multicast enabled="true"/' "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+    sed -i 's/<discovery-strategy enabled="true"/<discovery-strategy enabled="false"/' "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     _log "INFO" "HA-C configured against config files under ${_mount}"
 }
 
