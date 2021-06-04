@@ -18,6 +18,6 @@ spec:
             - name: nfs-volume
               mountPath: /var/tmp/share/sonatype/k8s-nxrm3-ha
           lifecycle:
-            preStart:
+            postStart:
               exec:
                 command: ['/bin/bash', '-c', 'curl -s -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-enable.sh | bash /dev/stdin "${_NODE_MEMBERS}" "${_SHARE_DIR}"']
