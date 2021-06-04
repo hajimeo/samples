@@ -6,6 +6,7 @@ _import "utils.sh"
 _NODE_MEMBERS="$1"
 _SHARE_DIR="$2" # Just for checking product license
 _SONATYPE_WORK=${_SONATYPE_WORK:-"/nexus-data"}
+_HELM_NAME="nexus-repository-manager"
 
 function f_nexus_ha_config() {
     local _mount="$1"
@@ -20,7 +21,7 @@ function f_nexus_ha_config() {
     [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
     curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     for _m in ${_members}; do
-        sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+        sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}-${_HELM_NAME}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     done
     _log "DEBUG" "HA-C configured against config files under ${_mount}"
 }
