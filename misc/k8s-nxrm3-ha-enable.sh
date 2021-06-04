@@ -3,7 +3,7 @@ _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
 _import() { [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1};. /tmp/${1}; }
 _import "utils.sh"
 
-_NODE_MEMBERS="${1-"nxrm3-ha1 nxrm3-ha2 nxrm3-ha3"}"
+_NODE_MEMBERS="${1:-"nxrm3-ha1 nxrm3-ha2 nxrm3-ha3"}"
 _SHARE_DIR="$2" # Just for checking product license
 _SONATYPE_WORK=${_SONATYPE_WORK:-"/nexus-data"}
 _HELM_NAME="nexus-repository-manager"
@@ -25,7 +25,7 @@ function f_nexus_ha_config() {
 
 function f_nexus_license_config() {
     local _mount="$1"
-    location _license_file="$2"
+    local _license_file="$2"
     if [ -d "${_license_file}" ]; then
         _license_file="$(ls -1t ${_license_file%/}/sonatype-*.lic 2>/dev/null | head -n1)"
     fi
