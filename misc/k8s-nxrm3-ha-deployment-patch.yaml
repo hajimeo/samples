@@ -1,6 +1,6 @@
 spec:
   # Should be always 1. Scale does not work with NXRM3
-  replicas: 1
+  #replicas: 1
   minReadySeconds: 300
   strategy:
     # NXRM3 is not RollingUpdate-able
