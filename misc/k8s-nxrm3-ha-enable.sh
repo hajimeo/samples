@@ -3,7 +3,7 @@ _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
 _import() { [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1};. /tmp/${1}; }
 _import "utils.sh"
 
-_NODE_MEMBERS="$1"
+_NODE_MEMBERS="${1-"nxrm3-ha1 nxrm3-ha2 nxrm3-ha3"}"
 _SHARE_DIR="$2" # Just for checking product license
 _SONATYPE_WORK=${_SONATYPE_WORK:-"/nexus-data"}
 _HELM_NAME="nexus-repository-manager"
@@ -11,9 +11,6 @@ _HELM_NAME="nexus-repository-manager"
 function f_nexus_ha_config() {
     local _mount="$1"
     local _members="$2"
-    if [ -z "${_members}" ]; then
-        _members="nxrm3-ha1 nxrm3-ha2 nxrm3-ha3"
-    fi
     _upsert "${_mount%/}/etc/nexus.properties" "nexus.clustered" "true" || return $?
     _upsert "${_mount%/}/etc/nexus.properties" "nexus.log.cluster.enabled" "false" || return $?
     _upsert "${_mount%/}/etc/nexus.properties" "nexus.hazelcast.discovery.isEnabled" "false" || return $?

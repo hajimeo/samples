@@ -1,0 +1,23 @@
+spec:
+  # Should be always 1. Scale does not work with NXRM3
+  replicas: 1
+  minReadySeconds: 120
+  strategy:
+    # NXRM3 is not RollingUpdate-able
+    type: Recreate
+  template:
+    spec:
+      volumes:
+        - name: nfs-volume
+          nfs:
+            server: 192.168.52.31
+            path: /var/tmp/share/sonatype/k8s-nxrm3-ha
+      containers:
+        - name: nexus-repository-manager
+          volumeMounts:
+            - name: nfs-volume
+              mountPath: /var/tmp/share/sonatype/k8s-nxrm3-ha
+          lifecycle:
+            preStart:
+              exec:
+                command: ['/bin/bash', '-c', 'curl -s -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-enable.sh | bash /dev/stdin "${_NODE_MEMBERS}" "${_SHARE_DIR}"']
