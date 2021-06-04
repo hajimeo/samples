@@ -20,11 +20,12 @@ function f_nexus_ha_config() {
     for _m in ${_members}; do
         sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}-${_HELM_NAME}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     done
-    _log "DEBUG" "HA-C configured against config files under ${_mount}"
+    _log "INFO" "HA-C configured against config files under ${_mount}"
 }
 
 function f_nexus_license_config() {
-    location _license_file="$1"
+    local _mount="$1"
+    location _license_file="$2"
     if [ -d "${_license_file}" ]; then
         _license_file="$(ls -1t ${_license_file%/}/sonatype-*.lic 2>/dev/null | head -n1)"
     fi
@@ -32,8 +33,9 @@ function f_nexus_license_config() {
         _log "ERROR" "No license file: ${_license_file}"
         return 1
     fi
-    if ! grep -q "nexus.licenseFile" "${_license_file}"; then
-        _upsert "${_license_file}" "nexus.licenseFile" "${_license_file}" || return $?
+    if ! grep -q "${_mount%/}/etc/nexus.properties" "${_license_file}"; then
+        _upsert "${_license_file}" "${_mount%/}/etc/nexus.properties" "${_license_file}" || return $?
+        _log "INFO" "License file is specified in  ${_mount}"
     fi
 }
 
@@ -42,7 +44,7 @@ main() {
         echo "No nexus.properties file: ${_SONATYPE_WORK%/}/etc/nexus.properties"; return 1
     fi
     if [ -d "${_SHARE_DIR%/}" ]; then
-        f_nexus_license_config "${_SHARE_DIR%/}"
+        f_nexus_license_config "${_SONATYPE_WORK%/}" "${_SHARE_DIR%/}"
     fi
     f_nexus_ha_config "${_SONATYPE_WORK%/}" "${_NODE_MEMBERS}"
 }
