@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# source <(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh)
-# source <(curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_container.sh)
+# source <(curl -sL --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh)
+# source <(curl -sL --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_container.sh)
 
 _DOCKER_CMD=${_DOCKER_CMD:-"docker"}    # To support podman
 _DOMAIN="${_DOMAIN:-"standalone.localdomain"}"
