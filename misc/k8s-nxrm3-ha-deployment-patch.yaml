@@ -1,9 +1,11 @@
 spec:
   template:
-    metadata:
-      name: ${_POD_NAME}
     spec:
       hostname: ${_POD_NAME}
+      subdomain: pods
+      dnsConfig:
+        nameservers:
+          - ${_DNS_SERVER}
       volumes:
         - name: nfs-volume
           nfs:
