@@ -1,7 +1,7 @@
 spec:
   template:
     spec:
-      hostanme: ${_POD_NAME}
+      hostname: ${_POD_NAME}
       volumes:
         - name: nfs-volume
           nfs:
