@@ -306,7 +306,6 @@ function _update_hosts_file() {
     # Some OS such as Mac is hard to modify /etc/hosts file but seems below works
     sudo -n true    # this outputs 'sudo: a password is required'
     cat ${_tmp_file} | sudo tee ${_file} >/dev/null
-    _log "DEBUG" "Updated ${_file} with ${_fqdn} ${_ip}"
 }
 
 function _url_enc() {

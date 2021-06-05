@@ -259,12 +259,13 @@ function _update_hosts_for_k8s() {
         kubectl get pods -n "${_n}" --show-labels
         return 0
     fi
-    ${_k} get pods -n "${_n}" -l "app.kubernetes.io/name=${_l}" --field-selector=status.phase=Running -o custom-columns=name:metadata.name --no-headers | xargs -I{} kubectl exec -n "${_n}" {} -- sh -c 'echo $(hostname -f) $(hostname -i)' > "${__TMP%/}/${FUNCNAME}.tmp"
-    while IFS= read -r _l; do
+    ${_k} get pods -n "${_n}" -l "app.kubernetes.io/name=${_l}" --field-selector=status.phase=Running -o custom-columns=name:metadata.name --no-headers | xargs -I{} kubectl exec -n "${_n}" {} -- sh -c 'echo $(hostname -f) $(hostname -i)' | grep ".${_n}." > "${__TMP%/}/${FUNCNAME}.tmp"
+    cat "${__TMP%/}/${FUNCNAME}.tmp" | while read -r _l; do
         if ! _update_hosts_file ${_l} ${_host_file}; then
             _log "WARN" "Please update ${_host_file} file to add ${_l}"
         fi
-        _log "INFO" "${_host_file} was updated with ${_l}"
-    done < "${__TMP%/}/${FUNCNAME}.tmp"
-    [ -n "${_DNS_RELOAD}" ] && eval "${_DNS_RELOAD}" 2>/dev/null
+        [ "${_host_file}" -nt "${__TMP%/}/${FUNCNAME}.last" ] && _log "INFO" "${_host_file} was updated with ${_l}"
+    done
+    [ -n "${_DNS_RELOAD}" ] && [ "${_host_file}" -nt "${__TMP%/}/${FUNCNAME}.last" ] && eval "${_DNS_RELOAD}" 2>/dev/null
+    date > "${__TMP%/}/${FUNCNAME}.last"
 }
