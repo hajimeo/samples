@@ -248,3 +248,23 @@ function _update_hosts_for_container() {
     [ -n "${_DNS_RELOAD}" ] && eval "${_DNS_RELOAD}" 2>/dev/null
     _log "DEBUG" "Updated /etc/hosts file with '${_container_ip} ${_fqdn}'"
 }
+
+function _update_hosts_for_k8s() {
+    local _host_file="${1}"
+    local _l="${2}" # nexus-repository-manager
+    local _n="${3:-"default"}"
+    local _k="${4:-"kubectl"}"
+    [ -f "${_host_file}" ] || return 11
+    if [ -z "${_l}" ]; then
+        kubectl get pods -n "${_n}" --show-labels
+        return 0
+    fi
+    ${_k} get pods -n "${_n}" -l "app.kubernetes.io/name=${_l}" --field-selector=status.phase=Running -o custom-columns=name:metadata.name --no-headers | xargs -I{} kubectl exec -n "${_n}" {} -- sh -c 'echo $(hostname -f) $(hostname -i)' > "${__TMP%/}/${FUNCNAME}.tmp"
+    while IFS= read -r _l; do
+        if ! _update_hosts_file ${_l} ${_host_file}; then
+            _log "WARN" "Please update ${_host_file} file to add ${_l}"
+        fi
+    done < "${__TMP%/}/${FUNCNAME}.tmp"
+    [ -n "${_DNS_RELOAD}" ] && eval "${_DNS_RELOAD}" 2>/dev/null
+    _log "INFO" "${_host_file} was updated."
+}
