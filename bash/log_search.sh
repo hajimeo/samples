@@ -499,9 +499,9 @@ function f_list_start_end(){
     local _files=""
     # If no file(s) given, check current working directory
     if [ -n "${_glob}" ]; then
-        _files="`find . -type f \( -name "${_glob}" -o -name "${_glob}.gz" \) -size +0 -print | tail -n ${_tail_n}`"
+        _files="`find . \( ! -regex '.*/\..*' \) -type f \( -name "${_glob}" -o -name "${_glob}.gz" \) -size +0 -print | tail -n ${_tail_n}`"
     else
-        _files="`find . -type f -size +0 -print | tail -n ${_tail_n}`"
+        _files="`find . \( ! -regex '.*/\..*' \) -type f -size +0 -print | tail -n ${_tail_n}`"
         #_files="`ls -1 | tail -n ${_tail_n}`"
     fi
     for _f in `echo ${_files}`; do f_start_end_time "${_f}" "${_date_regex}"; done | sort -t$'\t' -k${_sort} | column -t -s$'\t'
