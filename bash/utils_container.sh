@@ -264,7 +264,7 @@ function _update_hosts_for_k8s() {
         if ! _update_hosts_file ${_l} ${_host_file}; then
             _log "WARN" "Please update ${_host_file} file to add ${_l}"
         fi
+        _log "INFO" "${_host_file} was updated with ${_l}"
     done < "${__TMP%/}/${FUNCNAME}.tmp"
     [ -n "${_DNS_RELOAD}" ] && eval "${_DNS_RELOAD}" 2>/dev/null
-    _log "INFO" "${_host_file} was updated."
 }
