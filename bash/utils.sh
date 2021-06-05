@@ -338,10 +338,11 @@ function _trim() {
     echo "${_string}" | _sed -e 's/^ *//g' -e 's/ *$//g'
 }
 
+# For For loop
 function _split() {
     local _string="$1"
     local _delimiter="${2:-","}"
-    echo ${_string} | sed "s/${_delimiter}/$IFS/g"
+    echo "${_string}" | sed "s/${_delimiter}/ /g"
 }
 
 function _escape() {
