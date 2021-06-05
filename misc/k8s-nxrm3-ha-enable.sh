@@ -4,30 +4,30 @@ _import() { [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -
 _import "utils.sh"
 
 _SHARE_DIR="$1" # Just for checking product license
-_NODE_MEMBERS="${2-"nxrm3-ha1 nxrm3-ha2 nxrm3-ha3"}"
+_NODE_MEMBERS="${2-"nxrm3-ha1,nxrm3-ha2,nxrm3-ha3"}"
 _SONATYPE_WORK=${_SONATYPE_WORK:-"/nexus-data"}
-_HELM_NAME="nexus-repository-manager"
 
+# Edit nexus.properties to enable HA-C and TCP/IP discovery, and modify hazelcast-network.xml if does NOT exist.
 function f_nexus_ha_config() {
     local _mount="$1"
     local _members="$2"
     _upsert "${_mount%/}/etc/nexus.properties" "nexus.clustered" "true" || return $?
     _upsert "${_mount%/}/etc/nexus.properties" "nexus.log.cluster.enabled" "false" || return $?
-    _upsert "${_mount%/}/etc/nexus.properties" "nexus.hazelcast.discovery.isEnabled" "true" || return $?
-    # Always force recreating for now
-    [ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && mv -f ${_mount%/}/etc/fabric/hazelcast-network.xml{,.bak}
+    _upsert "${_mount%/}/etc/nexus.properties" "nexus.hazelcast.discovery.isEnabled" "false" || return $?
+    _log "INFO" "${_mount%/}/etc/nexus.properties was modified for enabling HA-C and for TCP/IP discovery."
+    # NOTE: At this moment skip if exist (find . -name 'hazelcast*.xml*' -delete)
+    [ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && return 0
+    #[ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && mv -f ${_mount%/}/etc/fabric/hazelcast-network.xml{,.bak}
     # TODO: TCP IP discover somehow does not work
-    #[ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
-    #curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
-    #local _my_hostname="$(hostname -f)"
-    #local _my_ipaddress="$(hostname -i)"    # this may not be accurate but should be OK for NXRM3 Pod
-    #local _member=""
-    #for _m in ${_members}; do
-    #    _member="${_m}-${_HELM_NAME}"
-    #    [[ "${_my_hostname}" =~ ^${_m} ]] && _member="${_my_ipaddress}"
-    #    sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_member}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
-    #done
-    _log "INFO" "HA-C configured against config files under ${_mount}"
+    [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
+    curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+    local _my_hostname="$(hostname -f)"
+    local _my_ipaddress="$(hostname -i)"    # this may not be accurate but should be OK for NXRM3 Pod
+    local _member=""
+    for _m in $(_split "${_members}"); do
+        sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+    done
+    _log "INFO" "${_mount%/}/etc/fabric/hazelcast-network.xml was (re)created."
 }
 
 function f_nexus_license_config() {

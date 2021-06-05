@@ -1,14 +1,30 @@
 spec:
-  minReadySeconds: 300
   template:
     spec:
+      hostanme: ${_POD_NAME}
       volumes:
         - name: nfs-volume
           nfs:
-            server: 192.168.52.31
-            path: /var/tmp/share/sonatype/k8s-nxrm3-ha
+            server: ${_NFS_SERVER}
+            path: ${_SHARE_DIR}
       containers:
         - name: nexus-repository-manager
+          ports:
+            - name: nexus-ha-5701
+              protocol: TCP
+              containerPort: 5701
+            - name: nexus-ha-5702
+              protocol: TCP
+              containerPort: 5702
+            - name: nexus-ha-5703
+              protocol: TCP
+              containerPort: 5703
+            - name: nexus-ha-2424
+              protocol: TCP
+              containerPort: 2424
+            - name: nexus-ha-2434
+              protocol: TCP
+              containerPort: 2434
           volumeMounts:
             - name: nfs-volume
               mountPath: /var/tmp/share/sonatype/k8s-nxrm3-ha
