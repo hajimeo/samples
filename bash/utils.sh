@@ -340,7 +340,7 @@ function _trim() {
 
 function _split() {
     local _string="$1"
-    local _delimiter="${2:-" "}"
+    local _delimiter="${2:-","}"
     echo ${_string} | sed "s/${_delimiter}/$IFS/g"
 }
 
