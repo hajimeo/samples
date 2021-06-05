@@ -18,12 +18,9 @@ function f_nexus_ha_config() {
     # NOTE: At this moment skip if exist (find . -name 'hazelcast*.xml*' -delete)
     [ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && return 0
     #[ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && mv -f ${_mount%/}/etc/fabric/hazelcast-network.xml{,.bak}
-    # TODO: TCP IP discover somehow does not work
+    # TODO: TCP IP discover somehow does not work with microk8s.
     [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
     curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
-    local _my_hostname="$(hostname -f)"
-    local _my_ipaddress="$(hostname -i)"    # this may not be accurate but should be OK for NXRM3 Pod
-    local _member=""
     for _m in $(_split "${_members}"); do
         sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     done
