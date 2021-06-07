@@ -2,7 +2,8 @@
 # source <(curl -sL --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh)
 # source <(curl -sL --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_container.sh)
 
-_DOCKER_CMD=${_DOCKER_CMD:-"docker"}    # To support podman
+_DOCKER_CMD=${_DOCKER_CMD:-"docker"}    # To support podman etc.
+_KUBECTL_CMD=${_KUBECTL_CMD:-"kubectl"}
 _DOMAIN="${_DOMAIN:-"standalone.localdomain"}"
 _DNS_RELOAD="sudo systemctl reload dnsmasq >/dev/null"
 __TMP=${__TMP:-"/tmp"}
@@ -251,21 +252,33 @@ function _update_hosts_for_container() {
 
 function _update_hosts_for_k8s() {
     local _host_file="${1}"
-    local _l="${2}" # nexus-repository-manager
-    local _n="${3:-"default"}"
-    local _k="${4:-"kubectl"}"
+    local _labelname="${2}" # nexus-repository-manager
+    local _namespace="${3:-"default"}"
+    local _k="${4:-"${_KUBECTL_CMD:-"kubectl"}"}"
     [ -f "${_host_file}" ] || return 11
-    if [ -z "${_l}" ]; then
-        kubectl get pods -n "${_n}" --show-labels
-        return 0
+    if [ -n "${_labelname}" ]; then
+        _labelname="app.kubernetes.io/name=${_labelname}"
     fi
-    ${_k} get pods -n "${_n}" -l "app.kubernetes.io/name=${_l}" --field-selector=status.phase=Running -o custom-columns=name:metadata.name --no-headers | xargs -I{} kubectl exec -n "${_n}" {} -- sh -c 'echo $(hostname -f) $(hostname -i)' | grep ".${_n}." > "${__TMP%/}/${FUNCNAME}.tmp"
-    cat "${__TMP%/}/${FUNCNAME}.tmp" | while read -r _l; do
-        if ! _update_hosts_file ${_l} ${_host_file}; then
-            _log "WARN" "Please update ${_host_file} file to add ${_l}"
+    _k8s_exec 'echo $(hostname -f) $(hostname -i)' "${_labelname}" "${_namespace}" "3" | grep ".${_namespace}." > "${__TMP%/}/${FUNCNAME}.tmp" || return $?
+    cat "${__TMP%/}/${FUNCNAME}.tmp" | while read -r _line; do
+        if ! _update_hosts_file ${_line} ${_host_file}; then
+            _log "WARN" "Please update ${_host_file} file to add ${_line}"
         fi
-        [ "${_host_file}" -nt "${__TMP%/}/${FUNCNAME}.last" ] && _log "INFO" "${_host_file} was updated with ${_l}"
+        [ "${_host_file}" -nt "${__TMP%/}/${FUNCNAME}.last" ] && _log "INFO" "${_host_file} was updated with ${_line}"
     done
     [ -n "${_DNS_RELOAD}" ] && [ "${_host_file}" -nt "${__TMP%/}/${FUNCNAME}.last" ] && eval "${_DNS_RELOAD}" 2>/dev/null
     date > "${__TMP%/}/${FUNCNAME}.last"
+}
+
+function _k8s_exec() {
+    local _cmd="${1}"
+    local _l="${2}" # kubernetes.io/name=nexus-repository-manager
+    local _ns="${3:-"default"}"
+    local _parallel="${4}"
+    local _k="${5:-"${_KUBECTL_CMD:-"kubectl"}"}"
+    if [ -z "${_l}" ]; then
+        kubectl get pods -n "${_ns}" --show-labels --field-selector=status.phase=Running | awk '{print $1"\n    "$6}'
+        return 11
+    fi
+    ${_k} get pods -n "${_ns}" -l "${_l}" --field-selector=status.phase=Running -o custom-columns=name:metadata.name --no-headers | xargs -I{} -P${_parallel:-"1"} kubectl exec -n "${_ns}" {} -- sh -c "${_cmd}"
 }
