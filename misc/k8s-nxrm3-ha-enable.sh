@@ -7,6 +7,9 @@ _SHARE_DIR="$1" # Just for checking product license
 _NODE_MEMBERS="${2-"nxrm3-ha1,nxrm3-ha2,nxrm3-ha3"}"
 _SONATYPE_WORK=${_SONATYPE_WORK:-"/nexus-data"}
 
+_HELM3=${_HELM3:-"helm3"}
+_KUBECTL=${_KUBECTL:-"kubectl"}
+
 # Edit nexus.properties to enable HA-C and TCP/IP discovery, and modify hazelcast-network.xml if does NOT exist.
 function f_nexus_ha_config() {
     local _mount="$1"
@@ -42,6 +45,56 @@ function f_nexus_license_config() {
         _upsert "${_mount%/}/etc/nexus.properties" "nexus.licenseFile" "${_license_file}" || return $?
         _log "INFO" "License file is specified in ${_mount%/}/etc/nexus.properties"
     fi
+}
+
+# Please delete if already exists
+#helm3 list -n sonatype
+#helm3 delete -n sonatype nxrm3-ha{1..3}
+function _build() {
+    local _nfs_server="${1:-"${_NFS_SERVER}"}"
+    local _share_dir="${2:-"${_SHARE_DIR}"}"
+    local _chart="${3:-"sonatype/nexus-repository-manager"}"
+    local _name_prefix="${4:-"nxrm3-ha"}"
+    local _name_space="${5:-"sonatype"}" # create namespace first
+
+    export _NFS_SERVER="${_nfs_server}"
+    export _SHARE_DIR="${_share_dir}"
+    export _NODE_MEMBERS="${_name_prefix}1,${_name_prefix}2,${_name_prefix}3"
+
+    if [ -n "${_chart%/}" ] && [ "${_chart%/}" != "." ]; then
+        if ! ${_HELM3} search repo "${_chart}"; then
+            _log "INFO" "Didn't find chart:${_chart} so adding the repo 'sonatype'..."; sleep 3
+            ${_HELM3} repo add sonatype https://sonatype.github.io/helm3-charts/ || return $?
+        fi
+    fi
+    if [ -f "/tmp/${_name_prefix}-dep-patch.yml" ]; then
+        _log "INFO" "/tmp/${_name_prefix}-dep-patch.yml exists. Reusing...";sleep 3
+    else
+        curl -o/tmp/${_name_prefix}-dep-patch.yml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-deployment-patch.yaml"
+    fi
+    if [ -f "/tmp/${_name_prefix}-svc-patch.yml" ]; then
+        _log "INFO" "/tmp/${_name_prefix}-svc-patch.yml exists. Reusing...";sleep 3
+    else
+        curl -o/tmp/${_name_prefix}-svc-patch.yml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-service-patch.yaml"
+    fi
+
+    for _i in {1..2}; do
+        local _name="${_name_prefix}${_i}"
+        if ${_HELM3} status -n ${_name_space} ${_name} &>/dev/null; then
+            _log "INFO" "${_name} already exists. Not installing but just Patching ..."; sleep 5
+        else
+            _log "INFO" "install -n ${_name_space} ${_name} ${_chart} ..."; sleep 5
+            ${_HELM3} ${_HELM3_OPTS} install -n ${_name_space} ${_name} ${_chart} -f <(echo -e 'nexus:\n  env:\n    - name: NEXUS_SECURITY_RANDOMPASSWORD\n      value: "false"') || return $?
+        fi
+        sleep 10
+        export _POD_NAME="${_name}"
+        _log "INFO" "patch service -n ${_name_space} ${_name}-nexus-repository-manager ..."
+        ${_KUBECTL} patch service -n ${_name_space} ${_name}-nexus-repository-manager --patch "$(eval "echo \"$(cat /tmp/${_name_prefix}-svc-patch.yml)\"")" || return $?
+        _log "INFO" "patch deployment -n ${_name_space} ${_name}-nexus-repository-manager ..."
+        ${_KUBECTL} patch deployment -n ${_name_space} ${_name}-nexus-repository-manager --patch "$(eval "echo \"$(cat /tmp/${_name_prefix}-dep-patch.yml)\"")" || return $?
+        _log "INFO" "Waiting 2 minutes ..."
+        sleep 120
+    done
 }
 
 main() {

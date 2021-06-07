@@ -3,12 +3,6 @@ spec:
     spec:
       hostname: ${_POD_NAME}
       subdomain: pods
-      dnsPolicy: 'None'
-      dnsConfig:
-        nameservers:
-          - ${_DNS_SERVER}
-        searches:
-          - ${_DNS_SEARCH}
       volumes:
         - name: nfs-volume
           nfs:
@@ -17,15 +11,10 @@ spec:
       containers:
         - name: nexus-repository-manager
           ports:
+            # probably don't need 5702 and 5703
             - name: nexus-ha-5701
               protocol: TCP
               containerPort: 5701
-            - name: nexus-ha-5702
-              protocol: TCP
-              containerPort: 5702
-            - name: nexus-ha-5703
-              protocol: TCP
-              containerPort: 5703
             - name: nexus-ha-2424
               protocol: TCP
               containerPort: 2424
@@ -34,7 +23,8 @@ spec:
               containerPort: 2434
           volumeMounts:
             - name: nfs-volume
-              mountPath: /var/tmp/share/sonatype/k8s-nxrm3-ha
+              # Currenlty always using same path
+              mountPath: ${_SHARE_DIR}
           lifecycle:
             postStart:
               exec:
