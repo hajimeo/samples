@@ -402,6 +402,18 @@ function npmInit() {
 EOF
 }
 
+alias npmPublish='npmDeploy'
+function npmDeploy() {
+    local _repo_url="${1:-"http://localhost:8081/repository/npm-hosted/"}"
+    local _name="${2:-"lodash-vulnerable"}"
+    if [ ! -f ./package.json ]; then
+        npmInit "${_name}" || return $?
+    fi
+    [ -f ./package.json.orig ] || cp -p ./package.json ./package.json.orig
+    cat ./package.json | python -c "import sys,json;a=json.loads(sys.stdin.read());d={\"publishConfig\":{\"registry\":\"${_repo_url}\"}};a.update(d);f=open(\"./package.json\",\"w\");f.write(json.dumps(a,indent=4,sort_keys=True));" || return $?
+    npm publish --registry "${_repo_url}" -ddd
+}
+
 
 ### Misc.   #################################
 
