@@ -1,5 +1,6 @@
 spec:
   type: NodePort
+  ClusterIP: None
   selector:
     app.kubernetes.io/name: nexus-repository-manager
   ports:
