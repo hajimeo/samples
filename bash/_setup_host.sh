@@ -339,12 +339,14 @@ function f_nfs_server() {
         service nfs-kernel-server restart || return $?
         #exportfs -ra   # to reload /etc/exports without restarting
     fi
+    # TODO: RPCNFSDCOUNT=20 on /etc/default/nfs-kernel-server
 
     # NFS checking commands:
     showmount -e $(hostname)
     #rpcinfo -p `hostname`  # list NFS versions, ports, services but a bit too long
     rpcinfo -s # list NFS information
     #nfsstat -v             # -v = -o all Display Server and Client stats
+    #service portmap status
 
     mkdir -m 777 /mnt/nfs &>/dev/null
     _info "Test:"
