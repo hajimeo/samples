@@ -57,43 +57,75 @@ function _build() {
     local _name_prefix="${4:-"nxrm3-ha"}"
     local _name_space="${5:-"sonatype"}" # create namespace first
 
+    [ -z "${_share_dir%/}" ] && return 12
     export _NFS_SERVER="${_nfs_server}"
     export _SHARE_DIR="${_share_dir}"
+    export _SHARE_PVC="${_SHARE_PVC:-"nfs-pv-claim"}"
     export _NODE_MEMBERS="${_name_prefix}1,${_name_prefix}2,${_name_prefix}3"
+
+    if [ -f "/tmp/helm-nxrm3-values.yaml" ]; then
+        _log "INFO" "/tmp/helm-nxrm3-values.yaml exists. Reusing...";sleep 1
+    else
+        curl -sf -o/tmp/helm-nxrm3-values.yaml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/helm-nxrm3-values.yaml"
+    fi
+    if [ -f "/tmp/nfs-pv-pvc.yml" ]; then
+        _log "INFO" "/tmp/nfs-pv-pvc.yml exists. Reusing...";sleep 1
+    else
+        curl -sf -o/tmp/nfs-pv-pvc.yml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nfs-pv-pvc-tmpl.yaml"
+    fi
+    if [ -f "/tmp/${_name_prefix}-dep-patch.yml" ]; then
+        _log "INFO" "/tmp/${_name_prefix}-dep-patch.yml exists. Reusing...";sleep 1
+    else
+        curl -sf -o/tmp/${_name_prefix}-dep-patch.yml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-deployment-patch.yaml"
+    fi
+    if [ -f "/tmp/${_name_prefix}-svc-patch.yml" ]; then
+        _log "INFO" "/tmp/${_name_prefix}-svc-patch.yml exists. Reusing...";sleep 1
+    else
+        curl -sf -o/tmp/${_name_prefix}-svc-patch.yml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-service-patch.yaml"
+    fi
+
+    _log "INFO" "Creating PV and PVC (${_SHARE_PVC}) for NFS...";sleep 1
+    if ! ${_KUBECTL} apply -n ${_name_space} -f <(eval "echo \"$(cat /tmp/nfs-pv-pvc.yml)\""); then
+        _log "WARN" "Creating ${_SHARE_PVC} failed but keep going (wait for 5 secs)..."; sleep 5
+    fi
 
     if [ -n "${_chart%/}" ] && [ "${_chart%/}" != "." ]; then
         if ! ${_HELM3} search repo "${_chart}"; then
-            _log "INFO" "Didn't find chart:${_chart} so adding the repo 'sonatype'..."; sleep 3
+            _log "INFO" "Didn't find chart:${_chart} so adding the repo 'sonatype'..."; sleep 1
             ${_HELM3} repo add sonatype https://sonatype.github.io/helm3-charts/ || return $?
         fi
     fi
-    if [ -f "/tmp/${_name_prefix}-dep-patch.yml" ]; then
-        _log "INFO" "/tmp/${_name_prefix}-dep-patch.yml exists. Reusing...";sleep 3
-    else
-        curl -o/tmp/${_name_prefix}-dep-patch.yml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-deployment-patch.yaml"
-    fi
-    if [ -f "/tmp/${_name_prefix}-svc-patch.yml" ]; then
-        _log "INFO" "/tmp/${_name_prefix}-svc-patch.yml exists. Reusing...";sleep 3
-    else
-        curl -o/tmp/${_name_prefix}-svc-patch.yml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-service-patch.yaml"
-    fi
 
-    for _i in {1..2}; do
+    for _i in {1..3}; do
         local _name="${_name_prefix}${_i}"
         if ${_HELM3} status -n ${_name_space} ${_name} &>/dev/null; then
             _log "INFO" "${_name} already exists. Not installing but just Patching ..."; sleep 5
         else
             _log "INFO" "install -n ${_name_space} ${_name} ${_chart} ..."; sleep 5
-            ${_HELM3} ${_HELM3_OPTS} install -n ${_name_space} ${_name} ${_chart} -f <(echo -e 'nexus:\n  env:\n    - name: NEXUS_SECURITY_RANDOMPASSWORD\n      value: "false"') || return $?
+            ${_HELM3} ${_HELM3_OPTS} install -n ${_name_space} ${_name} ${_chart} -f /tmp/helm-nxrm3-values.yaml || return $?
         fi
+
+        for _j in {1..30}; do
+            sleep 12
+            ${_KUBECTL} get -n ${_name_space} pods --field-selector=status.phase=Running -l app.kubernetes.io/instance=${_name} | grep -E "${_name_prefix}.-nexus-repository-manager[^ ]+ +1/1" && break
+        done
         sleep 10
+
+        local _name="${_name_prefix}${_i}"
         export _POD_NAME="${_name}"
+
         _log "INFO" "patch service -n ${_name_space} ${_name}-nexus-repository-manager ..."
         ${_KUBECTL} patch service -n ${_name_space} ${_name}-nexus-repository-manager --patch "$(eval "echo \"$(cat /tmp/${_name_prefix}-svc-patch.yml)\"")" || return $?
-        _log "INFO" "patch deployment -n ${_name_space} ${_name}-nexus-repository-manager ..."
+
+        # TODO: _log "INFO" "patch deployment -n ${_name_space} ${_name}-nexus-repository-manager ..."
         ${_KUBECTL} patch deployment -n ${_name_space} ${_name}-nexus-repository-manager --patch "$(eval "echo \"$(cat /tmp/${_name_prefix}-dep-patch.yml)\"")" || return $?
-        _log "INFO" "Waiting 2 minutes ..."
-        sleep 120
+
+        for _k in {1..30}; do
+            sleep 12
+            ${_KUBECTL} get -n ${_name_space} pods --field-selector=status.phase=Running -l app.kubernetes.io/instance=${_name} | grep -E "${_name_prefix}.-nexus-repository-manager[^ ]+ +1/1" && break
+        done
+        #${_KUBECTL} describe -n ${_name_space} deployment ${_name}-nexus-repository-manager
+        ${_KUBECTL} describe -n ${_name_space} pods -l app.kubernetes.io/instance=${_name} | grep -E '^Events:' -A7
     done
 }
 
