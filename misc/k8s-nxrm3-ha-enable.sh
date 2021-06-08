@@ -24,9 +24,9 @@ function f_nexus_ha_config() {
     # TODO: TCP IP discover somehow does not work with microk8s.
     [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
     curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
-    local _domain="$(hostname -d)"
+    #local _domain="$(hostname -d)"
     for _m in $(_split "${_members}"); do
-        sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}.${_domain#.}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+        sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     done
     _log "INFO" "${_mount%/}/etc/fabric/hazelcast-network.xml was (re)created."
 }
@@ -51,27 +51,19 @@ function f_nexus_license_config() {
 #helm3 list -n sonatype
 #helm3 delete -n sonatype nxrm3-ha{1..3}
 function _build() {
-    local _nfs_server="${1:-"${_NFS_SERVER}"}"
-    local _share_dir="${2:-"${_SHARE_DIR}"}"
-    local _chart="${3:-"sonatype/nexus-repository-manager"}"
-    local _name_prefix="${4:-"nxrm3-ha"}"
-    local _name_space="${5:-"sonatype"}" # create namespace first
+    local _share_dir="${1:-"${_SHARE_DIR}"}"
+    local _chart="${2:-"sonatype/nexus-repository-manager"}"
+    local _name_prefix="${3:-"nxrm3-ha"}"
+    local _name_space="${4:-"sonatype"}" # create namespace first
 
     [ -z "${_share_dir%/}" ] && return 12
-    export _NFS_SERVER="${_nfs_server}"
     export _SHARE_DIR="${_share_dir}"
-    export _SHARE_PVC="${_SHARE_PVC:-"nfs-pv-claim"}"
     export _NODE_MEMBERS="${_name_prefix}1,${_name_prefix}2,${_name_prefix}3"
 
     if [ -f "/tmp/helm-nxrm3-values.yaml" ]; then
         _log "INFO" "/tmp/helm-nxrm3-values.yaml exists. Reusing...";sleep 1
     else
         curl -sf -o/tmp/helm-nxrm3-values.yaml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/helm-nxrm3-values.yaml"
-    fi
-    if [ -f "/tmp/nfs-pv-pvc.yml" ]; then
-        _log "INFO" "/tmp/nfs-pv-pvc.yml exists. Reusing...";sleep 1
-    else
-        curl -sf -o/tmp/nfs-pv-pvc.yml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nfs-pv-pvc-tmpl.yaml"
     fi
     if [ -f "/tmp/${_name_prefix}-dep-patch.yml" ]; then
         _log "INFO" "/tmp/${_name_prefix}-dep-patch.yml exists. Reusing...";sleep 1
@@ -82,11 +74,6 @@ function _build() {
         _log "INFO" "/tmp/${_name_prefix}-svc-patch.yml exists. Reusing...";sleep 1
     else
         curl -sf -o/tmp/${_name_prefix}-svc-patch.yml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-service-patch.yaml"
-    fi
-
-    _log "INFO" "Creating PV and PVC (${_SHARE_PVC}) for NFS...";sleep 1
-    if ! ${_KUBECTL} apply -n ${_name_space} -f <(eval "echo \"$(cat /tmp/nfs-pv-pvc.yml)\""); then
-        _log "WARN" "Creating ${_SHARE_PVC} failed but keep going (wait for 5 secs)..."; sleep 5
     fi
 
     if [ -n "${_chart%/}" ] && [ "${_chart%/}" != "." ]; then
@@ -117,7 +104,7 @@ function _build() {
         _log "INFO" "patch service -n ${_name_space} ${_name}-nexus-repository-manager ..."
         ${_KUBECTL} patch service -n ${_name_space} ${_name}-nexus-repository-manager --patch "$(eval "echo \"$(cat /tmp/${_name_prefix}-svc-patch.yml)\"")" || return $?
 
-        # TODO: _log "INFO" "patch deployment -n ${_name_space} ${_name}-nexus-repository-manager ..."
+        _log "INFO" "patch deployment -n ${_name_space} ${_name}-nexus-repository-manager ..."
         ${_KUBECTL} patch deployment -n ${_name_space} ${_name}-nexus-repository-manager --patch "$(eval "echo \"$(cat /tmp/${_name_prefix}-dep-patch.yml)\"")" || return $?
 
         for _k in {1..30}; do
