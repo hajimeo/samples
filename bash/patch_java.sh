@@ -146,7 +146,8 @@ function f_setup_spring_cli() {
 }
 
 function f_javaenvs() {
-    local _port="${1}"
+    local _port="${1}"  # or directory path
+    local _user="$USER"
 
     if [ -n "$JAVA_HOME" ] && [ -n "$CLASSPATH" ]; then
         echo "JAVA_HOME and CLASSPATH are already set. Skipping f_javaenvs..."
@@ -158,16 +159,17 @@ function f_javaenvs() {
         return 10
     fi
 
-    local _p=`lsof -ti:${_port} -s TCP:LISTEN`
-    if [ -z "${_p}" ]; then
-        echo "Nothing running on port ${_port}. Manually set JAVA_HOME and CLASSPATH."
-        return 11
+    if [ ! -d "${_port}" ]; then
+        local _p=`lsof -ti:${_port} -s TCP:LISTEN`
+        if [ -z "${_p}" ]; then
+            echo "Nothing running on port ${_port}. Manually set JAVA_HOME and CLASSPATH."
+            return 11
+        fi
+        _user="`stat -c '%U' /proc/${_p} 2>/dev/null`"
+        [ -z "${_user}" ] && _user="$USER"
+        export _CWD="$(realpath /proc/${_p}/cwd 2>/dev/null)"
     fi
-    local _user="`stat -c '%U' /proc/${_p} 2>/dev/null`"
-    if [ -z "${_user}" ]; then
-        _user="$USER"
-        echo "Couldn't find _user from PID ${_p}, so using ${_user} ..."
-    fi
+
 
     local _jcmd="$(_find_jcmd "${_port}")"
     if [ -n "${_jcmd}" ]; then
@@ -187,26 +189,28 @@ function f_javaenvs() {
     else
         echo "WARN: Couldn't not set CLASSPATH because of no executable jcmd found."; sleep 3
     fi
-
-    export _CWD="$(realpath /proc/${_p}/cwd 2>/dev/null)"
 }
 
 function _find_jcmd() {
     # _set_java_home 8081 "${_JAVA_DIR%/}"
     local _port="${1}"
     local _search_path="${2:-"${_JAVA_DIR}"}"   # Extra search location in case JAVA_HOME doesn't work
-    local _java_home="${JAVA_HOME}"
+    local _java_home="${3:-"$JAVA_HOME"}"
 
-    local _p=`lsof -ti:${_port} -s TCP:LISTEN`
+    local _java_ver_str=""
     if [ -z "${_java_home}" ]; then
-        local _dir="$(dirname `readlink /proc/${_p}/exe` 2>/dev/null)"
-        _java_home="$(dirname ${_dir})"
+        local _p=`lsof -ti:${_port} -s TCP:LISTEN 2>/dev/null`
+        if [ -n "${_p}" ]; then
+            local _dir="$(dirname `readlink /proc/${_p}/exe` 2>/dev/null)"
+            _java_home="$(dirname ${_dir})"
+            _java_ver_str="$(/proc/${_p}/exe -version 2>&1 | grep -oE ' version .+')"
+        fi
     fi
 
-    local _jcmd="${_java_home}/bin/jcmd"
+    local _jcmd="$(which jcmd)"
+    [ -n "${_java_home}" ] && _jcmd="${_java_home}/bin/jcmd"    # if JAVA_HOME is set, overwrite
     if [ ! -x "${_jcmd}" ]; then
         _jcmd=""
-        local _java_ver_str="$(/proc/${_p}/exe -version 2>&1 | grep -oE ' version .+')"
         if [ -n "${_java_ver_str}" ]; then
             # Somehow the scope of "while" is local...
             for _j in $(find ${_search_path%/} -executable -name jcmd | grep -vw archives); do
@@ -221,12 +225,17 @@ function _find_jcmd() {
 }
 
 function f_set_classpath() {
-    local _port="${1}"
-    local _p=`lsof -ti:${_port} -s TCP:LISTEN` || return $?
-    local _user="`stat -c '%U' /proc/${_p} 2>/dev/null`"
-    local _jcmd="$(_find_jcmd "${_port}")" || return $?
-    # requires jcmd in the path
-    export CLASSPATH=".:`sudo -u ${_user:-"$USER"} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
+    local _port_or_dir="${1}"  # port or directory path
+    if [ -d "${_port_or_dir}" ]; then
+        local _tmp_cp="$(find ${_port_or_dir%/} -name '*.jar' | tr '\n' ':')"
+        export CLASSPATH=".:${_tmp_cp%:}"
+    else
+        local _p=`lsof -ti:${_port} -s TCP:LISTEN` || return $?
+        local _user="`stat -c '%U' /proc/${_p} 2>/dev/null`"
+        local _jcmd="$(_find_jcmd "${_port}")" || return $?
+        # requires jcmd in the path
+        export CLASSPATH=".:`sudo -u ${_user:-"$USER"} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
+    fi
 }
 
 function _set_extra_classpath() {
@@ -272,7 +281,10 @@ function f_jargrep() {
     elif which jar &>/dev/null; then
         _cmd="jar -tf"
     fi
-    find -L ${_path%/} -type f \( -name '*.jar' -or -name '*.war' \) -print0 | xargs -0 -n1 -I {} bash -c "${_cmd} {} 2>/dev/null | grep -w '${_class}' && echo '^ Jar: {}'" >&2
+    # NOTE: xargs behaves differently on Mac, so stopped using
+    find -L ${_path%/} -type f -name '*.jar' | while read -r _l; do
+        ${_cmd} "${_l}" 2>/dev/null | grep -w "${_class}" && echo "^ Jar: ${_l}" >&2
+    done
 }
 
 function f_update_jar() {
@@ -403,7 +415,7 @@ function _sed() {
 
 ### Main ###############################
 if [ "$0" = "$BASH_SOURCE" ]; then
-    _PORT="$1"
+    _PORT="$1"  # Or directory path
     _CLASS_FILEPATH="$2"
     _JAR_FILEPATH="$3"
     _UPDATING_CLASSNAME="$4"
@@ -416,7 +428,13 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
 
     f_javaenvs "$_PORT" || exit $?
-    [ -z "${_JAR_FILEPATH}" ] && _JAR_FILEPATH="${_CWD:="."}"
+    if [ -z "${_JAR_FILEPATH}" ]; then
+        if [ -d "${_PORT}" ]; then
+            _JAR_FILEPATH="${_PORT}"
+        else
+            _JAR_FILEPATH="${_CWD:="."}"
+        fi
+    fi
 
     # If _CLASS_FILEPATH is given, compiling.
     if [ -n "${_CLASS_FILEPATH}" ]; then
