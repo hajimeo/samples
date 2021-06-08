@@ -5,6 +5,7 @@ _import "utils.sh"
 
 _SHARE_DIR="$1" # Just for checking product license
 _NODE_MEMBERS="${2-"nxrm3-ha1,nxrm3-ha2,nxrm3-ha3"}"
+_NAME_SUFFIX="${3-"-nexus-repository-manager"}"
 _SONATYPE_WORK=${_SONATYPE_WORK:-"/nexus-data"}
 
 _HELM3=${_HELM3:-"helm3"}
@@ -26,7 +27,7 @@ function f_nexus_ha_config() {
     curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     #local _domain="$(hostname -d)"
     for _m in $(_split "${_members}"); do
-        sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+        sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}${_NAME_SUFFIX}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     done
     _log "INFO" "${_mount%/}/etc/fabric/hazelcast-network.xml was (re)created."
 }
