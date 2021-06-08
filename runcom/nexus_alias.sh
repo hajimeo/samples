@@ -80,6 +80,7 @@ function nxrmStart() {
     local _nexus_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
     local _cfg_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/sonatype-work/nexus3/etc/*' -type f -name 'nexus.properties' 2>/dev/null | sort | tail -n1)"
     local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
+    local _logback_overrides="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/logback/*' -type f -name 'logback-overrides.xml' 2>/dev/null | sort | tail -n1)"
     if [ -n "${_cfg_file}" ]; then
         grep -qE '^\s*nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
         grep -qE '^\s*nexus.browse.component.tree.automaticRebuild' "${_cfg_file}" || echo "nexus.browse.component.tree.automaticRebuild=false" >> "${_cfg_file}"
@@ -92,6 +93,11 @@ function nxrmStart() {
     if [ -n "${_jetty_https}" ]; then
         # TODO: version check as below breaks older nexus versions.
         sed -i.bak 's@class="org.eclipse.jetty.util.ssl.SslContextFactory"@class="org.eclipse.jetty.util.ssl.SslContextFactory$Server"@g' ${_jetty_https}
+    fi
+    if false && [ -s "${_logback_overrides}" ]; then
+        echo "$(grep -vE "(org.sonatype.nexus.orient.explain|</included>)" ${_logback_overrides})
+  <logger name='org.sonatype.nexus.orient.explain' level='TRACE'/>
+</included>" > ${_logback_overrides}
     fi
     # For java options, latter values are used, so appending
     INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}" ${_nexus_file} ${_mode}
