@@ -277,8 +277,36 @@ function _k8s_exec() {
     local _parallel="${4}"
     local _k="${5:-"${_KUBECTL_CMD:-"kubectl"}"}"
     if [ -z "${_l}" ]; then
-        kubectl get pods -n "${_ns}" --show-labels --field-selector=status.phase=Running | awk '{print $1"\n    "$6}'
+        ${_k} get pods -n "${_ns}" --show-labels --field-selector=status.phase=Running | awk '{print $1"\n    "$6}'
         return 11
     fi
     ${_k} get pods -n "${_ns}" -l "${_l}" --field-selector=status.phase=Running -o custom-columns=name:metadata.name --no-headers | xargs -I{} -P${_parallel:-"1"} kubectl exec -n "${_ns}" {} -- sh -c "${_cmd}"
+}
+
+#_k8s_stop "nxrm3-ha3,nxrm3-ha2,nxrm3-ha1" "-nexus-repository-manager" "sonatype"
+function _k8s_stop() {
+    local _names="${1}"
+    local _suffix="${2}"
+    local _ns="${3:-"default"}"
+    local _ttl="${4:-60}"
+    local _k="${5:-"${_KUBECTL_CMD:-"kubectl"}"}"
+    for _name in $(echo ${_names} | sed "s/,/ /g"); do
+        ${_k} scale -n "${_ns}" deployment ${_name}${_suffix} --replicas=0 || return $?
+        # TODO: should check status
+        sleep ${_ttl}
+    done
+}
+
+#_k8s_stop "nxrm3-ha1,nxrm3-ha2,nxrm3-ha3" "-nexus-repository-manager" "sonatype"
+function _k8s_start() {
+    local _names="${1}"
+    local _suffix="${2}"
+    local _ns="${3:-"default"}"
+    local _ttl="${4:-120}"
+    local _k="${5:-"${_KUBECTL_CMD:-"kubectl"}"}"
+    for _name in $(echo ${_names} | sed "s/,/ /g"); do
+        ${_k} scale -n "${_ns}" deployment ${_name}${_suffix} --replicas=1 || return $?
+        # TODO: should check status
+        sleep ${_ttl}
+    done
 }
