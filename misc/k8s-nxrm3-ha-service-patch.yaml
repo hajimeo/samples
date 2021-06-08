@@ -1,10 +1,14 @@
 spec:
-  type: NodePort
-  ClusterIP: None
-  selector:
-    app.kubernetes.io/name: nexus-repository-manager
   ports:
-    - name: nexus-ui
+    - name: nexus-ha-5701
       protocol: TCP
-      port: 8081
-      targetPort: 8081
+      port: 5701
+      targetPort: 5701
+    - name: nexus-ha-2424
+      protocol: TCP
+      port: 2424
+      targetPort: 2424
+    - name: nexus-ha-2434
+      protocol: TCP
+      port: 2434
+      targetPort: 2434
