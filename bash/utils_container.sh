@@ -270,6 +270,19 @@ function _update_hosts_for_k8s() {
     date > "${__TMP%/}/${FUNCNAME}.last"
 }
 
+_CONTAINER_CMD="${_CONTAINER_CMD:-"microk8s ctr containers"}"
+function _k8s_nsenter() {
+    local _cmd="${1}"
+    local _filter="${2}" # docker.io/sonatype/nexus3:30.1 or image_id
+    local _parallel="${3}"
+    : > ${__TMP%/}/${FUNCNAME}.list
+    # | python -c "import sys,json;a=json.loads(sys.stdin.read());print(json.dumps(a['Spec']['linux']['namespaces']))"
+    ${_CONTAINER_CMD} ls | grep -E "${_filter}" | awk '{print $1}' | while read -r _i; do
+        ${_CONTAINER_CMD} info ${_i} | sed -n -r 's@.+/proc/([0-9]+)/ns/.+@\1@p' | head -n1 >> ${__TMP%/}/${FUNCNAME}.list
+    done 2>/dev/null
+    cat ${__TMP%/}/${FUNCNAME}.list | xargs -I{} -t -P${_parallel:-"1"} nsenter -t {} -n ${_cmd}
+}
+
 function _k8s_exec() {
     local _cmd="${1}"
     local _l="${2}" # kubernetes.io/name=nexus-repository-manager
@@ -280,7 +293,7 @@ function _k8s_exec() {
         ${_k} get pods -n "${_ns}" --show-labels --field-selector=status.phase=Running | awk '{print $1"\n    "$6}'
         return 11
     fi
-    ${_k} get pods -n "${_ns}" -l "${_l}" --field-selector=status.phase=Running -o custom-columns=name:metadata.name --no-headers | xargs -I{} -P${_parallel:-"1"} kubectl exec -n "${_ns}" {} -- sh -c "${_cmd}"
+    ${_k} get pods -n "${_ns}" -l "${_l}" --field-selector=status.phase=Running -o custom-columns=name:metadata.name --no-headers | xargs -I{} -t -P${_parallel:-"1"} kubectl exec -n "${_ns}" {} -- sh -c "${_cmd}"
 }
 
 #_k8s_stop "nxrm3-ha3,nxrm3-ha2,nxrm3-ha1" "-nexus-repository-manager" "sonatype"
