@@ -1,8 +1,10 @@
 spec:
+  minReadySeconds: 180
   template:
     spec:
       hostname: ${_POD_NAME}
       subdomain: pods
+      dnsPolicy: Default
       volumes:
         - name: share-volume
           hostPath:
