@@ -977,6 +977,7 @@ function f_minikube4kvm() {
 function f_microk8s() {
     local __doc__="Install microk8s (kubernetes|k8s) (TODO: Ubuntu only)"
     # @see: https://ubuntu.com/tutorials/install-a-local-kubernetes-with-microk8s#1-overview
+    local dashboard=""  # change to "dashboard" to use dashboard
     snap install microk8s --classic || return $?
     #if ! type kubectl &>/dev/null && [ ! -f /etc/profile.d/microk8s.sh ]; then
     #    echo 'alias kubectl="microk8s kubectl"' > /etc/profile.d/microk8s.sh
@@ -989,7 +990,7 @@ function f_microk8s() {
     ufw default allow routed
     microk8s enable dns storage helm3 || return $?
     # optional services/addons
-    microk8s enable ingress #metallb dashboard prometheus
+    microk8s enable ingress ${dashboard} #metallb prometheus
     # To replace nginx SSL/HTTPS certificate
     #microk8s kubectl create secret tls standalone.localdomain --key /var/tmp/share/cert/standalone.localdomain.key --cert /var/tmp/share/cert/standalone.localdomain.crt
     #microk8s kubectl edit -n ingress daemonsets nginx-ingress-microk8s-controller
@@ -998,36 +999,47 @@ function f_microk8s() {
     microk8s.start || return $?
 
     # (a kind of) test
-    microk8s kubectl get all --all-namespaces
-    # output token
-    microk8s kubectl -n kube-system describe secret $(microk8s kubectl -n kube-system get secret | grep -oP '^default-token[^ ]+')
-    # Replace the dashboard certificate
-    if [ -s /var/tmp/share/cert/standalone.localdomain.key ]; then
-        microk8s kubectl -n kube-system delete secret kubernetes-dashboard-certs || return $?
-        cd /var/tmp/share/cert/ || return $?
-        microk8s kubectl -n kube-system create secret generic kubernetes-dashboard-certs --from-file=standalone.localdomain.crt --from-file=standalone.localdomain.key
-        cd -
-        echo "microk8s kubectl -n kube-system edit deploy kubernetes-dashboard -o yaml
-# Then, append below lines after '- args:'
-        - --tls-cert-file=/standalone.localdomain.crt
-        - --tls-key-file=/standalone.localdomain.key"
+    microk8s kubectl get all --all-namespaces || return $?
+    # If works update firewall. at this moment, only for ufw
+    if type ufw &>/dev/null; then
+        ufw allow in on vxlan.calico || return $?
+        ufw allow out on vxlan.calico || return $?
+        ufw default allow routed || return $?
+    fi
 
-        local _dboard_ip="$(microk8s kubectl -n kube-system get service kubernetes-dashboard -ojson | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['spec']['clusterIP'])")"
-        if [ -z "${_dboard_ip}" ] || [ ! -s /var/tmp/share/sonatype/utils.sh ]; then
-            _info "Update /etc/hosts or equivalent file for ${_dboard_ip}"
-        else
-            source /var/tmp/share/sonatype/utils.sh
-            local _host_file=/etc/hosts
-            [ -f /etc/banner_add_hosts ] && _host_file=/etc/banner_add_hosts
-            _update_hosts_file k8sboard.standalone.localdomain ${_dboard_ip} ${_host_file}
+    # output token if dashboard is enabled
+    if [ -n "${dashboard}" ]; then
+        microk8s kubectl -n kube-system describe secret $(microk8s kubectl -n kube-system get secret | grep -oP '^default-token[^ ]+')
+        # Replace the dashboard certificate
+        if [ -s /var/tmp/share/cert/standalone.localdomain.key ]; then
+            microk8s kubectl -n kube-system delete secret kubernetes-dashboard-certs || return $?
+            cd /var/tmp/share/cert/ || return $?
+            microk8s kubectl -n kube-system create secret generic kubernetes-dashboard-certs --from-file=standalone.localdomain.crt --from-file=standalone.localdomain.key
+            cd -
+            echo "microk8s kubectl -n kube-system edit deploy kubernetes-dashboard -o yaml
+    # Then, append below lines after '- args:'
+            - --tls-cert-file=/standalone.localdomain.crt
+            - --tls-key-file=/standalone.localdomain.key"
+
+            local _dboard_ip="$(microk8s kubectl -n kube-system get service kubernetes-dashboard -ojson | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a['spec']['clusterIP'])")"
+            if [ -z "${_dboard_ip}" ] || [ ! -s /var/tmp/share/sonatype/utils.sh ]; then
+                _info "Update /etc/hosts or equivalent file for ${_dboard_ip}"
+            else
+                source /var/tmp/share/sonatype/utils.sh
+                local _host_file=/etc/hosts
+                [ -f /etc/banner_add_hosts ] && _host_file=/etc/banner_add_hosts
+                _update_hosts_file k8sboard.standalone.localdomain ${_dboard_ip} ${_host_file}
+            fi
         fi
     fi
+
     # Image location
     ls -l /var/snap/microk8s/common/var/lib/containerd/
 
     echo "# Command examples:
     microk8s status --wait-ready    # list enabled/disabled addons
     microk8s config     # to output the config
+    microk8s inspect    # Very helpful troubleshooting command, generates a report
 
     microk8s helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
     microk8s helm3 search repo iq
