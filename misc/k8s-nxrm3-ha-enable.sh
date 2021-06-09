@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
-_DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
-_import() { [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1};. /tmp/${1}; }
-_import "utils.sh"
-
-_SHARE_DIR="$1" # Just for checking product license
+_SHARE_DIR="$1" # This is mainly for setting product license
 _NODE_MEMBERS="${2-"nxrm3-ha1,nxrm3-ha2,nxrm3-ha3"}"
 _NAME_SUFFIX="${3-"-nexus-repository-manager"}"
 _SONATYPE_WORK=${_SONATYPE_WORK:-"/nexus-data"}
+_DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
+_import() { [ ! -s "${_SHARE_DIR%/}/${1}" ] && curl -sfL --compressed "${_DL_URL%/}/bash/$1" -o "${_SHARE_DIR%/}/${1}";. "${_SHARE_DIR%/}/${1}"; }
+_import "utils.sh"
 
-_HELM3=${_HELM3:-"helm3"}
-_KUBECTL=${_KUBECTL:-"kubectl"}
 
 # Edit nexus.properties to enable HA-C and TCP/IP discovery, and modify hazelcast-network.xml if does NOT exist.
 function f_nexus_ha_config() {
