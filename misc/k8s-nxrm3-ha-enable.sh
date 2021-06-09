@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 _SHARE_DIR="$1" # This is mainly for setting product license
 _NODE_MEMBERS="${2-"nxrm3-ha1,nxrm3-ha2,nxrm3-ha3"}"
-_NAME_SUFFIX="${3-"-nexus-repository-manager"}"
+_HELM_NAME="${3-"nexus-repository-manager"}"
+
 _SONATYPE_WORK=${_SONATYPE_WORK:-"/nexus-data"}
 _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
 _import() { [ ! -s "${_SHARE_DIR%/}/${1}" ] && curl -sfL --compressed "${_DL_URL%/}/bash/$1" -o "${_SHARE_DIR%/}/${1}";. "${_SHARE_DIR%/}/${1}"; }
@@ -23,8 +24,10 @@ function f_nexus_ha_config() {
     [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
     curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     #local _domain="$(hostname -d)"
+    local _fqdn="$(hostname -f)"
     for _m in $(_split "${_members}"); do
-        sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}${_NAME_SUFFIX}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+        [[ "${_fqdn}" =~ ^${_m} ]] || _m="${_m}-${_HELM_NAME}"
+        sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     done
     _log "INFO" "${_mount%/}/etc/fabric/hazelcast-network.xml was (re)created."
 }
