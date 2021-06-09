@@ -23,11 +23,11 @@ function f_nexus_ha_config() {
     # TODO: TCP IP discover somehow does not work with Service and with microk8s.
     [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
     curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
-    #local _domain="$(hostname -d)"
-    local _fqdn="$(hostname -f)"
+    local _domain="$(hostname -d)"
+    #local _fqdn="$(hostname -f)"
     for _m in $(_split "${_members}"); do
-        [[ "${_fqdn}" =~ ^${_m} ]] || _m="${_m}-${_HELM_NAME}"
-        sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+        #[[ "${_fqdn}" =~ ^${_m} ]] || _m="${_m}-${_HELM_NAME}"
+        sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}.${_domain#.}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     done
     _log "INFO" "${_mount%/}/etc/fabric/hazelcast-network.xml was (re)created."
 }
