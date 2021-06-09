@@ -3,12 +3,6 @@ spec:
     spec:
       hostname: ${_POD_NAME}
       subdomain: pods
-      dnsPolicy: 'None'
-      dnsConfig:
-        nameservers:
-          - ${_DNS_SERVER}
-        searches:
-          - ${_DNS_SEARCH}
       volumes:
         - name: share-volume
           hostPath:

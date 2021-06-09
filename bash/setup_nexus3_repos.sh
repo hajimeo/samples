@@ -1140,6 +1140,77 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
     fi
 }
 
+# Please delete if already exists
+#helm3 list -n sonatype
+#helm3 delete -n sonatype nxrm3-ha{1..3}
+_HELM3=${_HELM3:-"helm3"}       # to support 'microk8s helm3'
+_KUBECTL=${_KUBECTL:-"kubectl"} # to support 'microk8s kubectl'
+function f_nexus_k8s_ha() {
+    local _share_dir="${1:-"${_SHARE_DIR}"}"
+    local _chart="${2:-"sonatype/nexus-repository-manager"}"
+    local _name_prefix="${3:-"nxrm3-ha"}"
+    local _name_space="${4:-"sonatype"}" # create namespace first
+
+    [ -z "${_share_dir%/}" ] && return 12
+    export _SHARE_DIR="${_share_dir}"
+    export _NODE_MEMBERS="${_name_prefix}1,${_name_prefix}2,${_name_prefix}3"
+
+    if [ -f "/tmp/helm-nxrm3-values.yaml" ]; then
+        _log "INFO" "/tmp/helm-nxrm3-values.yaml exists. Reusing...";sleep 1
+    else
+        curl -sf -o/tmp/helm-nxrm3-values.yaml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/helm-nxrm3-values.yaml"
+    fi
+    if [ -f "/tmp/${_name_prefix}-dep-patch.yml" ]; then
+        _log "INFO" "/tmp/${_name_prefix}-dep-patch.yml exists. Reusing...";sleep 1
+    else
+        curl -sf -o/tmp/${_name_prefix}-dep-patch.yml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-deployment-patch.yaml"
+    fi
+    if [ -f "/tmp/${_name_prefix}-svc-patch.yml" ]; then
+        _log "INFO" "/tmp/${_name_prefix}-svc-patch.yml exists. Reusing...";sleep 1
+    else
+        curl -sf -o/tmp/${_name_prefix}-svc-patch.yml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-service-patch.yaml"
+    fi
+
+    if [ -n "${_chart%/}" ] && [ "${_chart%/}" != "." ]; then
+        if ! ${_HELM3} search repo "${_chart}"; then
+            _log "INFO" "Didn't find chart:${_chart} so adding the repo 'sonatype'..."; sleep 1
+            ${_HELM3} repo add sonatype https://sonatype.github.io/helm3-charts/ || return $?
+        fi
+    fi
+
+    for _i in {1..3}; do
+        local _name="${_name_prefix}${_i}"
+        if ${_HELM3} status -n ${_name_space} ${_name} &>/dev/null; then
+            _log "INFO" "${_name} already exists. Not installing but just Patching ..."; sleep 5
+        else
+            _log "INFO" "install -n ${_name_space} ${_name} ${_chart} ..."; sleep 5
+            ${_HELM3} ${_HELM3_OPTS} install -n ${_name_space} ${_name} ${_chart} -f /tmp/helm-nxrm3-values.yaml || return $?
+        fi
+
+        for _j in {1..30}; do
+            sleep 12
+            ${_KUBECTL} get -n ${_name_space} pods --field-selector=status.phase=Running -l app.kubernetes.io/instance=${_name} | grep -E "${_name_prefix}.-nexus-repository-manager[^ ]+ +1/1" && break
+        done
+        sleep 10
+
+        local _name="${_name_prefix}${_i}"
+        export _POD_NAME="${_name}"
+
+        _log "INFO" "patch service -n ${_name_space} ${_name}-nexus-repository-manager ..."
+        ${_KUBECTL} patch service -n ${_name_space} ${_name}-nexus-repository-manager --patch "$(eval "echo \"$(cat /tmp/${_name_prefix}-svc-patch.yml)\"")" || return $?
+
+        _log "INFO" "patch deployment -n ${_name_space} ${_name}-nexus-repository-manager ..."
+        ${_KUBECTL} patch deployment -n ${_name_space} ${_name}-nexus-repository-manager --patch "$(eval "echo \"$(cat /tmp/${_name_prefix}-dep-patch.yml)\"")" || return $?
+
+        for _k in {1..30}; do
+            sleep 12
+            ${_KUBECTL} get -n ${_name_space} pods --field-selector=status.phase=Running -l app.kubernetes.io/instance=${_name} | grep -E "${_name_prefix}.-nexus-repository-manager[^ ]+ +1/1" && break
+        done
+        #${_KUBECTL} describe -n ${_name_space} deployment ${_name}-nexus-repository-manager
+        ${_KUBECTL} describe -n ${_name_space} pods -l app.kubernetes.io/instance=${_name} | grep -E '^Events:' -A7
+    done
+}
+
 
 ### Interview / questions related functions ###################################################################
 function interview() {
