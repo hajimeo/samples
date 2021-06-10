@@ -4,7 +4,8 @@ spec:
     spec:
       hostname: ${_POD_NAME}
       subdomain: pods
-      dnsPolicy: Default
+      # DNS settings may need to be changed based on the K8s environment
+      ${_DNS_SETTING}
       volumes:
         - name: share-volume
           hostPath:
@@ -25,10 +26,10 @@ spec:
               containerPort: 2434
           volumeMounts:
             - name: share-volume
-              # Currenlty always using same path
+              # Using same path as the hostPath
               mountPath: ${_SHARE_DIR}
           lifecycle:
             postStart:
               exec:
                 # somehow when *post*Start command runs, the volume is not ready...
-                command: ['/bin/bash', '-c', 'curl -s -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-enable.sh --compressed | bash /dev/stdin "${_SHARE_DIR}" "${_NODE_MEMBERS}"']
+                command: ['sh', '${_SHARE_DIR}/k8s-nxrm3-ha-enable.sh "${_SHARE_DIR}" "${_NODE_MEMBERS}"']
