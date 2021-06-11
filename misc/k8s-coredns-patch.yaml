@@ -1,0 +1,5 @@
+data:
+  customdomains.db: |
+    10.1.125.176 nxrm3-ha1.pods.sonatype.svc.cluster.local
+    10.1.125.129 nxrm3-ha2.pods.sonatype.svc.cluster.local
+    10.1.125.174 nxrm3-ha3.pods.sonatype.svc.cluster.local
