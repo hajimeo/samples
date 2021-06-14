@@ -41,7 +41,7 @@ function f_search_soft_deleted_blobs() {
         grep -l --include='*.properties' -IRs "^deleted=true" ${_content_dir} --null
     fi
     #grep -E '^(size=|deletedDateTime=|deletedReason=|@BlobStore.blob-name=)' `cat soft-deleted.list`
-    # TODO: utilse 'blobpath' command
+    # TODO: utilise 'blobpath' command
 }
 
 # TODO: search and sum the size per repo / per blob store, from file and/or DB.
