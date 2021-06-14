@@ -117,48 +117,39 @@ function export_key() {
     local _alias="${3:-"$(hostname -f)"}"
     local _type="$4"
 
-    local _basename="`basename $_file`"
+    local _basename="$(basename "${_file%.*}")"
     local _out_key="${_basename}.${_alias}.key"
     local _out_crt="${_basename}.${_alias}.pem"
     [ -z "$_type" ] && _type="${_file##*.}"
 
     if [ "$_type" = "pkcs8" ]; then
         openssl pkcs8 -outform PEM -in key.pkcs8 -out ${_out_key} -nocrypt
-    elif [ "$_type" = "jks" ]; then
+    elif [ "$_type" = "jks" ] || [ "$_type" = "p12" ]; then
         if [ ! -x "${JAVA_HOME%/}/bin/keytool" ]; then
             echo "This function requires 'keytool' command in \$JAVA_HOME/bin." >&2
             return 1
         fi
-        ${JAVA_HOME%/}/bin/keytool -importkeystore -noprompt -srckeystore ${_file} -srcstorepass "${_pass}" -srcalias ${_alias} \
-         -destkeystore ${_basename}.p12.tmp -deststoretype PKCS12 -deststorepass "${_pass}" -destkeypass "${_pass}" || return $?
-        openssl pkcs12 -in ${_basename}.p12.tmp -passin "pass:${_pass}" -nodes -nocerts -out ${_out_key}.tmp || return $?
-        openssl rsa -in ${_out_key}.tmp -out ${_out_key}
-        # 'sed' to remove Bag Attributes
-        openssl pkcs12 -in ${_basename}.p12.tmp -passin "pass:${_pass}" -nokeys -chain | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ${_out_crt} || return $?
-        rm -f ${_basename}.*.tmp
+        if [ "$_type" != "p12" ]; then  # if not p12, convert to p12
+            ${JAVA_HOME%/}/bin/keytool -importkeystore -noprompt -srckeystore ${_file} -srcstorepass "${_pass}" -srcalias ${_alias} \
+             -destkeystore ${_basename}.p12 -deststoretype PKCS12 -deststorepass "${_pass}" -destkeypass "${_pass}" || return $?
+        fi
+        # Generating tge key, and convert to RSA format
+        openssl pkcs12 -in ${_basename}.p12 -passin "pass:${_pass}" -nodes -nocerts -out ${_out_key}.tmp && openssl rsa -in ${_out_key}.tmp -out ${_out_key}
+        # Generating certs. 'sed' to remove "Bag Attributes" and "Key Attributes" lines
+        openssl pkcs12 -in ${_basename}.p12 -passin "pass:${_pass}" -nokeys -chain | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ${_out_crt}
+        rm -f ${_basename}*.tmp
     fi
     chmod 600 ${_out_key}
     ls -l ${_basename}.*
 }
 
-# export one certificate from jks/p12 as PEM format
+# Another example to export certificate from jks/p12 as PEM format
 function export_cert() {
     local _file="$1"
-    local _pass="${2:-password}"
-    local _alias="${3:-$(hostname -f)}"
-    local _type="$4"
-
-    local _basename="`basename $_file`"
+    local _pass="${2:-"password"}"
     local _out_crt="${_basename}.${_alias}.pem"
-    [ -z "$_type" ] && _type="${_file##*.}"
 
-    if [ ! -x "${JAVA_HOME%/}/bin/keytool" ]; then
-        echo "This function requires 'keytool' command in \$JAVA_HOME/bin." >&2
-        return 1
-    fi
-    #  -storetype ${_type}
-    ${JAVA_HOME%/}/bin/keytool -export -noprompt -keystore ${_file} -storepass "${_pass}" -alias ${_alias} | openssl x509 -inform der -text | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ${_out_crt} || return $?
-    ls -l ${_basename}.*
+    ${JAVA_HOME%/}/bin/keytool -export -noprompt -keystore ${_file} -storepass "${_pass}" | openssl x509 -inform der -text | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > ${_out_crt} || return $?
 }
 
 # generate .p12 (pkcs12|pfx) and .jks files from server cert/key (and CA cert)
