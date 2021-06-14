@@ -252,14 +252,12 @@ function _update_hosts_for_container() {
 
 function _update_hosts_for_k8s() {
     local _host_file="${1}"
-    local _labelname="${2}" # nexus-repository-manager
+    local _app_name="${2}" # nexus-repository-manager
     local _namespace="${3:-"default"}"
     local _k="${4:-"${_KUBECTL_CMD:-"kubectl"}"}"
     [ -f "${_host_file}" ] || return 11
-    if [ -n "${_labelname}" ]; then
-        _labelname="app.kubernetes.io/name=${_labelname}"
-    fi
-    _k8s_exec 'echo $(hostname -f) $(hostname -i)' "${_labelname}" "${_namespace}" "3" | grep ".${_namespace}." > "${__TMP%/}/${FUNCNAME}.tmp" || return $?
+    local _l="app.kubernetes.io/name=${_app_name}"
+    _k8s_exec 'echo $(hostname -f) $(hostname -i)' "${_l}" "${_namespace}" "3" | grep ".${_namespace}." > "${__TMP%/}/${FUNCNAME}.tmp" || return $?
     cat "${__TMP%/}/${FUNCNAME}.tmp" | while read -r _line; do
         if ! _update_hosts_file ${_line} ${_host_file}; then
             _log "WARN" "Please update ${_host_file} file to add ${_line}"
@@ -285,7 +283,7 @@ function _k8s_nsenter() {
 
 function _k8s_exec() {
     local _cmd="${1}"
-    local _l="${2}" # kubernetes.io/name=nexus-repository-manager
+    local _l="${2}" # app.kubernetes.io/name=nexus-repository-manager
     local _ns="${3:-"default"}"
     local _parallel="${4}"
     local _k="${5:-"${_KUBECTL_CMD:-"kubectl"}"}"
