@@ -1,4 +1,6 @@
 /*
+ * DEPRECATED (can't remember the difference between this and SSLSocketClientWithClientAuth, maybe POST?)
+ *
  * Testing 2-way SSL (Client Certificate Authentication)
  * @see: https://www.snaplogic.com/glossary/two-way-ssl-java-example
  *
