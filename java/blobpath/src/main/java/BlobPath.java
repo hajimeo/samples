@@ -3,7 +3,10 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.RandomAccessFile;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.Objects;
 import java.util.Scanner;
 import java.util.regex.Matcher;
@@ -14,8 +17,10 @@ import com.google.gson.JsonParser;
 import org.apache.commons.lang3.StringUtils;
 
 /**
- * The BlobPath program returns the blobpath if the argument is only one. Otherwise, expecting json strings from stdin,
- * then generate .properties and .bytes files
+ * Returns a blobpath if the argument is only one.
+ * Otherwise, expecting json strings from stdin, then generate .properties and .bytes files.
+ * For example ('repository_name' is needed to save it into .properties file)
+ *  echo "select bucket.repository_name as repository_name, * from asset where blob_ref like '%666c9fab-4334-4f1f-bb76-0db0c474a371'" | orient-console ./component | grep -E '^\s+\{' | blobpath /tmp/sptBoot/support-20210604-150957-1_tmp/sonatype-work/nexus3/blobs/custom
  */
 class BlobPath
 {
@@ -71,6 +76,14 @@ class BlobPath
     return String.format("vol-%02d/chap-%02d/%s", t1, t2, blobId);
   }
 
+  public static String blobDir(String blobId)
+  {
+    int hc = blobId.hashCode();
+    int t1 = Math.abs(hc % 43) + 1;
+    int t2 = Math.abs(hc % 47) + 1;
+    return String.format("vol-%02d/chap-%02d", t1, t2, blobId);
+  }
+
   private static void processInputs(InputStream is, String outDir) throws IOException {
     Scanner scanner = new Scanner(is);
     // At this moment, one exception stops the loop (no try/catch)
@@ -83,6 +96,10 @@ class BlobPath
   private static void saveJs(JsonObject js, String outDir) throws IOException {
     String blobRef = get(js, "blob_ref");
     Matcher matcher = BLOB_REF_PATTERN.matcher(blobRef);
+    if (!matcher.find()) {
+      System.err.println(blobRef + " does not match with the pattern. so skipping...");
+      return;
+    }
     String blobName = matcher.group(1);
     String blobId = matcher.group(3);
     String filePathBase = StringUtils.stripEnd(outDir, "/") + "/" + blobName + "/content";
@@ -93,18 +110,22 @@ class BlobPath
       return;
     }
 
-    File contentDir = new File(filePathBase);
+    File contentDir = new File(filePathBase + "/" + blobDir(blobId));
     if (!contentDir.exists()) {
-      contentDir.mkdirs();
+      if(!contentDir.mkdirs()) {
+        System.err.println("Could not create directory:" + contentDir.toString());
+        return;
+      }
     }
 
     String propContent = genPropertiesContent(js);
-    save(filePathBase + "/" + blobPath(blobId) + ".properties", propContent);
+    save(contentDir.getPath() + "/" + blobId + ".properties", propContent);
     int sizeByte = 0;
     if (BlobPath.useRealSize) {
       sizeByte = Integer.parseInt(get(js, "size"));
     }
-    genDummy(filePathBase + "/" + blobPath(blobId) + ".bytes", sizeByte);
+    genDummy(contentDir.getPath() + "/" + blobId + ".bytes", sizeByte);
+    System.err.println("Saved " + contentDir.getPath() + "/" + blobId + ".*");
   }
 
   private static void save(String filePath, String content) throws IOException {
@@ -120,10 +141,22 @@ class BlobPath
     raf.close();
   }
 
+  // To convert OrientDB date-time to timestamp
+  private static Number convertStringToTimestamp(String strDate) {
+    try {
+      SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");  // No milliseconds
+      Date date = dateFormat.parse(strDate);
+      return date.getTime();
+    } catch (ParseException e) {
+      System.out.println("Exception :" + e);
+      return null;
+    }
+  }
+
   public static String genPropertiesContent(JsonObject js) {
-    // TODO: creationTime should be Unix Timestamp with milliseconds
     // TODO: The first line (modified date) is using last_updated which does not have milliseconds and timezone
     // TODO: The second line does not match with the first line
+    String created = convertStringToTimestamp(get(js, "blob_created")).toString();
     return String.format("#%s,000+0000\n"
             + "#Mon Jan 01 00:00:00 UTC 2020\n"
             + "@BlobStore.created-by=%s\n"
@@ -135,7 +168,7 @@ class BlobPath
             + "@BlobStore.blob-name=%s\n"
             + "sha1=%s", get(js, "last_updated"), get(js, "created_by"),
         get(js, "size"), get(js, "repository_name"),
-        get(js, "blob_created"), get(js, "created_by_ip"),
+        created, get(js, "created_by_ip"),
         get(js, "content_type"), get(js, "name"), get(js, "sha1"));
   }
 

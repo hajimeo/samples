@@ -1,4 +1,5 @@
-/*
+/* DEPRECATED as it doesn't generate 100% accurate path
+ *
  * @see: https://gist.github.com/giautm/d79994acd796f3065903eccbc8d6e09b
  * 	env GOOS=linux GOARCH=amd64 go build blobdummygen.go
  */

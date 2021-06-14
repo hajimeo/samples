@@ -1,6 +1,6 @@
-/*
+/* DEPRECATED (or fix below TODO)
  * TODO: sometimes the result is not same as java.hashCode()
- * 
+ *
  * @see: https://gist.github.com/giautm/d79994acd796f3065903eccbc8d6e09b
  * 	env GOOS=linux GOARCH=amd64 go build blobpath.go
  * 	sudo curl -o /usr/local/bin/blobpath -L https://github.com/hajimeo/samples/raw/master/misc/blobpath_$(uname)
