@@ -59,7 +59,6 @@ function git_search() {
 #virtualenv -p python3 $HOME/.pyvenv
 alias pyv='source $HOME/.pyvenv/bin/activate'
 #alias pyv='pyenv activate mypyvenv'    # I felt pyenv is slow, so not using
-alias pjt='sed "s/,$//" | python -m json.tool'
 alias urldecode='python2 -c "import sys, urllib as ul; print(ul.unquote_plus(sys.argv[1]))"'
 alias urlencode3='python3 -c "import sys;from urllib import parse; print(parse.quote(sys.argv[1]))"'
 alias urlencode='python2 -c "import sys, urllib as ul; print(ul.quote(sys.argv[1]))"'
@@ -78,10 +77,12 @@ alias python_i_with_json='python3 -i <(echo "import sys,json;js=json.load(open(s
 alias json2csv='python3 -c "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);pdf.to_csv(sys.argv[1]+\".csv\", header=True, index=False)"'
 # Read xml file, then convert to dict, then print json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
-# this one is from a file
+# simplest json pretty print
+alias pjt='sed "s/,$//" | python -m json.tool'
+# this one is from a *JSON* file
 alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
 # echo "json like string" | tidyjson
-alias tidyjson='python3 -c "import sys,json;print(json.dumps(json.loads(sys.stdin.read()), indent=4, sort_keys=True))"'
+alias tidyjson='while read -r _l; do echo "${_l}" | sed "s/,$//" | python3 -c "import sys,json;print(json.dumps(json.loads(sys.stdin.read()), indent=4, sort_keys=True))";echo "--";done'
 # Pretty|Tidy print XML. NOTE: without encoding, etree.tostring returns bytes, which does not work with print()
 alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1].encode(\"utf-8\"));print(etree.tostring(t,encoding=\"unicode\",pretty_print=True))"'
 #alias prettyxml='xmllint --format'
