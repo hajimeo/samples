@@ -1040,6 +1040,7 @@ function f_microk8s() {
     microk8s status --wait-ready    # list enabled/disabled addons
     microk8s config     # to output the config
     microk8s inspect    # Very helpful troubleshooting command, generates a report
+    microk8s kubectl run -n <namespace> -it --rm --restart=Never busybox --image=gcr.io/google-containers/busybox sh    # Start a pod for troubleshooting
 
     microk8s helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
     microk8s helm3 search repo iq
