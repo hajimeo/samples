@@ -94,7 +94,7 @@ function get_tls_versions() {
 }
 
 # extract/export rsa private key and certificateS from pem file
-function extract_key_certs() {
+function extract_key_certs_from_pem() {
     # https://serverfault.com/questions/391396/how-to-split-a-pem-file
     local _file="$1"
     local _base_name="$(basename ${_file} .pem)"
