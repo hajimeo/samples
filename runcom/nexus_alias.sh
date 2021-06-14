@@ -11,6 +11,8 @@ if [ -z "${_WORK_DIR%/}" ]; then
 fi
 
 # Start iq CLI
+# To debug, use suspend=y
+#_JAVA_OPTIONS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5007" iqCli
 function iqCli() {
     local __doc__="https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
     local _path="${1:-"./"}"
@@ -18,7 +20,7 @@ function iqCli() {
     local _iq_app_id="${2:-${_IQ_APP_ID:-"sandbox-application"}}"
     local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
     local _iq_url="${4:-${_IQ_URL}}"
-    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.111.0-01"}}"
+    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.117.0-01"}}"
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
     local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}"
@@ -230,18 +232,8 @@ function mvn-arch-gen() {
     fi
 }
 
-function mvn-add-snapshot-repo-in-pom() {
-    # TODO:
-  echo "<distributionManagement>
-    <snapshotRepository>
-      <id>nexus</id>
-      <name>maven-snapshots</name>
-      <url>https://local.standalone.localdomain:8443/repository/snapshots/</url>
-    </snapshotRepository>
-  </distributionManagement>"
-}
-
 function mvn-package() {
+    local __doc__="Wrapper of mvn clean package"
     local _remote_repo="${1}"
     local _local_repo="${2}"
     local _options="${3-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
@@ -262,7 +254,7 @@ for i in {1..5000}; do
 done
 EOF
 function mvn-deploy() {
-    local __doc__="https://stackoverflow.com/questions/13547358/maven-deploydeploy-using-daltdeploymentrepository"
+    local __doc__="Wrapper of mvn clean package deploy"
     local _alt_repo="${1}"
     local _remote_repo="${2}"
     local _local_repo="${3}"
@@ -280,7 +272,7 @@ function mvn-deploy() {
 #mvn-dep-file httpclient-4.5.13.jar "com.example:my-app:1.0" "http://dh1.standalone.localdomain:8081/repository/maven-hosted/" "" "-Dclassifier=bin"
 #Test: get_by_gav "com.example:my-app:1.0" "http://local.standalone.localdomain:8081/repository/repo_maven_hosted/"
 function mvn-dep-file() {
-    local __doc__="https://maven.apache.org/plugins/maven-deploy-plugin/usage.html"
+    local __doc__="Wrapper of mvn deploy:deploy-file"
     local _file="${1}"
     local _gav="${2:-"com.example:my-app:1.0"}"
     local _remote_repo="$3"
@@ -299,6 +291,7 @@ function mvn-dep-file() {
 
 # Get one jar (file) by GAV
 function mvn-get-file() {
+    local __doc__="It says mvn- but curl to get a single file with GAV."
     local _gav="${1:-"junit:junit:4.12"}"   # or org.yaml:snakeyaml:jar:1.23
     local _repo_url="${2:-"http://dh1.standalone.localdomain:8081/repository/maven-public/"}"
     local _user="${3:-"admin"}"
@@ -322,6 +315,7 @@ function mvn-get-file() {
 
 # mvn devendency:get wrapper to use remote repo
 function mvn-get() {
+    local __doc__="Wrapper of mvn dependency:get"
     # maven/mvn get/download
     local _gav="${1:-"junit:junit:4.12"}"
     local _remote_repo="$2"
@@ -332,6 +326,7 @@ function mvn-get() {
 }
 
 function mvn-get-then-deploy() {
+    local __doc__="Get a file with curl/mvn-get-file, then mvn deploy:deploy-file"
     local _gav="${1:-"junit:junit:4.12"}"
     local _get_repo="${2:-"http://localhost:8081/repository/maven-public/"}"
     local _dep_repo="${3:-"http://localhost:8081/repository/maven-snapshots/"}" # layout policy: strict may make request fail.
@@ -347,9 +342,9 @@ function mvn-get-then-deploy() {
     fi
 }
 
-# mvn devendency:resolve wrapper to use remote repo
 function mvn-resolve() {
-    # maven/mvn resolve dependency only
+    local __doc__="Wrapper of mvn dependency:resolve (to resolve the dependencies)"
+    # mvn devendency:resolve wrapper to use remote repo
     local _remote_repo="$1"
     local _local_repo="$2"
     local _options=""
@@ -359,6 +354,7 @@ function mvn-resolve() {
 
 # mvn devendency:tree wrapper to use remote repo (not tested)
 function mvn-tree() {
+    local __doc__="Wrapper of mvn dependency:tree (to display dependencies)"
     # maven/mvn resolve dependency only
     local _remote_repo="$1"
     local _local_repo="$2"
