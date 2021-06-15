@@ -25,6 +25,8 @@ alias noalnum='tr -cd "[:alnum:]._-"'
 alias gzipk='gzip -k'
 # Configure .ssh/config. Not using -f and autossh
 alias s5proxy='netstat -tln | grep -E ":38080\s+" || ssh -4gC2TxnN -D38080'
+#sudo mdutil -d /Volumes/Samsung_T5
+[ -s /usr/libexec/locate.updatedb ] && alias updatedb='sudo /usr/libexec/locate.updatedb'
 
 ## Git #################################################################################################################
 # Show current tag
