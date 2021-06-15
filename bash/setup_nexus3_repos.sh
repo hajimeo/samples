@@ -1140,76 +1140,114 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
     fi
 }
 
-# Please delete if already exists
 #helm3 list -n sonatype
 #helm3 delete -n sonatype nxrm3-ha{1..3}
 _HELM3=${_HELM3:-"helm3"}       # to support 'microk8s helm3'
 _KUBECTL=${_KUBECTL:-"kubectl"} # to support 'microk8s kubectl'
 function f_nexus_k8s_ha() {
-    local _share_dir="${1:-"${_SHARE_DIR}"}"
-    local _chart="${2:-"sonatype/nexus-repository-manager"}"
-    local _name_prefix="${3:-"nxrm3-ha"}"
-    local _name_space="${4:-"sonatype"}" # create namespace first
-
+    local _share_dir="${1}"
+    local _pod_prefix="${2:-"nxrm3-ha"}"
+    local _namespace="${3:-"sonatype"}" # create namespace first
+    local _app_name="${4:-"nexus-repository-manager"}"
+    local _dns_server="${5}"
     [ -z "${_share_dir%/}" ] && return 12
-    export _SHARE_DIR="${_share_dir}"
-    export _NODE_MEMBERS="${_name_prefix}1,${_name_prefix}2,${_name_prefix}3"
+    #_log "TODO" "curl -L -o${_share_dir%/}/k8s-nxrm3-ha-enable.sh https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-enable.sh";sleep 3
 
-    if [ -f "/tmp/helm-nxrm3-values.yaml" ]; then
-        _log "INFO" "/tmp/helm-nxrm3-values.yaml exists. Reusing...";sleep 1
-    else
-        curl -sf -o/tmp/helm-nxrm3-values.yaml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/helm-nxrm3-values.yaml"
-    fi
-    if [ -f "/tmp/${_name_prefix}-dep-patch.yml" ]; then
-        _log "INFO" "/tmp/${_name_prefix}-dep-patch.yml exists. Reusing...";sleep 1
-    else
-        curl -sf -o/tmp/${_name_prefix}-dep-patch.yml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-deployment-patch.yaml"
-    fi
-    if [ -f "/tmp/${_name_prefix}-svc-patch.yml" ]; then
-        _log "INFO" "/tmp/${_name_prefix}-svc-patch.yml exists. Reusing...";sleep 1
-    else
-        curl -sf -o/tmp/${_name_prefix}-svc-patch.yml -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-service-patch.yaml"
-    fi
+    for _f in helm-nxrm3-values.yaml k8s-nxrm3-ha-deployment-patch.yaml k8s-nxrm3-ha-service-patch.yaml; do
+        if [ -f "/tmp/${_pod_prefix}_${_f}" ]; then
+            _log "INFO" "/tmp/${_pod_prefix}_${_f} exists. Reusing...";sleep 1
+        else
+            curl -sf -o/tmp/${_pod_prefix}_${_f} -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/${_f}" || return $?
+        fi
+    done
 
-    if [ -n "${_chart%/}" ] && [ "${_chart%/}" != "." ]; then
-        if ! ${_HELM3} search repo "${_chart}"; then
-            _log "INFO" "Didn't find chart:${_chart} so adding the repo 'sonatype'..."; sleep 1
+    if [ -n "${_app_name%/}" ] && [ "${_app_name%/}" != "." ]; then
+        if ! ${_HELM3} search repo "${_app_name}"; then
+            _log "INFO" "'${_HELM3} search repo ${_app_name}' failed, so adding 'sonatype' repo ..."; sleep 1
             ${_HELM3} repo add sonatype https://sonatype.github.io/helm3-charts/ || return $?
         fi
     fi
 
+    # Initial installation with helm
     for _i in {1..3}; do
-        local _name="${_name_prefix}${_i}"
-        if ${_HELM3} status -n ${_name_space} ${_name} &>/dev/null; then
-            _log "INFO" "${_name} already exists. Not installing but just Patching ..."; sleep 5
+        local _name="${_pod_prefix}${_i}"
+        if ${_HELM3} status -n ${_namespace} ${_name} &>/dev/null; then
+            _log "INFO" "${_name} already exists. Not installing but just Patching ..."; sleep 3
         else
-            _log "INFO" "install -n ${_name_space} ${_name} ${_chart} ..."; sleep 5
-            ${_HELM3} ${_HELM3_OPTS} install -n ${_name_space} ${_name} ${_chart} -f /tmp/helm-nxrm3-values.yaml || return $?
+            _log "INFO" "install -n ${_namespace} ${_name} sonatype/${_app_name} ..."; sleep 3
+            ${_HELM3} ${_HELM3_OPTS} install -n ${_namespace} ${_name} sonatype/${_app_name} -f /tmp/${_pod_prefix}_helm-nxrm3-values.yaml || return $?
+            sleep 10
         fi
+    done
 
-        for _j in {1..30}; do
-            sleep 12
-            ${_KUBECTL} get -n ${_name_space} pods --field-selector=status.phase=Running -l app.kubernetes.io/instance=${_name} | grep -E "${_name_prefix}.-nexus-repository-manager[^ ]+ +1/1" && break
+    # Wait for three nodes ready
+    for _i in {1..3}; do
+        local _name="${_pod_prefix}${_i}"
+        for _j in {1..60}; do
+            sleep 6
+            ${_KUBECTL} get -n ${_namespace} pods --field-selector=status.phase=Running -l app.kubernetes.io/instance=${_name} | grep -E "${_pod_prefix}.-${_app_name}[^ ]+ +1/1" && break
         done
-        sleep 10
+        # Thinking wouldn't need to patch Services
+        #_log "INFO" "patch service -n ${_namespace} ${_name}-${_app_name} ..."
+        #${_KUBECTL} patch service -n ${_namespace} ${_name}-${_app_name} --patch "$(eval "echo -e \"$(cat /tmp/${_pod_prefix}_k8s-nxrm3-ha-service-patch.yaml)\"")" || return $?
+    done
 
-        local _name="${_name_prefix}${_i}"
-        export _POD_NAME="${_name}"
+    unset _SEC_CONTEXT
+    unset _DNS_SETTING
+    if [ -n "${_dns_server}" ]; then
+        export _DNS_SETTING="None\n      dnsConfig:\n        nameservers:\n          - ${_dns_server}"
+    else
+        export _SEC_CONTEXT="allowPrivilegeEscalation: false\n            runAsUser: 0"
+    fi
+    export _SHARE_DIR="${_share_dir%/}"
+    export _NODE_MEMBERS="${_pod_prefix}1,${_pod_prefix}2,${_pod_prefix}3"
 
-        _log "INFO" "patch service -n ${_name_space} ${_name}-nexus-repository-manager ..."
-        ${_KUBECTL} patch service -n ${_name_space} ${_name}-nexus-repository-manager --patch "$(eval "echo \"$(cat /tmp/${_name_prefix}-svc-patch.yml)\"")" || return $?
+    # Patching Deployment *ony-by-one*
+    for _i in {1..3}; do
+        local _name="${_pod_prefix}${_i}"
+        export _POD_NAME="${_name}" # need this as used in a template
+        _log "INFO" "patch deployment -n ${_namespace} ${_name}-${_app_name} with '${_SHARE_DIR}' '${_NODE_MEMBERS}' ..."
+        ${_KUBECTL} patch deployment -n ${_namespace} ${_name}-${_app_name} --patch "$(eval "echo -e \"$(cat /tmp/${_pod_prefix}_k8s-nxrm3-ha-deployment-patch.yaml)\"")" || return $?
 
-        _log "INFO" "patch deployment -n ${_name_space} ${_name}-nexus-repository-manager ..."
-        ${_KUBECTL} patch deployment -n ${_name_space} ${_name}-nexus-repository-manager --patch "$(eval "echo \"$(cat /tmp/${_name_prefix}-dep-patch.yml)\"")" || return $?
-
-        for _k in {1..30}; do
-            sleep 12
-            ${_KUBECTL} get -n ${_name_space} pods --field-selector=status.phase=Running -l app.kubernetes.io/instance=${_name} | grep -E "${_name_prefix}.-nexus-repository-manager[^ ]+ +1/1" && break
+        local _success=false
+        for _k in {1..60}; do
+            sleep 6
+            ${_KUBECTL} get -n ${_namespace} pods --field-selector=status.phase=Running -l app.kubernetes.io/instance=${_name} | grep -E "${_pod_prefix}.-${_app_name}[^ ]+ +1/1" && _success=true && break
         done
-        #${_KUBECTL} describe -n ${_name_space} deployment ${_name}-nexus-repository-manager
-        ${_KUBECTL} describe -n ${_name_space} pods -l app.kubernetes.io/instance=${_name} | grep -E '^Events:' -A7
+
+        # If failed, display Events
+        if ! ${_success}; then
+            ${_KUBECTL} describe -n ${_namespace} pods -l app.kubernetes.io/instance=${_name} | grep -E '^Events:' -A7
+            return 13
+        fi
     done
 }
+
+# no longer in use
+function _update_name_resolution() {
+    local _dns_server="$1"
+    local _pod_prefix="${2:-"nxrm3-ha"}"
+    local _namespace="${3:-"sonatype"}"
+    local _app_name="${4:-"nexus-repository-manager"}"
+    if [ -n "${_dns_server}" ] && hostname -I | grep -qw "${_dns_server}"; then
+        local _hostfile="/etc/hosts"
+        # TODO: at this moment, assuming this DNS server uses banner_add_hosts or /etc/hosts
+        [ -f "/etc/banner_add_hosts" ] && _hostfile="/etc/banner_add_hosts"
+        _update_hosts_for_k8s "${_hostfile}" "${_app_name}" "${_namespace}"
+    else
+        _k8s_exec "grep -wE '${_pod_prefix}.' /etc/hosts" "app.kubernetes.io/name=${_app_name}" "${_namespace}" "3" 2>/dev/null | sort | uniq > /tmp/${_pod_prefix}_hosts.txt || return $?
+        # If only one line or zero, no point of updating
+        [ "$(grep -c -wE "${_pod_prefix}.\.pods" "/tmp/${_pod_prefix}_hosts.txt")" -lt 2 ] && return 0
+        if _k8s_exec "echo -e \"\$(grep -vwE '${_pod_prefix}.\.pods' /etc/hosts)\n$(cat /tmp/${_pod_prefix}_hosts.txt)\" > /etc/hosts" "app.kubernetes.io/name=${_app_name}" "${_namespace}" "3" 2>/tmp/${_pod_prefix}_hosts.err; then
+            _log "INFO" "Pods /etc/hosts have been updated."
+            cat /tmp/${_pod_prefix}_hosts.txt
+        else
+            _log "WARN" "Couldn't update Pods /etc/hosts."
+            cat /tmp/${_pod_prefix}_hosts.err
+        fi
+    fi
+}
+
 
 
 ### Interview / questions related functions ###################################################################
