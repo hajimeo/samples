@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 _SHARE_DIR="$1" # This is mainly for setting product license
 _NODE_MEMBERS="${2-"nxrm3-ha1,nxrm3-ha2,nxrm3-ha3"}"
-_HELM_NAME="${3-"nexus-repository-manager"}"
+_POD_PREFIX="${3-"nxrm3-ha"}"   # empty string should be acceptable
+#_HELM_NAME="${4-"nexus-repository-manager"}"
 
 _SONATYPE_WORK=${_SONATYPE_WORK:-"/nexus-data"}
 _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
@@ -48,6 +49,19 @@ function f_nexus_license_config() {
     fi
 }
 
+function f_update_hosts() {
+    local _merge_to="${1:-"/etc/hosts"}"
+    sort | uniq | while read -r _l; do
+        local _regex="$(echo "${_l}" | sed "s/\./\\\./g" | sed -E "s/ +/|/g")"
+        local _txt="$(grep -vwE "(${_regex})" ${_merge_to} 2>/dev/null)" # NOTE: this grep does not work with Mac
+        if [ -n "${_txt}" ]; then
+            echo -e "${_txt}\n${_l}"
+        else
+            echo -e "${_l}"
+        fi > "${_merge_to}" || return $?
+    done
+}
+
 main() {
     if [ ! -s "${_SONATYPE_WORK%/}/etc/nexus.properties" ]; then
         echo "No nexus.properties file: ${_SONATYPE_WORK%/}/etc/nexus.properties"; return 1
@@ -56,6 +70,15 @@ main() {
         f_nexus_license_config "${_SONATYPE_WORK%/}" "${_SHARE_DIR%/}"
     fi
     f_nexus_ha_config "${_SONATYPE_WORK%/}" "${_NODE_MEMBERS}"
+
+    # Only when root
+    [ "$(id -u)" != "0" ] && return 0
+    [ ! -s "${_SHARE_DIR%/}/${_POD_PREFIX}_hosts" ] && return 0
+    echo "$(hostname -i) $(hostname -f) $(hostname -s)" | f_update_hosts "${_SHARE_DIR%/}/${_POD_PREFIX}_hosts"
+    while true; do
+        sleep 6
+        cat "${_SHARE_DIR%/}/${_POD_PREFIX}_hosts" | f_update_hosts
+    done
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then

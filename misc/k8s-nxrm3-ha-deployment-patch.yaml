@@ -4,8 +4,8 @@ spec:
     spec:
       hostname: ${_POD_NAME}
       subdomain: pods
-      # DNS settings may need to be changed based on the K8s environment
-      ${_DNS_SETTING}
+      # NOTE: DNS settings may need to be changed based on the K8s environment
+      dnsPolicy: ${_DNS_SETTING:-'ClusterFirst'}
       volumes:
         - name: share-volume
           hostPath:
@@ -13,6 +13,9 @@ spec:
             type: DirectoryOrCreate
       containers:
         - name: nexus-repository-manager
+          # NOTE: not recommended but needed for name resolution
+          securityContext:
+            ${_SEC_CONTEXT:-'fsGroup: 2000'}
           ports:
             # probably don't need 5702 and 5703
             - name: nexus-ha-5701
@@ -32,4 +35,4 @@ spec:
             postStart:
               exec:
                 # somehow when *post*Start command runs, the volume is not ready...
-                command: ['sh', '${_SHARE_DIR}/k8s-nxrm3-ha-enable.sh "${_SHARE_DIR}" "${_NODE_MEMBERS}"']
+                command: ['/usr/bin/bash', '${_SHARE_DIR}/k8s-nxrm3-ha-enable.sh', '${_SHARE_DIR}', '${_NODE_MEMBERS}']
