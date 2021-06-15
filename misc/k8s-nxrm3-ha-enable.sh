@@ -14,6 +14,7 @@ _import "utils.sh"
 function f_nexus_ha_config() {
     local _mount="$1"
     local _members="$2"
+    local _work_dir="$3"
     _upsert "${_mount%/}/etc/nexus.properties" "nexus.clustered" "true" || return $?
     _upsert "${_mount%/}/etc/nexus.properties" "nexus.log.cluster.enabled" "false" || return $?
     _upsert "${_mount%/}/etc/nexus.properties" "nexus.hazelcast.discovery.isEnabled" "false" || return $?
@@ -21,9 +22,16 @@ function f_nexus_ha_config() {
     # NOTE: At this moment skip if exist (find . -name 'hazelcast*.xml*' -delete)
     [ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && return 0
     #[ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && mv -f ${_mount%/}/etc/fabric/hazelcast-network.xml{,.bak}
-    # TODO: TCP IP discover somehow does not work with Service and with microk8s.
+    # NOTE: TCP/IP discovery somehow does not work with Service (with microk8s)
     [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
-    curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+    if [ -d "${_work_dir%/}" ]; then
+        if [ ! -s "${_work_dir%/}/hazelcast-network.tmpl.xml" ]; then
+            curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_work_dir%/}/hazelcast-network.tmpl.xml" || return $?
+        fi
+        cp -f "${_work_dir%/}/hazelcast-network.tmpl.xml" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+    else
+        curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
+    fi
     local _domain="$(hostname -d)"
     #local _fqdn="$(hostname -f)"
     for _m in $(_split "${_members}"); do
@@ -69,7 +77,7 @@ main() {
     if [ -d "${_SHARE_DIR%/}" ]; then
         f_nexus_license_config "${_SONATYPE_WORK%/}" "${_SHARE_DIR%/}"
     fi
-    f_nexus_ha_config "${_SONATYPE_WORK%/}" "${_NODE_MEMBERS}"
+    f_nexus_ha_config "${_SONATYPE_WORK%/}" "${_NODE_MEMBERS}" "${_SHARE_DIR%/}"
 
     # Only when root
     [ "$(id -u)" != "0" ] && return 0
