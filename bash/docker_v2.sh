@@ -19,7 +19,8 @@
 
 : ${_TMP:="/tmp"}
 
-_curl="curl -s -f -D /dev/stderr --compressed -k"
+_curl="curl -v -f -D /dev/stderr --compressed -k"
+#_curl="curl -s -f -D /dev/stderr --compressed -k"
 
 function _print_token() {
     python -c "import sys,json
