@@ -53,6 +53,19 @@ function f_nexus_license_config() {
     fi
 }
 
+function f_migrate_blobstores() {
+    local _blobs_dir="${1:-"${_SONATYPE_WORK%/}/blobs"}"
+    local _blobs_share_dir="${2:-"${_SHARE_DIR%/}/blobs"}"
+    [ -d "${_blobs_share_dir}" ] && return 0    # If share "blobs" dir exist, not copying as this could be 2nd or 3rd node
+    [ -L "${_blobs_dir}" ] && return 0
+    [ ! -d "${_blobs_dir}" ] && return 11
+    [ -d "${_blobs_dir%/}_orig" ] && return 12  # It's strange dir is not symlink but _orig exists.
+    mkdir -m 777 -p "${_blobs_share_dir}" || return 13
+    cp -v -pR ${_blobs_dir%/}/* ${_blobs_share_dir%/}/ || return $?
+    mv -v "${_blobs_dir%/}" "${_blobs_dir%/}_orig" || return $?
+    ln -s "${_blobs_share_dir}" "${_blobs_dir%/}"
+}
+
 function f_update_hosts() {
     local _merge_to="${1:-"/etc/hosts"}"
     sort | uniq | while read -r _l; do
@@ -83,6 +96,8 @@ EOF
         /usr/bin/bash /tmp/_update_hosts.sh &>/tmp/_update_hosts.out &
         disown $!
     fi
+    # finally migrate directories under "blobs"
+    f_migrate_blobstores "${_SONATYPE_WORK%/}/blobs" "${_SHARE_DIR%/}/blobs"
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
