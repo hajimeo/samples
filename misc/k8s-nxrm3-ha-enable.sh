@@ -10,7 +10,6 @@ _import() { [ ! -s "${_SHARE_DIR%/}/${1}" ] && curl -sfL --compressed "${_DL_URL
 _import "utils.sh"
 
 
-# Edit nexus.properties to enable HA-C and TCP/IP discovery, and modify hazelcast-network.xml if does NOT exist.
 function f_nexus_ha_config() {
     local _mount="$1"
     local _members="$2"
@@ -21,7 +20,6 @@ function f_nexus_ha_config() {
     _log "INFO" "${_mount%/}/etc/nexus.properties was modified for enabling HA-C and for TCP/IP discovery."
     # NOTE: At this moment skip if exist (find . -name 'hazelcast*.xml*' -delete)
     [ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && return 0
-    #[ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && mv -f ${_mount%/}/etc/fabric/hazelcast-network.xml{,.bak}
     # NOTE: TCP/IP discovery somehow does not work with Service (with microk8s)
     [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
     if [ -d "${_work_dir%/}" ]; then
@@ -33,9 +31,7 @@ function f_nexus_ha_config() {
         curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     fi
     local _domain="$(hostname -d)"
-    #local _fqdn="$(hostname -f)"
     for _m in $(_split "${_members}"); do
-        #[[ "${_fqdn}" =~ ^${_m} ]] || _m="${_m}-${_HELM_NAME}"
         sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${_m}.${_domain#.}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
     done
     _log "INFO" "${_mount%/}/etc/fabric/hazelcast-network.xml was (re)created."
@@ -71,22 +67,22 @@ function f_update_hosts() {
 }
 
 main() {
-    if [ ! -s "${_SONATYPE_WORK%/}/etc/nexus.properties" ]; then
-        echo "No nexus.properties file: ${_SONATYPE_WORK%/}/etc/nexus.properties"; return 1
-    fi
-    if [ -d "${_SHARE_DIR%/}" ]; then
-        f_nexus_license_config "${_SONATYPE_WORK%/}" "${_SHARE_DIR%/}"
-    fi
+    f_nexus_license_config "${_SONATYPE_WORK%/}" "${_SHARE_DIR%/}"
     f_nexus_ha_config "${_SONATYPE_WORK%/}" "${_NODE_MEMBERS}" "${_SHARE_DIR%/}"
 
-    # Only when root
-    [ "$(id -u)" != "0" ] && return 0
-    [ ! -s "${_SHARE_DIR%/}/${_POD_PREFIX}_hosts" ] && return 0
-    echo "$(hostname -i) $(hostname -f) $(hostname -s)" | f_update_hosts "${_SHARE_DIR%/}/${_POD_PREFIX}_hosts"
-    while true; do
-        sleep 6
-        cat "${_SHARE_DIR%/}/${_POD_PREFIX}_hosts" | f_update_hosts
-    done
+    if  [ "$(id -u)" == "0" ] && [ -d "${_SHARE_DIR%/}" ]; then
+        echo "$(hostname -i) $(hostname -f) $(hostname -s)" | f_update_hosts "${_SHARE_DIR%/}/${_POD_PREFIX}_hosts"
+        cat << EOF > /tmp/_update_hosts.sh
+$(type f_update_hosts | grep -v '^f_update_hosts is a function')
+
+while true; do
+    sleep 6
+    cat "${_SHARE_DIR%/}/${_POD_PREFIX}_hosts" | f_update_hosts
+done
+EOF
+        /usr/bin/bash /tmp/_update_hosts.sh &>/tmp/_update_hosts.out &
+        disown $!
+    fi
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then

@@ -1142,7 +1142,7 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
 
 #helm3 list -n sonatype
 #helm3 delete -n sonatype nxrm3-ha{1..3}
-_HELM3=${_HELM3:-"helm3"}       # to support 'microk8s helm3'
+_HELM3=${_HELM3-"helm3"}        # to support 'microk8s helm3' If empty, skip all helm3 commands.
 _KUBECTL=${_KUBECTL:-"kubectl"} # to support 'microk8s kubectl'
 function f_nexus_k8s_ha() {
     local _share_dir="${1}"
@@ -1151,9 +1151,9 @@ function f_nexus_k8s_ha() {
     local _app_name="${4:-"nexus-repository-manager"}"
     local _dns_server="${5}"
     [ -z "${_share_dir%/}" ] && return 12
-    #_log "TODO" "curl -L -o${_share_dir%/}/k8s-nxrm3-ha-enable.sh https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-enable.sh";sleep 3
-
-    for _f in helm-nxrm3-values.yaml k8s-nxrm3-ha-deployment-patch.yaml k8s-nxrm3-ha-service-patch.yaml; do
+    # Download necessary files
+    #curl -L -o${_share_dir%/}/k8s-nxrm3-ha-enable.sh https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-enable.sh"
+    for _f in helm-nxrm3-values.yaml k8s-nxrm3-ha-deployment-patch.yaml; do #k8s-nxrm3-ha-service-patch.yaml
         if [ -f "/tmp/${_pod_prefix}_${_f}" ]; then
             _log "INFO" "/tmp/${_pod_prefix}_${_f} exists. Reusing...";sleep 1
         else
@@ -1161,36 +1161,29 @@ function f_nexus_k8s_ha() {
         fi
     done
 
-    if [ -n "${_app_name%/}" ] && [ "${_app_name%/}" != "." ]; then
-        if ! ${_HELM3} search repo "${_app_name}"; then
-            _log "INFO" "'${_HELM3} search repo ${_app_name}' failed, so adding 'sonatype' repo ..."; sleep 1
-            ${_HELM3} repo add sonatype https://sonatype.github.io/helm3-charts/ || return $?
+    if [ -n "${_HELM3}" ]; then
+        # Checking helm repo for sonatype is ready
+        if [ -n "${_app_name%/}" ] && [ "${_app_name%/}" != "." ]; then
+            if ! ${_HELM3} search repo "${_app_name}"; then
+                _log "INFO" "'${_HELM3} search repo ${_app_name}' failed, so adding 'sonatype' repo ..."; sleep 1
+                ${_HELM3} repo add sonatype https://sonatype.github.io/helm3-charts/ || return $?
+            fi
         fi
-    fi
 
-    # Initial installation with helm
-    for _i in {1..3}; do
-        local _name="${_pod_prefix}${_i}"
-        if ${_HELM3} status -n ${_namespace} ${_name} &>/dev/null; then
-            _log "INFO" "${_name} already exists. Not installing but just Patching ..."; sleep 3
-        else
-            _log "INFO" "install -n ${_namespace} ${_name} sonatype/${_app_name} ..."; sleep 3
-            ${_HELM3} ${_HELM3_OPTS} install -n ${_namespace} ${_name} sonatype/${_app_name} -f /tmp/${_pod_prefix}_helm-nxrm3-values.yaml || return $?
-            sleep 10
-        fi
-    done
-
-    # Wait for three nodes ready
-    for _i in {1..3}; do
-        local _name="${_pod_prefix}${_i}"
-        for _j in {1..60}; do
-            sleep 6
-            ${_KUBECTL} get -n ${_namespace} pods --field-selector=status.phase=Running -l app.kubernetes.io/instance=${_name} | grep -E "${_pod_prefix}.-${_app_name}[^ ]+ +1/1" && break
+        # Installing NXRM3s with helm3
+        for _i in {1..3}; do
+            local _name="${_pod_prefix}${_i}"
+            if ${_HELM3} status -n ${_namespace} ${_name} &>/dev/null; then
+                _log "INFO" "${_name} already exists. Not installing but just Patching ..."; sleep 3
+            else
+                _log "INFO" "install -n ${_namespace} ${_name} sonatype/${_app_name} ..."; sleep 3
+                ${_HELM3} ${_HELM3_OPTS} install -n ${_namespace} ${_name} sonatype/${_app_name} -f /tmp/${_pod_prefix}_helm-nxrm3-values.yaml || return $?
+                sleep 10
+            fi
         done
-        # Thinking wouldn't need to patch Services
-        #_log "INFO" "patch service -n ${_namespace} ${_name}-${_app_name} ..."
-        #${_KUBECTL} patch service -n ${_namespace} ${_name}-${_app_name} --patch "$(eval "echo -e \"$(cat /tmp/${_pod_prefix}_k8s-nxrm3-ha-service-patch.yaml)\"")" || return $?
-    done
+    else
+        _log "INFO" "No helm3 command specified, so just patching the Deployments with ${_KUBECTL} ..."; sleep 3
+    fi
 
     unset _SEC_CONTEXT
     unset _DNS_SETTING
@@ -1205,22 +1198,35 @@ function f_nexus_k8s_ha() {
     # Patching Deployment *ony-by-one*
     for _i in {1..3}; do
         local _name="${_pod_prefix}${_i}"
+        # Wait until this Pod becomes Ready state
+        _pod_ready_waiter "${_name}" "${_namespace}"
+
         export _POD_NAME="${_name}" # need this as used in a template
         _log "INFO" "patch deployment -n ${_namespace} ${_name}-${_app_name} with '${_SHARE_DIR}' '${_NODE_MEMBERS}' ..."
         ${_KUBECTL} patch deployment -n ${_namespace} ${_name}-${_app_name} --patch "$(eval "echo -e \"$(cat /tmp/${_pod_prefix}_k8s-nxrm3-ha-deployment-patch.yaml)\"")" || return $?
-
-        local _success=false
-        for _k in {1..60}; do
-            sleep 6
-            ${_KUBECTL} get -n ${_namespace} pods --field-selector=status.phase=Running -l app.kubernetes.io/instance=${_name} | grep -E "${_pod_prefix}.-${_app_name}[^ ]+ +1/1" && _success=true && break
-        done
+        sleep 20
+        # Wait until this Pod becomes Ready state
+        _pod_ready_waiter "${_name}" "${_namespace}"
 
         # If failed, display Events
-        if ! ${_success}; then
+        if [ "$?" != "0" ]; then
             ${_KUBECTL} describe -n ${_namespace} pods -l app.kubernetes.io/instance=${_name} | grep -E '^Events:' -A7
             return 13
         fi
     done
+}
+
+function _pod_ready_waiter() {
+    local _instance="${1}"
+    local _namespace="${2:-"sonatype"}"
+    local _n="${3:-"1"}"
+    local _times="${4:-"90"}"
+    local _interval="${5:-"6"}"
+    for _x in $(seq 1 ${_times}); do
+        sleep ${_interval}
+        ${_KUBECTL} get -n ${_namespace} pods --field-selector="status.phase=Running" -l "app.kubernetes.io/instance=${_instance}" | grep -w "${_n}/${_n}" && return 0
+    done
+    return 1
 }
 
 # no longer in use
