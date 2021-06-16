@@ -1142,6 +1142,7 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
 
 #helm3 list -n sonatype
 #helm3 delete -n sonatype nxrm3-ha{1..3}
+#rm -rf /var/tmp/share/sonatype/k8s-nxrm3-ha/blobs # or mv
 _HELM3=${_HELM3-"helm3"}        # to support 'microk8s helm3' If empty, skip all helm3 commands.
 _KUBECTL=${_KUBECTL:-"kubectl"} # to support 'microk8s kubectl'
 function f_nexus_k8s_ha() {
