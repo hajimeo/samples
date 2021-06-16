@@ -141,6 +141,8 @@ function export_key() {
     fi
     chmod 600 ${_out_key}
     ls -l ${_basename}.*
+    # NOTE: for the connection test, you do not need to split:
+    #curl -L "<URL>" --cert-type P12 --cert "./<file>.p12:<password>"
 }
 
 # Another example to export certificate from jks/p12 as PEM format
