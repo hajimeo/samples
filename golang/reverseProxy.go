@@ -6,17 +6,20 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strconv"
+	"time"
 )
 
 func help() {
 	fmt.Println(`
 Simple reverse proxy server for troubleshooting.
-Output REQUEST and RESPONSE headers.
+This script outputs REQUEST and RESPONSE headers.
 
 DOWNLOAD and INSTALL:
     sudo curl -o /usr/local/bin/reverseproxy -L https://github.com/hajimeo/samples/raw/master/misc/reverseproxy_$(uname)
@@ -26,40 +29,61 @@ USAGE EXAMPLE:
     reverseproxy <listening address:port> <listening pattern> <remote-URL> [certFile] [keyFile] 
     reverseproxy $(hostname -f):8080 / http://search.osakos.com/
 
-Also reads _DUMP_BODY environment variable. (TODO)
+Also, this script utilise the following environment variables:
+	_DUMP_BODY    boolean Whether dump the request/response body
+	_SAVE_BODY_TO string  Save body strings into this location
 `)
 }
 
-var server_addr string
-var proxy_pass string
-var scheme string
-var dump_body bool
+var server_addr string  // Listening server address eg: $(hostname -f):8080
+var proxy_pass string   // forwarding proxy URL
+var scheme string       // http or https (decided by given certificate)
+var dump_body bool      // If true, output
+var save_body_to string // if dump_body is true, save request/response bodies into files
 
 func handler(p *httputil.ReverseProxy) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		r.URL.Host = server_addr
-		r.URL.Scheme = scheme
-		r.Header.Set("X-Real-IP", r.RemoteAddr)
-		//r.Header.Set("X-Forwarded-For", r.RemoteAddr)	// TODO: not sure which value to use
-		r.Header.Set("X-Forwarded-Proto", scheme)
-		reqHeader, err := httputil.DumpRequest(r, dump_body)
+	return func(w http.ResponseWriter, req *http.Request) {
+		req.URL.Host = server_addr
+		req.URL.Scheme = scheme
+		req.Header.Set("X-Real-IP", req.RemoteAddr)
+		//req.Header.Set("X-Forwarded-For", req.RemoteAddr)	// TODO: not sure which value to use
+		req.Header.Set("X-Forwarded-Proto", scheme)
+		bodyBytes, err := httputil.DumpRequest(req, dump_body)
 		if err != nil {
 			log.Printf("DumpRequest error: %s\n", err)
 		} else {
-			log.Printf("REQUEST to: %s\n%s\n", proxy_pass, string(reqHeader))
+			_logBody(bodyBytes, "REQUEST")
 		}
-		p.ServeHTTP(w, r)
+		p.ServeHTTP(w, req)
 	}
 }
 
 func logResponseHeader(resp *http.Response) (err error) {
-	respHeader, err := httputil.DumpResponse(resp, dump_body)
+	bodyBytes, err := httputil.DumpResponse(resp, dump_body)
 	if err != nil {
 		log.Printf("DumpResponse error: %s\n", err)
 	} else {
-		log.Printf("RESPONSE from: %s\n%s\n", proxy_pass, string(respHeader))
+		_logBody(bodyBytes, "RESPONSE")
 	}
 	return nil
+}
+
+func _logBody(bodyBytes []byte, prefix string) {
+	var log_msg string
+	if len(save_body_to) > 0 {
+		tus := strconv.FormatInt(time.Now().Unix(), 10)
+		fname := save_body_to + "/" + prefix + "_" + tus + ".out"
+		err := ioutil.WriteFile(fname, bodyBytes, 0644)
+		if err != nil {
+			panic(err)
+		}
+		log_msg = "Saved into " + fname
+	} else if len(bodyBytes) > 512 {
+		log_msg = string(bodyBytes)[0:512] + " ..."
+	} else {
+		log_msg = string(bodyBytes)
+	}
+	log.Printf("%s: %s\n%s\n", prefix, proxy_pass, log_msg)
 }
 
 func main() {
@@ -94,6 +118,10 @@ func main() {
 	if os.Getenv("_DUMP_BODY") == "true" {
 		dump_body = true
 		log.Printf("dump_body is set to true.\n")
+	}
+	save_body_to = os.Getenv("_SAVE_BODY_TO")
+	if len(save_body_to) > 0 {
+		log.Printf("save_body_to is set to #{save_body_to}.\n")
 	}
 
 	// start reverse proxy
