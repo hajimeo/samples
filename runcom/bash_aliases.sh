@@ -26,7 +26,8 @@ alias gzipk='gzip -k'
 # Configure .ssh/config. Not using -f and autossh
 alias s5proxy='netstat -tln | grep -E ":38080\s+" || ssh -4gC2TxnN -D38080'
 #sudo mdutil -d /Volumes/Samsung_T5
-[ -s /usr/libexec/locate.updatedb ] && alias updatedb='sudo /usr/libexec/locate.updatedb'
+# not using sudo which may generate error if /var/db/locate.database is not accessible
+[ -s /usr/libexec/locate.updatedb ] && alias updatedb='sudo FILESYSTEMS="hfs ufs apfs exfat" /usr/libexec/locate.updatedb'
 
 ## Git #################################################################################################################
 # Show current tag
@@ -204,6 +205,17 @@ function _head_tail() {
         head -n ${_n} "${_f}"
         tail -n ${_n} "${_f}"
     fi
+}
+# Handy to check f_threads analysed / separated files
+function tail_head() {
+    local _glob="$1"    # NOTE: need double quotes
+    local _tn="${2:-"1"}"
+    local _hn="${3:-"${_tn}"}"
+    ls -1 ${_glob} | while read -r _f; do
+        echo "==> ${_f} <=="
+        tail -n ${_tn} "${_f}" | head -n ${_hn}
+        echo " "
+    done
 }
 # make a directory and cd
 function mcd() {
@@ -436,12 +448,14 @@ function pgStart() {
 }
 
 # Start a dummy web server (can be used as webhook receiver (TODO: return is not right))
+# TODO: PUT is not working, and can't kill on Mac
 function ncWeb() {
     local _port="${1:-"2222"}"
     local _http_status="${2:-"200 OK"}" # 400 Bad Request
-    local _last_mod="$(date --rfc-2822)"
+    local _save_to="${3:-"/dev/null"}"
+    local _last_mod="$(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)" || return $?
     while true; do
-        echo -e "HTTP/1.1 ${_http_status}\nDate: $(date --rfc-2822)\nServer: ncWeb\nLast-Modified: ${_last_mod}\nContent-Length: 0\n\n" | nc -v -v -l -p ${_port}
+        echo -e "HTTP/1.1 ${_http_status}\nDate: $(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)\nServer: ncWeb\nLast-Modified: ${_last_mod}\nContent-Length: 0\n\n" | nc -v -v -n -l -p ${_port} > "${_save_to}"
     done
 }
 
@@ -498,6 +512,10 @@ function backupC() {
     if [ "Darwin" = "$(uname)" ]; then
         echo "#mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < \$time.now(-2419200)' | LC_ALL=C sort"   # -onlyin "${_src}"
         mdfind 'kMDItemFSSize > 209715200 && kMDItemContentModificationDate < $time.now(-2419200)' | LC_ALL=C sort | while read -r _l;do ls -lh "${_l}"; done | sort -k5 -h | tail -n20
+    fi
+    # Currently updatedb may not index external drive (maybe because exFat?)
+    if type updatedb &>/dev/null; then
+        updatedb &>/dev/null &
     fi
 }
 # accessed time doesn't seem to work with directory, so using _name to check files
