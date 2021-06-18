@@ -6,6 +6,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -29,6 +30,10 @@ USAGE EXAMPLE:
     reverseproxy <listening address:port> <listening pattern> <remote-URL> [certFile] [keyFile] 
     reverseproxy $(hostname -f):8080 / http://search.osakos.com/
 
+Use as a web server (receiver) with netcat command:
+    while true; do nc -nlp 2222 &>/dev/null; done
+    reverseproxy $(hostname -f):8080 / http://localhsot:2222
+
 Also, this script utilise the following environment variables:
 	_DUMP_BODY    boolean Whether dump the request/response body
 	_SAVE_BODY_TO string  Save body strings into this location
@@ -48,42 +53,49 @@ func handler(p *httputil.ReverseProxy) func(http.ResponseWriter, *http.Request) 
 		req.Header.Set("X-Real-IP", req.RemoteAddr)
 		//req.Header.Set("X-Forwarded-For", req.RemoteAddr)	// TODO: not sure which value to use
 		req.Header.Set("X-Forwarded-Proto", scheme)
-		bodyBytes, err := httputil.DumpRequest(req, dump_body)
+		_, err := httputil.DumpRequest(req, dump_body)
+		log.Printf("REQUEST HEAD: %s\n", req.Header)
 		if err != nil {
 			log.Printf("DumpRequest error: %s\n", err)
 		} else {
-			_logBody(bodyBytes, "REQUEST")
+			logBody(req.Body, "REQUEST")
 		}
 		p.ServeHTTP(w, req)
 	}
 }
 
 func logResponseHeader(resp *http.Response) (err error) {
-	bodyBytes, err := httputil.DumpResponse(resp, dump_body)
+	_, err = httputil.DumpResponse(resp, dump_body)
+	log.Printf("RESPONSE HEAD: %s\n", resp.Header)
 	if err != nil {
 		log.Printf("DumpResponse error: %s\n", err)
 	} else {
-		_logBody(bodyBytes, "RESPONSE")
+		logBody(resp.Body, "RESPONSE")
 	}
 	return nil
 }
 
-func _logBody(bodyBytes []byte, prefix string) {
+func logBody(body io.ReadCloser, prefix string) {
+	bodyBytes, err := ioutil.ReadAll(body)
+	if err != nil {
+		log.Printf("ioutil.ReadAll error: %s\n", err)
+		return
+	}
 	var log_msg string
 	if len(save_body_to) > 0 {
-		tus := strconv.FormatInt(time.Now().Unix(), 10)
-		fname := save_body_to + "/" + prefix + "_" + tus + ".out"
+		time_ms_str := strconv.FormatInt(time.Now().UnixNano()/1000000, 10)
+		fname := save_body_to + "/" + time_ms_str + "_" + prefix + ".out"
 		err := ioutil.WriteFile(fname, bodyBytes, 0644)
 		if err != nil {
 			panic(err)
 		}
-		log_msg = "Saved into " + fname
+		log_msg = "saved into " + fname
 	} else if len(bodyBytes) > 512 {
 		log_msg = string(bodyBytes)[0:512] + " ..."
 	} else {
 		log_msg = string(bodyBytes)
 	}
-	log.Printf("%s: %s\n%s\n", prefix, proxy_pass, log_msg)
+	log.Printf("%s BODY: %s\n", prefix, log_msg)
 }
 
 func main() {
