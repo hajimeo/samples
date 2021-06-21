@@ -849,6 +849,9 @@ function _trust_ca() {
     fi
 
     if [ ! -d "${_ca_dir}" ]; then
+        if [ -d "$(dirname ${_ca_dir})" ]; then
+            mkdir -v "${_ca_dir}" || return $?
+        fi
         _log "ERROR" "Couldn't find 'update-ca-trust' or 'update-ca-certificates' command or directory to install CA cert."
         return 1
     fi
