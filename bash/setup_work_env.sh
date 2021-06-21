@@ -164,7 +164,9 @@ function f_setup_golang() {
         export GOPATH=$HOME/go
     fi
     # Installing something. Ex: go get -v -u github.com/hajimeo/docker-webui
-    _log "INFO" "Installing/udating delve/dlv ..."
+    _log "INFO" "Installing/updating gore ..."
+    go get -u github.com/motemen/gore/cmd/gore || return $?
+    _log "INFO" "Installing/updating delve/dlv ..."
     # If Mac: brew install go-delve/delve/delve
     go get -u github.com/go-delve/delve/cmd/dlv || return $?
     [ ! -d /var/tmp/share ] && sudo mkdir -m 777 -p /var/tmp/share || return $?
