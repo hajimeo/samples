@@ -11,25 +11,17 @@ set -o posix
 #umask 0000
 
 # Global variables
-g_SERVER_KEY_LOCATION="/etc/security/serverKeys/"
-g_CLIENT_KEY_LOCATION="/etc/security/clientKeys/"
-g_CLIENT_TRUST_LOCATION="/etc/security/clientKeys/"
 g_KEYSTORE_FILE="server.keystore.jks"
 g_KEYSTORE_FILE_P12="server.keystore.p12"
-g_TRUSTSTORE_FILE="server.truststore.jks"
-g_CLIENT_KEYSTORE_FILE="client.keystore.jks"
-g_CLIENT_TRUSTSTORE_FILE="all.jks"
-g_CLIENT_TRUSTSTORE_PASSWORD="changeit"
 g_FREEIPA_DEFAULT_PWD="secret12"
-g_KDC_REALM="`hostname -s`" && g_KDC_REALM=${g_KDC_REALM^^}
-g_admin="${_ADMIN_USER-"admin"}"
+g_admin="${_ADMIN_USER-"admin"}"    # not in use at this moment
 g_admin_pwd="${_ADMIN_PASS-"admin123"}"
 
 
 function f_ssl_setup() {
     local __doc__="Setup SSL (wildcard) certificate for f_ssl_hadoop"
     # f_ssl_setup "" ".standalone.localdomain"
-    local _password="${1:-${g_DEFAULT_PASSWORD:-hadoop}}"
+    local _password="${1:-${g_admin_pwd}}"
     local _domain_suffix="${2:-"`hostname -s`.localdomain"}}"
     local _openssl_cnf="${3:-./openssl.cnf}"
 
@@ -73,9 +65,7 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
     openssl req -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" -extensions v3_req -sha256 -new -key ./server.${_domain_suffix#.}.key -out ./server.${_domain_suffix#.}.csr -config ${_openssl_cnf} || return $?
     openssl x509 -req -extensions v3_req -days 3650 -sha256 -in ./server.${_domain_suffix#.}.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ./server.${_domain_suffix#.}.crt -extfile ${_openssl_cnf} -passin "pass:$_password"
 
-    # Step3: Create a client truststore file used by all clients/nodes and a server keystore
-    mv -f ./$g_CLIENT_TRUSTSTORE_FILE ./$g_CLIENT_TRUSTSTORE_FILE.$$.bak &>/dev/null
-    keytool -keystore ./$g_CLIENT_TRUSTSTORE_FILE -alias hadoopAllCert -import -file ./server.${_domain_suffix#.}.crt -storepass ${g_CLIENT_TRUSTSTORE_PASSWORD} -noprompt || return $?
+    # Step3: Create .p12 file, then .jks file
     openssl pkcs12 -export -in ./server.${_domain_suffix#.}.crt -inkey ./server.${_domain_suffix#.}.key -certfile ./server.${_domain_suffix#.}.crt -out ./${g_KEYSTORE_FILE_P12} -passin "pass:${_password}" -passout "pass:${_password}" || return $?
     [ -s ./${g_KEYSTORE_FILE} ] && mv -f ./${g_KEYSTORE_FILE} ./${g_KEYSTORE_FILE}.$$.bak
     keytool -importkeystore -srckeystore ./${g_KEYSTORE_FILE_P12} -srcstoretype pkcs12 -srcstorepass ${_password} -destkeystore ./${g_KEYSTORE_FILE} -deststoretype JKS -deststorepass ${_password} || return $?
@@ -112,7 +102,7 @@ function f_kerberos_crossrealm_setup() {
 function f_ldap_server_install() {
     local __doc__="Install LDAP server packages on Ubuntu (need to test setup)"
     local _shared_domain="$1"
-    local _password="${2-${g_DEFAULT_PASSWORD:-"hadoop"}}"
+    local _password="${2-${g_admin_pwd}}"
 
     if [ ! `which apt-get` ]; then
         _warn "No apt-get"
@@ -137,18 +127,45 @@ slapd slapd/no_configuration boolean false
 slapd slapd/dump_database string when needed
 EOF
 
-    DEBIAN_FRONTEND=noninteractive apt-get install -y slapd ldap-utils
+    DEBIAN_FRONTEND=noninteractive apt-get install -y slapd ldap-utils || return $?
+    service slapd start
+    DEBIAN_FRONTEND=noninteractive apt-get install -y phpldapadmin
+    service apache2 start
 
     if [ "$_shared_domain" == "example.com" ]; then
-        curl -H "accept-encoding: gzip" https://raw.githubusercontent.com/hajimeo/samples/master/misc/example.ldif -o /tmp/example.ldif || return $?
-        ldapadd -x -D cn=admin,dc=example,dc=com -w hadoop -f /tmp/example.ldif
+        curl -sf -L --compressed https://raw.githubusercontent.com/hajimeo/samples/master/misc/example.ldif -o /tmp/example.ldif || return $?
+        ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/example.ldif
     fi
+
+    # setting up ldaps (SSL)    @see: https://ubuntu.com/server/docs/service-ldap-with-tls
+    mkdir -v /etc/ldap/ssl || return $?
+    curl -o /etc/ldap/ssl/slapd.key -sf -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.key
+    curl -o /etc/ldap/ssl/slapd.crt -sf -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.crt
+    chown -v openldap:openldap /etc/ldap/ssl/slapd.* || return $?
+    chmod -v 400 /etc/ldap/ssl/slapd.* || return $?
+    cat << EOF > /tmp/certinfo.ldif
+dn: cn=config
+add: olcTLSCACertificateFile
+olcTLSCACertificateFile: /etc/ssl/certs/rootCA_standalone.pem
+-
+add: olcTLSCertificateFile
+olcTLSCertificateFile: /etc/ldap/ssl/slapd.crt
+-
+add: olcTLSCertificateKeyFile
+olcTLSCertificateKeyFile: /etc/ldap/ssl/slapd.key
+EOF
+    ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/certinfo.ldif || return $?
+    # NOTE: as per doc, ldaps is deprecated but enabling for now...
+    _upsert "/etc/default/slapd" "SLAPD_SERVICES" '"ldap:/// ldapi:/// ldaps:///"'
+    service slapd restart || return $?
+    # test
+    echo | openssl s_client -connect localhost:636 -showcerts | head
 }
 
 function _ldap_server_configure_external() {
     local __doc__="TODO: Configure LDAP server via SSH (requires password-less ssh)"
     local _ldap_domain="$1"
-    local _password="${2-${g_DEFAULT_PASSWORD:-"hadoop"}}"
+    local _password="${2-${g_admin_pwd}}"
     local _server="${3-localhost}"
 
     if [ -z "$_ldap_domain" ]; then
@@ -323,10 +340,10 @@ function f_freeipa_cert_update() {
     local _ipa_server_fqdn="${1}"
     local _p12_file="${2}"
     local _full_ca="${3}"   # If intermediate is used, concatenate first
-    local _p12_pass="${4:-${g_DEFAULT_PASSWORD:-"hadoop"}}"
+    local _p12_pass="${4:-${g_admin_pwd}}"
     local _adm_pwd="${5:-$g_FREEIPA_DEFAULT_PWD}"
     # example of generating p12.
-    #openssl pkcs12 -export -chain -CAfile rootCA_standalone.crt -in standalone.localdomain.crt -inkey standalone.localdomain.key -name standalone.localdomain -out standalone.localdomain.p12 -passout pass:hadoop
+    #openssl pkcs12 -export -chain -CAfile rootCA_standalone.crt -in standalone.localdomain.crt -inkey standalone.localdomain.key -name standalone.localdomain -out standalone.localdomain.p12 -passout pass:${_p12_pass}
 
     if [ -z "${_p12_file}" ]; then
         if [ ! -s /var/tmp/share/cert/standalone.localdomain.p12 ]; then
@@ -408,7 +425,7 @@ curl -o /etc/pki/tls/private/localhost.key -L https://raw.githubusercontent.com/
 function f_sssd_setup() {
     local __doc__="setup SSSD on each node (security lab) If /etc/sssd/sssd.conf exists, skip. Kerberos is required."
     # https://github.com/HortonworksUniversity/Security_Labs#install-solrcloud
-    # f_sssd_setup administrator '******' 'hdp.localdomain' 'adhost.hdp.localdomain' 'dc=hdp,dc=localdomain' 'hadoop' 'sandbox-hdp.hortonworks.com' 'sandbox-hdp.hortonworks.com'
+    # f_sssd_setup administrator '******' 'hdp.localdomain' 'adhost.hdp.localdomain' 'dc=hdp,dc=localdomain' '${_password}' 'sandbox-hdp.hortonworks.com' 'sandbox-hdp.hortonworks.com'
     local ad_user="$1"    #registersssd
     local ad_pwd="$2"
     local ad_domain="$3"  #lab.hortonworks.net
@@ -529,7 +546,7 @@ function _ssl_openssl_cnf_generate() {
 
     [ -z "$_domain_suffix" ] && _domain_suffix=".`hostname`"
     [ -z "$_dname" ] && _dname="CN=*.${_domain_suffix#.}, OU=Lab, O=Osakos, L=Brisbane, ST=QLD, C=AU"
-    [ -z "$_password" ] && _password=${g_DEFAULT_PASSWORD:-hadoop}
+    [ -z "$_password" ] && _password=${g_admin_pwd}
 
     echo [ req ] > "${_work_dir%/}/openssl.cnf"
     echo input_password = $_password >> "${_work_dir%/}/openssl.cnf"
