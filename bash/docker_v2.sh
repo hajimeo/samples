@@ -19,8 +19,8 @@
 
 : ${_TMP:="/tmp"}
 
-_curl="curl -v -f -D /dev/stderr --compressed -k"
-#_curl="curl -s -f -D /dev/stderr --compressed -k"
+#_curl="curl -v -f -D /dev/stderr --compressed -k"
+_curl="curl -s -f -D /dev/stderr --compressed -k"
 
 function _print_token() {
     python -c "import sys,json
@@ -53,7 +53,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _TOKEN="$(get_token)"
 
     if [ -n "${_TOKEN}" ]; then
-        # For debuging (Nexus's token can't be decoded)
+        echo "### Got token" >&2
+        echo "${_TOKEN}" >&2
+        # For debugging (Nexus's token can't be decoded)
         if which jwt &>/dev/null; then
             echo "### Decoding JWT" >&2
             jwt decode "${_TOKEN}"
