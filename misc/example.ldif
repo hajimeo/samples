@@ -108,6 +108,12 @@ objectClass: organizationalunit
 objectClass: top
 ou: People
 
+dn: cn=default-group,dc=example,dc=com
+cn: default-group
+gidnumber: 1000
+objectclass: posixGroup
+objectclass: top
+
 dn: uid=abarnes,ou=People,dc=example,dc=com
 objectClass: person
 #objectClass: cos
