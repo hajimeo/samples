@@ -6,6 +6,7 @@ alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
 alias fd='find . -name'
 alias sha1R='find . -type f -exec sha1sum "{}" \;'
 alias fcv='fc -e vim'
+alias vim0='vim -u /dev/null'   # handy when you process large text
 # 'time' with format
 alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"' # brew install gnu-time --with-default-names
 # In case 'tree' is not installed
@@ -447,15 +448,15 @@ function pgStart() {
     # To connect: psql template1
 }
 
-# Start a dummy web server (can be used as webhook receiver (TODO: return is not right))
-# TODO: PUT is not working, and can't kill on Mac
+# Start a dummy web server for webhook POST receiver
+# TODO: PUT is not working because of 0 content length (which is for POST), and can't kill on Mac
 function ncWeb() {
     local _port="${1:-"2222"}"
     local _http_status="${2:-"200 OK"}" # 400 Bad Request
-    local _save_to="${3:-"/dev/null"}"
     local _last_mod="$(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)" || return $?
     while true; do
-        echo -e "HTTP/1.1 ${_http_status}\nDate: $(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)\nServer: ncWeb\nLast-Modified: ${_last_mod}\nContent-Length: 0\n\n" | nc -v -v -n -l -p ${_port} > "${_save_to}"
+        echo -e "HTTP/1.1 ${_http_status}\nDate: $(type gdate &>/dev/null && gdate --rfc-2822 || date --rfc-2822)\nServer: ncWeb\nLast-Modified: ${_last_mod}\nContent-Length: 0\n\n" | nc -v -v -n -l -p ${_port}
+        echo -e "\n"
     done
 }
 
@@ -474,26 +475,27 @@ function backupC() {
 
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory'
-    find ${_src%/} -type d -mtime +14 -name '*_tmp' -delete &
-    find ${_src%/} -type f -mtime +14 -name '*.tmp' -delete &
-    find ${_src%/} -type f -mtime +90 -size +128000k \( -name "nexus.log" -o -name "request.log" -o -name "clm-server.log" -o -name "audit.log" \) -delete &
-    find ${_src%/} -type f -mtime +180  \( -name "*.log" -o -name "*.out" -o -name "*.log.gz" \) -delete &
-    find ${_src%/} -type f -mtime +360 -delete &
+    # NOTE: find ${_src%/} does not work without -L, and find ${_src%/}/* is somehow much slow, but then find ${_src%/}/ does not work with -delete
+    find -L ${_src%/} -type d -mtime +14 -name '*_tmp' -delete &
+    find -L ${_src%/} -type f -mtime +14 -name '*.tmp' -delete &
+    find -L ${_src%/} -type f -mtime +90 -size +128000k \( -name "nexus.log" -o -name "request.log" -o -name "clm-server.log" -o -name "audit.log" \) -delete &
+    find -L ${_src%/} -type f -mtime +180  \( -name "*.log" -o -name "*.out" -o -name "*.log.gz" \) -delete &
+    find -L ${_src%/} -type f -mtime +360 -delete &
     # NOTE: this find command requires "/*"
     if [ "Darwin" = "$(uname)" ]; then
-        gfind ${_src%/}/* -type d -mtime +2 -empty -delete &
+        gfind -L ${_src%/}/* -type d -mtime +2 -empty -delete 2>/dev/null &
     else
-        find ${_src%/}/* -type d -mtime +2 -empty -delete &
+        find -L ${_src%/}/* -type d -mtime +2 -empty -delete &
     fi
     wait
 
     #local _mv="mv --backup=t"
     #[ "Darwin" = "$(uname)" ] && _mv="gmv --backup=t"
-    #find ${_src%/} -type f -mtime +360 -size +100k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #find ${_src%/} -type f -mtime +270 -size +10240k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #find ${_src%/} -type f -mtime +180 -size +1024000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #find ${_src%/} -type f -mtime +90  -size +2048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #find ${_src%/} -type f -mtime +45 -size +4048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #find -L ${_src%/} -type f -mtime +360 -size +100k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #find -L ${_src%/} -type f -mtime +270 -size +10240k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #find -L ${_src%/} -type f -mtime +180 -size +1024000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #find -L ${_src%/} -type f -mtime +90  -size +2048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #find -L ${_src%/} -type f -mtime +45 -size +4048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     wait
 
     # Sync all files smaller than _size (10MB), means *NO* backup for files over 10MB.
@@ -515,7 +517,8 @@ function backupC() {
     fi
     # Currently updatedb may not index external drive (maybe because exFat?)
     if type updatedb &>/dev/null; then
-        updatedb &>/dev/null &
+        echo "# executing updatedb (may ask sudo password)"
+        updatedb
     fi
 }
 # accessed time doesn't seem to work with directory, so using _name to check files
