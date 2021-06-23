@@ -3,25 +3,26 @@
 # DOWNLOAD:
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_security.sh
 #
+_DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
+type _import &>/dev/null || _import() { [ ! -s /tmp/${1}_$$ ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1}_$$; . /tmp/${1}_$$; }
+_import "utils.sh"
 
-### OS/shell settings
-shopt -s nocasematch
-#shopt -s nocaseglob
-set -o posix
-#umask 0000
 
 # Global variables
 g_KEYSTORE_FILE="server.keystore.jks"
 g_KEYSTORE_FILE_P12="server.keystore.p12"
-g_FREEIPA_DEFAULT_PWD="secret12"
+g_KDC_REALM="EXAMPLE.COM"   #$(hostname -s)" && g_KDC_REALM=${g_KDC_REALM^^}
+
 g_admin="${_ADMIN_USER-"admin"}"    # not in use at this moment
 g_admin_pwd="${_ADMIN_PASS-"admin123"}"
+g_OTHER_DEFAULT_PWD="${g_admin_pwd}"
+g_FREEIPA_DEFAULT_PWD="secret12"
 
 
 function f_ssl_setup() {
     local __doc__="Setup SSL (wildcard) certificate for f_ssl_hadoop"
     # f_ssl_setup "" ".standalone.localdomain"
-    local _password="${1:-${g_admin_pwd}}"
+    local _password="${1:-${g_OTHER_DEFAULT_PWD}}"
     local _domain_suffix="${2:-"`hostname -s`.localdomain"}}"
     local _openssl_cnf="${3:-./openssl.cnf}"
 
@@ -34,7 +35,7 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
     fi
 
     if [ -s ./rootCA.key ]; then
-        _info "rootCA.key exists. Reusing..."
+        _log "INFO" "rootCA.key exists. Reusing..."
     else
         # Step1: create my root CA (key) and cert (pem) TODO: -aes256 otherwise key is not protected
         openssl genrsa -passout "pass:${_password}" -out ./rootCA.key 2048 || return $?
@@ -71,6 +72,180 @@ DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
     keytool -importkeystore -srckeystore ./${g_KEYSTORE_FILE_P12} -srcstoretype pkcs12 -srcstorepass ${_password} -destkeystore ./${g_KEYSTORE_FILE} -deststoretype JKS -deststorepass ${_password} || return $?
 }
 
+function f_kdc_install() {
+    local __doc__="Install KDC server packages on Ubuntu (may take long time)"
+    local _realm="${1:-"${g_KDC_REALM}"}"
+    local _password="${2:-"${g_OTHER_DEFAULT_PWD}"}"
+    local _server="${3:-$(hostname -I | awk '{print $1}')}"
+    local _ldap_password="${4}"
+
+    if [ -z "${_realm}" ]; then
+        _realm="$(hostname -s)" && _realm="${_realm^^}"
+        _log "INFO" "Using ${_realm} for realm"
+    fi
+    if [ -z "${_server}" ]; then
+        _log "ERROR" "No server IP/name for KDC"
+        return 1
+    fi
+    if [ ! "$(which apt-get)" ]; then
+        _log "WARN" "No apt-get"
+        return 1
+    fi
+    DEBIAN_FRONTEND=noninteractive apt-get install -y krb5-kdc krb5-admin-server libapache2-mod-auth-kerb || return $?
+
+    if [ -z "${_ldap_password}" ]; then
+        if [ -s /etc/krb5kdc/kdc.conf ] && [ -s /var/lib/krb5kdc/principal_${_realm} ]; then
+            if grep -qE '^\s*'${_realm}'\b' /etc/krb5kdc/kdc.conf; then
+                _log "INFO" "Realm: ${_realm} may already exit in /etc/krb5kdc/kdc.conf. Not try creating..."
+                return 0
+            fi
+        fi
+
+        cat << EOF >/tmp/f_kdc_install_on_host_kdc_$$.tmp
+    ${_realm} = {
+        database_name = /var/lib/krb5kdc/principal_${_realm}
+        admin_keytab = FILE:/etc/krb5kdc/kadm5_${_realm}.keytab
+        #acl_file = /etc/krb5kdc/kadm5_${_realm}.acl
+        key_stash_file = /etc/krb5kdc/stash_${_realm}
+        kdc_ports = 750,88
+        max_life = 10h 0m 0s
+        max_renewable_life = 7d 0h 0m 0s
+        master_key_type = des3-hmac-sha1
+        supported_enctypes = aes256-cts:normal arcfour-hmac:normal des3-hmac-sha1:normal des-cbc-crc:normal des:normal des:v4 des:norealm des:onlyrealm des:afs3
+        default_principal_flags = +preauth
+    }
+EOF
+        sed -i "/\[realms\]/r /tmp/f_kdc_install_on_host_kdc_$$.tmp" /etc/krb5kdc/kdc.conf
+    fi
+
+    cp -p /etc/krb5.conf /etc/krb5.conf.$(date +"%Y%m%d%H%M%S") || return $?
+
+    local _realm_extra=""
+    [ -n "${_ldap_password}" ] && _realm_extra="database_module = openldap_ldapconf"
+    cat << EOF > /etc/krb5.conf
+[libdefaults]
+  default_realm = ${_realm}
+  dns_lookup_realm = false
+  dns_lookup_kdc = false
+
+[realms]
+  ${_realm} = {
+    kdc = ${_server}
+    admin_server = ${_server}
+    default_domain = ${_realm,,}
+    ${_realm_extra}
+  }
+EOF
+
+    if [ -z "${_ldap_password}" ]; then
+        kdb5_util create -r ${_realm} -s -P ${_password} || return $? # or krb5_newrealm
+    else
+        f_ldap_config_for_kdc "${_ldap_password}" || return $?
+
+        local _dcs="dc=$(echo "${_realm,,}" | sed 's/\./,dc=/g')"
+        if [ -s /etc/krb5.conf ] && ! grep -qw 'ldap_kerberos_container_dn' /etc/krb5.conf; then
+            cat << EOF >> /etc/krb5.conf
+[dbdefaults]
+  ldap_kerberos_container_dn = cn=krbContainer,${_dcs}
+
+[dbmodules]
+  openldap_ldapconf = {
+    db_library = kldap
+    disable_last_success = true
+    disable_lockout  = true
+    ldap_kdc_dn = "uid=kdc-service,${_dcs}"
+    ldap_kadmind_dn = "uid=kadmin-service,${_dcs}"
+    ldap_service_password_file = /etc/krb5kdc/service.keyfile
+    ldap_servers = ldapi:///
+    ldap_conns_per_server = 5
+  }
+EOF
+        fi
+
+        kdb5_ldap_util -D cn=admin,${_dcs} -w "${_ldap_password}" create -subtrees ${_dcs} -r ${_realm} -s -H ldapi:/// -P "${_password}" || return $?
+        _log "TODO" "stashsrvpw will ask the passwords for service accounts..."
+        kdb5_ldap_util -D cn=admin,${_dcs} -w "${_ldap_password}" stashsrvpw -f /etc/krb5kdc/service.keyfile uid=kdc-service,${_dcs} -P "${_ldap_password}"
+        kdb5_ldap_util -D cn=admin,${_dcs} -w "${_ldap_password}" stashsrvpw -f /etc/krb5kdc/service.keyfile uid=kadmin-service,${_dcs} -P "${_password}"
+    fi
+
+    mv /etc/krb5kdc/kadm5.acl /etc/krb5kdc/.orig &>/dev/null
+    echo '*/admin *' >/etc/krb5kdc/kadm5.acl
+    service krb5-kdc restart && service krb5-admin-server restart
+    sleep 3
+    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} admin/admin@${_realm}"
+    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/${_server}@${_realm}"   # AMBARI-24869
+    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/admin@${_realm}" &>/dev/null # this should exist already
+    _log "INFO" "Testing ..."
+    kadmin -p admin/admin@${_realm} -w "${_password}" -q "get_principal admin/admin@${_realm}"
+}
+
+function f_ldap_config_for_kdc() {
+    local __doc__="(Re)configure *local* ldap server(slapd) for KDC server"
+    # @see: https://ubuntu.com/server/docs/service-kerberos-with-openldap-backend
+    #       https://github.com/nugaon/docker-kerberos-with-ldap#bind-ldap-user-to-kerberos-db
+    local _ldap_password="${1-${g_OTHER_DEFAULT_PWD}}"
+    local _realm="${2:-"${g_KDC_REALM}"}"
+    local _dcs="dc=$(echo "${_realm,,}" | sed 's/\./,dc=/g')"
+
+    # This 'excludes' file prevent to install docs
+    if [ -s /etc/dpkg/dpkg.cfg.d/excludes ]; then
+        mv -v /etc/dpkg/dpkg.cfg.d/excludes /var/tmp/excludes
+    fi
+    DEBIAN_FRONTEND=noninteractive apt-get install -y krb5-kdc-ldap schema2ldif || return $?
+    if [ ! -f /etc/dpkg/dpkg.cfg.d/excludes ] && [ -s /var/tmp/excludes ]; then
+        mv -v /var/tmp/excludes /etc/dpkg/dpkg.cfg.d/excludes
+    fi
+    cp -v /usr/share/doc/krb5-kdc-ldap/kerberos.schema.gz /etc/ldap/schema/ || return $?
+    gunzip /etc/ldap/schema/kerberos.schema.gz || return $?
+    ldap-schema-manager -i kerberos.schema || return $?
+    ldapmodify -Q -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+add: olcDbIndex
+olcDbIndex: krbPrincipalName eq,pres,sub
+EOF
+    #ldapdelete -x -D cn=admin,dc=example,dc=com -w "${_ldap_password}" uid=kdc-service,dc=example,dc=com
+    #ldapdelete -x -D cn=admin,dc=example,dc=com -w "${_ldap_password}" uid=kadmin-service,dc=example,dc=com
+    # NOTE: this is not recommended way, and only for demo
+    ldapadd -x -D cn=admin,${_dcs} -w "${_ldap_password}" <<EOF
+dn: uid=kdc-service,${_dcs}
+uid: kdc-service
+objectClass: account
+objectClass: simpleSecurityObject
+userPassword: ${_ldap_password}
+description: Account used for the Kerberos KDC
+
+dn: uid=kadmin-service,${_dcs}
+uid: kadmin-service
+objectClass: account
+objectClass: simpleSecurityObject
+userPassword: ${_ldap_password}
+description: Account used for the Kerberos Admin server
+EOF
+    # Next step is confusing, so taking a backup
+    slapcat -b cn=config -l /tmp/ldap-config_before.ldif || return $?
+    if ! grep -qF 'olcAccess: {2}to attrs=krbPrincipalKey' /tmp/ldap-config_before.ldif; then
+        ldapmodify -Q -Y EXTERNAL -H ldapi:/// <<EOF
+dn: olcDatabase={1}mdb,cn=config
+add: olcAccess
+olcAccess: {2}to attrs=krbPrincipalKey
+  by anonymous auth
+  by dn.exact="uid=kdc-service,${_dcs}" read
+  by dn.exact="uid=kadmin-service,${_dcs}" write
+  by self write
+  by * none
+-
+add: olcAccess
+olcAccess: {3}to dn.subtree="cn=krbContainer,${_dcs}"
+  by dn.exact="uid=kdc-service,${_dcs}" read
+  by dn.exact="uid=kadmin-service,${_dcs}" write
+  by * none
+EOF
+        slapcat -b cn=config -l /tmp/ldap-config_after.ldif || return $?
+        diff -wu /tmp/ldap-config_before.ldif /tmp/ldap-config_after.ldif
+        _log "INFO" "Please review above diff. then restart slapd."; sleep 3
+    fi
+}
+
 function f_kerberos_crossrealm_setup() {
     local __doc__="TODO: Setup cross realm (MIT only). Requires Password-less SSH login"
     local _remote_kdc="$1"
@@ -80,7 +255,7 @@ function f_kerberos_crossrealm_setup() {
     if [[ "$_local_kdc" =~ ^"127" ]]; then
         _local_kdc="`ifconfig ens3 | grep -oP 'inet addr:\d+\.\d+\.\d+\.\d+' | cut -d":" -f2`"
         [ -z "$_local_kdc" ] && return 11
-        _warn "hostname -i doesn't work so that using IP of 'ens3' $_local_kdc"
+        _log "WARN" "hostname -i doesn't work so that using IP of 'ens3' $_local_kdc"
     fi
 
     nc -z ${_remote_kdc} 88 || return 12
@@ -102,14 +277,15 @@ function f_kerberos_crossrealm_setup() {
 function f_ldap_server_install() {
     local __doc__="Install LDAP server packages on Ubuntu (need to test setup)"
     local _shared_domain="$1"
-    local _password="${2-${g_admin_pwd}}"
+    local _password="${2-${g_OTHER_DEFAULT_PWD}}"
 
     if [ ! `which apt-get` ]; then
-        _warn "No apt-get"
+        _log "WARN" "No apt-get"
         return 1
     fi
 
     [ -z "$_shared_domain" ] && _shared_domain="example.com"
+    local _dcs="dc=$(echo "${_shared_domain}" | sed 's/\./,dc=/g')"
 
 cat << EOF | debconf-set-selections
 slapd slapd/internal/adminpw password ${_password}
@@ -143,6 +319,7 @@ EOF
     curl -o /etc/ldap/ssl/slapd.crt -sf -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.crt
     chown -v openldap:openldap /etc/ldap/ssl/slapd.* || return $?
     chmod -v 400 /etc/ldap/ssl/slapd.* || return $?
+    _trust_ca || return $?
     cat << EOF > /tmp/certinfo.ldif
 dn: cn=config
 add: olcTLSCACertificateFile
@@ -154,91 +331,13 @@ olcTLSCertificateFile: /etc/ldap/ssl/slapd.crt
 add: olcTLSCertificateKeyFile
 olcTLSCertificateKeyFile: /etc/ldap/ssl/slapd.key
 EOF
-    ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/certinfo.ldif || return $?
+    ldapadd -x -D cn=admin,${_dcs} -w "${_password}" -f /tmp/example.ldif
+    #ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/certinfo.ldif || return $?
     # NOTE: as per doc, ldaps is deprecated but enabling for now...
     _upsert "/etc/default/slapd" "SLAPD_SERVICES" '"ldap:/// ldapi:/// ldaps:///"'
     service slapd restart || return $?
     # test
     echo | openssl s_client -connect localhost:636 -showcerts | head
-}
-
-function _ldap_server_configure_external() {
-    local __doc__="TODO: Configure LDAP server via SSH (requires password-less ssh)"
-    local _ldap_domain="$1"
-    local _password="${2-${g_admin_pwd}}"
-    local _server="${3-localhost}"
-
-    if [ -z "$_ldap_domain" ]; then
-        _ldap_domain="dc=example,dc=com"
-        _warn "No LDAP Domain, so using ${_ldap_domain}"
-    fi
-
-    local _md5="`ssh -q root@$_server -t "slappasswd -s ${_password}"`" || return $?
-
-    if [ -z "$_md5" ]; then
-        _error "Couldn't generate hashed password"
-        return 1
-    fi
-
-    _info "Updating password"
-    ssh -q root@$_server -t 'echo "dn: olcDatabase={0}config,cn=config
-changetype: modify
-add: olcRootPW
-olcRootPW: '${_md5}'
-" > /tmp/chrootpw.ldif && ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/chrootpw.ldif' || return $?
-
-    _info "Updating domain"
-    ssh -q root@$_server -t 'echo "dn: olcDatabase={1}monitor,cn=config
-changetype: modify
-replace: olcAccess
-olcAccess: {0}to * by dn.base="gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth"
-  read by dn.base="cn=Manager,'${_ldap_domain}'" read by * none
-
-dn: olcDatabase={2}bdb,cn=config
-changetype: modify
-replace: olcSuffix
-olcSuffix: '${_ldap_domain}'
-
-dn: olcDatabase={2}bdb,cn=config
-changetype: modify
-replace: olcRootDN
-olcRootDN: cn=Manager,'${_ldap_domain}'
-
-dn: olcDatabase={2}bdb,cn=config
-changetype: modify
-add: olcRootPW
-olcRootPW: '${_md5}'
-
-dn: olcDatabase={2}bdb,cn=config
-changetype: modify
-add: olcAccess
-olcAccess: {0}to attrs=userPassword,shadowLastChange by
-  dn="cn=Manager,'${_ldap_domain}'" write by anonymous auth by self write by * none
-olcAccess: {1}to dn.base="" by * read
-olcAccess: {2}to * by dn="cn=Manager,'${_ldap_domain}'" write by * read
-" > /tmp/chdomain.ldif && ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/chdomain.ldif' || return $?
-
-    _info "Updating base domain"
-    ssh -q root@$_server -t 'echo "dn: '${_ldap_domain}'
-objectClass: top
-objectClass: dcObject
-objectclass: organization
-o: Server World
-dc: Srv
-
-dn: cn=Manager,'${_ldap_domain}'
-objectClass: organizationalRole
-cn: Manager
-description: Directory Manager
-
-dn: ou=People,'${_ldap_domain}'
-objectClass: organizationalUnit
-ou: People
-
-dn: ou=Group,'${_ldap_domain}'
-objectClass: organizationalUnit
-ou: Group
-" > /tmp/basedomain.ldif && ldapadd -Y EXTERNAL -H ldapi:/// -f /tmp/basedomain.ldif' || return $?
 }
 
 function f_ldap_client_install() {
@@ -250,23 +349,23 @@ function f_ldap_client_install() {
     local _start_from="${4-$r_NODE_START_NUM}"
 
     if [ -z "$_ldap_server" ]; then
-        _warn "No LDAP server hostname. Using ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
+        _log "WARN" "No LDAP server hostname. Using ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
         _ldap_server="${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
     fi
     if [ -z "$_ldap_basedn" ]; then
-        _warn "No LDAP Base DN, so using dc=example,dc=com"
+        _log "WARN" "No LDAP Base DN, so using dc=example,dc=com"
         _ldap_basedn="dc=example,dc=com"
     fi
 
     for i in `_docker_seq "$_how_many" "$_start_from"`; do
         ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "yum -y erase nscd;yum -y install sssd sssd-client sssd-ldap openldap-clients"
         if [ $? -eq 0 ]; then
-            ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "authconfig --enablesssd --enablesssdauth --enablelocauthorize --enableldap --enableldapauth --disableldaptls --ldapserver=ldap://${_ldap_server} --ldapbasedn=${_ldap_basedn} --update" || _warn "node$i failed to setup ldap client"
+            ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "authconfig --enablesssd --enablesssdauth --enablelocauthorize --enableldap --enableldapauth --disableldaptls --ldapserver=ldap://${_ldap_server} --ldapbasedn=${_ldap_basedn} --update" || _log "WARN" "node$i failed to setup ldap client"
             # test
             #authconfig --test
             # getent passwd admin
         else
-            _warn "node$i failed to install ldap client"
+            _log "WARN" "node$i failed to install ldap client"
         fi
     done
 }
@@ -279,28 +378,28 @@ function f_freeipa_install() {
     local _force="${3}"
 
     # Used ports https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/linux_domain_identity_authentication_and_policy_guide/installing-ipa
-    ssh -q root@${_node} -t "yum update -y"
-    ssh -q root@${_ipa_server_fqdn} -t "yum install freeipa-server -y" || return $?
+    yum update -y || return $?
+    yum install freeipa-server -y || return $?
 
     # seems FreeIPA needs ipv6 for loopback
-    ssh -q root@${_ipa_server_fqdn} -t 'grep -q "^net.ipv6.conf.all.disable_ipv6" /etc/sysctl.conf || (echo "net.ipv6.conf.all.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.all.disable_ipv6=0);grep -q "^net.ipv6.conf.lo.disable_ipv6" /etc/sysctl.conf || (echo "net.ipv6.conf.lo.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.lo.disable_ipv6=0)'
-    ssh -q root@${_ipa_server_fqdn} -t 'sysctl -a 2>/dev/null | grep "^net.ipv6.conf.lo.disable_ipv6 = 1"' && return $?
+    grep -q "^net.ipv6.conf.all.disable_ipv6" /etc/sysctl.conf || (echo "net.ipv6.conf.all.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.all.disable_ipv6=0);grep -q "^net.ipv6.conf.lo.disable_ipv6" /etc/sysctl.conf || (echo "net.ipv6.conf.lo.disable_ipv6 = 0" >> /etc/sysctl.conf;sysctl -w net.ipv6.conf.lo.disable_ipv6=0)
+    sysctl -a 2>/dev/null | grep "^net.ipv6.conf.lo.disable_ipv6 = 1" && return $?
     # https://bugzilla.redhat.com/show_bug.cgi?id=1677027
-    ssh -q root@${_ipa_server_fqdn} -t 'sysctl -w fs.protected_regular=0'
+    sysctl -w fs.protected_regular=0
 
-    #_warn " YOU MIGHT WANT TO RESTART OS/CONTAINTER NOW (sleep 10)  "
+    #_log "WARN" " YOU MIGHT WANT TO RESTART OS/CONTAINTER NOW (sleep 10)  "
     #sleep 10
 
     # TODO: got D-bus error when freeIPA calls systemctl (service dbus restart makes install works but makes docker slow/unstable)
-    [[ "${_force}" =~ ^(y|Y) ]] && ssh -q root@${_ipa_server_fqdn} -t 'ipa-server-install --uninstall --ignore-topology-disconnect --ignore-last-of-role'
+    [[ "${_force}" =~ ^(y|Y) ]] && ipa-server-install --uninstall --ignore-topology-disconnect --ignore-last-of-role
     # Adding -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket in dcoker run
-    ssh -q root@${_ipa_server_fqdn} -t '_d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U'
+    _d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U
     if [ $? -ne 0 ]; then
-        _error "ipa-server-install failed. You might want to run 'service dbus restart' and/or restart the OS (container), and uninstall then re-install"
+        _log "ERROR" "ipa-server-install failed. You might want to run 'service dbus restart' and/or restart the OS (container), and uninstall then re-install"
         return 1
     fi
-    ssh -q root@${_ipa_server_fqdn} -t '[ ! -s /etc/rc.lcoal ] && echo -e "#!/bin/bash\nexit 0" > /etc/rc.local'
-    ssh -q root@${_ipa_server_fqdn} -t 'grep -q "ipactl start" /etc/rc.local || echo -e "\n`which ipactl` start" >> /etc/rc.local'
+    [ ! -s /etc/rc.lcoal ] && echo -e "#!/bin/bash\nexit 0" > /etc/rc.local
+    grep -q "ipactl start" /etc/rc.local || echo -e "\n`which ipactl` start" >> /etc/rc.local
 
     local _domain="${_ipa_server_fqdn#*.}"
     if [ "${_domain}" == "standalone.localdomain" ]; then
@@ -311,7 +410,7 @@ function f_freeipa_install() {
     #ipa config-show --all
 
     f_freeipa_cert_update "${_ipa_server_fqdn}"
-    _warn "TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days"
+    _log "WARN" "TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days"
 }
 
 function f_freeipa_client_install() {
@@ -327,11 +426,11 @@ function f_freeipa_client_install() {
     [[ "${_force_reinstall}" =~ y|Y ]] && _uninstall="service dbus restart; ipa-client-install --unattended --uninstall"
 
     # Avoid installing client on IPA server (best effort)
-    ssh -q root@${_client_host} -t '[ "`hostname -f`" = "'${_ipa_server_fqdn}'" ] && exit
-echo -n "'${_adm_pwd}'" | kinit admin
-yum install ipa-client -y
-'${_uninstall}'
-ipa-client-install --unattended --hostname=`hostname -f` --server='${_ipa_server_fqdn}' --domain='${_domain}' --realm='${_domain^^}' -p admin -w '${_adm_pwd}' --mkhomedir --force-join'
+    [ "`hostname -f`" = "'${_ipa_server_fqdn}'" ] && exit
+    echo -n "'${_adm_pwd}'" | kinit admin
+    yum install ipa-client -y
+    ${_uninstall}
+    ipa-client-install --unattended --hostname=`hostname -f` --server=${_ipa_server_fqdn} --domain=${_domain} --realm=${_domain^^} -p admin -w ${_adm_pwd} --mkhomedir --force-join
 }
 
 function f_freeipa_cert_update() {
@@ -340,7 +439,7 @@ function f_freeipa_cert_update() {
     local _ipa_server_fqdn="${1}"
     local _p12_file="${2}"
     local _full_ca="${3}"   # If intermediate is used, concatenate first
-    local _p12_pass="${4:-${g_admin_pwd}}"
+    local _p12_pass="${4:-${g_OTHER_DEFAULT_PWD}}"
     local _adm_pwd="${5:-$g_FREEIPA_DEFAULT_PWD}"
     # example of generating p12.
     #openssl pkcs12 -export -chain -CAfile rootCA_standalone.crt -in standalone.localdomain.crt -inkey standalone.localdomain.key -name standalone.localdomain -out standalone.localdomain.p12 -passout pass:${_p12_pass}
@@ -360,7 +459,7 @@ function f_freeipa_cert_update() {
     fi
     if [ -s ${_full_ca} ]; then
         ssh -q root@${_ipa_server_fqdn} -t "ipa-cacert-manage install ${_full_ca} && echo -n '${_adm_pwd}' | kinit admin && ipa-certupdate" #|| return $?
-        _info "TODO: Run 'ipa-certupdate' on each node."
+        _log "INFO" "TODO: Run 'ipa-certupdate' on each node."
     fi
 
     scp ${_p12_file} root@${_ipa_server_fqdn}:/tmp/ || return $?
@@ -517,14 +616,14 @@ kdestroy -c ${_krbcc}"
         local _c="`f_get_cluster_name ${_ambari_host}`" || return $?
         local _hdfs_client_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='HDFS_CLIENT' and current_state='INSTALLED' limit 1" ${_ambari_host}`"
         if [ -z "$_hdfs_client_node" ]; then
-            _warn "No hdfs client node found to execute 'hdfs dfsadmin -refreshUserToGroupsMappings'"
+            _log "WARN" "No hdfs client node found to execute 'hdfs dfsadmin -refreshUserToGroupsMappings'"
             return 1
         fi
         ssh -q root@$_hdfs_client_node -t "sudo -u hdfs bash -c \"kinit -kt /etc/security/keytabs/hdfs.headless.keytab hdfs-${_c}; hdfs dfsadmin -refreshUserToGroupsMappings\""
 
         local _yarn_rm_node="`_ambari_query_sql "select h.host_name from hostcomponentstate hcs join hosts h on hcs.host_id=h.host_id where component_name='RESOURCEMANAGER' and current_state='STARTED' limit 1" ${_ambari_host}`"
         if [ -z "$_yarn_rm_node" ]; then
-            _error "No yarn client node found to execute 'yarn rmadmin -refreshUserToGroupsMappings'"
+            _log "ERROR" "No yarn client node found to execute 'yarn rmadmin -refreshUserToGroupsMappings'"
             return 1
         fi
         ssh -q root@$_yarn_rm_node -t "sudo -u yarn bash -c \"kinit -kt /etc/security/keytabs/yarn.service.keytab yarn/\$(hostname -f); yarn rmadmin -refreshUserToGroupsMappings\""
@@ -540,13 +639,13 @@ function _ssl_openssl_cnf_generate() {
     local _work_dir="${4-./}"
 
     if [ -s "${_work_dir%/}/openssl.cnf" ]; then
-        _warn "${_work_dir%/}/openssl.cnf exists. Skipping..."
+        _log "WARN" "${_work_dir%/}/openssl.cnf exists. Skipping..."
         return
     fi
 
     [ -z "$_domain_suffix" ] && _domain_suffix=".`hostname`"
     [ -z "$_dname" ] && _dname="CN=*.${_domain_suffix#.}, OU=Lab, O=Osakos, L=Brisbane, ST=QLD, C=AU"
-    [ -z "$_password" ] && _password=${g_admin_pwd}
+    [ -z "$_password" ] && _password=${g_OTHER_DEFAULT_PWD}
 
     echo [ req ] > "${_work_dir%/}/openssl.cnf"
     echo input_password = $_password >> "${_work_dir%/}/openssl.cnf"
