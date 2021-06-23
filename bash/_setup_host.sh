@@ -291,9 +291,10 @@ listen stats
             if ! grep -qE "^backend backend_p${_b_port}$" "${_cfg}"; then
                 # NOTE: not using 'roundrobin' as I'm not sure if sticky session with cookie is working.
                 #       so, also removed 'cookie NXSESSIONID prefix nocache' and 'cookie' from server line
+                #       Forgot why I added hash-type consistent, i don't think i need this.
                 echo "backend backend_p${_b_port}
   balance first
-  hash-type consistent
+  #hash-type consistent
   option forwardfor
   http-request set-header X-Forwarded-Port %[dst_port]
   option tcp-check" >>"${_cfg}" # option httpchk OPTIONS /
@@ -1746,92 +1747,6 @@ function f_port_forward() {
     ssh -2CNnqTxfg -L$_local_port:$_remote_host:$_remote_port $_remote_host
 }
 
-function f_add_cert() {
-    local _crt_file="$1"
-    local _file_name="$(basename ${_crt_file})"
-    # NOTE: /usr/share/ca-certificates didn't work
-    local _ca_dir="/usr/local/share/ca-certificates/extra"
-    if [ -s ${_ca_dir%/}/${_file_name} ]; then
-        _info "${_ca_dir%/}/${_file_name} exists."
-        return 0
-    fi
-    if [ ! -d ${_ca_dir%/} ]; then
-        mkdir -m 755 -p ${_ca_dir%/} || return $?
-    fi
-    cp -v "${_crt_file}" ${_ca_dir%/}/ || return $?
-    update-ca-certificates
-}
-
-function f_kdc_install() {
-    local __doc__="Install KDC server packages on Ubuntu (may take long time)"
-    local _realm="${1:-$g_KDC_REALM}"
-    local _password="${2:-${g_DEFAULT_PASSWORD:-"hadoop"}}"
-    local _server="${3:-$(hostname -i | awk '{print $1}')}"
-
-    if [ -z "${_realm}" ]; then
-        _realm="$(hostname -s)" && _realm="${_realm^^}"
-        _info "Using ${_realm} for realm"
-    fi
-    if [ -z "${_server}" ]; then
-        _error "No server IP/name for KDC"
-        return 1
-    fi
-    if [ ! $(which apt-get) ]; then
-        _warn "No apt-get"
-        return 1
-    fi
-    # TODO: with 20.04, noninteractive does not work if no _realm is given.
-    DEBIAN_FRONTEND=noninteractive apt-get install -y krb5-kdc krb5-admin-server libapache2-mod-auth-kerb || return $?
-
-    if [ -s /etc/krb5kdc/kdc.conf ] && [ -s /var/lib/krb5kdc/principal_${_realm} ]; then
-        if grep -qE '^\s*'${_realm}'\b' /etc/krb5kdc/kdc.conf; then
-            _info "Realm: ${_realm} may already exit in /etc/krb5kdc/kdc.conf. Not try creating..."
-            return 0
-        fi
-    fi
-    echo '    '${_realm}' = {
-        database_name = /var/lib/krb5kdc/principal_'${_realm}'
-        admin_keytab = FILE:/etc/krb5kdc/kadm5_'${_realm}'.keytab
-        acl_file = /etc/krb5kdc/kadm5_'${_realm}'.acl
-        key_stash_file = /etc/krb5kdc/stash_'${_realm}'
-        kdc_ports = 750,88
-        max_life = 10h 0m 0s
-        max_renewable_life = 7d 0h 0m 0s
-        master_key_type = des3-hmac-sha1
-        supported_enctypes = aes256-cts:normal arcfour-hmac:normal des3-hmac-sha1:normal des-cbc-crc:normal des:normal des:v4 des:norealm des:onlyrealm des:afs3
-        default_principal_flags = +preauth
-    }
-' >/tmp/f_kdc_install_on_host_kdc_$$.tmp
-    sed -i "/\[realms\]/r /tmp/f_kdc_install_on_host_kdc_$$.tmp" /etc/krb5kdc/kdc.conf
-
-    # KDC process seems to use default_realm, and sed needs to escape + somehow
-    cp -p /etc/krb5.conf /etc/krb5.conf.$(date +"%Y%m%d%H%M%S") || return $?
-
-    echo '[libdefaults]
-  default_realm = '${_realm}'
-  dns_lookup_realm = false
-  dns_lookup_kdc = false
-
-[realms]
-  '${_realm}' = {
-   kdc = '${_server}'
-   admin_server = '${_server}'
- }
-' >/etc/krb5.conf
-
-    kdb5_util create -r ${_realm} -s -P ${_password} || return $? # or krb5_newrealm
-    mv /etc/krb5kdc/kadm5_${_realm}.acl /etc/krb5kdc/kadm5_${_realm}.orig &>/dev/null
-    echo '*/admin *' >/etc/krb5kdc/kadm5_${_realm}.acl
-    service krb5-kdc restart && service krb5-admin-server restart
-    sleep 3
-    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} admin/admin@${_realm}"
-    # AMBARI-24869
-    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/${_server}@${_realm}"
-    kadmin.local -r ${_realm} -q "add_principal -pw ${_password} kadmin/admin@${_realm}" &>/dev/null # this should exist already
-    _info "Testing ..."
-    kadmin -p admin/admin@${_realm} -w "${_password}" -q "get_principal admin/admin@${_realm}"
-}
-
 function f_gen_keytab() {
     local __doc__="Generate keytab(s). NOTE: NOT for FreeIPA"
     local _principal="${1}" # HTTP/`hosntame -f`@REALM
@@ -1994,12 +1909,8 @@ function p_basic_setup() {
     _log "INFO" "Executing f_host_performance"
     f_host_performance
 
-    if [ ! -s ${_WORK_DIR%/}/cert/rootCA_standalone.crt ]; then
-        [ ! -d "${_WORK_DIR%/}/cert" ] && mkdir -v -p "${_WORK_DIR%/}/cert"
-        curl -o ${_WORK_DIR%/}/cert/rootCA_standalone.crt -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/rootCA_standalone.crt"
-    fi
     _log "INFO" "Trusting rootCA_standalone.crt"
-    f_add_cert "${_WORK_DIR%/}/cert/rootCA_standalone.crt"
+    _trust_ca
 }
 
 ### Utility type functions #################################################
