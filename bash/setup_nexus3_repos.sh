@@ -557,7 +557,7 @@ function f_create_s3_blobstore() {
         fi
     fi
     _log "INFO" "Command examples:
-aws s3 ls s3://${_bucket}/${_prefix}/content/ # --recursive but 1000 limits
+aws s3 ls s3://${_bucket}/${_prefix}/content/ # --recursive but 1000 limits (same for list-objects)
 aws s3api list-objects --bucket ${_bucket} --query \"Contents[?contains(Key, 'f062f002-88f0-4b53-aeca-7324e9609329.properties')]\"
 aws s3api get-object-tagging --bucket ${_bucket} --key \"${_prefix}/content/vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties\"
 aws s3 cp s3://${_bucket}/${_prefix}/content/vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties -
@@ -898,7 +898,7 @@ function f_reset_client_configs() {
     # skopeo --debug copy --src-creds=admin:admin123 --dest-creds=admin:admin123 docker://dh1.standalone.localdomain:18082/alpine:3.7 docker://dh1.standalone.localdomain:18082/alpine:test
     ${_cmd} exec -it ${_name} bash -c "curl -L -o /etc/yum.repos.d/devel:kubic:libcontainers:stable.repo https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/CentOS_7/devel:kubic:libcontainers:stable.repo && yum -y install skopeo" >>${_LOG_FILE_PATH:-"/dev/null"}
 
-    # Install nuget.exe regardless of Nexus nuget repository availability
+    # Install nuget.exe regardless of Nexus nuget repository availability (can't remember why install then immediately remove...)
     ${_cmd} exec -it ${_name} bash -l -c "yum install -y nuget && yum remove -y nuget && curl -o /usr/local/bin/nuget.exe 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe'" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
     echo 'if [ -s /usr/local/bin/nuget.exe ]; then
   alias nuget="mono /usr/local/bin/nuget.exe"
