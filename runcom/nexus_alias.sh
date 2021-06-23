@@ -112,7 +112,7 @@ function nxrmDocker() {
     local _port="${3:-"8081"}"
     local _port_ssl="${4:-"8443"}"
     local _extra_opts="${5}"    # such as -Djava.util.prefs.userRoot=/some-other-dir
-    local _docker_host="${_DOCKER_HOST:-"dh1.standalone.localdomain:18185"}"
+    local _docker_host="${_DOCKER_HOST:-"dh1.standalone.localdomain:5000"}"
 
     local _nexus_data="${_WORK_DIR%/}/sonatype/${_name}-data"
     if [ ! -d "${_nexus_data%/}" ]; then
