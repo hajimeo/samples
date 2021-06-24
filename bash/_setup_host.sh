@@ -1889,6 +1889,7 @@ function f_bitbucket() {
     # rm -rf /opt/bitbucket/* /var/bitbucket-home/*
     # Git version 2 or higher is required
     if ! git --version | grep -qE 'git version [2345]'; then
+        # TODO: this script is for Ubuntu or generic, but using 'yum' (but as Ubuntu doesn't use git v1, should be OK)
         yum install -y https://repo.ius.io/ius-release-el7.rpm https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
         local _git_ver="$(yum list available | grep -E '^git[0-9]+\.x86_64\s+.+\s+ius' | sort | tail -n1 | awk '{print $1}')"
         if [ -z "${_git_ver}" ]; then
