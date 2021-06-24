@@ -1845,16 +1845,17 @@ EOF
 function f_crowd() {
     local _ver="${1:-"4.1.2"}"
     local _user="${2-"crowd"}"
+    local _data_dir="${3-"/var/crowd-home"}" # some persistent location if docker
     # rm -rf /opt/crowd/* /var/crowd/* /var/crowd-home/*
     _download_and_extract "https://product-downloads.atlassian.com/software/crowd/downloads/atlassian-crowd-${_ver}.tar.gz" "/opt/crowd" || return $?
     if ! grep -q "^crowd.home" "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties"; then
-        _upsert "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties" "crowd.home" "/var/crowd-home/${_ver}" || return $?
+        _upsert "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties" "crowd.home" "${_data_dir%/}/${_ver}" || return $?
     fi
-    [ -d "/var/crowd-home" ] || mkdir -p -m 777 /var/crowd-home
+    [ -d "${_data_dir%/}" ] || mkdir -p -m 777 "${_data_dir%/}"
     if [ -n "${_user}" ]; then
         f_useradd "${_user}" || return $?
     fi
-    sudo -i -u "${_user:-$USER}" bash /opt/crowd/atlassian-crowd-${_ver}/start_crowd.sh || return $?
+    sudo -i -u "${_user}" bash /opt/crowd/atlassian-crowd-${_ver}/start_crowd.sh || return $?
     _log "INFO" "Access http://$(hostname -f):8095/
 For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
 Then, '3 hour expiration for all Atlassian host products'"
@@ -1863,18 +1864,55 @@ Then, '3 hour expiration for all Atlassian host products'"
 function f_jira() {
     local _ver="${1:-"8.14.1"}"
     local _user="${2-"jira"}"
+    local _data_dir="${3-"/var/jira-home"}" # some persistent location if docker
     # rm -rf /opt/jira/* /var/jira-home/*
     _download_and_extract "https://product-downloads.atlassian.com/software/jira/downloads/atlassian-jira-software-${_ver}.tar.gz" "/opt/jira" || return $?
     if ! grep -qE "^jira.home *= *[^ ]+" "/opt/jira/atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties"; then
-        _upsert "/opt/jira/atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties" "jira.home" "/var/jira-home/${_ver}" || return $?
+        _upsert "/opt/jira/atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties" "jira.home" "${_data_dir%/}/${_ver}" || return $?
     fi
-    [ -d "/var/jira-home" ] || mkdir -p -m 777 /var/jira-home
+    [ -d "${_data_dir%/}" ] || mkdir -p -m 777 "${_data_dir%/}"
     if [ -n "${_user}" ]; then
-        chown -R "${_user}:" /opt/jira/atlassian-jira-software-${_ver}-standalone
         f_useradd "${_user}" || return $?
+        chown -R "${_user}:" /opt/jira/atlassian-jira-software-${_ver}-standalone
     fi
-    sudo -i -u "${_user:-$USER}" bash /opt/jira/atlassian-jira-software-${_ver}-standalone/bin/start-jira.sh || return $?
+    sudo -i -u "${_user}" bash /opt/jira/atlassian-jira-software-${_ver}-standalone/bin/start-jira.sh || return $?
     _log "INFO" "Access http://$(hostname -f):8080/
+For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
+Then, '3 hour expiration for all Atlassian host products'"
+}
+
+function f_bitbucket() {
+    # @see: https://confluence.atlassian.com/bitbucketserver/install-a-bitbucket-trial-867192384.html
+    local _ver="${1:-"7.14.0"}"
+    local _user="${2-"bitbucket"}"
+    local _data_dir="${3-"/var/bitbucket-home"}" # some persistent location if docker
+    # rm -rf /opt/bitbucket/* /var/bitbucket-home/*
+    # Git version 2 or higher is required
+    if ! git --version | grep -qE 'git version [2345]'; then
+        yum install -y https://repo.ius.io/ius-release-el7.rpm https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+        local _git_ver="$(yum list available | grep -E '^git[0-9]+\.x86_64\s+.+\s+ius' | sort | tail -n1 | awk '{print $1}')"
+        if [ -z "${_git_ver}" ]; then
+            _log "ERROR" "Cannot install Git v2"
+            return 1
+        fi
+        yum remove -y git*
+        yum insatll ${_git_ver} -y   # even if fails, keep going...
+    fi
+    _download_and_extract "https://product-downloads.atlassian.com/software/stash/downloads/atlassian-bitbucket-${_ver}.tar.gz" "/opt/bitbucket" || return $?
+    if [ -n "${_user}" ]; then
+        f_useradd "${_user}" || return $?
+        chown -R "${_user}:" /opt/bitbucket/atlassian-bitbucket-${_ver}
+    fi
+    local _java_home="$(dirname $(dirname $(readlink -f $(which java))))"
+    if [ -z "${_java_home%/}" ]; then
+        _log "ERROR" "No java home detected."
+        return 1
+    fi
+    sudo -i -u ${_user} bash -c 'grep -q "export JAVA_HOME=" $HOME/.bash_profile || echo "export JAVA_HOME='${_java_home%/}'" >> $HOME/.bash_profile'
+    [ -d "${_data_dir%/}" ] || mkdir -p -m 777 "${_data_dir%/}"
+    sudo -i -u ${_user} bash -c 'grep -q "export BITBUCKET_HOME=" $HOME/.bash_profile || echo "export BITBUCKET_HOME='${_data_dir%/}'" >> $HOME/.bash_profile'
+    sudo -i -u "${_user}" bash /opt/bitbucket/atlassian-bitbucket-${_ver}/bin/start-bitbucket.sh || return $?
+    _log "INFO" "Access http://$(hostname -f):7990/
 For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
 Then, '3 hour expiration for all Atlassian host products'"
 }
