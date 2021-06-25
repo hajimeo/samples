@@ -275,7 +275,7 @@ function mvn-dep-file() {
     local __doc__="Wrapper of mvn deploy:deploy-file"
     local _file="${1}"
     local _gav="${2:-"com.example:my-app:1.0"}"
-    local _remote_repo="$3"
+    local _remote_repo="$3" # mandatory
     local _server_id="${4:-"nexus"}"
     local _options="${5-"-Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
 
