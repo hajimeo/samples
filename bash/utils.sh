@@ -903,6 +903,7 @@ function _postgresql_configure() {
     # @see: https://www.enterprisedb.com/postgres-tutorials/how-tune-postgresql-memory
     _upsert ${_postgresql_conf} "shared_buffers" "1024MB"    # 4GB * 25%
     _upsert ${_postgresql_conf} "work_mem" "12MB" "#work_mem" # 4GB * 25% / max_connections (100) + extra
+    #_upsert ${_postgresql_conf} "effective_cache_size" "2048MB" "#effective_cache_size" # Physical mem (4GB) * 50%
     _upsert ${_postgresql_conf} "max_connections" "400" "#max_connections"   # nxrm3 uses a lot (100 per datastore)
     _upsert ${_postgresql_conf} "listen_addresses" "'*'" "#listen_addresses"
     [ ! -d /var/log/postgresql ] && mkdir -p -m 777 /var/log/postgresql

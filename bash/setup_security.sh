@@ -675,3 +675,40 @@ subjectAltName = @alt_names" >> "${_work_dir%/}/openssl.cnf"
 DNS.1 = ${_domain_suffix#.}
 DNS.2 = *.${_domain_suffix#.}" >> "${_work_dir%/}/openssl.cnf"
 }
+
+function f_dnsmasq() {
+    local __doc__="Install and set up dnsmasq"
+    local _domain_suffix="${1-"$(hostname -d)"}"
+    apt-get -y install dnsmasq || return $?
+
+    # For Ubuntu 18.04 name resolution slowness (ssh and sudo too).
+    # Also local hostname needs to be resolved @see: https://linuxize.com/post/how-to-change-hostname-on-ubuntu-18-04/
+    grep -q '^no-resolv' /etc/dnsmasq.conf || echo 'no-resolv' >>/etc/dnsmasq.conf
+    grep -q '^server=' /etc/dnsmasq.conf || echo 'server=1.1.1.1' >>/etc/dnsmasq.conf
+    if [ -n "${_domain_suffix}" ]; then
+        grep -q '^local=' /etc/dnsmasq.conf || echo 'local=/'${_domain_suffix#.}'/' >>/etc/dnsmasq.conf
+    fi
+    grep -q '^addn-hosts=' /etc/dnsmasq.conf || echo 'addn-hosts=/etc/banner_add_hosts' >>/etc/dnsmasq.conf
+    grep -q '^resolv-file=' /etc/dnsmasq.conf || (
+        echo 'resolv-file=/etc/resolv.dnsmasq.conf' >>/etc/dnsmasq.conf
+        echo 'nameserver 1.1.1.1' >/etc/resolv.dnsmasq.conf
+    )
+
+    touch /etc/banner_add_hosts || return $?
+    chmod 666 /etc/banner_add_hosts
+    # To avoid "Ignoring query from non-local network" message:
+    sed -i 's/ --local-service//g' /etc/init.d/dnsmasq
+
+    # @see https://bugs.launchpad.net/ubuntu/+source/systemd/+bug/1624320
+    if [ -L /etc/resolv.conf ] && grep -q '^nameserver 127.0.0.53' /etc/resolv.conf; then
+        systemctl stop systemd-resolved
+        systemctl disable systemd-resolved
+        rm -f /etc/resolv.conf
+        _log "WARN" "systemctl disable systemd-resolved was run. Please reboot"
+    fi
+    echo 'nameserver 127.0.0.1' >/etc/resolv.conf
+    if ! grep -qw dnsmasq /etc/sudoers; then
+        # NOT RECOMMENDED but for this service, allow everyone to reload
+        echo 'ALL ALL=NOPASSWD: /etc/init.d/dnsmasq force-reload' >> /etc/sudoers
+    fi
+}
