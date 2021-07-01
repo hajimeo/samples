@@ -1217,13 +1217,13 @@ main() {
             _log "ERROR" "Docker Save (commit) was specified but no name (-n or -v) to save."
             return 1
         fi
-        f_docker_commit "${_NAME}" "" "" "Y" || return $?
+        f_docker_commit "${_NAME}" || return $?
+        _CREATE_CONTAINER=false # To start application if necessary
     fi
 
     # Finally, starts a container if _NAME is not empty
-    # If -c is used, container should be already started, so don't need to start.
-    # If -s is used, it intentionally stops the container, so don't need to start.
-    if [ -n "${_NAME}" ] && ! ${_CREATE_CONTAINER} && ! ${_DOCKER_SAVE}; then
+    # If -C is used, container should be already started, so don't need to start.
+    if [ -n "${_NAME}" ] && ! ${_CREATE_CONTAINER}; then
         if docker ps --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
             _log "INFO" "Container ${_NAME} is already running ..."; sleep 1
         else
