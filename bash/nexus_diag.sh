@@ -7,7 +7,7 @@
 
 function usage() {
     cat << EOS
-TODO: update usage.
+Contain source-able and copy&paste-able functions, which are executed on the Nexus server, for troubleshooting various issues.
 EOS
 }
 
@@ -43,5 +43,44 @@ function f_search_soft_deleted_blobs() {
     #grep -E '^(size=|deletedDateTime=|deletedReason=|@BlobStore.blob-name=)' `cat soft-deleted.list`
     # TODO: utilise 'blobpath' command
 }
-
 # TODO: search and sum the size per repo / per blob store, from file and/or DB.
+
+alias sum_cols="paste -sd+ - | bc"
+function f_orientdb_checks() {
+    local _db="$1"
+    local _find="$(which gfind || echo "find")"
+    echo "# Finding wal files ..."
+    ${_find} ${_db%/} -type f -name '*.wal' -printf '%k\t%P\t%t\n'
+    echo "# Checking size (KB) of index files ..."
+    ${_find} ${_db%/} -type f -name '*_idx.sbt' -printf '%k\t%P\n' | sort -k2 | tee /tmp/$FUNCNAME.out
+    echo "Total: $(cat /tmp/$FUNCNAME.out | wc -l)"
+    echo "# Estimating table sizes (KB) from pcl files ..."
+    ${_find} ${_db%/} -type f -name '*.pcl' -printf '%k\t%P\n' | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/$FUNCNAME.out
+    cat /tmp/$FUNCNAME.out | uniq -f1 | while read -r _l; do
+        # NOTE: matching space in bash is a bit tricky
+        if [[ "${_l}" =~ ^[[:space:]]*[0-9]+[[:space:]]+(.+) ]]; then
+            local _table="${BASH_REMATCH[1]}"
+            local _total="$(grep -E "\s+${_table}$" /tmp/$FUNCNAME.out | awk '{print $1}' | sum_cols)"
+            echo -e "${_total}\t${_table}"
+        fi
+    done
+}
+
+# troubleshoot mount related issue such as startup fails with strange mount option.
+function f_mount_file() {
+    local _mount_to="${1:-"/mnt/$(basename "${_file}")"}"
+    local _extra_opts="${2}"
+    local _file_type="${3:-"ext3"}"
+    local _file="${4:-"/var/tmp/loop_file"}"
+    if [ ! -f "${_file}" ]; then
+        dd if=/dev/zero of="${_file}" bs=1 count=0 seek=1073741824 || return $?
+        # If xfs "apt-get install xfsprogs"
+        mkfs -t ${_file_type} "${_file}" || return $?
+    fi
+    if [ ! -d "${_mount_to}" ]; then
+        mkdir -m 777 -p "${_mount_to}" || return $?
+    fi
+    local _opts="loop"
+    [ -n "${_extra_opts}" ] && _opts="${_opts},${_extra_opts#,}"
+    mount -t ${_file_type} -o "${_opts}" "${_file}" "${_mount_to}"
+}

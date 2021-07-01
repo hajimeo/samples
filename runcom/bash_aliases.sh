@@ -84,14 +84,14 @@ alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict
 # simplest json pretty print
 alias pjt='sed "s/,$//" | python -m json.tool'
 # this one is from a *JSON* file
-alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
-# echo "json like string" | tidyjson
-alias tidyjson='while read -r _l; do echo "${_l}" | sed "s/,$//" | python3 -c "import sys,json;print(json.dumps(json.loads(sys.stdin.read()), indent=4, sort_keys=True))";echo "--";done'
+#alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
+# echo "json like string" | prettyjson
+alias prettyjson='while read -r _l; do echo "${_l}" | sed "s/,$//" | python3 -c "import sys,json;print(json.dumps(json.loads(sys.stdin.read()), indent=4, sort_keys=True))";echo "--";done'
 # Pretty|Tidy print XML. NOTE: without encoding, etree.tostring returns bytes, which does not work with print()
-alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1].encode(\"utf-8\"));print(etree.tostring(t,encoding=\"unicode\",pretty_print=True))"'
+#alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1].encode(\"utf-8\"));print(etree.tostring(t,encoding=\"unicode\",pretty_print=True))"'
 #alias prettyxml='xmllint --format'
-# echo "xml like string" | tidyxml
-alias tidyxml='python3 -c "import sys;from lxml import etree;t=etree.fromstring(sys.stdin.read());print(etree.tostring(t,encoding=\"unicode\",pretty_print=True))"'
+# echo "xml like string" | prettyxml
+alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.fromstring(sys.stdin.read());print(etree.tostring(t,encoding=\"unicode\",pretty_print=True))"'
 # TODO: find with sys.argv[2] (no ".//"), then output as string
 alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();print(r.find(sys.argv[2],namespaces=r.nsmap))"'
 # Search with 2nd arg and output the path(s)
@@ -130,11 +130,12 @@ alias tda='java -Xmx4g -jar $HOME/Apps/tda-bin-2.4/tda.jar &>/tmp/tda.out &'    
 alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar &>/tmp/gcviewer.out &'
 alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'   #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
 alias groovyi='groovysh -e ":set interpreterMode true"'
-alias jenkins='java -jar $HOME/Apps/jenkins.war &>/tmp/jenkins.out &'  #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/2.263.1/jenkins.war
+alias jenkins='java -jar $HOME/Apps/jenkins.war'  #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/<version>/jenkins.war
 # (reverse) proxy server https://www.mock-server.com/mock_server/getting_started.html
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'  #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
 [ -f /var/tmp/share/java/orient-console.jar ] && alias orient-console="java -jar /var/tmp/share/java/orient-console.jar"
+[ -f /var/tmp/share/java/blobpath.jar ] && alias blobpath="java -jar /var/tmp/share/java/blobpath.jar"
 
 # Chrome aliases for Mac (URL needs to be IP as hostname wouldn't be resolvable on remote)
 #alias shib-local='open -na "Google Chrome" --args --user-data-dir=$HOME/.chromep/local --proxy-server=socks5://localhost:28081'
@@ -480,9 +481,9 @@ function backupC() {
     # NOTE: find ${_src%/} does not work without -L, and find ${_src%/}/* is somehow much slow, but then find ${_src%/}/ does not work with -delete
     find -L ${_src%/} -type d -mtime +14 -name '*_tmp' -delete &
     find -L ${_src%/} -type f -mtime +14 -name '*.tmp' -delete &
-    find -L ${_src%/} -type f -mtime +90 -size +128000k \( -name "nexus.log" -o -name "request.log" -o -name "clm-server.log" -o -name "audit.log" \) -delete &
-    find -L ${_src%/} -type f -mtime +180  \( -name "*.log" -o -name "*.out" -o -name "*.log.gz" \) -delete &
-    find -L ${_src%/} -type f -mtime +360 -delete &
+    find -L ${_src%/} -type f -mtime +60 -name "*.log" -delete &
+    find -L ${_src%/} -type f -mtime +90 -size +128000k -delete &
+    find -L ${_src%/} -type f -mtime +180 -delete &
     # NOTE: this find command requires "/*"
     if [ "Darwin" = "$(uname)" ]; then
         gfind -L ${_src%/}/* -type d -mtime +2 -empty -delete 2>/dev/null &
@@ -589,8 +590,13 @@ function sync_nexus_binaries() {
 }
 
 function set_classpath() {
-    local _port="${1}"
-    local _p=`lsof -ti:${_port} -s TCP:LISTEN` || return $?
-    # requires jcmd in the path
-    export CLASSPATH=".:`jcmd ${_p} VM.system_properties | sed -E -n 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+    local _port_or_dir="${1}"
+    if [[ "${_port_or_dir}" =~ ^[0-9]+$ ]]; then
+        local _p=`lsof -ti:${_port} -s TCP:LISTEN` || return $?
+        # requires jcmd in the path
+        export CLASSPATH=".:`jcmd ${_p} VM.system_properties | sed -E -n 's/^java.class.path=(.+$)/\1/p' | sed 's/[\]:/:/g'`"
+    elif [ -d "${_port_or_dir}" ]; then
+        local _tmp_cp="$(find ${_port_or_dir%/} -type f -name '*.jar' | tr '\n' ':')"
+        export CLASSPATH=".:${_tmp_cp%:}"
+    fi
 }

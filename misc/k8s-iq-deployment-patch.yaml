@@ -1,3 +1,4 @@
+# IQ older than v118 does not stop properly
 spec:
   template:
     spec:
