@@ -17,6 +17,7 @@ Patch one class file by compiling and updating one jar
     <ClassName>.[java|scala]: A file path of your java or scala file.
     <some.jar>: A file path to your jar file which will be updated. If a dir, search jars for your class.
     [specific_ClassName]: Sometimes filename is not equal to actual classname.
+    [dir_detect_regex]: Sometimes same classname exist in multiple directories.
     [not_compile]: If 'Y', not compiling.
 
 Or, to start scala console (REPL):
@@ -227,7 +228,7 @@ function _find_jcmd() {
 function f_set_classpath() {
     local _port_or_dir="${1}"  # port or directory path
     if [ -d "${_port_or_dir}" ]; then
-        local _tmp_cp="$(find ${_port_or_dir%/} -name '*.jar' | tr '\n' ':')"
+        local _tmp_cp="$(find ${_port_or_dir%/} -type f -name '*.jar' | tr '\n' ':')"
         export CLASSPATH=".:${_tmp_cp%:}"
     else
         local _p=`lsof -ti:${_port} -s TCP:LISTEN` || return $?
@@ -283,7 +284,7 @@ function f_jargrep() {
     fi
     # NOTE: xargs behaves differently on Mac, so stopped using
     find -L ${_path%/} -type f -name '*.jar' | while read -r _l; do
-        ${_cmd} "${_l}" 2>/dev/null | grep -w "${_class}" && echo "^ Jar: ${_l}" >&2
+        ${_cmd} "${_l}" 2>/dev/null | grep -wE "${_class}" && echo "^ Jar: ${_l}" >&2
     done
 }
 
@@ -419,7 +420,8 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     _CLASS_FILEPATH="$2"
     _JAR_FILEPATH="$3"
     _UPDATING_CLASSNAME="$4"
-    _NOT_COMPILING="$5"
+    _DIR_DETECT_REGEX="$5"
+    _NOT_COMPILING="$6"
 
     if [ "$#" -eq 0 ]; then
         echo "A port number (1st arg) to find PID is required."
@@ -448,9 +450,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
 
         if [ -n "${_JAR_FILEPATH}" ] && [ -d "${_JAR_FILEPATH}" ]; then
             f_jargrep "${_CLASS_NAME}.class" "${_JAR_FILEPATH}"
-            [ -n "${_UPDATING_CLASSNAME}" ]  && f_jargrep "${_UPDATING_CLASSNAME}.class" "${_JAR_FILEPATH}"
+            [ -n "${_UPDATING_CLASSNAME}" ]  && f_jargrep "${_UPDATING_CLASSNAME}\.class" "${_JAR_FILEPATH}"
             echo "Please pick a jar file from above, and re-run the script:
-$0 '$1' '$2' '<jar path from above>' '$4' [Y]"
+$0 '$1' '$2' '<jar path from above>' '$4' '$5' [Y]"
             exit 0
         fi
 
@@ -460,7 +462,7 @@ $0 '$1' '$2' '<jar path from above>' '$4' [Y]"
         elif [ "${_EXT}" = "java" ]; then
             if [ -n "${_JAR_FILEPATH}" ] && [ -e "${_JAR_FILEPATH}" ]; then
                 # TODO: not sure adding "/" before _CLASS_NAME is OK
-                _DIR_PATH="$(dirname $($JAVA_HOME/bin/jar -tvf ${_JAR_FILEPATH} | grep -oE "[^ ]+/${_CLASS_NAME}.class"))"
+                _DIR_PATH="$(dirname $($JAVA_HOME/bin/jar -tvf ${_JAR_FILEPATH} | grep -oE "${_DIR_DETECT_REGEX:-"[^ ]+"}/${_CLASS_NAME}.class"))"
                 if [ ! -d "${_DIR_PATH}" ]; then
                     mkdir -p "${_DIR_PATH}" || exit $?
                 fi
