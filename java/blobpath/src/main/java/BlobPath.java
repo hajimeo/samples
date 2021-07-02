@@ -14,25 +14,35 @@ import java.util.regex.Pattern;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
 import org.apache.commons.lang3.StringUtils;
 
 /**
  * Returns a blobpath if the argument is only one.
  * Otherwise, expecting json strings from stdin, then generate .properties and .bytes files.
- * For example ('repository_name' is needed to save it into .properties file)
- *  echo "select bucket.repository_name as repository_name, * from asset where blob_ref like '%666c9fab-4334-4f1f-bb76-0db0c474a371'" | orient-console ./component | grep -E '^\s+\{' | blobpath /tmp/sptBoot/support-20210604-150957-1_tmp/sonatype-work/nexus3/blobs/custom
  */
 class BlobPath
 {
   public static final Pattern BLOB_REF_PATTERN = Pattern.compile("([^@]+)@([^:]+):(.*)");
-
   public static boolean outputOnly = false;
-
   public static boolean useRealSize = false;
-
   // f3fb8f3a-1cd4-494d-855f-75820aabbf2a
   public static final Pattern BLOB_ID_PATTERN =
       Pattern.compile("^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$");
+
+  public static void usage() {
+    System.out.println("Returns a blobpath if the argument is only one.\n" +
+        "Otherwise, reads json strings from stdin, then generate .properties and .bytes files.\n" +
+        "\n" +
+        "NOTE: *repository_name* is required to save it into .properties file.\n" +
+        "echo \"select bucket.repository_name as repository_name, * from asset where blob_ref like '%666c9fab-4334-4f1f-bb76-0db0c474a371'\" | orient-console ./component | blobpath /tmp/sptBoot/support-20210604-150957-1_tmp/sonatype-work/nexus3/blobs/custom\n" +
+        "\n" +
+        "OPTIONS:\n" +
+        "  --output-only    If true, do not generate .properties and .bytes files\n" +
+        "  --use-real-size  If true, read the value from 'size' in the properties file and generate .bytes with this size.\n" +
+        "  --help|-h        Display this message.\n" +
+        "");
+  }
 
   public static void main(String[] args)
   {
@@ -44,6 +54,11 @@ class BlobPath
 
     String outDir = ".";
     if (args.length > 0) {
+      if (Arrays.asList(args).contains("--help") && !Arrays.asList(args).contains("-h")) {
+        usage();
+        System.exit(0);
+      }
+
       outDir = args[0];
 
       if (Arrays.asList(args).contains("--output-only") && !Arrays.asList(args).contains("--output-only=false")) {
@@ -88,13 +103,24 @@ class BlobPath
     Scanner scanner = new Scanner(is);
     // At this moment, one exception stops the loop (no try/catch)
     while (scanner.hasNextLine()) {
-      JsonObject js = new JsonParser().parse(scanner.nextLine()).getAsJsonObject();
-      saveJs(js, outDir);
+      // NOTE: ignore if just "[" or "]", and remove the ending ","
+      String l = StringUtils.stripEnd(scanner.nextLine(), ",");
+      try {
+        JsonObject js = new JsonParser().parse(l).getAsJsonObject();
+        saveJs(js, outDir);
+      } catch (JsonSyntaxException e) {
+        System.err.println("JsonSyntaxException: " + e.getMessage() + " for \"" + l +"\"");
+        continue;
+      }
     }
   }
 
   private static void saveJs(JsonObject js, String outDir) throws IOException {
     String blobRef = get(js, "blob_ref");
+    if (blobRef == null || blobRef.isEmpty() || blobRef.equals("<null>")) {
+      System.err.println(js + " does not have 'blob_ref'. so skipping...");
+      return;
+    }
     Matcher matcher = BLOB_REF_PATTERN.matcher(blobRef);
     if (!matcher.find()) {
       System.err.println(blobRef + " does not match with the pattern. so skipping...");
