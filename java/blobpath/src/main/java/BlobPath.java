@@ -24,8 +24,11 @@ import org.apache.commons.lang3.StringUtils;
 class BlobPath
 {
   public static final Pattern BLOB_REF_PATTERN = Pattern.compile("([^@]+)@([^:]+):(.*)");
+
   public static boolean outputOnly = false;
+
   public static boolean useRealSize = false;
+
   // f3fb8f3a-1cd4-494d-855f-75820aabbf2a
   public static final Pattern BLOB_ID_PATTERN =
       Pattern.compile("^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$");
@@ -33,6 +36,8 @@ class BlobPath
   public static void usage() {
     System.out.println("Returns a blobpath if the argument is only one.\n" +
         "Otherwise, reads json strings from stdin, then generate .properties and .bytes files.\n" +
+        "\n" +
+        "    blobpath [blobstore path]\n" +
         "\n" +
         "NOTE: *repository_name* is required to save it into .properties file.\n" +
         "echo \"select bucket.repository_name as repository_name, * from asset where blob_ref like '%666c9fab-4334-4f1f-bb76-0db0c474a371'\" | orient-console ./component | blobpath /tmp/sptBoot/support-20210604-150957-1_tmp/sonatype-work/nexus3/blobs/custom\n" +
@@ -108,8 +113,9 @@ class BlobPath
       try {
         JsonObject js = new JsonParser().parse(l).getAsJsonObject();
         saveJs(js, outDir);
-      } catch (JsonSyntaxException e) {
-        System.err.println("JsonSyntaxException: " + e.getMessage() + " for \"" + l +"\"");
+      }
+      catch (JsonSyntaxException e) {
+        System.err.println("JsonSyntaxException: " + e.getMessage() + " for \"" + l + "\"");
         continue;
       }
     }
@@ -138,7 +144,7 @@ class BlobPath
 
     File contentDir = new File(filePathBase + "/" + blobDir(blobId));
     if (!contentDir.exists()) {
-      if(!contentDir.mkdirs()) {
+      if (!contentDir.mkdirs()) {
         System.err.println("Could not create directory:" + contentDir.toString());
         return;
       }
@@ -173,7 +179,8 @@ class BlobPath
       SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");  // No milliseconds
       Date date = dateFormat.parse(strDate);
       return date.getTime();
-    } catch (ParseException e) {
+    }
+    catch (ParseException e) {
       System.out.println("Exception :" + e);
       return null;
     }
