@@ -68,12 +68,12 @@ function f_orientdb_checks() {
 
 # troubleshoot mount related issue such as startup fails with strange mount option.
 function f_mount_file() {
-    local _mount_to="${1:-"/mnt/$(basename "${_file}")"}"
+    local _mount_to="${1}"
     local _extra_opts="${2}"
     local _file_type="${3:-"ext3"}"
     local _file="${4:-"/var/tmp/loop_file"}"
     if [ ! -f "${_file}" ]; then
-        dd if=/dev/zero of="${_file}" bs=1 count=0 seek=1073741824 || return $?
+        dd if=/dev/zero of="${_file}" bs=1 count=0 seek=10737418240 || return $?
         # If xfs "apt-get install xfsprogs"
         mkfs -t ${_file_type} "${_file}" || return $?
     fi
