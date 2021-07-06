@@ -66,6 +66,15 @@ function f_orientdb_checks() {
     done
 }
 
+# draft
+function f_find_open_bytes_files() {
+    # TODO: Not perfect but there is no way to link Java TID / HEX nid with FD or iNode
+    local _blobs="$1"   # /opt/sonatype/sonatype-work/nexus3/blobs/default
+    netstat -topen | grep 8081  # pick inode or port and pid
+    # Usually +1 or a few of above fd and the FD ends with 'w'
+    lsof -nPp $PID | grep -w $INODE -A 100 | grep -m1 "$(realpath "${_blobs}")/content/tmp/tmp"
+}
+
 # troubleshoot mount related issue such as startup fails with strange mount option.
 function f_mount_file() {
     local _mount_to="${1}"
