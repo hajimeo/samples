@@ -17,7 +17,7 @@ g_admin="${_ADMIN_USER-"admin"}"    # not in use at this moment
 g_admin_pwd="${_ADMIN_PASS-"admin123"}"
 g_OTHER_DEFAULT_PWD="${g_admin_pwd}"
 g_FREEIPA_DEFAULT_PWD="secret12"
-
+g_SSL_DIR="/etc/ssl/local"
 
 function f_ssl_setup() {
     local __doc__="Setup SSL (wildcard) certificate for f_ssl_hadoop"
@@ -77,7 +77,7 @@ function f_kdc_install() {
     local _realm="${1:-"${g_KDC_REALM}"}"
     local _password="${2:-"${g_OTHER_DEFAULT_PWD}"}"
     local _server="${3:-$(hostname -I | awk '{print $1}')}"
-    local _ldap_password="${4}"
+    local _ldap_password="${4-"${g_OTHER_DEFAULT_PWD}"}"
 
     if [ -z "${_realm}" ]; then
         _realm="$(hostname -s)" && _realm="${_realm^^}"
@@ -121,7 +121,13 @@ EOF
     cp -p /etc/krb5.conf /etc/krb5.conf.$(date +"%Y%m%d%H%M%S") || return $?
 
     local _realm_extra=""
-    [ -n "${_ldap_password}" ] && _realm_extra="database_module = openldap_ldapconf"
+    if [ -n "${_ldap_password}" ] && f_ldap_config_for_kdc "${_ldap_password}"; then
+        _realm_extra="database_module = openldap_ldapconf"
+    else
+        _log "WARN" "Not using local LDAP as backend."
+        _ldap_password=""
+    fi
+
     cat << EOF > /etc/krb5.conf
 [libdefaults]
   default_realm = ${_realm}
@@ -140,8 +146,6 @@ EOF
     if [ -z "${_ldap_password}" ]; then
         kdb5_util create -r ${_realm} -s -P ${_password} || return $? # or krb5_newrealm
     else
-        f_ldap_config_for_kdc "${_ldap_password}" || return $?
-
         local _dcs="dc=$(echo "${_realm,,}" | sed 's/\./,dc=/g')"
         if [ -s /etc/krb5.conf ] && ! grep -qw 'ldap_kerberos_container_dn' /etc/krb5.conf; then
             cat << EOF >> /etc/krb5.conf
@@ -314,11 +318,13 @@ EOF
     fi
 
     # setting up ldaps (SSL)    @see: https://ubuntu.com/server/docs/service-ldap-with-tls
-    mkdir -v /etc/ldap/ssl || return $?
-    curl -o /etc/ldap/ssl/slapd.key -sf -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.key
-    curl -o /etc/ldap/ssl/slapd.crt -sf -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.crt
-    chown -v openldap:openldap /etc/ldap/ssl/slapd.* || return $?
-    chmod -v 400 /etc/ldap/ssl/slapd.* || return $?
+    if [ ! -d "${g_SSL_DIR%/}" ]; then
+        mkdir -v "${g_SSL_DIR%/}" || return $?
+    fi
+    curl -o ${g_SSL_DIR%/}/slapd.key -sf -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.key
+    curl -o ${g_SSL_DIR%/}/slapd.crt -sf -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.crt
+    chown -v openldap:openldap ${g_SSL_DIR%/}/slapd.* || return $?
+    chmod -v 400 ${g_SSL_DIR%/}/slapd.* || return $?
     _trust_ca || return $?
     cat << EOF > /tmp/certinfo.ldif
 dn: cn=config
@@ -326,10 +332,10 @@ add: olcTLSCACertificateFile
 olcTLSCACertificateFile: /etc/ssl/certs/rootCA_standalone.pem
 -
 add: olcTLSCertificateFile
-olcTLSCertificateFile: /etc/ldap/ssl/slapd.crt
+olcTLSCertificateFile: ${g_SSL_DIR%/}/slapd.crt
 -
 add: olcTLSCertificateKeyFile
-olcTLSCertificateKeyFile: /etc/ldap/ssl/slapd.key
+olcTLSCertificateKeyFile: ${g_SSL_DIR%/}/slapd.key
 EOF
     ldapadd -x -D cn=admin,${_dcs} -w "${_password}" -f /tmp/example.ldif
     #ldapmodify -Y EXTERNAL -H ldapi:/// -f /tmp/certinfo.ldif || return $?
@@ -468,57 +474,67 @@ function f_freeipa_cert_update() {
 }
 
 function f_simplesamlphp() {
-    local __doc__="TODO: Setup Simple SAML PHP on a container"
+    local __doc__="No installation, but setup Simple SAML PHP"
     local _host="${1}"
+    local _apache2="apache2"
+    local _conf="/etc/apache2/sites-enabled/saml.conf"
+    local _server_name="$(hostanme -f)"
+    local _port="8444"
+    local _saml_dir="/var/www/simplesaml"
 
-    # TODO: Is it OK to use -y in the  yum install -y php as 5.6 is too old
-    ssh -q root@${_host} -t "yum install -y httpd mod_ssl && \
-yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm && \
-yum install -y http://rpms.remirepo.net/enterprise/remi-release-7.rpm && \
-yum install -y yum-utils && \
-yum-config-manager --enable remi-php56 && \
-yum install -y php php-mbstring php-xml php-curl php-memcache php-ldap" || return $?
-    ssh -q root@${_host} -t "[ ! -s /etc/httpd/conf.d/saml.conf ] && cp -pf /etc/httpd/conf.d/ssl.conf /etc/httpd/conf.d/saml.conf; \
-[ ! -s /etc/httpd/conf.d/ssl.conf.orig ] && mv /etc/httpd/conf.d/ssl.conf /etc/httpd/conf.d/ssl.conf.orig; \
-curl -o /etc/pki/tls/certs/localhost.crt -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.crt; \
-curl -o /etc/pki/tls/private/localhost.key -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.key"
-    ssh -q root@${_host} -t "patch /etc/httpd/conf.d/saml.conf <(echo '--- /etc/httpd/conf.d/ssl.conf  2020-11-16 14:44:03.000000000 +0000
-+++ /etc/httpd/conf.d/saml.conf 2020-12-30 01:24:06.813189424 +0000
-@@ -2,7 +2,7 @@
- # When we also provide SSL we have to listen to the
- # the HTTPS port in addition.
- #
--Listen 443 https
-+Listen 8444 https
+    # https://simplesamlphp.org/docs/stable/simplesamlphp-install#section_1
+    # Requires PHP 7.1.0 or higher. Ubuntu 20.04 is OK but not CentOS 7
+    # TODO: correctly detect OS type and version
+    if type apt-get &>/dev/null; then
+        # https://www.digitalocean.com/community/tutorials/how-to-install-and-configure-simplesamlphp-for-saml-authentication-on-ubuntu-18-04
+        apt-get install -y php-xml php-mbstring php-curl php-memcache php-ldap memcached || return $?
+    else
+        yum install -y httpd mod_ssl && \
+        yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm && \
+        yum install -y http://rpms.remirepo.net/enterprise/remi-release-7.rpm && \
+        yum install -y yum-utils && \
+        yum-config-manager --enable remi-php56 && \
+        yum install -y php php-mbstring php-xml php-curl php-memcache php-ldap || return $?
+        # TODO: Is it OK to use -y in the yum install -y php as 5.6 is too old
+        _apache2="httpd"
+        _conf="/etc/httpd/conf.d/saml.conf"
+    fi
 
- ##
- ##  SSL Global Context
-@@ -53,7 +53,18 @@
- ## SSL Virtual Host Context
- ##
-
--<VirtualHost _default_:443>
-+<VirtualHost _default_:8444>
-+  # changes for SimpleSamlPHP
-+  SetEnv SIMPLESAMLPHP_CONFIG_DIR /var/www/simplesaml/config
-+  DocumentRoot /var/www/simplesaml/www
-+  Alias /simplesaml /var/www/simplesaml/www
-+  Alias /sample /var/www/sample/
-+  ServerName node-freeipa.standalone.localdomain:8444
-+  <Directory /var/www/simplesaml/www>
-+    <IfModule mod_authz_core.c>
-+      Require all granted
-+    </IfModule>
-+  </Directory>
-
- # General setup for the virtual host, inherited from global configuration
- #DocumentRoot \"/var/www/html\"')"
-    ssh -q root@${_host} -t "systemctl enable httpd && systemctl restart httpd" || return $?
-    # TODO: configure Simple SAML PHP
-#curl -O -J -L https://simplesamlphp.org/download?latest
-#tar -xvf simplesamlphp-1.*.tar.gz
-#mv simplesamlphp-1.18.8 /var/www/simplesaml
-#vim /var/www/simplesaml/config/config.php ...
+    [ ! -s ${_conf}.orig ] && mv ${_conf} ${_conf}.orig;
+    curl -o ${g_SSL_DIR%/}/saml.crt -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.crt;
+    curl -o ${g_SSL_DIR%/}/saml.key -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.key
+    chmod 600 ${g_SSL_DIR%/}/saml.key
+    cat << EOF > ${_conf}
+Listen ${_port} https
+<VirtualHost _default_:${_port}>
+  SetEnv SIMPLESAMLPHP_CONFIG_DIR ${_saml_dir%/}/config
+  DocumentRoot ${_saml_dir%/}/www
+  Alias /simplesaml ${_saml_dir%/}/www
+  ServerName ${_server_name}:${_port}
+  <Directory ${_saml_dir%/}/www>
+    Require all granted
+  </Directory>
+  ErrorLog \${APACHE_LOG_DIR}/saml_error_log
+  TransferLog \${APACHE_LOG_DIR}/saml_access_log
+  CustomLog \${APACHE_LOG_DIR}/saml_request_log "%t %h %{SSL_PROTOCOL}x %{SSL_CIPHER}x \"%r\" %b"
+  SSLCertificateFile ${g_SSL_DIR%/}/saml.crt
+  SSLCertificateKeyFile ${g_SSL_DIR%/}/saml.key
+</VirtualHost>
+EOF
+    systemctl enable ${_apache2} && systemctl restart ${_apache2} || return $?
+    local _tmpdir="$(mktemp -d)"
+    cd "${_tmpdir}" || return $?
+    curl -O -J -L https://simplesamlphp.org/download?latest || return $?
+    tar -xvf "$(ls -1t simplesamlphp-*.tar.gz | head -n1)" || return $?
+    mv "$(find ./* -maxdepth 0 -type d)" /var/www/simplesaml || return $?
+    cd -
+    _log "INFO" "Updating ${_saml_dir%/}/config/config.php ..."
+    if [ ! -f ${_saml_dir%/}/config/config.php.orig ]; then
+        cp -p ${_saml_dir%/}/config/config.php ${_saml_dir%/}/config/config.php.orig || return $?
+    fi
+    sed -i.bak "s/'defaultsecretsalt'/'60a37e26dc9b5cf7321b'/" /var/www/simplesaml/config/config.php
+    sed -i.bak "s/'123'/'admin123'/" /var/www/simplesaml/config/config.php
+    sed -i.bak "s/'enable.saml20-idp' => false/'enable.saml20-idp' => true/" /var/www/simplesaml/config/config.php
 }
 
 function f_sssd_setup() {
