@@ -159,7 +159,7 @@ EOF
     disable_lockout  = true
     ldap_kdc_dn = "uid=kdc-service,${_dcs}"
     ldap_kadmind_dn = "uid=kadmin-service,${_dcs}"
-    ldap_service_password_file = /etc/krb5kdc/service.keyfile
+    ldap_service_password_file = /etc/krb5kdc/ldap_service.keyfile
     ldap_servers = ldapi:///
     ldap_conns_per_server = 5
   }
@@ -167,9 +167,9 @@ EOF
         fi
 
         kdb5_ldap_util -D cn=admin,${_dcs} -w "${_ldap_password}" create -subtrees ${_dcs} -r ${_realm} -s -H ldapi:/// -P "${_password}" || return $?
-        _log "TODO" "stashsrvpw will ask the passwords for service accounts..."
-        kdb5_ldap_util -D cn=admin,${_dcs} -w "${_ldap_password}" stashsrvpw -f /etc/krb5kdc/service.keyfile uid=kdc-service,${_dcs} -P "${_ldap_password}"
-        kdb5_ldap_util -D cn=admin,${_dcs} -w "${_ldap_password}" stashsrvpw -f /etc/krb5kdc/service.keyfile uid=kadmin-service,${_dcs} -P "${_password}"
+        _log "NOTE" "stashsrvpw may ask the passwords for service accounts..."
+        echo -e "${_ldap_password}\n${_ldap_password}" | kdb5_ldap_util -D cn=admin,${_dcs} -w "${_ldap_password}" stashsrvpw -f /etc/krb5kdc/ldap_service.keyfile uid=kdc-service,${_dcs}
+        echo -e "${_ldap_password}\n${_ldap_password}" | kdb5_ldap_util -D cn=admin,${_dcs} -w "${_ldap_password}" stashsrvpw -f /etc/krb5kdc/ldap_service.keyfile uid=kadmin-service,${_dcs}
     fi
 
     mv /etc/krb5kdc/kadm5.acl /etc/krb5kdc/.orig &>/dev/null
