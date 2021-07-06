@@ -728,3 +728,15 @@ function f_dnsmasq() {
         echo 'ALL ALL=NOPASSWD: /etc/init.d/dnsmasq force-reload' >> /etc/sudoers
     fi
 }
+
+function f_useradd() {
+    local _user="$1"
+    local _pwd="${2:-"${_user}123"}"
+
+    [ -z "${_user}" ] && return 1
+    if ! id -u ${_user} &>/dev/null; then
+        # should specify home directory just in case?
+        useradd -d "/home/${_user}/" -s "$(which bash)" -p "$(echo "${_pwd}" | openssl passwd -1 -stdin)" "${_user}"
+        mkdir "/home/${_user}/" && chown "${_user}":"${_user}" "/home/${_user}/"
+    fi
+}
