@@ -475,7 +475,7 @@ function f_freeipa_cert_update() {
 
 function f_simplesamlphp() {
     local __doc__="No installation, but setup Simple SAML PHP"
-    local _host="${1}"
+    local _local_ldap="${1}"
     local _apache2="apache2"
     local _conf="/etc/apache2/sites-enabled/saml.conf"
     local _server_name="$(hostanme -f)"
@@ -535,6 +535,24 @@ EOF
     sed -i.bak "s/'defaultsecretsalt'/'60a37e26dc9b5cf7321b'/" /var/www/simplesaml/config/config.php
     sed -i.bak "s/'123'/'admin123'/" /var/www/simplesaml/config/config.php
     sed -i.bak "s/'enable.saml20-idp' => false/'enable.saml20-idp' => true/" /var/www/simplesaml/config/config.php
+
+    if [ -n "${_local_ldap}" ]; then
+        #TODO: /var/www/simplesaml/config/authsources.php
+        echo "'${_local_ldap}' => array(
+    'ldap:LDAP',
+    'hostname' => 'node-freeipa.standalone.localdomain:389',
+    'enable_tls' => FALSE,
+    'attributes' => NULL,
+    'dnpattern' => 'uid=%username%,cn=users,cn=accounts,dc=standalone,dc=localdomain',
+    'search.enable' => FALSE,
+    'search.base' => 'cn=users,cn=accounts,dc=standalone,dc=localdomain',
+    'search.scope' => 'subtree',
+    'search.attributes' => array('uid', 'gecos', 'krbPrincipalName', 'mail'),
+    'search.filter' => '(&(objectClass=person)(uid=*))',
+    'search.username' => 'admin,cn=users,cn=accounts,dc=standalone,dc=localdomain',
+    'search.password' => 'secret12',
+),"
+    fi
 }
 
 function f_sssd_setup() {
