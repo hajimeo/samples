@@ -347,33 +347,26 @@ EOF
 }
 
 function f_ldap_client_install() {
-    local __doc__="TODO: CentOS6 only: Install LDAP client packages for sssd (security lab)"
+    local __doc__="TODO: CentOS6 only: Install LDAP client packages *for sssd* (security lab)"
     # somehow having difficulty to install openldap in docker so using dockerhost1
     local _ldap_server="${1}"
     local _ldap_basedn="${2}"
-    local _how_many="${3-$r_NUM_NODES}"
-    local _start_from="${4-$r_NODE_START_NUM}"
 
     if [ -z "$_ldap_server" ]; then
-        _log "WARN" "No LDAP server hostname. Using ${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
-        _ldap_server="${r_DOCKER_PRIVATE_HOSTNAME}${r_DOMAIN_SUFFIX}"
+        _log "WARN" "No LDAP server hostname. Using $(hostname -f)"; sleep 5
+        _ldap_server="$(hostname -f)"
     fi
     if [ -z "$_ldap_basedn" ]; then
         _log "WARN" "No LDAP Base DN, so using dc=example,dc=com"
         _ldap_basedn="dc=example,dc=com"
     fi
 
-    for i in `_docker_seq "$_how_many" "$_start_from"`; do
-        ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "yum -y erase nscd;yum -y install sssd sssd-client sssd-ldap openldap-clients"
-        if [ $? -eq 0 ]; then
-            ssh -q root@node$i${r_DOMAIN_SUFFIX} -t "authconfig --enablesssd --enablesssdauth --enablelocauthorize --enableldap --enableldapauth --disableldaptls --ldapserver=ldap://${_ldap_server} --ldapbasedn=${_ldap_basedn} --update" || _log "WARN" "node$i failed to setup ldap client"
-            # test
-            #authconfig --test
-            # getent passwd admin
-        else
-            _log "WARN" "node$i failed to install ldap client"
-        fi
-    done
+    yum -y erase nscd
+    yum -y install sssd sssd-client sssd-ldap openldap-clients || return $?
+    authconfig --enablesssd --enablesssdauth --enablelocauthorize --enableldap --enableldapauth --disableldaptls --ldapserver=ldap://${_ldap_server} --ldapbasedn=${_ldap_basedn} --update || return $?
+    # test
+    #authconfig --test
+    # getent passwd admin
 }
 
 function f_freeipa_install() {
