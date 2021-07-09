@@ -135,9 +135,10 @@ function f_topCausedByExceptions() {
 function f_topErrors() {
     local __doc__="List top X ERRORs but removing 1 or 2 occurences"
     local _glob="${1:-"*.*log*"}"   # file path which rg accepts and NEEDS double-quotes
-    local _date_4_bar="$2"  # For bar_chart.py ISO format datetime, but no seconds (eg: 2018-11-05 21:00)
-    local _regex="$3"       # to overwrite default regex to detect ERRORs
-    local _top_N="${4:-20}"
+    local _date_4_bar="$2"          # for bar_chart.py. ISO format datetime, but no seconds (eg: 2018-11-05 21:00)
+    local _regex="$3"               # to overwrite default regex to detect ERRORs
+    local _exclude_regex="$4"       # exclude some lines before _replace_number
+    local _top_N="${5:-20}"
 
     [ -z "$_regex" ] && _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|FAILED)\b.+"
     if [ -f "${_glob}" ]; then
@@ -147,7 +148,11 @@ function f_topErrors() {
         rg -z -c -g "${_glob}" "${_regex}" && echo " "
         rg -z --no-line-number --no-filename -g "${_glob}" "${_regex}" > /tmp/${FUNCNAME}_$$.tmp
     fi
-    cat /tmp/${FUNCNAME}_$$.tmp | _replace_number | sort | uniq -c | sort -nr | head -n ${_top_N}
+    if [ -z "${_exclude_regex}" ]; then
+        cat /tmp/${FUNCNAME}_$$.tmp
+    else
+        cat /tmp/${FUNCNAME}_$$.tmp | rg -v "${_exclude_regex}"
+    fi | _replace_number | sort | uniq -c | sort -nr | head -n ${_top_N}
 
     # just for fun, drawing bar chart
     if which bar_chart.py &>/dev/null; then
