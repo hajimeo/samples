@@ -1,11 +1,37 @@
+# kubectl apply -f k8s-nexus-ingress.yml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: nexus-ingress
-  # NOTE: don't forget to change below
+  # NOTE: don't forget to check/change the namespace.
   namespace: sonatype
 spec:
   rules:
+    # NXRM3 standalone
+    - host: nxrm3-k8s.standalone.localdomain
+      http:
+        paths:
+          - backend:
+              service:
+                # TODO: Need to make sure the service name is correct
+                name: nxrm3-nexus-repository-manager
+                port:
+                  number: 8081
+            pathType: Prefix
+            path: /
+    - host: docker-k8s.standalone.localdomain
+      http:
+        paths:
+          - backend:
+              service:
+                # TODO: Need to make sure the service name is correct
+                name: nxrm3-nexus-repository-manager
+                port:
+                  number: 5000
+            pathType: Prefix
+            path: /
+
+    # NXRM3 HA-C three nodes
     - host: nxrm3-ha1-k8s.standalone.localdomain
       http:
         paths:
@@ -36,28 +62,8 @@ spec:
                   number: 8081
             pathType: Prefix
             path: /
-    - host: nxrm3-k8s.standalone.localdomain
-      http:
-        paths:
-          - backend:
-              service:
-                # TODO: Need to make sure the service name is correct
-                name: nxrm3-nexus-repository-manager
-                port:
-                  number: 8081
-            pathType: Prefix
-            path: /
-    - host: docker-k8s.standalone.localdomain
-      http:
-        paths:
-          - backend:
-              service:
-                # TODO: Need to make sure the service name is correct
-                name: nxrm3-nexus-repository-manager
-                port:
-                  number: 5000
-            pathType: Prefix
-            path: /
+
+    # IQ
     - host: nxiq-k8s.standalone.localdomain
       http:
         paths:
@@ -68,7 +74,7 @@ spec:
                   number: 8070
             pathType: Prefix
             path: /
-    # TODO: do i need to expose this?
+    # NOTE: Do i need to expose this?
     - host: nxiq-admin-k8s.standalone.localdomain
       http:
         paths:
