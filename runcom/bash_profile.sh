@@ -88,3 +88,9 @@ if [ -d "$HOME/IdeaProjects/grumpy/build" ]; then
 fi
 
 export _SERVICE="sonatype"
+
+# The next line updates PATH for the Google Cloud SDK.
+if [ -f '/Users/hosako/Downloads/google-cloud-sdk/path.bash.inc' ]; then . '/Users/hosako/Downloads/google-cloud-sdk/path.bash.inc'; fi
+
+# The next line enables shell command completion for gcloud.
+if [ -f '/Users/hosako/Downloads/google-cloud-sdk/completion.bash.inc' ]; then . '/Users/hosako/Downloads/google-cloud-sdk/completion.bash.inc'; fi
