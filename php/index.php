@@ -5,6 +5,18 @@
  * PHP web server returns 200 for POST, so just handling PUT
  */
 
+function log($msg)
+{
+    $stderr = fopen('php://stderr', 'w');
+    fwrite($stderr, $msg);
+    fclose($stderr);
+}
+
+$headers = getallheaders();
+foreach ($headers as $key => $val) {
+    log('    ' . $key . ': ' . $val . PHP_EOL);
+}
+
 // @see: https://www.php.net/manual/en/features.file-upload.put-method.php
 $save_to = tempnam(sys_get_temp_dir(), 'put_');
 $putdata = fopen("php://input", "r");
@@ -13,7 +25,4 @@ while ($data = fread($putdata, 1024))
     fwrite($fp, $data);
 fclose($fp);
 fclose($putdata);
-
-$stderr = fopen('php://stderr', 'w');
-fwrite($stderr, "Wrote PUT/POST data into '" . $save_to . "'" . PHP_EOL);
-fclose($stderr);
+log("    Wrote PUT/POST data into '" . $save_to . "'" . PHP_EOL);
