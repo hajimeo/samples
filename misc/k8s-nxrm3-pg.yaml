@@ -31,7 +31,7 @@ spec:
       labels:
         app: nxrm3
     spec:
-      # TODO: the original one had initContainers to change owner of /nexus-data and serviceAccountName
+      # TODO: Do I need to use initContainers to change owner of /nexus-data and serviceAccountName?
       containers:
         - name: nxrm3-pod
           image: sonatype/nexus3:3.31.1
