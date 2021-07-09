@@ -1,98 +1,69 @@
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  namespace: nxrm
-  name: ingress-nxrm
-  annotations:
-    kubernetes.io/ingress.class: alb
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/subnets: subnet-076c578b03aa87261, subnet-0e50f111174c8e292
-spec:
-  rules:
-    - http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: nxrm-service
-                port:
-                  number: 80
----
+# NOTE: Do not forget to configure Ingress
+#       Also, export _DB_USER, _DB_PWD, _JDBC_URL, _DATA_DIR, _SHARE_DIR
 apiVersion: v1
 kind: Service
 metadata:
-  name: nxrm-service
-  namespace: nxrm
+  name: nxrm3-service
   labels:
-    app: nxrm
+    app: nxrm3
 spec:
   type: NodePort
   selector:
-    app: nxrm
+    app: nxrm3
   ports:
     - protocol: TCP
-      port: 80
+      port: 8081
       targetPort: 8081
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nxrm-deployment
-  namespace: nxrm
+  name: nxrm3-deployment
   labels:
-    app: nxrm
+    app: nxrm3
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nxrm
+      app: nxrm3
   template:
     metadata:
       labels:
-        app: nxrm
+        app: nxrm3
     spec:
-      serviceAccountName: nxrm-deployment-sa
-      initContainers:
-        - name: chown-nexusdata-owner-to-nexus
-          image: busybox:1.33.1
-          command: ['chown', '-R', '200:200', '/nexus-data']
-          volumeMounts:
-            - name: efs-storage
-              mountPath: /nexus-data
+      # TODO: the original one had initContainers to change owner of /nexus-data and serviceAccountName
       containers:
-        - name: nxrm-pod
+        - name: nxrm3-pod
           image: sonatype/nexus3:3.31.1
-          securityContext:
-            runAsUser: 200
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8081
           env:
             - name: NEXUS_SECURITY_RANDOMPASSWORD
-              value: "false"
+              value: 'false'
             - name: INSTALL4J_ADD_VM_PARAMS
-              value: "-Xms2703m -Xmx2703m -XX:MaxDirectMemorySize=2703m -Dnexus.earlyAccess.datastore.developer=true -Dnexus.licenseFile=/license-secret/nxrm-license.lic \
-          -Dnexus.datastore.enabled=true -Djava.util.prefs.userRoot=${NEXUS_DATA}/javaprefs \
-          -Dnexus.datastore.content.name=content \
-          -Dnexus.datastore.content.type=jdbc \
-          -Dnexus.datastore.content.jdbcUrl={{jdbc url}} \
-          -Dnexus.datastore.config.name=config \
-          -Dnexus.datastore.config.type=jdbc \
-          -Dnexus.datastore.config.jdbcUrl={{jdbc url}}"
+              # -Dnexus.licenseFile=/license-secret/nxrm-license.lic
+              value: '-Xms2703m -Xmx2703m -XX:MaxDirectMemorySize=2703m \
+          -Dnexus.datastore.enabled=true -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
+          -Dnexus.datastore.nexus.name=nexus \
+          -Dnexus.datastore.nexus.schema=nexus \
+          -Dnexus.datastore.nexus.username=${_DB_USER} \
+          -Dnexus.datastore.nexus.password=${_DB_PWD} \
+          -Dnexus.datastore.nexus.type=jdbc \
+          -Dnexus.datastore.nexus.jdbcUrl=${_JDBC_URL} \
+          -Dnexus.datastore.nexus.advanced=maximumPoolSize\=40'
           volumeMounts:
-            - mountPath: /license-secret
-              name: license-secret
-            - name: efs-storage
+            - name: nexus-data-volume
               mountPath: /nexus-data
+            - name: share-volume
+              # Using same path as the hostPath
+              mountPath: ${_SHARE_DIR}
       volumes:
-        - name: license-secret
-          csi:
-            driver: secrets-store.csi.k8s.io
-            readOnly: true
-            volumeAttributes:
-              secretProviderClass: "nxrm-license-secret"
-              fsType: ext4
-        - name: efs-storage
-          persistentVolumeClaim:
-            claimName: efs-claim
+        - name: nexus-data-volume
+          hostPath:
+            path: ${_DATA_DIR}
+            type: DirectoryOrCreate
+        - name: share-volume
+          hostPath:
+            path: ${_SHARE_DIR}
+            type: DirectoryOrCreate
