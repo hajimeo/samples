@@ -15,5 +15,5 @@ fclose($fp);
 fclose($putdata);
 
 $stderr = fopen('php://stderr', 'w');
-fwrite($stderr, "Wrote PUT data into '" . $save_to . "'" . PHP_EOL);
+fwrite($stderr, "Wrote PUT/POST data into '" . $save_to . "'" . PHP_EOL);
 fclose($stderr);
