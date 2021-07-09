@@ -30,6 +30,7 @@ function get_ciphers() {
     local _delay=1
 
     if [[ "${_use_nmap}" =~ ^(y|Y) ]] && which nmap &>/dev/null; then
+        # TODO: this doesn't work with TLSv1.3
         nmap --script +ssl-enum-ciphers -p ${_port} ${_host}
         return $?
     fi
@@ -43,7 +44,7 @@ function get_ciphers() {
         if [[ "$result" =~ ":error:" ]] ; then
             error=$(echo -n $result | cut -d':' -f6)
             echo -e "$cipher\tNO ($error)" >&2
-        elif [[ "$result" =~ "Cipher is ${cipher}" || "$result" =~ "Cipher    :" ]] ; then
+        elif [[ "$result" =~ Cipher[[:space:]]is[[:space:]]${cipher} || "$result" =~ Cipher[[:space:]]+: ]] ; then
             echo -e "$cipher\tYES"
         else
             echo -e "$cipher\tUNKNOWN RESPONSE" >&2
