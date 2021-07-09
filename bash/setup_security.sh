@@ -733,6 +733,7 @@ function f_dnsmasq() {
         rm -f /etc/resolv.conf
         _log "WARN" "systemctl disable systemd-resolved was run. Please reboot"
     fi
+    # NOTE: this won't work if container (if so, may need --dns=127.0.0.1)
     echo 'nameserver 127.0.0.1' >/etc/resolv.conf
     if ! grep -qw dnsmasq /etc/sudoers; then
         # NOT RECOMMENDED but for this service, allow everyone to reload
