@@ -525,6 +525,7 @@ EOF
 function _apache_install() {
     # NOTE: how to check loaded modules: apache2ctl -M and/or check mods-available/ and mods-enabled/
     apt-get install -y apache2 apache2-utils || return $?
+    apt-get install -y php libapache2-mod-php
     # https://www.cyberciti.biz/faq/apache-mod_dumpio-log-post-data/
     #a2enmod dump_io || return $?   # To log request headers but may log too much
     a2enmod proxy proxy_http proxy_connect proxy_wstunnel cache cache_disk ssl || return $?
