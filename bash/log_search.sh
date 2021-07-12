@@ -1314,7 +1314,8 @@ function _replace_number() {
     local _N_="_NUM_"
     [ 5 -gt ${_min} ] && _N_="*"
     _sed -r "s/[0-9a-fA-F]{40,}/___SHA*___/g" \
-     | _sed -r "s/[0-9a-fA-F]{8}-[0-9a-fA-F]{4,8}-[0-9a-fA-F]{4,8}-[0-9a-fA-F]{4,8}-[0-9a-fA-F]{8,12}/___UUID___/g" \
+     | _sed -r "s/\b[0-9a-fA-F]{32}\b/___UUID___/g" \
+     | _sed -r "s/\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4,8}-[0-9a-fA-F]{4,8}-[0-9a-fA-F]{4,8}-[0-9a-fA-F]{8,12}\b/___U-U-I-D___/g" \
      | _sed -r "s/0x[0-9a-f]{2,}/0x_HEX_/g" \
      | _sed -r "s/\b[0-9a-f]{6,8}\b/__HEX__/g" \
      | _sed -r "s/20[0-9][0-9][-/][0-9][0-9][-/][0-9][0-9][ T]/___DATE___./g" \
@@ -1326,7 +1327,7 @@ function _replace_number() {
      | _sed -r "s/-[0-9]+\] /-_N_] /g" \
      | _sed -r "s/-[0-9]+\//-_N_\//g" \
      | _sed -r "s/[0-9]{8,10}-[0-9]+\b/__THREAD_ID__/g" \
-     | _sed -r "s/[0-9]{${_min},}+/${_N_}/g"
+     | _sed -r "s/[0-9]{${_min},}+\b/${_N_}/g"
 }
 
 function _load_yaml() {
@@ -1402,6 +1403,15 @@ function _uniq() {
     ${_cmd} "$@"
 }
 
+function _LOG() {
+    local _log_file="${_LOG_FILE_PATH:-"/dev/null"}"
+    local _is_debug="${_DEBUG:-false}"
+    if [ "$1" == "DEBUG" ] && ! ${_is_debug}; then
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >> ${_log_file}
+    else
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a ${_log_file}
+    fi # 1>&2 At this moment, outputting to STDOUT
+}
 
 
 ### Help ###############################################################################################################
