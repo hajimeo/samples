@@ -93,3 +93,11 @@ function f_mount_file() {
     [ -n "${_extra_opts}" ] && _opts="${_opts},${_extra_opts#,}"
     mount -t ${_file_type} -o "${_opts}" "${_file}" "${_mount_to}"
 }
+
+#find /opt/sonatype/sonatype-work/clm-server/report -mindepth 2 -maxdepth 2 -type d -print | while read -r _p; do grep -qw totalArtifactCount ${_p}/report.cache/summary.json || echo "${_p}/report.cache/summary.json: No totalArtifactCount"; done
+function f_find_missing() {
+    local _start_dir="$1"
+    local _finding="$1"
+    local _depth="$2"
+    find ${_start_dir%/} -mindepth ${_depth} -maxdepth ${_depth} -type d -print | while read -r _p; do [ -f "${_p}/${_finding}" ] || echo "${_p} is missing ${_finding}"; done
+}
