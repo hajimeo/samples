@@ -512,6 +512,7 @@ function f_setup_raw() {
     if [ -s "${_TMP%/}/test_1k.img" ]; then
         f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
     fi
+    # Another quicker way: curl -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw_hosted/test.txt"
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
@@ -1047,8 +1048,13 @@ function f_nexus_admin_pwd() {
 
 # Create a test user and test role
 function f_nexus_testuser() {
-    f_apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"default","id":"test-role","name":"testRole","description":"test role","privileges":["nx-repository-view-*-*-*","nx-usertoken-current"],"roles":[]}],"type":"rpc"}'
-    f_apiS '{"action":"coreui_User","method":"create","data":[{"userId":"testuser","version":"","firstName":"test","lastName":"user","email":"testuser@example.com","status":"active","roles":["test-role"],"password":"testuser"}],"type":"rpc"}'
+    local _userid="${1:-"testuser"}"
+    local _privs="${2}" # eg: '"nx-repository-view-*-*-*","nx-usertoken-current"' NOTE: OSS doesn't have usertoken
+    local _role="${3-"test-role"}"
+    if [ -n "${_role}" ]; then
+        f_apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"default","id":"'${_role}'","name":"'${_role}'","description":"'${_role}'","privileges":['${_privs}'],"roles":[]}],"type":"rpc"}' #|| return $?
+    fi
+    f_apiS '{"action":"coreui_User","method":"create","data":[{"userId":"'${_userid}'","version":"","firstName":"test","lastName":"user","email":"'${_userid}'@example.com","status":"active","roles":["'${_role}'"],"password":"'${_userid}'"}],"type":"rpc"}'
 }
 
 function f_nexus_https_config() {
