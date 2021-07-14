@@ -439,6 +439,7 @@ function sshs() {
 alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
 
 # Start PostgreSQL (on Mac)
+# NOTE: if brew upgraded postgresql, may need to run 'brew postgresql-upgrade-database'
 function pgStart() {
     local _pg_data="${1:-"/usr/local/var/postgres"}"
     local _log_path="${2:-"$HOME/postgresql.log"}"
