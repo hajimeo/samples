@@ -908,6 +908,12 @@ function _postgresql_configure() {
     _upsert ${_postgresql_conf} "listen_addresses" "'*'" "#listen_addresses"
     [ ! -d /var/log/postgresql ] && mkdir -p -m 777 /var/log/postgresql
     _upsert ${_postgresql_conf} "log_directory" "'/var/log/postgresql' " "#log_directory"
+    #_upsert ${_postgresql_conf} "ssl" "on" "#ssl"
+    # NOTE: key file permission needs to be 0600
+    #_upsert ${_postgresql_conf} "ssl_key_file" "'/var/lib/pgsql/12/standalone.localdomain.key'" "#ssl_key_file"
+    #_upsert ${_postgresql_conf} "ssl_cert_file" "'/var/lib/pgsql/12/standalone.localdomain.crt'" "#ssl_cert_file"
+    #_upsert ${_postgresql_conf} "ssl_ca_file" "'/var/tmp/share/cert/rootCA_standalone.crt'" "#ssl_ca_file"
+    # pg_hba.conf: hostssl sonatype sonatype 0.0.0.0/0 md5
 
     if [ -z "${_wal_archive_dir}" ]; then
         _wal_archive_dir="${_WORK_DIR%/}/${_postgres}/backups/${_save_dir%/}/`hostname -s`_wal"
@@ -1006,8 +1012,8 @@ function _postgresql_create_dbuser() {
     fi
 
     # test
-    local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
-    local _cmd="psql -U ${_dbusr} -h ${_host_ip:-"127.0.0.1"} -d ${_dbname} -c \"\l ${_dbname}\""
+    local _host_name="$(hostname -f)"
+    local _cmd="psql -U ${_dbusr} -h ${_host_name} -d ${_dbname} -c \"\l ${_dbname}\""
     _log "INFO" "Testing connection with ${_cmd} ..."
     eval "PGPASSWORD=\"${_dbpwd}\" ${_cmd}" || return $?
 }
