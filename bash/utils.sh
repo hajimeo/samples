@@ -960,6 +960,7 @@ function _postgresql_create_dbuser() {
 
     if [ -z "${_postgres}" ]; then
         if [ "`uname`" = "Darwin" ]; then
+            #psql template1 -c "create database $USER"
             _postgres="$USER"
         else
             _postgres="$(_user_by_port "${_port}" 2>/dev/null)"
@@ -1006,7 +1007,7 @@ function _postgresql_create_dbuser() {
 
     # test
     local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
-    local _cmd="psql -U ${_dbusr} -h ${_host_ip} -d ${_dbname} -c \"\l ${_dbname}\""
+    local _cmd="psql -U ${_dbusr} -h ${_host_ip:-"127.0.0.1"} -d ${_dbname} -c \"\l ${_dbname}\""
     _log "INFO" "Testing connection with ${_cmd} ..."
     eval "PGPASSWORD=\"${_dbpwd}\" ${_cmd}" || return $?
 }
