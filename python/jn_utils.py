@@ -449,11 +449,11 @@ def _json2table(filename, tablename=None, conn=None, col_name='json_text', appen
         tablename = _pick_new_key(filename, {}, using_1st_char=False, prefix='t_')
 
     if appending is False:
-        res = conn.execute("DROP TABLE IF EXISTS %s" % (tablename))
+        res = execute("DROP TABLE IF EXISTS %s" % (tablename))
         if bool(res) is False:
             return res
         _debug("DROP-ed TABLE IF EXISTS %s" % (tablename))
-    res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s TEXT)" % (tablename, col_name))  # JSON type not supported?
+    res = execute("CREATE TABLE IF NOT EXISTS %s (%s TEXT)" % (tablename, col_name))  # JSON type not supported?
     if bool(res) is False:
         return res
     rtn = conn.executemany("INSERT INTO " + tablename + " VALUES (?)", str(j_str))
@@ -637,13 +637,13 @@ def _db(conn_str=':memory:', dbtype='sqlite', isolation_level=None, use_sqlalche
     >>> pass    # testing in connect()
     """
     global _DB_TYPE
-    _DB_TYPE=dbtype
+    _DB_TYPE = dbtype
     if use_sqlalchemy is False and dbtype == 'sqlite':
         return sqlite3.connect(conn_str, isolation_level=isolation_level)
     if dbtype == 'sqlite':
         conn_str = dbtype + ':///' + conn_str
     elif dbtype == 'hive':
-        return hive_conn("jdbc:hive2://"+conn_str)
+        return hive_conn("jdbc:hive2://" + conn_str)
     else:
         conn_str = dbtype + '://' + conn_str
     return create_engine(conn_str, isolation_level=isolation_level, echo=echo)
@@ -842,7 +842,7 @@ def connect(conn_str=':memory:', dbtype='sqlite', isolation_level=None, use_sqla
             db.connect().connection.connection.text_factory = str
         # For 'sqlite, 'db' is the connection object because of _db()
         conn = _register_udfs(db)
-    #elif dbtype == 'postgres':
+    # elif dbtype == 'postgres':
     #    _debug("TODO: do something")
     #    conn = db.connect()
     else:
@@ -963,7 +963,8 @@ def _autocomp_matcher(text):
     conn = _LAST_CONN
     # Currently only searching table object
     sql_and = " and tbl_name like '" + str(text) + "%'"
-    rs = conn.execute("select distinct name from sqlite_master where type = 'table'%s" % (sql_and))
+    # TODO: does not work with PostgreSQL
+    rs = execute("select distinct name from sqlite_master where type = 'table'%s" % (sql_and))
     if bool(rs) is False:
         return
     return _get_col_vals(rs.fetchall(), 0)
@@ -1312,6 +1313,18 @@ def describe(tablename=None, colname=None, conn=None):
     Columns: [name, rootpage]
     Index: []
     """
+    global _DB_TYPE
+    if _DB_TYPE != 'sqlite':
+        # If not sqlite, expecting information_schema is available
+        extra_where = ""
+        if bool(colname):
+            extra_where = " AND column_name like '" + colname + "%'"
+        if bool(tablename) is False:
+            sql = "SELECT distinct table_name, count(*) as col_num FROM information_schema.columns WHERE 1=1 %s GROUP BY table_name" % (extra_where)
+        else:
+            sql = "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_name = '%s' %s " % (tablename, extra_where)
+        return query(sql=sql, conn=conn, no_history=True)
+
     if bool(tablename) is False:
         return show_create_table(tablenames=None, like=colname, conn=conn)
     # NOTE: this query is sqlite specific. names = list(map(lambda x: x[0], cursor.description))
@@ -1342,6 +1355,11 @@ def show_create_table(tablenames=None, like=None, conn=None):
     Columns: [name, rootpage]
     Index: []
     """
+    # TODO: Only for sqlite, does not work with PostgreSQL
+    global _DB_TYPE
+    if _DB_TYPE != 'sqlite':
+        _err("Unsupported DB type: %s" % str(_DB_TYPE))
+        return
     if conn is None:
         conn = connect()
     sql_and = ""
@@ -1351,16 +1369,16 @@ def show_create_table(tablenames=None, like=None, conn=None):
         if isinstance(tablenames, str): tablenames = [tablenames]
         for t in tablenames:
             # Currently searching any object as long as name matches
-            rs = conn.execute("select sql from sqlite_master where name = '%s'%s" % (str(t), sql_and))
+            rs = execute("select sql from sqlite_master where name = '%s'%s" % (str(t), sql_and))
             if bool(rs) is False:
                 continue
             print(rs.fetchall()[0][0])
             # SQLite doesn't like - in a table name. need to escape with double quotes.
-            print("Rows: %s\n" % (conn.execute("SELECT count(oid) FROM \"%s\"" % (t)).fetchall()[0][0]))
+            print("Rows: %s\n" % (execute("SELECT count(oid) FROM \"%s\"" % (t)).fetchall()[0][0]))
         return
     if bool(like):
         # Currently only searching table object
-        rs = conn.execute("select distinct name from sqlite_master where type = 'table'%s" % (sql_and))
+        rs = execute("select distinct name from sqlite_master where type = 'table'%s" % (sql_and))
         if bool(rs) is False:
             return
         tablenames = _get_col_vals(rs.fetchall(), 0)
@@ -1773,11 +1791,11 @@ def logs2table(filename, tablename=None, conn=None,
     # If not None, create a table
     if bool(col_def_str):
         if appending is False:
-            res = conn.execute("DROP TABLE IF EXISTS %s" % (tablename))
+            res = execute("DROP TABLE IF EXISTS %s" % (tablename))
             if bool(res) is False:
                 return res
             _info("DROP-ed TABLE IF EXISTS: %s" % (tablename))
-        res = conn.execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def_str))
+        res = execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def_str))
         if bool(res) is False:
             return res
 
@@ -2007,7 +2025,7 @@ def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace', sche
     try:
         if bool(schema) is False:
             global _DB_SCHEMA
-            schema=_DB_SCHEMA
+            schema = _DB_SCHEMA
         df.to_sql(name=tablename, con=conn, chunksize=chunksize, if_exists=if_exists, schema=schema, index=False)
     except InterfaceError as e:
         res = re.search('Error binding parameter ([0-9]+) - probably unsupported type', str(e))
