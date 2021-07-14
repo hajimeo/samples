@@ -5,7 +5,7 @@
 # For local test:
 #   _import() { source /var/tmp/share/sonatype/$1; } && export -f _import
 #
-# source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh)"
+# source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh --compressed)"
 # export _NEXUS_URL="https://nxrm3-k8s.standalone.localdomain/"
 #
 _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
