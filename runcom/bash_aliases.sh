@@ -131,7 +131,7 @@ alias gcviewer='java -Xmx4g -jar $HOME/Apps/gcviewer/gcviewer-1.36.jar &>/tmp/gc
 alias gitbucket='java -jar gitbucket.war &> /tmp/gitbucket.out &'   #https://github.com/gitbucket/gitbucket/releases/download/4.34.0/gitbucket.war
 alias groovyi='groovysh -e ":set interpreterMode true"'
 alias jenkins='java -jar $HOME/Apps/jenkins.war'  #curl -o $HOME/Apps/jenkins.war -L https://get.jenkins.io/war-stable/<version>/jenkins.war
-# (reverse) proxy server https://www.mock-server.com/mock_server/getting_started.html
+# http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'  #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
 [ -f /var/tmp/share/java/orient-console.jar ] && alias orient-console="java -jar /var/tmp/share/java/orient-console.jar"
