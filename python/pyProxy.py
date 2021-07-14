@@ -6,7 +6,7 @@
 #
 import argparse, sys, socket, select, datetime, os
 try:
-    # TODO: this script does not work with python3
+    # TODO: Test this script with python3
     import _thread as thread
     from urllib.parse import urlparse, parse_qs
 except ImportError:
@@ -21,7 +21,6 @@ HTTPVER = 'HTTP/1.1'
 
 
 class ConnectionHandler:
-    reverse_url = ""
     _debug = False
 
     def __init__(self, connection, address, timeout):
@@ -71,15 +70,6 @@ class ConnectionHandler:
         # protocol = self.protocol   # TODO: https?
         host = self.path[:i]
         path = self.path[i:]
-        # TODO: not working
-        if len(self.reverse_url) > 0:
-            parsed_url = urlparse(self.reverse_url)
-            self.protocol = parsed_url.scheme
-            host = parsed_url.netloc
-            trimed_path = parsed_url.path.strip("/")
-            if len(trimed_path) > 0:
-                path = "/" + trimed_path + "/" + path.lstrip("/")
-            self.log(host+path)
         self._connect_target(host)
         _str = '%s %s %s\n' % (self.method, path, self.protocol) + self.client_buffer
         self.log(_str)
@@ -123,7 +113,7 @@ class ConnectionHandler:
                 break
 
 
-def start_server(host='localhost', port=8080, IPv6=False, timeout=60, reverse_url="", handler=ConnectionHandler):
+def start_server(host='localhost', port=8080, IPv6=False, timeout=60, handler=ConnectionHandler):
     if IPv6 == True:
         soc_type = socket.AF_INET6
     else:
@@ -139,8 +129,6 @@ def start_server(host='localhost', port=8080, IPv6=False, timeout=60, reverse_ur
             return 0
         else:
             raise
-    if len(reverse_url) > 0:
-        handler.reverse_url = reverse_url
     print("[%s] Serving on %s:%d" % (ts, host, port))  # debug
     soc.listen(0)
     while 1:
@@ -159,14 +147,12 @@ def main():
     parser = argparse.ArgumentParser(description='Simple Proxy / Reverse proxy')
     parser.add_argument('--host', required=False, default="0.0.0.0", help='Listening IP or hostname (default 0.0.0.0)')
     parser.add_argument('--port', required=False, default="8080", help='Listening port number (default 8080)')
-    parser.add_argument('--r_url', required=False, default="", help='Reverse Proxy destination URL')
     parser.add_argument('--timeout', required=False, default="60", help='socket timeout (default 60)')
     args = parser.parse_args()
     host = args.host
     port = int(args.port)
-    r_url = args.r_url
     timeout = int(args.timeout)
-    return start_server(host=host, port=port, timeout=timeout, reverse_url=r_url)
+    return start_server(host=host, port=port, timeout=timeout)
 
 
 if __name__ == '__main__':
