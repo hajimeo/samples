@@ -323,6 +323,7 @@ function get_certificate_from_https() {
     local _port="${2:-443}"
     local _dest_filepath="$3"
     local _proxy="$4"
+    local _truststore="$5"
     [ -z "${_dest_filepath}" ] && _dest_filepath=./${_host}_${_port}.pem
     local _keytool="$(which keytool 2>/dev/null)"
     [ -x "${JAVA_HOME%/}/bin/keytool" ] && _keytool="${JAVA_HOME%/}/bin/keytool"
@@ -354,7 +355,11 @@ function get_certificate_from_https() {
         fi
     fi > /tmp/${_host}_${_port}.tmp || return $?
     #gcsplit -f cert -s /tmp/${_host}_${_port}.tmp '/BEGIN CERTIFICATE/' '{*}'
-    sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp > ${_dest_filepath}
+    sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /tmp/${_host}_${_port}.tmp > ${_dest_filepath} || return $?
+    if [ -n "${_truststore}" ]; then
+        echo "${_keytool} -import -alias \"${_host}_${_port}\" -keystore \"${_truststore}\" -file \"${_dest_filepath}\""
+        ${_keytool} -import -alias "${_host}_${_port}" -keystore "${_truststore}" -file "${_dest_filepath}"
+    fi
 }
 
 # for SAML X509Certificate
