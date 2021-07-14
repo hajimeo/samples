@@ -1,0 +1,8 @@
+# TODO: IQ upgrading to v118 or higher may fail due to the UID chang
+spec:
+  # https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
+  initContainers:
+    # TODO how can I remove after upgrading
+    - name: update-uid-patch
+      image: busybox:1.28
+      command: ['sh', '-c', "chown -v -R 1000:1000 /var/log/nexus-iq-server /sonatype-work"]
