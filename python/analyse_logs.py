@@ -339,8 +339,8 @@ FROM t_log_elastic_jvm_monitor
         display_name = "NxiqLog_Policy_Scan_aggs"
         # UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1)
         query = """SELECT thread, min(date_time), max(date_time), 
-    STRFTIME('%s', substr(max(date_time), 1, 23))
-  - STRFTIME('%s', substr(min(date_time), 1, 23)) as diff,
+    STRFTIME('%%s', substr(max(date_time), 1, 23))
+  - STRFTIME('%%s', substr(min(date_time), 1, 23)) as diff,
     count(*)
 FROM t_iq_logs
 %s
