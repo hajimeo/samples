@@ -3,9 +3,7 @@
  *
  * curl -O https://raw.githubusercontent.com/hajimeo/samples/master/java/TestDBConn.java
  * javac TestDBConn.java
- * java -cp .:/some_jar_include_driver.jar TestDBConn org.postgresql.Driver jdbc:postgresql://`hostname -f`:5432/schema username password "select * from database.table where 1 = 1"
- *
- * java -jar ./target/TestDBConn-1.0-SNAPSHOT.jar org.postgresql.Driver jdbc:postgresql://node-nxiq.standalone.localdomain:5432/sonatype sonatype admin123 "select * from insight_brain_ods.schema_version"
+ * java -cp .:/jar_contains_DB_driver.jar TestDBConn org.postgresql.Driver jdbc:postgresql://`hostname -f`:5432/database username password "SELECT * FROM INFORMATION_SCHEMA.TABLES LIMIT 1"
  */
 
 import java.sql.*;
@@ -15,7 +13,7 @@ public class TestDBConn {
         if (args.length < 4) {
             System.err.println("Usage:");
             System.err.println("    java -cp .:path_to_jdbc.jar TestDBConn driver_class_name jdbc_str username password [sql]");
-            System.err.println("    java -cp ./nexus-iq-server-*.jar -jar ./TestDBConn-1.0-SNAPSHOT.jar org.postgresql.Driver jdbc:postgresql://localhost:5432/mydatabase dbuser dbuserpwd 'select * from insight_brain_ods.schema_version;'");
+            System.err.println("    java -cp ./nexus-iq-server-*.jar -jar ./TestDBConn-1.0-SNAPSHOT.jar org.postgresql.Driver jdbc:postgresql://localhost:5432/mydatabase dbuser dbuserpwd \"SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='insight_brain_ods' AND TABLE_NAME='schema_version';select * from insight_brain_ods.schema_version;\"");
             System.exit(1);
         }
 
