@@ -15,7 +15,7 @@ public class TestDBConn {
         if (args.length < 4) {
             System.err.println("Usage:");
             System.err.println("    java -cp .:path_to_jdbc.jar TestDBConn driver_class_name jdbc_str username password [sql]");
-            System.err.println("    java -cp .:./postgresql-42.2.5.jar TestDBConn org.postgresql.Driver jdbc:postgresql://localhost:5432/template1 postgres ****** 'select * from some_table;'");
+            System.err.println("    java -cp ./nexus-iq-server-*.jar -jar ./TestDBConn-1.0-SNAPSHOT.jar org.postgresql.Driver jdbc:postgresql://localhost:5432/mydatabase dbuser dbuserpwd 'select * from insight_brain_ods.schema_version;'");
             System.exit(1);
         }
 
