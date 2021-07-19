@@ -47,20 +47,23 @@ function f_search_soft_deleted_blobs() {
 
 alias sum_cols="paste -sd+ - | bc"
 function f_orientdb_checks() {
-    local _db="$1"
+    local _db="$1"  # TODO: Directory or ls -l output
     local _find="$(which gfind || echo "find")"
     echo "# Finding wal files ..."
+    #cat ${_db} | grep 'wal'
     ${_find} ${_db%/} -type f -name '*.wal' -printf '%k\t%P\t%t\n'
     echo "# Checking size (KB) of index files ..."
-    ${_find} ${_db%/} -type f -name '*_idx.sbt' -printf '%k\t%P\n' | sort -k2 | tee /tmp/$FUNCNAME.out
-    echo "Total: $(cat /tmp/$FUNCNAME.out | wc -l)"
+    #cat ${_db} | grep '_idx.sbt' | awk '{print $5" "$9}' | sort -k2 | tee /tmp/f_orientdb_checks.out
+    ${_find} ${_db%/} -type f -name '*_idx.sbt' -printf '%k\t%P\n' | sort -k2 | tee /tmp/f_orientdb_checks.out
+    echo "Total: $(cat /tmp/f_orientdb_checks.out | wc -l)"
     echo "# Estimating table sizes (KB) from pcl files ..."
-    ${_find} ${_db%/} -type f -name '*.pcl' -printf '%k\t%P\n' | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/$FUNCNAME.out
-    cat /tmp/$FUNCNAME.out | uniq -f1 | while read -r _l; do
+    #cat ${_db} | grep '.pcl' | awk '{print $5" "$9}' | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/f_orientdb_checks.out
+    ${_find} ${_db%/} -type f -name '*.pcl' -printf '%k\t%P\n' | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/f_orientdb_checks.out
+    cat /tmp/f_orientdb_checks.out | uniq -f1 | while read -r _l; do
         # NOTE: matching space in bash is a bit tricky
         if [[ "${_l}" =~ ^[[:space:]]*[0-9]+[[:space:]]+(.+) ]]; then
             local _table="${BASH_REMATCH[1]}"
-            local _total="$(grep -E "\s+${_table}$" /tmp/$FUNCNAME.out | awk '{print $1}' | sum_cols)"
+            local _total="$(grep -E "\s+${_table}$" /tmp/f_orientdb_checks.out | awk '{print $1}' | sum_cols)"
             echo -e "${_total}\t${_table}"
         fi
     done
