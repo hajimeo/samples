@@ -288,12 +288,13 @@ function f_populate_docker_hosted() {
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${_NEXUS_URL}"}"}"
     local _backup_ports="${3-"18182 18181"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
+    local _tag_to="${5:-"${_TAG_TO:-"${_tag_name}"}"}"
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
 
     # In _docker_proxy, the image might be already pulled.
-    if ! ${_cmd} tag ${_host_port:-"localhost"}/${_tag_name} ${_host_port}/${_tag_name} 2>/dev/null; then
+    if ! ${_cmd} tag ${_host_port:-"localhost"}/${_tag_name} ${_host_port}/${_tag_to} 2>/dev/null; then
         # Example commands to create layers
         # "FROM alpine:3.7\nCMD echo 'hello world'"
         # "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nENTRYPOINT [\"mysql\"]"
@@ -302,12 +303,12 @@ function f_populate_docker_hosted() {
         cd ${_build_dir} || return $?
         echo -e "FROM ${_tag_name}\n" > Dockerfile && ${_cmd} build --rm -t ${_tag_name} .
         cd -    # should check the previous return code.
-        if ! ${_cmd} tag localhost/${_tag_name} ${_host_port}/${_tag_name}; then
-            ${_cmd} tag ${_tag_name} ${_host_port}/${_tag_name} || return $?
+        if ! ${_cmd} tag localhost/${_tag_name} ${_host_port}/${_tag_to}; then
+            ${_cmd} tag ${_tag_name} ${_host_port}/${_tag_to} || return $?
         fi
     fi
-    _log "DEBUG" "${_cmd} push ${_host_port}/${_tag_name}"
-    ${_cmd} push ${_host_port}/${_tag_name} || return $?
+    _log "DEBUG" "${_cmd} push ${_host_port}/${_tag_to}"
+    ${_cmd} push ${_host_port}/${_tag_to} || return $?
 }
 
 function f_setup_yum() {
