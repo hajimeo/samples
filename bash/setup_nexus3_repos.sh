@@ -1048,6 +1048,15 @@ function f_nexus_admin_pwd() {
     f_api "/service/rest/beta/security/users/admin/change-password" "${_new_pwd}" "PUT" "admin" "${_current_pwd}"
 }
 
+function f_nexus_csel() {
+    local _csel_name="${1:-"csel-test"}"
+    local _expression="${2:-"format == 'raw' and path =^ '/test/'"}" # TODO: currently can't use double quotes
+    local _repos="${3:-"*"}"
+    local _actions="${4:-"*"}"
+    f_api "/service/rest/v1/security/content-selectors" "{\"name\":\"${_csel_name}\",\"description\":\"\",\"expression\":\"${_expression}\"}" || return $?
+    f_apiS '{"action":"coreui_Privilege","method":"create","data":[{"id":"NX.coreui.model.Privilege-99","name":"'${_csel_name}'-priv","description":"","version":"","type":"repository-content-selector","properties":{"contentSelector":"'${_csel_name}'","repository":"'${_repos}'","actions":"'${_actions}'"}}],"type":"rpc"}'
+}
+
 # Create a test user and test role
 function f_nexus_testuser() {
     local _userid="${1:-"testuser"}"
@@ -1655,8 +1664,6 @@ main() {
 
     _log "INFO" "Updating 'admin' user's password (may fail if already updated) ..."
     f_nexus_admin_pwd
-    _log "INFO" "Creating 'testuser' if it hasn't been created."
-    f_nexus_testuser &>/dev/null  # it's OK if this fails
 
     if ! _is_blob_available "${r_BLOB_NAME}"; then
         f_create_file_blobstore || return $?
@@ -1667,6 +1674,12 @@ main() {
             _log "ERROR" "Executing setup for format:${_f} failed."
         fi
     done
+
+    _log "INFO" "Adding a sample Content Selector (CSEL) ..."
+    f_nexus_csel &>/dev/null  # it's OK if this fails
+    _log "INFO" "Creating 'testuser' if it hasn't been created."
+    f_nexus_testuser &>/dev/null
+    #f_nexus_testuser "testuser" "\"csel-test-priv\"" "test-role"
 
     if _isYes "${r_NEXUS_CLIENT_INSTALL}"; then
         _log "INFO" "Installing a client container ..."
