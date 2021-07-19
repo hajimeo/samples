@@ -80,10 +80,19 @@ function nxrmStart() {
     local _mode=${3} # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
     local _nexus_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
-    local _cfg_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/sonatype-work/nexus3/etc/*' -type f -name 'nexus.properties' 2>/dev/null | sort | tail -n1)"
+    local _nexus_vmopt="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus.vmoptions' 2>/dev/null | sort | tail -n1)"
+    local _sonatype_work="$(find ${_base_dir%/} -maxdepth 4 -path '*/sonatype-work/*' -type d \( -name 'nexus3' -o -name 'nexus2' -o -name 'nexus' \) 2>/dev/null | sort | tail -n1)"
+    if [ -z "${_sonatype_work%/}" ]; then
+        echo "This function requires sonatype-work/{nexus|nexus3}"
+        return 1
+    fi
     local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
     local _logback_overrides="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/logback/*' -type f -name 'logback-overrides.xml' 2>/dev/null | sort | tail -n1)"
-    if [ -n "${_cfg_file}" ]; then
+    local _cfg_file="${_sonatype_work%/}/etc/nexus.properties"
+    if [ -n "${_nexus_vmopt}" ]; then   # This means NXRM3
+        #nexus.licenseFile=/var/tmp/share/sonatype/sonatype-*.lic
+        grep -qE '^\s*nexus.security.randompassword' "${_cfg_file}" || echo "nexus.security.randompassword=false" >> "${_cfg_file}"
+        grep -qE '^\s*nexus.onboarding.enabled' "${_cfg_file}" || echo "nexus.onboarding.enabled=false" >> "${_cfg_file}"
         grep -qE '^\s*nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
         grep -qE '^\s*nexus.browse.component.tree.automaticRebuild' "${_cfg_file}" || echo "nexus.browse.component.tree.automaticRebuild=false" >> "${_cfg_file}"
         # NOTE: this would not work if elasticsearch directory is empty
