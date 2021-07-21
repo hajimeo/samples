@@ -97,6 +97,12 @@ function f_mount_file() {
     mount -t ${_file_type} -o "${_opts}" "${_file}" "${_mount_to}"
 }
 
+# sometimes having many files in a dir causes performance issue
+function f_count_dirs() {
+    local _dir="$1"
+    find ${_dir%/} -type d -exec sh -c 'echo $(ls -f {} | wc -l) {}' \; # -f is better than -1 for this purpose
+}
+
 #find /opt/sonatype/sonatype-work/clm-server/report -mindepth 2 -maxdepth 2 -type d -print | while read -r _p; do grep -qw totalArtifactCount ${_p}/report.cache/summary.json || echo "${_p}/report.cache/summary.json: No totalArtifactCount"; done
 function f_find_missing() {
     local _start_dir="$1"
