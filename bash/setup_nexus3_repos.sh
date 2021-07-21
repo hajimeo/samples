@@ -299,10 +299,11 @@ function f_populate_docker_hosted() {
         # "FROM alpine:3.7\nCMD echo 'hello world'"
         # "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nENTRYPOINT [\"mysql\"]"
         # NOTE docker build -f does not work (bug?)
+        local _cwd="$(pwd)"
         local _build_dir="$(mktemp -d)" || return $?
         cd ${_build_dir} || return $?
         echo -e "FROM ${_tag_name}\n" > Dockerfile && ${_cmd} build --rm -t ${_tag_name} .
-        cd -    # should check the previous return code.
+        cd "${_cwd}"    # should check the previous return code.
         if ! ${_cmd} tag localhost/${_tag_name} ${_host_port}/${_tag_to}; then
             ${_cmd} tag ${_tag_name} ${_host_port}/${_tag_to} || return $?
         fi
