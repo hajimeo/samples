@@ -1,7 +1,8 @@
-# NOTE: Do not forget to configure Ingress.
+# NOTE: Copy the license file under _SHARE_DIR.
+#       Do not forget to configure Ingress.
+#       To recreate, delete the deployment.
 #export _DB_USER="nxrm3" _DB_PWD="nxrm3" _JDBC_URL="jdbc\:postgresql\://192.168.52.31\:5432/nxrm3" _SHARE_DIR="/var/tmp/share/sonatype/k8s-nxrm3" # permission
 #kubectl apply --namespace=sonatype -f <(eval "echo \"_1_cat ./k8s-nxrm3-pg.yaml_2_\"")  # Replace _1_ with a dollar sign + open brace, _2_ with close brace
-# NOTE: To recreate, delete the deployment.
 apiVersion: v1
 kind: Service
 metadata:

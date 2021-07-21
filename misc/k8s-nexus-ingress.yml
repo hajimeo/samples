@@ -31,6 +31,17 @@ spec:
             pathType: Prefix
             path: /
 
+    - host: nxrm3-pg-k8s.standalone.localdomain
+      http:
+        paths:
+          - backend:
+              service:
+                name: nxrm3-service
+                port:
+                  number: 8081
+            pathType: Prefix
+            path: /
+
     # NXRM3 HA-C three nodes
     - host: nxrm3-ha1-k8s.standalone.localdomain
       http:
