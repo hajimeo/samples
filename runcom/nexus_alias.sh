@@ -121,15 +121,16 @@ function nxrmDocker() {
     local _port="${3:-"8081"}"
     local _port_ssl="${4:-"8443"}"
     local _extra_opts="${5}"    # such as -Djava.util.prefs.userRoot=/some-other-dir
+    local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
     local _docker_host="${_DOCKER_HOST:-"dh1.standalone.localdomain:5000"}"
 
-    local _nexus_data="${_WORK_DIR%/}/sonatype/${_name}-data"
+    local _nexus_data="${_work_dir%/}/sonatype/${_name}-data"
     if [ ! -d "${_nexus_data%/}" ]; then
         mkdir -p -m 777 "${_nexus_data%/}" || return $?
     fi
     local _opts="--name=${_name}"
     [ -n "${INSTALL4J_ADD_VM_PARAMS}" ] && _opts="${_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\""
-    [ -d ${_WORK_DIR%/} ] && _opts="${_opts} -v ${_WORK_DIR%/}:/var/tmp/share"
+    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share"
     [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/nexus-data"
     [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
     local _cmd="docker run -d -p ${_port}:8081 -p ${_port_ssl}:8443 ${_opts} ${_docker_host%/}/sonatype/nexus3:${_tag}"
@@ -157,7 +158,7 @@ function iqStart() {
     cd -
 }
 
-#iqDocker "nxiq-test" "" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
+#iqDocker "nxiq-test" "1.113.0" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
 function iqDocker() {
     local _name="${1:-"nxiq"}"
     local _tag="${2:-"latest"}"
@@ -166,20 +167,21 @@ function iqDocker() {
     local _port_ssl="${5:-"8444"}"
     local _extra_opts="${6}"
     local _license="${7}"
+    local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
     local _docker_host="${_DOCKER_HOST:-"dh1.standalone.localdomain:5000"}"
 
-    local _nexus_data="${_WORK_DIR%/}/sonatype/${_name}-data"
+    local _nexus_data="${_work_dir%/}/sonatype/${_name}-data"
     [ ! -d "${_nexus_data%/}" ] && mkdir -p -m 777 "${_nexus_data%/}"
     [ ! -d "${_nexus_data%/}/etc" ] && mkdir -p -m 777 "${_nexus_data%/}/etc"
     [ ! -d "${_nexus_data%/}/log" ] && mkdir -p -m 777 "${_nexus_data%/}/log"
     local _opts="--name=${_name}"
     local _java_opts=""
     # NOTE: symlink of *.lic does not work with -v
-    [ -z "${_license}" ] && [ -d ${_WORK_DIR%/}/sonatype ] && _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
+    [ -z "${_license}" ] && [ -d ${_work_dir%/}/sonatype ] && _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
     [ -s "${_license}" ] && _java_opts="-Ddw.licenseFile=${_license}"
     [ -n "${JAVA_OPTS}" ] && _java_opts="${_java_opts} ${JAVA_OPTS}"
     [ -n "${_java_opts}" ] && _opts="${_opts} -e JAVA_OPTS=\"${_java_opts}\""
-    [ -d ${_WORK_DIR%/} ] && _opts="${_opts} -v ${_WORK_DIR%/}:/var/tmp/share"
+    [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share"
     [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/sonatype-work"
     [ -s "${_nexus_data%/}/etc/config.yml" ] && _opts="${_opts} -v ${_nexus_data%/}/etc:/etc/nexus-iq-server"
     [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/var/log/nexus-iq-server"
@@ -189,11 +191,12 @@ function iqDocker() {
     echo "${_cmd}"
     eval "${_cmd}"
     echo "/opt/sonatype/nexus-iq-server/start.sh may need to be replaced to trap SIGTERM"
-    if ! docker cp nxiq-test:/opt/sonatype/nexus-iq-server/start.sh - | grep -qa TERM; then
+    return
+    if ! docker cp ${_name}:/opt/sonatype/nexus-iq-server/start.sh - | grep -qwa TERM; then
         cat << EOF > /tmp/start_$$.sh
 _term() {
   echo "Received signal: SIGTERM"
-  kill -TERM "$(cat /sonatype-work/lock | cut -d"@" -f1)"
+  kill -TERM "\$(cat /sonatype-work/lock | cut -d"@" -f1)"
   sleep 10
 }
 trap _term SIGTERM
