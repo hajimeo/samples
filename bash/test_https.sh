@@ -21,23 +21,21 @@ _TEST_PORT=34443
 
 # List supported ciphers of a web server
 # NOTE: If unexpected result, may want to check "jdk.tls.disabledAlgorithms" in $JAVA_HOME/jre/lib/security/java.security
-function get_ciphers() {
+function list_ciphers() {
     # @see http://superuser.com/questions/109213/how-do-i-list-the-ssl-tls-cipher-suites-a-particular-website-offers
     local _host="${1:-`hostname -f`}"
     local _port="${2:-443}"
     local _use_nmap="${3}"
     local _host_port=$_host:$_port
     local _delay=1
-
+    # NOTE: *newer* curl also shows the cipher with -v -v -v (and also can specify ciphers)
     if [[ "${_use_nmap}" =~ ^(y|Y) ]] && which nmap &>/dev/null; then
         # TODO: this doesn't work with TLSv1.3
-        nmap --script +ssl-enum-ciphers -p ${_port} ${_host}
+        nmap --script ssl-enum-ciphers -p ${_port} ${_host}
         return $?
     fi
-
     ciphers=$(openssl ciphers 'ALL:eNULL' | sed -e 's/:/ /g')
     echo "Obtaining cipher list from ${_host_port} with $(openssl version)..." >&2
-
     for cipher in ${ciphers[@]}; do
         sleep ${_delay}
         result=$(echo -n | openssl s_client -cipher "$cipher" -connect ${_host_port} 2>&1)
