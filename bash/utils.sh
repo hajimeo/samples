@@ -900,11 +900,13 @@ function _postgresql_configure() {
 
     _log "INFO" "Updating ${_postgresql_conf} ..."
     # Performance tuning (so not mandatory). Expecting the server has at least 4GB
-    # @see: https://www.enterprisedb.com/postgres-tutorials/how-tune-postgresql-memory
+    # @see: https://pgtune.leopard.in.ua/#/
     _upsert ${_postgresql_conf} "shared_buffers" "1024MB"    # 4GB * 25%
     _upsert ${_postgresql_conf} "work_mem" "12MB" "#work_mem" # 4GB * 25% / max_connections (100) + extra
-    #_upsert ${_postgresql_conf} "effective_cache_size" "2048MB" "#effective_cache_size" # Physical mem (4GB) * 50%
-    _upsert ${_postgresql_conf} "max_connections" "400" "#max_connections"   # nxrm3 uses a lot (100 per datastore)
+    _upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # Physical mem (4GB) * 50% ~ 75%
+    #_upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Usually higher provides better write performance
+    ### End of tuning ###
+    _upsert ${_postgresql_conf} "max_connections" "400" "#max_connections"   # This is NXRM3 as it uses 100 per datastore...
     _upsert ${_postgresql_conf} "listen_addresses" "'*'" "#listen_addresses"
     [ ! -d /var/log/postgresql ] && mkdir -p -m 777 /var/log/postgresql
     _upsert ${_postgresql_conf} "log_directory" "'/var/log/postgresql' " "#log_directory"
@@ -945,8 +947,8 @@ function _postgresql_configure() {
         _upsert ${_postgresql_conf} "log_statement" "'mod'" "#log_statement"
         _upsert ${_postgresql_conf} "log_min_duration_statement" "1000" "#log_min_duration_statement"
     fi
-
-    if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION pg_buffercache;CREATE EXTENSION pg_prewarm;"; then
+    #CREATE EXTENSION pg_buffercache;
+    if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION pg_prewarm;"; then
         _upsert ${_postgresql_conf} "shared_preload_libraries" "'pg_prewarm'" "#shared_preload_libraries"
         # select pg_prewarm('<tablename>', 'buffer');
     fi
