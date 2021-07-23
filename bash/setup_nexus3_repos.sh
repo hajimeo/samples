@@ -265,7 +265,7 @@ function f_setup_docker() {
 
 function f_populate_docker_proxy() {
     local _tag_name="${1:-"alpine:3.7"}"
-    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP}"}"}"
+    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${_NEXUS_URL}"}"}"}"
     local _backup_ports="${3-"18179 18178"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
@@ -285,7 +285,7 @@ function f_populate_docker_proxy() {
 #f_populate_docker_hosted "" "localhost:18182"
 function f_populate_docker_hosted() {
     local _tag_name="${1:-"alpine:3.7"}"
-    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP}"}"}"
+    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${_NEXUS_URL}"}"}"}"
     local _backup_ports="${3-"18182 18181"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
     local _tag_to="${5:-"${_TAG_TO:-"${_tag_name}"}"}"
