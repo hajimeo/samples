@@ -724,7 +724,12 @@ function f_dnsmasq() {
     touch /etc/banner_add_hosts || return $?
     chmod 666 /etc/banner_add_hosts
     # To avoid "Ignoring query from non-local network" message:
-    sed -i 's/ --local-service//g' /etc/init.d/dnsmasq
+    if ps aux | grep -w 'dnsmasq' | grep -q 'local-service'; then
+        sed -i 's/ --local-service//g' /etc/init.d/dnsmasq
+    fi
+    # TODO: Also may need to add below in dnsmasq.conf
+    #listen-address=127.0.0.1
+    #listen-address=$(hostname -I | awk '{print $1}')
 
     # @see https://bugs.launchpad.net/ubuntu/+source/systemd/+bug/1624320
     if [ -L /etc/resolv.conf ] && grep -q '^nameserver 127.0.0.53' /etc/resolv.conf; then
@@ -739,6 +744,7 @@ function f_dnsmasq() {
         # NOT RECOMMENDED but for this service, allow everyone to reload
         echo 'ALL ALL=NOPASSWD: /etc/init.d/dnsmasq force-reload' >> /etc/sudoers
     fi
+    service dnsmasq restart
 }
 
 function f_useradd() {
