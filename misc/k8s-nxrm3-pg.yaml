@@ -18,7 +18,11 @@ spec:
       protocol: TCP
       port: 8081
       targetPort: 8081
-    - name: nexus-docker
+    - name: nexus-docker-http
+      protocol: TCP
+      port: 4999
+      targetPort: 4999
+    - name: nexus-docker-https
       protocol: TCP
       port: 5000
       targetPort: 5000
