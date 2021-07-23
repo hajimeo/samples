@@ -14,9 +14,14 @@ spec:
   selector:
     app: nxrm3-pg
   ports:
-    - protocol: TCP
+    - name: nexus-web-ui
+      protocol: TCP
       port: 8081
       targetPort: 8081
+    - name: nexus-docker
+      protocol: TCP
+      port: 5000
+      targetPort: 5000
 ---
 apiVersion: apps/v1
 kind: Deployment
