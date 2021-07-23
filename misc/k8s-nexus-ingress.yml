@@ -36,7 +36,7 @@ spec:
         paths:
           - backend:
               service:
-                name: nxrm3-service
+                name: nxrm3-pg-service
                 port:
                   number: 8081
             pathType: Prefix
