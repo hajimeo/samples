@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 # Utility type / reusable functions
-#
-# Example of usage (NOTE: "export -f _import" to overwrite):
-#   _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
-#   type _import &>/dev/null || _import() { [ ! -s /tmp/${1}_$$ ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1}_$$; . /tmp/${1}_$$; }
-#   _import "utils.sh"
+# source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh --compressed)"
 
 __PID="$$"
 __LAST_ANSWER=""
