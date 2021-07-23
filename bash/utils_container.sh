@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# source <(curl -sL --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh)
-# source <(curl -sL --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_container.sh)
+#source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh --compressed)"
+#source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_container.sh --compressed)"
 
 _DOCKER_CMD=${_DOCKER_CMD:-"docker"}    # To support podman etc.
 _KUBECTL_CMD=${_KUBECTL_CMD:-"kubectl"}
