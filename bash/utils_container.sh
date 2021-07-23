@@ -268,7 +268,8 @@ function _update_hosts_for_k8s() {
     date > "${__TMP%/}/${FUNCNAME}.last"
 }
 
-# NOTE: If docker-desktop: docker run --rm -it --privileged --pid=host debian nsenter -t 1 -m -u -n -i sh
+# NOTE: If docker-desktop: docker run --rm -it --privileged --pid=host debian nsenter -t 1 -m -u -n -i bash
+#       and check /containers/services/docker/rootfs/
 _CONTAINER_CMD="${_CONTAINER_CMD:-"microk8s ctr containers"}"
 function _k8s_nsenter() {
     local _cmd="${1}"
