@@ -105,6 +105,7 @@ function nxrmStart() {
         # TODO: version check as below breaks older nexus versions.
         sed -i.bak 's@class="org.eclipse.jetty.util.ssl.SslContextFactory"@class="org.eclipse.jetty.util.ssl.SslContextFactory$Server"@g' ${_jetty_https}
     fi
+    # Currently i'm not using.
     if false && [ -s "${_logback_overrides}" ]; then
         echo "$(grep -vE "(org.sonatype.nexus.orient.explain|</included>)" ${_logback_overrides})
   <logger name='org.sonatype.nexus.orient.explain' level='TRACE'/>
