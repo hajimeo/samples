@@ -1105,7 +1105,7 @@ def _pivot_ui(df, outfile_path="pivottablejs.html", **kwargs):
     _info("%s is created." % outfile_path)
 
 
-def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10):
+def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10, is_x_col_datetime=True):
     """
     Helper function for df.plot()
     As pandas.DataFrame.plot is a bit complicated, using simple options only if this method is used.
@@ -1118,6 +1118,7 @@ def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10):
     :param name: When saving to file.
     :param desc: TODO: Optional description (eg: SQL statement)
     :param tail: To return some sample rows.
+    :param is_x_col_datetime: If True and if x_col column type is not date, cast to date
     :return: DF (use .tail() or .head() to limit the rows)
     #>>> draw(ju.q("SELECT date, statuscode, bytesSent, elapsedTime from t_request_csv")).tail()
     #>>> draw(ju.q("select QueryHour, SumSqSqlWallTime, SumPostPlanTime, SumSqPostPlanTime from query_stats")).tail()
@@ -1131,6 +1132,9 @@ def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10):
         height_inch = len(df.columns) * 4
     if bool(x_colname) is False:
         x_colname = df.columns[x_col]
+    # check if column is already date
+    if is_x_col_datetime and pd.api.types.is_datetime64_any_dtype(df[x_colname]) is False:
+        df[x_colname]= pd.to_datetime(df[x_colname])
     df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)  # , title=name
     if bool(name) is False:
         name = _timestamp(format="%Y%m%d%H%M%S%f")
