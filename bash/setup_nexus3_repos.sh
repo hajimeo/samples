@@ -799,7 +799,6 @@ function f_api() {
 # Create a container which installs python, npm, mvn, nuget, etc.
 #usermod -a -G docker $USER (then relogin)
 #docker rm -f nexus-client; p_client_container "http://dh1.standalone.localdomain:8081/"
-#shellcheck disable=SC2120
 function p_client_container() {
     local __doc__="Create / start a docker container to install various client commands. Also calls f_reset_client_configs"
     local _base_url="${1:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
@@ -862,100 +861,120 @@ function p_client_container() {
         ${_cmd} exec -it ${_name} update-ca-trust
     fi
 
-    # Setup clients' config files
-    _log "INFO" "Setting up various client commands (outputs:${_LOG_FILE_PATH:-"/dev/null"})"
-    f_reset_client_configs "${_name}" "testuser" "${_base_url}"
+    _log "INFO" "Setting up various client commands ..."
+    ${_cmd} cp $BASH_SOURCE ${_name}:/tmp/setup_nexus3_repos.sh || return $?
+    ${_cmd} exec -it ${_name} bash -c "source /tmp/setup_nexus3_repos.sh && f_reset_client_configs \"testuser\" \"${_base_url}\"" || return $?
     _log "INFO" "Completed $FUNCNAME .
 To save : docker stop ${_name}; docker commit ${_name} ${_name}
 To login: ssh testuser@${_name}"
 }
 
 # Setup (reset) client configs against a CentOS container
-#f_reset_client_configs "nexus-client" "testuser" "http://dh1.standalone.localdomain:8081/"
+#f_reset_client_configs "testuser" "http://dh1.standalone.localdomain:8081/"
 function f_reset_client_configs() {
-    local _name="${1}"
-    local _user="${2:-"$USER"}"
-    local _base_url="${3:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
-    local _usr="${4:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"
-    local _pwd="${5:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
-    local _docker_cmd="${6:-"${r_DOCKER_CMD:-"docker"}"}"
-    local _cmd="${_docker_cmd} exec -it ${_name} bash -l -c"
+    local __doc__="Install various client software with mainly yum (TODO: works with CentOS 7 only)"
+    local _user="${1:-"testuser"}"
+    local _base_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"   # Nexus URL
+    local _usr="${3:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"  # Nexus user
+    local _pwd="${4:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"    # Nexus user's password
 
-    # Setup IQ CLI
-    ${_cmd} '_f=/home/'${_user}'/nexus-iq-cli-'${_IQ_CLI_VER}'.jar; [ ! -s "${_f}" ] && curl -sf -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-'${_IQ_CLI_VER}'.jar" -o "${_f}" && chown '${_user}': ${_f}'
-
-    # Using Nexus yum repository if available
-    local _repo_url="${_base_url%/}/repository/yum-group"
-    local _yum_install="yum install -y"
-    f_echo_yum_repo_file "yum-group" "${_base_url}" > ${_TMP%/}/nexus-yum-test.repo
-    if ${_cmd} cp ${_TMP%/}/nexus-yum-test.repo ${_name}:/etc/yum.repos.d/nexus-yum-test.repo && _is_url_reachable "${_repo_url}"; then
-        _yum_install="yum --disablerepo=base --enablerepo=nexusrepo-test install -y"
-    fi
-    ${_cmd} "${_yum_install} epel-release && curl -sL https://rpm.nodesource.com/setup_10.x | bash -;rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm;yum install -y centos-release-scl-rh centos-release-scl;${_yum_install} python3 maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang git" >>${_LOG_FILE_PATH:-"/dev/null"}
-    if [ $? -ne 0 ]; then
-        _log "ERROR" "installing packages with yum failed. Check ${_LOG_FILE_PATH}"
+    if [ ! -d "/home/${_user}" ]; then
+        _log "ERROR" "No /home/${_user}"
         return 1
     fi
 
-    # rg|ripgrep
-    ${_cmd} "yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && sudo yum install -y ripgrep" >>${_LOG_FILE_PATH:-"/dev/null"}
+    _log "INFO" "Setup IQ CLI version:${_IQ_CLI_VER} ..."
+    local _f=/home/${_user}/nexus-iq-cli-${_IQ_CLI_VER}.jar
+    [ ! -s "${_f}" ] && curl -fL "https://download.sonatype.com/clm/scanner/nexus-iq-cli-'${_IQ_CLI_VER}'.jar" -o "${_f}"
+    chown -v ${_user}: ${_f}
 
+    _log "INFO" "Setup yum, then install rpm packages ..."
+    local _repo_url="${_base_url%/}/repository/yum-group"
+    local _yum_install="yum install -y"
+    if f_echo_yum_repo_file "yum-group" "${_base_url}" > /etc/yum.repos.d/nexus-yum-test.repo && _is_url_reachable "${_repo_url}"; then
+        _yum_install="yum --disablerepo=base --enablerepo=nexusrepo-test install -y"
+    fi
+    ${_yum_install} epel-release || _log "ERROR" "yum install epel-release failed"
+    curl -fL https://rpm.nodesource.com/setup_14.x --compressed | bash - || _log "ERROR" "Executing https://rpm.nodesource.com/setup_14.x failed"
+    rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm
+    yum install -y centos-release-scl-rh centos-release-scl || _log "ERROR" "Installing .Net (for Nuget) related packages failed"
+    ${_yum_install} python3 maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang git || _log "ERROR" "yum install python3 maven nodejs etc. failed"
+
+    _log "INFO" "Installing ripgrep (rg) ..."
+    yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && sudo yum install -y ripgrep
+
+    _log "INFO" "Install Skopeo ..."
     # Skopeo (instead of podman) https://github.com/containers/skopeo/blob/master/install.md
     # NOTE: may need Deployment policy = allow redeployment
     # skopeo --debug copy --src-creds=admin:admin123 --dest-creds=admin:admin123 docker://dh1.standalone.localdomain:18082/alpine:3.7 docker://dh1.standalone.localdomain:18082/alpine:test
-    ${_cmd} "curl -L -o /etc/yum.repos.d/devel:kubic:libcontainers:stable.repo https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/CentOS_7/devel:kubic:libcontainers:stable.repo && yum -y install skopeo" >>${_LOG_FILE_PATH:-"/dev/null"}
+    curl -fL -o /etc/yum.repos.d/devel:kubic:libcontainers:stable.repo https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/CentOS_7/devel:kubic:libcontainers:stable.repo --compressed
+    yum install -y skopeo
 
     # Install nuget.exe regardless of Nexus nuget repository availability (can't remember why install then immediately remove...)
-    ${_cmd} "yum install -y nuget && yum remove -y nuget && curl -o /usr/local/bin/nuget.exe 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe'" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
-    echo 'if [ -s /usr/local/bin/nuget.exe ]; then
+    _log "INFO" "Install nuget.exe ..."
+    yum remove -y nuget
+    curl -fL -o /usr/local/bin/nuget.exe "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe"
+    cat << EOF > /etc/profile.d/nuget.sh
+if [ -s /usr/local/bin/nuget.exe ]; then
   alias nuget="mono /usr/local/bin/nuget.exe"
-fi' > ${_TMP%/}/nuget.sh
-    ${_docker_cmd} cp ${_TMP%/}/nuget.sh ${_name}:/etc/profile.d/nuget.sh
+fi
+EOF
     # And PowerShell for Linux... (note: using /rhel/ is correct)
-    ${_cmd} "curl -o /etc/yum.repos.d/microsoft-prod.repo https://packages.microsoft.com/config/rhel/7/prod.repo;yum install -y powershell" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
+    _log "INFO" "Install Powershell ..."
+    curl -fL -o /etc/yum.repos.d/microsoft-prod.repo https://packages.microsoft.com/config/rhel/7/prod.repo --compressed
+    yum install -y powershell
 
     # Using Nexus npm repository if available
+    _log "INFO" "Create a sample .npmrc if Nexus is reachable, and install yarn and bower globally ..."
     _repo_url="${_base_url%/}/repository/npm-group"
-    local _cred="$(python -c "import sys, base64; print(base64.b64encode('${_usr}:${_pwd}'))")"
-    echo "strict-ssl=false
+    if _is_url_reachable "${_repo_url}"; then
+        local _cred="$(python -c "import sys, base64; print(base64.b64encode('${_usr}:${_pwd}'))")"
+        cat << EOF > /home/${_user}/.npmrc
+strict-ssl=false
 registry=${_repo_url%/}
-_auth=\"${_cred}\"" > ${_TMP%/}/npmrc
-    if ${_docker_cmd} cp ${_TMP%/}/npmrc ${_name}:/root/.npmrc &&
-        ${_docker_cmd} cp ${_TMP%/}/npmrc ${_name}:/home/${_user}/.npmrc &&
-        ${_cmd} "chown ${_user}: /home/${_user}/.npmrc" &&
-        _is_url_reachable "${_repo_url}";
-    then
-        ${_cmd} "npm install -g yarn;npm install -g bower" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
+_auth=\"${_cred}\""
+EOF
+        chown -v ${_user}: /home/${_user}/.npmrc
     fi
+    npm install -g yarn
+    npm install -g bower
 
     # Using Nexus pypi repository if available, also install conan
+    _log "INFO" "Create a sample .pypirc if Nexus is reachable, and install conan ..."
     _repo_url="${_base_url%/}/repository/pypi-group"
-    echo "[distutils]
+    if _is_url_reachable "${_repo_url}"; then
+        cat << EOF > /home/${_user}/.pypirc
+[distutils]
 index-servers =
   nexus-group
 
 [nexus-group]
 repository: ${_repo_url%/}
 username: ${_usr}
-password: ${_pwd}" > ${_TMP%/}/pypirc
-    if ${_docker_cmd} cp ${_TMP%/}/pypirc ${_name}:/root/.pypirc &&
-        ${_docker_cmd} cp ${_TMP%/}/pypirc ${_name}:/home/${_user}/.pypirc &&
-        ${_cmd} "chown ${_user}: /home/${_user}/.pypirc" &&
-        _is_url_reachable "${_repo_url}";
-    then
-        ${_cmd} "pip3 install conan" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
+password: ${_pwd}
+EOF
+        chown -v ${_user}: /home/${_user}/.pypirc
     fi
+    pip3 install conan
 
     # Using Nexus rubygem/cocoapods(pod) repository if available (not sure if rubygem-group is supported in some versions, so using proxy)
-    _repo_url="${_base_url%/}/repository/rubygem-proxy"
+    _log "INFO" "Setting up Rubygem 2.3 ..."
     # @see: https://www.server-world.info/en/note?os=CentOS_7&p=ruby23
     #       Also need git newer than 1.8.8, but https://github.com/iusrepo/git216/issues/5
-    ${_cmd} "yum remove -y git*; yum -y install https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm && ${_yum_install} git" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
-    echo '#!/bin/bash
+    if git --version | grep 'git version 1.'; then
+        _log "INFO" "Updating git for Rubygem ..."
+        yum remove -y git*
+        yum install -y https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm
+        ${_yum_install} git
+    fi
+    cat << EOF > /etc/profile.d/rh-ruby23.sh
+#!/bin/bash
 source /opt/rh/rh-ruby23/enable
-export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.sh
-    ${_docker_cmd} cp ${_TMP%/}/rh-ruby23.sh ${_name}:/etc/profile.d/rh-ruby23.sh
+export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"
+EOF
     # If rubygem repo is reachable, install cocoapods *first* (Note: as of today, newest cocoapods fails with "Failed to build gem native extension")
+    _log "INFO" "Create a sample .gemrc if Nexus is reachable, and install cocoapods 1.8.4 ..."
+    _repo_url="${_base_url%/}/repository/rubygem-proxy"
     if _is_url_reachable "${_repo_url}"; then
         local _protocol="http"
         local _repo_url_without_http="${_repo_url}"
@@ -963,22 +982,27 @@ export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.s
             _protocol="${BASH_REMATCH[1]}"
             _repo_url_without_http="${BASH_REMATCH[2]}"
         fi
-        echo ":verbose: :really
+        cat << EOF > /home/${_user}/.gemrc
+:verbose: :really
 :disable_default_gem_server: true
 :sources:
-    - ${_protocol}://${_usr}:${_pwd}@${_repo_url_without_http%/}/" > ${_TMP%/}/gemrc
-        ${_docker_cmd} cp ${_TMP%/}/gemrc ${_name}:/root/.gemrc && ${_docker_cmd} cp ${_TMP%/}/gemrc ${_name}:/home/${_user}/.gemrc && ${_cmd} "chown ${_user}: /home/${_user}/.gemrc";
+    - ${_protocol}://${_usr}:${_pwd}@${_repo_url_without_http%/}/
+EOF
+        chown -v ${_user}: /home/${_user}/.gemrc
     fi
-    ${_cmd} "gem install cocoapods -v 1.8.4" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
+    gem install cocoapods -v 1.8.4
     # Need Xcode on Mac?: https://download.developer.apple.com/Developer_Tools/Xcode_10.3/Xcode_10.3.xip (or https://developer.apple.com/download/more/)
-    curl -s -f -o ${_TMP%/}/cocoapods-test.tgz -L https://github.com/hajimeo/samples/raw/master/misc/cocoapods-test.tgz && \
-    ${_docker_cmd} cp ${_TMP%/}/cocoapods-test.tgz ${_name}:/home/${_user}/cocoapods-test.tgz && \
-    ${_cmd} "chown ${_user}: /home/${_user}/cocoapods-test.tgz"
+    if [ ! -s "/home/${_user}/cocoapods-test.tgz" ]; then
+        _log "INFO" "Downloading a Xcode cocoapods test project ..."
+        curl -fL -o /home/${_user}/cocoapods-test.tgz https://github.com/hajimeo/samples/raw/master/misc/cocoapods-test.tgz
+        chown -v ${_user}: /home/${_user}/cocoapods-test.tgz
+    fi
     # TODO: cocoapods is installed but not configured properly
     #https://raw.githubusercontent.com/hajimeo/samples/master/misc/cocoapods-Podfile
     # (probably) how to retry pod install: cd $HOME/cocoapods-test && rm -rf $HOME/Library/Caches Pods Podfile.lock cocoapods-test.xcworkspace
 
     # If repo is reachable, setup GOPROXY env
+    _log "INFO" "Create a sample /etc/profile.d/go-proxy.sh (not under HOME) if Nexus is reachable ..."
     _repo_url="${_base_url%/}/repository/go-proxy"
     if _is_url_reachable "${_repo_url}"; then
         #local _protocol="http"
@@ -988,46 +1012,53 @@ export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.s
         #    _repo_url_without_http="${BASH_REMATCH[2]}"
         #fi
         #GOPROXY=${_protocol}://${_usr}:${_pwd}@${_repo_url_without_http%/}
-        echo "export GO111MODULE=on
-export GOPROXY=${_repo_url}" > ${_TMP%/}/go-proxy.sh
+        cat << EOF > /etc/profile.d/go-proxy.sh
+export GO111MODULE=on
+export GOPROXY=${_repo_url}
+EOF
         # Or: go env -w GOPROXY=${_repo_url}
-        ${_docker_cmd} cp ${_TMP%/}/go-proxy.sh ${_name}:/etc/profile.d/go-proxy.sh
-        ${_cmd} "rpm --import https://mirror.go-repo.io/centos/RPM-GPG-KEY-GO-REPO && curl -s https://mirror.go-repo.io/centos/go-repo.repo > /etc/yum.repos.d/go-repo.repo && yum install golang"
-        # Testing proxy repo (and for go debug: $HOME/go/bin/dlv)
-        ${_cmd} "sudo -u ${_user} -i go get github.com/go-delve/delve/cmd/dlv"
     fi
+    rpm --import https://mirror.go-repo.io/centos/RPM-GPG-KEY-GO-REPO
+    curl -fL https://mirror.go-repo.io/centos/go-repo.repo --compressed > /etc/yum.repos.d/go-repo.repo
+    yum install -y golang
+    _log "INFO" "Testing go (and proxy repo if setup) by adding HOME/go/bin/dlv ..."
+    sudo -u ${_user} -i go get github.com/go-delve/delve/cmd/dlv
 
     # Install Conda, and if repo is reachable, setup conda/anaconda/miniconda env
-    curl -o ${_TMP%/}/Miniconda3-latest-Linux-x86_64.sh --compressed https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh &&
-        ${_docker_cmd} cp ${_TMP%/}/Miniconda3-latest-Linux-x86_64.sh ${_name}:/home/${_user}/Miniconda3-latest-Linux-x86_64.sh && \
-        ${_cmd} "chown ${_user}: /home/${_user}/Miniconda3-latest-Linux-x86_64.sh" &&
-        ${_cmd} "sudo -u ${_user} -i /home/${_user}/Miniconda3-latest-Linux-x86_64.sh -b -p /home/${_user}/miniconda3" &&
-        ${_cmd} "sudo -u ${_user} -i mkdir /home/${_user}/bin; ln -s /home/${_user}/miniconda3/bin/conda /home/${_user}/bin/conda"
+    _log "INFO" "Setup cond and create a sample .condarc if Nexus is reachable ..."
+    curl -fL -o /home/${_user}/Miniconda3-latest-Linux-x86_64.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh --compressed && \
+        chown -v ${_user}: /home/${_user}/Miniconda3-latest-Linux-x86_64.sh &&
+        chmod -v u+x /home/${_user}/Miniconda3-latest-Linux-x86_64.sh &&
+        sudo -u ${_user} -i /home/${_user}/Miniconda3-latest-Linux-x86_64.sh -b -p /home/${_user}/miniconda3
+    sudo -u ${_user} -i mkdir /home/${_user}/bin &>/dev/null
+    [ ! -s "/home/${_user}/bin/conda" ] && ln -s /home/${_user}/miniconda3/bin/conda /home/${_user}/bin/conda
     _repo_url="${_base_url%/}/repository/conda-proxy"
     if _is_url_reachable "${_repo_url}"; then
         #local _pwd_encoded="$(python -c \"import sys, urllib as ul; print(ul.quote('${_pwd}'))\")"
-        echo "channels:
+        cat << EOF > /home/${_user}/.condarc
+channels:
   - ${_repo_url%/}
-  - defaults" > ${_TMP%/}/condarc
-        ${_docker_cmd} cp ${_TMP%/}/condarc ${_name}:/home/${_user}/.condarc && ${_cmd} "chown ${_user}: /home/${_user}/.condarc"
+  - defaults
+EOF
+        chown -v ${_user}: /home/${_user}/.condarc
     fi
 
     # Regardless of repo availability, setup helm
-    curl -fsSL -o ${_TMP%/}/get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
-    if [ -s ${_TMP%/}/get_helm.sh ]; then
-        ${_docker_cmd} cp ${_TMP%/}/get_helm.sh ${_name}:/home/${_user%/}/ && \
-        ${_cmd} "chown ${_user}: /home/${_user}/get_helm.sh" && \
-        ${_cmd} "chmod u+x /home/${_user}/get_helm.sh" && \
-        ${_cmd} "sudo -u ${_user} -i /home/${_user}/get_helm.sh"
-    fi
+    _log "INFO" "Setup helm ..."
+    curl -fL -o /home/${_user%/}/get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 --compressed
+    chown -v ${_user}: /home/${_user}/get_helm.sh && chmod -v u+x /home/${_user}/get_helm.sh
+    sudo -u ${_user} -i /home/${_user}/get_helm.sh
 
     # Using Nexus maven repository if available
     _repo_url="${_base_url%/}/repository/maven-group"
-    curl -s -f -o ${_TMP%/}/settings.xml -L ${_DL_URL%/}/misc/m2_settings.tmpl.xml && \
-    sed -i -e "s@_REPLACE_MAVEN_USERNAME_@${_usr}@1" -e "s@_REPLACE_MAVEN_USER_PWD_@${_pwd}@1" -e "s@_REPLACE_MAVEN_REPO_URL_@${_repo_url%/}/@1" ${_TMP%/}/settings.xml && \
-    ${_cmd} '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null' && \
-    ${_docker_cmd} cp ${_TMP%/}/settings.xml ${_name}:/home/${_user}/.m2/settings.xml && \
-    ${_cmd} "chown -R ${_user}: /home/${_user}/.m2"
+    if _is_url_reachable "${_repo_url}"; then
+        local _f=/home/${_user}/.m2/settings.xml
+        _log "INFO" "Setup ${_f} ..."
+        [ ! -d "/home/${_user}/.m2" ] && mkdir -v /home/${_user}/.m2 && chown -v ${_user}: /home/${_user}/.m2
+        [ -s ${_f} ] && cat ${_f} > ${_f}.bak
+        curl -fL -o ${_f} -L ${_DL_URL%/}/misc/m2_settings.tmpl.xml --compressed && \
+            sed -i -e "s@_REPLACE_MAVEN_USERNAME_@${_usr}@1" -e "s@_REPLACE_MAVEN_USER_PWD_@${_pwd}@1" -e "s@_REPLACE_MAVEN_REPO_URL_@${_repo_url%/}/@1" ${_f}
+    fi
 }
 
 # Set admin password after initial installation. If no 'admin.password' file, no error message and silently fail.
