@@ -863,9 +863,9 @@ function _trust_ca() {
 
 function _postgresql_configure() {
     local __doc__="Update postgresql.conf and pg_hba.conf"
-    local _verbose_logging="${1}"
+    local _verbose_logging="${1}"   # If Y, adds more logging configs which would work with pgbadger.
     local _wal_archive_dir="${2}"   # Automatically decided if empty
-    local _postgresql_conf="${3}"  # Automatically detected if empty. "/var/lib/pgsql/data" or "/etc/postgresql/10/main" or /var/lib/pgsql/12/data/
+    local _postgresql_conf="${3}"   # Automatically detected if empty. "/var/lib/pgsql/data" or "/etc/postgresql/10/main" or /var/lib/pgsql/12/data/
     local _postgres="${4}"
     local _port="${5:-"5432"}"
 
