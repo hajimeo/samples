@@ -238,7 +238,9 @@ function f_setup_python() {
     #python -m pip list -o --format=freeze ${_i_opt} | cut -d'=' -f1 | xargs python -m pip install -U
 
     # My favourite/essential python packages (except jupyter and pandas related)
-    python3.7 -m pip install -U ${_i_opt} lxml xmltodict pyyaml markdown
+    python3.7 -m pip install -U ${_i_opt} lxml xmltodict pyyaml markdown memory_profiler
+    #   %load_ext memory_profiler
+    #   %mprun al.analyse_logs()
     python3.7 -m pip install -U ${_i_opt} pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
     # Important packages (Jupyter and pandas)
@@ -250,8 +252,10 @@ function f_setup_python() {
 
     # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite.
     python3.7 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib psycopg2 --log /tmp/pip.log
-    # Not installing below as pandas_profiling fails at this moment. Pixiedust works only with jupyter-notebook
+    # pandas_profiling may fail to install. pixiedust works only with jupyter-notebook
     #python3.7 -m pip install -U ${_i_opt} pandas_profiling pixiedust --log /tmp/pip.log
+    #   import pandas_profiling as pdp
+    #   pdp.ProfileReport(df)
     # NOTE: In case I might use jupyter notebook, still installing this
     python3.7 -m pip install -U ${_i_opt} bash_kernel --log /tmp/pip.log && python3.7 -m bash_kernel.install
     # For Spark etc., BeakerX http://beakerx.com/ NOTE: this works with only python3.7
