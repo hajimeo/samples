@@ -45,29 +45,36 @@ function f_search_soft_deleted_blobs() {
 }
 # TODO: search and sum the size per repo / per blob store, from file and/or DB.
 
-alias sum_cols="paste -sd+ - | bc"
 function f_orientdb_checks() {
-    local _db="$1"  # TODO: Directory or ls -l output
-    local _find="$(which gfind || echo "find")"
+    local _db="$1"  # Directory or ls -l output
+    local _size_col="${2:-5}"
+    local _file_col="${2:-9}"
+    if [ -d "${_db%/}" ]; then
+        ls -l "${_db%/}" > /tmp/f_orientdb_checks_ls.out
+        _db=/tmp/f_orientdb_checks_ls.out
+    fi
     echo "# Finding wal files ..."
-    #cat ${_db} | grep 'wal'
-    ${_find} ${_db%/} -type f -name '*.wal' -printf '%k\t%P\t%t\n'
-    echo "# Checking size (KB) of index files ..."
-    #cat ${_db} | grep '_idx.sbt' | awk '{print $5" "$9}' | sort -k2 | tee /tmp/f_orientdb_checks.out
-    ${_find} ${_db%/} -type f -name '*_idx.sbt' -printf '%k\t%P\n' | sort -k2 | tee /tmp/f_orientdb_checks.out
-    echo "Total: $(cat /tmp/f_orientdb_checks.out | wc -l)"
-    echo "# Estimating table sizes (KB) from pcl files ..."
-    #cat ${_db} | grep '.pcl' | awk '{print $5" "$9}' | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/f_orientdb_checks.out
-    ${_find} ${_db%/} -type f -name '*.pcl' -printf '%k\t%P\n' | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/f_orientdb_checks.out
+    grep 'wal' "${_db}"
+    echo ""
+    echo "# Checking size (Bytes) of index files (alphabetical order) ..."
+    grep '_idx.sbt' "${_db}" | awk '{printf("%12s %s\n",$'${_size_col}',$'${_file_col}')}' | sort -k2 | tee /tmp/f_orientdb_checks.out
+    echo "Total: $(awk '{print $1}' /tmp/f_orientdb_checks.out | paste -sd+ - | bc) bytes / $(cat /tmp/f_orientdb_checks.out | wc -l) indexes"
+    echo ""
+    echo "# Estimating table sizes (Bytes) from pcl files ..."
+    grep '.pcl' "${_db}" | awk '{print $'${_size_col}'" "$'${_file_col}'}' | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/f_orientdb_checks.out
     cat /tmp/f_orientdb_checks.out | uniq -f1 | while read -r _l; do
         # NOTE: matching space in bash is a bit tricky
         if [[ "${_l}" =~ ^[[:space:]]*[0-9]+[[:space:]]+(.+) ]]; then
             local _table="${BASH_REMATCH[1]}"
-            local _total="$(grep -E "\s+${_table}$" /tmp/f_orientdb_checks.out | awk '{print $1}' | sum_cols)"
-            echo -e "${_total}\t${_table}"
+            local _total="$(grep -E "\s+${_table}$" /tmp/f_orientdb_checks.out | awk '{print $1}' | paste -sd+ - | bc)"
+            printf "%12s %s\n" ${_total} ${_table}
         fi
-    done
+    done | sort -k2
 }
+#local _find="$(which gfind || echo "find")"
+#${_find} ${_db%/} -type f -name '*.wal' -printf '%k\t%P\t%t\n'
+#${_find} ${_db%/} -type f -name '*_idx.sbt' -printf '%k\t%P\n' | sort -k2 | tee /tmp/f_orientdb_checks.out
+#${_find} ${_db%/} -type f -name '*.pcl' -printf '%k\t%P\n' | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/f_orientdb_checks.out
 
 # draft
 function f_find_open_bytes_files() {
