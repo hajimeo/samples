@@ -384,7 +384,7 @@ LIMIT 10""" % (where_sql)
     %s
       AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
     GROUP BY 1, 2""" % (log_table_name, where_sql)
-        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
+        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
         # count unique threads per hour
         display_name = "Unique_Threads_Hourly"
         query = """SELECT date_hour, count(*) as num 
@@ -393,7 +393,7 @@ LIMIT 10""" % (where_sql)
         %s
     ) tt
     GROUP BY 1""" % (log_table_name, where_sql)
-        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
+        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
 
     if ju.exists("t_threads"):
         display_name = "Blocked_Threads"
