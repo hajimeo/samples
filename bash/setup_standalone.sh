@@ -174,8 +174,8 @@ function f_update_hosts_file_by_fqdn() {
         _log "WARN" "${_container_name} is NOT running. Please check and update ${_hosts_file} manually."
         return 1
     fi
-
-    local _container_ip="`docker exec -it ${_container_name} hostname -i | tr -cd "[:print:]"`"   # tr to remove unnecessary control characters
+    # 'tr' to remove unnecessary control characters, and sometimes hostname -i returns a few IP addresses, so using 'cut'.
+    local _container_ip="$(docker exec -it ${_container_name} hostname -i | tr -cd "[:print:]" | cut -d" " -f1)"
     if [ -z "${_container_ip}" ]; then
         _log "WARN" "${_container_name} is running but not returning IP. Please check and update ${_hosts_file} manually."
         return 1
