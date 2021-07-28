@@ -240,7 +240,7 @@ function f_setup_python() {
     # My favourite/essential python packages (except jupyter and pandas related)
     python3.7 -m pip install -U ${_i_opt} lxml xmltodict pyyaml markdown memory_profiler
     #   %load_ext memory_profiler
-    #   %mprun al.analyse_logs()
+    #   %mprun -f al.etl al.analyse_logs()
     python3.7 -m pip install -U ${_i_opt} pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
 
     # Important packages (Jupyter and pandas)
