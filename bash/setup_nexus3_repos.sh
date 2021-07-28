@@ -973,7 +973,7 @@ source /opt/rh/rh-ruby23/enable
 export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"
 EOF
     # If rubygem repo is reachable, install cocoapods *first* (Note: as of today, newest cocoapods fails with "Failed to build gem native extension")
-    _log "INFO" "Create a sample .gemrc if Nexus is reachable, and install cocoapods 1.8.4 ..."
+    _log "INFO" "Create a sample .gemrc if Nexus is reachable ..."
     _repo_url="${_base_url%/}/repository/rubygem-proxy"
     if _is_url_reachable "${_repo_url}"; then
         local _protocol="http"
@@ -990,7 +990,8 @@ EOF
 EOF
         chown -v ${_user}: /home/${_user}/.gemrc
     fi
-    gem install cocoapods -v 1.8.4
+    _log "INFO" "*EXPERIMENTAL* Install cocoapods 1.8.4 ..."
+    bash -l -c "gem install cocoapods -v 1.8.4" # To reload shell
     # Need Xcode on Mac?: https://download.developer.apple.com/Developer_Tools/Xcode_10.3/Xcode_10.3.xip (or https://developer.apple.com/download/more/)
     if [ ! -s "/home/${_user}/cocoapods-test.tgz" ]; then
         _log "INFO" "Downloading a Xcode cocoapods test project ..."
@@ -1022,7 +1023,7 @@ EOF
     curl -fL https://mirror.go-repo.io/centos/go-repo.repo --compressed > /etc/yum.repos.d/go-repo.repo
     yum install -y golang
     _log "INFO" "Testing go (and proxy repo if setup) by adding HOME/go/bin/dlv ..."
-    sudo -u ${_user} -i go get github.com/go-delve/delve/cmd/dlv
+    sudo -u ${_user} -i go get github.com/go-delve/delve/cmd/dlv    # '-i' is also required to reload profile
 
     # Install Conda, and if repo is reachable, setup conda/anaconda/miniconda env
     _log "INFO" "Setup cond and create a sample .condarc if Nexus is reachable ..."
