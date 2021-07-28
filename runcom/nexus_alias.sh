@@ -76,7 +76,7 @@ function iqMvn() {
 # To start local (on Mac) NXRM2 or NXRM3 server
 function nxrmStart() {
     local _base_dir="${1:-"."}"
-    local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005"}
+    local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5005,suspend=n"}
     local _mode=${3} # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
     local _nexus_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
@@ -91,6 +91,10 @@ function nxrmStart() {
     local _cfg_file="${_sonatype_work%/}/etc/nexus.properties"
     if [ -n "${_nexus_vmopt}" ]; then   # This means NXRM3
         #nexus.licenseFile=/var/tmp/share/sonatype/sonatype-*.lic
+        if [ ! -d "${_sonatype_work%/}/etc" ]; then
+            mkdir -p "${_sonatype_work%/}/etc"
+            touch ${_cfg_file}
+        fi
         grep -qE '^\s*nexus.security.randompassword' "${_cfg_file}" || echo "nexus.security.randompassword=false" >> "${_cfg_file}"
         grep -qE '^\s*nexus.onboarding.enabled' "${_cfg_file}" || echo "nexus.onboarding.enabled=false" >> "${_cfg_file}"
         grep -qE '^\s*nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
@@ -145,7 +149,7 @@ function nxrmDocker() {
 # To start local (on Mac) IQ server
 function iqStart() {
     local _base_dir="${1:-"."}"
-    local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5006"}
+    local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=n"}
     #local _java_opts=${@:2}
     local _jar_file="$(realpath "$(find ${_base_dir%/} -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)")"
     [ -z "${_jar_file}" ] && return 11
