@@ -83,7 +83,7 @@ _ADMIN_PWD="admin123"
 _REPO_FORMATS="maven,pypi,npm,nuget,docker,helm,yum,rubygem,conan,conda,cocoapods,bower,go,apt,raw"
 ## Updatable variables
 _NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
-_IQ_CLI_VER="${_IQ_CLI_VER-"1.106.0-01"}"    # If empty, not download CLI jar
+_IQ_CLI_VER="${_IQ_CLI_VER-"1.120.0-02"}"    # If empty, not download CLI jar
 _DOCKER_NETWORK_NAME=${_DOCKER_NETWORK_NAME:-"nexus"}
 _DOCKER_CONTAINER_SHARE_DIR=${_DOCKER_CONTAINER_SHARE_DIR:-"/var/tmp/share"}
 _DOMAIN="${_DOMAIN:-"standalone.localdomain"}"
@@ -878,9 +878,11 @@ function f_reset_client_configs() {
     local _base_url="${3:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     local _usr="${4:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"
     local _pwd="${5:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"
-    local _cmd="${6:-"${r_DOCKER_CMD:-"docker"}"}"
+    local _docker_cmd="${6:-"${r_DOCKER_CMD:-"docker"}"}"
+    local _cmd="${_docker_cmd} exec -it ${_name} bash -l -c"
 
-    f_container_iq_cli "${_name}" "${_user}" "${_IQ_CLI_VER}" "${_cmd}"
+    # Setup IQ CLI
+    ${_cmd} '_f=/home/'${_user}'/nexus-iq-cli-'${_IQ_CLI_VER}'.jar; [ ! -s "${_f}" ] && curl -sf -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-'${_IQ_CLI_VER}'.jar" -o "${_f}" && chown '${_user}': ${_f}'
 
     # Using Nexus yum repository if available
     local _repo_url="${_base_url%/}/repository/yum-group"
@@ -889,28 +891,28 @@ function f_reset_client_configs() {
     if ${_cmd} cp ${_TMP%/}/nexus-yum-test.repo ${_name}:/etc/yum.repos.d/nexus-yum-test.repo && _is_url_reachable "${_repo_url}"; then
         _yum_install="yum --disablerepo=base --enablerepo=nexusrepo-test install -y"
     fi
-    ${_cmd} exec -it ${_name} bash -c "${_yum_install} epel-release && curl -sL https://rpm.nodesource.com/setup_10.x | bash -;rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm;yum install -y centos-release-scl-rh centos-release-scl;${_yum_install} python3 maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang git" >>${_LOG_FILE_PATH:-"/dev/null"}
+    ${_cmd} "${_yum_install} epel-release && curl -sL https://rpm.nodesource.com/setup_10.x | bash -;rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm;yum install -y centos-release-scl-rh centos-release-scl;${_yum_install} python3 maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang git" >>${_LOG_FILE_PATH:-"/dev/null"}
     if [ $? -ne 0 ]; then
         _log "ERROR" "installing packages with yum failed. Check ${_LOG_FILE_PATH}"
         return 1
     fi
 
     # rg|ripgrep
-    ${_cmd} exec -it ${_name} bash -c "yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && sudo yum install -y ripgrep" >>${_LOG_FILE_PATH:-"/dev/null"}
+    ${_cmd} "yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && sudo yum install -y ripgrep" >>${_LOG_FILE_PATH:-"/dev/null"}
 
     # Skopeo (instead of podman) https://github.com/containers/skopeo/blob/master/install.md
     # NOTE: may need Deployment policy = allow redeployment
     # skopeo --debug copy --src-creds=admin:admin123 --dest-creds=admin:admin123 docker://dh1.standalone.localdomain:18082/alpine:3.7 docker://dh1.standalone.localdomain:18082/alpine:test
-    ${_cmd} exec -it ${_name} bash -c "curl -L -o /etc/yum.repos.d/devel:kubic:libcontainers:stable.repo https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/CentOS_7/devel:kubic:libcontainers:stable.repo && yum -y install skopeo" >>${_LOG_FILE_PATH:-"/dev/null"}
+    ${_cmd} "curl -L -o /etc/yum.repos.d/devel:kubic:libcontainers:stable.repo https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/CentOS_7/devel:kubic:libcontainers:stable.repo && yum -y install skopeo" >>${_LOG_FILE_PATH:-"/dev/null"}
 
     # Install nuget.exe regardless of Nexus nuget repository availability (can't remember why install then immediately remove...)
-    ${_cmd} exec -it ${_name} bash -l -c "yum install -y nuget && yum remove -y nuget && curl -o /usr/local/bin/nuget.exe 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe'" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
+    ${_cmd} "yum install -y nuget && yum remove -y nuget && curl -o /usr/local/bin/nuget.exe 'https://dist.nuget.org/win-x86-commandline/latest/nuget.exe'" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
     echo 'if [ -s /usr/local/bin/nuget.exe ]; then
   alias nuget="mono /usr/local/bin/nuget.exe"
 fi' > ${_TMP%/}/nuget.sh
-    ${_cmd} cp ${_TMP%/}/nuget.sh ${_name}:/etc/profile.d/nuget.sh
+    ${_docker_cmd} cp ${_TMP%/}/nuget.sh ${_name}:/etc/profile.d/nuget.sh
     # And PowerShell for Linux... (note: using /rhel/ is correct)
-    ${_cmd} exec -it ${_name} bash -l -c "curl -o /etc/yum.repos.d/microsoft-prod.repo https://packages.microsoft.com/config/rhel/7/prod.repo;yum install -y powershell" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
+    ${_cmd} "curl -o /etc/yum.repos.d/microsoft-prod.repo https://packages.microsoft.com/config/rhel/7/prod.repo;yum install -y powershell" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
 
     # Using Nexus npm repository if available
     _repo_url="${_base_url%/}/repository/npm-group"
@@ -918,12 +920,12 @@ fi' > ${_TMP%/}/nuget.sh
     echo "strict-ssl=false
 registry=${_repo_url%/}
 _auth=\"${_cred}\"" > ${_TMP%/}/npmrc
-    if ${_cmd} cp ${_TMP%/}/npmrc ${_name}:/root/.npmrc &&
-        ${_cmd} cp ${_TMP%/}/npmrc ${_name}:/home/${_user}/.npmrc &&
-        ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.npmrc &&
+    if ${_docker_cmd} cp ${_TMP%/}/npmrc ${_name}:/root/.npmrc &&
+        ${_docker_cmd} cp ${_TMP%/}/npmrc ${_name}:/home/${_user}/.npmrc &&
+        ${_cmd} "chown ${_user}: /home/${_user}/.npmrc" &&
         _is_url_reachable "${_repo_url}";
     then
-        ${_cmd} exec -it ${_name} bash -l -c "npm install -g yarn;npm install -g bower" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
+        ${_cmd} "npm install -g yarn;npm install -g bower" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
     fi
 
     # Using Nexus pypi repository if available, also install conan
@@ -936,23 +938,23 @@ index-servers =
 repository: ${_repo_url%/}
 username: ${_usr}
 password: ${_pwd}" > ${_TMP%/}/pypirc
-    if ${_cmd} cp ${_TMP%/}/pypirc ${_name}:/root/.pypirc &&
-        ${_cmd} cp ${_TMP%/}/pypirc ${_name}:/home/${_user}/.pypirc &&
-        ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.pypirc &&
+    if ${_docker_cmd} cp ${_TMP%/}/pypirc ${_name}:/root/.pypirc &&
+        ${_docker_cmd} cp ${_TMP%/}/pypirc ${_name}:/home/${_user}/.pypirc &&
+        ${_cmd} "chown ${_user}: /home/${_user}/.pypirc" &&
         _is_url_reachable "${_repo_url}";
     then
-        ${_cmd} exec -it ${_name} bash -l -c "pip3 install conan" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
+        ${_cmd} "pip3 install conan" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
     fi
 
     # Using Nexus rubygem/cocoapods(pod) repository if available (not sure if rubygem-group is supported in some versions, so using proxy)
     _repo_url="${_base_url%/}/repository/rubygem-proxy"
     # @see: https://www.server-world.info/en/note?os=CentOS_7&p=ruby23
     #       Also need git newer than 1.8.8, but https://github.com/iusrepo/git216/issues/5
-    ${_cmd} exec -it ${_name} bash -c "yum remove -y git*; yum -y install https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm && ${_yum_install} git" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
+    ${_cmd} "yum remove -y git*; yum -y install https://packages.endpoint.com/rhel/7/os/x86_64/endpoint-repo-1.7-1.x86_64.rpm && ${_yum_install} git" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
     echo '#!/bin/bash
 source /opt/rh/rh-ruby23/enable
 export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.sh
-    ${_cmd} cp ${_TMP%/}/rh-ruby23.sh ${_name}:/etc/profile.d/rh-ruby23.sh
+    ${_docker_cmd} cp ${_TMP%/}/rh-ruby23.sh ${_name}:/etc/profile.d/rh-ruby23.sh
     # If rubygem repo is reachable, install cocoapods *first* (Note: as of today, newest cocoapods fails with "Failed to build gem native extension")
     if _is_url_reachable "${_repo_url}"; then
         local _protocol="http"
@@ -965,13 +967,13 @@ export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.s
 :disable_default_gem_server: true
 :sources:
     - ${_protocol}://${_usr}:${_pwd}@${_repo_url_without_http%/}/" > ${_TMP%/}/gemrc
-        ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/root/.gemrc && ${_cmd} cp ${_TMP%/}/gemrc ${_name}:/home/${_user}/.gemrc && ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.gemrc;
+        ${_docker_cmd} cp ${_TMP%/}/gemrc ${_name}:/root/.gemrc && ${_docker_cmd} cp ${_TMP%/}/gemrc ${_name}:/home/${_user}/.gemrc && ${_cmd} "chown ${_user}: /home/${_user}/.gemrc";
     fi
-    ${_cmd} exec -it ${_name} bash -l -c "gem install cocoapods -v 1.8.4" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
+    ${_cmd} "gem install cocoapods -v 1.8.4" 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"}
     # Need Xcode on Mac?: https://download.developer.apple.com/Developer_Tools/Xcode_10.3/Xcode_10.3.xip (or https://developer.apple.com/download/more/)
     curl -s -f -o ${_TMP%/}/cocoapods-test.tgz -L https://github.com/hajimeo/samples/raw/master/misc/cocoapods-test.tgz && \
-    ${_cmd} cp ${_TMP%/}/cocoapods-test.tgz ${_name}:/home/${_user}/cocoapods-test.tgz && \
-    ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/cocoapods-test.tgz
+    ${_docker_cmd} cp ${_TMP%/}/cocoapods-test.tgz ${_name}:/home/${_user}/cocoapods-test.tgz && \
+    ${_cmd} "chown ${_user}: /home/${_user}/cocoapods-test.tgz"
     # TODO: cocoapods is installed but not configured properly
     #https://raw.githubusercontent.com/hajimeo/samples/master/misc/cocoapods-Podfile
     # (probably) how to retry pod install: cd $HOME/cocoapods-test && rm -rf $HOME/Library/Caches Pods Podfile.lock cocoapods-test.xcworkspace
@@ -989,52 +991,43 @@ export X_SCLS="`scl enable rh-ruby23 \"echo $X_SCLS\"`"' > ${_TMP%/}/rh-ruby23.s
         echo "export GO111MODULE=on
 export GOPROXY=${_repo_url}" > ${_TMP%/}/go-proxy.sh
         # Or: go env -w GOPROXY=${_repo_url}
-        ${_cmd} cp ${_TMP%/}/go-proxy.sh ${_name}:/etc/profile.d/go-proxy.sh
-        ${_cmd} exec -it ${_name} bash -c "rpm --import https://mirror.go-repo.io/centos/RPM-GPG-KEY-GO-REPO && curl -s https://mirror.go-repo.io/centos/go-repo.repo > /etc/yum.repos.d/go-repo.repo && yum install golang"
+        ${_docker_cmd} cp ${_TMP%/}/go-proxy.sh ${_name}:/etc/profile.d/go-proxy.sh
+        ${_cmd} "rpm --import https://mirror.go-repo.io/centos/RPM-GPG-KEY-GO-REPO && curl -s https://mirror.go-repo.io/centos/go-repo.repo > /etc/yum.repos.d/go-repo.repo && yum install golang"
         # Testing proxy repo (and for go debug: $HOME/go/bin/dlv)
-        ${_cmd} exec -it ${_name} -u ${_user} bash -c "go get github.com/go-delve/delve/cmd/dlv"
+        ${_cmd} "sudo -u ${_user} -i go get github.com/go-delve/delve/cmd/dlv"
     fi
 
     # Install Conda, and if repo is reachable, setup conda/anaconda/miniconda env
     curl -o ${_TMP%/}/Miniconda3-latest-Linux-x86_64.sh --compressed https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh &&
-        ${_cmd} cp ${_TMP%/}/Miniconda3-latest-Linux-x86_64.sh ${_name}:/home/${_user}/Miniconda3-latest-Linux-x86_64.sh && \
-        ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/Miniconda3-latest-Linux-x86_64.sh &&
-        ${_cmd} exec -it ${_name} -u ${_user} bash /home/${_user}/Miniconda3-latest-Linux-x86_64.sh -b -p /home/${_user}/miniconda3 &&
-        ${_cmd} exec -it ${_name} -u ${_user} bash -c "mkdir /home/${_user}/bin; ln -s /home/${_user}/miniconda3/bin/conda /home/${_user}/bin/conda"
+        ${_docker_cmd} cp ${_TMP%/}/Miniconda3-latest-Linux-x86_64.sh ${_name}:/home/${_user}/Miniconda3-latest-Linux-x86_64.sh && \
+        ${_cmd} "chown ${_user}: /home/${_user}/Miniconda3-latest-Linux-x86_64.sh" &&
+        ${_cmd} "sudo -u ${_user} -i /home/${_user}/Miniconda3-latest-Linux-x86_64.sh -b -p /home/${_user}/miniconda3" &&
+        ${_cmd} "sudo -u ${_user} -i mkdir /home/${_user}/bin; ln -s /home/${_user}/miniconda3/bin/conda /home/${_user}/bin/conda"
     _repo_url="${_base_url%/}/repository/conda-proxy"
     if _is_url_reachable "${_repo_url}"; then
         #local _pwd_encoded="$(python -c \"import sys, urllib as ul; print(ul.quote('${_pwd}'))\")"
         echo "channels:
   - ${_repo_url%/}
   - defaults" > ${_TMP%/}/condarc
-        ${_cmd} cp ${_TMP%/}/condarc ${_name}:/home/${_user}/.condarc && ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/.condarc
+        ${_docker_cmd} cp ${_TMP%/}/condarc ${_name}:/home/${_user}/.condarc && ${_cmd} "chown ${_user}: /home/${_user}/.condarc"
     fi
 
     # Regardless of repo availability, setup helm
     curl -fsSL -o ${_TMP%/}/get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
     if [ -s ${_TMP%/}/get_helm.sh ]; then
-        ${_cmd} cp ${_TMP%/}/get_helm.sh ${_name}:/home/${_user%/}/ && \
-        ${_cmd} exec -it ${_name} chown ${_user}: /home/${_user}/get_helm.sh && \
-        ${_cmd} exec -it ${_name} chmod u+x /home/${_user}/get_helm.sh && \
-        ${_cmd} exec -it -u ${_user} ${_name} /home/${_user}/get_helm.sh
+        ${_docker_cmd} cp ${_TMP%/}/get_helm.sh ${_name}:/home/${_user%/}/ && \
+        ${_cmd} "chown ${_user}: /home/${_user}/get_helm.sh" && \
+        ${_cmd} "chmod u+x /home/${_user}/get_helm.sh" && \
+        ${_cmd} "sudo -u ${_user} -i /home/${_user}/get_helm.sh"
     fi
 
     # Using Nexus maven repository if available
     _repo_url="${_base_url%/}/repository/maven-group"
     curl -s -f -o ${_TMP%/}/settings.xml -L ${_DL_URL%/}/misc/m2_settings.tmpl.xml && \
     sed -i -e "s@_REPLACE_MAVEN_USERNAME_@${_usr}@1" -e "s@_REPLACE_MAVEN_USER_PWD_@${_pwd}@1" -e "s@_REPLACE_MAVEN_REPO_URL_@${_repo_url%/}/@1" ${_TMP%/}/settings.xml && \
-    ${_cmd} exec -it ${_name} bash -l -c '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null' && \
-    ${_cmd} cp ${_TMP%/}/settings.xml ${_name}:/home/${_user}/.m2/settings.xml && \
-    ${_cmd} exec -it ${_name} chown -R ${_user}: /home/${_user}/.m2
-}
-
-function f_container_iq_cli() {
-    local _name="${1}"
-    local _user="${2:-"$USER"}"
-    local _iq_cli_ver="${3:-"${_IQ_CLI_VER}"}"
-    local _cmd="${4:-"${r_DOCKER_CMD:-"docker"}"}"
-    [ -z "${_iq_cli_ver}" ] && return 99
-    ${_cmd} exec -d ${_name} bash -c '_f=/home/'${_user}'/nexus-iq-cli-'${_iq_cli_ver}'.jar; [ ! -s "${_f}" ] && curl -sf -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-'${_iq_cli_ver}'.jar" -o "${_f}" && chown '${_user}': ${_f}'
+    ${_cmd} '_f=/home/'${_user}'/.m2/settings.xml; [ -s ${_f} ] && cat ${_f} > ${_f}.bak; mkdir /home/'${_user}'/.m2 &>/dev/null' && \
+    ${_docker_cmd} cp ${_TMP%/}/settings.xml ${_name}:/home/${_user}/.m2/settings.xml && \
+    ${_cmd} "chown -R ${_user}: /home/${_user}/.m2"
 }
 
 # Set admin password after initial installation. If no 'admin.password' file, no error message and silently fail.
