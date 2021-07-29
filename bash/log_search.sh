@@ -12,9 +12,9 @@
 #
 
 [ -n "$_DEBUG" ] && (set -x; set -e)
-# TODO: to support zsh on Mac. below two lines make BASH_REMATCH work with same index as bash
-setopt KSH_ARRAYS &>/dev/null
-setopt BASH_REMATCH &>/dev/null
+# NOTE below two lines make BASH_REMATCH work with same index as bash, but gave up on supporting zsh (too different)
+#setopt KSH_ARRAYS &>/dev/null
+#setopt BASH_REMATCH &>/dev/null
 
 usage() {
     if [ -n "$1" ]; then
@@ -1506,6 +1506,7 @@ _SCRIPT_DIR="$(dirname "$BASH_SOURCE")"
 
 
 ### Main ###############################################################################################################
+[ -z "${BASH}" ] && echo "WARN: The functions in this script work with only 'bash'."
 if [ "$0" = "$BASH_SOURCE" ]; then
     usage | less
 fi
