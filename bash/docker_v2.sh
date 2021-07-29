@@ -8,6 +8,11 @@
 # Simpler test:
 #   curl -I -u "${_USER}:${_PWD}" -L -k "${_DOCKER_REGISTRY_URL%/}/v2/"
 #
+# To get the image names, then tags, then a tag (json):
+#   curl -u "${_USER}:${_PWD}" -L -k "${_DOCKER_REGISTRY_URL%/}/v2/_catalog"
+#   curl -u "${_USER}:${_PWD}" -L -k "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/tag/list"  # NEXUS-26037 if proxy
+#   curl -u "${_USER}:${_PWD}" -L -k "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}"
+#
 
 # Use 'export' to overwrite
 : ${_USER:=""}
