@@ -469,6 +469,7 @@ function nxrm3Staging() {
 #zgrep "2021:10:1" request-2021-01-08.log.gz | replayGets "/nexus/content/repositories/central/([^/]+/.+)" "http://localhost:8081/repository/maven-central"
 #rg -z "2021:\d\d:\d.+ \"GET /repository/maven-central/" request-2021-01-08.log.gz | replayGets "/repository/maven-central/([^/]+/.+)" "http://dh1:8081/repository/maven-central/"
 function replayGets() {
+    local __doc__="Replay requests in the request.log"
     local _path_match="$1"  # Need (...) eg: "/nexus/content/repositories/central/([^/]+/.+)"
     local _url_path="$2"    # http://localhost:8081/repository/maven-central
     [[ "${_url_path}" =~ ^http ]] || return 1
