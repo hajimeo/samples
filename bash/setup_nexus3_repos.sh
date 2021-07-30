@@ -85,7 +85,7 @@ _REPO_FORMATS="maven,pypi,npm,nuget,docker,helm,yum,rubygem,conan,conda,cocoapod
 _NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
 _IQ_CLI_VER="${_IQ_CLI_VER-"1.120.0-02"}"    # If empty, not download CLI jar
 _DOCKER_NETWORK_NAME=${_DOCKER_NETWORK_NAME:-"nexus"}
-_DOCKER_CONTAINER_SHARE_DIR=${_DOCKER_CONTAINER_SHARE_DIR:-"/var/tmp/share"}
+_SHARE_DIR=${_SHARE_DIR:-"/var/tmp/share"}
 _DOMAIN="${_DOMAIN:-"standalone.localdomain"}"
 _IS_NXRM2=${_IS_NXRM2:-"N"}
 _NO_DATA=${_NO_DATA:-"N"}
@@ -845,7 +845,7 @@ function p_client_container() {
         _docker_add_network "${_DOCKER_NETWORK_NAME}" "" "${_cmd}" || return $?
     fi
 
-    local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true -v ${_WORK_DIR%/}:${_DOCKER_CONTAINER_SHARE_DIR}"
+    local _ext_opts="-v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true -v ${_WORK_DIR%/}:${_SHARE_DIR}"
     [ -n "${_DOCKER_NETWORK_NAME}" ] && _ext_opts="--network=${_DOCKER_NETWORK_NAME} ${_ext_opts}"
     _log "INFO" "Running or Starting '${_name}'"
     # TODO: not right way to use 3rd and 4th arguments. Also if two IPs are configured, below might update /etc/hosts with 2nd IP.
@@ -873,7 +873,7 @@ To login: ssh testuser@${_name}"
 #f_reset_client_configs "testuser" "http://dh1.standalone.localdomain:8081/" && f_install_clients
 function f_reset_client_configs() {
     local __doc__="Configure various client tools"
-    local _user="${1:-"testuser"}"
+    local _user="${1:-"$USER"}"
     local _base_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"   # Nexus URL
     local _usr="${3:-"${r_ADMIN_USER:-"${_ADMIN_USER}"}"}"  # Nexus user
     local _pwd="${4:-"${r_ADMIN_PWD:-"${_ADMIN_PWD}"}"}"    # Nexus user's password
@@ -884,10 +884,21 @@ function f_reset_client_configs() {
         return 1
     fi
 
-    _log "INFO" "Setup IQ CLI version:${_IQ_CLI_VER} ..."
-    local _f=${_home%/}/nexus-iq-cli-${_IQ_CLI_VER}.jar
-    [ ! -s "${_f}" ] && curl -fL "https://download.sonatype.com/clm/scanner/nexus-iq-cli-'${_IQ_CLI_VER}'.jar" -o "${_f}"
-    chown -v ${_user}: ${_f}
+    if [ -n "${_IQ_CLI_VER}" ]; then
+        [ -d "${_SHARE_DIR%/}/sonatype" ] || mkdir -v -p -m 777 "${_SHARE_DIR%/}/sonatype"
+        local _f="${_SHARE_DIR%/}/sonatype/nexus-iq-cli-${_IQ_CLI_VER}.jar"
+        if [ ! -s "${_f}" ]; then
+            _log "INFO" "Downloading IQ CLI jar, version:${_IQ_CLI_VER} ..."
+            curl -fL "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_IQ_CLI_VER}.jar" -o "${_f}"
+        fi
+        if [ -s "${_f}" ]; then
+            _log "INFO" "Create IQ CLI executable ${_home%/}/bin/nexus-iq-cli ..."
+            [ -d "${_home%/}/bin" ] || mkdir -v "${_home%/}/bin"
+            (echo '#!/bin/sh' && echo 'exec java -jar $0 "$@"' && cat ${_f}) > "${_home%/}/bin/nexus-iq-cli"
+            chown -v ${_user}: "${_home%/}/bin/nexus-iq-cli"
+            chmod -v u+x "${_home%/}/bin/nexus-iq-cli"
+        fi
+    fi
 
     local _repo_url="${_base_url%/}/repository/yum-group"
     if _is_url_reachable "${_repo_url}"; then
@@ -1012,7 +1023,7 @@ function f_install_clients() {
     curl -fL https://rpm.nodesource.com/setup_14.x --compressed | bash - || _log "ERROR" "Executing https://rpm.nodesource.com/setup_14.x failed"
     rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm
     yum install -y centos-release-scl-rh centos-release-scl || _log "ERROR" "Installing .Net (for Nuget) related packages failed"
-    ${_yum_install} python3 maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang git || _log "ERROR" "yum install python3 maven nodejs etc. failed"
+    ${_yum_install} java-1.8.0-openjdk-devel python3 maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang git || _log "ERROR" "yum install java python3 maven nodejs etc. failed"
     _log "INFO" "Installing ripgrep (rg) ..."
     yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && sudo yum install -y ripgrep
     _log "INFO" "Install Skopeo ..."
@@ -1190,8 +1201,8 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
     local _license="${r_NEXUS_LICENSE_FILE}"
     [ -z "${_license}" ] && _license="$(ls -1t ${_WORK_DIR%/}/sonatype/sonatype-*.lic 2>/dev/null | head -n1)"
     if [ -s "${_license}" ]; then
-        [ -d "${_DOCKER_CONTAINER_SHARE_DIR}" ] && cp -f "${_license}" "${_DOCKER_CONTAINER_SHARE_DIR%/}/sonatype/"
-        _upsert ${_sonatype_work%/}/etc/nexus.properties "nexus.licenseFile" "${_DOCKER_CONTAINER_SHARE_DIR%/}/sonatype/$(basename "${_license}")" || return $?
+        [ -d "${_SHARE_DIR}" ] && cp -f "${_license}" "${_SHARE_DIR%/}/sonatype/"
+        _upsert ${_sonatype_work%/}/etc/nexus.properties "nexus.licenseFile" "${_SHARE_DIR%/}/sonatype/$(basename "${_license}")" || return $?
     elif _isYes "${r_NEXUS_INSTALL_HAC}"; then
         _log "ERROR" "HA-C is requested but no license."
         return 1
@@ -1656,7 +1667,7 @@ main() {
                 local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
                 local _v_name_ip="_ip_${_i}"
                 local _tmp_ext_opts="${_ext_opts}"
-                _tmp_ext_opts="${_tmp_ext_opts} -v ${_WORK_DIR%/}:${_DOCKER_CONTAINER_SHARE_DIR}"
+                _tmp_ext_opts="${_tmp_ext_opts} -v ${_WORK_DIR%/}:${_SHARE_DIR}"
                 if _isYes "${r_NEXUS_MOUNT}"; then
                     _tmp_ext_opts="${_tmp_ext_opts} $(f_nexus_mount_volume "${!_v_name_m}")" || return $?
                     f_nexus_init_properties "${!_v_name_m}" || return $?
@@ -1673,7 +1684,7 @@ main() {
                 fi
             done
         else
-            local _tmp_ext_opts="-v ${_WORK_DIR%/}:${_DOCKER_CONTAINER_SHARE_DIR}"
+            local _tmp_ext_opts="-v ${_WORK_DIR%/}:${_SHARE_DIR}"
             # Port forwarding for Nexus Single Node (obviously can't do same for HA as port will conflict)
             if [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
                 local _p="-p ${r_NEXUS_CONTAINER_PORT1}:8081"
