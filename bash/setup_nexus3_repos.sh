@@ -863,7 +863,7 @@ function p_client_container() {
 
     _log "INFO" "Setting up various client commands ..."
     ${_cmd} cp $BASH_SOURCE ${_name}:/tmp/setup_nexus3_repos.sh || return $?
-    ${_cmd} exec -it ${_name} bash -c "source /tmp/setup_nexus3_repos.sh && f_reset_client_configs \"testuser\" \"${_base_url}\"" || return $?
+    ${_cmd} exec -it ${_name} bash -c "source /tmp/setup_nexus3_repos.sh && f_reset_client_configs \"testuser\" \"${_base_url}\" && f_install_clients" || return $?
     _log "INFO" "Completed $FUNCNAME .
 To save : docker stop ${_name}; docker commit ${_name} ${_name}
 To login: ssh testuser@${_name}"
