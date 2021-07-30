@@ -390,6 +390,10 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
 
     dfs = []
     for file_path in files:
+        fs = _get_filesize(file_path)
+        if fs < 32:
+            _info("%s is too small (%d) Skipping ..." % (str(file_path), fs))
+            continue
         _info("Loading %s ..." % (str(file_path)))
         if bool(jq_query):
             obj = jq(file_path, jq_query)
@@ -417,7 +421,8 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
     df = pd.concat(dfs, sort=False)
     if bool(conn):
         if bool(json_cols) is False:
-            first_row = df[:1].to_dict(orient='records')[0]
+            # TODO: if non first raw contains dict or list?
+            first_row = df[:1].to_dict(orient='records')[0] # 'records' is for list like data
             for k in first_row:
                 if type(first_row[k]) is dict or type(first_row[k]) is list:
                     json_cols.append(k)
@@ -603,6 +608,9 @@ def _avoid_unsupported(df, json_cols=[], all_str=False, name=None):
     """
     if bool(json_cols) is False and all_str is False:
         return df
+    if len(df) > 200000:  # don't want to convert huge df
+        _err("_avoid_unsupported can't convert large df (%s)" % (str(len(df))))
+        return df
     keys = df.columns.tolist()
     cols = {}
     for k in keys:
@@ -610,7 +618,7 @@ def _avoid_unsupported(df, json_cols=[], all_str=False, name=None):
             _debug("_avoid_unsupported: k = %s" % (str(k)))
             # df[k] = df[k].to_string()
             cols[k] = 'str'
-        elif all_str and len(df) < 10000:  # don't want to convert huge df
+        elif all_str:
             cols[k] = 'str'
     if len(cols) > 0:
         if bool(name):
@@ -2022,6 +2030,7 @@ def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace', sche
     :param conn: database connection object
     :param chunksize: to split the data
     :param if_exists: 'fail', 'replace', or 'append'
+    :param schema: Database schema
     :return: True, or False or error column number if error.
     """
     if conn is None:
