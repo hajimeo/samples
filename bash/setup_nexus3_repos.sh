@@ -78,19 +78,19 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 
 
 ## Global variables
-_ADMIN_USER="admin"
-_ADMIN_PWD="admin123"
-_REPO_FORMATS="maven,pypi,npm,nuget,docker,helm,yum,rubygem,conan,conda,cocoapods,bower,go,apt,raw"
-## Updatable variables
-_NEXUS_URL=${_NEXUS_URL:-"http://localhost:8081/"}
-_IQ_CLI_VER="${_IQ_CLI_VER-"1.120.0-02"}"    # If empty, not download CLI jar
-_DOCKER_NETWORK_NAME=${_DOCKER_NETWORK_NAME:-"nexus"}
-_SHARE_DIR=${_SHARE_DIR:-"/var/tmp/share"}
-_DOMAIN="${_DOMAIN:-"standalone.localdomain"}"
-_IS_NXRM2=${_IS_NXRM2:-"N"}
-_NO_DATA=${_NO_DATA:-"N"}
-_TID="${_TID:-80}"
-## Misc.
+: ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,helm,yum,rubygem,conan,conda,cocoapods,bower,go,apt,raw"}
+: ${_ADMIN_USER:="admin"}
+: ${_ADMIN_PWD:="admin123"}
+: ${_DOMAIN:="standalone.localdomain"}
+: ${_NEXUS_URL:="http://localhost:8081/"}
+: ${_IQ_URL:="http://dh1.${_DOMAIN}:8070/"}
+: ${_IQ_CLI_VER-"1.120.0-02"}    # If empty, not download CLI jar
+: ${_DOCKER_NETWORK_NAME:="nexus"}
+: ${_SHARE_DIR:="/var/tmp/share"}
+: ${_IS_NXRM2:="N"}
+: ${_NO_DATA:="N"}
+: ${_TID:=80}
+## Misc. variables
 _LOG_FILE_PATH="/tmp/setup_nexus3_repos.log"
 _TMP="$(mktemp -d)"  # for downloading/uploading assets
 ## Variables which used by command arguments
@@ -570,9 +570,9 @@ aws s3 cp s3://${_bucket}/${_prefix}/content/vol-42/chap-31/f062f002-88f0-4b53-a
 
 function f_iq_quarantine() {
     local _repo_name="$1"
-    if [ -n "${_IQ_HOST}" ] && nc -z ${_IQ_HOST} ${_IQ_PORT:-"8070"}; then
+    if [ -n "${_IQ_URL}" ] && curl -sfI "${_IQ_URL}" &>/dev/null ; then
         _log "INFO" "Setting up IQ capability ..."
-        f_apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":true,"url":"'${_HTTP:-"http"}'://'${_IQ_HOST}':'${_IQ_PORT}'","authenticationType":"USER","username":"admin","password":"admin123","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}' || return $?
+        f_apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":true,"url":"'${_IQ_URL}'","authenticationType":"USER","username":"admin","password":"admin123","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}' || return $?
     fi
     # To create IQ: Audit and Quarantine for this repository:
     f_apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"firewall.audit","notes":"","enabled":true,"properties":{"repository":"'${_repo_name}'","quarantine":"true"}}],"type":"rpc"}' || return $?
@@ -884,22 +884,6 @@ function f_reset_client_configs() {
         return 1
     fi
 
-    if [ -n "${_IQ_CLI_VER}" ]; then
-        [ -d "${_SHARE_DIR%/}/sonatype" ] || mkdir -v -p -m 777 "${_SHARE_DIR%/}/sonatype"
-        local _f="${_SHARE_DIR%/}/sonatype/nexus-iq-cli-${_IQ_CLI_VER}.jar"
-        if [ ! -s "${_f}" ]; then
-            _log "INFO" "Downloading IQ CLI jar, version:${_IQ_CLI_VER} ..."
-            curl -fL "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_IQ_CLI_VER}.jar" -o "${_f}"
-        fi
-        if [ -s "${_f}" ]; then
-            _log "INFO" "Create IQ CLI executable ${_home%/}/bin/nexus-iq-cli ..."
-            [ -d "${_home%/}/bin" ] || mkdir -v "${_home%/}/bin"
-            (echo '#!/bin/sh' && echo 'exec java -jar $0 "$@"' && cat ${_f}) > "${_home%/}/bin/nexus-iq-cli"
-            chown -v ${_user}: "${_home%/}/bin/nexus-iq-cli"
-            chmod -v u+x "${_home%/}/bin/nexus-iq-cli"
-        fi
-    fi
-
     local _repo_url="${_base_url%/}/repository/yum-group"
     if _is_url_reachable "${_repo_url}"; then
         _log "INFO" "Generating /etc/yum.repos.d/nexus-yum-test.repo ..."
@@ -1010,6 +994,30 @@ EOF
 }
 function f_install_clients() {
     local __doc__="Install various client software with mainly yum as 'root' (TODO: so that works with CentOS 7 only)"
+
+    if [ -n "${_IQ_CLI_VER}" ]; then
+        [ -d "${_SHARE_DIR%/}/sonatype" ] || mkdir -v -p -m 777 "${_SHARE_DIR%/}/sonatype"
+        local _f="${_SHARE_DIR%/}/sonatype/nexus-iq-cli-${_IQ_CLI_VER}.jar"
+        if [ ! -s "${_f}" ]; then
+            _log "INFO" "Downloading IQ CLI jar, version:${_IQ_CLI_VER} ..."
+            curl -fL "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_IQ_CLI_VER}.jar" -o "${_f}"
+        fi
+        if [ -s "${_f}" ]; then
+            _log "INFO" "Create IQ CLI executable /usr/local/bin/nexus-iq-cli ..."
+            cat << "EOF" > /tmp/nexus-iq-cli.sh
+#!/usr/bin/env bash
+[[ ! " $@" =~ [[:space:]]-s[[:space:]]+[^-] ]] && _OPTS="${_OPTS% } -s ${_IQ_URL:-"http://localhost:8070/"}"
+[[ ! " $@" =~ [[:space:]]-a[[:space:]]+[^-] ]] && _OPTS="${_OPTS% } -a ${_ADMIN_USER:-"admin"}:${_ADMIN_PWD:-"admin123"}"
+[[ ! " $@" =~ [[:space:]]-i[[:space:]]+[^-] ]] && _OPTS="${_OPTS% } -i sandbox-application"
+[[ ! " $@" =~ [[:space:]]-t[[:space:]]+[^-] ]] && _OPTS="${_OPTS% } -t build"
+[[ ! " $@" =~ [[:space:]]-r[[:space:]]+[^-] ]] && _OPTS="${_OPTS% } -r iq_result_$(date +'%Y%m%d%H%M%S').json"
+set -x
+exec java -jar $BASH_SOURCE ${_OPTS% } "$@"
+EOF
+            (cat /tmp/nexus-iq-cli.sh && cat ${_f}) > "/usr/local/bin/nexus-iq-cli"
+            chmod -v a+x "/usr/local/bin/nexus-iq-cli"
+        fi
+    fi
 
     _log "INFO" "Install packages with yum ..."
     local _yum_install="yum install -y"
