@@ -569,10 +569,17 @@ function f_apache_proxy() {
     #DumpIOOutput On
     #LogLevel dumpio:trace7" >"${_conf}"
 
-    if grep -qE '^proxyuser:' /etc/apache2/passwd-nospecial; then
+    if ! grep -qE '^proxyuser:' /etc/apache2/passwd-nospecial; then
         echo -n 'proxypwd' | htpasswd -i -c /etc/apache2/passwd-nospecial proxyuser
     fi
     echo "
+    <Directory ${_proxy_dir}>
+        AuthType Basic
+        AuthName \"Basic Auth test\"
+        AuthUserFile /etc/apache2/passwd-nospecial
+        Require valid-user
+    </Directory>
+
     SSLProxyEngine On
     SSLProxyVerify none
     SSLProxyCheckPeerCN off
@@ -592,7 +599,6 @@ function f_apache_proxy() {
         #Require user proxyuser
         #Require valid-user
     </Proxy>
-
     ProxyVia On
 
     #<IfModule mod_cache_disk.c>
