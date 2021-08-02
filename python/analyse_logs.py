@@ -141,12 +141,14 @@ def update():
     ju.update(file=__file__)
 
 
-def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
+def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_from_regex=None, time_until_regex=None):
     """
     Extract data, transform and load (to DB)
     :param path: To specify a zip file
     :param dist: Directory path to save the extracted data (default ./_filtered)
     :param max_file_size: Larger than this size will be skipped (default 100MB)
+    :param time_from_regex: Regex for 'time' for logs2table's line_from (eg "(0[5-9]|1[0-3]]):\d\d:\d\d")
+    :param time_until_regex: Regex for 'time' for logs2table's line_until
     :return: void
     """
     if bool(path) is False:
@@ -193,27 +195,63 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
         
         ### Transform & Load ###################################################
         # db_xxxxx.json
-        _ = ju.load_jsons(src=dist, include_ptn="db_*.json", flatten=True)
-        # If audit.json file exists
-        _ = ju.json2df(dist+"/audit.json", tablename="t_audit_logs", flatten=True)
-        # xxxxx.csv
-        _ = ju.load_csvs(src="./_filtered/", include_ptn="*.csv")
+        _ = ju.load_jsons(src=dist, include_ptn="db_*.json", flatten=True, max_file_size=max_file_size)
+        # If audit.json file exists and no time_xxxx_regex
+        if os.path.isfile(dist+"/audit.json"):  # and bool(time_from_regex) is False and bool(time_until_regex) is False
+            _ = ju.json2df(dist+"/audit.json", tablename="t_audit_logs", flatten=True, max_file_size=max_file_size)
+        else:
+            # TODO: currently below is too slow, so not using "max_file_size=max_file_size,"
+            log_path = ju._get_file("audit.log")
+            if bool(log_path):
+                line_from = line_until = 0
+                if bool(time_from_regex):
+                    line_from=ju._linenumber(log_path, "^\{\"timestamp\":\"\d\d\d\d-\d\d-\d\d "+time_from_regex)
+                if bool(time_until_regex):
+                    line_until=ju._linenumber(log_path, "^\{\"timestamp\":\"\d\d\d\d-\d\d-\d\d "+time_until_regex)
+                _ = ju.json2df(log_path, tablename="t_audit_logs",
+                               line_by_line=True, line_from=line_from, line_until=line_until)
 
-        # If request.*csv* exists, use that (because it's faster), if not, logs2table, which is slower.
+        # xxxxx.csv
+        _ = ju.load_csvs(src="./_filtered/", include_ptn="*.csv", max_file_size=max_file_size)
+
+        # If request.*csv* exists, use that and should be loaded by above load_csvs (because it's faster), if not, logs2table, which is slower.
         if ju.exists("t_request") is False:
-            (col_names, line_matching) = _gen_regex_for_request_logs('request.log')
-            request_logs = ju.logs2table('request.log', tablename="t_request", line_beginning="^.",
-                                         col_names=col_names, line_matching=line_matching, max_file_size=max_file_size)
+            log_path = ju._get_file("request.log")
+            if bool(log_path):
+                line_from = line_until = 0
+                if bool(time_from_regex):
+                    line_from=ju._linenumber(log_path, "\d\d/.../\d\d\d\d:"+time_from_regex)
+                if bool(time_until_regex):
+                    line_until=ju._linenumber(log_path, "\d\d/.../\d\d\d\d:"+time_until_regex)
+                (col_names, line_matching) = _gen_regex_for_request_logs(log_path)
+                request_logs = ju.logs2table(log_path, tablename="t_request", line_beginning="^.",
+                                             col_names=col_names, line_matching=line_matching, max_file_size=max_file_size,
+                                             line_from=line_from, line_until=line_until)
 
         # Loading application log file(s) into database.
-        (col_names, line_matching) = _gen_regex_for_app_logs('nexus.log')
-        nxrm_logs = ju.logs2table('nexus.log', tablename="t_nxrm_logs", col_names=col_names,
-                                  line_matching=line_matching,
-                                  max_file_size=max_file_size)
-        (col_names, line_matching) = _gen_regex_for_app_logs('clm-server.log')
-        clm_logs = ju.logs2table('clm-server.log', tablename="t_iq_logs", col_names=col_names,
-                                 line_matching=line_matching,
-                                 max_file_size=max_file_size)
+        log_path = ju._get_file("nexus.log")
+        if bool(log_path):
+            line_from = line_until = 0
+            if bool(time_from_regex):
+                line_from=ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d "+time_from_regex)
+            if bool(time_until_regex):
+                line_until=ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d "+time_until_regex)
+            (col_names, line_matching) = _gen_regex_for_app_logs(log_path)
+            nxrm_logs = ju.logs2table(log_path, tablename="t_nxrm_logs", col_names=col_names,
+                                      line_matching=line_matching, max_file_size=max_file_size,
+                                      line_from=line_from, line_until=line_until)
+
+        log_path = ju._get_file("clm-server.log")
+        if bool(log_path):
+            line_from = line_until = 0
+            if bool(time_from_regex):
+                line_from=ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d "+time_from_regex)
+            if bool(time_until_regex):
+                line_until=ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d "+time_until_regex)
+            (col_names, line_matching) = _gen_regex_for_app_logs(log_path)
+            clm_logs = ju.logs2table(log_path, tablename="t_iq_logs", col_names=col_names,
+                                     line_matching=line_matching, max_file_size=max_file_size,
+                                     line_from=line_from, line_until=line_until)
 
         # Hazelcast health monitor
         if ju.exists("t_log_hazelcast_monitor") is False and bool(nxrm_logs):
@@ -260,32 +298,25 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100)):
     ju.display(ju.desc(), name="Available_Tables")
 
 
-def analyse_logs(path="", start_isotime=None, end_isotime=None, tail_num=10000, max_file_size=(1024 * 1024 * 100)):
+def analyse_logs(path="", tail_num=10000, max_file_size=(1024 * 1024 * 100), skip_etl=False):
     """
     A prototype / demonstration function for extracting then analyse log files
-    :param start_isotime: YYYY-MM-DD hh:mm:ss,sss
-    :param end_isotime: YYYY-MM-DD hh:mm:ss,sss
+    :param path: File (including zip) path
     :param tail_num: How many rows/records to display. Default is 10K
     :param max_file_size: File smaller than this size will be skipped.
+    :param skip_etl: Skip etl() function
     :return: void
     >>> pass    # test should be done in each function
     """
-    etl(path=path, max_file_size=max_file_size)
+    if bool(skip_etl) is False:
+        etl(path=path, max_file_size=max_file_size)
 
     where_sql = "WHERE 1=1"
-    if bool(start_isotime) is True:
-        where_sql += " AND date_time >= '" + start_isotime + "'"
-    if bool(end_isotime) is True:
-        where_sql += " AND date_time <= '" + end_isotime + "'"
 
     if ju.exists("t_request"):
         display_name = "RequestLog_StatusCode_Hourly_aggs"
         # Can't use above where_sql for this query
         where_sql2 = "WHERE 1=1"
-        if bool(start_isotime) is True:
-            where_sql2 += " AND UDF_STR2SQLDT(`date`) >= UDF_STR2SQLDT('" + start_isotime + " +0000')"
-        if bool(end_isotime) is True:
-            where_sql2 += " AND UDF_STR2SQLDT(`date`) <= UDF_STR2SQLDT('" + end_isotime + " +0000')"
         # UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d)', `date`, 1)
         query = """SELECT substr(`date`, 1, 14) AS date_hour, substr(statusCode, 1, 1) || 'xx' as status_code,
     CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
@@ -385,6 +416,7 @@ LIMIT 10""" % (where_sql)
       AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
     GROUP BY 1, 2""" % (log_table_name, where_sql)
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
+
         # count unique threads per hour
         display_name = "Unique_Threads_Hourly"
         query = """SELECT date_hour, count(*) as num 
@@ -394,6 +426,16 @@ LIMIT 10""" % (where_sql)
     ) tt
     GROUP BY 1""" % (log_table_name, where_sql)
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
+
+        display_name = "Join_Requests_And_AppLog_For_TimeoutException"
+        # UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1)
+        query = """SELECT n.date_time, n.loglevel, n.thread, n.user
+    , r.clientHost, r.user, r.requestURL, r.statusCode, r.headerContentLength, r.bytesSent, r.elapsedTime
+    FROM %s n
+    LEFT JOIN t_request r ON CAST(r.elapsedTime AS INT) >= 30000 AND n.thread = r.thread
+        AND UDF_STRFTIME('%%d/%%b/%%Y:%%H:%%M:%%S', DATETIME(n.date_time))||' +0000' = r.`date` 
+    WHERE n.message like '%%Idle timeout expired: 30000/30000 ms%%'""" % (log_table_name)
+        ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
     if ju.exists("t_threads"):
         display_name = "Blocked_Threads"

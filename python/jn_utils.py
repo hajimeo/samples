@@ -28,6 +28,8 @@ Get date_hour
     UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1)
 or faster way to get 10mis from the request.log:
     substr(date, 1, 16)
+Format datetime to request.log like one: https://www.sqlite.org/lang_datefunc.html (No month abbreviation)
+    UDF_STRFTIME('%d/%b/%Y:%H:%M:%S', DATETIME(date_time, '-30 seconds'))||' +0000' as req_date_time
 Convert current time or string date to Unix timestamp
     STRFTIME('%s', 'NOW')
     STRFTIME('%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1))
@@ -123,7 +125,7 @@ def _chunks(l, n):
     return [l[i:i + n] for i in range(0, len(l), n)]  # xrange is replaced
 
 
-def _globr(ptn='*', src='./', loop=0, depth=5, min_size=0, max_size=(1024 * 1024 * 1000), useRegex=False,
+def _globr(ptn='*', src='./', loop=0, depth=5, min_size=0, max_size=0, useRegex=False,
            ignoreHidden=True):
     """
     As Python 2.7's glob does not have recursive option
@@ -178,6 +180,15 @@ def _globr(ptn='*', src='./', loop=0, depth=5, min_size=0, max_size=(1024 * 1024
     return sorted(matches)
 
 
+def _get_file(filename):
+    if os.path.isfile(filename):
+        return filename
+    files = _globr(filename)
+    if bool(files) is False:
+        return None
+    return files[0]
+
+
 def _is_numeric(some_num):
     """
     Python's isnumeric return False for float!!!
@@ -218,7 +229,7 @@ def _is_jupyter():
     return is_jupyter
 
 
-def _open_file(file):
+def _open_file(file, mode="r"):
     """
     Open one text or gz file
     :param file:
@@ -230,21 +241,9 @@ def _open_file(file):
         return None
     if file.endswith(".gz"):
         _debug("opening %s" % (file))
-        return gzip.open(file, "rt")
+        return gzip.open(file, "%st" % (mode))
     else:
-        return open(file, "r")
-
-
-def _read(file):
-    """
-    Read one text or gz file
-    :param file:
-    :return: strings of contents
-    >>> s = _read(__file__);bool(s)
-    True
-    """
-    f = _open_file(file)
-    return f.read()
+        return open(file, mode)
 
 
 def _extract_zip(zipfile, dest=None):
@@ -314,7 +313,7 @@ def _debug(message, dbg=False):
 
 
 def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunksize=1000,
-               json_cols=[], flatten=None, useRegex=False):
+               json_cols=[], flatten=None, useRegex=False, max_file_size=0):
     """
     Find json files from current path and load as pandas dataframes object
     :param src: source/importing directory path
@@ -337,7 +336,7 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     if bool(exclude_ptn):
         ex = re.compile(exclude_ptn)
 
-    files = _globr(ptn=include_ptn, src=src, useRegex=useRegex)
+    files = _globr(ptn=include_ptn, src=src, useRegex=useRegex, max_size=max_file_size)
     for f in files:
         f_name, f_ext = os.path.splitext(os.path.basename(f))
         if ex is not None and ex.search(f_name):
@@ -354,26 +353,30 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     return (names_dict, dfs)
 
 
-def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json_cols=[], chunksize=1000,
-            if_exists='replace'):
+def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='replace', jq_query="",
+            max_file_size=(1024 * 1024 * 100),
+            flatten=None, json_cols=[], line_by_line=False, line_from=0, line_until=0):
     """
     Convert a json file, which contains list into a DataFrame
     If conn is given, import into a DB table
     :param filename: File path or file name or glob pattern
     :param tablename: If empty, table name will be the filename without extension
     :param conn:   DB connection object
+    :param chunksize: to split the data (used in pandas to_sql)
+    :param if_exists: 'fail', 'replace', or 'append'
     :param jq_query: String used with ju.jq(), to filter json record
     :param flatten: If true, use json_normalize()
     :param json_cols: to_sql() fails if column is json, so forcing those columns to string
-    :param chunksize: to split the data
-    :param if_exists: 'fail', 'replace', or 'append'
+    :param line_by_line: Another way to workaround 'Error binding parameter'
+    :param line_from: To exclude unnecessary lines. line_by_line = true requreid
+    :param line_until: To exclude unnecessary lines. line_by_line = true requreid
     :return: a DataFrame object
     #>>> json2df('./export.json', '.records | map(select(.["@class"] == "quartz_job_detail" and .value_data.jobDataMap != null))[] | .value_data.jobDataMap', ju.connect(), 't_quartz_job_detail')
     #>>> json2df('audit.json', '..|select(.attributes? and .attributes.".typeId" == "db.backup")|.attributes', ju.connect(), "t_audit_attr_dbbackup_logs")
     #>>> ju.json2df(filename="./audit.json", json_cols=['data', 'data.roleMembers', 'data.policyConstraints', 'data.applicationCategories', 'data.licenseNames'], conn=ju.connect())
     >>> pass    # TODO: implement test
     """
-    # If flatten is not specified but going to import into Sqlite, changing flatten to true so that less errror in DB
+    # If flatten is not specified but going to import into Sqlite, changing flatten to true so that less error in DB
     if flatten is None and (tablename is not None or conn is not None):
         flatten = True
     # If table name is specified but no conn object, create it
@@ -391,19 +394,44 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
     dfs = []
     for file_path in files:
         fs = _get_filesize(file_path)
+        if fs >= max_file_size:
+            _info("WARN: File %s (%d MB) is too large (max_file_size=%d)." % (
+                file_path, int(fs / 1024 / 1024), max_file_size))
+            continue
         if fs < 32:
-            _info("%s is too small (%d) Skipping ..." % (str(file_path), fs))
+            _info("%s is too small (%d) as JSON. Skipping ..." % (str(file_path), fs))
             continue
         _info("Loading %s ..." % (str(file_path)))
         if bool(jq_query):
             obj = jq(file_path, jq_query)
             dfs.append(pd.DataFrame(obj))
         else:
-            if flatten is True:
+            # TODO: currently too slow to use.
+            if line_by_line:
+                _dfs = []
+                _ln = 0
+                for line in _open_file(file_path):
+                    _ln += 1
+                    if bool(line_from) and _ln < line_from:
+                        continue
+                    if bool(line_until) and _ln > line_until:
+                        continue
+                    try:
+                        j_obj = json.loads(line.rstrip(','))
+                    except:
+                        # Ignore any non json strings
+                        continue
+                    #__df = pd.DataFrame.from_dict(_js, orient="columns")
+                    __df = pd.json_normalize(j_obj).fillna("")
+                    if len(__df) > 0:
+                        _dfs.append(__df)
+                if len(_dfs) > 0:
+                    _df = pd.concat(_dfs, sort=False)
+            elif flatten is True:
                 try:
                     with open(file_path) as f:
                         j_obj = json.load(f)
-                    # 'fillna' is for workarounding "probably unsupported type."
+                    # 'fillna' is for workaround-ing "probably unsupported type." (because of N/a)
                     _df = pd.json_normalize(j_obj).fillna("")
                 except JSONDecodeError as e:
                     _err("%s for %s" % (str(e), file_path))
@@ -422,7 +450,7 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
     if bool(conn):
         if bool(json_cols) is False:
             # TODO: if non first raw contains dict or list?
-            first_row = df[:1].to_dict(orient='records')[0] # 'records' is for list like data
+            first_row = df[:1].to_dict(orient='records')[0]  # 'records' is for list like data
             for k in first_row:
                 if type(first_row[k]) is dict or type(first_row[k]) is list:
                     json_cols.append(k)
@@ -430,7 +458,8 @@ def json2df(filename, tablename=None, conn=None, jq_query="", flatten=None, json
             tablename = _pick_new_key(os.path.basename(files[0]), {}, using_1st_char=False, prefix='t_')
         # Temp workaround: "<table>: Error binding parameter <N> - probably unsupported type."
         # Temp workadound2: if flatten is true, converting to str for all columns...
-        df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, all_str=flatten, name=tablename)
+        _debug("json_cols: %s" % (str(json_cols)))
+        df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, all_str=flatten, name=tablename, max_row_size=int(max_file_size/100))
         if df2table(df=df_tmp_mod, tablename=tablename, conn=conn, chunksize=chunksize, if_exists=if_exists) is True:
             _info("Created table: %s " % (tablename))
             _autocomp_inject(tablename=tablename)
@@ -594,7 +623,7 @@ def _pick_new_key(name, names_dict, using_1st_char=False, check_global=False, pr
     return new_key
 
 
-def _avoid_unsupported(df, json_cols=[], all_str=False, name=None):
+def _avoid_unsupported(df, json_cols=[], all_str=False, name=None, max_row_size=1000000):
     """
     Convert DF cols for workarounding "<table>: Error binding parameter <N> - probably unsupported type."
     :param df: A *reference* of panda DataFrame
@@ -608,24 +637,22 @@ def _avoid_unsupported(df, json_cols=[], all_str=False, name=None):
     """
     if bool(json_cols) is False and all_str is False:
         return df
-    if len(df) > 200000:  # don't want to convert huge df
-        _err("_avoid_unsupported can't convert large df (%s)" % (str(len(df))))
+    if len(df) > max_row_size:  # don't want to convert huge df
+        _err("_avoid_unsupported does not convert this large df (%d) (max_row_size = %d)" % (len(df), max_row_size))
         return df
     keys = df.columns.tolist()
     cols = {}
     for k in keys:
-        if k in json_cols or k.lower().find('json') > 0:
-            _debug("_avoid_unsupported: k = %s" % (str(k)))
-            # df[k] = df[k].to_string()
-            cols[k] = 'str'
+        k_str = str(k)
+        if k_str in json_cols or k_str.lower().find('json') > 0:
+            _debug("_avoid_unsupported: k_str = %s" % (k_str))
+            # df[k_str] = df[k_str].to_string()
+            cols[k_str] = 'str'
         elif all_str:
-            cols[k] = 'str'
+            cols[k_str] = 'str'
     if len(cols) > 0:
         if bool(name):
-            if all_str is False:
-                _debug(" - converting columns:%s." % (str(cols)))
-            else:
-                _debug(" - converting all columns (%d) to string." % (len(cols)))
+            _debug(" - converting columns:%s." % (str(cols)))
         return df.astype(cols)
     return df
 
@@ -681,7 +708,7 @@ def udf_regex(regex, item, rtn_idx=0):
 def udf_str2sqldt(date_time):
     """
     Convert date_time string to SQLite friendly ISO date_time string with "." milliseconds, instead of ","
-    eg: SELECT UDF_STR2SQLDT('14/Oct/2019:00:00:05 +0800', '%d/%b/%Y:%H:%M:%S %z') as SQLite_DateTime, ...
+    eg: SELECT UDF_STR2SQLDT('14/Oct/2019:00:00:05 +0800') as SQLite_DateTime, ...
     "2019-10-14 00:00:05.000000+0800"
     :param date_time:   String - Date and Time string
     :return:            String - SQLite accepting date time string
@@ -695,6 +722,19 @@ def udf_str2sqldt(date_time):
         date_str, time_str = date_time.split(":", 1)
         date_time = date_str + " " + time_str
     return parser.parse(date_time).strftime("%Y-%m-%d %H:%M:%S.%f%z")
+
+
+def udf_strftime(format, date_time):
+    """
+    Sqlite STRFTIME does not have Month abbribiation (almost same as udf_str2sqldt but 2 arguments)
+    eg: SELECT UDF_STRFTIME('14/Oct/2019:00:00:05 +0800', '%d/%b/%Y:%H:%M:%S %z') as request_datetime, ...
+    :param format:      String - Date and Time format supported by python's strftime
+    :param date_time:   String - Date and Time string
+    :return:            String - Formatted date time string
+    >>> udf_strftime("%d/%b/%Y:%H:%M:%S", "2021-07-30 05:59:16.999+0000")
+    '30/Jul/2021:05:59:16'
+    """
+    return parser.parse(date_time).strftime(format)
 
 
 def udf_timestamp(date_time):
@@ -819,6 +859,7 @@ def _register_udfs(conn):
         # UDF_REGEX(regex, column, integer)
         conn.create_function("UDF_REGEX", 3, udf_regex)
         conn.create_function("UDF_STR2SQLDT", 1, udf_str2sqldt)
+        conn.create_function("UDF_STRFTIME", 2, udf_strftime)
         conn.create_function("UDF_TIMESTAMP", 1, udf_timestamp)
         conn.create_function("UDF_STR_TO_INT", 1, udf_str_to_int)
         conn.create_function("UDF_NUM_HUMAN_READABLE", 1, udf_num_human_readable)
@@ -1056,15 +1097,18 @@ def display(df, name="", desc="", tail=1000):
             orig_length = len(df.index)
             df = df.tail(tail)
             name_html += "<pre>Displaying last " + str(tail) + " records (total: " + str(orig_length) + "</pre>"
-        df_styler = df.style.set_properties(**{'text-align': 'left'})
-        df_styler = df_styler.set_table_styles([
-            dict(selector='th', props=[('text-align', 'left'), ('vertical-align', 'top')]),
-            dict(selector='td', props=[('white-space', 'pre-wrap'), ('vertical-align', 'top')])
-        ])
-        # pd.options.display.html.use_mathjax = False    # Now this is set in global
-        _display(name_html + '\n' + df_styler.render())
+        try:
+            df_styler = df.style.set_properties(**{'text-align': 'left'})
+            df_styler = df_styler.set_table_styles([
+                dict(selector='th', props=[('text-align', 'left'), ('vertical-align', 'top')]),
+                dict(selector='td', props=[('white-space', 'pre-wrap'), ('vertical-align', 'top')])
+            ])
+            # pd.options.display.html.use_mathjax = False    # Now this is set in global
+            _display(name_html + '\n' + df_styler.render())
+        except Exception as e:
+            _display(name_html + '\n' + df.to_html())
+            _err(e)
     else:
-        # print(df.to_html())
         df2csv(df=df, file_path="%s.csv" % (str(name)))
 
 
@@ -1142,7 +1186,7 @@ def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10, is_
         x_colname = df.columns[x_col]
     # check if column is already date
     if is_x_col_datetime and pd.api.types.is_datetime64_any_dtype(df[x_colname]) is False:
-        df[x_colname]= pd.to_datetime(df[x_colname])
+        df[x_colname] = pd.to_datetime(df[x_colname])
     df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)  # , title=name
     if bool(name) is False:
         name = _timestamp(format="%Y%m%d%H%M%S%f")
@@ -1226,7 +1270,7 @@ def treeFromDf(df, name_ids, member_id, current="", level=0, indent=4, pad=" ", 
     :param mini: Do not output first level lines which do not have any members
     :return: void
     #>>> df = ju.q("select recipe_name, repository_name, `attributes.group.memberNames` from t_db_repo")
-    #>>> ju.treeFromDf(df, name_ids="repository_name,recipe_name", member_id="attributes.group.memberNames", pad=" ", prefix="- ")
+    #>>> ju.treeFromDf(df, name_ids="repository_name,recipe_name", member_id="attributes.group.memberNames", pad=" ", prefix="|-> ")
     >>> d = [{"recipe_name":"nuget-group", "repository_name":"nuget-group", "attributes.group.memberNames":"['nuget-hosted']"}, {"recipe_name":"nuget-hosted", "repository_name":"nuget-hosted"}]
     >>> df = pd.DataFrame(data=d)
     >>> treeFromDf(df, "repository_name", "attributes.group.memberNames", pad="_", prefix="")
@@ -1332,9 +1376,11 @@ def describe(tablename=None, colname=None, conn=None):
         if bool(colname):
             extra_where = " AND column_name like '" + colname + "%'"
         if bool(tablename) is False:
-            sql = "SELECT distinct table_name, count(*) as col_num FROM information_schema.columns WHERE 1=1 %s GROUP BY table_name" % (extra_where)
+            sql = "SELECT distinct table_name, count(*) as col_num FROM information_schema.columns WHERE 1=1 %s GROUP BY table_name" % (
+                extra_where)
         else:
-            sql = "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_name = '%s' %s " % (tablename, extra_where)
+            sql = "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_name = '%s' %s " % (
+                tablename, extra_where)
         return query(sql=sql, conn=conn, no_history=True)
 
     if bool(tablename) is False:
@@ -1646,9 +1692,30 @@ def _ms(time_matches, time_re_compiled):
 
 
 def _linecount_wc(filepath):
+    if bool(filepath) is False or os.path.isfile(filepath) is False:
+        return False
     if filepath.endswith(".gz"):
         return int(os.popen('gunzip -c %s | wc -l' % (filepath)).read().strip())
     return int(os.popen('wc -l %s' % (filepath)).read().split()[0])
+
+
+def _linenumber(filepath, search_regex, with_rg=False):
+    if bool(filepath) is False or os.path.isfile(filepath) is False:
+        return False
+    if bool(search_regex) is False:
+        return 0
+    if with_rg:
+        return int(os.popen('rg -n -m1 "%s" "%s" | cut -d":" -f1' % (search_regex, filepath)).read().strip())
+    # NOTE: grep was not faster than python
+    # if with_grep:
+    #    return int(os.popen('grep -n -m1 "%s" "%s" | cut -d":" -f1' % (search_regex, filepath)).read().strip())
+    ex = re.compile(search_regex)
+    cnt = 1
+    for line in _open_file(filepath):
+        if ex.search(line):
+            return cnt
+        cnt += 1
+    return 0
 
 
 def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None,
@@ -1811,11 +1878,12 @@ def logs2table(filename, tablename=None, conn=None,
         if bool(res) is False:
             return res
 
+    _has_table_created = False
     if multiprocessing:
         args_list = []
         for f in files:
             if os.stat(f).st_size >= max_file_size:
-                _info("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (
+                _info("WARN: File %s (%d MB) is too large (max_file_size=%d), so not appending into the args_list." % (
                     str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
                 continue
             # concurrent.futures.ProcessPoolExecutor hangs in Jupyter, so can't use kwargs
@@ -1831,6 +1899,7 @@ def logs2table(filename, tablename=None, conn=None,
             if bool(res) is False:  # if fails once, stop
                 _err("_insert2table failed to insert %d ..." % (len(tuples)))
                 return res
+            _has_table_created = True
     else:
         for f in files:
             if os.stat(f).st_size >= max_file_size:
@@ -1846,9 +1915,11 @@ def logs2table(filename, tablename=None, conn=None,
                 res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
                 if bool(res) is False:  # if fails once, stop
                     return res
-    _info("Created table: %s" % (tablename))
-    _autocomp_inject(tablename=tablename)
-    return True
+                _has_table_created = True
+    if _has_table_created:
+        _info("Created table: %s" % (tablename))
+        _autocomp_inject(tablename=tablename)
+    return _has_table_created
 
 
 def logs2dfs(filename, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
@@ -1910,7 +1981,7 @@ def logs2dfs(filename, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size
 
 
 def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000, if_exists='replace',
-              useRegex=False):
+              useRegex=False, max_file_size=0):
     """
     Convert multiple CSV files to DF *or* DB tables
     Example: _=ju.load_csvs("./", ju.connect(), "tables_*.csv")
@@ -1930,7 +2001,7 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
     names_dict = {}
     dfs = {}
     ex = re.compile(exclude_ptn)
-    files = _globr(ptn=include_ptn, src=src, useRegex=useRegex)
+    files = _globr(ptn=include_ptn, src=src, useRegex=useRegex, max_size=max_file_size)
     for f in files:
         if bool(exclude_ptn) and ex.search(os.path.basename(f)):
             continue
