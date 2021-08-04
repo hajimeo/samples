@@ -987,8 +987,7 @@ function f_request2csv() {
     local __doc__="Convert a jetty request.log to a csv file"
     local _glob="${1:-"request.log"}"
     local _out_file="$2"
-    local _pattern="$3"
-    local _pattern_out="$4"
+    local _pattern_str="$3"
 
     local _g_opt="-g"
     [ -s "${_glob}" ] && _g_opt=""
@@ -999,33 +998,37 @@ function f_request2csv() {
         _out_file="$(basename ${_glob} .log).csv"
     fi
     # NOTE: check jetty-requestlog.xml and logback-access.xml
-    local _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1' | sort | uniq | tail -n1)"
-    [ -n "${_pattern_str}" ] && echo "# found _pattern_str with rg -g logback-access.xml -g jetty-requestlog.xml" >&2
-    if [ -z "${_pattern}" ] && [ -z "${_pattern_str}" ]; then
-        local _tmp_first_line="$(rg --no-filename -m1 -z '\b20\d\d.\d\d.\d\d' ${_g_opt} "${_glob}")"
-        #echo "# first line: ${_tmp_first_line}" >&2
-        if echo "${_tmp_first_line}"   | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
-            _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
-        elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
-            _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
-        elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)"'; then
-            _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}"'
-        else
-            _pattern_str="%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime"
+    if [ -z "${_pattern_str}" ]; then
+        _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1' | sort | uniq | tail -n1)"
+        # If _patter_str is still empty, doing best guess.
+        if [ -z "${_pattern_str}" ]; then
+            local _tmp_first_line="$(rg --no-filename -m1 -z '\b20\d\d.\d\d.\d\d' ${_g_opt} "${_glob}")"
+            #echo "# first line: ${_tmp_first_line}" >&2
+            if echo "${_tmp_first_line}"   | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
+                _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
+                _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)"'; then
+                _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}"'
+            else
+                _pattern_str="%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime"
+            fi
         fi
+        echo "# pattern_str: ${_pattern_str}" >&2
     fi
-    echo "# pattern_str: ${_pattern_str}" >&2
+    if [ -z "${_pattern_str}" ]; then
+        echo "_pattern_str required." >&2
+        return 1
+    fi
     #echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
-    echo "\"$(echo ${_pattern_str} | tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_out_file}
-    if [ -z "${_pattern}" ]; then
-        _pattern="^$(_gen_pattern "${_pattern_str}")"
-        echo "# pattern: ${_pattern}" >&2
-        local _num=$(( $(echo -n "${_pattern_str}" | tr -d -c ' ' | wc -m) + 1 ))
-        _pattern_out="\"\$1\""
-        for _i in `seq 2 ${_num}`; do
-            _pattern_out="${_pattern_out},\"\$${_i}\""
-        done
-    fi
+    echo "\"$(echo "${_pattern_str}" | tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_out_file}
+    local _pattern="^$(_gen_pattern "${_pattern_str}")"
+    echo "# pattern: ${_pattern}" >&2
+    local _num=$(( $(echo -n "${_pattern_str}" | tr -d -c ' ' | wc -m) + 1 ))
+    local _pattern_out="\"\$1\""
+    for _i in `seq 2 ${_num}`; do
+        _pattern_out="${_pattern_out},\"\$${_i}\""
+    done
     rg --no-filename -N -z \
         "${_pattern}" \
         -o -r "${_pattern_out}" ${_g_opt} "${_glob}" >> ${_out_file}
