@@ -684,7 +684,7 @@ def _db(conn_str=':memory:', dbtype='sqlite', isolation_level=None, use_sqlalche
     return create_engine(conn_str, isolation_level=isolation_level, echo=echo)
 
 
-# Seems sqlite doesn't have regex (need to import pcre.so)
+# Seems sqlite doesn't have regex/regexp (need to import pcre.so)
 def udf_regex(regex, item, rtn_idx=0):
     """
     Regex UDF for SQLite
