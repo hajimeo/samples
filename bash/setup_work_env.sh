@@ -340,6 +340,9 @@ EOF
 function f_setup_java() {
     local _v="${1-"8"}" # Using 8 as JayDeBeApi uses specific version and which is for java 8
     local _ver="${_v}"  # Java version can be "9" or "1.8"
+    # NOTE: for Oracle java
+    #wget -c --no-cookies --no-check-certificate --header "Cookie: oraclelicense=accept-securebackup-cookie" https://download.oracle.com/otn-pub/java/jdk/8u301-b09/d3c52aa6bfa54d3ca74e617f18309292/jre-8u301-linux-i586.tar.gz
+
     [[ "${_v}" =~ ^[678]$ ]] && _ver="1.${_v}"
 
     if [ "$(uname)" = "Darwin" ]; then
