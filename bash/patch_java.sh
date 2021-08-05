@@ -2,28 +2,36 @@
 # DOWNLOAD:
 # curl -o /var/tmp/share/java/patch_java.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/patch_java.sh
 #
+# REQUIRED: lsof, realpath
 # NOTE: each function should be usable by just copying & pasting (no external function)
 #
 
+# Location to store downloaded JDK
 _JAVA_DIR="${_JAVA_DIR:-"/var/tmp/share/java"}"
 
 function usage() {
     cat << EOS
-Patch one class file by compiling and updating one jar
+Patch one Java/Scala class file by injecting into one jar.
 
 \$ bash $0 <port> <ClassName>.[java|scala] <some.jar> [specific_ClassName] [not_compile]
 
-    <port>: Port number to get a PID.
+    <port>: Port or Directory path (mainly for Mac).
     <ClassName>.[java|scala]: A file path of your java or scala file.
-    <some.jar>: A file path to your jar file which will be updated. If a dir, search jars for your class.
+    <some.jar>: A file path of your updating jar file. If a directory, search jars for your class.
     [specific_ClassName]: Sometimes filename is not equal to actual classname.
     [dir_detect_regex]: Sometimes same classname exist in multiple directories.
-    [not_compile]: If 'Y', not compiling.
+    [not_compile]: If 'Y', not compiling. Used when a class is already compiled.
 
-Or, to start scala console (REPL):
+To start console (REPL):
 
 \$ source ./patch_java.sh
+\$ f_jshell [<port>]
+or
+\$ f_groovy [<port>]
+or
 \$ f_scala [<port>]
+or
+\$ f_spring_cli [<port>]
 EOS
 }
 
@@ -147,7 +155,7 @@ function f_setup_spring_cli() {
 }
 
 function f_javaenvs() {
-    local _port="${1}"  # or directory path
+    local _port_or_dir="${1}"  # or directory path
     local _user="$USER"
 
     if [ -n "$JAVA_HOME" ] && [ -n "$CLASSPATH" ]; then
@@ -155,37 +163,35 @@ function f_javaenvs() {
         return 0
     fi
 
-    if [ -z "${_port}" ]; then
-        echo "No port number to find PID. Manually set JAVA_HOME and CLASSPATH."
+    if [ -z "${_port_or_dir}" ]; then
+        echo "_port_or_dir is empty. Please manually set JAVA_HOME and CLASSPATH."
         return 10
     fi
 
-    if [ ! -d "${_port}" ]; then
-        local _p=`lsof -ti:${_port} -s TCP:LISTEN`
+    if [ ! -d "${_port_or_dir}" ]; then
+        local _p="$(lsof -ti:${_port_or_dir} -s TCP:LISTEN)"
         if [ -z "${_p}" ]; then
-            echo "Nothing running on port ${_port}. Manually set JAVA_HOME and CLASSPATH."
+            echo "Nothing running on port:${_port_or_dir}. Manually set JAVA_HOME and CLASSPATH."
             return 11
         fi
-        _user="`stat -c '%U' /proc/${_p} 2>/dev/null`"
+        _user="$(lsof -nP -p ${_p} | head -n2 | tail -n1 | awk '{print $3}')"   # This is slow but stat -c '%U' doesn't work on Mac
         [ -z "${_user}" ] && _user="$USER"
         export _CWD="$(realpath /proc/${_p}/cwd 2>/dev/null)"
     fi
 
-
-    local _jcmd="$(_find_jcmd "${_port}")"
-    if [ -n "${_jcmd}" ]; then
-        export JAVA_HOME="$(dirname $(dirname ${_jcmd}))"
-    else
-        echo "WARN: Couldn't not find jcmd. Please set JAVA_HOME."
+    local _jcmd="$(_find_jcmd "${_port_or_dir}")"
+    [ -z "${JAVA_HOME}" ] && [ -n "${_jcmd}" ] && export JAVA_HOME="$(dirname $(dirname ${_jcmd}))"
+    if [ -z "${JAVA_HOME}" ]; then
+        echo "WARN: Couldn't not set JAVA_HOME (by using jcmd location). Please set JAVA_HOME for javac and jar commands."
         return 1
     fi
 
     if [ -x "${_jcmd}" ]; then
         if [ -z "$CLASSPATH" ]; then
-            f_set_classpath "${_port}" "${_user}"
-            _set_extra_classpath "${_port}"
+            f_set_classpath "${_port_or_dir}" "${_user}"
+            _set_extra_classpath "${_port_or_dir}"  # If dir, will be just ignored
         else
-            echo "WARN: CLASSPATH is already set, so not overwriting/appending."
+            echo "INFO: CLASSPATH is already set, so not overwriting/appending."
         fi
     else
         echo "WARN: Couldn't not set CLASSPATH because of no executable jcmd found."; sleep 3
@@ -202,20 +208,20 @@ function _find_jcmd() {
     if [ -z "${_java_home}" ]; then
         local _p=`lsof -ti:${_port} -s TCP:LISTEN 2>/dev/null`
         if [ -n "${_p}" ]; then
-            local _dir="$(dirname `readlink /proc/${_p}/exe` 2>/dev/null)"
-            _java_home="$(dirname ${_dir})"
+            local _dir="$(dirname "$(readlink /proc/${_p}/exe)" 2>/dev/null)"
+            _java_home="$(dirname "${_dir}")"
             _java_ver_str="$(/proc/${_p}/exe -version 2>&1 | grep -oE ' version .+')"
         fi
     fi
 
-    local _jcmd="$(which jcmd)"
+    local _jcmd="$(which jcmd 2>/dev/null)"
     [ -n "${_java_home}" ] && _jcmd="${_java_home}/bin/jcmd"    # if JAVA_HOME is set, overwrite
     if [ ! -x "${_jcmd}" ]; then
         _jcmd=""
         if [ -n "${_java_ver_str}" ]; then
             # Somehow the scope of "while" is local...
             for _j in $(find ${_search_path%/} -executable -name jcmd | grep -vw archives); do
-                if $(dirname $_j)/java -version 2>&1 | grep -q "${_java_ver_str}"; then
+                if $(dirname "${_j}")/java -version 2>&1 | grep -q "${_java_ver_str}"; then
                     _jcmd="$_j"
                     break
                 fi
@@ -232,7 +238,7 @@ function f_set_classpath() {
         export CLASSPATH=".:${_tmp_cp%:}"
     else
         local _p=`lsof -ti:${_port} -s TCP:LISTEN` || return $?
-        local _user="`stat -c '%U' /proc/${_p} 2>/dev/null`"
+        local _user="$(lsof -nP -p ${_p} | head -n2 | tail -n1 | awk '{print $3}')" # This is slow but stat -c '%U' doesn't work on Mac
         local _jcmd="$(_find_jcmd "${_port}")" || return $?
         # requires jcmd in the path
         export CLASSPATH=".:`sudo -u ${_user:-"$USER"} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
@@ -308,7 +314,7 @@ function f_update_jar() {
     if [ ! -d "${_compiled_dir}" ]; then
         _compiled_dir="`dirname "$(find . -name "${_class_name}.class" -print | tail -n1)"`"
         if [ "${_compiled_dir}" = "." ] || [ -z "${_compiled_dir}" ]; then
-            echo "Please check 'package' of your class or check ${_class_name}.class file under ${_compiled_dir}"
+            echo "${_class_name}.class shouldn't be located under ${_compiled_dir}."
             return 1
         fi
     fi
@@ -335,8 +341,8 @@ function f_update_jar() {
 function f_jcmd_agent() {
     local _port="${1}"
     local _agent_port="${2:-"1099"}"
-    local _p=`lsof -ti:${_port} -s TCP:LISTEN` || return $?
-    local _user="`stat -c '%U' /proc/${_p} 2>/dev/null`"
+    local _p="$(lsof -ti:${_port} -s TCP:LISTEN)" || return $?
+    local _user="$(lsof -nP -p ${_p} | head -n2 | tail -n1 | awk '{print $3}')" # This is slow but stat -c '%U' doesn't work on Mac
     local _jcmd="$(_find_jcmd "${_port}")" || return $?
     sudo -u ${_user:-"$USER"} ${_jcmd} ${_p} ManagementAgent.start jmxremote.port=${_agent_port} jmxremote.authenticate=false jmxremote.ssl=false || return $?
     sudo -u ${_user:-"$USER"} $(dirname "${_jcmd}")/jstat -J-Djstat.showUnsupported=true -snap ${_p} | grep '\.remoteAddress=' || return $?
