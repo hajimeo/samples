@@ -18,6 +18,8 @@ EOS
 
 # NOTE: the attribute order is not consistent. also with -z, ^ or $ does not work.
 #find ./vol-* -type f -name '*.properties' -print0 | xargs -0 -I{} -P3 grep -lPz "(?s)deleted=true.*@Bucket.repo-name=npm-proxy\b" {}
+# Find not deleted (last updated) grunt metadata asset
+#rg -l -g '*.properties' '@BlobStore.blob-name=grunt' | xargs -I {} rg 'Bucket.repo-name=npm-group' -l {} | xargs -I {} ggrep -L '^deleted=true' {}
 function f_search_blobs() {
     local _content_dir="${1:-"."}"    # /var/tmp/share/sonatype/blobs/default/content/vol-*
     local _grep_args="${2}"   # eg: -lPz "(?s)deleted=true.*@Bucket.repo-name=" NOTE: with -z, ^ or $ does not work.
