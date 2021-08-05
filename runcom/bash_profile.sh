@@ -1,4 +1,4 @@
-# source <(curl https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh --compressed)
+# source /dev/stdin <<< "(curl https://raw.githubusercontent.com/hajimeo/samples/master/runcom/bash_profile.sh --compressed)"
 
 # NOTE: for screen, .bashrc is needed, and in .bashrc, source .bash_profile
 # An example of usage
