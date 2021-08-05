@@ -116,7 +116,8 @@ function nxrmStart() {
 </included>" > ${_logback_overrides}
     fi
     # For java options, latter values are used, so appending
-    INSTALL4J_ADD_VM_PARAMS="${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}" ${_nexus_file} ${_mode}
+    INSTALL4J_ADD_VM_PARAMS="-XX:-MaxFDLimit ${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}" ${_nexus_file} ${_mode}
+    # ulimit: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
 }
 
 #nxrmDocker "nxrm3-test" "" "8181" "8543" "--read-only -v /tmp/nxrm3-test:/tmp"
