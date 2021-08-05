@@ -467,14 +467,18 @@ function nxrm3Staging() {
 }
 
 # NOTE: filter the output before passing function would be faster
-#zgrep "2021:10:1" request-2021-01-08.log.gz | replayGets "/nexus/content/repositories/central/([^/]+/.+)" "http://localhost:8081/repository/maven-central"
-#rg -z "2021:\d\d:\d.+ \"GET /repository/maven-central/" request-2021-01-08.log.gz | replayGets "/repository/maven-central/([^/]+/.+)" "http://dh1:8081/repository/maven-central/"
+#zgrep "2021:10:1" request-2021-01-08.log.gz | replayGets "http://localhost:8081/repository/maven-central" "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
+#rg -z "2021:\d\d:\d.+ \"GET /repository/maven-central/.+HTTP/[0-9.]+" 2\d\d" request-2021-01-08.log.gz | sort | uniq | replayGets "http://dh1:8081/repository/maven-central/"
 function replayGets() {
     local __doc__="Replay requests in the request.log"
-    local _path_match="$1"  # Need (...) eg: "/nexus/content/repositories/central/([^/]+/.+)"
-    local _url_path="$2"    # http://localhost:8081/repository/maven-central
+    local _url_path="$1"    # http://localhost:8081/repository/maven-central
+    local _path_match="${2:-"/repository/[^/]+/([^ ]+)"}"   # or NXRM2: "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
+    local _curl_opt="${3}"  # -u admin:admin123
+    local _c="${4:-"4"}"    # concurrency. Use 1 if order is important
     [[ "${_url_path}" =~ ^http ]] || return 1
     [[ "${_path_match}" =~ .*\(.+\).* ]] || return 2
-    # rg is easier and faster but for the portability ...
-    sed -nE "s|.+\"GET ${_path_match} HTTP/[0-9.]+\" 2[0-9][0-9].+|${_url_path%/}/\1|p" | sort | uniq | xargs -n1 -P4 -I {} curl -sf --head -o /dev/null -w "%{http_code} {}\n" "{}"
+    local _n="$(echo "${_path_match}" | tr -cd ')' | wc -c | tr -d "[:space:]")"
+    # TODO: sed is too difficult to handle multiple parentheses
+    # Not sorting as order might be important. --head -o/dev/null is intentional
+    rg "\bGET ${_path_match} HTTP/\d" -o -r "$"${_n} | xargs -n1 -P ${_c} -I {} curl -sf --head -o/dev/null -w "%{http_code} {}\n" ${_curl_opt} "${_url_path%/}/{}"
 }
