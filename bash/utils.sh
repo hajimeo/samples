@@ -240,7 +240,7 @@ $(ls -1t ./*.resp)"
         return 1
     fi
 
-    # Note: somehow "source <(...)" does noe work, so that created tmp file.
+    # Note: "source <(...)" does noe work with older bash (Mac), so that created tmp file.
     grep -oE '^r_.+[^\s]=\".*?\"' ${_file_path} > .${FUNCNAME}_${__PID}.tmp || return $?
     source .${FUNCNAME}_${__PID}.tmp || return $?
     rm -f .${FUNCNAME}_${__PID}.tmp  # clean up the temp file
