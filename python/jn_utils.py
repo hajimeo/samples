@@ -9,7 +9,7 @@
 jn_utils is Jupyter Notebook Utility script, which contains functions to convert text files to Pandas DataFrame or DB (SQLite) tables.
 To update this script, execute "ju.update()".
 
-== Pandas tips (which I often forget) ==================================
+== Pandas/Jupyter tips (which I often forget) ==================================
 To show more strings in the truncated rows:
     pd.options.display.max_rows = 1000      (default is 60)
 To show more strings in a column:
@@ -20,29 +20,30 @@ Convert one row to dict:
     row = df[:1].to_dict(orient='records')[0]
 Styling:
     https://pandas.pydata.org/pandas-docs/stable/user_guide/style.html
+Reload jn_utils.py after modifying the code (but anyway you lose loaded sqlite tables):
+    import importlib
+    importlib.reload(ju)
 
 == Sqlite tips (which I often forget) ==================================
 Convert Unix timestamp with milliseconds to datetime
     DATETIME(ROUND(dateColumn / 1000), 'unixepoch')
 Get date_hour
     UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1)
-or faster way to get 10mis from the request.log:
+  or, faster way to get 10mis from the request.log:
     substr(date, 1, 16)
 Format datetime to request.log like one: https://www.sqlite.org/lang_datefunc.html (No month abbreviation)
     UDF_STRFTIME('%d/%b/%Y:%H:%M:%S', DATETIME(date_time, '-30 seconds'))||' +0000' as req_date_time
 Convert current time or string date to Unix timestamp
     STRFTIME('%s', 'NOW')
     STRFTIME('%s', UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1))
-or
+  or
     UDF_TIMESTAMP('some date like string')
-or
+  or
     $ q "select (julianday('2020-05-01 00:10:00') - 2440587.5)*86400.0"
     1588291800.0000045
-    $ q "select CAST((julianday('2020-05-01 00:10:00') - julianday('2020-05-01 00:00:00')) * 8640000 AS INT)" <<< milliseconds
-    600.0000044703484
-Get the started time by concatenating today and the time string from 'date' column, then convert to Unix-timestamp
+Get request started time by concatenating today and the time string from 'date' column, then convert to Unix-timestamp
     TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time
-or  (4*60*60) is for the timezone offst -0400
+  or NOTE: (4*60*60) is for the timezone offst -0400
     TIME(UDF_TIMESTAMP(date) - CAST(elapsedTime/1000 AS INT) - (4*60*60), 'unixepoch') as started_time
 """
 
@@ -715,13 +716,7 @@ def udf_str2sqldt(date_time):
     >>> udf_str2sqldt("14/Oct/2019:00:00:05 +0800")
     '2019-10-14 00:00:05.000000+0800'
     """
-    # 14/Oct/2019:00:00:05 +0800 => 2013-10-07 04:23:19.120-04:00
-    # https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior
-    if date_time.count(":") >= 3:
-        # assuming the format is "%d/%b/%Y:%H:%M:%S %z"
-        date_str, time_str = date_time.split(":", 1)
-        date_time = date_str + " " + time_str
-    return parser.parse(date_time).strftime("%Y-%m-%d %H:%M:%S.%f%z")
+    return udf_strftime("%Y-%m-%d %H:%M:%S.%f%z", date_time)
 
 
 def udf_strftime(format, date_time):
@@ -734,6 +729,12 @@ def udf_strftime(format, date_time):
     >>> udf_strftime("%d/%b/%Y:%H:%M:%S", "2021-07-30 05:59:16.999+0000")
     '30/Jul/2021:05:59:16'
     """
+    # 14/Oct/2019:00:00:05 +0800 => 2013-10-07 04:23:19.120-04:00
+    # https://docs.python.org/3/library/datetime.html#strftime-and-strptime-behavior
+    if date_time.count(":") >= 3:
+        # assuming the format is "%d/%b/%Y:%H:%M:%S %z"
+        date_str, time_str = date_time.split(":", 1)
+        date_time = date_str + " " + time_str
     return parser.parse(date_time).strftime(format)
 
 
@@ -1157,20 +1158,22 @@ def _pivot_ui(df, outfile_path="pivottablejs.html", **kwargs):
     _info("%s is created." % outfile_path)
 
 
-def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10, is_x_col_datetime=True):
+def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10, is_x_col_datetime=True, kind="line"):
     """
     Helper function for df.plot()
     As pandas.DataFrame.plot is a bit complicated, using simple options only if this method is used.
     https://pandas.pydata.org/pandas-docs/stable/generated/pandas.DataFrame.plot.html
+    https://pandas.pydata.org/pandas-docs/stable/user_guide/visualization.html
 
     :param df: A DataFrame object, which first column will be the 'x' if x_col is not specified
     :param width: This is Inch and default is 16 inch.
     :param x_col: Column index number used for X axis.
     :param x_colname: If column name is given, use this instead of x_col.
     :param name: When saving to file.
-    :param desc: TODO: Optional description (eg: SQL statement)
+    :param desc: Optional description (eg: SQL statement)
     :param tail: To return some sample rows.
     :param is_x_col_datetime: If True and if x_col column type is not date, cast to date
+    :param kind: Default is "line". "hist" is useful too.
     :return: DF (use .tail() or .head() to limit the rows)
     #>>> draw(ju.q("SELECT date, statuscode, bytesSent, elapsedTime from t_request_csv")).tail()
     #>>> draw(ju.q("select QueryHour, SumSqSqlWallTime, SumPostPlanTime, SumSqPostPlanTime from query_stats")).tail()
@@ -1186,8 +1189,11 @@ def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10, is_
         x_colname = df.columns[x_col]
     # check if column is already date
     if is_x_col_datetime and pd.api.types.is_datetime64_any_dtype(df[x_colname]) is False:
-        df[x_colname] = pd.to_datetime(df[x_colname])
-    df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True)  # , title=name
+        try:
+            df[x_colname] = pd.to_datetime(df[x_colname])
+        except Exception as e:
+            _err(e) # Write the error but keep processing.
+    df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True, kind=kind)  # , title=name
     if bool(name) is False:
         name = _timestamp(format="%Y%m%d%H%M%S%f")
     plt.savefig("%s.png" % (str(name)))
