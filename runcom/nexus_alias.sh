@@ -474,11 +474,14 @@ function replayGets() {
     local _url_path="$1"    # http://localhost:8081/repository/maven-central
     local _path_match="${2:-"/repository/[^/]+/([^ ]+)"}"   # or NXRM2: "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
     local _curl_opt="${3}"  # -u admin:admin123
-    local _c="${4:-"4"}"    # concurrency. Use 1 if order is important
+    local _c="${4:-"1"}"    # concurrency. Use 1 if order is important
     [[ "${_url_path}" =~ ^http ]] || return 1
     [[ "${_path_match}" =~ .*\(.+\).* ]] || return 2
     local _n="$(echo "${_path_match}" | tr -cd ')' | wc -c | tr -d "[:space:]")"
     # TODO: sed is too difficult to handle multiple parentheses
-    # Not sorting as order might be important. --head -o/dev/null is intentional
-    rg "\bGET ${_path_match} HTTP/\d" -o -r "$"${_n} | xargs -n1 -P ${_c} -I {} curl -sf --head -o/dev/null -w "%{http_code} {}\n" ${_curl_opt} "${_url_path%/}/{}"
+    # Not sorting as order might be important. Also, --head -o/dev/null is intentional
+    rg "\bGET ${_path_match} HTTP/\d" -o -r "$"${_n} | xargs -n1 -P${_c} -I{} curl -sf --connect-timeout 2 --head -o/dev/null -w '%{http_code} {}\n' ${_curl_opt} "${_url_path%/}/{}"
 }
+#rg -m300 '03/Aug/2021:0[789].+GET /content/groups/npm-all/(.+/-/.+-[0-9.]+\.tgz)' -o -r '${1}' ./work/logs/request.log | xargs -I{} curl -sf --connect-timeout 2 --head -o/dev/null -w '%{http_code} {}\n' -u admin:admin123 "http://localhost:8081/nexus/content/groups/npm-all/{}" | tee result.out
+#npm cache clean --force
+#rg -m300 'GET /content/groups/npm-all/([^/]+)/-/.+-([0-9.]+)\.tgz' -o -r 'npm pack --registry=http://localhost:8081/nexus/content/groups/npm-all/ ${1}@${2}' ./work/logs/request.log | while read -r _c; do sh -x -c "${_c}"; done
