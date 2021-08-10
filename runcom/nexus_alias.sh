@@ -79,13 +79,15 @@ function nxrmStart() {
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5005,suspend=n"}
     local _mode=${3} # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
-    local _nexus_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
+    local _nexus_file="${_base_dir%/}/nexus/bin/nexus"
+    [ -s "${_nexus_file}" ] || _nexus_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
     local _nexus_vmopt="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus.vmoptions' 2>/dev/null | sort | tail -n1)"
     local _sonatype_work="$(find ${_base_dir%/} -maxdepth 4 -path '*/sonatype-work/*' -type d \( -name 'nexus3' -o -name 'nexus2' -o -name 'nexus' \) 2>/dev/null | grep -v -w elasticsearch | sort | tail -n1)"
     if [ -z "${_sonatype_work%/}" ]; then
         echo "This function requires sonatype-work/{nexus|nexus3}"
         return 1
     fi
+    local _version="$(basename "$(dirname "$(dirname "$(realpath "${_nexus_file}")")")")"
     local _jetty_https="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/*' -type f -name 'jetty-https.xml' 2>/dev/null | sort | tail -n1)"
     local _logback_overrides="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/logback/*' -type f -name 'logback-overrides.xml' 2>/dev/null | sort | tail -n1)"
     local _cfg_file="${_sonatype_work%/}/etc/nexus.properties"
@@ -105,8 +107,8 @@ function nxrmStart() {
     else
         [ -z "${_mode}" ] && _mode="console"
     fi
-    if [ -n "${_jetty_https}" ]; then
-        # TODO: version check as below breaks older nexus versions.
+    if [ -n "${_jetty_https}" ] && [[ "${_version}" =~ 3\.26\.+ ]]; then
+        # @see: https://issues.sonatype.org/browse/NEXUS-24867
         sed -i.bak 's@class="org.eclipse.jetty.util.ssl.SslContextFactory"@class="org.eclipse.jetty.util.ssl.SslContextFactory$Server"@g' ${_jetty_https}
     fi
     # Currently i'm not using.
