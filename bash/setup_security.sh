@@ -704,7 +704,7 @@ DNS.2 = *.${_domain_suffix#.}" >> "${_work_dir%/}/openssl.cnf"
 }
 
 function f_dnsmasq() {
-    local __doc__="Install and set up dnsmasq"
+    local __doc__="Install and set up dnsmasq. Mini version of _setup_host.sh one"
     local _domain_suffix="${1-"$(hostname -d)"}"
     apt-get -y install dnsmasq || return $?
 
