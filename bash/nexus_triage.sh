@@ -60,7 +60,7 @@ function f_orientdb_checks() {
     echo ""
     echo "# Checking size (Bytes) of index files (alphabetical order) ..."
     grep '_idx.sbt' "${_db}" | awk '{printf("%12s %s\n",$'${_size_col}',$'${_file_col}')}' | sort -k2 | tee /tmp/f_orientdb_checks.out
-    echo "Total: $(awk '{print $1}' /tmp/f_orientdb_checks.out | paste -sd+ - | bc) bytes / $(cat /tmp/f_orientdb_checks.out | wc -l) indexes"
+    echo "Total: $(awk '{print $1}' /tmp/f_orientdb_checks.out | paste -sd+ - | bc) bytes / $(cat /tmp/f_orientdb_checks.out | wc -l) indexes (expecting 15)"
     echo ""
     echo "# Estimating table sizes (Bytes) from pcl files ..."
     grep '.pcl' "${_db}" | awk '{print $'${_size_col}'" "$'${_file_col}'}' | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/f_orientdb_checks.out
@@ -109,7 +109,7 @@ function f_mount_file() {
 # sometimes having many files in a dir causes performance issue
 function f_count_dirs() {
     local _dir="$1"
-    # ls -f is better than -1 for this purpose
+    # ls -f is better than ls -1 for this purpose
     find ${_dir%/} -type d -exec sh -c 'echo -e "$(ls -f {} | wc -l)\t{}\t$(date +"%H:%M:%S")"' \;
 }
 
