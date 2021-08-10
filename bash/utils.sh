@@ -943,8 +943,8 @@ function _postgresql_configure() {
         _upsert ${_postgresql_conf} "log_statement" "'mod'" "#log_statement"
         _upsert ${_postgresql_conf} "log_min_duration_statement" "1000" "#log_min_duration_statement"
     fi
-    #CREATE EXTENSION pg_buffercache;
-    if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION pg_prewarm;"; then
+    #CREATE EXTENSION IF NOT EXISTS pg_buffercache;
+    if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_prewarm;"; then
         _upsert ${_postgresql_conf} "shared_preload_libraries" "'pg_prewarm'" "#shared_preload_libraries"
         # select pg_prewarm('<tablename>', 'buffer');
     fi
