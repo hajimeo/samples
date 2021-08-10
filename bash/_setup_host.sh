@@ -1238,12 +1238,18 @@ function f_dnsmasq() {
     fi
 
     # @see https://bugs.launchpad.net/ubuntu/+source/systemd/+bug/1624320
-    if [ -L /etc/resolv.conf ] && grep -q '^nameserver 127.0.0.53' /etc/resolv.conf; then
-        systemctl disable systemd-resolved
-        rm -f /etc/resolv.conf
-        echo 'nameserver 127.0.0.1' >/etc/resolv.conf
-        _warn "systemctl disable systemd-resolved was run. Please reboot"
-        [ -s /etc/rc.local ] && _insert_line /etc/rc.local "sed -i 's/127.0.0.53/127.0.0.1/' /etc/resolv.conf" "exit 0"
+    if [ -L /etc/resolv.conf ] && grep -qE '^nameserver\s+127.0.0.53' /etc/resolv.conf; then
+        if grep -qE '^nameserver\s+127.0.0.1' /run/resolvconf/resolv.conf; then
+            rm -f /etc/resolv.conf
+            ln -s /run/resolvconf/resolv.conf /etc/resolv.conf
+        else
+            systemctl disable systemd-resolved
+            rm -f /etc/resolv.conf
+            echo 'nameserver 127.0.0.1' >/etc/resolv.conf
+            _warn "systemctl disable systemd-resolved was run. Please reboot"
+            [ -s /etc/rc.local ] && _insert_line /etc/rc.local "sed -i 's/127.0.0.53/127.0.0.1/' /etc/resolv.conf" "exit 0"
+        fi
+        # Also may need to use bind-interfaces and except-interface not to listen libvirt interfaces
     fi
     # TODO: To avoid "Ignoring query from non-local network" message:
     grep 'local-service' /etc/init.d/dnsmasq
