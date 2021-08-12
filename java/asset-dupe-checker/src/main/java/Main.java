@@ -4,6 +4,8 @@
  * curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/asset-dupe-checker.jar"
  * java -Xmx4g -XX:MaxDirectMemorySize=4g [-Ddebug=true] [-DextractDir=./path] [-DrepoNames=xxx,yyy,zzz] -jar asset-dupe-checker.jar <component directory path|.bak file path> | tee asset-dupe-checker.sql
  *
+ * In the OrientDB Console, "LOAD SCRIPT ./asset-dupe-checker.sql"
+ *
  *    This command outputs fixing SQL statements in STDOUT.
  *    "extractDir" is the path used when a .bak file is given. If extractDir is empty, use the tmp directory and the extracted data will be deleted on exit.
  *    "repoNames" is a comma separated repository names to check these repositories only.
