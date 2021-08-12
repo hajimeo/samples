@@ -3,11 +3,12 @@
  * Limitation: only standard SQLs. No "info classes" etc.
  * TODO: add tests
  * TODO: Replace jline3
+ * TODO: convert to JSON without using ODocument.toJSON()
  *
  * curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar"
  * java -jar orient-console.jar <directory path|.bak file path> [permanent extract dir]
  * or
- * echo "query1;query2" | java -jar orient-console.jar <directory path|.bak file path>
+ * echo "query1;query2" | java -jar orient-console.jar <directory path|.bak file path> | grep -v '==> ' | results.json
  */
 
 /*
@@ -18,10 +19,13 @@ TODO: => DELETE FROM healthcheckconfig WHERE @rid in (SELECT rid FROM (SELECT MI
 	at Main.main(Main.java:277)
  */
 
+//import com.google.gson.GsonBuilder;
+//import com.google.gson.Gson;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
+import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
 import net.lingala.zip4j.ZipFile;
@@ -120,7 +124,8 @@ public class Main
       });
   }
 
-  private static void printListAsJson(List<?> oDocs) {
+  // TODO: changing to List<?> breaks toJSON()
+  private static void printListAsJson(List<ODocument> oDocs) {
     if (oDocs == null || oDocs.isEmpty()) {
       terminal.writer().println("\n[]");
       terminal.flush();
@@ -129,10 +134,10 @@ public class Main
     System.out.println("\n[");
     for (int i = 0; i < oDocs.size(); i++) {
       if (i == (oDocs.size() - 1)) {
-        terminal.writer().println("  " + oDocs.get(i).toString());
+        terminal.writer().println("  " + oDocs.get(i).toJSON());
       }
       else {
-        terminal.writer().println("  " + oDocs.get(i).toString() + ",");
+        terminal.writer().println("  " + oDocs.get(i).toJSON() + ",");
       }
       terminal.flush();
     }
@@ -150,7 +155,7 @@ public class Main
 
       Instant start = Instant.now();
       try {
-        final List<?> results = db.command(new OCommandSQL(q)).execute();
+        final List<ODocument> results = db.command(new OCommandSQL(q)).execute();
         printListAsJson(results);
         System.err.printf("Rows: %d, ", results.size());
       }
