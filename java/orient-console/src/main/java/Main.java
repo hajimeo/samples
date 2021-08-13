@@ -9,6 +9,9 @@
  * java -jar orient-console.jar <directory path|.bak file path> [permanent extract dir]
  * or
  * echo "query1;query2" | java -jar orient-console.jar <directory path|.bak file path> | grep -v '==> ' | results.json
+ *
+ * just my note:
+ * cp -p ~/IdeaProjects/samples/java/orient-console/target/orient-console-1.0-SNAPSHOT-jar-with-dependencies.jar ~/IdeaProjects/samples/misc/orient-console.jar
  */
 
 /*
@@ -30,6 +33,7 @@ import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
 import net.lingala.zip4j.ZipFile;
 import org.jline.reader.*;
+import org.jline.reader.impl.DefaultHighlighter;
 import org.jline.reader.impl.completer.StringsCompleter;
 import org.jline.reader.impl.history.DefaultHistory;
 import org.jline.terminal.Terminal;
@@ -165,7 +169,6 @@ public class Main
         e.printStackTrace();
       }
       catch (OCommandSQLParsingException | OCommandExecutionException ex) {
-        // TODO: why it's so hard to remove the last history with jline3? items should be exposed.
         removeLine(input);
         history.load();
       }
@@ -216,8 +219,6 @@ public class Main
   }
 
   private static void readLineLoop(ODatabaseDocumentTx db, LineReader reader) {
-    // NOTE: highlight (.highlighter(new DefaultHighlighter()))
-    // but this may output extra control characters which need to be removed when the result is redirected into a file
     // TODO: prompt and queries from STDIN are always printed in STDOUT which is a bit annoying when redirects to a file.
     //System.err.print(PROMPT);
     //String input = reader.readLine((String) null);
@@ -264,18 +265,21 @@ public class Main
   }
 
   private static LineReader setupReader() throws IOException {
-    terminal = TerminalBuilder
-        .builder()
+    terminal = TerminalBuilder.builder()
         .system(true)
-        //.dumb(true)
+        .dumb(true)
         .build();
     history = new DefaultHistory();
     historyPath = System.getProperty("user.home") + "/.orient-console_history";
     System.err.println("history path: " + historyPath);
     Set<String> words = genAutoCompWords(historyPath);
-    LineReader lr =
-        LineReaderBuilder.builder().terminal(terminal).history(history).completer(new StringsCompleter(words))
-            .variable(LineReader.HISTORY_FILE, new File(historyPath)).build();
+    LineReader lr = LineReaderBuilder.builder()
+        .terminal(terminal)
+        .highlighter(new DefaultHighlighter())
+        .history(history)
+        .completer(new StringsCompleter(words))
+        .variable(LineReader.HISTORY_FILE, new File(historyPath))
+        .build();
     history.attach(lr);
     return lr;
   }
