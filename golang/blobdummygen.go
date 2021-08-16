@@ -16,7 +16,7 @@ import (
 	"strings"
 )
 
-func usage() {
+func _usage() {
 	fmt.Println(`
 *** DEPRECATED ***
 Generate a dummy .property and .byte files
@@ -72,11 +72,9 @@ func createDummyBlob(path string, size int64) {
 }
 
 func main() {
-	if len(os.Args) > 1 {
-		if os.Args[1] == "-h" || os.Args[1] == "--help" {
-			usage()
-			os.Exit(0)
-		}
+	if len(os.Args) == 1 || os.Args[1] == "-h" || os.Args[1] == "--help" {
+		_usage()
+		os.Exit(0)
 	}
 
 	outDir := "."
