@@ -25,8 +25,23 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"log"
+	"os"
 	"time"
 )
+
+func usage() {
+	fmt.Println(`
+List AWS S3 objects as JSON string
+
+DOWNLOAD and INSTALL:
+    sudo curl -o /usr/local/bin/aws-s3-list -L https://github.com/hajimeo/samples/raw/master/misc/aws-s3-list_$(uname)
+    sudo chmod a+x /usr/local/bin/aws-s3-list
+    
+USAGE EXAMPLE:
+    $ export AWS_REGION=ap-southeast-2 AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyyy
+    $ aws-s3-list -b <backet-name> [-p <prefix>]
+`)
+}
 
 // S3ListObjectsAPI defines the interface for the ListObjectsV2 function.
 // We use this interface to test the function using a mocked service.
@@ -49,6 +64,11 @@ func GetObjects(c context.Context, api S3ListObjectsAPI, input *s3.ListObjectsV2
 }
 
 func main() {
+	if len(os.Args) == 1 || os.Args[1] == "-h" || os.Args[1] == "--help" {
+		usage()
+		os.Exit(0)
+	}
+
 	bucket := flag.String("b", "", "The name of the Bucket")
 	prefix := flag.String("p", "", "The name of the Prefix")
 	// Casting/converting int to int32 is somehow hard ...
@@ -58,11 +78,11 @@ func main() {
 
 	if *bucket == "" {
 		log.Printf("ERROR: You must supply the name of a bucket (-b BUCKET_NAME)")
-		return
+		os.Exit(1)
 	}
 
 	if *prefix == "" {
-		log.Printf("INFO: No prefix (-p PREFIX_STRING). Getting all ...")
+		log.Printf("WARN:  No prefix (-p PREFIX_STRING). Getting all ...")
 		time.Sleep(3 * time.Second)
 	}
 
@@ -80,33 +100,38 @@ func main() {
 	}
 
 	found_ttl := 0
-	found := 0
-	resp, err := GetObjects(context.TODO(), client, input)
-	if err != nil {
-		println("Got error retrieving list of objects:")
-		panic(err.Error())
-	}
-
 	fmt.Println("[")
-	found = len(resp.Contents)
-	i := 0
-	for _, item := range resp.Contents {
-		j, err := json.Marshal(item)
+	for {
+		resp, err := GetObjects(context.TODO(), client, input)
 		if err != nil {
-			panic(err)
+			println("Got error retrieving list of objects:")
+			panic(err.Error())
 		}
-		i++
-		fmt.Print("  ", string(j))
-		if !resp.IsTruncated && i < found {
-			fmt.Println(",")
-		}
-	}
 
-	found_ttl += found
+		i := 0
+		for _, item := range resp.Contents {
+			j, err := json.Marshal(item)
+			if err != nil {
+				panic(err)
+			}
+			i++
+			fmt.Print("  ", string(j))
+			if resp.IsTruncated || i < len(resp.Contents) {
+				fmt.Println(",")
+			}
+		}
+
+		found_ttl += len(resp.Contents)
+		if !resp.IsTruncated {
+			break
+		}
+		input.ContinuationToken = resp.NextContinuationToken
+		log.Printf("DEBUG: Set ContinuationToken to %s", *resp.NextContinuationToken)
+	}
 
 	fmt.Println("")
 	fmt.Println("]")
 
 	println("")
-	log.Printf("Found", found_ttl, "items in bucket", *bucket, "with prefix:", prefix)
+	log.Printf("INFO:  Found %d items in bucket: %s with prefix: %s", found_ttl, *bucket, *prefix)
 }
