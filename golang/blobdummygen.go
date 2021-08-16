@@ -1,7 +1,7 @@
-/* DEPRECATED as it doesn't generate 100% accurate path
+/* DEPRECATED: Use ../java/blobpath, because not tested
  *
- * @see: https://gist.github.com/giautm/d79994acd796f3065903eccbc8d6e09b
- * 	env GOOS=linux GOARCH=amd64 go build blobdummygen.go
+ * 	go build -o blobdummygen_Darwin blobdummygen.go
+ * 	env GOOS=linux GOARCH=amd64 go build -o blobdummygen_Linux blobdummygen.go
  */
 package main
 
@@ -9,7 +9,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"hash"
 	"io/ioutil"
 	"math"
 	"os"
@@ -19,6 +18,7 @@ import (
 
 func usage() {
 	fmt.Println(`
+*** DEPRECATED ***
 Generate a dummy .property and .byte files
 
 DOWNLOAD and INSTALL:
@@ -31,42 +31,21 @@ USAGE EXAMPLE:
 }
 
 /*** Implementing Java String.hashCode() ***/
-const Size = 4
-
-func NewHash() hash.Hash32 {
-	var s sum32 = 0
-	return &s
-}
-
-type sum32 uint32
-
-func (sum32) BlockSize() int  { return 1 }
-func (sum32) Size() int       { return Size }
-func (h *sum32) Reset()       { *h = 0 }
-func (h sum32) Sum32() uint32 { return uint32(h) }
-func (h sum32) Sum(in []byte) []byte {
-	s := h.Sum32()
-	return append(in, byte(s>>24), byte(s>>16), byte(s>>8), byte(s))
-}
-func (h *sum32) Write(p []byte) (n int, err error) {
-	s := h.Sum32()
-	for _, pp := range p {
-		s = 31*s + uint32(pp)
+func _myHashCode(s string) int32 {
+	h := int32(0)
+	// position, rune
+	for _, c := range s {
+		h = (31 * h) + int32(c)
+		//fmt.Printf("%d\n", h)
 	}
-	*h = sum32(s)
-	return len(p), nil
-}
-func hashCode(s string) uint32 {
-	h := NewHash()
-	h.Write([]byte(s))
-	return h.Sum32()
+	return h
 }
 
 /*** End of Java String.hashCode() ***/
 
 func blobdir(blobId string) string {
 	// org.sonatype.nexus.blobstore.VolumeChapterLocationStrategy#location
-	hashInt := hashCode(blobId)
+	hashInt := _myHashCode(blobId)
 	vol := math.Abs(math.Mod(float64(hashInt), 43)) + 1
 	chap := math.Abs(math.Mod(float64(hashInt), 47)) + 1
 	return fmt.Sprintf("vol-%02d/chap-%02d", int(vol), int(chap))
@@ -157,5 +136,4 @@ sha1=%s
 		createDummyBlob(finalPath+"/"+blobId+".bytes", blobSize)
 		fmt.Fprintln(os.Stderr, "Created "+finalPath+"/"+blobId+".properties")
 	}
-
 }
