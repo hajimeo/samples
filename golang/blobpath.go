@@ -16,7 +16,7 @@ func usage() {
 Generate Nexus blob store path (from <blob name>/content/)
 
 DOWNLOAD and INSTALL:
-    sudo curl -o /usr/local/bin/blobpath -L https://github.com/hajimeo/samples/raw/master/misc/blobpath_(uname)
+    sudo curl -o /usr/local/bin/blobpath -L https://github.com/hajimeo/samples/raw/master/misc/blobpath_$(uname)
     sudo chmod a+x /usr/local/bin/blobpath
     
 USAGE EXAMPLE:
