@@ -124,9 +124,9 @@ function f_setup_screen() {
 }
 
 function f_install_golang() {
-    local _ver="${1:-"1.13"}"
+    local _ver="${1:-"1.[12]"}"
     # TODO: currently only for Ubuntu and Mac, and hard-coding go version
-    if ! which go &>/dev/null || ! go version | grep -q "go${_ver}"; then
+    if ! which go &>/dev/null || ! go version | grep -qE "go${_ver}"; then
         if [ "$(uname)" = "Darwin" ]; then
             if which brew &>/dev/null; then
                 brew install go || return $? # as of 1.13.8, --with-cgo does not work.
