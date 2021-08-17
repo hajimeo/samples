@@ -106,12 +106,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *prefix == "" {
+	if !*noHeader && *prefix == "" {
 		_log("WARN", "Without prefix (-p PREFIX_STRING), this might take longer.", *debug)
 		time.Sleep(2 * time.Second)
 	}
 
-	if *withTags {
+	if !*noHeader && *withTags {
 		_log("WARN", "With Tags (-T), this will be extremely slower.", *debug)
 		time.Sleep(2 * time.Second)
 	}
