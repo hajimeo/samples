@@ -72,6 +72,7 @@ function f_orientdb_checks() {
             printf "%12s %s\n" ${_total} ${_table}
         fi
     done | sort -k2
+    echo "Total: $(awk '{print $1}' /tmp/f_orientdb_checks.out | paste -sd+ - | bc) bytes"
 }
 #local _find="$(which gfind || echo "find")"
 #${_find} ${_db%/} -type f -name '*.wal' -printf '%k\t%P\t%t\n'
