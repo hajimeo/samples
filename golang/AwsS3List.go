@@ -19,48 +19,67 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"log"
 	"os"
+	"strings"
 	"time"
 )
 
 func usage() {
 	fmt.Println(`
-List AWS S3 objects as JSON string
+List AWS S3 objects as CSV (Key,LastModified,Size,Owner,Tags)
 
 DOWNLOAD and INSTALL:
-    sudo curl -o /usr/local/bin/aws-s3-list -L https://github.com/hajimeo/samples/raw/master/misc/aws-s3-list_$(uname)
-    sudo chmod a+x /usr/local/bin/aws-s3-list
+    curl -o /usr/local/bin/aws-s3-list -L https://github.com/hajimeo/samples/raw/master/misc/aws-s3-list_$(uname)
+    chmod a+x /usr/local/bin/aws-s3-list
     
 USAGE EXAMPLE:
+    # Preparation: set AWS environment variables
     $ export AWS_REGION=ap-southeast-2 AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyyy
-    $ aws-s3-list -b <backet-name> [-p <prefix>]
+
+    # List all objects under Backet-name bucket 
+    $ aws-s3-list -b Backet-name
+
+    # List sub directories (-L) under nxrm3/content/vol* 
+    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -L
+
+    # Parallel execution
+    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -L | xargs -I{} -P4 aws-s3-list -b Backet-name -H -p "{}" > all_objects.csv
+
+OPTIONAL SWITCHES:
+    -p Prefix_str  Return objects which key starts with this prefix
+    -f Filter_str  Return objects which key contains this string (much slower than prefix)
+    -n topN_num    Return first/top N results only
+    -m MaxKeys_num Batch size number. Default is 1000
+    -L             With -p, list sub folders under prefix
+    -O             To get owner display name (will be slightly slower)
+    -T             To get tags (will be EXTREAMLY slower)
+    -H             No header line output
+    -X             Verbose log output
 `)
 }
 
-// S3ListObjectsAPI defines the interface for the ListObjectsV2 function.
-// We use this interface to test the function using a mocked service.
-type S3ListObjectsAPI interface {
-	ListObjectsV2(ctx context.Context,
-		params *s3.ListObjectsV2Input,
-		optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
+func _log(level string, message string, debug bool) {
+	if level != "DEBUG" || debug {
+		log.Printf("%s: %s\n", level, message)
+	}
 }
 
-// GetObjects retrieves the objects in an Amazon Simple Storage Service (Amazon S3) bucket
-// Inputs:
-//     c is the context of the method call, which includes the AWS Region
-//     api is the interface that defines the method call
-//     input defines the input arguments to the service call.
-// Output:
-//     If success, a ListObjectsV2Output object containing the result of the service call and nil
-//     Otherwise, nil and an error from the call to ListObjectsV2
-func GetObjects(c context.Context, api S3ListObjectsAPI, input *s3.ListObjectsV2Input) (*s3.ListObjectsV2Output, error) {
-	return api.ListObjectsV2(c, input)
+func tags2str(tagset []types.Tag) string {
+	str := ""
+	for _, _t := range tagset {
+		if len(str) == 0 {
+			str = fmt.Sprintf("%s=%s", *_t.Key, *_t.Value)
+		} else {
+			str = fmt.Sprintf("%s&%s=%s", str, *_t.Key, *_t.Value)
+		}
+	}
+	return str
 }
 
 func main() {
@@ -71,19 +90,30 @@ func main() {
 
 	bucket := flag.String("b", "", "The name of the Bucket")
 	prefix := flag.String("p", "", "The name of the Prefix")
+	filter := flag.String("f", "", "Filter string for keys")
+	listDirs := flag.Bool("L", false, "If true, just list directories and exit")
+	withOwner := flag.Bool("O", false, "If true, also get owner display name")
+	withTags := flag.Bool("T", false, "If true, also get tags of each object")
+	noHeader := flag.Bool("H", false, "If true, no header line")
+	debug := flag.Bool("X", false, "If true, more verbose logging")
+	topN := flag.Int("n", 0, "Return only first N keys (0 = no limit)")
 	// Casting/converting int to int32 is somehow hard ...
-	maxkeys := 0
-	flag.IntVar(&maxkeys, "m", 1000, "Integer value for Max Keys (<= 1000)")
+	maxkeys := flag.Int("m", 1000, "Integer value for Max Keys (<= 1000)")
 	flag.Parse()
 
 	if *bucket == "" {
-		log.Printf("ERROR: You must supply the name of a bucket (-b BUCKET_NAME)")
+		_log("ERROR", "You must supply the name of a bucket (-b BUCKET_NAME)", *debug)
 		os.Exit(1)
 	}
 
 	if *prefix == "" {
-		log.Printf("WARN:  No prefix (-p PREFIX_STRING). Getting all ...")
-		time.Sleep(3 * time.Second)
+		_log("WARN", "Without prefix (-p PREFIX_STRING), this might take longer.", *debug)
+		time.Sleep(2 * time.Second)
+	}
+
+	if *withTags {
+		_log("WARN", "With Tags (-T), this will be extremely slower.", *debug)
+		time.Sleep(2 * time.Second)
 	}
 
 	cfg, err := config.LoadDefaultConfig(context.TODO())
@@ -93,16 +123,47 @@ func main() {
 
 	client := s3.NewFromConfig(cfg)
 
+	if *listDirs {
+		_log("INFO", fmt.Sprintf("Retriving sub folders under %s", *prefix), *debug)
+		delimiter := "/"
+		inputV1 := &s3.ListObjectsInput{
+			Bucket:    bucket,
+			Prefix:    prefix,
+			MaxKeys:   int32(*maxkeys),
+			Delimiter: &delimiter,
+		}
+		resp, err := client.ListObjects(context.TODO(), inputV1)
+		if err != nil {
+			println("Got error retrieving list of objects:")
+			panic(err.Error())
+		}
+		for _, item := range resp.CommonPrefixes {
+			fmt.Println(*item.Prefix)
+		}
+		return
+	}
+
 	input := &s3.ListObjectsV2Input{
-		Bucket:  bucket,
-		Prefix:  prefix,
-		MaxKeys: int32(maxkeys),
+		Bucket:     bucket,
+		Prefix:     prefix,
+		MaxKeys:    int32(*maxkeys),
+		FetchOwner: *withOwner,
 	}
 
 	found_ttl := 0
-	fmt.Println("[")
+	if !*noHeader {
+		fmt.Print("Key,LastModified,Size")
+		if *withOwner {
+			fmt.Print(",Owner")
+		}
+		if *withTags {
+			fmt.Print(",Tags")
+		}
+		fmt.Println("")
+	}
+
 	for {
-		resp, err := GetObjects(context.TODO(), client, input)
+		resp, err := client.ListObjectsV2(context.TODO(), input)
 		if err != nil {
 			println("Got error retrieving list of objects:")
 			panic(err.Error())
@@ -110,28 +171,44 @@ func main() {
 
 		i := 0
 		for _, item := range resp.Contents {
-			j, err := json.Marshal(item)
-			if err != nil {
-				panic(err)
+			if len(*filter) == 0 || strings.Contains(*item.Key, *filter) {
+				i++ // if printed, adding one
+				output := fmt.Sprintf("\"%s\",\"%s\",%d", *item.Key, item.LastModified, item.Size)
+				if *withOwner {
+					output = fmt.Sprintf("%s,\"%s\"", output, *item.Owner.DisplayName)
+				}
+				// Get tags if -with-tags is presented.
+				if *withTags {
+					_log("DEBUG", fmt.Sprintf("Getting tags for %s", *item.Key), *debug)
+					_input := &s3.GetObjectTaggingInput{
+						Bucket: bucket,
+						Key:    item.Key,
+					}
+					_tag, err := client.GetObjectTagging(context.TODO(), _input)
+					if err != nil {
+						_log("DEBUG", fmt.Sprintf("Retrieving tags for %s failed. Ignoring...", *item.Key), *debug)
+					} else {
+						output = fmt.Sprintf("%s,\"%s\"", output, tags2str(_tag.TagSet))
+					}
+				}
+				fmt.Println(output)
 			}
-			i++
-			fmt.Print("  ", string(j))
-			if resp.IsTruncated || i < len(resp.Contents) {
-				fmt.Println(",")
+			if *topN > 0 && *topN <= (found_ttl+i) {
+				break
 			}
 		}
 
 		found_ttl += len(resp.Contents)
+		if *topN > 0 && *topN <= found_ttl {
+			break
+		}
 		if !resp.IsTruncated {
 			break
 		}
 		input.ContinuationToken = resp.NextContinuationToken
-		log.Printf("DEBUG: Set ContinuationToken to %s", *resp.NextContinuationToken)
+		_log("DEBUG", fmt.Sprintf("Set ContinuationToken to %s", *resp.NextContinuationToken), *debug)
 	}
 
-	fmt.Println("")
-	fmt.Println("]")
-
 	println("")
-	log.Printf("INFO:  Found %d items in bucket: %s with prefix: %s", found_ttl, *bucket, *prefix)
+	_log("INFO", fmt.Sprintf("Found %d items in bucket: %s with prefix: %s", found_ttl, *bucket, *prefix), *debug)
 }
