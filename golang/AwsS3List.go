@@ -10,9 +10,6 @@ export AWS_REGION=ap-southeast-2 AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyy
 ../misc/aws-s3-list_Darwin -b apac-support-bucket -p node-nxrm-ha1/
 */
 
-// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX - License - Identifier: Apache - 2.0
-
 package main
 
 import (
@@ -32,7 +29,8 @@ import (
 
 func usage() {
 	fmt.Println(`
-List AWS S3 objects as CSV (Key,LastModified,Size,Owner,Tags)
+List AWS S3 objects as CSV (Key,LastModified,Size,Owner,Tags).
+Usually it takes about 1 second for 1000 objects.
 
 DOWNLOAD and INSTALL:
     curl -o /usr/local/bin/aws-s3-list -L https://github.com/hajimeo/samples/raw/master/misc/aws-s3-list_$(uname)
@@ -61,16 +59,34 @@ OPTIONAL SWITCHES:
     -m MaxKeys_num Batch size number. Default is 1000
     -c concurrency Utilised only for retrieving Tags (-T)
     -L             With -p, list sub folders under prefix
+    -Lp            With -p, get the list of sub folders from prefix, then get objects in parallel
     -O             To get Owner display name (might be slightly slower)
     -T             To get Tags (will be slower)
     -H             No Header line output
     -X             Verbose log output
-    -XX            More verbose log output
-`)
+    -XX            More verbose log output`)
 }
 
-func _log(level string, message string, debug bool) {
-	if level != "DEBUG" || debug {
+// Arguments
+var _BUCKET *string
+var _PREFIX *string
+var _FILTER *string
+var _MAXKEYS *int
+var _TOP_N *int
+var _CON_N *int
+var _LIST_DIRS *bool
+var _PARALLEL *bool
+var _WITH_OWNER *bool
+var _WITH_TAGS *bool
+var _NO_HEADER *bool
+var _DEBUG *bool
+var _DEBUG2 *bool
+
+var found_ttl = 0
+var isNotTruncated = false
+
+func _log(level string, message string) {
+	if level != "DEBUG" || *_DEBUG {
 		log.Printf("%s: %s\n", level, message)
 	}
 }
@@ -87,31 +103,70 @@ func tags2str(tagset []types.Tag) string {
 	return str
 }
 
-func printLine(client *s3.Client, bucket *string, item types.Object, withOwner *bool, withTags *bool, debug *bool) {
+func printLine(client *s3.Client, item types.Object) {
 	output := fmt.Sprintf("\"%s\",\"%s\",%d", *item.Key, item.LastModified, item.Size)
-	if *withOwner {
+	if *_WITH_OWNER {
 		output = fmt.Sprintf("%s,\"%s\"", output, *item.Owner.DisplayName)
 	}
 	// Get tags if -with-tags is presented.
-	if *withTags {
-		_log("DEBUG", fmt.Sprintf("Getting tags for %s", *item.Key), *debug)
+	if *_WITH_TAGS {
+		_log("DEBUG", fmt.Sprintf("Getting tags for %s", *item.Key))
 		_input := &s3.GetObjectTaggingInput{
-			Bucket: bucket,
+			Bucket: _BUCKET,
 			Key:    item.Key,
 		}
-		_log("DEBUG", "before GetObjectTagging", *debug)
+		_log("DEBUG", "before GetObjectTagging")
 		_tag, err := client.GetObjectTagging(context.TODO(), _input)
 		if err != nil {
-			_log("DEBUG", fmt.Sprintf("Retrieving tags for %s failed. Ignoring...", *item.Key), *debug)
+			_log("DEBUG", fmt.Sprintf("Retrieving tags for %s failed. Ignoring...", *item.Key))
 		} else {
-			_log("DEBUG", output, *debug)
+			_log("DEBUG", output)
 			tag_output := tags2str(_tag.TagSet)
-			_log("DEBUG", tag_output, *debug)
+			_log("DEBUG", tag_output)
 			output = fmt.Sprintf("%s,\"%s\"", output, tag_output)
 		}
 	}
-	_log("DEBUG", output, *debug)
+	_log("DEBUG", output)
 	fmt.Println(output)
+}
+
+func listObjects(client *s3.Client, input *s3.ListObjectsV2Input, _PREFIX *string, ttl *int) bool {
+	input.Prefix = _PREFIX
+	resp, err := client.ListObjectsV2(context.TODO(), input)
+	if err != nil {
+		println("Got error retrieving list of objects:")
+		panic(err.Error())
+	}
+
+	//https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
+	var wgTags = sync.WaitGroup{}         // *
+	guard := make(chan struct{}, *_CON_N) // **
+
+	for _, item := range resp.Contents {
+		if len(*_FILTER) == 0 || strings.Contains(*item.Key, *_FILTER) {
+			*ttl++
+			guard <- struct{}{} // **
+			wgTags.Add(1)       // *
+			go func(client *s3.Client, item types.Object) {
+				printLine(client, item)
+				<-guard       // **
+				wgTags.Done() // *
+			}(client, item)
+		}
+
+		if *_TOP_N > 0 && *_TOP_N <= *ttl {
+			_log("DEBUG", fmt.Sprintf("Printed %d >= %d", *ttl, *_TOP_N))
+			break
+		}
+	}
+	wgTags.Wait() // *
+
+	if resp.IsTruncated {
+		_log("DEBUG", fmt.Sprintf("Set ContinuationToken to %s", *resp.NextContinuationToken))
+		input.ContinuationToken = resp.NextContinuationToken
+	}
+
+	return resp.IsTruncated
 }
 
 func main() {
@@ -120,42 +175,46 @@ func main() {
 		os.Exit(0)
 	}
 
-	bucket := flag.String("b", "", "The name of the Bucket")
-	prefix := flag.String("p", "", "The name of the Prefix")
-	filter := flag.String("f", "", "Filter string for keys")
-	cNum := flag.Int("c", 16, "Experimental: Concurrent number for Tags")
-	listDirs := flag.Bool("L", false, "If true, just list directories and exit")
-	withOwner := flag.Bool("O", false, "If true, also get owner display name")
-	withTags := flag.Bool("T", false, "If true, also get tags of each object")
-	noHeader := flag.Bool("H", false, "If true, no header line")
-	debug := flag.Bool("X", false, "If true, verbose logging")
-	debug2 := flag.Bool("XX", false, "If true, more verbose logging")
-	topN := flag.Int("n", 0, "Return only first N keys (0 = no limit)")
-	// Casting/converting int to int32 is somehow hard ...
-	maxkeys := flag.Int("m", 1000, "Integer value for Max Keys (<= 1000)")
+	_BUCKET = flag.String("b", "", "The name of the Bucket")
+	_PREFIX = flag.String("p", "", "The name of the Prefix")
+	_FILTER = flag.String("f", "", "Filter string for keys")
+	_MAXKEYS = flag.Int("m", 1000, "Integer value for Max Keys (<= 1000)")
+	_TOP_N = flag.Int("n", 0, "Return only first N keys (0 = no limit)")
+	_CON_N = flag.Int("c", 16, "Experimental: Concurrent number for Tags")
+	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
+	_PARALLEL = flag.Bool("Lp", false, "If true, parallel execution per sub directory")
+	_WITH_OWNER = flag.Bool("O", false, "If true, also get owner display name")
+	_WITH_TAGS = flag.Bool("T", false, "If true, also get tags of each object")
+	_NO_HEADER = flag.Bool("H", false, "If true, no header line")
+	_DEBUG = flag.Bool("X", false, "If true, verbose logging")
+	_DEBUG2 = flag.Bool("XX", false, "If true, more verbose logging")
 	flag.Parse()
 
-	if *debug2 {
-		debug = debug2
+	if *_DEBUG2 {
+		_DEBUG = _DEBUG2
 	}
 
-	if *bucket == "" {
-		_log("ERROR", "You must supply the name of a bucket (-b BUCKET_NAME)", *debug)
+	if *_PARALLEL {
+		_LIST_DIRS = _PARALLEL
+	}
+
+	if *_BUCKET == "" {
+		_log("ERROR", "You must supply the name of a bucket (-b BUCKET_NAME)")
 		os.Exit(1)
 	}
 
-	if !*noHeader && *prefix == "" {
-		_log("WARN", "Without prefix (-p PREFIX_STRING), this might take longer.", *debug)
+	if !*_NO_HEADER && *_PREFIX == "" {
+		_log("WARN", "Without prefix (-p PREFIX_STRING), this might take longer.")
 		time.Sleep(2 * time.Second)
 	}
 
-	if !*noHeader && *withTags {
-		_log("WARN", "With Tags (-T), this will be extremely slower.", *debug)
+	if !*_NO_HEADER && *_WITH_TAGS {
+		_log("WARN", "With Tags (-T), this will be extremely slower.")
 		time.Sleep(2 * time.Second)
 	}
 
 	cfg, err := config.LoadDefaultConfig(context.TODO())
-	if *debug2 {
+	if *_DEBUG2 {
 		// https://aws.github.io/aws-sdk-go-v2/docs/configuring-sdk/logging/
 		cfg, err = config.LoadDefaultConfig(context.TODO(), config.WithClientLogMode(aws.LogRetries|aws.LogRequest))
 	}
@@ -165,13 +224,14 @@ func main() {
 
 	client := s3.NewFromConfig(cfg)
 
-	if *listDirs {
-		_log("INFO", fmt.Sprintf("Retriving sub folders under %s", *prefix), *debug)
+	// TODO: create list of prefix
+	if *_LIST_DIRS {
+		_log("INFO", fmt.Sprintf("Retriving sub folders under %s", *_PREFIX))
 		delimiter := "/"
 		inputV1 := &s3.ListObjectsInput{
-			Bucket:    bucket,
-			Prefix:    prefix,
-			MaxKeys:   int32(*maxkeys),
+			Bucket:    _BUCKET,
+			Prefix:    _PREFIX,
+			MaxKeys:   int32(*_MAXKEYS),
 			Delimiter: &delimiter,
 		}
 		resp, err := client.ListObjects(context.TODO(), inputV1)
@@ -180,74 +240,49 @@ func main() {
 			panic(err.Error())
 		}
 		for _, item := range resp.CommonPrefixes {
+			// TODO: populate list of prefix
 			fmt.Println(*item.Prefix)
 		}
-		return
+
+		if !*_PARALLEL {
+			return
+		}
 	}
 
 	input := &s3.ListObjectsV2Input{
-		Bucket:     bucket,
-		Prefix:     prefix,
-		MaxKeys:    int32(*maxkeys),
-		FetchOwner: *withOwner,
+		Bucket:     _BUCKET,
+		MaxKeys:    int32(*_MAXKEYS),
+		FetchOwner: *_WITH_OWNER,
 	}
 
-	found_ttl := 0
-	if !*noHeader {
+	if !*_NO_HEADER {
 		fmt.Print("Key,LastModified,Size")
-		if *withOwner {
+		if *_WITH_OWNER {
 			fmt.Print(",Owner")
 		}
-		if *withTags {
+		if *_WITH_TAGS {
 			fmt.Print(",Tags")
 		}
 		fmt.Println("")
 	}
 
-	//https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
-	var wg = sync.WaitGroup{}           // *
-	guard := make(chan struct{}, *cNum) // **
+	var wg = sync.WaitGroup{}
 
+	// TODO: Loop the list of prefix
+	//for {
 	for {
-		resp, err := client.ListObjectsV2(context.TODO(), input)
-		if err != nil {
-			println("Got error retrieving list of objects:")
-			panic(err.Error())
-		}
-
-		i := 0
-		for _, item := range resp.Contents {
-			if len(*filter) == 0 || strings.Contains(*item.Key, *filter) {
-				i++                 // counting how many printed
-				guard <- struct{}{} // **
-				wg.Add(1)           // *
-				go func(client *s3.Client, bucket *string, item types.Object, withOwner *bool, withTags *bool, debug *bool) {
-					printLine(client, bucket, item, withOwner, withTags, debug)
-					<-guard   // **
-					wg.Done() // *
-				}(client, bucket, item, withOwner, withTags, debug)
-			}
-
-			if *topN > 0 && *topN <= (found_ttl+i) {
-				_log("DEBUG", fmt.Sprintf("Printed %d >= %d", (found_ttl+i), *topN), *debug)
-				break
-			}
-		}
-
-		found_ttl += len(resp.Contents)
-		if *topN > 0 && *topN <= found_ttl {
-			_log("DEBUG", fmt.Sprintf("Printed %d >= %d .", (found_ttl), *topN), *debug)
+		if !listObjects(client, input, _PREFIX, &found_ttl) {
+			_log("DEBUG", "NOT Truncated (completed).")
 			break
 		}
-		if !resp.IsTruncated {
-			_log("DEBUG", "Truncated, so stopping.", *debug)
+		if *_TOP_N > 0 && *_TOP_N <= found_ttl {
+			_log("DEBUG", fmt.Sprintf("Printed %d which is greater equal than %d.", found_ttl, *_TOP_N))
 			break
 		}
-		input.ContinuationToken = resp.NextContinuationToken
-		_log("DEBUG", fmt.Sprintf("Set ContinuationToken to %s", *resp.NextContinuationToken), *debug)
 	}
+	//}
 
-	wg.Wait() // *
+	wg.Wait()
 	println("")
-	_log("INFO", fmt.Sprintf("Found %d items in bucket: %s with prefix: %s", found_ttl, *bucket, *prefix), *debug)
+	_log("INFO", fmt.Sprintf("Found %d items in bucket: %s with prefix: %s", found_ttl, *_BUCKET, *_PREFIX))
 }
