@@ -13,9 +13,10 @@ export HISTTIMEFORMAT="%Y-%m-%d %T "
 # Go/Golang related
 if which go &>/dev/null; then
     [ -z "${GOROOT}" ] && export GOROOT=/usr/local/opt/go/libexec
-    [ -z "${GOPATH}" ] && export GOPATH=$HOME/go
     [[ ":$PATH:" != *":$PATH:$GOROOT/bin:"* ]] && export PATH=${PATH%:}:$GOROOT/bin
-    [[ ":$PATH:" != *":$GOPATH/bin:"* ]] && export PATH=${PATH%:}:$GOPATH/bin
+    #export GO111MODULE=off   # This is for keeping supporting older than 1.16
+    #[ -z "${GOPATH}" ] && export GOPATH=$HOME/go
+    #[[ ":$PATH:" != *":$GOPATH/bin:"* ]] && export PATH=${PATH%:}:$GOPATH/bin
 fi
 
 # Haskell related
@@ -68,26 +69,6 @@ if [ "$(uname)" = "Darwin" ]; then
     fi
 fi
 
-#if [ -d "$HOME/.pyenv/bin" ]; then
-#    export PATH="$HOME/.pyenv/bin:$PATH"
-#    eval "$(pyenv init -)"
-#    eval "$(pyenv virtualenv-init -)"
-#fi
-
-if [ -d "$HOME/IdeaProjects/grumpy/build" ]; then
-    # https://github.com/google/grumpy
-    # make
-    export PATH="$HOME/IdeaProjects/grumpy/build/bin:$PATH"
-    export GRUMPYPATH="$HOME/IdeaProjects/grumpy/build"
-    #export GOPATH="$GRUMPYPATH:$GOPATH" # TODO: not sure if this is OK for other golang code
-    #export PYTHONPATH="$HOME/IdeaProjects/grumpy/build/lib/python2.7/site-packages:$PYTHONPATH"
-    # echo 'some python code' | GOPATH=GRUMPYPATH grumprun
-    # TODO: below causes get_json.bin: line 1: syntax error near unexpected token `newline'
-    #grumpc -modname=get_json ./get_json.py > ./get_json/module.go
-    #go build -o get_json_`uname` ./get_json
-fi
-
-export _SERVICE="sonatype"
 
 # The next line updates PATH for the Google Cloud SDK.
 if [ -f '/Users/hosako/Downloads/google-cloud-sdk/path.bash.inc' ]; then . '/Users/hosako/Downloads/google-cloud-sdk/path.bash.inc'; fi
