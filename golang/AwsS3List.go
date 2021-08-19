@@ -24,7 +24,7 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
+	"sync/atomic"
 )
 
 func usage() {
@@ -46,25 +46,28 @@ USAGE EXAMPLE:
     # List sub directories (-L) under nxrm3/content/vol* 
     $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -L
 
-    # Parallel execution
-    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -L | xargs -I{} -P4 aws-s3-list -b Backet-name -H -p "{}" > all_objects.csv
-
     # Parallel execution with Owner & Tags and 100 concurrency
-    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -L | xargs -I{} -P4 aws-s3-list -b Backet-name -H -p "{}" -T -O -c 100 > all_with_tags.csv
+    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -L | xargs -I{} -P4 aws-s3-list -b Backet-name -H -p "{}" -T -O -cT 100 > all_with_tags.csv
+
+    # Parallel execution (concurrency 10)
+    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -cP 10 > all_objects.csv
+
+    # Parallel execution (concurrency 4 * 100)
+    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -T -O -cP 4 -cT 100 > all_with_tags.csv
 
 OPTIONAL SWITCHES:
-    -p Prefix_str  Return objects which key starts with this prefix
-    -f Filter_str  Return objects which key contains this string (much slower than prefix)
-    -n topN_num    Return first/top N results only
-    -m MaxKeys_num Batch size number. Default is 1000
-    -c concurrency Utilised only for retrieving Tags (-T)
-    -L             With -p, list sub folders under prefix
-    -Lp            With -p, get the list of sub folders from prefix, then get objects in parallel
-    -O             To get Owner display name (might be slightly slower)
-    -T             To get Tags (will be slower)
-    -H             No Header line output
-    -X             Verbose log output
-    -XX            More verbose log output`)
+    -p Prefix_str   Return objects which key starts with this prefix
+    -f Filter_str   Return objects which key contains this string (much slower than prefix)
+    -n topN_num     Return first/top N results only
+    -m MaxKeys_num  Batch size number. Default is 1000
+    -cP concurrency *EXPERIMENTAL*: With prefix (-p xxxx/content/vol-), execute in parallel per sub directory
+    -cT concurrency Utilised only for retrieving Tags (-T)
+    -L              With -p, list sub folders under prefix
+    -O              To get Owner display name (might be slightly slower)
+    -T              To get Tags (will be slower)
+    -H              No Header line output
+    -X              Verbose log output
+    -XX             More verbose log output`)
 }
 
 // Arguments
@@ -72,8 +75,9 @@ var _BUCKET *string
 var _PREFIX *string
 var _FILTER *string
 var _MAXKEYS *int
-var _TOP_N *int
-var _CON_N *int
+var _TOP_N *int64
+var _CON_N_P *int
+var _CON_N_T *int
 var _LIST_DIRS *bool
 var _PARALLEL *bool
 var _WITH_OWNER *bool
@@ -82,8 +86,7 @@ var _NO_HEADER *bool
 var _DEBUG *bool
 var _DEBUG2 *bool
 
-var found_ttl = 0
-var isNotTruncated = false
+var _PRINTED_N int64 // Atomic (maybe slower?)
 
 func _log(level string, message string) {
 	if level != "DEBUG" || *_DEBUG {
@@ -115,58 +118,68 @@ func printLine(client *s3.Client, item types.Object) {
 			Bucket: _BUCKET,
 			Key:    item.Key,
 		}
-		_log("DEBUG", "before GetObjectTagging")
 		_tag, err := client.GetObjectTagging(context.TODO(), _input)
 		if err != nil {
 			_log("DEBUG", fmt.Sprintf("Retrieving tags for %s failed. Ignoring...", *item.Key))
 		} else {
-			_log("DEBUG", output)
+			//_log("DEBUG", fmt.Sprintf("Retrieved tags for %s", *item.Key))
 			tag_output := tags2str(_tag.TagSet)
-			_log("DEBUG", tag_output)
 			output = fmt.Sprintf("%s,\"%s\"", output, tag_output)
 		}
 	}
-	_log("DEBUG", output)
 	fmt.Println(output)
 }
 
-func listObjects(client *s3.Client, input *s3.ListObjectsV2Input, _PREFIX *string, ttl *int) bool {
-	input.Prefix = _PREFIX
-	resp, err := client.ListObjectsV2(context.TODO(), input)
-	if err != nil {
-		println("Got error retrieving list of objects:")
-		panic(err.Error())
+func listObjects(client *s3.Client, prefix string) {
+	input := &s3.ListObjectsV2Input{
+		Bucket:     _BUCKET,
+		MaxKeys:    int32(*_MAXKEYS),
+		FetchOwner: *_WITH_OWNER,
+		Prefix:     &prefix,
 	}
 
-	//https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
-	var wgTags = sync.WaitGroup{}         // *
-	guard := make(chan struct{}, *_CON_N) // **
-
-	for _, item := range resp.Contents {
-		if len(*_FILTER) == 0 || strings.Contains(*item.Key, *_FILTER) {
-			*ttl++
-			guard <- struct{}{} // **
-			wgTags.Add(1)       // *
-			go func(client *s3.Client, item types.Object) {
-				printLine(client, item)
-				<-guard       // **
-				wgTags.Done() // *
-			}(client, item)
+	for {
+		resp, err := client.ListObjectsV2(context.TODO(), input)
+		if err != nil {
+			println("Got error retrieving list of objects:")
+			panic(err.Error())
 		}
 
-		if *_TOP_N > 0 && *_TOP_N <= *ttl {
-			_log("DEBUG", fmt.Sprintf("Printed %d >= %d", *ttl, *_TOP_N))
+		//https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
+		wgTags := sync.WaitGroup{}                  // *
+		guardTags := make(chan struct{}, *_CON_N_T) // **
+
+		for _, item := range resp.Contents {
+			if len(*_FILTER) == 0 || strings.Contains(*item.Key, *_FILTER) {
+				atomic.AddInt64(&_PRINTED_N, 1)
+				guardTags <- struct{}{}                         // **
+				wgTags.Add(1)                                   // *
+				go func(client *s3.Client, item types.Object) { // **
+					printLine(client, item)
+					<-guardTags   // **
+					wgTags.Done() // *
+				}(client, item)
+			}
+
+			if *_TOP_N > 0 && *_TOP_N <= _PRINTED_N {
+				_log("DEBUG", fmt.Sprintf("Printed %d >= %d", _PRINTED_N, *_TOP_N))
+				break
+			}
+		}
+		wgTags.Wait() // *
+
+		// Continue if truncated (more data available) and if not reaching to the top N.
+		if *_TOP_N > 0 && *_TOP_N <= _PRINTED_N {
+			_log("DEBUG", fmt.Sprintf("Found %d and reached %d", _PRINTED_N, *_TOP_N))
+			break
+		} else if resp.IsTruncated {
+			_log("DEBUG", fmt.Sprintf("Set ContinuationToken to %s", *resp.NextContinuationToken))
+			input.ContinuationToken = resp.NextContinuationToken
+		} else {
+			_log("DEBUG", "NOT Truncated (completed).")
 			break
 		}
 	}
-	wgTags.Wait() // *
-
-	if resp.IsTruncated {
-		_log("DEBUG", fmt.Sprintf("Set ContinuationToken to %s", *resp.NextContinuationToken))
-		input.ContinuationToken = resp.NextContinuationToken
-	}
-
-	return resp.IsTruncated
 }
 
 func main() {
@@ -179,8 +192,9 @@ func main() {
 	_PREFIX = flag.String("p", "", "The name of the Prefix")
 	_FILTER = flag.String("f", "", "Filter string for keys")
 	_MAXKEYS = flag.Int("m", 1000, "Integer value for Max Keys (<= 1000)")
-	_TOP_N = flag.Int("n", 0, "Return only first N keys (0 = no limit)")
-	_CON_N = flag.Int("c", 16, "Experimental: Concurrent number for Tags")
+	_TOP_N = flag.Int64("n", 0, "Return only first N keys (0 = no limit)")
+	_CON_N_P = flag.Int("cP", 1, "*EXPERIMENTAL* Concurrent number for Prefix")
+	_CON_N_T = flag.Int("cT", 16, "Concurrent number for Tags")
 	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
 	_PARALLEL = flag.Bool("Lp", false, "If true, parallel execution per sub directory")
 	_WITH_OWNER = flag.Bool("O", false, "If true, also get owner display name")
@@ -194,10 +208,6 @@ func main() {
 		_DEBUG = _DEBUG2
 	}
 
-	if *_PARALLEL {
-		_LIST_DIRS = _PARALLEL
-	}
-
 	if *_BUCKET == "" {
 		_log("ERROR", "You must supply the name of a bucket (-b BUCKET_NAME)")
 		os.Exit(1)
@@ -205,12 +215,10 @@ func main() {
 
 	if !*_NO_HEADER && *_PREFIX == "" {
 		_log("WARN", "Without prefix (-p PREFIX_STRING), this might take longer.")
-		time.Sleep(2 * time.Second)
 	}
 
 	if !*_NO_HEADER && *_WITH_TAGS {
 		_log("WARN", "With Tags (-T), this will be extremely slower.")
-		time.Sleep(2 * time.Second)
 	}
 
 	cfg, err := config.LoadDefaultConfig(context.TODO())
@@ -223,9 +231,10 @@ func main() {
 	}
 
 	client := s3.NewFromConfig(cfg)
+	subDirs := make([]string, 1)
+	subDirs = append(subDirs, *_PREFIX)
 
-	// TODO: create list of prefix
-	if *_LIST_DIRS {
+	if *_LIST_DIRS || *_CON_N_P > 1 {
 		_log("INFO", fmt.Sprintf("Retriving sub folders under %s", *_PREFIX))
 		delimiter := "/"
 		inputV1 := &s3.ListObjectsInput{
@@ -239,20 +248,29 @@ func main() {
 			println("Got error retrieving list of objects:")
 			panic(err.Error())
 		}
+		// replacing subDirs with the result (excluding 1 as it would make slower)
+		if *_CON_N_P > 1 && len(resp.CommonPrefixes) > 1 {
+			subDirs = make([]string, len(resp.CommonPrefixes))
+		}
 		for _, item := range resp.CommonPrefixes {
-			// TODO: populate list of prefix
-			fmt.Println(*item.Prefix)
+			// TODO: somehow empty value is added into subDirs even below
+			if len(strings.TrimSpace(*item.Prefix)) == 0 {
+				continue
+			}
+			if *_CON_N_P > 1 && len(resp.CommonPrefixes) > 1 {
+				subDirs = append(subDirs, *item.Prefix)
+			}
+			if *_LIST_DIRS {
+				fmt.Println(*item.Prefix)
+			}
 		}
 
-		if !*_PARALLEL {
-			return
-		}
+		_log("DEBUG", fmt.Sprintf("Sub directories: %v", subDirs))
 	}
 
-	input := &s3.ListObjectsV2Input{
-		Bucket:     _BUCKET,
-		MaxKeys:    int32(*_MAXKEYS),
-		FetchOwner: *_WITH_OWNER,
+	if *_CON_N_P < 1 {
+		_log("DEBUG", "_CON_N_P is lower than 1.")
+		return
 	}
 
 	if !*_NO_HEADER {
@@ -266,23 +284,26 @@ func main() {
 		fmt.Println("")
 	}
 
-	var wg = sync.WaitGroup{}
+	wg := sync.WaitGroup{}
+	guard := make(chan struct{}, *_CON_N_P)
 
-	// TODO: Loop the list of prefix
-	//for {
-	for {
-		if !listObjects(client, input, _PREFIX, &found_ttl) {
-			_log("DEBUG", "NOT Truncated (completed).")
-			break
+	for _, s := range subDirs {
+		if len(s) == 0 {
+			//_log("DEBUG", "Ignoring empty prefix.")
+			continue
 		}
-		if *_TOP_N > 0 && *_TOP_N <= found_ttl {
-			_log("DEBUG", fmt.Sprintf("Printed %d which is greater equal than %d.", found_ttl, *_TOP_N))
-			break
-		}
+		_log("DEBUG", "Prefix: "+s)
+		guard <- struct{}{}
+		wg.Add(1) // *
+		go func(client *s3.Client, prefix string) {
+			_log("DEBUG", fmt.Sprintf("Listing objects for %s ...", prefix))
+			listObjects(client, prefix)
+			<-guard
+			wg.Done()
+		}(client, s)
 	}
-	//}
 
 	wg.Wait()
 	println("")
-	_log("INFO", fmt.Sprintf("Found %d items in bucket: %s with prefix: %s", found_ttl, *_BUCKET, *_PREFIX))
+	_log("INFO", fmt.Sprintf("Found %d items in bucket: %s with prefix: %s", _PRINTED_N, *_BUCKET, *_PREFIX))
 }
