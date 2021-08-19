@@ -1163,7 +1163,7 @@ def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10, is_
     Helper function for df.plot()
     As pandas.DataFrame.plot is a bit complicated, using simple options only if this method is used.
     https://pandas.pydata.org/pandas-docs/stable/generated/pandas.DataFrame.plot.html
-    https://pandas.pydata.org/pandas-docs/stable/user_guide/visualization.html
+    https://pandas.pydata.org/pandas-docs/stable/user_guide/visualization.html (for 'kind')
 
     :param df: A DataFrame object, which first column will be the 'x' if x_col is not specified
     :param width: This is Inch and default is 16 inch.
@@ -1173,7 +1173,7 @@ def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10, is_
     :param desc: Optional description (eg: SQL statement)
     :param tail: To return some sample rows.
     :param is_x_col_datetime: If True and if x_col column type is not date, cast to date
-    :param kind: Default is "line". "hist" is useful too.
+    :param kind: Default is "line". "bar" and "hist" would be useful too.
     :return: DF (use .tail() or .head() to limit the rows)
     #>>> draw(ju.q("SELECT date, statuscode, bytesSent, elapsedTime from t_request_csv")).tail()
     #>>> draw(ju.q("select QueryHour, SumSqSqlWallTime, SumPostPlanTime, SumSqPostPlanTime from query_stats")).tail()
