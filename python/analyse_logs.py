@@ -65,7 +65,7 @@ def _gen_regex_for_app_logs(filepath=""):
     partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +(.+)'
 
     checking_line = None
-    for i in range(1, 100): # 10 was not enough
+    for i in range(1, 100):  # 10 was not enough
         checking_line = linecache.getline(filepath, i)
         if re.search('^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d)', checking_line):
             break
@@ -127,7 +127,8 @@ def _save_json(file_regex, save_path="", search_props=None, key_name=None, rtn_a
     if bool(file_paths) is False:
         ju._info("No file found by using regex:%s" % file_regex)
         return False
-    js_obj = gj.get_json(file_paths[0], search_props=search_props, key_name=key_name, rtn_attrs=rtn_attrs, find_all=find_all)
+    js_obj = gj.get_json(file_paths[0], search_props=search_props, key_name=key_name, rtn_attrs=rtn_attrs,
+                         find_all=find_all)
     if bool(js_obj) is False:
         ju._info("No JSON returned by searching with %s and %s" % (str(search_props), file_regex))
         return False
@@ -171,48 +172,57 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
     try:
         ### Extract ############################################################
         # Somehow Jupyter started as service uses 'sh', so forcing 'bash'
-        ju._system(ju._SH_EXECUTABLE + " -c '[ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh; [ ! -d \"%s\" ] && mkdir \"%s\"'" % (dist, dist))
-        ju._system(ju._SH_EXECUTABLE + " -c '%s[ -d \"%s\" ] && . /tmp/log_search.sh && f_request2csv \"\" \"%s\" 2>/dev/null && f_audit2json \"\" \"%s\"'" % ("cd %s;" % extracted_dir if extracted_dir else "", dist, dist, dist))
+        ju._system(
+            ju._SH_EXECUTABLE + " -c '[ ! -s /tmp/log_search.sh ] && curl -s --compressed https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh -o /tmp/log_search.sh; [ ! -d \"%s\" ] && mkdir \"%s\"'" % (
+            dist, dist))
+        ju._system(
+            ju._SH_EXECUTABLE + " -c '%s[ -d \"%s\" ] && . /tmp/log_search.sh && f_request2csv \"\" \"%s\" 2>/dev/null && f_audit2json \"\" \"%s\"'" % (
+            "cd %s;" % extracted_dir if extracted_dir else "", dist, dist, dist))
         # system-filestores from sysinfo.json
         _save_json("sysinfo\.json", "%s/system-filestores.json" % dist, "system-filestores")
         # extracting from DB export.json files
-        _save_json("config/export\.json", "%s/http_client.json" % dist, "records,@class=http_client", "@class", "connection,proxy")
-        _save_json("config/export\.json", "%s/db_repo.json" % dist, "records,@class=repository", "@class", "recipe_name,repository_name,online,attributes", True)
-        saml_config = _save_json("config/export\.json", "", "records,@class:saml", "@class", "entityId,idpMetadata,mapping,keyStoreBytes,keyStorePassword", True)
+        _save_json("config/export\.json", "%s/http_client.json" % dist, "records,@class=http_client", "@class",
+                   "connection,proxy")
+        _save_json("config/export\.json", "%s/db_repo.json" % dist, "records,@class=repository", "@class",
+                   "recipe_name,repository_name,online,attributes", True)
+        saml_config = _save_json("config/export\.json", "", "records,@class:saml", "@class",
+                                 "entityId,idpMetadata,mapping,keyStoreBytes,keyStorePassword", True)
         if bool(saml_config):
             db_saml_idp_metadata = ""
             from lxml import etree as ET
             if 'idpMetadata' in saml_config:
-                t=ET.fromstring(saml_config['idpMetadata'].encode('utf-8'))
-                db_saml_idp_metadata += ET.tostring(t,pretty_print=True,encoding='unicode') + "\n"
+                t = ET.fromstring(saml_config['idpMetadata'].encode('utf-8'))
+                db_saml_idp_metadata += ET.tostring(t, pretty_print=True, encoding='unicode') + "\n"
             if 'mapping' in saml_config:
-                db_saml_idp_metadata += "<!-- mapping \n"+str(saml_config['mapping'])+"\n-->"
+                db_saml_idp_metadata += "<!-- mapping \n" + str(saml_config['mapping']) + "\n-->"
             if len(db_saml_idp_metadata) > 0:
                 with open("%s/db_saml_idp_metadata.xml" % dist, 'w') as f:
                     f.write(db_saml_idp_metadata)
-        _save_json("security/export\.json", "%s/db_saml_user.json" % dist, "records,@class=saml_user", "@class", "id,status,roles", True)
+        _save_json("security/export\.json", "%s/db_saml_user.json" % dist, "records,@class=saml_user", "@class",
+                   "id,status,roles", True)
         # TODO: add more
-        
+
         ### Transform & Load ###################################################
         # db_xxxxx.json
-        _ = ju.load_jsons(src=dist, include_ptn="db_*.json", flatten=True, max_file_size=max_file_size)
+        _ = ju.load_jsons(src=dist, include_ptn="db_*.json", flatten=True, max_file_size=(max_file_size * 2))
         # If audit.json file exists and no time_xxxx_regex
-        if os.path.isfile(dist+"/audit.json"):  # and bool(time_from_regex) is False and bool(time_until_regex) is False
-            _ = ju.json2df(dist+"/audit.json", tablename="t_audit_logs", flatten=True, max_file_size=max_file_size)
+        if os.path.isfile(
+                dist + "/audit.json"):  # and bool(time_from_regex) is False and bool(time_until_regex) is False
+            _ = ju.json2df(dist + "/audit.json", tablename="t_audit_logs", flatten=True, max_file_size=max_file_size)
         else:
             # TODO: currently below is too slow, so not using "max_file_size=max_file_size,"
             log_path = ju._get_file("audit.log")
             if bool(log_path):
                 line_from = line_until = 0
                 if bool(time_from_regex):
-                    line_from=ju._linenumber(log_path, "^\{\"timestamp\":\"\d\d\d\d-\d\d-\d\d "+time_from_regex)
+                    line_from = ju._linenumber(log_path, "^\{\"timestamp\":\"\d\d\d\d-\d\d-\d\d " + time_from_regex)
                 if bool(time_until_regex):
-                    line_until=ju._linenumber(log_path, "^\{\"timestamp\":\"\d\d\d\d-\d\d-\d\d "+time_until_regex)
+                    line_until = ju._linenumber(log_path, "^\{\"timestamp\":\"\d\d\d\d-\d\d-\d\d " + time_until_regex)
                 _ = ju.json2df(log_path, tablename="t_audit_logs",
                                line_by_line=True, line_from=line_from, line_until=line_until)
 
-        # xxxxx.csv
-        _ = ju.load_csvs(src="./_filtered/", include_ptn="*.csv", max_file_size=max_file_size)
+        # xxxxx.csv. If CSV, probably 3 times higher should be OK
+        _ = ju.load_csvs(src="./_filtered/", include_ptn="*.csv", max_file_size=(max_file_size * 3))
 
         # If request.*csv* exists, use that and should be loaded by above load_csvs (because it's faster), if not, logs2table, which is slower.
         if ju.exists("t_request") is False:
@@ -220,22 +230,25 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
             if bool(log_path):
                 line_from = line_until = 0
                 if bool(time_from_regex):
-                    line_from=ju._linenumber(log_path, "\d\d/.../\d\d\d\d:"+time_from_regex)
+                    line_from = ju._linenumber(log_path, "\d\d/.../\d\d\d\d:" + time_from_regex)
                 if bool(time_until_regex):
-                    line_until=ju._linenumber(log_path, "\d\d/.../\d\d\d\d:"+time_until_regex)
+                    line_until = ju._linenumber(log_path, "\d\d/.../\d\d\d\d:" + time_until_regex)
                 (col_names, line_matching) = _gen_regex_for_request_logs(log_path)
                 request_logs = ju.logs2table(log_path, tablename="t_request", line_beginning="^.",
-                                             col_names=col_names, line_matching=line_matching, max_file_size=max_file_size,
+                                             col_names=col_names, line_matching=line_matching,
+                                             max_file_size=max_file_size,
                                              line_from=line_from, line_until=line_until)
+        if ju.exists("t_request"):
+            _ = ju.execute(sql="UPDATE t_request SET headerContentLength = 0 WHERE headerContentLength = '-'")
 
         # Loading application log file(s) into database.
         log_path = ju._get_file("nexus.log")
         if bool(log_path):
             line_from = line_until = 0
             if bool(time_from_regex):
-                line_from=ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d "+time_from_regex)
+                line_from = ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d " + time_from_regex)
             if bool(time_until_regex):
-                line_until=ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d "+time_until_regex)
+                line_until = ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d " + time_until_regex)
             (col_names, line_matching) = _gen_regex_for_app_logs(log_path)
             nxrm_logs = ju.logs2table(log_path, tablename="t_nxrm_logs", col_names=col_names,
                                       line_matching=line_matching, max_file_size=max_file_size,
@@ -245,9 +258,9 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
         if bool(log_path):
             line_from = line_until = 0
             if bool(time_from_regex):
-                line_from=ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d "+time_from_regex)
+                line_from = ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d " + time_from_regex)
             if bool(time_until_regex):
-                line_until=ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d "+time_until_regex)
+                line_until = ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d " + time_until_regex)
             (col_names, line_matching) = _gen_regex_for_app_logs(log_path)
             clm_logs = ju.logs2table(log_path, tablename="t_iq_logs", col_names=col_names,
                                      line_matching=line_matching, max_file_size=max_file_size,
@@ -322,7 +335,7 @@ def analyse_logs(path="", tail_num=10000, max_file_size=(1024 * 1024 * 100), ski
     CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
     CAST(AVG(CAST(elapsedTime AS INT)) AS INT) AS avg_elaps, 
     CAST(AVG(CAST(bytesSent AS INT)) AS INT) AS avg_bytes, 
-    CAST(AVG(CAST(bytesSent AS INT) / (CAST(elapsedTime AS INT) / 1000)) AS INT) AS avg_bps, 
+    CAST(AVG((CAST(headerContentLength AS INT) + CAST(bytesSent AS INT)) / (CAST(elapsedTime AS INT) / 1000)) AS INT) AS avg_bps, 
     count(*) AS occurrence
 FROM t_request
 %s
@@ -459,4 +472,4 @@ WHERE thread_name not like '%InstrumentedSelectChannelConnector%'
     # """)
 
     # Join requests with nexus.log
-    #ju.q("""SELECT * FROM t_request JOIN (SELECT '02/Mar/2021:'||strftime('%H:%M:%S', date_time)||' -0800' as req_datetime, thread FROM t_nxrm_logs where message like '%Connection reset by peer%') t ON t_request.date = t.req_datetime and t_request.thread = t.thread""")
+    # ju.q("""SELECT * FROM t_request JOIN (SELECT '02/Mar/2021:'||strftime('%H:%M:%S', date_time)||' -0800' as req_datetime, thread FROM t_nxrm_logs where message like '%Connection reset by peer%') t ON t_request.date = t.req_datetime and t_request.thread = t.thread""")
