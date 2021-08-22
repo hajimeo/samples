@@ -64,9 +64,10 @@ spec:
               value: 'false'
             - name: INSTALL4J_ADD_VM_PARAMS
               # No schema specified, so will be public.
-              #-Dnexus.licenseFile=/nexus-data/sonatype-license.lic
               value: '-Xms2703m -Xmx2703m -XX:MaxDirectMemorySize=2703m \
-                -Dnexus.datastore.enabled=true -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
+                -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
+                -Dnexus.licenseFile=/nexus-data/sonatype-license.lic \
+                -Dnexus.datastore.enabled=true \
                 -Dnexus.datastore.nexus.name=nexus \
                 -Dnexus.datastore.nexus.type=jdbc \
                 -Dnexus.datastore.nexus.jdbcUrl=${_JDBC_URL} \
