@@ -103,6 +103,9 @@ function nxrmStart() {
         grep -qE '^\s*nexus.browse.component.tree.automaticRebuild' "${_cfg_file}" || echo "nexus.browse.component.tree.automaticRebuild=false" >> "${_cfg_file}"
         # NOTE: this would not work if elasticsearch directory is empty
         grep -qE '^\s*nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
+        #grep -qE '^\s*nexus.orient.binaryListenerEnabled' "${_cfg_file}" || echo "nexus.orient.binaryListenerEnabled=true" >> "${_cfg_file}"
+        grep -qE '^\s*nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
+        grep -qE '^\s*nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
         [ -z "${_mode}" ] && _mode="run"
     else
         [ -z "${_mode}" ] && _mode="console"
@@ -263,7 +266,7 @@ function mvn-package() {
 # Example to generate 10 versions / snapshots (NOTE: in bash heredoc, 'EOF' and just EOF is different)
 : <<'EOF'
 mvn-arch-gen
-_REPO_URL="http://node3290.standalone.localdomain:8081/repository/maven-hosted/"
+_REPO_URL="http://dh1.standalone.localdomain:8081/repository/maven-hosted/"
 #mvn-deploy "${_REPO_URL}" "" "nexus"
   #sed -i.tmp -E "s@<groupId>com.example.*</groupId>@<groupId>com.example${i}</groupId>@" pom.xml   # If need to change groupId
   #sed -i.tmp -E "s@<artifactId>my-app.*</artifactId>@<artifactId>my-app${i}</artifactId>@" pom.xml # If need to change artifactId
@@ -274,13 +277,13 @@ done
 EOF
 function mvn-deploy() {
     local __doc__="Wrapper of mvn clean package deploy"
-    local _alt_repo="${1}"
+    local _deploy_repo="${1}"
     local _remote_repo="${2}"
     local _local_repo="${3}"
     local _server_id="${4:-"nexus"}"
     local _options="${5-"-DskipTests -Dorg.slf4j.simpleLogger.showDateTime=true -Dorg.slf4j.simpleLogger.dateTimeFormat=HH:mm:ss,SSS -U -X"}"
-    if [ -n "${_alt_repo}" ]; then
-        _options="-DaltDeploymentRepository=${_server_id}::default::${_alt_repo} ${_options}"
+    if [ -n "${_deploy_repo}" ]; then
+        _options="-DaltDeploymentRepository=${_server_id}::default::${_deploy_repo} ${_options}"
     fi
     [ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
     mvn `_mvn_settings "${_remote_repo}"` clean package deploy ${_options}
