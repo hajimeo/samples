@@ -1,13 +1,10 @@
-#!/usr/bin/env bash
-# DOWNLOAD:
-#   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/nexus_diag.sh
-#
-# This script is only for Linux|Mac with BASH.
-#
-
 function usage() {
     cat << EOS
-Contain source-able and copy&paste-able functions, which are executed on the Nexus server, for troubleshooting various issues.
+Contain source-able and copy & paste-able functions, which are executed on the Nexus server for troubleshooting various issues.
+
+DOWNLOAD LATEST and SOURCE:
+    curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/nexus_diag.sh
+    source ./nexus_diag.sh
 EOS
 }
 
@@ -16,15 +13,57 @@ EOS
 : ${_WORK_DIR:="/var/tmp/share"}
 : ${_JAVA_DIR:="${_WORK_DIR%/}/java"}
 
+
+#f_upload_dummies "http://localhost:8081/repository/raw-s3-hosted/manyfiles" "1432 10000" 8
+function f_upload_dummies() {
+    local __doc__="Upload text files into (raw) hosted repository"
+    local _rep_url="${1:-"http://localhost:8081/repository/raw-hosted/test"}"
+    local _how_many="${2:-"10"}"
+    local _parallel="${3:-"4"}"
+    local _file_prefix="${4:-"test_"}"
+    local _file_suffix="${5:-".txt"}"
+    local _usr="${6:-"admin"}"
+    local _pwd="${7:-"admin123"}"
+    local _seq="seq 1 ${_how_many}"
+    [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
+    # -T<(echo "aaa") may not work with some old bash, so creating a file
+    echo "test by f_upload_dummies started at $(date +'%Y-%m-%d %H:%M:%S')" > /tmp/f_upload_dummies.tmp || return $?
+    for i in $(eval "${_seq}"); do
+      echo "${_file_prefix}${i}${_file_suffix}"
+    done | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w '%{http_code} {}\n' -T /tmp/f_upload_dummies.tmp -L -k "${_rep_url%/}/{}"
+    # TODO: xargs only stops if exit code is 255
+}
+
+# NOTE: filter the output before passing function would be faster
+#zgrep "2021:10:1" request-2021-01-08.log.gz | f_replay_gets "http://localhost:8081/repository/maven-central" "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
+#rg -z "2021:\d\d:\d.+ \"GET /repository/maven-central/.+HTTP/[0-9.]+" 2\d\d" request-2021-01-08.log.gz | sort | uniq | f_replay_gets "http://dh1:8081/repository/maven-central/"
+function f_replay_gets() {
+    local __doc__="Replay GET requests in the request.log"
+    local _url_path="$1"    # http://localhost:8081/repository/maven-central
+    local _path_match="${2:-"/repository/[^/]+/([^ ]+)"}"   # or NXRM2: "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
+    local _curl_opt="${3}"  # -u admin:admin123
+    local _c="${4:-"1"}"    # concurrency. Use 1 if order is important
+    [[ "${_url_path}" =~ ^http ]] || return 1
+    [[ "${_path_match}" =~ .*\(.+\).* ]] || return 2
+    local _n="$(echo "${_path_match}" | tr -cd ')' | wc -c | tr -d "[:space:]")"
+    # TODO: sed is too difficult to handle multiple parentheses
+    # Not sorting as order might be important. Also, --head -o/dev/null is intentional
+    rg "\bGET ${_path_match} HTTP/\d" -o -r "$"${_n} | xargs -n1 -P${_c} -I{} curl -sf --connect-timeout 2 --head -o/dev/null -w '%{http_code} {}\n' ${_curl_opt} "${_url_path%/}/{}"
+}
+#rg -m300 '03/Aug/2021:0[789].+GET /content/groups/npm-all/(.+/-/.+-[0-9.]+\.tgz)' -o -r '${1}' ./work/logs/request.log | xargs -I{} curl -sf --connect-timeout 2 --head -o/dev/null -w '%{http_code} {}\n' -u admin:admin123 "http://localhost:8081/nexus/content/groups/npm-all/{}" | tee result.out
+#npm cache clean --force
+#rg -m300 'GET /content/groups/npm-all/([^/]+)/-/.+-([0-9.]+)\.tgz' -o -r 'npm pack --registry=http://localhost:8081/nexus/content/groups/npm-all/ ${1}@${2}' ./work/logs/request.log | while read -r _c; do sh -x -c "${_c}"; done
+
+
 # NOTE: the attribute order is not consistent. also with -z, ^ or $ does not work.
 #find ./vol-* -type f -name '*.properties' -print0 | xargs -0 -I{} -P3 grep -lPz "(?s)deleted=true.*@Bucket.repo-name=npm-proxy\b" {}
 # Find not deleted (last updated) grunt metadata asset
 #rg -l -g '*.properties' '@BlobStore.blob-name=grunt' | xargs -I {} rg 'Bucket.repo-name=npm-group' -l {} | xargs -I {} ggrep -L '^deleted=true' {}
 function f_search_blobs() {
+    local __doc__="find + grep is faster than grep --include, and using xargs -P2"
     local _content_dir="${1:-"."}"    # /var/tmp/share/sonatype/blobs/default/content/vol-*
     local _grep_args="${2}"   # eg: -lPz "(?s)deleted=true.*@Bucket.repo-name=" NOTE: with -z, ^ or $ does not work.
     [ -z "${_grep_args}" ] && return 1
-    # find + xargs is faster than grep with --include
     #grep -H --include='*.properties' -IRs ${_grep_args} ${_content_dir}    # -H or -l
     # NOTE: find -L makes this command a bit slower, and -P would be helpful onlly for slow store.
     #       Also, redirecting to a file is faster in the console.
@@ -33,6 +72,7 @@ function f_search_blobs() {
 }
 
 function f_search_soft_deleted_blobs() {
+    local __doc__="find deleted=true blobs"
     local _content_dir="${1:-"./vol-*"}"    # /var/tmp/share/sonatype/blobs/default/content/vol-*
     local _repo_name="${2}"
     if [ -n "${_repo_name}" ]; then
@@ -48,6 +88,7 @@ function f_search_soft_deleted_blobs() {
 # TODO: search and sum the size per repo / per blob store, from file and/or DB.
 
 function f_orientdb_checks() {
+    local __doc__="Check index number/size and pcl file size"
     local _db="$1"  # Directory or ls -l output
     local _size_col="${2:-5}"
     local _file_col="${2:-9}"
@@ -79,17 +120,17 @@ function f_orientdb_checks() {
 #${_find} ${_db%/} -type f -name '*_idx.sbt' -printf '%k\t%P\n' | sort -k2 | tee /tmp/f_orientdb_checks.out
 #${_find} ${_db%/} -type f -name '*.pcl' -printf '%k\t%P\n' | sort -k2 | sed -E 's/_?[0-9]*\.pcl//' > /tmp/f_orientdb_checks.out
 
-# draft
+# DRAFT: trying to find which blob_ref.bytes files are open.
 function f_find_open_bytes_files() {
-    # TODO: Not perfect but there is no way to link Java TID / HEX nid with FD or iNode
+    local __doc__="Not perfect but there is no way to link Java TID / HEX nid with FD or iNode"
     local _blobs="$1"   # /opt/sonatype/sonatype-work/nexus3/blobs/default
     netstat -topen | grep 8081  # pick inode or port and pid
     # Usually +1 or a few of above fd and the FD ends with 'w'
     lsof -nPp $PID | grep -w $INODE -A 100 | grep -m1 "$(realpath "${_blobs}")/content/tmp/tmp"
 }
 
-# troubleshoot mount related issue such as startup fails with strange mount option.
 function f_mount_file() {
+    local __doc__="To test mounting issue, mount a file as some (eg:ext3) file system with mount options"
     local _mount_to="${1}"
     local _extra_opts="${2}"
     local _file_type="${3:-"ext3"}"
@@ -107,8 +148,8 @@ function f_mount_file() {
     mount -t ${_file_type} -o "${_opts}" "${_file}" "${_mount_to}"
 }
 
-# sometimes having many files in a dir causes performance issue
 function f_count_dirs() {
+    local __doc__="sometimes having many files in a dir causes performance issue, so finding number of objects per directory"
     local _dir="$1"
     # ls -f is better than ls -1 for this purpose
     find ${_dir%/} -type d -exec sh -c 'echo -e "$(ls -f {} | wc -l)\t{}\t$(date +"%H:%M:%S")"' \;
@@ -116,8 +157,14 @@ function f_count_dirs() {
 
 #find /opt/sonatype/sonatype-work/clm-server/report -mindepth 2 -maxdepth 2 -type d -print | while read -r _p; do grep -qw totalArtifactCount ${_p}/report.cache/summary.json || echo "${_p}/report.cache/summary.json: No totalArtifactCount"; done
 function f_find_missing() {
+    local __doc__="find directory, which does not have the expecting file."
     local _start_dir="$1"
-    local _finding="$1"
+    local _expecting="$1"
     local _depth="$2"
-    find ${_start_dir%/} -mindepth ${_depth} -maxdepth ${_depth} -type d -print | while read -r _p; do [ -f "${_p}/${_finding}" ] || echo "${_p} is missing ${_finding}"; done
+    find ${_start_dir%/} -mindepth ${_depth} -maxdepth ${_depth} -type d -print | while read -r _p; do [ -f "${_p}/${_expecting}" ] || echo "${_p} is missing ${_expecting}"; done
 }
+
+
+if [ "$0" = "$BASH_SOURCE" ]; then
+    usage
+fi
