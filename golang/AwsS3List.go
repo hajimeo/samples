@@ -7,12 +7,13 @@ https://docs.aws.amazon.com/AmazonS3/latest/userguide/ListingKeysUsingAPIs.html
 go build -o ../misc/aws-s3-list_$(uname) AwsS3List.go
 env GOOS=linux GOARCH=amd64 go build -o ../misc/aws-s3-list_Linux AwsS3List.go
 export AWS_REGION=ap-southeast-2 AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyyy
-../misc/aws-s3-list_Darwin -b apac-support-bucket -p node-nxrm-ha1/
+../misc/aws-s3-list_Darwin -b apac-support-bucket -p "node-nxrm-ha1/content/vol-"
 */
 
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -52,19 +53,23 @@ USAGE EXAMPLE:
     # Parallel execution (concurrency 10)
     $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -cP 10 > all_objects.csv
 
-    # Parallel execution (concurrency 4 * 100)
+    # Parallel execution (concurrency 4 * 100) with Tags and Owner (approx. 300 results per sec)
     $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -T -O -cP 4 -cT 100 > all_with_tags.csv
+
+    # Parallel execution (concurrency 4 * 100) with all properties but no tags and owner (approx. 250 results per sec)
+    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -f ".properties" -P -cP 4 -cT 100 > all_with_props.csv
 
 OPTIONAL SWITCHES:
     -p Prefix_str   Return objects which key starts with this prefix
     -f Filter_str   Return objects which key contains this string (much slower than prefix)
     -n topN_num     Return first/top N results only
     -m MaxKeys_num  Batch size number. Default is 1000
-    -cP concurrency *EXPERIMENTAL*: With prefix (-p xxxx/content/vol-), execute in parallel per sub directory
-    -cT concurrency Utilised only for retrieving Tags (-T)
+    -cP concurrency With prefix (-p xxxx/content/vol-), execute in parallel per sub directory
+    -cT concurrency Used for retrieving Tags (-T) and/or Properties (-P)
     -L              With -p, list sub folders under prefix
-    -O              To get Owner display name (might be slightly slower)
-    -T              To get Tags (will be slower)
+    -O              Get Owner display name (can be slightly slower)
+    -T              Get Tags (can be slower)
+    -P              Get properties (can be very slower)
     -H              No Header line output
     -X              Verbose log output
     -XX             More verbose log output`)
@@ -79,9 +84,9 @@ var _TOP_N *int64
 var _CON_N_P *int
 var _CON_N_T *int
 var _LIST_DIRS *bool
-var _PARALLEL *bool
 var _WITH_OWNER *bool
 var _WITH_TAGS *bool
+var _WITH_PROPS *bool
 var _NO_HEADER *bool
 var _DEBUG *bool
 var _DEBUG2 *bool
@@ -114,17 +119,37 @@ func printLine(client *s3.Client, item types.Object) {
 	// Get tags if -with-tags is presented.
 	if *_WITH_TAGS {
 		_log("DEBUG", fmt.Sprintf("Getting tags for %s", *item.Key))
-		_input := &s3.GetObjectTaggingInput{
+		_inputT := &s3.GetObjectTaggingInput{
 			Bucket: _BUCKET,
 			Key:    item.Key,
 		}
-		_tag, err := client.GetObjectTagging(context.TODO(), _input)
+		_tag, err := client.GetObjectTagging(context.TODO(), _inputT)
 		if err != nil {
-			_log("DEBUG", fmt.Sprintf("Retrieving tags for %s failed. Ignoring...", *item.Key))
+			_log("DEBUG", fmt.Sprintf("Retrieving tags for %s failed with %s. Ignoring...", *item.Key, err.Error()))
 		} else {
 			//_log("DEBUG", fmt.Sprintf("Retrieved tags for %s", *item.Key))
 			tag_output := tags2str(_tag.TagSet)
 			output = fmt.Sprintf("%s,\"%s\"", output, tag_output)
+		}
+	}
+	if *_WITH_PROPS && strings.HasSuffix(*item.Key, ".properties") {
+		_log("DEBUG", fmt.Sprintf("Getting properties for %s", *item.Key))
+		_inputO := &s3.GetObjectInput{
+			Bucket: _BUCKET,
+			Key:    item.Key,
+		}
+		_obj, err := client.GetObject(context.TODO(), _inputO)
+		if err != nil {
+			_log("DEBUG", fmt.Sprintf("Retrieving object for %s failed with %s. Ignoring...", *item.Key, err.Error()))
+		} else {
+			buf := new(bytes.Buffer)
+			_, err := buf.ReadFrom(_obj.Body)
+			if err != nil {
+				_log("DEBUG", fmt.Sprintf("Readubg object for %s failed with %s. Ignoring...", *item.Key, err.Error()))
+			} else {
+				// Should also escape '"'?
+				output = fmt.Sprintf("%s,\"%s\"", output, strings.ReplaceAll(strings.TrimSpace(buf.String()), "\n", ","))
+			}
 		}
 	}
 	fmt.Println(output)
@@ -196,9 +221,9 @@ func main() {
 	_CON_N_P = flag.Int("cP", 1, "*EXPERIMENTAL* Concurrent number for Prefix")
 	_CON_N_T = flag.Int("cT", 16, "Concurrent number for Tags")
 	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
-	_PARALLEL = flag.Bool("Lp", false, "If true, parallel execution per sub directory")
 	_WITH_OWNER = flag.Bool("O", false, "If true, also get owner display name")
 	_WITH_TAGS = flag.Bool("T", false, "If true, also get tags of each object")
+	_WITH_PROPS = flag.Bool("P", false, "If true, also get the contents of .properties files")
 	_NO_HEADER = flag.Bool("H", false, "If true, no header line")
 	_DEBUG = flag.Bool("X", false, "If true, verbose logging")
 	_DEBUG2 = flag.Bool("XX", false, "If true, more verbose logging")
@@ -214,11 +239,16 @@ func main() {
 	}
 
 	if !*_NO_HEADER && *_PREFIX == "" {
-		_log("WARN", "Without prefix (-p PREFIX_STRING), this might take longer.")
+		_log("WARN", "Without prefix (-p PREFIX_STRING), it can take longer.")
+		//time.Sleep(3 * time.Second)
 	}
 
 	if !*_NO_HEADER && *_WITH_TAGS {
-		_log("WARN", "With Tags (-T), this will be extremely slower.")
+		_log("WARN", "With Tags (-T), it can be much slower.")
+	}
+
+	if !*_NO_HEADER && *_WITH_PROPS {
+		_log("WARN", "With Properties (-P), it can be extremely slower.")
 	}
 
 	cfg, err := config.LoadDefaultConfig(context.TODO())
@@ -234,8 +264,10 @@ func main() {
 	subDirs := make([]string, 1)
 	subDirs = append(subDirs, *_PREFIX)
 
+	_log("INFO", fmt.Sprintf("Getting list of bucket: %s ...", *_BUCKET))
+
 	if *_LIST_DIRS || *_CON_N_P > 1 {
-		_log("INFO", fmt.Sprintf("Retriving sub folders under %s", *_PREFIX))
+		_log("DEBUG", fmt.Sprintf("Retriving sub folders under %s", *_PREFIX))
 		delimiter := "/"
 		inputV1 := &s3.ListObjectsInput{
 			Bucket:    _BUCKET,
@@ -280,6 +312,9 @@ func main() {
 		}
 		if *_WITH_TAGS {
 			fmt.Print(",Tags")
+		}
+		if *_WITH_PROPS {
+			fmt.Print(",Properties")
 		}
 		fmt.Println("")
 	}
