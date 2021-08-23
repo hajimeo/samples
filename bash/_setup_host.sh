@@ -996,7 +996,8 @@ function f_microk8s() {
 
     ufw allow in on cni0 && ufw allow out on cni0
     ufw default allow routed
-    microk8s enable dns storage helm3 ingress ${dashboard} #dashboard metallb prometheus
+    # surprisingly ingress seems to work without coredns
+    microk8s enable storage helm3 ingress ${dashboard} # dns dashboard metallb prometheus
     echo "To replace nginx SSL/HTTPS certificate
     microk8s kubectl -n ingress create secret tls standalone.localdomain --key /var/tmp/share/cert/standalone.localdomain.key --cert /var/tmp/share/cert/standalone.localdomain.crt
     microk8s kubectl edit -n ingress daemonsets nginx-ingress-microk8s-controller
