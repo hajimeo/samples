@@ -15,8 +15,8 @@ if which go &>/dev/null; then
     [ -z "${GOROOT}" ] && export GOROOT=/usr/local/opt/go/libexec
     [[ ":$PATH:" != *":$PATH:$GOROOT/bin:"* ]] && export PATH=${PATH%:}:$GOROOT/bin
     #export GO111MODULE=off   # This is for keeping supporting older than 1.16
-    #[ -z "${GOPATH}" ] && export GOPATH=$HOME/go
-    #[[ ":$PATH:" != *":$GOPATH/bin:"* ]] && export PATH=${PATH%:}:$GOPATH/bin
+    [ -z "${GOPATH}" ] && export GOPATH=$HOME/go
+    [[ ":$PATH:" != *":$GOPATH/bin:"* ]] && export PATH=${PATH%:}:$GOPATH/bin
 fi
 
 # Haskell related
