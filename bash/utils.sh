@@ -921,8 +921,8 @@ function _postgresql_configure() {
     fi
 
     # @see: https://www.postgresql.org/docs/current/continuous-archiving.html https://www.postgresql.org/docs/current/runtime-config-wal.html
-    _upsert ${_postgresql_conf} "archive_mode" "on"
-    _upsert ${_postgresql_conf} "archive_command" "'test ! -f ${_wal_archive_dir%/}/%f && cp %p ${_wal_archive_dir%/}/%f'" # this is asynchronous
+    _upsert ${_postgresql_conf} "archive_mode" "on" "#archive_mode"
+    _upsert ${_postgresql_conf} "archive_command" "'test ! -f ${_wal_archive_dir%/}/%f && cp %p ${_wal_archive_dir%/}/%f'" "#archive_command" # this is asynchronous
     #TODO: use recovery_min_apply_delay = '1h'
     # For wal/replication/pg_rewind, better save log files outside of _postgresql_conf
 
