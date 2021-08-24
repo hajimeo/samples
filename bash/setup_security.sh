@@ -23,8 +23,9 @@ function f_ssl_setup() {
     local __doc__="Setup SSL (wildcard) certificate for f_ssl_hadoop"
     # f_ssl_setup "" ".standalone.localdomain"
     local _password="${1:-${g_OTHER_DEFAULT_PWD}}"
-    local _domain_suffix="${2:-"`hostname -s`.localdomain"}}"
-    local _openssl_cnf="${3:-./openssl.cnf}"
+    local _domain_suffix="${2:-"`hostname -s`.localdomain"}"
+    local _openssl_cnf="${3:-"./openssl.cnf"}"
+    local _root_key="${4:-"./rootCA.key"}"
 
     if [ ! -s "${_openssl_cnf}" ]; then
         curl -s -f -o "${_openssl_cnf}" https://raw.githubusercontent.com/hajimeo/samples/master/misc/openssl.cnf || return $?
@@ -34,42 +35,44 @@ DNS.1 = ${_domain_suffix#.}
 DNS.2 = *.${_domain_suffix#.}" >> ${_openssl_cnf}
     fi
 
-    if [ -s ./rootCA.key ]; then
-        _log "INFO" "rootCA.key exists. Reusing..."
+    if [ -s "${_root_key}" ]; then
+        _log "INFO" "${_root_key} exists. Reusing..."
     else
         # Step1: create my root CA (key) and cert (pem) TODO: -aes256 otherwise key is not protected
-        openssl genrsa -passout "pass:${_password}" -out ./rootCA.key 2048 || return $?
-        # How to verify key: openssl rsa -in rootCA.key -check
+        openssl genrsa -passout "pass:${_password}" -out ${_root_key} 2048 || return $?
+        # How to verify key: openssl rsa -in ${_root_key} -check
 
         # (Optional) For Ambari 2-way SSL
         [ -r ./ca.config ] || curl -O https://raw.githubusercontent.com/hajimeo/samples/master/misc/ca.config
         mkdir -p ./db/certs
         mkdir -p ./db/newcerts
-        openssl req -passin pass:${_password} -new -key ./rootCA.key -out ./rootCA.csr -batch
-        openssl ca -out rootCA.crt -days 1095 -keyfile rootCA.key -key ${_password} -selfsign -extensions jdk7_ca -config ./ca.config -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.localdomain" -batch -infiles ./rootCA.csr
-        openssl pkcs12 -export -in ./rootCA.crt -inkey ./rootCA.key -certfile ./rootCA.crt -out ./keystore.p12 -password pass:${_password} -passin pass:${_password}
+        openssl req -passin pass:${_password} -new -key ${_root_key} -out ./rootCA.csr -batch
+        openssl ca -out rootCA.crt -days 1095 -keyfile ${_root_key} -key ${_password} -selfsign -extensions jdk7_ca -config ./ca.config -subj "/C=AU/ST=QLD/O=Osakos/CN=RootCA.`hostname -s`.localdomain" -batch -infiles ./rootCA.csr
+        openssl pkcs12 -export -in ./rootCA.crt -inkey ${_root_key} -certfile ./rootCA.crt -out ./keystore.p12 -password pass:${_password} -passin pass:${_password}
+    fi
 
+    if [ ! -s "./rootCA.pem" ]; then
         # ref: https://stackoverflow.com/questions/50788043/how-to-trust-self-signed-localhost-certificates-on-linux-chrome-and-firefox
-        openssl req -x509 -new -sha256 -days 3650 -key ./rootCA.key -out ./rootCA.pem \
+        openssl req -x509 -new -sha256 -days 3650 -key ${_root_key} -out ./rootCA.pem \
             -config ${_openssl_cnf} -extensions v3_ca \
             -subj "/CN=RootCA.${_domain_suffix#.}" \
             -passin "pass:${_password}" || return $?
-        chmod 600 ./rootCA.key
+        chmod 600 ${_root_key}
         if [ -d /usr/local/share/ca-certificates ]; then
-            which update-ca-certificates && cp -f ./rootCA.pem /usr/local/share/ca-certificates && update-ca-certificates
+            which update-ca-certificates && cp -v -f ./rootCA.pem /usr/local/share/ca-certificates/ && update-ca-certificates
             #openssl x509 -in /etc/ssl/certs/ca-certificates.crt -noout -subject
         fi
     fi
 
     # Step2: create server key and certificate
-    openssl genrsa -out ./server.${_domain_suffix#.}.key 2048 || return $?
-    openssl req -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" -extensions v3_req -sha256 -new -key ./server.${_domain_suffix#.}.key -out ./server.${_domain_suffix#.}.csr -config ${_openssl_cnf} || return $?
-    openssl x509 -req -extensions v3_req -days 3650 -sha256 -in ./server.${_domain_suffix#.}.csr -CA ./rootCA.pem -CAkey ./rootCA.key -CAcreateserial -out ./server.${_domain_suffix#.}.crt -extfile ${_openssl_cnf} -passin "pass:$_password"
+    openssl genrsa -out ./wild.${_domain_suffix#.}.key 2048 || return $?
+    openssl req -subj "/C=AU/ST=QLD/O=HajimeTest/CN=*.${_domain_suffix#.}" -extensions v3_req -sha256 -new -key ./wild.${_domain_suffix#.}.key -out ./wild.${_domain_suffix#.}.csr -config ${_openssl_cnf} || return $?
+    openssl x509 -req -extensions v3_req -days 3650 -sha256 -in ./wild.${_domain_suffix#.}.csr -CA ./rootCA.pem -CAkey ${_root_key} -CAcreateserial -out ./wild.${_domain_suffix#.}.crt -extfile ${_openssl_cnf} -passin "pass:$_password"
 
     # Step3: Create .p12 file, then .jks file
-    openssl pkcs12 -export -in ./server.${_domain_suffix#.}.crt -inkey ./server.${_domain_suffix#.}.key -certfile ./server.${_domain_suffix#.}.crt -out ./${g_KEYSTORE_FILE_P12} -passin "pass:${_password}" -passout "pass:${_password}" || return $?
-    [ -s ./${g_KEYSTORE_FILE} ] && mv -f ./${g_KEYSTORE_FILE} ./${g_KEYSTORE_FILE}.$$.bak
-    keytool -importkeystore -srckeystore ./${g_KEYSTORE_FILE_P12} -srcstoretype pkcs12 -srcstorepass ${_password} -destkeystore ./${g_KEYSTORE_FILE} -deststoretype JKS -deststorepass ${_password} || return $?
+    openssl pkcs12 -export -in ./wild.${_domain_suffix#.}.crt -inkey ./wild.${_domain_suffix#.}.key -certfile ./wild.${_domain_suffix#.}.crt -out ./wild.${_domain_suffix#.}.p12 -passin "pass:${_password}" -passout "pass:${_password}" || return $?
+    [ -s ./wild.${_domain_suffix#.}.jks ] && mv -v -f ./wild.${_domain_suffix#.}.jks ./wild.${_domain_suffix#.}.jks.$$.bak
+    keytool -importkeystore -srckeystore ./wild.${_domain_suffix#.}.p12 -srcstoretype pkcs12 -srcstorepass ${_password} -destkeystore ./wild.${_domain_suffix#.}.jks -deststoretype JKS -deststorepass ${_password} || return $?
 }
 
 function f_kdc_install() {
