@@ -14,6 +14,13 @@ EOS
 : ${_JAVA_DIR:="${_WORK_DIR%/}/java"}
 
 
+function f_verify() {
+    local __doc__="Compare files with the original tar installer file"
+    local _tar="$1"
+    local _extracted="$2"
+    tar --diff -f "${_tar}" -C "${_extracted}" | grep -vE '(Uid|Gid|Mod time) differs'
+}
+
 #f_upload_dummies "http://localhost:8081/repository/raw-s3-hosted/manyfiles" "1432 10000" 8
 function f_upload_dummies() {
     local __doc__="Upload text files into (raw) hosted repository"
