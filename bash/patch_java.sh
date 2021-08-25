@@ -22,16 +22,15 @@ Patch one Java/Scala class file by injecting into one jar.
     [dir_detect_regex]: Sometimes same classname exist in multiple directories.
     [not_compile]: If 'Y', not compiling. Used when a class is already compiled.
 
-To start console (REPL):
+If no process or no port, use f_javaenvs. For example:
+    f_javaenvs /opt/sonatype/nexus-3.33.0
 
-\$ source ./patch_java.sh
-\$ f_jshell [<port>]
-or
-\$ f_groovy [<port>]
-or
-\$ f_scala [<port>]
-or
-\$ f_spring_cli [<port>]
+To start console (REPL):
+    source ./patch_java.sh
+    f_jshell [<port>]
+    f_groovy [<port>]
+    f_scala [<port>]
+    f_spring_cli [<port>]
 EOS
 }
 
