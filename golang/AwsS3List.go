@@ -4,8 +4,7 @@ https://docs.aws.amazon.com/AmazonS3/latest/userguide/ListingKeysUsingAPIs.html
 
 #go mod init github.com/hajimeo/samples/golang
 #go mod tidy
-go build -o ../misc/aws-s3-list_$(uname) AwsS3List.go
-env GOOS=linux GOARCH=amd64 go build -o ../misc/aws-s3-list_Linux AwsS3List.go
+go build -o ../misc/aws-s3-list_$(uname) AwsS3List.go && env GOOS=linux GOARCH=amd64 go build -o ../misc/aws-s3-list_Linux AwsS3List.go
 export AWS_REGION=ap-southeast-2 AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyyy
 ../misc/aws-s3-list_Darwin -b apac-support-bucket -p "node-nxrm-ha1/content/vol-"
 */
@@ -37,35 +36,35 @@ DOWNLOAD and INSTALL:
     curl -o /usr/local/bin/aws-s3-list -L https://github.com/hajimeo/samples/raw/master/misc/aws-s3-list_$(uname)
     chmod a+x /usr/local/bin/aws-s3-list
     
-USAGE EXAMPLE:
+USAGE EXAMPLES:
     # Preparation: set AWS environment variables
     $ export AWS_REGION=ap-southeast-2 AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyyy
 
-    # List all objects under Backet-name bucket 
+    # List all objects under the Backet-name bucket 
     $ aws-s3-list -b Backet-name
+
+    # Check the coutn and size of all .bytes file under nxrm3/content/vol-*
+    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -f ".bytes" -c1 50 >/dev/null
 
     # List sub directories (-L) under nxrm3/content/vol* 
     $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -L
 
-    # Parallel execution with Owner & Tags and 100 concurrency
-    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -L | xargs -I{} -P4 aws-s3-list -b Backet-name -H -p "{}" -T -O -cT 100 > all_with_tags.csv
-
     # Parallel execution (concurrency 10)
-    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -cP 10 > all_objects.csv
+    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -c1 10 > all_objects.csv
 
-    # Parallel execution (concurrency 4 * 100) with Tags and Owner (approx. 300 results per sec)
-    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -T -O -cP 4 -cT 100 > all_with_tags.csv
+    # Parallel execution (concurrency 4 * 100) with Tags and Owner (approx. 300 lines per sec)
+    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -T -O -c1 4 -c2 100 > all_with_tags.csv
 
-    # Parallel execution (concurrency 4 * 100) with all properties but no tags and owner (approx. 250 results per sec)
-    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -f ".properties" -P -cP 4 -cT 100 > all_with_props.csv
+    # Parallel execution (concurrency 4 * 100) with all properties (approx. 250 lines per sec)
+    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -f ".properties" -P -c1 4 -c2 100 > all_with_props.csv
 
 OPTIONAL SWITCHES:
     -p Prefix_str   Return objects which key starts with this prefix
     -f Filter_str   Return objects which key contains this string (much slower than prefix)
     -n topN_num     Return first/top N results only
     -m MaxKeys_num  Batch size number. Default is 1000
-    -cP concurrency With prefix (-p xxxx/content/vol-), execute in parallel per sub directory
-    -cT concurrency Used for retrieving Tags (-T) and/or Properties (-P)
+    -c1 concurrency Concurrency number for Prefix (-p xxxx/content/vol-), execute in parallel per sub directory
+    -c2 concurrency Concurrency number for Tags (-T) and also Properties (-P)
     -L              With -p, list sub folders under prefix
     -O              Get Owner display name (can be slightly slower)
     -T              Get Tags (can be slower)
@@ -81,8 +80,8 @@ var _PREFIX *string
 var _FILTER *string
 var _MAXKEYS *int
 var _TOP_N *int64
-var _CON_N_P *int
-var _CON_N_T *int
+var _CONC_1 *int
+var _CONC_2 *int
 var _LIST_DIRS *bool
 var _WITH_OWNER *bool
 var _WITH_TAGS *bool
@@ -92,6 +91,7 @@ var _DEBUG *bool
 var _DEBUG2 *bool
 
 var _PRINTED_N int64 // Atomic (maybe slower?)
+var _TTL_SIZE int64  // Atomic (maybe slower?)
 
 func _log(level string, message string) {
 	if level != "DEBUG" || *_DEBUG {
@@ -171,12 +171,13 @@ func listObjects(client *s3.Client, prefix string) {
 		}
 
 		//https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
-		wgTags := sync.WaitGroup{}                  // *
-		guardTags := make(chan struct{}, *_CON_N_T) // **
+		wgTags := sync.WaitGroup{}                 // *
+		guardTags := make(chan struct{}, *_CONC_2) // **
 
 		for _, item := range resp.Contents {
 			if len(*_FILTER) == 0 || strings.Contains(*item.Key, *_FILTER) {
 				atomic.AddInt64(&_PRINTED_N, 1)
+				atomic.AddInt64(&_TTL_SIZE, item.Size)
 				guardTags <- struct{}{}                         // **
 				wgTags.Add(1)                                   // *
 				go func(client *s3.Client, item types.Object) { // **
@@ -218,8 +219,8 @@ func main() {
 	_FILTER = flag.String("f", "", "Filter string for keys")
 	_MAXKEYS = flag.Int("m", 1000, "Integer value for Max Keys (<= 1000)")
 	_TOP_N = flag.Int64("n", 0, "Return only first N keys (0 = no limit)")
-	_CON_N_P = flag.Int("cP", 1, "*EXPERIMENTAL* Concurrent number for Prefix")
-	_CON_N_T = flag.Int("cT", 16, "Concurrent number for Tags")
+	_CONC_1 = flag.Int("c1", 1, "Concurrent number for Prefix")
+	_CONC_2 = flag.Int("c2", 16, "Concurrent number for Tags")
 	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
 	_WITH_OWNER = flag.Bool("O", false, "If true, also get owner display name")
 	_WITH_TAGS = flag.Bool("T", false, "If true, also get tags of each object")
@@ -266,7 +267,7 @@ func main() {
 
 	_log("INFO", fmt.Sprintf("Getting list of bucket: %s ...", *_BUCKET))
 
-	if *_LIST_DIRS || *_CON_N_P > 1 {
+	if *_LIST_DIRS || *_CONC_1 > 1 {
 		_log("DEBUG", fmt.Sprintf("Retriving sub folders under %s", *_PREFIX))
 		delimiter := "/"
 		inputV1 := &s3.ListObjectsInput{
@@ -281,7 +282,7 @@ func main() {
 			panic(err.Error())
 		}
 		// replacing subDirs with the result (excluding 1 as it would make slower)
-		if *_CON_N_P > 1 && len(resp.CommonPrefixes) > 1 {
+		if *_CONC_1 > 1 && len(resp.CommonPrefixes) > 1 {
 			subDirs = make([]string, len(resp.CommonPrefixes))
 		}
 		for _, item := range resp.CommonPrefixes {
@@ -289,7 +290,7 @@ func main() {
 			if len(strings.TrimSpace(*item.Prefix)) == 0 {
 				continue
 			}
-			if *_CON_N_P > 1 && len(resp.CommonPrefixes) > 1 {
+			if *_CONC_1 > 1 && len(resp.CommonPrefixes) > 1 {
 				subDirs = append(subDirs, *item.Prefix)
 			}
 			if *_LIST_DIRS {
@@ -297,12 +298,15 @@ func main() {
 			}
 		}
 
+		if *_LIST_DIRS {
+			return
+		}
 		_log("DEBUG", fmt.Sprintf("Sub directories: %v", subDirs))
 	}
 
-	if *_CON_N_P < 1 {
-		_log("DEBUG", "_CON_N_P is lower than 1.")
-		return
+	if *_CONC_1 < 1 {
+		_log("ERROR", "_CONC_1 is lower than 1.")
+		os.Exit(1)
 	}
 
 	if !*_NO_HEADER {
@@ -320,7 +324,7 @@ func main() {
 	}
 
 	wg := sync.WaitGroup{}
-	guard := make(chan struct{}, *_CON_N_P)
+	guard := make(chan struct{}, *_CONC_1)
 
 	for _, s := range subDirs {
 		if len(s) == 0 {
@@ -340,5 +344,5 @@ func main() {
 
 	wg.Wait()
 	println("")
-	_log("INFO", fmt.Sprintf("Found %d items in bucket: %s with prefix: %s", _PRINTED_N, *_BUCKET, *_PREFIX))
+	_log("INFO", fmt.Sprintf("Printed %d items (size: %d) in bucket: %s with prefix: %s", _PRINTED_N, _TTL_SIZE, *_BUCKET, *_PREFIX))
 }
