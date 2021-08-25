@@ -14,7 +14,25 @@ EOS
 : ${_JAVA_DIR:="${_WORK_DIR%/}/java"}
 
 
-function f_verify() {
+#curl -X PUT -T<(echo "test") localhost:2424
+function f_start_web() {
+    local __doc__="To check network connectivity"
+    local _port="${1:-"2424"}"
+    if type php &>/dev/null; then
+        curl -O "https://raw.githubusercontent.com/hajimeo/samples/master/php/index.php" && php -S 0.0.0.0:${_port} ./index.php
+    #elif type python; then
+        # Expecting python3
+        #python -m http.server ${_port} &>/dev/null &
+        # if python2.x: python -m SimpleHTTPServer ${_port} &>/dev/null &
+    elif type nc; then
+        while true; do nc -v -nlp "${_port}" &>/dev/null; done
+    else
+        echo "No php or nc (netcat)"
+        return 1
+    fi
+}
+
+function f_verify_install() {
     local __doc__="Compare files with the original tar installer file"
     local _tar="$1"
     local _extracted="$2"
