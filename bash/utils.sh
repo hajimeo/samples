@@ -1003,7 +1003,7 @@ function _postgresql_create_dbuser() {
     if [ -n "${_schema}" ]; then
         local _search_path="${_dbusr},public"
         for _s in ${_schema}; do
-            ${_psql_as_admin} -d ${_dbname} -c "CREATE SCHEMA ${_s} AUTHORIZATION ${_dbusr};"
+            ${_psql_as_admin} -d ${_dbname} -c "CREATE SCHEMA IF NOT EXISTS ${_s} AUTHORIZATION ${_dbusr};"
             _search_path="${_search_path},${_s}"
         done
         ${_psql_as_admin} -d template1 -c "ALTER ROLE ${_dbusr} SET search_path = ${_search_path};"
