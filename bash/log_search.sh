@@ -820,8 +820,9 @@ function _get_hextids() {
     cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d+|9)\d.\d+ +" -o -r '$1' | xargs printf "0x%x\n"
 }
 
-# f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
-# Also, f_last_tid_in_log would be useful.
+#f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
+#_THREAD_FILE_GLOB="jstack_*" f_threads "."
+# NOTE: f_last_tid_in_log would be useful.
 function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
     local _file="$1"    # Or dir contains thread_xxxx.txt files
