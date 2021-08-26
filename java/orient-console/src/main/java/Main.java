@@ -1,17 +1,10 @@
-/**
- * Simple OrientDB client
- * Limitation: only standard SQLs. No "info classes" etc.
+/*
+ * Simple OrientDB client Limitation: only standard SQLs. No "info classes" etc.
  * TODO: add tests
  * TODO: Replace jline3
  * TODO: convert to JSON without using ODocument.toJSON()
  *
- * curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar"
- * java -jar orient-console.jar <directory path|.bak file path> [permanent extract dir]
- * or
- * echo "query1;query2" | java -jar orient-console.jar <directory path|.bak file path> | grep -v '==> ' | results.json
- *
- * just my note:
- * cp -p ~/IdeaProjects/samples/java/orient-console/target/orient-console-1.0-SNAPSHOT-jar-with-dependencies.jar ~/IdeaProjects/samples/misc/orient-console.jar
+ * My note: cp -p ~/IdeaProjects/samples/java/orient-console/target/orient-console-1.0-SNAPSHOT-jar-with-dependencies.jar ~/IdeaProjects/samples/misc/orient-console.jar
  */
 
 /*
@@ -24,6 +17,7 @@ TODO: => DELETE FROM healthcheckconfig WHERE @rid in (SELECT rid FROM (SELECT MI
 
 //import com.google.gson.GsonBuilder;
 //import com.google.gson.Gson;
+
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
@@ -59,7 +53,24 @@ public class Main
 
   static String historyPath;
 
-  private Main() {
+  static String extractDir;
+
+  static String exportPath;
+
+  private static void usage() {
+    System.err.println("DOWNLOAD LATEST VERSION:\n" +
+        "  curl -O -L \"https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar\"\n" +
+        "\n" +
+        "USAGE EXAMPLES:\n" +
+        "# start interactive console:\n" +
+        "  java -jar ./orient-console.jar ./sonatype-work/nexus3/db/component\n" +
+        " or with small .bak (zip) file:\n" +
+        "  java -jar ./orient-console.jar ./component-2021-08-07-09-00-00-3.30.0-01.bak\n" +
+        " or with larger .bak file (or env:_EXTRACT_DIR):\n" +
+        "  java -DextractDir=./component -jar ./orient-console.jar ./component-2021-08-07-09-00-00-3.30.0-01.bak\n" +
+        "\n" +
+        "# batch processing (or env:_EXPORT_PATH):\n" +
+        "  echo \"SQL SELECT statement\" | java -DexportPath=./result.json -jar orient-console.jar <directory path|.bak file path>");
   }
 
   private static String getCurrentLocalDateTimeStamp() {
@@ -117,15 +128,15 @@ public class Main
       return;
     }
     Files.walk(path)
-      .sorted(Comparator.reverseOrder())
-      .forEach(p -> {
-        try {
-          Files.delete(p);
-        }
-        catch (IOException e) {
-          log(e.getMessage());
-        }
-      });
+        .sorted(Comparator.reverseOrder())
+        .forEach(p -> {
+          try {
+            Files.delete(p);
+          }
+          catch (IOException e) {
+            log(e.getMessage());
+          }
+        });
   }
 
   // TODO: changing to List<?> breaks toJSON()
@@ -135,7 +146,7 @@ public class Main
       terminal.flush();
       return;
     }
-    System.out.println("\n[");
+    terminal.writer().println("\n[");
     for (int i = 0; i < oDocs.size(); i++) {
       if (i == (oDocs.size() - 1)) {
         terminal.writer().println("  " + oDocs.get(i).toJSON());
@@ -149,6 +160,40 @@ public class Main
     terminal.flush();
   }
 
+  private static void writeListAsJson(List<ODocument> oDocs, String exportPath) {
+    System.err.println("");
+    try {
+      File fout = new File(exportPath);
+      FileOutputStream fos = new FileOutputStream(fout);
+      BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(fos));
+      if (oDocs == null || oDocs.isEmpty()) {
+        bw.write("[]");
+        bw.newLine();
+        bw.close();
+        return;
+      }
+      bw.write("[\n");
+      for (int i = 0; i < oDocs.size(); i++) {
+        if (i == (oDocs.size() - 1)) {
+          bw.write("  " + oDocs.get(i).toJSON());
+        }
+        else {
+          bw.write("  " + oDocs.get(i).toJSON() + ",");
+        }
+        bw.newLine();
+      }
+      bw.write("]");
+      bw.newLine();
+      bw.close();
+    }
+    catch (IOException e) {
+      e.printStackTrace();
+    }
+    finally {
+      System.err.println("");
+    }
+  }
+
   private static void execQueries(ODatabaseDocumentTx db, String input) {
     List<String> queries = Arrays.asList(input.split(";"));
     for (int i = 0; i < queries.size(); i++) {
@@ -160,8 +205,14 @@ public class Main
       Instant start = Instant.now();
       try {
         final List<ODocument> results = db.command(new OCommandSQL(q)).execute();
-        printListAsJson(results);
-        System.err.printf("Rows: %d, ", results.size());
+        if (exportPath.length() > 0) {
+          writeListAsJson(results, exportPath);
+          System.err.printf("Wrote %d rows to %s, ", results.size(), exportPath);
+        }
+        else {
+          printListAsJson(results);
+          System.err.printf("Rows: %d, ", results.size());
+        }
       }
       catch (java.lang.ClassCastException e) {
         // TODO: 'EXPLAIN' causes com.orientechnologies.orient.core.record.impl.ODocument cannot be cast to java.util.List
@@ -284,34 +335,37 @@ public class Main
     return lr;
   }
 
+  private Main() { }
+
   public static void main(final String[] args) throws IOException {
     if (args.length < 1) {
-      System.err.println("Usage: java -jar orient-console.jar <directory path|.bak file path> [permanent extract dir]");
+      usage();
       System.exit(1);
     }
 
     String path = args[0];
     String connStr = "";
     Path tmpDir = null;
-    String extDir = System.getProperty("extractDir", "");
+    extractDir = System.getProperty("extractDir", System.getenv("_EXTRACT_DIR"));
+    exportPath = System.getProperty("exportPath", System.getenv("_EXPORT_PATH"));
 
     // Preparing data (extracting zip if necessary)
     if (!(new File(path)).isDirectory()) {
       try {
-        if (!extDir.trim().isEmpty()) {
-          if (!prepareDir(extDir, path)) {
+        if (!extractDir.trim().isEmpty()) {
+          if (!prepareDir(extractDir, path)) {
             System.exit(1);
           }
         }
         else {
           tmpDir = Files.createTempDirectory(null);
           tmpDir.toFile().deleteOnExit();
-          extDir = tmpDir.toString();
+          extractDir = tmpDir.toString();
         }
 
-        log("Unzip-ing " + path + " to " + extDir);
-        unzip(path, extDir);
-        path = extDir;
+        log("Unzip-ing " + path + " to " + extractDir);
+        unzip(path, extractDir);
+        path = extractDir;
       }
       catch (Exception e) {
         log(path + " is not a right archive.");
