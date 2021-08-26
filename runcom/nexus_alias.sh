@@ -103,6 +103,8 @@ function nxrmStart() {
         grep -qE '^\s*nexus.browse.component.tree.automaticRebuild' "${_cfg_file}" || echo "nexus.browse.component.tree.automaticRebuild=false" >> "${_cfg_file}"
         # NOTE: this would not work if elasticsearch directory is empty
         grep -qE '^\s*nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
+        # ${nexus.h2.httpListenerPort:-8082}
+        grep -qE '^\s*nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
         # For OrientDB studio (hostname:2480/studio/index.html)
         #grep -qE '^\s*nexus.orient.binaryListenerEnabled' "${_cfg_file}" || echo "nexus.orient.binaryListenerEnabled=true" >> "${_cfg_file}"
         grep -qE '^\s*nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
