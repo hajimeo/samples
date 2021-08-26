@@ -205,7 +205,7 @@ public class Main
       Instant start = Instant.now();
       try {
         final List<ODocument> results = db.command(new OCommandSQL(q)).execute();
-        if (exportPath.length() > 0) {
+        if (exportPath != null && exportPath.length() > 0) {
           writeListAsJson(results, exportPath);
           System.err.printf("Wrote %d rows to %s, ", results.size(), exportPath);
         }
