@@ -39,6 +39,39 @@ function f_verify_install() {
     tar --diff -f "${_tar}" -C "${_extracted}" | grep -vE '(Uid|Gid|Mod time) differs'
 }
 
+function f_size_count() {
+    local __doc__="Count how many killbytes file and sum size (NOT considering 'deleted=true' files)"
+    local _dir="$1" # blobs/defaut/content/
+    local _chk_soft_del="$2"
+    local _P="${3}"
+    if [[ "${_chk_soft_del}" =~ ^(y|Y) ]]; then
+        # sed -nE "s/^size=([0-9]+)$/\1/p"
+        find ${_dir%/} -type f -name '*.properties' -print0 | xargs -0 -P${_P:-"3"} -I {} sh -c 'grep -q "deleted=true" {} || (_f="{}";find ${_f%.*}.bytes -printf "%k\n")' 2>/dev/null
+        echo ""
+    else
+        find ${_dir%/} -type f -name '*.bytes' -printf '%k\n'
+    fi | awk '{ c+=1;s += $1 }; END { print "count: "c " size: "s" kb" }'
+}
+
+function f_blobs_csv() {
+    local __doc__="Generate CSV for Key,LastModified,Size + properties"
+    local _dir="$1" # "blobs/defaut/content/vol-*"
+    local _with_props="$2"
+    local _filter="${3}"
+    local _P="${4}"
+    printf "Key,LastModified,Size"
+    local _find="find ${_dir%/} -type f"
+    [ -n "${_filter}" ] && _find="${_find} -name '${_filter}'"
+    if [[ "${_with_props}" =~ ^(y|Y) ]]; then
+        printf ",Properties\n"
+        # without _o=, it may output empty "" line.
+        eval "${_find} -print0" | xargs -0 -P${_P:-"3"} -I {} sh -c '[ -f {} ] && _o="$(find {} -printf "\"%p\",\"%t\",%s," && printf "\"%s\"\n" "$(echo "{}" | grep -q ".properties" && cat {} | tr "\n" "," | sed "s/,$//")")" && echo ${_o}'
+    else
+        printf "\n"
+        eval "${_find} -printf '\"%p\",\"%t\",%s\n'"
+    fi
+}
+
 #f_upload_dummies "http://localhost:8081/repository/raw-s3-hosted/manyfiles" "1432 10000" 8
 function f_upload_dummies() {
     local __doc__="Upload text files into (raw) hosted repository"
