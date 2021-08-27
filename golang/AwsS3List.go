@@ -43,8 +43,8 @@ USAGE EXAMPLES:
     # List all objects under the Backet-name bucket 
     $ aws-s3-list -b Backet-name
 
-    # Check the coutn and size of all .bytes file under nxrm3/content/vol-*
-    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -f ".bytes" -c1 50 >/dev/null
+    # Check the count and size of all .bytes file under nxrm3/content/ (including tmp)
+    $ aws-s3-list -b Backet-name -p "nxrm3/content/" -f ".bytes" -c1 50 >/dev/null
 
     # List sub directories (-L) under nxrm3/content/vol* 
     $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -L
@@ -58,9 +58,14 @@ USAGE EXAMPLES:
     # Parallel execution (concurrency 4 * 100) with all properties (approx. 250 lines per sec)
     $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -f ".properties" -P -c1 4 -c2 100 > all_with_props.csv
 
+    # List all objects which proerties contain 'deleted=true'
+    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -fP "deleted=true" -P -c1 4 -c2 100 > soft_deleted.csv
+
 OPTIONAL SWITCHES:
-    -p Prefix_str   Return objects which key starts with this prefix
-    -f Filter_str   Return objects which key contains this string (much slower than prefix)
+    -p Prefix_str   List objects which key starts with this prefix
+    -f Filter_str   List objects which key contains this string (much slower)
+    -fP Filter_str  List .properties file (no .bytes files) which contains this string (much slower)
+                    Equivalent of -f ".properties" and -P.
     -n topN_num     Return first/top N results only
     -m MaxKeys_num  Batch size number. Default is 1000
     -c1 concurrency Concurrency number for Prefix (-p xxxx/content/vol-), execute in parallel per sub directory
@@ -78,6 +83,7 @@ OPTIONAL SWITCHES:
 var _BUCKET *string
 var _PREFIX *string
 var _FILTER *string
+var _FILTER2 *string
 var _MAXKEYS *int
 var _TOP_N *int64
 var _CONC_1 *int
@@ -113,9 +119,39 @@ func tags2str(tagset []types.Tag) string {
 
 func printLine(client *s3.Client, item types.Object) {
 	output := fmt.Sprintf("\"%s\",\"%s\",%d", *item.Key, item.LastModified, item.Size)
+
+	// Checking props first because if _FILTER2 is given and match, do not check others.
+	props := ""
+	if *_WITH_PROPS && strings.HasSuffix(*item.Key, ".properties") {
+		_log("DEBUG", fmt.Sprintf("Getting properties for %s", *item.Key))
+		_inputO := &s3.GetObjectInput{
+			Bucket: _BUCKET,
+			Key:    item.Key,
+		}
+		_obj, err := client.GetObject(context.TODO(), _inputO)
+		if err != nil {
+			_log("DEBUG", fmt.Sprintf("Retrieving %s failed with %s. Ignoring...", *item.Key, err.Error()))
+		} else {
+			buf := new(bytes.Buffer)
+			_, err := buf.ReadFrom(_obj.Body)
+			if err != nil {
+				_log("DEBUG", fmt.Sprintf("Readubg object for %s failed with %s. Ignoring...", *item.Key, err.Error()))
+			} else {
+				if len(*_FILTER2) == 0 || strings.Contains(buf.String(), *_FILTER2) {
+					// Should also escape '"'?
+					props = strings.ReplaceAll(strings.TrimSpace(buf.String()), "\n", ",")
+				} else {
+					_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s. Not outputting entire line...", *item.Key, *_FILTER2))
+					return
+				}
+			}
+		}
+	}
+
 	if *_WITH_OWNER {
 		output = fmt.Sprintf("%s,\"%s\"", output, *item.Owner.DisplayName)
 	}
+
 	// Get tags if -with-tags is presented.
 	if *_WITH_TAGS {
 		_log("DEBUG", fmt.Sprintf("Getting tags for %s", *item.Key))
@@ -126,32 +162,19 @@ func printLine(client *s3.Client, item types.Object) {
 		_tag, err := client.GetObjectTagging(context.TODO(), _inputT)
 		if err != nil {
 			_log("DEBUG", fmt.Sprintf("Retrieving tags for %s failed with %s. Ignoring...", *item.Key, err.Error()))
+			output = fmt.Sprintf("%s,\"\"", output)
 		} else {
 			//_log("DEBUG", fmt.Sprintf("Retrieved tags for %s", *item.Key))
 			tag_output := tags2str(_tag.TagSet)
 			output = fmt.Sprintf("%s,\"%s\"", output, tag_output)
 		}
 	}
-	if *_WITH_PROPS && strings.HasSuffix(*item.Key, ".properties") {
-		_log("DEBUG", fmt.Sprintf("Getting properties for %s", *item.Key))
-		_inputO := &s3.GetObjectInput{
-			Bucket: _BUCKET,
-			Key:    item.Key,
-		}
-		_obj, err := client.GetObject(context.TODO(), _inputO)
-		if err != nil {
-			_log("DEBUG", fmt.Sprintf("Retrieving object for %s failed with %s. Ignoring...", *item.Key, err.Error()))
-		} else {
-			buf := new(bytes.Buffer)
-			_, err := buf.ReadFrom(_obj.Body)
-			if err != nil {
-				_log("DEBUG", fmt.Sprintf("Readubg object for %s failed with %s. Ignoring...", *item.Key, err.Error()))
-			} else {
-				// Should also escape '"'?
-				output = fmt.Sprintf("%s,\"%s\"", output, strings.ReplaceAll(strings.TrimSpace(buf.String()), "\n", ","))
-			}
-		}
+
+	if *_WITH_PROPS {
+		output = fmt.Sprintf("%s,\"%s\"", output, props)
 	}
+	atomic.AddInt64(&_PRINTED_N, 1)
+	atomic.AddInt64(&_TTL_SIZE, item.Size)
 	fmt.Println(output)
 }
 
@@ -176,8 +199,6 @@ func listObjects(client *s3.Client, prefix string) {
 
 		for _, item := range resp.Contents {
 			if len(*_FILTER) == 0 || strings.Contains(*item.Key, *_FILTER) {
-				atomic.AddInt64(&_PRINTED_N, 1)
-				atomic.AddInt64(&_TTL_SIZE, item.Size)
 				guardTags <- struct{}{}                         // **
 				wgTags.Add(1)                                   // *
 				go func(client *s3.Client, item types.Object) { // **
@@ -217,6 +238,7 @@ func main() {
 	_BUCKET = flag.String("b", "", "The name of the Bucket")
 	_PREFIX = flag.String("p", "", "The name of the Prefix")
 	_FILTER = flag.String("f", "", "Filter string for keys")
+	_FILTER2 = flag.String("fP", "", "Filter string for properties (-P is required)")
 	_MAXKEYS = flag.Int("m", 1000, "Integer value for Max Keys (<= 1000)")
 	_TOP_N = flag.Int64("n", 0, "Return only first N keys (0 = no limit)")
 	_CONC_1 = flag.Int("c1", 1, "Concurrent number for Prefix")
@@ -237,6 +259,11 @@ func main() {
 	if *_BUCKET == "" {
 		_log("ERROR", "You must supply the name of a bucket (-b BUCKET_NAME)")
 		os.Exit(1)
+	}
+
+	if len(*_FILTER2) > 0 {
+		*_FILTER = ".properties"
+		*_WITH_PROPS = true
 	}
 
 	if !*_NO_HEADER && *_PREFIX == "" {
@@ -265,7 +292,7 @@ func main() {
 	subDirs := make([]string, 1)
 	subDirs = append(subDirs, *_PREFIX)
 
-	_log("INFO", fmt.Sprintf("Getting list of bucket: %s ...", *_BUCKET))
+	_log("INFO", fmt.Sprintf("Generating list from bucket: %s ...", *_BUCKET))
 
 	if *_LIST_DIRS || *_CONC_1 > 1 {
 		_log("DEBUG", fmt.Sprintf("Retriving sub folders under %s", *_PREFIX))
