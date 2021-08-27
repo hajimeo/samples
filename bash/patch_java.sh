@@ -37,6 +37,7 @@ EOS
 # copied from setup_work.env.sh and modified
 function f_setup_java() {
     local _v="${1:-"8"}" # Using 8 as JayDeBeApi uses specific version and which is for java 8
+    local _filter="${2:-"jdk_x64_linux"}" # (jdk|jre)_x64_(linux|mac)
     local _ver="${_v}"  # Java version can be "9" or "1.8"
     [[ "${_v}" =~ ^[678]$ ]] && _ver="1.${_v}"
     [ ! -d "${_JAVA_DIR%/}" ] && mkdir -p -m 777 ${_JAVA_DIR%/}
@@ -44,24 +45,23 @@ function f_setup_java() {
     # If Linux, downloading .tar.gz file and extract, so that it can be re-used in the container
     # NOTE: with grep or sed, without --compressed is faster
     #local _java_exact_ver="$(basename $(curl -s https://github.com/AdoptOpenJDK/openjdk${_v}-binaries/releases/latest | _sed -nr 's/.+"(https:[^"]+)".+/\1/p'))"
-    local _java_exact_ver="$(curl -sf -L "https://api.adoptopenjdk.net/v3/assets/latest/${_v}/hotspot?release=latest&jvm_impl=hotspot&vendor=adoptopenjdk" | grep -m1 -E '"release_name": "jdk-?'${_v}'.[^"]+"' | grep -oE 'jdk-?'${_v}'[^"]+')"
+    curl -sf -L "https://api.adoptopenjdk.net/v3/assets/latest/${_v}/hotspot?release=latest&jvm_impl=hotspot&vendor=adoptopenjdk" -o /tmp/java_${_v}_latest.json || return $?
+    local _java_exact_ver="$(grep -m1 -E '"release_name": "jdk-?'${_v}'.[^"]+"' /tmp/java_${_v}_latest.json | grep -oE 'jdk-?'${_v}'[^"]+')"
     # NOTE: hoping the naming rule is same for different versions (eg: jdk8u275-b01, jdk-11.0.9.1+1)
     if [[ ! "${_java_exact_ver}" =~ (jdk-?)([^-+]+)([-+])([^_]+) ]]; then
         echo "Could not determine the download-able version by using ${_v}."
         return 1
     fi
+    local _dl_url="$(sed -nE 's/^ *"link": *"(.+'${_filter}'.+)",?$/\1/p' /tmp/java_8_latest.json)"
+    if [ -z "${_dl_url}" ]; then
+        echo "Could not determine the download-URL by using ${_java_exact_ver}."
+        return 1
+    fi
 
-    local _jdk="${BASH_REMATCH[1]}"         # jdk- or jdk
-    local _jdk_ver="${BASH_REMATCH[2]}"     # 8u275 or 11.0.9.1
-    local _ver_sep="${BASH_REMATCH[3]}"     # - or +
-    local _jdk_minor="${BASH_REMATCH[4]}"   # b01 or 1
-    local _ver_sep2=""
-    [ "${_ver_sep}" == "+" ] && _ver_sep2="_"
-    #https://github.com/AdoptOpenJDK/openjdk8-binaries/releases/download/jdk8u275-b01/OpenJDK8U-jdk_x64_linux_hotspot_8u275b01.tar.gz
-    #https://github.com/AdoptOpenJDK/openjdk11-binaries/releases/download/jdk-11.0.9.1%2B1/OpenJDK11U-jdk_x64_linux_hotspot_11.0.9.1_1.tar.gz
-    local _fname="OpenJDK${_v}U-jdk_x64_linux_hotspot_${_jdk_ver}${_ver_sep2}${_jdk_minor}.tar.gz"
+    local _fname="$(basename "${_dl_url}")"
+    echo "Downloading ${_dl_url} ..."
     if [ ! -s "${_JAVA_DIR%/}/${_fname}" ]; then
-        curl --retry 3 -C - -o "${_JAVA_DIR%/}/${_fname}" -f -L "https://github.com/AdoptOpenJDK/openjdk${_v}-binaries/releases/download/${_jdk}${_jdk_ver}${_ver_sep}${_jdk_minor}/${_fname}" || return $?
+        curl --retry 3 -C - -o "${_JAVA_DIR%/}/${_fname}" -f -L "${_dl_url}" || return $?
     fi
 
     tar -xf "${_JAVA_DIR%/}/${_fname}" -C ${_JAVA_DIR%/}/ || return $?
@@ -78,6 +78,8 @@ EOF
             echo "WARN Current Java version is not ${_ver}."
             return 1
         fi
+    else
+        echo "Not updating /etc/profile.d/java.sh with ${_JAVA_DIR%/}/${_java_exact_ver}"
     fi
 }
 
