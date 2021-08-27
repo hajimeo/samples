@@ -39,8 +39,9 @@ function f_verify_install() {
     tar --diff -f "${_tar}" -C "${_extracted}" | grep -vE '(Uid|Gid|Mod time) differs'
 }
 
+#find . -type f -printf '%s\n' | awk '{ c+=1;s+=$1/1024/1024 }; END { print "count:"c", size:"s" MB" }'
 function f_size_count() {
-    local __doc__="Count how many killbytes file and sum size (NOT considering 'deleted=true' files)"
+    local __doc__="Count how many kilobytes file and sum size (NOT considering 'deleted=true' files)"
     local _dir="$1" # blobs/defaut/content/
     local _chk_soft_del="$2"
     local _P="${3}"
@@ -49,8 +50,8 @@ function f_size_count() {
         find ${_dir%/} -type f -name '*.properties' -print0 | xargs -0 -P${_P:-"3"} -I {} sh -c 'grep -q "deleted=true" {} || (_f="{}";find ${_f%.*}.bytes -printf "%k\n")' 2>/dev/null
         echo ""
     else
-        find ${_dir%/} -type f -name '*.bytes' -printf '%k\n'
-    fi | awk '{ c+=1;s += $1 }; END { print "count: "c " size: "s" kb" }'
+        find ${_dir%/} -type f -name '*.bytes' -printf '%s\n'
+    fi | awk '{ c+=1;s+=$1/1024/1024 }; END { print "{\"count\":"c", \"size\":"s", \"unit\":\"MB\"}" }'
 }
 
 function f_blobs_csv() {
