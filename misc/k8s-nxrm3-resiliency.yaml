@@ -1,0 +1,138 @@
+# https://help.sonatype.com/repomanager3/resiliency-and-high-availability/single-data-center-on-premises-deployment-example-using-kubernetes
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nxrm-deployment
+  namespace: nxrm
+  labels:
+    app: nxrm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nxrm
+  template:
+    metadata:
+      labels:
+        app: nxrm
+    spec:
+      initContainers:
+        - name: chown-nexusdata-owner-to-nexus
+          image: busybox:1.33.1
+          command: ['chown', '-R', '200:200', '/blobs']
+          volumeMounts:
+            - name: nfs-blob-storage
+              mountPath: /blobs
+      containers:
+        - name: nxrm-pod
+          image: sonatype/nexus3:3.33.0
+          securityContext:
+            runAsUser: 200
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8081
+          env:
+            - name: LICENSE_FILE
+              value: /etc/nxrm-license/nxrm-license.lic
+            - name: NEXUS_SECURITY_RANDOMPASSWORD
+              value: "false"
+            - name: NEXUS_SEARCH_INDEX_REBUILD_ON_STARTUP
+              value: "true"
+            - name: INSTALL4J_ADD_VM_PARAMS
+              value: "-Xms2703m -Xmx2703m -XX:MaxDirectMemorySize=2703m \
+          -Dnexus.licenseFile=${LICENSE_FILE} \
+          -Dnexus.datastore.enabled=true \
+          -Djava.util.prefs.userRoot=${NEXUS_DATA}/javaprefs \
+          -Dnexus.datastore.nexus.name=nexus \
+          -Dnexus.datastore.nexus.type=jdbc \
+          -Dnexus.datastore.nexus.jdbcUrl=jdbc:postgresql://postgres_url:5432/${storeName}?user=postgres&password=postgres"
+          volumeMounts:
+            - name: nfs-blob-storage
+              mountPath: /blobs
+            - name: license-volume
+              mountPath: /etc/nxrm-license
+      volumes:
+        - name: nfs-blob-storage
+          persistentVolumeClaim:
+            claimName: nfs-blobstorage-claim
+        - name: license-volume
+          configMap:
+            name: nxrm-license
+---
+kind: PersistentVolume
+metadata:
+  name: nfs-blobstorage-pv
+spec:
+  capacity:
+    storage: <size>
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-blobstorage
+  mountOptions:
+    - hard
+    - nfsvers=4.1
+  nfs:
+    path: <path to mount>
+    server: <server ip address>
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-blobstorage-claim
+  namespace: nxrm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: nfs-blobstorage
+  resources:
+    requests:
+      storage: <size>
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: nxrm
+  name: ingress-nxrm
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: <scheme>
+    alb.ingress.kubernetes.io/subnets: subnet-abc, subnet-xyz
+spec:
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nxrm-service
+                port:
+                  number: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nxrm-service
+  namespace: nxrm
+  labels:
+    app: nxrm
+spec:
+  type: NodePort
+  selector:
+    app: nxrm
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8081
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+configMapGenerator:
+  - name: nxrm-license
+    namespace: nxrm
+    files:
+      - nxrm-license.lic
+resources:
+  - nxrm_deployment.yaml
