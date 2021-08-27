@@ -75,7 +75,7 @@ function f_blobs_csv() {
 #f_upload_dummies "http://localhost:8081/repository/raw-s3-hosted/manyfiles" "1432 10000" 8
 function f_upload_dummies() {
     local __doc__="Upload text files into (raw) hosted repository"
-    local _rep_url="${1:-"http://localhost:8081/repository/raw-hosted/test"}"
+    local _repo_url="${1:-"http://localhost:8081/repository/raw-hosted/test"}"
     local _how_many="${2:-"10"}"
     local _parallel="${3:-"4"}"
     local _file_prefix="${4:-"test_"}"
@@ -88,8 +88,22 @@ function f_upload_dummies() {
     echo "test by f_upload_dummies started at $(date +'%Y-%m-%d %H:%M:%S')" > /tmp/f_upload_dummies.tmp || return $?
     for i in $(eval "${_seq}"); do
       echo "${_file_prefix}${i}${_file_suffix}"
-    done | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w '%{http_code} {}\n' -T /tmp/f_upload_dummies.tmp -L -k "${_rep_url%/}/{}"
+    done | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w '%{http_code} {}\n' -T /tmp/f_upload_dummies.tmp -L -k "${_repo_url%/}/{}"
     # TODO: xargs only stops if exit code is 255
+}
+
+function f_mvn_copy_local() {
+    local __doc__="Copy/upload local maven repository to hosted repository"
+    local _repo_url="${1:-"http://localhost:8081/repository/maven-hosted"}"
+    local _local_dir="${2:-"${HOME%/}/.m2/repository"}"
+    local _filter="${3}"
+    local _parallel="${4:-"4"}"
+    local _usr="${5:-"admin"}"
+    local _pwd="${6:-"admin123"}"
+    # at this moment, limiting to pom, jar and sha1 files only
+    local _find="find \"${_local_dir%/}\" -type f \( -iname \*.pom -o -iname \*.jar -o -iname \*.sha1 \)"
+    [ -n "${_filter}" ] && _find="${_find} -path \"${_filter}\""
+    eval "${_find} -print" | sed -nE 's@.*'${_local_dir%/}'/(.+)$@\1@p' | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w '%{http_code} {}\n' -T ${_local_dir%/}/{} -L -k "${_repo_url%/}/{}"
 }
 
 # NOTE: filter the output before passing function would be faster
