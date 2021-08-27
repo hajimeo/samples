@@ -154,6 +154,11 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="pyv && cd $HOME/IdeaProjects/samples/python/ && python3 ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
+function lns() {
+    [ -L "$2" ] && rm -i "$2"
+    ln -v -s "$(realpath "$1")" "$(realpath "$2")"
+}
+
 # eg: date_calc "17:15:02.123 -262.708 seconds" or " 30 days ago"
 function date_calc() {
     local _d_opt="$1"
