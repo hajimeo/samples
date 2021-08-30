@@ -49,6 +49,7 @@ spec:
       labels:
         app: nxrm3-pg
     spec:
+      terminationGracePeriodSeconds: 120
       # NOTE: Without initContainers, it fails to start on Docker-Desktop
       initContainers:
         - name: my-customizaion
