@@ -352,7 +352,7 @@ public class Main
     // Preparing data (extracting zip if necessary)
     if (!(new File(path)).isDirectory()) {
       try {
-        if (exportPath != null && !extractDir.trim().isEmpty()) {
+        if (extractDir != null && !extractDir.trim().isEmpty()) {
           if (!prepareDir(extractDir, path)) {
             System.exit(1);
           }
