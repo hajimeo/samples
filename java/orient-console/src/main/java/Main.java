@@ -352,7 +352,7 @@ public class Main
     // Preparing data (extracting zip if necessary)
     if (!(new File(path)).isDirectory()) {
       try {
-        if (!extractDir.trim().isEmpty()) {
+        if (exportPath != null && !extractDir.trim().isEmpty()) {
           if (!prepareDir(extractDir, path)) {
             System.exit(1);
           }
@@ -369,7 +369,7 @@ public class Main
       }
       catch (Exception e) {
         log(path + " is not a right archive.");
-        log(e.getMessage());
+        e.printStackTrace();
         delR(tmpDir);
         System.exit(1);
       }
