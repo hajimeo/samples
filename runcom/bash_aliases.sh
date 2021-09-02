@@ -484,27 +484,27 @@ function backupC() {
 
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory'
-    # NOTE: find ${_src%/} does not work without -L, and find ${_src%/}/* is somehow much slow, but then find ${_src%/}/ does not work with -delete
-    find -L ${_src%/} -type d -mtime +14 -name '*_tmp' -delete &
-    find -L ${_src%/} -type f -mtime +14 -name '*.tmp' -delete &
-    find -L ${_src%/} -type f -mtime +60 -name "*.log" -delete &
-    find -L ${_src%/} -type f -mtime +90 -size +128000k -delete &
-    find -L ${_src%/} -type f -mtime +180 -delete &
+    _src="$(realpath "${_src}")"    # because find -L ... -delete does not work
+    find ${_src%/} -type d -mtime +14 -name '*_tmp' -delete &
+    find ${_src%/} -type f -mtime +14 -name '*.tmp' -delete &
+    find ${_src%/} -type f -mtime +60 -name "*.log" -delete &
+    find ${_src%/} -type f -mtime +90 -size +128000k -delete &
+    find ${_src%/} -type f -mtime +180 -delete &
     # NOTE: this find command requires "/*"
     if [ "Darwin" = "$(uname)" ]; then
-        gfind -L ${_src%/}/* -type d -mtime +2 -empty -delete 2>/dev/null &
+        gfind ${_src%/}/* -type d -mtime +2 -empty -delete 2>/dev/null &
     else
-        find -L ${_src%/}/* -type d -mtime +2 -empty -delete &
+        find ${_src%/}/* -type d -mtime +2 -empty -delete &
     fi
     wait
 
     #local _mv="mv --backup=t"
     #[ "Darwin" = "$(uname)" ] && _mv="gmv --backup=t"
-    #find -L ${_src%/} -type f -mtime +360 -size +100k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #find -L ${_src%/} -type f -mtime +270 -size +10240k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #find -L ${_src%/} -type f -mtime +180 -size +1024000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #find -L ${_src%/} -type f -mtime +90  -size +2048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    #find -L ${_src%/} -type f -mtime +45 -size +4048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #find ${_src%/} -type f -mtime +360 -size +100k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #find ${_src%/} -type f -mtime +270 -size +10240k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #find ${_src%/} -type f -mtime +180 -size +1024000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #find ${_src%/} -type f -mtime +90  -size +2048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
+    #find ${_src%/} -type f -mtime +45 -size +4048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     wait
 
     # Sync all files smaller than _size (10MB), means *NO* backup for files over 10MB.
