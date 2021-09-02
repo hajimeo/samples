@@ -20,7 +20,7 @@ function iqCli() {
     local _iq_app_id="${2:-${_IQ_APP_ID:-"sandbox-application"}}"
     local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
     local _iq_url="${4:-${_IQ_URL}}"
-    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.120.0-02"}}"
+    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.122.0-01"}}"
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
     local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}"
