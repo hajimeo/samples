@@ -61,7 +61,7 @@ USAGE EXAMPLES:
     # List all objects which proerties contain 'deleted=true'
     $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -fP "deleted=true" -P -c1 4 -c2 100 > soft_deleted.csv
 
-OPTIONAL SWITCHES:
+ARGUMENTS:
     -p Prefix_str   List objects which key starts with this prefix
     -f Filter_str   List objects which key contains this string (much slower)
     -fP Filter_str  List .properties file (no .bytes files) which contains this string (much slower)
