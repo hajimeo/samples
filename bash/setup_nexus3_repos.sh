@@ -84,7 +84,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 : ${_DOMAIN:="standalone.localdomain"}
 : ${_NEXUS_URL:="http://localhost:8081/"}
 : ${_IQ_URL:="http://dh1.${_DOMAIN}:8070/"}
-: ${_IQ_CLI_VER-"1.120.0-02"}    # If empty, not download CLI jar
+: ${_IQ_CLI_VER-"1.122.0-01"}    # If empty, not download CLI jar
 : ${_DOCKER_NETWORK_NAME:="nexus"}
 : ${_SHARE_DIR:="/var/tmp/share"}
 : ${_IS_NXRM2:="N"}
