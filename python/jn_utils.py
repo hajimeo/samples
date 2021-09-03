@@ -10,6 +10,8 @@ jn_utils is Jupyter Notebook Utility script, which contains functions to convert
 To update this script, execute "ju.update()".
 
 == Pandas/Jupyter tips (which I often forget) ==================================
+To show the elapsed time:
+    %%time
 To show more strings in the truncated rows:
     pd.options.display.max_rows = 1000      (default is 60)
 To show more strings in a column:
@@ -53,7 +55,12 @@ from time import time
 from datetime import datetime
 from dateutil import parser
 
-import pandas as pd
+try:
+    import modin.pandas as pd
+    import pandas
+except ImportError:
+    import pandas as pd
+
 from sqlalchemy import create_engine
 import matplotlib.pyplot as plt
 
@@ -422,7 +429,7 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
                     except:
                         # Ignore any non json strings
                         continue
-                    #__df = pd.DataFrame.from_dict(_js, orient="columns")
+                    # __df = pd.DataFrame.from_dict(_js, orient="columns")
                     __df = pd.json_normalize(j_obj).fillna("")
                     if len(__df) > 0:
                         _dfs.append(__df)
@@ -460,7 +467,8 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
         # Temp workaround: "<table>: Error binding parameter <N> - probably unsupported type."
         # Temp workadound2: if flatten is true, converting to str for all columns...
         _debug("json_cols: %s" % (str(json_cols)))
-        df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, all_str=flatten, name=tablename, max_row_size=int(max_file_size/100))
+        df_tmp_mod = _avoid_unsupported(df=df, json_cols=json_cols, all_str=flatten, name=tablename,
+                                        max_row_size=int(max_file_size / 100))
         if df2table(df=df_tmp_mod, tablename=tablename, conn=conn, chunksize=chunksize, if_exists=if_exists) is True:
             _info("Created table: %s " % (tablename))
             _autocomp_inject(tablename=tablename)
@@ -955,6 +963,58 @@ def query(sql, conn=None, no_history=False, show=False):
     return df
 
 
+def queryV2(select_sql, source=None, no_history=False, show=False):
+    """
+    Call modin.experimental.sql.query (EXPERIMENTAL) with given query, expecting SELECT statement
+    :param sql: SELECT statement only at this moment
+    :param source: CSV or JSON (files can be converted into DataFrame) or DataFrame
+    :param no_history: not saving this query into a history file
+    :param show: True/False or integer to draw HTML (NOTE: False is faster)
+    :return: a DF object or void
+    >>> obj = [{"col1":1, "col2":2}, {"col1":3, "col2":4}]
+    >>> df = pd.DataFrame(obj)
+    >>> queryV2("select * from obj", df)
+    Empty DataFrame
+    Columns: [name]
+    Index: []
+    """
+    #orig_val = os.getenv("USE_MODIN", default=1)
+    # At this moment if import fails, just throw exception
+    #import modin.experimental.sql as mdsql
+    import warnings
+    warnings.filterwarnings('ignore', category=UserWarning)
+    import dfsql.extensions
+
+
+    sql_subbed = re.sub(r'\sfrom\s+[^ ]+', '', select_sql, re.IGNORECASE)
+    if type(source) == type("string"):
+        if source.lower().endswith(".csv"):
+            source = csv2df(source)  # pd.read_csv(source)
+        elif source.lower().endswith(".json"):
+            source = json2df(source)
+    elif type(source) != pandas.core.frame.DataFrame:
+        _err("source is not correct object type.")
+        return
+    # below is basically calling dfsql.sql_query
+    df = source.sql(sql_subbed)
+
+    if no_history is False and df.empty is False:
+        try:
+            _save_query(select_sql)
+        except Exception as e:
+            _err(e)
+    if bool(show):
+        show_num = 1000
+        try:
+            if show is not True:
+                show_num = int(show)
+        except ValueError:
+            pass
+        display(df, tail=show_num)
+        return
+    return df
+
+
 q = query
 
 
@@ -1192,7 +1252,7 @@ def draw(df, width=16, x_col=0, x_colname=None, name=None, desc="", tail=10, is_
         try:
             df[x_colname] = pd.to_datetime(df[x_colname])
         except Exception as e:
-            _err(e) # Write the error but keep processing.
+            _err(e)  # Write the error but keep processing.
     df.plot(figsize=(width, height_inch), x=x_colname, subplots=True, sharex=True, kind=kind)  # , title=name
     if bool(name) is False:
         name = _timestamp(format="%Y%m%d%H%M%S%f")
@@ -1366,7 +1426,7 @@ history = qhistory
 def describe(tablename=None, colname=None, conn=None):
     """
     Describe a table
-    :param tablename: Exact table name. If empty, get table list
+    :param tablename: Exact table name. If empty, get table list (SHOW TABLES)
     :param colname: String used in like for column name
     :param conn: DB connection (cursor) object
     :return: a DF object contains a table information or table list
@@ -1375,6 +1435,7 @@ def describe(tablename=None, colname=None, conn=None):
     Columns: [name, rootpage]
     Index: []
     """
+    # TODO: for Modin SQL, may need to use "ds = DataSource(metadata_dir=metadata_dir);ds.query('SHOW TABLES')"
     global _DB_TYPE
     if _DB_TYPE != 'sqlite':
         # If not sqlite, expecting information_schema is available
@@ -1819,7 +1880,7 @@ def logs2table(filename, tablename=None, conn=None,
     :param max_file_size: To avoid memory issue, setting max file size per file
     :param appending: default is False. If False, use 'DROP TABLE IF EXISTS'
     :param multiprocessing: (Experimental) default is False. If True, use multiple CPUs
-    :return: True if no error, or a tuple contains multiple information for debug
+    :return: True if no error, or DataFrame list
     #>>> (col_names, line_matching) = al._gen_regex_for_request_logs('request.log')
          ju.logs2table('request.log', tablename="t_request", line_beginning="^.", col_names=col_names, line_matching=line_matching)
     #>>> logs2table(filename='nexus.log*', tablename='t_nexus_log',
@@ -1834,7 +1895,7 @@ def logs2table(filename, tablename=None, conn=None,
     """
     global _SIZE_REGEX
     global _TIME_REGEX
-    if conn is None:
+    if bool(tablename) and conn is None:
         conn = connect()
     # NOTE: as python dict does not guarantee the order, col_def_str is using string
     if bool(num_cols) is False:
@@ -1846,144 +1907,89 @@ def logs2table(filename, tablename=None, conn=None,
     if bool(files) is False:
         _debug("No %s. Skipping ..." % (str(filename)))
         return None
-
     if len(files) > max_file_num:
         raise ValueError('Glob: %s returned too many files (%s)' % (filename, str(len(files))))
-    col_def_str = ""
-    if isinstance(col_names, dict):
-        for k, v in col_names.iteritems():
-            if col_def_str != "":
-                col_def_str += ", "
-            col_def_str += "%s %s" % (k, v)
-    else:
-        for v in col_names:
-            if col_def_str != "":
-                col_def_str += ", "
-            # the column name 'jsonstr' is currently not in use.
-            if v == 'jsonstr':
-                col_def_str += "%s json" % (v)
-            elif v == 'size' and size_regex == _SIZE_REGEX:
-                col_def_str += "%s INTEGER" % (v)
-            elif v == 'time' and time_regex == _TIME_REGEX:
-                col_def_str += "%s REAL" % (v)
-            else:
-                col_def_str += "%s TEXT" % (v)
 
-    if bool(tablename) is False:
-        first_filename = os.path.basename(files[0])
-        tablename = _pick_new_key(first_filename, {}, using_1st_char=False, prefix='t_')
-
-    # If not None, create a table
-    if bool(col_def_str):
-        if appending is False:
-            res = execute("DROP TABLE IF EXISTS %s" % (tablename))
+    if bool(conn):
+        col_def_str = ""
+        if isinstance(col_names, dict):
+            for k, v in col_names.iteritems():
+                if col_def_str != "":
+                    col_def_str += ", "
+                col_def_str += "%s %s" % (k, v)
+        else:
+            for v in col_names:
+                if col_def_str != "":
+                    col_def_str += ", "
+                # the column name 'jsonstr' is currently not in use.
+                if v == 'jsonstr':
+                    col_def_str += "%s json" % (v)
+                elif v == 'size' and size_regex == _SIZE_REGEX:
+                    col_def_str += "%s INTEGER" % (v)
+                elif v == 'time' and time_regex == _TIME_REGEX:
+                    col_def_str += "%s REAL" % (v)
+                else:
+                    col_def_str += "%s TEXT" % (v)
+        if bool(tablename) is False:
+            first_filename = os.path.basename(files[0])
+            tablename = _pick_new_key(first_filename, {}, using_1st_char=False, prefix='t_')
+        # If not None, create a table
+        if bool(col_def_str):
+            if appending is False:
+                res = execute("DROP TABLE IF EXISTS %s" % (tablename))
+                if bool(res) is False:
+                    return res
+                _info("DROP-ed TABLE IF EXISTS: %s" % (tablename))
+            res = execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def_str))
             if bool(res) is False:
                 return res
-            _info("DROP-ed TABLE IF EXISTS: %s" % (tablename))
-        res = execute("CREATE TABLE IF NOT EXISTS %s (%s)" % (tablename, col_def_str))
-        if bool(res) is False:
-            return res
 
-    _has_table_created = False
-    if multiprocessing:
-        args_list = []
-        for f in files:
-            if os.stat(f).st_size >= max_file_size:
-                _info("WARN: File %s (%d MB) is too large (max_file_size=%d), so not appending into the args_list." % (
-                    str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
-                continue
+    dfs = []
+    inserted_num = 0
+    args_list = []
+    for f in files:
+        if os.stat(f).st_size >= max_file_size:
+            _info("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (
+                str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
+            continue
+        if multiprocessing:
             # concurrent.futures.ProcessPoolExecutor hangs in Jupyter, so can't use kwargs
             args_list.append(
                 (f, line_beginning, line_matching, size_regex, time_regex, num_cols, True, line_from, line_until))
-        # file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None, replace_comma=False
-        rs = _mexec(_read_file_and_search, args_list)
-        for tuples in rs:
-            if bool(tuples) is False or len(tuples) == 0:
-                _info("WARN: _mexec returned empty tuple ...")
-                continue
-            res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
-            if bool(res) is False:  # if fails once, stop
-                _err("_insert2table failed to insert %d ..." % (len(tuples)))
-                return res
-            _has_table_created = True
-    else:
-        for f in files:
-            if os.stat(f).st_size >= max_file_size:
-                _info("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (
-                    str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
-                continue
+            # file_path, line_beginning, line_matching, size_regex=None, time_regex=None, num_cols=None, replace_comma=False
+        else:
             tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
                                            size_regex=size_regex, time_regex=time_regex, num_cols=num_cols,
                                            replace_comma=True, line_from=line_from, line_until=line_until)
-            if bool(tuples):
-                _debug(("tuples len:%d" % len(tuples)))
-            if len(tuples) > 0:
-                res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
-                if bool(res) is False:  # if fails once, stop
-                    return res
-                _has_table_created = True
-    if _has_table_created:
-        _info("Created table: %s" % (tablename))
-        _autocomp_inject(tablename=tablename)
-    return _has_table_created
-
-
-def logs2dfs(filename, col_names=['datetime', 'loglevel', 'thread', 'ids', 'size', 'time', 'message'],
-             num_fields=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
-             line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[0-9.,]*) (.+?) \[(.+?)\] (\{.*?\}) (.+)",
-             size_regex=_SIZE_REGEX, time_regex=_TIME_REGEX,
-             max_file_num=10, multiprocessing=False):
-    """
-    Convert multiple files to *multiple* DataFrame objects
-    :param filename: A file name or *simple* regex used in glob to select files.
-    :param col_names: Column definition list or dict (column_name1 data_type, column_name2 data_type, ...)
-    :param num_fields: Number of columns in the table. Optional if col_def_str is given.
-    :param line_beginning: To detect the beginning of the log entry (normally ^\d\d\d\d-\d\d-\d\d)
-    :param line_matching: A group matching regex to separate one log lines into columns
-    :param size_regex: (optional) size-like regex to populate 'size' column
-    :param time_regex: (optional) time/duration like regex to populate 'time' column
-    :param max_file_num: To avoid memory issue, setting max files to import
-    :param multiprocessing: (Experimental) If True, use multiple CPUs
-    :return: A concatenated DF object
-    #>>> df = logs2dfs(filename="debug.2018-08-28.11.log.gz")
-    #>>> df2 = df[df.loglevel=='DEBUG'].head(10)
-    #>>> bool(df2)
-    #True
-    >>> pass    # TODO: implement test
-    """
-    # NOTE: as python dict does not guarantee the order, col_def_str is using string
-    if bool(num_fields) is False:
-        num_fields = len(col_names)
-    files = _globr(filename)
-
-    if bool(files) is False:
-        return False
-
-    if len(files) > max_file_num:
-        raise ValueError('Glob: %s returned too many files (%s)' % (filename, str(len(files))))
-
-    dfs = []
+            inserted_num += _log2tables_inner(tuples, conn, tablename, col_names, dfs)
     if multiprocessing:
-        args_list = []
-        for f in files:
-            args_list.append((f, line_beginning, line_matching, size_regex, time_regex, num_fields, True))
-        # from concurrent.futures import ProcessPoolExecutor hangs in Jupyter, so can't use kwargs
         rs = _mexec(_read_file_and_search, args_list)
         for tuples in rs:
-            if len(tuples) > 0:
-                dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
-    else:
-        for f in files:
-            _info("Processing %s (%d KB) ..." % (str(f), os.stat(f).st_size / 1024))
-            tuples = _read_file_and_search(file_path=f, line_beginning=line_beginning, line_matching=line_matching,
-                                           size_regex=size_regex, time_regex=time_regex, num_cols=num_fields,
-                                           replace_comma=True)
-            if len(tuples) > 0:
-                dfs += [pd.DataFrame.from_records(tuples, columns=col_names)]
-    _info("Completed.")
+            inserted_num += _log2tables_inner(tuples, conn, tablename, col_names, dfs)
+
+    if bool(conn):
+        if inserted_num > 0:
+            _info("Created table: %s" % (tablename))
+            _autocomp_inject(tablename=tablename)
+        return bool(inserted_num)
     if bool(dfs) is False:
         return None
+    _info("Completed.")
     return pd.concat(dfs, sort=False)
+
+
+def _log2tables_inner(tuples, conn, tablename, col_names, dfs):
+    if bool(tuples) is False or len(tuples) == 0:
+        _info("WARN: got empty tuple. Ignoring ...")
+        return 0
+    _debug(("tuples len:%d" % len(tuples)))
+    if bool(conn):
+        res = _insert2table(conn=conn, tablename=tablename, tpls=tuples)
+        if bool(res):  # TODO: if fails once, should stop?
+            return 1
+    else:
+        dfs.append(pd.DataFrame.from_records(tuples, columns=col_names))
+    return 0
 
 
 def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksize=1000, if_exists='replace',
