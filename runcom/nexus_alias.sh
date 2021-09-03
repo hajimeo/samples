@@ -23,7 +23,6 @@ function iqCli() {
     local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.122.0-01"}}"
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
-    local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}"
 
     if [ -z "${_iq_url}" ] && [ -z "${_IQ_URL}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
         _iq_url="http://localhost:8070/"
@@ -40,7 +39,8 @@ function iqCli() {
         [ ! -d "${_cli_dir}" ] && mkdir -p "${_cli_dir}"
         curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
     fi
-    local _cmd="java -Djava.io.tmpdir=\"${_iq_tmp}\" -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r \"${_iq_tmp%/}/iq_result_$(date +'%Y%m%d%H%M%S').json\" -X ${_path}"
+    # Mac uses "TMPDIR" (but can't change) like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/
+    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r "$(realpath "${TMPDIR:-"/tmp"}/iq_result_$(date +'%Y%m%d%H%M%S').json")" -X ${_path}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
