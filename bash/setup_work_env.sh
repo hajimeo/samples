@@ -247,6 +247,7 @@ function f_setup_python() {
     # TODO: Autocomplete doesn't work with Lab and NB if different version is used. @see https://github.com/ipython/ipython/issues/11530
     #       However, using 7.1.1 with python 3.8 may cause TypeError: required field "type_ignores" missing from Module
     python3.7 -m pip install -U ${_i_opt} ipython==7.1.1 || return $?  #prettytable==0.7.2
+    python3.7 -m pip install -U ${_i_opt} modin[ray] dfsql --log /tmp/pip.log    # it's OK if fails
     python3.7 -m pip install -U ${_i_opt} jupyter jupyterlab pandas --log /tmp/pip.log || return $?   #ipython
     # Reinstall: python3.7 -m pip uninstall -y jupyterlab && python3.7 -m pip install jupyterlab
 
