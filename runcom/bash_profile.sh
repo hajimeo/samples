@@ -10,6 +10,17 @@ export HISTTIMEFORMAT="%Y-%m-%d %T "
 [ -s $HOME/.bash_aliases ] && source $HOME/.bash_aliases
 #[ -s $HOME/IdeaProjects/samples/runcom/bash_aliases.sh ] && source $HOME/IdeaProjects/samples/runcom/bash_aliases.sh
 
+# @see: https://threkk.medium.com/how-to-use-bookmarks-in-bash-zsh-6b8074e40774
+#mkdir $HOME/backup/cdpath; ln -s $HOME/backup/cdpath $HOME/.cdpath
+if [ -d "$HOME/.cdpath" ]; then
+    export CDPATH=".:$HOME/.cdpath:/"
+    alias goto="cd -P"
+    #bookmark $HOME/Documents/cases
+    function bookmark() {
+        ln -v -s "$(realpath "$1")" "$HOME/.cdpath/$(basename "$1")"
+    }
+fi
+
 # Go/Golang related
 if which go &>/dev/null; then
     [ -z "${GOROOT}" ] && export GOROOT=/usr/local/opt/go/libexec
