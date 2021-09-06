@@ -55,11 +55,9 @@ from time import time
 from datetime import datetime
 from dateutil import parser
 
-try:
-    import modin.pandas as pd
-    import pandas
-except ImportError:
-    import pandas as pd
+# At this moment, many pandas functions do not work with modin.
+#import modin.pandas as pd
+import pandas as pd
 
 from sqlalchemy import create_engine
 import matplotlib.pyplot as plt
@@ -963,44 +961,50 @@ def query(sql, conn=None, no_history=False, show=False):
     return df
 
 
-def queryV2(select_sql, source=None, no_history=False, show=False):
+def dfQuery(sql, source=None, no_history=True, show=False, **kwargs):
     """
-    Call modin.experimental.sql.query (EXPERIMENTAL) with given query, expecting SELECT statement
+    Call dfsql.sql_query with modin (EXPERIMENTAL) for the given source (DataFrame) object
+    Not so fast comparing with SQLite. probably may not work with small data.
+    @see: https://github.com/mindsdb/dfsql/blob/stable/testdrive.ipynb
     :param sql: SELECT statement only at this moment
     :param source: CSV or JSON (files can be converted into DataFrame) or DataFrame
     :param no_history: not saving this query into a history file
     :param show: True/False or integer to draw HTML (NOTE: False is faster)
     :return: a DF object or void
-    >>> obj = [{"col1":1, "col2":2}, {"col1":3, "col2":4}]
-    >>> df = pd.DataFrame(obj)
-    >>> queryV2("select * from obj", df)
-    Empty DataFrame
-    Columns: [name]
-    Index: []
+    >>> src = pd.DataFrame([{"col1":1, "col2":2}, {"col1":3, "col2":4}])
+    >>> df = dfQuery("select * from test_tbl", test_tbl=src)
+    >>> len(df)
+    2
     """
-    #orig_val = os.getenv("USE_MODIN", default=1)
-    # At this moment if import fails, just throw exception
-    #import modin.experimental.sql as mdsql
-    import warnings
+    import warnings # TODO: not ignoring warnings?
     warnings.filterwarnings('ignore', category=UserWarning)
+
+    orig_val = os.getenv("USE_MODIN", default="")
+    os.environ["USE_MODIN"] = "True"
+    # At this moment if import fails, just throw exception
+    import modin.pandas as pd
+    #import modin.experimental.sql as mdsql
     import dfsql.extensions
+    from dfsql import sql_query
 
-
-    sql_subbed = re.sub(r'\sfrom\s+[^ ]+', '', select_sql, re.IGNORECASE)
-    if type(source) == type("string"):
-        if source.lower().endswith(".csv"):
-            source = csv2df(source)  # pd.read_csv(source)
-        elif source.lower().endswith(".json"):
-            source = json2df(source)
-    elif type(source) != pandas.core.frame.DataFrame:
-        _err("source is not correct object type.")
-        return
+    if bool(source):
+        if type(source) == type("string"):
+            if source.lower().endswith(".csv"):
+                source = csv2df(source)  # pd.read_csv(source)
+            elif source.lower().endswith(".json"):
+                source = json2df(source)
+        elif type(source) != pd.DataFrame:
+            _err("source is not DataFrame.")
+            return
     # below is basically calling dfsql.sql_query
-    df = source.sql(sql_subbed)
+    df = sql_query(sql, **kwargs)
+    os.environ["USE_MODIN"] = orig_val
+    if bool(orig_val) is False:
+        import pandas as pd
 
     if no_history is False and df.empty is False:
         try:
-            _save_query(select_sql)
+            _save_query(sql)
         except Exception as e:
             _err(e)
     if bool(show):
@@ -1051,7 +1055,7 @@ def _save_query(sql, limit=1000):
     sql = sql.strip().rstrip(';')
     df_new = pd.DataFrame([[_timestamp(format="%Y%m%d%H%M%S"), sql]], columns=["datetime", "query"])
     df_hist = csv2df(query_history_csv, header=None)
-    if df_hist is False or df_hist is None:
+    if df_hist is False or df_hist.empty:
         df = df_new
     else:
         # If not empty (= same query exists), drop/remove old dupe row(s), so that time will be new.
