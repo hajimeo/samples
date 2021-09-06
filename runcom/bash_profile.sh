@@ -21,6 +21,7 @@ if [ -d "$HOME/.cdpath" ]; then
     }
 fi
 
+
 # Go/Golang related
 if which go &>/dev/null; then
     [ -z "${GOROOT}" ] && export GOROOT=/usr/local/opt/go/libexec
@@ -46,6 +47,7 @@ if [ -s $HOME/.rgrc ]; then
     [ -z "${RIPGREP_CONFIG_PATH}" ] && export RIPGREP_CONFIG_PATH=$HOME/.rgrc
 fi
 
+# Mac specific (so far python and Java)
 if [ "$(uname)" = "Darwin" ]; then
     # Some older Mac, pip3 was not in the path, and below was the workaround
     #if [ -d /usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`*/Frameworks/Python.framework/Versions/3.7/bin ]; then
@@ -71,15 +73,18 @@ if [ "$(uname)" = "Darwin" ]; then
             export PYTHONPATH=$HOME/IdeaProjects/samples/python:$PYTHONPATH
         fi
     fi
-    # java related
+
+    # Java related
     if [ -f /usr/libexec/java_home ]; then
         #[ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 11 2>/dev/null`
         [ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8 2>/dev/null`
         _JAVA_HOME_11="$(/usr/libexec/java_home -v 11)"
         [ -n "${_JAVA_HOME_11}" ] && alias jshell="$(/usr/libexec/java_home -v 11)/bin/jshell"
     fi
-fi
 
+    # Docker related
+    docker-machine status default 2>/dev/null | grep -q "Running" && eval "$(docker-machine env default)"
+fi
 
 # The next line updates PATH for the Google Cloud SDK.
 if [ -f '/Users/hosako/Downloads/google-cloud-sdk/path.bash.inc' ]; then . '/Users/hosako/Downloads/google-cloud-sdk/path.bash.inc'; fi
