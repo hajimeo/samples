@@ -83,7 +83,10 @@ if [ "$(uname)" = "Darwin" ]; then
     fi
 
     # Docker related
-    docker-machine status default 2>/dev/null | grep -q "Running" && eval "$(docker-machine env default)"
+    if type docker-machine &>/dev/null; then
+        alias dm-start='docker-machine start default && eval "$(docker-machine env default)"'
+        [ -z "${DOCKER_HOST}" ] && docker-machine status default 2>/dev/null | grep -q "Running" && eval "$(docker-machine env default)"
+    fi
 fi
 
 # The next line updates PATH for the Google Cloud SDK.
