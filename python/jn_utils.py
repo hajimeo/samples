@@ -56,7 +56,7 @@ from datetime import datetime
 from dateutil import parser
 
 # At this moment, many pandas functions do not work with modin.
-#import modin.pandas as pd
+# import modin.pandas as pd
 import pandas as pd
 
 from sqlalchemy import create_engine
@@ -321,7 +321,7 @@ def _debug(message, dbg=False):
 def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunksize=1000,
                json_cols=[], flatten=None, useRegex=False, max_file_size=0):
     """
-    Find json files from current path and load as pandas dataframes object
+    Find json files from current path and load into Database or pandas dataframes object
     :param src: source/importing directory path
     :param conn: If connection object is given, convert JSON to table
     :param include_ptn: Regex string to include some file
@@ -345,12 +345,15 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     files = _globr(ptn=include_ptn, src=src, useRegex=useRegex, max_size=max_file_size)
     for f in files:
         f_name, f_ext = os.path.splitext(os.path.basename(f))
-        if ex is not None and ex.search(f_name):
+        if ex is not None and ex.search(f):
             _info("Excluding %s as per exclude_ptn (%d KB)..." % (f_name, _get_filesize(f) / 1024))
             continue
         new_name = _pick_new_key(f_name, names_dict, prefix='t_')
         names_dict[new_name] = f
-        dfs[new_name] = json2df(filename=f, conn=conn, tablename=new_name, chunksize=chunksize, json_cols=json_cols,
+        tablename = new_name
+        if bool(conn) is False:
+            tablename = None
+        dfs[new_name] = json2df(filename=f, conn=conn, tablename=tablename, chunksize=chunksize, json_cols=json_cols,
                                 flatten=flatten)
     if bool(conn):
         del (names_dict)
@@ -401,7 +404,7 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
     for file_path in files:
         fs = _get_filesize(file_path)
         if fs >= max_file_size:
-            _info("WARN: File %s (%d MB) is too large (max_file_size=%d)." % (
+            _info("WARN: File %s (%d MB) is too large (max_file_size=%d). Use 'line_from'." % (
                 file_path, int(fs / 1024 / 1024), max_file_size))
             continue
         if fs < 32:
@@ -976,14 +979,14 @@ def dfQuery(sql, source=None, no_history=True, show=False, **kwargs):
     >>> len(df)
     2
     """
-    import warnings # TODO: not ignoring warnings?
+    import warnings  # TODO: not ignoring warnings?
     warnings.filterwarnings('ignore', category=UserWarning)
 
     use_modin = os.getenv("USE_MODIN", default="")
     if use_modin.lower() in ['true', '1']:
         try:
             import modin.pandas as pd
-            #import modin.experimental.sql as mdsql
+            # import modin.experimental.sql as mdsql
         except ImportError:
             _err("Failed to import modin.pandas. Using normal pandas")
             use_modin = 'False'
@@ -1773,6 +1776,7 @@ def _linecount_wc(filepath):
     return int(os.popen('wc -l %s' % (filepath)).read().split()[0])
 
 
+# Dirty function which uses 'rg' to get the line number
 def _linenumber(filepath, search_regex, with_rg=False):
     if bool(filepath) is False or os.path.isfile(filepath) is False:
         return False
@@ -1956,7 +1960,7 @@ def logs2table(filename, tablename=None, conn=None,
     args_list = []
     for f in files:
         if os.stat(f).st_size >= max_file_size:
-            _info("WARN: File %s (%d MB) is too large (max_file_size=%d)" % (
+            _info("WARN: File %s (%d MB) is too large (max_file_size=%d). Use 'line_from'" % (
                 str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
             continue
         if multiprocessing:
@@ -2028,9 +2032,12 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
         if os.stat(f).st_size == 0:
             continue
         f_name, f_ext = os.path.splitext(os.path.basename(f))
-        tablename = _pick_new_key(f_name, names_dict, prefix='t_')
-        names_dict[tablename] = f
-        dfs[tablename] = csv2df(filename=f, conn=conn, tablename=tablename, chunksize=chunksize, if_exists=if_exists)
+        new_name = _pick_new_key(f_name, names_dict, prefix='t_')
+        tablename = new_name
+        if bool(conn) is False:
+            tablename = None
+        names_dict[new_name] = f
+        dfs[new_name] = csv2df(filename=f, conn=conn, tablename=tablename, chunksize=chunksize, if_exists=if_exists)
     if bool(conn):
         del (names_dict)
         del (dfs)
