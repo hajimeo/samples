@@ -979,11 +979,15 @@ def dfQuery(sql, source=None, no_history=True, show=False, **kwargs):
     import warnings # TODO: not ignoring warnings?
     warnings.filterwarnings('ignore', category=UserWarning)
 
-    orig_val = os.getenv("USE_MODIN", default="")
-    os.environ["USE_MODIN"] = "True"
-    # At this moment if import fails, just throw exception
-    import modin.pandas as pd
-    #import modin.experimental.sql as mdsql
+    use_modin = os.getenv("USE_MODIN", default="")
+    if use_modin.lower() in ['true', '1']:
+        try:
+            import modin.pandas as pd
+            #import modin.experimental.sql as mdsql
+        except ImportError:
+            _err("Failed to import modin.pandas. Using normal pandas")
+            use_modin = 'False'
+            pass
     import dfsql.extensions
     from dfsql import sql_query
 
@@ -998,8 +1002,7 @@ def dfQuery(sql, source=None, no_history=True, show=False, **kwargs):
             return
     # below is basically calling dfsql.sql_query
     df = sql_query(sql, **kwargs)
-    os.environ["USE_MODIN"] = orig_val
-    if bool(orig_val) is False:
+    if use_modin.lower() in ['true', '1']:
         import pandas as pd
 
     if no_history is False and df.empty is False:
