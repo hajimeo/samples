@@ -2,22 +2,23 @@
 #   This script uses the node's hostPath for sharing blobs, instead of the recommended NFS.
 #
 # PREPARATION:
-#  - On K8s node: mkdir -m 777 ${_SHARE_DIR%/}/${_ID}
-#  - Also, copy the 'sonatype-license.lic' into ${_SHARE_DIR%/}, with the read permission.
-#  - On PostgreSQL server: . ./utils.sh && _postgresql_create_dbuser "${_ID}"
-#  - _DNS is my hack, and usually wouldn't need to use this.
+#  - On K8s node: mkdir -m 777 ${_SHARE_DIR%/}/${_ID}, which will be used for blob stores.
+#  - Set up the license file from one of the following ways:
+#     a) Copy the 'sonatype-license.lic' into ${_SHARE_DIR%/} and specify '-Dnexus.licenseFile='
+#     b) kubectl -n "sonatype" create configmap sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
+#     c) (RECOMMENDED) kubectl -n "sonatype" create secret generic sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
+#  - On PostgreSQL server: source ./utils.sh && _postgresql_create_dbuser "${_ID}"
+#  - Configure Ingress
 #
-# kubectl create namespace "sonatype"
-# export _ID="nxrm3pg" _DNS="192.168.52.31" _SHARE_DIR="/var/tmp/share" # NOTE: can't use "-" for _DB_USER
-# export _TAG="3.34.0" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
-# eval 'echo \"\\$\\(cat ./k8s-nxrm3-pg.yaml\\)\"' > /tmp/${_ID}.yaml # Replace single quotes with double quotes and remove \\
-# kubectl apply -n "sonatype" -f /tmp/${_ID}.yaml
-#
-# POST DEPLOY:
-#   Do not forget to configure Ingress.
-#   To test:
-#   To recreate, 'kubectl delete -n sonatype -f /tmp/k8s-nxrm3-pg.yaml',
-#     and etc/fabric/nexus-store.properties if JDBC setting was changed.
+# COMMAND EXAMPLE:
+#   kubectl create namespace "sonatype"
+#   # NOTE: _DNS is my hack and usually don't need to use this. _DB_USER can't use '-'.
+#   export _ID="nxrm3pg" _DNS="192.168.52.31" _SHARE_DIR="/var/tmp/share"
+#   export _TAG="3.34.0" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
+#   eval 'echo \"\\$\\(cat ./k8s-nxrm3-pg.yaml\\)\"' > /tmp/${_ID}.yaml # Replace single quotes with double quotes and remove \\
+#   # To recreate (remove /nexus-data/etc/fabric/nexus-store.properties if JDBC setting was changed)
+#   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml
+#   kubectl -n "sonatype" apply -f /tmp/${_ID}.yaml
 #
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -40,6 +41,7 @@ metadata:
   labels:
     app: nxrm3-pg
 spec:
+  minReadySeconds: 180
   replicas: 1
   selector:
     matchLabels:
@@ -50,28 +52,28 @@ spec:
         app: nxrm3-pg
     spec:
       terminationGracePeriodSeconds: 120
+      dnsPolicy: Default
       # NOTE: Without initContainers, it fails to start on Docker-Desktop
       initContainers:
         - name: my-customizaion
           env:
             - name: BLOBS_PATH
-              value: /var/tmp/share/sonatype/${_ID}/blobs
+              value: ${_SHARE_DIR%/}/sonatype/${_ID}/blobs
             - name: NAMESERVER
               value: ${_DNS:-127.0.0.1}
           image: busybox:1.33.1
           #[ -d /nexus-data/blobs ] && [ ! -L /nexus-data/blobs ] && mv -v /nexus-data/blobs /nexus-data/blobs_orig;
           # Below echo nameserver ... is my personal hack as i do not want to use coreDNS
-          command: ['sh', '-c', 'echo nameserver \$NAMESERVER > /etc/resolv.conf;mkdir -p -m 777 -v \$BLOBS_PATH;[ ! -L /nexus-data/blobs ] && ln -v -s \$BLOBS_PATH /nexus-data/blobs;chown -v -R 1000:1000 /nexus-data;']
+          command: ['sh', '-c', 'echo nameserver \$NAMESERVER > /etc/resolv.conf;mkdir -p -m 777 -v \$BLOBS_PATH;[ ! -L /nexus-data/blobs ] && ln -v -s \$BLOBS_PATH /nexus-data/blobs;chown -v -R 200:200 /nexus-data;']
           volumeMounts:
             - name: nexus-data-volume
               mountPath: /nexus-data
             - name: nexus-share-volume
-              mountPath: /var/tmp/share
+              mountPath: ${_SHARE_DIR%/}
       containers:
         - name: nxrm3-pg-pod
           securityContext:
-            # TODO: should I use 200?
-            runAsUser: 1000
+            runAsUser: 200
           image: sonatype/nexus3:${_TAG:-latest}
           imagePullPolicy: IfNotPresent
           ports:
@@ -83,7 +85,7 @@ spec:
               # No schema specified, so will be public.
               value: '-Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g \
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
-                -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic \
+                -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
                 -Dnexus.datastore.enabled=true \
                 -Dnexus.datastore.nexus.name=nexus \
                 -Dnexus.datastore.nexus.type=jdbc \
@@ -92,17 +94,24 @@ spec:
                 -Dnexus.datastore.nexus.password=${_DB_PWD} \
                 -Dnexus.datastore.nexus.maximumPoolSize=10'
           volumeMounts:
+            - name: sonatype-license-volume
+              mountPath: /etc/sonatype
+              readOnly: true
             - name: nexus-data-volume
               mountPath: /nexus-data
             - name: nexus-share-volume
-              mountPath: /var/tmp/share
+              mountPath: ${_SHARE_DIR%/}
       volumes:
+        #kubectl -n sonatype create secret generic sonatype-license --from-file /path/to/licenseFile
+        - name: sonatype-license-volume
+          secret:
+            secretName: sonatype-license
         - name: nexus-data-volume
           persistentVolumeClaim:
             claimName: nxrm3-pg-data-pvc
         - name: nexus-share-volume
           hostPath:
-            path: ${_SHARE_DIR}
+            path: ${_SHARE_DIR%/}
             type: DirectoryOrCreate
 ---
 apiVersion: v1
