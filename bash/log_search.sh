@@ -921,10 +921,9 @@ function f_threads() {
     #awk 'FNR == 2' ${_save_dir%/}/*.out | sort | uniq -c | sort -r | head -n 20
     #echo " "
     echo "## Counting 'waiting to lock|waiting on|waiting to lock' etc. basically hung processes (excluding smaller than 1k threads, 'parking to wait for' and 'None', and top 20)"
-    # Could not remember why I decided to check 'parking to wait for'.
     rg '^\s+\- [^<]' --no-filename `find ${_save_dir%/} -type f -size +1k` | rg -v '(- locked|- None|parking to wait for)' | sort | uniq -c | sort -nr | tee ${_tmp_dir%/}/f_threads_$$_waiting_counts.out | head -n 20
     echo " "
-    echo "## Checking 'parking to wait for' qtp threads, because it may indicate the pool exhaustion issue (eg:NEXUS-17896) (excluding smaller than 1k threads)"
+    echo "## Checking 'parking to wait for' qtp threads, because it may indicate the pool exhaustion issue (eg:NEXUS-17896 / NEXUS-10372) (excluding smaller than 1k threads)"
     rg '(parking to wait for)' -l `find ${_save_dir%/} -type f -size +1k` | rg '.*/(qtp[^/]+)$' -o -r '$1' | wc -l
     echo " "
     # At least more than 10 waiting:
@@ -988,7 +987,8 @@ function f_request2csv() {
     local __doc__="Convert a jetty request.log to a csv file"
     local _glob="${1:-"request.log"}"
     local _out_file="$2"
-    local _pattern_str="$3"
+    local _filter="${3}"    # eg "\[\d\d/.../\d\d\d\d:0[789]"
+    local _pattern_str="$4"
 
     local _g_opt="-g"
     [ -s "${_glob}" ] && _g_opt=""
@@ -1030,9 +1030,12 @@ function f_request2csv() {
     for _i in `seq 2 ${_num}`; do
         _pattern_out="${_pattern_out},\"\$${_i}\""
     done
-    rg --no-filename -N -z \
-        "${_pattern}" \
-        -o -r "${_pattern_out}" ${_g_opt} "${_glob}" >> ${_out_file}
+    if [ -n "${_filter}" ]; then
+        # TODO: this would be slower than single 'rg'
+        rg --no-filename -N -z "${_filter}" ${_g_opt} "${_glob}" | rg "${_pattern}" -o -r "${_pattern_out}"
+    else
+        rg --no-filename -N -z "${_pattern}" -o -r "${_pattern_out}" ${_g_opt} "${_glob}"
+    fi >> ${_out_file}
 }
 
 #f_log2csv "(Starting|Finished) upload to key (.+) in bucket" nexus.log ",\"\$6\",\"\$7\"" ",start_end,key" > ./s3_upload.csv
@@ -1306,14 +1309,14 @@ function _find_and_cat() {
     local _name="$1"
     local _find_all="$2"
     local _max_depth="${3:-"5"}"
-    # Accept not only file name but also /<dir>/<filename>
+    local _result=1
+    # Accept not only file name but also /<dir>/<filename> so that using grep
     for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
-        if [ -n "${_f}" ]; then
-            cat "${_f}"
-            [[ "${_find_all}" =~ ^(y|Y) ]] || break
-            echo ''
-        fi
+        cat "${_f}" && _result=0
+        [[ "${_find_all}" =~ ^(y|Y) ]] || break
+        echo ''
     done
+    return ${_result}
 }
 
 function _replace_number() {
