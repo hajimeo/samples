@@ -172,8 +172,12 @@ if __name__ == '__main__':
     _d = get_json(json_str=_in, search_props=search_props, key_name=key_name, rtn_attrs=rtn_attrs, find_all=find_all)
     #_debug("len(_d) %s " % (len(_d)))
 
+    if _d is None:
+        sys.exit(1)
     if bool(_no_pprint):
         if type(_d) == list:
+            # removing empty list just in case
+            _d = list(filter(None, _d))
             print('[')
             for _i, _e in enumerate(_d):
                 if len(_d) == (_i + 1):
