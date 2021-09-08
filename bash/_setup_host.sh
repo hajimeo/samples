@@ -574,6 +574,10 @@ function f_apache_proxy() {
     fi
     echo "
     <Directory ${_proxy_dir}>
+        Options +Indexes +FollowSymLinks -SymLinksIfOwnerMatch
+        AllowOverride None
+        Order allow,deny
+        Allow from all
         AuthType Basic
         AuthName \"Basic Auth test\"
         AuthUserFile /etc/apache2/passwd-nospecial
