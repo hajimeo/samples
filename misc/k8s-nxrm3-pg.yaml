@@ -1,5 +1,5 @@
 # NOTE:
-#   This script uses the node's hostPath for sharing blobs, instead of the reocmmended NFS.
+#   This script uses the node's hostPath for sharing blobs, instead of the recommended NFS.
 #
 # PREPARATION:
 #  - On K8s node: mkdir -m 777 ${_SHARE_DIR%/}/${_ID}
@@ -9,7 +9,7 @@
 #
 # kubectl create namespace "sonatype"
 # export _ID="nxrm3pg" _DNS="192.168.52.31" _SHARE_DIR="/var/tmp/share" # NOTE: can't use "-" for _DB_USER
-# export _TAG="3.33.1" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
+# export _TAG="3.34.0" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
 # eval 'echo \"\\$\\(cat ./k8s-nxrm3-pg.yaml\\)\"' > /tmp/${_ID}.yaml # Replace single quotes with double quotes and remove \\
 # kubectl apply -n "sonatype" -f /tmp/${_ID}.yaml
 #
@@ -81,7 +81,7 @@ spec:
               value: 'false'
             - name: INSTALL4J_ADD_VM_PARAMS
               # No schema specified, so will be public.
-              value: '-Xms2703m -Xmx2703m -XX:MaxDirectMemorySize=2703m \
+              value: '-Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g \
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                 -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic \
                 -Dnexus.datastore.enabled=true \
