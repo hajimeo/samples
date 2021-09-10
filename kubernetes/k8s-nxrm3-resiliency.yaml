@@ -1,4 +1,35 @@
 # https://help.sonatype.com/repomanager3/resiliency-and-high-availability/single-data-center-on-premises-deployment-example-using-kubernetes
+kind: PersistentVolume
+metadata:
+  name: nfs-blobstorage-pv
+spec:
+  capacity:
+    storage: <size>
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: nfs-blobstorage
+  mountOptions:
+    - hard
+    - nfsvers=4.1
+  nfs:
+    path: <path to mount>
+    server: <server ip address>
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-blobstorage-claim
+  namespace: nxrm
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: nfs-blobstorage
+  resources:
+    requests:
+      storage: <size>
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -58,37 +89,6 @@ spec:
         - name: license-volume
           configMap:
             name: nxrm-license
----
-kind: PersistentVolume
-metadata:
-  name: nfs-blobstorage-pv
-spec:
-  capacity:
-    storage: <size>
-  volumeMode: Filesystem
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: nfs-blobstorage
-  mountOptions:
-    - hard
-    - nfsvers=4.1
-  nfs:
-    path: <path to mount>
-    server: <server ip address>
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: nfs-blobstorage-claim
-  namespace: nxrm
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: nfs-blobstorage
-  resources:
-    requests:
-      storage: <size>
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
