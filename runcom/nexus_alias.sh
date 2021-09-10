@@ -39,7 +39,7 @@ function iqCli() {
         [ ! -d "${_cli_dir}" ] && mkdir -p "${_cli_dir}"
         curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
     fi
-    # Mac uses "TMPDIR" (but can't change) like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/
+    # Mac uses "TMPDIR" (but can't change) like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
     local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r "$(realpath "${TMPDIR:-"/tmp"}/iq_result_$(date +'%Y%m%d%H%M%S').json")" -X ${_path}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
@@ -206,7 +206,8 @@ function iqDocker() {
     echo "NOTE: Replacing /opt/sonatype/nexus-iq-server/start.sh to add trap SIGTERM (used from next restart though)"
     # Not doing at this moment as newer version has the fix.
     if ! docker cp ${_name}:/opt/sonatype/nexus-iq-server/start.sh - | grep -qwa TERM; then
-        cat << EOF > /tmp/start.sh
+        local _tmpfile=$(mktemp)
+        cat << EOF > ${_tmpfile}
 _term() {
   echo "Received signal: SIGTERM"
   kill -TERM "\$(cat /sonatype-work/lock | cut -d"@" -f1)"
@@ -216,7 +217,7 @@ trap _term SIGTERM
 /usr/bin/java ${JAVA_OPTS} -jar nexus-iq-server-*.jar server /etc/nexus-iq-server/config.yml &
 wait
 EOF
-        docker cp /tmp/start.sh ${_name}:/opt/sonatype/nexus-iq-server/start.sh
+        docker cp ${_tmpfile} ${_name}:/opt/sonatype/nexus-iq-server/start.sh
     fi
 }
 
@@ -280,7 +281,7 @@ done
 EOF
 function mvn-deploy() {
     local __doc__="Wrapper of mvn clean package deploy"
-    local _deploy_repo="${1}"
+    local _deploy_repo="${1:-"http://dh1.standalone.localdomain:8081/repository/maven-hosted/"}"
     local _remote_repo="${2}"
     local _local_repo="${3}"
     local _server_id="${4:-"nexus"}"
