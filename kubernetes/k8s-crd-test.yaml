@@ -1,0 +1,38 @@
+#https://atmarkit.itmedia.co.jp/ait/articles/2109/10/news013.html#utm_medium=email&utm_source=ait-sinchaku&utm_campaign=20210910
+# To check/test: kubectl get fcrd myfirstcr -o jsonpath='{.spec.message}'
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: firstcrds.stable.example.com
+spec:
+  # stable.example.comというapi groupの中に作成
+  group: stable.example.com
+  scope: Namespaced
+  names:
+    # FirstCrdという名前のKindを定義
+    kind: FirstCrd
+    plural: firstcrds
+    singular: firstcrd
+    shortNames:
+      - fcrd
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                # string型のmessageというspec Propertyを定義
+                message:
+                  type: string
+---
+apiVersion: stable.example.com/v1
+kind: FirstCrd
+metadata:
+  name: myfirstcr
+spec:
+  message: "Hello,crd!!\n"
