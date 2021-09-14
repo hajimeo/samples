@@ -105,8 +105,9 @@ function nxrmStart() {
         grep -qE '^\s*nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
         # ${nexus.h2.httpListenerPort:-8082}
         grep -qE '^\s*nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
+        # Binary (or HA-C) connect remote:localhost/component admin admin
+        grep -qE '^\s*nexus.orient.binaryListenerEnabled' "${_cfg_file}" || echo "nexus.orient.binaryListenerEnabled=true" >> "${_cfg_file}"
         # For OrientDB studio (hostname:2480/studio/index.html)
-        #grep -qE '^\s*nexus.orient.binaryListenerEnabled' "${_cfg_file}" || echo "nexus.orient.binaryListenerEnabled=true" >> "${_cfg_file}"
         grep -qE '^\s*nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
         grep -qE '^\s*nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
         [ -z "${_mode}" ] && _mode="run"
@@ -159,11 +160,13 @@ function iqStart() {
     local _base_dir="${1:-"."}"
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=n"}
     #local _java_opts=${@:2}
-    local _jar_file="$(realpath "$(find ${_base_dir%/} -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)")"
+    _base_dir="$(realpath ${_base_dir%/})"
+    local _jar_file="$(find ${_base_dir%/} -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
     local _cfg_file="$(realpath "$(dirname "${_jar_file}")/config.yml")"
     [ -z "${_cfg_file}" ] && return 12
     grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://localhost:8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+    grep -qE '^\s*port: 8443$' "${_cfg_file}" && sed -i.bak 's/port: 8443/port: 8470/g' "${_cfg_file}"
     grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
     grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.bak -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
     cd "${_base_dir}"
@@ -270,13 +273,17 @@ function mvn-package() {
 # Example to generate 10 versions / snapshots (NOTE: in bash heredoc, 'EOF' and just EOF is different)
 : <<'EOF'
 mvn-arch-gen
-_REPO_URL="http://dh1.standalone.localdomain:8081/repository/maven-hosted/"
+_REPO_URL="http://localhost:8081/repository/maven-snapshots/"
 #mvn-deploy "${_REPO_URL}" "" "nexus"
-  #sed -i.tmp -E "s@<groupId>com.example.*</groupId>@<groupId>com.example${i}</groupId>@" pom.xml   # If need to change groupId
-  #sed -i.tmp -E "s@<artifactId>my-app.*</artifactId>@<artifactId>my-app${i}</artifactId>@" pom.xml # If need to change artifactId
-for i in {1..5000}; do
-  sed -i.tmp -E "s@^  <version>.*</version>@  <version>1.${i}-SNAPSHOT</version>@" pom.xml
-  mvn-deploy "${_REPO_URL}" "" "" "nexus" "" || break
+for v in {1..5}; do
+  for a in {1..3}; do
+    for g in {1..3}; do
+      sed -i.tmp -E "s@^  <groupId>.+</groupId>@  <groupId>com.example${g}</groupId>@" pom.xml
+      sed -i.tmp -E "s@^  <artifactId>.+</artifactId>@  <artifactId>my-app${a}</artifactId>@" pom.xml
+      sed -i.tmp -E "s@^  <version>.+</version>@  <version>1.${v}-SNAPSHOT</version>@" pom.xml
+      mvn-deploy "${_REPO_URL}" "" "" "nexus" "" || break
+    done || break
+  done || break
 done
 EOF
 function mvn-deploy() {
@@ -312,6 +319,33 @@ function mvn-dep-file() {
         [ -n "${_remote_repo}" ] && _options="${_options% } -Durl=${_remote_repo}"
         [ -n "${_server_id}" ] && _options="${_options% } -DrepositoryId=${_server_id}"
         mvn `_mvn_settings "${_remote_repo}"` deploy:deploy-file -DgroupId=${_g} -DartifactId=${_a} -Dversion=${_v} -DgeneratePom=true -Dfile=${_file} ${_options}
+    fi
+}
+
+# Using NXRM3's upload (would not work with NXRM2), also this API does not work with snapshot repository
+function mvn-upload() {
+    local _file="${1}"
+    local _gav="${2:-"com.example:my-app:1.0"}"
+    local _remote_repo="${3:-"maven-hosted"}"
+    local _nexus_url="${4:-"http://localhost:8081/"}"
+    if [ -z "${_file}" ]; then
+        if [ ! -f "./junit-4.12.jar" ]; then
+            mvn-get-file "junit:junit:4.12" || return $?
+        fi
+        _file="./junit-4.12.jar"
+    fi
+    [ -f "${_file}" ] || return 11
+    if [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
+        local _g="${BASH_REMATCH[1]}"
+        local _a="${BASH_REMATCH[2]}"
+        local _v="${BASH_REMATCH[3]}"
+        local _ext="${_file##*.}"
+        curl -u admin:admin123 -w "  %{http_code} ${_remote_repo} ${_gav}\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_nexus_url%/}/service/rest/v1/components?repository=${_remote_repo}" \
+           -F groupId=${_g} \
+           -F artifactId=${_a} \
+           -F version=${_v} \
+           -F asset1=@${_file} \
+           -F asset1.extension=${_ext}
     fi
 }
 
