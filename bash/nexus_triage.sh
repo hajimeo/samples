@@ -16,7 +16,7 @@ EOS
 
 #curl -X PUT -T<(echo "test") localhost:2424
 function f_start_web() {
-    local __doc__="To check network connectivity"
+    local __doc__="To check network connectivity and transfer speed"
     local _port="${1:-"2424"}"
     if type php &>/dev/null; then
         curl -O "https://raw.githubusercontent.com/hajimeo/samples/master/php/index.php" && php -S 0.0.0.0:${_port} ./index.php
@@ -56,10 +56,10 @@ function f_size_count() {
 
 function f_blobs_csv() {
     local __doc__="Generate CSV for Key,LastModified,Size + properties"
-    local _dir="$1" # "blobs/defaut/content/vol-*"
-    local _with_props="$2"
-    local _filter="${3}"
-    local _P="${4}"
+    local _dir="$1"         # "blobs/default/content/vol-*"
+    local _with_props="$2"  # Y to check properties file, but extremely slow
+    local _filter="${3}"    # "*.properties"
+    local _P="${4}"         #
     printf "Key,LastModified,Size"
     local _find="find ${_dir%/} -type f"
     [ -n "${_filter}" ] && _find="${_find} -name '${_filter}'"
@@ -200,6 +200,16 @@ function f_find_open_bytes_files() {
     netstat -topen | grep 8081  # pick inode or port and pid
     # Usually +1 or a few of above fd and the FD ends with 'w'
     lsof -nPp $PID | grep -w $INODE -A 100 | grep -m1 "$(realpath "${_blobs}")/content/tmp/tmp"
+}
+
+function f_check_filesystems() {
+    local __doc__="Elastic Search checks all file systems with getFileStores() and if a FS is slow or hang, Nexus hangs"
+    # NOTE: Mac doesn't have df --output
+    df --output=target | grep -v '^Mounted on' | while read -r _m
+    do
+        echo "# Checking ${_m} ..."
+        timeout 3 stat "${_m}" || echo "ERROR: 'stat ${_m}' failed" >&2;
+    done
 }
 
 function f_mount_file() {
