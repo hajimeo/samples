@@ -927,7 +927,7 @@ function _postgresql_configure() {
     # For wal/replication/pg_rewind, better save log files outside of _postgresql_conf
 
     _upsert ${_postgresql_conf} "log_error_verbosity" "default" "#log_error_verbosity"
-    _upsert ${_postgresql_conf} "log_line_prefix" "'%m [%p]: user=%u,db=%d,app=%a,client=%h '" "#log_line_prefix"
+    _upsert ${_postgresql_conf} "log_line_prefix" "'%m [%p-%l]: user=%u,db=%d,app=%a,client=%h '" "#log_line_prefix"
     _upsert ${_postgresql_conf} "log_connections" "on" "#log_connections"
     _upsert ${_postgresql_conf} "log_disconnections" "on" "#log_disconnections"
 
