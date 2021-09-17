@@ -85,6 +85,7 @@ if [ "$(uname)" = "Darwin" ]; then
     if type docker-machine &>/dev/null; then
         alias dm-start='docker-machine start default && eval "$(docker-machine env default)"'
         [ -z "${DOCKER_HOST}" ] && docker-machine status default 2>/dev/null | grep -q "Running" && eval "$(docker-machine env default)"
+        # To stop, docker-machine start default, then open a new shell
     fi
 fi
 
