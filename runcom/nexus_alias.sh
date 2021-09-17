@@ -79,6 +79,7 @@ function nxrmStart() {
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5005,suspend=n"}
     local _mode=${3} # if NXRM2, not 'run' but 'console'
     #local _java_opts=${@:2}
+    _base_dir="$(realpath "${_base_dir}")"
     local _nexus_file="${_base_dir%/}/nexus/bin/nexus"
     [ -s "${_nexus_file}" ] || _nexus_file="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus' 2>/dev/null | sort | tail -n1)"
     local _nexus_vmopt="$(find ${_base_dir%/} -maxdepth 4 -path '*/bin/*' -type f -name 'nexus.vmoptions' 2>/dev/null | sort | tail -n1)"
