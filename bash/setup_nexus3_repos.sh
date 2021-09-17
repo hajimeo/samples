@@ -82,7 +82,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
 : ${_DOMAIN:="standalone.localdomain"}
-: ${_NEXUS_URL:="http://localhost:8081/"}
+: ${_NEXUS_URL:="http://localhost:8081/"}   # or https://local.standalone.localdomain:8443/ for docker
 : ${_IQ_URL:="http://dh1.${_DOMAIN}:8070/"}
 : ${_IQ_CLI_VER-"1.122.0-01"}    # If empty, not download CLI jar
 : ${_DOCKER_NETWORK_NAME:="nexus"}
@@ -233,7 +233,7 @@ function f_setup_nuget() {
 #_NEXUS_URL=http://node3281.standalone.localdomain:8081/ f_setup_docker
 function f_setup_docker() {
     local _prefix="${1:-"docker"}"
-    local _tag_name="${2:-"alpine:3.7"}"
+    local _img_name="${2:-"alpine:3.7"}"
     local _blob_name="${3:-"${r_BLOB_NAME:-"default"}"}"
     #local _opts="--tls-verify=false"    # TODO: only for podman. need an *easy* way to use http for 'docker'
 
@@ -245,6 +245,7 @@ function f_setup_docker() {
     fi
     # add some data for xxxx-proxy
     f_populate_docker_proxy
+    _log "NOTE" "May want to add 'Docker Bearer Token Realm' for anonymous access."
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
@@ -264,7 +265,7 @@ function f_setup_docker() {
 }
 
 function f_populate_docker_proxy() {
-    local _tag_name="${1:-"alpine:3.7"}"
+    local _img_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${_NEXUS_URL}"}"}"}"
     local _backup_ports="${3-"18179 18178"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
@@ -272,29 +273,29 @@ function f_populate_docker_proxy() {
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
 
-    for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_tag_name}"); do
+    for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_img_name}"); do
         _log "WARN" "Deleting ${_imn} (wait for 5 secs)";sleep 5
         if ! ${_cmd} rmi ${_imn}; then
             _log "WARN" "Deleting ${_imn} failed but keep continuing..."
         fi
     done
-    _log "DEBUG" "${_cmd} pull ${_host_port}/${_tag_name}"
-    ${_cmd} pull ${_host_port}/${_tag_name} || return $?
+    _log "DEBUG" "${_cmd} pull ${_host_port}/${_img_name}"
+    ${_cmd} pull ${_host_port}/${_img_name} || return $?
 }
 #ssh -2CNnqTxfg -L18182:localhost:18182 node3250    #ps aux | grep 2CNnqTxfg
 #f_populate_docker_hosted "" "localhost:18182"
 function f_populate_docker_hosted() {
-    local _tag_name="${1:-"alpine:3.7"}"
+    local _img_name="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${_NEXUS_URL}"}"}"}"
     local _backup_ports="${3-"18182 18181"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
-    local _tag_to="${5:-"${_TAG_TO:-"${_tag_name}"}"}"
+    local _tag_to="${5:-"${_TAG_TO:-"${_img_name}"}"}"
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
 
     # In _docker_proxy, the image might be already pulled.
-    if ! ${_cmd} tag ${_host_port:-"localhost"}/${_tag_name} ${_host_port}/${_tag_to} 2>/dev/null; then
+    if ! ${_cmd} tag ${_host_port:-"localhost"}/${_img_name} ${_host_port}/${_tag_to} 2>/dev/null; then
         # Example commands to create layers
         # "FROM alpine:3.7\nCMD echo 'hello world'"
         # "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nENTRYPOINT [\"mysql\"]"
@@ -302,10 +303,10 @@ function f_populate_docker_hosted() {
         local _cwd="$(pwd)"
         local _build_dir="$(mktemp -d)" || return $?
         cd ${_build_dir} || return $?
-        echo -e "FROM ${_tag_name}\n" > Dockerfile && ${_cmd} build --rm -t ${_tag_name} .
+        echo -e "FROM ${_img_name}\n" > Dockerfile && ${_cmd} build --rm -t ${_img_name} .
         cd "${_cwd}"    # should check the previous return code.
-        if ! ${_cmd} tag localhost/${_tag_name} ${_host_port}/${_tag_to}; then
-            ${_cmd} tag ${_tag_name} ${_host_port}/${_tag_to} || return $?
+        if ! ${_cmd} tag localhost/${_img_name} ${_host_port}/${_tag_to}; then
+            ${_cmd} tag ${_img_name} ${_host_port}/${_tag_to} || return $?
         fi
     fi
     _log "DEBUG" "${_cmd} push ${_host_port}/${_tag_to}"
