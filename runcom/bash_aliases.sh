@@ -451,7 +451,7 @@ function pgStart() {
     local _cmd="${3:-"start"}"
     if [ -s "${_log_path}" ]; then
         gzip -S "_$(date +'%Y%m%d%H%M%S').gz" "${_log_path}" &>/dev/null
-        mv "${_log_path}_*.gz" /tmp/
+        mv -v ${_log_path}_*.gz /tmp/
     fi
     pg_ctl -D ${_pg_data} -l ${_log_path} ${_cmd}
     # To connect: psql template1
