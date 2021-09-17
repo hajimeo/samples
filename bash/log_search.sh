@@ -821,7 +821,7 @@ function _get_hextids() {
 }
 
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
-#_THREAD_FILE_GLOB="jstack_*" f_threads "."
+#_THREAD_FILE_GLOB="?-dump.txt" f_threads "."   # Don't use "*" beginning of the file name
 # NOTE: f_last_tid_in_log would be useful.
 function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
