@@ -971,8 +971,8 @@ def dfQuery(sql, source=None, no_history=True, show=False, **kwargs):
     @see: https://github.com/mindsdb/dfsql/blob/stable/testdrive.ipynb
     :param sql: SELECT statement only at this moment
     :param source: CSV or JSON (files can be converted into DataFrame) or DataFrame
-    :param no_history: not saving this query into a history file
-    :param show: True/False or integer to draw HTML (NOTE: False is faster)
+    :param no_history: TODO: not working with dfsql generated DF. If True, Not saving this query into a history file
+    :param show: TODO: not working with dfsql generated DF. True/False or integer to draw HTML (NOTE: False is faster)
     :return: a DF object or void
     >>> src = pd.DataFrame([{"col1":1, "col2":2}, {"col1":3, "col2":4}])
     >>> df = dfQuery("select * from test_tbl", test_tbl=src)
@@ -991,18 +991,22 @@ def dfQuery(sql, source=None, no_history=True, show=False, **kwargs):
             _err("Failed to import modin.pandas. Using normal pandas")
             use_modin = 'False'
             pass
-    import dfsql.extensions
+        import dfsql.extensions
+    else:
+        os.environ['USE_MODIN'] = "False"
+        import pandas as pd
     from dfsql import sql_query
 
-    if bool(source):
+    if source is not None:
         if type(source) == type("string"):
             if source.lower().endswith(".csv"):
                 source = csv2df(source)  # pd.read_csv(source)
             elif source.lower().endswith(".json"):
                 source = json2df(source)
-        elif type(source) != pd.DataFrame:
-            _err("source is not DataFrame.")
+        if type(source) != pd.core.frame.DataFrame:
+            _err("source %s is not DataFrame." % str(source))
             return
+        kwargs['source'] = source
     # below is basically calling dfsql.sql_query
     df = sql_query(sql, **kwargs)
     if use_modin.lower() in ['true', '1']:
@@ -1155,6 +1159,9 @@ def display(df, name="", desc="", tail=1000):
     :return Void
     >>> pass
     """
+    if type(df) != pd.core.frame.DataFrame:
+        _err("Given df is not DataFrame (%s)" % type(df))
+        return
     name_html = ""
     if bool(name) is False:
         name = _timestamp(format="%Y%m%d%H%M%S%f")
