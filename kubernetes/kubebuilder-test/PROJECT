@@ -1,0 +1,6 @@
+domain: example.com
+layout:
+- go.kubebuilder.io/v3
+projectName: kubebuilder-test
+repo: example.com/sampleweb
+version: "3"
