@@ -904,13 +904,15 @@ function f_threads() {
         echo "WAITING: $(rg '\bQueuedThreadPool.*\.run' ${_save_dir%/}/ -l -g '*WAITING*' -g '*waiting*' | wc -l)"
         echo " "
 
-        echo "## Counting 'Pool.acquire' for OrientDB pool"
+        echo "## Counting 'Pool.acquire' for DB pool"
         rg -i 'Pool\.acquire\b' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
         echo " "
 
-        echo "## Counting 'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin"
+        echo "## Counting 'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
         # https://support.sonatype.com/hc/en-us/articles/213464998-How-to-disable-the-System-Feeds-nexus-timeline-plugin-feature-to-improve-Nexus-performance
-        rg 'DefaultTimelineIndexer' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
+        echo "##          'content_digest' https://issues.sonatype.org/browse/NEXUS-26379 (3.29.x) and NEXUS-25294 (3.27.x and older)"
+        echo "##          'touchItemLastRequested' https://issues.sonatype.org/browse/NEXUS-10372 all NXRM2"
+        rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
         echo " "
     fi
 
