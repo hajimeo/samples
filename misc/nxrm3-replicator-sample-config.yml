@@ -1,0 +1,8 @@
+sources:
+  - path: /opt/sonatype/sonatype-work/nexus3/blobs/default
+    type: file
+    targets:
+      - path: /opt/sonatype/sonatype-work/nexus3/blobs/test
+        type: file
+        repositoryName: raw-repl-hosted
+        connectionName: hajimetest
