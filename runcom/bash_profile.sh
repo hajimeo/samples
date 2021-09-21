@@ -83,7 +83,7 @@ if [ "$(uname)" = "Darwin" ]; then
 
     # Docker related
     if type docker-machine &>/dev/null; then
-        alias dm-start='docker-machine start default && eval "$(docker-machine env default)"'
+        alias dm-start='docker-machine start default && eval "$(docker-machine env default)" && docker-machine ssh default "echo \"$(docker-machine ip default) local.standalone.localdomain\" | sudo tee -a /etc/hosts"'
         [ -z "${DOCKER_HOST}" ] && docker-machine status default 2>/dev/null | grep -q "Running" && eval "$(docker-machine env default)"
         # To stop, docker-machine start default, then open a new shell
     fi
