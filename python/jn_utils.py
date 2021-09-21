@@ -565,6 +565,8 @@ def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablen
     #>>> xml2df('./nexus.xml', 'repository', conn=ju.connect())
     >>> pass    # TODO: implement test
     """
+    if bool(tablename) and conn is None:
+        conn = connect()
     data = xml2dict(file_path, row_element_name, tbl_element_name)
     df = pd.DataFrame(data)
     if bool(conn):
