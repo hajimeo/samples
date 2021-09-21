@@ -112,8 +112,10 @@ function nxrmStart() {
         grep -qE '^\s*nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
         grep -qE '^\s*nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
         [ -z "${_mode}" ] && _mode="run"
-    else
+    else    # if NXRM2
         [ -z "${_mode}" ] && _mode="console"
+        # jvm 1    | Caused by: java.lang.ClassNotFoundException: org.eclipse.tycho.nexus.internal.plugin.UnzipRepository
+        echo "NOTE: May need to 'unzip -d ${_base_dir%/}/sonatype-work/nexus/plugin-repository $HOME/Downloads/unzip-repository-plugin-0.14.0-bundle.zip'"
     fi
     if [ -n "${_jetty_https}" ] && [[ "${_version}" =~ 3\.26\.+ ]]; then
         # @see: https://issues.sonatype.org/browse/NEXUS-24867
@@ -441,6 +443,8 @@ function _mvn_settings() {
     echo "-s ${_settings_xml}"
 }
 
+
+
 # basically same as npm init -y but adding lodash 4.17.4 :-)
 function npmInit() {
     local _name="${1:-"lodash-vulnerable"}"
@@ -475,6 +479,24 @@ function npmDeploy() {
     [ -f ./package.json.orig ] || cp -p ./package.json ./package.json.orig
     cat ./package.json | python -c "import sys,json;a=json.loads(sys.stdin.read());d={\"publishConfig\":{\"registry\":\"${_repo_url}\"}};a.update(d);f=open(\"./package.json\",\"w\");f.write(json.dumps(a,indent=4,sort_keys=True));" || return $?
     npm publish --registry "${_repo_url}" -ddd
+}
+
+
+
+function nuget-get() {
+    local _pkg="$1" # Syncfusion.SfChart.WPF@19.2.0.62
+    local _repo_url="${2:-"http://dh1.standalone.localdomain:8081/repository/nuget.org-proxy/index.json"}"
+    local _save_to="${3}"  # NOTE: nuget.exe does not work with SSD with exFat
+    local _ver=""
+    if [[ "${_pkg}" =~ ^([^@]+)@([^ ]+)$ ]]; then
+        _pkg="${BASH_REMATCH[1]}"
+        _ver="-Version ${BASH_REMATCH[2]}"
+    fi
+    if [ -z "${_save_to%/}" ]; then
+        _save_to="$(mktemp -d -t "nuget_")"
+    fi
+    eval nuget install ${_pkg} ${_ver} -Source ${_repo_url} -OutputDirectory ${_save_to} -NoCache -Verbosity Detailed || return $?
+    ls -ltr ${_save_to%/}/ | tail -n5
 }
 
 
