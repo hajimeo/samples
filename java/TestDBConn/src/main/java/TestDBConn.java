@@ -14,7 +14,7 @@ import java.util.List;
 public class TestDBConn
 {
   // NOTE: use small letters.
-  static String[] needQuotesTypes = new String[]{"string", "pgobject"};
+  static String[] needQuotesTypes = new String[]{"string"};
 
   public static void main(String[] args) {
     if (args.length < 4) {
