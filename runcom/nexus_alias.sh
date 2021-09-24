@@ -29,7 +29,7 @@ function iqCli() {
     elif [ -n "${_iq_url}" ] && [[ ! "${_iq_url}" =~ ^https?://.+:[0-9]+ ]]; then   # Provided hostname only
         _iq_url="http://${_iq_url}:8070/"
     elif [ -z "${_iq_url}" ]; then  # default
-        _iq_url="http://dh1.standalone.localdomain:8070/"
+        _iq_url="https://dh1.standalone.localdomain:8470/"
     fi
     #[ ! -d "${_iq_tmp}" ] && mkdir -p "${_iq_tmp}"
 
@@ -198,6 +198,8 @@ function iqDocker() {
     # NOTE: symlink of *.lic does not work with -v
     [ -z "${_license}" ] && [ -d ${_work_dir%/}/sonatype ] && _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
     [ -s "${_license}" ] && _java_opts="-Ddw.licenseFile=${_license}"
+    # To use PostgreSQL
+    #-e JAVA_OPTS="-Ddw.database.type=postgresql -Ddw.database.hostname=db-server-name.domain.net"
     [ -n "${JAVA_OPTS}" ] && _java_opts="${_java_opts} ${JAVA_OPTS}"
     [ -n "${_java_opts}" ] && _opts="${_opts} -e JAVA_OPTS=\"${_java_opts}\""
     [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share"
@@ -206,10 +208,10 @@ function iqDocker() {
     [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/var/log/nexus-iq-server"
     [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/opt/sonatype/nexus-iq-server/log" # due to audit.log => fixed from v104
     [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
-    local _cmd="docker run --init -d -p ${_port}:8070 -p ${_port2}:8071 -p ${_port_ssl}:8444 ${_opts} ${_docker_host%/}/sonatype/nexus-iq-server:${_tag}"
+    local _cmd="docker run -d -p ${_port}:8070 -p ${_port2}:8071 -p ${_port_ssl}:8444 ${_opts} ${_docker_host%/}/sonatype/nexus-iq-server:${_tag}"  # --init
     echo "${_cmd}"
     eval "${_cmd}"
-    echo "NOTE: Replacing /opt/sonatype/nexus-iq-server/start.sh to add trap SIGTERM (used from next restart though)"
+    echo "NOTE: May need to repalce /opt/sonatype/nexus-iq-server/start.sh to add trap SIGTERM (used from next restart though)"
     # Not doing at this moment as newer version has the fix.
     if ! docker cp ${_name}:/opt/sonatype/nexus-iq-server/start.sh - | grep -qwa TERM; then
         local _tmpfile=$(mktemp)
@@ -223,7 +225,7 @@ trap _term SIGTERM
 /usr/bin/java ${JAVA_OPTS} -jar nexus-iq-server-*.jar server /etc/nexus-iq-server/config.yml &
 wait
 EOF
-        docker cp ${_tmpfile} ${_name}:/opt/sonatype/nexus-iq-server/start.sh
+        #docker cp ${_tmpfile} ${_name}:/opt/sonatype/nexus-iq-server/start.sh
     fi
 }
 
