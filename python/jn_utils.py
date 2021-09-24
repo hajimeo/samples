@@ -345,8 +345,10 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     files = _globr(ptn=include_ptn, src=src, useRegex=useRegex, max_size=max_file_size)
     for f in files:
         f_name, f_ext = os.path.splitext(os.path.basename(f))
+        if f_name.startswith("."):
+            continue
         if ex is not None and ex.search(f):
-            _info("Excluding %s as per exclude_ptn (%d KB)..." % (f_name, _get_filesize(f) / 1024))
+            _info("Excluding %s as per exclude_ptn (%d KB)..." % (f, _get_filesize(f) / 1024))
             continue
         new_name = _pick_new_key(f_name, names_dict, prefix='t_')
         names_dict[new_name] = f
@@ -383,6 +385,7 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
     #>>> json2df('./export.json', '.records | map(select(.["@class"] == "quartz_job_detail" and .value_data.jobDataMap != null))[] | .value_data.jobDataMap', ju.connect(), 't_quartz_job_detail')
     #>>> json2df('audit.json', '..|select(.attributes? and .attributes.".typeId" == "db.backup")|.attributes', ju.connect(), "t_audit_attr_dbbackup_logs")
     #>>> ju.json2df(filename="./audit.json", json_cols=['data', 'data.roleMembers', 'data.policyConstraints', 'data.applicationCategories', 'data.licenseNames'], conn=ju.connect())
+    #>>> ju.json2df("./db/membershipMapping.json", tablename="t_membership_mapping", jq_query=".membershipMapping")
     >>> pass    # TODO: implement test
     """
     # If flatten is not specified but going to import into Sqlite, changing flatten to true so that less error in DB
@@ -449,6 +452,7 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
                 try:
                     _df = pd.read_json(file_path)
                 except UnicodeDecodeError:
+                    _err("%s caused %s" % (file_path, str(e)))
                     _df = pd.read_json(file_path, encoding="iso-8859-1")
             dfs.append(_df)  # , dtype=False (didn't help)
 
@@ -773,6 +777,26 @@ def udf_timestamp(date_time):
     return int(parser.parse(date_time).timestamp())
 
 
+def udf_started_time(request_date_time, elapsed_ms):
+    """
+    Doing below calculation:
+    TIME(UDF_TIMESTAMP(date) - CAST(elapsedTime/1000 AS INT) - (4*60*60), 'unixepoch')
+
+    eg: SELECT UDF_STARTED_TIME(some_request_datetime, some_elapsed_ms) as started_time, ...
+    :param request_date_time: ISO date string (or Date/Time column but SQLite doesn't have date/time columns)
+    :param elapsed_ms: Integer (elapsed time in millisecond)
+    :return:          Integer of Unix Timestamp
+    """
+    ts_sec = udf_timestamp(request_date_time)
+    tz_str = "+0000"
+    if request_date_time.count(" ") == 1:
+        # assuming the date_time uses "%d/%b/%Y:%H:%M:%S %z". This format doesn't work with parse, so changing.
+        _, tz_str = request_date_time.split(" ", 1)
+    # somehow converting timestamp to date string with timezone offset is very hard in python...
+    started_ts_sec = ts_sec - int(elapsed_ms / 1000) + ((int(tz_str) / 100) * 60 * 60)
+    return datetime.utcfromtimestamp(started_ts_sec).strftime('%Y-%m-%d %H:%M:%S')
+
+
 def udf_str_to_int(some_str):
     """
     Convert \d\d\d\d(MB|M|GB\G) to bytes etc.
@@ -873,6 +897,7 @@ def _register_udfs(conn):
         conn.create_function("UDF_STR2SQLDT", 1, udf_str2sqldt)
         conn.create_function("UDF_STRFTIME", 2, udf_strftime)
         conn.create_function("UDF_TIMESTAMP", 1, udf_timestamp)
+        conn.create_function("UDF_STARTED_TIME", 2, udf_started_time)
         conn.create_function("UDF_STR_TO_INT", 1, udf_str_to_int)
         conn.create_function("UDF_NUM_HUMAN_READABLE", 1, udf_num_human_readable)
     return conn
@@ -1907,6 +1932,11 @@ def logs2table(filename, tablename=None, conn=None,
          col_names=['date_time', 'loglevel', 'thread', 'node', 'user', 'class', 'message'],
             line_matching='^(\\d\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d[^ ]*) +([^ ]+) +\\[([^]]+)\\] ([^ ]*) ([^ ]*) ([^ ]+) - (.*)',
             size_regex=None, time_regex=None)
+    # nxrm2
+    #>>> logs2table(filename='nexus.log*', tablename='t_nexus2_log',
+         col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
+            line_matching='^(\\d\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d[^ ]*) +([^ ]+) +\\[([^]]+)\\] ([^ ]*) ([^ ]+) - (.*)',
+            size_regex=None, time_regex=None)
     #>>> logs2table('clm-server_*.log*', tablename="t_clm_server_log", multiprocessing=True, max_file_num=20
             col_names=['date_time', 'loglevel', 'thread', 'user', 'class', 'message'],
             line_matching='^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)',
@@ -2035,12 +2065,15 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
     ex = re.compile(exclude_ptn)
     files = _globr(ptn=include_ptn, src=src, useRegex=useRegex, max_size=max_file_size)
     for f in files:
-        if bool(exclude_ptn) and ex.search(os.path.basename(f)):
-            continue
-        _debug("Processing %s" % (f))
         if os.stat(f).st_size == 0:
             continue
         f_name, f_ext = os.path.splitext(os.path.basename(f))
+        if f_name.startswith("."):
+            continue
+        if bool(exclude_ptn) and ex.search(os.path.basename(f)):
+            _info("Excluding %s as per exclude_ptn (%d KB)..." % (f, _get_filesize(f) / 1024))
+            continue
+        _debug("Processing %s" % (f))
         new_name = _pick_new_key(f_name, names_dict, prefix='t_')
         tablename = new_name
         if bool(conn) is False:
