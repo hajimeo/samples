@@ -440,6 +440,18 @@ function sshs() {
     fi
     ssh ${_user_at_host} -t ${_cmd}
 }
+function ssh_remote_mount() {
+    local _user="${1:-"$USER"}"
+    local _src="${2:-"/Users/${_user}"}"    # expecting Mac...
+    local _tgt="${3}"
+    [ -z "${SSH_CONNECTION}" ] && return 1
+    local _remote_host="$(echo ${SSH_CONNECTION} | cut -d" " -f1)"
+    [ -z "${_tgt}" ] && _tgt="$HOME/mnt/${_remote_host}"
+    if [ ! -d "${_tgt}" ]; then
+        mkdir -v -p -m 777 ${_tgt} || return $?
+    fi
+    eval sshfs -o uid=$UID,umask=002,reconnect,follow_symlinks ${_user}@${_remote_host}:${_src} ${_tgt}
+}
 # My personal dirty ssh shortcut (cd /var/tmp/share/sonatype/logs/node-nxiq_nxiq)
 alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
 
