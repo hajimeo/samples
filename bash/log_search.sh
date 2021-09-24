@@ -1007,10 +1007,16 @@ function f_request2csv() {
         if [ -z "${_pattern_str}" ]; then
             local _tmp_first_line="$(rg --no-filename -m1 -z '\b20\d\d.\d\d.\d\d' ${_g_opt} "${_glob}")"
             #echo "# first line: ${_tmp_first_line}" >&2
-            if echo "${_tmp_first_line}"   | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
+            if echo "${_tmp_first_line}"   | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
-            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'; then
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\] (.+)$'; then
+                _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}" [%thread] %misc'
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\] (.+)$'; then
+                _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" [%thread] %misc'
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" (.+)$'; then
+                _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" "%misc"'
             elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)"'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}"'
             else
