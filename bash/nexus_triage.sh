@@ -54,6 +54,10 @@ function f_size_count() {
     fi | awk '{ c+=1;s+=$1/1024/1024 }; END { print "{\"count\":"c", \"size\":"s", \"unit\":\"MB\"}" }'
 }
 
+#grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' ./suspicious_blobs.json | sort > suspicious_blob_refs.list
+#grep 'Asset{metadata=AttachedEntityMetadata' deadBlobResult-*.json | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' > deadblobs_blob_refs.list
+#diff -wy --suppress-common-lines suspicious_blob_refs.list deadblobs_blob_refs.list
+#comm -12 suspicious_blob_refs.list deadblobs_blob_refs.list > more_suspicious_blob_refs.list
 function f_blobs_csv() {
     local __doc__="Generate CSV for Key,LastModified,Size + properties"
     local _dir="$1"         # "blobs/default/content/vol-*"
