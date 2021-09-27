@@ -37,10 +37,10 @@ class BlobPath
     System.out.println("Returns a blobpath if the argument is only one.\n" +
         "Otherwise, reads json strings from stdin, then generate .properties and .bytes files.\n" +
         "\n" +
-        "    blobpath [blobstore path]\n" +
+        "    blobpath [blobs dir *FULL* path]\n" +
         "\n" +
         "NOTE: *repository_name* is required to save it into .properties file.\n" +
-        "echo \"select bucket.repository_name as repository_name, * from asset where blob_ref like '%666c9fab-4334-4f1f-bb76-0db0c474a371'\" | orient-console ./component | blobpath /tmp/sptBoot/support-20210604-150957-1_tmp/sonatype-work/nexus3/blobs/custom\n" +
+        "echo \"select bucket.repository_name as repository_name, * from asset where blob_ref like '%666c9fab-4334-4f1f-bb76-0db0c474a371'\" | orient-console ./component | grep '^  {' | blobpath /tmp/sptBoot/support-20210604-150957-1_tmp/sonatype-work/nexus3/blobs\n" +
         "\n" +
         "OPTIONS:\n" +
         "  --output-only    If true, do not generate .properties and .bytes files\n" +
