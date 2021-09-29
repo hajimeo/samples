@@ -1865,13 +1865,14 @@ function f_crowd() {
     local _user="${2-"crowd"}"
     local _data_dir="${3-"/var/crowd-home"}" # some persistent location if docker
     # rm -rf /opt/crowd/* /var/crowd/* /var/crowd-home/*
-    _download_and_extract "https://product-downloads.atlassian.com/software/crowd/downloads/atlassian-crowd-${_ver}.tar.gz" "/opt/crowd" || return $?
+    _download_and_extract "https://product-downloads.atlassian.com/software/crowd/downloads/atlassian-crowd-${_ver}.tar.gz" "/opt/crowd" "" "" "${_user}" || return $?
     if ! grep -q "^crowd.home" "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties"; then
         _upsert "/opt/crowd/atlassian-crowd-${_ver}/crowd-webapp/WEB-INF/classes/crowd-init.properties" "crowd.home" "${_data_dir%/}/${_ver}" || return $?
     fi
     [ -d "${_data_dir%/}" ] || mkdir -p -m 777 "${_data_dir%/}"
     if [ -n "${_user}" ]; then
         f_useradd "${_user}" || return $?
+        chown -R "${_user}:" "/opt/crowd/atlassian-crowd-${_ver}"
     fi
     sudo -i -u "${_user}" bash /opt/crowd/atlassian-crowd-${_ver}/start_crowd.sh || return $?
     _log "INFO" "Access http://$(hostname -f):8095/
@@ -1884,14 +1885,14 @@ function f_jira() {
     local _user="${2-"jira"}"
     local _data_dir="${3-"/var/jira-home"}" # some persistent location if docker
     # rm -rf /opt/jira/* /var/jira-home/*
-    _download_and_extract "https://product-downloads.atlassian.com/software/jira/downloads/atlassian-jira-software-${_ver}.tar.gz" "/opt/jira" || return $?
+    _download_and_extract "https://product-downloads.atlassian.com/software/jira/downloads/atlassian-jira-software-${_ver}.tar.gz" "/opt/jira" "" "" "${_user}" || return $?
     if ! grep -qE "^jira.home *= *[^ ]+" "/opt/jira/atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties"; then
         _upsert "/opt/jira/atlassian-jira-software-${_ver}-standalone/atlassian-jira/WEB-INF/classes/jira-application.properties" "jira.home" "${_data_dir%/}/${_ver}" || return $?
     fi
     [ -d "${_data_dir%/}" ] || mkdir -p -m 777 "${_data_dir%/}"
     if [ -n "${_user}" ]; then
         f_useradd "${_user}" || return $?
-        chown -R "${_user}:" /opt/jira/atlassian-jira-software-${_ver}-standalone
+        chown -R "${_user}:" "/opt/jira/atlassian-jira-software-${_ver}-standalone"
     fi
     sudo -i -u "${_user}" bash /opt/jira/atlassian-jira-software-${_ver}-standalone/bin/start-jira.sh || return $?
     _log "INFO" "Access http://$(hostname -f):8080/
@@ -1917,10 +1918,10 @@ function f_bitbucket() {
         yum remove -y git*
         yum insatll ${_git_ver} -y   # even if fails, keep going...
     fi
-    _download_and_extract "https://product-downloads.atlassian.com/software/stash/downloads/atlassian-bitbucket-${_ver}.tar.gz" "/opt/bitbucket" || return $?
+    _download_and_extract "https://product-downloads.atlassian.com/software/stash/downloads/atlassian-bitbucket-${_ver}.tar.gz" "/opt/bitbucket" "" "" "${_user}" || return $?
     if [ -n "${_user}" ]; then
         f_useradd "${_user}" || return $?
-        chown -R "${_user}:" /opt/bitbucket/atlassian-bitbucket-${_ver}
+        chown -R "${_user}:" "/opt/bitbucket/atlassian-bitbucket-${_ver}"
     fi
     local _java_home="$(dirname $(dirname $(readlink -f $(which java))))"
     if [ -z "${_java_home%/}" ]; then
