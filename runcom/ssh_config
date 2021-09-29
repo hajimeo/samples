@@ -1,4 +1,6 @@
-# Example of .ssh/config (NOTE: ssh checks ownership and permissions of this file)
+# Example (not symlink) of .ssh/config
+# NOTE: 'ssh' checks ownership and permissions of this file
+
 Host *
   # example of keeping pinging server (eg: Azure)
   ServerAliveInterval 20
@@ -12,3 +14,14 @@ Host 10.* 172.* 192.168.* *.localdomain node* localhost
   #IdentityFile ~/.ssh/id_rsa
   # To not show "Warning: Permanently added ..." (is QUIET better?)
   LogLevel ERROR
+
+Host *.compute.amazonaws.com
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  # example of identity file path. $HOME didn't work
+  IdentityFile ~/.ssh/aws_XXXXXXX-kp.pem
+
+Host limadocker
+  HostName localhost
+  NoHostAuthenticationForLocalhost yes
+  Port 60006

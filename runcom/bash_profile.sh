@@ -81,8 +81,11 @@ if [ "$(uname)" = "Darwin" ]; then
         [ -n "${_JAVA_HOME_11}" ] && alias jshell="$(/usr/libexec/java_home -v 11)/bin/jshell"
     fi
 
-    # Docker related
-    if type docker-machine &>/dev/null; then
+    # Docker related use "lima" first
+    if type lima &>/dev/null; then
+        # "limadocker" is the hostname defined in
+        export DOCKER_HOST=ssh://limadocker:60006
+    elif type docker-machine &>/dev/null; then
         alias dm-start='docker-machine start default && eval "$(docker-machine env default)" && docker-machine ssh default "echo \"$(docker-machine ip default) local.standalone.localdomain\" | sudo tee -a /etc/hosts"'
         [ -z "${DOCKER_HOST}" ] && docker-machine status default 2>/dev/null | grep -q "Running" && eval "$(docker-machine env default)"
         # To stop, docker-machine start default, then open a new shell
