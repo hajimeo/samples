@@ -406,7 +406,7 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
     dfs = []
     for file_path in files:
         fs = _get_filesize(file_path)
-        if fs >= max_file_size:
+        if bool(line_from) is False and fs >= max_file_size:
             _info("WARN: File %s (%d MB) is too large (max_file_size=%d). Use 'line_from'." % (
                 file_path, int(fs / 1024 / 1024), max_file_size))
             continue
@@ -1998,7 +1998,7 @@ def logs2table(filename, tablename=None, conn=None,
     inserted_num = 0
     args_list = []
     for f in files:
-        if os.stat(f).st_size >= max_file_size:
+        if bool(line_from) is False and os.stat(f).st_size >= max_file_size:
             _info("WARN: File %s (%d MB) is too large (max_file_size=%d). Use 'line_from'" % (
                 str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
             continue
