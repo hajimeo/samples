@@ -1042,7 +1042,8 @@ EOF
     curl -fL -o /etc/yum.repos.d/devel:kubic:libcontainers:stable.repo https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/CentOS_7/devel:kubic:libcontainers:stable.repo --compressed
     yum install -y skopeo
     # Install nuget.exe regardless of Nexus nuget repository availability (can't remember why install then immediately remove...)
-    _log "INFO" "Install nuget.exe ..."
+    _log "INFO" "Install mono and nuget.exe ..."
+    curl https://download.mono-project.com/repo/centos7-stable.repo | tee /etc/yum.repos.d/mono-centos7-stable.repo && yum install -y mono-complete
     yum remove -y nuget
     curl -fL -o /usr/local/bin/nuget.exe "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe"
     # Adding nuget alias globally
