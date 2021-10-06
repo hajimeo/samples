@@ -159,6 +159,12 @@ function lns() {
     ln -v -s "$(realpath "$1")" "$(realpath "$2")"
 }
 
+function random_list() {
+    eval "IFS=\" \" read -a _list <<< \"${1}\""
+    local _rand=$[$RANDOM % ${#_list[@]}]
+    echo "${_list[${_rand}]}"
+}
+
 # eg: date_calc "17:15:02.123 -262.708 seconds" or " 30 days ago"
 function date_calc() {
     local _d_opt="$1"
