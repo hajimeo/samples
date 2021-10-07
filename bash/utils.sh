@@ -927,19 +927,20 @@ function _postgresql_configure() {
     # For wal/replication/pg_rewind, better save log files outside of _postgresql_conf
 
     _upsert ${_postgresql_conf} "log_error_verbosity" "default" "#log_error_verbosity"
-    _upsert ${_postgresql_conf} "log_line_prefix" "'%m [%p-%l]: user=%u,db=%d,app=%a,client=%h '" "#log_line_prefix"
     _upsert ${_postgresql_conf} "log_connections" "on" "#log_connections"
     _upsert ${_postgresql_conf} "log_disconnections" "on" "#log_disconnections"
+    _upsert ${_postgresql_conf} "log_lock_waits" "on" "#log_lock_waits"
+    _upsert ${_postgresql_conf} "log_temp_files" "0" "#log_temp_files"
 
     if [[ "${_verbose_logging}" =~ (y|Y) ]]; then
         # @see: https://github.com/darold/pgbadger#POSTGRESQL-CONFIGURATION (brew install pgbadger)
         # To log the SQL statements
+        _upsert ${_postgresql_conf} "log_line_prefix" "'%m [%p-%l]: user=%u,db=%d,app=%a,client=%h '" "#log_line_prefix"
         _upsert ${_postgresql_conf} "log_min_duration_statement" "0" "#log_min_duration_statement"
         _upsert ${_postgresql_conf} "log_checkpoints" "on" "#log_checkpoints"
-        _upsert ${_postgresql_conf} "log_lock_waits" "on" "#log_lock_waits"
-        _upsert ${_postgresql_conf} "log_temp_files" "0" "#log_temp_files"
         _upsert ${_postgresql_conf} "log_autovacuum_min_duration" "0" "#log_autovacuum_min_duration"
     else
+        _upsert ${_postgresql_conf} "log_line_prefix" "'%m [%p-%l]: user=%u,db=%d,vtid=%v '" "#log_line_prefix"
         _upsert ${_postgresql_conf} "log_statement" "'mod'" "#log_statement"
         _upsert ${_postgresql_conf} "log_min_duration_statement" "1000" "#log_min_duration_statement"
     fi
