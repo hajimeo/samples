@@ -228,6 +228,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
         _ = ju.load_jsons(".", include_ptn=".+/db/.+\.json", exclude_ptn='export\.json', useRegex=True, conn=ju.connect())
 
         # If request.*csv* exists, use that and should be loaded by above load_csvs (because it's faster), if not, logs2table, which is slower.
+        request_logs = None
         if ju.exists("t_request") is False:
             log_path = ju._get_file("request.log")
             if bool(log_path):
@@ -242,10 +243,15 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
                                              max_file_size=max_file_size,
                                              line_from=line_from, line_until=line_until)
         if ju.exists("t_request"):
-            _ = ju.execute(sql="UPDATE t_request SET headerContentLength = 0 WHERE headerContentLength = '-'")
+            try:
+                _ = ju.execute(sql="UPDATE t_request SET headerContentLength = 0 WHERE headerContentLength = '-'")
+            except:
+                # non NXRM3 request.log wouldn't have headerContentLength
+                pass
 
         # Loading application log file(s) into database.
         log_path = ju._get_file("nexus.log")
+        nxrm_logs = None
         if bool(log_path):
             line_from = line_until = 0
             if bool(time_from_regex):
@@ -258,6 +264,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
                                       line_from=line_from, line_until=line_until)
 
         log_path = ju._get_file("clm-server.log")
+        clm_logs = None
         if bool(log_path):
             line_from = line_until = 0
             if bool(time_from_regex):
@@ -338,7 +345,7 @@ def analyse_logs(path="", tail_num=10000, max_file_size=(1024 * 1024 * 100), ski
     CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
     CAST(AVG(CAST(elapsedTime AS INT)) AS INT) AS avg_elaps, 
     CAST(AVG(CAST(bytesSent AS INT)) AS INT) AS avg_bytes, 
-    CAST(AVG((CAST(headerContentLength AS INT) + CAST(bytesSent AS INT)) / (CAST(elapsedTime AS INT) / 1000)) AS INT) AS avg_bps, 
+    --CAST(AVG((CAST(headerContentLength AS INT) + CAST(bytesSent AS INT)) / (CAST(elapsedTime AS INT) / 1000)) AS INT) AS avg_bps, 
     count(*) AS occurrence
 FROM t_request
 %s
@@ -383,39 +390,39 @@ FROM t_log_elastic_jvm_monitor
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
     if ju.exists("t_iq_logs"):
-        display_name = "NxiqLog_Policy_Scan_aggs"
-        # UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d.\d+)', max(date_time), 1)
-        query = """SELECT thread, min(date_time), max(date_time), 
-    STRFTIME('%%s', substr(max(date_time), 1, 23))
-  - STRFTIME('%%s', substr(min(date_time), 1, 23)) as diff,
-    count(*)
-FROM t_iq_logs
-%s
-  AND thread LIKE 'PolicyEvaluateService%%'
-GROUP BY 1
-ORDER BY diff, thread""" % (where_sql)
-        ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
+        display_name = "NxiqLog_Policy_Scan_durations"
+        # Window function / partition doesn't work with sqlite installed by pip somehow
+        query = """SELECT t_scan_start.thread, start_dt, end_dt,
+  (STRFTIME('%s', end_dt) - STRFTIME('%s', start_dt)) as duration, duration_ms_str
+  FROM (SELECT thread, date_time as start_dt FROM t_iq_logs 
+    WHERE thread like 'PolicyEvaluateService-%%' AND message like '%%Received %% scan for application%%'
+      AND date_time >= (SELECT date_time FROM t_iq_logs WHERE thread = 'PolicyEvaluateService-0' ORDER BY date_time DESC LIMIT 1)) t_scan_start
+LEFT JOIN (SELECT thread, date_time as end_dt, UDF_REGEX('(\d+) ms\.', message, 1) as duration_ms_str 
+    FROM t_iq_logs 
+    WHERE thread like 'PolicyEvaluateService-%%' AND message like '%%Evaluated policy for app public id%%') t_scan_end
+  ON t_scan_start.thread = t_scan_end.thread and t_scan_start.start_dt < t_scan_end.end_dt
+ORDER BY start_dt"""
+        # TODO: not accurate
+        #ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
         display_name = "NxiqLog_HDS_Client_Requests"
         query = """SELECT date_time, 
-  UDF_REGEX(' in (\d+) ms', message, 1) as ms,
-  UDF_REGEX('ms. (\d+)$', message, 1) as status
+  UDF_REGEX('ms. (\d+)$', message, 1) as status,
+  CAST(UDF_REGEX(' in (\d+) ms', message, 1) AS INT) as ms
 FROM t_iq_logs
 %s
-  AND class = 'com.sonatype.insight.brain.hds.HdsClient'
+  AND class in ('com.sonatype.insight.brain.hds.HdsClient', 'com.sonatype.insight.brain.hds.DefaultHdsClient')
   AND message LIKE 'Completed request%%'""" % (where_sql)
-        ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
+        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
-        display_name = "NxiqLog_Top10_Slow_Scans"
+        display_name = "NxiqLog_Scans_Evaluations"
         query = """SELECT date_time, thread,
     UDF_REGEX(' scan id ([^ ]+),', message, 1) as scan_id,
     CAST(UDF_REGEX(' in (\d+) ms', message, 1) as INT) as ms 
 FROM t_iq_logs
 %s
-  AND message like 'Evaluated policy for%%'
-ORDER BY ms DESC
-LIMIT 10""" % (where_sql)
-        ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
+  AND message like 'Evaluated policy for%%'""" % (where_sql)
+        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
     log_table_name = None
     if ju.exists("t_nxrm_logs"):
@@ -443,6 +450,7 @@ LIMIT 10""" % (where_sql)
     GROUP BY 1""" % (log_table_name, where_sql)
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
 
+    if ju.exists("t_nxrm_logs"):
         display_name = "Join_Requests_And_AppLog_For_TimeoutException"
         # UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1)
         query = """SELECT n.date_time, n.loglevel, n.thread, n.user
