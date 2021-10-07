@@ -316,7 +316,7 @@ function check_keytool_v_output() {
     "
 }
 
-function get_certificate_from_https() {
+function get_cert_from_https() {
     local _host="$1"
     local _port="${2:-443}"
     local _dest_filepath="$3"
