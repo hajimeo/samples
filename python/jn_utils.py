@@ -769,6 +769,8 @@ def udf_timestamp(date_time):
     >>> udf_timestamp("2021-04-14 06:39:42+0000")
     1618382382
     """
+    if bool(date_time) is False:
+        return None
     if date_time.count(":") >= 3:
         # assuming the date_time uses "%d/%b/%Y:%H:%M:%S %z". This format doesn't work with parse, so changing.
         date_str, time_str = date_time.split(":", 1)
