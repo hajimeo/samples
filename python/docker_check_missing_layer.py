@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import requests
 
-### change hostname and port, and credential ###
-url = 'https://NEXUS_HOSTNAME:5000/v2/'
+### change URL to a hosted repo (_catalog is not working with proxy (and group)), and credential ###
+url = 'http://localhost:8081/repository/docker-proxy/v2/'
 auth = ('admin', 'admin123')
 
 headers = {'Accept': 'application/json'}
@@ -22,6 +22,7 @@ def get_repos():
 def get_tags(repo):
     r = session.get(url + repo + '/tags/list')
     r_data = r.json()
+    #print(r_data['tags'])
     for tag in r_data['tags']:
         yield tag
 
@@ -33,7 +34,8 @@ def get_blobs(repo, tag):
         for layer in r_data['fsLayers']:
             yield layer['blobSum']
     else:
-        print(f'# ERROR: {repo}:{tag} MISSING BLOBS')
+        print(f'# INFO: {repo}:{tag} manifest does not have any fsLayers')
+        #print(f'#       {r_data}\n')
 
 
 def check_blob(repo, blob):
@@ -44,7 +46,7 @@ def check_blob(repo, blob):
 def main():
     for repo in get_repos():
         for tag in get_tags(repo):
-            print(f'-- {repo}:{tag}')
+            print(f'# INFO: Checking {repo}:{tag} ...')
             for blob in get_blobs(repo, tag):
                 check_blob(repo, blob)
 
