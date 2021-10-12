@@ -1070,8 +1070,8 @@ function f_microk8s() {
     microk8s kubectl expose deployment <deployment-name> --type=LoadBalancer --port=8081
     microk8s kubectl port-forward --address 0.0.0.0 <pod-name> 18081:8081 & # this command runs in foreground
     microk8s kubectl get pods              # get a pod name to login
-    microk8s kubectl logs <pod-name>
-    microk8s kubectl describe pod <pod-name>
+    microk8s kubectl logs <pod-name>       # --previous
+    microk8s kubectl describe pod <pod-name>    # shows Events
     microk8s kubectl describe pvc <pvc-name>
     microk8s kubectl exec <pod-name> -ti -- bash
     microk8s kubectl scale --replicas=0 deployment <deployment-name>    # stop all pods temporarily (if no HPA)
