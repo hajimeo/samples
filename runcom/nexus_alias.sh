@@ -39,7 +39,7 @@ function iqCli() {
         [ ! -d "${_cli_dir}" ] && mkdir -p "${_cli_dir}"
         curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
     fi
-    # Mac uses "TMPDIR" (but can't change) like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
+    # Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
     local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r "$(realpath "${TMPDIR:-"/tmp"}/iq_result_$(date +'%Y%m%d%H%M%S').json")" -X ${_path}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
@@ -138,7 +138,7 @@ function nxrmDocker() {
     local _tag="${2:-"latest"}"
     local _port="${3:-"8081"}"
     local _port_ssl="${4:-"8443"}"
-    local _extra_opts="${5}"    # such as -Djava.util.prefs.userRoot=/some-other-dir
+    local _extra_opts="${5}"    # this is docker options not INSTALL4J_ADD_VM_PARAMS
     local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
     local _docker_host="${_DOCKER_HOST:-"dh1.standalone.localdomain:5000"}"
 
