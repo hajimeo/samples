@@ -100,6 +100,7 @@ main() {
     fi
 
     f_create_pg || return $?
+    # TODO: setup license
     _JVM_PARAMS="-Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g \
                                  -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                                  -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
