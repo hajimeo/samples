@@ -944,11 +944,19 @@ function _postgresql_configure() {
         _upsert ${_postgresql_conf} "log_statement" "'mod'" "#log_statement"
         _upsert ${_postgresql_conf} "log_min_duration_statement" "1000" "#log_min_duration_statement"
     fi
+    # To check:
+    # SELECT setting, pending_restart FROM pg_settings WHERE name = 'shared_preload_libraries';
     #CREATE EXTENSION IF NOT EXISTS pg_buffercache;
+    local _shared_preload_libraries="auto_explain"
     if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_prewarm;"; then
-        _upsert ${_postgresql_conf} "shared_preload_libraries" "'pg_prewarm'" "#shared_preload_libraries"
+        _shared_preload_libraries="${_shared_preload_libraries},pg_prewarm"
         # select pg_prewarm('<tablename>', 'buffer');
     fi
+    _upsert ${_postgresql_conf} "shared_preload_libraries" "'${_shared_preload_libraries}'" "#shared_preload_libraries"
+    #ALTER SYSTEM SET auto_explain.log_min_duration TO '0';
+    #SELECT pg_reload_conf();
+    #SELECT * FROM pg_settings WHERE name like 'auto_explain%';
+    _upsert ${_postgresql_conf} "auto_explain.log_min_duration" "5000"
 
     diff -wu ${__TMP%/}/postgresql.conf.orig ${_postgresql_conf}
     _log "INFO" "Updated postgresql config. Please restart (or reload) the service."
