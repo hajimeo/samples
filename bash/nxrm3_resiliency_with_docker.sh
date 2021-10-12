@@ -4,8 +4,8 @@
 # TODO: Not commpleted and needs Usage example:
 
 
-_CONT1_NAME="${1:-"nxrm3-res1"}"  # First NXRM3 container name
-_CONT2_NAME="${2:-"nxrm3-res2"}"  # Second NXRM3 container name
+_ACTIVE_CONT_NAME="${1:-"nxrm3-res1"}"      # First NXRM3 container name
+_STANDBY_CONT_NAME="${2:-"nxrm3-res2"}"     # Second NXRM3 container name
 _SHARE_DIR="${3:-"$HOME/share/dockers"}"    # Path for saving container data under this directory
 
 # Please feel free to overwrite below by using "export <ENV NAME>=xxxxxxxxx"
@@ -81,7 +81,7 @@ function f_create_nxrm3() {
 }
 
 main() {
-    if [ -z "${_CONT1_NAME}" ]; then
+    if [ -z "${_ACTIVE_CONT_NAME}" ]; then
         echo "Please specify your IQ container name as the 1st argument of this script."
         retun 1
     fi
@@ -110,9 +110,10 @@ main() {
                                  -Dnexus.datastore.nexus.username=${_DB_USER} \
                                  -Dnexus.datastore.nexus.password=${_DB_PWD} \
                                  -Dnexus.datastore.nexus.maximumPoolSize=10"
-    f_create_nxrm3 "${_CONT2_NAME}" "${_NXRM3_IMAGENAME}" "8182" "${_JVM_PARAMS}" || return $?
+    # TODO: Share blob store
+    f_create_nxrm3 "${_STANDBY_CONT_NAME}" "${_NXRM3_IMAGENAME}" "8182" "${_JVM_PARAMS}" || return $?
     # TODO: Update above to read-only
-    f_create_nxrm3 "${_CONT1_NAME}" "${_NXRM3_IMAGENAME}" "8181" "${_JVM_PARAMS}" || return $?
+    f_create_nxrm3 "${_ACTIVE_CONT_NAME}" "${_NXRM3_IMAGENAME}" "8181" "${_JVM_PARAMS}" || return $?
     # TODO: need a revese proxy or load balancer which understands the read-only status
 }
 
