@@ -76,17 +76,17 @@ function f_postgres_log() {
 
 #f_grep_multilines top_2021-03-31_17-49-17.out "" "Active Internet connections" > threads_2021-03-31_17-49-17.out
 function f_grep_multilines() {
-    local __doc__="Multiline search with 'rg' dotall TODO: dot and brace can't be used in _str_in_1st_line"
+    local __doc__="Multiline search with 'rg' dotall. Including the last line. NOTE: dot and brace can't be used in _str_in_1st_line"
     local _file="${1}" # -g "*.*log*" may work too
     local _str_in_1st_line="${2:-"^2\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d"}"
-    local _boundary_str="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d"}"
+    local _str_in_last_line="${3:-"^2\\d\\d\\d-\\d\\d-\\d\\d.\\d\\d:\\d\\d:\\d\\d"}"
 
     # NOTE: '\Z' to try matching the end of file returns 'unrecognized escape sequence'
-    local _regex="${_str_in_1st_line}.+?(${_boundary_str}|\z)"
+    local _regex="${_str_in_1st_line}.+?(${_str_in_last_line}|\z)"
     echo "# regex:${_regex} ${_file}" >&2
     rg "${_regex}" \
         --multiline --multiline-dotall --no-line-number --no-filename -z \
-        -m 2000 --sort=path ${_file} | grep -v "${_boundary_str}" | tr -d '\000'
+        -m 2000 --sort=path ${_file} | tr -d '\000' # | grep -v "${_boundary_str}" # this would remove unwanted line too
     # not sure if rg sorts properly with --sort, so best effort (can not use ' | sort' as multi-lines)
 }
 
@@ -96,7 +96,7 @@ function _grep_multilines() {
     local _file="${1}"
     local _start="${2:-"202\\d-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d"}"
     local _end="${3:-"Active Internet connections"}"
-    _grep -Pzo "(?s)${_start}[\s\S]*?${_end}.+?\n" "${_file}" | grep -v "${_end}" | tr -d '\000'
+    _grep -Pzo "(?s)${_start}[\s\S]*?${_end}.+?\n" "${_file}" | tr -d '\000'
 }
 
 
@@ -772,16 +772,26 @@ FLUSH PRIVILEGES;"
     #curl -i -H "X-Requested-By:ambari" -u admin:admin -X DELETE "http://$AMBARI_SERVER:8080/api/v1/clusters/$CLUSTER/artifacts/kerberos_descriptor"
 }
 
+
+#JAVA_GC_LOG_DIR="/some/location"
+#JAVA_GC_OPTS="-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${JAVA_GC_LOG_DIR%/}/ -XX:+PrintClassHistogramBeforeFullGC -XX:+PrintClassHistogramAfterFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:${JAVA_GC_LOG_DIR}/gc.%t.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=10m"
 function f_gc_before_after_check() {
-    local __doc__="TODO: add PrintClassHistogramBeforeFullGC, and parse log to find which objects are increasing"
-    return
-    # TODO: _grep -F '#instances' -A 20 solr_gc.log | _grep -E -- '----------------|org.apache'
-    export JAVA_GC_LOG_DIR="/some/location"
-    export JAVA_GC_OPTS="-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${JAVA_GC_LOG_DIR%/}/ \
-    -XX:+PrintClassHistogramBeforeFullGC -XX:+PrintClassHistogramAfterFullGC \
-    -XX:+TraceClassLoading -XX:+TraceClassUnloading \
-    -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps \
-    -Xloggc:${JAVA_GC_LOG_DIR}/gc.%t.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=1024k"
+    local __doc__="TODO: add PrintClassHistogramBeforeFullGC/PrintClassHistogramAfterFullGC, and parse log to find which objects are increasing"
+    local _log_dir="${1:-"."}"
+    local _keyword="${2-"sonatype"}"
+    local _A_max="${3-"100"}"
+    # _grep -F '#instances' -A 20 solr_gc.log | _grep -E -- '----------------|org.apache'
+    # NOTE: expecting filenames works with --sort=path
+    rg -z -N --sort=path --no-filename 'Full GC' -A ${_A_max} ${_log_dir} > /tmp/${FUNCNAME}_$$.tmp || return $?
+    diff -wy
+    cat /tmp/${FUNCNAME}_$$.tmp | rg "${_keyword:-".*"}" | awk '{print $4}' | sort | uniq | while read -r _cls; do
+        echo "# ${_cls}"
+        rg "\d+\s+\d+\s+${_cls}$" -o /tmp/${FUNCNAME}_$$.tmp | uniq -c
+        echo ""
+    done
+    echo "# diff between first and last for class includes '${_keyword}':"
+    local _n1=$((${_A_max} + 1))
+    diff -w -y -W200 <(head -n ${_n1} /tmp/${FUNCNAME}_$$.tmp | rg "(\d+)\s+(\d+)\s+(.*${_keyword}.*)" -o -r '${3} ${2} ${1}') <(tail -n ${_n1} /tmp/${FUNCNAME}_$$.tmp | rg "(\d+)\s+(\d+)\s+(.*${_keyword}.*)" -o -r '${3} ${2} ${1}')
 }
 
 function f_validate_siro_ini() {
@@ -1003,21 +1013,24 @@ function f_request2csv() {
     # NOTE: check jetty-requestlog.xml and logback-access.xml
     if [ -z "${_pattern_str}" ]; then
         _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1' | sort | uniq | tail -n1)"
+        # Or IQ uses: "%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime \"%header{User-Agent}\""
         # If _patter_str is still empty, doing best guess.
         if [ -z "${_pattern_str}" ]; then
             local _tmp_first_line="$(rg --no-filename -m1 -z '\b20\d\d.\d\d.\d\d' ${_g_opt} "${_glob}")"
             #echo "# first line: ${_tmp_first_line}" >&2
-            if echo "${_tmp_first_line}"   | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]$'; then
+            if echo "${_tmp_first_line}"   | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
-            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\] (.+)$'; then
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\] (.+)$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}" [%thread] %misc'
-            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]$'; then
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"$'; then
+                _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %header{Content-Length} %bytesSent %elapsedTime "%header{User-Agent}"'
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\]$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" [%thread]'
-            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\] (.+)$'; then
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" \[([^\]]+)\] (.+)$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" [%thread] %misc'
-            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" (.+)$'; then
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)" (.+)$'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}" "%misc"'
-            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)"'; then
+            elif echo "${_tmp_first_line}" | rg -q '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]*)"'; then
                 _pattern_str='%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent %elapsedTime "%header{User-Agent}"'
             else
                 _pattern_str="%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime"
@@ -1396,6 +1409,17 @@ function _get_json() {
     python3 $HOME/IdeaProjects/samples/python/get_json.py "${_props}" "${_key}" "${_attrs}" "${_find_all}" "${_no_pprint}"
 }
 
+function _actual_file_size() {
+    local _log_path="$1"
+    [ ! -f "${_log_path}" ] && return
+    local _file_cmd_out="$(file "${_log_path}")"
+    if ! echo "${_file_cmd_out}" | grep -qi "compress"; then
+        wc -c "${_log_path}" | awk '{print $1}'
+    else
+        echo "${_file_cmd_out}" | rg "\bsize (\d+)" -o -r '$1'
+    fi
+}
+
 function _sed() {
     local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
     ${_cmd} "$@"
@@ -1422,13 +1446,13 @@ function _uniq() {
 }
 
 function _LOG() {
-    local _log_file="${_LOG_FILE_PATH:-"/dev/null"}"
-    local _is_debug="${_DEBUG:-false}"
-    if [ "$1" == "DEBUG" ] && ! ${_is_debug}; then
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" >> ${_log_file}
-    else
-        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a ${_log_file}
-    fi # 1>&2 At this moment, outputting to STDOUT
+    if [ "$1" != "DEBUG" ] || [ -n "${_DEBUG}" ]; then
+        if [ -n "${_LOG_FILE_PATH}" ]; then
+            echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a ${_LOG_FILE_PATH}
+        else
+            echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"
+        fi
+    fi >&2
 }
 
 
