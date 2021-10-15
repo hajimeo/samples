@@ -79,7 +79,8 @@ alias int2utc='python -c "import sys,datetime;print(datetime.datetime.utcfromtim
 alias dec2hex='printf "%x\n"'
 alias hex2dec='printf "%d\n"'
 #alias python_i_with_pandas='python -i <(echo "import sys,json;import pandas as pd;f=open(sys.argv[1]);jd=json.load(f);df=pd.DataFrame(jd);")'   # Start python interactive after loading json object in 'df' (pandas dataframe)
-alias python_i_with_pandas='python3 -i <(echo "import sys,json;import pandas as pd;df=pd.read_json(sys.argv[1]);print(\"df\")")' # to convert list/dict pdf.values.tolist()
+alias python_i_with_pd_json='python3 -i <(echo "import sys,json;import pandas as pd;df=pd.read_json(sys.argv[1]);print(df)")' # to convert list/dict pdf.values.tolist()
+alias python_i_with_pd_csv='python3 -i <(echo "import sys;import pandas as pd;df=pd.read_csv(sys.argv[1],escapechar=\"\\\\\", index_col=False);print(df)")'
 alias python_i_with_json='python3 -i <(echo "import sys,json;js=json.load(open(sys.argv[1]));print(\"js\");")'
 alias json2csv='python3 -c "import sys,json;import pandas as pd;pdf=pd.read_json(sys.argv[1]);pdf.to_csv(sys.argv[1]+\".csv\", header=True, index=False)"'
 # Read xml file, then convert to dict, then print json
