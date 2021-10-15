@@ -1905,7 +1905,7 @@ def _read_file_and_search(file_path, line_beginning, line_matching, size_regex=N
 def logs2table(filename, tablename=None, conn=None,
                col_names=['date_time', 'loglevel', 'thread', 'node', 'user', 'class', 'message'],
                num_cols=None, line_beginning="^\d\d\d\d-\d\d-\d\d",
-               line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]*) ([^ ]+) - (.*)",
+               line_matching="^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[^ ]*) +([^ ]+) +\[([^]]+)\][^ ]* ([^ ]*) ([^ ]*) ([^ ]+) - (.*)",
                size_regex=None, time_regex=None,
                line_from=0, line_until=0,
                max_file_num=10, max_file_size=(1024 * 1024 * 100),

@@ -75,11 +75,11 @@ def _gen_regex_for_app_logs(filepath=""):
     ju._debug(checking_line)
 
     columns = ['date_time', 'loglevel', 'thread', 'node', 'user', 'class', 'message']
-    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]*) ([^ ]+) - (.*)'
+    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +\[([^]]+)\][^ ]* ([^ ]*) ([^ ]*) ([^ ]+) - (.*)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
     columns = ['date_time', 'loglevel', 'thread', 'user', 'class', 'message']
-    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +\[([^]]+)\] ([^ ]*) ([^ ]+) - (.*)'
+    partern_str = '^(\d\d\d\d-\d\d-\d\d.\d\d:\d\d:\d\d[.,0-9]*)[^ ]* +([^ ]+) +\[([^]]+)\][^ ]* ([^ ]*) ([^ ]+) - (.*)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
     return (columns, partern_str)
@@ -120,6 +120,20 @@ def _gen_regex_for_elastic_jvm(sample):
         partern_str += " %s=([^, ]+)," % (c)
     partern_str += "?"
     return (columns, partern_str)
+
+
+def _create_t_log_elastic_jvm_monitor(tablename='t_log_elastic_jvm_monitor'):
+    df_em = ju.q("""select date_time, message from t_nxrm_logs where class = 'org.elasticsearch.monitor.jvm'""")
+    if len(df_em) == 0:
+        return False
+    (col_names, line_matching) = _gen_regex_for_elastic_jvm(df_em['message'][1])
+    msg_ext = df_em['message'].str.extract(line_matching)
+    msg_ext.columns = col_names
+    # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
+    df_em.drop(columns=['message']).join(msg_ext).to_sql(name=tablename, con=ju.connect(),
+                                                         chunksize=1000, if_exists='replace',
+                                                         schema=ju._DB_SCHEMA)
+    ju._autocomp_inject(tablename=tablename)
 
 
 def _save_json(file_regex, save_path="", search_props=None, key_name=None, rtn_attrs=None, find_all=False):
@@ -288,22 +302,11 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
                 df_hm.drop(columns=['message']).join(msg_ext).to_sql(name="t_log_hazelcast_monitor", con=ju.connect(),
                                                                      chunksize=1000, if_exists='replace',
                                                                      schema=ju._DB_SCHEMA)
-                health_monitor = True
                 ju._autocomp_inject(tablename='t_log_hazelcast_monitor')
 
-        # Elastic JVM monitor
+        # org.elasticsearch.monitor.jvm
         if ju.exists("t_log_elastic_jvm_monitor") is False and bool(nxrm_logs):
-            df_em = ju.q("""select date_time, message from t_nxrm_logs where class = 'org.elasticsearch.monitor.jvm'""")
-            if len(df_em) > 0:
-                (col_names, line_matching) = _gen_regex_for_elastic_jvm(df_em['message'][1])
-                msg_ext = df_em['message'].str.extract(line_matching)
-                msg_ext.columns = col_names
-                # Delete unnecessary column(s), then left join the extracted dataframe, then load into SQLite
-                df_em.drop(columns=['message']).join(msg_ext).to_sql(name="t_log_elastic_jvm_monitor", con=ju.connect(),
-                                                                     chunksize=1000, if_exists='replace',
-                                                                     schema=ju._DB_SCHEMA)
-                health_monitor = True
-                ju._autocomp_inject(tablename='t_log_elastic_jvm_monitor')
+            _create_t_log_elastic_jvm_monitor('t_log_elastic_jvm_monitor')
 
         # Thread dump
         threads = ju.logs2table(filename="threads.txt", tablename="t_threads", conn=ju.connect(),
