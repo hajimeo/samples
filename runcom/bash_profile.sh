@@ -85,7 +85,7 @@ if [ "$(uname)" = "Darwin" ]; then
     if type lima &>/dev/null; then
         # "limadocker" is the hostname defined in $HOME/.ssh/config
         export DOCKER_HOST=ssh://limadocker:60006
-        alias lm-start='lima start default'
+        alias lm-start='limactl start default'
     elif type docker-machine &>/dev/null; then
         alias dm-start='docker-machine start default && eval "$(docker-machine env default)" && docker-machine ssh default "echo \"$(docker-machine ip default) local.standalone.localdomain\" | sudo tee -a /etc/hosts"'
         [ -z "${DOCKER_HOST}" ] && docker-machine status default 2>/dev/null | grep -q "Running" && eval "$(docker-machine env default)"
