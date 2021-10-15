@@ -113,7 +113,7 @@ main() {
                                  -Dnexus.datastore.nexus.maximumPoolSize=10"
     # TODO: Share blob store
     f_create_nxrm3 "${_STANDBY_CONT_NAME}" "${_NXRM3_IMAGENAME}" "8182" "${_JVM_PARAMS}" || return $?
-    # TODO: Update above to read-only
+    # TODO: Update above to read-only. eg: curl -u admin:admin123 -X POST http://localhost:8081/service/rest/v1/read-only/freeze
     f_create_nxrm3 "${_ACTIVE_CONT_NAME}" "${_NXRM3_IMAGENAME}" "8181" "${_JVM_PARAMS}" || return $?
     # TODO: need a revese proxy or load balancer which understands the read-only status
 }
