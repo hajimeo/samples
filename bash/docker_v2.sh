@@ -10,7 +10,7 @@
 #
 # To get the image names, then tags, then a tag (json):
 #   curl -u "${_USER}:${_PWD}" -L -k "${_DOCKER_REGISTRY_URL%/}/v2/_catalog"
-#   curl -u "${_USER}:${_PWD}" -L -k "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/tag/list"  # NEXUS-26037 if proxy
+#   curl -u "${_USER}:${_PWD}" -L -k "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/tags/list"  # NEXUS-26037 if proxy
 #   curl -u "${_USER}:${_PWD}" -L -k "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}"
 #
 
@@ -19,8 +19,10 @@
 : ${_PWD:=""}
 : ${_IMAGE:="ratelimitpreview/test"}
 : ${_TAG="latest"}
-: ${_TOKEN_SERVER_URL:="https://auth.docker.io/token?service=registry.docker.io"}   # http://dh1.standalone.localdomain:8081/repository/docker-proxy/v2/token
-: ${_DOCKER_REGISTRY_URL:="https://registry-1.docker.io"}   # http://dh1.standalone.localdomain:8081/repository/docker-proxy/
+: ${_TOKEN_SERVER_URL:="http://dh1.standalone.localdomain:8081/repository/docker-proxy/v2/token"}
+: ${_DOCKER_REGISTRY_URL:="http://dh1.standalone.localdomain:8081/repository/docker-proxy/"}
+#: ${_TOKEN_SERVER_URL:="https://auth.docker.io/token?service=registry.docker.io"}
+#: ${_DOCKER_REGISTRY_URL:="https://registry-1.docker.io"}
 
 : ${_TMP:="/tmp"}
 
