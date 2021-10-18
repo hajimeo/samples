@@ -238,9 +238,9 @@ function f_set_classpath() {
         local _tmp_cp="$(find ${_port_or_dir%/} -type f -name '*.jar' | tr '\n' ':')"
         export CLASSPATH=".:${_tmp_cp%:}"
     else
-        local _p=`lsof -ti:${_port} -s TCP:LISTEN` || return $?
+        local _p=`lsof -ti:${_port_or_dir} -s TCP:LISTEN` || return $?
         local _user="$(lsof -nP -p ${_p} | head -n2 | tail -n1 | awk '{print $3}')" # This is slow but stat -c '%U' doesn't work on Mac
-        local _jcmd="$(_find_jcmd "${_port}")" || return $?
+        local _jcmd="$(_find_jcmd "${_port_or_dir}")" || return $?
         # requires jcmd in the path
         export CLASSPATH=".:`sudo -u ${_user:-"$USER"} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
     fi
@@ -250,7 +250,7 @@ function _set_extra_classpath() {
     # _set_extra_classpath 8081 "${_JAVA_DIR%/}/lib"
     # _EXTRA_LIB="${_JAVA_DIR%/}/lib" _set_extra_classpath 8081
     local _port="${1}"
-    local _extra_lib="${2-${_EXTRA_LIB}}"
+    local _extra_lib="${2-"${_EXTRA_LIB}"}"
     local _classpath=""
 
     if [ "${_port}" == "8081" ] && [ -d "/usr/tmp/share/java/lib" ]; then
