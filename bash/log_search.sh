@@ -783,7 +783,6 @@ function f_gc_before_after_check() {
     # _grep -F '#instances' -A 20 solr_gc.log | _grep -E -- '----------------|org.apache'
     # NOTE: expecting filenames works with --sort=path
     rg -z -N --sort=path --no-filename 'Full GC' -A ${_A_max} ${_log_dir} > /tmp/${FUNCNAME}_$$.tmp || return $?
-    diff -wy
     cat /tmp/${FUNCNAME}_$$.tmp | rg "${_keyword:-".*"}" | awk '{print $4}' | sort | uniq | while read -r _cls; do
         echo "# ${_cls}"
         rg "\d+\s+\d+\s+${_cls}$" -o /tmp/${FUNCNAME}_$$.tmp | uniq -c
@@ -792,6 +791,8 @@ function f_gc_before_after_check() {
     echo "# diff between first and last for class includes '${_keyword}':"
     local _n1=$((${_A_max} + 1))
     diff -w -y -W200 <(head -n ${_n1} /tmp/${FUNCNAME}_$$.tmp | rg "(\d+)\s+(\d+)\s+(.*${_keyword}.*)" -o -r '${3} ${2} ${1}') <(tail -n ${_n1} /tmp/${FUNCNAME}_$$.tmp | rg "(\d+)\s+(\d+)\s+(.*${_keyword}.*)" -o -r '${3} ${2} ${1}')
+    echo ""
+    echo "# Temp file: /tmp/${FUNCNAME}_$$.tmp"
 }
 
 function f_validate_siro_ini() {
