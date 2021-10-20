@@ -504,6 +504,7 @@ function nuget-get() {
 
 ### Misc.   #################################
 #nxrm3Staging "yum-releases-prd" "test-tag" "repository=${_REPO_NAME_FROM}&name=adwaita-qt-common"
+#nxrm3Staging "raw-empty-hosted" "test-tag" "name=/test/test_1k.img"
 function nxrm3Staging() {
     local _move_to_repo="${1}"
     local _tag="${2}"
@@ -511,8 +512,8 @@ function nxrm3Staging() {
     local _nxrm3_url="${4:-"http://localhost:8081/"}"
     # tag may already exist, so not stopping if error
     if [ -n "${_tag}" ]; then
-        echo "# ${_nxrm3_url%/}/service/rest/v1/tags" -d '{"name": "'${_tag}'"}'
-        curl -v -u admin:admin123 -H "Content-Type: application/json" "${_nxrm3_url%/}/service/rest/v1/tags" -d '{"name": "'${_tag}'"}'
+        echo "# ${_nxrm3_url%/}/service/rest/v1/tags -d '{\"name\": \"'${_tag}'\"}'"
+        curl -u admin:admin123 -H "Content-Type: application/json" "${_nxrm3_url%/}/service/rest/v1/tags" -d '{"name": "'${_tag}'"}'
         echo ""
     fi
     if [ -n "${_search}" ]; then
@@ -523,7 +524,7 @@ function nxrm3Staging() {
             return
         fi
         echo "# ${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
-        curl -v -f -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}" || return $?
+        curl -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
         echo ""
         # NOTE: immediately moving fails with 404
         sleep 5
