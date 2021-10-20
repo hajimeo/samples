@@ -1410,6 +1410,46 @@ function _get_json() {
     python3 $HOME/IdeaProjects/samples/python/get_json.py "${_props}" "${_key}" "${_attrs}" "${_find_all}" "${_no_pprint}"
 }
 
+# _get_json warpper to convert some numeric values to human friendly formats
+function _search_json() {
+    local _file="$1"
+    local _search="$2"
+    local _h="$3" # Human readable
+    local _no_pprint="$4"
+    # NOTE: jmx.json can be TRUNCATED
+    local _result="$(_find_and_cat "${_file}" 2>/dev/null | _get_json "${_search}" "" "" "" "${_no_pprint}" 2>/dev/null)"
+    # TODO: Not sure if this works with Mac
+    if [[ "${_search}" =~ \[.+,.(.+).\] ]]; then
+        _search="${BASH_REMATCH[1]}"
+    elif [[ "${_search}" =~ \[.(.+).\] ]]; then
+        _search="${BASH_REMATCH[1]}"
+    fi
+    # If human friendly output is on and the value/result is an integer
+    if [[ "${_h}" =~ ^(y|Y) ]] && [[ "${_result}" =~ [1-9]+ ]]; then
+        if [[ "${_result}" -gt 1099511627776 ]]; then
+            _result="$(bc <<<"scale=2;${_result} / 1099511627776") TB"
+        elif [[ "${_result}" -gt 1073741824 ]]; then
+            _result="$(bc <<<"scale=2;${_result} / 1073741824") GB"
+        elif [[ "${_result}" -gt 1048576 ]]; then
+            _result="$(bc <<<"scale=2;${_result} / 1048576") MB"
+        elif [[ "${_result}" -gt 1024 ]]; then
+            _result="$(bc <<<"scale=2;${_result} / 1024") KB"
+        fi
+    fi
+    echo "${_search}: ${_result}"
+}
+
+function _human_friendly() {
+    # TODO: Too slow
+    local _num=$1
+    # NOTE: requires jn_utils.py in PYTHON_PATH (for python3)
+    # language=Python
+    echo "${_num}" | python3 -c "import sys, json
+import jn_utils as ju
+print(ju._human_readable_num(sys.stdin.read()))
+"
+}
+
 function _actual_file_size() {
     local _log_path="$1"
     [ ! -f "${_log_path}" ] && return
