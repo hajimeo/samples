@@ -106,12 +106,13 @@ alias jp='pyv && jupyter-lab &> /tmp/jupyter-lab.out &'
 alias jn='pyv && jupyter-notebook &> /tmp/jupyter-notebook.out &'
 
 ## Common software/command but need to install #######################################################################
-which docker &>/dev/null && alias docker_stop="docker stop -t 120"  # 10 seconds is too short
+type docker &>/dev/null && alias docker_stop="docker stop -t 120"  # 10 seconds is too short
 #alias rdocker="DOCKER_HOST='tcp://dh1:2375' docker"
 alias rdocker="ssh dh1 docker"
-which q &>/dev/null && alias qcsv='q -O -d"," -T --disable-double-double-quoting'
-which pgbadger &>/dev/null && alias pgbg='pgbadger --timezone 0'
-which microk8s &>/dev/null && alias kubectl="microk8s kubectl"
+type podman &>/dev/null && alias podmand="podman --log-level debug" && alias podman_login="podman --log-level debug login --tls-verify=false" && alias podman_pull="podman --log-level debug pull --tls-verify=false" && alias podman_push="podman --log-level debug push --tls-verify=false"
+type q &>/dev/null && alias qcsv='q -O -d"," -T --disable-double-double-quoting'
+type pgbadger &>/dev/null && alias pgbg='pgbadger --timezone 0'
+type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 
 ## Non default (need to install some complex software and/or develop script) alias commands ############################
 # Load/source my own searching utility functions / scripts
@@ -477,6 +478,8 @@ function pgStart() {
     fi
     pg_ctl -D ${_pg_data} -l ${_log_path} ${_cmd}
     # To connect: psql template1
+    # If 'The data directory was initialized by PostgreSQL version', then brew postgresql-upgrade-database
+    # and also check postgresql.conf : listen_addresses
 }
 
 # Start a dummy web server for webhook POST receiver

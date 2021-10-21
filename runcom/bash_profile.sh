@@ -20,6 +20,14 @@ if [ -d "$HOME/.cdpath" ]; then
     }
 fi
 
+# nuget/dotnet related
+if [ -s "$HOME/Apps/dotnet/dotnet" ]; then
+    DOTNET_ROOT=$HOME/Apps/dotnet
+    #mkdir -v -p "$DOTNET_ROOT"
+    #curl -O -J -L https://download.visualstudio.microsoft.com/download/pr/50ae4c83-5e38-4eba-b683-68313e7ed6f2/14a0ed0f807fc8ecf3f68cb3464016bc/dotnet-sdk-5.0.402-osx-x64.tar.gz
+    #tar -vzxf "$(ls -1 dotnet-sdk-5.*-osx-x64.tar.gz | tail -n1)" -C "$DOTNET_ROOT"
+    export PATH=${PATH%:}:${DOTNET_ROOT%/}
+fi
 
 # Go/Golang related
 if which go &>/dev/null; then
@@ -81,8 +89,12 @@ if [ "$(uname)" = "Darwin" ]; then
         [ -n "${_JAVA_HOME_11}" ] && alias jshell="$(/usr/libexec/java_home -v 11)/bin/jshell"
     fi
 
-    # Docker related use "lima" first
-    if type lima &>/dev/null; then
+    # Docker related. Use "podman" first
+    if type podman &>/dev/null; then
+        #brew install podman
+        #podman machine init --cpus 2 --disk-size 40 --memory 4096
+        alias pd-start='podman machine start'
+    elif type lima &>/dev/null; then
         # "limadocker" is the hostname defined in $HOME/.ssh/config
         export DOCKER_HOST=ssh://limadocker:60006
         alias lm-start='limactl start default'
