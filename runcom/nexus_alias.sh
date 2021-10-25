@@ -132,7 +132,7 @@ function nxrmStart() {
     # ulimit: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
 }
 
-#nxrmDocker "nxrm3-test" "" "8181" "8543" "--read-only -v /tmp/nxrm3-test:/tmp"
+#nxrmDocker "nxrm3-test" "" "8181" "8543" #"--read-only -v /tmp/nxrm3-test:/tmp"
 function nxrmDocker() {
     local _name="${1:-"nxrm3"}"
     local _tag="${2:-"latest"}"
@@ -173,7 +173,7 @@ function iqStart() {
     grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
     grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.bak -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
     cd "${_base_dir}"
-    java -Xmx2g ${_java_opts} -jar "${_jar_file}" server "${_cfg_file}"
+    java -Xms2g -Xmx4g ${_java_opts} -jar "${_jar_file}" server "${_cfg_file}"
     cd -
 }
 
