@@ -110,6 +110,7 @@ type docker &>/dev/null && alias docker_stop="docker stop -t 120"  # 10 seconds 
 #alias rdocker="DOCKER_HOST='tcp://dh1:2375' docker"
 alias rdocker="ssh dh1 docker"
 type podman &>/dev/null && alias podmand="podman --log-level debug" && alias podman_login="podman --log-level debug login --tls-verify=false" && alias podman_pull="podman --log-level debug pull --tls-verify=false" && alias podman_push="podman --log-level debug push --tls-verify=false"
+alias podman_delete_all='podman system prune --all'    # --force && podman rmi --all
 type q &>/dev/null && alias qcsv='q -O -d"," -T --disable-double-double-quoting'
 type pgbadger &>/dev/null && alias pgbg='pgbadger --timezone 0'
 type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
