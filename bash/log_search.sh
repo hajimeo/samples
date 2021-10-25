@@ -1461,6 +1461,21 @@ function _actual_file_size() {
     fi
 }
 
+function _wait_jobs() {
+    local _until_how_many="${1:-2}" # Running two is OK
+    local timeout_sec="${2:-180}"
+    local _i=0
+    while true; do
+        local _num="$(jobs -l | wc -l | tr -d '[:space:]')"
+        if [ -z "${_num}" ] || [ ${_num} -le ${_until_how_many} ]; then
+            return 0
+        fi
+        sleep 1
+        _i=$(( ${_i} + 1 ))
+        [ ${_i} -ge ${timeout_sec} ] && return 1
+    done
+}
+
 function _sed() {
     local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
     ${_cmd} "$@"
