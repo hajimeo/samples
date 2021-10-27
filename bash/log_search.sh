@@ -1450,6 +1450,15 @@ print(ju._human_readable_num(sys.stdin.read()))
 "
 }
 
+function _py3i_pipe() {
+    local _pipe=${1}
+    [ -z "${_pipe}" ] && _pipe="$(mktemp -u)"
+    mkfifo ${_pipe}
+    echo "# Starting python3 interactive with ${_pipe} ..." >&2
+    tail -n1 -f ${_pipe} | python3 -i
+    rm -v -f ${_pipe}
+}
+
 function _actual_file_size() {
     local _log_path="$1"
     [ ! -f "${_log_path}" ] && return
