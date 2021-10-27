@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-# line_parser.py func_name_without_lb_ [args] < some_file.txt
-# echo 'YYYY-MM-DDThh:mm:ss,sss current_line_num' | line_parser.py thread_num ${_last_line_num} | bar_chart.py -A
-# echo 'YYYY-MM-DD hh:mm:ss,sss some_log_text' | line_parser.py time_diff
+# Generic python script to parse the log lines with the function (1st argument), to use the result for gantt chart.
+# TODO: tooooooo messy and complicated. Should be refactored
 #
-# Example: measuring AWS (PUT) request (expecting some_task.log is Single thread):
-# rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d).+com.amazonaws.request - (Sending Request: [^ ]+|Received)' ./log/tasks/some_task.log -o -r '$1 $2 $3' | line_parser.py time_diff "Sending" > time_diff.csv
-# rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ com.amazonaws.request - (Sending Request: [^ ]+|Received)' -o -r '$1 $2 $3 $4' --no-filename --sort=path -g nexus.log | line_parser.py time_diff "Sending" 3 > time_diff.csv
-# rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.http.impl.conn.PoolingHttpClientConnectionManager - (Connection request:.+|Connection released:.+)' -o -r '$1 $2 $3 $4' --no-filename --sort=path -g nexus.log | line_parser.py time_diff "Connection request" 3 > time_diff.csv
+#   line_parser.py func_name_without_lb_ [extra args] < some_file.txt
 #
-# All functions need to use "lp_" prefix
-# TODO: should be a class
+# Process the stdin with lp_thread_num, which accept an extra argument as 'start_line_num'.
+#   echo 'YYYY-MM-DDThh:mm:ss,sss current_line_num' | line_parser.py thread_num ${_last_line_num} | bar_chart.py -A
+# Process the stdin with lp_time_diff, which accept two extra arguments as 'starting_message' and 'split_num'.
+#   echo 'YYYY-MM-DD hh:mm:ss,sss some_log_text' | line_parser.py time_diff
+#
+# NOTE: All function names need to start with "lp_" prefix
+# NOTE: Do not forget to insert column headers. Eg: start_datetime,end_datetime,elapsed,message,thread
+#
+# More complex Examples: measuring AWS (PUT) request (expecting some_task.log is Single thread):
+#   rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d).+com.amazonaws.request - (Sending Request: [^ ]+|Received)' ./log/tasks/some_task.log -o -r '$1 $2 $3' | line_parser.py time_diff "Sending" > time_diff.csv
+#   rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ com.amazonaws.request - (Sending Request: [^ ]+|Received)' -o -r '$1 $2 $3 $4' --no-filename --sort=path -g nexus.log | line_parser.py time_diff "Sending" 3 > time_diff.csv
+#   rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.http.impl.conn.PoolingHttpClientConnectionManager - (Connection request:.+|Connection released:.+)' -o -r '$1 $2 $3 $4' --no-filename --sort=path -g nexus.log | line_parser.py time_diff "Connection request" 3 > time_diff.csv
 #
 
 import sys, re, dateutil.parser
@@ -72,11 +78,11 @@ def lp_time_diff(line):
     if (len(sys.argv) > 2) and bool(sys.argv[2]):
         starting_message = sys.argv[2]
     # False works when *current* line's col[2] contains good message.
-    _split_num = 2
+    split_num = 2
     if (len(sys.argv) > 3) and bool(sys.argv[3]):
-        _split_num = int(sys.argv[3])
+        split_num = int(sys.argv[3])
     # "date time value" or "date time thread value"
-    cols = line.strip().split(" ", _split_num)
+    cols = line.strip().split(" ", split_num)
     if len(cols) < 2:
         return
 
@@ -108,7 +114,7 @@ def lp_time_diff(line):
             _final_message = message.replace('"', '\\"')
 
         if _final_message is not None:
-            # TODO: should use _split_num
+            # TODO: should use split_num
             if len(cols) > 3:
                 # should escape double-quotes on cols[2]
                 print("\"%s\",\"%s\",%s,\"%s\",\"%s\"" % (
