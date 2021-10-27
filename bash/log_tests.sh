@@ -33,15 +33,14 @@ fi
 : ${_FILTERED_DATA_DIR:="./_filtered"}
 : ${_LOG_GLOB:="*.log"}
 
-# Aliases
-alias _rg='rg -z -N'
-alias qcsv='q -O -d"," -T --disable-double-double-quoting'
-alias p_supports='for _d in `find . -maxdepth 1 -type d -name "*support*-202?????-??????-*[0-9]"`; do cd ${_d} && p_support; cd -; done'
-alias urlencode3='python3 -c "import sys;from urllib import parse; print(parse.quote(sys.argv[1]))"'
-alias python_i_with_pd_csv='python3 -i <(echo "import sys;import pandas as pd;df=pd.read_csv(sys.argv[1],escapechar=\"\\\\\", index_col=False);print(df)")'
-[ -s $HOME/IdeaProjects/nexus-toolbox/analyzer/analyze.py ] && alias sptZip="python3 $HOME/IdeaProjects/nexus-toolbox/analyzer/analyze.py" # -t for repository tree
-[ -s $HOME/IdeaProjects/nexus-toolbox/scripts/dump_nxrm3_groovy_scripts.py ] && alias sptDumpScript="python3 $HOME/IdeaProjects/nexus-toolbox/scripts/dump_nxrm3_groovy_scripts.py"
-[ -s $HOME/IdeaProjects/samples/misc/blobpath.jar ] && alias blobpath="java -jar $HOME/IdeaProjects/samples/misc/blobpath.jar"
+# Aliases (can't use alias in shell script, so functions)
+_rg() {
+    rg "$@"
+}
+qcsv() {
+    q -O -d"," -T --disable-double-double-quoting "$@"
+}
+#TODO: alias python_i_with_pd_csv='python3 -i <(echo "import sys;import pandas as pd;df=pd.read_csv(sys.argv[1],escapechar=\"\\\\\", index_col=False);print(df)")'
 
 
 function f_run_extract() {
@@ -183,10 +182,9 @@ function f_run_report() {
     fi
 
     if [ -s ${_FILTERED_DATA_DIR%/}/f_threads.out ]; then
-        echo "## THREADS: Checking the result of f_threads from ${_FILTERED_DATA_DIR%/}/f_threads.out"
-        [ -n "${_f_threads_pid}" ] && wait ${_f_threads_pid}
+        echo "## THREADS: Result of f_threads from ${_FILTERED_DATA_DIR%/}/f_threads.out"
         echo '```'
-        cat /tmp/f_threads_$$.out
+        cat ${_FILTERED_DATA_DIR%/}/f_threads.out
         echo '```'
     else
         echo "## THREADS: NOT checking threads as no ${_FILTERED_DATA_DIR%/}/f_threads.out"
@@ -207,9 +205,7 @@ function f_run_report() {
 }
 
 function f_run_tests() {
-    echo "# $(basename "$BASH_SOURCE" ".sh") test results"
-    echo "[[toc]]"
-    echo ""
+    echo "## ${FUNCNAME} results"
     _LOG "INFO" "Executing $(typeset -F | grep '^declare -f t_' | wc -l) tests."
     for _t in $(typeset -F | grep '^declare -f t_' | cut -d' ' -f3); do
         if ! _wait_jobs; then
@@ -253,6 +249,7 @@ function t_system() {
     _test_template "$(_rg 'MaxFileDescriptorCount: *\d{4}$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
     _test_template "$(_rg 'SystemLoadAverage: *([2-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high"
     _test_template "$(_rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low"
+    # TODO: check -XX:+UseG1GC
 }
 function t_disk_space() {
     if [ ! -s ${_FILTERED_DATA_DIR%/}/system-filestores.json ]; then
@@ -318,56 +315,16 @@ function t_threads() {
     _test_template "$(rg '(MessageDigest|findAssetByContentDigest|WeakHashMap)' -m1 ${_dir} | head -n10)" "WARN" "'MessageDigest|findAssetByContentDigest|WeakHashMap' may indicates CPU issue (eg: NEXUS-10991)"
 }
 
-
-
-
-
-
-function _t_xxxxxxx() {
-    # generating _service_log_hour and _request_log_hour
-    _tz=$(echo "${_tz}" | tr -d '"')
-    [ -z "${_tz}" ] && _tz="UTC"
-    local _tmp_date=""
-    local _tmp_h=""
-    local _service_log_hour="(${_DATE_FORMAT}).(\d\d)"
-    local _request_log_hour="(${_DATE_FMT_REQ}):(\d\d)"
-    if [ -n "${_st}" ]; then
-        # Mac's bash does not return if [[ "${_st}" =~ (${_DATE_FORMAT}).(\d)(\d) ]]; then
-        _tmp_date="$(eval "TZ=${_tz} _date -d'${_st}' +'%Y-%m-%d'")"
-        _tmp_h="$(eval "TZ=${_tz} _date -d'${_st}' +'%H'")"
-
-        # If date is different, because support zip contains from YYYY-MM-DD.00:00:00, no point of crafting complex regex
-        if [ -n "${_zip_taken_at}" ]; then
-            local _zip_taken_at_date=$(eval "TZ=${_tz} _date -d'${_zip_taken_at}' +'%Y-%m-%d'")
-            if [ "${_zip_taken_at_date}" != "${_tmp_date}" ]; then
-                #_tmp_date="${_zip_taken_at_date}"
-                #_tmp_h="00"
-                _tmp_h=""
-            fi
-        fi
+# TODO:
+function _r_requests() {
+    if [ ! -s ${_FILTERED_DATA_DIR%/}/request.csv ]; then
+        _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/request.csv."
+        return
     fi
-    if [ -n "${_tmp_h}" ]; then
-        local _start_hour="0[${_tmp_h: -1}-9]|1[0-9]|2[0-3]"
-        if [ ${_tmp_h} == 23 ]; then
-            local _next_date="$(eval "TZ=${_tz} _date -d'${_st} +1 day' +'%Y-%m-%d'")"
-            local _req_date="$(eval "TZ=${_tz} _date -d'${_st}' +'%d/%b/%Y'")"
-            local _req_next_date="$(eval "TZ=${_tz} _date -d'${_st} +1 day' +'%d/%b/%Y'")"
-            # Need to use two ()
-            _service_log_hour="(${_tmp_date}.23|${_next_date}.\d\d)(:)"
-            _request_log_hour="(${_req_date}.23|${_req_next_date}.\d\d)(:)"
-        else
-            if [ ${_tmp_h} -ge 20 ]; then
-                _start_hour="2[${_tmp_h: -1}-3]"
-            elif [ ${_tmp_h} -ge 10 ]; then
-                _start_hour="1[${_tmp_h: -1}-9]|2[0-3]"
-            fi
-            _service_log_hour="(${_tmp_date}).(${_start_hour})"
-            _request_log_hour="($(eval "TZ=${_tz} _date -d'${_tmp_date}' +'%d/%b/%Y'")):(${_start_hour})"
-        fi
-    fi
+    _py3i_pipe "/tmp/_r_requests.pipe" &
+    local _pid=$!
+    echo
 
-
-    if [ -n "${_f_request2csv_pid}" ] || [ -s ${_FILTERED_DATA_DIR%/}/request.csv ]; then
         [ -n "${_f_request2csv_pid}" ] && wait ${_f_request2csv_pid}
         echo "## REQUESTS: Analysing ${_REQUEST_LOG} (${_FILTERED_DATA_DIR%/}/request.csv)"
         # first and end time per user
@@ -430,6 +387,9 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     fi
 
     f_run_extract || exit $?
+    echo "# $(basename "$BASH_SOURCE" ".sh") results"
+    echo "[[toc]]"
+    echo ""
     f_run_report
     f_run_tests || exit $?
 fi
