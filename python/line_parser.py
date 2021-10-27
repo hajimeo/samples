@@ -11,8 +11,8 @@
 # Process the stdin with lp_time_diff, which accept two extra arguments as 'starting_message' and 'split_num'.
 #   echo 'YYYY-MM-DD hh:mm:ss,sss some_log_text' | line_parser.py time_diff
 #
-# NOTE: All function names need to start with "lp_" prefix
-# NOTE: Do not forget to insert column headers. Eg: start_datetime,end_datetime,elapsed,message,thread
+# NOTE: All *actual* function names need to start with "lp_" , and use the with/without 'lb_' function name as the 1st arg
+# NOTE: Do not forget to insert column headers in the csv. Eg: start_datetime,end_datetime,elapsed,message,thread
 #
 # More complex Examples: measuring AWS (PUT) request (expecting some_task.log is Single thread):
 #   rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d).+com.amazonaws.request - (Sending Request: [^ ]+|Received)' ./log/tasks/some_task.log -o -r '$1 $2 $3' | line_parser.py time_diff "Sending" > time_diff.csv
@@ -132,9 +132,11 @@ def lp_time_diff(line):
 
 if __name__ == '__main__':
     func_name = sys.argv[1]
+    if func_name.startswith('lp_') is False:
+        func_name = 'lp_' + func_name
 
     for line in sys.stdin:
-        globals()['lp_' + func_name](line)
+        globals()[func_name](line)
 
     # Some function needs to be called with empty line
-    globals()['lp_' + func_name]("")
+    globals()[func_name]("")
