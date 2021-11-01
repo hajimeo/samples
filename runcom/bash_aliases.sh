@@ -32,7 +32,8 @@ alias s5proxy='netstat -tln | grep -E ":38080\s+" || ssh -4gC2TxnN -D38080'
 
 ## Git #################################################################################################################
 # Show current tag
-alias get_tag='git describe --tags'
+alias git_tag_crt='git describe --tags'
+alias git_tag_hash='git tag --contains'
 # compare tags
 function git_comp_tags() {
     local _tag1="$1"
