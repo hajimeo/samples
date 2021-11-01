@@ -251,7 +251,7 @@ function f_setup_python() {
     python3.7 -m pip install -U ${_i_opt} jupyter jupyterlab pandas dfsql --log /tmp/pip.log || return $?   #ipython
     # Reinstall: python3.7 -m pip uninstall -y jupyterlab && python3.7 -m pip install jupyterlab
 
-    # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite.
+    # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite, and slow, and doesn't look like maintained any more.
     python3.7 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib psycopg2 --log /tmp/pip.log
     # pandas_profiling may fail to install. pixiedust works only with jupyter-notebook
     #python3.7 -m pip install -U ${_i_opt} pandas_profiling pixiedust --log /tmp/pip.log

@@ -6,8 +6,7 @@ Check/test log files such as request.log and report any suspicious entry.
 
 REQUIREMENTS:
     bash, ripgrep (rg), coreutils (realpath, timeout)
-    q (but will be replaced)
-    python3 with pandas
+    q https://github.com/harelba/q
 
 TARGET OS:
     macOS Mojave
@@ -37,10 +36,9 @@ fi
 _rg() {
     rg "$@"
 }
-qcsv() {
+_q() {
     q -O -d"," -T --disable-double-double-quoting "$@"
 }
-#TODO: alias python_i_with_pd_csv='python3 -i <(echo "import sys;import pandas as pd;df=pd.read_csv(sys.argv[1],escapechar=\"\\\\\", index_col=False);print(df)")'
 
 
 function f_run_extract() {
@@ -59,14 +57,16 @@ function f_run_extract() {
     local _req_log_size="$(_actual_file_size "${_req_log_path}")"
 
     ### Doing time consuming extracting first #########################################
+    if [ -n "${_log_size}" ] && [ ${_log_size} -gt 0 ] && [ ${_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
+        f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out &
+    fi
+
+    _NOT_SPLIT_BY_DATE=Y f_threads &>${_FILTERED_DATA_DIR%/}/f_threads.out &
+
     if [ -n "${_req_log_size}" ] && [ ${_req_log_size} -gt 0 ] && [ ${_req_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
         f_request2csv "${_REQUEST_LOG}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
     else
         _LOG "INFO" "Run: f_request2csv "${_REQUEST_LOG}" ${_FILTERED_DATA_DIR%/}/request.csv # ${_req_log_size} > ${_LOG_THRESHOLD_BYTES}"
-    fi
-    _NOT_SPLIT_BY_DATE=Y f_threads &>${_FILTERED_DATA_DIR%/}/f_threads.out &
-    if [ -n "${_log_size}" ] && [ ${_log_size} -gt 0 ] && [ ${_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
-        f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out &
     fi
 
     if [ -s "${_log_path}" ]; then
@@ -205,6 +205,7 @@ function f_run_report() {
 }
 
 function f_run_tests() {
+    # TODO: Check/Get the product version
     echo "## ${FUNCNAME} results"
     _LOG "INFO" "Executing $(typeset -F | grep '^declare -f t_' | wc -l) tests."
     for _t in $(typeset -F | grep '^declare -f t_' | cut -d' ' -f3); do
@@ -316,30 +317,25 @@ function t_threads() {
 }
 
 # TODO:
-function _r_requests() {
+function t_requests() {
     if [ ! -s ${_FILTERED_DATA_DIR%/}/request.csv ]; then
         _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/request.csv."
         return
     fi
-    _py3i_pipe "/tmp/_r_requests.pipe" &
-    local _pid=$!
-    echo
 
-        [ -n "${_f_request2csv_pid}" ] && wait ${_f_request2csv_pid}
-        echo "## REQUESTS: Analysing ${_REQUEST_LOG} (${_FILTERED_DATA_DIR%/}/request.csv)"
         # first and end time per user
-        #qcsv -H "select clientHost, user, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1,2"
+        #_q -H "select clientHost, user, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1,2"
         echo "### Counting host_ip + user per hour for last 10 hours ('-' in user is counted as 1)"
         echo '```'
-        qcsv -H "select substr(date,1,14) as hour, count(*), count(distinct clientHost), count(distinct user), count(distinct clientHost||user) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1 order by hour desc LIMIT 10"
+        _q -H "select substr(date,1,14) as hour, count(*), count(distinct clientHost), count(distinct user), count(distinct clientHost||user) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1 order by hour desc LIMIT 10"
         echo '```'
         echo "### Top 20 HTTP status 4xx and 5xx per method, repo, status"
         echo '```'
-        qcsv -H "select requestURL, statusCode from ${_FILTERED_DATA_DIR}/request.csv where requestURL like '%/repository/%' AND (statusCode like '4%' or statusCode like '5%')" | rg "([^ ]+) .*/repository/([^/]+)/.+ HTTP/1.1\s+(\d+)" -o -r '$1 $2 $3' | sort | uniq -c | sort -nr | head -n10
+        _q -H "select requestURL, statusCode from ${_FILTERED_DATA_DIR}/request.csv where requestURL like '%/repository/%' AND (statusCode like '4%' or statusCode like '5%')" | rg "([^ ]+) .*/repository/([^/]+)/.+ HTTP/1.1\s+(\d+)" -o -r '$1 $2 $3' | sort | uniq -c | sort -nr | head -n10
         echo '```'
         echo "### count by IP, limit 5 (to guess if proxy or not)"
         echo '```'
-        qcsv -H "select clientHost, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1 order by 2 desc limit 5"
+        _q -H "select clientHost, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1 order by 2 desc limit 5"
         echo '```'
         echo "### Counting HTTP methods and HTTP protocol version from ${_REQUEST_LOG} (HTTP/1.0 may cause buffer issue with nginx)"
         # https://serverfault.com/questions/768693/nginx-how-to-completely-disable-request-body-buffering
@@ -348,11 +344,11 @@ function _r_requests() {
         echo '```'
         echo "### Top slow requests (select ... from ${_FILTERED_DATA_DIR%/}/request.csv where elapsedTime > 7000 order by elapsedTime DESC limit 10)"
         echo '```'
-        qcsv -H "select clientHost, user, date, requestURL, statusCode, bytesSent, elapsedTime, CAST((CAST(bytesSent as INT) / CAST(elapsedTime as INT)) as DECIMAL(10, 2)) as byte_per_ms, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time from ${_FILTERED_DATA_DIR%/}/request.csv where elapsedTime > 7000 order by elapsedTime DESC limit 10"
+        _q -H "select clientHost, user, date, requestURL, statusCode, bytesSent, elapsedTime, CAST((CAST(bytesSent as INT) / CAST(elapsedTime as INT)) as DECIMAL(10, 2)) as byte_per_ms, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time from ${_FILTERED_DATA_DIR%/}/request.csv where elapsedTime > 7000 order by elapsedTime DESC limit 10"
         echo '```'
         echo "### First 10 5xx errors (select ... from ${_FILTERED_DATA_DIR%/}/request.csv where statusCode like '5%' order by started_time limit 10)"
         echo '```'
-        qcsv -H "select clientHost, user, date, requestURL, statusCode, bytesSent, elapsedTime, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time from ${_FILTERED_DATA_DIR%/}/request.csv where statusCode like '5%' order by started_time limit 10"
+        _q -H "select clientHost, user, date, requestURL, statusCode, bytesSent, elapsedTime, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time from ${_FILTERED_DATA_DIR%/}/request.csv where statusCode like '5%' order by started_time limit 10"
         echo '```'
         echo "### Request counts per hour with '${_request_log_hour}' from ${_REQUEST_LOG}"
         echo '```'
@@ -361,14 +357,14 @@ function _r_requests() {
         echo '```'
         echo "### Top 10 slow APIs from ${_REQUEST_LOG}"
         echo '```'
-        qcsv -H "select * from _filtered/request.csv WHERE (requestURL like '%/service/rest/%' OR requestURL like '%/api/v2/%') AND elapsedTime > 1000 ORDER BY elapsedTime DESC LIMIT 10"
+        _q -H "select * from _filtered/request.csv WHERE (requestURL like '%/service/rest/%' OR requestURL like '%/api/v2/%') AND elapsedTime > 1000 ORDER BY elapsedTime DESC LIMIT 10"
         echo '```'
         echo "### API-like requests from ${_REQUEST_LOG}"
         echo '```'
-        qcsv -H "select * from _filtered/request.csv WHERE (requestURL like '%/service/rest/%' OR requestURL like '%/api/v2/%')" | rg "\d\d.[A-Z][a-z]{2}.20\d\d.\d\d:\d" -o | bar_chart.py
+        _q -H "select * from _filtered/request.csv WHERE (requestURL like '%/service/rest/%' OR requestURL like '%/api/v2/%')" | rg "\d\d.[A-Z][a-z]{2}.20\d\d.\d\d:\d" -o | bar_chart.py
         echo '```'
-    else
-        echo "## REQUESTS: NOT converting ${_REQUEST_LOG} to CSV (if exists) as too big (${_req_log_size})"
+
+        #echo "## REQUESTS: NOT converting ${_REQUEST_LOG} to CSV (if exists) as too big (${_req_log_size})"
         echo "### 5xx statusCode in ${_REQUEST_LOG} (${_FILTERED_DATA_DIR%/}/log_requests_5xx.out)"
         rg 'HTTP/\d\.\d" 5\d\d\s' --no-filename -g ${_REQUEST_LOG} >${_FILTERED_DATA_DIR%/}/log_requests_5xx.out
         if [ -s ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out ]; then
@@ -376,20 +372,22 @@ function _r_requests() {
             rg "${_DATE_FMT_REQ}.\d\d:\d" -o ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out | bar_chart.py
             echo '```'
         fi
-    fi
 }
 
+
+main() {
+    f_run_extract || return $?
+    echo "# $(basename "$BASH_SOURCE" ".sh") results"
+    echo "[[toc]]"
+    echo ""
+    f_run_report
+    f_run_tests || return $?
+}
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     if [[ "$1" =~ ^(-h|help)$ ]]; then
         usage | less
         exit
     fi
-
-    f_run_extract || exit $?
-    echo "# $(basename "$BASH_SOURCE" ".sh") results"
-    echo "[[toc]]"
-    echo ""
-    f_run_report
-    f_run_tests || exit $?
+    main
 fi
