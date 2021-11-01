@@ -13,7 +13,7 @@ function usage() {
     cat << EOS
 Patch one Java/Scala class file by injecting into one jar.
 
-\$ bash $0 <port> <ClassName>.[java|scala] <some.jar> [specific_ClassName] [not_compile]
+\$ bash $0 <port> <ClassName>.[java|scala] <some.jar> [specific_ClassName] [dir_detect_regex] [not_compile]
 
     <port>: Port or Directory path (mainly for Mac).
     <ClassName>.[java|scala]: A file path of your java or scala file.
@@ -229,7 +229,7 @@ function _find_jcmd() {
             done
         fi
     fi
-    echo "${_jcmd}"
+    echo "$(realpath "${_jcmd}")"
 }
 
 function f_set_classpath() {
@@ -469,7 +469,13 @@ $0 '$1' '$2' '<jar path from above>' '$4' '$5' [Y]"
         elif [ "${_EXT}" = "java" ]; then
             if [ -n "${_JAR_FILEPATH}" ] && [ -e "${_JAR_FILEPATH}" ]; then
                 # TODO: not sure adding "/" before _CLASS_NAME is OK
-                _DIR_PATH="$(dirname $($JAVA_HOME/bin/jar -tvf ${_JAR_FILEPATH} | grep -oE "${_DIR_DETECT_REGEX:-"[^ ]+"}/${_CLASS_NAME}.class"))"
+                dirname $($JAVA_HOME/bin/jar -tvf ${_JAR_FILEPATH} | grep -oE "${_DIR_DETECT_REGEX:-"[^ ]+"}/${_CLASS_NAME}.class") > /tmp/patch_java.sh.out
+                if [ "$(cat /tmp/patch_java.sh.out | wc -l)" -ne 1 ]; then
+                    echo "${_JAR_FILEPATH} may contain more than one ${_CLASS_NAME}.class. Utilise _DIR_DETECT_REGEX (5th arg)."
+                    cat /tmp/patch_java.sh.out
+                    exit 11
+                fi
+                _DIR_PATH="$(cat /tmp/patch_java.sh.out)"
                 if [ ! -d "${_DIR_PATH}" ]; then
                     mkdir -p "${_DIR_PATH}" || exit $?
                 fi
