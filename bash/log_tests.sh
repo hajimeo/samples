@@ -158,6 +158,8 @@ function _check_log_stop_start() {
 }
 
 function f_run_report() {
+    echo "## ${FUNCNAME} results"
+    echo ""
     if [ -s "${_FILTERED_DATA_DIR%/}/extracted_configs.md" ]; then
         cat ${_FILTERED_DATA_DIR%/}/extracted_configs.md
     fi
@@ -210,6 +212,7 @@ function f_run_report() {
 function f_run_tests() {
     # TODO: Check/Get the product version
     echo "## ${FUNCNAME} results"
+    echo ""
     _LOG "INFO" "Executing $(typeset -F | grep '^declare -f t_' | wc -l) tests."
     for _t in $(typeset -F | grep '^declare -f t_' | cut -d' ' -f3); do
         if ! _wait_jobs; then
@@ -223,9 +226,10 @@ function f_run_tests() {
 }
 function _head() {
     local _X="###"
-    [ "$1" == "WARN" ] && _X="####"
-    [ "$1" == "INFO" ] && _X="#####"
+    [ "$1" == "WARN" ] && _X="###"
+    [ "$1" == "INFO" ] && _X="####"
     echo "${_X} $*"
+    echo ""
 }
 function _test_template() {
     local _bad_result="$1"
