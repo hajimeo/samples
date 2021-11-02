@@ -15,7 +15,7 @@ To show the elapsed time:
 To show more strings in the truncated rows:
     pd.options.display.max_rows = 1000      (default is 60)
 To show more strings in a column:
-    pd.options.display.max_colwidth = 1000  (default is 50. -1 to disable = show everything)
+    pd.options.display.max_colwidth = 1000  (default is 50. -1 or None to disable = show everything)
 To show the first 3 rows and the last 3 rows:
     df.iloc[[0,1,2,-3,-2,-1]]
 Convert one row to dict:
@@ -2191,7 +2191,7 @@ def df2table(df, tablename, conn=None, chunksize=1000, if_exists='replace', sche
     return True
 
 
-def df2csv(df, file_path, mode="w", header=True):
+def df2csv(df, file_path=None, mode="w", header=True):
     '''
     Save DataFrame to a CSV file
     :param df: Pandas Data Frame object
