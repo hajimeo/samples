@@ -4,6 +4,7 @@ package main
 import (
 	"bufio"
 	"database/sql"
+	"encoding/csv"
 	"encoding/hex"
 	"fmt"
 	"github.com/chzyer/readline"
@@ -24,7 +25,6 @@ var opt = struct {
 	Usage     string "Usage string"
 	Load      string "CSV file to load"
 	MemDB     bool   "Create DB in :memory: instead of disk. Defaults to false"
-	AskType   bool   "Asks type for each field. Uses TEXT otherwise."
 	Type      string "Comma separated field types. Can be TEXT/REAL/INTEGER."
 	TableName string "Sqlite table name.  Default is csv filename."
 	RPI       int    "Rows per insert. Defaults to 100. Reduce if long rows.|100"
@@ -38,7 +38,6 @@ func Usage() {
 	fmt.Println(`
 Usage: csvsql  --Load    <csvfile>
               [--MemDB]             #Creates sqlite db in :memory: instead of disk.
-              [--AskType]           #Asks type for each field. Uses TEXT otherwise.
               [--Type  <type1>,...] #Comma separated field types. Can be TEXT/REAL/INTEGER.
               [--TableName]         #Sqlite table name.  Default is csv filename.
               [--Query]             #Query to run. If not provided, enters interactive mode.
@@ -47,7 +46,6 @@ Usage: csvsql  --Load    <csvfile>
               [--OutDelim]          #Output Delimiter to use. Defaults is comma.
               [--WorkDir <workdir>] #tmp dir to create db in. Defaults to /tmp/. 
 The --WorkDir parameter is ignored if --MemDB is specified.
-The --AskType parameter is ignored if --Type  is specified.
 The --OutFile parameter is ignored if --Query is NOT specified.
 `)
 }
@@ -82,8 +80,7 @@ func InsertToDB(db *sql.DB, queries <-chan string, done chan<- bool) {
 	}
 }
 
-func SetType(headerStr string) (fieldsSql string, quoteField []bool, fieldTypes []byte) {
-	header := strings.Split(headerStr, ",")
+func setType(header []string) (fieldsSql string, quoteField []bool, fieldTypes []byte) {
 	types := strings.Split(opt.Type, ",")
 	for ii, field := range header {
 		if len(fieldsSql) > 0 {
@@ -110,51 +107,6 @@ func SetType(headerStr string) (fieldsSql string, quoteField []bool, fieldTypes 
 	return fieldsSql, quoteField, fieldTypes
 }
 
-func AskType(headerStr string, rowStr string) (fieldsSql string, quoteField []bool, fieldTypes []byte) {
-	var completer = readline.NewPrefixCompleter(
-		readline.PcItem("TEXT"),
-		readline.PcItem("INTEGER"),
-		readline.PcItem("REAL"),
-	)
-	rl, err := readline.NewEx(&readline.Config{
-		AutoComplete: completer,
-		Prompt:       "Enter type (TAB for options): ",
-	})
-	if err != nil {
-		log.Panic(err)
-	}
-	header := strings.Split(headerStr, ",")
-	value := strings.Split(rowStr, ",")
-	for ii, field := range header {
-		fmt.Printf("Field: %s  (first value: %s)\n", field, value[ii])
-		fieldType, err := rl.Readline()
-		if err != nil {
-			log.Panic(err)
-		}
-		fieldType = strings.ToUpper(strings.TrimSpace(fieldType))
-		if len(fieldsSql) > 0 {
-			fieldsSql += ","
-		}
-		if fieldType == "INTEGER" || fieldType == "REAL" {
-			fieldsSql += field + " " + fieldType
-		} else {
-			fieldType = "TEXT"
-			fieldsSql += field + " " + fieldType
-		}
-		if fieldType == "TEXT" {
-			fieldTypes = append(fieldTypes, 0)
-			quoteField = append(quoteField, true)
-		} else if fieldType == "INTEGER" {
-			fieldTypes = append(fieldTypes, 1)
-			quoteField = append(quoteField, false)
-		} else if fieldType == "REAL" {
-			fieldTypes = append(fieldTypes, 2)
-			quoteField = append(quoteField, false)
-		}
-	}
-	return fieldsSql, quoteField, fieldTypes
-}
-
 func main() {
 	sflag.Parse(&opt)
 	if _, err := os.Stat(opt.Load); os.IsNotExist(err) {
@@ -165,6 +117,7 @@ func main() {
 	var dbfile string
 	var dbdir string
 	var headerStr string
+	var header []string
 	var rowStr string
 	var fieldsSql string
 	var quoteField []bool
@@ -187,17 +140,30 @@ func main() {
 	}
 	defer db.Close()
 
-	fp, err := os.Open(opt.Load)
+	csvfp, err := os.Open(opt.Load)
 	if err != nil {
 		log.Panic(err)
 	}
-	fpBuf := bufio.NewReader(fp)
-	headerStr, err = fpBuf.ReadString('\n')
-	headerStr = strings.TrimSuffix(headerStr, "\n")
-	if err != nil {
-		log.Panic(err)
+	reader := csv.NewReader(csvfp)
+	currentLine := 1
+	for {
+		record, err := reader.Read()
+		if err != nil {
+			log.Panic(err)
+		}
+
+		// TODO: add flag to decide if the first line is header or not
+		if currentLine == 1 {
+			header = record
+			if len(opt.Type) > 0 {
+				fieldsSql, quoteField, fieldTypes = setType(header)
+			}
+			continue
+		}
+
+		currentLine++
 	}
-	rowStr, err = fpBuf.ReadString('\n')
+
 	rowStr = strings.TrimSuffix(rowStr, "\n")
 	if err == io.EOF {
 		if len(rowStr) == 0 {
@@ -208,9 +174,7 @@ func main() {
 		log.Panic(err)
 	}
 	if len(opt.Type) > 0 {
-		fieldsSql, quoteField, fieldTypes = SetType(headerStr)
-	} else if opt.AskType {
-		fieldsSql, quoteField, fieldTypes = AskType(headerStr, rowStr)
+		fieldsSql, quoteField, fieldTypes = setType(header)
 	} else {
 		for _, field := range strings.Split(headerStr, ",") {
 			if len(fieldsSql) > 0 {
@@ -231,13 +195,17 @@ func main() {
 		fmt.Println("Loading csv into table '" + opt.TableName + "'")
 	}
 	insCnt := 0
+	lineNo := 1
 	for {
+		log.Printf("DEBUG: lineNo %d, quoteField length %d\n", lineNo, len(quoteField))
 		fieldsSql = ""
+		//rowStr
 		for ii, field := range strings.Split(rowStr, ",") {
 			if len(fieldsSql) > 0 {
 				fieldsSql += ","
 			}
-			if quoteField[ii] {
+			value, ok := quoteField[ii]
+			if ok {
 				fieldsSql += "\"" + field + "\""
 			} else {
 				field = strings.TrimSpace(field)
@@ -258,13 +226,14 @@ func main() {
 			query += ",(" + fieldsSql + ")"
 		}
 		insCnt++
-		rowStr, err = fpBuf.ReadString('\n')
+		rowStr, err = reader.ReadString('\n')
 		rowStr = strings.TrimSuffix(rowStr, "\n")
 		if err == io.EOF {
 			break
 		} else if err != nil {
 			log.Panic(err)
 		}
+		lineNo++
 	}
 	if len(query) > 0 {
 		query += ";"
