@@ -43,59 +43,42 @@ _rg() {
 _q() {
     q -O -d"," -T --disable-double-double-quoting "$@"
 }
-
+_runner() {
+    local _pfx="$1"
+    local _tmp="$(mktemp -d)"
+    _LOG "INFO" "Executing $(typeset -F | grep "^declare -f ${_pfx}" | wc -l) ${_pfx}xxxxxx functions."
+    for _t in $(typeset -F | grep "^declare -f ${_pfx}" | cut -d' ' -f3); do
+        if ! _wait_jobs; then
+            _LOG "ERROR" "${FUNCNAME} failed."
+            return 11
+        fi
+        eval "_LOG \"DEBUG\" \"Started ${_t}\";${_t} > ${_tmp}/${_t}.out;echo '';_LOG \"DEBUG\" \"Completed ${_t} ($?)\"" &
+    done
+    _wait_jobs 0
+    cat ${_tmp}/${_pfx}*.out
+    _LOG "INFO" "Completed ${FUNCNAME}."
+}
 
 function f_run_extract() {
-    _LOG "INFO" "Extracting data into ${_FILTERED_DATA_DIR%/} ..."
     [ -d "${_FILTERED_DATA_DIR%/}" ] || mkdir -v -p "${_FILTERED_DATA_DIR%/}" || return $?
     if [ "$(ls -1 "${_FILTERED_DATA_DIR%/}")" ]; then
         _LOG "INFO" "${_FILTERED_DATA_DIR%/} is not empty so not extracting."
         return
     fi
+    _runner "e_"
+}
 
-    local _log_path="$(find . -maxdepth 3 -type f -print | grep -m1 -E "/(${_NXRM_LOG}|${_NXIQ_LOG}|server.log)$")"
-    local _log_size="$(_actual_file_size "${_log_path}")"
-    [ -z "${_log_path}" ] && _log_path="*.log"
-    _LOG_GLOB="$(basename ${_log_path} | sed 's/.\///')"
-    local _req_log_path="$(find . -maxdepth 3 -name ${_REQUEST_LOG} | head -n1 2>/dev/null)"
-    local _req_log_size="$(_actual_file_size "${_req_log_path}")"
+function f_run_report() {
+    echo "## ${FUNCNAME} results"
+    echo ""
+    _runner "r_"
+}
 
-    ### Doing time consuming extracting first #########################################
-    if [ -n "${_log_size}" ] && [ ${_log_size} -gt 0 ] && [ ${_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
-        f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out &
-    fi
-
-    _NOT_SPLIT_BY_DATE=Y f_threads &>${_FILTERED_DATA_DIR%/}/f_threads.out &
-
-    if [ -n "${_req_log_size}" ] && [ ${_req_log_size} -gt 0 ] && [ ${_req_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
-        f_request2csv "${_REQUEST_LOG}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
-    else
-        _LOG "INFO" "Run: f_request2csv "${_REQUEST_LOG}" ${_FILTERED_DATA_DIR%/}/request.csv # ${_req_log_size} > ${_LOG_THRESHOLD_BYTES}"
-    fi
-
-    if [ -s "${_log_path}" ]; then
-        local _start_log_line=""
-        if [[ "${_log_path}" =~ (nexus)[^*]*log[^*]* ]]; then
-            #_start_log_line=".*org.sonatype.nexus.(webapp.WebappBootstrap|events.EventSubscriberHost) - Initialized"  # NXRM2 (if no DEBUG)
-            _start_log_line=".*org.sonatype.nexus.pax.logging.NexusLogActivator - start" # NXRM3
-        elif [[ "${_log_path}" =~ (clm-server)[^*]*log[^*]* ]]; then
-            _start_log_line=".* Initializing Nexus IQ Server .*"   # IQ
-        fi
-        if [ -n "${_start_log_line}" ]; then
-            f_splitByRegex ${_log_path} "${_start_log_line}" "_split_logs" &
-        #if [ -n "${_log_size}" ] && [ ${_log_size} -gt 0 ] && [ ${_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
-        #    echo 'Use: f_splitByRegex '${_log_path}' "'${_start_log_line}'" "_split_logs"'
-        fi
-    fi
-
-    # below is not heavy but still takes a few secs
-    _extract_configs >${_FILTERED_DATA_DIR%/}/extracted_configs.md &
-    _extract_log_last_start >${_FILTERED_DATA_DIR%/}/extract_log_last_start.md &
-    ############################################################################
-
-    _search_json "sysinfo.json" "system-filestores" > ${_FILTERED_DATA_DIR%/}/system-filestores.json
-    wait
-    _LOG "INFO" "Completed ${FUNCNAME} ($?)"
+function f_run_tests() {
+    echo "## ${FUNCNAME} results"
+    echo ""
+    _runner "t_"
+    # TODO: currently can't count failed test.
 }
 
 function _extract_configs() {
@@ -167,72 +150,6 @@ function _check_log_stop_start() {
     # NXRM2: org.sonatype.nexus.bootstrap.jetty.JettyServer - Stopped
     _rg --no-filename '(org.sonatype.nexus.bootstrap.jsw.JswLauncher - Stopping with code:|org.eclipse.jetty.server.AbstractConnector - Stopped ServerConnector|org.sonatype.nexus.events.EventSubscriberHost - Initialized|org.sonatype.nexus.webapp.WebappBootstrap - Initialized|org.eclipse.jetty.server.Server - Started|Started InstrumentedSelectChannelConnector|Received signal: SIGTERM|org.sonatype.nexus.extender.NexusContextListener - Uptime:|org.sonatype.nexus.extender.NexusLifecycleManager - Shutting down|org.sonatype.nexus.extender.NexusLifecycleManager - Stop KERNEL|org.sonatype.nexus.bootstrap.jetty.JettyServer - Stopped|org.sonatype.nexus.pax.logging.NexusLogActivator - start|com.sonatype.insight.brain.service.InsightBrainService - Stopping Nexus IQ Server|Disabled session validation scheduler|Initializing Nexus IQ Server)' ${_log_path} | sort | uniq | tail -n10
 }
-
-function f_run_report() {
-    echo "## ${FUNCNAME} results"
-    echo ""
-    if [ -s "${_FILTERED_DATA_DIR%/}/extracted_configs.md" ]; then
-        cat ${_FILTERED_DATA_DIR%/}/extracted_configs.md
-    fi
-    if [ -s "${_FILTERED_DATA_DIR%/}/extract_log_last_start.md" ]; then
-        cat ${_FILTERED_DATA_DIR%/}/extract_log_last_start.md
-    fi
-
-    echo "## AUDIT: Top 20 'domain','type' from audit.log"
-    echo '```'
-    _rg --no-filename '"domain":"([^"]+)", *"type":"([^"]+)"' -o -r '$1,$2' -g audit.log | sort | uniq -c | sort -nr | head -n20
-    echo "# NOTE: taskblockedevent would mean another task is running (dupe tasks?). repositorymetadataupdatedevent would mean quarantine."
-    echo '```'
-
-    if [ -s ${_FILTERED_DATA_DIR%/}f_topErrors.out ]; then
-        [ -n "${_f_topErrors_pid}" ] && wait ${_f_topErrors_pid}
-        echo "## APP LOG: counting WARNs and above, then displaying 10+ occurrences in ${_LOG_GLOB} (${_FILTERED_DATA_DIR%/}f_topErrors.out)"
-        echo '```'
-        cat /tmp/f_topErrors_$$.out | rg -v '^\s*\d\s+' # NOTE: be careful to modify this. It might hides bar_chart output
-        echo '```'
-    else
-        echo "## APP LOG: NOT counting WARNs and above in ${_LOG_GLOB} as no ${_FILTERED_DATA_DIR%/}f_topErrors.out"
-    fi
-
-    if [ -s ${_FILTERED_DATA_DIR%/}/f_threads.out ]; then
-        echo "## THREADS: Result of f_threads from ${_FILTERED_DATA_DIR%/}/f_threads.out"
-        echo '```'
-        cat ${_FILTERED_DATA_DIR%/}/f_threads.out
-        echo '```'
-    else
-        echo "## THREADS: NOT checking threads as no ${_FILTERED_DATA_DIR%/}/f_threads.out"
-    fi
-
-    echo "## max 100 *.log files' start and end (start time, end time, difference(sec), filesize)"
-    echo '```'
-    f_list_start_end "*.log"
-    echo '```'
-
-    echo "### NOTE: To split logs by hour:"
-    echo '```'
-    echo "_SPLIT_BY_REGEX_SORT=\"Y\" f_splitByRegex \"./log/nexus.log\" \"^${_DATE_FORMAT}.\d\d\" \"_hourly_logs\""
-    echo "f_extractFromLog \"./log/nexus.log\" \"^${_DATE_FORMAT}.XX\" \"^${_DATE_FORMAT}.YY\" > extracted_XX_YY.out"
-    echo "_SPLIT_BY_REGEX_SORT=\"Y\" f_splitByRegex \"./log/request.log\" \"${_DATE_FMT_REQ}:\d\d\" \"_hourly_logs_req\""
-    echo "f_extractFromLog \"./log/request.log\" \"${_DATE_FMT_REQ}.XX\" \"${_DATE_FMT_REQ}.YY\" > extracted_req_XX_YY.out"
-    echo '```'
-
-    r_requests
-}
-
-function f_run_tests() {
-    echo "## ${FUNCNAME} results"
-    echo ""
-    _LOG "INFO" "Executing $(typeset -F | grep '^declare -f t_' | wc -l) tests."
-    for _t in $(typeset -F | grep '^declare -f t_' | cut -d' ' -f3); do
-        if ! _wait_jobs; then
-            _LOG "ERROR" "${FUNCNAME} failed."
-            return 11
-        fi
-        eval "_LOG \"DEBUG\" \"Started ${_t}\";${_t};echo '';_LOG \"DEBUG\" \"Completed ${_t} ($?)\"" &
-    done
-    _wait_jobs 0
-    _LOG "INFO" "Completed tests."  # TODO: currently can't count failed test.
-}
 function _head() {
     local _X="###"
     [ "$1" == "WARN" ] && _X="###"
@@ -255,6 +172,132 @@ function _test_template() {
 }
 
 
+### Extracts ###################################################################
+function e_configs() {
+    _extract_configs >${_FILTERED_DATA_DIR%/}/extracted_configs.md &
+    _extract_log_last_start >${_FILTERED_DATA_DIR%/}/extract_log_last_start.md &
+    _search_json "sysinfo.json" "system-filestores" > ${_FILTERED_DATA_DIR%/}/system-filestores.json
+}
+function e_threads() {
+    _NOT_SPLIT_BY_DATE=Y f_threads &>${_FILTERED_DATA_DIR%/}/f_threads.out &
+}
+function e_app_logs() {
+    local _log_path="$(find . -maxdepth 3 -type f -print | grep -m1 -E "/(${_NXRM_LOG}|${_NXIQ_LOG}|server.log)$")"
+    local _log_size="$(_actual_file_size "${_log_path}")"
+    [ -z "${_log_path}" ] && _log_path="*.log"
+    _LOG_GLOB="$(basename ${_log_path} | sed 's/.\///')"
+
+    if [ -n "${_log_size}" ] && [ ${_log_size} -gt 0 ] && [ ${_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
+        f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
+    fi
+    if [ -s "${_log_path}" ]; then
+        local _start_log_line=""
+        if [[ "${_log_path}" =~ (nexus)[^*]*log[^*]* ]]; then
+            #_start_log_line=".*org.sonatype.nexus.(webapp.WebappBootstrap|events.EventSubscriberHost) - Initialized"  # NXRM2 (if no DEBUG)
+            _start_log_line=".*org.sonatype.nexus.pax.logging.NexusLogActivator - start" # NXRM3
+        elif [[ "${_log_path}" =~ (clm-server)[^*]*log[^*]* ]]; then
+            _start_log_line=".* Initializing Nexus IQ Server .*"   # IQ
+        fi
+        if [ -n "${_start_log_line}" ]; then
+            f_splitByRegex ${_log_path} "${_start_log_line}" "_split_logs" &
+        #if [ -n "${_log_size}" ] && [ ${_log_size} -gt 0 ] && [ ${_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
+        #    echo 'Use: f_splitByRegex '${_log_path}' "'${_start_log_line}'" "_split_logs"'
+        fi
+    fi
+}
+function e_req_logs() {
+    local _req_log_path="$(find . -maxdepth 3 -name ${_REQUEST_LOG} | head -n1 2>/dev/null)"
+    local _req_log_size="$(_actual_file_size "${_req_log_path}")"
+    if [ -n "${_req_log_size}" ] && [ ${_req_log_size} -gt 0 ] && [ ${_req_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
+        f_request2csv "${_REQUEST_LOG}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
+    else
+        _LOG "INFO" "Not converting "${_REQUEST_LOG}" to CSV as log size ${_req_log_size} is larger than ${_LOG_THRESHOLD_BYTES}"
+    fi
+}
+
+### Reports ###################################################################
+function r_configs() {
+    if [ -s "${_FILTERED_DATA_DIR%/}/extracted_configs.md" ]; then
+        cat ${_FILTERED_DATA_DIR%/}/extracted_configs.md
+    fi
+    if [ -s "${_FILTERED_DATA_DIR%/}/extract_log_last_start.md" ]; then
+        cat ${_FILTERED_DATA_DIR%/}/extract_log_last_start.md
+    fi
+}
+function r_audits() {
+    echo "## AUDIT: Top 20 'domain','type' from audit.log"
+    echo '```'
+    _rg --no-filename '"domain":"([^"]+)", *"type":"([^"]+)"' -o -r '$1,$2' -g audit.log | sort | uniq -c | sort -nr | head -n20
+    echo "# NOTE: taskblockedevent would mean another task is running (dupe tasks?). repositorymetadataupdatedevent would mean quarantine."
+    echo '```'
+}
+function r_app_logs() {
+    if [ ! -s ${_FILTERED_DATA_DIR%/}f_topErrors.out ]; then
+        _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/f_topErrors.out"
+        return
+    fi
+    [ -n "${_f_topErrors_pid}" ] && wait ${_f_topErrors_pid}
+    echo "## APP LOG: counting WARNs and above, then displaying 10+ occurrences in ${_LOG_GLOB} (${_FILTERED_DATA_DIR%/}f_topErrors.out)"
+    echo '```'
+    cat /tmp/f_topErrors_$$.out | rg -v '^\s*\d\s+' # NOTE: be careful to modify this. It might hides bar_chart output
+    echo '```'
+}
+function r_threads() {
+    if [ ! -s ${_FILTERED_DATA_DIR%/}/f_threads ]; then
+        _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/f_threads.out"
+        return
+    fi
+    echo "## THREADS: Result of f_threads from ${_FILTERED_DATA_DIR%/}/f_threads.out"
+    echo '```'
+    cat ${_FILTERED_DATA_DIR%/}/f_threads.out
+    echo '```'
+}
+function r_requests() {
+    if [ ! -s ${_FILTERED_DATA_DIR%/}/request.csv ]; then
+        _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/request.csv."
+        return
+    fi
+    # first and end time per user
+    #_q -H "select clientHost, user, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1,2"
+    echo "### Counting host_ip + user per hour for last 10 ('-' in user is counted as 1)"
+    echo '```'
+    _q -H "SELECT substr(date,1,14) as hour, count(*), count(distinct clientHost), count(distinct user), count(distinct clientHost||user) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1 order by hour desc LIMIT 10"
+    echo '```'
+
+    echo "### Request counts per hour from ${_REQUEST_LOG}"
+    echo '```'
+    rg "${_DATE_FMT_REQ}:\d\d" -o --no-filename -g ${_REQUEST_LOG} | bar_chart.py
+    echo '```'
+
+    echo "### API-like requests per hour from ${_REQUEST_LOG}"
+    echo '```'
+    #_q -H "select substr(date,1,16) as ten_min, count(*) as c, CAST(avg(elapsedTime) as INT) as avg_elapsed from ${_FILTERED_DATA_DIR%/}/request.csv WHERE (requestURL like '%/service/rest/%' OR requestURL like '%/api/v2/%') GROUP BY ten_min HAVING avg_elapsed > 7000"
+    rg "(${_DATE_FMT_REQ}:\d\d).+(/service/rest/|/api/v2/)" --no-filename -g ${_REQUEST_LOG} -o -r '$1' | bar_chart.py
+    echo '```'
+
+    rg 'HTTP/\d\.\d" 5\d\d\s' --no-filename -g ${_REQUEST_LOG} > ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out
+    if [ -s ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out ]; then
+        echo "### 5xx statusCode in ${_REQUEST_LOG} (${_FILTERED_DATA_DIR%/}/log_requests_5xx.out)"
+        echo '```'
+        rg "${_DATE_FMT_REQ}.\d\d" -o ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out | bar_chart.py
+        echo '```'
+    fi
+}
+function r_list_logs() {
+    echo "## max 100 *.log files' start and end (start time, end time, difference(sec), filesize)"
+    echo '```'
+    f_list_start_end "*.log"
+    echo '```'
+
+    echo "### NOTE: To split logs by hour:"
+    echo '```'
+    echo "_SPLIT_BY_REGEX_SORT=\"Y\" f_splitByRegex \"./log/nexus.log\" \"^${_DATE_FORMAT}.\d\d\" \"_hourly_logs\""
+    echo "f_extractFromLog \"./log/nexus.log\" \"^${_DATE_FORMAT}.XX\" \"^${_DATE_FORMAT}.YY\" > extracted_XX_YY.out"
+    echo "_SPLIT_BY_REGEX_SORT=\"Y\" f_splitByRegex \"./log/request.log\" \"${_DATE_FMT_REQ}:\d\d\" \"_hourly_logs_req\""
+    echo "f_extractFromLog \"./log/request.log\" \"${_DATE_FMT_REQ}.XX\" \"${_DATE_FMT_REQ}.YY\" > extracted_req_XX_YY.out"
+    echo '```'
+}
+
 ### Tests ###################################################################
 function t_system() {
     if [ ! -s ${_FILTERED_DATA_DIR%/}/extracted_configs.md ]; then
@@ -266,7 +309,7 @@ function t_system() {
     _test_template "$(_rg 'MaxFileDescriptorCount: *\d{4}$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
     _test_template "$(_rg 'SystemLoadAverage: *([2-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high"
     _test_template "$(_rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low"
-    _test_template "$(_rg -q -- '-XX:+UseG1GC' -g jmx.json || _rg -- '-Xmx' -g jmx.json)" "INFO" "No '-XX:+UseG1GC' for below Xmx"
+    _test_template "$(_rg -g jmx.json -q -- '-XX:+UseG1GC' || _rg -g jmx.json -- '-Xmx')" "INFO" "No '-XX:+UseG1GC' for below Xmx"
 }
 function t_disk_space() {
     if [ ! -s ${_FILTERED_DATA_DIR%/}/system-filestores.json ]; then
@@ -331,38 +374,6 @@ function t_threads() {
     fi
     _test_template "$(rg '(MessageDigest|findAssetByContentDigest|WeakHashMap)' -m1 ${_dir} | head -n10)" "WARN" "'MessageDigest|findAssetByContentDigest|WeakHashMap' may indicates CPU issue (eg: NEXUS-10991)"
 }
-
-function r_requests() {
-    if [ ! -s ${_FILTERED_DATA_DIR%/}/request.csv ]; then
-        _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/request.csv."
-        return
-    fi
-    # first and end time per user
-    #_q -H "select clientHost, user, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1,2"
-    echo "### Counting host_ip + user per hour for last 10 ('-' in user is counted as 1)"
-    echo '```'
-    _q -H "SELECT substr(date,1,14) as hour, count(*), count(distinct clientHost), count(distinct user), count(distinct clientHost||user) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1 order by hour desc LIMIT 10"
-    echo '```'
-
-    echo "### Request counts per hour from ${_REQUEST_LOG}"
-    echo '```'
-    rg "${_DATE_FMT_REQ}:\d\d" -o --no-filename -g ${_REQUEST_LOG} | bar_chart.py
-    echo '```'
-
-    echo "### API-like requests per hour from ${_REQUEST_LOG}"
-    echo '```'
-    #_q -H "select substr(date,1,16) as ten_min, count(*) as c, CAST(avg(elapsedTime) as INT) as avg_elapsed from ${_FILTERED_DATA_DIR%/}/request.csv WHERE (requestURL like '%/service/rest/%' OR requestURL like '%/api/v2/%') GROUP BY ten_min HAVING avg_elapsed > 7000"
-    rg "(${_DATE_FMT_REQ}:\d\d).+(/service/rest/|/api/v2/)" --no-filename -g ${_REQUEST_LOG} -o -r '$1' | bar_chart.py
-    echo '```'
-
-    rg 'HTTP/\d\.\d" 5\d\d\s' --no-filename -g ${_REQUEST_LOG} > ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out
-    if [ -s ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out ]; then
-        echo "### 5xx statusCode in ${_REQUEST_LOG} (${_FILTERED_DATA_DIR%/}/log_requests_5xx.out)"
-        echo '```'
-        rg "${_DATE_FMT_REQ}.\d\d" -o ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out | bar_chart.py
-        echo '```'
-    fi
-}
 function t_requests() {
     if [ ! -s ${_FILTERED_DATA_DIR%/}/request.csv ]; then
         _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/request.csv."
@@ -372,7 +383,8 @@ function t_requests() {
     _q -H "SELECT requestURL, statusCode, count(*) as c FROM ${_FILTERED_DATA_DIR}/request.csv WHERE requestURL LIKE '%/repository/%' AND (statusCode like '5%') GROUP BY requestURL, statusCode HAVING c > 10 ORDER BY c DESC LIMIT 10" > /tmp/t_requests.out
     _test_template "$(rg -q '\s+5\d\d\s+' -m1 /tmp/t_requests.out && cat /tmp/t_requests.out)" "WARN" "Many repeated 5xx status in ${_FILTERED_DATA_DIR}/request.csv (${_FILTERED_DATA_DIR%/}/log_requests_5xx.out)"
 
-    _q -H "SELECT clientHost, user, date, requestURL, statusCode, bytesSent, elapsedTime, CAST((CAST(bytesSent as INT) / CAST(elapsedTime as INT)) as DECIMAL(10, 2)) as bytes_per_ms, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8)) - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time FROM ${_FILTERED_DATA_DIR%/}/request.csv WHERE elapsedTime > 7000 AND (headerContentLength <> '-' OR bytes_per_ms < 1024) ORDER BY elapsedTime DESC LIMIT 20" > /tmp/t_requests.out
+    # NOTE: can't use headerContentLength as some request.log doesn't have it
+    _q -H "SELECT clientHost, user, date, requestURL, statusCode, bytesSent, elapsedTime, CAST((CAST(bytesSent as INT) / CAST(elapsedTime as INT)) as DECIMAL(10, 2)) as bytes_per_ms, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8)) - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time FROM ${_FILTERED_DATA_DIR%/}/request.csv WHERE elapsedTime > 7000 AND bytes_per_ms < 1024 ORDER BY elapsedTime DESC LIMIT 20" > /tmp/t_requests.out
     _test_template "$(rg -q '\s+GET\s+' -m1 /tmp/t_requests.out && cat /tmp/t_requests.out)" "WARN" "Unusually slow downloads in ${_FILTERED_DATA_DIR}/request.csv"
 }
 
@@ -382,8 +394,8 @@ main() {
     echo "# $(basename "$BASH_SOURCE" ".sh") results"
     echo "[[toc]]"
     echo ""
-    f_run_report
     f_run_tests || return $?
+    f_run_report
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
