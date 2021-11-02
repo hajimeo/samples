@@ -33,6 +33,9 @@ fi
 : ${_FILTERED_DATA_DIR:="./_filtered"}
 : ${_LOG_GLOB:="*.log"}
 
+: ${_WORKING_DIR:=""}   # either workingDirectory or sonatypeWork
+: ${_APP_VER_NUM:=""}   # 3.36.0 => 3360
+
 # Aliases (can't use alias in shell script, so functions)
 _rg() {
     rg "$@"
@@ -119,13 +122,21 @@ function _extract_configs() {
     _search_json "sysinfo.json" "system-runtime,maxMemory" "Y"
     _search_json "sysinfo.json" "system-runtime,threads"
     echo '```'
-    _head "CONFIG: network interfaces"
+    _head "CONFIG: network related"
     echo '```json'
     _search_json "sysinfo.json" "system-network"
     echo '```'
-    _head "CONFIG: database (TODO: IQ)"
+    _head "CONFIG: database related (TODO: IQ)"
     echo '```'
     _find_and_cat "config_ds_info.properties" 2>/dev/null
+    echo '```'
+    _head "CONFIG: application related"
+    echo '```'
+    _WORKING_DIR="$(_search_json "sysinfo.json" "nexus-configuration,workingDirectory" || _search_json "sysinfo.json" "install-info,sonatypeWork" | rg ': "([^"]+)' -o -r '$1')"
+    echo "sonatypeWork: \"${_WORKING_DIR}\""
+    local _app_ver="$(_search_json "sysinfo.json" "nexus-status,version" || _search_json "product-version.json" "product-version,version" | rg ': "([^"]+)' -o -r '$1')"
+    echo "app version: \"${_app_ver}\""
+    _APP_VER_NUM="$(echo "${_app_ver}" | rg "(\d+)\.(\d+)\.(\d+)" -o -r '${1}${2}${3}')"
     echo '```'
 }
 function _extract_log_last_start() {
@@ -167,7 +178,6 @@ function f_run_report() {
         cat ${_FILTERED_DATA_DIR%/}/extract_log_last_start.md
     fi
 
-    # TODO: should extract first?
     echo "## AUDIT: Top 20 'domain','type' from audit.log"
     echo '```'
     _rg --no-filename '"domain":"([^"]+)", *"type":"([^"]+)"' -o -r '$1,$2' -g audit.log | sort | uniq -c | sort -nr | head -n20
@@ -210,7 +220,6 @@ function f_run_report() {
 }
 
 function f_run_tests() {
-    # TODO: Check/Get the product version
     echo "## ${FUNCNAME} results"
     echo ""
     _LOG "INFO" "Executing $(typeset -F | grep '^declare -f t_' | wc -l) tests."
@@ -257,7 +266,7 @@ function t_system() {
     _test_template "$(_rg 'MaxFileDescriptorCount: *\d{4}$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
     _test_template "$(_rg 'SystemLoadAverage: *([2-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high"
     _test_template "$(_rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low"
-    # TODO: check -XX:+UseG1GC
+    _test_template "$(_rg -q -- '-XX:+UseG1GC' -g jmx.json || _rg -- '-Xmx' -g jmx.json)" "INFO" "No '-XX:+UseG1GC' for below Xmx"
 }
 function t_disk_space() {
     if [ ! -s ${_FILTERED_DATA_DIR%/}/system-filestores.json ]; then
@@ -303,7 +312,7 @@ function t_performance_issue() {
 function t_oome() {
     _test_template "$(_rg -c 'OutOfMemoryError' -g "${_LOG_GLOB}")" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
 }
-# TODO: this might be slow
+# NOTE: this might be slow
 function t_exceptions() {
     _test_template "$(rg '([^ ()]+\.[a-zA-Z0-9]+Exception):' -o -r '$1' --no-filename -g "${_LOG_GLOB}" | sort | uniq -c | sort -nr | rg '^\s*\d\d+' | head -n10)" "WARN" "Many exceptions detected from ${_LOG_GLOB}"
 }

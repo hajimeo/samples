@@ -1418,7 +1418,7 @@ function _search_json() {
     local _no_pprint="$4"
     # NOTE: jmx.json can be TRUNCATED
     local _result="$(_find_and_cat "${_file}" 2>/dev/null | _get_json "${_search}" "" "" "" "${_no_pprint}" 2>/dev/null)"
-    # TODO: Not sure if this works with Mac
+    [ -z "${_result}" ] && return 1
     if [[ "${_search}" =~ \[.+,.(.+).\] ]]; then
         _search="${BASH_REMATCH[1]}"
     elif [[ "${_search}" =~ \[.(.+).\] ]]; then
