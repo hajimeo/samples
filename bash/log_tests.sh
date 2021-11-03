@@ -61,10 +61,10 @@ _runner() {
 
 function f_run_extract() {
     [ -d "${_FILTERED_DATA_DIR%/}" ] || mkdir -v -p "${_FILTERED_DATA_DIR%/}" || return $?
-    if [ "$(ls -1 "${_FILTERED_DATA_DIR%/}")" ]; then
-        _LOG "INFO" "${_FILTERED_DATA_DIR%/} is not empty so not extracting."
-        return
-    fi
+    #if [ "$(ls -1 "${_FILTERED_DATA_DIR%/}")" ]; then
+    #    _LOG "INFO" "${_FILTERED_DATA_DIR%/} is not empty so not extracting."
+    #    return
+    #fi
     _runner "e_"
 }
 
@@ -139,6 +139,7 @@ function _extract_log_last_start() {
     echo "Zip taken time : ${_zip_taken_at}"
     echo "Server Timezone: ${_tz}"
     echo '```'
+    _head "LOGS" "Instance start time (from ${_log_path})"
     echo '```'
     _check_log_stop_start "${_log_path}"
     echo '```'
@@ -152,8 +153,13 @@ function _check_log_stop_start() {
 }
 function _head() {
     local _X="###"
-    [ "$1" == "WARN" ] && _X="###"
-    [ "$1" == "INFO" ] && _X="####"
+    if [ "$1" == "WARN" ]; then
+        _X="###"
+    elif [ "$1" == "INFO" ]; then
+        _X="####"
+    elif [ "$1" == "NOTE" ]; then
+        _X="#####"
+    fi
     echo "${_X} $*"
     echo ""
 }
@@ -225,10 +231,10 @@ function r_configs() {
     fi
 }
 function r_audits() {
-    echo "## AUDIT: Top 20 'domain','type' from audit.log"
+    _head "AUDIT" "Top 20 'domain','type' from audit.log"
     echo '```'
     _rg --no-filename '"domain":"([^"]+)", *"type":"([^"]+)"' -o -r '$1,$2' -g audit.log | sort | uniq -c | sort -nr | head -n20
-    echo "# NOTE: taskblockedevent would mean another task is running (dupe tasks?). repositorymetadataupdatedevent would mean quarantine."
+    echo "NOTE: taskblockedevent would mean another task is running (dupe tasks?). repositorymetadataupdatedevent would mean quarantine."
     echo '```'
 }
 function r_app_logs() {
@@ -237,7 +243,7 @@ function r_app_logs() {
         return
     fi
     [ -n "${_f_topErrors_pid}" ] && wait ${_f_topErrors_pid}
-    echo "## APP LOG: counting WARNs and above, then displaying 10+ occurrences in ${_LOG_GLOB} (${_FILTERED_DATA_DIR%/}f_topErrors.out)"
+    _head "APP LOG: counting WARNs and above, then displaying 10+ occurrences in ${_LOG_GLOB} (${_FILTERED_DATA_DIR%/}f_topErrors.out)"
     echo '```'
     cat /tmp/f_topErrors_$$.out | rg -v '^\s*\d\s+' # NOTE: be careful to modify this. It might hides bar_chart output
     echo '```'
@@ -247,7 +253,7 @@ function r_threads() {
         _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/f_threads.out"
         return
     fi
-    echo "## THREADS: Result of f_threads from ${_FILTERED_DATA_DIR%/}/f_threads.out"
+    _head "THREADS" "Result of f_threads from ${_FILTERED_DATA_DIR%/}/f_threads.out"
     echo '```'
     cat ${_FILTERED_DATA_DIR%/}/f_threads.out
     echo '```'
@@ -259,12 +265,12 @@ function r_requests() {
     fi
     # first and end time per user
     #_q -H "select clientHost, user, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1,2"
-    echo "### Counting host_ip + user per hour for last 10 ('-' in user is counted as 1)"
+    _head "REQUESTS" "Counting host_ip + user per hour for last 10 ('-' in user is counted as 1)"
     echo '```'
     _q -H "SELECT substr(date,1,14) as hour, count(*), count(distinct clientHost), count(distinct user), count(distinct clientHost||user) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1 order by hour desc LIMIT 10"
     echo '```'
 
-    echo "### Request counts per hour from ${_REQUEST_LOG}"
+    _head "REQUESTS" "Request counts per hour from ${_REQUEST_LOG}"
     echo '```'
     rg "${_DATE_FMT_REQ}:\d\d" -o --no-filename -g ${_REQUEST_LOG} | bar_chart.py
     echo '```'
@@ -284,12 +290,12 @@ function r_requests() {
     fi
 }
 function r_list_logs() {
-    echo "## max 100 *.log files' start and end (start time, end time, difference(sec), filesize)"
+    _head "APP LOG" "max 100 *.log files' start and end (start time, end time, difference(sec), filesize)"
     echo '```'
     f_list_start_end "*.log"
     echo '```'
 
-    echo "### NOTE: To split logs by hour:"
+    _head "NOTE" "To split logs by hour:"
     echo '```'
     echo "_SPLIT_BY_REGEX_SORT=\"Y\" f_splitByRegex \"./log/nexus.log\" \"^${_DATE_FORMAT}.\d\d\" \"_hourly_logs\""
     echo "f_extractFromLog \"./log/nexus.log\" \"^${_DATE_FORMAT}.XX\" \"^${_DATE_FORMAT}.YY\" > extracted_XX_YY.out"
