@@ -999,9 +999,9 @@ function f_last_tid_in_log() {
 function f_request2csv() {
     local __doc__="Convert a jetty request.log to a csv file"
     local _glob="${1:-"request.log"}"
-    local _out_file="$2"
+    local _out_file="${2}"
     local _filter="${3}"    # eg "\[\d\d/.../\d\d\d\d:0[789]"
-    local _pattern_str="$4"
+    local _pattern_str="${4}"
 
     local _g_opt="-g"
     [ -s "${_glob}" ] && _g_opt=""
@@ -1013,7 +1013,7 @@ function f_request2csv() {
     fi
     # NOTE: check jetty-requestlog.xml and logback-access.xml
     if [ -z "${_pattern_str}" ]; then
-        _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '<pattern>(.+)</pattern>' -o -r '$1' | sort | uniq | tail -n1)"
+        _pattern_str="$(rg -g logback-access.xml -g jetty-requestlog.xml --no-filename -m1 -w '^\s*<pattern>(.+)</pattern>' -o -r '$1' | sort | uniq | tail -n1)"
         # Or IQ uses: "%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime \"%header{User-Agent}\""
         # If _patter_str is still empty, doing best guess.
         if [ -z "${_pattern_str}" ]; then
