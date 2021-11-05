@@ -2,12 +2,21 @@
 
 usage() {
     cat << EOF
-Check/test log files such as request.log and report any suspicious entry.
+Implementing test cases (like programing lanugage's Unit tests) with bash.
+
+All functions start with "e_" are for extracting data, so that tests do not need to check large log files repeatedly.
+All functions start with "r_" are for reporting, just displaying some useful, good-to-know information with Markdown.
+All functions start with "t_" are actual testing.
 
 REQUIREMENTS:
-    bash, ripgrep (rg), coreutils (realpath, timeout)
-    q from https://github.com/harelba/q
-    bar_chart.py from https://github.com/bitly/data_hacks (TODO: this project is dead)
+    bash, not tested with zsh.
+    Please install below: (eg: 'brew install coreutils ripgrep jq q')
+        coreutils (realpath, timeout)
+        rg  https://github.com/BurntSushi/ripgrep
+        jq  https://stedolan.github.io/jq/download/
+        q   https://github.com/harelba/q
+    Also, please put below in the PATH:
+        https://github.com/bitly/data_hacks/blob/master/data_hacks/bar_chart.py (TODO: project is no longer updated)
 
 TARGET OS:
     macOS Mojave
@@ -15,7 +24,7 @@ EOF
 }
 
 # Importing external libraries
-_import() { . $HOME/IdeaProjects/samples/bash/${1} &>/dev/null && return; [ ! -s /tmp/${1}_$$ ] && curl -sf --compressed "https://raw.githubusercontent.com/hajimeo/samples/master/bash/${1}" -o /tmp/${1}_$$; . /tmp/${1}_$$; }
+_import() { . $HOME/IdeaProjects/samples/bash/${1} &>/dev/null && return; [ ! -s /tmp/${1} ] && curl -sf --compressed "https://raw.githubusercontent.com/hajimeo/samples/master/bash/${1}" -o /tmp/${1}; . /tmp/${1}; }
 # Requires https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 _import "log_search.sh"
 
@@ -34,7 +43,7 @@ fi
 : ${_LOG_GLOB:="*.log"}
 
 : ${_WORKING_DIR:=""}   # either workingDirectory or sonatypeWork
-: ${_APP_VER_NUM:=""}   # 3.36.0 => 3360
+: ${_APP_VER:=""}   # 3.36.0-01
 
 # Aliases (can't use alias in shell script, so functions)
 _rg() {
@@ -71,6 +80,11 @@ function f_run_extract() {
 function f_run_report() {
     echo "## ${FUNCNAME} results"
     echo ""
+    if [ ! -s ${_FILTERED_DATA_DIR%/}/extracted_configs.md ]; then
+        _head "INFO" "No ${_FILTERED_DATA_DIR%/}/extracted_configs.md"
+    else
+        cat ${_FILTERED_DATA_DIR%/}/extracted_configs.md
+    fi
     _runner "r_"
 }
 
@@ -96,30 +110,41 @@ function _extract_configs() {
     _search_json "jmx.json" "java.lang:type=OperatingSystem,SystemLoadAverage"
     _search_json "jmx.json" "java.lang:type=OperatingSystem,MaxFileDescriptorCount"
     _search_json "jmx.json" "java.lang:type=OperatingSystem,OpenFileDescriptorCount"
-    # TODO: detect if container(cgroup) or not. Maybe check overlay or not?
     echo '```'
+
+    _head "CONFIG: system-environment"
+    echo '```'
+    _search_json "sysinfo.json" "system-environment,PWD"
+    _search_json "sysinfo.json" "system-environment,HOME" # for -Djava.util.prefs.userRoot=/home/nexus/.java
+    _search_json "sysinfo.json" "system-environment,HOSTNAME"
+    _search_json "jmx.json" "java.lang:type=Runtime,Name" # to find PID and hostname (in case no HOSTNAME env set)
+    echo '```'
+
     _head "CONFIG: system-runtime"
     echo '```'
     _search_json "sysinfo.json" "system-runtime,totalMemory" "Y"
     _search_json "sysinfo.json" "system-runtime,freeMemory" "Y"
     _search_json "sysinfo.json" "system-runtime,maxMemory" "Y"
     _search_json "sysinfo.json" "system-runtime,threads"
+    _search_json "jmx.json" "java.lang:type=Runtime,InputArguments" | uniq
     echo '```'
+
     _head "CONFIG: network related"
     echo '```json'
     _search_json "sysinfo.json" "system-network"
     echo '```'
+
     _head "CONFIG: database related (TODO: IQ)"
     echo '```'
     _find_and_cat "config_ds_info.properties" 2>/dev/null
     echo '```'
+
     _head "CONFIG: application related"
     echo '```'
     _WORKING_DIR="$(_search_json "sysinfo.json" "nexus-configuration,workingDirectory" || _search_json "sysinfo.json" "install-info,sonatypeWork" | rg ': "([^"]+)' -o -r '$1')"
     echo "sonatypeWork: \"${_WORKING_DIR}\""
-    local _app_ver="$(_search_json "sysinfo.json" "nexus-status,version" || _search_json "product-version.json" "product-version,version" | rg ': "([^"]+)' -o -r '$1')"
-    echo "app version: \"${_app_ver}\""
-    _APP_VER_NUM="$(echo "${_app_ver}" | rg "(\d+)\.(\d+)\.(\d+)" -o -r '${1}${2}${3}')"
+    _APP_VER="$(_search_json "sysinfo.json" "nexus-status,version" || _search_json "product-version.json" "product-version,version" | rg ': "([^"]+)' -o -r '$1')"
+    echo "app version: \"${_APP_VER}\""
     echo '```'
 }
 function _extract_log_last_start() {
@@ -142,6 +167,7 @@ function _extract_log_last_start() {
     _head "LOGS" "Instance start time (from ${_log_path})"
     echo '```'
     _check_log_stop_start "${_log_path}"
+    echo "# NOTE: slow/hang startup can be caused by org.apache.lucene.util.IOUtils.getFileStore as it checks all mount points of the OS (even app is not using)"
     echo '```'
 }
 function _check_log_stop_start() {
@@ -163,14 +189,32 @@ function _head() {
     echo "${_X} $*"
     echo ""
 }
+function _basic_check() {
+    local _required_app_ver_regex="${1}"
+    local _required_file="${2}"
+    local _level="${3:-"INFO"}"
+    local _message="${4}"
+    if [ -n "${_required_app_ver_regex}" ]; then
+        # No message for version
+        [ -n "${_APP_VER}" ] && [[ ! "${_APP_VER}" =~ ${_required_app_ver_regex} ]] && return 8
+    fi
+    if [ -n "${_required_file}" ] && [ ! -s "${_required_file}" ]; then
+        # ${FUNCNAME[1]} is to get the caller function name
+        [ -z "${_message}" ] && _message="Can not run ${FUNCNAME[1]} as no ${_required_file}"
+        _head "${_level}" "${_message}"
+        return 1
+    fi
+    return 0
+}
 function _test_template() {
     local _bad_result="$1"
     local _level="$2"
     local _message="$3"
     local _note="$4"
+    local _style="$5"
     [ -z "${_bad_result}" ] && return
     _head "${_level}" "${_message}"
-    echo '```'
+    echo '```'${_style}
     echo "${_bad_result}"
     [ -n "${_note}" ] && echo "# ${_note}"
     echo '```'
@@ -223,9 +267,7 @@ function e_req_logs() {
 
 ### Reports ###################################################################
 function r_configs() {
-    if [ -s "${_FILTERED_DATA_DIR%/}/extracted_configs.md" ]; then
-        cat ${_FILTERED_DATA_DIR%/}/extracted_configs.md
-    fi
+    cat ${_FILTERED_DATA_DIR%/}/extracted_configs*.md
     if [ -s "${_FILTERED_DATA_DIR%/}/extract_log_last_start.md" ]; then
         cat ${_FILTERED_DATA_DIR%/}/extract_log_last_start.md
     fi
@@ -238,10 +280,7 @@ function r_audits() {
     echo '```'
 }
 function r_app_logs() {
-    if [ ! -s ${_FILTERED_DATA_DIR%/}f_topErrors.out ]; then
-        _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/f_topErrors.out"
-        return
-    fi
+    _basic_check "" "${_FILTERED_DATA_DIR%/}/f_topErrors.out" || return
     [ -n "${_f_topErrors_pid}" ] && wait ${_f_topErrors_pid}
     _head "APP LOG: counting WARNs and above, then displaying 10+ occurrences in ${_LOG_GLOB} (${_FILTERED_DATA_DIR%/}f_topErrors.out)"
     echo '```'
@@ -249,20 +288,14 @@ function r_app_logs() {
     echo '```'
 }
 function r_threads() {
-    if [ ! -s ${_FILTERED_DATA_DIR%/}/f_threads ]; then
-        _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/f_threads.out"
-        return
-    fi
+    _basic_check "" "${_FILTERED_DATA_DIR%/}/f_threads.out" || return
     _head "THREADS" "Result of f_threads from ${_FILTERED_DATA_DIR%/}/f_threads.out"
     echo '```'
     cat ${_FILTERED_DATA_DIR%/}/f_threads.out
     echo '```'
 }
 function r_requests() {
-    if [ ! -s ${_FILTERED_DATA_DIR%/}/request.csv ]; then
-        _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/request.csv."
-        return
-    fi
+    _basic_check "" "${_FILTERED_DATA_DIR%/}/request.csv" || return
     # first and end time per user
     #_q -H "select clientHost, user, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1,2"
     _head "REQUESTS" "Counting host_ip + user per hour for last 10 ('-' in user is counted as 1)"
@@ -305,11 +338,13 @@ function r_list_logs() {
 }
 
 ### Tests ###################################################################
-function t_system() {
-    if [ ! -s ${_FILTERED_DATA_DIR%/}/extracted_configs.md ]; then
-        _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/extracted_configs.md"
-        return
+function t_basic() {
+    if ! find . -maxdepth 5 -type f -name sysinfo.json | grep -q 'sysinfo.json'; then
+        _head "ERROR" "No 'sysinfo.json' found under $(realpath .) with maxdepth 5"
     fi
+}
+function t_system() {
+    _basic_check "" "${_FILTERED_DATA_DIR%/}/extracted_configs.md" || return
     _test_template "$(_rg 'AvailableProcessors: *[1-3]$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "AvailableProcessors might be too low"
     _test_template "$(_rg 'TotalPhysicalMemorySize: *(.+ MB|[1-7]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "TotalPhysicalMemorySize might be too low"
     _test_template "$(_rg 'MaxFileDescriptorCount: *\d{4}$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
@@ -317,19 +352,10 @@ function t_system() {
     _test_template "$(_rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low"
     _test_template "$(_rg -g jmx.json -q -- '-XX:+UseG1GC' || _rg -g jmx.json -- '-Xmx')" "INFO" "No '-XX:+UseG1GC' for below Xmx"
 }
-function t_disk_space() {
-    if [ ! -s ${_FILTERED_DATA_DIR%/}/system-filestores.json ]; then
-        _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/system-filestores.json"
-        return
-    fi
-    local _result=
+function t_mounts() {
+    _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return
     _test_template "$(_rg '"totalSpace": [1-9]' -B2 -A3 ${_FILTERED_DATA_DIR%/}/system-filestores.json | _rg '"usableSpace": [1-7]?\d{1,9},' -B3 -A2)" "ERROR" "Storage/disk space (usableSpace) is less than 8GB" "NOTE: 'No space left on device' can be also caused by Inode, which won't be shown in above."
-}
-function t_network_mount() {
-    if [ ! -s ${_FILTERED_DATA_DIR%/}/system-filestores.json ]; then
-        _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/system-filestores.json"
-        return
-    fi
+
     local _workingDirectory="$(_search_json "sysinfo.json" "nexus-configuration,workingDirectory" | _rg -o -r '$1' '"(/[^"]+)"')"
     local _parent_dir="$(echo "${_workingDirectory}" | _rg -o -r '$1' '^(/[^/]+)')"
     [ -z "${_parent_dir}" ] && _parent_dir="$(_search_json "sysinfo.json" "install-info,sonatypeWork" | _rg -o '"(/[^/]+).+sonatype-work.*"' -r '$1')"
@@ -366,10 +392,7 @@ function t_exceptions() {
     _test_template "$(rg '([^ ()]+\.[a-zA-Z0-9]+Exception):' -o -r '$1' --no-filename -g "${_LOG_GLOB}" | sort | uniq -c | sort -nr | rg '^\s*\d\d+' | head -n10)" "WARN" "Many exceptions detected from ${_LOG_GLOB}"
 }
 function t_errors() {
-    if [ ! -s ${_FILTERED_DATA_DIR%/}/f_topErrors.out ]; then
-        _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/f_topErrors.out"
-        return
-    fi
+    _basic_check "" "${_FILTERED_DATA_DIR%/}/f_topErrors.out" || return
     _test_template "$(rg '^\s*\d\d+.+\s+ERROR\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out | head -n10)" "WARN" "Many ERROR detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out"
 }
 function t_threads() {
@@ -381,11 +404,7 @@ function t_threads() {
     _test_template "$(rg '(MessageDigest|findAssetByContentDigest|WeakHashMap)' -m1 ${_dir} | head -n10)" "WARN" "'MessageDigest|findAssetByContentDigest|WeakHashMap' may indicates CPU issue (eg: NEXUS-10991)"
 }
 function t_requests() {
-    if [ ! -s ${_FILTERED_DATA_DIR%/}/request.csv ]; then
-        _head "INFO" "Can not run ${FUNCNAME} as no ${_FILTERED_DATA_DIR%/}/request.csv."
-        return
-    fi
-
+    _basic_check "" "${_FILTERED_DATA_DIR%/}/request.csv" || return
     _q -H "SELECT requestURL, statusCode, count(*) as c FROM ${_FILTERED_DATA_DIR}/request.csv WHERE requestURL LIKE '%/repository/%' AND (statusCode like '5%') GROUP BY requestURL, statusCode HAVING c > 10 ORDER BY c DESC LIMIT 10" > /tmp/t_requests.out
     _test_template "$(rg -q '\s+5\d\d\s+' -m1 /tmp/t_requests.out && cat /tmp/t_requests.out)" "WARN" "Many repeated 5xx status in ${_FILTERED_DATA_DIR}/request.csv (${_FILTERED_DATA_DIR%/}/log_requests_5xx.out)"
 
@@ -409,5 +428,5 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         usage | less
         exit
     fi
-    main
+    main > "$(basename "$BASH_SOURCE" .sh).md"
 fi
