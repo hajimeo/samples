@@ -172,12 +172,17 @@ function iqStart() {
     [ -z "${_jar_file}" ] && return 11
     local _cfg_file="$(realpath "$(dirname "${_jar_file}")/config.yml")"
     [ -z "${_cfg_file}" ] && return 12
+
+    grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://localhost:8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+
     grep -qE '^\s*port: 8443$' "${_cfg_file}" && sed -i.bak 's/port: 8443/port: 8470/g' "${_cfg_file}"
     grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
     grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.bak -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
     cd "${_base_dir}"
-    java -Xms2g -Xmx4g ${_java_opts} -jar "${_jar_file}" server "${_cfg_file}"
+    local _cmd="java -Xms2g -Xmx4g ${_java_opts} -jar "${_jar_file}" server "${_cfg_file}" 2>/tmp/iq-server.err"
+    echo "${_cmd}"
+    eval "${_cmd}"
     cd -
 }
 
@@ -454,12 +459,13 @@ function _mvn_settings() {
 # basically same as npm init -y but adding lodash 4.17.4 :-)
 function npmInit() {
     local _name="${1:-"lodash-vulnerable"}"
+    local _ver="${2:-"1.0.0"}"
     mkdir "${_name}"
     cd "${_name}"
     cat << EOF > ./package.json
 {
   "name": "${_name}",
-  "version": "1.0.0",
+  "version": "${_ver}",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -479,14 +485,40 @@ alias npmPublish='npmDeploy'
 function npmDeploy() {
     local _repo_url="${1:-"http://localhost:8081/repository/npm-hosted/"}"
     local _name="${2:-"lodash-vulnerable"}"
-    if [ ! -f ./package.json ]; then
-        npmInit "${_name}" || return $?
-    fi
-    [ -f ./package.json.orig ] || cp -p ./package.json ./package.json.orig
-    cat ./package.json | python -c "import sys,json;a=json.loads(sys.stdin.read());d={\"publishConfig\":{\"registry\":\"${_repo_url}\"}};a.update(d);f=open(\"./package.json\",\"w\");f.write(json.dumps(a,indent=4,sort_keys=True));" || return $?
-    npm publish --registry "${_repo_url}" -ddd
+    local _ver="${3:-"1.0.0"}"
+    [ -s ./package.json.orig ] || cp -v -p ./package.json ./package.json.orig
+    cat ./package.json | python -c "import sys,json
+a=json.loads(sys.stdin.read())
+d={\"name\":\"${_name}\",\"version\":\"${_ver}\",\"publishConfig\":{\"registry\":\"${_repo_url}\"}}
+a.update(d);f=open(\"./package.json\",\"w\")
+f.write(json.dumps(a,indent=4,sort_keys=True));" || return $?
+    npm publish --registry "${_repo_url}" -ddd || return $?
 }
+# Create a dummy npm tgz from the original tgz and publish if repo URL is given (should use npm publish?)
+function npmDummyVer() {
+    local _orig_tgz="${1}"
+    local _dummy_ver="${2}"
+    local _repo_url="${3}"
 
+    local _crt_dir="$(pwd)"
+    local _dir="$(mktemp -d)"
+    [[ "${_orig_tgz}" =~ ([^/]+)-([^-]+)\.tgz ]] || return $?
+    _pkg="${BASH_REMATCH[1]}"
+    _ver="${BASH_REMATCH[2]}"
+    tar -xvf "${_orig_tgz}" -C "${_dir%/}/" || return $?
+
+    cd "${_dir%/}"
+    grep -IRs -w "${_ver}" ./ || return $?
+    sed -i 's/"version": "'${_ver}'"/"version": "'${_dummy_ver}'"/' package/package.json
+    grep -IRs -w "${_dummy_ver}" ./ || return $?
+    tar -czvf "${_crt_dir%/}/${_pkg}-${_dummy_ver}.tgz" package || return $?
+    if [ -n "${_repo_url%/}" ] && [[ "${_repo_url%/}" =~ ^(.+)/repository/([^/]+) ]]; then
+        _url="${BASH_REMATCH[1]}"
+        _repo_name="${BASH_REMATCH[2]}"
+        curl -v -u admin:admin123 -k "${_url%/}/service/rest/v1/components?repository=${_repo_name%/}" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -F "npm.asset=@${_crt_dir%/}/${_pkg}-${_dummy_ver}.tgz" || return $?
+    fi
+    cd -
+}
 
 
 function nuget-get() {

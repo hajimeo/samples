@@ -120,6 +120,8 @@ type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 # Load/source my own searching utility functions / scripts
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 alias logS="pyv; source $HOME/IdeaProjects/work/bash/log_search.sh"
+alias logT="pyv; source $HOME/IdeaProjects/samples/bash/log_tests.sh"
+alias logNxrm="pyv;$HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
 alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
 alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py"
 alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
@@ -172,6 +174,11 @@ function random_list() {
     echo "${_list[${_rand}]}"
 }
 
+function datems() {
+    local _cmd="date"
+    type gdate &>/dev/null && _cmd="gdate"
+    ${_cmd} +"%F %T.%3N"
+}
 # eg: date_calc "17:15:02.123 -262.708 seconds" or " 30 days ago"
 function date_calc() {
     local _d_opt="$1"
@@ -564,6 +571,7 @@ function mv_not_accessed() {
     local _atime="${2:-100}" # 100 days
     local _name="${3}"       # "*.pom"
     local _do_it="${4}"
+    # Can't remember why I'm using FUNCNAME[0] (even not FUNCNAME[1] for caller)
     #find -L /tmp -type f -name "${FUNCNAME[0]}_$$.out" -mmin -3 | grep -q "${FUNCNAME[0]}_$$.out"
     if [ -n "${_name}" ]; then
         find ${_dir%/} -amin +${_atime} -name "${_name}" -print0
@@ -601,6 +609,9 @@ function push2search() {
 ## Work specific functions
 if [ -s $HOME/IdeaProjects/samples/runcom/nexus_alias.sh ]; then
     source $HOME/IdeaProjects/samples/runcom/nexus_alias.sh
+fi
+if [ -s $HOME/IdeaProjects/work/bash/nexus_aliases.sh ]; then
+    source $HOME/IdeaProjects/work/bash/nexus_aliases.sh
 fi
 function pubS() {
     [ $HOME/IdeaProjects/work/bash/install_sonatype.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/work/bash/install_sonatype.sh dh1:/var/tmp/share/sonatype/ && cp -f $HOME/IdeaProjects/work/bash/install_sonatype.sh $HOME/share/sonatype/
