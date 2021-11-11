@@ -62,7 +62,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     if [ -n "${_TOKEN}" ]; then
         echo "### Got token" >&2
         echo "${_TOKEN}" >&2
-        # For debugging (Nexus's token can't be decoded)
+        # For debugging (NOTE: Nexus's token can't be decoded)
         if which jwt &>/dev/null; then
             echo "### Decoding JWT" >&2
             jwt decode "${_TOKEN}"
