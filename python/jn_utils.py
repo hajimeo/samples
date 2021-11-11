@@ -33,6 +33,8 @@ Get date_hour
     UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1)
   or, faster way to get 10mis from the request.log:
     substr(date, 1, 16)
+  convert request.log's date to time:
+    TIME(substr(date, 13, 8)) as hhmmss
 Format datetime to request.log like one: https://www.sqlite.org/lang_datefunc.html (No month abbreviation)
     UDF_STRFTIME('%d/%b/%Y:%H:%M:%S', DATETIME(date_time, '-30 seconds'))||' +0000' as req_date_time
 Convert current time or string date to Unix timestamp

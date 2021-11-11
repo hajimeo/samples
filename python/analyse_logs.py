@@ -2,6 +2,7 @@ import jn_utils as ju
 import get_json as gj
 import linecache, re, os, json
 
+isHeaderContentLength=False
 
 def _gen_regex_for_request_logs(filepath="request.log"):
     """
@@ -166,6 +167,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
     :param time_until_regex: Regex for 'time' for logs2table's line_until
     :return: void
     """
+    global isHeaderContentLength
     if bool(path) is False:
         maybe_zips = ju._globr("*support*.zip", depth=1)
         if len(maybe_zips) > 0:
@@ -259,6 +261,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
         if ju.exists("t_request"):
             try:
                 _ = ju.execute(sql="UPDATE t_request SET headerContentLength = 0 WHERE headerContentLength = '-'")
+                isHeaderContentLength=True
             except:
                 # non NXRM3 request.log wouldn't have headerContentLength
                 pass
@@ -324,7 +327,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
     ju.display(ju.desc(), name="Available_Tables")
 
 
-def analyse_logs(path="", tail_num=10000, max_file_size=(1024 * 1024 * 100), skip_etl=False):
+def analyse_logs(path="", tail_num=10000, max_file_size=(1024 * 1024 * 100), skip_etl=False, useHeaderContentLength=False):
     """
     A prototype / demonstration function for extracting then analyse log files
     :param path: File (including zip) path
@@ -334,10 +337,20 @@ def analyse_logs(path="", tail_num=10000, max_file_size=(1024 * 1024 * 100), ski
     :return: void
     >>> pass    # test should be done in each function
     """
+    global isHeaderContentLength
+    if useHeaderContentLength:
+        isHeaderContentLength=useHeaderContentLength
     if bool(skip_etl) is False:
         etl(path=path, max_file_size=max_file_size)
 
     where_sql = "WHERE 1=1"
+
+    headerContentLengthAgg=""
+    avgMsPerBytesAgg="CAST(SUM(CAST(elapsedTime AS INTEGER)) / SUM(CAST(bytesSent AS INTEGER)) AS INT)  AS avgMsPerBytes,"
+    if isHeaderContentLength:
+        # NOTE: using commma in the end of line.
+        headerContentLengthAgg="AVG(CAST(headerContentLength AS INTEGER)) AS bytesReceived,"
+        avgMsPerBytesAgg="CAST(SUM(CAST(elapsedTime AS INTEGER)) / SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) AS INT) AS avgMsPerBytes,"
 
     if ju.exists("t_request"):
         display_name = "RequestLog_StatusCode_Hourly_aggs"
@@ -348,20 +361,23 @@ def analyse_logs(path="", tail_num=10000, max_file_size=(1024 * 1024 * 100), ski
     CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
     CAST(AVG(CAST(elapsedTime AS INT)) AS INT) AS avg_elaps, 
     CAST(AVG(CAST(bytesSent AS INT)) AS INT) AS avg_bytes, 
-    --CAST(AVG((CAST(headerContentLength AS INT) + CAST(bytesSent AS INT)) / (CAST(elapsedTime AS INT) / 1000)) AS INT) AS avg_bps, 
-    count(*) AS occurrence
+    %s 
+    count(*) AS requests
 FROM t_request
 %s
-GROUP BY 1, 2""" % (where_sql2)
+GROUP BY 1, 2""" % (avgMsPerBytesAgg, where_sql2)
         ju.display(ju.q(query), name=display_name, desc=query)
 
         display_name = "RequestLog_Status_ByteSent_Elapsed"
-        query = """SELECT UDF_STR2SQLDT(`date`) AS date_time, 
-    CAST(substr(statusCode, 1, 1) AS INTEGER) AS status_1stChar, 
-    CAST(bytesSent AS INTEGER) AS bytesSent, 
-    CAST(elapsedTime AS INTEGER) AS elapsedTime 
-FROM t_request %s""" % (where_sql2)
-        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
+        query = """SELECT TIME(substr(date, 13, 8)) as hhmmss,
+    AVG(CAST(bytesSent AS INTEGER)) AS bytesSent, %s 
+    AVG(CAST(elapsedTime AS INTEGER)) AS elapsedTime,
+    %s
+    count(*) AS requests
+FROM t_request
+%s
+GROUP BY hhmmss""" % (headerContentLengthAgg, avgMsPerBytesAgg, where_sql2)
+        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
 
     if ju.exists("t_log_hazelcast_monitor"):
         display_name = "NexusLog_Health_Monitor"
