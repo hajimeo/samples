@@ -120,6 +120,7 @@ function nxrmStart() {
         [ -z "${_mode}" ] && _mode="console"
         # jvm 1    | Caused by: java.lang.ClassNotFoundException: org.eclipse.tycho.nexus.internal.plugin.UnzipRepository
         echo "NOTE: May need to 'unzip -d ${_base_dir%/}/sonatype-work/nexus/plugin-repository $HOME/Downloads/unzip-repository-plugin-0.14.0-bundle.zip'"
+        [ -n "${_java_opts}" ] && export _JAVA_OPTIONS="${_java_opts}"
     fi
     if [ -n "${_jetty_https}" ] && [[ "${_version}" =~ 3\.26\.+ ]]; then
         # @see: https://issues.sonatype.org/browse/NEXUS-24867
@@ -494,32 +495,71 @@ a.update(d);f=open(\"./package.json\",\"w\")
 f.write(json.dumps(a,indent=4,sort_keys=True));" || return $?
     npm publish --registry "${_repo_url}" -ddd || return $?
 }
-# Create a dummy npm tgz from the original tgz and publish if repo URL is given (should use npm publish?)
+
+# Create a dummy npm tgz from the original tgz and publish if repo URL is given
 function npmDummyVer() {
     local _orig_tgz="${1}"
     local _dummy_ver="${2}"
     local _repo_url="${3}"
 
     local _crt_dir="$(pwd)"
-    local _dir="$(mktemp -d)"
     [[ "${_orig_tgz}" =~ ([^/]+)-([^-]+)\.tgz ]] || return $?
     _pkg="${BASH_REMATCH[1]}"
     _ver="${BASH_REMATCH[2]}"
+    local _dir="${_pkg}"
+    if [ ! -d "${_dir%/}" ]; then
+        mkdir -v "${_dir}" || return $?
+    fi
     tar -xvf "${_orig_tgz}" -C "${_dir%/}/" || return $?
 
+    grep -w "${_ver}" ${_dir%/}/package/package.json || return $?
+    sed -i.bak 's/"version": "'${_ver}'"/"version": "'${_dummy_ver}'"/' ${_dir%/}/package/package.json || return $?
+    grep -w "${_dummy_ver}" ${_dir%/}/package/package.json || return $?
+
     cd "${_dir%/}"
-    grep -IRs -w "${_ver}" ./ || return $?
-    sed -i 's/"version": "'${_ver}'"/"version": "'${_dummy_ver}'"/' package/package.json
-    grep -IRs -w "${_dummy_ver}" ./ || return $?
     tar -czvf "${_crt_dir%/}/${_pkg}-${_dummy_ver}.tgz" package || return $?
+    cd -
     if [ -n "${_repo_url%/}" ] && [[ "${_repo_url%/}" =~ ^(.+)/repository/([^/]+) ]]; then
+        # Nexus UI uploading
         _url="${BASH_REMATCH[1]}"
         _repo_name="${BASH_REMATCH[2]}"
         curl -v -u admin:admin123 -k "${_url%/}/service/rest/v1/components?repository=${_repo_name%/}" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -F "npm.asset=@${_crt_dir%/}/${_pkg}-${_dummy_ver}.tgz" || return $?
+        #not working: curl -v -u admin:admin123 -X PUT -k "${_repo_url%/}/${_pkg}/-/${_pkg}-${_dummy_ver}.tgz" -T "${_crt_dir%/}/${_pkg}-${_dummy_ver}.tgz" || return $?
     fi
-    cd -
 }
 
+function npmDummyVers() {
+    local _how_many="${1}"
+    local _repo_url="${2}"
+    local _pkg_name="${3:-"mytest"}"
+    local _from_num="${4}"
+    local _dir="$(mktemp -d)"
+    cat << EOF > "${_dir%/}/package.json"
+{
+    "author": "nxrm test",
+    "description": "reproducing issue",
+    "keywords": [],
+    "license": "ISC",
+    "main": "index.js",
+    "name": "${_pkg_name}",
+    "publishConfig": {
+        "registry": "${_repo_url}"
+    },
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "version": "1.0.0"
+}
+EOF
+    cd "${_dir}"
+    for i in `seq ${_from_num:-"1"} ${_how_many:-"1"}`; do
+      sed -i.tmp -E 's/"version": "1.[0-9].0"/"version": "1.'${i}'.0"/' ./package.json
+      npm publish --registry "${_repo_url}" -ddd || break
+      sleep 1
+    done
+    cd -
+    echo "To test: npm cache clean --force; npm pack ${_pkg_name} --registry ${_repo_url}"
+}
 
 function nuget-get() {
     local _pkg="$1" # Syncfusion.SfChart.WPF@19.2.0.62
