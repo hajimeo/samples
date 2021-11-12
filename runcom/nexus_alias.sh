@@ -497,34 +497,38 @@ f.write(json.dumps(a,indent=4,sort_keys=True));" || return $?
 }
 
 # Create a dummy npm tgz from the original tgz and publish if repo URL is given
+#curl -O -L https://registry.npmjs.org/auditjs/-/auditjs-4.0.33.tgz
 function npmDummyVer() {
-    local _orig_tgz="${1}"
-    local _dummy_ver="${2}"
-    local _repo_url="${3}"
+    local _repo_url="${1}"
+    local _orig_tgz="${2}"
+    local _new_ver="${3}"
+    local _new_name="${4}"  # Optional
 
     local _crt_dir="$(pwd)"
     [[ "${_orig_tgz}" =~ ([^/]+)-([^-]+)\.tgz ]] || return $?
     _pkg="${BASH_REMATCH[1]}"
+    [ -z "${_new_name}" ] && _new_name="${_pkg}"
     _ver="${BASH_REMATCH[2]}"
-    local _dir="${_pkg}"
+    local _dir="${_new_name}"
     if [ ! -d "${_dir%/}" ]; then
         mkdir -v "${_dir}" || return $?
     fi
-    tar -xvf "${_orig_tgz}" -C "${_dir%/}/" || return $?
-
+    tar -xf "${_orig_tgz}" -C "${_dir%/}/" || return $?
     grep -w "${_ver}" ${_dir%/}/package/package.json || return $?
-    sed -i.bak 's/"version": "'${_ver}'"/"version": "'${_dummy_ver}'"/' ${_dir%/}/package/package.json || return $?
-    grep -w "${_dummy_ver}" ${_dir%/}/package/package.json || return $?
-
+    sed -i.bak 's/"version": "'${_ver}'"/"version": "'${_new_ver}'"/' ${_dir%/}/package/package.json || return $?
+    sed -i.bak 's/"name": "'${_pkg}'"/"name": "'${_new_name}'"/' ${_dir%/}/package/package.json || return $?
+    grep -w "${_new_ver}" ${_dir%/}/package/package.json || return $?
+    mv -f -v ${_dir%/}/package/package.json.bak /tmp/
+    # Below somehow does NOT work! somehow old version and old name remains
+    #gunzip "${_new_name}-${_new_ver}.tgz"&& tar -uvf "${_new_name}-${_new_ver}.tar" package/package.json && gzip "${_new_name}-${_new_ver}.tar" && mv "${_new_name}-${_new_ver}.tar.gz" "${_new_name}-${_new_ver}.tgz" || return $?
     cd "${_dir%/}"
-    tar -czvf "${_crt_dir%/}/${_pkg}-${_dummy_ver}.tgz" package || return $?
+    tar -czf "${_crt_dir%/}/${_new_name}-${_new_ver}.tgz" package || return $?
     cd -
     if [ -n "${_repo_url%/}" ] && [[ "${_repo_url%/}" =~ ^(.+)/repository/([^/]+) ]]; then
-        # Nexus UI uploading
         _url="${BASH_REMATCH[1]}"
         _repo_name="${BASH_REMATCH[2]}"
-        curl -v -u admin:admin123 -k "${_url%/}/service/rest/v1/components?repository=${_repo_name%/}" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -F "npm.asset=@${_crt_dir%/}/${_pkg}-${_dummy_ver}.tgz" || return $?
-        #not working: curl -v -u admin:admin123 -X PUT -k "${_repo_url%/}/${_pkg}/-/${_pkg}-${_dummy_ver}.tgz" -T "${_crt_dir%/}/${_pkg}-${_dummy_ver}.tgz" || return $?
+        curl -vf -u admin:admin123 -k "${_url%/}/service/rest/v1/components?repository=${_repo_name%/}" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -F "npm.asset=@${_crt_dir%/}/${_new_name}-${_new_ver}.tgz" || return $?
+        # NPM repo doesn't support PUT: curl -v -u admin:admin123 -X PUT -k "${_repo_url%/}/${_new_name}/-/${_new_name}-${_new_ver}.tgz" -T "${_crt_dir%/}/${_new_name}-${_new_ver}.tgz" || return $?
     fi
 }
 
