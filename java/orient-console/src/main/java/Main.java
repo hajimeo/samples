@@ -23,6 +23,7 @@ import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.record.impl.ORecordBytes;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
 import net.lingala.zip4j.ZipFile;
@@ -32,6 +33,9 @@ import org.jline.reader.impl.completer.StringsCompleter;
 import org.jline.reader.impl.history.DefaultHistory;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
+
+//import com.fasterxml.jackson.databind.ObjectMapper;
+//import com.fasterxml.jackson.dataformat.smile.SmileFactory;
 
 import java.io.*;
 import java.nio.file.DirectoryStream;
@@ -56,6 +60,8 @@ public class Main
   static String extractDir;
 
   static String exportPath;
+
+  static String[] fieldNames;
 
   private static void usage() {
     System.err.println("DOWNLOAD LATEST VERSION:\n" +
@@ -157,7 +163,33 @@ public class Main
       terminal.flush();
     }
     terminal.writer().println("]");
+    // TODO: not working?  and not organised properly
+    if (oDocs.size() == 1) {
+      printRaw(oDocs.get(0));
+    }
     terminal.flush();
+  }
+
+  private static void printRaw(ODocument oDoc) {
+    if (fieldNames.length == 0) {
+      fieldNames = oDoc.fieldNames();
+    }
+    List<String> fieldList = new ArrayList<>(Arrays.asList(fieldNames));
+    if (fieldList.contains("raw")) {
+      String rawBytesString = readBytes(oDoc.field("raw"));
+      System.out.println(rawBytesString);
+    }
+  }
+
+  private static String readBytes(ORecordBytes rawBytes) {
+    try {
+      final byte[] raw = rawBytes.toStream();
+      return raw.toString();
+    }
+    catch (Exception e) {
+      e.printStackTrace();
+    }
+    return "<failed read rawBytes>";
   }
 
   private static void writeListAsJson(List<ODocument> oDocs, String exportPath) {
@@ -204,14 +236,17 @@ public class Main
 
       Instant start = Instant.now();
       try {
-        final List<ODocument> results = db.command(new OCommandSQL(q)).execute();
+        final List<ODocument> oDocs = db.command(new OCommandSQL(q)).execute();
+        if (oDocs.size() > 0) {
+          fieldNames = oDocs.get(0).fieldNames();
+        }
         if (exportPath != null && exportPath.length() > 0) {
-          writeListAsJson(results, exportPath);
-          System.err.printf("Wrote %d rows to %s, ", results.size(), exportPath);
+          writeListAsJson(oDocs, exportPath);
+          System.err.printf("Wrote %d rows to %s, ", oDocs.size(), exportPath);
         }
         else {
-          printListAsJson(results);
-          System.err.printf("Rows: %d, ", results.size());
+          printListAsJson(oDocs);
+          System.err.printf("Rows: %d, ", oDocs.size());
         }
       }
       catch (java.lang.ClassCastException e) {
@@ -350,7 +385,7 @@ public class Main
     exportPath = System.getProperty("exportPath", System.getenv("_EXPORT_PATH"));
 
     // Preparing data (extracting zip if necessary)
-    if (!(new File(path)).isDirectory()) {
+    if (!(new File(path)).isDirectory() && !(new File(path)).isDirectory()) {
       try {
         if (extractDir != null && !extractDir.trim().isEmpty()) {
           if (!prepareDir(extractDir, path)) {
@@ -374,18 +409,24 @@ public class Main
         System.exit(1);
       }
     }
+    // TODO: above should have more proper error check.
 
     // Somehow without an ending /, OStorageException happens
     if (!path.endsWith("/")) {
       path = path + "/";
     }
-    connStr = "plocal:" + path + " admin admin";
+    if (path.startsWith("remote ")) {
+      connStr = path + " admin admin";
+    }
+    else {
+      connStr = "plocal:" + path + " admin admin";
+    }
     System.err.println("# connection string = " + connStr);
 
     LineReader lr = setupReader();
 
-    Orient.instance().getRecordConflictStrategy()
-        .registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
+    // Below does not work with 2.1.14
+    Orient.instance().getRecordConflictStrategy().registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
     try (ODatabaseDocumentTx db = new ODatabaseDocumentTx(connStr)) {
       try {
         db.open("admin", "admin");
