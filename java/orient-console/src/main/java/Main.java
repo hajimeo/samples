@@ -18,6 +18,8 @@ TODO: => DELETE FROM healthcheckconfig WHERE @rid in (SELECT rid FROM (SELECT MI
 //import com.google.gson.GsonBuilder;
 //import com.google.gson.Gson;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.gson.Gson;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
@@ -33,9 +35,8 @@ import org.jline.reader.impl.completer.StringsCompleter;
 import org.jline.reader.impl.history.DefaultHistory;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
-
-//import com.fasterxml.jackson.databind.ObjectMapper;
-//import com.fasterxml.jackson.dataformat.smile.SmileFactory;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.smile.SmileFactory;
 
 import java.io.*;
 import java.nio.file.DirectoryStream;
@@ -61,7 +62,13 @@ public class Main
 
   static String exportPath;
 
+  static String binaryField;
+
   static String[] fieldNames;
+
+  private static final ObjectMapper objectMapper = new ObjectMapper(new SmileFactory());
+
+  private static final Gson gson = new Gson();
 
   private static void usage() {
     System.err.println("DOWNLOAD LATEST VERSION:\n" +
@@ -164,32 +171,36 @@ public class Main
     }
     terminal.writer().println("]");
     // TODO: not working?  and not organised properly
-    if (oDocs.size() == 1) {
-      printRaw(oDocs.get(0));
-    }
     terminal.flush();
+    if (oDocs.size() == 1) {
+      printBinary(oDocs.get(0));
+    }
   }
 
-  private static void printRaw(ODocument oDoc) {
+  private static void printBinary(ODocument oDoc) {
+    if (binaryField.isEmpty()) {
+      return;
+    }
     if (fieldNames.length == 0) {
       fieldNames = oDoc.fieldNames();
     }
     List<String> fieldList = new ArrayList<>(Arrays.asList(fieldNames));
-    if (fieldList.contains("raw")) {
-      String rawBytesString = readBytes(oDoc.field("raw"));
-      System.out.println(rawBytesString);
+    if (fieldList.contains(binaryField)) {
+      outBytes(oDoc.field(binaryField));
     }
   }
 
-  private static String readBytes(ORecordBytes rawBytes) {
+  private static void outBytes(ORecordBytes rawBytes) {
     try {
-      final byte[] raw = rawBytes.toStream();
-      return raw.toString();
+      //rawBytes.toOutputStream(System.out);
+      final Map<String, Object> raw = objectMapper.readValue(rawBytes.toStream(),
+          new TypeReference<Map<String, Object>>() { });
+      String json = gson.toJson(raw);
+      System.out.println(json);
     }
     catch (Exception e) {
       e.printStackTrace();
     }
-    return "<failed read rawBytes>";
   }
 
   private static void writeListAsJson(List<ODocument> oDocs, String exportPath) {
@@ -383,6 +394,7 @@ public class Main
     Path tmpDir = null;
     extractDir = System.getProperty("extractDir", System.getenv("_EXTRACT_DIR"));
     exportPath = System.getProperty("exportPath", System.getenv("_EXPORT_PATH"));
+    binaryField = System.getProperty("binaryField", "");
 
     // Preparing data (extracting zip if necessary)
     if (!(new File(path)).isDirectory() && !(new File(path)).isDirectory()) {
@@ -426,7 +438,8 @@ public class Main
     LineReader lr = setupReader();
 
     // Below does not work with 2.1.14
-    Orient.instance().getRecordConflictStrategy().registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
+    Orient.instance().getRecordConflictStrategy()
+        .registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
     try (ODatabaseDocumentTx db = new ODatabaseDocumentTx(connStr)) {
       try {
         db.open("admin", "admin");
