@@ -172,9 +172,6 @@ public class Main
     terminal.writer().println("]");
     // TODO: not working?  and not organised properly
     terminal.flush();
-    if (oDocs.size() == 1) {
-      printBinary(oDocs.get(0));
-    }
   }
 
   private static void printBinary(ODocument oDoc) {
@@ -186,21 +183,22 @@ public class Main
     }
     List<String> fieldList = new ArrayList<>(Arrays.asList(fieldNames));
     if (fieldList.contains(binaryField)) {
-      outBytes(oDoc.field(binaryField));
+      System.out.println(bytesToStr(oDoc.field(binaryField)));
     }
   }
 
-  private static void outBytes(ORecordBytes rawBytes) {
+  private static String bytesToStr(ORecordBytes rawBytes) {
+    String str = "";
     try {
       //rawBytes.toOutputStream(System.out);
       final Map<String, Object> raw = objectMapper.readValue(rawBytes.toStream(),
           new TypeReference<Map<String, Object>>() { });
-      String json = gson.toJson(raw);
-      System.out.println(json);
+      str = gson.toJson(raw);
     }
     catch (Exception e) {
       e.printStackTrace();
     }
+    return str;
   }
 
   private static void writeListAsJson(List<ODocument> oDocs, String exportPath) {
@@ -258,6 +256,10 @@ public class Main
         else {
           printListAsJson(oDocs);
           System.err.printf("Rows: %d, ", oDocs.size());
+        }
+        // Currently using below if the result is only one record.
+        if (oDocs.size() == 1) {
+          printBinary(oDocs.get(0));
         }
       }
       catch (java.lang.ClassCastException e) {
