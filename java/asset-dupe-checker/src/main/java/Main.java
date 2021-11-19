@@ -207,18 +207,19 @@ public class Main
       }
 
       // if adding this may be going to exceed the limit
-      current_ttl += repoCounts.get(repo_name);
-      long est = estimateSize(current_ttl);
-      debug(
-          "Adding " + repoCounts.get(repo_name) + " for " + repo_name + " = " + current_ttl + " (estimate_size:" + est +
-              " / " + maxMb + ", sub_repo_names.size:" + sub_repo_names.size() + ")");
-      if (sub_repo_names.size() > 0 && est > maxMb) {
-        log("Checking (" + sub_repo_names.size() + "): " + sub_repo_names.toString());
-        if (checkDupes(tx, sub_repo_names)) {
-          is_dupe_found = true;
+      if (repoCounts.containsKey(repo_name)) {
+        current_ttl += repoCounts.get(repo_name);
+        long est = estimateSize(current_ttl);
+        debug("Adding " + repoCounts.get(repo_name) + " for " + repo_name + " = " + current_ttl + " (estimate_size:" + est +
+                " / " + maxMb + ", sub_repo_names.size:" + sub_repo_names.size() + ")");
+        if (sub_repo_names.size() > 0 && est > maxMb) {
+          log("Estimate exceeded " + maxMb + " so checking (" + sub_repo_names.size() + "): " + sub_repo_names.toString());
+          if (checkDupes(tx, sub_repo_names)) {
+            is_dupe_found = true;
+          }
+          current_ttl = 0;
+          sub_repo_names = new ArrayList<String>();
         }
-        current_ttl = 0;
-        sub_repo_names = new ArrayList<String>();
       }
 
       sub_repo_names.add(repo_name);
