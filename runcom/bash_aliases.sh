@@ -168,6 +168,17 @@ function lns() {
     ln -v -s "$(realpath "$1")" "$(realpath "$2")"
 }
 
+function unzips() {
+    for _f in "$@"; do
+        local _dir_name="$(basename "${_f}" .zip)"
+        if unzip -l "${_f}" | grep -q "${_dir_name}"; then
+            unzip "${_f}"
+        else
+            unzip -d "${_dir_name}" "${_f}"
+        fi || return $?
+    done
+}
+
 function random_list() {
     eval "IFS=\" \" read -a _list <<< \"${1}\""
     local _rand=$[$RANDOM % ${#_list[@]}]

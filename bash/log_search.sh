@@ -818,17 +818,19 @@ function f_count_lines() {
     fi
 }
 
-#_get_hextids top_2021-03-31_16-31-43.out | sort | uniq -c
-#_get_hextids top_2021-03-31_16-31-43.out | tr '\n' '|'
-#ls -1 top_2021-03-31_*.out | while read -r _f;do (echo "# ${_f}"; _get_hextids ${_f} | xargs -I {} grep 'nid={} run' ${_f}); done &> result.out
-function _get_hextids() {
+#f_hextids_from_topH top_2021-03-31_16-31-43.out | sort | uniq -c
+#f_hextids_from_topH top_2021-03-31_16-31-43.out | tr '\n' '|'
+#ls -1 top_2021-03-31_*.out | while read -r _f;do (echo "# ${_f}"; f_hextids_from_topH ${_f} | xargs -I {} grep 'nid={} run' ${_f}); done &> result.out
+function f_hexTids_from_topH() {
     # grep top output and return PID (currently over 90% CUP one) for the user, then use printf to convert to hex
     local _file="${1}"
-    local _user="${2:-"nexus"}" # [^ ]+
-    local _n="${3:-10}"
-    rg '^(  PID|top )' -A ${_n} "${_file}" | rg "^(top |\s*\d+ +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d+|9)\d.\d+ +)" > /tmp/${FUNCNAME}_$$.tmp || return $?
-    cat /tmp/${FUNCNAME}_$$.tmp >&2
-    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d+|9)\d.\d+ +" -o -r '$1' | xargs printf "0x%x\n"
+    local _user="${2:-".+"}" # [^ ]+
+    local _command="${3:-"java"}" # [^ ]+
+    local _n="${4:-20}"
+    rg '^top' -A ${_n} "${_file}" | rg "^(top|\s*\d+\s+${_user}\s.+\s${_command})" | tee /tmp/${FUNCNAME}_$$.tmp || return $?
+    echo ""
+    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|[7-9]\d\.\d+)" -o -r '$1' | sort | uniq -c | sort -nr
+    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|[7-9]\d\.\d+)" -o -r '$1' | xargs printf "0x%x\n"
 }
 
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
@@ -884,17 +886,25 @@ function f_threads() {
             _count=$(( ${_count} + 1 ))
         done
         echo " "
-        # Only when checking multiple thread dumps
+        # Doing below only when checking multiple thread dumps
         echo "## Long *RUN*ning and no-change (same hash) threads contain '${_running_thread_search_re}' (threads:${_count})"
         rg -l "${_running_thread_search_re}" -g '*run*.out' -g '*RUN*.out' ${_save_dir%/}/ | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort | tee /tmp/${FUNCNAME}_$$.tmp
-        if [ ! -s /tmp/${FUNCNAME}_$$.tmp ] && [ 2 -lt ${_count} ]; then
+        if [ 3 -lt ${_count} ]; then
             local __count=$(( ${_count} - 1 ))
+            echo "## Long *RUN*ning and no-change (same hash) threads contain '${_running_thread_search_re}' (threads:${__count}/${_count})"
             rg -l "${_running_thread_search_re}" -g '*run*.out' -g '*RUN*.out' ${_save_dir%/}/ | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s+${__count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
         fi
         # TODO: also check similar file sizes (wc -c?)
         echo "## Long running threads contain '${_running_thread_search_re}' (threads:${_count})"
         rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
         #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
+        echo " "
+        echo "## Counting methods (but more than once) from running threads which also contains '${_running_thread_search_re}' (threads:${_count})"
+        rg "${_running_thread_search_re}" -l -g '*runnable*' ${_save_dir%/} | while read -r _f; do
+            echo "$(basename "${_f}") $(rg '^\sat\s' -m1 "${_f}")"
+        done | sort | uniq -c | sort -nr | rg -v '^\s*1\s' | head -n40
+        echo " "
+        echo "### May also want to use f_hextids_from_topH()"
         echo " "
         return $?
     fi
@@ -953,6 +963,13 @@ function f_threads() {
     if [ -n "${_running_thread_search_re}" ]; then
         echo "## Finding *probably* running threads containing '${_running_thread_search_re}'"
         rg -l -w RUNNABLE ${_save_dir%/}/ | xargs -I {} rg -H -m1 "${_running_thread_search_re}" {}
+        echo " "
+        echo "## Finding popular methods from *probably* running threads containing '${_running_thread_search_re}'"
+        #rg -w RUNNABLE -A1 -H ${_save_dir%/} | rg '^\sat' | sort | uniq -c
+        rg "${_running_thread_search_re}" -l -g '*runnable*' ${_save_dir%/} | xargs -P3 -I {} rg '^\sat\s' -m1 "{}" | sort | uniq -c | sort -nr | head -10
+        echo " "
+        echo "## Finding runnable 'QuartzTaskJob\.doExecute' for Scheduled tasks"
+        rg "${_running_thread_search_re}" -l -g '*runnable*' ${_save_dir%/} | xargs -P3 -I {} rg 'QuartzTaskJob\.doExecute' -B3
         echo " "
     fi
 
@@ -1079,6 +1096,22 @@ function f_log2csv() {
         echo "date_time,thread,user,class,${_col_append}" | cat - /tmp/f_log2csv_$$.out
     fi
 }
+
+f_reqsFromCSV() {
+    local _csv_filename="${1:-"request.csv"}"
+    local _elapsedTime_gt="${2:-"7000"}"
+    local _since_time="${3-"00:00:00"}"
+    local _limit="${4:-"20"}"
+    local _file="$(find . -maxdepth 3 -type f -print | grep "/${_csv_filename}$" | sort -r | head -n1)"
+    [ -z "${_file}" ] && return 1
+    local _extra_cols=""
+    local _extra_where=""
+    head -n1 "${_file}" | grep -q "headerContentLength" && _extra_cols=", headerContentLength" && _extra_where=" OR (headerContentLength <> '-' AND headerContentLength <> '0')"
+    local _sql="SELECT clientHost, user, date, requestURL, statusCode, bytesSent ${_extra_cols}, elapsedTime, CAST((CAST(bytesSent as INT) / CAST(elapsedTime as INT)) as DECIMAL(10, 2)) as bytes_per_ms, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time FROM ${_file} WHERE elapsedTime >= ${_elapsedTime_gt} AND started_time >= '${_since_time}' AND (bytes_per_ms < 10240 ${_extra_where}) order by elapsedTime DESC limit ${_limit}"
+    echo "# SQL: ${_sql}" >&2
+    q -O -d"," -T --disable-double-double-quoting -H "${_sql}"
+}
+
 
 function _gen_pattern() {
     local _pattern_str="${1}"
@@ -1473,15 +1506,13 @@ function _actual_file_size() {
 function _wait_jobs() {
     local _until_how_many="${1:-2}" # Running two is OK
     local timeout_sec="${2:-180}"
-    local _i=0
-    while true; do
-        local _num="$(jobs -l | wc -l | tr -d '[:space:]')"
+    for _i in $(seq 0 ${timeout_sec}); do
+        local _num="$(jobs -l | grep -iw "Running" | wc -l | tr -d '[:space:]')"
         if [ -z "${_num}" ] || [ ${_num} -le ${_until_how_many} ]; then
             return 0
         fi
+        #echo "${_num} background jobs are still running" >&2
         sleep 1
-        _i=$(( ${_i} + 1 ))
-        [ ${_i} -ge ${timeout_sec} ] && return 1
     done
 }
 

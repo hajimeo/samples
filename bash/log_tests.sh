@@ -42,9 +42,6 @@ fi
 : ${_FILTERED_DATA_DIR:="./_filtered"}
 : ${_LOG_GLOB:="*.log"}
 
-: ${_WORKING_DIR:=""}   # either workingDirectory or sonatypeWork
-: ${_APP_VER:=""}   # 3.36.0-01
-
 # Aliases (can't use alias in shell script, so functions)
 _rg() {
     rg "$@"
@@ -55,17 +52,18 @@ _q() {
 _runner() {
     local _pfx="$1"
     local _tmp="$(mktemp -d)"
-    _LOG "INFO" "Executing $(typeset -F | grep "^declare -f ${_pfx}" | wc -l) ${_pfx}xxxxxx functions."
+    _LOG "INFO" "Executing ${FUNCNAME[1]}->${FUNCNAME} $(typeset -F | grep "^declare -f ${_pfx}" | wc -l  | tr -d "[:space:]") functions."
     for _t in $(typeset -F | grep "^declare -f ${_pfx}" | cut -d' ' -f3); do
         if ! _wait_jobs; then
             _LOG "ERROR" "${FUNCNAME} failed."
             return 11
         fi
-        eval "_LOG \"DEBUG\" \"Started ${_t}\";${_t} > ${_tmp}/${_t}.out;echo '';_LOG \"DEBUG\" \"Completed ${_t} ($?)\"" &
+        _LOG "DEBUG" "Started ${_t}"    # TODO: couldn't display actual command in jogs -l command
+        eval "${_t} > ${_tmp}/${_t}.out;_LOG DEBUG \"Completed ${_t} (\$?)\"" &
     done
     _wait_jobs 0
     cat ${_tmp}/${_pfx}*.out
-    _LOG "INFO" "Completed ${FUNCNAME}."
+    _LOG "INFO" "Completed ${FUNCNAME[1]}->${FUNCNAME}."
 }
 
 function f_run_extract() {
@@ -96,6 +94,16 @@ function f_run_tests() {
 }
 
 function _extract_configs() {
+    _head "CONFIG: system-environment"
+    echo '```'
+    _search_json "sysinfo.json" "system-environment,HOSTNAME"
+    _search_json "sysinfo.json" "system-environment,USER"
+    _search_json "sysinfo.json" "system-environment,TZ"
+    _search_json "sysinfo.json" "system-environment,PWD"
+    _search_json "sysinfo.json" "system-environment,HOME" # for -Djava.util.prefs.userRoot=/home/nexus/.java
+    _search_json "jmx.json" "java.lang:type=Runtime,Name" # to find PID and hostname (in case no HOSTNAME env set)
+    echo '```'
+
     _head "CONFIG: OS/server information from jmx.json"
     echo '```'
     #_search_json "sysinfo.json" "system-runtime"   # This one does not show physical memory size
@@ -110,14 +118,6 @@ function _extract_configs() {
     _search_json "jmx.json" "java.lang:type=OperatingSystem,SystemLoadAverage"
     _search_json "jmx.json" "java.lang:type=OperatingSystem,MaxFileDescriptorCount"
     _search_json "jmx.json" "java.lang:type=OperatingSystem,OpenFileDescriptorCount"
-    echo '```'
-
-    _head "CONFIG: system-environment"
-    echo '```'
-    _search_json "sysinfo.json" "system-environment,PWD"
-    _search_json "sysinfo.json" "system-environment,HOME" # for -Djava.util.prefs.userRoot=/home/nexus/.java
-    _search_json "sysinfo.json" "system-environment,HOSTNAME"
-    _search_json "jmx.json" "java.lang:type=Runtime,Name" # to find PID and hostname (in case no HOSTNAME env set)
     echo '```'
 
     _head "CONFIG: system-runtime"
@@ -141,11 +141,23 @@ function _extract_configs() {
 
     _head "CONFIG: application related"
     echo '```'
-    _WORKING_DIR="$(_search_json "sysinfo.json" "nexus-configuration,workingDirectory" || _search_json "sysinfo.json" "install-info,sonatypeWork" | rg ': "([^"]+)' -o -r '$1')"
-    echo "sonatypeWork: \"${_WORKING_DIR}\""
-    _APP_VER="$(_search_json "sysinfo.json" "nexus-status,version" || _search_json "product-version.json" "product-version,version" | rg ': "([^"]+)' -o -r '$1')"
-    echo "app version: \"${_APP_VER}\""
+    echo "sonatypeWork: \"$(_working_dir)\""
+    echo "app version: \"$(_app_ver)\""
     echo '```'
+}
+: ${_WORKING_DIR:="<null>"}   # either workingDirectory or sonatypeWork
+function _working_dir() {
+    [ -n "${_WORKING_DIR}" ] && [ "${_WORKING_DIR}" != "<null>" ] && echo "${_WORKING_DIR}" && return
+    local _working_dir_line="$(_search_json "sysinfo.json" "nexus-configuration,workingDirectory" || _search_json "sysinfo.json" "install-info,sonatypeWork")"
+    local _result="$(echo "${_working_dir_line}" | rg ': "([^"]+)' -o -r '$1')"
+    [ -n "${_result}" ] && [ "${_result}" != "<null>" ] && _WORKING_DIR="$(echo "${_result}")" && echo "${_WORKING_DIR}"
+}
+: ${_APP_VER:="<null>"}   # 3.36.0-01
+function _app_ver() {
+    [ -n "${_APP_VER}" ] && [ "${_APP_VER}" != "<null>" ] && echo "${_APP_VER}" && return
+    local _app_ver_line="$(_search_json "sysinfo.json" "nexus-status,version" || _search_json "product-version.json" "product-version,version")"
+    local _result="$(echo "${_app_ver_line}" | rg ': "([^"]+)' -o -r '$1')"
+    [ -n "${_result}" ] && [ "${_result}" != "<null>" ] && _APP_VER="$(echo "${_result}")" && echo "${_APP_VER}"
 }
 function _extract_log_last_start() {
     _head "LOGS" "Instance start time (from jmx.json)"
@@ -195,8 +207,10 @@ function _basic_check() {
     local _level="${3:-"INFO"}"
     local _message="${4}"
     if [ -n "${_required_app_ver_regex}" ]; then
-        # No message for version
-        [ -n "${_APP_VER}" ] && [[ ! "${_APP_VER}" =~ ${_required_app_ver_regex} ]] && return 8
+        local _ver="$(_app_ver)"
+        [ -z "${_ver}" ] && _head "${_level}" "Can not run ${FUNCNAME[1]} as no _APP_VER detected" && return 8
+        # NOTE: No message if version doesn't match but just skip.
+        [ -n "${_ver}" ] && [[ ! "${_ver}" =~ ${_required_app_ver_regex} ]] && return 9
     fi
     if [ -n "${_required_file}" ] && [ ! -s "${_required_file}" ]; then
         # ${FUNCNAME[1]} is to get the caller function name
@@ -256,12 +270,12 @@ function e_app_logs() {
     fi
 }
 function e_req_logs() {
-    local _req_log_path="$(find . -maxdepth 3 -name ${_REQUEST_LOG} | head -n1 2>/dev/null)"
+    local _req_log_path="$(find . -maxdepth 3 -name "${_REQUEST_LOG:-"request.log"}" | sort -r | head -n1 2>/dev/null)"
     local _req_log_size="$(_actual_file_size "${_req_log_path}")"
     if [ -n "${_req_log_size}" ] && [ ${_req_log_size} -gt 0 ] && [ ${_req_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
-        f_request2csv "${_REQUEST_LOG}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
+        f_request2csv "${_req_log_path}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
     else
-        _LOG "INFO" "Not converting "${_REQUEST_LOG}" to CSV as log size ${_req_log_size} is larger than ${_LOG_THRESHOLD_BYTES}"
+        _LOG "INFO" "Not converting "${_req_log_path}" to CSV as no ${_REQUEST_LOG:-"request.log"} or log size (${_req_log_size}) is larger than ${_LOG_THRESHOLD_BYTES}"
     fi
 }
 
@@ -281,10 +295,9 @@ function r_audits() {
 }
 function r_app_logs() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/f_topErrors.out" || return
-    [ -n "${_f_topErrors_pid}" ] && wait ${_f_topErrors_pid}
     _head "APP LOG: counting WARNs and above, then displaying 10+ occurrences in ${_LOG_GLOB} (${_FILTERED_DATA_DIR%/}f_topErrors.out)"
     echo '```'
-    cat /tmp/f_topErrors_$$.out | rg -v '^\s*\d\s+' # NOTE: be careful to modify this. It might hides bar_chart output
+    rg -v '^\s*\d\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out # NOTE: be careful to modify this. It might hides bar_chart output
     echo '```'
 }
 function r_threads() {
@@ -409,7 +422,7 @@ function t_requests() {
     _test_template "$(rg -q '\s+5\d\d\s+' -m1 /tmp/t_requests.out && cat /tmp/t_requests.out)" "WARN" "Many repeated 5xx status in ${_FILTERED_DATA_DIR}/request.csv (${_FILTERED_DATA_DIR%/}/log_requests_5xx.out)"
 
     # NOTE: can't use headerContentLength as some request.log doesn't have it
-    _q -H "SELECT clientHost, user, date, requestURL, statusCode, bytesSent, elapsedTime, CAST((CAST(bytesSent as INT) / CAST(elapsedTime as INT)) as DECIMAL(10, 2)) as bytes_per_ms, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8)) - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time FROM ${_FILTERED_DATA_DIR%/}/request.csv WHERE elapsedTime > 7000 AND bytes_per_ms < 1024 ORDER BY elapsedTime DESC LIMIT 20" > /tmp/t_requests.out
+    f_reqsFromCSV "request.csv" "7000" "20" 2>/dev/null >/tmp/t_requests.out
     _test_template "$(rg -q '\s+GET\s+' -m1 /tmp/t_requests.out && cat /tmp/t_requests.out)" "WARN" "Unusually slow downloads in ${_FILTERED_DATA_DIR}/request.csv"
 }
 
