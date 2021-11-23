@@ -1,14 +1,14 @@
-javascript:if (confirm("Reload this page with 1 minute interval for 480 times")) {
+javascript:if (confirm("Pinging this URL with 3 minute interval for 120 times")) {
   current = location.href;
   x = 0;
   intervalID = setInterval(function() {
     var newwin = window.open(current, '_blank');
-    setTimeout(() => {
+    setTimeout(function() {
       console.log("Reloading ", current);
-    }, 5000);
+    }, 5 * 1000);
     newwin.close();
-    if (++x === 480) {
+    if (++x === 120) {
       window.clearInterval(intervalID);
     }
-  }, 55 * 1000);
+  }, (180 - 5) * 1000);
 }
