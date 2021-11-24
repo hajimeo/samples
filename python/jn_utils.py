@@ -408,14 +408,15 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
 
     dfs = []
     for file_path in files:
-        fs = _get_filesize(file_path)
-        if bool(line_from) is False and bool(max_file_size) and fs >= max_file_size:
-            _info("WARN: File %s (%d MB) is too large (max_file_size=%d). Use 'line_from'." % (
-                file_path, int(fs / 1024 / 1024), max_file_size))
-            continue
-        if fs < 128:
-            _info("%s is too small (%d) as JSON. Skipping ..." % (str(file_path), fs))
-            continue
+        if bool(max_file_size):
+            fs = _get_filesize(file_path)
+            if bool(line_from) is False and fs >= max_file_size:
+                _info("WARN: File %s (%d MB) is too large (max_file_size=%d). Use 'line_from'." % (
+                    file_path, int(fs / 1024 / 1024), max_file_size))
+                continue
+            if fs < 128:
+                _info("%s is too small (%d) as JSON. Skipping ..." % (str(file_path), fs))
+                continue
         _info("Loading %s ..." % (str(file_path)))
         if bool(jq_query):
             obj = jq(file_path, jq_query)
@@ -1096,7 +1097,7 @@ def _save_query(sql, limit=1000):
     # removing spaces and last ';'
     sql = sql.strip().rstrip(';')
     df_new = pd.DataFrame([[_timestamp(format="%Y%m%d%H%M%S"), sql]], columns=["datetime", "query"])
-    df_hist = csv2df(query_history_csv, header=None)
+    df_hist = csv2df(query_history_csv, header=None, max_file_size=0)
     if df_hist is None or df_hist is False or df_hist.empty:
         df = df_new
     else:
@@ -2003,10 +2004,15 @@ def logs2table(filename, tablename=None, conn=None,
     inserted_num = 0
     args_list = []
     for f in files:
-        if bool(line_from) is False and bool(max_file_size) and os.stat(f).st_size >= max_file_size:
-            _info("WARN: File %s (%d MB) is too large (max_file_size=%d). Use 'line_from'" % (
-                str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
-            continue
+        if bool(max_file_size):
+            fs = _get_filesize(f)
+            if bool(line_from) is False and fs >= max_file_size:
+                _info("WARN: File %s (%d MB) is too large (max_file_size=%d).." % (
+                    str(f), int(fs / 1024 / 1024), max_file_size))
+                continue
+            if fs < 128:
+                _info("%s is too small (%d) as log. Skipping ..." % (str(f), fs))
+                continue
         if multiprocessing:
             # concurrent.futures.ProcessPoolExecutor hangs in Jupyter, so can't use kwargs
             args_list.append(
@@ -2119,14 +2125,15 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
             _debug("No %s. Skipping ..." % (str(filename)))
             return None
         file_path = files[0]
-    fs = _get_filesize(file_path)
-    if bool(max_file_size) and fs >= max_file_size:
-        _info("WARN: File %s (%d MB) is too large (max_file_size=%d).." % (
-            file_path, int(fs / 1024 / 1024), max_file_size))
-        return None
-    if fs < 128:
-        _info("%s is too small (%d) as CSV. Skipping ..." % (str(file_path), fs))
-        return None
+    if bool(max_file_size):
+        fs = _get_filesize(file_path)
+        if fs >= max_file_size:
+            _info("WARN: File %s (%d MB) is too large (max_file_size=%d).." % (
+                file_path, int(fs / 1024 / 1024), max_file_size))
+            return None
+        if fs < 128:
+            _info("%s is too small (%d) as CSV. Skipping ..." % (str(file_path), fs))
+            return None
     # special logic for 'csv': if no header, most likely 'append' is better
     if if_exists is None:
         if header is None:
