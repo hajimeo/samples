@@ -7,6 +7,7 @@ isHeaderContentLength=False
 def _gen_regex_for_request_logs(filepath="request.log"):
     """
     Return a list which contains column names, and regex pattern for request.log
+    Based on bash/log_search.sh f_request2csv
     :param filepath: A file path or *simple* regex used in glob to select files.
     :return: (col_list, pattern_str)
     """
@@ -25,6 +26,11 @@ def _gen_regex_for_request_logs(filepath="request.log"):
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime",
                "headerUserAgent", "thread"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)" \[([^\]]+)\]'
+    if re.search(partern_str, checking_line):
+        return (columns, partern_str)
+    columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "headerContentLength", "bytesSent",
+               "elapsedTime", "headerUserAgent"]
+    partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) "([^"]+)"'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime",
@@ -243,7 +249,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
         # ./work/db/xxxxx.json (new DB)
         _ = ju.load_jsons(".", include_ptn=".+/db/.+\.json", exclude_ptn='export\.json', useRegex=True, conn=ju.connect())
 
-        # If request.*csv* exists, use that and should be loaded by above load_csvs (because it's faster), if not, logs2table, which is slower.
+        # If request.*csv* exists, use that (should be already created by load_csvs and should be loaded by above load_csvs (because it's faster), if not, logs2table, which is slower.
         request_logs = None
         if ju.exists("t_request") is False:
             log_path = ju._get_file("request.log")
@@ -354,9 +360,9 @@ def analyse_logs(path="", tail_num=10000, max_file_size=(1024 * 1024 * 100), ski
 
     if ju.exists("t_request"):
         display_name = "RequestLog_StatusCode_Hourly_aggs"
-        # Can't use above where_sql for this query
         where_sql2 = "WHERE 1=1"
-        # UDF_REGEX('(\d\d/[a-zA-Z]{3}/20\d\d:\d\d)', `date`, 1)
+        # Join db_repo.json and request.log
+        #   AND UDF_REGEX('.+ /nexus/content/repositories/([^/]+)', t_request.requestURL, 1) IN (SELECT repository_name FROM t_db_repo where t_db_repo.`attributes.storage.blobStoreName` = 'nexus3')
         query = """SELECT substr(`date`, 1, 14) AS date_hour, substr(statusCode, 1, 1) || 'xx' as status_code,
     CAST(MAX(CAST(elapsedTime AS INT)) AS INT) AS max_elaps, 
     CAST(AVG(CAST(elapsedTime AS INT)) AS INT) AS avg_elaps, 
@@ -370,13 +376,13 @@ GROUP BY 1, 2""" % (avgMsPerBytesAgg, where_sql2)
 
         display_name = "RequestLog_Status_ByteSent_Elapsed"
         query = """SELECT TIME(substr(date, 13, 8)) as hhmmss,
+    %s
     AVG(CAST(bytesSent AS INTEGER)) AS bytesSent, %s 
     AVG(CAST(elapsedTime AS INTEGER)) AS elapsedTime,
-    %s
     count(*) AS requests
 FROM t_request
 %s
-GROUP BY hhmmss""" % (headerContentLengthAgg, avgMsPerBytesAgg, where_sql2)
+GROUP BY hhmmss""" % (avgMsPerBytesAgg, headerContentLengthAgg, where_sql2)
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
 
     if ju.exists("t_log_hazelcast_monitor"):
