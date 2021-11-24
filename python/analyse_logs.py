@@ -42,7 +42,6 @@ def _gen_regex_for_request_logs(filepath="request.log"):
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([0-9]+)'
     if re.search(partern_str, checking_line):
         return (columns, partern_str)
-
     columns = ["clientHost", "l", "user", "date", "requestURL", "statusCode", "bytesSent", "elapsedTime", "misc"]
     partern_str = '^([^ ]+) ([^ ]+) ([^ ]+) \[([^\]]+)\] "([^"]+)" ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)'
     if re.search(partern_str, checking_line):

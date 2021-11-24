@@ -332,6 +332,7 @@ def load_jsons(src="./", conn=None, include_ptn='*.json', exclude_ptn='', chunks
     :param json_cols: to_sql() fails if column is json, so do some workaround against those columns
     :param flatten: If true, use json_normalize()
     :param useRegex: whether use regex or not to find json files
+    :param max_file_size: 0 means no size limit
     :return: A tuple contain key=>file relationship and Pandas dataframes objects
     #>>> (names_dict, dfs) = load_jsons(src="./engine/aggregates")
     #>>> bool(names_dict)
@@ -408,11 +409,11 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
     dfs = []
     for file_path in files:
         fs = _get_filesize(file_path)
-        if bool(line_from) is False and fs >= max_file_size:
+        if bool(line_from) is False and bool(max_file_size) and fs >= max_file_size:
             _info("WARN: File %s (%d MB) is too large (max_file_size=%d). Use 'line_from'." % (
                 file_path, int(fs / 1024 / 1024), max_file_size))
             continue
-        if fs < 32:
+        if fs < 128:
             _info("%s is too small (%d) as JSON. Skipping ..." % (str(file_path), fs))
             continue
         _info("Loading %s ..." % (str(file_path)))
@@ -655,7 +656,7 @@ def _avoid_unsupported(df, json_cols=[], all_str=False, name=None, max_row_size=
     """
     if bool(json_cols) is False and all_str is False:
         return df
-    if len(df) > max_row_size:  # don't want to convert huge df
+    if bool(max_row_size) and len(df) > max_row_size:  # don't want to convert huge df
         _err("_avoid_unsupported does not convert this large df (%d) (max_row_size = %d)" % (len(df), max_row_size))
         return df
     keys = df.columns.tolist()
@@ -2002,7 +2003,7 @@ def logs2table(filename, tablename=None, conn=None,
     inserted_num = 0
     args_list = []
     for f in files:
-        if bool(line_from) is False and os.stat(f).st_size >= max_file_size:
+        if bool(line_from) is False and bool(max_file_size) and os.stat(f).st_size >= max_file_size:
             _info("WARN: File %s (%d MB) is too large (max_file_size=%d). Use 'line_from'" % (
                 str(f), int(os.stat(f).st_size / 1024 / 1024), max_file_size))
             continue
@@ -2083,7 +2084,7 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
         if bool(conn) is False:
             tablename = None
         names_dict[new_name] = f
-        dfs[new_name] = csv2df(filename=f, conn=conn, tablename=tablename, chunksize=chunksize, if_exists=if_exists)
+        dfs[new_name] = csv2df(filename=f, conn=conn, tablename=tablename, chunksize=chunksize, if_exists=if_exists, max_file_size=max_file_size)
     if bool(conn):
         del (names_dict)
         del (dfs)
@@ -2091,7 +2092,7 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
     return (names_dict, dfs)
 
 
-def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exists='replace'):
+def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exists='replace', max_file_size=(1024 * 1024 * 400)):
     '''
     Load a CSV file into a DataFrame *or* database table if conn is given
     If conn is given, import into a DB table
@@ -2103,6 +2104,7 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
                    Row number(s) to use as the column names
                    Or a list of column names
     :param if_exists: {‘fail’, ‘replace’, ‘append’}
+    :param max_file_size: max file size (note size smaller than 128 bytes is also skipped)
     :return: Pandas DF object or False if file is not readable
     #>>> df = ju.csv2df(file_path='./slow_queries.csv', conn=ju.connect())
     >>> pass    # Testing in df2csv()
@@ -2117,6 +2119,14 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
             _debug("No %s. Skipping ..." % (str(filename)))
             return None
         file_path = files[0]
+    fs = _get_filesize(file_path)
+    if bool(max_file_size) and fs >= max_file_size:
+        _info("WARN: File %s (%d MB) is too large (max_file_size=%d).." % (
+            file_path, int(fs / 1024 / 1024), max_file_size))
+        return None
+    if fs < 128:
+        _info("%s is too small (%d) as CSV. Skipping ..." % (str(file_path), fs))
+        return None
     # special logic for 'csv': if no header, most likely 'append' is better
     if if_exists is None:
         if header is None:
