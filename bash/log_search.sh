@@ -1061,6 +1061,7 @@ function f_request2csv() {
         return 1
     fi
     #echo '"clientHost","user","dateTime","method","requestUrl","statusCode","contentLength","byteSent","elapsedTime_ms","userAgent","thread"' > ${_csv}
+    # TODO: shouldn't create file before making sure "rg" returns something
     echo "\"$(echo "${_pattern_str}" | tr -cd '[:alnum:]._ ' | _sed 's/ /","/g')\"" > ${_out_file}
     local _pattern="^$(_gen_pattern "${_pattern_str}")"
     echo "# pattern: ${_pattern}" >&2
@@ -1168,6 +1169,19 @@ function f_healthlog2csv() {
     [ -s "/tmp/_health_monitor_$$.json" ] || return 1
     # language=Python
     python3 -c "import pandas as pd;import csv;df=pd.read_json('/tmp/_health_monitor_$$.json');df.to_csv('${_out_file}', mode='w', header=True, index=False, escapechar='\\\', quoting=csv.QUOTE_NONNUMERIC)"
+}
+
+#SELECT TIME(substr(date_time, 12, 8)) as hhmmss, AVG(mbs) as avg_MBperSec, count(*) as requests FROM t_blob_iostat GROUP BY hhmmss
+function f_iostat2csv() {
+    local __doc__="Convert some log which contains org.sonatype.nexus.blobstore.iostat to csv"
+    local _glob="${1:-"nexus.log"}"
+    local _out_file="${2:-"./blob_iostat.csv"}"
+    # Converting ,\d\d\d to .\d\d\d
+    rg -q 'org.sonatype.nexus.blobstore.iostat' -m1 -g "${_glob}" || return 1
+    # NOTE "read" and "written" only, no "deleted"
+    rg "^(${_DATE_FORMAT}.\d\d:\d\d:\d\d).([\d]+)[^\[]+\[([^\]]+)\] [^ ]* ([^ ]*) org.sonatype.nexus.blobstore.iostat - blobstore ([^:]+): .+ bytes ([^ ]+) in .+ \((.+) mb/s\)" -o -r '"$1.$2","$3","$4","$5","$6",$7' --no-filename -g "${_glob}" > "${_out_file}"
+    head -n1 ${_out_file} | rg -q '^date_time' || echo "date_time,thread,user,blobstore,type,mbs
+$(cat "${_out_file}")" > ${_out_file}
 }
 
 function f_get_pems_from_xml() {
