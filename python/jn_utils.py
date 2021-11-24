@@ -1097,7 +1097,7 @@ def _save_query(sql, limit=1000):
     sql = sql.strip().rstrip(';')
     df_new = pd.DataFrame([[_timestamp(format="%Y%m%d%H%M%S"), sql]], columns=["datetime", "query"])
     df_hist = csv2df(query_history_csv, header=None)
-    if df_hist is False or df_hist.empty:
+    if df_hist is None or df_hist is False or df_hist.empty:
         df = df_new
     else:
         # If not empty (= same query exists), drop/remove old dupe row(s), so that time will be new.
