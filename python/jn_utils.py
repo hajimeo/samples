@@ -1450,7 +1450,7 @@ def qhistory(run=None, like=None, html=True, tail=20):
     """
     query_history_csv = os.getenv('JN_UTILS_QUERY_HISTORY', os.getenv('HOME') + os.path.sep + ".ju_qhistory")
     df = csv2df(query_history_csv, header=None)
-    if df is False or df.empty:
+    if df is None or df is False or df.empty:
         return
     df.columns = ["datetime", "query"]
     if type(run) == int:
