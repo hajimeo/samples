@@ -1,4 +1,6 @@
-# TODO: IQ upgrading to v118 or higher may fail due to the UID chang
+# IQ upgrading to v118 or higher may fail due to the UID chang
+# ./start.sh: line2: /var/log/nexus-iq-server/stderr.log: Permission denied
+# NOTE: probably 'fsGroup: 1000' would be enough
 spec:
   # https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
   initContainers:

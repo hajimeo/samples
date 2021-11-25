@@ -56,6 +56,7 @@ serviceAccount:
   # If not set and create is true, a name is generated using the fullname template
   name:
 
+# ./start.sh: line2: /var/log/nexus-iq-server/stderr.log: Permission denied
 podSecurityContext: {}
   # fsGroup: 2000
 
