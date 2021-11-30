@@ -38,8 +38,8 @@ function _postgresql_configure() {
     _log "INFO" "Updating ${_postgresql_conf} ..."
     # Performance tuning (so not mandatory). Expecting the server has at least 4GB
     # @see: https://pgtune.leopard.in.ua/#/
-    _upsert ${_postgresql_conf} "shared_buffers" "1024MB"    # 4GB * 25%
-    _upsert ${_postgresql_conf} "work_mem" "12MB" "#work_mem" # 4GB * 25% / max_connections (100) + extra
+    _upsert ${_postgresql_conf} "shared_buffers" "1024MB"     # Default 8MB. 4GB * 25%
+    _upsert ${_postgresql_conf} "work_mem" "12MB" "#work_mem" # Default 4MB. 4GB * 25% / max_connections (100) + extra
     _upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # Physical mem (4GB) * 50% ~ 75%
     #_upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Usually higher provides better write performance
     ### End of tuning ###
