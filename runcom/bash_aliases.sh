@@ -121,6 +121,8 @@ type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
 alias logS="pyv; source $HOME/IdeaProjects/work/bash/log_search.sh"
 alias logT="pyv; source $HOME/IdeaProjects/samples/bash/log_tests.sh"
+alias logN="pyv; source $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
+alias logTest="pyv;$HOME/IdeaProjects/samples/bash/log_tests.sh"
 alias logNxrm="pyv;$HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
 alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
 alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py"
