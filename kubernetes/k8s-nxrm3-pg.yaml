@@ -12,6 +12,7 @@
 #
 # COMMAND EXAMPLE:
 #   kubectl create namespace "sonatype"
+#   cd ~/IdeaProjects/samples/kubernetes
 #   # NOTE: _DNS is my hack and usually don't need to use this. _DB_USER can't use '-'.
 #   export _ID="nxrm3pg" _DNS="192.168.52.31" _SHARE_DIR="/var/tmp/share"
 #   export _TAG="3.36.0" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
