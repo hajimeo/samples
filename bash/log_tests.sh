@@ -44,17 +44,18 @@ fi
 
 # Aliases (can't use alias in shell script, so functions)
 _rg() {
-    rg "$@"
+    rg -z "$@" 2>/tmp/_rg_last.err
 }
 _q() {
-    q -O -d"," -T --disable-double-double-quoting "$@"
+    q -O -d"," -T --disable-double-double-quoting "$@" 2>/tmp/_q_last.err
 }
 _runner() {
     local _pfx="$1"
+    local _n="${2:-"3"}"
     local _tmp="$(mktemp -d)"
     _LOG "INFO" "Executing ${FUNCNAME[1]}->${FUNCNAME} $(typeset -F | grep "^declare -f ${_pfx}" | wc -l  | tr -d "[:space:]") functions."
     for _t in $(typeset -F | grep "^declare -f ${_pfx}" | cut -d' ' -f3); do
-        if ! _wait_jobs; then
+        if ! _wait_jobs "${_n}"; then
             _LOG "ERROR" "${FUNCNAME} failed."
             return 11
         fi
@@ -76,7 +77,7 @@ function f_run_extract() {
 }
 
 function f_run_report() {
-    echo "## ${FUNCNAME} results"
+    echo "# ${FUNCNAME} results"
     echo ""
     if [ ! -s ${_FILTERED_DATA_DIR%/}/extracted_configs.md ]; then
         _head "INFO" "No ${_FILTERED_DATA_DIR%/}/extracted_configs.md"
@@ -87,14 +88,14 @@ function f_run_report() {
 }
 
 function f_run_tests() {
-    echo "## ${FUNCNAME} results"
+    echo "# ${FUNCNAME} results"
     echo ""
     _runner "t_"
     # TODO: currently can't count failed test.
 }
 
 function _extract_configs() {
-    _head "CONFIG: system-environment"
+    _head "CONFIG" "system-environment"
     echo '```'
     _search_json "sysinfo.json" "system-environment,HOSTNAME"
     _search_json "sysinfo.json" "system-environment,USER"
@@ -104,7 +105,7 @@ function _extract_configs() {
     _search_json "jmx.json" "java.lang:type=Runtime,Name" # to find PID and hostname (in case no HOSTNAME env set)
     echo '```'
 
-    _head "CONFIG: OS/server information from jmx.json"
+    _head "CONFIG" "OS/server information from jmx.json"
     echo '```'
     #_search_json "sysinfo.json" "system-runtime"   # This one does not show physical memory size
     _search_json "jmx.json" "java.lang:type=OperatingSystem,AvailableProcessors"
@@ -120,7 +121,7 @@ function _extract_configs() {
     _search_json "jmx.json" "java.lang:type=OperatingSystem,OpenFileDescriptorCount"
     echo '```'
 
-    _head "CONFIG: system-runtime"
+    _head "CONFIG" "system-runtime"
     echo '```'
     _search_json "sysinfo.json" "system-runtime,totalMemory" "Y"
     _search_json "sysinfo.json" "system-runtime,freeMemory" "Y"
@@ -129,17 +130,17 @@ function _extract_configs() {
     _search_json "jmx.json" "java.lang:type=Runtime,InputArguments" | uniq
     echo '```'
 
-    _head "CONFIG: network related"
+    _head "CONFIG" "network related"
     echo '```json'
     _search_json "sysinfo.json" "system-network"
     echo '```'
 
-    _head "CONFIG: database related (TODO: IQ)"
+    _head "CONFIG" "database related (TODO: IQ)"
     echo '```'
     _find_and_cat "config_ds_info.properties" 2>/dev/null
     echo '```'
 
-    _head "CONFIG: application related"
+    _head "CONFIG" "application related"
     echo '```'
     echo "sonatypeWork: \"$(_working_dir)\""
     echo "app version: \"$(_app_ver)\""
@@ -149,20 +150,20 @@ function _extract_configs() {
 function _working_dir() {
     [ -n "${_WORKING_DIR}" ] && [ "${_WORKING_DIR}" != "<null>" ] && echo "${_WORKING_DIR}" && return
     local _working_dir_line="$(_search_json "sysinfo.json" "nexus-configuration,workingDirectory" || _search_json "sysinfo.json" "install-info,sonatypeWork")"
-    local _result="$(echo "${_working_dir_line}" | rg ': "([^"]+)' -o -r '$1')"
+    local _result="$(echo "${_working_dir_line}" | _rg ': "([^"]+)' -o -r '$1')"
     [ -n "${_result}" ] && [ "${_result}" != "<null>" ] && _WORKING_DIR="$(echo "${_result}")" && echo "${_WORKING_DIR}"
 }
 : ${_APP_VER:="<null>"}   # 3.36.0-01
 function _app_ver() {
     [ -n "${_APP_VER}" ] && [ "${_APP_VER}" != "<null>" ] && echo "${_APP_VER}" && return
     local _app_ver_line="$(_search_json "sysinfo.json" "nexus-status,version" || _search_json "product-version.json" "product-version,version")"
-    local _result="$(echo "${_app_ver_line}" | rg ': "([^"]+)' -o -r '$1')"
+    local _result="$(echo "${_app_ver_line}" | _rg ': "([^"]+)' -o -r '$1')"
     [ -n "${_result}" ] && [ "${_result}" != "<null>" ] && _APP_VER="$(echo "${_result}")" && echo "${_APP_VER}"
 }
 function _extract_log_last_start() {
-    _head "LOGS" "Instance start time (from jmx.json)"
+    _head "LOGS" "Instance start time from jmx.json"
     local _tz="$(_find_and_cat "jmx.json" 2>/dev/null | _get_json "java.lang:type=Runtime,SystemProperties,key=user.timezone,value")"
-    [ -z "${_tz}" ] && _tz="$(_find_and_cat "sysinfo.json" 2>/dev/null | _get_json "nexus-properties,user.timezone" | rg '"([^"]+)' -o -r '$1')"
+    [ -z "${_tz}" ] && _tz="$(_find_and_cat "sysinfo.json" 2>/dev/null | _get_json "nexus-properties,user.timezone" | _rg '"([^"]+)' -o -r '$1')"
     local _st_ms="$(_find_and_cat jmx.json 2>/dev/null | _get_json "java.lang:type=Runtime,StartTime")"
     local _up_ms="$(_find_and_cat jmx.json 2>/dev/null | _get_json "java.lang:type=Runtime,Uptime")"
     local _st=""
@@ -176,7 +177,7 @@ function _extract_log_last_start() {
     echo "Zip taken time : ${_zip_taken_at}"
     echo "Server Timezone: ${_tz}"
     echo '```'
-    _head "LOGS" "Instance start time (from ${_log_path})"
+    _head "LOGS" "Instance start time from ${_log_path}"
     echo '```'
     _check_log_stop_start "${_log_path}"
     echo "# NOTE: slow/hang startup can be caused by org.apache.lucene.util.IOUtils.getFileStore as it checks all mount points of the OS (even app is not using)"
@@ -192,14 +193,15 @@ function _check_log_stop_start() {
 function _head() {
     local _X="###"
     if [ "$1" == "WARN" ]; then
-        _X="###"
+        _X="##"
     elif [ "$1" == "INFO" ]; then
-        _X="####"
+        _X="###"
     elif [ "$1" == "NOTE" ]; then
-        _X="#####"
+        _X="####"
     fi
-    echo "${_X} $*"
-    echo ""
+    echo "  "
+    echo "${_X} $*" #| sed -E 's/([(){}_])/\\\1/g'
+    echo "  "
 }
 function _basic_check() {
     local _required_app_ver_regex="${1}"
@@ -295,9 +297,9 @@ function r_audits() {
 }
 function r_app_logs() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/f_topErrors.out" || return
-    _head "APP LOG: counting WARNs and above, then displaying 10+ occurrences in ${_LOG_GLOB} (${_FILTERED_DATA_DIR%/}f_topErrors.out)"
+    _head "APP LOG" "Counting WARNs and above, then displaying 10+ occurrences in ${_LOG_GLOB} ${_FILTERED_DATA_DIR%/}f_topErrors.out"
     echo '```'
-    rg -v '^\s*\d\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out # NOTE: be careful to modify this. It might hides bar_chart output
+    _rg -v '^\s*\d\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out # NOTE: be careful to modify this. It might hides bar_chart output
     echo '```'
 }
 function r_threads() {
@@ -318,20 +320,20 @@ function r_requests() {
 
     _head "REQUESTS" "Request counts per hour from ${_REQUEST_LOG}"
     echo '```'
-    rg "${_DATE_FMT_REQ}:\d\d" -o --no-filename -g ${_REQUEST_LOG} | bar_chart.py
+    _rg "${_DATE_FMT_REQ}:\d\d" -o --no-filename -g ${_REQUEST_LOG} | bar_chart.py
     echo '```'
 
     echo "### API-like requests per hour from ${_REQUEST_LOG}"
     echo '```'
     #_q -H "select substr(date,1,16) as ten_min, count(*) as c, CAST(avg(elapsedTime) as INT) as avg_elapsed from ${_FILTERED_DATA_DIR%/}/request.csv WHERE (requestURL like '%/service/rest/%' OR requestURL like '%/api/v2/%') GROUP BY ten_min HAVING avg_elapsed > 7000"
-    rg "(${_DATE_FMT_REQ}:\d\d).+(/service/rest/|/api/v2/)" --no-filename -g ${_REQUEST_LOG} -o -r '$1' | bar_chart.py
+    _rg "(${_DATE_FMT_REQ}:\d\d).+(/service/rest/|/api/v2/)" --no-filename -g ${_REQUEST_LOG} -o -r '$1' | bar_chart.py
     echo '```'
 
-    rg 'HTTP/\d\.\d" 5\d\d\s' --no-filename -g ${_REQUEST_LOG} > ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out
+    _rg 'HTTP/\d\.\d" 5\d\d\s' --no-filename -g ${_REQUEST_LOG} > ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out
     if [ -s ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out ]; then
         echo "### 5xx statusCode in ${_REQUEST_LOG} (${_FILTERED_DATA_DIR%/}/log_requests_5xx.out)"
         echo '```'
-        rg "${_DATE_FMT_REQ}.\d\d" -o ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out | bar_chart.py
+        _rg "${_DATE_FMT_REQ}.\d\d" -o ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out | bar_chart.py
         echo '```'
     fi
 }
@@ -377,8 +379,7 @@ function t_mounts() {
     if echo "${_result}" | grep -qEi '(nfs|cifs)'; then
         _head "WARN" "workingDirectory:${_workingDirectory} might be in a mount point (${_parent_dir})"
         _display_result="Y"
-    fi
-    if echo "${_result}" | grep -qwi '(overlay)'; then
+    elif echo "${_result}" | grep -qwi '(overlay)'; then
         _head "INFO" "workingDirectory:${_workingDirectory} might be in overlay (${_parent_dir})"
         _display_result="Y"
     fi
@@ -402,11 +403,11 @@ function t_oome() {
 }
 # NOTE: this might be slow
 function t_exceptions() {
-    _test_template "$(rg '([^ ()]+\.[a-zA-Z0-9]+Exception):' -o -r '$1' --no-filename -g "${_LOG_GLOB}" | sort | uniq -c | sort -nr | rg '^\s*\d\d+' | head -n10)" "WARN" "Many exceptions detected from ${_LOG_GLOB}"
+    _test_template "$(_rg '([^ ()]+\.[a-zA-Z0-9]+Exception):' -o -r '$1' --no-filename -g "${_LOG_GLOB}" | sort | uniq -c | sort -nr | _rg '^\s*\d\d+' | head -n10)" "WARN" "Many exceptions detected from ${_LOG_GLOB}"
 }
 function t_errors() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/f_topErrors.out" || return
-    _test_template "$(rg '^\s*\d\d+.+\s+ERROR\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out | head -n10)" "WARN" "Many ERROR detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out"
+    _test_template "$(_rg '^\s*\d\d+.+\s+ERROR\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out | head -n10)" "WARN" "Many ERROR detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out"
 }
 function t_threads() {
     local _dir="$(find . -maxdepth 3 -type d -name "_threads" -print -quit)"
@@ -414,16 +415,16 @@ function t_threads() {
         _head "INFO" "Can not run ${FUNCNAME} as no _threads directory."
         return
     fi
-    _test_template "$(rg '(MessageDigest|findAssetByContentDigest|WeakHashMap)' -m1 ${_dir} | head -n10)" "WARN" "'MessageDigest|findAssetByContentDigest|WeakHashMap' may indicates CPU issue (eg: NEXUS-10991)"
+    _test_template "$(_rg '(MessageDigest|findAssetByContentDigest|WeakHashMap)' -m1 ${_dir} | head -n10)" "WARN" "'MessageDigest|findAssetByContentDigest|WeakHashMap' may indicates CPU issue (eg: NEXUS-10991)"
 }
 function t_requests() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/request.csv" || return
     _q -H "SELECT requestURL, statusCode, count(*) as c FROM ${_FILTERED_DATA_DIR}/request.csv WHERE requestURL LIKE '%/repository/%' AND (statusCode like '5%') GROUP BY requestURL, statusCode HAVING c > 10 ORDER BY c DESC LIMIT 10" > /tmp/t_requests.out
-    _test_template "$(rg -q '\s+5\d\d\s+' -m1 /tmp/t_requests.out && cat /tmp/t_requests.out)" "WARN" "Many repeated 5xx status in ${_FILTERED_DATA_DIR}/request.csv (${_FILTERED_DATA_DIR%/}/log_requests_5xx.out)"
+    _test_template "$(_rg -q '\s+5\d\d\s+' -m1 /tmp/t_requests.out && cat /tmp/t_requests.out)" "WARN" "Many repeated 5xx status in ${_FILTERED_DATA_DIR}/request.csv (${_FILTERED_DATA_DIR%/}/log_requests_5xx.out)"
 
     # NOTE: can't use headerContentLength as some request.log doesn't have it
-    f_reqsFromCSV "request.csv" "7000" "20" 2>/dev/null >/tmp/t_requests.out
-    _test_template "$(rg -q '\s+GET\s+' -m1 /tmp/t_requests.out && cat /tmp/t_requests.out)" "WARN" "Unusually slow downloads in ${_FILTERED_DATA_DIR}/request.csv"
+    f_reqsFromCSV "request.csv" "7000" "" "20" 2>/dev/null >/tmp/t_requests.out
+    _test_template "$(_rg -q '\s+GET\s+' -m1 /tmp/t_requests.out && cat /tmp/t_requests.out)" "WARN" "Unusually slow downloads in ${_FILTERED_DATA_DIR}/request.csv"
 }
 
 
