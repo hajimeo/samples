@@ -82,6 +82,8 @@ if [ "$(uname)" = "Darwin" ]; then
     fi
 
     # Java related
+    # Truststore location: $(/usr/libexec/java_home)/lib/security/cacerts or $(/usr/libexec/java_home)/jre/lib/security/cacerts
+    # To verify: -Djavax.net.debug=ssl,keymanager
     if [ -f /usr/libexec/java_home ]; then
         #[ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 11 2>/dev/null`
         [ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8 2>/dev/null`
