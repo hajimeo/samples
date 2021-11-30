@@ -73,7 +73,7 @@ function f_setup_java() {
 [[ "\$PATH" != *"${_JAVA_DIR%/}/"* ]] && export PATH=${_JAVA_DIR%/}/${_java_exact_ver}/bin:\${PATH#:}
 [ -z "\${JAVA_HOME}" ] && export JAVA_HOME=${_JAVA_DIR%/}/${_java_exact_ver}
 EOF
-        sudo mv /tmp/java.sh /etc/profile.d/java.sh && source /etc/profile.d/java.sh
+        sudo mv -v /tmp/java.sh /etc/profile.d/java.sh && source /etc/profile.d/java.sh
         if ! java -version 2>&1 | grep -w "build ${_ver}" -m 1; then
             echo "WARN Current Java version is not ${_ver}."
             return 1
@@ -307,9 +307,11 @@ function f_update_jar() {
     fi
 
     local _jar_filename="$(basename ${_jar_filepath})"
-    cp -p ${_jar_filepath} ./${_jar_filename} || return $?
+    if [ "$(realpath "${_jar_filepath}")" != "$(realpath ./${_jar_filename})" ]; then
+        cp -p ${_jar_filepath} ./${_jar_filename} || return $?
+    fi
     if [ ! -s "${_jar_filename}.orig" ]; then
-        cp -p ${_jar_filepath} ./${_jar_filename}.orig || return $?
+        cp -v -p ${_jar_filepath} ./${_jar_filename}.orig || return $?
     fi
 
     if [ ! -d "${_compiled_dir}" ]; then
@@ -331,10 +333,10 @@ function f_update_jar() {
     echo "Checking if any non-updated class... (zip -d ${_jar_filepath} '/path/to/class')"
     $JAVA_HOME/bin/jar -tvf ./${_jar_filename} | grep -w ${_class_name} | grep -v "${_updated_time}"
 
-    cp -p -f ./${_jar_filename} ${_jar_filename}.patched || return $?
+    cp -v -p -f ./${_jar_filename} ${_jar_filename}.patched || return $?
     echo "Moving ./${_jar_filename} to ${_jar_filepath} (may ask yes or no) ..."
     ls -l ./${_jar_filename} ${_jar_filepath} || return $?
-    mv ./${_jar_filename} ${_jar_filepath} || return $?
+    mv -v ./${_jar_filename} ${_jar_filepath} || return $?
     return 0
 }
 
@@ -480,7 +482,7 @@ $0 '$1' '$2' '<jar path from above>' '$4' '$5' [Y]"
                     mkdir -p "${_DIR_PATH}" || exit $?
                 fi
                 if [ "$(realpath ${_CLASS_FILEPATH})" != "$(realpath ${_DIR_PATH%/}/${_CLASS_FILENAME})" ]; then
-                    cp -p -f ${_CLASS_FILEPATH} ${_DIR_PATH%/}/ || exit $?
+                    cp -v -p -f ${_CLASS_FILEPATH} ${_DIR_PATH%/}/ || exit $?
                 fi
                 _CLASS_FILEPATH=${_DIR_PATH%/}/${_CLASS_FILENAME}
             fi
