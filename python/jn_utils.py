@@ -49,6 +49,8 @@ Get request started time by concatenating today and the time string from 'date' 
     TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time
   or NOTE: (4*60*60) is for the timezone offst -0400
     TIME(UDF_TIMESTAMP(date) - CAST(elapsedTime/1000 AS INT) - (4*60*60), 'unixepoch') as started_time
+Kind of joining two tables with UDF_REGEX:
+    AND UDF_REGEX('.+ /repository/([^/]+)', t_request.requestURL, 1) IN (SELECT repository_name FROM t_db_repo where t_db_repo.`attributes.storage.blobStoreName` = 'default')
 """
 
 # TODO: When you add a new pip package, don't forget to update setup_work_env.sh

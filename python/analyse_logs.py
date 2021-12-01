@@ -352,10 +352,12 @@ def analyse_logs(path="", tail_num=10000, max_file_size=(1024 * 1024 * 100), ski
 
     headerContentLengthAgg=""
     avgMsPerBytesAgg="CAST(SUM(CAST(elapsedTime AS INTEGER)) / SUM(CAST(bytesSent AS INTEGER)) AS INT)  AS avgMsPerBytes,"
+    avgBytesPerMsAgg="CAST(SUM(CAST(bytesSent AS INTEGER)) / SUM(CAST(elapsedTime AS INTEGER)) AS INT)  AS avgBytesPerMs,"
     if isHeaderContentLength:
         # NOTE: using commma in the end of line.
         headerContentLengthAgg="AVG(CAST(headerContentLength AS INTEGER)) AS bytesReceived,"
         avgMsPerBytesAgg="CAST(SUM(CAST(elapsedTime AS INTEGER)) / SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) AS INT) AS avgMsPerBytes,"
+        avgBytesPerMsAgg="CAST(SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) / SUM(CAST(elapsedTime AS INTEGER)) AS INT) AS avgBytesPerMs,"
 
     if ju.exists("t_request"):
         display_name = "RequestLog_StatusCode_Hourly_aggs"
@@ -370,18 +372,18 @@ def analyse_logs(path="", tail_num=10000, max_file_size=(1024 * 1024 * 100), ski
     count(*) AS requests
 FROM t_request
 %s
-GROUP BY 1, 2""" % (avgMsPerBytesAgg, where_sql2)
+GROUP BY 1, 2""" % (avgBytesPerMsAgg, where_sql2)
         ju.display(ju.q(query), name=display_name, desc=query)
 
         display_name = "RequestLog_Status_ByteSent_Elapsed"
         query = """SELECT TIME(substr(date, 13, 8)) as hhmmss,
-    %s
-    AVG(CAST(bytesSent AS INTEGER)) AS bytesSent, %s 
-    AVG(CAST(elapsedTime AS INTEGER)) AS elapsedTime,
+    %s %s
+    SUM(CAST(bytesSent AS INTEGER)) AS bytesSent, %s 
+    SUM(CAST(elapsedTime AS INTEGER)) AS elapsedTime,
     count(*) AS requests
 FROM t_request
 %s
-GROUP BY hhmmss""" % (avgMsPerBytesAgg, headerContentLengthAgg, where_sql2)
+GROUP BY hhmmss""" % (avgBytesPerMsAgg, avgMsPerBytesAgg, headerContentLengthAgg, where_sql2)
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
 
     if ju.exists("t_log_hazelcast_monitor"):
