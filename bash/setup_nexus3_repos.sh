@@ -79,7 +79,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 
 
 ## Global variables
-: ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,helm,yum,rubygem,conan,conda,cocoapods,bower,go,apt,raw"}
+: ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,yum,rubygem,helm,bower,conan,conda,cocoapods,bower,go,apt,r,raw"}
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
 : ${_DOMAIN:="standalone.localdomain"}
@@ -272,7 +272,7 @@ function f_setup_docker() {
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
         # Using "httpPort":4999 - 5000
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":4999,"httpsPort":5000,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"groupWriteMember":"'${_prefix}'-hosted","memberNames":["docker-hosted","docker-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' || return $?
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":4999,"httpsPort":5000,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"groupWriteMember":"'${_prefix}'-hosted","memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
     f_populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "5000 4999"
@@ -399,7 +399,7 @@ function f_setup_rubygem() {
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["gems-hosted","gems-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"rubygems-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"rubygems-group"}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out || return $?
     fi
     # TODO: add some data for xxxx-group
     #f_get_asset "${_prefix}-group" "7/os/x86_64/Packages/$(basename ${_upload_file})" || return $?
@@ -424,7 +424,7 @@ function f_setup_helm() {
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"component":{"proprietaryComponents":false},"cleanup":{"policyName":[]}},"name":"helm-hosted","format":"","type":"","url":"","online":true,"recipe":"'${_prefix}'-hosted"}],"type":"rpc","tid":19}' || return $?
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"helm-hosted","format":"","type":"","url":"","online":true,"recipe":"'${_prefix}'-hosted"}],"type":"rpc","tid":19}' || return $?
     fi
     # add some data for xxxx-hosted
     [ -s "${_TMP%/}/mysql-8.7.2.tgz" ] && curl -sf -u "${_ADMIN_USER}:${_ADMIN_PWD}" "${_NEXUS_URL%/}/repository/${_prefix}-hosted/" -T "${_TMP%/}/mysql-8.7.2.tgz"
@@ -527,6 +527,41 @@ function f_setup_apt() {
     # TODO: add hosted
 }
 
+function f_setup_r() {
+    local _prefix="${1:-"r"}"
+    local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
+    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _extra_sto_opt=""
+    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    # If no xxxx-proxy, create it
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://cran.r-project.org/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"r-proxy"}],"type":"rpc"}' || return $?
+    fi
+    # add some data for xxxx-proxy
+    #f_get_asset "${_prefix}-proxy" "download/plugins/nexus-jenkins-plugin/3.9.20200722-164144.e3a1be0/nexus-jenkins-plugin.hpi"
+
+    # If no xxxx-hosted, create it
+    if ! _is_repo_available "${_prefix}-hosted"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"r-hosted"}],"type":"rpc"}' && \
+            echo "# install.packages('agricolae', repos='${_NEXUS_URL%/}/repository/r${_prefix}-proxy/', type='binary')"
+    fi
+    if [ ! -s "${_TMP%/}/myfunpackage_1.0.tar.gz" ]; then
+        curl -sf -o "${_TMP%/}/myfunpackage_1.0.tar.gz" -L https://github.com/sonatype-nexus-community/nexus-repository-r/raw/NEXUS-20439_r_format_support/nexus-repository-r-it/src/test/resources/r/myfunpackage_1.0.tar.gz
+    fi
+    if [ -s "${_TMP%/}/myfunpackage_1.0.tar.gz" ]; then
+        curl -sf -u "${_ADMIN_USER}:${_ADMIN_PWD}" "${_NEXUS_URL%/}/repository/${_prefix}-hosted/src/contrib/myfunpackage_1.0.tar.gz" -T "${_TMP%/}/myfunpackage_1.0.tar.gz" && \
+            echo "# install.packages('myfunpackage', repos='${_NEXUS_URL%/}/repository/r${_prefix}-hosted/', type='source')"
+    fi
+
+    # If no xxxx-group, create it
+    if ! _is_repo_available "${_prefix}-group"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"r-group"}],"type":"rpc"}' && \
+            echo "# install.packages('bit', repos='${_NEXUS_URL%/}/repository/r${_prefix}-group/', type='binary')"
+    fi
+    # add some data for xxxx-group
+    #f_get_asset "${_prefix}-group" "test/test_1k.img"
+}
+
 function f_setup_raw() {
     local _prefix="${1:-"raw"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
@@ -553,7 +588,7 @@ function f_setup_raw() {
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false'${_extra_sto_opt}'},"group":{"memberNames":["raw-hosted"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"raw-group"}],"type":"rpc"}' || return $?
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":false'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"recipe":"raw-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
     f_get_asset "${_prefix}-group" "test/test_1k.img"
