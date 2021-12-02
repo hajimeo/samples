@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Collection of functions to setup a desktop / work environment (Ubuntu or Mac)
+# Collection of functions to setup a desktop / work environment which *should* work on Ubuntu and Mac
 #
 # NOTE: This script always tries to overwrite (update)
 #       Using 'sudo' for pip3 and others
