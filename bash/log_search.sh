@@ -967,10 +967,10 @@ function f_threads() {
         #rg -w RUNNABLE -A1 -H ${_save_dir%/} | rg '^\sat' | sort | uniq -c
         rg "${_running_thread_search_re}" -l -g '*runnable*' ${_save_dir%/} | xargs -P3 -I {} rg '^\sat\s' -m1 "{}" | sort | uniq -c | sort -nr | head -10
         echo " "
+        echo "## Finding runnable (expecting QuartzTaskJob) '${_running_thread_search_re}.+Task.execute' from ${_save_dir%/}"
+        rg -m1 -s "${_running_thread_search_re}.+Task\.execute\(" -g '*runnable*' "${_save_dir%/}"
+        echo " "
     fi
-    echo "## Finding runnable 'QuartzTaskJob XxxxxxTask.execute' for Scheduled tasks from ${_save_dir%/}"
-    rg -m1 -s "Task\.execute\(" -g '*runnable*' "${_save_dir%/}"
-    echo " "
 
     echo "## Counting *probably* waiting for connection pool by checking 'getConnection'"
     rg -m1 -w getConnection ${_save_dir%/}/ -g '*WAITING*' --no-filename | sort | uniq -c
