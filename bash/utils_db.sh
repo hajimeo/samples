@@ -36,14 +36,14 @@ function _postgresql_configure() {
     [ ! -s "${__TMP%/}/postgresql.conf.orig" ] && cp -f "${_postgresql_conf}" "${__TMP%/}/postgresql.conf.orig"
 
     _log "INFO" "Updating ${_postgresql_conf} ..."
-    # Performance tuning (so not mandatory). Expecting the server has at least 4GB
+    # Performance tuning (so not mandatory). Expecting the server has at least 4GB RAM
     # @see: https://pgtune.leopard.in.ua/#/
-    _upsert ${_postgresql_conf} "shared_buffers" "1024MB"     # Default 8MB. 4GB * 25%
-    _upsert ${_postgresql_conf} "work_mem" "12MB" "#work_mem" # Default 4MB. 4GB * 25% / max_connections (100) + extra
-    _upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # Physical mem (4GB) * 50% ~ 75%
+    _upsert ${_postgresql_conf} "shared_buffers" "1024MB"       # Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm
+    _upsert ${_postgresql_conf} "work_mem" "8MB" "#work_mem"    # Default 4MB. RAM * 25% / max_connections (200) + extra a few MB. NOTE: I'm not expecting my PG uses 200 though
+    _upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # RAM * 50% ~ 75%
     #_upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Usually higher provides better write performance
     ### End of tuning ###
-    _upsert ${_postgresql_conf} "max_connections" "400" "#max_connections"   # This is NXRM3 as it uses 100 per datastore...
+    _upsert ${_postgresql_conf} "max_connections" "200" "#max_connections"   # This is for NXRM3 as it uses 100 per datastore NOTE: work_mem * max_conn < shared_buffers.
     _upsert ${_postgresql_conf} "listen_addresses" "'*'" "#listen_addresses"
     [ ! -d /var/log/postgresql ] && mkdir -p -m 777 /var/log/postgresql
     _upsert ${_postgresql_conf} "log_directory" "'/var/log/postgresql' " "#log_directory"
