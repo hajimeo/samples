@@ -405,15 +405,31 @@ function f_chrome() {
     apt-get install google-chrome-stable -y
 }
 
-function f_google_remote_desktop() {
-    local __doc__="Install Google Remote Desktop on Ubuntu"
+function f_chrome_remote_desktop() {
+    local __doc__="Install Google Chrome Remote Desktop on Ubuntu (TODO: should be run as non root user but sudo cat doesn't work)"
     # https://ubuntu.com/blog/launch-ubuntu-desktop-on-google-cloud
     apt-get install wget tasksel -y
     curl -o /tmp/chrome-remote-desktop_current_amd64.deb -L "https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb" || return $?
     apt-get install /tmp/chrome-remote-desktop_current_amd64.deb -y || return $?
     #sudo tasksel install ubuntu-desktop
     bash -c 'echo "exec /etc/X11/Xsession /usr/bin/gnome-session" > /etc/chrome-remote-desktop-session' || return $?
-    echo "please reboot"
+    if [ ! -f /etc/polkit-1/localauthority.conf.d/02-allow-colord.conf ]; then
+        cat << EOF > /etc/polkit-1/localauthority.conf.d/02-allow-colord.conf
+polkit.addRule(function(action, subject) {
+ if ((action.id == "org.freedesktop.color-manager.create-device" ||
+ action.id == "org.freedesktop.color-manager.create-profile" ||
+ action.id == "org.freedesktop.color-manager.delete-device" ||
+ action.id == "org.freedesktop.color-manager.delete-profile" ||
+ action.id == "org.freedesktop.color-manager.modify-device" ||
+ action.id == "org.freedesktop.color-manager.modify-profile") &&
+ subject.isInGroup("{users}")) {
+ return polkit.Result.YES;
+ }
+});
+EOF
+    fi
+    echo "please reboot, then go to https://remotedesktop.google.com/headless?pli=1 to authorise"
+    #sudo systemctl status chrome-remote-desktop@$USER
 }
 
 function f_x2go_setup() {
