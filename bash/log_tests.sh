@@ -283,7 +283,6 @@ function e_req_logs() {
 
 ### Reports ###################################################################
 function r_configs() {
-    cat ${_FILTERED_DATA_DIR%/}/extracted_configs*.md
     if [ -s "${_FILTERED_DATA_DIR%/}/extract_log_last_start.md" ]; then
         cat ${_FILTERED_DATA_DIR%/}/extract_log_last_start.md
     fi
@@ -396,7 +395,7 @@ function t_mounts() {
     fi
 }
 function t_performance_issue() {
-    _test_template "$(_rg -i '\b(Too many open files|No space left|low heap memory|Not enough physical memory available|huge system clock jump|Timed out|Timeout waiting for connection|waiting for more room|read only)\b' -o -g "${_LOG_GLOB}" | sort | uniq -c | sort -nr | head -n20)" "WARN" "This instance may have some performance issue (${_LOG_GLOB})"
+    _test_template "$(_rg -i '\b(Too many open files|No space left|low heap memory|Not enough physical memory available|huge system clock jump|Read timed out|Timed out|Timeout waiting for connection|waiting for more room|read only)\b' -o -g "${_LOG_GLOB}" | sort | uniq -c | sort -nr | head -n20)" "WARN" "This instance may have some performance issue (${_LOG_GLOB})"
 }
 function t_oome() {
     _test_template "$(_rg -c 'OutOfMemoryError' -g "${_LOG_GLOB}")" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
