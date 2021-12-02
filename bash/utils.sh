@@ -360,7 +360,7 @@ function _pid_by_port() {
     [ -z "${_port}" ] && return 1
     # Some Linux doesn't have 'lsof' + no root user can't see all, but Mac's netstat is very different so using only if Mac...
     if [ "`uname`" = "Darwin" ]; then
-        lsof -ti:${_port} -sTCP:LISTEN | head -n1
+        lsof -ti:${_port} -sTCP:LISTEN | head -n1   # should be tail?
     else
         netstat -t4lnp 2>/dev/null | grep -wE "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:${_port}" | awk '{print $7}' | grep -m1 -oE '[0-9-]+' | head -n1
     fi

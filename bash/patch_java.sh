@@ -170,7 +170,7 @@ function f_javaenvs() {
     fi
 
     if [ ! -d "${_port_or_dir}" ]; then
-        local _p="$(lsof -ti:${_port_or_dir} -s TCP:LISTEN)"
+        local _p="$(lsof -ti:${_port_or_dir} -sTCP:LISTEN | tail -n1)"
         if [ -z "${_p}" ]; then
             echo "Nothing running on port:${_port_or_dir}. Manually set JAVA_HOME and CLASSPATH."
             return 11
@@ -350,6 +350,28 @@ function f_jcmd_agent() {
     sudo -u ${_user:-"$USER"} ${_jcmd} ${_p} ManagementAgent.start jmxremote.port=${_agent_port} jmxremote.authenticate=false jmxremote.ssl=false || return $?
     sudo -u ${_user:-"$USER"} $(dirname "${_jcmd}")/jstat -J-Djstat.showUnsupported=true -snap ${_p} | grep '\.remoteAddress=' || return $?
     echo "# To stop: 'sudo -u ${_user:-"$USER"} ${_jcmd} ${_p} ManagementAgent.stop'"
+}
+
+# Starting Java Fright Recorder (JFR) for Java Mission Control (JMC)
+function f_profile() {
+    local _port="${1}"      # To find a PID
+    local _secs="${2:-60}"  # Duration seconds
+    local _dump_path="${3}"
+
+    local _pid="$(lsof -ti:${_port} -sTCP:LISTEN | tail -n1)"
+    if [ -z "${_pid}" ]; then
+        echo "Nothing running on port ${_port}"
+        return 11
+    fi
+    [ -z "${_dump_path}" ] && _dump_path="/tmp/profile_${_pid}.jfr"
+
+    local _user="$(lsof -nP -p ${_pid} | head -n2 | tail -n1 | awk '{print $3}')"   # This is slow but $(stat -c '%U') doesn't work on Mac
+    local _jcmd="$(_find_jcmd "${_port_or_dir}")" || return $?
+    if [ "${_user}" != "$USER" ]; then
+        sudo -u ${_user} ${_jcmd} ${_pid} JFR.start settings=profile duration=${_secs}s filename="${_dump_path}"
+    else
+        ${_jcmd} ${_pid} JFR.start settings=profile duration=${_secs}s filename="${_dump_path}"
+    fi
 }
 
 function f_scala() {
