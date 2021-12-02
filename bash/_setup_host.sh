@@ -27,19 +27,22 @@ function f_host_misc() {
 
     # apt-get instll openssh-server
     # If you would like to use the default, comment PasswordAuthentication or PermitRootLogin
-    grep -q '^PasswordAuthentication no' /etc/ssh/sshd_config && sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config || return $?
-    grep -q '^PermitRootLogin ' /etc/ssh/sshd_config && sed -i 's/^PermitRootLogin .\+/PermitRootLogin no/' /etc/ssh/sshd_config
-    _upsert "/etc/ssh/sshd_config" "GatewayPorts" "yes" "" " "
-    if [ $? -eq 0 ]; then
+    _upsert "/etc/ssh/sshd_config" "PasswordAuthentication" "yes" "#PasswordAuthentication" " "
+    #_upsert "/etc/ssh/sshd_config" "PermitRootLogin" "yes" "#PermitRootLogin" " "
+    _upsert "/etc/ssh/sshd_config" "ClientAliveInterval" "60" "#ClientAliveInterval" " "
+    _upsert "/etc/ssh/sshd_config" "GatewayPorts" "yes" "#GatewayPorts" " "
+    if [ $? -eq 0 ]; then   # not perfect but better than not checking.
         service ssh restart
     fi
 
-    if [ ! -s /etc/update-motd.d/99-start-hdp ]; then
-        echo '#!/bin/bash
-ls -lt ~/*.resp
+    if [ ! -s /etc/update-motd.d/99-host-misc ]; then
+        #ls -lt ~/*.resp
+        cat << EOF > /etc/update-motd.d/99-host-misc
+#!/bin/bash
+screen -ls
 docker ps
-screen -ls' >/etc/update-motd.d/99-start-hdp
-        chmod a+x /etc/update-motd.d/99-start-hdp
+EOF
+        chmod a+x /etc/update-motd.d/99-host-misc
         run-parts --lsbsysinit /etc/update-motd.d >/run/motd.dynamic
     fi
 
@@ -400,6 +403,17 @@ function f_chrome() {
     curl -fsSL "https://dl.google.com/linux/linux_signing_key.pub" | apt-key add - || return $?
     apt-get update || return $?
     apt-get install google-chrome-stable -y
+}
+
+function f_google_remote_desktop() {
+    local __doc__="Install Google Remote Desktop on Ubuntu"
+    # https://ubuntu.com/blog/launch-ubuntu-desktop-on-google-cloud
+    apt-get install wget tasksel -y
+    curl -o /tmp/chrome-remote-desktop_current_amd64.deb -L "https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb" || return $?
+    apt-get install /tmp/chrome-remote-desktop_current_amd64.deb -y || return $?
+    #sudo tasksel install ubuntu-desktop
+    bash -c 'echo "exec /etc/X11/Xsession /usr/bin/gnome-session" > /etc/chrome-remote-desktop-session' || return $?
+    echo "please reboot"
 }
 
 function f_x2go_setup() {
