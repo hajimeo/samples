@@ -29,7 +29,7 @@ metadata:
     app: nxrm3-pg
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
       storage: 12Gi
