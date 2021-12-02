@@ -491,9 +491,9 @@ alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
 # Start PostgreSQL (on Mac)
 # NOTE: if brew upgraded postgresql, may need to run 'brew postgresql-upgrade-database'
 function pgStart() {
-    local _pg_data="${1:-"/usr/local/var/postgres"}"
-    local _log_path="${2:-"$HOME/postgresql.log"}"
-    local _cmd="${3:-"start"}"
+    local _cmd="${1:-"status"}"
+    local _pg_data="${2:-"/usr/local/var/postgres"}"
+    local _log_path="${3:-"$HOME/postgresql.log"}"
     if [ -s "${_log_path}" ]; then
         gzip -S "_$(date +'%Y%m%d%H%M%S').gz" "${_log_path}" &>/dev/null
         mv -v ${_log_path}_*.gz /tmp/
