@@ -30,10 +30,10 @@ metadata:
     app: nxrm3-pg
 spec:
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   resources:
     requests:
-      storage: 12Gi
+      storage: 4Gi
   #storageClassName: standard
 ---
 apiVersion: apps/v1
@@ -84,18 +84,18 @@ spec:
             httpGet:
               path: /
               port: 8081
-            initialDelaySeconds: 180
+            initialDelaySeconds: 60
             periodSeconds: 60
             failureThreshold: 6
-            timeoutSeconds: 30
+            timeoutSeconds: 10
           readinessProbe:
             httpGet:
               path: /
               port: 8081
-            initialDelaySeconds: 180
+            initialDelaySeconds: 60
             periodSeconds: 60
             failureThreshold: 6
-            timeoutSeconds: 30
+            timeoutSeconds: 10
           env:
             - name: NEXUS_SECURITY_RANDOMPASSWORD
               value: 'false'
