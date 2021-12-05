@@ -9,7 +9,7 @@ curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.ja
 ## USAGE EXAMPLES:
 ```
 # start interactive console:
-ava -jar ./orient-console.jar ./sonatype-work/nexus3/db/component
+java -jar ./orient-console.jar ./sonatype-work/nexus3/db/component
 # or with small .bak (zip) file:
 java -jar ./orient-console.jar ./component-2021-08-07-09-00-00-3.30.0-01.bak
 # or with larger .bak file (or env:_EXTRACT_DIR):
