@@ -1,20 +1,3 @@
-/*
- * Simple OrientDB client Limitation: only standard SQLs. No "info classes" etc.
- * TODO: add tests
- * TODO: Replace jline3
- * TODO: convert to JSON without using ODocument.toJSON()
- *
- * My note: cp -p ~/IdeaProjects/samples/java/orient-console/target/orient-console-1.0-SNAPSHOT-jar-with-dependencies.jar ~/IdeaProjects/samples/misc/orient-console.jar
- */
-
-/*
-TODO: => DELETE FROM healthcheckconfig WHERE @rid in (SELECT rid FROM (SELECT MIN(@rid) as rid, property_name, COUNT(*) as c FROM healthcheckconfig GROUP BY property_name) WHERE c > 1)
- java.lang.ClassCastException: java.lang.Integer cannot be cast to java.util.List
-	at Main.execQueries(Main.java:84)
-	at Main.readLineLoop(Main.java:141)
-	at Main.main(Main.java:277)
- */
-
 //import com.google.gson.GsonBuilder;
 //import com.google.gson.Gson;
 
@@ -71,10 +54,7 @@ public class Main
   private static final Gson gson = new Gson();
 
   private static void usage() {
-    System.err.println("DOWNLOAD LATEST VERSION:\n" +
-        "  curl -O -L \"https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar\"\n" +
-        "\n" +
-        "USAGE EXAMPLES:\n" +
+    System.err.println("USAGE EXAMPLES:\n" +
         "# start interactive console:\n" +
         "  java -jar ./orient-console.jar ./sonatype-work/nexus3/db/component\n" +
         " or with small .bak (zip) file:\n" +
