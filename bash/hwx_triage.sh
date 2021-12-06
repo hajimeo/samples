@@ -61,7 +61,8 @@ function f_check_system() {
 
     # System information
     uname -a &> ${_work_dir%/}/uname-a.out
-    systemd-analyze &> ${_work_dir%/}/systemd-analyze.out   #systemd-analyze blame (then disable and stop)
+    systemd-analyze &> ${_work_dir%/}/systemd-analyze.out
+    systemd-analyze blame &>> ${_work_dir%/}/systemd-analyze.out   # then disable and stop
     lsb_release -a &>> ${_work_dir%/}/uname-a.out
     localectl status &> ${_work_dir%/}/locale.out
     locale &>> ${_work_dir%/}/locale.out
