@@ -406,13 +406,23 @@ function f_chrome() {
 }
 
 function f_chrome_remote_desktop() {
-    local __doc__="Install Google Chrome Remote Desktop on Ubuntu (TODO: should be run as non root user but sudo cat doesn't work)"
+    local __doc__="Install Google Chrome Remote Desktop on Ubuntu (TODO: the setup function should be run as non root user but sudo cat doesn't work)"
+    local _user="$1"
     # https://ubuntu.com/blog/launch-ubuntu-desktop-on-google-cloud
+    # https://bytexd.com/install-chrome-remote-desktop-headless/
     apt-get install wget tasksel -y
     curl -o /tmp/chrome-remote-desktop_current_amd64.deb -L "https://dl.google.com/linux/direct/chrome-remote-desktop_current_amd64.deb" || return $?
     apt-get install /tmp/chrome-remote-desktop_current_amd64.deb -y || return $?
     #sudo tasksel install ubuntu-desktop
-    bash -c 'echo "exec /etc/X11/Xsession /usr/bin/gnome-session" > /etc/chrome-remote-desktop-session' || return $?
+    if [ ! -s /usr/bin/xfce4-session ]; then
+        echo "Please install xfce4 with xscreensaver"
+        return $?
+    fi
+    if [ -n "${_user}" ]; then
+        usermod -a -G chrome-remote-desktop ${_user} || return $?
+    fi
+    bash -c 'echo "exec /etc/X11/Xsession /usr/bin/xfce4-session" > /etc/chrome-remote-desktop-session' || return $?
+    #bash -c 'echo "exec /etc/X11/Xsession /usr/bin/gnome-session" > /etc/chrome-remote-desktop-session' || return $?
     if [ ! -f /etc/polkit-1/localauthority.conf.d/02-allow-colord.conf ]; then
         cat << EOF > /etc/polkit-1/localauthority.conf.d/02-allow-colord.conf
 polkit.addRule(function(action, subject) {
@@ -428,7 +438,7 @@ polkit.addRule(function(action, subject) {
 });
 EOF
     fi
-    echo "please reboot, then go to https://remotedesktop.google.com/headless?pli=1 to authorise"
+    echo "You might want to reboot, then go to https://remotedesktop.google.com/headless?pli=1 to authorise"
     #sudo systemctl status chrome-remote-desktop@$USER
 }
 
@@ -445,7 +455,7 @@ function f_x2go_setup() {
     apt-add-repository ppa:x2go/stable -y || return $?
     apt-get update || return $?
     # GNOME does not work well so installing XFCE
-    apt-get install xfce4 xfce4-goodies -y || return $?
+    apt-get install xfce4 xfce4-goodies xscreensaver -y || return $?
     apt-get install x2goserver x2goserver-xsession -y || return $?
 
     _info "Please install X2Go client from http://wiki.x2go.org/doku.php/doc:installation:x2goclient"
@@ -1134,13 +1144,13 @@ function f_vnc_setup() {
     fi
 
     if [[ "${_install_xfce}" =~ ^(y|Y) ]]; then
-        apt-get install xfce4 xfce4-goodies -y || return $?
+        apt-get install xfce4 xfce4-goodies xscreensaver -y || return $?
     fi
     #f_chrome
     #apt-get install -y tightvncserver autocutsel || return $?
     apt-get install -y tigervnc-standalone-server || return $?
 
-    # TODO: also disable screensaver and sleep (eg: /home/hajime/.xscreensaver
+    # TODO: also disable screensaver and sleep (eg: /home/hajime/.xscreensaver)
     su - $_user -c 'expect <<EOF
 spawn "vncpasswd"
 expect "Password:"
