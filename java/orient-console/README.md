@@ -6,16 +6,16 @@ Limitation: only standard and SELECT SQL statements. No "info classes" etc.
 curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar"
 ```
 
-## USAGE EXAMPLES:
+## Usage Examples:
 ```
-# start interactive console:
+# Start interactive console:
 java -jar ./orient-console.jar ./sonatype-work/nexus3/db/component
 # or with small .bak (zip) file:
 java -jar ./orient-console.jar ./component-2021-08-07-09-00-00-3.30.0-01.bak
-# or with larger .bak file (or env:_EXTRACT_DIR):
-# java -DextractDir=./component -jar ./orient-console.jar ./component-2021-08-07-09-00-00-3.30.0-01.bak
+# or with larger .bak file (or use env:_EXTRACT_DIR instead of -DextractDir):
+java -DextractDir=./component -jar ./orient-console.jar ./component-2021-08-07-09-00-00-3.30.0-01.bak
 
-# batch processing (or use env:_EXPORT_PATH):
+# Batch processing (env:_EXPORT_PATH can be used instead of -DexportPath):
 echo "SQL SELECT statement" | java -DexportPath=./result.json -jar orient-console.jar <directory path|.bak file path>
 ```
 
