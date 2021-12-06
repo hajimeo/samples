@@ -103,6 +103,7 @@ alias xml_get='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.a
 alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.parse(sys.argv[1]);r=t.getroot();pprint.pprint([t.getelementpath(x) for x in r.findall(\".//\"+sys.argv[2],namespaces=r.nsmap)])"'
 # Strip XML / HTML to get text. NOTE: using sys.stdin.read. (TODO: maybe </br> without new line should add new line)
 alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))"'
+alias escape4json='python3 -c "import sys,json;print(json.dumps(sys.stdin.read()))"'
 alias jp='pyv && jupyter-lab &> /tmp/jupyter-lab.out &'
 alias jn='pyv && jupyter-notebook &> /tmp/jupyter-notebook.out &'
 
