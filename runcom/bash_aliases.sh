@@ -533,6 +533,7 @@ function backupC() {
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory'
     _src="$(realpath "${_src}")"    # because find -L ... -delete does not work
+    find ${_src%/} -type f -mtime +7 -size 0 \( ! -iname ".*" \) -delete &
     find ${_src%/} -type d -mtime +14 -name '*_tmp' -delete &
     find ${_src%/} -type f -mtime +14 -name '*.tmp' -delete &
     find ${_src%/} -type f -mtime +60 -name "*.log" -delete &
