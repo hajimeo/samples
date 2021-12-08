@@ -355,23 +355,21 @@ function f_jcmd_agent() {
 # Starting Java Fright Recorder (JFR) for Java Mission Control (JMC)
 function f_profile() {
     local _port="${1}"      # To find a PID
-    local _secs="${2:-60}"  # Duration seconds
-    local _dump_path="${3}"
-
+    local _secs="${2:-600}" # Duration seconds
+    local _name="${3:-"port${_port}"}"
+    local _dump_path="${4:-"."}"
     local _pid="$(lsof -ti:${_port} -sTCP:LISTEN | tail -n1)"
     if [ -z "${_pid}" ]; then
         echo "Nothing running on port ${_port}"
         return 11
     fi
-    [ -z "${_dump_path}" ] && _dump_path="/tmp/profile_${_pid}.jfr"
-
+    [ -d "${_dump_path}" ] && _dump_path="${_dump_path%/}/profile_${_name}_${_pid}_$(date +"%Y%m%d%H%M%S").jfr"
+    _dump_path="$(realpath "${_dump_path}")"
     local _user="$(lsof -nP -p ${_pid} | head -n2 | tail -n1 | awk '{print $3}')"   # This is slow but $(stat -c '%U') doesn't work on Mac
     local _jcmd="$(_find_jcmd "${_port_or_dir}")" || return $?
-    if [ "${_user}" != "$USER" ]; then
-        sudo -u ${_user} ${_jcmd} ${_pid} JFR.start settings=profile duration=${_secs}s filename="${_dump_path}"
-    else
-        ${_jcmd} ${_pid} JFR.start settings=profile duration=${_secs}s filename="${_dump_path}"
-    fi
+    [ "${_user}" != "$USER" ] && _jcmd="sudo -u ${_user} ${_jcmd}"
+    ${_jcmd} ${_pid} JFR.start settings=profile name="${_name}" duration=${_secs}s filename="${_dump_path}"
+    echo "To stop: ${_jcmd} ${_pid} JFR.stop name=${_name}"
 }
 
 function f_scala() {
