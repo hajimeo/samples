@@ -82,7 +82,7 @@ function f_run_report() {
     if [ ! -s ${_FILTERED_DATA_DIR%/}/extracted_configs.md ]; then
         _head "INFO" "No ${_FILTERED_DATA_DIR%/}/extracted_configs.md"
     else
-        cat ${_FILTERED_DATA_DIR%/}/extracted_configs.md
+        cat ${_FILTERED_DATA_DIR%/}/extracted_configs*.md
     fi
     _runner "r_"
 }
