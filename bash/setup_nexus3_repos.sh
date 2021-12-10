@@ -424,7 +424,7 @@ function f_setup_helm() {
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"helm-hosted","format":"","type":"","url":"","online":true,"recipe":"'${_prefix}'-hosted"}],"type":"rpc","tid":19}' || return $?
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"helm-hosted","format":"","type":"","url":"","online":true,"recipe":"'${_prefix}'-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
     [ -s "${_TMP%/}/mysql-8.7.2.tgz" ] && curl -sf -u "${_ADMIN_USER}:${_ADMIN_PWD}" "${_NEXUS_URL%/}/repository/${_prefix}-hosted/" -T "${_TMP%/}/mysql-8.7.2.tgz"
@@ -455,9 +455,16 @@ function f_setup_conan() {
 
     # If no xxxx-proxy, create it (NOTE: No HA, but seems to work with HA???)
     if ! _is_repo_available "${_prefix}-proxy"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://conan.bintray.com","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conan-proxy"}],"type":"rpc"}' || return $?
+        # Used to be https://conan.bintray.com
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://center.conan.io","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conan-proxy"}],"type":"rpc"}' || return $?
     fi
     # TODO: add some data for xxxx-proxy
+
+    # If no xxxx-hosted, create it. From 3.35, so it's OK to fail
+    if ! _is_repo_available "${_prefix}-hosted"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"'${_extra_sto_opt}'},"component":{"proprietaryComponents":false},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"conan-hosted"}],"type":"rpc"}' && \
+            _log "INFO" "Please enable 'Conan Bearer Token Realm'"
+    fi
 }
 
 function f_setup_conda() {
@@ -975,7 +982,7 @@ EOF
         chown -v ${_user}: ${_home%/}/.npmrc
     fi
 
-    # Using Nexus pypi repository if available, also install conan
+    # Using Nexus pypi repository if available
     _repo_url="${_base_url%/}/repository/pypi-group"
     if _is_url_reachable "${_repo_url}"; then
         _log "INFO" "Create a sample ${_home%/}/.pypirc ..."
@@ -990,6 +997,15 @@ username: ${_usr}
 password: ${_pwd}
 EOF
         chown -v ${_user}: ${_home%/}/.pypirc
+    fi
+    # Using Nexus conan proxy repository if available
+    _repo_url="${_base_url%/}/repository/conan-proxy"
+    if _is_url_reachable "${_repo_url}" && type conan &>/dev/null; then
+        # Or should overwrite $HOME/.conan/conan.conf ?
+        conan remote remove conan-center
+        conan remote remove conancenter
+        conan remote add conan-proxy ${_repo_url} false
+        #rm -rf $HOME/.conan    # clear conan local cache
     fi
 
     _repo_url="${_base_url%/}/repository/rubygem-proxy"
@@ -1128,7 +1144,14 @@ EOF
     npm install -g yarn
     npm install -g bower
     _log "INFO" "Install conan ..."
-    pip3 install conan
+    if pip3 install conan; then
+        [ ! -d /opt/cmake ] && mkdir /opt/cmake
+        cd /opt/cmake
+        [ ! -s ./cmake-3.22.1-linux-x86_64.sh ] && curl -o ./cmake-3.22.1-linux-x86_64.sh -L https://github.com/Kitware/CMake/releases/download/v3.22.1/cmake-3.22.1-linux-x86_64.sh
+        bash ./cmake-3.22.1-linux-x86_64.sh --skip-license
+        ln -v -s /opt/cmake/bin/* /usr/local/bin && \
+            ${_yum_install} gcc gcc-c++ make
+    fi
     _log "INFO" "Setting up Rubygem 2.3 ..."
     # @see: https://www.server-world.info/en/note?os=CentOS_7&p=ruby23
     #       Also need git newer than 1.8.8, but https://github.com/iusrepo/git216/issues/5
