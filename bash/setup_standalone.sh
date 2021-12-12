@@ -479,7 +479,7 @@ function f_as_log_cleanup() {
     local _service="${3:-${_SERVICE}}"  # NOT in use (was before)
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    # Using xargs instead of -delete so that can see what's deleted. Also -mount for not checking non-local file system, and -size +0 for not deleting placeholder files.
+    # Using xargs instead of find + -delete so that can see what's deleted. Also -mount for not checking non-local file system, and -size +0 for not deleting placeholder files.
     docker exec -it ${_name} bash -c 'for _d in $(find /{var,opt} -mount -type d \( -name log -o -name logs -o -name tmp \) -print); do
         if [ "tmp" == "$(basename "${_d}")" ]; then
             find "${_d%/}" -mount -type f -size +0 -mtime +'${_days}' -print0
@@ -487,7 +487,7 @@ function f_as_log_cleanup() {
             find "${_d%/}" -mount -type f -size +0 -mtime +'${_days}' \( -name '*log*' -o -name '*.out' -o -name '*.tmp' \) -exec grep -Iq . {} \; -print0
         fi 2>/dev/null | xargs -0 -P3 -n1 -t -I {} rm -f {}
     done'
-    docker exec -it ${_name} bash -c 'find /tmp -mount -type f -mtime +'${_days}' -delete'
+    docker exec -it ${_name} bash -c 'find /tmp -mount -type f -mtime +'${_days}' -print -delete'
 }
 
 function f_docker_commit() {
