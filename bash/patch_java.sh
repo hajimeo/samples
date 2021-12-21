@@ -354,6 +354,7 @@ function f_jcmd_agent() {
 
 # Starting Java Fright Recorder (JFR) for Java Mission Control (JMC)
 function f_profile() {
+    # https://www.javatpoint.com/java-flight-recorder
     local _port="${1}"      # To find a PID
     local _secs="${2:-600}" # Duration seconds
     local _name="${3:-"port${_port}"}"
