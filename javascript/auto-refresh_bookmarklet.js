@@ -1,3 +1,4 @@
+// NOTE: need to allow the popup, maybe?
 javascript:if (confirm("Pinging this URL with 3 minute interval for 120 times")) {
   current = location.href;
   x = 0;
