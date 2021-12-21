@@ -33,6 +33,7 @@ alias s5proxy='netstat -tln | grep -E ":38080\s+" || ssh -4gC2TxnN -D38080'
 ## Git #################################################################################################################
 # Show current tag
 alias git_tag_crt='git describe --tags'
+alias git_crt_tag='git describe --tags'
 alias git_tag_hash='git tag --contains'
 # compare tags
 function git_comp_tags() {
@@ -87,7 +88,7 @@ alias json2csv='python3 -c "import sys,json;import pandas as pd;pdf=pd.read_json
 # Read xml file, then convert to dict, then print json
 alias xml2json='python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))"'
 # simplest json pretty print
-alias pjt='sed "s/,$//" | python -m json.tool'
+alias pjt='sed "s/,$//" | while read -r _l;do echo "${_l}" | python -m json.tool; done'
 # this one is from a *JSON* file
 #alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
 # echo "json like string" | prettyjson
