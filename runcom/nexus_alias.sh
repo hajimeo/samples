@@ -174,6 +174,10 @@ function iqStart() {
     local _cfg_file="$(realpath "$(dirname "${_jar_file}")/config.yml")"
     [ -z "${_cfg_file}" ] && return 12
 
+    local _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
+    [ -z "${_license}" ] && [ -s "${HOME%/}/.nexus_executable_cache/nexus.lic" ] && _license="${HOME%/}/.nexus_executable_cache/nexus.lic"
+    [ -s "${_license}" ] && _java_opts="${_java_opts} -Ddw.licenseFile=${_license}"
+
     grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://localhost:8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
 
