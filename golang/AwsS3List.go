@@ -6,7 +6,7 @@ https://docs.aws.amazon.com/AmazonS3/latest/userguide/ListingKeysUsingAPIs.html
 #go mod tidy
 go build -o ../misc/aws-s3-list_$(uname) AwsS3List.go && env GOOS=linux GOARCH=amd64 go build -o ../misc/aws-s3-list_Linux AwsS3List.go
 export AWS_REGION=ap-southeast-2 AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyyy
-../misc/aws-s3-list_Darwin -b apac-support-bucket -p "node-nxrm-ha1/content/vol-"
+../misc/aws-s3-list_Darwin -b apac-support-bucket -p "node-nxrm-ha1/content/vol-" -c1 10
 */
 
 package main
