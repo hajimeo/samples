@@ -136,16 +136,41 @@ function f_replay_gets() {
 #find ./vol-* -type f -name '*.properties' -print0 | xargs -0 -I{} -P3 grep -lPz "(?s)deleted=true.*@Bucket.repo-name=npm-proxy\b" {}
 # Find not deleted (last updated) grunt metadata asset
 #rg -l -g '*.properties' '@BlobStore.blob-name=grunt' | xargs -I {} rg 'Bucket.repo-name=npm-group' -l {} | xargs -I {} ggrep -L '^deleted=true' {}
-function f_search_blobs() {
+function f_blob_search() {
     local __doc__="find + grep is faster than grep --include, and using xargs -P2"
     local _content_dir="${1:-"."}"    # /var/tmp/share/sonatype/blobs/default/content/vol-*
-    local _grep_args="${2}"   # eg: -lPz "(?s)deleted=true.*@Bucket.repo-name=" NOTE: with -z, ^ or $ does not work.
-    [ -z "${_grep_args}" ] && return 1
-    #grep -H --include='*.properties' -IRs ${_grep_args} ${_content_dir}    # -H or -l
+    local _2nd_arg="${2}"
+    [ -z "${_2nd_arg}" ] && return 1
+    #grep -H --include='*.properties' -IRs "${@:2}" ${_content_dir}    # -H or -l
     # NOTE: find -L makes this command a bit slower, and -P would be helpful onlly for slow store.
-    #       Also, redirecting to a file is faster in the console.
-    find ${_content_dir} -type f -name '*.properties' -print0 | xargs -0 -P 2 grep ${_grep_args} > /tmp/$FUNCNAME.out
-    cat /tmp/$FUNCNAME.out
+    #       Also, redirecting to a file is faster in the console (but not doing so that more intructive)
+    if type rg &>/dev/null; then
+        rg -g '*.properties' "${@:2}"
+    else
+        find ${_content_dir%/} -type f -name '*.properties' -print0 | xargs -0 -P 2 grep "${@:2}"
+    fi # > /tmp/$FUNCNAME.out;cat /tmp/$FUNCNAME.out
+}
+# Not perfect
+function f_blob_list_from_pom() {
+    local __doc__="NOTE: using f_blob_search"
+    local _content_dir="${1:-"."}"    # /var/tmp/share/sonatype/blobs/default/content/vol-*
+    local _artifactId="${2}"  # eg "log4j-core"
+    local _is_dependency="${3}"
+    f_blob_search "${_content_dir}" -l '^@BlobStore.blob-name=.+pom$' | while read -r _f; do
+        local _tmp_lines="$(grep -B3 -A2 "<artifactId>${_artifactId}</artifactId>" "${_f%.*}.bytes")"
+        if [ -n "${_tmp_lines}" ]; then
+            # Find dependencies only
+            if [[ "${_is_dependency}" =~ ^(y|Y) ]]; then
+                if ! echo "${_tmp_lines}" | grep -q "<dependency>"; then
+                    continue
+                fi
+                if echo "${_tmp_lines}" | grep -q "<scope>test</scope>"; then
+                    continue
+                fi
+            fi
+            grep -H '^@BlobStore.blob-name=' "${_f}"
+        fi
+    done
 }
 
 function f_search_soft_deleted_blobs() {
