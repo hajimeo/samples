@@ -171,6 +171,7 @@ function gen_p12_jks() {
     local _chain=""
     [ -n "${_full_ca_crt}" ] && _chain="-chain -CAfile ${_full_ca_crt}"
     # NOTE: If intermediate CA is used, cat root.cer intermediate.cer > full_ca.cer (TODO: does order matter?)
+    # NOTE: If p7b (pkcs7/pkcs#7): openssl pkcs7 -inform der -print_certs -in certificate.p7b -out certificate.cer
     # TODO: at this moment, the password sets on .key file will be lost.
     local _cmd="openssl pkcs12 -export ${_chain} -in ${_srv_crt} -inkey ${_srv_key} -name ${_name} -out ${_name}.p12 ${_pass_arg} -passout \"pass:${_store_pass}\""
     eval "${_cmd}" || return $?
