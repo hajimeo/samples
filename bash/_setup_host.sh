@@ -1689,7 +1689,9 @@ function f_postfix() {
 
     postmap /etc/postfix/generic || return $?
     service postfix restart || return $?
-    #postconf -n
+    _log "INFO" "For 'Relay access denied', may need to modify 'mynetworks'"
+    #postconf -n | grep smtpd_relay_restrictions
+    #smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated defer_unauth_destination
     #mail --debug-level=9 -a "FROM:test@hajigle.com" -s "test mail" admin@osakos.com </dev/null
 }
 
