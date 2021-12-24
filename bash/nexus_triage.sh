@@ -1,6 +1,10 @@
+#!/usr/bin/env bash
 function usage() {
     cat << EOS
-Contain source-able and copy & paste-able functions, which are executed on the Nexus server for troubleshooting various issues.
+$(basename "$BASH_SOURCE") contains functions which are:
+ - copy & paste-able, means no dependency to other functions (may still download external file with curl)
+ - should work on the Nexus server (Linux)
+for troubleshooting various issues.
 
 DOWNLOAD LATEST and SOURCE:
     curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/nexus_diag.sh
@@ -198,7 +202,7 @@ function f_orientdb_checks() {
         ls -l "${_db%/}" > /tmp/f_orientdb_checks_ls.out
         _db=/tmp/f_orientdb_checks_ls.out
     fi
-    echo "# Finding wal files ..."
+    echo "# Finding wal files (should be small) ..."
     grep 'wal' "${_db}"
     echo ""
     echo "# Checking size (Bytes) of index files (alphabetical order) ..."
