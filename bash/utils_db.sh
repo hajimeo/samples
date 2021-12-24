@@ -143,12 +143,35 @@ function _postgresql_create_dbuser() {
     [ "${_dbusr}" == "all" ] && return 0
 
     _log "INFO" "Creating Role:${_dbusr} and Database:${_dbname} ..."
+    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_dbadmin}"
+}
+
+function _postgresql_create_role_and_db() {
+    local _dbusr="${1}" # new DB user
+    local _dbpwd="${2:-"${_dbusr}"}"
+    local _dbname="${3:-"${_dbusr}"}"
+    local _schema="${4}"
+    local _dbadmin="${5:-"postgres"}"
+    local _dbhost="${6}"
+    local _dbport="${7:-"5432"}"
+
+    local _psql_as_admin="sudo -u ${_dbadmin} -i psql"
+    if [ -n "${_dbhost}" ]; then
+        if [ -z "${PGPASSWORD}" ]; then
+            echo "No PGPASSWORD set for ${_dbadmin}"; return 1
+        fi
+        _psql_as_admin="psql -U ${_dbadmin} -h ${_dbhost} -p ${_dbport}"
+    fi
     # NOTE: need to be superuser and 'usename' is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
-    ${_psql_as_admin} -d template1 -tA -c "SELECT usename FROM pg_shadow" | grep -q "^${_dbusr}$" || ${_psql_as_admin} -c "CREATE ROLE ${_dbusr} WITH LOGIN PASSWORD '${_dbpwd}';"    # not SUPERUSER
-    ${_psql_as_admin} -d template1 -ltA  -F',' | grep -q "^${_dbname}," || ${_psql_as_admin} -c "CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';"
+    ${_psql_as_admin} -d template1 -tA -c "SELECT usename FROM pg_shadow" | grep -q "^${_dbusr}$" || ${_psql_as_admin} -d template1 -c "CREATE ROLE ${_dbusr} WITH LOGIN PASSWORD '${_dbpwd}';"    # not SUPERUSER
+    if [ "${_dbadmin}" != "posrgres" ] && [ "${_dbadmin}" != "$USER" ]; then
+        # TODO ${_dbadmin%@*} is only for Azure
+        ${_psql_as_admin} -d template1 -c "GRANT ${_dbusr} TO \"${_dbadmin%@*}\";"
+    fi
+    ${_psql_as_admin} -d template1 -ltA  -F',' | grep -q "^${_dbname}," || ${_psql_as_admin} -d template1 -c "CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';"
     # Below two lines are not needed. for testing purpose to avoid unnecessary permission errors.
-    ${_psql_as_admin} -d template1 -c "GRANT ALL ON DATABASE ${_dbname} TO ${_dbusr};"
-    ${_psql_as_admin} -d ${_dbname} -c "GRANT ALL ON SCHEMA public TO ${_dbusr};"
+    ${_psql_as_admin} -d template1 -c "GRANT ALL ON DATABASE ${_dbname} TO \"${_dbusr}\";" || return $?
+    ${_psql_as_admin} -d ${_dbname} -c "GRANT ALL ON SCHEMA public TO \"${_dbusr}\";"
 
     if [ -n "${_schema}" ]; then
         local _search_path="${_dbusr},public"
@@ -158,11 +181,10 @@ function _postgresql_create_dbuser() {
         done
         ${_psql_as_admin} -d template1 -c "ALTER ROLE ${_dbusr} SET search_path = ${_search_path};"
     fi
-
     # test
     local _host_name="$(hostname -f)"
-    local _cmd="psql -U ${_dbusr} -h ${_host_name} -d ${_dbname} -c \"\l ${_dbname}\""
-    _log "INFO" "Testing connection with ${_cmd} ..."
+    local _cmd="psql -U ${_dbusr} -h ${_dbhost:-"${_host_name}"} -d ${_dbname} -c \"\l ${_dbname}\""
+    _log "INFO" "Testing connection with \"${_cmd}\" ..."
     eval "PGPASSWORD=\"${_dbpwd}\" ${_cmd}" || return $?
 }
 
