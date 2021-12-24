@@ -44,14 +44,19 @@ fi
 
 # Aliases (can't use alias in shell script, so functions)
 _rg() {
-    rg -z "$@" 2>/tmp/_rg_last.err
+    local _max_filesize="${_RG_MAX_FILESIZE-"300M"}"    # Default is 300 MB
+    if [ -n "${_max_filesize}" ]; then
+        rg --max-filesize "${_max_filesize}" -z "$@"
+    else
+        rg -z "$@"
+    fi 2>/tmp/_rg_last.err
 }
 _q() {
     q -O -d"," -T --disable-double-double-quoting "$@" 2>/tmp/_q_last.err
 }
 _runner() {
     local _pfx="$1"
-    local _n="${2:-"3"}"
+    local _n="${2:-"4"}"
     local _tmp="$(mktemp -d)"
     _LOG "INFO" "Executing ${FUNCNAME[1]}->${FUNCNAME} $(typeset -F | grep "^declare -f ${_pfx}" | wc -l  | tr -d "[:space:]") functions."
     for _t in $(typeset -F | grep "^declare -f ${_pfx}" | cut -d' ' -f3); do
