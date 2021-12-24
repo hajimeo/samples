@@ -235,6 +235,7 @@ function _find_jcmd() {
 function f_set_classpath() {
     local _port_or_dir="${1}"  # port or directory path
     if [ -d "${_port_or_dir}" ]; then
+        # NOTE: wouldn't be able to use -maxdepth as can't predict the depth of the Group ID, hence not using -L (symlink)
         local _tmp_cp="$(find ${_port_or_dir%/} -type f -name '*.jar' | tr '\n' ':')"
         export CLASSPATH=".:${_tmp_cp%:}"
     else
@@ -418,7 +419,7 @@ function f_spring_cli() {
 # Start Java Shell (available from Java 9)
 function f_jshell() {
     local _port="${1}"
-    if [[ "${_port}" =~ ^[0-9]+$ ]]; then
+    if [[ "${_port}" =~ ^[0-9]+$ ]] || [ -d "${_port}" ]; then
         f_javaenvs "${_port}"
     else
         echo "No port, so not detecting/setting JAVA_HOME and CLASSPATH...";sleep 3
