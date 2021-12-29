@@ -79,7 +79,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 
 
 ## Global variables
-: ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,yum,rubygem,helm,bower,conan,conda,cocoapods,bower,go,apt,r,raw"}
+: ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,yum,rubygem,helm,bower,conan,conda,cocoapods,bower,go,apt,r,p2,raw"}
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
 : ${_DOMAIN:="standalone.localdomain"}
@@ -108,7 +108,7 @@ _RESP_FILE=""
 function f_setup_maven() {
     local _prefix="${1:-"maven"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
@@ -144,7 +144,7 @@ function f_setup_maven() {
 function f_setup_pypi() {
     local _prefix="${1:-"pypi"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
@@ -170,10 +170,25 @@ function f_setup_pypi() {
     f_get_asset "${_prefix}-group" "packages/pyyaml/5.3.1/PyYAML-5.3.1.tar.gz"
 }
 
+function f_setup_p2() {
+    local _prefix="${1:-"p2"}"
+    local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
+    local _extra_sto_opt=""
+    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    # If no xxxx-proxy, create it
+    if ! _is_repo_available "${_prefix}-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://download.eclipse.org/releases/2019-09/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":false,"connection":{"useTrustStore":false}},"storage":{"dataStoreName":"nexus","blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"'${_prefix}'-proxy"}],"type":"rpc"}' || return $?
+    fi
+    # add some data for xxxx-proxy
+    f_get_asset "${_prefix}-proxy" "p2.index"
+    f_get_asset "${_prefix}-proxy" "compositeContent.jar"
+}
+
 function f_setup_npm() {
     local _prefix="${1:-"npm"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
@@ -209,7 +224,7 @@ function f_setup_npm() {
 function f_setup_nuget() {
     local _prefix="${1:-"nuget"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # nuget.org-proxy for V2 should exist, so not creating nuget-proxy
@@ -247,7 +262,7 @@ function f_setup_docker() {
     local _prefix="${1:-"docker"}"
     local _img_name="${2:-"alpine:3.7"}"
     local _blob_name="${3:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${4:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     #local _opts="--tls-verify=false"    # TODO: only for podman. need an *easy* way to use http for 'docker'
@@ -331,7 +346,7 @@ function f_populate_docker_hosted() {
 function f_setup_yum() {
     local _prefix="${1:-"yum"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
@@ -383,7 +398,7 @@ priority=1'
 function f_setup_rubygem() {
     local _prefix="${1:-"rubygem"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
@@ -409,7 +424,7 @@ function f_setup_rubygem() {
 function f_setup_helm() {
     local _prefix="${1:-"helm"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it. NOTE: not supported with HA-C
@@ -434,7 +449,7 @@ function f_setup_helm() {
 function f_setup_bower() {
     local _prefix="${1:-"bower"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
@@ -449,7 +464,7 @@ function f_setup_bower() {
 function f_setup_conan() {
     local _prefix="${1:-"conan"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # NOTE: If you disabled Anonymous access, then it is needed to enable the Conan Bearer Token Realm (via Administration > Security > Realms):
@@ -471,7 +486,7 @@ function f_setup_conan() {
 function f_setup_conda() {
     local _prefix="${1:-"conda"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it (NOTE: No HA)
@@ -484,7 +499,7 @@ function f_setup_conda() {
 function f_setup_cocoapods() {
     local _prefix="${1:-"cocoapods"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it (NOTE: No HA, but seems to work with HA???)
@@ -497,7 +512,7 @@ function f_setup_cocoapods() {
 function f_setup_go() {
     local _prefix="${1:-"go"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it (NOTE: No HA support)
@@ -515,7 +530,7 @@ function f_setup_go() {
 function f_setup_apt() {
     local _prefix="${1:-"apt"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it (NOTE: No HA support)
@@ -538,7 +553,7 @@ function f_setup_apt() {
 function f_setup_r() {
     local _prefix="${1:-"r"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
@@ -573,7 +588,7 @@ function f_setup_r() {
 function f_setup_raw() {
     local _prefix="${1:-"raw"}"
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
-    local _ds_name="${3:-"${_DATASTORE_NAME}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # NOTE: using "strictContentTypeValidation":false for raw repositories
@@ -1531,6 +1546,7 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype/sonatype-*.lic" "" "r
     local _host="$(hostname -f)"
     [[ "${r_NEXUS_URL}" =~ ^https?://([^:/]+).+$ ]] && _host="${BASH_REMATCH[1]}"
     _ask "Blob store name" "${_BLOBTORE_NAME}" "r_BLOB_NAME" "N" "Y"
+    _ask "Data store name ('nexus' if PostgreSQL, empty if OrientDB)" "${_DATASTORE_NAME}" "r_DATASTORE_NAME"
     _ask "Admin username" "${_ADMIN_USER}" "r_ADMIN_USER" "N" "Y"
     _ask "Admin password" "${_ADMIN_PWD}" "r_ADMIN_PWD" "Y" "Y"
     _ask "Formats to setup (comma separated)" "${_REPO_FORMATS}" "r_REPO_FORMATS" "N" "Y"
