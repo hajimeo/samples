@@ -301,7 +301,7 @@ function f_populate_docker_proxy() {
     local _cmd="${4-"${r_DOCKER_CMD}"}"
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
-    _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
+    _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_cmd}")" || return $?
 
     for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_img_name}"); do
         _log "WARN" "Deleting ${_imn} (wait for 5 secs)";sleep 5
@@ -322,7 +322,7 @@ function f_populate_docker_hosted() {
     local _tag_to="${5:-"${_TAG_TO:-"${_img_name}"}"}"
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
-    _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}")" || return $?
+    _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_cmd}")" || return $?
 
     # In _docker_proxy, the image might be already pulled.
     if ! ${_cmd} tag ${_host_port:-"localhost"}/${_img_name} ${_host_port}/${_tag_to} 2>/dev/null; then
@@ -331,11 +331,16 @@ function f_populate_docker_hosted() {
         # "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nENTRYPOINT [\"mysql\"]"
         # NOTE docker build -f does not work (bug?)
         local _cwd="$(pwd)"
-        local _build_dir="$(mktemp -d)" || return $?
+        local _build_dir="${_TMP%/}/${FUNCNAME}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"
+        if [ -d "${_build_dir%/}" ]; then
+            _log "ERROR" "${_build_dir%/} exists."
+            return 1
+        fi
         cd ${_build_dir} || return $?
         echo -e "FROM ${_img_name}\n" > Dockerfile && ${_cmd} build --rm -t ${_img_name} .
-        cd "${_cwd}"    # should check the previous return code.
-        if ! ${_cmd} tag localhost/${_img_name} ${_host_port}/${_tag_to}; then
+        cd "${_cwd}"    # should check the previous return code?
+        # It seems newer docker appends "localhost/" so trying this one first.
+        if ! ${_cmd} tag localhost/${_img_name} ${_host_port}/${_tag_to} 2>/dev/null; then
             ${_cmd} tag ${_img_name} ${_host_port}/${_tag_to} || return $?
         fi
     fi
