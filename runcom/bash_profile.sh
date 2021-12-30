@@ -95,6 +95,7 @@ if [ "$(uname)" = "Darwin" ]; then
     if type podman &>/dev/null; then
         #brew install podman
         #podman machine init --cpus 2 --disk-size 40 --memory 4096
+        # To add my root CA: podman machine ssh, then add pem under /etc/pki/ca-trust/source/anchors/ and update-ca-trust
         alias pd-start='podman machine start'
     elif type lima &>/dev/null; then
         # "limadocker" is the hostname defined in $HOME/.ssh/config
