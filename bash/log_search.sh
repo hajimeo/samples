@@ -774,7 +774,7 @@ FLUSH PRIVILEGES;"
 
 
 #JAVA_GC_LOG_DIR="/some/location"
-#JAVA_GC_OPTS="-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${JAVA_GC_LOG_DIR%/}/ -XX:+PrintClassHistogramBeforeFullGC -XX:+PrintClassHistogramAfterFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:${JAVA_GC_LOG_DIR}/gc.%t.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=10m"
+#JAVA_GC_OPTS="-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${JAVA_GC_LOG_DIR%/}/ -XX:+PrintClassHistogramBeforeFullGC -XX:+PrintClassHistogramAfterFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:${JAVA_GC_LOG_DIR}/gc.%t.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100m"
 function f_gc_before_after_check() {
     local __doc__="TODO: add PrintClassHistogramBeforeFullGC/PrintClassHistogramAfterFullGC, and parse log to find which objects are increasing"
     local _log_dir="${1:-"."}"
@@ -887,15 +887,14 @@ function f_threads() {
         done
         echo " "
         # Doing below only when checking multiple thread dumps
-        echo "## Long *RUN*ning and no-change (same hash) threads contain '${_running_thread_search_re}' (threads:${_count})"
-        rg -l "${_running_thread_search_re}" -g '*run*.out' -g '*RUN*.out' ${_save_dir%/}/ | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort | tee /tmp/${FUNCNAME}_$$.tmp
-        if [ 3 -lt ${_count} ]; then
-            local __count=$(( ${_count} - 1 ))
-            echo "## Long *RUN*ning and no-change (same hash) threads contain '${_running_thread_search_re}' (threads:${__count}/${_count})"
-            rg -l "${_running_thread_search_re}" -g '*run*.out' -g '*RUN*.out' ${_save_dir%/}/ | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | rg "^\s+${__count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
-        fi
+        local __count=${_count}
+        [ 3 -lt ${_count} ] && __count=$(( ${_count} - 1 ))
+        echo "## Long *RUN*ning and no-change (same hash) threads which contain '${_running_thread_search_re}' (threads:${__count}/${_count})"
+        _long_running "${_save_dir%/}" "${_running_thread_search_re}" "${__count}" | tee /tmp/${FUNCNAME}_$$.tmp
+        echo "## Long *RUN*ning and no-change (same hash) threads which size is 2k+ (threads:${__count}/${_count})"
+        _long_running "${_save_dir%/}" "" "${__count}" "2k" | tee /tmp/${FUNCNAME}_$$.tmp
         # TODO: also check similar file sizes (wc -c?)
-        echo "## Long running threads contain '${_running_thread_search_re}' (threads:${_count})"
+        echo "## Long running (based on thread name) threads which contain '${_running_thread_search_re}' (threads:${_count})"
         rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
         #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
         echo " "
@@ -985,6 +984,17 @@ function f_threads() {
         rg -iw 'nid=0x[a-z0-9]+ ([^\[]+)' -o -r '$1' --no-filename ${_file} | sort -r | uniq -c
     fi
     echo "Total: `rg '^"' ${_file} -c`"
+}
+function _long_running() {
+    local _search_dir="${1:-"."}"
+    local _search_re="${2}"
+    local _min_count="${3:-"2"}"
+    local _size="${4:-"1k"}"
+    if [ -n "${_search_re}" ]; then
+        rg -l "${_search_re}" -g '*run*.out' -g '*RUN*.out' ${_search_dir%/}
+    else
+        find ${_search_dir%/} -type f \( -name '*run*.out' -o -name '*RUN*.out' \) -size +${_size} -print
+    fi | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | sort -nr | rg "^\s*([${_min_count}-9]|\d\d+)\s+"
 }
 
 #f_last_tid_in_log "" ../support-20200915-143729-1/log/request.log "15/Sep/2020:08:" > f_last_tid_in_log.csv 2> f_last_tid_in_log.err
