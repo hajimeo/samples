@@ -31,11 +31,11 @@ JAVA_OPTIONS="-Xms${_XMX} -Xmx${_XMX} -XX:OnOutOfMemoryError='kill %p' -XX:Activ
 # GC log related options are different by Java version.
 if ${_JAVA} -XX:+PrintFlagsFinal -version 2>/dev/null | grep -q PrintClassHistogramBeforeFullGC; then
     # probably java 8
-    JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+UseG1GC -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=10m -XX:+PrintClassHistogramBeforeFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading"
+    JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+UseG1GC -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100m -XX:+PrintClassHistogramBeforeFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading"
     JAVA_OPTIONS="${JAVA_OPTIONS} -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=6786 -Dcom.sun.management.jmxremote.local.only=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false"
 else
-    # default, expecting java 11
-    JAVA_OPTIONS="${JAVA_OPTIONS} -Xlog:gc*:file=${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log:time,uptime:filecount=10,filesize=1024k"
+    # default, expecting java 11 (more: https://foojay.io/today/embracing-jvm-unified-logging/ )
+    JAVA_OPTIONS="${JAVA_OPTIONS} -Xlog:gc*:file=${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log:time,uptime:filecount=10,filesize=100m,classhisto*=trace"
 fi
 
 do_start()
