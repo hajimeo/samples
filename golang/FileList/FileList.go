@@ -14,6 +14,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -37,13 +39,13 @@ ARGUMENTS:
     -p Prefix_str   List only objects which directory *name* starts with this prefix (eg: val-)
     -f Filter_str   List only objects which path contains this string (eg. .properties)
     -fP Filter_str  List .properties file (no .bytes files) which contains this string (much slower)
-                    Equivalent of -f ".properties" and -P.
+                    Also, this enables -f ".properties" and -P.
     -n topN_num     Return first/top N results only
     -c concurrency  Executing walk per sub directory in parallel (may not need with very fast disk)
     -P              Get properties (can be very slower)
+    -R              Treat -fP value as regex
     -H              No column Header line
-    -X              Verbose log output
-    -XX             More verbose log output`)
+    -X              Verbose log output`)
 }
 
 // Arguments
@@ -57,8 +59,9 @@ var _CONC_1 *int
 //var _CONC_2 *int	// TODO: not implementing this for now
 var _WITH_PROPS *bool
 var _NO_HEADER *bool
+var _USE_REGEX *bool
+var _R *regexp.Regexp
 var _DEBUG *bool
-var _DEBUG2 *bool
 
 var _PRINTED_N int64 // Atomic (maybe slower?)
 var _TTL_SIZE int64  // Atomic (maybe slower?)
@@ -79,13 +82,31 @@ func printLine(path string, f os.FileInfo) {
 		if err != nil {
 			_log("DEBUG", fmt.Sprintf("Retrieving tags for %s failed with %s. Ignoring...", path, err.Error()))
 		} else {
-			contents := string(bytes)
-			if len(*_FILTER2) == 0 || strings.Contains(contents, *_FILTER2) {
-				// Should also escape '"'?
-				props = strings.ReplaceAll(strings.TrimSpace(contents), "\n", ",")
+			contents := strings.TrimSpace(string(bytes))
+			if len(*_FILTER2) == 0 {
+				// If no _FILETER2, just return the contents as single line. Should also escape '"'?
+				props = strings.ReplaceAll(contents, "\n", ",")
 			} else {
-				_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s. Not outputting entire line...", path, *_FILTER2))
-				return
+				// Otherwise, return properties lines only if contents match.
+				if *_USE_REGEX { //len(_R.String()) > 0
+					// To allow to use simpler regex, sorting line and converting to single line firt
+					lines := strings.Split(strings.TrimSpace(string(bytes)), "\n")
+					sort.Strings(lines)
+					contents = strings.Join(lines, ",")
+					if _R.MatchString(contents) {
+						props = contents
+					} else {
+						_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s (with Regex). Not outputting entire line...", path, *_FILTER2))
+						return
+					}
+				} else {
+					if strings.Contains(contents, *_FILTER2) {
+						props = strings.ReplaceAll(contents, "\n", ",")
+					} else {
+						_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s (with Regex). Not outputting entire line...", path, *_FILTER2))
+						return
+					}
+				}
 			}
 		}
 	}
@@ -116,10 +137,10 @@ func getDirs(basedir string, prefix string) []string {
 	return dirs
 }
 
-func listObjects(basedir string, filter string) {
+func listObjects(basedir string) {
 	err := filepath.Walk(basedir, func(path string, f os.FileInfo, err error) error {
 		if !f.IsDir() {
-			if len(filter) == 0 || strings.Contains(f.Name(), filter) {
+			if len(*_FILTER) == 0 || strings.Contains(f.Name(), *_FILTER) {
 				printLine(path, f)
 				if *_TOP_N > 0 && *_TOP_N <= _PRINTED_N {
 					_log("DEBUG", fmt.Sprintf("Printed %d >= %d", _PRINTED_N, *_TOP_N))
@@ -149,18 +170,15 @@ func main() {
 	_TOP_N = flag.Int64("n", 0, "Return only first N keys (0 = no limit)")
 	_CONC_1 = flag.Int("c", 1, "Concurrent number for sub directories (may not need to use with very fast disk)")
 	_WITH_PROPS = flag.Bool("P", false, "If true, also get the contents of .properties files")
+	_USE_REGEX = flag.Bool("R", false, "If true, regexp.MatchString is used for _FILTER2")
 	_NO_HEADER = flag.Bool("H", false, "If true, no header line")
 	_DEBUG = flag.Bool("X", false, "If true, verbose logging")
-	_DEBUG2 = flag.Bool("XX", false, "If true, more verbose logging")
 	flag.Parse()
-
-	if *_DEBUG2 {
-		_DEBUG = _DEBUG2
-	}
 
 	if len(*_FILTER2) > 0 {
 		*_FILTER = ".properties"
 		*_WITH_PROPS = true
+		_R, _ = regexp.Compile(*_FILTER2)
 	}
 
 	if !*_NO_HEADER && *_WITH_PROPS {
@@ -199,12 +217,12 @@ func main() {
 		_log("DEBUG", "subDir: "+s)
 		guard <- struct{}{}
 		wg.Add(1) // *
-		go func(basedir string, filter string) {
+		go func(basedir string) {
 			_log("DEBUG", fmt.Sprintf("Listing objects for %s ...", basedir))
-			listObjects(basedir, filter)
+			listObjects(basedir)
 			<-guard
 			wg.Done()
-		}(s, *_FILTER)
+		}(s)
 	}
 
 	wg.Wait()

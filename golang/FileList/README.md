@@ -39,9 +39,9 @@ chmod a+x /usr/local/bin/file-list
     -n topN_num     Return first/top N results only
     -c concurrency  Executing walk per sub directory in parallel (may not need with very fast disk)
     -P              Get properties (can be very slower)
+    -R              Treat -fP value as regex
     -H              No column Header line
     -X              Verbose log output
-    -XX             More verbose log output
 ```
 
 ## USAGE EXAMPLE:
@@ -72,7 +72,7 @@ $ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f "
 ```
 List all objects which proerties contain 'deleted=true'
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "deleted=true" > soft_deleted.csv
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "deleted=true" > soft_deleted2.csv
 ```
 
 ## Misc.
