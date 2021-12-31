@@ -24,8 +24,10 @@ function f_blobs_csv() {
 ```
 
 ## DOWNLOAD and INSTALL:
+```bash
 curl -o /usr/local/bin/file-list -L https://github.com/hajimeo/samples/raw/master/misc/file-list_$(uname)
 chmod a+x /usr/local/bin/file-list
+```
 
 ## ARGUMENTS:
 ```
