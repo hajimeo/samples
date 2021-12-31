@@ -209,5 +209,5 @@ func main() {
 
 	wg.Wait()
 	println("")
-	_log("INFO", fmt.Sprintf("Printed %d items (size: %d) in bucket: %s with prefix: '%s'", _PRINTED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX))
+	_log("INFO", fmt.Sprintf("Printed %d items (size: %d) in %s with prefix: '%s'", _PRINTED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX))
 }

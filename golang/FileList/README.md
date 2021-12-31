@@ -52,25 +52,39 @@ $ file-list -b ./sonatype-work/nexus3/blobs/default
 "sonatype-work/nexus3/blobs/default/content/vol-43/chap-29/3488648f-d5f8-45f8-8314-10681fcaf0ce.properties","2021-09-17 08:35:03.907951265 +1000 AEST",352
 "sonatype-work/nexus3/blobs/default/metadata.properties","2021-09-17 08:34:00.625028548 +1000 AEST",73
 
-2021/12/31 14:23:09 INFO: Printed 185 items (size: 75910509) in bucket: ./sonatype-work/nexus3/blobs/default with prefix:
+2021/12/31 14:23:09 INFO: Printed 185 items (size: 75910509) in ./sonatype-work/nexus3/blobs/default with prefix:
 ```
 Check the count and size of all .bytes file under "content" directory under "default" blob store (including tmp files).  
 This would be useful to compare with the counters in the Blobstore page.
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default -p "content" -f ".bytes" >/dev/null
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -f ".bytes" >/dev/null
 2021/12/31 14:24:15 INFO: Generating list with ./sonatype-work/nexus3/blobs/default ...
 
-2021/12/31 14:24:15 INFO: Printed 91 items (size: 75871811) in bucket: ./sonatype-work/nexus3/blobs/default with prefix: 'content'
+2021/12/31 14:24:15 INFO: Printed 91 items (size: 75871811) in ./sonatype-work/nexus3/blobs/default with prefix: ''
 ```
 Parallel execution (concurrency 10), and save to all_objects.csv file
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default -p "content" -c 10 > all_objects.csv
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 > all_objects.csv
 ```
 Parallel execution (concurrency 10) with all properties
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default -p "content" -c 10 -f ".properties" -P > all_with_props.csv
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P > all_with_props.csv
 ```
 List all objects which proerties contain 'deleted=true'
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default -p "content" -c 10 -f ".properties" -P -fP "deleted=true" > soft_deleted.csv
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "deleted=true" > soft_deleted.csv
+```
+
+## Misc.
+Listing relatively larger blob store **with all properties contents and with 200 concurrency**:
+```
+# time file-list -b ./content -P -c 200 >/tmp/files2.csv
+2021/12/31 14:54:12 WARN: With Properties (-P), listing can be slower.
+2021/12/31 14:54:12 INFO: Generating list with ./content ...
+
+2021/12/31 14:54:14 INFO: Printed 113939 items (size: 16658145001) in ./content with prefix: ''
+
+real    0m1.908s    <<< very fast!
+user    0m1.733s
+sys     0m1.775s
 ```
