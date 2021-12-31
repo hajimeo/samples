@@ -119,7 +119,10 @@ function nxrmStart() {
     else    # if NXRM2
         [ -z "${_mode}" ] && _mode="console"
         # jvm 1    | Caused by: java.lang.ClassNotFoundException: org.eclipse.tycho.nexus.internal.plugin.UnzipRepository
+        #https://repo1.maven.org/maven2/org/eclipse/tycho/nexus/unzip-repository-plugin/0.14.0/unzip-repository-plugin-0.14.0-bundle.zip
         echo "NOTE: May need to 'unzip -d ${_base_dir%/}/sonatype-work/nexus/plugin-repository $HOME/Downloads/unzip-repository-plugin-0.14.0-bundle.zip'"
+        # jvm 1    | Caused by: java.lang.ClassNotFoundException: org.codehaus.janino.ScriptEvaluator
+        #./sonatype-work/nexus/conf/logback-nexus.xml
         [ -n "${_java_opts}" ] && export _JAVA_OPTIONS="${_java_opts}"
     fi
     if [ -n "${_jetty_https}" ] && [[ "${_version}" =~ 3\.26\.+ ]]; then
