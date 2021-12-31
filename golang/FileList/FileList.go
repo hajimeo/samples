@@ -129,7 +129,7 @@ func listObjects(basedir string, filter string) {
 		}
 		return nil
 	})
-	if err != nil {
+	if err != nil && err != io.EOF {
 		println("Got error retrieving list of files:")
 		panic(err.Error())
 	}
