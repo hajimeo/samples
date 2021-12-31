@@ -72,7 +72,11 @@ $ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f "
 ```
 List all objects which proerties contain 'deleted=true'
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "deleted=true" > soft_deleted2.csv
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "deleted=true" > soft_deleted.csv
+```
+List all objects which proerties contain 'repo-name=docker-proxy' and 'deleted=true'
+```
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.csv
 ```
 
 ## Misc.
