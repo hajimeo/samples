@@ -4,9 +4,9 @@ https://docs.aws.amazon.com/AmazonS3/latest/userguide/ListingKeysUsingAPIs.html
 
 #go mod init github.com/hajimeo/samples/golang
 #go mod tidy
-go build -o ../misc/aws-s3-list_$(uname) AwsS3List.go && env GOOS=linux GOARCH=amd64 go build -o ../misc/aws-s3-list_Linux AwsS3List.go
+go build -o ../../misc/aws-s3-list_$(uname) AwsS3List.go && env GOOS=linux GOARCH=amd64 go build -o ../../misc/aws-s3-list_Linux AwsS3List.go
 export AWS_REGION=ap-southeast-2 AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyyy
-../misc/aws-s3-list_Darwin -b apac-support-bucket -p "node-nxrm-ha1/content/vol-" -c1 10
+$HOME/IdeaProjects/samples/misc/aws-s3-list_$(uname) -b apac-support-bucket -p "node-nxrm-ha1/content/vol-" -c1 10
 */
 
 package main
@@ -29,7 +29,7 @@ import (
 
 func usage() {
 	fmt.Println(`
-List AWS S3 objects as CSV (Key,LastModified,Size,Owner,Tags).
+List AWS S3 objects as CSV (Path,LastModified,Size,Owner,Tags).
 Usually it takes about 1 second for 1000 objects.
 
 DOWNLOAD and INSTALL:
@@ -337,7 +337,7 @@ func main() {
 	}
 
 	if !*_NO_HEADER {
-		fmt.Print("Key,LastModified,Size")
+		fmt.Print("Path,LastModified,Size")
 		if *_WITH_OWNER {
 			fmt.Print(",Owner")
 		}

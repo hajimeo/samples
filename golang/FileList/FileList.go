@@ -31,7 +31,6 @@ DOWNLOAD and INSTALL:
     
 USAGE EXAMPLES:
     file-list -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
-    TODO
 
 ARGUMENTS:
     -b BaseDir_str  Base directory path (eg: <workingDirectory>/blobs/default/content)
