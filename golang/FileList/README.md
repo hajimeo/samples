@@ -4,12 +4,12 @@ The expected usage is generating the list of blobRef IDs and compare with the bl
 Basically rewrite of below bash function:
 ```bash
 function f_blobs_csv() {
-    local __doc__="Generate CSV for Key,LastModified,Size + properties"
+    local __doc__="Generate CSV for Path,LastModified,Size + properties"
     local _dir="$1"         # "blobs/default/content/vol-*"
     local _with_props="$2"  # Y to check properties file, but extremely slow
     local _filter="${3}"    # "*.properties"
     local _P="${4}"         #
-    printf "Key,LastModified,Size"
+    printf "Path,LastModified,Size"
     local _find="find ${_dir%/} -type f"
     [ -n "${_filter}" ] && _find="${_find} -name '${_filter}'"
     if [[ "${_with_props}" =~ ^(y|Y) ]]; then
@@ -23,17 +23,19 @@ function f_blobs_csv() {
 }
 ```
 
-### ARGUMENTS:
+## DOWNLOAD and INSTALL:
+curl -o /usr/local/bin/file-list -L https://github.com/hajimeo/samples/raw/master/misc/file-list_$(uname)
+chmod a+x /usr/local/bin/file-list
+
+## ARGUMENTS:
 ```
-    -p Prefix_str   List objects which path starts with this prefix
-    -f Filter_str   List objects which path contains this string (much slower)
+    -b BaseDir_str  Base directory path (eg: <workingDirectory>/blobs/default/content)
+    -p Prefix_str   List only objects which directory *name* starts with this prefix (eg: val-)
+    -f Filter_str   List only objects which path contains this string (eg. .properties)
     -fP Filter_str  List .properties file (no .bytes files) which contains this string (much slower)
                     Equivalent of -f ".properties" and -P.
     -n topN_num     Return first/top N results only
-    -m MaxKeys_num  Batch size number. Default is 1000
-    -c1 concurrency Concurrency number for Prefix (-p xxxx/content/vol-), execute in parallel per sub directory
-    -c2 concurrency Concurrency number for Tags (-T) and also Properties (-P)
-    -L              With -p, list sub folders under prefix
+    -c concurrency  Executing walk per sub directory in parallel (may not need with very fast disk)
     -P              Get properties (can be very slower)
     -H              No column Header line
     -X              Verbose log output
@@ -41,21 +43,32 @@ function f_blobs_csv() {
 ```
 
 ## USAGE EXAMPLE:
-TODO: below is incorrect
+List all files under the ./sonatype-work/nexus3/blobs/default
 ```
-./aws-s3-list_Darwin -b apac-support-bucket -p "default/content/vol-" -c1 20 > /tmp/all_objects.csv
-# Extract blob ref IDs only:
-grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/all_objects.csv | sort | uniq > all_blob_refs_s3.out
+$ file-list -b ./sonatype-work/nexus3/blobs/default
+... (snip) ...
+"sonatype-work/nexus3/blobs/default/content/vol-43/chap-29/3488648f-d5f8-45f8-8314-10681fcaf0ce.properties","2021-09-17 08:35:03.907951265 +1000 AEST",352
+"sonatype-work/nexus3/blobs/default/metadata.properties","2021-09-17 08:34:00.625028548 +1000 AEST",73
 
-# Get blob ref IDs from a database backup file:
-curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar"
-echo "SELECT blob_ref FROM asset WHERE blob_ref LIKE 's3-test@%'" | java -DexportPath=/tmp/result.json -jar ./orient-console.jar ../sonatype/backups/component-2021-08-30-22-00-00-3.33.0-01.bak
-grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/result.json | sort > all_blob_refs_from_db.out
-
-# Check missing blobs:
-diff -wy --suppress-common-lines all_blob_refs_s3.out all_blob_refs_from_db.out | head -n3
-1ab44c7d-553a-416c-b0ec-a1e06088f984			      <
-234e1975-2e5a-4d0c-9e06-bf85e33de422			      <
-23bdb564-a670-4925-81ee-4ba70a33a672			      <
+2021/12/31 14:23:09 INFO: Printed 185 items (size: 75910509) in bucket: ./sonatype-work/nexus3/blobs/default with prefix:
 ```
-All above commands would complete within 10 seconds, and the last result means no dead blobs.
+Check the count and size of all .bytes file under "content" directory under "default" blob store (including tmp files).  
+This would be useful to compare with the counters in the Blobstore page.
+```
+$ file-list -b ./sonatype-work/nexus3/blobs/default -p "content" -f ".bytes" >/dev/null
+2021/12/31 14:24:15 INFO: Generating list with ./sonatype-work/nexus3/blobs/default ...
+
+2021/12/31 14:24:15 INFO: Printed 91 items (size: 75871811) in bucket: ./sonatype-work/nexus3/blobs/default with prefix: 'content'
+```
+Parallel execution (concurrency 10), and save to all_objects.csv file
+```
+$ file-list -b ./sonatype-work/nexus3/blobs/default -p "content" -c 10 > all_objects.csv
+```
+Parallel execution (concurrency 10) with all properties
+```
+$ file-list -b ./sonatype-work/nexus3/blobs/default -p "content" -c 10 -f ".properties" -P > all_with_props.csv
+```
+List all objects which proerties contain 'deleted=true'
+```
+$ file-list -b ./sonatype-work/nexus3/blobs/default -p "content" -c 10 -f ".properties" -P -fP "deleted=true" > soft_deleted.csv
+```
