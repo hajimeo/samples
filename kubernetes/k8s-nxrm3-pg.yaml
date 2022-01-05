@@ -15,7 +15,7 @@
 #   cd ~/IdeaProjects/samples/kubernetes
 #   # Below _DNS is my hack and usually don't need to use this. _DB_USER can't contain '-' character.
 #   export _ID="nxrm3pg" _DNS="192.168.52.31" _SHARE_DIR="/var/tmp/share"
-#   export _TAG="3.37.0" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
+#   export _TAG="3.37.2" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
 #   # Replace single quotes with double quotes and remove \\ from below:
 #   eval 'echo \"\\$\\(cat ./k8s-nxrm3-pg.yaml\\)\"' > /tmp/${_ID}.yaml
 #   # When recreating, remove /nexus-data/etc/fabric/nexus-store.properties if JDBC setting was changed.
@@ -66,7 +66,7 @@ spec:
           image: busybox:1.33.1
           #[ -d /nexus-data/blobs ] && [ ! -L /nexus-data/blobs ] && mv -v /nexus-data/blobs /nexus-data/blobs_orig;
           # Below echo nameserver ... is my personal hack as i do not want to use coreDNS
-          command: ['sh', '-c', '[ -z "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; [ ! -d "\$BLOBS_PATH" ] && mkdir -p -m 777 -v \$BLOBS_PATH; if [ ! -L /nexus-data/blobs ]; then ln -v -s \$BLOBS_PATH /nexus-data/blobs && chown -v 200:200 /nexus-data && chown -v -R 200:200 /nexus-data/blobs/; fi']
+          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; [ ! -d "\$BLOBS_PATH" ] && mkdir -p -m 777 -v \$BLOBS_PATH; if [ ! -L /nexus-data/blobs ]; then ln -v -s \$BLOBS_PATH /nexus-data/blobs && chown -v 200:200 /nexus-data && chown -v -R 200:200 /nexus-data/blobs/; fi']
           volumeMounts:
             - name: nexus-data-volume
               mountPath: /nexus-data
@@ -84,17 +84,19 @@ spec:
             httpGet:
               path: /
               port: 8081
-            initialDelaySeconds: 60
-            periodSeconds: 60
+            initialDelaySeconds: 30
+            periodSeconds: 120
+            successThreshold: 1
             failureThreshold: 6
             timeoutSeconds: 10
           readinessProbe:
             httpGet:
               path: /
               port: 8081
-            initialDelaySeconds: 60
-            periodSeconds: 60
-            failureThreshold: 6
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            successThreshold: 1
+            failureThreshold: 60
             timeoutSeconds: 10
           env:
             - name: NEXUS_SECURITY_RANDOMPASSWORD
