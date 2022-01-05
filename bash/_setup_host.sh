@@ -74,8 +74,9 @@ function f_del_log_cron() {
     fi
     # NOTE: I'm using -print to output what will be deleted into STDOUT (but hiding error), which may generate cron email to root
     echo '#!/bin/bash
-find '${_parent_dir%/}'/logs -type f -name "*log*" -mtime +'${_days}' -print -delete 2>/dev/null
-find '${_parent_dir%/}'/backups -type f -mtime +'$((${_days} * 5))' -print -delete
+find '${_parent_dir%/}'/logs -type f -name "*log*" -mtime +'${_days}' -print -delete
+find '${_parent_dir%/}'/backups -type f -mtime +'$((${_days} * 3))' -print -delete
+find '${_parent_dir%/}'/backups/* -type d -mtime +2 -empty -print -delete
 exit $?' >/etc/cron.daily/${_name}
     chmod a+x /etc/cron.daily/${_name}
 }
@@ -1115,6 +1116,9 @@ function f_microk8s() {
     microk8s kubectl describe pvc <pvc-name>
     microk8s kubectl exec <pod-name> -ti -- bash
     microk8s kubectl scale --replicas=0 deployment <deployment-name>    # stop all pods temporarily (if no HPA)
+
+    # Ingress troubleshooting: https://kubernetes.github.io/ingress-nginx/troubleshooting/
+    microk8s kubectl exec -it -n ingress nginx-ingress-microk8s-controller-xb9qh -- cat /etc/nginx/nginx.conf
 
     microk8s stop
     #systemctl stop snap.microk8s.daemon-containerd.service
