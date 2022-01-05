@@ -24,28 +24,11 @@ import (
 func usage() {
 	// TODO: update usage
 	fmt.Println(`
-List AWS S3 objects as CSV (Key,LastModified,Size,Owner,Tags).
+List AWS S3 objects as CSV (Path,LastModified,Size,Owner,Tags).
 Usually it takes about 1 second for 1000 objects.
-
-DOWNLOAD and INSTALL:
-    curl -o /usr/local/bin/file-list -L https://github.com/hajimeo/samples/raw/master/misc/file-list_$(uname)
-    chmod a+x /usr/local/bin/file-list
     
-USAGE EXAMPLES:
-    file-list -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
-
-ARGUMENTS:
-    -b BaseDir_str  Base directory path (eg: <workingDirectory>/blobs/default/content)
-    -p Prefix_str   List only objects which directory *name* starts with this prefix (eg: val-)
-    -f Filter_str   List only objects which path contains this string (eg. .properties)
-    -fP Filter_str  List .properties file (no .bytes files) which contains this string (much slower)
-                    Also, this enables -f ".properties" and -P.
-    -n topN_num     Return first/top N results only
-    -c concurrency  Executing walk per sub directory in parallel (may not need with very fast disk)
-    -P              Get properties (can be very slower)
-    -R              Treat -fP value as regex
-    -H              No column Header line
-    -X              Verbose log output`)
+HOW TO and USAGE EXAMPLES:
+    https://github.com/hajimeo/samples/tree/master/golang/FileList`)
 }
 
 // Arguments
@@ -90,7 +73,7 @@ func printLine(path string, f os.FileInfo) {
 				// Otherwise, return properties lines only if contents match.
 				if *_USE_REGEX { //len(_R.String()) > 0
 					// To allow to use simpler regex, sorting line and converting to single line firt
-					lines := strings.Split(strings.TrimSpace(string(bytes)), "\n")
+					lines := strings.Split(contents, "\n")
 					sort.Strings(lines)
 					contents = strings.Join(lines, ",")
 					if _R.MatchString(contents) {
@@ -164,7 +147,7 @@ func main() {
 	}
 
 	_BASEDIR = flag.String("b", ".", "Base directory (default: '.')")
-	_PREFIX = flag.String("p", "", "The prefix of directory/file name (eg: vol-)")
+	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: vol-)")
 	_FILTER = flag.String("f", "", "Filter string for file paths (eg: .properties)")
 	_FILTER2 = flag.String("fP", "", "Filter string for properties (-P is required)")
 	_TOP_N = flag.Int64("n", 0, "Return only first N keys (0 = no limit)")
@@ -205,6 +188,8 @@ func main() {
 	if *_CONC_1 > 1 {
 		_log("DEBUG", fmt.Sprintf("Retriving sub directories under %s", *_BASEDIR))
 		subDirs = getDirs(*_BASEDIR, *_PREFIX)
+	} else if len(*_PREFIX) > 0 {
+		_log("INFO", fmt.Sprintf("Prefix %s is provided but no concurrency so ignored.", *_PREFIX))
 	}
 
 	wg := sync.WaitGroup{}

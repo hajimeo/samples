@@ -22,6 +22,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"log"
 	"os"
+	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,51 +34,8 @@ func usage() {
 List AWS S3 objects as CSV (Path,LastModified,Size,Owner,Tags).
 Usually it takes about 1 second for 1000 objects.
 
-DOWNLOAD and INSTALL:
-    curl -o /usr/local/bin/aws-s3-list -L https://github.com/hajimeo/samples/raw/master/misc/aws-s3-list_$(uname)
-    chmod a+x /usr/local/bin/aws-s3-list
-    
-USAGE EXAMPLES:
-    # Preparation: set AWS environment variables
-    $ export AWS_REGION=ap-southeast-2 AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyyy
-
-    # List all objects under the Backet-name bucket 
-    $ aws-s3-list -b Backet-name
-
-    # Check the count and size of all .bytes file under nxrm3/content/ (including tmp)
-    $ aws-s3-list -b Backet-name -p "nxrm3/content/" -f ".bytes" -c1 50 >/dev/null
-
-    # List sub directories (-L) under nxrm3/content/vol* 
-    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -L
-
-    # Parallel execution (concurrency 10)
-    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -c1 10 > all_objects.csv
-
-    # Parallel execution (concurrency 4 * 100) with Tags and Owner (approx. 300 lines per sec)
-    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -T -O -c1 4 -c2 100 > all_with_tags.csv
-
-    # Parallel execution (concurrency 4 * 100) with all properties (approx. 250 lines per sec)
-    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -f ".properties" -P -c1 4 -c2 100 > all_with_props.csv
-
-    # List all objects which proerties contain 'deleted=true'
-    $ aws-s3-list -b Backet-name -p "nxrm3/content/vol-" -fP "deleted=true" -P -c1 4 -c2 100 > soft_deleted.csv
-
-ARGUMENTS:
-    -p Prefix_str   List objects which key starts with this prefix
-    -f Filter_str   List objects which key contains this string (much slower)
-    -fP Filter_str  List .properties file (no .bytes files) which contains this string (much slower)
-                    Equivalent of -f ".properties" and -P.
-    -n topN_num     Return first/top N results only
-    -m MaxKeys_num  Batch size number. Default is 1000
-    -c1 concurrency Concurrency number for Prefix (-p xxxx/content/vol-), execute in parallel per sub directory
-    -c2 concurrency Concurrency number for Tags (-T) and also Properties (-P)
-    -L              With -p, list sub folders under prefix
-    -O              Get Owner display name (can be slightly slower)
-    -T              Get Tags (can be slower)
-    -P              Get properties (can be very slower)
-    -H              No Header line output
-    -X              Verbose log output
-    -XX             More verbose log output`)
+HOW TO and USAGE EXAMPLES:
+    https://github.com/hajimeo/samples/tree/master/golang/AwsS3List`)
 }
 
 // Arguments
@@ -93,6 +52,8 @@ var _WITH_OWNER *bool
 var _WITH_TAGS *bool
 var _WITH_PROPS *bool
 var _NO_HEADER *bool
+var _USE_REGEX *bool
+var _R *regexp.Regexp
 var _DEBUG *bool
 var _DEBUG2 *bool
 
@@ -123,26 +84,45 @@ func printLine(client *s3.Client, item types.Object) {
 	// Checking props first because if _FILTER2 is given and match, do not check others.
 	props := ""
 	if *_WITH_PROPS && strings.HasSuffix(*item.Key, ".properties") {
-		_log("DEBUG", fmt.Sprintf("Getting properties for %s", *item.Key))
+		path := *item.Key
+		_log("DEBUG", fmt.Sprintf("Getting properties for %s", path))
 		_inputO := &s3.GetObjectInput{
 			Bucket: _BUCKET,
 			Key:    item.Key,
 		}
 		_obj, err := client.GetObject(context.TODO(), _inputO)
 		if err != nil {
-			_log("DEBUG", fmt.Sprintf("Retrieving %s failed with %s. Ignoring...", *item.Key, err.Error()))
+			_log("DEBUG", fmt.Sprintf("Retrieving %s failed with %s. Ignoring...", path, err.Error()))
 		} else {
 			buf := new(bytes.Buffer)
 			_, err := buf.ReadFrom(_obj.Body)
 			if err != nil {
 				_log("DEBUG", fmt.Sprintf("Readubg object for %s failed with %s. Ignoring...", *item.Key, err.Error()))
+			}
+			contents := strings.TrimSpace(buf.String())
+			if len(*_FILTER2) == 0 {
+				// If no _FILETER2, just return the contents as single line. Should also escape '"'?
+				props = strings.ReplaceAll(contents, "\n", ",")
 			} else {
-				if len(*_FILTER2) == 0 || strings.Contains(buf.String(), *_FILTER2) {
-					// Should also escape '"'?
-					props = strings.ReplaceAll(strings.TrimSpace(buf.String()), "\n", ",")
+				// Otherwise, return properties lines only if contents match.
+				if *_USE_REGEX { //len(_R.String()) > 0
+					// To allow to use simpler regex, sorting line and converting to single line firt
+					lines := strings.Split(contents, "\n")
+					sort.Strings(lines)
+					contents = strings.Join(lines, ",")
+					if _R.MatchString(contents) {
+						props = contents
+					} else {
+						_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s (with Regex). Not outputting entire line...", path, *_FILTER2))
+						return
+					}
 				} else {
-					_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s. Not outputting entire line...", *item.Key, *_FILTER2))
-					return
+					if strings.Contains(contents, *_FILTER2) {
+						props = strings.ReplaceAll(contents, "\n", ",")
+					} else {
+						_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s (with Regex). Not outputting entire line...", path, *_FILTER2))
+						return
+					}
 				}
 			}
 		}
@@ -235,9 +215,9 @@ func main() {
 		os.Exit(0)
 	}
 
-	_BUCKET = flag.String("b", "", "The name of the Bucket")
-	_PREFIX = flag.String("p", "", "The name of the Prefix")
-	_FILTER = flag.String("f", "", "Filter string for keys")
+	_BUCKET = flag.String("b", "", "S3 Bucket name")
+	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: xxxxxx/content/vol-)")
+	_FILTER = flag.String("f", "", "Filter string for item.Keys")
 	_FILTER2 = flag.String("fP", "", "Filter string for properties (-P is required)")
 	_MAXKEYS = flag.Int("m", 1000, "Integer value for Max Keys (<= 1000)")
 	_TOP_N = flag.Int64("n", 0, "Return only first N keys (0 = no limit)")
@@ -247,6 +227,7 @@ func main() {
 	_WITH_OWNER = flag.Bool("O", false, "If true, also get owner display name")
 	_WITH_TAGS = flag.Bool("T", false, "If true, also get tags of each object")
 	_WITH_PROPS = flag.Bool("P", false, "If true, also get the contents of .properties files")
+	_USE_REGEX = flag.Bool("R", false, "If true, regexp.MatchString is used for _FILTER2")
 	_NO_HEADER = flag.Bool("H", false, "If true, no header line")
 	_DEBUG = flag.Bool("X", false, "If true, verbose logging")
 	_DEBUG2 = flag.Bool("XX", false, "If true, more verbose logging")
@@ -264,15 +245,16 @@ func main() {
 	if len(*_FILTER2) > 0 {
 		*_FILTER = ".properties"
 		*_WITH_PROPS = true
+		_R, _ = regexp.Compile(*_FILTER2)
 	}
 
 	if !*_NO_HEADER && *_PREFIX == "" {
-		_log("WARN", "Without prefix (-p PREFIX_STRING), it can take longer.")
+		_log("WARN", "Without prefix (-p PREFIX_STRING), listing can take longer.")
 		//time.Sleep(3 * time.Second)
 	}
 
 	if !*_NO_HEADER && *_WITH_TAGS {
-		_log("WARN", "With Tags (-T), it can be much slower.")
+		_log("WARN", "With Tags (-T), listing can be much slower.")
 	}
 
 	if !*_NO_HEADER && *_WITH_PROPS {

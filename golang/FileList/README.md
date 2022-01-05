@@ -29,10 +29,25 @@ curl -o /usr/local/bin/file-list -L https://github.com/hajimeo/samples/raw/maste
 chmod a+x /usr/local/bin/file-list
 ```
 
+## Example output
+Listing relatively larger blob store **with all properties contents and with 200 concurrency**:
+```
+# time file-list -b ./content -P -c 200 >/tmp/files2.csv
+2021/12/31 14:54:12 WARN: With Properties (-P), listing can be slower.
+2021/12/31 14:54:12 INFO: Generating list with ./content ...
+
+2021/12/31 14:54:14 INFO: Printed 113939 items (size: 16658145001) in ./content with prefix: ''
+
+real    0m1.908s    <<< very fast!
+user    0m1.733s
+sys     0m1.775s
+```
+
 ## ARGUMENTS:
 ```
     -b BaseDir_str  Base directory path (eg: <workingDirectory>/blobs/default/content)
     -p Prefix_str   List only objects which directory *name* starts with this prefix (eg: val-)
+                    Require -c 2 or higher number. If -c 1, -p is not used.
     -f Filter_str   List only objects which path contains this string (eg. .properties)
     -fP Filter_str  List .properties file (no .bytes files) which contains this string (much slower)
                     Equivalent of -f ".properties" and -P.
@@ -77,18 +92,4 @@ $ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f "
 List all objects which properties contain 'repo-name=docker-proxy' and 'deleted=true' (NOTE: properties are sorted)
 ```
 $ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.csv
-```
-
-## Misc.
-Listing relatively larger blob store **with all properties contents and with 200 concurrency**:
-```
-# time file-list -b ./content -P -c 200 >/tmp/files2.csv
-2021/12/31 14:54:12 WARN: With Properties (-P), listing can be slower.
-2021/12/31 14:54:12 INFO: Generating list with ./content ...
-
-2021/12/31 14:54:14 INFO: Printed 113939 items (size: 16658145001) in ./content with prefix: ''
-
-real    0m1.908s    <<< very fast!
-user    0m1.733s
-sys     0m1.775s
 ```
