@@ -30,17 +30,17 @@ chmod a+x /usr/local/bin/file-list
 ```
 
 ## Example output
-Listing relatively larger blob store **with all properties contents and with 200 concurrency**:
+Listing blob store items with all properties contents and with 10 concurrency:
 ```
-# time file-list -b ./content -P -c 200 >/tmp/files2.csv
-2021/12/31 14:54:12 WARN: With Properties (-P), listing can be slower.
-2021/12/31 14:54:12 INFO: Generating list with ./content ...
+[root@node-nxrm-ha1 ~]# time file-list -b /opt/sonatype/sonatype-work/nexus3/blobs/default/content -p 'vol-' -P -c 10 > /tmp/default_props.csv
+2022/01/05 05:45:07 WARN: With Properties (-P), listing can be slower.
+2022/01/05 05:45:07 INFO: Generating list with /opt/sonatype/sonatype-work/nexus3/blobs/default/content ...
 
-2021/12/31 14:54:14 INFO: Printed 113939 items (size: 16658145001) in ./content with prefix: ''
+2022/01/05 05:45:08 INFO: Printed 35344 items (size: 5219997855) in /opt/sonatype/sonatype-work/nexus3/blobs/default/content with prefix: 'vol-'
 
-real    0m1.908s    <<< very fast!
-user    0m1.733s
-sys     0m1.775s
+real    0m0.693s   <<< Very fast!
+user    0m0.554s
+sys     0m0.834s
 ```
 
 ## ARGUMENTS:
@@ -92,4 +92,50 @@ $ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f "
 List all objects which properties contain 'repo-name=docker-proxy' and 'deleted=true' (NOTE: properties are sorted)
 ```
 $ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.csv
+```
+
+## ADVANCE USAGE EXAMPLE:
+```
+file-list -b /opt/sonatype/sonatype-work/nexus3/blobs/default/content -p 'vol-' -P -c 10 > default_props.csv
+# Extract blob ref IDs only:
+grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' default_props.csv | sort | uniq > /tmp/default_blob_refs.out
+
+# Get blob ref IDs from a database backup file:
+curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar"
+echo "SELECT blob_ref FROM asset WHERE blob_ref LIKE 'default@%'" | java -DexportPath=/tmp/result.json -jar ./orient-console.jar ../sonatype/backups/component-2022-01-04-22-00-00-3.37.0-01.bak
+grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/result.json | sort | uniq > /tmp/default_blob_refs_from_db.out
+
+# Check missing blobs:
+diff -wy --suppress-common-lines /tmp/default_blob_refs.out /tmp/default_blob_refs_from_db.out > default_blob_refs_diff.out
+
+head -n3 default_blob_refs_diff.out
+001c00d5-7a50-4412-9523-b5c080b21ea7                          <
+0021bef4-139f-414d-93d6-8dc98b93ca1a                          <
+00261d0f-0fa7-4d68-b354-7ff18b5dab62                          <
+
+# Check details
+grep "001c00d5-7a50-4412-9523-b5c080b21ea7.properties" default_props.csv | tr ',' '\n'
+"/opt/sonatype/sonatype-work/nexus3/blobs/default/content/vol-05/chap-45/001c00d5-7a50-4412-9523-b5c080b21ea7.properties"
+"2021-10-19 00:59:38.430595915 +0000 UTC"
+1200
+"#2021-10-19 00:59:38
+435+0000
+#Tue Oct 19 00:59:38 UTC 2021
+@attributes.asset.npm.repository_url=https\://github.com/facebook/regenerator/tree/master/packages/regenerator-runtime
+@BlobStore.created-by-ip=system
+... (snip) ...
+@BlobStore.blob-name=/regenerator-runtime/-/regenerator-runtime-0.11.1.tgz
+@attributes.asset.npm.license=MIT
+@attributes.asset.npm.tagged_not=
+@attributes.asset.npm.name=regenerator-runtime"
+```
+All above commands would complete within 10 seconds, and the last result means no dead blobs but orphaned blobs (looks like because of PostgreSQL migration test as per "@BlobStore.blob-name=/").
+
+Example of generating filepath list for deleting all orphaned:
+```
+grep -oE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' default_blob_refs_diff.out | while read -r _br; do
+  # Below is slow, but just in case, to make sure all blob-name starts with "/"
+  #grep -E "${_br}\.properties.+,@BlobStore\.blob-name=/" default_props.csv | grep -oE '^"[^"]+"' | sed -E 's/.properties/.*/g'
+  grep -oE "[^\"]+${_br}[^\"]+" default_props.csv
+done > orphaned_filepath.out
 ```

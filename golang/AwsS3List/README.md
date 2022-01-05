@@ -12,7 +12,7 @@ chmod a+x /usr/local/bin/aws-s3-list
 ## Example output
 List all objects under node-nxrm-ha1/content/vol-* for the bucket (apac-support-bucket) with 20 concurrency:
 ```
-$ time ./aws-s3-list -b apac-support-bucket -p "node-nxrm-ha1/content/vol-" -c1 20 > /tmp/all_objects.csv
+$ time aws-s3-list -b apac-support-bucket -p "node-nxrm-ha1/content/vol-" -c1 20 > /tmp/all_objects.csv
 2021/08/31 15:44:45 INFO: Generating list from bucket: apac-support-bucket ...
 
 2021/08/31 15:44:57 INFO: Printed 20030 items (size: 3426012) in bucket: apac-support-bucket with prefix: node-nxrm-ha1/content/vol-
@@ -71,19 +71,20 @@ NOTE: When the bucket is small, *without* -c1 is faster.
 
 ## ADVANCE USAGE EXAMPLE:
 ```
-./aws-s3-list_Darwin -b apac-support-bucket -p "node-nxrm-ha1/content/vol-" -c1 20 > /tmp/all_objects.csv
+aws-s3-list -b apac-support-bucket -p "node-nxrm-ha1/content/vol-" -c1 20 > /tmp/s3-test_objects.csv
 # Extract blob ref IDs only:
-grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/all_objects.csv | sort | uniq > all_blob_refs_s3.out
+grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/s3-test_objects.csv | sort | uniq > s3-test_blob_refs.out
 
 # Get blob ref IDs from a database backup file:
 curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar"
 echo "SELECT blob_ref FROM asset WHERE blob_ref LIKE 's3-test@%'" | java -DexportPath=/tmp/result.json -jar ./orient-console.jar ../sonatype/backups/component-2021-08-30-22-00-00-3.33.0-01.bak
-grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/result.json | sort > all_blob_refs_from_db.out
+grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/result.json | sort | uniq > s3-test_blob_refs_from_db.out
 
 # Check missing blobs:
-diff -wy --suppress-common-lines all_blob_refs_s3.out all_blob_refs_from_db.out | head -n3
+diff -wy --suppress-common-lines s3-test_blob_refs.out s3-test_blob_refs_from_db.out
 1ab44c7d-553a-416c-b0ec-a1e06088f984			      <
 234e1975-2e5a-4d0c-9e06-bf85e33de422			      <
 23bdb564-a670-4925-81ee-4ba70a33a672			      <
+...
 ```
 All above commands would complete within 10 seconds, and the last result means no dead blobs.
