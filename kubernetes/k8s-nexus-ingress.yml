@@ -1,36 +1,11 @@
-# kubectl apply -f k8s-nexus-ingress.yml
+# kubectl apply -n sonatype -f k8s-nexus-ingress.yml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: nexus-ingress
-  # NOTE: don't forget to check/change the namespace.
-  namespace: sonatype
 spec:
   rules:
-    # NXRM3 standalone
-    - host: nxrm3-k8s.standalone.localdomain
-      http:
-        paths:
-          - backend:
-              service:
-                # TODO: Need to make sure the service name is correct
-                name: nxrm3-nexus-repository-manager
-                port:
-                  number: 8081
-            pathType: Prefix
-            path: /
-    - host: docker-k8s.standalone.localdomain
-      http:
-        paths:
-          - backend:
-              service:
-                # TODO: Need to make sure the service name is correct
-                name: nxrm3-nexus-repository-manager
-                port:
-                  number: 5000
-            pathType: Prefix
-            path: /
-
+    # NXRM3 + PostgreSQL standalone
     - host: nxrm3-pg-k8s.standalone.localdomain
       http:
         paths:
@@ -41,36 +16,14 @@ spec:
                   number: 8081
             pathType: Prefix
             path: /
-
-    # NXRM3 HA-C three nodes
-    - host: nxrm3-ha1-k8s.standalone.localdomain
+    - host: docker-k8s.standalone.localdomain
       http:
         paths:
           - backend:
               service:
-                name: nxrm3-ha1-nexus-repository-manager
+                name: nxrm3-pg-service
                 port:
-                  number: 8081
-            pathType: Prefix
-            path: /
-    - host: nxrm3-ha2-k8s.standalone.localdomain
-      http:
-        paths:
-          - backend:
-              service:
-                name: nxrm3-ha2-nexus-repository-manager
-                port:
-                  number: 8081
-            pathType: Prefix
-            path: /
-    - host: nxrm3-ha3-k8s.standalone.localdomain
-      http:
-        paths:
-          - backend:
-              service:
-                name: nxrm3-ha3-nexus-repository-manager
-                port:
-                  number: 8081
+                  number: 5000
             pathType: Prefix
             path: /
 
