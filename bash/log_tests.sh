@@ -428,7 +428,7 @@ function t_requests() {
 
     # NOTE: can't use headerContentLength as some request.log doesn't have it
     f_reqsFromCSV "request.csv" "7000" "" "20" 2>/dev/null >/tmp/t_requests.out
-    _test_template "$(_rg -q '\s+GET\s+' -m1 /tmp/t_requests.out && cat /tmp/t_requests.out)" "WARN" "Unusually slow downloads in ${_FILTERED_DATA_DIR}/request.csv"
+    _test_template "$(_rg -q '\s+GET\s+' -m1 /tmp/t_requests.out && cat /tmp/t_requests.out)" "WARN" "Slow downloads in ${_FILTERED_DATA_DIR}/request.csv"
 }
 
 
