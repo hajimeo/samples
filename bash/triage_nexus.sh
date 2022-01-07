@@ -81,6 +81,25 @@ function f_blobs_csv() {
     fi
 }
 
+function f_blob_refs_from_dump() {
+    local __doc__="List blob_ref from pg_dump .gz file"
+    # PGPASSWORD="${_DB_PWD}" pg_dump -U ${_DB_USER} -h ${_DB_HOSTNAME} -f ${_dump_dest_filename} -Z 6 ${_DB_NAME}
+    local _blobstore="$1"
+    local _dump_file="$2"
+    # default:1e8fa82e-de1d-4077-a000-87519667c480@543737FB-31D9E760-58122A7D-1203FD17-A4855E39 (assuming it starts with *correct* blobstore name)
+    zgrep -oE "\s+${_blobstore}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}" "${_dump_file}" | sed -E "s/\s+${_blobstore}://g"
+}
+function f_blob_refs_from_bak() {
+    local __doc__="List blob_ref from OrientDB .bak file"
+    local _blobstore="$1"
+    local _bak_file="$2"
+    if [ ! -s /tmp/orient-console.jar ]; then
+        curl -o/tmp/orient-console.jar -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar" || return $?
+    fi
+    echo "SELECT blob_ref FROM asset WHERE blob_ref LIKE '${_blobstore}@%'" | java -DexportPath=/tmp/result.json -jar ./orient-console.jar "${_bak_file}" || return $?
+    grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/result.json
+}
+
 #f_upload_dummies "http://localhost:8081/repository/raw-s3-hosted/manyfiles" "1432 10000" 8
 function f_upload_dummies() {
     local __doc__="Upload text files into (raw) hosted repository"
