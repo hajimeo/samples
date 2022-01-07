@@ -73,7 +73,9 @@ function f_check_system() {
     getenforce &> ${_work_dir%/}/getenforce.out
     iptables -nvL --line-number &> ${_work_dir%/}/iptables.out
     iptables -t nat -nvL --line-number &>> ${_work_dir%/}/iptables.out
-    (which timeout &>/dev/null && (timeout 3 time head -n 1 /dev/./urandom > /dev/null;echo '-';timeout 3 time head -n 1 /dev/random > /dev/null)) &> ${_work_dir%/}/random.out
+    timeout 3 time head -n 1 /dev/./urandom &> ${_work_dir%/}/random.out
+    echo '-' &>> ${_work_dir%/}/random.out
+    timeout 3 time head -n 1 /dev/random &>> ${_work_dir%/}/random.out
 
     #top -b -n1 -c -o +%MEM  # '+' (default) for reverse order (opposite of 'ps')
     top -b -n1 -c &>> ${_work_dir%/}/top.out
