@@ -1675,6 +1675,9 @@ function f_postfix() {
             _upsert "${_conf_file}" "recipient_canonical_classes" "envelope_recipient"
             _upsert "${_conf_file}" "recipient_canonical_maps" "regexp:/etc/postfix/recipient_canonical_map"
             _upsert "${_conf_file}" "smtpd_tls_security_level" "may"
+            # TODO: not sure if i need to use below
+            _upsert "${_conf_file}" "smtpd_tls_wrappermode" "yes"
+            _upsert "${_conf_file}" "smtpd_sasl_auth_enable" "yes"
             # Ubuntu's postfix uses /etc/ssl/private/ssl-cert-snakeoil.key so actually don't need below
             if [ -s /var/tmp/share/cert/standalone.localdomain.key ]; then
                 _upsert "${_conf_file}" "smtpd_tls_key_file" "/var/tmp/share/cert/standalone.localdomain.key"
