@@ -23,7 +23,8 @@ spec:
               service:
                 name: nxrm3-pg-service
                 port:
-                  number: 5000
+                  #number: 5000
+                  number: 4999
             pathType: Prefix
             path: /
 
