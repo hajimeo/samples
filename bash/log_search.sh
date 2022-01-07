@@ -778,14 +778,17 @@ function f_gc_overview() {
     local _file="$1"
     local _saveTo="$2"
     local _size="${3:-"M"}"
-    local _datetime_filter="${4:-"${_DATE_FORMAT}.\d\d:\d\d:\d\d.\d+"}"
+    local _datetime_filter="${4:-"${_DATE_FORMAT}.\\d\\d:\\d\\d:\\d\\d.?\\d*"}"
     [ -z "${_saveTo}" ] && _saveTo="$(basename ${_file%.*}).csv"
     # TODO: can't use the datetime filter in below rg command. Need to use more complex rg command
     rg -z '(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+)' -o ${_file} | paste - - > /tmp/${FUNCNAME}.tmp || return $?
     rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC[^,]+).* ([0-9.]+) secs.+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}" -o -r '"${1}",${3},${4},${5},"${2}"' /tmp/${FUNCNAME}.tmp > "${_saveTo}" || return $?
     head -n1 "${_saveTo}" | rg -q '^date_time' || echo "date_time,elapsed_secs,heap_before_${_size},heap_after_${_size},gc_type
 $(cat "${_saveTo}")" > ${_saveTo}
-    rg "${_DATE_FORMAT}.\d\d:\d" -o gc.2021-10-30_15-03-15.log.0.current.csv | bar_chart.py
+    echo "# Full GCs"
+    rg "^\"(${_DATE_FORMAT}.\d\d:\d).+Full GC" -o -r '$1' ${_saveTo} | bar_chart.py
+    echo "# All GCs"
+    rg "^\"(${_DATE_FORMAT}.\d\d)" -o -r '$1' ${_saveTo} | bar_chart.py
     ls -l /tmp/${FUNCNAME}.tmp ${_saveTo}
 }
 
@@ -1125,7 +1128,7 @@ function f_log2csv() {
     fi
 }
 
-f_reqsFromCSV() {
+function f_reqsFromCSV() {
     local _csv_filename="${1:-"request.csv"}"
     local _elapsedTime_gt="${2:-"7000"}"
     local _since_time="${3-"00:00:00"}"
