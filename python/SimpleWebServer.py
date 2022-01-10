@@ -121,9 +121,10 @@ class SimpleWebServer(BaseHTTPRequestHandler):
         SimpleWebServer._creds = c
         # self._log(str(SimpleWebServer._creds.__dict__))
         if plain:
-            f = open(credpath + ".tmp", "wb")
+            self._log(credpath + ".tmp")
+            f = open(credpath + ".tmp", "w")
             for p, v in s.items():
-                f.write(p + "='" + v + "'\n")
+                f.write(str(p) + "='" + str(v) + "'\n")
             f.close()
             import py_compile
             py_compile.compile(credpath + ".tmp", credpath + "c")
