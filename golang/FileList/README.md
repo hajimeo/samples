@@ -139,6 +139,3 @@ grep -oE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' default
   grep -oE "[^\"]+${_br}[^\"]+" default_props.csv
 done > orphaned_filepath.out
 ```
-
-## TODOs:
-Currently -c N without -p 'xxxx' causes duplicate records.

@@ -40,6 +40,7 @@ var _TOP_N *int64
 var _CONC_1 *int
 
 //var _CONC_2 *int	// TODO: not implementing this for now
+var _LIST_DIRS *bool
 var _WITH_PROPS *bool
 var _NO_HEADER *bool
 var _USE_REGEX *bool
@@ -104,16 +105,35 @@ func printLine(path string, f os.FileInfo) {
 
 // get *all* directories under basedir and which name starts with prefix
 func getDirs(basedir string, prefix string) []string {
-	dirs := []string{}
+	var dirs []string
+	basedir = strings.TrimSuffix(basedir, string(filepath.Separator))
+	if len(prefix) == 0 {
+		fp, err := os.Open(basedir)
+		if err != nil {
+			println("os.Open for " + basedir + " failed.")
+			panic(err.Error())
+		}
+		list, _ := fp.Readdir(0) // 0 to read all files and folders
+		for _, f := range list {
+			if f.IsDir() {
+				dirs = append(dirs, basedir+string(filepath.Separator)+f.Name())
+			}
+		}
+		return dirs
+	}
+
+	// Not using Glob because probably it needs to open each object for IsDir()
+	//list, _ := filepath.Glob(basedir + string(filepath.Separator) + prefix)
 	err := filepath.Walk(basedir, func(path string, f os.FileInfo, err error) error {
 		if f.IsDir() {
+			// len(prefix) == 0 is no longer needed but at this moment, leaving as it is.
 			if len(prefix) == 0 || strings.HasPrefix(f.Name(), prefix) {
 				dirs = append(dirs, path)
 			}
 		}
 		return nil
 	})
-	if err != nil {
+	if err != nil && err != io.EOF {
 		println("Got error retrieving list of directories:")
 		panic(err.Error())
 	}
@@ -152,6 +172,7 @@ func main() {
 	_FILTER2 = flag.String("fP", "", "Filter string for properties (-P is required)")
 	_TOP_N = flag.Int64("n", 0, "Return only first N keys (0 = no limit)")
 	_CONC_1 = flag.Int("c", 1, "Concurrent number for sub directories (may not need to use with very fast disk)")
+	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
 	_WITH_PROPS = flag.Bool("P", false, "If true, also get the contents of .properties files")
 	_USE_REGEX = flag.Bool("R", false, "If true, regexp.MatchString is used for _FILTER2")
 	_NO_HEADER = flag.Bool("H", false, "If true, no header line")
@@ -169,7 +190,7 @@ func main() {
 	}
 
 	if *_CONC_1 < 1 {
-		_log("ERROR", "_CONC_1 is lower than 1.")
+		_log("ERROR", "-c is lower than 1.")
 		os.Exit(1)
 	}
 
@@ -183,14 +204,13 @@ func main() {
 
 	_log("INFO", fmt.Sprintf("Generating list with %s ...", *_BASEDIR))
 
-	subDirs := make([]string, 1)
-	subDirs = append(subDirs, *_BASEDIR)
-	if *_CONC_1 > 1 {
-		_log("DEBUG", fmt.Sprintf("Retriving sub directories under %s", *_BASEDIR))
-		subDirs = getDirs(*_BASEDIR, *_PREFIX)
-	} else if len(*_PREFIX) > 0 {
-		_log("INFO", fmt.Sprintf("Prefix %s is provided but no concurrency so ignored.", *_PREFIX))
+	_log("DEBUG", fmt.Sprintf("Retriving sub directories under %s", *_BASEDIR))
+	subDirs := getDirs(*_BASEDIR, *_PREFIX)
+	if *_LIST_DIRS {
+		fmt.Printf("%v", subDirs)
+		return
 	}
+	_log("DEBUG", fmt.Sprintf("Sub directories: %v", subDirs))
 
 	wg := sync.WaitGroup{}
 	guard := make(chan struct{}, *_CONC_1)
