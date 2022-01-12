@@ -11,7 +11,7 @@ All functions start with "t_" are actual testing.
 REQUIREMENTS:
     bash, not tested with zsh.
     Please install below: (eg: 'brew install coreutils ripgrep jq q')
-        coreutils (realpath, timeout)
+        coreutils (realpath)
         rg  https://github.com/BurntSushi/ripgrep
         jq  https://stedolan.github.io/jq/download/
         q   https://github.com/harelba/q
@@ -21,6 +21,13 @@ REQUIREMENTS:
 TARGET OS:
     macOS Mojave
 EOF
+}
+_check_required() {
+    if ! type q >/dev/null || ! type rg >/dev/null || ! type jq >/dev/null || ! type realpath >/dev/null; then
+        _LOG "ERROR" "Required command is missing."
+        usage
+        return 1
+    fi
 }
 
 # Importing external libraries
@@ -54,6 +61,7 @@ _rg() {
 _q() {
     q -O -d"," -T --disable-double-double-quoting "$@" 2>/tmp/_q_last.err
 }
+
 _runner() {
     local _pfx="$1"
     local _n="${2:-"4"}"
@@ -282,7 +290,7 @@ function e_req_logs() {
     if [ -n "${_req_log_size}" ] && [ ${_req_log_size} -gt 0 ] && [ ${_req_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
         f_request2csv "${_req_log_path}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
     else
-        _LOG "INFO" "Not converting "${_req_log_path}" to CSV as no ${_REQUEST_LOG:-"request.log"} or log size (${_req_log_size}) is larger than ${_LOG_THRESHOLD_BYTES}"
+        _LOG "INFO" "Not converting '${_req_log_path}' to CSV because no ${_REQUEST_LOG:-"request.log"} or log size (${_req_log_size}) is larger than ${_LOG_THRESHOLD_BYTES}"
     fi
 }
 
@@ -433,6 +441,7 @@ function t_requests() {
 
 
 main() {
+    _check_required || return $?
     f_run_extract || return $?
     echo "# $(basename "$BASH_SOURCE" ".sh") results"
     echo "[[toc]]"
