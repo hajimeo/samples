@@ -32,16 +32,24 @@ chmod a+x /usr/local/bin/file-list
 ## Example output
 Listing blob store items with all properties contents and with 10 concurrency:
 ```
-[root@node-nxrm-ha1 ~]# time file-list -b /opt/sonatype/sonatype-work/nexus3/blobs/default/content -p 'vol-' -P -c 10 > /tmp/default_props.csv
-2022/01/05 05:45:07 WARN: With Properties (-P), listing can be slower.
-2022/01/05 05:45:07 INFO: Generating list with /opt/sonatype/sonatype-work/nexus3/blobs/default/content ...
+[root@node-nxrm-ha1 sonatype]# echo 3 > /proc/sys/vm/drop_caches
+[root@node-nxrm-ha1 sonatype]# file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -P -c 10 > /tmp/default_props.csv
+2022/01/12 02:52:06 WARN: With Properties (-P), listing can be slower.
+2022/01/12 02:52:06 INFO: Generating list with ./sonatype-work/nexus3/blobs/default/content ...
 
-2022/01/05 05:45:08 INFO: Printed 35344 items (size: 5219997855) in /opt/sonatype/sonatype-work/nexus3/blobs/default/content with prefix: 'vol-'
-
-real    0m0.693s   <<< Very fast!
-user    0m0.554s
-sys     0m0.834s
+2022/01/12 02:53:49 INFO: Printed 35731 items (size: 5278777651) in ./sonatype-work/nexus3/blobs/default/content with prefix: 'vol-'
 ```
+About 350 files per second on HDD (non SSD).
+
+Finding deleted=true (just for testing as you should just grep against /tmp/default_props.csv)
+```
+[root@node-nxrm-ha1 sonatype]# file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -fP "deleted=true" -c 10 > /tmp/default_soft_deleted.csv
+2022/01/12 02:56:44 WARN: With Properties (-P), listing can be slower.
+2022/01/12 02:56:44 INFO: Generating list with ./sonatype-work/nexus3/blobs/default/content ...
+
+2022/01/12 02:56:44 INFO: Printed 24 items (size: 19114) in ./sonatype-work/nexus3/blobs/default/content with prefix: 'vol-'
+```
+This time, it's much faster because of buffer/cache on Linux.
 
 ## ARGUMENTS:
 ```
