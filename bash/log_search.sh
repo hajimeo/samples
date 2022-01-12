@@ -795,7 +795,7 @@ $(cat "${_saveTo}")" > ${_saveTo}
 #JAVA_GC_LOG_DIR="/some/location"
 #JAVA_GC_OPTS="-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${JAVA_GC_LOG_DIR%/}/ -XX:+PrintClassHistogramBeforeFullGC -XX:+PrintClassHistogramAfterFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:${JAVA_GC_LOG_DIR}/gc.%t.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100m"
 function f_gc_before_after_check() {
-    local __doc__="TODO: add PrintClassHistogramBeforeFullGC/PrintClassHistogramAfterFullGC, and parse log to find which objects are increasing"
+    local __doc__="Check PrintClassHistogramBeforeFullGC/PrintClassHistogramAfterFullGC (not jmap -histo) to find which objects are increasing"
     local _log_dir="${1:-"."}"
     local _keyword="${2-"sonatype"}"
     local _A_max="${3-"100"}"
@@ -812,6 +812,25 @@ function f_gc_before_after_check() {
     diff -w -y -W200 <(head -n ${_n1} /tmp/${FUNCNAME}_$$.tmp | rg "(\d+)\s+(\d+)\s+(.*${_keyword}.*)" -o -r '${3} ${2} ${1}') <(tail -n ${_n1} /tmp/${FUNCNAME}_$$.tmp | rg "(\d+)\s+(\d+)\s+(.*${_keyword}.*)" -o -r '${3} ${2} ${1}')
     echo ""
     echo "# Temp file: /tmp/${FUNCNAME}_$$.tmp"
+}
+
+#for _f in $(ls -1 ./jmap_histos/jmap_histo_*.out); do f_jmap_histo2csv "${_f}" "./jmap_histos.csv"; done
+function f_jmap_histo2csv() {
+    local __doc__="Convert jmap -histo output to csv"
+    local _file="${1}"      # File path which contains jmap histo output
+    local _save_to="${2}"   # Saving path. If empty $(basename "${_file%.*}").csv
+    local _class_ex="${3-".*sonatype.*"}"   # If not empty, count classes which contains this word
+    local _key="${4}"       # Used for the first column. Expecting date_time but if empty file name
+    [ -z "${_key}" ] && _key="$(basename "${_file%.*}")"    # Not using "%%.*"
+    [ -z "${_save_to}" ] && _save_to="./$(basename "${_file%.*}").csv"
+    [ -z "${_class_ex}" ] && _class_ex=".+"
+    if [ -s "${_save_to}" ]; then
+        echo "${_save_to} exists, so appending ${_file} results ..." >&2
+    fi
+    # num     #instances         #bytes  class name
+    rg -z "^\s*\d+:\s+(\d+)\s+(\d+)\s+(${_class_ex})" -o -r '"'${_key}'","$3",$2,$1' ${_file} >> "${_save_to}" || return $?
+    head -n1 "${_save_to}" | rg -q '^key' || echo "key,class_name,bytes,instances
+$(cat "${_save_to}")" > ${_save_to}
 }
 
 function f_validate_siro_ini() {
