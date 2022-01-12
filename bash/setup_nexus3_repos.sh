@@ -1161,6 +1161,7 @@ if [ -s /usr/local/bin/nuget.exe ]; then
   alias nuget="mono /usr/local/bin/nuget.exe"
 fi
 EOF
+    # https://docs.microsoft.com/en-us/powershell/scripting/install/install-centos?view=powershell-7.2
     _log "INFO" "Install Powershell ..."    # NOTE: using /rhel/ is correct.
     curl -fL -o /etc/yum.repos.d/microsoft-prod.repo https://packages.microsoft.com/config/rhel/7/prod.repo --compressed
     yum install -y powershell
