@@ -122,8 +122,8 @@ function _postgresql_create_dbuser() {
         fi
     fi
     local _psql_as_admin="sudo -u ${_dbadmin} -i psql"
-    if ! grep -q "^${_dbadmin}" /etc/passwd; then
-        _log "WARN" "'${_dbadmin}' OS user does not exist. May require to set PGPASSWORD variable."
+    if ! id "${_dbadmin}" &>/dev/null; then
+        _log "WARN" "'${_dbadmin}' OS user may not exist. May require to set PGPASSWORD variable."
         # This will ask the password everytime, but you can use PGPASSWORD
         _psql_as_admin="psql -U ${_dbadmin}"
     fi
