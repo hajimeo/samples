@@ -10,6 +10,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/pkg/errors"
 	"io"
 	"log"
 	"os"
@@ -24,8 +25,7 @@ import (
 func usage() {
 	// TODO: update usage
 	fmt.Println(`
-List AWS S3 objects as CSV (Path,LastModified,Size,Owner,Tags).
-Usually it takes about 1 second for 1000 objects.
+List .properties and .bytes files as CSV (Path,LastModified,Size).
     
 HOW TO and USAGE EXAMPLES:
     https://github.com/hajimeo/samples/tree/master/golang/FileList`)
@@ -107,41 +107,31 @@ func printLine(path string, f os.FileInfo) {
 func getDirs(basedir string, prefix string) []string {
 	var dirs []string
 	basedir = strings.TrimSuffix(basedir, string(filepath.Separator))
-	if len(prefix) == 0 {
-		fp, err := os.Open(basedir)
-		if err != nil {
-			println("os.Open for " + basedir + " failed.")
-			panic(err.Error())
-		}
-		list, _ := fp.Readdir(0) // 0 to read all files and folders
-		for _, f := range list {
-			if f.IsDir() {
+	fp, err := os.Open(basedir)
+	if err != nil {
+		println("os.Open for " + basedir + " failed.")
+		panic(err.Error())
+	}
+	list, _ := fp.Readdir(0) // 0 to read all files and folders
+	for _, f := range list {
+		if f.IsDir() {
+			if len(prefix) == 0 || strings.HasPrefix(f.Name(), prefix) {
 				dirs = append(dirs, basedir+string(filepath.Separator)+f.Name())
 			}
 		}
-		return dirs
-	}
-
-	// Not using Glob because probably it needs to open each object for IsDir()
-	//list, _ := filepath.Glob(basedir + string(filepath.Separator) + prefix)
-	err := filepath.Walk(basedir, func(path string, f os.FileInfo, err error) error {
-		if f.IsDir() {
-			// len(prefix) == 0 is no longer needed but at this moment, leaving as it is.
-			if len(prefix) == 0 || strings.HasPrefix(f.Name(), prefix) {
-				dirs = append(dirs, path)
-			}
-		}
-		return nil
-	})
-	if err != nil && err != io.EOF {
-		println("Got error retrieving list of directories:")
-		panic(err.Error())
 	}
 	return dirs
 }
 
 func listObjects(basedir string) {
+	// Below does not work because currently Glob does not support ./**/*
+	//list, err := filepath.Glob(basedir + string(filepath.Separator) + *_FILTER)
+	// Somehow WalkDir is slower in this code
+	//err := filepath.WalkDir(basedir, func(path string, f fs.DirEntry, err error) error {
 	err := filepath.Walk(basedir, func(path string, f os.FileInfo, err error) error {
+		if err != nil {
+			return errors.Wrap(err, "failed filepath.WalkDir")
+		}
 		if !f.IsDir() {
 			if len(*_FILTER) == 0 || strings.Contains(f.Name(), *_FILTER) {
 				printLine(path, f)
@@ -202,8 +192,6 @@ func main() {
 		fmt.Println("")
 	}
 
-	_log("INFO", fmt.Sprintf("Generating list with %s ...", *_BASEDIR))
-
 	_log("DEBUG", fmt.Sprintf("Retriving sub directories under %s", *_BASEDIR))
 	subDirs := getDirs(*_BASEDIR, *_PREFIX)
 	if *_LIST_DIRS {
@@ -212,6 +200,7 @@ func main() {
 	}
 	_log("DEBUG", fmt.Sprintf("Sub directories: %v", subDirs))
 
+	_log("INFO", fmt.Sprintf("Generating list from %s ...", *_BASEDIR))
 	wg := sync.WaitGroup{}
 	guard := make(chan struct{}, *_CONC_1)
 	for _, s := range subDirs {

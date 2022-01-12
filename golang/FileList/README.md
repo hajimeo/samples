@@ -30,7 +30,7 @@ chmod a+x /usr/local/bin/file-list
 ```
 
 ## Example output
-Listing blob store items with all properties contents and with 10 concurrency:
+Listing blob store items **with all properties contents** and with 10 concurrency:
 ```
 [root@node-nxrm-ha1 sonatype]# echo 3 > /proc/sys/vm/drop_caches
 [root@node-nxrm-ha1 sonatype]# file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -P -c 10 > /tmp/default_props.csv
