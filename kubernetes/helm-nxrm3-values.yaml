@@ -19,12 +19,17 @@ nexus:
   env:
     - name: install4jAddVmParams
       value: "-Xms1200M -Xmx1200M -XX:MaxDirectMemorySize=2G -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap"
+      #value: "-Xms1200M -Xmx1200M -XX:MaxDirectMemorySize=2G -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap -Dapplication-port-ssl=8443 -Dssl.etc=${karaf.data}/ssl -Dnexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-https.xml,${jetty.etc}/jetty-requestlog.xml"
     - name: NEXUS_SECURITY_RANDOMPASSWORD
       value: "true"
   properties:
-    override: false
+    override: true
     data:
       nexus.scripts.allowCreation: true
+      # SSL/HTTPS (create /nexus-data/ssl/keystore.jks, create /nexus-data/ssl/jetty-https.xml with password, and change below 'nexus-args)
+      application-port-ssl: 8443
+      ssl.etc: /nexus-data/ssl
+      nexus-args: ${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-https.xml,${jetty.etc}/jetty-requestlog.xml
       # See this article for ldap configuratioon options https://support.sonatype.com/hc/en-us/articles/216597138-Setting-Advanced-LDAP-Connection-Properties-in-Nexus-Repository-Manager
       #nexus.ldap.env.java.naming.security.authentication: simple
   # nodeSelector:
@@ -42,7 +47,7 @@ nexus:
     # cpu: 250m
   # memory: 4800Mi
   # The ports should only be changed if the nexus image uses a different port
-  nexusPort: 8081
+  nexusPort: 8443
 
   securityContext:
     fsGroup: 2000
@@ -86,7 +91,8 @@ deployment:
   # mountPath: /nexus-data
   # # Uncomment and modify this to run a command after starting the nexus container.
   postStart:
-    command:    # '["/bin/sh", "-c", "ls"]'
+    # Dirty hack for test. Should update the PV instead below
+    command: '["/bin/sh", "-c", "mkdir -v -p /nexus-data/ssl; curl -o /nexus-data/ssl/keystore.jks -L https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.jks; chown -v -R 200 /nexus-data/ssl"]'
   preStart:
     command:    # '["/bin/rm", "-f", "/path/to/lockfile"]'
   terminationGracePeriodSeconds: 120
