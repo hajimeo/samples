@@ -21,6 +21,7 @@ nexus:
       value: "-Xms1200M -Xmx1200M -XX:MaxDirectMemorySize=2G -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap"
     - name: NEXUS_SECURITY_RANDOMPASSWORD
       value: "true"
+  ##### Hack for enabling HTTPS: start #####
   properties:
     override: true
     data:
@@ -29,8 +30,7 @@ nexus:
       application-port-ssl: 8443
       ssl.etc: /nexus-data/etc/ssl
       nexus-args: ${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,/nexus-data/etc/ssl/jetty-https.xml,${jetty.etc}/jetty-requestlog.xml
-      # See this article for ldap configuratioon options https://support.sonatype.com/hc/en-us/articles/216597138-Setting-Advanced-LDAP-Connection-Properties-in-Nexus-Repository-Manager
-      #nexus.ldap.env.java.naming.security.authentication: simple
+  ##### Hack for enabling HTTPS: end #####
   # nodeSelector:
   #   cloud.google.com/gke-nodepool: default-pool
   resources: {}
@@ -80,6 +80,7 @@ deployment:
   annotations: {}
   # # Add init containers. e.g. to be used to give specific permissions for nexus-data.
   # # Add your own init container or uncomment and modify the given example.
+  ##### Hack for enabling HTTPS: start #####
   initContainers:
     - name: fmp-volume-permission
       image: busybox
@@ -88,10 +89,10 @@ deployment:
       volumeMounts:
         - name: nexus-repository-manager-data
           mountPath: /nexus-data
-  # # Uncomment and modify this to run a command after starting the nexus container.
   postStart:
-    # Dirty hack for test. TODO: update below for either 'sed'-ing '>password<' or useing own jetty-https.xml
-    command: '["/bin/sh", "-c", "[ -f /nexus-data/etc/ssl/keystore.jks ] || curl -o /nexus-data/etc/ssl/keystore.jks -L https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.jks; [ -f /nexus-data/etc/ssl/jetty-https.xml ] || cp -v -p /opt/sonatype/nexus/etc/jetty/jetty-https.xml /nexus-data/etc/ssl/"]'
+    # NOTE: preStart would be ideal, but does not work. TODO: update below for either 'sed'-ing '>password<' or useing own jetty-https.xml
+    command: '["/bin/sh", "-c", "[ -f /nexus-data/etc/ssl/jetty-https.xml ] || cp -v -p /opt/sonatype/nexus/etc/jetty/jetty-https.xml /nexus-data/etc/ssl/; [ -f /nexus-data/etc/ssl/keystore.jks ] || curl -o /nexus-data/etc/ssl/keystore.jks -L https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.jks;"]'
+  ##### Hack for enabling HTTPS: end #####
   preStart:
     command:    # '["/bin/rm", "-f", "/path/to/lockfile"]'
   terminationGracePeriodSeconds: 120
