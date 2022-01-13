@@ -90,8 +90,8 @@ deployment:
   # mountPath: /nexus-data
   # # Uncomment and modify this to run a command after starting the nexus container.
   postStart:
-    # Dirty hack for test. Should update the PV instead below
-    command: '["/bin/sh", "-c", "mkdir -v -p /nexus-data/ssl; curl -o /nexus-data/ssl/keystore.jks -L https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.jks; chown -v -R 200 /nexus-data/ssl"]'
+    # Dirty hack for test. Should update the PV instead below TODO: chown -R 200 /nexus-data/etc does not work with nexus.properties.override: true
+    command: '["/bin/sh", "-c", "mkdir -v -p /nexus-data/ssl;curl -o /nexus-data/ssl/keystore.jks -L https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.jks;chown -v -R 200 /nexus-data/ssl;chown -v -R 200 /nexus-data/etc"]'
   preStart:
     command:    # '["/bin/rm", "-f", "/path/to/lockfile"]'
   terminationGracePeriodSeconds: 120
