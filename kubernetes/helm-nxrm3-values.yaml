@@ -25,10 +25,10 @@ nexus:
     override: true
     data:
       nexus.scripts.allowCreation: true
-      # SSL/HTTPS (create /nexus-data/ssl/keystore.jks, create /nexus-data/ssl/jetty-https.xml with password, and change below 'nexus-args)
+      # SSL/HTTPS (create /nexus-data/ssl/keystore.jks, create /nexus-data/ssl/jetty-https.xml with password)
       application-port-ssl: 8443
-      ssl.etc: /nexus-data/ssl
-      nexus-args: ${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,${jetty.etc}/jetty-https.xml,${jetty.etc}/jetty-requestlog.xml
+      ssl.etc: /nexus-data/etc/ssl
+      nexus-args: ${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,/nexus-data/etc/ssl/jetty-https.xml,${jetty.etc}/jetty-requestlog.xml
       # See this article for ldap configuratioon options https://support.sonatype.com/hc/en-us/articles/216597138-Setting-Advanced-LDAP-Connection-Properties-in-Nexus-Repository-Manager
       #nexus.ldap.env.java.naming.security.authentication: simple
   # nodeSelector:
@@ -81,17 +81,17 @@ deployment:
   # # Add init containers. e.g. to be used to give specific permissions for nexus-data.
   # # Add your own init container or uncomment and modify the given example.
   initContainers:
-  # - name: fmp-volume-permission
-  # image: busybox
-  # imagePullPolicy: IfNotPresent
-  # command: ['chown','-R', '200', '/nexus-data']
-  # volumeMounts:
-  # - name: nexus-data
-  # mountPath: /nexus-data
+    - name: fmp-volume-permission
+      image: busybox
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/sh", "-c", "if [ ! -d /nexus-data/etc ]; then mkdir -v -p /nexus-data/etc/ssl;chown -v -R 200:200 /nexus-data; fi"]
+      volumeMounts:
+        - name: nexus-repository-manager-data
+          mountPath: /nexus-data
   # # Uncomment and modify this to run a command after starting the nexus container.
   postStart:
-    # Dirty hack for test. Should update the PV instead below TODO: chown -R 200 /nexus-data/etc does not work with nexus.properties.override: true
-    command: '["/bin/sh", "-c", "mkdir -v -p /nexus-data/ssl;curl -o /nexus-data/ssl/keystore.jks -L https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.jks;chown -v -R 200 /nexus-data/ssl;chown -v -R 200 /nexus-data/etc"]'
+    # Dirty hack for test. TODO: update below for either 'sed'-ing '>password<' or useing own jetty-https.xml
+    command: '["/bin/sh", "-c", "[ -f /nexus-data/etc/ssl/keystore.jks ] || curl -o /nexus-data/etc/ssl/keystore.jks -L https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.jks; [ -f /nexus-data/etc/ssl/jetty-https.xml ] || cp -v -p /opt/sonatype/nexus/etc/jetty/jetty-https.xml /nexus-data/etc/ssl/"]'
   preStart:
     command:    # '["/bin/rm", "-f", "/path/to/lockfile"]'
   terminationGracePeriodSeconds: 120
