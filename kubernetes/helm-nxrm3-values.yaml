@@ -19,7 +19,6 @@ nexus:
   env:
     - name: install4jAddVmParams
       value: "-Xms1200M -Xmx1200M -XX:MaxDirectMemorySize=2G -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap"
-      #value: "-Xms1200M -Xmx1200M -XX:MaxDirectMemorySize=2G -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap -Dapplication-port-ssl=8443 -Dssl.etc=${karaf.data}/ssl -Dnexus-args=${jetty.etc}/jetty.xml,${jetty.etc}/jetty-https.xml,${jetty.etc}/jetty-requestlog.xml"
     - name: NEXUS_SECURITY_RANDOMPASSWORD
       value: "true"
   properties:
