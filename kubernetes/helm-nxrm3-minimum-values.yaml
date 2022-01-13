@@ -1,0 +1,18 @@
+statefulset:
+  enabled: false
+deploymentStrategy: Recreate
+image:
+  pullPolicy: IfNotPresent
+
+nexus:
+  env:
+    - name: install4jAddVmParams
+      value: "-Xms1200M -Xmx1200M -XX:MaxDirectMemorySize=2G -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap"
+    - name: NEXUS_SECURITY_RANDOMPASSWORD
+      value: "false"
+
+deployment:
+  annotations: {}
+  postStart: {}
+  preStart: {}
+  terminationGracePeriodSeconds: 120
