@@ -367,6 +367,7 @@ public class Main
           List<ODocument> bkts =
               execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
 
+          // TODO: 'where key = [bucket.rid]' works, but not 'select key, count(*) as c from index:asset_bucket_name_idx group by key;', so looping...
           for (ODocument bkt : bkts) {
             String q =
                 "select count(*) as c from index:asset_bucket_name_idx where key = [" +
