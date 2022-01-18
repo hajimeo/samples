@@ -164,7 +164,10 @@ function _docker_login() {
     fi
 
     _log "DEBUG" "${_cmd} login ${_host_port} --username ${_user} --password ********"
-    ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} >&2 || return $?
+    if ! ${_cmd} login ${_host_port} --username ${_user} --password ${_pwd} &>${__TMP%/}/${FUNCNAME}.tmp; then
+        cat ${__TMP%/}/${FUNCNAME}.tmp
+        return 1
+    fi
     echo "${_host_port}"
 }
 
