@@ -79,7 +79,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 
 
 ## Global variables
-: ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,yum,rubygem,helm,bower,conan,conda,cocoapods,bower,go,apt,r,p2,raw"}
+: ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,yum,rubygem,helm,conan,conda,cocoapods,bower,go,apt,r,p2,raw"}
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
 : ${_DOMAIN:="standalone.localdomain"}
@@ -274,8 +274,9 @@ function f_setup_docker() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18178,"httpsPort":18179,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"https://registry-1.docker.io","contentMaxAge":-1,"metadataMaxAge":1440},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"undefined":[false,false],"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
+    _log "INFO" "Populating ${_prefix}-proxy repository with some image ..."
     if ! f_populate_docker_proxy; then
-        _log "WARN" "May need to add 'Docker Bearer Token Realm' (not only for anonymous access)."
+        _log "WARN" "f_populate_docker_proxy failed. May need to add 'Docker Bearer Token Realm' (not only for anonymous access)."
     fi
 
     # If no xxxx-hosted, create it
@@ -284,8 +285,9 @@ function f_setup_docker() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":18181,"httpsPort":18182,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
+    _log "INFO" "Populating ${_prefix}-hosted repository with some image ..."
     if ! f_populate_docker_hosted; then
-        _log "WARN" "May need to add 'Docker Bearer Token Realm'."
+        _log "WARN" "f_populate_docker_hosted failed. May need to add 'Docker Bearer Token Realm'."
     fi
 
     # If no xxxx-group, create it
@@ -294,6 +296,7 @@ function f_setup_docker() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":4999,"httpsPort":5000,"forceBasicAuth":true,"v1Enabled":true},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"groupWriteMember":"'${_prefix}'-hosted","memberNames":["'${_prefix}'-hosted","'${_prefix}'-proxy"]}},"name":"'${_prefix}'-group","format":"","type":"","url":"","online":true,"undefined":[false,false],"recipe":"docker-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
+    _log "INFO" "Populating ${_prefix}-group repository with some image via docker proxy repo ..."
     f_populate_docker_proxy "hello-world" "${r_DOCKER_GROUP}" "5000 4999"
 }
 
@@ -318,34 +321,39 @@ function f_populate_docker_proxy() {
 #ssh -2CNnqTxfg -L18182:localhost:18182 node3250    #ps aux | grep 2CNnqTxfg
 #f_populate_docker_hosted "" "localhost:18182"
 function f_populate_docker_hosted() {
-    local _img_name="${1:-"alpine:3.7"}"
+    local _base_img="${1:-"alpine:3.7"}"
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${_NEXUS_URL}"}"}"}"
     local _backup_ports="${3-"18182 18181"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
-    local _tag_to="${5:-"${_TAG_TO:-"${_img_name}"}"}"
+    local _tag_to="${5:-"${_TAG_TO}"}"
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_cmd}")" || return $?
 
-    # In _docker_proxy, the image might be already pulled.
-    if ! ${_cmd} tag ${_host_port:-"localhost"}/${_img_name} ${_host_port}/${_tag_to} 2>/dev/null; then
-        # Example commands to create layers
-        # "FROM alpine:3.7\nCMD echo 'hello world'"
-        # "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nENTRYPOINT [\"mysql\"]"
-        # NOTE docker build -f does not work (bug?)
-        local _cwd="$(pwd)"
-        local _build_dir="${_TMP%/}/${FUNCNAME}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"
-        if [ -d "${_build_dir%/}" ]; then
-            _log "ERROR" "${_build_dir%/} exists."
-            return 1
+    if [ -z "${_tag_to}" ] && [[ "${_base_img}" =~ ([^:]+):?.* ]]; then
+        _tag_to="${BASH_REMATCH[1]}_hosted"
+    fi
+
+    for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_tag_to}"); do
+        _log "WARN" "Deleting ${_imn} (wait for 5 secs)";sleep 5
+        if ! ${_cmd} rmi ${_imn}; then
+            _log "WARN" "Deleting ${_imn} failed but keep continuing..."
         fi
-        cd ${_build_dir} || return $?
-        echo -e "FROM ${_img_name}\n" > Dockerfile && ${_cmd} build --rm -t ${_img_name} .
-        cd "${_cwd}"    # should check the previous return code?
-        # It seems newer docker appends "localhost/" so trying this one first.
-        if ! ${_cmd} tag localhost/${_img_name} ${_host_port}/${_tag_to} 2>/dev/null; then
-            ${_cmd} tag ${_img_name} ${_host_port}/${_tag_to} || return $?
-        fi
+    done
+
+    # NOTE: docker build -f does not work (bug?)
+    local _cwd="$(pwd)"
+    local _build_dir="${_TMP%/}/${FUNCNAME}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"
+    if [ ! -d "${_build_dir%/}" ]; then
+        mkdir -p ${_build_dir} || return $?
+    fi
+    cd ${_build_dir} || return $?
+    # NOTE: Trying to create a layer, but haven't confirmed if this creates.
+    echo -e "FROM ${_base_img}\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > /var/tmp/f_populate_docker_hosted.out" > Dockerfile && ${_cmd} build --rm -t ${_tag_to} .
+    cd "${_cwd}"    # should check the previous return code?
+    # It seems newer docker appends "localhost/" so trying this one first.
+    if ! ${_cmd} tag localhost/${_tag_to} ${_host_port}/${_tag_to} 2>/dev/null; then
+        ${_cmd} tag ${_tag_to} ${_host_port}/${_tag_to} || return $?
     fi
     _log "DEBUG" "${_cmd} push ${_host_port}/${_tag_to}"
     ${_cmd} push ${_host_port}/${_tag_to} || return $?
