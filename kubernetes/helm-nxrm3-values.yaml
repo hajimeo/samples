@@ -17,7 +17,9 @@ nexus:
     #    port: 5000
     #    secretName: registrySecret
   env:
-    - name: install4jAddVmParams
+    #- name: install4jAddVmParams
+    - name: INSTALL4J_ADD_VM_PARAMS
+      # NOTE: Enabling nexus.properties.override makes /nexus-data/etc owned by root and not writable, but -Dapplication-port-ssl=8443 does not work
       value: "-Xms1200M -Xmx1200M -XX:MaxDirectMemorySize=2G -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap"
     - name: NEXUS_SECURITY_RANDOMPASSWORD
       value: "true"
@@ -26,7 +28,6 @@ nexus:
     override: true
     data:
       nexus.scripts.allowCreation: true
-      # SSL/HTTPS (create /nexus-data/ssl/keystore.jks, create /nexus-data/ssl/jetty-https.xml with password)
       application-port-ssl: 8443
       ssl.etc: /nexus-data/etc/ssl
       nexus-args: ${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,/nexus-data/etc/ssl/jetty-https.xml,${jetty.etc}/jetty-requestlog.xml
@@ -85,7 +86,7 @@ deployment:
     - name: fmp-volume-permission
       image: busybox
       imagePullPolicy: IfNotPresent
-      command: ["/bin/sh", "-c", "if [ ! -d /nexus-data/etc ]; then mkdir -v -p /nexus-data/etc/ssl;chown -v -R 200:200 /nexus-data; fi"]
+      command: ["/bin/sh", "-c", "[ -d /nexus-data/etc/ssl ] || mkdir -v -p /nexus-data/etc/ssl; chown -v -R 200:200 /nexus-data/etc;"]
       volumeMounts:
         - name: nexus-repository-manager-data
           mountPath: /nexus-data
