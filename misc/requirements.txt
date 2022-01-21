@@ -23,7 +23,7 @@ idna==2.10
 importlib-metadata==2.0.0
 incremental==17.5.0
 ipykernel==5.3.4
-ipython==7.1.1
+ipython==7.16.3
 ipython-genutils==0.2.0
 ipython-sql==0.4.0
 ipywidgets==7.5.1
