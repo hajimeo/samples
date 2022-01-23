@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-
 usage() {
     cat << EOF
-Implementing test cases (like programing lanugage's Unit tests) with bash.
+Providing some framework for building log check/test cases (like programing language's Unit tests) with bash.
 
 All functions start with "e_" are for extracting data, so that tests do not need to check large log files repeatedly.
+All functions start with "t_" are actual testing / checking. those should behave similar to unit tests.
 All functions start with "r_" are for reporting, just displaying some useful, good-to-know information with Markdown.
-All functions start with "t_" are actual testing.
 
-REQUIREMENTS:
+PREREQUISITE:
     bash, not tested with zsh.
     Please install below: (eg: 'brew install coreutils ripgrep jq q')
         coreutils (realpath)
@@ -22,7 +21,7 @@ TARGET OS:
     macOS Mojave
 EOF
 }
-_check_required() {
+_prerequisites() {
     if ! type q >/dev/null || ! type rg >/dev/null || ! type jq >/dev/null || ! type realpath >/dev/null; then
         _LOG "ERROR" "Required command is missing."
         usage
@@ -48,6 +47,10 @@ fi
 : ${_LOG_THRESHOLD_BYTES:=125829120}    # 120MB (large number significantly affects to the time)
 : ${_FILTERED_DATA_DIR:="./_filtered"}
 : ${_LOG_GLOB:="*.log"}
+
+_WORKING_DIR="${_WORKING_DIR_OVERWRITE:-"<null>"}"  # value for either workingDirectory or sonatypeWork
+_APP_VER="${_APP_VER_OVERWRITE:-"<null>"}"          # 3.36.0-01
+
 
 # Aliases (can't use alias in shell script, so functions)
 _rg() {
@@ -159,19 +162,17 @@ function _extract_configs() {
     echo "app version: \"$(_app_ver)\""
     echo '```'
 }
-: ${_WORKING_DIR:="<null>"}   # either workingDirectory or sonatypeWork
 function _working_dir() {
     [ -n "${_WORKING_DIR}" ] && [ "${_WORKING_DIR}" != "<null>" ] && echo "${_WORKING_DIR}" && return
     local _working_dir_line="$(_search_json "sysinfo.json" "nexus-configuration,workingDirectory" || _search_json "sysinfo.json" "install-info,sonatypeWork")"
     local _result="$(echo "${_working_dir_line}" | _rg ': "([^"]+)' -o -r '$1')"
-    [ -n "${_result}" ] && [ "${_result}" != "<null>" ] && _WORKING_DIR="$(echo "${_result}")" && echo "${_WORKING_DIR}"
+    [ -n "${_result}" ] && [ "${_result}" != "<null>" ] && export _WORKING_DIR="$(echo "${_result}")" && echo "${_WORKING_DIR}"
 }
-: ${_APP_VER:="<null>"}   # 3.36.0-01
 function _app_ver() {
     [ -n "${_APP_VER}" ] && [ "${_APP_VER}" != "<null>" ] && echo "${_APP_VER}" && return
     local _app_ver_line="$(_search_json "sysinfo.json" "nexus-status,version" || _search_json "product-version.json" "product-version,version")"
     local _result="$(echo "${_app_ver_line}" | _rg ': "([^"]+)' -o -r '$1')"
-    [ -n "${_result}" ] && [ "${_result}" != "<null>" ] && _APP_VER="$(echo "${_result}")" && echo "${_APP_VER}"
+    [ -n "${_result}" ] && [ "${_result}" != "<null>" ] && export _APP_VER="$(echo "${_result}")" && echo "${_APP_VER}"
 }
 function _extract_log_last_start() {
     _head "LOGS" "Instance start time from jmx.json"
@@ -441,13 +442,14 @@ function t_requests() {
 
 
 main() {
-    _check_required || return $?
+    local _result_file="${1:-"/dev/stdout"}"
+    _prerequisites || return $?
     f_run_extract || return $?
-    echo "# $(basename "$BASH_SOURCE" ".sh") results"
-    echo "[[toc]]"
-    echo ""
-    f_run_tests || return $?
-    f_run_report
+    echo "# $(basename "$BASH_SOURCE" ".sh") results" > "${_result_file}"
+    echo "[[toc]]" >> "${_result_file}"
+    echo "" >> "${_result_file}"
+    f_run_tests >> "${_result_file}"|| return $?
+    f_run_report >> "${_result_file}"
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
