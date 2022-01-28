@@ -349,7 +349,7 @@ function f_populate_docker_hosted() {
     fi
     cd ${_build_dir} || return $?
     # NOTE: Trying to create a layer, but haven't confirmed if this creates.
-    echo -e "FROM ${_base_img}\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > /var/tmp/f_populate_docker_hosted.out" > Dockerfile && ${_cmd} build --rm -t ${_tag_to} .
+    echo -e "FROM ${_base_img}\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > /var/tmp/f_populate_docker_hosted.out" > Dockerfile && ${_cmd} build --rm -t ${_tag_to} .
     cd "${_cwd}"    # should check the previous return code?
     # It seems newer docker appends "localhost/" so trying this one first.
     if ! ${_cmd} tag localhost/${_tag_to} ${_host_port}/${_tag_to} 2>/dev/null; then
