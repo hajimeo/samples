@@ -793,7 +793,7 @@ $(cat "${_saveTo}")" > ${_saveTo}
 }
 
 #JAVA_GC_LOG_DIR="/some/location"
-#JAVA_GC_OPTS="-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${JAVA_GC_LOG_DIR%/}/ -XX:+PrintClassHistogramBeforeFullGC -XX:+PrintClassHistogramAfterFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -Xloggc:${JAVA_GC_LOG_DIR}/gc.%t.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100m"
+#JAVA_GC_OPTS="-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${JAVA_GC_LOG_DIR%/}/ -XX:+PrintClassHistogramBeforeFullGC -XX:+PrintClassHistogramAfterFullGC -XX:+TraceClassLoading -XX:+TraceClassUnloading -verbose:gc -XX:+PrintGC -XX:+PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCApplicationStoppedTime -Xloggc:${JAVA_GC_LOG_DIR}/gc.%t.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=10 -XX:GCLogFileSize=100m"
 function f_gc_before_after_check() {
     local __doc__="Check PrintClassHistogramBeforeFullGC/PrintClassHistogramAfterFullGC (not jmap -histo) to find which objects are increasing"
     local _log_dir="${1:-"."}"
@@ -856,9 +856,9 @@ function f_count_lines() {
     fi
 }
 
-#f_hextids_from_topH top_2021-03-31_16-31-43.out | sort | uniq -c
-#f_hextids_from_topH top_2021-03-31_16-31-43.out | tr '\n' '|'
-#ls -1 top_2021-03-31_*.out | while read -r _f;do (echo "# ${_f}"; f_hextids_from_topH ${_f} | xargs -I {} grep 'nid={} run' ${_f}); done &> result.out
+#f_hexTids_from_topH top_2021-03-31_16-31-43.out | sort | uniq -c
+#f_hexTids_from_topH top_2021-03-31_16-31-43.out | tr '\n' '|'
+#ls -1 top_2021-03-31_*.out | while read -r _f;do (echo "# ${_f}"; f_hexTids_from_topH ${_f} | xargs -I {} grep 'nid={} run' ${_f}); done &> result.out
 function f_hexTids_from_topH() {
     # grep top output and return PID (currently over 90% CUP one) for the user, then use printf to convert to hex
     local _file="${1}"
@@ -867,8 +867,9 @@ function f_hexTids_from_topH() {
     local _n="${4:-20}"
     rg '^top' -A ${_n} "${_file}" | rg "^(top|\s*\d+\s+${_user}\s.+\s${_command})" | tee /tmp/${FUNCNAME}_$$.tmp || return $?
     echo ""
-    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|[7-9]\d\.\d+)" -o -r '$1' | sort | uniq -c | sort -nr
-    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|[7-9]\d\.\d+)" -o -r '$1' | xargs printf "0x%x\n"
+    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|[6-9]\d\.\d+)" -o -r '$1' | sort | uniq | while read -r _pid; do
+        printf "%s\t0x%x\n" ${_pid} ${_pid}
+    done
 }
 
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
@@ -908,6 +909,10 @@ function f_threads() {
     if [ ! -d "${_file}" ] && [[ ! "${_not_split_by_date}" =~ ^(y|Y) ]]; then
         local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -c ${_file})
         if [ 1 -lt ${_how_many_threads:-0} ]; then
+            echo "## Check if 'Heap' information exists"
+            rg '^Heap' -A1 ${_file} | rg -w total
+            echo " "
+
             f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d" "${_tmp_dir%/}" "" || return $?
             _file="${_tmp_dir%/}"
         fi
@@ -941,7 +946,7 @@ function f_threads() {
             echo "$(basename "${_f}") $(rg '^\sat\s' -m1 "${_f}")"
         done | sort | uniq -c | sort -nr | rg -v '^\s*1\s' | head -n40
         echo " "
-        echo "### May also want to use f_hextids_from_topH()"
+        echo "### May also want to use f_hexTids_from_topH()"
         echo " "
         return $?
     fi
@@ -969,7 +974,8 @@ function f_threads() {
         # https://support.sonatype.com/hc/en-us/articles/213464998-How-to-disable-the-System-Feeds-nexus-timeline-plugin-feature-to-improve-Nexus-performance
         echo "##          'content_digest' https://issues.sonatype.org/browse/NEXUS-26379 (3.29.x) and NEXUS-25294 (3.27.x and older)"
         echo "##          'touchItemLastRequested' https://issues.sonatype.org/browse/NEXUS-10372 all NXRM2"
-        rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
+        echo "##          'preClose0' https://issues.sonatype.org/browse/NEXUS-30865 all NXRM2"
+        rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested|preClose0)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
         echo " "
     fi
 
@@ -1002,7 +1008,7 @@ function f_threads() {
         echo " "
         echo "## Finding popular methods from *probably* running threads containing '${_running_thread_search_re}'"
         #rg -w RUNNABLE -A1 -H ${_save_dir%/} | rg '^\sat' | sort | uniq -c
-        rg "${_running_thread_search_re}" -l -g '*runnable*' ${_save_dir%/} | xargs -P3 -I {} rg '^\sat\s' -m1 "{}" | sort | uniq -c | sort -nr | head -10
+        rg "${_running_thread_search_re}" -l -g '*runnable*' ${_save_dir%/} | xargs -P3 -I {} rg '^\s+at\s' -m1 "{}" | sort | uniq -c | sort -nr | head -10
         echo " "
         echo "## Finding runnable (expecting QuartzTaskJob) '${_running_thread_search_re}.+Task.execute' from ${_save_dir%/}"
         rg -m1 -s "${_running_thread_search_re}.+Task\.execute\(" -g '*runnable*' "${_save_dir%/}"
@@ -1247,8 +1253,15 @@ for c in j['capabilitiesConfiguration']['capabilities']['capability']:
 }
 
 function f_h2_start() {
+    # NXRM3
+    #Save Settings: Generic H2 (Embedded)
+    #Driver: org.h2.Driver
+    #JDBC URL: jdbc:h2:file:nexus
+    #username: <LEAVE BLANK>
+    #password: <LEAVE BLANK>
     local _baseDir="${1}"
     local _Xmx="${2:-"2g"}"
+    local _h2_ver="1.4.200" # or 1.4.196 for IQ
     if [ -z "${_baseDir}" ]; then
         if [ -d ./sonatype-work/clm-server/data ]; then
             _baseDir="./sonatype-work/clm-server/data/"
@@ -1256,24 +1269,25 @@ function f_h2_start() {
             _baseDir="."
         fi
     fi
-    # NOTE: 1.4.200 causes org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException
-    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.Server -baseDir "${_baseDir}"
+    # NOTE: 1.4.200 is used by NXRM# but may causes org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException with IQ
+    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-${_h2_ver}.jar org.h2.tools.Server -baseDir "${_baseDir}"
 }
 
 function f_h2_shell() {
     local _db_file="${1}"
     local _query_file="${2}"
     local _Xmx="${3:-"2g"}"
-
+    local _h2_ver="1.4.200" # or 1.4.196 for IQ
     _db_file="$(realpath ${_db_file})"
-    # DB_CLOSE_ON_EXIT=FALSE; may have some bug: https://github.com/h2database/h2database/issues/1259
-    local _url="jdbc:h2:${_db_file/.h2.db/};DATABASE_TO_UPPER=FALSE;SCHEMA=insight_brain_ods;IFEXISTS=true;MV_STORE=FALSE"
+    # DB_CLOSE_ON_EXIT=FALSE may have some bug: https://github.com/h2database/h2database/issues/1259
+    # IGNORECASE=TRUE for case insensitive column value
+    local _url="jdbc:h2:${_db_file%%.*};DATABASE_TO_UPPER=FALSE;SCHEMA=insight_brain_ods;IFEXISTS=true;MV_STORE=FALSE"
     if [ -s "${_query_file}" ]; then
-        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.RunScript -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver -script "${_query_file}"
+        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-${_h2_ver}.jar org.h2.tools.RunScript -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver -script "${_query_file}"
     elif [ -n "${_query_file}" ]; then  # probably SQL statement
-        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.RunScript -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver -script <(echo "${_query_file}")
+        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-${_h2_ver}.jar org.h2.tools.RunScript -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver -script <(echo "${_query_file}")
     else
-        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-1.4.196.jar org.h2.tools.Shell -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver
+        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-${_h2_ver}.jar org.h2.tools.Shell -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver
     fi
 }
 
