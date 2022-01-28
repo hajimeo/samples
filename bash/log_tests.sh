@@ -47,6 +47,7 @@ fi
 : ${_LOG_THRESHOLD_BYTES:=125829120}    # 120MB (large number significantly affects to the time)
 : ${_FILTERED_DATA_DIR:="./_filtered"}
 : ${_LOG_GLOB:="*.log"}
+: ${_SKIP_EXTRACT:=""}
 
 _WORKING_DIR="${_WORKING_DIR_OVERWRITE:-"<null>"}"  # value for either workingDirectory or sonatypeWork
 _APP_VER="${_APP_VER_OVERWRITE:-"<null>"}"          # 3.36.0-01
@@ -65,9 +66,25 @@ _q() {
     q -O -d"," -T --disable-double-double-quoting "$@" 2>/tmp/_q_last.err
 }
 
+_log_duration() {
+    local _started="$1"
+    local _ended="$2"
+    local _threshold="${3:-"0"}"
+    local _log_msg="${3:-"Completed ${FUNCNAME[1]}"}"
+    [ -z "${_started}" ] && return
+    [ -z "${_ended}" ] && _ended="$(date +%s)"
+    local _diff=$((${_ended} - ${_started}))
+    local _log_level="DEBUG"
+    if [ ${_diff} -ge ${_threshold} ]; then
+        _log_level="INFO"
+    fi
+    _LOG "${_log_level}" "${_log_msg} in ${_diff}s"
+}
+
 _runner() {
     local _pfx="$1"
     local _n="${2:-"4"}"
+    local _sec="${3:-"3"}"
     local _tmp="$(mktemp -d)"
     _LOG "INFO" "Executing ${FUNCNAME[1]}->${FUNCNAME} $(typeset -F | grep "^declare -f ${_pfx}" | wc -l  | tr -d "[:space:]") functions."
     for _t in $(typeset -F | grep "^declare -f ${_pfx}" | cut -d' ' -f3); do
@@ -76,7 +93,8 @@ _runner() {
             return 11
         fi
         _LOG "DEBUG" "Started ${_t}"    # TODO: couldn't display actual command in jogs -l command
-        eval "${_t} > ${_tmp}/${_t}.out;_LOG DEBUG \"Completed ${_t} (\$?)\"" &
+        local _started="$(date +%s)"
+        eval "${_t} > ${_tmp}/${_t}.out;_log_duration \"${_started}\" \"\" \"${_sec}\" \"Completed ${_t}\"" &
     done
     _wait_jobs 0
     cat ${_tmp}/${_pfx}*.out
@@ -89,6 +107,10 @@ function f_run_extract() {
     #    _LOG "INFO" "${_FILTERED_DATA_DIR%/} is not empty so not extracting."
     #    return
     #fi
+    if [[ "${_SKIP_EXTRACT}" =~ (y|Y) ]]; then
+        _LOG "INFO" "_SKIP_EXTRACT is set, so not extracting."
+        return
+    fi
     _runner "e_"
 }
 
