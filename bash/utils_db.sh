@@ -41,7 +41,7 @@ function _postgresql_configure() {
     _upsert ${_postgresql_conf} "shared_buffers" "1024MB"       # Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm
     _upsert ${_postgresql_conf} "work_mem" "8MB" "#work_mem"    # Default 4MB. RAM * 25% / max_connections (200) + extra a few MB. NOTE: I'm not expecting my PG uses 200 though
     _upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # RAM * 50% ~ 75%
-    #_upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Usually higher provides better write performance
+    _upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Usually higher provides better write performance
     ### End of tuning ###
     _upsert ${_postgresql_conf} "max_connections" "200" "#max_connections"   # This is for NXRM3 as it uses 100 per datastore NOTE: work_mem * max_conn < shared_buffers.
     _upsert ${_postgresql_conf} "listen_addresses" "'*'" "#listen_addresses"
@@ -169,7 +169,7 @@ function _postgresql_create_role_and_db() {
         ${_psql_as_admin} -d template1 -c "GRANT ${_dbusr} TO \"${_dbadmin%@*}\";"
     fi
     ${_psql_as_admin} -d template1 -ltA  -F',' | grep -q "^${_dbname}," || ${_psql_as_admin} -d template1 -c "CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';"
-    # Below two lines are not needed. for testing purpose to avoid unnecessary permission errors.
+    # NOTE: Below two lines are NOT needed because of 'WITH OWNER'. Just for testing purpose to avoid unnecessary permission errors.
     ${_psql_as_admin} -d template1 -c "GRANT ALL ON DATABASE ${_dbname} TO \"${_dbusr}\";" || return $?
     ${_psql_as_admin} -d ${_dbname} -c "GRANT ALL ON SCHEMA public TO \"${_dbusr}\";"
 
