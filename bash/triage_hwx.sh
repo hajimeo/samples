@@ -91,7 +91,7 @@ function f_check_system() {
     python -c 'import socket as s;print s.gethostname();print s.gethostbyname(s.gethostname());print s.getfqdn()' &> ${_work_dir%/}/python_getfqdn.out
 
     # Disk
-    mount &> ${_work_dir%/}/mount_df.out
+    mount &> ${_work_dir%/}/mount_df.out    # findmnt -T /path for specific location
     df -h &> ${_work_dir%/}/mount_df.out
     vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
     iostat -x -p -t 1 3 2>/dev/null || vmstat -d 1 3 &> ${_work_dir%/}/iostat.out &
