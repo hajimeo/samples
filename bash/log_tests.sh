@@ -400,7 +400,7 @@ function t_system() {
     _test_template "$(_rg 'MaxFileDescriptorCount: *\d{4}$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
     _test_template "$(_rg 'SystemLoadAverage: *([2-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high"
     _test_template "$(_rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low"
-    _test_template "$(_rg -g jmx.json -q -- '-XX:+UseG1GC' || _rg -g jmx.json -- '-Xmx')" "INFO" "No '-XX:+UseG1GC' for below Xmx"
+    _test_template "$(_rg -g jmx.json -q -- '-XX:+UseG1GC' || _rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
 }
 function t_mounts() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return
