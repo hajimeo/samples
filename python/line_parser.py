@@ -3,7 +3,8 @@
 #
 # Generic python script to parse the log lines with the function (1st argument), to use the result for gantt chart.
 # TODO: tooooooo messy and complicated. Should be refactored
-#   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/python/line_parser.py
+#
+#   curl -o/usr/local/bin/line_parser.py https://raw.githubusercontent.com/hajimeo/samples/master/python/line_parser.py
 #   line_parser.py func_name_without_lb_ [extra args] < some_file.txt
 #
 # Process the stdin with lp_thread_num, which accept an extra argument as 'start_line_num'.
@@ -18,7 +19,9 @@
 #   rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d).+com.amazonaws.request - (Sending Request: [^ ]+|Received)' ./log/tasks/some_task.log -o -r '$1 $2 $3' | line_parser.py time_diff "Sending" > time_diff.csv
 #   rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ com.amazonaws.request - (Sending Request: [^ ]+|Received)' -o -r '$1 $2 $3 $4' --no-filename --sort=path -g nexus.log | line_parser.py time_diff "Sending" 3 > time_diff.csv
 #   rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.http.impl.conn.PoolingHttpClientConnectionManager - (Connection request:.+|Connection released:.+)' -o -r '$1 $2 $3 $4' ./log/nexus.log | line_parser.py time_diff "Connection request" 3 > time_diff.csv
-#   rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.http.impl.conn.PoolingHttpClientConnectionManager - (Connection leased:.+|Connection released:.+)' -o -r '$1 $2 $3 $4' ./log/nexus.log | line_parser.py time_diff "Connection leased" 3 > leased_released_diff.csv
+#   rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.http.impl.conn.PoolingHttpClientConnectionManager - (Connection leased:.+|Connection released:.+)' -o -r '$1 $2 $3 $4' ./log/nexus.log | line_parser.py time_diff "Connection leased" 3 > time_diff.csv
+#   rg '^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.ibatis.transaction.jdbc.JdbcTransaction - (Opening JDBC Connection|Closing JDBC Connection.+)' -o -r '$1 $2 $3 $4' ./log/nexus.log | line_parser.py time_diff "Opening JDBC" 3 > time_diff.csv
+#   echo -e "start_datetime,end_datetime,diff,message,thread\n$(cat time_diff.csv)" > time_diff.csv
 #
 
 import sys, re, dateutil.parser
@@ -31,7 +34,7 @@ def lp_thread_num(line):
     """
     Read thread dumps generated from Scala and print the line number of <label>
     Expected line format: YYYY-MM-DDThh:mm:ss,sss current_line_num
-    NOTE: This method reads sys.argv[2] for the start_line_num
+    NOTE: This method reads sys.argv[2] for start_line_num
     :param line: String - currently reading line
     :return: void
     """
@@ -54,8 +57,8 @@ def lp_time_diff(line):
     """
     Read log files and print the time difference between *previous* line in Milliseconds
     Expected line format: ^YYYY-MM-DD hh:mm:ss,sss some_text (space between date and time)
-    NOTE: This method reads sys.argv[2] for specifying starting message string
-    NOTE: This method reads sys.argv[3] for max split number = count of space character
+    NOTE: This method reads sys.argv[2] for starting_message = specifying starting message string
+    NOTE: This method reads sys.argv[3] for split_num = max split number = count of space character (default is 2 because two spaces)
     :param line: String - current reading line
     :return: void
     """
@@ -109,7 +112,8 @@ def lp_time_diff(line):
             _prev_label = _PREV_LABEL[thread]
         _final_message = None
         if thread in _PREV_LABEL and bool(_PREV_MSG[thread]) and bool(starting_message):
-            if _PREV_MSG[thread].startswith(starting_message):
+            #if _PREV_MSG[thread].startswith(starting_message):
+            if re.search(starting_message, _PREV_MSG[thread]):
                 _final_message = _PREV_MSG[thread].replace('"', '\\"')
         else:
             _final_message = message.replace('"', '\\"')
@@ -126,7 +130,8 @@ def lp_time_diff(line):
                 _prev_label, crt_date_time, (timestamp_in_ms - _prev_value), _final_message))
             else:
                 print("\"%s\",\"%s\",%s" % (_prev_label, crt_date_time, (timestamp_in_ms - _prev_value)))
-    if (bool(starting_message) and thread not in _PREV_LABEL and message.startswith(starting_message)) or bool(starting_message) is False or thread in _PREV_LABEL:
+    # message.startswith(starting_message) might be faster?
+    if (bool(starting_message) and thread not in _PREV_LABEL and re.search(starting_message, message)) or bool(starting_message) is False or thread in _PREV_LABEL:
         _PREV_LABEL[thread] = crt_date_time
         _PREV_VALUE[thread] = timestamp_in_ms
         _PREV_MSG[thread] = message
