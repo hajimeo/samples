@@ -64,6 +64,7 @@ function git_search() {
 ## Python ##############################################################################################################
 #virtualenv -p python3 $HOME/.pyvenv
 alias pyv='source $HOME/.pyvenv/bin/activate'
+alias pyv39='source $HOME/.pyvenv39/bin/activate'
 #alias pyv='pyenv activate mypyvenv'    # I felt pyenv is slow, so not using
 alias urldecode='python2 -c "import sys, urllib as ul; print(ul.unquote_plus(sys.argv[1]))"'
 alias urlencode3='python3 -c "import sys;from urllib import parse; print(parse.quote(sys.argv[1]))"'
