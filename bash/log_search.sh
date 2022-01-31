@@ -975,7 +975,8 @@ function f_threads() {
         echo "##          'content_digest' https://issues.sonatype.org/browse/NEXUS-26379 (3.29.x) and NEXUS-25294 (3.27.x and older)"
         echo "##          'touchItemLastRequested' https://issues.sonatype.org/browse/NEXUS-10372 all NXRM2"
         echo "##          'preClose0' https://issues.sonatype.org/browse/NEXUS-30865 all NXRM2"
-        rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested|preClose0)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
+        echo "##          'MemoryCache' https://bugs.openjdk.java.net/browse/JDK-8259886 < 8u301"
+        rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
         echo " "
     fi
 
