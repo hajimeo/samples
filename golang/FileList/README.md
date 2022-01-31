@@ -147,3 +147,8 @@ grep -oE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' default
   grep -oE "[^\"]+${_br}[^\"]+" default_props.csv
 done > orphaned_filepath.out
 ```
+
+```
+find ./vol-* -type f -name '*.bytes' > all_bytes_files.out
+grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' all_bytes_files.out > blob_ids_only.out
+```
