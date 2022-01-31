@@ -141,6 +141,7 @@ function nxrmStart() {
 }
 
 #nxrmDocker "nxrm3-test" "" "8181" "8543" #"--read-only -v /tmp/nxrm3-test:/tmp"
+#docker run --init -d -p 8081:8081 -p 8443:8443 --name=nxrm3 -e INSTALL4J_ADD_VM_PARAMS="-Dssl.etc=\${karaf.data}/etc/ssl -Dnexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml -Dapplication-port-ssl=8443 -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v /var/tmp/share/sonatype/nxrm3-data:/nexus-data dh1.standalone.localdomain:5000/sonatype/nexus3:latest
 function nxrmDocker() {
     local _name="${1:-"nxrm3"}"
     local _tag="${2:-"latest"}"
@@ -627,4 +628,29 @@ function nxrm3Staging() {
     echo "# ${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}"
     curl -v -f -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}" || return $?
     echo ""
+}
+
+function nxrm3Scripting() {
+    local _groovy_file="$1"
+    local _nexus_url="$2"
+    local _script_name="$3"
+    local _args_str="$4"
+    [ -z "${_script_name}" ] && _script_name="${_groovy_file%%.*}"
+    local _groovy_json_str="$(if [ -f "${_groovy_file}" ]; then
+        cat "${_groovy_file}"
+    else
+        echo "${_groovy_file}"
+    fi | python -c "import sys,json;print(json.dumps(sys.stdin.read()))")" || return $?
+    echo '{"name":"'${_script_name}'","content":'${_groovy_json_str}',"type": "groovy"}' > /tmp/${_script_name}.json || return $?
+    if ! curl -f -D- -u admin:admin123 -X POST -H 'Content-Type: application/json' "${_nexus_url%/}/service/rest/v1/script" -d@/tmp/${_script_name}.json; then
+        echo "May need to run below (or use -X DELETE)
+    curl -D- -u admin:admin123 -X PUT -H 'Content-Type: application/json' ${_nexus_url%/}/service/rest/v1/script/${_script_name} -d@/tmp/${_script_name}.json"
+        #curl -D- -u admin:admin123 -X DELETE "${_nexus_url%/}/service/rest/v1/script/${_script_name}"
+        return 1
+    fi
+    if [ -n "${_args_str}" ]; then
+        echo "${_args_str}" > /tmp/${FUNCNAME}_args.json || return $?
+        # TODO: why need to use text/plain?
+        curl -D- -u admin:admin123 -X POST -H 'Content-Type: text/plain' "${_nexus_url%/}/service/rest/v1/script/${_script_name}/run" -d@/tmp/${FUNCNAME}_args.json
+    fi
 }
