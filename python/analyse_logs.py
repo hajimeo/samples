@@ -128,7 +128,7 @@ def _gen_regex_for_elastic_jvm(sample):
     return (columns, partern_str)
 
 
-def _create_t_log_elastic_jvm_monitor(tablename='t_log_elastic_jvm_monitor'):
+def _create_t_log_elastic_monitor_jvm(tablename='t_log_elastic_monitor_jvm'):
     df_em = ju.q("""select date_time, message from t_nxrm_logs where class = 'org.elasticsearch.monitor.jvm'""")
     if len(df_em) == 0:
         return False
@@ -313,8 +313,8 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
                 ju._autocomp_inject(tablename='t_log_hazelcast_monitor')
 
         # org.elasticsearch.monitor.jvm
-        if ju.exists("t_log_elastic_jvm_monitor") is False and bool(nxrm_logs):
-            _create_t_log_elastic_jvm_monitor('t_log_elastic_jvm_monitor')
+        if ju.exists("t_log_elastic_monitor_jvm") is False and bool(nxrm_logs):
+            _create_t_log_elastic_monitor_jvm('t_log_elastic_monitor_jvm')
 
         # Thread dump
         threads = ju.logs2table(filename="threads.txt", tablename="t_threads", conn=ju.connect(),
@@ -404,14 +404,14 @@ FROM t_log_hazelcast_monitor
 %s""" % (where_sql)
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
-    if ju.exists("t_log_elastic_jvm_monitor"):
+    if ju.exists("t_log_elastic_monitor_jvm"):
         display_name = "NexusLog_ElasticJvm_Monitor"
         query = """SELECT date_time
     , UDF_STR_TO_INT(duration) as duration_ms
     , UDF_STR_TO_INT(total_time) as total_time_ms
     , UDF_STR_TO_INT(mem_before) as mem_before_bytes
     , UDF_STR_TO_INT(mem_after) as mem_after_bytes
-FROM t_log_elastic_jvm_monitor
+FROM t_log_elastic_monitor_jvm
 %s""" % (where_sql)
         ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query)
 
