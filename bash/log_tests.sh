@@ -70,7 +70,7 @@ _log_duration() {
     local _started="$1"
     local _ended="$2"
     local _threshold="${3:-"0"}"
-    local _log_msg="${3:-"Completed ${FUNCNAME[1]}"}"
+    local _log_msg="${4:-"Completed ${FUNCNAME[1]}"}"
     [ -z "${_started}" ] && return
     [ -z "${_ended}" ] && _ended="$(date +%s)"
     local _diff=$((${_ended} - ${_started}))

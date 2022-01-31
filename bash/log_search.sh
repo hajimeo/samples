@@ -782,6 +782,11 @@ function f_gc_overview() {
     [ -z "${_saveTo}" ] && _saveTo="$(basename ${_file%.*}).csv"
     # TODO: can't use the datetime filter in below rg command. Need to use more complex rg command
     rg -z '(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+)' -o ${_file} | paste - - > /tmp/${FUNCNAME}.tmp || return $?
+    # TODO: ([0-9.]+) secs does not work with PrintClassHistogramBeforeFullGC
+    if rg -m1 'Class Histogram' /tmp/${FUNCNAME}.tmp; then
+        echo "This function does not work with PrintClassHistogramBeforeFullGC to check /tmp/${FUNCNAME}.tmp"
+        return 1
+    fi
     rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC[^,]+).* ([0-9.]+) secs.+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}" -o -r '"${1}",${3},${4},${5},"${2}"' /tmp/${FUNCNAME}.tmp > "${_saveTo}" || return $?
     head -n1 "${_saveTo}" | rg -q '^date_time' || echo "date_time,elapsed_secs,heap_before_${_size},heap_after_${_size},gc_type
 $(cat "${_saveTo}")" > ${_saveTo}
@@ -799,12 +804,12 @@ function f_gc_before_after_check() {
     local _log_dir="${1:-"."}"
     local _keyword="${2-"sonatype"}"
     local _A_max="${3-"100"}"
-    # _grep -F '#instances' -A 20 solr_gc.log | _grep -E -- '----------------|org.apache'
+    #rg -z -N --no-filename "^(${_DT_FMT}).+\bFull GC" -o -r '$1' ${_log_dir} | sort | uniq > /tmp/${FUNCNAME}_datetimes_$$.tmp || return $?
     # NOTE: expecting filenames works with --sort=path
-    rg -z -N --sort=path --no-filename 'Full GC' -A ${_A_max} ${_log_dir} > /tmp/${FUNCNAME}_$$.tmp || return $?
+    rg -z -N --sort=path --no-filename '\bFull GC\b' -A ${_A_max} ${_log_dir} > /tmp/${FUNCNAME}_$$.tmp || return $?
     cat /tmp/${FUNCNAME}_$$.tmp | rg "${_keyword:-".*"}" | awk '{print $4}' | sort | uniq | while read -r _cls; do
-        echo "# ${_cls}"
-        rg "\d+\s+\d+\s+${_cls}$" -o /tmp/${FUNCNAME}_$$.tmp | uniq -c
+        echo "# 'date_time' '#instances' '#bytes' for ${_cls}"
+        rg "(^${_DT_FMT}|\s+\d+\s+\d+\s+${_cls//$/\\$}$)" -o /tmp/${FUNCNAME}_$$.tmp | rg "${_cls//$/\\$}" -B1 | rg -v -- '--' | paste - -
         echo ""
     done
     echo "# diff between first and last for class includes '${_keyword}':"
@@ -1583,14 +1588,16 @@ function _actual_file_size() {
 
 function _wait_jobs() {
     local _until_how_many="${1:-2}" # Running two is OK
-    local timeout_sec="${2:-180}"
-    for _i in $(seq 0 ${timeout_sec}); do
+    local _timeout_sec="${2:-180}"
+    local _sp="0.2"
+    local _loop_num="$(echo "${_timeout_sec}/${_sp}" | bc)"
+    for _i in $(seq 0 ${_loop_num}); do
         local _num="$(jobs -l | grep -iw "Running" | wc -l | tr -d '[:space:]')"
         if [ -z "${_num}" ] || [ ${_num} -le ${_until_how_many} ]; then
             return 0
         fi
         #echo "${_num} background jobs are still running" >&2
-        sleep 1
+        sleep ${_sp}
     done
 }
 
