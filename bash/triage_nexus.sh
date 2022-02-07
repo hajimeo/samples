@@ -255,7 +255,7 @@ function f_find_open_bytes_files() {
 }
 
 function f_check_filesystems() {
-    local __doc__="Elastic Search checks all file systems with getFileStores() and if a FS is slow or hang, Nexus hangs"
+    local __doc__="Elastic Search checks all file systems with getFileStores() -> getFileStore() and if a FS is slow or hang, Nexus hangs"
     # NOTE: Mac doesn't have df --output
     df --output=target | grep -v '^Mounted on' | while read -r _m
     do
