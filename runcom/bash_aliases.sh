@@ -408,7 +408,7 @@ function bar() {
     local _time_regex="${1}" # Below line was intentional as \ will be removed in ":-"
     [ -z "${_time_regex}" ] && _time_regex="\d\d:\d"
     #ggrep -oP "${_datetime_regex}" | sed 's/ /./g' | bar_chart.py
-    rg "(^20\d\d-\d\d-\d\d|\d\d.[A-Z][a-z]{2}.20\d\d).${_time_regex}" -o | sed 's/ /./g' | bar_chart.py
+    rg "(^\"?20\d\d-\d\d-\d\d|\d\d.[A-Z][a-z]{2}.20\d\d).${_time_regex}" -o | sed 's/ /./g' | bar_chart.py
 }
 # Start Jupyter Lab as service
 function jpl() {

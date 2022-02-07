@@ -10,6 +10,18 @@ if [ -z "${_WORK_DIR%/}" ]; then
     fi
 fi
 
+function _get_iq_url() {
+    local _iq_url="${1:-${_IQ_URL}}"
+    if [ -z "${_iq_url}" ] && [ -z "${_IQ_URL}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
+        _iq_url="http://localhost:8070/"
+    elif [ -n "${_iq_url}" ] && [[ ! "${_iq_url}" =~ ^https?://.+:[0-9]+ ]]; then   # Provided hostname only
+        _iq_url="http://${_iq_url}:8070/"
+    elif [ -z "${_iq_url}" ]; then  # default
+        _iq_url="https://dh1.standalone.localdomain:8470/"
+    fi
+    echo "${_iq_url}"
+}
+
 # Start iq CLI
 # To debug, use suspend=y
 #_JAVA_OPTIONS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5007" iqCli
@@ -24,13 +36,7 @@ function iqCli() {
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
 
-    if [ -z "${_iq_url}" ] && [ -z "${_IQ_URL}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
-        _iq_url="http://localhost:8070/"
-    elif [ -n "${_iq_url}" ] && [[ ! "${_iq_url}" =~ ^https?://.+:[0-9]+ ]]; then   # Provided hostname only
-        _iq_url="http://${_iq_url}:8070/"
-    elif [ -z "${_iq_url}" ]; then  # default
-        _iq_url="https://dh1.standalone.localdomain:8470/"
-    fi
+    _iq_url="$(_get_iq_url "${_iq_url}")"
     #[ ! -d "${_iq_tmp}" ] && mkdir -p "${_iq_tmp}"
 
     if [ ! -s "${_iq_cli_jar}" ]; then
@@ -328,7 +334,8 @@ function mvn-deploy() {
         _options="-DaltDeploymentRepository=${_server_id}::default::${_deploy_repo} ${_options}"
     fi
     [ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
-    mvn `_mvn_settings "${_remote_repo}"` clean package deploy ${_options}
+    # https://issues.apache.org/jira/browse/MRESOLVER-56
+    mvn `_mvn_settings "${_remote_repo}"` clean package deploy -DcreateChecksum=true -Daether.checksums.algorithms="SHA256,SHA512" ${_options}
 }
 
 #mvn-arch-gen
@@ -349,7 +356,7 @@ function mvn-dep-file() {
         local _v="${BASH_REMATCH[3]}"
         [ -n "${_remote_repo}" ] && _options="${_options% } -Durl=${_remote_repo}"
         [ -n "${_server_id}" ] && _options="${_options% } -DrepositoryId=${_server_id}"
-        mvn `_mvn_settings "${_remote_repo}"` deploy:deploy-file -DgroupId=${_g} -DartifactId=${_a} -Dversion=${_v} -DgeneratePom=true -Dfile=${_file} ${_options}
+        mvn `_mvn_settings "${_remote_repo}"` deploy:deploy-file -DcreateChecksum=true -Daether.checksums.algorithms="SHA256,SHA512" -DgroupId=${_g} -DartifactId=${_a} -Dversion=${_v} -DgeneratePom=true -Dfile=${_file} ${_options}
     fi
 }
 
