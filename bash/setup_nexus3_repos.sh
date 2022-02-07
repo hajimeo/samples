@@ -233,7 +233,8 @@ function f_setup_nuget() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"nugetVersion":"V3","queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://api.nuget.org/v3/index.json","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}'
     fi
     # add some data for xxxx-proxy
-    f_get_asset "${_prefix}-v3-proxy" "index.json"  # This one may fail on some Nexus version
+    f_get_asset "${_prefix}-v3-proxy" "index.json"  # This one may fail on some older Nexus version
+    f_get_asset "${_prefix}-v3-proxy" "/v3/content/test/2.0.1.1/test.2.0.1.1.nupkg" "${_TMP%/}/test.2.0.1.1.nupkg"  # this one may fail on some older Nexus version
 
     if ! _is_repo_available "${_prefix}-ps-proxy"; then # Need '"nugetVersion":"V2",'?
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://www.powershellgallery.com/api/v2","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-ps-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}'
