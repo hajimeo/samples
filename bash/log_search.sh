@@ -780,14 +780,15 @@ function f_gc_overview() {
     local _size="${3:-"M"}"
     local _datetime_filter="${4:-"${_DATE_FORMAT}.\\d\\d:\\d\\d:\\d\\d.?\\d*"}"
     [ -z "${_saveTo}" ] && _saveTo="$(basename ${_file%.*}).csv"
-    # TODO: can't use the datetime filter in below rg command. Need to use more complex rg command
-    rg -z '(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+)' -o ${_file} | paste - - > /tmp/${FUNCNAME}.tmp || return $?
     # TODO: ([0-9.]+) secs does not work with PrintClassHistogramBeforeFullGC
-    if rg -m1 'Class Histogram' /tmp/${FUNCNAME}.tmp; then
-        echo "This function does not work with PrintClassHistogramBeforeFullGC to check /tmp/${FUNCNAME}.tmp"
-        return 1
+    if rg -m1 'Class Histogram' -q ${_file}; then
+        rg -z "(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+|\[Times: .+real=.+$)" -o ${_file} | rg '(GC pause|Full GC)' -A2 | rg -v -- '--' | paste - - - > /tmp/${FUNCNAME}.tmp || return $?
+        rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC.+?\)).+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}.+ real=([0-9.]+) secs.+" -o -r '"${1}",${5},${3},${4},"${2}"' /tmp/${FUNCNAME}.tmp > "${_saveTo}" || return $?
+    else
+        # TODO: can't use the _datetime_filter at below rg command. Need to use more complex rg command
+        rg -z '(^20\d\d-\d\d-\d\d.+(GC pause|Full GC).+$|Heap:\s*[^\]]+)' -o ${_file} | paste - - > /tmp/${FUNCNAME}.tmp || return $?
+        rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC[^,]+).* ([0-9.]+) secs.+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}" -o -r '"${1}",${3},${4},${5},"${2}"' /tmp/${FUNCNAME}.tmp > "${_saveTo}" || return $?
     fi
-    rg "^(${_datetime_filter}).+(GC pause[^,]+|Full GC[^,]+).* ([0-9.]+) secs.+Heap:\s*([0-9.]+)${_size}[\(\)0-9.KMG ]+->\s*([0-9.]+)${_size}" -o -r '"${1}",${3},${4},${5},"${2}"' /tmp/${FUNCNAME}.tmp > "${_saveTo}" || return $?
     head -n1 "${_saveTo}" | rg -q '^date_time' || echo "date_time,elapsed_secs,heap_before_${_size},heap_after_${_size},gc_type
 $(cat "${_saveTo}")" > ${_saveTo}
     echo "# Full GCs"
@@ -795,6 +796,7 @@ $(cat "${_saveTo}")" > ${_saveTo}
     echo "# All GCs"
     rg "^\"(${_DATE_FORMAT}.\d\d)" -o -r '$1' ${_saveTo} | bar_chart.py
     ls -l /tmp/${FUNCNAME}.tmp ${_saveTo}
+    #df = ju.q(\"SELECT date_time,elapsed_secs,heap_before_M,heap_after_M from t_gc WHERE gc_type like 'Full GC%'\")"
 }
 
 #JAVA_GC_LOG_DIR="/some/location"
@@ -868,9 +870,9 @@ function f_hexTids_from_topH() {
     # grep top output and return PID (currently over 90% CUP one) for the user, then use printf to convert to hex
     local _file="${1}"
     local _user="${2:-".+"}" # [^ ]+
-    local _command="${3:-"java"}" # [^ ]+
+    local _command="${3:-"(java|VM Thread|GC )"}" # [^ ]+
     local _n="${4:-20}"
-    rg '^top' -A ${_n} "${_file}" | rg "^(top|\s*\d+\s+${_user}\s.+\s${_command})" | tee /tmp/${FUNCNAME}_$$.tmp || return $?
+    rg '^top' -A ${_n} -g "${_file}" --no-filename | rg "^(top|\s*\d+\s+${_user}\s.+\s${_command})" | tee /tmp/${FUNCNAME}_$$.tmp || return $?
     echo ""
     cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|[6-9]\d\.\d+)" -o -r '$1' | sort | uniq | while read -r _pid; do
         printf "%s\t0x%x\n" ${_pid} ${_pid}
