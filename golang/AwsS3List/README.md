@@ -88,3 +88,8 @@ diff -wy --suppress-common-lines s3-test_blob_refs.out s3-test_blob_refs_from_db
 ...
 ```
 All above commands would complete within 10 seconds, and the last result means no dead blobs.
+
+NOTE: AWS CLI example to get size, but it's not same as Nexus because it includes *.properties
+```
+aws s3api list-objects --bucket apac-support-bucket --prefix node-nxrm-ha1/content --output json --query "[sum(Contents[].Size), length(Contents[])]"
+```
