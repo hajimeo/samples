@@ -3,6 +3,7 @@
 #source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_db.sh --compressed)"
 
 function _postgresql_configure() {
+    # @see: https://wiki.postgresql.org/wiki/Tuning_Your_PostgreSQL_Server
     local __doc__="Update postgresql.conf and pg_hba.conf. Need to run from the PostgreSQL server (localhost)"
     local _verbose_logging="${1}"   # If Y, adds more logging configs which would work with pgbadger.
     local _wal_archive_dir="${2}"   # Automatically decided if empty
@@ -40,6 +41,7 @@ function _postgresql_configure() {
     # @see: https://pgtune.leopard.in.ua/#/
     _upsert ${_postgresql_conf} "shared_buffers" "1024MB"       # Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm
     _upsert ${_postgresql_conf} "work_mem" "8MB" "#work_mem"    # Default 4MB. RAM * 25% / max_connections (200) + extra a few MB. NOTE: I'm not expecting my PG uses 200 though
+    #_upsert ${_postgresql_conf} "maintenance_work_mem" "64MB" "#maintenance_work_mem"    # Default 64MB. Can be higher than work_mem
     _upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # RAM * 50% ~ 75%
     _upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Usually higher provides better write performance
     ### End of tuning ###
