@@ -44,7 +44,7 @@ else
     _NXIQ_LOG="${_NXIQ_LOG:-"clm-server.log"}"
     _REQUEST_LOG="${_REQUEST_LOG:-"request.log"}"
 fi
-: ${_LOG_THRESHOLD_BYTES:=125829120}    # 120MB (large number significantly affects to the time)
+: ${_LOG_THRESHOLD_BYTES:=268435456}    # 256MB, usually takes 7s
 : ${_FILTERED_DATA_DIR:="./_filtered"}
 : ${_LOG_GLOB:="*.log"}
 : ${_SKIP_EXTRACT:=""}
@@ -290,7 +290,7 @@ function e_app_logs() {
     _LOG_GLOB="$(basename ${_log_path} | sed 's/.\///')"
 
     if [ -n "${_log_size}" ] && [ ${_log_size} -gt 0 ] && [ ${_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
-        f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
+        f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
     fi
     if [ -s "${_log_path}" ]; then
         local _start_log_line=""
@@ -389,8 +389,11 @@ function r_list_logs() {
 
 ### Tests ###################################################################
 function t_basic() {
+    if find . -maxdepth 3 -type f -name truncated | grep -q 'truncated'; then
+        _head "WARN" "'truncated' found under $(realpath .) with maxdepth 3"
+    fi
     if ! find . -maxdepth 5 -type f -name sysinfo.json | grep -q 'sysinfo.json'; then
-        _head "ERROR" "No 'sysinfo.json' found under $(realpath .) with maxdepth 5"
+        _head "ERROR" "No 'sysinfo.json' under $(realpath .) with maxdepth 5"
     fi
 }
 function t_system() {
@@ -398,9 +401,9 @@ function t_system() {
     _test_template "$(_rg 'AvailableProcessors: *[1-3]$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "AvailableProcessors might be too low"
     _test_template "$(_rg 'TotalPhysicalMemorySize: *(.+ MB|[1-7]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "TotalPhysicalMemorySize might be too low"
     _test_template "$(_rg 'MaxFileDescriptorCount: *\d{4}$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
-    _test_template "$(_rg 'SystemLoadAverage: *([2-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high"
+    _test_template "$(_rg 'SystemLoadAverage: *([2-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
     _test_template "$(_rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low"
-    _test_template "$(_rg -g jmx.json -q -- '-XX:+UseG1GC' || _rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
+    _test_template "$(_rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || _rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
 }
 function t_mounts() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return
