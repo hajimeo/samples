@@ -212,6 +212,36 @@ function f_search_soft_deleted_blobs() {
 }
 # TODO: search and sum the size per repo / per blob store, from file and/or DB.
 
+function f_missing_check() {
+    # To check 'exists in metadata, but is missing from the blobstore'
+    # https://issues.sonatype.org/browse/NEXUS-27145 stops maven-metadata rebuild, so deleting multiple maven-metadata.xml files
+    local _comp_bak="$1"
+    local _blobstore="${2:-"default"}"
+    local _path2content="${2:-"./content"}"
+    # NOTE: May need to modify 'where' part for deleting specifics:
+    local _sql="select bucket.repository_name as repo_name, name, blob_ref from asset where attributes.maven2.asset_kind = 'REPOSITORY_METADATA' and blob_ref like '${_blobstore}@%' LIMIT 2;"
+    if [ ! -s orient-console.jar ]; then
+        curl -o ./orient-console.jar -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar" || return $?
+    fi
+    if ! type blobpath &>/dev/null && [ ! -s blobpath ]; then
+        curl -o ./blobpath -L "https://github.com/hajimeo/samples/raw/master/misc/blobpath_$(uname)" || return $?
+        chmod u+x ./blobpath || return $?
+    fi
+    echo "${_sql}" | java -DexportPath=./result.json -jar orient-console.jar ${_comp_bak} || return $?
+    cat ./result.json | while read -r _l; do
+        if [[ "${_l}" =~ \"repo_name\":\"([^\"]+)\".+\"name\":\"([^\"]+)\".+\"blob_ref\":\"${_blobstore}@[^:]+:([^\"]+)\" ]]; then
+            local _repo_name="${BASH_REMATCH[1]}"
+            local _name="${BASH_REMATCH[2]}"
+            local _blobId="${BASH_REMATCH[3]}"
+            local _path="${_path2content%/}/$(blobpath "${_blobId}")"
+            if [ ! -f "${_path}" ]; then    # Change this with aws cli if S3
+                echo "${_name} ${_path} does not exist."
+                #echo curl -u admin:admin123 "${_NXRM3_BASEURL%/}/repository/${_repo_name}/${_name#/}"
+            fi
+        fi
+    done
+}
+
 function f_orientdb_checks() {
     local __doc__="Check index number/size and pcl file size"
     local _db="$1"  # Directory or ls -l output
