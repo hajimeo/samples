@@ -153,9 +153,19 @@ function _postgresql_create_role_and_db() {
     local _dbpwd="${2:-"${_dbusr}"}"
     local _dbname="${3:-"${_dbusr}"}"
     local _schema="${4}"
-    local _dbadmin="${5:-"postgres"}"
+    local _dbadmin="${5}"
     local _dbhost="${6}"
     local _dbport="${7:-"5432"}"
+
+    if [ -z "${_dbadmin}" ]; then
+        if [ "`uname`" = "Darwin" ]; then
+            #psql template1 -c "create database $USER"
+            _dbadmin="$USER"
+        else
+            _dbadmin="$(_user_by_port "${_port}" 2>/dev/null)"
+            [ -z "${_dbadmin}" ] && _dbadmin="postgres"
+        fi
+    fi
 
     local _psql_as_admin="sudo -u ${_dbadmin} -i psql"
     if [ -n "${_dbhost}" ]; then
