@@ -77,7 +77,7 @@ function iqMvn() {
         _iq_url="https://dh1.standalone.localdomain:8470/"
     fi
 
-    local _cmd="mvn com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 ${_mvn_opts}"
+    local _cmd="mvn com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -Dclm.scan.dirExcludes=\"**/BOOT-INF/lib/**\" ${_mvn_opts}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
@@ -316,6 +316,14 @@ for v in {1..5}; do
 done
 EOF
 : <<'EOF'
+mvn-arch-gen
+_REPO_URL="http://localhost:8081/repository/snapshots/"
+for v in {1..11}; do
+  sed -i.tmp -E "s@^  <version>.+</version>@  <version>23.76.0-${v}0-SNAPSHOT</version>@" pom.xml
+  mvn-deploy "${_REPO_URL}" "" "" "nexus" "" || break
+done
+EOF
+: <<'EOF'
 _REPO_URL="http://dh1:8081/repository/maven-hosted/"
 for _v in "7.10.0" "7.9.0" "SortTest-1.3.1" "SortTest-1.3.0" "SortTest-1.2.0" "SortTest-1.1.0" "SortTest-1.0.6" "SortTest-1.0.5" "SortTest-1.0.4" "SortTest-1.0.3" "SortTest-1.0.2" "SortTest.SR1" "SortTest"; do
   sed -i.tmp -E "s@^  <version>.*</version>@  <version>${_v}</version>@" pom.xml
@@ -334,8 +342,8 @@ function mvn-deploy() {
         _options="-DaltDeploymentRepository=${_server_id}::default::${_deploy_repo} ${_options}"
     fi
     [ -n "${_local_repo}" ] && _options="${_options% } -Dmaven.repo.local=${_local_repo}"
-    # https://issues.apache.org/jira/browse/MRESOLVER-56
-    mvn `_mvn_settings "${_remote_repo}"` clean package deploy -DcreateChecksum=true -Daether.checksums.algorithms="SHA256,SHA512" ${_options}
+    # https://issues.apache.org/jira/browse/MRESOLVER-56     -Daether.checksums.algorithms="SHA256,SHA512"
+    mvn `_mvn_settings "${_remote_repo}"` clean package deploy -DcreateChecksum=true ${_options}
 }
 
 #mvn-arch-gen
