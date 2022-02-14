@@ -42,7 +42,7 @@ function f_prepare() {
         sudo python3.7 /tmp/get-pip.py || return $?
     fi
     # python 3.7 does not have virtualenv?
-    python3.7 -m pip install -U virtualenv
+    #python3.7 -m pip install -U virtualenv venv
 
     # For bar_chart.py  TODO: this works only with python2, hence no pip3 (and not in virtualenv), and eventually will stop working
     if which python2 &>/dev/null; then
@@ -223,7 +223,9 @@ function f_setup_python() {
         deactivate &>/dev/null
         # NOTE: when python version is changed, need to run virtualenv command again
         echo "Activating virtualenv: $HOME/.pyvenv (https://virtualenv.pypa.io/en/latest/user_guide.html) ..."
-        python3.7 -m virtualenv -p python3.7 $HOME/.pyvenv || return $?
+        if ! python3.7 -m virtualenv -p python3.7 $HOME/.pyvenv; then
+            python3.7 -m venv $HOME/.pyvenv || return $?
+        fi
         source $HOME/.pyvenv/bin/activate || return $?
         # NOTE: Currently not using pyenv (below) as it makes shell slower
         #pyenv deactivate &>/dev/null    # Or pyenv local system

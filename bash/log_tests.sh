@@ -404,6 +404,9 @@ function t_system() {
     _test_template "$(_rg 'SystemLoadAverage: *([2-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
     _test_template "$(_rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low"
     _test_template "$(_rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || _rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
+    if ! _rg -g jmx.json -q 'x86_64'; then
+        _head "WARN" "No 'x86_64' found in jmx.json. Might be 32 bit Java (or non Linux)"
+    fi
 }
 function t_mounts() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/system-filestores.json" || return

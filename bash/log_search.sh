@@ -872,11 +872,22 @@ function f_hexTids_from_topH() {
     local _user="${2:-".+"}" # [^ ]+
     local _command="${3:-"(java|VM Thread|GC )"}" # [^ ]+
     local _n="${4:-20}"
-    rg '^top' -A ${_n} -g "${_file}" --no-filename | rg "^(top|\s*\d+\s+${_user}\s.+\s${_command})" | tee /tmp/${FUNCNAME}_$$.tmp || return $?
+    if [ -f "${_file}" ]; then
+        rg '^top' -A ${_n} "${_file}"
+    else
+        rg '^top' -A ${_n} -g "${_file}" --no-filename
+    fi | rg "^(top|\s*\d+\s+${_user}\s.+\s${_command})" | tee /tmp/${FUNCNAME}_$$.tmp || return $?
     echo ""
-    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|[6-9]\d\.\d+)" -o -r '$1' | sort | uniq | while read -r _pid; do
-        printf "%s\t0x%x\n" ${_pid} ${_pid}
+    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|[6-9]\d\.\d+)" -o -r '$1' | sort | uniq -c | sort -nr | head -n20 | while read -r _l; do
+        if [[ "${_l}" =~ ([0-9]+)[[:space:]]+([0-9]+) ]]; then
+            local _cnt="${BASH_REMATCH[1]}"
+            local _pid="${BASH_REMATCH[2]}"
+            printf "%s\t%s\t0x%x\n" ${_cnt} ${_pid} ${_pid}
+        fi
     done
+    echo ""
+    rg '^Proto' -m1 "${_file}"
+    rg '^tcp\s+(\d{4,}\s+\d+|\d+\s+\d{4,})\s+.+/java' "${_file}"
 }
 
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
@@ -917,7 +928,7 @@ function f_threads() {
         local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -c ${_file})
         if [ 1 -lt ${_how_many_threads:-0} ]; then
             echo "## Check if 'Heap' information exists"
-            rg '^Heap' -A1 ${_file} | rg -w total
+            rg '^Heap' -A8 ${_file} | rg '\d\d+% used'
             echo " "
 
             f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d" "${_tmp_dir%/}" "" || return $?
