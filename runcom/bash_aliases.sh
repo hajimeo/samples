@@ -497,9 +497,9 @@ function pgStart() {
     local _cmd="${1:-"status"}"
     local _pg_data="${2:-"/usr/local/var/postgres"}"
     local _log_path="${3:-"$HOME/postgresql.log"}"
-    if [ -s "${_log_path}" ]; then
-        gzip -S "_$(date +'%Y%m%d%H%M%S').gz" "${_log_path}" &>/dev/null
-        mv -v ${_log_path}_*.gz /tmp/
+    if [ "${_cmd}" == "start" ] && [ -s "${_log_path}" ]; then
+        mv -v ${_log_path} /tmp/
+        gzip -S "_$(date +'%Y%m%d%H%M%S').gz" "/tmp/${_log_path}" &>/dev/null &
     fi
     pg_ctl -D ${_pg_data} -l ${_log_path} ${_cmd}
     # To connect: psql template1
