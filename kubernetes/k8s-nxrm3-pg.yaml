@@ -102,10 +102,12 @@ spec:
             - name: NEXUS_SECURITY_RANDOMPASSWORD
               value: 'false'
             - name: INSTALL4J_ADD_VM_PARAMS
-              # No schema specified, so will be public.
+              # NOTE: In the datastore parameter, no schema specified, so will be public.
+              #       allowCreation shouldn't be used for production. Also maybe -Dnexus.onboarding.enabled=false better?
               value: '-Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g \
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
+                -Dnexus.scripts.allowCreation=true \
                 -Dnexus.datastore.enabled=true \
                 -Dnexus.datastore.nexus.name=nexus \
                 -Dnexus.datastore.nexus.type=jdbc \
