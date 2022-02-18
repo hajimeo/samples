@@ -19,6 +19,13 @@ PREREQUISITE:
 
 TARGET OS:
     macOS Mojave
+
+GLOBAL VARIABLES (not all):
+    _APP_VER_OVERWRITE                  To specify application version
+    _WORKING_DIR_OVERWRITE              To specify the sonatype work directory (but not used)
+    _NXRM_LOG _NXIQ_LOG _REQUEST_LOG    To specify the log filename (used for rg -g)
+    _LOG_THRESHOLD_BYTES                Currently log files larger than 256MB will be ignored.
+    _SKIP_EXTRACT                       Do not run functions start with e_
 EOF
 }
 _prerequisites() {
@@ -246,7 +253,7 @@ function _basic_check() {
     local _message="${4}"
     if [ -n "${_required_app_ver_regex}" ]; then
         local _ver="$(_app_ver)"
-        [ -z "${_ver}" ] && _head "${_level}" "Can not run ${FUNCNAME[1]} as no _APP_VER detected" && return 8
+        [ -z "${_ver}" ] && _head "INFO" "Can not run ${FUNCNAME[1]} as no _APP_VER / _APP_VER_OVERWRITE detected" && return 8
         # NOTE: No message if version doesn't match but just skip.
         [ -n "${_ver}" ] && [[ ! "${_ver}" =~ ${_required_app_ver_regex} ]] && return 9
     fi
