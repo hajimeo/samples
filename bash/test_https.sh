@@ -28,7 +28,11 @@ function list_ciphers() {
     local _use_nmap="${3}"
     local _host_port=$_host:$_port
     local _delay=1
-    # NOTE: *newer* curl also shows the cipher with -v -v -v (and also can specify ciphers)
+
+    # -Djdk.tls.ephemeralDHKeySiz=1024 | curl: (35) error:141A318A:SSL routines:tls_process_ske_dhe:dh key too small
+    echo -n | openssl s_client -cipher "EDH" -connect ${_host_port} 2>&1 | grep -ie "Server .* key"
+
+    # NOTE: Instead of nmap, *newer* curl also shows the cipher with -v -v -v (and also can specify ciphers)
     if [[ "${_use_nmap}" =~ ^(y|Y) ]] && which nmap &>/dev/null; then
         # TODO: this doesn't work with TLSv1.3
         nmap --script ssl-enum-ciphers -p ${_port} ${_host}
