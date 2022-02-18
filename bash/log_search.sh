@@ -872,12 +872,14 @@ function f_hexTids_from_topH() {
     local _user="${2:-".+"}" # [^ ]+
     local _command="${3:-"(java|VM Thread|GC )"}" # [^ ]+
     local _n="${4:-20}"
+    echo "# Overview from top (${_n})"
     if [ -f "${_file}" ]; then
         rg '^top' -A ${_n} "${_file}"
     else
         rg '^top' -A ${_n} -g "${_file}" --no-filename
     fi | rg "^(top|\s*\d+\s+${_user}\s.+\s${_command})" | tee /tmp/${FUNCNAME}_$$.tmp || return $?
     echo ""
+    echo "# Converting suspicious PIDs to hex"
     cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|[6-9]\d\.\d+)" -o -r '$1' | sort | uniq -c | sort -nr | head -n20 | while read -r _l; do
         if [[ "${_l}" =~ ([0-9]+)[[:space:]]+([0-9]+) ]]; then
             local _cnt="${BASH_REMATCH[1]}"
@@ -886,8 +888,9 @@ function f_hexTids_from_topH() {
         fi
     done
     echo ""
+    echo "# Large Receive / Send Q from netstat"
     rg '^Proto' -m1 "${_file}"
-    rg '^tcp\s+(\d{4,}\s+\d+|\d+\s+\d{4,})\s+.+/java' "${_file}"
+    rg "^tcp\s+(\d{4,}\s+\d+|\d+\s+\d{4,})\s+.+/${_command}" "${_file}"
 }
 
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
@@ -928,7 +931,7 @@ function f_threads() {
         local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -c ${_file})
         if [ 1 -lt ${_how_many_threads:-0} ]; then
             echo "## Check if 'Heap' information exists"
-            rg '^Heap' -A8 ${_file} | rg '\d\d+% used'
+            rg '^Heap' -A8 ${_file} | rg 'total'    # % didn't work with G1GC
             echo " "
 
             f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d" "${_tmp_dir%/}" "" || return $?
