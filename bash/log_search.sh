@@ -903,7 +903,7 @@ function f_threads() {
     local _running_thread_search_re="${3-"\.sonatype\."}"
     local _save_dir="${4}"
     local _not_split_by_date="${5:-${_NOT_SPLIT_BY_DATE}}"
-    local _thread_file_glob="${6:-${_THREAD_FILE_GLOB:-"threads*.txt*"}}"
+    local _thread_file_glob="${6:-${_THREAD_FILE_GLOB:-"thread*.txt*"}}"
 
     [ -z "${_file}" ] && _file="$(find . -type f -name threads.txt 2>/dev/null | grep '/threads.txt$' -m 1)"
     [ -z "${_file}" ] && return 1
