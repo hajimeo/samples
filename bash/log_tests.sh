@@ -271,7 +271,7 @@ function _test_template() {
     local _message="$3"
     local _note="$4"
     local _style="$5"
-    [ -z "${_bad_result}" ] && return
+    [ -z "${_bad_result}" ] && return 0
     _head "${_level}" "${_message}"
     echo '```'${_style}
     echo "${_bad_result}"
