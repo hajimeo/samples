@@ -43,25 +43,24 @@ Use as a web server (receiver) with netcat command:
 Also, this script utilise the following environment variables:
 	_DUMP_BODY    boolean Whether dump the request/response body
 	_SAVE_BODY_TO string  Save body strings into this location
-	_SAML_IDP_URL boolean Enable SAML SP testing mode
-`)
+	_SAML_IDP_URL boolean Enable SAML SP testing mode`)
 }
 
-var server_addr string  // Listening server address eg: $(hostname -f):8080
-var proxy_pass string   // forwarding proxy URL
-var scheme string       // http or https (decided by given certificate)
-var dump_body bool      // If true, output
-var save_body_to string // if dump_body is true, save request/response bodies into files
-var saml_idp_url string // If true, run as SAML SP testing mode
+var serverAddr string // Listening server address eg: $(hostname -f):8080
+var proxyPass string  // forwarding proxy URL
+var scheme string     // http or https (decided by given certificate)
+var dumpBody bool     // If true, output
+var saveBodyTo string // if dumpBody is true, save request/response bodies into files
+var samlIdpUrl string // If true, run as SAML SP testing mode
 
 func handler(p *httputil.ReverseProxy) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
-		req.URL.Host = server_addr
+		req.URL.Host = serverAddr
 		req.URL.Scheme = scheme
 		req.Header.Set("X-Real-IP", req.RemoteAddr)
 		//req.Header.Set("X-Forwarded-For", req.RemoteAddr)	// TODO: not sure which value to use
 		req.Header.Set("X-Forwarded-Proto", scheme)
-		_, err := httputil.DumpRequest(req, dump_body)
+		_, err := httputil.DumpRequest(req, dumpBody)
 		log.Printf("REQUEST HEAD: %s\n", req.Header)
 		if err != nil {
 			log.Printf("DumpRequest error: %s\n", err)
@@ -73,7 +72,7 @@ func handler(p *httputil.ReverseProxy) func(http.ResponseWriter, *http.Request) 
 }
 
 func logResponseHeader(resp *http.Response) (err error) {
-	_, err = httputil.DumpResponse(resp, dump_body)
+	_, err = httputil.DumpResponse(resp, dumpBody)
 	log.Printf("RESPONSE HEAD: %s\n", resp.Header)
 	if err != nil {
 		log.Printf("DumpResponse error: %s\n", err)
@@ -89,21 +88,21 @@ func logBody(body io.ReadCloser, prefix string) {
 		log.Printf("ioutil.ReadAll error: %s\n", err)
 		return
 	}
-	var log_msg string
-	if len(save_body_to) > 0 {
-		time_ms_str := strconv.FormatInt(time.Now().UnixNano()/1000000, 10)
-		fname := save_body_to + "/" + time_ms_str + "_" + prefix + ".out"
+	var logMsg string
+	if len(saveBodyTo) > 0 {
+		timeMsStr := strconv.FormatInt(time.Now().UnixNano()/1000000, 10)
+		fname := saveBodyTo + "/" + timeMsStr + "_" + prefix + ".out"
 		err := ioutil.WriteFile(fname, bodyBytes, 0644)
 		if err != nil {
 			panic(err)
 		}
-		log_msg = "saved into " + fname
+		logMsg = "saved into " + fname
 	} else if len(bodyBytes) > 512 {
-		log_msg = string(bodyBytes)[0:512] + " ..."
+		logMsg = string(bodyBytes)[0:512] + " ..."
 	} else {
-		log_msg = string(bodyBytes)
+		logMsg = string(bodyBytes)
 	}
-	log.Printf("%s BODY: %s\n", prefix, log_msg)
+	log.Printf("%s BODY: %s\n", prefix, logMsg)
 }
 
 func Env(key string, fallback string) string {
@@ -143,11 +142,14 @@ func readRsaKeyCert(keyFile string, certFile string) (*rsa.PrivateKey, *x509.Cer
 
 // Dummy page displayed after authentication
 func samlHello(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Hello, %s!", r.Header.Get("X-Saml-Cn"))
+	_, err := fmt.Fprintf(w, "Hello, %s!", r.Header.Get("X-Saml-Cn"))
+	if err != nil {
+		panic(err)
+	}
 }
 
 // _SAML_IDP_URL, _SAML_SP_ENTITY_ID, _SAML_SP_URL, _SAML_SP_BINDING, _SAML_SP_SIGN_CERT
-func samlLoadConfig(sp_url string, keyFile string, certFile string) samlsp.Options {
+func samlLoadConfig(spUrlStr string, keyFile string, certFile string) samlsp.Options {
 	samlOptions := samlsp.Options{
 		AllowIDPInitiated: true,
 	}
@@ -198,11 +200,11 @@ func samlLoadConfig(sp_url string, keyFile string, certFile string) samlsp.Optio
 		}
 	}
 
-	url, err := url.Parse(sp_url)
+	spUrl, err := url.Parse(spUrlStr)
 	if err != nil {
 		panic(err)
 	}
-	samlOptions.URL = *url
+	samlOptions.URL = *spUrl
 	// TODO: use https://github.com/hajimeo/saml-test-sp/blob/master/pkg/helpers/generate.go
 	key, cert := readRsaKeyCert(keyFile, certFile)
 	samlOptions.Key = key
@@ -222,14 +224,14 @@ func main() {
 
 	// handling args
 	if len(os.Args) > 1 {
-		server_addr = os.Args[1]
+		serverAddr = os.Args[1]
 	}
 	ptn := "/"
 	if len(os.Args) > 2 {
 		ptn = os.Args[2]
 	}
 	if len(os.Args) > 3 {
-		proxy_pass = os.Args[3]
+		proxyPass = os.Args[3]
 	}
 	certFile := ""
 	if len(os.Args) > 4 {
@@ -239,25 +241,28 @@ func main() {
 	if len(os.Args) > 5 {
 		keyFile = os.Args[5]
 	}
-	dump_body = EnvB("_DUMP_BODY", false)
-	save_body_to = Env("_SAVE_BODY_TO", "")
-	if len(save_body_to) > 0 {
-		log.Printf("save_body_to is set to #{save_body_to}.\n")
+	dumpBody = EnvB("_DUMP_BODY", false)
+	saveBodyTo = Env("_SAVE_BODY_TO", "")
+	if len(saveBodyTo) > 0 {
+		log.Printf("saveBodyTo is set to #{saveBodyTo}.\n")
 	}
 
 	// https://pkg.go.dev/github.com/edaniels/go-saml
-	saml_idp_url = Env("_SAML_IDP_URL", "")
-	if len(saml_idp_url) > 0 {
-		log.Printf("saml_idp_url is set to #{saml_idp_url}.\n")
-		samlSP, _ := samlsp.New(samlLoadConfig(saml_idp_url, keyFile, certFile))
+	samlIdpUrl = Env("_SAML_IDP_URL", "")
+	if len(samlIdpUrl) > 0 {
+		log.Printf("samlIdpUrl is set to #{samlIdpUrl}.\n")
+		samlSP, _ := samlsp.New(samlLoadConfig(samlIdpUrl, keyFile, certFile))
 		app := http.HandlerFunc(samlHello)
 		http.Handle("/hello", samlSP.RequireAccount(app))
 		http.Handle("/saml/", samlSP)
-		http.ListenAndServe(":8000", nil)
+		err := http.ListenAndServe(":8000", nil)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	// start reverse proxy
-	remote, err := url.Parse(proxy_pass)
+	remote, err := url.Parse(proxyPass)
 	if err != nil {
 		panic(err)
 	}
@@ -265,13 +270,13 @@ func main() {
 	proxy.ModifyResponse = logResponseHeader
 	// registering handler function for this pattern
 	http.HandleFunc(ptn, handler(proxy))
-	log.Printf("Starting listener on %s\n\n", server_addr)
+	log.Printf("Starting listener on %s\n\n", serverAddr)
 	if len(keyFile) > 0 {
 		scheme = "https"
-		err = http.ListenAndServeTLS(server_addr, certFile, keyFile, nil)
+		err = http.ListenAndServeTLS(serverAddr, certFile, keyFile, nil)
 	} else {
 		scheme = "http"
-		err = http.ListenAndServe(server_addr, nil)
+		err = http.ListenAndServe(serverAddr, nil)
 	}
 	if err != nil {
 		panic(err)
