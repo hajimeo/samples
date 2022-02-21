@@ -5,7 +5,13 @@
 package main
 
 import (
+	"context"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"github.com/crewjam/saml"
+	"github.com/crewjam/saml/samlsp"
 	"io"
 	"io/ioutil"
 	"log"
@@ -37,6 +43,7 @@ Use as a web server (receiver) with netcat command:
 Also, this script utilise the following environment variables:
 	_DUMP_BODY    boolean Whether dump the request/response body
 	_SAVE_BODY_TO string  Save body strings into this location
+	_SAML_IDP_URL boolean Enable SAML SP testing mode
 `)
 }
 
@@ -45,6 +52,7 @@ var proxy_pass string   // forwarding proxy URL
 var scheme string       // http or https (decided by given certificate)
 var dump_body bool      // If true, output
 var save_body_to string // if dump_body is true, save request/response bodies into files
+var saml_idp_url string // If true, run as SAML SP testing mode
 
 func handler(p *httputil.ReverseProxy) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
@@ -98,6 +106,111 @@ func logBody(body io.ReadCloser, prefix string) {
 	log.Printf("%s BODY: %s\n", prefix, log_msg)
 }
 
+func Env(key string, fallback string) string {
+	value, exists := os.LookupEnv(key)
+	if exists {
+		return value
+	}
+	return fallback
+}
+
+func EnvB(key string, fallback bool) bool {
+	value, exists := os.LookupEnv(key)
+	if exists {
+		switch value {
+		case
+			"TRUE",
+			"True",
+			"true",
+			"Y",
+			"Yes",
+			"YES":
+			return true
+		}
+	}
+	return fallback
+}
+
+func readRsaKeyCert(keyFile string, certFile string) (*rsa.PrivateKey, *x509.Certificate) {
+	keyStr, _ := ioutil.ReadFile(keyFile)
+	certStr, _ := ioutil.ReadFile(certFile)
+	block, _ := pem.Decode([]byte(keyStr))
+	key, _ := x509.ParsePKCS1PrivateKey(block.Bytes)
+	block, _ = pem.Decode([]byte(certStr))
+	cert, _ := x509.ParseCertificate(block.Bytes)
+	return key, cert
+}
+
+// Dummy page displayed after authentication
+func samlHello(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "Hello, %s!", r.Header.Get("X-Saml-Cn"))
+}
+
+// _SAML_IDP_URL, _SAML_SP_ENTITY_ID, _SAML_SP_URL, _SAML_SP_BINDING, _SAML_SP_SIGN_CERT
+func samlLoadConfig(sp_url string, keyFile string, certFile string) samlsp.Options {
+	samlOptions := samlsp.Options{
+		AllowIDPInitiated: true,
+	}
+	samlOptions.EntityID = Env("_SAML_SP_ENTITY_ID", "saml-test-sp")
+	metadataURL, metadataURLexists := os.LookupEnv("_SAML_IDP_URL")
+	if metadataURLexists {
+		log.Printf("Will attempt to load metadata from %s", metadataURL)
+		idpMetadataURL, err := url.Parse(metadataURL)
+		if err != nil {
+			panic(err)
+		}
+		desc, err := samlsp.FetchMetadata(context.TODO(), http.DefaultClient, *idpMetadataURL)
+		if err != nil {
+			panic(err)
+		}
+		samlOptions.IDPMetadata = desc
+	} else {
+		ssoURL := Env("_SAML_SP_URL", "")
+		binding := Env("_SAML_SP_BINDING", saml.HTTPPostBinding)
+		samlOptions.IDPMetadata = &saml.EntityDescriptor{
+			EntityID: samlOptions.EntityID,
+			IDPSSODescriptors: []saml.IDPSSODescriptor{
+				{
+					SingleSignOnServices: []saml.Endpoint{
+						{
+							Binding:  binding,
+							Location: ssoURL,
+						},
+					},
+				},
+			},
+		}
+		if signingCert := Env("_SAML_SP_SIGN_CERT", ""); signingCert != "" {
+			samlOptions.IDPMetadata.IDPSSODescriptors[0].KeyDescriptors = []saml.KeyDescriptor{
+				{
+					Use: "singing",
+					KeyInfo: saml.KeyInfo{
+						X509Data: saml.X509Data{
+							X509Certificates: []saml.X509Certificate{
+								{
+									Data: signingCert,
+								},
+							},
+						},
+					},
+				},
+			}
+		}
+	}
+
+	url, err := url.Parse(sp_url)
+	if err != nil {
+		panic(err)
+	}
+	samlOptions.URL = *url
+	// TODO: use https://github.com/hajimeo/saml-test-sp/blob/master/pkg/helpers/generate.go
+	key, cert := readRsaKeyCert(keyFile, certFile)
+	samlOptions.Key = key
+	samlOptions.Certificate = cert
+	log.Printf("Configuration Options: %+v", samlOptions)
+	return samlOptions
+}
+
 func main() {
 	// Not enough args or help is asked, show help()
 	if len(os.Args) < 4 || os.Args[1] == "-h" || os.Args[1] == "--help" {
@@ -126,14 +239,21 @@ func main() {
 	if len(os.Args) > 5 {
 		keyFile = os.Args[5]
 	}
-	dump_body = false
-	if os.Getenv("_DUMP_BODY") == "true" {
-		dump_body = true
-		log.Printf("dump_body is set to true.\n")
-	}
-	save_body_to = os.Getenv("_SAVE_BODY_TO")
+	dump_body = EnvB("_DUMP_BODY", false)
+	save_body_to = Env("_SAVE_BODY_TO", "")
 	if len(save_body_to) > 0 {
 		log.Printf("save_body_to is set to #{save_body_to}.\n")
+	}
+
+	// https://pkg.go.dev/github.com/edaniels/go-saml
+	saml_idp_url = Env("_SAML_IDP_URL", "")
+	if len(saml_idp_url) > 0 {
+		log.Printf("saml_idp_url is set to #{saml_idp_url}.\n")
+		samlSP, _ := samlsp.New(samlLoadConfig(saml_idp_url, keyFile, certFile))
+		app := http.HandlerFunc(samlHello)
+		http.Handle("/hello", samlSP.RequireAccount(app))
+		http.Handle("/saml/", samlSP)
+		http.ListenAndServe(":8000", nil)
 	}
 
 	// start reverse proxy
