@@ -931,7 +931,7 @@ function f_threads() {
         local _how_many_threads=$(rg '^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d' -c ${_file})
         if [ 1 -lt ${_how_many_threads:-0} ]; then
             echo "## Check if 'Heap' information exists"
-            rg '^Heap' -A8 ${_file} | rg 'total'    # % didn't work with G1GC
+            rg '^Heap' -A8 ${_file} | rg '(total|\d\d+% used)'    # % didn't work with G1GC
             echo " "
 
             f_splitByRegex "${_file}" "^20\d\d-\d\d-\d\d \d\d:\d\d:\d\d" "${_tmp_dir%/}" "" || return $?
@@ -945,12 +945,15 @@ function f_threads() {
         #find ${_file%/} -type f -name 'threads*.txt' 2>/dev/null | while read -r _f; do
         for _f in $(find ${_file%/} -type f \( -name "${_thread_file_glob}" -o -name '20*.out' \) -print 2>/dev/null | sort -n); do
             local _filename=$(basename ${_f})
-            echo "Saving outputs into f_thread_${_filename%.*}.out ..."
+            _LOG "INFO" "Saving outputs into f_thread_${_filename%.*}.out ..."
             f_threads "${_f}" "${_split_search}" "${_running_thread_search_re}" "${_save_dir%/}/${_filename%.*}" "Y" > ./f_thread_${_filename%.*}.out
             _count=$(( ${_count} + 1 ))
         done
         echo " "
         # Doing below only when checking multiple thread dumps
+        echo "## Thread status counts from ./f_thread_*.out"
+        rg -A10 '^## Counting thread states' ./f_thread_*.out
+        echo " "
         local __count=${_count}
         [ 3 -lt ${_count} ] && __count=$(( ${_count} - 1 ))
         echo "## Long *RUN*ning and no-change (same hash) threads which contain '${_running_thread_search_re}' (threads:${__count}/${_count})"
@@ -974,32 +977,25 @@ function f_threads() {
 
     f_splitByRegex "${_file}" "${_split_search}" "${_save_dir%/}" ""
 
-    if [[ "${_running_thread_search_re}" =~ .*sonatype.* ]]; then
-        echo "## Listening ports (acceptor)"
-        # Sometimes this can be a hostname
-        #rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
-        rg '^[^ ].+(\-acceptor\-| Acceptor\d+).+:\d+[\} "]' --no-filename "${_file}" | sort | uniq
-        echo " "
+    echo "## Listening ports (acceptor)"
+    # Sometimes this can be a hostname
+    #rg '\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+' --no-filename "${_file}"
+    rg '^[^ ].+(\-acceptor\-| Acceptor\d+).+:\d+[\} "]' --no-filename "${_file}" | sort | uniq
+    echo " "
 
-        echo "## Counting 'QueuedThreadPool.*\.run' for Jetty pool (QueuedThreadPool.runJob may not work with older NXRM2)"
-        echo "BLOCKED: $(rg '\bQueuedThreadPool.*\.run' ${_save_dir%/}/ -l -g '*BLOCKED*' -g '*blocked*' | wc -l)"
-        echo "RUNNABLE:$(rg '\bQueuedThreadPool.*\.run' ${_save_dir%/}/ -l -g '*RUNNABLE*' -g '*runnable*' | wc -l)"
-        echo "WAITING: $(rg '\bQueuedThreadPool.*\.run' ${_save_dir%/}/ -l -g '*WAITING*' -g '*waiting*' | wc -l)"
-        echo " "
+    echo "## Counting 'QueuedThreadPool.*\.run' for Jetty pool (QueuedThreadPool.runJob may not work with older NXRM2)"
+    echo "BLOCKED: $(rg '\bQueuedThreadPool.*\.run' ${_save_dir%/}/ -l -g '*BLOCKED*' -g '*blocked*' | wc -l)"
+    echo "RUNNABLE:$(rg '\bQueuedThreadPool.*\.run' ${_save_dir%/}/ -l -g '*RUNNABLE*' -g '*runnable*' | wc -l)"
+    echo "WAITING: $(rg '\bQueuedThreadPool.*\.run' ${_save_dir%/}/ -l -g '*WAITING*' -g '*waiting*' | wc -l)"
+    echo " "
 
-        echo "## Counting 'Pool.acquire' for DB pool"
-        rg -i 'Pool\.acquire\b' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
-        echo " "
+    echo "## Counting 'Pool.acquire' for DB pool"
+    rg -i 'Pool\.acquire\b' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
+    echo " "
 
-        echo "## Counting 'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
-        # https://support.sonatype.com/hc/en-us/articles/213464998-How-to-disable-the-System-Feeds-nexus-timeline-plugin-feature-to-improve-Nexus-performance
-        echo "##          'content_digest' https://issues.sonatype.org/browse/NEXUS-26379 (3.29.x) and NEXUS-25294 (3.27.x and older)"
-        echo "##          'touchItemLastRequested' https://issues.sonatype.org/browse/NEXUS-10372 all NXRM2"
-        echo "##          'preClose0' https://issues.sonatype.org/browse/NEXUS-30865 all NXRM2"
-        echo "##          'MemoryCache' https://bugs.openjdk.java.net/browse/JDK-8259886 < 8u301"
-        rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
-        echo " "
-    fi
+    echo "## Counting *probably* waiting for connection pool by checking 'getConnection'"
+    rg -m1 -w getConnection ${_save_dir%/}/ -g '*WAITING*' --no-filename | sort | uniq -c
+    echo " "
 
     echo "## Finding BLOCKED or waiting to lock lines (excluding '-acceptor-')"
     rg -w '(BLOCKED|waiting to lock)' -C1 --no-filename -g '!*-acceptor-*' -g '!*_Acceptor*' ${_save_dir%/}/
@@ -1035,16 +1031,37 @@ function f_threads() {
         echo "## Finding runnable (expecting QuartzTaskJob) '${_running_thread_search_re}.+Task.execute' from ${_save_dir%/}"
         rg -m1 -s "${_running_thread_search_re}.+Task\.execute\(" -g '*runnable*' "${_save_dir%/}"
         echo " "
-    fi
 
-    echo "## Counting *probably* waiting for connection pool by checking 'getConnection'"
-    rg -m1 -w getConnection ${_save_dir%/}/ -g '*WAITING*' --no-filename | sort | uniq -c
-    echo " "
+        # Sonatype specific known issue related.
+        if [[ "${_running_thread_search_re}" =~ .*sonatype.* ]]; then
+            echo "## Counting 'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
+            # https://support.sonatype.com/hc/en-us/articles/213464998-How-to-disable-the-System-Feeds-nexus-timeline-plugin-feature-to-improve-Nexus-performance
+            echo "##          'content_digest' https://issues.sonatype.org/browse/NEXUS-26379 (3.29.x) and NEXUS-25294 (3.27.x and older)"
+            echo "##          'touchItemLastRequested' https://issues.sonatype.org/browse/NEXUS-10372 all NXRM2"
+            echo "##          'preClose0' https://issues.sonatype.org/browse/NEXUS-30865 all NXRM2"
+            echo "##          'MemoryCache' https://bugs.openjdk.java.net/browse/JDK-8259886 < 8u301"
+            rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
+            echo " "
+        fi
+
+        echo "## Counting (BLOCKED|waiting to lock) except acceptors and first 10 matching and more than 10 threads"
+        rg -w '(BLOCKED|waiting to lock)' -l -g '!*-acceptor-*' -g '!*_Acceptor*' "${_save_dir%/}" | while read -r _ff; do
+            rg -m10 "${_running_thread_search_re}" "${_ff}"
+        done | sort | uniq -c | sort -r | rg '^\s*\d\d+'
+        echo " "
+    fi
 
     echo "## Counting thread types excluding WAITING (top 20)"
     rg '^[^\s]' ${_file} | rg -v WAITING | _replace_number 1 | sort | uniq -c | sort -nr | head -n 20
     echo " "
-    if grep -q 'state=' ${_file}; then
+    echo "## Counting thread states"
+    _thread_state_sum ${_file}
+}
+function _thread_state_sum() {
+    local _file="$1"
+    if rg -q 'java.lang.Thread.State:' ${_file}; then
+        rg 'java.lang.Thread.State:\s*(.+)$' -o -r '$1' --no-filename ${_file} | sort | uniq -c
+    elif rg -q 'state=' ${_file}; then
         rg -iw 'state=(.+)' -o -r '$1' --no-filename ${_file} | sort -r | uniq -c
     else
         rg -iw 'nid=0x[a-z0-9]+ ([^\[]+)' -o -r '$1' --no-filename ${_file} | sort -r | uniq -c
@@ -1405,6 +1422,7 @@ function f_splitByRegex() {
             [ -n "${_prev_str}" ] && [ "${_prev_str}" == "${BASH_REMATCH[2]}" ] && continue
             # Found new value (next date, next thread etc.)
             _tmp_str="$(echo "${_prev_str}" | sed "s/[ =]/_/g" | tr -cd '[:alnum:]._-\n' | cut -c1-192)"
+            # TODO: this might cause some performance issue
             sed -n "${_prev_n},$((${BASH_REMATCH[1]} - 1))p;$((${BASH_REMATCH[1]} - 1))q" ${_file} > ${_save_path_prefix}${_tmp_str}.${_out_ext} || return $?
             _prev_str="${BASH_REMATCH[2]}"  # Used for the file name and detecting a new value
             _prev_n=${BASH_REMATCH[1]}
@@ -1594,6 +1612,10 @@ function _py3i_pipe() {
 function _actual_file_size() {
     local _log_path="$1"
     [ ! -f "${_log_path}" ] && return
+    if [[ "${_log_path}" != *.gz ]] && [[ "${_log_path}" != *.zip ]]; then
+        wc -c "${_log_path}" | awk '{print $1}'
+        return
+    fi
     local _file_cmd_out="$(file "${_log_path}")"
     if ! echo "${_file_cmd_out}" | grep -qi "compress"; then
         wc -c "${_log_path}" | awk '{print $1}'

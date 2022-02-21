@@ -24,7 +24,7 @@ GLOBAL VARIABLES (not all):
     _APP_VER_OVERWRITE                  To specify application version
     _WORKING_DIR_OVERWRITE              To specify the sonatype work directory (but not used)
     _NXRM_LOG _NXIQ_LOG _REQUEST_LOG    To specify the log filename (used for rg -g)
-    _LOG_THRESHOLD_BYTES                Currently log files larger than 256MB will be ignored.
+    _LOG_THRESHOLD_BYTES                Some time consuming functions are skipped if file is larger than 256MB
     _SKIP_EXTRACT                       Do not run functions start with e_
 EOF
 }
@@ -265,6 +265,14 @@ function _basic_check() {
     fi
     return 0
 }
+# NOTE: this function is not so fast
+function _size_check() {
+    local _file_path="$1"
+    local _log_threshold_bytes="${2:-"${_LOG_THRESHOLD_BYTES:-0}"}"
+    local _file_size="$(_actual_file_size "${_file_path}")"
+    [ -n "${_file_size}" ] && [ ${_file_size} -gt 0 ] && [ ${_file_size} -le ${_log_threshold_bytes} ] && return 0
+    return 1
+}
 function _test_template() {
     local _bad_result="$1"
     local _level="$2"
@@ -292,11 +300,10 @@ function e_threads() {
 }
 function e_app_logs() {
     local _log_path="$(find . -maxdepth 3 -type f -print | grep -m1 -E "/(${_NXRM_LOG}|${_NXIQ_LOG}|server.log)$")"
-    local _log_size="$(_actual_file_size "${_log_path}")"
     [ -z "${_log_path}" ] && _log_path="*.log"
     _LOG_GLOB="$(basename ${_log_path} | sed 's/.\///')"
 
-    if [ -n "${_log_size}" ] && [ ${_log_size} -gt 0 ] && [ ${_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
+    if _size_check "${_log_path}"; then
         f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
     fi
     if [ -s "${_log_path}" ]; then
@@ -307,17 +314,15 @@ function e_app_logs() {
         elif [[ "${_log_path}" =~ (clm-server)[^*]*log[^*]* ]]; then
             _start_log_line=".* Initializing Nexus IQ Server .*"   # IQ
         fi
-        if [ -n "${_start_log_line}" ]; then
+        if [ -n "${_start_log_line}" ] &&  _size_check "${_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
             f_splitByRegex ${_log_path} "${_start_log_line}" "_split_logs" &
-        #if [ -n "${_log_size}" ] && [ ${_log_size} -gt 0 ] && [ ${_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
-        #    echo 'Use: f_splitByRegex '${_log_path}' "'${_start_log_line}'" "_split_logs"'
         fi
     fi
 }
 function e_req_logs() {
     local _req_log_path="$(find . -maxdepth 3 -name "${_REQUEST_LOG:-"request.log"}" | sort -r | head -n1 2>/dev/null)"
     local _req_log_size="$(_actual_file_size "${_req_log_path}")"
-    if [ -n "${_req_log_size}" ] && [ ${_req_log_size} -gt 0 ] && [ ${_req_log_size} -le ${_LOG_THRESHOLD_BYTES} ]; then
+    if  _size_check "${_req_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
         f_request2csv "${_req_log_path}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
     else
         _LOG "INFO" "Not converting '${_req_log_path}' to CSV because no ${_REQUEST_LOG:-"request.log"} or log size (${_req_log_size}) is larger than ${_LOG_THRESHOLD_BYTES}"
@@ -387,9 +392,9 @@ function r_list_logs() {
 
     _head "NOTE" "To split logs by hour:"
     echo '```'
-    echo "_SPLIT_BY_REGEX_SORT=\"Y\" f_splitByRegex \"./log/nexus.log\" \"^${_DATE_FORMAT}.\d\d\" \"_hourly_logs\""
-    echo "f_extractFromLog \"./log/nexus.log\" \"^${_DATE_FORMAT}.XX\" \"^${_DATE_FORMAT}.YY\" > extracted_XX_YY.out"
-    echo "_SPLIT_BY_REGEX_SORT=\"Y\" f_splitByRegex \"./log/request.log\" \"${_DATE_FMT_REQ}:\d\d\" \"_hourly_logs_req\""
+    echo "_SPLIT_BY_REGEX_SORT=\"Y\" f_splitByRegex \"./log/${_NXRM_LOG}\" \"^${_DATE_FORMAT}.\d\d\" \"_hourly_logs\""
+    echo "f_extractFromLog \"./log/${_NXRM_LOG}\" \"^${_DATE_FORMAT}.XX\" \"^${_DATE_FORMAT}.YY\" > extracted_XX_YY.out"
+    echo "_SPLIT_BY_REGEX_SORT=\"Y\" f_splitByRegex \"./log/${_REQUEST_LOG}\" \"${_DATE_FMT_REQ}:\d\d\" \"_hourly_logs_req\""
     echo "f_extractFromLog \"./log/request.log\" \"${_DATE_FMT_REQ}.XX\" \"${_DATE_FMT_REQ}.YY\" > extracted_req_XX_YY.out"
     echo '```'
 }
