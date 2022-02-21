@@ -497,11 +497,15 @@ function pgStart() {
     local _cmd="${1:-"status"}"
     local _pg_data="${2:-"/usr/local/var/postgres"}"
     local _log_path="${3:-"$HOME/postgresql.log"}"
-    if [ "${_cmd}" == "start" ] && [ -s "${_log_path}" ]; then
+    if [ "${_cmd}" == "start" ] && [ -n "${_log_path}" ] && [ -s "${_log_path}" ]; then
         mv -v ${_log_path} /tmp/
         gzip -S "_$(date +'%Y%m%d%H%M%S').gz" "/tmp/${_log_path}" &>/dev/null &
     fi
-    pg_ctl -D ${_pg_data} -l ${_log_path} ${_cmd}
+    if [ -n "${_log_path}" ]; then
+        pg_ctl -D ${_pg_data} -l ${_log_path} ${_cmd}
+    else
+        pg_ctl -D ${_pg_data} ${_cmd}
+    fi
     # To connect: psql template1
     # If 'The data directory was initialized by PostgreSQL version', then brew postgresql-upgrade-database
     # and also check postgresql.conf : listen_addresses
