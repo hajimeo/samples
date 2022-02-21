@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-usage() {
+_usage() {
     cat << EOF
 Providing some framework for building log check/test cases (like programing language's Unit tests) with bash.
 
@@ -31,7 +31,7 @@ EOF
 _prerequisites() {
     if ! type q >/dev/null || ! type rg >/dev/null || ! type jq >/dev/null || ! type realpath >/dev/null; then
         _LOG "ERROR" "Required command is missing."
-        usage
+        _usage
         return 1
     fi
 }
@@ -493,8 +493,8 @@ main() {
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
-    if [[ "$1" =~ ^(-h|help)$ ]]; then
-        usage | less
+    if [[ "$1" =~ ^(-h|help|--help)$ ]]; then
+        _usage | less
         exit
     fi
     main > "$(basename "$BASH_SOURCE" .sh).md"
