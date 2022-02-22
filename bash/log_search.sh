@@ -1550,14 +1550,27 @@ function _json_dump() {
     fi
 }
 
-# NOTE: utils.sh has same function
 function _get_json() {
     local _props="$1"           # search hierarchy list string. eg: "xxxx,yyyy,key[:=]value" (*NO* space)
     local _key="${2}"           # a key attribute in props. eg: '@class' (OrientDB), 'key' (jmx.json)
     local _attrs="${3}"         # attribute1,attribute2,attr3.*subattr3* (using dot) to return only those attributes' value
     local _find_all="${4}"      # If Y, not stopping after finding one
     local _no_pprint="${5}"     # no prettified output
-    python3 $HOME/IdeaProjects/samples/python/get_json.py "${_props}" "${_key}" "${_attrs}" "${_find_all}" "${_no_pprint}"
+    local _get_json_py="${_GET_JSON_PY}"
+    if [ -z "${_get_json_py}" ]; then
+        if which get_json.py &>/dev/null; then
+            _get_json_py="$(which get_json.py)"
+        elif [ -s "$HOME/IdeaProjects/samples/python/get_json.py" ]; then
+            _get_json_py="$HOME/IdeaProjects/samples/python/get_json.py"
+        elif [ ! -s "/tmp/get_json.py" ]; then
+            if ! curl -sf -o /tmp/get_json.py -L "https://github.com/hajimeo/samples/blob/master/python/get_json.py"; then
+                _LOG "ERROR" "No get_json.py"
+                return 1
+            fi
+        fi
+        _get_json_py="/tmp/get_json.py"
+    fi
+    python3 "${_get_json_py}" "${_props}" "${_key}" "${_attrs}" "${_find_all}" "${_no_pprint}"
 }
 
 # _get_json warpper to convert some numeric values to human friendly formats
