@@ -303,9 +303,6 @@ function e_app_logs() {
     [ -z "${_log_path}" ] && _log_path="*.log"
     _LOG_GLOB="$(basename ${_log_path} | sed 's/.\///')"
 
-    if _size_check "${_log_path}"; then
-        f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
-    fi
     if [ -s "${_log_path}" ]; then
         local _start_log_line=""
         if [[ "${_log_path}" =~ (nexus)[^*]*log[^*]* ]]; then
@@ -315,8 +312,14 @@ function e_app_logs() {
             _start_log_line=".* Initializing Nexus IQ Server .*"   # IQ
         fi
         if [ -n "${_start_log_line}" ] &&  _size_check "${_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
-            f_splitByRegex ${_log_path} "${_start_log_line}" "_split_logs" &
+            f_splitByRegex ${_log_path} "${_start_log_line}" "_split_logs"
         fi
+    fi
+    local _since_last_restart="$(ls -1r _split_logs/* 2>/dev/null | head -n1)"
+    if [ -n "${_since_last_restart}" ]; then
+        f_topErrors "${_since_last_restart}" "" "" "(WARN .+ high disk watermark|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
+    elif _size_check "${_log_path}"; then
+        f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
     fi
 }
 function e_req_logs() {
@@ -340,13 +343,6 @@ function r_audits() {
     echo '```'
     _rg --no-filename '"domain":"([^"]+)", *"type":"([^"]+)"' -o -r '$1,$2' -g audit.log | sort | uniq -c | sort -nr | head -n20
     echo "NOTE: taskblockedevent would mean another task is running (dupe tasks?). repositorymetadataupdatedevent would mean quarantine."
-    echo '```'
-}
-function r_app_logs() {
-    _basic_check "" "${_FILTERED_DATA_DIR%/}/f_topErrors.out" || return
-    _head "APP LOG" "Counting WARNs and above, then displaying 10+ occurrences in ${_LOG_GLOB} ${_FILTERED_DATA_DIR%/}f_topErrors.out"
-    echo '```'
-    _rg -v '^\s*\d\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out # NOTE: be careful to modify this. It might hides bar_chart output
     echo '```'
 }
 function r_threads() {
@@ -454,13 +450,12 @@ function t_performance_issue() {
 function t_oome() {
     _test_template "$(_rg -c 'OutOfMemoryError' -g "${_LOG_GLOB}")" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
 }
-# NOTE: this might be slow
-function t_exceptions() {
-    _test_template "$(_rg '([^ ()]+\.[a-zA-Z0-9]+Exception):' -o -r '$1' --no-filename -g "${_LOG_GLOB}" | sort | uniq -c | sort -nr | _rg '^\s*\d\d+' | head -n10)" "WARN" "Many exceptions detected from ${_LOG_GLOB}"
-}
 function t_errors() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/f_topErrors.out" || return
-    _test_template "$(_rg '^\s*\d\d+.+\s+ERROR\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out | head -n10)" "WARN" "Many ERROR detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out"
+    if _test_template "$(_rg -q '^\s*\d\d+.+\s+ERROR\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out && cat ${_FILTERED_DATA_DIR%/}/f_topErrors.out)" "ERROR" "Many ERROR detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out (since last restart)"; then
+        _test_template "$(_rg '^\s*\d\d\d+.+\s+WARN\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out && cat ${_FILTERED_DATA_DIR%/}/f_topErrors.out)" "WARN" "Many WARN detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out (since last restart)"
+    fi
+    #_test_template "$(_rg '([^ ()]+\.[a-zA-Z0-9]+Exception):' -o -r '$1' --no-filename -g "${_LOG_GLOB}" | sort | uniq -c | sort -nr | _rg '^\s*\d\d+' | head -n10)" "WARN" "Many exceptions detected from ${_LOG_GLOB}"
 }
 function t_threads() {
     local _dir="$(find . -maxdepth 3 -type d -name "_threads" -print -quit)"
