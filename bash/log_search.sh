@@ -1568,7 +1568,7 @@ function _get_json() {
                 return 1
             fi
         fi
-        _get_json_py="/tmp/get_json.py"
+        [ -z "${_get_json_py}" ] && _get_json_py="/tmp/get_json.py"
     fi
     python3 "${_get_json_py}" "${_props}" "${_key}" "${_attrs}" "${_find_all}" "${_no_pprint}"
 }
