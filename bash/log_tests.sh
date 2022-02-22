@@ -10,12 +10,13 @@ All functions start with "r_" are for reporting, just displaying some useful, go
 PREREQUISITE:
     bash, not tested with zsh.
     Please install below: (eg: 'brew install coreutils ripgrep jq q')
-        coreutils (realpath)
+        coreutils (eg: realpath)
         rg  https://github.com/BurntSushi/ripgrep
         jq  https://stedolan.github.io/jq/download/
         q   https://github.com/harelba/q
+        python3 with pandas
     Also, please put below in the PATH:
-        https://github.com/bitly/data_hacks/blob/master/data_hacks/bar_chart.py (TODO: project is no longer updated)
+        https://github.com/bitly/data_hacks/blob/master/data_hacks/bar_chart.py (TODO: this project is no longer updated)
 
 TARGET OS:
     macOS Mojave
