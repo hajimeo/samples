@@ -1,10 +1,11 @@
-# IQ upgrading to v118 or higher may fail due to the UID chang
-# ./start.sh: line2: /var/log/nexus-iq-server/stderr.log: Permission denied
-# NOTE: probably 'fsGroup: 1000' would be enough
+# IQ upgrading to v118 or higher may fail due to the UID change.
+#   ./start.sh: line2: /var/log/nexus-iq-server/stderr.log: Permission denied
+# kubectl patch deployment -n ${namespace} ${deployment-name} --patch-file ./k8s-iq-uid-patch.yaml
+# NOTE: Didn't test but if you fixed with 'fsGroup: 1000', you would need to make sure fsGroup is set.
 spec:
   # https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
   initContainers:
-    # TODO how can I remove after upgrading
+    # TODO: how can I remove after upgrading
     - name: update-uid-patch
       image: busybox:1.28
       command: ['sh', '-c', "chown -v -R 1000:1000 /var/log/nexus-iq-server /sonatype-work"]
