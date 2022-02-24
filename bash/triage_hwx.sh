@@ -81,7 +81,7 @@ function f_check_system() {
     top -b -n1 -c &>> ${_work_dir%/}/top.out
     #ps aux --sort uid,-vsz # '-' for reverse (opposite of 'top')
     ps auxwwwf &> ${_work_dir%/}/ps.out
-    netstat -aopen &> ${_work_dir%/}/netstat.out
+    netstat -aopen || cat /proc/net/tcp &> ${_work_dir%/}/netstat.out
     mpstat -P ALL &> ${_work_dir%/}/top.out     # CPU stats (-P)
 
     # Name resolution
