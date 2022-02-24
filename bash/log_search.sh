@@ -1383,7 +1383,7 @@ function f_splitByRegex() {
         if [[ "${_file}" =~ request.*log ]]; then
             _line_regex="${_DATE_FMT_REQ}:\d\d"
         fi
-        [ -z "${_SPLIT_BY_REGEX_SORT}" ] && _SPLIT_BY_REGEX_SORT="Y"
+        [ -z "${_SPLIT_BY_REGEX_SORT}" ] && _sort="Y"
     fi
 
     #_file="$(echo ${_file} | _sed 's/.\///')"
