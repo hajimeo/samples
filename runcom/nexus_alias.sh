@@ -63,7 +63,8 @@ function iqMvn() {
     local _iq_app_id="${1:-${_IQ_APP_ID:-"sandbox-application"}}"
     local _iq_stage="${2:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
     local _iq_url="${3:-${_IQ_URL}}"
-    local _mvn_opts="${4:-"-X"}"    # no -U
+    local _file="${4:-"."}"
+    local _mvn_opts="${5:-"-X"}"    # no -U
     #local _iq_tmp="${_IQ_TMP:-"./iq-tmp"}" # does not generate anything
 
     local _iq_mvn_ver="${_IQ_MVN_VER}"  # empty = latest
@@ -77,7 +78,7 @@ function iqMvn() {
         _iq_url="https://dh1.standalone.localdomain:8470/"
     fi
 
-    local _cmd="mvn com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -Dclm.scan.dirExcludes=\"**/BOOT-INF/lib/**\" ${_mvn_opts}"
+    local _cmd="mvn -f ${_file} com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -Dclm.scan.dirExcludes=\"**/BOOT-INF/lib/**\" ${_mvn_opts}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
