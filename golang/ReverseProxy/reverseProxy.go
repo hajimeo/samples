@@ -1,6 +1,7 @@
 /**
  * Based on https://gist.github.com/JalfResi/6287706
  *          https://qiita.com/convto/items/64e8f090198a4cf7a4fc (japanese)
+ * go build -o ../../misc/reverseproxy_$(uname) reverseProxy.go && env GOOS=linux GOARCH=amd64 go build -o ../../misc/reverseproxy_Linux reverseProxy.go
  */
 package main
 
@@ -35,7 +36,7 @@ Use as a web server (receiver) with netcat command:
     reverseproxy $(hostname -f):8080 / http://localhsot:2222
 
 Also, this script utilise the following environment variables:
-	_DUMP_BODY    boolean Whether dump the request/response body
+	_DUMP_BODY    boolean If true, dump the request/response body
 	_SAVE_BODY_TO string  Save body strings into this location
 `)
 }
