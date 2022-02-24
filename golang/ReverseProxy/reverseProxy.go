@@ -1,6 +1,7 @@
 /**
  * Based on https://gist.github.com/JalfResi/6287706
  *          https://qiita.com/convto/items/64e8f090198a4cf7a4fc (japanese)
+ *          https://pkg.go.dev/github.com/edaniels/go-saml
  */
 package main
 
@@ -41,9 +42,11 @@ Use as a web server (receiver) with netcat command:
     reverseproxy $(hostname -f):8080 / http://localhsot:2222
 
 Also, this script utilise the following environment variables:
-	_DUMP_BODY    boolean Whether dump the request/response body
-	_SAVE_BODY_TO string  Save body strings into this location
-	_SAML_IDP_URL boolean Enable SAML SP testing mode`)
+    _DUMP_BODY    boolean If true, dump the request/response body
+    _SAVE_BODY_TO string  Save body strings into this location
+SAML related:
+    _SAML_ENABLED
+    _SAML_IDP_URL or _SAML_SP_ENTITY_ID, _SAML_SP_URL, _SAML_SP_BINDING, _SAML_SP_SIGN_CERT`)
 }
 
 var serverAddr string // Listening server address eg: $(hostname -f):8080
@@ -52,6 +55,13 @@ var scheme string     // http or https (decided by given certificate)
 var dumpBody bool     // If true, output
 var saveBodyTo string // if dumpBody is true, save request/response bodies into files
 var samlIdpUrl string // If true, run as SAML SP testing mode
+
+func deferPanic() {
+	// recover from panic if one occured. Set err to nil otherwise.
+	if err := recover(); err != nil {
+		log.Println("panic occurred:", err)
+	}
+}
 
 func handler(p *httputil.ReverseProxy) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
@@ -131,12 +141,29 @@ func EnvB(key string, fallback bool) bool {
 }
 
 func readRsaKeyCert(keyFile string, certFile string) (*rsa.PrivateKey, *x509.Certificate) {
-	keyStr, _ := ioutil.ReadFile(keyFile)
-	certStr, _ := ioutil.ReadFile(certFile)
+	defer deferPanic()
+	keyStr, err := ioutil.ReadFile(keyFile)
+	if err != nil {
+		log.Printf("keyFile %s is not readable", keyFile)
+		return nil, nil
+	}
+	certStr, err := ioutil.ReadFile(certFile)
+	if err != nil {
+		log.Printf("certFile %s is not readable", certFile)
+		return nil, nil
+	}
 	block, _ := pem.Decode([]byte(keyStr))
-	key, _ := x509.ParsePKCS1PrivateKey(block.Bytes)
+	key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		log.Printf("keyFile %s is not a valid key", keyFile)
+		return nil, nil
+	}
 	block, _ = pem.Decode([]byte(certStr))
-	cert, _ := x509.ParseCertificate(block.Bytes)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		log.Printf("certFile %s is not a valid xwer", certFile)
+		return nil, nil
+	}
 	return key, cert
 }
 
@@ -149,13 +176,14 @@ func samlHello(w http.ResponseWriter, r *http.Request) {
 }
 
 // _SAML_IDP_URL, _SAML_SP_ENTITY_ID, _SAML_SP_URL, _SAML_SP_BINDING, _SAML_SP_SIGN_CERT
-func samlLoadConfig(spUrlStr string, keyFile string, certFile string) samlsp.Options {
+func samlLoadConfig(serverUrl string, keyFile string, certFile string) samlsp.Options {
 	samlOptions := samlsp.Options{
 		AllowIDPInitiated: true,
 	}
 	samlOptions.EntityID = Env("_SAML_SP_ENTITY_ID", "saml-test-sp")
-	metadataURL, metadataURLexists := os.LookupEnv("_SAML_IDP_URL")
-	if metadataURLexists {
+	ssoURL := Env("_SAML_SP_URL", "")
+	metadataURL := Env("_SAML_IDP_URL", "")
+	if len(metadataURL) > 0 {
 		log.Printf("Will attempt to load metadata from %s", metadataURL)
 		idpMetadataURL, err := url.Parse(metadataURL)
 		if err != nil {
@@ -163,11 +191,12 @@ func samlLoadConfig(spUrlStr string, keyFile string, certFile string) samlsp.Opt
 		}
 		desc, err := samlsp.FetchMetadata(context.TODO(), http.DefaultClient, *idpMetadataURL)
 		if err != nil {
-			panic(err)
+			log.Printf("Failed to fetch the metadata from %s with err %+v", metadataURL, err)
+		} else {
+			samlOptions.IDPMetadata = desc
 		}
-		samlOptions.IDPMetadata = desc
 	} else {
-		ssoURL := Env("_SAML_SP_URL", "")
+		//`urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST` or `urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect`
 		binding := Env("_SAML_SP_BINDING", saml.HTTPPostBinding)
 		samlOptions.IDPMetadata = &saml.EntityDescriptor{
 			EntityID: samlOptions.EntityID,
@@ -182,6 +211,7 @@ func samlLoadConfig(spUrlStr string, keyFile string, certFile string) samlsp.Opt
 				},
 			},
 		}
+		// PEM-encoded Certificate used for signing, with the PEM Header and all newlines removed.
 		if signingCert := Env("_SAML_SP_SIGN_CERT", ""); signingCert != "" {
 			samlOptions.IDPMetadata.IDPSSODescriptors[0].KeyDescriptors = []saml.KeyDescriptor{
 				{
@@ -199,8 +229,11 @@ func samlLoadConfig(spUrlStr string, keyFile string, certFile string) samlsp.Opt
 			}
 		}
 	}
-
-	spUrl, err := url.Parse(spUrlStr)
+	urlStr := "https://" + serverUrl
+	if len(keyFile) > 0 {
+		urlStr = "http://" + serverUrl
+	}
+	spUrl, err := url.Parse(urlStr)
 	if err != nil {
 		panic(err)
 	}
@@ -247,20 +280,6 @@ func main() {
 		log.Printf("saveBodyTo is set to #{saveBodyTo}.\n")
 	}
 
-	// https://pkg.go.dev/github.com/edaniels/go-saml
-	samlIdpUrl = Env("_SAML_IDP_URL", "")
-	if len(samlIdpUrl) > 0 {
-		log.Printf("samlIdpUrl is set to #{samlIdpUrl}.\n")
-		samlSP, _ := samlsp.New(samlLoadConfig(samlIdpUrl, keyFile, certFile))
-		app := http.HandlerFunc(samlHello)
-		http.Handle("/hello", samlSP.RequireAccount(app))
-		http.Handle("/saml/", samlSP)
-		err := http.ListenAndServe(":8000", nil)
-		if err != nil {
-			panic(err)
-		}
-	}
-
 	// start reverse proxy
 	remote, err := url.Parse(proxyPass)
 	if err != nil {
@@ -270,6 +289,13 @@ func main() {
 	proxy.ModifyResponse = logResponseHeader
 	// registering handler function for this pattern
 	http.HandleFunc(ptn, handler(proxy))
+	samlEnabled := EnvB("_SAML_ENABLED", false)
+	if samlEnabled {
+		log.Printf("samlEnabled is set, so configuring this proxy for SAML.\n")
+		samlSP, _ := samlsp.New(samlLoadConfig(serverAddr, keyFile, certFile))
+		http.Handle("/hello", samlSP.RequireAccount(http.HandlerFunc(samlHello)))
+		http.Handle("/saml/", samlSP)
+	}
 	log.Printf("Starting listener on %s\n\n", serverAddr)
 	if len(keyFile) > 0 {
 		scheme = "https"
