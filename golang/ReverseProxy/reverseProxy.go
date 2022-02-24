@@ -2,6 +2,8 @@
  * Based on https://gist.github.com/JalfResi/6287706
  *          https://qiita.com/convto/items/64e8f090198a4cf7a4fc (japanese)
  *          https://pkg.go.dev/github.com/edaniels/go-saml
+ *
+ * go build -o ../../misc/reverseproxy_$(uname) reverseProxy.go && env GOOS=linux GOARCH=amd64 go build -o ../../misc/reverseproxy_Linux reverseProxy.go
  */
 package main
 
