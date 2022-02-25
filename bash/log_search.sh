@@ -1437,6 +1437,7 @@ function f_splitByRegex() {
 }
 
 function f_extractFromLog() {
+    local __doc__="Extract specific lines from file"
     local _file="$1"    # can't be a glob as used in sed later
     local _regex_from="$2"
     local _regex_to="$3"
