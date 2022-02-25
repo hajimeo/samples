@@ -52,8 +52,8 @@ func handler(p *httputil.ReverseProxy) func(http.ResponseWriter, *http.Request) 
 	return func(w http.ResponseWriter, req *http.Request) {
 		req.URL.Host = server_addr
 		req.URL.Scheme = scheme
-		req.Header.Set("X-Real-IP", r.RemoteAddr)
-		//r.Header.Set("X-Forwarded-For", req.RemoteAddr)	// TODO: not sure which value to use for client addr
+		req.Header.Set("X-Real-IP", req.RemoteAddr)
+		//req.Header.Set("X-Forwarded-For", req.RemoteAddr)	// TODO: not sure which value to use for client addr
 		req.Header.Set("X-Forwarded-Proto", scheme)
 		reqHeader, err := httputil.DumpRequest(req, dump_body)
 		if err != nil {
