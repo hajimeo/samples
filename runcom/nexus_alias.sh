@@ -318,7 +318,8 @@ done
 EOF
 : <<'EOF'
 mvn-arch-gen
-_REPO_URL="http://localhost:8081/repository/snapshots/"
+_REPO_URL="http://dh1:8081/nexus/content/repositories/snapshots/"
+#_REPO_URL="http://localhost:8081/repository/snapshots/"
 for v in {1..11}; do
   sed -i.tmp -E "s@^  <version>.+</version>@  <version>23.76.0-${v}0-SNAPSHOT</version>@" pom.xml
   mvn-deploy "${_REPO_URL}" "" "" "nexus" "" || break
