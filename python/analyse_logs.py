@@ -508,5 +508,8 @@ WHERE thread_name not like '%InstrumentedSelectChannelConnector%'
     # ORDER BY nextFireTime
     # """)
 
-    # Join requests with nexus.log
-    # ju.q("""SELECT * FROM t_request JOIN (SELECT '02/Mar/2021:'||strftime('%H:%M:%S', date_time)||' -0800' as req_datetime, thread FROM t_nxrm_logs where message like '%Connection reset by peer%') t ON t_request.date = t.req_datetime and t_request.thread = t.thread""")
+    # Join request.log and nexus.log
+    # _date="24/Feb/2022"
+    # _tz="-0500"
+    # _sql="SELECT * FROM t_request JOIN (SELECT '%s:'||substr(date_time, 12, 8)||' %s' as req_datetime, thread FROM t_nxrm_logs) t ON t_request.date = t.req_datetime and t_request.thread = t.thread" % (_date, _tz)
+    # ju.q(_sql)
