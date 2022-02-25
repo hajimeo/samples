@@ -460,6 +460,7 @@ function f_setup_helm() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"helm-hosted","format":"","type":"","url":"","online":true,"recipe":"'${_prefix}'-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
+    # https://issues.sonatype.org/browse/NEXUS-31326
     [ -s "${_TMP%/}/mysql-8.7.2.tgz" ] && curl -sf -u "${_ADMIN_USER}:${_ADMIN_PWD}" "${_NEXUS_URL%/}/repository/${_prefix}-hosted/" -T "${_TMP%/}/mysql-8.7.2.tgz"
 }
 
