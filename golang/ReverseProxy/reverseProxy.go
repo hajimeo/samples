@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -29,7 +30,7 @@ DOWNLOAD and INSTALL:
     
 USAGE EXAMPLE:
     reverseproxy <listening address:port> <listening pattern> <remote-URL> [certFile] [keyFile] 
-    reverseproxy $(hostname -f):8080 / http://search.osakos.com/
+    reverseproxy $(hostname -f):28443 / http://search.osakos.com/ /var/tmp/share/cert/standalone.localdomain.crt /var/tmp/share/cert/standalone.localdomain.key
 
 Use as a web server (receiver) with netcat command:
     while true; do nc -nlp 2222 &>/dev/null; done
@@ -51,32 +52,32 @@ func handler(p *httputil.ReverseProxy) func(http.ResponseWriter, *http.Request) 
 	return func(w http.ResponseWriter, req *http.Request) {
 		req.URL.Host = server_addr
 		req.URL.Scheme = scheme
-		req.Header.Set("X-Real-IP", req.RemoteAddr)
-		//req.Header.Set("X-Forwarded-For", req.RemoteAddr)	// TODO: not sure which value to use
+		req.Header.Set("X-Real-IP", r.RemoteAddr)
+		//r.Header.Set("X-Forwarded-For", req.RemoteAddr)	// TODO: not sure which value to use for client addr
 		req.Header.Set("X-Forwarded-Proto", scheme)
-		_, err := httputil.DumpRequest(req, dump_body)
-		log.Printf("REQUEST HEAD: %s\n", req.Header)
+		reqHeader, err := httputil.DumpRequest(req, dump_body)
 		if err != nil {
 			log.Printf("DumpRequest error: %s\n", err)
 		} else {
-			logBody(req.Body, "REQUEST")
+			log.Printf("REQUEST HEAD to %s\n%s\n", proxy_pass, string(reqHeader))
+			req.Body = logBody(req.Body, "REQUEST")
 		}
 		p.ServeHTTP(w, req)
 	}
 }
 
 func logResponseHeader(resp *http.Response) (err error) {
-	_, err = httputil.DumpResponse(resp, dump_body)
-	log.Printf("RESPONSE HEAD: %s\n", resp.Header)
+	respHeader, err := httputil.DumpResponse(resp, dump_body)
 	if err != nil {
 		log.Printf("DumpResponse error: %s\n", err)
 	} else {
-		logBody(resp.Body, "RESPONSE")
+		log.Printf("RESPONSE HEAD from %s\n%s\n", proxy_pass, string(respHeader))
+		resp.Body = logBody(resp.Body, "RESPONSE")
 	}
 	return nil
 }
 
-func logBody(body io.ReadCloser, prefix string) {
+func logBody(body io.ReadCloser, prefix string) (bodyRewinded io.ReadCloser) {
 	bodyBytes, err := ioutil.ReadAll(body)
 	if err != nil {
 		log.Printf("ioutil.ReadAll error: %s\n", err)
@@ -92,11 +93,13 @@ func logBody(body io.ReadCloser, prefix string) {
 		}
 		log_msg = "saved into " + fname
 	} else if len(bodyBytes) > 512 {
-		log_msg = string(bodyBytes)[0:512] + " ..."
+		log_msg = string(bodyBytes)[0:512] + "\n..."
 	} else {
 		log_msg = string(bodyBytes)
 	}
 	log.Printf("%s BODY: %s\n", prefix, log_msg)
+	//https://stackoverflow.com/questions/33532374/in-go-how-can-i-reuse-a-readcloser
+	return ioutil.NopCloser(bytes.NewReader(bodyBytes))
 }
 
 func main() {
