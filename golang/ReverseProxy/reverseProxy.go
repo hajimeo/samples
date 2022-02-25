@@ -38,8 +38,7 @@ Use as a web server (receiver) with netcat command:
 
 Also, this script utilise the following environment variables:
 	_DUMP_BODY    boolean If true, dump the request/response body
-	_SAVE_BODY_TO string  Save body strings into this location
-`)
+	_SAVE_BODY_TO string  Save body strings into this location`)
 }
 
 var serverAddr string // Listening server address eg: $(hostname -f):8080
@@ -83,21 +82,21 @@ func logBody(body io.ReadCloser, prefix string) (bodyRewinded io.ReadCloser) {
 		log.Printf("ioutil.ReadAll error: %s\n", err)
 		return
 	}
-	var log_msg string
+	var logMsg string
 	if len(saveBodyTo) > 0 {
-		time_ms_str := strconv.FormatInt(time.Now().UnixNano()/1000000, 10)
-		fname := saveBodyTo + "/" + time_ms_str + "_" + prefix + ".out"
+		timeMsStr := strconv.FormatInt(time.Now().UnixNano()/1000000, 10)
+		fname := saveBodyTo + "/" + timeMsStr + "_" + prefix + ".out"
 		err := ioutil.WriteFile(fname, bodyBytes, 0644)
 		if err != nil {
 			panic(err)
 		}
-		log_msg = "saved into " + fname
+		logMsg = "saved into " + fname
 	} else if len(bodyBytes) > 512 {
-		log_msg = string(bodyBytes)[0:512] + "\n..."
+		logMsg = string(bodyBytes)[0:512] + "\n..."
 	} else {
-		log_msg = string(bodyBytes)
+		logMsg = string(bodyBytes)
 	}
-	log.Printf("%s BODY: %s\n", prefix, log_msg)
+	log.Printf("%s BODY: %s\n", prefix, logMsg)
 	//https://stackoverflow.com/questions/33532374/in-go-how-can-i-reuse-a-readcloser
 	return ioutil.NopCloser(bytes.NewReader(bodyBytes))
 }
