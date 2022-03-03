@@ -291,14 +291,6 @@ function _test_template() {
 
 
 ### Extracts ###################################################################
-function e_configs() {
-    _extract_configs >${_FILTERED_DATA_DIR%/}/extracted_configs.md &
-    _extract_log_last_start >${_FILTERED_DATA_DIR%/}/extract_log_last_start.md &
-    _search_json "sysinfo.json" "system-filestores" > ${_FILTERED_DATA_DIR%/}/system-filestores.json
-}
-function e_threads() {
-    _NOT_SPLIT_BY_DATE=Y f_threads &>${_FILTERED_DATA_DIR%/}/f_threads.out &
-}
 function e_app_logs() {
     local _log_path="$(find . -maxdepth 3 -type f -print | grep -m1 -E "/(${_NXRM_LOG}|${_NXIQ_LOG}|server.log)$")"
     [ -z "${_log_path}" ] && _log_path="*.log"
@@ -320,7 +312,8 @@ function e_app_logs() {
     if [ -n "${_since_last_restart}" ]; then
         f_topErrors "${_since_last_restart}" "" "" "(WARN .+ high disk watermark|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
     elif _size_check "${_log_path}"; then
-        f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
+        # TODO: this one is slow
+        _TOP_ERROR_MAX_N=10000 f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
     fi
 }
 function e_req_logs() {
@@ -331,6 +324,14 @@ function e_req_logs() {
     else
         _LOG "INFO" "Not converting '${_req_log_path}' to CSV because no ${_REQUEST_LOG:-"request.log"} or log size (${_req_log_size}) is larger than ${_LOG_THRESHOLD_BYTES}"
     fi
+}
+function e_threads() {
+    _NOT_SPLIT_BY_DATE=Y f_threads &>${_FILTERED_DATA_DIR%/}/f_threads.out &
+}
+function e_configs() {
+    _extract_configs >${_FILTERED_DATA_DIR%/}/extracted_configs.md &
+    _extract_log_last_start >${_FILTERED_DATA_DIR%/}/extract_log_last_start.md &
+    _search_json "sysinfo.json" "system-filestores" > ${_FILTERED_DATA_DIR%/}/system-filestores.json
 }
 
 ### Reports ###################################################################
@@ -410,11 +411,11 @@ function t_system() {
     _test_template "$(_rg 'AvailableProcessors: *[1-3]$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "AvailableProcessors might be too low"
     _test_template "$(_rg 'TotalPhysicalMemorySize: *(.+ MB|[1-7]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "TotalPhysicalMemorySize might be too low"
     _test_template "$(_rg 'MaxFileDescriptorCount: *\d{4}$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
-    _test_template "$(_rg 'SystemLoadAverage: *([2-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
+    _test_template "$(_rg 'SystemLoadAverage: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
     _test_template "$(_rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low"
     _test_template "$(_rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || _rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
     if ! _rg -g jmx.json -q 'x86_64'; then
-        _head "WARN" "No 'x86_64' found in jmx.json. Might be 32 bit Java (or non Linux)"
+        _head "WARN" "No 'x86_64' found in jmx.json. Might be 32 bit Java (or non Linux, check the top of jvm.log)"
     fi
 }
 function t_mounts() {
@@ -445,16 +446,13 @@ function t_mounts() {
         echo '```'
     fi
 }
-function t_performance_issue() {
-    _test_template "$(_rg -i '\b(Too many open files|No space left|low heap memory|Not enough physical memory available|huge system clock jump|Read timed out|Timed out|Timeout waiting for connection|waiting for more room|read only)\b' -o -g "${_LOG_GLOB}" | sort | uniq -c | sort -nr | head -n20)" "WARN" "This instance may have some performance issue (${_LOG_GLOB})"
-}
 function t_oome() {
     _test_template "$(_rg -c 'OutOfMemoryError' -g "${_LOG_GLOB}")" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
 }
 function t_errors() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/f_topErrors.out" || return
-    if _test_template "$(_rg -q '^\s*\d\d+.+\s+ERROR\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out && cat ${_FILTERED_DATA_DIR%/}/f_topErrors.out)" "ERROR" "Many ERROR detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out (since last restart)"; then
-        _test_template "$(_rg '^\s*\d\d\d+.+\s+WARN\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out && cat ${_FILTERED_DATA_DIR%/}/f_topErrors.out)" "WARN" "Many WARN detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out (since last restart)"
+    if _test_template "$(_rg -q '^\s*\d\d+.+\s+ERROR\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out && cat ${_FILTERED_DATA_DIR%/}/f_topErrors.out)" "ERROR" "Many ERROR detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out (since last start if restarted)"; then
+        _test_template "$(_rg '^\s*\d\d\d+.+\s+WARN\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out && cat ${_FILTERED_DATA_DIR%/}/f_topErrors.out)" "WARN" "Many WARN detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out (since last start if restarted)"
     fi
     #_test_template "$(_rg '([^ ()]+\.[a-zA-Z0-9]+Exception):' -o -r '$1' --no-filename -g "${_LOG_GLOB}" | sort | uniq -c | sort -nr | _rg '^\s*\d\d+' | head -n10)" "WARN" "Many exceptions detected from ${_LOG_GLOB}"
 }
