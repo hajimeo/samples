@@ -128,7 +128,7 @@ alias logN="logT; source $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
 alias logTest="pyv;$HOME/IdeaProjects/samples/bash/log_tests.sh"
 alias logNxrm="pyv;$HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
 alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
-alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py"
+#alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py" # this is for Hadoop xml files
 alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 
 # VM related
@@ -272,10 +272,15 @@ function jsondiff() {
     local _f1="$(echo $1 | sed -e 's/^.\///' -e 's/[/]/_/g')"
     local _f2="$(echo $2 | sed -e 's/^.\///' -e 's/[/]/_/g')"
     # alternative https://json-delta.readthedocs.io/en/latest/json_diff.1.html
-    python3 -c "import sys,json;print(json.dumps(json.load(open('${_f1}')), indent=4, sort_keys=True))" >"/tmp/${_f1}"
-    python3 -c "import sys,json;print(json.dumps(json.load(open('${_f2}')), indent=4, sort_keys=True))" >"/tmp/${_f2}"
+    python3 -c "import sys,json;print(json.dumps(json.load(open('${_f1}')), indent=4, sort_keys=True))" >"/tmp/${_f1}" || return $?
+    python3 -c "import sys,json;print(json.dumps(json.load(open('${_f2}')), indent=4, sort_keys=True))" >"/tmp/${_f2}" || return $?
     #prettyjson $2 > "/tmp/${_f2}"
     vimdiff "/tmp/${_f1}" "/tmp/${_f2}"
+}
+function xmldiff() {
+    python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))" $1 >/tmp/xmldiff1_$$.json || return $?
+    python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))" $2 >/tmp/xmldiff2_$$.json || return $?
+    vimdiff /tmp/xmldiff1_$$.json /tmp/xmldiff2_$$.json
 }
 # Convert yml|yaml file to a sorted json. Can be used to validate yaml file
 function yaml2json() {
