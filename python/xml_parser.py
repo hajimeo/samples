@@ -42,7 +42,7 @@ Misc.: for non xml files
     _f=./client.properties; diff -w $_f <(ssh -Cp 2222 root@sandbox.hortonworks.com cat /etc/falcon/conf/$_f)
 '''
     filename = os.path.basename(__file__)
-    print usage_str % (filename, filename, filename, filename)
+    print(usage_str % (filename, filename, filename, filename))
 
 class XmlParser:
     @staticmethod
@@ -65,7 +65,7 @@ class XmlParser:
         parser = etree.XMLParser(recover=True)
         try:
             r = etree.ElementTree(file=filename, parser=parser).getroot()
-        except Exception, e:
+        except Exception as e:
             XmlParser.fatal(str(e))
             return rtn
 
@@ -76,7 +76,7 @@ class XmlParser:
                 if len(name) > 0:
                     if value == 'None': value=""
                     rtn[name] = value
-            except Exception, e:
+            except Exception as e:
                 XmlParser.warn(name+" does not have value. "+str(e))
         return rtn
 
@@ -110,7 +110,7 @@ class XmlParser:
     @staticmethod
     def output_as_str(dict):
         for k in dict.keys():
-            print "%s=%s" % (k, str(dict[k]))
+            print("%s=%s" % (k, str(dict[k])))
 
 
 
@@ -139,4 +139,4 @@ if __name__ == '__main__':
 
     # For now, just outputting as JSON (from a dict)
     #pprint.pprint(out)
-    print json.dumps(out, indent=4, sort_keys=True)
+    print(json.dumps(out, indent=4, sort_keys=True))
