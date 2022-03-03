@@ -418,7 +418,7 @@ function f_docker_run() {
     fi
 
     #    -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket \
-    _log "INFO" "docker run ${_name} from ${_base} ..."
+    _log "INFO" "docker run ${_name} from ${_base} ..." # --tmpfs /tmp:noexec
     docker run -t -i -d -v /sys/fs/cgroup:/sys/fs/cgroup:ro --privileged=true \
         -v ${_share_dir_from%/}:${_share_dir_to%/} ${_port_opts} ${_network} ${_dns} ${_hostname_opt} ${_extra_opts} \
         --name=${_name} ${_base} /sbin/init || return $?
