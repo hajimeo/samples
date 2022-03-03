@@ -136,21 +136,24 @@ function f_topCausedByExceptions() {
 }
 
 function f_topErrors() {
-    local __doc__="List top X ERRORs but removing 1 or 2 occurences"
+    local __doc__="List top X ERRORs with -m Y, and removing 1 or 2 occurrences"
     local _glob="${1:-"*.*log*"}"   # file path which rg accepts and NEEDS double-quotes
     local _date_4_bar="$2"          # for bar_chart.py. ISO format datetime, but no seconds (eg: 2018-11-05 21:00)
     local _regex="$3"               # to overwrite default regex to detect ERRORs
     local _exclude_regex="$4"       # exclude some lines before _replace_number
     local _top_N="${5:-20}"
-
+    local _max_N="${6-${_TOP_ERROR_MAX_N}}"
+    local _max_N_opt=""
     [ -z "$_regex" ] && _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|FAILED)\b.+"
+    [ -n "${_max_N}" ] && _max_N_opt="-m ${_max_N}"
     if [ -f "${_glob}" ]; then
         rg -z -c "${_regex}" -H "${_glob}" && echo " "
-        rg -z --no-line-number --no-filename "${_regex}" "${_glob}" > /tmp/${FUNCNAME}_$$.tmp
+        rg -z --no-line-number --no-filename "${_regex}" ${_max_N_opt} "${_glob}" > /tmp/${FUNCNAME}_$$.tmp
     else
         rg -z -c -g "${_glob}" "${_regex}" && echo " "
-        rg -z --no-line-number --no-filename -g "${_glob}" "${_regex}" > /tmp/${FUNCNAME}_$$.tmp
+        rg -z --no-line-number --no-filename -g "${_glob}" ${_max_N_opt} "${_regex}" > /tmp/${FUNCNAME}_$$.tmp
     fi
+    [ -n "${_max_N}" ] && echo "# Top ${_top_N} with -m ${_max_N}"
     if [ -z "${_exclude_regex}" ]; then
         cat /tmp/${FUNCNAME}_$$.tmp
     else
@@ -956,9 +959,9 @@ function f_threads() {
         echo " "
         local __count=${_count}
         [ 3 -lt ${_count} ] && __count=$(( ${_count} - 1 ))
-        echo "## Long *RUN*ning and no-change (same hash) threads which contain '${_running_thread_search_re}' (threads:${__count}/${_count})"
+        echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which contain '${_running_thread_search_re}' (threads:${__count}/${_count})"
         _long_running "${_save_dir%/}" "${_running_thread_search_re}" "${__count}" | tee /tmp/${FUNCNAME}_$$.tmp
-        echo "## Long *RUN*ning and no-change (same hash) threads which size is 2k+ (threads:${__count}/${_count})"
+        echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which size is 2k+ (threads:${__count}/${_count})"
         _long_running "${_save_dir%/}" "" "${__count}" "2k" | tee /tmp/${FUNCNAME}_$$.tmp
         # TODO: also check similar file sizes (wc -c?)
         echo "## Long running (based on thread name) threads which contain '${_running_thread_search_re}' (threads:${_count})"
@@ -993,8 +996,8 @@ function f_threads() {
     rg -i 'Pool\.acquire\b' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
     echo " "
 
-    echo "## Counting *probably* waiting for connection pool by checking 'getConnection'"
-    rg -m1 -w getConnection ${_save_dir%/}/ -g '*WAITING*' --no-filename | sort | uniq -c
+    echo "## Counting *probably* waiting for connection pool by checking 'getConnection' and 'org.apache.http.pool.PoolEntryFuture.await'"
+    rg -m1 '\b(getConnection|org.apache.http.pool.PoolEntryFuture.await)\b' ${_save_dir%/}/ -g '*WAITING*' -g '*waiting*' --no-filename | sort | uniq -c
     echo " "
 
     echo "## Finding BLOCKED or waiting to lock lines (excluding '-acceptor-')"
@@ -1009,11 +1012,11 @@ function f_threads() {
     echo "## Checking 'parking to wait for' qtp threads, because it may indicate the pool exhaustion issue (eg:NEXUS-17896 / NEXUS-10372) (excluding smaller than 1k threads)"
     rg '(parking to wait for)' -l `find ${_save_dir%/} -type f -size +1k` | rg '.*/(qtp[^/]+)$' -o -r '$1' | wc -l
     echo " "
-    # At least more than 10 waiting:
-    local _most_waiting="$(rg -m 1 '^\s*\d\d+\s+.+(0x[0-9a-f]+)' -o -r '$1' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
+    # At least more than 5 waiting:
+    local _most_waiting="$(rg -m 1 '^\s*([5-9]|\d\d+)\s+.+(0x[0-9a-f]+)' -o -r '$2' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
     if [ -n "${_most_waiting}" ]; then
         echo "## Finding thread(s) locked '${_most_waiting}' (excluding smaller than 1k threads)"
-        rg "locked.+${_most_waiting}" -l `find ${_save_dir%/} -type f -size +1k` | xargs -I {} rg -H '(java.lang.Thread.State:| state=)' {}
+        rg "locked.+${_most_waiting}" -l `find ${_save_dir%/} -type f -size +1k -name '*.out'` | xargs -I {} rg -H '(java.lang.Thread.State:| state=)' {}
         echo " "
     fi
     echo "## 'locked' objects or id excluding synchronizers (top 20 and more than once)"    # | rg -v '^\s+1\s'
@@ -1074,8 +1077,10 @@ function _long_running() {
     local _min_count="${3:-"2"}"
     local _size="${4:-"1k"}"
     if [ -n "${_search_re}" ]; then
+        rg -l --multiline --multiline-dotall " BLOCKED .+${_search_re}" -g '*wait*.out' ${_search_dir%/}
         rg -l "${_search_re}" -g '*run*.out' -g '*RUN*.out' ${_search_dir%/}
     else
+        rg -l -w "BLOCKED" -g '*wait*.out' ${_search_dir%/}
         find ${_search_dir%/} -type f \( -name '*run*.out' -o -name '*RUN*.out' \) -size +${_size} -print
     fi | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | sort -nr | rg "^\s*([${_min_count}-9]|\d\d+)\s+"
 }
