@@ -84,7 +84,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 : ${_ADMIN_PWD:="admin123"}
 : ${_DOMAIN:="standalone.localdomain"}
 : ${_NEXUS_URL:="http://localhost:8081/"}   # or https://local.standalone.localdomain:8443/ for docker
-: ${_IQ_URL:="http://dh1.${_DOMAIN}:8070/"}
+: ${_IQ_URL:="http://localhost:8070/"}
 : ${_IQ_CLI_VER-"1.128.0-01"}               # If "" (empty), not download CLI jar
 : ${_DOCKER_NETWORK_NAME:="nexus"}
 : ${_SHARE_DIR:="/var/tmp/share"}
@@ -681,13 +681,16 @@ aws s3 cp s3://${_bucket}/${_prefix}/content/vol-42/chap-31/f062f002-88f0-4b53-a
 
 function f_iq_quarantine() {
     local _repo_name="$1"
-    if [ -n "${_IQ_URL}" ] && curl -sfI "${_IQ_URL}" &>/dev/null ; then
-        _log "INFO" "Setting up IQ capability ..."
-        f_apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":true,"url":"'${_IQ_URL}'","authenticationType":"USER","username":"admin","password":"admin123","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}' || return $?
+    if [ -z "${_IQ_URL}" ] || ! curl -sfI "${_IQ_URL}" &>/dev/null ; then
+        _log "WARN" "IQ ${_IQ_URL} is not reachable capability"
+        return
     fi
+    f_apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":true,"url":"'${_IQ_URL}'","authenticationType":"USER","username":"admin","password":"admin123","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}' || return $?
     # To create IQ: Audit and Quarantine for this repository:
-    f_apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"firewall.audit","notes":"","enabled":true,"properties":{"repository":"'${_repo_name}'","quarantine":"true"}}],"type":"rpc"}' || return $?
-    _log "INFO" "IQ: Audit and Quarantine for ${_repo_name} completed."
+    if [ -n "${_repo_name}" ]; then
+        f_apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"firewall.audit","notes":"","enabled":true,"properties":{"repository":"'${_repo_name}'","quarantine":"true"}}],"type":"rpc"}' || return $?
+        _log "INFO" "IQ: Audit and Quarantine for ${_repo_name} completed."
+    fi
 }
 
 # f_get_and_upload_jars "maven" "junit" "junit" "3.8 4.0 4.1 4.2 4.3 4.4 4.5 4.6 4.7 4.8 4.9 4.10 4.11 4.12"
@@ -1015,6 +1018,17 @@ _auth=\"${_cred}\""
 EOF
         chown -v ${_user}: ${_home%/}/.npmrc
     fi
+    _repo_url="${_base_url%/}/repository/bower-proxy"
+    if _is_url_reachable "${_repo_url}"; then
+        _log "INFO" "Create a sample ${_home%/}/.bowerrc ..."
+        cat << EOF > ${_home%/}/.bowerrc
+{
+    "registry" : "${_repo_url%/}",
+    "resolvers": ["bower-nexus3-resolver"]
+}
+EOF
+        chown -v ${_user}: ${_home%/}/.bowerrc
+    fi
 
     # Using Nexus pypi repository if available
     _repo_url="${_base_url%/}/repository/pypi-group"
@@ -1178,6 +1192,7 @@ EOF
     _log "INFO" "Install yarn and bower globally ..."
     npm install -g yarn
     npm install -g bower
+    npm install -g bower-nexus3-resolver
     _log "INFO" "Install conan ..."
     if pip3 install conan; then
         [ ! -d /opt/cmake ] && mkdir /opt/cmake
