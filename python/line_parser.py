@@ -20,7 +20,8 @@
 #   rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ com.amazonaws.request - (Sending Request: [^ ]+|Received)' -o -r '$1 $2 $3 $4' --no-filename --sort=path -g nexus.log | line_parser.py time_diff "Sending" 3 > time_diff.csv
 #   rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.http.impl.conn.PoolingHttpClientConnectionManager - (Connection request:.+|Connection released:.+)' -o -r '$1 $2 $3 $4' ./log/nexus.log | line_parser.py time_diff "Connection request" 3 > time_diff.csv
 #   rg '^(\d\d\d\d-\d\d-\d\d) (\d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.http.impl.conn.PoolingHttpClientConnectionManager - (Connection leased:.+|Connection released:.+)' -o -r '$1 $2 $3 $4' ./log/nexus.log | line_parser.py time_diff "Connection leased" 3 > time_diff.csv
-#   rg '^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.ibatis.transaction.jdbc.JdbcTransaction - (Opening JDBC Connection|Closing JDBC Connection.+)' -o -r '$1 $2 $3 $4' ./log/nexus.log | line_parser.py time_diff "Opening JDBC" 3 > time_diff.csv
+#   rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.apache.ibatis.transaction.jdbc.JdbcTransaction - (Opening JDBC Connection|Closing JDBC Connection.+)' -o -r '$1 $2 $3 $4' ./log/nexus.log | line_parser.py time_diff "Opening JDBC" 3 > time_diff.csv
+#   rg '^(\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d.\d\d\d)[^ ]+ [^ ]+ +\[([^\]]+)\].+ org.sonatype.nexus.content.maven.store.Maven2ComponentDAO.browseComponents - (<==\s*Total:\s*\d+|==>\s*Preparing:)' -o -r '$1 $2 $3 $4' ./log/nexus.log | line_parser.py time_diff "Total:" 3 > time_diff_browseComponents.csv
 #   echo -e "start_datetime,end_datetime,diff,message,thread\n$(cat time_diff.csv)" > time_diff.csv
 #
 
