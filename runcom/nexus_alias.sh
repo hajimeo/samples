@@ -33,7 +33,7 @@ function iqCli() {
     local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
     local _iq_url="${4:-${_IQ_URL}}"
     local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.128.0-01"}}"
-    local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"
+    local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"    # -D fileIncludes="**/package-lock.json"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
 
     _iq_url="$(_get_iq_url "${_iq_url}")"
@@ -147,8 +147,8 @@ function nxrmStart() {
     # ulimit: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
 }
 
-#nxrmDocker "nxrm3-test" "" "8181" "8543" #"--read-only -v /tmp/nxrm3-test:/tmp"
-#docker run --init -d -p 8081:8081 -p 8443:8443 --name=nxrm3 -e INSTALL4J_ADD_VM_PARAMS="-Dssl.etc=\${karaf.data}/etc/ssl -Dnexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml -Dapplication-port-ssl=8443 -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v /var/tmp/share/sonatype/nxrm3-data:/nexus-data dh1.standalone.localdomain:5000/sonatype/nexus3:latest
+#nxrmDocker "nxrm3-test" "" "8181" "8543" #"--read-only -v /tmp/nxrm3-test:/tmp" or --tmpfs /tmp:noexec
+#docker run --init -d -p 8081:8081 -p 8443:8443 --name=nxrm3docker --tmpfs /tmp:noexec -e INSTALL4J_ADD_VM_PARAMS="-Dssl.etc=\${karaf.data}/etc/ssl -Dnexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml -Dapplication-port-ssl=8443 -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v /var/tmp/share/sonatype/nxrm3-data:/nexus-data dh1.standalone.localdomain:5000/sonatype/nexus3:latest
 function nxrmDocker() {
     local _name="${1:-"nxrm3"}"
     local _tag="${2:-"latest"}"
