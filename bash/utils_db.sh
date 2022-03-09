@@ -37,13 +37,19 @@ function _postgresql_configure() {
     [ ! -s "${__TMP%/}/postgresql.conf.orig" ] && cp -f "${_postgresql_conf}" "${__TMP%/}/postgresql.conf.orig"
 
     _log "INFO" "Updating ${_postgresql_conf} ..."
-    # Performance tuning (so not mandatory). Expecting the server has at least 4GB RAM
-    # @see: https://pgtune.leopard.in.ua/#/
-    _upsert ${_postgresql_conf} "shared_buffers" "1024MB"       # Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm
+    ### Performance tuning (so not mandatory). Expecting the server has at least 4GB RAM
+    # @see: https://pgtune.leopard.in.ua/#/ and https://pgpedia.info/index.html
+    _upsert ${_postgresql_conf} "shared_buffers" "1024MB" "#shared_buffers" # Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm if very old Linux or BSD
     _upsert ${_postgresql_conf} "work_mem" "8MB" "#work_mem"    # Default 4MB. RAM * 25% / max_connections (200) + extra a few MB. NOTE: I'm not expecting my PG uses 200 though
     #_upsert ${_postgresql_conf} "maintenance_work_mem" "64MB" "#maintenance_work_mem"    # Default 64MB. Can be higher than work_mem
     _upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # RAM * 50% ~ 75%
-    _upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Usually higher provides better write performance
+    #_upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Default -1 (1/32 of shared_buffers) Usually higher provides better write performance
+    _upsert ${_postgresql_conf} "checkpoint_completion_target" "0.9" "#checkpoint_completion_target"    # Default 0.5 or 0.9. Ratio of checkpoint_timeout (5min). Larger reduce disk I/O but may take checkpointing longer
+    #_upsert ${_postgresql_conf} "random_page_cost" "1.1" "#random_page_cost"   # Default 4.0. If very fast disk is used, recommended to use same as seq_page_cost (1.0)
+    #_upsert ${_postgresql_conf} "effective_io_concurrency" "200" "#effective_io_concurrency"   # Default 1. Was for RAID so number of disks. If SSD, somehow 200 is recommended
+    _upsert ${_postgresql_conf} "checkpoint_completion_target" "0.9" "#checkpoint_completion_target"    # Default 0.5 (old 'checkpoint_segments'). Larger may work for write heavy DB
+    _upsert ${_postgresql_conf} "min_wal_size" "1GB" "#min_wal_size"    # Default 80MB
+    _upsert ${_postgresql_conf} "max_wal_size" "4GB" "#max_wal_size"    # Default 1GB
     ### End of tuning ###
     _upsert ${_postgresql_conf} "max_connections" "200" "#max_connections"   # This is for NXRM3 as it uses 100 per datastore NOTE: work_mem * max_conn < shared_buffers.
     _upsert ${_postgresql_conf} "listen_addresses" "'*'" "#listen_addresses"
