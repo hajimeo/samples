@@ -498,6 +498,17 @@ function f_setup_conan() {
     if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"'${_extra_sto_opt}'},"component":{"proprietaryComponents":false},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"conan-hosted"}],"type":"rpc"}' && \
             _log "INFO" "Please enable 'Conan Bearer Token Realm'"
+        if [ $? -eq 0 ] && type conan &>/dev/null; then
+            local _build_dir="$(mktemp -d)"
+            cd "${_build_dir}"
+            conan remote add conan-hosted "${_NEXUS_URL%/}/repository/${_prefix}-hosted/"
+            conan user -p admin123 -r ${_prefix}-hosted admin
+            local _pkg_ver="hello/0.2"
+            local _usr_stable="demo/testing"
+            conan new ${_pkg_ver} && conan create . ${_usr_stable}
+            conan upload -r ${_prefix}-hosted ${_pkg_ver}@${_usr_stable} --all
+            cd -
+        fi
     fi
 }
 
