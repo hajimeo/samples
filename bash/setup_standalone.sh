@@ -1184,14 +1184,9 @@ main() {
             if docker ps -a --format "{{.Names}}" | grep -qE "^${_NAME}$"; then
                 _NAME="${_NAME}-$(date +"%S")"
             fi
-
-            # If no _NAME originally, and if _CREATE_CONTAINER, and if _DOCKER_SAVE is not set, trying to save
-            if ${_CREATE_CONTAINER} && ! ${_IS_DOCKER_SAVE_SPECIFIED}; then
-                _DOCKER_SAVE=true
-            fi
         fi
 
-        # If no "-c" and -v is given, will check if image for same name already exists.
+        # If no "-C" and -v is given, will check if image for same name already exists.
         if ! ${_CREATE_CONTAINER} && [ -n "${_SERVICE}" ] && [ -z "${_IMAGE_NAME}" ] && [ -n "${_VERSION}" ]; then
             local _tmp_image_name="${_SERVICE}$(echo "${_VERSION}" | sed 's/[^0-9]//g')"
             if docker images --format "{{.Repository}}" | grep -qE "^${_tmp_image_name}$"; then
@@ -1203,7 +1198,7 @@ main() {
             _log "INFO" "Container:${_NAME} already exists and no -c, so no f_as_install ..."
         elif ! $_CREATE_CONTAINER && docker images --format "{{.Repository}}" | grep -qE "^${_NAME}$"; then
             # A bit confusing, but because of the Special Condition 1, will create a container without installing app.
-            _log "INFO" "An image which same name as ${_NAME} already exists and no -c, so no f_as_install ..."
+            _log "INFO" "An image which same name as ${_NAME} already exists and no -C, so no f_as_install ..."
         elif $_CREATE_CONTAINER; then
             local _base="${_IMAGE_NAME:-"${_BASE_IMAGE}:${_OS_VERSION}"}"
             _log "INFO" "Creating ${_NAME} container from ${_base} (v:${_VERSION})..."
