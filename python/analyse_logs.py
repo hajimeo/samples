@@ -162,6 +162,44 @@ def update():
     ju.update(file=__file__)
 
 
+def request2table(filepath, tablename="t_request", max_file_size=(1024 * 1024 * 100), time_from_regex=None, time_until_regex=None):
+    """
+    Convert request.log file to DB table
+    :param filepath: File path or glob pattern
+    :param tablename: DB table name
+    :param max_file_size: larger than this file will be skipped
+    :param time_from_regex: Regex string to detect the start time from the log
+    :param time_until_regex: Regex string to detect the end time from the log
+    :return: True if no error, or DataFrame list
+    """
+    log_path = ju._get_file(filepath)
+    if bool(log_path) is False:
+        return False
+    line_from = line_until = 0
+    if bool(time_from_regex):
+        line_from = ju._linenumber(log_path, "\d\d/.../\d\d\d\d:" + time_from_regex)
+    if bool(time_until_regex):
+        line_until = ju._linenumber(log_path, "\d\d/.../\d\d\d\d:" + time_until_regex)
+    (col_names, line_matching) = _gen_regex_for_request_logs(log_path)
+    return ju.logs2table(log_path, tablename=tablename, line_beginning="^.",
+                                 col_names=col_names, line_matching=line_matching,
+                                 max_file_size=max_file_size,
+                                 line_from=line_from, line_until=line_until)
+
+def applog2table(filepath, tablename="t_applog", max_file_size=(1024 * 1024 * 100), time_from_regex=None, time_until_regex=None):
+    log_path = ju._get_file(filepath)
+    if bool(log_path) is False:
+        return False
+    line_from = line_until = 0
+    if bool(time_from_regex):
+        line_from = ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d " + time_from_regex)
+    if bool(time_until_regex):
+        line_until = ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d " + time_until_regex)
+    (col_names, line_matching) = _gen_regex_for_app_logs(log_path)
+    return ju.logs2table(log_path, tablename=tablename, col_names=col_names,
+                              line_matching=line_matching, max_file_size=max_file_size,
+                              line_from=line_from, line_until=line_until)
+
 def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_from_regex=None, time_until_regex=None):
     """
     Extract data, transform and load (to DB)
@@ -249,20 +287,8 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
         _ = ju.load_jsons(".", include_ptn=".+/db/.+\.json", exclude_ptn='export\.json', useRegex=True, conn=ju.connect())
 
         # If request.*csv* exists, use that (should be already created by load_csvs and should be loaded by above load_csvs (because it's faster), if not, logs2table, which is slower.
-        request_logs = None
         if ju.exists("t_request") is False:
-            log_path = ju._get_file("request.log")
-            if bool(log_path):
-                line_from = line_until = 0
-                if bool(time_from_regex):
-                    line_from = ju._linenumber(log_path, "\d\d/.../\d\d\d\d:" + time_from_regex)
-                if bool(time_until_regex):
-                    line_until = ju._linenumber(log_path, "\d\d/.../\d\d\d\d:" + time_until_regex)
-                (col_names, line_matching) = _gen_regex_for_request_logs(log_path)
-                request_logs = ju.logs2table(log_path, tablename="t_request", line_beginning="^.",
-                                             col_names=col_names, line_matching=line_matching,
-                                             max_file_size=max_file_size,
-                                             line_from=line_from, line_until=line_until)
+            _ = request2table("request.log")
         if ju.exists("t_request"):
             try:
                 _ = ju.execute(sql="UPDATE t_request SET headerContentLength = 0 WHERE headerContentLength = '-'")
@@ -272,31 +298,8 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
                 pass
 
         # Loading application log file(s) into database.
-        log_path = ju._get_file("nexus.log")
-        nxrm_logs = None
-        if bool(log_path):
-            line_from = line_until = 0
-            if bool(time_from_regex):
-                line_from = ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d " + time_from_regex)
-            if bool(time_until_regex):
-                line_until = ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d " + time_until_regex)
-            (col_names, line_matching) = _gen_regex_for_app_logs(log_path)
-            nxrm_logs = ju.logs2table(log_path, tablename="t_nxrm_logs", col_names=col_names,
-                                      line_matching=line_matching, max_file_size=max_file_size,
-                                      line_from=line_from, line_until=line_until)
-
-        log_path = ju._get_file("clm-server.log")
-        clm_logs = None
-        if bool(log_path):
-            line_from = line_until = 0
-            if bool(time_from_regex):
-                line_from = ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d " + time_from_regex)
-            if bool(time_until_regex):
-                line_until = ju._linenumber(log_path, "^\d\d\d\d-\d\d-\d\d " + time_until_regex)
-            (col_names, line_matching) = _gen_regex_for_app_logs(log_path)
-            clm_logs = ju.logs2table(log_path, tablename="t_iq_logs", col_names=col_names,
-                                     line_matching=line_matching, max_file_size=max_file_size,
-                                     line_from=line_from, line_until=line_until)
+        nxrm_logs = applog2table("nexus.log", "t_nxrm_logs")
+        _ = applog2table("clm-server.log", "t_iq_logs")
 
         # Hazelcast health monitor
         if ju.exists("t_log_hazelcast_monitor") is False and bool(nxrm_logs):
@@ -351,17 +354,18 @@ def analyse_logs(path="", tail_num=10000, max_file_size=(1024 * 1024 * 100), ski
     where_sql = "WHERE 1=1"
 
     headerContentLengthAgg=""
-    avgMsPerByteAgg="CAST(SUM(CAST(elapsedTime AS INTEGER)) / SUM(CAST(bytesSent AS INTEGER)) AS INT)  AS avgMsPerByte,"
-    avgBytesPerMsAgg="CAST(SUM(CAST(bytesSent AS INTEGER)) / SUM(CAST(elapsedTime AS INTEGER)) AS INT)  AS avgBytesPerMs,"
+    avgMsPerByteAgg="CAST(SUM(CAST(elapsedTime AS INT)) / SUM(CAST(bytesSent AS INT)) AS INT)  AS avgMsPerByte,"
+    avgBytesPerMsAgg="CAST(SUM(CAST(bytesSent AS INT)) / SUM(CAST(elapsedTime AS INT)) AS INT)  AS avgBytesPerMs,"
+    where_sql2 = "WHERE 1=1"
     if isHeaderContentLength:
-        # NOTE: using commma in the end of line.
+        #where_sql2 = "WHERE (CAST(bytesSent AS INT) + CAST(headerContentLength AS INT) > 0)" # TODO: POST has 0 and 0
+        # NOTE: Don't forget to append a comma in the end of line.
         headerContentLengthAgg="AVG(CAST(headerContentLength AS INTEGER)) AS bytesReceived,"
         avgMsPerByteAgg="CAST(SUM(CAST(elapsedTime AS INTEGER)) / SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) AS INT) AS avgMsPerByte,"
         avgBytesPerMsAgg="CAST(SUM(CAST(bytesSent AS INT) + CAST(headerContentLength AS INT)) / SUM(CAST(elapsedTime AS INTEGER)) AS INT) AS avgBytesPerMs,"
 
     if ju.exists("t_request"):
         display_name = "RequestLog_StatusCode_Hourly_aggs"
-        where_sql2 = "WHERE 1=1"
         # Join db_repo.json and request.log
         #   AND UDF_REGEX('.+ /nexus/content/repositories/([^/]+)', t_request.requestURL, 1) IN (SELECT repository_name FROM t_db_repo where t_db_repo.`attributes.storage.blobStoreName` = 'nexus3')
         query = """SELECT substr(`date`, 1, 14) AS date_hour, substr(statusCode, 1, 1) || 'xx' as status_code,
