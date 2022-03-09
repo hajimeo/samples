@@ -960,10 +960,11 @@ function f_threads() {
         local __count=${_count}
         [ 3 -lt ${_count} ] && __count=$(( ${_count} - 1 ))
         echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which contain '${_running_thread_search_re}' (threads:${__count}/${_count})"
-        _long_running "${_save_dir%/}" "${_running_thread_search_re}" "${__count}" | tee /tmp/${FUNCNAME}_$$.tmp
+        _long_running "${_save_dir%/}" "${_running_thread_search_re}" "${__count}"
+        _long_blocked "${_save_dir%/}" "${_running_thread_search_re}" "${__count}"
         if [ 2 -lt ${_count} ]; then
-            echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which size is 2k+ (threads:${__count}/${_count})"
-            _long_running "${_save_dir%/}" "" "${__count}" "2k" | tee /tmp/${FUNCNAME}_$$.tmp
+            echo "## Long *RUN*ning and no-change (same hash) threads which size is 2k+ (threads:${__count}/${_count})"
+            _long_running "${_save_dir%/}" "" "${__count}" "2k"
         fi
         # TODO: also check similar file sizes (wc -c?)
         echo "## Long running (based on thread name) threads which contain '${_running_thread_search_re}' (threads:${_count})"
@@ -1079,12 +1080,17 @@ function _long_running() {
     local _min_count="${3:-"2"}"
     local _size="${4:-"1k"}"
     if [ -n "${_search_re}" ]; then
-        rg -l --multiline --multiline-dotall " BLOCKED .+${_search_re}" -g '*wait*.out' ${_search_dir%/}
+        # TODO: not utilising _size
         rg -l "${_search_re}" -g '*run*.out' -g '*RUN*.out' ${_search_dir%/}
     else
-        rg -l -w "BLOCKED" -g '*wait*.out' ${_search_dir%/}
         find ${_search_dir%/} -type f \( -name '*run*.out' -o -name '*RUN*.out' \) -size +${_size} -print
     fi | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | sort -nr | rg "^\s*([${_min_count}-9]|\d\d+)\s+"
+}
+function _long_blocked() {
+    local _search_dir="${1:-"."}"
+    local _search_re="${2}"
+    local _min_count="${3:-"2"}"
+    rg -l --multiline --multiline-dotall " BLOCKED .+${_search_re}" -g '*wait*.out' ${_search_dir%/} | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | sort -nr | rg "^\s*([${_min_count}-9]|\d\d+)\s+"
 }
 
 #f_last_tid_in_log "" ../support-20200915-143729-1/log/request.log "15/Sep/2020:08:" > f_last_tid_in_log.csv 2> f_last_tid_in_log.err
