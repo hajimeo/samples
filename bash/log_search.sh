@@ -875,7 +875,7 @@ function f_hexTids_from_topH() {
     local _user="${2:-".+"}" # [^ ]+
     local _command="${3:-"(java|VM Thread|GC )"}" # [^ ]+
     local _n="${4:-20}"
-    echo "# Overview from top (${_n})"
+    echo "# Overview from top ${_n} (check long 'TIME+')"
     if [ -f "${_file}" ]; then
         rg '^top' -A ${_n} "${_file}"
     else
@@ -892,8 +892,8 @@ function f_hexTids_from_topH() {
     done
     echo ""
     echo "# Large Receive / Send Q from netstat"
-    rg '^Proto' -m1 "${_file}"
-    rg "^tcp\s+(\d{4,}\s+\d+|\d+\s+\d{4,})\s+.+/${_command}" "${_file}"
+    #rg '^Proto' "${_file}"
+    rg "^(Proto|tcp\s+(\d{4,}\s+\d+|\d+\s+\d{4,})\s+.+/${_command})" "${_file}"
 }
 
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
@@ -961,8 +961,10 @@ function f_threads() {
         [ 3 -lt ${_count} ] && __count=$(( ${_count} - 1 ))
         echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which contain '${_running_thread_search_re}' (threads:${__count}/${_count})"
         _long_running "${_save_dir%/}" "${_running_thread_search_re}" "${__count}" | tee /tmp/${FUNCNAME}_$$.tmp
-        echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which size is 2k+ (threads:${__count}/${_count})"
-        _long_running "${_save_dir%/}" "" "${__count}" "2k" | tee /tmp/${FUNCNAME}_$$.tmp
+        if [ 2 -lt ${_count} ]; then
+            echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which size is 2k+ (threads:${__count}/${_count})"
+            _long_running "${_save_dir%/}" "" "${__count}" "2k" | tee /tmp/${FUNCNAME}_$$.tmp
+        fi
         # TODO: also check similar file sizes (wc -c?)
         echo "## Long running (based on thread name) threads which contain '${_running_thread_search_re}' (threads:${_count})"
         rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
