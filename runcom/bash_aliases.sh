@@ -411,9 +411,10 @@ function mov2gif() {
 # Grep STDIN with \d\d\d\d-\d\d-\d\d.\d\d:\d (upto 10 mins) and pass to bar_chart
 function bar() {
     local _time_regex="${1}" # Below line was intentional as \ will be removed in ":-"
+    local _file="${2}"
     [ -z "${_time_regex}" ] && _time_regex="\d\d:\d"
     #ggrep -oP "${_datetime_regex}" | sed 's/ /./g' | bar_chart.py
-    rg "(^\"?20\d\d-\d\d-\d\d|\"timestamp\":\"20\d\d-\d\d-\d\d|\d\d.[A-Z][a-z]{2}.20\d\d).${_time_regex}" -o | sed 's/ /./g' | bar_chart.py
+    rg "(^\"?20\d\d-\d\d-\d\d|\"timestamp\":\"20\d\d-\d\d-\d\d|\d\d.[A-Z][a-z]{2}.20\d\d).${_time_regex}" -o ${_file} | sed 's/ /./g' | bar_chart.py
 }
 # Start Jupyter Lab as service
 function jpl() {
