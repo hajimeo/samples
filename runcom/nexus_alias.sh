@@ -182,7 +182,7 @@ function iqStart() {
     _base_dir="$(realpath ${_base_dir%/})"
     local _jar_file="$(find ${_base_dir%/} -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(realpath "$(dirname "${_jar_file}")/config.yml")"
+    local _cfg_file="$(find ${_base_dir%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
 
     local _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
@@ -202,7 +202,7 @@ function iqStart() {
     cd -
 }
 
-#iqDocker "nxiq-test" "1.113.0" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
+#iqDocker "nxiq-test" "1.125.0" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
 function iqDocker() {
     local _name="${1:-"nxiq"}"
     local _tag="${2:-"latest"}"
@@ -219,10 +219,10 @@ function iqDocker() {
     [ ! -d "${_nexus_data%/}/etc" ] && mkdir -p -m 777 "${_nexus_data%/}/etc"
     [ ! -d "${_nexus_data%/}/log" ] && mkdir -p -m 777 "${_nexus_data%/}/log"
     local _opts="--name=${_name}"
-    local _java_opts=""
+    local _java_opts="" #"-Ddw.dbCacheSizePercent=50 -Ddw.needsAcknowledgementOfInitialDashboardFilter=true"
     # NOTE: symlink of *.lic does not work with -v
     [ -z "${_license}" ] && [ -d ${_work_dir%/}/sonatype ] && _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
-    [ -s "${_license}" ] && _java_opts="-Ddw.licenseFile=${_license}"
+    [ -s "${_license}" ] && _java_opts="${_java_opts} -Ddw.licenseFile=${_license}"
     # To use PostgreSQL
     #-e JAVA_OPTS="-Ddw.database.type=postgresql -Ddw.database.hostname=db-server-name.domain.net"
     [ -n "${JAVA_OPTS}" ] && _java_opts="${_java_opts} ${JAVA_OPTS}"
