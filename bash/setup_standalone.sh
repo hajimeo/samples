@@ -56,7 +56,7 @@ OTHERS (which normally you don't need to use):
         If not specified (default), the installer script (install_${_SERVICE}.sh) should decide.
 
     -M 8081
-        Monitoring port. Script watis until this port will be available or timeouts.
+        Monitoring port. Script waits until this port will be available or timeouts.
 
     -N
         Not installing / starting, just creat an empty container or start -n node.
