@@ -99,8 +99,10 @@ spec:
             failureThreshold: 60
             timeoutSeconds: 10
           env:
+            # TODO: use NEXUS_SECURITY_INITIAL_PASSWORD = true for the security
             - name: NEXUS_SECURITY_RANDOMPASSWORD
               value: 'false'
+            # NOTE: install4jAddVmParams is wrong
             - name: INSTALL4J_ADD_VM_PARAMS
               # NOTE: In the datastore parameter, no schema specified, so will be public.
               #       allowCreation shouldn't be used for production. Also maybe -Dnexus.onboarding.enabled=false better?
