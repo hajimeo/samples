@@ -15,6 +15,6 @@ except:
 for _h in ${@:2}; do
   echo "# Testing ${_h} ..."
   _TOKEN="$(curl -s -k -u "$1" "${_h%/}/v2/token?account=$1&client_id=docker&offline_token=true" --get --data-urlencode "service=${_h%/}/v2/token" | _print_token)"
-  echo "# TODKEN: ${_TOKEN}"
-  curl -I -k -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_h%/}/v2/"
+  echo "# Testing TOKEN: ${_TOKEN} with curl ${_h%/}/v2/"
+  curl -D- -k -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_h%/}/v2/"
 done
