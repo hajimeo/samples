@@ -1,0 +1,130 @@
+# NOTE:
+#   This script uses the node's hostPath for sharing blobs, instead of the recommended NFS.
+#
+# PREPARATION:
+#  - Set up the license file:
+#     kubectl -n "sonatype" create secret generic sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
+#  - On PostgreSQL server: source ./utils.sh && _postgresql_create_dbuser "${_ID}"
+#  - Configure Ingress
+#
+# COMMAND EXAMPLE:
+#   export _ID="nxiqpg" _RUNAS_USR=1000 _DNS="192.168.52.31"
+#   export _TAG="1.135.0" _DB_USER="${_ID}" _DB_PWD="${_ID}" _DB_HOST="192.168.52.31" _DB_NAME="${_ID}"
+#   eval "echo \"$(cat ./k8s-iq-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
+#   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml
+#   kubectl -n "sonatype" apply -f /tmp/${_ID}.yaml
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nxiq-pg-data-pvc
+  labels:
+    app: nxiq-pg
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 4Gi
+  #storageClassName: standard
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nxiq-pg-deployment
+  labels:
+    app: nxiq-pg
+spec:
+  minReadySeconds: 180
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nxiq-pg
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: nxiq-pg
+    spec:
+      terminationGracePeriodSeconds: 120
+      dnsPolicy: Default
+      # NOTE: Without initContainers, it fails to start on Docker-Desktop
+      initContainers:
+        - name: my-customizaion
+          env:
+            - name: NAMESERVER
+              value: ${_DNS:-127.0.0.1}
+          image: busybox:1.33.1
+          # Below echo nameserver ... is my personal hack as I do not want to use coreDNS
+          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; chown -v -R ${_RUNAS_USR:-1000}: /sonatype-work; [ ! -L /var/log/nexus-iq-server ] && ln -v -s /sonatype-work/log /var/log/nexus-iq-server; [ ! -L /etc/nexus-iq-server ] && ln -v -s /sonatype-work/etc /etc/nexus-iq-server; ']
+          volumeMounts:
+            - name: nxiq-pg-data-pv
+              mountPath: /sonatype-work
+      containers:
+        - name: nxiq-pg-pod
+          securityContext:
+            runAsUser: ${_RUNAS_USR:-1000}
+          image: "sonatype/nexus-iq-server:${_TAG:-latest}"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: JAVA_OPTS
+              value: '-Xms2g -Xmx2g \
+              -Ddw.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic \
+              -Ddw.database.type=postgresql \
+              -Ddw.database.hostname=${_DB_HOST} \
+              -Ddw.database.name=${_DB_NAME} \
+              -Ddw.database.username=${_DB_USER} \
+              -Ddw.database.password=${_DB_PWD} \
+              -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=/sonatype-work/log/jvm.log'
+          ports:
+            - containerPort: 8070
+            #- containerPort: 8071
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 8070
+            initialDelaySeconds: 30
+            periodSeconds: 120
+            successThreshold: 1
+            failureThreshold: 6
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 8070
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            successThreshold: 1
+            failureThreshold: 60
+            timeoutSeconds: 10
+          volumeMounts:
+            - name: sonatype-license-volume
+              mountPath: /etc/sonatype
+              readOnly: true
+            - name: nxiq-pg-data-pv
+              mountPath: /sonatype-work
+      volumes:
+        #kubectl -n sonatype create secret generic sonatype-license --from-file /path/to/licenseFile
+        - name: sonatype-license-volume
+          secret:
+            secretName: sonatype-license
+        - name: nxiq-pg-data-pv
+          persistentVolumeClaim:
+            claimName: nxiq-pg-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nxiq-pg-service
+  labels:
+    app: nxiq-pg
+spec:
+  type: NodePort
+  selector:
+    app: nxiq-pg
+  ports:
+    - name: nxiq-web-ui
+      protocol: TCP
+      port: 8070
+      targetPort: 8070
