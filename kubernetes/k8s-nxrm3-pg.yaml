@@ -2,7 +2,7 @@
 #   This script uses the node's hostPath for sharing blobs, instead of the recommended NFS.
 #
 # PREPARATION:
-#  - On K8s node: mkdir -m 777 ${_SHARE_DIR%/}/${_ID}, which will be used for blob stores.
+#  - On K8s node: mkdir -m 777 ${_BLOBS_PATH}, which will be used for blob stores.
 #  - Set up the license file from one of the following ways:
 #     a) Copy the 'sonatype-license.lic' into ${_SHARE_DIR%/} and specify '-Dnexus.licenseFile='
 #     b) kubectl -n "sonatype" create configmap sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
@@ -14,7 +14,7 @@
 #   kubectl create namespace "sonatype"
 #   cd ~/IdeaProjects/samples/kubernetes
 #   # Below _DNS is my hack and usually don't need to use this. _DB_USER can't contain '-' character.
-#   export _ID="nxrm3pg" _DNS="192.168.52.31" _SHARE_DIR="/var/tmp/share"
+#   export _ID="nxrm3pg" _DNS="192.168.52.31" _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs"
 #   export _TAG="3.37.3" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
 #   eval "echo \"$(cat ./k8s-nxrm3-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
 #   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml
@@ -61,7 +61,7 @@ spec:
         - name: my-customizaion
           env:
             - name: BLOBS_PATH
-              value: ${_SHARE_DIR%/}/sonatype/${_ID}/blobs
+              value: ${_BLOBS_PATH%/}
             - name: NAMESERVER
               value: ${_DNS:-127.0.0.1}
           image: busybox:1.33.1
@@ -72,8 +72,8 @@ spec:
           volumeMounts:
             - name: nexus-data-volume
               mountPath: /nexus-data
-            - name: nexus-share-volume
-              mountPath: ${_SHARE_DIR%/}
+            - name: nexus-blobs-volume
+              mountPath: ${_BLOBS_PATH%/}
       containers:
         - name: nxrm3-pg-pod
           securityContext:
@@ -126,8 +126,8 @@ spec:
               readOnly: true
             - name: nexus-data-volume
               mountPath: /nexus-data
-            - name: nexus-share-volume
-              mountPath: ${_SHARE_DIR%/}
+            - name: nexus-blobs-volume
+              mountPath: ${_BLOBS_PATH%/}
       volumes:
         #kubectl -n sonatype create secret generic sonatype-license --from-file /path/to/licenseFile
         - name: sonatype-license-volume
@@ -136,9 +136,9 @@ spec:
         - name: nexus-data-volume
           persistentVolumeClaim:
             claimName: nxrm3-pg-data-pvc
-        - name: nexus-share-volume
+        - name: nexus-blobs-volume
           hostPath:
-            path: ${_SHARE_DIR%/}
+            path: ${_BLOBS_PATH%/}
             type: DirectoryOrCreate
 ---
 apiVersion: v1

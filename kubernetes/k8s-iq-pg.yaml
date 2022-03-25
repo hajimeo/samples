@@ -2,31 +2,18 @@
 #   This script uses the node's hostPath for sharing blobs, instead of the recommended NFS.
 #
 # PREPARATION:
+#  - On K8s node: mkdir -m 777 ${_SONATYPE_WORK}, which will be used for sonatypeWork directory.
 #  - Set up the license file:
 #     kubectl -n "sonatype" create secret generic sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
 #  - On PostgreSQL server: source ./utils.sh && _postgresql_create_dbuser "${_ID}"
 #  - Configure Ingress
 #
 # COMMAND EXAMPLE:
-#   export _ID="nxiqpg" _RUNAS_USR=1000 _DNS="192.168.52.31"
+#   export _ID="nxiqpg" _RUNAS_USR=1000 _DNS="192.168.52.31" _SONATYPE_WORK="/var/tmp/share/sonatype/${_ID}"
 #   export _TAG="1.135.0" _DB_USER="${_ID}" _DB_PWD="${_ID}" _DB_HOST="192.168.52.31" _DB_NAME="${_ID}"
 #   eval "echo \"$(cat ./k8s-iq-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
 #   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml
 #   kubectl -n "sonatype" apply -f /tmp/${_ID}.yaml
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: nxiq-pg-data-pvc
-  labels:
-    app: nxiq-pg
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 4Gi
-  #storageClassName: standard
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -57,9 +44,9 @@ spec:
               value: ${_DNS:-127.0.0.1}
           image: busybox:1.33.1
           # Below echo nameserver ... is my personal hack as I do not want to use coreDNS
-          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; chown -v -R ${_RUNAS_USR:-1000}: /sonatype-work; [ ! -L /var/log/nexus-iq-server ] && ln -v -s /sonatype-work/log /var/log/nexus-iq-server; [ ! -L /etc/nexus-iq-server ] && ln -v -s /sonatype-work/etc /etc/nexus-iq-server; ']
+          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; chown -v -R ${_RUNAS_USR:-1000}: /sonatype-work']
           volumeMounts:
-            - name: nxiq-pg-data-pv
+            - name: nxiq-pg-work-volume
               mountPath: /sonatype-work
       containers:
         - name: nxiq-pg-pod
@@ -68,18 +55,20 @@ spec:
           image: "sonatype/nexus-iq-server:${_TAG:-latest}"
           imagePullPolicy: IfNotPresent
           env:
+            # Somehow -Ddw.licenseFile is not working (but anyway, only once)
             - name: JAVA_OPTS
               value: '-Xms2g -Xmx2g \
-              -Ddw.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic \
+              -Ddw.licenseFile=/etc/sonatype/sonatype-license.lic \
+              -Ddw.enableDefaultPasswordWarning=postgresql \
               -Ddw.database.type=postgresql \
               -Ddw.database.hostname=${_DB_HOST} \
               -Ddw.database.name=${_DB_NAME} \
               -Ddw.database.username=${_DB_USER} \
               -Ddw.database.password=${_DB_PWD} \
-              -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=/sonatype-work/log/jvm.log'
+              -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=/var/log/nexus-iq-server/jvm.log'
           ports:
             - containerPort: 8070
-            #- containerPort: 8071
+            - containerPort: 8071
           livenessProbe:
             httpGet:
               path: /ping
@@ -101,17 +90,23 @@ spec:
           volumeMounts:
             - name: sonatype-license-volume
               mountPath: /etc/sonatype
-              readOnly: true
-            - name: nxiq-pg-data-pv
+            - name: nxiq-pg-log-volume
+              mountPath: /var/log/nexus-iq-server
+            - name: nxiq-pg-work-volume
               mountPath: /sonatype-work
       volumes:
         #kubectl -n sonatype create secret generic sonatype-license --from-file /path/to/licenseFile
         - name: sonatype-license-volume
           secret:
             secretName: sonatype-license
-        - name: nxiq-pg-data-pv
-          persistentVolumeClaim:
-            claimName: nxiq-pg-data-pvc
+        - name: nxiq-pg-log-volume
+          hostPath:
+            path: ${_SONATYPE_WORK%/}/log
+            type: DirectoryOrCreate
+        - name: nxiq-pg-work-volume
+          hostPath:
+            path: ${_SONATYPE_WORK%/}
+            type: DirectoryOrCreate
 ---
 apiVersion: v1
 kind: Service
