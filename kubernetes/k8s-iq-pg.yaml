@@ -59,7 +59,7 @@ spec:
             - name: JAVA_OPTS
               value: '-Xms2g -Xmx2g \
               -Ddw.licenseFile=/etc/sonatype/sonatype-license.lic \
-              -Ddw.enableDefaultPasswordWarning=postgresql \
+              -Ddw.enableDefaultPasswordWarning=false \
               -Ddw.database.type=postgresql \
               -Ddw.database.hostname=${_DB_HOST} \
               -Ddw.database.name=${_DB_NAME} \
