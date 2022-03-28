@@ -427,7 +427,7 @@ function t_mounts() {
     [ -z "${_parent_dir}" ] && _parent_dir="$(_search_json "sysinfo.json" "install-info,sonatypeWork" | _rg -o '"(/[^/]+).+sonatype-work.*"' -r '$1')"
     local _result="$(_rg -B1 -A6 '("description": "'${_parent_dir}'\b|"description": "/[ "]|"description": "/tmp[ "])' ${_FILTERED_DATA_DIR%/}/system-filestores.json)"
     local _display_result=""
-    if echo "${_result}" | grep -qEi '(nfs|cifs)'; then
+    if echo "${_result}" | grep -qEiw '(nfs|cifs)'; then
         _head "WARN" "workingDirectory:${_workingDirectory} might be in a mount point (${_parent_dir})"
         _display_result="Y"
     elif echo "${_result}" | grep -qwi '(overlay)'; then
@@ -439,10 +439,11 @@ function t_mounts() {
         echo "${_result}"
         # NOTE: 'bs=1 count=0 seek=104857600' is for creating one 100MB file very quickly
         echo "# Command examples to check (disk) performance with 100MB file:"
-        echo "time sudo -u <nexus> dd if=/dev/zero of=\${_workingDirectory}/tmp/test.img bs=100M count=1 oflag=dsync
-    time curl -u admin:admin123 -T \${_workingDirectory}/tmp/test.img http://localhost:8081/repository/raw-hosted/test/ --progress-bar | tee /dev/null
+        echo "    time sudo -u <nexus> dd if=/dev/zero of=\${_workingDirectory}/tmp/test.img bs=100M count=1 oflag=dsync
+    gzip ${_workingDirectory}/tmp/test.img
+    time curl -D- -u admin:admin123 -T \${_workingDirectory}/tmp/test.img.gz http://localhost:8081/repository/\${_rawHosted}/test/ --progress-bar | tee /dev/null
     sudo -u <nexus> dd if=/dev/zero of=\${installDirectory}/public/test.img bs=1 count=0 seek=104857600
-    time curl -o/dev/null http://localhost:8081/test.img"
+    time curl -D- -o/dev/null http://localhost:8081/test.img"
         echo '```'
     fi
 }
