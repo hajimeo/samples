@@ -1046,7 +1046,8 @@ function f_threads() {
             echo "##          'touchItemLastRequested' https://issues.sonatype.org/browse/NEXUS-10372 all NXRM2"
             echo "##          'preClose0' https://issues.sonatype.org/browse/NEXUS-30865 all NXRM2"
             echo "##          'MemoryCache' https://bugs.openjdk.java.net/browse/JDK-8259886 < 8u301"
-            rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
+            echo "##          'CachingDateFormatter' https://issues.sonatype.org/browse/NEXUS-31564"
+            rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache|CachingDateFormatter)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
             echo " "
         fi
 
