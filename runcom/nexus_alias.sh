@@ -49,7 +49,8 @@ function iqCli() {
             curl -f -L "https://download.sonatype.com/clm/scanner/nexus-iq-cli-${_iq_cli_ver}.jar" -o "${_iq_cli_jar}" || return $?
         fi
     fi
-    # Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
+    # NOTE: -X/--debug outputs to STDOUT
+    #       Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
     local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r "$(realpath "${TMPDIR:-"/tmp"}/iq_result_$(date +'%Y%m%d%H%M%S').json")" -X ${_path}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
@@ -104,6 +105,9 @@ function nxrmStart() {
     local _logback_overrides="$(find ${_base_dir%/} -maxdepth 4 -path '*/etc/logback/*' -type f -name 'logback-overrides.xml' 2>/dev/null | sort | tail -n1)"
     local _cfg_file="${_sonatype_work%/}/etc/nexus.properties"
     if [ -n "${_nexus_vmopt}" ]; then   # This means NXRM3
+        # To avoid 'Caused by: java.lang.IllegalStateException: Insufficient configured threads' https://support.sonatype.com/hc/en-us/articles/360000744687-Understanding-Eclipse-Jetty-9-4-Thread-Allocation#ReservedThreadExecutor
+        grep -qE -- '^\s*-XX:ActiveProcessorCount=2' "${_nexus_vmopt}" || echo "-XX:ActiveProcessorCount=2" >> "${_nexus_vmopt}"
+
         #nexus.licenseFile=/var/tmp/share/sonatype/sonatype-*.lic
         if [ ! -d "${_sonatype_work%/}/etc" ]; then
             mkdir -p "${_sonatype_work%/}/etc"
@@ -626,24 +630,24 @@ function nxrm3Staging() {
     # tag may already exist, so not stopping if error
     if [ -n "${_tag}" ]; then
         echo "# ${_nxrm3_url%/}/service/rest/v1/tags -d '{\"name\": \"'${_tag}'\"}'"
-        curl -u admin:admin123 -H "Content-Type: application/json" "${_nxrm3_url%/}/service/rest/v1/tags" -d '{"name": "'${_tag}'"}'
+        curl -D- -u admin:admin123 -H "Content-Type: application/json" "${_nxrm3_url%/}/service/rest/v1/tags" -d '{"name": "'${_tag}'"}'
         echo ""
     fi
     if [ -n "${_search}" ]; then
         if [ -z "${_tag}" ] || [ -z "${_move_to_repo}" ]; then
             echo "# ${_nxrm3_url%/}/service/rest/v1/search?${_search}"
-            curl -u admin:admin123 -X GET "${_nxrm3_url%/}/service/rest/v1/search?${_search}"
+            curl -D- -u admin:admin123 -X GET "${_nxrm3_url%/}/service/rest/v1/search?${_search}"
             echo ""
             return
         fi
         echo "# ${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
-        curl -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
+        curl -D- -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
         echo ""
         # NOTE: immediately moving fails with 404
         sleep 5
     fi
     echo "# ${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}"
-    curl -v -f -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}" || return $?
+    curl -D- -f -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}" || return $?
     echo ""
 }
 
