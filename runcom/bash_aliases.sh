@@ -169,7 +169,8 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
 function lns() {
-    [ -L "$2" ] && rm -i "$2"
+    if [ -L "$2" ]; then rm -i "$2" || return $?; fi
+    if [ -d "$2" ]; then rmdir "$2" || return $?; fi
     ln -v -s "$(realpath "$1")" "$(realpath "$2")"
 }
 
@@ -645,6 +646,7 @@ function pubS() {
     [ $HOME/IdeaProjects/samples/bash/setup_standalone.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/setup_standalone.sh dh1:/usr/local/bin/
     [ $HOME/IdeaProjects/samples/runcom/nexus_alias.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/runcom/nexus_alias.sh dh1:/var/tmp/share/sonatype/
     [ $HOME/IdeaProjects/samples/bash/utils.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/utils.sh dh1:/var/tmp/share/ && cp -f $HOME/IdeaProjects/samples/bash/utils.sh $HOME/share/sonatype/
+    [ $HOME/IdeaProjects/samples/bash/utils_db.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/utils_db.sh dh1:/var/tmp/share/ && cp -f $HOME/IdeaProjects/samples/bash/utils_db.sh $HOME/share/sonatype/
     [ $HOME/IdeaProjects/samples/bash/utils_container.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/utils_container.sh dh1:/var/tmp/share/ && cp -f $HOME/IdeaProjects/samples/bash/utils_container.sh $HOME/share/sonatype/
     [ $HOME/IdeaProjects/samples/bash/_setup_host.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/_setup_host.sh dh1:/var/tmp/share/
     [ $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh dh1:/var/tmp/share/sonatype/ && cp -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/share/sonatype/ && cp -f $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh $HOME/IdeaProjects/nexus-toolbox/scripts/
