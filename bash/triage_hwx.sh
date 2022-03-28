@@ -76,6 +76,7 @@ function f_check_system() {
     timeout 3 time head -n 1 /dev/./urandom &> ${_work_dir%/}/random.out
     echo '-' &>> ${_work_dir%/}/random.out
     timeout 3 time head -n 1 /dev/random &>> ${_work_dir%/}/random.out
+    lslocks > ${_work_dir%/}/lslocks.out    # *local* file system locks (/proc/locks)
 
     #top -b -n1 -c -o +%MEM  # '+' (default) for reverse order (opposite of 'ps')
     top -b -n1 -c &>> ${_work_dir%/}/top.out
