@@ -201,17 +201,19 @@ function f_javaenvs() {
 
 function _find_jcmd() {
     # _set_java_home 8081 "${_JAVA_DIR%/}"
-    local _port="${1}"
+    local _port_or_dir="${1}"
     local _search_path="${2:-"${_JAVA_DIR}"}"   # Extra search location in case JAVA_HOME doesn't work
     local _java_home="${3:-"$JAVA_HOME"}"
 
     local _java_ver_str=""
     if [ -z "${_java_home}" ]; then
-        local _p=`lsof -ti:${_port} -s TCP:LISTEN 2>/dev/null`
-        if [ -n "${_p}" ]; then
-            local _dir="$(dirname "$(readlink /proc/${_p}/exe)" 2>/dev/null)"
-            _java_home="$(dirname "${_dir}")"
-            _java_ver_str="$(/proc/${_p}/exe -version 2>&1 | grep -oE ' version .+')"
+        if [ ! -d "${_port_or_dir}" ]; then
+            local _p=`lsof -ti:${_port_or_dir} -s TCP:LISTEN 2>/dev/null`
+            if [ -n "${_p}" ]; then
+                local _dir="$(dirname "$(readlink /proc/${_p}/exe)" 2>/dev/null)"
+                _java_home="$(dirname "${_dir}")"
+                _java_ver_str="$(/proc/${_p}/exe -version 2>&1 | grep -oE ' version .+')"
+            fi
         fi
     fi
 
@@ -228,6 +230,10 @@ function _find_jcmd() {
                 fi
             done
         fi
+    fi
+    if [ -z "${_jcmd%/}" ]; then
+        echo "Couldn't find jcmd path. Use export JAVA_HOME= ."
+        return 1
     fi
     echo "$(realpath "${_jcmd}")"
 }
@@ -303,7 +309,7 @@ function f_update_jar() {
     local _compiled_dir="${_class_name}"
 
     if [ ! -d "$JAVA_HOME" ]; then
-        echo "JAVA_HOME is not set. Use 'f_javaenvs <port>'."
+        echo "JAVA_HOME is not set. Use 'f_javaenvs <port>' or export JAVA_HOME=."
         return 1
     fi
 
