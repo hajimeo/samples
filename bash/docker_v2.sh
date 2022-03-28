@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# https://docs.docker.com/registry/spec/api/
+#
 # https://success.docker.com/article/how-do-i-authenticate-with-the-v2-api
 # https://www.docker.com/blog/checking-your-current-docker-pull-rate-limits-and-status/
 # https://docs.docker.com/registry/spec/auth/token/
@@ -19,26 +21,15 @@
 : ${_PWD:=""}
 : ${_IMAGE:="ratelimitpreview/test"}
 : ${_TAG="latest"}
-: ${_TOKEN_SERVER_URL:="http://dh1.standalone.localdomain:8081/repository/docker-proxy/v2/token"}
 : ${_DOCKER_REGISTRY_URL:="http://dh1.standalone.localdomain:8081/repository/docker-proxy/"}
-#: ${_TOKEN_SERVER_URL:="https://auth.docker.io/token?service=registry.docker.io"}
+: ${_TOKEN_SERVER_URL:="${_DOCKER_REGISTRY_URL%/}/v2/token"}
 #: ${_DOCKER_REGISTRY_URL:="https://registry-1.docker.io"}
+#: ${_TOKEN_SERVER_URL:="https://auth.docker.io/token?service=registry.docker.io"}
 
 : ${_TMP:="/tmp"}
 
 #_curl="curl -v -f -D /dev/stderr --compressed -k"
 _curl="curl -s -f -D /dev/stderr --compressed -k"
-
-function _print_token() {
-    python -c "import sys,json
-s=sys.stdin.read()
-try:
-  a=json.loads(s)
-  print(a['token'])
-except:
-  sys.stderr.write(s+'\n')
-"
-}
 
 function get_token() {
     local _token_server_url="${1:-"${_TOKEN_SERVER_URL}"}"
@@ -52,7 +43,7 @@ function get_token() {
         ${_curl} -u "${_user}:${_pwd}" "${_token_server_url}" --get --data-urlencode "scope=repository:${_image}:pull"
     else
         ${_curl} "${_token_server_url}" --get --data-urlencode "scope=repository:${_image}:pull"
-    fi | _print_token
+    fi | sed -E 's/.+"token":"([^"]+)".+/\1/'
 }
 
 function upload() {
