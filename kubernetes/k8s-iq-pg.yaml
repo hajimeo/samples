@@ -14,6 +14,70 @@
 #   eval "echo \"$(cat ./k8s-iq-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
 #   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml
 #   kubectl -n "sonatype" apply -f /tmp/${_ID}.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nxiq-pg-conf
+  labels:
+    app: nxiq-pg
+data:
+  # NOTE: Can't use double-quotes. The baseUrl is not set.
+  config.yml: |
+    sonatypeWork: /sonatype-work
+    server:
+      applicationConnectors:
+        - type: http
+          port: 8070
+      adminConnectors:
+        - type: http
+          port: 8071
+      requestLog:
+        appenders:
+          - type: file
+            currentLogFilename: /sonatype-work/log/request.log
+            archivedLogFilenamePattern: /sonatype-work/log/request-%d.log.gz
+            archivedFileCount: 7
+    logging:
+      level: DEBUG
+      loggers:
+        com.sonatype.insight.scan: INFO
+        eu.medsea.mimeutil.MimeUtil2: INFO
+        org.apache.http: INFO
+        org.apache.http.wire: ERROR
+        org.eclipse.birt.report.engine.layout.pdf.font.FontConfigReader: WARN
+        org.eclipse.jetty: INFO
+        org.apache.shiro.web.filter.authc.BasicHttpAuthenticationFilter: INFO
+        com.sonatype.insight.audit:
+          appenders:
+            - type: file
+              currentLogFilename: /sonatype-work/log/audit.log
+              archivedLogFilenamePattern: /sonatype-work/log/audit-%d.log.gz
+              archivedFileCount: 14
+        com.sonatype.insight.policy.violation:
+          appenders:
+            - type: file
+              currentLogFilename: /sonatype-work/log/policy-violation.log
+              archivedLogFilenamePattern: /sonatype-work/log/policy-violation-%d.log.gz
+              archivedFileCount: 7
+      appenders:
+        - type: console
+          threshold: INFO
+          logFormat: \"%d{'yyyy-MM-dd HH:mm:ss,SSSZ'} %level [%thread] %X{username} %logger - %msg%n\"
+        - type: file
+          threshold: ALL
+          currentLogFilename: /sonatype-work/log/clm-server.log
+          archivedLogFilenamePattern: /sonatype-work/log/clm-server-%d.log.gz
+          logFormat: \"%d{'yyyy-MM-dd HH:mm:ss,SSSZ'} %level [%thread] %X{username} %logger - %msg%n\"
+          archivedFileCount: 7
+    createSampleData: true
+    enableDefaultPasswordWarning: false
+    licenseFile: /etc/sonatype/sonatype-license.lic
+    database:
+      type: postgresql
+      hostname: ${_DB_HOST}
+      name: ${_DB_NAME}
+      username: ${_DB_USER}
+      password: ${_DB_PWD}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -44,7 +108,7 @@ spec:
               value: ${_DNS:-127.0.0.1}
           image: busybox:1.33.1
           # Below echo nameserver ... is my personal hack as I do not want to use coreDNS
-          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; chown -v -R ${_RUNAS_USR:-1000}: /sonatype-work']
+          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; [ ! -d /sonatype-work/log ] && mkdir -v /sonatype-work/log; chown -v -R ${_RUNAS_USR:-1000}: /sonatype-work']
           volumeMounts:
             - name: nxiq-pg-work-volume
               mountPath: /sonatype-work
@@ -57,15 +121,8 @@ spec:
           env:
             # Somehow -Ddw.licenseFile is not working (but anyway, only once)
             - name: JAVA_OPTS
-              value: '-Xms2g -Xmx2g \
-              -Ddw.licenseFile=/etc/sonatype/sonatype-license.lic \
-              -Ddw.enableDefaultPasswordWarning=false \
-              -Ddw.database.type=postgresql \
-              -Ddw.database.hostname=${_DB_HOST} \
-              -Ddw.database.name=${_DB_NAME} \
-              -Ddw.database.username=${_DB_USER} \
-              -Ddw.database.password=${_DB_PWD} \
-              -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=/var/log/nexus-iq-server/jvm.log'
+              value: '-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g \
+              -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=/sonatype-work/log/jvm.log'
           ports:
             - containerPort: 8070
             - containerPort: 8071
@@ -90,8 +147,8 @@ spec:
           volumeMounts:
             - name: sonatype-license-volume
               mountPath: /etc/sonatype
-            - name: nxiq-pg-log-volume
-              mountPath: /var/log/nexus-iq-server
+            - name: nxiq-pg-conf-volume
+              mountPath: /etc/nexus-iq-server
             - name: nxiq-pg-work-volume
               mountPath: /sonatype-work
       volumes:
@@ -99,10 +156,12 @@ spec:
         - name: sonatype-license-volume
           secret:
             secretName: sonatype-license
-        - name: nxiq-pg-log-volume
-          hostPath:
-            path: ${_SONATYPE_WORK%/}/log
-            type: DirectoryOrCreate
+        - name: nxiq-pg-conf-volume
+          configMap:
+            name: nxiq-pg-conf
+            items:
+              - key: config.yml
+                path: config.yml
         - name: nxiq-pg-work-volume
           hostPath:
             path: ${_SONATYPE_WORK%/}
