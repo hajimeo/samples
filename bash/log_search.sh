@@ -1211,12 +1211,13 @@ function f_reqsFromCSV() {
     local _elapsedTime_gt="${2:-"7000"}"
     local _since_time="${3-"00:00:00"}"
     local _limit="${4:-"20"}"
+    local _extra_where="$5"
     local _file="$(find . -maxdepth 3 -type f -print | grep "/${_csv_filename}$" | sort -r | head -n1)"
     [ -z "${_file}" ] && return 1
     local _extra_cols=""
-    local _extra_where=""
-    head -n1 "${_file}" | grep -q "headerContentLength" && _extra_cols=", headerContentLength" && _extra_where=" OR (headerContentLength <> '-' AND headerContentLength <> '0')"
-    local _sql="SELECT clientHost, user, date, requestURL, statusCode, bytesSent ${_extra_cols}, elapsedTime, CAST((CAST(bytesSent as INT) / CAST(elapsedTime as INT)) as DECIMAL(10, 2)) as bytes_per_ms, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time FROM ${_file} WHERE elapsedTime >= ${_elapsedTime_gt} AND started_time >= '${_since_time}' AND (bytes_per_ms < 10240 ${_extra_where}) order by elapsedTime DESC limit ${_limit}"
+    local _extra_cols_where=""
+    head -n1 "${_file}" | grep -q "headerContentLength" && _extra_cols=", headerContentLength" && _extra_cols_where="OR (headerContentLength <> '-' AND headerContentLength <> '0')"
+    local _sql="SELECT clientHost, user, date, requestURL, statusCode, bytesSent ${_extra_cols}, elapsedTime, CAST((CAST(bytesSent as INT) / CAST(elapsedTime as INT)) as DECIMAL(10, 2)) as bytes_per_ms, TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time FROM ${_file} WHERE elapsedTime >= ${_elapsedTime_gt} AND started_time >= '${_since_time}' AND (bytes_per_ms < 10240 ${_extra_cols_where}) ${_extra_where} order by elapsedTime DESC limit ${_limit}"
     echo "# SQL: ${_sql}" >&2
     q -O -d"," -T --disable-double-double-quoting -H "${_sql}"
 }
