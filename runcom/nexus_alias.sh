@@ -17,7 +17,7 @@ function _get_iq_url() {
     elif [ -n "${_iq_url}" ] && [[ ! "${_iq_url}" =~ ^https?://.+:[0-9]+ ]]; then   # Provided hostname only
         _iq_url="http://${_iq_url}:8070/"
     elif [ -z "${_iq_url}" ]; then  # default
-        _iq_url="https://dh1.standalone.localdomain:8470/"
+        _iq_url="https://nxiq-k8s.standalone.localdomain/"
     fi
     echo "${_iq_url}"
 }
@@ -76,7 +76,7 @@ function iqMvn() {
     elif [ -n "${_iq_url}" ] && [[ ! "${_iq_url}" =~ ^https?://.+:[0-9]+ ]]; then   # Provided hostname only
         _iq_url="http://${_iq_url}:8070/"
     elif [ -z "${_iq_url}" ]; then  # default
-        _iq_url="https://dh1.standalone.localdomain:8470/"
+        _iq_url="https://nxiq-k8s.standalone.localdomain/"
     fi
 
     local _cmd="mvn -f ${_file} com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -Dclm.scan.dirExcludes=\"**/BOOT-INF/lib/**\" ${_mvn_opts}"
