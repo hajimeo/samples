@@ -107,8 +107,9 @@ spec:
             - name: NAMESERVER
               value: ${_DNS:-127.0.0.1}
           image: busybox:1.33.1
-          # Below echo nameserver ... is my personal hack as I do not want to use coreDNS
-          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; [ ! -d /sonatype-work/log ] && mkdir -v /sonatype-work/log && chown -v -R ${_RUNAS_USR:-1000}: /sonatype-work']
+          # NOTE: 'echo nameserver ...' line is my personal hack as i do not want to use coreDNS
+          #       Also, it seems the exit code needs to be 0
+          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; [ ! -d /sonatype-work/log ] && mkdir -v /sonatype-work/log && chown -v -R ${_RUNAS_USR:-1000}: /sonatype-work; echo "completed"']
           volumeMounts:
             - name: nxiq-pg-work-volume
               mountPath: /sonatype-work
