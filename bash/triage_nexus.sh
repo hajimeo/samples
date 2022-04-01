@@ -146,14 +146,23 @@ function f_replay_gets() {
     [[ "${_url_path}" =~ ^http ]] || return 1
     [[ "${_path_match}" =~ .*\(.+\).* ]] || return 2
     local _n="$(echo "${_path_match}" | tr -cd ')' | wc -c | tr -d "[:space:]")"
-    # TODO: sed is too difficult to handle multiple parentheses
+    # TODO: Remove 'rg', but sed is too difficult to handle multiple parentheses
     # Not sorting as order might be important. Also, --head -o/dev/null is intentional
-    rg "\bGET ${_path_match} HTTP/\d" -o -r "$"${_n} | xargs -n1 -P${_c} -I{} curl -sf --connect-timeout 2 --head -o/dev/null -w '%{http_code} {}\n' ${_curl_opt} "${_url_path%/}/{}"
+    rg "\bGET ${_path_match} HTTP/\d" -o -r "$"${_n} | xargs -n1 -P${_c} -I{} curl -sSf --connect-timeout 2 --head -o/dev/null -w '%{http_code} {}\n' ${_curl_opt} "${_url_path%/}/{}"
 }
 #rg -m300 '03/Aug/2021:0[789].+GET /content/groups/npm-all/(.+/-/.+-[0-9.]+\.tgz)' -o -r '${1}' ./work/logs/request.log | xargs -I{} curl -sf --connect-timeout 2 --head -o/dev/null -w '%{http_code} {}\n' -u admin:admin123 "http://localhost:8081/nexus/content/groups/npm-all/{}" | tee result.out
 #npm cache clean --force
 #rg -m300 'GET /content/groups/npm-all/([^/]+)/-/.+-([0-9.]+)\.tgz' -o -r 'npm pack --registry=http://localhost:8081/nexus/content/groups/npm-all/ ${1}@${2}' ./work/logs/request.log | while read -r _c; do sh -x -c "${_c}"; done
 
+function f_tail_to_delete_missing_maven_metadata() {
+    local __doc__="tail request.log to delete missing maven-metadata.xml"
+    local _request_log="${1:-"./request.log"}"
+    local _nexus_url="${2:-"http://localhost:8081/"}"
+    local _user_pwd="${3:-"admin:admin123"}"
+    # Can use -t and/or -p in xargs
+    # TODO: Group repo?
+    tail -f "${_request_log}" | sed -E 's@.+ "GET ([^ ]*/repository/.+maven-metadata.xml) HTTP/..." 500 .+@\1@' | xargs -n1 -I{} echo "curl -sSf --connect-timeout 2 -X DELETE -w '%{http_code} {}\n' -u '${_user_pwd}' '${_nexus_url%/}{}'"
+}
 
 # NOTE: the attribute order is not consistent. also with -z, ^ or $ does not work.
 #find ./vol-* -type f -name '*.properties' -print0 | xargs -0 -I{} -P3 grep -lPz "(?s)deleted=true.*@Bucket.repo-name=npm-proxy\b" {}
