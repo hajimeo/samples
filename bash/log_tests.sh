@@ -467,12 +467,12 @@ function t_threads() {
 }
 function t_requests() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/request.csv" || return
-    _q -H "SELECT requestURL, statusCode, count(*) as c FROM ${_FILTERED_DATA_DIR}/request.csv WHERE requestURL LIKE '%/repository/%' AND (statusCode like '5%') GROUP BY requestURL, statusCode HAVING c > 10 ORDER BY c DESC LIMIT 10" > /tmp/t_requests.out
-    _test_template "$(_rg -q '\s+5\d\d\s+' -m1 /tmp/t_requests.out && cat /tmp/t_requests.out)" "WARN" "Many repeated 5xx status in ${_FILTERED_DATA_DIR}/request.csv (${_FILTERED_DATA_DIR%/}/log_requests_5xx.out)"
+    _q -H "SELECT requestURL, statusCode, count(*) as c FROM ${_FILTERED_DATA_DIR}/request.csv WHERE requestURL LIKE '%/repository/%' AND (statusCode like '5%') GROUP BY requestURL, statusCode HAVING c > 10 ORDER BY c DESC LIMIT 10" > /tmp/t_requests_$$.out
+    _test_template "$(_rg -q '\s+5\d\d\s+' -m1 /tmp/t_requests_$$.out && cat /tmp/t_requests_$$.out)" "WARN" "Many repeated 5xx status in ${_FILTERED_DATA_DIR}/request.csv (${_FILTERED_DATA_DIR%/}/log_requests_5xx.out)"
 
     # NOTE: can't use headerContentLength as some request.log doesn't have it
-    f_reqsFromCSV "request.csv" "7000" "" "20" 2>/dev/null >/tmp/t_requests.out
-    _test_template "$(_rg -q '\s+GET\s+' -m1 /tmp/t_requests.out && cat /tmp/t_requests.out)" "WARN" "Top 20 slow downloads from ${_FILTERED_DATA_DIR}/request.csv"
+    f_reqsFromCSV "request.csv" "7000" "" "20" "AND requestURL NOT LIKE 'GET %/maven-metadata.xml %'" 2>/dev/null >/tmp/t_requests_$$.out
+    _test_template "$(_rg -q '\s+GET\s+' -m1 /tmp/t_requests_$$.out && cat /tmp/t_requests_$$.out)" "WARN" "Top 20 slow downloads excluding maven-metadata.xml from ${_FILTERED_DATA_DIR}/request.csv"
 }
 
 
