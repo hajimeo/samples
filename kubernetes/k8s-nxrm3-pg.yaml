@@ -2,7 +2,7 @@
 #   This script uses the node's hostPath for sharing blobs, instead of the recommended NFS.
 #
 # PREPARATION:
-#  - On K8s node: mkdir -m 777 ${_BLOBS_PATH}, which will be used for blob stores.
+#  - On K8s node: mkdir -m 777 ${_NEXUS_DATA}, which will be used for blob stores.
 #  - Set up the license file from one of the following ways:
 #     a) Copy the 'sonatype-license.lic' into ${_SHARE_DIR%/} and specify '-Dnexus.licenseFile='
 #     b) kubectl -n "sonatype" create configmap sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
@@ -14,27 +14,12 @@
 #   kubectl create namespace "sonatype"
 #   cd ~/IdeaProjects/samples/kubernetes
 #   # Below _DNS is my hack and usually don't need to use this. _DB_USER can't contain '-' character.
-#   export _ID="nxrm3pg" _DNS="192.168.52.31" _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs"
-#   export _TAG="3.37.3" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
+#   export _ID="nxrm3pg" _TAG="3.38.1" _RUNAS_USR=200 _DNS="192.168.52.31"
+#   export _NEXUS_DATA="/var/tmp/share/sonatype/${_ID}" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
 #   eval "echo \"$(cat ./k8s-nxrm3-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
 #   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml
 #   kubectl -n "sonatype" apply -f /tmp/${_ID}.yaml
 #
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: nxrm3-pg-data-pvc
-  labels:
-    app: nxrm3-pg
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 4Gi
-  #storageClassName: standard
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -60,24 +45,20 @@ spec:
       initContainers:
         - name: my-customizaion
           env:
-            - name: BLOBS_PATH
-              value: ${_BLOBS_PATH%/}
             - name: NAMESERVER
               value: ${_DNS:-127.0.0.1}
           image: busybox:1.33.1
           #[ -d /nexus-data/blobs ] && [ ! -L /nexus-data/blobs ] && mv -v /nexus-data/blobs /nexus-data/blobs_orig;
           # Below echo nameserver ... is my personal hack as i do not want to use coreDNS
           # When recreating, remove /nexus-data/etc/fabric/nexus-store.properties in case JDBC setting was changed.
-          command: ['sh', '-c', '[ -s /nexus-data/etc/fabric/nexus-store.properties ] && rm -f -v /nexus-data/etc/fabric/nexus-store.properties; [ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; [ ! -d "\$BLOBS_PATH" ] && mkdir -p -m 777 -v \$BLOBS_PATH; if [ ! -L /nexus-data/blobs ]; then ln -v -s \$BLOBS_PATH /nexus-data/blobs && chown -v 200:200 /nexus-data && chown -v -R 200:200 /nexus-data/blobs/; fi']
+          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; [ -s /nexus-data/etc/fabric/nexus-store.properties ] && rm -f -v /nexus-data/etc/fabric/nexus-store.properties || chown -R -v ${_RUNAS_USR:-200}: /nexus-data']
           volumeMounts:
             - name: nexus-data-volume
               mountPath: /nexus-data
-            - name: nexus-blobs-volume
-              mountPath: ${_BLOBS_PATH%/}
       containers:
         - name: nxrm3-pg-pod
           securityContext:
-            runAsUser: 200
+            runAsUser: ${_RUNAS_USR:-200}
           image: sonatype/nexus3:${_TAG:-latest}
           imagePullPolicy: IfNotPresent
           ports:
@@ -108,7 +89,7 @@ spec:
             - name: INSTALL4J_ADD_VM_PARAMS
               # NOTE: In the datastore parameter, no schema specified, so will be public.
               #       allowCreation shouldn't be used for production. Also maybe -Dnexus.onboarding.enabled=false better?
-              value: '-Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g \
+              value: '-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g \
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
                 -Dnexus.scripts.allowCreation=true \
@@ -126,20 +107,17 @@ spec:
               readOnly: true
             - name: nexus-data-volume
               mountPath: /nexus-data
-            - name: nexus-blobs-volume
-              mountPath: ${_BLOBS_PATH%/}
       volumes:
         #kubectl -n sonatype create secret generic sonatype-license --from-file /path/to/licenseFile
         - name: sonatype-license-volume
           secret:
             secretName: sonatype-license
         - name: nexus-data-volume
-          persistentVolumeClaim:
-            claimName: nxrm3-pg-data-pvc
-        - name: nexus-blobs-volume
           hostPath:
-            path: ${_BLOBS_PATH%/}
+            path: ${_NEXUS_DATA%/}
             type: DirectoryOrCreate
+          #persistentVolumeClaim:
+          #  claimName: nxrm3-pg-data-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -164,3 +142,17 @@ spec:
       protocol: TCP
       port: 5000
       targetPort: 5000
+#---
+#apiVersion: v1
+#kind: PersistentVolumeClaim
+#metadata:
+#  name: nxrm3-pg-data-pvc
+#  labels:
+#    app: nxrm3-pg
+#spec:
+#  accessModes:
+#    - ReadWriteOnce
+#  resources:
+#    requests:
+#      storage: 4Gi
+#  #storageClassName: standard

@@ -9,8 +9,8 @@
 #  - Configure Ingress
 #
 # COMMAND EXAMPLE:
-#   export _ID="nxiqpg" _RUNAS_USR=1000 _DNS="192.168.52.31" _SONATYPE_WORK="/var/tmp/share/sonatype/${_ID}"
-#   export _TAG="1.135.0" _DB_USER="${_ID}" _DB_PWD="${_ID}" _DB_HOST="192.168.52.31" _DB_NAME="${_ID}"
+#   export _ID="nxiqpg" _TAG="1.135.0" _RUNAS_USR=1000 _DNS="192.168.52.31"
+#   export _SONATYPE_WORK="/var/tmp/share/sonatype/${_ID}" _DB_USER="${_ID}" _DB_PWD="${_ID}" _DB_HOST="192.168.52.31" _DB_NAME="${_ID}"
 #   eval "echo \"$(cat ./k8s-iq-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
 #   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml
 #   kubectl -n "sonatype" apply -f /tmp/${_ID}.yaml
@@ -108,7 +108,7 @@ spec:
               value: ${_DNS:-127.0.0.1}
           image: busybox:1.33.1
           # Below echo nameserver ... is my personal hack as I do not want to use coreDNS
-          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; [ ! -d /sonatype-work/log ] && mkdir -v /sonatype-work/log; chown -v -R ${_RUNAS_USR:-1000}: /sonatype-work']
+          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; [ ! -d /sonatype-work/log ] && mkdir -v /sonatype-work/log && chown -v -R ${_RUNAS_USR:-1000}: /sonatype-work']
           volumeMounts:
             - name: nxiq-pg-work-volume
               mountPath: /sonatype-work
