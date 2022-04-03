@@ -103,7 +103,8 @@ spec:
             # NOTE: install4jAddVmParams is wrong
             - name: INSTALL4J_ADD_VM_PARAMS
               # NOTE: In the datastore parameter, no schema specified, so will be public.
-              #       allowCreation shouldn't be used for production. Also maybe -Dnexus.onboarding.enabled=false better?
+              #       The nexus.scripts.allowCreation shouldn't be used for production.
+              #       Also, maybe using nexus.onboarding.enabled=false is better?
               value: '-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g \
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
