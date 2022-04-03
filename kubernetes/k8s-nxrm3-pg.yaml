@@ -2,7 +2,7 @@
 #   This script uses the node's hostPath for sharing blobs, instead of the recommended NFS.
 #
 # PREPARATION:
-#  - On K8s node: mkdir -m 777 ${_NEXUS_DATA}, which will be used for blob stores.
+#  - On K8s node: mkdir -m 777 ${_BLOBS_PATH}, which will be used for blob stores.
 #  - Set up the license file from one of the following ways:
 #     a) Copy the 'sonatype-license.lic' into ${_SHARE_DIR%/} and specify '-Dnexus.licenseFile='
 #     b) kubectl -n "sonatype" create configmap sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
@@ -15,11 +15,26 @@
 #   cd ~/IdeaProjects/samples/kubernetes
 #   # Below _DNS is my hack and usually don't need to use this. _DB_USER can't contain '-' character.
 #   export _ID="nxrm3pg" _TAG="3.38.1" _RUNAS_USR=200 _DNS="192.168.52.31"
-#   export _NEXUS_DATA="/var/tmp/share/sonatype/${_ID}" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
+#   export _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
 #   eval "echo \"$(cat ./k8s-nxrm3-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
 #   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml
 #   kubectl -n "sonatype" apply -f /tmp/${_ID}.yaml
 #
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nxrm3-pg-data-pvc
+  labels:
+    app: nxrm3-pg
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 4Gi
+  #storageClassName: standard
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -44,18 +59,17 @@ spec:
       # NOTE: Without initContainers, it fails to start on Docker-Desktop
       initContainers:
         - name: my-customizaion
-          env:
-            - name: NAMESERVER
-              value: ${_DNS:-127.0.0.1}
           image: busybox:1.33.1
           #[ -d /nexus-data/blobs ] && [ ! -L /nexus-data/blobs ] && mv -v /nexus-data/blobs /nexus-data/blobs_orig;
           # NOTE: 'echo nameserver ...' line is my personal hack as i do not want to use coreDNS
           #       When recreating, remove /nexus-data/etc/fabric/nexus-store.properties in case JDBC setting was changed.
           #       Also, it seems the exit code needs to be 0
-          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; [ -s /nexus-data/etc/fabric/nexus-store.properties ] && rm -f -v /nexus-data/etc/fabric/nexus-store.properties || chown -R -v ${_RUNAS_USR:-200}: /nexus-data; echo "completed"']
+          command: ['sh', '-c', '[ -n "${_DNS:-127.0.0.1}" ] && echo nameserver "${_DNS:-127.0.0.1}" > /etc/resolv.conf; [ -s /nexus-data/etc/fabric/nexus-store.properties ] && rm -f -v /nexus-data/etc/fabric/nexus-store.properties || chown -R -v ${_RUNAS_USR:-200}: /nexus-data; echo "completed"']
           volumeMounts:
             - name: nexus-data-volume
               mountPath: /nexus-data
+            - name: nexus-blobs-volume
+              mountPath: /nexus-data/blobs
       containers:
         - name: nxrm3-pg-pod
           securityContext:
@@ -95,8 +109,6 @@ spec:
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
                 -Dnexus.scripts.allowCreation=true \
                 -Dnexus.datastore.enabled=true \
-                -Dnexus.datastore.nexus.name=nexus \
-                -Dnexus.datastore.nexus.type=jdbc \
                 -Dnexus.datastore.nexus.jdbcUrl=${_JDBC_URL} \
                 -Dnexus.datastore.nexus.username=${_DB_USER} \
                 -Dnexus.datastore.nexus.password=${_DB_PWD} \
@@ -108,17 +120,21 @@ spec:
               readOnly: true
             - name: nexus-data-volume
               mountPath: /nexus-data
+            - name: nexus-blobs-volume
+              mountPath: /nexus-data/blobs
       volumes:
         #kubectl -n sonatype create secret generic sonatype-license --from-file /path/to/licenseFile
         - name: sonatype-license-volume
           secret:
             secretName: sonatype-license
+        # No strong reason, but I feel using a persistent volume for /nexus-data (and let k8s chose the underline file system) might be appropriate for the /nexus-data.
         - name: nexus-data-volume
+          persistentVolumeClaim:
+            claimName: nxrm3-pg-data-pvc
+        - name: nexus-blobs-volume
           hostPath:
-            path: ${_NEXUS_DATA%/}
+            path: ${_BLOBS_PATH%/}
             type: DirectoryOrCreate
-          #persistentVolumeClaim:
-          #  claimName: nxrm3-pg-data-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -143,17 +159,3 @@ spec:
       protocol: TCP
       port: 5000
       targetPort: 5000
-#---
-#apiVersion: v1
-#kind: PersistentVolumeClaim
-#metadata:
-#  name: nxrm3-pg-data-pvc
-#  labels:
-#    app: nxrm3-pg
-#spec:
-#  accessModes:
-#    - ReadWriteOnce
-#  resources:
-#    requests:
-#      storage: 4Gi
-#  #storageClassName: standard
