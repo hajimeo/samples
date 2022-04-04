@@ -677,11 +677,6 @@ function f_create_s3_blobstore() {
     if ! _is_repo_available "raw-s3-hosted"; then
         _log "INFO" "Creating raw-s3-hosted ..."
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"raw-s3-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
-        dd if=/dev/zero of=${_TMP%/}/test_1k.img bs=1 count=0 seek=1024
-        if [ -s "${_TMP%/}/test_1k.img" ]; then
-            _log "INFO" "Uploading ${_TMP%/}/test_1k.img for test (should not take more than a few seconds) ..."
-            time f_upload_asset "raw-s3-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
-        fi
     fi
     _log "INFO" "Command examples:
 aws s3 ls s3://${_bucket}/${_prefix}/content/ # --recursive but 1000 limits (same for list-objects)
@@ -904,7 +899,7 @@ function f_api() {
     [ "${_data:0:1}" != "{" ] && _content_type="Content-Type: text/plain"
 
     local _curl="curl -sf"
-    ${_DEBUG} && _curl="curl -fv"
+    ${_DEBUG} && _curl="curl -vf"
     if [ -z "${_data}" ]; then
         # GET and DELETE *can not* use Content-Type json
         ${_curl} -D ${_TMP%/}/_api_header_$$.out -u "${_user_pwd}" -k "${_nexus_url%/}/${_path#/}" -X ${_method}
@@ -1373,12 +1368,64 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
     fi
 }
 
+function f_repository_replication() {
+    local __doc__="Setup Repository Replication v1 using 'admin' user"
+    local _src_repo="${1:-"raw-hosted"}"
+    local _tgt_repo="${2:-"raw-repl-hosted"}"
+    local _target_url="${3:-"http://localhost:8081/"}"
+    local _src_blob="${4:-"${_BLOBTORE_NAME}"}"
+    local _tgt_blob="${5:-"test"}"
+    local _ds_name="${6:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
+    local _workingDirectory="${7:-"${_WORKING_DIR:-"/opt/sonatype/sonatype-work/nexus3"}"}"
+    local _extra_sto_opt=""
+    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    curl -sS -f -k -I "${_target_url}" >/dev/null || return $?
+
+    # It's OK if can't create blobs/repos as this could be due to permission.
+    if ! _is_blob_available "${_src_repo}"; then
+        f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${_src_blob}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${_src_blob}'"}}}],"type":"rpc"}' &> ${_TMP%/}/f_setup_repo_repl.out
+    fi
+    if ! _is_blob_available "${_tgt_repo}" "${_target_url}" ; then
+        _NEXUS_URL="${_target_url}" f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${_tgt_blob}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${_tgt_blob}'"}}}],"type":"rpc"}' &> ${_TMP%/}/f_setup_repo_repl.out
+    fi
+    if ! _is_repo_available "${_src_repo}"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_src_blob}'","writePolicy":"ALLOW","strictContentTypeValidation":false'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_src_repo}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}'
+    fi
+    if ! _is_repo_available "${_tgt_repo}" "${_target_url}" ; then
+        _NEXUS_URL="${_target_url}" f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_tgt_blob}'","writePolicy":"ALLOW","strictContentTypeValidation":false'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_tgt_repo}'","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}'
+    fi
+
+    f_apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"replication","notes":"","enabled":true,"properties":{}}],"type":"rpc"}' && sleep 2
+    if ! f_api "/service/rest/beta/replication/connection/" '{"id":"","name":"'${_src_repo}'_to_'${_tgt_repo}'","sourceRepositoryName":"'${_src_repo}'","includeExistingContent":false,"destinationInstanceUrl":"'${_target_url}'","destinationInstanceUsername":"'${_ADMIN_USER}'","destinationInstancePassword":"'${_ADMIN_PWD}'","destinationRepositoryName":"'${_tgt_repo}'","contentRegexes":[],"replicatedContent":"all"}' "POST"; then
+        _log "ERROR" "Creating '${_src_repo}_to_${_tgt_repo}' failed."
+    fi
+    echo ""
+    if [ -d "${_workingDirectory}" ]; then
+        echo "# replication cli jar from '${_workingDirectory%/}../..'"
+        find ${_workingDirectory%/}/../.. -maxdepth 4 -name 'nexus-replicator-cli-*.jar'
+    fi
+    echo "# Example config.yml for *file* type with '${_workingDirectory}'"
+    cat << EOF
+debug:
+    true
+sources:
+  - path: ${_workingDirectory}/blobs/${_src_blob}/
+    type: file
+    targets:
+      - path: ${_workingDirectory}/blobs/${_tgt_blob}/
+        type: file
+        repositoryName: ${_tgt_repo}
+        connectionName: ${_src_repo}_to_${_tgt_repo}
+EOF
+}
+
 #helm3 list -n sonatype
 #helm3 delete -n sonatype nxrm3-ha{1..3}
 #rm -rf /var/tmp/share/sonatype/k8s-nxrm3-ha/blobs # or mv
 _HELM3=${_HELM3-"helm3"}        # to support 'microk8s helm3' If empty, skip all helm3 commands.
 _KUBECTL=${_KUBECTL:-"kubectl"} # to support 'microk8s kubectl'
 function f_nexus_k8s_ha() {
+    local __doc__="Build legacy HA-C with helm chart"
     local _share_dir="${1}"
     local _pod_prefix="${2:-"nxrm3-ha"}"
     local _namespace="${3:-"sonatype"}" # create namespace first
@@ -1693,10 +1740,11 @@ function _questions_cleanup_inner_inner() {
 ### Validation functions (NOTE: needs to start with _is because of _ask()) #######################################
 function _is_repo_available() {
     local _repo_name="$1"
+    local _nexus_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     # At this moment, not always checking
     find ${_TMP%/}/ -type f -name '_does_repo_exist*.out' -mmin +5 -delete 2>/dev/null
     if [ ! -s ${_TMP%/}/_does_repo_exist$$.out ]; then
-        f_api "/service/rest/v1/repositories" | grep '"name":' > ${_TMP%/}/_does_repo_exist$$.out
+        _NEXUS_URL="${_nexus_url}" f_api "/service/rest/v1/repositories" | grep '"name":' > ${_TMP%/}/_does_repo_exist$$.out
     fi
     if [ -n "${_repo_name}" ]; then
         # case insensitive
@@ -1705,10 +1753,11 @@ function _is_repo_available() {
 }
 function _is_blob_available() {
     local _blob_name="$1"
+    local _nexus_url="${2:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
     # At this moment, not always checking
     find ${_TMP%/}/ -type f -name '_does_blob_exist*.out' -mmin +5 -delete 2>/dev/null
     if [ ! -s ${_TMP%/}/_does_blob_exist$$.out ]; then
-        f_api "/service/rest/beta/blobstores" | grep '"name":' > ${_TMP%/}/_does_blob_exist$$.out
+        _NEXUS_URL="${_nexus_url}" f_api "/service/rest/beta/blobstores" | grep '"name":' > ${_TMP%/}/_does_blob_exist$$.out
     fi
     if [ -n "${_blob_name}" ]; then
         # case insensitive
