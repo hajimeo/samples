@@ -948,6 +948,10 @@ function f_threads() {
         #find ${_file%/} -type f -name 'threads*.txt' 2>/dev/null | while read -r _f; do
         for _f in $(find ${_file%/} -type f \( -name "${_thread_file_glob}" -o -name '20*.out' \) -print 2>/dev/null | sort -n); do
             local _filename=$(basename ${_f})
+            if [ -s "./f_thread_${_filename%.*}.out" ]; then
+                _LOG "WARN" "./f_thread_${_filename%.*}.out exists, skipping..."
+                continue
+            fi
             _LOG "INFO" "Saving outputs into f_thread_${_filename%.*}.out ..."
             f_threads "${_f}" "${_split_search}" "${_running_thread_search_re}" "${_save_dir%/}/${_filename%.*}" "Y" > ./f_thread_${_filename%.*}.out
             _count=$(( ${_count} + 1 ))
