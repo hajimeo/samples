@@ -3,21 +3,23 @@
 #
 # PREPARATION:
 #  - On K8s node: mkdir -m 777 ${_BLOBS_PATH}, which will be used for blob stores.
-#  - Set up the license file from one of the following ways:
-#     a) Copy the 'sonatype-license.lic' into ${_SHARE_DIR%/} and specify '-Dnexus.licenseFile='
-#     b) kubectl -n "sonatype" create configmap sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
-#     c) (RECOMMENDED) kubectl -n "sonatype" create secret generic sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
+#  - Create a namespace:
+#     kubectl create namespace "sonatype"
+#  - Create a secret for the license file:
+#     kubectl -n "sonatype" create secret generic sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
+#  - Create another secret for JDBC variables:
+#     kubectl -n "sonatype" create secret generic ${_ID}-jdbc --from-literal=db_user=${_DB_USER} --from-literal=db_pwd=${_DB_PWD} --from-literal=jdbc_url=${_JDBC_URL}
 #  - On PostgreSQL server: source ./utils.sh && _postgresql_create_dbuser "${_ID}"
 #  - Configure Ingress
 #
 # COMMAND EXAMPLE:
-#   kubectl create namespace "sonatype"
 #   cd ~/IdeaProjects/samples/kubernetes
 #   # Below _DNS is my hack and usually don't need to use this. _DB_USER can't contain '-' character.
 #   export _ID="nxrm3pg" _TAG="3.38.1" _RUNAS_USR=200 _DNS="192.168.52.31"
 #   export _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
+#   # Run the create secret commands if necessary, then:
 #   eval "echo \"$(cat ./k8s-nxrm3-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
-#   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml
+#   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml   # NOTE: This deletes PVC as well.
 #   kubectl -n "sonatype" apply -f /tmp/${_ID}.yaml
 #
 ---
@@ -97,7 +99,22 @@ spec:
             failureThreshold: 60
             timeoutSeconds: 10
           env:
-            # TODO: use NEXUS_SECURITY_INITIAL_PASSWORD = true for the security
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: ${_ID}-jdbc
+                  key: db_user
+            - name: DB_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: ${_ID}-jdbc
+                  key: db_pwd
+            - name: JDBC_URL
+              valueFrom:
+                secretKeyRef:
+                  name: ${_ID}-jdbc
+                  key: jdbc_url
+            # NOTE: Should use 'true' (or remove) for the production for security
             - name: NEXUS_SECURITY_RANDOMPASSWORD
               value: 'false'
             # NOTE: install4jAddVmParams is wrong
@@ -110,9 +127,9 @@ spec:
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
                 -Dnexus.scripts.allowCreation=true \
                 -Dnexus.datastore.enabled=true \
-                -Dnexus.datastore.nexus.jdbcUrl=${_JDBC_URL} \
-                -Dnexus.datastore.nexus.username=${_DB_USER} \
-                -Dnexus.datastore.nexus.password=${_DB_PWD} \
+                -Dnexus.datastore.nexus.jdbcUrl=\${JDBC_URL} \
+                -Dnexus.datastore.nexus.username=\${DB_USER} \
+                -Dnexus.datastore.nexus.password=\${DB_PWD} \
                 -Dnexus.datastore.nexus.maximumPoolSize=10 \
                 -Dnexus.datastore.nexus.advanced=maxLifetime=600000'
           volumeMounts:
