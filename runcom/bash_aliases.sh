@@ -263,6 +263,13 @@ function tail_head() {
         echo " "
     done
 }
+# To display every Nth line from a file
+function every_Nth() {
+    local _Nth="$1"
+    local _file="$2"
+    awk "NR % ${_Nth} == 0" "${_file}"
+}
+
 # make a directory and cd
 function mcd() {
     local _path="$1"
