@@ -29,7 +29,7 @@ _JAVA="java"
 _XMX="${_NXIQ_HEAPSIZE:-"2G"}"
 JAVA_OPTIONS="-Xms${_XMX} -Xmx${_XMX} -XX:ActiveProcessorCount=2 -XX:-OmitStackTraceInFastThrow"
 #JAVA_OPTIONS="${JAVA_OPTIONS} -XX:OnOutOfMemoryError='kill %p'"    # TODO: need to escape this properly
-JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=${NEXUS_IQ_SONATYPEWORK}/log/jvm.log" # for kill -3. Also jvm_%p.log works too
+JAVA_OPTIONS="${JAVA_OPTIONS} -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=${NEXUS_IQ_SONATYPEWORK}/log/jvm.log" # For kill -3 (too see the stdout, use journalctl _PID=<PID>). Also jvm_%p.log works too
 # GC log related options are different by Java version.
 if ${_JAVA} -XX:+PrintFlagsFinal -version 2>/dev/null | grep -q PrintClassHistogramBeforeFullGC; then
     # probably java 8
