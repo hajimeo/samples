@@ -218,10 +218,9 @@ public class Main
       if (repoCounts.containsKey(repo_name)) {
         sub_ttl += repoCounts.get(repo_name);
         long est = estimateSizeMB(sub_ttl);
-        debug("Adding " + repo_name + " (rows:" + repoCounts.get(repo_name) + ", sub_ttl:" + sub_ttl + ", estimate_size:" + est +
-                " / " + maxMb + ", sub_repo_names.size:" + sub_repo_names.size() + ")");
-        if (sub_repo_names.size() > 0 && est > maxMb) {
-          log("Estimate exceeded " + maxMb + ", so start checking (" + sub_repo_names.size() + "): " + sub_repo_names);
+        debug("Repository name:" + repo_name + ", rows:" + repoCounts.get(repo_name) + ", sub_ttl:" + sub_ttl + ", estimate_size:" + est + "/" + maxMb );
+        if (sub_repo_names.size() > 0 && (est > maxMb || magnifyPercent < 1.0)) {
+          log("Running checkDupes() against (" + sub_repo_names.size() + "): " + sub_repo_names);
           if (checkDupes(tx, sub_repo_names)) {
             is_dupe_found = true;
           }
@@ -234,7 +233,7 @@ public class Main
     }
 
     if (sub_repo_names.size() > 0) {
-      log("Checking (" + sub_repo_names.size() + "): " + sub_repo_names.toString());
+      log("Running checkDupes() against (" + sub_repo_names.size() + "): " + sub_repo_names);
       if (checkDupes(tx, sub_repo_names)) {
         is_dupe_found = true;
       }
