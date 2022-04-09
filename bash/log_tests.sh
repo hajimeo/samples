@@ -149,6 +149,7 @@ function _extract_configs() {
     _search_json "sysinfo.json" "system-environment,PWD"
     _search_json "sysinfo.json" "system-environment,HOME" # for -Djava.util.prefs.userRoot=/home/nexus/.java
     _search_json "jmx.json" "java.lang:type=Runtime,Name" # to find PID and hostname (in case no HOSTNAME env set)
+    _search_json "jmx.json" "java.lang:type=Runtime,SystemProperties" "" "Y" | rg '"(java.util.prefs.userRoot|java.home)'
     echo '```'
 
     _head "CONFIG" "OS/server information from jmx.json"
