@@ -170,7 +170,8 @@ public class Main
         if (i > 0) {
           where_repos.append(" OR ");
         }
-        where_repos.append("bucket.repository_name like '").append(repoNames.get(i)).append("'");
+        // Using 'LIKE' is intentional, so that this query won't use the potentially broken index (but slow)
+        where_repos.append("bucket.repository_name LIKE '").append(repoNames.get(i)).append("'");
       }
       where_repos.append(")");
     }
@@ -179,7 +180,7 @@ public class Main
       where = "WHERE " + where_repos;
     }
     List<ODocument> dups = execQueries(tx,
-        "SELECT FROM (SELECT bucket.repository_name as repo_name, component, name, list(@rid) as dupe_rids, max(@rid) as keep_rid, COUNT(*) as c FROM asset " +
+        "SELECT FROM (SELECT bucket.repository_name as repo_name, component, name, LIST(@rid) as dupe_rids, MAX(@rid) as keep_rid, COUNT(*) as c FROM asset " +
             where +
             " GROUP BY bucket, component, name) WHERE c > 1 LIMIT " + limit + ";");
 
@@ -214,21 +215,27 @@ public class Main
         continue;
       }
 
-      // if adding this may be going to exceed the limit
-      if (repoCounts.containsKey(repo_name)) {
+      boolean runCheckDupes = false;
+      if(magnifyPercent == 0.0 && sub_repo_names.size() > 0) {
+        runCheckDupes = true;
+      }
+      else if (magnifyPercent > 0.0 && repoCounts.containsKey(repo_name)) {
         sub_ttl += repoCounts.get(repo_name);
         long est = estimateSizeMB(sub_ttl);
         debug("Repository name:" + repo_name + ", rows:" + repoCounts.get(repo_name) + ", sub_ttl:" + sub_ttl + ", estimate_size:" + est + "/" + maxMb );
-        if (sub_repo_names.size() > 0 && (est > maxMb || magnifyPercent < 1.0)) {
-          log("Running checkDupes() against (" + sub_repo_names.size() + "): " + sub_repo_names);
-          if (checkDupes(tx, sub_repo_names)) {
-            is_dupe_found = true;
-          }
-          sub_ttl = 0;
-          sub_repo_names = new ArrayList<String>();
+        if (sub_repo_names.size() > 0 && est > maxMb) {
+          runCheckDupes= true;
         }
       }
 
+      if (runCheckDupes) {
+        log("Running checkDupes() against (" + sub_repo_names.size() + "): " + sub_repo_names);
+        if (checkDupes(tx, sub_repo_names)) {
+          is_dupe_found = true;
+        }
+        sub_ttl = 0L;
+        sub_repo_names = new ArrayList<String>();
+      }
       sub_repo_names.add(repo_name);
     }
 
@@ -248,16 +255,22 @@ public class Main
 
   public static void main(final String[] args) throws IOException {
     if (args.length < 1) {
-      System.out.println(
-          "Usage: java -Xmx4g -XX:MaxDirectMemorySize=4g -jar asset-dupe-checker.jar <component directory path> | tee asset-dupe-checker.sql");
+      System.out.println("Usage:");
+      System.out.println("  java -Xmx4g -jar asset-dupe-checker.jar <component directory path> | tee asset-dupe-checker.sql");
+      System.out.println("Acceptable System properties:");
+      System.out.println("  -DrepoNames=<repo1,repo2,... to specify repositories to check>");
+      System.out.println("  -DmagnifyPercent=<int. For estimating size (default 400). Higher makes conservative but using 0 checks one repository each>");
+      System.out.println("  -Dlimit=<int. Currently duplicates over 1000 per query is ignored as not expecting so many duplicates>");
+      System.out.println("  -DextractDir=<extracting path for component-*.bak>");
+      System.out.println("  -Ddebug=true");
       System.exit(1);
     }
 
     /* Populating class properties with system properties */
     String extDir = System.getProperty("extractDir", "");
     String repoNames = System.getProperty("repoNames", "");
+    magnifyPercent = Double.parseDouble(System.getProperty("magnifyPercent", "400"));
     limit = System.getProperty("limit", "1000");
-    magnifyPercent = Double.parseDouble(System.getProperty("magnifyPercent", "300"));
     isDebug = Boolean.getBoolean("debug");
 
     String path = args[0];
@@ -315,15 +328,22 @@ public class Main
           log("Asset table/class is empty.");
           System.exit(1);
         }
-        log("Asset count: " + ac.toString());
+        log("Asset count: " + ac);
 
         long estimateMb = estimateSizeMB(ac);
         boolean check_all_repo = false;
-
         if (!repoNames.trim().isEmpty()) {
           repo_names = Arrays.asList(repoNames.split(","));
-          log("Repository names: " + repo_names.toString() +
-              " are provided, so that not checking the record counts per repo.");
+          log("Repo names: " + repo_names + " are provided, so not checking the record counts per repo.");
+        }
+        else if (magnifyPercent == 0.0) {
+          log("magnifyPercent is 0%, so checking each repository.");
+          List<ODocument> bkts =
+              execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
+          for (ODocument bkt : bkts) {
+            repo_names.add(bkt.field("repository_name"));
+          }
+          log("Repository names to check (" + repo_names.size() + "):\n" + repo_names);
         }
         else if (maxMb > estimateMb) {
           log("Asset count is small, so not checking each repositories.");
@@ -343,7 +363,7 @@ public class Main
             out("-- [WARN] may need 'TRUNCATE CLASS browse_node;'");
           }
 
-          // Counting Indexes.
+          // Checking how many Indexes.
           docs = execQueries(tx,
               "select name from (select expand(indexes) from metadata:indexmanager) where name like '%_idx' ORDER BY name");
           long idx_size = docs.size();
@@ -355,6 +375,7 @@ public class Main
             log(docs.toString());
           }
 
+          // Checking each index count
           for (ODocument idx : docs) {
             String iname = idx.field("name");
             List<ODocument> _idx_c = execQueries(tx, "select count(*) as c from index:" + iname);
@@ -373,11 +394,9 @@ public class Main
             System.exit(1);
           }
 
-          // Get repository names to count records per repos with alphabetical order
           List<ODocument> bkts =
               execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
-
-          // TODO: 'where key = [bucket.rid]' works, but not 'select key, count(*) as c from index:asset_bucket_name_idx group by key;', so looping...
+          // NOTE: 'where key = [bucket.rid]' works, but 'select key, count(*) as c from index:asset_bucket_name_idx group by key;' does not, so looping...
           for (ODocument bkt : bkts) {
             String repoId = ((ODocument) bkt.field("r")).getIdentity().toString();
             String repoName = bkt.field("repository_name");
@@ -392,15 +411,14 @@ public class Main
               repo_names_skipped.add(repoName);
             }
             else if (c == 0) {
-              debug("No record for " + repoName + ", so skipping.");
-              //repo_names_skipped.add(repoName); but not adding into repo_names_skipped
+              debug("No record for " + repoName + ".");
             }
             else {
               repo_names.add(repoName);
               repo_counts.put(repoName, c);
             }
           }
-          log("Repository names to check (" + repo_names.size() + "):\n" + repo_names.toString());
+          log("Repository names to check (" + repo_names.size() + "):\n" + repo_names);
         }
 
         if (ac.equals(abcn_idx_c)) {
@@ -427,7 +445,7 @@ public class Main
           }
 
           if (repo_names_skipped.size() > 0) {
-            out("-- [WARN] Skipped repositories: " + repo_names_skipped.toString() +
+            out("-- [WARN] Skipped repositories: " + repo_names_skipped +
                 "\n--        To force, rerun with -Xmx*g -DrepoNames=xxx,yyy,zzz");
           }
         }
