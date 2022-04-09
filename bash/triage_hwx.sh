@@ -76,7 +76,7 @@ function f_check_system() {
     timeout 3 time head -n 1 /dev/./urandom &> ${_work_dir%/}/random.out
     echo '-' &>> ${_work_dir%/}/random.out
     timeout 3 time head -n 1 /dev/random &>> ${_work_dir%/}/random.out
-    lslocks > ${_work_dir%/}/lslocks.out    # *local* file system locks (/proc/locks)
+    lslocks -u > ${_work_dir%/}/lslocks.out    # *local* file system locks (/proc/locks)
 
     #top -b -n1 -c -o +%MEM  # '+' (default) for reverse order (opposite of 'ps')
     top -b -n1 -c &>> ${_work_dir%/}/top.out
@@ -138,8 +138,9 @@ function f_check_process() {
         _cmd_dir="$JAVA_HOME/bin" 2>/dev/null
     fi
 
-    echo "INFO" "Collecting PID related information..." >&2
+    echo "INFO" "Collecting PID (${_p}) related information..." >&2
     su - $_user -c 'klist -eaf' &> ${_work_dir%/}/klist_${_user}.out
+    #lslocks -u -p ${_p} > ${_work_dir%/}/lslocks_${_p}.out # not using as it's used in the f_check_system
 
     if which prlimit &>/dev/null; then
         prlimit -p ${_p} &> ${_work_dir%/}/proc_limits_${_p}.out
@@ -376,6 +377,12 @@ function f_collect_comp_metrics_from_AMS() {
     curl ${_cmd_opts} "${_base_url}" -G --data-urlencode "metricNames=${_metric_names}" --data-urlencode "appId=${_comp^^}" --data-urlencode "startTime=${_S}" --data-urlencode "endTime=${_E}" -o ${_work_dir%/}/ams_${_comp}_metrics.json || return $?
     cat ${_work_dir%/}/ams_${_comp}_metrics.json | python -m json.tool > /tmp/ams_${_comp}_metrics.json || return $?
     mv -f /tmp/ams_${_comp}_metrics.json ${_work_dir%/}/ams_${_comp}_metrics.json
+}
+
+function f_write_permission_test() {    # for 'Permission denied'
+    local _file="$1"
+    jrunscript -e 'var f=new java.io.FileWriter("'${_file}'");f.write("OK\n");f.close();'
+    rm -v "${_file}"
 }
 
 #function f_test_network() {
