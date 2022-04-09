@@ -53,7 +53,7 @@ public class Main
 
   private static void debug(String msg) {
     if (isDebug) {
-      log(msg);
+      log("DEBUG " + msg);
     }
   }
 
@@ -121,6 +121,7 @@ public class Main
 
   public static List<ODocument> execQueries(ODatabaseDocumentTx tx, String input) {
     List<ODocument> results = null;
+    debug("Query: executing " + input + " ...");
     Instant start = Instant.now();
     try {
       results = tx.query(new OSQLSynchQuery(input));
@@ -198,7 +199,7 @@ public class Main
       Map<String, Long> repoCounts)
   {
     boolean is_dupe_found = false;
-    long current_ttl = 0L;
+    long sub_ttl = 0L;
     List<String> sub_repo_names = new ArrayList<String>();
 
     for (String repo_name : repoNames) {
@@ -208,16 +209,16 @@ public class Main
 
       // if adding this may be going to exceed the limit
       if (repoCounts.containsKey(repo_name)) {
-        current_ttl += repoCounts.get(repo_name);
-        long est = estimateSize(current_ttl);
-        debug("Adding " + repoCounts.get(repo_name) + " for " + repo_name + " = " + current_ttl + " (estimate_size:" + est +
+        sub_ttl += repoCounts.get(repo_name);
+        long est = estimateSizeMB(sub_ttl);
+        debug("Adding " + repo_name + " (rows:" + repoCounts.get(repo_name) + ", sub_ttl:" + sub_ttl + ", estimate_size:" + est +
                 " / " + maxMb + ", sub_repo_names.size:" + sub_repo_names.size() + ")");
         if (sub_repo_names.size() > 0 && est > maxMb) {
           log("Estimate exceeded " + maxMb + " so checking (" + sub_repo_names.size() + "): " + sub_repo_names.toString());
           if (checkDupes(tx, sub_repo_names)) {
             is_dupe_found = true;
           }
-          current_ttl = 0;
+          sub_ttl = 0;
           sub_repo_names = new ArrayList<String>();
         }
       }
@@ -234,8 +235,9 @@ public class Main
     return is_dupe_found;
   }
 
-  public static long estimateSize(long c) {
-    return (c * 3) / 1024 + 1024;
+  public static long estimateSizeMB(long c) {
+    // If magnify_percent is 300%, assuming 1 row = 4KB
+    return (long) Math.ceil(((c * magnifyPercent / 100) + 1024) / 1024);
   }
 
   public static void main(final String[] args) throws IOException {
@@ -259,8 +261,7 @@ public class Main
     Map<String, Long> repo_counts = new HashMap<String, Long>();
 
     maxMb = Runtime.getRuntime().maxMemory() / 1024 / 1024;
-
-    log("main() started.");
+    log("main() started with maxMb = " + maxMb);
 
     if (!(new File(path)).isDirectory()) {
       try {
@@ -307,7 +308,7 @@ public class Main
         }
         log("Asset count: " + ac.toString());
 
-        long estimateMb = estimateSize(ac);
+        long estimateMb = estimateSizeMB(ac);
         boolean check_all_repo = false;
 
         if (!repoNames.trim().isEmpty()) {
@@ -377,7 +378,7 @@ public class Main
             Long c = c_per_bkt.get(0).field("c");
             log("Repository: " + bkt.field("repository_name") + " estimated count: " + c.toString());
             // super rough estimate. Just guessing one record would use 3KB (+1GB).
-            estimateMb = estimateSize(c);
+            estimateMb = estimateSizeMB(c);
             if (maxMb < estimateMb) {
               debug("Heap: " + maxMb + " MB may not be enough for " + repoName + " (estimate: " + estimateMb + " MB).");
               repo_names_skipped.add(repoName);
