@@ -2,7 +2,7 @@
  * (PoC) Simple duplicate checker for Asset records
  *
  * curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/asset-dupe-checker.jar"
- * java -Xmx4g -XX:MaxDirectMemorySize=4g [-Ddebug=true] [-DextractDir=./path] [-DrepoNames=xxx,yyy,zzz] -jar asset-dupe-checker.jar <component directory path|.bak file path> | tee asset-dupe-checker.sql
+ * java -Xmx4g -XX:MaxDirectMemorySize=4g [-Ddebug=true] [-DextractDir=./path] [-DrepoNames=xxx,yyy,zzz] [-DextraCheck=true] -jar asset-dupe-checker.jar <component directory path|.bak file path> | tee asset-dupe-checker.sql
  *
  * In the OrientDB Console, "LOAD SCRIPT ./asset-dupe-checker.sql"
  *
@@ -11,6 +11,7 @@
  *    "repoNames" is a comma separated repository names to check these repositories only.
  *
  * TODO: add tests. Cleanup the code (main)..., convert to Groovy.
+ * TODO: Check component table too, because deleting component may require to update asset.component column.
  *
  * My note:
  *  mvn clean package && cp -v ./target/asset-dupe-checker-1.0-SNAPSHOT-jar-with-dependencies.jar ../../misc/asset-dupe-checker.jar
@@ -38,9 +39,13 @@ public class Main
 {
   private static long maxMb;
 
+  private static String limit = "1000";
+
+  private static double magnifyPercent = 300.0;
+
   private static boolean isDebug;
 
-  private Main() {}
+  private Main() { }
 
   private static String getCurrentLocalDateTimeStamp() {
     return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"));
@@ -157,25 +162,28 @@ public class Main
   }
 
   public static boolean checkDupes(ODatabaseDocumentTx tx, List<String> repoNames) {
-    boolean is_dupe_found = false;
-    StringBuilder where = new StringBuilder();
+    StringBuilder where_repos = new StringBuilder();
     if (repoNames != null && repoNames.size() > 0) {
       // Can't use " in ['...','...'] when we suspect asset_bucket_component_name_idx
-      where = new StringBuilder("WHERE (");
+      where_repos = new StringBuilder("(");
       for (int i = 0; i < repoNames.size(); i++) {
         if (i > 0) {
-          where.append(" OR ");
+          where_repos.append(" OR ");
         }
-        where.append("bucket.repository_name like '").append(repoNames.get(i)).append("'");
+        where_repos.append("bucket.repository_name like '").append(repoNames.get(i)).append("'");
       }
-      where.append(")");
+      where_repos.append(")");
     }
-    // Not expecting more than 1000 duplicates per repository / repositories
+    String where = "";
+    if (where_repos.length() > 0) {
+      where = "WHERE " + where_repos;
+    }
     List<ODocument> dups = execQueries(tx,
         "SELECT FROM (SELECT bucket.repository_name as repo_name, component, name, list(@rid) as dupe_rids, max(@rid) as keep_rid, COUNT(*) as c FROM asset " +
             where +
-            " GROUP BY bucket, component, name) WHERE c > 1 LIMIT 1000;");
+            " GROUP BY bucket, component, name) WHERE c > 1 LIMIT " + limit + ";");
 
+    boolean is_dupe_found = false;
     for (ODocument doc : dups) {
       log(doc.toJSON());
       // output TRUNCATE RECORD statements
@@ -189,7 +197,6 @@ public class Main
         }
       }
     }
-
     return is_dupe_found;
   }
 
@@ -214,7 +221,7 @@ public class Main
         debug("Adding " + repo_name + " (rows:" + repoCounts.get(repo_name) + ", sub_ttl:" + sub_ttl + ", estimate_size:" + est +
                 " / " + maxMb + ", sub_repo_names.size:" + sub_repo_names.size() + ")");
         if (sub_repo_names.size() > 0 && est > maxMb) {
-          log("Estimate exceeded " + maxMb + " so checking (" + sub_repo_names.size() + "): " + sub_repo_names.toString());
+          log("Estimate exceeded " + maxMb + ", so start checking (" + sub_repo_names.size() + "): " + sub_repo_names);
           if (checkDupes(tx, sub_repo_names)) {
             is_dupe_found = true;
           }
@@ -247,8 +254,11 @@ public class Main
       System.exit(1);
     }
 
+    /* Populating class properties with system properties */
     String extDir = System.getProperty("extractDir", "");
     String repoNames = System.getProperty("repoNames", "");
+    limit = System.getProperty("limit", "1000");
+    magnifyPercent = Double.parseDouble(System.getProperty("magnifyPercent", "300"));
     isDebug = Boolean.getBoolean("debug");
 
     String path = args[0];
@@ -370,11 +380,11 @@ public class Main
 
           // TODO: 'where key = [bucket.rid]' works, but not 'select key, count(*) as c from index:asset_bucket_name_idx group by key;', so looping...
           for (ODocument bkt : bkts) {
-            String q =
-                "select count(*) as c from index:asset_bucket_name_idx where key = [" +
-                    ((ODocument) bkt.field("r")).getIdentity().toString() + "]";
-            List<ODocument> c_per_bkt = execQueries(tx, q);
+            String repoId = ((ODocument) bkt.field("r")).getIdentity().toString();
             String repoName = bkt.field("repository_name");
+            String q =
+                "select count(*) as c from index:asset_bucket_name_idx where key = [" + repoId + "]";
+            List<ODocument> c_per_bkt = execQueries(tx, q);
             Long c = c_per_bkt.get(0).field("c");
             log("Repository: " + bkt.field("repository_name") + " estimated count: " + c.toString());
             // super rough estimate. Just guessing one record would use 3KB (+1GB).
@@ -412,9 +422,10 @@ public class Main
           }
 
           if (is_dupe_found) {
-            out("-- REPAIR DATABASE --fix-links;");
+            out("--TRUNCATE CLASS browse_node;");
+            out("--REPAIR DATABASE --fix-links;");
+            out("--REBUILD INDEX *;");
             out("REBUILD INDEX asset_bucket_component_name_idx;");
-            out("-- REBUILD INDEX *;");
           }
 
           if (repo_names_skipped.size() > 0) {
