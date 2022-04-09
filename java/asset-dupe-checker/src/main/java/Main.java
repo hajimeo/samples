@@ -41,7 +41,7 @@ public class Main
 
   private static String limit = "1000";
 
-  private static double magnifyPercent = 300.0;
+  private static double magnifyPercent = 400.0;
 
   private static boolean isDebug;
 
@@ -126,7 +126,7 @@ public class Main
 
   public static List<ODocument> execQueries(ODatabaseDocumentTx tx, String input) {
     List<ODocument> results = null;
-    debug("Query: executing " + input + " ...");
+    debug("Query: executing '" + input + "' ...");
     Instant start = Instant.now();
     try {
       results = tx.query(new OSQLSynchQuery(input));
@@ -137,7 +137,7 @@ public class Main
     }
     finally {
       Instant finish = Instant.now();
-      debug("Query: " + input + " elapsed: " + Duration.between(start, finish).toMillis() + " ms");
+      debug("Query: '" + input + "', Elapsed: " + Duration.between(start, finish).toMillis() + " ms");
     }
     return results;
   }
@@ -243,7 +243,7 @@ public class Main
   }
 
   public static long estimateSizeMB(long c) {
-    // If magnify_percent is 300%, assuming 1 row = 4KB
+    // If magnify_percent is 400%, assuming 1 row = 5KB
     return (long) Math.ceil(((c * magnifyPercent / 100) + 1024) / 1024);
   }
 
