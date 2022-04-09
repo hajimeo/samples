@@ -2,7 +2,7 @@
  * (PoC) Simple duplicate checker for Asset records
  *
  * curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/asset-dupe-checker.jar"
- * java -Xmx4g -XX:MaxDirectMemorySize=4g [-Ddebug=true] [-DextractDir=./path] [-DrepoNames=xxx,yyy,zzz] [-DextraCheck=true] -jar asset-dupe-checker.jar <component directory path|.bak file path> | tee asset-dupe-checker.sql
+ * java -Xmx4g -XX:MaxDirectMemorySize=4g [-Ddebug=true] [-DextractDir=./path] [-DrepoNames=xxx,yyy,zzz] -jar asset-dupe-checker.jar <component directory path|.bak file path> | tee asset-dupe-checker.sql
  *
  * In the OrientDB Console, "LOAD SCRIPT ./asset-dupe-checker.sql"
  *
@@ -381,8 +381,7 @@ public class Main
           for (ODocument bkt : bkts) {
             String repoId = ((ODocument) bkt.field("r")).getIdentity().toString();
             String repoName = bkt.field("repository_name");
-            String q =
-                "select count(*) as c from index:asset_bucket_name_idx where key = [" + repoId + "]";
+            String q = "select count(*) as c from index:asset_bucket_name_idx where key = [" + repoId + "]";
             List<ODocument> c_per_bkt = execQueries(tx, q);
             Long c = c_per_bkt.get(0).field("c");
             log("Repository: " + bkt.field("repository_name") + " estimated count: " + c.toString());
