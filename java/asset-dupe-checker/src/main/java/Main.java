@@ -44,7 +44,7 @@ public class Main
   private static String repoNamesExclude = "";
   private static String limit = "1000";
   private static Path tmpDir = null;
-  private static double magnifyPercent = 400.0;
+  private static double magnifyPercent = 300.0;
   private static boolean noDupeCheck;
   private static boolean isDebug;
 
@@ -56,7 +56,7 @@ public class Main
     System.out.println("Acceptable System properties:");
     System.out.println("  -DrepoNames=<repo1,repo2,... to specify repositories to check>");
     System.out.println("  -DrepoNamesExclude=<repo1,repo2,... to exclude specific repositories>");
-    System.out.println("  -DmagnifyPercent=<int. For estimating size (default 400). Higher makes conservative but using 0 checks one repository each>");
+    System.out.println("  -DmagnifyPercent=<int. For estimating size (default 300). Higher makes conservative but using 0 checks one repository each>");
     System.out.println("  -Dlimit=<int. Currently duplicates over 1000 per query is ignored as not expecting so many duplicates>");
     System.out.println("  -DextractDir=<extracting path for component-*.bak>");
     System.out.println("  -DnoDupeCheck=true");
@@ -149,7 +149,7 @@ public class Main
   }
 
   private static long estimateSizeMB(long c) {
-    // If magnify_percent is 400%, assuming 1 row = 5KB
+    // If magnify_percent is 300%, assuming 1 row = 3KB + 1KB = 4KB
     return (long) Math.ceil(((c * magnifyPercent / 100) + 1024) / 1024);
   }
 
@@ -234,35 +234,40 @@ public class Main
   public static boolean checkDupesForRepos(
       ODatabaseDocumentTx tx,
       List<String> repoNames,
-      Map<String, Long> repoCounts)
+      Map<String, Long> repoCounts,
+      long max_mb,
+      boolean checkEachRepo
+  )
   {
     boolean is_dupe_found = false;
     long sub_ttl = 0L;
     List<String> sub_repo_names = new ArrayList<>();
-    List<String> repo_names_exclude = Arrays.asList(repoNamesExclude.split(","));
 
     for (String repo_name : repoNames) {
       if (repo_name.trim().isEmpty()) {
         continue;
       }
-      if (repo_names_exclude.contains(repo_name.trim())) {
-        log("Repository name:" + repo_name + " is in the repoNamesExclude. Skipping...");
-        continue;
-      }
 
       boolean runCheckDupes = false;
-      if(magnifyPercent == 0.0 && sub_repo_names.size() > 0) {
+      if(checkEachRepo || repoCounts.isEmpty() || (repoCounts.containsKey(repo_name) && repoCounts.get(repo_name) < 0)) {
         runCheckDupes = true;
       }
-      else if (magnifyPercent > 0.0 && repoCounts.containsKey(repo_name)) {
+      else if (repoCounts.containsKey(repo_name)) {
         sub_ttl += repoCounts.get(repo_name);
         long est = estimateSizeMB(sub_ttl);
-        debug("Repository name:" + repo_name + ", rows:" + repoCounts.get(repo_name) + ", sub_ttl:" + sub_ttl + ", estimate_size:" + est + "/" + maxMb );
-        if (sub_repo_names.size() > 0 && est > maxMb) {
-          runCheckDupes= true;
+        debug("Repository name:" + repo_name + ", rows:" + repoCounts.get(repo_name) + ", sub_ttl:" + sub_ttl +
+            ", estimate_size:" + est + "/" + max_mb);
+        if (sub_repo_names.size() > 0 && est > max_mb) {
+          log("Will exceed the estimated limit, so running checkDupes() against (" + sub_repo_names.size() + "): " + sub_repo_names);
+          if (checkDupes(tx, sub_repo_names)) {
+            is_dupe_found = true;
+          }
+          sub_ttl = 0L;
+          sub_repo_names = new ArrayList<>();
         }
       }
 
+      sub_repo_names.add(repo_name);
       if (runCheckDupes) {
         log("Running checkDupes() against (" + sub_repo_names.size() + "): " + sub_repo_names);
         if (checkDupes(tx, sub_repo_names)) {
@@ -271,9 +276,9 @@ public class Main
         sub_ttl = 0L;
         sub_repo_names = new ArrayList<>();
       }
-      sub_repo_names.add(repo_name);
     }
 
+    // If sub_repo_names is still not empty.
     if (sub_repo_names.size() > 0) {
       log("Running checkDupes() against (" + sub_repo_names.size() + "): " + sub_repo_names);
       if (checkDupes(tx, sub_repo_names)) {
@@ -283,11 +288,51 @@ public class Main
     return is_dupe_found;
   }
 
+  public static Map<String, Long> getRepoNamesCounts(ODatabaseDocumentTx tx, List<String> repo_names_include, List<String> repo_names_exclude, long max_mb, boolean noDupeCheck) {
+    Map<String, Long> repo_counts = new HashMap<>();
+    // Intentionally sorting with repository_name
+    List<ODocument> bkts = execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
+    // NOTE: 'where key = [bucket.rid]' works, but 'select key, count(*) as c from index:asset_bucket_name_idx group by key;' does not, so looping...
+    for (ODocument bkt : bkts) {
+      String repoId = ((ODocument) bkt.field("r")).getIdentity().toString();
+      String repoName = bkt.field("repository_name");
+
+      if (!repo_names_include.isEmpty() && !repo_names_include.contains(repoName)) {
+        log("Repository name:" + repoName + " is not in the repoNames (include). Skipping...");
+        continue;
+      }
+      if (repo_names_exclude.contains(repoName)) {
+        log("Repository name:" + repoName + " is in the repoNamesExclude. Skipping...");
+        continue;
+      }
+
+      long c = -1L;
+      if(!noDupeCheck) {
+        String q = "select count(*) as c from index:asset_bucket_name_idx where key = [" + repoId + "]";
+        List<ODocument> c_per_bkt = execQueries(tx, q);
+        c = c_per_bkt.get(0).field("c");
+        log("Repository:" + repoName + " estimated count:" + c);
+        long estimateMb = estimateSizeMB(c);
+        // super rough estimate. Just guessing one record would use 3KB (+1GB).
+        if (max_mb < estimateMb) {
+          log("[WARN] Heap: " + max_mb + " MB may not be enough for " + repoName + " (count:"+ c +", estimate:" + estimateMb + " MB).");
+          continue;
+        }
+        if (c == 0) {
+          debug("No record for " + repoName + ".");
+          continue;
+        }
+      }
+      repo_counts.put(repoName, c);
+    }
+    return repo_counts;
+  }
+
   private static void setGlobals() {
     extDir = System.getProperty("extractDir", "");
     repoNames = System.getProperty("repoNames", "");
     repoNamesExclude = System.getProperty("repoNamesExclude", "");
-    magnifyPercent = Double.parseDouble(System.getProperty("magnifyPercent", "400"));
+    magnifyPercent = Double.parseDouble(System.getProperty("magnifyPercent", "300"));
     limit = System.getProperty("limit", "1000");
     noDupeCheck = Boolean.getBoolean("noDupeCheck");
     isDebug = Boolean.getBoolean("debug");
@@ -306,9 +351,8 @@ public class Main
     Long abn_idx_c = 0L;
     Long abcn_idx_c = 0L;
     Long cbgnv_idx_c = 0L;
-    List<String> repo_names = new ArrayList<>();
-    List<String> repo_names_skipped = new ArrayList<>();
     Map<String, Long> repo_counts = new HashMap<>();
+    List<String> repo_names = new ArrayList<>();
 
     log("main() started with maxMb = " + maxMb);
 
@@ -351,12 +395,9 @@ public class Main
 
         long estimateMb = estimateSizeMB(ac);
         boolean check_all_repo = false;
-        if (!repoNames.trim().isEmpty()) {
-          repo_names = Arrays.asList(repoNames.split(","));
-          log("Repo names: " + repo_names + " are provided, so not checking the record counts per repo.");
-        }
-        else if (magnifyPercent == 0.0) {
-          log("magnifyPercent is 0%, so checking each repository.");
+
+        if (magnifyPercent == 0.0) {
+          log("magnifyPercent is 0%, so skipping various checks and checking each repository.");
           List<ODocument> bkts =
               execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
           for (ODocument bkt : bkts) {
@@ -419,30 +460,8 @@ public class Main
             out("-- [WARN] may need 'TRUNCATE CLASS browse_node;'");
           }
 
-          // Intentionally sorting with repository_name
-          List<ODocument> bkts = execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
-          // NOTE: 'where key = [bucket.rid]' works, but 'select key, count(*) as c from index:asset_bucket_name_idx group by key;' does not, so looping...
-          for (ODocument bkt : bkts) {
-            String repoId = ((ODocument) bkt.field("r")).getIdentity().toString();
-            String repoName = bkt.field("repository_name");
-            String q = "select count(*) as c from index:asset_bucket_name_idx where key = [" + repoId + "]";
-            List<ODocument> c_per_bkt = execQueries(tx, q);
-            Long c = c_per_bkt.get(0).field("c");
-            log("Repository: " + repoName + " estimated count: " + c.toString());
-            // super rough estimate. Just guessing one record would use 3KB (+1GB).
-            estimateMb = estimateSizeMB(c);
-            if (maxMb < estimateMb) {
-              debug("Heap: " + maxMb + " MB may not be enough for " + repoName + " (estimate: " + estimateMb + " MB).");
-              repo_names_skipped.add(repoName);
-            }
-            else if (c == 0) {
-              debug("No record for " + repoName + ".");
-            }
-            else {
-              repo_names.add(repoName);
-              repo_counts.put(repoName, c);
-            }
-          }
+          repo_counts = getRepoNamesCounts(tx, Arrays.asList(repoNames.split(",")), Arrays.asList(repoNamesExclude.split(",")), maxMb, (magnifyPercent == 0.0));
+          repo_names.addAll(repo_counts.keySet());
         }
 
         if (ac.equals(abcn_idx_c)) {
@@ -461,7 +480,7 @@ public class Main
           }
           else {
             log("Repository names to check (" + repo_names.size() + "):\n" + repo_names);
-            is_dupe_found = checkDupesForRepos(tx, repo_names, repo_counts);
+            is_dupe_found = checkDupesForRepos(tx, repo_names, repo_counts, maxMb, (magnifyPercent == 0.0));
           }
 
           if (is_dupe_found) {
@@ -469,11 +488,6 @@ public class Main
             out("--REPAIR DATABASE --fix-links;");
             out("--REBUILD INDEX *;");
             out("REBUILD INDEX asset_bucket_component_name_idx;");
-          }
-
-          if (repo_names_skipped.size() > 0) {
-            out("-- [WARN] Skipped repositories: " + repo_names_skipped +
-                "\n--        To force, rerun with -Xmx*g -DrepoNames=xxx,yyy,zzz");
           }
         }
       }
