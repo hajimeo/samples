@@ -179,7 +179,7 @@ public class Main
             "browse_node_asset_id_idx", "browse_node_component_id_idx",
             "browse_node_repository_name_parent_path_name_idx", "component_tags_idx",
             "docker_foreign_layers_digest_idx", "statushealthcheck_node_id_idx", "tag_name_idx");
-    List<String> current_idxs = new ArrayList<String>();
+    List<String> current_idxs = new ArrayList<>();
     for (ODocument doc : docs) {
       current_idxs.add(doc.field("name").toString());
     }
@@ -238,7 +238,7 @@ public class Main
   {
     boolean is_dupe_found = false;
     long sub_ttl = 0L;
-    List<String> sub_repo_names = new ArrayList<String>();
+    List<String> sub_repo_names = new ArrayList<>();
     List<String> repo_names_exclude = Arrays.asList(repoNamesExclude.split(","));
 
     for (String repo_name : repoNames) {
@@ -269,7 +269,7 @@ public class Main
           is_dupe_found = true;
         }
         sub_ttl = 0L;
-        sub_repo_names = new ArrayList<String>();
+        sub_repo_names = new ArrayList<>();
       }
       sub_repo_names.add(repo_name);
     }
@@ -302,13 +302,13 @@ public class Main
     setGlobals();
 
     String path = args[0];
-    String connStr = "";
+    String connStr;
     Long abn_idx_c = 0L;
     Long abcn_idx_c = 0L;
     Long cbgnv_idx_c = 0L;
-    List<String> repo_names = new ArrayList<String>();
-    List<String> repo_names_skipped = new ArrayList<String>();
-    Map<String, Long> repo_counts = new HashMap<String, Long>();
+    List<String> repo_names = new ArrayList<>();
+    List<String> repo_names_skipped = new ArrayList<>();
+    Map<String, Long> repo_counts = new HashMap<>();
 
     log("main() started with maxMb = " + maxMb);
 
@@ -396,7 +396,7 @@ public class Main
             log("Index: " + iname + " count: " + _idx_c.get(0).field("c").toString());
           }
 
-          // Current limitation/restriction: asset_bucket_name_idx is required (accept 10% difference as this is for estimation).
+          // Current limitation/restriction: asset_bucket_name_idx is required (10% difference as this is estimation).
           if (abn_idx_c > 0 && (abn_idx_c * 1.1) < ac) {
             log("[ERROR] asset_bucket_name_idx count is too small against the asset count. Please do 'REBUILD INDEX asset_bucket_name_idx' first.");
             System.exit(1);
@@ -447,9 +447,8 @@ public class Main
 
         if (ac.equals(abcn_idx_c)) {
           // TODO: Not so good logic. Currently if -DrepoNames is given, abcn_idx_c is 0 (if ac is 0, already exit)
-          log("Asset count (" + ac.toString() +
-              ") is equal to the asset_bucket_component_name_idx count, so not checking duplicates." +
-              "\nTo force, rerun with -DrepoNames=xxx,yyy,zzz");
+          log("Asset count (" + ac + ") is same as asset_bucket_component_name_idx, so not checking duplicates.\n" +
+              "To force, rerun with -DrepoNames=xxx,yyy,zzz");
         }
         else {
           boolean is_dupe_found = false;
