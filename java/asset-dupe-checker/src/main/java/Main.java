@@ -20,6 +20,7 @@
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
+import com.orientechnologies.orient.core.exception.ODatabaseException;
 import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
@@ -38,14 +39,25 @@ import java.util.*;
 public class Main
 {
   private static long maxMb;
-
+  private static String extDir = "";
+  private static String repoNames = "";
   private static String limit = "1000";
-
+  private static Path tmpDir = null;
   private static double magnifyPercent = 400.0;
-
   private static boolean isDebug;
 
   private Main() { }
+
+  private static void usage() {
+    System.out.println("Usage:");
+    System.out.println("  java -Xmx4g -jar asset-dupe-checker.jar <component directory path> | tee asset-dupe-checker.sql");
+    System.out.println("Acceptable System properties:");
+    System.out.println("  -DrepoNames=<repo1,repo2,... to specify repositories to check>");
+    System.out.println("  -DmagnifyPercent=<int. For estimating size (default 400). Higher makes conservative but using 0 checks one repository each>");
+    System.out.println("  -Dlimit=<int. Currently duplicates over 1000 per query is ignored as not expecting so many duplicates>");
+    System.out.println("  -DextractDir=<extracting path for component-*.bak>");
+    System.out.println("  -Ddebug=true");
+  }
 
   private static String getCurrentLocalDateTimeStamp() {
     return LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS"));
@@ -58,7 +70,7 @@ public class Main
 
   private static void debug(String msg) {
     if (isDebug) {
-      log("DEBUG " + msg);
+      log("[DEBUG] " + msg);
     }
   }
 
@@ -79,22 +91,30 @@ public class Main
   }
 
   private static boolean prepareDir(String dirPath, String zipFilePath) throws IOException {
+    // if dirPath is empty, use a temp directory
+    if (dirPath.trim().isEmpty()) {
+      tmpDir = Files.createTempDirectory(null);
+      tmpDir.toFile().deleteOnExit();
+      extDir = tmpDir.toString();
+      return true;
+    }
+
     File destDir = new File(dirPath);
     if (!destDir.exists()) {
       if (!destDir.mkdirs()) {
-        log("Couldn't create " + destDir);
+        log("[ERROR] Couldn't create " + destDir);
         return false;
       }
     }
     else if (!isDirEmpty(destDir.toPath())) {
-      log(dirPath + " is not empty.");
+      log("[ERROR] " + dirPath + " is not empty.");
       return false;
     }
     // TODO: check if dirPath has enough space properly (currently just requesting 10 times of .bak file).
     long usable_space = Files.getFileStore(new File(dirPath).toPath()).getUsableSpace();
     long zip_file_size = (new File(zipFilePath)).length();
     if (zip_file_size * 10 > usable_space) {
-      log(dirPath + " (usable:" + usable_space + ") may not be enough for extracting " + zipFilePath + " (size:" +
+      log("[ERROR] " + dirPath + " (usable:" + usable_space + ") may not be enough for extracting " + zipFilePath + " (size:" +
           zip_file_size + ")");
       return false;
     }
@@ -119,9 +139,14 @@ public class Main
             Files.delete(p);
           }
           catch (IOException e) {
-            log(e.getMessage());
+            log("[ERROR] " + e.getMessage());
           }
         });
+  }
+
+  private static long estimateSizeMB(long c) {
+    // If magnify_percent is 400%, assuming 1 row = 5KB
+    return (long) Math.ceil(((c * magnifyPercent / 100) + 1024) / 1024);
   }
 
   public static List<ODocument> execQueries(ODatabaseDocumentTx tx, String input) {
@@ -131,8 +156,8 @@ public class Main
     try {
       results = tx.query(new OSQLSynchQuery(input));
     }
-    catch (java.lang.ClassCastException e) {
-      log(e.getMessage());
+    catch (ODatabaseException | ClassCastException e) {
+      log("[ERROR] " + e.getMessage());
       //e.printStackTrace();
     }
     finally {
@@ -180,7 +205,8 @@ public class Main
       where = "WHERE " + where_repos;
     }
     List<ODocument> dups = execQueries(tx,
-        "SELECT FROM (SELECT bucket.repository_name as repo_name, component, name, LIST(@rid) as dupe_rids, MAX(@rid) as keep_rid, COUNT(*) as c FROM asset " +
+        // Seems reducing columns reduce heap usage, so not using "bucket.repository_name as repo_name, component, name"
+        "SELECT FROM (SELECT LIST(@rid) as dupe_rids, MAX(@rid) as keep_rid, COUNT(*) as c FROM asset " +
             where +
             " GROUP BY bucket, component, name) WHERE c > 1 LIMIT " + limit + ";");
 
@@ -248,62 +274,44 @@ public class Main
     return is_dupe_found;
   }
 
-  public static long estimateSizeMB(long c) {
-    // If magnify_percent is 400%, assuming 1 row = 5KB
-    return (long) Math.ceil(((c * magnifyPercent / 100) + 1024) / 1024);
+  private static void setGlobals() {
+    extDir = System.getProperty("extractDir", "");
+    repoNames = System.getProperty("repoNames", "");
+    magnifyPercent = Double.parseDouble(System.getProperty("magnifyPercent", "400"));
+    limit = System.getProperty("limit", "1000");
+    isDebug = Boolean.getBoolean("debug");
+    maxMb = Runtime.getRuntime().maxMemory() / 1024 / 1024;
   }
 
   public static void main(final String[] args) throws IOException {
     if (args.length < 1) {
-      System.out.println("Usage:");
-      System.out.println("  java -Xmx4g -jar asset-dupe-checker.jar <component directory path> | tee asset-dupe-checker.sql");
-      System.out.println("Acceptable System properties:");
-      System.out.println("  -DrepoNames=<repo1,repo2,... to specify repositories to check>");
-      System.out.println("  -DmagnifyPercent=<int. For estimating size (default 400). Higher makes conservative but using 0 checks one repository each>");
-      System.out.println("  -Dlimit=<int. Currently duplicates over 1000 per query is ignored as not expecting so many duplicates>");
-      System.out.println("  -DextractDir=<extracting path for component-*.bak>");
-      System.out.println("  -Ddebug=true");
+      usage();
       System.exit(1);
     }
-
-    /* Populating class properties with system properties */
-    String extDir = System.getProperty("extractDir", "");
-    String repoNames = System.getProperty("repoNames", "");
-    magnifyPercent = Double.parseDouble(System.getProperty("magnifyPercent", "400"));
-    limit = System.getProperty("limit", "1000");
-    isDebug = Boolean.getBoolean("debug");
+    setGlobals();
 
     String path = args[0];
     String connStr = "";
-    Path tmpDir = null;
     Long abn_idx_c = 0L;
     Long abcn_idx_c = 0L;
+    Long cbgnv_idx_c = 0L;
     List<String> repo_names = new ArrayList<String>();
     List<String> repo_names_skipped = new ArrayList<String>();
     Map<String, Long> repo_counts = new HashMap<String, Long>();
 
-    maxMb = Runtime.getRuntime().maxMemory() / 1024 / 1024;
     log("main() started with maxMb = " + maxMb);
 
     if (!(new File(path)).isDirectory()) {
       try {
-        if (!extDir.trim().isEmpty()) {
-          if (!prepareDir(extDir, path)) {
-            System.exit(1);
-          }
+        if (!prepareDir(extDir, path)) {
+          System.exit(1);
         }
-        else {
-          tmpDir = Files.createTempDirectory(null);
-          tmpDir.toFile().deleteOnExit();
-          extDir = tmpDir.toString();
-        }
-
         log("Unzip-ing " + path + " to " + extDir);
         unzip(path, extDir);
         path = extDir;
       }
       catch (Exception e) {
-        log(path + " is not a right archive.");
+        log("[ERROR] " + path + " is not a right archive.");
         log(e.getMessage());
         delR(tmpDir);
         System.exit(1);
@@ -325,7 +333,7 @@ public class Main
         List<ODocument> docs = execQueries(tx, "select count(*) as c from asset");
         Long ac = docs.get(0).field("c");
         if (ac == 0) {
-          log("Asset table/class is empty.");
+          log("[ERROR] Asset table/class is empty.");
           System.exit(1);
         }
         log("Asset count: " + ac);
@@ -350,19 +358,6 @@ public class Main
           check_all_repo = true;
         }
         else {
-          // At this moment, probably not interested in the component count
-          //docs = execQueries(tx, "select count(*) as c from component");
-          //log("Component count: " + docs.get(0).field("c"));
-
-          // Just in case, counting browse_node (should count per repo?)
-          docs = execQueries(tx, "select count(*) as c from browse_node");
-          long bnc = docs.get(0).field("c");
-          log("Browse_node count: " + bnc);
-          double ratio = (double) bnc / (double) ac;
-          if (ac > 0 && bnc > 0 && (ratio < 0.8 || ratio > 1.2)) {
-            out("-- [WARN] may need 'TRUNCATE CLASS browse_node;'");
-          }
-
           // Checking how many Indexes.
           docs = execQueries(tx,
               "select name from (select expand(indexes) from metadata:indexmanager) where name like '%_idx' ORDER BY name");
@@ -385,13 +380,33 @@ public class Main
             else if (iname.equals("asset_bucket_component_name_idx")) {
               abcn_idx_c = _idx_c.get(0).field("c");
             }
+            else if (iname.equals("component_bucket_group_name_version_idx")) {
+              cbgnv_idx_c = _idx_c.get(0).field("c");
+            }
             log("Index: " + iname + " count: " + _idx_c.get(0).field("c").toString());
           }
 
           // Current limitation/restriction: asset_bucket_name_idx is required (accept 10% difference as this is for estimation).
           if (abn_idx_c > 0 && (abn_idx_c * 1.1) < ac) {
-            log("[ERROR] asset_bucket_name_idx count is too small. Please do 'REBUILD INDEX asset_bucket_name_idx' first.");
+            log("[ERROR] asset_bucket_name_idx count is too small against the asset count. Please do 'REBUILD INDEX asset_bucket_name_idx' first.");
             System.exit(1);
+          }
+
+          // Extra checks
+          docs = execQueries(tx, "select count(*) as c from component");
+          Long cc = docs.get(0).field("c");
+          log("Component count: " + cc);
+          if (cbgnv_idx_c > 0 && cbgnv_idx_c < cc ) {
+            log("[WARN] component_bucket_group_name_version_idx is smaller than the component count. Please check if the component has any duplicates.");
+          }
+
+          // Just in case, counting browse_node (should count per repo?)
+          docs = execQueries(tx, "select count(*) as c from browse_node");
+          long bnc = docs.get(0).field("c");
+          log("Browse_node count: " + bnc);
+          double ratio = (double) bnc / (double) ac;
+          if (ac > 0 && bnc > 0 && (ratio < 0.8 || ratio > 1.2)) {
+            out("-- [WARN] may need 'TRUNCATE CLASS browse_node;'");
           }
 
           List<ODocument> bkts =
