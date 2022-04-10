@@ -41,9 +41,11 @@ public class Main
   private static long maxMb;
   private static String extDir = "";
   private static String repoNames = "";
+  private static String repoNamesExclude = "";
   private static String limit = "1000";
   private static Path tmpDir = null;
   private static double magnifyPercent = 400.0;
+  private static boolean noDupeCheck;
   private static boolean isDebug;
 
   private Main() { }
@@ -53,9 +55,11 @@ public class Main
     System.out.println("  java -Xmx4g -jar asset-dupe-checker.jar <component directory path> | tee asset-dupe-checker.sql");
     System.out.println("Acceptable System properties:");
     System.out.println("  -DrepoNames=<repo1,repo2,... to specify repositories to check>");
+    System.out.println("  -DrepoNamesExclude=<repo1,repo2,... to exclude specific repositories>");
     System.out.println("  -DmagnifyPercent=<int. For estimating size (default 400). Higher makes conservative but using 0 checks one repository each>");
     System.out.println("  -Dlimit=<int. Currently duplicates over 1000 per query is ignored as not expecting so many duplicates>");
     System.out.println("  -DextractDir=<extracting path for component-*.bak>");
+    System.out.println("  -DnoDupeCheck=true");
     System.out.println("  -Ddebug=true");
   }
 
@@ -235,9 +239,14 @@ public class Main
     boolean is_dupe_found = false;
     long sub_ttl = 0L;
     List<String> sub_repo_names = new ArrayList<String>();
+    List<String> repo_names_exclude = Arrays.asList(repoNamesExclude.split(","));
 
     for (String repo_name : repoNames) {
       if (repo_name.trim().isEmpty()) {
+        continue;
+      }
+      if (repo_names_exclude.contains(repo_name.trim())) {
+        log("Repository name:" + repo_name + " is in the repoNamesExclude. Skipping...");
         continue;
       }
 
@@ -277,8 +286,10 @@ public class Main
   private static void setGlobals() {
     extDir = System.getProperty("extractDir", "");
     repoNames = System.getProperty("repoNames", "");
+    repoNamesExclude = System.getProperty("repoNamesExclude", "");
     magnifyPercent = Double.parseDouble(System.getProperty("magnifyPercent", "400"));
     limit = System.getProperty("limit", "1000");
+    noDupeCheck = Boolean.getBoolean("noDupeCheck");
     isDebug = Boolean.getBoolean("debug");
     maxMb = Runtime.getRuntime().maxMemory() / 1024 / 1024;
   }
@@ -351,7 +362,6 @@ public class Main
           for (ODocument bkt : bkts) {
             repo_names.add(bkt.field("repository_name"));
           }
-          log("Repository names to check (" + repo_names.size() + "):\n" + repo_names);
         }
         else if (maxMb > estimateMb) {
           log("Asset count is small, so not checking each repositories.");
@@ -409,8 +419,8 @@ public class Main
             out("-- [WARN] may need 'TRUNCATE CLASS browse_node;'");
           }
 
-          List<ODocument> bkts =
-              execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
+          // Intentionally sorting with repository_name
+          List<ODocument> bkts = execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
           // NOTE: 'where key = [bucket.rid]' works, but 'select key, count(*) as c from index:asset_bucket_name_idx group by key;' does not, so looping...
           for (ODocument bkt : bkts) {
             String repoId = ((ODocument) bkt.field("r")).getIdentity().toString();
@@ -418,7 +428,7 @@ public class Main
             String q = "select count(*) as c from index:asset_bucket_name_idx where key = [" + repoId + "]";
             List<ODocument> c_per_bkt = execQueries(tx, q);
             Long c = c_per_bkt.get(0).field("c");
-            log("Repository: " + bkt.field("repository_name") + " estimated count: " + c.toString());
+            log("Repository: " + repoName + " estimated count: " + c.toString());
             // super rough estimate. Just guessing one record would use 3KB (+1GB).
             estimateMb = estimateSizeMB(c);
             if (maxMb < estimateMb) {
@@ -433,7 +443,6 @@ public class Main
               repo_counts.put(repoName, c);
             }
           }
-          log("Repository names to check (" + repo_names.size() + "):\n" + repo_names);
         }
 
         if (ac.equals(abcn_idx_c)) {
@@ -445,10 +454,14 @@ public class Main
         else {
           boolean is_dupe_found = false;
 
-          if (check_all_repo) {
+          if (noDupeCheck) {
+            log("Not checking any duplicates for\n" + repo_names);
+          }
+          else if (check_all_repo) {
             is_dupe_found = checkDupes(tx, null);
           }
           else {
+            log("Repository names to check (" + repo_names.size() + "):\n" + repo_names);
             is_dupe_found = checkDupesForRepos(tx, repo_names, repo_counts);
           }
 
