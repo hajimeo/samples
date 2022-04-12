@@ -40,8 +40,8 @@ public class Main
 {
   private static long maxMb;
   private static String extDir = "";
-  private static String repoNames = "";
-  private static String repoNamesExclude = "";
+  private static List<String> repoNames;
+  private static List<String> repoNamesExclude;
   private static String limit = "1000";
   private static Path tmpDir = null;
   private static double magnifyPercent = 300.0;
@@ -249,7 +249,7 @@ public class Main
       }
 
       boolean runCheckDupes = false;
-      if(checkEachRepo || repoCounts.isEmpty() || (repoCounts.containsKey(repo_name) && repoCounts.get(repo_name) < 0)) {
+      if(checkEachRepo || repoCounts == null || repoCounts.isEmpty() || (repoCounts.containsKey(repo_name) && repoCounts.get(repo_name) < 0)) {
         runCheckDupes = true;
       }
       else if (repoCounts.containsKey(repo_name)) {
@@ -258,7 +258,7 @@ public class Main
         debug("Repository name:" + repo_name + ", rows:" + repoCounts.get(repo_name) + ", sub_ttl:" + sub_ttl +
             ", estimate_size:" + est + "/" + max_mb);
         if (sub_repo_names.size() > 0 && est > max_mb) {
-          log("Will exceed the estimated limit, so running checkDupes() against (" + sub_repo_names.size() + "): " + sub_repo_names);
+          log("Adding " + repo_name + " will exceed the estimated limit, so running checkDupes() for " + sub_repo_names.size() + " repositories.\n" + sub_repo_names);
           if (checkDupes(tx, sub_repo_names)) {
             is_dupe_found = true;
           }
@@ -269,7 +269,7 @@ public class Main
 
       sub_repo_names.add(repo_name);
       if (runCheckDupes) {
-        log("Running checkDupes() against (" + sub_repo_names.size() + "): " + sub_repo_names);
+        log("Running checkDupes() against " + sub_repo_names.size() + " repositories.\n" + sub_repo_names);
         if (checkDupes(tx, sub_repo_names)) {
           is_dupe_found = true;
         }
@@ -280,7 +280,7 @@ public class Main
 
     // If sub_repo_names is still not empty.
     if (sub_repo_names.size() > 0) {
-      log("Running checkDupes() against (" + sub_repo_names.size() + "): " + sub_repo_names);
+      log("Running checkDupes() against " + sub_repo_names.size() + " repositories.\n" + sub_repo_names);
       if (checkDupes(tx, sub_repo_names)) {
         is_dupe_found = true;
       }
@@ -297,12 +297,12 @@ public class Main
       String repoId = ((ODocument) bkt.field("r")).getIdentity().toString();
       String repoName = bkt.field("repository_name");
 
-      if (!repo_names_include.isEmpty() && !repo_names_include.contains(repoName)) {
+      if (repo_names_include != null && repo_names_include.size() > 0 && !repo_names_include.contains(repoName)) {
         log("Repository name:" + repoName + " is not in the repoNames (include). Skipping...");
         continue;
       }
       if (repo_names_exclude.contains(repoName)) {
-        log("Repository name:" + repoName + " is in the repoNamesExclude. Skipping...");
+        log("Repository name:" + repoName + " is in the repoNamesExclude. Skipping...\n" + repo_names_exclude);
         continue;
       }
 
@@ -329,14 +329,27 @@ public class Main
   }
 
   private static void setGlobals() {
-    extDir = System.getProperty("extractDir", "");
-    repoNames = System.getProperty("repoNames", "");
-    repoNamesExclude = System.getProperty("repoNamesExclude", "");
-    magnifyPercent = Double.parseDouble(System.getProperty("magnifyPercent", "300"));
-    limit = System.getProperty("limit", "1000");
-    noDupeCheck = Boolean.getBoolean("noDupeCheck");
     isDebug = Boolean.getBoolean("debug");
+    extDir = System.getProperty("extractDir", "");
+    debug("extDir: " + extDir);
+    String repoNamesStr = System.getProperty("repoNames", "");
+    if (!repoNamesStr.trim().isEmpty()) {
+      repoNames = Arrays.asList(repoNamesStr.trim().split(","));
+    }
+    debug("repoNames: " + repoNames);
+    String repoNamesExcludeStr = System.getProperty("repoNamesExclude", "");
+    if (!repoNamesExcludeStr.trim().isEmpty()) {
+      repoNamesExclude = Arrays.asList(repoNamesExcludeStr.trim().split(","));
+    }
+    debug("repoNamesExclude: " + repoNamesExclude);
+    magnifyPercent = Double.parseDouble(System.getProperty("magnifyPercent", "300"));
+    debug("magnifyPercent: " + magnifyPercent);
+    limit = System.getProperty("limit", "1000");
+    debug("limit: " + limit);
+    noDupeCheck = Boolean.getBoolean("noDupeCheck");
+    debug("noDupeCheck: " + noDupeCheck);
     maxMb = Runtime.getRuntime().maxMemory() / 1024 / 1024;
+    debug("maxMb: " + maxMb);
   }
 
   public static void main(final String[] args) throws IOException {
@@ -398,11 +411,8 @@ public class Main
 
         if (magnifyPercent == 0.0) {
           log("magnifyPercent is 0%, so skipping various checks and checking each repository.");
-          List<ODocument> bkts =
-              execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
-          for (ODocument bkt : bkts) {
-            repo_names.add(bkt.field("repository_name"));
-          }
+          repo_counts = getRepoNamesCounts(tx, repoNames, repoNamesExclude, maxMb, true);
+          repo_names.addAll(repo_counts.keySet());
         }
         else if (maxMb > estimateMb) {
           log("Asset count is small, so not checking each repositories.");
@@ -460,7 +470,7 @@ public class Main
             out("-- [WARN] may need 'TRUNCATE CLASS browse_node;'");
           }
 
-          repo_counts = getRepoNamesCounts(tx, Arrays.asList(repoNames.split(",")), Arrays.asList(repoNamesExclude.split(",")), maxMb, (magnifyPercent == 0.0));
+          repo_counts = getRepoNamesCounts(tx, repoNames, repoNamesExclude, maxMb, noDupeCheck);
           repo_names.addAll(repo_counts.keySet());
         }
 
