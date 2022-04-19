@@ -4,6 +4,7 @@
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.gson.Gson;
 import com.orientechnologies.orient.core.Orient;
+import com.orientechnologies.orient.core.command.OCommandRequest;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
@@ -34,19 +35,12 @@ import java.util.*;
 public class Main
 {
   static final String PROMPT = "=> ";
-
   static Terminal terminal;
-
   static History history;
-
   static String historyPath;
-
   static String extractDir;
-
   static String exportPath;
-
   static String binaryField;
-
   static String[] fieldNames;
 
   private static final ObjectMapper objectMapper = new ObjectMapper(new SmileFactory());
@@ -142,15 +136,22 @@ public class Main
     terminal.writer().println("\n[");
     for (int i = 0; i < oDocs.size(); i++) {
       if (i == (oDocs.size() - 1)) {
-        terminal.writer().println("  " + oDocs.get(i).toJSON());
+        terminal.writer().println("  " + oDocs.get(i).toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0"));
       }
       else {
-        terminal.writer().println("  " + oDocs.get(i).toJSON() + ",");
+        terminal.writer().println("  " + oDocs.get(i).toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0") + ",");
       }
       terminal.flush();
     }
     terminal.writer().println("]");
     // TODO: not working?  and not organised properly
+    terminal.flush();
+  }
+
+  private static void printDocAsJson(ODocument oDoc) {
+    // NOTE: Should check null, like 'if (oDoc == null) {'?
+    // Default; rid,version,class,type,attribSameRow,keepTypes,alwaysFetchEmbedded,fetchPlan:*:0
+    terminal.writer().println(oDoc.toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0,prettyPrint"));
     terminal.flush();
   }
 
@@ -225,25 +226,34 @@ public class Main
 
       Instant start = Instant.now();
       try {
-        final List<ODocument> oDocs = db.command(new OCommandSQL(q)).execute();
-        if (oDocs.size() > 0) {
-          fieldNames = oDocs.get(0).fieldNames();
+        Object oDocs = db.command(new OCommandSQL(q)).execute();
+        //final List<ODocument> oDocs = db.command(new OCommandSQL(q)).execute();
+        if (oDocs instanceof Integer) {
+          System.err.printf("Rows: %d, ", oDocs);
         }
-        if (exportPath != null && exportPath.length() > 0) {
-          writeListAsJson(oDocs, exportPath);
-          System.err.printf("Wrote %d rows to %s, ", oDocs.size(), exportPath);
+        else if (oDocs instanceof ODocument) {
+          // NOTE: 'EXPLAIN' causes com.orientechnologies.orient.core.record.impl.ODocument cannot be cast to java.util.List
+          printDocAsJson((ODocument) oDocs);
         }
         else {
-          printListAsJson(oDocs);
-          System.err.printf("Rows: %d, ", oDocs.size());
-        }
-        // Currently using below if the result is only one record.
-        if (oDocs.size() == 1) {
-          printBinary(oDocs.get(0));
+          if (((List<ODocument>) oDocs).size() > 0) {
+            fieldNames = ((List<ODocument>) oDocs).get(0).fieldNames();
+          }
+          if (exportPath != null && exportPath.length() > 0) {
+            writeListAsJson(((List<ODocument>) oDocs), exportPath);
+            System.err.printf("Wrote %d rows to %s, ", ((List<ODocument>) oDocs).size(), exportPath);
+          }
+          else {
+            printListAsJson(((List<ODocument>) oDocs));
+            System.err.printf("Rows: %d, ", ((List<ODocument>) oDocs).size());
+          }
+          // Currently using below if the result is only one record.
+          if (((List<ODocument>) oDocs).size() == 1) {
+            printBinary(((List<ODocument>) oDocs).get(0));
+          }
         }
       }
       catch (java.lang.ClassCastException e) {
-        // TODO: 'EXPLAIN' causes com.orientechnologies.orient.core.record.impl.ODocument cannot be cast to java.util.List
         System.err.println(e.getMessage());
         e.printStackTrace();
       }
