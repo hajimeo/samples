@@ -58,7 +58,7 @@ public class Main
     System.out.println("  -DrepoNames=<repo1,repo2,...> To specify repositories to check");
     System.out.println("  -DrepoNamesExclude=<repo1,repo2,...> To exclude specific repositories");
     System.out.println("  -DmagnifyPercent=<int> Used for estimating (default 300). Higher makes conservative but using 0 checks one repository each");
-    System.out.println("  -DcheckPerComp=true For extremely large repository");
+    //System.out.println("  -DcheckPerComp=true For extremely large repository");
     System.out.println("  -Dlimit=<int> Currently duplicates over 1000 per query is ignored as not expecting so many duplicates");
     System.out.println("  -DextractDir=<extracting path> To specify component-*.bak file");
     System.out.println("  -DnoDupeCheck=true For testing/debugging this code");
@@ -402,8 +402,8 @@ public class Main
     debug("magnifyPercent: " + MAGNIFY_PERCENT);
     LIMIT = System.getProperty("limit", "1000");
     debug("limit: " + LIMIT);
-    CHECK_PER_COMP = Boolean.getBoolean("checkPerComp");
-    debug("checkPerComp: " + CHECK_PER_COMP);
+    //CHECK_PER_COMP = Boolean.getBoolean("checkPerComp");
+    //debug("checkPerComp: " + CHECK_PER_COMP);
     NO_DUPE_CHECK = Boolean.getBoolean("noDupeCheck");
     debug("noDupeCheck: " + NO_DUPE_CHECK);
     MAXMB = Runtime.getRuntime().maxMemory() / 1024 / 1024;
