@@ -874,7 +874,8 @@ function f_hexTids_from_topH() {
     local _file="${1}"
     local _user="${2:-".+"}" # [^ ]+
     local _command="${3:-"(java|VM Thread|GC )"}" # [^ ]+
-    local _n="${4:-20}"
+    local _search_word="${4-"sonatype"}"
+    local _n="${5:-20}"
     echo "# Overview from top ${_n} (check long 'TIME+')"
     if [ -f "${_file}" ]; then
         rg '^top' -A ${_n} "${_file}"
@@ -883,13 +884,22 @@ function f_hexTids_from_topH() {
     fi | rg "^(top|\s*\d+\s+${_user}\s.+\s${_command})" | tee /tmp/${FUNCNAME}_$$.tmp || return $?
     echo ""
     echo "# Converting suspicious PIDs to hex"
-    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|[6-9]\d\.\d+)" -o -r '$1' | sort | uniq -c | sort -nr | head -n20 | while read -r _l; do
+    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|[6-9]\d\.\d+)" -o -r '$1' | sort | uniq -c | sort -nr | head -n${_n} | while read -r _l; do
         if [[ "${_l}" =~ ([0-9]+)[[:space:]]+([0-9]+) ]]; then
             local _cnt="${BASH_REMATCH[1]}"
             local _pid="${BASH_REMATCH[2]}"
-            printf "%s\t%s\t0x%x\n" ${_cnt} ${_pid} ${_pid}
+            local _hex_pid="$(printf "0x%x" ${_pid})"
+            printf "%s\t%s\t%s\n" ${_cnt} ${_pid} ${_hex_pid}
+            if [ ${_cnt} -gt 2 ] && [ -d "_threads" ]; then
+                rg -w "nid=${_hex_pid}" -l ./_threads/ | while read -r _f; do
+                    if rg -q "${_search_word}" ${_f}; then
+                        rg "(^\"|^\s+java.lang.Thread.State\b|\blocked\b|${_search_word})" ${_f}
+                    fi
+                done > /tmp/high_cpu_threads_${_pid}_${_hex_pid}.out
+            fi
         fi
     done
+    ls -ltr /tmp/high_cpu_threads_*.out
     echo ""
     echo "# Large Receive / Send Q from netstat"
     #rg '^Proto' "${_file}"
@@ -948,13 +958,13 @@ function f_threads() {
         #find ${_file%/} -type f -name 'threads*.txt' 2>/dev/null | while read -r _f; do
         for _f in $(find ${_file%/} -type f \( -name "${_thread_file_glob}" -o -name '20*.out' \) -print 2>/dev/null | sort -n); do
             local _filename=$(basename ${_f})
+            _count=$(( ${_count} + 1 ))
             if [ -s "./f_thread_${_filename%.*}.out" ]; then
                 _LOG "WARN" "./f_thread_${_filename%.*}.out exists, skipping..."
                 continue
             fi
             _LOG "INFO" "Saving outputs into f_thread_${_filename%.*}.out ..."
             f_threads "${_f}" "${_split_search}" "${_running_thread_search_re}" "${_save_dir%/}/${_filename%.*}" "Y" > ./f_thread_${_filename%.*}.out
-            _count=$(( ${_count} + 1 ))
         done
         echo " "
         # Doing below only when checking multiple thread dumps
@@ -1051,7 +1061,8 @@ function f_threads() {
             echo "##          'preClose0' https://issues.sonatype.org/browse/NEXUS-30865 all NXRM2"
             echo "##          'MemoryCache' https://bugs.openjdk.java.net/browse/JDK-8259886 < 8u301"
             echo "##          'CachingDateFormatter' https://issues.sonatype.org/browse/NEXUS-31564"
-            rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache|CachingDateFormatter)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
+            echo "##          'com.codahale.metrics.health.HealthCheck.execute' (nexus.healthcheck.refreshInterval)"
+            rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache|CachingDateFormatter|com.codahale.metrics.health.HealthCheck.execute)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
             echo " "
         fi
 
