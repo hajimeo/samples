@@ -318,7 +318,7 @@ public class Main
         subRepoNames.add(repoName);
       }
 
-      if (runCheckDupes) {
+      if (runCheckDupes && subRepoNames != null && repoNames.size() > 0) {
         log("Running checkDupes() against " + subRepoNames.size() + " repositories.\n" + subRepoNames);
         if (checkDupes(tx, subRepoNames)) {
           isDupeFound = true;
@@ -329,8 +329,8 @@ public class Main
     }
 
     // In case the subRepoNames is still not empty.
-    if (subRepoNames.size() > 0) {
-      log("Running checkDupes() against " + subRepoNames.size() + " repositories.\n" + subRepoNames);
+    if (subRepoNames != null && subRepoNames.size() > 0) {
+      log("Running final checkDupes() against " + subRepoNames.size() + " repositories.\n" + subRepoNames);
       if (checkDupes(tx, subRepoNames)) {
         isDupeFound = true;
       }
