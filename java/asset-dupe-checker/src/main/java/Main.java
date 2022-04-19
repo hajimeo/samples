@@ -231,9 +231,10 @@ public class Main
       long progress = 1;
       for (ODocument comp : comps) {
         String rid = ((ODocument) comp.field("r")).getIdentity().toString();
+        // TODO: using LIKE makes below query extremely slow, however, without LIKE, OrientDB doesn't return correct result...
         List<ODocument> dups = execQueries(tx,
-            "SELECT FROM (SELECT LIST(@rid) as dupe_rids, MAX(@rid) as keep_rid, COUNT(*) as c FROM asset WHERE component = " +
-                rid + " AND bucket.repository_name LIKE '" + repoName + "' GROUP BY name) WHERE c > 1 LIMIT " + LIMIT +
+            "SELECT FROM (SELECT LIST(@rid) as dupe_rids, MAX(@rid) as keep_rid, COUNT(*) as c FROM asset WHERE component LIKE " +
+                rid + " AND bucket.repository_name LIKE '" + repoName + "' GROUP BY bucket, component, name) WHERE c > 1 LIMIT " + LIMIT +
                 ";");
         if (outputTruncate(dups)) {
           is_dupe_found = true;
@@ -285,6 +286,8 @@ public class Main
       }
 
       boolean runCheckDupes = false;
+      boolean runCheckDupesPerComp = checkPerComp;
+
       if(checkEachRepo || repoCounts == null || repoCounts.isEmpty() || (repoCounts.containsKey(repoName) && repoCounts.get(repoName) < 0)) {
         runCheckDupes = true;
       }
@@ -293,8 +296,8 @@ public class Main
         long estimateMb = estimateSizeMB(c);
         // super rough estimate. Just guessing one record would use 3KB (+1GB).
         if (maxMb < estimateMb) {
-          log("[WARN] Heap: " + maxMb + " MB may not be enough for " + repoName + " (count:"+ c +", estimate:" + estimateMb + " MB). Using component IDs, which is extremely slow and rely on component_bucket_group_name_version_idx.");
-          checkPerComp = true;
+          log("[WARN] Heap: " + maxMb + " MB may not be enough for " + repoName + " (count:"+ c +", estimate:" + estimateMb + " MB). TODO: Check per component, which is extremely slow and rely on component_bucket_group_name_version_idx.");
+          //TODO: runCheckDupesPerComp = true;
         }
         else {
           subTtl += c;
@@ -309,7 +312,7 @@ public class Main
         }
       }
 
-      if(checkPerComp) {
+      if(runCheckDupesPerComp) {
         if (checkDupesPerComp(tx, repoName)) {
           isDupeFound = true;
         }
