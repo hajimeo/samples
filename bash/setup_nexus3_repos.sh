@@ -410,7 +410,10 @@ baseurl='${_repo_url%/}'/$releasever/os/$basearch/
 enabled=1
 gpgcheck=0
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
-priority=1'
+priority=1
+username='${_ADMIN_USER:-"admin"}'
+password='${_ADMIN_PWD:-"admin123"}
+# https://support.sonatype.com/hc/en-us/articles/213464848-Authenticated-Access-to-Nexus-from-Yum-Doesn-t-Work
 }
 
 function f_setup_rubygem() {
