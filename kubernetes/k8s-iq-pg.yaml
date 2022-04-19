@@ -121,6 +121,7 @@ spec:
           imagePullPolicy: IfNotPresent
           env:
             # Somehow -Ddw.licenseFile is not working (but anyway, only once)
+            # If no configMap: -Ddw.database.type=postgresql -Ddw.database.hostname=${_DB_HOST} -Ddw.database.name=${_DB_NAME} -Ddw.database.username=${_DB_USER}
             - name: JAVA_OPTS
               value: '-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g \
               -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=/sonatype-work/log/jvm.log'
