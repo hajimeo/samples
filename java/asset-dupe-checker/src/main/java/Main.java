@@ -296,8 +296,8 @@ public class Main
         long estimateMb = estimateSizeMB(c);
         // super rough estimate. Just guessing one record would use 3KB (+1GB).
         if (maxMb < estimateMb) {
-          log("[WARN] Heap: " + maxMb + " MB may not be enough for " + repoName + " (count:"+ c +", estimate:" + estimateMb + " MB). TODO: Check per component, which is extremely slow and rely on component_bucket_group_name_version_idx.");
-          //TODO: runCheckDupesPerComp = true;
+          log("[WARN] Heap: " + maxMb + " MB may not be enough for " + repoName + " (count:"+ c +", estimate:" + estimateMb + " MB).");
+          runCheckDupesPerComp = true;
         }
         else {
           subTtl += c;
@@ -313,9 +313,11 @@ public class Main
       }
 
       if(runCheckDupesPerComp) {
-        if (checkDupesPerComp(tx, repoName)) {
+        out("-- [WARN] Skipped '" + repoName + "' repository");
+        // TODO: need faster way to check this. below is toooooo slow
+        /*if (checkDupesPerComp(tx, repoName)) {
           isDupeFound = true;
-        }
+        }*/
       }
       else {
         subRepoNames.add(repoName);
