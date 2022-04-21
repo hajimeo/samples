@@ -60,7 +60,7 @@ spec:
       dnsPolicy: Default
       # NOTE: Without initContainers, it fails to start on Docker-Desktop
       initContainers:
-        - name: my-customizaion
+        - name: my-customization
           image: busybox:1.33.1
           #[ -d /nexus-data/blobs ] && [ ! -L /nexus-data/blobs ] && mv -v /nexus-data/blobs /nexus-data/blobs_orig;
           # NOTE: 'echo nameserver ...' line is my personal hack as i do not want to use coreDNS
