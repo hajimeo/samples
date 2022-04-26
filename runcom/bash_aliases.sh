@@ -546,6 +546,9 @@ function backupC() {
     if which code && [ -d "$HOME/backup" ]; then
         code --list-extensions | xargs -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh
     fi
+    if [ -s /etc/hosts ] && [ -d "$HOME/backup" ]; then
+        cp -v -f /etc/hosts $HOME/backup/etc_hosts
+    fi
 
     [ ! -d "${_src}" ] && return 11
     [ ! -d "$HOME/.Trash" ] && return 12
