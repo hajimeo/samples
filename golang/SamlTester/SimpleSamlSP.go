@@ -43,6 +43,11 @@ func hello(w http.ResponseWriter, r *http.Request) {
 }
 
 func setArgs() {
+	if os.Args[1] == "-h" || os.Args[1] == "--help" {
+		simplesamlsp_help()
+		os.Exit(0)
+	}
+	helpers.DEBUG = helpers.UEnvB("_DEBUG", false)
 	if len(os.Args) > 1 {
 		_HOST_PORT = os.Args[1]
 		helpers.ULog("DEBUG", "_HOST_PORT = "+_HOST_PORT)
@@ -75,10 +80,9 @@ func getSpURL(hostPort string) *url.URL {
 }
 
 func main() {
-	helpers.DEBUG = helpers.UEnvB("_DEBUG", false)
 	setArgs()
 
-	helpers.ULog("DEBUG", "Generating EntityDescriptor from :"+_IDP_METADATA_URL)
+	helpers.ULog("DEBUG", "Getting IdP metadata from "+_IDP_METADATA_URL)
 	idpMetadataURL, _ := url.Parse(_IDP_METADATA_URL)
 	idpMetadata, err := samlsp.FetchMetadata(context.Background(), http.DefaultClient, *idpMetadataURL)
 	if err != nil {
@@ -116,4 +120,5 @@ func main() {
 		helpers.ULog("ERROR", "ListenAndServe failed with "+_HOST_PORT)
 		panic(err)
 	}
+	// TODO: 2022/04/26 18:14:37 http: TLS handshake error from 192.168.1.206:56149: remote error: tls: unknown certificate
 }
