@@ -7,13 +7,13 @@ import (
 
 var _DEBUG bool
 
-func _log(level string, message string) {
+func uLog(level string, message string) {
 	if level != "DEBUG" || _DEBUG {
 		log.Printf("%s: %s\n", level, message)
 	}
 }
 
-func _env(key string, fallback string) string {
+func uEnv(key string, fallback string) string {
 	value, exists := os.LookupEnv(key)
 	if exists {
 		return value
@@ -21,7 +21,7 @@ func _env(key string, fallback string) string {
 	return fallback
 }
 
-func _envB(key string, fallback bool) bool {
+func uEnvB(key string, fallback bool) bool {
 	value, exists := os.LookupEnv(key)
 	if exists {
 		switch value {
