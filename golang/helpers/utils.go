@@ -5,15 +5,15 @@ import (
 	"os"
 )
 
-var _DEBUG bool
+var DEBUG bool
 
-func uLog(level string, message string) {
-	if level != "DEBUG" || _DEBUG {
+func ULog(level string, message string) {
+	if level != "DEBUG" || DEBUG {
 		log.Printf("%s: %s\n", level, message)
 	}
 }
 
-func uEnv(key string, fallback string) string {
+func UEnv(key string, fallback string) string {
 	value, exists := os.LookupEnv(key)
 	if exists {
 		return value
@@ -21,7 +21,7 @@ func uEnv(key string, fallback string) string {
 	return fallback
 }
 
-func uEnvB(key string, fallback bool) bool {
+func UEnvB(key string, fallback bool) bool {
 	value, exists := os.LookupEnv(key)
 	if exists {
 		switch value {
