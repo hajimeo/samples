@@ -394,7 +394,7 @@ function r_list_logs() {
     echo "_SPLIT_BY_REGEX_SORT=\"Y\" f_splitByRegex \"./log/${_NXRM_LOG}\" \"^${_DATE_FORMAT}.\d\d\" \"_hourly_logs\""
     echo "f_extractFromLog \"./log/${_NXRM_LOG}\" \"^${_DATE_FORMAT}.XX\" \"^${_DATE_FORMAT}.YY\" > extracted_XX_YY.out"
     echo "_SPLIT_BY_REGEX_SORT=\"Y\" f_splitByRegex \"./log/${_REQUEST_LOG}\" \"${_DATE_FMT_REQ}:\d\d\" \"_hourly_logs_req\""
-    echo "f_extractFromLog \"./log/request.log\" \"${_DATE_FMT_REQ}.XX\" \"${_DATE_FMT_REQ}.YY\" > extracted_req_XX_YY.out"
+    echo "f_extractFromLog \"./log/${_REQUEST_LOG}\" \"${_DATE_FMT_REQ}.XX\" \"${_DATE_FMT_REQ}.YY\" > extracted_req_XX_YY.out"
     echo '```'
 }
 
