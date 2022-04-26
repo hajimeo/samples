@@ -135,16 +135,18 @@ function f_topCausedByExceptions() {
     rg -z -N -o "$_regex" -g "$_glob" | sort | uniq -c | sort -nr | head -n40
 }
 
+#f_topErrors ./nexus.log.2022-04-21.gz "^\d\d\d\d-\d\d-\d\d.(12|13).\d"
 function f_topErrors() {
     local __doc__="List top X ERRORs with -m Y, and removing 1 or 2 occurrences"
     local _glob="${1:-"*.*log*"}"   # file path which rg accepts and NEEDS double-quotes
-    local _date_4_bar="$2"          # for bar_chart.py. ISO format datetime, but no seconds (eg: 2018-11-05 21:00)
+    local _date_regex="$2"          # for bar_chart.py. ISO format datetime, but no seconds (eg: 2018-11-05 21:00)
     local _regex="$3"               # to overwrite default regex to detect ERRORs
     local _exclude_regex="$4"       # exclude some lines before _replace_number
     local _top_N="${5:-20}"
     local _max_N="${6-${_TOP_ERROR_MAX_N}}"
     local _max_N_opt=""
-    [ -z "$_regex" ] && _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|FAILED)\b.+"
+    [ -z "${_regex}" ] && _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|FAILED)\b.+"
+    [ -n "${_date_regex}" ] && _regex="${_date_regex}.*${_regex}"
     [ -n "${_max_N}" ] && _max_N_opt="-m ${_max_N}"
     if [ -f "${_glob}" ]; then
         rg -z -c "${_regex}" -H "${_glob}" && echo " "
@@ -163,7 +165,7 @@ function f_topErrors() {
     # just for fun, drawing bar chart
     if which bar_chart.py &>/dev/null; then
         echo " "
-        if [ -z "${_date_4_bar}" ]; then
+        if [ -z "${_date_regex}" ]; then
             if [ -f "${_glob}" ]; then
                 rg -z --no-line-number --no-filename -o '^\d\d\d\d-\d\d-\d\d.\d\d:\d' "${_glob}" > /tmp/${FUNCNAME}_2_$$.tmp
             else
@@ -171,12 +173,12 @@ function f_topErrors() {
             fi
             local _num=$(cat /tmp/${FUNCNAME}_2_$$.tmp | sort | uniq | wc -l | tr -d '[:space:]')
             if [ "${_num}" -lt 30 ]; then
-                _date_4_bar="^\d\d\d\d-\d\d-\d\d.\d\d:\d"
+                _date_regex="^\d\d\d\d-\d\d-\d\d.\d\d:\d"
             else
-                _date_4_bar="^\d\d\d\d-\d\d-\d\d.\d\d"
+                _date_regex="^\d\d\d\d-\d\d-\d\d.\d\d"
             fi
         fi
-        rg -z --no-line-number --no-filename -o "${_date_4_bar}" /tmp/${FUNCNAME}_$$.tmp | sed 's/T/ /' | bar_chart.py
+        rg -z --no-line-number --no-filename -o "${_date_regex}" /tmp/${FUNCNAME}_$$.tmp | sed 's/T/ /' | bar_chart.py
     fi
 }
 
@@ -1465,6 +1467,11 @@ function f_splitByRegex() {
         rm -f ${_tmp_file}
     fi
 }
+function f_splitPerHour() {
+    local _file="$1"
+    local _dest_dir="${2:-"_hourly_logs"}"
+    f_splitByRegex "${_file}" "^${_DATE_FORMAT}.\d\d" "${_dest_dir}"
+}
 
 function f_extractFromLog() {
     local __doc__="Extract specific lines from file"
@@ -1479,7 +1486,21 @@ function f_extractFromLog() {
         _n2="$(rg "${_regex_to}" --no-filename -m1 -n -o "${_file}" | cut -d':' -f1)"
         [ -z "${_n2}" ] && return 12
     fi
-    _sed -n "${_n1},${_n2}p;" ${_file}
+    if [ "${_file##*.}" = 'gz' ]; then
+        gunzip -c "${_file}"
+    else
+        cat "${_file}"
+    fi | _sed -n "${_n1},${_n2}p;"
+}
+function f_extractByHours() {
+    local _file="$1"
+    local _start_hour="${2}"
+    local _end_hour="${3}"
+    local _date_format="${_DATE_FORMAT}"
+    [ -z "${_end_hour}" ] && _end_hour="$(( ${_start_hour} + 1 ))"
+    local _tmp_filename="$(basename "${_file}")"
+    [[ "${_tmp_filename}" =~ request ]] && _date_format="${_DATE_FMT_REQ}"
+    f_extractFromLog "${_file}" "${_date_format}[: T.]${_start_hour}" "${_date_format}[: T.]${_end_hour}" > "${_tmp_filename%%.*}_extracted_${_start_hour}_${_end_hour}.out"
 }
 
 function _date2int() {
