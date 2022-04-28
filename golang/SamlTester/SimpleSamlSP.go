@@ -11,7 +11,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"github.com/crewjam/saml"
 	"github.com/crewjam/saml/samlsp"
 	"github.com/hajimeo/samples/golang/helpers"
 	"io/ioutil"
@@ -36,7 +35,6 @@ USAGE EXAMPLE:
     simplesamlsp dh1.standalone.localdomain:8081 https://dh1.standalone.localdomain:8444/simplesaml/saml2/idp/metadata.php
 
 ENVIRONMENT VARIABLES (all optional):
-    _SAML_SP_META_URL  string  eg: http://dh1.standalone.localdomain:8081/service/rest/v1/security/saml/metadata
     _SAML_SP_ENTITY_ID string  eg: http://dh1.standalone.localdomain:8081/service/rest/v1/security/saml/metadata
     _SAML_SP_BIND_URL  string  eg: http://dh1.standalone.localdomain:8081/saml
     _SAML_SP_BINDING   string  eg: urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST
@@ -77,12 +75,12 @@ func setArgs() {
 	}
 }
 
-func GetSpUrlStr(hostPort string) string {
+func GetSpUrlStr(hostPort string, path string) string {
 	urlStr := "http://" + hostPort
 	if len(KEY_PATH) > 0 {
 		urlStr = "https://" + hostPort
 	}
-	return urlStr + ""
+	return urlStr + path
 }
 
 func ReadRsaKeyCert(keyFile string, certFile string) (*rsa.PrivateKey, *x509.Certificate) {
@@ -118,65 +116,28 @@ func ReadRsaKeyCert(keyFile string, certFile string) (*rsa.PrivateKey, *x509.Cer
 	return key, cert
 }
 
-func SamlLoadConfig(spUrlStr string, spBindUrlStr string, keyFile string, certFile string) samlsp.Options {
-	// NOTE: Accept environment variables: _SAML_SP_META_URL, _SAML_SP_ENTITY_ID, _SAML_SP_BINDING, _SAML_SP_SIGN_CERT
-	samlOptions := samlsp.Options{AllowIDPInitiated: true}
-	samlOptions.EntityID = helpers.UEnv("_SAML_SP_ENTITY_ID", "saml-test-sp")
-	spMetadataUrlStr := helpers.UEnv("_SAML_SP_META_URL", "")
-	if len(spMetadataUrlStr) > 0 {
-		helpers.ULog("DEBUG", "Getting SP metadata from "+spMetadataUrlStr)
-		spMetadataUrl, err := url.Parse(spMetadataUrlStr)
-		if err != nil {
-			helpers.ULog("WARN", fmt.Sprintf("%s may not be a valid URL string. Ignoring ...", spMetadataUrlStr))
-		} else {
-			desc, err := samlsp.FetchMetadata(context.TODO(), http.DefaultClient, *spMetadataUrl)
-			if err != nil {
-				helpers.ULog("ERROR", fmt.Sprintf("Failed to fetch the metadata from %s", spMetadataUrlStr))
-				panic(err)
-			}
-			helpers.ULog("DEBUG", fmt.Sprintf("FetchMetadata result: %+v", desc))
-			samlOptions.IDPMetadata = desc
-		}
-	} else {
-		//`urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST` or `urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect`
-		binding := helpers.UEnv("_SAML_SP_BINDING", saml.HTTPPostBinding)
-		samlOptions.IDPMetadata = &saml.EntityDescriptor{
-			EntityID: samlOptions.EntityID,
-			IDPSSODescriptors: []saml.IDPSSODescriptor{
-				{
-					SingleSignOnServices: []saml.Endpoint{
-						{
-							Binding:  binding,
-							Location: spBindUrlStr,
-						},
-					},
-				},
-			},
-		}
-		// PEM-encoded Certificate used for signing, with the PEM Header and all newlines removed.
-		if signCertPath := helpers.UEnv("_SAML_SP_SIGN_CERT", ""); signCertPath != "" {
-			signingCert, err := ioutil.ReadFile(signCertPath)
-			if err != nil {
-				helpers.ULog("ERROR", fmt.Sprintf("%s may not be a valid signing certificate", signCertPath))
-				panic(err)
-			}
-			samlOptions.IDPMetadata.IDPSSODescriptors[0].KeyDescriptors = []saml.KeyDescriptor{
-				{
-					Use: "singing",
-					KeyInfo: saml.KeyInfo{
-						X509Data: saml.X509Data{
-							X509Certificates: []saml.X509Certificate{
-								{
-									Data: string(signingCert),
-								},
-							},
-						},
-					},
-				},
-			}
-		}
+func SamlLoadConfig(spUrlStr string, idpMetadataUrlStr string, keyFile string, certFile string) samlsp.Options {
+	// NOTE: Accept environment variables: _SAML_SP_ENTITY_ID, _SAML_SP_BINDING, _SAML_SP_SIGN_CERT
+	if len(idpMetadataUrlStr) == 0 {
+		helpers.ULog("ERROR", "idpMetadataUrlStr is required.")
+		panic("Empty idpMetadataUrlStr")
+	}
+	idpMetadataUrl, err := url.Parse(idpMetadataUrlStr)
+	if err != nil {
+		helpers.ULog("WARN", fmt.Sprintf("%s may not be a valid URL string. Ignoring ...", idpMetadataUrlStr))
+		panic(err)
 	}
 
+	helpers.ULog("DEBUG", "Getting IdP metadata with "+idpMetadataUrlStr)
+	samlOptions := samlsp.Options{AllowIDPInitiated: true}
+	samlOptions.EntityID = helpers.UEnv("_SAML_SP_ENTITY_ID", "saml-test-sp")
+	desc, err := samlsp.FetchMetadata(context.TODO(), http.DefaultClient, *idpMetadataUrl)
+	if err != nil {
+		helpers.ULog("ERROR", fmt.Sprintf("Failed to fetch the metadata from %s", idpMetadataUrlStr))
+		panic(err)
+	}
+	helpers.ULog("DEBUG", fmt.Sprintf("FetchMetadata result: %+v", desc))
+	samlOptions.IDPMetadata = desc
 	spUrl, err := url.Parse(spUrlStr)
 	if err != nil {
 		helpers.ULog("ERROR", fmt.Sprintf("%s is not a vaild URL string", spUrlStr))
@@ -193,20 +154,21 @@ func SamlLoadConfig(spUrlStr string, spBindUrlStr string, keyFile string, certFi
 func main() {
 	setArgs()
 	bindPath := "/saml"
-	spUrlStr := GetSpUrlStr(HOST_PORT)
-	spBindUrlStr := helpers.UEnv("_SAML_SP_BIND_URL", spUrlStr+bindPath)
-	helpers.ULog("DEBUG", "Generating SAML Config then MiddleWare with "+spBindUrlStr+", "+KEY_PATH+", "+CERT_PATH)
-	config := SamlLoadConfig(spUrlStr, spBindUrlStr, KEY_PATH, CERT_PATH)
+	spUrlStr := GetSpUrlStr(HOST_PORT, bindPath)
+	helpers.ULog("DEBUG", "Generating SAML Config then MiddleWare with "+spUrlStr+", "+KEY_PATH+", "+CERT_PATH)
+	config := SamlLoadConfig(spUrlStr, IDP_METADATA_URL, KEY_PATH, CERT_PATH)
 	myMiddleWare, err := samlsp.New(config)
 	if err != nil {
 		helpers.ULog("ERROR", fmt.Sprintf("samlsp.New failed with %+v", config))
 		panic(err)
 	}
-	//myMiddleWare.OnError = func(w http.ResponseWriter, r *http.Request, err error) {/* Do something */}
+	//TODO: myMiddleWare.OnError = func(w http.ResponseWriter, r *http.Request, err error) {/* Do something */}
 
-	http.Handle(bindPath, myMiddleWare)
-	http.Handle("/login", myMiddleWare.RequireAccount(http.HandlerFunc(login)))
-	helpers.ULog("INFO", "Starting Simple SP on "+spUrlStr+"/login ("+config.URL.Path+"/metadata for metadata)")
+	app := http.HandlerFunc(login)
+	path := config.URL.Path
+	http.Handle(path, myMiddleWare)
+	http.Handle(path+"/login", myMiddleWare.RequireAccount(app))
+	helpers.ULog("INFO", "Starting Simple SP on "+config.URL.String()+"/login ("+path+"/metadata for metadata)")
 	if len(KEY_PATH) > 0 {
 		err = http.ListenAndServeTLS(HOST_PORT, CERT_PATH, KEY_PATH, nil)
 	} else {
