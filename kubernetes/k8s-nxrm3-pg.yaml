@@ -78,6 +78,11 @@ spec:
             runAsUser: ${_RUNAS_USR:-200}
           image: sonatype/nexus3:${_TAG:-latest}
           imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              # Make sure blow works with INSTALL4J_ADD_VM_PARAMS
+              cpu: "2"
+              memory: "4G"
           ports:
             - containerPort: 8081
           livenessProbe:

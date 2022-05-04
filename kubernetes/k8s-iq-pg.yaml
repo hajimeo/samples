@@ -120,6 +120,11 @@ spec:
             runAsUser: ${_RUNAS_USR:-1000}
           image: "sonatype/nexus-iq-server:${_TAG:-latest}"
           imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              # Make sure blow works with JAVA_OPTS
+              cpu: "2"
+              memory: "2G"
           env:
             # Somehow -Ddw.licenseFile is not working (but anyway, only once)
             # If no configMap: -Ddw.database.type=postgresql -Ddw.database.hostname=${_DB_HOST} -Ddw.database.name=${_DB_NAME} -Ddw.database.username=${_DB_USER}
