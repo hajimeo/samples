@@ -20,7 +20,7 @@
     <mirror>
       <id>nexus</id>
       <mirrorOf>*</mirrorOf>
-      <url>http://dh1.standalone.localdomain:8081/repository/maven-central</url>
+      <url>http://nxrm3-pg-k8s.standalone.localdomain/repository/maven-central</url>
     </mirror>
   </mirrors>
   <profiles>
