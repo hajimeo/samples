@@ -87,15 +87,15 @@ $ file-list -b ./sonatype-work/nexus3/blobs/default/content -f ".bytes" >/dev/nu
 ```
 Parallel execution (concurrency 10), and save to all_objects.csv file
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 > all_objects.csv
+$ file-list -b ./content -p "vol-" -c 10 > all_objects.csv
 ```
 Parallel execution (concurrency 10) with all properties
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P > all_with_props.csv
+$ file-list -b ./content -p "vol-" -c 10 -f ".properties" -P > all_with_props.csv
 ```
-List all objects which proerties contain 'deleted=true'
+List all objects which properties contain 'deleted=true'
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "deleted=true" > soft_deleted.csv
+$ file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -fP "deleted=true" > soft_deleted.csv
 ```
 List all objects which properties contain 'repo-name=docker-proxy' and 'deleted=true' (NOTE: properties are sorted)
 ```
