@@ -4,7 +4,6 @@
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.gson.Gson;
 import com.orientechnologies.orient.core.Orient;
-import com.orientechnologies.orient.core.command.OCommandRequest;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
@@ -282,7 +281,14 @@ public class Main
       String currentLine;
 
       while ((currentLine = reader.readLine()) != null) {
-        if (currentLine.matches("^[0-9]+:" + inputToRemove + "$")) {
+        try {
+          if (currentLine.matches("^[0-9]+:" + inputToRemove + "$")) {
+            continue;
+          }
+        }
+        catch (IllegalArgumentException ee) {
+          // It's OK to ignore most of the errors/exception from matches
+          log(ee.getMessage());
           continue;
         }
         writer.write(currentLine + System.getProperty("line.separator"));
