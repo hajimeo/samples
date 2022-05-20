@@ -166,8 +166,24 @@ alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/update
 # Slack API Search
 # python3 -m http.server
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="pyv && cd $HOME/IdeaProjects/samples/python/ && python3 ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
+alias smtpdemo='python -m smtpd -n -c DebuggingServer localhost:2500'
 
 ### Functions (some command syntax does not work with alias eg: sudo) ##################################################
+function fcat() {
+    local _name="$1"
+    local _find_all="$2"
+    local _max_depth="${3:-"5"}"
+    local _result=1
+    # Accept not only file name but also /<dir>/<filename> so that using grep
+    for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
+        echo "# ${_f}" >&2
+        cat "${_f}" && _result=0
+        [[ "${_find_all}" =~ ^(y|Y) ]] || break
+        echo ''
+    done
+    return ${_result}
+}
+
 function lns() {
     if [ -L "$2" ]; then rm -i "$2" || return $?; fi
     if [ -d "$2" ]; then rmdir "$2" || return $?; fi
@@ -512,8 +528,9 @@ function pgStart() {
     local _pg_data="${2:-"/usr/local/var/postgres"}"
     local _log_path="${3:-"$HOME/postgresql.log"}"
     if [ "${_cmd}" == "start" ] && [ -n "${_log_path}" ] && [ -s "${_log_path}" ]; then
-        mv -v ${_log_path} /tmp/
-        gzip -S "_$(date +'%Y%m%d%H%M%S').gz" "/tmp/${_log_path}" &>/dev/null &
+        if mv -v ${_log_path} /tmp/; then
+            gzip -S _$(date +'%Y%m%d%H%M%S').gz /tmp/$(basename ${_log_path}) &>/dev/null &
+        fi
     fi
     if [ -n "${_log_path}" ]; then
         pg_ctl -D ${_pg_data} -l ${_log_path} ${_cmd}
