@@ -99,6 +99,7 @@ Another way to create a container:
 _PORTS="${_PORTS-"8070 8071 8081 8444 8443 5005"}"       # Used by -P (docker port forwarding). for _p in ${_PORTS}; do lsof -i:${_p}; done
 # Below is for storing files which I do not want to store in github. NOTE: Mac does not have "hostname -I"
 #_DOWNLOAD_URL="${_DOWNLOAD_URL-"http://$(hostname -I | awk '{print $1}')/${_SERVICE}/"}"
+#_YUM_PROXY_URL="${_YUM_PROXY_URL-"http://nxrm3-pg-k8s.${_DOMAIN}/repository/yum-proxy/"}"   # Be careful of using https
 #_CUSTOM_NETWORK="hdp"
 
 _CREATE_CONTAINER=false
@@ -307,7 +308,7 @@ function _gen_dockerFile() {
 
 function f_docker_base_create() {
     local __doc__="Create a docker base image (f_docker_base_create ./Dockerfile centos 6.8)"
-    local _docker_file="${1:-DockerFile7}"
+    local _docker_file="${1:-"DockerFile7"}"
     local _os_name="${2:-centos}"
     local _os_ver_num="${3:-${_OS_VERSION}}"
     local _force_build="${4}"
@@ -549,6 +550,22 @@ function f_container_setup_misc() {
     #docker exec -i ${_name} bash -c "ls /{var/run,etc,run}/nologin && rm /{var/run,etc,run}/nologin"
     docker exec -i ${_name} bash -c "chpasswd <<< root:${_password}"
     docker exec -i ${_name} bash -c "echo -e '\nexport TERM=xterm-256color' >> /etc/profile"
+    # TODO: not implemented yet
+    #if [ -n "${_YUM_PROXY_URL}" ] && curl -s -I -L -k -m1 --retry 0 "${_YUM_PROXY_URL}" &>/dev/null; then
+    #    f_echo_yum_repo_file "${_YUM_PROXY_URL}" "nexus-yum-proxy" > /tmp/nexus-yum-proxy.repo
+    #fi
+}
+
+function f_echo_yum_repo_file() {
+    local _repo_url="${1}"
+    local _name="${2:-"nexus-yum-proxy"}"
+echo '['${_name}']
+name='${_name}'
+baseurl='${_repo_url%/}'/$releasever/os/$basearch/
+enabled=1
+gpgcheck=0
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+priority=1'
 }
 
 function f_container_useradd() {
