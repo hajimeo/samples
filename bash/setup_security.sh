@@ -375,7 +375,7 @@ function f_ldap_client_install() {
 function f_freeipa_install() {
     local __doc__="Install freeIPA (may better create a dedicated container)"
     #p_node_create node99${r_DOMAIN_SUFFIX} 99 # Intentionally no Ambari install
-    local _ipa_server_fqdn="$1"
+    local _ipa_server_fqdn="${1:-"$(hostnaem -f)"}"
     local _password="${2:-$g_FREEIPA_DEFAULT_PWD}"    # password need to be 8 or longer
     local _force="${3}"
 
