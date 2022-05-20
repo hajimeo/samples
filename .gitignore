@@ -12,3 +12,4 @@ backup/*
 java/*.class
 java/*/target/*
 java/groovy/*.jar
+*_test.*
