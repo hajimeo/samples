@@ -94,6 +94,7 @@ function f_check_system() {
     # Disk
     mount &> ${_work_dir%/}/mount_df.out    # findmnt -T /path for specific location's mount options
     df -h &> ${_work_dir%/}/mount_df.out
+    grep -wE "(nfs|nfs4)" /proc/mounts > mounts_nfs.out # to check NFS version
     vmstat 1 3 &> ${_work_dir%/}/vmstat.out &
     iostat -x -p -t 1 3 2>/dev/null || vmstat -d 1 3 &> ${_work_dir%/}/iostat.out &
     pidstat -dl 3 3 &> ${_work_dir%/}/pstat.out &   # current disk stats per PID
