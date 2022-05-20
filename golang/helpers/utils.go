@@ -37,3 +37,10 @@ func UEnvB(key string, fallback bool) bool {
 	}
 	return fallback
 }
+
+func DeferPanic() {
+	// recover from panic if one occurred. Set err to nil otherwise.
+	if err := recover(); err != nil {
+		log.Println("Panic occurred:", err)
+	}
+}
