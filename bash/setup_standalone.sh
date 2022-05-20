@@ -175,7 +175,7 @@ function f_update_hosts_file_by_fqdn() {
         return 1
     fi
     # 'tr' to remove unnecessary control characters, and sometimes hostname -i returns a few IP addresses, so using 'cut'.
-    local _container_ip="$(docker exec -it ${_container_name} hostname -i | tr -cd "[:print:]" | cut -d" " -f1)"
+    local _container_ip="$(docker exec -i ${_container_name} hostname -i | tr -cd "[:print:]" | cut -d" " -f1)"
     if [ -z "${_container_ip}" ]; then
         _log "WARN" "${_container_name} is running but not returning IP. Please check and update ${_hosts_file} manually."
         return 1
@@ -480,14 +480,14 @@ function f_as_log_cleanup() {
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
     # Using xargs instead of find + -delete so that can see what's deleted. Also -mount for not checking non-local file system, and -size +0 for not deleting placeholder files.
-    docker exec -it ${_name} bash -c 'for _d in $(find /{var,opt} -mount -type d \( -name log -o -name logs -o -name tmp \) -print); do
+    docker exec -i ${_name} bash -c 'for _d in $(find /{var,opt} -mount -type d \( -name log -o -name logs -o -name tmp \) -print); do
         if [ "tmp" == "$(basename "${_d}")" ]; then
             find "${_d%/}" -mount -type f -size +0 -mtime +'${_days}' -print0
         else
             find "${_d%/}" -mount -type f -size +0 -mtime +'${_days}' \( -name '*log*' -o -name '*.out' -o -name '*.tmp' \) -exec grep -Iq . {} \; -print0
         fi 2>/dev/null | xargs -0 -P3 -n1 -t -I {} rm -f {}
     done'
-    docker exec -it ${_name} bash -c 'find /tmp -mount -type f -mtime +'${_days}' -print -delete'
+    docker exec -i ${_name} bash -c 'find /tmp -mount -type f -mtime +'${_days}' -print -delete'
 }
 
 function f_docker_commit() {
@@ -537,7 +537,7 @@ function f_container_misc() {
     local __doc__="Misc. command to workaround container issues"
     local _name="${1:-${_NAME}}"
     # Can't make crond run all the time
-    docker exec -it ${_name} bash -c "systemctl start crond.service" &>/dev/null
+    docker exec -i ${_name} bash -c "systemctl start crond.service" &>/dev/null
 }
 
 function f_container_setup_misc() {
@@ -546,9 +546,9 @@ function f_container_setup_misc() {
     local _password="${2-$_SERVICE}"  # Optional. If empty, will be _SERVICE
 
     # https://access.redhat.com/discussions/4321031 "System is booting up. See pam_nologin(8)"
-    #docker exec -it ${_name} bash -c "ls /{var/run,etc,run}/nologin && rm /{var/run,etc,run}/nologin"
-    docker exec -it ${_name} bash -c "chpasswd <<< root:${_password}"
-    docker exec -it ${_name} bash -c "echo -e '\nexport TERM=xterm-256color' >> /etc/profile"
+    #docker exec -i ${_name} bash -c "ls /{var/run,etc,run}/nologin && rm /{var/run,etc,run}/nologin"
+    docker exec -i ${_name} bash -c "chpasswd <<< root:${_password}"
+    docker exec -i ${_name} bash -c "echo -e '\nexport TERM=xterm-256color' >> /etc/profile"
 }
 
 function f_container_useradd() {
@@ -560,7 +560,7 @@ function f_container_useradd() {
     [ -z "$_user" ] && return 1
     [ -z "$_password" ] && _password="${_user}-password"
 
-    docker exec -it ${_name} bash -c 'grep -q "^'$_user':" /etc/passwd && exit 0; useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
+    docker exec -i ${_name} bash -c 'grep -q "^'$_user':" /etc/passwd && exit 0; useradd '$_user' -s `which bash` -p $(echo "'$_password'" | openssl passwd -1 -stdin) && usermod -a -G users '$_user || return $?
 
     if [ "`uname`" = "Linux" ] && which kadmin.local &>/dev/null; then
         kadmin.local -q "add_principal -pw $_password $_user" 2>/dev/null
@@ -591,12 +591,12 @@ function f_container_ssh_config() {
         return 1
     fi
 
-    docker exec -it ${_name} bash -c "[ -f /root/.ssh/authorized_keys ] || ( install -D -m 600 /dev/null /root/.ssh/authorized_keys && chmod 700 /root/.ssh )"
-    docker exec -it ${_name} bash -c "[ -f /root/.ssh/id_rsa.orig ] && exit; [ -f /root/.ssh/id_rsa ] && mv /root/.ssh/id_rsa /root/.ssh/id_rsa.orig; echo \"`cat ${_key}`\" > /root/.ssh/id_rsa; chmod 600 /root/.ssh/id_rsa;echo \"`cat ${_pub_key}`\" > /root/.ssh/id_rsa.pub; chmod 644 /root/.ssh/id_rsa.pub"
-    docker exec -it ${_name} bash -c "grep -q \"^`cat ${_pub_key}`\" /root/.ssh/authorized_keys || echo \"`cat ${_pub_key}`\" >> /root/.ssh/authorized_keys"
+    docker exec -i ${_name} bash -c "[ -f /root/.ssh/authorized_keys ] || ( install -D -m 600 /dev/null /root/.ssh/authorized_keys && chmod 700 /root/.ssh )"
+    docker exec -i ${_name} bash -c "[ -f /root/.ssh/id_rsa.orig ] && exit; [ -f /root/.ssh/id_rsa ] && mv /root/.ssh/id_rsa /root/.ssh/id_rsa.orig; echo \"`cat ${_key}`\" > /root/.ssh/id_rsa; chmod 600 /root/.ssh/id_rsa;echo \"`cat ${_pub_key}`\" > /root/.ssh/id_rsa.pub; chmod 644 /root/.ssh/id_rsa.pub"
+    docker exec -i ${_name} bash -c "grep -q \"^`cat ${_pub_key}`\" /root/.ssh/authorized_keys || echo \"`cat ${_pub_key}`\" >> /root/.ssh/authorized_keys"
     [ -s "${_global_auth_key_file}" ] && f_update_auth_key "${_name}" "${_global_auth_key_file}"
-    #docker exec -it ${_name} bash -c "grep -q '^AuthorizedKeysFile' /etc/ssh/sshd_config && sed -i '/^AuthorizedKeysFile/ s@\$@ ${_global_auth_key_file}@' /etc/ssh/sshd_config && service sshd restart"
-    docker exec -it ${_name} bash -c "[ -f /root/.ssh/config ] || echo -e \"Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\n  LogLevel ERROR\" > /root/.ssh/config"
+    #docker exec -i ${_name} bash -c "grep -q '^AuthorizedKeysFile' /etc/ssh/sshd_config && sed -i '/^AuthorizedKeysFile/ s@\$@ ${_global_auth_key_file}@' /etc/ssh/sshd_config && service sshd restart"
+    docker exec -i ${_name} bash -c "[ -f /root/.ssh/config ] || echo -e \"Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\n  LogLevel ERROR\" > /root/.ssh/config"
 }
 
 function f_update_auth_key() {
@@ -611,7 +611,7 @@ function f_update_auth_key() {
 
     chmod 700 "$(dirname "${_global_auth_key_file}")"
     chmod 600 "${_global_auth_key_file}"
-    docker exec -it ${_name} bash -c "echo \"`cat ${_global_auth_key_file}`\" >> /root/.ssh/authorized_keys && cat /root/.ssh/authorized_keys | sort | uniq > /root/.ssh/.authorized_keys.tmp && mv -f /root/.ssh/.authorized_keys.tmp /root/.ssh/authorized_keys"
+    docker exec -i ${_name} bash -c "echo \"`cat ${_global_auth_key_file}`\" >> /root/.ssh/authorized_keys && cat /root/.ssh/authorized_keys | sort | uniq > /root/.ssh/.authorized_keys.tmp && mv -f /root/.ssh/.authorized_keys.tmp /root/.ssh/authorized_keys"
 }
 
 function f_container_add_NIC() {
@@ -629,7 +629,7 @@ route add default gw ${_before_gw} eth0\
 route del default gw ${_after_gw}\
 "
     fi
-    docker exec -it ${_name} bash -c "netstat -rn"
+    docker exec -i ${_name} bash -c "netstat -rn"
 }
 
 function f_as_setup() {
@@ -664,7 +664,7 @@ function f_as_setup() {
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
     _log "INFO" "Executing '${_cmd}' &>/tmp/install_${_name}.out ..."
-    docker exec -it ${_name} bash -c "${_cmd}" &>/tmp/install_${_name}.out
+    docker exec -i ${_name} bash -c "${_cmd}" &>/tmp/install_${_name}.out
     if [ $? -ne 0 ]; then
         _log "ERROR" "Installation/Setup failed. Please check /tmp/install_${_name}.out"
         return 1
@@ -684,7 +684,7 @@ function f_as_start() {
     if [[ "${_is_restarting}" =~ ^(y|Y) ]]; then
         f_as_stop || return $?
     fi
-    docker exec -it ${_name} bash -c "source ${_SHARE_DIR}/${_service}/install_${_service}.sh;start_${_service}" || return $?
+    docker exec -i ${_name} bash -c "source ${_SHARE_DIR}/${_service}/install_${_service}.sh;start_${_service}" || return $?
     f_container_misc "${_name}"
 }
 
@@ -695,7 +695,7 @@ function f_as_stop() {
 
     # NOTE: To support different version, f_as_setup should create a symlink
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
-    docker exec -it ${_name} bash -c "source ${_SHARE_DIR}/${_service}/install_${_service}.sh;stop_${_service}"
+    docker exec -i ${_name} bash -c "source ${_SHARE_DIR}/${_service}/install_${_service}.sh;stop_${_service}"
 }
 
 function f_as_hostname_change() {
@@ -706,7 +706,7 @@ function f_as_hostname_change() {
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
     _log "INFO" "Scheduling hostname change to ${_hostname} (from ${_old_hostname})"
-    echo "docker exec -it ${_name} bash -c \". ${_SHARE_DIR%/}/${_service%/}/install_${_service%/}.sh;f_hostname_change '${_hostname}' '${_old_hostname}'\"" | at now +1 minute
+    echo "docker exec -i ${_name} bash -c \". ${_SHARE_DIR%/}/${_service%/}/install_${_service%/}.sh;f_hostname_change '${_hostname}' '${_old_hostname}'\"" | at now +1 minute
 }
 
 function f_as_install() {
