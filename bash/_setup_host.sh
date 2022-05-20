@@ -1117,6 +1117,7 @@ function f_microk8s() {
     microk8s kubectl describe pvc <pvc-name>
     microk8s kubectl exec <pod-name> -ti -- bash
     microk8s kubectl scale --replicas=0 deployment <deployment-name>    # stop all pods temporarily (if no HPA)
+    microk8s kubectl delete pod --grace-period=0 --force <pod-name>     # force terminating/deleting
 
     # Ingress troubleshooting: https://kubernetes.github.io/ingress-nginx/troubleshooting/
     microk8s kubectl exec -it -n ingress nginx-ingress-microk8s-controller-xb9qh -- cat /etc/nginx/nginx.conf
