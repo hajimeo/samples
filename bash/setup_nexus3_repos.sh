@@ -79,7 +79,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 
 
 ## Global variables
-: ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,yum,rubygem,helm,conan,conda,cocoapods,bower,go,apt,r,p2,raw"}
+: ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,yum,rubygem,helm,conan,conda,cocoapods,bower,go,apt,r,p2,gitlfs,raw"}
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
 : ${_DOMAIN:="standalone.localdomain"}
@@ -385,10 +385,14 @@ function f_setup_yum() {
     fi
     # add some data for xxxx-hosted
     local _upload_file="$(find ${_TMP%/} -type f -size +1k -name "dos2unix-*.el7.x86_64.rpm" 2>/dev/null | tail -n1)"
+    if [ ! -s "${_upload_file}" ]; then
+        if curl -sSf -o ${_TMP%/}/aether-api-1.13.1-13.el7.noarch.rpm "http://mirror.centos.org/centos/7/os/x86_64/Packages/aether-api-1.13.1-13.el7.noarch.rpm"; then
+            _upload_file=${_TMP%/}/aether-api-1.13.1-13.el7.noarch.rpm
+        fi
+    fi
     if [ -s "${_upload_file}" ]; then
+        #curl -D/dev/stderr -u admin:admin123 -X PUT "${_NEXUS_URL%/}/repository/${_prefix}-hosted/7/os/x86_64/Packages/$(basename ${_upload_file})" -T ${_upload_file}
         f_upload_asset "${_prefix}-hosted" -F "yum.asset=@${_upload_file}" -F "yum.asset.filename=$(basename ${_upload_file})" -F "yum.directory=7/os/x86_64/Packages"
-    else
-        _log "WARN" "No rpm file for upload test."
     fi
     #curl -u 'admin:admin123' --upload-file /etc/pki/rpm-gpg/RPM-GPG-KEY-pmanager ${r_NEXUS_URL%/}/repository/yum-hosted/RPM-GPG-KEY-pmanager
 
@@ -500,7 +504,7 @@ function f_setup_conan() {
 
     # If no xxxx-hosted, create it. From 3.35, so it's OK to fail
     if ! _is_repo_available "${_prefix}-hosted"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"'${_extra_sto_opt}'},"component":{"proprietaryComponents":false},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"conan-hosted"}],"type":"rpc"}' && \
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"conan-hosted"}],"type":"rpc"}' && \
             _log "INFO" "Please enable 'Conan Bearer Token Realm'"
         if [ $? -eq 0 ] && type conan &>/dev/null; then
             local _build_dir="$(mktemp -d)"
@@ -616,6 +620,18 @@ function f_setup_r() {
     fi
     # add some data for xxxx-group
     #f_get_asset "${_prefix}-group" "test/test_1k.img"
+}
+
+function f_setup_gitlfs() {
+    local _prefix="${1:-"gitlfs"}"
+    local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
+    local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
+    local _extra_sto_opt=""
+    [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
+    # If no xxxx-hosted, create it
+    if ! _is_repo_available "${_prefix}-hosted"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}',"writePolicy":"ALLOW"},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"gitlfs-hosted"}],"type":"rpc"}' || return $?
+    fi
 }
 
 function f_setup_raw() {
@@ -1123,8 +1139,13 @@ EOF
         chown -v ${_user}: ${_home%/}/.condarc
     fi
 
-    # Regardless of repo availability, setup helm
-    _log "INFO" "Not setting up any helm/helm3 configs. Please do it manually later ..."
+    # .lfsconfig needs to be under a git repo, so can't configure
+    #_repo_url="${_base_url%/}/repository/gitlfs-hosted"
+    #if _is_url_reachable "${_repo_url}" && git lfs version &>/dev/null; then
+    #    _log "INFO" "Create git config for ${_repo_url%/}/info/lfs ..."
+    #    git config -f .lfsconfig lfs.url ${_repo_url%/}/info/lfs
+    #    git add .lfsconfig
+    #fi
 
     _repo_url="${_base_url%/}/repository/maven-group"
     if _is_url_reachable "${_repo_url}"; then
@@ -1135,6 +1156,9 @@ EOF
         curl -fL -o ${_f} -L ${_DL_URL%/}/misc/m2_settings.tmpl.xml --compressed && \
             sed -i -e "s@_REPLACE_MAVEN_USERNAME_@${_usr}@1" -e "s@_REPLACE_MAVEN_USER_PWD_@${_pwd}@1" -e "s@_REPLACE_MAVEN_REPO_URL_@${_repo_url%/}/@1" ${_f}
     fi
+
+    # Regardless of repo availability, setup helm
+    _log "INFO" "Not setting up any helm/helm3 configs. Please do it manually later ..."
 }
 function f_install_clients() {
     local __doc__="Install various client software with mainly yum as 'root' (TODO: so that works with CentOS 7 only)"
@@ -1244,9 +1268,14 @@ EOF
         bash /var/tmp/Miniconda3-latest-Linux-x86_64.sh -b -p /usr/local/miniconda3
     [ -L "/usr/local/bin/conda" ] && rm -v -f /usr/local/bin/conda
     [ ! -s "/usr/local/bin/conda" ] && ln -s /usr/local/miniconda3/bin/conda /usr/local/bin/conda
-    _log "INFO" "Setup helm ..."
+    _log "INFO" "Install helm3 ..."
     curl -fL -o /var/tmp/get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 --compressed
     bash /var/tmp/get_helm.sh
+    if type git &>/dev/null; then
+        _log "INFO" "Install git lfs ..."
+        curl -sSf https://packagecloud.io/install/repositories/github/git-lfs/script.rpm.sh | sudo bash
+        yum install git-lfs && git lfs install
+    fi
 }
 
 # Set admin password after initial installation. If no 'admin.password' file, no error message and silently fail.
