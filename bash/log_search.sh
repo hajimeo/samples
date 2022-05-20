@@ -1060,9 +1060,9 @@ function f_threads() {
             # https://support.sonatype.com/hc/en-us/articles/213464998-How-to-disable-the-System-Feeds-nexus-timeline-plugin-feature-to-improve-Nexus-performance
             echo "##          'content_digest' https://issues.sonatype.org/browse/NEXUS-26379 (3.29.x) and NEXUS-25294 (3.27.x and older)"
             echo "##          'touchItemLastRequested' https://issues.sonatype.org/browse/NEXUS-10372 all NXRM2"
-            echo "##          'preClose0' https://issues.sonatype.org/browse/NEXUS-30865 all NXRM2"
+            echo "##          'preClose0' https://issues.sonatype.org/browse/NEXUS-30865 Jetty, all NXRM2"
             echo "##          'MemoryCache' https://bugs.openjdk.java.net/browse/JDK-8259886 < 8u301"
-            echo "##          'CachingDateFormatter' https://issues.sonatype.org/browse/NEXUS-31564"
+            echo "##          'CachingDateFormatter' https://issues.sonatype.org/browse/NEXUS-31564 (logback)"
             echo "##          'com.codahale.metrics.health.HealthCheck.execute' (nexus.healthcheck.refreshInterval)"
             rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache|CachingDateFormatter|com.codahale.metrics.health.HealthCheck.execute)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
             echo " "
