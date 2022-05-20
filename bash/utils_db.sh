@@ -42,7 +42,7 @@ function _postgresql_configure() {
     _upsert ${_postgresql_conf} "shared_buffers" "1024MB" "#shared_buffers" # Default 8MB. RAM * 25%. Make sure enough kernel.shmmax (ipcs -l) and /dev/shm if very old Linux or BSD
     _upsert ${_postgresql_conf} "work_mem" "8MB" "#work_mem"    # Default 4MB. RAM * 25% / max_connections (200) + extra a few MB. NOTE: I'm not expecting my PG uses 200 though
     #_upsert ${_postgresql_conf} "maintenance_work_mem" "64MB" "#maintenance_work_mem"    # Default 64MB. Can be higher than work_mem
-    _upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # RAM * 50% ~ 75%
+    #_upsert ${_postgresql_conf} "effective_cache_size" "3072MB" "#effective_cache_size" # Default 4GB. RAM * 50% ~ 75%
     #_upsert ${_postgresql_conf} "wal_buffers" "16MB" "#wal_buffers" # Default -1 (1/32 of shared_buffers) Usually higher provides better write performance
     _upsert ${_postgresql_conf} "checkpoint_completion_target" "0.9" "#checkpoint_completion_target"    # Default 0.5 or 0.9. Ratio of checkpoint_timeout (5min). Larger reduce disk I/O but may take checkpointing longer
     #_upsert ${_postgresql_conf} "random_page_cost" "1.1" "#random_page_cost"   # Default 4.0. If very fast disk is used, recommended to use same as seq_page_cost (1.0)
@@ -249,4 +249,34 @@ function _postgres_pitr() {
     diff -u ${_data_dir%/}/postgresql.conf.bak ${_data_dir%/}/postgresql.conf
     _log "INFO" "postgresql.conf has been updated. Please start PostgreSQL for recovery then 'promote'."
     # Upon completion of the recovery process, the server will remove recovery.signal (to prevent accidentally re-entering recovery mode later) and then commence normal database operations.
+}
+
+# _postgresql_create_dbuser "test"
+function _psql_restore() {
+    local __doc__="To import database / restore database from pg_dump result with psql"
+    local _dump_filepath="$1"
+    local _dbusr="${2:-"$USER"}"
+    local _dbpwd="${3:-"${_dbusr}"}"
+    local _dbname="${4:-"${_dbusr}"}"
+    local _schema="${5}"    #:-"public"
+    local _opts="${6-"${_PSQL_OPTIONS}"}"  # eg: '--set ON_ERROR_STOP=1' '--set VERBOSITY=verbose' doesn't add any extra information
+    local _db_hostname="${7:-"${_DB_HOSTNAME:-"localhost"}"}"
+    local _db_port="${8:-"${_DB_PORT:-"5432"}"}"
+    local _dry_run="${9:-"${_DRY_RUN}"}"
+    # NOTE: pg_restore has useful options: --jobs=2 --no-owner --verbose #--clean --data-only, but does not support SQL file
+    #PGPASSWORD="${_dbpwd}" pg_restore -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} --jobs=2 --no-owner --verbose ${_dump_filepath}
+    local _cmd=""
+    if [[ "${_dump_filepath}" =~ \.gz$ ]]; then
+        _cmd="gunzip -c ${_dump_filepath} |"
+    else
+        _cmd="cat ${_dump_filepath} |"
+    fi
+    if [ -n "${_schema}" ]; then
+        _cmd="${_cmd} sed -E 's/ SCHEMA [^ ;]+/ SCHEMA ${_schema}/' |"
+    fi
+    _cmd="${_cmd} sed -E 's/( OWNER|GRANT ALL ON SCHEMA .+) TO [^ ]+;/\1 TO ${_dbusr};/'"
+    local _cmd2="psql ${_opts} -h ${_db_hostname} -p ${_db_port} -U ${_dbusr} -d ${_dbname} -L ./${FUNCNAME}_psql.log"
+    echo "${_cmd} | ${_cmd2}"
+    [[ "${_dry_run}" =~ ^[yY] ]] && return
+    eval "${_cmd} | PGPASSWORD="${_dbpwd}" ${_cmd2}"
 }
