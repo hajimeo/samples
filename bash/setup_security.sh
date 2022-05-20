@@ -375,10 +375,12 @@ function f_ldap_client_install() {
 function f_freeipa_install() {
     local __doc__="Install freeIPA (may better create a dedicated container)"
     #p_node_create node99${r_DOMAIN_SUFFIX} 99 # Intentionally no Ambari install
-    local _ipa_server_fqdn="${1:-"$(hostnaem -f)"}"
-    local _password="${2:-$g_FREEIPA_DEFAULT_PWD}"    # password need to be 8 or longer
+    local _ipa_server_fqdn="${1:-"$(hostnaem -f)"}" # Used to replace the certificate
+    local _password="${2:-$g_FREEIPA_DEFAULT_PWD}"  # password need to be 8 or longer
     local _force="${3}"
 
+    #The GPG keys listed for the "MySQL Connectors Community" repository are already installed but they are not correct for this package.
+    rpm --import https://repo.mysql.com/RPM-GPG-KEY-mysql-2022
     # Used ports https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/linux_domain_identity_authentication_and_policy_guide/installing-ipa
     yum update -y || return $?
     yum install freeipa-server -y || return $?
@@ -393,9 +395,14 @@ function f_freeipa_install() {
     #sleep 10
 
     # TODO: got D-bus error when freeIPA calls systemctl (service dbus restart makes install works but makes docker slow/unstable)
+    # May need to add -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket in docker run ?
     [[ "${_force}" =~ ^(y|Y) ]] && ipa-server-install --uninstall --ignore-topology-disconnect --ignore-last-of-role
-    # Adding -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket in dcoker run
-    _d=`hostname -d` && ipa-server-install -a "'${_password}'" --hostname=`hostname -f` -r ${_d^^} -p "'${_password}'" -n ${_d} -U
+    local _domain="${_ipa_server_fqdn#*.}"
+    if [ -z "${_domain}" ]; then
+        _log "ERROR" "_ipa_server_fqdn may not be FQDN"
+        return 1
+    fi
+    ipa-server-install -a "${_password}" --hostname="${_ipa_server_fqdn}" -r "${_domain^^}" -p "${_password}" -n "${_domain}" -U
     if [ $? -ne 0 ]; then
         _log "ERROR" "ipa-server-install failed. You might want to run 'service dbus restart' and/or restart the OS (container), and uninstall then re-install"
         return 1
@@ -403,15 +410,12 @@ function f_freeipa_install() {
     [ ! -s /etc/rc.lcoal ] && echo -e "#!/bin/bash\nexit 0" > /etc/rc.local
     grep -q "ipactl start" /etc/rc.local || echo -e "\n`which ipactl` start" >> /etc/rc.local
 
-    local _domain="${_ipa_server_fqdn#*.}"
     if [ "${_domain}" == "standalone.localdomain" ]; then
         f_freeipa_cert_update "${_ipa_server_fqdn}"
     fi
 
     #ipa ping
     #ipa config-show --all
-
-    f_freeipa_cert_update "${_ipa_server_fqdn}"
     _log "WARN" "TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days"
 }
 
@@ -460,13 +464,12 @@ function f_freeipa_cert_update() {
         fi
     fi
     if [ -s ${_full_ca} ]; then
-        ssh -q root@${_ipa_server_fqdn} -t "ipa-cacert-manage install ${_full_ca} && echo -n '${_adm_pwd}' | kinit admin && ipa-certupdate" #|| return $?
+        ipa-cacert-manage install ${_full_ca} && echo -n "${_adm_pwd}" | kinit admin && ipa-certupdate #|| return $?
         _log "INFO" "TODO: Run 'ipa-certupdate' on each node."
     fi
 
-    scp ${_p12_file} root@${_ipa_server_fqdn}:/tmp/ || return $?
     # Should update only web server cert (no -d)?
-    ssh -q root@${_ipa_server_fqdn} -t "ipa-server-certinstall -v -w -d /tmp/$(basename ${_p12_file}) --pin="${_p12_pass}" -p "${_adm_pwd}" && ipactl restart"
+    ipa-server-certinstall -v -w -d "${_p12_file}" --pin="${_p12_pass}" -p "${_adm_pwd}" && ipactl restart
 }
 
 function f_simplesamlphp() {
