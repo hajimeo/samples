@@ -96,17 +96,17 @@ def get_json(filepath="", json_str="", search_props=[], key_name=None, rtn_attrs
             _p_name = None
             if bool(ptn_k):
                 # searching "key_name" : "some value"
-                _debug("_p = %s and regex = %s " % (str(_p), str("[\"]?(" + key_name + ")[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")))
+                _debug("_p = %s and ptn_k (regex) = %s " % (str(_p), str("[\"]?" + key_name + "[\"]?\s*[:=]\s*[\"]?([^\"]+)[\"]?")))
                 m = ptn_k.search(_p)
                 if m:
                     _p_name = m.groups()[0]
                     _p = key_name
-                    _debug("_p = %s and _p_name = %s " % (str(_p), str(_p_name)))
+                    _debug("_p is now key_name (%s) and _p_name is %s " % (str(_p), str(_p_name)))
             _tmp_d = []
             for _dd in _d:
                 if _p not in _dd:
                     continue
-                _debug("  _p = %s is in _dd and _dd[_p] = %s " % (str(_p), str(_dd[_p])))
+                _debug("  _p (%s) is in _dd and _dd[_p] = %s " % (str(_p), str(_dd[_p])))
                 if bool(_p_name) is False:
                     _debug("  _p = %s is in _dd and _dd[_p] = %s and _p_name is False " % (str(_p), str(_dd[_p])))
                     _tmp_d.append(_dd[_p])
