@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
 
-_SERVICE="sonatype"
+export _SERVICE="sonatype"
 
 main() {
+    for n in $(docker ps -a --format "{{.Names}}" | grep -E "^node-?(nxrm-ha2|nxrm-ha3|nxiq|nxrm2|freeipa)$" | sort); do
+        bash /usr/local/bin/setup_standalone.sh -N -n $n &>/tmp/setup_standalone_$n.out &
+        sleep 1
+    done
+    bash -x /usr/local/bin/setup_standalone.sh -n node-nxrm-ha1 &>/tmp/setup_standalone_node-nxrm-ha1.out &
+    sleep 1
+    bash -l /usr/local/bin/setup_standalone.sh -N -n nexus-client &>/tmp/setup_standalone_nexus-client
+
     if ! systemctl restart dnsmasq.service; then
         systemctl status dnsmasq.service
         return 1
     fi
-    for n in `docker ps -a --format "{{.Names}}" | grep -E "^node-?(nxrm-ha2|nxrm-ha3)$" | sort`; do
-        bash -l /usr/local/bin/setup_standalone.sh -N -n $n &>/tmp/setup_standalone_$n.out &
-        sleep 1;
-    done
-    for n in `docker ps -a --format "{{.Names}}" | grep -E "^node-?(nxrm-ha1|nxiq|freeipa||nxrm2)$" | sort`; do
-        bash -l /usr/local/bin/setup_standalone.sh -n $n &>/tmp/setup_standalone_$n.out &
-        sleep 1
-    done
-    bash -l /usr/local/bin/setup_standalone.sh -N -n nexus-client &>/tmp/setup_standalone_nexus-client
+    if ! systemctl restart haproxy.service; then
+        systemctl status haproxy.service
+        return 1
+    fi
     wait
 }
 
