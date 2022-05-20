@@ -375,7 +375,7 @@ function f_ldap_client_install() {
 function f_freeipa_install() {
     local __doc__="Install freeIPA (may better create a dedicated container)"
     #p_node_create node99${r_DOMAIN_SUFFIX} 99 # Intentionally no Ambari install
-    local _ipa_server_fqdn="${1:-"$(hostnaem -f)"}" # Used to replace the certificate
+    local _ipa_server_fqdn="${1:-"$(hostname -f)"}" # Used to replace the certificate
     local _password="${2:-$g_FREEIPA_DEFAULT_PWD}"  # password need to be 8 or longer
     local _force="${3}"
 
@@ -411,6 +411,7 @@ function f_freeipa_install() {
     grep -q "ipactl start" /etc/rc.local || echo -e "\n`which ipactl` start" >> /etc/rc.local
 
     if [ "${_domain}" == "standalone.localdomain" ]; then
+        _log "INFO" "Updating SSL certificate for standalone.localdomain ..."
         f_freeipa_cert_update "${_ipa_server_fqdn}"
     fi
 
