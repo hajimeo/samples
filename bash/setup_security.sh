@@ -413,11 +413,19 @@ function f_freeipa_install() {
     if [ "${_domain}" == "standalone.localdomain" ]; then
         _log "INFO" "Updating SSL certificate for standalone.localdomain ..."
         f_freeipa_cert_update "${_ipa_server_fqdn}"
+
+        _log "INFO" "Setting up SAML ..."
+        f_simplesamlphp "${_ipa_server_fqdn}:389"
     fi
 
     #ipa ping
     #ipa config-show --all
     _log "WARN" "TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days"
+    # TODO: create dummy users and groups
+    #echo -n "'${_adm_pwd}'" | kinit admin
+    #ipa user-add ffffff --random --first=user --last=test --password-expiration=$(date -u +%Y%m%d000000Z -d "89 days")
+    #LDAPTLS_REQCERT=never ldappasswd -Y GSSAPI -U 'admin@STANDALONE.LOCALDOMAIN' -s 'ffffff' uid=ffffff,cn=users,cn=accounts,dc=standalone,dc=localdomain -H ldap://$(hostname -f)
+    # This will anyway ask to change the password at next login...
 }
 
 function f_freeipa_client_install() {
@@ -475,10 +483,15 @@ function f_freeipa_cert_update() {
 
 function f_simplesamlphp() {
     local __doc__="No installation, but setup Simple SAML PHP"
-    local _local_ldap="${1}"
+    local _local_ldap="${1-"localhost:389"}"    # node-freeipa.standalone.localdomain:389
+    local _base_dc="${2:-"dc=standalone,dc=localdomain"}"
+    local _admin="${3:-"${g_admin}"}"
+    local _admin_pwd="${3:-"${g_FREEIPA_DEFAULT_PWD}"}"
+    local _version="${3:-"1.19.5"}"
+
     local _apache2="apache2"
     local _conf="/etc/apache2/sites-enabled/saml.conf"
-    local _server_name="$(hostanme -f)"
+    local _server_name="$(hostname -f)"
     local _port="8444"
     local _saml_dir="/var/www/simplesaml"
 
@@ -489,9 +502,11 @@ function f_simplesamlphp() {
         # https://www.digitalocean.com/community/tutorials/how-to-install-and-configure-simplesamlphp-for-saml-authentication-on-ubuntu-18-04
         apt-get install -y php-xml php-mbstring php-curl php-memcache php-ldap memcached || return $?
     else
+        # Below two may fail with "does not update installed package"
+        yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+        yum install -y http://rpms.remirepo.net/enterprise/remi-release-7.rpm
+
         yum install -y httpd mod_ssl && \
-        yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm && \
-        yum install -y http://rpms.remirepo.net/enterprise/remi-release-7.rpm && \
         yum install -y yum-utils && \
         yum-config-manager --enable remi-php56 && \
         yum install -y php php-mbstring php-xml php-curl php-memcache php-ldap || return $?
@@ -500,11 +515,17 @@ function f_simplesamlphp() {
         _conf="/etc/httpd/conf.d/saml.conf"
     fi
 
-    [ ! -s ${_conf}.orig ] && mv ${_conf} ${_conf}.orig;
-    curl -o ${g_SSL_DIR%/}/saml.crt -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.crt;
-    curl -o ${g_SSL_DIR%/}/saml.key -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.key
-    chmod 600 ${g_SSL_DIR%/}/saml.key
-    cat << EOF > ${_conf}
+    if [ -s "${_conf}" ]; then
+        #[ ! -s ${_conf}.orig ] && mv ${_conf} ${_conf}.orig;
+        _log "WARN" "${_conf} exists, so not re-creating conf file and not re-configuring ${_apache2}."
+    else
+        if [ ! -d "${g_SSL_DIR%/}" ]; then
+            mkdir -p -v "${g_SSL_DIR%/}" || return $?
+        fi
+        curl -o ${g_SSL_DIR%/}/saml.crt -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.crt || return $?
+        curl -o ${g_SSL_DIR%/}/saml.key -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.key || return $?
+        chmod 600 ${g_SSL_DIR%/}/saml.key
+        cat << EOF > ${_conf}
 Listen ${_port} https
 <VirtualHost _default_:${_port}>
   SetEnv SIMPLESAMLPHP_CONFIG_DIR ${_saml_dir%/}/config
@@ -521,37 +542,33 @@ Listen ${_port} https
   SSLCertificateKeyFile ${g_SSL_DIR%/}/saml.key
 </VirtualHost>
 EOF
-    systemctl enable ${_apache2} && systemctl restart ${_apache2} || return $?
-    local _tmpdir="$(mktemp -d)"
-    cd "${_tmpdir}" || return $?
-    curl -O -J -L https://simplesamlphp.org/download?latest || return $?
-    tar -xvf "$(ls -1t simplesamlphp-*.tar.gz | head -n1)" || return $?
-    mv "$(find ./* -maxdepth 0 -type d)" /var/www/simplesaml || return $?
-    cd -
-    _log "INFO" "Updating ${_saml_dir%/}/config/config.php ..."
-    if [ ! -f ${_saml_dir%/}/config/config.php.orig ]; then
-        cp -p ${_saml_dir%/}/config/config.php ${_saml_dir%/}/config/config.php.orig || return $?
+        systemctl enable ${_apache2} && systemctl restart ${_apache2} || return $?
     fi
-    sed -i.bak "s/'defaultsecretsalt'/'60a37e26dc9b5cf7321b'/" /var/www/simplesaml/config/config.php
-    sed -i.bak "s/'123'/'admin123'/" /var/www/simplesaml/config/config.php
-    sed -i.bak "s/'enable.saml20-idp' => false/'enable.saml20-idp' => true/" /var/www/simplesaml/config/config.php
+    if [ -s "${_saml_dir%/}/config/config.php" ]; then
+        _log "WARN" "${_saml_dir%/}/config/config.php exists. Not downloading Simple SAML PHP and not re-configuring config.php."
+    else
+        local _tmpdir="$(mktemp -d)"
+        cd "${_tmpdir}" || return $?
+        curl -O -J -L https://github.com/simplesamlphp/simplesamlphp/releases/download/v${_version}/simplesamlphp-${_version}.tar.gz || return $?
+        tar -xvf "$(ls -1t simplesamlphp-*.tar.gz | head -n1)" || return $?
+        mv "$(find ./* -maxdepth 0 -type d)" ${_saml_dir%/} || return $?
+        cd -
 
-    if [ -n "${_local_ldap}" ]; then
-        #TODO: /var/www/simplesaml/config/authsources.php
-        echo "'${_local_ldap}' => array(
-    'ldap:LDAP',
-    'hostname' => 'node-freeipa.standalone.localdomain:389',
-    'enable_tls' => FALSE,
-    'attributes' => NULL,
-    'dnpattern' => 'uid=%username%,cn=users,cn=accounts,dc=standalone,dc=localdomain',
-    'search.enable' => FALSE,
-    'search.base' => 'cn=users,cn=accounts,dc=standalone,dc=localdomain',
-    'search.scope' => 'subtree',
-    'search.attributes' => array('uid', 'gecos', 'krbPrincipalName', 'mail'),
-    'search.filter' => '(&(objectClass=person)(uid=*))',
-    'search.username' => 'admin,cn=users,cn=accounts,dc=standalone,dc=localdomain',
-    'search.password' => 'secret12',
-),"
+        _log "INFO" "Updating ${_saml_dir%/}/config/config.php ..."
+        if [ ! -f ${_saml_dir%/}/config/config.php.orig ]; then
+            cp -p ${_saml_dir%/}/config/config.php ${_saml_dir%/}/config/config.php.orig || return $?
+        fi
+        sed -i.bak "s/'defaultsecretsalt'/'60a37e26dc9b5cf7321b'/;s/'123'/'admin123'/;s/'enable.saml20-idp' => false/'enable.saml20-idp' => true/" ${_saml_dir%/}/config/config.php
+        if [ -n "${_local_ldap}" ]; then
+            _log "INFO" "Adding local_ldap config into ${_saml_dir%/}/config/authsources.php ..."
+            if [ ! -f "${_saml_dir%/}/config/authsources.php.orig" ]; then
+                cp -p "${_saml_dir%/}/config/authsources.php" "${_saml_dir%/}/config/authsources.php.orig" || return $?
+            fi
+            cat ${_saml_dir%/}/config/authsources.php | grep -v '^];$' > /tmp/authsources.php
+            echo "'local_ldap'=>['ldap:LDAP','hostname'=>'${_local_ldap}','enable_tls'=>FALSE,'attributes'=>NULL,'dnpattern'=>'uid=%username%,cn=users,cn=accounts,${_base_dc}','search.enable'=>FALSE,'search.base'=>'cn=users,cn=accounts,${_base_dc}','search.scope'=>'subtree','search.attributes'=>array('uid', 'gecos', 'krbPrincipalName', 'mail'),'search.filter'=>'(&(objectClass=person)(uid=*))','search.username'=>'${_admin},cn=users,cn=accounts,${_base_dc}','search.password'=>'${_admin_pwd}']," >> /tmp/authsources.php
+            echo "];" >> /tmp/authsources.php
+            mv -v -f /tmp/authsources.php ${_saml_dir%/}/config/authsources.php
+        fi
     fi
 }
 
