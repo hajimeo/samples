@@ -418,6 +418,7 @@ function f_freeipa_install() {
         f_simplesamlphp "${_ipa_server_fqdn}:389"
     fi
 
+    #ipactl status
     #ipa ping
     #ipa config-show --all
     _log "WARN" "TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days"
@@ -520,11 +521,11 @@ function f_simplesamlphp() {
         _log "WARN" "${_conf} exists, so not re-creating conf file and not re-configuring ${_apache2}."
     else
         if [ ! -d "${g_SSL_DIR%/}" ]; then
-            mkdir -p -v "${g_SSL_DIR%/}" || return $?
+            mkdir -v "${g_SSL_DIR%/}" || return $?
         fi
         curl -o ${g_SSL_DIR%/}/saml.crt -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.crt || return $?
         curl -o ${g_SSL_DIR%/}/saml.key -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.key || return $?
-        chmod 600 ${g_SSL_DIR%/}/saml.key
+        chmod 600 ${g_SSL_DIR%/}/saml.key || return $?
         cat << EOF > ${_conf}
 Listen ${_port} https
 <VirtualHost _default_:${_port}>
@@ -535,9 +536,9 @@ Listen ${_port} https
   <Directory ${_saml_dir%/}/www>
     Require all granted
   </Directory>
-  ErrorLog \${APACHE_LOG_DIR}/saml_error_log
-  TransferLog \${APACHE_LOG_DIR}/saml_access_log
-  CustomLog \${APACHE_LOG_DIR}/saml_request_log "%t %h %{SSL_PROTOCOL}x %{SSL_CIPHER}x \"%r\" %b"
+  ErrorLog ${_saml_dir%/}/saml_error_log
+  TransferLog ${_saml_dir%/}/saml_access_log
+  CustomLog ${_saml_dir%/}/saml_request_log "%t %h %{SSL_PROTOCOL}x %{SSL_CIPHER}x \"%r\" %b"
   SSLCertificateFile ${g_SSL_DIR%/}/saml.crt
   SSLCertificateKeyFile ${g_SSL_DIR%/}/saml.key
 </VirtualHost>
@@ -570,6 +571,7 @@ EOF
             mv -v -f /tmp/authsources.php ${_saml_dir%/}/config/authsources.php
         fi
     fi
+    _log "INFO" "Done. may need to remove /etc/httpd/conf.d/ssl.conf"
 }
 
 function f_sssd_setup() {
