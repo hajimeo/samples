@@ -366,7 +366,7 @@ function prettify() {
     #[[ "${_oneline}" =~ ^[yY] ]] && _str="$(echo "${_str}" | tr -d '\n')"
     # TODO: convert to pyparsing (or think about some good regex)
     python -c "import sys
-s = '${_str}';n = 0;p = '${_pad}';f = False;
+s = '''${_str}''';n = 0;p = '${_pad}';f = False;
 if len(s) == 0:
     for l in sys.stdin:
         s += l
