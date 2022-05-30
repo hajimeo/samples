@@ -48,23 +48,25 @@ var KEY_PATH string
 
 func login(w http.ResponseWriter, r *http.Request) {
 	// TODO: add ore debugging output
-	//_, _ = fmt.Fprintf(w, "REQUEST HEADERS:\n%+v\n", r.Header)
+	_, _ = fmt.Fprintf(w, "REQUEST HEADERS:\n%+v\n", r.Header)
+	fmt.Fprintf(w, "Hello, %s!", samlsp.AttributeFromContext(r.Context(), "cn"))
 	s := samlsp.SessionFromContext(r.Context())
 	if s == nil {
 		http.Error(w, "No Session", http.StatusInternalServerError)
-		return
+		panic("No Session")
 	}
 	sa, ok := s.(samlsp.SessionWithAttributes)
 	if !ok {
 		http.Error(w, "Session has no attributes", http.StatusInternalServerError)
-		return
+		panic("Session has no attributes")
 	}
 	w.Header().Set("Content-Type", "application/json")
 	data, err := json.MarshalIndent(sa, "", "    ")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		panic(err)
 	}
+	helpers.ULog("DEBUG", "data = "+string(data))
 	_, _ = w.Write(data)
 }
 
@@ -160,11 +162,14 @@ func SamlLoadConfig(spUrlStr string, entityID string, idpMetadataUrlStr string, 
 	key, cert := ReadRsaKeyCert(keyFile, certFile)
 
 	samlOptions := samlsp.Options{
-		EntityID:    entityID,
+		//EntityID:    entityID,
 		URL:         *rootURL,
 		Key:         key,
 		Certificate: cert,
 		IDPMetadata: idpMetadata,
+	}
+	if len(entityID) > 0 {
+		samlOptions.EntityID = entityID
 	}
 	helpers.ULog("DEBUG", fmt.Sprintf("Configuration Options: %+v", samlOptions))
 	return samlOptions
@@ -173,7 +178,7 @@ func SamlLoadConfig(spUrlStr string, entityID string, idpMetadataUrlStr string, 
 func main() {
 	_setArgs()
 	bindPath := helpers.UEnv("_SAML_SP_BIND_PATH", "/saml/") // Needs to end with "/"?
-	entityID := helpers.UEnv("_SAML_SP_ENTITY_ID", "saml-test-sp")
+	entityID := helpers.UEnv("_SAML_SP_ENTITY_ID", "")
 	spUrlStr := GetSpUrlStr(HOST_PORT, "")
 	helpers.ULog("DEBUG", "Generating SAML Config then MiddleWare with "+spUrlStr+", "+KEY_PATH+", "+CERT_PATH)
 	config := SamlLoadConfig(spUrlStr, entityID, IDP_METADATA_URL, KEY_PATH, CERT_PATH)
@@ -186,7 +191,7 @@ func main() {
 
 	http.Handle("/login", myMiddleWare.RequireAccount(http.HandlerFunc(login)))
 	http.Handle(bindPath, myMiddleWare)
-	helpers.ULog("INFO", "Starting Simple SP on "+config.URL.String()+"/login ("+bindPath+"metadata for metadata)")
+	helpers.ULog("INFO", "Starting Simple SP on "+config.URL.String()+"/login ("+config.URL.String()+bindPath+"metadata)")
 	if len(KEY_PATH) > 0 {
 		err = http.ListenAndServeTLS(HOST_PORT, CERT_PATH, KEY_PATH, nil)
 	} else {
