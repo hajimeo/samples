@@ -369,10 +369,14 @@ function r_requests() {
     _rg "${_DATE_FMT_REQ}:\d\d" -o --no-filename -g ${_REQUEST_LOG} | bar_chart.py
     echo '```'
 
-    echo "### API-like requests per hour from ${_REQUEST_LOG}"
+    _head "REQUESTS" "API-like requests per hour from ${_REQUEST_LOG}"
     echo '```'
     #_q -H "select substr(date,1,16) as ten_min, count(*) as c, CAST(avg(elapsedTime) as INT) as avg_elapsed from ${_FILTERED_DATA_DIR%/}/request.csv WHERE (requestURL like '%/service/rest/%' OR requestURL like '%/api/v2/%') GROUP BY ten_min HAVING avg_elapsed > 7000"
-    _rg "(${_DATE_FMT_REQ}:\d\d).+(/service/rest/|/api/v2/)" --no-filename -g ${_REQUEST_LOG} -o -r '$1' | bar_chart.py
+    _rg "(${_DATE_FMT_REQ}:\d\d).+(/service/rest/| /rest/|/api/v2/)" --no-filename -g ${_REQUEST_LOG} -o -r '$1' | bar_chart.py
+    echo '```'
+    echo '```'
+    echo "# To check which requests are used most:"
+    echo "rg \"(${_DATE_FMT_REQ}:\d\d).+(/service/rest/| /rest/|/api/v2/)([^ ?=]+)\" --no-filename -g ${_REQUEST_LOG} -o -r '\$2\$3' | _replace_number | sort | uniq -c | sort -nr | head -n10"
     echo '```'
 
     _rg 'HTTP/\d\.\d" 5\d\d\s' --no-filename -g ${_REQUEST_LOG} > ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out
