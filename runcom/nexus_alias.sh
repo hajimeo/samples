@@ -111,21 +111,8 @@ function nxrmStart() {
         #nexus.licenseFile=/var/tmp/share/sonatype/sonatype-*.lic
         if [ ! -d "${_sonatype_work%/}/etc" ]; then
             mkdir -p "${_sonatype_work%/}/etc"
-            touch ${_cfg_file}
         fi
-        grep -qE '^\s*nexus.security.randompassword' "${_cfg_file}" || echo "nexus.security.randompassword=false" >> "${_cfg_file}"
-        grep -qE '^\s*nexus.onboarding.enabled' "${_cfg_file}" || echo "nexus.onboarding.enabled=false" >> "${_cfg_file}"
-        grep -qE '^\s*nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
-        grep -qE '^\s*nexus.browse.component.tree.automaticRebuild' "${_cfg_file}" || echo "nexus.browse.component.tree.automaticRebuild=false" >> "${_cfg_file}"
-        # NOTE: this would not work if elasticsearch directory is empty
-        grep -qE '^\s*nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
-        # ${nexus.h2.httpListenerPort:-8082}
-        grep -qE '^\s*nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
-        # Binary (or HA-C) connect remote:hostname/component admin admin
-        grep -qE '^\s*nexus.orient.binaryListenerEnabled' "${_cfg_file}" || echo "nexus.orient.binaryListenerEnabled=true" >> "${_cfg_file}"
-        # For OrientDB studio (hostname:2480/studio/index.html)
-        grep -qE '^\s*nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
-        grep -qE '^\s*nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
+        [ -n "${_cfg_file}" ] && _updateNexusProps "${_cfg_file}"
         [ -z "${_mode}" ] && _mode="run"
     else    # if NXRM2
         [ -z "${_mode}" ] && _mode="console"
@@ -149,6 +136,24 @@ function nxrmStart() {
     # For java options, latter values are used, so appending
     INSTALL4J_ADD_VM_PARAMS="-XX:-MaxFDLimit ${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}" ${_nexus_file} ${_mode}
     # ulimit: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
+}
+
+function _updateNexusProps() {
+    local _cfg_file="$1"
+    touch ${_cfg_file}
+    grep -qE '^\s*nexus.security.randompassword' "${_cfg_file}" || echo "nexus.security.randompassword=false" >> "${_cfg_file}"
+    grep -qE '^\s*nexus.onboarding.enabled' "${_cfg_file}" || echo "nexus.onboarding.enabled=false" >> "${_cfg_file}"
+    grep -qE '^\s*nexus.scripts.allowCreation' "${_cfg_file}" || echo "nexus.scripts.allowCreation=true" >> "${_cfg_file}"
+    grep -qE '^\s*nexus.browse.component.tree.automaticRebuild' "${_cfg_file}" || echo "nexus.browse.component.tree.automaticRebuild=false" >> "${_cfg_file}"
+    # NOTE: this would not work if elasticsearch directory is empty
+    grep -qE '^\s*nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
+    # ${nexus.h2.httpListenerPort:-8082}
+    grep -qE '^\s*nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
+    # Binary (or HA-C) connect remote:hostname/component admin admin
+    grep -qE '^\s*nexus.orient.binaryListenerEnabled' "${_cfg_file}" || echo "nexus.orient.binaryListenerEnabled=true" >> "${_cfg_file}"
+    # For OrientDB studio (hostname:2480/studio/index.html)
+    grep -qE '^\s*nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
+    grep -qE '^\s*nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
 }
 
 #nxrmDocker "nxrm3-test" "" "8181" "8543" #"--read-only -v /tmp/nxrm3-test:/tmp" or --tmpfs /tmp:noexec
