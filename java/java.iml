@@ -9,5 +9,6 @@
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="library" name="groovy-2.5.8" level="application" />
+    <orderEntry type="library" name="external-libs" level="application" />
   </component>
 </module>
