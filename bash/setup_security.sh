@@ -488,7 +488,7 @@ function f_simplesamlphp() {
     local _base_dc="${2:-"dc=standalone,dc=localdomain"}"
     local _admin="${3:-"${g_admin}"}"
     local _admin_pwd="${3:-"${g_FREEIPA_DEFAULT_PWD}"}"
-    local _version="${3:-"1.19.5"}"
+    local _version="${3:-"1.19.1"}" # 1.19.5 causes https://github.com/simplesamlphp/simplesamlphp/issues/1592
 
     local _apache2="apache2"
     local _conf="/etc/apache2/sites-enabled/saml.conf"
@@ -503,15 +503,15 @@ function f_simplesamlphp() {
         # https://www.digitalocean.com/community/tutorials/how-to-install-and-configure-simplesamlphp-for-saml-authentication-on-ubuntu-18-04
         apt-get install -y php-xml php-mbstring php-curl php-memcache php-ldap memcached || return $?
     else
-        # Below two may fail with "does not update installed package"
+        # https://computingforgeeks.com/how-to-install-php-on-centos-fedora/
+        # Below two may fail with "does not update installed package" so not checking return code.
         yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
         yum install -y http://rpms.remirepo.net/enterprise/remi-release-7.rpm
 
         yum install -y httpd mod_ssl && \
-        yum install -y yum-utils && \
-        yum-config-manager --enable remi-php56 && \
+        yum install -y epel-release yum-utils && \
+        yum-config-manager --disable remi-php54 && yum-config-manager --enable remi-php73 || return $?
         yum install -y php php-mbstring php-xml php-curl php-memcache php-ldap || return $?
-        # TODO: Is it OK to use -y in the yum install -y php as 5.6 is too old
         _apache2="httpd"
         _conf="/etc/httpd/conf.d/saml.conf"
     fi
@@ -536,9 +536,9 @@ Listen ${_port} https
   <Directory ${_saml_dir%/}/www>
     Require all granted
   </Directory>
-  ErrorLog ${_saml_dir%/}/saml_error_log
-  TransferLog ${_saml_dir%/}/saml_access_log
-  CustomLog ${_saml_dir%/}/saml_request_log "%t %h %{SSL_PROTOCOL}x %{SSL_CIPHER}x \"%r\" %b"
+  ErrorLog ${_saml_dir%/}/log/saml_error_log
+  TransferLog ${_saml_dir%/}/log/saml_access_log
+  CustomLog ${_saml_dir%/}/log/saml_request_log "%t %h %{SSL_PROTOCOL}x %{SSL_CIPHER}x \"%r\" %b"
   SSLCertificateFile ${g_SSL_DIR%/}/saml.crt
   SSLCertificateKeyFile ${g_SSL_DIR%/}/saml.key
 </VirtualHost>
@@ -561,7 +561,7 @@ EOF
         fi
         sed -i.bak "s/'defaultsecretsalt'/'60a37e26dc9b5cf7321b'/;s/'123'/'admin123'/;s/'enable.saml20-idp' => false/'enable.saml20-idp' => true/" ${_saml_dir%/}/config/config.php
         if [ -n "${_local_ldap}" ]; then
-            _log "INFO" "Adding local_ldap config into ${_saml_dir%/}/config/authsources.php ..."
+            _log "INFO" "Updating ${_saml_dir%/}/config/authsources.php ..."
             if [ ! -f "${_saml_dir%/}/config/authsources.php.orig" ]; then
                 cp -p "${_saml_dir%/}/config/authsources.php" "${_saml_dir%/}/config/authsources.php.orig" || return $?
             fi
@@ -570,8 +570,11 @@ EOF
             echo "];" >> /tmp/authsources.php
             mv -v -f /tmp/authsources.php ${_saml_dir%/}/config/authsources.php
         fi
+        _log "INFO" "Updating ${_saml_dir%/}/metadata/saml20-idp-hosted.php ..."
+        sed -i.bak -r "s/\s+'auth' => .+$/    'auth' => 'local_ldap',\n    'NameIDFormat'               => 'urn:oasis:names:tc:SAML:1.1:nameid-format:persistent',\n    'simplesaml.nameidattribute' => 'uid',\n    'SingleSignOnServiceBinding' => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST',\n    'SingleLogoutServiceBinding' => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST',/" ${_saml_dir%/}/metadata/saml20-idp-hosted.php
     fi
-    _log "INFO" "Done. may need to remove /etc/httpd/conf.d/ssl.conf"
+    _log "INFO" "Done. Insert SP metadata into"
+    _log "TODO" "May need to remove /etc/httpd/conf.d/ssl.conf"
 }
 
 function f_sssd_setup() {
