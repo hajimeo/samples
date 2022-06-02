@@ -12,10 +12,14 @@ fi
 
 function _get_iq_url() {
     local _iq_url="${1:-${_IQ_URL}}"
-    if [ -z "${_iq_url}" ] && [ -z "${_IQ_URL}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
+    if [ -z "${_iq_url}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
         _iq_url="http://localhost:8070/"
-    elif [ -n "${_iq_url}" ] && [[ ! "${_iq_url}" =~ ^https?://.+:[0-9]+ ]]; then   # Provided hostname only
-        _iq_url="http://${_iq_url}:8070/"
+    elif [ -n "${_iq_url}" ] && [[ ! "${_iq_url}" =~ ^https?://.+ ]]; then
+        if [[ ! "${_iq_url}" =~ .+:[0-9]+ ]]; then   # Provided hostname only
+            _iq_url="http://${_iq_url%/}:8070/"
+        else
+            _iq_url="http://${_iq_url%/}/"
+        fi
     elif [ -z "${_iq_url}" ]; then  # default
         _iq_url="https://nxiq-k8s.standalone.localdomain/"
     fi
