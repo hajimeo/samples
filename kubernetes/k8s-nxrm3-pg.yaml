@@ -166,7 +166,10 @@ metadata:
   labels:
     app: nxrm3-pg
 spec:
-  type: NodePort
+  #type: NodePort
+  # Using metallib
+  type: LoadBalancer
+  loadBalancerIP: 192.168.52.230
   selector:
     app: nxrm3-pg
   ports:
