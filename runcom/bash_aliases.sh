@@ -615,6 +615,7 @@ function backupC() {
     fi
     # Currently updatedb may not index external drive (maybe because exFat?)
     if type updatedb &>/dev/null; then
+        #alias of 'updatedb' = sudo FILESYSTEMS="hfs ufs apfs exfat" /usr/libexec/locate.updatedb
         echo "# executing updatedb (may ask sudo password)"
         updatedb
     fi
