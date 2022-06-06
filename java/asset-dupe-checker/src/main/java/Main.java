@@ -305,10 +305,15 @@ public class Main
           long estimateSubTtl = estimateSizeMB(subTtl);
           debug("Repository name:" + repoName + ", rows:" + repoCounts.get(repoName) + ", subTtl:" + subTtl +
               ", estimate_size:" + estimateSubTtl + "/" + maxMb);
-          if (subRepoNames.size() > 0 && estimateSubTtl > maxMb) {
-            log("Adding " + repoName + " will exceed the estimated limit, so will run checkDupes() for " +
+          // Avoiding too long "IN" so set max 100 to the sub repository names.
+          if (subRepoNames.size() > 99 || (subRepoNames.size() > 0 && estimateSubTtl > maxMb)) {
+            log("Adding " + repoName + " (count:"+ c +", estimate:" + estimateMb + " MB) may exceed the limit, so will run checkDupes() for " +
                 subRepoNames.size() + " repositories.\n" + subRepoNames);
-            runCheckDupes = true;
+            if (checkDupes(tx, subRepoNames)) {
+              isDupeFound = true;
+            }
+            subTtl = 0L;
+            subRepoNames = new ArrayList<>();
           }
         }
       }
@@ -325,7 +330,7 @@ public class Main
         subRepoNames.add(repoName);
       }
 
-      if (runCheckDupes && subRepoNames != null && repoNames.size() > 0) {
+      if (runCheckDupes && subRepoNames.size() > 0 && repoNames.size() > 0) {
         log("Running checkDupes() against " + subRepoNames.size() + " repositories.\n" + subRepoNames);
         if (checkDupes(tx, subRepoNames)) {
           isDupeFound = true;
@@ -336,8 +341,8 @@ public class Main
     }
 
     // In case the subRepoNames is still not empty.
-    if (subRepoNames != null && subRepoNames.size() > 0) {
-      log("Running final checkDupes() against " + subRepoNames.size() + " repositories.\n" + subRepoNames);
+    if (subRepoNames.size() > 0) {
+      log("Running the final checkDupes() against " + subRepoNames.size() + " repositories.\n" + subRepoNames);
       if (checkDupes(tx, subRepoNames)) {
         isDupeFound = true;
       }
