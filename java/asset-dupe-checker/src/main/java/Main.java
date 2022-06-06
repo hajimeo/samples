@@ -12,7 +12,7 @@
  *    "extractDir" is the path used when a .bak file is given. If extractDir is empty, use the tmp directory and the extracted data will be deleted on exit.
  *  "repoNames" is a comma separated repository names to force checking these repositories only.
  *
- * TODO: add tests. Cleanup the code (main)..., convert to Groovy.
+ * TODO: Add tests. Cleanup the code (too messy...)
  *
  * My note:
  *  mvn clean package && cp -v ./target/asset-dupe-checker-1.0-SNAPSHOT-jar-with-dependencies.jar ../../misc/asset-dupe-checker.jar
@@ -28,9 +28,12 @@ import com.orientechnologies.orient.core.sql.query.OSQLSynchQuery;
 import net.lingala.zip4j.ZipFile;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -41,9 +44,10 @@ public class Main
 {
   private static long MAXMB;
   private static String EXTRACT_DIR = "";
+  private static String LOG_PATH = "";
   private static List<String> REPO_NAMES_INCLUDE;
   private static List<String> REPO_NAMES_EXCLUDE;
-  private static String LIMIT = "1000";
+  private static String LIMIT = "-1"; // but default is 4000
   private static Path TMP_DIR = null;
   private static double MAGNIFY_PERCENT = 300.0;
   private static boolean CHECK_PER_COMP;
@@ -60,7 +64,7 @@ public class Main
     System.out.println("  -DrepoNamesExclude=<repo1,repo2,...> To exclude specific repositories");
     System.out.println("  -DmagnifyPercent=<int> Used for estimating (default 300). Higher makes conservative but using 0 checks one repository each");
     //System.out.println("  -DcheckPerComp=true For extremely large repository");
-    System.out.println("  -Dlimit=<int> Currently duplicates over 1000 per query is ignored as not expecting so many duplicates");
+    System.out.println("  -Dlimit=<int> Currently duplicates over 4000 per query is ignored as not expecting so many duplicates");
     System.out.println("  -DextractDir=<extracting path> To specify component-*.bak file");
     System.out.println("  -DnoDupeCheck=true For testing/debugging this code");
     System.out.println("  -Ddebug=true");
@@ -71,8 +75,25 @@ public class Main
   }
 
   private static void log(String msg) {
+    log(msg, false);
+  }
+
+  private static void log(String msg, Boolean noPrint) {
     // TODO: proper logging
-    System.err.println(getCurrentLocalDateTimeStamp() + " " + msg);
+    String message = getCurrentLocalDateTimeStamp() + " " + msg + "\n";
+    if (!noPrint) {
+      System.err.print(message);
+    }
+    if (LOG_PATH != null && LOG_PATH.length() > 1) {
+      try {
+        Files.write(Paths.get(LOG_PATH), message.getBytes(StandardCharsets.UTF_8),
+            StandardOpenOption.CREATE,
+            StandardOpenOption.APPEND);
+      }
+      catch (Exception logE) {
+        System.err.println("log() got Exception: " + logE.getMessage());
+      }
+    }
   }
 
   private static void debug(String msg) {
@@ -216,6 +237,9 @@ public class Main
         "SELECT FROM (SELECT LIST(@rid) as dupe_rids, MAX(@rid) as keep_rid, COUNT(*) as c FROM asset " +
             where +
             " GROUP BY bucket, component, name) WHERE c > 1 LIMIT " + LIMIT + ";");
+    if (dups.size() > 0) {
+      log("Found " + dups.size() + " duplicates from " + repoNames.toString());
+    }
     if (outputTruncate(dups)) {
       is_dupe_found = true;
     }
@@ -223,6 +247,7 @@ public class Main
   }
 
   private static boolean checkDupesPerComp(ODatabaseDocumentTx tx, String repoName) {
+    // TODO: too slow, so stopped using this.
     boolean is_dupe_found = false;
     if (repoName != null && !repoName.trim().isEmpty()) {
       List<ODocument> comps = execQueries(tx,"SELECT @rid as r FROM component WHERE bucket.repository_name = '" + repoName +"' LIMIT -1;");
@@ -409,12 +434,14 @@ public class Main
     debug("repoNamesExclude: " + REPO_NAMES_EXCLUDE);
     MAGNIFY_PERCENT = Double.parseDouble(System.getProperty("magnifyPercent", "300"));
     debug("magnifyPercent: " + MAGNIFY_PERCENT);
-    LIMIT = System.getProperty("limit", "1000");
+    LIMIT = System.getProperty("limit", "4000");
     debug("limit: " + LIMIT);
     //CHECK_PER_COMP = Boolean.getBoolean("checkPerComp");
     //debug("checkPerComp: " + CHECK_PER_COMP);
     NO_DUPE_CHECK = Boolean.getBoolean("noDupeCheck");
     debug("noDupeCheck: " + NO_DUPE_CHECK);
+    LOG_PATH = System.getProperty("logPath", "./asset-dupe-checker.log");
+    debug("logPath: " + LOG_PATH);
     MAXMB = Runtime.getRuntime().maxMemory() / 1024 / 1024;
     debug("maxMb: " + MAXMB);
   }
