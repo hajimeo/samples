@@ -235,10 +235,9 @@ public class Main
     List<ODocument> dups = execQueries(tx,
         // Seems reducing columns reduce heap usage, so not using "bucket.repository_name as repo_name, component, name"
         "SELECT FROM (SELECT LIST(@rid) as dupe_rids, MAX(@rid) as keep_rid, COUNT(*) as c FROM asset " +
-            where +
-            " GROUP BY bucket, component, name) WHERE c > 1 LIMIT " + LIMIT + ";");
-    if (dups.size() > 0) {
-      log("Found " + dups.size() + " duplicates from " + repoNames.toString());
+            where + " GROUP BY bucket, component, name) WHERE c > 1 LIMIT " + LIMIT + ";");
+    if (dups != null && repoNames != null) {
+      log("Found " + dups.size() + " duplicates from " + repoNames.size() + " repositories with LIMIT " + LIMIT);
     }
     if (outputTruncate(dups)) {
       is_dupe_found = true;
@@ -330,10 +329,10 @@ public class Main
           long estimateSubTtl = estimateSizeMB(subTtl);
           debug("Repository name:" + repoName + ", rows:" + repoCounts.get(repoName) + ", subTtl:" + subTtl +
               ", estimate_size:" + estimateSubTtl + "/" + maxMb);
-          // Avoiding too long "IN" so set max 100 to the sub repository names.
-          if (subRepoNames.size() > 99 || (subRepoNames.size() > 0 && estimateSubTtl > maxMb)) {
+          // Avoiding too long "IN" so set max 300 to the sub repository names.
+          if (subRepoNames.size() >= 300 || (subRepoNames.size() > 0 && estimateSubTtl > maxMb)) {
             log("Adding " + repoName + " (count:"+ c +", estimate:" + estimateMb + " MB) may exceed the limit, so will run checkDupes() for " +
-                subRepoNames.size() + " repositories.\n" + subRepoNames);
+                subRepoNames.size() + " repositories (subTtl:" + (subTtl - c) + ").\n" + subRepoNames);
             if (checkDupes(tx, subRepoNames)) {
               isDupeFound = true;
             }
@@ -344,7 +343,7 @@ public class Main
       }
 
       if(runCheckDupesPerComp) {
-        // TODO: need faster way to check this. below is toooooo slow
+        // TODO: need faster way to check per comp or any smaller set than repository. below is toooooo slow
         /*if (checkDupesPerComp(tx, repoName)) {
           isDupeFound = true;
         }*/
