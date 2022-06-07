@@ -172,7 +172,7 @@ public class Main
   }
 
   private static long estimateSizeMB(long c) {
-    // If magnify_percent is 300%, assuming 1 row = 3KB + 1KB = 4KB
+    // If magnify_percent is 400%, assuming 1 row = 4KB + 1KB = 5KB
     return (long) Math.ceil(((c * MAGNIFY_PERCENT / 100) + 1024) / 1024);
   }
 
@@ -183,7 +183,7 @@ public class Main
     try {
       results = tx.query(new OSQLSynchQuery(input));
     }
-    // TODO: Not sure if these are catchable but trying...
+    // TODO: Not sure if these are catchable. Also BufferUnderflowException tends to cause 'OutOfMemoryError: Java heap space'
     catch (ODatabaseException | ClassCastException | java.nio.BufferUnderflowException e) {
       log("[ERROR] " + e.getMessage());
       //e.printStackTrace();
