@@ -47,7 +47,7 @@ public class Main
   private static String LOG_PATH = "";
   private static List<String> REPO_NAMES_INCLUDE;
   private static List<String> REPO_NAMES_EXCLUDE;
-  private static String LIMIT = "-1"; // but default is 4000
+  private static String LIMIT = "-1";
   private static Path TMP_DIR = null;
   private static double MAGNIFY_PERCENT = 300.0;
   private static boolean CHECK_PER_COMP;
@@ -183,7 +183,8 @@ public class Main
     try {
       results = tx.query(new OSQLSynchQuery(input));
     }
-    catch (ODatabaseException | ClassCastException e) {
+    // TODO: Not sure if these are catchable but trying...
+    catch (ODatabaseException | ClassCastException | java.nio.BufferUnderflowException e) {
       log("[ERROR] " + e.getMessage());
       //e.printStackTrace();
     }
@@ -234,7 +235,7 @@ public class Main
     }
     List<ODocument> dups = execQueries(tx,
         // Seems reducing columns reduce heap usage, so not using "bucket.repository_name as repo_name, component, name"
-        "SELECT FROM (SELECT LIST(@rid) as dupe_rids, MAX(@rid) as keep_rid, COUNT(*) as c FROM asset " +
+        "SELECT FROM (SELECT bucket, LIST(@rid) as dupe_rids, MAX(@rid) as keep_rid, COUNT(*) as c FROM asset " +
             where + " GROUP BY bucket, component, name) WHERE c > 1 LIMIT " + LIMIT + ";");
     if (dups != null && repoNames != null) {
       log("Found " + dups.size() + " duplicates from " + repoNames.size() + " repositories with LIMIT " + LIMIT);
@@ -433,7 +434,7 @@ public class Main
     debug("repoNamesExclude: " + REPO_NAMES_EXCLUDE);
     MAGNIFY_PERCENT = Double.parseDouble(System.getProperty("magnifyPercent", "300"));
     debug("magnifyPercent: " + MAGNIFY_PERCENT);
-    LIMIT = System.getProperty("limit", "4000");
+    LIMIT = System.getProperty("limit", "-1");
     debug("limit: " + LIMIT);
     //CHECK_PER_COMP = Boolean.getBoolean("checkPerComp");
     //debug("checkPerComp: " + CHECK_PER_COMP);
@@ -457,6 +458,8 @@ public class Main
     Long abn_idx_c = 0L;
     Long abcn_idx_c = 0L;
     Long cbgnv_idx_c = 0L;
+    Long bna_idx_c = 0L;
+    Long bnc_idx_c = 0L;
     Map<String, Long> repo_counts = new HashMap<>();
     List<String> repo_names = new ArrayList<>();
 
@@ -501,6 +504,7 @@ public class Main
 
         long estimateMb = estimateSizeMB(ac);
         boolean check_all_repo = false;
+        boolean needTrunBrowse = false;
 
         if (MAGNIFY_PERCENT == 0.0) {
           log("magnifyPercent is 0%, so skipping various checks and checking each repository.");
@@ -536,6 +540,12 @@ public class Main
             else if (iname.equals("component_bucket_group_name_version_idx")) {
               cbgnv_idx_c = getIndexCount(tx, iname);
             }
+            else if (iname.equals("browse_node_asset_id_idx")) {
+              bna_idx_c = getIndexCount(tx, iname);
+            }
+            else if (iname.equals("browse_node_component_id_idx")) {
+              bnc_idx_c = getIndexCount(tx, iname);
+            }
           }
 
           // Current limitation/restriction: asset_bucket_name_idx is required (10% difference as this is estimation).
@@ -554,13 +564,13 @@ public class Main
 
           // Just in case, counting browse_node (should count per repo?)
           docs = execQueries(tx, "select count(*) as c from browse_node");
-          long bnc = docs.get(0).field("c");
-          log("Browse_node count: " + bnc);
-          double ratio = (double) bnc / (double) ac;
-          if (ac > 0 && bnc > 0 && (ratio < 0.8 || ratio > 1.2)) {
-            out("-- [WARN] may need 'TRUNCATE CLASS browse_node;'");
+          long bn_c = docs.get(0).field("c");
+          log("Browse_node count: " + bn_c + " / index: " + (bnc_idx_c + bna_idx_c));
+          double ratio = (double) bn_c / ((double) bnc_idx_c + (double) bna_idx_c);
+          if (ac > 0 && bn_c > 0 && (ratio < 0.9 || ratio > 1.01)) {
+            log("[WARN] need 'TRUNCATE CLASS browse_node;'");
+            needTrunBrowse = true;
           }
-
           repo_counts = getRepoNamesCounts(tx, REPO_NAMES_INCLUDE, REPO_NAMES_EXCLUDE, (NO_DUPE_CHECK || CHECK_PER_COMP));
           repo_names.addAll(repo_counts.keySet());
         }
@@ -583,9 +593,14 @@ public class Main
           }
 
           if (is_dupe_found) {
-            out("--TRUNCATE CLASS browse_node;");
             out("--REPAIR DATABASE --fix-links;");
             out("--REBUILD INDEX *;");
+            if (needTrunBrowse) {
+              out("TRUNCATE CLASS browse_node;");
+            }
+            else {
+              out("--TRUNCATE CLASS browse_node;");
+            }
             out("REBUILD INDEX asset_bucket_component_name_idx;");
           }
         }
