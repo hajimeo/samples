@@ -21,6 +21,7 @@
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
+import com.orientechnologies.orient.core.exception.OCommandExecutionException;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
 import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.record.impl.ODocument;
@@ -50,9 +51,10 @@ public class Main
   private static String LIMIT = "-1";
   private static Path TMP_DIR = null;
   private static double MAGNIFY_PERCENT = 300.0;
-  private static boolean CHECK_PER_COMP;
+  //private static boolean CHECK_PER_COMP;
   private static boolean NO_DUPE_CHECK;
   private static boolean IS_DEBUG;
+  private static long SUBTTL;
 
   private Main() { }
 
@@ -104,6 +106,7 @@ public class Main
 
   private static void out(String msg) {
     System.out.println(msg);
+    log(msg, true);
   }
 
   private static void unzip(String zipFilePath, String destPath) throws IOException {
@@ -184,7 +187,7 @@ public class Main
       results = tx.query(new OSQLSynchQuery(input));
     }
     // TODO: Not sure if these are catchable. Also BufferUnderflowException tends to cause 'OutOfMemoryError: Java heap space'
-    catch (ODatabaseException | ClassCastException | java.nio.BufferUnderflowException e) {
+    catch (ODatabaseException | OCommandExecutionException | ClassCastException | java.nio.BufferUnderflowException | java.lang.NullPointerException e) {
       log("[ERROR] " + e.getMessage());
       //e.printStackTrace();
     }
@@ -197,19 +200,22 @@ public class Main
 
   public static void printMissingIndex(List<ODocument> docs) {
     List<String> expected_idxs = Arrays
-        .asList("asset_bucket_component_name_idx", "asset_bucket_name_idx", "asset_component_idx", "asset_name_ci_idx",
-            "bucket_repository_name_idx", "component_bucket_group_name_version_idx",
-            "component_bucket_name_version_idx", "component_ci_name_ci_idx", "component_group_name_version_ci_idx",
-            "browse_node_asset_id_idx", "browse_node_component_id_idx",
-            "browse_node_repository_name_parent_path_name_idx", "component_tags_idx",
-            "docker_foreign_layers_digest_idx", "statushealthcheck_node_id_idx", "tag_name_idx");
+        .asList("asset_bucket_component_name_idx", "asset_bucket_name_idx", "asset_component_idx", "asset_name_ci_idx", //asset_bucket_rid_idx??
+            "browse_node_asset_id_idx", "browse_node_component_id_idx", "browse_node_repository_name_parent_path_name_idx",
+            "bucket_repository_name_idx",
+            "component_bucket_group_name_version_idx", "component_bucket_name_version_idx", "component_ci_name_ci_idx", "component_group_name_version_ci_idx", "component_tags_idx",
+            "coordinate_download_count_namespace_name_version_ip_address_idx", "coordinate_download_count_namespace_name_version_repository_name_idx", "coordinate_download_count_namespace_name_version_username_idx", "coordinate_download_count_repository_name_namespace_name_version_date_ip_address_username_idx",
+            "deleted_blob_index_blobstore_blob_id_idx",
+            "docker_foreign_layers_digest_idx",
+            "statushealthcheck_node_id_idx",
+            "tag_name_idx");
     List<String> current_idxs = new ArrayList<>();
     for (ODocument doc : docs) {
       current_idxs.add(doc.field("name").toString());
     }
     for (String idx : expected_idxs) {
       if (!current_idxs.contains(idx)) {
-        out("-- Missing index: " + idx);
+        out("-- [WARN] Missing index (not considering version): " + idx);
       }
     }
   }
@@ -251,7 +257,7 @@ public class Main
     boolean is_dupe_found = false;
     if (repoName != null && !repoName.trim().isEmpty()) {
       List<ODocument> comps = execQueries(tx,"SELECT @rid as r FROM component WHERE bucket.repository_name = '" + repoName +"' LIMIT -1;");
-      log("Component size for " + repoName + " = " + comps.size());
+      debug("Component size for " + repoName + " = " + comps.size());
       Boolean current_debug = IS_DEBUG;
       IS_DEBUG = false;
       long progress = 1;
@@ -298,12 +304,11 @@ public class Main
       List<String> repoNames,
       Map<String, Long> repoCounts,
       long maxMb,
-      boolean checkEachRepo,
-      boolean checkPerComp
+      boolean checkEachRepo
   )
   {
     boolean isDupeFound = false;
-    long subTtl = 0L;
+    SUBTTL = 0L;
     List<String> subRepoNames = new ArrayList<>();
 
     for (String repoName : repoNames) {
@@ -311,57 +316,18 @@ public class Main
         continue;
       }
 
-      boolean runCheckDupes = false;
-      boolean runCheckDupesPerComp = checkPerComp;
-
-      if(checkEachRepo || repoCounts == null || repoCounts.isEmpty() || (repoCounts.containsKey(repoName) && repoCounts.get(repoName) < 0)) {
-        runCheckDupes = true;
-      }
-      else if (repoCounts.containsKey(repoName)) {
-        long c = repoCounts.get(repoName);
-        long estimateMb = estimateSizeMB(c);
-        // super rough estimate. Just guessing one record would use 3KB (+1GB).
-        if (maxMb < estimateMb) {
-          log("[WARN] Heap: " + maxMb + " MB may not be enough for " + repoName + " (count:"+ c +", estimate:" + estimateMb + " MB).");
-          runCheckDupesPerComp = true;
-        }
-        else {
-          subTtl += c;
-          long estimateSubTtl = estimateSizeMB(subTtl);
-          debug("Repository name:" + repoName + ", rows:" + repoCounts.get(repoName) + ", subTtl:" + subTtl +
-              ", estimate_size:" + estimateSubTtl + "/" + maxMb);
-          // Avoiding too long "IN" so set max 300 to the sub repository names.
-          if (subRepoNames.size() >= 300 || (subRepoNames.size() > 0 && estimateSubTtl > maxMb)) {
-            log("Adding " + repoName + " (count:"+ c +", estimate:" + estimateMb + " MB) may exceed the limit, so will run checkDupes() for " +
-                subRepoNames.size() + " repositories (subTtl:" + (subTtl - c) + ").\n" + subRepoNames);
-            if (checkDupes(tx, subRepoNames)) {
-              isDupeFound = true;
-            }
-            subTtl = 0L;
-            subRepoNames = new ArrayList<>();
-          }
-        }
-      }
-
-      if(runCheckDupesPerComp) {
-        // TODO: need faster way to check per comp or any smaller set than repository. below is toooooo slow
-        /*if (checkDupesPerComp(tx, repoName)) {
-          isDupeFound = true;
-        }*/
-        out("-- [WARN] Skipped '" + repoName + "' repository");
-        out("--        To force, rerun with higher '-Xmx*g' and '-DrepoNames=" + repoName + "'");
-      }
-      else {
-        subRepoNames.add(repoName);
-      }
-
-      if (runCheckDupes && subRepoNames.size() > 0 && repoNames.size() > 0) {
+      // NOTE: shouldRunCheckDupes() updates subRepoNames if force check mode (it's inconsistent but SUBTTL as well).
+      boolean runCheckDupes = shouldRunCheckDupes(repoName, repoCounts, subRepoNames, maxMb);
+      if (subRepoNames.size() > 0 && repoNames.size() > 0 && (checkEachRepo || runCheckDupes)) {
         log("Running checkDupes() against " + subRepoNames.size() + " repositories.\n" + subRepoNames);
         if (checkDupes(tx, subRepoNames)) {
           isDupeFound = true;
         }
-        subTtl = 0L;
+        SUBTTL = 0L;
         subRepoNames = new ArrayList<>();
+      }
+      if (!runCheckDupes && !REPO_NAMES_EXCLUDE.contains(repoName) && !subRepoNames.contains(repoName)) {
+        subRepoNames.add(repoName);
       }
     }
 
@@ -373,6 +339,60 @@ public class Main
       }
     }
     return isDupeFound;
+  }
+
+  private static boolean shouldRunCheckDupes(
+      String repoName,
+      Map<String, Long> repoCounts,
+      List<String> subRepoNames,
+      long maxMb
+  )
+  {
+    // Force checking *current* repoName if below condition matches.
+    // I don't think repoCounts == null is possible but just in case, also repoCounts.get(repoName) = -1 means force.
+    if (repoCounts == null || repoCounts.isEmpty() ||
+        (repoCounts.containsKey(repoName) && repoCounts.get(repoName) < 0)) {
+      if (!subRepoNames.contains(repoName)) {
+        subRepoNames.add(repoName);
+      }
+      return true;
+    }
+
+    // If this repo doesn't have any records, skip this repo (so not adding into subRepoNames and no point of increasing SUBTTL)
+    if (!repoCounts.containsKey(repoName)) {
+      return false;
+    }
+
+    long c = repoCounts.get(repoName);
+    // super rough estimate. Just guessing one record would use 3KB (+1KB).
+    long estimateMb = estimateSizeMB(c);
+    if (maxMb < estimateMb) {
+      log("[WARN] Heap: " + maxMb + " MB may not be enough for " + repoName + " (count:" + c + ", estimate:" +
+          estimateMb + " MB).\nTo force, rerun with higher '-Xmx*g' and '-DrepoNames=\" + repoName + \"'");
+      out("-- [WARN] Skipped '" + repoName + "' repository");
+      if (!REPO_NAMES_EXCLUDE.contains(repoName)) {
+        REPO_NAMES_EXCLUDE.add(repoName);
+      }
+      return true;
+    }
+
+    long estimateSubTtlSize = estimateSizeMB((SUBTTL + c));
+    debug("Repository name:" + repoName + ", rows:" + repoCounts.get(repoName) + ", subTtl:" + (SUBTTL + c) +
+        ", estimate_size:" + estimateSubTtlSize + "/" + maxMb);
+    if (subRepoNames.size() > 0 && estimateSubTtlSize > maxMb) {
+      log("Running checkDupes() as adding " + repoName + " (count:" + c + ", estimate:" + estimateMb +
+          " MB) may exceed the limit (" +
+          subRepoNames.size() + " repositories / subTtlBefore:" + (SUBTTL) + ").\n" + subRepoNames);
+      return true;
+    }
+
+    // Avoiding too long "IN" so set max 300 to the sub repository names.
+    if (subRepoNames.size() >= 300) {
+      return true;
+    }
+    // If false, that means checking next repo, so increase the subtotal now.
+    SUBTTL += c;
+    return false;
   }
 
   public static Map<String, Long> getRepoNamesCounts(ODatabaseDocumentTx tx, List<String> repo_names_include, List<String> repo_names_exclude, boolean noEstimateCheck) {
@@ -395,12 +415,11 @@ public class Main
 
       long c = -1L;
       if(!noEstimateCheck) {
-        log("Checking estimate row count for " + repoName + "(" + repoId + ")");
         // NOTE: To check count: "select bucket, count(*) as c from asset group by bucket;" might be faster???
         String q = "select count(*) as c from index:asset_bucket_name_idx where key = [" + repoId + "]";
         List<ODocument> c_per_bkt = execQueries(tx, q);
         c = c_per_bkt.get(0).field("c");
-        log("Repository:" + repoName + " estimated count:" + c);
+        log("Repository:" + repoName + "(" + repoId + ") estimated count:" + c);
         if (c == 0) {
           debug("No record for " + repoName + ".");
           continue;
@@ -412,9 +431,14 @@ public class Main
   }
 
   private static Long getIndexCount(ODatabaseDocumentTx tx, String iname) {
-    List<ODocument> _idx_c = execQueries(tx, "select count(*) as c from index:" + iname);
-    Long c = _idx_c.get(0).field("c");
-    log("Index: " + iname + " count: " + c.toString());
+    Long c = 0L;
+    try {
+      List<ODocument> _idx_c = execQueries(tx, "select count(*) as c from index:" + iname);
+      c = _idx_c.get(0).field("c");
+      log("Index: " + iname + " count: " + c.toString());
+    } catch (Exception e) {
+      log("[ERROR] getIndexCount exception:" + e.getMessage());
+    }
     return c;
   }
 
@@ -458,8 +482,7 @@ public class Main
     Long abn_idx_c = 0L;
     Long abcn_idx_c = 0L;
     Long cbgnv_idx_c = 0L;
-    Long bna_idx_c = 0L;
-    Long bnc_idx_c = 0L;
+    Long bnrpn_idx_c = 0L;
     Map<String, Long> repo_counts = new HashMap<>();
     List<String> repo_names = new ArrayList<>();
 
@@ -507,7 +530,7 @@ public class Main
         boolean needTrunBrowse = false;
 
         if (MAGNIFY_PERCENT == 0.0) {
-          log("magnifyPercent is 0%, so skipping various checks and checking each repository.");
+          log("magnifyPercent is 0%, so skipping various checks, and starting to check each repository.");
           repo_counts = getRepoNamesCounts(tx, REPO_NAMES_INCLUDE, REPO_NAMES_EXCLUDE, true);
           repo_names.addAll(repo_counts.keySet());
         }
@@ -523,6 +546,7 @@ public class Main
           if (idx_size < 16) {
             log("[WARN] Indexes size (" + idx_size + ") is less then expected (16). Some Index might be missing.");
           }
+          // NOTE: This also populate MISSING_INDEXES list
           printMissingIndex(docs);
           if (idx_size != 16) {
             log(docs.toString());
@@ -540,11 +564,8 @@ public class Main
             else if (iname.equals("component_bucket_group_name_version_idx")) {
               cbgnv_idx_c = getIndexCount(tx, iname);
             }
-            else if (iname.equals("browse_node_asset_id_idx")) {
-              bna_idx_c = getIndexCount(tx, iname);
-            }
-            else if (iname.equals("browse_node_component_id_idx")) {
-              bnc_idx_c = getIndexCount(tx, iname);
+            else if (iname.equals("browse_node_repository_name_parent_path_name_idx")) {
+              bnrpn_idx_c = getIndexCount(tx, iname);
             }
           }
 
@@ -557,21 +578,20 @@ public class Main
           // Extra checks
           docs = execQueries(tx, "select count(*) as c from component");
           Long cc = docs.get(0).field("c");
-          log("Component count: " + cc);
+          debug("Component count: " + cc);
           if (cbgnv_idx_c > 0 && cbgnv_idx_c < cc ) {
-            log("[WARN] component_bucket_group_name_version_idx is smaller than the component count. Please check if the component has any duplicates.");
+            log("[WARN] component_bucket_group_name_version_idx is smaller than the component count. The component may have duplicates.");
           }
 
-          // Just in case, counting browse_node (should count per repo?)
+          // Just in case, counting browse_node
           docs = execQueries(tx, "select count(*) as c from browse_node");
           long bn_c = docs.get(0).field("c");
-          log("Browse_node count: " + bn_c + " / index: " + (bnc_idx_c + bna_idx_c));
-          double ratio = (double) bn_c / ((double) bnc_idx_c + (double) bna_idx_c);
-          if (ac > 0 && bn_c > 0 && (ratio < 0.9 || ratio > 1.01)) {
-            log("[WARN] need 'TRUNCATE CLASS browse_node;'");
+          debug("Browse_node count: " + bn_c + " / index: " + (bnrpn_idx_c));
+          if (ac > 0 && bn_c > 0 && (bnrpn_idx_c > 0 && bn_c != bnrpn_idx_c)) {
+            log("[WARN] browse_node_repository_name_parent_path_name_idx is smaller than the browse_node count. The browse_node may have duplicates");
             needTrunBrowse = true;
           }
-          repo_counts = getRepoNamesCounts(tx, REPO_NAMES_INCLUDE, REPO_NAMES_EXCLUDE, (NO_DUPE_CHECK || CHECK_PER_COMP));
+          repo_counts = getRepoNamesCounts(tx, REPO_NAMES_INCLUDE, REPO_NAMES_EXCLUDE, NO_DUPE_CHECK);
           repo_names.addAll(repo_counts.keySet());
         }
 
@@ -588,8 +608,8 @@ public class Main
             is_dupe_found = checkDupes(tx, null);
           }
           else {
-            log("Repository names to check (" + repo_names.size() + "):\n" + repo_names);
-            is_dupe_found = checkDupesForRepos(tx, repo_names, repo_counts, MAXMB, (MAGNIFY_PERCENT == 0.0), CHECK_PER_COMP);
+            log("Starting checkDupesForRepos for " + repo_names.size() + " repositories:\n" + repo_names);
+            is_dupe_found = checkDupesForRepos(tx, repo_names, repo_counts, MAXMB, (MAGNIFY_PERCENT == 0.0));
           }
 
           if (is_dupe_found) {
