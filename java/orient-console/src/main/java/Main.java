@@ -43,6 +43,7 @@ public class Main
   static String binaryField;
   static String[] fieldNames;
   static String paging = "";
+  static int pageCount = 1;
   static String ridName = "rid";
   static int last_rows = 0;
   static String last_rid = "#-1:-1";
@@ -52,16 +53,7 @@ public class Main
   private static final Gson gson = new Gson();
 
   private static void usage() {
-    System.err.println("USAGE EXAMPLES:\n" +
-        "# Start interactive console:\n" +
-        "  java -jar ./orient-console.jar ./sonatype-work/nexus3/db/component\n" +
-        " or with small .bak (zip) file:\n" +
-        "  java -jar ./orient-console.jar ./component-2021-08-07-09-00-00-3.30.0-01.bak\n" +
-        " or with larger .bak file (or env:_EXTRACT_DIR):\n" +
-        "  java -DextractDir=./component -jar ./orient-console.jar ./component-2021-08-07-09-00-00-3.30.0-01.bak\n" +
-        "\n" +
-        "# batch processing (or env:_EXPORT_PATH):\n" +
-        "  echo \"SQL SELECT statement\" | java -DexportPath=./result.json -jar orient-console.jar <directory path|.bak file path>");
+    System.err.println("https://github.com/hajimeo/samples/blob/master/java/orient-console/README.md");
   }
 
   private static String getCurrentLocalDateTimeStamp() {
@@ -239,22 +231,26 @@ public class Main
         boolean isPaging = false;
         if(paging != null && paging.trim().length() > 0 && q.toLowerCase().startsWith("select ")) {
           if (q.toLowerCase().contains(" order by ") || q.toLowerCase().contains(" limit ")) {
-            log("ERROR: 'paging' is given but query contains 'order by' or 'limit', so not paging.");
+            log("ERROR: 'paging' is given but query contains 'order by' or 'limit', so not paging");
             continue;
           }
           if (q.toLowerCase().contains(" group by ")) {
-            log("ERROR: 'paging' is given but currently it does not work with 'group by'.");
+            log("ERROR: 'paging' is given but currently it does not work with 'group by'");
             continue;
           }
           if (!q.toLowerCase().contains(" "+ridName+",")) {  // TODO: should use regex
-            log("WARN: 'paging' is given but query may not contain '@rid as "+ridName+"'.");
+            log("WARN: 'paging' is given but query may not contain '@rid as "+ridName+"'");
+          }
+          else {
+            log("INFO: pagination is enabled with paging size:"+paging+"");
           }
           isPaging = true;
         }
 
         execQuery(db, q, isPaging);
         while (isPaging && last_rows > 0) {
-          log("Doing pagination with last_rid:"+last_rid+" last_rows:"+last_rows);
+          pageCount += 1;
+          log("Fetching page:" + pageCount + " with last_rid:" + last_rid + " last_rows:" + last_rows);
           execQuery(db, q, isPaging);
         }
       }
