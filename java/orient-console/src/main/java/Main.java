@@ -22,12 +22,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.smile.SmileFactory;
 
 import java.io.*;
-import java.nio.channels.FileChannel;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -45,6 +42,10 @@ public class Main
   static String exportPath;
   static String binaryField;
   static String[] fieldNames;
+  static String paging = "";
+  static String ridName = "rid";
+  static int last_rows = 0;
+  static String last_rid = "#-1:-1";
 
   private static final ObjectMapper objectMapper = new ObjectMapper(new SmileFactory());
 
@@ -130,15 +131,15 @@ public class Main
   }
 
   // TODO: changing to List<?> breaks toJSON()
-  private static void printListAsJson(List<ODocument> oDocs) {
+  private static void printListAsJson(List<ODocument> oDocs, boolean isPaging) {
     if (oDocs == null || oDocs.isEmpty()) {
-      terminal.writer().println("\n[]");
+      if (!isPaging) terminal.writer().println("\n[]");
       terminal.flush();
       return;
     }
-    terminal.writer().println("\n[");
+    if (!isPaging) terminal.writer().println("\n[");
     for (int i = 0; i < oDocs.size(); i++) {
-      if (i == (oDocs.size() - 1)) {
+      if (!isPaging && i == (oDocs.size() - 1)) {
         terminal.writer().println("  " + oDocs.get(i).toJSON(JSON_FORMAT));
       }
       else {
@@ -146,7 +147,7 @@ public class Main
       }
       terminal.flush();
     }
-    terminal.writer().println("]");
+    if (!isPaging) terminal.writer().println("]");
     // TODO: not working?  and not organised properly
     terminal.flush();
   }
@@ -185,27 +186,27 @@ public class Main
     return str;
   }
 
-  private static void writeListAsJson(List<ODocument> oDocs, String exportPath) {
+  private static void writeListAsJson(List<ODocument> oDocs, String exportPath, boolean isPaging) {
     System.err.println("");
     try {
       File fout = new File(exportPath);
       FileOutputStream fos = new FileOutputStream(fout, true);
       BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(fos));
       if (oDocs == null || oDocs.isEmpty()) {
-        bw.write("[]");
+        if (!isPaging) bw.write("[]");
         bw.newLine();
         bw.close();
         return;
       }
-      if (oDocs.size() == 1) {
+      if (!isPaging && oDocs.size() == 1) {
         bw.write(oDocs.get(0).toJSON(JSON_FORMAT));
         bw.newLine();
         bw.close();
         return;
       }
-      bw.write("[\n");
+      if (!isPaging) bw.write("[\n");
       for (int i = 0; i < oDocs.size(); i++) {
-        if (i == (oDocs.size() - 1)) {
+        if (!isPaging && i == (oDocs.size() - 1)) {
           bw.write("  " + oDocs.get(i).toJSON(JSON_FORMAT));
         }
         else {
@@ -213,8 +214,8 @@ public class Main
         }
         bw.newLine();
       }
-      bw.write("]");
-      bw.newLine();
+      if (!isPaging) bw.write("]");
+      if (!isPaging) bw.newLine();
       bw.close();
     }
     catch (IOException e) {
@@ -235,32 +236,7 @@ public class Main
 
       Instant start = Instant.now();
       try {
-        Object oDocs = db.command(new OCommandSQL(q)).execute();
-        //final List<ODocument> oDocs = db.command(new OCommandSQL(q)).execute();
-        if (oDocs instanceof Integer) {
-          System.err.printf("Rows: %d, ", oDocs);
-        }
-        else if (oDocs instanceof ODocument) {
-          // NOTE: 'EXPLAIN' causes com.orientechnologies.orient.core.record.impl.ODocument cannot be cast to java.util.List
-          printDocAsJson((ODocument) oDocs);
-        }
-        else {
-          if (((List<ODocument>) oDocs).size() > 0) {
-            fieldNames = ((List<ODocument>) oDocs).get(0).fieldNames();
-          }
-          if (exportPath != null && exportPath.length() > 0) {
-            writeListAsJson(((List<ODocument>) oDocs), exportPath);
-            System.err.printf("Wrote %d rows to %s, ", ((List<ODocument>) oDocs).size(), exportPath);
-          }
-          else {
-            printListAsJson(((List<ODocument>) oDocs));
-            System.err.printf("Rows: %d, ", ((List<ODocument>) oDocs).size());
-          }
-          // Currently using below if the result is only one record.
-          if (((List<ODocument>) oDocs).size() == 1) {
-            printBinary(((List<ODocument>) oDocs).get(0));
-          }
-        }
+        execQuery(db, q);
       }
       catch (java.lang.ClassCastException e) {
         System.err.println(e.getMessage());
@@ -274,6 +250,69 @@ public class Main
         Instant finish = Instant.now();
         long timeElapsed = Duration.between(start, finish).toMillis();
         System.err.printf("Elapsed: %d ms\n", timeElapsed);
+      }
+    }
+  }
+  private static void execQuery(ODatabaseDocumentTx db, String query) {
+    if (query == null || query.isEmpty()) {
+      return;
+    }
+    String q = query;
+    boolean isPaging = false;
+    if(paging != null && paging.trim().length() > 0 && q.toLowerCase().startsWith("select ")) {
+      if (q.toLowerCase().contains(" order by ") || q.toLowerCase().contains(" limit ")) {
+        log("ERROR: 'paging' is given but query contains 'order by' or 'limit', so not paging.");
+        return;
+      }
+      if (q.toLowerCase().contains(" group by ")) {
+        log("ERROR: 'paging' is given but currently it does not work with 'group by'.");
+        return;
+      }
+
+      if (!q.toLowerCase().contains(" "+ridName+",")) {  // TODO: should use regex
+        log("WARN: 'paging' is given but query may not contain '@rid as "+ridName+"'.");
+      }
+      isPaging = true;
+      if (q.toLowerCase().contains(" where ")) {
+        q += " AND @rid > " + last_rid + " LIMIT " + paging;
+      }
+      else {
+        q += " WHERE @rid > " + last_rid + " LIMIT " + paging;
+      }
+    }
+
+    Object oDocs = db.command(new OCommandSQL(q)).execute();
+    //final List<ODocument> oDocs = db.command(new OCommandSQL(q)).execute();
+    if (oDocs instanceof Integer) {
+      // this means UPDATE/INSERT etc, so not updating last_rows
+      System.err.printf("Rows: %d, ", oDocs);
+    }
+    else if (oDocs instanceof ODocument) {
+      // NOTE: 'EXPLAIN' causes com.orientechnologies.orient.core.record.impl.ODocument cannot be cast to java.util.List
+      printDocAsJson((ODocument) oDocs);
+    }
+    else {
+      if (((List<ODocument>) oDocs).size() > 0) {
+        fieldNames = ((List<ODocument>) oDocs).get(0).fieldNames();
+      }
+      if (exportPath != null && exportPath.length() > 0) {
+        writeListAsJson(((List<ODocument>) oDocs), exportPath, isPaging);
+        if (!isPaging) System.err.printf("Wrote %d rows to %s", ((List<ODocument>) oDocs).size(), exportPath);
+      }
+      else {
+        printListAsJson(((List<ODocument>) oDocs), isPaging);
+        if (!isPaging) System.err.printf("Rows: %d, ", ((List<ODocument>) oDocs).size());
+      }
+      // Currently using below if the result is only one record.
+      if (((List<ODocument>) oDocs).size() == 1) {
+        printBinary(((List<ODocument>) oDocs).get(0));
+      }
+
+      last_rows = ((List<ODocument>) oDocs).size();
+      if (isPaging && last_rows > 0) {
+        last_rid = ((ODocument) ((ODocument) ((List<ODocument>) oDocs).get((last_rows - 1))).field(ridName)).getIdentity().toString();
+        log("Doing pagination with last_rid:"+last_rid+" last_rows:"+last_rows);
+        execQuery(db, query);
       }
     }
   }
@@ -403,15 +442,14 @@ public class Main
     extractDir = System.getProperty("extractDir", System.getenv("_EXTRACT_DIR"));
     exportPath = System.getProperty("exportPath", System.getenv("_EXPORT_PATH"));
     binaryField = System.getProperty("binaryField", "");
+    paging = System.getProperty("paging", "");
+    ridName = System.getProperty("ridName", "rid");
 
     if (exportPath != null && exportPath.length() > 0) {
-      try {
-        FileChannel.open(Paths.get(exportPath), StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING).close();
-      }
-      catch (IOException e) {
-        log("exportPath:" + exportPath + " caused exception:" + e.getMessage());
-        System.exit(1);
-      }
+      File yourFile = new File(exportPath);
+      yourFile.createNewFile(); // if file already exists will do nothing
+      FileOutputStream fos = new FileOutputStream(yourFile, false);
+      fos.close();
     }
 
     // Preparing data (extracting zip if necessary)
