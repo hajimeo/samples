@@ -335,7 +335,7 @@ public class Main
 
     // In case the subRepoNames is still not empty.
     if (subRepoNames.size() > 0) {
-      log("Running the final checkDupes() against " + subRepoNames.size() + " repositories.\n" + subRepoNames);
+      log("Running the checkDupes() against " + subRepoNames.size() + " repositories.\n" + subRepoNames);
       if (checkDupes(tx, subRepoNames)) {
         isDupeFound = true;
       }
