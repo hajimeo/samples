@@ -15,7 +15,7 @@
 # COMMAND EXAMPLE:
 #   cd ~/IdeaProjects/samples/kubernetes
 #   # Below _DNS is my hack and usually don't need to use this. _DB_USER can't contain '-' character.
-#   export _ID="nxrm3pg" _TAG="3.38.1" _RUNAS_USR=200 _DNS="192.168.52.31"
+#   export _ID="nxrm3pg" _TAG="3.39.0" _RUNAS_USR=200 _DNS="192.168.52.31"
 #   export _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
 #   # Run the create secret commands if necessary, then:
 #   eval "echo \"$(cat ./k8s-nxrm3-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
@@ -167,7 +167,7 @@ metadata:
     app: nxrm3-pg
 spec:
   #type: NodePort
-  # Using metallib
+  # For MetalLB
   type: LoadBalancer
   loadBalancerIP: 192.168.52.230
   selector:

@@ -183,7 +183,10 @@ metadata:
   labels:
     app: nxiq-pg
 spec:
-  type: NodePort
+  #type: NodePort
+  # For MetalLB
+  type: LoadBalancer
+  loadBalancerIP: 192.168.52.220
   selector:
     app: nxiq-pg
   ports:
