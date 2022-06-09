@@ -46,8 +46,8 @@ public class Main
   private static long MAXMB;
   private static String EXTRACT_DIR = "";
   private static String LOG_PATH = "";
-  private static List<String> REPO_NAMES_INCLUDE;
-  private static List<String> REPO_NAMES_EXCLUDE;
+  private static List<String> REPO_NAMES_INCLUDE = new ArrayList<>();
+  private static List<String> REPO_NAMES_EXCLUDE = new ArrayList<>();
   private static String LIMIT = "-1";
   private static Path TMP_DIR = null;
   private static double MAGNIFY_PERCENT = 300.0;
@@ -317,7 +317,7 @@ public class Main
       }
 
       // NOTE: shouldRunCheckDupes() updates subRepoNames if force check mode (it's inconsistent but SUBTTL as well).
-      boolean runCheckDupes = shouldRunCheckDupes(repoName, repoCounts, subRepoNames, maxMb);
+      boolean runCheckDupes = shouldRunCheckDupesNow(repoName, repoCounts, subRepoNames, maxMb);
       if (subRepoNames.size() > 0 && repoNames.size() > 0 && (checkEachRepo || runCheckDupes)) {
         log("Running checkDupes() against " + subRepoNames.size() + " repositories.\n" + subRepoNames);
         if (checkDupes(tx, subRepoNames)) {
@@ -326,7 +326,8 @@ public class Main
         SUBTTL = 0L;
         subRepoNames = new ArrayList<>();
       }
-      if (!runCheckDupes && !REPO_NAMES_EXCLUDE.contains(repoName) && !subRepoNames.contains(repoName)) {
+
+      if (!REPO_NAMES_EXCLUDE.contains(repoName) && !subRepoNames.contains(repoName)) {
         subRepoNames.add(repoName);
       }
     }
@@ -341,7 +342,7 @@ public class Main
     return isDupeFound;
   }
 
-  private static boolean shouldRunCheckDupes(
+  private static boolean shouldRunCheckDupesNow(
       String repoName,
       Map<String, Long> repoCounts,
       List<String> subRepoNames,
@@ -352,14 +353,14 @@ public class Main
     // I don't think repoCounts == null is possible but just in case, also repoCounts.get(repoName) = -1 means force.
     if (repoCounts == null || repoCounts.isEmpty() ||
         (repoCounts.containsKey(repoName) && repoCounts.get(repoName) < 0)) {
-      if (!subRepoNames.contains(repoName)) {
-        subRepoNames.add(repoName);
-      }
       return true;
     }
 
     // If this repo doesn't have any records, skip this repo (so not adding into subRepoNames and no point of increasing SUBTTL)
-    if (!repoCounts.containsKey(repoName)) {
+    if (!repoCounts.containsKey(repoName) || repoCounts.get(repoName) == 0) {
+      if (!REPO_NAMES_EXCLUDE.contains(repoName)) {
+        REPO_NAMES_EXCLUDE.add(repoName);
+      }
       return false;
     }
 
@@ -373,7 +374,7 @@ public class Main
       if (!REPO_NAMES_EXCLUDE.contains(repoName)) {
         REPO_NAMES_EXCLUDE.add(repoName);
       }
-      return true;
+      return false;
     }
 
     long estimateSubTtlSize = estimateSizeMB((SUBTTL + c));
@@ -382,7 +383,7 @@ public class Main
     if (subRepoNames.size() > 0 && estimateSubTtlSize > maxMb) {
       log("Running checkDupes() as adding " + repoName + " (count:" + c + ", estimate:" + estimateMb +
           " MB) may exceed the limit (" +
-          subRepoNames.size() + " repositories / subTtlBefore:" + (SUBTTL) + ").\n" + subRepoNames);
+          subRepoNames.size() + " repositories / subTtlBefore:" + (SUBTTL) + ").");
       return true;
     }
 
@@ -608,7 +609,7 @@ public class Main
             is_dupe_found = checkDupes(tx, null);
           }
           else {
-            log("Starting checkDupesForRepos for " + repo_names.size() + " repositories:\n" + repo_names);
+            log("Starting checkDupesForRepos for total " + repo_names.size() + " repositories:\n" + repo_names);
             is_dupe_found = checkDupesForRepos(tx, repo_names, repo_counts, MAXMB, (MAGNIFY_PERCENT == 0.0));
           }
 
