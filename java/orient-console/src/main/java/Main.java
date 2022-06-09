@@ -22,9 +22,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.smile.SmileFactory;
 
 import java.io.*;
+import java.nio.channels.FileChannel;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -34,6 +37,7 @@ import java.util.*;
 public class Main
 {
   static final String PROMPT = "=> ";
+  static final String JSON_FORMAT = "attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0";
   static Terminal terminal;
   static History history;
   static String historyPath;
@@ -135,10 +139,10 @@ public class Main
     terminal.writer().println("\n[");
     for (int i = 0; i < oDocs.size(); i++) {
       if (i == (oDocs.size() - 1)) {
-        terminal.writer().println("  " + oDocs.get(i).toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0"));
+        terminal.writer().println("  " + oDocs.get(i).toJSON(JSON_FORMAT));
       }
       else {
-        terminal.writer().println("  " + oDocs.get(i).toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0") + ",");
+        terminal.writer().println("  " + oDocs.get(i).toJSON(JSON_FORMAT) + ",");
       }
       terminal.flush();
     }
@@ -150,7 +154,7 @@ public class Main
   private static void printDocAsJson(ODocument oDoc) {
     // NOTE: Should check null, like 'if (oDoc == null) {'?
     // Default; rid,version,class,type,attribSameRow,keepTypes,alwaysFetchEmbedded,fetchPlan:*:0
-    terminal.writer().println(oDoc.toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0,prettyPrint"));
+    terminal.writer().println(oDoc.toJSON(JSON_FORMAT+",prettyPrint"));
     terminal.flush();
   }
 
@@ -185,7 +189,7 @@ public class Main
     System.err.println("");
     try {
       File fout = new File(exportPath);
-      FileOutputStream fos = new FileOutputStream(fout);
+      FileOutputStream fos = new FileOutputStream(fout, true);
       BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(fos));
       if (oDocs == null || oDocs.isEmpty()) {
         bw.write("[]");
@@ -193,13 +197,19 @@ public class Main
         bw.close();
         return;
       }
+      if (oDocs.size() == 1) {
+        bw.write(oDocs.get(0).toJSON(JSON_FORMAT));
+        bw.newLine();
+        bw.close();
+        return;
+      }
       bw.write("[\n");
       for (int i = 0; i < oDocs.size(); i++) {
         if (i == (oDocs.size() - 1)) {
-          bw.write("  " + oDocs.get(i).toJSON());
+          bw.write("  " + oDocs.get(i).toJSON(JSON_FORMAT));
         }
         else {
-          bw.write("  " + oDocs.get(i).toJSON() + ",");
+          bw.write("  " + oDocs.get(i).toJSON(JSON_FORMAT) + ",");
         }
         bw.newLine();
       }
@@ -393,6 +403,16 @@ public class Main
     extractDir = System.getProperty("extractDir", System.getenv("_EXTRACT_DIR"));
     exportPath = System.getProperty("exportPath", System.getenv("_EXPORT_PATH"));
     binaryField = System.getProperty("binaryField", "");
+
+    if (exportPath != null && exportPath.length() > 0) {
+      try {
+        FileChannel.open(Paths.get(exportPath), StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING).close();
+      }
+      catch (IOException e) {
+        log("exportPath:" + exportPath + " caused exception:" + e.getMessage());
+        System.exit(1);
+      }
+    }
 
     // Preparing data (extracting zip if necessary)
     if (!(new File(path)).isDirectory() && !(new File(path)).isDirectory()) {
