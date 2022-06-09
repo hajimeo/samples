@@ -9,8 +9,8 @@
 #  - Configure Ingress
 #
 # COMMAND EXAMPLE:
-#   export _ID="nxiqpg" _TAG="1.135.0" _BASE_URL="https://nxiq-k8s.standalone.localdomain/" _RUNAS_USR=1000 _DNS="192.168.52.31"
-#   export _SONATYPE_WORK="/var/tmp/share/sonatype/${_ID}" _DB_USER="${_ID}" _DB_PWD="${_ID}" _DB_NAME="${_ID}" _DB_HOST="192.168.52.31"
+#   export _ID="nxiqpg" _TAG="1.138.0" _METALLB_IP="192.168.52.220" _RUNAS_USR=1000 _DNS="192.168.52.31"
+#   export _SONATYPE_WORK="/var/tmp/share/sonatype/${_ID}" _BASE_URL="https://nxiq-k8s.standalone.localdomain/" _DB_USER="${_ID}" _DB_PWD="${_ID}" _DB_NAME="${_ID}" _DB_HOST="192.168.52.31"
 #   eval "echo \"$(cat ./k8s-iq-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
 #   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml
 #   kubectl -n "sonatype" apply -f /tmp/${_ID}.yaml
