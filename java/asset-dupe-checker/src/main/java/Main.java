@@ -368,12 +368,15 @@ public class Main
     long estimateMb = estimateSizeMB(c);
     if (maxMb < estimateMb) {
       log("[WARN] Heap: " + maxMb + " MB may not be enough for " + repoName + " (count:" + c + ", estimate:" +
-          estimateMb + " MB).\nTo force, rerun with higher '-Xmx*g' and '-DrepoNames=\" + repoName + \"'");
-      out("-- [WARN] Skipped '" + repoName + "' repository");
-      if (!REPO_NAMES_EXCLUDE.contains(repoName)) {
-        REPO_NAMES_EXCLUDE.add(repoName);
+          estimateMb + " MB).");
+      if(REPO_NAMES_INCLUDE == null || !REPO_NAMES_INCLUDE.contains(repoName)) {
+        log("       To force, rerun with higher '-Xmx*g' and '-DrepoNames=" + repoName + "' (and save output to a different file)");
+        out("-- [WARN] Skipped '" + repoName + "' repository");
+        if (!REPO_NAMES_EXCLUDE.contains(repoName)) {
+          REPO_NAMES_EXCLUDE.add(repoName);
+        }
+        return false;
       }
-      return false;
     }
 
     long estimateSubTtlSize = estimateSizeMB((SUBTTL + c));
@@ -593,7 +596,7 @@ public class Main
           repoNames.addAll(REPO_COUNTS.keySet());
         }
 
-        if (abcn_idx_c > 0 && ac.equals(abcn_idx_c)) {
+        if (abcn_idx_c > 0 && ac.equals(abcn_idx_c) && (REPO_NAMES_INCLUDE == null || REPO_NAMES_INCLUDE.size() == 0)) {
           log("Asset count (" + ac + ") is same as asset_bucket_component_name_idx, so not checking duplicates.\n" +
               "To force, rerun with -DrepoNames=xxx,yyy,zzz");
         }
