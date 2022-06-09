@@ -62,15 +62,15 @@ public class Main
   private static void usage() {
     System.out.println("Usage:");
     System.out.println("  java -Xmx4g -jar asset-dupe-checker.jar <component directory path> | tee asset-dupe-checker.sql");
-    System.out.println("Acceptable System properties:");
-    System.out.println("  -DrepoNames=<repo1,repo2,...> To specify repositories to check");
-    System.out.println("  -DrepoNamesExclude=<repo1,repo2,...> To exclude specific repositories");
-    System.out.println("  -DmagnifyPercent=<int> Used for estimating (default 300). Higher makes conservative but using 0 checks one repository each");
+    System.out.println("System properties:");
+    System.out.println("  -DextractDir=<extracting path>  Directory used for extracting component-*.bak file");
+    System.out.println("  -DrepoNames=<repo1,repo2,...>   To specify (force) the repositories to check");
+    System.out.println("  -DrepoNamesExclude=<repo1,...>  To exclude specific repositories");
+    System.out.println("  -DmagnifyPercent=<int>          Default 300. 0 disable validations and check one repository each");
     //System.out.println("  -DcheckPerComp=true For extremely large repository");
-    System.out.println("  -Dlimit=<int> Currently duplicates over 4000 per query is ignored as not expecting so many duplicates");
-    System.out.println("  -DextractDir=<extracting path> To specify component-*.bak file");
-    System.out.println("  -DnoDupeCheck=true For testing/debugging this code");
-    System.out.println("  -Ddebug=true");
+    System.out.println("  -Dlimit=<int>                   Limit the duplicate row result (this is for testing)");
+    System.out.println("  -DnoDupeCheck=true              For testing/debugging this code");
+    System.out.println("  -Ddebug=true                    Verbose outputs");
   }
 
   private static String getCurrentLocalDateTimeStamp() {
@@ -531,7 +531,7 @@ public class Main
         boolean needTrunBrowse = false;
 
         if (MAGNIFY_PERCENT == 0.0) {
-          log("magnifyPercent is 0%, so skipping various checks, and starting to check each repository.");
+          log("magnifyPercent is 0%, so cannot do the estimation. Skipping various checks.");
           getRepoNamesCounts(tx, REPO_NAMES_INCLUDE, REPO_NAMES_EXCLUDE, true);
           repoNames.addAll(REPO_COUNTS.keySet());
         }
