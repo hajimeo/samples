@@ -17,19 +17,14 @@ java -DextractDir=./component -jar ./orient-console.jar ./component-2021-08-07-0
 
 # Batch processing (env:_EXPORT_PATH can be used instead of -DexportPath):
 echo "SQL SELECT statement" | java -DexportPath=./result.json -jar orient-console.jar <directory path|.bak file path>
+
+# Pagenation for extreamly large result set
+echo "SIMPLE SELECT statement which returns so many rows" | java -DexportPath=./result_paged.json -Dpaging=10000 -jar orient-console.jar <directory path|.bak file path>
 ```
 
 ## TODOs:
-
 - Add unit tests 
 - Replace jline3 
-```
-=> DELETE FROM healthcheckconfig WHERE @rid in (SELECT rid FROM (SELECT MIN(@rid) as rid, property_name, COUNT(*) as c FROM healthcheckconfig GROUP BY property_name) WHERE c > 1)
-java.lang.ClassCastException: java.lang.Integer cannot be cast to java.util.List
-at Main.execQueries(Main.java:84)
-at Main.readLineLoop(Main.java:141)
-at Main.main(Main.java:277)
-```
 
 ## My note:
 mvn clean package && cp -v -p ./target/orient-console-1.0-SNAPSHOT-jar-with-dependencies.jar  ../../misc/orient-console.jar
