@@ -236,7 +236,27 @@ public class Main
 
       Instant start = Instant.now();
       try {
-        execQuery(db, q);
+        boolean isPaging = false;
+        if(paging != null && paging.trim().length() > 0 && q.toLowerCase().startsWith("select ")) {
+          if (q.toLowerCase().contains(" order by ") || q.toLowerCase().contains(" limit ")) {
+            log("ERROR: 'paging' is given but query contains 'order by' or 'limit', so not paging.");
+            continue;
+          }
+          if (q.toLowerCase().contains(" group by ")) {
+            log("ERROR: 'paging' is given but currently it does not work with 'group by'.");
+            continue;
+          }
+          if (!q.toLowerCase().contains(" "+ridName+",")) {  // TODO: should use regex
+            log("WARN: 'paging' is given but query may not contain '@rid as "+ridName+"'.");
+          }
+          isPaging = true;
+        }
+
+        execQuery(db, q, isPaging);
+        while (isPaging && last_rows > 0) {
+          log("Doing pagination with last_rid:"+last_rid+" last_rows:"+last_rows);
+          execQuery(db, q, isPaging);
+        }
       }
       catch (java.lang.ClassCastException e) {
         System.err.println(e.getMessage());
@@ -253,36 +273,19 @@ public class Main
       }
     }
   }
-  private static void execQuery(ODatabaseDocumentTx db, String query) {
-    if (query == null || query.isEmpty()) {
-      return;
-    }
-    String q = query;
-    boolean isPaging = false;
-    if(paging != null && paging.trim().length() > 0 && q.toLowerCase().startsWith("select ")) {
-      if (q.toLowerCase().contains(" order by ") || q.toLowerCase().contains(" limit ")) {
-        log("ERROR: 'paging' is given but query contains 'order by' or 'limit', so not paging.");
-        return;
-      }
-      if (q.toLowerCase().contains(" group by ")) {
-        log("ERROR: 'paging' is given but currently it does not work with 'group by'.");
-        return;
-      }
 
-      if (!q.toLowerCase().contains(" "+ridName+",")) {  // TODO: should use regex
-        log("WARN: 'paging' is given but query may not contain '@rid as "+ridName+"'.");
-      }
-      isPaging = true;
-      if (q.toLowerCase().contains(" where ")) {
-        q += " AND @rid > " + last_rid + " LIMIT " + paging;
+  private static void execQuery(ODatabaseDocumentTx db, String query, boolean isPaging) {
+    if (isPaging) {
+      if (query.toLowerCase().contains(" where ")) {
+        query += " AND @rid > " + last_rid + " LIMIT " + paging;
       }
       else {
-        q += " WHERE @rid > " + last_rid + " LIMIT " + paging;
+        query += " WHERE @rid > " + last_rid + " LIMIT " + paging;
       }
     }
 
-    Object oDocs = db.command(new OCommandSQL(q)).execute();
-    //final List<ODocument> oDocs = db.command(new OCommandSQL(q)).execute();
+    Object oDocs = db.command(new OCommandSQL(query)).execute();
+    //final List<ODocument> oDocs = db.command(new OCommandSQL(query)).execute();
     if (oDocs instanceof Integer) {
       // this means UPDATE/INSERT etc, so not updating last_rows
       System.err.printf("Rows: %d, ", oDocs);
@@ -297,11 +300,15 @@ public class Main
       }
       if (exportPath != null && exportPath.length() > 0) {
         writeListAsJson(((List<ODocument>) oDocs), exportPath, isPaging);
-        if (!isPaging) System.err.printf("Wrote %d rows to %s", ((List<ODocument>) oDocs).size(), exportPath);
+        if (!isPaging) {
+          System.err.printf("Wrote %d rows to %s", ((List<ODocument>) oDocs).size(), exportPath);
+        }
       }
       else {
         printListAsJson(((List<ODocument>) oDocs), isPaging);
-        if (!isPaging) System.err.printf("Rows: %d, ", ((List<ODocument>) oDocs).size());
+        if (!isPaging) {
+          System.err.printf("Rows: %d, ", ((List<ODocument>) oDocs).size());
+        }
       }
       // Currently using below if the result is only one record.
       if (((List<ODocument>) oDocs).size() == 1) {
@@ -309,10 +316,10 @@ public class Main
       }
 
       last_rows = ((List<ODocument>) oDocs).size();
-      if (isPaging && last_rows > 0) {
-        last_rid = ((ODocument) ((ODocument) ((List<ODocument>) oDocs).get((last_rows - 1))).field(ridName)).getIdentity().toString();
-        log("Doing pagination with last_rid:"+last_rid+" last_rows:"+last_rows);
-        execQuery(db, query);
+      if (last_rows > 0) {
+        last_rid =
+            ((ODocument) ((ODocument) ((List<ODocument>) oDocs).get((last_rows - 1))).field(ridName)).getIdentity()
+                .toString();
       }
     }
   }
