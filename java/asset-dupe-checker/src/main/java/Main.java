@@ -48,6 +48,7 @@ public class Main
   private static String LOG_PATH = "";
   private static List<String> REPO_NAMES_INCLUDE = new ArrayList<>();
   private static List<String> REPO_NAMES_EXCLUDE = new ArrayList<>();
+  private static Map<String, Long> REPO_COUNTS = new HashMap<>();
   private static String LIMIT = "-1";
   private static Path TMP_DIR = null;
   private static double MAGNIFY_PERCENT = 300.0;
@@ -302,7 +303,6 @@ public class Main
   public static boolean checkDupesForRepos(
       ODatabaseDocumentTx tx,
       List<String> repoNames,
-      Map<String, Long> repoCounts,
       long maxMb,
       boolean checkEachRepo
   )
@@ -317,7 +317,7 @@ public class Main
       }
 
       // NOTE: shouldRunCheckDupes() updates subRepoNames if force check mode (it's inconsistent but SUBTTL as well).
-      boolean runCheckDupes = shouldRunCheckDupesNow(repoName, repoCounts, subRepoNames, maxMb);
+      boolean runCheckDupes = shouldRunCheckDupesNow(repoName, subRepoNames, maxMb);
       if (subRepoNames.size() > 0 && repoNames.size() > 0 && (checkEachRepo || runCheckDupes)) {
         log("Running checkDupes() against " + subRepoNames.size() + " repositories.\n" + subRepoNames);
         if (checkDupes(tx, subRepoNames)) {
@@ -327,7 +327,8 @@ public class Main
         subRepoNames = new ArrayList<>();
       }
 
-      if (!REPO_NAMES_EXCLUDE.contains(repoName) && !subRepoNames.contains(repoName)) {
+      if (REPO_COUNTS.containsKey(repoName) && !REPO_NAMES_EXCLUDE.contains(repoName) && !subRepoNames.contains(repoName)) {
+        SUBTTL += REPO_COUNTS.get(repoName);
         subRepoNames.add(repoName);
       }
     }
@@ -344,27 +345,25 @@ public class Main
 
   private static boolean shouldRunCheckDupesNow(
       String repoName,
-      Map<String, Long> repoCounts,
       List<String> subRepoNames,
       long maxMb
   )
   {
     // Force checking *current* repoName if below condition matches.
-    // I don't think repoCounts == null is possible but just in case, also repoCounts.get(repoName) = -1 means force.
-    if (repoCounts == null || repoCounts.isEmpty() ||
-        (repoCounts.containsKey(repoName) && repoCounts.get(repoName) < 0)) {
+    // I don't think REPO_COUNTS == null is possible but just in case, also REPO_COUNTS.get(repoName) = -1L means force.
+    if (REPO_COUNTS == null || REPO_COUNTS.isEmpty() ||
+        (REPO_COUNTS.containsKey(repoName) && REPO_COUNTS.get(repoName) < 0)) {
       return true;
     }
-
     // If this repo doesn't have any records, skip this repo (so not adding into subRepoNames and no point of increasing SUBTTL)
-    if (!repoCounts.containsKey(repoName) || repoCounts.get(repoName) == 0) {
+    if (!REPO_COUNTS.containsKey(repoName) || REPO_COUNTS.get(repoName) == 0) {
       if (!REPO_NAMES_EXCLUDE.contains(repoName)) {
         REPO_NAMES_EXCLUDE.add(repoName);
       }
       return false;
     }
 
-    long c = repoCounts.get(repoName);
+    long c = REPO_COUNTS.get(repoName);
     // super rough estimate. Just guessing one record would use 3KB (+1KB).
     long estimateMb = estimateSizeMB(c);
     if (maxMb < estimateMb) {
@@ -378,7 +377,7 @@ public class Main
     }
 
     long estimateSubTtlSize = estimateSizeMB((SUBTTL + c));
-    debug("Repository name:" + repoName + ", rows:" + repoCounts.get(repoName) + ", subTtl:" + (SUBTTL + c) +
+    debug("Repository name:" + repoName + ", rows:" + REPO_COUNTS.get(repoName) + ", subTtl:" + (SUBTTL + c) +
         ", estimate_size:" + estimateSubTtlSize + "/" + maxMb);
     if (subRepoNames.size() > 0 && estimateSubTtlSize > maxMb) {
       log("Running checkDupes() as adding " + repoName + " (count:" + c + ", estimate:" + estimateMb +
@@ -392,12 +391,11 @@ public class Main
       return true;
     }
     // If false, that means checking next repo, so increase the subtotal now.
-    SUBTTL += c;
     return false;
   }
 
-  public static Map<String, Long> getRepoNamesCounts(ODatabaseDocumentTx tx, List<String> repo_names_include, List<String> repo_names_exclude, boolean noEstimateCheck) {
-    Map<String, Long> repo_counts = new HashMap<>();
+  public static void getRepoNamesCounts(ODatabaseDocumentTx tx, List<String> repoNamesInclude, List<String> repoNamesExclude, boolean noEstimateCheck) {
+    REPO_COUNTS = new HashMap<>();
     // Intentionally sorting with repository_name
     List<ODocument> bkts = execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
     // NOTE: 'where key = [bucket.rid]' works, but 'select key, count(*) as c from index:asset_bucket_name_idx group by key;' does not, so looping...
@@ -405,11 +403,11 @@ public class Main
       String repoId = ((ODocument) bkt.field("r")).getIdentity().toString();
       String repoName = bkt.field("repository_name");
 
-      if (repo_names_include != null && repo_names_include.size() > 0 && !repo_names_include.contains(repoName)) {
+      if (repoNamesInclude != null && repoNamesInclude.size() > 0 && !repoNamesInclude.contains(repoName)) {
         debug("Repository name:" + repoName + " is not in the repoNames (include). Skipping...");
         continue;
       }
-      if (repo_names_exclude != null && repo_names_exclude.size() > 0 && repo_names_exclude.contains(repoName)) {
+      if (repoNamesExclude != null && repoNamesExclude.size() > 0 && repoNamesExclude.contains(repoName)) {
         debug("Repository name:" + repoName + " is in the repoNamesExclude. Skipping...");
         continue;
       }
@@ -426,9 +424,8 @@ public class Main
           continue;
         }
       }
-      repo_counts.put(repoName, c);
+      REPO_COUNTS.put(repoName, c);
     }
-    return repo_counts;
   }
 
   private static Long getIndexCount(ODatabaseDocumentTx tx, String iname) {
@@ -485,7 +482,7 @@ public class Main
     Long cbgnv_idx_c = 0L;
     Long bnrpn_idx_c = 0L;
     Map<String, Long> repo_counts = new HashMap<>();
-    List<String> repo_names = new ArrayList<>();
+    List<String> repoNames = new ArrayList<>();
 
     log("main() started with maxMb = " + MAXMB);
 
@@ -532,8 +529,8 @@ public class Main
 
         if (MAGNIFY_PERCENT == 0.0) {
           log("magnifyPercent is 0%, so skipping various checks, and starting to check each repository.");
-          repo_counts = getRepoNamesCounts(tx, REPO_NAMES_INCLUDE, REPO_NAMES_EXCLUDE, true);
-          repo_names.addAll(repo_counts.keySet());
+          getRepoNamesCounts(tx, REPO_NAMES_INCLUDE, REPO_NAMES_EXCLUDE, true);
+          repoNames.addAll(REPO_COUNTS.keySet());
         }
         else if (MAXMB > estimateMb) {
           log("Asset count is small, so not checking each repositories.");
@@ -592,8 +589,8 @@ public class Main
             log("[WARN] browse_node_repository_name_parent_path_name_idx is smaller than the browse_node count. The browse_node may have duplicates");
             needTrunBrowse = true;
           }
-          repo_counts = getRepoNamesCounts(tx, REPO_NAMES_INCLUDE, REPO_NAMES_EXCLUDE, NO_DUPE_CHECK);
-          repo_names.addAll(repo_counts.keySet());
+          getRepoNamesCounts(tx, REPO_NAMES_INCLUDE, REPO_NAMES_EXCLUDE, NO_DUPE_CHECK);
+          repoNames.addAll(REPO_COUNTS.keySet());
         }
 
         if (abcn_idx_c > 0 && ac.equals(abcn_idx_c)) {
@@ -603,14 +600,14 @@ public class Main
         else {
           boolean is_dupe_found = false;
           if (NO_DUPE_CHECK) {
-            log("Not checking any duplicates for (this is for testing)\n" + repo_names);
+            log("Not checking any duplicates for (this is for testing)\n" + repoNames);
           }
           else if (check_all_repo) {
             is_dupe_found = checkDupes(tx, null);
           }
           else {
-            log("Starting checkDupesForRepos for total " + repo_names.size() + " repositories:\n" + repo_names);
-            is_dupe_found = checkDupesForRepos(tx, repo_names, repo_counts, MAXMB, (MAGNIFY_PERCENT == 0.0));
+            log("Starting checkDupesForRepos for total " + repoNames.size() + " repositories:\n" + repoNames);
+            is_dupe_found = checkDupesForRepos(tx, repoNames, MAXMB, (MAGNIFY_PERCENT == 0.0));
           }
 
           if (is_dupe_found) {
