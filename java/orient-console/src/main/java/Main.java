@@ -34,7 +34,7 @@ import java.util.*;
 public class Main
 {
   static final String PROMPT = "=> ";
-  static final String JSON_FORMAT = "attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0";
+  static final String JSON_FORMAT = "rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0";
   static Terminal terminal;
   static History history;
   static String historyPath;
@@ -53,7 +53,7 @@ public class Main
 
   private static void usage() {
     System.err.println("USAGE EXAMPLES:\n" +
-        "# start interactive console:\n" +
+        "# Start interactive console:\n" +
         "  java -jar ./orient-console.jar ./sonatype-work/nexus3/db/component\n" +
         " or with small .bak (zip) file:\n" +
         "  java -jar ./orient-console.jar ./component-2021-08-07-09-00-00-3.30.0-01.bak\n" +
@@ -316,10 +316,8 @@ public class Main
       }
 
       last_rows = ((List<ODocument>) oDocs).size();
-      if (last_rows > 0) {
-        last_rid =
-            ((ODocument) ((ODocument) ((List<ODocument>) oDocs).get((last_rows - 1))).field(ridName)).getIdentity()
-                .toString();
+      if (isPaging && last_rows > 0) {
+        last_rid = ((ODocument) ((ODocument) ((List<ODocument>) oDocs).get((last_rows - 1))).field(ridName)).getIdentity().toString();
       }
     }
   }
