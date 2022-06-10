@@ -491,7 +491,7 @@ function f_ip_set() {
         return 1
     fi
     if [ -z "${_nic}" ]; then
-        _nic="$(netstat -rn | grep ^0.0.0.0 | awk '{print $8}')"
+        _nic="$(netstat -rn | grep '^0.0.0.0' | awk '{print $8}')"
     fi
     if [ -z "${_nic}" ]; then
         _log "ERROR" "No NIC name."
@@ -1011,7 +1011,7 @@ function f_minikube4kvm() {
     curl -fL -o /usr/local/bin/minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 || return $?
     chmod a+x /usr/local/bin/minikube
     /usr/local/bin/minikube version || return $?
-    curl -fL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" || return $?
+    curl -fL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/$(curl -L -s "https://dl.k8s.io/release/stable.txt")/bin/linux/amd64/kubectl" || return $?
     chmod a+x /usr/local/bin/kubectl
     /usr/local/bin/kubectl version -o json  # not checking return code as if no 8080, it returns 1
 
@@ -1043,7 +1043,8 @@ function f_microk8s() {
     ufw allow in on cni0 && ufw allow out on cni0
     ufw default allow routed
     # surprisingly ingress seems to work without coredns
-    microk8s enable storage helm3 ingress ${dashboard} # dns dashboard metallb prometheus
+    microk8s enable storage helm3 ingress ${dashboard} # dns dashboard prometheus
+    #microk8s enable metallb:192.168.52.200-192.168.52.230
     echo "To replace nginx SSL/HTTPS certificate
     microk8s kubectl -n ingress create secret tls standalone.localdomain --key /var/tmp/share/cert/standalone.localdomain.key --cert /var/tmp/share/cert/standalone.localdomain.crt
     microk8s kubectl edit -n ingress daemonsets nginx-ingress-microk8s-controller
