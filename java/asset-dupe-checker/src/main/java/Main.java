@@ -54,6 +54,8 @@ public class Main
   private static double MAGNIFY_PERCENT = 300.0;
   //private static boolean CHECK_PER_COMP;
   private static boolean NO_DUPE_CHECK;
+
+  //private static boolean DUPE_CHECK_WITH_INDEX;
   private static boolean IS_DEBUG;
   private static long SUBTTL;
 
@@ -70,6 +72,7 @@ public class Main
     //System.out.println("  -DcheckPerComp=true For extremely large repository");
     System.out.println("  -Dlimit=<int>                   Limit the duplicate row result (this is for testing)");
     System.out.println("  -DnoDupeCheck=true              For testing/debugging this code");
+    //System.out.println("  -DdupeCheckWithIndex=true       In case you would like to avoid 'REBUILD INDEX'");
     System.out.println("  -Ddebug=true                    Verbose outputs");
   }
 
@@ -291,6 +294,7 @@ public class Main
       ODocument keep_rid = doc.field("keep_rid");
       List<ORecordId> dupe_rids = doc.field("dupe_rids");
       for (ORecordId dr : dupe_rids) {
+        //if (DUPE_CHECK_WITH_INDEX) { TODO }
         if (!dr.getIdentity().toString().equals(keep_rid.getIdentity().toString())) {
           out("TRUNCATE RECORD " + dr + ";");
           is_dupe_found = true;
@@ -371,7 +375,7 @@ public class Main
           estimateMb + " MB).");
       if(REPO_NAMES_INCLUDE == null || !REPO_NAMES_INCLUDE.contains(repoName)) {
         log("       To force, rerun with higher '-Xmx*g' and '-DrepoNames=" + repoName + "' (and save output to a different file)");
-        out("-- [WARN] Skipped '" + repoName + "' repository");
+        out("-- [WARN] Skipped '" + repoName + "' repository (" + c + ")");
         if (!REPO_NAMES_EXCLUDE.contains(repoName)) {
           REPO_NAMES_EXCLUDE.add(repoName);
         }
@@ -465,6 +469,8 @@ public class Main
     //debug("checkPerComp: " + CHECK_PER_COMP);
     NO_DUPE_CHECK = Boolean.getBoolean("noDupeCheck");
     debug("noDupeCheck: " + NO_DUPE_CHECK);
+    //DUPE_CHECK_WITH_INDEX = Boolean.getBoolean("dupeCheckWithIndex");
+    //debug("dupeCheckWithIndex: " + DUPE_CHECK_WITH_INDEX);
     LOG_PATH = System.getProperty("logPath", "./asset-dupe-checker.log");
     debug("logPath: " + LOG_PATH);
     MAXMB = Runtime.getRuntime().maxMemory() / 1024 / 1024;
@@ -581,15 +587,15 @@ public class Main
           Long cc = docs.get(0).field("c");
           debug("Component count: " + cc);
           if (cbgnv_idx_c > 0 && cbgnv_idx_c < cc ) {
-            log("[WARN] component_bucket_group_name_version_idx is smaller than the component count. The component may have duplicates.");
+            log("[WARN] component_bucket_group_name_version_idx (" + cbgnv_idx_c + ") < component count (" + cc + "). Component may have duplicates");
           }
 
           // Just in case, counting browse_node
           docs = execQueries(tx, "select count(*) as c from browse_node");
           long bn_c = docs.get(0).field("c");
           debug("Browse_node count: " + bn_c + " / index: " + (bnrpn_idx_c));
-          if (ac > 0 && bn_c > 0 && (bnrpn_idx_c > 0 && bn_c != bnrpn_idx_c)) {
-            log("[WARN] browse_node_repository_name_parent_path_name_idx is smaller than the browse_node count. The browse_node may have duplicates");
+          if (ac > 0 && bn_c > 0 && (bnrpn_idx_c > 0 && bnrpn_idx_c < bn_c)) {
+            log("[WARN] browse_node_repository_name_parent_path_name_idx (" + bnrpn_idx_c + ") < browse_node count (" + bn_c + "). Browse_node may have duplicates");
             needTrunBrowse = true;
           }
           getRepoNamesCounts(tx, REPO_NAMES_INCLUDE, REPO_NAMES_EXCLUDE, NO_DUPE_CHECK);
