@@ -28,7 +28,7 @@ function _get_iq_url() {
 
 # Start iq CLI
 # To debug, use suspend=y
-#_JAVA_OPTIONS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5007" iqCli
+#JAVA_TOOL_OPTIONS="-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5007" iqCli
 function iqCli() {
     local __doc__="https://help.sonatype.com/integrations/nexus-iq-cli#NexusIQCLI-Parameters"
     local _path="${1:-"./"}"
@@ -125,7 +125,7 @@ function nxrmStart() {
         echo "NOTE: May need to 'unzip -d ${_base_dir%/}/sonatype-work/nexus/plugin-repository $HOME/Downloads/unzip-repository-plugin-0.14.0-bundle.zip'"
         # jvm 1    | Caused by: java.lang.ClassNotFoundException: org.codehaus.janino.ScriptEvaluator
         #./sonatype-work/nexus/conf/logback-nexus.xml
-        [ -n "${_java_opts}" ] && export _JAVA_OPTIONS="${_java_opts}"
+        [ -n "${_java_opts}" ] && export JAVA_TOOL_OPTIONS="${_java_opts}"
     fi
     if [ -n "${_jetty_https}" ] && [[ "${_version}" =~ 3\.26\.+ ]]; then
         # @see: https://issues.sonatype.org/browse/NEXUS-24867
