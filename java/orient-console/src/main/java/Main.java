@@ -185,8 +185,6 @@ public class Main
       FileOutputStream fos = new FileOutputStream(fout, true);
       BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(fos));
       if (oDocs == null || oDocs.isEmpty()) {
-        if (!isPaging) bw.write("[]");
-        bw.newLine();
         bw.close();
         return;
       }
@@ -296,7 +294,7 @@ public class Main
       if (exportPath != null && exportPath.length() > 0) {
         writeListAsJson(((List<ODocument>) oDocs), exportPath, isPaging);
         if (!isPaging) {
-          System.err.printf("Wrote %d rows to %s", ((List<ODocument>) oDocs).size(), exportPath);
+          System.err.printf("Wrote %d rows to %s\n", ((List<ODocument>) oDocs).size(), exportPath);
         }
       }
       else {
