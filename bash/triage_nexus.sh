@@ -38,8 +38,8 @@ function f_start_web() {
 
 function f_verify_install() {
     local __doc__="Compare files with the original tar installer file"
-    local _tar="$1"
-    local _extracted="$2"
+    local _tar="$1"         # curl -O -L https://download.sonatype.com/nexus/3/nexus-3.38.0-01-unix.tar.gz
+    local _extracted="$2"   # directory which contains "nexus-3.38.0-01"
     tar --diff -f "${_tar}" -C "${_extracted}" | grep -vE '(Uid|Gid|Mod time) differs'
 }
 
