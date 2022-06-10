@@ -573,17 +573,17 @@ function backupC() {
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory'
     _src="$(realpath "${_src}")"    # because find -L ... -delete does not work
-    find ${_src%/} -type f -mtime +7 -size 0 \( ! -iname ".*" \) -print -delete &
-    find ${_src%/} -type d -mtime +14 -name '*_tmp' -print -delete &
-    find ${_src%/} -type f -mtime +14 -name '*.tmp' -print -delete &
-    find ${_src%/} -type f -mtime +60 -name "*.log" -print -delete &
-    find ${_src%/} -type f -mtime +90 -size +128000k -print -delete &
-    find ${_src%/} -type f -mtime +180 -print -delete &
+    find ${_src%/} -type f -mtime +7 -size 0 \( ! -name "._*" \) -print -delete 2>/dev/null &
+    find ${_src%/} -type d -mtime +14 -name '*_tmp' -print -delete 2>/dev/null &
+    find ${_src%/} -type f -mtime +14 -name '*.tmp' -print -delete 2>/dev/null &
+    find ${_src%/} -type f -mtime +60 -name "*.log" -print -delete 2>/dev/null &
+    find ${_src%/} -type f -mtime +90 -size +128000k -print -delete 2>/dev/null &
+    find ${_src%/} -type f -mtime +180 -print -delete 2>/dev/null &
     # NOTE: this find command requires "/*"
     if [ "Darwin" = "$(uname)" ]; then
         gfind ${_src%/}/* -type d -mtime +2 -empty -print -delete 2>/dev/null &
     else
-        find ${_src%/}/* -type d -mtime +2 -empty -print -delete &
+        find ${_src%/}/* -type d -mtime +2 -empty -print -delete 2>/dev/null &
     fi
     wait
 
