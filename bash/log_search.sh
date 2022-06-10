@@ -826,6 +826,13 @@ function f_gc_before_after_check() {
     echo "# Temp file: /tmp/${FUNCNAME}_$$.tmp"
 }
 
+function f_jmap_histo_compare() {
+    local _file_glob="${1:-${_HISTO_FILE_GLOB:-"histo*.out"}}"
+    local _keyword="${2:-".*sonatype.*"}"
+    local _m="${3:-"10"}"
+    rg "${_keyword}" -m${_m} -g "${_file_glob}"
+}
+
 #for _f in $(ls -1 ./jmap_histos/jmap_histo_*.out); do f_jmap_histo2csv "${_f}" "./jmap_histos.csv"; done
 function f_jmap_histo2csv() {
     local __doc__="Convert jmap -histo output to csv"
