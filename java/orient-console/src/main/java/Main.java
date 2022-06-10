@@ -294,7 +294,7 @@ public class Main
       if (exportPath != null && exportPath.length() > 0) {
         writeListAsJson(((List<ODocument>) oDocs), exportPath, isPaging);
         if (!isPaging) {
-          System.err.printf("Wrote %d rows to %s\n", ((List<ODocument>) oDocs).size(), exportPath);
+          System.err.printf("Wrote %d rows to %s.\n", ((List<ODocument>) oDocs).size(), exportPath);
         }
       }
       else {
