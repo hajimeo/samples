@@ -1069,9 +1069,10 @@ function f_threads() {
             echo "##          'touchItemLastRequested' https://issues.sonatype.org/browse/NEXUS-10372 all NXRM2"
             echo "##          'preClose0' https://issues.sonatype.org/browse/NEXUS-30865 Jetty, all NXRM2"
             echo "##          'MemoryCache' https://bugs.openjdk.java.net/browse/JDK-8259886 < 8u301"
+            echo "##          'java.lang.Class.forName' https://issues.sonatype.org/browse/NEXUS-28608 up to NXRM 2.14.20"
             echo "##          'CachingDateFormatter' https://issues.sonatype.org/browse/NEXUS-31564 (logback)"
             echo "##          'com.codahale.metrics.health.HealthCheck.execute' (nexus.healthcheck.refreshInterval)"
-            rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache|CachingDateFormatter|com.codahale.metrics.health.HealthCheck.execute)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
+            rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache|java.lang.Class.forName|CachingDateFormatter|com.codahale.metrics.health.HealthCheck.execute)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
             echo " "
         fi
 
