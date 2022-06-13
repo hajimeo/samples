@@ -1120,6 +1120,10 @@ function f_microk8s() {
     microk8s kubectl scale --replicas=0 deployment <deployment-name>    # stop all pods temporarily (if no HPA)
     microk8s kubectl delete pod --grace-period=0 --force <pod-name>     # force terminating/deleting
 
+    # list images (docker images)
+    microk8s ctr images list
+    kubectl get pods --all-namespaces -o go-template --template='{{range .items}}{{range .spec.containers}}{{.image}} {{end}}{{end}}'
+
     # Ingress troubleshooting: https://kubernetes.github.io/ingress-nginx/troubleshooting/
     microk8s kubectl exec -it -n ingress nginx-ingress-microk8s-controller-xb9qh -- cat /etc/nginx/nginx.conf
 
