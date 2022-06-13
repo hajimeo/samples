@@ -21,7 +21,7 @@ function _get_iq_url() {
             _iq_url="http://${_iq_url%/}/"
         fi
     elif [ -z "${_iq_url}" ]; then  # default
-        _iq_url="https://nxiq-k8s.standalone.localdomain/"
+        _iq_url="http://nxiq-k8s.standalone.localdomain:8070/"
     fi
     echo "${_iq_url}"
 }
@@ -55,7 +55,7 @@ function iqCli() {
     fi
     # NOTE: -X/--debug outputs to STDOUT
     #       Mac uses "TMPDIR" (and can't change), which is like java.io.tmpdir = /var/folders/ct/cc2rqp055svfq_cfsbvqpd1w0000gn/T/ + nexus-iq
-    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r "$(realpath "${TMPDIR:-"/tmp"}/iq_result_$(date +'%Y%m%d%H%M%S').json")" -X ${_path}"
+    local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r iq_result.json -X ${_path}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
@@ -74,16 +74,9 @@ function iqMvn() {
 
     local _iq_mvn_ver="${_IQ_MVN_VER}"  # empty = latest
     [ -n "${_iq_mvn_ver}" ] && _iq_mvn_ver=":${_iq_mvn_ver}"
+    _iq_url="$(_get_iq_url "${_iq_url}")"
 
-    if [ -z "${_iq_url}" ] && [ -z "${_IQ_URL}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
-        _iq_url="http://localhost:8070/"
-    elif [ -n "${_iq_url}" ] && [[ ! "${_iq_url}" =~ ^https?://.+:[0-9]+ ]]; then   # Provided hostname only
-        _iq_url="http://${_iq_url}:8070/"
-    elif [ -z "${_iq_url}" ]; then  # default
-        _iq_url="https://nxiq-k8s.standalone.localdomain/"
-    fi
-
-    local _cmd="mvn -f ${_file} com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -Dclm.scan.dirExcludes=\"**/BOOT-INF/lib/**\" ${_mvn_opts}"
+    local _cmd="mvn -f ${_file} com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -Dclm.resultFile=iq_result.json -Dclm.scan.dirExcludes=\"**/BOOT-INF/lib/**\" ${_mvn_opts}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2

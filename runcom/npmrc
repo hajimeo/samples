@@ -1,7 +1,7 @@
 ;npmrc example
 strict-ssl=false
 email=npmtest@example.com
-registry=http://nxrm3-pg-k8s.standalone.localdomain/repository/npm-group/
+registry=http://nxrm3-pg-k8s.standalone.localdomain:8081/repository/npm-group/
 ;always-auth=true
 ; _auth needs to use base64, so for example, admin admin123
 _auth="YWRtaW46YWRtaW4xMjM="

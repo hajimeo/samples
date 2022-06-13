@@ -3,11 +3,11 @@ index-servers =
   nexus
 
 [nexus]
-repository: http://nxrm3-pg-k8s.standalone.localdomain/repository/pypi-proxy/
+repository: http://nxrm3-pg-k8s.standalone.localdomain:8081/repository/pypi-proxy/
 username: admin
 password: admin123
 
 [nexus-hosted]
-repository: http://nxrm3-pg-k8s.standalone.localdomain/repository/pypi-hosted/
+repository: http://nxrm3-pg-k8s.standalone.localdomain:8081/repository/pypi-hosted/
 username: admin
 password: admin123
