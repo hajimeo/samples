@@ -289,6 +289,24 @@ function _test_template() {
     echo '```'
     return 1
 }
+function _test_tmpl_auto() {
+    local _bad_result="$1"
+    local _warn_if_gt="$2"
+    local _err_if_gt="$3"
+    local _message="$4"
+    local _note="$5"
+    local _style="$6"
+    [ -z "${_bad_result}" ] && return 0
+    local _level="INFO"
+    local _wc="$(echo "${_bad_result}" | wc -l | tr -d '[:space:]')"
+    if [ ${_wc:-0} -gt ${_err_if_gt:-0} ]; then
+        _level="ERROR"
+    elif [ ${_wc:-0} -gt ${_warn_if_gt:-0} ]; then
+        _level="WARN"
+    fi
+    _test_template "${_bad_result}" "${_level}" "${_message}" "${_note}" "${_style}"
+    return $?
+}
 
 
 ### Extracts ###################################################################
@@ -301,7 +319,7 @@ function e_app_logs() {
         local _start_log_line=""
         if [[ "${_log_path}" =~ (nexus)[^*]*log[^*]* ]]; then
             #_start_log_line=".*org.sonatype.nexus.(webapp.WebappBootstrap|events.EventSubscriberHost) - Initialized"  # NXRM2 (if no DEBUG)
-            _start_log_line=".*org.sonatype.nexus.pax.logging.NexusLogActivator - start" # NXRM3
+            _start_log_line="(.*org.sonatype.nexus.pax.logging.NexusLogActivator - start|.*org.sonatype.nexus.events.EventSubscriberHost - Initialized)" # NXRM3|NXRM2
         elif [[ "${_log_path}" =~ (clm-server)[^*]*log[^*]* ]]; then
             _start_log_line=".* Initializing Nexus IQ Server .*"   # IQ
         fi
@@ -317,13 +335,14 @@ function e_app_logs() {
         _TOP_ERROR_MAX_N=10000 f_topErrors "${_LOG_GLOB}" "" "" "(WARN .+ high disk watermark|Attempt to access soft-deleted blob .+nexus-repository-docker)" >${_FILTERED_DATA_DIR%/}/f_topErrors.out
     fi
 }
-function e_req_logs() {
+function e_requests() {
     local _req_log_path="$(find . -maxdepth 3 -name "${_REQUEST_LOG:-"request.log"}" | sort -r | head -n1 2>/dev/null)"
     local _req_log_size="$(_actual_file_size "${_req_log_path}")"
     if  _size_check "${_req_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
         f_request2csv "${_req_log_path}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
+        _rg "${_DATE_FMT_REQ}:(\d\d).+(/rest/|/api/)([^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?)" --no-filename -g ${_REQUEST_LOG} -o -r '"$1:" "$2$3"' | _replace_number | sort -k1,2 | uniq -c > ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv &
     else
-        _LOG "INFO" "Not converting '${_req_log_path}' to CSV because no ${_REQUEST_LOG:-"request.log"} or log size (${_req_log_size}) is larger than ${_LOG_THRESHOLD_BYTES}"
+        _LOG "INFO" "Not converting '${_req_log_path}' to CSV (and agg_requests_count_hour_api) because no ${_REQUEST_LOG:-"request.log"} or log size (${_req_log_size}) is larger than ${_LOG_THRESHOLD_BYTES}"
     fi
 }
 function e_threads() {
@@ -356,36 +375,18 @@ function r_threads() {
     echo '```'
 }
 function r_requests() {
-    _basic_check "" "${_FILTERED_DATA_DIR%/}/request.csv" || return
+    _head "REQUESTS" "Request counts per hour from ${_REQUEST_LOG}"
+    echo '```'
+    _rg "${_DATE_FMT_REQ}:\d\d" -o --no-filename -g ${_REQUEST_LOG} | bar_chart.py
+    echo '```'
+
+    [ -s "${_FILTERED_DATA_DIR%/}/request.csv" ] || return
     # first and end time per user
     #_q -H "select clientHost, user, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1,2"
     _head "REQUESTS" "Counting host_ip + user per hour for last 10 ('-' in user is counted as 1)"
     echo '```'
     _q -H "SELECT substr(date,1,14) as hour, count(*), count(distinct clientHost), count(distinct user), count(distinct clientHost||user) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1 order by hour desc LIMIT 10"
     echo '```'
-
-    _head "REQUESTS" "Request counts per hour from ${_REQUEST_LOG}"
-    echo '```'
-    _rg "${_DATE_FMT_REQ}:\d\d" -o --no-filename -g ${_REQUEST_LOG} | bar_chart.py
-    echo '```'
-
-    _head "REQUESTS" "API-like requests per hour from ${_REQUEST_LOG}"
-    echo '```'
-    #_q -H "select substr(date,1,16) as ten_min, count(*) as c, CAST(avg(elapsedTime) as INT) as avg_elapsed from ${_FILTERED_DATA_DIR%/}/request.csv WHERE (requestURL like '%/service/rest/%' OR requestURL like '%/api/v2/%') GROUP BY ten_min HAVING avg_elapsed > 7000"
-    _rg "(${_DATE_FMT_REQ}:\d\d).+(/service/rest/| /rest/|/api/v2/)" --no-filename -g ${_REQUEST_LOG} -o -r '$1' | bar_chart.py
-    echo '```'
-    echo '```'
-    echo "# To check which requests are used most:"
-    echo "rg \"(${_DATE_FMT_REQ}:\d\d).+(/service/rest/| /rest/|/api/v2/)([^ ?=]+)\" --no-filename -g ${_REQUEST_LOG} -o -r '\$2\$3' | _replace_number | sort | uniq -c | sort -nr | head -n10"
-    echo '```'
-
-    _rg 'HTTP/\d\.\d" 5\d\d\s' --no-filename -g ${_REQUEST_LOG} > ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out
-    if [ -s ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out ]; then
-        echo "### 5xx statusCode in ${_REQUEST_LOG} (${_FILTERED_DATA_DIR%/}/log_requests_5xx.out)"
-        echo '```'
-        _rg "${_DATE_FMT_REQ}.\d\d" -o ${_FILTERED_DATA_DIR%/}/log_requests_5xx.out | bar_chart.py
-        echo '```'
-    fi
 }
 function r_list_logs() {
     _head "APP LOG" "max 100 *.log files' start and end (start time, end time, difference(sec), filesize)"
@@ -472,12 +473,23 @@ function t_threads() {
 }
 function t_requests() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/request.csv" || return
-    _q -H "SELECT requestURL, statusCode, count(*) as c FROM ${_FILTERED_DATA_DIR}/request.csv WHERE requestURL LIKE '%/repository/%' AND (statusCode like '5%') GROUP BY requestURL, statusCode HAVING c > 10 ORDER BY c DESC LIMIT 10" > /tmp/t_requests_$$.out
-    _test_template "$(_rg -q '\s+5\d\d\s+' -m1 /tmp/t_requests_$$.out && cat /tmp/t_requests_$$.out)" "WARN" "Many repeated 5xx status in ${_FILTERED_DATA_DIR}/request.csv (${_FILTERED_DATA_DIR%/}/log_requests_5xx.out)"
+    local _query="SELECT requestURL, statusCode, count(*) as c, avg(elapsedTime) as avg_elapsed, max(elapsedTime) as max_elapsed, sum(elapsedTime) as sum_elapsed FROM ${_FILTERED_DATA_DIR}/request.csv WHERE (statusCode like '5%') GROUP BY requestURL, statusCode HAVING (c > 100 or avg_elapsed > 1000 or max_elapsed > 7000) ORDER BY sum_elapsed DESC LIMIT 10"
+    if _q -H "${_query}" 2>/dev/null > ${_FILTERED_DATA_DIR%/}/agg_requests_5xx_slow.ssv; then
+        local _line_num="$(cat ${_FILTERED_DATA_DIR%/}/agg_requests_5xx_slow.ssv | wc -l | tr -d '[:space:]')"
+        if [ -n "${_line_num}" ] && [ ${_line_num} -gt 5 ]; then
+            _test_template "$(head -n10 ${_FILTERED_DATA_DIR%/}/agg_requests_5xx_slow.ssv)" "WARN" "Many slow 5xx status in ${_FILTERED_DATA_DIR}/request.csv" "${_query}"
+        fi
+    fi
+
+    # TODO: SQLite does not have regex replace (so that can include elapsed)
+    if [ -s "${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv" ]; then
+        _test_template "$(q -O -d" " -T  --disable-double-double-quoting "SELECT c2 as hour, c3 as api, sum(c1) as c FROM ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv GROUP BY hour, api HAVING c > 2000 ORDER BY c DESC LIMIT 40")" "WARN" "Potentially too frequent API-like requests per hour (${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv)" \
+          "_q -H \"SELECT substr(date,1,14) as hour, count(*), avg(elapsedTime), max(elapsedTime), sum(elapsedTime) FROM ${_FILTERED_DATA_DIR%/}/request.csv where requestURL like '%/<REPLACE_HERE>/%' GROUP by hour HAVING max(elapsedTime) > 2000\""
+    fi
 
     # NOTE: can't use headerContentLength as some request.log doesn't have it
-    f_reqsFromCSV "request.csv" "7000" "" "20" "AND requestURL NOT LIKE 'GET %/maven-metadata.xml %'" 2>/dev/null >/tmp/t_requests_$$.out
-    _test_template "$(_rg -q '\s+GET\s+' -m1 /tmp/t_requests_$$.out && cat /tmp/t_requests_$$.out)" "WARN" "Top 20 slow downloads excluding maven-metadata.xml from ${_FILTERED_DATA_DIR}/request.csv"
+    f_reqsFromCSV "request.csv" "7000" "" "20" "AND requestURL NOT LIKE 'GET %/maven-metadata.xml %'" 2>/dev/null >${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out
+    _test_template "$(_rg -q '\s+GET\s+' -m1 ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow.out && cat ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow.out)" "WARN" "Top 20 slow downloads excluding maven-metadata.xml from ${_FILTERED_DATA_DIR}/request.csv"
 }
 
 
