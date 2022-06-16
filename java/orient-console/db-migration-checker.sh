@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
+#
 # REQUIREMENTS:
-# java (v8), python3
+#   Assuming the asset-dupe-checker.jar was already used and fixed.
+#   java (v8), python3 (not used yet)
+#
 
-: ${_CHECK_LIST:="NEXUS-29594"}
+: ${_CHECK_LIST:="NEXUS-29594 NEXUS-33290"}
 
 function f_gen_sqls_per_bucket() {
     local _json_file="$1"
@@ -44,9 +47,9 @@ main() {
     local _sql=""
 
     if [ -n "${_xmx}" ]; then
-        _sql="SELECT repository_name as repo_name FROM bucket ORDER BY repository_name limit -1;"
+        _sql="SELECT @rid as rid, repository_name as repo_name FROM bucket ORDER BY repository_name limit -1;"
     else
-        _sql="SELECT bucket.repository_name as repo_name, count(*) as c FROM asset GROUP BY bucket ORDER BY c DESC limit -1;"
+        _sql="SELECT bucket, bucket.repository_name as repo_name, count(*) as c FROM asset GROUP BY bucket ORDER BY c DESC limit -1;"
     fi
     echo "${_sql}" | java -Xms${_xmx:-"4g"} -Xmx${_xmx:-"4g"} -DexportPath=./bkt_names.json -jar ${_orient_console} ${_component} || return $?
     if [ -z "${_xmx}" ]; then
@@ -58,12 +61,24 @@ main() {
         echo "# [INFO] Using -Xmx${_xmx} ..."
     fi
 
-    if echo "${_CHECK_LIST}" | grep -qE "NEXUS-29594\b"; then
+    if echo "${_CHECK_LIST}" | grep -qE "\bNEXUS-29594\b"; then
         echo "# [INFO] Checking NEXUS-29594 ..."
-        # NOTE: not using 'like' as expecting index is no broken.
-        _sql="SELECT * FROM (select bucket, name, format, list(component) as comps, count(*) as c from asset WHERE bucket.repository_name = '%REPO_NAME_VALUE%' group by name) where c > 1;"
-        f_gen_sqls_per_bucket "./bkt_names.json" "${_sql}" | java -Xms${_xmx} -Xmx${_xmx} -DexportPath=./result_NEXUS-29594.json -jar ${_orient_console} ${_component} || return $?
+        # NOTE: not using 'like' as expecting index is no broken (Use asset-dupe-checker.jar)
+        _sql="SELECT * FROM (SELECT bucket, name, format, list(component) as comps, count(*) as c from asset WHERE bucket.repository_name = '%REPO_NAME_VALUE%' group by name) where c > 1;"
+        f_gen_sqls_per_bucket "./bkt_names.json" "${_sql}" | java -Xms${_xmx} -Xmx${_xmx} -DexportPath=./result_NEXUS-29594_1.json -jar ${_orient_console} ${_component} || return $?
+
+        _sql="SELECT @rid as rid, bucket, name, blob_ref FROM asset WHERE bucket.repository_name = '%REPO_NAME_VALUE%' AND format = 'docker' AND name like '%/manifests/sha256:%' AND @rid IN (SELECT rids FROM (SELECT list(@rid) as rids, COUNT(*) as c FROM asset where bucket.repository_name = '%REPO_NAME_VALUE%' AND format = 'docker' GROUP BY blob_ref) WHERE c > 1);"
+        f_gen_sqls_per_bucket "./bkt_names.json" "${_sql}" | java -Xms${_xmx} -Xmx${_xmx} -DexportPath=./result_NEXUS-29594_2.json -jar ${_orient_console} ${_component} || return $?
     fi
+
+    if echo "${_CHECK_LIST}" | grep -qE "\bNEXUS-33290\b"; then
+        echo "# [INFO] Checking NEXUS-33290 ..."
+        # NOTE: not using 'like' as expecting index is no broken (Use asset-dupe-checker.jar)
+        _sql="SELECT @rid as rid, bucket, name, format FROM asset WHERE bucket.repository_name = '%REPO_NAME_VALUE%' AND attributes.content.last_modified.asLong() = 0;"
+        f_gen_sqls_per_bucket "./bkt_names.json" "${_sql}" | java -Xms${_xmx} -Xmx${_xmx} -DexportPath=./result_NEXUS-33290.json -jar ${_orient_console} ${_component} || return $?
+    fi
+
+    # NEXUS-31032 fixed in 3.38.0 migrator
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
