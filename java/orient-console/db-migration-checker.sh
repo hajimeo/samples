@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# REQUIREMENTS:
+# java (v8), python3
 
 : ${_CHECK_LIST:="NEXUS-29594"}
 
@@ -14,9 +16,18 @@ function f_gen_sqls_per_bucket() {
     done
 }
 
+function _get_xmx() {
+    local _max_c="${1:-0}"
+    local _xmx_gb="$(( ${_max_c} * 3 / 1024 / 1024 + 1))"
+    if [ 6 -gt ${_xmx_gb:-0} ]; then
+        _xmx_gb=6
+    fi
+    echo "${_xmx_gb}g"
+}
+
 main() {
     local _component="${1}"
-    local _xmx="${2:-"6g"}"
+    local _xmx="${2}"
     local _orient_console="${3}"
 
     if [ ! -d "${_component%/}" ]; then
@@ -30,10 +41,22 @@ main() {
             curl -o "${_orient_console}" -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar" || return $?
         fi
     fi
-
-    echo "SELECT bucket.repository_name as repo_name, count(*) as c FROM asset GROUP BY bucket ORDER BY c DESC limit -1;" | java -Xms${_xmx} -Xmx${_xmx} -DexportPath=./bkt_names.json -jar ${_orient_console} ${_component} || return $?
-
     local _sql=""
+
+    if [ -n "${_xmx}" ]; then
+        _sql="SELECT repository_name as repo_name FROM bucket ORDER BY repository_name limit -1;"
+    else
+        _sql="SELECT bucket.repository_name as repo_name, count(*) as c FROM asset GROUP BY bucket ORDER BY c DESC limit -1;"
+    fi
+    echo "${_sql}" | java -Xms${_xmx:-"4g"} -Xmx${_xmx:-"4g"} -DexportPath=./bkt_names.json -jar ${_orient_console} ${_component} || return $?
+    if [ -z "${_xmx}" ]; then
+        local _max_c="0"
+        if [[ "$(grep -m1 '"c":' ./bkt_names.json)" =~ \"c\":([0-9]+) ]]; then
+            _max_c="${BASH_REMATCH[1]}"
+        fi
+        _xmx="$(_get_xmx "${_max_c}")"
+        echo "# [INFO] Using -Xmx${_xmx} ..."
+    fi
 
     if echo "${_CHECK_LIST}" | grep -qE "NEXUS-29594\b"; then
         echo "# [INFO] Checking NEXUS-29594 ..."
