@@ -6,7 +6,7 @@
 #
 
 #: ${_CHECK_LIST:="NEXUS-29594_1 NEXUS-29594_2 NEXUS-33290"}
-: ${_CHECK_LIST:="NEXUS-29594_1"}
+: ${_CHECK_LIST:="NEXUS-29594_1 NEXUS-28621"}
 
 function f_gen_sqls_per_bucket() {
     local _json_file="$1"
@@ -79,6 +79,12 @@ for js in jsList:
     if echo "${_CHECK_LIST}" | grep -qE "\bNEXUS-29594_2\b"; then
         _sql="SELECT @rid as rid, bucket, name, blob_ref FROM asset WHERE bucket.repository_name = '%REPO_NAME_VALUE%' AND format = 'docker' AND name like '%/manifests/sha256:%' AND @rid IN (SELECT rids FROM (SELECT list(@rid) as rids, COUNT(*) as c FROM asset where bucket.repository_name = '%REPO_NAME_VALUE%' AND format = 'docker' GROUP BY blob_ref) WHERE c > 1);"
         f_gen_sqls_per_bucket "./bkt_names.json" "${_sql}" | java -Xms${_xmx} -Xmx${_xmx} -DexportPath=./result_NEXUS-29594_2.json -jar ${_orient_console} ${_component} || return $?
+    fi
+
+    if echo "${_CHECK_LIST}" | grep -qE "\bNEXUS-28621\b"; then
+        # This query should be fast (as long as index is healthy)
+        _sql="SELECT @rid as rid, bucket, component, name, format, size, blob_ref FROM asset WHERE name = '';"
+        echo "${_sql}" | java -Xms${_xmx} -Xmx${_xmx} -DexportPath=./result_NEXUS-28621.json -jar ${_orient_console} ${_component} || return $?
     fi
 
     if echo "${_CHECK_LIST}" | grep -qE "\bNEXUS-33290\b"; then
