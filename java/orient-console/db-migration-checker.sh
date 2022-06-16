@@ -22,7 +22,7 @@ function f_gen_sqls_per_bucket() {
 
 function _get_xmx() {
     local _max_c="${1:-0}"
-    local _xmx_gb="$(( ${_max_c} * 3 / 1024 / 1024 + 1))"
+    local _xmx_gb="$(( ${_max_c} * 3 / 1024 / 1024 + 2))"   # per 3KB + 2GB
     if [ 6 -gt ${_xmx_gb:-0} ]; then
         _xmx_gb=6
     fi
