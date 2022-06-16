@@ -189,7 +189,7 @@ public class Main
         return;
       }
       if (!isPaging && oDocs.size() == 1) {
-        bw.write(oDocs.get(0).toJSON(JSON_FORMAT));
+        bw.write("[" + oDocs.get(0).toJSON(JSON_FORMAT) + "]");
         bw.newLine();
         bw.close();
         return;

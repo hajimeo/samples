@@ -101,8 +101,7 @@ for js in jsList:
             cat ./result_NEXUS-28621.json | python3 -c 'import sys, json
 jsList = json.loads(sys.stdin.read())
 for js in jsList:
-    for rid in js["rid"]:
-        print("DELETE FROM asset WHERE @rid = %s AND component.@rid IS NULL;" % rid)' >> "${_result}"
+    print("DELETE FROM asset WHERE @rid = %s AND component.@rid IS NULL;" % js["rid"])' >> "${_result}"
         fi
     fi
 
