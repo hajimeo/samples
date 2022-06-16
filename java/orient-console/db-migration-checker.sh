@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+
+: ${_CHECK_LIST:="NEXUS-29594"}
+
+function f_gen_sqls_per_bucket() {
+    local _json_file="$1"
+    local _base_sql="$2"
+    local _replace="${3:-"%REPO_NAME_VALUE%"}"
+    local _repo_col="${4:-"repo_name"}"
+    cat "${_json_file}" | while read -r _l; do
+        if [[ "${_l}" =~ \"${_repo_col}\":\"([^\"]+)\" ]]; then
+            echo "${_base_sql}" | sed "s/${_replace}/${BASH_REMATCH[1]}/g"
+        fi
+    done
+}
+
+main() {
+    local _component="${1}"
+    local _xmx="${2:-"6g"}"
+    local _orient_console="${3}"
+
+    if [ ! -d "${_component%/}" ]; then
+        echo "Provide a path to the component directory"
+        return 1
+    fi
+
+    if [ -z "${_orient_console}" ]; then
+        _orient_console="./orient-console.jar"
+        if [ ! -s "${_orient_console}" ]; then
+            curl -o "${_orient_console}" -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar" || return $?
+        fi
+    fi
+
+    echo "SELECT bucket.repository_name as repo_name, count(*) as c FROM asset GROUP BY bucket ORDER BY c DESC limit -1;" | java -Xms${_xmx} -Xmx${_xmx} -DexportPath=./bkt_names.json -jar ${_orient_console} ${_component} || return $?
+
+    local _sql=""
+
+    if echo "${_CHECK_LIST}" | grep -qE "NEXUS-29594\b"; then
+        echo "# [INFO] Checking NEXUS-29594 ..."
+        # NOTE: not using 'like' as expecting index is no broken.
+        _sql="SELECT * FROM (select bucket, name, format, list(component) as comps, count(*) as c from asset WHERE bucket.repository_name = '%REPO_NAME_VALUE%' group by name) where c > 1;"
+        f_gen_sqls_per_bucket "./bkt_names.json" "${_sql}" | java -Xms${_xmx} -Xmx${_xmx} -DexportPath=./result_NEXUS-29594.json -jar ${_orient_console} ${_component} || return $?
+    fi
+}
+
+if [ "$0" = "$BASH_SOURCE" ]; then
+    main "$@"
+fi
