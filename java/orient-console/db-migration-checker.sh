@@ -2,10 +2,11 @@
 #
 # REQUIREMENTS:
 #   Assuming the asset-dupe-checker.jar was already used and fixed.
-#   java (v8), python3 (not used yet)
+#   java (v8), python3
 #
 
-: ${_CHECK_LIST:="NEXUS-29594 NEXUS-33290"}
+#: ${_CHECK_LIST:="NEXUS-29594_1 NEXUS-29594_2 NEXUS-33290"}
+: ${_CHECK_LIST:="NEXUS-29594_1"}
 
 function f_gen_sqls_per_bucket() {
     local _json_file="$1"
@@ -61,12 +62,21 @@ main() {
         echo "# [INFO] Using -Xmx${_xmx} ..."
     fi
 
-    if echo "${_CHECK_LIST}" | grep -qE "\bNEXUS-29594\b"; then
+    if echo "${_CHECK_LIST}" | grep -qE "\bNEXUS-29594_1\b"; then
         echo "# [INFO] Checking NEXUS-29594 ..."
         # NOTE: not using 'like' as expecting index is no broken (Use asset-dupe-checker.jar)
-        _sql="SELECT * FROM (SELECT bucket, name, format, list(component) as comps, count(*) as c from asset WHERE bucket.repository_name = '%REPO_NAME_VALUE%' group by name) where c > 1;"
+        _sql="SELECT * FROM (SELECT list(@rid) as rids, bucket, name, format, list(component) as comps, count(*) as c from asset WHERE bucket.repository_name = '%REPO_NAME_VALUE%' group by name) where c > 1;"
         f_gen_sqls_per_bucket "./bkt_names.json" "${_sql}" | java -Xms${_xmx} -Xmx${_xmx} -DexportPath=./result_NEXUS-29594_1.json -jar ${_orient_console} ${_component} || return $?
+        if [ -s ./result_NEXUS-29594_1.json ]; then
+            cat ./result_NEXUS-29594_1.json | python3 -c 'import sys, json
+jsList = json.loads(sys.stdin.read())
+for js in jsList:
+    for rid in js["rids"]:
+        print("DELETE FROM asset WHERE @rid = %s AND component.@rid IS NULL;" % rid)' > ./fix_NEXUS-29594_1.sql && echo "# [INFO] ./fix_NEXUS-29594_1.sql has been created."
+        fi
+    fi
 
+    if echo "${_CHECK_LIST}" | grep -qE "\bNEXUS-29594_2\b"; then
         _sql="SELECT @rid as rid, bucket, name, blob_ref FROM asset WHERE bucket.repository_name = '%REPO_NAME_VALUE%' AND format = 'docker' AND name like '%/manifests/sha256:%' AND @rid IN (SELECT rids FROM (SELECT list(@rid) as rids, COUNT(*) as c FROM asset where bucket.repository_name = '%REPO_NAME_VALUE%' AND format = 'docker' GROUP BY blob_ref) WHERE c > 1);"
         f_gen_sqls_per_bucket "./bkt_names.json" "${_sql}" | java -Xms${_xmx} -Xmx${_xmx} -DexportPath=./result_NEXUS-29594_2.json -jar ${_orient_console} ${_component} || return $?
     fi
