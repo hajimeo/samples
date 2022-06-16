@@ -51,7 +51,7 @@ public class Main
   private static Map<String, Long> REPO_COUNTS = new HashMap<>();
   private static String LIMIT = "-1";
   private static Path TMP_DIR = null;
-  private static double MAGNIFY_PERCENT = 300.0;
+  private static double MAGNIFY_PERCENT = 250.0;
   //private static boolean CHECK_PER_COMP;
   private static boolean NO_DUPE_CHECK;
 
@@ -68,7 +68,7 @@ public class Main
     System.out.println("  -DextractDir=<extracting path>  Directory used for extracting component-*.bak file");
     System.out.println("  -DrepoNames=<repo1,repo2,...>   To specify (force) the repositories to check");
     System.out.println("  -DrepoNamesExclude=<repo1,...>  To exclude specific repositories");
-    System.out.println("  -DmagnifyPercent=<int>          Default 300. 0 disable validations and check one repository each");
+    System.out.println("  -DmagnifyPercent=<int>          Default 250. 0 disable validations and check one repository each");
     //System.out.println("  -DcheckPerComp=true For extremely large repository");
     System.out.println("  -Dlimit=<int>                   Limit the duplicate row result (this is for testing)");
     System.out.println("  -DnoDupeCheck=true              For testing/debugging this code");
@@ -405,7 +405,7 @@ public class Main
     REPO_COUNTS = new HashMap<>();
     // Intentionally sorting with repository_name
     List<ODocument> bkts = execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
-    // NOTE: 'where key = [bucket.rid]' works, but 'select key, count(*) as c from index:asset_bucket_name_idx group by key;' does not, so looping...
+    // NOTE: 'where key = [bucket.rid]' works, but 'select key, count(1) as c from index:asset_bucket_name_idx group by key;' does not, so looping...
     for (ODocument bkt : bkts) {
       String repoId = ((ODocument) bkt.field("r")).getIdentity().toString();
       String repoName = bkt.field("repository_name");
@@ -421,8 +421,8 @@ public class Main
 
       long c = -1L;
       if(!noEstimateCheck) {
-        // NOTE: To check count: "select bucket, count(*) as c from asset group by bucket;" might be faster???
-        String q = "select count(*) as c from index:asset_bucket_name_idx where key = [" + repoId + "]";
+        // NOTE: To check count: "select bucket, count(1) as c from asset group by bucket;" might be faster???
+        String q = "select count(1) as c from index:asset_bucket_name_idx where key = [" + repoId + "]";
         List<ODocument> c_per_bkt = execQueries(tx, q);
         c = c_per_bkt.get(0).field("c");
         log("Repository:" + repoName + "(" + repoId + ") estimated count:" + c);
@@ -438,7 +438,7 @@ public class Main
   private static Long getIndexCount(ODatabaseDocumentTx tx, String iname) {
     Long c = 0L;
     try {
-      List<ODocument> _idx_c = execQueries(tx, "select count(*) as c from index:" + iname);
+      List<ODocument> _idx_c = execQueries(tx, "select count(1) as c from index:" + iname);
       c = _idx_c.get(0).field("c");
       log("Index: " + iname + " count: " + c.toString());
     } catch (Exception e) {
@@ -461,7 +461,7 @@ public class Main
       REPO_NAMES_EXCLUDE = Arrays.asList(repoNamesExcludeStr.trim().split(","));
     }
     debug("repoNamesExclude: " + REPO_NAMES_EXCLUDE);
-    MAGNIFY_PERCENT = Double.parseDouble(System.getProperty("magnifyPercent", "300"));
+    MAGNIFY_PERCENT = Double.parseDouble(System.getProperty("magnifyPercent", "250"));
     debug("magnifyPercent: " + MAGNIFY_PERCENT);
     LIMIT = System.getProperty("limit", "-1");
     debug("limit: " + LIMIT);
@@ -524,7 +524,7 @@ public class Main
       try {
         tx.open("admin", "admin");
 
-        List<ODocument> docs = execQueries(tx, "select count(*) as c from asset");
+        List<ODocument> docs = execQueries(tx, "select count(1) as c from asset");
         Long ac = docs.get(0).field("c");
         if (ac == 0) {
           log("[ERROR] Asset table/class is empty.");
@@ -583,7 +583,7 @@ public class Main
           }
 
           // Extra checks
-          docs = execQueries(tx, "select count(*) as c from component");
+          docs = execQueries(tx, "select count(1) as c from component");
           Long cc = docs.get(0).field("c");
           debug("Component count: " + cc);
           if (cbgnv_idx_c > 0 && cbgnv_idx_c < cc ) {
@@ -591,7 +591,7 @@ public class Main
           }
 
           // Just in case, counting browse_node
-          docs = execQueries(tx, "select count(*) as c from browse_node");
+          docs = execQueries(tx, "select count(1) as c from browse_node");
           long bn_c = docs.get(0).field("c");
           debug("Browse_node count: " + bn_c + " / index: " + (bnrpn_idx_c));
           if (ac > 0 && bn_c > 0 && (bnrpn_idx_c > 0 && bnrpn_idx_c < bn_c)) {
