@@ -6,21 +6,27 @@ deploymentStrategy: Recreate
 image:
   # Sonatype Official Public Image
   repository: sonatype/nexus3
-  tag: 3.37.3
+  tag: 3.39.0
   pullPolicy: IfNotPresent
 
 nexus:
   docker:
     enabled: false
-    registries: []
+    # registries:
     #  - host: chart.local
     #    port: 5000
-    #    secretName: registrySecret
+    #     secretName: registry-secret
   env:
-    #- name: install4jAddVmParams
+    # minimum recommended memory settings for a small, person instance from
+    # https://help.sonatype.com/repomanager3/product-information/system-requirements
+    #- name: install4jAddVmParams <<< bug
     - name: INSTALL4J_ADD_VM_PARAMS
-      # NOTE: Enabling nexus.properties.override makes /nexus-data/etc owned by root and not writable, but -Dapplication-port-ssl=8443 does not work
-      value: "-Xms1200M -Xmx1200M -XX:MaxDirectMemorySize=2G -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap"
+      value: |-
+        -Xms2703M -Xmx2703M
+        -XX:MaxDirectMemorySize=2703M
+        -XX:+UnlockExperimentalVMOptions
+        -XX:+UseCGroupMemoryLimitForHeap
+        -Djava.util.prefs.userRoot=/nexus-data/javaprefs
     - name: NEXUS_SECURITY_RANDOMPASSWORD
       value: "true"
   ##### Hack for enabling HTTPS: start #####
@@ -28,29 +34,34 @@ nexus:
     override: true
     data:
       nexus.scripts.allowCreation: true
+      # See this article for ldap configuratioon options https://support.sonatype.com/hc/en-us/articles/216597138-Setting-Advanced-LDAP-Connection-Properties-in-Nexus-Repository-Manager
+      # nexus.ldap.env.java.naming.security.authentication: simple
       application-port-ssl: 8443
       ssl.etc: /nexus-data/etc/ssl
       nexus-args: ${jetty.etc}/jetty.xml,${jetty.etc}/jetty-http.xml,/nexus-data/etc/ssl/jetty-https.xml,${jetty.etc}/jetty-requestlog.xml
   ##### Hack for enabling HTTPS: end #####
   # nodeSelector:
   #   cloud.google.com/gke-nodepool: default-pool
-  resources: {}
+  resources:
+  # minimum recommended memory settings for a small, person instance from
+  # https://help.sonatype.com/repomanager3/product-information/system-requirements
     # requests:
-    ## Based on https://support.sonatype.com/hc/en-us/articles/115006448847#mem
-    ## and https://twitter.com/analytically/status/894592422382063616:
-    ##   Xms == Xmx
-    ##   Xmx <= 4G
-    ##   MaxDirectMemory >= 2G
-    ##   Xmx + MaxDirectMemory <= RAM * 2/3 (hence the request for 4800Mi)
-    ##   MaxRAMFraction=1 is not being set as it would allow the heap
-    ##     to use all the available memory.
-    # cpu: 250m
-  # memory: 4800Mi
+  #     cpu: 4
+  #     memory: 8Gi
+  #   limits:
+  #     cpu: 4
+  #     memory: 8Gi
+
   # The ports should only be changed if the nexus image uses a different port
   nexusPort: 8443
 
+  # Default the pods UID and GID to match the nexus3 container.
+  # Customize or remove these values from the securityContext as appropriate for
+  # your deployment environment.
   securityContext:
-    fsGroup: 2000
+    runAsUser: 200
+    runAsGroup: 200
+    fsGroup: 200
   podAnnotations: {}
   livenessProbe:
     initialDelaySeconds: 30
@@ -101,20 +112,17 @@ deployment:
   additionalVolumes:
   additionalVolumeMounts:
 
-
 ingress:
   enabled: false
-  annotations: {kubernetes.io/ingress.class: nginx}
-    # kubernetes.io/ingress.class: nginx
-  # kubernetes.io/tls-acme: "true"
+  ingressClassName: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
   hostPath: /
   hostRepo: repo.demo
-  tls: []
-    # - secretName: nexus-local-tls
-    #   hosts:
-    #     - nexus.local
-    #     - nexus-docker.local
-  #     - nexus-docker-hosted.local
+  # tls:
+  #   - secretName: nexus-local-tls
+  #     hosts:
+  #       - repo.demo
 
 
 service:
@@ -159,7 +167,7 @@ persistence:
 
 tolerations: []
 
-# # Enable configmap and add data in configmap
+# Enable configmap and add data in configmap
 config:
   enabled: false
   mountPath: /sonatype-nexus-conf
@@ -181,6 +189,7 @@ serviceAccount:
   # If not set and create is true, a name is generated using the fullname template
   name: ""
 
-psp:
-  create: false
+# TODO: Not sure what below is for
+#psp:
+#  create: false
 
