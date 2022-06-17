@@ -58,7 +58,7 @@ function iqCli() {
     local _cmd="java -jar ${_iq_cli_jar} ${_iq_cli_opt} -s ${_iq_url} -a 'admin:admin123' -i ${_iq_app_id} -t ${_iq_stage} -r iq_result.json -X ${_path}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed." >&2
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] Completed. (${_iq_url}/api/v2/applications/${_iq_app_id}/reports/{REPORT_ID}/raw)" >&2
 }
 
 # Start "mvn" with IQ plugin
