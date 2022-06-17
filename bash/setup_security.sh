@@ -372,6 +372,11 @@ function f_ldap_client_install() {
     # getent passwd admin
 }
 
+# setup_standalone.sh -C -N -n node-freeipa
+# ssh node-freeipa
+#   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_security.sh
+#   f_freeipa_install # this will also run f_simplesamlphp
+# setup_standalone.sh -s -n node-freeipa
 function f_freeipa_install() {
     local __doc__="Install freeIPA (may better create a dedicated container)"
     #p_node_create node99${r_DOMAIN_SUFFIX} 99 # Intentionally no Ambari install
@@ -516,35 +521,6 @@ function f_simplesamlphp() {
         _conf="/etc/httpd/conf.d/saml.conf"
     fi
 
-    if [ -s "${_conf}" ]; then
-        #[ ! -s ${_conf}.orig ] && mv ${_conf} ${_conf}.orig;
-        _log "WARN" "${_conf} exists, so not re-creating conf file and not re-configuring ${_apache2}."
-    else
-        if [ ! -d "${g_SSL_DIR%/}" ]; then
-            mkdir -v "${g_SSL_DIR%/}" || return $?
-        fi
-        curl -o ${g_SSL_DIR%/}/saml.crt -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.crt || return $?
-        curl -o ${g_SSL_DIR%/}/saml.key -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.key || return $?
-        chmod 600 ${g_SSL_DIR%/}/saml.key || return $?
-        cat << EOF > ${_conf}
-Listen ${_port} https
-<VirtualHost _default_:${_port}>
-  SetEnv SIMPLESAMLPHP_CONFIG_DIR ${_saml_dir%/}/config
-  DocumentRoot ${_saml_dir%/}/www
-  Alias /simplesaml ${_saml_dir%/}/www
-  ServerName ${_server_name}:${_port}
-  <Directory ${_saml_dir%/}/www>
-    Require all granted
-  </Directory>
-  ErrorLog ${_saml_dir%/}/log/saml_error_log
-  TransferLog ${_saml_dir%/}/log/saml_access_log
-  CustomLog ${_saml_dir%/}/log/saml_request_log "%t %h %{SSL_PROTOCOL}x %{SSL_CIPHER}x \"%r\" %b"
-  SSLCertificateFile ${g_SSL_DIR%/}/saml.crt
-  SSLCertificateKeyFile ${g_SSL_DIR%/}/saml.key
-</VirtualHost>
-EOF
-        systemctl enable ${_apache2} && systemctl restart ${_apache2} || return $?
-    fi
     if [ -s "${_saml_dir%/}/config/config.php" ]; then
         _log "WARN" "${_saml_dir%/}/config/config.php exists. Not downloading Simple SAML PHP and not re-configuring config.php."
     else
@@ -573,8 +549,40 @@ EOF
         _log "INFO" "Updating ${_saml_dir%/}/metadata/saml20-idp-hosted.php ..."
         sed -i.bak -r "s/\s+'auth' => .+$/    'auth' => 'local_ldap',\n    'NameIDFormat'               => 'urn:oasis:names:tc:SAML:1.1:nameid-format:persistent',\n    'simplesaml.nameidattribute' => 'uid',\n    'SingleSignOnServiceBinding' => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST',\n    'SingleLogoutServiceBinding' => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST',/" ${_saml_dir%/}/metadata/saml20-idp-hosted.php
     fi
+
+    if [ -s "${_conf}" ]; then
+        #[ ! -s ${_conf}.orig ] && mv ${_conf} ${_conf}.orig;
+        _log "WARN" "${_conf} exists, so not re-creating Apache2/httpd conf file and not re-configuring ${_apache2}."
+    else
+        if [ ! -d "${g_SSL_DIR%/}" ]; then
+            mkdir -v "${g_SSL_DIR%/}" || return $?
+        fi
+        curl -o ${g_SSL_DIR%/}/saml.crt -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.crt || return $?
+        curl -o ${g_SSL_DIR%/}/saml.key -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/standalone.localdomain.key || return $?
+        chmod 600 ${g_SSL_DIR%/}/saml.key || return $?
+        mkdir -v -p -m 777 ${_saml_dir%/}/log
+        cat << EOF > ${_conf}
+Listen ${_port} https
+<VirtualHost _default_:${_port}>
+  SetEnv SIMPLESAMLPHP_CONFIG_DIR ${_saml_dir%/}/config
+  DocumentRoot ${_saml_dir%/}/www
+  Alias /simplesaml ${_saml_dir%/}/www
+  ServerName ${_server_name}:${_port}
+  <Directory ${_saml_dir%/}/www>
+    Require all granted
+  </Directory>
+  ErrorLog ${_saml_dir%/}/log/saml_error_log
+  TransferLog ${_saml_dir%/}/log/saml_access_log
+  CustomLog ${_saml_dir%/}/log/saml_request_log "%t %h %{SSL_PROTOCOL}x %{SSL_CIPHER}x \"%r\" %b"
+  SSLCertificateFile ${g_SSL_DIR%/}/saml.crt
+  SSLCertificateKeyFile ${g_SSL_DIR%/}/saml.key
+</VirtualHost>
+EOF
+        [ -s /etc/httpd/conf.d/ssl.conf ] && mv -v -f /etc/httpd/conf.d/ssl.conf /etc/httpd/ssl.conf.orig
+        systemctl enable ${_apache2} && systemctl restart ${_apache2} || return $?
+    fi
+
     _log "INFO" "Done. Insert SP metadata into"
-    _log "TODO" "May need to remove /etc/httpd/conf.d/ssl.conf"
 }
 
 function f_sssd_setup() {

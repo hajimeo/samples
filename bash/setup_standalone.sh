@@ -71,6 +71,7 @@ OTHERS (which normally you don't need to use):
 
     -X
         Stop service and container
+        for _n in \$(docker ps -a --format '{{.Names}}'); do setup_standalone.sh -X -n \${_n}; done
 
     -R
         Restart service
@@ -476,7 +477,7 @@ function f_docker_start() {
 function f_as_log_cleanup() {
     local __doc__="Find log|logs|tmp directories and delete non binary files older than X days"
     local _hostname="$1"    # short name is also OK
-    local _days="${2:-2}"  # NOT in use (was before)
+    local _days="${2:-7}"
     local _service="${3:-${_SERVICE}}"  # NOT in use (was before)
 
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
@@ -509,7 +510,7 @@ function f_docker_commit() {
     fi
 
     if [[ "${_remove_log}" =~ ^(y|Y) ]]; then
-        f_as_log_cleanup "${_name}" "Y"
+        f_as_log_cleanup "${_name}" "1"
     fi
 
     _log "INFO" "Stopping and Committing ${_name} ..."; sleep 1
@@ -1146,11 +1147,11 @@ main() {
             _log "ERROR" "To stop|restart, need -n <name>"
             return 1
         fi
-        _log "INFO" "Stopping service (best effort)..."
+        _log "INFO" "Stopping service (best effort) on ${_NAME} ..."
         f_as_stop "${_NAME}" "${_SERVICE}" || return $?
         # Default 10 seconds might be a bit dangerous.
-        _log "INFO" "Stopping container (best effort)..."
-        docker stop -t 120 ${_NAME}
+        _log "INFO" "Stopping container ${_NAME} (best effort)..."
+        docker stop -t 20 ${_NAME}
         return $?
     fi
 
