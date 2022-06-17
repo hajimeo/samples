@@ -1331,6 +1331,7 @@ for c in j['capabilitiesConfiguration']['capabilities']['capability']:
 "
 }
 
+# curl -O https://repo1.maven.org/maven2/com/h2database/h2/1.4.200/h2-1.4.200.jar
 function f_h2_start() {
     # NXRM3
     #Save Settings: Generic H2 (Embedded)
