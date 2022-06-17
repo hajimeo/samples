@@ -61,12 +61,14 @@ spec:
       # NOTE: Without initContainers, it fails to start on Docker-Desktop
       initContainers:
         - name: my-customization
+          # NOTE: busybox does not have curl
           image: busybox:1.33.1
           #[ -d /nexus-data/blobs ] && [ ! -L /nexus-data/blobs ] && mv -v /nexus-data/blobs /nexus-data/blobs_orig;
           # NOTE: 'echo nameserver ...' line is my personal hack as i do not want to use coreDNS
           #       When recreating, remove /nexus-data/etc/fabric/nexus-store.properties in case JDBC setting was changed.
           #       Also, it seems the exit code needs to be 0
-          command: ['sh', '-c', '[ -n "${_DNS:-127.0.0.1}" ] && echo nameserver "${_DNS:-127.0.0.1}" > /etc/resolv.conf; [ -s /nexus-data/etc/fabric/nexus-store.properties ] && rm -f -v /nexus-data/etc/fabric/nexus-store.properties || chown -R -v ${_RUNAS_USR:-200}: /nexus-data; echo "completed"']
+          #       '-Dapplication-port-ssl=8443' does not work
+          command: ['sh', '-c', '[ -n "${_DNS:-127.0.0.1}" ] && echo nameserver "${_DNS:-127.0.0.1}" > /etc/resolv.conf; [ -s /nexus-data/etc/fabric/nexus-store.properties ] && rm -f -v /nexus-data/etc/fabric/nexus-store.properties || chown -R -v ${_RUNAS_USR:-200}: /nexus-data; mkdir -v -p /nexus-data/etc/ssl; grep -qE "^application-port-ssl" /nexus-data/etc/nexus.properties || echo "application-port-ssl:8443">/nexus-data/etc/nexus.properties; echo "Completed."']
           volumeMounts:
             - name: nexus-data-volume
               mountPath: /nexus-data
@@ -85,6 +87,14 @@ spec:
               memory: "4G"
           ports:
             - containerPort: 8081
+            - containerPort: 8443
+            - containerPort: 4999
+            - containerPort: 5000
+          lifecycle:
+            postStart:
+              exec:
+                # This is not perfect but busybox or alpine doesn't have curl
+                command: ['/bin/sh', '-c', '[ -f /nexus-data/etc/ssl/keystore.jks ] || curl -sf -o /nexus-data/etc/ssl/keystore.jks -L https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.jks & [ -f /nexus-data/etc/ssl/jetty-https.xml ] || cp -v -p /opt/sonatype/nexus/etc/jetty/jetty-https.xml /nexus-data/etc/ssl/;']
           livenessProbe:
             httpGet:
               path: /
@@ -131,6 +141,8 @@ spec:
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
                 -Dnexus.scripts.allowCreation=true \
+                -Dssl.etc=/nexus-data/etc/ssl \
+                -Dnexus-args=/opt/sonatype/nexus/etc/jetty/jetty.xml,/opt/sonatype/nexus/etc/jetty/jetty-http.xml,/nexus-data/etc/ssl/jetty-https.xml,/opt/sonatype/nexus/etc/jetty/jetty-requestlog.xml \
                 -Dnexus.datastore.enabled=true \
                 -Dnexus.datastore.nexus.jdbcUrl=\${JDBC_URL} \
                 -Dnexus.datastore.nexus.username=\${DB_USER} \
@@ -173,10 +185,14 @@ spec:
   selector:
     app: nxrm3-pg
   ports:
-    - name: nexus-web-ui
+    - name: nexus-webui-http
       protocol: TCP
       port: 8081
       targetPort: 8081
+    - name: nexus-webui-https
+      protocol: TCP
+      port: 8443
+      targetPort: 8443
     - name: nexus-docker-http
       protocol: TCP
       port: 4999

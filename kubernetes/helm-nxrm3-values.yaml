@@ -102,7 +102,7 @@ deployment:
         - name: nexus-repository-manager-data
           mountPath: /nexus-data
   postStart:
-    # NOTE: preStart would be ideal, but does not work. TODO: update below for either 'sed'-ing '>password<' or useing own jetty-https.xml
+    # NOTE: preStart would be ideal, but does not work. TODO: update below for either 'sed'-ing '>password<' or using own jetty-https.xml
     command: '["/bin/sh", "-c", "[ -f /nexus-data/etc/ssl/jetty-https.xml ] || cp -v -p /opt/sonatype/nexus/etc/jetty/jetty-https.xml /nexus-data/etc/ssl/; [ -f /nexus-data/etc/ssl/keystore.jks ] || curl -o /nexus-data/etc/ssl/keystore.jks -L https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.jks;"]'
   ##### Hack for enabling HTTPS: end #####
   preStart:
