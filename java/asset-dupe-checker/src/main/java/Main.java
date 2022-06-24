@@ -2,7 +2,7 @@
  * (PoC) Simple duplicate checker for Asset records
  *
  * curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/asset-dupe-checker.jar"
- * java -Xmx4g -XX:MaxDirectMemorySize=4g [-Ddebug=true] [-DextractDir=./path] [-DrepoNames=xxx,yyy,zzz] -jar asset-dupe-checker.jar <component directory path|.bak file path> | tee asset-dupe-checker.sql
+ * java -Xms4g -Xmx4g [-Ddebug=true] [-DextractDir=./path] [-DrepoNames=xxx,yyy,zzz] -jar ./asset-dupe-checker.jar <component directory path|.bak file path> | tee asset-dupe-checker.sql
  *
  * After above, in the OrientDB Console, "LOAD SCRIPT ./asset-dupe-checker.sql"
  *
@@ -51,7 +51,7 @@ public class Main
   private static Map<String, Long> REPO_COUNTS = new HashMap<>();
   private static String LIMIT = "-1";
   private static Path TMP_DIR = null;
-  private static double MAGNIFY_PERCENT = 250.0;
+  private static double MAGNIFY_PERCENT = 300.0;
   //private static boolean CHECK_PER_COMP;
   private static boolean NO_DUPE_CHECK;
 
@@ -179,7 +179,7 @@ public class Main
   }
 
   private static long estimateSizeMB(long c) {
-    // If magnify_percent is 400%, assuming 1 row = 4KB + 1KB = 5KB
+    // If magnify_percent is 300%, assuming 1 row = 3KB + 1KB = 4KB
     return (long) Math.ceil(((c * MAGNIFY_PERCENT / 100) + 1024) / 1024);
   }
 
@@ -245,7 +245,7 @@ public class Main
     }
     List<ODocument> dups = execQueries(tx,
         // Seems reducing columns reduce heap usage, so not using "bucket.repository_name as repo_name, component, name"
-        "SELECT FROM (SELECT bucket, LIST(@rid) as dupe_rids, MAX(@rid) as keep_rid, COUNT(*) as c FROM asset " +
+        "SELECT FROM (SELECT bucket, LIST(@rid) as dupe_rids, MAX(@rid) as keep_rid, count(*) as c FROM asset " +
             where + " GROUP BY bucket, component, name) WHERE c > 1 LIMIT " + LIMIT + ";");
     if (dups != null && repoNames != null) {
       log("Found " + dups.size() + " duplicates from " + repoNames.size() + " repositories with LIMIT " + LIMIT);
@@ -269,7 +269,7 @@ public class Main
         String rid = ((ODocument) comp.field("r")).getIdentity().toString();
         // TODO: using LIKE makes below query extremely slow, however, without LIKE, OrientDB doesn't return correct result...
         List<ODocument> dups = execQueries(tx,
-            "SELECT FROM (SELECT LIST(@rid) as dupe_rids, MAX(@rid) as keep_rid, COUNT(*) as c FROM asset WHERE component LIKE " +
+            "SELECT FROM (SELECT LIST(@rid) as dupe_rids, MAX(@rid) as keep_rid, count(*) as c FROM asset WHERE component LIKE " +
                 rid + " AND bucket.repository_name LIKE '" + repoName + "' GROUP BY bucket, component, name) WHERE c > 1 LIMIT " + LIMIT +
                 ";");
         if (outputTruncate(dups)) {
@@ -405,7 +405,7 @@ public class Main
     REPO_COUNTS = new HashMap<>();
     // Intentionally sorting with repository_name
     List<ODocument> bkts = execQueries(tx, "select @rid as r, repository_name from bucket ORDER BY repository_name");
-    // NOTE: 'where key = [bucket.rid]' works, but 'select key, count(1) as c from index:asset_bucket_name_idx group by key;' does not, so looping...
+    // NOTE: 'where key = [bucket.rid]' works, but 'select key, count(*) as c from index:asset_bucket_name_idx group by key;' does not, so looping...
     for (ODocument bkt : bkts) {
       String repoId = ((ODocument) bkt.field("r")).getIdentity().toString();
       String repoName = bkt.field("repository_name");
@@ -421,8 +421,8 @@ public class Main
 
       long c = -1L;
       if(!noEstimateCheck) {
-        // NOTE: To check count: "select bucket, count(1) as c from asset group by bucket;" might be faster???
-        String q = "select count(1) as c from index:asset_bucket_name_idx where key = [" + repoId + "]";
+        // NOTE: To check count: "select bucket, count(*) as c from asset group by bucket;" might be faster???
+        String q = "select count(*) as c from index:asset_bucket_name_idx where key = [" + repoId + "]";
         List<ODocument> c_per_bkt = execQueries(tx, q);
         c = c_per_bkt.get(0).field("c");
         log("Repository:" + repoName + "(" + repoId + ") estimated count:" + c);
@@ -438,7 +438,7 @@ public class Main
   private static Long getIndexCount(ODatabaseDocumentTx tx, String iname) {
     Long c = 0L;
     try {
-      List<ODocument> _idx_c = execQueries(tx, "select count(1) as c from index:" + iname);
+      List<ODocument> _idx_c = execQueries(tx, "select count(*) as c from index:" + iname);
       c = _idx_c.get(0).field("c");
       log("Index: " + iname + " count: " + c.toString());
     } catch (Exception e) {
@@ -461,7 +461,7 @@ public class Main
       REPO_NAMES_EXCLUDE = Arrays.asList(repoNamesExcludeStr.trim().split(","));
     }
     debug("repoNamesExclude: " + REPO_NAMES_EXCLUDE);
-    MAGNIFY_PERCENT = Double.parseDouble(System.getProperty("magnifyPercent", "250"));
+    MAGNIFY_PERCENT = Double.parseDouble(System.getProperty("magnifyPercent", "300"));
     debug("magnifyPercent: " + MAGNIFY_PERCENT);
     LIMIT = System.getProperty("limit", "-1");
     debug("limit: " + LIMIT);
@@ -524,7 +524,7 @@ public class Main
       try {
         tx.open("admin", "admin");
 
-        List<ODocument> docs = execQueries(tx, "select count(1) as c from asset");
+        List<ODocument> docs = execQueries(tx, "select count(*) as c from asset");
         Long ac = docs.get(0).field("c");
         if (ac == 0) {
           log("[ERROR] Asset table/class is empty.");
@@ -583,7 +583,7 @@ public class Main
           }
 
           // Extra checks
-          docs = execQueries(tx, "select count(1) as c from component");
+          docs = execQueries(tx, "select count(*) as c from component");
           Long cc = docs.get(0).field("c");
           debug("Component count: " + cc);
           if (cbgnv_idx_c > 0 && cbgnv_idx_c < cc ) {
@@ -591,7 +591,7 @@ public class Main
           }
 
           // Just in case, counting browse_node
-          docs = execQueries(tx, "select count(1) as c from browse_node");
+          docs = execQueries(tx, "select count(*) as c from browse_node");
           long bn_c = docs.get(0).field("c");
           debug("Browse_node count: " + bn_c + " / index: " + (bnrpn_idx_c));
           if (ac > 0 && bn_c > 0 && (bnrpn_idx_c > 0 && bnrpn_idx_c < bn_c)) {
