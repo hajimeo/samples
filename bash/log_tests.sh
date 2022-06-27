@@ -469,7 +469,9 @@ function t_threads() {
         _head "INFO" "Can not run ${FUNCNAME} as no _threads directory."
         return
     fi
-    _test_template "$(_rg '(MessageDigest|findAssetByContentDigest|WeakHashMap)' -m1 ${_dir} | head -n10)" "WARN" "'MessageDigest|findAssetByContentDigest|WeakHashMap' may indicates CPU issue (eg: NEXUS-10991)"
+    if type _threads_extra_check &>/dev/null; then
+        _test_template "$(_threads_extra_check "${_dir}")" "WARN" "${_dir} may have some known performance issue(s)"
+    fi
 }
 function t_requests() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/request.csv" || return
@@ -490,7 +492,7 @@ function t_requests() {
 
     # NOTE: can't use headerContentLength as some request.log doesn't have it
     f_reqsFromCSV "request.csv" "7000" "" "20" "AND requestURL NOT LIKE 'GET %/maven-metadata.xml %'" 2>/dev/null >${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out
-    _test_template "$(_rg -q '\s+GET\s+' -m1 ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow.out && cat ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow.out)" "WARN" "Top 20 slow downloads excluding maven-metadata.xml from ${_FILTERED_DATA_DIR}/request.csv"
+    _test_template "$(_rg -q '\s+GET\s+' -m1 ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out && cat ${_FILTERED_DATA_DIR%/}/agg_requests_top20_slow_GET.out)" "WARN" "Top 20 slow downloads excluding maven-metadata.xml from ${_FILTERED_DATA_DIR}/request.csv"
 }
 
 
