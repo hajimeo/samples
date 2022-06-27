@@ -26,6 +26,7 @@ function f_prepare() {
         apt-get update
     fi
     _install sudo curl screen jq python3.7 #netcat
+    _install python3-venv   # it's probably OK if this fails
     # Below is for pyenv and not using at this moment
     #_install make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python-openssl git
     f_install_rg
@@ -41,7 +42,7 @@ function f_prepare() {
         _install python3-distutils
         sudo python3.7 /tmp/get-pip.py || return $?
     fi
-    # python 3.7 does not have virtualenv?
+    # NOTE: python 3.7 may not have virtualenv but venv
     #python3.7 -m pip install -U virtualenv venv
 
     # For bar_chart.py  TODO: this works only with python2, hence no pip3 (and not in virtualenv), and eventually will stop working
@@ -221,7 +222,7 @@ function f_setup_python() {
 
     if [[ ! "${_no_venv}" =~ ^(y|Y) ]]; then
         deactivate &>/dev/null
-        # NOTE: when python version is changed, need to run virtualenv command again
+        # NOTE: when python version is changed, need to switch to venv
         echo "Activating virtualenv: $HOME/.pyvenv (https://virtualenv.pypa.io/en/latest/user_guide.html) ..."
         if ! python3.7 -m virtualenv -p python3.7 $HOME/.pyvenv; then
             python3.7 -m venv $HOME/.pyvenv || return $?
@@ -255,7 +256,8 @@ function f_setup_python() {
     # Reinstall: python3.7 -m pip uninstall -y jupyterlab && python3.7 -m pip install jupyterlab
 
     # Must-have packages. NOTE: Initially I thought pandasql looked good but it's actually using sqlite, and slow, and doesn't look like maintained any more.
-    python3.7 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib psycopg2 --log /tmp/pip.log
+    python3.7 -m pip install -U ${_i_opt} jupyter_kernel_gateway sqlalchemy ipython-sql pivottablejs matplotlib --log /tmp/pip.log
+    python3.7 -m pip install -U ${_i_opt} psycopg2-binary --log /tmp/pip.log
     # pandas_profiling may fail to install. pixiedust works only with jupyter-notebook
     #python3.7 -m pip install -U ${_i_opt} pandas_profiling pixiedust --log /tmp/pip.log
     #   import pandas_profiling as pdp
