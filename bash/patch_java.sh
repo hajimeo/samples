@@ -244,12 +244,17 @@ function f_set_classpath() {
         # NOTE: wouldn't be able to use -maxdepth as can't predict the depth of the Group ID, hence not using -L (symlink)
         local _tmp_cp="$(find ${_port_or_dir%/} -type f -name '*.jar' | tr '\n' ':')"
         export CLASSPATH=".:${_tmp_cp%:}"
-    else
+    elif [ -n "${_port_or_dir%/}" ]; then
         local _p=`lsof -ti:${_port_or_dir} -s TCP:LISTEN` || return $?
         local _user="$(lsof -nP -p ${_p} | head -n2 | tail -n1 | awk '{print $3}')" # This is slow but stat -c '%U' doesn't work on Mac
         local _jcmd="$(_find_jcmd "${_port_or_dir}")" || return $?
         # requires jcmd in the path
-        export CLASSPATH=".:`sudo -u ${_user:-"$USER"} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g'`"
+        export CLASSPATH=".:$(sudo -u ${_user:-"$USER"} ${_jcmd} ${_p} VM.system_properties | _sed -nr 's/^java.class.path=(.+$)/\1/p' | _sed 's/[\]:/:/g')"
+    elif [ -s ./pom.xml ] && type mvn &>/dev/null; then
+        mvn dependency:build-classpath -Dmdep.outputFile=/tmp/build-classpath.out || return $?
+        if [ -s /tmp/build-classpath.out ]; then
+            export CLASSPATH=".:$(cat /tmp/build-classpath.out)"
+        fi
     fi
 }
 
