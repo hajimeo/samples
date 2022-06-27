@@ -497,7 +497,12 @@ public class Main
         .registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
     try (ODatabaseDocumentTx db = new ODatabaseDocumentTx(connStr)) {
       try {
-        db.open("admin", "admin");
+        try {
+          db.open("admin", "admin");
+        }
+        catch (NullPointerException e) {
+          e.printStackTrace();
+        }
         System.err.println("# Type 'exit' or Ctrl+D to exit. Ctrl+C to cancel current query");
         readLineLoop(db, lr);
       }
