@@ -656,7 +656,7 @@ function f_setup_raw() {
     if [ -s "${_TMP%/}/test_1k.img" ]; then
         f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
     fi
-    # Another quicker way: curl -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw_hosted/test.txt"
+    # Another quicker way: curl -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test.txt"
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
