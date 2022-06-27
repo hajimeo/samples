@@ -5,64 +5,81 @@
 # To download the latest script:
 #   curl -OL https://github.com/hajimeo/samples/raw/master/java/btrace/btrace
 #
+#   curl -O -L https://github.com/btraceio/btrace/releases/download/v2.2.2/btrace-v2.2.2-bin.tar.gz
+#
 
-if [ -z "$BTRACE_HOME" -o ! -d "$BTRACE_HOME" ] ; then
+if [ -z "$BTRACE_HOME" -o ! -d "$BTRACE_HOME" ]; then
   # resolve links - $0 could be a link to btrace's home
   PRG="$0"
-  progname=`basename "$0"`
-  BTRACE_HOME=`dirname "$PRG"`
-  BTRACE_HOME=`cd "$BTRACE_HOME" && pwd`
+  progname=$(basename "$0")
+  PRG=$(readlink "$PRG")
+
+  if [ -z "$PRG" ]; then
+    PRG=$0
+  fi
+  BTRACE_HOME=$(dirname "$PRG")/..
+  BTRACE_HOME=$(cd "$BTRACE_HOME" && pwd)
 fi
 
-[ -f "${BTRACE_HOME}/btrace-client.jar" ] || curl -sfo ${BTRACE_HOME}/btrace-client.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-client.jar
-[ -f "${BTRACE_HOME}/btrace-agent.jar" ] || curl -sfo ${BTRACE_HOME}/btrace-agent.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-agent.jar
-[ -f "${BTRACE_HOME}/btrace-boot.jar" ] || curl -sfo ${BTRACE_HOME}/btrace-boot.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-boot.jar
 
-if [ -f "${BTRACE_HOME}/btrace-client.jar" ] ; then
-    if [ "${JAVA_HOME}" = "" ]; then
-        export JAVA_HOME="$(dirname $(dirname `readlink /proc/${1}/exe`))"
+[ -d "${BTRACE_HOME%/}/libs" ] || mkdir -v -p "${BTRACE_HOME%/}/libs"
+[ -f "${BTRACE_HOME%/}/libs/btrace-client.jar" ] || curl -sfo ${BTRACE_HOME%/}/libs/btrace-client.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-client.jar
+[ -f "${BTRACE_HOME%/}/libs/btrace-agent.jar" ] || curl -sfo ${BTRACE_HOME%/}/libs/btrace-agent.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-agent.jar
+[ -f "${BTRACE_HOME%/}/libs/btrace-boot.jar" ] || curl -sfo ${BTRACE_HOME%/}/libs/btrace-boot.jar -L https://raw.githubusercontent.com/hajimeo/samples/master/java/btrace/btrace-boot.jar
+
+
+JAVA_ARGS="-XX:+IgnoreUnrecognizedVMOptions"
+if [ -d "${JAVA_HOME}/jmods" ]; then
+  JAVA_ARGS="$JAVA_ARGS -XX:+AllowRedefinitionToAddDeleteMethods"
+  JAVA_ARGS="$JAVA_ARGS --add-exports jdk.internal.jvmstat/sun.jvmstat.monitor=ALL-UNNAMED"
+fi
+
+if [ -f "${BTRACE_HOME}/libs/btrace-client.jar" ]; then
+  if [ -d "${JAVA_HOME}" ]; then
+    TOOLS_JAR="$JAVA_HOME/lib/tools.jar"
+
+    if [ ! -f "$TOOLS_JAR" ]; then
+      # probably running on JRE - try to localize JDK
+      TOOLS_JAR="$JAVA_HOME/../lib/tools.jar"
     fi
 
-    if [ "${JAVA_HOME}" != "" ]; then
-       case "`uname`" in
-          Darwin*)
-              # In Mac OS X, tools.jar is classes.jar and is kept in a
-              # different location. Check if we can locate classes.jar
-              # based on ${JAVA_VERSION}
-              TOOLS_JAR="/System/Library/Frameworks/JavaVM.framework/Versions/${JAVA_VERSION}/Classes/classes.jar"
+    if [ ! -f "${TOOLS_JAR}" ] && [ ! -d "${JAVA_HOME}/jmods" ]; then
+      # old Java versions on MacOS don't have tools.jar at all
+      case "$(uname)" in
+      Darwin*)
+        # In older JDK versions for Mac OS X, tools.jar is classes.jar
+        # and is kept in a different location. Check if we can locate
+        # classes.jar based on ${JAVA_VERSION}
+        TOOLS_JAR="/System/Library/Frameworks/JavaVM.framework/Versions/${JAVA_VERSION}/Classes/classes.jar"
 
-              # if we can't find, try relative path from ${JAVA_HOME}. Usually,
-              # /System/Library/Frameworks/JavaVM.framework/Versions/1.6.0/Home
-              # is JAVA_HOME. (or whatever version beyond 1.6.0!)
-              if [ ! -f ${TOOLS_JAR} ] ; then
-                  TOOLS_JAR="${JAVA_HOME}/../Classes/classes.jar"
-              fi
+        # if we can't find, try relative path from ${JAVA_HOME}. Usually,
+        # /System/Library/Frameworks/JavaVM.framework/Versions/1.6.0/Home
+        # is JAVA_HOME. (or whatever version beyond 1.6.0!)
+        if [ ! -f "${TOOLS_JAR}" ]; then
+          TOOLS_JAR="${JAVA_HOME}/../Classes/classes.jar"
+        fi
 
-              # If we still can't find, tell the user to set JAVA_VERSION.
-              # This way, we can avoid zip file errors from the agent side
-              # and "connection refused" message from client.
-              if [ ! -f ${TOOLS_JAR} ] ; then
-                  echo "Please set JAVA_VERSION to the target java version"
-                  exit 1
-              fi
-          ;;
-          *)
-              TOOLS_JAR="${JAVA_HOME}/lib/tools.jar"
-          ;;
-       esac
-
-       if [ ! -r "${TOOLS_JAR}" ]; then
-          echo "No ${TOOLS_JAR}. OpenJDK 11 may not be supported yet: https://github.com/btraceio/btrace/issues/374"
+        # If we still can't find, tell the user to set JAVA_VERSION.
+        # This way, we can avoid zip file errors from the agent side
+        # and "connection refused" message from client.
+        if [ ! -f "${TOOLS_JAR}" ]; then
+          echo "Please set JAVA_VERSION to the target java version"
           exit 1
-       fi
-
-       # What is dtrace.jar?
-       ${JAVA_HOME}/bin/java -cp "${BTRACE_HOME}/btrace-client.jar":${TOOLS_JAR}:/usr/share/lib/java/dtrace.jar com.sun.btrace.client.Main $*
-    else
-       echo "Please set JAVA_HOME before running this script"
-       exit 1
+        fi
+        ;;
+      esac
     fi
-else
-    echo "Please set BTRACE_HOME before running this script"
+    if [ ! -f "${TOOLS_JAR}" ] && [ ! -d "${JAVA_HOME}/jmods" ]; then
+      # in non-jigsaw world TOOLS_JAR must point to a valid file
+      echo "Unable to locate tools.jar. Please, make sure JAVA_HOME points to a valid JDK installation"
+      exit 1
+    fi
+    ${JAVA_HOME}/bin/java ${JAVA_ARGS} -cp ${BTRACE_HOME}/libs/btrace-client.jar:${TOOLS_JAR}:/usr/share/lib/java/dtrace.jar org.openjdk.btrace.client.Main $*
+  else
+    echo "Please set a valid JAVA_HOME before running this script"
     exit 1
+  fi
+else
+  echo "Please set BTRACE_HOME before running this script"
+  exit 1
 fi
