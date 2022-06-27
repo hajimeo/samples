@@ -1044,7 +1044,7 @@ function f_microk8s() {
     ufw default allow routed
     # surprisingly ingress seems to work without coredns
     microk8s enable storage helm3 ingress ${dashboard} # dns dashboard prometheus
-    #microk8s enable metallb:192.168.52.200-192.168.52.230
+    #microk8s disable metallb; microk8s enable metallb:192.168.1.200-192.168.1.240
     echo "To replace nginx SSL/HTTPS certificate
     microk8s kubectl -n ingress create secret tls standalone.localdomain --key /var/tmp/share/cert/standalone.localdomain.key --cert /var/tmp/share/cert/standalone.localdomain.crt
     microk8s kubectl edit -n ingress daemonsets nginx-ingress-microk8s-controller
@@ -1650,7 +1650,7 @@ function f_kvm() {
     # TODO: create a bridge interface (br0) https://www.cyberciti.biz/faq/how-to-add-network-bridge-with-nmcli-networkmanager-on-linux/
     # Well, docker0 NIC works... (and TODO: netsh winhttp set proxy proxy-server="http=172.17.0.1:28080;https=172.17.0.1:28080"
     #nmcli con add ifname br0 type bridge con-name br0 && nmcli con add type bridge-slave ifname eno1 master br0 && nmcli con modify br0 bridge.stp no && nmcli con up br0
-    #nmcli connection modify br0 ipv4.addresses 192.168.52.31/24 && nmcli connection modify br0 ipv4.dns && nmcli connection modify br0 ipv4.method manual
+    #nmcli connection modify br0 ipv4.addresses 192.168.1.31/24 && nmcli connection modify br0 ipv4.dns && nmcli connection modify br0 ipv4.method manual
     #nmcli connection show
     #nmcli -f bridge con show br0
     _info "To connect (need to configure ssh password-less access):
