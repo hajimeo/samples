@@ -982,16 +982,12 @@ function f_threads() {
         echo " "
         local __count=${_count}
         [ 3 -lt ${_count} ] && __count=$(( ${_count} - 1 ))
-        echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which contain '${_running_thread_search_re}' (threads:${__count}/${_count})"
-        _long_running "${_save_dir%/}" "${_running_thread_search_re}" "${__count}"
-        _long_blocked "${_save_dir%/}" "${_running_thread_search_re}" "${__count}"
-        if [ 2 -lt ${_count} ]; then
-            echo "## Long *RUN*ning and no-change (same hash) threads which size is 2k+ (threads:${__count}/${_count})"
-            _long_running "${_save_dir%/}" "" "${__count}" "2k"
-        fi
+        echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which contain '${_running_thread_search_re}' (threads:${_count})"
+        _long_running "${_save_dir%/}" "${_running_thread_search_re}"
+        _long_blocked "${_save_dir%/}" "${_running_thread_search_re}"
         # TODO: also check similar file sizes (wc -c?)
-        echo "## Long running (based on thread name) threads which contain '${_running_thread_search_re}' (threads:${_count})"
-        rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+${_count}\s+.+ ([^ ]+$)" -o -r '$1' | sort
+        echo "## Long running ([3-9]|\d\d+) threads which contain '${_running_thread_search_re}' (threads:${_count})"
+        rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+([3-9]|\d\d+)\s+.+ ([^ ]+$)" -o -r '$1' | sort
         #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
         echo " "
         echo "## Counting methods (but more than once) from running threads which also contains '${_running_thread_search_re}' (threads:${_count})"
@@ -1063,17 +1059,7 @@ function f_threads() {
 
         # Sonatype specific known issue related.
         if [[ "${_running_thread_search_re}" =~ .*sonatype.* ]]; then
-            echo "## Counting 'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
-            # https://support.sonatype.com/hc/en-us/articles/213464998-How-to-disable-the-System-Feeds-nexus-timeline-plugin-feature-to-improve-Nexus-performance
-            echo "##          'content_digest' https://issues.sonatype.org/browse/NEXUS-26379 (3.29.x) and NEXUS-25294 (3.27.x and older)"
-            echo "##          'touchItemLastRequested' https://issues.sonatype.org/browse/NEXUS-10372 all NXRM2"
-            echo "##          'preClose0' https://issues.sonatype.org/browse/NEXUS-30865 Jetty, all NXRM2"
-            echo "##          'MemoryCache' https://bugs.openjdk.java.net/browse/JDK-8259886 < 8u301"
-            echo "##          'java.lang.Class.forName' https://issues.sonatype.org/browse/NEXUS-28608 up to NXRM 2.14.20"
-            echo "##          'CachingDateFormatter' https://issues.sonatype.org/browse/NEXUS-31564 (logback)"
-            echo "##          'com.codahale.metrics.health.HealthCheck.execute' (nexus.healthcheck.refreshInterval)"
-            rg '(DefaultTimelineIndexer|content_digest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache|java.lang.Class.forName|CachingDateFormatter|com.codahale.metrics.health.HealthCheck.execute)' ${_save_dir%/}/ -m1 --no-filename | sort | uniq -c
-            echo " "
+            _threads_extra_check "${_save_dir%/}"
         fi
 
         echo "## Counting (BLOCKED|waiting to lock) except acceptors and first 10 matching and more than 10 threads"
@@ -1117,6 +1103,24 @@ function _long_blocked() {
     local _search_re="${2}"
     local _min_count="${3:-"2"}"
     rg -l --multiline --multiline-dotall " BLOCKED .+${_search_re}" -g '*wait*.out' ${_search_dir%/} | xargs -I {} md5sum {} | rg '([0-9a-z]+)\s+.+/([^/]+)$' -o -r '$1 $2' | sort | uniq -c | sort -nr | rg "^\s*([${_min_count}-9]|\d\d+)\s+"
+}
+function _threads_extra_check() {
+    local _dir="$1"
+    echo "## Counting:"
+    echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
+    # https://support.sonatype.com/hc/en-us/articles/213464998-How-to-disable-the-System-Feeds-nexus-timeline-plugin-feature-to-improve-Nexus-performance
+    echo "##    'content_digest' https://issues.sonatype.org/browse/NEXUS-26379 (3.29.x) and NEXUS-25294 (3.27.x and older)"
+    echo "##    'findAssetByContentDigest' https://issues.sonatype.org/browse/NEXUS-26379"
+    echo "##    'touchItemLastRequested' https://issues.sonatype.org/browse/NEXUS-10372 all NXRM2"
+    echo "##    'preClose0' https://issues.sonatype.org/browse/NEXUS-30865 Jetty, all NXRM2"
+    echo "##    'MemoryCache' https://bugs.openjdk.java.net/browse/JDK-8259886 < 8u301"
+    echo "##    'java.lang.Class.forName' https://issues.sonatype.org/browse/NEXUS-28608 up to NXRM 2.14.20"
+    echo "##    'CachingDateFormatter' https://issues.sonatype.org/browse/NEXUS-31564 (logback)"
+    echo "##    'com.codahale.metrics.health.HealthCheck.execute' (nexus.healthcheck.refreshInterval)"
+    echo "##    'WeakHashMap' https://issues.sonatype.org/browse/NEXUS-10991"
+    echo "##    'MessageDigest' (May indicate CPU resource issue?)"
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache|java.lang.Class.forName|CachingDateFormatter|com.codahale.metrics.health.HealthCheck.execute|WeakHashMap|MessageDigest)' "${_dir%/}/" -m1 --no-filename | sort | uniq -c
+    echo " "
 }
 
 #f_last_tid_in_log "" ../support-20200915-143729-1/log/request.log "15/Sep/2020:08:" > f_last_tid_in_log.csv 2> f_last_tid_in_log.err
