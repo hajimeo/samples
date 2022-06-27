@@ -9,8 +9,9 @@
 #  - Configure Ingress
 #
 # COMMAND EXAMPLE:
-#   export _ID="nxiqpg" _TAG="1.138.0" _METALLB_IP="192.168.52.220" _RUNAS_USR=1000 _DNS="192.168.52.31"
-#   export _SONATYPE_WORK="/var/tmp/share/sonatype/${_ID}" _BASE_URL="https://nxiq-k8s.standalone.localdomain/" _DB_USER="${_ID}" _DB_PWD="${_ID}" _DB_NAME="${_ID}" _DB_HOST="192.168.52.31"
+#   # Below _DNS is only for my k8s env (don't forget to update /etc/banner_add_hosts). _DB_USER can't contain '-' character.
+#   export _ID="nxiqpg" _TAG="1.138.0" _METALLB_IP="192.168.1.220" _RUNAS_USR=1000 _DNS="192.168.1.31"
+#   export _SONATYPE_WORK="/var/tmp/share/sonatype/${_ID}" _BASE_URL="https://nxiq-k8s.standalone.localdomain/" _DB_USER="${_ID}" _DB_PWD="${_ID}" _DB_NAME="${_ID}" _DB_HOST="192.168.1.31"
 #   eval "echo \"$(cat ./k8s-iq-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
 #   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml
 #   kubectl -n "sonatype" apply -f /tmp/${_ID}.yaml
@@ -145,8 +146,7 @@ spec:
             failureThreshold: 6
             timeoutSeconds: 10
           readinessProbe:
-            httpGet:
-              path: /ping
+            tcpSocket:
               port: 8070
             initialDelaySeconds: 30
             periodSeconds: 20
@@ -186,7 +186,7 @@ spec:
   #type: NodePort
   # For MetalLB
   type: LoadBalancer
-  loadBalancerIP: 192.168.52.220
+  loadBalancerIP: ${_METALLB_IP}
   selector:
     app: nxiq-pg
   ports:

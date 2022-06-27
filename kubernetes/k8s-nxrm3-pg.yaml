@@ -7,17 +7,17 @@
 #     kubectl create namespace "sonatype"
 #  - Create a secret for the license file:
 #     kubectl -n "sonatype" create secret generic sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
-#  - Create another secret for JDBC variables:
-#     kubectl -n "sonatype" create secret generic ${_ID}-jdbc --from-literal=db_user=${_DB_USER} --from-literal=db_pwd=${_DB_PWD} --from-literal=jdbc_url=${_JDBC_URL}
 #  - On PostgreSQL server: source ./utils.sh && _postgresql_create_dbuser "${_ID}"
 #  - Configure Ingress
 #
 # COMMAND EXAMPLE:
 #   cd ~/IdeaProjects/samples/kubernetes
-#   # Below _DNS is my hack and usually don't need to use this. _DB_USER can't contain '-' character.
-#   export _ID="nxrm3pg" _TAG="3.39.0" _METALLB_IP="192.168.52.230" _RUNAS_USR=200 _DNS="192.168.52.31"
-#   export _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.52.31:5432/${_ID}"
-#   # Run the create secret commands if necessary, then:
+#   # Below _DNS is only for my k8s env (don't forget to update /etc/banner_add_hosts). _DB_USER can't contain '-' character.
+#   export _ID="nxrm3pg" _TAG="3.40.1" _METALLB_IP="192.168.1.230" _RUNAS_USR=200 _DNS="192.168.1.31"
+#   export _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.1.31:5432/${_ID}"
+#   # Run the create secret commands if necessary
+#   #kubectl -n "sonatype" delete secret ${_ID}-jdbc
+#   #kubectl -n "sonatype" create secret generic ${_ID}-jdbc --from-literal=db_user=${_DB_USER} --from-literal=db_pwd=${_DB_PWD} --from-literal=jdbc_url=${_JDBC_URL}
 #   eval "echo \"$(cat ./k8s-nxrm3-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
 #   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml   # NOTE: This deletes PVC as well.
 #   kubectl -n "sonatype" apply -f /tmp/${_ID}.yaml
@@ -68,7 +68,7 @@ spec:
           #       When recreating, remove /nexus-data/etc/fabric/nexus-store.properties in case JDBC setting was changed.
           #       Also, it seems the exit code needs to be 0
           #       '-Dapplication-port-ssl=8443' does not work
-          command: ['sh', '-c', '[ -n "${_DNS:-127.0.0.1}" ] && echo nameserver "${_DNS:-127.0.0.1}" > /etc/resolv.conf; [ -s /nexus-data/etc/fabric/nexus-store.properties ] && rm -f -v /nexus-data/etc/fabric/nexus-store.properties || chown -R -v ${_RUNAS_USR:-200}: /nexus-data; mkdir -v -p /nexus-data/etc/ssl; grep -qE "^application-port-ssl" /nexus-data/etc/nexus.properties || echo "application-port-ssl:8443">/nexus-data/etc/nexus.properties; echo "Completed."']
+          command: ['sh', '-c', '[ -n "${_DNS:-127.0.0.1}" ] && echo nameserver "${_DNS:-127.0.0.1}" > /etc/resolv.conf; rm -f -v /nexus-data/etc/fabric/nexus-store.properties || chown -R -v ${_RUNAS_USR:-200}: /nexus-data; mkdir -v -p /nexus-data/etc/ssl; grep -qE "^application-port-ssl" /nexus-data/etc/nexus.properties || echo "application-port-ssl:8443">/nexus-data/etc/nexus.properties; echo "Completed."']
           volumeMounts:
             - name: nexus-data-volume
               mountPath: /nexus-data
@@ -105,8 +105,7 @@ spec:
             failureThreshold: 6
             timeoutSeconds: 10
           readinessProbe:
-            httpGet:
-              path: /
+            tcpSocket:
               port: 8081
             initialDelaySeconds: 30
             periodSeconds: 20
@@ -162,7 +161,7 @@ spec:
         - name: sonatype-license-volume
           secret:
             secretName: sonatype-license
-        # No strong reason, but I feel using a persistent volume for /nexus-data (and let k8s chose the underline file system) might be appropriate for the /nexus-data.
+        # No strong reason, but I feel NOT specifying own persistent volume for /nexus-data (and let k8s chose the underline file system) might be appropriate for the /nexus-data.
         - name: nexus-data-volume
           persistentVolumeClaim:
             claimName: nxrm3-pg-data-pvc
