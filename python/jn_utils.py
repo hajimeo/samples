@@ -1209,7 +1209,7 @@ def display(df, name="", desc="", tail=1000):
         if df.empty is False and df.index.empty is False and len(df.index) > tail:
             orig_length = len(df.index)
             df = df.tail(tail)
-            name_html += "<pre>Displaying last " + str(tail) + " records (total: " + str(orig_length) + "</pre>"
+            name_html += "<pre>Displaying last " + str(tail) + " records (total: " + str(orig_length) + ")</pre>"
         try:
             df_styler = df.style.set_properties(**{'text-align': 'left'})
             df_styler = df_styler.set_table_styles([

@@ -294,6 +294,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
                 _ = ju.execute(sql="UPDATE t_request SET headerContentLength = 0 WHERE headerContentLength = '-'")
                 isHeaderContentLength=True
             except:
+                isHeaderContentLength=False
                 # non NXRM3 request.log wouldn't have headerContentLength
                 pass
 
@@ -484,12 +485,16 @@ FROM t_iq_logs
         display_name = "Join_Requests_And_AppLog_For_TimeoutException"
         # UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1)
         query = """SELECT n.date_time, n.loglevel, n.thread, n.user
-    , r.clientHost, r.user, r.requestURL, r.statusCode, r.headerContentLength, r.bytesSent, r.elapsedTime
+    , r.clientHost, r.user, r.requestURL, r.statusCode, r.bytesSent, r.elapsedTime
     FROM %s n
     LEFT JOIN t_request r ON CAST(r.elapsedTime AS INT) >= 30000 AND n.thread = r.thread
         AND UDF_STRFTIME('%%d/%%b/%%Y:%%H:%%M:%%S', DATETIME(n.date_time))||' +0000' = r.`date` 
     WHERE n.message like '%%Idle timeout expired: 30000/30000 ms%%'""" % (log_table_name)
-        ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
+        try:
+            ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
+        except:
+            # non NXRM3 request.log wouldn't have r.thread
+            pass
 
     if ju.exists("t_threads"):
         display_name = "Blocked_Threads"
