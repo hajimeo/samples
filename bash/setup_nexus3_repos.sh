@@ -682,7 +682,7 @@ function f_create_file_blobstore() {
 function f_create_s3_blobstore() {
     local _blob_name="${1:-"s3-test"}"
     local _bucket="${2:-"apac-support-bucket"}"
-    local _region="${3:-${AWS_REGION:="ap-southeast-2"}}"
+    local _region="${3:-${AWS_REGION:-"ap-southeast-2"}}"
     local _ak="${4:-${AWS_ACCESS_KEY_ID}}"
     local _sk="${5:-${AWS_SECRET_ACCESS_KEY}}"
     local _prefix="${6:-"$(hostname -s)_${_blob_name}"}"    # cat /etc/machine-id is not perfect if docker container
