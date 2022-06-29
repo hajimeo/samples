@@ -19,7 +19,7 @@
 #   #kubectl -n "sonatype" delete secret ${_ID}-jdbc
 #   #kubectl -n "sonatype" create secret generic ${_ID}-jdbc --from-literal=db_user=${_DB_USER} --from-literal=db_pwd=${_DB_PWD} --from-literal=jdbc_url=${_JDBC_URL}
 #   eval "echo \"$(cat ./k8s-nxrm3-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
-#   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml   # NOTE: This deletes PVC as well.
+#   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml   # NOTE: This deletes PVC as well
 #   kubectl -n "sonatype" apply -f /tmp/${_ID}.yaml
 #
 ---
@@ -68,7 +68,7 @@ spec:
           #       When recreating, remove /nexus-data/etc/fabric/nexus-store.properties in case JDBC setting was changed.
           #       Also, it seems the exit code needs to be 0
           #       '-Dapplication-port-ssl=8443' does not work
-          command: ['sh', '-c', '[ -n "${_DNS:-127.0.0.1}" ] && echo nameserver "${_DNS:-127.0.0.1}" > /etc/resolv.conf; rm -f -v /nexus-data/etc/fabric/nexus-store.properties || chown -R -v ${_RUNAS_USR:-200}: /nexus-data; mkdir -v -p /nexus-data/etc/ssl; grep -qE "^application-port-ssl" /nexus-data/etc/nexus.properties || echo "application-port-ssl:8443">/nexus-data/etc/nexus.properties; echo "Completed."']
+          command: ['sh', '-c', '[ -n "${_DNS:-127.0.0.1}" ] && echo nameserver "${_DNS:-127.0.0.1}" > /etc/resolv.conf; mkdir -v -p /nexus-data/etc/ssl; rm -f -v /nexus-data/etc/fabric/nexus-store.properties; [ -s /nexus-data/etc/nexus.properties ] || chown -R -v ${_RUNAS_USR:-200}: /nexus-data; grep -qE "^application-port-ssl" /nexus-data/etc/nexus.properties || echo "application-port-ssl:8443" > /nexus-data/etc/nexus.properties; echo "Completed."']
           volumeMounts:
             - name: nexus-data-volume
               mountPath: /nexus-data
@@ -177,10 +177,10 @@ metadata:
   labels:
     app: nxrm3-pg
 spec:
-  #type: NodePort
+  type: NodePort
   # For MetalLB
-  type: LoadBalancer
-  loadBalancerIP: ${_METALLB_IP}
+  #type: LoadBalancer
+  #loadBalancerIP: ${_METALLB_IP}
   selector:
     app: nxrm3-pg
   ports:
