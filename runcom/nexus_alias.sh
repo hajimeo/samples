@@ -21,7 +21,7 @@ function _get_iq_url() {
             _iq_url="http://${_iq_url%/}/"
         fi
     elif [ -z "${_iq_url}" ]; then  # default
-        _iq_url="http://nxiq-k8s.standalone.localdomain:8070/"
+        _iq_url="https://nxiq-k8s.standalone.localdomain/"
     fi
     echo "${_iq_url}"
 }

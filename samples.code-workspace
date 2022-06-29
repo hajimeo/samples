@@ -5,7 +5,7 @@
 		}
 	],
 	"settings": {
-		"nexusiq.url": "http://nxiq-k8s.standalone.localdomain:8070/",
+		"nexusiq.url": "https://nxiq-k8s.standalone.localdomain/",
 		"nexusExplorer.dataSource": "iqServer",
 		"python.pythonPath": "~/.pyvenv/bin/python"
 	}

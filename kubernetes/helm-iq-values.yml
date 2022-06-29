@@ -109,7 +109,7 @@ persistence:
   storageSize: 1Gi
 
 configYaml:
-  baseUrl: http://nxiq-k8s.standalone.localdomain:8070
+  baseUrl: http://nxiq-k8s.standalone.localdomain
   sonatypeWork: /sonatype-work
   #TODO: licenseFile:
   server:
