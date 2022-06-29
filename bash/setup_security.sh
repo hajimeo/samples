@@ -489,11 +489,12 @@ function f_freeipa_cert_update() {
 
 function f_simplesamlphp() {
     local __doc__="No installation, but setup Simple SAML PHP"
-    local _local_ldap="${1-"localhost:389"}"    # node-freeipa.standalone.localdomain:389
-    local _base_dc="${2:-"dc=standalone,dc=localdomain"}"
-    local _admin="${3:-"${g_admin}"}"
+    local _base_dc="${1:-"dc=standalone,dc=localdomain"}"
+    local _admin="${2:-"${g_admin}"}"
     local _admin_pwd="${3:-"${g_FREEIPA_DEFAULT_PWD}"}"
-    local _version="${3:-"1.19.1"}" # 1.19.5 causes https://github.com/simplesamlphp/simplesamlphp/issues/1592
+    local _ldap_host="${4-"localhost"}"    # node-freeipa.standalone.localdomain:389
+    local _ldap_port="${5-"port"}"    # node-freeipa.standalone.localdomain:389
+    local _version="${6:-"1.19.1"}" # 1.19.5 causes https://github.com/simplesamlphp/simplesamlphp/issues/1592
 
     local _apache2="apache2"
     local _conf="/etc/apache2/sites-enabled/saml.conf"
@@ -535,19 +536,37 @@ function f_simplesamlphp() {
         if [ ! -f ${_saml_dir%/}/config/config.php.orig ]; then
             cp -p ${_saml_dir%/}/config/config.php ${_saml_dir%/}/config/config.php.orig || return $?
         fi
-        sed -i.bak "s/'defaultsecretsalt'/'60a37e26dc9b5cf7321b'/;s/'123'/'admin123'/;s/'enable.saml20-idp' => false/'enable.saml20-idp' => true/" ${_saml_dir%/}/config/config.php
-        if [ -n "${_local_ldap}" ]; then
+        sed -i.bak "s/'defaultsecretsalt'/'60a37e26dc9b5cf7321b'/;s/'123'/'admin123'/;s/'enable.saml20-idp' => false/'enable.saml20-idp' => true/;s/'logging.handler' => 'syslog'/'logging.handler' => 'file'/" ${_saml_dir%/}/config/config.php
+        if [ -n "${_ldap_host}" ]; then
             _log "INFO" "Updating ${_saml_dir%/}/config/authsources.php ..."
             if [ ! -f "${_saml_dir%/}/config/authsources.php.orig" ]; then
                 cp -p "${_saml_dir%/}/config/authsources.php" "${_saml_dir%/}/config/authsources.php.orig" || return $?
             fi
             cat ${_saml_dir%/}/config/authsources.php | grep -v '^];$' > /tmp/authsources.php
-            echo "'local_ldap'=>['ldap:LDAP','hostname'=>'${_local_ldap}','enable_tls'=>FALSE,'attributes'=>NULL,'dnpattern'=>'uid=%username%,cn=users,cn=accounts,${_base_dc}','search.enable'=>FALSE,'search.base'=>'cn=users,cn=accounts,${_base_dc}','search.scope'=>'subtree','search.attributes'=>array('uid', 'gecos', 'krbPrincipalName', 'mail'),'search.filter'=>'(&(objectClass=person)(uid=*))','search.username'=>'${_admin},cn=users,cn=accounts,${_base_dc}','search.password'=>'${_admin_pwd}']," >> /tmp/authsources.php
+            echo "'ldap-auth1' => array(
+     'ldap:LDAP',
+     'hostname' => '${_ldap_host}',
+     'port' => '${_ldap_port}',
+     'enable_tls' => FALSE,
+     'attributes' => NULL,
+     'dnpattern' => 'uid=%username%,cn=users,cn=accounts,${_base_dc}',
+     'search.enable' => FALSE,
+     'search.base' => 'cn=users,cn=accounts,${_base_dc}',
+     'search.scope' => 'subtree',
+     'search.attributes' => array('uid', 'gecos', 'krbPrincipalName', 'mail'),
+     'search.filter' => '(&(objectClass=person)(uid=*))',
+     'search.username' => '${_admin},cn=users,cn=accounts,${_base_dc}',
+     'search.password' => '${_admin}',
+ )," >> /tmp/authsources.php
             echo "];" >> /tmp/authsources.php
             mv -v -f /tmp/authsources.php ${_saml_dir%/}/config/authsources.php
         fi
         _log "INFO" "Updating ${_saml_dir%/}/metadata/saml20-idp-hosted.php ..."
-        sed -i.bak -r "s/\s+'auth' => .+$/    'auth' => 'local_ldap',\n    'NameIDFormat'               => 'urn:oasis:names:tc:SAML:1.1:nameid-format:persistent',\n    'simplesaml.nameidattribute' => 'uid',\n    'SingleSignOnServiceBinding' => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST',\n    'SingleLogoutServiceBinding' => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST',/" ${_saml_dir%/}/metadata/saml20-idp-hosted.php
+        sed -i.bak -r "s/\s+'auth' => .+$/    'auth' => 'ldap-auth1',\n    'NameIDFormat'               => 'urn:oasis:names:tc:SAML:1.1:nameid-format:persistent',\n    'simplesaml.nameidattribute' => 'uid',\n    'SingleSignOnServiceBinding' => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST',\n    'SingleLogoutServiceBinding' => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST',/" ${_saml_dir%/}/metadata/saml20-idp-hosted.php
+
+        #ln -s /etc/pki/tls/certs/localhost.crt ${_saml_dir%/}/cert/server.crt
+        #ln -s /etc/pki/tls/certs/localhost.key ${_saml_dir%/}/cert/server.pem
+        openssl req -newkey rsa:2048 -new -x509 -days 3652 -nodes -subj "/C=AU/ST=QLD/CN=$(hostname -f)" -out ${_saml_dir%/}/cert/server.crt -keyout ${_saml_dir%/}/cert/server.pem
     fi
 
     if [ -s "${_conf}" ]; then
