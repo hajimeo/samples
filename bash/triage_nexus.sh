@@ -103,7 +103,7 @@ function f_blob_refs_from_bak() {
 #f_upload_dummies "http://localhost:8081/repository/raw-s3-hosted/manyfiles" "1432 10000" 8
 function f_upload_dummies() {
     local __doc__="Upload text files into (raw) hosted repository"
-    local _repo_url="${1:-"http://localhost:8081/repository/raw-hosted/test"}"
+    local _repo_path="${1:-"http://localhost:8081/repository/raw-hosted/test"}"
     local _how_many="${2:-"10"}"
     local _parallel="${3:-"4"}"
     local _file_prefix="${4:-"test_"}"
@@ -113,10 +113,9 @@ function f_upload_dummies() {
     local _seq="seq 1 ${_how_many}"
     [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
     # -T<(echo "aaa") may not work with some old bash, so creating a file
-    echo "test by f_upload_dummies started at $(date +'%Y-%m-%d %H:%M:%S')" > /tmp/f_upload_dummies.tmp || return $?
     for i in $(eval "${_seq}"); do
       echo "${_file_prefix}${i}${_file_suffix}"
-    done | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w '%{http_code} {}\n' -T /tmp/f_upload_dummies.tmp -L -k "${_repo_url%/}/{}"
+    done | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w '%{http_code} {}\n' -T<(echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')") -L -k "${_repo_path%/}/{}"
     # TODO: xargs only stops if exit code is 255
 }
 
