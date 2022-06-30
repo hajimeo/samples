@@ -284,7 +284,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
         _ = ju.load_csvs(src="./_filtered/", include_ptn="*.csv", max_file_size=(max_file_size * 3), conn=ju.connect())
 
         # ./work/db/xxxxx.json (new DB)
-        _ = ju.load_jsons(".", include_ptn=".+/db/.+\.json", exclude_ptn='export\.json', useRegex=True, conn=ju.connect())
+        _ = ju.load_jsons(".", include_ptn=".+/db/.+\.json", exclude_ptn='(samlConfigurationExport\.json|export\.json)', useRegex=True, conn=ju.connect())
 
         # If request.*csv* exists, use that (should be already created by load_csvs and should be loaded by above load_csvs (because it's faster), if not, logs2table, which is slower.
         if ju.exists("t_request") is False:
