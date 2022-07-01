@@ -949,26 +949,40 @@ function f_docker_setup() {
         return 1
     fi
 
-    if which docker | grep -qw snap; then
-        _warn "'docker' might be installed from 'snap'. Please remove with 'snap remove docker'"
-        return 1
-    fi
-
     if ! which docker &>/dev/null; then
         apt-get install -y apt-transport-https ca-certificates curl gnupg-agent software-properties-common || return $?
-        # if Ubuntu 18
-        if grep -qiP 'Ubuntu (18|20)\.' /etc/issue.net; then
+        # if Ubuntu 18, do not use snap
+        if grep -qiP 'Ubuntu (18)\.' /etc/issue.net; then
             apt-get remove -y docker docker-engine docker.io containerd runc
             curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
             #apt-key fingerprint 0EBFCD88 || return $?  # probably no longer needed?
             add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
             apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io
-        else
-            # Old (14.04 and 16.04) way (TODO: apt.dockerproject.org no longer works)
+            # journalctl -f -u docker.service
+
+            # echo "/media/D512/docker /var/lib/docker none bind" >> /etc/fstab
+        # Old (14.04 and 16.04) way (TODO: apt.dockerproject.org no longer works)
+        elif grep -qiP 'Ubuntu 1.\.' /etc/issue.net; then
             apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D || _info "Did not add key for docker"
             grep -q "deb https://apt.dockerproject.org/repo" /etc/apt/sources.list.d/docker.list || echo "deb https://apt.dockerproject.org/repo ubuntu-$(cat /etc/lsb-release | grep CODENAME | cut -d= -f2) main" >>/etc/apt/sources.list.d/docker.list
             apt-get update && apt-get purge lxc-docker*
             apt-get install docker-engine -y
+        elif type snap &>/dev/null; then
+            # NOTE: snap's docker may not work well with microk8s
+            apt-get remove -y docker docker-engine docker.io containerd runc
+            apt-get update && snap install docker
+            #systemctl start snap.docker.dockerd.service
+            # Uninstall without snapshot: snap remove docker --purge BUT this will delete everything!
+            # To check log for snap: snap logs docker
+
+            # NOTE: symlink does not work ...
+            #rsync -av /var/snap/docker/common/var-lib-docker/containerd /media/D512/docker/
+            #mv /var/snap/docker/common/var-lib-docker{,_orig}
+            #mkdir /var/snap/docker/common/var-lib-docker
+            #echo '/media/D512/docker /var/snap/docker/common/var-lib-docker none bind' >> /etc/fstab
+        else
+            _error "Couldn't identify how to install docker"
+            return 1
         fi
     fi
 
@@ -1001,6 +1015,7 @@ function f_docker_setup() {
         iptables-save >/etc/iptables.up.rules
         #which docker &>/dev/null && service docker restart
     fi
+    echo "If dnsmasq is used, you may want to run/check f_dnsmasq"
 }
 
 function f_minikube4kvm() {
@@ -1055,12 +1070,22 @@ function f_microk8s() {
 
     # (a kind of) test
     microk8s kubectl get all --all-namespaces || return $?
-    # If works update firewall. at this moment, only for ufw
+    # If above test works, update firewall. at this moment, only for ufw
     if type ufw &>/dev/null; then
         ufw allow in on vxlan.calico || return $?
         ufw allow out on vxlan.calico || return $?
         ufw default allow routed || return $?
     fi
+
+    # Pods restart every 20 minutes. As per https://github.com/canonical/microk8s/issues/506 and https://github.com/canonical/microk8s/issues/2790
+    systemctl stop snap.microk8s.daemon-apiserver-kicker.service
+    systemctl disable snap.microk8s.daemon-apiserver-kicker.service
+    # NOTE 'microk8s start' re-enable above, so trying below
+    if [ -f /var/snap/microk8s/current/args/kube-apiserver ] && ! grep -q 'advertise-address' /var/snap/microk8s/current/args/kube-apiserver; then
+        echo '--advertise-address=0.0.0.0' >> /var/snap/microk8s/current/args/kube-apiserver
+    fi
+    #systemctl stop snap.microk8s.daemon-kubelet.service
+    #systemctl disable snap.microk8s.daemon-kubelet.service
 
     # output token if dashboard is enabled
     if [ -n "${dashboard}" ]; then
@@ -1278,20 +1303,24 @@ function f_dnsmasq() {
     fi
 
     # Without below, DNS (resolv.conf) in containers will be 8.8.8.8
-    if [ -d /etc/docker ] && [ ! -s /etc/docker/daemon.json ]; then
-        local _docker_bridge_net="$(docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
-        local _daemon_json=""
-        #_daemon_json="${_daemon_json%,},\n\"hosts\": [\"tcp://0.0.0.0:2375\", \"unix:///var/run/docker.sock\"]"
-        if [ -n "${_docker_bridge_net}" ]; then
-            _daemon_json="${_daemon_json%,},\n\"dns\": [\"${_docker_bridge_net}.1\", \"1.1.1.1\"]"
-        fi
-        echo -e "{${_daemon_json}\n}" > /etc/docker/daemon.json
-        _warn "daemon.json updated. 'systemctl daemon-reload && service docker restart' required"
-        #mkdir -p /etc/systemd/system/docker.service.d
-        #echo -e '[Service]\nExecStart=\nExecStart=/usr/bin/dockerd' > /etc/systemd/system/docker.service.d/override.conf
-        #_warn "Port 2375 is exposed. 'systemctl daemon-reload && service docker restart' required"
-        # TODO: also add live-restore https://docs.docker.com/config/containers/live-restore/
+    local _docker_daemon_json=""
+    if [ -d /var/snap/docker/current/config ]; then
+        _docker_daemon_json="/var/snap/docker/current/config/daemon.json"
+    elif [ -d /var/snap/docker/current/etc/docker ]; then
+        _docker_daemon_json="/var/snap/docker/current/etc/docker/daemon.json"
+    elif [ -d /etc/docker ]; then
+        _docker_daemon_json="/etc/docker/daemon.json"
     fi
+    if [ -n "${_docker_daemon_json}" ]; then
+        #_json_update "${_docker_daemon_json}" "hosts" "[\"tcp://0.0.0.0:2375\", \"unix:///var/run/docker.sock\"]"
+        local _docker_bridge_net="$(docker inspect bridge | python -c "import sys,json;a=json.loads(sys.stdin.read());print(a[0]['IPAM']['Config'][0]['Subnet'])" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')"
+        _json_update "${_docker_daemon_json}" "dns" "[\"${_docker_bridge_net:-"172.17.0"}.1\", \"1.1.1.1\"]"
+        _warn "daemon.json updated. Restarting docker is required ('systemctl daemon-reload && service docker restart' or 'snap restart docker')"
+    fi
+    #mkdir -p /etc/systemd/system/docker.service.d
+    #echo -e '[Service]\nExecStart=\nExecStart=/usr/bin/dockerd' > /etc/systemd/system/docker.service.d/override.conf
+    #_warn "Port 2375 is exposed. 'systemctl daemon-reload && service docker restart' required"
+    # TODO: also add live-restore https://docs.docker.com/config/containers/live-restore/
 
     # @see https://bugs.launchpad.net/ubuntu/+source/systemd/+bug/1624320
     if [ -L /etc/resolv.conf ] && grep -qE '^nameserver\s+127.0.0.53' /etc/resolv.conf; then
@@ -1309,6 +1338,22 @@ function f_dnsmasq() {
     fi
     # TODO: To avoid "Ignoring query from non-local network" message:
     grep 'local-service' /etc/init.d/dnsmasq
+}
+function _json_update() {
+    local _json_file="$1"
+    local _key="$2"
+    local _value="$3"
+    if [ ! -s "${_json_file}" ]; then
+        echo "{}"
+    else
+        cat "${_json_file}"
+    fi | python -c "import sys,json;a=json.loads(sys.stdin.read());
+a['${_key}']=${_value};
+print(json.dumps(a,indent=4,sort_keys=True));" > /tmp/${FUNCNAME}_$$.json || return $?
+    if [ ! -s "${_json_file}.orig" ]; then
+        cp -p -v ${_json_file}{,.orig} || return $?
+    fi
+    mv -v -f /tmp/${FUNCNAME}_$$.json ${_json_file}
 }
 
 function f_dnsmasq_banner_reset() {
