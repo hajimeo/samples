@@ -9,7 +9,8 @@ curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.ja
 ## Usage Examples:
 ```
 # Start interactive console:
-java -jar ./orient-console.jar ./sonatype-work/nexus3/db/component
+java -jar ./orient-console.jar "remote:node-nxrm-ha1.standalone.localdomain/component"
+java -jar ./orient-console.jar "./sonatype-work/nexus3/db/component"
 # or with small .bak (zip) file:
 java -jar ./orient-console.jar ./component-2021-08-07-09-00-00-3.30.0-01.bak
 # or with larger .bak file (or use env:_EXTRACT_DIR instead of -DextractDir):
@@ -27,5 +28,5 @@ echo "SIMPLE SELECT statement which returns so many rows" | java -DexportPath=./
 - Replace jline3 
 
 ## My note:
-mvn clean package && cp -v -p ./target/orient-console-1.0-SNAPSHOT-jar-with-dependencies.jar  ../../misc/orient-console.jar
+mvn clean package && cp -v -p ./target/orient-console-1.0-SNAPSHOT.jar ../../misc/orient-console.jar
 

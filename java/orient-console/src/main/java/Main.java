@@ -3,6 +3,7 @@
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.gson.Gson;
+import com.orientechnologies.orient.client.remote.OStorageRemote;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
@@ -38,15 +39,17 @@ public class Main
   static private Terminal terminal;
   static private History history;
   static private String historyPath;
-  static String extractDir;
-  static String exportPath;
-  static String binaryField;
+  static private String extractDir;
+  static private String exportPath;
+  static private String binaryField;
   static private String[] fieldNames;
-  static String paging = "";
+  static private String paging = "";
   static private int pageCount = 1;
-  static String ridName = "rid";
+  static private String ridName = "rid";
   static private int lastRows = 0;
-  static String lastRid = "#-1:-1";
+  static private String lastRid = "#-1:-1";
+  static private String dbUser = "admin";
+  static private String dbPwd = "admin";
 
   private static final ObjectMapper objectMapper = new ObjectMapper(new SmileFactory());
 
@@ -443,6 +446,14 @@ public class Main
     paging = System.getProperty("paging", "");
     ridName = System.getProperty("ridName", "rid");
     lastRid = System.getProperty("lastRid", "#-1:-1");
+    String envOrientDBUser = System.getenv("ORIENTDB_USER");
+    if (envOrientDBUser != null ){
+      dbUser = envOrientDBUser;
+    }
+    String envOrientDBPwd = System.getenv("ORIENTDB_PWD");
+    if (envOrientDBPwd != null ){
+      dbPwd = envOrientDBPwd;
+    }
 
     if (exportPath != null && exportPath.length() > 0) {
       File yourFile = new File(exportPath);
@@ -452,7 +463,7 @@ public class Main
     }
 
     // Preparing data (extracting zip if necessary)
-    if (!(new File(path)).isDirectory() && !(new File(path)).isDirectory()) {
+    if (!path.startsWith("remote:") && !(new File(path)).isDirectory() && !(new File(path)).isDirectory()) {
       try {
         if (extractDir != null && !extractDir.trim().isEmpty()) {
           if (!prepareDir(extractDir, path)) {
@@ -478,37 +489,39 @@ public class Main
     }
     // TODO: above should have more proper error check.
 
-    // Somehow without an ending /, OStorageException happens
-    if (!path.endsWith("/")) {
-      path = path + "/";
-    }
-    if (path.startsWith("remote ")) {
-      connStr = path + " admin admin";
+    ODatabaseDocumentTx db;
+    if (path.startsWith("remote:")) {
+      System.err.println("# connecting to " + path);
+      db = new ODatabaseDocumentTx(path);
+      db.setProperty(OStorageRemote.PARAM_CONNECTION_STRATEGY, OStorageRemote.CONNECTION_STRATEGY.STICKY.toString());
     }
     else {
-      connStr = "plocal:" + path + " admin admin";
+      // Somehow without an ending /, OStorageException happens
+      if (!path.endsWith("/")) {
+        path = path + "/";
+      }
+      System.err.println("# connecting to plocal:" + path);
+      db = new ODatabaseDocumentTx("plocal:" + path);
     }
-    System.err.println("# connection string = " + connStr);
 
-    LineReader lr = setupReader();
-
-    // Below does not work with 2.1.14
+    // Below hook does not work with 2.1.14
     Orient.instance().getRecordConflictStrategy()
         .registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
-    try (ODatabaseDocumentTx db = new ODatabaseDocumentTx(connStr)) {
+
+    try {
       try {
-        try {
-          db.open("admin", "admin");
-        }
-        catch (NullPointerException e) {
-          e.printStackTrace();
-        }
-        System.err.println("# Type 'exit' or Ctrl+D to exit. Ctrl+C to cancel current query");
-        readLineLoop(db, lr);
+        db.open(dbUser, dbPwd);
       }
-      catch (Exception e) {
+      catch (NullPointerException e) {
         e.printStackTrace();
       }
+
+      System.err.println("# Type 'exit' or Ctrl+D to exit. Ctrl+C to cancel current query");
+      LineReader lr = setupReader();
+      readLineLoop(db, lr);
+    }
+    catch (Exception e) {
+      e.printStackTrace();
     }
 
     delR(tmpDir);
