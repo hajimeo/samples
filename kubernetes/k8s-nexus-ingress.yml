@@ -1,5 +1,5 @@
 # kubectl create secret tls nexus-tls -n sonatype --key ~/IdeaProjects/samples/misc/standalone.localdomain.key --cert ~/IdeaProjects/samples/misc/standalone.localdomain.crt
-# kubectl apply -n sonatype -f k8s-nexus-ingress.yml
+# kubectl apply -n sonatype -f ./k8s-nexus-ingress.yml
 #
 apiVersion: networking.k8s.io/v1
 kind: IngressClass
@@ -39,17 +39,18 @@ spec:
     - host: nxrm3-pg-k8s.standalone.localdomain
       http:
         paths:
-          - backend:
+          - path: /
+            backend:
               service:
                 name: nxrm3-pg-service
                 port:
                   number: 8081
             pathType: Prefix
-            path: /
     - host: docker-k8s.standalone.localdomain
       http:
         paths:
-          - backend:
+          - path: /
+            backend:
               service:
                 name: nxrm3-pg-service
                 port:
@@ -57,27 +58,56 @@ spec:
                   number: 4999 # httpPort
                   #number: 8081
             pathType: Prefix
-            path: /
+    - host: docker-proxy.standalone.localdomain
+      http:
+        paths:
+          - path: /
+            backend:
+              service:
+                name: nxrm3-pg-service
+                port:
+                  number: 8081
+            pathType: Prefix
+    - host: docker-hosted.standalone.localdomain
+      http:
+        paths:
+          - path: /
+            backend:
+              service:
+                name: nxrm3-pg-service
+                port:
+                  number: 8081
+            pathType: Prefix
+    - host: docker-group.standalone.localdomain
+      http:
+        paths:
+          - path: /
+            backend:
+              service:
+                name: nxrm3-pg-service
+                port:
+                  number: 8081
+            pathType: Prefix
 
     # IQ
     - host: nxiq-k8s.standalone.localdomain
       http:
         paths:
-          - backend:
+          - path: /
+            backend:
               service:
                 name: nxiq-pg-service
                 port:
                   number: 8070
             pathType: Prefix
-            path: /
     # NOTE: Do i need to expose this?
     - host: nxiq-admin-k8s.standalone.localdomain
       http:
         paths:
-          - backend:
+          - path: /
+            backend:
               service:
                 name: nxiq-pg-service
                 port:
                   number: 8071
             pathType: Prefix
-            path: /
