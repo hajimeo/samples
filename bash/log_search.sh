@@ -1106,7 +1106,7 @@ function _long_blocked() {
 }
 function _threads_extra_check() {
     local _dir="$1"
-    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache|java.lang.Class.forName|CachingDateFormatter|com.codahale.metrics.health.HealthCheck.execute|WeakHashMap|MessageDigest)' "${_dir%/}/" -m1 --no-filename | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache|java.lang.Class.forName|CachingDateFormatter|com.codahale.metrics.health.HealthCheck.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl.startUpload|UploadManagerImpl.blobsByName)' "${_dir%/}/" -m1 --no-filename | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
     if [ -s /tmp/$FUNCNAME_$$.out ]; then
         echo "## Counting:"
         echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
@@ -1120,6 +1120,8 @@ function _threads_extra_check() {
         echo "##    'CachingDateFormatter' https://issues.sonatype.org/browse/NEXUS-31564 (logback)"
         echo "##    'com.codahale.metrics.health.HealthCheck.execute' (nexus.healthcheck.refreshInterval)"
         echo "##    'WeakHashMap' https://issues.sonatype.org/browse/NEXUS-10991"
+        echo "##    'userId\.toLowerCase' https://issues.sonatype.org/browse/NEXUS-31776"
+        echo "##    'UploadManagerImpl.startUpload|.blobsByName' https://issues.sonatype.org/browse/NEXUS-31395"
         echo "##    'MessageDigest' (May indicate CPU resource issue?)"
         cat /tmp/$FUNCNAME_$$.out
         echo " "
