@@ -6,7 +6,7 @@ alias cdl='cd "`ls -dtr ./*/ | tail -n 1`"'
 alias fd='find . -name'
 alias sha1R='find . -type f -exec sha1sum "{}" \;'
 alias fcv='fc -e vim'
-alias vim0='vim -u /dev/null'   # handy when you process large text
+alias vim0='vim -u NONE'   # handy when you process large text
 # 'time' with format
 alias timef='/usr/bin/time -f"[%Us user %Ss sys %es real %MkB mem]"' # brew install gnu-time --with-default-names
 # In case 'tree' is not installed
