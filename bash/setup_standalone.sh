@@ -700,7 +700,7 @@ function f_as_start() {
     local _name="`echo "${_hostname}" | cut -d"." -f1`"
 
     if [[ "${_is_restarting}" =~ ^(y|Y) ]]; then
-        f_as_stop || return $?
+        f_as_stop "${_hostname}" "${_service}" || return $?
     fi
     docker exec -i ${_name} bash -c "source ${_SHARE_DIR}/${_service}/install_${_service}.sh;start_${_service}" || return $?
     f_container_misc "${_name}"
