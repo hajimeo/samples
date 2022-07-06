@@ -242,7 +242,7 @@ function f_set_classpath() {
     local _port_or_dir="${1}"  # port or directory path
     if [ -d "${_port_or_dir}" ]; then
         # NOTE: wouldn't be able to use -maxdepth as can't predict the depth of the Group ID, hence not using -L (symlink)
-        local _tmp_cp="$(find ${_port_or_dir%/} -type f -name '*.jar' | tr '\n' ':')"
+        local _tmp_cp="$(find $(realpath "${_port_or_dir%/}") -type f -name '*.jar' | tr '\n' ':')"
         export CLASSPATH=".:${_tmp_cp%:}"
     elif [ -n "${_port_or_dir%/}" ]; then
         local _p=`lsof -ti:${_port_or_dir} -s TCP:LISTEN` || return $?
