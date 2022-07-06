@@ -114,7 +114,7 @@ function f_setup_maven() {
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"https://repo1.maven.org/maven2/","contentMaxAge":-1,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}' || return $?
-        echo "NOTE: if 'IQ: Audit and Quarantine' is needed:"
+        echo "NOTE: if 'IQ: Audit and Quarantine' is needed for ${_prefix}-proxy:"
         echo "      f_iq_quarantine \"${_prefix}-proxy\""
         # NOTE: com.fasterxml.jackson.core:jackson-databind:2.9.3 should be quarantined if IQ is configured. May need to delete the component first
         #f_get_asset "maven-proxy" "com/fasterxml/jackson/core/jackson-databind/2.9.3/jackson-databind-2.9.3.jar" "test.jar"
@@ -210,7 +210,7 @@ function f_setup_npm() {
     # https://help.sonatype.com/iqserver/managing/policy-management/reference-policy-set-v6
     if ! _is_repo_available "${_prefix}-prop-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"component":{"proprietaryComponents":true},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-prop-hosted","format":"","type":"","url":"","online":true,"recipe":"npm-hosted"}],"type":"rpc"}' # || return $? # this would fail if version is not 3.30
-        echo "NOTE: if 'IQ: Audit and Quarantine' is needed:"
+        echo "NOTE: if 'IQ: Audit and Quarantine' is needed for ${_prefix}-prop-hosted:"
         echo "      f_iq_quarantine \"${_prefix}-prop-hosted\""
     fi
 
