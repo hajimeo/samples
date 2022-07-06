@@ -405,9 +405,7 @@ function r_list_logs() {
 
 ### Tests ###################################################################
 function t_basic() {
-    if find . -maxdepth 3 -type f -name truncated | grep -q 'truncated'; then
-        _head "WARN" "'truncated' found under $(realpath .) with maxdepth 3"
-    fi
+    _test_template "$(find . -maxdepth 3 -type f -name truncated | grep 'truncated')" "WARN" "'truncated' found under $(realpath .) with maxdepth 3"
     if ! find . -maxdepth 5 -type f -name sysinfo.json | grep -q 'sysinfo.json'; then
         _head "ERROR" "No 'sysinfo.json' under $(realpath .) with maxdepth 5"
     fi
