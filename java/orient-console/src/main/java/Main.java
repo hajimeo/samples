@@ -2,9 +2,11 @@
 //import com.google.gson.Gson;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import com.orientechnologies.orient.client.remote.OStorageRemote;
 import com.orientechnologies.orient.core.Orient;
+import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
@@ -12,6 +14,16 @@ import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.record.impl.ORecordBytes;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.sql.OCommandSQLParsingException;
+import com.orientechnologies.orient.server.OServer;
+import com.orientechnologies.orient.server.config.OServerConfiguration;
+import com.orientechnologies.orient.server.config.OServerEntryConfiguration;
+import com.orientechnologies.orient.server.config.OServerNetworkConfiguration;
+import com.orientechnologies.orient.server.config.OServerNetworkListenerConfiguration;
+import com.orientechnologies.orient.server.config.OServerNetworkProtocolConfiguration;
+import com.orientechnologies.orient.server.config.OServerSecurityConfiguration;
+import com.orientechnologies.orient.server.config.OServerStorageConfiguration;
+import com.orientechnologies.orient.server.config.OServerUserConfiguration;
+import com.orientechnologies.orient.server.network.protocol.binary.ONetworkProtocolBinary;
 import net.lingala.zip4j.ZipFile;
 import org.jline.reader.*;
 import org.jline.reader.impl.DefaultHighlighter;
@@ -23,6 +35,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.smile.SmileFactory;
 
 import java.io.*;
+import java.lang.reflect.InvocationTargetException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,24 +45,48 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
+import javax.management.InstanceAlreadyExistsException;
+import javax.management.MBeanRegistrationException;
+import javax.management.MalformedObjectNameException;
+import javax.management.NotCompliantMBeanException;
+
 public class Main
 {
   static final private String PROMPT = "=> ";
+
   static final private String JSON_FORMAT = "rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0";
+
   static private Terminal terminal;
+
   static private History history;
+
   static private String historyPath;
+
   static private String extractDir;
+
   static private String exportPath;
+
   static private String binaryField;
+
   static private String[] fieldNames;
+
   static private String paging = "";
+
   static private int pageCount = 1;
+
   static private String ridName = "rid";
+
   static private int lastRows = 0;
+
   static private String lastRid = "#-1:-1";
+
   static private String dbUser = "admin";
+
   static private String dbPwd = "admin";
+
+  static private Boolean isServer;
+
+  static private OServer server;
 
   private static final ObjectMapper objectMapper = new ObjectMapper(new SmileFactory());
 
@@ -128,11 +165,15 @@ public class Main
   // TODO: changing to List<?> breaks toJSON()
   private static void printListAsJson(List<ODocument> oDocs, boolean isPaging) {
     if (oDocs == null || oDocs.isEmpty()) {
-      if (!isPaging) terminal.writer().println("\n[]");
+      if (!isPaging) {
+        terminal.writer().println("\n[]");
+      }
       terminal.flush();
       return;
     }
-    if (!isPaging) terminal.writer().println("\n[");
+    if (!isPaging) {
+      terminal.writer().println("\n[");
+    }
     for (int i = 0; i < oDocs.size(); i++) {
       if (!isPaging && i == (oDocs.size() - 1)) {
         terminal.writer().println("  " + oDocs.get(i).toJSON(JSON_FORMAT));
@@ -142,7 +183,9 @@ public class Main
       }
       terminal.flush();
     }
-    if (!isPaging) terminal.writer().println("]");
+    if (!isPaging) {
+      terminal.writer().println("]");
+    }
     // TODO: not working?  and not organised properly
     terminal.flush();
   }
@@ -150,7 +193,7 @@ public class Main
   private static void printDocAsJson(ODocument oDoc) {
     // NOTE: Should check null, like 'if (oDoc == null) {'?
     // Default; rid,version,class,type,attribSameRow,keepTypes,alwaysFetchEmbedded,fetchPlan:*:0
-    terminal.writer().println(oDoc.toJSON(JSON_FORMAT+",prettyPrint"));
+    terminal.writer().println(oDoc.toJSON(JSON_FORMAT + ",prettyPrint"));
     terminal.flush();
   }
 
@@ -197,7 +240,9 @@ public class Main
         bw.close();
         return;
       }
-      if (!isPaging) bw.write("[\n");
+      if (!isPaging) {
+        bw.write("[\n");
+      }
       for (int i = 0; i < oDocs.size(); i++) {
         if (!isPaging && i == (oDocs.size() - 1)) {
           bw.write("  " + oDocs.get(i).toJSON(JSON_FORMAT));
@@ -207,8 +252,12 @@ public class Main
         }
         bw.newLine();
       }
-      if (!isPaging) bw.write("]");
-      if (!isPaging) bw.newLine();
+      if (!isPaging) {
+        bw.write("]");
+      }
+      if (!isPaging) {
+        bw.newLine();
+      }
       bw.close();
     }
     catch (IOException e) {
@@ -230,7 +279,7 @@ public class Main
       Instant start = Instant.now();
       try {
         boolean isPaging = false;
-        if(paging != null && paging.trim().length() > 0 && q.toLowerCase().startsWith("select ")) {
+        if (paging != null && paging.trim().length() > 0 && q.toLowerCase().startsWith("select ")) {
           if (q.toLowerCase().contains(" order by ") || q.toLowerCase().contains(" limit ")) {
             log("\nERROR: 'paging' is given but query contains 'order by' or 'limit'.");
             continue;
@@ -238,10 +287,10 @@ public class Main
           if (!q.toLowerCase().contains(" where ")) {
             log("\nWARN: 'paging' is given but OrientDB 2.x pagination may not work with 'where' clause ... :(");
           }
-          if (!q.toLowerCase().contains(" "+ridName+",")) {  // TODO: should use regex
-            log("\nWARN: 'paging' is given but query may not contain '@rid as "+ridName+"'");
+          if (!q.toLowerCase().contains(" " + ridName + ",")) {  // TODO: should use regex
+            log("\nWARN: 'paging' is given but query may not contain '@rid as " + ridName + "'");
           }
-          log("\nINFO: pagination is enabled with paging size:"+paging+"");
+          log("\nINFO: pagination is enabled with paging size:" + paging + "");
           isPaging = true;
         }
 
@@ -313,7 +362,8 @@ public class Main
 
       lastRows = ((List<ODocument>) oDocs).size();
       if (isPaging && lastRows > 0) {
-        lastRid = ((ODocument) ((ODocument) ((List<ODocument>) oDocs).get((lastRows - 1))).field(ridName)).getIdentity().toString();
+        lastRid = ((ODocument) ((ODocument) ((List<ODocument>) oDocs).get((lastRows - 1))).field(ridName)).getIdentity()
+            .toString();
       }
     }
   }
@@ -370,7 +420,9 @@ public class Main
     String input = reader.readLine(PROMPT);
     while (input != null && !input.equalsIgnoreCase("exit")) {
       try {
-        execQueries(db, input);
+        if (db != null) {
+          execQueries(db, input);
+        }
         input = reader.readLine(PROMPT);
       }
       catch (UserInterruptException e) {
@@ -429,17 +481,59 @@ public class Main
     return lr;
   }
 
+  private static void startServer(String dbPath)
+      throws MalformedObjectNameException, NotCompliantMBeanException, InstanceAlreadyExistsException,
+             ClassNotFoundException, MBeanRegistrationException, IOException, InvocationTargetException,
+             NoSuchMethodException, InstantiationException, IllegalAccessException
+  {
+    File databaseDir = new File(dbPath).getCanonicalFile().getParentFile();
+    Path homeDir = databaseDir.toPath();
+    System.setProperty("orient.home", homeDir.toString());
+    System.setProperty(Orient.ORIENTDB_HOME, homeDir.toString());
+
+    server = new OServer();
+    OServerConfiguration config = new OServerConfiguration();
+    config.location = "DYNAMIC-CONFIGURATION";  // Not sure about this, just took from OrientDbEmbeddedTrial
+    config.properties = new OServerEntryConfiguration[]{
+        new OServerEntryConfiguration("server.database.path", databaseDir.getPath())
+    };
+    config.handlers = Lists.newArrayList();
+    config.hooks = Lists.newArrayList();
+    config.network = new OServerNetworkConfiguration();
+    config.network.protocols = Lists.newArrayList(
+        new OServerNetworkProtocolConfiguration("binary", ONetworkProtocolBinary.class.getName())
+    );
+    OServerNetworkListenerConfiguration binaryListener = new OServerNetworkListenerConfiguration();
+    binaryListener.ipAddress = "0.0.0.0";
+    binaryListener.portRange = "2424-2430";
+    binaryListener.protocol = "binary";
+    binaryListener.socket = "default";
+    config.network.listeners = Lists.newArrayList(
+        binaryListener
+    );
+
+    config.storages = new OServerStorageConfiguration[]{};
+    config.users = new OServerUserConfiguration[]{
+        new OServerUserConfiguration("admin", "admin", "*")
+    };
+
+    config.security = new OServerSecurityConfiguration();
+    config.security.users = Lists.newArrayList();
+    config.security.resources = Lists.newArrayList();
+
+    server.startup(config);
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    OGlobalConfiguration.dumpConfiguration(new PrintStream(baos, true));
+    log("Global configuration:\n" + baos.toString("UTF8"));
+
+    server.addUser(OServerConfiguration.DEFAULT_ROOT_USER, "SomeRootPassword", "*");
+    server.activate();
+    // TODO: SEVER ODefaultServerSecurity.loadConfig() Could not access the security JSON file
+  }
+
   private Main() { }
 
-  public static void main(final String[] args) throws IOException {
-    if (args.length < 1) {
-      usage();
-      System.exit(1);
-    }
-
-    String path = args[0];
-    String connStr = "";
-    Path tmpDir = null;
+  private static void setGlobals() {
     extractDir = System.getProperty("extractDir", System.getenv("_EXTRACT_DIR"));
     exportPath = System.getProperty("exportPath", System.getenv("_EXPORT_PATH"));
     binaryField = System.getProperty("binaryField", "");
@@ -447,17 +541,31 @@ public class Main
     ridName = System.getProperty("ridName", "rid");
     lastRid = System.getProperty("lastRid", "#-1:-1");
     String envOrientDBUser = System.getenv("ORIENTDB_USER");
-    if (envOrientDBUser != null ){
+    if (envOrientDBUser != null) {
       dbUser = envOrientDBUser;
     }
     String envOrientDBPwd = System.getenv("ORIENTDB_PWD");
-    if (envOrientDBPwd != null ){
+    if (envOrientDBPwd != null) {
       dbPwd = envOrientDBPwd;
     }
+    isServer = Boolean.getBoolean("server");
+  }
 
+  public static void main(final String[] args) throws IOException {
+    if (args.length < 1) {
+      usage();
+      System.exit(1);
+    }
+
+    setGlobals();
+
+    String path = args[0];
+    Path tmpDir = null;
+
+    // if exportPath is given, create the path
     if (exportPath != null && exportPath.length() > 0) {
       File yourFile = new File(exportPath);
-      yourFile.createNewFile(); // if file already exists will do nothing
+      yourFile.createNewFile(); // if file already exists, this method does nothing
       FileOutputStream fos = new FileOutputStream(yourFile, false);
       fos.close();
     }
@@ -489,41 +597,50 @@ public class Main
     }
     // TODO: above should have more proper error check.
 
-    ODatabaseDocumentTx db;
-    if (path.startsWith("remote:")) {
-      System.err.println("# connecting to " + path);
-      db = new ODatabaseDocumentTx(path);
-      db.setProperty(OStorageRemote.PARAM_CONNECTION_STRATEGY, OStorageRemote.CONNECTION_STRATEGY.STICKY.toString());
-    }
-    else {
-      // Somehow without an ending /, OStorageException happens
-      if (!path.endsWith("/")) {
-        path = path + "/";
-      }
-      System.err.println("# connecting to plocal:" + path);
-      db = new ODatabaseDocumentTx("plocal:" + path);
-    }
-
-    // Below hook does not work with 2.1.14
-    Orient.instance().getRecordConflictStrategy()
-        .registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
-
     try {
-      try {
-        db.open(dbUser, dbPwd);
+      ODatabaseDocumentTx db = null;
+      if (isServer != null && isServer) {
+        startServer(path);
+        System.err.println("# Service started for " + path);
       }
-      catch (NullPointerException e) {
-        e.printStackTrace();
-      }
+      else {
+        if (path.startsWith("remote:")) {
+          System.err.println("# connecting to " + path);
+          db = new ODatabaseDocumentTx(path);
+          db.setProperty(OStorageRemote.PARAM_CONNECTION_STRATEGY,
+              OStorageRemote.CONNECTION_STRATEGY.STICKY.toString());
+        }
+        else {
+          // Somehow without an ending /, OStorageException happens
+          if (!path.endsWith("/")) {
+            path = path + "/";
+          }
+          System.err.println("# connecting to plocal:" + path);
+          db = new ODatabaseDocumentTx("plocal:" + path);
+        }
 
-      System.err.println("# Type 'exit' or Ctrl+D to exit. Ctrl+C to cancel current query");
-      LineReader lr = setupReader();
-      readLineLoop(db, lr);
+        // Below hook does not work with 2.1.14
+        Orient.instance().getRecordConflictStrategy()
+            .registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
+
+        try {
+          db.open(dbUser, dbPwd);
+        }
+        catch (NullPointerException e) {
+          e.printStackTrace();
+        }
+
+        System.err.println("# Type 'exit' or Ctrl+D to exit. Ctrl+C to cancel current query");
+      }
+      readLineLoop(db, setupReader());
     }
     catch (Exception e) {
       e.printStackTrace();
     }
 
+    if (server != null) {
+      server.shutdown();
+    }
     delR(tmpDir);
     System.err.println("");
   }
