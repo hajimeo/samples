@@ -103,7 +103,7 @@ function nxrmStart() {
     local _cfg_file="${_sonatype_work%/}/etc/nexus.properties"
     if [ -n "${_nexus_vmopt}" ]; then   # This means NXRM3
         # To avoid 'Caused by: java.lang.IllegalStateException: Insufficient configured threads' https://support.sonatype.com/hc/en-us/articles/360000744687-Understanding-Eclipse-Jetty-9-4-Thread-Allocation#ReservedThreadExecutor
-        grep -qE -- '^\s*-XX:ActiveProcessorCount=2' "${_nexus_vmopt}" || echo "-XX:ActiveProcessorCount=2" >> "${_nexus_vmopt}"
+        grep -qE -- '^\s*-XX:ActiveProcessorCount=' "${_nexus_vmopt}" || echo "-XX:ActiveProcessorCount=4" >> "${_nexus_vmopt}"
 
         #nexus.licenseFile=/var/tmp/share/sonatype/sonatype-*.lic
         if [ ! -d "${_sonatype_work%/}/etc" ]; then
@@ -325,7 +325,7 @@ EOF
 : <<'EOF'
 mvn-arch-gen
 _REPO_URL="http://dh1:8081/nexus/content/repositories/snapshots/"
-#_REPO_URL="http://localhost:8081/repository/snapshots/"
+#_REPO_URL="http://dh1:8081/nexus/content/repositories/snapshots/"
 for v in {1..11}; do
   sed -i.tmp -E "s@^  <version>.+</version>@  <version>23.76.0-${v}0-SNAPSHOT</version>@" pom.xml
   mvn-deploy "${_REPO_URL}" "" "" "nexus" "" || break
@@ -521,12 +521,17 @@ function npmInit() {
 EOF
 }
 
+alias npm-deploy='npmDeploy'
 alias npmPublish='npmDeploy'
 function npmDeploy() {
     local _repo_url="${1:-"http://localhost:8081/repository/npm-hosted/"}"
     local _name="${2:-"lodash-vulnerable"}"
     local _ver="${3:-"1.0.0"}"
-    [ -s ./package.json.orig ] || cp -v -p ./package.json ./package.json.orig
+    if [ -s ./package.json ] && [ ! -s ./package.json.orig ]; then
+        cp -v -p ./package.json ./package.json.orig
+    elif [ ! -s ./package.json ]; then
+        npmInit "${_name}" "${_ver}"
+    fi
     cat ./package.json | python -c "import sys,json
 a=json.loads(sys.stdin.read())
 d={\"name\":\"${_name}\",\"version\":\"${_ver}\",\"publishConfig\":{\"registry\":\"${_repo_url}\"}}
