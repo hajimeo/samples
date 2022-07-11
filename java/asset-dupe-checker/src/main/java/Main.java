@@ -68,7 +68,7 @@ public class Main
     System.out.println("  -DextractDir=<extracting path>  Directory used for extracting component-*.bak file");
     System.out.println("  -DrepoNames=<repo1,repo2,...>   To specify (force) the repositories to check");
     System.out.println("  -DrepoNamesExclude=<repo1,...>  To exclude specific repositories");
-    System.out.println("  -DmagnifyPercent=<int>          Default 250. 0 disable validations and check one repository each");
+    System.out.println("  -DmagnifyPercent=<int>          0 disables estimations/validations, and checks one repository each");
     //System.out.println("  -DcheckPerComp=true For extremely large repository");
     System.out.println("  -Dlimit=<int>                   Limit the duplicate row result (this is for testing)");
     System.out.println("  -DnoDupeCheck=true              For testing/debugging this code");
@@ -621,14 +621,14 @@ public class Main
 
           if (is_dupe_found) {
             out("--REPAIR DATABASE --fix-links;");
-            out("--REBUILD INDEX *;");
+            //out("--REBUILD INDEX *;");
+            out("--REBUILD INDEX asset_bucket_component_name_idx;");
             if (needTrunBrowse) {
               out("TRUNCATE CLASS browse_node;");
             }
             else {
               out("--TRUNCATE CLASS browse_node;");
             }
-            out("REBUILD INDEX asset_bucket_component_name_idx;");
           }
         }
       }
