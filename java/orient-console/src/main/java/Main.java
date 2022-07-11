@@ -418,7 +418,10 @@ public class Main
     //System.err.print(PROMPT);
     //String input = reader.readLine((String) null);
     String input = reader.readLine(PROMPT);
-    while (input != null && !input.equalsIgnoreCase("exit")) {
+    while (input != null && !input.startsWith("exit")) {
+      if(input.startsWith("--")) {
+        continue;
+      }
       try {
         if (db != null) {
           execQueries(db, input);
@@ -494,8 +497,11 @@ public class Main
     server = new OServer();
     OServerConfiguration config = new OServerConfiguration();
     config.location = "DYNAMIC-CONFIGURATION";  // Not sure about this, just took from OrientDbEmbeddedTrial
+    // TODO: Still couldn't avoid 'SEVER ODefaultServerSecurity.loadConfig() Could not access the security JSON file'
+    File securityFile = new File(databaseDir, "orient-console-security.json");
     config.properties = new OServerEntryConfiguration[]{
-        new OServerEntryConfiguration("server.database.path", databaseDir.getPath())
+        new OServerEntryConfiguration("server.database.path", databaseDir.getPath()),
+        new OServerEntryConfiguration("server.security.file", securityFile.getPath())
     };
     config.handlers = Lists.newArrayList();
     config.hooks = Lists.newArrayList();
@@ -514,7 +520,7 @@ public class Main
 
     config.storages = new OServerStorageConfiguration[]{};
     config.users = new OServerUserConfiguration[]{
-        new OServerUserConfiguration("admin", "admin", "*")
+        new OServerUserConfiguration(dbUser, dbPwd, "*")
     };
 
     config.security = new OServerSecurityConfiguration();
@@ -522,13 +528,13 @@ public class Main
     config.security.resources = Lists.newArrayList();
 
     server.startup(config);
+    // Using 'null' for iPassword generates a random password
+    server.addUser(OServerConfiguration.DEFAULT_ROOT_USER, "SomeRootPassword", "*");
+    server.activate();
+
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     OGlobalConfiguration.dumpConfiguration(new PrintStream(baos, true));
     log("Global configuration:\n" + baos.toString("UTF8"));
-
-    server.addUser(OServerConfiguration.DEFAULT_ROOT_USER, "SomeRootPassword", "*");
-    server.activate();
-    // TODO: SEVER ODefaultServerSecurity.loadConfig() Could not access the security JSON file
   }
 
   private Main() { }
@@ -596,42 +602,43 @@ public class Main
       }
     }
     // TODO: above should have more proper error check.
+    String dbName = new File(path).getName();
 
     try {
       ODatabaseDocumentTx db = null;
       if (isServer != null && isServer) {
         startServer(path);
         System.err.println("# Service started for " + path);
+        path = "remote:127.0.0.1/" + dbName;
+      }
+
+      if (path.startsWith("remote:")) {
+        System.err.println("# connecting to " + path);
+        db = new ODatabaseDocumentTx(path);
+        db.setProperty(OStorageRemote.PARAM_CONNECTION_STRATEGY,
+            OStorageRemote.CONNECTION_STRATEGY.STICKY.toString());
       }
       else {
-        if (path.startsWith("remote:")) {
-          System.err.println("# connecting to " + path);
-          db = new ODatabaseDocumentTx(path);
-          db.setProperty(OStorageRemote.PARAM_CONNECTION_STRATEGY,
-              OStorageRemote.CONNECTION_STRATEGY.STICKY.toString());
+        // Somehow without an ending /, OStorageException happens
+        if (!path.endsWith("/")) {
+          path = path + "/";
         }
-        else {
-          // Somehow without an ending /, OStorageException happens
-          if (!path.endsWith("/")) {
-            path = path + "/";
-          }
-          System.err.println("# connecting to plocal:" + path);
-          db = new ODatabaseDocumentTx("plocal:" + path);
-        }
-
-        // Below hook does not work with 2.1.14
-        Orient.instance().getRecordConflictStrategy()
-            .registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
-
-        try {
-          db.open(dbUser, dbPwd);
-        }
-        catch (NullPointerException e) {
-          e.printStackTrace();
-        }
-
-        System.err.println("# Type 'exit' or Ctrl+D to exit. Ctrl+C to cancel current query");
+        System.err.println("# connecting to plocal:" + path);
+        db = new ODatabaseDocumentTx("plocal:" + path);
       }
+
+      // Below hook does not work with 2.1.14
+      Orient.instance().getRecordConflictStrategy()
+          .registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
+
+      try {
+        db.open(dbUser, dbPwd);
+      }
+      catch (NullPointerException e) {
+        e.printStackTrace();
+      }
+
+      System.err.println("# Type 'exit' or Ctrl+D to exit. Ctrl+C to cancel current query");
       readLineLoop(db, setupReader());
     }
     catch (Exception e) {
