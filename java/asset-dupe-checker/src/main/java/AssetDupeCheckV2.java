@@ -212,7 +212,7 @@ public class AssetDupeCheckV2
       if (maybeDupe == null || maybeDupe.toString().equals(docId.toString())) {
         break;
       }
-
+      dupeCounter++;
       log("Duplicate found " + maybeDupe + " indexKey: " + indexKey.toString() + " (docId:" + docId + ")");
       out("TRUNCATE RECORD " + maybeDupe + ";");
       if (IS_REPAIRING) {
