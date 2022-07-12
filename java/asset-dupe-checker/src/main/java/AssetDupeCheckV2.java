@@ -29,14 +29,12 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
+import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.id.ORID;
-import com.orientechnologies.orient.core.id.ORecordId;
 import com.orientechnologies.orient.core.index.OIndex;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.storage.ORecordDuplicatedException;
@@ -54,7 +52,7 @@ public class AssetDupeCheckV2
 
   private static String INDEX_NAME;
 
-  private static boolean IS_REMOVING;
+  private static boolean IS_REPAIRING;
 
   private static boolean IS_REBUILDING;
 
@@ -68,7 +66,7 @@ public class AssetDupeCheckV2
         "  java -Xmx4g -jar asset-dupe-checker-v2.jar <component directory path> | tee asset-dupe-checker.sql");
     System.out.println("System properties:");
     System.out.println("  -DextractDir=<extracting path>  Directory used for extracting component-*.bak file");
-    System.out.println("  -DremoveDupes=true              Remove duplicates if detected");
+    System.out.println("  -Drepaire=true                  Remove duplicates and add missing, if detected");
     System.out.println("  -DrebuildIndex=true             Rebuild asset_bucket_component_name_idx");
     System.out.println("  -Ddebug=true                    Verbose outputs");
   }
@@ -181,86 +179,73 @@ public class AssetDupeCheckV2
     index.rebuild();
   }
 
-  private static Boolean addToIndexFromTable(ODatabaseDocumentTx db, String indexName, String tableName, Boolean isRemoving) {
+  private static Boolean checkTableWithIndex(ODatabaseDocumentTx db, String indexName, String tableName) {
     OIndex<?> index = db.getMetadata().getIndexManager().getIndex(indexName);
+    //index.clear();  // At this moment, do not want to destroy the index in case of another issue later
     long count = 0L;
-    int deleted = 0;
+    int dupeCounter = 0;
     long total = db.countClass(tableName);
     log("Count for " + tableName + " is " + total);
     for (ODocument doc : db.browseClass(tableName)) {
       count++;
-      deleted += _addToIndexWithDelete(db, index, doc, isRemoving);
+      dupeCounter += checkDocWithIndex(db, index, doc);
       if (count % 2500 == 0) {
         index.flush();
-        log("Checked " + count + "/" + total + " (deleted:" + deleted + ")");
+        log("Checked " + count + "/" + total + " (duplicates:" + dupeCounter + ")");
       }
     }
     return true;
   }
 
-  private static int _addToIndexWithDelete(ODatabaseDocumentTx db, OIndex<?> index, ODocument doc, Boolean isRemoving) {
-    int deleted = 0;
-    while (true) {
-      ORecordId maybeDupeId = _addToIndex(index, doc);
-      if (maybeDupeId == null) {
-        return deleted;
-      }
-      if (!isRemoving) {
-        out("TRUNCATE RECORD " + maybeDupeId + ";");
-        return deleted;
-      }
-      if (deleted > 10) {
-        log("[ERROR] Tried to add index:" + index + " " + deleted + " times but failed.");
-        return deleted;
-      }
-      db.delete(maybeDupeId);
-      db.commit();    // TODO: not sure if this helps to reduce heap
-      deleted++;
-      log("[WARN] Deleted duplicate ID: " + maybeDupeId + " for index: " + index + " (" + deleted + ")");
-    }
-  }
-
-  private static ORecordId _addToIndex(OIndex<?> index, ODocument doc) {
+  private static int checkDocWithIndex(ODatabaseDocumentTx db, OIndex<?> index, ODocument doc) {
+    int dupeCounter = 0;
     List<String> fields = index.getDefinition().getFields();
     Object[] vals = new Object[fields.size()];
     for (int i = 0; i < vals.length; i++) {
       vals[i] = doc.field(fields.get(i));
     }
-    Object indexKey = index.getDefinition().createValue(vals);
     ORID docId = doc.getIdentity();
-    debug("key: " + indexKey.toString() + ", values: " + docId.toString());
+    Object indexKey = index.getDefinition().createValue(vals);
+    // check up to 10 duplicates under this key
+    for (int i = 0; i < 10; i++) {
+      Object maybeDupe = index.get(indexKey);
+      if (maybeDupe == null || maybeDupe.toString().equals(docId.toString())) {
+        break;
+      }
+
+      log("Duplicate found " + maybeDupe + " indexKey: " + indexKey.toString() + " (docId:" + docId + ")");
+      out("TRUNCATE RECORD " + maybeDupe + ";");
+      if (IS_REPAIRING) {
+        db.delete((ORID) maybeDupe);
+        db.commit();    // TODO: not sure if this helps to reduce heap
+        log("[WARN] Deleted duplicate: " + maybeDupe);
+      }
+      else {
+        index.remove(indexKey, (OIdentifiable) maybeDupe);
+      }
+    }
+
+    // Regardless of IS_REPAIRING, needs to use put to detect duplicates.
     try {
+      debug("putting key: " + indexKey.toString() + ", values: " + docId.toString());
       index.put(indexKey, docId);
     }
     catch (ORecordDuplicatedException e) {
-      // TODO: should use index.get(indexKey)?
-      String error = e.getMessage();
-      // 'Cannot index record' to delete newer
-      Pattern CANNOT_ASSET_RID_REGEX =
-          Pattern.compile("(?s).*previously assigned to the record #(?<iClusterId>[0-9]+):(?<iPositionId>[0-9]+).*");
-      Matcher myMatcher = CANNOT_ASSET_RID_REGEX.matcher(error);
-      if (myMatcher.matches()) {
-        int iClusterId = Integer.parseInt(myMatcher.group("iClusterId"));
-        long iPositionId = Long.parseLong(myMatcher.group("iPositionId"));
-        return new ORecordId(iClusterId, iPositionId);
-      }
-      else {
-        log("[WARN] +" + error);
-      }
+      log("[ERROR] " + e.getMessage());
     }
-    return null;
+    return dupeCounter;
   }
 
   private static void setGlobals() {
     IS_DEBUG = Boolean.getBoolean("debug");
-    IS_REMOVING = Boolean.getBoolean("removeDupes");
-    debug("removeDupes: " + IS_REMOVING);
+    IS_REPAIRING = Boolean.getBoolean("repair");
+    debug("repair: " + IS_REPAIRING);
     IS_REBUILDING = Boolean.getBoolean("rebuildIndex");
     debug("rebuildIndex: " + IS_REBUILDING);
     TABLE_NAME = System.getProperty("tableName", "asset");
     debug("tableName: " + TABLE_NAME);
     INDEX_NAME = System.getProperty("indexName", "asset_bucket_component_name_idx");
-    debug("tableName: " + TABLE_NAME);
+    debug("indexName: " + INDEX_NAME);
     EXTRACT_DIR = System.getProperty("extractDir", "");
     debug("extDir: " + EXTRACT_DIR);
     LOG_PATH = System.getProperty("logPath", "./asset-dupe-checker-v2.log");
@@ -308,8 +293,8 @@ public class AssetDupeCheckV2
       try {
         db.open("admin", "admin");
         log("Connected to " + connStr);
-        Boolean result = addToIndexFromTable(db, INDEX_NAME, TABLE_NAME, IS_REMOVING);
-        log("Added records to indexName: " + INDEX_NAME + " from tableName: " + TABLE_NAME);
+        Boolean result = checkTableWithIndex(db, INDEX_NAME, TABLE_NAME);
+        log("Check all records from indexName: " + INDEX_NAME + " from tableName: " + TABLE_NAME);
         if (result && IS_REBUILDING) {
           rebuildIndex(db, INDEX_NAME);
           log("Rebuilt indexName: " + INDEX_NAME);
@@ -317,6 +302,9 @@ public class AssetDupeCheckV2
       }
       catch (Exception e) {
         e.printStackTrace();
+      }
+      finally {
+        db.close();
       }
     }
 
