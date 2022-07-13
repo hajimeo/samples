@@ -66,7 +66,8 @@ public class AssetDupeCheckV2
         "  java -Xmx4g -XX:MaxDirectMemorySize=8g -jar asset-dupe-checker-v2.jar <component directory path> | tee asset-dupe-checker.sql");
     System.out.println("System properties:");
     System.out.println("  -DextractDir=<extracting path>  Location for extracting component-*.bak file");
-    System.out.println("  -Drepair=true                   Remove duplicates from table and insert missing index record");
+    System.out.println(
+        "  -Drepair=true                   Remove duplicates from table and insert missing index record");
     System.out.println("  -DrebuildIndex=true             Rebuild specified index (asset_bucket_component_name_idx)");
     System.out.println("  -Ddebug=true                    Verbose outputs");
     System.out.println("advanced properties:");
@@ -199,6 +200,7 @@ public class AssetDupeCheckV2
         log("Checked " + count + "/" + total + " (duplicates:" + dupeCounter + ")");
       }
     }
+    log("Checked " + count + "/" + total + " (duplicates:" + dupeCounter + ")");
     // If dupes found but not fixed, return false, so that it won't trigger index rebuild
     if (dupeCounter > 0 && !IS_REPAIRING) {
       return false;
@@ -215,11 +217,18 @@ public class AssetDupeCheckV2
     }
     ORID docId = doc.getIdentity();
     Object indexKey = index.getDefinition().createValue(vals);
-    // check up to 10 duplicates under this key
-    for (int i = 0; i < 10; i++) {
+    boolean needPut = true;
+    long c = index.count(indexKey);
+    for (int i = 0; i < c; i++) {
       Object maybeDupe = index.get(indexKey);
-      if (maybeDupe == null || maybeDupe.toString().equals(docId.toString())) {
+      // This condition should not happen because of 'c', but just in case ...
+      if (maybeDupe == null) {  // No index, so will put later
         break;
+      }
+      if (c == 1 && maybeDupe.toString().equals(docId.toString())) {  // only one index and same ID, so no put
+        needPut = false;
+        break;
+        // if more than one index, should delete this one, so no extra handling required
       }
       dupeCounter++;
       log("Duplicate found " + maybeDupe + " indexKey: " + indexKey.toString() + " (docId:" + docId + ")");
@@ -230,17 +239,20 @@ public class AssetDupeCheckV2
         log("[WARN] Deleted duplicate: " + maybeDupe);
       }
       else {
+        // If not IS_REPAIRING, need to remove this one to detect another duplicates for same key
         index.remove(indexKey, (OIdentifiable) maybeDupe);
       }
     }
 
-    // Regardless of IS_REPAIRING, needs to use put to detect duplicates.
-    try {
-      debug("putting key: " + indexKey.toString() + ", values: " + docId.toString());
-      index.put(indexKey, docId);
-    }
-    catch (ORecordDuplicatedException e) {
-      log("[ERROR] " + e.getMessage());
+    if (needPut) {
+      try {
+        // Regardless of IS_REPAIRING, needs to put to detect next duplicates for same key.
+        index.put(indexKey, docId);
+        debug("Put key: " + indexKey.toString() + ", values: " + docId.toString());
+      }
+      catch (ORecordDuplicatedException e) {
+        log("[ERROR] " + e.getMessage());
+      }
     }
     return dupeCounter;
   }
@@ -305,7 +317,7 @@ public class AssetDupeCheckV2
         db.open("admin", "admin");
         log("Connected to " + connStr);
         Boolean result = checkIndex(db, INDEX_NAME, TABLE_NAME);
-        log("Checked all records for indexName: " + INDEX_NAME + " and tableName: " + TABLE_NAME);
+        log("Checked/repaired indexName: " + INDEX_NAME + " from tableName: " + TABLE_NAME);
         if (IS_REBUILDING) {
           if (!result) {
             log("Index rebuild is requested but not rebuilding as duplicates found.");
@@ -321,7 +333,7 @@ public class AssetDupeCheckV2
       }
     }
 
-    log("Completed. Elapsed " + ((System.nanoTime() - start)/1000_000) + " ms");
+    log("Completed. Elapsed " + ((System.nanoTime() - start) / 1000_000) + " ms");
     // Cleaning up the temp dir if used
     delR(TMP_DIR);
   }
