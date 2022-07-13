@@ -63,12 +63,15 @@ public class AssetDupeCheckV2
   private static void usage() {
     System.out.println("Usage:");
     System.out.println(
-        "  java -Xmx4g -jar asset-dupe-checker-v2.jar <component directory path> | tee asset-dupe-checker.sql");
+        "  java -Xmx4g -XX:MaxDirectMemorySize=8g -jar asset-dupe-checker-v2.jar <component directory path> | tee asset-dupe-checker.sql");
     System.out.println("System properties:");
-    System.out.println("  -DextractDir=<extracting path>  Directory used for extracting component-*.bak file");
-    System.out.println("  -Drepaire=true                  Remove duplicates and add missing, if detected");
-    System.out.println("  -DrebuildIndex=true             Rebuild asset_bucket_component_name_idx");
+    System.out.println("  -DextractDir=<extracting path>  Location for extracting component-*.bak file");
+    System.out.println("  -Drepair=true                   Remove duplicates from table and insert missing index record");
+    System.out.println("  -DrebuildIndex=true             Rebuild specified index (asset_bucket_component_name_idx)");
     System.out.println("  -Ddebug=true                    Verbose outputs");
+    System.out.println("advanced properties:");
+    System.out.println("  -DindexName=component_bucket_group_name_version_idx");
+    System.out.println("  -DtableName=component");
   }
 
   private static String getCurrentLocalDateTimeStamp() {
@@ -179,25 +182,31 @@ public class AssetDupeCheckV2
     index.rebuild();
   }
 
-  private static Boolean checkTableWithIndex(ODatabaseDocumentTx db, String indexName, String tableName) {
+  private static Boolean checkIndex(ODatabaseDocumentTx db, String indexName, String tableName) {
     OIndex<?> index = db.getMetadata().getIndexManager().getIndex(indexName);
-    //index.clear();  // At this moment, do not want to destroy the index in case of another issue later
+    if (IS_REPAIRING) {
+      index.clear();
+    }
     long count = 0L;
     int dupeCounter = 0;
     long total = db.countClass(tableName);
     log("Count for " + tableName + " is " + total);
     for (ODocument doc : db.browseClass(tableName)) {
       count++;
-      dupeCounter += checkDocWithIndex(db, index, doc);
-      if (count % 2500 == 0) {
+      dupeCounter += checkIndexEntry(db, index, doc);
+      if (count % 5000 == 0) {
         index.flush();
         log("Checked " + count + "/" + total + " (duplicates:" + dupeCounter + ")");
       }
     }
+    // If dupes found but not fixed, return false, so that it won't trigger index rebuild
+    if (dupeCounter > 0 && !IS_REPAIRING) {
+      return false;
+    }
     return true;
   }
 
-  private static int checkDocWithIndex(ODatabaseDocumentTx db, OIndex<?> index, ODocument doc) {
+  private static int checkIndexEntry(ODatabaseDocumentTx db, OIndex<?> index, ODocument doc) {
     int dupeCounter = 0;
     List<String> fields = index.getDefinition().getFields();
     Object[] vals = new Object[fields.size()];
@@ -289,26 +298,30 @@ public class AssetDupeCheckV2
 
     Orient.instance().getRecordConflictStrategy()
         .registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
+
+    long start = System.nanoTime();
     try (ODatabaseDocumentTx db = new ODatabaseDocumentTx(connStr)) {
       try {
         db.open("admin", "admin");
         log("Connected to " + connStr);
-        Boolean result = checkTableWithIndex(db, INDEX_NAME, TABLE_NAME);
-        log("Check all records from indexName: " + INDEX_NAME + " from tableName: " + TABLE_NAME);
-        if (result && IS_REBUILDING) {
-          rebuildIndex(db, INDEX_NAME);
-          log("Rebuilt indexName: " + INDEX_NAME);
+        Boolean result = checkIndex(db, INDEX_NAME, TABLE_NAME);
+        log("Checked all records for indexName: " + INDEX_NAME + " and tableName: " + TABLE_NAME);
+        if (IS_REBUILDING) {
+          if (!result) {
+            log("Index rebuild is requested but not rebuilding as duplicates found.");
+          }
+          else {
+            rebuildIndex(db, INDEX_NAME);
+            log("Rebuilt indexName: " + INDEX_NAME);
+          }
         }
       }
       catch (Exception e) {
         e.printStackTrace();
       }
-      finally {
-        db.close();
-      }
     }
 
-    log("main() completed.");
+    log("Completed. Elapsed " + ((System.nanoTime() - start)/1000_000) + " ms");
     // Cleaning up the temp dir if used
     delR(TMP_DIR);
   }
