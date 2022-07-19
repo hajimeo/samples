@@ -36,7 +36,7 @@ function iqCli() {
     local _iq_app_id="${2:-${_IQ_APP_ID:-"sandbox-application"}}"
     local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
     local _iq_url="${4:-${_IQ_URL}}"
-    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.128.0-01"}}"
+    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.140.0-01"}}"
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"    # -D fileIncludes="**/package-lock.json"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
 
@@ -103,7 +103,7 @@ function nxrmStart() {
     local _cfg_file="${_sonatype_work%/}/etc/nexus.properties"
     if [ -n "${_nexus_vmopt}" ]; then   # This means NXRM3
         # To avoid 'Caused by: java.lang.IllegalStateException: Insufficient configured threads' https://support.sonatype.com/hc/en-us/articles/360000744687-Understanding-Eclipse-Jetty-9-4-Thread-Allocation#ReservedThreadExecutor
-        grep -qE -- '^\s*-XX:ActiveProcessorCount=' "${_nexus_vmopt}" || echo "-XX:ActiveProcessorCount=4" >> "${_nexus_vmopt}"
+        grep -qE -- '^\s*-XX:ActiveProcessorCount=' "${_nexus_vmopt}" || echo "-XX:ActiveProcessorCount=2" >> "${_nexus_vmopt}"
 
         #nexus.licenseFile=/var/tmp/share/sonatype/sonatype-*.lic
         if [ ! -d "${_sonatype_work%/}/etc" ]; then
@@ -118,7 +118,7 @@ function nxrmStart() {
         echo "NOTE: May need to 'unzip -d ${_base_dir%/}/sonatype-work/nexus/plugin-repository $HOME/Downloads/unzip-repository-plugin-0.14.0-bundle.zip'"
         # jvm 1    | Caused by: java.lang.ClassNotFoundException: org.codehaus.janino.ScriptEvaluator
         #./sonatype-work/nexus/conf/logback-nexus.xml
-        [ -n "${_java_opts}" ] && export JAVA_TOOL_OPTIONS="${_java_opts}"
+        #[ -n "${_java_opts}" ] && export JAVA_TOOL_OPTIONS="${_java_opts}"
     fi
     if [ -n "${_jetty_https}" ] && [[ "${_version}" =~ 3\.26\.+ ]]; then
         # @see: https://issues.sonatype.org/browse/NEXUS-24867
@@ -186,9 +186,9 @@ function iqStart() {
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=n"}
     #local _java_opts=${@:2}
     _base_dir="$(realpath ${_base_dir%/})"
-    local _jar_file="$(find ${_base_dir%/} -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
+    local _jar_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
-    local _cfg_file="$(find ${_base_dir%/} -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
+    local _cfg_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
 
     local _license="$(ls -1t /var/tmp/share/sonatype/*.lic 2>/dev/null | head -n1)"
@@ -202,7 +202,7 @@ function iqStart() {
     grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
     grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.bak -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
     cd "${_base_dir}"
-    local _cmd="java -Xms2g -Xmx4g ${_java_opts} -jar "${_jar_file}" server "${_cfg_file}" 2>/tmp/iq-server.err"
+    local _cmd="java -Xms2g -Xmx4g ${_java_opts} -jar \"${_jar_file}\" server \"${_cfg_file}\" 2>/tmp/iq-server.err"
     echo "${_cmd}"
     eval "${_cmd}"
     cd -
