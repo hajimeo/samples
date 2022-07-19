@@ -108,9 +108,9 @@ function f_setup_scala() {
 }
 
 function f_setup_groovy() {
-    local _ver="${1:-2.4.17}"   # This version is for NXRM3
+    local _ver="${1:-"2.4.17"}"   # This version is for NXRM3
     local _extract_dir="${2:-"${_JAVA_DIR}"}"
-    local _inst_dir="${3:-/usr/local/groovy}"
+    local _inst_dir="${3:-"/usr/local/groovy"}"
 
     if [ -d "$GROOVY_HOME" ]; then
         echo "GROOVY_HOME is already set so that skipping setup."
@@ -120,7 +120,7 @@ function f_setup_groovy() {
     if [ ! -x ${_inst_dir%/}/bin/groovysh ]; then
         if [ ! -d "${_extract_dir%/}/groovy-${_ver}" ]; then
             if [ ! -s "${_extract_dir%/}/apache-groovy-binary-${_ver}.zip" ]; then
-                curl --retry 3 -C - -o "${_extract_dir%/}/apache-groovy-binary-${_ver}.zip" -f -L "https://bintray.com/artifact/download/groovy/maven/apache-groovy-binary-${_ver}.zip" || return $?
+                curl --retry 3 -C - -o "${_extract_dir%/}/apache-groovy-binary-${_ver}.zip" -f -L "https://archive.apache.org/dist/groovy/${_ver}/distribution/apache-groovy-binary-${_ver}.zip" || return $?
             fi
             unzip "${_extract_dir%/}/apache-groovy-binary-${_ver}.zip" -d "${_extract_dir%/}/" || return $?
         fi
@@ -402,6 +402,8 @@ function f_scala() {
 function f_groovy() {
     local _port="${1}"
     local _cded=false
+    # If NXRM3:
+    #java -jar $installDirectory/system/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar test.groovy
     f_setup_groovy
     if [[ "${_port}" =~ ^[0-9]+$ ]]; then
         f_javaenvs "${_port}"
