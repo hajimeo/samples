@@ -95,7 +95,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 : ${_TID:=80}
 ## Misc. variables
 _LOG_FILE_PATH="/tmp/setup_nexus3_repos.log"
-_TMP="$(mktemp -d)"  # for downloading/uploading assets
+_TMP="/tmp"  # for downloading/uploading assets
 ## Variables which used by command arguments
 _AUTO=false
 _DEBUG=false
