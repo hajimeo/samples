@@ -882,37 +882,41 @@ function f_hexTids_from_topH() {
     # grep top output and return PID (currently over 90% CUP one) for the user, then use printf to convert to hex
     local _file="${1}"
     local _user="${2:-".+"}" # [^ ]+
-    local _command="${3:-"(java|VM Thread|GC )"}" # [^ ]+
+    local _command="${3:-"java"}" # Only for netstat. Used to be '(java|VM Thread|GC )' but it can be quartz- or qtp-
     local _search_word="${4-"sonatype"}"
-    local _n="${5:-20}"
+    local _threads_dir="${4-"./_threads"}"
+    local _cpu_pct_regex="${5-"${_CPU_PCT_REGEX:-"[6-9]\d\.\d+"}"}"
+    local _n="${6:-20}"
     echo "# Overview from top ${_n} (check long 'TIME+')"
     if [ -f "${_file}" ]; then
         rg '^top' -A ${_n} "${_file}"
     else
         rg '^top' -A ${_n} -g "${_file}" --no-filename
-    fi | rg "^(top|\s*\d+\s+${_user}\s.+\s${_command})" | tee /tmp/${FUNCNAME}_$$.tmp || return $?
+    fi | rg "^(top|\s*\d+\s+${_user}\s.+\s.[^ ]+)" | tee /tmp/${FUNCNAME}_$$.tmp || return $?
     echo ""
     echo "# Converting suspicious PIDs to hex"
-    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|[6-9]\d\.\d+)" -o -r '$1' | sort | uniq -c | sort -nr | head -n${_n} | while read -r _l; do
+    cat /tmp/${FUNCNAME}_$$.tmp | rg "^\s*(\d+) +${_user} +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +[^ ]+ +(\d\d\d+\.\d+|${_cpu_pct_regex})" -o -r '$1' | sort | uniq -c | sort -nr | head -n${_n} | while read -r _l; do
         if [[ "${_l}" =~ ([0-9]+)[[:space:]]+([0-9]+) ]]; then
             local _cnt="${BASH_REMATCH[1]}"
             local _pid="${BASH_REMATCH[2]}"
             local _hex_pid="$(printf "0x%x" ${_pid})"
             printf "%s\t%s\t%s\n" ${_cnt} ${_pid} ${_hex_pid}
-            if [ ${_cnt} -gt 2 ] && [ -d "_threads" ]; then
-                rg -w "nid=${_hex_pid}" -l ./_threads/ | while read -r _f; do
+            if [ ${_cnt} -gt 2 ] && [ -d "${_threads_dir%/}" ]; then
+                rg -w "nid=${_hex_pid}" -l "${_threads_dir%/}/" | while read -r _f; do
                     if rg -q "${_search_word}" ${_f}; then
                         rg "(^\"|^\s+java.lang.Thread.State\b|\blocked\b|${_search_word})" ${_f}
                     fi
-                done > /tmp/high_cpu_threads_${_pid}_${_hex_pid}.out
+                done > ./high_cpu_threads_${_pid}_${_hex_pid}.out
             fi
         fi
     done
-    ls -ltr /tmp/high_cpu_threads_*.out
     echo ""
     echo "# Large Receive / Send Q from netstat"
     #rg '^Proto' "${_file}"
     rg "^(Proto|tcp\s+(\d{4,}\s+\d+|\d+\s+\d{4,})\s+.+/${_command})" "${_file}"
+    echo ""
+    echo "# High CPU thread summaries"
+    ls -ltr ./high_cpu_threads_*.out
 }
 
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
@@ -985,9 +989,12 @@ function f_threads() {
         echo "## Long *RUN*ning (or BLOCKED) and no-change (same hash) threads which contain '${_running_thread_search_re}' (threads:${_count})"
         _long_running "${_save_dir%/}" "${_running_thread_search_re}"
         _long_blocked "${_save_dir%/}" "${_running_thread_search_re}"
+        echo '# rg -A7 -m1 "RUNNABLE" -g <filename>'
         # TODO: also check similar file sizes (wc -c?)
-        echo "## Long running ([3-9]|\d\d+) threads which contain '${_running_thread_search_re}' (threads:${_count})"
-        rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+([3-9]|\d\d+)\s+.+ ([^ ]+$)" -o -r '$1' | sort
+        local _times=3
+        [ -n "${_count}" ] && [ ${_count} -gt 1 ] && [ 3 -gt ${_count} ] && _times=${_count}
+        echo "## Long running (more than ${_times} times) threads which contain '${_running_thread_search_re}' (threads:${_count})"
+        rg -l "${_running_thread_search_re}" ${_save_dir%/}/ | xargs -I {} basename {} | sort | uniq -c | rg "^\s+([${_times}-9]|\d\d+)\s+.+ ([^ ]+$)" -o -r '$1' | sort
         #| rg -v "(ParallelGC|G1 Concurrent Refinement|Parallel Marking Threads|GC Thread|VM Thread)"
         echo " "
         echo "## Counting methods (but more than once) from running threads which also contains '${_running_thread_search_re}' (threads:${_count})"
@@ -1038,7 +1045,15 @@ function f_threads() {
     local _most_waiting="$(rg -m 1 '^\s*([5-9]|\d\d+)\s+.+(0x[0-9a-f]+)' -o -r '$2' ${_tmp_dir%/}/f_threads_$$_waiting_counts.out)"
     if [ -n "${_most_waiting}" ]; then
         echo "## Finding thread(s) locked '${_most_waiting}' (excluding smaller than 1k threads)"
-        rg "locked.+${_most_waiting}" -l `find ${_save_dir%/} -type f -size +1k -name '*.out'` | xargs -I {} rg -H '(java.lang.Thread.State:| state=)' {}
+        # I was doing 'rg ... `find ...` | xargs', but when find is empty, rg checks everything, so below is not efficient but safer
+        find ${_save_dir%/} -type f -size +1k -name '*.out' -print | while read -r _f; do
+            if rg -q "locked.+${_most_waiting}" -l "${_f}"; then
+                rg -H '(java.lang.Thread.State:| state=)' "${_f}"
+            fi
+        done
+        echo " "
+        echo "## Finding top 10 'owned by' for '${_most_waiting}' (excluding smaller than 1k threads)"
+        rg "waiting to lock .${_most_waiting}\b" -A1 ${_save_dir%/} | rg -o 'owned by .+' | sort | uniq -c | sort -n | head -n10
         echo " "
     fi
     echo "## 'locked' objects or id excluding synchronizers (top 20 and more than once)"    # | rg -v '^\s+1\s'
@@ -1545,6 +1560,19 @@ function __extractdate() {
         _date_str="20${BASH_REMATCH[1]} ${BASH_REMATCH[2]}"
     fi
     echo "${_date_str}"
+}
+
+function _find() {
+    local _name="$1"
+    local _find_all="$2"
+    local _max_depth="${3:-"5"}"
+    local _result=1
+    # Accept not only file name but also /<dir>/<filename> so that using grep
+    for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
+        echo "${_f}" && _result=0
+        [[ "${_find_all}" =~ ^(y|Y) ]] || break
+    done
+    return ${_result}
 }
 
 function _find_and_cat() {
