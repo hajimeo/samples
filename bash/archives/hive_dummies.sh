@@ -278,7 +278,7 @@ row format serde 'org.apache.hive.hcatalog.data.JsonSerDe';
         #set hive.druid.indexer.partition.size.max=9000000;
         #set hive.druid.indexer.memory.rownum.max=100000;
         #set hive.tez.container.size=16000;
-        #set hive.tez.java.opts=-Xmx10g -XX:MaxDirectMemorySize=1024g -Duser.timezone="America/New_York";
+        #set hive.tez.java.opts=-Xmx10g -XX:MaxDirectMemorySize=10g -Duser.timezone="America/New_York";
         #set hive.llap.execution.mode=none;
 
         # NOTE: not sure if cast(from_unixtime( is needed for __time
