@@ -77,6 +77,7 @@ function f_check_system() {
     echo '-' &>> ${_work_dir%/}/random.out
     timeout 3 time head -n 1 /dev/random &>> ${_work_dir%/}/random.out
     lslocks -u > ${_work_dir%/}/lslocks.out    # *local* file system locks (/proc/locks)
+    cat /sys/fs/cgroup/cpuset/cpuset.cpus &> ${_work_dir%/}/cpuset.cpus.out # for kubernetes pod / docker container
 
     #top -b -n1 -c -o +%MEM  # '+' (default) for reverse order (opposite of 'ps')
     top -b -n1 -c &>> ${_work_dir%/}/top.out
@@ -164,9 +165,9 @@ function f_check_process() {
         local _pre_cmd=""
         which timeout &>/dev/null && _pre_cmd="timeout 12"
         [ -x "${_cmd_dir}/jmap" ] && $_pre_cmd sudo -u ${_user} ${_cmd_dir}/jmap -histo ${_p} &> ${_work_dir%/}/jmap_histo_${_p}.out
-        # 'ps' with -L (or -T) does not work with -p <pid>, also anyway, same as 'top' COMMAND is truncated.
-        #ps -eLo user,pid,lwp,nlwp,ruser,pcpu,stime,etime,comm | grep -w "${_p}" &> ${_work_dir%/}/pseLo_${_p}.out
-        top -Hb -n 3 -d 3 -p ${_p} &> ${_work_dir%/}/top_${_p}.out &    # printf "%x\n" [PID]
+        # 'ps' with -L (or -T) does not work with -p <pid>. For MacOS, htop then F5?
+        #ps -eLo user,pid,lwp,nlwp,ruser,pcpu,stime,etime,comm | grep -w "${_p}" &> ${_work_dir%/}/pseLo_${_p}.out (Mac
+        top -H -b -n 3 -d 3 -p ${_p} &> ${_work_dir%/}/top_${_p}.out &    # printf "%x\n" [PID]
         #ls -l /proc/<PID>/task/<tid>/fd    # to check which Linux thread opens which files
         [ -x "${_cmd_dir}/jstack" ] && for i in {1..3};do $_pre_cmd sudo -u ${_user} ${_cmd_dir}/jstack -l ${_p}; sleep 3; done &> ${_work_dir%/}/jstack_${_p}.out &
         #$_pre_cmd pstack ${_p} &> ${_work_dir%/}/pstack_${_p}.out &    # if jstack or jstack -F doesn't work
