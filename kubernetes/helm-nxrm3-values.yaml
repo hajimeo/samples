@@ -6,8 +6,12 @@ deploymentStrategy: Recreate
 image:
   # Sonatype Official Public Image
   repository: sonatype/nexus3
-  tag: 3.39.0
+  tag: 3.40.1
   pullPolicy: IfNotPresent
+imagePullSecrets:
+# for image registries that require login, specify the name of the existing
+# kubernetes secret
+#   - name: <pull-secret-name>
 
 nexus:
   docker:
@@ -27,6 +31,7 @@ nexus:
         -XX:+UnlockExperimentalVMOptions
         -XX:+UseCGroupMemoryLimitForHeap
         -Djava.util.prefs.userRoot=/nexus-data/javaprefs
+        -Dnexus.licenseFile=/etc/secret-volume/nx-license.lic
     - name: NEXUS_SECURITY_RANDOMPASSWORD
       value: "true"
   ##### Hack for enabling HTTPS: start #####
@@ -81,9 +86,9 @@ nexus:
   #   hostnames:
   #   - "example.com"
   #   - "www.example.com"
-
-
-imagePullSecrets: []
+-Dnexus:
+  licenseFile=/etc/secret-volume/nx-license:
+    lic:
 nameOverride: ""
 fullnameOverride: ""
 
@@ -174,11 +179,12 @@ config:
   data: []
 
 # # To use an additional secret, set enable to true and add data
+# base64 xxxxxx.lic
 secret:
-  enabled: false
+  enabled: true
   mountPath: /etc/secret-volume
   readOnly: true
-  data: []
+  data: {"nx-license.lic":"base64string"}
 
 serviceAccount:
   # Specifies whether a service account should be created
