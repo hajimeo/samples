@@ -224,8 +224,8 @@ function f_gen_replication_log_from_soft_deleted() {
     local __doc__="Workaround for NEXUS-27079. find deleted=true blobs to generate ./YYYY-MM-DD (then move under reconciliation)"
     local _content_dir="${1:-"./content/vol-*"}"
     local _days="${2:-"2"}"     # Check files which modified within this days
-    local _output_date="${4:-"$(date '+%Y-%m-%d')"}"
-    local _P="${5:-"4"}"
+    local _output_date="${3:-"$(date '+%Y-%m-%d')"}"
+    local _P="${4:-"4"}"
     if [ -s "./${_output_date}" ]; then
         echo "./${_output_date} exists."
         return 1
