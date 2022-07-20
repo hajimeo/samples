@@ -221,7 +221,7 @@ function f_search_soft_deleted_blobs() {
 
 # May not work with Mac because of sed (may work)
 function f_gen_replication_log_from_soft_deleted() {
-    local __doc__="Workaround for NEXUS-27079. find deleted=true blobs to generate ./YYYY-MM-DD (then move under reconciliation)"
+    local __doc__="Workaround for NEXUS-27079. find deleted=true blobs to generate ./YYYY-MM-DD (then manually move under reconciliation)"
     local _content_dir="${1:-"./content/vol-*"}"
     local _days="${2:-"2"}"     # Check files which modified within this days
     local _output_date="${3:-"$(date '+%Y-%m-%d')"}"
@@ -230,7 +230,7 @@ function f_gen_replication_log_from_soft_deleted() {
         echo "./${_output_date} exists."
         return 1
     fi
-    find ${_content_dir} -type f -name '*.properties' -mtime -${_days} -print0 | xargs -P${_P} -I{} -0 sh -c 'grep -q "^deleted=true" {} && sed -i -e s/^deleted=true// {} && [[ "{}" =~ .*([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}).* ]] && echo "'${_output_date}' 00:00:01,${BASH_REMATCH[1]}" >> ./'${_output_date}';'
+    find ${_content_dir} -type f -name '????????-????-????-????-????????????.properties' -mtime -${_days} -print0 | xargs -P${_P} -I{} -0 bash -c 'grep -q "^deleted=true" {} && sed -i -e s/^deleted=true// {} && echo "'${_output_date}' 00:00:01,$(basename {} .properties)" >> ./'${_output_date}';'
     ls -l ./${_output_date}
 }
 
