@@ -54,7 +54,8 @@ public class Main
 {
   static final private String PROMPT = "=> ";
 
-  static final private String JSON_FORMAT = "rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0";
+  static final private String DEFAULT_JSON_FORMAT = "rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0";
+  static private String jsonFormat = DEFAULT_JSON_FORMAT;
 
   static private Terminal terminal;
 
@@ -176,10 +177,10 @@ public class Main
     }
     for (int i = 0; i < oDocs.size(); i++) {
       if (!isPaging && i == (oDocs.size() - 1)) {
-        terminal.writer().println("  " + oDocs.get(i).toJSON(JSON_FORMAT));
+        terminal.writer().println("  " + oDocs.get(i).toJSON(jsonFormat));
       }
       else {
-        terminal.writer().println("  " + oDocs.get(i).toJSON(JSON_FORMAT) + ",");
+        terminal.writer().println("  " + oDocs.get(i).toJSON(jsonFormat) + ",");
       }
       terminal.flush();
     }
@@ -193,7 +194,7 @@ public class Main
   private static void printDocAsJson(ODocument oDoc) {
     // NOTE: Should check null, like 'if (oDoc == null) {'?
     // Default; rid,version,class,type,attribSameRow,keepTypes,alwaysFetchEmbedded,fetchPlan:*:0
-    terminal.writer().println(oDoc.toJSON(JSON_FORMAT + ",prettyPrint"));
+    terminal.writer().println(oDoc.toJSON(DEFAULT_JSON_FORMAT + ",prettyPrint"));
     terminal.flush();
   }
 
@@ -235,7 +236,7 @@ public class Main
         return;
       }
       if (!isPaging && oDocs.size() == 1) {
-        bw.write("[" + oDocs.get(0).toJSON(JSON_FORMAT) + "]");
+        bw.write("[" + oDocs.get(0).toJSON(jsonFormat) + "]");
         bw.newLine();
         bw.close();
         return;
@@ -245,10 +246,10 @@ public class Main
       }
       for (int i = 0; i < oDocs.size(); i++) {
         if (!isPaging && i == (oDocs.size() - 1)) {
-          bw.write("  " + oDocs.get(i).toJSON(JSON_FORMAT));
+          bw.write("  " + oDocs.get(i).toJSON(jsonFormat));
         }
         else {
-          bw.write("  " + oDocs.get(i).toJSON(JSON_FORMAT) + ",");
+          bw.write("  " + oDocs.get(i).toJSON(jsonFormat) + ",");
         }
         bw.newLine();
       }
@@ -419,11 +420,23 @@ public class Main
     //String input = reader.readLine((String) null);
     String input = reader.readLine(PROMPT);
     while (input != null && !input.startsWith("exit")) {
-      if(input.startsWith("--")) {
-        continue;
-      }
       try {
-        if (db != null) {
+        boolean executingQuery=true;
+
+        if(input.startsWith("--")) {
+          executingQuery=false;
+        }
+        // TODO: not property implementing my own 'set'
+        else if(input.toLowerCase().startsWith("set pretty true")) {
+          jsonFormat = DEFAULT_JSON_FORMAT+",prettyPrint";
+          executingQuery=false;
+        }
+        else if(input.toLowerCase().startsWith("set pretty false")) {
+          jsonFormat = DEFAULT_JSON_FORMAT;
+          executingQuery=false;
+        }
+
+        if (executingQuery && db != null) {
           execQueries(db, input);
         }
         input = reader.readLine(PROMPT);
