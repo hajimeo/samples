@@ -17,38 +17,93 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 func usage() {
-	// TODO: update usage
 	fmt.Println(`
 List .properties and .bytes files as CSV (Path,LastModified,Size).
     
 HOW TO and USAGE EXAMPLES:
-    https://github.com/hajimeo/samples/tree/master/golang/FileList`)
+    https://github.com/hajimeo/samples/tree/master/golang/FileList \n`)
+	flag.PrintDefaults()
 }
 
-// Arguments
+// Arguments / global variables
 var _BASEDIR *string
 var _PREFIX *string
 var _FILTER *string
-var _FILTER2 *string
+var _FILTER_P *string
+var _DEL_DATE_FROM *string
+var _DEL_DATE_FROM_ts int64
+var _DEL_DATE_TO *string
+var _DEL_DATE_TO_ts int64
+var _START_TIME_ts int64
 var _TOP_N *int64
 var _CONC_1 *int
-
-//var _CONC_2 *int	// TODO: not implementing this for now
 var _LIST_DIRS *bool
 var _WITH_PROPS *bool
 var _NO_HEADER *bool
 var _USE_REGEX *bool
+var _RECON_FMT *bool
+var _REMOVE_DEL *bool
 var _R *regexp.Regexp
+var _R_DEL_DT *regexp.Regexp
 var _DEBUG *bool
-
 var _PRINTED_N int64 // Atomic (maybe slower?)
 var _TTL_SIZE int64  // Atomic (maybe slower?)
+
+func _setGlobals() {
+	_BASEDIR = flag.String("b", ".", "Base directory (default: '.')")
+	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: 'vol-')")
+	_WITH_PROPS = flag.Bool("P", false, "If true, read and output the .properties files")
+	_FILTER = flag.String("f", "", "Filter file paths (eg: '.properties')")
+	_FILTER_P = flag.String("fP", "", "Filter .properties contents (eg: 'deleted=true')")
+	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and _FILTER_P string is treated as regex")
+	_RECON_FMT = flag.Bool("RF", false, "Output for the Reconcile task (any_string,blob_ref). Requires -fP and ignores -P")
+	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF and -dF") // TODO: also think about restore plan
+	_DEL_DATE_FROM = flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
+	_DEL_DATE_TO = flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
+	_TOP_N = flag.Int64("n", 0, "Return only first N keys (0 = no limit), but best effor, and may return more than N")
+	_CONC_1 = flag.Int("c", 1, "Concurrent number for sub directories (may not need to use with very fast disk)")
+	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
+	_NO_HEADER = flag.Bool("H", false, "If true, no header line")
+	_DEBUG = flag.Bool("X", false, "If true, verbose logging")
+	flag.Parse()
+
+	// If _FILTER_P is given, automatically populate other related variables
+	if len(*_FILTER_P) > 0 {
+		*_FILTER = ".properties"
+		//*_WITH_PROPS = true
+		if *_USE_REGEX {
+			_R, _ = regexp.Compile(*_FILTER_P)
+		}
+	}
+	_START_TIME_ts = time.Now().Unix()
+	if *_RECON_FMT {
+		_R_DEL_DT, _ = regexp.Compile("^deletedDateTime=([0-9]+)")
+		if len(*_DEL_DATE_FROM) > 0 {
+			tmpTimeFrom, err := time.Parse("2006-01-02", *_DEL_DATE_FROM)
+			if err != nil {
+				_log("ERROR", fmt.Sprintf("_DEL_DATE_FROM:%s is incorrect", *_DEL_DATE_FROM))
+				os.Exit(1)
+			}
+			_DEL_DATE_FROM_ts = tmpTimeFrom.Unix()
+		}
+		if len(*_DEL_DATE_TO) > 0 {
+			tmpTimeTo, err := time.Parse("2006-01-02", *_DEL_DATE_TO)
+			if err != nil {
+				_log("ERROR", fmt.Sprintf("_DEL_DATE_TO:%s is incorrect", *_DEL_DATE_TO))
+				os.Exit(1)
+			}
+			_DEL_DATE_TO_ts = tmpTimeTo.Unix()
+		}
+	}
+}
 
 func _log(level string, message string) {
 	if level != "DEBUG" || *_DEBUG {
@@ -56,51 +111,129 @@ func _log(level string, message string) {
 	}
 }
 
-func printLine(path string, f os.FileInfo) {
-	output := fmt.Sprintf("\"%s\",\"%s\",%d", path, f.ModTime(), f.Size())
-	// Checking props first because if _FILTER2 is given and match, do not check others.
-	props := ""
-	if *_WITH_PROPS && strings.HasSuffix(path, ".properties") {
-		_log("DEBUG", fmt.Sprintf("Getting properties for %s", path))
-		bytes, err := os.ReadFile(path)
-		if err != nil {
-			_log("DEBUG", fmt.Sprintf("Retrieving tags for %s failed with %s. Ignoring...", path, err.Error()))
+func printLine(path string, f os.FileInfo) bool {
+	output := ""
+	if !*_RECON_FMT {
+		output = fmt.Sprintf("\"%s\",\"%s\",%d", path, f.ModTime(), f.Size())
+	}
+	if (*_WITH_PROPS || len(*_FILTER_P) > 0) && strings.HasSuffix(path, ".properties") {
+		if *_RECON_FMT {
+			output = genOutputForReconcile(path)
 		} else {
-			contents := strings.TrimSpace(string(bytes))
-			if len(*_FILTER2) == 0 {
-				// If no _FILETER2, just return the contents as single line. Should also escape '"'?
-				props = strings.ReplaceAll(contents, "\n", ",")
-			} else {
-				// Otherwise, return properties lines only if contents match.
-				if *_USE_REGEX { //len(_R.String()) > 0
-					// To allow to use simpler regex, sorting line and converting to single line firt
-					lines := strings.Split(contents, "\n")
-					sort.Strings(lines)
-					contents = strings.Join(lines, ",")
-					if _R.MatchString(contents) {
-						props = contents
-					} else {
-						_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s (with Regex). Not outputting entire line...", path, *_FILTER2))
-						return
-					}
-				} else {
-					if strings.Contains(contents, *_FILTER2) {
-						props = strings.ReplaceAll(contents, "\n", ",")
-					} else {
-						_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s (with Regex). Not outputting entire line...", path, *_FILTER2))
-						return
-					}
-				}
+			props := genOutputFromProp(path)
+			_log("DEBUG", fmt.Sprintf("genOutputFromProp returned props length:%d for path:%s", len(props), path))
+			if len(props) > 0 && *_WITH_PROPS {
+				output = fmt.Sprintf("%s,\"%s\"", output, props)
 			}
 		}
 	}
 
-	if *_WITH_PROPS {
-		output = fmt.Sprintf("%s,\"%s\"", output, props)
-	}
-	atomic.AddInt64(&_PRINTED_N, 1)
-	atomic.AddInt64(&_TTL_SIZE, f.Size())
 	fmt.Println(output)
+	if !*_RECON_FMT {
+		atomic.AddInt64(&_PRINTED_N, 1)
+		atomic.AddInt64(&_TTL_SIZE, f.Size())
+	}
+	return len(output) > 0
+}
+
+// as per google, this would be faster than using TrimSuffix
+func getBaseName(path string) string {
+	fileName := filepath.Base(path)
+	return fileName[:len(fileName)-len(filepath.Ext(fileName))]
+}
+
+func getNowStr() string {
+	currentTime := time.Now()
+	return currentTime.Format("2006-01-02 15:04:05")
+}
+
+func getContents(path string) (string, error) {
+	_log("DEBUG", fmt.Sprintf("Getting contents from %s", path))
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		_log("DEBUG", fmt.Sprintf("ReadFile for %s failed with %s. Ignoring...", path, err.Error()))
+		return "", err
+	}
+	contents := strings.TrimSpace(string(bytes))
+	return contents, nil
+}
+
+func genOutputForReconcile(path string) string {
+	// if _DEL_DATE_FROM or DEL_DATE_TO is set, check deletedDateTime=
+	if _DEL_DATE_FROM_ts > 0 || _DEL_DATE_TO_ts > 0 {
+		contents, err := getContents(path)
+		if err != nil {
+			return ""
+		}
+		// capture group
+		m := _R_DEL_DT.FindStringSubmatch(contents)
+		if len(m) < 2 {
+			_log("DEBUG", fmt.Sprintf("path:%s dos not match with %s", path, _R_DEL_DT.String()))
+			return ""
+		}
+		deletedTS, _ := strconv.ParseInt(m[1], 10, 64)
+		if isTimestampBetween(deletedTS) {
+			if _DEL_DATE_FROM_ts > 0 && *_REMOVE_DEL {
+				// TODO: remove 'deleted=true'
+				_log("WARN", fmt.Sprintf("removed 'deleted=true' from %s", path))
+			}
+			return fmt.Sprintf("%s,\"%s\"", getNowStr(), getBaseName(path))
+		}
+	}
+
+	return fmt.Sprintf("%s,\"%s\"", getNowStr(), getBaseName(path))
+}
+
+func isTimestampBetween(ts int64) bool {
+	if _DEL_DATE_FROM_ts > 0 && _DEL_DATE_FROM_ts > ts {
+		return false
+	}
+	if _DEL_DATE_TO_ts > 0 && _DEL_DATE_TO_ts < ts {
+		return false
+	}
+	if _DEL_DATE_TO_ts == 0 && _START_TIME_ts < ts {
+		_log("DEBUG", fmt.Sprintf("deletedDateTime=%d is greater than the this script's start time:%d", ts, _START_TIME_ts))
+		return false
+	}
+	return true
+}
+
+func genOutputFromProp(path string) string {
+	contents, err := getContents(path)
+	if err != nil {
+		return ""
+	}
+
+	// If no _FILTER_P, just returns the content as one line
+	if len(*_FILTER_P) == 0 {
+		// If no _FILETER2, just return the contents as single line. Should also escape '"'?
+		return strings.ReplaceAll(contents, "\n", ",")
+	}
+
+	// If asked to use regex, return properties lines only if matches.
+	if *_USE_REGEX {
+		if _R == nil || len(_R.String()) == 0 { //
+			//_log("DEBUG", fmt.Sprintf("_USE_REGEX is specified by no regular expression (_R)"))
+			return ""
+		}
+		// To allow to use simpler regex, sorting line and converting to single line firt
+		lines := strings.Split(contents, "\n")
+		sort.Strings(lines)
+		contents = strings.Join(lines, ",")
+		if _R.MatchString(contents) {
+			return contents
+		}
+		_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s (with Regex). Not outputting entire line...", path, *_FILTER_P))
+		return ""
+	}
+
+	// If not regex (eg: 'deleted=true')
+	if strings.Contains(contents, *_FILTER_P) {
+		return strings.ReplaceAll(contents, "\n", ",")
+	}
+
+	_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s (with Regex). Not outputting entire line...", path, *_FILTER_P))
+	return ""
 }
 
 // get *all* directories under basedir and which name starts with prefix
@@ -124,7 +257,7 @@ func getDirs(basedir string, prefix string) []string {
 }
 
 func listObjects(basedir string) {
-	// Below does not work because currently Glob does not support ./**/*
+	// Below line does not work because currently Glob does not support ./**/*
 	//list, err := filepath.Glob(basedir + string(filepath.Separator) + *_FILTER)
 	// Somehow WalkDir is slower in this code
 	//err := filepath.WalkDir(basedir, func(path string, f fs.DirEntry, err error) error {
@@ -156,42 +289,18 @@ func main() {
 		os.Exit(0)
 	}
 
-	_BASEDIR = flag.String("b", ".", "Base directory (default: '.')")
-	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: vol-)")
-	_FILTER = flag.String("f", "", "Filter string for file paths (eg: .properties)")
-	_FILTER2 = flag.String("fP", "", "Filter string for properties (-P is required)")
-	_TOP_N = flag.Int64("n", 0, "Return only first N keys (0 = no limit)")
-	_CONC_1 = flag.Int("c", 1, "Concurrent number for sub directories (may not need to use with very fast disk)")
-	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
-	_WITH_PROPS = flag.Bool("P", false, "If true, also get the contents of .properties files")
-	_USE_REGEX = flag.Bool("R", false, "If true, regexp.MatchString is used for _FILTER2")
-	_NO_HEADER = flag.Bool("H", false, "If true, no header line")
-	_DEBUG = flag.Bool("X", false, "If true, verbose logging")
-	flag.Parse()
+	_setGlobals()
 
-	if len(*_FILTER2) > 0 {
-		*_FILTER = ".properties"
-		*_WITH_PROPS = true
-		_R, _ = regexp.Compile(*_FILTER2)
-	}
-
+	// Validations
 	if !*_NO_HEADER && *_WITH_PROPS {
 		_log("WARN", "With Properties (-P), listing can be slower.")
 	}
-
 	if *_CONC_1 < 1 {
 		_log("ERROR", "-c is lower than 1.")
 		os.Exit(1)
 	}
 
-	if !*_NO_HEADER {
-		fmt.Print("Path,LastModified,Size")
-		if *_WITH_PROPS {
-			fmt.Print(",Properties")
-		}
-		fmt.Println("")
-	}
-
+	// Start outputting ..
 	_log("DEBUG", fmt.Sprintf("Retriving sub directories under %s", *_BASEDIR))
 	subDirs := getDirs(*_BASEDIR, *_PREFIX)
 	if *_LIST_DIRS {
@@ -199,6 +308,15 @@ func main() {
 		return
 	}
 	_log("DEBUG", fmt.Sprintf("Sub directories: %v", subDirs))
+
+	// Printing headers if requested
+	if !*_RECON_FMT && !*_NO_HEADER {
+		fmt.Print("Path,LastModified,Size")
+		if *_WITH_PROPS {
+			fmt.Print(",Properties")
+		}
+		fmt.Println("")
+	}
 
 	_log("INFO", fmt.Sprintf("Generating list from %s ...", *_BASEDIR))
 	wg := sync.WaitGroup{}
@@ -220,6 +338,8 @@ func main() {
 	}
 
 	wg.Wait()
-	println("")
-	_log("INFO", fmt.Sprintf("Printed %d items (size: %d) in %s with prefix: '%s'", _PRINTED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX))
+	if !*_RECON_FMT {
+		println("")
+		_log("INFO", fmt.Sprintf("Printed %d items (size: %d) in %s with prefix: '%s'", _PRINTED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX))
+	}
 }
