@@ -29,6 +29,22 @@ curl -o /usr/local/bin/file-list -L https://github.com/hajimeo/samples/raw/maste
 chmod a+x /usr/local/bin/file-list
 ```
 
+## ARGUMENTS:
+```
+    -b BaseDir_str  Base directory path (eg: <workingDirectory>/blobs/default/content)
+    -p Prefix_str   List only objects which directory *name* starts with this prefix (eg: val-)
+                    Require -c 2 or higher number. If -c 1, -p is not used.
+    -f Filter_str   List only objects which path contains this string (eg. .properties)
+    -fP Filter_str  List .properties file (no .bytes files) which contains this string (much slower)
+                    Equivalent of -f ".properties" and -P.
+    -n topN_num     Return first/top N results only
+    -c concurrency  Executing walk per sub directory in parallel (may not need with very fast disk)
+    -P              Get properties (can be very slower)
+    -R              Treat -fP value as regex
+    -H              No column Header line
+    -X              Verbose log output
+```
+
 ## Example output
 Listing blob store items **with all properties contents** and with 10 concurrency:
 ```
@@ -51,23 +67,7 @@ Finding deleted=true (just for testing as you should just grep against /tmp/defa
 ```
 This time, it's much faster because of buffer/cache on Linux.
 
-## ARGUMENTS:
-```
-    -b BaseDir_str  Base directory path (eg: <workingDirectory>/blobs/default/content)
-    -p Prefix_str   List only objects which directory *name* starts with this prefix (eg: val-)
-                    Require -c 2 or higher number. If -c 1, -p is not used.
-    -f Filter_str   List only objects which path contains this string (eg. .properties)
-    -fP Filter_str  List .properties file (no .bytes files) which contains this string (much slower)
-                    Equivalent of -f ".properties" and -P.
-    -n topN_num     Return first/top N results only
-    -c concurrency  Executing walk per sub directory in parallel (may not need with very fast disk)
-    -P              Get properties (can be very slower)
-    -R              Treat -fP value as regex
-    -H              No column Header line
-    -X              Verbose log output
-```
-
-## USAGE EXAMPLE:
+## More usage examples:
 List all files under the ./sonatype-work/nexus3/blobs/default
 ```
 $ file-list -b ./sonatype-work/nexus3/blobs/default
@@ -101,6 +101,11 @@ List all objects which properties contain 'repo-name=docker-proxy' and 'deleted=
 ```
 $ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.csv
 ```
+Generate YYYY-MM-DD log for Reconcile task (blobstore.rebuildComponentDB)
+```
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.csv
+```
+NOTE: the attributes in a properties file are sorted in memory, so that attributes start with "@" comes before "deleted=".
 
 ## ADVANCE USAGE EXAMPLE:
 ```

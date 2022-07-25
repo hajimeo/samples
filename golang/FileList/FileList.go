@@ -51,6 +51,9 @@ var _NO_HEADER *bool
 var _USE_REGEX *bool
 var _RECON_FMT *bool
 var _REMOVE_DEL *bool
+
+//var _EXCLUDE_FILE *string
+//var _INCLUDE_FILE *string
 var _R *regexp.Regexp
 var _R_DEL_DT *regexp.Regexp
 var _DEBUG *bool
@@ -68,6 +71,8 @@ func _setGlobals() {
 	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF and -dF") // TODO: also think about restore plan
 	_DEL_DATE_FROM = flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
 	_DEL_DATE_TO = flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
+	//_EXCLUDE_FILE = flag.String("sk", "", "Blob IDs in this file will be skipped from the check") // TODO
+	//_INCLUDE_FILE = flag.String("sk", "", "ONLY blob IDs in this file will be checked")           // TODO
 	_TOP_N = flag.Int64("n", 0, "Return only first N keys (0 = no limit), but best effor, and may return more than N")
 	_CONC_1 = flag.Int("c", 1, "Concurrent number for sub directories (may not need to use with very fast disk)")
 	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
@@ -84,8 +89,8 @@ func _setGlobals() {
 		}
 	}
 	_START_TIME_ts = time.Now().Unix()
+	_R_DEL_DT, _ = regexp.Compile("^deletedDateTime=([0-9]+)")
 	if *_RECON_FMT {
-		_R_DEL_DT, _ = regexp.Compile("^deletedDateTime=([0-9]+)")
 		if len(*_DEL_DATE_FROM) > 0 {
 			tmpTimeFrom, err := time.Parse("2006-01-02", *_DEL_DATE_FROM)
 			if err != nil {
@@ -111,14 +116,26 @@ func _log(level string, message string) {
 	}
 }
 
-func printLine(path string, f os.FileInfo) bool {
+func _writeToFile(path string, contents string) error {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	f.WriteString(contents)
+	return err
+}
+
+func printLine(path string, fInfo os.FileInfo) bool {
 	output := ""
+	modTime := fInfo.ModTime()
+	modTimeTs := modTime.Unix()
 	if !*_RECON_FMT {
-		output = fmt.Sprintf("\"%s\",\"%s\",%d", path, f.ModTime(), f.Size())
+		output = fmt.Sprintf("\"%s\",\"%s\",%d", path, modTime, fInfo.Size())
 	}
 	if (*_WITH_PROPS || len(*_FILTER_P) > 0) && strings.HasSuffix(path, ".properties") {
 		if *_RECON_FMT {
-			output = genOutputForReconcile(path)
+			output = genOutputForReconcile(path, modTimeTs)
 		} else {
 			props := genOutputFromProp(path)
 			_log("DEBUG", fmt.Sprintf("genOutputFromProp returned props length:%d for path:%s", len(props), path))
@@ -131,7 +148,7 @@ func printLine(path string, f os.FileInfo) bool {
 	fmt.Println(output)
 	if !*_RECON_FMT {
 		atomic.AddInt64(&_PRINTED_N, 1)
-		atomic.AddInt64(&_TTL_SIZE, f.Size())
+		atomic.AddInt64(&_TTL_SIZE, fInfo.Size())
 	}
 	return len(output) > 0
 }
@@ -158,7 +175,15 @@ func getContents(path string) (string, error) {
 	return contents, nil
 }
 
-func genOutputForReconcile(path string) string {
+func genOutputForReconcile(path string, modTimeMs int64) string {
+	// NOTE: Even not accurate, to make this function faster, currently checking modTimeMs against _DEL_DATE_FROM_ts
+	if _DEL_DATE_FROM_ts > 0 && modTimeMs < _DEL_DATE_FROM_ts {
+		return ""
+	}
+	// NOT checking against _DEL_DATE_TO_ts as file might be touched accidentally (I may change my mind if slow)
+	if _START_TIME_ts > 0 && modTimeMs > _START_TIME_ts {
+		return ""
+	}
 	// if _DEL_DATE_FROM or DEL_DATE_TO is set, check deletedDateTime=
 	if _DEL_DATE_FROM_ts > 0 || _DEL_DATE_TO_ts > 0 {
 		contents, err := getContents(path)
@@ -173,11 +198,12 @@ func genOutputForReconcile(path string) string {
 		}
 		deletedTS, _ := strconv.ParseInt(m[1], 10, 64)
 		if isTimestampBetween(deletedTS) {
+			_log("INFO", fmt.Sprintf("path:%s deletedDateTime=%d is between _DEL_DATE_FROM_ts:%d and _DEL_DATE_TO_ts:%d (%d)", path, deletedTS, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, _START_TIME_ts))
 			if _DEL_DATE_FROM_ts > 0 && *_REMOVE_DEL {
 				// TODO: remove 'deleted=true'
 				_log("WARN", fmt.Sprintf("removed 'deleted=true' from %s", path))
 			}
-			return fmt.Sprintf("%s,\"%s\"", getNowStr(), getBaseName(path))
+			return fmt.Sprintf("%s,%s", getNowStr(), getBaseName(path))
 		}
 	}
 
