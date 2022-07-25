@@ -92,9 +92,12 @@ func TestGenOutputForReconcile(t *testing.T) {
 	flag.Set("RF", "true")
 	_setGlobals() // somehow '*_DEBUG = false' does not work
 
-	output := genOutputForReconcile(DUMMY_FILE_PATH, modTimeMs)
+	output, errNo := genOutputForReconcile(DUMMY_FILE_PATH, modTimeMs)
 	if strings.Contains(output, ",dummy") {
 		t.Errorf("genOutputForReconcile didn't return deletedDateTime value (%s)", output)
+	}
+	if errNo > 0 {
+		t.Errorf("genOutputForReconcile return errorNo %d", errNo)
 	}
 	// TODO: add more test by changing date from/to
 }

@@ -29,8 +29,8 @@ func usage() {
 List .properties and .bytes files as CSV (Path,LastModified,Size).
     
 HOW TO and USAGE EXAMPLES:
-    https://github.com/hajimeo/samples/tree/master/golang/FileList \n`)
-	flag.PrintDefaults()
+    https://github.com/hajimeo/samples/tree/master/golang/FileList`)
+	fmt.Println("")
 }
 
 // Arguments / global variables
@@ -74,7 +74,7 @@ func _setGlobals() {
 	_DEL_DATE_TO = flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
 	//_EXCLUDE_FILE = flag.String("sk", "", "Blob IDs in this file will be skipped from the check") // TODO
 	//_INCLUDE_FILE = flag.String("sk", "", "ONLY blob IDs in this file will be checked")           // TODO
-	_TOP_N = flag.Int64("n", 0, "Return only first N keys (0 = no limit), but best effor, and may return more than N")
+	_TOP_N = flag.Int64("n", 0, "Return first N lines (0 = no limit). (TODO: may return more than N)")
 	_CONC_1 = flag.Int("c", 1, "Concurrent number for sub directories (may not need to use with very fast disk)")
 	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
 	_NO_HEADER = flag.Bool("H", false, "If true, no header line")
@@ -90,9 +90,10 @@ func _setGlobals() {
 		}
 	}
 	_START_TIME_ts = time.Now().Unix()
-	_R_DEL_DT, _ = regexp.Compile("^deletedDateTime=([0-9]+)")
+	_R_DEL_DT, _ = regexp.Compile("[^#]?deletedDateTime=([0-9]+)")
 	_R_DELETED, _ = regexp.Compile("deleted=true")
 	if *_RECON_FMT {
+		*_FILTER = ".properties"
 		if len(*_DEL_DATE_FROM) > 0 {
 			tmpTimeFrom, err := time.Parse("2006-01-02", *_DEL_DATE_FROM)
 			if err != nil {
@@ -132,30 +133,37 @@ func _writeToFile(path string, contents string) error {
 }
 
 func printLine(path string, fInfo os.FileInfo) bool {
-	output := ""
+	//_log("DEBUG", fmt.Sprintf("printLine-ing for path:%s", path))
 	modTime := fInfo.ModTime()
 	modTimeTs := modTime.Unix()
+	output := ""
 	if !*_RECON_FMT {
 		output = fmt.Sprintf("\"%s\",\"%s\",%d", path, modTime, fInfo.Size())
 	}
-	if (*_WITH_PROPS || len(*_FILTER_P) > 0) && strings.HasSuffix(path, ".properties") {
+
+	if (*_WITH_PROPS || len(*_FILTER_P) > 0 || *_RECON_FMT) && strings.HasSuffix(path, ".properties") {
 		if *_RECON_FMT {
-			output = genOutputForReconcile(path, modTimeTs)
+			rOutput, errNo := genOutputForReconcile(path, modTimeTs)
+			output = rOutput
+			_log("DEBUG", fmt.Sprintf("genOutputForReconcile returned output length:%d for path:%s modTimeTs:%d (%d)", len(output), path, modTimeTs, errNo))
 		} else {
-			props := genOutputFromProp(path)
-			_log("DEBUG", fmt.Sprintf("genOutputFromProp returned props length:%d for path:%s", len(props), path))
-			if len(props) > 0 && *_WITH_PROPS {
+			props, errNo := genOutputFromProp(path)
+			_log("DEBUG", fmt.Sprintf("genOutputFromProp returned props length:%d for path:%s (%d)", len(props), path, errNo))
+			if errNo > 0 {
+				output = ""
+			} else if len(props) > 0 && *_WITH_PROPS {
 				output = fmt.Sprintf("%s,\"%s\"", output, props)
 			}
 		}
 	}
 
-	fmt.Println(output)
-	if !*_RECON_FMT {
+	if len(output) > 0 {
 		atomic.AddInt64(&_PRINTED_N, 1)
 		atomic.AddInt64(&_TTL_SIZE, fInfo.Size())
+		fmt.Println(output)
+		return true
 	}
-	return len(output) > 0
+	return false
 }
 
 // as per google, this would be faster than using TrimSuffix
@@ -180,26 +188,26 @@ func getContents(path string) (string, error) {
 	return contents, nil
 }
 
-func genOutputForReconcile(path string, modTimeMs int64) string {
+func genOutputForReconcile(path string, modTimeMs int64) (string, int) {
 	// NOTE: Even not accurate, to make this function faster, currently checking modTimeMs against _DEL_DATE_FROM_ts
 	if _DEL_DATE_FROM_ts > 0 && modTimeMs < _DEL_DATE_FROM_ts {
-		return ""
+		return "", 11
 	}
 	// NOT checking against _DEL_DATE_TO_ts as file might be touched accidentally (I may change my mind if slow)
 	if _START_TIME_ts > 0 && modTimeMs > _START_TIME_ts {
-		return ""
+		return "", 12
 	}
 	// if _DEL_DATE_FROM or DEL_DATE_TO is set, check deletedDateTime=
 	if _DEL_DATE_FROM_ts > 0 || _DEL_DATE_TO_ts > 0 {
 		contents, err := getContents(path)
 		if err != nil {
-			return ""
+			return "", 13
 		}
 		// capture group
 		m := _R_DEL_DT.FindStringSubmatch(contents)
 		if len(m) < 2 {
-			_log("DEBUG", fmt.Sprintf("path:%s dos not match with %s", path, _R_DEL_DT.String()))
-			return ""
+			_log("DEBUG", fmt.Sprintf("path:%s dos not match with %s (%s)", path, _R_DEL_DT.String(), m))
+			return "", 14
 		}
 		deletedTS, _ := strconv.ParseInt(m[1], 10, 64)
 		if isTimestampBetween(deletedTS) {
@@ -214,11 +222,12 @@ func genOutputForReconcile(path string, modTimeMs int64) string {
 					_log("WARN", fmt.Sprintf("Removed 'deleted=true' from path:%s (%d => %d)", path, len(contents), len(updatedContents)))
 				}
 			}
-			return fmt.Sprintf("%s,%s", getNowStr(), getBaseName(path))
+			return fmt.Sprintf("%s,%s", getNowStr(), getBaseName(path)), 0
 		}
+		return "", 15
 	}
 
-	return fmt.Sprintf("%s,\"%s\"", getNowStr(), getBaseName(path))
+	return fmt.Sprintf("%s,\"%s\"", getNowStr(), getBaseName(path)), 0
 }
 
 // one line but for unit testing
@@ -226,56 +235,57 @@ func removeLines(contents string, rex *regexp.Regexp) string {
 	return rex.ReplaceAllString(contents, "")
 }
 
-func isTimestampBetween(ts int64) bool {
-	if _DEL_DATE_FROM_ts > 0 && _DEL_DATE_FROM_ts > ts {
+func isTimestampBetween(tMsec int64) bool {
+	if _DEL_DATE_FROM_ts > 0 && (_DEL_DATE_FROM_ts*1000) > tMsec {
 		return false
 	}
-	if _DEL_DATE_TO_ts > 0 && _DEL_DATE_TO_ts < ts {
+	if _DEL_DATE_TO_ts > 0 && (_DEL_DATE_TO_ts*1000) < tMsec {
 		return false
 	}
-	if _DEL_DATE_TO_ts == 0 && _START_TIME_ts < ts {
-		_log("DEBUG", fmt.Sprintf("deletedDateTime=%d is greater than the this script's start time:%d", ts, _START_TIME_ts))
+	if _DEL_DATE_TO_ts == 0 && (_START_TIME_ts*1000) < tMsec {
+		_log("DEBUG", fmt.Sprintf("deletedDateTime=%d is greater than the this script's start time:%d", tMsec, _START_TIME_ts))
 		return false
 	}
 	return true
 }
 
-func genOutputFromProp(path string) string {
+func genOutputFromProp(path string) (string, int) {
 	contents, err := getContents(path)
 	if err != nil {
-		return ""
+		return "", 21
 	}
 
 	// If no _FILTER_P, just returns the content as one line
 	if len(*_FILTER_P) == 0 {
 		// If no _FILETER2, just return the contents as single line. Should also escape '"'?
-		return strings.ReplaceAll(contents, "\n", ",")
+		return strings.ReplaceAll(contents, "\n", ","), 0
 	}
 
 	// If asked to use regex, return properties lines only if matches.
 	if *_USE_REGEX {
 		if _R == nil || len(_R.String()) == 0 { //
 			//_log("DEBUG", fmt.Sprintf("_USE_REGEX is specified by no regular expression (_R)"))
-			return ""
+			return "", 22
 		}
 		// To allow to use simpler regex, sorting line and converting to single line firt
 		lines := strings.Split(contents, "\n")
 		sort.Strings(lines)
 		contents = strings.Join(lines, ",")
 		if _R.MatchString(contents) {
-			return contents
+			return contents, 0
 		}
 		_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s (with Regex). Not outputting entire line...", path, *_FILTER_P))
-		return ""
+		return "", 23
 	}
 
 	// If not regex (eg: 'deleted=true')
 	if strings.Contains(contents, *_FILTER_P) {
-		return strings.ReplaceAll(contents, "\n", ",")
+		//_log("DEBUG", fmt.Sprintf("path:%s contains %s", path, *_FILTER_P))
+		return strings.ReplaceAll(contents, "\n", ","), 0
 	}
 
-	_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s (with Regex). Not outputting entire line...", path, *_FILTER_P))
-	return ""
+	_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s. Not outputting entire line...", path, *_FILTER_P))
+	return "", 24
 }
 
 // get *all* directories under basedir and which name starts with prefix
@@ -328,9 +338,9 @@ func listObjects(basedir string) {
 func main() {
 	if len(os.Args) == 1 || os.Args[1] == "-h" || os.Args[1] == "--help" {
 		usage()
+		_setGlobals()
 		os.Exit(0)
 	}
-
 	_setGlobals()
 
 	// Validations
@@ -380,8 +390,6 @@ func main() {
 	}
 
 	wg.Wait()
-	if !*_RECON_FMT {
-		println("")
-		_log("INFO", fmt.Sprintf("Printed %d items (size: %d) in %s with prefix: '%s'", _PRINTED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX))
-	}
+	println("")
+	_log("INFO", fmt.Sprintf("Printed %d items (size: %d) in %s with prefix: '%s'", _PRINTED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX))
 }

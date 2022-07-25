@@ -101,9 +101,13 @@ List all objects which properties contain 'repo-name=docker-proxy' and 'deleted=
 ```
 $ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.csv
 ```
-Generate YYYY-MM-DD log for Reconcile task (blobstore.rebuildComponentDB)
+Output lines for Reconcile task's YYYY-MM-DD log (blobstore.rebuildComponentDB), like Dry-Run
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.csv
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-05-19" > ./2022-05-19
+```
+Remove 'deleted=true', then output lines for Reconcile task's YYYY-MM-DD log
+```
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-07-19" -RDel > ./2022-07-19
 ```
 NOTE: the attributes in a properties file are sorted in memory, so that attributes start with "@" comes before "deleted=".
 
