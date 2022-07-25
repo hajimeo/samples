@@ -66,6 +66,17 @@ func TestGetContents(t *testing.T) {
 	}
 }
 
+func TestRemoveLines(t *testing.T) {
+	_setGlobals()
+	updatedContents := removeLines(DUMMY_PROP_TXT, _R_DELETED)
+	if len(updatedContents) == len(DUMMY_FILE_PATH) {
+		t.Errorf("removeLines does not look like removed anything (%d vs. %d)", len(updatedContents), len(DUMMY_PROP_TXT))
+	}
+	if strings.Contains(updatedContents, "deleted=true") {
+		t.Errorf("removeLines does not look like removed 'deleted=true' (%d vs. %d)", len(updatedContents), len(DUMMY_PROP_TXT))
+	}
+}
+
 func TestGenOutputForReconcile(t *testing.T) {
 	err := _writeToFile(DUMMY_FILE_PATH, DUMMY_PROP_TXT)
 	if err != nil {

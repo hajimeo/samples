@@ -56,6 +56,7 @@ var _REMOVE_DEL *bool
 //var _INCLUDE_FILE *string
 var _R *regexp.Regexp
 var _R_DEL_DT *regexp.Regexp
+var _R_DELETED *regexp.Regexp
 var _DEBUG *bool
 var _PRINTED_N int64 // Atomic (maybe slower?)
 var _TTL_SIZE int64  // Atomic (maybe slower?)
@@ -90,6 +91,7 @@ func _setGlobals() {
 	}
 	_START_TIME_ts = time.Now().Unix()
 	_R_DEL_DT, _ = regexp.Compile("^deletedDateTime=([0-9]+)")
+	_R_DELETED, _ = regexp.Compile("deleted=true")
 	if *_RECON_FMT {
 		if len(*_DEL_DATE_FROM) > 0 {
 			tmpTimeFrom, err := time.Parse("2006-01-02", *_DEL_DATE_FROM)
@@ -122,7 +124,10 @@ func _writeToFile(path string, contents string) error {
 		return err
 	}
 	defer f.Close()
-	f.WriteString(contents)
+	byteLen, err := f.WriteString(contents)
+	if byteLen < 0 || err != nil {
+		return err
+	}
 	return err
 }
 
@@ -201,13 +206,24 @@ func genOutputForReconcile(path string, modTimeMs int64) string {
 			_log("INFO", fmt.Sprintf("path:%s deletedDateTime=%d is between _DEL_DATE_FROM_ts:%d and _DEL_DATE_TO_ts:%d (%d)", path, deletedTS, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, _START_TIME_ts))
 			if _DEL_DATE_FROM_ts > 0 && *_REMOVE_DEL {
 				// TODO: remove 'deleted=true'
-				_log("WARN", fmt.Sprintf("removed 'deleted=true' from %s", path))
+				updatedContents := removeLines(contents, _R_DELETED)
+				err := _writeToFile(path, updatedContents)
+				if err != nil {
+					_log("ERROR", fmt.Sprintf("Updating path:%s failed with %s", path, err))
+				} else {
+					_log("WARN", fmt.Sprintf("Removed 'deleted=true' from path:%s (%d => %d)", path, len(contents), len(updatedContents)))
+				}
 			}
 			return fmt.Sprintf("%s,%s", getNowStr(), getBaseName(path))
 		}
 	}
 
 	return fmt.Sprintf("%s,\"%s\"", getNowStr(), getBaseName(path))
+}
+
+// one line but for unit testing
+func removeLines(contents string, rex *regexp.Regexp) string {
+	return rex.ReplaceAllString(contents, "")
 }
 
 func isTimestampBetween(ts int64) bool {
