@@ -1,6 +1,11 @@
 #_import() { curl -sf --compressed "https://raw.githubusercontent.com/hajimeo/samples/master/$1" -o /tmp/_i;. /tmp/_i; }
 #_import "runcom/nexus_alias.sh"
 
+alias hashUnencodedChars='python3 -c "import sys,hashlib; print(hashlib.sha1(sys.argv[1].encode(\"utf-16-le\")).hexdigest())"'
+alias esIndexName=hashUnencodedChars
+
+
+
 if [ -z "${_WORK_DIR%/}" ]; then
     if [ "`uname`" = "Darwin" ]; then
         # dovker -v does not work with symlink
@@ -144,7 +149,7 @@ function _updateNexusProps() {
     grep -qE '^\s*nexus.browse.component.tree.automaticRebuild' "${_cfg_file}" || echo "nexus.browse.component.tree.automaticRebuild=false" >> "${_cfg_file}"
     # NOTE: this would not work if elasticsearch directory is empty
     grep -qE '^\s*nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
-    # ${nexus.h2.httpListenerPort:-8082}
+    # ${nexus.h2.httpListenerPort:-8082} jdbc:h2:file:./nexus (no username)
     grep -qE '^\s*nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
     # Binary (or HA-C) connect remote:hostname/component admin admin
     grep -qE '^\s*nexus.orient.binaryListenerEnabled' "${_cfg_file}" || echo "nexus.orient.binaryListenerEnabled=true" >> "${_cfg_file}"
