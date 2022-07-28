@@ -37,6 +37,7 @@ import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.index.OIndex;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.storage.ORecordDuplicatedException;
 import net.lingala.zip4j.ZipFile;
 
@@ -51,6 +52,7 @@ public class AssetDupeCheckV2
   private static String TABLE_NAME;
 
   private static String INDEX_NAME;
+  private static String UNIQUE_INDEX_FIELDS;
 
   private static boolean IS_REPAIRING;
 
@@ -73,6 +75,7 @@ public class AssetDupeCheckV2
     System.out.println("advanced properties:");
     System.out.println("  -DindexName=component_bucket_group_name_version_idx");
     System.out.println("  -DtableName=component");
+    System.out.println("  -DindexFields=bucket,component,name");
   }
 
   private static String getCurrentLocalDateTimeStamp() {
@@ -183,16 +186,22 @@ public class AssetDupeCheckV2
     index.rebuild();
   }
 
-  private static Boolean checkIndex(ODatabaseDocumentTx db, String indexName, String tableName) {
-    OIndex<?> index = db.getMetadata().getIndexManager().getIndex(indexName);
+  private static Boolean checkIndex(ODatabaseDocumentTx db) {
+    OIndex<?> index = db.getMetadata().getIndexManager().getIndex(INDEX_NAME);
     if (IS_REPAIRING) {
-      index.clear();
+      if (UNIQUE_INDEX_FIELDS.length() > 0) {
+        String query = "CREATE INDEX " + INDEX_NAME +" ON "+TABLE_NAME+" ("+UNIQUE_INDEX_FIELDS+") UNIQUE;";
+        Object oDocs = db.command(new OCommandSQL(query)).execute();
+        log("Executed " + query + " (" + oDocs.toString() + ")");
+      } else {
+        index.clear();
+      }
     }
     long count = 0L;
     int dupeCounter = 0;
-    long total = db.countClass(tableName);
-    log("Count for " + tableName + " is " + total);
-    for (ODocument doc : db.browseClass(tableName)) {
+    long total = db.countClass(TABLE_NAME);
+    log("Count for " + TABLE_NAME + " is " + total);
+    for (ODocument doc : db.browseClass(TABLE_NAME)) {
       count++;
       dupeCounter += checkIndexEntry(db, index, doc);
       if (count % 5000 == 0) {
@@ -210,6 +219,7 @@ public class AssetDupeCheckV2
 
   private static int checkIndexEntry(ODatabaseDocumentTx db, OIndex<?> index, ODocument doc) {
     int dupeCounter = 0;
+    // This may cause NullPointerException when index does not exist
     List<String> fields = index.getDefinition().getFields();
     Object[] vals = new Object[fields.size()];
     for (int i = 0; i < vals.length; i++) {
@@ -267,6 +277,8 @@ public class AssetDupeCheckV2
     debug("tableName: " + TABLE_NAME);
     INDEX_NAME = System.getProperty("indexName", "asset_bucket_component_name_idx");
     debug("indexName: " + INDEX_NAME);
+    UNIQUE_INDEX_FIELDS = System.getProperty("indexFields", "");
+    debug("indexName: " + INDEX_NAME);
     EXTRACT_DIR = System.getProperty("extractDir", "");
     debug("extDir: " + EXTRACT_DIR);
     LOG_PATH = System.getProperty("logPath", "./asset-dupe-checker-v2.log");
@@ -316,7 +328,7 @@ public class AssetDupeCheckV2
       try {
         db.open("admin", "admin");
         log("Connected to " + connStr);
-        Boolean result = checkIndex(db, INDEX_NAME, TABLE_NAME);
+        Boolean result = checkIndex(db);
         log("Checked/repaired indexName: " + INDEX_NAME + " from tableName: " + TABLE_NAME);
         if (IS_REBUILDING) {
           if (!result) {
