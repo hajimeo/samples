@@ -194,8 +194,9 @@ public class AssetDupeCheckV2
       log(indexName + " is not supported (supported: " + SUPPORTED_INDEX_NAMES + ")");
       return "";
     }
-    String tmp = indexName.replaceFirst("^" + tableName + "_", "");
-    return tmp.replaceAll("_", ",");
+    indexName = indexName.replaceFirst("^" + tableName + "_", "");
+    indexName = indexName.replaceFirst("_idx$", "");
+    return indexName.replaceAll("_", ",");
   }
 
   private static OIndex<?> createIndex(ODatabaseDocumentTx db) {
@@ -229,6 +230,7 @@ public class AssetDupeCheckV2
 
     if (IS_REPAIRING) {
       if (index == null) {
+        log("Index: " + INDEX_NAME + " does not exist. Trying to create...");
         index = createIndex(db);
       }
       else {
