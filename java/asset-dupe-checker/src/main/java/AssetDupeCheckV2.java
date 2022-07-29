@@ -73,7 +73,7 @@ public class AssetDupeCheckV2
         "  java -Xmx4g -XX:MaxDirectMemorySize=8g -jar asset-dupe-checker-v2.jar <component directory path> | tee asset-dupe-checker.sql");
     System.out.println("System properties:");
     System.out.println("  -DextractDir=./component            # Location of extracting component-*.bak file");
-    System.out.println("  -Drepair=true                       # Remove duplicates and insert missing index record");
+    System.out.println("  -Drepair=true                       # Remove duplicates and insert missing index records");
     System.out.println("  -Ddebug=true                        # Verbose outputs");
     System.out.println("Advanced properties (use those carefully):");
     System.out.println("  -DrebuildIndex=true                 # Rebuild index (eg:asset_bucket_component_name_idx)");
