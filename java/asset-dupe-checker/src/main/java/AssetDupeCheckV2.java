@@ -27,6 +27,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 
@@ -52,7 +53,11 @@ public class AssetDupeCheckV2
   private static String TABLE_NAME;
 
   private static String INDEX_NAME;
-  private static String UNIQUE_INDEX_FIELDS;
+
+  private static final List<String> SUPPORTED_INDEX_NAMES =
+      Arrays.asList("asset_bucket_component_name_idx", "component_bucket_group_name_version_idx");
+
+  private static Long DUPE_COUNTER;
 
   private static boolean IS_REPAIRING;
 
@@ -67,15 +72,13 @@ public class AssetDupeCheckV2
     System.out.println(
         "  java -Xmx4g -XX:MaxDirectMemorySize=8g -jar asset-dupe-checker-v2.jar <component directory path> | tee asset-dupe-checker.sql");
     System.out.println("System properties:");
-    System.out.println("  -DextractDir=<extracting path>  Location for extracting component-*.bak file");
-    System.out.println(
-        "  -Drepair=true                   Remove duplicates from table and insert missing index record");
-    System.out.println("  -DrebuildIndex=true             Rebuild specified index (asset_bucket_component_name_idx)");
-    System.out.println("  -Ddebug=true                    Verbose outputs");
-    System.out.println("advanced properties:");
+    System.out.println("  -DextractDir=./component            # Location of extracting component-*.bak file");
+    System.out.println("  -Drepair=true                       # Remove duplicates and insert missing index record");
+    System.out.println("  -Ddebug=true                        # Verbose outputs");
+    System.out.println("Advanced properties (use those carefully):");
+    System.out.println("  -DrebuildIndex=true                 # Rebuild index (eg:asset_bucket_component_name_idx)");
     System.out.println("  -DindexName=component_bucket_group_name_version_idx");
-    System.out.println("  -DtableName=component");
-    System.out.println("  -DindexFields=bucket,component,name");
+    System.out.println("  -DtableName=component               # NOTE: be careful of repairing component");
   }
 
   private static String getCurrentLocalDateTimeStamp() {
@@ -186,32 +189,72 @@ public class AssetDupeCheckV2
     index.rebuild();
   }
 
+  private static String guessIndexFields(String indexName, String tableName) {
+    if (!SUPPORTED_INDEX_NAMES.contains(indexName)) {
+      log(indexName + " is not supported (supported: " + SUPPORTED_INDEX_NAMES + ")");
+      return "";
+    }
+    String tmp = indexName.replaceFirst("^" + tableName + "_", "");
+    return tmp.replaceAll("_", ",");
+  }
+
+  private static OIndex<?> createIndex(ODatabaseDocumentTx db) {
+    String fields = guessIndexFields(INDEX_NAME, TABLE_NAME);
+    if (fields.length() == 0) {
+      log("Index: " + INDEX_NAME + " does not exist and can't create.");
+      return null;
+    }
+    try {
+      // Below is simpler than 'index = tbl.createIndex(INDEX_NAME, INDEX_TYPE.UNIQUE, fields);' if works
+      String query = "CREATE INDEX " + INDEX_NAME + " ON " + TABLE_NAME + " (" + fields + ") UNIQUE;";
+      Object oDocs = db.command(new OCommandSQL(query)).execute();
+      log("Executed " + query + " (" + oDocs.toString() + ")");
+    }
+    // I don't think below can be caught in here
+    //catch (BufferUnderflowException eBuff) {
+    //  log("Ignoring BufferUnderflowException for index:" + INDEX_NAME + " - " + eBuff.getMessage());
+    //}
+    catch (ORecordDuplicatedException eDupe) {
+      log("Ignoring ORecordDuplicatedException for index:" + INDEX_NAME + " - " + eDupe.getMessage());
+    }
+    catch (Exception e) {
+      log("Creating index:" + INDEX_NAME + " caused Exception: " + e.getMessage());
+      return null;
+    }
+    return db.getMetadata().getIndexManager().getIndex(INDEX_NAME);
+  }
+
   private static Boolean checkIndex(ODatabaseDocumentTx db) {
     OIndex<?> index = db.getMetadata().getIndexManager().getIndex(INDEX_NAME);
+
     if (IS_REPAIRING) {
-      if (UNIQUE_INDEX_FIELDS.length() > 0) {
-        String query = "CREATE INDEX " + INDEX_NAME +" ON "+TABLE_NAME+" ("+UNIQUE_INDEX_FIELDS+") UNIQUE;";
-        Object oDocs = db.command(new OCommandSQL(query)).execute();
-        log("Executed " + query + " (" + oDocs.toString() + ")");
-      } else {
+      if (index == null) {
+        index = createIndex(db);
+      }
+      else {
         index.clear();
       }
     }
+
+    if (index == null) {
+      log("Index: " + INDEX_NAME + " does not exist.");
+      return false;
+    }
+
     long count = 0L;
-    int dupeCounter = 0;
     long total = db.countClass(TABLE_NAME);
     log("Count for " + TABLE_NAME + " is " + total);
     for (ODocument doc : db.browseClass(TABLE_NAME)) {
       count++;
-      dupeCounter += checkIndexEntry(db, index, doc);
+      DUPE_COUNTER += checkIndexEntry(db, index, doc);
       if (count % 5000 == 0) {
         index.flush();
-        log("Checked " + count + "/" + total + " (duplicates:" + dupeCounter + ")");
+        log("Checked " + count + "/" + total + " (duplicates:" + DUPE_COUNTER + ")");
       }
     }
-    log("Checked " + count + "/" + total + " (duplicates:" + dupeCounter + ")");
+    log("Checked " + count + "/" + total + " (duplicates:" + DUPE_COUNTER + ")");
     // If dupes found but not fixed, return false, so that it won't trigger index rebuild
-    if (dupeCounter > 0 && !IS_REPAIRING) {
+    if (DUPE_COUNTER > 0 && !IS_REPAIRING) {
       return false;
     }
     return true;
@@ -277,8 +320,6 @@ public class AssetDupeCheckV2
     debug("tableName: " + TABLE_NAME);
     INDEX_NAME = System.getProperty("indexName", "asset_bucket_component_name_idx");
     debug("indexName: " + INDEX_NAME);
-    UNIQUE_INDEX_FIELDS = System.getProperty("indexFields", "");
-    debug("indexName: " + INDEX_NAME);
     EXTRACT_DIR = System.getProperty("extractDir", "");
     debug("extDir: " + EXTRACT_DIR);
     LOG_PATH = System.getProperty("logPath", "./asset-dupe-checker-v2.log");
@@ -332,7 +373,7 @@ public class AssetDupeCheckV2
         log("Checked/repaired indexName: " + INDEX_NAME + " from tableName: " + TABLE_NAME);
         if (IS_REBUILDING) {
           if (!result) {
-            log("Index rebuild is requested but not rebuilding as duplicates found.");
+            log("Index rebuild is requested but not rebuilding as checkIndex returned false (dupes or missing index).");
           }
           else {
             rebuildIndex(db, INDEX_NAME);
