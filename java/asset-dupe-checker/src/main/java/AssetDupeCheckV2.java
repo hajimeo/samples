@@ -29,16 +29,27 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
+import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.id.ORID;
+import com.orientechnologies.orient.core.index.ODefaultIndexFactory;
 import com.orientechnologies.orient.core.index.OIndex;
+import com.orientechnologies.orient.core.index.OIndexDefinition;
+import com.orientechnologies.orient.core.index.OIndexDefinitionFactory;
+import com.orientechnologies.orient.core.index.OIndexException;
+import com.orientechnologies.orient.core.index.OIndexRebuildOutputListener;
+import com.orientechnologies.orient.core.index.OIndexes;
+import com.orientechnologies.orient.core.metadata.OMetadataDefault;
+import com.orientechnologies.orient.core.metadata.schema.OClass.INDEX_TYPE;
+import com.orientechnologies.orient.core.metadata.schema.OClassImpl;
 import com.orientechnologies.orient.core.record.impl.ODocument;
-import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.storage.ORecordDuplicatedException;
 import net.lingala.zip4j.ZipFile;
 
@@ -200,16 +211,27 @@ public class AssetDupeCheckV2
   }
 
   private static OIndex<?> createIndex(ODatabaseDocumentTx db) {
-    String fields = guessIndexFields(INDEX_NAME, TABLE_NAME);
-    if (fields.length() == 0) {
+    OIndex<?> index = null;
+    String fieldsStr = guessIndexFields(INDEX_NAME, TABLE_NAME);
+    if (fieldsStr.length() == 0) {
       log("Index: " + INDEX_NAME + " does not exist and can't create.");
       return null;
     }
     try {
-      // Below is simpler than 'index = tbl.createIndex(INDEX_NAME, INDEX_TYPE.UNIQUE, fields);' if works
-      String query = "CREATE INDEX " + INDEX_NAME + " ON " + TABLE_NAME + " (" + fields + ") UNIQUE;";
-      Object oDocs = db.command(new OCommandSQL(query)).execute();
-      log("Executed " + query + " (" + oDocs.toString() + ")");
+      String[] fields = fieldsStr.split(",");
+      String type = INDEX_TYPE.UNIQUE.name();
+      OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass(TABLE_NAME);
+      // OrientDB hack for setting rebuild = false in index.create()
+      OIndexDefinition indexDefinition = OIndexDefinitionFactory.createIndexDefinition(tbl, Arrays.asList(fields), tbl.extractFieldTypes(fields), null, type, ODefaultIndexFactory.SBTREE_ALGORITHM);
+      Set<String> clustersToIndex = findClustersByIds(tbl.getClusterIds(), db);
+      index = OIndexes.createIndex(db, INDEX_NAME, type, ODefaultIndexFactory.SBTREE_ALGORITHM, ODefaultIndexFactory.NONE_VALUE_CONTAINER, null, -1);
+      index.create(INDEX_NAME, indexDefinition, OMetadataDefault.CLUSTER_INDEX_NAME, clustersToIndex, false, new OIndexRebuildOutputListener(index));
+      // Below rebuild indexes, and it doesn't look like the schema saved when exception.
+      //index = tbl.createIndex(INDEX_NAME, type, fields);
+      // Below is simpler but again, it does not save schema when exception
+      //String query = "CREATE INDEX " + INDEX_NAME + " ON " + TABLE_NAME + " (" + fields + ") UNIQUE;";
+      //Object oDocs = db.command(new OCommandSQL(query)).execute();
+      log("Created unique index:" + INDEX_NAME + " with " + fieldsStr + "");
     }
     // I don't think below can be caught in here
     //catch (BufferUnderflowException eBuff) {
@@ -217,12 +239,31 @@ public class AssetDupeCheckV2
     //}
     catch (ORecordDuplicatedException eDupe) {
       log("Ignoring ORecordDuplicatedException for index:" + INDEX_NAME + " - " + eDupe.getMessage());
+      db.commit();
     }
     catch (Exception e) {
       log("Creating index:" + INDEX_NAME + " caused Exception: " + e.getMessage());
-      return null;
+      e.printStackTrace();
+      return null;  // return index;
     }
-    return db.getMetadata().getIndexManager().getIndex(INDEX_NAME);
+    finally {
+      index = db.getMetadata().getIndexManager().getIndex(INDEX_NAME);
+    }
+    return index;
+  }
+
+  private static Set<String> findClustersByIds(int[] clusterIdsToIndex, ODatabase database) {
+    Set<String> clustersToIndex = new HashSet<String>();
+    if (clusterIdsToIndex != null) {
+      for (int clusterId : clusterIdsToIndex) {
+        final String clusterNameToIndex = database.getClusterNameById(clusterId);
+        if (clusterNameToIndex == null)
+          throw new OIndexException("Cluster with id " + clusterId + " does not exist.");
+
+        clustersToIndex.add(clusterNameToIndex);
+      }
+    }
+    return clustersToIndex;
   }
 
   private static Boolean checkIndex(ODatabaseDocumentTx db) {
