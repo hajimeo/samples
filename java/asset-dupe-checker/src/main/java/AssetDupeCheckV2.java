@@ -251,7 +251,7 @@ public class AssetDupeCheckV2
       //eDupe.printStackTrace();
     }
     catch (Exception e) {
-      log("Creating index:" + INDEX_NAME + " caused Exception: " + e.getMessage());
+      log("[ERROR] Creating index:" + INDEX_NAME + " caused Exception: " + e.getMessage());
       e.printStackTrace();
       return null;  // return index;
     }
@@ -330,13 +330,23 @@ public class AssetDupeCheckV2
 
   private static int checkIndexEntry(ODatabaseDocumentTx db, OIndex<?> index, ODocument doc) {
     int dupeCounter = 0;
-    // This may cause NullPointerException when index does not exist
+    ORID docId = doc.getIdentity();
+    // This may cause NullPointerException when index does not exist,
+    // or java.lang.ArrayIndexOutOfBoundsException if doc is corrupted
     List<String> fields = index.getDefinition().getFields();
     Object[] vals = new Object[fields.size()];
-    for (int i = 0; i < vals.length; i++) {
-      vals[i] = doc.field(fields.get(i));
+    try {
+      for (int i = 0; i < vals.length; i++) {
+        vals[i] = doc.field(fields.get(i));
+      }
     }
-    ORID docId = doc.getIdentity();
+    catch (ArrayIndexOutOfBoundsException e) {
+      log("[WARN] Data corruption for docId: " + docId + "\n" + e.getMessage());
+      if (IS_REPAIRING) {
+        db.delete(docId);
+        log("[WARN] Deleted corrupted record: " + docId);
+      }
+    }
     Object indexKey = index.getDefinition().createValue(vals);
     boolean needPut = true;
     long c = index.count(indexKey);
@@ -406,7 +416,8 @@ public class AssetDupeCheckV2
       }
       testQuery = testQuery + " AND " + fields[i] + val;
     }
-    String explainStr = ((ODocument) db.command(new OCommandSQL(testQuery)).execute()).toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0,prettyPrint");
+    String explainStr = ((ODocument) db.command(new OCommandSQL(testQuery)).execute()).toJSON(
+        "rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0,prettyPrint");
     log(explainStr);
     if (!explainStr.contains("\"" + INDEX_NAME + "\"")) {
       return false;
@@ -485,7 +496,7 @@ public class AssetDupeCheckV2
           }
         }
         log("Validating indexName: " + INDEX_NAME);
-        if(!validateIndex(db)) {
+        if (!validateIndex(db)) {
           log("[ERROR] Validating indexName: " + INDEX_NAME + " failed");
         }
       }
