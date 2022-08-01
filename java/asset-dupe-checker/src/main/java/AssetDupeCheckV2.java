@@ -422,7 +422,7 @@ public class AssetDupeCheckV2
     if (oDocs.isEmpty()) {
       return false;
     }
-    String indexDef = oDocs.get(0).toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0,prettyPrint");
+    String indexDef = oDocs.get(0).toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0"); //,prettyPrint
     log(indexDef);
     if (!indexDef.contains("\"" + INDEX_NAME + "\"")) {
       return false;
@@ -447,7 +447,7 @@ public class AssetDupeCheckV2
       testQuery = testQuery + " AND " + fields[i] + val;
     }
     String explainStr = ((ODocument) db.command(new OCommandSQL(testQuery)).execute()).toJSON(
-        "rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0,prettyPrint");
+        "rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0"); //,prettyPrint
     log(explainStr);
     if (!explainStr.contains("\"" + INDEX_NAME + "\"")) {
       return false;
