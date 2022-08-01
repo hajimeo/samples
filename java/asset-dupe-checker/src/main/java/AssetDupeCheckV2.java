@@ -251,9 +251,10 @@ public class AssetDupeCheckV2
       //eDupe.printStackTrace();
     }
     catch (Exception e) {
-      log("[ERROR] Creating index:" + INDEX_NAME + " caused Exception: " + e.getMessage());
+      // If table is corrupted, this may cause java.lang.ArrayIndexOutOfBoundsException but not sure what could be done in this code.
+      log("[ERROR] Creating index:" + INDEX_NAME + " failed. May need to do DB export/import.");
       e.printStackTrace();
-      return null;  // return index;
+      return null;
     }
     finally {
       if (index != null) {
@@ -367,17 +368,7 @@ public class AssetDupeCheckV2
         // if more than one index, should delete this one, so no extra handling required
       }
       dupeCounter++;
-      log("Duplicate found " + maybeDupe + " indexKey: " + indexKey.toString() + " (docId:" + docId + ")");
-      out("TRUNCATE RECORD " + maybeDupe + ";");
-      if (IS_REPAIRING) {
-        db.delete((ORID) maybeDupe);
-        db.commit();    // TODO: not sure if this helps to reduce heap
-        log("[WARN] Deleted duplicate: " + maybeDupe);
-      }
-      else {
-        // If not IS_REPAIRING, need to remove this one to detect another duplicates for same key
-        index.remove(indexKey, (OIdentifiable) maybeDupe);
-      }
+      actionsForDupe(db, (ORID) maybeDupe, docId, index, indexKey);
     }
 
     if (needPut) {
@@ -393,10 +384,44 @@ public class AssetDupeCheckV2
     return dupeCounter;
   }
 
+  private static int logAssets(ODatabaseDocumentTx db, ORID compId) {
+    String query = "SELECT @rid as rid, bucket, component, name FROM asset WHERE component = " + compId.toString();
+    List<ODocument> oDocs = db.command(new OCommandSQL(query)).execute();
+    for(ODocument oDoc : oDocs) {
+      log(oDoc.toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0"));
+    }
+    return oDocs.size();
+  }
+
+  private static void actionsForDupe(ODatabaseDocumentTx db, ORID maybeDupe, ORID docId, OIndex<?> index, Object indexKey) {
+    log("Duplicate found " + maybeDupe + " indexKey: " + indexKey.toString() + " (docId:" + docId + ")");
+    ORID deletingId = maybeDupe;
+    if (TABLE_NAME.equalsIgnoreCase("component")) {
+      int maybeNum = logAssets(db, maybeDupe);
+      int docIdNum = logAssets(db, docId);
+      if (docIdNum < maybeNum) {
+        deletingId = docId;
+      }
+    }
+    out("TRUNCATE RECORD " + deletingId + ";");
+    if (IS_REPAIRING) {
+      // TODO: When component, the decision of which one to delete may not be the best
+      db.delete(deletingId);
+      log("[WARN] Deleted duplicate: " + deletingId);
+    }
+    else {
+      // Need to remove this one to detect another duplicates for same key (if repairing, above delete() also remove from index
+      index.remove(indexKey, deletingId);
+    }
+  }
+
   private static boolean validateIndex(ODatabaseDocumentTx db) {
     List<ODocument> oDocs = db.command(new OCommandSQL(
             "select * from (select expand(indexes) from metadata:indexmanager) where name = '" + INDEX_NAME + "'"))
         .execute();
+    if (oDocs.isEmpty()) {
+      return false;
+    }
     String indexDef = oDocs.get(0).toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0,prettyPrint");
     log(indexDef);
     if (!indexDef.contains("\"" + INDEX_NAME + "\"")) {
