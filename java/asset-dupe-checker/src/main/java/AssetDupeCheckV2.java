@@ -29,28 +29,14 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 import com.orientechnologies.orient.core.Orient;
-import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
-import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.id.ORID;
-import com.orientechnologies.orient.core.index.ODefaultIndexFactory;
 import com.orientechnologies.orient.core.index.OIndex;
-import com.orientechnologies.orient.core.index.OIndexDefinition;
-import com.orientechnologies.orient.core.index.OIndexDefinitionFactory;
-import com.orientechnologies.orient.core.index.OIndexException;
-import com.orientechnologies.orient.core.index.OIndexManager;
-import com.orientechnologies.orient.core.index.OIndexRebuildOutputListener;
-import com.orientechnologies.orient.core.index.OIndexes;
-import com.orientechnologies.orient.core.metadata.OMetadataDefault;
-import com.orientechnologies.orient.core.metadata.schema.OClass.INDEX_TYPE;
-import com.orientechnologies.orient.core.metadata.schema.OClassImpl;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.storage.ORecordDuplicatedException;
@@ -213,76 +199,46 @@ public class AssetDupeCheckV2
     return indexName.replaceAll("_", ",");
   }
 
-  private static OIndex<?> createIndex(ODatabaseDocumentTx db) {
-    OIndex<?> index = null;
+  private static OIndex<?> createIndex(ODatabaseDocumentTx db, String type, boolean dropFirst) {
     String fieldsStr = guessIndexFields(INDEX_NAME, TABLE_NAME);
     if (fieldsStr.length() == 0) {
       log("Index: " + INDEX_NAME + " does not exist and can't create.");
       return null;
     }
-    try {
-      String[] fields = fieldsStr.split(",");
-      String type = INDEX_TYPE.UNIQUE.name();
-      OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass(TABLE_NAME);
-      // OrientDB hack for setting rebuild = false in index.create()
-      OIndexDefinition indexDefinition = OIndexDefinitionFactory.createIndexDefinition(tbl, Arrays.asList(fields), tbl.extractFieldTypes(fields), null, type, ODefaultIndexFactory.SBTREE_ALGORITHM);
-      indexDefinition.setNullValuesIgnored(OGlobalConfiguration.INDEX_IGNORE_NULL_VALUES_DEFAULT.getValueAsBoolean());
-      Set<String> clustersToIndex = findClustersByIds(tbl.getClusterIds(), db);
-      index = OIndexes.createIndex(db, INDEX_NAME, type, ODefaultIndexFactory.SBTREE_ALGORITHM, ODefaultIndexFactory.NONE_VALUE_CONTAINER, null, -1);
-      index.create(INDEX_NAME, indexDefinition, OMetadataDefault.CLUSTER_INDEX_NAME, clustersToIndex, false, new OIndexRebuildOutputListener(index));
-      // Below rebuild indexes, and it doesn't look like the schema saved when exception.
-      //index = tbl.createIndex(INDEX_NAME, type, fields);
-      // Below is simpler but again, it does not save schema when exception
-      //String query = "CREATE INDEX " + INDEX_NAME + " ON " + TABLE_NAME + " (" + fields + ") UNIQUE;";
-      //Object oDocs = db.command(new OCommandSQL(query)).execute();
-      log("Created unique index:" + INDEX_NAME + " with " + fieldsStr + "");
+    if (type.isEmpty()) {
+      type = "NOTUNIQUE";
     }
-    // I don't think below can be caught in here
-    //catch (BufferUnderflowException eBuff) {
-    //  log("Ignoring BufferUnderflowException for index:" + INDEX_NAME + " - " + eBuff.getMessage());
-    //}
+    try {
+      if (dropFirst) {
+        String query = "DROP INDEX " + INDEX_NAME;
+        db.command(new OCommandSQL(query)).execute();
+      }
+      String query = "CREATE INDEX " + INDEX_NAME + " ON " + TABLE_NAME + " (" + fieldsStr + ") " + type;
+      db.command(new OCommandSQL(query)).execute();
+    }
     catch (ORecordDuplicatedException eDupe) {
       log("Ignoring ORecordDuplicatedException for index:" + INDEX_NAME + " - " + eDupe.getMessage());
+      //eDupe.printStackTrace();
     }
     catch (Exception e) {
       log("Creating index:" + INDEX_NAME + " caused Exception: " + e.getMessage());
       e.printStackTrace();
       return null;  // return index;
     }
-    finally {
-      if (index != null) {
-        db.getMetadata().getIndexManager().save();
-        //log("Saved Index defintion and setting IS_REBUILDING=true for index:" + INDEX_NAME);
-        //IS_REBUILDING=true;
-      } else {
-        index = db.getMetadata().getIndexManager().getIndex(INDEX_NAME);
-      }
-    }
-    return index;
-  }
-
-  private static Set<String> findClustersByIds(int[] clusterIdsToIndex, ODatabase database) {
-    Set<String> clustersToIndex = new HashSet<String>();
-    if (clusterIdsToIndex != null) {
-      for (int clusterId : clusterIdsToIndex) {
-        final String clusterNameToIndex = database.getClusterNameById(clusterId);
-        if (clusterNameToIndex == null) {
-          throw new OIndexException("Cluster with id " + clusterId + " does not exist.");
-        }
-
-        clustersToIndex.add(clusterNameToIndex);
-      }
-    }
-    return clustersToIndex;
+    return db.getMetadata().getIndexManager().getIndex(INDEX_NAME);
   }
 
   private static Boolean checkIndex(ODatabaseDocumentTx db) {
     OIndex<?> index = db.getMetadata().getIndexManager().getIndex(INDEX_NAME);
 
+    boolean isDummyIdxCreated = false;
     if (IS_REPAIRING) {
       if (index == null) {
-        log("Index: " + INDEX_NAME + " does not exist. Trying to create...");
-        index = createIndex(db);
+        log("[WARN] Index: " + INDEX_NAME + " does not exist. Trying to create (notunique, then unique)...");
+        index = createIndex(db, "", false);
+        if (index != null) {
+          isDummyIdxCreated = true;
+        }
       }
       else {
         index.clear();
@@ -306,6 +262,10 @@ public class AssetDupeCheckV2
       }
     }
     log("Checked " + count + "/" + total + " (duplicates:" + DUPE_COUNTER + ")");
+    if(isDummyIdxCreated) {
+      IS_REBUILDING = false;  // no need to re-rebuild
+      createIndex(db, "UNIQUE", true);
+    }
     // If dupes found but not fixed, return false, so that it won't trigger index rebuild
     if (DUPE_COUNTER > 0 && !IS_REPAIRING) {
       return false;
@@ -434,7 +394,17 @@ public class AssetDupeCheckV2
           }
         }
         log("Validating indexName: " + INDEX_NAME);
-        //Object oDocs = db.command(new OCommandSQL("SELECT indexDefinition.className as table, name from (select expand(indexes) from metadata:indexmanager) order by table, name LIMIT -1;")).execute();
+        List<ODocument> oDocs = db.command(new OCommandSQL(
+                "select * from (select expand(indexes) from metadata:indexmanager) where name = '" + INDEX_NAME + "'"))
+            .execute();
+        ODocument oDoc = oDocs.get(0);
+        log(oDoc.toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0,prettyPrint"));
+
+        String fieldStr = guessIndexFields(INDEX_NAME, TABLE_NAME);
+        oDoc = db.command(new OCommandSQL(
+            "EXPLAIN EXPLAIN SELECT " + fieldStr + ", count(*) as c from (select * from " + TABLE_NAME +
+                " limit 1) group by " + fieldStr)).execute();
+        log(oDoc.toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0,prettyPrint"));
       }
       catch (Exception e) {
         e.printStackTrace();
