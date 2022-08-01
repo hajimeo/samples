@@ -305,21 +305,29 @@ public class AssetDupeCheckV2
 
     long count = 0L;
     long total = db.countClass(TABLE_NAME);
-    log("Count for " + TABLE_NAME + " is " + total);
-    for (ODocument doc : db.browseClass(TABLE_NAME)) {
-      count++;
-      DUPE_COUNTER += checkIndexEntry(db, index, doc);
-      if (count % 5000 == 0) {
-        index.flush();
-        log("Checked " + count + "/" + total + " (duplicates:" + DUPE_COUNTER + ")");
+    try {
+      log("Count for " + TABLE_NAME + " is " + total);
+      for (ODocument doc : db.browseClass(TABLE_NAME)) {
+        count++;
+        DUPE_COUNTER += checkIndexEntry(db, index, doc);
+        if (count % 5000 == 0) {
+          index.flush();
+          log("Checking " + count + "/" + total + " (duplicates:" + DUPE_COUNTER + ")");
+        }
+      }
+      log("Checked " + count + "/" + total + " (duplicates:" + DUPE_COUNTER + ")");
+
+      if (index != null && isDummyIdxCreated) {
+        IS_REBUILDING = false;  // no need to re-rebuild
+        log("Re-creating index:" + INDEX_NAME);
+        createIndex(db, false);
       }
     }
-    log("Checked " + count + "/" + total + " (duplicates:" + DUPE_COUNTER + ")");
-    if (isDummyIdxCreated) {
-      IS_REBUILDING = false;  // no need to re-rebuild
-      index.delete();
-      debug("Deleted index:dummy_" + INDEX_NAME + ", and re-creating index:" + INDEX_NAME);
-      createIndex(db, false);
+    finally {
+      if (index != null && isDummyIdxCreated) {
+        index.delete(); // cleaning up unnecessary temp/dummy index
+        debug("Deleted index:dummy_" + INDEX_NAME);
+      }
     }
     // If dupes found but not fixed, return false, so that it won't trigger index rebuild
     if (DUPE_COUNTER > 0 && !IS_REPAIRING) {
@@ -342,10 +350,7 @@ public class AssetDupeCheckV2
     }
     catch (ArrayIndexOutOfBoundsException e) {
       log("[WARN] Data corruption for docId: " + docId + "\n" + e.getMessage());
-      if (IS_REPAIRING) {
-        db.delete(docId);
-        log("[WARN] Deleted corrupted record: " + docId);
-      }
+      // can't see the value with doc.toString and can't delete with db.delete.
     }
     Object indexKey = index.getDefinition().createValue(vals);
     boolean needPut = true;
