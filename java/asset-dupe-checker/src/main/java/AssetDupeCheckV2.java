@@ -34,6 +34,7 @@ import java.util.List;
 import java.util.Set;
 
 import com.orientechnologies.orient.core.Orient;
+import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
@@ -44,12 +45,14 @@ import com.orientechnologies.orient.core.index.OIndex;
 import com.orientechnologies.orient.core.index.OIndexDefinition;
 import com.orientechnologies.orient.core.index.OIndexDefinitionFactory;
 import com.orientechnologies.orient.core.index.OIndexException;
+import com.orientechnologies.orient.core.index.OIndexManager;
 import com.orientechnologies.orient.core.index.OIndexRebuildOutputListener;
 import com.orientechnologies.orient.core.index.OIndexes;
 import com.orientechnologies.orient.core.metadata.OMetadataDefault;
 import com.orientechnologies.orient.core.metadata.schema.OClass.INDEX_TYPE;
 import com.orientechnologies.orient.core.metadata.schema.OClassImpl;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.sql.OCommandSQL;
 import com.orientechnologies.orient.core.storage.ORecordDuplicatedException;
 import net.lingala.zip4j.ZipFile;
 
@@ -68,7 +71,7 @@ public class AssetDupeCheckV2
   private static final List<String> SUPPORTED_INDEX_NAMES =
       Arrays.asList("asset_bucket_component_name_idx", "component_bucket_group_name_version_idx");
 
-  private static Long DUPE_COUNTER;
+  private static Long DUPE_COUNTER = 0L;
 
   private static boolean IS_REPAIRING;
 
@@ -223,6 +226,7 @@ public class AssetDupeCheckV2
       OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass(TABLE_NAME);
       // OrientDB hack for setting rebuild = false in index.create()
       OIndexDefinition indexDefinition = OIndexDefinitionFactory.createIndexDefinition(tbl, Arrays.asList(fields), tbl.extractFieldTypes(fields), null, type, ODefaultIndexFactory.SBTREE_ALGORITHM);
+      indexDefinition.setNullValuesIgnored(OGlobalConfiguration.INDEX_IGNORE_NULL_VALUES_DEFAULT.getValueAsBoolean());
       Set<String> clustersToIndex = findClustersByIds(tbl.getClusterIds(), db);
       index = OIndexes.createIndex(db, INDEX_NAME, type, ODefaultIndexFactory.SBTREE_ALGORITHM, ODefaultIndexFactory.NONE_VALUE_CONTAINER, null, -1);
       index.create(INDEX_NAME, indexDefinition, OMetadataDefault.CLUSTER_INDEX_NAME, clustersToIndex, false, new OIndexRebuildOutputListener(index));
@@ -239,7 +243,6 @@ public class AssetDupeCheckV2
     //}
     catch (ORecordDuplicatedException eDupe) {
       log("Ignoring ORecordDuplicatedException for index:" + INDEX_NAME + " - " + eDupe.getMessage());
-      db.commit();
     }
     catch (Exception e) {
       log("Creating index:" + INDEX_NAME + " caused Exception: " + e.getMessage());
@@ -247,7 +250,13 @@ public class AssetDupeCheckV2
       return null;  // return index;
     }
     finally {
-      index = db.getMetadata().getIndexManager().getIndex(INDEX_NAME);
+      if (index != null) {
+        db.getMetadata().getIndexManager().save();
+        //log("Saved Index defintion and setting IS_REBUILDING=true for index:" + INDEX_NAME);
+        //IS_REBUILDING=true;
+      } else {
+        index = db.getMetadata().getIndexManager().getIndex(INDEX_NAME);
+      }
     }
     return index;
   }
@@ -257,8 +266,9 @@ public class AssetDupeCheckV2
     if (clusterIdsToIndex != null) {
       for (int clusterId : clusterIdsToIndex) {
         final String clusterNameToIndex = database.getClusterNameById(clusterId);
-        if (clusterNameToIndex == null)
+        if (clusterNameToIndex == null) {
           throw new OIndexException("Cluster with id " + clusterId + " does not exist.");
+        }
 
         clustersToIndex.add(clusterNameToIndex);
       }
@@ -423,6 +433,8 @@ public class AssetDupeCheckV2
             log("Rebuilt indexName: " + INDEX_NAME);
           }
         }
+        log("Validating indexName: " + INDEX_NAME);
+        //Object oDocs = db.command(new OCommandSQL("SELECT indexDefinition.className as table, name from (select expand(indexes) from metadata:indexmanager) order by table, name LIMIT -1;")).execute();
       }
       catch (Exception e) {
         e.printStackTrace();
