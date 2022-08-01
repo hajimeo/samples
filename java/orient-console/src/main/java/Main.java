@@ -44,6 +44,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.management.InstanceAlreadyExistsException;
 import javax.management.MBeanRegistrationException;
@@ -55,6 +57,7 @@ public class Main
   static final private String PROMPT = "=> ";
 
   static final private String DEFAULT_JSON_FORMAT = "rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0";
+
   static private String jsonFormat = DEFAULT_JSON_FORMAT;
 
   static private Terminal terminal;
@@ -92,6 +95,8 @@ public class Main
   private static final ObjectMapper objectMapper = new ObjectMapper(new SmileFactory());
 
   private static final Gson gson = new Gson();
+
+  public static final Pattern indexNamePtn = Pattern.compile( "(rebuild|list) indexes ([^;]+)", Pattern.CASE_INSENSITIVE);
 
   private static void usage() {
     System.err.println("https://github.com/hajimeo/samples/blob/master/java/orient-console/README.md");
@@ -271,8 +276,7 @@ public class Main
 
   private static void execQueries(ODatabaseDocumentTx db, String input) {
     List<String> queries = Arrays.asList(input.split(";"));
-    for (int i = 0; i < queries.size(); i++) {
-      String q = queries.get(i);
+    for (String q : queries) {
       if (q == null || q.isEmpty()) {
         continue;
       }
@@ -302,12 +306,12 @@ public class Main
           execQuery(db, q, isPaging);
         }
       }
-      catch (java.lang.ClassCastException e) {
+      catch (ClassCastException e) {
         System.err.println(e.getMessage());
         e.printStackTrace();
       }
       catch (OCommandSQLParsingException | OCommandExecutionException ex) {
-        removeLine(input);
+        removeLineFromHistory(input);
         history.load();
       }
       finally {
@@ -332,7 +336,7 @@ public class Main
     //Object oDocs = db.query(new OCommandSQL(query));
     Object oDocs = db.command(new OCommandSQL(query)).execute();
     //final List<ODocument> oDocs = db.command(new OCommandSQL(query)).execute();
-    if (oDocs instanceof Integer) {
+    if (oDocs instanceof Integer || oDocs instanceof Long) {
       // this means UPDATE/INSERT etc., so not updating last_rows
       System.err.printf("Rows: %d, ", oDocs);
     }
@@ -369,7 +373,7 @@ public class Main
     }
   }
 
-  private static void removeLine(String inputToRemove) {
+  private static void removeLineFromHistory(String inputToRemove) {
     BufferedReader reader = null;
     BufferedWriter writer = null;
 
@@ -414,6 +418,60 @@ public class Main
     }
   }
 
+  private static List<ODocument> listIndexes(ODatabaseDocumentTx db, String indexName) {
+    String whereAppend = "";
+    if (indexName.length() > 0) {
+      whereAppend = " AND name like '" + indexName.replaceAll("\\*", "%") +"'";
+    }
+    String query = "SELECT indexDefinition.className as table, name from (select expand(indexes) from metadata:indexmanager) where indexDefinition.className is not null "+whereAppend+" order by table, name LIMIT -1";
+    //log(query);
+    List<ODocument> oDocs = db.command(new OCommandSQL(query))
+        .execute();
+    printListAsJson(oDocs, false);
+    return oDocs;
+  }
+
+  private static void rebuildIndexes(ODatabaseDocumentTx db, String indexName) {
+    log("Rebuilding the following indexes:");
+    List<ODocument> oDocs = listIndexes(db, indexName);
+    for (ODocument oDoc : oDocs) {
+      execQueries(db, "REBUILD INDEX " + oDoc.field("name"));
+    }
+  }
+
+  private static boolean isSpecialQueryAndProcess(ODatabaseDocumentTx db, String input) {
+    if (input.startsWith("--")) {
+      return true;
+    }
+    if (input.toLowerCase().startsWith("set pretty true")) { // TODO: not property implementing my own 'set'
+      jsonFormat = DEFAULT_JSON_FORMAT + ",prettyPrint";
+      return true;
+    }
+    if (input.toLowerCase().startsWith("set pretty false")) {
+      jsonFormat = DEFAULT_JSON_FORMAT;
+      return true;
+    }
+    if (input.toLowerCase().startsWith("list indexes")) {
+      Matcher matcher = indexNamePtn.matcher(input.toLowerCase());
+      String indexName = "";
+      if (matcher.find()) {
+        indexName = matcher.group(2);
+      }
+      listIndexes(db, indexName);
+      return true;
+    }
+    if (input.toLowerCase().startsWith("rebuild indexes")) { // NOT 'rebuild index *'
+      Matcher matcher = indexNamePtn.matcher(input);
+      String indexName = "";
+      if (matcher.find()) {
+        indexName = matcher.group(2);
+      }
+      rebuildIndexes(db, indexName);
+      return true;
+    }
+    return false;
+  }
+
   private static void readLineLoop(ODatabaseDocumentTx db, LineReader reader) {
     // TODO: prompt and queries from STDIN are always printed in STDOUT which is a bit annoying when redirects to a file.
     //System.err.print(PROMPT);
@@ -421,22 +479,7 @@ public class Main
     String input = reader.readLine(PROMPT);
     while (input != null && !input.startsWith("exit")) {
       try {
-        boolean executingQuery=true;
-
-        if(input.startsWith("--")) {
-          executingQuery=false;
-        }
-        // TODO: not property implementing my own 'set'
-        else if(input.toLowerCase().startsWith("set pretty true")) {
-          jsonFormat = DEFAULT_JSON_FORMAT+",prettyPrint";
-          executingQuery=false;
-        }
-        else if(input.toLowerCase().startsWith("set pretty false")) {
-          jsonFormat = DEFAULT_JSON_FORMAT;
-          executingQuery=false;
-        }
-
-        if (executingQuery && db != null) {
+        if (!isSpecialQueryAndProcess(db, input) && db != null) {
           execQueries(db, input);
         }
         input = reader.readLine(PROMPT);
@@ -617,8 +660,8 @@ public class Main
     // TODO: above should have more proper error check.
     String dbName = new File(path).getName();
 
+    ODatabaseDocumentTx db = null;
     try {
-      ODatabaseDocumentTx db = null;
       if (isServer != null && isServer) {
         startServer(path);
         System.err.println("# Service started for " + path);
@@ -648,6 +691,7 @@ public class Main
         db.open(dbUser, dbPwd);
       }
       catch (NullPointerException e) {
+        log("NullPointerException happened (and ignoring)");
         e.printStackTrace();
       }
 
@@ -657,11 +701,19 @@ public class Main
     catch (Exception e) {
       e.printStackTrace();
     }
-
-    if (server != null) {
-      server.shutdown();
+    finally {
+      // If not closing or proper shutdown, OrientDB rebuilds indexes at next connect...
+      if (db != null) {
+        db.close();
+      }
+      if (server != null) {
+        server.shutdown();
+      }
+      if (tmpDir != null) {
+        log("Clearing temp directory: " + tmpDir + " ...");
+        delR(tmpDir);
+      }
     }
-    delR(tmpDir);
-    System.err.println("");
+    log("Exiting.");
   }
 }
