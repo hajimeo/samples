@@ -79,7 +79,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 
 
 ## Global variables
-: ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,yum,rubygem,helm,conan,conda,cocoapods,bower,go,apt,r,p2,gitlfs,raw"}
+: ${_REPO_FORMATS:="maven,pypi,npm,nuget,docker,yum,rubygem,helm,conda,cocoapods,bower,go,apt,r,p2,gitlfs,raw"}
 : ${_ADMIN_USER:="admin"}
 : ${_ADMIN_PWD:="admin123"}
 : ${_DOMAIN:="standalone.localdomain"}
@@ -1406,7 +1406,7 @@ function f_repository_replication() {
     local __doc__="Setup Repository Replication v1 using 'admin' user"
     local _src_repo="${1:-"raw-hosted"}"
     local _tgt_repo="${2:-"raw-repl-hosted"}"
-    local _target_url="${3:-"http://localhost:8081/"}"
+    local _target_url="${3:-"http://$(hostname):8081/"}"
     local _src_blob="${4:-"${_BLOBTORE_NAME}"}"
     local _tgt_blob="${5:-"test"}"
     local _ds_name="${6:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
@@ -1430,6 +1430,7 @@ function f_repository_replication() {
     fi
 
     f_apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"replication","notes":"","enabled":true,"properties":{}}],"type":"rpc"}' && sleep 2
+    # TODO: may not be working
     if ! f_api "/service/rest/beta/replication/connection/" '{"id":"","name":"'${_src_repo}'_to_'${_tgt_repo}'","sourceRepositoryName":"'${_src_repo}'","includeExistingContent":false,"destinationInstanceUrl":"'${_target_url}'","destinationInstanceUsername":"'${_ADMIN_USER}'","destinationInstancePassword":"'${_ADMIN_PWD}'","destinationRepositoryName":"'${_tgt_repo}'","contentRegexes":[],"replicatedContent":"all"}' "POST"; then
         _log "ERROR" "Creating '${_src_repo}_to_${_tgt_repo}' failed."
     fi
@@ -1451,6 +1452,22 @@ sources:
         repositoryName: ${_tgt_repo}
         connectionName: ${_src_repo}_to_${_tgt_repo}
 EOF
+}
+
+function f_delete_all_assets() {
+    # TODO: continuationToken, not relying on the output from python -mjson.tool (number of spaces)
+    f_api "/service/rest/v1/search/assets?sort=repository" | grep '^            "id":' > /tmp/${FUNCNAME}_$$.out || return $?
+    local _line_num="$(cat /tmp/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
+    read -p "Are you sure to delete all (${_line_num}) assets?: " "_yes"
+    echo ""
+    [[ "${_yes}" =~ ^[yY] ]] || return
+     cat /tmp/${FUNCNAME}_$$.out | while read -r _l; do
+        if [[ "${_l}" =~ \"id\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+            echo "# ${BASH_REMATCH[1]}"
+            f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" || break
+        fi
+    done
+    echo "Deleted ${_line_num} assets"
 }
 
 #helm3 list -n sonatype
