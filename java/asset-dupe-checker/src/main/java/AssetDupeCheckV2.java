@@ -71,9 +71,7 @@ public class AssetDupeCheckV2
   private static final List<String> SUPPORTED_INDEX_NAMES =
       Arrays.asList("asset_bucket_component_name_idx", "component_bucket_group_name_version_idx");
 
-  private static final List<String> UPDATED_COMP_IDS = new ArrayList<String>();
-
-  ;
+  private static final List<String> UPDATED_COMP_IDS = new ArrayList<>();
 
   private static Long DUPE_COUNTER = 0L;
 
@@ -290,7 +288,7 @@ public class AssetDupeCheckV2
   }
 
   private static Set<String> findClustersByIds(int[] clusterIdsToIndex, ODatabase database) {
-    Set<String> clustersToIndex = new HashSet<String>();
+    Set<String> clustersToIndex = new HashSet<>();
     if (clusterIdsToIndex != null) {
       for (int clusterId : clusterIdsToIndex) {
         final String clusterNameToIndex = database.getClusterNameById(clusterId);
@@ -425,8 +423,8 @@ public class AssetDupeCheckV2
     log("Duplicate found " + maybeDupe + " indexKey: " + indexKey.toString() + " (docId:" + docId + ")");
     ORID deletingId = maybeDupe;
     ORID keepingId = docId;
-    boolean shouldUpdate = false;
-    String updQuery = "";
+    boolean shouldUpdate;
+    String updQuery;
     if (TABLE_NAME.equalsIgnoreCase("component")) {
       List<ODocument> maybeAssets = logAssets(db, maybeDupe);
       List<ODocument> docIdAssets = logAssets(db, docId);
