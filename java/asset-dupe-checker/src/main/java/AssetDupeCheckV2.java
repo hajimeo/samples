@@ -68,6 +68,8 @@ public class AssetDupeCheckV2
 
   private static String INDEX_NAME = "";
 
+  private static String INDEX_FIELDS = "";
+
   private static final List<String> SUPPORTED_INDEX_NAMES =
       Arrays.asList("asset_bucket_component_name_idx", "component_bucket_group_name_version_idx");
 
@@ -205,16 +207,16 @@ public class AssetDupeCheckV2
     index.rebuild();
   }
 
-  private static String guessIndexFields(ODatabaseDocumentTx db) {
+  private static void setIndexFields(ODatabaseDocumentTx db) {
     if (!SUPPORTED_INDEX_NAMES.contains(INDEX_NAME)) {
       log("[ERROR] " + INDEX_NAME + " is not supported (supported: " + SUPPORTED_INDEX_NAMES + ")");
-      return "";
+      return;
     }
     if (TABLE_NAME.isEmpty()) {
       String[] words = INDEX_NAME.split("_", 3);
       if (words.length == 0) {
         log("[ERROR] No table name specified for indexName:" + INDEX_NAME);
-        return "";
+        return;
       }
       if (db.getMetadata().getSchema().getClass(words[0]) != null) {
         TABLE_NAME = words[0];
@@ -224,24 +226,23 @@ public class AssetDupeCheckV2
       }
       else {
         log("[ERROR] No table name specified for indexName:" + INDEX_NAME);
-        return "";
+        return;
       }
       log("Using TABLE_NAME:" + TABLE_NAME);
     }
     String fieldsStr = INDEX_NAME.replaceFirst("^" + TABLE_NAME + "_", "");
     fieldsStr = fieldsStr.replaceFirst("_idx$", "");
-    return fieldsStr.replaceAll("_", ",");
+    INDEX_FIELDS = fieldsStr.replaceAll("_", ",");
   }
 
   private static OIndex<?> createIndex(ODatabaseDocumentTx db, boolean isDummy) {
     OIndex<?> index = null;
-    String fieldsStr = guessIndexFields(db);
-    if (fieldsStr.isEmpty()) {
+    if (INDEX_FIELDS.isEmpty()) {
       log("Index: " + INDEX_NAME + " does not exist and can't create.");
       return null;
     }
     try {
-      String[] fields = fieldsStr.split(",");
+      String[] fields = INDEX_FIELDS.split(",");
       String type = INDEX_TYPE.UNIQUE.name();
       OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass(TABLE_NAME);
       if (isDummy) {
@@ -263,7 +264,7 @@ public class AssetDupeCheckV2
         // Below is simpler but again, it does not save schema when exception
         //String query = "CREATE INDEX " + INDEX_NAME + " ON " + TABLE_NAME + " (" + fields + ") UNIQUE;";
         //Object oDocs = db.command(new OCommandSQL(query)).execute();
-        log("Created unique index:" + INDEX_NAME + " with " + fieldsStr + "");
+        log("Created unique index:" + INDEX_NAME + " with " + INDEX_FIELDS + "");
       }
     }
     catch (ORecordDuplicatedException eDupe) {
@@ -304,7 +305,6 @@ public class AssetDupeCheckV2
 
   private static Boolean checkIndex(ODatabaseDocumentTx db) {
     OIndex<?> index = db.getMetadata().getIndexManager().getIndex(INDEX_NAME);
-
     boolean isDummyIdxCreated = false;
     if (IS_REPAIRING) {
       if (index == null) {
@@ -327,16 +327,17 @@ public class AssetDupeCheckV2
     long count = 0L;
     long total = db.countClass(TABLE_NAME);
     try {
-      log("Count for " + TABLE_NAME + " is " + total);
+      log("*Estimate* count for " + TABLE_NAME + " = " + total);
       for (ODocument doc : db.browseClass(TABLE_NAME)) {
         count++;
         DUPE_COUNTER += checkIndexEntry(db, index, doc);
         if (count % 5000 == 0) {
           index.flush();
-          log("Checking " + count + "/" + total + " (duplicates:" + DUPE_COUNTER + ")");
+          log("Checking " + count + "/" + total + " (" + (int) ((count * 100) / total) + "%, duplicates:" +
+              DUPE_COUNTER + ")");
         }
       }
-      log("Checked " + count + "/" + total + " (duplicates:" + DUPE_COUNTER + ")");
+      log("Checked total:" + count + " and found duplicates:" + DUPE_COUNTER);
 
       if (index != null && isDummyIdxCreated) {
         IS_REBUILDING = false;  // no need to re-rebuild
@@ -485,9 +486,8 @@ public class AssetDupeCheckV2
       return false;
     }
 
-    String fieldStr = guessIndexFields(db);
-    String[] fields = fieldStr.split(",");
-    String testQuery = "EXPLAIN SELECT " + fieldStr + " from " + TABLE_NAME + " WHERE 1 = 1";
+    String[] fields = INDEX_FIELDS.split(",");
+    String testQuery = "EXPLAIN SELECT " + INDEX_FIELDS + " from " + TABLE_NAME + " WHERE 1 = 1";
     OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass(TABLE_NAME);
     List<OType> fTypes = tbl.extractFieldTypes(fields);
     for (int i = 0; i < fields.length; i++) {
@@ -515,7 +515,7 @@ public class AssetDupeCheckV2
     debug("repair: " + IS_REPAIRING);
     IS_REBUILDING = Boolean.getBoolean("rebuildIndex");
     debug("rebuildIndex: " + IS_REBUILDING);
-    TABLE_NAME = System.getProperty("tableName", "asset");
+    TABLE_NAME = System.getProperty("tableName", "");
     debug("tableName: " + TABLE_NAME);
     INDEX_NAME = System.getProperty("indexName", "asset_bucket_component_name_idx");
     debug("indexName: " + INDEX_NAME);
@@ -568,6 +568,7 @@ public class AssetDupeCheckV2
       try {
         db.open("admin", "admin");
         log("Connected to " + connStr);
+        setIndexFields(db);
         Boolean result = checkIndex(db);
         log("Checked/repaired indexName: " + INDEX_NAME + " from tableName: " + TABLE_NAME);
         if (IS_REBUILDING) {
