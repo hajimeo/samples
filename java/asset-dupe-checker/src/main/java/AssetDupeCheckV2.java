@@ -27,6 +27,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -38,7 +39,6 @@ import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
-import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.index.ODefaultIndexFactory;
 import com.orientechnologies.orient.core.index.OIndex;
@@ -64,20 +64,24 @@ public class AssetDupeCheckV2
 
   private static Path TMP_DIR = null;
 
-  private static String TABLE_NAME;
+  private static String TABLE_NAME = "";
 
-  private static String INDEX_NAME;
+  private static String INDEX_NAME = "";
 
   private static final List<String> SUPPORTED_INDEX_NAMES =
       Arrays.asList("asset_bucket_component_name_idx", "component_bucket_group_name_version_idx");
 
+  private static final List<String> UPDATED_COMP_IDS = new ArrayList<String>();
+
+  ;
+
   private static Long DUPE_COUNTER = 0L;
 
-  private static boolean IS_REPAIRING;
+  private static boolean IS_REPAIRING = false;
 
-  private static boolean IS_REBUILDING;
+  private static boolean IS_REBUILDING = false;
 
-  private static boolean IS_DEBUG;
+  private static boolean IS_DEBUG = false;
 
   private AssetDupeCheckV2() { }
 
@@ -203,20 +207,38 @@ public class AssetDupeCheckV2
     index.rebuild();
   }
 
-  private static String guessIndexFields(String indexName, String tableName) {
-    if (!SUPPORTED_INDEX_NAMES.contains(indexName)) {
-      log(indexName + " is not supported (supported: " + SUPPORTED_INDEX_NAMES + ")");
+  private static String guessIndexFields(ODatabaseDocumentTx db) {
+    if (!SUPPORTED_INDEX_NAMES.contains(INDEX_NAME)) {
+      log("[ERROR] " + INDEX_NAME + " is not supported (supported: " + SUPPORTED_INDEX_NAMES + ")");
       return "";
     }
-    indexName = indexName.replaceFirst("^" + tableName + "_", "");
-    indexName = indexName.replaceFirst("_idx$", "");
-    return indexName.replaceAll("_", ",");
+    if (TABLE_NAME.isEmpty()) {
+      String[] words = INDEX_NAME.split("_", 3);
+      if (words.length == 0) {
+        log("[ERROR] No table name specified for indexName:" + INDEX_NAME);
+        return "";
+      }
+      if (db.getMetadata().getSchema().getClass(words[0]) != null) {
+        TABLE_NAME = words[0];
+      }
+      else if (words.length > 1 && db.getMetadata().getSchema().getClass(words[0] + "_" + words[1]) != null) {
+        TABLE_NAME = words[0] + "_" + words[1];
+      }
+      else {
+        log("[ERROR] No table name specified for indexName:" + INDEX_NAME);
+        return "";
+      }
+      log("Using TABLE_NAME:" + TABLE_NAME);
+    }
+    String fieldsStr = INDEX_NAME.replaceFirst("^" + TABLE_NAME + "_", "");
+    fieldsStr = fieldsStr.replaceFirst("_idx$", "");
+    return fieldsStr.replaceAll("_", ",");
   }
 
-  private static OIndex<?> createIndex(ODatabaseDocumentTx db, boolean isDummey) {
+  private static OIndex<?> createIndex(ODatabaseDocumentTx db, boolean isDummy) {
     OIndex<?> index = null;
-    String fieldsStr = guessIndexFields(INDEX_NAME, TABLE_NAME);
-    if (fieldsStr.length() == 0) {
+    String fieldsStr = guessIndexFields(db);
+    if (fieldsStr.isEmpty()) {
       log("Index: " + INDEX_NAME + " does not exist and can't create.");
       return null;
     }
@@ -224,7 +246,7 @@ public class AssetDupeCheckV2
       String[] fields = fieldsStr.split(",");
       String type = INDEX_TYPE.UNIQUE.name();
       OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass(TABLE_NAME);
-      if (isDummey) {
+      if (isDummy) {
         // OrientDB hack for setting rebuild = false in index.create()
         OIndexDefinition indexDefinition =
             OIndexDefinitionFactory.createIndexDefinition(tbl, Arrays.asList(fields), tbl.extractFieldTypes(fields),
@@ -384,28 +406,62 @@ public class AssetDupeCheckV2
     return dupeCounter;
   }
 
-  private static int logAssets(ODatabaseDocumentTx db, ORID compId) {
+  private static List<ODocument> logAssets(ODatabaseDocumentTx db, ORID compId) {
     String query = "SELECT @rid as rid, bucket, component, name FROM asset WHERE component = " + compId.toString();
     List<ODocument> oDocs = db.command(new OCommandSQL(query)).execute();
-    for(ODocument oDoc : oDocs) {
+    for (ODocument oDoc : oDocs) {
       log(oDoc.toJSON("rid,attribSameRow,alwaysFetchEmbedded,fetchPlan:*:0"));
     }
-    return oDocs.size();
+    return oDocs;
   }
 
-  private static void actionsForDupe(ODatabaseDocumentTx db, ORID maybeDupe, ORID docId, OIndex<?> index, Object indexKey) {
+  private static void actionsForDupe(
+      ODatabaseDocumentTx db,
+      ORID maybeDupe,
+      ORID docId,
+      OIndex<?> index,
+      Object indexKey)
+  {
     log("Duplicate found " + maybeDupe + " indexKey: " + indexKey.toString() + " (docId:" + docId + ")");
     ORID deletingId = maybeDupe;
+    ORID keepingId = docId;
+    boolean shouldUpdate = false;
+    String updQuery = "";
     if (TABLE_NAME.equalsIgnoreCase("component")) {
-      int maybeNum = logAssets(db, maybeDupe);
-      int docIdNum = logAssets(db, docId);
-      if (docIdNum < maybeNum) {
+      List<ODocument> maybeAssets = logAssets(db, maybeDupe);
+      List<ODocument> docIdAssets = logAssets(db, docId);
+      if (docIdAssets.size() < maybeAssets.size()) {
         deletingId = docId;
+        keepingId = maybeDupe;
+        shouldUpdate = (docIdAssets.size() > 0);
+      }
+      else {
+        shouldUpdate = (maybeAssets.size() > 0);
+      }
+      if (shouldUpdate && UPDATED_COMP_IDS.contains(deletingId.toString())) {
+        updQuery = "UPDATE asset SET component = " + keepingId + " WHERE component = " + deletingId + ";";
+        out(updQuery);
+        UPDATED_COMP_IDS.add(deletingId.toString());
+
+        if (IS_REPAIRING) {
+          try {
+            Object updNum = db.command(new OCommandSQL(updQuery)).execute();
+            if (updNum instanceof Integer || updNum instanceof Long) {
+              log("[WARN] Updated " + updNum + " assets which component Id = " + deletingId);
+            }
+            else {
+              log("[ERROR] Updating assets which component Id = " + deletingId + " failed: " + updNum.toString());
+            }
+          }
+          catch (Exception updEx) {
+            log("[ERROR] Query: \"" + updQuery + "\" failed with Exception: " + updEx.getMessage());
+          }
+        }
       }
     }
     out("TRUNCATE RECORD " + deletingId + ";");
+
     if (IS_REPAIRING) {
-      // TODO: When component, the decision of which one to delete may not be the best
       db.delete(deletingId);
       log("[WARN] Deleted duplicate: " + deletingId);
     }
@@ -431,7 +487,7 @@ public class AssetDupeCheckV2
       return false;
     }
 
-    String fieldStr = guessIndexFields(INDEX_NAME, TABLE_NAME);
+    String fieldStr = guessIndexFields(db);
     String[] fields = fieldStr.split(",");
     String testQuery = "EXPLAIN SELECT " + fieldStr + " from " + TABLE_NAME + " WHERE 1 = 1";
     OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass(TABLE_NAME);
