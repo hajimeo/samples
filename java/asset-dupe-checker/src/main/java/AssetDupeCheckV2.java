@@ -423,12 +423,12 @@ public class AssetDupeCheckV2
   {
     log("Duplicate found " + maybeDupe + " indexKey: " + indexKey.toString() + " (docId:" + docId + ")");
     ORID deletingId = maybeDupe;
-    ORID keepingId = docId;
+    ORID keepingId = docId; // This means default is keeping the older one for UPDATE.
     boolean shouldUpdate;
     String updQuery;
     if (TABLE_NAME.equalsIgnoreCase("component")) {
-      List<ODocument> maybeAssets = logAssets(db, maybeDupe);
       List<ODocument> docIdAssets = logAssets(db, docId);
+      List<ODocument> maybeAssets = logAssets(db, maybeDupe);
       if (docIdAssets.size() < maybeAssets.size()) {
         deletingId = docId;
         keepingId = maybeDupe;
@@ -437,7 +437,7 @@ public class AssetDupeCheckV2
       else {
         shouldUpdate = (maybeAssets.size() > 0);
       }
-      if (shouldUpdate && UPDATED_COMP_IDS.contains(deletingId.toString())) {
+      if (shouldUpdate && !UPDATED_COMP_IDS.contains(deletingId.toString())) {
         updQuery = "UPDATE asset SET component = " + keepingId + " WHERE component = " + deletingId + ";";
         out(updQuery);
         UPDATED_COMP_IDS.add(deletingId.toString());
