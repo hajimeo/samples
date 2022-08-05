@@ -239,7 +239,7 @@ function f_setup_nuget() {
     f_get_asset "${_prefix}-v3-proxy" "/v3/content/test/2.0.1.1/test.2.0.1.1.nupkg" "${_TMP%/}/test.2.0.1.1.nupkg"  # this one may fail on some older Nexus version
 
     if ! _is_repo_available "${_prefix}-ps-proxy"; then # Need '"nugetVersion":"V2",'?
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://www.powershellgallery.com/api/v2","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-ps-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}'
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"nugetVersion":"V2","queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://www.powershellgallery.com/api/v2","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-ps-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}'
     fi
     # TODO: should add "https://www.myget.org/F/workflow" as well?
 
@@ -1452,6 +1452,20 @@ sources:
         repositoryName: ${_tgt_repo}
         connectionName: ${_src_repo}_to_${_tgt_repo}
 EOF
+}
+
+function f_register_script() {
+    local _script_file="$1"
+    local _script_name="$2"
+    [ -s "${_script_file%/}" ] || return 1
+    [ -z "${_script_name}" ] && _script_name="$(basename ${_script_file} .groovy)"
+    python -c "import sys,json;print(json.dumps(open('${_script_file}').read()))" > /tmp/${_script_name}_$$.out || return $?
+    echo "{\"name\":\"${_script_name}\",\"content\":$(cat /tmp/${_script_name}_$$.out),\"type\":\"groovy\"}" > /tmp/${_script_name}_$$.json
+    # Delete if exists
+    f_api "/service/rest/v1/script/${_script_name}" "" "DELETE"
+    f_api "/service/rest/v1/script" "$(cat /tmp/${_script_name}_$$.json)" || return $?
+    echo "To run:
+    curl -u admin -X POST -H 'Content-Type: text/plain' '${_NEXUS_URL%/}/service/rest/v1/script/${_script_name}/run' -d'{arg:value}'"
 }
 
 function f_delete_all_assets() {
