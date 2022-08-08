@@ -21,6 +21,11 @@ function f_blobs_csv() {
         eval "${_find} -printf '\"%p\",\"%t\",%s\n'"
     fi
 }
+
+# For Reconcile (TODO: is using `????????-????-????-????-????????????.properties` faster?)
+#echo -n > ./'${_output_date}'; # Only first time, otherwise optional in case you might want to append
+#touch /tmp/checker;            # Only first time, otherwise optional in case of continuing 
+find ${_content_dir%/}/vol-* -type f -name '*.properties' -mtime -${_days} -print0 -not -newer /tmp/checker | xargs -P${_P} -I{} -0 bash -c 'grep -q "^deleted=true" {} && sed -i -e "s/^deleted=true//" {} && echo "'${_output_date}' 00:00:01,$(basename {} .properties)" >> ./'${_output_date}';'
 ```
 
 ## DOWNLOAD and INSTALL:
