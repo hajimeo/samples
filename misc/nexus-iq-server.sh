@@ -40,6 +40,7 @@ else
     JAVA_OPTIONS="${JAVA_OPTIONS} -Xlog:gc*:file=${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log:time,uptime:filecount=10,filesize=100m,classhisto*=trace"
 fi
 
+chmod a+w /tmp/nexus_iq_server.out /tmp/nexus_iq_server.err &>/dev/null
 do_start()
 {
     cd ${NEXUS_IQ_SONATYPEWORK}
