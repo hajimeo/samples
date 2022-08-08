@@ -18,6 +18,8 @@ To show more strings in a column:
     pd.options.display.max_colwidth = 1000  (default is 50. -1 or None to disable = show everything)
 To show the first 3 rows and the last 3 rows:
     df.iloc[[0,1,2,-3,-2,-1]]
+Get first row of 'component' column:
+     comp = df.iloc[0]['component']
 Convert one row to dict:
     row = df[:1].to_dict(orient='records')[0]
 Styling:
@@ -49,6 +51,8 @@ Get request started time by concatenating today and the time string from 'date' 
     TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time
   or NOTE: (4*60*60) is for the timezone offst -0400
     TIME(UDF_TIMESTAMP(date) - CAST(elapsedTime/1000 AS INT) - (4*60*60), 'unixepoch') as started_time
+  or use UDF:
+    udf_started_time(date, elapsedTime) as started (but YYYY-MM-DD hh:mm:ss)
 Kind of joining two tables with UDF_REGEX:
     AND UDF_REGEX('.+ /repository/([^/]+)', t_request.requestURL, 1) IN (SELECT repository_name FROM t_db_repo where t_db_repo.`attributes.storage.blobStoreName` = 'default')
 """
@@ -559,6 +563,27 @@ def json2dict(file_path, sort=True):
     return rtn
 
 
+def dict2df(dict, tablename=None, conn=None, chunksize=1000, if_exists='replace'):
+    """
+    Convert dict/json object into DataFrame and SQL table
+    :param dict:      Dict
+    :param tablename: String - If not empty, a SQL table is also created and populated
+    :param conn:      Connection - Same as above. If no tablename, automatically decided
+    :param chunksize: Int
+    :param if_exists: Boolean - Decides to replace or append
+    :return:          Dataframe object
+    >>> pass
+    """
+    df = pd.json_normalize(dict).fillna("")
+    if bool(tablename) and conn is None:
+        conn = connect()
+    if bool(conn):
+        if df2table(df=df, tablename=tablename, conn=conn, chunksize=chunksize, if_exists=if_exists) is True:
+            _info("Created table: %s " % (tablename))
+            _autocomp_inject(tablename=tablename)
+    return df
+
+
 def xml2df(file_path, row_element_name, tbl_element_name=None, conn=None, tablename=None, chunksize=1000,
            if_exists='replace'):
     """
@@ -725,6 +750,19 @@ def udf_regex(regex, item, rtn_idx=0):
     if bool(matches) is False:
         return None
     return matches.group(rtn_idx)
+
+
+def udf_count_char(char, sentence):
+    """
+    Count the occurence of the char from sentence (as not easy with SQLite)
+    eg: SELECT UDF_COUNT_CHAR(",", "Test,test2,test3") as num_comma, ...
+    :param char:     String - Searching character(s)
+    :param sentence: String - some words as heystack
+    :return:         Integer
+    >>> udf_count_char(",", "[14609635, 15266629, 14938094, 1905404, 2233813]")
+    '4'
+    """
+    return sentence.count(char)
 
 
 def udf_str2sqldt(date_time):
@@ -902,6 +940,7 @@ def _register_udfs(conn):
     if _LOAD_UDFS:
         # UDF_REGEX(regex, column, integer)
         conn.create_function("UDF_REGEX", 3, udf_regex)
+        conn.create_function("UDF_COUNT_CHAR", 2, udf_count_char)
         conn.create_function("UDF_STR2SQLDT", 1, udf_str2sqldt)
         conn.create_function("UDF_STRFTIME", 2, udf_strftime)
         conn.create_function("UDF_TIMESTAMP", 1, udf_timestamp)
@@ -2092,7 +2131,8 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
         if bool(conn) is False:
             tablename = None
         names_dict[new_name] = f
-        dfs[new_name] = csv2df(filename=f, conn=conn, tablename=tablename, chunksize=chunksize, if_exists=if_exists, max_file_size=max_file_size)
+        dfs[new_name] = csv2df(filename=f, conn=conn, tablename=tablename, chunksize=chunksize, if_exists=if_exists,
+                               max_file_size=max_file_size)
     if bool(conn):
         del (names_dict)
         del (dfs)
@@ -2100,7 +2140,8 @@ def load_csvs(src="./", conn=None, include_ptn='*.csv', exclude_ptn='', chunksiz
     return (names_dict, dfs)
 
 
-def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exists='replace', max_file_size=(1024 * 1024 * 400)):
+def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exists='replace',
+           max_file_size=(1024 * 1024 * 400)):
     '''
     Load a CSV file into a DataFrame *or* database table if conn is given
     If conn is given, import into a DB table
