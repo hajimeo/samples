@@ -323,8 +323,12 @@ function e_app_logs() {
         elif [[ "${_log_path}" =~ (clm-server)[^*]*log[^*]* ]]; then
             _start_log_line=".* Initializing Nexus IQ Server .*"   # IQ
         fi
-        if [ -n "${_start_log_line}" ] &&  _size_check "${_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
-            f_splitByRegex ${_log_path} "${_start_log_line}" "_split_logs"
+        if [ -n "${_start_log_line}" ]; then
+            if _size_check "${_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 5))"; then
+                f_splitByRegex ${_log_path} "${_start_log_line}" "_split_logs"
+            else
+                _LOG "INFO" "Not doing f_splitByRegex for '${_log_path}' as the size is larger than $((${_LOG_THRESHOLD_BYTES} * 5))"
+            fi
         fi
     fi
     local _since_last_restart="$(ls -1r _split_logs/* 2>/dev/null | head -n1)"
@@ -414,6 +418,7 @@ function t_system() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/extracted_configs.md" || return
     _test_template "$(_rg 'AvailableProcessors: *[1-3]$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "AvailableProcessors might be too low"
     _test_template "$(_rg 'TotalPhysicalMemorySize: *(.+ MB|[1-7]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "TotalPhysicalMemorySize might be too low"
+    # TODO: compare TotalPhysicalMemorySize and CommittedVirtualMemorySize
     _test_template "$(_rg 'MaxFileDescriptorCount: *\d{4}$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
     _test_template "$(_rg 'SystemLoadAverage: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
     _test_template "$(_rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low"
@@ -452,7 +457,7 @@ function t_mounts() {
     fi
 }
 function t_oome() {
-    _test_template "$(_rg -c 'OutOfMemoryError' -g "${_LOG_GLOB}")" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
+    _test_template "$(_rg -c 'OutOfMemoryError' -g "${_LOG_GLOB}" -g "!jvm.log")" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
 }
 function t_errors() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/f_topErrors.out" || return
