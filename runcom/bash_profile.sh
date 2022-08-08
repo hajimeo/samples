@@ -14,6 +14,7 @@ export HISTTIMEFORMAT="%Y-%m-%d %T "
 if [ -d "$HOME/.cdpath" ]; then
     export CDPATH=".:$HOME/.cdpath:/"
     alias goto="cd -P"
+    alias gt="cd -P"
     #bookmark $HOME/Documents/cases
     function bookmark() {
         ln -v -s "$(realpath "${1%/}")" "$HOME/.cdpath/$(basename "${1%/}")"
@@ -61,13 +62,14 @@ if [ "$(uname)" = "Darwin" ]; then
     #    # Mac's brew installs pip in this directory and may not in the path
     #    export PATH=$(ls -d /usr/local/Cellar/python/`python3 -V | cut -d " " -f 2`*/Frameworks/Python.framework/Versions/3.7/bin):$PATH
     #fi
+    # NOTE: This would no longer needed. Remove later
     # Use Brew one first (Using 3.7 for jupyter related dependency)
-    ___python37bin="$(ls -1d /usr/local/Cellar/python@3.7/3.7*/bin | tail -n1)"
-    if [ -n "${___python37bin}" ]; then
-        [[ ":$PATH:" != *":${___python37bin%/}:"* ]] && export PATH=${___python37bin%/}:${PATH#:}
-    elif [ -d $HOME/Library/Python/3.7/bin ]; then
-        [[ ":$PATH:" != *":$HOME/Library/Python/3.7/bin:"* ]] && export PATH=$HOME/Library/Python/3.7/bin:${PATH#:}
-    fi
+    #___python37bin="$(ls -1d /usr/local/Cellar/python@3.7/3.7*/bin | tail -n1)"
+    #if [ -n "${___python37bin}" ]; then
+    #    [[ ":$PATH:" != *":${___python37bin%/}:"* ]] && export PATH=${___python37bin%/}:${PATH#:}
+    #elif [ -d $HOME/Library/Python/3.7/bin ]; then
+    #    [[ ":$PATH:" != *":$HOME/Library/Python/3.7/bin:"* ]] && export PATH=$HOME/Library/Python/3.7/bin:${PATH#:}
+    #fi
     if [ -d /usr/local/sbin ]; then
         # Intentionally adding at the beginning
         [[ ":$PATH:" != *":/usr/local/sbin:"* ]] && export PATH=${PATH%:}:/usr/local/sbin
