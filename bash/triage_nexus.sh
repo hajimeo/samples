@@ -230,7 +230,7 @@ function f_gen_replication_log_from_soft_deleted() {
         echo "./${_output_date} exists."
         return 1
     fi
-    find ${_content_dir} -type f -name '????????-????-????-????-????????????.properties' -mtime -${_days} -print0 | xargs -P${_P} -I{} -0 bash -c 'grep -q "^deleted=true" {} && sed -i -e s/^deleted=true// {} && echo "'${_output_date}' 00:00:01,$(basename {} .properties)" >> ./'${_output_date}';'
+    find ${_content_dir} -type f -name '????????-????-????-????-????????????.properties' -mtime -${_days} -print0 | xargs -P${_P} -I{} -0 bash -c 'grep -q "^deleted=true" {} && sed -i -e "s/^deleted=true//" {} && echo "'${_output_date}' 00:00:01,$(basename {} .properties)" >> ./'${_output_date}';'
     ls -l ./${_output_date}
 }
 
