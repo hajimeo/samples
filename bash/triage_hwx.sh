@@ -93,6 +93,7 @@ function f_check_system() {
     python -c 'import socket as s;print s.gethostname();print s.gethostbyname(s.gethostname());print s.getfqdn()' &> ${_work_dir%/}/python_getfqdn.out
 
     # Disk
+    # NOTE: with java https://confluence.atlassian.com/kb/test-disk-access-speed-for-a-java-application-818577561.html
     mount &> ${_work_dir%/}/mount_df.out    # findmnt -T /path for specific location's mount options
     df -Th &> ${_work_dir%/}/mount_df.out
     grep -wE "(nfs|nfs4)" /proc/mounts > mounts_nfs.out # to check NFS version
