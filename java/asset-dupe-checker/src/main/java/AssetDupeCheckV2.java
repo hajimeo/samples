@@ -217,25 +217,28 @@ public class AssetDupeCheckV2
   }
 
   private static void exportDb(ODatabaseDocumentTx db, String exportTo) throws IOException {
+    if ((new File(exportTo+".gz")).exists()) {
+      log("[WARN] " + exportTo+".gz exists. Re-using...");
+      return;
+    }
     OCommandOutputListener listener = System.out::print;
     ODatabaseExport exp = new ODatabaseExport(db, exportTo, listener);
     exp.exportDatabase();
     exp.close();
+    System.err.println("");
   }
 
-  private static void importDb(ODatabaseDocumentTx db, String importingFile) throws IOException {
+  private static void importDb(ODatabaseDocumentTx db, String importName) throws IOException {
+    if (!(new File(importName)).exists()) {
+      importName = importName + ".gz";
+    }
     OCommandOutputListener listener = System.out::print;
-    if (!(new File(importingFile)).exists()) {
-      importingFile = importingFile + ".json.gz";
-    }
-    if (!(new File(importingFile)).exists()) {
-      importingFile = importingFile + ".gz";
-    }
-    // if still doesn't exist, throw IOException
-    ODatabaseImport imp = new ODatabaseImport(db, importingFile, listener);
+    // This automatically appends .gz. If fails, just throw IOException
+    ODatabaseImport imp = new ODatabaseImport(db, importName, listener);
     imp.setPreserveClusterIDs(true);
     imp.importDatabase();
     imp.close();
+    System.err.println("");
   }
 
   private static void exportImportDb(ODatabaseDocumentTx db) {
@@ -246,6 +249,7 @@ public class AssetDupeCheckV2
     }
     try {
       exportDb(db, exportTo);
+      // TODO: it seems to work without dropping, but should I drop?
       importDb(db, exportTo);
     } catch (IOException ioe) {
       log("[ERROR] " + ioe.getMessage());
