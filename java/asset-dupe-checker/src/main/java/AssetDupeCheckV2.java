@@ -217,8 +217,8 @@ public class AssetDupeCheckV2
   }
 
   private static void exportDb(ODatabaseDocumentTx db, String exportTo) throws IOException {
-    if ((new File(exportTo+".gz")).exists()) {
-      log("[WARN] " + exportTo+".gz exists. Re-using...");
+    if ((new File(exportTo + ".gz")).exists()) {
+      log("[WARN] " + exportTo + ".gz exists. Re-using...");
       return;
     }
     OCommandOutputListener listener = System.out::print;
@@ -242,6 +242,17 @@ public class AssetDupeCheckV2
   }
 
   private static void exportImportDb(ODatabaseDocumentTx db) {
+    try {
+      OClassImpl tbl = (OClassImpl) db.getMetadata().getSchema().getClass("browse_node");
+      if (tbl != null) {
+        log("[WARN] Truncating browse_node for export/import");
+        tbl.truncate();
+      }
+    }
+    catch (IOException ioe) {
+      log("[WARN] Ignoring TRUNCATE browse_node exception: " + ioe.getMessage());
+    }
+
     String exportName = "component-export";
     String exportTo = "." + File.separatorChar + exportName;
     if (!EXTRACT_DIR.isEmpty()) {
@@ -251,7 +262,8 @@ public class AssetDupeCheckV2
       exportDb(db, exportTo);
       // TODO: it seems to work without dropping, but should I drop?
       importDb(db, exportTo);
-    } catch (IOException ioe) {
+    }
+    catch (IOException ioe) {
       log("[ERROR] " + ioe.getMessage());
     }
   }
@@ -560,12 +572,17 @@ public class AssetDupeCheckV2
 
   private static void setGlobals() {
     IS_DEBUG = Boolean.getBoolean("debug");
-    IS_REPAIRING = Boolean.getBoolean("repair");
-    debug("repair: " + IS_REPAIRING);
     IS_REBUILDING = Boolean.getBoolean("rebuildIndex");
     debug("rebuildIndex: " + IS_REBUILDING);
     IS_REIMPORTING = Boolean.getBoolean("exportImport");
     debug("exportImport: " + IS_REIMPORTING);
+    if (IS_REIMPORTING) {
+      IS_REPAIRING = true;
+    }
+    else {
+      IS_REPAIRING = Boolean.getBoolean("repair");
+    }
+    debug("repair: " + IS_REPAIRING);
     IS_NO_INDEX_CHECK = Boolean.getBoolean("noCheckIndex");
     debug("noCheckIndex: " + IS_NO_INDEX_CHECK);
     TABLE_NAME = System.getProperty("tableName", "");
