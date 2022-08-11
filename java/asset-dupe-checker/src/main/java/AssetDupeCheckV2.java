@@ -35,10 +35,13 @@ import java.util.List;
 import java.util.Set;
 
 import com.orientechnologies.orient.core.Orient;
+import com.orientechnologies.orient.core.command.OCommandOutputListener;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.conflict.OVersionRecordConflictStrategy;
 import com.orientechnologies.orient.core.db.ODatabase;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentTx;
+import com.orientechnologies.orient.core.db.tool.ODatabaseExport;
+import com.orientechnologies.orient.core.db.tool.ODatabaseImport;
 import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.index.ODefaultIndexFactory;
 import com.orientechnologies.orient.core.index.OIndex;
@@ -81,6 +84,10 @@ public class AssetDupeCheckV2
 
   private static boolean IS_REBUILDING = false;
 
+  private static boolean IS_REIMPORTING = false;
+
+  private static boolean IS_NO_INDEX_CHECK = false;
+
   private static boolean IS_DEBUG = false;
 
   private AssetDupeCheckV2() { }
@@ -95,6 +102,8 @@ public class AssetDupeCheckV2
     System.out.println("  -Ddebug=true                        # Verbose outputs");
     System.out.println("Advanced properties (use those carefully):");
     System.out.println("  -DrebuildIndex=true                 # Rebuild index (eg:asset_bucket_component_name_idx)");
+    System.out.println("  -DexportImport=true                 # DB Export to current (or extractDir), then import");
+    System.out.println("  -DnoCheckIndex=true                 # Does not check index...");
     System.out.println("  -DindexName=component_bucket_group_name_version_idx");
     System.out.println("  -DtableName=component               # NOTE: be careful of repairing component");
   }
@@ -205,6 +214,42 @@ public class AssetDupeCheckV2
   private static void rebuildIndex(ODatabaseDocumentTx db, String indexName) {
     OIndex<?> index = db.getMetadata().getIndexManager().getIndex(indexName);
     index.rebuild();
+  }
+
+  private static void exportDb(ODatabaseDocumentTx db, String exportTo) throws IOException {
+    OCommandOutputListener listener = System.out::print;
+    ODatabaseExport exp = new ODatabaseExport(db, exportTo, listener);
+    exp.exportDatabase();
+    exp.close();
+  }
+
+  private static void importDb(ODatabaseDocumentTx db, String importingFile) throws IOException {
+    OCommandOutputListener listener = System.out::print;
+    if (!(new File(importingFile)).exists()) {
+      importingFile = importingFile + ".json.gz";
+    }
+    if (!(new File(importingFile)).exists()) {
+      importingFile = importingFile + ".gz";
+    }
+    // if still doesn't exist, throw IOException
+    ODatabaseImport imp = new ODatabaseImport(db, importingFile, listener);
+    imp.setPreserveClusterIDs(true);
+    imp.importDatabase();
+    imp.close();
+  }
+
+  private static void exportImportDb(ODatabaseDocumentTx db) {
+    String exportName = "component-export";
+    String exportTo = "." + File.separatorChar + exportName;
+    if (!EXTRACT_DIR.isEmpty()) {
+      exportTo = EXTRACT_DIR + File.separatorChar + exportName;
+    }
+    try {
+      exportDb(db, exportTo);
+      importDb(db, exportTo);
+    } catch (IOException ioe) {
+      log("[ERROR] " + ioe.getMessage());
+    }
   }
 
   private static void setIndexFields(ODatabaseDocumentTx db) {
@@ -337,7 +382,7 @@ public class AssetDupeCheckV2
               DUPE_COUNTER + ")");
         }
       }
-      log("Checked total:" + count + " and found duplicates:" + DUPE_COUNTER);
+      log("Checked indexName:" + INDEX_NAME + " - total:" + count + " duplicates:" + DUPE_COUNTER);
 
       if (index != null && isDummyIdxCreated) {
         IS_REBUILDING = false;  // no need to re-rebuild
@@ -515,6 +560,10 @@ public class AssetDupeCheckV2
     debug("repair: " + IS_REPAIRING);
     IS_REBUILDING = Boolean.getBoolean("rebuildIndex");
     debug("rebuildIndex: " + IS_REBUILDING);
+    IS_REIMPORTING = Boolean.getBoolean("exportImport");
+    debug("exportImport: " + IS_REIMPORTING);
+    IS_NO_INDEX_CHECK = Boolean.getBoolean("noCheckIndex");
+    debug("noCheckIndex: " + IS_NO_INDEX_CHECK);
     TABLE_NAME = System.getProperty("tableName", "");
     debug("tableName: " + TABLE_NAME);
     INDEX_NAME = System.getProperty("indexName", "asset_bucket_component_name_idx");
@@ -569,8 +618,10 @@ public class AssetDupeCheckV2
         db.open("admin", "admin");
         log("Connected to " + connStr);
         setIndexFields(db);
-        Boolean result = checkIndex(db);
-        log("Checked/repaired indexName: " + INDEX_NAME + " from tableName: " + TABLE_NAME);
+        boolean result = true;
+        if (!IS_NO_INDEX_CHECK) {
+          result = checkIndex(db);
+        }
         if (IS_REBUILDING) {
           if (!result) {
             log("Index rebuild is requested but not rebuilding as checkIndex returned false (dupes or missing index)");
@@ -580,6 +631,10 @@ public class AssetDupeCheckV2
             log("Rebuilt indexName: " + INDEX_NAME);
           }
         }
+        if (IS_REIMPORTING) {
+          exportImportDb(db);
+        }
+
         log("Validating indexName: " + INDEX_NAME);
         if (!validateIndex(db)) {
           log("[ERROR] Validating indexName: " + INDEX_NAME + " failed");
