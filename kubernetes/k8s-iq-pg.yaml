@@ -136,6 +136,11 @@ spec:
           ports:
             - containerPort: 8070
             - containerPort: 8071
+          lifecycle:
+            postStart:
+              exec:
+                # For Retention policy administrative task
+                command: ['/bin/sh', '-c', 'find /sonatype-work/trash/* -mtime +7 -print -delete']
           livenessProbe:
             httpGet:
               #host: ${_METALLB_IP}
