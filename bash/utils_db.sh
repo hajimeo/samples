@@ -179,7 +179,10 @@ function _postgresql_create_role_and_db() {
             echo "No PGPASSWORD set for ${_dbadmin}"; return 1
         fi
         _psql_as_admin="psql -U ${_dbadmin} -h ${_dbhost} -p ${_dbport}"
+    elif [ "`uname`" = "Darwin" ]; then
+        _psql_as_admin="psql"
     fi
+
     # NOTE: need to be superuser and 'usename' is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
     ${_psql_as_admin} -d template1 -tA -c "SELECT usename FROM pg_shadow" | grep -q "^${_dbusr}$" || ${_psql_as_admin} -d template1 -c "CREATE ROLE ${_dbusr} WITH LOGIN PASSWORD '${_dbpwd}';"    # not SUPERUSER
     if [ "${_dbadmin}" != "posrgres" ] && [ "${_dbadmin}" != "$USER" ]; then
@@ -202,7 +205,7 @@ function _postgresql_create_role_and_db() {
     # test
     local _host_name="$(hostname -f)"
     local _cmd="psql -U ${_dbusr} -h ${_dbhost:-"${_host_name}"} -d ${_dbname} -c \"\l ${_dbname}\""
-    _log "INFO" "Testing connection with \"${_cmd}\" ..."
+    _log "INFO" "Testing the connection with \"${_cmd}\" ..."
     eval "PGPASSWORD=\"${_dbpwd}\" ${_cmd}" || return $?
 }
 
@@ -265,6 +268,7 @@ function _psql_restore() {
     local _dry_run="${9:-"${_DRY_RUN}"}"
     # NOTE: pg_restore has useful options: --jobs=2 --no-owner --verbose #--clean --data-only, but does not support SQL file
     #PGPASSWORD="${_dbpwd}" pg_restore -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} --jobs=2 --no-owner --verbose ${_dump_filepath}
+    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}"
     local _cmd=""
     if [[ "${_dump_filepath}" =~ \.gz$ ]]; then
         _cmd="gunzip -c ${_dump_filepath} |"
