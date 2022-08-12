@@ -2,6 +2,33 @@
 #source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils.sh --compressed)"
 #source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/utils_db.sh --compressed)"
 
+function _get_dbadmin_user() {
+    local _dbadmin="$1"
+    if [ -n "${_dbadmin}" ]; then
+        echo "${_dbadmin}"
+        return $?
+    fi
+    if [ "`uname`" = "Darwin" ]; then
+        #psql template1 -c "create database $USER"
+        _dbadmin="$USER"
+    else
+        _dbadmin="$(_user_by_port "${_port}" 2>/dev/null)"
+        [ -z "${_dbadmin}" ] && _dbadmin="postgres"
+    fi
+    echo "${_dbadmin}"
+}
+
+function _get_psql_as_admin() {
+    local _dbadmin="${1:-"$USER"}"
+    local _psql_as_admin="sudo -u ${_dbadmin} -i psql"
+    if ! id "${_dbadmin}" &>/dev/null; then
+        _log "WARN" "'${_dbadmin}' OS user may not exist. May require to set PGPASSWORD variable."
+        # This will ask the password everytime, but you can use PGPASSWORD
+        _psql_as_admin="psql -U ${_dbadmin}"
+    fi
+    echo "${_psql_as_admin}"
+}
+
 function _postgresql_configure() {
     # @see: https://wiki.postgresql.org/wiki/Tuning_Your_PostgreSQL_Server
     local __doc__="Update postgresql.conf and pg_hba.conf. Need to run from the PostgreSQL server (localhost)"
@@ -10,20 +37,8 @@ function _postgresql_configure() {
     local _postgresql_conf="${3}"   # Automatically detected if empty. "/var/lib/pgsql/data" or "/etc/postgresql/10/main" or /var/lib/pgsql/12/data/
     local _dbadmin="${4}"
     local _port="${5:-"5432"}"      # just for deciding the username. Optional.
-
-    if [ -z "${_dbadmin}" ]; then
-        if [ "`uname`" = "Darwin" ]; then
-            _dbadmin="$USER"
-        else
-            _dbadmin="$(_user_by_port "${_port}" 2>/dev/null)"
-            [ -z "${_dbadmin}" ] && _dbadmin="postgres"
-        fi
-    fi
-    local _psql_as_admin="sudo -u ${_dbadmin} -i psql"
-    if ! grep -q "^${_dbadmin}" /etc/passwd; then
-        # This will ask the password everytime, but you can use PGPASSWORD
-        _psql_as_admin="psql -U ${_dbadmin}"
-    fi
+    _dbadmin="$(_get_dbadmin_user "${_dbadmin}")"
+    local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
 
     if [ ! -f "${_postgresql_conf}" ]; then
         _postgresql_conf="$(${_psql_as_admin} -tAc 'SHOW config_file')" || return $?
@@ -119,22 +134,8 @@ function _postgresql_create_dbuser() {
     local _schema="${4}"
     local _dbadmin="${5}"
     local _port="${6:-"5432"}"
-
-    if [ -z "${_dbadmin}" ]; then
-        if [ "`uname`" = "Darwin" ]; then
-            #psql template1 -c "create database $USER"
-            _dbadmin="$USER"
-        else
-            _dbadmin="$(_user_by_port "${_port}" 2>/dev/null)"
-            [ -z "${_dbadmin}" ] && _dbadmin="postgres"
-        fi
-    fi
-    local _psql_as_admin="sudo -u ${_dbadmin} -i psql"
-    if ! id "${_dbadmin}" &>/dev/null; then
-        _log "WARN" "'${_dbadmin}' OS user may not exist. May require to set PGPASSWORD variable."
-        # This will ask the password everytime, but you can use PGPASSWORD
-        _psql_as_admin="psql -U ${_dbadmin}"
-    fi
+    _dbadmin="$(_get_dbadmin_user "${_dbadmin}")"
+    local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
 
     local _pg_hba_conf="$(${_psql_as_admin} -tAc 'SHOW hba_file')"
     if [ ! -f "${_pg_hba_conf}" ]; then
@@ -162,27 +163,8 @@ function _postgresql_create_role_and_db() {
     local _dbadmin="${5}"
     local _dbhost="${6}"
     local _dbport="${7:-"5432"}"
-
-    if [ -z "${_dbadmin}" ]; then
-        if [ "`uname`" = "Darwin" ]; then
-            #psql template1 -c "create database $USER"
-            _dbadmin="$USER"
-        else
-            _dbadmin="$(_user_by_port "${_port}" 2>/dev/null)"
-            [ -z "${_dbadmin}" ] && _dbadmin="postgres"
-        fi
-    fi
-
-    local _psql_as_admin="sudo -u ${_dbadmin} -i psql"
-    if [ -n "${_dbhost}" ]; then
-        if [ -z "${PGPASSWORD}" ]; then
-            echo "No PGPASSWORD set for ${_dbadmin}"; return 1
-        fi
-        _psql_as_admin="psql -U ${_dbadmin} -h ${_dbhost} -p ${_dbport}"
-    elif [ "`uname`" = "Darwin" ]; then
-        _psql_as_admin="psql"
-    fi
-
+    _dbadmin="$(_get_dbadmin_user "${_dbadmin}")"
+    local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
     # NOTE: need to be superuser and 'usename' is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
     ${_psql_as_admin} -d template1 -tA -c "SELECT usename FROM pg_shadow" | grep -q "^${_dbusr}$" || ${_psql_as_admin} -d template1 -c "CREATE ROLE ${_dbusr} WITH LOGIN PASSWORD '${_dbpwd}';"    # not SUPERUSER
     if [ "${_dbadmin}" != "posrgres" ] && [ "${_dbadmin}" != "$USER" ]; then
@@ -219,6 +201,7 @@ function _postgres_pitr() {
     local _target_ISO_datetime="${4}"   # yyyy-mm-dd hh:mm:ss (optional)
     local _dbadmin="${5:-"postgres"}"   # DB OS user
     local _port="${6:-"5432"}"          # PostgreSQL port number (optional)
+    _dbadmin="$(_get_dbadmin_user "${_dbadmin}")"
 
     if [ ! -d "${_data_dir}" ]; then
         _log "ERROR" "No PostgreSQL data dir provided: ${_data_dir}"
