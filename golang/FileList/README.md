@@ -114,6 +114,11 @@ Remove 'deleted=true', then output lines for Reconcile task's YYYY-MM-DD log
 ```
 $ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-07-19" -RDel > ./2022-07-19
 ```
+Check orphaned files (PostgreSQL only) with max 10 DB connections
+```
+$ file-list -b ./default/content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=nxrm3pg dbname=nxrm3pg"
+```
+
 NOTE: the attributes in a properties file are sorted in memory, so that attributes start with "@" comes before "deleted=".
 
 ## ADVANCE USAGE EXAMPLE:

@@ -2,14 +2,17 @@
 #go mod init github.com/hajimeo/samples/golang/FileList
 #go mod tidy
 go build -o ../../misc/file-list_$(uname) FileList.go && env GOOS=linux GOARCH=amd64 go build -o ../../misc/file-list_Linux FileList.go
+
 $HOME/IdeaProjects/samples/misc/file-list_$(uname) -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
 */
 
 package main
 
 import (
+	"database/sql"
 	"flag"
 	"fmt"
+	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 	"io"
 	"log"
@@ -38,6 +41,7 @@ var _BASEDIR *string
 var _PREFIX *string
 var _FILTER *string
 var _FILTER_P *string
+var _DB_CON_STR *string
 var _DEL_DATE_FROM *string
 var _DEL_DATE_FROM_ts int64
 var _DEL_DATE_TO *string
@@ -54,10 +58,14 @@ var _REMOVE_DEL *bool
 
 //var _EXCLUDE_FILE *string
 //var _INCLUDE_FILE *string
+var REPO_TO_FMT map[string]string
 var _R *regexp.Regexp
 var _R_DEL_DT *regexp.Regexp
 var _R_DELETED *regexp.Regexp
+var _R_REPO_NAME *regexp.Regexp
+var _R_BLOB_NAME *regexp.Regexp
 var _DEBUG *bool
+var _CHECKED_N int64 // Atomic (maybe slower?)
 var _PRINTED_N int64 // Atomic (maybe slower?)
 var _TTL_SIZE int64  // Atomic (maybe slower?)
 
@@ -67,6 +75,7 @@ func _setGlobals() {
 	_WITH_PROPS = flag.Bool("P", false, "If true, read and output the .properties files")
 	_FILTER = flag.String("f", "", "Filter file paths (eg: '.properties')")
 	_FILTER_P = flag.String("fP", "", "Filter .properties contents (eg: 'deleted=true')")
+	_DB_CON_STR = flag.String("db", "", "DB connection string")
 	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and _FILTER_P string is treated as regex")
 	_RECON_FMT = flag.Bool("RF", false, "Output for the Reconcile task (any_string,blob_ref). Requires -fP and ignores -P")
 	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF and -dF") // TODO: also think about restore plan
@@ -89,9 +98,27 @@ func _setGlobals() {
 			_R, _ = regexp.Compile(*_FILTER_P)
 		}
 	}
+	if len(*_DB_CON_STR) > 0 {
+		*_FILTER = ".properties"
+		*_WITH_PROPS = false
+		rows := queryDb("select name, REGEXP_REPLACE(recipe_name, '-.+', '') as fmt from repository")
+		REPO_TO_FMT = make(map[string]string)
+		for rows.Next() {
+			var name string
+			var fmt string
+			err := rows.Scan(&name, &fmt)
+			if err != nil {
+				panic(err)
+			}
+			REPO_TO_FMT[name] = fmt
+		}
+		rows.Close()
+	}
 	_START_TIME_ts = time.Now().Unix()
 	_R_DEL_DT, _ = regexp.Compile("[^#]?deletedDateTime=([0-9]+)")
 	_R_DELETED, _ = regexp.Compile("deleted=true")
+	_R_REPO_NAME, _ = regexp.Compile("[^#]?@Bucket.repo-name=(.+)")
+	_R_BLOB_NAME, _ = regexp.Compile("[^#]?@BlobStore.blob-name=(.+)")
 	if *_RECON_FMT {
 		*_FILTER = ".properties"
 		if len(*_DEL_DATE_FROM) > 0 {
@@ -137,17 +164,22 @@ func printLine(path string, fInfo os.FileInfo) bool {
 	modTime := fInfo.ModTime()
 	modTimeTs := modTime.Unix()
 	output := ""
+	props := ""
+	errNo := 0
 	if !*_RECON_FMT {
 		output = fmt.Sprintf("\"%s\",\"%s\",%d", path, modTime, fInfo.Size())
 	}
 
-	if (*_WITH_PROPS || len(*_FILTER_P) > 0 || *_RECON_FMT) && strings.HasSuffix(path, ".properties") {
+	if strings.HasSuffix(path, ".properties") && (*_WITH_PROPS || len(*_FILTER_P) > 0 || *_RECON_FMT || len(*_DB_CON_STR) > 0) {
 		if *_RECON_FMT {
-			rOutput, errNo := genOutputForReconcile(path, modTimeTs)
-			output = rOutput
+			output, errNo = genOutputForReconcile(path, modTimeTs)
 			_log("DEBUG", fmt.Sprintf("genOutputForReconcile returned output length:%d for path:%s modTimeTs:%d (%d)", len(output), path, modTimeTs, errNo))
+		} else if len(*_DB_CON_STR) > 0 {
+			if !isBlobIdMissingInDB(path) {
+				output = ""
+			}
 		} else {
-			props, errNo := genOutputFromProp(path)
+			props, errNo = genOutputFromProp(path)
 			_log("DEBUG", fmt.Sprintf("genOutputFromProp returned props length:%d for path:%s (%d)", len(props), path, errNo))
 			if errNo > 0 {
 				output = ""
@@ -157,6 +189,7 @@ func printLine(path string, fInfo os.FileInfo) bool {
 		}
 	}
 
+	atomic.AddInt64(&_CHECKED_N, 1)
 	if len(output) > 0 {
 		atomic.AddInt64(&_PRINTED_N, 1)
 		atomic.AddInt64(&_TTL_SIZE, fInfo.Size())
@@ -188,7 +221,68 @@ func getContents(path string) (string, error) {
 	return contents, nil
 }
 
+func queryDb(query string) *sql.Rows {
+	if len(*_DB_CON_STR) == 0 {
+		return nil
+	}
+	db, err := sql.Open("postgres", *_DB_CON_STR)
+	if err != nil {
+		// If DB connection issue, let's stop the script
+		panic(err.Error())
+	}
+	defer db.Close()
+	//db.SetMaxOpenConns(*_CONC_1)
+	//err = db.Ping()
+	rows, err := db.Query(query)
+	if err != nil {
+		panic(err.Error())
+	}
+	return rows
+}
+
+func isBlobIdMissingInDB(path string) bool {
+	// Ref: https://go.dev/doc/database/querying
+	// Getting the blobName of asset, otherwise, the checking query will be slower.
+	contents, err := getContents(path)
+	if err != nil {
+		_log("ERROR", "No contents from "+path)
+		// if no content, assuming missing
+		return true
+	}
+	m := _R_REPO_NAME.FindStringSubmatch(contents)
+	if len(m) < 2 {
+		_log("WARN", "No _R_REPO_NAME match for "+path)
+		// At this moment, if no blobName, assuming NOT missing...
+		return false
+	}
+	repoName := m[1]
+	m = _R_BLOB_NAME.FindStringSubmatch(contents)
+	if len(m) < 2 {
+		_log("WARN", "No _R_BLOB_NAME match for "+path)
+		// At this moment, if no blobName, assuming NOT missing...
+		return false
+	}
+	blobName := m[1]
+	if !strings.HasPrefix(blobName, "/") {
+		blobName = "/" + blobName
+	}
+	// TODO: it's wrong to specify "maven2" in here
+	fmt := REPO_TO_FMT[repoName]
+	query := "SELECT ab.asset_blob_id FROM " + fmt + "_asset_blob ab INNER JOIN " + fmt + "_asset a on ab.asset_blob_id = a.asset_blob_id WHERE a.path = '" + blobName + "' and ab.blob_ref like '%:" + getBaseName(path) + "@%'"
+	_log("DEBUG", query)
+	rows := queryDb(query)
+	defer rows.Close()
+	noRows := true
+	for rows.Next() {
+		noRows = false
+		break
+	}
+	return noRows
+}
+
 func genOutputForReconcile(path string, modTimeMs int64) (string, int) {
+	contents := ""
+	var err error
 	// NOTE: Even not accurate, to make this function faster, currently checking modTimeMs against _DEL_DATE_FROM_ts
 	if _DEL_DATE_FROM_ts > 0 && modTimeMs < _DEL_DATE_FROM_ts {
 		return "", 11
@@ -199,7 +293,7 @@ func genOutputForReconcile(path string, modTimeMs int64) (string, int) {
 	}
 	// if _DEL_DATE_FROM or DEL_DATE_TO is set, check deletedDateTime=
 	if _DEL_DATE_FROM_ts > 0 || _DEL_DATE_TO_ts > 0 {
-		contents, err := getContents(path)
+		contents, err = getContents(path)
 		if err != nil {
 			return "", 13
 		}
@@ -391,5 +485,5 @@ func main() {
 
 	wg.Wait()
 	println("")
-	_log("INFO", fmt.Sprintf("Printed %d items (size: %d) in %s with prefix: '%s'", _PRINTED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX))
+	_log("INFO", fmt.Sprintf("Printed %d of %d (size:%d) in %s with prefix:%s", _PRINTED_N, _CHECKED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX))
 }
