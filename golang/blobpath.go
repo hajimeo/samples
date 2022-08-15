@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 func usage() {
@@ -47,6 +48,12 @@ func main() {
 	}
 
 	blobId := os.Args[1]
+	if len(blobId) > 36 {
+		BLOB_ID_PATTERN := regexp.MustCompile(`.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}).*`)
+		matches := BLOB_ID_PATTERN.FindStringSubmatch(blobId)
+		blobId = matches[1]
+	}
+
 	ext := ".properties"
 	if len(os.Args) > 2 {
 		ext = os.Args[2]
