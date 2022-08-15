@@ -1,4 +1,5 @@
 /* May recommend to use ../java/blobpath, because not tested enough
+ * TODO: Only for OrientDB
  *
  * 	go build -o ../misc/blobdummygen_Darwin blobdummygen.go
  * 	env GOOS=linux GOARCH=amd64 go build -o ../misc/blobdummygen_Linux blobdummygen.go
@@ -88,6 +89,7 @@ func main() {
 		}
 	}
 
+	// TODO: PostgreSQL uses "blobName@blobId:InstanceId"
 	BLOB_REF_PATTERN := regexp.MustCompile(`([^@]+)@([^:]+):(.*)`)
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
