@@ -82,10 +82,10 @@ func main() {
 		if len(ext) == 0 {
 			// If no extension specified, check ".properties" and ".bytes" both
 			if _, err := os.Stat(path + ".properties"); err != nil {
-				fmt.Println(path)
+				fmt.Println(path + ".properties")
 			}
 			if _, err := os.Stat(path + ".bytes"); err != nil {
-				fmt.Println(path)
+				fmt.Println(path + ".bytes")
 			}
 		} else if _, err := os.Stat(path); err != nil {
 			fmt.Println(path)
