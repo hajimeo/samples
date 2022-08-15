@@ -83,8 +83,7 @@ func main() {
 			// If no extension specified, check ".properties" and ".bytes" both
 			if _, err := os.Stat(path + ".properties"); err != nil {
 				fmt.Println(path + ".properties")
-			}
-			if _, err := os.Stat(path + ".bytes"); err != nil {
+				// TODO: Doing os.Stat(path + ".bytes") makes this code twice slower, so not doing
 				fmt.Println(path + ".bytes")
 			}
 		} else if _, err := os.Stat(path); err != nil {
