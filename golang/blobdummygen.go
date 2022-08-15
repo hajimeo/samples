@@ -89,7 +89,7 @@ func main() {
 		}
 	}
 
-	// TODO: PostgreSQL uses "blobName@blobId:InstanceId"
+	// TODO: PostgreSQL uses "blobName:blobId:InstanceId" (order is diff and no '@')
 	BLOB_REF_PATTERN := regexp.MustCompile(`([^@]+)@([^:]+):(.*)`)
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
