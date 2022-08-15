@@ -1,6 +1,6 @@
 /* Trying to do same as java.lang.String.hashCode
  *
- * go build -o ../misc/blobpath_Darwin blobpath.go && env GOOS=linux GOARCH=amd64 go build -o ../misc/blobpath_Linux blobpath.go
+ * go build -o ../misc/blobpath_Darwin blobpath.go && env GOOS=linux GOARCH=amd64 go build -o ../misc/blobpath_Linux blobpath.go; date
  */
 package main
 
@@ -29,12 +29,12 @@ USAGE EXAMPLE:
     $ blobpath "83e59741-f05d-4915-a1ba-7fc789be34b1" ".bytes"
     vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.bytes
 
-    $ blobpath "83e59741-f05d-4915-a1ba-7fc789be34b1" ".bytes" "/nexus-data/blobs/default/content/"
-    /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.bytes
+    $ blobpath "83e59741-f05d-4915-a1ba-7fc789be34b1" ".properties" "/nexus-data/blobs/default/content/"
+    /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties
 
-    $ cat /tmp/blobIds.out | xargs -I{} -P3 ./blobpath "{}" ".properties" "${_BLOBSTORE_DIR}" "Y"
-    /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.bytes
-`)
+    $ cat /tmp/blobIds.out | xargs -I{} -P3 ./blobpath "{}" "" "/nexus-data/blobs/default/content/" "Y"
+    /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties
+    /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.bytes`)
 }
 
 func myHashCode(s string) int32 {
@@ -79,7 +79,15 @@ func main() {
 	path := filepath.Join(pathPfx, fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), blobId+ext)
 
 	if isMissingOnly {
-		if _, err := os.Stat(path); err != nil {
+		if len(ext) == 0 {
+			// If no extension specified, check ".properties" and ".bytes" both
+			if _, err := os.Stat(path + ".properties"); err != nil {
+				fmt.Println(path)
+			}
+			if _, err := os.Stat(path + ".bytes"); err != nil {
+				fmt.Println(path)
+			}
+		} else if _, err := os.Stat(path); err != nil {
 			fmt.Println(path)
 		}
 	} else {
