@@ -79,7 +79,7 @@ func main() {
 	path := filepath.Join(pathPfx, fmt.Sprintf("vol-%02d", int(vol)), fmt.Sprintf("chap-%02d", int(chap)), blobId+ext)
 
 	if isMissingOnly {
-		if _, err := os.Stat(path); err == nil {
+		if _, err := os.Stat(path); err != nil {
 			fmt.Println(path)
 		}
 	} else {
