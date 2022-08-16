@@ -9,6 +9,7 @@ $HOME/IdeaProjects/samples/misc/file-list_$(uname) -b <workingDirectory>/blobs/d
 package main
 
 import (
+	"bufio"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -42,6 +43,7 @@ var _PREFIX *string
 var _FILTER *string
 var _FILTER_P *string
 var _DB_CON_STR *string
+var _TRUTH *string
 var _DEL_DATE_FROM *string
 var _DEL_DATE_FROM_ts int64
 var _DEL_DATE_TO *string
@@ -69,13 +71,16 @@ var _CHECKED_N int64 // Atomic (maybe slower?)
 var _PRINTED_N int64 // Atomic (maybe slower?)
 var _TTL_SIZE int64  // Atomic (maybe slower?)
 
+type StoreProps map[string]string
+
 func _setGlobals() {
 	_BASEDIR = flag.String("b", ".", "Base directory (default: '.')")
 	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: 'vol-')")
 	_WITH_PROPS = flag.Bool("P", false, "If true, read and output the .properties files")
 	_FILTER = flag.String("f", "", "Filter file paths (eg: '.properties')")
 	_FILTER_P = flag.String("fP", "", "Filter .properties contents (eg: 'deleted=true')")
-	_DB_CON_STR = flag.String("db", "", "DB connection string")
+	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [DB|BS]")
+	_DB_CON_STR = flag.String("db", "", "DB connection string or path to properties file")
 	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and _FILTER_P string is treated as regex")
 	_RECON_FMT = flag.Bool("RF", false, "Output for the Reconcile task (any_string,blob_ref). Requires -fP and ignores -P")
 	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF and -dF") // TODO: also think about restore plan
@@ -99,6 +104,10 @@ func _setGlobals() {
 		}
 	}
 	if len(*_DB_CON_STR) > 0 {
+		if _, err := os.Stat(*_DB_CON_STR); err == nil {
+			props := readPropertiesFile(*_DB_CON_STR)
+			*_DB_CON_STR = genDbConnStr(props)
+		}
 		*_FILTER = ".properties"
 		*_WITH_PROPS = false
 		db := openDb()
@@ -162,6 +171,57 @@ func _writeToFile(path string, contents string) error {
 	return err
 }
 
+func readPropertiesFile(filename string) StoreProps {
+	props := StoreProps{}
+	file, err := os.Open(filename)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if equal := strings.Index(line, "="); equal >= 0 {
+			if key := strings.TrimSpace(line[:equal]); len(key) > 0 {
+				value := ""
+				if len(line) > equal {
+					value = strings.TrimSpace(line[equal+1:])
+				}
+				props[key] = value
+			}
+		}
+	}
+	if err = scanner.Err(); err != nil {
+		panic(err)
+	}
+	return props
+}
+
+func genDbConnStr(props StoreProps) string {
+	jdbcPtn := regexp.MustCompile(`jdbc:postgresql://([^/:]+):?(\d*)/([^?]+)\??(.*)`)
+	props["jdbcUrl"] = strings.ReplaceAll(props["jdbcUrl"], "\\", "")
+	matches := jdbcPtn.FindStringSubmatch(props["jdbcUrl"])
+	if matches == nil {
+		props["password"] = "********"
+		panic(fmt.Sprintf("No 'jdbcUrl' in props: %v", props))
+	}
+	hostname := matches[1]
+	port := matches[2]
+	database := matches[3]
+	if len(port) == 0 {
+		port = "5432"
+	}
+	params := ""
+	if len(matches) > 3 {
+		params = matches[4]
+		params = " " + strings.ReplaceAll(params, "&", " ")
+	}
+	connStr := fmt.Sprintf("host=%s user=%s password=%s dbname=%s%s", hostname, props["username"], props["password"], database, params)
+	props["password"] = "********"
+	_log("INFO", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s%s", hostname, port, props["username"], props["password"], database, params))
+	return connStr
+}
+
 func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
 	//_log("DEBUG", fmt.Sprintf("printLine-ing for path:%s", path))
 	modTime := fInfo.ModTime()
@@ -178,8 +238,10 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
 			output, errNo = genOutputForReconcile(path, modTimeTs)
 			_log("DEBUG", fmt.Sprintf("genOutputForReconcile returned output length:%d for path:%s modTimeTs:%d (%d)", len(output), path, modTimeTs, errNo))
 		} else if len(*_DB_CON_STR) > 0 {
-			if !isBlobIdMissingInDB(path, db) {
+			if *_TRUTH == "BS" && !isBlobIdMissingInDB(path, db) {
 				output = ""
+				//} TODO: else if *_TRUTH == "DB" && !isBlobIdMissingInBlobStore() {
+				//	output = ""
 			}
 		} else {
 			props, errNo = genOutputFromProp(path)
@@ -240,7 +302,7 @@ func openDb() *sql.DB {
 }
 
 func queryDb(query string, db *sql.DB) *sql.Rows {
-	if len(*_DB_CON_STR) == 0 {
+	if len(*_DB_CON_STR) == 0 { // For unit tests
 		return nil
 	}
 	rows, err := db.Query(query)
@@ -280,6 +342,10 @@ func genBlobIdCheckingQuery(path string) (string, int) {
 	query := "SELECT ab.asset_blob_id FROM " + repoFmt + "_asset_blob ab INNER JOIN " + repoFmt + "_asset a on ab.asset_blob_id = a.asset_blob_id WHERE a.path = '" + blobName + "' and ab.blob_ref like '%:" + getBaseName(path) + "@%'"
 	_log("DEBUG", query)
 	return query, -1
+}
+
+func isBlobIdMissingInBlobStore() bool {
+	return false
 }
 
 func isBlobIdMissingInDB(path string, db *sql.DB) bool {
