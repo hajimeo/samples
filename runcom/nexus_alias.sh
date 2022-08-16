@@ -327,15 +327,7 @@ for v in {1..5}; do
   done || break
 done
 EOF
-: <<'EOF'
-mvn-arch-gen
-_REPO_URL="http://dh1:8081/nexus/content/repositories/snapshots/"
-#_REPO_URL="http://dh1:8081/nexus/content/repositories/snapshots/"
-for v in {1..11}; do
-  sed -i.tmp -E "s@^  <version>.+</version>@  <version>23.76.0-${v}0-SNAPSHOT</version>@" pom.xml
-  mvn-deploy "${_REPO_URL}" "" "" "nexus" "" || break
-done
-EOF
+# Example for testing version sort order
 : <<'EOF'
 _REPO_URL="http://dh1:8081/repository/maven-hosted/"
 for _v in "7.10.0" "7.9.0" "SortTest-1.3.1" "SortTest-1.3.0" "SortTest-1.2.0" "SortTest-1.1.0" "SortTest-1.0.6" "SortTest-1.0.5" "SortTest-1.0.4" "SortTest-1.0.3" "SortTest-1.0.2" "SortTest.SR1" "SortTest"; do
@@ -343,7 +335,6 @@ for _v in "7.10.0" "7.9.0" "SortTest-1.3.1" "SortTest-1.3.0" "SortTest-1.2.0" "S
   mvn-deploy "${_REPO_URL}" "" "" "nexus" "" || break
 done
 EOF
-
 function mvn-deploy() {
     local __doc__="Wrapper of mvn clean package deploy"
     local _deploy_repo="${1:-"http://dh1.standalone.localdomain:8081/repository/maven-hosted/"}"
