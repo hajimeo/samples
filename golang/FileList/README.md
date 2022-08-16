@@ -106,6 +106,8 @@ List all objects which properties contain 'repo-name=docker-proxy' and 'deleted=
 ```
 $ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.csv
 ```
+NOTE: the attributes in a properties file are sorted in memory, so that attributes start with "@" comes before "deleted=".
+
 Output lines for Reconcile task's YYYY-MM-DD log (blobstore.rebuildComponentDB), like Dry-Run
 ```
 $ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-05-19" > ./2022-05-19
@@ -118,8 +120,7 @@ Check orphaned files (PostgreSQL only) with max 10 DB connections
 ```
 $ file-list -b ./default/content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=nxrm3pg dbname=nxrm3pg"
 ```
-
-NOTE: the attributes in a properties file are sorted in memory, so that attributes start with "@" comes before "deleted=".
+NOTE: Above outputs blobs which are not in <format>_asset table, which includes assets which have not soft-deleted by Cleanup unused asset blobs task.
 
 ## ADVANCE USAGE EXAMPLE:
 ```

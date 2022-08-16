@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-func usage() {
+func _usage() {
 	fmt.Println(`
 List .properties and .bytes files as CSV (Path,LastModified,Size).
     
@@ -58,7 +58,7 @@ var _REMOVE_DEL *bool
 
 //var _EXCLUDE_FILE *string
 //var _INCLUDE_FILE *string
-var REPO_TO_FMT map[string]string
+var _REPO_TO_FMT map[string]string
 var _R *regexp.Regexp
 var _R_DEL_DT *regexp.Regexp
 var _R_DELETED *regexp.Regexp
@@ -101,8 +101,9 @@ func _setGlobals() {
 	if len(*_DB_CON_STR) > 0 {
 		*_FILTER = ".properties"
 		*_WITH_PROPS = false
-		rows := queryDb("select name, REGEXP_REPLACE(recipe_name, '-.+', '') as fmt from repository")
-		REPO_TO_FMT = make(map[string]string)
+		db := openDb()
+		rows := queryDb("select name, REGEXP_REPLACE(recipe_name, '-.+', '') as fmt from repository", db)
+		_REPO_TO_FMT = make(map[string]string)
 		for rows.Next() {
 			var name string
 			var fmt string
@@ -110,9 +111,11 @@ func _setGlobals() {
 			if err != nil {
 				panic(err)
 			}
-			REPO_TO_FMT[name] = fmt
+			_REPO_TO_FMT[name] = fmt
 		}
 		rows.Close()
+		db.Close()
+		_log("DEBUG", fmt.Sprintf("_REPO_TO_FMT = %v", _REPO_TO_FMT))
 	}
 	_START_TIME_ts = time.Now().Unix()
 	_R_DEL_DT, _ = regexp.Compile("[^#]?deletedDateTime=([0-9]+)")
@@ -159,7 +162,7 @@ func _writeToFile(path string, contents string) error {
 	return err
 }
 
-func printLine(path string, fInfo os.FileInfo) bool {
+func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
 	//_log("DEBUG", fmt.Sprintf("printLine-ing for path:%s", path))
 	modTime := fInfo.ModTime()
 	modTimeTs := modTime.Unix()
@@ -175,7 +178,7 @@ func printLine(path string, fInfo os.FileInfo) bool {
 			output, errNo = genOutputForReconcile(path, modTimeTs)
 			_log("DEBUG", fmt.Sprintf("genOutputForReconcile returned output length:%d for path:%s modTimeTs:%d (%d)", len(output), path, modTimeTs, errNo))
 		} else if len(*_DB_CON_STR) > 0 {
-			if !isBlobIdMissingInDB(path) {
+			if !isBlobIdMissingInDB(path, db) {
 				output = ""
 			}
 		} else {
@@ -221,7 +224,7 @@ func getContents(path string) (string, error) {
 	return contents, nil
 }
 
-func queryDb(query string) *sql.Rows {
+func openDb() *sql.DB {
 	if len(*_DB_CON_STR) == 0 {
 		return nil
 	}
@@ -230,9 +233,16 @@ func queryDb(query string) *sql.Rows {
 		// If DB connection issue, let's stop the script
 		panic(err.Error())
 	}
-	defer db.Close()
+	//defer db.Close()
 	//db.SetMaxOpenConns(*_CONC_1)
 	//err = db.Ping()
+	return db
+}
+
+func queryDb(query string, db *sql.DB) *sql.Rows {
+	if len(*_DB_CON_STR) == 0 {
+		return nil
+	}
 	rows, err := db.Query(query)
 	if err != nil {
 		panic(err.Error())
@@ -240,43 +250,56 @@ func queryDb(query string) *sql.Rows {
 	return rows
 }
 
-func isBlobIdMissingInDB(path string) bool {
-	// Ref: https://go.dev/doc/database/querying
+func genBlobIdCheckingQuery(path string) (string, int) {
 	// Getting the blobName of asset, otherwise, the checking query will be slower.
 	contents, err := getContents(path)
 	if err != nil {
 		_log("ERROR", "No contents from "+path)
 		// if no content, assuming missing
-		return true
+		return "", 1
 	}
 	m := _R_REPO_NAME.FindStringSubmatch(contents)
 	if len(m) < 2 {
 		_log("WARN", "No _R_REPO_NAME match for "+path)
 		// At this moment, if no blobName, assuming NOT missing...
-		return false
+		return "", 0
 	}
 	repoName := m[1]
 	m = _R_BLOB_NAME.FindStringSubmatch(contents)
 	if len(m) < 2 {
 		_log("WARN", "No _R_BLOB_NAME match for "+path)
 		// At this moment, if no blobName, assuming NOT missing...
-		return false
+		return "", 0
 	}
 	blobName := m[1]
 	if !strings.HasPrefix(blobName, "/") {
 		blobName = "/" + blobName
 	}
-	// TODO: it's wrong to specify "maven2" in here
-	fmt := REPO_TO_FMT[repoName]
-	query := "SELECT ab.asset_blob_id FROM " + fmt + "_asset_blob ab INNER JOIN " + fmt + "_asset a on ab.asset_blob_id = a.asset_blob_id WHERE a.path = '" + blobName + "' and ab.blob_ref like '%:" + getBaseName(path) + "@%'"
+	// TODO: Should be LEFT JOIN but the query will be slower...
+	repoFmt := _REPO_TO_FMT[repoName]
+	query := "SELECT ab.asset_blob_id FROM " + repoFmt + "_asset_blob ab INNER JOIN " + repoFmt + "_asset a on ab.asset_blob_id = a.asset_blob_id WHERE a.path = '" + blobName + "' and ab.blob_ref like '%:" + getBaseName(path) + "@%'"
 	_log("DEBUG", query)
-	rows := queryDb(query)
-	defer rows.Close()
+	return query, -1
+}
+
+func isBlobIdMissingInDB(path string, db *sql.DB) bool {
+	// Ref: https://go.dev/doc/database/querying
+	query, errNo := genBlobIdCheckingQuery(path)
+	if errNo != -1 {
+		return errNo == 1
+	}
+	rows := queryDb(query, db)
+	if rows == nil {
+		// For test
+		_log("WARN", "rows is nil for "+path+". Ignoring.\nquery: "+query)
+		return false
+	}
 	noRows := true
 	for rows.Next() {
 		noRows = false
 		break
 	}
+	rows.Close()
 	return noRows
 }
 
@@ -403,6 +426,7 @@ func getDirs(basedir string, prefix string) []string {
 }
 
 func listObjects(basedir string) {
+	db := openDb()
 	// Below line does not work because currently Glob does not support ./**/*
 	//list, err := filepath.Glob(basedir + string(filepath.Separator) + *_FILTER)
 	// Somehow WalkDir is slower in this code
@@ -413,7 +437,7 @@ func listObjects(basedir string) {
 		}
 		if !f.IsDir() {
 			if len(*_FILTER) == 0 || strings.Contains(f.Name(), *_FILTER) {
-				printLine(path, f)
+				printLine(path, f, db)
 				if *_TOP_N > 0 && *_TOP_N <= _PRINTED_N {
 					_log("DEBUG", fmt.Sprintf("Printed %d >= %d", _PRINTED_N, *_TOP_N))
 					return io.EOF
@@ -426,12 +450,13 @@ func listObjects(basedir string) {
 		println("Got error retrieving list of files:")
 		panic(err.Error())
 	}
+	db.Close()
 }
 
 // Define, set, and validate command arguments
 func main() {
 	if len(os.Args) == 1 || os.Args[1] == "-h" || os.Args[1] == "--help" {
-		usage()
+		_usage()
 		_setGlobals()
 		os.Exit(0)
 	}
