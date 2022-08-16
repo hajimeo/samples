@@ -375,8 +375,8 @@ function f_ldap_client_install() {
 # setup_standalone.sh -C -N -n node-freeipa
 # ssh node-freeipa
 #   curl -O https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_security.sh
-#   f_freeipa_install # this will also run f_simplesamlphp
-# setup_standalone.sh -s -n node-freeipa
+#   f_freeipa_install   # this will also run f_simplesamlphp
+#   setup_standalone.sh -s -n node-freeipa    # to save as image
 function f_freeipa_install() {
     local __doc__="Install freeIPA (may better create a dedicated container)"
     #p_node_create node99${r_DOMAIN_SUFFIX} 99 # Intentionally no Ambari install
@@ -601,7 +601,7 @@ EOF
         systemctl enable ${_apache2} && systemctl restart ${_apache2} || return $?
     fi
 
-    _log "INFO" "Done. Insert SP metadata into"
+    _log "INFO" "Done. Insert SP metadata into ${_saml_dir%/}/metadata/saml20-sp-remote.php"
 }
 
 function f_sssd_setup() {
