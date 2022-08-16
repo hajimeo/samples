@@ -10,7 +10,7 @@
 #
 # COMMAND EXAMPLE:
 #   # Below _DNS is only for my k8s env (don't forget to update /etc/banner_add_hosts). _DB_USER can't contain '-' character.
-#   export _ID="nxiqpg" _TAG="1.138.0" _METALLB_IP="192.168.1.220" _RUNAS_USR=1000 _DNS="192.168.1.31"
+#   export _ID="nxiqpg" _TAG="1.142.0" _METALLB_IP="192.168.1.220" _RUNAS_USR=1000 _DNS="192.168.1.31"
 #   export _SONATYPE_WORK="/var/tmp/share/sonatype/${_ID}" _BASE_URL="https://nxiq-k8s.standalone.localdomain/" _DB_USER="${_ID}" _DB_PWD="${_ID}" _DB_NAME="${_ID}" _DB_HOST="192.168.1.31"
 #   eval "echo \"$(cat ./k8s-iq-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
 #   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml
