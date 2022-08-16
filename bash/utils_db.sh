@@ -39,6 +39,7 @@ function _postgresql_configure() {
     local _port="${5:-"5432"}"      # just for deciding the username. Optional.
     _dbadmin="$(_get_dbadmin_user "${_dbadmin}")"
     local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
+    local _restart=false
 
     if [ ! -f "${_postgresql_conf}" ]; then
         _postgresql_conf="$(${_psql_as_admin} -tAc 'SHOW config_file')" || return $?
@@ -90,11 +91,11 @@ function _postgresql_configure() {
     #TODO: use recovery_min_apply_delay = '1h'
     # For wal/replication/pg_rewind, better save log files outside of _postgresql_conf
 
-    _upsert ${_postgresql_conf} "log_error_verbosity" "default" "#log_error_verbosity"
+    _upsert ${_postgresql_conf} "log_error_verbosity" "verbose" "#log_error_verbosity"  # default
     _upsert ${_postgresql_conf} "log_connections" "on" "#log_connections"
     _upsert ${_postgresql_conf} "log_disconnections" "on" "#log_disconnections"
     _upsert ${_postgresql_conf} "log_lock_waits" "on" "#log_lock_waits"
-    _upsert ${_postgresql_conf} "log_temp_files" "0" "#log_temp_files"
+    _upsert ${_postgresql_conf} "log_temp_files" "1kB" "#log_temp_files"    # -1
 
     if [[ "${_verbose_logging}" =~ (y|Y) ]]; then
         # @see: https://github.com/darold/pgbadger#POSTGRESQL-CONFIGURATION (brew install pgbadger)
@@ -108,22 +109,31 @@ function _postgresql_configure() {
         _upsert ${_postgresql_conf} "log_statement" "'mod'" "#log_statement"
         _upsert ${_postgresql_conf} "log_min_duration_statement" "1000" "#log_min_duration_statement"
     fi
-    # To check:
-    # SELECT setting, pending_restart FROM pg_settings WHERE name = 'shared_preload_libraries';
-    #CREATE EXTENSION IF NOT EXISTS pg_buffercache;
+
     local _shared_preload_libraries="auto_explain"
+    if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"; then
+        _shared_preload_libraries="${_shared_preload_libraries},pg_stat_statements"
+        # select * from pg_stat_statements;
+    fi
+    #${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_buffercache;"
     if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_prewarm;"; then
         _shared_preload_libraries="${_shared_preload_libraries},pg_prewarm"
         # select pg_prewarm('<tablename>', 'buffer');
     fi
-    _upsert ${_postgresql_conf} "shared_preload_libraries" "'${_shared_preload_libraries}'" "#shared_preload_libraries"
-    #ALTER SYSTEM SET auto_explain.log_min_duration TO '0';
-    #SELECT pg_reload_conf();
-    #SELECT * FROM pg_settings WHERE name like 'auto_explain%';
+    if _upsert ${_postgresql_conf} "shared_preload_libraries" "'${_shared_preload_libraries}'" "#shared_preload_libraries"; then
+        _restart=true
+    fi
     _upsert ${_postgresql_conf} "auto_explain.log_min_duration" "5000"
+    # To check:
+    # SELECT setting, pending_restart FROM pg_settings WHERE name = 'shared_preload_libraries';
+    # ALTER SYSTEM SET auto_explain.log_min_duration TO '0';
+    # SELECT pg_reload_conf();
+    # SELECT * FROM pg_settings WHERE name like 'auto_explain%';
 
     diff -wu ${__TMP%/}/postgresql.conf.orig ${_postgresql_conf}
-    _log "INFO" "Updated postgresql config. Please restart (or reload) the service."
+    if _restart || ! ${_psql_as_admin} -d template1 -c "SELECT pg_reload_conf();"; then
+        _log "INFO" "Updated postgresql config. Please restart or reload the service."
+    fi
 }
 
 function _postgresql_create_dbuser() {
