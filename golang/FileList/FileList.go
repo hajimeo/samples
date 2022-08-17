@@ -57,7 +57,7 @@ var _NO_HEADER *bool
 var _USE_REGEX *bool
 var _RECON_FMT *bool
 var _REMOVE_DEL *bool
-var _CHK_BLOB_SIZE *bool
+var _NO_BLOB_SIZE *bool
 
 //var _EXCLUDE_FILE *string
 //var _INCLUDE_FILE *string
@@ -82,7 +82,7 @@ func _setGlobals() {
 	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: 'vol-')")
 	_WITH_PROPS = flag.Bool("P", false, "If true, read and output the .properties files")
 	_FILTER = flag.String("f", "", "Filter file paths (eg: '.properties')")
-	_CHK_BLOB_SIZE = flag.Bool("BSize", false, "When -f = '.properties', checks Blob size")
+	_NO_BLOB_SIZE = flag.Bool("NBSize", false, "When -f = '.properties', checks Blob size")
 	_FILTER_P = flag.String("fP", "", "Filter .properties contents (eg: 'deleted=true')")
 	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [DB|BS]") // TODO: not implemented "DB" yet
 	_DB_CON_STR = flag.String("db", "", "DB connection string or path to properties file")
@@ -251,7 +251,7 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
 		output = fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, fInfo.Size())
 	}
 	// listObjects() already checked _FILTER, but just in case...
-	if *_CHK_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
+	if !*_NO_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
 		blobSize = getBlobSize(path)
 		output = fmt.Sprintf("%s%s%d", output, _SEP, blobSize)
 	}
@@ -575,7 +575,7 @@ func main() {
 	// Printing headers if requested
 	if !*_RECON_FMT && !*_NO_HEADER {
 		fmt.Print("Path,LastModified,Size")
-		if *_CHK_BLOB_SIZE && *_FILTER == _PROP_EXT {
+		if !*_NO_BLOB_SIZE && *_FILTER == _PROP_EXT {
 			fmt.Print(",BlobSize")
 		}
 		if *_WITH_PROPS {
@@ -605,5 +605,5 @@ func main() {
 
 	wg.Wait()
 	println("")
-	_log("INFO", fmt.Sprintf("Printed %d of %d (size:%d) in %s with prefix:%s", _PRINTED_N, _CHECKED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX))
+	_log("INFO", fmt.Sprintf("Printed %d of %d (size:%d) in %s and sub-dir starts with %s (elapsed:%ds)", _PRINTED_N, _CHECKED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX, time.Now().Unix()-_START_TIME_ts))
 }
