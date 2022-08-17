@@ -30,7 +30,7 @@ import (
 
 func _usage() {
 	fmt.Println(`
-List .properties and .bytes files as CSV (Path,LastModified,Size).
+List .properties and .bytes files as *Tab* Separated Values (Path,LastModified,Size).
     
 HOW TO and USAGE EXAMPLES:
     https://github.com/hajimeo/samples/tree/master/golang/FileList`)
@@ -57,6 +57,7 @@ var _NO_HEADER *bool
 var _USE_REGEX *bool
 var _RECON_FMT *bool
 var _REMOVE_DEL *bool
+var _CHK_BLOB_SIZE *bool
 
 //var _EXCLUDE_FILE *string
 //var _INCLUDE_FILE *string
@@ -73,16 +74,20 @@ var _TTL_SIZE int64  // Atomic (maybe slower?)
 
 type StoreProps map[string]string
 
+var _SEP = "	"
+var _PROP_EXT = ".properties"
+
 func _setGlobals() {
 	_BASEDIR = flag.String("b", ".", "Base directory (default: '.')")
 	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: 'vol-')")
 	_WITH_PROPS = flag.Bool("P", false, "If true, read and output the .properties files")
 	_FILTER = flag.String("f", "", "Filter file paths (eg: '.properties')")
+	_CHK_BLOB_SIZE = flag.Bool("BSize", false, "When -f = '.properties', checks Blob size")
 	_FILTER_P = flag.String("fP", "", "Filter .properties contents (eg: 'deleted=true')")
-	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [DB|BS]")
+	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [DB|BS]") // TODO: not implemented "DB" yet
 	_DB_CON_STR = flag.String("db", "", "DB connection string or path to properties file")
 	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and _FILTER_P string is treated as regex")
-	_RECON_FMT = flag.Bool("RF", false, "Output for the Reconcile task (any_string,blob_ref). Requires -fP and ignores -P")
+	_RECON_FMT = flag.Bool("RF", false, "Output for the Reconcile task (any_string,blob_ref). -P will be ignored")
 	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF and -dF") // TODO: also think about restore plan
 	_DEL_DATE_FROM = flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
 	_DEL_DATE_TO = flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
@@ -97,7 +102,7 @@ func _setGlobals() {
 
 	// If _FILTER_P is given, automatically populate other related variables
 	if len(*_FILTER_P) > 0 {
-		*_FILTER = ".properties"
+		*_FILTER = _PROP_EXT
 		//*_WITH_PROPS = true
 		if *_USE_REGEX {
 			_R, _ = regexp.Compile(*_FILTER_P)
@@ -108,7 +113,7 @@ func _setGlobals() {
 			props := readPropertiesFile(*_DB_CON_STR)
 			*_DB_CON_STR = genDbConnStr(props)
 		}
-		*_FILTER = ".properties"
+		*_FILTER = _PROP_EXT
 		*_WITH_PROPS = false
 		db := openDb()
 		rows := queryDb("select name, REGEXP_REPLACE(recipe_name, '-.+', '') as fmt from repository", db)
@@ -132,24 +137,18 @@ func _setGlobals() {
 	_R_REPO_NAME, _ = regexp.Compile("[^#]?@Bucket.repo-name=(.+)")
 	_R_BLOB_NAME, _ = regexp.Compile("[^#]?@BlobStore.blob-name=(.+)")
 	if *_RECON_FMT {
-		*_FILTER = ".properties"
+		*_FILTER = _PROP_EXT
+		if len(*_FILTER_P) == 0 {
+			*_FILTER_P = "deleted=true"
+		}
 		if len(*_DEL_DATE_FROM) > 0 {
-			tmpTimeFrom, err := time.Parse("2006-01-02", *_DEL_DATE_FROM)
-			if err != nil {
-				_log("ERROR", fmt.Sprintf("_DEL_DATE_FROM:%s is incorrect", *_DEL_DATE_FROM))
-				os.Exit(1)
-			}
-			_DEL_DATE_FROM_ts = tmpTimeFrom.Unix()
+			_DEL_DATE_FROM_ts = datetimeStrToTs(*_DEL_DATE_FROM)
 		}
 		if len(*_DEL_DATE_TO) > 0 {
-			tmpTimeTo, err := time.Parse("2006-01-02", *_DEL_DATE_TO)
-			if err != nil {
-				_log("ERROR", fmt.Sprintf("_DEL_DATE_TO:%s is incorrect", *_DEL_DATE_TO))
-				os.Exit(1)
-			}
-			_DEL_DATE_TO_ts = tmpTimeTo.Unix()
+			_DEL_DATE_TO_ts = datetimeStrToTs(*_DEL_DATE_TO)
 		}
 	}
+	_log("DEBUG", "_setGlobals completed.")
 }
 
 func _log(level string, message string) {
@@ -169,6 +168,14 @@ func _writeToFile(path string, contents string) error {
 		return err
 	}
 	return err
+}
+
+func datetimeStrToTs(datetimeStr string) int64 {
+	tmpTimeFrom, err := time.Parse("2006-01-02", datetimeStr)
+	if err != nil {
+		panic(err)
+	}
+	return tmpTimeFrom.Unix()
 }
 
 func readPropertiesFile(filename string) StoreProps {
@@ -213,13 +220,22 @@ func genDbConnStr(props StoreProps) string {
 	}
 	params := ""
 	if len(matches) > 3 {
-		params = matches[4]
-		params = " " + strings.ReplaceAll(params, "&", " ")
+		// TODO: probably need to escape?
+		params = " " + strings.ReplaceAll(matches[4], "&", " ")
 	}
 	connStr := fmt.Sprintf("host=%s user=%s password=%s dbname=%s%s", hostname, props["username"], props["password"], database, params)
 	props["password"] = "********"
 	_log("INFO", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s%s", hostname, port, props["username"], props["password"], database, params))
 	return connStr
+}
+
+func getBlobSize(propPath string) int64 {
+	blobPath := getPathWithoutExt(propPath) + ".bytes"
+	info, err := os.Stat(blobPath)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
 }
 
 func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
@@ -229,14 +245,28 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
 	output := ""
 	props := ""
 	errNo := 0
-	if !*_RECON_FMT {
-		output = fmt.Sprintf("\"%s\",\"%s\",%d", path, modTime, fInfo.Size())
-	}
+	var blobSize int64 = 0
 
-	if strings.HasSuffix(path, ".properties") && (*_WITH_PROPS || len(*_FILTER_P) > 0 || *_RECON_FMT || len(*_DB_CON_STR) > 0) {
+	if !*_RECON_FMT {
+		output = fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, fInfo.Size())
+	}
+	// listObjects() already checked _FILTER, but just in case...
+	if *_CHK_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
+		blobSize = getBlobSize(path)
+		output = fmt.Sprintf("%s%s%d", output, _SEP, blobSize)
+	}
+	if strings.HasSuffix(path, _PROP_EXT) && (*_WITH_PROPS || len(*_FILTER_P) > 0 || *_RECON_FMT || len(*_DB_CON_STR) > 0) {
 		if *_RECON_FMT {
-			output, errNo = genOutputForReconcile(path, modTimeTs)
-			_log("DEBUG", fmt.Sprintf("genOutputForReconcile returned output length:%d for path:%s modTimeTs:%d (%d)", len(output), path, modTimeTs, errNo))
+			if _START_TIME_ts > 0 && modTimeTs > _START_TIME_ts {
+				// NOT checking against _DEL_DATE_TO_ts as file might be touched accidentally (I may change my mind if slow)
+				output = ""
+			} else if _DEL_DATE_FROM_ts > 0 && modTimeTs < _DEL_DATE_FROM_ts {
+				// Even not accurate, to make this function faster, currently checking fileModMs against _DEL_DATE_FROM_ts
+				output = ""
+			} else {
+				output, errNo = genOutputForReconcile(path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts)
+				_log("DEBUG", fmt.Sprintf("genOutputForReconcile returned output length:%d for path:%s modTimeTs:%d (%d)", len(output), path, modTimeTs, errNo))
+			}
 		} else if len(*_DB_CON_STR) > 0 {
 			if *_TRUTH == "BS" && !isBlobIdMissingInDB(path, db) {
 				output = ""
@@ -249,7 +279,7 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
 			if errNo > 0 {
 				output = ""
 			} else if len(props) > 0 && *_WITH_PROPS {
-				output = fmt.Sprintf("%s,\"%s\"", output, props)
+				output = fmt.Sprintf("%s%s%s", output, _SEP, props)
 			}
 		}
 	}
@@ -257,7 +287,7 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
 	atomic.AddInt64(&_CHECKED_N, 1)
 	if len(output) > 0 {
 		atomic.AddInt64(&_PRINTED_N, 1)
-		atomic.AddInt64(&_TTL_SIZE, fInfo.Size())
+		atomic.AddInt64(&_TTL_SIZE, fInfo.Size()+blobSize)
 		fmt.Println(output)
 		return true
 	}
@@ -265,9 +295,13 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
 }
 
 // as per google, this would be faster than using TrimSuffix
+func getPathWithoutExt(path string) string {
+	return path[:len(path)-len(filepath.Ext(path))]
+}
+
 func getBaseName(path string) string {
 	fileName := filepath.Base(path)
-	return fileName[:len(fileName)-len(filepath.Ext(fileName))]
+	return getPathWithoutExt(fileName)
 }
 
 func getNowStr() string {
@@ -369,19 +403,11 @@ func isBlobIdMissingInDB(path string, db *sql.DB) bool {
 	return noRows
 }
 
-func genOutputForReconcile(path string, modTimeMs int64) (string, int) {
+func genOutputForReconcile(path string, delDateFromTs int64, delDateToTs int64) (string, int) {
 	contents := ""
 	var err error
-	// NOTE: Even not accurate, to make this function faster, currently checking modTimeMs against _DEL_DATE_FROM_ts
-	if _DEL_DATE_FROM_ts > 0 && modTimeMs < _DEL_DATE_FROM_ts {
-		return "", 11
-	}
-	// NOT checking against _DEL_DATE_TO_ts as file might be touched accidentally (I may change my mind if slow)
-	if _START_TIME_ts > 0 && modTimeMs > _START_TIME_ts {
-		return "", 12
-	}
-	// if _DEL_DATE_FROM or DEL_DATE_TO is set, check deletedDateTime=
-	if _DEL_DATE_FROM_ts > 0 || _DEL_DATE_TO_ts > 0 {
+	// if _DEL_DATE_FROM or _DEL_DATE_TO is set, check deletedDateTime=\d+
+	if delDateFromTs > 0 || delDateToTs > 0 {
 		contents, err = getContents(path)
 		if err != nil {
 			return "", 13
@@ -392,10 +418,10 @@ func genOutputForReconcile(path string, modTimeMs int64) (string, int) {
 			_log("DEBUG", fmt.Sprintf("path:%s dos not match with %s (%s)", path, _R_DEL_DT.String(), m))
 			return "", 14
 		}
-		deletedTS, _ := strconv.ParseInt(m[1], 10, 64)
-		if isTimestampBetween(deletedTS) {
-			_log("INFO", fmt.Sprintf("path:%s deletedDateTime=%d is between _DEL_DATE_FROM_ts:%d and _DEL_DATE_TO_ts:%d (%d)", path, deletedTS, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, _START_TIME_ts))
-			if _DEL_DATE_FROM_ts > 0 && *_REMOVE_DEL {
+		deletedTSMsec, _ := strconv.ParseInt(m[1], 10, 64)
+		if isTimestampBetween(deletedTSMsec, delDateFromTs*1000, delDateToTs*1000) {
+			_log("INFO", fmt.Sprintf("path:%s deletedDateTime=%d is between delDateFromTs:%d and delDateToTs:%d", path, deletedTSMsec, delDateFromTs*1000, delDateToTs*1000))
+			if delDateFromTs > 0 && *_REMOVE_DEL {
 				// TODO: remove 'deleted=true'
 				updatedContents := removeLines(contents, _R_DELETED)
 				err := _writeToFile(path, updatedContents)
@@ -409,8 +435,8 @@ func genOutputForReconcile(path string, modTimeMs int64) (string, int) {
 		}
 		return "", 15
 	}
-
-	return fmt.Sprintf("%s,\"%s\"", getNowStr(), getBaseName(path)), 0
+	// Not using _SEP for this output
+	return fmt.Sprintf("%s,%s", getNowStr(), getBaseName(path)), 0
 }
 
 // one line but for unit testing
@@ -418,14 +444,14 @@ func removeLines(contents string, rex *regexp.Regexp) string {
 	return rex.ReplaceAllString(contents, "")
 }
 
-func isTimestampBetween(tMsec int64) bool {
-	if _DEL_DATE_FROM_ts > 0 && (_DEL_DATE_FROM_ts*1000) > tMsec {
+func isTimestampBetween(tMsec int64, fromTsMsec int64, toTsMsec int64) bool {
+	if fromTsMsec > 0 && fromTsMsec > tMsec {
 		return false
 	}
-	if _DEL_DATE_TO_ts > 0 && (_DEL_DATE_TO_ts*1000) < tMsec {
+	if toTsMsec > 0 && (toTsMsec*1000) < tMsec {
 		return false
 	}
-	if _DEL_DATE_TO_ts == 0 && (_START_TIME_ts*1000) < tMsec {
+	if toTsMsec == 0 && (_START_TIME_ts*1000) < tMsec {
 		_log("DEBUG", fmt.Sprintf("deletedDateTime=%d is greater than the this script's start time:%d", tMsec, _START_TIME_ts))
 		return false
 	}
@@ -549,6 +575,9 @@ func main() {
 	// Printing headers if requested
 	if !*_RECON_FMT && !*_NO_HEADER {
 		fmt.Print("Path,LastModified,Size")
+		if *_CHK_BLOB_SIZE && *_FILTER == _PROP_EXT {
+			fmt.Print(",BlobSize")
+		}
 		if *_WITH_PROPS {
 			fmt.Print(",Properties")
 		}
