@@ -181,6 +181,7 @@ function f_blob_search() {
         find ${_content_dir%/} -type f -name '*.properties' -print0 | xargs -0 -P 2 grep "${@:2}"
     fi # > /tmp/$FUNCNAME.out;cat /tmp/$FUNCNAME.out
 }
+
 # Not perfect
 function f_blob_list_from_pom() {
     local __doc__="NOTE: using f_blob_search"
@@ -219,18 +220,25 @@ function f_search_soft_deleted_blobs() {
     # TODO: utilise 'blobpath' command
 }
 
-# May not work with Mac because of sed (may work)
+# sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
 function f_gen_replication_log_from_soft_deleted() {
     local __doc__="Workaround for NEXUS-27079. find deleted=true blobs to generate ./YYYY-MM-DD (then manually move under reconciliation)"
-    local _content_dir="${1:-"./content/vol-*"}"
-    local _days="${2:-"2"}"     # Check files which modified within this days
+    local _blobstore_dir="${1}" # Also used to get blobstore name
+    local _days="${2:-"-1"}"    # Using "+1" to check all files older than one day
     local _output_date="${3:-"$(date '+%Y-%m-%d')"}"
-    local _P="${4:-"4"}"
+    local _P="${4:-"3"}"
     if [ -s "./${_output_date}" ]; then
         echo "./${_output_date} exists."
         return 1
     fi
-    find ${_content_dir} -type f -name '????????-????-????-????-????????????.properties' -mtime -${_days} -print0 | xargs -P${_P} -I{} -0 bash -c 'grep -q "^deleted=true" {} && sed -i -e "s/^deleted=true//" {} && echo "'${_output_date}' 00:00:01,$(basename {} .properties)" >> ./'${_output_date}';'
+    if [ ! -d "${_blobstore_dir%/}/content" ]; then
+        echo "${_blobstore_dir%/}/content does not exist."
+        return 1
+    fi
+    #echo -n "$$" > /tmp/_undeleting.pid || return $?
+    #find ...  -type f -name '????????-????-????-????-????????????.properties ! -newer /tmp/_undeleting.pid
+    # To test without changing file timestamp: sed -e "s/^deleted=true//" {} &>/dev/null
+    find ${_blobstore_dir%/}/content/vol-* -name '*.properties' -mtime ${_days} -print0 | xargs -P${_P} -I{} -0 bash -c 'grep -q "^deleted=true" {} && sed -e "s/^deleted=true//" {} &>/dev/null && echo "'${_output_date}' 00:00:01,$(basename {} .properties)" >> ./'${_output_date}';'
     ls -l ./${_output_date}
 }
 
