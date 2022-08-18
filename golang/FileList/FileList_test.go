@@ -52,10 +52,10 @@ func TestGetPathWithoutExt(t *testing.T) {
 	}
 }
 
-func TestGetBaseName(t *testing.T) {
-	fileName := getBaseName(DUMMY_FILE_PATH)
+func TestGetBaseNameWithoutExt(t *testing.T) {
+	fileName := getBaseNameWithoutExt(DUMMY_FILE_PATH)
 	if fileName != "00000000-abcd-ef00-12345-123456789abc" {
-		t.Errorf("getBaseName with %s didn't return '00000000-abcd-ef00-12345-123456789abc'", DUMMY_FILE_PATH)
+		t.Errorf("getBaseNameWithoutExt with %s didn't return '00000000-abcd-ef00-12345-123456789abc'", DUMMY_FILE_PATH)
 	}
 }
 

@@ -11,6 +11,7 @@ package main
 import (
 	"bufio"
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
 	_ "github.com/lib/pq"
@@ -110,13 +111,13 @@ func _setGlobals() {
 	}
 	if len(*_DB_CON_STR) > 0 {
 		if _, err := os.Stat(*_DB_CON_STR); err == nil {
-			props := readPropertiesFile(*_DB_CON_STR)
+			props, _ := readPropertiesFile(*_DB_CON_STR)
 			*_DB_CON_STR = genDbConnStr(props)
 		}
 		*_FILTER = _PROP_EXT
 		*_WITH_PROPS = false
 		db := openDb()
-		rows := queryDb("select name, REGEXP_REPLACE(recipe_name, '-.+', '') as fmt from repository", db)
+		rows := queryDb("SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository;", db)
 		_REPO_TO_FMT = make(map[string]string)
 		for rows.Next() {
 			var name string
@@ -178,11 +179,11 @@ func datetimeStrToTs(datetimeStr string) int64 {
 	return tmpTimeFrom.Unix()
 }
 
-func readPropertiesFile(filename string) StoreProps {
+func readPropertiesFile(path string) (StoreProps, error) {
 	props := StoreProps{}
-	file, err := os.Open(filename)
+	file, err := os.Open(path)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
@@ -199,9 +200,9 @@ func readPropertiesFile(filename string) StoreProps {
 		}
 	}
 	if err = scanner.Err(); err != nil {
-		panic(err)
+		return nil, err
 	}
-	return props
+	return props, nil
 }
 
 func genDbConnStr(props StoreProps) string {
@@ -239,49 +240,19 @@ func getBlobSize(propPath string) int64 {
 }
 
 func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
-	//_log("DEBUG", fmt.Sprintf("printLine-ing for path:%s", path))
 	modTime := fInfo.ModTime()
 	modTimeTs := modTime.Unix()
-	output := ""
-	props := ""
-	errNo := 0
 	var blobSize int64 = 0
 
-	if !*_RECON_FMT {
-		output = fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, fInfo.Size())
-	}
-	// listObjects() already checked _FILTER, but just in case...
-	if !*_NO_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
+	// Default values
+	output := fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, fInfo.Size())
+	if strings.HasSuffix(path, _PROP_EXT) && !*_NO_BLOB_SIZE {
 		blobSize = getBlobSize(path)
 		output = fmt.Sprintf("%s%s%d", output, _SEP, blobSize)
 	}
-	if strings.HasSuffix(path, _PROP_EXT) && (*_WITH_PROPS || len(*_FILTER_P) > 0 || *_RECON_FMT || len(*_DB_CON_STR) > 0) {
-		if *_RECON_FMT {
-			if _START_TIME_ts > 0 && modTimeTs > _START_TIME_ts {
-				// NOT checking against _DEL_DATE_TO_ts as file might be touched accidentally (I may change my mind if slow)
-				output = ""
-			} else if _DEL_DATE_FROM_ts > 0 && modTimeTs < _DEL_DATE_FROM_ts {
-				// Even not accurate, to make this function faster, currently checking fileModMs against _DEL_DATE_FROM_ts
-				output = ""
-			} else {
-				output, errNo = genOutputForReconcile(path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts)
-				_log("DEBUG", fmt.Sprintf("genOutputForReconcile returned output length:%d for path:%s modTimeTs:%d (%d)", len(output), path, modTimeTs, errNo))
-			}
-		} else if len(*_DB_CON_STR) > 0 {
-			if *_TRUTH == "BS" && !isBlobIdMissingInDB(path, db) {
-				output = ""
-				//} TODO: else if *_TRUTH == "DB" && !isBlobIdMissingInBlobStore() {
-				//	output = ""
-			}
-		} else {
-			props, errNo = genOutputFromProp(path)
-			_log("DEBUG", fmt.Sprintf("genOutputFromProp returned props length:%d for path:%s (%d)", len(props), path, errNo))
-			if errNo > 0 {
-				output = ""
-			} else if len(props) > 0 && *_WITH_PROPS {
-				output = fmt.Sprintf("%s%s%s", output, _SEP, props)
-			}
-		}
+
+	if strings.HasSuffix(path, _PROP_EXT) {
+		output = _printLineExtra(output, path, modTimeTs, db)
 	}
 
 	atomic.AddInt64(&_CHECKED_N, 1)
@@ -294,12 +265,58 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
 	return false
 }
 
+func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB) string {
+	props, err := readPropertiesFile(path)
+	if err != nil {
+		_log("DEBUG", "Error from "+path+" - "+err.Error())
+		return ""
+	}
+	props["blobId"] = getBaseNameWithoutExt(path)
+
+	if *_RECON_FMT {
+		// Skipping file which was modified just after this script started
+		if _START_TIME_ts > 0 && modTimeTs > _START_TIME_ts {
+			return ""
+		}
+		reconOutput, errNo := genOutputForReconcile(props, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts)
+		_log("DEBUG", fmt.Sprintf("genOutputForReconcile returned output length:%d for path:%s modTimeTs:%d (%d)", len(reconOutput), path, modTimeTs, errNo))
+		return reconOutput
+	}
+
+	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 {
+		// Script is asked to output if this blob is missing in DB
+		if *_TRUTH == "BS" {
+			if isBlobIdMissingInDB(props, db) {
+				return output
+			} else {
+				return ""
+			}
+		}
+		if *_TRUTH == "DB" {
+			// TODO: isBlobIdMissingInBlobStore()
+			return ""
+		}
+		return ""
+	}
+
+	propsStr, err2 := genOutputFromProp(props)
+	if err != nil {
+		_log("DEBUG", "Error from "+path+" - "+err2.Error())
+		return output
+	}
+	_log("DEBUG", fmt.Sprintf("genOutputFromProp returned props length:%d for path:%s", len(propsStr), path))
+	if *_WITH_PROPS && len(propsStr) > 0 {
+		output = fmt.Sprintf("%s%s%s", output, _SEP, propsStr)
+	}
+	return output
+}
+
 // as per google, this would be faster than using TrimSuffix
 func getPathWithoutExt(path string) string {
 	return path[:len(path)-len(filepath.Ext(path))]
 }
 
-func getBaseName(path string) string {
+func getBaseNameWithoutExt(path string) string {
 	fileName := filepath.Base(path)
 	return getPathWithoutExt(fileName)
 }
@@ -307,17 +324,6 @@ func getBaseName(path string) string {
 func getNowStr() string {
 	currentTime := time.Now()
 	return currentTime.Format("2006-01-02 15:04:05")
-}
-
-func getContents(path string) (string, error) {
-	_log("DEBUG", fmt.Sprintf("Getting contents from %s", path))
-	bytes, err := os.ReadFile(path)
-	if err != nil {
-		_log("DEBUG", fmt.Sprintf("ReadFile for %s failed with %s. Ignoring...", path, err.Error()))
-		return "", err
-	}
-	contents := strings.TrimSpace(string(bytes))
-	return contents, nil
 }
 
 func openDb() *sql.DB {
@@ -373,7 +379,7 @@ func genBlobIdCheckingQuery(path string) (string, int) {
 	}
 	// TODO: Should be LEFT JOIN but the query will be slower...
 	repoFmt := _REPO_TO_FMT[repoName]
-	query := "SELECT ab.asset_blob_id FROM " + repoFmt + "_asset_blob ab INNER JOIN " + repoFmt + "_asset a on ab.asset_blob_id = a.asset_blob_id WHERE a.path = '" + blobName + "' and ab.blob_ref like '%:" + getBaseName(path) + "@%'"
+	query := "SELECT ab.asset_blob_id FROM " + repoFmt + "_asset_blob ab INNER JOIN " + repoFmt + "_asset a on ab.asset_blob_id = a.asset_blob_id WHERE a.path = '" + blobName + "' and ab.blob_ref like '%:" + getBaseNameWithoutExt(path) + "@%'"
 	_log("DEBUG", query)
 	return query, -1
 }
@@ -403,22 +409,14 @@ func isBlobIdMissingInDB(path string, db *sql.DB) bool {
 	return noRows
 }
 
-func genOutputForReconcile(path string, delDateFromTs int64, delDateToTs int64) (string, int) {
-	contents := ""
-	var err error
+func genOutputForReconcile(props StoreProps, delDateFromTs int64, delDateToTs int64) (string, error) {
 	// if _DEL_DATE_FROM or _DEL_DATE_TO is set, check deletedDateTime=\d+
 	if delDateFromTs > 0 || delDateToTs > 0 {
-		contents, err = getContents(path)
-		if err != nil {
-			return "", 13
+		deletedDateTime, ok := props["deletedDateTime"]
+		if !ok {
+			return "", errors.New(fmt.Sprintf("properties of %s dos not have deletedDateTime", props["blobId"]))
 		}
-		// capture group
-		m := _R_DEL_DT.FindStringSubmatch(contents)
-		if len(m) < 2 {
-			_log("DEBUG", fmt.Sprintf("path:%s dos not match with %s (%s)", path, _R_DEL_DT.String(), m))
-			return "", 14
-		}
-		deletedTSMsec, _ := strconv.ParseInt(m[1], 10, 64)
+		deletedTSMsec, _ := strconv.ParseInt(deletedDateTime, 10, 64)
 		if isTimestampBetween(deletedTSMsec, delDateFromTs*1000, delDateToTs*1000) {
 			_log("INFO", fmt.Sprintf("path:%s deletedDateTime=%d is between delDateFromTs:%d and delDateToTs:%d", path, deletedTSMsec, delDateFromTs*1000, delDateToTs*1000))
 			if delDateFromTs > 0 && *_REMOVE_DEL {
@@ -431,12 +429,12 @@ func genOutputForReconcile(path string, delDateFromTs int64, delDateToTs int64) 
 					_log("WARN", fmt.Sprintf("Removed 'deleted=true' from path:%s (%d => %d)", path, len(contents), len(updatedContents)))
 				}
 			}
-			return fmt.Sprintf("%s,%s", getNowStr(), getBaseName(path)), 0
+			return fmt.Sprintf("%s,%s", getNowStr(), getBaseNameWithoutExt(path)), 0
 		}
 		return "", 15
 	}
 	// Not using _SEP for this output
-	return fmt.Sprintf("%s,%s", getNowStr(), getBaseName(path)), 0
+	return fmt.Sprintf("%s,%s", getNowStr(), getBaseNameWithoutExt(path)), 0
 }
 
 // one line but for unit testing
@@ -458,43 +456,49 @@ func isTimestampBetween(tMsec int64, fromTsMsec int64, toTsMsec int64) bool {
 	return true
 }
 
-func genOutputFromProp(path string) (string, int) {
-	contents, err := getContents(path)
-	if err != nil {
-		return "", 21
+func sortProps(props StoreProps) StoreProps {
+	sortedProps := StoreProps{}
+	keys := []string{}
+	for key := range props {
+		keys = append(keys, key)
 	}
+	sort.Strings(keys)
+	for _, val := range keys {
+		sortedProps[val] = props[val]
+	}
+	return sortedProps
+}
 
-	// If no _FILTER_P, just returns the content as one line
+func propsToJsonStr(props StoreProps) string {
+	jsonStr, _ := json.Marshal(sortProps(props))
+	return string(jsonStr)
+}
+
+func genOutputFromProp(props StoreProps) (string, error) {
+	// To allow to use simpler regex, sorting line and converting to single line first
+	contents := propsToJsonStr(props)
+
+	// If no _FILTER_P, return as it is
 	if len(*_FILTER_P) == 0 {
-		// If no _FILETER2, just return the contents as single line. Should also escape '"'?
-		return strings.ReplaceAll(contents, "\n", ","), 0
+		return contents, nil
 	}
 
-	// If asked to use regex, return properties lines only if matches.
 	if *_USE_REGEX {
+		// If asked to use regex, but no regex ... false?
 		if _R == nil || len(_R.String()) == 0 { //
-			//_log("DEBUG", fmt.Sprintf("_USE_REGEX is specified by no regular expression (_R)"))
-			return "", 22
+			return "", errors.New("_USE_REGEX is specified but no regular expression (_R)")
 		}
-		// To allow to use simpler regex, sorting line and converting to single line firt
-		lines := strings.Split(contents, "\n")
-		sort.Strings(lines)
-		contents = strings.Join(lines, ",")
 		if _R.MatchString(contents) {
-			return contents, 0
+			return contents, nil
 		}
-		_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s (with Regex). Not outputting entire line...", path, *_FILTER_P))
-		return "", 23
+		return "", errors.New(fmt.Sprintf("Properties of %s does not contain %s (with Regex). Not outputting entire line...", props["blobId"], *_FILTER_P))
 	}
 
 	// If not regex (eg: 'deleted=true')
-	if strings.Contains(contents, *_FILTER_P) {
-		//_log("DEBUG", fmt.Sprintf("path:%s contains %s", path, *_FILTER_P))
-		return strings.ReplaceAll(contents, "\n", ","), 0
+	if !strings.Contains(contents, *_FILTER_P) {
+		return "", errors.New(fmt.Sprintf("%s does not contain %s.", props["blobId"], *_FILTER_P))
 	}
-
-	_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s. Not outputting entire line...", path, *_FILTER_P))
-	return "", 24
+	return contents, nil
 }
 
 // get *all* directories under basedir and which name starts with prefix
