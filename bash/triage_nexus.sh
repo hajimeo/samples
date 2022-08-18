@@ -220,7 +220,8 @@ function f_search_soft_deleted_blobs() {
     # TODO: utilise 'blobpath' command
 }
 
-# sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
+# Probably does not work with Mac's 'sed' because of -i difference
+#sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
 function f_gen_replication_log_from_soft_deleted() {
     local __doc__="Workaround for NEXUS-27079. find deleted=true blobs to generate ./YYYY-MM-DD (then manually move under reconciliation)"
     local _blobstore_dir="${1}" # Also used to get blobstore name
@@ -228,17 +229,18 @@ function f_gen_replication_log_from_soft_deleted() {
     local _output_date="${3:-"$(date '+%Y-%m-%d')"}"
     local _P="${4:-"3"}"
     if [ -s "./${_output_date}" ]; then
-        echo "./${_output_date} exists."
+        echo "./${_output_date} exists." >&2
         return 1
     fi
     if [ ! -d "${_blobstore_dir%/}/content" ]; then
-        echo "${_blobstore_dir%/}/content does not exist."
+        echo "${_blobstore_dir%/}/content does not exist." >&2
         return 1
     fi
     #echo -n "$$" > /tmp/_undeleting.pid || return $?
     #find ...  -type f -name '????????-????-????-????-????????????.properties ! -newer /tmp/_undeleting.pid
-    # To test without changing file timestamp: sed -e "s/^deleted=true//" {} &>/dev/null
-    find ${_blobstore_dir%/}/content/vol-* -name '*.properties' -mtime ${_days} -print0 | xargs -P${_P} -I{} -0 bash -c 'grep -q "^deleted=true" {} && sed -e "s/^deleted=true//" {} &>/dev/null && echo "'${_output_date}' 00:00:01,$(basename {} .properties)" >> ./'${_output_date}';'
+    # To test without changing file timestamp: sed -n -e "s/^deleted=true//" (instead of -i)
+    #ls -1d ${_blobstore_dir%/}/content/vol-* | xargs -t -P${_P} -I[] find [] -name '*.properties' -mtime ${_days} -exec grep -l "^deleted=true" {} \; -exec sed -n -e "s/^deleted=true//" {} \;
+    find ${_blobstore_dir%/}/content/vol-* -name '*.properties' -mtime ${_days} -print0 | xargs -P${_P} -I{} -0 sh -c 'grep -q "^deleted=true" {} && sed -i -e "s/^deleted=true//" {} && echo "'${_output_date}' 00:00:01,$(basename {} .properties)" >> ./'${_output_date}';'
     ls -l ./${_output_date}
 }
 
