@@ -88,7 +88,7 @@ func _setGlobals() {
 	_DB_CON_STR = flag.String("db", "", "DB connection string or path to properties file")
 	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and _FILTER_P string is treated as regex")
 	_RECON_FMT = flag.Bool("RF", false, "Output for the Reconcile task (any_string,blob_ref). -P will be ignored")
-	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF and -dF") // TODO: also think about restore plan
+	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF *and* -dF") // TODO: also think about restore plan
 	_DEL_DATE_FROM = flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
 	_DEL_DATE_TO = flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
 	//_EXCLUDE_FILE = flag.String("sk", "", "Blob IDs in this file will be skipped from the check") // TODO
@@ -110,13 +110,13 @@ func _setGlobals() {
 	}
 	if len(*_DB_CON_STR) > 0 {
 		if _, err := os.Stat(*_DB_CON_STR); err == nil {
-			props := readPropertiesFile(*_DB_CON_STR)
+			props, _ := readPropertiesFile(*_DB_CON_STR)
 			*_DB_CON_STR = genDbConnStr(props)
 		}
 		*_FILTER = _PROP_EXT
 		*_WITH_PROPS = false
 		db := openDb()
-		rows := queryDb("select name, REGEXP_REPLACE(recipe_name, '-.+', '') as fmt from repository", db)
+		rows := queryDb("SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository;", db)
 		_REPO_TO_FMT = make(map[string]string)
 		for rows.Next() {
 			var name string
@@ -133,7 +133,7 @@ func _setGlobals() {
 	}
 	_START_TIME_ts = time.Now().Unix()
 	_R_DEL_DT, _ = regexp.Compile("[^#]?deletedDateTime=([0-9]+)")
-	_R_DELETED, _ = regexp.Compile("deleted=true")
+	_R_DELETED, _ = regexp.Compile("deleted=true") // should not use ^ as replacing one-line text
 	_R_REPO_NAME, _ = regexp.Compile("[^#]?@Bucket.repo-name=(.+)")
 	_R_BLOB_NAME, _ = regexp.Compile("[^#]?@BlobStore.blob-name=(.+)")
 	if *_RECON_FMT {
@@ -178,11 +178,11 @@ func datetimeStrToTs(datetimeStr string) int64 {
 	return tmpTimeFrom.Unix()
 }
 
-func readPropertiesFile(filename string) StoreProps {
+func readPropertiesFile(path string) (StoreProps, error) {
 	props := StoreProps{}
-	file, err := os.Open(filename)
+	file, err := os.Open(path)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	defer file.Close()
 	scanner := bufio.NewScanner(file)
@@ -199,9 +199,9 @@ func readPropertiesFile(filename string) StoreProps {
 		}
 	}
 	if err = scanner.Err(); err != nil {
-		panic(err)
+		return nil, err
 	}
-	return props
+	return props, nil
 }
 
 func genDbConnStr(props StoreProps) string {
@@ -243,8 +243,6 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
 	modTime := fInfo.ModTime()
 	modTimeTs := modTime.Unix()
 	output := ""
-	props := ""
-	errNo := 0
 	var blobSize int64 = 0
 
 	if !*_RECON_FMT {
@@ -255,33 +253,8 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
 		blobSize = getBlobSize(path)
 		output = fmt.Sprintf("%s%s%d", output, _SEP, blobSize)
 	}
-	if strings.HasSuffix(path, _PROP_EXT) && (*_WITH_PROPS || len(*_FILTER_P) > 0 || *_RECON_FMT || len(*_DB_CON_STR) > 0) {
-		if *_RECON_FMT {
-			if _START_TIME_ts > 0 && modTimeTs > _START_TIME_ts {
-				// NOT checking against _DEL_DATE_TO_ts as file might be touched accidentally (I may change my mind if slow)
-				output = ""
-			} else if _DEL_DATE_FROM_ts > 0 && modTimeTs < _DEL_DATE_FROM_ts {
-				// Even not accurate, to make this function faster, currently checking fileModMs against _DEL_DATE_FROM_ts
-				output = ""
-			} else {
-				output, errNo = genOutputForReconcile(path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts)
-				_log("DEBUG", fmt.Sprintf("genOutputForReconcile returned output length:%d for path:%s modTimeTs:%d (%d)", len(output), path, modTimeTs, errNo))
-			}
-		} else if len(*_DB_CON_STR) > 0 {
-			if *_TRUTH == "BS" && !isBlobIdMissingInDB(path, db) {
-				output = ""
-				//} TODO: else if *_TRUTH == "DB" && !isBlobIdMissingInBlobStore() {
-				//	output = ""
-			}
-		} else {
-			props, errNo = genOutputFromProp(path)
-			_log("DEBUG", fmt.Sprintf("genOutputFromProp returned props length:%d for path:%s (%d)", len(props), path, errNo))
-			if errNo > 0 {
-				output = ""
-			} else if len(props) > 0 && *_WITH_PROPS {
-				output = fmt.Sprintf("%s%s%s", output, _SEP, props)
-			}
-		}
+	if strings.HasSuffix(path, _PROP_EXT) {
+		output = _printLineExtra(output, path, modTimeTs, db)
 	}
 
 	atomic.AddInt64(&_CHECKED_N, 1)
@@ -294,12 +267,60 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
 	return false
 }
 
+func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB) string {
+	skipCheck := false
+	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 {
+		// Script is asked to output if this blob is missing in DB
+		if *_TRUTH == "BS" {
+			if !isBlobIdMissingInDB(path, db) {
+				return ""
+			}
+			skipCheck = true
+		}
+		if *_TRUTH == "DB" {
+			// TODO: if !isBlobIdMissingInBlobStore() {
+			//skipCheck = true
+			return ""
+		}
+	}
+
+	if *_RECON_FMT {
+		// If reconciliation output format is requested, do not use 'output'
+		if !skipCheck && _START_TIME_ts > 0 && modTimeTs > _START_TIME_ts {
+			// NOT checking against _DEL_DATE_TO_ts as file might be touched accidentally (I may change my mind if slow)
+			return ""
+		}
+		if !skipCheck && _DEL_DATE_FROM_ts > 0 && modTimeTs < _DEL_DATE_FROM_ts {
+			// Even not accurate, to make this function faster, currently checking fileModMs against _DEL_DATE_FROM_ts
+			return ""
+		}
+		reconOutput, reconErr := genOutputForReconcile(path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, skipCheck)
+		if reconErr != nil {
+			_log("DEBUG", reconErr.Error())
+		}
+		return reconOutput
+	}
+
+	if *_WITH_PROPS {
+		props, propErr := genOutputFromProp(path)
+		if propErr != nil {
+			_log("DEBUG", propErr.Error())
+			// If can't read .propreties file, still return the original "output", so not return-ing
+			//return ""
+		}
+		if len(props) > 0 {
+			output = fmt.Sprintf("%s%s%s", output, _SEP, props)
+		}
+	}
+	return output
+}
+
 // as per google, this would be faster than using TrimSuffix
 func getPathWithoutExt(path string) string {
 	return path[:len(path)-len(filepath.Ext(path))]
 }
 
-func getBaseName(path string) string {
+func getBaseNameWithoutExt(path string) string {
 	fileName := filepath.Base(path)
 	return getPathWithoutExt(fileName)
 }
@@ -323,6 +344,9 @@ func getContents(path string) (string, error) {
 func openDb() *sql.DB {
 	if len(*_DB_CON_STR) == 0 {
 		return nil
+	}
+	if !strings.Contains(*_DB_CON_STR, "sslmode") {
+		*_DB_CON_STR = *_DB_CON_STR + " sslmode=disable"
 	}
 	db, err := sql.Open("postgres", *_DB_CON_STR)
 	if err != nil {
@@ -369,11 +393,12 @@ func genBlobIdCheckingQuery(path string) (string, int) {
 	}
 	blobName := m[1]
 	if !strings.HasPrefix(blobName, "/") {
+		_log("INFO", "BlobStore.blob-name does not start with '/' for "+path)
 		blobName = "/" + blobName
 	}
 	// TODO: Should be LEFT JOIN but the query will be slower...
 	repoFmt := _REPO_TO_FMT[repoName]
-	query := "SELECT ab.asset_blob_id FROM " + repoFmt + "_asset_blob ab INNER JOIN " + repoFmt + "_asset a on ab.asset_blob_id = a.asset_blob_id WHERE a.path = '" + blobName + "' and ab.blob_ref like '%:" + getBaseName(path) + "@%'"
+	query := "SELECT ab.asset_blob_id FROM " + repoFmt + "_asset_blob ab INNER JOIN " + repoFmt + "_asset a on ab.asset_blob_id = a.asset_blob_id WHERE a.path = '" + blobName + "' and ab.blob_ref like '%:" + getBaseNameWithoutExt(path) + "@%'"
 	_log("DEBUG", query)
 	return query, -1
 }
@@ -403,40 +428,45 @@ func isBlobIdMissingInDB(path string, db *sql.DB) bool {
 	return noRows
 }
 
-func genOutputForReconcile(path string, delDateFromTs int64, delDateToTs int64) (string, int) {
-	contents := ""
-	var err error
+func genOutputForReconcile(path string, delDateFromTs int64, delDateToTs int64, skipCheck bool) (string, error) {
+	deletedMsg := ""
+	deletedDtMsg := ""
 	// if _DEL_DATE_FROM or _DEL_DATE_TO is set, check deletedDateTime=\d+
-	if delDateFromTs > 0 || delDateToTs > 0 {
-		contents, err = getContents(path)
+	if skipCheck || delDateFromTs > 0 || delDateToTs > 0 {
+		contents, err := getContents(path)
 		if err != nil {
-			return "", 13
+			return "", errors.New(fmt.Sprintf("Could not read the contents from %s for deletion date check", path))
 		}
-		// capture group
 		m := _R_DEL_DT.FindStringSubmatch(contents)
-		if len(m) < 2 {
-			_log("DEBUG", fmt.Sprintf("path:%s dos not match with %s (%s)", path, _R_DEL_DT.String(), m))
-			return "", 14
+
+		if !skipCheck && len(m) < 2 {
+			return "", errors.New(fmt.Sprintf("path:%s dos not match with %s (%s)", path, _R_DEL_DT.String(), m))
 		}
-		deletedTSMsec, _ := strconv.ParseInt(m[1], 10, 64)
-		if isTimestampBetween(deletedTSMsec, delDateFromTs*1000, delDateToTs*1000) {
-			_log("INFO", fmt.Sprintf("path:%s deletedDateTime=%d is between delDateFromTs:%d and delDateToTs:%d", path, deletedTSMsec, delDateFromTs*1000, delDateToTs*1000))
-			if delDateFromTs > 0 && *_REMOVE_DEL {
-				// TODO: remove 'deleted=true'
+		// Check and Remove deleted=true only when deletedDatetime is set in the properties file
+		if len(m) > 1 {
+			deletedTSMsec, _ := strconv.ParseInt(m[1], 10, 64)
+			if !isTimestampBetween(deletedTSMsec, delDateFromTs*1000, delDateToTs*1000) {
+				return "", errors.New(fmt.Sprintf("%d is not between %d and %d", deletedTSMsec, delDateFromTs*1000, delDateToTs*1000))
+			}
+			deletedDtMsg = fmt.Sprintf(" deletedDateTime=%d", deletedTSMsec)
+
+			if *_REMOVE_DEL {
 				updatedContents := removeLines(contents, _R_DELETED)
 				err := _writeToFile(path, updatedContents)
 				if err != nil {
 					_log("ERROR", fmt.Sprintf("Updating path:%s failed with %s", path, err))
+				} else if len(contents) == len(updatedContents) {
+					_log("WARN", fmt.Sprintf("Removed 'deleted=true' from path:%s but size is same (%d => %d)", path, len(contents), len(updatedContents)))
 				} else {
-					_log("WARN", fmt.Sprintf("Removed 'deleted=true' from path:%s (%d => %d)", path, len(contents), len(updatedContents)))
+					deletedMsg = " (removed 'deletedMsg=true')"
 				}
 			}
-			return fmt.Sprintf("%s,%s", getNowStr(), getBaseName(path)), 0
 		}
-		return "", 15
 	}
+
+	_log("INFO", fmt.Sprintf("Found path:%s%s%s", path, deletedDtMsg, deletedMsg))
 	// Not using _SEP for this output
-	return fmt.Sprintf("%s,%s", getNowStr(), getBaseName(path)), 0
+	return fmt.Sprintf("%s,%s", getNowStr(), getBaseNameWithoutExt(path)), nil
 }
 
 // one line but for unit testing
@@ -458,43 +488,37 @@ func isTimestampBetween(tMsec int64, fromTsMsec int64, toTsMsec int64) bool {
 	return true
 }
 
-func genOutputFromProp(path string) (string, int) {
+func genOutputFromProp(path string) (string, error) {
 	contents, err := getContents(path)
 	if err != nil {
-		return "", 21
+		return "", errors.New(fmt.Sprintf("Couldn't read %s.", path))
 	}
 
-	// If no _FILTER_P, just returns the content as one line
 	if len(*_FILTER_P) == 0 {
 		// If no _FILETER2, just return the contents as single line. Should also escape '"'?
-		return strings.ReplaceAll(contents, "\n", ","), 0
+		return strings.ReplaceAll(contents, "\n", ","), nil
 	}
 
-	// If asked to use regex, return properties lines only if matches.
 	if *_USE_REGEX {
+		// If asked to use regex, return properties lines only if matches.
 		if _R == nil || len(_R.String()) == 0 { //
-			//_log("DEBUG", fmt.Sprintf("_USE_REGEX is specified by no regular expression (_R)"))
-			return "", 22
+			return "", errors.New("_USE_REGEX is specified but no regular expression (_R)")
 		}
 		// To allow to use simpler regex, sorting line and converting to single line firt
 		lines := strings.Split(contents, "\n")
 		sort.Strings(lines)
 		contents = strings.Join(lines, ",")
 		if _R.MatchString(contents) {
-			return contents, 0
+			return contents, nil
 		}
-		_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s (with Regex). Not outputting entire line...", path, *_FILTER_P))
-		return "", 23
+		return "", errors.New(fmt.Sprintf("%s does not contain %s (with Regex). Not outputting entire line.", path, *_FILTER_P))
 	}
 
 	// If not regex (eg: 'deleted=true')
-	if strings.Contains(contents, *_FILTER_P) {
-		//_log("DEBUG", fmt.Sprintf("path:%s contains %s", path, *_FILTER_P))
-		return strings.ReplaceAll(contents, "\n", ","), 0
+	if !strings.Contains(contents, *_FILTER_P) {
+		return "", errors.New(fmt.Sprintf("%s does not contain %s.", path, *_FILTER_P))
 	}
-
-	_log("DEBUG", fmt.Sprintf("Properties of %s does not contain %s. Not outputting entire line...", path, *_FILTER_P))
-	return "", 24
+	return contents, nil
 }
 
 // get *all* directories under basedir and which name starts with prefix

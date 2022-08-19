@@ -74,7 +74,7 @@ Finding deleted=true (just for testing as you should just grep against /tmp/defa
 This time, it's much faster because of buffer/cache on Linux.
 
 ## More usage examples:
-List all files under the ./sonatype-work/nexus3/blobs/default
+### List all files under the ./sonatype-work/nexus3/blobs/default
 ```
 $ file-list -b ./sonatype-work/nexus3/blobs/default
 ... (snip) ...
@@ -83,7 +83,7 @@ $ file-list -b ./sonatype-work/nexus3/blobs/default
 
 2021/12/31 14:23:09 INFO: Printed 185 items (size: 75910509) in ./sonatype-work/nexus3/blobs/default with prefix:
 ```
-Check the count and size of all .bytes file under "content" directory under "default" blob store (including tmp files).  
+### Check the count and size of all .bytes file under "content" directory under "default" blob store (including tmp files).
 This would be useful to compare with the counters in the Blobstore page.
 ```
 $ file-list -b ./sonatype-work/nexus3/blobs/default/content -f ".bytes" >/dev/null
@@ -91,37 +91,47 @@ $ file-list -b ./sonatype-work/nexus3/blobs/default/content -f ".bytes" >/dev/nu
 
 2021/12/31 14:24:15 INFO: Printed 91 items (size: 75871811) in ./sonatype-work/nexus3/blobs/default with prefix: ''
 ```
-Parallel execution (concurrency 10), and save to all_objects.csv file
+### Parallel execution (concurrency 10), and save to all_objects.csv file
 ```
 $ file-list -b ./content -p "vol-" -c 10 > all_objects.csv
 ```
-Parallel execution (concurrency 10) with all properties
+### Parallel execution (concurrency 10) with all properties
 ```
 $ file-list -b ./content -p "vol-" -c 10 -f ".properties" -P > all_with_props.csv
 ```
-List all objects which properties contain 'deleted=true'
+### List all objects which properties contain 'deleted=true'
 ```
 $ file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -fP "deleted=true" > soft_deleted.csv
 ```
-List all objects which properties contain 'repo-name=docker-proxy' and 'deleted=true' (NOTE: properties are sorted)
+### List all objects which properties contain 'repo-name=docker-proxy' and 'deleted=true' (NOTE: properties are sorted)
 ```
 $ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.csv
 ```
 NOTE: the attributes in a properties file are sorted in memory, so that attributes start with "@" comes before "deleted=".
 
-Output lines for Reconcile task's YYYY-MM-DD log (blobstore.rebuildComponentDB), like Dry-Run
+### Output lines for Reconcile task's YYYY-MM-DD log (blobstore.rebuildComponentDB), like Dry-Run
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-05-19" > ./2022-05-19
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-05-19" > ./$(date '+%Y-%m-%d')
 ```
-Remove 'deleted=true', then output lines for Reconcile task's YYYY-MM-DD log
+### Remove 'deleted=true', then output lines for Reconcile task's YYYY-MM-DD log
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-07-19" -RDel > ./2022-07-19
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-07-19" -RDel > ./$(date '+%Y-%m-%d')
 ```
-Check orphaned files (PostgreSQL only) with max 10 DB connections
+### Check orphaned files (PostgreSQL only) with max 10 DB connections
 ```
 $ file-list -b ./default/content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=nxrm3pg dbname=nxrm3pg"
 ```
+or
+```
+$ file-list -b ./default/content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties
+```
 NOTE: Above outputs blobs which are not in <format>_asset table, which includes assets which have not soft-deleted by Cleanup unused asset blobs task.
+
+### Check orphaned files (PostgreSQL only) with max 4 DB connections, and with Reconciliation YYYY-MM-DD format, and since 2022-05-19 (to remove 'deleted=true' -RDel)
+```
+$ file-list -b ./default/content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -RF -dF "2022-05-19" > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d%H%M%S").log
+```
+NOTE: If using -RDel, recommend to save the STDERR into a file
 
 ## ADVANCE USAGE EXAMPLE:
 ```

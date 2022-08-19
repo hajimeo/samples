@@ -52,10 +52,10 @@ func TestGetPathWithoutExt(t *testing.T) {
 	}
 }
 
-func TestGetBaseName(t *testing.T) {
-	fileName := getBaseName(DUMMY_FILE_PATH)
+func TestGetBaseNameWithoutExt(t *testing.T) {
+	fileName := getBaseNameWithoutExt(DUMMY_FILE_PATH)
 	if fileName != "00000000-abcd-ef00-12345-123456789abc" {
-		t.Errorf("getBaseName with %s didn't return '00000000-abcd-ef00-12345-123456789abc'", DUMMY_FILE_PATH)
+		t.Errorf("getBaseNameWithoutExt with %s didn't return '00000000-abcd-ef00-12345-123456789abc'", DUMMY_FILE_PATH)
 	}
 }
 
@@ -140,9 +140,9 @@ func TestGenOutputForReconcile(t *testing.T) {
 	}
 	delDateFrom := datetimeStrToTs("2021-06-02")
 	delDateTo := datetimeStrToTs("2021-06-03")
-	output, errNo := genOutputForReconcile(DUMMY_FILE_PATH, delDateFrom, delDateTo)
-	if errNo > 0 {
-		t.Errorf("genOutputForReconcile return errorNo %d", errNo)
+	output, err := genOutputForReconcile(DUMMY_FILE_PATH, delDateFrom, delDateTo, false)
+	if err != nil {
+		t.Errorf("genOutputForReconcile return error %s", err.Error())
 	}
 	if !strings.Contains(output, ",00000000-abcd-ef00-12345-123456789abc") {
 		t.Errorf("output should contain '00000000-abcd-ef00-12345-123456789abc'\n(%s)", output)
@@ -150,9 +150,9 @@ func TestGenOutputForReconcile(t *testing.T) {
 
 	delDateFrom = datetimeStrToTs("2022-06-02")
 	delDateTo = datetimeStrToTs("2022-07-02")
-	output, errNo = genOutputForReconcile(DUMMY_FILE_PATH, delDateFrom, delDateTo)
-	if errNo != 15 {
-		t.Errorf("genOutputForReconcile return errorNo %d", errNo)
+	output, err = genOutputForReconcile(DUMMY_FILE_PATH, delDateFrom, delDateTo, false)
+	if err == nil || !strings.Contains(err.Error(), "is not between") {
+		t.Errorf("genOutputForReconcile return unexpected error %s", err.Error())
 	}
 	if strings.Contains(output, ",00000000-abcd-ef00-12345-123456789abc") {
 		t.Errorf("As 'deletedDateTime=1622674572617' (2021-06-02T22:56:12.617Z), should not return anything (%s)", output)
