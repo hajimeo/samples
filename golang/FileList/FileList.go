@@ -431,18 +431,28 @@ func isBlobIdMissingInDB(path string, db *sql.DB) bool {
 func genOutputForReconcile(path string, delDateFromTs int64, delDateToTs int64, skipCheck bool) (string, error) {
 	deletedMsg := ""
 	deletedDtMsg := ""
-	// if _DEL_DATE_FROM or _DEL_DATE_TO is set, check deletedDateTime=\d+
-	if skipCheck || delDateFromTs > 0 || delDateToTs > 0 {
+
+	// If skipCheck is true and no deletedDateFrom/To is specified, just return the output for reconcile
+	if skipCheck && delDateFromTs == 0 && delDateToTs == 0 {
+		_log("INFO", fmt.Sprintf("Found path:%s .", path))
+		// Not using _SEP for this output
+		return fmt.Sprintf("%s,%s", getNowStr(), getBaseNameWithoutExt(path)), nil
+	}
+
+	// if _DEL_DATE_FROM or _DEL_DATE_TO, examine deletedDateTime
+	if delDateFromTs > 0 || delDateToTs > 0 {
 		contents, err := getContents(path)
 		if err != nil {
 			return "", errors.New(fmt.Sprintf("Could not read the contents from %s for deletion date check", path))
 		}
-		m := _R_DEL_DT.FindStringSubmatch(contents)
 
+		m := _R_DEL_DT.FindStringSubmatch(contents)
+		// stop in here with error, only when skipCheck is false
 		if !skipCheck && len(m) < 2 {
 			return "", errors.New(fmt.Sprintf("path:%s dos not match with %s (%s)", path, _R_DEL_DT.String(), m))
 		}
-		// Check and Remove deleted=true only when deletedDatetime is set in the properties file
+
+		// Current logic is Check and Remove deleted=true only when deletedDatetime is set in the properties file
 		if len(m) > 1 {
 			deletedTSMsec, _ := strconv.ParseInt(m[1], 10, 64)
 			if !isTimestampBetween(deletedTSMsec, delDateFromTs*1000, delDateToTs*1000) {
