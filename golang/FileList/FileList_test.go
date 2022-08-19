@@ -23,8 +23,18 @@ sha1=c6b3eecd723b7b26fd92308e7ff25d1142059521
 deletedReason=Updating asset AttachedEntityId{asset->\#24\:3384}
 @Bucket.repo-name=helm-hosted
 size=63`
+var DUMMY_DB_PROPS_PATH = "/tmp/dummy-store.properties"
+var DUMMY_DB_PROP_TXT = `#2022-08-14 20:58:43,970+0000
+#Sun Aug 14 20:58:43 UTC 2022
+password=xxxxxxxx
+maximumPoolSize=10
+jdbcUrl=jdbc\:postgresql\://192.168.1.1\:5433/nxrm3pg?ssl\=true&sslfactory\=org.postgresql.ssl.NonValidatingFactory
+advanced=maxLifetime\=600000
+username=nxrm3pg`
 
 func TestMain(m *testing.M) {
+	_writeToFile(DUMMY_FILE_PATH, DUMMY_PROP_TXT)
+	_writeToFile(DUMMY_DB_PROPS_PATH, DUMMY_DB_PROP_TXT)
 	_setGlobals()
 	// Run tests
 	exitVal := m.Run()
@@ -34,10 +44,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestPrintLine(t *testing.T) {
-	err := _writeToFile(DUMMY_FILE_PATH, DUMMY_PROP_TXT)
-	if err != nil {
-		t.Errorf("Preparing test failed with %s", err)
-	}
 	fInfo, _ := os.Lstat(DUMMY_FILE_PATH)
 	if !printLine(DUMMY_FILE_PATH, fInfo, nil) {
 		t.Errorf("printLine failed with all default global variables")
@@ -75,16 +81,20 @@ func TestGetNowStr(t *testing.T) {
 }
 
 func TestGetContents(t *testing.T) {
-	err := _writeToFile(DUMMY_FILE_PATH, DUMMY_PROP_TXT)
-	if err != nil {
-		t.Errorf("Preparing test failed with %s", err)
-	}
 	contents, err := getContents(DUMMY_FILE_PATH)
 	if err != nil {
 		t.Errorf("getContents failed with %s", err)
 	}
 	if contents != DUMMY_PROP_TXT {
 		t.Errorf("getContents didn't return expected txt (length:%d vs. %d)", len(contents), len(DUMMY_PROP_TXT))
+	}
+}
+
+func TestGenDbConnStr(t *testing.T) {
+	props, _ := readPropertiesFile(DUMMY_DB_PROPS_PATH)
+	dbConnStr := genDbConnStr(props)
+	if !strings.Contains(dbConnStr, "host=192.168.1.1 port=5433 user=nxrm3pg password=xxxxxxxx dbname=nxrm3pg") {
+		t.Errorf("DB connection string: %s is incorrect.", dbConnStr)
 	}
 }
 
@@ -97,7 +107,6 @@ func TestQueryDb(t *testing.T) {
 }
 
 func TestGenBlobIdCheckingQuery(t *testing.T) {
-	_writeToFile(DUMMY_FILE_PATH, DUMMY_PROP_TXT)
 	query, errNo := genBlobIdCheckingQuery(DUMMY_FILE_PATH)
 	if errNo != -1 {
 		t.Errorf("errNo should be -1 but god %d", errNo)
@@ -109,7 +118,6 @@ func TestGenBlobIdCheckingQuery(t *testing.T) {
 }
 
 func TestIsBlobIdMissingInDB(t *testing.T) {
-	_writeToFile(DUMMY_FILE_PATH, DUMMY_PROP_TXT)
 	rtn := isBlobIdMissingInDB(DUMMY_FILE_PATH, nil)
 	if len(*_DB_CON_STR) == 0 && rtn {
 		t.Errorf("If no _DB_CON_STR, isBlobIdMissingInDB should not return true")
@@ -134,10 +142,6 @@ func TestIsTimestampBetween(t *testing.T) {
 }
 
 func TestGenOutputForReconcile(t *testing.T) {
-	err := _writeToFile(DUMMY_FILE_PATH, DUMMY_PROP_TXT)
-	if err != nil {
-		t.Errorf("Preparing test failed with %s", err)
-	}
 	delDateFrom := datetimeStrToTs("2021-06-02")
 	delDateTo := datetimeStrToTs("2021-06-03")
 	output, err := genOutputForReconcile(DUMMY_FILE_PATH, delDateFrom, delDateTo, false)

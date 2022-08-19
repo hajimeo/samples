@@ -223,7 +223,7 @@ func genDbConnStr(props StoreProps) string {
 		// TODO: probably need to escape?
 		params = " " + strings.ReplaceAll(matches[4], "&", " ")
 	}
-	connStr := fmt.Sprintf("host=%s user=%s password=%s dbname=%s%s", hostname, props["username"], props["password"], database, params)
+	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s%s", hostname, port, props["username"], props["password"], database, params)
 	props["password"] = "********"
 	_log("INFO", fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s%s", hostname, port, props["username"], props["password"], database, params))
 	return connStr
@@ -620,7 +620,7 @@ func main() {
 		guard <- struct{}{}
 		wg.Add(1) // *
 		go func(basedir string) {
-			_log("DEBUG", fmt.Sprintf("Listing objects for %s ...", basedir))
+			_log("INFO", fmt.Sprintf("Checking files under %s ...", basedir))
 			listObjects(basedir)
 			<-guard
 			wg.Done()
