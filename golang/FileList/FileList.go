@@ -548,6 +548,8 @@ func getDirs(basedir string, prefix string) []string {
 			}
 		}
 	}
+	// it seems Readdir does not return sorted directories
+	sort.Strings(dirs)
 	return dirs
 }
 
@@ -630,8 +632,8 @@ func main() {
 		guard <- struct{}{}
 		wg.Add(1) // *
 		go func(basedir string) {
-			_log("INFO", fmt.Sprintf("Checking files under %s ...", basedir))
 			listObjects(basedir)
+			_log("INFO", fmt.Sprintf("Completed %s (total: %d))", basedir, _CHECKED_N))
 			<-guard
 			wg.Done()
 		}(s)
