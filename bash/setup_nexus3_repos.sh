@@ -85,12 +85,13 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 : ${_DOMAIN:="standalone.localdomain"}
 : ${_NEXUS_URL:="http://localhost:8081/"}   # or https://local.standalone.localdomain:8443/ for docker
 : ${_IQ_URL:="http://localhost:8070/"}
-: ${_IQ_CLI_VER-"1.128.0-01"}               # If "" (empty), not download CLI jar
+: ${_IQ_CLI_VER-"1.141.0-01"}               # If "" (empty), not download CLI jar
 : ${_DOCKER_NETWORK_NAME:="nexus"}
 : ${_SHARE_DIR:="/var/tmp/share"}
 : ${_IS_NXRM2:="N"}
 : ${_NO_DATA:="N"}
 : ${_BLOBTORE_NAME:="default"}
+: ${_IS_NEWDB:=""}
 : ${_DATASTORE_NAME:=""}  # TODO: If Postgres (or H2), needs to add attributes.storage.dataStoreName = "nexus"
 : ${_TID:=80}
 ## Misc. variables
@@ -110,6 +111,7 @@ function f_setup_maven() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -146,6 +148,7 @@ function f_setup_pypi() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -175,6 +178,7 @@ function f_setup_p2() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -190,6 +194,7 @@ function f_setup_npm() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -228,6 +233,7 @@ function f_setup_nuget() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # nuget.org-proxy for V2 should exist, so not creating nuget-proxy
     _log "NOTE" "v3.29 and higher added \"nugetVersion\":\"V3\", so please check if nuget proxy repos have correct version from Web UI."
@@ -267,6 +273,7 @@ function f_setup_docker() {
     local _blob_name="${3:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     #local _opts="--tls-verify=false"    # TODO: only for podman. need an *easy* way to use http for 'docker'
 
@@ -305,7 +312,7 @@ function f_setup_docker() {
 
 function f_populate_docker_proxy() {
     local _img_name="${1:-"alpine:3.7"}"
-    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${_NEXUS_URL}"}"}"}"
+    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
     local _backup_ports="${3-"18179 18178"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
@@ -325,7 +332,7 @@ function f_populate_docker_proxy() {
 #f_populate_docker_hosted "" "localhost:18182"
 function f_populate_docker_hosted() {
     local _base_img="${1:-"alpine:3.7"}"
-    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${_NEXUS_URL}"}"}"}"
+    local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
     local _backup_ports="${3-"18182 18181"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
     local _tag_to="${5:-"${_TAG_TO}"}"
@@ -367,6 +374,7 @@ function f_setup_yum() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -427,6 +435,7 @@ function f_setup_rubygem() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -453,6 +462,7 @@ function f_setup_helm() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it. NOTE: not supported with HA-C
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -471,7 +481,7 @@ function f_setup_helm() {
     fi
     # add some data for xxxx-hosted
     # https://issues.sonatype.org/browse/NEXUS-31326
-    [ -s "${_TMP%/}/mysql-8.7.2.tgz" ] && curl -sf -u "${_ADMIN_USER}:${_ADMIN_PWD}" "${_NEXUS_URL%/}/repository/${_prefix}-hosted/" -T "${_TMP%/}/mysql-8.7.2.tgz"
+    [ -s "${_TMP%/}/mysql-8.7.2.tgz" ] && curl -sf -u "${r_ADMIN_USER:-"${_ADMIN_USER}"}:${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_NEXUS_URL%/}/repository/${_prefix}-hosted/" -T "${_TMP%/}/mysql-8.7.2.tgz"
 }
 
 function f_setup_bower() {
@@ -479,6 +489,7 @@ function f_setup_bower() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -494,6 +505,7 @@ function f_setup_conan() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # NOTE: If you disabled Anonymous access, then it is needed to enable the Conan Bearer Token Realm (via Administration > Security > Realms):
 
@@ -527,6 +539,7 @@ function f_setup_conda() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it (NOTE: No HA)
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -540,6 +553,7 @@ function f_setup_cocoapods() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it (NOTE: No HA, but seems to work with HA???)
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -553,6 +567,7 @@ function f_setup_go() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it (NOTE: No HA support)
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -571,6 +586,7 @@ function f_setup_apt() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it (NOTE: No HA support)
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -594,6 +610,7 @@ function f_setup_r() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-proxy, create it
     if ! _is_repo_available "${_prefix}-proxy"; then
@@ -611,7 +628,7 @@ function f_setup_r() {
         curl -sf -o "${_TMP%/}/myfunpackage_1.0.tar.gz" -L https://github.com/sonatype-nexus-community/nexus-repository-r/raw/NEXUS-20439_r_format_support/nexus-repository-r-it/src/test/resources/r/myfunpackage_1.0.tar.gz
     fi
     if [ -s "${_TMP%/}/myfunpackage_1.0.tar.gz" ]; then
-        curl -sf -u "${_ADMIN_USER}:${_ADMIN_PWD}" "${_NEXUS_URL%/}/repository/${_prefix}-hosted/src/contrib/myfunpackage_1.0.tar.gz" -T "${_TMP%/}/myfunpackage_1.0.tar.gz" && \
+        curl -sf -u "${r_ADMIN_USER:-"${_ADMIN_USER}"}:${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_NEXUS_URL%/}/repository/${_prefix}-hosted/src/contrib/myfunpackage_1.0.tar.gz" -T "${_TMP%/}/myfunpackage_1.0.tar.gz" && \
             echo "# install.packages('myfunpackage', repos='${_NEXUS_URL%/}/repository/r${_prefix}-hosted/', type='source')"
     fi
 
@@ -629,6 +646,7 @@ function f_setup_gitlfs() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
@@ -641,6 +659,7 @@ function f_setup_raw() {
     local _blob_name="${2:-"${r_BLOB_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     # NOTE: using "strictContentTypeValidation":false for raw repositories
     # If no xxxx-proxy, create it
@@ -670,6 +689,24 @@ function f_setup_raw() {
 
 
 ### Nexus related Misc. functions #################################################################
+function _get_datastore_name() {
+    local _ds_name="nexus"  # at this moment, it seems hard-coded as 'nexus'
+    if [ -n "${_DATASTORE_NAME}" ]; then
+        echo "${_DATASTORE_NAME}"
+        return
+    fi
+    if [[ "${_IS_NEWDB}" =~ ^(y|Y) ]]; then
+        _DATASTORE_NAME="${_ds_name}"
+        echo "${_DATASTORE_NAME}"
+        return
+    fi
+    if [ -z "${_IS_NEWDB}" ] && f_api "/service/rest/internal/ui/datastore" &>/dev/null; then
+        _DATASTORE_NAME="${_ds_name}"
+        echo "${_DATASTORE_NAME}"
+        return
+    fi
+}
+
 function f_create_file_blobstore() {
     local _blob_name="$1"
     if ! f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"File","name":"'${_blob_name}'","isQuotaEnabled":false,"attributes":{"file":{"path":"'${_blob_name}'"}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
@@ -1412,6 +1449,7 @@ function f_repository_replication() {
     local _ds_name="${6:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
     local _workingDirectory="${7:-"${_WORKING_DIR:-"/opt/sonatype/sonatype-work/nexus3"}"}"
     local _extra_sto_opt=""
+    [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
     curl -sS -f -k -I "${_target_url}" >/dev/null || return $?
 
@@ -1431,7 +1469,7 @@ function f_repository_replication() {
 
     f_apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"replication","notes":"","enabled":true,"properties":{}}],"type":"rpc"}' && sleep 2
     # TODO: may not be working
-    if ! f_api "/service/rest/beta/replication/connection/" '{"id":"","name":"'${_src_repo}'_to_'${_tgt_repo}'","sourceRepositoryName":"'${_src_repo}'","includeExistingContent":false,"destinationInstanceUrl":"'${_target_url}'","destinationInstanceUsername":"'${_ADMIN_USER}'","destinationInstancePassword":"'${_ADMIN_PWD}'","destinationRepositoryName":"'${_tgt_repo}'","contentRegexes":[],"replicatedContent":"all"}' "POST"; then
+    if ! f_api "/service/rest/beta/replication/connection/" '{"id":"","name":"'${_src_repo}'_to_'${_tgt_repo}'","sourceRepositoryName":"'${_src_repo}'","includeExistingContent":false,"destinationInstanceUrl":"'${_target_url}'","destinationInstanceUsername":"'${r_ADMIN_USER:-"${_ADMIN_USER}"}'","destinationInstancePassword":"'${r_ADMIN_PWD:-"${_ADMIN_PWD}"}'","destinationRepositoryName":"'${_tgt_repo}'","contentRegexes":[],"replicatedContent":"all"}' "POST"; then
         _log "ERROR" "Creating '${_src_repo}_to_${_tgt_repo}' failed."
     fi
     echo ""
@@ -1705,8 +1743,8 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype/sonatype-*.lic" "" "r
     [[ "${r_NEXUS_URL}" =~ ^https?://([^:/]+).+$ ]] && _host="${BASH_REMATCH[1]}"
     _ask "Blob store name" "${_BLOBTORE_NAME}" "r_BLOB_NAME" "N" "Y"
     _ask "Data store name ('nexus' if PostgreSQL, empty if OrientDB)" "${_DATASTORE_NAME}" "r_DATASTORE_NAME"
-    _ask "Admin username" "${_ADMIN_USER}" "r_ADMIN_USER" "N" "Y"
-    _ask "Admin password" "${_ADMIN_PWD}" "r_ADMIN_PWD" "Y" "Y"
+    _ask "Admin username" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "r_ADMIN_USER" "N" "Y"
+    _ask "Admin password" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "r_ADMIN_PWD" "Y" "Y"
     _ask "Formats to setup (comma separated)" "${_REPO_FORMATS}" "r_REPO_FORMATS" "N" "Y"
 
     ## for f_setup_docker()
