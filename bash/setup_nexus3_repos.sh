@@ -702,6 +702,7 @@ function _get_datastore_name() {
     fi
     if [ -z "${_IS_NEWDB}" ] && f_api "/service/rest/internal/ui/datastore" &>/dev/null; then
         _DATASTORE_NAME="${_ds_name}"
+        _IS_NEWDB="Y"
         echo "${_DATASTORE_NAME}"
         return
     fi
