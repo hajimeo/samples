@@ -3,7 +3,12 @@
 #go mod tidy
 go build -o ../../misc/file-list_$(uname) FileList.go && env GOOS=linux GOARCH=amd64 go build -o ../../misc/file-list_Linux FileList.go
 
+echo 3 > /proc/sys/vm/drop_caches
+
 $HOME/IdeaProjects/samples/misc/file-list_$(uname) -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
+
+cd /opt/sonatype/sonatype-work/nexus3/blobs/default/
+/var/tmp/share/file-list_Linux -b ./content -p vol- -c 4 -db /opt/sonatype/sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName default > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d").log &
 */
 
 package main
@@ -44,6 +49,7 @@ var _FILTER *string
 var _FILTER_P *string
 var _DB_CON_STR *string
 var _TRUTH *string
+var _BS_NAME *string
 var _DEL_DATE_FROM *string
 var _DEL_DATE_FROM_ts int64
 var _DEL_DATE_TO *string
@@ -61,7 +67,7 @@ var _NO_BLOB_SIZE *bool
 
 //var _EXCLUDE_FILE *string
 //var _INCLUDE_FILE *string
-var _REPO_TO_FMT map[string]string
+//var _REPO_TO_FMT map[string]string
 var _R *regexp.Regexp
 var _R_DEL_DT *regexp.Regexp
 var _R_DELETED *regexp.Regexp
@@ -71,11 +77,11 @@ var _DEBUG *bool
 var _CHECKED_N int64 // Atomic (maybe slower?)
 var _PRINTED_N int64 // Atomic (maybe slower?)
 var _TTL_SIZE int64  // Atomic (maybe slower?)
-
-type StoreProps map[string]string
-
 var _SEP = "	"
 var _PROP_EXT = ".properties"
+var _DEP_ID = ""
+
+type StoreProps map[string]string
 
 func _setGlobals() {
 	_BASEDIR = flag.String("b", ".", "Base directory (default: '.')")
@@ -86,6 +92,7 @@ func _setGlobals() {
 	_FILTER_P = flag.String("fP", "", "Filter .properties contents (eg: 'deleted=true')")
 	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [DB|BS]") // TODO: not implemented "DB" yet
 	_DB_CON_STR = flag.String("db", "", "DB connection string or path to properties file")
+	_BS_NAME = flag.String("bsName", "", "Eg. 'default'. If provided, the query will be faster")
 	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and _FILTER_P string is treated as regex")
 	_RECON_FMT = flag.Bool("RF", false, "Output for the Reconcile task (any_string,blob_ref). -P will be ignored")
 	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF *and* -dF") // TODO: also think about restore plan
@@ -115,21 +122,6 @@ func _setGlobals() {
 		}
 		*_FILTER = _PROP_EXT
 		*_WITH_PROPS = false
-		db := openDb()
-		rows := queryDb("SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository;", db)
-		_REPO_TO_FMT = make(map[string]string)
-		for rows.Next() {
-			var name string
-			var fmt string
-			err := rows.Scan(&name, &fmt)
-			if err != nil {
-				panic(err)
-			}
-			_REPO_TO_FMT[name] = fmt
-		}
-		rows.Close()
-		db.Close()
-		_log("DEBUG", fmt.Sprintf("_REPO_TO_FMT = %v", _REPO_TO_FMT))
 	}
 	_START_TIME_ts = time.Now().Unix()
 	_R_DEL_DT, _ = regexp.Compile("[^#]?deletedDateTime=([0-9]+)")
@@ -202,6 +194,27 @@ func readPropertiesFile(path string) (StoreProps, error) {
 		return nil, err
 	}
 	return props, nil
+}
+
+// Not in use for now
+func genRepoFmtMap() map[string]string {
+	// temporarily opening a DB connection only for this query
+	db := openDb()
+	defer db.Close()
+	rows := queryDb("SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository;", db)
+	defer rows.Close()
+	reposToFmts := make(map[string]string)
+	for rows.Next() {
+		var name string
+		var fmt string
+		err := rows.Scan(&name, &fmt)
+		if err != nil {
+			panic(err)
+		}
+		reposToFmts[name] = fmt
+	}
+	_log("DEBUG", fmt.Sprintf("reposToFmts = %v", reposToFmts))
+	return reposToFmts
 }
 
 func genDbConnStr(props StoreProps) string {
@@ -360,7 +373,7 @@ func openDb() *sql.DB {
 }
 
 func queryDb(query string, db *sql.DB) *sql.Rows {
-	if len(*_DB_CON_STR) == 0 { // For unit tests
+	if db == nil { // For unit tests
 		return nil
 	}
 	rows, err := db.Query(query)
@@ -370,61 +383,82 @@ func queryDb(query string, db *sql.DB) *sql.Rows {
 	return rows
 }
 
-func genBlobIdCheckingQuery(path string) (string, int) {
-	// Getting the blobName of asset, otherwise, the checking query will be slower.
-	contents, err := getContents(path)
-	if err != nil {
-		_log("ERROR", "No contents from "+path)
-		// if no content, assuming missing
-		return "", 1
+// TODO: Ideally it would be faster if this function can get the format
+func genBlobIdCheckingQuery(path string, tableNames []string) string {
+	blobId := getBaseNameWithoutExt(path)
+	queryPrefix := "SELECT blob_ref"
+	where := "blob_ref LIKE '%:" + blobId + "@%'"
+	if len(*_BS_NAME) > 0 {
+		if len(_DEP_ID) == 0 {
+			// PostgreSQL still uses index for 'like' with forward search, so much faster than above
+			where = "blob_ref like '" + *_BS_NAME + ":" + blobId + "@%'"
+		} else {
+			// and '=' is much faster than above (could be about 10 times)
+			where = "blob_ref = '" + *_BS_NAME + ":" + blobId + "@" + _DEP_ID + "'"
+		}
 	}
-	m := _R_REPO_NAME.FindStringSubmatch(contents)
-	if len(m) < 2 {
-		_log("WARN", "No _R_REPO_NAME match for "+path)
-		// At this moment, if no blobName, assuming NOT missing...
-		return "", 0
+	elements := make([]string, 0)
+	for _, tableName := range tableNames {
+		element := queryPrefix + " FROM " + tableName + " WHERE " + where
+		elements = append(elements, element)
 	}
-	repoName := m[1]
-	m = _R_BLOB_NAME.FindStringSubmatch(contents)
-	if len(m) < 2 {
-		_log("WARN", "No _R_BLOB_NAME match for "+path)
-		// At this moment, if no blobName, assuming NOT missing...
-		return "", 0
-	}
-	blobName := m[1]
-	if !strings.HasPrefix(blobName, "/") {
-		_log("INFO", "BlobStore.blob-name does not start with '/' for "+path)
-		blobName = "/" + blobName
-	}
-	// TODO: Should be LEFT JOIN but the query will be slower...
-	repoFmt := _REPO_TO_FMT[repoName]
-	query := "SELECT ab.asset_blob_id FROM " + repoFmt + "_asset_blob ab INNER JOIN " + repoFmt + "_asset a on ab.asset_blob_id = a.asset_blob_id WHERE a.path = '" + blobName + "' and ab.blob_ref like '%:" + getBaseNameWithoutExt(path) + "@%'"
+	query := strings.Join(elements, " UNION ALL ")
 	_log("DEBUG", query)
-	return query, -1
+	return query
 }
 
+// only works on postgres
+func getAssetBlobTables(db *sql.DB) []string {
+	result := make([]string, 0)
+	query := "SELECT table_name FROM information_schema.tables WHERE table_name like '%_asset_blob'"
+	rows := queryDb(query, db)
+	if rows == nil { // For unit tests
+		return nil
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		err := rows.Scan(&name)
+		if err != nil {
+			panic(err)
+		}
+		result = append(result, name)
+	}
+
+	return result
+}
+
+// TODO: Checking from DB to blobstore, like Orphaned blob finder
 func isBlobIdMissingInBlobStore() bool {
 	return false
 }
 
 func isBlobIdMissingInDB(path string, db *sql.DB) bool {
 	// Ref: https://go.dev/doc/database/querying
-	query, errNo := genBlobIdCheckingQuery(path)
-	if errNo != -1 {
-		return errNo == 1
-	}
+	tableNames := getAssetBlobTables(db)
+	query := genBlobIdCheckingQuery(path, tableNames)
 	rows := queryDb(query, db)
 	if rows == nil {
 		// For test
 		_log("WARN", "rows is nil for "+path+". Ignoring.\nquery: "+query)
 		return false
 	}
+	defer rows.Close()
 	noRows := true
 	for rows.Next() {
+		if len(_DEP_ID) == 0 {
+			var blobRef string
+			err := rows.Scan(&blobRef)
+			if err != nil {
+				_log("WARN", "Querying for "+path+" did not return blob_ref. Error:"+err.Error())
+			}
+			blobRefRe := regexp.MustCompile(`^.+@`)
+			_DEP_ID = blobRefRe.ReplaceAllString(blobRef, "")
+			_log("INFO", "Using Deployment ID: "+_DEP_ID)
+		}
 		noRows = false
 		break
 	}
-	rows.Close()
 	return noRows
 }
 
