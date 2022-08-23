@@ -149,7 +149,7 @@ function _postgresql_create_dbuser() {
 
     local _pg_hba_conf="$(${_psql_as_admin} -tAc 'SHOW hba_file')"
     if [ ! -f "${_pg_hba_conf}" ]; then
-        _log "WARN" "No pg_hba.conf file found."
+        _log "WARN" "No pg_hba.conf (${_pg_hba_conf}) found."
         return 1
     fi
 
@@ -158,6 +158,8 @@ function _postgresql_create_dbuser() {
     if ! grep -E "host\s+${_dbname}\s+${_dbusr}\s+" "${_pg_hba_conf}"; then
         echo "host ${_dbname} ${_dbusr} 0.0.0.0/0 md5" >> "${_pg_hba_conf}" || return $?
         ${_psql_as_admin} -tAc 'SELECT pg_reload_conf()' || return $?
+        #${_psql_as_admin} -tAc 'SELECT pg_read_file('pg_hba.conf');'
+        ${_psql_as_admin} -tAc "select * from pg_hba_file_rules where database = '{${_dbname}}' and user_name = '{${_dbusr}}';"
     fi
     [ "${_dbusr}" == "all" ] && return 0
 
