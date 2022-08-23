@@ -67,7 +67,7 @@ var _NO_BLOB_SIZE *bool
 
 //var _EXCLUDE_FILE *string
 //var _INCLUDE_FILE *string
-//var _REPO_TO_FMT map[string]string
+var _REPO_TO_FMT map[string]string
 var _R *regexp.Regexp
 var _R_DEL_DT *regexp.Regexp
 var _R_DELETED *regexp.Regexp
@@ -79,7 +79,6 @@ var _PRINTED_N int64 // Atomic (maybe slower?)
 var _TTL_SIZE int64  // Atomic (maybe slower?)
 var _SEP = "	"
 var _PROP_EXT = ".properties"
-var _DEP_ID = ""
 
 type StoreProps map[string]string
 
@@ -122,6 +121,7 @@ func _setGlobals() {
 		}
 		*_FILTER = _PROP_EXT
 		*_WITH_PROPS = false
+		_REPO_TO_FMT = genRepoFmtMap()
 	}
 	_START_TIME_ts = time.Now().Unix()
 	_R_DEL_DT, _ = regexp.Compile("[^#]?deletedDateTime=([0-9]+)")
@@ -383,19 +383,14 @@ func queryDb(query string, db *sql.DB) *sql.Rows {
 	return rows
 }
 
-// TODO: Ideally it would be faster if this function can get the format
 func genBlobIdCheckingQuery(path string, tableNames []string) string {
 	blobId := getBaseNameWithoutExt(path)
-	queryPrefix := "SELECT blob_ref"
+	queryPrefix := "SELECT asset_blob_id"
 	where := "blob_ref LIKE '%:" + blobId + "@%'"
 	if len(*_BS_NAME) > 0 {
-		if len(_DEP_ID) == 0 {
-			// PostgreSQL still uses index for 'like' with forward search, so much faster than above
-			where = "blob_ref like '" + *_BS_NAME + ":" + blobId + "@%'"
-		} else {
-			// and '=' is much faster than above (could be about 10 times)
-			where = "blob_ref = '" + *_BS_NAME + ":" + blobId + "@" + _DEP_ID + "'"
-		}
+		// PostgreSQL still uses index for 'like' with forward search, so much faster than above
+		// NOTE: node-id or deployment id can vary
+		where = "blob_ref like '" + *_BS_NAME + ":" + blobId + "@%'"
 	}
 	elements := make([]string, 0)
 	for _, tableName := range tableNames {
@@ -408,8 +403,29 @@ func genBlobIdCheckingQuery(path string, tableNames []string) string {
 }
 
 // only works on postgres
-func getAssetBlobTables(db *sql.DB) []string {
+func getAssetBlobTables(path string, db *sql.DB) []string {
 	result := make([]string, 0)
+	if len(path) > 0 {
+		contents, err := getContents(path)
+		if err != nil {
+			_log("ERROR", "No contents from "+path)
+			// if no content, assuming missing
+			return result
+		}
+		m := _R_REPO_NAME.FindStringSubmatch(contents)
+		if len(m) < 2 {
+			_log("WARN", "No _R_REPO_NAME match for "+path)
+			// At this moment, if no blobName, assuming NOT missing...
+			return result
+		}
+		repoName := m[1]
+		if repoFmt, ok := _REPO_TO_FMT[repoName]; ok {
+			result = append(result, repoFmt+"_asset_blob")
+			return result
+		} else {
+			_log("WARN", "repoName: "+repoName+" is not in _REPO_TO_FMT")
+		}
+	}
 	query := "SELECT table_name FROM information_schema.tables WHERE table_name like '%_asset_blob'"
 	rows := queryDb(query, db)
 	if rows == nil { // For unit tests
@@ -434,9 +450,10 @@ func isBlobIdMissingInBlobStore() bool {
 }
 
 func isBlobIdMissingInDB(path string, db *sql.DB) bool {
-	// Ref: https://go.dev/doc/database/querying
-	tableNames := getAssetBlobTables(db)
+	// TODO: Current UNION query is bit slow. Providing "path" generates the repoFmt but too slow
+	tableNames := getAssetBlobTables(path, db)
 	query := genBlobIdCheckingQuery(path, tableNames)
+	// Ref: https://go.dev/doc/database/querying
 	rows := queryDb(query, db)
 	if rows == nil {
 		// For test
@@ -446,16 +463,6 @@ func isBlobIdMissingInDB(path string, db *sql.DB) bool {
 	defer rows.Close()
 	noRows := true
 	for rows.Next() {
-		if len(_DEP_ID) == 0 {
-			var blobRef string
-			err := rows.Scan(&blobRef)
-			if err != nil {
-				_log("WARN", "Querying for "+path+" did not return blob_ref. Error:"+err.Error())
-			}
-			blobRefRe := regexp.MustCompile(`^.+@`)
-			_DEP_ID = blobRefRe.ReplaceAllString(blobRef, "")
-			_log("INFO", "Using Deployment ID: "+_DEP_ID)
-		}
 		noRows = false
 		break
 	}
@@ -667,7 +674,7 @@ func main() {
 		wg.Add(1) // *
 		go func(basedir string) {
 			listObjects(basedir)
-			_log("INFO", fmt.Sprintf("Completed %s (total: %d))", basedir, _CHECKED_N))
+			_log("INFO", fmt.Sprintf("Completed %s (total: %d)", basedir, _CHECKED_N))
 			<-guard
 			wg.Done()
 		}(s)
