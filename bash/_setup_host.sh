@@ -1811,7 +1811,7 @@ function f_install_packages() {
     apt-get -y install sysv-rc-conf # Not stopping if error because Ubuntu 18 does not have this
     apt-get -y install python2 python3 # Not stopping if error because Ubuntu 18 does not have this
     #apt-get -y install postgresql-client mysql-client libmysql-java    # Probably no longer need to install these all the time
-    apt-get -y install vim openssh-server screen ntpdate curl wget sshfs tcpdump sharutils unzip libxml2-utils expect netcat nscd ppp at resolvconf
+    apt-get -y install vim openssh-server screen ntpdate curl wget sshfs tcpdump sharutils unzip libxml2-utils expect netcat nscd ppp at resolvconf vmtouch
 }
 
 function f_sshfs_mount() {
