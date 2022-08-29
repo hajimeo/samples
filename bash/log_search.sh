@@ -919,6 +919,21 @@ function f_hexTids_from_topH() {
     ls -ltr ./high_cpu_threads_*.out
 }
 
+function f_splitTopNetstat() {
+    local __doc__="Split a file which contains mutliple top and netstat outputs"
+    local _file="$1"
+    local _netstat_str="${2:-"Active Internet"}"    # if /proc/net/tcp, " *sl" NOTE HEX is reversed order
+    local _out_dir="top_netstat" #"`basename ${_file} .out`"
+    if [ ! -d $_out_dir ]; then
+        mkdir -v -p $_out_dir || return $?
+    fi
+    local _tmpDir="$(mktemp -d)"
+    _csplit -z -f "${_tmpDir%/}/topNs_" ${_file} "/^top /" '{*}' || return $?
+    for _f in $(ls -1 ${_tmpDir%/}/topNs_*); do
+        _csplit -z -f "${_out_dir%/}/`basename ${_f}`_" ${_f} "/^${_netstat_str} /" '{*}' || return $?
+    done
+}
+
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
 #_THREAD_FILE_GLOB="?-dump.txt" f_threads "."   # Don't use "*" beginning of the file name
 # NOTE: f_last_tid_in_log would be useful.
@@ -1121,7 +1136,7 @@ function _long_blocked() {
 }
 function _threads_extra_check() {
     local _dir="$1"
-    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache|java.lang.Class.forName|CachingDateFormatter|com.codahale.metrics.health.HealthCheck.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl.startUpload|UploadManagerImpl.blobsByName)' "${_dir%/}/" -m1 --no-filename | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
+    rg '(DefaultTimelineIndexer|content_digest|findAssetByContentDigest|touchItemLastRequested|preClose0|sun.security.util.MemoryCache|java.lang.Class.forName|CachingDateFormatter|com.codahale.metrics.health.HealthCheck.execute|WeakHashMap|userId\.toLowerCase|MessageDigest|UploadManagerImpl.startUpload|UploadManagerImpl.blobsByName|maybeTrimRepositories)' "${_dir%/}/" -m1 --no-filename | sort | uniq -c > /tmp/$FUNCNAME_$$.out || return $?
     if [ -s /tmp/$FUNCNAME_$$.out ]; then
         echo "## Counting:"
         echo "##    'DefaultTimelineIndexer' for NXRM2 System Feeds: timeline-plugin,"
@@ -1138,6 +1153,7 @@ function _threads_extra_check() {
         echo "##    'userId\.toLowerCase' https://issues.sonatype.org/browse/NEXUS-31776"
         echo "##    'UploadManagerImpl.startUpload|.blobsByName' https://issues.sonatype.org/browse/NEXUS-31395"
         echo "##    'MessageDigest' (May indicate CPU resource issue?)"
+        echo "##    'maybeTrimRepositories' https://issues.sonatype.org/browse/NEXUS-28891"
         cat /tmp/$FUNCNAME_$$.out
         echo " "
     fi
