@@ -25,6 +25,8 @@ function _get_psql_as_admin() {
         _log "WARN" "'${_dbadmin}' OS user may not exist. May require to set PGPASSWORD variable."
         # This will ask the password everytime, but you can use PGPASSWORD
         _psql_as_admin="psql -U ${_dbadmin}"
+    elif [ "$USER" == "postgres" ]; then
+        _psql_as_admin="psql -U ${_dbadmin}"
     fi
     echo "${_psql_as_admin}"
 }
@@ -137,7 +139,7 @@ function _postgresql_configure() {
 }
 
 function _postgresql_create_dbuser() {
-    local __doc__="Create DB user/role/schema/database. Need to run from the PostgreSQL server (localhost)"
+    local __doc__="Create DB user/role and database/schema. Need to run from the PostgreSQL server (localhost)"
     local _dbusr="${1}"
     local _dbpwd="${2:-"${_dbusr}"}"
     local _dbname="${3:-"${_dbusr}"}"
