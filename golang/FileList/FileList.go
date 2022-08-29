@@ -50,6 +50,7 @@ var _FILTER_P *string
 var _DB_CON_STR *string
 var _TRUTH *string
 var _BS_NAME *string
+var _NODE_ID *string
 var _DEL_DATE_FROM *string
 var _DEL_DATE_FROM_ts int64
 var _DEL_DATE_TO *string
@@ -87,11 +88,12 @@ func _setGlobals() {
 	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: 'vol-')")
 	_WITH_PROPS = flag.Bool("P", false, "If true, read and output the .properties files")
 	_FILTER = flag.String("f", "", "Filter file paths (eg: '.properties')")
-	_NO_BLOB_SIZE = flag.Bool("NBSize", false, "When -f = '.properties', checks Blob size")
+	_NO_BLOB_SIZE = flag.Bool("NBSize", false, "Disable .bytes size checking (When -f is '.properties', the default behaviour is checking size)")
 	_FILTER_P = flag.String("fP", "", "Filter .properties contents (eg: 'deleted=true')")
-	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [DB|BS]") // TODO: not implemented "DB" yet
+	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [BS|DB]") // TODO: not implemented "DB" yet
 	_DB_CON_STR = flag.String("db", "", "DB connection string or path to properties file")
 	_BS_NAME = flag.String("bsName", "", "Eg. 'default'. If provided, the query will be faster")
+	_NODE_ID = flag.String("nodeId", "", "Advanced option.")
 	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and _FILTER_P string is treated as regex")
 	_RECON_FMT = flag.Bool("RF", false, "Output for the Reconcile task (any_string,blob_ref). -P will be ignored")
 	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF *and* -dF") // TODO: also think about restore plan
@@ -199,9 +201,12 @@ func readPropertiesFile(path string) (StoreProps, error) {
 // Not in use for now
 func genRepoFmtMap() map[string]string {
 	// temporarily opening a DB connection only for this query
-	db := openDb()
+	db := openDb(*_DB_CON_STR)
 	defer db.Close()
 	rows := queryDb("SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository;", db)
+	if rows == nil { // For unit tests
+		return nil
+	}
 	defer rows.Close()
 	reposToFmts := make(map[string]string)
 	for rows.Next() {
@@ -251,63 +256,93 @@ func getBlobSize(propPath string) int64 {
 	return info.Size()
 }
 
-func printLine(path string, fInfo os.FileInfo, db *sql.DB) bool {
+func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 	//_log("DEBUG", fmt.Sprintf("printLine-ing for path:%s", path))
 	modTime := fInfo.ModTime()
 	modTimeTs := modTime.Unix()
 	output := ""
 	var blobSize int64 = 0
 
+	// If not for Reconciliation YYYY-MM-DD log, output normally.
 	if !*_RECON_FMT {
 		output = fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, fInfo.Size())
 	}
-	// listObjects() already checked _FILTER, but just in case...
+
+	// If .properties file is checked and _NO_BLOB_SIZE, then get the size of .bytes file
 	if !*_NO_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
 		blobSize = getBlobSize(path)
 		output = fmt.Sprintf("%s%s%d", output, _SEP, blobSize)
 	}
+
+	// If .properties file is checked, depending on other flags, output can be changed.
 	if strings.HasSuffix(path, _PROP_EXT) {
 		output = _printLineExtra(output, path, modTimeTs, db)
 	}
 
+	// Updating counters and return
 	atomic.AddInt64(&_CHECKED_N, 1)
 	if len(output) > 0 {
 		atomic.AddInt64(&_PRINTED_N, 1)
 		atomic.AddInt64(&_TTL_SIZE, fInfo.Size()+blobSize)
 		fmt.Println(output)
-		return true
+		return
 	}
-	return false
+	return
 }
 
+// To handle a bit complicated conditions
 func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB) string {
 	skipCheck := false
+
+	if *_RECON_FMT {
+		if _START_TIME_ts > 0 && modTimeTs > _START_TIME_ts {
+			_log("DEBUG", "path:"+path+" is recently modified, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" > "+strconv.FormatInt(_START_TIME_ts, 10)+")")
+			return ""
+		}
+		if _DEL_DATE_FROM_ts > 0 && modTimeTs < _DEL_DATE_FROM_ts {
+			_log("DEBUG", "path:"+path+" mod time is older than _DEL_DATE_FROM_ts, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" < "+strconv.FormatInt(_DEL_DATE_FROM_ts, 10)+")")
+			return ""
+		}
+		// NOTE: Not doing same for _DEL_DATE_TO_ts as some task may touch.
+	}
+
+	// If _NODE_ID is given and no deleted date from/to, should not need to open a file
+	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && len(*_NODE_ID) > 0 && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
+		if *_TRUTH == "BS" {
+			if !isBlobIdMissingInDB("", path, db) {
+				_log("DEBUG", "path:"+path+" exists in Database. Skipping.")
+				return ""
+			}
+			reconOutput, reconErr := genOutputForReconcile("", path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, true)
+			if reconErr != nil {
+				_log("DEBUG", reconErr.Error())
+			}
+			return reconOutput
+		}
+		// TODO: if *_TRUTH == "DB" { if !isBlobIdMissingInBlobStore() {
+	}
+
+	// Excluding above special condition, usually needs to read the file
+	contents, err := getContents(path)
+	if err != nil {
+		_log("ERROR", "No contents from "+path)
+		// if no content, no point of restoring
+		return ""
+	}
+
 	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 {
 		// Script is asked to output if this blob is missing in DB
 		if *_TRUTH == "BS" {
-			if !isBlobIdMissingInDB(path, db) {
+			if !isBlobIdMissingInDB(contents, path, db) {
 				return ""
 			}
 			skipCheck = true
 		}
-		if *_TRUTH == "DB" {
-			// TODO: if !isBlobIdMissingInBlobStore() {
-			//skipCheck = true
-			return ""
-		}
 	}
 
 	if *_RECON_FMT {
-		// If reconciliation output format is requested, do not use 'output'
-		if !skipCheck && _START_TIME_ts > 0 && modTimeTs > _START_TIME_ts {
-			// NOT checking against _DEL_DATE_TO_ts as file might be touched accidentally (I may change my mind if slow)
-			return ""
-		}
-		if !skipCheck && _DEL_DATE_FROM_ts > 0 && modTimeTs < _DEL_DATE_FROM_ts {
-			// Even not accurate, to make this function faster, currently checking fileModMs against _DEL_DATE_FROM_ts
-			return ""
-		}
-		reconOutput, reconErr := genOutputForReconcile(path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, skipCheck)
+		// If reconciliation output format is requested, should not use 'output'
+		reconOutput, reconErr := genOutputForReconcile(contents, path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, skipCheck)
 		if reconErr != nil {
 			_log("DEBUG", reconErr.Error())
 		}
@@ -315,11 +350,11 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB) st
 	}
 
 	if *_WITH_PROPS {
-		props, propErr := genOutputFromProp(path)
+		props, propErr := genOutputFromProp(contents, path)
 		if propErr != nil {
 			_log("DEBUG", propErr.Error())
-			// If can't read .propreties file, still return the original "output", so not return-ing
-			//return ""
+			// If this can't read .properties file, still return the original "output"
+			return output
 		}
 		if len(props) > 0 {
 			output = fmt.Sprintf("%s%s%s", output, _SEP, props)
@@ -354,19 +389,18 @@ func getContents(path string) (string, error) {
 	return contents, nil
 }
 
-func openDb() *sql.DB {
-	if len(*_DB_CON_STR) == 0 {
+func openDb(dbConnStr string) *sql.DB {
+	if len(dbConnStr) == 0 {
 		return nil
 	}
-	if !strings.Contains(*_DB_CON_STR, "sslmode") {
-		*_DB_CON_STR = *_DB_CON_STR + " sslmode=disable"
+	if !strings.Contains(dbConnStr, "sslmode") {
+		dbConnStr = dbConnStr + " sslmode=disable"
 	}
-	db, err := sql.Open("postgres", *_DB_CON_STR)
+	db, err := sql.Open("postgres", dbConnStr)
 	if err != nil {
 		// If DB connection issue, let's stop the script
 		panic(err.Error())
 	}
-	//defer db.Close()
 	//db.SetMaxOpenConns(*_CONC_1)
 	//err = db.Ping()
 	return db
@@ -383,49 +417,59 @@ func queryDb(query string, db *sql.DB) *sql.Rows {
 	return rows
 }
 
-func genBlobIdCheckingQuery(path string, tableNames []string) string {
-	blobId := getBaseNameWithoutExt(path)
-	queryPrefix := "SELECT asset_blob_id"
-	where := "blob_ref LIKE '%:" + blobId + "@%'"
-	if len(*_BS_NAME) > 0 {
-		// PostgreSQL still uses index for 'like' with forward search, so much faster than above
-		// NOTE: node-id or deployment id can vary
-		where = "blob_ref like '" + *_BS_NAME + ":" + blobId + "@%'"
+func genUnionQuery(tableNames []string, columns string, where string) string {
+	if len(columns) == 0 {
+		columns = "*"
 	}
+	if len(where) > 0 {
+		where = " WHERE " + where
+	}
+	queryPrefix := "SELECT " + columns
 	elements := make([]string, 0)
 	for _, tableName := range tableNames {
-		element := queryPrefix + " FROM " + tableName + " WHERE " + where
+		element := queryPrefix + " FROM " + tableName + where
 		elements = append(elements, element)
 	}
 	query := strings.Join(elements, " UNION ALL ")
-	_log("DEBUG", query)
+	return query
+}
+
+func genBlobIdCheckingQuery(path string, tableNames []string) string {
+	blobId := getBaseNameWithoutExt(path)
+	where := "blob_ref LIKE '%:" + blobId + "@%'"
+	if len(*_BS_NAME) > 0 {
+		if len(*_NODE_ID) > 0 {
+			// NOTE: node-id or deployment id can be anything...
+			where = "blob_ref = '" + *_BS_NAME + ":" + blobId + "@" + *_NODE_ID + "'"
+		} else {
+			// PostgreSQL still uses index for 'like' with forward search, so much faster than above
+			where = "blob_ref like '" + *_BS_NAME + ":" + blobId + "@%'"
+		}
+	}
+	query := genUnionQuery(tableNames, "asset_blob_id", where)
+	_log("INFO", query)
 	return query
 }
 
 // only works on postgres
-func getAssetBlobTables(path string, db *sql.DB) []string {
+func getAssetBlobTables(contents string, db *sql.DB, reposToFmt map[string]string) []string {
 	result := make([]string, 0)
-	if len(path) > 0 {
-		contents, err := getContents(path)
-		if err != nil {
-			_log("ERROR", "No contents from "+path)
-			// if no content, assuming missing
-			return result
-		}
+	if len(contents) > 0 {
 		m := _R_REPO_NAME.FindStringSubmatch(contents)
 		if len(m) < 2 {
-			_log("WARN", "No _R_REPO_NAME match for "+path)
+			_log("WARN", "No _R_REPO_NAME in "+contents)
 			// At this moment, if no blobName, assuming NOT missing...
 			return result
 		}
 		repoName := m[1]
-		if repoFmt, ok := _REPO_TO_FMT[repoName]; ok {
+		if repoFmt, ok := reposToFmt[repoName]; ok {
 			result = append(result, repoFmt+"_asset_blob")
 			return result
 		} else {
-			_log("WARN", "repoName: "+repoName+" is not in _REPO_TO_FMT")
+			_log("WARN", fmt.Sprintf("repoName: %s is not in reposToFmt\n%v\n", repoName, reposToFmt))
 		}
 	}
+
 	query := "SELECT table_name FROM information_schema.tables WHERE table_name like '%_asset_blob'"
 	rows := queryDb(query, db)
 	if rows == nil { // For unit tests
@@ -440,7 +484,6 @@ func getAssetBlobTables(path string, db *sql.DB) []string {
 		}
 		result = append(result, name)
 	}
-
 	return result
 }
 
@@ -449,15 +492,22 @@ func isBlobIdMissingInBlobStore() bool {
 	return false
 }
 
-func isBlobIdMissingInDB(path string, db *sql.DB) bool {
-	// TODO: Current UNION query is bit slow. Providing "path" generates the repoFmt but too slow
-	tableNames := getAssetBlobTables(path, db)
+func isBlobIdMissingInDB(contents string, path string, db *sql.DB) bool {
+	// TODO: Current UNION query is a bit slow. Providing "path" generates the repoFmt but too slow
+	tableNames := getAssetBlobTables(contents, db, _REPO_TO_FMT)
+	if tableNames == nil { // Mainly for unit test
+		_log("WARN", "tableNames is nil for contents: "+contents)
+		return false
+	}
 	query := genBlobIdCheckingQuery(path, tableNames)
+	if len(query) == 0 { // Mainly for unit test
+		_log("WARN", fmt.Sprintf("query is empty for path: %s and tableNames: %v\n", path, tableNames))
+		return false
+	}
 	// Ref: https://go.dev/doc/database/querying
 	rows := queryDb(query, db)
-	if rows == nil {
-		// For test
-		_log("WARN", "rows is nil for "+path+". Ignoring.\nquery: "+query)
+	if rows == nil { // Mainly for unit test
+		_log("WARN", "rows is nil for query: "+query)
 		return false
 	}
 	defer rows.Close()
@@ -469,12 +519,12 @@ func isBlobIdMissingInDB(path string, db *sql.DB) bool {
 	return noRows
 }
 
-func genOutputForReconcile(path string, delDateFromTs int64, delDateToTs int64, skipCheck bool) (string, error) {
+func genOutputForReconcile(contents string, path string, delDateFromTs int64, delDateToTs int64, skipCheck bool) (string, error) {
 	deletedMsg := ""
 	deletedDtMsg := ""
 
 	// If skipCheck is true and no deletedDateFrom/To is specified, just return the output for reconcile
-	if skipCheck && delDateFromTs == 0 && delDateToTs == 0 {
+	if skipCheck {
 		_log("INFO", fmt.Sprintf("Found path:%s .", path))
 		// Not using _SEP for this output
 		return fmt.Sprintf("%s,%s", getNowStr(), getBaseNameWithoutExt(path)), nil
@@ -482,11 +532,6 @@ func genOutputForReconcile(path string, delDateFromTs int64, delDateToTs int64, 
 
 	// if _DEL_DATE_FROM or _DEL_DATE_TO, examine deletedDateTime
 	if delDateFromTs > 0 || delDateToTs > 0 {
-		contents, err := getContents(path)
-		if err != nil {
-			return "", errors.New(fmt.Sprintf("Could not read the contents from %s for deletion date check", path))
-		}
-
 		m := _R_DEL_DT.FindStringSubmatch(contents)
 		// stop in here with error, only when skipCheck is false
 		if !skipCheck && len(m) < 2 {
@@ -539,12 +584,7 @@ func isTimestampBetween(tMsec int64, fromTsMsec int64, toTsMsec int64) bool {
 	return true
 }
 
-func genOutputFromProp(path string) (string, error) {
-	contents, err := getContents(path)
-	if err != nil {
-		return "", errors.New(fmt.Sprintf("Couldn't read %s.", path))
-	}
-
+func genOutputFromProp(contents string, path string) (string, error) {
 	if len(*_FILTER_P) == 0 {
 		// If no _FILETER2, just return the contents as single line. Should also escape '"'?
 		return strings.ReplaceAll(contents, "\n", ","), nil
@@ -595,7 +635,8 @@ func getDirs(basedir string, prefix string) []string {
 }
 
 func listObjects(basedir string) {
-	db := openDb()
+	db := openDb(*_DB_CON_STR)
+	defer db.Close()
 	// Below line does not work because currently Glob does not support ./**/*
 	//list, err := filepath.Glob(basedir + string(filepath.Separator) + *_FILTER)
 	// Somehow WalkDir is slower in this code
@@ -619,7 +660,6 @@ func listObjects(basedir string) {
 		println("Got error retrieving list of files:")
 		panic(err.Error())
 	}
-	db.Close()
 }
 
 // Define, set, and validate command arguments
