@@ -90,13 +90,19 @@ public class Main
 
   static private Boolean isServer;
 
+  static private Boolean isDebug;
+
   static private OServer server;
 
   private static final ObjectMapper objectMapper = new ObjectMapper(new SmileFactory());
 
   private static final Gson gson = new Gson();
 
-  public static final Pattern indexNamePtn = Pattern.compile( "(rebuild|list) indexes ([^;]+)", Pattern.CASE_INSENSITIVE);
+  public static final Pattern indexNamePtn =
+      Pattern.compile("(rebuild|list) indexes ([^;]+)", Pattern.CASE_INSENSITIVE);
+
+  public static final Pattern describeNamePtn =
+      Pattern.compile("(info|describe|desc) (table|class|index) ([^;]+)", Pattern.CASE_INSENSITIVE);
 
   private static void usage() {
     System.err.println("https://github.com/hajimeo/samples/blob/master/java/orient-console/README.md");
@@ -109,6 +115,12 @@ public class Main
   private static void log(String msg) {
     // TODO: proper logging
     System.err.println(getCurrentLocalDateTimeStamp() + " " + msg);
+  }
+
+  private static void log(String msg, Boolean debug) {
+    if (debug) {
+      log("DEBUG: " + msg);
+    }
   }
 
   private static void unzip(String zipFilePath, String destPath) throws IOException {
@@ -421,9 +433,11 @@ public class Main
   private static List<ODocument> listIndexes(ODatabaseDocumentTx db, String indexName) {
     String whereAppend = "";
     if (indexName.length() > 0) {
-      whereAppend = " AND name like '" + indexName.replaceAll("\\*", "%") +"'";
+      whereAppend = " AND name like '" + indexName.replaceAll("\\*", "%") + "'";
     }
-    String query = "SELECT indexDefinition.className as table, name from (select expand(indexes) from metadata:indexmanager) where indexDefinition.className is not null "+whereAppend+" order by table, name LIMIT -1";
+    String query =
+        "SELECT indexDefinition.className as table, name from (select expand(indexes) from metadata:indexmanager) where indexDefinition.className is not null " +
+            whereAppend + " order by table, name LIMIT -1";
     //log(query);
     List<ODocument> oDocs = db.command(new OCommandSQL(query))
         .execute();
@@ -444,23 +458,58 @@ public class Main
       return true;
     }
     if (input.toLowerCase().startsWith("set pretty true")) { // TODO: not property implementing my own 'set'
+      log(input, isDebug);
       jsonFormat = DEFAULT_JSON_FORMAT + ",prettyPrint";
+      System.err.print("OK");
       return true;
     }
     if (input.toLowerCase().startsWith("set pretty false")) {
+      log(input, isDebug);
       jsonFormat = DEFAULT_JSON_FORMAT;
+      System.err.print("OK");
+      return true;
+    }
+    if (input.toLowerCase().startsWith("describe ") || input.toLowerCase().startsWith("desc ") || input.toLowerCase().startsWith("info ")) {
+      Matcher matcher = describeNamePtn.matcher(input);
+      if (matcher.find()) {
+        String descType = matcher.group(2);
+        String tableName = matcher.group(3);
+        String query =
+            "SELECT expand(properties) from (select expand(classes) from metadata:schema) where name = '" + tableName +
+                "'";
+        if (descType.equalsIgnoreCase("index")) {
+          query =
+              "SELECT name, indexDefinition, indexDefinition.indexDefinitions as indexDefinitions from (select expand(indexes) from metadata:indexmanager) WHERE name = '" +
+                  tableName + "'";
+        }
+        String currentJsonFmt = jsonFormat;
+        //jsonFormat = DEFAULT_JSON_FORMAT + ",prettyPrint";
+        log(query, isDebug);
+        execQueries(db, query);
+        //jsonFormat = currentJsonFmt;
+      }
+      return true;
+    }
+    if (input.toLowerCase().startsWith("list classes") || input.toLowerCase().startsWith("list tables")) {
+      String query =
+          "SELECT name from (SELECT expand(classes) from metadata:schema) WHERE NOT (name LIKE 'O%' OR name LIKE '_%') ORDER BY name LIMIT -1";
+      log(query, isDebug);
+      execQueries(db, query);
       return true;
     }
     if (input.toLowerCase().startsWith("list indexes")) {
+      log(input, isDebug);
       Matcher matcher = indexNamePtn.matcher(input.toLowerCase());
       String indexName = "";
       if (matcher.find()) {
         indexName = matcher.group(2);
       }
+      // If indexName is empty, list all
       listIndexes(db, indexName);
       return true;
     }
     if (input.toLowerCase().startsWith("rebuild indexes")) { // NOT 'rebuild index *'
+      log(input, isDebug);
       Matcher matcher = indexNamePtn.matcher(input);
       String indexName = "";
       if (matcher.find()) {
@@ -479,7 +528,8 @@ public class Main
     String input = reader.readLine(PROMPT);
     while (input != null && !input.startsWith("exit")) {
       try {
-        if (!isSpecialQueryAndProcess(db, input) && db != null) {
+        if (db != null && !isSpecialQueryAndProcess(db, input)) {
+          log("execQueries: " + input, isDebug);
           execQueries(db, input);
         }
         input = reader.readLine(PROMPT);
@@ -596,12 +646,19 @@ public class Main
   private Main() { }
 
   private static void setGlobals() {
+    isDebug = Boolean.getBoolean("debug");
     extractDir = System.getProperty("extractDir", System.getenv("_EXTRACT_DIR"));
+    log("extractDir   = " + extractDir, isDebug);
     exportPath = System.getProperty("exportPath", System.getenv("_EXPORT_PATH"));
+    log("exportPath   = " + exportPath, isDebug);
     binaryField = System.getProperty("binaryField", "");
+    log("binaryField  = " + binaryField, isDebug);
     paging = System.getProperty("paging", "");
+    log("paging       = " + paging, isDebug);
     ridName = System.getProperty("ridName", "rid");
+    log("ridName      = " + ridName, isDebug);
     lastRid = System.getProperty("lastRid", "#-1:-1");
+    log("lastRid      = " + lastRid, isDebug);
     String envOrientDBUser = System.getenv("ORIENTDB_USER");
     if (envOrientDBUser != null) {
       dbUser = envOrientDBUser;
