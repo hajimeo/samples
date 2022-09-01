@@ -812,6 +812,8 @@ def udf_timestamp(date_time):
     1618396782
     >>> udf_timestamp("2021-04-14 06:39:42+0000")
     1618382382
+    >>> udf_timestamp("2021-04-14 06:39:42,000+0000")
+    1618382382
     """
     if bool(date_time) is False:
         return None
@@ -823,21 +825,22 @@ def udf_timestamp(date_time):
     return int(parser.parse(date_time).timestamp())
 
 
-def udf_started_time(request_date_time, elapsed_ms):
+def udf_started_time(date_time, elapsed_ms):
     """
     Doing below calculation:
     TIME(UDF_TIMESTAMP(date) - CAST(elapsedTime/1000 AS INT) - (4*60*60), 'unixepoch')
 
-    eg: SELECT UDF_STARTED_TIME(some_request_datetime, some_elapsed_ms) as started_time, ...
-    :param request_date_time: ISO date string (or Date/Time column but SQLite doesn't have date/time columns)
+    eg: SELECT UDF_STARTED_TIME(some_datetime, some_elapsed_ms) as started_time, ...
+    :param date_time: ISO date string (or Date/Time column but SQLite doesn't have date/time columns)
     :param elapsed_ms: Integer (elapsed time in millisecond)
     :return:          Integer of Unix Timestamp
     """
-    ts_sec = udf_timestamp(request_date_time)
+    ts_sec = udf_timestamp(date_time)
+    elapsed_ms = int(elapsed_ms)
     tz_str = "+0000"
-    if request_date_time.count(" ") == 1:
-        # assuming the date_time uses "%d/%b/%Y:%H:%M:%S %z". This format doesn't work with parse, so changing.
-        _, tz_str = request_date_time.split(" ", 1)
+    matches = re.search('(.+) *([-+]\d{4})$', date_time)
+    if bool(matches):
+        tz_str = matches.group(2)
     # somehow converting timestamp to date string with timezone offset is very hard in python...
     started_ts_sec = ts_sec - int(elapsed_ms / 1000) + ((int(tz_str) / 100) * 60 * 60)
     return datetime.utcfromtimestamp(started_ts_sec).strftime('%Y-%m-%d %H:%M:%S')
