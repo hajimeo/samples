@@ -124,6 +124,14 @@ func _setGlobals() {
 		*_FILTER = _PROP_EXT
 		*_WITH_PROPS = false
 		_REPO_TO_FMT = genRepoFmtMap()
+
+		if len(*_NODE_ID) > 0 {
+			if !validateNodeId(*_NODE_ID) {
+				_log("ERROR", fmt.Sprintf("_NODE_ID: %s may not be correct.", *_NODE_ID))
+				_log("ERROR", fmt.Sprintf("Ctrl + c to cancel now ..."))
+				time.Sleep(8 * time.Second)
+			}
+		}
 	}
 	_START_TIME_ts = time.Now().Unix()
 	_R_DEL_DT, _ = regexp.Compile("[^#]?deletedDateTime=([0-9]+)")
@@ -147,7 +155,16 @@ func _setGlobals() {
 
 func _log(level string, message string) {
 	if level != "DEBUG" || *_DEBUG {
-		log.Printf("%s: %s\n", level, message)
+		log.Printf("%-5s %s\n", level, message)
+	}
+}
+
+// TODO: this may output too frequently
+func _elapsed(startTsMs int64, message string, thresholdMs int64) {
+	//elapsed := time.Since(start)
+	elapsed := time.Now().UnixMilli() - startTsMs
+	if elapsed > thresholdMs {
+		log.Printf("%s (%dms)", message, elapsed)
 	}
 }
 
@@ -203,7 +220,7 @@ func genRepoFmtMap() map[string]string {
 	// temporarily opening a DB connection only for this query
 	db := openDb(*_DB_CON_STR)
 	defer db.Close()
-	rows := queryDb("SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository;", db)
+	rows := queryDb("SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository", db)
 	if rows == nil { // For unit tests
 		return nil
 	}
@@ -220,6 +237,26 @@ func genRepoFmtMap() map[string]string {
 	}
 	_log("DEBUG", fmt.Sprintf("reposToFmts = %v", reposToFmts))
 	return reposToFmts
+}
+
+func validateNodeId(nodeId string) bool {
+	// temporarily opening a DB connection only for this query
+	db := openDb(*_DB_CON_STR)
+	defer db.Close()
+	tableNames := getAssetTables(db, "", nil)
+	query := genAssetBlobUnionQuery(tableNames, "1 as c", "ab.blob_ref NOT like '%@"+nodeId+"' LIMIT 1", true)
+	query = "SELECT SUM(c) as numInvalid FROM (" + query + ") t_unions"
+	//query = "SELECT tableName, REGEXP_REPLACE(blob_ref, '^[^@]+@', '') AS nodeId, count(*) FROM ("+query+") t_unions GROUP BY 1, 2"
+	rows := queryDb(query, db)
+	defer rows.Close()
+	var numInvalid int64
+	for rows.Next() {
+		err := rows.Scan(&numInvalid)
+		if err != nil {
+			panic(err)
+		}
+	}
+	return !(numInvalid > 1)
 }
 
 func genDbConnStr(props StoreProps) string {
@@ -379,6 +416,7 @@ func getNowStr() string {
 }
 
 func getContents(path string) (string, error) {
+	defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 100)
 	_log("DEBUG", fmt.Sprintf("Getting contents from %s", path))
 	bytes, err := os.ReadFile(path)
 	if err != nil {
@@ -407,17 +445,20 @@ func openDb(dbConnStr string) *sql.DB {
 }
 
 func queryDb(query string, db *sql.DB) *sql.Rows {
+	defer _elapsed(time.Now().UnixMilli(), "WARN  slow query:"+query, 100)
 	if db == nil { // For unit tests
 		return nil
 	}
+	_log("DEBUG", query)
 	rows, err := db.Query(query)
 	if err != nil {
+		_log("ERROR", query)
 		panic(err.Error())
 	}
 	return rows
 }
 
-func genUnionQuery(tableNames []string, columns string, where string) string {
+func genAssetBlobUnionQuery(tableNames []string, columns string, where string, includeTableName bool) string {
 	if len(columns) == 0 {
 		columns = "*"
 	}
@@ -427,8 +468,15 @@ func genUnionQuery(tableNames []string, columns string, where string) string {
 	queryPrefix := "SELECT " + columns
 	elements := make([]string, 0)
 	for _, tableName := range tableNames {
-		element := queryPrefix + " FROM " + tableName + where
-		elements = append(elements, element)
+		element := queryPrefix
+		if includeTableName {
+			element = element + ", '" + tableName + "' as tableName"
+		}
+		element = fmt.Sprintf("%s FROM %s a", element, tableName)
+		// NOTE: Join is required otherwise when Cleanup unused asset blob task has not been run, this script thinks that blob exists
+		element = fmt.Sprintf("%s JOIN %s_blob ab ON a.asset_blob_id = ab.asset_blob_id", element, tableName)
+		element = fmt.Sprintf("%s%s", element, where)
+		elements = append(elements, "("+element+")")
 	}
 	query := strings.Join(elements, " UNION ALL ")
 	return query
@@ -446,13 +494,13 @@ func genBlobIdCheckingQuery(path string, tableNames []string) string {
 			where = "blob_ref like '" + *_BS_NAME + ":" + blobId + "@%'"
 		}
 	}
-	query := genUnionQuery(tableNames, "asset_blob_id", where)
+	query := genAssetBlobUnionQuery(tableNames, "asset_id", where, false)
 	_log("INFO", query)
 	return query
 }
 
 // only works on postgres
-func getAssetBlobTables(contents string, db *sql.DB, reposToFmt map[string]string) []string {
+func getAssetTables(db *sql.DB, contents string, reposToFmt map[string]string) []string {
 	result := make([]string, 0)
 	if len(contents) > 0 {
 		m := _R_REPO_NAME.FindStringSubmatch(contents)
@@ -470,7 +518,7 @@ func getAssetBlobTables(contents string, db *sql.DB, reposToFmt map[string]strin
 		}
 	}
 
-	query := "SELECT table_name FROM information_schema.tables WHERE table_name like '%_asset_blob'"
+	query := "SELECT table_name FROM information_schema.tables WHERE table_name like '%_asset'"
 	rows := queryDb(query, db)
 	if rows == nil { // For unit tests
 		return nil
@@ -494,7 +542,7 @@ func isBlobIdMissingInBlobStore() bool {
 
 func isBlobIdMissingInDB(contents string, path string, db *sql.DB) bool {
 	// TODO: Current UNION query is a bit slow. Providing "path" generates the repoFmt but too slow
-	tableNames := getAssetBlobTables(contents, db, _REPO_TO_FMT)
+	tableNames := getAssetTables(db, contents, _REPO_TO_FMT)
 	if tableNames == nil { // Mainly for unit test
 		_log("WARN", "tableNames is nil for contents: "+contents)
 		return false
@@ -635,6 +683,7 @@ func getDirs(basedir string, prefix string) []string {
 }
 
 func listObjects(basedir string) {
+	var subTtl int64
 	db := openDb(*_DB_CON_STR)
 	defer db.Close()
 	// Below line does not work because currently Glob does not support ./**/*
@@ -647,6 +696,7 @@ func listObjects(basedir string) {
 		}
 		if !f.IsDir() {
 			if len(*_FILTER) == 0 || strings.Contains(f.Name(), *_FILTER) {
+				subTtl++
 				printLine(path, f, db)
 				if *_TOP_N > 0 && *_TOP_N <= _PRINTED_N {
 					_log("DEBUG", fmt.Sprintf("Printed %d >= %d", _PRINTED_N, *_TOP_N))
@@ -660,10 +710,12 @@ func listObjects(basedir string) {
 		println("Got error retrieving list of files:")
 		panic(err.Error())
 	}
+	_log("INFO", fmt.Sprintf("Checked %d for %s (total: %d)", subTtl, basedir, _CHECKED_N))
 }
 
 // Define, set, and validate command arguments
 func main() {
+	log.SetFlags(log.Lmicroseconds)
 	if len(os.Args) == 1 || os.Args[1] == "-h" || os.Args[1] == "--help" {
 		_usage()
 		_setGlobals()
@@ -714,7 +766,6 @@ func main() {
 		wg.Add(1) // *
 		go func(basedir string) {
 			listObjects(basedir)
-			_log("INFO", fmt.Sprintf("Completed %s (total: %d)", basedir, _CHECKED_N))
 			<-guard
 			wg.Done()
 		}(s)

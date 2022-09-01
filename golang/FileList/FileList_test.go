@@ -136,18 +136,20 @@ func TestQueryDb(t *testing.T) {
 	// TODO: Use mock to test this function properly
 }
 
-func TestGenUnionQuery(t *testing.T) {
+func TestGenAssetBlobUnionQuery(t *testing.T) {
 	tableNames := make([]string, 0)
 	tableNames = append(tableNames, "maven2_asset_blob")
 	tableNames = append(tableNames, "pypi_asset_blob")
-	query := genUnionQuery(tableNames, "", "")
-	if query != "SELECT * FROM maven2_asset_blob UNION ALL SELECT * FROM pypi_asset_blob" {
-		t.Log(query)
+	query := genAssetBlobUnionQuery(tableNames, "", "", false)
+	if !strings.Contains(query, "pypi_asset_blob") {
 		t.Errorf("Returned query query:%s is not expected result", query)
 	}
-	query = genUnionQuery(tableNames, "test, test2", "aaaa like 'bbbb'")
-	if query != "SELECT test, test2 FROM maven2_asset_blob WHERE aaaa like 'bbbb' UNION ALL SELECT test, test2 FROM pypi_asset_blob WHERE aaaa like 'bbbb'" {
-		t.Log(query)
+	query = genAssetBlobUnionQuery(tableNames, "test, test2", "aaaa like 'bbbb'", false)
+	if !strings.Contains(query, "aaaa like 'bbbb'") {
+		t.Errorf("Returned query query:%s is not expected result", query)
+	}
+	query = genAssetBlobUnionQuery(tableNames, "", "", true)
+	if !strings.Contains(query, "'maven2_asset_blob' as tableName") {
 		t.Errorf("Returned query query:%s is not expected result", query)
 	}
 }
@@ -156,6 +158,7 @@ func TestGenBlobIdCheckingQuery(t *testing.T) {
 	tableNames := make([]string, 0)
 	tableNames = append(tableNames, "maven2_asset_blob")
 	tableNames = append(tableNames, "pypi_asset_blob")
+	*_BS_NAME = "testtest"
 	query := genBlobIdCheckingQuery(DUMMY_FILE_PATH, tableNames)
 	// Could not test without DB || !strings.Contains(query, " helm_asset_blob ") || !strings.Contains(query, " helm_asset ")
 	if !strings.Contains(query, " UNION ALL ") || !strings.Contains(query, ":00000000-abcd-ef00-12345-123456789abc@") {
@@ -164,9 +167,9 @@ func TestGenBlobIdCheckingQuery(t *testing.T) {
 }
 
 func TestGetAssetBlobTables(t *testing.T) {
-	rtn := getAssetBlobTables("", nil, _REPO_TO_FMT)
+	rtn := getAssetTables(nil, "", _REPO_TO_FMT)
 	if len(*_DB_CON_STR) == 0 && rtn != nil {
-		t.Errorf("If no _DB_CON_STR, getAssetBlobTables should return nil")
+		t.Errorf("If no _DB_CON_STR, getAssetTables should return nil")
 	}
 	if len(TEST_DB_CONN_STR) == 0 {
 		t.Log("No DB conn string provided in TEST_DB_CONN_STR. Skipping TestGetAssetBlobTables.")
@@ -175,10 +178,10 @@ func TestGetAssetBlobTables(t *testing.T) {
 	*_DB_CON_STR = TEST_DB_CONN_STR
 	db := openDb(*_DB_CON_STR)
 	_REPO_TO_FMT := genRepoFmtMap()
-	rtn = getAssetBlobTables(DUMMY_PROP_TXT, db, _REPO_TO_FMT)
+	rtn = getAssetTables(db, DUMMY_PROP_TXT, _REPO_TO_FMT)
 	t.Log(rtn)
 	if len(*_DB_CON_STR) == 0 && rtn == nil {
-		t.Errorf("Even if no _DB_CON_STR, getAssetBlobTables should NOT return nil")
+		t.Errorf("Even if no _DB_CON_STR, getAssetTables should NOT return nil")
 	}
 }
 
@@ -189,6 +192,17 @@ func TestGetAssetBlobTables(t *testing.T) {
 //		t.Errorf("If no _DB_CON_STR, isBlobIdMissingInDB should not return true")
 //	}
 //}
+
+func TestValidateNodeId(t *testing.T) {
+	if len(TEST_DB_CONN_STR) == 0 {
+		t.Log("No DB conn string provided in TEST_DB_CONN_STR. Skipping TestGenRpoFmtMap.")
+		return
+	}
+	*_DB_CON_STR = TEST_DB_CONN_STR
+	if validateNodeId("aaaaa") {
+		t.Errorf("validateNodeId should not return true with 'aaaaa'")
+	}
+}
 
 func TestRemoveLines(t *testing.T) {
 	updatedContents := removeLines(DUMMY_PROP_TXT, _R_DELETED)
