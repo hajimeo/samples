@@ -1451,6 +1451,7 @@ function _getAfterFirstMatch() {
     fi
 }
 
+# To split hourly: f_splitByRegex nexus.log
 function f_splitByRegex() {
     # TODO: this doesn't work with Ubuntu?
     local _file="$1"        # can't be a glob as used in sed later
@@ -1458,7 +1459,7 @@ function f_splitByRegex() {
     local _save_to="${3}"
     local _prefix="${4-"*None*"}"   # Can be an empty string
     local _out_ext="${5:-"out"}"
-    local _sort="${6:-"${_SPLIT_BY_REGEX_SORT}"}"   # When _line_regex is date/time like regex, better sort first
+    local _sort="${6:-"${_SPLIT_BY_REGEX_SORT}"}"   # If regex-ing with some numeric value (eg: date/time), sort with -u is faster
     if [ -z "${_line_regex}" ]; then
         _line_regex="^${_DATE_FORMAT}.\d\d"
         if [[ "${_file}" =~ request.*log ]]; then
