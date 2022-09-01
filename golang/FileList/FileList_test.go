@@ -2,13 +2,13 @@
 package main
 
 import (
-	"flag"
 	"os"
 	"strings"
 	"testing"
 	"time"
 )
 
+var TEST_DB_CONN_STR = "host=localhost port=5432 user=nxrm password=nxrm123 dbname=nexustest"
 var DUMMY_FILE_PATH = "/tmp/00000000-abcd-ef00-12345-123456789abc.properties"
 var DUMMY_PROP_TXT = `#2021-06-02 22:56:12,617+0000
 #Wed Jun 02 22:56:12 UTC 2021
@@ -21,7 +21,7 @@ creationTime=1622674572509
 sha1=c6b3eecd723b7b26fd92308e7ff25d1142059521
 @BlobStore.blob-name=index.yaml
 deletedReason=Updating asset AttachedEntityId{asset->\#24\:3384}
-@Bucket.repo-name=helm-hosted
+@Bucket.repo-name=nuget.org-proxy
 size=63`
 var DUMMY_DB_PROPS_PATH = "/tmp/dummy-store.properties"
 var DUMMY_DB_PROP_TXT = `#2022-08-14 20:58:43,970+0000
@@ -43,12 +43,42 @@ func TestMain(m *testing.M) {
 	os.Exit(exitVal)
 }
 
-func TestPrintLine(t *testing.T) {
-	fInfo, _ := os.Lstat(DUMMY_FILE_PATH)
-	if !printLine(DUMMY_FILE_PATH, fInfo, nil) {
-		t.Errorf("printLine failed with all default global variables")
-		flag.PrintDefaults()
+func TestOpenDb(t *testing.T) {
+	if len(TEST_DB_CONN_STR) == 0 {
+		t.Log("No DB conn string provided in TEST_DB_CONN_STR. Skipping TestOpenDb.")
+		return
 	}
+	db := openDb(TEST_DB_CONN_STR)
+	if db == nil {
+		t.Errorf("openDb didn't return DB ojbect")
+	}
+	err := db.Ping()
+	if err != nil {
+		t.Log("db.Ping failed with " + err.Error() + ". Skipping the test.")
+		return
+	}
+}
+
+func TestGenRpoFmtMap(t *testing.T) {
+	if len(TEST_DB_CONN_STR) == 0 {
+		t.Log("No DB conn string provided in TEST_DB_CONN_STR. Skipping TestGenRpoFmtMap.")
+		return
+	}
+	*_DB_CON_STR = TEST_DB_CONN_STR
+	reposToFmts := genRepoFmtMap()
+	t.Log(reposToFmts)
+	if reposToFmts == nil || len(reposToFmts) == 0 {
+		t.Errorf("genRepoFmtMap didn't return any reposToFmts.")
+	}
+}
+
+// TODO: think about good testing
+func TestPrintLine(t *testing.T) {
+	//_setGlobals()
+	fInfo, _ := os.Lstat(DUMMY_FILE_PATH)
+	printLine(DUMMY_FILE_PATH, fInfo, nil)
+	//t.Errorf("printLine failed with all default global variables")
+	//flag.PrintDefaults()
 }
 
 func TestGetPathWithoutExt(t *testing.T) {
@@ -106,21 +136,71 @@ func TestQueryDb(t *testing.T) {
 	// TODO: Use mock to test this function properly
 }
 
-func TestGenBlobIdCheckingQuery(t *testing.T) {
-	query, errNo := genBlobIdCheckingQuery(DUMMY_FILE_PATH)
-	if errNo != -1 {
-		t.Errorf("errNo should be -1 but god %d", errNo)
+func TestGenAssetBlobUnionQuery(t *testing.T) {
+	tableNames := make([]string, 0)
+	tableNames = append(tableNames, "maven2_asset_blob")
+	tableNames = append(tableNames, "pypi_asset_blob")
+	query := genAssetBlobUnionQuery(tableNames, "", "", false)
+	if !strings.Contains(query, "pypi_asset_blob") {
+		t.Errorf("Returned query query:%s is not expected result", query)
 	}
+	query = genAssetBlobUnionQuery(tableNames, "test, test2", "aaaa like 'bbbb'", false)
+	if !strings.Contains(query, "aaaa like 'bbbb'") {
+		t.Errorf("Returned query query:%s is not expected result", query)
+	}
+	query = genAssetBlobUnionQuery(tableNames, "", "", true)
+	if !strings.Contains(query, "'maven2_asset_blob' as tableName") {
+		t.Errorf("Returned query query:%s is not expected result", query)
+	}
+}
+
+func TestGenBlobIdCheckingQuery(t *testing.T) {
+	tableNames := make([]string, 0)
+	tableNames = append(tableNames, "maven2_asset_blob")
+	tableNames = append(tableNames, "pypi_asset_blob")
+	*_BS_NAME = "testtest"
+	query := genBlobIdCheckingQuery(DUMMY_FILE_PATH, tableNames)
 	// Could not test without DB || !strings.Contains(query, " helm_asset_blob ") || !strings.Contains(query, " helm_asset ")
-	if !strings.Contains(query, "/index.yaml") || !strings.Contains(query, ":00000000-abcd-ef00-12345-123456789abc@") {
+	if !strings.Contains(query, " UNION ALL ") || !strings.Contains(query, ":00000000-abcd-ef00-12345-123456789abc@") {
 		t.Errorf("Generated query:%s might be incorrect", query)
 	}
 }
 
-func TestIsBlobIdMissingInDB(t *testing.T) {
-	rtn := isBlobIdMissingInDB(DUMMY_FILE_PATH, nil)
-	if len(*_DB_CON_STR) == 0 && rtn {
-		t.Errorf("If no _DB_CON_STR, isBlobIdMissingInDB should not return true")
+func TestGetAssetBlobTables(t *testing.T) {
+	rtn := getAssetTables(nil, "", _REPO_TO_FMT)
+	if len(*_DB_CON_STR) == 0 && rtn != nil {
+		t.Errorf("If no _DB_CON_STR, getAssetTables should return nil")
+	}
+	if len(TEST_DB_CONN_STR) == 0 {
+		t.Log("No DB conn string provided in TEST_DB_CONN_STR. Skipping TestGetAssetBlobTables.")
+		return
+	}
+	*_DB_CON_STR = TEST_DB_CONN_STR
+	db := openDb(*_DB_CON_STR)
+	_REPO_TO_FMT := genRepoFmtMap()
+	rtn = getAssetTables(db, DUMMY_PROP_TXT, _REPO_TO_FMT)
+	t.Log(rtn)
+	if len(*_DB_CON_STR) == 0 && rtn == nil {
+		t.Errorf("Even if no _DB_CON_STR, getAssetTables should NOT return nil")
+	}
+}
+
+// TODO: fix below test
+//func TestIsBlobIdMissingInDB(t *testing.T) {
+//	rtn := isBlobIdMissingInDB(DUMMY_FILE_PATH, nil)
+//	if len(*_DB_CON_STR) == 0 && rtn {
+//		t.Errorf("If no _DB_CON_STR, isBlobIdMissingInDB should not return true")
+//	}
+//}
+
+func TestValidateNodeId(t *testing.T) {
+	if len(TEST_DB_CONN_STR) == 0 {
+		t.Log("No DB conn string provided in TEST_DB_CONN_STR. Skipping TestGenRpoFmtMap.")
+		return
+	}
+	*_DB_CON_STR = TEST_DB_CONN_STR
+	if validateNodeId("aaaaa") {
+		t.Errorf("validateNodeId should not return true with 'aaaaa'")
 	}
 }
 
@@ -144,7 +224,7 @@ func TestIsTimestampBetween(t *testing.T) {
 func TestGenOutputForReconcile(t *testing.T) {
 	delDateFrom := datetimeStrToTs("2021-06-02")
 	delDateTo := datetimeStrToTs("2021-06-03")
-	output, err := genOutputForReconcile(DUMMY_FILE_PATH, delDateFrom, delDateTo, false)
+	output, err := genOutputForReconcile(DUMMY_PROP_TXT, DUMMY_FILE_PATH, delDateFrom, delDateTo, false)
 	if err != nil {
 		t.Errorf("genOutputForReconcile return error %s", err.Error())
 	}
@@ -154,7 +234,7 @@ func TestGenOutputForReconcile(t *testing.T) {
 
 	delDateFrom = datetimeStrToTs("2022-06-02")
 	delDateTo = datetimeStrToTs("2022-07-02")
-	output, err = genOutputForReconcile(DUMMY_FILE_PATH, delDateFrom, delDateTo, false)
+	output, err = genOutputForReconcile(DUMMY_PROP_TXT, DUMMY_FILE_PATH, delDateFrom, delDateTo, false)
 	if err == nil || !strings.Contains(err.Error(), "is not between") {
 		t.Errorf("genOutputForReconcile return unexpected error %s", err.Error())
 	}

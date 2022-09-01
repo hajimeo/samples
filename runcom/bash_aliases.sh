@@ -172,7 +172,7 @@ alias smtpdemo='python -m smtpd -n -c DebuggingServer localhost:2500'
 function fcat() {
     local _name="$1"
     local _find_all="$2"
-    local _max_depth="${3:-"5"}"
+    local _max_depth="${3:-"7"}"
     local _result=1
     # Accept not only file name but also /<dir>/<filename> so that using grep
     for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
@@ -392,7 +392,8 @@ while i < len(s):
         if (i + 1) < len(s) and s[i + 1] == ' ' and ((i + 2) < len(s) and s[i + 2] != ' '):
             i += 1
     f = False
-    i += 1"
+    i += 1
+print('')"
 }
 # Grep against jar file to find a class ($1)
 function jargrep() {
@@ -682,8 +683,9 @@ function pubS() {
     [ $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java -nt /tmp/pubS.last ] && cp -v -f $HOME/IdeaProjects/samples/java/asset-dupe-checker/src/main/java/AssetDupeCheckV2.java $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/src/main/java/ && cp -v -f $HOME/IdeaProjects/samples/misc/asset-dupe-checker-v2.jar $HOME/IdeaProjects/nexus-toolbox/asset-dupe-checker/
     [ $HOME/IdeaProjects/samples/bash/patch_java.sh -nt /tmp/pubS.last ] && scp -C $HOME/IdeaProjects/samples/bash/patch_java.sh dh1:/var/tmp/share/java/
     #cp -v -f $HOME/IdeaProjects/work/nexus-groovy/src2/TrustStoreConverter.groovy $HOME/IdeaProjects/nexus-toolbox/scripts/
-    date | tee /tmp/pubS.last
+    scp ~/IdeaProjects/samples/misc/orient-console.jar dh1:/var/tmp/share/java/ &
     sync_nexus_binaries &>/dev/null &
+    date | tee /tmp/pubS.last
 }
 function sync_nexus_binaries() {
     local _host="${1:-"dh1"}"

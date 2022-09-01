@@ -1508,13 +1508,16 @@ function f_register_script() {
 }
 
 function f_delete_all_assets() {
+    local _force="$1"
     # TODO: continuationToken, not relying on the output from python -mjson.tool (number of spaces)
     f_api "/service/rest/v1/search/assets?sort=repository" | grep '^            "id":' > /tmp/${FUNCNAME}_$$.out || return $?
     local _line_num="$(cat /tmp/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
-    read -p "Are you sure to delete all (${_line_num}) assets?: " "_yes"
-    echo ""
-    [[ "${_yes}" =~ ^[yY] ]] || return
-     cat /tmp/${FUNCNAME}_$$.out | while read -r _l; do
+    if [[ ! "${_force}" =~ ^[yY] ]]; then
+        read -p "Are you sure to delete all (${_line_num}) assets?: " "_yes"
+        echo ""
+        [[ "${_yes}" =~ ^[yY] ]] || return
+    fi
+    cat /tmp/${FUNCNAME}_$$.out | while read -r _l; do
         if [[ "${_l}" =~ \"id\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
             echo "# ${BASH_REMATCH[1]}"
             f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" || break

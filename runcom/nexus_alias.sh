@@ -623,13 +623,17 @@ function nuget-get() {
 
 
 ### Misc.   #################################
+
+# 1. Create a new raw-hosted repo (eg: raw-test-hosted)
+# 2. curl -D- -u "admin:admin123" -T<(echo "test for nxrm3Staging") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
+# 3. nxrm3Staging "raw-test-hosted" "" "repository=raw-hosted&name=*test%2Fnxrm3Staging.txt"    # Need "/" if NewDB so using "*"
 #nxrm3Staging "yum-releases-prd" "test-tag" "repository=${_REPO_NAME_FROM}&name=adwaita-qt-common"
 #nxrm3Staging "raw-empty-hosted" "test-tag" "name=/test/test_1k.img"
 function nxrm3Staging() {
     local _move_to_repo="${1}"
     local _tag="${2}"
     local _search="${3}"
-    local _nxrm3_url="${4:-"http://localhost:8081/"}"
+    local _nxrm3_url="${4:-"${_NEXUS_URL-"http://localhost:8081/"}"}"
     # tag may already exist, so not stopping if error
     if [ -n "${_tag}" ]; then
         echo "# ${_nxrm3_url%/}/service/rest/v1/tags -d '{\"name\": \"'${_tag}'\"}'"
@@ -637,20 +641,27 @@ function nxrm3Staging() {
         echo ""
     fi
     if [ -n "${_search}" ]; then
-        if [ -z "${_tag}" ] || [ -z "${_move_to_repo}" ]; then
+        if [ -z "${_tag}" ] && [ -z "${_move_to_repo}" ]; then
             echo "# ${_nxrm3_url%/}/service/rest/v1/search?${_search}"
             curl -D- -u admin:admin123 -X GET "${_nxrm3_url%/}/service/rest/v1/search?${_search}"
             echo ""
             return
         fi
-        echo "# ${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
-        curl -D- -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
-        echo ""
-        # NOTE: immediately moving fails with 404
-        sleep 5
+        if [ -n "${_tag}" ]; then
+            echo "# ${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
+            curl -D- -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/tags/associate/${_tag}?${_search}"
+            echo ""
+            # NOTE: immediately moving fails with 404
+            sleep 5
+        fi
     fi
-    echo "# ${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}"
-    curl -D- -f -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}" || return $?
+    if [ -n "${_tag}" ]; then
+        echo "# ${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}"
+        curl -D- -f -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?tag=${_tag}" || return $?
+    elif [ -n "${_search}" ]; then
+        echo "# ${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?${_search}"
+        curl -D- -f -u admin:admin123 -X POST "${_nxrm3_url%/}/service/rest/v1/staging/move/${_move_to_repo}?${_search}" || return $?
+    fi
     echo ""
 }
 

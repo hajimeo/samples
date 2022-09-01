@@ -110,7 +110,7 @@ function f_upload_dummies() {
     local _file_suffix="${5:-".txt"}"
     local _usr="${6:-"admin"}"
     local _pwd="${7:-"admin123"}"
-    local _seq="seq 1 ${_how_many}"
+    local _seq="seq ${_SEQ_START:-1} ${_how_many}"
     [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
     # -T<(echo "aaa") may not work with some old bash, so creating a file
     for i in $(eval "${_seq}"); do
@@ -134,14 +134,15 @@ function f_mvn_copy_local() {
 }
 
 # NOTE: filter the output before passing function would be faster
+# cat ./log/request.log | rg -v '(\.tgz|dist-tags) ' | f_replay_gets "http://dh1:8081/repository/npm-s3-group-diff-bs" ".*/repository/npm-group/([^ ]+)" "10"
 #zgrep "2021:10:1" request-2021-01-08.log.gz | f_replay_gets "http://localhost:8081/repository/maven-central" "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
 #rg -z "2021:\d\d:\d.+ \"GET /repository/maven-central/.+HTTP/[0-9.]+" 2\d\d" request-2021-01-08.log.gz | sort | uniq | f_replay_gets "http://dh1:8081/repository/maven-central/"
 function f_replay_gets() {
     local __doc__="Replay GET requests in the request.log"
     local _url_path="$1"    # http://localhost:8081/repository/maven-central
-    local _path_match="${2:-"/repository/[^/]+/([^ ]+)"}"   # or NXRM2: "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
-    local _curl_opt="${3}"  # -u admin:admin123
-    local _c="${4:-"1"}"    # concurrency. Use 1 if order is important
+    local _path_match="${2:-".*/repository/[^/]+/([^ ]+)"}"   # or NXRM2: "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
+    local _c="${3:-"1"}"    # concurrency. Use 1 if order is important
+    local _curl_opt="${4}"  # -u admin:admin123
     [[ "${_url_path}" =~ ^http ]] || return 1
     [[ "${_path_match}" =~ .*\(.+\).* ]] || return 2
     local _n="$(echo "${_path_match}" | tr -cd ')' | wc -c | tr -d "[:space:]")"
