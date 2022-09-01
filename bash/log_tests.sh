@@ -25,6 +25,7 @@ GLOBAL VARIABLES (not all):
     _APP_VER_OVERWRITE                  To specify application version
     _WORKING_DIR_OVERWRITE              To specify the sonatype work directory (but not used)
     _NXRM_LOG _NXIQ_LOG _REQUEST_LOG    To specify the log filename (used for rg -g)
+                                        Also _LOG_DATE can be used
     _LOG_THRESHOLD_BYTES                Some time consuming functions are skipped if file is larger than 256MB
     _SKIP_EXTRACT                       Do not run functions start with e_
 EOF
