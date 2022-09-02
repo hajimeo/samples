@@ -1510,7 +1510,7 @@ function f_register_script() {
 #f_upload_dummies "http://localhost:8081/repository/raw-hosted/manyfiles" "1432 10000" 8
 function f_upload_dummies() {
     local __doc__="Upload text files into (raw) hosted repository"
-    local _repo_path="${1:-"http://localhost:8081/repository/raw-hosted/test"}"
+    local _repo_path="${1:-"${_NEXUS_URL%/}/repository/raw-hosted/test"}"
     local _how_many="${2:-"10"}"
     local _parallel="${3:-"4"}"
     local _file_prefix="${4:-"test_"}"
@@ -1529,8 +1529,17 @@ function f_upload_dummies() {
 
 function f_delete_all_assets() {
     local _force="$1"
-    # TODO: continuationToken, not relying on the output from python -mjson.tool (number of spaces)
-    f_api "/service/rest/v1/search/assets?sort=repository" | grep '^            "id":' > /tmp/${FUNCNAME}_$$.out || return $?
+    local _max_loop="${2:-200}" # 50 * 200 = 10000 max
+    rm -f /tmp/${FUNCNAME}_*.out || return $?
+    local _path="/service/rest/v1/search/assets"
+    local _query=""
+    for i in $(seq "1" "${_max_loop}"); do
+        f_api "${_path}${_query}" > /tmp/${FUNCNAME}_${i}.json || return $?
+        grep -qE '"continuationToken": *"[0-9a-f]+' /tmp/${FUNCNAME}_${i}.json || break
+        local cToken="$(cat /tmp/${FUNCNAME}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
+        _query="?continuationToken=${cToken}"
+    done
+    grep -E '^ +"id":' /tmp/${FUNCNAME}_*.json | sort | uniq > /tmp/${FUNCNAME}_$$.out || return $?
     local _line_num="$(cat /tmp/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
         read -p "Are you sure to delete all (${_line_num}) assets?: " "_yes"
