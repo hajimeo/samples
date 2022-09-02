@@ -26,7 +26,7 @@ function TestFileList() {
         _log "WARN" "_expected_num (${_expected_num}) might be incorrect"
     fi
 
-    time ${_FILE_LIST} -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName ${_bsName} -RDel -X > ./file-list.out 2> ./file-list.log
+    time ${_FILE_LIST} -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName ${_bsName} -X > ./file-list.out 2> ./file-list.log
      local _file_list_ln="$(cat ./file-list.out | wc -l | tr -d '[:space:]')"
 
      if [ 0 -eq ${_file_list_ln} ]; then
@@ -50,6 +50,7 @@ function TestFileList() {
      echo "Manual test: "
      echo "    Starting this nexus and run *all* 'Cleanup unused asset blob' tasks."
      echo "    Re-run file-list command to make sure 'deleted=true' is removed."
+     echo "    ${_FILE_LIST} -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName ${_bsName} -dF $(date '+%Y-%m-%d') -RDel -X > ./file-list_del.out 2> ./file-list_del.log"
      echo "    Run the Reconcile with Since 1 days and with file-list.out."
 }
 

@@ -150,6 +150,11 @@ func _setGlobals() {
 			_DEL_DATE_TO_ts = datetimeStrToTs(*_DEL_DATE_TO)
 		}
 	}
+	if *_REMOVE_DEL {
+		if !*_RECON_FMT || len(*_DEL_DATE_FROM) == 0 {
+			_log("WARN", "Ignoring -RDel as no -RF or no -dF.")
+		}
+	}
 	_log("DEBUG", "_setGlobals completed.")
 }
 
@@ -582,8 +587,8 @@ func genOutputForReconcile(contents string, path string, delDateFromTs int64, de
 	deletedMsg := ""
 	deletedDtMsg := ""
 
-	// If skipCheck is true and no deletedDateFrom/To is specified, just return the output for reconcile
-	if skipCheck {
+	// If skipCheck is true and no deletedDateFrom/To and _REMOVE_DEL are specified, just return the output for reconcile
+	if skipCheck && !*_REMOVE_DEL && delDateFromTs == 0 {
 		_log("INFO", fmt.Sprintf("Found path:%s .", path))
 		// Not using _SEP for this output
 		return fmt.Sprintf("%s,%s", getNowStr(), getBaseNameWithoutExt(path)), nil
@@ -605,7 +610,8 @@ func genOutputForReconcile(contents string, path string, delDateFromTs int64, de
 			}
 			deletedDtMsg = fmt.Sprintf(" deletedDateTime=%d", deletedTSMsec)
 
-			if *_REMOVE_DEL {
+			// Currently, for the safety, _REMOVE_DEL requires delDateFromTs
+			if *_REMOVE_DEL && delDateFromTs > 0 {
 				updatedContents := removeLines(contents, _R_DELETED)
 				err := _writeToFile(path, updatedContents)
 				if err != nil {
