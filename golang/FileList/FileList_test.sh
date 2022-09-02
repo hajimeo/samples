@@ -14,6 +14,7 @@ _VER="${5:-"3.40.1-01"}"            # Specify your nexus version
 _NEXUS_TGZ_DIR="${6:-"$HOME/.nexus_executable_cache"}"
 
 _ASSET_CREATE_NUM=1000
+_PID=""
 #_FORCE=""
 
 
@@ -127,7 +128,7 @@ EOF
 
     # Start your nexus. You can also use "nexus run"
     ./nexus-${_VER}/bin/nexus run &> ./nexus_run.out &
-    local _wpid=$!
+    _PID=$!
     #tail -f ./sonatype-work/nexus3/log/nexus.log
 
     # Wait until port is ready
@@ -143,11 +144,6 @@ EOF
     f_delete_all_assets "Y"
     local _expected_num=$(cat /tmp/f_delete_all_assets_$$.out | wc -l | tr -d '[:space:]')
 
-    _log "INFO" "Stopping Nexus (${_wpid}) ..."
-    kill ${_wpid}
-
-    sleep 3
-
     # For measuring the time of your restoring command, delete Linux (file) cache
     #sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
 
@@ -156,4 +152,9 @@ EOF
 
 if [ "$0" = "$BASH_SOURCE" ]; then
     main
+    if [ -n "${_PID}" ]; then
+        _log "INFO" "Stopping Nexus (${_wpid}) ..."
+        sleep 3
+        kill ${_PID}
+    fi
 fi
