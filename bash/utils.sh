@@ -359,8 +359,9 @@ function _pid_by_port() {
     local _port="$1"
     [ -z "${_port}" ] && return 1
     # Some Linux doesn't have 'lsof' + no root user can't see all, but Mac's netstat is very different so using only if Mac...
+    # Also mac's lsof doesn't have  -sTCP:LISTEN
     if [ "`uname`" = "Darwin" ]; then
-        lsof -ti:${_port} -sTCP:LISTEN | head -n1   # should be tail?
+        lsof -ti:${_port} | head -n1   # should be tail?
     else
         netstat -t4lnp 2>/dev/null | grep -wE "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:${_port}" | awk '{print $7}' | grep -m1 -oE '[0-9-]+' | head -n1
     fi
@@ -369,12 +370,25 @@ function _pid_by_port() {
 function _user_by_port() {
     local _port="$1"
     [ -z "${_port}" ] && return 1
-    # Some Linux doesn't have 'lsof' + no root user can't see all, but Mac's netstat is very different so using only if Mac...
     if [ "`uname`" = "Darwin" ]; then
-        lsof -i:${_port} -sTCP:LISTEN | grep -v '^COMMAND' | awk '{print $3}' | head -n1
+        lsof -i:${_port} | grep -v '^COMMAND' | awk '{print $3}' | head -n1
     else
         netstat -t4le 2>/dev/null | grep -w "0.0.0.0:${_port}" | awk '{print $7}' | head -n1
     fi
+}
+
+function _find_port() {
+    local _starting_port="${1}"
+    local _how_many_try="${2:-10}"
+    for i in $(seq 0 ${_how_many_try}); do
+        local _port=$((${_starting_port} + ${i}))
+        local _pid=$(_pid_by_port "${_port}") || return $?
+        if [ -z "${_pid}" ]; then
+            echo "${_port}"
+            return 0
+        fi
+    done
+    return 1
 }
 
 function _wait_url() {
