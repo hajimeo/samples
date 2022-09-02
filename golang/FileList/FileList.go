@@ -163,7 +163,7 @@ func _log(level string, message string) {
 func _elapsed(startTsMs int64, message string, thresholdMs int64) {
 	//elapsed := time.Since(start)
 	elapsed := time.Now().UnixMilli() - startTsMs
-	if elapsed > thresholdMs {
+	if elapsed >= thresholdMs {
 		log.Printf("%s (%dms)", message, elapsed)
 	}
 }
@@ -347,7 +347,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB) st
 	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && len(*_NODE_ID) > 0 && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
 		if *_TRUTH == "BS" {
 			if !isBlobIdMissingInDB("", path, db) {
-				_log("DEBUG", "path:"+path+" exists in Database. Skipping.")
+				//_log("DEBUG", "path:"+path+" exists in Database. Skipping.")
 				return ""
 			}
 			reconOutput, reconErr := genOutputForReconcile("", path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, true)
@@ -416,8 +416,11 @@ func getNowStr() string {
 }
 
 func getContents(path string) (string, error) {
-	defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 100)
-	_log("DEBUG", fmt.Sprintf("Getting contents from %s", path))
+	if *_DEBUG {
+		defer _elapsed(time.Now().UnixMilli(), "DEBUG Read "+path, 0)
+	} else {
+		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 100)
+	}
 	bytes, err := os.ReadFile(path)
 	if err != nil {
 		_log("DEBUG", fmt.Sprintf("ReadFile for %s failed with %s. Ignoring...", path, err.Error()))
@@ -445,11 +448,14 @@ func openDb(dbConnStr string) *sql.DB {
 }
 
 func queryDb(query string, db *sql.DB) *sql.Rows {
-	defer _elapsed(time.Now().UnixMilli(), "WARN  slow query:"+query, 100)
+	if *_DEBUG {
+		defer _elapsed(time.Now().UnixMilli(), "DEBUG Executed "+query, 0)
+	} else {
+		defer _elapsed(time.Now().UnixMilli(), "WARN  slow query:"+query, 100)
+	}
 	if db == nil { // For unit tests
 		return nil
 	}
-	_log("DEBUG", query)
 	rows, err := db.Query(query)
 	if err != nil {
 		_log("ERROR", query)
@@ -479,6 +485,7 @@ func genAssetBlobUnionQuery(tableNames []string, columns string, where string, i
 		elements = append(elements, "("+element+")")
 	}
 	query := strings.Join(elements, " UNION ALL ")
+	//_log("DEBUG", query)
 	return query
 }
 
@@ -495,7 +502,6 @@ func genBlobIdCheckingQuery(path string, tableNames []string) string {
 		}
 	}
 	query := genAssetBlobUnionQuery(tableNames, "asset_id", where, false)
-	_log("INFO", query)
 	return query
 }
 
@@ -511,7 +517,7 @@ func getAssetTables(db *sql.DB, contents string, reposToFmt map[string]string) [
 		}
 		repoName := m[1]
 		if repoFmt, ok := reposToFmt[repoName]; ok {
-			result = append(result, repoFmt+"_asset_blob")
+			result = append(result, repoFmt+"_asset")
 			return result
 		} else {
 			_log("WARN", fmt.Sprintf("repoName: %s is not in reposToFmt\n%v\n", repoName, reposToFmt))
