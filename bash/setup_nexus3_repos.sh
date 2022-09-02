@@ -1507,6 +1507,26 @@ function f_register_script() {
     curl -u admin -X POST -H 'Content-Type: text/plain' '${_NEXUS_URL%/}/service/rest/v1/script/${_script_name}/run' -d'{arg:value}'"
 }
 
+#f_upload_dummies "http://localhost:8081/repository/raw-hosted/manyfiles" "1432 10000" 8
+function f_upload_dummies() {
+    local __doc__="Upload text files into (raw) hosted repository"
+    local _repo_path="${1:-"http://localhost:8081/repository/raw-hosted/test"}"
+    local _how_many="${2:-"10"}"
+    local _parallel="${3:-"4"}"
+    local _file_prefix="${4:-"test_"}"
+    local _file_suffix="${5:-".txt"}"
+    local _usr="${6:-"${_ADMIN_USER}"}"
+    local _pwd="${7:-"${_ADMIN_PWD}"}"
+    # _SEQ_START is for continuing
+    local _seq="seq ${_SEQ_START:-1} ${_how_many}"
+    [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
+    # -T<(echo "aaa") may not work with some old bash, so creating a file
+    for i in $(eval "${_seq}"); do
+      echo "${_file_prefix}${i}${_file_suffix}"
+    done | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w '%{http_code} {}\n' -T<(echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')") -L -k "${_repo_path%/}/{}"
+    # NOTE: xargs only stops if exit code is 255
+}
+
 function f_delete_all_assets() {
     local _force="$1"
     # TODO: continuationToken, not relying on the output from python -mjson.tool (number of spaces)
