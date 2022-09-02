@@ -1539,7 +1539,7 @@ function f_delete_all_assets() {
         local cToken="$(cat /tmp/${FUNCNAME}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
         _query="?continuationToken=${cToken}"
     done
-    grep -E '^ +"id":' /tmp/${FUNCNAME}_*.json | sort | uniq > /tmp/${FUNCNAME}_$$.out || return $?
+    grep -E '^ +"id":' -h /tmp/${FUNCNAME}_*.json | sort | uniq > /tmp/${FUNCNAME}_$$.out || return $?
     local _line_num="$(cat /tmp/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
         read -p "Are you sure to delete all (${_line_num}) assets?: " "_yes"
