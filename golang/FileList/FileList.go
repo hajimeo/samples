@@ -169,6 +169,11 @@ func _elapsed(startTsMs int64, message string, thresholdMs int64) {
 }
 
 func _writeToFile(path string, contents string) error {
+	if *_DEBUG {
+		defer _elapsed(time.Now().UnixMilli(), "DEBUG Wrote "+path, 0)
+	} else {
+		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file write for path:"+path, 100)
+	}
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
 		return err
