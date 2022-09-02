@@ -153,7 +153,7 @@ EOF
 if [ "$0" = "$BASH_SOURCE" ]; then
     main
     if [ -n "${_PID}" ]; then
-        _log "INFO" "Stopping Nexus (${_wpid}) ..."
+        _log "INFO" "Stopping Nexus (${_PID}) ..."
         sleep 3
         kill ${_PID}
     fi
