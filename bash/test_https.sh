@@ -287,6 +287,13 @@ function test_https() {
     fi
 }
 
+# Test email server's connectivity with openssl
+function test_smtp() {
+    # https://halon.io/blog/how-to-test-smtp-servers-using-the-command-line
+    local _host_port="${1}" # smtp.office365.com:587
+    echo -n | openssl s_client -connect ${_host_port} -starttls smtp
+}
+
 # output md5 hash of .key or .crt file
 function check_pem_file() {
     local _file=$1
