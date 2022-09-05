@@ -1,4 +1,4 @@
-# AWS S3 List
+# DEPRECATED: AWS S3 List (use File List one)
 Demo script to list all objects from a S3 bucket with CSV format.  
 The plan was generating the list of blobRef IDs and compare with the blobRef IDs stored in the OrientDB to find the inconsistency.  
 The reason of using GoLang is because I hoped this would be faster than Java or Python.
