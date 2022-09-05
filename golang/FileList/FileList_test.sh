@@ -15,8 +15,10 @@ _NEXUS_TGZ_DIR="${6:-"$HOME/.nexus_executable_cache"}"
 
 _ASSET_CREATE_NUM=1000
 _PID=""
+_AWS_S3_BUCKET="apac-support-bucket"
+_AWS_S3_PREFIX="filelist_test"
 #_FORCE=""
-
+#_IS_S3=false
 
 function TestFileList() {
     local _expected_num="${1:-0}"
@@ -26,31 +28,34 @@ function TestFileList() {
         _log "WARN" "_expected_num (${_expected_num}) might be incorrect"
     fi
 
-    time ${_FILE_LIST} -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName ${_bsName} -X > ./file-list.out 2> ./file-list.log
+    local _opt="-b ./sonatype-work/nexus3/blobs/${_bsName}/content -p vol-"
+    ${_IS_S3} && _opt="-b ${_AWS_S3_BUCKET} -p ${_AWS_S3_PREFIX%/}/content/vol- -S3"
+    _log "INFO" "Executing '${_FILE_LIST} ${_opt} -c 10 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName ${_bsName}'"
+    time ${_FILE_LIST} ${_opt} -c 10 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName ${_bsName} -X >./file-list.out 2>./file-list.log || return $?
      local _file_list_ln="$(cat ./file-list.out | wc -l | tr -d '[:space:]')"
 
      if [ 0 -eq ${_file_list_ln} ]; then
          _log "ERROR" "Test failed. file-list didn't find any blobs (${_file_list_ln})"
      fi
 
-     if [ ${_file_list_ln} -lt ${_expected_num} ]; then
-         _log "ERROR" "Test failed. file-list.out line number ${_file_list_ln} is less than ${_expected_num}"
+     if [ ${_file_list_ln} -gt ${_expected_num} ] || [ ${_file_list_ln} -lt ${_ASSET_CREATE_NUM} ]; then
+         _log "ERROR" "Test failed. file-list.out line number ${_file_list_ln} is not between ${_ASSET_CREATE_NUM} and ${_expected_num}"
      fi
 
      if type rg &>/dev/null; then
-         if rg -g '*.properties' -l '^deleted=true' ./sonatype-work/nexus3/blobs/default/content/vol-*; then
+         if ! ${_IS_S3} && rg -g '*.properties' -l '^deleted=true' ./sonatype-work/nexus3/blobs/${_bsName}/content/vol-*; then
              _log "ERROR" "Test failed. with '-RDel', rg shouldn't find any file."
          fi
      fi
 
      # Some metadata can not be deleted with API so actual_file_sorted would have more
-     #find ./sonatype-work/nexus3/blobs/default/content/vol-* -name '*.properties' | rg '[0-9a-f\-]{20,}' -o | sort > actual_file_sorted.out
+     #find ./sonatype-work/nexus3/blobs/${_bsName}/content/vol-* -name '*.properties' | rg '[0-9a-f\-]{20,}' -o | sort > actual_file_sorted.out
 
      _log "INFO" "${_file_list_ln} of ${_expected_num} are found by file-list"
      echo "Manual test: "
-     echo "    Starting this nexus and run *all* 'Cleanup unused asset blob' tasks."
+     echo "    Start this nexus and wait or run *all* 'Cleanup unused asset blob' tasks."
      echo "    Re-run file-list command to make sure 'deleted=true' is removed."
-     echo "    ${_FILE_LIST} -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName ${_bsName} -dF $(date '+%Y-%m-%d') -RDel -X > ./file-list_del.out 2> ./file-list_del.log"
+     echo "    ${_FILE_LIST} ${_opt} -c 10 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName ${_bsName} -dF $(date '+%Y-%m-%d') -RDel -X > ./file-list_del.out 2> ./file-list_del.log"
      echo "    Run the Reconcile with Since 1 days and with file-list.out."
 }
 
@@ -137,10 +142,16 @@ EOF
     _log "INFO" "Waiting ${_NEXUS_URL} ..."
     _wait_url "${_NEXUS_URL}" || return $?
 
+    if ${_IS_S3}; then
+        export _BLOBTORE_NAME="s3-test"
+        _log "INFO" "Creating ${_BLOBTORE_NAME} (this also creates 'raw-s3-hosted' repo)..."
+        f_create_s3_blobstore "${_BLOBTORE_NAME}" "${_AWS_S3_PREFIX}" "${_AWS_S3_BUCKET}" || return $?    # other params use AWS_XXXX env variables
+    fi
+
     # Below line creates various repositories with a few dummy assets, but not using as this is not for testing Reconcile
     #_AUTO=true main
     f_setup_raw || return $?
-    f_upload_dummies "${_NEXUS_URL%/}/repository/raw-hosted/test" "${_ASSET_CREATE_NUM}" || return $?
+    f_upload_dummies "${_NEXUS_URL%/}/repository/raw-s3-hosted/test" "${_ASSET_CREATE_NUM}" || return $?
 
     f_delete_all_assets "Y"
     local _expected_num=$(cat /tmp/f_delete_all_assets_$$.out | wc -l | tr -d '[:space:]')
@@ -148,7 +159,7 @@ EOF
     # For measuring the time of your restoring command, delete Linux (file) cache
     #sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'
 
-    TestFileList "${_expected_num}" "default"
+    TestFileList "${_expected_num}" "${_BLOBTORE_NAME}"
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then

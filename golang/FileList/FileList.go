@@ -15,9 +15,15 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 	"io"
@@ -47,6 +53,20 @@ var _BASEDIR *string
 var _PREFIX *string
 var _FILTER *string
 var _FILTER_P *string
+var _TOP_N *int64
+var _CONC_1 *int
+var _LIST_DIRS *bool
+var _WITH_PROPS *bool
+var _NO_HEADER *bool
+var _USE_REGEX *bool
+
+//var _EXCLUDE_FILE *string
+//var _INCLUDE_FILE *string
+
+// Reconcile related
+var _RECON_FMT *bool
+var _REMOVE_DEL *bool
+var _WITH_BLOB_SIZE *bool
 var _DB_CON_STR *string
 var _TRUTH *string
 var _BS_NAME *string
@@ -56,25 +76,24 @@ var _DEL_DATE_FROM_ts int64
 var _DEL_DATE_TO *string
 var _DEL_DATE_TO_ts int64
 var _START_TIME_ts int64
-var _TOP_N *int64
-var _CONC_1 *int
-var _LIST_DIRS *bool
-var _WITH_PROPS *bool
-var _NO_HEADER *bool
-var _USE_REGEX *bool
-var _RECON_FMT *bool
-var _REMOVE_DEL *bool
-var _NO_BLOB_SIZE *bool
-
-//var _EXCLUDE_FILE *string
-//var _INCLUDE_FILE *string
 var _REPO_TO_FMT map[string]string
+
+// AWS related
+var _IS_S3 *bool
+var _MAXKEYS *int
+var _WITH_OWNER *bool
+var _WITH_TAGS *bool
+var _CONC_2 *int
+
+// Regular expressions
 var _R *regexp.Regexp
 var _R_DEL_DT *regexp.Regexp
 var _R_DELETED *regexp.Regexp
 var _R_REPO_NAME *regexp.Regexp
 var _R_BLOB_NAME *regexp.Regexp
+
 var _DEBUG *bool
+var _DEBUG2 *bool
 var _CHECKED_N int64 // Atomic (maybe slower?)
 var _PRINTED_N int64 // Atomic (maybe slower?)
 var _TTL_SIZE int64  // Atomic (maybe slower?)
@@ -84,21 +103,14 @@ var _PROP_EXT = ".properties"
 type StoreProps map[string]string
 
 func _setGlobals() {
-	_BASEDIR = flag.String("b", ".", "Base directory (default: '.')")
+	_BASEDIR = flag.String("b", ".", "Base directory (default: '.') or S3 Bucket name")
+	//_BASEDIR = flag.String("b", "", "S3 Bucket name")
 	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: 'vol-')")
 	_WITH_PROPS = flag.Bool("P", false, "If true, read and output the .properties files")
 	_FILTER = flag.String("f", "", "Filter file paths (eg: '.properties')")
-	_NO_BLOB_SIZE = flag.Bool("NBSize", false, "Disable .bytes size checking (When -f is '.properties', the default behaviour is checking size)")
+	_WITH_BLOB_SIZE = flag.Bool("BSize", false, "If true, includes .bytes size (When -f is '.properties')")
 	_FILTER_P = flag.String("fP", "", "Filter .properties contents (eg: 'deleted=true')")
-	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [BS|DB]") // TODO: not implemented "DB" yet
-	_DB_CON_STR = flag.String("db", "", "DB connection string or path to properties file")
-	_BS_NAME = flag.String("bsName", "", "Eg. 'default'. If provided, the query will be faster")
-	_NODE_ID = flag.String("nodeId", "", "Advanced option.")
 	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and _FILTER_P string is treated as regex")
-	_RECON_FMT = flag.Bool("RF", false, "Output for the Reconcile task (any_string,blob_ref). -P will be ignored")
-	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF *and* -dF") // TODO: also think about restore plan
-	_DEL_DATE_FROM = flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
-	_DEL_DATE_TO = flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
 	//_EXCLUDE_FILE = flag.String("sk", "", "Blob IDs in this file will be skipped from the check") // TODO
 	//_INCLUDE_FILE = flag.String("sk", "", "ONLY blob IDs in this file will be checked")           // TODO
 	_TOP_N = flag.Int64("n", 0, "Return first N lines (0 = no limit). (TODO: may return more than N)")
@@ -106,6 +118,25 @@ func _setGlobals() {
 	_LIST_DIRS = flag.Bool("L", false, "If true, just list directories and exit")
 	_NO_HEADER = flag.Bool("H", false, "If true, no header line")
 	_DEBUG = flag.Bool("X", false, "If true, verbose logging")
+	_DEBUG2 = flag.Bool("XX", false, "If true, more verbose logging")
+
+	// Reconcile related
+	_TRUTH = flag.String("src", "BS", "Using database or blobstore as source [BS|DB]") // TODO: not implemented "DB" yet
+	_DB_CON_STR = flag.String("db", "", "DB connection string or path to properties file")
+	_BS_NAME = flag.String("bsName", "", "Eg. 'default'. If provided, the query will be faster")
+	_NODE_ID = flag.String("nodeId", "", "Advanced option.")
+	_RECON_FMT = flag.Bool("RF", false, "Output for the Reconcile task (any_string,blob_ref). -P will be ignored")
+	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF *and* -dF") // TODO: also think about restore plan
+	_DEL_DATE_FROM = flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
+	_DEL_DATE_TO = flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
+
+	// AWS S3 related
+	_CONC_2 = flag.Int("c2", 16, "Concurrent number for retrieving AWS Tags")
+	_IS_S3 = flag.Bool("S3", false, "If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION")
+	_MAXKEYS = flag.Int("m", 1000, "Integer value for Max Keys (<= 1000)")
+	_WITH_OWNER = flag.Bool("O", false, "If true, also get owner display name")
+	_WITH_TAGS = flag.Bool("T", false, "If true, also get tags of each object")
+
 	flag.Parse()
 
 	// If _FILTER_P is given, automatically populate other related variables
@@ -153,6 +184,8 @@ func _setGlobals() {
 	if *_REMOVE_DEL {
 		if !*_RECON_FMT || len(*_DEL_DATE_FROM) == 0 {
 			_log("WARN", "Ignoring -RDel as no -RF or no -dF.")
+		} else if _IS_S3 != nil && *_IS_S3 {
+			panic("TODO: -RDel is not implemented for S3.")
 		}
 	}
 	_log("DEBUG", "_setGlobals completed.")
@@ -173,8 +206,15 @@ func _elapsed(startTsMs int64, message string, thresholdMs int64) {
 	}
 }
 
-func _writeToFile(path string, contents string) error {
-	if *_DEBUG {
+func writeContents(path string, contents string, client *s3.Client) error {
+	if _IS_S3 != nil && *_IS_S3 {
+		return writeContentsS3(path, contents, client)
+	}
+	return writeContentsFile(path, contents)
+}
+
+func writeContentsFile(path string, contents string) error {
+	if _DEBUG != nil && *_DEBUG {
 		defer _elapsed(time.Now().UnixMilli(), "DEBUG Wrote "+path, 0)
 	} else {
 		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file write for path:"+path, 100)
@@ -189,6 +229,40 @@ func _writeToFile(path string, contents string) error {
 		return err
 	}
 	return err
+}
+
+func writeContentsS3(path string, contents string, client *s3.Client) error {
+	if _DEBUG != nil && *_DEBUG {
+		defer _elapsed(time.Now().UnixMilli(), "DEBUG Wrote "+path, 0)
+	} else {
+		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file write for path:"+path, 400)
+	}
+	input := &s3.PutObjectInput{
+		Bucket: _BASEDIR,
+		Key:    &path,
+		Body:   bytes.NewReader([]byte(contents)),
+	}
+	resp, err := client.PutObject(context.TODO(), input)
+	if err != nil {
+		_log("DEBUG", fmt.Sprintf("Path: %s. Resp: %v", path, resp))
+		return err
+	}
+	return nil
+}
+
+func removeTagsS3(path string, client *s3.Client) error {
+	inputTag := &s3.PutObjectTaggingInput{
+		Bucket: _BASEDIR,
+		Key:    &path,
+		Tagging: &types.Tagging{
+			TagSet: []types.Tag{},
+		},
+	}
+	respTag, errTag := client.PutObjectTagging(context.TODO(), inputTag)
+	if errTag != nil {
+		_log("WARN", fmt.Sprintf("Deleting Tag failed. Path: %s. Resp: %v", path, respTag))
+	}
+	return errTag
 }
 
 func datetimeStrToTs(datetimeStr string) int64 {
@@ -225,7 +299,6 @@ func readPropertiesFile(path string) (StoreProps, error) {
 	return props, nil
 }
 
-// Not in use for now
 func genRepoFmtMap() map[string]string {
 	// temporarily opening a DB connection only for this query
 	db := openDb(*_DB_CON_STR)
@@ -254,8 +327,8 @@ func validateNodeId(nodeId string) bool {
 	db := openDb(*_DB_CON_STR)
 	defer db.Close()
 	tableNames := getAssetTables(db, "", nil)
-	query := genAssetBlobUnionQuery(tableNames, "1 as c", "ab.blob_ref NOT like '%@"+nodeId+"' LIMIT 1", true)
-	query = "SELECT SUM(c) as numInvalid FROM (" + query + ") t_unions"
+	query := "SELECT SUM(c) as numInvalid"
+	query = query + " FROM (" + genAssetBlobUnionQuery(tableNames, "1 as c", "ab.blob_ref NOT like '%@"+nodeId+"' LIMIT 1", true) + ") t_unions"
 	//query = "SELECT tableName, REGEXP_REPLACE(blob_ref, '^[^@]+@', '') AS nodeId, count(*) FROM ("+query+") t_unions GROUP BY 1, 2"
 	rows := queryDb(query, db)
 	defer rows.Close()
@@ -303,6 +376,93 @@ func getBlobSize(propPath string) int64 {
 	return info.Size()
 }
 
+func getBlobSizeS3(propPath string, client *s3.Client) int64 {
+	blobPath := getPathWithoutExt(propPath) + ".bytes"
+	if _DEBUG != nil && *_DEBUG {
+		defer _elapsed(time.Now().UnixMilli(), "DEBUG HeadObject to "+blobPath, 0)
+	} else {
+		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file access for path:"+blobPath, 300)
+	}
+	headObj := s3.HeadObjectInput{
+		Bucket: _BASEDIR,
+		Key:    &blobPath,
+	}
+	result, err := client.HeadObject(context.TODO(), &headObj)
+	if err != nil {
+		_log("WARN", "Failed to request "+blobPath)
+	}
+	return result.ContentLength
+}
+
+func tags2str(tagset []types.Tag) string {
+	str := ""
+	for _, _t := range tagset {
+		if len(str) == 0 {
+			str = fmt.Sprintf("%s=%s", *_t.Key, *_t.Value)
+		} else {
+			str = fmt.Sprintf("%s&%s=%s", str, *_t.Key, *_t.Value)
+		}
+	}
+	return str
+}
+
+func printLineS3(client *s3.Client, item types.Object, db *sql.DB) {
+	path := *item.Key
+	//_log("DEBUG", fmt.Sprintf("printLine-ing for path:%s", path))
+	modTime := item.LastModified
+	modTimeTs := modTime.Unix()
+	output := ""
+	var blobSize int64 = 0
+
+	// If not for Reconciliation YYYY-MM-DD log, output normally.
+	if !*_RECON_FMT {
+		output = fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, item.Size)
+	}
+
+	// If .properties file is checked and _WITH_BLOB_SIZE, then get the size of .bytes file
+	if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
+		blobSize = getBlobSizeS3(path, client)
+		output = fmt.Sprintf("%s%s%d", output, _SEP, blobSize)
+	}
+
+	// If .properties file is checked, depending on other flags, output can be changed.
+	if strings.HasSuffix(path, _PROP_EXT) {
+		output = _printLineExtra(output, path, modTimeTs, db, client)
+	}
+
+	if *_WITH_OWNER {
+		output = fmt.Sprintf("%s%s%s", output, _SEP, *item.Owner.DisplayName)
+	}
+
+	// Get tags if -with-tags is presented.
+	if *_WITH_TAGS {
+		_log("DEBUG", fmt.Sprintf("Getting tags for %s", path))
+		_inputT := &s3.GetObjectTaggingInput{
+			Bucket: _BASEDIR,
+			Key:    &path,
+		}
+		_tag, err := client.GetObjectTagging(context.TODO(), _inputT)
+		if err != nil {
+			_log("DEBUG", fmt.Sprintf("Retrieving tags for %s failed with %s. Ignoring...", path, err.Error()))
+			output = fmt.Sprintf("%s%s", output, _SEP)
+		} else {
+			//_log("DEBUG", fmt.Sprintf("Retrieved tags for %s", path))
+			tag_output := tags2str(_tag.TagSet)
+			output = fmt.Sprintf("%s%s%s", output, _SEP, tag_output)
+		}
+	}
+
+	// Updating counters and return
+	atomic.AddInt64(&_CHECKED_N, 1)
+	if len(output) > 0 {
+		atomic.AddInt64(&_PRINTED_N, 1)
+		atomic.AddInt64(&_TTL_SIZE, item.Size+blobSize)
+		fmt.Println(output)
+		return
+	}
+	return
+}
+
 func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 	//_log("DEBUG", fmt.Sprintf("printLine-ing for path:%s", path))
 	modTime := fInfo.ModTime()
@@ -315,15 +475,15 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 		output = fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, fInfo.Size())
 	}
 
-	// If .properties file is checked and _NO_BLOB_SIZE, then get the size of .bytes file
-	if !*_NO_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
+	// If .properties file is checked and _WITH_BLOB_SIZE, then get the size of .bytes file
+	if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT && strings.HasSuffix(path, _PROP_EXT) {
 		blobSize = getBlobSize(path)
 		output = fmt.Sprintf("%s%s%d", output, _SEP, blobSize)
 	}
 
 	// If .properties file is checked, depending on other flags, output can be changed.
 	if strings.HasSuffix(path, _PROP_EXT) {
-		output = _printLineExtra(output, path, modTimeTs, db)
+		output = _printLineExtra(output, path, modTimeTs, db, nil)
 	}
 
 	// Updating counters and return
@@ -338,7 +498,7 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 }
 
 // To handle a bit complicated conditions
-func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB) string {
+func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, client *s3.Client) string {
 	skipCheck := false
 
 	if *_RECON_FMT {
@@ -360,7 +520,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB) st
 				//_log("DEBUG", "path:"+path+" exists in Database. Skipping.")
 				return ""
 			}
-			reconOutput, reconErr := genOutputForReconcile("", path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, true)
+			reconOutput, reconErr := genOutputForReconcile("", path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, true, client)
 			if reconErr != nil {
 				_log("DEBUG", reconErr.Error())
 			}
@@ -370,7 +530,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB) st
 	}
 
 	// Excluding above special condition, usually needs to read the file
-	contents, err := getContents(path)
+	contents, err := getContents(path, client)
 	if err != nil {
 		_log("ERROR", "No contents from "+path)
 		// if no content, no point of restoring
@@ -389,7 +549,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB) st
 
 	if *_RECON_FMT {
 		// If reconciliation output format is requested, should not use 'output'
-		reconOutput, reconErr := genOutputForReconcile(contents, path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, skipCheck)
+		reconOutput, reconErr := genOutputForReconcile(contents, path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, skipCheck, client)
 		if reconErr != nil {
 			_log("DEBUG", reconErr.Error())
 		}
@@ -425,8 +585,15 @@ func getNowStr() string {
 	return currentTime.Format("2006-01-02 15:04:05")
 }
 
-func getContents(path string) (string, error) {
-	if *_DEBUG {
+func getContents(path string, client *s3.Client) (string, error) {
+	if _IS_S3 != nil && *_IS_S3 {
+		return getContentsS3(path, client)
+	}
+	return getContentsFile(path)
+}
+
+func getContentsFile(path string) (string, error) {
+	if _DEBUG != nil && *_DEBUG {
 		defer _elapsed(time.Now().UnixMilli(), "DEBUG Read "+path, 0)
 	} else {
 		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 100)
@@ -437,6 +604,31 @@ func getContents(path string) (string, error) {
 		return "", err
 	}
 	contents := strings.TrimSpace(string(bytes))
+	return contents, nil
+}
+
+func getContentsS3(path string, client *s3.Client) (string, error) {
+	if _DEBUG != nil && *_DEBUG {
+		defer _elapsed(time.Now().UnixMilli(), "DEBUG Read "+path, 0)
+	} else {
+		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 400)
+	}
+	input := &s3.GetObjectInput{
+		Bucket: _BASEDIR,
+		Key:    &path,
+	}
+	obj, err := client.GetObject(context.TODO(), input)
+	if err != nil {
+		_log("DEBUG", fmt.Sprintf("Retrieving %s failed with %s. Ignoring...", path, err.Error()))
+		return "", err
+	}
+	buf := new(bytes.Buffer)
+	_, err = buf.ReadFrom(obj.Body)
+	if err != nil {
+		_log("DEBUG", fmt.Sprintf("Reading object for %s failed with %s. Ignoring...", path, err.Error()))
+		return "", err
+	}
+	contents := strings.TrimSpace(buf.String())
 	return contents, nil
 }
 
@@ -458,7 +650,7 @@ func openDb(dbConnStr string) *sql.DB {
 }
 
 func queryDb(query string, db *sql.DB) *sql.Rows {
-	if *_DEBUG {
+	if _DEBUG != nil && *_DEBUG {
 		defer _elapsed(time.Now().UnixMilli(), "DEBUG Executed "+query, 0)
 	} else {
 		defer _elapsed(time.Now().UnixMilli(), "WARN  slow query:"+query, 100)
@@ -583,7 +775,7 @@ func isBlobIdMissingInDB(contents string, path string, db *sql.DB) bool {
 	return noRows
 }
 
-func genOutputForReconcile(contents string, path string, delDateFromTs int64, delDateToTs int64, skipCheck bool) (string, error) {
+func genOutputForReconcile(contents string, path string, delDateFromTs int64, delDateToTs int64, skipCheck bool, client *s3.Client) (string, error) {
 	deletedMsg := ""
 	deletedDtMsg := ""
 
@@ -613,13 +805,20 @@ func genOutputForReconcile(contents string, path string, delDateFromTs int64, de
 			// Currently, for the safety, _REMOVE_DEL requires delDateFromTs
 			if *_REMOVE_DEL && delDateFromTs > 0 {
 				updatedContents := removeLines(contents, _R_DELETED)
-				err := _writeToFile(path, updatedContents)
+				err := writeContents(path, updatedContents, client)
 				if err != nil {
 					_log("ERROR", fmt.Sprintf("Updating path:%s failed with %s", path, err))
 				} else if len(contents) == len(updatedContents) {
 					_log("WARN", fmt.Sprintf("Removed 'deleted=true' from path:%s but size is same (%d => %d)", path, len(contents), len(updatedContents)))
 				} else {
 					deletedMsg = " (removed 'deletedMsg=true')"
+
+					if _IS_S3 != nil && *_IS_S3 {
+						errTag := removeTagsS3(path, client)
+						if errTag == nil {
+							_ = removeTagsS3(getPathWithoutExt(path)+".bytes", client)
+						}
+					}
 				}
 			}
 		}
@@ -678,6 +877,42 @@ func genOutputFromProp(contents string, path string) (string, error) {
 }
 
 // get *all* directories under basedir and which name starts with prefix
+func getDirsS3(client *s3.Client) []string {
+	dirs := make([]string, 1)
+	dirs = append(dirs, *_PREFIX)
+
+	_log("DEBUG", fmt.Sprintf("Retriving sub folders under %s", *_PREFIX))
+	delimiter := "/"
+	inputV1 := &s3.ListObjectsInput{
+		Bucket:    _BASEDIR,
+		Prefix:    _PREFIX,
+		MaxKeys:   int32(*_MAXKEYS),
+		Delimiter: &delimiter,
+	}
+	resp, err := client.ListObjects(context.TODO(), inputV1)
+	if err != nil {
+		println("Got error retrieving list of objects:")
+		panic(err.Error())
+	}
+	// replacing dirs with the result (excluding 1 as it would make slower)
+	if *_CONC_1 > 1 && len(resp.CommonPrefixes) > 1 {
+		dirs = make([]string, len(resp.CommonPrefixes))
+	}
+	for _, item := range resp.CommonPrefixes {
+		// TODO: somehow empty value is added into dirs even below
+		if len(strings.TrimSpace(*item.Prefix)) == 0 {
+			continue
+		}
+		if *_CONC_1 > 1 && len(resp.CommonPrefixes) > 1 {
+			dirs = append(dirs, *item.Prefix)
+		}
+	}
+
+	sort.Strings(dirs)
+	return dirs
+}
+
+// get *all* directories under basedir and which name starts with prefix
 func getDirs(basedir string, prefix string) []string {
 	var dirs []string
 	basedir = strings.TrimSuffix(basedir, string(filepath.Separator))
@@ -697,6 +932,62 @@ func getDirs(basedir string, prefix string) []string {
 	// it seems Readdir does not return sorted directories
 	sort.Strings(dirs)
 	return dirs
+}
+
+func listObjectsS3(client *s3.Client, prefix string) {
+	var subTtl int64
+	db := openDb(*_DB_CON_STR)
+	defer db.Close()
+
+	input := &s3.ListObjectsV2Input{
+		Bucket:     _BASEDIR,
+		MaxKeys:    int32(*_MAXKEYS),
+		FetchOwner: *_WITH_OWNER,
+		Prefix:     &prefix,
+	}
+
+	for {
+		resp, err := client.ListObjectsV2(context.TODO(), input)
+		if err != nil {
+			println("Got error retrieving list of objects:")
+			panic(err.Error())
+		}
+
+		//https://stackoverflow.com/questions/25306073/always-have-x-number-of-goroutines-running-at-any-time
+		wgTags := sync.WaitGroup{}                 // *
+		guardTags := make(chan struct{}, *_CONC_2) // **
+
+		for _, item := range resp.Contents {
+			if len(*_FILTER) == 0 || strings.Contains(*item.Key, *_FILTER) {
+				subTtl++
+				guardTags <- struct{}{}                                     // **
+				wgTags.Add(1)                                               // *
+				go func(client *s3.Client, item types.Object, db *sql.DB) { // **
+					printLineS3(client, item, db)
+					<-guardTags   // **
+					wgTags.Done() // *
+				}(client, item, db)
+			}
+
+			if *_TOP_N > 0 && *_TOP_N <= _PRINTED_N {
+				_log("DEBUG", fmt.Sprintf("Printed %d >= %d", _PRINTED_N, *_TOP_N))
+				break
+			}
+		}
+		wgTags.Wait() // *
+
+		// Continue if truncated (more data available) and if not reaching to the top N.
+		if *_TOP_N > 0 && *_TOP_N <= _PRINTED_N {
+			_log("DEBUG", fmt.Sprintf("Found %d and reached %d", _PRINTED_N, *_TOP_N))
+			break
+		} else if resp.IsTruncated {
+			_log("DEBUG", fmt.Sprintf("Set ContinuationToken to %s", *resp.NextContinuationToken))
+			input.ContinuationToken = resp.NextContinuationToken
+		} else {
+			_log("DEBUG", "NOT Truncated (completed).")
+			break
+		}
+	}
 }
 
 func listObjects(basedir string) {
@@ -750,8 +1041,24 @@ func main() {
 	}
 
 	// Start outputting ..
+	var subDirs []string
+	var client *s3.Client
+
 	_log("DEBUG", fmt.Sprintf("Retriving sub directories under %s", *_BASEDIR))
-	subDirs := getDirs(*_BASEDIR, *_PREFIX)
+	if _IS_S3 != nil && *_IS_S3 {
+		cfg, err := config.LoadDefaultConfig(context.TODO())
+		if _DEBUG2 != nil && *_DEBUG2 {
+			// https://aws.github.io/aws-sdk-go-v2/docs/configuring-sdk/logging/
+			cfg, err = config.LoadDefaultConfig(context.TODO(), config.WithClientLogMode(aws.LogRetries|aws.LogRequest))
+		}
+		if err != nil {
+			panic("configuration error, " + err.Error())
+		}
+		client = s3.NewFromConfig(cfg)
+		subDirs = getDirsS3(client)
+	} else {
+		subDirs = getDirs(*_BASEDIR, *_PREFIX)
+	}
 	if *_LIST_DIRS {
 		fmt.Printf("%v", subDirs)
 		return
@@ -761,11 +1068,17 @@ func main() {
 	// Printing headers if requested
 	if !*_RECON_FMT && !*_NO_HEADER {
 		fmt.Print("Path,LastModified,Size")
-		if !*_NO_BLOB_SIZE && *_FILTER == _PROP_EXT {
+		if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT {
 			fmt.Print(",BlobSize")
 		}
 		if *_WITH_PROPS {
 			fmt.Print(",Properties")
+		}
+		if *_WITH_OWNER {
+			fmt.Print(",Owner")
+		}
+		if *_WITH_TAGS {
+			fmt.Print(",Tags")
 		}
 		fmt.Println("")
 	}
@@ -780,15 +1093,24 @@ func main() {
 		}
 		_log("DEBUG", "subDir: "+s)
 		guard <- struct{}{}
-		wg.Add(1) // *
-		go func(basedir string) {
-			listObjects(basedir)
-			<-guard
-			wg.Done()
-		}(s)
+		wg.Add(1)
+		if _IS_S3 != nil && *_IS_S3 {
+			go func(client *s3.Client, prefix string) {
+				listObjectsS3(client, prefix)
+				<-guard
+				wg.Done()
+			}(client, s)
+		} else {
+			go func(basedir string) {
+				listObjects(basedir)
+				<-guard
+				wg.Done()
+			}(s)
+		}
 	}
 
 	wg.Wait()
 	println("")
 	_log("INFO", fmt.Sprintf("Printed %d of %d (size:%d) in %s and sub-dir starts with %s (elapsed:%ds)", _PRINTED_N, _CHECKED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX, time.Now().Unix()-_START_TIME_ts))
+	//_log("INFO", fmt.Sprintf("Printed %d items (size: %d) in bucket: %s with prefix: %s", _PRINTED_N, _TTL_SIZE, *_BASEDIR, *_PREFIX))
 }

@@ -33,8 +33,14 @@ advanced=maxLifetime\=600000
 username=nxrm3pg`
 
 func TestMain(m *testing.M) {
-	_writeToFile(DUMMY_FILE_PATH, DUMMY_PROP_TXT)
-	_writeToFile(DUMMY_DB_PROPS_PATH, DUMMY_DB_PROP_TXT)
+	err := writeContentsFile(DUMMY_FILE_PATH, DUMMY_PROP_TXT)
+	if err != nil {
+		panic(err)
+	}
+	err = writeContentsFile(DUMMY_DB_PROPS_PATH, DUMMY_DB_PROP_TXT)
+	if err != nil {
+		panic(err)
+	}
 	_setGlobals()
 	// Run tests
 	exitVal := m.Run()
@@ -111,7 +117,7 @@ func TestGetNowStr(t *testing.T) {
 }
 
 func TestGetContents(t *testing.T) {
-	contents, err := getContents(DUMMY_FILE_PATH)
+	contents, err := getContents(DUMMY_FILE_PATH, nil)
 	if err != nil {
 		t.Errorf("getContents failed with %s", err)
 	}
@@ -224,7 +230,7 @@ func TestIsTimestampBetween(t *testing.T) {
 func TestGenOutputForReconcile(t *testing.T) {
 	delDateFrom := datetimeStrToTs("2021-06-02")
 	delDateTo := datetimeStrToTs("2021-06-03")
-	output, err := genOutputForReconcile(DUMMY_PROP_TXT, DUMMY_FILE_PATH, delDateFrom, delDateTo, false)
+	output, err := genOutputForReconcile(DUMMY_PROP_TXT, DUMMY_FILE_PATH, delDateFrom, delDateTo, false, nil)
 	if err != nil {
 		t.Errorf("genOutputForReconcile return error %s", err.Error())
 	}
@@ -234,7 +240,7 @@ func TestGenOutputForReconcile(t *testing.T) {
 
 	delDateFrom = datetimeStrToTs("2022-06-02")
 	delDateTo = datetimeStrToTs("2022-07-02")
-	output, err = genOutputForReconcile(DUMMY_PROP_TXT, DUMMY_FILE_PATH, delDateFrom, delDateTo, false)
+	output, err = genOutputForReconcile(DUMMY_PROP_TXT, DUMMY_FILE_PATH, delDateFrom, delDateTo, false, nil)
 	if err == nil || !strings.Contains(err.Error(), "is not between") {
 		t.Errorf("genOutputForReconcile return unexpected error %s", err.Error())
 	}
