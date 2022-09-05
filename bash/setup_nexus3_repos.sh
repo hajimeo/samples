@@ -721,11 +721,11 @@ function f_create_file_blobstore() {
 # AWS_ACCESS_KEY_ID=xxx AWS_SECRET_ACCESS_KEY=yyy f_create_s3_blobstore
 function f_create_s3_blobstore() {
     local _blob_name="${1:-"s3-test"}"
-    local _bucket="${2:-"apac-support-bucket"}"
-    local _region="${3:-${AWS_REGION:-"ap-southeast-2"}}"
-    local _ak="${4:-${AWS_ACCESS_KEY_ID}}"
-    local _sk="${5:-${AWS_SECRET_ACCESS_KEY}}"
-    local _prefix="${6:-"$(hostname -s)_${_blob_name}"}"    # cat /etc/machine-id is not perfect if docker container
+    local _prefix="${2:-"$(hostname -s)_${_blob_name}"}"    # cat /etc/machine-id is not perfect if docker container
+    local _bucket="${3:-"apac-support-bucket"}"
+    local _region="${4:-"${AWS_REGION:-"ap-southeast-2"}"}"
+    local _ak="${5:-"${AWS_ACCESS_KEY_ID}"}"
+    local _sk="${6:-"${AWS_SECRET_ACCESS_KEY}"}"
     # NOTE 3.27 has ',"state":""'
     if ! f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_blob_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix}'","expiration":"2","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
         _log "ERROR" "Blobstore ${_blob_name} does not exist."
