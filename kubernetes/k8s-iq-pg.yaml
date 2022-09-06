@@ -132,7 +132,7 @@ spec:
             - name: JAVA_OPTS
               value: '-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g \
               -XX:+UnlockDiagnosticVMOptions -XX:+LogVMOutput -XX:LogFile=/sonatype-work/log/jvm.log \
-              -Dinsight.threads.dao=1'
+              -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005'
           ports:
             - containerPort: 8070
             - containerPort: 8071

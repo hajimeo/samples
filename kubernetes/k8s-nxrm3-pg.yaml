@@ -13,7 +13,7 @@
 # COMMAND EXAMPLE:
 #   cd ~/IdeaProjects/samples/kubernetes
 #   # Below _DNS is only for my k8s env (don't forget to update /etc/banner_add_hosts). _DB_USER can't contain '-' character.
-#   export _ID="nxrm3pg" _TAG="3.40.1" _METALLB_IP="192.168.1.230" _RUNAS_USR=200 _DNS="192.168.1.31"
+#   export _ID="nxrm3pg" _TAG="3.41.1" _METALLB_IP="192.168.1.230" _RUNAS_USR=200 _DNS="192.168.1.31"
 #   export _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.1.31:5432/${_ID}"
 #   # Run the create secret commands if necessary
 #   #kubectl -n "sonatype" delete secret ${_ID}-jdbc
@@ -147,7 +147,8 @@ spec:
                 -Dnexus.datastore.nexus.username=\${DB_USER} \
                 -Dnexus.datastore.nexus.password=\${DB_PWD} \
                 -Dnexus.datastore.nexus.maximumPoolSize=10 \
-                -Dnexus.datastore.nexus.advanced=maxLifetime=600000'
+                -Dnexus.datastore.nexus.advanced=maxLifetime=600000 \
+                -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005'
           volumeMounts:
             - name: sonatype-license-volume
               mountPath: /etc/sonatype
