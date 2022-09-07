@@ -61,6 +61,8 @@ spec:
       # NOTE: Without initContainers, it fails to start on Docker-Desktop
       initContainers:
         - name: my-customization
+          securityContext:
+            runAsUser: 0
           # NOTE: busybox does not have curl
           image: busybox:1.33.1
           #[ -d /nexus-data/blobs ] && [ ! -L /nexus-data/blobs ] && mv -v /nexus-data/blobs /nexus-data/blobs_orig;

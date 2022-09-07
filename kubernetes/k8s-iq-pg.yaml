@@ -105,6 +105,8 @@ spec:
       # NOTE: Without initContainers, it fails to start on Docker-Desktop
       initContainers:
         - name: my-customizaion
+          securityContext:
+            runAsUser: 0
           env:
             - name: NAMESERVER
               value: ${_DNS:-127.0.0.1}
