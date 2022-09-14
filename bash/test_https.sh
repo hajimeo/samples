@@ -19,21 +19,21 @@
 # port number used by a test web server
 _TEST_PORT=34443
 
-# List supported ciphers of a web server
+# List supported ciphers of a web server (unsupported "NO" uses STDERR)
 # NOTE: If unexpected result, may want to check "jdk.tls.disabledAlgorithms" in $JAVA_HOME/jre/lib/security/java.security
 function list_ciphers() {
     # @see http://superuser.com/questions/109213/how-do-i-list-the-ssl-tls-cipher-suites-a-particular-website-offers
     local _host="${1:-`hostname -f`}"
     local _port="${2:-443}"
-    local _use_nmap="${3}"
+    local _delay="${3:-"0.2"}"
+    local _no_nmap="${4}"
     local _host_port=$_host:$_port
-    local _delay=1
 
     # -Djdk.tls.ephemeralDHKeySiz=1024 | curl: (35) error:141A318A:SSL routines:tls_process_ske_dhe:dh key too small
     echo -n | openssl s_client -cipher "EDH" -connect ${_host_port} 2>&1 | grep -ie "Server .* key"
 
     # NOTE: Instead of nmap, *newer* curl also shows the cipher with -v -v -v (and also can specify ciphers)
-    if [[ "${_use_nmap}" =~ ^(y|Y) ]] && which nmap &>/dev/null; then
+    if [[ ! "${_no_nmap}" =~ ^(y|Y) ]] && which nmap &>/dev/null; then
         # TODO: this doesn't work with TLSv1.3
         nmap --script ssl-enum-ciphers -p ${_port} ${_host}
         return $?
@@ -292,6 +292,8 @@ function test_smtp() {
     # https://halon.io/blog/how-to-test-smtp-servers-using-the-command-line
     local _host_port="${1}" # smtp.office365.com:587
     echo -n | openssl s_client -connect ${_host_port} -starttls smtp
+    # If postgresql
+    #echo -n | openssl s_client -connect localhost:5432 -starttls postgres
 }
 
 # output md5 hash of .key or .crt file
