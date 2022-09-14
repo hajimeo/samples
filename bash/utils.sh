@@ -34,11 +34,11 @@ function _find_recent() {
     local _base_dir="${4:-"${_BASE_DIR:-"."}"}" # the global env variable _BASE_DIR is set, using.
     local _mmin="${5-"-60"}"
     if [ ! -d "${_dir}" ]; then
-        _dir=$(if [[ "${_follow_symlink}" =~ ^(y|Y) ]]; then
-            realpath $(find -L ${_base_dir%/} -type d \( -name log -o -name logs \) | tr '\n' ' ') | sort | uniq | tr '\n' ' '
+        if [[ "${_follow_symlink}" =~ ^(y|Y) ]]; then
+            _dir="$(realpath $(find -L ${_base_dir%/} -type d \( -name log -o -name logs \) 2>/dev/null | tr '\n' ' ') | sort | uniq | tr '\n' ' ' | tail -n1)"
         else
-            find ${_base_dir%/} -type d \( -name log -o -name logs \)| tr '\n' ' '
-        fi 2>/dev/null | tail -n1)
+            _dir="$(find ${_base_dir%/} -type d \( -name log -o -name logs \)| tr '\n' ' ' 2>/dev/null | tail -n1)"
+        fi
     fi
     [ -n "${_mmin}" ] && _mmin="-mmin ${_mmin}"
     if [[ "${_follow_symlink}" =~ ^(y|Y) ]]; then
