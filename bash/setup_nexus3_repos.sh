@@ -1518,13 +1518,74 @@ function f_upload_dummies() {
     local _usr="${6:-"${_ADMIN_USER}"}"
     local _pwd="${7:-"${_ADMIN_PWD}"}"
     # _SEQ_START is for continuing
-    local _seq="seq ${_SEQ_START:-1} ${_how_many}"
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _seq="seq ${_seq_start} ${_seq_end}"
     [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
     # -T<(echo "aaa") may not work with some old bash, so creating a file
     for i in $(eval "${_seq}"); do
       echo "${_file_prefix}${i}${_file_suffix}"
     done | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w '%{http_code} {}\n' -T<(echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')") -L -k "${_repo_path%/}/{}"
     # NOTE: xargs only stops if exit code is 255
+}
+
+function f_upload_dummies_mvn() {
+    local __doc__="Upload text files into (maven) hosted repository"
+    local _repo_name="${1:-"maven-hosted"}"
+    local _how_many="${2:-"10"}"
+    local _parallel="${3:-"4"}"
+    local _file_prefix="${4:-"test_"}"
+    local _file_suffix="${5:-".txt"}"
+    local _usr="${6:-"${_ADMIN_USER}"}"
+    local _pwd="${7:-"${_ADMIN_PWD}"}"
+    # _SEQ_START is for continuing
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _seq="seq ${_seq_start} ${_seq_end}"
+    [[ "${_how_many}" =~ ^[0-9]+[[:space:]]+[0-9]+$ ]] && _seq="seq ${_how_many}"
+    local _filepath="${_TMP%/}/dummy.jar"
+    if [ ! -s "${_filepath}" ]; then
+        if type jar &>/dev/null; then
+            echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')" > dummy.txt
+            jar cvf ${_filepath} dummy.txt || return $?
+        else
+            curl -o "${_filepath}" "https://repo1.maven.org/maven2/org/sonatype/goodies/goodies-i18n/2.3.4/goodies-i18n-2.3.4.jar" || return $?
+        fi
+    fi
+    local _g="setup.nexus3.repos"
+    local _a="dummy"
+    # Does not work with Mac's bash...
+    #export -f f_upload_asset
+    for i in $(eval "${_seq}"); do
+      echo "$i"
+    done | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{}\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_filepath} -F maven2.asset1.extension=jar
+    # NOTE: xargs only stops if exit code is 255
+}
+
+function mvn-upload() {
+    local _file="${1}"
+    local _gav="${2:-"com.example:my-app:1.0"}"
+    local _remote_repo="${3:-"maven-hosted"}"
+    local _nexus_url="${4:-"${_NEXUS_URL-"http://localhost:8081/"}"}"
+    if [ -z "${_file}" ]; then
+        if [ ! -f "./junit-4.12.jar" ]; then
+            mvn-get-file "junit:junit:4.12" || return $?
+        fi
+        _file="./junit-4.12.jar"
+    fi
+    [ -f "${_file}" ] || return 11
+    if [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
+        local _g="${BASH_REMATCH[1]}"
+        local _a="${BASH_REMATCH[2]}"
+        local _v="${BASH_REMATCH[3]}"
+        local _ext="${_file##*.}"
+        curl -u admin:admin123 -w "  %{http_code} ${_remote_repo} ${_gav}\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_nexus_url%/}/service/rest/v1/components?repository=${_remote_repo}" \
+           -F groupId=${_g} \
+           -F artifactId=${_a} \
+           -F version=${_v} \
+           -F asset1=@${_file} \
+           -F asset1.extension=${_ext}
+    fi
 }
 
 function f_delete_all_assets() {
