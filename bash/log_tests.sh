@@ -25,7 +25,7 @@ GLOBAL VARIABLES (not all):
     _APP_VER_OVERWRITE                  To specify application version
     _WORKING_DIR_OVERWRITE              To specify the sonatype work directory (but not used)
     _NXRM_LOG _NXIQ_LOG _REQUEST_LOG    To specify the log filename (used for rg -g)
-                                        Also _LOG_DATE can be used
+    _LOG_DATE                           To specify above log files
     _LOG_THRESHOLD_BYTES                Some time consuming functions are skipped if file is larger than 256MB
     _SKIP_EXTRACT                       Do not run functions start with e_
 EOF
@@ -423,7 +423,7 @@ function t_system() {
     _test_template "$(_rg 'MaxFileDescriptorCount: *\d{4}$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
     _test_template "$(_rg 'SystemLoadAverage: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
     _test_template "$(_rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low"
-    _test_template "$(_rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || _rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
+    _test_template "$(_rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || _rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
     if ! _rg -g jmx.json -q 'x86_64'; then
         _head "WARN" "No 'x86_64' found in jmx.json. Might be 32 bit Java (or non Linux, check the top of jvm.log)"
     fi
