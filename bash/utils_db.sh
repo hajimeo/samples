@@ -132,6 +132,15 @@ function _postgresql_configure() {
     # SELECT pg_reload_conf();
     # SELECT * FROM pg_settings WHERE name like 'auto_explain%';
 
+    # SSL / client certificate authentication https://smallstep.com/hello-mtls/doc/combined/postgresql/psql
+    #_upsert ${_postgresql_conf} "ssl" "on" "#ssl"
+    #_upsert ${_postgresql_conf} "ssl_ca_file" "/var/tmp/share/cert/rootCA.pem" "#ssl_ca_file"
+    #_upsert ${_postgresql_conf} "ssl_cert_file" "/var/tmp/share/cert/standalone.localdomain.crt" "#ssl_cert_file"
+    #_upsert ${_postgresql_conf} "ssl_key_file" "/var/tmp/share/cert/standalone.localdomain_postgres.key" "#ssl_key_file"
+    # NOTE: Key needs to be owned by postgres
+    # NOTE: modify pg_hba.conf: hostssl nxrm3ha1 all 0.0.0.0/0 md5 clientcert=1
+    # NOTE: also somehow restart is required
+
     diff -wu ${__TMP%/}/postgresql.conf.orig ${_postgresql_conf}
     if _restart || ! ${_psql_as_admin} -d template1 -c "SELECT pg_reload_conf();"; then
         _log "INFO" "Updated postgresql config. Please restart or reload the service."
