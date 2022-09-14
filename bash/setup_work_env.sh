@@ -352,15 +352,11 @@ function f_setup_java() {
     [[ "${_v}" =~ ^[678]$ ]] && _ver="1.${_v}"
 
     if [ "$(uname)" = "Darwin" ]; then
-        if [ -z "${_v}" ]; then
-            brew install java
-        else
-            brew tap adoptopenjdk/openjdk
-            #brew search adoptopenjdk
-            brew install adoptopenjdk${_v}
-        fi
-        #/usr/libexec/java_home -v ${_v}
-    elif [ -z "${_v}" ]; then
+        _log "WARN" "Use https://www.azul.com/downloads/?version=java-8-lts&os=macos&architecture=x86-64-bit&package=jdk"
+        return 1
+    fi
+
+    if [ -z "${_v}" ]; then
         _log "INFO" "Version is not specified, so installing default-jdk ... (sudo required)"
         _install default-jdk
     else
