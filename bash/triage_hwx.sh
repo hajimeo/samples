@@ -76,7 +76,7 @@ function f_check_system() {
     timeout 3 time head -n 1 /dev/./urandom &> ${_work_dir%/}/random.out
     echo '-' &>> ${_work_dir%/}/random.out
     timeout 3 time head -n 1 /dev/random &>> ${_work_dir%/}/random.out
-    lslocks -u > ${_work_dir%/}/lslocks.out    # *local* file system locks (/proc/locks)
+    lslocks -u > ${_work_dir%/}/lslocks.out    # *local* file system lock (/proc/locks)
     cat /sys/fs/cgroup/cpuset/cpuset.cpus &> ${_work_dir%/}/cpuset.cpus.out # for kubernetes pod / docker container
 
     #top -b -n1 -c -o +%MEM  # '+' (default) for reverse order (opposite of 'ps')
@@ -107,7 +107,7 @@ function f_check_system() {
 
     # NFS related
     showmount -e `hostname` &> ${_work_dir%/}/nfs.out
-    #rpcinfo -s &>> ${_work_dir%/}/nfs.out              # list NFS summary information
+    #rpcinfo -s &>> ${_work_dir%/}/nfs.out              # list NFS summary information (for rpcbind)
     rpcinfo -p `hostname` &>> ${_work_dir%/}/nfs.out    # list NFS versions, ports, services but a bit too long
     nfsstat -v &>> ${_work_dir%/}/nfs.out               # -v = -o all Display Server and Client stats
 
