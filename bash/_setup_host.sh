@@ -348,8 +348,8 @@ function f_nfs_server() {
 
     # NFS checking commands:
     showmount -e $(hostname)
-    #rpcinfo -p `hostname`  # list NFS versions, ports, services but a bit too long
-    rpcinfo -s # list NFS information
+    #rpcinfo -p #`hostname`  # list NFS versions, ports, services but could be a long list
+    rpcinfo -s # list NFS information (rpcbind)
     #nfsstat -v             # -v = -o all Display Server and Client stats
     #service portmap status
 
