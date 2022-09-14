@@ -1773,6 +1773,7 @@ function _sed() {
     ${_cmd} "$@"
 }
 function _csplit() {
+    # NOTE: Mac (or BSD) has split -p for pattern, but not gsplit
     local _cmd="csplit"; which gcsplit &>/dev/null && _cmd="gcsplit"
     ${_cmd} "$@"
 }
