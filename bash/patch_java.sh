@@ -381,6 +381,7 @@ function f_profile() {
     local _user="$(lsof -nP -p ${_pid} | head -n2 | tail -n1 | awk '{print $3}')"   # This is slow but $(stat -c '%U') doesn't work on Mac
     local _jcmd="$(_find_jcmd "${_port_or_dir}")" || return $?
     [ "${_user}" != "$USER" ] && _jcmd="sudo -u ${_user} ${_jcmd}"
+    #${_jcmd} ${_pid} VM.unlock_commercial_features
     ${_jcmd} ${_pid} JFR.start settings=profile name="${_name}" duration=${_secs}s filename="${_dump_path}"
     echo "To stop: ${_jcmd} ${_pid} JFR.stop name=${_name}"
 }
