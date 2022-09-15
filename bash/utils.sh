@@ -33,19 +33,20 @@ function _find_recent() {
     local _follow_symlink="${3:-"Y"}"
     local _base_dir="${4:-"${_BASE_DIR:-"."}"}" # the global env variable _BASE_DIR is set, using.
     local _mmin="${5-"-60"}"
+    local _depth="${6:-"6"}"
     if [ ! -d "${_dir}" ]; then
         if [[ "${_follow_symlink}" =~ ^(y|Y) ]]; then
-            _dir="$(realpath $(find -L ${_base_dir%/} -type d \( -name log -o -name logs \) 2>/dev/null | tr '\n' ' ') | sort | uniq | tr '\n' ' ' | tail -n1)"
+            _dir="$(realpath $(find -L ${_base_dir%/} -maxdepth ${_depth} -type d \( -name log -o -name logs \) 2>/dev/null | tr '\n' ' ') | sort | uniq | tr '\n' ' ' | tail -n1)"
         else
-            _dir="$(find ${_base_dir%/} -type d \( -name log -o -name logs \)| tr '\n' ' ' 2>/dev/null | tail -n1)"
+            _dir="$(find ${_base_dir%/} -maxdepth ${_depth} -type d \( -name log -o -name logs \)| tr '\n' ' ' 2>/dev/null | tail -n1)"
         fi
     fi
     [ -n "${_mmin}" ] && _mmin="-mmin ${_mmin}"
     if [[ "${_follow_symlink}" =~ ^(y|Y) ]]; then
-        local _files_oneline="$(find -L ${_dir} -type f -name "${_file_glob}" ${_mmin} | tr '\n' ' ')"
+        local _files_oneline="$(find -L ${_dir} -maxdepth ${_depth} -type f -name "${_file_glob}" ${_mmin} | tr '\n' ' ')"
         [ -n "${_files_oneline}" ] && realpath ${_files_oneline} | sort | uniq | tr '\n' ' '
     else
-        find ${_dir} -type f -name "${_file_glob}" ${_mmin} | tr '\n' ' '
+        find ${_dir} -maxdepth ${_depth} -type f -name "${_file_glob}" ${_mmin} | tr '\n' ' '
     fi
 }
 
