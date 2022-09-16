@@ -477,7 +477,7 @@ function chromep() {
 # Add route to dockerhost to access containers directly
 function r2dh() {
     local _dh="${1}" # docker host IP or L2TP 10.0.1.1
-    local _network_addrs="${2:-"172.17.0.0 172.18.0.0 172.17.100.0 10.152.183.0"}"
+    local _network_addrs="${2:-"172.17.0.0 172.18.0.0 172.17.100.0 10.1.25.0"}" # last one is for K8s pods
     [ -z "${_dh}" ] && _dh="$(ifconfig ppp0 | grep -oE 'inet .+' | awk '{print $4}')" 2>/dev/null
     [ -z "${_dh}" ] && _dh="dh1.standalone.localdomain"
 
@@ -704,4 +704,14 @@ function set_classpath() {
         local _tmp_cp="$(find ${_port_or_dir%/} -type f -name '*.jar' | tr '\n' ':')"
         export CLASSPATH=".:${_tmp_cp%:}"
     fi
+}
+
+function update_cacerts() {
+    local _pem="$1"
+    local _alias="$2"
+    [ -z "${JAVA_HOME}" ] && return 1
+    [ ! -f "${JAVA_HOME%/}/jre/lib/security/cacerts" ] && return 2
+    [ ! -f "${_pem}" ] && return 3
+    [ -z "${_alias}" ] && _alias="$(basename "${_pem%%.*}")"
+    sudo keytool -import -alias "${_alias}" -keystore "${JAVA_HOME%/}/jre/lib/security/cacerts" -file "${_pem}" -noprompt -storepass changeit
 }
