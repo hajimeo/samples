@@ -89,8 +89,10 @@ if [ "$(uname)" = "Darwin" ]; then
     if [ -f /usr/libexec/java_home ]; then
         #[ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 11 2>/dev/null`
         [ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8 2>/dev/null`
-        _JAVA_HOME_11="$(/usr/libexec/java_home -v 11)"
-        [ -n "${_JAVA_HOME_11}" ] && alias jshell="$(/usr/libexec/java_home -v 11)/bin/jshell"
+        if /usr/libexec/java_home -v 11 &>/dev/null; then
+            _JAVA_HOME_11="$(/usr/libexec/java_home -v 11)"
+            alias jshell="${_JAVA_HOME_11}/bin/jshell"
+        fi
     fi
 
     # Docker related. Use "podman" first
