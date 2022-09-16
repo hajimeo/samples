@@ -200,10 +200,11 @@ def applog2table(filepath, tablename="t_applog", max_file_size=(1024 * 1024 * 10
                               line_matching=line_matching, max_file_size=max_file_size,
                               line_from=line_from, line_until=line_until)
 
-def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_from_regex=None, time_until_regex=None):
+def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_from_regex=None, time_until_regex=None):
     """
     Extract data, transform and load (to DB)
     :param path: To specify a zip file
+    :param log_suffix: To specify the YYYY-MM-DD.log.gz
     :param dist: Directory path to save the extracted data (default ./_filtered)
     :param max_file_size: Larger than this size will be skipped (default 100MB)
     :param time_from_regex: Regex for 'time' for logs2table's line_from (eg "(0[5-9]|1[0-3]]):\d\d:\d\d")
@@ -270,7 +271,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
             _ = ju.json2df(dist + "/audit.json", tablename="t_audit_logs", flatten=True, max_file_size=max_file_size)
         else:
             # TODO: currently below is too slow, so not using "max_file_size=max_file_size,"
-            log_path = ju._get_file("audit.log")
+            log_path = ju._get_file("audit"+log_suffix)
             if bool(log_path):
                 line_from = line_until = 0
                 if bool(time_from_regex):
@@ -288,7 +289,7 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
 
         # If request.*csv* exists, use that (should be already created by load_csvs and should be loaded by above load_csvs (because it's faster), if not, logs2table, which is slower.
         if ju.exists("t_request") is False:
-            _ = request2table("request.log")
+            _ = request2table("request"+log_suffix)
         if ju.exists("t_request"):
             try:
                 _ = ju.execute(sql="UPDATE t_request SET headerContentLength = 0 WHERE headerContentLength = '-'")
@@ -299,8 +300,8 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
                 pass
 
         # Loading application log file(s) into database.
-        nxrm_logs = applog2table("nexus.log", "t_nxrm_logs")
-        _ = applog2table("clm-server.log", "t_iq_logs")
+        nxrm_logs = applog2table("nexus"+log_suffix, "t_nxrm_logs")
+        _ = applog2table("clm-server"+log_suffix, "t_iq_logs")
 
         # Hazelcast health monitor
         if ju.exists("t_log_hazelcast_monitor") is False and bool(nxrm_logs):
@@ -336,10 +337,11 @@ def etl(path="", dist="./_filtered", max_file_size=(1024 * 1024 * 100), time_fro
     ju.display(ju.desc(), name="Available_Tables")
 
 
-def analyse_logs(path="", tail_num=10000, max_file_size=(1024 * 1024 * 100), skip_etl=False, useHeaderContentLength=False):
+def analyse_logs(path="", log_suffix=".log", tail_num=10000, max_file_size=(1024 * 1024 * 100), skip_etl=False, useHeaderContentLength=False):
     """
     A prototype / demonstration function for extracting then analyse log files
     :param path: File (including zip) path
+    :param log_suffix: To specify the YYYY-MM-DD.log.gz
     :param tail_num: How many rows/records to display. Default is 10K
     :param max_file_size: File smaller than this size will be skipped.
     :param skip_etl: Skip etl() function
@@ -350,7 +352,7 @@ def analyse_logs(path="", tail_num=10000, max_file_size=(1024 * 1024 * 100), ski
     if useHeaderContentLength:
         isHeaderContentLength=useHeaderContentLength
     if bool(skip_etl) is False:
-        etl(path=path, max_file_size=max_file_size)
+        etl(path=path, log_suffix=log_suffix, max_file_size=max_file_size)
 
     where_sql = "WHERE 1=1"
 
