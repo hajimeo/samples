@@ -677,7 +677,7 @@ function f_setup_raw() {
     if [ -s "${_TMP%/}/test_1k.img" ]; then
         f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
     fi
-    # Another quicker way: curl -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test.txt"
+    # Quicker way: curl -D- -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test/test.txt"
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
@@ -1560,32 +1560,6 @@ function f_upload_dummies_mvn() {
       echo "$i"
     done | xargs -I{} -P${_parallel} curl -s -f -u "${_usr}:${_pwd}" -w "%{http_code} ${_g}:${_a}:{}\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_NEXUS_URL%/}/service/rest/v1/components?repository=${_repo_name}" -F maven2.groupId=${_g} -F maven2.artifactId=${_a} -F maven2.version={} -F maven2.asset1=@${_filepath} -F maven2.asset1.extension=jar
     # NOTE: xargs only stops if exit code is 255
-}
-
-function mvn-upload() {
-    local _file="${1}"
-    local _gav="${2:-"com.example:my-app:1.0"}"
-    local _remote_repo="${3:-"maven-hosted"}"
-    local _nexus_url="${4:-"${_NEXUS_URL-"http://localhost:8081/"}"}"
-    if [ -z "${_file}" ]; then
-        if [ ! -f "./junit-4.12.jar" ]; then
-            mvn-get-file "junit:junit:4.12" || return $?
-        fi
-        _file="./junit-4.12.jar"
-    fi
-    [ -f "${_file}" ] || return 11
-    if [[ "${_gav}" =~ ^" "*([^: ]+)" "*:" "*([^: ]+)" "*:" "*([^: ]+)" "*$ ]]; then
-        local _g="${BASH_REMATCH[1]}"
-        local _a="${BASH_REMATCH[2]}"
-        local _v="${BASH_REMATCH[3]}"
-        local _ext="${_file##*.}"
-        curl -u admin:admin123 -w "  %{http_code} ${_remote_repo} ${_gav}\n" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -k "${_nexus_url%/}/service/rest/v1/components?repository=${_remote_repo}" \
-           -F groupId=${_g} \
-           -F artifactId=${_a} \
-           -F version=${_v} \
-           -F asset1=@${_file} \
-           -F asset1.extension=${_ext}
-    fi
 }
 
 function f_delete_all_assets() {
