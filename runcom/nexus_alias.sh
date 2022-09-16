@@ -1,9 +1,9 @@
 #_import() { curl -sf --compressed "https://raw.githubusercontent.com/hajimeo/samples/master/$1" -o /tmp/_i;. /tmp/_i; }
 #_import "runcom/nexus_alias.sh"
 
+# For identifying elasticsearch directory name for repository
 alias hashUnencodedChars='python3 -c "import sys,hashlib; print(hashlib.sha1(sys.argv[1].encode(\"utf-16-le\")).hexdigest())"'
 alias esIndexName=hashUnencodedChars
-
 
 
 if [ -z "${_WORK_DIR%/}" ]; then
@@ -17,16 +17,21 @@ fi
 
 function _get_iq_url() {
     local _iq_url="${1:-${_IQ_URL}}"
-    if [ -z "${_iq_url}" ] && curl -f -s -I "http://localhost:8070/" &>/dev/null; then
-        _iq_url="http://localhost:8070/"
-    elif [ -n "${_iq_url}" ] && [[ ! "${_iq_url}" =~ ^https?://.+ ]]; then
+    if [ -z "${_iq_url}" ]; then
+        for _url in "http://localhost:8070/" "https://nxiq-k8s.standalone.localdomain/" "http://dh1:8070/"; do
+            if curl -f -s -I "${_url%/}/" &>/dev/null; then
+                echo "${_url%/}/"
+                return
+            fi
+        done
+        return 1
+    fi
+    if [[ ! "${_iq_url}" =~ ^https?://.+ ]]; then
         if [[ ! "${_iq_url}" =~ .+:[0-9]+ ]]; then   # Provided hostname only
             _iq_url="http://${_iq_url%/}:8070/"
         else
             _iq_url="http://${_iq_url%/}/"
         fi
-    elif [ -z "${_iq_url}" ]; then  # default
-        _iq_url="https://nxiq-k8s.standalone.localdomain/"
     fi
     echo "${_iq_url}"
 }
@@ -45,7 +50,7 @@ function iqCli() {
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"    # -D fileIncludes="**/package-lock.json"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
 
-    _iq_url="$(_get_iq_url "${_iq_url}")"
+    _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
     #[ ! -d "${_iq_tmp}" ] && mkdir -p "${_iq_tmp}"
 
     if [ ! -s "${_iq_cli_jar}" ]; then
@@ -79,8 +84,9 @@ function iqMvn() {
 
     local _iq_mvn_ver="${_IQ_MVN_VER}"  # empty = latest
     [ -n "${_iq_mvn_ver}" ] && _iq_mvn_ver=":${_iq_mvn_ver}"
-    _iq_url="$(_get_iq_url "${_iq_url}")"
+    _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
 
+    #clm-maven-plugin:2.30.2-01:index
     local _cmd="mvn -f ${_file} com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -Dclm.resultFile=iq_result.json -Dclm.scan.dirExcludes=\"**/BOOT-INF/lib/**\" ${_mvn_opts}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
@@ -158,8 +164,76 @@ function _updateNexusProps() {
     grep -qE '^\s*nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
 }
 
+function nxrmInstall() {
+    local _ver="$1" #3.40.1-01
+    local _dbname="$2"  # If h2, use H2
+    local _dbusr="${3:-"${_dbname}"}"
+    local _dbpwd="${4:-"${_dbusr}123"}"
+    local _port="${5:-"8081"}"
+    local _installer_dir="${6:-"$HOME/.nexus_executable_cache"}"
+
+    local _os="linux"
+    [ "`uname`" = "Darwin" ] && _os="mac"
+
+    if [ ! -s "${_installer_dir%/}/license/nexus.lic" ]; then
+        echo "no ${_installer_dir%/}/license/nexus.lic"
+        return 1
+    fi
+
+    local _extractTar=true
+    if [ -d "nxrm-${_ver}" ]; then
+        echo "WARN nxrm-${_ver} exists. Will just update the settings..."
+        sleep 5
+        _extractTar=false
+    else
+        local _tgz="${_installer_dir%/}/nexus-${_ver}-${_os}.tgz"
+        if [ ! -s "${_tgz}" ]; then
+            echo "no ${_tgz}"
+            return 1
+        fi
+        mkdir -v nxrm-${_ver} || return $?
+    fi
+
+    cd nxrm-${_ver} || return $?
+    if ${_extractTar}; then
+        tar -xvf ${_tgz} || return $?
+    fi
+    if [ ! -d ./sonatype-work/nexus3/etc/fabric ]; then
+        mkdir -v -p ./sonatype-work/nexus3/etc/fabric || return $?
+    fi
+    local _prop="./sonatype-work/nexus3/etc/nexus.properties"
+    for _l in "nexus.licenseFile=${_installer_dir%/}/license/nexus.lic" "application-port=${_port}" "nexus.security.randompassword=false" "nexus.onboarding.enabled=false" "nexus.scripts.allowCreation=true"; do
+        grep -q "^${_l%=*}" "${_prop}" 2>/dev/null || echo "${_l}" >> "${_prop}" || return $?
+    done
+    if [ -n "${_dbname}" ]; then
+        grep -q "^nexus.datastore.enabled" "${_prop}" 2>/dev/null || echo "nexus.datastore.enabled=true" >> "${_prop}" || return $?
+        if [[ ! "${_dbname}" =~ [hH]2 ]]; then
+            cat << EOF > ./sonatype-work/nexus3/etc/fabric/nexus-store.properties
+jdbcUrl=jdbc\:postgresql\://$(hostname -f)\:5432/${_dbname}
+username=${_dbusr}
+password=${_dbpwd}
+maximumPoolSize=40
+advanced=maxLifetime\=600000
+EOF
+        fi
+        local _util_dir="$(dirname "$(dirname "$BASH_SOURCE")")/bash"
+        if [ -s "${_util_dir}/utils_db.sh" ]; then
+            source ${_util_dir}/utils.sh
+            source ${_util_dir}/utils_db.sh
+            _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}"
+        else
+            echo "WARN Not creating database"
+        fi
+    fi
+
+    #nxrmStart
+    echo "To start: ./nexus-${_ver}/bin/nexus run"
+}
+
 #nxrmDocker "nxrm3-test" "" "8181" "8543" #"--read-only -v /tmp/nxrm3-test:/tmp" or --tmpfs /tmp:noexec
 #docker run --init -d -p 8081:8081 -p 8443:8443 --name=nxrm3docker --tmpfs /tmp:noexec -e INSTALL4J_ADD_VM_PARAMS="-Dssl.etc=\${karaf.data}/etc/ssl -Dnexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml -Dapplication-port-ssl=8443 -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v /var/tmp/share/sonatype/nxrm3-data:/nexus-data dh1.standalone.localdomain:5000/sonatype/nexus3:latest
+# export INSTALL4J_ADD_VM_PARAMS="-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -XX:+PrintGC -XX:+PrintGCDateStamps -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic"
+# export INSTALL4J_ADD_VM_PARAMS="-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic -Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=jdbc\:postgresql\://localhost/nxrm?ssl=true&sslmode=require -Dnexus.datastore.nexus.username=nxrm -Dnexus.datastore.nexus.password=nxrm123 -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=600000"
 function nxrmDocker() {
     local _name="${1:-"nxrm3"}"
     local _tag="${2:-"latest"}"
@@ -200,8 +274,9 @@ function iqStart() {
     [ -z "${_license}" ] && [ -s "${HOME%/}/.nexus_executable_cache/nexus.lic" ] && _license="${HOME%/}/.nexus_executable_cache/nexus.lic"
     [ -s "${_license}" ] && _java_opts="${_java_opts} -Ddw.licenseFile=${_license}"
 
+    # TODO: belows need to use API: curl -D- -u admin:admin123 -X PUT -H "Content-Type: application/json" -d '{"hdsUrl": "https://clm-staging.sonatype.com/", "baseUrl": "http://'$(hostname -f)':8070/"}' http://localhost:8070/api/v2/config;
     grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
-    grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://localhost:8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+    grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://$(hostname -f):8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
 
     grep -qE '^\s*port: 8443$' "${_cfg_file}" && sed -i.bak 's/port: 8443/port: 8470/g' "${_cfg_file}"
     grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
@@ -211,6 +286,64 @@ function iqStart() {
     echo "${_cmd}"
     eval "${_cmd}"
     cd -
+}
+
+function iqInstall() {
+#nexus-iq-server-1.99.0-01-bundle.tar.gz
+    local _ver="$1" #1.142.0-02
+    local _dbname="$2"
+    local _dbusr="${3:-"${_dbname}"}"
+    local _dbpwd="${4:-"${_dbusr}123"}"
+    local _port="${5:-"8070"}"
+    local _port2="${6:-"8071"}"
+    local _installer_dir="${7:-"$HOME/.nexus_executable_cache"}"
+
+    if [ -d "nxiq-${_ver}" ]; then
+        echo "nxiq-${_ver} exists."
+        return 1
+    fi
+    local _tgz="${_installer_dir%/}/nexus-iq-server-${_ver}-bundle.tar.gz"
+    if [ ! -s "${_tgz}" ]; then
+        echo "no ${_tgz}"
+        return 1
+    fi
+    if [ ! -s "${_installer_dir%/}/license/nexus.lic" ]; then
+        echo "no ${_installer_dir%/}/license/nexus.lic"
+        return 1
+    fi
+
+    mkdir -v nxiq-${_ver} || return $?
+    cd nxiq-${_ver} || return $?
+    tar -xvf ${_tgz} || return $?
+
+    local _jar_file="$(find . -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
+    [ -z "${_jar_file}" ] && return 11
+    local _cfg_file="$(find . -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
+    [ -z "${_cfg_file}" ] && return 12
+
+    grep -qE '^licenseFile' "${_cfg_file}" || echo "licenseFile: ${_installer_dir%/}/license/nexus.lic" >> "${_cfg_file}"
+    grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.bak 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
+    grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.bak 's/port: 8071/port: '${_port2}'/g' "${_cfg_file}"
+
+    if [ -n "${_dbname}" ]; then
+        cat << EOF >> ${_cfg_file}
+database:
+  type: postgresql
+  hostname: $(hostname -f)
+  port: 5432
+  name: ${_dbname}
+  username: ${_dbusr}
+  password: ${_dbpwd}
+EOF
+        if type _postgresql_create_dbuser &>/dev/null; then
+            _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}"
+        else
+            echo "WARN Not creating database"
+        fi
+    fi
+
+    # iqStart
+    echo "To start: java -jar ${_jar_file} server ${_cfg_file}"
 }
 
 #iqDocker "nxiq-test" "1.125.0" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
@@ -377,7 +510,7 @@ function mvn-upload() {
     local _file="${1}"
     local _gav="${2:-"com.example:my-app:1.0"}"
     local _remote_repo="${3:-"maven-hosted"}"
-    local _nexus_url="${4:-"http://localhost:8081/"}"
+    local _nexus_url="${4:-"${_NEXUS_URL-"http://localhost:8081/"}"}"
     if [ -z "${_file}" ]; then
         if [ ! -f "./junit-4.12.jar" ]; then
             mvn-get-file "junit:junit:4.12" || return $?
@@ -627,8 +760,10 @@ function nuget-get() {
 # 1. Create a new raw-hosted repo (eg: raw-test-hosted)
 # 2. curl -D- -u "admin:admin123" -T<(echo "test for nxrm3Staging") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
 # 3. nxrm3Staging "raw-test-hosted" "" "repository=raw-hosted&name=*test%2Fnxrm3Staging.txt"    # Need "/" if NewDB so using "*"
-#nxrm3Staging "yum-releases-prd" "test-tag" "repository=${_REPO_NAME_FROM}&name=adwaita-qt-common"
-#nxrm3Staging "raw-empty-hosted" "test-tag" "name=/test/test_1k.img"
+# With maven2:
+#   export _NEXUS_URL="https://nxrm3-pg-k8s.standalone.localdomain/"
+#   mvn-upload "" "com.example:my-app-staging:1.0" "maven-hosted"
+#   nxrm3Staging "maven-releases" "maven-test-tag" "repository=maven-hosted&name=my-app-staging"
 function nxrm3Staging() {
     local _move_to_repo="${1}"
     local _tag="${2}"
