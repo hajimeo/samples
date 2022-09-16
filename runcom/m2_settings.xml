@@ -20,7 +20,7 @@
     <mirror>
       <id>nexus</id>
       <mirrorOf>*</mirrorOf>
-      <url>http://nxrm3-pg-k8s.standalone.localdomain/repository/maven-group</url>
+      <url>https://nxrm3-pg-k8s.standalone.localdomain/repository/maven-group</url>
     </mirror>
   </mirrors>
   <profiles>
