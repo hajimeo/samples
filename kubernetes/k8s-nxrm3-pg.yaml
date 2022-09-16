@@ -70,7 +70,7 @@ spec:
           #       When recreating, remove /nexus-data/etc/fabric/nexus-store.properties in case JDBC setting was changed.
           #       Also, it seems the exit code needs to be 0
           #       '-Dapplication-port-ssl=8443' does not work
-          command: ['sh', '-c', '[ -n "${_DNS:-127.0.0.1}" ] && echo nameserver "${_DNS:-127.0.0.1}" > /etc/resolv.conf; mkdir -v -p /nexus-data/etc/ssl; rm -f -v /nexus-data/etc/fabric/nexus-store.properties; [ -s /nexus-data/etc/nexus.properties ] || chown -R -v ${_RUNAS_USR:-200}: /nexus-data; grep -qE "^application-port-ssl" /nexus-data/etc/nexus.properties || echo "application-port-ssl:8443" > /nexus-data/etc/nexus.properties; echo "Completed."']
+          command: ['sh', '-c', 'id;[ -n "${_DNS:-127.0.0.1}" ] && echo nameserver "${_DNS:-127.0.0.1}" > /etc/resolv.conf; mkdir -v -p /nexus-data/etc/ssl; rm -f -v /nexus-data/etc/fabric/nexus-store.properties; [ -s /nexus-data/etc/nexus.properties ] || chown -R -v ${_RUNAS_USR:-200}:${_RUNAS_USR:-200} /nexus-data; grep -qE "^application-port-ssl" /nexus-data/etc/nexus.properties || echo "application-port-ssl:8443" > /nexus-data/etc/nexus.properties; echo "Completed."']
           volumeMounts:
             - name: nexus-data-volume
               mountPath: /nexus-data
