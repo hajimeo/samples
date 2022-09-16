@@ -52,7 +52,7 @@ Get request started time by concatenating today and the time string from 'date' 
   or NOTE: (4*60*60) is for the timezone offst -0400
     TIME(UDF_TIMESTAMP(date) - CAST(elapsedTime/1000 AS INT) - (4*60*60), 'unixepoch') as started_time
   or use UDF:
-    udf_started_time(date, elapsedTime) as started (but YYYY-MM-DD hh:mm:ss)
+    udf_started_time(date, elapsedTime) as started (output is YYYY-MM-DD hh:mm:ss)
 Kind of joining two tables with UDF_REGEX:
     AND UDF_REGEX('.+ /repository/([^/]+)', t_request.requestURL, 1) IN (SELECT repository_name FROM t_db_repo where t_db_repo.`attributes.storage.blobStoreName` = 'default')
 """
@@ -414,7 +414,7 @@ def json2df(filename, tablename=None, conn=None, chunksize=1000, if_exists='repl
 
     dfs = []
     for file_path in files:
-        if bool(max_file_size):
+        if bool(max_file_size) and max_file_size >= 0:
             fs = _get_filesize(file_path)
             if bool(line_from) is False and fs >= max_file_size:
                 _info("WARN: File %s (%d MB) is too large (max_file_size=%d). Use 'line_from'." % (
@@ -2048,7 +2048,7 @@ def logs2table(filename, tablename=None, conn=None,
     inserted_num = 0
     args_list = []
     for f in files:
-        if bool(max_file_size):
+        if bool(max_file_size) and max_file_size >= 0:
             fs = _get_filesize(f)
             if bool(line_from) is False and fs >= max_file_size:
                 _info("WARN: File %s (%d MB) is too large (max_file_size=%d).." % (
@@ -2171,7 +2171,7 @@ def csv2df(filename, conn=None, tablename=None, chunksize=1000, header=0, if_exi
             _debug("No %s. Skipping ..." % (str(filename)))
             return None
         file_path = files[0]
-    if bool(max_file_size):
+    if bool(max_file_size) and max_file_size >= 0:
         fs = _get_filesize(file_path)
         if fs >= max_file_size:
             _info("WARN: File %s (%d MB) is too large (max_file_size=%d).." % (
