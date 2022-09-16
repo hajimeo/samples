@@ -194,7 +194,13 @@ function _postgresql_create_role_and_db() {
         # TODO ${_dbadmin%@*} is only for Azure
         ${_psql_as_admin} -d template1 -c "GRANT ${_dbusr} TO \"${_dbadmin%@*}\";"
     fi
-    ${_psql_as_admin} -d template1 -ltA  -F',' | grep -q "^${_dbname}," || ${_psql_as_admin} -d template1 -c "CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';"
+    if ${_psql_as_admin} -d template1 -ltA  -F',' | grep -q "^${_dbname},"; then
+        _log "WARN" "${_dbname} already exists. May need to run below first:
+    ${_psql_as_admin} -d template1 -c \"DROP DATABASE ${_dbname}\""
+        sleep 3
+    else
+        ${_psql_as_admin} -d template1 -c "CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';"
+    fi
     # NOTE: Below two lines are NOT needed because of 'WITH OWNER'. Just for testing purpose to avoid unnecessary permission errors.
     ${_psql_as_admin} -d template1 -c "GRANT ALL ON DATABASE ${_dbname} TO \"${_dbusr}\";" || return $?
     ${_psql_as_admin} -d ${_dbname} -c "GRANT ALL ON SCHEMA public TO \"${_dbusr}\";"
