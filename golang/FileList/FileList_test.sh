@@ -13,12 +13,13 @@ _DBNAME="${4:-"${_DBUSER}test"}"    # Use some unique name (lowercase)
 _VER="${5:-"3.40.1-01"}"            # Specify your nexus version
 _NEXUS_TGZ_DIR="${6:-"$HOME/.nexus_executable_cache"}"
 
+_TEST_REPO_NAME="raw-hosted"
 _ASSET_CREATE_NUM=1000
 _PID=""
 _AWS_S3_BUCKET="apac-support-bucket"
 _AWS_S3_PREFIX="filelist_test"
-#_FORCE=""
-#_IS_S3=false
+#_FORCE="N"
+#_IS_S3="N"
 
 function TestFileList() {
     local _expected_num="${1:-0}"
@@ -29,7 +30,7 @@ function TestFileList() {
     fi
 
     local _opt="-b ./sonatype-work/nexus3/blobs/${_bsName}/content -p vol-"
-    ${_IS_S3} && _opt="-b ${_AWS_S3_BUCKET} -p ${_AWS_S3_PREFIX%/}/content/vol- -S3"
+    [[ "${_IS_S3}" =~ ^[yY] ]] && _opt="-b ${_AWS_S3_BUCKET} -p ${_AWS_S3_PREFIX%/}/content/vol- -S3"
     _log "INFO" "Executing '${_FILE_LIST} ${_opt} -c 10 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName ${_bsName}'"
     time ${_FILE_LIST} ${_opt} -c 10 -db ./sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName ${_bsName} -X >./file-list.out 2>./file-list.log || return $?
      local _file_list_ln="$(cat ./file-list.out | wc -l | tr -d '[:space:]')"
@@ -43,7 +44,7 @@ function TestFileList() {
      fi
 
      if type rg &>/dev/null; then
-         if ! ${_IS_S3} && rg -g '*.properties' -l '^deleted=true' ./sonatype-work/nexus3/blobs/${_bsName}/content/vol-*; then
+         if [[ ! "${_IS_S3}" =~ ^[yY] ]] && rg -g '*.properties' -l '^deleted=true' ./sonatype-work/nexus3/blobs/${_bsName}/content/vol-*; then
              _log "ERROR" "Test failed. with '-RDel', rg shouldn't find any file."
          fi
      fi
@@ -142,16 +143,18 @@ EOF
     _log "INFO" "Waiting ${_NEXUS_URL} ..."
     _wait_url "${_NEXUS_URL}" || return $?
 
-    if ${_IS_S3}; then
+    # Below line creates various repositories with a few dummy assets, but not using as this is not for testing Reconcile
+    #_AUTO=true main
+
+    if [[ "${_IS_S3}" =~ ^[yY] ]]; then
         export _BLOBTORE_NAME="s3-test"
         _log "INFO" "Creating ${_BLOBTORE_NAME} (this also creates 'raw-s3-hosted' repo)..."
         f_create_s3_blobstore "${_BLOBTORE_NAME}" "${_AWS_S3_PREFIX}" "${_AWS_S3_BUCKET}" || return $?    # other params use AWS_XXXX env variables
+        _TEST_REPO_NAME="raw-s3-hosted"
+    else
+        f_setup_raw || return $?
     fi
-
-    # Below line creates various repositories with a few dummy assets, but not using as this is not for testing Reconcile
-    #_AUTO=true main
-    f_setup_raw || return $?
-    f_upload_dummies "${_NEXUS_URL%/}/repository/raw-s3-hosted/test" "${_ASSET_CREATE_NUM}" || return $?
+    f_upload_dummies "${_NEXUS_URL%/}/repository/${_TEST_REPO_NAME}/test" "${_ASSET_CREATE_NUM}" || return $?
 
     f_delete_all_assets "Y"
     local _expected_num=$(cat /tmp/f_delete_all_assets_$$.out | wc -l | tr -d '[:space:]')
