@@ -1,7 +1,6 @@
 # File List
-Demo script to list all objects from a File type blob store with CSV format.  
-The expected usage is generating the list of blobRef IDs and compare with the blobRef IDs stored in Nexus DB (OrientDB / PostgreSQL) to find the inconsistency.
-Basically rewrite of below bash function:
+Demo script to list all objects from a File type blob store with tab delimiter format.  
+Basically rewriting below bash function and command:
 ```bash
 function f_blobs_csv() {
     local __doc__="Generate CSV for Path,LastModified,Size + properties"
@@ -21,10 +20,11 @@ function f_blobs_csv() {
         eval "${_find} -printf '\"%p\",\"%t\",%s\n'"
     fi
 }
-
-# For Reconcile (TODO: is using `????????-????-????-????-????????????.properties` faster?)
+```
+```
 #echo -n > ./'${_output_date}'; # Only first time, otherwise optional in case you might want to append
 #touch /tmp/checker;            # Only first time, otherwise optional in case of continuing 
+# TODO: is using `????????-????-????-????-????????????.properties` faster?
 find ${_content_dir%/}/vol-* -type f -name '*.properties' -mtime -${_days} -print0 -not -newer /tmp/checker | xargs -P${_P} -I{} -0 bash -c 'grep -q "^deleted=true" {} && sed -i -e "s/^deleted=true//" {} && echo "'${_output_date}' 00:00:01,$(basename {} .properties)" >> ./'${_output_date}';'
 ```
 
@@ -36,150 +36,125 @@ chmod a+x /usr/local/bin/file-list
 
 ## ARGUMENTS:
 ```
-    -b BaseDir_str  Base directory path (eg: <workingDirectory>/blobs/default/content)
-    -p Prefix_str   List only objects which directory *name* starts with this prefix (eg: val-)
-                    Require -c 2 or higher number. If -c 1, -p is not used.
-    -f Filter_str   List only objects which path contains this string (eg. .properties)
-    -fP Filter_str  List .properties file (no .bytes files) which contains this string (much slower)
-                    Equivalent of -f ".properties" and -P.
-    -n topN_num     Return first/top N results only
-    -c concurrency  Executing walk per sub directory in parallel (may not need with very fast disk)
-    -P              Get properties (can be very slower)
-    -R              Treat -fP value as regex
-    -H              No column Header line
-    -X              Verbose log output
+Usage of file-list:
+  -BSize
+    	If true, includes .bytes size (When -f is '.properties')
+  -H	If true, no header line
+  -L	If true, just list directories and exit
+  -O	If true, also get owner display name
+  -P	If true, read and output the .properties files
+  -R	If true, .properties content is *sorted* and _FILTER_P string is treated as regex
+  -RDel
+    	Remove 'deleted=true' from .properties. Requires -RF *and* -dF
+  -RF
+    	Output for the Reconcile task (any_string,blob_ref). -P will be ignored
+  -S3
+    	If true, access S3 bucket with AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and AWS_REGION
+  -T	If true, also get tags of each object
+  -X	If true, verbose logging
+  -XX
+    	If true, more verbose logging
+  -b string
+    	Base directory (default: '.') or S3 Bucket name (default ".")
+  -bsName string
+    	Eg. 'default'. If provided, the query will be faster
+  -c int
+    	Concurrent number for sub directories (may not need to use with very fast disk) (default 1)
+  -c2 int
+    	Concurrent number for retrieving AWS Tags (default 16)
+  -dF string
+    	Deleted date YYYY-MM-DD (from). Used to search deletedDateTime
+  -dT string
+    	Deleted date YYYY-MM-DD (to). To exclude newly deleted assets
+  -mF string
+    	File modification date YYYY-MM-DD (from).
+  -mT string
+    	File modification date YYYY-MM-DD (to).
+  -db string
+    	DB connection string or path to properties file
+  -f string
+    	Filter file paths (eg: '.properties')
+  -fP string
+    	Filter .properties contents (eg: 'deleted=true')
+  -m int
+    	Integer value for Max Keys (<= 1000) (default 1000)
+  -n int
+    	Return first N lines (0 = no limit). (TODO: may return more than N)
+  -nodeId string
+    	Advanced option.
+  -p string
+    	Prefix of sub directories (eg: 'vol-')
+  -src string
+    	Using database or blobstore as source [BS|DB] (default "BS")
 ```
 
-## Example output
-Listing blob store items **with all properties contents** and with 10 concurrency:
+## Usage Examples
+NOTE: For accurate performance testing, may need to clear Linux file cache (as 'root'):
 ```
-# Clear Linux's file cache
-[root@node-nxrm-ha1 sonatype]# echo 3 > /proc/sys/vm/drop_caches
-[root@node-nxrm-ha1 sonatype]# file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -P -c 10 > /tmp/default_props.csv
-2022/01/12 02:52:06 WARN: With Properties (-P), listing can be slower.
-2022/01/12 02:52:06 INFO: Generating list with ./sonatype-work/nexus3/blobs/default/content ...
-
-2022/01/12 02:53:49 INFO: Printed 35731 items (size: 5278777651) in ./sonatype-work/nexus3/blobs/default/content with prefix: 'vol-'
+echo 3 > /proc/sys/vm/drop_caches
 ```
-About 350 files per second on HDD (non SSD).
-
-Finding deleted=true (just for testing as you should just grep against /tmp/default_props.csv)
-```
-[root@node-nxrm-ha1 sonatype]# file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -fP "deleted=true" -c 10 > /tmp/default_soft_deleted.csv
-2022/01/12 02:56:44 WARN: With Properties (-P), listing can be slower.
-2022/01/12 02:56:44 INFO: Generating list with ./sonatype-work/nexus3/blobs/default/content ...
-
-2022/01/12 02:56:44 INFO: Printed 24 items (size: 19114) in ./sonatype-work/nexus3/blobs/default/content with prefix: 'vol-'
-```
-This time, it's much faster because of buffer/cache on Linux.
-
-## More usage examples:
 ### List all files under the ./sonatype-work/nexus3/blobs/default
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default
+file-list -b ./sonatype-work/nexus3/blobs/default
 ... (snip) ...
 "sonatype-work/nexus3/blobs/default/content/vol-43/chap-29/3488648f-d5f8-45f8-8314-10681fcaf0ce.properties","2021-09-17 08:35:03.907951265 +1000 AEST",352
 "sonatype-work/nexus3/blobs/default/metadata.properties","2021-09-17 08:34:00.625028548 +1000 AEST",73
 
 2021/12/31 14:23:09 INFO: Printed 185 items (size: 75910509) in ./sonatype-work/nexus3/blobs/default with prefix:
 ```
-### Check the count and size of all .bytes file under "content" directory under "default" blob store (including tmp files).
+
+### Listing blob store items with .properties file contents (-P) with 10 concurrency (-c 10):
+```
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -P -c 10 > /tmp/default_with_props.tsv
+```
+
+### Finding deleted=true (-fP "\<expression\>")
+```
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -fP "deleted=true" -c 10 > /tmp/default_soft_deleted.tsv
+```
+
+### Check the total count and size of all .bytes files
 This would be useful to compare with the counters in the Blobstore page.
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -f ".bytes" >/dev/null
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -f ".bytes" >/dev/null
 2021/12/31 14:24:15 INFO: Generating list with ./sonatype-work/nexus3/blobs/default ...
+... (snip) ...
+13:52:46.972949 INFO  Printed 136895 of 136895 (size:2423593014) in ./sonatype-work/nexus3/blobs/default/content and sub-dir starts with vol- (elapsed:26s)
+```
 
-2021/12/31 14:24:15 INFO: Printed 91 items (size: 75871811) in ./sonatype-work/nexus3/blobs/default with prefix: ''
+### List all objects which properties contain 'repo-name=docker-proxy' and 'deleted=true'
 ```
-### Parallel execution (concurrency 10), and save to all_objects.csv file
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.tsv
 ```
-$ file-list -b ./content -p "vol-" -c 10 > all_objects.csv
-```
-### Parallel execution (concurrency 10) with all properties
-```
-$ file-list -b ./content -p "vol-" -c 10 -f ".properties" -P > all_with_props.csv
-```
-### List all objects which properties contain 'deleted=true'
-```
-$ file-list -b ./content -p "vol-" -c 10 -f ".properties" -P -fP "deleted=true" > soft_deleted.csv
-```
-### List all objects which properties contain 'repo-name=docker-proxy' and 'deleted=true' (NOTE: properties are sorted)
-```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fP "@Bucket\.repo-name=docker-proxy.+deleted=true" -R > docker-proxy_soft_deleted.csv
-```
-NOTE: the attributes in a properties file are sorted in memory, so that attributes start with "@" comes before "deleted=".
+NOTE: the attributes in a .properties file are sorted in memory, so that attributes start with "@" comes before "deleted=true" line.
 
-### Output lines for Reconcile task's YYYY-MM-DD log (blobstore.rebuildComponentDB), like Dry-Run
+### Output lines for the reconciliation (blobstore.rebuildComponentDB) YYYY-MM-DD text (-RF) and for the files which were modified on and after 2022-05-19 (-mF "\<date\>")
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-05-19" > ./$(date '+%Y-%m-%d')
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -mF "2022-05-19" > ./$(date '+%Y-%m-%d')
 ```
-### Remove 'deleted=true', then output lines for Reconcile task's YYYY-MM-DD log
+
+### Output lines for the reconciliation (blobstore.rebuildComponentDB) YYYY-MM-DD text (-RF) and deleted from 2022-05-19 (-dF "\<date\>")
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-07-19" -RDel > ./$(date '+%Y-%m-%d')
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-05-19" > ./$(date '+%Y-%m-%d')
 ```
-### Check orphaned files (PostgreSQL only) with max 10 DB connections
+
+### Remove 'deleted=true' (-RDel), then output lines for the reconciliation YYYY-MM-DD text
 ```
-$ file-list -b ./default/content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=nxrm3pg dbname=nxrm3pg"
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-07-19" -RDel > ./$(date '+%Y-%m-%d')
+```
+
+### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10)
+```
+file-list -b ./default/content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=nxrm3pg dbname=nxrm3pg"
 ```
 or
 ```
-$ file-list -b ./default/content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties
+file-list -b ./default/content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties
 ```
 NOTE: Above outputs blobs which are not in <format>_asset table, which includes assets which have not soft-deleted by Cleanup unused asset blobs task.
 
-### Check orphaned files (PostgreSQL only) with max 4 DB connections, and with Reconciliation YYYY-MM-DD format, and since 2022-05-19 (to remove 'deleted=true' -RDel)
+### Check orphaned files, and with the reconciliation YYYY-MM-DD format output (-RF), and deleted after 2022-05-19 (-dF)
 ```
 $ file-list -b ./default/content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -RF -dF "2022-05-19" > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d%H%M%S").log
 ```
-NOTE: If using -RDel, recommend to save the STDERR into a file
-
-## ADVANCE USAGE EXAMPLE:
-```
-file-list -b /opt/sonatype/sonatype-work/nexus3/blobs/default/content -p 'vol-' -P -c 10 > default_props.csv
-# Extract blob ref IDs only:
-grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' default_props.csv | sort | uniq > /tmp/default_blob_refs.out
-
-# Get blob ref IDs from a database backup file:
-curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar"
-echo "SELECT blob_ref FROM asset WHERE blob_ref LIKE 'default@%'" | java -DexportPath=/tmp/result.json -jar ./orient-console.jar ../sonatype/backups/component-2022-01-04-22-00-00-3.37.0-01.bak
-grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' /tmp/result.json | sort | uniq > /tmp/default_blob_refs_from_db.out
-
-# Check missing blobs:
-diff -wy --suppress-common-lines /tmp/default_blob_refs.out /tmp/default_blob_refs_from_db.out > default_blob_refs_diff.out
-
-head -n3 default_blob_refs_diff.out
-001c00d5-7a50-4412-9523-b5c080b21ea7                          <
-0021bef4-139f-414d-93d6-8dc98b93ca1a                          <
-00261d0f-0fa7-4d68-b354-7ff18b5dab62                          <
-
-# Check details
-grep "001c00d5-7a50-4412-9523-b5c080b21ea7.properties" default_props.csv | tr ',' '\n'
-"/opt/sonatype/sonatype-work/nexus3/blobs/default/content/vol-05/chap-45/001c00d5-7a50-4412-9523-b5c080b21ea7.properties"
-"2021-10-19 00:59:38.430595915 +0000 UTC"
-1200
-"#2021-10-19 00:59:38
-435+0000
-#Tue Oct 19 00:59:38 UTC 2021
-@attributes.asset.npm.repository_url=https\://github.com/facebook/regenerator/tree/master/packages/regenerator-runtime
-@BlobStore.created-by-ip=system
-... (snip) ...
-@BlobStore.blob-name=/regenerator-runtime/-/regenerator-runtime-0.11.1.tgz
-@attributes.asset.npm.license=MIT
-@attributes.asset.npm.tagged_not=
-@attributes.asset.npm.name=regenerator-runtime"
-```
-All above commands would complete within 10 seconds, and the last result means no dead blobs but orphaned blobs (looks like because of PostgreSQL migration test as per "@BlobStore.blob-name=/").
-
-Example of generating filepath list for deleting all orphaned:
-```
-grep -oE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' default_blob_refs_diff.out | while read -r _br; do
-  # Below is slow, but just in case, to make sure all blob-name starts with "/"
-  #grep -E "${_br}\.properties.+,@BlobStore\.blob-name=/" default_props.csv | grep -oE '^"[^"]+"' | sed -E 's/.properties/.*/g'
-  grep -oE "[^\"]+${_br}[^\"]+" default_props.csv
-done > orphaned_filepath.out
-```
-
-```
-find ./vol-* -type f -name '*.bytes' > all_bytes_files.out
-grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' all_bytes_files.out > blob_ids_only.out
-```
+NOTE: If using -RDel to delete "deleted=true", recommend to save the STDERR into a file like above.

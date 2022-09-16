@@ -75,6 +75,10 @@ var _DEL_DATE_FROM *string
 var _DEL_DATE_FROM_ts int64
 var _DEL_DATE_TO *string
 var _DEL_DATE_TO_ts int64
+var _MOD_DATE_FROM *string
+var _MOD_DATE_FROM_ts int64
+var _MOD_DATE_TO *string
+var _MOD_DATE_TO_ts int64
 var _START_TIME_ts int64
 var _REPO_TO_FMT map[string]string
 
@@ -129,6 +133,8 @@ func _setGlobals() {
 	_REMOVE_DEL = flag.Bool("RDel", false, "Remove 'deleted=true' from .properties. Requires -RF *and* -dF") // TODO: also think about restore plan
 	_DEL_DATE_FROM = flag.String("dF", "", "Deleted date YYYY-MM-DD (from). Used to search deletedDateTime")
 	_DEL_DATE_TO = flag.String("dT", "", "Deleted date YYYY-MM-DD (to). To exclude newly deleted assets")
+	_MOD_DATE_FROM = flag.String("mF", "", "File modification date YYYY-MM-DD from")
+	_MOD_DATE_TO = flag.String("mT", "", "File modification date YYYY-MM-DD to")
 
 	// AWS S3 related
 	_CONC_2 = flag.Int("c2", 16, "Concurrent number for retrieving AWS Tags")
@@ -139,6 +145,9 @@ func _setGlobals() {
 
 	flag.Parse()
 
+	if _DEBUG2 != nil && *_DEBUG2 {
+		*_DEBUG = true
+	}
 	// If _FILTER_P is given, automatically populate other related variables
 	if len(*_FILTER_P) > 0 {
 		*_FILTER = _PROP_EXT
@@ -180,6 +189,12 @@ func _setGlobals() {
 		if len(*_DEL_DATE_TO) > 0 {
 			_DEL_DATE_TO_ts = datetimeStrToTs(*_DEL_DATE_TO)
 		}
+		if len(*_MOD_DATE_FROM) > 0 {
+			_MOD_DATE_FROM_ts = datetimeStrToTs(*_MOD_DATE_FROM)
+		}
+		if len(*_MOD_DATE_TO) > 0 {
+			_MOD_DATE_TO_ts = datetimeStrToTs(*_MOD_DATE_TO)
+		}
 	}
 	if *_REMOVE_DEL {
 		if !*_RECON_FMT || len(*_DEL_DATE_FROM) == 0 {
@@ -192,8 +207,17 @@ func _setGlobals() {
 }
 
 func _log(level string, message string) {
-	if level != "DEBUG" || *_DEBUG {
+	if level != "DEBUG" && level != "DEBUG2" {
 		log.Printf("%-5s %s\n", level, message)
+		return
+	}
+	if level == "DEBUG" && _DEBUG != nil && *_DEBUG {
+		log.Printf("%-5s %s\n", level, message)
+		return
+	}
+	if level == "DEBUG2" && _DEBUG2 != nil && *_DEBUG2 {
+		log.Printf("%-5s %s\n", level, message)
+		return
 	}
 }
 
@@ -266,7 +290,13 @@ func removeTagsS3(path string, client *s3.Client) error {
 }
 
 func datetimeStrToTs(datetimeStr string) int64 {
-	tmpTimeFrom, err := time.Parse("2006-01-02", datetimeStr)
+	if len(datetimeStr) == 0 {
+		panic("datetimeStr is empty")
+	}
+	if len(datetimeStr) <= 10 {
+		datetimeStr = datetimeStr + " 00:00:00"
+	}
+	tmpTimeFrom, err := time.Parse("2006-01-02 15:04:03", datetimeStr)
 	if err != nil {
 		panic(err)
 	}
@@ -302,7 +332,9 @@ func readPropertiesFile(path string) (StoreProps, error) {
 func genRepoFmtMap() map[string]string {
 	// temporarily opening a DB connection only for this query
 	db := openDb(*_DB_CON_STR)
-	defer db.Close()
+	if db != nil {
+		defer db.Close()
+	}
 	rows := queryDb("SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository", db)
 	if rows == nil { // For unit tests
 		return nil
@@ -325,7 +357,9 @@ func genRepoFmtMap() map[string]string {
 func validateNodeId(nodeId string) bool {
 	// temporarily opening a DB connection only for this query
 	db := openDb(*_DB_CON_STR)
-	defer db.Close()
+	if db != nil {
+		defer db.Close()
+	}
 	tableNames := getAssetTables(db, "", nil)
 	query := "SELECT SUM(c) as numInvalid"
 	query = query + " FROM (" + genAssetBlobUnionQuery(tableNames, "1 as c", "ab.blob_ref NOT like '%@"+nodeId+"' LIMIT 1", true) + ") t_unions"
@@ -414,6 +448,17 @@ func printLineS3(client *s3.Client, item types.Object, db *sql.DB) {
 	output := ""
 	var blobSize int64 = 0
 
+	atomic.AddInt64(&_CHECKED_N, 1)
+
+	if _MOD_DATE_FROM_ts > 0 && modTimeTs < _MOD_DATE_FROM_ts {
+		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d is less than %d", path, modTimeTs, _MOD_DATE_FROM_ts))
+		return
+	}
+	if _MOD_DATE_TO_ts > 0 && modTimeTs > _MOD_DATE_TO_ts {
+		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d is newer than %d", path, modTimeTs, _MOD_DATE_TO_ts))
+		return
+	}
+
 	// If not for Reconciliation YYYY-MM-DD log, output normally.
 	if !*_RECON_FMT {
 		output = fmt.Sprintf("%s%s%s%s%d", path, _SEP, modTime, _SEP, item.Size)
@@ -453,7 +498,6 @@ func printLineS3(client *s3.Client, item types.Object, db *sql.DB) {
 	}
 
 	// Updating counters and return
-	atomic.AddInt64(&_CHECKED_N, 1)
 	if len(output) > 0 {
 		atomic.AddInt64(&_PRINTED_N, 1)
 		atomic.AddInt64(&_TTL_SIZE, item.Size+blobSize)
@@ -469,6 +513,17 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 	modTimeTs := modTime.Unix()
 	output := ""
 	var blobSize int64 = 0
+
+	atomic.AddInt64(&_CHECKED_N, 1)
+
+	if _MOD_DATE_FROM_ts > 0 && modTimeTs < _MOD_DATE_FROM_ts {
+		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d is less than %d", path, modTimeTs, _MOD_DATE_FROM_ts))
+		return
+	}
+	if _MOD_DATE_TO_ts > 0 && modTimeTs > _MOD_DATE_TO_ts {
+		_log("DEBUG2", fmt.Sprintf("path:%s modTime %d is newer than %d", path, modTimeTs, _MOD_DATE_TO_ts))
+		return
+	}
 
 	// If not for Reconciliation YYYY-MM-DD log, output normally.
 	if !*_RECON_FMT {
@@ -487,7 +542,6 @@ func printLine(path string, fInfo os.FileInfo, db *sql.DB) {
 	}
 
 	// Updating counters and return
-	atomic.AddInt64(&_CHECKED_N, 1)
 	if len(output) > 0 {
 		atomic.AddInt64(&_PRINTED_N, 1)
 		atomic.AddInt64(&_TTL_SIZE, fInfo.Size()+blobSize)
@@ -503,11 +557,11 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 
 	if *_RECON_FMT {
 		if _START_TIME_ts > 0 && modTimeTs > _START_TIME_ts {
-			_log("DEBUG", "path:"+path+" is recently modified, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" > "+strconv.FormatInt(_START_TIME_ts, 10)+")")
+			_log("DEBUG2", "path:"+path+" is recently modified, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" > "+strconv.FormatInt(_START_TIME_ts, 10)+")")
 			return ""
 		}
 		if _DEL_DATE_FROM_ts > 0 && modTimeTs < _DEL_DATE_FROM_ts {
-			_log("DEBUG", "path:"+path+" mod time is older than _DEL_DATE_FROM_ts, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" < "+strconv.FormatInt(_DEL_DATE_FROM_ts, 10)+")")
+			_log("DEBUG2", "path:"+path+" mod time is older than _DEL_DATE_FROM_ts, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" < "+strconv.FormatInt(_DEL_DATE_FROM_ts, 10)+")")
 			return ""
 		}
 		// NOTE: Not doing same for _DEL_DATE_TO_ts as some task may touch.
@@ -822,9 +876,11 @@ func genOutputForReconcile(contents string, path string, delDateFromTs int64, de
 				}
 			}
 		}
+		_log("INFO", fmt.Sprintf("Found path:%s%s%s", path, deletedDtMsg, deletedMsg))
+	} else {
+		_log("DEBUG", fmt.Sprintf("Found path:%s%s%s", path, deletedDtMsg, deletedMsg))
 	}
 
-	_log("INFO", fmt.Sprintf("Found path:%s%s%s", path, deletedDtMsg, deletedMsg))
 	// Not using _SEP for this output
 	return fmt.Sprintf("%s,%s", getNowStr(), getBaseNameWithoutExt(path)), nil
 }
@@ -937,8 +993,9 @@ func getDirs(basedir string, prefix string) []string {
 func listObjectsS3(client *s3.Client, prefix string) {
 	var subTtl int64
 	db := openDb(*_DB_CON_STR)
-	defer db.Close()
-
+	if db != nil {
+		defer db.Close()
+	}
 	input := &s3.ListObjectsV2Input{
 		Bucket:     _BASEDIR,
 		MaxKeys:    int32(*_MAXKEYS),
@@ -993,7 +1050,9 @@ func listObjectsS3(client *s3.Client, prefix string) {
 func listObjects(basedir string) {
 	var subTtl int64
 	db := openDb(*_DB_CON_STR)
-	defer db.Close()
+	if db != nil {
+		defer db.Close()
+	}
 	// Below line does not work because currently Glob does not support ./**/*
 	//list, err := filepath.Glob(basedir + string(filepath.Separator) + *_FILTER)
 	// Somehow WalkDir is slower in this code
