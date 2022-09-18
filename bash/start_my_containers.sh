@@ -3,13 +3,16 @@
 export _SERVICE="sonatype"
 
 main() {
-    for n in $(docker ps -a --format "{{.Names}}" | grep -E "^node-?(nxrm-ha2|nxrm-ha3|nxiq|nxrm2|freeipa)$" | sort); do
+    # Run one-by-one
+    for n in freeipa node-nxiq node-nxrm-ha1; do
+        bash /usr/local/bin/setup_standalone.sh -n $n &>/tmp/setup_standalone_$n.out
+        sleep 1
+    done
+    # If -ha2 -ha3 exist, run but without starting
+    for n in $(docker ps -a --format "{{.Names}}" | grep -E "^(node-nxrm2|node-nxrm-ha2|node-nxrm-ha3|nexus-client)$" | sort); do
         bash /usr/local/bin/setup_standalone.sh -N -n $n &>/tmp/setup_standalone_$n.out &
         sleep 1
     done
-    bash -x /usr/local/bin/setup_standalone.sh -n node-nxrm-ha1 &>/tmp/setup_standalone_node-nxrm-ha1.out &
-    sleep 1
-    bash -l /usr/local/bin/setup_standalone.sh -N -n nexus-client &>/tmp/setup_standalone_nexus-client
     wait
 
     if ! systemctl restart dnsmasq.service; then
