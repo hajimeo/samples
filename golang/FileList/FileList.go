@@ -53,6 +53,7 @@ var _BASEDIR *string
 var _PREFIX *string
 var _FILTER *string
 var _FILTER_P *string
+var _FILTER_PX *string
 var _TOP_N *int64
 var _CONC_1 *int
 var _LIST_DIRS *bool
@@ -91,6 +92,7 @@ var _CONC_2 *int
 
 // Regular expressions
 var _R *regexp.Regexp
+var _RX *regexp.Regexp
 var _R_DEL_DT *regexp.Regexp
 var _R_DELETED *regexp.Regexp
 var _R_REPO_NAME *regexp.Regexp
@@ -113,8 +115,9 @@ func _setGlobals() {
 	_WITH_PROPS = flag.Bool("P", false, "If true, read and output the .properties files")
 	_FILTER = flag.String("f", "", "Filter file paths (eg: '.properties')")
 	_WITH_BLOB_SIZE = flag.Bool("BSize", false, "If true, includes .bytes size (When -f is '.properties')")
-	_FILTER_P = flag.String("fP", "", "Filter .properties contents (eg: 'deleted=true')")
-	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and _FILTER_P string is treated as regex")
+	_FILTER_P = flag.String("fP", "", "Filter for .properties (eg: 'deleted=true')")
+	_FILTER_PX = flag.String("fPX", "", "Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')")
+	_USE_REGEX = flag.Bool("R", false, "If true, .properties content is *sorted* and -fP|-fPX string is treated as regex")
 	//_EXCLUDE_FILE = flag.String("sk", "", "Blob IDs in this file will be skipped from the check") // TODO
 	//_INCLUDE_FILE = flag.String("sk", "", "ONLY blob IDs in this file will be checked")           // TODO
 	_TOP_N = flag.Int64("n", 0, "Return first N lines (0 = no limit). (TODO: may return more than N)")
@@ -149,11 +152,16 @@ func _setGlobals() {
 		*_DEBUG = true
 	}
 	// If _FILTER_P is given, automatically populate other related variables
-	if len(*_FILTER_P) > 0 {
+	if len(*_FILTER_P) > 0 || len(*_FILTER_PX) > 0 {
 		*_FILTER = _PROP_EXT
 		//*_WITH_PROPS = true
 		if *_USE_REGEX {
-			_R, _ = regexp.Compile(*_FILTER_P)
+			if len(*_FILTER_P) > 0 {
+				_R, _ = regexp.Compile(*_FILTER_P)
+			}
+			if len(*_FILTER_PX) > 0 {
+				_RX, _ = regexp.Compile(*_FILTER_PX)
+			}
 		}
 	}
 	if len(*_DB_CON_STR) > 0 {
@@ -162,7 +170,7 @@ func _setGlobals() {
 			*_DB_CON_STR = genDbConnStr(props)
 		}
 		*_FILTER = _PROP_EXT
-		*_WITH_PROPS = false
+		//*_WITH_PROPS = false
 		_REPO_TO_FMT = genRepoFmtMap()
 
 		if len(*_NODE_ID) > 0 {
@@ -586,9 +594,12 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 	// Excluding above special condition, usually needs to read the file
 	contents, err := getContents(path, client)
 	if err != nil {
-		_log("ERROR", "No contents from "+path)
+		_log("ERROR", "getContents for "+path+" returned error:"+err.Error())
 		// if no content, no point of restoring
 		return ""
+	}
+	if len(contents) == 0 {
+		_log("WARN", "getContents for "+path+" returned 0 size.")
 	}
 
 	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 {
@@ -611,11 +622,10 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 	}
 
 	if *_WITH_PROPS {
-		props, propErr := genOutputFromProp(contents, path)
-		if propErr != nil {
-			_log("DEBUG", propErr.Error())
-			// If this can't read .properties file, still return the original "output"
-			return output
+		props, skipReason := genOutputFromProp(contents, path)
+		if skipReason != nil {
+			_log("DEBUG2", skipReason.Error())
+			return ""
 		}
 		if len(props) > 0 {
 			output = fmt.Sprintf("%s%s%s", output, _SEP, props)
@@ -905,29 +915,36 @@ func isTimestampBetween(tMsec int64, fromTsMsec int64, toTsMsec int64) bool {
 }
 
 func genOutputFromProp(contents string, path string) (string, error) {
-	if len(*_FILTER_P) == 0 {
-		// If no _FILETER2, just return the contents as single line. Should also escape '"'?
+	if len(*_FILTER_P) == 0 && len(*_FILTER_PX) == 0 {
+		// If no _FILTER_P, just return the contents as single line. Should also escape '"'?
 		return strings.ReplaceAll(contents, "\n", ","), nil
 	}
 
 	if *_USE_REGEX {
-		// If asked to use regex, return properties lines only if matches.
-		if _R == nil || len(_R.String()) == 0 { //
-			return "", errors.New("_USE_REGEX is specified but no regular expression (_R)")
-		}
-		// To allow to use simpler regex, sorting line and converting to single line firt
+		// To use simpler regex, sorting line and converting to single line first
 		lines := strings.Split(contents, "\n")
 		sort.Strings(lines)
 		contents = strings.Join(lines, ",")
-		if _R.MatchString(contents) {
-			return contents, nil
+		// Exclude check first
+		if _RX != nil && len(_RX.String()) > 0 && _RX.MatchString(contents) {
+			return "", errors.New(fmt.Sprintf("%s matches with the exclude regex filter: %s. Skipping.", path, *_FILTER_PX))
 		}
-		return "", errors.New(fmt.Sprintf("%s does not contain %s (with Regex). Not outputting entire line.", path, *_FILTER_P))
-	}
-
-	// If not regex (eg: 'deleted=true')
-	if !strings.Contains(contents, *_FILTER_P) {
-		return "", errors.New(fmt.Sprintf("%s does not contain %s.", path, *_FILTER_P))
+		if _R != nil && len(_R.String()) > 0 {
+			if _R.MatchString(contents) {
+				_log("DEBUG2", fmt.Sprintf("%s match with the regex filter: %s.", path, *_FILTER_P))
+				return contents, nil
+			} else {
+				return "", errors.New(fmt.Sprintf("%s does NOT match with the regex filter %s. Skipping.", path, *_FILTER_P))
+			}
+		}
+	} else {
+		if len(*_FILTER_PX) > 0 && strings.Contains(contents, *_FILTER_PX) {
+			return "", errors.New(fmt.Sprintf("%s contain exclude filter: %s. Skipping.", path, *_FILTER_PX))
+		}
+		// If not regex (eg: 'deleted=true')
+		if len(*_FILTER_P) > 0 && !strings.Contains(contents, *_FILTER_P) {
+			return "", errors.New(fmt.Sprintf("%s does not contain %s. Skipping.", path, *_FILTER_P))
+		}
 	}
 	return contents, nil
 }

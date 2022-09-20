@@ -76,6 +76,8 @@ Usage of file-list:
     	Filter file paths (eg: '.properties')
   -fP string
     	Filter .properties contents (eg: 'deleted=true')
+  -fPX string
+    	Excluding Filter for .properties (eg: 'BlobStore.blob-name=.+/maven-metadata.xml.*')
   -m int
     	Integer value for Max Keys (<= 1000) (default 1000)
   -n int
@@ -128,6 +130,12 @@ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".p
 ```
 NOTE: the attributes in a .properties file are sorted in memory, so that attributes start with "@" comes before "deleted=true" line.
 
+### List all objects which does NOT contain 'maven-metadata.xml'
+```
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".properties" -P -fPX "BlobStore\.blob-name=.+/maven-metadata.xml.*" -R > all_excluding_maven-metadata.tsv
+```
+NOTE: the attributes in a .properties file are sorted in memory, so that attributes start with "@" comes before "deleted=true" line.
+
 ### Output lines for the reconciliation (blobstore.rebuildComponentDB) YYYY-MM-DD text (-RF) and for the files which were modified on and after 2022-05-19 (-mF "\<date\>")
 ```
 file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -mF "2022-05-19" > ./$(date '+%Y-%m-%d')
@@ -145,16 +153,16 @@ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -d
 
 ### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10)
 ```
-file-list -b ./default/content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=nxrm3pg dbname=nxrm3pg"
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db "host=localhost port=5432 user=nxrm3pg password=nxrm3pg dbname=nxrm3pg"
 ```
 or
 ```
-file-list -b ./default/content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties
 ```
 NOTE: Above outputs blobs which are not in <format>_asset table, which includes assets which have not soft-deleted by Cleanup unused asset blobs task.
 
 ### Check orphaned files, and with the reconciliation YYYY-MM-DD format output (-RF), and deleted after 2022-05-19 (-dF)
 ```
-$ file-list -b ./default/content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -RF -dF "2022-05-19" > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d%H%M%S").log
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -RF -dF "2022-05-19" > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d%H%M%S").log
 ```
 NOTE: If using -RDel to delete "deleted=true", recommend to save the STDERR into a file like above.
