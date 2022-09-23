@@ -188,6 +188,7 @@ function _extract_configs() {
     _find_and_cat "config_ds_info.properties" 2>/dev/null
     echo '```'
 
+    # TODO: add installDirectory and IQ sonatype-work
     _head "CONFIG" "application related"
     echo '```'
     echo "sonatypeWork: \"$(_working_dir)\""
@@ -427,6 +428,12 @@ function t_system() {
     _test_template "$(_rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || _rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
     if ! _rg -g jmx.json -q 'x86_64'; then
         _head "WARN" "No 'x86_64' found in jmx.json. Might be 32 bit Java (or non Linux, check the top of jvm.log)"
+    fi
+    if _rg -g sysinfo.json -q 'DOCKER_TYPE'; then
+        _head "WARN" "Might be installed on DOCKER"
+    fi
+    if _rg -g sysinfo.json -q 'KUBERNETES_'; then
+        _head "WARN" "Might be installed on KUBERNETES"
     fi
 }
 function t_mounts() {
