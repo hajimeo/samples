@@ -164,6 +164,31 @@ function _updateNexusProps() {
     grep -qE '^\s*nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
 }
 
+function _prepare_install() {
+    local _type="$1"
+    local _tgz="$2"
+
+    local _dirname="${_type}_${_ver}"
+    [ -n "${_dbname}" ] && _dirname="${_dirname}_${_dbname}"
+    local _extractTar=true
+    if [ -d "${_dirname}" ]; then
+        echo "WARN ${_dirname} exists. Will just update the settings..."
+        sleep 5
+        _extractTar=false
+    else
+        if [ ! -s "${_tgz}" ]; then
+            echo "no ${_tgz}"
+            return 1
+        fi
+        mkdir -v "${_dirname}" || return $?
+    fi
+
+    cd "${_dirname}" || return $?
+    if ${_extractTar}; then
+        tar -xvf ${_tgz} || return $?
+    fi
+}
+
 function nxrmInstall() {
     local _ver="$1" #3.40.1-01
     local _dbname="$2"  # If h2, use H2
@@ -180,24 +205,8 @@ function nxrmInstall() {
         return 1
     fi
 
-    local _extractTar=true
-    if [ -d "nxrm-${_ver}" ]; then
-        echo "WARN nxrm-${_ver} exists. Will just update the settings..."
-        sleep 5
-        _extractTar=false
-    else
-        local _tgz="${_installer_dir%/}/nexus-${_ver}-${_os}.tgz"
-        if [ ! -s "${_tgz}" ]; then
-            echo "no ${_tgz}"
-            return 1
-        fi
-        mkdir -v nxrm-${_ver} || return $?
-    fi
+    _prepare_install "nxrm" "${_installer_dir%/}/nexus-${_ver}-${_os}.tgz" || return $?
 
-    cd nxrm-${_ver} || return $?
-    if ${_extractTar}; then
-        tar -xvf ${_tgz} || return $?
-    fi
     if [ ! -d ./sonatype-work/nexus3/etc/fabric ]; then
         mkdir -v -p ./sonatype-work/nexus3/etc/fabric || return $?
     fi
@@ -215,14 +224,14 @@ password=${_dbpwd}
 maximumPoolSize=40
 advanced=maxLifetime\=600000
 EOF
-        fi
-        local _util_dir="$(dirname "$(dirname "$BASH_SOURCE")")/bash"
-        if [ -s "${_util_dir}/utils_db.sh" ]; then
-            source ${_util_dir}/utils.sh
-            source ${_util_dir}/utils_db.sh
-            _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}"
-        else
-            echo "WARN Not creating database"
+            local _util_dir="$(dirname "$(dirname "$BASH_SOURCE")")/bash"
+            if [ -s "${_util_dir}/utils_db.sh" ]; then
+                source ${_util_dir}/utils.sh
+                source ${_util_dir}/utils_db.sh
+                _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}"
+            else
+                echo "WARN Not creating database"
+            fi
         fi
     fi
 
@@ -274,9 +283,12 @@ function iqStart() {
     [ -z "${_license}" ] && [ -s "${HOME%/}/.nexus_executable_cache/nexus.lic" ] && _license="${HOME%/}/.nexus_executable_cache/nexus.lic"
     [ -s "${_license}" ] && _java_opts="${_java_opts} -Ddw.licenseFile=${_license}"
 
-    # TODO: belows need to use API: curl -D- -u admin:admin123 -X PUT -H "Content-Type: application/json" -d '{"hdsUrl": "https://clm-staging.sonatype.com/", "baseUrl": "http://'$(hostname -f)':8070/"}' http://localhost:8070/api/v2/config;
+    # TODO: belows need to use API:
+    #  curl -D- -u admin:admin123 -X PUT -H "Content-Type: application/json" -d '{"hdsUrl": "https://clm-staging.sonatype.com/"}' http://localhost:8070/api/v2/config;
+    # curl -D- -u admin:admin123 -X PUT -H "Content-Type: application/json" -d '{"baseUrl": "http://'$(hostname -f)':8070/", "forceBaseUrl":false}' http://localhost:8070/api/v2/config;
     grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://$(hostname -f):8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+    grep -qE '^enableDefaultPasswordWarning:' "${_cfg_file}" || echo -e "enableDefaultPasswordWarning: false\n$(cat "${_cfg_file}")" > "${_cfg_file}"
 
     grep -qE '^\s*port: 8443$' "${_cfg_file}" && sed -i.bak 's/port: 8443/port: 8470/g' "${_cfg_file}"
     grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
@@ -298,35 +310,34 @@ function iqInstall() {
     local _port2="${6:-"8071"}"
     local _installer_dir="${7:-"$HOME/.nexus_executable_cache"}"
 
-    if [ -d "nxiq-${_ver}" ]; then
-        echo "nxiq-${_ver} exists."
-        return 1
-    fi
-    local _tgz="${_installer_dir%/}/nexus-iq-server-${_ver}-bundle.tar.gz"
-    if [ ! -s "${_tgz}" ]; then
-        echo "no ${_tgz}"
-        return 1
-    fi
     if [ ! -s "${_installer_dir%/}/license/nexus.lic" ]; then
         echo "no ${_installer_dir%/}/license/nexus.lic"
         return 1
     fi
 
-    mkdir -v nxiq-${_ver} || return $?
-    cd nxiq-${_ver} || return $?
-    tar -xvf ${_tgz} || return $?
+    _prepare_install "nxiq" "${_installer_dir%/}/nexus-iq-server-${_ver}-bundle.tar.gz" || return $?
 
     local _jar_file="$(find . -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
     local _cfg_file="$(find . -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
 
-    grep -qE '^licenseFile' "${_cfg_file}" || echo "licenseFile: ${_installer_dir%/}/license/nexus.lic" >> "${_cfg_file}"
+    # TODO: belows need to use API:
+    #  curl -D- -u admin:admin123 -X PUT -H "Content-Type: application/json" -d '{"hdsUrl": "https://clm-staging.sonatype.com/"}' http://localhost:8070/api/v2/config;
+    # curl -D- -u admin:admin123 -X PUT -H "Content-Type: application/json" -d '{"baseUrl": "http://'$(hostname -f)':8070/", "forceBaseUrl":false}' http://localhost:8070/api/v2/config;
+    grep -qE '^enableDefaultPasswordWarning:' "${_cfg_file}" || echo -e "enableDefaultPasswordWarning: false\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+    grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_installer_dir%/}/license/nexus.lic\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+    grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+    grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://$(hostname -f):8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+
     grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.bak 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
     grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.bak 's/port: 8071/port: '${_port2}'/g' "${_cfg_file}"
 
     if [ -n "${_dbname}" ]; then
-        cat << EOF >> ${_cfg_file}
+        # TODO: currently assuming "database:" is the end of file
+        [ -s "${_cfg_file}" ] && cp -v -f -p ${_cfg_file} ${_cfg_file}_$$
+        cat << EOF > ${_cfg_file}
+$(sed -n '/^database:/q;p' ${_cfg_file})
 database:
   type: postgresql
   hostname: $(hostname -f)
@@ -335,15 +346,21 @@ database:
   username: ${_dbusr}
   password: ${_dbpwd}
 EOF
-        if type _postgresql_create_dbuser &>/dev/null; then
+        [ -s ${_cfg_file}_$$ ] && diff -wu ${_cfg_file}_$$ ${_cfg_file}
+
+        local _util_dir="$(dirname "$(dirname "$BASH_SOURCE")")/bash"
+        if [ -s "${_util_dir}/utils_db.sh" ]; then
+            source ${_util_dir}/utils.sh
+            source ${_util_dir}/utils_db.sh
             _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}"
         else
             echo "WARN Not creating database"
         fi
     fi
 
+    [ ! -d ./log ] && mkdir -m 777 ./log
     # iqStart
-    echo "To start: java -jar ${_jar_file} server ${_cfg_file}"
+    echo "To start: java -jar ${_jar_file} server ${_cfg_file} 2>./log/iq-server.err"
 }
 
 #iqDocker "nxiq-test" "1.125.0" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
@@ -757,9 +774,10 @@ function nuget-get() {
 
 ### Misc.   #################################
 
-# 1. Create a new raw-hosted repo (eg: raw-test-hosted)
+# 1. Create a new raw-test-hosted repo
 # 2. curl -D- -u "admin:admin123" -T<(echo "test for nxrm3Staging") -L -k "${_NEXUS_URL%/}/repository/raw-hosted/test/nxrm3Staging.txt"
-# 3. nxrm3Staging "raw-test-hosted" "" "repository=raw-hosted&name=*test%2Fnxrm3Staging.txt"    # Need "/" if NewDB so using "*"
+# 3. nxrm3Staging "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test%2Fnxrm3Staging.txt"
+# ^ Tag is optional. Using "*" in name= as name|path in NewDB starts with "/"
 # With maven2:
 #   export _NEXUS_URL="https://nxrm3-pg-k8s.standalone.localdomain/"
 #   mvn-upload "" "com.example:my-app-staging:1.0" "maven-hosted"
