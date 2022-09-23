@@ -4,7 +4,7 @@ export _SERVICE="sonatype"
 
 main() {
     # Run one-by-one
-    for n in freeipa node-nxiq node-nxrm-ha1; do
+    for n in node-freeipa node-nxiq node-nxrm-ha1; do
         bash /usr/local/bin/setup_standalone.sh -n $n &>/tmp/setup_standalone_$n.out
         sleep 1
     done
