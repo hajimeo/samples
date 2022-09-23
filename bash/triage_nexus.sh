@@ -38,9 +38,17 @@ function f_start_web() {
 
 function f_verify_install() {
     local __doc__="Compare files with the original tar installer file"
-    local _tar="$1"         # curl -O -L https://download.sonatype.com/nexus/3/nexus-3.38.0-01-unix.tar.gz
-    local _extracted="$2"   # directory which contains "nexus-3.38.0-01"
-    tar --diff -f "${_tar}" -C "${_extracted}" | grep -vE '(Uid|Gid|Mod time) differs'
+    local _ver="$1" # "3.38.1-01"
+    local _installDir="$2" # directory which contains "system" directory
+    local _downloadDir="${3:-"/tmp"}"
+    if [ ! -d "${_installDir%/}/system" ]; then
+        echo "${_installDir%/}/system does not exist.";
+        return 1
+    fi
+    if [ ! -s "${_downloadDir%/}/nexus-${_ver}-unix.tar.gz" ]; then
+        curl -o "${_downloadDir%/}/nexus-${_ver}-unix.tar.gz" -L "https://download.sonatype.com/nexus/3/nexus-${_ver}-unix.tar.gz" || return $?
+    fi
+    tar --diff -f "${_downloadDir%/}/nexus-${_ver}-unix.tar.gz" nexus-${_ver}/system -C "${_installDir%/}/system" | grep -vE '(Uid|Gid) differs'   #|Mod time
 }
 
 #find . -type f -printf '%s\n' | awk '{ c+=1;s+=$1/1024/1024 }; END { print "count:"c", size:"s" MB" }'
