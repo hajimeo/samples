@@ -165,11 +165,10 @@ function _updateNexusProps() {
 }
 
 function _prepare_install() {
-    local _type="$1"
+    local _dirname="$1"
     local _tgz="$2"
+    local _download_dir="${3:-"$HOME/.nexus_executable_cache"}"
 
-    local _dirname="${_type}_${_ver}"
-    [ -n "${_dbname}" ] && _dirname="${_dirname}_${_dbname}"
     local _extractTar=true
     if [ -d "${_dirname}" ]; then
         echo "WARN ${_dirname} exists. Will just update the settings..."
@@ -177,8 +176,11 @@ function _prepare_install() {
         _extractTar=false
     else
         if [ ! -s "${_tgz}" ]; then
-            echo "no ${_tgz}"
-            return 1
+            local _filename="$(basename "${_tgz}")"
+            local _url="https://download.sonatype.com/nexus/3/${_filename}"
+            [[ "${_filename}" =~ ^nexus-iq ]] && _url="https://download.sonatype.com/clm/server/${_filename}"
+            echo "no ${_tgz}. Downloading from ${_url} ..."
+            curl -o "${_tgz}" -L "${_url}" || return $?
         fi
         mkdir -v "${_dirname}" || return $?
     fi
@@ -195,23 +197,19 @@ function nxrmInstall() {
     local _dbusr="${3:-"${_dbname}"}"
     local _dbpwd="${4:-"${_dbusr}123"}"
     local _port="${5:-"8081"}"
-    local _installer_dir="${6:-"$HOME/.nexus_executable_cache"}"
+    local _download_dir="${6:-"$HOME/.nexus_executable_cache"}"
 
     local _os="linux"
     [ "`uname`" = "Darwin" ] && _os="mac"
-
-    if [ ! -s "${_installer_dir%/}/license/nexus.lic" ]; then
-        echo "no ${_installer_dir%/}/license/nexus.lic"
-        return 1
-    fi
-
-    _prepare_install "nxrm" "${_installer_dir%/}/nexus-${_ver}-${_os}.tgz" || return $?
+    local _dirname="nxrm_${_ver}"
+    [ -n "${_dbname}" ] && _dirname="${_dirname}_${_dbname}"
+    _prepare_install "${_dirname}" "${_download_dir%/}/nexus-${_ver}-${_os}.tgz"  "${_download_dir}" || return $?
 
     if [ ! -d ./sonatype-work/nexus3/etc/fabric ]; then
         mkdir -v -p ./sonatype-work/nexus3/etc/fabric || return $?
     fi
     local _prop="./sonatype-work/nexus3/etc/nexus.properties"
-    for _l in "nexus.licenseFile=${_installer_dir%/}/license/nexus.lic" "application-port=${_port}" "nexus.security.randompassword=false" "nexus.onboarding.enabled=false" "nexus.scripts.allowCreation=true"; do
+    for _l in "nexus.licenseFile=${_download_dir%/}/license/nexus.lic" "application-port=${_port}" "nexus.security.randompassword=false" "nexus.onboarding.enabled=false" "nexus.scripts.allowCreation=true"; do
         grep -q "^${_l%=*}" "${_prop}" 2>/dev/null || echo "${_l}" >> "${_prop}" || return $?
     done
     if [ -n "${_dbname}" ]; then
@@ -308,14 +306,11 @@ function iqInstall() {
     local _dbpwd="${4:-"${_dbusr}123"}"
     local _port="${5:-"8070"}"
     local _port2="${6:-"8071"}"
-    local _installer_dir="${7:-"$HOME/.nexus_executable_cache"}"
+    local _download_dir="${7:-"$HOME/.nexus_executable_cache"}"
 
-    if [ ! -s "${_installer_dir%/}/license/nexus.lic" ]; then
-        echo "no ${_installer_dir%/}/license/nexus.lic"
-        return 1
-    fi
-
-    _prepare_install "nxiq" "${_installer_dir%/}/nexus-iq-server-${_ver}-bundle.tar.gz" || return $?
+    local _dirname="nxiq_${_ver}"
+    [ -n "${_dbname}" ] && _dirname="${_dirname}_${_dbname}"
+    _prepare_install "${_dirname}" "${_download_dir%/}/nexus-iq-server-${_ver}-bundle.tar.gz" "${_download_dir}" || return $?
 
     local _jar_file="$(find . -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
@@ -326,7 +321,7 @@ function iqInstall() {
     #  curl -D- -u admin:admin123 -X PUT -H "Content-Type: application/json" -d '{"hdsUrl": "https://clm-staging.sonatype.com/"}' http://localhost:8070/api/v2/config;
     # curl -D- -u admin:admin123 -X PUT -H "Content-Type: application/json" -d '{"baseUrl": "http://'$(hostname -f)':8070/", "forceBaseUrl":false}' http://localhost:8070/api/v2/config;
     grep -qE '^enableDefaultPasswordWarning:' "${_cfg_file}" || echo -e "enableDefaultPasswordWarning: false\n$(cat "${_cfg_file}")" > "${_cfg_file}"
-    grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_installer_dir%/}/license/nexus.lic\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+    grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_download_dir%/}/license/nexus.lic\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://$(hostname -f):8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
 
