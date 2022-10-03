@@ -122,14 +122,19 @@ type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 ## Non default (need to install some complex software and/or develop script) alias commands ############################
 # Load/source my own searching utility functions / scripts
 #mkdir -p $HOME/IdeaProjects/samples/bash; curl -o $HOME/IdeaProjects/samples/bash/log_search.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/log_search.sh
-alias logS="pyv; source $HOME/IdeaProjects/work/bash/log_search.sh"
-alias logT="pyv; source $HOME/IdeaProjects/samples/bash/log_tests.sh"
-alias logN="logT; source $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
-alias logTest="pyv;$HOME/IdeaProjects/samples/bash/log_tests.sh"
-alias logNxrm="pyv;$HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
-alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
+if [ -d $HOME/IdeaProjects/samples/bash ]; then
+    alias logT="pyv; source $HOME/IdeaProjects/samples/bash/log_tests.sh"
+    alias logTest="pyv;$HOME/IdeaProjects/samples/bash/log_tests.sh"
+    alias setNexus="source $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh"
+    alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
+fi
+if [ -d $HOME/IdeaProjects/work/bash ]; then
+    alias logS="pyv; source $HOME/IdeaProjects/work/bash/log_search.sh"
+    alias logN="logT; source $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
+    alias logNxrm="pyv;$HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
+    alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
+fi
 #alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py" # this is for Hadoop xml files
-alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 
 # VM related
 # virt-manager remembers the connections, so normally would not need to start in this way.
