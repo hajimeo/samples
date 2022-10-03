@@ -26,7 +26,7 @@ function f_prepare() {
         apt-get update
     fi
     _install sudo curl screen jq python3.7 #netcat
-    _install python3-venv   # it's probably OK if this fails
+    _install python3.7-venv   # it's probably OK if this fails
     # Below is for pyenv and not using at this moment
     #_install make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python-openssl git
     f_install_rg
