@@ -1,0 +1,20 @@
+[
+  {
+    "name": "admin",
+    "groups": ["admins", "ipausers"],
+    "email": "admin@standalone.localdomain",
+    "common_name": "Administrator",
+    "surname": "superuser",
+    "given_name": "admin",
+    "password": "secret12"
+  },
+  {
+    "name": "samluser",
+    "groups": ["users", "ipausers"],
+    "email": "samluser@standalone.localdomain",
+    "common_name": "Saml User",
+    "surname": "user",
+    "given_name": "saml",
+    "hashed_password": "JDJiJDEwJEtOSFJSTTBEeG1VSHNaQzhMMlovbi5UaHZlY2w5VEdaSzYxN2FDTFZNeFJscUN6TWNzcnhPCg=="
+  }
+]
