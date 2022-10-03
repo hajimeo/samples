@@ -103,6 +103,7 @@ function _postgresql_configure() {
         # @see: https://github.com/darold/pgbadger#POSTGRESQL-CONFIGURATION (brew install pgbadger)
         # To log the SQL statements
         _upsert ${_postgresql_conf} "log_line_prefix" "'%m [%p-%l]: user=%u,db=%d,app=%a,client=%h '" "#log_line_prefix"
+        # ALTER system SET log_min_duration_statement = 0;SELECT pg_reload_conf();
         _upsert ${_postgresql_conf} "log_min_duration_statement" "0" "#log_min_duration_statement"
         _upsert ${_postgresql_conf} "log_checkpoints" "on" "#log_checkpoints"
         _upsert ${_postgresql_conf} "log_autovacuum_min_duration" "0" "#log_autovacuum_min_duration"
