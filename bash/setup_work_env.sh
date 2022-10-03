@@ -39,7 +39,7 @@ function f_prepare() {
         # For python 2.7 https://bootstrap.pypa.io/pip/2.7/get-pip.py
         curl -s -f "https://bootstrap.pypa.io/get-pip.py" -o /tmp/get-pip.py || return $?
         # @see https://github.com/pypa/get-pip/issues/43
-        _install python3-distutils
+        _install python3.7-distutils
         sudo python3.7 /tmp/get-pip.py || return $?
     fi
     # NOTE: python 3.7 may not have virtualenv but venv
