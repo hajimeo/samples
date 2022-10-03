@@ -15,6 +15,9 @@
     "common_name": "Saml User",
     "surname": "user",
     "given_name": "saml",
-    "hashed_password": "JDJiJDEwJEtOSFJSTTBEeG1VSHNaQzhMMlovbi5UaHZlY2w5VEdaSzYxN2FDTFZNeFJscUN6TWNzcnhPCg=="
+    "password": "samluser",
+    "username": "samluser",
+    "firstName": "Saml",
+    "lastName": "User"
   }
 ]
