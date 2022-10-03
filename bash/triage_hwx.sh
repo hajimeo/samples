@@ -119,6 +119,7 @@ function f_check_system() {
     # Misc.
     #sysctl kernel.pid_max fs.file-max fs.file-nr # max is OS limit (Too many open files)
     sysctl -a &> ${_work_dir%/}/sysctl.out
+    sysctl -a | grep fips &> ${_work_dir%/}/sysctl_rhel_fips.out
     #sar -A &> ${_work_dir%/}/sar_A.out
     env &> ${_work_dir%/}/env.out  # to check PATH, LD_LIBRARY_PATH, JAVA_HOME, CLASSPATH
     wait
