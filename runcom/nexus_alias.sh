@@ -46,7 +46,7 @@ function iqCli() {
     local _iq_app_id="${2:-${_IQ_APP_ID:-"sandbox-application"}}"
     local _iq_stage="${3:-${_IQ_STAGE:-"build"}}" #develop|build|stage-release|release|operate
     local _iq_url="${4:-${_IQ_URL}}"
-    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.140.0-01"}}"
+    local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.144.0-05"}}"
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"    # -D fileIncludes="**/package-lock.json"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
 
@@ -157,7 +157,7 @@ function _updateNexusProps() {
     grep -qE '^\s*nexus.elasticsearch.autoRebuild' "${_cfg_file}" || echo "nexus.elasticsearch.autoRebuild=false" >> "${_cfg_file}"
     # ${nexus.h2.httpListenerPort:-8082} jdbc:h2:file:./nexus (no username)
     grep -qE '^\s*nexus.h2.httpListenerEnabled' "${_cfg_file}" || echo "nexus.h2.httpListenerEnabled=true" >> "${_cfg_file}"
-    # Binary (or HA-C) connect remote:hostname/component admin admin
+    # Binary (or HA-C) for 'connect remote:hostname/component admin admin'
     grep -qE '^\s*nexus.orient.binaryListenerEnabled' "${_cfg_file}" || echo "nexus.orient.binaryListenerEnabled=true" >> "${_cfg_file}"
     # For OrientDB studio (hostname:2480/studio/index.html)
     grep -qE '^\s*nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
@@ -191,7 +191,7 @@ function _prepare_install() {
     fi
 }
 
-function nxrmInstall() {
+function nxrm3Install() {
     local _ver="$1" #3.40.1-01
     local _dbname="$2"  # If h2, use H2
     local _dbusr="${3:-"${_dbname}"}"
@@ -235,6 +235,7 @@ EOF
 
     #nxrmStart
     echo "To start: ./nexus-${_ver}/bin/nexus run"
+    type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
 }
 
 #nxrmDocker "nxrm3-test" "" "8181" "8543" #"--read-only -v /tmp/nxrm3-test:/tmp" or --tmpfs /tmp:noexec
@@ -281,9 +282,7 @@ function iqStart() {
     [ -z "${_license}" ] && [ -s "${HOME%/}/.nexus_executable_cache/nexus.lic" ] && _license="${HOME%/}/.nexus_executable_cache/nexus.lic"
     [ -s "${_license}" ] && _java_opts="${_java_opts} -Ddw.licenseFile=${_license}"
 
-    # TODO: belows need to use API:
-    #  curl -D- -u admin:admin123 -X PUT -H "Content-Type: application/json" -d '{"hdsUrl": "https://clm-staging.sonatype.com/"}' http://localhost:8070/api/v2/config;
-    # curl -D- -u admin:admin123 -X PUT -H "Content-Type: application/json" -d '{"baseUrl": "http://'$(hostname -f)':8070/", "forceBaseUrl":false}' http://localhost:8070/api/v2/config;
+    # NOTE: From v138, most of configs need to use API: https://help.sonatype.com/iqserver/automating/rest-apis/configuration-rest-api---v2
     grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://$(hostname -f):8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^enableDefaultPasswordWarning:' "${_cfg_file}" || echo -e "enableDefaultPasswordWarning: false\n$(cat "${_cfg_file}")" > "${_cfg_file}"
@@ -298,8 +297,24 @@ function iqStart() {
     cd -
 }
 
+function _iqConfigAPI() {
+    local _d="$1"
+    local _iq_url="$2"
+    local _cmd="curl -D- -u admin:admin123 -X PUT -H \"Content-Type: application/json\" \"${_iq_url%/}/api/v2/config\""
+    echo "${_cmd} -d '${_d}'"
+    eval "${_cmd} -d '${_d}'" || return $?
+}
+
+function iqConfigUpdate() {
+    local _iq_url="$1"
+    _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
+    _iqConfigAPI '{"hdsUrl":"https://clm-staging.sonatype.com/"}' "${_iq_url}"
+    _iqConfigAPI '{"baseUrl":"https://clm-staging.sonatype.com/","forceBaseUrl":false}' "${_iq_url}"
+    _iqConfigAPI '{"enableDefaultPasswordWarning":false}' "${_iq_url}"
+    echo "May want to run 'f_api_nxiq_scm_setup _token' as well"
+}
+
 function iqInstall() {
-#nexus-iq-server-1.99.0-01-bundle.tar.gz
     local _ver="$1" #1.142.0-02
     local _dbname="$2"
     local _dbusr="${3:-"${_dbname}"}"
@@ -317,14 +332,10 @@ function iqInstall() {
     local _cfg_file="$(find . -maxdepth 2 -type f -name 'config.yml' 2>/dev/null | sort | tail -n1)"
     [ -z "${_cfg_file}" ] && return 12
 
-    # TODO: belows need to use API:
-    #  curl -D- -u admin:admin123 -X PUT -H "Content-Type: application/json" -d '{"hdsUrl": "https://clm-staging.sonatype.com/"}' http://localhost:8070/api/v2/config;
-    # curl -D- -u admin:admin123 -X PUT -H "Content-Type: application/json" -d '{"baseUrl": "http://'$(hostname -f)':8070/", "forceBaseUrl":false}' http://localhost:8070/api/v2/config;
-    grep -qE '^enableDefaultPasswordWarning:' "${_cfg_file}" || echo -e "enableDefaultPasswordWarning: false\n$(cat "${_cfg_file}")" > "${_cfg_file}"
-    grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_download_dir%/}/license/nexus.lic\n$(cat "${_cfg_file}")" > "${_cfg_file}"
+    # NOTE: From v138, most of configs need to use API: https://help.sonatype.com/iqserver/automating/rest-apis/configuration-rest-api---v2
+    #       So changing minimum and use iqStart.
     grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
-    grep -qE '^baseUrl:' "${_cfg_file}" || echo -e "baseUrl: http://$(hostname -f):8070/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
-
+    grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_download_dir%/}/license/nexus.lic\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.bak 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
     grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.bak 's/port: 8071/port: '${_port2}'/g' "${_cfg_file}"
 
@@ -354,8 +365,8 @@ EOF
     fi
 
     [ ! -d ./log ] && mkdir -m 777 ./log
-    # iqStart
     echo "To start: java -jar ${_jar_file} server ${_cfg_file} 2>./log/iq-server.err"
+    type iqStart &>/dev/null && echo "      Or: iqStart"
 }
 
 #iqDocker "nxiq-test" "1.125.0" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
