@@ -49,10 +49,10 @@ Convert current time or string date to Unix timestamp
     1588291800.0000045
 Get request started time by concatenating today and the time string from 'date' column, then convert to Unix-timestamp
     TIME(CAST((julianday(DATE('now')||' '||substr(date,13,8))  - 2440587.5) * 86400.0 - elapsedTime/1000 AS INT), 'unixepoch') as started_time
-  or NOTE: (4*60*60) is for the timezone offst -0400
+  or, NOTE: (4*60*60) is for the timezone offst -0400
     TIME(UDF_TIMESTAMP(date) - CAST(elapsedTime/1000 AS INT) - (4*60*60), 'unixepoch') as started_time
-  or use UDF:
-    udf_started_time(date, elapsedTime) as started (output is YYYY-MM-DD hh:mm:ss)
+  or use UDF, output is YYYY-MM-DD hh:mm:ss:
+    udf_started_time(date, elapsedTime) as started
 Kind of joining two tables with UDF_REGEX:
     AND UDF_REGEX('.+ /repository/([^/]+)', t_request.requestURL, 1) IN (SELECT repository_name FROM t_db_repo where t_db_repo.`attributes.storage.blobStoreName` = 'default')
 """
@@ -825,6 +825,7 @@ def udf_timestamp(date_time):
     return int(parser.parse(date_time).timestamp())
 
 
+RE_STARTED = re.compile('(.+) *([-+]\d{4})$')
 def udf_started_time(date_time, elapsed_ms):
     """
     Doing below calculation:
@@ -835,10 +836,11 @@ def udf_started_time(date_time, elapsed_ms):
     :param elapsed_ms: Integer (elapsed time in millisecond)
     :return:          Integer of Unix Timestamp
     """
+    global RE_STARTED
     ts_sec = udf_timestamp(date_time)
     elapsed_ms = int(elapsed_ms)
     tz_str = "+0000"
-    matches = re.search('(.+) *([-+]\d{4})$', date_time)
+    matches = RE_STARTED.search(date_time)
     if bool(matches):
         tz_str = matches.group(2)
     # somehow converting timestamp to date string with timezone offset is very hard in python...
@@ -2016,6 +2018,8 @@ def logs2table(filename, tablename=None, conn=None,
             for k, v in col_names.iteritems():
                 if col_def_str != "":
                     col_def_str += ", "
+                if v == "":
+                    v = "TEXT"
                 col_def_str += "%s %s" % (k, v)
         else:
             for v in col_names:
@@ -2024,6 +2028,8 @@ def logs2table(filename, tablename=None, conn=None,
                 # the column name 'jsonstr' is currently not in use.
                 if v == 'jsonstr':
                     col_def_str += "%s json" % (v)
+                elif v in ('bytesSent', 'elapsedTime'): # Not elegant but for now, for request.log
+                    col_def_str += "%s INTEGER" % (v)
                 elif v == 'size' and size_regex == _SIZE_REGEX:
                     col_def_str += "%s INTEGER" % (v)
                 elif v == 'time' and time_regex == _TIME_REGEX:
