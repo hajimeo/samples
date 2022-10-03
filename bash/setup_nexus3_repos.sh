@@ -727,8 +727,9 @@ function f_create_s3_blobstore() {
     local _ak="${5:-"${AWS_ACCESS_KEY_ID}"}"
     local _sk="${6:-"${AWS_SECRET_ACCESS_KEY}"}"
     # NOTE 3.27 has ',"state":""'
+    # TODO: replace with /v1/blobstores/s3 POST
     if ! f_apiS '{"action":"coreui_Blobstore","method":"create","data":[{"type":"S3","name":"'${_blob_name}'","isQuotaEnabled":false,"property_region":"'${_region}'","property_bucket":"'${_bucket}'","property_prefix":"'${_prefix}'","property_expiration":1,"authEnabled":true,"property_accessKeyId":"'${_ak}'","property_secretAccessKey":"'${_sk}'","property_assumeRole":"","property_sessionToken":"","encryptionSettingsEnabled":false,"advancedConnectionSettingsEnabled":false,"attributes":{"s3":{"region":"'${_region}'","bucket":"'${_bucket}'","prefix":"'${_prefix}'","expiration":"2","accessKeyId":"'${_ak}'","secretAccessKey":"'${_sk}'","assumeRole":"","sessionToken":""}}}],"type":"rpc"}' > ${_TMP%/}/f_apiS_last.out; then
-        _log "ERROR" "Blobstore ${_blob_name} does not exist."
+        _log "ERROR" "Failed to create blobstore: ${_blob_name} ."
         _log "ERROR" "$(cat ${_TMP%/}/f_apiS_last.out)"
         return 1
     fi
@@ -743,6 +744,25 @@ aws s3api list-objects --bucket ${_bucket} --query \"Contents[?contains(Key, 'f0
 aws s3api get-object-tagging --bucket ${_bucket} --key \"${_prefix}/content/vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties\"
 aws s3 cp s3://${_bucket}/${_prefix}/content/vol-42/chap-31/f062f002-88f0-4b53-aeca-7324e9609329.properties -
 "
+}
+
+function f_create_azure_blobstore() {
+    #https://learn.microsoft.com/en-us/azure/active-directory/develop/howto-create-service-principal-portal#get-tenant-and-app-id-values-for-signing-in
+    local _blob_name="${1:-"az-test"}"
+    local _container_name="${2:-"$(hostname -s)_${_blob_name}"}"
+    local _an="${3:-"${AZURE_ACCOUNT_NAME}"}"
+    local _ak="${4:-"${AZURE_ACCOUNT_KEY}"}"
+    # nexus.azure.server=<your.desired.blob.storage.server>
+    if ! f_api "/service/rest/v1/blobstores/azure" '{"name":"'${_blob_name}'","bucketConfiguration":{"authentication":{"authenticationMethod":"ACCOUNTKEY","accountKey":"'${_ak}'"},"accountName":"'${_an}'","containerName":"'${_container_name}'"}}' > ${_TMP%/}/f_api_last.out; then
+        _log "ERROR" "Failed to create blobstore: ${_blob_name} ."
+        _log "ERROR" "$(cat ${_TMP%/}/f_api_last.out)"
+        return 1
+    fi
+    _log "DEBUG" "$(cat ${_TMP%/}/f_api_last.out)"
+    if ! _is_repo_available "raw-az-hosted"; then
+        _log "INFO" "Creating raw-az-hosted ..."
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"raw-az-hosted","format":"","type":"","url":"","online":true,"recipe":"raw-hosted"}],"type":"rpc"}' || return $?
+    fi
 }
 
 function f_iq_quarantine() {
