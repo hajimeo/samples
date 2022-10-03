@@ -223,10 +223,10 @@ function f_setup_python() {
     if [[ ! "${_no_venv}" =~ ^(y|Y) ]]; then
         deactivate &>/dev/null
         # NOTE: when python version is changed, need to switch to venv
-        echo "Activating virtualenv: $HOME/.pyvenv (https://virtualenv.pypa.io/en/latest/user_guide.html) ..."
-        if ! python3.7 -m virtualenv -p python3.7 $HOME/.pyvenv; then
-            python3.7 -m venv $HOME/.pyvenv || return $?
-        fi
+        #echo "Activating virtualenv: ${HOME%/}/.pyvenv (https://virtualenv.pypa.io/en/latest/user_guide.html) ..."
+        #if ! python3.7 -m virtualenv -p python3.7 $HOME/.pyvenv; then
+            python3.7 -m venv ${HOME%/}/.pyvenv || return $?
+        #fi
         source $HOME/.pyvenv/bin/activate || return $?
         # NOTE: Currently not using pyenv (below) as it makes shell slower
         #pyenv deactivate &>/dev/null    # Or pyenv local system
