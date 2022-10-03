@@ -310,12 +310,11 @@ function f_find_open_bytes_files() {
 }
 
 function f_check_filesystems() {
-    local __doc__="Elastic Search checks all file systems with getFileStores() -> getFileStore() and if a FS is slow or hang, Nexus hangs"
-    # NOTE: Mac doesn't have df --output
-    df --output=target | grep -v '^Mounted on' | while read -r _m
-    do
+    local __doc__="Elastic Search checks all file systems with sun.nio.fs.UnixNativeDispatcher.stat(), and if a FS is slow or hang, Nexus hangs"
+    # NOTE: above would not work if the mount point path contains space (not using "df" or "mount" as those execute stat
+    cat /etc/mtab | grep -E ' /[^ ]+' -o | while read -r _m; do
         echo "# Checking ${_m} ..."
-        timeout 3 stat "${_m}" || echo "ERROR: 'stat ${_m}' failed" >&2;
+        timeout 3 stat "${_m}" >/dev/null || echo "ERROR: 'stat ${_m}' failed" >&2;
     done
 }
 
