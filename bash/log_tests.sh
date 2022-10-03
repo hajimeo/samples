@@ -48,10 +48,12 @@ if [ -n "${_LOG_DATE}" ]; then
     _NXRM_LOG="nexus-${_LOG_DATE}.log.gz"
     _NXIQ_LOG="clm-server-${_LOG_DATE}.log.gz"
     _REQUEST_LOG="request-${_LOG_DATE}.log.gz"
+    _AUDIT_LOG="audit-${_LOG_DATE}.log.gz"
 else
     _NXRM_LOG="${_NXRM_LOG:-"nexus.log"}"
     _NXIQ_LOG="${_NXIQ_LOG:-"clm-server.log"}"
     _REQUEST_LOG="${_REQUEST_LOG:-"request.log"}"
+    _AUDIT_LOG="${_AUDIT_LOG:-"audit.log"}"
 fi
 : ${_LOG_THRESHOLD_BYTES:=268435456}    # 256MB, usually takes 7s
 : ${_FILTERED_DATA_DIR:="./_filtered"}
@@ -368,9 +370,9 @@ function r_configs() {
     fi
 }
 function r_audits() {
-    _head "AUDIT" "Top 20 'domain','type' from audit.log"
+    _head "AUDIT" "Top 20 'domain','type' from ${_AUDIT_LOG}"
     echo '```'
-    _rg --no-filename '"domain":"([^"]+)", *"type":"([^"]+)"' -o -r '$1,$2' -g audit.log | sort | uniq -c | sort -nr | head -n20
+    _rg --no-filename '"domain":"([^"]+)", *"type":"([^"]+)"' -o -r '$1,$2' -g ${_AUDIT_LOG} | sort | uniq -c | sort -nr | head -n20
     echo "NOTE: taskblockedevent would mean another task is running (dupe tasks?). repositorymetadataupdatedevent would mean quarantine."
     echo '```'
 }
@@ -467,6 +469,9 @@ function t_mounts() {
 }
 function t_oome() {
     _test_template "$(_rg -c 'OutOfMemoryError' -g "${_LOG_GLOB}" -g "!jvm.log")" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
+}
+function t_fips() {
+    _test_template "$(_rg -m1 '(KeyStore must be from provider SunPKCS11-NSS-FIPS|PBE AlgorithmParameters not available)' -g "${_LOG_GLOB}")" "WARN" "FIPS mode might be detected from ${_LOG_GLOB}" "-Dcom.redhat.fips=false"
 }
 function t_errors() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/f_topErrors.out" || return
