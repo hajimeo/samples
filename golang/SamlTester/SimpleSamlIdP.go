@@ -1,6 +1,14 @@
-// Original: https://github.com/d-rk/mini-saml-idp
-// export IDP_KEY=~/IdeaProjects/samples/misc/standalone.localdomain.key IDP_CERT=~/IdeaProjects/samples/misc/standalone.localdomain.crt USER_JSON=./samlIdp-simple.json IDP_BASE_URL="http://local.standalone.localdomain:2080/" SERVICE_METADATA_URL="./nxrm3-local.xml"
-// IdP metadata: ${IDP_BASE_URL%/}/metadata
+/**
+Original: https://github.com/d-rk/mini-saml-idp
+
+Example env variables:
+	export IDP_KEY=../../misc/standalone.localdomain.key IDP_CERT=../../misc/standalone.localdomain.crt USER_JSON=./samlIdp-simple.json IDP_BASE_URL="http://localhost:2080/" SERVICE_METADATA_URL="./nxrm3-metadata.xml"
+
+To get IdP metadata:
+	${IDP_BASE_URL%/}/metadata
+
+go build -o ../../misc/simplesamlidp_$(uname) ./SimpleSamlIdP.go && env GOOS=linux GOARCH=amd64 go build -o ../../misc/simplesamlidp_Linux ./SimpleSamlIdP.go
+*/
 
 package main
 
@@ -67,6 +75,8 @@ func main() {
 	idpBaseUrlString := os.Getenv("IDP_BASE_URL")
 	serviceUrlOrXml := os.Getenv("SERVICE_METADATA_URL")
 
+	// If URL ends with "/", many places won't work.
+	idpBaseUrlString = strings.TrimRight(idpBaseUrlString, "/")
 	idpBaseURL, err := url.Parse(idpBaseUrlString)
 	if err != nil {
 		logr.Fatalf("cannot parse base URL: %v", err)
