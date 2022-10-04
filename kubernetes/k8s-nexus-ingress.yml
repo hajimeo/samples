@@ -1,14 +1,23 @@
 # kubectl create secret tls nexus-tls -n sonatype --key ~/IdeaProjects/samples/misc/standalone.localdomain.key --cert ~/IdeaProjects/samples/misc/standalone.localdomain.crt
 # kubectl apply -n sonatype -f ./k8s-nexus-ingress.yml
-# To check: kubectl exec -n ingress nginx-ingress-microk8s-controller-gd98r cat nginx.conf
+# To check: kubectl exec -n ingress nginx-ingress-microk8s-controller-tlg6c cat /etc/nginx.conf
 
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+  name: nexus-ingress
+  annotations:
+    ingressclass.kubernetes.io/is-default-class: "true"
+spec:
+  controller: k8s.io/ingress-nginx
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: nexus-ingress
   annotations:
-    # TODO: may not be working
-    #ingressclass.kubernetes.io/is-default-class: "true"
     kubernetes.io/ingress.class: "nginx"
     nginx.ingress.kubernetes.io/proxy-body-size: "1023m"
     #nginx.ingress.kubernetes.io/client-max-body-size: "1022m"
@@ -22,6 +31,7 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
     #nginx.ingress.kubernetes.io/rewrite-target: /repository/docker-group/v$1
 spec:
+  ingressClassName: nexus-ingress
   tls:
     - hosts:
         - nxrm3-pg-k8s.standalone.localdomain
