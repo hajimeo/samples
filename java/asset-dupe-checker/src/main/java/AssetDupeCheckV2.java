@@ -679,7 +679,7 @@ public class AssetDupeCheckV2
             log("Rebuilt indexName: " + INDEX_NAME);
           }
         }
-        if (IS_REIMPORTING) {
+        if (IS_REIMPORTING || IS_EXPORTING) {
           exportImportDb(db);
         }
 
