@@ -469,7 +469,8 @@ public class Main
       System.err.print("OK");
       return true;
     }
-    if (input.toLowerCase().startsWith("describe ") || input.toLowerCase().startsWith("desc ") || input.toLowerCase().startsWith("info ")) {
+    if (input.toLowerCase().startsWith("describe ") || input.toLowerCase().startsWith("desc ") ||
+        input.toLowerCase().startsWith("info ")) {
       Matcher matcher = describeNamePtn.matcher(input);
       if (matcher.find()) {
         String descType = matcher.group(2);
@@ -744,14 +745,7 @@ public class Main
       Orient.instance().getRecordConflictStrategy()
           .registerImplementation("ConflictHook", new OVersionRecordConflictStrategy());
 
-      try {
-        db.open(dbUser, dbPwd);
-      }
-      catch (NullPointerException e) {
-        log("NullPointerException happened (and ignoring)");
-        e.printStackTrace();
-      }
-
+      db.open(dbUser, dbPwd);
       System.err.println("# Type 'exit' or Ctrl+D to exit. Ctrl+C to cancel current query");
       readLineLoop(db, setupReader());
     }
