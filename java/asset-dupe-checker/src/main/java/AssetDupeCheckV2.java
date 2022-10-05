@@ -71,6 +71,8 @@ public class AssetDupeCheckV2
 
   private static String INDEX_NAME = "";
 
+  private static String[] DROP_TABLES;
+
   private static String INDEX_FIELDS = "";
 
   private static final List<String> SUPPORTED_INDEX_NAMES =
@@ -85,6 +87,8 @@ public class AssetDupeCheckV2
   private static boolean IS_REBUILDING = false;
 
   private static boolean IS_REIMPORTING = false;
+
+  private static boolean IS_EXPORTING = false;
 
   private static boolean IS_NO_INDEX_CHECK = false;
 
@@ -102,10 +106,12 @@ public class AssetDupeCheckV2
     System.out.println("  -Ddebug=true                        # Verbose outputs");
     System.out.println("Advanced properties (use those carefully):");
     System.out.println("  -DrebuildIndex=true                 # Rebuild index (eg:asset_bucket_component_name_idx)");
+    System.out.println("  -DexportOnly=true                   # DB Export to current (or extractDir)");
     System.out.println("  -DexportImport=true                 # DB Export to current (or extractDir), then import");
     System.out.println("  -DnoCheckIndex=true                 # Does not check index...");
     System.out.println("  -DindexName=component_bucket_group_name_version_idx");
     System.out.println("  -DtableName=component               # NOTE: be careful of repairing component");
+    System.out.println("  -DdropTables=deleted_blob_index     # Only for export/import");
   }
 
   private static String getCurrentLocalDateTimeStamp() {
@@ -253,6 +259,18 @@ public class AssetDupeCheckV2
       log("[WARN] Ignoring TRUNCATE browse_node exception: " + ioe.getMessage());
     }
 
+    if (DROP_TABLES != null && DROP_TABLES.length > 0) {
+      for (int i = 0; i < DROP_TABLES.length; i++) {
+        try {
+          log("[WARN] Dropping " + DROP_TABLES[i] + " for export/import");
+          db.getMetadata().getSchema().dropClass(DROP_TABLES[i]);
+        }
+        catch (Exception ex) {
+          log("[WARN] Ignoring DROP CLASS " + DROP_TABLES[i] + " exception: " + ex.getMessage());
+        }
+      }
+    }
+
     String exportName = "component-export";
     String exportTo = "." + File.separatorChar + exportName;
     if (!EXTRACT_DIR.isEmpty()) {
@@ -260,8 +278,12 @@ public class AssetDupeCheckV2
     }
     try {
       exportDb(db, exportTo);
-      // TODO: it seems to work without dropping, but should I drop?
-      importDb(db, exportTo);
+      if(IS_EXPORTING) {
+        log("[INFO] Export Only is set so not importing.");
+      } else {
+        // TODO: it seems to work without dropping, but should I drop?
+        importDb(db, exportTo);
+      }
     }
     catch (IOException ioe) {
       log("[ERROR] " + ioe.getMessage());
@@ -574,6 +596,8 @@ public class AssetDupeCheckV2
     IS_DEBUG = Boolean.getBoolean("debug");
     IS_REBUILDING = Boolean.getBoolean("rebuildIndex");
     debug("rebuildIndex: " + IS_REBUILDING);
+    IS_EXPORTING = Boolean.getBoolean("exportOnly");
+    debug("exportOnly: " + IS_EXPORTING);
     IS_REIMPORTING = Boolean.getBoolean("exportImport");
     debug("exportImport: " + IS_REIMPORTING);
     if (IS_REIMPORTING) {
@@ -589,6 +613,9 @@ public class AssetDupeCheckV2
     debug("tableName: " + TABLE_NAME);
     INDEX_NAME = System.getProperty("indexName", "asset_bucket_component_name_idx");
     debug("indexName: " + INDEX_NAME);
+    String dropTables = System.getProperty("dropTables", "");
+    debug("dropTables: " + dropTables);
+    DROP_TABLES = dropTables.split(",");
     EXTRACT_DIR = System.getProperty("extractDir", "");
     debug("extDir: " + EXTRACT_DIR);
     LOG_PATH = System.getProperty("logPath", "./asset-dupe-checker-v2.log");
