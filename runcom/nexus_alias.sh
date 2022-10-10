@@ -164,6 +164,16 @@ function _updateNexusProps() {
     grep -qE '^\s*nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
 }
 
+function _updateNexusDb() {
+    local _config_db="$1"
+    if [ ! -s "/var/tmp/share/java/orient-console.jar" ]; then
+        echo "/var/tmp/share/java/orient-console.jar is required"
+        return 1
+    fi
+    # Disable Firewall capabilities as it makes Nexus startup extreamly slower
+    echo "update capability set enabled = false where type like 'firewall%';update capability set enabled = false where type like 'clm';" | java -jar "/var/tmp/share/java/orient-console.jar" "${_config_db}"
+}
+
 function _prepare_install() {
     local _dirname="$1"
     local _tgz="$2"
@@ -187,7 +197,7 @@ function _prepare_install() {
 
     cd "${_dirname}" || return $?
     if ${_extractTar}; then
-        tar -xvf ${_tgz} || return $?
+        tar -xf ${_tgz} || return $?
     fi
 }
 
