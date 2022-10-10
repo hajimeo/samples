@@ -20,6 +20,9 @@ export IDP_KEY=./myidp.key IDP_CERT=./myidp.crt USER_JSON=./simple-saml-idp.json
 ```
 ### Set up SAML on your Service
 To get IdP's metadata, access "${IDP_BASE_URL%/}/metadata"
+```
+curl "${IDP_BASE_URL%/}/metadata"
+```
 If your Service is NXRM3, just paste above metadata XML and save (and add SAML Realm).
 Then download Service's metadata into SERVICE_METADATA_URL:
 ```
