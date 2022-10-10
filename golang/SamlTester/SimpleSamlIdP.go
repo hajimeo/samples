@@ -46,7 +46,12 @@ var key = func() crypto.PrivateKey {
 	b, _ := pem.Decode(keyData)
 	k, err := x509.ParsePKCS1PrivateKey(b.Bytes)
 	if err != nil {
-		logger.DefaultLogger.Fatalf("parsing idp key: %s", err)
+		// try one more time
+		k2, err2 := x509.ParsePKCS8PrivateKey(b.Bytes)
+		if err2 != nil {
+			logger.DefaultLogger.Fatalf("parsing idp key: %s / %s", err, err2)
+		}
+		return k2
 	}
 	return k
 }()
