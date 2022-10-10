@@ -125,7 +125,7 @@ type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 if [ -d $HOME/IdeaProjects/samples/bash ]; then
     alias logT="pyv; source $HOME/IdeaProjects/samples/bash/log_tests.sh"
     alias logTest="pyv;$HOME/IdeaProjects/samples/bash/log_tests.sh"
-    alias setNexus="source $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh"
+    alias setupNexus3="source $HOME/IdeaProjects/samples/bash/setup_nexus3_repos.sh"
     alias ss="bash $HOME/IdeaProjects/samples/bash/setup_standalone.sh"
 fi
 if [ -d $HOME/IdeaProjects/work/bash ]; then
