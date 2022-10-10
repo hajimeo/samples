@@ -1064,7 +1064,7 @@ function f_microk8s() {
     microk8s kubectl -n ingress create secret tls standalone.localdomain --key /var/tmp/share/cert/standalone.localdomain.key --cert /var/tmp/share/cert/standalone.localdomain.crt
     microk8s kubectl edit -n ingress daemonsets nginx-ingress-microk8s-controller
     # then add below line in the containers.args:
-    #        - '--default-ssl-certificate=ingress/standalone.localdomain'
+    #        - --default-ssl-certificate=ingress/standalone.localdomain
     "
     microk8s.start || return $?
 
