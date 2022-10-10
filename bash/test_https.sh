@@ -374,7 +374,7 @@ function get_cert_from_https() {
     fi
 }
 
-# for SAML X509Certificate
+# for X509Certificate. basically 'base64 -d' or 'base64 -D' (Mac)
 function gen_cert_from_str() {
     local _str="$1"
     local _filename="$2"
