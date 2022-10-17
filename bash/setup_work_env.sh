@@ -46,12 +46,8 @@ function f_prepare() {
     # NOTE: python 3.7 may not have virtualenv but venv
     #python3.7 -m pip install -U virtualenv venv
 
-    # For bar_chart.py  TODO: this works only with python2, hence no pip3 (and not in virtualenv), and eventually will stop working
-    if which python2 &>/dev/null; then
-        sudo -i python2 -m pip install -U data_hacks
-    else
-        sudo -i pip install -U data_hacks
-    fi # it's OK if this fails
+    #sudo -i pip2 install -U data_hacks
+    curl -f -o /usr/local/bin/bar_chart.py -L https://raw.githubusercontent.com/bitly/data_hacks/master/data_hacks/bar_chart.py && chmod a+x /usr/local/bin/bar_chart.py
 
     if grep -qw docker /etc/group; then
         sudo usermod -a -G docker $USER && _log "NOTE" "Please re-login as user group has been changed."
@@ -243,7 +239,7 @@ function f_setup_python() {
     #python -m pip list -o --format=freeze ${_i_opt} | cut -d'=' -f1 | xargs python -m pip install -U
 
     # My favourite/essential python packages (except jupyter and pandas related)
-    python3.7 -m pip install -U ${_i_opt} lxml xmltodict pyyaml markdown memory_profiler
+    python3.7 -m pip install -U ${_i_opt} wheel lxml xmltodict pyyaml markdown memory_profiler
     #   %load_ext memory_profiler
     #   %mprun -f al.etl al.analyse_logs()
     python3.7 -m pip install -U ${_i_opt} pyjq 2>/dev/null # TODO: as of this typing, this fails against python 3.8 (3.7 looks OK)
