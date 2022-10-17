@@ -6,6 +6,7 @@
 #       Using 'sudo' for pip3 and others
 #
 # curl -O "https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_work_env.sh"
+# sudo bash ./setup_work_env.sh
 #
 
 _DOWNLOAD_FROM_BASE="https://raw.githubusercontent.com/hajimeo/samples/master/"
@@ -444,7 +445,7 @@ function _symlink_or_download() {
 
 main() {
     sudo echo "Starting setup ..."
-    #f_prepare
+    f_prepare
     _log "INFO" "Running f_setup_misc ..."
     f_setup_misc
     echo "Exit code $?"
