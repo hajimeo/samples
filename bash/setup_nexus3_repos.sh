@@ -321,7 +321,7 @@ function f_populate_docker_proxy() {
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_cmd}")" || return $?
 
     for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_img_name}"); do
-        _log "WARN" "Deleting ${_imn} (wait for 5 secs)";sleep 5
+        _log "WARN" "Deleting ${_imn} (waiting for 3 secs)";sleep 3
         if ! ${_cmd} rmi ${_imn}; then
             _log "WARN" "Deleting ${_imn} failed but keep continuing..."
         fi
@@ -332,11 +332,12 @@ function f_populate_docker_proxy() {
 #ssh -2CNnqTxfg -L18182:localhost:18182 node3250    #ps aux | grep 2CNnqTxfg
 #f_populate_docker_hosted "" "localhost:18182"
 function f_populate_docker_hosted() {
-    local _base_img="${1:-"alpine:3.7"}"
+    local _base_img="${1:-"alpine:3.7"}"    # dh1.standalone.localdomain:5000/alpine:3.7
     local _host_port="${2:-"${r_DOCKER_PROXY:-"${r_DOCKER_GROUP:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"}"}"
     local _backup_ports="${3-"18182 18181"}"
     local _cmd="${4-"${r_DOCKER_CMD}"}"
     local _tag_to="${5:-"${_TAG_TO}"}"
+    local _num_layers="${6:-"${_NUM_LAYERS:-"1"}"}"
     [ -z "${_cmd}" ] && _cmd="$(_docker_cmd)"
     [ -z "${_cmd}" ] && return 0    # If no docker command, just exist
     _host_port="$(_docker_login "${_host_port}" "${_backup_ports}" "${r_ADMIN_USER:-"${_ADMIN_USER}"}" "${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_cmd}")" || return $?
@@ -346,7 +347,7 @@ function f_populate_docker_hosted() {
     fi
 
     for _imn in $(${_cmd} images --format "{{.Repository}}" | grep -w "${_tag_to}"); do
-        _log "WARN" "Deleting ${_imn} (wait for 5 secs)";sleep 5
+        _log "WARN" "Deleting ${_imn} (waiting for 3 secs)";sleep 3
         if ! ${_cmd} rmi ${_imn}; then
             _log "WARN" "Deleting ${_imn} failed but keep continuing..."
         fi
@@ -354,14 +355,19 @@ function f_populate_docker_hosted() {
 
     # NOTE: docker build -f does not work (bug?)
     local _cwd="$(pwd)"
-    local _build_dir="${_TMP%/}/${FUNCNAME}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"
+    local _build_dir="${HOME%/}/${FUNCNAME}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"  # /tmp or /var/tmp fails on Ubuntu
     if [ ! -d "${_build_dir%/}" ]; then
-        mkdir -p ${_build_dir} || return $?
+        mkdir -v -p ${_build_dir} || return $?
     fi
     cd ${_build_dir} || return $?
-    # NOTE: Trying to create a layer, but haven't confirmed if this creates.
-    echo -e "FROM ${_base_img}\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > /var/tmp/f_populate_docker_hosted.out" > Dockerfile && ${_cmd} build --rm -t ${_tag_to} .
-    cd "${_cwd}"    # should check the previous return code?
+    # NOTE: Trying to create a layer. NOTE: 'CMD' doesn't create new layers.
+    local _build_str="FROM ${_base_img}"    #\nRUN apk add --no-cache mysql-client
+    for i in $(seq 1 ${_num_layers}); do
+        _build_str="${_build_str}\nRUN echo 'Adding layer ${i} for ${_tag_to}' > /var/tmp/layer_${i}"
+    done
+    echo -e "${_build_str}" > Dockerfile
+    ${_cmd} build --rm -t ${_tag_to} . || return $?
+    cd "${_cwd}" && mv -v ${_build_dir} ${_TMP%/}/
     # It seems newer docker appends "localhost/" so trying this one first.
     if ! ${_cmd} tag localhost/${_tag_to} ${_host_port}/${_tag_to} 2>/dev/null; then
         ${_cmd} tag ${_tag_to} ${_host_port}/${_tag_to} || return $?
@@ -369,6 +375,7 @@ function f_populate_docker_hosted() {
     _log "DEBUG" "${_cmd} push ${_host_port}/${_tag_to}"
     ${_cmd} push ${_host_port}/${_tag_to} || return $?
 }
+#echo -e "FROM alpine:3.7\nRUN apk add --no-cache mysql-client\nCMD echo 'Built ${_tag_to} from image:${_base_img}' > /var/tmp/f_populate_docker_hosted.out" > Dockerfile && ${_cmd} build --rm -t ${_tag_to} .
 
 function f_setup_yum() {
     local _prefix="${1:-"yum"}"
