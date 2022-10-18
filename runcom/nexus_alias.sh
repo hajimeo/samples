@@ -249,7 +249,9 @@ EOF
 }
 
 #nxrmDocker "nxrm3-test" "" "8181" "8543" #"--read-only -v /tmp/nxrm3-test:/tmp" or --tmpfs /tmp:noexec
-#docker run --init -d -p 8081:8081 -p 8443:8443 --name=nxrm3docker --tmpfs /tmp:noexec -e INSTALL4J_ADD_VM_PARAMS="-Dssl.etc=\${karaf.data}/etc/ssl -Dnexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml -Dapplication-port-ssl=8443 -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v /var/tmp/share/sonatype/nxrm3-data:/nexus-data dh1.standalone.localdomain:5000/sonatype/nexus3:latest
+#mkdir -v -p -m777 /var/tmp/share/sonatype/nxrm3docker
+#docker run --init -d -p 18081:8081 --name=nxrm3docker -e INSTALL4J_ADD_VM_PARAMS="-Dnexus-context-path=/nexus -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v /var/tmp/share/sonatype/nxrm3docker:/nexus-data sonatype/nexus3:latest
+#docker run --init -d -p 18081:8081 -p 18443:8443 --name=nxrm3dockerWithHTTPS --tmpfs /tmp:noexec -e INSTALL4J_ADD_VM_PARAMS="-Dssl.etc=\${karaf.data}/etc/ssl -Dnexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml -Dapplication-port-ssl=8443 -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v /var/tmp/share/sonatype/nxrm3-data:/nexus-data dh1.standalone.localdomain:5000/sonatype/nexus3:latest
 # export INSTALL4J_ADD_VM_PARAMS="-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -XX:+PrintGC -XX:+PrintGCDateStamps -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic"
 # export INSTALL4J_ADD_VM_PARAMS="-XX:ActiveProcessorCount=2 -Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g -Dnexus.licenseFile=/var/tmp/share/sonatype/sonatype-license.lic -Dnexus.datastore.enabled=true -Dnexus.datastore.nexus.jdbcUrl=jdbc\:postgresql\://localhost/nxrm?ssl=true&sslmode=require -Dnexus.datastore.nexus.username=nxrm -Dnexus.datastore.nexus.password=nxrm123 -Dnexus.datastore.nexus.maximumPoolSize=10 -Dnexus.datastore.nexus.advanced=maxLifetime=600000"
 function nxrmDocker() {
@@ -380,7 +382,7 @@ EOF
     type iqStart &>/dev/null && echo "      Or: iqStart"
 }
 
-#iqDocker "nxiq-test" "1.125.0" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
+#iqDocker "nxiq-test" "1.105.0" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
 function iqDocker() {
     local _name="${1:-"nxiq"}"
     local _tag="${2:-"latest"}"
@@ -417,7 +419,7 @@ function iqDocker() {
     eval "${_cmd}"
     echo "NOTE: May need to repalce /opt/sonatype/nexus-iq-server/start.sh to add trap SIGTERM (used from next restart though)"
     # Not doing at this moment as newer version has the fix.
-    if ! docker cp ${_name}:/opt/sonatype/nexus-iq-server/start.sh - | grep -qwa TERM; then
+    if false && docker cp ${_name}:/opt/sonatype/nexus-iq-server/start.sh - | grep -qwa TERM; then
         local _tmpfile=$(mktemp)
         cat << EOF > ${_tmpfile}
 _term() {
