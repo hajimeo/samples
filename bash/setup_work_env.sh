@@ -25,9 +25,18 @@ function f_prepare() {
         fi
         add-apt-repository ppa:deadsnakes/ppa -y
         apt-get update
+        #curl -o /tmp/q.deb https://github.com/harelba/q/releases/download/v3.1.6/q-text-as-data-3.1.6-1.x86_64.deb && sudo dpkg -i q.deb
     fi
-    _install sudo curl screen jq python3.7 #netcat
-    _install python3.7-venv   # it's probably OK if this fails
+    _install sudo curl screen gcc jq #netcat
+    #python@3.7: The x86_64 architecture is required for this software.
+    #https://diewland.medium.com/how-to-install-python-3-7-on-macbook-m1-87c5b0fcb3b5
+    if type ibrew &>/dev/null; then
+      ibrew install python@3.7
+      ibrew install python@3.7-dev
+    else
+      _install python3.7 && _install python3.7-dev
+      _install python3.7-venv   # it's probably OK if this fails
+    fi
     # Below is for pyenv and not using at this moment
     #_install make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev libffi-dev liblzma-dev python-openssl git
     f_install_rg
@@ -47,11 +56,21 @@ function f_prepare() {
     #python3.7 -m pip install -U virtualenv venv
 
     #sudo -i pip2 install -U data_hacks
-    curl -f -o /usr/local/bin/bar_chart.py -L https://raw.githubusercontent.com/bitly/data_hacks/master/data_hacks/bar_chart.py && chmod a+x /usr/local/bin/bar_chart.py
+    sudo curl -f -o /usr/local/bin/bar_chart.py -L https://raw.githubusercontent.com/bitly/data_hacks/master/data_hacks/bar_chart.py && sudo chmod a+x /usr/local/bin/bar_chart.py
 
     if grep -qw docker /etc/group; then
         sudo usermod -a -G docker $USER && _log "NOTE" "Please re-login as user group has been changed."
     fi
+
+    # Currently only for Mac
+    f_install_misc
+}
+
+function f_install_misc() {
+  if type brew &>/dev/null; then
+    # 'q' is installable with brew
+    brew install gnu-sed coreutils grep q
+  fi
 }
 
 function f_setup_misc() {
@@ -81,6 +100,10 @@ function f_setup_misc() {
 
     if which git &>/dev/null && ! git config credential.helper | grep -qw cache; then
         git config --global credential.helper "cache --timeout=600"
+    fi
+
+    if [ -s $HOME/backup/bashrc ] && [ ! -f $HOME/.bashrc ]; then
+      ln -s $HOME/backup/bashrc $HOME/.bashrc
     fi
 }
 
