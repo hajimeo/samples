@@ -117,3 +117,7 @@ if [ -f '/Users/hosako/Downloads/google-cloud-sdk/path.bash.inc' ]; then . '/Use
 
 # The next line enables shell command completion for gcloud.
 if [ -f '/Users/hosako/Downloads/google-cloud-sdk/completion.bash.inc' ]; then . '/Users/hosako/Downloads/google-cloud-sdk/completion.bash.inc'; fi
+
+export RIPGREP_CONFIG_PATH=$HOME/.rgrc
+
+export RIPGREP_CONFIG_PATH=$HOME/.rgrc
