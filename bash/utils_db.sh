@@ -71,8 +71,8 @@ function _postgresql_configure() {
     ### End of tuning ###
     _upsert ${_postgresql_conf} "max_connections" "200" "#max_connections"   # This is for NXRM3 as it uses 100 per datastore NOTE: work_mem * max_conn < shared_buffers.
     _upsert ${_postgresql_conf} "listen_addresses" "'*'" "#listen_addresses"
-    [ ! -d /var/log/postgresql ] && mkdir -p -m 777 /var/log/postgresql
-    _upsert ${_postgresql_conf} "log_directory" "'/var/log/postgresql' " "#log_directory"
+    [ -d /var/log/postgresql ] || mkdir -p -m 777 /var/log/postgresql
+    [ -d /var/log/postgresql ] && _upsert ${_postgresql_conf} "log_directory" "'/var/log/postgresql' " "#log_directory"
     #_upsert ${_postgresql_conf} "ssl" "on" "#ssl"
     # NOTE: key file permission needs to be 0600
     #_upsert ${_postgresql_conf} "ssl_key_file" "'/var/lib/pgsql/12/standalone.localdomain.key'" "#ssl_key_file"
@@ -81,7 +81,7 @@ function _postgresql_configure() {
     # pg_hba.conf: hostssl sonatype sonatype 0.0.0.0/0 md5
 
     if [ -z "${_wal_archive_dir}" ]; then
-        _wal_archive_dir="${_WORK_DIR%/}/${_dbadmin}/backups/${_save_dir%/}/`hostname -s`_wal"
+        _wal_archive_dir="${_WORK_DIR%/}/${_dbadmin}/backups/`hostname -s`_wal"
     fi
     if [ ! -d "${_wal_archive_dir}" ]; then
         sudo -u "${_dbadmin}" mkdir -v -p "${_wal_archive_dir}" || return $?
@@ -89,8 +89,8 @@ function _postgresql_configure() {
 
     # @see: https://www.postgresql.org/docs/current/continuous-archiving.html https://www.postgresql.org/docs/current/runtime-config-wal.html
     _upsert ${_postgresql_conf} "archive_mode" "on" "#archive_mode"
-    _upsert ${_postgresql_conf} "archive_command" "'test ! -f ${_wal_archive_dir%/}/%f && cp %p ${_wal_archive_dir%/}/%f'" "#archive_command" # this is asynchronous
-    #TODO: use recovery_min_apply_delay = '1h'
+    _upsert ${_postgresql_conf} "archive_command" "'test ! -f ${_wal_archive_dir%/}/%f && cp %p ${_wal_archive_dir%/}/%f'" # this is asynchronous
+    #TODO: Can't append under #archive_command. Use recovery_min_apply_delay = '1h'
     # For wal/replication/pg_rewind, better save log files outside of _postgresql_conf
 
     _upsert ${_postgresql_conf} "log_error_verbosity" "verbose" "#log_error_verbosity"  # default
@@ -143,7 +143,7 @@ function _postgresql_configure() {
     # NOTE: also somehow restart is required
 
     diff -wu ${__TMP%/}/postgresql.conf.orig ${_postgresql_conf}
-    if _restart || ! ${_psql_as_admin} -d template1 -c "SELECT pg_reload_conf();"; then
+    if ${_restart} || ! ${_psql_as_admin} -d template1 -c "SELECT pg_reload_conf();"; then
         _log "INFO" "Updated postgresql config. Please restart or reload the service."
     fi
 }
