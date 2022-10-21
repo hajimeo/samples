@@ -143,7 +143,7 @@ function nxrmStart() {
     fi
     # For java options, latter values are used, so appending
     INSTALL4J_ADD_VM_PARAMS="-XX:-MaxFDLimit ${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}" ${_nexus_file} ${_mode}
-    # ulimit: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
+    # ulimit / Too many open files: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
 }
 
 function _updateNexusProps() {
