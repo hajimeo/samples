@@ -15,6 +15,7 @@ type _import &>/dev/null || _import() { [ ! -s /tmp/${1} ] && curl -sf --compres
 _import "utils.sh"
 _import "utils_container.sh"
 
+type python &>/dev/null || alias python=python3  # For M1 Mac workaround
 
 function usage() {
     local _filename="$(basename $BASH_SOURCE)"
