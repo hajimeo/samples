@@ -127,7 +127,7 @@ function f_install_rg() {
 
 function f_setup_rg() {
     _symlink_or_download "runcom/rgrc" "$HOME/.rgrc" || return $?
-    if ! grep -qR '^export RIPGREP_CONFIG_PATH=' $HOME/.bash_profile; then
+    if ! grep -qR 'export RIPGREP_CONFIG_PATH=' $HOME/.bash_profile; then
         echo -e '\nexport RIPGREP_CONFIG_PATH=$HOME/.rgrc' >>$HOME/.bash_profile || return $?
     fi
 }
