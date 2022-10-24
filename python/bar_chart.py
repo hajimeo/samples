@@ -56,7 +56,7 @@ def run(input_stream, options):
             total += 1
 
     if not data:
-        print "Error: no data"
+        print("Error: no data")
         sys.exit(1)
 
     max_length = max([len(key) for key in data.keys()])
@@ -66,7 +66,7 @@ def run(input_stream, options):
     scale = int(math.ceil(float(max_value) / value_characters))
     scale = max(1, scale)
 
-    print "# each " + options.dot + " represents a count of %d. total %d" % (scale, total)
+    print("# each " + options.dot + " represents a count of %d. total %d" % (scale, total))
 
     if options.sort_values:
         data = [[value, key] for key, value in data.items()]
@@ -85,7 +85,7 @@ def run(input_stream, options):
     for value, key in data:
         if options.percentage:
             percentage = " (%0.2f%%)" % (100 * Decimal(value) / Decimal(total))
-        print str_format % (key[:max_length], value, (value / scale) * options.dot, percentage)
+        print(str_format % (key[:max_length], value, int(value / scale) * options.dot, percentage))
 
 if __name__ == "__main__":
     parser = OptionParser()
@@ -110,6 +110,6 @@ if __name__ == "__main__":
 
     if sys.stdin.isatty():
         parser.print_usage()
-        print "for more help use --help"
+        print("for more help use --help")
         sys.exit(1)
     run(load_stream(sys.stdin), options)
