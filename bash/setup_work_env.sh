@@ -56,7 +56,7 @@ function f_prepare() {
     #python3.7 -m pip install -U virtualenv venv
 
     #sudo -i pip2 install -U data_hacks
-    sudo curl -f -o /usr/local/bin/bar_chart.py -L https://raw.githubusercontent.com/bitly/data_hacks/master/data_hacks/bar_chart.py && sudo chmod a+x /usr/local/bin/bar_chart.py
+    sudo curl -f -o /usr/local/bin/bar_chart.py -L https://raw.githubusercontent.com/hajimeo/samples/master/python/bar_chart.py && sudo chmod a+x /usr/local/bin/bar_chart.py
 
     if grep -qw docker /etc/group; then
         sudo usermod -a -G docker $USER && _log "NOTE" "Please re-login as user group has been changed."
@@ -69,7 +69,11 @@ function f_prepare() {
 function f_install_misc() {
   if type brew &>/dev/null; then
     # 'q' is installable with brew
-    brew install gnu-sed coreutils grep q
+    if type ibrew &>/dev/null; then
+      ibrew install gnu-sed grep q coreutils #Not installable on ARM
+    else
+      brew install gnu-sed grep q coreutils
+    fi
   fi
 }
 
