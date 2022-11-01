@@ -129,7 +129,7 @@ function _postgresql_configure() {
     _upsert ${_postgresql_conf} "auto_explain.log_min_duration" "5000"
     # To check:
     # SELECT setting, pending_restart FROM pg_settings WHERE name = 'shared_preload_libraries';
-    # ALTER SYSTEM SET auto_explain.log_min_duration TO '0';
+    # ALTER system SET auto_explain.log_min_duration TO '0';
     # SELECT pg_reload_conf();
     # SELECT * FROM pg_settings WHERE name like 'auto_explain%';
 
