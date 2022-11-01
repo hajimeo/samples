@@ -9,8 +9,9 @@ All functions start with "r_" are for reporting, just displaying some useful, go
 
 PREREQUISITE:
     bash, not tested with zsh.
-    Please install below: (eg: 'brew install coreutils ripgrep jq q')
+    Please install below: (eg: 'brew install coreutils findutils ripgrep jq q')
         coreutils (eg: realpath)
+        findutils (eg: gfind)
         rg  https://github.com/BurntSushi/ripgrep
         jq  https://stedolan.github.io/jq/download/
         q   https://github.com/harelba/q
