@@ -92,6 +92,8 @@ if [ "$(uname)" = "Darwin" ]; then
         if /usr/libexec/java_home -v 11 &>/dev/null; then
             _JAVA_HOME_11="$(/usr/libexec/java_home -v 11)"
             alias jshell="${_JAVA_HOME_11}/bin/jshell"
+        elif [ -e "$HOME/Apps/zulu11.60.19-ca-jdk11.0.17-macosx_aarch64/bin/jshell" ]; then
+            alias jshell="$HOME/Apps/zulu11.60.19-ca-jdk11.0.17-macosx_aarch64/bin/jshell"
         fi
     fi
 
