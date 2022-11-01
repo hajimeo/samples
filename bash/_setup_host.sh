@@ -1018,10 +1018,10 @@ function f_docker_setup() {
     echo "If dnsmasq is used, you may want to run/check f_dnsmasq"
 }
 
-function f_minikube4kvm() {
-    local __doc__="Install minikube (kubernetes|k8s) for KVM"
+function f_minikube() {
+    local __doc__="Install minikube (kubernetes|k8s) for KVM or Docker"
     # @see: https://computingforgeeks.com/how-to-run-minikube-on-kvm/
-    local _user="${1:-"virtuser"}"  # NOTE: expecting this user is already created
+    local _user="${1}"  # eg 'virtuser' NOTE: expecting this user is already created
     apt-get install apt-transport-https -y
     curl -fL -o /usr/local/bin/minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 || return $?
     chmod a+x /usr/local/bin/minikube
@@ -1029,18 +1029,40 @@ function f_minikube4kvm() {
     curl -fL -o /usr/local/bin/kubectl "https://dl.k8s.io/release/$(curl -L -s "https://dl.k8s.io/release/stable.txt")/bin/linux/amd64/kubectl" || return $?
     chmod a+x /usr/local/bin/kubectl
     /usr/local/bin/kubectl version -o json  # not checking return code as if no 8080, it returns 1
+    local _sudo=""
 
-    usermod -aG libvirt ${_user}
-    #newgrp libvirt
-    sudo -i -u ${_user} minikube config set vm-driver kvm2 || return $?
-    sudo -i -u ${_user} minikube start || return $?
+    if [ -n "${_user}" ]; then  # currently if username is given, use KVM
+      usermod -aG libvirt ${_user}
+      #newgrp libvirt
+      _sudo="sudo -i -u ${_user}"
+      ${_sudo} minikube config set vm-driver kvm2 || return $?
+    else
+      minikube config set driver docker
+    fi
+    if [ -s /var/tmp/share/cert/rootCA_standalone.crt ]; then
+      # https://minikube.sigs.k8s.io/docs/handbook/untrusted_certs/
+      ${_sudo} bash -c 'mkdir -p ${HOME%/}/.minikube/certs; cp -v /var/tmp/share/cert/rootCA_standalone.crt ${HOME%/}/.minikube/certs/'
+    fi
+    ${_sudo} minikube addons enable ingress || return $?
+    ${_sudo} minikube start --embed-certs || return $?
+    echo "INFO: To mount a volume"
+    echo '  minikube mount $HOME/share:/var/tmp/share &>/tmp/minikube_mount.out &'
     curl -k https://$(minikube ip):8443/livez?verbose   # health check
     _info "May want to move below file(s) to a faster drive."
-    sudo -i -u ${_user} bash -c 'ls -l ${HOME%/}/.minikube/machines/minikube/*.rawdisk'
-    sudo -i -u ${_user} kubectl config view
-    _info "May want to set up Port-forwarding k8s API requests to minikube's host-only network IP:8443."
-    echo "ssh-keygen -f /home/${_user}/.ssh/known_hosts -R \$(minikube ip)"
-    echo "ssh -2CNnqTxfg -D38081 -i /home/${_user}/.minikube/machines/minikube/id_rsa docker@\$(minikube ip) -L 38443:localhost:8443"   # -o StrictHostKeyChecking=no
+    ${_sudo} bash -c 'ls -l ${HOME%/}/.minikube/machines/minikube/*.rawdisk'
+    ${_sudo} kubectl config view
+    _info "May want to set up Port-forwarding k8s API requests to minikube's host-only network IP:8443 (D38081 is not in use)"
+    echo "  ssh-keygen -f /home/${_user:-"ubuntu"}/.ssh/known_hosts -R \$(minikube ip)"
+    echo "  ${_sudo} bash -c 'ssh -2CNnqTxfg -D38081 -i /home/${_user:-"ubuntu"}/.minikube/machines/minikube/id_rsa docker@\$(minikube ip) -L 38443:localhost:8443'"   # -o StrictHostKeyChecking=no
+    echo "Also, use 'insecure-skip-tls-verify: true'"
+    cat << EOF >/dev/null
+minikube ssh
+  apt-get update
+  apt install net-tools
+  ls -l /var/log/pods/
+
+ssh -p58380 root@localhost
+EOF
 }
 
 function f_microk8s() {
@@ -1058,7 +1080,7 @@ function f_microk8s() {
     ufw allow in on cni0 && ufw allow out on cni0
     ufw default allow routed
     # surprisingly ingress seems to work without coredns
-    microk8s enable storage helm3 ingress ${dashboard} # dns dashboard prometheus
+    microk8s enable storage helm3 ingress dns ${dashboard} # dashboard prometheus
     #microk8s disable metallb; microk8s enable metallb:192.168.1.200-192.168.1.240
     echo "To replace nginx SSL/HTTPS certificate
     microk8s kubectl -n ingress create secret tls standalone.localdomain --key /var/tmp/share/cert/standalone.localdomain.key --cert /var/tmp/share/cert/standalone.localdomain.crt
@@ -1077,9 +1099,9 @@ function f_microk8s() {
         ufw default allow routed || return $?
     fi
 
-    # Pods restart every 20 minutes. As per https://github.com/canonical/microk8s/issues/506 and https://github.com/canonical/microk8s/issues/2790
-    systemctl stop snap.microk8s.daemon-apiserver-kicker.service
-    systemctl disable snap.microk8s.daemon-apiserver-kicker.service
+    # If Pods restart every 20 minutes. As per https://github.com/canonical/microk8s/issues/506 and https://github.com/canonical/microk8s/issues/2790
+    #systemctl stop snap.microk8s.daemon-apiserver-kicker.service
+    #systemctl disable snap.microk8s.daemon-apiserver-kicker.service
     # NOTE 'microk8s start' re-enable above, so trying below
     if [ -f /var/snap/microk8s/current/args/kube-apiserver ] && ! grep -q 'advertise-address' /var/snap/microk8s/current/args/kube-apiserver; then
         echo '--advertise-address=0.0.0.0' >> /var/snap/microk8s/current/args/kube-apiserver
@@ -1114,6 +1136,7 @@ function f_microk8s() {
     fi
 
     # Image location
+    _info "Images under /var/snap/microk8s/common/var/lib/containerd/"
     ls -l /var/snap/microk8s/common/var/lib/containerd/
 
     echo "# Command examples:
@@ -1159,6 +1182,10 @@ function f_microk8s() {
     #systemctl stop snap.microk8s.daemon-controller-manager.service
     #systemctl stop snap.microk8s.daemon-proxy.service
 "
+    echo "kubectl config file: /var/snap/microk8s/current/credentials/client.config"
+    cat /var/snap/microk8s/current/credentials/client.config
+    echo ""
+    echo "# May need to use 'insecure-skip-tls-verify: true' under 'cluster'"
 }
 
 function f_vnc_setup() {
