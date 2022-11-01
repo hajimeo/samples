@@ -969,6 +969,7 @@ function f_api() {
     local _usr="${4:-${r_ADMIN_USER:-"${_ADMIN_USER}"}}"
     local _pwd="${5-${r_ADMIN_PWD:-"${_ADMIN_PWD}"}}"   # If explicitly empty string, curl command will ask password (= may hang)
     local _nexus_url="${6:-"${r_NEXUS_URL:-"${_NEXUS_URL}"}"}"
+    local _sort_keys="${7:-"${r_API_SORT_KEYS:-"${_API_SORT_KEYS}"}"}"
 
     local _user_pwd="${_usr}"
     [ -n "${_pwd}" ] && _user_pwd="${_usr}:${_pwd}"
@@ -991,8 +992,10 @@ function f_api() {
         cat ${_TMP%/}/_api_header_$$.out >&2
         return ${_rc}
     fi
-    if ! cat ${_TMP%/}/f_api_nxrm_$$.out | python -m json.tool 2>/dev/null; then
-        echo -n `cat ${_TMP%/}/f_api_nxrm_$$.out`
+    if [[ "${_sort_keys}" =~ ^[yY] ]]; then
+      cat ${_TMP%/}/f_api_nxrm_$$.out | python -c "import sys,json;print(json.dumps(json.load(sys.stdin), indent=4, sort_keys=True))"
+    elif ! cat ${_TMP%/}/f_api_nxrm_$$.out | python -m json.tool 2>/dev/null; then
+        echo -n "$(cat ${_TMP%/}/f_api_nxrm_$$.out)"
         echo ""
     fi
 }
@@ -1063,8 +1066,8 @@ function p_client_container() {
     fi
 
     _log "INFO" "Setting up various client commands ..."
-    ${_cmd} cp $BASH_SOURCE ${_name}:/tmp/setup_nexus3_repos.sh || return $?
-    ${_cmd} exec -it ${_name} bash -c "source /tmp/setup_nexus3_repos.sh && f_reset_client_configs \"testuser\" \"${_base_url}\" && f_install_clients" || return $?
+    #${_cmd} cp $BASH_SOURCE ${_name}:/tmp/setup_nexus3_repos.sh || return $? # This started failing
+    ${_cmd} exec -it ${_name} bash -c "source /dev/stdin <<< \"\$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh --compressed)\" && f_reset_client_configs \"testuser\" \"${_base_url}\" && f_install_clients" || return $?
     _log "INFO" "Completed $FUNCNAME .
 To save : docker stop ${_name}; docker commit ${_name} ${_name}
 To login: ssh testuser@${_name}"
@@ -1194,7 +1197,7 @@ EOF
         #local _pwd_encoded="$(python -c \"import sys, urllib as ul; print(ul.quote('${_pwd}'))\")"
         cat << EOF > ${_home%/}/.condarc
 channels:
-  - ${_repo_url%/}
+  - ${_repo_url%/}/main
   - defaults
 EOF
         chown -v ${_user}: ${_home%/}/.condarc
@@ -1583,17 +1586,62 @@ function f_upload_dummies_mvn() {
     # NOTE: xargs only stops if exit code is 255
 }
 
-function f_delete_all_assets() {
+# NOTE: below may not work with group repo:
+# org.sonatype.nexus.repository.IllegalOperationException: Deleting from repository pypi-group of type pypi is not supported
+function f_delete_asset() {
+    local __doc__="Delete matching assets (not components) with Assets REST API (not Search)"
     local _force="$1"
-    local _max_loop="${2:-200}" # 50 * 200 = 10000 max
+    local _path_regex="$2"
+    local _repo="$3"
+    local _search_all="$4"
+    local _max_loop="${5:-200}" # 50 * 200 = 10000 max
+    rm -f /tmp/${FUNCNAME}_*.out || return $?
+    local _path="/service/rest/v1/assets"
+    local _query=""
+    local _base_query="?"
+    [ -z "${_path_regex}" ] && return 11
+    [ -z "${_repo}" ] && return 12  # repository is mandatory
+    [ -n "${_repo}" ] && _base_query="?repository=${_repo}"
+    for i in $(seq "1" "${_max_loop}"); do
+        _API_SORT_KEYS=Y f_api "${_path}${_base_query}${_query}" > /tmp/${FUNCNAME}_${i}.json || return $?
+        grep -E '"(id|path)"' /tmp/${FUNCNAME}_${i}.json | grep -E "\"${_path_regex}\"" -B1 > /tmp/${FUNCNAME}_${i}_matched_IDs.out
+        if [ $? -eq 0 ] && [[ ! "${_search_all}" =~ ^[yY] ]]; then
+            break
+        fi
+        grep -qE '"continuationToken": *"[0-9a-f]+' /tmp/${FUNCNAME}_${i}.json || break
+        local cToken="$(cat /tmp/${FUNCNAME}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
+        _query="&continuationToken=${cToken}"
+    done
+    grep -E '^ +"id":' -h /tmp/${FUNCNAME}_*_matched_IDs.out | sort | uniq > /tmp/${FUNCNAME}_$$.out || return $?
+    local _line_num="$(cat /tmp/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
+    if [[ ! "${_force}" =~ ^[yY] ]]; then
+        read -p "Are you sure to delete matched (${_line_num}) assets?: " "_yes"
+        echo ""
+        [[ "${_yes}" =~ ^[yY] ]] || return
+    fi
+    cat /tmp/${FUNCNAME}_$$.out | while read -r _l; do
+        if [[ "${_l}" =~ \"id\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
+            echo "# ${BASH_REMATCH[1]}"
+            f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" || break
+        fi
+    done
+    echo "Deleted ${_line_num} assets"
+}
+function f_delete_all_assets() {
+    local __doc__="Delete all assets (not components) with Search REST API"
+    local _force="$1"
+    local _repo="$2"
+    local _max_loop="${3:-200}" # 50 * 200 = 10000 max
     rm -f /tmp/${FUNCNAME}_*.out || return $?
     local _path="/service/rest/v1/search/assets"
     local _query=""
+    local _base_query="?"
+    [ -n "${_repo}" ] && _base_query="?repository=${_repo}"
     for i in $(seq "1" "${_max_loop}"); do
-        f_api "${_path}${_query}" > /tmp/${FUNCNAME}_${i}.json || return $?
+        f_api "${_path}${_base_query}${_query}" > /tmp/${FUNCNAME}_${i}.json || return $?
         grep -qE '"continuationToken": *"[0-9a-f]+' /tmp/${FUNCNAME}_${i}.json || break
         local cToken="$(cat /tmp/${FUNCNAME}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
-        _query="?continuationToken=${cToken}"
+        _query="&continuationToken=${cToken}"
     done
     grep -E '^ +"id":' -h /tmp/${FUNCNAME}_*.json | sort | uniq > /tmp/${FUNCNAME}_$$.out || return $?
     local _line_num="$(cat /tmp/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
