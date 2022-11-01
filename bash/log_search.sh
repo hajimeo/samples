@@ -28,6 +28,7 @@ Required commands:
     brew install ripgrep      # for rg
     brew install gnu-sed      # for gsed
     brew install coreutils    # for gtac gdate realpath
+    brew install findutils    # for gtac gdate realpath
     brew install q            # To query csv files https://github.com/harelba/q/releases/download/2.0.19/q-text-as-data_2.0.19-2_amd64.deb
     brew install jq           # To query json files
     brew install grep         # Do not need anymore, but ggrep is faster than Mac's grep
