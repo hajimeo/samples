@@ -1,23 +1,25 @@
 # NOTE:
 #   This script uses the node's hostPath for sharing blobs, instead of the recommended NFS.
 #
-# PREPARATION:
-#  - On K8s node: mkdir -m 777 ${_BLOBS_PATH}, which will be used for blob stores.
+# ONE TIME ONLY PREPARATION (*after* "export")
+#  - On K8s node, which will be used for blob stores:
+#     mkdir -v -p -m 777 ${_BLOBS_PATH}
 #  - Create a namespace:
 #     kubectl create namespace "sonatype"
 #  - Create a secret for the license file:
 #     kubectl -n "sonatype" create secret generic sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
-#  - On PostgreSQL server: source ./utils.sh && _postgresql_create_dbuser "${_ID}"
+#  - Create secret for JDBC
+#     #kubectl -n "sonatype" delete secret ${_ID}-jdbc
+#     kubectl -n "sonatype" create secret generic ${_ID}-jdbc --from-literal=db_user="${_DB_USER}" --from-literal=db_pwd="${_DB_PWD}" --from-literal=jdbc_url="${_JDBC_URL}"
+#  - On PostgreSQL server: source ../bash/utils.sh && source ../bash/utils_db.sh && _postgresql_create_dbuser "${_ID}"
 #  - Configure Ingress
 #
 # COMMAND EXAMPLE:
 #   cd ~/IdeaProjects/samples/kubernetes
 #   # Below _DNS is only for my k8s env (don't forget to update /etc/banner_add_hosts). _DB_USER can't contain '-' character.
-#   export _ID="nxrm3pg" _TAG="3.41.1" _METALLB_IP="192.168.1.230" _RUNAS_USR=200 _DNS="192.168.1.31"
-#   export _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs" _DB_USER="${_ID}" _DB_PWD="${_ID}" _JDBC_URL="jdbc:postgresql://192.168.1.31:5432/${_ID}"
-#   # Run the create secret commands if necessary
-#   #kubectl -n "sonatype" delete secret ${_ID}-jdbc
-#   #kubectl -n "sonatype" create secret generic ${_ID}-jdbc --from-literal=db_user=${_DB_USER} --from-literal=db_pwd=${_DB_PWD} --from-literal=jdbc_url=${_JDBC_URL}
+#   export _ID="nxrm3pg" _TAG="3.42.0" _RUNAS_USR=200 #_DNS="192.168.1.31" _METALLB_IP="192.168.1.230"
+#   export _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs" _JDBC_URL="jdbc:postgresql://$(hostname -f):5432/${_ID}" _DB_USER="${_ID}" _DB_PWD="${_ID}"
+#
 #   eval "echo \"$(cat ./k8s-nxrm3-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
 #   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml   # NOTE: This deletes PVC as well
 #   kubectl -n "sonatype" apply -f /tmp/${_ID}.yaml
@@ -70,7 +72,7 @@ spec:
           #       When recreating, remove /nexus-data/etc/fabric/nexus-store.properties in case JDBC setting was changed.
           #       Also, it seems the exit code needs to be 0
           #       '-Dapplication-port-ssl=8443' does not work
-          command: ['sh', '-c', 'id;[ -n "${_DNS:-127.0.0.1}" ] && echo nameserver "${_DNS:-127.0.0.1}" > /etc/resolv.conf; mkdir -v -p /nexus-data/etc/ssl; rm -f -v /nexus-data/etc/fabric/nexus-store.properties; [ -s /nexus-data/etc/nexus.properties ] || chown -R -v ${_RUNAS_USR:-200}:${_RUNAS_USR:-200} /nexus-data; grep -qE "^application-port-ssl" /nexus-data/etc/nexus.properties || echo "application-port-ssl:8443" > /nexus-data/etc/nexus.properties; echo "Completed."']
+          command: ['sh', '-c', 'id;[ -n "${_DNS}" ] && echo nameserver "${_DNS}" > /etc/resolv.conf; mkdir -v -p /nexus-data/etc/ssl; rm -f -v /nexus-data/etc/fabric/nexus-store.properties; [ -s /nexus-data/etc/nexus.properties ] || chown -R -v ${_RUNAS_USR:-200}:${_RUNAS_USR:-200} /nexus-data; grep -qE "^application-port-ssl" /nexus-data/etc/nexus.properties || echo "application-port-ssl:8443" > /nexus-data/etc/nexus.properties; echo "Completed."']
           volumeMounts:
             - name: nexus-data-volume
               mountPath: /nexus-data
