@@ -77,7 +77,7 @@ alias b64decode='python3 -c "import sys, base64; print(base64.b64decode(sys.argv
 alias htmlencode="python -c \"import sys,html;print(html.escape(sys.argv[1]))\""
 alias htmldecode="python -c \"import sys,html;print(html.unescape(sys.argv[1]))\""
 alias utc2int='python3 -c "import sys,time,dateutil.parser;from datetime import timezone;print(int(dateutil.parser.parse(sys.argv[1]).replace(tzinfo=timezone.utc).timestamp()))"' # doesn't work with yy/mm/dd (2 digits year)
-alias int2utc='python -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1][0:10])).strftime(\"%Y-%m-%dT%H:%M:%S\")+\".\"+sys.argv[1][10:13]+\"Z\")"'
+alias int2utc='python3 -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1][0:10])).strftime(\"%Y-%m-%dT%H:%M:%S\")+\".\"+sys.argv[1][10:13]+\"Z\")"'
 #alias int2utc='python -c "import sys,time;print(time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\")"'
 alias dec2hex='printf "%x\n"'
 alias hex2dec='printf "%d\n"'
@@ -186,6 +186,21 @@ function fcat() {
     for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
         echo "# ${_f}" >&2
         cat "${_f}" && _result=0
+        [[ "${_find_all}" =~ ^(y|Y) ]] || break
+        echo ''
+    done
+    return ${_result}
+}
+
+function fvim() {
+    local _name="$1"
+    local _find_all="$2"
+    local _max_depth="${3:-"7"}"
+    local _result=1
+    # Accept not only file name but also /<dir>/<filename> so that using grep
+    for _f in `find . -maxdepth ${_max_depth} -type f -print | grep -w "${_name}$"`; do
+        echo "# ${_f}" >&2
+        vim "${_f}" && _result=$?
         [[ "${_find_all}" =~ ^(y|Y) ]] || break
         echo ''
     done
@@ -532,9 +547,9 @@ alias _ssh='ssh $(basename "$PWD" | cut -d"_" -f1)'
 
 # Start PostgreSQL (on Mac)
 # NOTE: if brew upgraded postgresql, may need to run 'brew postgresql-upgrade-database'
-function pgStart() {
+function pgStatus() {
     local _cmd="${1:-"status"}"
-    local _pg_data="${2:-"/usr/local/var/postgres"}"
+    local _pg_data="${2:-"/usr/local/var/postgresql@14"}"
     local _log_path="${3:-"$HOME/postgresql.log"}"
     if [ "${_cmd}" == "start" ] && [ -n "${_log_path}" ] && [ -s "${_log_path}" ]; then
         if mv -v ${_log_path} /tmp/; then
@@ -571,6 +586,10 @@ function backupC() {
 
     if which code && [ -d "$HOME/backup" ]; then
         code --list-extensions | xargs -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh
+    fi
+    # install codium
+    if which codium && [ -d "$HOME/backup" ]; then
+        codium --list-extensions | xargs -L 1 echo codium --install-extension >$HOME/backup/vscodium_install_extensions.sh
     fi
     if [ -s /etc/hosts ] && [ -d "$HOME/backup" ]; then
         cp -v -f /etc/hosts $HOME/backup/etc_hosts
