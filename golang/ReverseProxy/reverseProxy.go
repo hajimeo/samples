@@ -1,7 +1,7 @@
 /**
  * Based on https://gist.github.com/JalfResi/6287706
  *          https://qiita.com/convto/items/64e8f090198a4cf7a4fc (japanese)
- * go build -o ../../misc/reverseproxy_$(uname) reverseProxy.go && env GOOS=linux GOARCH=amd64 go build -o ../../misc/reverseproxy_Linux reverseProxy.go
+ * go build -o ../../misc/reverseproxy_$(uname) reverseProxy.go && env GOOS=linux GOARCH=amd64 go build -o ../../misc/reverseproxy_Linux reverseProxy.go && env GOOS=linux GOARCH=arm64 go build -o ../../misc/reverseproxy_LinuxArm reverseProxy.go
  */
 package main
 
@@ -26,7 +26,7 @@ This script outputs REQUEST and RESPONSE headers.
 
 DOWNLOAD and INSTALL:
     sudo curl -o /usr/local/bin/reverseproxy -L https://github.com/hajimeo/samples/raw/master/misc/reverseproxy_$(uname)
-    sudo chmod a+x /usr/local/bin/reverseproxy
+    sudo chmod a+x /usr/local/bin/reverseproxy*
     
 USAGE EXAMPLE:
     reverseproxy <listening address:port> <listening pattern> <remote-URL> [certFile] [keyFile] 
