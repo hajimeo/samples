@@ -52,7 +52,8 @@ function _postgresql_configure() {
         return 1
     fi
 
-    [ ! -s "${__TMP%/}/postgresql.conf.orig" ] && cp -f "${_postgresql_conf}" "${__TMP%/}/postgresql.conf.orig"
+    local _conf_dir="$(dirname "${_postgresql_conf}")"
+    [ ! -s "${_conf_dir%/}/postgresql.conf.orig" ] && cp -f "${_postgresql_conf}" "${_conf_dir%/}/postgresql.conf.orig"
 
     _log "INFO" "Updating ${_postgresql_conf} ..."
     ### Performance tuning (so not mandatory). Expecting the server has at least 4GB RAM
@@ -68,6 +69,7 @@ function _postgresql_configure() {
     _upsert ${_postgresql_conf} "checkpoint_completion_target" "0.9" "#checkpoint_completion_target"    # Default 0.5 (old 'checkpoint_segments'). Larger may work for write heavy DB
     _upsert ${_postgresql_conf} "min_wal_size" "1GB" "#min_wal_size"    # Default 80MB
     _upsert ${_postgresql_conf} "max_wal_size" "4GB" "#max_wal_size"    # Default 1GB
+    #_upsert ${_postgresql_conf} "max_slot_wal_keep_size" "100GB" "#max_slot_wal_keep_size"    # Default -1 and probably from v13?
     ### End of tuning ###
     _upsert ${_postgresql_conf} "max_connections" "200" "#max_connections"   # This is for NXRM3 as it uses 100 per datastore NOTE: work_mem * max_conn < shared_buffers.
     _upsert ${_postgresql_conf} "listen_addresses" "'*'" "#listen_addresses"
