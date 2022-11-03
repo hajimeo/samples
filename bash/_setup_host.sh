@@ -1182,8 +1182,13 @@ function f_microk8s() {
     #systemctl stop snap.microk8s.daemon-controller-manager.service
     #systemctl stop snap.microk8s.daemon-proxy.service
 "
-    echo "kubectl config file: /var/snap/microk8s/current/credentials/client.config"
-    cat /var/snap/microk8s/current/credentials/client.config
+    if [ -s /var/snap/microk8s/current/credentials/client.config ]; then
+        echo "kubectl config file: /var/snap/microk8s/current/credentials/client.config"
+        cat /var/snap/microk8s/current/credentials/client.config
+    elif [ -s $HOME/.microk8s/config ]; then
+        echo "kubectl config file: $HOME/.microk8s/config"
+        cat $HOME/.microk8s/config
+    fi
     echo ""
     echo "# May need to use 'insecure-skip-tls-verify: true' under 'cluster'"
 }
