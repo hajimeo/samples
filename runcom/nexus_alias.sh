@@ -259,7 +259,7 @@ function nxrmDocker() {
     local _port_ssl="${4:-"8443"}"
     local _extra_opts="${5}"    # this is docker options not INSTALL4J_ADD_VM_PARAMS
     local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
-    local _docker_host="${_DOCKER_HOST:-"dh1.standalone.localdomain:5000"}"
+    local _docker_host="${_DOCKER_HOST}"  #:-"dh1.standalone.localdomain:5000"
 
     local _nexus_data="${_work_dir%/}/sonatype/${_name}-data"
     if [ ! -d "${_nexus_data%/}" ]; then
@@ -270,7 +270,8 @@ function nxrmDocker() {
     [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share"
     [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/nexus-data"
     [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
-    local _cmd="docker run --init -d -p ${_port}:8081 -p ${_port_ssl}:8443 ${_opts} ${_docker_host%/}/sonatype/nexus3:${_tag}"
+    [ -n "${_docker_host}" ] && _docker_host="${_docker_host%/}/"
+    local _cmd="docker run --init -d -p ${_port}:8081 -p ${_port_ssl}:8443 ${_opts} ${_docker_host%/}sonatype/nexus3:${_tag}"
     echo "${_cmd}"
     eval "${_cmd}"
     echo "To get the admin password:
@@ -389,7 +390,7 @@ function iqDocker() {
     local _extra_opts="${6}"
     local _license="${7}"
     local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
-    local _docker_host="${_DOCKER_HOST:-"dh1.standalone.localdomain:5000"}"
+    local _docker_host="${_DOCKER_HOST}"  #:-"dh1.standalone.localdomain:5000"
 
     local _nexus_data="${_work_dir%/}/sonatype/${_name}-data"
     [ ! -d "${_nexus_data%/}" ] && mkdir -p -m 777 "${_nexus_data%/}"
@@ -410,7 +411,8 @@ function iqDocker() {
     [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/var/log/nexus-iq-server"
     [ -d "${_nexus_data%/}/log" ] && _opts="${_opts} -v ${_nexus_data%/}/log:/opt/sonatype/nexus-iq-server/log" # due to audit.log => fixed from v104
     [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
-    local _cmd="docker run -d -p ${_port}:8070 -p ${_port2}:8071 -p ${_port_ssl}:8444 ${_opts} ${_docker_host%/}/sonatype/nexus-iq-server:${_tag}"  # --init
+    [ -n "${_docker_host}" ] && _docker_host="${_docker_host%/}/"
+    local _cmd="docker run -d -p ${_port}:8070 -p ${_port2}:8071 -p ${_port_ssl}:8444 ${_opts} ${_docker_host%/}sonatype/nexus-iq-server:${_tag}"  # --init
     echo "${_cmd}"
     eval "${_cmd}"
     echo "NOTE: May need to repalce /opt/sonatype/nexus-iq-server/start.sh to add trap SIGTERM (used from next restart though)"
