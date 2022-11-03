@@ -551,9 +551,16 @@ function pgStatus() {
     local _cmd="${1:-"status"}"
     local _pg_data="${2:-"/usr/local/var/postgresql@14"}"
     local _log_path="${3:-"$HOME/postgresql.log"}"
-    if [ "${_cmd}" == "start" ] && [ -n "${_log_path}" ] && [ -s "${_log_path}" ]; then
-        if mv -v ${_log_path} /tmp/; then
-            gzip -S _$(date +'%Y%m%d%H%M%S').gz /tmp/$(basename ${_log_path}) &>/dev/null &
+    local _wal_backup_path="${4:-"$HOME/share/$USER/backups/$(hostname -s)_wal"}"
+    #ln -s /Volumes/Samsung_T5/hajime/backups $HOME/share/$USER/backups
+    if [ "${_cmd}" == "start" ]; then
+        if [ -n "${_log_path}" ] && [ -s "${_log_path}" ]; then
+          if mv -v ${_log_path} /tmp/; then
+              gzip -S _$(date +'%Y%m%d%H%M%S').gz /tmp/$(basename ${_log_path}) &>/dev/null &
+          fi
+        fi
+        if [ -d "${_wal_backup_path%/}" ]; then
+            find ${_wal_backup_path%/} -type f -mtime +2 -print -delete 2>/dev/null &
         fi
     fi
     if [ -n "${_log_path}" ]; then
