@@ -1,3 +1,9 @@
+// TODO: Probably does NOT work.
+/*
+ * java -Djavax.net.ssl.keyStore=/var/tmp/share/cert/standalone.localdomain.jks -Djavax.net.ssl.keyStorePassword=password -Djavax.net.ssl.trustStore=$JAVA_HOME/jre/lib/security/cacerts -Djavax.net.ssl.trustStorePassword=changeit -Djavax.net.ssl.keyStoreType=jks -jar ./TLSServer-1.0-SNAPSHOT.jar
+ */
+
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
@@ -21,9 +27,25 @@ import javax.net.ssl.TrustManagerFactory;
 public class TLSServer
 {
   public static void main(String[] args) {
-    TLSServer tlss = new TLSServer();
+    String keyStorePath = System.getProperty("javax.net.ssl.keyStore");
+    String keyStorePwd = System.getProperty("javax.net.ssl.keyStorePassword", "changeit");
+    String trustStorePath = System.getProperty("javax.net.ssl.trustStore", keyStorePath);
+    String trustStorePwd = System.getProperty("javax.net.ssl.trustStorePassword", keyStorePwd);
+    String storeType = System.getProperty("javax.net.ssl.keyStoreType", "jks");
+
     try {
-      tlss.serve(Integer.parseInt(args[1]), args[2], args[3], args[4].toCharArray(), args[5], args[6].toCharArray());
+      int port = 8080;
+      if (args.length > 1) {
+        port = Integer.parseInt(args[1]);
+      }
+      String tlsV = "TLSv1.2";
+      if (args.length > 2) {
+        tlsV = args[2];
+      }
+
+      TLSServer tlss = new TLSServer();
+      tlss.serve(port, tlsV, trustStorePath, trustStorePwd.toCharArray(), keyStorePath,
+          trustStorePwd.toCharArray(), storeType);
     }
     catch (Exception e) {
       e.printStackTrace();
@@ -32,20 +54,17 @@ public class TLSServer
 
   public void serve(
       int port, String tlsVersion, String trustStoreName,
-      char[] trustStorePassword, String keyStoreName, char[] keyStorePassword)
+      char[] trustStorePassword, String keyStoreName, char[] keyStorePassword, String storeType)
       throws Exception
   {
-
     Objects.requireNonNull(tlsVersion, "TLS version is mandatory");
 
-    if (port <= 0) {
-      throw new IllegalArgumentException(
-          "Port number cannot be less than or equal to 0");
+    if (storeType.isEmpty()) {
+      storeType = KeyStore.getDefaultType();
     }
-
-    KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-    InputStream tstore = TLSServer.class
-        .getResourceAsStream("/" + trustStoreName);
+    // TODO: not working. tstore becomes null
+    KeyStore trustStore = KeyStore.getInstance(storeType);
+    InputStream tstore = new FileInputStream(trustStoreName);
     trustStore.load(tstore, trustStorePassword);
     tstore.close();
     TrustManagerFactory tmf = TrustManagerFactory
