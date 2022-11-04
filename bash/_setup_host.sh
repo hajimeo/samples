@@ -1043,19 +1043,23 @@ function f_minikube() {
       # https://minikube.sigs.k8s.io/docs/handbook/untrusted_certs/
       ${_sudo} bash -c 'mkdir -p ${HOME%/}/.minikube/certs; cp -v /var/tmp/share/cert/rootCA_standalone.crt ${HOME%/}/.minikube/certs/'
     fi
-    ${_sudo} minikube addons enable ingress || return $?
+    #${_sudo} minikube addons enable ingress || return $?
+    ${_sudo} minikube config set memory 8192
+    ${_sudo} minikube config set cpus 4
     ${_sudo} minikube start --embed-certs || return $?
     echo "INFO: To mount a volume"
     echo '  minikube mount $HOME/share:/var/tmp/share &>/tmp/minikube_mount.out &'
     curl -k https://$(minikube ip):8443/livez?verbose   # health check
+    #curl -k https://localhost:58636/livez?verbose      # If Mac
     _info "May want to move below file(s) to a faster drive."
     ${_sudo} bash -c 'ls -l ${HOME%/}/.minikube/machines/minikube/*.rawdisk'
-    ${_sudo} kubectl config view
     _info "May want to set up Port-forwarding k8s API requests to minikube's host-only network IP:8443 (D38081 is not in use)"
     echo "  ssh-keygen -f /home/${_user:-"ubuntu"}/.ssh/known_hosts -R \$(minikube ip)"
     echo "  ${_sudo} bash -c 'ssh -2CNnqTxfg -D38081 -i /home/${_user:-"ubuntu"}/.minikube/machines/minikube/id_rsa docker@\$(minikube ip) -L 38443:localhost:8443'"   # -o StrictHostKeyChecking=no
     echo "Also, use 'insecure-skip-tls-verify: true'"
     cat << EOF >/dev/null
+minikube kubectl config view  # ~/.kube/config will be updated
+
 minikube ssh
   apt-get update
   apt install net-tools

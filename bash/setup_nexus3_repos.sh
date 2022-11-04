@@ -481,7 +481,7 @@ function f_setup_helm() {
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://sonatype.github.io/helm3-charts","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-sonatype-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"helm-proxy"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-proxy
-    f_get_asset "${_prefix}-proxy" "/mysql-8.7.2.tgz" "${_TMP%/}/mysql-8.7.2.tgz"
+    f_get_asset "${_prefix}-proxy" "/mysql-9.4.1.tgz" "${_TMP%/}/mysql-9.4.1.tgz"
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
@@ -489,7 +489,7 @@ function f_setup_helm() {
     fi
     # add some data for xxxx-hosted
     # https://issues.sonatype.org/browse/NEXUS-31326
-    [ -s "${_TMP%/}/mysql-8.7.2.tgz" ] && curl -sf -u "${r_ADMIN_USER:-"${_ADMIN_USER}"}:${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_NEXUS_URL%/}/repository/${_prefix}-hosted/" -T "${_TMP%/}/mysql-8.7.2.tgz"
+    [ -s "${_TMP%/}/mysql-9.4.1.tgz" ] && curl -sf -u "${r_ADMIN_USER:-"${_ADMIN_USER}"}:${r_ADMIN_PWD:-"${_ADMIN_PWD}"}" "${_NEXUS_URL%/}/repository/${_prefix}-hosted/" -T "${_TMP%/}/mysql-9.4.1.tgz"
 }
 
 function f_setup_bower() {

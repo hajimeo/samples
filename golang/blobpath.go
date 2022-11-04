@@ -1,6 +1,6 @@
 /* Trying to do same as java.lang.String.hashCode
  *
- * go build -o ../misc/blobpath_Darwin blobpath.go && env GOOS=linux GOARCH=amd64 go build -o ../misc/blobpath_Linux blobpath.go; date
+ * go build -o ../misc/blobpath_$(uname)_$(uname -m) blobpath.go && env GOOS=linux GOARCH=amd64 go build -o ../misc/blobpath_Linux_amd64 blobpath.go; date
  */
 package main
 
@@ -19,7 +19,7 @@ Generate Nexus blob store path (from <blob name>/content/)
     blobpath <blobId-like-string> <extention> <blobstore-content-dir> <if-missing-only>
 
 DOWNLOAD and INSTALL:
-    sudo curl -o /usr/local/bin/blobpath -L https://github.com/hajimeo/samples/raw/master/misc/blobpath_$(uname)
+    sudo curl -o /usr/local/bin/blobpath -L https://github.com/hajimeo/samples/raw/master/misc/blobpath_$(uname)_$(uname -m)
     sudo chmod a+x /usr/local/bin/blobpath
     
 USAGE EXAMPLE:
