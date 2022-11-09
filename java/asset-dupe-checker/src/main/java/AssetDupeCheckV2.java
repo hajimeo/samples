@@ -389,17 +389,19 @@ public class AssetDupeCheckV2
   private static Boolean checkIndex(ODatabaseDocumentTx db) {
     OIndex<?> index = db.getMetadata().getIndexManager().getIndex(INDEX_NAME);
     boolean isDummyIdxCreated = false;
-    if (IS_REPAIRING) {
-      if (index == null) {
-        log("[WARN] Index: " + INDEX_NAME + " does not exist. Trying to create (notunique, then unique)...");
+    if (index == null) {
+      log("[WARN] Index: " + INDEX_NAME + " does not exist. Trying to create (notunique, then unique)...");
+      if (IS_REPAIRING) {
+        log("Try creating " + INDEX_NAME + " (notunique, then unique)...");
         index = createIndex(db, true);
         if (index != null) {
           isDummyIdxCreated = true;
         }
       }
-      else {
-        index.clear();
-      }
+    }
+    else if(!IS_NO_INDEX_CHECK) { // TODO: currently this is meaningless as always false
+      index.clear();
+      log("Index: " + INDEX_NAME + " is cleared (= do not terminate this script in the middle)");
     }
 
     if (index == null) {
