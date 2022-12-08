@@ -7,7 +7,7 @@ autopep8==1.5.4
 backcall==0.2.0
 bash-kernel==0.7.2
 bleach==3.2.1
-certifi==2020.11.8
+certifi==2022.12.7
 cffi==1.14.3
 chardet==3.0.4
 colorama==0.4.4
