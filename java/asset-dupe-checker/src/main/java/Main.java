@@ -422,6 +422,7 @@ public class Main
       long c = -1L;
       if(!noEstimateCheck) {
         // NOTE: To check count: "select bucket, count(*) as c from asset group by bucket;" might be faster???
+        // TODO: Using 'from INDEXVALUES:asset_bucket_name_idx' is better?
         String q = "select count(*) as c from index:asset_bucket_name_idx where key = [" + repoId + "]";
         List<ODocument> c_per_bkt = execQueries(tx, q);
         c = c_per_bkt.get(0).field("c");
