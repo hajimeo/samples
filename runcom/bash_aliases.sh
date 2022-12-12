@@ -117,7 +117,7 @@ type podman &>/dev/null && alias podmand="podman --log-level debug" && alias pod
 alias podman_delete_all='podman system prune --all'    # --force && podman rmi --all
 type q &>/dev/null && alias qcsv='q -O -d"," -T --disable-double-double-quoting'
 type pgbadger &>/dev/null && alias pgbg='pgbadger --timezone 0'
-type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
+#type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 #type zsh &>/dev/null && alias zzhi='env /usr/bin/arch -x86_64 /bin/zsh —-login'
 type zsh &>/dev/null && alias ibrew="arch -x86_64 /usr/local/bin/brew"
 
