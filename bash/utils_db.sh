@@ -13,9 +13,8 @@ function _get_dbadmin_user() {
         _dbadmin="$USER"
     else
         _dbadmin="$(_user_by_port "${_port}" 2>/dev/null)"
-        [ -z "${_dbadmin}" ] && _dbadmin="postgres"
     fi
-    echo "${_dbadmin}"
+    echo "${_dbadmin:-"postgres"}"
 }
 
 function _get_psql_as_admin() {
@@ -83,7 +82,7 @@ function _postgresql_configure() {
     # pg_hba.conf: hostssl sonatype sonatype 0.0.0.0/0 md5
 
     if [ -z "${_wal_archive_dir}" ]; then
-        _wal_archive_dir="${_WORK_DIR%/}/${_dbadmin}/backups/`hostname -s`_wal"
+        _wal_archive_dir="${_WORK_DIR%/}/backups/`hostname -s`_wal"
     fi
     if [ ! -d "${_wal_archive_dir}" ]; then
         sudo -u "${_dbadmin}" mkdir -v -p "${_wal_archive_dir}" || return $?
