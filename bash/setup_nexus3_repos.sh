@@ -1317,6 +1317,9 @@ EOF
         ${_yum_install} git
     fi
     # Enabling ruby 2.3 globally
+    if [ ! -s /opt/rh/rh-ruby23/enable ]; then
+        yum install -y rh-ruby23
+    fi
     cat << EOF > /etc/profile.d/rh-ruby23.sh
 #!/bin/bash
 source /opt/rh/rh-ruby23/enable
