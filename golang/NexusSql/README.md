@@ -9,7 +9,7 @@ No UPDATE/INSERT/DELETE support, read (SELECT) only.
   - Locks
   - Estimated Table sizes
 - NXRM3: Get estimated size per repo / blobstore
-- NXRM3: Export Component database
+- NXRM3: Export Component database (require 'pg_dump' in PATH)
 - NXIQ: ...
 
 ## COMMAND LINE OPTIONS
