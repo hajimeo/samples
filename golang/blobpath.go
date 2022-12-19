@@ -35,9 +35,9 @@ USAGE EXAMPLE:
     $ blobpath "83e59741-f05d-4915-a1ba-7fc789be34b1" ".properties" "/nexus-data/blobs/default/content/"
     /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties
 
-    $ cat /tmp/blobIds.out | xargs -I{} -P3 ./blobpath "{}" "" "/nexus-data/blobs/default/content/" "Y"
-    /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties
-    /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.bytes`)
+	# Report if .properties file is missing ("Y" in the 4th argument)
+    $ cat /tmp/blobIds.out | xargs -I{} -P3 ./blobpath "{}" ".properties" "/nexus-data/blobs/default/content/" "Y"
+    /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties`)
 }
 
 func myHashCode(s string) int32 {
