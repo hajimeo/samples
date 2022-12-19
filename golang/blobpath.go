@@ -1,7 +1,10 @@
-/* Trying to do same as java.lang.String.hashCode
- *
- * go build -o ../misc/blobpath_$(uname)_$(uname -m) blobpath.go && env GOOS=linux GOARCH=amd64 go build -o ../misc/blobpath_Linux_amd64 blobpath.go; date
- */
+/*
+Trying to do same as java.lang.String.hashCode
+
+env GOOS=linux GOARCH=amd64 go build -o ../misc/blobpath_Linux_amd64 blobpath.go && \
+env GOOS=darwin GOARCH=amd64 go build -o ../misc/blobpath_Darwin_amd64 blobpath.go && \
+env GOOS=darwin GOARCH=arm64 go build -o ../misc/blobpath_Darwin_arm64 blobpath.go && date
+*/
 package main
 
 import (

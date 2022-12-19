@@ -5,7 +5,8 @@ env GOOS=linux GOARCH=amd64 go build -o ../../misc/nexus-sql_Linux_amd64 NexusSq
 env GOOS=darwin GOARCH=amd64 go build -o ../../misc/nexus-sql_Darwin_amd64 NexusSql.go && \
 env GOOS=darwin GOARCH=arm64 go build -o ../../misc/nexus-sql_Darwin_arm64 NexusSql.go && date
 
-SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository
+SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository;
+SELECT REGEXP_REPLACE(REGEXP_REPLACE(blob_ref, '^[^:]+:', ''), '@.+', '') AS blobId from maven2_asset_blob;
 */
 
 package main

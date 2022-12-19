@@ -14,9 +14,10 @@ No UPDATE/INSERT/DELETE support, read (SELECT) only.
 
 ## COMMAND LINE OPTIONS
 ```
-  -t    Type    Application Type [nxrm3|nxiq] and default is nxrm
   -c    Config  Path to nexus-store.properties or config.yml
-  -a    Action  db-check|data-size|data-export
+  -q    SQL query
+  //-t    Type    Application Type [nxrm3|nxiq] and default is nxrm
+  //-a    Action  db-check|data-size|data-export
 ```
 
 ## USAGE EXAMPLE:

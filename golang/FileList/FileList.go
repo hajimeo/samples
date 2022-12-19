@@ -1,11 +1,14 @@
 /*
 #go mod init github.com/hajimeo/samples/golang/FileList
 #go mod tidy
-go build -o ../../misc/file-list_$(uname) FileList.go && env GOOS=linux GOARCH=amd64 go build -o ../../misc/file-list_Linux FileList.go
+env GOOS=linux GOARCH=amd64 go build -o ../../misc/file-list_Linux_amd64 FileList.go && \
+env GOOS=darwin GOARCH=amd64 go build -o ../../misc/file-list_Darwin_amd64 FileList.go && \
+env GOOS=darwin GOARCH=arm64 go build -o ../../misc/file-list_Darwin_arm64 FileList.go && date
 
 echo 3 > /proc/sys/vm/drop_caches
 
-$HOME/IdeaProjects/samples/misc/file-list_$(uname) -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
+$HOME/IdeaProjects/samples/misc/file-list_$(uname)_$(uname -m) -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
+$HOME/IdeaProjects/samples/misc/file-list_$(uname)_$(uname -m) -b <workingDirectory>/blobs/default/content -p "vol-" -c1 10
 
 cd /opt/sonatype/sonatype-work/nexus3/blobs/default/
 /var/tmp/share/file-list_Linux -b ./content -p vol- -c 4 -db /opt/sonatype/sonatype-work/nexus3/etc/fabric/nexus-store.properties -RF -bsName default > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d").log &
@@ -577,18 +580,19 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 
 	// If _NODE_ID is given and no deleted date from/to, should not need to open a file
 	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && len(*_NODE_ID) > 0 && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
-		if *_TRUTH == "BS" {
-			if !isBlobIdMissingInDB("", path, db) {
-				//_log("DEBUG", "path:"+path+" exists in Database. Skipping.")
-				return ""
-			}
-			reconOutput, reconErr := genOutputForReconcile("", path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, true, client)
-			if reconErr != nil {
-				_log("DEBUG", reconErr.Error())
-			}
-			return reconOutput
+		if *_TRUTH == "BS" && !isBlobIdMissingInDB("", path, db) {
+			//_log("DEBUG", "path:"+path+" exists in Database. Skipping.")
+			return ""
 		}
-		// TODO: if *_TRUTH == "DB" { if !isBlobIdMissingInBlobStore() {
+		/*if *_TRUTH == "DB" && !isBlobIdMissingInBlobStore("", path, db) {
+			//_log("DEBUG", "path:"+path+" exists in Blobstore. Skipping.")
+			return ""
+		}*/
+		reconOutput, reconErr := genOutputForReconcile("", path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, true, client)
+		if reconErr != nil {
+			_log("DEBUG", reconErr.Error())
+		}
+		return reconOutput
 	}
 
 	// Excluding above special condition, usually needs to read the file
@@ -610,6 +614,12 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 			}
 			skipCheck = true
 		}
+		/*else if *_TRUTH == "BS" {
+			if !isBlobIdMissingInBlobStore(contents, path, db) {
+				return ""
+			}
+			skipCheck = true
+		} */
 	}
 
 	if *_RECON_FMT {
@@ -807,8 +817,8 @@ func getAssetTables(db *sql.DB, contents string, reposToFmt map[string]string) [
 	return result
 }
 
-// TODO: Checking from DB to blobstore, like Orphaned blob finder
-func isBlobIdMissingInBlobStore() bool {
+// TODO: Checking from DB to blobstore, like DeadBlobsFinder
+func isBlobIdMissingInBlobStore(db *sql.DB) bool {
 	return false
 }
 
