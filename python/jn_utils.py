@@ -546,20 +546,29 @@ def jq(file_path, query='.', as_string=False):
     return result
 
 
-def json2dict(file_path, sort=True):
+def json2dict(file_path, sort=True, key_name=None, key_value=None):
     """
-    Read a json file and return as dict
+    Read a json file and return as dicts in a list
     :param file_path: Json File path
-    :param sort:
-    :return: Python dict
+    :param sort: Boolean. Used in json.dumps sort_keys
+    :param key_name: String. Return becomes dict with this key
+    :param key_value: String. Returns only key value is this value
+    :return: Python list contains dicts or dict if key_name is given
     >>> pass    # TODO: implement test
     """
     with open(file_path) as f:
         rtn = json.load(f)
     if not rtn:
-        return {}
+        return []
     if sort:
         rtn = json.loads(json.dumps(rtn, sort_keys=sort))
+    if bool(key_name):
+        rtn2 = {}
+        for line in rtn:
+            if key_name in line:
+                if bool(key_value) is False or line[key_name] == key_value:
+                    rtn2[line[key_name]] = line
+        return rtn2
     return rtn
 
 
@@ -826,6 +835,8 @@ def udf_timestamp(date_time):
 
 
 RE_STARTED = re.compile('(.+) *([-+]\d{4})$')
+
+
 def udf_started_time(date_time, elapsed_ms):
     """
     Doing below calculation:
@@ -2028,7 +2039,7 @@ def logs2table(filename, tablename=None, conn=None,
                 # the column name 'jsonstr' is currently not in use.
                 if v == 'jsonstr':
                     col_def_str += "%s json" % (v)
-                elif v in ('bytesSent', 'elapsedTime'): # Not elegant but for now, for request.log
+                elif v in ('bytesSent', 'elapsedTime'):  # Not elegant but for now, for request.log
                     col_def_str += "%s INTEGER" % (v)
                 elif v == 'size' and size_regex == _SIZE_REGEX:
                     col_def_str += "%s INTEGER" % (v)
