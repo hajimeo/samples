@@ -11,7 +11,7 @@
 #
 # COMMAND EXAMPLE:
 #   # Below _DNS is only for my k8s env (don't forget to update /etc/banner_add_hosts). _DB_USER can't contain '-' character.
-#   export _ID="nxiqpg" _TAG="1.144.0" _METALLB_IP="192.168.1.220" _RUNAS_USR=1000 _DNS="192.168.1.31"
+#   export _ID="nxiqpg" _TAG="1.144.0" _RUNAS_USR=1000 _DNS="192.168.1.31" # _METALLB_IP="192.168.1.220"
 #   export _SONATYPE_WORK="/var/tmp/share/sonatype/${_ID}" _BASE_URL="https://nxiq-k8s.standalone.localdomain/" _DB_USER="${_ID}" _DB_PWD="${_ID}" _DB_NAME="${_ID}" _DB_HOST="192.168.1.31"
 #   eval "echo \"$(cat ./k8s-iq-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
 #   #kubectl -n "sonatype" delete -f /tmp/${_ID}.yaml
@@ -114,7 +114,7 @@ spec:
           image: busybox:1.33.1
           # NOTE: 'echo nameserver ...' line is my personal hack as i do not want to use coreDNS
           #       Also, it seems the exit code needs to be 0
-          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; [ ! -d /sonatype-work/log ] && mkdir -v /sonatype-work/log && chown -v -R ${_RUNAS_USR:-1000}: /sonatype-work; echo "completed"']
+          command: ['sh', '-c', '[ -n "\$NAMESERVER" ] && echo nameserver \$NAMESERVER > /etc/resolv.conf; [ ! -d /sonatype-work/log ] && mkdir -v /sonatype-work/log && chown -v -R ${_RUNAS_USR:-1000}: /sonatype-work; [ -d /sonatype-work/trash ] && find /sonatype-work/trash/* -mtime +7 -print -delete; echo "completed"']
           volumeMounts:
             - name: nxiq-pg-work-volume
               mountPath: /sonatype-work
@@ -139,11 +139,6 @@ spec:
           ports:
             - containerPort: 8070
             - containerPort: 8071
-          lifecycle:
-            postStart:
-              exec:
-                # For Retention policy administrative task
-                command: ['/bin/sh', '-c', '[ -d /sonatype-work/trash ] && find /sonatype-work/trash -mtime +7 -print -delete']
           livenessProbe:
             httpGet:
               #host: ${_METALLB_IP}
