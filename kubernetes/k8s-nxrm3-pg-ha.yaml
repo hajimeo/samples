@@ -196,8 +196,8 @@ kind: Ingress
 metadata:
   name: ${_ID}-ingress
 spec:
-  # Without this, Internal error occurred: 2 default IngressClasses were found, only 1 allowed
-  ingressClassName: ${_ID}-ingress
+  # TODO: may need to use the existing ingress? (kubectl get ingressclass)
+  ingressClassName: nexus-ingress
   tls:
     - hosts:
         - ${_ID}-k8s.standalone.localdomain
