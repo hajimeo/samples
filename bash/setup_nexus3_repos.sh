@@ -940,9 +940,19 @@ function f_apiS() {
             return ${_rc}
         fi
     fi
-    local _H_sess="NXSESSIONID: $(_sed -nr 's/.+\sNXSESSIONID\s+([0-9a-f]+)/\1/p' ${_c})"
+    local _sess="$(_sed -nr 's/.+\sNXSESSIONID\s+([0-9a-f]+)/\1/p' ${_c})"
+    local _sess_key="NXSESSIONID"
+    if [ -z "${_sess}" ]; then
+        _sess="$(_sed -nr 's/.+\sNXJWT\s+([^\s]+)/\1/p' ${_c})"
+        if [ -z "${_sess}" ]; then
+            _log "ERROR" "No session id in '${_c}'"
+            return 1
+        fi
+        _sess_key="NXJWT"
+    fi
+    local _H_sess="${_sess_key}: ${_sess}"
     local _H_anti="NX-ANTI-CSRF-TOKEN: test"
-    local _C="Cookie: NX-ANTI-CSRF-TOKEN=test; NXSESSIONID=$(_sed -nr 's/.+\sNXSESSIONID\s+([0-9a-f]+)/\1/p' ${_c})"
+    local _C="Cookie: NX-ANTI-CSRF-TOKEN=test; ${_sess_key}=${_sess}"
     local _content_type="Content-Type: application/json"
     if [ "${_data:0:1}" != "{" ]; then
         _content_type="Content-Type: text/plain"
