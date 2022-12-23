@@ -5,7 +5,7 @@
 #   cd ~/IdeaProjects/samples/kubernetes
 #   # Below _DNS is only for my k8s env (don't forget to update /etc/banner_add_hosts). _DB_USER can't contain '-' character.
 #   export _NAMESPACE="sonatype-ha"
-#   export _ID="nxrm3pg" _TAG="3.44.0" _RUNAS_USR=200 _DNS="192.168.1.31" _DB_HOST_PORT="192.168.1.31:5432" #_METALLB_IP="192.168.1.230"
+#   export _ID="nxrm3ha" _TAG="3.44.0" _RUNAS_USR=200 _DNS="192.168.1.31" _DB_HOST_PORT="192.168.1.31:5432" #_METALLB_IP="192.168.1.230"
 #   export _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs" _JDBC_URL="jdbc:postgresql://${_DB_HOST_PORT}/${_ID}" _DB_USER="${_ID}" _DB_PWD="${_ID}"
 #
 #  one time only preparation (*after* above "export")
@@ -24,44 +24,32 @@
 #
 #   #kubectl -n ${_NAMESPACE} delete secret ${_ID}-jdbc
 #   kubectl -n ${_NAMESPACE} create secret generic ${_ID}-jdbc --from-literal=db_user="${_DB_USER}" --from-literal=db_pwd="${_DB_PWD}" --from-literal=jdbc_url="${_JDBC_URL}"
-#   eval "echo \"$(cat ./k8s-nxrm3-pg.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
+#   eval "echo \"$(cat ./k8s-nxrm3-pg-ha.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
 #   #kubectl -n ${_NAMESPACE} delete -f /tmp/${_ID}.yaml   # NOTE: This deletes PVC as well
 #   kubectl -n ${_NAMESPACE} apply -f /tmp/${_ID}.yaml
 #
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: nxrm3-pg-data-pvc
-  labels:
-    app: nxrm3-pg
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 4Gi
-  #storageClassName: standard
----
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: ${_ID}-deployment
+  name: ${_ID}-statefulset
   labels:
     app: ${_ID}
 spec:
-  minReadySeconds: 180
+  serviceName: ${_ID}-statefulset-sn
+  #minReadySeconds: 180
   replicas: 1
   selector:
     matchLabels:
       app: ${_ID}
-  strategy:
-    type: Recreate
+  #strategy:
+  #  type: Recreate
   template:
     metadata:
       labels:
         app: ${_ID}
     spec:
+      #serviceAccountName: ${_ID}-statefulset-sa
       terminationGracePeriodSeconds: 120
       dnsPolicy: Default
       # NOTE: Without initContainers, it fails to start on Docker-Desktop
@@ -98,11 +86,6 @@ spec:
             - containerPort: 8443
             - containerPort: 4999
             - containerPort: 5000
-          lifecycle:
-            postStart:
-              exec:
-                # TODO: This is not perfect but busybox or alpine doesn't have curl
-                command: ['/bin/sh', '-c', '[ -f /nexus-data/etc/ssl/keystore.jks ] || curl -sf -o /nexus-data/etc/ssl/keystore.jks -L https://github.com/hajimeo/samples/raw/master/misc/standalone.localdomain.jks & [ -f /nexus-data/etc/ssl/jetty-https.xml ] || cp -v -p /opt/sonatype/nexus/etc/jetty/jetty-https.xml /nexus-data/etc/ssl/;']
           livenessProbe:
             httpGet:
               path: /
@@ -141,24 +124,21 @@ spec:
               value: 'false'
             # NOTE: install4jAddVmParams is wrong
             - name: INSTALL4J_ADD_VM_PARAMS
-              # NOTE: In the datastore parameter, no schema specified, so will be 'public.'
+              # NOTE: In the datastore parameter, no schema specified, so will be public.
               #       The nexus.scripts.allowCreation shouldn't be used for production.
               #       Also, maybe using nexus.onboarding.enabled=false is better?
-              #       To enable HTTPS/SSL, append ',/nexus-data/etc/ssl/jetty-https.xml'
               value: '-XX:ActiveProcessorCount=2 -Xms1g -Xmx3g -XX:MaxDirectMemorySize=2g \
                 -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap \
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
                 -Dnexus.scripts.allowCreation=true \
-                -Dssl.etc=/nexus-data/etc/ssl \
-                -Dnexus-args=/opt/sonatype/nexus/etc/jetty/jetty.xml,/opt/sonatype/nexus/etc/jetty/jetty-http.xml,/opt/sonatype/nexus/etc/jetty/jetty-requestlog.xml \
+                -Dnexus.datastore.clustered.enabled=true \
                 -Dnexus.datastore.enabled=true \
                 -Dnexus.datastore.nexus.jdbcUrl=\${JDBC_URL} \
                 -Dnexus.datastore.nexus.username=\${DB_USER} \
                 -Dnexus.datastore.nexus.password=\${DB_PWD} \
                 -Dnexus.datastore.nexus.maximumPoolSize=10 \
-                -Dnexus.datastore.nexus.advanced=maxLifetime=600000 \
-                -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005'
+                -Dnexus.datastore.nexus.advanced=maxLifetime=600000'
           volumeMounts:
             - name: sonatype-license-volume
               mountPath: /etc/sonatype
@@ -172,14 +152,19 @@ spec:
         - name: sonatype-license-volume
           secret:
             secretName: sonatype-license
-        # No strong reason, but I feel NOT specifying own persistent volume for /nexus-data (and let k8s chose the underline file system) might be appropriate for the /nexus-data.
-        - name: nexus-data-volume
-          persistentVolumeClaim:
-            claimName: nxrm3-pg-data-pvc
         - name: nexus-blobs-volume
           hostPath:
             path: ${_BLOBS_PATH%/}
             type: DirectoryOrCreate
+  volumeClaimTemplates:
+    - metadata:
+        name: nexus-data-volume
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        #storageClassName: "standard"
+        resources:
+          requests:
+            storage: 4Gi  #20Gi
 ---
 apiVersion: v1
 kind: Service
@@ -199,15 +184,7 @@ spec:
       protocol: TCP
       port: 8081
       targetPort: 8081
-    - name: nexus-webui-https
-      protocol: TCP
-      port: 8443
-      targetPort: 8443
     - name: nexus-docker-http
       protocol: TCP
       port: 4999
       targetPort: 4999
-    - name: nexus-docker-https
-      protocol: TCP
-      port: 5000
-      targetPort: 5000
