@@ -20,7 +20,8 @@
 #     kubectl create namespace ${_NAMESPACE}
 #  - Create a secret for the license file:
 #     kubectl -n ${_NAMESPACE} create secret generic sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
-#  - (Optional) Configure Ingress
+#  - Configure Ingress
+#     kubectl -n ${_NAMESPACE} create secret tls nexus-tls --key ~/IdeaProjects/samples/misc/standalone.localdomain.key --cert ~/IdeaProjects/samples/misc/standalone.localdomain.crt
 #
 #   #kubectl -n ${_NAMESPACE} delete secret ${_ID}-jdbc
 #   kubectl -n ${_NAMESPACE} create secret generic ${_ID}-jdbc --from-literal=db_user="${_DB_USER}" --from-literal=db_pwd="${_DB_PWD}" --from-literal=jdbc_url="${_JDBC_URL}"
@@ -83,9 +84,9 @@ spec:
               memory: "4G"
           ports:
             - containerPort: 8081
-            - containerPort: 8443
+            #- containerPort: 8443
             - containerPort: 4999
-            - containerPort: 5000
+            #- containerPort: 5000
           livenessProbe:
             httpGet:
               path: /
@@ -188,3 +189,39 @@ spec:
       protocol: TCP
       port: 4999
       targetPort: 4999
+---
+# TODO: seems not working
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ${_ID}-ingress
+spec:
+  # Without this, Internal error occurred: 2 default IngressClasses were found, only 1 allowed
+  ingressClassName: ${_ID}-ingress
+  tls:
+    - hosts:
+        - ${_ID}-k8s.standalone.localdomain
+      secretName: nexus-tls
+  rules:
+    - host: ${_ID}-k8s.standalone.localdomain
+      http:
+        paths:
+          - path: /
+            backend:
+              service:
+                name: ${_ID}-service
+                port:
+                  number: 8081
+            pathType: Prefix
+    - host: ${_ID}-docker-k8s.standalone.localdomain
+      http:
+        paths:
+          - path: /
+            backend:
+              service:
+                name: ${_ID}-service
+                port:
+                  #number: 5000 # httpsPort
+                  number: 4999 # httpPort
+                  #number: 8081
+            pathType: Prefix
