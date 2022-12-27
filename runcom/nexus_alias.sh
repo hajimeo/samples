@@ -94,6 +94,9 @@ function iqMvn() {
 }
 
 # To start local (on Mac) NXRM2 or NXRM3 server
+# TODO: UPDATE repository_blobstore SET attributes = {} where type = 'S3';
+#       UPDATE repository_blobstore SET attributes.file = {} where type = 'S3';
+#       UPDATE repository_blobstore SET type = 'File', attributes.file.path = 's3/test' where type = 'S3';
 function nxrmStart() {
     local _base_dir="${1:-"."}"
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5005,suspend=n"}
@@ -201,18 +204,25 @@ function _prepare_install() {
     fi
 }
 
+# To install 2nd instance: _NXRM3_INSTALL_PORT=8082 _NXRM3_INSTALL_DIR=./nxrm_3.42.0-01_test nxrm3Install 3.42.0-01
+# To upgrade (from ${_dirname}/): tar -xvf ~/.nexus_executable_cache/nexus-3.42.0-01-mac.tgz
 function nxrm3Install() {
     local _ver="$1" #3.40.1-01
     local _dbname="$2"  # If h2, use H2
     local _dbusr="${3:-"${_dbname}"}"
     local _dbpwd="${4:-"${_dbusr}123"}"
-    local _port="${5:-"8081"}"
+    local _port="${5:-"${_NXRM3_INSTALL_PORT:-"8081"}"}"
+    local _dirname="${6:-"${_NXRM3_INSTALL_DIR}"}"
     local _download_dir="${6:-"$HOME/.nexus_executable_cache"}"
 
+    # I think PostgreSQL doesn't work with mixed case.
+    _dbname="$(echo "${_dbname}" | tr '[:upper:]' '[:lower:]')"
     local _os="linux"
     [ "`uname`" = "Darwin" ] && _os="mac"
-    local _dirname="nxrm_${_ver}"
-    [ -n "${_dbname}" ] && _dirname="${_dirname}_${_dbname}"
+    if [ -z "${_dirname}" ]; then
+        _dirname="nxrm_${_ver}"
+        [ -n "${_dbname}" ] && _dirname="${_dirname}_${_dbname}"
+    fi
     _prepare_install "${_dirname}" "${_download_dir%/}/nexus-${_ver}-${_os}.tgz"  "${_download_dir}" || return $?
 
     if [ ! -d ./sonatype-work/nexus3/etc/fabric ]; then
@@ -742,6 +752,7 @@ function npmDummyVer() {
     fi
 }
 
+
 function npmDummyVers() {
     local _how_many="${1}"
     local _repo_url="${2}"
@@ -766,13 +777,16 @@ function npmDummyVers() {
 }
 EOF
     cd "${_dir}"
-    for i in `seq ${_from_num:-"1"} ${_how_many:-"1"}`; do
+    for i in `seq ${_from_num:-"1"} $((${_from_num:-"1"} + ${_how_many:-"1"} - 1))`; do
       sed -i.tmp -E 's/"version": "1.[0-9].0"/"version": "1.'${i}'.0"/' ./package.json
       npm publish --registry "${_repo_url}" -ddd || break
       sleep 1
-    done
+    done || echo "ERROR: may need 'npm Bearer Token Realm' and 'npm adduser --registry ${_repo_url%/}/'"
     cd -
-    echo "To test: npm cache clean --force; npm pack ${_pkg_name} --registry ${_repo_url}"
+    echo "To test:
+    curl -O ${_repo_url%/}/${_pkg_name}
+    npm cache clean --force
+    npm pack --registry ${_repo_url%/}/ ${_pkg_name}"
 }
 
 function nuget-get() {
