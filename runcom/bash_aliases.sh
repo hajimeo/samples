@@ -33,8 +33,18 @@ alias s5proxy='netstat -tln | grep -E ":38080\s+" || ssh -4gC2TxnN -D38080'
 ## Git #################################################################################################################
 # Show current tag
 alias git_tag_crt='git describe --tags'
-alias git_crt_tag='git describe --tags'
+alias git_crt_tag=git_tag_crt
 alias git_tag_hash='git tag --contains'
+# To list release-<version>
+function git_tags() {
+    local _project="${1:-"."}" # eg: $HOME/IdeaProjects/samples
+    local _checkout_to="$2"
+    if [ -n "${_checkout_to}" ]; then
+        git -C "${_project%/}" checkout "${_checkout_to}"
+        return $?
+    fi
+    git -C "${_project%/}" tag -l | sort --version-sort # | grep -oE "\d+\.\d+\.\d+\-\d+"
+}
 # compare tags
 function git_comp_tags() {
     local _tag1="$1"
@@ -500,7 +510,7 @@ function chromep() {
 # Add route to dockerhost to access containers directly
 function r2dh() {
     local _dh="${1}" # docker host IP or L2TP 10.0.1.1
-    local _network_addrs="${2:-"172.17.0.0 172.18.0.0 172.17.100.0 10.1.25.0"}" # last one is for K8s pods
+    local _network_addrs="${2:-"172.17.0.0 172.18.0.0 172.17.100.0 10.1.25.0 10.152.183.0"}" # last one is for K8s pods
     [ -z "${_dh}" ] && _dh="$(ifconfig ppp0 | grep -oE 'inet .+' | awk '{print $4}')" 2>/dev/null
     [ -z "${_dh}" ] && _dh="dh1.standalone.localdomain"
 
@@ -530,6 +540,7 @@ function sshs() {
     fi
     ssh ${_user_at_host} -t ${_cmd}
 }
+# sshfs -o uid=$UID,gid=$UID,umask=000,reconnect,follow_symlinks $USER@$(echo ${SSH_CONNECTION} | cut -d" " -f1):/Users/$USER/IdeaProjects $HOME/IdeaProjects
 function ssh_remote_mount() {
     local _user="${1:-"$USER"}"
     local _src="${2:-"/Users/${_user}"}"    # expecting Mac...
@@ -555,12 +566,10 @@ function pgStatus() {
     #ln -s /Volumes/Samsung_T5/hajime/backups $HOME/share/$USER/backups
     if [ "${_cmd}" == "start" ]; then
         if [ -n "${_log_path}" ] && [ -s "${_log_path}" ]; then
-          if mv -v ${_log_path} /tmp/; then
-              gzip -S _$(date +'%Y%m%d%H%M%S').gz /tmp/$(basename ${_log_path}) &>/dev/null &
-          fi
+            echo -n > ${_log_path}
         fi
         if [ -d "${_wal_backup_path%/}" ]; then
-            find ${_wal_backup_path%/} -type f -mtime +2 -print -delete 2>/dev/null &
+            find ${_wal_backup_path%/} -type f -mtime +2 -delete 2>/dev/null &  # -print
         fi
     fi
     if [ -n "${_log_path}" ]; then
@@ -608,6 +617,7 @@ function backupC() {
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
     # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory'
     _src="$(realpath "${_src}")"    # because find -L ... -delete does not work
+    [ -z "${_src%/}" ] && return 13
     find ${_src%/} -type f -mtime +7 -size 0 \( ! -name "._*" \) -print -delete 2>/dev/null &
     find ${_src%/} -type d -mtime +14 -name '*_tmp' -print -delete 2>/dev/null &
     find ${_src%/} -type f -mtime +14 -name '*.tmp' -print -delete 2>/dev/null &
@@ -747,5 +757,6 @@ function update_cacerts() {
     [ ! -f "${JAVA_HOME%/}/jre/lib/security/cacerts" ] && return 2
     [ ! -f "${_pem}" ] && return 3
     [ -z "${_alias}" ] && _alias="$(basename "${_pem%%.*}")"
+    echo 'sudo keytool -import -alias "'${_alias}'" -keystore "'${JAVA_HOME%/}'/jre/lib/security/cacerts" -file "'${_pem}'" -noprompt -storepass changeit' >&2
     sudo keytool -import -alias "${_alias}" -keystore "${JAVA_HOME%/}/jre/lib/security/cacerts" -file "${_pem}" -noprompt -storepass changeit
 }
