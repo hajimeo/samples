@@ -15,12 +15,12 @@
 #     #source ../bash/utils.sh && source ../bash/utils_db.sh && _postgresql_create_dbuser "${_ID}"
 #     sudo -u postgres -i psql -c "CREATE USER ${_DB_USER} WITH LOGIN PASSWORD '${_DB_PWD}';"
 #     sudo -u postgres -i psql -c "CREATE DATABASE ${_ID} WITH OWNER ${_DB_USER} ENCODING 'UTF8';"
-#     # Also,update pg_hba.conf
+#     # Also, don't forget updating pg_hba.conf
 #  - Create a namespace:
 #     kubectl create namespace ${_NAMESPACE}
 #  - Create a secret for the license file:
 #     kubectl -n ${_NAMESPACE} create secret generic sonatype-license --from-file sonatype-license.lic=/path/to/licenseFile
-#  - Configure Ingress
+#  - Configure tls secret for Ingress
 #     kubectl -n ${_NAMESPACE} create secret tls nexus-tls --key ~/IdeaProjects/samples/misc/standalone.localdomain.key --cert ~/IdeaProjects/samples/misc/standalone.localdomain.crt
 #
 #   #kubectl -n ${_NAMESPACE} delete secret ${_ID}-jdbc
@@ -190,7 +190,6 @@ spec:
       port: 4999
       targetPort: 4999
 ---
-# TODO: seems not working
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
