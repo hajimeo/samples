@@ -103,7 +103,7 @@ alias pjt='sed "s/,$//" | while read -r _l;do echo "${_l}" | python -m json.tool
 # this one is from a *JSON* file
 #alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.load(open(sys.argv[1])), indent=4, sort_keys=True))"'
 # echo "json like string" | prettyjson
-alias prettyjson='while read -r _l; do echo "${_l}" | sed "s/,$//" | python3 -c "import sys,json;print(json.dumps(json.loads(sys.stdin.read()), indent=4, sort_keys=True))";echo "--";done'
+alias prettyjson='python3 -c "import sys,json;print(json.dumps(json.loads(sys.stdin.read()), indent=4, sort_keys=True))"'
 # Pretty|Tidy print XML. NOTE: without encoding, etree.tostring returns bytes, which does not work with print()
 #alias prettyxml='python3 -c "import sys;from lxml import etree;t=etree.parse(sys.argv[1].encode(\"utf-8\"));print(etree.tostring(t,encoding=\"unicode\",pretty_print=True))"'
 #alias prettyxml='xmllint --format'
