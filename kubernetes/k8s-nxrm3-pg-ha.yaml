@@ -133,6 +133,7 @@ spec:
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
                 -Dnexus.scripts.allowCreation=true \
+                -Dnexus.jwt.enabled=true \
                 -Dnexus.datastore.clustered.enabled=true \
                 -Dnexus.datastore.enabled=true \
                 -Dnexus.datastore.nexus.jdbcUrl=\${JDBC_URL} \
