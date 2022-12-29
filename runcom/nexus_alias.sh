@@ -49,6 +49,7 @@ function iqCli() {
     local _iq_cli_ver="${5:-${_IQ_CLI_VER:-"1.144.0-05"}}"
     local _iq_cli_opt="${6:-${_IQ_CLI_OPT}}"    # -D fileIncludes="**/package-lock.json"
     local _iq_cli_jar="${_IQ_CLI_JAR:-"${_WORK_DIR%/}/sonatype/iq-cli/nexus-iq-cli-${_iq_cli_ver}.jar"}"
+    # TODO: utilise http://localhost:8070/rest/product/version
 
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
     #[ ! -d "${_iq_tmp}" ] && mkdir -p "${_iq_tmp}"
@@ -750,43 +751,6 @@ function npmDummyVer() {
         curl -vf -u admin:admin123 -k "${_url%/}/service/rest/v1/components?repository=${_repo_name%/}" -H "accept: application/json" -H "Content-Type: multipart/form-data" -X POST -F "npm.asset=@${_crt_dir%/}/${_new_name}-${_new_ver}.tgz" || return $?
         # NPM repo doesn't support PUT: curl -v -u admin:admin123 -X PUT -k "${_repo_url%/}/${_new_name}/-/${_new_name}-${_new_ver}.tgz" -T "${_crt_dir%/}/${_new_name}-${_new_ver}.tgz" || return $?
     fi
-}
-
-
-function npmDummyVers() {
-    local _how_many="${1}"
-    local _repo_url="${2}"
-    local _pkg_name="${3:-"mytest"}"
-    local _from_num="${4}"
-    local _dir="$(mktemp -d)"
-    cat << EOF > "${_dir%/}/package.json"
-{
-    "author": "nxrm test",
-    "description": "reproducing issue",
-    "keywords": [],
-    "license": "ISC",
-    "main": "index.js",
-    "name": "${_pkg_name}",
-    "publishConfig": {
-        "registry": "${_repo_url}"
-    },
-    "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
-    },
-    "version": "1.0.0"
-}
-EOF
-    cd "${_dir}"
-    for i in `seq ${_from_num:-"1"} $((${_from_num:-"1"} + ${_how_many:-"1"} - 1))`; do
-      sed -i.tmp -E 's/"version": "1.[0-9].0"/"version": "1.'${i}'.0"/' ./package.json
-      npm publish --registry "${_repo_url}" -ddd || break
-      sleep 1
-    done || echo "ERROR: may need 'npm Bearer Token Realm' and 'npm adduser --registry ${_repo_url%/}/'"
-    cd -
-    echo "To test:
-    curl -O ${_repo_url%/}/${_pkg_name}
-    npm cache clean --force
-    npm pack --registry ${_repo_url%/}/ ${_pkg_name}"
 }
 
 function nuget-get() {
