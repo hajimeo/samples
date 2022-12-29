@@ -171,7 +171,7 @@ spec:
         # No strong reason, but I feel NOT specifying own persistent volume for /nexus-data (and let k8s chose the underline file system) might be appropriate for the /nexus-data.
         - name: nexus-data-volume
           persistentVolumeClaim:
-            claimName: nxrm3-pg-data-pvc
+            claimName: ${_ID}-data-pvc
         - name: nexus-blobs-volume
           hostPath:
             path: ${_BLOBS_PATH%/}
