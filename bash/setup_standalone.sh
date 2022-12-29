@@ -1120,7 +1120,7 @@ main() {
         return 1
     fi
     if ! which python &>/dev/null; then
-        _log "ERROR" "python is required for this script."
+        _log "ERROR" "python (python2 or alias of python3) is required for this script."
         return 1
     fi
     if [ "`uname`" = "Darwin" ]; then

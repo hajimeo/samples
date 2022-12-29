@@ -237,7 +237,7 @@ function f_gen_replication_log_from_soft_deleted() {
     ls -l ./${_output_date}
 }
 
-function f_missing_check() {
+function f_missing_check_orientdb() {
     # To check 'exists in metadata, but is missing from the blobstore'
     # https://issues.sonatype.org/browse/NEXUS-27145 stops maven-metadata rebuild, so deleting multiple maven-metadata.xml files
     local _comp_bak="$1"
@@ -249,7 +249,7 @@ function f_missing_check() {
         curl -o ./orient-console.jar -L "https://github.com/hajimeo/samples/raw/master/misc/orient-console.jar" || return $?
     fi
     if ! type blobpath &>/dev/null && [ ! -s blobpath ]; then
-        curl -o ./blobpath -L "https://github.com/hajimeo/samples/raw/master/misc/blobpath_$(uname)" || return $?
+        curl -o ./blobpath -L "https://github.com/hajimeo/samples/raw/master/misc/blobpath_$(uname)_$(uname -m)" || return $?
         chmod u+x ./blobpath || return $?
     fi
     echo "${_sql}" | java -DexportPath=./result.json -jar orient-console.jar ${_comp_bak} || return $?

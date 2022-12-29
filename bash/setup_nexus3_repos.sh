@@ -588,7 +588,7 @@ function f_setup_go() {
     # Workaround for https://issues.sonatype.org/browse/NEXUS-21642
     if ! _is_repo_available "gosum-raw-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"raw":{"contentDisposition":"ATTACHMENT"},"proxy":{"remoteUrl":"https://sum.golang.org","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"gosum-raw-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"raw-proxy"}],"type":"rpc"}' || return $?
-        _log "INFO" "May need to set 'GOSUMDB=\"sum.golang.org ${r_NEXUS_URL:-"${_NEXUS_URL}"}/repository/gosum-raw-proxy\"'"
+        _log "INFO" "May need to set 'GOSUMDB=\"sum.golang.org ${r_NEXUS_URL:-"${_NEXUS_URL%/}"}/repository/gosum-raw-proxy\"'"
     fi
     # TODO: add some data for xxxx-proxy
 }
@@ -1610,6 +1610,56 @@ function f_upload_dummies_mvn() {
     # NOTE: xargs only stops if exit code is 255
 }
 
+function f_upload_dummies_npm() {
+    local __doc__="Upload dummy tgz into (npm) hosted repository"
+    local _repo_name="${1:-"npm-hosted"}"
+    local _how_many="${2:-"10"}"
+    local _pkg_name="${3:-"mytest"}"
+    local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _seq="seq ${_seq_start} ${_seq_end}"
+    if ! type npm &>/dev/null; then
+        echo "ERROR: this function requires 'npm' in the PATH"
+        return 1
+    fi
+    local _dir="$(mktemp -d)"
+    cat << EOF > "${_dir%/}/package.json"
+{
+    "author": "nxrm test",
+    "description": "reproducing issue",
+    "keywords": [],
+    "license": "ISC",
+    "main": "index.js",
+    "name": "${_pkg_name}",
+    "publishConfig": {
+        "registry": "${_repo_url}"
+    },
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "version": "1.0.0"
+}
+EOF
+    cd "${_dir}"
+    for i in $(eval "${_seq}"); do
+      sed -i.tmp -E 's/"version": "1.[0-9].0"/"version": "1.'${i}'.0"/' ./package.json
+      # TODO: should be parallel
+      if ! npm publish --registry "${_repo_url}" -ddd; then
+          echo "ERROR: may need 'npm Bearer Token Realm'"
+          echo "       also 'npm adduser --registry ${_repo_url%/}/' (check ~/.npmrc as well)"
+          cd -
+          return 1
+      fi
+      sleep 1
+    done
+    cd -
+    echo "To test:
+    curl -O ${_repo_url%/}/${_pkg_name}
+    npm cache clean --force
+    npm pack --registry ${_repo_url%/}/ ${_pkg_name}"
+}
+
 # NOTE: below may not work with group repo:
 # org.sonatype.nexus.repository.IllegalOperationException: Deleting from repository pypi-group of type pypi is not supported
 function f_delete_asset() {
@@ -1636,7 +1686,7 @@ function f_delete_asset() {
         local cToken="$(cat /tmp/${FUNCNAME}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
         _query="&continuationToken=${cToken}"
     done
-    grep -E '^ +"id":' -h /tmp/${FUNCNAME}_*_matched_IDs.out | sort | uniq > /tmp/${FUNCNAME}_$$.out || return $?
+    grep -E '^            "id":' -h /tmp/${FUNCNAME}_*_matched_IDs.out | sort | uniq > /tmp/${FUNCNAME}_$$.out || return $?
     local _line_num="$(cat /tmp/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
         read -p "Are you sure to delete matched (${_line_num}) assets?: " "_yes"
@@ -1667,7 +1717,7 @@ function f_delete_all_assets() {
         local cToken="$(cat /tmp/${FUNCNAME}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
         _query="&continuationToken=${cToken}"
     done
-    grep -E '^ +"id":' -h /tmp/${FUNCNAME}_*.json | sort | uniq > /tmp/${FUNCNAME}_$$.out || return $?
+    grep -E '^            "id":' -h /tmp/${FUNCNAME}_*.json | sort | uniq > /tmp/${FUNCNAME}_$$.out || return $?
     local _line_num="$(cat /tmp/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
         read -p "Are you sure to delete all (${_line_num}) assets?: " "_yes"
