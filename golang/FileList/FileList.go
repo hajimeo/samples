@@ -571,10 +571,11 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 			_log("DEBUG2", "path:"+path+" is recently modified, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" > "+strconv.FormatInt(_START_TIME_ts, 10)+")")
 			return ""
 		}
-		if _DEL_DATE_FROM_ts > 0 && modTimeTs < _DEL_DATE_FROM_ts {
+		// TODO: probably do not need this check when _DEL_DATE_FROM_ts is gven
+		/*if _DEL_DATE_FROM_ts > 0 && modTimeTs < _DEL_DATE_FROM_ts {
 			_log("DEBUG2", "path:"+path+" mod time is older than _DEL_DATE_FROM_ts, so skipping ("+strconv.FormatInt(modTimeTs, 10)+" < "+strconv.FormatInt(_DEL_DATE_FROM_ts, 10)+")")
 			return ""
-		}
+		}*/
 		// NOTE: Not doing same for _DEL_DATE_TO_ts as some task may touch.
 	}
 
@@ -885,7 +886,7 @@ func genOutputForReconcile(contents string, path string, delDateFromTs int64, de
 				} else if len(contents) == len(updatedContents) {
 					_log("WARN", fmt.Sprintf("Removed 'deleted=true' from path:%s but size is same (%d => %d)", path, len(contents), len(updatedContents)))
 				} else {
-					deletedMsg = " (removed 'deletedMsg=true')"
+					deletedMsg = " (removed 'deleted=true')"
 
 					if _IS_S3 != nil && *_IS_S3 {
 						errTag := removeTagsS3(path, client)

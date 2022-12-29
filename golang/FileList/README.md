@@ -136,19 +136,19 @@ file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -f ".p
 ```
 NOTE: the attributes in a .properties file are sorted in memory, so that attributes start with "@" comes before "deleted=true" line.
 
-### Output lines for the reconciliation (blobstore.rebuildComponentDB) YYYY-MM-DD text (-RF) and for the files which were modified on and after 2022-05-19 (-mF "\<date\>")
+### Output lines for the reconciliation (blobstore.rebuildComponentDB) YYYY-MM-DD text (-RF) and for the files which were modified since 1 day ago (-mF "\<date\>")
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -mF "2022-05-19" > ./$(date '+%Y-%m-%d')
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -mF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d')
 ```
 
-### Output lines for the reconciliation (blobstore.rebuildComponentDB) YYYY-MM-DD text (-RF) and deleted from 2022-05-19 (-dF "\<date\>")
+### Output lines for the reconciliation (blobstore.rebuildComponentDB) YYYY-MM-DD text (-RF) and deleted from one day ago (-dF "\<date\>")
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-05-19" > ./$(date '+%Y-%m-%d')
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d')
 ```
 
 ### Remove 'deleted=true' (-RDel), then output lines for the reconciliation YYYY-MM-DD text
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "2022-07-19" -RDel > ./$(date '+%Y-%m-%d')
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p "vol-" -c 10 -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" -RDel > ./$(date '+%Y-%m-%d')
 ```
 
 ### Check orphaned files by querying against PostgreSQL (-db "\<conn string or nexus-store.properties file path) with max 10 DB connections (-c 10)
@@ -161,8 +161,8 @@ file-list -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db /nex
 ```
 NOTE: Above outputs blobs which are not in <format>_asset table, which includes assets which have not soft-deleted by Cleanup unused asset blobs task.
 
-### Check orphaned files, and with the reconciliation YYYY-MM-DD format output (-RF), and deleted after 2022-05-19 (-dF)
+### Check orphaned files, and with the reconciliation YYYY-MM-DD format output (-RF), and deleted after 1 day ago (-dF)
 ```
-$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -RF -dF "2022-05-19" > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d%H%M%S").log
+$ file-list -b ./sonatype-work/nexus3/blobs/default/content -p vol- -c 10 -db /nexus-data/etc/fabric/nexus-store.properties -RF -dF "$(date -d "1 day ago" +%Y-%m-%d)" > ./$(date '+%Y-%m-%d') 2> ./file-list_$(date +"%Y%m%d%H%M%S").log
 ```
 NOTE: If using -RDel to delete "deleted=true", recommend to save the STDERR into a file like above.
