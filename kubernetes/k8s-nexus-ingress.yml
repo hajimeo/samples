@@ -34,19 +34,19 @@ spec:
   ingressClassName: nexus-ingress
   tls:
     - hosts:
-        - nxrm3-pg-k8s.standalone.localdomain
+        - nxrm3pg-k8s.standalone.localdomain
         - docker-k8s.standalone.localdomain
         - nxiq-k8s.standalone.localdomain
       secretName: nexus-tls
   rules:
     # NXRM3 + PostgreSQL standalone
-    - host: nxrm3-pg-k8s.standalone.localdomain
+    - host: nxrm3pg-k8s.standalone.localdomain
       http:
         paths:
           - path: /
             backend:
               service:
-                name: nxrm3-pg-service
+                name: nxrm3pg-service
                 port:
                   number: 8081
             pathType: Prefix
@@ -56,7 +56,7 @@ spec:
           - path: /
             backend:
               service:
-                name: nxrm3-pg-service
+                name: nxrm3pg-service
                 port:
                   #number: 5000 # httpsPort
                   number: 4999 # httpPort
@@ -68,7 +68,7 @@ spec:
           - path: /
             backend:
               service:
-                name: nxrm3-pg-service
+                name: nxrm3pg-service
                 port:
                   number: 8081
             pathType: Prefix
@@ -78,7 +78,7 @@ spec:
           - path: /
             backend:
               service:
-                name: nxrm3-pg-service
+                name: nxrm3pg-service
                 port:
                   number: 8081
             pathType: Prefix
@@ -88,7 +88,7 @@ spec:
           - path: /
             backend:
               service:
-                name: nxrm3-pg-service
+                name: nxrm3pg-service
                 port:
                   number: 8081
             pathType: Prefix
