@@ -124,7 +124,7 @@ spec:
             - name: INSTALL4J_ADD_VM_PARAMS
               # NOTE: In the datastore parameter, no schema specified, so will be public.
               #       The nexus.scripts.allowCreation shouldn't be used for production.
-              #       Also, maybe using nexus.onboarding.enabled=false is better?
+              #       Also, maybe using nexus.onboarding.enabled=false and nexus.skipDefaultRepositories=true (but HA doesn't do this anyway)?
               #       To enable HTTPS/SSL, prepare keystore.jks and append ',/nexus-data/etc/ssl/jetty-https.xml'
               value: '-XX:ActiveProcessorCount=2 -Xms1g -Xmx3g -XX:MaxDirectMemorySize=2g \
                 -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap \
@@ -194,6 +194,15 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: ${_ID}-ingress
+  labels:
+    app: ${_ID}
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/session-cookie-name: "NXJWT"
+    nginx.ingress.kubernetes.io/session-cookie-expires: "172800"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "172800"
 spec:
   # TODO: may need to use the existing ingress? (kubectl get ingressclass)
   ingressClassName: nexus-ingress
