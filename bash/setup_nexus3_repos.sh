@@ -13,6 +13,7 @@ _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
 type _import &>/dev/null || _import() { [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1}; . /tmp/${1}; }
 
 _import "utils.sh"
+_import "utils_db.sh"
 _import "utils_container.sh"
 
 type python &>/dev/null || alias python=python3  # For M1 Mac workaround
@@ -93,7 +94,7 @@ If HA-C, edit nexus.properties for all nodes, then remove 'db' directory from no
 : ${_NO_DATA:="N"}
 : ${_BLOBTORE_NAME:="default"}
 : ${_IS_NEWDB:=""}
-: ${_DATASTORE_NAME:=""}  # TODO: If Postgres (or H2), needs to add attributes.storage.dataStoreName = "nexus"
+: ${_DATASTORE_NAME:=""}  # If Postgres (or H2), needs to add attributes.storage.dataStoreName = "nexus"
 : ${_TID:=80}
 ## Misc. variables
 _LOG_FILE_PATH="/tmp/setup_nexus3_repos.log"
@@ -1810,7 +1811,6 @@ function f_nexus_k8s_ha() {
         fi
     done
 }
-
 function _pod_ready_waiter() {
     local _instance="${1}"
     local _namespace="${2:-"sonatype"}"
@@ -1823,9 +1823,7 @@ function _pod_ready_waiter() {
     done
     return 1
 }
-
-# no longer in use
-function _update_name_resolution() {
+function _update_name_resolution() {    # no longer in use but leaving as an example
     local _dns_server="$1"
     local _pod_prefix="${2:-"nxrm3-ha"}"
     local _namespace="${3:-"sonatype"}"
@@ -1847,6 +1845,112 @@ function _update_name_resolution() {
             cat /tmp/${_pod_prefix}_hosts.err
         fi
     fi
+}
+
+# NOTE: currently this function is tested against support.zip boot-ed then migrated database
+# Example export command (Not using --data-only as needs CREATE statements also requires PostgreSQL v12 or higher for wildcard in -t):
+#PGGSSENCMODE=disable pg_dump -h localhost -p 5432 -U nxrm -d nxrm -t "repository" -t "*_content_repository" -t "*_component*" -t "*_asset*" -t "tag" -t "*deleted_blob*" -t "change_blobstore" -Z 6 -f component_db_dump.sql.gz   # -t "*_browse_node"
+function f_restore_postgresql_component_db() {
+    local __doc__="Restore 'component' database from a pg_dump generated sql.gz file into the existing *local* database"
+    local _sql_gz_file="${1}"
+    local _db_hostname="${2:-"localhost"}"
+    local _dbusr="${3:-"nxrm"}"
+    local _dbpwd="${4:-"${_dbusr}123"}"
+    local _dbname="${5:-${_dbusr}}"
+    local _workDirectory="${6:-"."}"     # To detect workDirectory
+    local _usr="${7:-${_SERVICE:-"$USER"}}"
+    local _orig_db_for_reuse="${8-"${_ORIG_DB_FOR_REUSE}"}"
+    local _fix_db_only="${9-"${_RESTORE_FIX_DB_ONLY}"}"
+
+    if [ ! -s "${_sql_gz_file}" ]; then
+        _log "ERROR" "No import file ${_sql_gz_file}'"
+        return 1
+    fi
+
+    if [ -z "${_workDirectory%/}" ]; then
+        _workDirectory="$(ls -1dt ./sonatype-work/nexus* 2>/dev/null | head -n1)"
+        if [ -z "${_workDirectory}" ]; then
+            _log "ERROR" "no _workDirectory set"
+            return 1
+        fi
+    fi
+    local _temp_db_name="${FUNCNAME}_db"
+
+    # _postgresql_create_dbuser does not work if DB is not local
+    if [ "${_db_hostname}" == "localhost" ] || [ "${_db_hostname}" == "$(hostname -f)" ]; then
+        _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" || return $?
+    else
+        _log "WARN" "Didn't run _postgresql_create_dbuser as _db_hostname is not local"
+        sleep 3
+    fi
+
+    # If NOT _orig_db_for_reuse, create the temp DB and import
+    if [ -z "${_orig_db_for_reuse}" ]; then
+        if PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -ltA -F','| grep -q "^${_temp_db_name},"; then
+            _log "ERROR" "Please run 'DROP DATABASE ${_temp_db_name};' first"
+            return 1
+        fi
+        _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_temp_db_name}" || return $?
+        _log "INFO" "Importing DB data from '${_sql_gz_file}' into '${_temp_db_name}' (please ignore WARN 'already exists') ..."
+        _psql_restore "${_sql_gz_file}" "${_dbusr}" "${_dbpwd}" "${_temp_db_name}" "public" || return $?
+        _log "INFO" "Restore to temp DB completed."
+    fi
+
+    if [[ ! "${_fix_db_only}" =~ ^(y|Y) ]]; then
+        # export only, <format>_component, <format>_asset, <format>_asset_blob, ...
+        for _suffix in component asset asset_blob browse_node component_tag; do # No need content_repository
+            PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name like '%_${_suffix}' order by table_name;" | while read -r _tbl; do
+                PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -c "DROP TABLE IF EXISTS ${_tbl} CASCADE;"
+                # would not need to use -O -x -a. --column-inserts is super slow comparing to COPY ...
+                _log "INFO" "Importing ${_tbl} (output: /tmp/${FUNCNAME}_${_tbl}.log) ..."
+                PGPASSWORD="${_dbpwd}" pg_dump -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -t "${_tbl}" | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} &> /tmp/${FUNCNAME}_${_tbl}.log || return $?   # Using -L may generate very large text file
+            done
+        done
+    fi
+
+    # NOTE: May need to fix <format>_content_repository
+    PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -tA -c "select table_name from information_schema.tables where table_name like '%_content_repository' order by table_name;" | while read -r _tbl; do
+        _log "INFO" "Checking ${_tbl} (/tmp/${_temp_db_name}.${_tbl}.list) ..."
+        PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -F, -c "select cr.repository_id, r.name from ${_tbl} cr join repository r ON cr.config_repository_id = r.id order by cr.repository_id" > /tmp/${_temp_db_name}.${_tbl}.list
+        PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -tA -F, -c "select cr.repository_id, r.name from ${_tbl} cr join repository r ON cr.config_repository_id = r.id order by cr.repository_id" > /tmp/${_dbname}.${_tbl}.list
+
+        if ! diff -wy --suppress-common-lines /tmp/${_temp_db_name}.${_tbl}.list /tmp/${_dbname}.${_tbl}.list; then
+            _update_content_repository_per_fmt "${_tbl}" "/tmp/${_temp_db_name}.${_tbl}.list" | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname}
+        fi
+    done
+
+    log "INFO" "To test / check:"
+    echo "VACUUM FULL VERBOSE; SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' ORDER BY relname;"
+    log "INFO" "Please make sure nexus-store.properties file is correct, and if necessary reset 'admin' password. Also make sure it will not connect to the external system (eg: AWS S3, LDAP, SAML, SMTP, HTTP proxy etc.)"
+    # Shouldn't need below as support booter should take care of
+    #_update_nxrm3_db_config "${_db_hostname}" "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schemas}" "${_workDirectory}" "${_usr}" || return $?
+    #_log "INFO" "Resetting all users' password (not role/privileges) ..."; sleep 3;
+    #PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -c "update security_user SET password='\$shiro1\$SHA-512\$1024\$NE+wqQq/TmjZMvfI7ENh/g==\$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA==';"    #, status='active' WHERE id='admin'
+}
+function _update_content_repository_per_fmt() {
+    local _tbl="$1"                 # eg. "pypi_content_repository"
+    local _correct_list="$2"        # eg. "1,pypi-local 2,pypi-remote 3,pypi"
+    if [ -f "${_correct_list}" ]; then
+        _correct_list="$(cat "${_correct_list}" | tr '\n' ' ')"
+    fi
+    local _updates_1=""
+    local _updates_2=""
+    for _l in ${_correct_list}; do
+        if [[ "${_l}" =~ ([^, ]+),([^, ]+) ]]; then
+            local _repo_id="${BASH_REMATCH[1]}"
+            local _repo_name="${BASH_REMATCH[2]}"
+            _updates_1="${_updates_1}UPDATE ${_tbl} SET config_repository_id = (SELECT uuid_in(md5(random()::text || clock_timestamp()::text)::cstring)) WHERE repository_id = ${_repo_id};"
+            _updates_2="${_updates_2}UPDATE ${_tbl} SET config_repository_id = (SELECT id FROM repository WHERE name = '${_repo_name}') WHERE repository_id = ${_repo_id};"
+        fi
+    done
+    if [ -z "${_updates_1}" ] || [ -z "${_updates_2}" ]; then
+        _log "ERROR" "Failed to generate update statements\n${_updates_1}\n${_updates_2}"
+        return
+    fi
+    echo "BEGIN;"
+    echo "${_updates_1}"
+    echo "${_updates_2}"
+    echo "COMMIT;"
 }
 
 

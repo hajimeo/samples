@@ -153,7 +153,7 @@ function _postgresql_create_dbuser() {
     local __doc__="Create DB user/role and database/schema. Need to run from the PostgreSQL server (localhost)"
     local _dbusr="${1}"
     local _dbpwd="${2:-"${_dbusr}"}"
-    local _dbname="${3:-"${_dbusr}"}"
+    local _dbname="${3-"${_dbusr}"}"    # accept "" (empty string), then 'all' database is allowed
     local _schema="${4}"
     local _dbadmin="${5}"
     local _port="${6:-"5432"}"
@@ -165,17 +165,21 @@ function _postgresql_create_dbuser() {
         _log "WARN" "No pg_hba.conf (${_pg_hba_conf}) found."
         return 1
     fi
+    if [ -z "${_dbname}" ]; then
+        _log "WARN" "No _dbname specified, which will allow ${_dbusr} to access 'all' database."
+        sleep 3
+    fi
 
     # NOTE: Use 'hostssl all all 0.0.0.0/0 cert clientcert=1' for 2-way | client certificate authentication
     #       To do that, also need to utilise database.parameters.some_key:value in config.yml
-    if ! grep -E "host\s+${_dbname}\s+${_dbusr}\s+" "${_pg_hba_conf}"; then
-        echo "host ${_dbname} ${_dbusr} 0.0.0.0/0 md5" >> "${_pg_hba_conf}" || return $?
+    if ! grep -E "host\s+${_dbname:-"all"}\s+${_dbusr}\s+" "${_pg_hba_conf}"; then
+        echo "host ${_dbname:-"all"} ${_dbusr} 0.0.0.0/0 md5" >> "${_pg_hba_conf}" || return $?
         ${_psql_as_admin} -tAc 'SELECT pg_reload_conf()' || return $?
         #${_psql_as_admin} -tAc 'SELECT pg_read_file('pg_hba.conf');'
-        ${_psql_as_admin} -tAc "select * from pg_hba_file_rules where database = '{${_dbname}}' and user_name = '{${_dbusr}}';"
+        ${_psql_as_admin} -tAc "select * from pg_hba_file_rules where database = '{${_dbname:-"all"}}' and user_name = '{${_dbusr}}';"
     fi
-    [ "${_dbusr}" == "all" ] && return 0
 
+    [ "${_dbusr}" == "all" ] && return 0    # not creating user 'all'
     _log "INFO" "Creating Role:${_dbusr} and Database:${_dbname} ..."
     _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_dbadmin}"
 }
@@ -183,12 +187,13 @@ function _postgresql_create_dbuser() {
 function _postgresql_create_role_and_db() {
     local _dbusr="${1}" # new DB user
     local _dbpwd="${2:-"${_dbusr}"}"
-    local _dbname="${3:-"${_dbusr}"}"
+    local _dbname="${3-"${_dbusr}"}"    # If explicitly "", not creating DB but user/role only
     local _schema="${4}"
     local _dbadmin="${5}"
     local _dbhost="${6}"
     local _dbport="${7:-"5432"}"
     _dbadmin="$(_get_dbadmin_user "${_dbadmin}")"
+
     local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
     # NOTE: need to be superuser and 'usename' is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
     ${_psql_as_admin} -d template1 -tA -c "SELECT usename FROM pg_shadow" | grep -q "^${_dbusr}$" || ${_psql_as_admin} -d template1 -c "CREATE USER ${_dbusr} WITH LOGIN PASSWORD '${_dbpwd}';"    # not SUPERUSER
@@ -196,25 +201,29 @@ function _postgresql_create_role_and_db() {
         # TODO ${_dbadmin%@*} is only for Azure
         ${_psql_as_admin} -d template1 -c "GRANT ${_dbusr} TO \"${_dbadmin%@*}\";"
     fi
-    if ${_psql_as_admin} -d template1 -ltA  -F',' | grep -q "^${_dbname},"; then
-        _log "WARN" "${_dbname} already exists. May need to run below first:
-    ${_psql_as_admin} -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"};\""
-        sleep 3
-    else
-        ${_psql_as_admin} -d template1 -c "CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';"
-    fi
-    # NOTE: Below two lines are NOT needed because of 'WITH OWNER'. Just for testing purpose to avoid unnecessary permission errors.
-    ${_psql_as_admin} -d template1 -c "GRANT ALL ON DATABASE ${_dbname} TO \"${_dbusr}\";" || return $?
-    ${_psql_as_admin} -d ${_dbname} -c "GRANT ALL ON SCHEMA public TO \"${_dbusr}\";"
 
-    if [ -n "${_schema}" ]; then
-        local _search_path="${_dbusr},public"
-        for _s in ${_schema}; do
-            ${_psql_as_admin} -d ${_dbname} -c "CREATE SCHEMA IF NOT EXISTS ${_s} AUTHORIZATION ${_dbusr};"
-            _search_path="${_search_path},${_s}"
-        done
-        ${_psql_as_admin} -d template1 -c "ALTER ROLE ${_dbusr} SET search_path = ${_search_path};"
+    if [ -n "${_dbname}" ]; then
+        if ${_psql_as_admin} -d template1 -ltA  -F',' | grep -q "^${_dbname},"; then
+            _log "WARN" "${_dbname} already exists. May need to run below first:
+        ${_psql_as_admin} -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"};\""
+            sleep 3
+        else
+            ${_psql_as_admin} -d template1 -c "CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';"
+        fi
+        # NOTE: Below two lines are NOT needed because of 'WITH OWNER'. Just for testing purpose to avoid unnecessary permission errors.
+        ${_psql_as_admin} -d template1 -c "GRANT ALL ON DATABASE ${_dbname} TO \"${_dbusr}\";" || return $?
+        ${_psql_as_admin} -d ${_dbname} -c "GRANT ALL ON SCHEMA public TO \"${_dbusr}\";"
+
+        if [ -n "${_schema}" ]; then
+            local _search_path="${_dbusr},public"
+            for _s in ${_schema}; do
+                ${_psql_as_admin} -d ${_dbname} -c "CREATE SCHEMA IF NOT EXISTS ${_s} AUTHORIZATION ${_dbusr};"
+                _search_path="${_search_path},${_s}"
+            done
+            ${_psql_as_admin} -d template1 -c "ALTER ROLE ${_dbusr} SET search_path = ${_search_path};"
+        fi
     fi
+
     # test
     local _host_name="$(hostname -f)"
     local _cmd="psql -U ${_dbusr} -h ${_dbhost:-"${_host_name}"} -d ${_dbname} -c \"\l ${_dbname}\""
