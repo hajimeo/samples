@@ -1919,9 +1919,9 @@ function f_restore_postgresql_component_db() {
         fi
     done
 
-    log "INFO" "To test / check:"
+    _log "INFO" "To test / check:"
     echo "VACUUM FULL VERBOSE; SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' ORDER BY relname;"
-    log "INFO" "Please make sure nexus-store.properties file is correct, and if necessary reset 'admin' password. Also make sure it will not connect to the external system (eg: AWS S3, LDAP, SAML, SMTP, HTTP proxy etc.)"
+    _log "INFO" "Please make sure nexus-store.properties file is correct, and if necessary reset 'admin' password. Also make sure it will not connect to the external system (eg: AWS S3, LDAP, SAML, SMTP, HTTP proxy etc.)"
     # Shouldn't need below as support booter should take care of
     #_update_nxrm3_db_config "${_db_hostname}" "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schemas}" "${_workDirectory}" "${_usr}" || return $?
     #_log "INFO" "Resetting all users' password (not role/privileges) ..."; sleep 3;
