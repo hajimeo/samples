@@ -497,7 +497,7 @@ function mvn-package() {
 mvn-arch-gen
 _REPO_URL="http://localhost:8081/repository/maven-snapshots/"
 #mvn-deploy "${_REPO_URL}" "" "nexus"
-for v in {1..5}; do
+for v in {1..3}; do
   for a in {1..3}; do
     for g in {1..3}; do
       sed -i.tmp -E "s@^  <groupId>.+</groupId>@  <groupId>com.example${g}</groupId>@" pom.xml
@@ -507,6 +507,8 @@ for v in {1..5}; do
     done || break
   done || break
 done
+# Test (need to use group repo):
+set -x;mvn-get "com.example1:my-app2:1.3-SNAPSHOT" "http://dh1:8081/repository/maven-public/";set +x
 EOF
 # Example for testing version sort order
 : <<'EOF'

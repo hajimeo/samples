@@ -601,37 +601,45 @@ function backupC() {
     #local _dst="${2-"hosako@z230:/cygdrive/h/hajime/cases"}"
 
     if which code && [ -d "$HOME/backup" ]; then
-        code --list-extensions | xargs -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh
+        code --list-extensions | xargs -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh || return $?
     fi
     # install codium
     if which codium && [ -d "$HOME/backup" ]; then
-        codium --list-extensions | xargs -L 1 echo codium --install-extension >$HOME/backup/vscodium_install_extensions.sh
+        codium --list-extensions | xargs -L 1 echo codium --install-extension >$HOME/backup/vscodium_install_extensions.sh || return $?
     fi
+
     if [ -s /etc/hosts ] && [ -d "$HOME/backup" ]; then
-        cp -v -f /etc/hosts $HOME/backup/etc_hosts
+        cp -v -f /etc/hosts $HOME/backup/etc_hosts || return $?
+    fi
+    if [ -d "$HOME/.ssh" ] && [ -d "$HOME/backup/ssh" ]; then
+        # not copying symlink as I'm expecting symlinks would be from the "samples" repo
+        rsync -cavn --no-links "$HOME/.ssh/" "$HOME/backup/ssh" || return $?
+    fi
+    if [ -s "$HOME/IdeaProjects/m2_settings.xml" ] && [ -d "$HOME/backup" ]; then
+        cp -v -f $HOME/IdeaProjects/m2_settings.xml $HOME/backup/IdeaProjects_m2_settings.xml || return $?
     fi
 
     [ ! -d "${_src}" ] && return 11
-    [ ! -d "$HOME/.Trash" ] && return 12
 
     ## Special: support_tmp directory or .tmp or .out file wouldn't need to backup (not using atime as directory doesn't work)
-    # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory'
+    # NOTE: xargs may not work with very long file name 'mv: rename {} to /Users/hosako/.Trash/{}: No such file or directory', so not using.
     _src="$(realpath "${_src}")"    # because find -L ... -delete does not work
-    [ -z "${_src%/}" ] && return 13
+    [ -z "${_src%/}" ] && return 12
     find ${_src%/} -type f -mtime +7 -size 0 \( ! -name "._*" \) -print -delete 2>/dev/null &
     find ${_src%/} -type d -mtime +14 -name '*_tmp' -print -delete 2>/dev/null &
     find ${_src%/} -type f -mtime +14 -name '*.tmp' -print -delete 2>/dev/null &
     find ${_src%/} -type f -mtime +60 -name "*.log" -print -delete 2>/dev/null &
     find ${_src%/} -type f -mtime +90 -size +128000k -print -delete 2>/dev/null &
     find ${_src%/} -type f -mtime +180 -print -delete 2>/dev/null &
-    # NOTE: this find command requires "/*"
+    wait
+    # Wait then deleting empty directories. NOTE: this find command requires "/*"
     if [ "Darwin" = "$(uname)" ]; then
         gfind ${_src%/}/* -type d -mtime +2 -empty -print -delete 2>/dev/null &
     else
         find ${_src%/}/* -type d -mtime +2 -empty -print -delete 2>/dev/null &
     fi
-    wait
 
+    #[ ! -d "$HOME/.Trash" ] && return 13
     #local _mv="mv --backup=t"
     #[ "Darwin" = "$(uname)" ] && _mv="gmv --backup=t"
     #find ${_src%/} -type f -mtime +360 -size +100k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
@@ -639,7 +647,7 @@ function backupC() {
     #find ${_src%/} -type f -mtime +180 -size +1024000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     #find ${_src%/} -type f -mtime +90  -size +2048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
     #find ${_src%/} -type f -mtime +45 -size +4048000k -print0 | xargs -0 -n1 -I {} ${_mv} "{}" $HOME/.Trash/ &
-    wait
+    #wait
 
     # Sync all files smaller than _size (10MB), means *NO* backup for files over 10MB.
     if [ -n "${_dst}" ]; then
@@ -661,10 +669,11 @@ function backupC() {
     # Currently updatedb may not index external drive (maybe because exFat?)
     if type updatedb &>/dev/null; then
         #alias of 'updatedb' = sudo FILESYSTEMS="hfs ufs apfs exfat" /usr/libexec/locate.updatedb
-        echo "# executing updatedb (may ask sudo password)"
+        echo "# executing updatedb (may ask sudo password)" # this means can't run in background...
         updatedb
     fi
 }
+
 # accessed time doesn't seem to work with directory, so using _name to check files
 #mv_not_accessed "." "30" "*.pom" "Y"
 function mv_not_accessed() {
