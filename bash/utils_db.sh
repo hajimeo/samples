@@ -205,7 +205,7 @@ function _postgresql_create_role_and_db() {
     if [ -n "${_dbname}" ]; then
         if ${_psql_as_admin} -d template1 -ltA  -F',' | grep -q "^${_dbname},"; then
             _log "WARN" "${_dbname} already exists. May need to run below first:
-        ${_psql_as_admin} -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"};\""
+        ${_psql_as_admin} -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};\""
             sleep 3
         else
             ${_psql_as_admin} -d template1 -c "CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';"
