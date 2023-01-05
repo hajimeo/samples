@@ -90,6 +90,8 @@ public class AssetDupeCheckV2
 
   private static boolean IS_EXPORTING = false;
 
+  private static boolean IS_REUSING_EXPORTED = false;
+
   private static boolean IS_NO_INDEX_CHECK = false;
 
   private static boolean IS_DEBUG = false;
@@ -107,6 +109,7 @@ public class AssetDupeCheckV2
     System.out.println("Advanced properties (use those carefully):");
     System.out.println("  -DrebuildIndex=true                 # Rebuild index (eg:asset_bucket_component_name_idx)");
     System.out.println("  -DexportOnly=true                   # DB Export to current (or extractDir)");
+    System.out.println("  -DimportReuse=true                  # If 'true', reuse the component-export.gz if exists");
     System.out.println("  -DexportImport=true                 # DB Export to current (or extractDir), then import");
     System.out.println("  -DnoCheckIndex=true                 # Does not check index...");
     System.out.println("  -DindexName=component_bucket_group_name_version_idx");
@@ -223,10 +226,6 @@ public class AssetDupeCheckV2
   }
 
   private static void exportDb(ODatabaseDocumentTx db, String exportTo) throws IOException {
-    if ((new File(exportTo + ".gz")).exists()) {
-      log("[WARN] " + exportTo + ".gz exists. Re-using...");
-      return;
-    }
     OCommandOutputListener listener = System.out::print;
     ODatabaseExport exp = new ODatabaseExport(db, exportTo, listener);
     exp.exportDatabase();
@@ -277,7 +276,12 @@ public class AssetDupeCheckV2
       exportTo = EXTRACT_DIR + File.separatorChar + exportName;
     }
     try {
-      exportDb(db, exportTo);
+      if ((new File(exportTo + ".gz")).exists() && IS_REUSING_EXPORTED) {
+        log("[WARN] " + exportTo + ".gz exists. Re-using...");
+      } else {
+        // OrientDB automatically delete the exportTo if exists.
+        exportDb(db, exportTo);
+      }
       if(IS_EXPORTING) {
         log("[INFO] Export Only is set so not importing.");
       } else {
@@ -600,6 +604,8 @@ public class AssetDupeCheckV2
     debug("rebuildIndex: " + IS_REBUILDING);
     IS_EXPORTING = Boolean.getBoolean("exportOnly");
     debug("exportOnly: " + IS_EXPORTING);
+    IS_REUSING_EXPORTED = Boolean.getBoolean("importReuse");
+    debug("importReuse: " + IS_REUSING_EXPORTED);
     IS_REIMPORTING = Boolean.getBoolean("exportImport");
     debug("exportImport: " + IS_REIMPORTING);
     if (IS_REIMPORTING) {
