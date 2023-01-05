@@ -267,7 +267,7 @@ function _basic_check() {
     if [ -n "${_required_file}" ] && [ ! -s "${_required_file}" ]; then
         # ${FUNCNAME[1]} is to get the caller function name
         [ -z "${_message}" ] && _message="Can not run ${FUNCNAME[1]} as no ${_required_file}"
-        _head "${_level}" "${_message}"
+        _head "WARN" "${_message}"
         return 1
     fi
     return 0
