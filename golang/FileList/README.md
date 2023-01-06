@@ -1,5 +1,5 @@
 # File List
-Demo script to list all objects from a File type blob store with tab delimiter format.  
+Demo script to list all objects from a File type blob store with tab delimiter format (not csv).  
 Basically rewriting below bash function and command:
 ```bash
 function f_blobs_csv() {
@@ -108,6 +108,10 @@ file-list -b ./sonatype-work/nexus3/blobs/default
 ### Listing blob store items with .properties file contents (-P) with 10 concurrency (-c 10):
 ```
 file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -P -c 10 > /tmp/default_with_props.tsv
+```
+Exclude .bytes files, so that .properties file only:
+```
+file-list -b ./sonatype-work/nexus3/blobs/default/content -p 'vol-' -P -f ".properties" -c 10 > /tmp/default_props_only.tsv
 ```
 
 ### Finding deleted=true (-fP "\<expression\>")
