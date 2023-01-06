@@ -44,7 +44,7 @@ import (
 
 func _usage() {
 	fmt.Println(`
-List .properties and .bytes files as *Tab* Separated Values (Path,LastModified,Size).
+List .properties and .bytes files as *Tab* Separated Values (Path LastModified Size).
     
 HOW TO and USAGE EXAMPLES:
     https://github.com/hajimeo/samples/tree/master/golang/FileList`)
@@ -1154,18 +1154,18 @@ func main() {
 
 	// Printing headers if requested
 	if !*_RECON_FMT && !*_NO_HEADER {
-		fmt.Print("Path,LastModified,Size")
+		fmt.Printf("Path%sLastModified%sSize", _SEP, _SEP)
 		if *_WITH_BLOB_SIZE && *_FILTER == _PROP_EXT {
-			fmt.Print(",BlobSize")
+			fmt.Printf("%sBlobSize", _SEP)
 		}
 		if *_WITH_PROPS {
-			fmt.Print(",Properties")
+			fmt.Printf("%sProperties", _SEP)
 		}
 		if *_WITH_OWNER {
-			fmt.Print(",Owner")
+			fmt.Printf("%sOwner", _SEP)
 		}
 		if *_WITH_TAGS {
-			fmt.Print(",Tags")
+			fmt.Printf("%sTags", _SEP)
 		}
 		fmt.Println("")
 	}
