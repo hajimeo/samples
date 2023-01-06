@@ -30,7 +30,7 @@ find ${_content_dir%/}/vol-* -type f -name '*.properties' -mtime -${_days} -prin
 
 ## DOWNLOAD and INSTALL:
 ```bash
-curl -o /usr/local/bin/file-list -L https://github.com/hajimeo/samples/raw/master/misc/file-list_$(uname)
+curl -o /usr/local/bin/file-list -L https://github.com/hajimeo/samples/raw/master/misc/file-list_$(uname)_$(uname -m)
 chmod a+x /usr/local/bin/file-list
 ```
 
