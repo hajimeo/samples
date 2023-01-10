@@ -1886,9 +1886,9 @@ function f_restore_postgresql_component_db() {
     # _postgresql_create_dbuser does not work if DB is not local
     if [ "${_db_hostname}" == "localhost" ] || [ "${_db_hostname}" == "$(hostname -f)" ]; then
         _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" || return $?
-    else
-        _log "WARN" "Didn't run _postgresql_create_dbuser as _db_hostname is not local"
-        sleep 3
+    elif ! PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -ltA -F','| grep -q "^${_dbname},"; then
+        _log "ERROR" "Didn't run _postgresql_create_dbuser. Please check if DB user: ${_dbusr} and DB: ${_dbname} have been created on ${_db_hostname}."
+        return 1
     fi
 
     # If NOT _orig_db_for_reuse, create the temp DB and import
