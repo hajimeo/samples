@@ -1873,24 +1873,15 @@ function f_restore_postgresql_component_db() {
     local _dbusr="${3:-"nxrm"}"
     local _dbpwd="${4:-"${_dbusr}123"}"
     local _dbname="${5:-${_dbusr}}"
-    local _workDirectory="${6:-"."}"     # To detect workDirectory
-    local _usr="${7:-${_SERVICE:-"$USER"}}"
-    local _orig_db_for_reuse="${8-"${_ORIG_DB_FOR_REUSE}"}"
-    local _fix_db_only="${9-"${_RESTORE_FIX_DB_ONLY}"}"
+    local _usr="${6:-${_SERVICE:-"$USER"}}"
+    local _orig_db_for_reuse="${7-"${_ORIG_DB_FOR_REUSE}"}"
+    local _fix_db_only="${8-"${_RESTORE_FIX_DB_ONLY}"}"
+    local _temp_db_name="${FUNCNAME}_db"
 
     if [ ! -s "${_sql_gz_file}" ]; then
         _log "ERROR" "No import file ${_sql_gz_file}'"
         return 1
     fi
-
-    if [ -z "${_workDirectory%/}" ]; then
-        _workDirectory="$(ls -1dt ./sonatype-work/nexus* 2>/dev/null | head -n1)"
-        if [ -z "${_workDirectory}" ]; then
-            _log "ERROR" "no _workDirectory set"
-            return 1
-        fi
-    fi
-    local _temp_db_name="${FUNCNAME}_db"
 
     # _postgresql_create_dbuser does not work if DB is not local
     if [ "${_db_hostname}" == "localhost" ] || [ "${_db_hostname}" == "$(hostname -f)" ]; then
@@ -1907,7 +1898,7 @@ function f_restore_postgresql_component_db() {
             return 1
         fi
         _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_temp_db_name}" || return $?
-        _log "INFO" "Importing DB data from '${_sql_gz_file}' into '${_temp_db_name}' (please ignore WARN 'already exists') ..."
+        _log "INFO" "Importing DB data from '${_sql_gz_file}' into '${_temp_db_name}' (ignore 'WARN ${_temp_db_name} already exists') ..."
         _psql_restore "${_sql_gz_file}" "${_dbusr}" "${_dbpwd}" "${_temp_db_name}" "public" || return $?
         _log "INFO" "Restore to temp DB completed."
     fi
@@ -1938,7 +1929,7 @@ function f_restore_postgresql_component_db() {
     _log "INFO" "Restored into ${_dbname}! To keep the original DB 'ALTER DATABASE ${FUNCNAME}_db RENAME TO ${_dbname}_orig;'"
     #_log "INFO" "To check:"
     #echo "VACUUM FULL VERBOSE; SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' ORDER BY relname;"
-    _log "INFO" "Please make sure '${_workDirectory%/}/etc/fabric/nexus-store.properties' file is correct, and if necessary, reset 'admin' password. Also make sure it will not connect to the external system (eg: AWS S3, LDAP, SAML, SMTP, HTTP proxy etc.)"
+    _log "INFO" "Please make sure '\$_workDirectory/etc/fabric/nexus-store.properties' file is correct, and if necessary, reset 'admin' password. Also make sure it will not connect to the external system (eg: AWS S3, LDAP, SAML, SMTP, HTTP proxy etc.)"
     # Shouldn't need below as support booter should take care of
     #_update_nxrm3_db_config "${_db_hostname}" "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schemas}" "${_workDirectory}" "${_usr}" || return $?
     #_log "INFO" "Resetting all users' password (not role/privileges) ..."; sleep 3;
