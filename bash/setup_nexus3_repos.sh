@@ -525,25 +525,37 @@ function f_setup_conan() {
     # If no xxxx-proxy, create it (NOTE: No HA, but seems to work with HA???)
     if ! _is_repo_available "${_prefix}-proxy"; then
         # Used to be https://conan.bintray.com
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://center.conan.io","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conan-proxy"}],"type":"rpc"}' || return $?
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"proxy":{"remoteUrl":"https://center.conan.io/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"conan-proxy"}],"type":"rpc"}' || return $?
     fi
     # TODO: add some data for xxxx-proxy
 
     # If no xxxx-hosted, create it. From 3.35, so it's OK to fail
     if ! _is_repo_available "${_prefix}-hosted"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"conan-hosted"}],"type":"rpc"}' && \
-            _log "INFO" "Please enable 'Conan Bearer Token Realm'"
-        if [ $? -eq 0 ] && type conan &>/dev/null; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"conan-hosted"}],"type":"rpc"}'
+        if [ $? -eq 0 ] && type cmake &>/dev/null && type conan &>/dev/null; then
             local _build_dir="$(mktemp -d)"
             cd "${_build_dir}"
-            conan remote add conan-hosted "${_NEXUS_URL%/}/repository/${_prefix}-hosted/"
-            conan user -p admin123 -r ${_prefix}-hosted admin
-            local _pkg_ver="hello/0.2"
-            local _usr_stable="demo/testing"
-            conan new ${_pkg_ver} && conan create . ${_usr_stable}
-            conan upload -r ${_prefix}-hosted ${_pkg_ver}@${_usr_stable} --all
+            if ! _setup_conan_hosted_inner "${_prefix}"; then
+                _log "WARN" "Please enable 'Conan Bearer Token Realm'"
+            fi
             cd -
         fi
+    fi
+}
+function _setup_conan_hosted_inner() {
+    local _prefix="${1:-"conan"}"
+    if ${_DEBUG}; then
+        export CONAN_LOGGING_LEVEL=debug
+    fi
+    # Ignoring Remote 'conan-hosted' already exists with same URL
+    conan remote add conan-hosted "${_NEXUS_URL%/}/repository/${_prefix}-hosted/"
+    conan user -p admin123 -r "${_prefix}-hosted" admin || return $?
+    local _pkg_ver="hello/0.2"
+    local _usr_stable="demo/testing"
+    conan new ${_pkg_ver} && conan create . ${_usr_stable} || return $?
+    conan upload -r "${_prefix}-hosted" ${_pkg_ver}@${_usr_stable} --all
+    if ${_DEBUG}; then
+        unset CONAN_LOGGING_LEVEL
     fi
 }
 
@@ -999,7 +1011,7 @@ function f_api() {
     [ -z "${_method}" ] && _method="GET"
     # TODO: check if GET and DELETE *can not* use Content-Type json?
     local _content_type="Content-Type: application/json"
-    [ "${_data:0:1}" != "{" ] && _content_type="Content-Type: text/plain"
+    [ "${_data:0:1}" != "{" ] && [ "${_data:0:1}" != "[" ] && _content_type="Content-Type: text/plain"
 
     local _curl="curl -sf"
     ${_DEBUG} && _curl="curl -vf"
@@ -1377,6 +1389,10 @@ function f_nexus_admin_pwd() {
     [ -z "${_current_pwd}" ] && _current_pwd="$(docker exec -ti ${_container_name} cat /nexus-data/admin.password | tr -cd "[:print:]")"
     [ -z "${_current_pwd}" ] && return 112
     f_api "/service/rest/beta/security/users/admin/change-password" "${_new_pwd}" "PUT" "admin" "${_current_pwd}"
+}
+
+function f_put_realms() {
+    f_api "/service/rest/v1/security/realms/active" '["NexusAuthenticatingRealm","NexusAuthorizingRealm","User-Token-Realm","DockerToken","ConanToken","NpmToken","NuGetApiKey","LdapRealm","SamlRealm","rutauth-realm"]' "PUT" || return $?
 }
 
 function f_nexus_csel() {
@@ -2352,6 +2368,10 @@ main() {
     if ! _is_blob_available "${r_BLOB_NAME}"; then
         f_create_file_blobstore || return $?
     fi
+
+    _log "INFO" "Resetting Realms to this script's default realms ..."
+    f_put_realms
+
     for _f in `echo "${r_REPO_FORMATS:-"${_REPO_FORMATS}"}" | sed 's/,/ /g'`; do
         _log "INFO" "Executing f_setup_${_f} ..."
         if ! f_setup_${_f}; then
