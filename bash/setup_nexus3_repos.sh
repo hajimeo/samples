@@ -1879,7 +1879,7 @@ function f_restore_postgresql_component() {
     local _temp_db_name="${FUNCNAME}_db"
         # Below table order matters. No need content_repository
     local _comp_related_tbl_suffixes="browse_node asset asset_blob component_tag component deleted_blob"
-    local _comp_related_tables="tag change_blobstore"
+    local _comp_related_tables="tag change_blobstore"   # not including 'repository'
 
     if [ ! -s "${_sql_gz_file}" ]; then
         _log "ERROR" "No import file ${_sql_gz_file}'"
@@ -1940,14 +1940,14 @@ function f_restore_postgresql_component() {
         done
     fi
 
-    # NOTE: May need to fix <format>_content_repository
+    # NOTE: May need to fix <format>_content_repository. The tempDB side requires to have 'repository' table.
     PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name like '%_content_repository' order by table_name;" | while read -r _tbl; do
         PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -F, -c "select cr.repository_id, r.name from ${_tbl} cr join repository r ON cr.config_repository_id = r.id order by cr.repository_id" > /tmp/${_temp_db_name}.${_tbl}.list
         PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -tA -F, -c "select cr.repository_id, r.name from ${_tbl} cr join repository r ON cr.config_repository_id = r.id order by cr.repository_id" > /tmp/${_dbname}.${_tbl}.list
 
         if ! diff -wy --suppress-common-lines /tmp/${_temp_db_name}.${_tbl}.list /tmp/${_dbname}.${_tbl}.list; then
             _log "INFO" "Generating update statements for ${_tbl} (/tmp/${_temp_db_name}.${_tbl}.sql) ..."
-            _update_content_repository_per_fmt "${_tbl}" "/tmp/${_temp_db_name}.${_tbl}.list" > /tmp/${_temp_db_name}.${_tbl}.sql || return $?
+            _gen_update_stmt_for_content_repository "${_tbl}" "/tmp/${_temp_db_name}.${_tbl}.list" > /tmp/${_temp_db_name}.${_tbl}.sql || return $?
             cat /tmp/${_temp_db_name}.${_tbl}.sql | PGPASSWORD="${_dbpwd}" psql --set VERBOSITY=verbose -h ${_db_hostname} -U ${_dbusr} -d ${_dbname}
         fi
     done
@@ -1961,14 +1961,14 @@ function f_restore_postgresql_component() {
     #_log "INFO" "Resetting all users' password (not role/privileges) ..."; sleep 3;
     #PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -c "update security_user SET password='\$shiro1\$SHA-512\$1024\$NE+wqQq/TmjZMvfI7ENh/g==\$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA==';"    #, status='active' WHERE id='admin'
 }
-function _update_content_repository_per_fmt() {
+function _gen_update_stmt_for_content_repository() {
     local _tbl="$1"                 # eg. "pypi_content_repository"
     local _correct_list="$2"        # eg. "1,pypi-local 2,pypi-remote 3,pypi"
     if [ -f "${_correct_list}" ]; then
         _correct_list="$(cat "${_correct_list}" | tr '\n' ' ')"
     fi
     # Replacing with some dummy UUID to avoid 'violates unique constraint'
-    local _updates_1="UPDATE maven2_content_repository SET config_repository_id = (SELECT uuid_in(md5(config_repository_id::text)::cstring));\n"
+    local _updates_1="UPDATE ${_tbl} SET config_repository_id = (SELECT uuid_in(md5(config_repository_id::text)::cstring));\n"
     local _updates_2=""
     for _l in ${_correct_list}; do
         if [[ "${_l}" =~ ([^, ]+),([^, ]+) ]]; then
@@ -1976,7 +1976,7 @@ function _update_content_repository_per_fmt() {
             local _repo_name="${BASH_REMATCH[2]}"
             # TODO: sometimes the imported tempDB does not have all repository_id, so assuming the DB dump has all repository for the <format>
             #_updates_1="${_updates_1}UPDATE ${_tbl} SET config_repository_id = (SELECT uuid_in(md5(random()::text || clock_timestamp()::text)::cstring)) WHERE repository_id = ${_repo_id};\n"
-            _updates_2="${_updates_2}UPDATE ${_tbl} SET config_repository_id = (SELECT id FROM repository WHERE name = '${_repo_name}') WHERE repository_id = ${_repo_id} and config_repository_id <> (SELECT id FROM repository WHERE name = '${_repo_name}');\n"
+            _updates_2="${_updates_2}UPDATE ${_tbl} SET config_repository_id = (SELECT id FROM repository WHERE name = '${_repo_name}') WHERE repository_id = ${_repo_id};\n"
         fi
     done
     if [ -z "${_updates_1}" ] || [ -z "${_updates_2}" ]; then
