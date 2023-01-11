@@ -1866,7 +1866,7 @@ function _update_name_resolution() {    # no longer in use but leaving as an exa
 # NOTE: currently this function is tested against support.zip boot-ed then migrated database
 # Example export command (Not using --data-only as needs CREATE statements also requires PostgreSQL v12 or higher for wildcard in -t):
 #PGGSSENCMODE=disable pg_dump -h localhost -p 5432 -U nxrm -d nxrm -t "repository" -t "*_content_repository" -t "*_component*" -t "*_asset*" -t "tag" -t "*deleted_blob*" -t "change_blobstore" -Z 6 -f component_db_dump.sql.gz   # -t "*_browse_node"
-function f_restore_postgresql_component_db() {
+function f_restore_postgresql_component() {
     local __doc__="Restore 'component' database from a pg_dump generated sql.gz file into the existing *local* database"
     local _sql_gz_file="${1}"
     local _db_hostname="${2:-"localhost"}"
@@ -1874,9 +1874,12 @@ function f_restore_postgresql_component_db() {
     local _dbpwd="${4:-"${_dbusr}123"}"
     local _dbname="${5:-${_dbusr}}"
     local _usr="${6:-${_SERVICE:-"$USER"}}"
-    local _orig_db_for_reuse="${7-"${_ORIG_DB_FOR_REUSE}"}"
-    local _fix_db_only="${8-"${_RESTORE_FIX_DB_ONLY}"}"
+    local _reuse_orig_db="${7-"${_REUSE_ORIG_DB}"}"
+    local _fix_repo_ids_only="${8-"${_FIX_REPO_IDS_ONLY}"}"
     local _temp_db_name="${FUNCNAME}_db"
+        # Below table order matters. No need content_repository
+    local _comp_related_tbl_suffixes="browse_node asset asset_blob component_tag component deleted_blob"
+    local _comp_related_tables="tag change_blobstore"
 
     if [ ! -s "${_sql_gz_file}" ]; then
         _log "ERROR" "No import file ${_sql_gz_file}'"
@@ -1891,8 +1894,8 @@ function f_restore_postgresql_component_db() {
         return 1
     fi
 
-    # If NOT _orig_db_for_reuse, create the temp DB and import
-    if [ -z "${_orig_db_for_reuse}" ]; then
+    # If NOT _reuse_orig_db, create the temp DB and import
+    if [[ ! "${_reuse_orig_db}" =~ ^(y|Y) ]]; then
         if PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -ltA -F','| grep -q "^${_temp_db_name},"; then
             _log "ERROR" "Please run 'DROP DATABASE ${_temp_db_name};' first"
             return 1
@@ -1903,11 +1906,33 @@ function f_restore_postgresql_component_db() {
         _log "INFO" "Restore to temp DB completed."
     fi
 
-    if [[ ! "${_fix_db_only}" =~ ^(y|Y) ]]; then
+    if [[ ! "${_fix_repo_ids_only}" =~ ^(y|Y) ]]; then
+        # NOTE: not using DB transactions in this section
+        # special table(s)
+        for _tablename in ${_comp_related_tables}; do
+            PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name = '${_tablename}' order by table_name;" | while read -r _tbl; do
+                _log "INFO" "DROP TABLE IF EXISTS ${_tbl};"
+                PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -c "DROP TABLE IF EXISTS ${_tbl};"
+            done
+        done
         # export only, <format>_component, <format>_asset, <format>_asset_blob, ...
-        for _suffix in component asset asset_blob browse_node component_tag; do # No need content_repository
+        for _suffix in ${_comp_related_tbl_suffixes}; do
             PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name like '%_${_suffix}' order by table_name;" | while read -r _tbl; do
-                PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -c "DROP TABLE IF EXISTS ${_tbl} CASCADE;"
+                _log "INFO" "DROP TABLE IF EXISTS ${_tbl};"
+                PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -c "DROP TABLE IF EXISTS ${_tbl};"
+            done
+        done
+
+        # Creating in reverse order
+        for _suffix in $(echo "${_comp_related_tbl_suffixes}" | tr ' ' '\n' | tac); do
+            PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name like '%_${_suffix}' order by table_name;" | while read -r _tbl; do
+                # would not need to use -O -x -a. --column-inserts is super slow comparing to COPY ...
+                _log "INFO" "Importing ${_tbl} (output: /tmp/${FUNCNAME}_${_tbl}.log) ..."
+                PGPASSWORD="${_dbpwd}" pg_dump -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -t "${_tbl}" | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} &> /tmp/${FUNCNAME}_${_tbl}.log || return $?   # Using -L may generate very large text file
+            done
+        done
+        for _tablename in ${_comp_related_tables}; do
+            PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name = '${_tablename}' order by table_name;" | while read -r _tbl; do
                 # would not need to use -O -x -a. --column-inserts is super slow comparing to COPY ...
                 _log "INFO" "Importing ${_tbl} (output: /tmp/${FUNCNAME}_${_tbl}.log) ..."
                 PGPASSWORD="${_dbpwd}" pg_dump -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -t "${_tbl}" | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} &> /tmp/${FUNCNAME}_${_tbl}.log || return $?   # Using -L may generate very large text file
@@ -1916,17 +1941,18 @@ function f_restore_postgresql_component_db() {
     fi
 
     # NOTE: May need to fix <format>_content_repository
-    PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -tA -c "select table_name from information_schema.tables where table_name like '%_content_repository' order by table_name;" | while read -r _tbl; do
-        _log "INFO" "Checking ${_tbl} (/tmp/${_temp_db_name}.${_tbl}.list) ..."
+    PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name like '%_content_repository' order by table_name;" | while read -r _tbl; do
         PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -F, -c "select cr.repository_id, r.name from ${_tbl} cr join repository r ON cr.config_repository_id = r.id order by cr.repository_id" > /tmp/${_temp_db_name}.${_tbl}.list
         PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -tA -F, -c "select cr.repository_id, r.name from ${_tbl} cr join repository r ON cr.config_repository_id = r.id order by cr.repository_id" > /tmp/${_dbname}.${_tbl}.list
 
         if ! diff -wy --suppress-common-lines /tmp/${_temp_db_name}.${_tbl}.list /tmp/${_dbname}.${_tbl}.list; then
-            _update_content_repository_per_fmt "${_tbl}" "/tmp/${_temp_db_name}.${_tbl}.list" | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname}
+            _log "INFO" "Generating update statements for ${_tbl} (/tmp/${_temp_db_name}.${_tbl}.sql) ..."
+            _update_content_repository_per_fmt "${_tbl}" "/tmp/${_temp_db_name}.${_tbl}.list" > /tmp/${_temp_db_name}.${_tbl}.sql || return $?
+            cat /tmp/${_temp_db_name}.${_tbl}.sql | PGPASSWORD="${_dbpwd}" psql --set VERBOSITY=verbose -h ${_db_hostname} -U ${_dbusr} -d ${_dbname}
         fi
     done
 
-    _log "INFO" "Restored into ${_dbname}! To keep the original DB 'ALTER DATABASE ${FUNCNAME}_db RENAME TO ${_dbname}_orig;'"
+    _log "INFO" "Restored into ${_dbname}! To keep the original DB, 'ALTER DATABASE ${FUNCNAME}_db RENAME TO ${_dbname}_orig;'"
     #_log "INFO" "To check:"
     #echo "VACUUM FULL VERBOSE; SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' ORDER BY relname;"
     _log "INFO" "Please make sure '\$_workDirectory/etc/fabric/nexus-store.properties' file is correct, and if necessary, reset 'admin' password. Also make sure it will not connect to the external system (eg: AWS S3, LDAP, SAML, SMTP, HTTP proxy etc.)"
@@ -1941,24 +1967,23 @@ function _update_content_repository_per_fmt() {
     if [ -f "${_correct_list}" ]; then
         _correct_list="$(cat "${_correct_list}" | tr '\n' ' ')"
     fi
-    local _updates_1=""
+    # Replacing with some dummy UUID to avoid 'violates unique constraint'
+    local _updates_1="UPDATE maven2_content_repository SET config_repository_id = (SELECT uuid_in(md5(config_repository_id::text)::cstring));\n"
     local _updates_2=""
     for _l in ${_correct_list}; do
         if [[ "${_l}" =~ ([^, ]+),([^, ]+) ]]; then
             local _repo_id="${BASH_REMATCH[1]}"
             local _repo_name="${BASH_REMATCH[2]}"
-            _updates_1="${_updates_1}UPDATE ${_tbl} SET config_repository_id = (SELECT uuid_in(md5(random()::text || clock_timestamp()::text)::cstring)) WHERE repository_id = ${_repo_id};"
-            _updates_2="${_updates_2}UPDATE ${_tbl} SET config_repository_id = (SELECT id FROM repository WHERE name = '${_repo_name}') WHERE repository_id = ${_repo_id};"
+            # TODO: sometimes the imported tempDB does not have all repository_id, so assuming the DB dump has all repository for the <format>
+            #_updates_1="${_updates_1}UPDATE ${_tbl} SET config_repository_id = (SELECT uuid_in(md5(random()::text || clock_timestamp()::text)::cstring)) WHERE repository_id = ${_repo_id};\n"
+            _updates_2="${_updates_2}UPDATE ${_tbl} SET config_repository_id = (SELECT id FROM repository WHERE name = '${_repo_name}') WHERE repository_id = ${_repo_id} and config_repository_id <> (SELECT id FROM repository WHERE name = '${_repo_name}');\n"
         fi
     done
     if [ -z "${_updates_1}" ] || [ -z "${_updates_2}" ]; then
         _log "ERROR" "Failed to generate update statements\n${_updates_1}\n${_updates_2}"
         return
     fi
-    echo "BEGIN;"
-    echo "${_updates_1}"
-    echo "${_updates_2}"
-    echo "COMMIT;"
+    echo -e "BEGIN;\n${_updates_1}${_updates_2}COMMIT;"
 }
 
 
