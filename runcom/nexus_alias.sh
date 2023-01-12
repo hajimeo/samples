@@ -98,6 +98,7 @@ function iqMvn() {
 # TODO: UPDATE repository_blobstore SET attributes = {} where type = 'S3';
 #       UPDATE repository_blobstore SET attributes.file = {} where type = 'S3';
 #       UPDATE repository_blobstore SET type = 'File', attributes.file.path = 's3/test' where type = 'S3';
+# TODO: https://issues.sonatype.org/browse/NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
 function nxrmStart() {
     local _base_dir="${1:-"."}"
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5005,suspend=n"}
@@ -126,6 +127,9 @@ function nxrmStart() {
         fi
         [ -n "${_cfg_file}" ] && _updateNexusProps "${_cfg_file}"
         [ -z "${_mode}" ] && _mode="run"
+        # TODO:
+        #cp /Users/hosako/share/java/libs/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar ${_base_dir%/}/nexus-3.*/system/net/java/dev/jna/jna/5.4.0/jna-5.4.0.jar
+        #cp $HOME/share/java/libs/system/net/java/dev/jna/jna-platform/5.11.0/jna-platform-5.11.0.jar ${_base_dir%/}/nexus-3.*/system/net/java/dev/jna/jna-platform/5.4.0/jna-platform-5.4.0.jar
     else    # if NXRM2
         [ -z "${_mode}" ] && _mode="console"
         # jvm 1    | Caused by: java.lang.ClassNotFoundException: org.eclipse.tycho.nexus.internal.plugin.UnzipRepository
@@ -210,7 +214,7 @@ function _prepare_install() {
 function nxrm3Install() {
     local _ver="$1" #3.40.1-01
     local _dbname="$2"  # If h2, use H2
-    local _dbusr="${3:-"${_dbname}"}"
+    local _dbusr="${3:-"nxrm"}"     # do not want to create many users/roles
     local _dbpwd="${4:-"${_dbusr}123"}"
     local _port="${5:-"${_NXRM3_INSTALL_PORT:-"8081"}"}"
     local _dirname="${6:-"${_NXRM3_INSTALL_DIR}"}"
@@ -270,7 +274,7 @@ function nxrmDocker() {
     local _tag="${2:-"latest"}"
     local _port="${3:-"8081"}"
     local _port_ssl="${4:-"8443"}"
-    local _extra_opts="${5}"    # this is docker options not INSTALL4J_ADD_VM_PARAMS
+    local _extra_opts="${5-"--platform=linux/amd64"}"    # this is docker options not INSTALL4J_ADD_VM_PARAMS
     local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
     local _docker_host="${_DOCKER_HOST}"  #:-"dh1.standalone.localdomain:5000"
 
@@ -401,7 +405,7 @@ function iqDocker() {
     local _port="${3:-"8070"}"
     local _port2="${4:-"8071"}"
     local _port_ssl="${5:-"8444"}"
-    local _extra_opts="${6}"
+    local _extra_opts="${6-"--platform=linux/amd64"}"
     local _license="${7}"
     local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
     local _docker_host="${_DOCKER_HOST}"  #:-"dh1.standalone.localdomain:5000"
