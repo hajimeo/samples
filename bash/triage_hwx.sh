@@ -155,7 +155,7 @@ function f_check_process() {
     date > ${_work_dir%/}/proc_io_${_p}.out; cat /proc/${_p}/io >> ${_work_dir%/}/proc_io_${_p}.out
     cat /proc/${_p}/environ | tr '\0' '\n' > ${_work_dir%/}/proc_environ_${_p}.out
     # https://gist.github.com/jkstill/5095725
-    cat /proc/${_p}/net/tcp > ${_work_dir%/}/net_tcp_${_p}.out
+    cat /proc/${_p}/net/tcp > ${_work_dir%/}/net_tcp_${_p}.out  # if no netstat
     lsof -nPp ${_p} &> ${_work_dir%/}/lsof_${_p}.out
 
     if [ -d "$_cmd_dir" ]; then
