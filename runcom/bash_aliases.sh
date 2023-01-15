@@ -72,7 +72,10 @@ function git_search() {
 }
 
 ## Python ##############################################################################################################
+#pip tends to cause a lot of issue and using -m is safer
+alias pip='python -m pip'
 #virtualenv -p python3 $HOME/.pyvenv
+alias newpyv='python -m venv ./pyvenv && source ./pyvenv/bin/activate'
 alias pyv='source $HOME/.pyvenv/bin/activate'
 alias pyv39='source $HOME/.pyvenv39/bin/activate'
 #alias pyv='pyenv activate mypyvenv'    # I felt pyenv is slow, so not using
