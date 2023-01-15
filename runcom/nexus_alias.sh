@@ -220,6 +220,15 @@ function nxrm3Install() {
     local _dirname="${6:-"${_NXRM3_INSTALL_DIR}"}"
     local _download_dir="${6:-"$HOME/.nexus_executable_cache"}"
 
+    for _p in $(seq ${_port} $((${_port} + 9))); do
+        curl -s -q -f -I "localhost:${_p}"
+        if [ $? == 52 ]; then
+            _port="${_p}"
+            echo "WARN Using port:${_port}"
+            break
+        fi
+        # If couldn't find any available port, anyway trying the original _port
+    done
     # I think PostgreSQL doesn't work with mixed case.
     _dbname="$(echo "${_dbname}" | tr '[:upper:]' '[:lower:]')"
     local _os="linux"
