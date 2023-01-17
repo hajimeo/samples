@@ -89,7 +89,7 @@ func readPropertiesFile(filename string) (AppConfigProperties, error) {
 func buildConnStringFromFileForNXRM(filePath string) string {
 	config, err := readPropertiesFile(filePath)
 	if err != nil {
-		helpers.ULog("ERROR", err.Error())
+		helpers.Log("ERROR", err.Error())
 		return ""
 	}
 	return genDbConnStrNXRM(config)

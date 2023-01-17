@@ -7,13 +7,13 @@ import (
 
 var DEBUG bool
 
-func ULog(level string, message string) {
+func Log(level string, message string) {
 	if level != "DEBUG" || DEBUG {
 		log.Printf("%s: %s\n", level, message)
 	}
 }
 
-func UEnv(key string, fallback string) string {
+func getEnv(key string, fallback string) string {
 	value, exists := os.LookupEnv(key)
 	if exists {
 		return value
@@ -21,7 +21,7 @@ func UEnv(key string, fallback string) string {
 	return fallback
 }
 
-func UEnvB(key string, fallback bool) bool {
+func getBoolEnv(key string, fallback bool) bool {
 	value, exists := os.LookupEnv(key)
 	if exists {
 		switch value {
@@ -42,5 +42,11 @@ func DeferPanic() {
 	// recover from panic if one occurred. Set err to nil otherwise.
 	if err := recover(); err != nil {
 		log.Println("Panic occurred:", err)
+	}
+}
+
+func PanicIfErr(err error) {
+	if err != nil {
+		panic(err)
 	}
 }
