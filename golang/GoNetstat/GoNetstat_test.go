@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+var DUMMY_LINE = "   0: 00000000:A41D 00000000:0000 0A 00000001:00000002 00:00000000 00000000     0        0 45079 1 ffff930accdbf1c0 100 0 0 10 0"
+
 func TestMain(m *testing.M) {
 	// Run tests
 	exitVal := m.Run()
@@ -15,11 +17,32 @@ func TestMain(m *testing.M) {
 }
 
 func TestRemoveEmpty(t *testing.T) {
-	line := "   0: 00000000:A41D 00000000:0000 0A 00000001:00000002 00:00000000 00000000     0        0 45079 1 ffff930accdbf1c0 100 0 0 10 0"
-	line_array := removeEmpty(strings.Split(strings.TrimSpace(line), " "))
-	if line_array == nil {
-		t.Errorf("DB connection props should not be empty")
+	l := removeEmpty(strings.Split(strings.TrimSpace(DUMMY_LINE), " "))
+	if l == nil {
+		t.Errorf("Empty removed line should not be empty.")
 	} else {
-		t.Errorf("line_array: %s", line_array)
+		t.Logf("line_array: %s", l)
+	}
+}
+
+func TestPadStrToDec(t *testing.T) {
+	d := padStrToDec("00000050")
+	if d != 50 {
+		t.Errorf("00000050 should be 50, but got %v", d)
+	}
+	d = padStrToDec("aaaaa")
+	if d != -1 {
+		t.Errorf("aaaaa should be -1, but got %v", d)
+	}
+}
+
+func TestPrintSocket(t *testing.T) {
+	header := genHeader()
+	t.Logf("%s", header)
+	s := Socket{"uid", "name", "pid", "test.exe", "TEST", "1.2.3.4", 5678, "5.6.7.8", 10001, "inode", 12345, 54321, "timeout"}
+	line := genPrintLine(s, "tcp")
+	t.Logf("%s", line)
+	if len(header) != len(line) {
+		t.Errorf("Length of header and line should be same")
 	}
 }

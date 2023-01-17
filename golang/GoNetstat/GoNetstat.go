@@ -1,7 +1,9 @@
 /*
-Almost just a copy of https://raw.githubusercontent.com/drael/GOnetstat/master/gonetstat.go
+Based on https://raw.githubusercontent.com/drael/GOnetstat/master/gonetstat.go
+
 go mod init github.com/hajimeo/samples/golang/GoNetStat
-go mod tidy
+go get -u -t && go mod tidy
+
 env GOOS=linux GOARCH=amd64 go build -o ../../misc/gonetstat_Linux_amd64 ./GoNetstat.go
 */
 
@@ -9,20 +11,13 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"github.com/hajimeo/samples/golang/helpers"
 	"os"
 	"os/user"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-)
-
-const (
-	PROC_TCP  = "/proc/net/tcp"
-	PROC_UDP  = "/proc/net/udp"
-	PROC_TCP6 = "/proc/net/tcp6"
-	PROC_UDP6 = "/proc/net/udp6"
 )
 
 var STATE = map[string]string{
@@ -39,7 +34,7 @@ var STATE = map[string]string{
 	"0B": "CLOSING",
 }
 
-type Process struct {
+type Socket struct {
 	User        string
 	Name        string
 	Pid         string
@@ -49,6 +44,10 @@ type Process struct {
 	Port        int64
 	ForeignIp   string
 	ForeignPort int64
+	Inode       string
+	RecvQ       int64
+	SendQ       int64
+	timeout     string
 }
 
 type iNode struct {
@@ -56,44 +55,31 @@ type iNode struct {
 	link string
 }
 
-func getData(t string) []string {
-	// Get data from tcp or udp file.
+var DisplayFmt = "%-8v %-12v %-12v %-20v %-20v %-10v %-10v %-16v %-16v"
 
-	var proc_t string
-
-	if t == "tcp" {
-		proc_t = PROC_TCP
-	} else if t == "udp" {
-		proc_t = PROC_UDP
-	} else if t == "tcp6" {
-		proc_t = PROC_TCP6
-	} else if t == "udp6" {
-		proc_t = PROC_UDP6
-	} else {
-		fmt.Printf("%s is a invalid type, tcp and udp only!\n", t)
-		os.Exit(1)
-	}
-
-	data, err := ioutil.ReadFile(proc_t)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+func getLines(path string) []string {
+	data, err := os.ReadFile(path)
+	helpers.PanicIfErr(err)
 	lines := strings.Split(string(data), "\n")
-
 	// Return lines without Header line and blank line on the end
 	return lines[1 : len(lines)-1]
-
 }
 
 func hexToDec(h string) int64 {
-	// convert hexadecimal to decimal.
+	// convert hexadecimal to decimal (int64).
 	d, err := strconv.ParseInt(h, 16, 32)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	helpers.PanicIfErr(err)
+	return d
+}
 
+func padStrToDec(s string) int64 {
+	// convert 00000001 to decimal (int64).
+	d, err := strconv.ParseInt(s, 10, 64)
+	//helpers.PanicIfErr(err)
+	if err != nil {
+		d = -1
+		helpers.Log("DEBUG", "Can't cast "+s)
+	}
 	return d
 }
 
@@ -103,7 +89,7 @@ func convertIp(ip string) string {
 
 	var out string
 
-	// Check ip size if greater than 8 is a ipv6 type
+	// Check ip size if greater than 8 is ipv6 type
 	if len(ip) > 8 {
 		i := []string{ip[30:32],
 			ip[28:30],
@@ -176,41 +162,41 @@ func getUser(uid string) string {
 
 func removeEmpty(array []string) []string {
 	// remove empty data from line
-	var new_array []string
+	var newArray []string
 	for _, i := range array {
 		if i != "" {
-			new_array = append(new_array, i)
+			newArray = append(newArray, i)
 		}
 	}
-	return new_array
+	return newArray
 }
 
-func processNetstatLine(line string, fileDescriptors *[]iNode, output chan<- Process) {
-	line_array := removeEmpty(strings.Split(strings.TrimSpace(line), " "))
-	ip_port := strings.Split(line_array[1], ":")
-	ip := convertIp(ip_port[0])
-	port := hexToDec(ip_port[1])
+func processNetstatLine(line string, fileDescriptors *[]iNode, output chan<- Socket) {
+	l := removeEmpty(strings.Split(strings.TrimSpace(line), " "))
+
+	ipPort := strings.Split(l[1], ":")
+	ip := convertIp(ipPort[0])
+	port := hexToDec(ipPort[1])
 
 	// foreign ip and port
-	fip_port := strings.Split(line_array[2], ":")
-	fip := convertIp(fip_port[0])
-	fport := hexToDec(fip_port[1])
+	fipPort := strings.Split(l[2], ":")
+	fIp := convertIp(fipPort[0])
+	fPort := hexToDec(fipPort[1])
 
-	state := STATE[line_array[3]]
+	state := STATE[l[3]]
 	// TODO: add tx_queue and rx_queue bytes
-	uid := getUser(line_array[7])
-	pid := findPid(line_array[9], fileDescriptors)
+	uid := getUser(l[7])
+	pid := findPid(l[9], fileDescriptors)
 	exe := getProcessExe(pid)
 	name := getProcessName(exe)
-	output <- Process{uid, name, pid, exe, state, ip, port, fip, fport}
+	recvQ := padStrToDec(l[4])
+	sendQ := padStrToDec(l[5])
+	output <- Socket{uid, name, pid, exe, state, ip, port, fIp, fPort, l[9], recvQ, sendQ, l[8]}
 }
 
 func getFileDescriptors() []string {
-	d, err := filepath.Glob("/proc/[0-9]*/fd/[0-9]*")
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	// This works only for live system
+	d, _ := filepath.Glob("/proc/[0-9]*/fd/[0-9]*")
 	return d
 }
 
@@ -233,70 +219,60 @@ func getInodes() []iNode {
 	return inodes
 }
 
-func netstat(t string) []Process {
-	// Return a array of Process with Name, Ip, Port, State .. etc
-	// Require Root acess to get information about some processes.
+func netstat(path string) []Socket {
+	lines := getLines(path)
+	Sockets := make([]Socket, len(lines))
+	res := make(chan Socket, len(lines))
 
-	data := getData(t)
-	Processes := make([]Process, len(data))
-	res := make(chan Process, len(data))
+	localInodes := getInodes()
 
-	inodes := getInodes()
-
-	for _, line := range data {
-		go processNetstatLine(line, &inodes, res)
+	for _, line := range lines {
+		go processNetstatLine(line, &localInodes, res)
 	}
 
-	for i, _ := range data {
+	for i, _ := range lines {
 		p := <-res
-		Processes[i] = p
+		Sockets[i] = p
 	}
 
-	return Processes
+	return Sockets
 }
 
-func Tcp() []Process {
-	// Get a slice of Process type with TCP data
-	data := netstat("tcp")
-	return data
+func genHeader() string {
+	return fmt.Sprintf(DisplayFmt, "Proto", "Recv-Q", "Send-Q", "Local Adress", "Foregin Adress",
+		"State", "Inode", "Pid/Program", "timeout")
 }
 
-func Udp() []Process {
-	// Get a slice of Process type with UDP data
-	data := netstat("udp")
-	return data
-}
+func genPrintLine(s Socket, netType string) string {
+	ipPort := fmt.Sprintf("%v:%v", s.Ip, s.Port)
+	fipPort := fmt.Sprintf("%v:%v", s.ForeignIp, s.ForeignPort)
+	pidProgram := fmt.Sprintf("%v/%v", s.Pid, s.Name)
 
-func Tcp6() []Process {
-	// Get a slice of Process type with TCP6 data
-	data := netstat("tcp6")
-	return data
-}
-
-func Udp6() []Process {
-	// Get a slice of Process type with UDP6 data
-	data := netstat("udp6")
-	return data
+	return fmt.Sprintf(DisplayFmt,
+		netType, s.RecvQ, s.SendQ, ipPort, fipPort, s.State, s.Inode, pidProgram, s.timeout)
 }
 
 func main() {
-	d := Tcp()
-
-	// format header
-	fmt.Printf("Proto %16s %20s %14s %24s\n", "Local Adress", "Foregin Adress",
-		"State", "Pid/Program")
-
-	for _, p := range d {
-
-		// Check STATE to show only Listening connections
-		if p.State == "LISTEN" {
-			// format data like netstat output
-			ip_port := fmt.Sprintf("%v:%v", p.Ip, p.Port)
-			fip_port := fmt.Sprintf("%v:%v", p.ForeignIp, p.ForeignPort)
-			pid_program := fmt.Sprintf("%v/%v", p.Pid, p.Name)
-
-			fmt.Printf("tcp %16v %20v %16v %20v\n", ip_port, fip_port,
-				p.State, pid_program)
+	netType := "tcp"
+	procNetFile := "/proc/net/" + netType
+	// If a file (output of /proc/net/tcp) is given, parse it
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case
+			"tcp",
+			"tcp6",
+			"udp",
+			"udp6":
+			netType = os.Args[1]
+			procNetFile = "/proc/net/" + netType
+		default:
+			procNetFile = os.Args[1]
 		}
+	}
+
+	sockets := netstat(procNetFile)
+	fmt.Println(genHeader())
+	for _, s := range sockets {
+		fmt.Println(genPrintLine(s, netType))
 	}
 }
