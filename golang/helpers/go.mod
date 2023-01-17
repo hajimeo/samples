@@ -1,3 +1,3 @@
-module 	github.com/hajimeo/samples/golang/helpers
+module helpers
 
 go 1.19
