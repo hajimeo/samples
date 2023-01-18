@@ -175,7 +175,7 @@ func removeEmpty(array []string) []string {
 	return newArray
 }
 
-func processNetstatLine(line string, fileDescriptors *[]FdLink, output chan<- Socket) {
+func processNetstatLine(line string, fileDescriptors *[]FdLink) Socket {
 	l := removeEmpty(strings.Split(strings.TrimSpace(line), " "))
 
 	ipPort := strings.Split(l[1], ":")
@@ -197,7 +197,7 @@ func processNetstatLine(line string, fileDescriptors *[]FdLink, output chan<- So
 	sendRecvQ := strings.Split(l[4], ":")
 	sendQ := padStrToDec(sendRecvQ[0])
 	recvQ := padStrToDec(sendRecvQ[1])
-	output <- Socket{uid, name, pid, exe, state, ip, port, fIp, fPort, l[9], recvQ, sendQ, l[8]}
+	return Socket{uid, name, pid, exe, state, ip, port, fIp, fPort, l[9], recvQ, sendQ, l[8]}
 }
 
 func getFileDescriptors() []string {
@@ -228,16 +228,11 @@ func getLocalInodes() []FdLink {
 func netstat(path string) []Socket {
 	lines := getLines(path)
 	Sockets := make([]Socket, len(lines))
-	res := make(chan Socket, len(lines))
 
 	localFdLinks := getLocalInodes()
 
-	for _, line := range lines {
-		go processNetstatLine(line, &localFdLinks, res)
-	}
-
-	for i, _ := range lines {
-		Sockets[i] = <-res
+	for i, line := range lines {
+		Sockets[i] = processNetstatLine(line, &localFdLinks)
 	}
 
 	return Sockets

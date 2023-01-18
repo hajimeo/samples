@@ -56,14 +56,13 @@ func TestGetLines(t *testing.T) {
 	if !strings.Contains(lines[0], "   0: 00000000:1388 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 53447 1 ffff9fcb36e608c0 100 0 1 10 0") {
 		t.Errorf("lines[0] should match with the 2nd line of ./net_tcp.out")
 	}
-	t.Logf("'%s'", lines[0])
+	//t.Logf("'%s'", lines[0])
+	t.Logf("'%s'", lines[len(lines)-1])
 }
 
 func TestProcessNetstatLine(t *testing.T) {
 	localFdLinks := getLocalInodes()
-	res := make(chan Socket, 1)
-	processNetstatLine(DUMMY_LINE, &localFdLinks, res)
-	s := <-res
+	s := processNetstatLine(DUMMY_LINE, &localFdLinks)
 	t.Logf("%T %v", s, s)
 	if s.SendQ != 1 {
 		t.Errorf("s.SendQ (00000001) should be 1 but got %v", s.SendQ)
