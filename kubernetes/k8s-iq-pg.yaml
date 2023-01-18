@@ -139,23 +139,30 @@ spec:
           ports:
             - containerPort: 8070
             - containerPort: 8071
-          livenessProbe:
-            httpGet:
-              #host: ${_METALLB_IP}
-              path: /ping
-              port: 8070
-            initialDelaySeconds: 30
-            periodSeconds: 120
-            successThreshold: 1
-            failureThreshold: 6
-            timeoutSeconds: 10
-          readinessProbe:
+          startupProbe:
             tcpSocket:
-              port: 8070
-            initialDelaySeconds: 30
+              port: 8071
+            initialDelaySeconds: 10
             periodSeconds: 20
             successThreshold: 1
-            failureThreshold: 6
+            failureThreshold: 120
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8070
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 30
+            timeoutSeconds: 10
+          livenessProbe:
+            httpGet:
+              port: 8071
+            initialDelaySeconds: 10
+            periodSeconds: 60
+            successThreshold: 1
+            failureThreshold: 3
             timeoutSeconds: 10
           volumeMounts:
             - name: sonatype-license-volume
