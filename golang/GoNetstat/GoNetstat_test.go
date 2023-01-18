@@ -43,7 +43,7 @@ func TestPadStrToDec(t *testing.T) {
 func TestPrintSocket(t *testing.T) {
 	header := genHeader()
 	t.Logf("%s", header)
-	s := Socket{"uid", "name", "pid", "test.exe", "TEST", "1.2.3.4", 5678, "5.6.7.8", 10001, "inode", 12345, 54321, "timeout"}
+	s := Socket{"uid", "name", "pid", "test.exe", "TEST", "1.2.3.4", 5678, "5.6.7.8", 10001, "inode", 12345, 54321, "timeout", "misc."}
 	line := genPrintLine(s, "tcp")
 	t.Logf("%s", line)
 	if len(header) != len(line) {

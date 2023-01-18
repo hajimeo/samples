@@ -1,5 +1,6 @@
 /*
 Based on https://raw.githubusercontent.com/drael/GOnetstat/master/gonetstat.go
+Ref: https://www.kernel.org/doc/Documentation/networking/proc_net_tcp.txt
 
 go mod init github.com/hajimeo/samples/golang/GoNetStat
 go get -u -t && go mod tidy
@@ -23,7 +24,7 @@ import (
 )
 
 // Proto    Recv-Q     Send-Q     Local Adress           Foregin Adress         State          Inode      Pid/Program          timeout
-var DisplayFmt = "%-8v %-10v %-10v %-22v %-22v %-14v %-10v %-20v %v"
+var DisplayFmt = "%-8v %-10v %-10v %-22v %-22v %-14v %-10v %-20v %v %v"
 
 var STATE = map[string]string{
 	"01": "ESTABLISHED",
@@ -53,6 +54,7 @@ type Socket struct {
 	RecvQ       int64
 	SendQ       int64
 	timeout     string
+	misc        string
 }
 
 type FdLink struct {
@@ -197,7 +199,7 @@ func processNetstatLine(line string, fileDescriptors *[]FdLink) Socket {
 	sendRecvQ := strings.Split(l[4], ":")
 	sendQ := padStrToDec(sendRecvQ[0])
 	recvQ := padStrToDec(sendRecvQ[1])
-	return Socket{uid, name, pid, exe, state, ip, port, fIp, fPort, l[9], recvQ, sendQ, l[8]}
+	return Socket{uid, name, pid, exe, state, ip, port, fIp, fPort, l[9], recvQ, sendQ, l[8], strings.Join(l[10:], " ")}
 }
 
 func getFileDescriptors() []string {
@@ -240,7 +242,7 @@ func netstat(path string) []Socket {
 
 func genHeader() string {
 	return fmt.Sprintf(DisplayFmt, "Proto", "Recv-Q", "Send-Q", "Local Adress", "Foregin Adress",
-		"State", "Inode", "Pid/Program", "timeout")
+		"State", "Inode", "Pid/Program", "timeout", "misc.")
 }
 
 func genPrintLine(s Socket, netType string) string {
@@ -249,7 +251,7 @@ func genPrintLine(s Socket, netType string) string {
 	pidProgram := fmt.Sprintf("%v/%v", s.Pid, s.Name)
 
 	return fmt.Sprintf(DisplayFmt,
-		netType, s.RecvQ, s.SendQ, ipPort, fipPort, s.State, s.Inode, pidProgram, s.timeout)
+		netType, s.RecvQ, s.SendQ, ipPort, fipPort, s.State, s.Inode, pidProgram, s.timeout, s.misc)
 }
 
 func main() {
