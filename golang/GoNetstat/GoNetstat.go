@@ -50,7 +50,7 @@ type Socket struct {
 	timeout     string
 }
 
-type iNode struct {
+type FdLink struct {
 	path string
 	link string
 }
@@ -124,7 +124,7 @@ func convertIp(ip string) string {
 	return out
 }
 
-func findPid(inode string, inodes *[]iNode) string {
+func findPid(inode string, inodes *[]FdLink) string {
 	// Loop through all fd dirs of process on /proc to compare the inode and
 	// get the pid.
 
@@ -171,7 +171,7 @@ func removeEmpty(array []string) []string {
 	return newArray
 }
 
-func processNetstatLine(line string, fileDescriptors *[]iNode, output chan<- Socket) {
+func processNetstatLine(line string, fileDescriptors *[]FdLink, output chan<- Socket) {
 	l := removeEmpty(strings.Split(strings.TrimSpace(line), " "))
 
 	ipPort := strings.Split(l[1], ":")
@@ -200,15 +200,15 @@ func getFileDescriptors() []string {
 	return d
 }
 
-func getInodes() []iNode {
+func getLocalInodes() []FdLink {
 	fileDescriptors := getFileDescriptors()
-	inodes := make([]iNode, len(fileDescriptors))
-	res := make(chan iNode, len(fileDescriptors))
+	inodes := make([]FdLink, len(fileDescriptors))
+	res := make(chan FdLink, len(fileDescriptors))
 
-	go func(fileDescriptors *[]string, output chan<- iNode) {
-		for _, item := range *fileDescriptors {
-			link, _ := os.Readlink(item)
-			output <- iNode{item, link}
+	go func(fileDescriptors *[]string, output chan<- FdLink) {
+		for _, fd := range *fileDescriptors {
+			link, _ := os.Readlink(fd)
+			output <- FdLink{fd, link}
 		}
 	}(&fileDescriptors, res)
 
@@ -224,10 +224,10 @@ func netstat(path string) []Socket {
 	Sockets := make([]Socket, len(lines))
 	res := make(chan Socket, len(lines))
 
-	localInodes := getInodes()
+	localFdLinks := getLocalInodes()
 
 	for _, line := range lines {
-		go processNetstatLine(line, &localInodes, res)
+		go processNetstatLine(line, &localFdLinks, res)
 	}
 
 	for i, _ := range lines {
