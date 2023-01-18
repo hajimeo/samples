@@ -4,7 +4,9 @@ Based on https://raw.githubusercontent.com/drael/GOnetstat/master/gonetstat.go
 go mod init github.com/hajimeo/samples/golang/GoNetStat
 go get -u -t && go mod tidy
 
-env GOOS=linux GOARCH=amd64 go build -o ../../misc/gonetstat_Linux_amd64 ./GoNetstat.go
+env GOOS=linux GOARCH=amd64 go build -o ../../misc/gonetstat_Linux_amd64 GoNetstat.go && \
+env GOOS=darwin GOARCH=amd64 go build -o ../../misc/gonetstat_Darwin_amd64 GoNetstat.go && \
+env GOOS=darwin GOARCH=arm64 go build -o ../../misc/gonetstat_Darwin_arm64 GoNetstat.go && date
 */
 
 package main
@@ -19,6 +21,9 @@ import (
 	"strconv"
 	"strings"
 )
+
+// Proto    Recv-Q     Send-Q     Local Adress           Foregin Adress         State          Inode      Pid/Program          timeout
+var DisplayFmt = "%-8v %-10v %-10v %-22v %-22v %-14v %-10v %-20v %v"
 
 var STATE = map[string]string{
 	"01": "ESTABLISHED",
@@ -55,9 +60,8 @@ type FdLink struct {
 	link string
 }
 
-var DisplayFmt = "%-8v %-12v %-12v %-20v %-20v %-10v %-10v %-16v %-16v"
-
 func getLines(path string) []string {
+	// just return lines (without header line) as list
 	data, err := os.ReadFile(path)
 	helpers.PanicIfErr(err)
 	lines := strings.Split(string(data), "\n")
@@ -189,8 +193,10 @@ func processNetstatLine(line string, fileDescriptors *[]FdLink, output chan<- So
 	pid := findPid(l[9], fileDescriptors)
 	exe := getProcessExe(pid)
 	name := getProcessName(exe)
-	recvQ := padStrToDec(l[4])
-	sendQ := padStrToDec(l[5])
+
+	sendRecvQ := strings.Split(l[4], ":")
+	sendQ := padStrToDec(sendRecvQ[0])
+	recvQ := padStrToDec(sendRecvQ[1])
 	output <- Socket{uid, name, pid, exe, state, ip, port, fIp, fPort, l[9], recvQ, sendQ, l[8]}
 }
 
@@ -231,8 +237,7 @@ func netstat(path string) []Socket {
 	}
 
 	for i, _ := range lines {
-		p := <-res
-		Sockets[i] = p
+		Sockets[i] = <-res
 	}
 
 	return Sockets
