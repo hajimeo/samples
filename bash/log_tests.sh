@@ -67,7 +67,7 @@ _APP_VER="${_APP_VER_OVERWRITE:-"<null>"}"          # 3.36.0-01
 
 # Aliases (can't use alias in shell script, so functions)
 _rg() {
-    local _max_filesize="${_RG_MAX_FILESIZE-"300M"}"    # Default is 300 MB
+    local _max_filesize="${_RG_MAX_FILESIZE-"2G"}"
     if [ -n "${_max_filesize}" ]; then
         rg --max-filesize "${_max_filesize}" -z "$@"
     else
