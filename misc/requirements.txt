@@ -78,7 +78,7 @@ pyasn1==0.4.8
 pyasn1-modules==0.2.8
 pycodestyle==2.6.0
 pycparser==2.20
-Pygments==2.7.2
+Pygments==2.7.4
 PyHamcrest==2.0.2
 pyjq==2.4.0
 pyOpenSSL==20.0.1
