@@ -19,7 +19,7 @@ import (
 func usage() {
 	fmt.Println(`
 Generate Nexus blob store path (from <blob name>/content/)
-    blobpath <blobId-like-string> <extention> <blobstore-content-dir> <if-missing-only>
+    blobpath <blobId-like-string> <extension> <blobstore-content-dir> <if-missing-only>
 
 DOWNLOAD and INSTALL:
     sudo curl -o /usr/local/bin/blobpath -L https://github.com/hajimeo/samples/raw/master/misc/blobpath_$(uname)_$(uname -m)
@@ -37,7 +37,10 @@ USAGE EXAMPLE:
 
 	# Report if .properties file is missing ("Y" in the 4th argument)
     $ cat /tmp/blobIds.out | xargs -I{} -P3 ./blobpath "{}" ".properties" "/nexus-data/blobs/default/content/" "Y"
-    /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties`)
+    /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties
+ADVANCED:
+	rg 'blobRef=([^@]+)@[^:]+:([^, ]+)' -o -r 'blobpath "$2" "" "$1@content"' deadBlobResult-20230120-160737.json > ./eval.sh
+	bash -v ./eval.sh > actual_paths.out`)
 }
 
 func myHashCode(s string) int32 {
@@ -62,7 +65,7 @@ func main() {
 		matches := BLOB_ID_PATTERN.FindStringSubmatch(blobId)
 		blobId = matches[1]
 	}
-	ext := ".properties"
+	ext := ""
 	if len(os.Args) > 2 {
 		ext = os.Args[2]
 	}
@@ -84,15 +87,20 @@ func main() {
 	if isMissingOnly {
 		if len(ext) == 0 {
 			// If no extension specified, check ".properties" and ".bytes" both
+			// TODO: But doing os.Stat(path + ".bytes") makes this code twice slower, so not doing
 			if _, err := os.Stat(path + ".properties"); err != nil {
 				fmt.Println(path + ".properties")
-				// TODO: Doing os.Stat(path + ".bytes") makes this code twice slower, so not doing
 				fmt.Println(path + ".bytes")
 			}
 		} else if _, err := os.Stat(path); err != nil {
 			fmt.Println(path)
 		}
 	} else {
-		fmt.Println(path)
+		if len(ext) == 0 {
+			fmt.Println(path + ".properties")
+			fmt.Println(path + ".bytes")
+		} else {
+			fmt.Println(path)
+		}
 	}
 }
