@@ -39,8 +39,11 @@ USAGE EXAMPLE:
     $ cat /tmp/blobIds.out | xargs -I{} -P3 ./blobpath "{}" ".properties" "/nexus-data/blobs/default/content/" "Y"
     /nexus-data/blobs/default/content/vol-31/chap-32/83e59741-f05d-4915-a1ba-7fc789be34b1.properties
 ADVANCED:
+    # NOTE: using xxxxxx@ as blobStore ID/name is not 100% accurate
 	rg 'blobRef=([^@]+)@[^:]+:([^, ]+)' -o -r 'blobpath "$2" "" "$1@content"' deadBlobResult-20230120-160737.json > ./eval.sh
-	bash -v ./eval.sh > actual_paths.out`)
+	bash -v ./eval.sh > actual_paths.out
+    #rg -o '^.+@' actual_paths.out | sort | uniq -c
+	sed -i.bak 's;^default@;/opt/sonatype/sonatype-work/blobs/default/;g' ./actual_paths.out`)
 }
 
 func myHashCode(s string) int32 {
