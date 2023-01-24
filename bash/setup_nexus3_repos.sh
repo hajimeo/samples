@@ -568,6 +568,7 @@ function _upload_to_conan_hosted() {
     CONAN_LOGIN_USERNAME="${_ADMIN_USER}" CONAN_PASSWORD="${_ADMIN_PWD}" conan upload --confirm --force --retry 0 -r "${_prefix}-hosted" --all ${_pkg_ver}@${_usr_stable}
     local _rc=$?
     if [ ${_rc} != 0 ]; then
+        # /v1/users/check_credentials returns 401 if no realm
         _log "ERROR" "Please make sure 'Conan Bearer Token Realm' (ConanToken) is enabled (f_put_realms)"
     fi
     cd -
