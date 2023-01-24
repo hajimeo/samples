@@ -97,6 +97,7 @@ function _postgresql_configure() {
     _upsert ${_postgresql_conf} "log_error_verbosity" "verbose" "#log_error_verbosity"  # default
     _upsert ${_postgresql_conf} "log_connections" "on" "#log_connections"
     _upsert ${_postgresql_conf} "log_disconnections" "on" "#log_disconnections"
+    #_upsert ${_postgresql_conf} "log_duration" "on" "#log_duration"    # This output many lines, so log_min_duration_statement would be better
     _upsert ${_postgresql_conf} "log_lock_waits" "on" "#log_lock_waits"
     _upsert ${_postgresql_conf} "log_temp_files" "1kB" "#log_temp_files"    # -1
 
@@ -111,7 +112,7 @@ function _postgresql_configure() {
     else
         _upsert ${_postgresql_conf} "log_line_prefix" "'%m [%p-%l]: db=%d,user=%u,app=%a,client=%h '" "#log_line_prefix"
         _upsert ${_postgresql_conf} "log_statement" "'mod'" "#log_statement"
-        _upsert ${_postgresql_conf} "log_min_duration_statement" "1000" "#log_min_duration_statement"
+        _upsert ${_postgresql_conf} "log_min_duration_statement" "100" "#log_min_duration_statement"
     fi
 
     local _shared_preload_libraries="auto_explain"

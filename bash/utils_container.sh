@@ -288,8 +288,8 @@ function _k8s_nsenter() {
 
 function _k8s_exec() {
     local _cmd="${1}"
-    local _l="${2}" # app.kubernetes.io/name=nexus-repository-manager
-    local _ns="${3:-"default"}"
+    local _l="${2}" # selector/label. eg:app=nxiq-pg, app=nxrm3pg, app.kubernetes.io/name=nexus-repository-manager
+    local _ns="${3:-"${_NAMESPACE:-"default"}"}"
     local _parallel="${4}"
     local _k="${5:-"${_KUBECTL_CMD:-"kubectl"}"}"
     if [ -z "${_l}" ]; then
@@ -297,6 +297,19 @@ function _k8s_exec() {
         return 11
     fi
     ${_k} get pods -n "${_ns}" -l "${_l}" --field-selector=status.phase=Running -o custom-columns=name:metadata.name --no-headers | xargs -I{} -t -P${_parallel:-"1"} kubectl exec -n "${_ns}" {} -- sh -c "${_cmd}"
+}
+
+function _k8s_shell() {
+    local _pod_name="${1}"  # accept wildcard
+    local _shell="${2:-"bash"}"
+    local _ns="${3:-"${_NAMESPACE:-"default"}"}"
+    local _k="${4:-"${_KUBECTL_CMD:-"kubectl"}"}"
+    if [ -z "${_pod_name}" ]; then
+        ${_k} get pods -n "${_ns}" --show-labels --field-selector=status.phase=Running
+        return 11
+    fi
+    local _name="$(${_k} get pods -n "${_ns}" --no-headers -o custom-columns=name:metadata.name --field-selector=status.phase=Running | grep "${_pod_name}")" || return $?
+    kubectl exec -n "${_ns}" ${_name} -ti -- "${_shell}"
 }
 
 #_k8s_stop "nxrm3-ha3,nxrm3-ha2,nxrm3-ha1" "-nexus-repository-manager" "sonatype"
