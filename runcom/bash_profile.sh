@@ -87,14 +87,12 @@ if [ "$(uname)" = "Darwin" ]; then
     # Truststore location: $(/usr/libexec/java_home)/lib/security/cacerts or $(/usr/libexec/java_home)/jre/lib/security/cacerts
     # To verify: -Djavax.net.debug=ssl,keymanager
     if [ -f /usr/libexec/java_home ]; then
-        #[ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 11 2>/dev/null`
+        #[ -z "${_JAVA_HOME_11}" ] && export _JAVA_HOME_11=`/usr/libexec/java_home -v 11 2>/dev/null`
         [ -z "${JAVA_HOME}" ] && export JAVA_HOME=`/usr/libexec/java_home -v 1.8 2>/dev/null`
-        if /usr/libexec/java_home -v 11 &>/dev/null; then
-            _JAVA_HOME_11="$(/usr/libexec/java_home -v 11)"
-        fi
     fi
     if [ -d "$HOME/Apps/zulu11.60.19-ca-jdk11.0.17-macosx_aarch64" ]; then
         alias jshell="$HOME/Apps/zulu11.60.19-ca-jdk11.0.17-macosx_aarch64/bin/jshell"
+        [ -z "${_JAVA_HOME_11}" ] && export _JAVA_HOME_11="$HOME/Apps/zulu11.60.19-ca-jdk11.0.17-macosx_aarch64"
     elif [ -n "${_JAVA_HOME_11%/}" ]; then
         alias jshell="${_JAVA_HOME_11}/bin/jshell"
     fi

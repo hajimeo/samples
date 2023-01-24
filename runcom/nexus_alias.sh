@@ -98,7 +98,6 @@ function iqMvn() {
 # TODO: UPDATE repository_blobstore SET attributes = {} where type = 'S3';
 #       UPDATE repository_blobstore SET attributes.file = {} where type = 'S3';
 #       UPDATE repository_blobstore SET type = 'File', attributes.file.path = 's3/test' where type = 'S3';
-# TODO: https://issues.sonatype.org/browse/NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
 function nxrmStart() {
     local _base_dir="${1:-"."}"
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5005,suspend=n"}
@@ -127,9 +126,10 @@ function nxrmStart() {
         fi
         [ -n "${_cfg_file}" ] && _updateNexusProps "${_cfg_file}"
         [ -z "${_mode}" ] && _mode="run"
-        # TODO:
-        #cp /Users/hosako/share/java/libs/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar ${_base_dir%/}/nexus-3.*/system/net/java/dev/jna/jna/5.4.0/jna-5.4.0.jar
-        #cp $HOME/share/java/libs/system/net/java/dev/jna/jna-platform/5.11.0/jna-platform-5.11.0.jar ${_base_dir%/}/nexus-3.*/system/net/java/dev/jna/jna-platform/5.4.0/jna-platform-5.4.0.jar
+        # TODO: https://issues.sonatype.org/browse/NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
+        #cd ${_base_dir%/}/nexus-3.*
+        #cp /Users/hosako/share/java/libs/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar ./system/net/java/dev/jna/jna/5.4.0/jna-5.4.0.jar
+        #cp $HOME/share/java/libs/system/net/java/dev/jna/jna-platform/5.11.0/jna-platform-5.11.0.jar ./system/net/java/dev/jna/jna-platform/5.4.0/jna-platform-5.4.0.jar
     else    # if NXRM2
         [ -z "${_mode}" ] && _mode="console"
         # jvm 1    | Caused by: java.lang.ClassNotFoundException: org.eclipse.tycho.nexus.internal.plugin.UnzipRepository
@@ -152,6 +152,18 @@ function nxrmStart() {
     # For java options, latter values are used, so appending
     INSTALL4J_ADD_VM_PARAMS="-XX:-MaxFDLimit ${INSTALL4J_ADD_VM_PARAMS} ${_java_opts}" ${_nexus_file} ${_mode}
     # ulimit / Too many open files: https://help.sonatype.com/repomanager3/installation/system-requirements#SystemRequirements-MacOSX
+}
+
+function _nexus29730() {
+    # https://issues.sonatype.org/browse/NEXUS-29730 java.lang.NoClassDefFoundError: com/sun/jna/Platform
+    local _base_dir="${1:-"."}"
+    local _good_jar_root="${2:-"/var/tmp/share/java/libs"}"
+    find ${_base_dir%/}/nexus-3.* -type f -path '*/system/net/java/dev/jna/jna/*' -name "jna-*.jar" | while read -r _jar; do
+        cp -v -f ${_good_jar_root%/}/system/net/java/dev/jna/jna/5.11.0/jna-5.11.0.jar ${_jar}
+    done
+    find ${_base_dir%/}/nexus-3.* -type f -path '*/system/net/java/dev/jna/jna-platform/*' -name "jna-*.jar" | while read -r _jar; do
+        cp -v -f ${_good_jar_root%/}/system/net/java/dev/jna/jna-platform/5.11.0/jna-platform-5.11.0.jar ${_jar}
+    done
 }
 
 function _updateNexusProps() {
@@ -856,3 +868,13 @@ function nxrm3Scripting() {
         curl -D- -u admin:admin123 -X POST -H 'Content-Type: text/plain' "${_nexus_url%/}/service/rest/v1/script/${_script_name}/run" -d@/tmp/${FUNCNAME}_args.json
     fi
 }
+
+# Convert the DeadBlobsFinder result to a simple list
+function nxrm3DBF2list() {
+    local _json_file="$1"
+    python3 -c "import sys,json;js=json.load(open('${_json_file}'))
+for k in js:
+    for i in js[k]:
+        print('%-28s %s' % (k, i[1]))"
+}
+#cat nxrm3DBF2list.out | awk '{print $1}' | sort | uniq | while read -r _repo; do rg "\"name\": \"${_repo}\"" --no-filename -g db_repos.json ; done
