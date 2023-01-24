@@ -532,31 +532,49 @@ function f_setup_conan() {
     # If no xxxx-hosted, create it. From 3.35, so it's OK to fail
     if ! _is_repo_available "${_prefix}-hosted"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true,"writePolicy":"ALLOW"'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"conan-hosted"}],"type":"rpc"}'
-        if [ $? -eq 0 ] && type cmake &>/dev/null && type conan &>/dev/null; then
-            local _build_dir="$(mktemp -d)"
-            cd "${_build_dir}"
-            if ! _setup_conan_hosted_inner "${_prefix}"; then
-                _log "WARN" "Please enable 'Conan Bearer Token Realm'"
-            fi
-            cd -
-        fi
     fi
+    _upload_to_conan_hosted "${_prefix}"
+    return 0    # ignore the last function failure
 }
-function _setup_conan_hosted_inner() {
+function _upload_to_conan_hosted() {
     local _prefix="${1:-"conan"}"
+    if ! type conan &>/dev/null; then
+        _log "WARN" "_upload_to_conan_hosted requires 'conan'"
+        return 1
+    fi
+    if ! type cmake &>/dev/null; then
+        _log "WARN" "_upload_to_conan_hosted requires 'cmake'"
+        # sudo snap install cmake --classic
+        return 1
+    fi
     if ${_DEBUG}; then
         export CONAN_LOGGING_LEVEL=debug
     fi
-    # Ignoring Remote 'conan-hosted' already exists with same URL
-    conan remote add conan-hosted "${_NEXUS_URL%/}/repository/${_prefix}-hosted/"
-    conan user -p admin123 -r "${_prefix}-hosted" admin || return $?
+    # Ignoring Remote 'conan-hosted' does not exist or if add fails
+    conan remote remove ${_prefix}-hosted
+    conan remote add ${_prefix}-hosted "${_NEXUS_URL%/}/repository/${_prefix}-hosted" false
+
     local _pkg_ver="hello/0.2"
     local _usr_stable="demo/testing"
-    conan new ${_pkg_ver} && conan create . ${_usr_stable} || return $?
-    conan upload -r "${_prefix}-hosted" ${_pkg_ver}@${_usr_stable} --all
+    local _build_dir="$(mktemp -d)"
+    cd "${_build_dir}" || return $?
+    conan new ${_pkg_ver}
+    if ! conan create . ${_usr_stable}; then
+        cd -
+        return 1
+    fi
+    #conan user -c
+    #conan user -p ${_ADMIN_PWD} -r "${_prefix}-hosted" ${_ADMIN_USER}
+    CONAN_LOGIN_USERNAME="${_ADMIN_USER}" CONAN_PASSWORD="${_ADMIN_PWD}" conan upload --confirm --force --retry 0 -r "${_prefix}-hosted" --all ${_pkg_ver}@${_usr_stable}
+    local _rc=$?
+    if [ ${_rc} != 0 ]; then
+        _log "ERROR" "Please make sure 'Conan Bearer Token Realm' (ConanToken) is enabled (f_put_realms)"
+    fi
+    cd -
     if ${_DEBUG}; then
         unset CONAN_LOGGING_LEVEL
     fi
+    return ${_rc}
 }
 
 function f_setup_conda() {
@@ -796,7 +814,7 @@ function f_iq_quarantine() {
         _log "WARN" "IQ ${_IQ_URL} is not reachable capability"
         return
     fi
-    f_apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":true,"url":"'${_IQ_URL}'","authenticationType":"USER","username":"admin","password":"admin123","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}' || return $?
+    f_apiS '{"action":"clm_CLM","method":"update","data":[{"enabled":true,"url":"'${_IQ_URL}'","authenticationType":"USER","username":"'${_ADMIN_USER}'","password":"'${_ADMIN_PWD}'","timeoutSeconds":null,"properties":"","showLink":true}],"type":"rpc"}' || return $?
     # To create IQ: Audit and Quarantine for this repository:
     if [ -n "${_repo_name}" ]; then
         f_apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"firewall.audit","notes":"","enabled":true,"properties":{"repository":"'${_repo_name}'","quarantine":"true"}}],"type":"rpc"}' || return $?
@@ -1325,14 +1343,20 @@ EOF
     npm install -g yarn
     npm install -g bower
     npm install -g bower-nexus3-resolver
-    _log "INFO" "Install conan ..."
-    if pip3 install conan; then
+    if ! type cmake &>/dev/null; then
+        _log "INFO" "Install cmake ..."
         [ ! -d /opt/cmake ] && mkdir /opt/cmake
         cd /opt/cmake
         [ ! -s ./cmake-3.22.1-linux-x86_64.sh ] && curl -o ./cmake-3.22.1-linux-x86_64.sh -L https://github.com/Kitware/CMake/releases/download/v3.22.1/cmake-3.22.1-linux-x86_64.sh
         bash ./cmake-3.22.1-linux-x86_64.sh --skip-license
         ln -v -s /opt/cmake/bin/* /usr/local/bin && \
             ${_yum_install} gcc gcc-c++ make
+    fi
+    _log "INFO" "Install conan ..."
+    if ! type pip3 &>/dev/null; then
+        _log "WARN" "No 'conan' installed because of no 'pip3' (probably no python3)"
+    else
+        pip3 install conan
     fi
     _log "INFO" "Setting up Rubygem 2.3 ..."
     # @see: https://www.server-world.info/en/note?os=CentOS_7&p=ruby23
@@ -1612,7 +1636,7 @@ function f_upload_dummies_mvn() {
     if [ ! -s "${_filepath}" ]; then
         if type jar &>/dev/null; then
             echo "test by f_upload_dummies at $(date +'%Y-%m-%d %H:%M:%S')" > dummy.txt
-            jar cvf ${_filepath} dummy.txt || return $?
+            jar -cvf ${_filepath} dummy.txt || return $?
         else
             curl -o "${_filepath}" "https://repo1.maven.org/maven2/org/sonatype/goodies/goodies-i18n/2.3.4/goodies-i18n-2.3.4.jar" || return $?
         fi
