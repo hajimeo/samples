@@ -1730,7 +1730,9 @@ function f_upload_dummies_nuget() {
         return 1
     fi
 
-    unzip -d ${_TMP%/}/${_pkg_name} "${_TMP%/}/${_pkg_name}.latest.nupkg" ${_nuspec} ${_psmdcp} || return $?
+    if [ ! -s "${_TMP%/}/${_pkg_name%/}/${_nuspec}" ]; then
+        unzip -d ${_TMP%/}/${_pkg_name} "${_TMP%/}/${_pkg_name}.latest.nupkg" ${_nuspec} ${_psmdcp} || return $?
+    fi
     #local _base_ver="$(sed -n -r 's@.*<version>(.+)</version>.*@\1@p' "${_nuspec}")"
     cp -v -f "${_TMP%/}/${_pkg_name}.latest.nupkg" "${_TMP%/}/${_pkg_name}.${_base_ver}.x.nupkg"
     for i in $(eval "${_seq}"); do
