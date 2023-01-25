@@ -1934,8 +1934,9 @@ function _update_name_resolution() {    # no longer in use but leaving as an exa
 }
 
 # NOTE: currently this function is tested against support.zip boot-ed then migrated database
-# Example export command (Not using --data-only as needs CREATE statements also requires PostgreSQL v12 or higher for wildcard in -t):
-#PGGSSENCMODE=disable pg_dump -h localhost -p 5432 -U nxrm -d nxrm -O -t "repository" -t "*_content_repository" -t "*_component*" -t "*_asset*" -t "tag" -t "*deleted_blob*" -t "change_blobstore" -Z 6 -f component_db_dump.sql.gz   # -t "*_browse_node"
+# Example export command (Using --no-owner and --clean, but not using --data-only as needs CREATE statements. -t with * requires PostgreSQL v12 or higher):
+#_FMT="*"; PGGSSENCMODE=disable pg_dump -h localhost -p 5432 -U nxrm -d nxrm -c -O -t "repository" -t "${_FMT}_content_repository" -t "${_FMT}_component" -t "${_FMT}_component_tag" -t "${_FMT}_asset" -t "${_FMT}_asset_blob" -t "tag" -Z 6 -f component_db_$(date +"%Y%m%d%H%M%S").sql.gz
+# Other interesting tables: -t "*_browse_node" -t "*deleted_blob*" -t "change_blobstore"
 function f_restore_postgresql_component() {
     local __doc__="Restore 'component' database from a pg_dump generated sql.gz file into the existing *local* database"
     local _sql_gz_file="${1}"
