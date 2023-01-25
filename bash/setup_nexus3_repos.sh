@@ -257,16 +257,16 @@ function f_setup_nuget() {
 
     # Nexus should have nuget.org-proxy, nuget-group, and nuget-hosted already, so creating only v3 one
     # If no xxxx-hosted, create it
-    if ! _is_repo_available "${_prefix}-v3-hosted"; then
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","writePolicy":"ALLOW_ONCE","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-hosted","format":"","type":"","url":"","online":true,"recipe":"nuget-hosted"}],"type":"rpc"}' || return $?
+    if ! _is_repo_available "${_prefix}-hosted"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","writePolicy":"ALLOW","strictContentTypeValidation":true'${_extra_sto_opt}'},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-hosted","format":"","type":"","url":"","online":true,"recipe":"nuget-hosted"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-hosted
-    f_upload_asset "${_prefix}-v3-hosted" -F "nuget.asset=@${_TMP%/}/test.2.0.1.1.nupkg"
+    f_upload_asset "${_prefix}-hosted" -F "nuget.asset=@${_TMP%/}/test.2.0.1.1.nupkg"
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-v3-group"; then
         # Hosted first
-        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-v3-hosted","'${_prefix}'-v3-proxy"]}},"name":"'${_prefix}'-v3-group","format":"","type":"","url":"","online":true,"recipe":"nuget-group"}],"type":"rpc"}' || return $?
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"storage":{"blobStoreName":"'${_blob_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"group":{"memberNames":["'${_prefix}'-hosted","'${_prefix}'-v3-proxy"]}},"name":"'${_prefix}'-v3-group","format":"","type":"","url":"","online":true,"recipe":"nuget-group"}],"type":"rpc"}' || return $?
     fi
     # add some data for xxxx-group
     f_get_asset "${_prefix}-v3-group" "/v3/content/nlog/3.1.0/nlog.3.1.0.nupkg" "${_TMP%/}/nlog.3.1.0.nupkg"  # this one may fail on some Nexus version
@@ -1588,11 +1588,11 @@ function f_register_script() {
     local _script_name="$2"
     [ -s "${_script_file%/}" ] || return 1
     [ -z "${_script_name}" ] && _script_name="$(basename ${_script_file} .groovy)"
-    python -c "import sys,json;print(json.dumps(open('${_script_file}').read()))" > /tmp/${_script_name}_$$.out || return $?
-    echo "{\"name\":\"${_script_name}\",\"content\":$(cat /tmp/${_script_name}_$$.out),\"type\":\"groovy\"}" > /tmp/${_script_name}_$$.json
+    python -c "import sys,json;print(json.dumps(open('${_script_file}').read()))" > ${_TMP%/}/${_script_name}_$$.out || return $?
+    echo "{\"name\":\"${_script_name}\",\"content\":$(cat ${_TMP%/}/${_script_name}_$$.out),\"type\":\"groovy\"}" > ${_TMP%/}/${_script_name}_$$.json
     # Delete if exists
     f_api "/service/rest/v1/script/${_script_name}" "" "DELETE"
-    f_api "/service/rest/v1/script" "$(cat /tmp/${_script_name}_$$.json)" || return $?
+    f_api "/service/rest/v1/script" "$(cat ${_TMP%/}/${_script_name}_$$.json)" || return $?
     echo "To run:
     curl -u admin -X POST -H 'Content-Type: text/plain' '${_NEXUS_URL%/}/service/rest/v1/script/${_script_name}/run' -d'{arg:value}'"
 }
@@ -1702,6 +1702,51 @@ EOF
     npm pack --registry ${_repo_url%/}/ ${_pkg_name}"
 }
 
+function f_upload_dummies_nuget() {
+    local __doc__="Upload dummy .nupkg into (Nuget) hosted repository"
+    local _repo_name="${1:-"nuget-hosted"}"
+    local _how_many="${2:-"10"}"
+    local _pkg_name="${3:-"HelloWorld"}"    # eg. AutoFixture.AutoNSubstitute for dependencies
+    local _base_ver="${4:-"9.9"}"
+    local _usr="${5:-"${_ADMIN_USER}"}"
+    local _pwd="${6:-"${_ADMIN_PWD}"}"
+    local _repo_url="${_NEXUS_URL%/}/repository/${_repo_name}/"
+    local _seq_start="${_SEQ_START:-1}"
+    local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
+    local _seq="seq ${_seq_start} ${_seq_end}"
+
+    if [ ! -s "${_TMP%/}/${_pkg_name}.latest.nupkg" ]; then
+        if ! curl -sf -L "https://www.nuget.org/api/v2/package/${_pkg_name}/" -o "${_TMP%/}/${_pkg_name}.latest.nupkg"; then
+            _log "ERROR" "Downloading https://www.nuget.org/api/v2/package/${_pkg_name}/ failed ($?)"
+            return 1
+        fi
+    fi
+    local _nuspec="$(unzip -l "${_TMP%/}/${_pkg_name}.latest.nupkg" | grep -oE '[^ ]+\.nuspec$')"
+    local _psmdcp="$(unzip -l "${_TMP%/}/${_pkg_name}.latest.nupkg" | grep -oE '[^ ]+\.psmdcp')"
+    #local _nuspec="$(find ${_TMP%/}/${_pkg_name} -type f -name '*.nuspec' -print | head -n1)"
+    #local _psmdcp="$(find ${_TMP%/}/${_pkg_name} -type f -name '*.psmdcp' -print | head -n1)"
+    if [ -z "${_nuspec}" ]; then
+        _log "ERROR" "${_TMP%/}/${_pkg_name}.latest.nupkg does not have .nuspec file"
+        return 1
+    fi
+
+    unzip -d ${_TMP%/}/${_pkg_name} "${_TMP%/}/${_pkg_name}.latest.nupkg" ${_nuspec} ${_psmdcp} || return $?
+    #local _base_ver="$(sed -n -r 's@.*<version>(.+)</version>.*@\1@p' "${_nuspec}")"
+    cp -v -f "${_TMP%/}/${_pkg_name}.latest.nupkg" "${_TMP%/}/${_pkg_name}.${_base_ver}.x.nupkg"
+    for i in $(eval "${_seq}"); do
+        sed -i.tmp -E 's@<version>.+</version>@<version>'${_base_ver}'.'$i'</version>@' "${_TMP%/}/${_pkg_name%/}/${_nuspec}"
+        sed -i.tmp -E 's@<version>.+</version>@<version>'${_base_ver}'.'$i'</version>@' "${_TMP%/}/${_pkg_name%/}/${_psmdcp}"
+        cd "${_TMP%/}/${_pkg_name%/}" || return $?
+        zip -q "${_TMP%/}/${_pkg_name}.${_base_ver}.x.nupkg" "${_nuspec}" "${_psmdcp}"
+        local _rc=$?
+        cd - >/dev/null
+        [ ${_rc} != 0 ] && return ${_rc}
+        # NOTE: Can't execute this in parallel, as using same file name
+        curl -s -f -u "${_usr}:${_pwd}" -o/dev/null -w "%{http_code} ${_pkg_name}.${_base_ver}.$i.nupkg\n" -X PUT "${_repo_url%/}/" -F "package=@${_TMP%/}/${_pkg_name}.${_base_ver}.x.nupkg" || return $?
+        #f_upload_asset "${_repo_name}" -F "nuget.asset=@${_TMP%/}/${_pkg_name}.${_base_ver}.$i.nupkg" || return $?
+    done
+}
+
 # NOTE: below may not work with group repo:
 # org.sonatype.nexus.repository.IllegalOperationException: Deleting from repository pypi-group of type pypi is not supported
 function f_delete_asset() {
@@ -1711,7 +1756,7 @@ function f_delete_asset() {
     local _repo="$3"
     local _search_all="$4"
     local _max_loop="${5:-200}" # 50 * 200 = 10000 max
-    rm -f /tmp/${FUNCNAME}_*.out || return $?
+    rm -f ${_TMP%/}/${FUNCNAME}_*.out || return $?
     local _path="/service/rest/v1/assets"
     local _query=""
     local _base_query="?"
@@ -1719,23 +1764,23 @@ function f_delete_asset() {
     [ -z "${_repo}" ] && return 12  # repository is mandatory
     [ -n "${_repo}" ] && _base_query="?repository=${_repo}"
     for i in $(seq "1" "${_max_loop}"); do
-        _API_SORT_KEYS=Y f_api "${_path}${_base_query}${_query}" > /tmp/${FUNCNAME}_${i}.json || return $?
-        grep -E '"(id|path)"' /tmp/${FUNCNAME}_${i}.json | grep -E "\"${_path_regex}\"" -B1 > /tmp/${FUNCNAME}_${i}_matched_IDs.out
+        _API_SORT_KEYS=Y f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME}_${i}.json || return $?
+        grep -E '"(id|path)"' ${_TMP%/}/${FUNCNAME}_${i}.json | grep -E "\"${_path_regex}\"" -B1 > ${_TMP%/}/${FUNCNAME}_${i}_matched_IDs.out
         if [ $? -eq 0 ] && [[ ! "${_search_all}" =~ ^[yY] ]]; then
             break
         fi
-        grep -qE '"continuationToken": *"[0-9a-f]+' /tmp/${FUNCNAME}_${i}.json || break
-        local cToken="$(cat /tmp/${FUNCNAME}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
+        grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME}_${i}.json || break
+        local cToken="$(cat ${_TMP%/}/${FUNCNAME}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
         _query="&continuationToken=${cToken}"
     done
-    grep -E '^            "id":' -h /tmp/${FUNCNAME}_*_matched_IDs.out | sort | uniq > /tmp/${FUNCNAME}_$$.out || return $?
-    local _line_num="$(cat /tmp/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
+    grep -E '^            "id":' -h ${_TMP%/}/${FUNCNAME}_*_matched_IDs.out | sort | uniq > ${_TMP%/}/${FUNCNAME}_$$.out || return $?
+    local _line_num="$(cat ${_TMP%/}/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
         read -p "Are you sure to delete matched (${_line_num}) assets?: " "_yes"
         echo ""
         [[ "${_yes}" =~ ^[yY] ]] || return
     fi
-    cat /tmp/${FUNCNAME}_$$.out | while read -r _l; do
+    cat ${_TMP%/}/${FUNCNAME}_$$.out | while read -r _l; do
         if [[ "${_l}" =~ \"id\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
             echo "# ${BASH_REMATCH[1]}"
             f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" || break
@@ -1748,25 +1793,25 @@ function f_delete_all_assets() {
     local _force="$1"
     local _repo="$2"
     local _max_loop="${3:-200}" # 50 * 200 = 10000 max
-    rm -f /tmp/${FUNCNAME}_*.out || return $?
+    rm -f ${_TMP%/}/${FUNCNAME}_*.out || return $?
     local _path="/service/rest/v1/search/assets"
     local _query=""
     local _base_query="?"
     [ -n "${_repo}" ] && _base_query="?repository=${_repo}"
     for i in $(seq "1" "${_max_loop}"); do
-        f_api "${_path}${_base_query}${_query}" > /tmp/${FUNCNAME}_${i}.json || return $?
-        grep -qE '"continuationToken": *"[0-9a-f]+' /tmp/${FUNCNAME}_${i}.json || break
-        local cToken="$(cat /tmp/${FUNCNAME}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
+        f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME}_${i}.json || return $?
+        grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME}_${i}.json || break
+        local cToken="$(cat ${_TMP%/}/${FUNCNAME}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
         _query="&continuationToken=${cToken}"
     done
-    grep -E '^            "id":' -h /tmp/${FUNCNAME}_*.json | sort | uniq > /tmp/${FUNCNAME}_$$.out || return $?
-    local _line_num="$(cat /tmp/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
+    grep -E '^            "id":' -h ${_TMP%/}/${FUNCNAME}_*.json | sort | uniq > ${_TMP%/}/${FUNCNAME}_$$.out || return $?
+    local _line_num="$(cat ${_TMP%/}/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
         read -p "Are you sure to delete all (${_line_num}) assets?: " "_yes"
         echo ""
         [[ "${_yes}" =~ ^[yY] ]] || return
     fi
-    cat /tmp/${FUNCNAME}_$$.out | while read -r _l; do
+    cat ${_TMP%/}/${FUNCNAME}_$$.out | while read -r _l; do
         if [[ "${_l}" =~ \"id\"[[:space:]]*:[[:space:]]*\"([^\"]+)\" ]]; then
             echo "# ${BASH_REMATCH[1]}"
             f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" || break
@@ -1791,10 +1836,10 @@ function f_nexus_k8s_ha() {
     # Download necessary files
     #curl -L -o${_share_dir%/}/k8s-nxrm3-ha-enable.sh https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-enable.sh"
     for _f in helm-nxrm3-values.yaml k8s-nxrm3-ha-deployment-patch.yaml; do #k8s-nxrm3-ha-service-patch.yaml
-        if [ -f "/tmp/${_pod_prefix}_${_f}" ]; then
-            _log "INFO" "/tmp/${_pod_prefix}_${_f} exists. Reusing...";sleep 1
+        if [ -f "${_TMP%/}/${_pod_prefix}_${_f}" ]; then
+            _log "INFO" "${_TMP%/}/${_pod_prefix}_${_f} exists. Reusing...";sleep 1
         else
-            curl -sf -o/tmp/${_pod_prefix}_${_f} -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/${_f}" || return $?
+            curl -sf -o${_TMP%/}/${_pod_prefix}_${_f} -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/${_f}" || return $?
         fi
     done
 
@@ -1814,7 +1859,7 @@ function f_nexus_k8s_ha() {
                 _log "INFO" "${_name} already exists. Not installing but just Patching ..."; sleep 3
             else
                 _log "INFO" "install -n ${_namespace} ${_name} sonatype/${_app_name} ..."; sleep 3
-                ${_HELM3} ${_HELM3_OPTS} install -n ${_namespace} ${_name} sonatype/${_app_name} -f /tmp/${_pod_prefix}_helm-nxrm3-values.yaml || return $?
+                ${_HELM3} ${_HELM3_OPTS} install -n ${_namespace} ${_name} sonatype/${_app_name} -f ${_TMP%/}/${_pod_prefix}_helm-nxrm3-values.yaml || return $?
                 sleep 10
             fi
         done
@@ -1840,7 +1885,7 @@ function f_nexus_k8s_ha() {
 
         export _POD_NAME="${_name}" # need this as used in a template
         _log "INFO" "patch deployment -n ${_namespace} ${_name}-${_app_name} with '${_SHARE_DIR}' '${_NODE_MEMBERS}' ..."
-        ${_KUBECTL} patch deployment -n ${_namespace} ${_name}-${_app_name} --patch "$(eval "echo -e \"$(cat /tmp/${_pod_prefix}_k8s-nxrm3-ha-deployment-patch.yaml)\"")" || return $?
+        ${_KUBECTL} patch deployment -n ${_namespace} ${_name}-${_app_name} --patch "$(eval "echo -e \"$(cat ${_TMP%/}/${_pod_prefix}_k8s-nxrm3-ha-deployment-patch.yaml)\"")" || return $?
         sleep 20
         # Wait until this Pod becomes Ready state
         _pod_ready_waiter "${_name}" "${_namespace}"
@@ -1875,15 +1920,15 @@ function _update_name_resolution() {    # no longer in use but leaving as an exa
         [ -f "/etc/banner_add_hosts" ] && _hostfile="/etc/banner_add_hosts"
         _update_hosts_for_k8s "${_hostfile}" "${_app_name}" "${_namespace}"
     else
-        _k8s_exec "grep -wE '${_pod_prefix}.' /etc/hosts" "app.kubernetes.io/name=${_app_name}" "${_namespace}" "3" 2>/dev/null | sort | uniq > /tmp/${_pod_prefix}_hosts.txt || return $?
+        _k8s_exec "grep -wE '${_pod_prefix}.' /etc/hosts" "app.kubernetes.io/name=${_app_name}" "${_namespace}" "3" 2>/dev/null | sort | uniq > ${_TMP%/}/${_pod_prefix}_hosts.txt || return $?
         # If only one line or zero, no point of updating
-        [ "$(grep -c -wE "${_pod_prefix}.\.pods" "/tmp/${_pod_prefix}_hosts.txt")" -lt 2 ] && return 0
-        if _k8s_exec "echo -e \"\$(grep -vwE '${_pod_prefix}.\.pods' /etc/hosts)\n$(cat /tmp/${_pod_prefix}_hosts.txt)\" > /etc/hosts" "app.kubernetes.io/name=${_app_name}" "${_namespace}" "3" 2>/tmp/${_pod_prefix}_hosts.err; then
+        [ "$(grep -c -wE "${_pod_prefix}.\.pods" "${_TMP%/}/${_pod_prefix}_hosts.txt")" -lt 2 ] && return 0
+        if _k8s_exec "echo -e \"\$(grep -vwE '${_pod_prefix}.\.pods' /etc/hosts)\n$(cat ${_TMP%/}/${_pod_prefix}_hosts.txt)\" > /etc/hosts" "app.kubernetes.io/name=${_app_name}" "${_namespace}" "3" 2>${_TMP%/}/${_pod_prefix}_hosts.err; then
             _log "INFO" "Pods /etc/hosts have been updated."
-            cat /tmp/${_pod_prefix}_hosts.txt
+            cat ${_TMP%/}/${_pod_prefix}_hosts.txt
         else
             _log "WARN" "Couldn't update Pods /etc/hosts."
-            cat /tmp/${_pod_prefix}_hosts.err
+            cat ${_TMP%/}/${_pod_prefix}_hosts.err
         fi
     fi
 }
@@ -1952,28 +1997,28 @@ function f_restore_postgresql_component() {
         for _suffix in $(echo "${_comp_related_tbl_suffixes}" | tr ' ' '\n' | tac); do
             PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name like '%_${_suffix}' order by table_name;" | while read -r _tbl; do
                 # would not need to use -O -x -a. --column-inserts is super slow comparing to COPY ...
-                _log "INFO" "Importing ${_tbl} (output: /tmp/${FUNCNAME}_${_tbl}.log) ..."
-                PGPASSWORD="${_dbpwd}" pg_dump -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -t "${_tbl}" | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} &> /tmp/${FUNCNAME}_${_tbl}.log || return $?   # Using -L may generate very large text file
+                _log "INFO" "Importing ${_tbl} (output: ${_TMP%/}/${FUNCNAME}_${_tbl}.log) ..."
+                PGPASSWORD="${_dbpwd}" pg_dump -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -t "${_tbl}" | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} &> ${_TMP%/}/${FUNCNAME}_${_tbl}.log || return $?   # Using -L may generate very large text file
             done
         done
         for _tablename in ${_comp_related_tables}; do
             PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name = '${_tablename}' order by table_name;" | while read -r _tbl; do
                 # would not need to use -O -x -a. --column-inserts is super slow comparing to COPY ...
-                _log "INFO" "Importing ${_tbl} (output: /tmp/${FUNCNAME}_${_tbl}.log) ..."
-                PGPASSWORD="${_dbpwd}" pg_dump -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -t "${_tbl}" | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} &> /tmp/${FUNCNAME}_${_tbl}.log || return $?   # Using -L may generate very large text file
+                _log "INFO" "Importing ${_tbl} (output: ${_TMP%/}/${FUNCNAME}_${_tbl}.log) ..."
+                PGPASSWORD="${_dbpwd}" pg_dump -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -t "${_tbl}" | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} &> ${_TMP%/}/${FUNCNAME}_${_tbl}.log || return $?   # Using -L may generate very large text file
             done
         done
     fi
 
     # NOTE: May need to fix <format>_content_repository. The tempDB side requires to have 'repository' table.
     PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name like '%_content_repository' order by table_name;" | while read -r _tbl; do
-        PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -F, -c "select cr.repository_id, r.name from ${_tbl} cr join repository r ON cr.config_repository_id = r.id order by cr.repository_id" > /tmp/${_temp_db_name}.${_tbl}.list
-        PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -tA -F, -c "select cr.repository_id, r.name from ${_tbl} cr join repository r ON cr.config_repository_id = r.id order by cr.repository_id" > /tmp/${_dbname}.${_tbl}.list
+        PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -F, -c "select cr.repository_id, r.name from ${_tbl} cr join repository r ON cr.config_repository_id = r.id order by cr.repository_id" > ${_TMP%/}/${_temp_db_name}.${_tbl}.list
+        PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -tA -F, -c "select cr.repository_id, r.name from ${_tbl} cr join repository r ON cr.config_repository_id = r.id order by cr.repository_id" > ${_TMP%/}/${_dbname}.${_tbl}.list
 
-        if ! diff -wy --suppress-common-lines /tmp/${_temp_db_name}.${_tbl}.list /tmp/${_dbname}.${_tbl}.list; then
-            _log "INFO" "Generating update statements for ${_tbl} (/tmp/${_temp_db_name}.${_tbl}.sql) ..."
-            _gen_update_stmt_for_content_repository "${_tbl}" "/tmp/${_temp_db_name}.${_tbl}.list" > /tmp/${_temp_db_name}.${_tbl}.sql || return $?
-            cat /tmp/${_temp_db_name}.${_tbl}.sql | PGPASSWORD="${_dbpwd}" psql --set VERBOSITY=verbose -h ${_db_hostname} -U ${_dbusr} -d ${_dbname}
+        if ! diff -wy --suppress-common-lines ${_TMP%/}/${_temp_db_name}.${_tbl}.list ${_TMP%/}/${_dbname}.${_tbl}.list; then
+            _log "INFO" "Generating update statements for ${_tbl} (${_TMP%/}/${_temp_db_name}.${_tbl}.sql) ..."
+            _gen_update_stmt_for_content_repository "${_tbl}" "${_TMP%/}/${_temp_db_name}.${_tbl}.list" > ${_TMP%/}/${_temp_db_name}.${_tbl}.sql || return $?
+            cat ${_TMP%/}/${_temp_db_name}.${_tbl}.sql | PGPASSWORD="${_dbpwd}" psql --set VERBOSITY=verbose -h ${_db_hostname} -U ${_dbusr} -d ${_dbname}
         fi
     done
 
