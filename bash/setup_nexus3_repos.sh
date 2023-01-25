@@ -1937,8 +1937,17 @@ function _update_name_resolution() {    # no longer in use but leaving as an exa
 
 # NOTE: currently this function is tested against support.zip boot-ed then migrated database
 # Example export command (Using --no-owner and --clean, but not using --data-only as needs CREATE statements. -t with * requires PostgreSQL v12 or higher):
-#_FMT="*"; PGGSSENCMODE=disable pg_dump -h localhost -p 5432 -U nxrm -d nxrm -c -O -t "repository" -t "${_FMT}_content_repository" -t "${_FMT}_component" -t "${_FMT}_component_tag" -t "${_FMT}_asset" -t "${_FMT}_asset_blob" -t "tag" -Z 6 -f component_db_$(date +"%Y%m%d%H%M%S").sql.gz
+#_FMT="*" _DBHOST="localhost" _DBPORT=5432 _DBNAME="nxrm_v3450" _DBUSER="nxrm" PGPASSWORD=nxrm123 PGGSSENCMODE=disable;
+#pg_dump -h ${_DBHOST} -p ${_DBPORT} -U ${_DBUSER} -d ${_DBNAME} -c -O -t "repository" -t "${_FMT}_content_repository" -t "${_FMT}_component" -t "${_FMT}_component_tag" -t "${_FMT}_asset" -t "${_FMT}_asset_blob" -t "tag" -Z 6 -f ./component_db_$(date +"%Y%m%d%H%M%S").sql.gz
 # Other interesting tables: -t "*_browse_node" -t "*deleted_blob*" -t "change_blobstore"
+
+# How to restore example:
+#gunzip -c ./component_db_*.sql.gz | psql -h ${_DBHOST} -p ${_DBPORT} -U ${_DBUSER} -d some_new_db -L ./psql_restore.log
+# How to verify
+#VACUUM FULL VERBOSE;
+#SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' AND relname NOT LIKE '%_browse_%' AND (relname like '%repository%' OR relname like '%component%' OR relname like '%asset%') ORDER BY 2 DESC LIMIT 40;
+
+# DEPRECATED: see above
 function f_restore_postgresql_component() {
     local __doc__="Restore 'component' database from a pg_dump generated sql.gz file into the existing *local* database"
     local _sql_gz_file="${1}"
