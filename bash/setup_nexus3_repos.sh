@@ -1702,7 +1702,7 @@ EOF
     npm pack --registry ${_repo_url%/}/ ${_pkg_name}"
 }
 
-# Example command to create with 6 concurency and 500 each
+# Example command to create with 6 concurrency and 500 each
 #for _i in {0..5}; do _SEQ_START=$((500 * ${_i} + 1)) f_upload_dummies_nuget "nuget-hosted" 500 & done
 function f_upload_dummies_nuget() {
     local __doc__="Upload dummy .nupkg into (Nuget) hosted repository"
