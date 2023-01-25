@@ -1730,21 +1730,22 @@ function f_upload_dummies_nuget() {
         return 1
     fi
 
-    if [ ! -s "${_TMP%/}/${_pkg_name%/}/${_nuspec}" ]; then
-        unzip -d ${_TMP%/}/${_pkg_name} "${_TMP%/}/${_pkg_name}.latest.nupkg" ${_nuspec} ${_psmdcp} || return $?
+    if [ ! -s "${_TMP%/}/${_pkg_name%/}_$$/${_nuspec}" ]; then
+        unzip -d ${_TMP%/}/${_pkg_name%/}_$$ "${_TMP%/}/${_pkg_name}.latest.nupkg" ${_nuspec} ${_psmdcp} || return $?
     fi
     #local _base_ver="$(sed -n -r 's@.*<version>(.+)</version>.*@\1@p' "${_nuspec}")"
-    cp -v -f "${_TMP%/}/${_pkg_name}.latest.nupkg" "${_TMP%/}/${_pkg_name}.${_base_ver}.x.nupkg"
+    cp -v -f "${_TMP%/}/${_pkg_name}.latest.nupkg" "${_TMP%/}/${_pkg_name}.${_base_ver}.${_seq_start}.nupkg"
     for i in $(eval "${_seq}"); do
-        sed -i.tmp -E 's@<version>.+</version>@<version>'${_base_ver}'.'$i'</version>@' "${_TMP%/}/${_pkg_name%/}/${_nuspec}"
-        sed -i.tmp -E 's@<version>.+</version>@<version>'${_base_ver}'.'$i'</version>@' "${_TMP%/}/${_pkg_name%/}/${_psmdcp}"
-        cd "${_TMP%/}/${_pkg_name%/}" || return $?
-        zip -q "${_TMP%/}/${_pkg_name}.${_base_ver}.x.nupkg" "${_nuspec}" "${_psmdcp}"
+        sed -i.tmp -E 's@<version>.+</version>@<version>'${_base_ver}'.'$i'</version>@' "${_TMP%/}/${_pkg_name%/}_$$/${_nuspec}"
+        sed -i.tmp -E 's@<version>.+</version>@<version>'${_base_ver}'.'$i'</version>@' "${_TMP%/}/${_pkg_name%/}_$$/${_psmdcp}"
+        cd "${_TMP%/}/${_pkg_name%/}_$$" || return $?
+        zip -q "${_TMP%/}/${_pkg_name}.${_base_ver}.${_seq_start}.nupkg" "${_nuspec}" "${_psmdcp}"
         local _rc=$?
         cd - >/dev/null
         [ ${_rc} != 0 ] && return ${_rc}
-        # NOTE: Can't execute this in parallel, as using same file name
-        curl -s -f -u "${_usr}:${_pwd}" -o/dev/null -w "%{http_code} ${_pkg_name}.${_base_ver}.$i.nupkg\n" -X PUT "${_repo_url%/}/" -F "package=@${_TMP%/}/${_pkg_name}.${_base_ver}.x.nupkg" || return $?
+        # NOTE: Can't execute this curl in parallel (unlike other f_upload_dummies) because of using same file name.
+        #       Use different _SEQ_START to make upload faster
+        curl -s -f -u "${_usr}:${_pwd}" -o/dev/null -w "%{http_code} ${_pkg_name}.${_base_ver}.$i.nupkg\n" -X PUT "${_repo_url%/}/" -F "package=@${_TMP%/}/${_pkg_name}.${_base_ver}.${_seq_start}.nupkg" || return $?
         #f_upload_asset "${_repo_name}" -F "nuget.asset=@${_TMP%/}/${_pkg_name}.${_base_ver}.$i.nupkg" || return $?
     done
 }
