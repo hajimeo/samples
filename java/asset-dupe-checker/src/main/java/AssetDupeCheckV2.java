@@ -261,6 +261,9 @@ public class AssetDupeCheckV2
     if (DROP_TABLES != null && DROP_TABLES.length > 0) {
       for (int i = 0; i < DROP_TABLES.length; i++) {
         try {
+          if (DROP_TABLES[i].isEmpty()) {
+            continue;
+          }
           log("[WARN] Dropping " + DROP_TABLES[i] + " for export/import");
           db.getMetadata().getSchema().dropClass(DROP_TABLES[i]);
         }
