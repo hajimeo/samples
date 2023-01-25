@@ -1702,6 +1702,8 @@ EOF
     npm pack --registry ${_repo_url%/}/ ${_pkg_name}"
 }
 
+# Example command to create with 6 concurency and 500 each
+#for _i in {0..5}; do _SEQ_START=$((500 * ${_i} + 1)) f_upload_dummies_nuget "nuget-hosted" 500 & done
 function f_upload_dummies_nuget() {
     local __doc__="Upload dummy .nupkg into (Nuget) hosted repository"
     local _repo_name="${1:-"nuget-hosted"}"
@@ -1714,6 +1716,7 @@ function f_upload_dummies_nuget() {
     local _seq_start="${_SEQ_START:-1}"
     local _seq_end="$((${_seq_start} + ${_how_many} - 1))"
     local _seq="seq ${_seq_start} ${_seq_end}"
+    local _tmpdir="$(mktemp -d)"
 
     if [ ! -s "${_TMP%/}/${_pkg_name}.latest.nupkg" ]; then
         if ! curl -sf -L "https://www.nuget.org/api/v2/package/${_pkg_name}/" -o "${_TMP%/}/${_pkg_name}.latest.nupkg"; then
@@ -1722,7 +1725,7 @@ function f_upload_dummies_nuget() {
         fi
     fi
     local _nuspec="$(unzip -l "${_TMP%/}/${_pkg_name}.latest.nupkg" | grep -oE '[^ ]+\.nuspec$')"
-    local _psmdcp="$(unzip -l "${_TMP%/}/${_pkg_name}.latest.nupkg" | grep -oE '[^ ]+\.psmdcp')"
+    local _psmdcp="$(unzip -l "${_TMP%/}/${_pkg_name}.latest.nupkg" | grep -oE '[^ ]+\.psmdcp$')"
     #local _nuspec="$(find ${_TMP%/}/${_pkg_name} -type f -name '*.nuspec' -print | head -n1)"
     #local _psmdcp="$(find ${_TMP%/}/${_pkg_name} -type f -name '*.psmdcp' -print | head -n1)"
     if [ -z "${_nuspec}" ]; then
@@ -1730,22 +1733,22 @@ function f_upload_dummies_nuget() {
         return 1
     fi
 
-    if [ ! -s "${_TMP%/}/${_pkg_name%/}_$$/${_nuspec}" ]; then
-        unzip -d ${_TMP%/}/${_pkg_name%/}_$$ "${_TMP%/}/${_pkg_name}.latest.nupkg" ${_nuspec} ${_psmdcp} || return $?
+    if [ ! -s "${_tmpdir%/}/${_nuspec}" ]; then
+        unzip -d ${_tmpdir%/} "${_TMP%/}/${_pkg_name}.latest.nupkg" ${_nuspec} ${_psmdcp} || return $?
     fi
     #local _base_ver="$(sed -n -r 's@.*<version>(.+)</version>.*@\1@p' "${_nuspec}")"
-    cp -v -f "${_TMP%/}/${_pkg_name}.latest.nupkg" "${_TMP%/}/${_pkg_name}.${_base_ver}.${_seq_start}.nupkg"
+    cp -v -f "${_TMP%/}/${_pkg_name}.latest.nupkg" "${_tmpdir%/}/${_pkg_name}.${_base_ver}.${_seq_start}.nupkg" || return $?
     for i in $(eval "${_seq}"); do
-        sed -i.tmp -E 's@<version>.+</version>@<version>'${_base_ver}'.'$i'</version>@' "${_TMP%/}/${_pkg_name%/}_$$/${_nuspec}"
-        sed -i.tmp -E 's@<version>.+</version>@<version>'${_base_ver}'.'$i'</version>@' "${_TMP%/}/${_pkg_name%/}_$$/${_psmdcp}"
-        cd "${_TMP%/}/${_pkg_name%/}_$$" || return $?
-        zip -q "${_TMP%/}/${_pkg_name}.${_base_ver}.${_seq_start}.nupkg" "${_nuspec}" "${_psmdcp}"
+        sed -i.tmp -E 's@<version>.+</version>@<version>'${_base_ver}'.'$i'</version>@' "${_tmpdir%/}/${_nuspec}"
+        sed -i.tmp -E 's@<version>.+</version>@<version>'${_base_ver}'.'$i'</version>@' "${_tmpdir%/}/${_psmdcp}"
+        cd "${_tmpdir%/}" || return $?
+        zip -q "./${_pkg_name}.${_base_ver}.${_seq_start}.nupkg" "${_nuspec}" "${_psmdcp}"
         local _rc=$?
         cd - >/dev/null
         [ ${_rc} != 0 ] && return ${_rc}
         # NOTE: Can't execute this curl in parallel (unlike other f_upload_dummies) because of using same file name.
         #       Use different _SEQ_START to make upload faster
-        curl -s -f -u "${_usr}:${_pwd}" -o/dev/null -w "%{http_code} ${_pkg_name}.${_base_ver}.$i.nupkg\n" -X PUT "${_repo_url%/}/" -F "package=@${_TMP%/}/${_pkg_name}.${_base_ver}.${_seq_start}.nupkg" || return $?
+        curl -s -f -u "${_usr}:${_pwd}" -o/dev/null -w "%{http_code} ${_pkg_name}.${_base_ver}.$i.nupkg\n" -X PUT "${_repo_url%/}/" -F "package=@${_tmpdir%/}/${_pkg_name}.${_base_ver}.${_seq_start}.nupkg" || return $?
         #f_upload_asset "${_repo_name}" -F "nuget.asset=@${_TMP%/}/${_pkg_name}.${_base_ver}.$i.nupkg" || return $?
     done
 }
