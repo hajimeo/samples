@@ -21,6 +21,10 @@ if [ -d "$HOME/.cdpath" ]; then
     }
 fi
 
+if [ -x "/usr/local/opt/curl/bin/curl" ]; then
+    export PATH="/usr/local/opt/curl/bin:$PATH"
+fi
+
 # nuget/dotnet related
 if [ -s "$HOME/Apps/dotnet/dotnet" ]; then
     DOTNET_ROOT=$HOME/Apps/dotnet
