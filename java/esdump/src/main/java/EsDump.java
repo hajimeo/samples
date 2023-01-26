@@ -4,6 +4,8 @@
  * https://ishanupamanyu.com/blog/get-all-documents-in-lucene/
  *
  * mvn clean package && cp -v -f ./target/esdump-1.0-SNAPSHOT-jar-with-dependencies.jar ../../misc/esdump.jar
+ *
+ * curl -O -L https://github.com/hajimeo/samples/raw/master/misc/esdump.jar
  */
 
 import com.google.common.hash.Hashing;
