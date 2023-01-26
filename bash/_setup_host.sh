@@ -93,7 +93,7 @@ function f_shellinabox() {
     if ! id -u $_user &>/dev/null; then
         f_useradd "$_user" "$_pass" "Y" || return $?
         usermod -a -G docker ${_user}
-        _log "INFO" "${_user}:${_pass} has been created."
+        _info "${_user}:${_pass} has been created."
     fi
 
     if ! grep -qE "^SHELLINABOX_ARGS.+${_user}:.+/shellinabox_login\"" /etc/default/shellinabox; then
@@ -106,7 +106,7 @@ function f_shellinabox() {
     # NOTE: Assuming socks5 proxy is running on localhost 28081
     if [ ! -f /usr/local/bin/setup_standalone.sh ]; then
         cp $BASH_SOURCE /usr/local/bin/setup_standalone.sh || return $?
-        _log "INFO" "$BASH_SOURCE is copied to /usr/local/bin/setup_standalone.sh. To avoid confusion, please delete .sh one"
+        _info "$BASH_SOURCE is copied to /usr/local/bin/setup_standalone.sh. To avoid confusion, please delete .sh one"
     fi
     chown root:docker /usr/local/bin/setup_standalone*
     chmod 750 /usr/local/bin/setup_standalone*
@@ -124,7 +124,7 @@ function f_shellinabox() {
     sleep 1
     local _port=$(sed -n -r 's/^SHELLINABOX_PORT=([0-9]+)/\1/p' /etc/default/shellinabox)
     lsof -i:${_port}
-    _log "INFO" "To access: 'http://$(ip route get 1 | sed -nr 's/^.* src ([^ ]+) .*$/\1/p'):${_port}/${_user}/'"
+    _info "To access: 'http://$(ip route get 1 | sed -nr 's/^.* src ([^ ]+) .*$/\1/p'):${_port}/${_user}/'"
 }
 
 function f_sysstat_setup() {
@@ -380,7 +380,7 @@ function f_s3fs() {
 
     if [ -n "${_secret}" ]; then
         if [ -s "$HOME/.passwd-s3fs" ]; then
-            _log "INFO" "$HOME/.passwd-s3fs already exists, so not updating."
+            _info "$HOME/.passwd-s3fs already exists, so not updating."
         else
             echo "${_secret}" >"$HOME/.passwd-s3fs" || return $?
             chmod 600 "$HOME/.passwd-s3fs" || return $?
@@ -487,27 +487,27 @@ function f_ip_set() {
     local _nic="$2" # ensXX
     local _gw="$3"
     if [[ ! "${_ip_mask}" =~ $_IP_RANGE_REGEX ]]; then
-        _log "ERROR" "${_ip_mask} is not IP address range."
+        _error "${_ip_mask} is not IP address range."
         return 1
     fi
     if [ -z "${_nic}" ]; then
         _nic="$(netstat -rn | grep '^0.0.0.0' | awk '{print $8}')"
     fi
     if [ -z "${_nic}" ]; then
-        _log "ERROR" "No NIC name."
+        _error "No NIC name."
         return 1
     fi
     if [ -z "${_gw}" ] && [[ "${_ip_mask}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)\..+ ]]; then
         _gw="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}.1"
     fi
     if [ -z "${_gw}" ]; then
-        _log "ERROR" "No Gateway address."
+        _error "No Gateway address."
         return 1
     fi
 
     local _conf_file="$(ls -1tr /etc/netplan/* | tail -n1)"
     if [ -z "${_conf_file}" ]; then
-        _log "ERROR" "No netplan config file for updating found."
+        _error "No netplan config file for updating found."
         return 1
     else
         _backup "${_conf_file}"
@@ -699,6 +699,21 @@ function f_apache_reverse_proxy() {
         return 1
     fi
 
+    if [ -n "${_keytab_file}" ] && [ ! -s "${_keytab_file}" ]; then
+        _error "No HTTP keytab: ${_keytab_file}"
+        #kadmin -p admin@\${_realm} -q 'add_principal -randkey HTTP/${_sever_host}'
+        #kadmin -p admin@\${_realm} -q "xst -k ${_keytab_file} HTTP/$(hostname -f)"
+        echo "Check /etc/krb5.conf for the correct Realm
+# If no FreeIPA, from KDC server
+    kadmin.local -q 'add_principal -randkey HTTP/${_sever_host}'
+    kadmin.local -q 'xst -k ${_keytab_file} HTTP/${_sever_host}'
+# If freeIPA, after adding host and service from UI, 'kinit admin@\${_realm} && klist -eaf':
+    ipa-getkeytab -s node-freeipa.standalone.localdomain -p HTTP/${_sever_host} -k ${_keytab_file}
+    chmod a+r ${_keytab_file}
+    # To test: kinit -V -kt ${_keytab_file} HTTP/${_sever_host};klist -eaf;kdestroy"
+        return 1
+    fi
+
     local _conf="/etc/apache2/sites-available/rproxy${_port}.conf"
     if [ -s ${_conf} ]; then
         _info "${_conf} already exists. Skipping..."
@@ -748,14 +763,7 @@ function f_apache_reverse_proxy() {
 " >>${_conf}
     fi
 
-    if [ -n "${_keytab_file}" ] && [ ! -s "${_keytab_file}" ]; then
-        _log "INFO" "No HTTP keytab: ${_keytab_file}"
-        echo "    kadmin -p admin@\${_realm} -q 'add_principal -randkey HTTP/${_sever_host}'
-    kadmin -p admin@\${_realm} -q "xst -k ${_keytab_file} HTTP/$(hostname -f)"
-    # If freeIPA, after adding host and service from UI, 'kinit admin':
-    ipa-getkeytab -s node-freeipa.standalone.localdomain -p \"HTTP/${_sever_host}\" -k ${_keytab_file}
-    chmod a+r ${_keytab_file}"
-    elif [ -s "${_keytab_file}" ]; then
+    if [ -s "${_keytab_file}" ]; then
         # http://www.microhowto.info/howto/configure_apache_to_use_kerberos_authentication.html
         #local _realm="`sed -n -e 's/^ *default_realm *= *\b\(.\+\)\b/\1/p' /etc/krb5.conf`"
         local _realm="$(klist -kt ${_keytab_file} | grep -m1 -oP '@.+' | sed 's/@//')"
@@ -1156,21 +1164,25 @@ function f_microk8s() {
     microk8s helm upgrade --debug nexus-iq-server-1645669212 sonatype/nexus-iq-server -n default --reset-values --dry-run
     microk8s helm3 install --debug nxrm3 helm-sonatype-proxy/nexus-repository-manager -n sonatype
     microk8s helm3 uninstall nxrm3     # to delete everything
+    # troubleshooting helm related issue
+    microk8s helm3 get manifest <release name>      # https://helm.sh/docs/helm/helm_get_manifest/
+    microk8s helm3 template [NAME] [CHART]          # https://helm.sh/docs/helm/helm_template/
 
-    microk8s kubectl config get-contexts    # list available kubectl configs
+    microk8s kubectl config get-contexts            # list available kubectl configs
     microk8s kubectl cluster-info #dump
     microk8s kubectl create -f your_deployment.yml
-    microk8s kubectl get services          # or all, or deployments to check the NAME
+    microk8s kubectl get services                   # or all, or deployments to check the NAME
     microk8s kubectl get deploy <deployment-name> -o yaml   # to export the deployment yaml
     microk8s kubectl expose deployment <deployment-name> --type=LoadBalancer --port=8081
     microk8s kubectl port-forward --address 0.0.0.0 <pod-name> 18081:8081 & # this command runs in foreground
-    microk8s kubectl get pods              # get a pod name to login
-    microk8s kubectl logs <pod-name>       # --previous
-    microk8s kubectl describe pod <pod-name>    # shows Events
+    microk8s kubectl get pods                       # get a pod name to login
+    microk8s kubectl describe pod <pod-name>        # shows Events
+    microk8s kubectl logs <pod-name>                # To see if app had error, also --previous is useful
+    microk8s kubectl get pod <pod-name> -o yaml     # to get more information than describe
+    microk8s kubectl delete pod --grace-period=0 --force <pod-name>     # force terminating/deleting. check 'get pvc' and 'get pv'
     microk8s kubectl describe pvc <pvc-name>
     microk8s kubectl exec <pod-name> -ti -- bash
     microk8s kubectl scale --replicas=0 deployment <deployment-name>    # stop all pods temporarily (if no HPA)
-    microk8s kubectl delete pod --grace-period=0 --force <pod-name>     # force terminating/deleting
 
     # list images (docker images)
     microk8s ctr images list
@@ -1756,7 +1768,7 @@ function f_postfix() {
     fi
     if [ -n "${_redirect_mail}" ]; then
         if grep -qw "${_redirect_mail}" /etc/postfix/recipient_canonical_map; then
-            _log "WARN" "${_redirect_mail} exists in /etc/postfix/recipient_canonical_map, so not setting up the redirection."
+            _warn "${_redirect_mail} exists in /etc/postfix/recipient_canonical_map, so not setting up the redirection."
             sleep 3
         else
             echo "/./ ${_redirect_mail}" >>/etc/postfix/recipient_canonical_map || return $?
@@ -1772,7 +1784,7 @@ function f_postfix() {
                 _upsert "${_conf_file}" "smtpd_tls_key_file" "/var/tmp/share/cert/standalone.localdomain.key"
                 _upsert "${_conf_file}" "smtpd_tls_cert_file" "/var/tmp/share/cert/standalone.localdomain.crt"
             fi
-            _log "INFO" "openssl s_client -host localhost -port 25 -starttls smtp" # -debug
+            _info "openssl s_client -host localhost -port 25 -starttls smtp" # -debug
             echo -n | openssl s_client -host localhost:25 -starttls smtp -crlf
             # To connect with starttls, like telnet:
             #openssl s_client -connect localhost:25 -starttls smtp -crlf
@@ -1785,7 +1797,7 @@ function f_postfix() {
 
     postmap /etc/postfix/generic || return $?
     service postfix restart || return $?
-    _log "INFO" "For 'Relay access denied', may need to modify 'mynetworks'"
+    _info "For 'Relay access denied', may need to modify 'mynetworks'"
     #postconf -n | grep smtpd_relay_restrictions
     #smtpd_relay_restrictions = permit_mynetworks permit_sasl_authenticated defer_unauth_destination
     #mail --debug-level=9 -a "FROM:test@hajigle.com" -s "test mail" admin@osakos.com </dev/null
@@ -1932,7 +1944,7 @@ function f_gen_keytab() {
     fi
 
     if [[ "${_delete_first}" =~ ^(y|Y) ]]; then
-        _log "WARN" "Deleting principals ${_service} ${_service}/${_host} ..."
+        _warn "Deleting principals ${_service} ${_service}/${_host} ..."
         sleep 3
         kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "delete_principal -force ${_service}@${_realm}"
         kadmin -p ${_kadmin_usr} -w ${_kadmin_pwd} -q "delete_principal -force ${_service}/${_host}@${_realm}"
@@ -1940,7 +1952,7 @@ function f_gen_keytab() {
 
         # if successfully deleted, remove keytabs too
         if [ -s "${_tmp_dir%/}/keytabs/${_service}.headless.keytab" ]; then
-            _log "WARN" "Removing ${_tmp_dir%/}/keytabs/${_service}.headless.keytab ..."
+            _warn "Removing ${_tmp_dir%/}/keytabs/${_service}.headless.keytab ..."
             sleep 3
             rm -f "${_tmp_dir%/}/keytabs/${_service}.headless.keytab" || return $?
         fi
@@ -1966,7 +1978,7 @@ function f_gen_keytab() {
 
     # backup
     if [ -s "${_keytab_dir%/}/${_service}.service.keytab" ] && [ ! -f "${_keytab_dir%/}/${_service}.service.keytab.orig" ]; then
-        _log "INFO" "Moving ${_keytab_dir%/}/${_service}.service.keytab to .orig ..."
+        _info "Moving ${_keytab_dir%/}/${_service}.service.keytab to .orig ..."
         sleep 1
         mv "${_keytab_dir%/}/${_service}.service.keytab" "${_keytab_dir%/}/${_service}.service.keytab.orig" || return $?
     fi
@@ -1974,7 +1986,7 @@ function f_gen_keytab() {
 
     # backup
     if [ -s "${_keytab_dir%/}/${_service}.combined.keytab" ] && [ ! -f "${_keytab_dir%/}/${_service}.combined.keytab.orig" ]; then
-        _log "INFO" "Moving ${_keytab_dir%/}/${_service}.combined.keytab to .orig ..."
+        _info "Moving ${_keytab_dir%/}/${_service}.combined.keytab to .orig ..."
         sleep 1
         mv "${_keytab_dir%/}/${_service}.combined.keytab" "${_keytab_dir%/}/${_service}.combined.keytab.orig" || return $?
     fi
@@ -1991,7 +2003,7 @@ EOF
         chown ${_service}: ${_tmp_dir%/}/keytabs/${_service}.headless.keytab ${_keytab_dir%/}/${_service}.*
         chmod 600 ${_tmp_dir%/}/keytabs/${_service}.headless.keytab ${_keytab_dir%/}/${_service}.*
     fi
-    _log "INFO" "Testing ..."
+    _info "Testing ..."
     ls -l ${_keytab_dir%/}/${_service}.*
     kinit -kt ${_keytab_dir%/}/${_service}.service.keytab ${_principal}
     klist -eaf
@@ -2013,7 +2025,7 @@ function f_crowd() {
         chown -R "${_user}:" "/opt/crowd/atlassian-crowd-${_ver}"
     fi
     sudo -i -u "${_user}" bash /opt/crowd/atlassian-crowd-${_ver}/start_crowd.sh || return $?
-    _log "INFO" "Access http://$(hostname -f):8095/
+    _info "Access http://$(hostname -f):8095/
 For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
 Then, '3 hour expiration for all Atlassian host products'"
 }
@@ -2033,7 +2045,7 @@ function f_jira() {
         chown -R "${_user}:" "/opt/jira/atlassian-jira-software-${_ver}-standalone"
     fi
     sudo -i -u "${_user}" bash /opt/jira/atlassian-jira-software-${_ver}-standalone/bin/start-jira.sh || return $?
-    _log "INFO" "Access http://$(hostname -f):8080/
+    _info "Access http://$(hostname -f):8080/
 For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
 Then, '3 hour expiration for all Atlassian host products'"
 }
@@ -2050,7 +2062,7 @@ function f_bitbucket() {
         yum install -y https://repo.ius.io/ius-release-el7.rpm https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
         local _git_ver="$(yum list available | grep -E '^git[0-9]+\.x86_64\s+.+\s+ius' | sort | tail -n1 | awk '{print $1}')"
         if [ -z "${_git_ver}" ]; then
-            _log "ERROR" "Cannot install Git v2"
+            _error "Cannot install Git v2"
             return 1
         fi
         yum remove -y git*
@@ -2063,49 +2075,49 @@ function f_bitbucket() {
     fi
     local _java_home="$(dirname $(dirname $(readlink -f $(which java))))"
     if [ -z "${_java_home%/}" ]; then
-        _log "ERROR" "No java home detected."
+        _error "No java home detected."
         return 1
     fi
     sudo -i -u ${_user} bash -c 'grep -q "export JAVA_HOME=" $HOME/.bash_profile || echo "export JAVA_HOME='${_java_home%/}'" >> $HOME/.bash_profile'
     [ -d "${_data_dir%/}" ] || mkdir -p -m 777 "${_data_dir%/}"
     sudo -i -u ${_user} bash -c 'grep -q "export BITBUCKET_HOME=" $HOME/.bash_profile || echo "export BITBUCKET_HOME='${_data_dir%/}'" >> $HOME/.bash_profile'
     sudo -i -u "${_user}" bash /opt/bitbucket/atlassian-bitbucket-${_ver}/bin/start-bitbucket.sh || return $?
-    _log "INFO" "Access http://$(hostname -f):7990/
+    _info "Access http://$(hostname -f):7990/
 For trial license: https://developer.atlassian.com/platform/marketplace/timebomb-licenses-for-testing-server-apps/
 Then, '3 hour expiration for all Atlassian host products'"
 }
 
 function p_basic_setup() {
     if which apt-get &>/dev/null; then
-        _log "INFO" "Executing apt-get install packages"
+        _info "Executing apt-get install packages"
         f_install_packages || return $?
-        _log "INFO" "Executing f_docker_setup"
+        _info "Executing f_docker_setup"
         f_docker_setup || return $?
-        _log "INFO" "Executing f_sysstat_setup"
+        _info "Executing f_sysstat_setup"
         f_sysstat_setup
-        _log "INFO" "Executing f_apache_proxy"
+        _info "Executing f_apache_proxy"
         f_apache_proxy
-        #_log "INFO" "Executing f_squid_proxy"
+        #_info "Executing f_squid_proxy"
         #f_squid_proxy
-        #_log "INFO" "Executing f_socks5_proxy"
+        #_info "Executing f_socks5_proxy"
         #f_socks5_proxy
-        #_log "INFO" "Executing f_shellinabox" (this will create 'webuser' which can login to any container as root)
+        #_info "Executing f_shellinabox" (this will create 'webuser' which can login to any container as root)
         #f_shellinabox
 
-        _log "INFO" "Executing f_dnsmasq"
+        _info "Executing f_dnsmasq"
         f_dnsmasq || return $?
     fi
 
-    _log "INFO" "Executing f_ssh_setup"
+    _info "Executing f_ssh_setup"
     f_ssh_setup || return $?
 
-    _log "INFO" "Executing f_host_misc"
+    _info "Executing f_host_misc"
     f_host_misc
 
-    _log "INFO" "Executing f_host_performance"
+    _info "Executing f_host_performance"
     f_host_performance
 
-    _log "INFO" "Trusting rootCA_standalone.crt"
+    _info "Trusting rootCA_standalone.crt"
     _trust_ca
 }
 
