@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# curl -o /var/tmp/share/test_https.sh https://raw.githubusercontent.com/hajimeo/samples/master/bash/test_https.sh
+# source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/test_https.sh --compressed)"
 #
 # Useful Java flags (NOTE: based on java 8)
 #   -Dcom.sun.net.ssl.checkRevocation=false                         # to avoid hostname error (not same as curl -k)
@@ -57,42 +57,41 @@ function list_ciphers() {
 
 # Get (actually testing) enabled and not supported TLS protocols
 # NOTE: If unexpected result, may want to check "jdk.tls.disabledAlgorithms" in $JAVA_HOME/jre/lib/security/java.security
-function get_tls_versions() {
+function test_tls_versions() {
     local _host="${1:-`hostname -f`}"
     local _port="${2:-443}"
     local _head="${3:-10}"
     local _delay=1
     local _host_port=$_host:$_port
 
-    #curl -h | sed -ne '/--tlsv/p'
-    # -1, --tlsv1         Use >= TLSv1 (SSL)
-    #     --tlsv1.0       Use TLSv1.0 (SSL)
-    #     --tlsv1.1       Use TLSv1.1 (SSL)
-    #     --tlsv1.2       Use TLSv1.2 (SSL)
-    #     --tlsv1.3       Use TLSv1.3 (SSL)
+    #curl -h all | sed -ne '/--tlsv/p'
     #curl -h | sed -ne '/--sslv/p'
-    # -2, --sslv2         Use SSLv2 (SSL)
-    # -3, --sslv3         Use SSLv3 (SSL)
+    #openssl s_client -help 2>&1 | sed -nr '/^ *-tls[0-9]/p'
 
-    for _v in {0..3}; do  # 'ssl2' no longer works with openssl
-        sleep ${_delay}
-        #local _output="`echo -n | openssl s_client -connect ${_host_port} -${_v} 2>/dev/null`"
-        local _output="$(curl -k -v -o/dev/null -f "https://${_host_port}/" --tlsv1.${_v} 2>&1)"
-        if ! curl -k -v -o/dev/null -f "https://${_host_port}/" --tlsv1.${_v} &> /tmp/get_tls_versions_tlsv1.${_v}.out; then
-            echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] WARN: 'TLS v1.${_v}' failed." >&2
+    for _v in {1..3}; do  # 'ssl2' no longer works with openssl
+        # Mac's curl may not work with --tlsv1.x options so using openssl, and probably it uses the highest protocol anyway
+        #curl -k -v -o/dev/null -f "https://${_host_port}/" --tlsv1.${_v} &> /tmp/get_tls_versions_tlsv1.${_v}.out
+        echo -n | openssl s_client -connect ${_host_port} -tls1_${_v} &> /tmp/get_tls_versions_tlsv1.${_v}.out
+        local _rc=$?
+        if [ ${_rc} -ne 0 ]; then
+            echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] WARN: 'TLS v1.${_v}' failed (${_rc})" >&2
         else
-            echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] INFO: 'TLS v1.${_v}' worked"
-            grep '* SSL connection using' /tmp/get_tls_versions_tlsv1.${_v}.out
+            echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] INFO: 'TLS v1.${_v}' worked (/tmp/get_tls_versions_tlsv1.${_v}.out)"
+            grep -E '^ +(Protocol|Cipher) *:' /tmp/get_tls_versions_tlsv1.${_v}.out
         fi
+        sleep ${_delay}
     done
 
-    if [ -x "${JAVA_HOME%/}/bin/jrunscript" ]; then
+    local _jrunscript=""
+    type jrunscript &>/dev/null && _jrunscript="jrunscript"
+    [ -x "${JAVA_HOME%/}/bin/jrunscript" ] && _jrunscript="${JAVA_HOME%/}/bin/jrunscript"
+    if [ -n "${_jrunscript}" ]; then
         #"${JAVA_HOME%/}/bin/jrunscript" -e 'var e=javax.net.ssl.SSLContext.getDefault().createSSLEngine(); e.setEnabledProtocols(["TLSv1","TLSv1.1","TLSv1.2"]); sp=e.getEnabledProtocols(); for (var i in sp) println(sp[i])'
         echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] INFO: Java client side Supported protocols"
-        "${JAVA_HOME%/}/bin/jrunscript" -e 'var ps = javax.net.ssl.SSLContext.getDefault().createSSLEngine().getSupportedProtocols(); for (var i in ps) println(ps[i])'
+        "${_jrunscript}" -e 'var ps = javax.net.ssl.SSLContext.getDefault().createSSLEngine().getSupportedProtocols(); for (var i in ps) println(ps[i])'
         echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] INFO: Java client side Enabled protocols"
-        "${JAVA_HOME%/}/bin/jrunscript" -e 'var ps = javax.net.ssl.SSLContext.getDefault().createSSLEngine().getEnabledProtocols(); for (var i in ps) println(ps[i])'
-        # TODO: "${JAVA_HOME%/}/bin/jrunscript" -e 'var ni = java.net.NetworkInterface.getNetworkInterfaces();for (var i in ni) println(ni[i].getInetAddresses().toString())'
+        "${_jrunscript}" -e 'var ps = javax.net.ssl.SSLContext.getDefault().createSSLEngine().getEnabledProtocols(); for (var i in ps) println(ps[i])'
+        # TODO: "${_jrunscript}" -e 'var ni = java.net.NetworkInterface.getNetworkInterfaces();for (var i in ni) println(ni[i].getInetAddresses().toString())'
     fi
 }
 
