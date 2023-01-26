@@ -62,25 +62,25 @@ function f_check_system() {
     # System information
     uname -a &> ${_work_dir%/}/uname-a.out
     systemd-analyze &> ${_work_dir%/}/systemd-analyze.out
-    systemd-analyze blame &>> ${_work_dir%/}/systemd-analyze.out   # then disable and stop
-    lsb_release -a &>> ${_work_dir%/}/uname-a.out
+    systemd-analyze blame 2>&1 >> ${_work_dir%/}/systemd-analyze.out   # then disable and stop
+    lsb_release -a 2>&1 >> ${_work_dir%/}/uname-a.out
     localectl status &> ${_work_dir%/}/locale.out
-    locale &>> ${_work_dir%/}/locale.out
+    locale 2>&1 >> ${_work_dir%/}/locale.out
     cat /proc/cpuinfo &> ${_work_dir%/}/cpuinfo.out
     cat /proc/meminfo &> ${_work_dir%/}/meminfo.out
     numactl -H &> ${_work_dir%/}/numa.out
     dmesg | grep 'link up' &> ${_work_dir%/}/dmesg_link_up.out
     getenforce &> ${_work_dir%/}/getenforce.out
     iptables -nvL --line-number &> ${_work_dir%/}/iptables.out
-    iptables -t nat -nvL --line-number &>> ${_work_dir%/}/iptables.out
+    iptables -t nat -nvL --line-number 2>&1 >> ${_work_dir%/}/iptables.out
     timeout 3 time head -n 1 /dev/./urandom &> ${_work_dir%/}/random.out
-    echo '-' &>> ${_work_dir%/}/random.out
-    timeout 3 time head -n 1 /dev/random &>> ${_work_dir%/}/random.out
+    echo '-' 2>&1 >> ${_work_dir%/}/random.out
+    timeout 3 time head -n 1 /dev/random 2>&1 >> ${_work_dir%/}/random.out
     lslocks -u > ${_work_dir%/}/lslocks.out    # file system lock (/proc/locks)
     cat /sys/fs/cgroup/cpuset/cpuset.cpus &> ${_work_dir%/}/cpuset.cpus.out # for kubernetes pod / docker container
 
     #top -b -n1 -c -o +%MEM  # '+' (default) for reverse order (opposite of 'ps')
-    top -b -n1 -c &>> ${_work_dir%/}/top.out
+    top -b -n1 -c 2>&1 >> ${_work_dir%/}/top.out
     #ps aux --sort uid,-vsz # '-' for reverse (opposite of 'top')
     ps auxwwwf &> ${_work_dir%/}/ps.out
     netstat -aopen || cat /proc/net/tcp &> ${_work_dir%/}/netstat.out
@@ -107,9 +107,9 @@ function f_check_system() {
 
     # NFS related
     showmount -e `hostname` &> ${_work_dir%/}/nfs.out
-    #rpcinfo -s &>> ${_work_dir%/}/nfs.out              # list NFS summary information (for rpcbind)
-    rpcinfo -p `hostname` &>> ${_work_dir%/}/nfs.out    # list NFS versions, ports, services but a bit too long
-    nfsstat -v &>> ${_work_dir%/}/nfs.out               # -v = -o all Display Server and Client stats
+    #rpcinfo -s 2>&1 >> ${_work_dir%/}/nfs.out              # list NFS summary information (for rpcbind)
+    rpcinfo -p `hostname` 2>&1 >> ${_work_dir%/}/nfs.out    # list NFS versions, ports, services but a bit too long
+    nfsstat -v 2>&1 >> ${_work_dir%/}/nfs.out               # -v = -o all Display Server and Client stats
 
     # Network
     ifconfig 2>/dev/null || ip address &> ${_work_dir%/}/ifconfig.out
