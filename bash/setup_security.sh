@@ -426,7 +426,8 @@ function f_freeipa_install() {
     #ipactl status
     #ipa ping
     #ipa config-show --all
-    _log "WARN" "TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days"
+    _log "WARN" "TODO: Update Password global_policy Max lifetime (days) to unlimited or 3650 days
+    https://${_ipa_server_fqdn}/ipa/ui/#/e/pwpolicy/details/global_policy"
     # TODO: create dummy users and groups
     #echo -n "'${_adm_pwd}'" | kinit admin
     #ipa user-add ffffff --random --first=user --last=test --password-expiration=$(date -u +%Y%m%d000000Z -d "89 days")
