@@ -493,8 +493,8 @@ function f_simplesamlphp() {
     local _base_dc="${1:-"dc=standalone,dc=localdomain"}"
     local _admin="${2:-"${g_admin}"}"
     local _admin_pwd="${3:-"${g_FREEIPA_DEFAULT_PWD}"}"
-    local _ldap_host="${4-"localhost"}"    # node-freeipa.standalone.localdomain:389
-    local _ldap_port="${5-"port"}"    # node-freeipa.standalone.localdomain:389
+    local _ldap_host="${4:-"localhost"}"
+    local _ldap_port="${5:-"389"}"
     local _version="${6:-"1.19.1"}" # 1.19.5 causes https://github.com/simplesamlphp/simplesamlphp/issues/1592
 
     local _apache2="apache2"
@@ -547,7 +547,7 @@ function f_simplesamlphp() {
             echo "'ldap-auth1' => array(
      'ldap:LDAP',
      'hostname' => '${_ldap_host}',
-     'port' => '${_ldap_port}',
+     'port' => ${_ldap_port},
      'enable_tls' => FALSE,
      'attributes' => NULL,
      'dnpattern' => 'uid=%username%,cn=users,cn=accounts,${_base_dc}',
