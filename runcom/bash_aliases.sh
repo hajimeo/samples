@@ -39,8 +39,9 @@ alias git_tag_hash='git tag --contains'
 function git_tags() {
     local _project="${1:-"."}" # eg: $HOME/IdeaProjects/samples
     local _checkout_to="$2"
+    local _checkout_opts="$3"
     if [ -n "${_checkout_to}" ]; then
-        git -C "${_project%/}" checkout "${_checkout_to}"
+        git -C "${_project%/}" checkout ${_checkout_opts} "${_checkout_to}"
         return $?
     fi
     git -C "${_project%/}" tag -l | sort --version-sort # | grep -oE "\d+\.\d+\.\d+\-\d+"
