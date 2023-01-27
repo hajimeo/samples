@@ -1316,7 +1316,27 @@ EOF
     curl -fL https://rpm.nodesource.com/setup_14.x --compressed | bash - || _log "ERROR" "Executing https://rpm.nodesource.com/setup_14.x failed"
     rpm -Uvh https://packages.microsoft.com/config/centos/7/packages-microsoft-prod.rpm
     yum install -y centos-release-scl-rh centos-release-scl || _log "ERROR" "Installing .Net (for Nuget) related packages failed"
-    ${_yum_install} java-1.8.0-openjdk-devel python3 maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang git || _log "ERROR" "yum install java python3 maven nodejs etc. failed"
+    ${_yum_install} java-1.8.0-openjdk-devel maven nodejs rh-ruby23 rubygems aspnetcore-runtime-3.1 golang git gcc openssl-devel bzip2-devel libffi-devel zlib-devel xz-devel || _log "ERROR" "yum install java maven nodejs etc. failed"
+    if type python3 &>/dev/null; then
+        _log "WARN" "python3 is already in the $PATH so not installing"
+    else
+        _log "INFO" "Installing python 3.7 ..."
+        local _pwd="$(pwd)"
+        [ ! -d "/usr/src" ] && mkdir -v -p /usr/src
+        cd "/usr/src"
+        [ ! -s "./Python-3.7.11.tgz" ] && curl -fL -O "https://www.python.org/ftp/python/3.7.11/Python-3.7.11.tgz"
+        tar -xzf ./Python-3.7.11.tgz && \
+        cd Python-3.7.11 && \
+        ./configure --enable-optimizations && make altinstall
+        if [ $? -eq 0 ] && [ -x /usr/local/bin/python3.7 ]; then
+            if [ -f /bin/python3 ]; then
+                mv -v /bin/python3 /bin/python3.orig
+            fi
+            ln -s /usr/local/bin/python3.7 /bin/python3
+        fi
+        cd "${_pwd}"
+    fi
+
     _log "INFO" "Installing ripgrep (rg) ..."
     yum-config-manager --add-repo=https://copr.fedorainfracloud.org/coprs/carlwgeorge/ripgrep/repo/epel-7/carlwgeorge-ripgrep-epel-7.repo && sudo yum install -y ripgrep
     _log "INFO" "Install Skopeo ..."
@@ -1350,8 +1370,8 @@ EOF
         cd /opt/cmake
         [ ! -s ./cmake-3.22.1-linux-x86_64.sh ] && curl -o ./cmake-3.22.1-linux-x86_64.sh -L https://github.com/Kitware/CMake/releases/download/v3.22.1/cmake-3.22.1-linux-x86_64.sh
         bash ./cmake-3.22.1-linux-x86_64.sh --skip-license
-        ln -v -s /opt/cmake/bin/* /usr/local/bin && \
-            ${_yum_install} gcc gcc-c++ make
+        cd -
+        ln -v -s /opt/cmake/bin/* /usr/local/bin && ${_yum_install} gcc gcc-c++ make
     fi
     _log "INFO" "Install conan ..."
     if ! type pip3 &>/dev/null; then
@@ -1400,7 +1420,7 @@ EOF
     if type git &>/dev/null; then
         _log "INFO" "Install git lfs ..."
         curl -sSf https://packagecloud.io/install/repositories/github/git-lfs/script.rpm.sh | sudo bash
-        yum install git-lfs && git lfs install
+        yum install -y git-lfs && git lfs install
     fi
 }
 
