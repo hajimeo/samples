@@ -1,7 +1,7 @@
 /*
 sysPath="/opt/sonatype/nexus/system"
 java -Dgroovy.classpath="$(find ${sysPath%/}/org/postgresql/postgresql -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${sysPath%/}/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar" \
-    /tmp/DbConnTest.groovy /nexus-data/etc/fabric/nexus-store.properties
+    ./DbConnTest.groovy /nexus-data/etc/fabric/nexus-store.properties
  */
 import org.postgresql.*
 import groovy.sql.Sql
