@@ -1,22 +1,26 @@
 /*
-source /nexus-data/etc/fabric/nexus-store.properties
-sysDir="/opt/sonatype/nexus/system"
-java -Dgroovy.classpath="$(find ${installDir%/}/org/postgresql/postgresql -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${installDir%/}/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar" /tmp/DbConnTest.groovy "${jdbcUrl}" "${username}" "${password}"
+sysPath="/opt/sonatype/nexus/system"
+java -Dgroovy.classpath="$(find ${sysPath%/}/org/postgresql/postgresql -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${sysPath%/}/org/codehaus/groovy/groovy-all/2.4.17/groovy-all-2.4.17.jar" \
+    /tmp/DbConnTest.groovy /nexus-data/etc/fabric/nexus-store.properties
  */
 import org.postgresql.*
 import groovy.sql.Sql
 
+def p = new Properties()
+if (!args) p = System.getenv()
+else {
+    def pf = new File(args[0])
+    pf.withInputStream { p.load(it) }
+}
+def query = (args.length > 1) ? args[1] : "SELECT 'ok' as test"
 def driver = Class.forName('org.postgresql.Driver').newInstance() as Driver
-def query = (args.length > 3) ? args[3] : "SELECT 'ok' as test"
-def props = new Properties()
-props.setProperty("DB_user", args[1])
-props.setProperty("DB_password", args[2])
-def conn = driver.connect(args[0], props)
+def dbP = new Properties()
+dbP.setProperty("DB_user", p.username)
+dbP.setProperty("DB_password", p.password)
+def conn = driver.connect(p.jdbcUrl, dbP)
 def sql = new Sql(conn)
 try {
-    sql.eachRow(query) {
-        println(it)
-    }
+    sql.eachRow(query) {println(it)}
 } finally {
     sql.close()
     conn.close()
