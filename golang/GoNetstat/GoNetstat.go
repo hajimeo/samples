@@ -8,6 +8,9 @@ go get -u -t && go mod tidy
 env GOOS=linux GOARCH=amd64 go build -o ../../misc/gonetstat_Linux_amd64 GoNetstat.go && \
 env GOOS=darwin GOARCH=amd64 go build -o ../../misc/gonetstat_Darwin_amd64 GoNetstat.go && \
 env GOOS=darwin GOARCH=arm64 go build -o ../../misc/gonetstat_Darwin_arm64 GoNetstat.go && date
+
+# To install:
+curl -o /usr/local/bin/gonetstat -L https://github.com/hajimeo/samples/raw/master/misc/gonetstat_$(uname)_$(uname -m)
 */
 
 package main
