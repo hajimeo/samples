@@ -11,6 +11,9 @@ env GOOS=darwin GOARCH=arm64 go build -o ../../misc/gonetstat_Darwin_arm64 GoNet
 
 # To install:
 curl -o /usr/local/bin/gonetstat -L https://github.com/hajimeo/samples/raw/master/misc/gonetstat_$(uname)_$(uname -m)
+chmod a+x /usr/local/bin/gonetstat
+# how to use:
+gonetstat /proc/net/tcp
 */
 
 package main
