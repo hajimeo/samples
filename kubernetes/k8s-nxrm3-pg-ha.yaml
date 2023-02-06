@@ -1,11 +1,14 @@
 # NOTE:
 #   This script uses the node's hostPath for sharing blobs, instead of the recommended NFS.
 #
+# LIMITATION:
+#   Can't (or need to be careful) use special characters such as double-quotes and dollar mark.
+#
 # COMMAND EXAMPLE:
 #   cd ~/IdeaProjects/samples/kubernetes
 #   # Below _DNS is only for my k8s env (don't forget to update /etc/banner_add_hosts). _DB_USER can't contain '-' character.
 #   export _NAMESPACE="sonatype-ha" _ID="nxrm3ha"
-#   export _TAG="3.45.0" _RUNAS_USR=200 _DNS="192.168.1.31" _DB_HOST_PORT="192.168.1.31:5432" #_METALLB_IP="192.168.1.230"
+#   export _TAG="3.46.0" _RUNAS_USR=200 _DNS="192.168.1.31" _DB_HOST_PORT="192.168.1.31:5432" #_METALLB_IP="192.168.1.230"
 #   export _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs" _JDBC_URL="jdbc:postgresql://${_DB_HOST_PORT}/${_ID}" _DB_USER="${_ID}" _DB_PWD="${_ID}"
 #
 #  one time only preparation (*after* above "export")
@@ -25,9 +28,9 @@
 #
 #   #kubectl -n ${_NAMESPACE} delete secret ${_ID}-jdbc
 #   #kubectl -n ${_NAMESPACE} create secret generic ${_ID}-jdbc --from-literal=db_user="${_DB_USER}" --from-literal=db_pwd="${_DB_PWD}" --from-literal=jdbc_url="${_JDBC_URL}"
-#   eval "echo \"$(cat ./k8s-nxrm3-pg-ha.yaml | grep -v '^\s*#')\"" > /tmp/${_ID}.yaml
-#   #kubectl -n ${_NAMESPACE} delete -f /tmp/${_ID}.yaml   # NOTE: This deletes PVC as well
-#   kubectl -n ${_NAMESPACE} apply -f /tmp/${_ID}.yaml
+#   eval "echo \"$(cat ./k8s-nxrm3-pg-ha.yaml | grep -v '^\s*#')\"" > ./${_ID}.yaml
+#   #kubectl -n ${_NAMESPACE} delete -f ./${_ID}.yaml   # NOTE: This deletes PVC as well
+#   kubectl -n ${_NAMESPACE} apply -f ./${_ID}.yaml
 #
 ---
 apiVersion: apps/v1
@@ -48,7 +51,7 @@ spec:
         app: ${_ID}
     spec:
       #serviceAccountName: ${_ID}-statefulset-sa
-      terminationGracePeriodSeconds: 120
+      terminationGracePeriodSeconds: 60
       dnsPolicy: Default
       # NOTE: Without initContainers, it fails to start on Docker-Desktop
       initContainers:
@@ -63,7 +66,7 @@ spec:
           #       Also, it seems the exit code needs to be 0
           #       '/nexus-data/bin/tar' for broken kubectl cp from 3.42.0
           #       https://vault.centos.org/centos/8/BaseOS/x86_64/os/Packages/tar-1.30-5.el8.x86_64.rpm
-          command: ['sh', '-c', 'id;[ -n "${_DNS}" ] && echo nameserver "${_DNS}" > /etc/resolv.conf; mkdir -v -p /nexus-data/etc/ssl; [ -s /nexus-data/etc/nexus.properties ] || chown -R -v ${_RUNAS_USR:-200}:${_RUNAS_USR:-200} /nexus-data; [ ! -d /nexus-data/bin ] && mkdir /nexus-data/bin; [ ! -f /nexus-data/bin/tar ] && wget -q https://github.com/hajimeo/samples/raw/master/misc/tar-1.30-5.el8.x86_64.bin -O /nexus-data/bin/tar && chmod -v a+x /nexus-data/bin/tar; echo "Completed."']
+          command: ['sh', '-c', 'id;[ -n \"${_DNS}\" ] && echo nameserver \"${_DNS}\" > /etc/resolv.conf; mkdir -v -p /nexus-data/etc/ssl; [ -s /nexus-data/etc/nexus.properties ] || chown -R -v ${_RUNAS_USR:-200}:${_RUNAS_USR:-200} /nexus-data; [ ! -d /nexus-data/bin ] && mkdir /nexus-data/bin; [ ! -f /nexus-data/bin/tar ] && wget -q https://github.com/hajimeo/samples/raw/master/misc/tar-1.30-5.el8.x86_64.bin -O /nexus-data/bin/tar && chmod -v a+x /nexus-data/bin/tar; echo \"Completed.\"']
           volumeMounts:
             - name: nexus-data-volume
               mountPath: /nexus-data
@@ -78,8 +81,8 @@ spec:
           resources:
             requests:
               # Make sure blow works with INSTALL4J_ADD_VM_PARAMS
-              cpu: "2"
-              memory: "4G"
+              cpu: '2'
+              memory: '4G'
           ports:
             - containerPort: 8081
             #- containerPort: 8443
@@ -173,8 +176,8 @@ spec:
     - metadata:
         name: nexus-data-volume
       spec:
-        accessModes: [ "ReadWriteOnce" ]
-        #storageClassName: "standard"
+        accessModes: [ 'ReadWriteOnce' ]
+        #storageClassName: 'standard'
         resources:
           requests:
             storage: 4Gi  #20Gi
@@ -210,12 +213,12 @@ metadata:
     app: ${_ID}
   annotations:
     kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
-    nginx.ingress.kubernetes.io/affinity: "cookie"
-    nginx.ingress.kubernetes.io/affinity-mode: "persistent"
-    #nginx.ingress.kubernetes.io/session-cookie-name: "NXJWT"
-    #nginx.ingress.kubernetes.io/session-cookie-expires: "1800"
-    #nginx.ingress.kubernetes.io/session-cookie-max-age: "1800"
+    nginx.ingress.kubernetes.io/proxy-body-size: '0'
+    nginx.ingress.kubernetes.io/affinity: 'cookie'
+    nginx.ingress.kubernetes.io/affinity-mode: 'persistent'
+    #nginx.ingress.kubernetes.io/session-cookie-name: 'NXJWT'
+    #nginx.ingress.kubernetes.io/session-cookie-expires: '1800'
+    #nginx.ingress.kubernetes.io/session-cookie-max-age: '1800'
 spec:
   # TODO: may need to use the existing ingress? (kubectl get ingressclass)
   ingressClassName: nexus-ingress
