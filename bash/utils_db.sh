@@ -199,7 +199,7 @@ function _postgresql_create_role_and_db() {
     local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
     # NOTE: need to be superuser and 'usename' is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
     ${_psql_as_admin} -d template1 -tA -c "SELECT usename FROM pg_shadow" | grep -q "^${_dbusr}$" || ${_psql_as_admin} -d template1 -c "CREATE USER ${_dbusr} WITH LOGIN PASSWORD '${_dbpwd}';"    # not SUPERUSER
-    if [ "${_dbadmin}" != "posrgres" ] && [ "${_dbadmin}" != "$USER" ]; then
+    if [ "${_dbadmin}" != "postgres" ] && [ "${_dbadmin}" != "$USER" ]; then
         # TODO ${_dbadmin%@*} is only for Azure
         ${_psql_as_admin} -d template1 -c "GRANT ${_dbusr} TO \"${_dbadmin%@*}\";"
     fi
