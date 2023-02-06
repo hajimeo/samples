@@ -87,7 +87,7 @@ function iqMvn() {
     [ -n "${_iq_mvn_ver}" ] && _iq_mvn_ver=":${_iq_mvn_ver}"
     _iq_url="$(_get_iq_url "${_iq_url}")" || return $?
 
-    #clm-maven-plugin:2.30.2-01:index
+    #clm-maven-plugin:2.30.2-01:index | com.sonatype.clm:clm-maven-plugin:index to generate module.xml file
     local _cmd="mvn -f ${_file} com.sonatype.clm:clm-maven-plugin${_iq_mvn_ver}:evaluate -Dclm.serverUrl=${_iq_url} -Dclm.applicationId=${_iq_app_id} -Dclm.stage=${_iq_stage} -Dclm.username=admin -Dclm.password=admin123 -Dclm.resultFile=iq_result.json -Dclm.scan.dirExcludes=\"**/BOOT-INF/lib/**\" ${_mvn_opts}"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] Executing: ${_cmd}" >&2
     eval "${_cmd}"
@@ -95,9 +95,19 @@ function iqMvn() {
 }
 
 # To start local (on Mac) NXRM2 or NXRM3 server
-# TODO: UPDATE repository_blobstore SET attributes = {} where type = 'S3';
-#       UPDATE repository_blobstore SET attributes.file = {} where type = 'S3';
-#       UPDATE repository_blobstore SET type = 'File', attributes.file.path = 's3/test' where type = 'S3';
+# TODO: May need to reset 'admin' user, and also use below query (after modifying for H2/PostgreSQL/OrientDB)
+#  UPDATE repository_blobstore SET attributes = {} where type = 'S3';
+#  UPDATE repository_blobstore SET attributes.file = {} where type = 'S3';
+#  UPDATE repository_blobstore SET type = 'File', attributes.file.path = 's3/test' where type = 'S3';
+#
+#  Orient: UPDATE capability SET enabled = false WHERE type like 'firewall%';update capability set enabled = false where type like 'clm';
+#  H2: UPDATE capability_storage_item SET enabled = false WHERE type IN ('firewall.audit', 'clm', 'webhook.repository', 'healthcheck', 'crowd');
+#      TODO: UPDATE realm_configuration SET realm_names = '["NexusAuthenticatingRealm", "NexusAuthorizingRealm"]' FORMAT JSON where id = 1;
+#
+#  DELETE FROM nuget_asset WHERE path = '/index.json';
+#
+#  TRUNCATE TABLE http_client_configuration;
+#  INSERT INTO http_client_configuration (id, proxy) VALUES (1, '{"http": {"host": "localhost", "port": 28080, "enabled": true, "authentication": null}, "https": null, "nonProxyHosts": null}' FORMAT JSON);
 function nxrmStart() {
     local _base_dir="${1:-"."}"
     local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5005,suspend=n"}
@@ -182,16 +192,6 @@ function _updateNexusProps() {
     # For OrientDB studio (hostname:2480/studio/index.html)
     grep -qE '^\s*nexus.orient.httpListenerEnabled' "${_cfg_file}" || echo "nexus.orient.httpListenerEnabled=true" >> "${_cfg_file}"
     grep -qE '^\s*nexus.orient.dynamicPlugins' "${_cfg_file}" || echo "nexus.orient.dynamicPlugins=true" >> "${_cfg_file}"
-}
-
-function _updateNexusDb() {
-    local _config_db="$1"
-    if [ ! -s "/var/tmp/share/java/orient-console.jar" ]; then
-        echo "/var/tmp/share/java/orient-console.jar is required"
-        return 1
-    fi
-    # Disable Firewall capabilities as it makes Nexus startup extreamly slower
-    echo "update capability set enabled = false where type like 'firewall%';update capability set enabled = false where type like 'clm';" | java -jar "/var/tmp/share/java/orient-console.jar" "${_config_db}"
 }
 
 function _prepare_install() {
@@ -419,7 +419,7 @@ EOF
     type iqStart &>/dev/null && echo "      Or: iqStart"
 }
 
-#iqDocker "nxiq-test" "1.105.0" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
+#iqDocker "nxiq-test" "1.146.0" "8170" "8171" "8544" #"--read-only -v /tmp/nxiq-test:/tmp"
 function iqDocker() {
     local _name="${1:-"nxiq"}"
     local _tag="${2:-"latest"}"
@@ -522,13 +522,14 @@ function mvn-package() {
 : <<'EOF'
 mvn-arch-gen
 _REPO_URL="http://localhost:8081/repository/maven-snapshots/"
+l="-SNAPSHOT"
 #mvn-deploy "${_REPO_URL}" "" "nexus"
 for v in {1..3}; do
   for a in {1..3}; do
     for g in {1..3}; do
       sed -i.tmp -E "s@^  <groupId>.+</groupId>@  <groupId>com.example${g}</groupId>@" pom.xml
       sed -i.tmp -E "s@^  <artifactId>.+</artifactId>@  <artifactId>my-app${a}</artifactId>@" pom.xml
-      sed -i.tmp -E "s@^  <version>.+</version>@  <version>1.${v}-SNAPSHOT</version>@" pom.xml
+      sed -i.tmp -E "s@^  <version>.+</version>@  <version>1.${v}${_SNAPSHOT}</version>@" pom.xml
       mvn-deploy "${_REPO_URL}" "" "" "nexus" "" || break
     done || break
   done || break
