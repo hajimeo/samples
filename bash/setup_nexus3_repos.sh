@@ -7,7 +7,7 @@
 #
 # How to source:
 #   source /dev/stdin <<< "$(curl https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_nexus3_repos.sh --compressed)"
-#   export _NEXUS_URL="https://nxrm3-k8s.standalone.localdomain/"
+#   export _NEXUS_URL="http://localhost:8081/"
 #
 _DL_URL="${_DL_URL:-"https://raw.githubusercontent.com/hajimeo/samples/master"}"
 type _import &>/dev/null || _import() { [ ! -s /tmp/${1} ] && curl -sf --compressed "${_DL_URL%/}/bash/$1" -o /tmp/${1}; . /tmp/${1}; }
