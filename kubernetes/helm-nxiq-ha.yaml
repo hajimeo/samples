@@ -1,0 +1,913 @@
+---
+# Source: nexus-iq-server-ha/templates/iq-server-secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nxiqha-iq-server-license-secret
+data:
+  license_lic: L3Zhci90bXAvc2hhcmUvc29uYXR5cGUvc29uYXR5cGUtbGljZW5zZS5saWM=
+---
+# Source: nexus-iq-server-ha/templates/iq-server-secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nxiqha-iq-server-initial-admin-password-secret
+data:
+  password: YWRtaW4xMjM=
+---
+# Source: nexus-iq-server-ha/templates/iq-server-secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nxiqha-iq-server-database-hostname-secret
+data:
+  hostname: MTkyLjE2OC4xLjMx
+---
+# Source: nexus-iq-server-ha/templates/iq-server-secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nxiqha-iq-server-database-port-secret
+data:
+  port: NTQzMg==
+---
+# Source: nexus-iq-server-ha/templates/iq-server-secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nxiqha-iq-server-database-name-secret
+data:
+  name: aXFoYQ==
+---
+# Source: nexus-iq-server-ha/templates/iq-server-secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nxiqha-iq-server-database-username-secret
+data:
+  username: aXFoYQ==
+---
+# Source: nexus-iq-server-ha/templates/iq-server-secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: nxiqha-iq-server-database-password-secret
+data:
+  password: aXFoYQ==
+---
+# Source: nexus-iq-server-ha/charts/fluentd/templates/aggregator-init-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nxiqha-fluentd-aggregator-init-scripts
+  namespace: "sonatype-ha"
+  labels:
+    app.kubernetes.io/name: fluentd
+    helm.sh/chart: fluentd-5.5.12
+    app.kubernetes.io/instance: nxiqha
+    app.kubernetes.io/managed-by: Helm
+data:
+    plugins.sh: fluent-gem install fluent-plugin-cloudwatch-logs
+---
+# Source: nexus-iq-server-ha/templates/fluentd-config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nxiqha-fluentd-sidecar-forwarder-configmap
+data:
+  fluentd: |
+    config:
+      - match:
+          $tag: fluent.**
+          $type: "null"
+      - source:
+          $type: http
+          port: 9880
+      - match:
+          $tag: fluent.healthcheck
+          $type: stdout
+      - source:
+          $type: tail
+          parse:
+            $type: regexp
+            expression: /^(?<host>[^ ]*) (?<ident>[^ ]*) (?<authuser>[^ ]*) \[(?<logtime>[^\]]*)\]
+              "(?<method>[^ ]*) (?<path>[^ ]*) (?<protocol>[^"]*)" (?<status>[^ ]*) (?<bytes>[^
+              ]*) (?<time>[^ ]*) "(?<userAgent>[^"]*)"$/
+            time_format: '%d/%b/%Y:%H:%M:%S %z'
+            time_key: logtime
+            types: status:integer,bytes:integer,time:integer
+          path: /var/log/nexus-iq-server/request.log
+          pos_file: /opt/bitnami/fluentd/logs/buffers/request.pos
+          read_from_head: true
+          tag: iq_server.request
+      - source:
+          $type: tail
+          parse:
+            $type: json
+            time_format: '%Y-%m-%dT%H:%M:%S.%L%z'
+            time_format_fallbacks: '%Y-%m-%dT%H:%M:%S.%LZ'
+            time_key: timestamp
+            time_type: mixed
+          path: /var/log/nexus-iq-server/audit.log
+          pos_file: /opt/bitnami/fluentd/logs/buffers/audit.pos
+          read_from_head: true
+          tag: iq_server.audit
+      - source:
+          $type: tail
+          parse:
+            $type: json
+            time_format: '%Y-%m-%dT%H:%M:%S.%L%z'
+            time_format_fallbacks: '%Y-%m-%dT%H:%M:%S.%LZ'
+            time_key: eventTimestamp
+            time_type: mixed
+          path: /var/log/nexus-iq-server/policy-violation.log
+          pos_file: /opt/bitnami/fluentd/logs/buffers/policy-violation.pos
+          read_from_head: true
+          tag: iq_server.policy-violation
+      - source:
+          $type: tail
+          parse:
+            $type: regexp
+            expression: /^((?<logtime>[^ ]* [^ ]*) (?<level>[^ ]*) \[(?<thread>[^\]]*)\]
+              (?<username>[^ ]*) (?<logger>[^ ]*) - (?<message>.*))|(?<message>.*)$/
+            time_format: '%Y-%m-%d %H:%M:%S,%L%z'
+            time_key: logtime
+          path: /var/log/nexus-iq-server/clm-server.log
+          pos_file: /opt/bitnami/fluentd/logs/buffers/clm-server.pos
+          read_from_head: true
+          tag: iq_server.clm-server
+      - source:
+          $type: tail
+          parse:
+            $type: none
+          path: /var/log/nexus-iq-server/stderr.log
+          pos_file: /opt/bitnami/fluentd/logs/buffers/stderr.pos
+          read_from_head: true
+          tag: iq_server.stderr
+      - filter:
+          $tag: '**'
+          $type: record_transformer
+          record:
+            hostname: !fluent/s "#{ENV['HOSTNAME']}"
+      - match:
+          $tag: '**'
+          $type: forward
+          buffer:
+            $type: file
+            flush_interval: 5s
+            flush_thread_count: 2
+            path: /opt/bitnami/fluentd/logs/buffers/logs.buffer
+          server:
+            host: 'nxiqha-fluentd-aggregator'
+            port: 24224
+---
+# Source: nexus-iq-server-ha/templates/fluentd-config.yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nxiqha-fluentd-aggregator-configmap
+data:
+  fluentd.yaml: |
+    config:
+      - match:
+          $tag: fluent.**
+          $type: "null"
+      - source:
+          $type: http
+          port: 9880
+      - match:
+          $tag: fluent.healthcheck
+          $type: stdout
+      - source:
+          $type: forward
+          port: 24224
+      - match:
+          $tag: iq_server.request
+          $type: copy
+          store:
+          - $type: stdout
+          - $type: file
+            append: true
+            buffer:
+              $type: file
+              flush_interval: 5s
+              flush_mode: interval
+              flush_thread_count: 2
+              path: /opt/bitnami/fluentd/logs/buffers/request.buffer
+            format:
+              $type: json
+            inject:
+              tag_key: fluentd_tag
+              time_format: '%Y-%m-%dT%H:%M:%S.%NZ'
+              time_key: time
+              time_type: string
+            path: /opt/bitnami/fluentd/logs/nexus-iq-server/request
+          - $type: 'null'
+            auto_create_group: true
+            auto_create_stream: true
+            log_group_name: !fluent/s "#{ENV['LOG_GROUP_NAME']}"
+            log_stream_name: !fluent/s "#{ENV['LOG_STREAM_NAME']}"
+            region: !fluent/s "#{ENV['REGION']}"
+            remove_log_stream_name_key: true
+      - match:
+          $tag: iq_server.audit
+          $type: copy
+          store:
+          - $type: stdout
+          - $type: file
+            append: true
+            buffer:
+              $type: file
+              flush_interval: 5s
+              flush_mode: interval
+              flush_thread_count: 2
+              path: /opt/bitnami/fluentd/logs/buffers/audit.buffer
+            format:
+              $type: json
+            inject:
+              tag_key: fluentd_tag
+              time_format: '%Y-%m-%dT%H:%M:%S.%NZ'
+              time_key: time
+              time_type: string
+            path: /opt/bitnami/fluentd/logs/nexus-iq-server/audit
+          - $type: 'null'
+            auto_create_group: true
+            auto_create_stream: true
+            log_group_name: !fluent/s "#{ENV['LOG_GROUP_NAME']}"
+            log_stream_name: !fluent/s "#{ENV['LOG_STREAM_NAME']}"
+            region: !fluent/s "#{ENV['REGION']}"
+            remove_log_stream_name_key: true
+      - match:
+          $tag: iq_server.policy-violation
+          $type: copy
+          store:
+          - $type: stdout
+          - $type: file
+            append: true
+            buffer:
+              $type: file
+              flush_interval: 5s
+              flush_mode: interval
+              flush_thread_count: 2
+              path: /opt/bitnami/fluentd/logs/buffers/policy-violation.buffer
+            format:
+              $type: json
+            inject:
+              tag_key: fluentd_tag
+              time_format: '%Y-%m-%dT%H:%M:%S.%NZ'
+              time_key: time
+              time_type: string
+            path: /opt/bitnami/fluentd/logs/nexus-iq-server/policy-violation
+          - $type: 'null'
+            auto_create_group: true
+            auto_create_stream: true
+            log_group_name: !fluent/s "#{ENV['LOG_GROUP_NAME']}"
+            log_stream_name: !fluent/s "#{ENV['LOG_STREAM_NAME']}"
+            region: !fluent/s "#{ENV['REGION']}"
+            remove_log_stream_name_key: true
+      - match:
+          $tag: iq_server.clm-server
+          $type: copy
+          store:
+          - $type: stdout
+          - $type: file
+            append: true
+            buffer:
+              $type: file
+              flush_interval: 5s
+              flush_mode: interval
+              flush_thread_count: 2
+              path: /opt/bitnami/fluentd/logs/buffers/clm-server.buffer
+            format:
+              $type: json
+            inject:
+              tag_key: fluentd_tag
+              time_format: '%Y-%m-%dT%H:%M:%S.%NZ'
+              time_key: time
+              time_type: string
+            path: /opt/bitnami/fluentd/logs/nexus-iq-server/clm-server
+          - $type: 'null'
+            auto_create_group: true
+            auto_create_stream: true
+            log_group_name: !fluent/s "#{ENV['LOG_GROUP_NAME']}"
+            log_stream_name: !fluent/s "#{ENV['LOG_STREAM_NAME']}"
+            region: !fluent/s "#{ENV['REGION']}"
+            remove_log_stream_name_key: true
+      - match:
+          $tag: iq_server.stderr
+          $type: copy
+          store:
+          - $type: stdout
+          - $type: file
+            append: true
+            buffer:
+              $type: file
+              flush_interval: 5s
+              flush_mode: interval
+              flush_thread_count: 2
+              path: /opt/bitnami/fluentd/logs/buffers/stderr.buffer
+            format:
+              $type: json
+            inject:
+              tag_key: fluentd_tag
+              time_format: '%Y-%m-%dT%H:%M:%S.%NZ'
+              time_key: time
+              time_type: string
+            path: /opt/bitnami/fluentd/logs/nexus-iq-server/stderr
+          - $type: 'null'
+            auto_create_group: true
+            auto_create_stream: true
+            log_group_name: !fluent/s "#{ENV['LOG_GROUP_NAME']}"
+            log_stream_name: !fluent/s "#{ENV['LOG_STREAM_NAME']}"
+            region: !fluent/s "#{ENV['REGION']}"
+            remove_log_stream_name_key: true
+---
+# Source: nexus-iq-server-ha/templates/iq-server-config-map.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nxiqha-iq-server-config-configmap
+data:
+  config: |
+    clusterDirectory: /sonatype-work/clm-cluster
+    createSampleData: true
+    database:
+      hostname: ${NXIQ_DATABASE_HOSTNAME}
+      name: ${NXIQ_DATABASE_NAME}
+      password: ${NXIQ_DATABASE_PASSWORD}
+      port: ${NXIQ_DATABASE_PORT}
+      type: postgresql
+      username: ${NXIQ_DATABASE_USERNAME}
+    licenseFile: ${NXIQ_LICENSE_FILE}
+    logging:
+      appenders:
+      - logFormat: '%d{''yyyy-MM-dd HH:mm:ss,SSSZ''} %level [%thread] %X{username} %logger
+          - %msg%n'
+        threshold: ALL
+        type: console
+      - archivedFileCount: 50
+        archivedLogFilenamePattern: /var/log/nexus-iq-server/clm-server-%d.log.gz
+        currentLogFilename: /var/log/nexus-iq-server/clm-server.log
+        logFormat: '%d{''yyyy-MM-dd HH:mm:ss,SSSZ''} %level [%thread] %X{username} %logger
+          - %msg%n'
+        threshold: ALL
+        type: file
+      level: DEBUG
+      loggers:
+        com.networknt.schema: false
+        com.sonatype.insight.audit:
+          appenders:
+          - type: console
+          - archivedFileCount: 50
+            archivedLogFilenamePattern: /var/log/nexus-iq-server/audit-%d.log.gz
+            currentLogFilename: /var/log/nexus-iq-server/audit.log
+            type: file
+        com.sonatype.insight.policy.violation:
+          appenders:
+          - type: console
+          - archivedFileCount: 50
+            archivedLogFilenamePattern: /var/log/nexus-iq-server/policy-violation-%d.log.gz
+            currentLogFilename: /var/log/nexus-iq-server/policy-violation.log
+            type: file
+        com.sonatype.insight.scan: INFO
+        eu.medsea.mimeutil.MimeUtil2: INFO
+        org.apache.http: INFO
+        org.apache.http.wire: ERROR
+        org.apache.shiro.web.filter.authc.BasicHttpAuthenticationFilter: INFO
+        org.eclipse.birt.report.engine.layout.pdf.font.FontConfigReader: WARN
+        org.eclipse.jetty: INFO
+        org.postgresql.jdbc.PgConnection: INFO
+        org.quartz: INFO
+        org.zeroturnaround.exec: INFO
+    server:
+      adminConnectors:
+      - port: 8071
+        type: http
+      adminContextPath: /
+      applicationConnectors:
+      - port: 8070
+        type: http
+      applicationContextPath: /
+      requestLog:
+        appenders:
+        - logFormat: '%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent
+            %elapsedTime "%header{User-Agent}"'
+          type: console
+        - archivedFileCount: 50
+          archivedLogFilenamePattern: /var/log/nexus-iq-server/request-%d.log.gz
+          currentLogFilename: /var/log/nexus-iq-server/request.log
+          logFormat: '%clientHost %l %user [%date] "%requestURL" %statusCode %bytesSent
+            %elapsedTime "%header{User-Agent}"'
+          type: file
+    sonatypeWork: /sonatype-work/clm-server
+---
+# Source: nexus-iq-server-ha/templates/iq-server-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: iq-server-pvc
+  annotations:
+    "helm.sh/resource-policy": keep
+spec:
+  volumeMode: Filesystem
+  storageClassName: microk8s-hostpath
+  accessModes:
+    - ReadWriteMany
+  volumeName: iq-server-pv
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Source: nexus-iq-server-ha/charts/fluentd/templates/aggregator-svc-headless.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nxiqha-fluentd-headless
+  namespace: "sonatype-ha"
+  labels:
+    app.kubernetes.io/name: fluentd
+    helm.sh/chart: fluentd-5.5.12
+    app.kubernetes.io/instance: nxiqha
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: aggregator
+    app: aggregator
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: http
+      
+      port: 9880
+      protocol: TCP
+      targetPort: http
+    - name: tcp
+      
+      port: 24224
+      protocol: TCP
+      targetPort: tcp
+  selector:
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/instance: nxiqha
+    app.kubernetes.io/component: aggregator
+---
+# Source: nexus-iq-server-ha/charts/fluentd/templates/aggregator-svc.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nxiqha-fluentd-aggregator
+  namespace: "sonatype-ha"
+  labels:
+    app.kubernetes.io/name: fluentd
+    helm.sh/chart: fluentd-5.5.12
+    app.kubernetes.io/instance: nxiqha
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: aggregator
+    app: aggregator
+spec:
+  type: ClusterIP
+  sessionAffinity: None
+  ports:
+    - name: http
+      
+      port: 9880
+      protocol: TCP
+      targetPort: http
+    - name: tcp
+      
+      port: 24224
+      protocol: TCP
+      targetPort: tcp
+  selector:
+    app.kubernetes.io/name: fluentd
+    app.kubernetes.io/instance: nxiqha
+    app.kubernetes.io/component: aggregator
+---
+# Source: nexus-iq-server-ha/templates/iq-server-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nxiqha-iq-server-application-service
+spec:
+  type: ClusterIP
+  selector:
+    name: nxiqha-iq-server
+  ports:
+    - name: iq-server-app-port-0
+      protocol: TCP
+      port: 8070
+      targetPort: application-0
+---
+# Source: nexus-iq-server-ha/templates/iq-server-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nxiqha-iq-server-admin-service
+spec:
+  type: ClusterIP
+  selector:
+    name: nxiqha-iq-server
+  ports:
+    - name: iq-server-adm-port-0
+      protocol: TCP
+      port: 8071
+      targetPort: admin-0
+---
+# Source: nexus-iq-server-ha/templates/iq-server-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nxiqha-iq-server-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      name: nxiqha-iq-server
+  template:
+    metadata:
+      labels:
+        name: nxiqha-iq-server
+    spec:
+      serviceAccountName: default
+      volumes:
+        - name: nxiqha-iq-server-pod-volume
+          persistentVolumeClaim:
+            claimName: iq-server-pvc
+        - name: nxiqha-iq-server-pod-license-volume
+          secret:
+            secretName: nxiqha-iq-server-license-secret
+        - name: nxiqha-iq-server-pod-config-volume
+          configMap:
+            name: nxiqha-iq-server-config-configmap
+            items:
+              - key: config
+                path: config.yml
+        - name: nxiqha-iq-server-pod-logs
+          emptyDir: {}
+        - name: nxiqha-fluentd-pod-config-volume
+          configMap:
+            name: nxiqha-fluentd-sidecar-forwarder-configmap
+            items:
+              - key: fluentd
+                path: fluentd.yaml
+      containers:
+        - name: nxiqha-iq-server-container
+          image: sonatype/nexus-iq-server:1.153.0
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests:
+              cpu: '2'
+              memory: '4G'
+            limits:
+              cpu: '2'
+              memory: '4G'
+          ports:
+            - containerPort: 8070
+              name: application-0
+            - containerPort: 8071
+              name: admin-0
+          volumeMounts:
+            - mountPath: /sonatype-work/clm-cluster
+              name: nxiqha-iq-server-pod-volume
+            - mountPath: "/opt/sonatype/nexus-iq-server/.ssh"
+              name: nxiqha-iq-server-pod-volume
+              subPath: .ssh
+            - mountPath: "/license"
+              name: nxiqha-iq-server-pod-license-volume
+              readOnly: true
+            - mountPath: "/etc/nexus-iq-server"
+              name: nxiqha-iq-server-pod-config-volume
+            - mountPath: "/var/log/nexus-iq-server"
+              name: nxiqha-iq-server-pod-logs
+          env:
+            - name: NXIQ_LICENSE_FILE
+              value: "/license/license_lic"
+            - name: NXIQ_INITIAL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "nxiqha-iq-server-initial-admin-password-secret"
+                  key: "password"
+            - name: NXIQ_DATABASE_HOSTNAME
+              valueFrom:
+                secretKeyRef:
+                  name: "nxiqha-iq-server-database-hostname-secret"
+                  key: "hostname"
+            - name: NXIQ_DATABASE_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: "nxiqha-iq-server-database-port-secret"
+                  key: "port"
+            - name: NXIQ_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: "nxiqha-iq-server-database-name-secret"
+                  key: "name"
+            - name: NXIQ_DATABASE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: "nxiqha-iq-server-database-username-secret"
+                  key: "username"
+            - name: NXIQ_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "nxiqha-iq-server-database-password-secret"
+                  key: "password"
+            - name: NXIQ_DATABASE_MIGRATION
+              value: "false"
+          readinessProbe:
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - |
+                      curl -If http://localhost:8071/healthcheck/database &&
+                      curl -If http://localhost:8071/healthcheck/clusterDirectory &&
+                      curl -If http://localhost:8071/healthcheck/workDirectory
+          livenessProbe:
+            initialDelaySeconds: 180
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - |
+                      curl -If http://localhost:8071/healthcheck/threadDeadlock
+        - name: nxiqha-fluentd-container
+          image: bitnami/fluentd:1.15.3-debian-11-r20
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - mountPath: "/opt/bitnami/fluentd/conf"
+              name: nxiqha-fluentd-pod-config-volume
+            - mountPath: "/var/log/nexus-iq-server"
+              name: nxiqha-iq-server-pod-logs
+          env:
+            - name: FLUENTD_CONF
+              value: fluentd.yaml
+      initContainers:
+        - name: nxiqha-set-iq-persistence-ownership
+          image: busybox:1.28
+          command: ["sh", "-c", "chown -R 1000:1000 /sonatype-work/clm-cluster"]
+          volumeMounts:
+            - mountPath: /sonatype-work/clm-cluster
+              name: nxiqha-iq-server-pod-volume
+---
+# Source: nexus-iq-server-ha/charts/fluentd/templates/aggregator-statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nxiqha-fluentd
+  namespace: "sonatype-ha"
+  labels:
+    app.kubernetes.io/name: fluentd
+    helm.sh/chart: fluentd-5.5.12
+    app.kubernetes.io/instance: nxiqha
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/component: aggregator
+    ## Istio Labels: https://istio.io/docs/ops/deployment/requirements/
+    app: aggregator
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluentd
+      app.kubernetes.io/instance: nxiqha
+      app.kubernetes.io/component: aggregator
+  serviceName: nxiqha-fluentd-headless
+  replicas: 1
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fluentd
+        helm.sh/chart: fluentd-5.5.12
+        app.kubernetes.io/instance: nxiqha
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/component: aggregator
+        app: aggregator
+      annotations:
+        checksum/config: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+    spec:
+      
+      serviceAccountName: default
+      securityContext:
+        fsGroup: 0
+        runAsGroup: 0
+        runAsUser: 1000
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: fluentd
+                    app.kubernetes.io/instance: nxiqha
+                    app.kubernetes.io/component: aggregator
+                topologyKey: kubernetes.io/hostname
+              weight: 1
+
+      initContainers:
+        - command:
+          - sh
+          - -c
+          - chown -R 1000:1000 /opt/bitnami/fluentd/logs/nexus-iq-server
+          image: busybox:1.28
+          name: 'nxiqha-set-fluentd-persistence-ownership'
+          volumeMounts:
+          - mountPath: /opt/bitnami/fluentd/logs/nexus-iq-server
+            name: iq-server-pod-volume
+            subPath: log
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: fluentd
+          image: docker.io/bitnami/fluentd:1.15.3-debian-11-r20
+          imagePullPolicy: "IfNotPresent"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+              - ALL
+            privileged: true
+            readOnlyRootFilesystem: false
+          
+          env:
+            - name: BITNAMI_DEBUG
+              value: "false"
+            - name: FLUENTD_CONF
+              value: fluentd.yaml
+            - name: FLUENTD_OPT
+              value: ""
+            - name: REGION
+              valueFrom:
+                configMapKeyRef:
+                  key: region
+                  name: cloudwatch
+                  optional: true
+            - name: LOG_GROUP_NAME
+              valueFrom:
+                configMapKeyRef:
+                  key: logGroupName
+                  name: cloudwatch
+                  optional: true
+            - name: LOG_STREAM_NAME
+              valueFrom:
+                configMapKeyRef:
+                  key: logStreamName
+                  name: cloudwatch
+                  optional: true
+          resources:
+            limits: {}
+            requests: {}
+          ports:
+            - name: tcp
+              containerPort: 24224
+              protocol: TCP
+            - containerPort: 9880
+              name: http
+              protocol: TCP
+          startupProbe:
+            httpGet:
+              path: /fluentd.healthcheck?json=%7B%22ping%22%3A+%22pong%22%7D
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /fluentd.healthcheck?json=%7B%22ping%22%3A+%22pong%22%7D
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /fluentd.healthcheck?json=%7B%22ping%22%3A+%22pong%22%7D
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 6
+          volumeMounts:
+            - name: fluentd-config
+              mountPath: /opt/bitnami/fluentd/conf
+            - name: buffer
+              mountPath: /opt/bitnami/fluentd/logs/buffers
+            - name: custom-init-scripts
+              mountPath: /docker-entrypoint-initdb.d/init-scripts
+            - mountPath: /opt/bitnami/fluentd/logs/nexus-iq-server
+              name: iq-server-pod-volume
+              subPath: log
+      volumes:
+        - name: iq-server-pod-volume
+          persistentVolumeClaim:
+            claimName: iq-server-pvc
+        - name: fluentd-config
+          configMap:
+            name: nxiqha-fluentd-aggregator-configmap
+        - name: buffer
+          emptyDir: {}
+        - name: custom-init-scripts
+          configMap:
+            name: nxiqha-fluentd-aggregator-init-scripts
+---
+# Source: nexus-iq-server-ha/templates/iq-server-jobs.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nxiqha-migrate-db
+spec:
+  completions: 1
+  parallelism: 1
+  ttlSecondsAfterFinished: 0
+  template:
+    spec:
+      serviceAccountName: default
+      volumes:
+        - name: nxiqha-iq-server-pod-config-volume
+          configMap:
+            name: nxiqha-iq-server-config-configmap
+            items:
+              - key: config
+                path: config.yml
+      containers:
+        - name: nxiqha-iq-server-container
+          image: sonatype/nexus-iq-server:1.153.0
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - mountPath: "/etc/nexus-iq-server"
+              name: nxiqha-iq-server-pod-config-volume
+          env:
+            - name: NXIQ_DATABASE_HOSTNAME
+              valueFrom:
+                secretKeyRef:
+                  name: "nxiqha-iq-server-database-hostname-secret"
+                  key: "hostname"
+            - name: NXIQ_DATABASE_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: "nxiqha-iq-server-database-port-secret"
+                  key: "port"
+            - name: NXIQ_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: "nxiqha-iq-server-database-name-secret"
+                  key: "name"
+            - name: NXIQ_DATABASE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: "nxiqha-iq-server-database-username-secret"
+                  key: "username"
+            - name: NXIQ_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "nxiqha-iq-server-database-password-secret"
+                  key: "password"
+          command:
+            - /bin/sh
+            - -c
+            - "/usr/bin/java -jar `ls ./nexus-iq-server*.jar` migrate-db /etc/nexus-iq-server/config.yml"
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+      restartPolicy: OnFailure
+---
+# Source: nexus-iq-server-ha/templates/delete-old-aggregate-logs-cronjob.yaml
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: nxiqha-delete-old-aggregate-logs-cronjob
+spec:
+  schedule: "0 1 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 0
+      template:
+        spec:
+          restartPolicy: OnFailure
+          volumes:
+            - name: nxiqha-iq-server-pod-volume
+              persistentVolumeClaim:
+                claimName: iq-server-pvc
+          containers:
+          - name: "nxiqha-delete-old-aggregate-logs"
+            image: busybox:1.28
+            imagePullPolicy: IfNotPresent
+            command:
+            - /bin/sh
+            - -c
+            - find /log/ -type f -mtime +49 -delete
+            volumeMounts:
+              - mountPath: /log
+                name: nxiqha-iq-server-pod-volume
+                subPath: log
