@@ -923,15 +923,25 @@ function f_hexTids_from_topH() {
 }
 
 function f_splitTopNetstat() {
-    local __doc__="Split a file which contains mutliple top and netstat outputs"
+    local __doc__="Split a file which contains multiple top and netstat outputs"
     local _file="$1"
-    local _netstat_str="${2:-"Active Internet"}"    # if /proc/net/tcp, " *sl" NOTE HEX is reversed order
+    local _netstat_str="${2}"    # if /proc/net/tcp, " *sl" NOTE HEX is reversed order
     local _out_dir="top_netstat" #"`basename ${_file} .out`"
     if [ ! -d $_out_dir ]; then
         mkdir -v -p $_out_dir || return $?
     fi
     local _tmpDir="$(mktemp -d)"
     _csplit -z -f "${_tmpDir%/}/topNs_" ${_file} "/^top /" '{*}' || return $?
+    if [ -z "${_netstat_str}" ]; then
+        if rg -q "^Active Internet\s+" "${_file}"; then
+            _netstat_str="Active Internet"
+        elif rg -q "^\s*sl\s+" "${_file}"; then
+            _netstat_str=" *sl"
+        fi
+    fi
+    if [ -z "${_netstat_str}" ]; then
+        return 11
+    fi
     for _f in $(ls -1 ${_tmpDir%/}/topNs_*); do
         _csplit -z -f "${_out_dir%/}/`basename ${_f}`_" ${_f} "/^${_netstat_str} /" '{*}' || return $?
     done
@@ -940,6 +950,7 @@ function f_splitTopNetstat() {
 #f_splitByRegex threads.txt "^${_DATE_FORMAT}.+"
 #_THREAD_FILE_GLOB="?-dump.txt" f_threads "."   # Don't use "*" beginning of the file name
 # NOTE: f_last_tid_in_log would be useful.
+# Full thread dump OpenJDK 64-Bit Server VM (25.352-b08 mixed mode):
 function f_threads() {
     local __doc__="Split file to each thread, then output thread count"
     local _file="$1"    # Or dir contains thread_xxxx.txt files
@@ -1020,7 +1031,7 @@ function f_threads() {
             echo "$(basename "${_f}") $(rg '^\sat\s' -m1 "${_f}")"
         done | sort | uniq -c | sort -nr | rg -v '^\s*1\s' | head -n40
         echo " "
-        echo "### May also want to use f_hexTids_from_topH()"
+        echo "### May also want to use f_hexTids_from_topH() and f_splitTopNetstat()"
         echo " "
         return $?
     fi
@@ -1374,8 +1385,9 @@ for c in j['capabilitiesConfiguration']['capabilities']['capability']:
 "
 }
 
-# curl -O https://repo1.maven.org/maven2/com/h2database/h2/1.4.200/h2-1.4.200.jar
+# curl -o $HOME/IdeaProjects/libs/h2-1.4.200.jar https://repo1.maven.org/maven2/com/h2database/h2/1.4.200/h2-1.4.200.jar
 function f_h2_start() {
+    local __doc__="http://www.h2database.com/javadoc/org/h2/tools/Server.html"
     # NXRM3
     #Save Settings: Generic H2 (Embedded)
     #Driver: org.h2.Driver
@@ -1383,34 +1395,45 @@ function f_h2_start() {
     #username: <LEAVE BLANK>
     #password: <LEAVE BLANK>
     local _baseDir="${1}"
-    local _Xmx="${2:-"2g"}"
-    local _h2_ver="1.4.200" # or 1.4.196 for IQ
+    local _port="${2:-"8082"}"
+    local _Xmx="${3:-"8g"}"
+    local _h2_ver="1.4.200" # 1.4.200 for NXRM3 or 1.4.196 for IQ
     if [ -z "${_baseDir}" ]; then
         if [ -d ./sonatype-work/clm-server/data ]; then
             _baseDir="./sonatype-work/clm-server/data/"
+        elif [ -d ./sonatype-work/nexus3/db ]; then
+            _baseDir="./sonatype-work/nexus3/db"
         else
             _baseDir="."
         fi
     fi
     # NOTE: 1.4.200 is used by NXRM# but may causes org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException with IQ
-    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-${_h2_ver}.jar org.h2.tools.Server -baseDir "${_baseDir}"
+    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/libs/h2-${_h2_ver}.jar org.h2.tools.Server -webPort ${_port} -ifNotExists -baseDir "${_baseDir}"
 }
 
+# TODO: backup function with:
+#java -cp h2-1.4.200.jar org.h2.tools.Script -url jdbc:h2:/<path-to-old-db-file>/<DB-name> -user <username> -password <password> -script backup.zip -options compression zip
+
+#SELECT TABLE_SCHEMA, TABLE_NAME, ROW_COUNT_ESTIMATE FROM INFORMATION_SCHEMA.TABLES WHERE ROW_COUNT_ESTIMATE > 0 ORDER BY ROW_COUNT_ESTIMATE DESC;
+
+#f_h2_shell ./ods.h2.db "SCRIPT TO 'db-dump.sql' TABLE <tablename1>, <tablename2>...
+# CALL CSVWRITE('./conan_conan-center-proxy.csv', '')
 function f_h2_shell() {
     local _db_file="${1}"
     local _query_file="${2}"
     local _Xmx="${3:-"2g"}"
+    local _opts="${4-"${_H2_DB_OPTS:-";DATABASE_TO_UPPER=FALSE;SCHEMA=insight_brain_ods;IFEXISTS=true;MV_STORE=FALSE"}"}"
     local _h2_ver="1.4.200" # or 1.4.196 for IQ
     _db_file="$(realpath ${_db_file})"
     # DB_CLOSE_ON_EXIT=FALSE may have some bug: https://github.com/h2database/h2database/issues/1259
     # IGNORECASE=TRUE for case insensitive column value
-    local _url="jdbc:h2:${_db_file%%.*};DATABASE_TO_UPPER=FALSE;SCHEMA=insight_brain_ods;IFEXISTS=true;MV_STORE=FALSE"
+    local _url="jdbc:h2:${_db_file%%.*}${_opts}"
     if [ -s "${_query_file}" ]; then
-        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-${_h2_ver}.jar org.h2.tools.RunScript -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver -script "${_query_file}"
+        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/libs/h2-${_h2_ver}.jar org.h2.tools.RunScript -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver -script "${_query_file}"
     elif [ -n "${_query_file}" ]; then  # probably SQL statement
-        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-${_h2_ver}.jar org.h2.tools.RunScript -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver -script <(echo "${_query_file}")
+        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/libs/h2-${_h2_ver}.jar org.h2.tools.RunScript -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver -script <(echo "${_query_file}")
     else
-        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/external-libs/h2-${_h2_ver}.jar org.h2.tools.Shell -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver
+        java -Xmx${_Xmx} -cp $HOME/IdeaProjects/libs/h2-${_h2_ver}.jar org.h2.tools.Shell -url "${_url};TRACE_LEVEL_SYSTEM_OUT=2" -user sa -password "" -driver org.h2.Driver
     fi
 }
 
