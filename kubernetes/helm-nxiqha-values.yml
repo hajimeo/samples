@@ -1,0 +1,611 @@
+# Default values for nexus-iq-server-ha.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Nexus IQ Server HA configuration
+iq_server:
+  # Sonatype official public image
+  imageRegistry: # Container image registry, if not specified the Docker public registry will be used
+  image: "sonatype/nexus-iq-server"
+  tag: "1.153.0"
+  imagePullPolicy: "IfNotPresent"
+
+  # We usually recommend not to specify default resources and to leave this as a conscious choice for the user.
+  # This also increases the chance that the chart runs on environments with little resources.
+  # The commented values below are the minimum recommended resources for production.
+  resources:
+    requests:
+      cpu: 2
+      memory: 4G
+    limits:
+      cpu: 2
+      memory: 4G
+
+  # Value for the JAVA_OPTS environment variable to pass custom settings to the JVM
+  javaOpts:
+
+  # Product license
+  # One of these can be set to automatically install a product license
+  license: /var/tmp/share/sonatype/sonatype-license.lic
+  # The name of an existing Kubernetes secret containing a license_lic key with a value of the base64 encoding of your
+  # product license file content
+  licenseSecret:
+
+  # Git SSH configuration for Source Control
+  # One of these can be set to automatically install the SSH private key for Git SSH operations
+  sshPrivateKey: # Path to your SSH private key file
+  # The name of an existing Kubernetes secret containing an id_rsa key with a value of the base64 encoding of
+  # your SSH private key file content
+  sshPrivateKeySecret:
+  # One of these can be set to automatically install the known hosts for Git SSH operations
+  sshKnownHosts: # Path to your known SSH hosts file in the correct format, see: https://manpages.ubuntu.com/manpages/kinetic/en/man8/sshd.8.html#ssh_known_hosts%20file%20format
+  # The name of an existing Kubernetes secret containing a known_hosts key with a value of the base64 encoding of
+  # your known hosts file content
+  sshKnownHostsSecret:
+
+  # Database (PostgreSQL 10.7 or newer or a PostgreSQL-compatible service)
+  database:
+    hostname: "192.168.1.31"
+    port: 5432
+    name: "iqha"
+    username: "iqha"
+    # One of these can be set to hold the database password
+    password: "iqha"
+    # The name of an existing Kubernetes secret containing a password key with a value of the base64 encoding of your
+    # password
+    passwordSecret:
+
+  # Shared file system
+  persistence:
+    # Set this to use an existing PV (no PV will be created)
+    existingPersistentVolumeName:
+    # Set this to use an existing PVC (no PV or PVC will be created)
+    existingPersistentVolumeClaimName:
+    # If creating a PV, use this name
+    persistentVolumeName: "iq-server-pv"
+    # If creating a PVC, use this name
+    persistentVolumeClaimName: "iq-server-pvc"
+    # Prevent the PV from being deleted
+    persistentVolumeRetainPolicy: "keep"
+    # Prevent the PVC from being deleted
+    persistentVolumeClaimRetainPolicy: "keep"
+    # Storage capacity for PV/PVC to provision/request
+    size: "1Gi"
+    # Storage class for PV/PVC (empty disables dynamic provisioning)
+    storageClassName: "nfs-client"
+    # Access mode for PV/PVC (should correspond to the volume type)
+    accessModes:
+      - ReadWriteMany
+    # Volume type
+    # Whichever one has all required parameters set will be used
+    # If this applies to multiple, then one will be selected in the preference order of csi then nfs
+    #csi:
+    #  driver:
+    #  fsType:
+    #  volumeHandle:
+    nfs:
+      server: "192.168.1.31"
+      path: "/var/tmp/share/sonatype/nxiqha"
+
+  # The service account to use to run the pods/job
+  serviceAccountName: "default"
+
+  # How the service is exposed
+  serviceType: "ClusterIP"
+  # Annotations for the application service
+  applicationServiceAnnotations:
+  # Annotations for the admin service
+  adminServiceAnnotations:
+
+  # Number of pods to run
+  replicas: 2
+  
+  # One of these can be set to hold the initial admin password
+  initialAdminPassword: "admin123" # Plaintext password
+  # The name of an existing Kubernetes secret containing a password key with a value of the base64 encoding of your
+  # password
+  initialAdminPasswordSecret:
+  
+  # Configures the readiness probe for each pod
+  readinessProbe:
+    initialDelaySeconds: 45
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 4
+  # Configures the liveness probe for each pod
+  livenessProbe:
+    initialDelaySeconds: 180
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  # fluentd sidecar forwarder
+  # Enabled to forward logs to the fluentd daemonset aggregator
+  fluentd:
+    forwarder:
+      enabled: true
+
+  # The full text of the config.yml file that will be passed to each Nexus IQ Server
+  # Note that log formats must correspond to what the fluentd sidecar configuration is set to recognize
+  config:
+    sonatypeWork: "/sonatype-work/clm-server"
+    clusterDirectory: "/sonatype-work/clm-cluster"
+    database:
+      type: "postgresql"
+      # Pickup database settings from environment variables
+      hostname: ${NXIQ_DATABASE_HOSTNAME}
+      port: ${NXIQ_DATABASE_PORT}
+      name: ${NXIQ_DATABASE_NAME}
+      username: ${NXIQ_DATABASE_USERNAME}
+      password: ${NXIQ_DATABASE_PASSWORD}
+    # Pickup product license path from an environment variable
+    licenseFile: ${NXIQ_LICENSE_FILE}
+    server:
+      applicationContextPath: /
+      applicationConnectors:
+        - type: http
+          port: 8070
+      adminContextPath: /
+      adminConnectors:
+        - type: http
+          port: 8071
+      requestLog:
+        appenders:
+          - type: console
+            logFormat: "%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime \"%header{User-Agent}\""
+          - type: file
+            currentLogFilename: "/var/log/nexus-iq-server/request.log"
+            logFormat: "%clientHost %l %user [%date] \"%requestURL\" %statusCode %bytesSent %elapsedTime \"%header{User-Agent}\""
+            archivedLogFilenamePattern: "/var/log/nexus-iq-server/request-%d.log.gz"
+            archivedFileCount: 50
+    logging:
+      level: DEBUG
+      loggers:
+        "com.sonatype.insight.scan": INFO
+        "eu.medsea.mimeutil.MimeUtil2": INFO
+        "org.apache.http": INFO
+        "org.apache.http.wire": ERROR
+        "org.apache.shiro.web.filter.authc.BasicHttpAuthenticationFilter": INFO
+        "org.eclipse.birt.report.engine.layout.pdf.font.FontConfigReader": WARN
+        "org.eclipse.jetty": INFO
+        "org.postgresql.jdbc.PgConnection": INFO
+        "org.quartz": INFO
+        "org.zeroturnaround.exec": INFO
+        "com.networknt.schema": OFF
+        "com.sonatype.insight.audit":
+          appenders:
+            - type: console
+            - type: file
+              currentLogFilename: "/var/log/nexus-iq-server/audit.log"
+              archivedLogFilenamePattern: "/var/log/nexus-iq-server/audit-%d.log.gz"
+              archivedFileCount: 50
+        "com.sonatype.insight.policy.violation":
+          appenders:
+            - type: console
+            - type: file
+              currentLogFilename: "/var/log/nexus-iq-server/policy-violation.log"
+              archivedLogFilenamePattern: "/var/log/nexus-iq-server/policy-violation-%d.log.gz"
+              archivedFileCount: 50
+      appenders:
+        - type: console
+          threshold: ALL
+          logFormat: "%d{'yyyy-MM-dd HH:mm:ss,SSSZ'} %level [%thread] %X{username} %logger - %msg%n"
+        - type: file
+          threshold: ALL
+          logFormat: "%d{'yyyy-MM-dd HH:mm:ss,SSSZ'} %level [%thread] %X{username} %logger - %msg%n"
+          currentLogFilename: "/var/log/nexus-iq-server/clm-server.log"
+          archivedLogFilenamePattern: "/var/log/nexus-iq-server/clm-server-%d.log.gz"
+          archivedFileCount: 50
+    createSampleData: true
+
+# Load balancer
+ingress:
+  enabled: false
+  ingressClassName: nginx
+  pathType: Prefix
+  annotations:
+  # Optional parameter to set the application hostname
+  hostApplication:
+  # Optional parameter to set the application path
+  hostApplicationPath:
+  # Optional parameter to set the admin hostname
+  hostAdmin:
+  # Optional parameter to set the admin path
+  hostAdminPath:
+
+  # Optional parameters to set the certificate/key pair either by a secretName or directly for tls
+  # If not set, then nginx will use a default self-signed certificate
+  tls:
+    #- secretName:
+    #  certificate:
+    #  key:
+    #  hosts:
+# Ingress controller for Kubernetes using nginx as a reverse-proxy and load balancer
+ingress-nginx:
+  enabled: false
+  controller:
+    config:
+      # Set to try the next server on various errors/timeouts
+      proxy-next-upstream: "error timeout invalid_header http_500 http_502 http_503 http_504"
+      # Set to 0 to allow an unlimited maximum body size
+      proxy-body-size: "0"
+    extraArgs:
+      default-ssl-certificate: "$(POD_NAMESPACE)/$(INGRESS_SECRET_NAME)"
+    extraEnvs:
+      - name: INGRESS_SECRET_NAME
+        valueFrom:
+          configMapKeyRef:
+            name: ingress-configmap
+            key: INGRESS_SECRET_NAME
+# external-dns configuration
+externalDns:
+  enabled: false
+  args:
+    - --provider=aws
+    - --policy=upsert-only
+    - --source=service
+    - --source=ingress
+    - --registry=txt
+    - --txt-owner-id={{ .Release.Name }}-external-dns
+
+# Service account creation/configuration
+serviceAccount:
+  create: false
+  labels:
+  annotations:
+  automountServiceAccountToken: false
+
+# AWS configuration
+# Secrets
+secret:
+  # ARN storing the initial admin password in an initial_admin_password key
+  arn:
+  license:
+    # ARN storing the binary content of Nexus IQ Server license
+    arn:
+  rds:
+    # ARN storing the host, port, (database) name, username, and password properties with their respective values
+    arn:
+  sshPrivateKey:
+    # ARN storing the binary content of your SSH private key file for use with ssh git operations
+    arn:
+  sshKnownHosts:
+    # ARN storing the binary content of your known_hosts file for use with ssh git operations
+    arn:
+# Cloudwatch (requires the fluentd service account or EKS worker nodes to have correct permissions)
+cloudwatch:
+  enabled: false
+  region:
+  logGroupName:
+  logStreamName:
+# Configuration for an existing externally managed application load balancer target groups
+existingApplicationLoadBalancer:
+  applicationTargetGroupARN:
+  adminTargetGroupARN:
+
+# Aggregate log file retention configuration
+aggregateLogFileRetention:
+  # Cron schedule expression for when to delete old aggregate log files if needed
+  deleteCron: "0 1 * * *"
+  # Maximum last modified time of an aggregate log file in days (0 disables deletion)
+  maxLastModifiedDays: 50
+
+# fluentd configuration
+fluentd:
+  enabled: true
+  config:
+    # Configuration for sidecar forwarder
+    # Note that source parsing formats must correspond to the Nexus IQ Server log formats
+    sidecar_forwarder:
+      # Ignore fluentd own events
+      - match:
+          $tag: fluent.**
+          $type: "null"
+      # HTTP input for the liveness and readiness probes
+      - source:
+          $type: http
+          port: 9880
+      # Throw the healthcheck to the standard output instead of forwarding it
+      - match:
+          $tag: fluent.healthcheck
+          $type: stdout
+      # Get the request log
+      - source:
+          $type: tail
+          path: /var/log/nexus-iq-server/request.log
+          pos_file: /opt/bitnami/fluentd/logs/buffers/request.pos
+          tag: iq_server.request
+          read_from_head: true
+          parse:
+            $type: regexp
+            expression: /^(?<host>[^ ]*) (?<ident>[^ ]*) (?<authuser>[^ ]*) \[(?<logtime>[^\]]*)\] "(?<method>[^ ]*) (?<path>[^ ]*) (?<protocol>[^"]*)" (?<status>[^ ]*) (?<bytes>[^ ]*) (?<time>[^ ]*) "(?<userAgent>[^"]*)"$/
+            time_key: logtime
+            time_format: "%d/%b/%Y:%H:%M:%S %z"
+            types: "status:integer,bytes:integer,time:integer"
+      # Get the audit log
+      - source:
+          $type: tail
+          path: /var/log/nexus-iq-server/audit.log
+          pos_file: /opt/bitnami/fluentd/logs/buffers/audit.pos
+          tag: iq_server.audit
+          read_from_head: true
+          parse:
+            $type: json
+            time_type: mixed
+            time_key: timestamp
+            time_format: "%Y-%m-%dT%H:%M:%S.%L%z"
+            time_format_fallbacks: "%Y-%m-%dT%H:%M:%S.%LZ"
+      # Get the policy violation log
+      - source:
+          $type: tail
+          path: /var/log/nexus-iq-server/policy-violation.log
+          pos_file: /opt/bitnami/fluentd/logs/buffers/policy-violation.pos
+          tag: iq_server.policy-violation
+          read_from_head: true
+          parse:
+            $type: json
+            time_type: mixed
+            time_key: eventTimestamp
+            time_format: "%Y-%m-%dT%H:%M:%S.%L%z"
+            time_format_fallbacks: "%Y-%m-%dT%H:%M:%S.%LZ"
+      # Get the server log
+      - source:
+          $type: tail
+          path: /var/log/nexus-iq-server/clm-server.log
+          pos_file: /opt/bitnami/fluentd/logs/buffers/clm-server.pos
+          tag: iq_server.clm-server
+          read_from_head: true
+          parse:
+            $type: regexp
+            expression: /^((?<logtime>[^ ]* [^ ]*) (?<level>[^ ]*) \[(?<thread>[^\]]*)\] (?<username>[^ ]*) (?<logger>[^ ]*) - (?<message>.*))|(?<message>.*)$/
+            time_key: logtime
+            time_format: "%Y-%m-%d %H:%M:%S,%L%z"
+      # Get the stderr log
+      - source:
+          $type: tail
+          path: /var/log/nexus-iq-server/stderr.log
+          pos_file: /opt/bitnami/fluentd/logs/buffers/stderr.pos
+          tag: iq_server.stderr
+          read_from_head: true
+          parse:
+            $type: none
+      # Enrich with kubernetes metadata
+      - filter:
+          $tag: "**"
+          $type: record_transformer
+          record:
+            hostname: ${HOSTNAME}
+      # Forward all logs to the aggregator
+      - match:
+          $tag: "**"
+          $type: forward
+          server:
+            host: "{{ .Release.Name }}-fluentd-aggregator"
+            port: 24224
+          buffer:
+            $type: file
+            path: /opt/bitnami/fluentd/logs/buffers/logs.buffer
+            flush_thread_count: 2
+            flush_interval: 5s
+    # Configuration for daemonset aggregator
+    aggregator:
+      # Ignore fluentd own events
+      - match:
+          $tag: fluent.**
+          $type: "null"
+      # HTTP input for the liveness and readiness probes
+      - source:
+          $type: http
+          port: 9880
+      # Throw the healthcheck to the standard output instead of forwarding it
+      - match:
+          $tag: fluent.healthcheck
+          $type: stdout
+      # TCP input to receive logs from
+      - source:
+          $type: forward
+          port: 24224
+      # Send the aggregated request log to a file
+      - match:
+          $tag: "iq_server.request"
+          $type: copy
+          store:
+            - $type: stdout
+            - $type: file
+              path: /opt/bitnami/fluentd/logs/nexus-iq-server/request
+              append: true
+              format:
+                $type: json
+              inject:
+                time_key: time
+                time_type: string
+                time_format: "%Y-%m-%dT%H:%M:%S.%NZ"
+                tag_key: fluentd_tag
+              buffer:
+                $type: file
+                path: /opt/bitnami/fluentd/logs/buffers/request.buffer
+                flush_mode: interval
+                flush_thread_count: 2
+                flush_interval: 5s
+            - $type: "{{- if ((.Values.cloudwatch).enabled) }}cloudwatch_logs{{- else }}null{{- end }}"
+              log_group_name: ${LOG_GROUP_NAME}
+              log_stream_name: ${LOG_STREAM_NAME}
+              auto_create_stream: true
+              auto_create_group: true
+              remove_log_stream_name_key: true
+              region: ${REGION}
+      # Send the aggregated audit log to a file
+      - match:
+          $tag: "iq_server.audit"
+          $type: copy
+          store:
+            - $type: stdout
+            - $type: file
+              path: /opt/bitnami/fluentd/logs/nexus-iq-server/audit
+              append: true
+              format:
+                $type: json
+              inject:
+                time_key: time
+                time_type: string
+                time_format: "%Y-%m-%dT%H:%M:%S.%NZ"
+                tag_key: fluentd_tag
+              buffer:
+                $type: file
+                path: /opt/bitnami/fluentd/logs/buffers/audit.buffer
+                flush_mode: interval
+                flush_thread_count: 2
+                flush_interval: 5s
+            - $type: "{{- if ((.Values.cloudwatch).enabled) }}cloudwatch_logs{{- else }}null{{- end }}"
+              log_group_name: ${LOG_GROUP_NAME}
+              log_stream_name: ${LOG_STREAM_NAME}
+              auto_create_stream: true
+              auto_create_group: true
+              remove_log_stream_name_key: true
+              region: ${REGION}
+      # Send the aggregated policy violation log to a file
+      - match:
+          $tag: "iq_server.policy-violation"
+          $type: copy
+          store:
+            - $type: stdout
+            - $type: file
+              path: /opt/bitnami/fluentd/logs/nexus-iq-server/policy-violation
+              append: true
+              format:
+                $type: json
+              inject:
+                time_key: time
+                time_type: string
+                time_format: "%Y-%m-%dT%H:%M:%S.%NZ"
+                tag_key: fluentd_tag
+              buffer:
+                $type: file
+                path: /opt/bitnami/fluentd/logs/buffers/policy-violation.buffer
+                flush_mode: interval
+                flush_thread_count: 2
+                flush_interval: 5s
+            - $type: "{{- if ((.Values.cloudwatch).enabled) }}cloudwatch_logs{{- else }}null{{- end }}"
+              log_group_name: ${LOG_GROUP_NAME}
+              log_stream_name: ${LOG_STREAM_NAME}
+              auto_create_stream: true
+              auto_create_group: true
+              remove_log_stream_name_key: true
+              region: ${REGION}
+      # Send the aggregated server log to a file
+      - match:
+          $tag: "iq_server.clm-server"
+          $type: copy
+          store:
+            - $type: stdout
+            - $type: file
+              path: /opt/bitnami/fluentd/logs/nexus-iq-server/clm-server
+              append: true
+              format:
+                $type: json
+              inject:
+                time_key: time
+                time_type: string
+                time_format: "%Y-%m-%dT%H:%M:%S.%NZ"
+                tag_key: fluentd_tag
+              buffer:
+                $type: file
+                path: /opt/bitnami/fluentd/logs/buffers/clm-server.buffer
+                flush_mode: interval
+                flush_thread_count: 2
+                flush_interval: 5s
+            - $type: "{{- if ((.Values.cloudwatch).enabled) }}cloudwatch_logs{{- else }}null{{- end }}"
+              log_group_name: ${LOG_GROUP_NAME}
+              log_stream_name: ${LOG_STREAM_NAME}
+              auto_create_stream: true
+              auto_create_group: true
+              remove_log_stream_name_key: true
+              region: ${REGION}
+      # Send the aggregated stderr log to a file
+      - match:
+          $tag: "iq_server.stderr"
+          $type: copy
+          store:
+            - $type: stdout
+            - $type: file
+              path: /opt/bitnami/fluentd/logs/nexus-iq-server/stderr
+              append: true
+              format:
+                $type: json
+              inject:
+                time_key: time
+                time_type: string
+                time_format: "%Y-%m-%dT%H:%M:%S.%NZ"
+                tag_key: fluentd_tag
+              buffer:
+                $type: file
+                path: /opt/bitnami/fluentd/logs/buffers/stderr.buffer
+                flush_mode: interval
+                flush_thread_count: 2
+                flush_interval: 5s
+            - $type: "{{- if ((.Values.cloudwatch).enabled) }}cloudwatch_logs{{- else }}null{{- end }}"
+              log_group_name: ${LOG_GROUP_NAME}
+              log_stream_name: ${LOG_STREAM_NAME}
+              auto_create_stream: true
+              auto_create_group: true
+              remove_log_stream_name_key: true
+              region: ${REGION}
+  # Configuration for daemonset forwarder
+  # The subchart enables this by default, but each Nexus IQ Server pod uses a sidecar forwarder, and so this is disabled
+  forwarder:
+    enabled: false
+    configFile: "fluentd.yaml"
+    configMap: "{{ .Release.Name }}-fluentd-daemonset-forwarder-configmap"
+  # Configuration for daemonset aggregator
+  aggregator:
+    enabled: true
+    configFile: "fluentd.yaml"
+    configMap: "{{ .Release.Name }}-fluentd-aggregator-configmap"
+    extraVolumes:
+      - name: "iq-server-pod-volume"
+        persistentVolumeClaim:
+          claimName: "iq-server-pvc"
+    extraVolumeMounts:
+      - name: "iq-server-pod-volume"
+        mountPath: "/opt/bitnami/fluentd/logs/nexus-iq-server"
+        subPath: log
+    extraEnvVars:
+      - name: REGION
+        valueFrom:
+          configMapKeyRef:
+            name: cloudwatch
+            key: region
+            optional: true
+      - name: LOG_GROUP_NAME
+        valueFrom:
+          configMapKeyRef:
+            name: cloudwatch
+            key: logGroupName
+            optional: true
+      - name: LOG_STREAM_NAME
+        valueFrom:
+          configMapKeyRef:
+            name: cloudwatch
+            key: logStreamName
+            optional: true
+    podSecurityContext:
+      enabled: true
+      runAsUser: 1000
+      runAsGroup: 0
+      fsGroup: 0
+    containerSecurityContext:
+      enabled: true
+      allowPrivilegeEscalation: true
+      readOnlyRootFilesystem: false
+      privileged: true
+    initContainers:
+      - name: "{{ .Release.Name }}-set-fluentd-persistence-ownership"
+        image: busybox:1.28
+        command: [ "sh", "-c", "chown -R 1000:1000 /opt/bitnami/fluentd/logs/nexus-iq-server" ]
+        volumeMounts:
+          - mountPath: "/opt/bitnami/fluentd/logs/nexus-iq-server"
+            name: "iq-server-pod-volume"
+            subPath: log
+    initScripts:
+      # Plugin which can be configured to send logs to CloudWatch
+      plugins.sh: "fluent-gem install fluent-plugin-cloudwatch-logs"
