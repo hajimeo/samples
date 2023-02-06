@@ -152,7 +152,7 @@ function _postgresql_configure() {
 }
 
 function _postgresql_create_dbuser() {
-    local __doc__="Create DB user/role and database/schema. Need to run from the PostgreSQL server (localhost)"
+    local __doc__="Create DB user/role and database/schema and update pg_hba.conf. Need to run from the PostgreSQL server (localhost)"
     local _dbusr="${1}"
     local _dbpwd="${2:-"${_dbusr}"}"
     local _dbname="${3-"${_dbusr}"}"    # accept "" (empty string), then 'all' database is allowed
@@ -187,6 +187,7 @@ function _postgresql_create_dbuser() {
 }
 
 function _postgresql_create_role_and_db() {
+    local __doc__="Create DB user/role and database/schema (no pg_hba.conf update)"
     local _dbusr="${1}" # new DB user
     local _dbpwd="${2:-"${_dbusr}"}"
     local _dbname="${3-"${_dbusr}"}"    # If explicitly "", not creating DB but user/role only
