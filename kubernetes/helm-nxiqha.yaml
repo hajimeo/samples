@@ -402,6 +402,29 @@ data:
           type: file
     sonatypeWork: /sonatype-work/clm-server
 ---
+# Source: nexus-iq-server-ha/templates/iq-server-pv.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: iq-server-pv
+  annotations:
+    "helm.sh/resource-policy": keep
+spec:
+  volumeMode: Filesystem
+  storageClassName: nfs-client
+  persistentVolumeReclaimPolicy: Retain
+  claimRef:
+    namespace: sonatype-ha
+    name: iq-server-pvc
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  nfs:
+    readOnly: false
+    server: 192.168.1.31
+    path: /var/tmp/share/sonatype/nxiqha
+---
 # Source: nexus-iq-server-ha/templates/iq-server-pvc.yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -411,7 +434,7 @@ metadata:
     "helm.sh/resource-policy": keep
 spec:
   volumeMode: Filesystem
-  storageClassName: microk8s-hostpath
+  storageClassName: nfs-client
   accessModes:
     - ReadWriteMany
   volumeName: iq-server-pv
@@ -432,6 +455,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: aggregator
     app: aggregator
+  annotations:
 spec:
   type: ClusterIP
   clusterIP: None
@@ -464,6 +488,7 @@ metadata:
     app.kubernetes.io/managed-by: Helm
     app.kubernetes.io/component: aggregator
     app: aggregator
+  annotations:
 spec:
   type: ClusterIP
   sessionAffinity: None
@@ -556,11 +581,11 @@ spec:
           imagePullPolicy: IfNotPresent
           resources:
             requests:
-              cpu: '2'
-              memory: '4G'
+              cpu: 2
+              memory: 4G
             limits:
-              cpu: '2'
-              memory: '4G'
+              cpu: 2
+              memory: 4G
           ports:
             - containerPort: 8070
               name: application-0
@@ -671,6 +696,7 @@ metadata:
     app.kubernetes.io/component: aggregator
     ## Istio Labels: https://istio.io/docs/ops/deployment/requirements/
     app: aggregator
+  annotations:
 spec:
   selector:
     matchLabels:
@@ -678,6 +704,7 @@ spec:
       app.kubernetes.io/instance: nxiqha
       app.kubernetes.io/component: aggregator
   serviceName: nxiqha-fluentd-headless
+  podManagementPolicy: 
   replicas: 1
   updateStrategy:
     type: RollingUpdate
@@ -700,6 +727,8 @@ spec:
         runAsGroup: 0
         runAsUser: 1000
       affinity:
+        podAffinity:
+          
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
             - podAffinityTerm:
@@ -710,7 +739,8 @@ spec:
                     app.kubernetes.io/component: aggregator
                 topologyKey: kubernetes.io/hostname
               weight: 1
-
+        nodeAffinity:
+          
       initContainers:
         - command:
           - sh
@@ -760,6 +790,7 @@ spec:
                   key: logStreamName
                   name: cloudwatch
                   optional: true
+          envFrom:
           resources:
             limits: {}
             requests: {}
