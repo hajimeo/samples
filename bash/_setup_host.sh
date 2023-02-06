@@ -1159,8 +1159,9 @@ function f_microk8s() {
 
     microk8s helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
     microk8s helm3 search repo iq
+    microk8s helm3 lint <dir/to/Chart.yaml>         # To check formatting
     # after creating the namespace 'sonatype'
-    microk8s helm3 install --debug nxiq helm-sonatype-proxy/nexus-iq-server -n sonatype -f ./helm-iq-values.yml
+    microk8s helm3 install --dry-run --debug nxiq helm-sonatype-proxy/nexus-iq-server -n sonatype -f ./helm-iq-values.yml
     microk8s helm upgrade --debug nexus-iq-server-1645669212 sonatype/nexus-iq-server -n default --reset-values --dry-run
     microk8s helm3 install --debug nxrm3 helm-sonatype-proxy/nexus-repository-manager -n sonatype
     microk8s helm3 uninstall nxrm3     # to delete everything
