@@ -544,7 +544,7 @@ kind: Deployment
 metadata:
   name: nxiqha-iq-server-deployment
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       name: nxiqha-iq-server

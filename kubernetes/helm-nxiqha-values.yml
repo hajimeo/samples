@@ -1,3 +1,5 @@
+# helm template -n sonatype-ha nxiqha -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml . >~/IdeaProjects/samples/kubernetes/helm-nxiqha.yaml
+
 # Default values for nexus-iq-server-ha.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
