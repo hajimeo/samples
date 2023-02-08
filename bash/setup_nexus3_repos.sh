@@ -365,7 +365,6 @@ function f_populate_docker_hosted() {
     done
 
     # NOTE: docker build -f does not work (bug?)
-    local _cwd="$(pwd)"
     local _build_dir="${HOME%/}/${FUNCNAME}_build_tmp_dir_$(date +'%Y%m%d%H%M%S')"  # /tmp or /var/tmp fails on Ubuntu
     if [ ! -d "${_build_dir%/}" ]; then
         mkdir -v -p ${_build_dir} || return $?
@@ -377,8 +376,13 @@ function f_populate_docker_hosted() {
         _build_str="${_build_str}\nRUN echo 'Adding layer ${i} for ${_tag_to}' > /var/tmp/layer_${i}"
     done
     echo -e "${_build_str}" > Dockerfile
-    ${_cmd} build --rm -t ${_tag_to} . || return $?
-    cd "${_cwd}" && mv -v ${_build_dir} ${_TMP%/}/
+    ${_cmd} build --rm -t ${_tag_to} .
+    local _rc=$?
+    cd -  && mv -v ${_build_dir} ${_TMP%/}/
+    if [ ${_rc} -ne 0 ]; then
+        _log "ERROR" "'${_cmd} build --rm -t ${_tag_to} .' failed (${_rc}, ${_TMP%/}/${_build_dir})"
+        return ${_rc}
+    fi
     # It seems newer docker appends "localhost/" so trying this one first.
     if ! ${_cmd} tag localhost/${_tag_to} ${_host_port}/${_tag_to} 2>/dev/null; then
         ${_cmd} tag ${_tag_to} ${_host_port}/${_tag_to} || return $?
