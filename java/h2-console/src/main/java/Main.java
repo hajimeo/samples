@@ -1,4 +1,4 @@
-import com.google.gson.Gson;
+import org.h2.jdbc.JdbcSQLException;
 import org.json.JSONObject;
 import org.jline.reader.*;
 import org.jline.reader.impl.DefaultHighlighter;
@@ -24,15 +24,15 @@ public class Main {
     static private Terminal terminal;
     static private History history;
     static private String historyPath;
-    static private String paging = "";
-    static private int pageCount = 1;
-    static private String ridName = "_rowid_";
+    static private int paging = 0;
+    static private int pageCount = 0;
+    static private int offset = 0;
+    static private String ridName = "_ROWID_";
     static private int lastRows = 0;
     static private String lastRid = "0";
     static private String dbUser = "sa";
     static private String dbPwd = "";
     static private Boolean isDebug;
-    private static final Gson gson = new Gson();
     private static Connection conn;
     private static Statement stat;
 
@@ -41,6 +41,8 @@ public class Main {
 
     public static final Pattern describeNamePtn =
             Pattern.compile("(info|describe|desc) (table|class|index) ([^;]+)", Pattern.CASE_INSENSITIVE);
+    public static final Pattern setPagingPtn =
+            Pattern.compile("(set) (page|paging|offset) ([0-9]+)", Pattern.CASE_INSENSITIVE);
 
     private static void usage() {
         System.err.println("https://github.com/hajimeo/samples/blob/master/java/h2-console/README.md");
@@ -62,26 +64,34 @@ public class Main {
     }
 
     // TODO: changing to List<?> breaks toJSON()
-    private static void printRsAsJson(ResultSet rs, boolean isPaging) throws SQLException {
+    private static int printRsAsJson(ResultSet rs, boolean isPaging) throws SQLException {
         ResultSetMetaData meta = rs.getMetaData();
-        lastRows = rs.getFetchSize();
         //int longestLabel = 0;
         int colLen = meta.getColumnCount();
-        String[] columns = new String[colLen];
+        List columns = new ArrayList();
         for (int i = 0; i < colLen; i++) {
             String s = meta.getColumnLabel(i + 1);
-            columns[i] = s;
+            columns.add(s);
             //longestLabel = Math.max(longestLabel, s.length());
         }
+        log("Columns: " + columns, isDebug);
 
-        if (!isPaging) {
+        if (pageCount == 0) {
             terminal.writer().print("\n[");
         }
         int rowCount = 0;
+        log("FetchSize = "+rs.getFetchSize(), isDebug);
         while (rs.next()) {
+            if (columns.contains(ridName.toUpperCase())) {
+                lastRid = rs.getObject(ridName.toUpperCase()).toString();
+            }
+            else if (columns.contains(ridName.toLowerCase())) {
+                lastRid = rs.getObject(ridName.toLowerCase()).toString();
+            }
+            else
             terminal.writer().print("\n  ");
             // Not first row
-            if (rowCount > 1) {
+            if (rowCount > 0) {
                 terminal.writer().print(",");
             }
             rowCount++;
@@ -89,89 +99,106 @@ public class Main {
 
             try {
                 for (int i = 0; i < colLen; i++) {
-                    String label = columns[i];
-                    if (i == 0) {
-                        lastRid = rs.getRowId(label).toString();
-                        obj.put(ridName, lastRid);
-                    }
+                    String label = (String) columns.get(i);
                     obj.put(label, rs.getObject(label));
                 }
-                terminal.writer().println(gson.toJson(obj));
+                terminal.writer().print(obj.toString());
             } catch (Exception e) {
-                System.err.println("ERROR: printing result failed (lastRid = " + lastRid + ") with " + e.getMessage());
-                //e.printStackTrace();
+                log("WARN: printing result failed (lastRid = " + lastRid + ") Exception: " + e.getMessage());
+                e.printStackTrace();
             }
             terminal.flush();
         }
-        if (!isPaging) {
-            terminal.writer().println("]");
+        if (!isPaging || rowCount < paging) {
+            terminal.writer().println("\n]");
         }
         // TODO: not working?  and not organised properly
         terminal.flush();
+        return rowCount;
     }
 
     private static void execQueries(String input) {
         String[] queries = input.split(";");
+        //boolean needHistoryReload = false;
         for (String q : queries) {
             if (q == null || q.trim().isEmpty()) {
                 continue;
             }
 
             Instant start = Instant.now();
+            pageCount = 0;
+            int fetchedRows = 0;
+
             try {
                 boolean isPaging = false;
-                if (paging != null && paging.trim().length() > 0 && q.toLowerCase().startsWith("select ")) {
+                if (paging > 0 && q.toLowerCase().startsWith("select ")) {
                     // TODO: expecting H2 'OFFSET' would work with 'order by' and limit?
                     //if (q.toLowerCase().contains(" order by ") || q.toLowerCase().contains(" limit ")) {
-                    //    log("\nERROR: 'paging' is given but query contains 'order by' or 'limit'.");
+                    //    log("ERROR: 'paging' is given but query contains 'order by' or 'limit'.");
                     //    continue;
                     //}
                     if (q.toLowerCase().contains(" offset ")) {
                         log("\nWARN: 'paging' is given but query contains 'offset'. Skipping this query: " + q);
                         continue;
                     }
+                    if (q.toLowerCase().contains(" limit ")) {
+                        log("\nWARN: 'paging' is given but query contains 'limit'. Skipping this query: " + q);
+                        continue;
+                    }
                     log("\nINFO: pagination is enabled with paging size:" + paging + "");
                     isPaging = true;
                 }
 
-                execQuery(q, isPaging);
-                while (isPaging && lastRows > 0) {
+                fetchedRows = execQuery(q, isPaging);
+                while (isPaging && lastRows >= paging) {
                     pageCount += 1;
-                    log("Fetching page:" + pageCount + " with lastRows:" + lastRows + " | lastRid:" + lastRid);
-                    execQuery(q, isPaging);
+                    fetchedRows += execQuery(q, isPaging);
+                    System.out.println();
+                    log("Fetched page:" + pageCount + " with paging:" + paging + " | lastRid:" + lastRid);
                 }
                 // Catch ignorable exceptions in here
-            } catch (ClassCastException e) {
+            } catch (java.lang.RuntimeException e) {
                 System.err.println(e.getMessage());
-                e.printStackTrace();
+                //removeLineFromHistory(q);
+                //needHistoryReload = true;
             } finally {
                 Instant finish = Instant.now();
                 long timeElapsed = Duration.between(start, finish).toMillis();
-                System.err.printf("Elapsed: %d ms\n", timeElapsed);
+                System.err.printf("\nElapsed: %d ms  Rows: %d\n", timeElapsed, fetchedRows);
             }
         }
     }
 
-    private static void execQuery(String query, boolean isPaging) {
+    private static int execQuery(String query, boolean isPaging) {
         if (isPaging) {
-            if (query.toLowerCase().contains(" offset ")) {
+            if (!query.toLowerCase().contains(" " + ridName + " ")) {
+                query = query.replaceAll("^(?i)SELECT ", "SELECT " + ridName + ", ");
+            }
+            if (query.toLowerCase().contains(" limit ")) {
                 // Probably below doesn't work well but anyway trying
                 query = query.replaceAll(" (?i)limit ", " LIMIT " + paging + "");
             } else {
                 query += " LIMIT " + paging;
             }
-            query += " OFFSET " + lastRows;
+            query += " OFFSET " + (pageCount * paging + offset);
+            log(query, isDebug);
         }
 
         try {
             ResultSet rs;
             if (stat.execute(query)) {
                 rs = stat.getResultSet();
-                printRsAsJson(rs, isPaging);
+                lastRows = printRsAsJson(rs, isPaging);
             } else {
-                int updateCount = stat.getUpdateCount();
-                System.err.printf("Rows: %d, ", updateCount);
+                lastRows = stat.getUpdateCount();
             }
+            return lastRows;
+        } catch (JdbcSQLException e) {
+            if (e.getMessage().contains("corrupted while reading record")) {
+                System.out.println();
+                log("ERROR: '" + query + "' failed with " + e.getMessage() + "(" + lastRid + ")");
+            }
+            throw new RuntimeException(e);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -226,13 +253,47 @@ public class Main {
         if (input.toLowerCase().startsWith("set autocommit true")) {
             log(input, isDebug);
             conn.setAutoCommit(true);
-            System.err.print("OK");
+            System.err.println("OK.");
             return true;
         }
         if (input.toLowerCase().startsWith("set autocommit false")) {
             log(input, isDebug);
             conn.setAutoCommit(false);
-            System.err.print("OK");
+            System.err.println("OK.");
+            return true;
+        }
+        if (input.toLowerCase().startsWith("set debug true")) {
+            isDebug = true;
+            System.err.println("OK. isDebug=" + isDebug);
+            return true;
+        }
+        if (input.toLowerCase().startsWith("set debug false")) {
+            isDebug = false;
+            System.err.println("OK. isDebug=" + isDebug);
+            return true;
+        }
+        if (input.toLowerCase().startsWith("set paging")) {
+            Matcher matcher = setPagingPtn.matcher(input);
+            if (matcher.find()) {
+                // Not in use as not sure how to do 'desc <non table>'
+                String pageSize = matcher.group(3);
+                if (pageSize != null && !pageSize.trim().isEmpty()) {
+                    paging = Integer.parseInt(pageSize);
+                }
+            }
+            System.err.println("OK. paging=" + paging);
+            return true;
+        }
+        if (input.toLowerCase().startsWith("set offset")) {
+            Matcher matcher = setPagingPtn.matcher(input);
+            if (matcher.find()) {
+                // Not in use as not sure how to do 'desc <non table>'
+                String offsetSize = matcher.group(3);
+                if (offsetSize != null && !offsetSize.trim().isEmpty()) {
+                    offset = Integer.parseInt(offsetSize);
+                }
+            }
+            System.err.println("OK. (start) offset=" + offset);
             return true;
         }
         if (input.toLowerCase().startsWith("describe table") || input.toLowerCase().startsWith("desc table") ||
@@ -270,8 +331,7 @@ public class Main {
                 }
                 input = reader.readLine(PROMPT);
             } catch (SQLException e) {
-                // User hit ctrl-C, just clear the current line and try again.
-                System.err.println(e.getMessage());
+                log(e.getMessage());
                 removeLineFromHistory(input);
                 history.load();
                 input = "";
@@ -291,19 +351,42 @@ public class Main {
         Set<String> wordSet = new HashSet<>(Arrays
                 .asList("CREATE", "SELECT FROM", "UPDATE", "INSERT INTO", "DELETE FROM", "FROM", "WHERE", "BETWEEN", "AND",
                         "DISTINCT", "DISTINCT", "LIKE", "LIMIT", "NOT"));
-        try (BufferedReader br = new BufferedReader(new InputStreamReader(Files.newInputStream(Paths.get(fileName))))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                StringTokenizer st = new StringTokenizer(line, " ,.;:\"");
-                while (st.hasMoreTokens()) {
-                    String w = st.nextToken();
-                    if (w.matches("^[a-zA-Z]*$")) {
-                        wordSet.add(w);
+        if (new File(fileName).isFile()) {
+            try (BufferedReader br = new BufferedReader(new InputStreamReader(Files.newInputStream(Paths.get(fileName))))) {
+                String line;
+                while ((line = br.readLine()) != null) {
+                    StringTokenizer st = new StringTokenizer(line, " ,.;:\"");
+                    while (st.hasMoreTokens()) {
+                        String w = st.nextToken();
+                        if (w.matches("^[a-zA-Z]*$")) {
+                            wordSet.add(w);
+                        }
                     }
                 }
+            } catch (IOException e) {
+                log(e.getMessage());
             }
-        } catch (IOException e) {
-            System.err.println(e.getMessage());
+        }
+
+        if (conn != null && stat != null) {
+            ResultSet rs;
+            try {
+                if (stat.execute("SELECT DISTINCT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE <> 'SYSTEM TABLE'")) {
+                    rs = stat.getResultSet();
+                    while (rs.next()) {
+                        wordSet.add(rs.getString(2));
+                        wordSet.add(rs.getString(1) + "." + rs.getString(2));
+                    }
+                }
+                if (stat.execute("SELECT DISTINCT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS")) {
+                    rs = stat.getResultSet();
+                    while (rs.next()) {
+                        wordSet.add(rs.getString(1));
+                    }
+                }
+            } catch (SQLException e) {
+                log(e.getMessage());
+            }
         }
         return wordSet;
     }
@@ -315,7 +398,7 @@ public class Main {
                 .build();
         history = new DefaultHistory();
         historyPath = System.getProperty("user.home") + "/.h2-console_history";
-        System.err.println("history path: " + historyPath);
+        System.err.println("# history path: " + historyPath);
         Set<String> words = genAutoCompWords(historyPath);
         LineReader lr = LineReaderBuilder.builder()
                 .terminal(terminal)
@@ -330,9 +413,9 @@ public class Main {
 
     private static void setGlobals() {
         isDebug = Boolean.getBoolean("debug");
-        paging = System.getProperty("paging", "");
+        paging = Integer.parseInt(System.getProperty("paging", "0"));
         log("paging       = " + paging, isDebug);
-        ridName = System.getProperty("ridName", "_rowid_");
+        ridName = System.getProperty("ridName", "_ROWID_");
         log("ridName      = " + ridName, isDebug);
         lastRid = System.getProperty("lastRid", "0");
         log("lastRid      = " + lastRid, isDebug);
@@ -369,6 +452,7 @@ public class Main {
             // Making sure auto commit is on as default
             conn.setAutoCommit(true);
             stat = conn.createStatement();
+            stat.setFetchSize(1000);
 
             System.err.println("# Type 'exit' or Ctrl+D to exit. Ctrl+C to cancel current query");
             readLineLoop(setupReader());
