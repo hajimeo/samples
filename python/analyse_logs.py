@@ -336,6 +336,27 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
 
     ju.display(ju.desc(), name="Available_Tables")
 
+def analyze_log_table(log_table_name, where_sql="", tail_num=10000):
+    # analyse t_logs table (eg: count ERROR|WARN)
+    display_name = "WarnsErrors_Hourly"
+    # UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1)
+    query = """SELECT substr(`date_time`, 1, 13) as date_hour, loglevel, count(*) as num 
+    FROM %s
+    %s
+      AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
+    GROUP BY 1, 2""" % (log_table_name, where_sql)
+    ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
+
+    # count unique threads per hour
+    display_name = "Unique_Threads_Hourly"
+    # TODO: should use UDF_REGEX("^([^-@]+)", thread, 1) as thread ?
+    query = """SELECT date_hour, count(*) as num 
+    FROM (SELECT distinct substr(`date_time`, 1, 13) as date_hour, thread 
+        FROM %s
+        %s
+    ) tt
+    GROUP BY 1""" % (log_table_name, where_sql)
+    ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
 
 def analyse_logs(path="", log_suffix=".log", tail_num=10000, max_file_size=(1024 * 1024 * 100), skip_etl=False, useHeaderContentLength=False):
     """
@@ -463,25 +484,7 @@ FROM t_iq_logs
     elif ju.exists("t_iq_logs"):
         log_table_name = "t_iq_logs"
     if bool(log_table_name):
-        # analyse t_logs table (eg: count ERROR|WARN)
-        display_name = "WarnsErrors_Hourly"
-        # UDF_REGEX('(\d\d\d\d-\d\d-\d\d.\d\d)', date_time, 1)
-        query = """SELECT substr(`date_time`, 1, 13) as date_hour, loglevel, count(*) as num 
-    FROM %s
-    %s
-      AND loglevel NOT IN ('TRACE', 'DEBUG', 'INFO')
-    GROUP BY 1, 2""" % (log_table_name, where_sql)
-        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
-
-        # count unique threads per hour
-        display_name = "Unique_Threads_Hourly"
-        query = """SELECT date_hour, count(*) as num 
-    FROM (SELECT distinct substr(`date_time`, 1, 13) as date_hour, thread 
-        FROM %s
-        %s
-    ) tt
-    GROUP BY 1""" % (log_table_name, where_sql)
-        ju.draw(ju.q(query).tail(tail_num), name=display_name, desc=query, is_x_col_datetime=False)
+        analyze_log_table(log_table_name, where_sql, tail_num)
 
     if ju.exists("t_nxrm_logs"):
         display_name = "Join_Requests_And_AppLog_For_TimeoutException"
