@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# DEPRECATED!!
+#
 # REQUIREMENTS:
 #   Assuming the asset-dupe-checker.jar was already used and fixed.
 #   java (v8), python3

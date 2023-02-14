@@ -691,7 +691,7 @@ public class Main
     }
 
     // Preparing data (extracting zip if necessary)
-    if (!path.startsWith("remote:") && !(new File(path)).isDirectory() && !(new File(path)).isDirectory()) {
+    if (!path.startsWith("remote:") && !(new File(path)).isDirectory()) {
       try {
         if (extractDir != null && !extractDir.trim().isEmpty()) {
           if (!prepareDir(extractDir, path)) {
@@ -753,6 +753,7 @@ public class Main
       e.printStackTrace();
     }
     finally {
+      log("Exiting.");
       // If not closing or proper shutdown, OrientDB rebuilds indexes at next connect...
       if (db != null) {
         db.close();
@@ -765,6 +766,5 @@ public class Main
         delR(tmpDir);
       }
     }
-    log("Exiting.");
   }
 }

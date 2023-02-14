@@ -1,5 +1,5 @@
 # Simple OrientDB client  
-Limitation: only standard and SELECT SQL statements. No "info classes" etc.
+Limitation: only standard and SELECT SQL statements. Most of OrientDB SQL commands may not work" ("info classes" etc.)
 
 ## Download the latest version:
 ```
@@ -30,7 +30,7 @@ java -jar ./orient-console.jar "remote:node-nxrm-ha1.standalone.localdomain/comp
 echo "SQL SELECT statement" | java -DexportPath=./result.json -jar orient-console.jar <directory path|.bak file path>
 
 # Pagenation for extreamly large result set
-echo "SIMPLE SELECT statement which returns so many rows" | java -DexportPath=./result_paged.json -Dpaging=10000 -jar orient-console.jar <directory path|.bak file path>
+echo "<*SIMPLE* SELECT statement which returns so many rows>" | java -DexportPath=./result_paged.json -Dpaging=10000 -jar orient-console.jar <directory path|.bak file path>
 ```
 
 ## TODOs:
