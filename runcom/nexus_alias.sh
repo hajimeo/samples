@@ -18,7 +18,7 @@ fi
 function _get_iq_url() {
     local _iq_url="${1:-${_IQ_URL}}"
     if [ -z "${_iq_url}" ]; then
-        for _url in "http://localhost:8070/" "https://nxiq-k8s.standalone.localdomain/" "http://dh1:8070/"; do
+        for _url in "http://localhost:8070/" "https://nxiqha-k8s.standalone.localdomain/" "https://nxiq-k8s.standalone.localdomain/" "http://dh1:8070/"; do
             if curl -f -s -I "${_url%/}/" &>/dev/null; then
                 echo "${_url%/}/"
                 return
@@ -222,7 +222,7 @@ function _prepare_install() {
 }
 
 # To install 2nd instance: _NXRM3_INSTALL_PORT=8082 _NXRM3_INSTALL_DIR=./nxrm_3.42.0-01_test nxrm3Install 3.42.0-01
-# To upgrade (from ${_dirname}/): tar -xvf ~/.nexus_executable_cache/nexus-3.42.0-01-mac.tgz
+# To upgrade (from ${_dirname}/): tar -xvf $HOME/.nexus_executable_cache/nexus-3.42.0-01-mac.tgz
 function nxrm3Install() {
     local _ver="$1" #3.40.1-01
     local _dbname="$2"  # If h2, use H2
@@ -522,7 +522,7 @@ function mvn-package() {
 : <<'EOF'
 mvn-arch-gen
 _REPO_URL="http://localhost:8081/repository/maven-snapshots/"
-l="-SNAPSHOT"
+_SNAPSHOT="-SNAPSHOT"
 #mvn-deploy "${_REPO_URL}" "" "nexus"
 for v in {1..3}; do
   for a in {1..3}; do
@@ -610,6 +610,7 @@ function mvn-upload() {
 }
 
 # Get one jar (file) by GAV
+alias mvn-get='mvn-get-file'
 function mvn-get-file() {
     local __doc__="It says mvn- but curl to get a single file with GAV."
     local _gav="${1:-"junit:junit:4.12"}"   # or org.yaml:snakeyaml:jar:1.23
@@ -634,7 +635,7 @@ function mvn-get-file() {
 }
 
 # mvn devendency:get wrapper to use remote repo
-function mvn-get() {
+function mvn-get-with-dep() {
     local __doc__="Wrapper of mvn dependency:get"
     # maven/mvn get/download
     local _gav="${1:-"junit:junit:4.12"}"
@@ -806,7 +807,7 @@ function nuget-get() {
 # 3. nxrm3Staging "raw-test-hosted" "raw-test-tag" "repository=raw-hosted&name=*test%2Fnxrm3Staging.txt"
 # ^ Tag is optional. Using "*" in name= as name|path in NewDB starts with "/"
 # With maven2:
-#   export _NEXUS_URL="https://nxrm3-pg-k8s.standalone.localdomain/"
+#   export _NEXUS_URL="https://nxrm3ha-k8s.standalone.localdomain/"
 #   mvn-upload "" "com.example:my-app-staging:1.0" "maven-hosted"
 #   nxrm3Staging "maven-releases" "maven-test-tag" "repository=maven-hosted&name=my-app-staging"
 function nxrm3Staging() {
