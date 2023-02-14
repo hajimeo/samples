@@ -307,6 +307,7 @@ function f_find_open_bytes_files() {
     netstat -topen | grep 8081  # pick inode or port and pid
     # Usually +1 or a few of above fd and the FD ends with 'w'
     lsof -nPp $PID | grep -w $INODE -A 100 | grep -m1 "$(realpath "${_blobs}")/content/tmp/tmp"
+    #lsof -nP +D /opt/sonatype/sonatype-work/nexus3/blobs/default/content   # To check specific directory only
 }
 
 function f_check_filesystems() {
