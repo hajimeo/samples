@@ -14,10 +14,10 @@ java -Xmx16g -jar ./h2-console.jar "/sonatype-work/data/ods.h2.db"
 ### Execute SQL statement(s)
 ```
 # Batch processing
-echo "SQL SELECT statement" | java -jar h2-console.jar <DB file path>
+echo "SQL SELECT statement" | java -jar h2-console.jar <DB file path> [<H2 options>]
 
 # Pagenation for extreamly large result set
-echo "<*SIMPLE* SELECT statement which returns so many rows>" | java -Dpaging=10000 -jar h2-console.jar <DB file path + H2 options>
+echo "<*SIMPLE* SELECT statement which returns so many rows>" | java -Dpaging=10000 -jar h2-console.jar <DB file path> [<H2 options>]
 ```
 ### Recover database:
 Instead of `-jar`, use `-cp`
