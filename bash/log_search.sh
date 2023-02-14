@@ -1385,6 +1385,7 @@ for c in j['capabilitiesConfiguration']['capabilities']['capability']:
 "
 }
 
+# curl -O https://repo1.maven.org/maven2/com/h2database/h2/1.4.196/h2-1.4.196.jar
 # curl -o $HOME/IdeaProjects/libs/h2-1.4.200.jar https://repo1.maven.org/maven2/com/h2database/h2/1.4.200/h2-1.4.200.jar
 function f_h2_start() {
     local __doc__="http://www.h2database.com/javadoc/org/h2/tools/Server.html"
@@ -1397,18 +1398,19 @@ function f_h2_start() {
     local _baseDir="${1}"
     local _port="${2:-"8082"}"
     local _Xmx="${3:-"8g"}"
-    local _h2_ver="1.4.200" # 1.4.200 for NXRM3 or 1.4.196 for IQ
+    local _h2_ver="${4:-"1.4.200"}"
     if [ -z "${_baseDir}" ]; then
         if [ -d ./sonatype-work/clm-server/data ]; then
             _baseDir="./sonatype-work/clm-server/data/"
+            _h2_ver="1.4.196"
         elif [ -d ./sonatype-work/nexus3/db ]; then
             _baseDir="./sonatype-work/nexus3/db"
         else
             _baseDir="."
         fi
     fi
-    # NOTE: 1.4.200 is used by NXRM# but may causes org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException with IQ
-    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/libs/h2-${_h2_ver}.jar org.h2.tools.Server -webPort ${_port} -ifNotExists -baseDir "${_baseDir}"
+    # NOTE: 1.4.200 is used by NXRM# but may causes org.h2.jdbc.JdbcSQLIntegrityConstraintViolationException with IQ    # -ifNotExists
+    java -Xmx${_Xmx} -cp $HOME/IdeaProjects/libs/h2-${_h2_ver}.jar org.h2.tools.Server -webPort ${_port} -baseDir "${_baseDir}"
 }
 
 # TODO: backup function with:
@@ -1654,13 +1656,13 @@ function _replace_number() {
      -e "s/[0-9]{${_min},}+\b/${_N_}/g"
 }
 
+# DEPRECATED: utils.sh now has this so this fuction should be removed.
 function _load_yaml() {
     local _yaml_file="${1}"
     local _name_space="${2}"
-    [ -s "${_yaml_file}" ] || return 1
     # TODO: probably this can be done only with awk
     #awk -F "=" '{out=$2;gsub(/[^0-9a-zA-Z_]/,"_",$1);for(i=3;i<=NF;i++){out=out"="$i};print $1"=\""$out"\""}' ${_yaml_file} > /tmp/_load_yaml.out || return $?
-    _sed -n -r 's/^([^=]+)[[:space:]]+=[[:space:]]+(.+)/'${_name_space}'\1\t"\2"/p' ${_yaml_file} | awk -F "\t" '{gsub(/[^0-9a-zA-Z_]/,"_",$1); print $1"="$2}' > /tmp/_load_yaml.out || return $?
+    _sed -n -r 's/^[[:space:]]*([^=:]+)[[:space:]]*[=:][[:space:]]+(.+)/'${_name_space}'\1\t"\2"/p' ${_yaml_file} | awk -F "\t" '{gsub(/[^0-9a-zA-Z_]/,"_",$1); print $1"="$2}' > /tmp/_load_yaml.out || return $?
     source /tmp/_load_yaml.out
 }
 
