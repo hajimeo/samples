@@ -503,7 +503,8 @@ function t_requests() {
 
     # TODO: Using agg_requests_count_hour_api.ssv as SQLite does not have regex replace (so that can include elapsed)
     if [ -s "${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv" ]; then
-        _query="SELECT c2 as hour, c3 as api, sum(c1) as c FROM ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv GROUP BY hour, api HAVING c > 100 ORDER BY c DESC LIMIT 40"
+        # /rest/v1/status for NXRM3 should be fast so excluding
+        _query="SELECT c2 as hour, c3 as api, sum(c1) as c FROM ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv WHERE api not like '%/rest/v1/status%' GROUP BY hour, api HAVING c > 100 ORDER BY c DESC LIMIT 40"
         _test_tmpl_auto "$(q -d" " -T  --disable-double-double-quoting "${_query}")" "2" "5" "Potentially too frequent API-like requests per hour (${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv)" \
           "_q -H \"SELECT substr(date,1,14) as hour, count(*), avg(elapsedTime), max(elapsedTime), sum(elapsedTime) FROM ${_FILTERED_DATA_DIR%/}/request.csv where requestURL like '%/<REPLACE_HERE>/%' GROUP by hour HAVING max(elapsedTime) > 2000\""
     fi
