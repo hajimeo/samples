@@ -1,3 +1,6 @@
+/**
+ * https://www.codejava.net/java-se/jdbc/connect-to-h2-database-examples
+ */
 import org.h2.jdbc.JdbcSQLException;
 import org.json.JSONObject;
 import org.jline.reader.*;
@@ -63,33 +66,34 @@ public class Main {
         }
     }
 
-    // TODO: changing to List<?> breaks toJSON()
-    private static int printRsAsJson(ResultSet rs, boolean isPaging) throws SQLException {
+    private static List<String> getColumns(ResultSet rs) throws SQLException {
         ResultSetMetaData meta = rs.getMetaData();
         //int longestLabel = 0;
         int colLen = meta.getColumnCount();
-        List columns = new ArrayList();
+        List<String> columns = new ArrayList();
         for (int i = 0; i < colLen; i++) {
             String s = meta.getColumnLabel(i + 1);
             columns.add(s);
-            //longestLabel = Math.max(longestLabel, s.length());
         }
         log("Columns: " + columns, isDebug);
+        return columns;
+    }
+
+    // TODO: changing to List<?> breaks toJSON()
+    private static int printRsAsJson(ResultSet rs, boolean isPaging) throws SQLException {
+        List<String> columns = getColumns(rs);
 
         if (pageCount == 0) {
             terminal.writer().print("\n[");
         }
         int rowCount = 0;
-        log("FetchSize = "+rs.getFetchSize(), isDebug);
         while (rs.next()) {
             if (columns.contains(ridName.toUpperCase())) {
                 lastRid = rs.getObject(ridName.toUpperCase()).toString();
-            }
-            else if (columns.contains(ridName.toLowerCase())) {
+            } else if (columns.contains(ridName.toLowerCase())) {
                 lastRid = rs.getObject(ridName.toLowerCase()).toString();
-            }
-            else
-            terminal.writer().print("\n  ");
+            } else
+                terminal.writer().print("\n  ");
             // Not first row
             if (rowCount > 0) {
                 terminal.writer().print(",");
@@ -98,8 +102,7 @@ public class Main {
             JSONObject obj = new JSONObject();
 
             try {
-                for (int i = 0; i < colLen; i++) {
-                    String label = (String) columns.get(i);
+                for (String label : columns) {
                     obj.put(label, rs.getObject(label));
                 }
                 terminal.writer().print(obj.toString());
@@ -204,6 +207,27 @@ public class Main {
         }
     }
 
+    private static void execute(String query) {
+        log(query, isDebug);
+        try {
+            ResultSet rs;
+            if (stat.execute(query)) {
+                rs = stat.getResultSet();
+                List<String> columns = getColumns(rs);
+                while (rs.next()) {
+                    for (String label : columns) {
+                        String value = rs.getObject(label).toString();
+                        log(label + " = " + value, isDebug);
+                        terminal.writer().println(value);
+                    }
+                }
+                terminal.flush();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     // TODO: use this method when some exceptions happen
     private static void removeLineFromHistory(String inputToRemove) {
         BufferedReader reader = null;
@@ -297,25 +321,28 @@ public class Main {
             return true;
         }
         if (input.toLowerCase().startsWith("describe table") || input.toLowerCase().startsWith("desc table") ||
-                input.toLowerCase().startsWith("info ")) {
+                input.toLowerCase().startsWith("info table")) {
             Matcher matcher = describeNamePtn.matcher(input);
             if (matcher.find()) {
                 // Not in use as not sure how to do 'desc <non table>'
-                String descType = matcher.group(2);
-                String tableName = matcher.group(3);
-                String query = "SHOW COLUMNS FROM " + tableName + ";";
-                log(query, isDebug);
-                execQuery(query, false);
-                query = "SELECT * FROM INFORMATION_SCHEMA.CONSTRAINTS where table_name = '" + tableName + "'";
-                log(query, isDebug);
-                execQuery(query, false);
+                //String descType = matcher.group(2);
+                String[] names = matcher.group(3).split("\\.", 2);
+                String query = "SELECT SQL FROM INFORMATION_SCHEMA.TABLES";
+                String where = " WHERE TABLE_NAME = '" + names[0] + "'";
+                if (names.length > 1) {
+                    where = " WHERE TABLE_SCHEMA = '" + names[0] + "' AND TABLE_NAME = '" + names[1] + "'";
+                }
+                execute(query + where);
+                query = "SELECT SQL FROM INFORMATION_SCHEMA.CONSTRAINTS";
+                execute(query + where);
+            } else {
+                log("No match found from " + input, isDebug);
             }
             return true;
         }
         if (input.toLowerCase().startsWith("list classes") || input.toLowerCase().startsWith("list tables")) {
             String query = "SELECT TABLE_SCHEMA, TABLE_NAME, ROW_COUNT_ESTIMATE FROM INFORMATION_SCHEMA.TABLES ORDER BY TABLE_SCHEMA, TABLE_NAME";
-            log(query, isDebug);
-            execQuery(query, false);
+            execute(query);
             return true;
         }
         return false;
