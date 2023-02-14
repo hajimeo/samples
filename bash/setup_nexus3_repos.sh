@@ -743,7 +743,8 @@ function f_setup_raw() {
     if [ -s "${_TMP%/}/test_1k.img" ]; then
         f_upload_asset "${_prefix}-hosted" -F raw.directory=test -F raw.asset1=@${_TMP%/}/test_1k.img -F raw.asset1.filename=test_1k.img
     fi
-    # Quicker way: curl -D- -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test/test.txt"
+    # Quicker way: --limit-rate=4k
+    # curl -D- -u 'admin:admin123' -T <(echo 'test') "${_NEXUS_URL%/}/repository/raw-hosted/test/test.txt"
 
     # If no xxxx-group, create it
     if ! _is_repo_available "${_prefix}-group"; then
@@ -1482,7 +1483,9 @@ function f_nexus_admin_pwd() {
 }
 
 function f_put_realms() {
-    f_api "/service/rest/v1/security/realms/active" '["NexusAuthenticatingRealm","NexusAuthorizingRealm","User-Token-Realm","DockerToken","ConanToken","NpmToken","NuGetApiKey","LdapRealm","rutauth-realm"]' "PUT" || return $?
+    local _optional_realms=""
+    f_api "/service/rest/v1/security/realms/active" | grep -q '"SamlRealm"' || _optional_realms=",\"SamlRealm\""
+    f_api "/service/rest/v1/security/realms/active" "[\"NexusAuthenticatingRealm\",\"NexusAuthorizingRealm\",\"User-Token-Realm\",\"DockerToken\",\"ConanToken\",\"NpmToken\",\"NuGetApiKey\",\"LdapRealm\",\"rutauth-realm\"${_optional_realms}]" "PUT" || return $?
     # Removed ,"SamlRealm" as it adds extra popup to login
 }
 
