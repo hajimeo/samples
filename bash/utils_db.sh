@@ -19,13 +19,14 @@ function _get_dbadmin_user() {
 
 function _get_psql_as_admin() {
     local _dbadmin="${1:-"$USER"}"
+    local _cmd="${2:-"psql"}"
     local _psql_as_admin="sudo -u ${_dbadmin} -i psql"
     if ! id "${_dbadmin}" &>/dev/null; then
         _log "WARN" "'${_dbadmin}' OS user may not exist. May require to set PGPASSWORD variable."
         # This will ask the password everytime, but you can use PGPASSWORD
-        _psql_as_admin="psql -U ${_dbadmin}"
+        _psql_as_admin="${_cmd} -U ${_dbadmin}"
     elif [ "$USER" == "postgres" ]; then
-        _psql_as_admin="psql -U ${_dbadmin}"
+        _psql_as_admin="${_cmd} -U ${_dbadmin}"
     fi
     echo "${_psql_as_admin}"
 }
@@ -193,8 +194,7 @@ function _postgresql_create_role_and_db() {
     local _dbname="${3-"${_dbusr}"}"    # If explicitly "", not creating DB but user/role only
     local _schema="${4}"
     local _dbadmin="${5}"
-    local _dbhost="${6}"
-    local _dbport="${7:-"5432"}"
+    local _dbtemplate="${6}"
     _dbadmin="$(_get_dbadmin_user "${_dbadmin}")"
 
     local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
@@ -211,6 +211,7 @@ function _postgresql_create_role_and_db() {
         ${_psql_as_admin} -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};\""
             sleep 3
         else
+            # NOTE: 'WITH template <dbname>' does not work well with different owner/user
             ${_psql_as_admin} -d template1 -c "CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';"
         fi
         # NOTE: Below two lines are NOT needed because of 'WITH OWNER'. Just for testing purpose to avoid unnecessary permission errors.
@@ -228,8 +229,7 @@ function _postgresql_create_role_and_db() {
     fi
 
     # test
-    local _host_name="$(hostname -f)"
-    local _cmd="psql -U ${_dbusr} -h ${_dbhost:-"${_host_name}"} -d ${_dbname} -c \"\l ${_dbname}\""
+    local _cmd="psql -h $(hostname -f) -p 5432 -U ${_dbusr} -d ${_dbname} -c \"\l ${_dbname}\""
     _log "INFO" "Testing the connection with \"${_cmd}\" ..."
     eval "PGPASSWORD=\"${_dbpwd}\" ${_cmd}" || return $?
 }
@@ -309,4 +309,18 @@ function _psql_restore() {
     echo "${_cmd} | ${_cmd2}"
     [[ "${_dry_run}" =~ ^[yY] ]] && return
     eval "${_cmd} | PGPASSWORD="${_dbpwd}" ${_cmd2}"
+}
+
+function _psql_copydb() {
+    local __doc__="Copy database with 'pg_dump | psql' as superuser because 'CREATE DATABASE ... WITH TEMPLATE dbname' keeps owners"
+    local _local_src_db="${1}"
+    local _dbusr="${2:-"$USER"}"
+    local _dbpwd="${3:-"${_dbusr}"}"
+    local _dbname="${4:-"${_dbusr}"}"
+    #local _schema="${5}"    # psql ... -n "${_schema}"
+    local _db_hostname="${5:-"${_DB_HOSTNAME:-"localhost"}"}"
+    local _db_port="${6:-"${_DB_PORT:-"5432"}"}"
+
+    local _pg_dump_as_admin="$(_get_psql_as_admin "$(_get_dbadmin_user)" "pg_dump")"
+    ${_pg_dump_as_admin} -d "${_local_src_db}" -c -O | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -p ${_db_port} -U ${_dbusr} -d ${_dbname}
 }
