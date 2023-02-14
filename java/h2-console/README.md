@@ -1,5 +1,5 @@
 # Simple H2 client
-Limitation: only standard and SELECT SQL statements. No "info classes" etc.
+Limitation: only standard and SELECT SQL statements. H2 specific commands/queries may not work.
 
 ## Download the latest version:
 ```
@@ -9,7 +9,7 @@ curl -O -L "https://github.com/hajimeo/samples/raw/master/misc/h2-console.jar"
 ## Usage Examples:
 ### Start interactive console
 ```
-java -Xmx16g -jar ./h2-console.jar "/sonatype-work/data/ods" "MV_STORE=FALSE;DATABASE_TO_UPPER=FALSE;LOCK_MODE=0;DEFAULT_LOCK_TIMEOUT=600000"
+java -Xmx16g -jar ./h2-console.jar "/sonatype-work/data/ods.h2.db"
 ```
 ### Execute SQL statement(s)
 ```
