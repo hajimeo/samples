@@ -1,4 +1,4 @@
-# helm template -n sonatype-ha nxiqha -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml . >~/IdeaProjects/samples/kubernetes/helm-nxiqha.yaml
+# helm template -n sonatype-ha nxiqha -f ~/IdeaProjects/samples/kubernetes/helm-nxiqha-values.yml . >~/IdeaProjects/samples/kubernetes/helm-nxiqha-deployed.yaml
 
 # Default values for nexus-iq-server-ha.
 # This is a YAML-formatted file.
@@ -9,7 +9,7 @@ iq_server:
   # Sonatype official public image
   imageRegistry: # Container image registry, if not specified the Docker public registry will be used
   image: "sonatype/nexus-iq-server"
-  tag: "1.153.0"
+  tag: "1.155.0"
   imagePullPolicy: "IfNotPresent"
 
   # We usually recommend not to specify default resources and to leave this as a conscious choice for the user.
@@ -125,7 +125,7 @@ iq_server:
   # Enabled to forward logs to the fluentd daemonset aggregator
   fluentd:
     forwarder:
-      enabled: true
+      enabled: false
 
   # The full text of the config.yml file that will be passed to each Nexus IQ Server
   # Note that log formats must correspond to what the fluentd sidecar configuration is set to recognize
@@ -294,7 +294,8 @@ aggregateLogFileRetention:
 
 # fluentd configuration
 fluentd:
-  enabled: true
+  # for testing, disabling
+  enabled: false
   config:
     # Configuration for sidecar forwarder
     # Note that source parsing formats must correspond to the Nexus IQ Server log formats
