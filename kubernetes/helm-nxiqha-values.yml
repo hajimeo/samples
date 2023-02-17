@@ -17,11 +17,11 @@ iq_server:
   # The commented values below are the minimum recommended resources for production.
   resources:
     requests:
-      cpu: 2
-      memory: 4G
+      cpu: 1
+      memory: 2G
     limits:
-      cpu: 2
-      memory: 4G
+      cpu: 1
+      memory: 2G
 
   # Value for the JAVA_OPTS environment variable to pass custom settings to the JVM
   javaOpts:
@@ -100,7 +100,7 @@ iq_server:
   adminServiceAnnotations:
 
   # Number of pods to run
-  replicas: 1
+  replicas: 2
   
   # One of these can be set to hold the initial admin password
   initialAdminPassword: "admin123" # Plaintext password

@@ -8,7 +8,7 @@
 #   cd ~/IdeaProjects/samples/kubernetes
 #   # Below _DNS is only for my k8s env (don't forget to update /etc/banner_add_hosts). _DB_USER can't contain '-' character.
 #   export _NAMESPACE="sonatype-ha" _ID="nxrm3ha"
-#   export _TAG="3.46.0" _RUNAS_USR=200 _DNS="192.168.1.31" _DB_HOST_PORT="192.168.1.31:5432" #_METALLB_IP="192.168.1.230"
+#   export _TAG="3.47.1" _RUNAS_USR=200 _DNS="192.168.1.31" _DB_HOST_PORT="192.168.1.31:5432" #_METALLB_IP="192.168.1.230"
 #   export _BLOBS_PATH="/var/tmp/share/sonatype/${_ID}/blobs" _JDBC_URL="jdbc:postgresql://${_DB_HOST_PORT}/${_ID}" _DB_USER="${_ID}" _DB_PWD="${_ID}"
 #
 #  one time only preparation (*after* above "export")
@@ -41,7 +41,7 @@ metadata:
     app: ${_ID}
 spec:
   serviceName: ${_ID}-statefulset-sn
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: ${_ID}
@@ -81,8 +81,8 @@ spec:
           resources:
             requests:
               # Make sure blow works with INSTALL4J_ADD_VM_PARAMS
-              cpu: '2'
-              memory: '4G'
+              cpu: '1'
+              memory: '3G'
           ports:
             - containerPort: 8081
             #- containerPort: 8443
@@ -154,7 +154,7 @@ spec:
                 -Dnexus.datastore.nexus.password=\${DB_PWD} \
                 -Dnexus.datastore.nexus.maximumPoolSize=10 \
                 -Dnexus.datastore.nexus.advanced=maxLifetime=600000 \
-                -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005'
+                -Dnexus.replication.http.enabled=true'
           volumeMounts:
             - name: sonatype-license-volume
               mountPath: /etc/sonatype
