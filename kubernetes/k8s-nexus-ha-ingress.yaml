@@ -1,7 +1,16 @@
 # kubectl create secret tls nexus-tls -n sonatype-ha --key ~/IdeaProjects/samples/misc/standalone.localdomain.key --cert ~/IdeaProjects/samples/misc/standalone.localdomain.crt
 # kubectl apply -n sonatype-ha -f ./k8s-nexus-ha-ingress.yaml
-# To check: kubectl exec -n ingress nginx-ingress-microk8s-controller-tlg6c cat /etc/nginx/nginx.conf
+# To check: kubectl cp -n ingress nginx-ingress-microk8s-controller-22p79:/etc/nginx/nginx.conf ./ingress-nginx.conf
 
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  labels:
+    app.kubernetes.io/component: controller
+  name: nexusha-ingresscontroller
+spec:
+  controller: k8s.io/ingress-nginx
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
