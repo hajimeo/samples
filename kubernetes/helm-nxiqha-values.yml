@@ -100,7 +100,7 @@ iq_server:
   adminServiceAnnotations:
 
   # Number of pods to run
-  replicas: 2
+  replicas: 1
   
   # One of these can be set to hold the initial admin password
   initialAdminPassword: "admin123" # Plaintext password
