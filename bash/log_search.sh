@@ -149,6 +149,7 @@ function f_topErrors() {
     [ -z "${_regex}" ] && _regex="\b(WARN|ERROR|SEVERE|FATAL|SHUTDOWN|Caused by|.+?Exception|FAILED)\b.+"
     [ -n "${_date_regex}" ] && _regex="${_date_regex}.*${_regex}"
     [ -n "${_max_N}" ] && _max_N_opt="-m ${_max_N}"
+    echo "# rg -c \"${_regex}\" ..."
     if [ -f "${_glob}" ]; then
         rg -z -c "${_regex}" -H "${_glob}" && echo " "
         rg -z --no-line-number --no-filename "${_regex}" ${_max_N_opt} "${_glob}" > /tmp/${FUNCNAME}_$$.tmp
@@ -836,22 +837,27 @@ function f_jmap_histo_compare() {
     rg "${_keyword}" -m${_m} -g "${_file_glob}"
 }
 
-#for _f in $(ls -1 ./jmap_histos/jmap_histo_*.out); do f_jmap_histo2csv "${_f}" "./jmap_histos.csv"; done
+#mkdir -v ./jmap_histos
+#_csplit -z -f "./jmap_histos/jmap_histo_" ${_file} "/^ *num /" '{*}'
+#_i=1; for _f in $(ls -1 ./jmap_histos/jmap_histo_*); do f_jmap_histo2csv "${_f}" "./jmap_histos.csv" "" "${_i}"; _i=$((${_i}+1)); done
+#  ju.d(ju.q("""SELECT * FROM t_jmap_histos WHERE class_name like '%.sonatype.%' and bytes > 500000 ORDER BY class_name, key"""))
+#  ju.d(ju.q("""SELECT * FROM t_jmap_histos WHERE class_name like '%.sonatype.%' and bytes > 500000 ORDER BY bytes DESC"""))
 function f_jmap_histo2csv() {
     local __doc__="Convert jmap -histo output to csv"
-    local _file="${1}"      # File path which contains jmap histo output
+    local _file="${1}"      # File path which contains one jmap histo output
     local _save_to="${2}"   # Saving path. If empty $(basename "${_file%.*}").csv
     local _class_ex="${3-".*sonatype.*"}"   # If not empty, count classes which contains this word
     local _key="${4}"       # Used for the first column. Expecting date_time but if empty file name
     [ -z "${_key}" ] && _key="$(basename "${_file%.*}")"    # Not using "%%.*"
+    [ -z "${_key}" ] && _key="$(basename "${_file}")"
     [ -z "${_save_to}" ] && _save_to="./$(basename "${_file%.*}").csv"
     [ -z "${_class_ex}" ] && _class_ex=".+"
     if [ -s "${_save_to}" ]; then
         echo "${_save_to} exists, so appending ${_file} results ..." >&2
     fi
     # num     #instances         #bytes  class name
-    rg -z "^\s*\d+:\s+(\d+)\s+(\d+)\s+(${_class_ex})" -o -r '"'${_key}'","$3",$2,$1' ${_file} >> "${_save_to}" || return $?
-    head -n1 "${_save_to}" | rg -q '^key' || echo "key,class_name,bytes,instances
+    rg -z "^\s*\d+:\s+(\d+)\s+(\d+)\s+(${_class_ex})" -o -r '"'${_key}'","$3",$1,$2' ${_file} >> "${_save_to}" || return $?
+    head -n1 "${_save_to}" | rg -q '^key' || echo "key,class_name,instances,bytes
 $(cat "${_save_to}")" > ${_save_to}
 }
 
