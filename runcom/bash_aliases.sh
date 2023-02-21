@@ -148,8 +148,10 @@ if [ -d $HOME/IdeaProjects/samples/bash ]; then
 fi
 if [ -d $HOME/IdeaProjects/work/bash ]; then
     alias logS="pyv; source $HOME/IdeaProjects/work/bash/log_search.sh"
-    alias logN="logT; source $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
-    alias logNxrm="pyv;$HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
+    alias srcRm="logT; source $HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
+    alias srcIq="logT; source $HOME/IdeaProjects/work/bash/log_tests_nxiq.sh"
+    alias logRm="pyv;$HOME/IdeaProjects/work/bash/log_tests_nxrm.sh"
+    alias logIq="pyv;$HOME/IdeaProjects/work/bash/log_tests_nxiq.sh"
     alias instSona="source $HOME/IdeaProjects/work/bash/install_sonatype.sh"
 fi
 #alias xmldiff="python $HOME/IdeaProjects/samples/python/xml_parser.py" # this is for Hadoop xml files
@@ -171,7 +173,7 @@ alias jenkins='java -jar $HOME/Apps/jenkins.war'  #curl -o $HOME/Apps/jenkins.wa
 # http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'  #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
-[ -f /var/tmp/share/java/orient-console.jar ] && alias orient-console="java -jar /var/tmp/share/java/orient-console.jar"
+[ -f /var/tmp/share/java/orient-console.jar ] && alias orient-console="java ${_JAVA_OPTS} -jar /var/tmp/share/java/orient-console.jar"
 [ -f /var/tmp/share/java/blobpath.jar ] && alias blobpathJ="java -jar /var/tmp/share/java/blobpath.jar"
 alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${_JAVA_HOME_11%/}/bin'
 
