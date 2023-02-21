@@ -1208,7 +1208,7 @@ function f_microk8s() {
         cat $HOME/.microk8s/config
     fi
     echo ""
-    echo "# May need to use 'insecure-skip-tls-verify: true' under 'cluster'"
+    echo "# May need to use 'insecure-skip-tls-verify: true' under 'cluster' instead of certificate-authority-data"
 }
 
 function f_vnc_setup() {
