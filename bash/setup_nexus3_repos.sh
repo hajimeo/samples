@@ -112,6 +112,7 @@ function f_setup_maven() {
     local _prefix="${1:-"maven"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
+    local _source_nexus_url="${4:-"${r_SOURCE_NEXUS_URL:-"${_SOURCE_NEXUS_URL}"}"}"
     local _extra_sto_opt=""
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
@@ -128,6 +129,10 @@ function f_setup_maven() {
     # add some data for xxxx-proxy
     # If NXRM2: _get_asset_NXRM2 "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar"
     f_get_asset "${_prefix}-proxy" "junit/junit/4.12/junit-4.12.jar" "${_TMP%/}/junit-4.12.jar"
+
+    if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"maven":{"versionPolicy":"MIXED","layoutPolicy":"PERMISSIVE"},"proxy":{"remoteUrl":"'${_source_nexus_url%/}'/repository/'${_prefix}'-hosted/","contentMaxAge":60,"metadataMaxAge":60},"replication":{"preemptivePullEnabled":true,"assetPathRegex":""},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":true}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-repl-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"maven2-proxy"}],"type":"rpc"}' || return $?
+    fi
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
@@ -198,6 +203,7 @@ function f_setup_npm() {
     local _prefix="${1:-"npm"}"
     local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
+    local _source_nexus_url="${4:-"${r_SOURCE_NEXUS_URL:-"${_SOURCE_NEXUS_URL}"}"}"
     local _extra_sto_opt=""
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
@@ -208,6 +214,10 @@ function f_setup_npm() {
     fi
     # add some data for xxxx-proxy
     f_get_asset "${_prefix}-proxy" "lodash/-/lodash-4.17.19.tgz" "${_TMP%/}/lodash-4.17.19.tgz"
+
+    if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"npm":{"removeNonCataloged":false,"removeQuarantinedVersions":false},"proxy":{"remoteUrl":"'${_source_nexus_url%/}'/repository/'${_prefix}'-hosted/","contentMaxAge":60,"metadataMaxAge":60},"replication":{"preemptivePullEnabled":true,"assetPathRegex":""},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":true}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-repl-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"npm-proxy"}],"type":"rpc","tid"' || return $?
+    fi
 
     # If no xxxx-hosted, create it
     if ! _is_repo_available "${_prefix}-hosted"; then
@@ -280,9 +290,9 @@ function f_setup_nuget() {
 #_NEXUS_URL=http://node3281.standalone.localdomain:8081/ f_setup_docker
 function f_setup_docker() {
     local _prefix="${1:-"docker"}"
-    local _img_name="${2:-"alpine:3.7"}"
-    local _bs_name="${3:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
+    local _bs_name="${2:-"${r_BLOBSTORE_NAME:-"${_BLOBTORE_NAME}"}"}"
     local _ds_name="${3:-"${r_DATASTORE_NAME:-"${_DATASTORE_NAME}"}"}"
+    local _source_nexus_url="${4:-"${r_SOURCE_NEXUS_URL:-"${_SOURCE_NEXUS_URL}"}"}"
     local _extra_sto_opt=""
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
@@ -299,6 +309,10 @@ function f_setup_docker() {
     _log "INFO" "Populating ${_prefix}-proxy repository with some image ..."
     if ! f_populate_docker_proxy; then
         _log "WARN" "f_populate_docker_proxy failed. May need to add 'Docker Bearer Token Realm' (not only for anonymous access)."
+    fi
+
+    if [ -n "${_source_nexus_url}" ] && [ -n "${_extra_sto_opt}" ] && ! _is_repo_available "${_prefix}-repl-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"docker":{"httpPort":null,"httpsPort":null,"forceBasicAuth":false,"v1Enabled":true},"proxy":{"remoteUrl":"'${_source_nexus_url%/}'/repository/'${_prefix}'-hosted/","contentMaxAge":-1,"metadataMaxAge":60},"replication":{"preemptivePullEnabled":true,"assetPathRegex":""},"dockerProxy":{"indexType":"HUB","cacheForeignLayers":false,"useTrustStoreForIndexAccess":false},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":true}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-repl-proxy","format":"","type":"","url":"","online":true,"undefined":[false,false],"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"docker-proxy"}],"type":"rpc"}' || return $?
     fi
 
     # If no xxxx-hosted, create it
@@ -574,13 +588,14 @@ function _upload_to_conan_hosted() {
     local _build_dir="$(mktemp -d)"
     cd "${_build_dir}" || return $?
     conan new ${_pkg_ver}
-    if ! conan create . ${_usr_stable}; then
+    # example: https://issues.sonatype.org/browse/NEXUS-37563
+    if ! conan create -s arch=x86_64 -s os=Linux . ${_usr_stable}; then
         cd -
         return 1
     fi
     #conan user -c
     #conan user -p ${_ADMIN_PWD} -r "${_prefix}-hosted" ${_ADMIN_USER}
-    CONAN_LOGIN_USERNAME="${_ADMIN_USER}" CONAN_PASSWORD="${_ADMIN_PWD}" conan upload --confirm --force --retry 0 -r "${_prefix}-hosted" --all ${_pkg_ver}@${_usr_stable}
+    CONAN_LOGIN_USERNAME="${_ADMIN_USER}" CONAN_PASSWORD="${_ADMIN_PWD}" conan upload --confirm --all --retry 0 -r "${_prefix}-hosted" ${_pkg_ver}@${_usr_stable}
     local _rc=$?
     if [ ${_rc} != 0 ]; then
         # /v1/users/check_credentials returns 401 if no realm
@@ -754,6 +769,10 @@ function f_setup_raw() {
     f_get_asset "${_prefix}-group" "test/test_1k.img"
 }
 
+function f_branding() {
+    local _msg="${1:-"HelloWorld!"}"
+    f_apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"rapture.branding","notes":"","enabled":true,"properties":{"headerEnabled":"true","headerHtml":"<div style=\"background-color:white;text-align:right\">'${_msg}'</a>&nbsp;</div>","footerEnabled":null,"footerHtml":""}}],"type":"rpc"}'
+}
 
 ### Nexus related Misc. functions #################################################################
 function _get_blobstore_name() {
@@ -1532,32 +1551,11 @@ function f_nexus_https_config() {
     _log "DEBUG" "HTTPS configured against config files under ${_mount}"
 }
 
-function f_nexus_ha_config() {
-    local _mount="$1"
-    _upsert ${_mount%/}/etc/nexus.properties "nexus.clustered" "true" || return $?
-    _upsert ${_mount%/}/etc/nexus.properties "nexus.log.cluster.enabled" "false" || return $?
-    _upsert ${_mount%/}/etc/nexus.properties "nexus.hazelcast.discovery.isEnabled" "false" || return $?
-    [ -f "${_mount%/}/etc/fabric/hazelcast-network.xml" ] && mv -f ${_mount%/}/etc/fabric/hazelcast-network.xml{,bak}
-    [ ! -d "${_mount%/}/etc/fabric" ] && mkdir -p "${_mount%/}/etc/fabric"
-    curl -s -f -m 7 --retry 2 -L "${_DL_URL%/}/misc/hazelcast-network.tmpl.xml" -o "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
-    for _i in {1..3}; do
-        local _tmp_v_name="r_NEXUS_CONTAINER_NAME_${_i}"
-        _sed -i "0,/<member>%HA_NODE_/ s/<member>%HA_NODE_.%<\/member>/<member>${!_tmp_v_name}.${_DOMAIN#.}<\/member>/" "${_mount%/}/etc/fabric/hazelcast-network.xml" || return $?
-    done
-    _log "DEBUG" "HA-C configured against config files under ${_mount}"
-}
-
 function f_nexus_mount_volume() {
     local _mount="$1"
     local _v=""
     if [ -n "${_mount}" ]; then
         _v="${_v% } -v ${_mount%/}:/nexus-data"
-        if _isYes "${r_NEXUS_INSTALL_HAC}" && [ -n "${r_NEXUS_MOUNT_DIR_SHARED}" ]; then
-            if [ ! -d "${r_NEXUS_MOUNT_DIR_SHARED}" ]; then
-                mkdir -m 777 -p ${r_NEXUS_MOUNT_DIR_SHARED%/} || return $?
-            fi
-            _v="${_v% } -v ${r_NEXUS_MOUNT_DIR_SHARED%/}:/nexus-data/blobs"
-        fi
     fi
     echo "${_v}"
 }
@@ -1582,10 +1580,6 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
 
     # HTTPS/SSL/TLS setup
     f_nexus_https_config "${_sonatype_work%/}" || return $?
-    # HA-C related setup
-    if _isYes "${r_NEXUS_INSTALL_HAC}"; then
-        f_nexus_ha_config "${_sonatype_work%/}" || return $?
-    fi
 
     # A license file in local
     local _license="${r_NEXUS_LICENSE_FILE}"
@@ -1593,9 +1587,6 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
     if [ -s "${_license}" ]; then
         [ -d "${_SHARE_DIR}" ] && cp -f "${_license}" "${_SHARE_DIR%/}/sonatype/"
         _upsert ${_sonatype_work%/}/etc/nexus.properties "nexus.licenseFile" "${_SHARE_DIR%/}/sonatype/$(basename "${_license}")" || return $?
-    elif _isYes "${r_NEXUS_INSTALL_HAC}"; then
-        _log "ERROR" "HA-C is requested but no license."
-        return 1
     fi
 }
 
@@ -1895,83 +1886,7 @@ function f_delete_all_assets() {
     echo "Deleted ${_line_num} assets"
 }
 
-#helm3 list -n sonatype
-#helm3 delete -n sonatype nxrm3-ha{1..3}
-#rm -rf /var/tmp/share/sonatype/k8s-nxrm3-ha/blobs # or mv
-_HELM3=${_HELM3-"helm3"}        # to support 'microk8s helm3' If empty, skip all helm3 commands.
-_KUBECTL=${_KUBECTL:-"kubectl"} # to support 'microk8s kubectl'
-function f_nexus_k8s_ha() {
-    local __doc__="Build legacy HA-C with helm chart"
-    local _share_dir="${1}"
-    local _pod_prefix="${2:-"nxrm3-ha"}"
-    local _namespace="${3:-"sonatype"}" # create namespace first
-    local _app_name="${4:-"nexus-repository-manager"}"
-    local _dns_server="${5}"
-    [ -z "${_share_dir%/}" ] && return 12
-    # Download necessary files
-    #curl -L -o${_share_dir%/}/k8s-nxrm3-ha-enable.sh https://raw.githubusercontent.com/hajimeo/samples/master/misc/k8s-nxrm3-ha-enable.sh"
-    for _f in helm-nxrm3-values.yaml k8s-nxrm3-ha-deployment-patch.yaml; do #k8s-nxrm3-ha-service-patch.yaml
-        if [ -f "${_TMP%/}/${_pod_prefix}_${_f}" ]; then
-            _log "INFO" "${_TMP%/}/${_pod_prefix}_${_f} exists. Reusing...";sleep 1
-        else
-            curl -sf -o${_TMP%/}/${_pod_prefix}_${_f} -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/${_f}" || return $?
-        fi
-    done
-
-    if [ -n "${_HELM3}" ]; then
-        # Checking helm repo for sonatype is ready
-        if [ -n "${_app_name%/}" ] && [ "${_app_name%/}" != "." ]; then
-            if ! ${_HELM3} search repo "${_app_name}"; then
-                _log "INFO" "'${_HELM3} search repo ${_app_name}' failed, so adding 'sonatype' repo ..."; sleep 1
-                ${_HELM3} repo add sonatype https://sonatype.github.io/helm3-charts/ || return $?
-            fi
-        fi
-
-        # Installing NXRM3s with helm3
-        for _i in {1..3}; do
-            local _name="${_pod_prefix}${_i}"
-            if ${_HELM3} status -n ${_namespace} ${_name} &>/dev/null; then
-                _log "INFO" "${_name} already exists. Not installing but just Patching ..."; sleep 3
-            else
-                _log "INFO" "install -n ${_namespace} ${_name} sonatype/${_app_name} ..."; sleep 3
-                ${_HELM3} ${_HELM3_OPTS} install -n ${_namespace} ${_name} sonatype/${_app_name} -f ${_TMP%/}/${_pod_prefix}_helm-nxrm3-values.yaml || return $?
-                sleep 10
-            fi
-        done
-    else
-        _log "INFO" "No helm3 command specified, so just patching the Deployments with ${_KUBECTL} ..."; sleep 3
-    fi
-
-    unset _SEC_CONTEXT
-    unset _DNS_SETTING
-    if [ -n "${_dns_server}" ]; then
-        export _DNS_SETTING="None\n      dnsConfig:\n        nameservers:\n          - ${_dns_server}"
-    else
-        export _SEC_CONTEXT="allowPrivilegeEscalation: false\n            runAsUser: 0"
-    fi
-    export _SHARE_DIR="${_share_dir%/}"
-    export _NODE_MEMBERS="${_pod_prefix}1,${_pod_prefix}2,${_pod_prefix}3"
-
-    # Patching Deployment *ony-by-one*
-    for _i in {1..3}; do
-        local _name="${_pod_prefix}${_i}"
-        # Wait until this Pod becomes Ready state
-        _pod_ready_waiter "${_name}" "${_namespace}"
-
-        export _POD_NAME="${_name}" # need this as used in a template
-        _log "INFO" "patch deployment -n ${_namespace} ${_name}-${_app_name} with '${_SHARE_DIR}' '${_NODE_MEMBERS}' ..."
-        ${_KUBECTL} patch deployment -n ${_namespace} ${_name}-${_app_name} --patch "$(eval "echo -e \"$(cat ${_TMP%/}/${_pod_prefix}_k8s-nxrm3-ha-deployment-patch.yaml)\"")" || return $?
-        sleep 20
-        # Wait until this Pod becomes Ready state
-        _pod_ready_waiter "${_name}" "${_namespace}"
-
-        # If failed, display Events
-        if [ "$?" != "0" ]; then
-            ${_KUBECTL} describe -n ${_namespace} pods -l app.kubernetes.io/instance=${_name} | grep -E '^Events:' -A7
-            return 13
-        fi
-    done
-}
+# K8s related but not in use yet | any more
 function _pod_ready_waiter() {
     local _instance="${1}"
     local _namespace="${2:-"sonatype"}"
@@ -2020,7 +1935,7 @@ function _update_name_resolution() {    # no longer in use but leaving as an exa
 #VACUUM FULL VERBOSE;
 #SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' AND relname NOT LIKE '%_browse_%' AND (relname like '%repository%' OR relname like '%component%' OR relname like '%asset%') ORDER BY 2 DESC LIMIT 40;
 
-# DEPRECATED: see above
+# probably DEPRECATED? see above
 function f_restore_postgresql_component() {
     local __doc__="Restore 'component' database from a pg_dump generated sql.gz file into the existing *local* database"
     local _sql_gz_file="${1}"
@@ -2190,36 +2105,14 @@ function questions() {
             echo "NOTE: sudo password may be required."
             _ask "Nexus version" "latest" "r_NEXUS_VERSION" "N" "Y"
             local _ver_num=$(echo "${r_NEXUS_VERSION}" | sed 's/[^0-9]//g')
-            if [ "`uname`" = "Darwin" ]; then
-                # TODO: Mac's docker containers do not look like able to communicate each other.
-                r_NEXUS_INSTALL_HAC=N
-            else
-                _ask "Would you like to build HA-C?" "N" "r_NEXUS_INSTALL_HAC" "N" "N"
+            _ask "Nexus container name" "nexus${_ver_num}" "r_NEXUS_CONTAINER_NAME" "N" "N" "_is_container_name"
+            _ask "Would you like to mount SonatypeWork directory?" "Y" "r_NEXUS_MOUNT" "N" "N"
+            if _isYes "${r_NEXUS_MOUNT}"; then
+                _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/sonatype/nexus-data_${r_NEXUS_CONTAINER_NAME%/}" "r_NEXUS_MOUNT_DIR" "N" "Y" "_is_existed"
             fi
-            if _isYes "${r_NEXUS_INSTALL_HAC}"; then
-                echo "NOTE: You may also need to set up a reverse proxy."
-                # NOTE: mounting a volume to sonatype-work is mandatory for HA-C
-                r_NEXUS_MOUNT="Y"
-                for _i in {1..3}; do
-                    _ask "Nexus container name ${_i}" "nexus${_ver_num}-${_i}" "r_NEXUS_CONTAINER_NAME_${_i}" "N" "N" "_is_container_name"
-                    local _tmp_v_name="r_NEXUS_CONTAINER_NAME_${_i}"
-                    _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/sonatype/nexus-data_${!_tmp_v_name}" "r_NEXUS_MOUNT_DIR_${_i}" "N" "Y" "_is_existed"
-                done
-                _ask "Mount path for shared blobstore" "${_WORK_DIR%/}/sonatype/nexus-data_nexus${_ver_num}_shared_blobs" "r_NEXUS_MOUNT_DIR_SHARED" "N" "Y" "_is_existed"
-                _ask "Would you like to start a Socks proxy (if you do not have a reverse proxy)" "N" "r_SOCKS_PROXY"
-                if _isYes "${r_SOCKS_PROXY}"; then
-                    _ask "Socks proxy port" "48484" "r_SOCKS_PROXY_PORT"
-                fi
-            else
-                _ask "Nexus container name" "nexus${_ver_num}" "r_NEXUS_CONTAINER_NAME" "N" "N" "_is_container_name"
-                _ask "Would you like to mount SonatypeWork directory?" "Y" "r_NEXUS_MOUNT" "N" "N"
-                if _isYes "${r_NEXUS_MOUNT}"; then
-                    _ask "Mount to container:/nexus-data" "${_WORK_DIR%/}/sonatype/nexus-data_${r_NEXUS_CONTAINER_NAME%/}" "r_NEXUS_MOUNT_DIR" "N" "Y" "_is_existed"
-                fi
-                _ask "Nexus container exposing port for 8081 ('0' to disable docker port forward)" "8081" "r_NEXUS_CONTAINER_PORT1" "N" "Y" "_is_port_available"
-                if [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
-                    _ask "Nexus container exposing port for 8443 (HTTPS)" "8443" "r_NEXUS_CONTAINER_PORT2" "N" "N" "_is_port_available"
-                fi
+            _ask "Nexus container exposing port for 8081 ('0' to disable docker port forward)" "8081" "r_NEXUS_CONTAINER_PORT1" "N" "Y" "_is_port_available"
+            if [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
+                _ask "Nexus container exposing port for 8443 (HTTPS)" "8443" "r_NEXUS_CONTAINER_PORT2" "N" "N" "_is_port_available"
             fi
             _ask "Nexus license file path if you have:
 If empty, it will try finding from ${_WORK_DIR%/}/sonatype/sonatype-*.lic" "" "r_NEXUS_LICENSE_FILE" "N" "N" "_is_license_path"
@@ -2228,16 +2121,12 @@ If empty, it will try finding from ${_WORK_DIR%/}/sonatype/sonatype-*.lic" "" "r
     fi
 
     if _isYes "${r_NEXUS_INSTALL}"; then
-        if _isYes "${r_NEXUS_INSTALL_HAC}"; then
-            _ask "Nexus base URL (normally reverse proxy)" "http://${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}:8081/" "r_NEXUS_URL" "N" "Y"
+        if [ -z "${r_NEXUS_CONTAINER_PORT1}" ] || [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
+            _ask "Nexus base URL" "http://localhost:${r_NEXUS_CONTAINER_PORT1:-"8081"}/" "r_NEXUS_URL" "N" "Y"
+        elif [ -n "${r_NEXUS_CONTAINER_NAME}" ]; then
+            _ask "Nexus base URL" "http://${r_NEXUS_CONTAINER_NAME}.${_DOMAIN#.}:8081/" "r_NEXUS_URL" "N" "Y"
         else
-            if [ -z "${r_NEXUS_CONTAINER_PORT1}" ] || [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
-                _ask "Nexus base URL" "http://localhost:${r_NEXUS_CONTAINER_PORT1:-"8081"}/" "r_NEXUS_URL" "N" "Y"
-            elif [ -n "${r_NEXUS_CONTAINER_NAME}" ]; then
-                _ask "Nexus base URL" "http://${r_NEXUS_CONTAINER_NAME}.${_DOMAIN#.}:8081/" "r_NEXUS_URL" "N" "Y"
-            else
-                _ask "Nexus base URL" "" "r_NEXUS_URL" "N" "Y"
-            fi
+            _ask "Nexus base URL" "" "r_NEXUS_URL" "N" "Y"
         fi
     else
         _ask "Nexus base URL" "" "r_NEXUS_URL" "N" "Y" "_is_url_reachable"
@@ -2380,12 +2269,6 @@ function _is_license_path() {
     if [ -n "$1" ] && [ ! -s "$1" ]; then
         echo "$1 does not exist." >&2
         return 1
-    elif _isYes "${r_NEXUS_INSTALL_HAC}"; then
-        _license="$(ls -1t ${_WORK_DIR%/}/sonatype/sonatype-*.lic 2>/dev/null | head -n1)"
-        if [ -z "${_license}" ]; then
-            echo "HA-C is requested but no license with 'ls ${_WORK_DIR%/}/sonatype/sonatype-*.lic'." >&2
-            return 1
-        fi
     fi
 }
 function _is_url_reachable() {
@@ -2468,68 +2351,31 @@ main() {
             _docker_add_network "${_DOCKER_NETWORK_NAME}" "" "${r_DOCKER_CMD}" || return $?
         fi
 
-        if _isYes "${r_NEXUS_INSTALL_HAC}"; then
-            local _ext_opts=""
-            if [ -n "${_DOCKER_NETWORK_NAME}" ]; then
-                _ext_opts="--network=${_DOCKER_NETWORK_NAME}"
-                local _ip_1="$(_container_available_ip "${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}" "/etc/hosts")" || return $?
-                local _ip_2="$(_container_available_ip "${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}" "/etc/hosts")" || return $?
-                local _ip_3="$(_container_available_ip "${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}" "/etc/hosts")" || return $?
-                _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_1}.${_DOMAIN#.}:${_ip_1}"
-                _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_2}.${_DOMAIN#.}:${_ip_2}"
-                _ext_opts="${_ext_opts} --add-host ${r_NEXUS_CONTAINER_NAME_3}.${_DOMAIN#.}:${_ip_3}"
-                # TODO: it should exclude own host:ip, otherwise, container's hosts file has two lines for own host:ip
-                _log "DEBUG" "_add_hosts: ${_ext_opts}"
+        local _tmp_ext_opts="-v ${_WORK_DIR%/}:${_SHARE_DIR}"
+        # Port forwarding for Nexus Single Node (obviously can't do same for HA as port will conflict)
+        if [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
+            local _p="-p ${r_NEXUS_CONTAINER_PORT1}:8081"
+            [ -n "${r_NEXUS_CONTAINER_PORT2}" ] && [ "${r_NEXUS_CONTAINER_PORT2}" -gt 0 ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT2}:8443"
+            if [[ "${r_DOCKER_PROXY}" =~ :([0-9]+)$ ]]; then
+                _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
             fi
-
-            for _i in {1..3}; do
-                local _v_name="r_NEXUS_CONTAINER_NAME_${_i}"
-                local _v_name_m="r_NEXUS_MOUNT_DIR_${_i}"
-                local _v_name_ip="_ip_${_i}"
-                local _tmp_ext_opts="${_ext_opts}"
-                _tmp_ext_opts="${_tmp_ext_opts} -v ${_WORK_DIR%/}:${_SHARE_DIR}"
-                if _isYes "${r_NEXUS_MOUNT}"; then
-                    _tmp_ext_opts="${_tmp_ext_opts} $(f_nexus_mount_volume "${!_v_name_m}")" || return $?
-                    f_nexus_init_properties "${!_v_name_m}" || return $?
-                fi
-                [ -n "${!_v_name_ip}" ] && _tmp_ext_opts="${_tmp_ext_opts} --ip=${!_v_name_ip}"
-                _docker_run_or_start "${!_v_name}" "${_tmp_ext_opts}" "sonatype/nexus3:${r_NEXUS_VERSION:-"latest"}" "${r_DOCKER_CMD}" || return $?
-                if [ "${!_v_name}" == "${r_NEXUS_CONTAINER_NAME_1}" ]; then
-                    _log "INFO" "Waiting for ${r_NEXUS_CONTAINER_NAME_1} started ..."
-                    # If HA-C, needs to wait the first node starts (TODO: what if not 8081?)
-                    if ! _wait_url "http://${!_v_name}.${_DOMAIN#.}:8081/"; then
-                        _log "ERROR" "${!_v_name}.${_DOMAIN#.} is unreachable"
-                        return 1
-                    fi
-                fi
-            done
-        else
-            local _tmp_ext_opts="-v ${_WORK_DIR%/}:${_SHARE_DIR}"
-            # Port forwarding for Nexus Single Node (obviously can't do same for HA as port will conflict)
-            if [ -n "${r_NEXUS_CONTAINER_PORT1}" ] && [ "${r_NEXUS_CONTAINER_PORT1}" -gt 0 ]; then
-                local _p="-p ${r_NEXUS_CONTAINER_PORT1}:8081"
-                [ -n "${r_NEXUS_CONTAINER_PORT2}" ] && [ "${r_NEXUS_CONTAINER_PORT2}" -gt 0 ] && _p="${_p% } -p ${r_NEXUS_CONTAINER_PORT2}:8443"
-                if [[ "${r_DOCKER_PROXY}" =~ :([0-9]+)$ ]]; then
-                    _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
-                fi
-                if [[ "${r_DOCKER_HOSTED}" =~ :([0-9]+)$ ]]; then
-                    _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
-                fi
-                if [[ "${r_DOCKER_GROUP}" =~ :([0-9]+)$ ]]; then
-                    _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
-                fi
-                _tmp_ext_opts="${_p} ${_tmp_ext_opts}"
+            if [[ "${r_DOCKER_HOSTED}" =~ :([0-9]+)$ ]]; then
+                _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
             fi
-            if _isYes "${r_NEXUS_MOUNT}"; then
-                _tmp_ext_opts="${_tmp_ext_opts} $(f_nexus_mount_volume "${r_NEXUS_MOUNT_DIR}")" || return $?
-                f_nexus_init_properties "${r_NEXUS_MOUNT_DIR}" || return $?
+            if [[ "${r_DOCKER_GROUP}" =~ :([0-9]+)$ ]]; then
+                _pid_by_port "${BASH_REMATCH[1]}" &>/dev/null || _p="${_p% } -p ${BASH_REMATCH[1]}:${BASH_REMATCH[1]}"
             fi
-            _docker_run_or_start "${r_NEXUS_CONTAINER_NAME}" "${_tmp_ext_opts}" "sonatype/nexus3:${r_NEXUS_VERSION:-"latest"}"  "${r_DOCKER_CMD}"
-            # 'main' requires "r_NEXUS_URL"
-            if [ -z "${r_NEXUS_URL}" ] || ! _wait_url "${r_NEXUS_URL}"; then
-                _log "ERROR" "${r_NEXUS_URL} is unreachable"
-                return 1
-            fi
+            _tmp_ext_opts="${_p} ${_tmp_ext_opts}"
+        fi
+        if _isYes "${r_NEXUS_MOUNT}"; then
+            _tmp_ext_opts="${_tmp_ext_opts} $(f_nexus_mount_volume "${r_NEXUS_MOUNT_DIR}")" || return $?
+            f_nexus_init_properties "${r_NEXUS_MOUNT_DIR}" || return $?
+        fi
+        _docker_run_or_start "${r_NEXUS_CONTAINER_NAME}" "${_tmp_ext_opts}" "sonatype/nexus3:${r_NEXUS_VERSION:-"latest"}"  "${r_DOCKER_CMD}"
+        # 'main' requires "r_NEXUS_URL"
+        if [ -z "${r_NEXUS_URL}" ] || ! _wait_url "${r_NEXUS_URL}"; then
+            _log "ERROR" "${r_NEXUS_URL} is unreachable"
+            return 1
         fi
     fi
 
