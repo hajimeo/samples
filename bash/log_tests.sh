@@ -240,6 +240,15 @@ function _check_log_stop_start() {
     # NXRM2: org.sonatype.nexus.bootstrap.jetty.JettyServer - Stopped
     _rg --no-filename '(org.sonatype.nexus.bootstrap.jsw.JswLauncher - Stopping with code:|org.eclipse.jetty.server.AbstractConnector - Stopped ServerConnector|org.sonatype.nexus.events.EventSubscriberHost - Initialized|org.sonatype.nexus.webapp.WebappBootstrap - Initialized|org.eclipse.jetty.server.Server - Started|Started InstrumentedSelectChannelConnector|Received signal: SIGTERM|org.sonatype.nexus.extender.NexusContextListener - Uptime:|org.sonatype.nexus.extender.NexusLifecycleManager - Shutting down|org.sonatype.nexus.extender.NexusLifecycleManager - Stop KERNEL|org.sonatype.nexus.bootstrap.jetty.JettyServer - Stopped|org.sonatype.nexus.pax.logging.NexusLogActivator - start|com.sonatype.insight.brain.service.InsightBrainService - Stopping Nexus IQ Server|Disabled session validation scheduler|Initializing Nexus IQ Server)' ${_log_path} | sort | uniq | tail -n10
 }
+function _code() {
+    local _text="$1"
+    local _style="$2"
+    local _last_echo_en="${3-"\\n"}"
+    echo '```'${_style}
+    echo "${_text}"
+    echo '```'
+    echo -en "${_last_echo_n}"
+}
 function _head() {
     local _X="###"
     if [ "$1" == "WARN" ]; then
@@ -380,29 +389,20 @@ function r_audits() {
 function r_threads() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/f_threads.out" || return
     _head "THREADS" "Result of f_threads from ${_FILTERED_DATA_DIR%/}/f_threads.out"
-    echo '```'
-    cat ${_FILTERED_DATA_DIR%/}/f_threads.out
-    echo '```'
+    _code "$(cat ${_FILTERED_DATA_DIR%/}/f_threads.out)" ""
 }
 function r_requests() {
     _head "REQUESTS" "Request counts per hour from ${_REQUEST_LOG}"
-    echo '```'
-    _rg "${_DATE_FMT_REQ}:\d\d" -o --no-filename -g ${_REQUEST_LOG} | bar_chart.py
-    echo '```'
-
+    _code "$(_rg "${_DATE_FMT_REQ}:\d\d" -o --no-filename -g ${_REQUEST_LOG} | bar_chart.py)"
     [ -s "${_FILTERED_DATA_DIR%/}/request.csv" ] || return
     # first and end time per user
     #_q -H "select clientHost, user, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1,2"
     _head "REQUESTS" "Counting host_ip + user per hour for last 10 ('-' in user is counted as 1)"
-    echo '```'
-    _q -H "SELECT substr(date,1,14) as hour, count(*), count(distinct clientHost), count(distinct user), count(distinct clientHost||user) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1 order by hour desc LIMIT 10"
-    echo '```'
+    _code "$(_q -H "SELECT substr(date,1,14) as hour, count(*), count(distinct clientHost), count(distinct user), count(distinct clientHost||user) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1 order by hour desc LIMIT 10")" ""
 }
 function r_list_logs() {
     _head "APP LOG" "max 100 *.log files' start and end (start time, end time, difference(sec), filesize)"
-    echo '```'
-    f_list_start_end "*.log"
-    echo '```'
+    _code "$(f_list_start_end "*.log")"
 
     _head "NOTE" "To split logs by hour:"
     echo '```'

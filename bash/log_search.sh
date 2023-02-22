@@ -1801,7 +1801,17 @@ function _wait_jobs() {
         sleep ${_sp}
     done
 }
-
+function _line_num() {
+    local _file="$1"
+    local _opt="${2:-"-l"}"
+    local _cmd="wc ${_opt}"
+    if [[ "${_file}" =~ \.gz$ ]]; then
+        _cmd="gunzip -c ${_file} | ${_cmd}"
+    elif [ -n "${_file}" ]; then
+        _cmd="cat ${_file} | ${_cmd}"
+    fi
+    eval "${_cmd}" | tr -d "[:space:]"
+}
 function _sed() {
     local _cmd="sed"; which gsed &>/dev/null && _cmd="gsed"
     ${_cmd} "$@"
