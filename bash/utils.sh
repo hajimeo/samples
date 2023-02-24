@@ -358,11 +358,13 @@ function _grep() {
     ${_cmd} "$@"
 }
 
+# eval "$(_load_yaml ./test.yml)"
 function _load_yaml() {
     local _yaml_file="${1}"
     local _name_space="${2}"
     _sed -n -r 's/^[[:space:]]*([^=:]+)[[:space:]]*[=:][[:space:]]+(.+)/'${_name_space}'\1\t"\2"/p' ${_yaml_file} | awk -F "\t" '{gsub(/[^0-9a-zA-Z_]/,"_",$1); print $1"="$2}' > "${__TMP}/_load_yaml_$$.out" || return $?
     source "${__TMP}/_load_yaml_$$.out"
+    cat ${__TMP}/_load_yaml_$$.out
 }
 
 function _pid_by_port() {
