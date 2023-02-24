@@ -684,28 +684,40 @@ function _download() {
     local _save_as="$2"
     local _no_backup="$3"
     local _skip_if_exist="$4"   # default is always continuing or overwriting
+    local _no_tmp="${5:-"${_NO_TMP_FOR_DOWNLOAD}"}"
 
     if [[ "${_skip_if_exist}" =~ ^(y|Y) ]] && [ -s "${_save_as}" ]; then
         _log "INFO" "Not downloading as ${_save_as} exists."
         return
     fi
+
+    local _tmp_dl_path="${_save_as}"
+    if [[ ! "${_no_tmp}" =~ ^(y|Y) ]]; then
+        _tmp_dl_path="${__TMP%/}/$(basename "${_save_as}")"
+    fi
+    # should do this? rm -v -f "${_tmp_dl_path}" || return $?
+
     local _cmd="curl -s -f --retry 3 -L -k '${_url}'"
     # NOTE: if the file already exists, "-C -" may do something unexpected for text files
     if [[ ! "${_save_as}" =~ (\.gz|.zip|.tar|.tgz) ]]; then
         _cmd="${_cmd} --compressed"
     fi
-    if [ -s "${_save_as}" ] && ! file "${_save_as}" | grep -qwi "text"; then
+    # if partially downloaded in the tmp location
+    if [ -s "${_tmp_dl_path}" ] && ! file "${_tmp_dl_path}" | grep -qwi "text"; then
         _cmd="${_cmd} -C -"
     fi
     if [ -z "${_save_as}" ]; then
         _cmd="${_cmd} -O"
     else
         [[ "${_no_backup}" =~ ^(y|Y) ]] || _backup "${_save_as}"
-        _cmd="${_cmd} -o ${_save_as}"
+        _cmd="${_cmd} -o ${_tmp_dl_path}"
     fi
 
     _log "INFO" "Downloading ${_url} ..."
-    eval ${_cmd}
+    eval "${_cmd}" || return $?
+    if [[ ! "${_no_tmp}" =~ ^(y|Y) ]]; then
+        mv -v -f "${_tmp_dl_path}" "${_save_as}" || return $?
+    fi
 }
 
 function _download_and_extract() {
@@ -721,12 +733,7 @@ function _download_and_extract() {
         [ -n "${_as_user}" ] && chown ${_as_user}: "${_save_dir}"
     fi
 
-    local _tmp_dl_dir="${__TMP%/}"
-    [[ "${_no_tmp}" =~ ^(y|Y) ]] && _tmp_dl_dir="${_save_dir}"
-    _download "${_url}" "${_tmp_dl_dir%/}/${_file}" "Y" "Y" || return $?
-    if [[ ! "${_no_tmp}" =~ ^(y|Y) ]]; then
-        mv -v -f "${_tmp_dl_dir%/}/${_file}" "${_save_dir%/}/${_file}" || return $?
-    fi
+    _download "${_url}" "${_save_dir%/}/${_file}" "Y" "Y" "${_no_tmp}" || return $?
 
     # If no extract directory, just download.
     if [ -n "${_extract_to}" ]; then
