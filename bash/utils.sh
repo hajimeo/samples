@@ -712,13 +712,19 @@ function _download_and_extract() {
     local _save_dir="${3:-"${_WORK_DIR%/}/downloads"}"
     local _file="$4"
     local _as_user="${5}"
+    local _no_tmp="${6:-"${_NO_TMP_FOR_DOWNLOAD}"}"
     [ -z "${_file}" ] && _file="`basename "${_url}"`"
     if [ -d "${_save_dir}" ]; then
         mkdir -v -p "${_save_dir}" || return $?
         [ -n "${_as_user}" ] && chown ${_as_user}: "${_save_dir}"
     fi
 
-    _download "${_url}" "${_save_dir%/}/${_file}" "Y" "Y" || return $?
+    local _tmp_dl_dir="${__TMP%/}"
+    [[ "${_no_tmp}" =~ ^(y|Y) ]] && _tmp_dl_dir="${_save_dir}"
+    _download "${_url}" "${_tmp_dl_dir%/}/${_file}" "Y" "Y" || return $?
+    if [[ ! "${_no_tmp}" =~ ^(y|Y) ]]; then
+        mv -v -f "${_tmp_dl_dir%/}/${_file}" "${_save_dir%/}/${_file}" || return $?
+    fi
 
     # If no extract directory, just download.
     if [ -n "${_extract_to}" ]; then
