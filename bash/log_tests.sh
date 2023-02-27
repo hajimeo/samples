@@ -95,7 +95,7 @@ _log_duration() {
 
 _runner() {
     local _pfx="$1"
-    local _n="${2:-"4"}"
+    local _n="${2:-"3"}"
     local _sec="${3:-"3"}"
     local _tmp="$(mktemp -d)"
     _LOG "INFO" "Executing ${FUNCNAME[1]}->${FUNCNAME} $(typeset -F | grep "^declare -f ${_pfx}" | wc -l  | tr -d "[:space:]") functions."
@@ -389,7 +389,7 @@ function r_audits() {
 function r_threads() {
     _basic_check "" "${_FILTERED_DATA_DIR%/}/f_threads.out" || return
     _head "THREADS" "Result of f_threads from ${_FILTERED_DATA_DIR%/}/f_threads.out"
-    _code "$(cat ${_FILTERED_DATA_DIR%/}/f_threads.out)" ""
+    _code "$(cat ${_FILTERED_DATA_DIR%/}/f_threads.out)" "" ""
 }
 function r_requests() {
     _head "REQUESTS" "Request counts per hour from ${_REQUEST_LOG}"
@@ -398,7 +398,7 @@ function r_requests() {
     # first and end time per user
     #_q -H "select clientHost, user, count(*), min(date), max(date) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1,2"
     _head "REQUESTS" "Counting host_ip + user per hour for last 10 ('-' in user is counted as 1)"
-    _code "$(_q -H "SELECT substr(date,1,14) as hour, count(*), count(distinct clientHost), count(distinct user), count(distinct clientHost||user) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1 order by hour desc LIMIT 10")" ""
+    _code "$(_q -H "SELECT substr(date,1,14) as hour, count(*), count(distinct clientHost), count(distinct user), count(distinct clientHost||user) from ${_FILTERED_DATA_DIR%/}/request.csv group by 1 order by hour desc LIMIT 10")" "" ""
 }
 function r_list_logs() {
     _head "APP LOG" "max 100 *.log files' start and end (start time, end time, difference(sec), filesize)"
