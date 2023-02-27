@@ -49,6 +49,11 @@ function get_token() {
 function upload() {
     # TODO: Implement upload (PUT?) test
     cat << EOF
+curl -s -u admin:admin123 -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' -H 'Content-Type: application/vnd.docker.distribution.manifest.v2+json' http://localhost:5000/v2/alpine/manifests/sha256:e2e16842c9b54d985bf1ef9242a313f36b856181f188de21313820e177002501 -o e2e16842c9b54d985bf1ef9242a313f36b856181f188de21313820e177002501.json
+
+# NOTE: not -d, --data (how about -T / --upload-file?)
+curl -v -u admin:admin123 -H 'Content-Type: application/vnd.docker.distribution.manifest.v2+json' -X PUT http://localhost:5001/v2/alpine/manifests/sha256:e2e16842c9b54d985bf1ef9242a313f36b856181f188de21313820e177002501 --data-binary @e2e16842c9b54d985bf1ef9242a313f36b856181f188de21313820e177002501.json
+
 # Authentication check
 DEBU[0000] GET https://node-nxrm-ha1.standalone.localdomain:18183/v2/
 DEBU[0000] Ping https://node-nxrm-ha1.standalone.localdomain:18183/v2/ status 401
