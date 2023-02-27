@@ -125,7 +125,7 @@ iq_server:
   # Enabled to forward logs to the fluentd daemonset aggregator
   fluentd:
     forwarder:
-      enabled: false
+      enabled: true
 
   # The full text of the config.yml file that will be passed to each Nexus IQ Server
   # Note that log formats must correspond to what the fluentd sidecar configuration is set to recognize
@@ -294,8 +294,7 @@ aggregateLogFileRetention:
 
 # fluentd configuration
 fluentd:
-  # for testing, disabling
-  enabled: false
+  enabled: true
   config:
     # Configuration for sidecar forwarder
     # Note that source parsing formats must correspond to the Nexus IQ Server log formats

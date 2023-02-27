@@ -94,8 +94,8 @@ spec:
           resources:
             requests:
               # Make sure blow works with INSTALL4J_ADD_VM_PARAMS
-              cpu: '2'
-              memory: '4G'
+              cpu: '1'
+              memory: '6G'
           ports:
             - containerPort: 8081
             #- containerPort: 8443
@@ -154,7 +154,7 @@ spec:
               #       The nexus.scripts.allowCreation shouldn't be used for production.
               #       Also, maybe using nexus.onboarding.enabled=false and nexus.skipDefaultRepositories=true ?
               #       To enable HTTPS/SSL, prepare keystore.jks and append ',/nexus-data/etc/ssl/jetty-https.xml'
-              value: '-XX:ActiveProcessorCount=2 -Xms1g -Xmx3g -XX:MaxDirectMemorySize=2g \
+              value: '-XX:ActiveProcessorCount=1 -Xms2g -Xmx4g \
                 -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap \
                 -Djava.util.prefs.userRoot=/nexus-data/javaprefs \
                 -Dnexus.licenseFile=/etc/sonatype/sonatype-license.lic \
