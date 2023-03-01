@@ -8,6 +8,7 @@
 
 # Location to store downloaded JDK
 _JAVA_DIR="${_JAVA_DIR:-"/var/tmp/share/java"}"
+_EXTRA_LIB="${_EXTRA_LIB:-"/var/tmp/share/java/libs"}"
 
 function usage() {
     cat << EOS
@@ -190,7 +191,7 @@ function f_javaenvs() {
     if [ -x "${_jcmd}" ]; then
         if [ -z "$CLASSPATH" ]; then
             f_set_classpath "${_port_or_dir}" "${_user}"
-            _set_extra_classpath "${_port_or_dir}"  # If dir, will be just ignored
+            _set_extra_classpath "${_port_or_dir}"  # If dir, will be just ignored (only _EXTRA_LIB is used)
         else
             echo "INFO: CLASSPATH is already set, so not overwriting/appending."
         fi
@@ -259,17 +260,9 @@ function f_set_classpath() {
 }
 
 function _set_extra_classpath() {
-    # _set_extra_classpath 8081 "${_JAVA_DIR%/}/lib"
-    # _EXTRA_LIB="${_JAVA_DIR%/}/lib" _set_extra_classpath 8081
-    local _port="${1}"
+    local _port="${1:-}"
     local _extra_lib="${2-"${_EXTRA_LIB}"}"
     local _classpath=""
-
-    if [ "${_port}" == "8081" ] && [ -d "/usr/tmp/share/java/lib" ]; then
-        # At this moment, not considering dups
-        _classpath="${CLASSPATH%:}:$(find /usr/tmp/share/java/lib -type f -name '*.jar' | tr '\n' ':')"
-        export CLASSPATH="${_classpath%:}"
-    fi
 
     if [ "${_port}" == "8081" ] && [ -d "/opt/sonatype/nexus/system" ]; then
         # At this moment, not considering dups
@@ -283,7 +276,6 @@ function _set_extra_classpath() {
         export CLASSPATH="${_classpath%:}"
     fi
 
-    # using extra_dir only when no CLASSPATH set, otherwise, CLASSPATH can be super long
     if [ -d "${_extra_lib}" ]; then
         # It might contain another groovy jar but might be a different version, but as it should be using 2.4, should be OK
         #local _extra_classpath=$(find ${_extra_lib%/} -name '*.jar' -not -name 'groovy-*.jar' -print | tr '\n' ':')
