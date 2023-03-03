@@ -437,11 +437,11 @@ public class Main {
 
     private static List<ODocument> listIndexes(ODatabaseDocumentTx db, String indexName) {
         String whereAppend = "";
-        if (indexName.length() > 0) {
+        if (indexName.length() > 0 && !indexName.equals("*")) {
             whereAppend = " AND name like '" + indexName.replaceAll("\\*", "%") + "'";
         }
         String query =
-                "SELECT indexDefinition.className as table, name from (select expand(indexes) from metadata:indexmanager) where indexDefinition.className is not null " +
+                "SELECT indexDefinition.className as table, name, type from (select expand(indexes) from metadata:indexmanager) where indexDefinition.className is not null " +
                         whereAppend + " order by table, name LIMIT -1";
         //log(query);
         List<ODocument> oDocs = db.command(new OCommandSQL(query))
