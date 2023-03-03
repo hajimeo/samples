@@ -80,17 +80,17 @@ alias newpyv='python -m venv ./pyvenv && source ./pyvenv/bin/activate'
 alias pyv='source $HOME/.pyvenv/bin/activate'
 alias pyv39='source $HOME/.pyvenv39/bin/activate'
 #alias pyv='pyenv activate mypyvenv'    # I felt pyenv is slow, so not using
-alias urlencode='python3 -c "import sys;from urllib import parse; print(parse.quote(sys.argv[1]))"'
-#alias urlencode='python2 -c "import sys, urllib as ul; print(ul.quote(sys.argv[1]))"'
-alias urldecode='python3 -c "import sys;from urllib import parse; print(parse.unquote(sys.argv[1]))"'
-#alias urldecode='python2 -c "import sys, urllib as ul; print(ul.unquote_plus(sys.argv[1]))"'
+alias urlencode='python3 -c "import sys;from urllib import parse; print(parse.quote(sys.stdin.read()))"'
+#alias urlencode='python2 -c "import sys, urllib as ul; print(ul.quote(sys.stdin.read()))"'
+alias urldecode='python3 -c "import sys;from urllib import parse; print(parse.unquote(sys.stdin.read()))"'
+#alias urldecode='python2 -c "import sys, urllib as ul; print(ul.unquote_plus(sys.stdin.read()))"'
 # base64 encode/decode (coreutils base64 or openssl base64 -e|-d)
-alias b64encode='python3 -c "import sys, base64; print(base64.b64encode(sys.argv[1].encode(\"utf-8\")).decode())"'
-#alias b64encode='python -c "import sys, base64; print(base64.b64encode(sys.argv[1]))"'
-alias b64decode='python3 -c "import sys, base64; print(base64.b64decode(sys.argv[1]).decode())"'                                                                                   # .decode() to remove "b'xxxx"
+alias b64encode='python3 -c "import sys, base64; print(base64.b64encode(sys.stdin.read().encode(\"utf-8\")).decode())"'
+#alias b64encode='python -c "import sys, base64; print(base64.b64encode(sys.stdin.read()))"'
+alias b64decode='python3 -c "import sys, base64; print(base64.b64decode(sys.stdin.read()).decode())"'                                                                                   # .decode() to remove "b'xxxx"
 # require python3
-alias htmlencode="python -c \"import sys,html;print(html.escape(sys.argv[1]))\""
-alias htmldecode="python -c \"import sys,html;print(html.unescape(sys.argv[1]))\""
+alias htmlencode="python -c \"import sys,html;print(html.escape(sys.stdin.read()))\""
+alias htmldecode="python -c \"import sys,html;print(html.unescape(sys.stdin.read()))\""
 alias utc2int='python3 -c "import sys,time,dateutil.parser;from datetime import timezone;print(int(dateutil.parser.parse(sys.argv[1]).replace(tzinfo=timezone.utc).timestamp()))"' # doesn't work with yy/mm/dd (2 digits year)
 alias int2utc='python3 -c "import sys,datetime;print(datetime.datetime.utcfromtimestamp(int(sys.argv[1][0:10])).strftime(\"%Y-%m-%dT%H:%M:%S\")+\".\"+sys.argv[1][10:13]+\"Z\")"'
 #alias int2utc='python -c "import sys,time;print(time.asctime(time.gmtime(int(sys.argv[1])))+\" UTC\")"'
@@ -541,10 +541,10 @@ function sshs() {
     local _session_name="${2}"
     local _cmd="screen -r || screen -ls"
     if [ -n "${_session_name}" ]; then
-        _cmd="screen -x ${_session_name} || screen -S ${_session_name}"
+        _cmd="screen -x ${_session_name} || screen -s -/bin/bash -S ${_session_name}"
     else
         # if no session name specified, tries to attach it anyway (if only one session, should work)
-        _cmd="screen -x || screen -x $USER || screen -S $USER"
+        _cmd="screen -x || screen -x $USER || screen -s -/bin/bash -S $USER"
     fi
     ssh ${_user_at_host} -t ${_cmd}
 }
