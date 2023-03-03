@@ -6,7 +6,7 @@
 #       Using 'sudo' for pip3 and others
 #
 # curl -O "https://raw.githubusercontent.com/hajimeo/samples/master/bash/setup_work_env.sh"
-# sudo bash ./setup_work_env.sh
+# bash ./setup_work_env.sh
 #
 
 _DOWNLOAD_FROM_BASE="https://raw.githubusercontent.com/hajimeo/samples/master/"
@@ -27,7 +27,11 @@ function f_prepare() {
         apt-get update
         #curl -o /tmp/q.deb https://github.com/harelba/q/releases/download/v3.1.6/q-text-as-data-3.1.6-1.x86_64.deb && sudo dpkg -i q.deb
     fi
-    _install sudo curl screen gcc jq #netcat
+    if ! type sudo &>/dev/null; then
+        _install sudo curl screen gcc jq #netcat
+    else
+        _install curl screen gcc jq #netcat
+    fi
     #python@3.7: The x86_64 architecture is required for this software.
     #https://diewland.medium.com/how-to-install-python-3-7-on-macbook-m1-87c5b0fcb3b5
     if type ibrew &>/dev/null; then
