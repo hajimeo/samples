@@ -284,7 +284,7 @@ EOF
     type nxrmStart &>/dev/null && echo "      Or: nxrmStart"
 }
 
-#nxrmDocker "nxrm3-test" "" "8181" "8543" #"--read-only -v /tmp/nxrm3-test:/tmp" or --tmpfs /tmp:noexec
+#nxrmDocker "nxrm3-test" "" "8181:8081 8543:8443 15000:5000" #"--read-only -v /tmp/nxrm3-test:/tmp" or --tmpfs /tmp:noexec
 #mkdir -v -p -m777 /var/tmp/share/sonatype/nxrm3docker
 #docker run --init -d -p 18081:8081 --name=nxrm3docker -e INSTALL4J_ADD_VM_PARAMS="-Dnexus-context-path=/nexus -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v /var/tmp/share/sonatype/nxrm3docker:/nexus-data sonatype/nexus3:latest
 #docker run --init -d -p 18081:8081 -p 18443:8443 --name=nxrm3dockerWithHTTPS --tmpfs /tmp:noexec -e INSTALL4J_ADD_VM_PARAMS="-Dssl.etc=\${karaf.data}/etc/ssl -Dnexus-args=\${jetty.etc}/jetty.xml,\${jetty.etc}/jetty-https.xml,\${jetty.etc}/jetty-requestlog.xml -Dapplication-port-ssl=8443 -Djava.util.prefs.userRoot=/nexus-data" -v /var/tmp/share:/var/tmp/share -v /var/tmp/share/sonatype/nxrm3-data:/nexus-data dh1.standalone.localdomain:5000/sonatype/nexus3:latest
@@ -293,9 +293,8 @@ EOF
 function nxrmDocker() {
     local _name="${1:-"nxrm3"}"
     local _tag="${2:-"latest"}"
-    local _port="${3:-"8081"}"
-    local _port_ssl="${4:-"8443"}"
-    local _extra_opts="${5-"--platform=linux/amd64"}"    # this is docker options not INSTALL4J_ADD_VM_PARAMS
+    local _ports="${3:-"8081:8081 5000:5000"}"
+    local _extra_opts="${4-"--platform=linux/amd64"}"    # this is docker options not INSTALL4J_ADD_VM_PARAMS
     local _work_dir="${_WORK_DIR:-"/var/tmp/share"}"
     local _docker_host="${_DOCKER_HOST}"  #:-"dh1.standalone.localdomain:5000"
 
@@ -303,13 +302,19 @@ function nxrmDocker() {
     if [ ! -d "${_nexus_data%/}" ]; then
         mkdir -p -m 777 "${_nexus_data%/}" || return $?
     fi
+    local _p=""
+    if [ -n "${_ports}" ]; then
+        for _p_p in ${_ports}; do
+            _p="-p ${_p_p} ${_p% }"
+        done
+    fi
     local _opts="--name=${_name}"
     [ -n "${INSTALL4J_ADD_VM_PARAMS}" ] && _opts="${_opts} -e INSTALL4J_ADD_VM_PARAMS=\"${INSTALL4J_ADD_VM_PARAMS}\""
     [ -d "${_work_dir%/}" ] && _opts="${_opts} -v ${_work_dir%/}:/var/tmp/share"
     [ -d "${_nexus_data%/}" ] && _opts="${_opts} -v ${_nexus_data%/}:/nexus-data"
     [ -n "${_extra_opts}" ] && _opts="${_opts} ${_extra_opts}"  # Should be last to overwrite
     [ -n "${_docker_host}" ] && _docker_host="${_docker_host%/}/"
-    local _cmd="docker run --init -d -p ${_port}:8081 -p ${_port_ssl}:8443 ${_opts} ${_docker_host%/}sonatype/nexus3:${_tag}"
+    local _cmd="docker run --init -d ${_p} ${_opts} ${_docker_host%/}sonatype/nexus3:${_tag}"
     echo "${_cmd}"
     eval "${_cmd}"
     echo "To get the admin password:
