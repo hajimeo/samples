@@ -17,8 +17,8 @@
 #
 
 # Use 'export' to overwrite
-: ${_USER:=""}
-: ${_PWD:=""}
+: ${_USER:="admin"}
+: ${_PWD:="admin123"}
 : ${_IMAGE:="ratelimitpreview/test"}
 : ${_TAG="latest"}
 : ${_DOCKER_REGISTRY_URL:="http://dh1.standalone.localdomain:8081/repository/docker-proxy/"}
@@ -89,10 +89,14 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         fi
 
         # NOTE: curl with -I (HEAD) does not return RateLimit-Limit or RateLimit-Remaining
-        if [ -n "${_TAG}" ]; then
+        if [ -n "${_IMAGE}" ] && [ -n "${_TAG}" ]; then
             echo "### Requesting '${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}'" >&2
             ${_curl} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/manifests/${_TAG}" | python -m json.tool
-        else
+        fi
+
+        if [ -n "${_IMAGE}" ]; then
+            echo "### Testing V1 API with search for '${_IMAGE}'" >&2
+            ${_curl} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v1/search?n=10&q=${_IMAGE}" | python -m json.tool
             echo "### Requesting Tags for '${_IMAGE}'" >&2
             #${_curl} -H "Authorization: Bearer ${_TOKEN}" "${_DOCKER_REGISTRY_URL%/}/v1/repositories/${_IMAGE}/tags"
             ${_curl} -H "Authorization: Bearer ${_TOKEN}" -H "Accept: application/json" "${_DOCKER_REGISTRY_URL%/}/v2/${_IMAGE}/tags/list" | python -m json.tool
