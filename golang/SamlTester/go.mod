@@ -7,7 +7,7 @@ require (
 	github.com/hajimeo/samples/golang v0.0.0-20221104063308-0992795ec5eb
 	github.com/pkg/errors v0.9.1
 	github.com/zenazn/goji v1.0.1
-	golang.org/x/crypto v0.0.0-20210711020723-a769d52b0f97
+	golang.org/x/crypto v0.1.0
 )
 
 require (
