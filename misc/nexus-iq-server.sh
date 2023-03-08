@@ -42,6 +42,7 @@ else
     # default, expecting java 11 (more: https://foojay.io/today/embracing-jvm-unified-logging/ )
     JAVA_OPTIONS="${JAVA_OPTIONS} -Xlog:gc*:file=${NEXUS_IQ_SONATYPEWORK}/log/gc.%t.log:time,uptime:filecount=10,filesize=100m,classhisto*=trace"
 fi
+JAVA_OPTIONS="${JAVA_OPTIONS} -Dinsight.threads.monitor=3"
 
 chmod a+w /tmp/nexus_iq_server.out /tmp/nexus_iq_server.err &>/dev/null
 do_start()
