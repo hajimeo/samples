@@ -7,7 +7,7 @@ import org.postgresql.*
 import groovy.sql.Sql
 
 def p = new Properties()
-if (!args) p = System.getenv()
+if (!args) p = System.getenv()  //username, password, jdbcUrl
 else {
     def pf = new File(args[0])
     pf.withInputStream { p.load(it) }
@@ -15,8 +15,9 @@ else {
 def query = (args.length > 1) ? args[1] : "SELECT 'ok' as test"
 def driver = Class.forName('org.postgresql.Driver').newInstance() as Driver
 def dbP = new Properties()
-dbP.setProperty("DB_user", p.username)
-dbP.setProperty("DB_password", p.password)
+dbP.setProperty("user", p.username)
+dbP.setProperty("password", p.password)
+//println(dbP)
 def conn = driver.connect(p.jdbcUrl, dbP)
 def sql = new Sql(conn)
 try {
