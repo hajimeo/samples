@@ -4,6 +4,7 @@
 
 function _get_dbadmin_user() {
     local _dbadmin="$1"
+    local _port="${2:-"5432"}"
     if [ -n "${_dbadmin}" ]; then
         echo "${_dbadmin}"
         return $?
@@ -39,7 +40,7 @@ function _postgresql_configure() {
     local _postgresql_conf="${3}"   # Automatically detected if empty. "/var/lib/pgsql/data" or "/etc/postgresql/10/main" or /var/lib/pgsql/12/data/
     local _dbadmin="${4}"
     local _port="${5:-"5432"}"      # just for deciding the username. Optional.
-    _dbadmin="$(_get_dbadmin_user "${_dbadmin}")"
+    _dbadmin="$(_get_dbadmin_user "${_dbadmin}" "${_port}")"
     local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
     local _restart=false
 
@@ -160,7 +161,8 @@ function _postgresql_create_dbuser() {
     local _schema="${4}"
     local _dbadmin="${5}"
     local _port="${6:-"5432"}"
-    _dbadmin="$(_get_dbadmin_user "${_dbadmin}")"
+    local _force="${7}"
+    _dbadmin="$(_get_dbadmin_user "${_dbadmin}" "${_port}")"
     local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
 
     local _pg_hba_conf="$(${_psql_as_admin} -tAc 'SHOW hba_file')"
@@ -184,7 +186,7 @@ function _postgresql_create_dbuser() {
 
     [ "${_dbusr}" == "all" ] && return 0    # not creating user 'all'
     _log "INFO" "Creating Role:${_dbusr} and Database:${_dbname} ..."
-    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_dbadmin}"
+    _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schema}" "${_dbadmin}" "${_port}" "${_force}"
 }
 
 function _postgresql_create_role_and_db() {
@@ -194,8 +196,9 @@ function _postgresql_create_role_and_db() {
     local _dbname="${3-"${_dbusr}"}"    # If explicitly "", not creating DB but user/role only
     local _schema="${4}"
     local _dbadmin="${5}"
-    local _force="${6}"
-    _dbadmin="$(_get_dbadmin_user "${_dbadmin}")"
+    local _port="${6:-"5432"}"
+    local _force="${7}"
+    _dbadmin="$(_get_dbadmin_user "${_dbadmin}" "${_port}")"
 
     local _psql_as_admin="$(_get_psql_as_admin "${_dbadmin}")"
     # NOTE: need to be superuser and 'usename' is correct. options: -t --tuples-only, -A --no-align, -F --field-separator
@@ -250,7 +253,7 @@ function _postgres_pitr() {
     local _target_ISO_datetime="${4}"   # yyyy-mm-dd hh:mm:ss (optional)
     local _dbadmin="${5:-"postgres"}"   # DB OS user
     local _port="${6:-"5432"}"          # PostgreSQL port number (optional)
-    _dbadmin="$(_get_dbadmin_user "${_dbadmin}")"
+    _dbadmin="$(_get_dbadmin_user "${_dbadmin}" "${_port}")"
 
     if [ ! -d "${_data_dir}" ]; then
         _log "ERROR" "No PostgreSQL data dir provided: ${_data_dir}"
@@ -327,6 +330,6 @@ function _psql_copydb() {
     local _db_hostname="${5:-"${_DB_HOSTNAME:-"localhost"}"}"
     local _db_port="${6:-"${_DB_PORT:-"5432"}"}"
 
-    local _pg_dump_as_admin="$(_get_psql_as_admin "$(_get_dbadmin_user)" "pg_dump")"
+    local _pg_dump_as_admin="$(_get_psql_as_admin "$(_get_dbadmin_user)" "pg_dump" "${_db_port}")"
     ${_pg_dump_as_admin} -d "${_local_src_db}" -c -O | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -p ${_db_port} -U ${_dbusr} -d ${_dbname}
 }
