@@ -830,8 +830,10 @@ function f_gc_before_after_check() {
     echo "# Temp file: /tmp/${FUNCNAME}_$$.tmp"
 }
 
+# If jmap output starts with YYYY-MM-DD hh:mm:ss.xxx
+#_csplit -z -f "./jmap_histos/jmap_histo_" ${_file} "/^2023-/" '{*}'
 function f_jmap_histo_compare() {
-    local _file_glob="${1:-${_HISTO_FILE_GLOB:-"histo*.out"}}"
+    local _file_glob="${1:-${_HISTO_FILE_GLOB:-"jmap_histo_*"}}"
     local _keyword="${2:-".*sonatype.*"}"
     local _m="${3:-"10"}"
     rg "${_keyword}" -m${_m} -g "${_file_glob}"
@@ -840,6 +842,8 @@ function f_jmap_histo_compare() {
 #mkdir -v ./jmap_histos
 #_csplit -z -f "./jmap_histos/jmap_histo_" ${_file} "/^ *num /" '{*}'
 #_i=1; for _f in $(ls -1 ./jmap_histos/jmap_histo_*); do f_jmap_histo2csv "${_f}" "./jmap_histos.csv" "" "${_i}"; _i=$((${_i}+1)); done
+# If jmap output starts with YYYY-MM-DD hh:mm:ss.xxx
+#for _f in $(ls -1 ./jmap_histos/jmap_histo_*); do f_jmap_histo2csv "${_f}" "./jmap_histos.csv" "" "$(rg -m1 '^202\d-\d\d-\d\d.+' -o ${_f})"; done
 #  ju.d(ju.q("""SELECT * FROM t_jmap_histos WHERE class_name like '%.sonatype.%' and bytes > 500000 ORDER BY class_name, key"""))
 #  ju.d(ju.q("""SELECT * FROM t_jmap_histos WHERE class_name like '%.sonatype.%' and bytes > 500000 ORDER BY bytes DESC"""))
 function f_jmap_histo2csv() {
@@ -856,7 +860,7 @@ function f_jmap_histo2csv() {
         echo "${_save_to} exists, so appending ${_file} results ..." >&2
     fi
     # num     #instances         #bytes  class name
-    rg -z "^\s*\d+:\s+(\d+)\s+(\d+)\s+(${_class_ex})" -o -r '"'${_key}'","$3",$1,$2' ${_file} >> "${_save_to}" || return $?
+    rg -z "^\s*\d+:\s+(\d+)\s+(\d+)\s+(${_class_ex})" -o -r "\"${_key}\",\"\$3\",\$1,\$2" ${_file} >> "${_save_to}" || return $?
     head -n1 "${_save_to}" | rg -q '^key' || echo "key,class_name,instances,bytes
 $(cat "${_save_to}")" > ${_save_to}
 }
