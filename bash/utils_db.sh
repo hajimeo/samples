@@ -209,6 +209,7 @@ function _postgresql_create_role_and_db() {
     fi
 
     if [ -n "${_dbname}" ]; then
+        local _create_db=true
         if ${_psql_as_admin} -d template1 -ltA  -F',' | grep -q "^${_dbname},"; then
             if [[ "${_force}" =~ ^[yY] ]]; then
                 _log "WARN" "${_dbname} already exists. As force is specified, dropping ${_dbname} ..."
@@ -218,8 +219,10 @@ function _postgresql_create_role_and_db() {
                 _log "WARN" "${_dbname} already exists. May need to run below first:
         ${_psql_as_admin} -d ${_dbname} -c \"DROP SCHEMA ${_schema:-"public"} CASCADE;CREATE SCHEMA ${_schema:-"public"} AUTHORIZATION ${_dbusr};\""
                 sleep 3
+                _create_db=false
             fi
-        else
+        fi
+        if ${_create_db}; then
             # NOTE: 'WITH template <dbname>' does not work well with different owner/user
             ${_psql_as_admin} -d template1 -c "CREATE DATABASE ${_dbname} WITH OWNER ${_dbusr} ENCODING 'UTF8';"
         fi
