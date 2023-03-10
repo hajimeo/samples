@@ -844,8 +844,10 @@ function f_jmap_histo_compare() {
 #_i=1; for _f in $(ls -1 ./jmap_histos/jmap_histo_*); do f_jmap_histo2csv "${_f}" "./jmap_histos.csv" "" "${_i}"; _i=$((${_i}+1)); done
 # If jmap output starts with YYYY-MM-DD hh:mm:ss.xxx
 #for _f in $(ls -1 ./jmap_histos/jmap_histo_*); do f_jmap_histo2csv "${_f}" "./jmap_histos.csv" "" "$(rg -m1 '^202\d-\d\d-\d\d.+' -o ${_f})"; done
-#  ju.d(ju.q("""SELECT * FROM t_jmap_histos WHERE class_name like '%.sonatype.%' and bytes > 500000 ORDER BY class_name, key"""))
-#  ju.d(ju.q("""SELECT * FROM t_jmap_histos WHERE class_name like '%.sonatype.%' and bytes > 500000 ORDER BY bytes DESC"""))
+#
+#  ju.csv2df("./jmap_histos.csv", tablename="t_jmap_histos")
+#  ju.d(ju.q("""SELECT min(key), count(*), class_name, instances, bytes FROM t_jmap_histos WHERE class_name like '%.sonatype.%' and bytes > 500000 GROUP BY class_name, instances, bytes ORDER BY class_name, key"""))
+#  ju.d(ju.q("""SELECT min(key), count(*), class_name, instances, bytes FROM t_jmap_histos WHERE bytes > 500000 GROUP BY class_name, instances, bytes ORDER BY bytes DESC"""))
 function f_jmap_histo2csv() {
     local __doc__="Convert jmap -histo output to csv"
     local _file="${1}"      # File path which contains one jmap histo output
