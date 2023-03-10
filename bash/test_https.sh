@@ -92,6 +92,8 @@ function test_tls_versions() {
         echo "[$(date -u +'%Y-%m-%dT%H:%M:%SZ')] INFO: '$(type java)' Enabled protocols"
         "${_jrunscript}" -e 'var ps = javax.net.ssl.SSLContext.getDefault().createSSLEngine().getEnabledProtocols(); for (var i in ps) println(ps[i])'
         # TODO: "${_jrunscript}" -e 'var ni = java.net.NetworkInterface.getNetworkInterfaces();for (var i in ni) println(ni[i].getInetAddresses().toString())'
+        # TODO: Specifying -Djdk.tls.client.protocols=TLSv1.3 -Dhttps.protocols=TLSv1.3 in above does not work.
+        #       To debug, -Djavax.net.debug=all Also, java has -Djava.security.properties=/path/to/your/java.security
     fi
 }
 
