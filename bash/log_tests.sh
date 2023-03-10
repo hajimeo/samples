@@ -361,7 +361,7 @@ function e_requests() {
         f_request2csv "${_req_log_path}" ${_FILTERED_DATA_DIR%/}/request.csv 2>/dev/null &
         _rg "${_DATE_FMT_REQ}:(\d\d).+(/rest/|/api/)([^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?[^/ =?]+/?)" --no-filename -g ${_REQUEST_LOG} -o -r '"$1:" "$2$3"' | _replace_number | sort -k1,2 | uniq -c > ${_FILTERED_DATA_DIR%/}/agg_requests_count_hour_api.ssv &
     else
-        _LOG "INFO" "Not converting '${_req_log_path}' to CSV (and agg_requests_count_hour_api) because no ${_REQUEST_LOG:-"request.log"} or log size (${_req_log_size}) is larger than ${_LOG_THRESHOLD_BYTES}"
+        _LOG "WARN" "Not converting '${_req_log_path}' to CSV (and agg_requests_count_hour_api) because no ${_REQUEST_LOG:-"request.log"} or log size (${_req_log_size}) is larger than ${_LOG_THRESHOLD_BYTES}"
     fi
 }
 function e_threads() {
@@ -469,7 +469,7 @@ function t_mounts() {
     fi
 }
 function t_oome() {
-    _test_template "$(_rg -c 'OutOfMemoryError' -g "${_LOG_GLOB}" -g "!jvm.log")" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
+    _test_template "$(_rg 'java.lang.OutOfMemoryError:.+' -o -g "${_LOG_GLOB}" -g '!jvm.log' | sort | uniq -c | sort | head -n10)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
 }
 function t_fips() {
     _test_template "$(_rg -m1 '(KeyStore must be from provider SunPKCS11-NSS-FIPS|PBE AlgorithmParameters not available)' -g "${_LOG_GLOB}")" "WARN" "FIPS mode might be detected from ${_LOG_GLOB}" "-Dcom.redhat.fips=false"
