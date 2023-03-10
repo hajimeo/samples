@@ -1,5 +1,6 @@
 #!/usr/bin/env groovy
 // https://gist.github.com/renatoathaydes/8ad276cedd515f8ff5fc
+// TODO: convert to HTTPS
 
 import org.eclipse.jetty.server.Server
 import org.eclipse.jetty.servlet.*
