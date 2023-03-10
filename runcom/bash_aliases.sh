@@ -123,6 +123,7 @@ alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");pri
 alias escape4json='python3 -c "import sys,json;print(json.dumps(sys.stdin.read()))"'
 alias jp='pyv && jupyter-lab &> /tmp/jupyter-lab.out &'
 alias jn='pyv && jupyter-notebook &> /tmp/jupyter-notebook.out &'
+alias startWeb='python3 -m http.server' # specify port (default:8000) if python2: python -m SimpleHTTPServer 8000
 
 ## Common software/command but need to install #######################################################################
 type docker &>/dev/null && alias docker_stop="docker stop -t 120"  # 10 seconds is too short
@@ -190,7 +191,6 @@ alias winchrome='/opt/google/chrome/chrome --user-data-dir=$HOME/.chromep --prox
 alias hwxS3='s3cmd ls s3://private-repo-1.hortonworks.com/HDP/centos7/2.x/updates/'
 # TODO: public-repo-1.hortonworks.com private-repo-1.hortonworks.com
 # Slack API Search
-# python3 -m http.server
 [ -s $HOME/IdeaProjects/samples/python/SimpleWebServer.py ] && alias slackS="pyv && cd $HOME/IdeaProjects/samples/python/ && python3 ./SimpleWebServer.py &> /tmp/SimpleWebServer.out &"
 alias smtpdemo='python -m smtpd -n -c DebuggingServer localhost:2500'
 
