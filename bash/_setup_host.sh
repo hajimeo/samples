@@ -527,6 +527,8 @@ function f_ip_set() {
     netplan apply #--debug apply
 }
 
+# Expose one port example
+#ssh -4gC2TxnNf -L 6443:localhost:6443 localhost
 function f_socks5_proxy() {
     local __doc__="Start Socks5 proxy (for websocket)"
     local _port="${1:-$((${r_PROXY_PORT:-28080} + 1))}" # 28081
@@ -1155,42 +1157,47 @@ function f_microk8s() {
     microk8s status --wait-ready    # list enabled/disabled addons
     microk8s config     # to output the config
     microk8s inspect    # Very helpful troubleshooting command, generates a report
-    microk8s kubectl run -n <namespace> -it --rm --restart=Never busybox --image=gcr.io/google-containers/busybox sh    # Start a pod for troubleshooting
 
-    microk8s helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
-    microk8s helm3 search repo iq
-    microk8s helm3 lint <dir/to/Chart.yaml>         # To check formatting
+    helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
+    helm3 search repo iq
+    helm3 lint <dir/to/Chart.yaml>         # To check formatting
     # after creating the namespace 'sonatype'
-    microk8s helm3 install --dry-run --debug nxiq helm-sonatype-proxy/nexus-iq-server -n sonatype -f ./helm-iq-values.yml
-    microk8s helm upgrade --debug nexus-iq-server-1645669212 sonatype/nexus-iq-server -n default --reset-values --dry-run
-    microk8s helm3 install --debug nxrm3 helm-sonatype-proxy/nexus-repository-manager -n sonatype
-    microk8s helm3 uninstall nxrm3     # to delete everything
+    helm3 install nxiq helm-sonatype-proxy/nexus-iq-server -n sonatype -f ./helm-iq-values.yml --dry-run
+    helm upgrade nxiq sonatype/nexus-iq-server -n default --version 47.1.0 --reset-values --dry-run
+    helm3 install nxrm3 helm-sonatype-proxy/nexus-repository-manager -n sonatype    #--debug is not so useful
+    helm3 uninstall nxrm3     # to delete everything
     # troubleshooting helm related issue
-    microk8s helm3 get manifest <release name>      # https://helm.sh/docs/helm/helm_get_manifest/
-    microk8s helm3 template [NAME] [CHART]          # https://helm.sh/docs/helm/helm_template/
+    helm3 get manifest <release name>      # https://helm.sh/docs/helm/helm_get_manifest/
+    helm3 template [NAME] [CHART]          # https://helm.sh/docs/helm/helm_template/
 
-    microk8s kubectl config get-contexts            # list available kubectl configs
-    microk8s kubectl cluster-info #dump
-    microk8s kubectl create -f your_deployment.yml
-    microk8s kubectl get services                   # or all, or deployments to check the NAME
-    microk8s kubectl get deploy <deployment-name> -o yaml   # to export the deployment yaml
-    microk8s kubectl expose deployment <deployment-name> --type=LoadBalancer --port=8081
-    microk8s kubectl port-forward --address 0.0.0.0 <pod-name> 18081:8081 & # this command runs in foreground
-    microk8s kubectl get pods                       # get a pod name to login
-    microk8s kubectl describe pod <pod-name>        # shows Events
-    microk8s kubectl logs <pod-name>                # To see if app had error, also --previous is useful
-    microk8s kubectl get pod <pod-name> -o yaml     # to get more information than describe
-    microk8s kubectl delete pod --grace-period=0 --force <pod-name>     # force terminating/deleting. check 'get pvc' and 'get pv'
-    microk8s kubectl describe pvc <pvc-name>
-    microk8s kubectl exec <pod-name> -ti -- bash
-    microk8s kubectl scale --replicas=0 deployment <deployment-name>    # stop all pods temporarily (if no HPA)
+    kubectl config get-contexts            # list available kubectl configs
+    kubectl cluster-info #dump
+    kubectl create -f your_deployment.yml  # or kubectl apply
+    kubectl get services                   # or all, or deployments to check the NAME
+    kubectl get deploy <deployment-name> -o yaml   # to export the deployment yaml
+    kubectl expose deployment <deployment-name> --type=LoadBalancer --port=8081
+    kubectl get pods --show-labels -A
+    kubectl port-forward pod/<pod-name> -n default --address 0.0.0.0 18081:8081 & # this command runs in foreground
+    kubectl port-forward \$(kubectl get pods -n sonatype -l \"app.kubernetes.io/name=nexus-repository-manager\" -o jsonpath=\"{.items[0].metadata.name}\") 8081:8081 -n sonatype &>/tmp/k8s_pf_8081.out &
+    kubectl get pods                       # get a pod name to login
+    kubectl describe pod <pod-name>        # shows Events
+    kubectl get pod <pod-name> -o yaml     # similar to above describe, but yaml format
+    kubectl logs <pod-name>                # To see if app had error, also --previous is useful
+    kubectl delete pod --grace-period=0 --force <pod-name>     # force terminating/deleting. check 'get pvc' and 'get pv'
+    kubectl describe pvc <pvc-name>
+    kubectl exec <pod-name> -ti -- bash
+    kubectl scale --replicas=0 deployment <deployment-name>    # stop all pods temporarily (if no HPA)
 
     # list images (docker images)
     microk8s ctr images list
+    kubectl get node -o json | jq -r '.items[].status.images[].names'   # jq is required
+    kubectl get node -o go-template --template='{{range .items}}{{range .status.images}}{{.sizeBytes}}{{\"\t\"}}{{.names}}{{\"\n\"}}{{end}}{{end}}'
     kubectl get pods --all-namespaces -o go-template --template='{{range .items}}{{range .spec.containers}}{{.image}} {{end}}{{end}}'
 
+    # Start a pod for troubleshooting (more: https://stackoverflow.com/questions/61803186/how-to-mount-volume-inside-pod-using-kubectl-cli)
+    kubectl run -n default -it --rm --restart=Never busybox --image=gcr.io/google-containers/busybox -- sh
     # Ingress troubleshooting: https://kubernetes.github.io/ingress-nginx/troubleshooting/
-    microk8s kubectl exec -it -n ingress nginx-ingress-microk8s-controller-xb9qh -- cat /etc/nginx/nginx.conf
+    kubectl exec -it -n ingress nginx-ingress-microk8s-controller-xb9qh -- cat /etc/nginx/nginx.conf
 
     microk8s stop   #microk8s.stop
     snap stop --disable microk8s
