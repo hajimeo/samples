@@ -52,6 +52,8 @@ function f_verify_install() {
 }
 
 #find . -type f -printf '%s\n' | awk '{ c+=1;s+=$1/1024/1024 }; END { print "count:"c", size:"s" MB" }'
+#find /nexus_* -type d -name content -print0 | xargs -0 -I{} -P3 du -s {};
+#find /nexus_* -type d -name content -print0 | xargs -0 -I{} -P3 -t sh -c "find {} -name '*.properties' ! -newermt '2023-03-03 23:59:59' -ls | head -n1"
 function f_size_count() {
     local __doc__="Count how many kilobytes file and sum size (NOT considering 'deleted=true' files)"
     local _dir="$1" # blobs/defaut/content/
