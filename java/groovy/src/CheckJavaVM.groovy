@@ -1,6 +1,6 @@
 // https://gist.github.com/rednaxelafx/1388046
 
-package groovy
+
 
 import java.lang.management.ManagementFactory
 import com.sun.tools.attach.VirtualMachine
