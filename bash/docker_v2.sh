@@ -46,9 +46,22 @@ function get_token() {
     fi | sed -E 's/.+"token":"([^"]+)".+/\1/'
 }
 
+# If 'jq': jq -R 'split(".") | .[1] | @base64d | fromjson' <<< "$1"
+function decode_jwt() {
+    local _jwt="$1"
+    local _payload="$(echo -n "${_jwt}" | cut -d "." -f 2)"
+    local _mod=$((${#_payload} % 4))
+    if [ ${_mod} -eq 2 ]; then
+        _payload="${_payload}"'=='
+    elif [ $_mod -eq 3 ]; then
+        _payload="${_payload}"'='
+    fi
+    echo "${_payload}" | tr '_-' '/+' | openssl enc -d -base64
+}
+
 function upload() {
     # TODO: Implement upload (PUT?) test
-    cat << EOF
+    cat <<EOF
 curl -s -u admin:admin123 -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' -H 'Content-Type: application/vnd.docker.distribution.manifest.v2+json' http://localhost:5000/v2/alpine/manifests/sha256:e2e16842c9b54d985bf1ef9242a313f36b856181f188de21313820e177002501 -o e2e16842c9b54d985bf1ef9242a313f36b856181f188de21313820e177002501.json
 
 # NOTE: not -d, --data (how about -T / --upload-file?)
@@ -76,17 +89,16 @@ EOF
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
+    # TODO: the token server URL is decided by "www-authenticate: Bearer realm="https://dh1:5000/v2/token",service="https://dh1:5000/v2/token"
     echo "### Requesting '${_TOKEN_SERVER_URL}&scope=repository:${_IMAGE}:pull'" >&2
     _TOKEN="$(get_token)"
 
     if [ -n "${_TOKEN}" ]; then
         echo "### Got token" >&2
         echo "${_TOKEN}" >&2
-        # For debugging (NOTE: Nexus's token can't be decoded)
-        if which jwt &>/dev/null; then
-            echo "### Decoding JWT" >&2
-            jwt decode "${_TOKEN}"
-        fi
+        # For debugging (NOTE: Nexus's Docker bearer token can't be decoded)
+        echo "### [DEBUG] Decoding JWT" >&2
+        decode_jwt "${_TOKEN}" | python -m json.tool
 
         # NOTE: curl with -I (HEAD) does not return RateLimit-Limit or RateLimit-Remaining
         if [ -n "${_IMAGE}" ] && [ -n "${_TAG}" ]; then
