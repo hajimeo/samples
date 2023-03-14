@@ -771,6 +771,7 @@ function f_setup_raw() {
 
 function f_branding() {
     local _msg="${1:-"HelloWorld!"}"
+    #<marquee direction="right" behavior="alternate"><span style="color:#f0f8ff;">some text</span></marquee>
     f_apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"rapture.branding","notes":"","enabled":true,"properties":{"headerEnabled":"true","headerHtml":"<div style=\"background-color:white;text-align:right\">'${_msg}'</a>&nbsp;</div>","footerEnabled":null,"footerHtml":""}}],"type":"rpc"}'
 }
 
@@ -1520,12 +1521,12 @@ function f_nexus_csel() {
 # Create a test user and test role
 function f_nexus_testuser() {
     local _userid="${1:-"testuser"}"
-    local _privs="${2}" # eg: '"nx-repository-view-*-*-*","nx-usertoken-current"' NOTE: OSS doesn't have usertoken
+    local _privs="${2-"\"nx-repository-view-*-*-*\",\"nx-search-read\",\"nx-component-upload\""}" # NOTE: nx-usertoken-current does not work with OSS as no User Token
     local _role="${3-"test-role"}"
     if [ -n "${_role}" ]; then
-        f_apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"default","id":"'${_role}'","name":"'${_role}'","description":"'${_role}'","privileges":['${_privs}'],"roles":[]}],"type":"rpc"}' #|| return $?
+        f_api "/service/rest/v1/security/roles" "{\"id\":\"${_role}\",\"name\":\"${_role} name\",\"description\":\"${_role} desc\",\"privileges\":[${_privs}],\"roles\":[]}"
     fi
-    f_apiS '{"action":"coreui_User","method":"create","data":[{"userId":"'${_userid}'","version":"","firstName":"test","lastName":"user","email":"'${_userid}'@example.com","status":"active","roles":["'${_role}'"],"password":"'${_userid}'"}],"type":"rpc"}'
+    f_apiS '{"action":"coreui_User","method":"create","data":[{"userId":"'${_userid}'","version":"","firstName":"test","lastName":"user","email":"'${_userid}'@example.com","status":"active","roles":["'${_role:-"nx-anonymous"}'"],"password":"'${_userid}'"}],"type":"rpc"}'
 }
 
 function f_nexus_https_config() {
@@ -1590,8 +1591,55 @@ nexus.scripts.allowCreation=true' > ${_sonatype_work%/}/etc/nexus.properties || 
     fi
 }
 
+
+
+# SAML server: https://github.com/hajimeo/samples/blob/master/golang/SamlTester/README.md
+function f_start_saml_server() {
+    local _service_metadata_url="${1:-"./service-metadata.xml"}"
+    local _idp_base_url="${2:-"http://localhost:2080/"}"
+    if [ -z "${_service_metadata_url}" ]; then
+        echo "Please specify _service_metadata_url"; return 1
+    fi
+    local _cmd="simplesamlidp"
+    if type ${_cmd} &>/dev/null || [ ! -s ./simplesamlidp ]; then
+        curl -o ./simplesamlidp -L "https://github.com/hajimeo/samples/raw/master/misc/simplesamlidp_$(uname)_$(uname -m)" || return $?
+        chmod u+x ./simplesamlidp || return $?
+        _cmd="./simplesamlidp"
+    fi
+    if [ ! -s simple-saml-idp.json ]; then
+        curl -O -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/simple-saml-idp.json || return $?
+    fi
+    openssl req -x509 -newkey rsa:2048 -keyout ./myidp.key -out ./myidp.crt -days 365 -nodes -subj "/CN=$(hostname -f)"
+    export IDP_KEY=./myidp.key IDP_CERT=./myidp.crt USER_JSON=./simple-saml-idp.json IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_service_metadata_url}"
+    eval "${_cmd}"
+}
+
+function f_start_ldap_server() {
+    if [ ! -s ./glauth/glauth ]; then
+        local _fname="$(uname | tr '[:upper:]' '[:lower:]')$(uname -m).zip"
+        curl -O -L "https://github.com/glauth/glauth/releases/download/v2.1.0/${_fname}" || return $?
+        unzip -d ./glauth ./${_fname}
+        chmod u+x ./glauth/glauth || return $?
+    fi
+    if [ ! -s ./glauth/glauth-simple.cfg ]; then
+        curl -o ./glauth/glauth-simple.cfg -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/glauth-simple.cfg || return $?
+    fi
+    # listening 0.0.0.0:389
+    ./glauth/glauth -c ./glauth/glauth-simple.cfg
+}
+function f_nexus_ldap_config() {
+    local __doc__="Setup LDAP for GLAuth server."
+    local _name="${1:-"glauth"}"
+    local _host="${2:-"localhost"}"
+    local _port="${3:-"389"}"   # 636
+    #nc -z ${_host} ${_port} || return $?
+    # Using 'mail' instead of 'uid' so that not confused with same 'admin' user between local and ldap
+    f_apiS '{"action":"ldap_LdapServer","method":"create","data":[{"id":"","name":"'${_name}'","protocol":"ldap","host":"'${_host}'","port":"'${_port}'","searchBase":"dc=standalone,dc=localdomain","authScheme":"simple","authUsername":"admin@standalone.localdomain","authPassword":"secret12","connectionTimeout":"30","connectionRetryDelay":"300","maxIncidentsCount":"3","template":"Posix%20with%20Dynamic%20Groups","userBaseDn":"ou=users","userSubtree":true,"userObjectClass":"posixAccount","userLdapFilter":"","userIdAttribute":"mail","userRealNameAttribute":"cn","userEmailAddressAttribute":"mail","userPasswordAttribute":"","ldapGroupsAsRoles":true,"groupType":"dynamic","userMemberOfAttribute":"memberOf"}],"type":"rpc"}'
+    f_apiS '{"action":"coreui_Role","method":"create","data":[{"version":"","source":"LDAP","id":"ipausers","name":"ipausers-role","description":"ipausers-role-desc","privileges":["nx-repository-view-*-*-*","nx-search-read","nx-component-upload"],"roles":[]}],"type":"rpc"}'
+}
+
 function f_repository_replication() {
-    local __doc__="Setup Repository Replication v1 using 'admin' user"
+    local __doc__="DEPRECATED Setup Repository Replication v1 using 'admin' user"
     local _src_repo="${1:-"raw-hosted"}"
     local _tgt_repo="${2:-"raw-repl-hosted"}"
     local _target_url="${3:-"http://$(hostname):8081/"}"
@@ -2404,7 +2452,7 @@ main() {
 
     if _isYes "${r_NEXUS_CLIENT_INSTALL}"; then
         _log "INFO" "Installing a client container ..."
-        p_client_container
+        p_client_container "" "" ""
     fi
 
     if _isYes "${r_SOCKS_PROXY}"; then
