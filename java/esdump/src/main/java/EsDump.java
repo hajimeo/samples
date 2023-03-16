@@ -3,9 +3,10 @@
  * https://lucene.apache.org/core/5_5_2/demo/src-html/org/apache/lucene/demo/SearchFiles.html
  * https://ishanupamanyu.com/blog/get-all-documents-in-lucene/
  *
- * mvn clean package && cp -v -f ./target/esdump-1.0-SNAPSHOT-jar-with-dependencies.jar ../../misc/esdump.jar
+ * mvn clean package && cp -v -f ./target/esdump-1.0-SNAPSHOT-jar-with-dependencies.jar ../../misc/esdump8.jar
  *
  * curl -O -L https://github.com/hajimeo/samples/raw/master/misc/esdump.jar
+ * curl -O -L https://github.com/hajimeo/samples/raw/master/misc/esdump8.jar
  */
 
 import com.google.common.hash.Hashing;
@@ -98,7 +99,8 @@ public class EsDump {
     public static long searchAndPrintResults(IndexSearcher indexSearcher, Query query) throws IOException {
         long i = 0L;
         TopDocs topDocs = indexSearcher.search(query, RETRIEVE_NUM);
-        long totalHits = topDocs.totalHits;
+        long totalHits = topDocs.totalHits; // 5.5.2
+        //long totalHits = topDocs.totalHits.value; // 8.11.2
         System.err.printf("Found %d hits.%n", totalHits);
         while (topDocs.scoreDocs.length != 0) {
             ScoreDoc[] results = topDocs.scoreDocs;
