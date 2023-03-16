@@ -7,6 +7,8 @@
  *
  * curl -O -L https://github.com/hajimeo/samples/raw/master/misc/esdump.jar
  * curl -O -L https://github.com/hajimeo/samples/raw/master/misc/esdump8.jar
+ *
+ * TODO: Caused by: java.lang.IllegalArgumentException: An SPI class of type org.apache.lucene.codecs.Codec with name 'Lucene84' does not exist.  You need to add the corresponding JAR file supporting this SPI to your classpath.  The current classpath supports the following names: [Lucene87]
  */
 
 import com.google.common.hash.Hashing;
@@ -99,8 +101,8 @@ public class EsDump {
     public static long searchAndPrintResults(IndexSearcher indexSearcher, Query query) throws IOException {
         long i = 0L;
         TopDocs topDocs = indexSearcher.search(query, RETRIEVE_NUM);
-        long totalHits = topDocs.totalHits; // 5.5.2
-        //long totalHits = topDocs.totalHits.value; // 8.11.2
+        //long totalHits = topDocs.totalHits; // 5.5.2
+        long totalHits = topDocs.totalHits.value; // 8.11.2
         System.err.printf("Found %d hits.%n", totalHits);
         while (topDocs.scoreDocs.length != 0) {
             ScoreDoc[] results = topDocs.scoreDocs;
