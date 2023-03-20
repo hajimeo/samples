@@ -1,8 +1,8 @@
 /*
 #go mod init github.com/hajimeo/samples/golang/NexusSql
 go mod tidy
-env GOOS=linux GOARCH=amd64 go build -o ../../misc/nexus-sql_Linux_amd64 NexusSql.go && \
-env GOOS=darwin GOARCH=amd64 go build -o ../../misc/nexus-sql_Darwin_amd64 NexusSql.go && \
+env GOOS=linux GOARCH=amd64 go build -o ../../misc/nexus-sql_Linux_x86_64 NexusSql.go && \
+env GOOS=darwin GOARCH=amd64 go build -o ../../misc/nexus-sql_Darwin_x86_64 NexusSql.go && \
 env GOOS=darwin GOARCH=arm64 go build -o ../../misc/nexus-sql_Darwin_arm64 NexusSql.go && date
 
 SELECT name, REGEXP_REPLACE(recipe_name, '-.+', '') AS fmt FROM repository;

@@ -7,7 +7,9 @@ Example env variables:
 To get IdP metadata:
 	${IDP_BASE_URL%/}/metadata
 
-go build -o ../../misc/simplesamlidp_$(uname) ./SimpleSamlIdP.go && env GOOS=linux GOARCH=amd64 go build -o ../../misc/simplesamlidp_Linux ./SimpleSamlIdP.go
+env GOOS=linux GOARCH=amd64 go build -o ../../misc/simplesamlidp_Linux_x86_64 SimpleSamlIdP.go && \
+env GOOS=darwin GOARCH=amd64 go build -o ../../misc/simplesamlidp_Darwin_x86_64 SimpleSamlIdP.go && \
+env GOOS=darwin GOARCH=arm64 go build -o ../../misc/simplesamlidp_Darwin_arm64 SimpleSamlIdP.go && date
 */
 
 package main

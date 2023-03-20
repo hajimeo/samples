@@ -5,8 +5,8 @@ Ref: https://www.kernel.org/doc/Documentation/networking/proc_net_tcp.txt
 go mod init github.com/hajimeo/samples/golang/GoNetStat
 go get -u -t && go mod tidy
 
-env GOOS=linux GOARCH=amd64 go build -o ../../misc/gonetstat_Linux_amd64 GoNetstat.go && \
-env GOOS=darwin GOARCH=amd64 go build -o ../../misc/gonetstat_Darwin_amd64 GoNetstat.go && \
+env GOOS=linux GOARCH=amd64 go build -o ../../misc/gonetstat_Linux_x86_64 GoNetstat.go && \
+env GOOS=darwin GOARCH=amd64 go build -o ../../misc/gonetstat_Darwin_x86_64 GoNetstat.go && \
 env GOOS=darwin GOARCH=arm64 go build -o ../../misc/gonetstat_Darwin_arm64 GoNetstat.go && date
 
 # To install:
