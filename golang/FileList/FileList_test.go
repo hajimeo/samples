@@ -8,7 +8,9 @@ import (
 	"time"
 )
 
-var TEST_DB_CONN_STR = "host=localhost port=5432 user=nxrm password=nxrm123 dbname=nexustest"
+// To create DB, an easy way is running ./FileList_test.sh
+// var TEST_DB_CONN_STR = "host=localhost port=5432 user=nxrm password=nxrm123 dbname=nxrmtest"
+var TEST_DB_CONN_STR = ""
 var DUMMY_FILE_PATH = "/tmp/00000000-abcd-ef00-12345-123456789abc.properties"
 var DUMMY_PROP_TXT = `#2021-06-02 22:56:12,617+0000
 #Wed Jun 02 22:56:12 UTC 2021
@@ -167,7 +169,7 @@ func TestGenBlobIdCheckingQuery(t *testing.T) {
 	*_BS_NAME = "testtest"
 	query := genBlobIdCheckingQuery(DUMMY_FILE_PATH, tableNames)
 	// Could not test without DB || !strings.Contains(query, " helm_asset_blob ") || !strings.Contains(query, " helm_asset ")
-	if !strings.Contains(query, " UNION ALL ") || !strings.Contains(query, ":00000000-abcd-ef00-12345-123456789abc@") {
+	if !strings.Contains(query, " UNION ALL ") || !strings.Contains(query, ":00000000-abcd-ef00-12345-123456789abc") {
 		t.Errorf("Generated query:%s might be incorrect", query)
 	}
 }
@@ -198,6 +200,20 @@ func TestGetAssetBlobTables(t *testing.T) {
 //		t.Errorf("If no _DB_CON_STR, isBlobIdMissingInDB should not return true")
 //	}
 //}
+
+func TestGenValidateNodeIdQuery(t *testing.T) {
+	if len(TEST_DB_CONN_STR) == 0 {
+		t.Log("No DB conn string provided in TEST_DB_CONN_STR. Skipping TestGenRpoFmtMap.")
+		return
+	}
+	*_DB_CON_STR = TEST_DB_CONN_STR
+	db := openDb(*_DB_CON_STR)
+	query := genValidateNodeIdQuery("aaaaa", db)
+	if !strings.Contains(query, "aaaaa") {
+		t.Errorf("genValidateNodeIdQuery should return a query containing 'aaaaa'")
+		t.Log(query)
+	}
+}
 
 func TestValidateNodeId(t *testing.T) {
 	if len(TEST_DB_CONN_STR) == 0 {

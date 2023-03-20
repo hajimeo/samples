@@ -1,8 +1,8 @@
 /*
 #go mod init github.com/hajimeo/samples/golang/FileList
 #go mod tidy
-env GOOS=linux GOARCH=amd64 go build -o ../../misc/file-list_Linux_amd64 FileList.go && \
-env GOOS=darwin GOARCH=amd64 go build -o ../../misc/file-list_Darwin_amd64 FileList.go && \
+env GOOS=linux GOARCH=amd64 go build -o ../../misc/file-list_Linux_x86_64 FileList.go && \
+env GOOS=darwin GOARCH=amd64 go build -o ../../misc/file-list_Darwin_x86_64 FileList.go && \
 env GOOS=darwin GOARCH=arm64 go build -o ../../misc/file-list_Darwin_arm64 FileList.go && date
 
 echo 3 > /proc/sys/vm/drop_caches
@@ -114,7 +114,7 @@ type StoreProps map[string]string
 func _setGlobals() {
 	_BASEDIR = flag.String("b", ".", "Base directory (default: '.') or S3 Bucket name")
 	//_BASEDIR = flag.String("b", "", "S3 Bucket name")
-	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: 'vol-')")
+	_PREFIX = flag.String("p", "", "Prefix of sub directories (eg: 'vol-') This is not recursive")
 	_WITH_PROPS = flag.Bool("P", false, "If true, read and output the .properties files")
 	_FILTER = flag.String("f", "", "Filter file paths (eg: '.properties')")
 	_WITH_BLOB_SIZE = flag.Bool("BSize", false, "If true, includes .bytes size (When -f is '.properties')")
@@ -176,6 +176,7 @@ func _setGlobals() {
 		//*_WITH_PROPS = false
 		_REPO_TO_FMT = genRepoFmtMap()
 
+		// TODO: blobRef no longer contains NODE_ID from around 3.47?
 		if len(*_NODE_ID) > 0 {
 			if !validateNodeId(*_NODE_ID) {
 				_log("ERROR", fmt.Sprintf("_NODE_ID: %s may not be correct.", *_NODE_ID))
@@ -365,16 +366,21 @@ func genRepoFmtMap() map[string]string {
 	return reposToFmts
 }
 
+func genValidateNodeIdQuery(nodeId string, db *sql.DB) string {
+	tableNames := getAssetTables(db, "", nil)
+	query := "SELECT SUM(c) as numInvalid"
+	query = query + " FROM (" + genAssetBlobUnionQuery(tableNames, "1 as c", "ab.blob_ref NOT like '%@"+nodeId+"' LIMIT 1", true) + ") t_unions"
+	//query = "SELECT tableName, REGEXP_REPLACE(blob_ref, '^[^@]+@', '') AS nodeId, count(*) FROM ("+query+") t_unions GROUP BY 1, 2"
+	return query
+}
+
 func validateNodeId(nodeId string) bool {
 	// temporarily opening a DB connection only for this query
 	db := openDb(*_DB_CON_STR)
 	if db != nil {
 		defer db.Close()
 	}
-	tableNames := getAssetTables(db, "", nil)
-	query := "SELECT SUM(c) as numInvalid"
-	query = query + " FROM (" + genAssetBlobUnionQuery(tableNames, "1 as c", "ab.blob_ref NOT like '%@"+nodeId+"' LIMIT 1", true) + ") t_unions"
-	//query = "SELECT tableName, REGEXP_REPLACE(blob_ref, '^[^@]+@', '') AS nodeId, count(*) FROM ("+query+") t_unions GROUP BY 1, 2"
+	query := genValidateNodeIdQuery(nodeId, db)
 	rows := queryDb(query, db)
 	defer rows.Close()
 	var numInvalid int64
@@ -581,14 +587,13 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 
 	// If _NODE_ID is given and no deleted date from/to, should not need to open a file
 	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 && len(*_NODE_ID) > 0 && _DEL_DATE_FROM_ts == 0 && _DEL_DATE_TO_ts == 0 {
-		if *_TRUTH == "BS" && !isBlobIdMissingInDB("", path, db) {
-			//_log("DEBUG", "path:"+path+" exists in Database. Skipping.")
+		if *_TRUTH == "BS" && !isBlobMissingInDB("", path, db) {
+			_log("DEBUG2", "path:"+path+" exists in Database. Skipping.")
+			return ""
+		} else if *_TRUTH == "DB" && !isBlobMissingInBlobStore(path, client) {
+			_log("DEBUG2", "path:"+path+" exists in Blobstore. Skipping.")
 			return ""
 		}
-		/*if *_TRUTH == "DB" && !isBlobIdMissingInBlobStore("", path, db) {
-			//_log("DEBUG", "path:"+path+" exists in Blobstore. Skipping.")
-			return ""
-		}*/
 		reconOutput, reconErr := genOutputForReconcile("", path, _DEL_DATE_FROM_ts, _DEL_DATE_TO_ts, true, client)
 		if reconErr != nil {
 			_log("DEBUG", reconErr.Error())
@@ -608,19 +613,19 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 	}
 
 	if len(*_DB_CON_STR) > 0 && len(*_TRUTH) > 0 {
-		// Script is asked to output if this blob is missing in DB
 		if *_TRUTH == "BS" {
-			if !isBlobIdMissingInDB(contents, path, db) {
+			// Script is asked to output if this blob is missing in DB
+			if !isBlobMissingInDB(contents, path, db) {
+				return ""
+			}
+			skipCheck = true
+		} else if *_TRUTH == "DB" {
+			// Script is asked to output if this blob is missing in Blobstore
+			if !isBlobMissingInBlobStore(path, client) {
 				return ""
 			}
 			skipCheck = true
 		}
-		/*else if *_TRUTH == "BS" {
-			if !isBlobIdMissingInBlobStore(contents, path, db) {
-				return ""
-			}
-			skipCheck = true
-		} */
 	}
 
 	if *_RECON_FMT {
@@ -632,7 +637,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 		return reconOutput
 	}
 
-	if *_WITH_PROPS {
+	if *_WITH_PROPS || len(*_FILTER_P) > 0 || len(*_FILTER_PX) > 0 {
 		props, skipReason := genOutputFromProp(contents, path)
 		if skipReason != nil {
 			_log("DEBUG2", skipReason.Error())
@@ -671,7 +676,7 @@ func getContentsFile(path string) (string, error) {
 	if _DEBUG != nil && *_DEBUG {
 		defer _elapsed(time.Now().UnixMilli(), "DEBUG Read "+path, 0)
 	} else {
-		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 100)
+		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 500)
 	}
 	bytes, err := os.ReadFile(path)
 	if err != nil {
@@ -686,7 +691,7 @@ func getContentsS3(path string, client *s3.Client) (string, error) {
 	if _DEBUG != nil && *_DEBUG {
 		defer _elapsed(time.Now().UnixMilli(), "DEBUG Read "+path, 0)
 	} else {
-		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 400)
+		defer _elapsed(time.Now().UnixMilli(), "WARN  slow file read for path:"+path, 2000)
 	}
 	input := &s3.GetObjectInput{
 		Bucket: _BASEDIR,
@@ -775,7 +780,7 @@ func genBlobIdCheckingQuery(path string, tableNames []string) string {
 			where = "blob_ref = '" + *_BS_NAME + ":" + blobId + "@" + *_NODE_ID + "'"
 		} else {
 			// PostgreSQL still uses index for 'like' with forward search, so much faster than above
-			where = "blob_ref like '" + *_BS_NAME + ":" + blobId + "@%'"
+			where = "blob_ref like '" + *_BS_NAME + ":" + blobId + "%'"
 		}
 	}
 	query := genAssetBlobUnionQuery(tableNames, "asset_id", where, false)
@@ -818,12 +823,20 @@ func getAssetTables(db *sql.DB, contents string, reposToFmt map[string]string) [
 	return result
 }
 
-// TODO: Checking from DB to blobstore, like DeadBlobsFinder
-func isBlobIdMissingInBlobStore(db *sql.DB) bool {
+// Checking from DB to blobstore, like DeadBlobsFinder
+func isBlobMissingInBlobStore(path string, client *s3.Client) bool {
+	// TODO: implement for S3 as well (eg: will be similar to getContentsS3)
+	/*if _IS_S3 != nil && *_IS_S3 {
+		readFromS3(path, client)
+		return false
+	}
+	if _, err := os.Stat(path); err == nil {
+		return false
+	}*/
 	return false
 }
 
-func isBlobIdMissingInDB(contents string, path string, db *sql.DB) bool {
+func isBlobMissingInDB(contents string, path string, db *sql.DB) bool {
 	// TODO: Current UNION query is a bit slow. Providing "path" generates the repoFmt but too slow
 	tableNames := getAssetTables(db, contents, _REPO_TO_FMT)
 	if tableNames == nil { // Mainly for unit test

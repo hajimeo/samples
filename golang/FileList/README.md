@@ -85,7 +85,7 @@ Usage of file-list:
   -nodeId string
     	Advanced option.
   -p string
-    	Prefix of sub directories (eg: 'vol-')
+    	Prefix of sub directories (eg: 'vol-'). This is not recursive
   -src string
     	Using database or blobstore as source [BS|DB] (default "BS")
 ```
@@ -97,7 +97,7 @@ echo 3 > /proc/sys/vm/drop_caches
 ```
 ### List all files under the ./sonatype-work/nexus3/blobs/default
 ```
-file-list -b ./sonatype-work/nexus3/blobs/default
+file-list -b ./sonatype-work/nexus3/blobs/default/content
 ... (snip) ...
 "sonatype-work/nexus3/blobs/default/content/vol-43/chap-29/3488648f-d5f8-45f8-8314-10681fcaf0ce.properties","2021-09-17 08:35:03.907951265 +1000 AEST",352
 "sonatype-work/nexus3/blobs/default/metadata.properties","2021-09-17 08:34:00.625028548 +1000 AEST",73
