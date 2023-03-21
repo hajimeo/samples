@@ -117,10 +117,13 @@ function _postgresql_configure() {
         _upsert ${_postgresql_conf} "log_min_duration_statement" "100" "#log_min_duration_statement"
     fi
 
+    # "CREATE EXTENSION" creates in the current database. "select * from pg_extension;" to check
     local _shared_preload_libraries="auto_explain"
+    # https://www.postgresql.org/docs/current/pgstatstatements.html
     if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"; then
         _shared_preload_libraries="${_shared_preload_libraries},pg_stat_statements"
-        # select * from pg_stat_statements;
+        # SELECT pg_stat_statements_reset();
+        # SELECT ROUND(total_exec_time/calls) as avg_ms, ROUND(total_exec_time) as ttl_ms, ROUND(100.0 * shared_blks_hit / nullif(shared_blks_hit + shared_blks_read, 0)) AS hit_percent, calls, rows, query FROM pg_stat_statements WHERE total_exec_time/calls > 100 ORDER BY 1 DESC LIMIT 100;
     fi
     #${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_buffercache;"
     if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_prewarm;"; then
