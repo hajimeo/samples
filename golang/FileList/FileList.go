@@ -643,7 +643,7 @@ func _printLineExtra(output string, path string, modTimeTs int64, db *sql.DB, cl
 			_log("DEBUG2", skipReason.Error())
 			return ""
 		}
-		if len(props) > 0 {
+		if *_WITH_PROPS && len(props) > 0 {
 			output = fmt.Sprintf("%s%s%s", output, _SEP, props)
 		}
 	}
@@ -969,6 +969,7 @@ func genOutputFromProp(contents string, path string) (string, error) {
 		if len(*_FILTER_P) > 0 && !strings.Contains(contents, *_FILTER_P) {
 			return "", errors.New(fmt.Sprintf("%s does not contain %s. Skipping.", path, *_FILTER_P))
 		}
+		contents = strings.ReplaceAll(contents, "\n", ",")
 	}
 	return contents, nil
 }
