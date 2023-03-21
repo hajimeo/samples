@@ -1153,52 +1153,11 @@ function f_microk8s() {
     _info "Images under /var/snap/microk8s/common/var/lib/containerd/"
     ls -l /var/snap/microk8s/common/var/lib/containerd/
 
-    echo "# Command examples:
-    microk8s status --wait-ready    # list enabled/disabled addons
-    microk8s config     # to output the config
-    microk8s inspect    # Very helpful troubleshooting command, generates a report
-
-    helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
-    helm3 search repo iq
-    helm3 lint <dir/to/Chart.yaml>         # To check formatting
-    # after creating the namespace 'sonatype'
-    helm3 install nxiq helm-sonatype-proxy/nexus-iq-server -n sonatype -f ./helm-iq-values.yml --dry-run
-    helm upgrade nxiq sonatype/nexus-iq-server -n default --version 47.1.0 --reset-values --dry-run
-    helm3 install nxrm3 helm-sonatype-proxy/nexus-repository-manager -n sonatype    #--debug is not so useful
-    helm3 uninstall nxrm3     # to delete everything
-    # troubleshooting helm related issue
-    helm3 get manifest <release name>      # https://helm.sh/docs/helm/helm_get_manifest/
-    helm3 template [NAME] [CHART]          # https://helm.sh/docs/helm/helm_template/
-
-    kubectl config get-contexts            # list available kubectl configs
-    kubectl cluster-info #dump
-    kubectl create -f your_deployment.yml  # or kubectl apply
-    kubectl get services                   # or all, or deployments to check the NAME
-    kubectl get deploy <deployment-name> -o yaml   # to export the deployment yaml
-    kubectl expose deployment <deployment-name> --type=LoadBalancer --port=8081
-    kubectl get pods --show-labels -A
-    kubectl port-forward pod/<pod-name> -n default --address 0.0.0.0 18081:8081 & # this command runs in foreground
-    kubectl port-forward \$(kubectl get pods -n sonatype -l \"app.kubernetes.io/name=nexus-repository-manager\" -o jsonpath=\"{.items[0].metadata.name}\") 8081:8081 -n sonatype &>/tmp/k8s_pf_8081.out &
-    kubectl get pods                       # get a pod name to login
-    kubectl describe pod <pod-name>        # shows Events
-    kubectl get pod <pod-name> -o yaml     # similar to above describe, but yaml format
-    kubectl logs <pod-name>                # To see if app had error, also --previous is useful
-    kubectl delete pod --grace-period=0 --force <pod-name>     # force terminating/deleting. check 'get pvc' and 'get pv'
-    kubectl describe pvc <pvc-name>
-    kubectl exec <pod-name> -ti -- bash
-    kubectl scale --replicas=0 deployment <deployment-name>    # stop all pods temporarily (if no HPA)
-
-    # list images (docker images)
-    microk8s ctr images list
-    kubectl get node -o json | jq -r '.items[].status.images[].names'   # jq is required
-    kubectl get node -o go-template --template='{{range .items}}{{range .status.images}}{{.sizeBytes}}{{\"\t\"}}{{.names}}{{\"\n\"}}{{end}}{{end}}'
-    kubectl get pods --all-namespaces -o go-template --template='{{range .items}}{{range .spec.containers}}{{.image}} {{end}}{{end}}'
-
-    # Start a pod for troubleshooting (more: https://stackoverflow.com/questions/61803186/how-to-mount-volume-inside-pod-using-kubectl-cli)
-    kubectl run -n default -it --rm --restart=Never busybox --image=gcr.io/google-containers/busybox -- sh
-    # Ingress troubleshooting: https://kubernetes.github.io/ingress-nginx/troubleshooting/
-    kubectl exec -it -n ingress nginx-ingress-microk8s-controller-xb9qh -- cat /etc/nginx/nginx.conf
-
+    cat << 'EOF'
+# Command examples:
+    microk8s status --wait-ready            # list enabled/disabled addons
+    microk8s config                         # to output the config
+    microk8s inspect                        # Very helpful troubleshooting command, generates a report
     microk8s stop   #microk8s.stop
     snap stop --disable microk8s
     #systemctl stop snap.microk8s.daemon-containerd.service
@@ -1206,7 +1165,48 @@ function f_microk8s() {
     #systemctl stop snap.microk8s.daemon-apiserver.service
     #systemctl stop snap.microk8s.daemon-controller-manager.service
     #systemctl stop snap.microk8s.daemon-proxy.service
-"
+
+## Helm/Helm3
+    helm3 repo add nxrm3 http://dh1.standalone.localdomain:8081/repository/helm-proxy/
+    helm3 search repo iq
+    helm3 lint <dir/to/Chart.yaml>          # To check formatting
+### after creating the namespace 'sonatype'
+    helm3 install nxiq helm-sonatype-proxy/nexus-iq-server -n sonatype -f ./helm-iq-values.yml --dry-run
+    helm upgrade nxiq sonatype/nexus-iq-server -n default --version 47.1.0 --reset-values --dry-run
+    helm3 install nxrm3 helm-sonatype-proxy/nexus-repository-manager -n sonatype    #--debug is not so useful
+    helm3 uninstall nxrm3                   # to delete everything
+### troubleshooting helm related issue
+    helm3 get manifest <release name>       # https://helm.sh/docs/helm/helm_get_manifest/
+    helm3 template [NAME] [CHART]           # https://helm.sh/docs/helm/helm_template/
+
+## Kubectl
+    kubectl config get-contexts             # list available kubectl configs
+    kubectl cluster-info #dump
+    kubectl create -f your_deployment.yml   # or kubectl apply
+    kubectl get services                    # or all, or deployments to check the NAME
+    kubectl get deploy <deployment-name> -o yaml    # to export the deployment yaml
+    kubectl describe pvc <pvc-name>
+    kubectl describe pod <pod-name>         # to see Events
+    kubectl get pod <pod-name> -o yaml      # similar to above describe, but yaml format
+    kubectl expose deployment <deployment-name> --type=LoadBalancer --port=8081
+    kubectl get pods --show-labels -A       # get pods from all namespaces with labels
+    kubectl exec $(kubectl get pods -n sonatype -l app.kubernetes.io/name=nexus-repository-manager -o jsonpath={.items[0].metadata.name}) -n sonatype -t -i -- bash
+    kubectl port-forward pod/<pod-name> -n default --address 0.0.0.0 18081:8081 & # this command runs in foreground
+    kubectl port-forward $(kubectl get pods -n sonatype -l 'app.kubernetes.io/name=nexus-repository-manager' -o jsonpath='{.items[0].metadata.name}') 8081:8081 -n sonatype &>/tmp/k8s_pf_8081.out &
+    kubectl logs <pod-name>                 # To see if app had error, also --previous is useful
+    kubectl delete pod --grace-period=0 --force <pod-name>      # force terminating/deleting. check 'get pvc' and 'get pv'
+    kubectl scale --replicas=0 deployment <deployment-name>     # stop all pods temporarily (if no HPA)
+### list images (docker images)
+    microk8s ctr images list
+    kubectl get node -o json | jq -r '.items[].status.images[].names'   # jq is required
+    kubectl get node -o go-template --template='{{range .items}}{{range .status.images}}{{.sizeBytes}}{{"\t"}}{{.names}}{{"\n"}}{{end}}{{end}}'
+    kubectl get pods --all-namespaces -o go-template --template='{{range .items}}{{range .spec.containers}}{{.image}} {{end}}{{end}}'
+### Start a pod for troubleshooting (more: https://stackoverflow.com/questions/61803186/how-to-mount-volume-inside-pod-using-kubectl-cli)
+    kubectl run -n default -it --rm --restart=Never busybox --image=gcr.io/google-containers/busybox -- sh
+### Ingress troubleshooting: https://kubernetes.github.io/ingress-nginx/troubleshooting/
+    kubectl exec -it -n ingress nginx-ingress-microk8s-controller-xb9qh -- cat /etc/nginx/nginx.conf
+EOF
+
     if [ -s /var/snap/microk8s/current/credentials/client.config ]; then
         echo "kubectl config file: /var/snap/microk8s/current/credentials/client.config"
         cat /var/snap/microk8s/current/credentials/client.config
