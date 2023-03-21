@@ -322,10 +322,15 @@ function nxrmDocker() {
 }
 
 # To start local (on Mac) IQ server
+# TODO: delete LDAP
+#TRUNCATE TABLE insight_brain_ods.proxy_server_configuration;INSERT INTO insight_brain_ods.proxy_server_configuration (proxy_server_configuration_id, hostname, port, exclude_hosts) VALUES ('proxy-server-configuration', 'non-existing-hostname', 8080, '*.sonatype.com');
+#java -jar nexus-iq-server-[version].jar reset-admin config.yml
 function iqStart() {
     local _base_dir="${1:-"."}"
-    local _java_opts=${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=n"}
+    local _java_opts="${2-"-agentlib:jdwp=transport=dt_socket,server=y,address=5006,suspend=n"}"
     #local _java_opts=${@:2}
+    # IQ doesn't seem to use below HTTP proxy one but just in case
+    local _http_proxy="${3-"-Dhttp.proxyHost=non-existing-hostname -Dhttp.proxyPort=8800 -Dhttp.nonProxyHosts=\"*.sonatype.com\" -Dsun.net.spi.nameservice.nameservers=127.0.0.1 -Dsun.net.spi.nameservice.provider.1=dns,sun"}"
     _base_dir="$(realpath ${_base_dir%/})"
     local _jar_file="$(find "${_base_dir%/}" -maxdepth 2 -type f -name 'nexus-iq-server*.jar' 2>/dev/null | sort | tail -n1)"
     [ -z "${_jar_file}" ] && return 11
@@ -346,7 +351,7 @@ function iqStart() {
     grep -qE '^\s*threshold:\s*INFO$' "${_cfg_file}" && sed -i.bak 's/threshold: INFO/threshold: ALL/g' "${_cfg_file}"
     grep -qE '^\s*level:\s*DEBUG$' "${_cfg_file}" || sed -i.bak -E 's/level: .+/level: DEBUG/g' "${_cfg_file}"
     cd "${_base_dir}"
-    local _cmd="java -Xms2g -Xmx4g ${_java_opts} -jar \"${_jar_file}\" server \"${_cfg_file}\" 2>/tmp/iq-server.err"
+    local _cmd="java -Xms2g -Xmx4g ${_java_opts} ${_http_proxy} -jar \"${_jar_file}\" server \"${_cfg_file}\" 2>/tmp/iq-server.err"
     echo "${_cmd}"
     eval "${_cmd}"
     cd -
@@ -374,9 +379,8 @@ function iqInstall() {
     local _dbname="$2"
     local _dbusr="${3:-"${_dbname}"}"
     local _dbpwd="${4:-"${_dbusr}123"}"
-    local _port="${5:-"8070"}"
-    local _port2="${6:-"8071"}"
-    local _download_dir="${7:-"$HOME/.nexus_executable_cache"}"
+    local _port="${5:-"${_IQ_INSTALL_PORT:-"8070"}"}"
+    local _download_dir="${6:-"$HOME/.nexus_executable_cache"}"
 
     local _dirname="nxiq_${_ver}"
     [ -n "${_dbname}" ] && _dirname="${_dirname}_${_dbname}"
@@ -392,7 +396,7 @@ function iqInstall() {
     grep -qE '^hdsUrl:' "${_cfg_file}" || echo -e "hdsUrl: https://clm-staging.sonatype.com/\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^licenseFile' "${_cfg_file}" || echo -e "licenseFile: ${_download_dir%/}/license/nexus.lic\n$(cat "${_cfg_file}")" > "${_cfg_file}"
     grep -qE '^\s*port: 8070' "${_cfg_file}" && sed -i.bak 's/port: 8070/port: '${_port}'/g' "${_cfg_file}"
-    grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.bak 's/port: 8071/port: '${_port2}'/g' "${_cfg_file}"
+    grep -qE '^\s*port: 8071' "${_cfg_file}" && sed -i.bak 's/port: 8071/port: '$((${_port} + 1))'/g' "${_cfg_file}"
 
     if [ -n "${_dbname}" ]; then
         # TODO: currently assuming "database:" is the end of file
