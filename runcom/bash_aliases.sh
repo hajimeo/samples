@@ -174,7 +174,7 @@ alias jenkins='java -jar $HOME/Apps/jenkins.war'  #curl -o $HOME/Apps/jenkins.wa
 # http (but https fails) + reverse proxy server https://www.mock-server.com/mock_server/getting_started.html
 alias mockserver='java -jar $HOME/Apps/mockserver-netty.jar'  #curl -o $HOME/Apps/mockserver-netty.jar -L https://search.maven.org/remotecontent?filepath=org/mock-server/mockserver-netty/5.11.1/mockserver-netty-5.11.1-jar-with-dependencies.jar
 alias jkCli='java -jar $HOME/Apps/jenkins-cli.jar -s http://localhost:8080/ -auth admin:admin123' #curl -o $HOME/Apps/jenkins-cli.jar -L http://localhost:8080/jnlpJars/jenkins-cli.jar
-[ -f /var/tmp/share/java/orient-console.jar ] && alias orient-console="java ${_JAVA_OPTS} -jar /var/tmp/share/java/orient-console.jar"
+[ -f /var/tmp/share/java/orient-console.jar ] && alias orient-console="java -jar /var/tmp/share/java/orient-console.jar"
 [ -f /var/tmp/share/java/blobpath.jar ] && alias blobpathJ="java -jar /var/tmp/share/java/blobpath.jar"
 alias matJ11='/Applications/mat.app/Contents/MacOS/MemoryAnalyzer -vm ${_JAVA_HOME_11%/}/bin'
 
@@ -326,7 +326,13 @@ function every_Nth() {
     local _file="$2"
     awk "NR % ${_Nth} == 0" "${_file}"
 }
-
+# Run specific command X times parallely with Y concurrency
+function multiexec() {
+    local _cmd="$1"
+    local _X="${2:-"1"}"
+    local _Y="${3:-"1"}"
+    echo "$(seq 1 ${_X})" | xargs -I{} -P${_Y} -t bash -c "${_cmd}"
+}
 # make a directory and cd
 function mcd() {
     local _path="$1"
@@ -334,18 +340,18 @@ function mcd() {
     cd "${_path}"
 }
 function jsondiff() {
-    local _f1="$(echo $1 | sed -e 's/^.\///' -e 's/[/]/_/g')"
-    local _f2="$(echo $2 | sed -e 's/^.\///' -e 's/[/]/_/g')"
+    local _f1="$(basename $1 .json)_1.json"
+    local _f2="$(basename $2 .json)_2.json"
     # alternative https://json-delta.readthedocs.io/en/latest/json_diff.1.html
-    python3 -c "import sys,json;print(json.dumps(json.load(open('${_f1}')), indent=4, sort_keys=True))" >"/tmp/${_f1}" || return $?
-    python3 -c "import sys,json;print(json.dumps(json.load(open('${_f2}')), indent=4, sort_keys=True))" >"/tmp/${_f2}" || return $?
-    #prettyjson $2 > "/tmp/${_f2}"
-    vimdiff "/tmp/${_f1}" "/tmp/${_f2}"
+    python3 -c "import sys,json;print(json.dumps(json.load(open('${1}')), indent=4, sort_keys=True))" >"/tmp/${_f1}" || return $?
+    python3 -c "import sys,json;print(json.dumps(json.load(open('${2}')), indent=4, sort_keys=True))" >"/tmp/${_f2}" || return $?
+    # sometimes vimdiff crush and close the terminal
+    bash -c "vimdiff \"/tmp/${_f1}\" \"/tmp/${_f2}\"" 2>/tmp/vimdiff.err
 }
 function xmldiff() {
     python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))" $1 >/tmp/xmldiff1_$$.json || return $?
     python3 -c "import sys,xmltodict,json;print(json.dumps(xmltodict.parse(open(sys.argv[1]).read()), indent=4, sort_keys=True))" $2 >/tmp/xmldiff2_$$.json || return $?
-    vimdiff /tmp/xmldiff1_$$.json /tmp/xmldiff2_$$.json
+    bash -c "vimdiff /tmp/xmldiff1_$$.json /tmp/xmldiff2_$$.json" 2>/tmp/vimdiff.err
 }
 # Convert yml|yaml file to a sorted json. Can be used to validate yaml file
 function yaml2json() {
@@ -385,7 +391,7 @@ function _find_recent() {
         find ${_dir} -type f -name "${_file_glob}" ${_mmin} | tr '\n' ' '
     fi
 }
-# Tail recnetly modified log files
+# Tail recently modified log files
 function tail_logs() {
     local _log_dir="${1}"
     local _log_file_glob="${2:-"*.log"}"
