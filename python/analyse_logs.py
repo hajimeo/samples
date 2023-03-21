@@ -286,7 +286,7 @@ def etl(path="", log_suffix=".log", dist="./_filtered", max_file_size=(1024 * 10
                                line_by_line=True, line_from=line_from, line_until=line_until)
 
         # xxxxx.csv. If CSV, probably 3 times higher should be OK
-        _ = ju.load_csvs(src="./_filtered/", include_ptn="*.csv", max_file_size=(max_file_size * 3), conn=ju.connect())
+        _ = ju.load_csvs(src="./_filtered/", include_ptn="*.csv", max_file_size=(max_file_size * 5), conn=ju.connect())
 
         # ./work/db/xxxxx.json (new DB)
         _ = ju.load_jsons(".", include_ptn=".+/db/.+\.json", exclude_ptn='(samlConfigurationExport\.json|export\.json)', useRegex=True, conn=ju.connect())
@@ -504,6 +504,16 @@ FROM t_iq_logs
         except:
             # non NXRM3 request.log wouldn't have r.thread
             pass
+        if ju.exists("t_log_task_status"):
+            display_name = "Potentially_long_running_tasks"
+            query = """SELECT thread_id, task_name, user, count(*), min(date_time), max(date_time), ((STRFTIME('%s', max(date_time)) - STRFTIME('%s', min(date_time))) / (count(*) / 2)) as avg_duration FROM t_log_task_status
+    GROUP BY 1,2,3
+    HAVING count(*) < 7
+    ORDER BY min(date_time)"""
+            try:
+                ju.display(ju.q(query).tail(tail_num), name=display_name, desc=query)
+            except:
+                pass
 
     if ju.exists("t_threads"):
         display_name = "Blocked_Threads"
