@@ -152,6 +152,7 @@ function _extract_configs() {
     _search_json "sysinfo.json" "system-environment,TZ"
     _search_json "sysinfo.json" "system-environment,PWD"
     _search_json "sysinfo.json" "system-environment,HOME" # for -Djava.util.prefs.userRoot=/home/nexus/.java
+    rg '\.encoding"' info/sysinfo.json | sort | uniq
     _search_json "jmx.json" "java.lang:type=Runtime,Name" # to find PID and hostname (in case no HOSTNAME env set)
     _search_json "jmx.json" "java.lang:type=Runtime,SystemProperties" "" "Y" | rg '"(java.util.prefs.userRoot|java.home)'
     echo '```'
@@ -240,15 +241,6 @@ function _check_log_stop_start() {
     # NXRM2: org.sonatype.nexus.bootstrap.jetty.JettyServer - Stopped
     _rg --no-filename '(org.sonatype.nexus.bootstrap.jsw.JswLauncher - Stopping with code:|org.eclipse.jetty.server.AbstractConnector - Stopped ServerConnector|org.sonatype.nexus.events.EventSubscriberHost - Initialized|org.sonatype.nexus.webapp.WebappBootstrap - Initialized|org.eclipse.jetty.server.Server - Started|Started InstrumentedSelectChannelConnector|Received signal: SIGTERM|org.sonatype.nexus.extender.NexusContextListener - Uptime:|org.sonatype.nexus.extender.NexusLifecycleManager - Shutting down|org.sonatype.nexus.extender.NexusLifecycleManager - Stop KERNEL|org.sonatype.nexus.bootstrap.jetty.JettyServer - Stopped|org.sonatype.nexus.pax.logging.NexusLogActivator - start|com.sonatype.insight.brain.service.InsightBrainService - Stopping Nexus IQ Server|Disabled session validation scheduler|Initializing Nexus IQ Server)' ${_log_path} | sort | uniq | tail -n10
 }
-function _code() {
-    local _text="$1"
-    local _style="$2"
-    local _last_echo_en="${3-"\\n"}"
-    echo '```'${_style}
-    echo "${_text}"
-    echo '```'
-    echo -en "${_last_echo_n}"
-}
 function _head() {
     local _X="###"
     if [ "$1" == "WARN" ]; then
@@ -261,6 +253,20 @@ function _head() {
     echo "  "
     echo "${_X} $*" #| sed -E 's/([(){}_])/\\\1/g'
     echo "  "
+}
+function _code() {
+    local _text="$1"
+    local _style="$2"
+    local _last_echo_en="${3-"\\n"}"
+    echo '```'${_style}
+    echo "${_text}"
+    echo '```'
+    echo -en "${_last_echo_n}"
+}
+function _jira() {
+    local _id="$1"
+    local _pfx="${2:-"\\n"}"
+    echo -e -n "[${_id}](https://issues.sonatype.org/browse/${_id})${_pfx}"
 }
 function _basic_check() {
     local _required_app_ver_regex="${1}"
@@ -425,12 +431,13 @@ function t_system() {
     _test_template "$(_rg 'AvailableProcessors: *[1-3]$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "AvailableProcessors might be too low (-XX:ActiveProcessorCount=N ?)"
     _test_template "$(_rg 'TotalPhysicalMemorySize: *(.+ MB|[1-7]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "TotalPhysicalMemorySize might be too low"
     # TODO: compare TotalPhysicalMemorySize and CommittedVirtualMemorySize
-    _test_template "$(_rg 'MaxFileDescriptorCount: *\d{4}$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
-    _test_template "$(_rg 'SystemLoadAverage: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
-    _test_template "$(_rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low (NEXUS-35218)"
-    _test_template "$(_rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || _rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
+    _test_template "$(rg 'MaxFileDescriptorCount: *\d{4}$' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "MaxFileDescriptorCount might be too low"
+    _test_template "$(rg 'SystemLoadAverage: *([4-9]\.|\d\d+)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "SystemLoadAverage might be too high (check number of CPUs)"
+    _test_template "$(rg 'maxMemory: *(.+ MB|[1-3]\.\d+ GB)' ${_FILTERED_DATA_DIR%/}/extracted_configs.md)" "WARN" "maxMemory (heap|Xmx) might be too low (NEXUS-35218)"
+    _test_template "$(rg -g jmx.json -g wrapper.conf -q -- '-XX:\+UseG1GC' || rg -g jmx.json -- '-Xmx')" "WARN" "No '-XX:+UseG1GC' for below Xmx (only for Java 8)" "Also consider using -XX:+ExplicitGCInvokesConcurrent"
+    _test_template "$(rg -- '-Djavax\.net\.ssl..+=' ${_FILTERED_DATA_DIR%/}/extracted_configs.md | rg -v -i 'password')" "WARN" "javax.net.ssl.xxxx is used in jmx.json, java.lang:type=Runtime,InputArguments"
     if ! _rg -g jmx.json -q 'x86_64'; then
-        _head "WARN" "No 'x86_64' found in jmx.json. Might be 32 bit Java (or non Linux, check the top of jvm.log)"
+        _head "WARN" "No 'x86_64' found in jmx.json. Might be 32 bit Java or Windows, check the top of jvm.log)"
     fi
     if _rg -g sysinfo.json -q 'DOCKER_TYPE'; then
         _head "WARN" "Might be installed on DOCKER"
