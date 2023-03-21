@@ -5,7 +5,7 @@ import urllib
 
 PORT = 8080
 
-class MyProxy(http.server.SimpleHTTPRequestHandler):
+class SimpleHttpProxy(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         url = self.path[1:]
         self.send_response(200)
@@ -13,6 +13,6 @@ class MyProxy(http.server.SimpleHTTPRequestHandler):
         self.copyfile(urllib.urlopen(url), self.wfile)
 
 
-httpd = socketserver.ForkingTCPServer(('', PORT), MyProxy)
+httpd = socketserver.ForkingTCPServer(('', PORT), SimpleHttpProxy)
 print("Now serving at " + str(PORT))
 httpd.serve_forever()
