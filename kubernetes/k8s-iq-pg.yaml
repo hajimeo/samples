@@ -149,7 +149,7 @@ spec:
             timeoutSeconds: 10
           readinessProbe:
             httpGet:
-              path: /
+              path: /ping
               port: 8070
             initialDelaySeconds: 10
             periodSeconds: 10
@@ -158,6 +158,7 @@ spec:
             timeoutSeconds: 10
           livenessProbe:
             httpGet:
+              path: /ping
               port: 8071
             initialDelaySeconds: 10
             periodSeconds: 60
