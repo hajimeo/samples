@@ -252,8 +252,10 @@ function f_setup_nuget() {
     [ -z "${_bs_name}" ] && _bs_name="$(_get_blobstore_name)"
     [ -z "${_ds_name}" ] && _ds_name="$(_get_datastore_name)"
     [ -n "${_ds_name}" ] && _extra_sto_opt=',"dataStoreName":"'${_ds_name}'"'
-    # nuget.org-proxy for V2 should exist, so not creating nuget-proxy
     _log "NOTE" "v3.29 and higher added \"nugetVersion\":\"V3\", so please check if nuget proxy repos have correct version from Web UI."
+    if ! _is_repo_available "${_prefix}-v2-proxy"; then
+        f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"nugetVersion":"V2","queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://www.nuget.org/api/v2/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v2-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}'
+    fi
     if ! _is_repo_available "${_prefix}-v3-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"nugetVersion":"V3","queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://api.nuget.org/v3/index.json","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}'
     fi
@@ -770,6 +772,7 @@ function f_setup_raw() {
 }
 
 function f_branding() {
+    local __doc__="NXRM3 branding|brand example"
     local _msg="${1:-"HelloWorld!"}"
     #<marquee direction="right" behavior="alternate"><span style="color:#f0f8ff;">some text</span></marquee>
     f_apiS '{"action":"capability_Capability","method":"create","data":[{"id":"NX.coreui.model.Capability-1","typeId":"rapture.branding","notes":"","enabled":true,"properties":{"headerEnabled":"true","headerHtml":"<div style=\"background-color:white;text-align:right\">'${_msg}'</a>&nbsp;</div>","footerEnabled":null,"footerHtml":""}}],"type":"rpc"}'
@@ -1903,7 +1906,7 @@ function f_delete_asset() {
     echo "Deleted ${_line_num} assets"
 }
 function f_delete_all_assets() {
-    local __doc__="Delete all assets (not components) with Search REST API"
+    local __doc__="Delete all assets (not components) with Search REST API (require correct search index)"
     local _force="$1"
     local _repo="$2"
     local _max_loop="${3:-200}" # 50 * 200 = 10000 max
@@ -1912,13 +1915,14 @@ function f_delete_all_assets() {
     local _query=""
     local _base_query="?"
     [ -n "${_repo}" ] && _base_query="?repository=${_repo}"
+    cat /dev/null > ${_TMP%/}/${FUNCNAME}_$$.out
     for i in $(seq "1" "${_max_loop}"); do
-        f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME}_${i}.json || return $?
-        grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME}_${i}.json || break
-        local cToken="$(cat ${_TMP%/}/${FUNCNAME}_${i}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
+        f_api "${_path}${_base_query}${_query}" > ${_TMP%/}/${FUNCNAME}.json || return $?
+        grep -E '^            "id":' -h ${_TMP%/}/${FUNCNAME}.json | sort | uniq >> ${_TMP%/}/${FUNCNAME}_$$.out || return $?
+        grep -qE '"continuationToken": *"[0-9a-f]+' ${_TMP%/}/${FUNCNAME}.json || break
+        local cToken="$(cat ${_TMP%/}/${FUNCNAME}.json | python -c 'import sys,json;a=json.loads(sys.stdin.read());print(a["continuationToken"])')"
         _query="&continuationToken=${cToken}"
     done
-    grep -E '^            "id":' -h ${_TMP%/}/${FUNCNAME}_*.json | sort | uniq > ${_TMP%/}/${FUNCNAME}_$$.out || return $?
     local _line_num="$(cat ${_TMP%/}/${FUNCNAME}_$$.out | wc -l | tr -d '[:space:]')"
     if [[ ! "${_force}" =~ ^[yY] ]]; then
         read -p "Are you sure to delete all (${_line_num}) assets?: " "_yes"
@@ -1931,7 +1935,7 @@ function f_delete_all_assets() {
             f_api "/service/rest/v1/assets/${BASH_REMATCH[1]}" "" "DELETE" || break
         fi
     done
-    echo "Deleted ${_line_num} assets"
+    echo "Deleted ${_line_num} assets (run Cleanup unused <format> blobs from <datastore> task)"
 }
 
 # K8s related but not in use yet | any more
