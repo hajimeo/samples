@@ -197,18 +197,14 @@ function f_blob_list_from_pom() {
     done
 }
 
+#FileBlobStore - Attempt to access soft-deleted blob b90943e5-3d35-43bc-aeba-8004eb1b6752 attributes: /path/to/default/content/vol-43/chap-36/b90943e5-3d35-43bc-aeba-8004eb1b6752.properties {deletedDateTime=1678699831279, deleted=true, @BlobStore.created-by=anonymous, creationTime=1669712642144, @BlobStore.created-by-ip=192.168.0.111, @BlobStore.content-type=text/html, sha1=xxxxxxxxx, @BlobStore.blob-name=tools, deletedReason=Removing unused asset blob, @Bucket.repo-name=test-repo, size=143524}
+# Note deleting deletedDateTime
+#gsed -i -e 's/^deleted=true$//' -e 's/^deletedReason=Removing unused asset blob$//'
 function f_search_soft_deleted_blobs() {
     local __doc__="find deleted=true blobs"
-    local _content_dir="${1:-"./vol-*"}"    # /var/tmp/share/sonatype/blobs/default/content/vol-*
-    local _repo_name="${2}"
-    if [ -n "${_repo_name}" ]; then
-        # NOTE: intentionally, not using double quotes for _content_dir, in case it contains "*"
-        #grep -l --include='*.properties' -IRs "^deleted=true" ${_content_dir} --null | xargs -0 -P2 grep -l -E '^@BlobStore.blob-name=(name1|name2)$'
-        grep -l --include='*.properties' -IRs "^deleted=true" ${_content_dir} --null | xargs -0 -P2 grep -l -E '^@Bucket.repo-name=maven-group$'
-    else
-        grep -l --include='*.properties' -IRs "^deleted=true" ${_content_dir} --null
-    fi
-    #grep -E '^(size=|deletedDateTime=|deletedReason=|@BlobStore.blob-name=)' `cat soft-deleted.list`
+    local _content_dir="${1}"    # /var/tmp/share/sonatype/blobs/default/content
+    [ -d "${_content_dir}" ] || return 11
+    find ${_content_dir%/} -maxdepth 2 -type d -name 'vol-*' -print0 | xargs -0 -I {} -P4 -t grep -l --include='*.properties' -IRs "^deleted=true" {}
     # TODO: utilise 'blobpath' command
 }
 
