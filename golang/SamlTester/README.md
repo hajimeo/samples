@@ -3,7 +3,7 @@ For Unit / Integ tests, based on https://github.com/d-rk/mini-saml-idp.
 
 ## Download / install
 ```
-curl -o ./simplesamlidp -L https://github.com/hajimeo/samples/raw/master/misc/simplesamlidp_$(uname)_$(uname -m;
+curl -o ./simplesamlidp -L https://github.com/hajimeo/samples/raw/master/misc/simplesamlidp_$(uname)_$(uname -m);
 chmod u+x ./simplesamlidp;
 curl -O -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/simple-saml-idp.json;
 ```
