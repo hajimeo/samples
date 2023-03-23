@@ -121,8 +121,8 @@ alias xml_path='python -c "import sys,pprint;from lxml import etree;t=etree.pars
 # Strip XML / HTML to get text. NOTE: using sys.stdin.read. (TODO: maybe </br> without new line should add new line)
 alias strip_tags='python3 -c "import sys,html,re;rx=re.compile(r\"<[^>]+>\");print(html.unescape(rx.sub(\"\",sys.stdin.read())))"'
 alias escape4json='python3 -c "import sys,json;print(json.dumps(sys.stdin.read()))"'
-alias jp='pyv && jupyter-lab &> /tmp/jupyter-lab.out &'
-alias jn='pyv && jupyter-notebook &> /tmp/jupyter-notebook.out &'
+alias jp='pyv && jupyter-lab &> /tmp/jupyter-lab.out'   # not using & as i forget to stop
+alias jn='pyv && jupyter-notebook &> /tmp/jupyter-notebook.out'
 alias startWeb='python3 -m http.server' # specify port (default:8000) if python2: python -m SimpleHTTPServer 8000
 
 ## Common software/command but need to install #######################################################################
@@ -136,7 +136,10 @@ type pgbadger &>/dev/null && alias pgbg='pgbadger --timezone 0'
 #type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
 #type zsh &>/dev/null && alias zzhi='env /usr/bin/arch -x86_64 /bin/zsh —-login'
 type zsh &>/dev/null && alias ibrew="arch -x86_64 /usr/local/bin/brew"
-
+if type aws-vault &>/dev/null && [ -s "$HOME/.kube/support_test_config" ]; then
+    alias awsSpt='aws-vault exec support -- aws'
+    alias kcSpt='aws-vault exec support -- kubectl --kubeconfig $HOME/.kube/support_test_config'
+fi
 
 ## Non default (need to install some complex software and/or develop script) alias commands ############################
 # Load/source my own searching utility functions / scripts
@@ -506,12 +509,13 @@ function jpl() {
 }
 # MITM proxy
 function mitmProxy() {
-    local _front_port="${1:-"8080"}"
-    local _back_host="${2:-"localhost"}"
-    local _back_port="${3:-"${_front_port}"}"
+    local _fport="${1:-"8080"}"
+    local _bhost="${2:-"localhost"}"
+    local _port="${3:-"${_fport}"}"
     local _node="${4:-"/tmp/mitmpipe_$$"}"
     [ -e "${_node}" ] || mknod "${_node}" p # creates a FIFO
-    nc -k -l ${_front_port} 0<${_node} | tee -a ./in_$$.dump | nc "${_back_host}" ${_back_port} | tee >(LC_CTYPE=C tr -cd '[:print:]\n' >>./out_$$.dump) 1>${_node}
+    #nc -k -l ${_fport} 0<${_node} | tee -a ./in_$$.dump | nc "${_bhost}" ${_port} | tee -a ./out_$$.dump 1>${_node}
+    nc -k -l ${_fport} 0<${_node} | tee >(LC_CTYPE=C tr -cd '[:print:]\n' >>./in_$$.dump) | nc "${_bhost}" ${_port} | tee >(LC_CTYPE=C tr -cd '[:print:]\n' >>./out_$$.dump) 1>${_node}
 }
 # Mac only: Start Google Chrome in incognito with proxy
 function chromep() {
@@ -627,16 +631,22 @@ function backupC() {
         code --list-extensions | xargs -L 1 echo code --install-extension >$HOME/backup/vscode_install_extensions.sh || return $?
     fi
     # install codium
-    if which codium && [ -d "$HOME/backup" ]; then
+    if type codium &>/dev/null && [ -d "$HOME/backup" ]; then
         codium --list-extensions | xargs -L 1 echo codium --install-extension >$HOME/backup/vscodium_install_extensions.sh || return $?
     fi
-
+    if type kubectl &>/dev/null && [ -d "$HOME/backup/kube" ]; then
+        rsync -cav $HOME/.kube/*config* $HOME/backup/kube/
+    fi
+    if [ -s $HOME/.aws/config ] && [ -d "$HOME/backup" ]; then
+        # Not backing up .aws/credentials
+        cp -v -f $HOME/.aws/config $HOME/backup/aws_config || return $?
+    fi
     if [ -s /etc/hosts ] && [ -d "$HOME/backup" ]; then
         cp -v -f /etc/hosts $HOME/backup/etc_hosts || return $?
     fi
     if [ -d "$HOME/.ssh" ] && [ -d "$HOME/backup/ssh" ]; then
         # not copying symlink as I'm expecting symlinks would be from the "samples" repo
-        rsync -cavn --no-links "$HOME/.ssh/" "$HOME/backup/ssh" || return $?
+        rsync -cav --no-links "$HOME/.ssh/" "$HOME/backup/ssh" || return $?
     fi
     if [ -s "$HOME/IdeaProjects/m2_settings.xml" ] && [ -d "$HOME/backup" ]; then
         cp -v -f $HOME/IdeaProjects/m2_settings.xml $HOME/backup/IdeaProjects_m2_settings.xml || return $?
