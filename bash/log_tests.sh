@@ -331,26 +331,30 @@ function _test_tmpl_auto() {
 
 
 ### Extracts ###################################################################
+function _split_log() {
+    local _log_path="$1"
+    local _start_log_line=""
+    if [[ "${_log_path}" =~ (nexus)[^*]*log[^*]* ]]; then
+        #_start_log_line=".*org.sonatype.nexus.(webapp.WebappBootstrap|events.EventSubscriberHost) - Initialized"  # NXRM2 (if no DEBUG)
+        _start_log_line="(.*org.sonatype.nexus.pax.logging.NexusLogActivator - start|.*org.sonatype.nexus.events.EventSubscriberHost - Initialized)" # NXRM3|NXRM2
+    elif [[ "${_log_path}" =~ (clm-server)[^*]*log[^*]* ]]; then
+        _start_log_line=".* Initializing Nexus IQ Server .*"   # IQ
+    fi
+    if [ -n "${_start_log_line}" ]; then
+        if _size_check "${_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
+            f_splitByRegex ${_log_path} "${_start_log_line}" "_split_logs"
+        else
+            _LOG "INFO" "Not doing f_splitByRegex for '${_log_path}' as the size is larger than $((${_LOG_THRESHOLD_BYTES} * 10))"
+        fi
+    fi
+}
 function e_app_logs() {
     local _log_path="$(find . -maxdepth 3 -type f -print | grep -m1 -E "/(${_NXRM_LOG}|${_NXIQ_LOG}|server.log)$")"
     [ -z "${_log_path}" ] && _log_path="*.log"
     _LOG_GLOB="$(basename ${_log_path} | sed 's/.\///')"
 
     if [ -s "${_log_path}" ]; then
-        local _start_log_line=""
-        if [[ "${_log_path}" =~ (nexus)[^*]*log[^*]* ]]; then
-            #_start_log_line=".*org.sonatype.nexus.(webapp.WebappBootstrap|events.EventSubscriberHost) - Initialized"  # NXRM2 (if no DEBUG)
-            _start_log_line="(.*org.sonatype.nexus.pax.logging.NexusLogActivator - start|.*org.sonatype.nexus.events.EventSubscriberHost - Initialized)" # NXRM3|NXRM2
-        elif [[ "${_log_path}" =~ (clm-server)[^*]*log[^*]* ]]; then
-            _start_log_line=".* Initializing Nexus IQ Server .*"   # IQ
-        fi
-        if [ -n "${_start_log_line}" ]; then
-            if _size_check "${_log_path}" "$((${_LOG_THRESHOLD_BYTES} * 10))"; then
-                f_splitByRegex ${_log_path} "${_start_log_line}" "_split_logs"
-            else
-                _LOG "INFO" "Not doing f_splitByRegex for '${_log_path}' as the size is larger than $((${_LOG_THRESHOLD_BYTES} * 10))"
-            fi
-        fi
+        _split_log "${_log_path}"
     fi
     local _since_last_restart="$(ls -1r _split_logs/* 2>/dev/null | head -n1)"
     if [ -n "${_since_last_restart}" ]; then
@@ -375,14 +379,14 @@ function e_threads() {
 }
 function e_configs() {
     _extract_configs >${_FILTERED_DATA_DIR%/}/extracted_configs.md &
-    _extract_log_last_start >${_FILTERED_DATA_DIR%/}/extract_log_last_start.md &
+    _extract_log_last_start >${_FILTERED_DATA_DIR%/}/extracted_log_last_start.md &
     _search_json "sysinfo.json" "system-filestores" > ${_FILTERED_DATA_DIR%/}/system-filestores.json
 }
 
 ### Reports ###################################################################
 function r_configs() {
-    if [ -s "${_FILTERED_DATA_DIR%/}/extract_log_last_start.md" ]; then
-        cat ${_FILTERED_DATA_DIR%/}/extract_log_last_start.md
+    if [ -s "${_FILTERED_DATA_DIR%/}/extracted_log_last_start.md" ]; then
+        cat ${_FILTERED_DATA_DIR%/}/extracted_log_last_start.md
     fi
 }
 function r_audits() {
@@ -475,8 +479,9 @@ function t_mounts() {
         echo '```'
     fi
 }
+# TODO: For this one, checking without size limit (not _rg)?
 function t_oome() {
-    _test_template "$(_rg 'java.lang.OutOfMemoryError:.+' -o -g "${_LOG_GLOB}" -g '!jvm.log' | sort | uniq -c | sort | head -n10)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
+    _test_template "$(_RG_MAX_FILESIZE="6G" _rg 'java.lang.OutOfMemoryError:.+' -m1 -o -g "${_LOG_GLOB}" -g '\!jvm.log' | sort | uniq -c | sort | head -n10)" "ERROR" "OutOfMemoryError detected from ${_LOG_GLOB}"
 }
 function t_fips() {
     _test_template "$(_rg -m1 '(KeyStore must be from provider SunPKCS11-NSS-FIPS|PBE AlgorithmParameters not available)' -g "${_LOG_GLOB}")" "WARN" "FIPS mode might be detected from ${_LOG_GLOB}" "-Dcom.redhat.fips=false"
