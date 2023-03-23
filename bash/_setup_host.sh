@@ -532,6 +532,7 @@ function f_ip_set() {
 function f_socks5_proxy() {
     local __doc__="Start Socks5 proxy (for websocket)"
     local _port="${1:-$((${r_PROXY_PORT:-28080} + 1))}" # 28081
+    [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
     local _cmd="autossh -4gC2TxnNf -D${_port} socks5user@localhost &> /tmp/ssh_socks5.out"
 
     apt-get install -y autossh || return $?
@@ -548,7 +549,13 @@ function f_socks5_proxy() {
     [ ! -s /etc/rc.lcoal ] && echo -e '#!/bin/bash\nexit 0' >/etc/rc.local
     _insert_line /etc/rc.local "${_cmd}" "exit 0"
     lsof -nPi:${_port} -s TCP:LISTEN | grep "^ssh" && return 0
-    eval "${_cmd}"
+    eval "${_cmd}" || return $?
+    local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
+    echo "NOTE: Below command starts Chrome with this Socks5 proxy:
+# Mac:
+open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port} <URL>
+# Win:
+\"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe\" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port} <URL>"
 }
 
 function f_squid_proxy() {

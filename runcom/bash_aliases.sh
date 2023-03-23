@@ -504,6 +504,15 @@ function jpl() {
     echo "Redirecting STDOUT / STDERR into ${_log}" >&2
     nohup jupyter lab --ip=$(hostname -I | cut -d ' ' -f1) --no-browser --config="${_conf}" --notebook-dir="${_dir%/}" 2>&1 | tee "${_log}" | grep -m1 -oE "http://$(hostname -I | cut -d ' ' -f1):.+token=.+" &
 }
+# MITM proxy
+function mitmProxy() {
+    local _front_port="${1:-"8080"}"
+    local _back_host="${2:-"localhost"}"
+    local _back_port="${3:-"${_front_port}"}"
+    local _node="${4:-"/tmp/mitmpipe_$$"}"
+    [ -e "${_node}" ] || mknod "${_node}" p # creates a FIFO
+    nc -k -l ${_front_port} 0<${_node} | tee -a ./in_$$.dump | nc "${_back_host}" ${_back_port} | tee >(LC_CTYPE=C tr -cd '[:print:]\n' >>./out_$$.dump) 1>${_node}
+}
 # Mac only: Start Google Chrome in incognito with proxy
 function chromep() {
     local _host_port="${1:-"192.168.6.163:28081"}"

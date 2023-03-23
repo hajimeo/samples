@@ -805,56 +805,6 @@ function _upsert() {
     fi
 }
 
-function _socks5_proxy() {
-    local _port="${1:-"48484"}"
-    local _default_URL="${2}"   # optional: used in the usage.
-    [[ "${_port}" =~ ^[0-9]+$ ]] || return 11
-
-    local _hash="$(cat $HOME/.ssh/id_rsa.pub 2>/dev/null | awk '{print $2}')"
-    if [ -z "${_hash}" ]; then
-        _log "ERROR" "$FUNCNAME requires ssh password-less login."
-        return 1
-    fi
-    if ! grep -q "${_hash}" $HOME/.ssh/authorized_keys; then
-        cat $HOME/.ssh/id_rsa.pub >> $HOME/.ssh/authorized_keys || return $?
-    fi
-
-    local _cmd="ssh -4gC2TxnNf -D${_port} localhost 2>&1 >> ${_LOG_FILE_PATH:-"/dev/null"} &"
-    local _host_ip="$(hostname -I 2>/dev/null | cut -d" " -f1)"
-
-    local _pid="$(_pid_by_port "${_port}")"
-    if [ -n "${_pid}" ]; then
-        local _ps_comm="$(ps -o comm= -p ${_pid})"
-        ps -Fwww -p ${_pid}
-        if [ "${_ps_comm}" == "ssh" ]; then
-            _log "INFO" "The Socks proxy might be already running (${_pid})"
-        else
-            _log "WARN" "The port:${_port} is used by PID:${_pid}. Please stop this PID or use different port."
-            return 1
-        fi
-    else
-        eval "${_cmd}" || return $?
-        _log "INFO" "Started socks proxy on \"${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}\"."
-    fi
-
-    echo "NOTE: Below command starts Chrome with this Socks5 proxy:
-# Mac:
-open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port} ${_default_URL}
-# Win:
-\"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe\" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port}" ${_default_URL}
-}
-
-function _mitm_proxy() {
-    local _front_port="${1:-"8080"}"
-    local _back_host="${2:-"localhost"}"
-    local _back_port="${3:-"${_front_port}"}"
-    local _in_dump="${4:-"./in.dump"}"
-    local _out_dump="${5:-"./out.dump"}"
-    local _node="${6:-"/tmp/backpipe_$$"}"
-    mknod "${_node}" p # creates a FIFO
-    nc -l ${_front_port} 0<${_node} | tee -a "${_in_dump}" | nc "${_back_host}" ${_back_port} | tee -a "${_out_dump}" 1>${_node}
-}
-
 function _trust_ca() {
     local _ca_pem="$1"
     if [ ! -s "${_ca_pem}" ]; then

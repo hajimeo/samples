@@ -2458,10 +2458,6 @@ main() {
         _log "INFO" "Installing a client container ..."
         p_client_container "" "" ""
     fi
-
-    if _isYes "${r_SOCKS_PROXY}"; then
-        _socks5_proxy "${r_SOCKS_PROXY_PORT}" "${r_NEXUS_URL}"
-    fi
     _log "INFO" "Setup completed. (log:${_LOG_FILE_PATH})"
 }
 
