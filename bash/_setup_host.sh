@@ -555,7 +555,9 @@ function f_socks5_proxy() {
 # Mac:
 open -na \"Google Chrome\" --args --user-data-dir=\$HOME/.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port} <URL>
 # Win:
-\"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe\" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port} <URL>"
+\"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe\" --user-data-dir=%USERPROFILE%\.chrome_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port} <URL>
+\"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe\" --user-data-dir=%USERPROFILE%\.edge_pxy --proxy-server=socks5://${_host_ip:-"xxx.xxx.xxx.xxx"}:${_port} <URL>
+"
 }
 
 function f_squid_proxy() {
