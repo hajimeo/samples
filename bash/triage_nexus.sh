@@ -36,6 +36,33 @@ function f_start_web() {
     fi
 }
 
+alias curld='curl -sf -w "time_namelookup:\t%{time_namelookup}\ntime_connect:\t%{time_connect}\ntime_appconnect:\t%{time_appconnect}\ntime_pretransfer:\t%{time_pretransfer}\ntime_redirect:\t%{time_redirect}\ntime_starttransfer:\t%{time_starttransfer}\n----\ntime_total:\t%{time_total}\nhttp_code:\t%{http_code}\nspeed_download:\t%{speed_download}\nspeed_upload:\t%{speed_upload}\n"'
+function f_upload_download_tests() {
+    local workingDirectory="${1:-"/tmp"}"   #/opt/sonatype/sonatype-work/nexus3
+    local installDirectory="${2}";          #/opt/sonatype/nexus
+    local user_pwd="${3:-"admin:admin123"}";
+    local repo_url="${4:-"http://localhost:8081/repository/raw-hosted/test/"}";
+    local _repeat="${5:-"1"}"
+    local _img="test.img"
+    # Repeat below a few times
+    for _i in $(seq 1 ${_repeat}); do
+        echo "# [$(date +"%Y-%m-%d %H:%M:%S")-${_i}] Writing 100M to ${workingDirectory%/}/tmp/"
+        dd if=/dev/zero of="${workingDirectory%/}/tmp/${_img}" bs=100M count=1 oflag=dsync 2>&1
+        echo "# [$(date +"%Y-%m-%d %H:%M:%S")-${_i}] Uploading 100M to ${repo_url%/}/"
+        curld -u "${user_pwd}" -T "${workingDirectory%/}/tmp/${_img}" "${repo_url%/}/" || return $?
+        echo "# [$(date +"%Y-%m-%d %H:%M:%S")-${_i}] Downloading 100M from ${repo_url%/}/"
+        curld -u "${user_pwd}" -o/dev/null "${repo_url%/}/${_img}" || return $?
+        # public might not be writable if docker / k8s
+        if [ -d "${installDirectory%/}" ] && [ -d "${installDirectory%/}/public" ]; then
+            if dd if=/dev/zero of="${installDirectory%/}/public/${_img}" bs=1 count=0 seek=104857600 2>/dev/null; then
+                echo "# [$(date +"%Y-%m-%d %H:%M:%S")-${_i}] Downloading 100M from http://localhost:8081/ (may fail)"
+                curld -o/dev/null http://localhost:8081/${_img}
+            fi
+        fi
+        echo "# [$(date +"%Y-%m-%d %H:%M:%S")-${_i}] Completed."
+    done
+}
+
 function f_verify_install() {
     local __doc__="Compare files with the original tar installer file"
     local _ver="$1" # "3.38.1-01"
