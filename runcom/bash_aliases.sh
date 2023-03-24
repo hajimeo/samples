@@ -134,12 +134,16 @@ alias podman_delete_all='podman system prune --all'    # --force && podman rmi -
 type q &>/dev/null && alias qcsv='q -O -d"," -T --disable-double-double-quoting'
 type pgbadger &>/dev/null && alias pgbg='pgbadger --timezone 0'
 #type microk8s &>/dev/null && alias kubectl="microk8s kubectl"
-#type zsh &>/dev/null && alias zzhi='env /usr/bin/arch -x86_64 /bin/zsh —-login'
-type zsh &>/dev/null && alias ibrew="arch -x86_64 /usr/local/bin/brew"
+alias kPods='kubectl get pods --show-labels -A'
+function kBash() {
+    kubectl exec "$1" -n "${2:-"default"}" -t -i -- bash
+}
 if type aws-vault &>/dev/null && [ -s "$HOME/.kube/support_test_config" ]; then
     alias awsSpt='aws-vault exec support -- aws'
     alias kcSpt='aws-vault exec support -- kubectl --kubeconfig $HOME/.kube/support_test_config'
 fi
+#type zsh &>/dev/null && alias zzhi='env /usr/bin/arch -x86_64 /bin/zsh —-login'
+type zsh &>/dev/null && alias ibrew="arch -x86_64 /usr/local/bin/brew"
 
 ## Non default (need to install some complex software and/or develop script) alias commands ############################
 # Load/source my own searching utility functions / scripts
