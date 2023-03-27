@@ -393,7 +393,8 @@ function r_audits() {
     _head "AUDIT" "Top 20 'domain','type' from ${_AUDIT_LOG}"
     echo '```'
     _rg --no-filename '"domain":"([^"]+)", *"type":"([^"]+)"' -o -r '$1,$2' -g ${_AUDIT_LOG} | sort | uniq -c | sort -nr | head -n20
-    echo "NOTE: taskblockedevent would mean another task is running (dupe tasks?). repositorymetadataupdatedevent would mean quarantine."
+    echo "NOTE: taskblockedevent would mean another task is running (dupe tasks?)."
+    echo "      repositorymetadataupdatedevent (NXRM) and governance.repository.quarantine (IQ) could be quarantine."
     echo '```'
 }
 function r_threads() {
@@ -487,11 +488,20 @@ function t_fips() {
     _test_template "$(_rg -m1 '(KeyStore must be from provider SunPKCS11-NSS-FIPS|PBE AlgorithmParameters not available)' -g "${_LOG_GLOB}")" "WARN" "FIPS mode might be detected from ${_LOG_GLOB}" "-Dcom.redhat.fips=false"
 }
 function t_errors() {
-    _basic_check "" "${_FILTERED_DATA_DIR%/}/f_topErrors.out" || return
-    if _test_template "$(_rg -q '^\s*\d\d+.+\s+ERROR\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out && cat ${_FILTERED_DATA_DIR%/}/f_topErrors.out)" "ERROR" "Many ERROR detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out (since last start if restarted)"; then
-        _test_template "$(_rg '^\s*\d\d\d+.+\s+WARN\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out && cat ${_FILTERED_DATA_DIR%/}/f_topErrors.out)" "WARN" "Many WARN detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out (since last start if restarted)"
+    if [ -s "${_FILTERED_DATA_DIR%/}/f_topErrors.out" ]; then
+        if _test_template "$(_rg -q '^\s*\d\d+.+\s+ERROR\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out && cat ${_FILTERED_DATA_DIR%/}/f_topErrors.out)" "ERROR" "Many ERROR detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out (since last start if restarted)"; then
+            _test_template "$(_rg '^\s*\d\d\d+.+\s+WARN\s+' ${_FILTERED_DATA_DIR%/}/f_topErrors.out && cat ${_FILTERED_DATA_DIR%/}/f_topErrors.out)" "WARN" "Many WARN detected from ${_FILTERED_DATA_DIR%/}/f_topErrors.out (since last start if restarted)"
+        fi
     fi
     #_test_template "$(_rg '([^ ()]+\.[a-zA-Z0-9]+Exception):' -o -r '$1' --no-filename -g "${_LOG_GLOB}" | sort | uniq -c | sort -nr | _rg '^\s*\d\d+' | head -n10)" "WARN" "Many exceptions detected from ${_LOG_GLOB}"
+    local _dir="$(find . -maxdepth 3 -type d -name "_split_logs" -print -quit)"
+    if [ -n "${_dir%/}" ]; then
+        local _num="$(ls -1 ${_dir%/}/ | _line_num)"
+        if [ 2 -lt "${_num}" ]; then
+            # TODO: some important issue uses WARN.
+            _test_template "$(_rg -m1 "^${_DATE_FORMAT}.+ (ERROR |WARN .+DataStoreManagerImpl)" ${_dir%/}/)" "WARN" "First ERRORs after multiple restart (${_dir%/} | ${_num})"
+        fi
+    fi
 }
 function t_threads() {
     local _dir="$(find . -maxdepth 3 -type d -name "_threads" -print -quit)"
