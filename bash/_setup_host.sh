@@ -1183,7 +1183,7 @@ function f_microk8s() {
     helm3 install nxiq helm-sonatype-proxy/nexus-iq-server -n sonatype -f ./helm-iq-values.yml --dry-run
     helm upgrade nxiq sonatype/nexus-iq-server -n default --version 47.1.0 --reset-values --dry-run
     helm3 install nxrm3 helm-sonatype-proxy/nexus-repository-manager -n sonatype    #--debug is not so useful
-    helm3 uninstall nxrm3                   # to delete everything
+    helm3 uninstall nxrm3 --dry-run         # to delete everything
 ### troubleshooting helm related issue
     helm3 get manifest <release name>       # https://helm.sh/docs/helm/helm_get_manifest/
     helm3 template [NAME] [CHART]           # https://helm.sh/docs/helm/helm_template/
