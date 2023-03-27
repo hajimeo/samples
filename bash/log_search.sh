@@ -1778,6 +1778,7 @@ function _wait_jobs() {
         sleep ${_sp}
     done
 }
+#ls -1 _split_logs/* | _line_num
 function _line_num() {
     local _file="$1"
     local _opt="${2:-"-l"}"
