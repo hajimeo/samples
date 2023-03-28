@@ -709,9 +709,11 @@ public class AssetDupeCheckV2 {
                     exportImportDb(db);
                 }
 
-                log("Validating indexName: " + INDEX_NAME);
-                if (!validateIndex(db, INDEX_NAME)) {
-                    log("[ERROR] Validating indexName: " + INDEX_NAME + " failed");
+                if (SUPPORTED_INDEX_NAMES.contains(INDEX_NAME)) {
+                    log("Validating indexName: " + INDEX_NAME);
+                    if (!validateIndex(db, INDEX_NAME)) {
+                        log("[ERROR] Validating indexName: " + INDEX_NAME + " failed");
+                    }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
