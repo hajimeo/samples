@@ -14,7 +14,7 @@
  * TODO: Add tests. Cleanup the code (too messy...)
  *
  * My note:
- *  mvn clean package && cp -v ./target/asset-dupe-checker-2.0-SNAPSHOT-jar-with-dependencies.jar ../../misc/asset-dupe-checker-v2.1.jar
+ *  mvn clean package && cp -v ./target/asset-dupe-checker-2.0-SNAPSHOT-jar-with-dependencies.jar ../../misc/asset-dupe-checker-v2.jar
  */
 
 import java.io.File;
@@ -247,15 +247,15 @@ public class AssetDupeCheckV2 {
             return;
         }
         long idxSize = getIndexFileSize(indexName);
-        log("Rebuilding indexName:" + indexName + " size:" + idxSize);
+        log("Rebuilding indexName:" + indexName + " size:" + idxSize +" bytes");
         OIndex<?> index = db.getMetadata().getIndexManager().getIndex(indexName);
         index.rebuild();
         long idxSize2 = getIndexFileSize(indexName);
         int prct = 100;
         if (idxSize > 0) {
-            prct = (int) round((idxSize2 / idxSize) * 100.0);
+            prct = (int) round(((float) idxSize2/idxSize) * 100.0);
         }
-        log("Completed rebuilding indexName:" + indexName + " size:" + idxSize2 + "(" + prct + "%)");
+        log("Completed rebuilding indexName:" + indexName + " size:" + idxSize2 +" bytes (" + prct + "%)");
     }
 
     private static void exportDb(ODatabaseDocumentTx db, String exportTo) throws IOException {
@@ -417,7 +417,7 @@ public class AssetDupeCheckV2 {
     }
 
     private static Boolean checkIndex(ODatabaseDocumentTx db) {
-        if (!IS_NO_INDEX_CHECK) {
+        if (IS_NO_INDEX_CHECK) {
             log("No index check is specified, so skipping checkIndex for " + INDEX_NAME + "");
             return true;
         }
