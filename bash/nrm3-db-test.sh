@@ -8,8 +8,8 @@ EOS
 
 _DB_CONN_TEST_FILE="/tmp/DbConnTest.groovy"
 _GROOVY_ALL_VER="2.4.17"
-: ${_INSTALL_DIR:=""}
-: ${_WORK_DIR:=""}
+: "${_INSTALL_DIR:=""}"
+: "${_WORK_DIR:=""}"
 
 function _genDbConnTest() {
     cat << EOF > "${_DB_CONN_TEST_FILE}"
@@ -60,7 +60,7 @@ function runDbConnTest() {
         echo "Could not find nexus-store.properties file." >&2
         return 1
     fi
-    java -Dgroovy.classpath="$(find ${installDir%/}/system/org/postgresql/postgresql -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${installDir%/}/system/org/codehaus/groovy/groovy-all/${_GROOVY_ALL_VER}/groovy-all-${_GROOVY_ALL_VER}.jar" \
+    java -Dgroovy.classpath="$(find "${_INSTALL_DIR%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_INSTALL_DIR%/}/system/org/codehaus/groovy/groovy-all/${_GROOVY_ALL_VER}/groovy-all-${_GROOVY_ALL_VER}.jar" \
     "${_DB_CONN_TEST_FILE}" "${storeProp}" "${query}"
 }
 
