@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
-# curl -O -L "https://raw.githubusercontent.com/hajimeo/samples/master/bash/nrm3-db-mig-helper.sh"
-
 usage() {
     cat << EOS
 USAGE:
-    Before starting this script, prepare nexus-store.properties, then specify the migrator jar version.
-    bash ./nxrm3-db-mig-helper.sh <migrator-version> [/path/to/nexus-store.properties]
-    bash ./nxrm3-db-mig-helper.sh 3.44.0-01
+    bash ./nxrm3-db-test.sh [/path/to/nexus-store.properties] [query]
 EOS
 }
 
@@ -46,52 +42,43 @@ function _detectDirs() {    # Best effort. may not return accurate dir path
         _INSTALL_DIR="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
     fi
     if [ ! -d "${_WORD_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
-        local _KarafData="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data([^ ]+) .+/\1/p' | head -1)"
-        _WORD_DIR="${_INSTALL_DIR%/}/${_KarafData%/}"
+        local _karafData="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data([^ ]+) .+/\1/p' | head -1)"
+        _WORD_DIR="${_INSTALL_DIR%/}/${_karafData%/}"
     fi
-}
-
-function _ports() { # Best effort. may not return accurate dir path
-    local pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -v 'grep -F' | awk '{print $2}')"
-    [ -z "${pid}" ] && return 1
-    cat /proc/${pid}/net/tcp | sed -n -E 's/^ *[0-9]+: 00000000:([^ ]+).+/\1/p' | sort | uniq | while read -r x; do printf "%d\n" 0x${x}; done
-}
-
-function getVer() {     # requires 'curl'
-    _ports | while read -r p; do
-        curl -s -f -k -I "localhost:8081" | sed -n -E 's/^Server: *Nexus\/([^ ]+) .*/\1/p' | grep -E '^[0-9.-]+$' && break
-    done
 }
 
 function runDbConnTest() {
     local storeProp="$1"
+    local query="$2"
     if [ ! -s "${_DB_CONN_TEST_FILE}" ]; then
         _genDbConnTest || return $?
     fi
+    if [ -z "${storeProp}" ] && [ -d "${_WORD_DIR%/}" ]; then
+        storeProp="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
+    fi
+    if [ ! -s "${storeProp}" ]; then
+        echo "Could not find nexus-store.properties file." >&2
+        return 1
+    fi
     java -Dgroovy.classpath="$(find ${installDir%/}/system/org/postgresql/postgresql -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${installDir%/}/system/org/codehaus/groovy/groovy-all/${_GROOVY_ALL_VER}/groovy-all-${_GROOVY_ALL_VER}.jar" \
-    "${_DB_CONN_TEST_FILE}" "${storeProp}"
-}
-
-function getMigratorJar() {
-    return
+    "${_DB_CONN_TEST_FILE}" "${storeProp}" "${query}"
 }
 
 main() {
-    local migVer="$1"
-    local storeProp="$2"
+    local storeProp="$1"
     _detectDirs
     if [ -z "${_INSTALL_DIR}" ]; then
         echo "Could not find install directory." >&2
         return 1
     fi
-    runDbConnTest "${storeProp}" }|| return $?
+    runDbConnTest "${storeProp}" || return $?
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
-    if [ "$#" -eq 0 ]; then
+    #if [ "$#" -eq 0 ]; then
+    if [ "$1" == "-h" ] || [ "$1" == "--help" ] || [ "$1" == "help" ]; then
         usage
         exit 1
     fi
-
     main "$@"
 fi
