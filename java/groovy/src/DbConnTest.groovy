@@ -12,7 +12,7 @@ else {
     def pf = new File(args[0])
     pf.withInputStream { p.load(it) }
 }
-def query = (args.length > 1) ? args[1] : "SELECT 'ok' as test"
+def query = (args.length > 1 && !args[1].empty) ? args[1] : "SELECT 'ok' as test"
 def driver = Class.forName('org.postgresql.Driver').newInstance() as Driver
 def dbP = new Properties()
 dbP.setProperty("user", p.username)

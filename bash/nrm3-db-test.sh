@@ -21,7 +21,7 @@ else {
    def pf = new File(args[0])
    pf.withInputStream { p.load(it) }
 }
-def query = (args.length > 1) ? args[1] : "SELECT 'ok' as test"
+def query = (args.length > 1 && args[1]) ? args[1] : "SELECT 'ok' as test"
 def driver = Class.forName('org.postgresql.Driver').newInstance() as Driver
 def dbP = new Properties()
 dbP.setProperty("user", p.username)
@@ -42,7 +42,7 @@ function _detectDirs() {    # Best effort. may not return accurate dir path
         _INSTALL_DIR="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
     fi
     if [ ! -d "${_WORD_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
-        local _karafData="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data([^ ]+) .+/\1/p' | head -1)"
+        local _karafData="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -1)"
         _WORD_DIR="${_INSTALL_DIR%/}/${_karafData%/}"
     fi
 }
@@ -66,12 +66,13 @@ function runDbConnTest() {
 
 main() {
     local storeProp="$1"
+    local query="$2"
     _detectDirs
     if [ -z "${_INSTALL_DIR}" ]; then
         echo "Could not find install directory." >&2
         return 1
     fi
-    runDbConnTest "${storeProp}" || return $?
+    runDbConnTest "${storeProp}" "${query}" || return $?
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
