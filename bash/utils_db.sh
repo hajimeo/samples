@@ -108,32 +108,39 @@ function _postgresql_configure() {
         # To log the SQL statements. @see: https://www.eversql.com/enable-slow-query-log-postgresql/ for AWS RDS
         _upsert ${_postgresql_conf} "log_line_prefix" "'%t [%p]: db=%d,user=%u,app=%a,client=%h '" "#log_line_prefix"
         # TODO: 'ALTER DATABASE system' might stay after restarting?
-        # ALTER DATABASE :DBNAME SET log_min_duration_statement = 0;SELECT pg_reload_conf();
+        # ALTER system RESET ALL;
+        # ALTER system SET log_min_duration_statement = 0;SELECT pg_reload_conf(); -- DATABASE :DBNAME
         _upsert ${_postgresql_conf} "log_min_duration_statement" "0" "#log_min_duration_statement"
         _upsert ${_postgresql_conf} "log_checkpoints" "on" "#log_checkpoints"
         _upsert ${_postgresql_conf} "log_autovacuum_min_duration" "0" "#log_autovacuum_min_duration"
     else
         _upsert ${_postgresql_conf} "log_line_prefix" "'%m [%p-%l]: db=%d,user=%u,app=%a,client=%h '" "#log_line_prefix"
+        # ALTER system RESET ALL;
+        # ALTER system SET log_statement = 'mod';SELECT pg_reload_conf();
         _upsert ${_postgresql_conf} "log_statement" "'mod'" "#log_statement"
         _upsert ${_postgresql_conf} "log_min_duration_statement" "100" "#log_min_duration_statement"
     fi
 
-    # "CREATE EXTENSION" creates in the current database. "select * from pg_extension;" to check
+    # "CREATE EXTENSION" creates in the current database. "" to check
     local _shared_preload_libraries="auto_explain"
     # https://www.postgresql.org/docs/current/pgstatstatements.html
     if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements;"; then
         _shared_preload_libraries="${_shared_preload_libraries},pg_stat_statements"
         # SELECT pg_stat_statements_reset();
+        # NOTE: column name is slightly different by version. eg: total_time instead of total_exec_time
         # SELECT ROUND(mean_exec_time) mean_ms, ROUND(stddev_exec_time) stddev, ROUND(max_exec_time) max_ms, ROUND(total_exec_time) ttl_ms, ROUND(100.0 * shared_blks_hit / nullif(shared_blks_hit + shared_blks_read, 0)) AS hit_percent, calls, rows, query FROM pg_stat_statements WHERE total_exec_time/calls > 100 ORDER BY 1 DESC LIMIT 100;
     fi
     #${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_buffercache;"
+    # https://github.com/postgres/postgres/blob/master/contrib/pg_prewarm/autoprewarm.c
+    # To check: 'ps -aef | grep autoprewarm' and $PGDATA/autoprewarm.blocks file
     if ${_psql_as_admin} -d template1 -c "CREATE EXTENSION IF NOT EXISTS pg_prewarm;"; then
         _shared_preload_libraries="${_shared_preload_libraries},pg_prewarm"
-        # select pg_prewarm('<tablename>', 'buffer');
+        # select pg_prewarm('<tablename>'); # 2nd arg default is 'buffer', 3rd is 'main'
     fi
     if _upsert ${_postgresql_conf} "shared_preload_libraries" "'${_shared_preload_libraries}'" "#shared_preload_libraries"; then
         _restart=true
     fi
+
     _upsert ${_postgresql_conf} "auto_explain.log_min_duration" "5000"
     # To check:
     # SELECT setting, pending_restart FROM pg_settings WHERE name = 'shared_preload_libraries';

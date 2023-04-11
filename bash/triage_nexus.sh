@@ -152,21 +152,22 @@ function f_mvn_copy_local() {
 }
 
 # NOTE: filter the output before passing function would be faster
-# cat ./log/request.log | rg -v '(\.tgz|dist-tags) ' | f_replay_gets "http://dh1:8081/repository/npm-s3-group-diff-bs" ".*/repository/npm-group/([^ ]+)" "10"
-#zgrep "2021:10:1" request-2021-01-08.log.gz | f_replay_gets "http://localhost:8081/repository/maven-central" "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
-#rg -z "2021:\d\d:\d.+ \"GET /repository/maven-central/.+HTTP/[0-9.]+" 2\d\d" request-2021-01-08.log.gz | sort | uniq | f_replay_gets "http://dh1:8081/repository/maven-central/"
+# cat ./log/request.log | rg -v '(\.tgz|dist-tags) ' | f_replay_gets "http://dh1:8081/repository/npm-s3-group-diff-bs" "10"
+#zgrep "2021:10:1" request-2021-01-08.log.gz | f_replay_gets "http://localhost:8081/repository/maven-central" "" "" "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
+#rg -m10 -z "2021:\d\d:\d.+ \"GET /repository/maven-central/.+HTTP/[0-9.]+" 2\d\d" request-2021-01-08.log.gz | sort | uniq | f_replay_gets "http://dh1:8081/repository/maven-central/"
 function f_replay_gets() {
     local __doc__="Replay GET requests in the request.log"
     local _url_path="$1"    # http://localhost:8081/repository/maven-central
-    local _path_match="${2:-".*/repository/[^/]+/([^ ]+)"}"   # or NXRM2: "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
-    local _c="${3:-"1"}"    # concurrency. Use 1 if order is important
-    local _curl_opt="${4}"  # -u admin:admin123
+    local _c="${2:-"1"}"    # concurrency. Use 1 if order is important
+    local _curl_opt="${3}"  # -u admin:admin123 --head
+    local _path_match="${4:-".*/repository/[^/]+/([^ ]+)"}"   # or NXRM2: "/nexus/content/(repositories|groups)/[^/]+/([^ ]+)"
+    local _rg_opt="${5}"    # "-g 'request.log'"
     [[ "${_url_path}" =~ ^http ]] || return 1
     [[ "${_path_match}" =~ .*\(.+\).* ]] || return 2
     local _n="$(echo "${_path_match}" | tr -cd ')' | wc -c | tr -d "[:space:]")"
     # TODO: Remove 'rg', but sed is too difficult to handle multiple parentheses
     # Not sorting as order might be important. Also, --head -o/dev/null is intentional
-    rg "\bGET ${_path_match} HTTP/\d" -o -r "$"${_n} | xargs -n1 -P${_c} -I{} curl -sSf --connect-timeout 2 --head -o/dev/null -w '%{http_code} {}\n' ${_curl_opt} "${_url_path%/}/{}"
+    rg "\bGET ${_path_match} HTTP/\d" -o -r "$"${_n} ${_rg_opt} | xargs -n1 -P${_c} -I{} curl -sSf --connect-timeout 2 -o/dev/null -w '%{http_code} (%{size_download}) {}\n' ${_curl_opt} "${_url_path%/}/{}"
 }
 #rg -m300 '03/Aug/2021:0[789].+GET /content/groups/npm-all/(.+/-/.+-[0-9.]+\.tgz)' -o -r '${1}' ./work/logs/request.log | xargs -I{} curl -sf --connect-timeout 2 --head -o/dev/null -w '%{http_code} {}\n' -u admin:admin123 "http://localhost:8081/nexus/content/groups/npm-all/{}" | tee result.out
 #npm cache clean --force
@@ -182,24 +183,23 @@ function f_tail_to_delete_missing_maven_metadata() {
     tail -f "${_request_log}" | sed -E 's@.+ "GET ([^ ]*/repository/.+maven-metadata.xml) HTTP/..." 500 .+@\1@' | xargs -n1 -I{} echo "curl -sSf --connect-timeout 2 -X DELETE -w '%{http_code} {}\n' -u '${_user_pwd}' '${_nexus_url%/}{}'"
 }
 
-# NOTE: the attribute order is not consistent. also with -z, ^ or $ does not work.
 #find ./vol-* -type f -name '*.properties' -print0 | xargs -0 -I{} -P3 grep -lPz "(?s)deleted=true.*@Bucket.repo-name=npm-proxy\b" {}
-# Find not deleted (last updated) grunt metadata asset
 #rg -l -g '*.properties' '@BlobStore.blob-name=grunt' | xargs -I {} rg 'Bucket.repo-name=npm-group' -l {} | xargs -I {} ggrep -L '^deleted=true' {}
+#grep -H --include='*.properties' -IRs "${@:2}" ${_content_dir}    # -H or -l
+
+# NOTE: Attribute order is not consistent. also because of with -z, ^ or $ does not work.
+#       find -L makes this command a bit slower, and xargs -P would be helpful only for slow store.
+#       find + grep is faster than grep --include but for the simplicity, not doing
+#       Also, redirecting to a file is faster in the console, but not doing because you can append below sed|gsed
+#           gsed -i -e 's/^deleted=true$//' -e 's/^deletedReason=Removing unused asset blob$//'
 function f_blob_search() {
-    local __doc__="find + grep is faster than grep --include, and using xargs -P2"
-    local _content_dir="${1:-"."}"    # /var/tmp/share/sonatype/blobs/default/content/vol-*
-    local _2nd_arg="${2}"
-    [ -z "${_2nd_arg}" ] && return 1
-    #grep -H --include='*.properties' -IRs "${@:2}" ${_content_dir}    # -H or -l
-    # NOTE: find -L makes this command a bit slower, and -P would be helpful onlly for slow store.
-    #       Also, redirecting to a file is faster in the console (but not doing so that more intructive)
-    if type rg &>/dev/null; then
-        rg -g '*.properties' "${@:2}"
-    else
-        find ${_content_dir%/} -type f -name '*.properties' -print0 | xargs -0 -P 2 grep "${@:2}"
-    fi # > /tmp/$FUNCNAME.out;cat /tmp/$FUNCNAME.out
+    local __doc__="Search blob store properties files with regex"
+    local _content_dir="${1:-"."}"          # /var/tmp/share/sonatype/blobs/default/content
+    local _regex="${2:-"\bdeleted=true\b"}" # (?s)(?=.*?repo-name=npm-(proxy|group)\b)(?=.*?blob-name=lodash\b).*
+    find ${_content_dir%/} -maxdepth 1 -type d -name 'vol-*' -print0 | xargs -0 -I {} -P4 -t grep -IRslPz --include='*.properties' "${_regex}" {}
 }
+# | tee result.out; sed 's/properties/bytes/g' result.out > result.bytes.out; tar -czvf test.tgz -T <(cat result.out result.bytes.out)
+# TODO: utilise 'blobpath' command
 
 # Not perfect
 function f_blob_list_from_pom() {
@@ -222,17 +222,6 @@ function f_blob_list_from_pom() {
             grep -H '^@BlobStore.blob-name=' "${_f}"
         fi
     done
-}
-
-#FileBlobStore - Attempt to access soft-deleted blob b90943e5-3d35-43bc-aeba-8004eb1b6752 attributes: /path/to/default/content/vol-43/chap-36/b90943e5-3d35-43bc-aeba-8004eb1b6752.properties {deletedDateTime=1678699831279, deleted=true, @BlobStore.created-by=anonymous, creationTime=1669712642144, @BlobStore.created-by-ip=192.168.0.111, @BlobStore.content-type=text/html, sha1=xxxxxxxxx, @BlobStore.blob-name=tools, deletedReason=Removing unused asset blob, @Bucket.repo-name=test-repo, size=143524}
-# Note deleting deletedDateTime
-#gsed -i -e 's/^deleted=true$//' -e 's/^deletedReason=Removing unused asset blob$//'
-function f_search_soft_deleted_blobs() {
-    local __doc__="find deleted=true blobs"
-    local _content_dir="${1}"    # /var/tmp/share/sonatype/blobs/default/content
-    [ -d "${_content_dir}" ] || return 11
-    find ${_content_dir%/} -maxdepth 2 -type d -name 'vol-*' -print0 | xargs -0 -I {} -P4 -t grep -l --include='*.properties' -IRs "^deleted=true" {}
-    # TODO: utilise 'blobpath' command
 }
 
 # Probably does not work with Mac's 'sed' because of -i difference
