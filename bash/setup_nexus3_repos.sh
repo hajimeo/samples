@@ -256,6 +256,7 @@ function f_setup_nuget() {
     if ! _is_repo_available "${_prefix}-v2-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"nugetVersion":"V2","queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://www.nuget.org/api/v2/","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v2-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}'
     fi
+    f_get_asset "${_prefix}-v2-proxy" "/HelloWorld/1.3.0.15" "${_TMP%/}/helloworld.1,3.0.15.nupkg"
     if ! _is_repo_available "${_prefix}-v3-proxy"; then
         f_apiS '{"action":"coreui_Repository","method":"create","data":[{"attributes":{"nugetProxy":{"nugetVersion":"V3","queryCacheItemMaxAge":3600},"proxy":{"remoteUrl":"https://api.nuget.org/v3/index.json","contentMaxAge":1440,"metadataMaxAge":1440},"httpclient":{"blocked":false,"autoBlock":true,"connection":{"useTrustStore":false}},"storage":{"blobStoreName":"'${_bs_name}'","strictContentTypeValidation":true'${_extra_sto_opt}'},"negativeCache":{"enabled":true,"timeToLive":1440},"cleanup":{"policyName":[]}},"name":"'${_prefix}'-v3-proxy","format":"","type":"","url":"","online":true,"routingRuleId":"","authEnabled":false,"httpRequestSettings":false,"recipe":"nuget-proxy"}],"type":"rpc"}'
     fi
@@ -1604,13 +1605,15 @@ function f_start_saml_server() {
         echo "Please specify _service_metadata_url"; return 1
     fi
     local _cmd="simplesamlidp"
-    if type ${_cmd} &>/dev/null || [ ! -s ./simplesamlidp ]; then
-        curl -o ./simplesamlidp -L "https://github.com/hajimeo/samples/raw/master/misc/simplesamlidp_$(uname)_$(uname -m)" || return $?
-        chmod u+x ./simplesamlidp || return $?
-        _cmd="./simplesamlidp"
+    if type ${_cmd} &>/dev/null; then
+        if [ ! -s "${_SHARE_DIR%/}/simplesamlidp" ]; then
+            curl -o "${_SHARE_DIR%/}/simplesamlidp" -L "https://github.com/hajimeo/samples/raw/master/misc/simplesamlidp_$(uname)_$(uname -m)" --compressed || return $?
+            chmod u+x "${_SHARE_DIR%/}/simplesamlidp" || return $?
+        fi
+        _cmd="${_SHARE_DIR%/}/simplesamlidp"
     fi
-    if [ ! -s simple-saml-idp.json ]; then
-        curl -O -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/simple-saml-idp.json || return $?
+    if [ ! -s ./simple-saml-idp.json ]; then
+        curl -O -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/simple-saml-idp.json" --compressed  || return $?
     fi
     openssl req -x509 -newkey rsa:2048 -keyout ./myidp.key -out ./myidp.crt -days 365 -nodes -subj "/CN=$(hostname -f)"
     export IDP_KEY=./myidp.key IDP_CERT=./myidp.crt USER_JSON=./simple-saml-idp.json IDP_BASE_URL="${_idp_base_url}" SERVICE_METADATA_URL="${_service_metadata_url}"
@@ -1618,14 +1621,16 @@ function f_start_saml_server() {
 }
 
 function f_start_ldap_server() {
+    local _fname="$(uname | tr '[:upper:]' '[:lower:]')$(uname -m).zip"
+    if [ ! -s "${_SHARE_DIR%/}/${_fname}" ]; then
+        curl -o "${_SHARE_DIR%/}/${_fname}" -L "https://github.com/glauth/glauth/releases/download/v2.1.0/${_fname}" --compressed || return $?
+    fi
     if [ ! -s ./glauth/glauth ]; then
-        local _fname="$(uname | tr '[:upper:]' '[:lower:]')$(uname -m).zip"
-        curl -O -L "https://github.com/glauth/glauth/releases/download/v2.1.0/${_fname}" || return $?
-        unzip -d ./glauth ./${_fname}
+        unzip -d ./glauth "${_SHARE_DIR%/}/${_fname}"
         chmod u+x ./glauth/glauth || return $?
     fi
     if [ ! -s ./glauth/glauth-simple.cfg ]; then
-        curl -o ./glauth/glauth-simple.cfg -L https://raw.githubusercontent.com/hajimeo/samples/master/misc/glauth-simple.cfg || return $?
+        curl -o ./glauth/glauth-simple.cfg -L "https://raw.githubusercontent.com/hajimeo/samples/master/misc/glauth-simple.cfg" --compressed || return $?
     fi
     # listening 0.0.0.0:389
     ./glauth/glauth -c ./glauth/glauth-simple.cfg
@@ -1977,137 +1982,32 @@ function _update_name_resolution() {    # no longer in use but leaving as an exa
 
 # NOTE: currently this function is tested against support.zip boot-ed then migrated database
 # Example export command (Using --no-owner and --clean, but not using --data-only as needs CREATE statements. -t with * requires PostgreSQL v12 or higher):
-#_FMT="*" _DBHOST="localhost" _DBPORT=5432 _DBNAME="nxrm_v3450" _DBUSER="nxrm" PGPASSWORD=nxrm123 PGGSSENCMODE=disable;
-#pg_dump -h ${_DBHOST} -p ${_DBPORT} -U ${_DBUSER} -d ${_DBNAME} -c -O -t "repository" -t "${_FMT}_content_repository" -t "${_FMT}_component" -t "${_FMT}_component_tag" -t "${_FMT}_asset" -t "${_FMT}_asset_blob" -t "tag" -Z 6 -f ./component_db_$(date +"%Y%m%d%H%M%S").sql.gz
 # Other interesting tables: -t "*_browse_node" -t "*deleted_blob*" -t "change_blobstore"
+function f_export_postgresql_component() {
+    local _workingDirectory="${1}"
+    local _exportTo="${2:-"./component_db_$(date +"%Y%m%d%H%M%S").sql.gz"}"
+    source "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
+    [[ "${jdbcUrl}" =~ jdbc:postgresql://([^:/]+):?([0-9]*)/([^\?]+) ]]
+    _FMT="*" _DBHOST="${BASH_REMATCH[1]}" _DBPORT="${BASH_REMATCH[2]}" _DBNAME="${BASH_REMATCH[3]}" _DBUSER="${username}" PGPASSWORD="${password}" PGGSSENCMODE=disable;
+    pg_dump -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -c -O -t "repository" -t "${_FMT}_content_repository" -t "${_FMT}_component" -t "${_FMT}_component_tag" -t "${_FMT}_asset" -t "${_FMT}_asset_blob" -t "tag" -Z 6 -f "${_exportTo}"
+}
 
-# How to restore example:
-#gunzip -c ./component_db_*.sql.gz | psql -h ${_DBHOST} -p ${_DBPORT} -U ${_DBUSER} -d some_new_db -L ./psql_restore.log
 # How to verify
 #VACUUM FULL VERBOSE;
 #SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' AND relname NOT LIKE '%_browse_%' AND (relname like '%repository%' OR relname like '%component%' OR relname like '%asset%') ORDER BY 2 DESC LIMIT 40;
-
-# probably DEPRECATED? see above
 function f_restore_postgresql_component() {
-    local __doc__="Restore 'component' database from a pg_dump generated sql.gz file into the existing *local* database"
-    local _sql_gz_file="${1}"
-    local _db_hostname="${2:-"localhost"}"
-    local _dbusr="${3:-"nxrm"}"
-    local _dbpwd="${4:-"${_dbusr}123"}"
-    local _dbname="${5:-${_dbusr}}"
-    local _usr="${6:-${_SERVICE:-"$USER"}}"
-    local _reuse_orig_db="${7-"${_REUSE_ORIG_DB}"}"
-    local _fix_repo_ids_only="${8-"${_FIX_REPO_IDS_ONLY}"}"
-    local _temp_db_name="${FUNCNAME}_db"
-        # Below table order matters. No need content_repository
-    local _comp_related_tbl_suffixes="browse_node asset asset_blob component_tag component deleted_blob"
-    local _comp_related_tables="tag change_blobstore"   # not including 'repository'
-
-    if [ ! -s "${_sql_gz_file}" ]; then
-        _log "ERROR" "No import file ${_sql_gz_file}'"
-        return 1
+    local _workingDirectory="${1}"
+    source "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
+    local _importFrom="${2}"
+    [[ "${jdbcUrl}" =~ jdbc:postgresql://([^:/]+):?([0-9]*)/([^\?]+) ]]
+    _DBHOST="${BASH_REMATCH[1]}" _DBPORT="${BASH_REMATCH[2]}" _DBNAME="${BASH_REMATCH[3]}" _DBUSER="${username}" PGPASSWORD="${password}" PGGSSENCMODE=disable;
+    if [ -z "${_importFrom}" ]; then
+        _importFrom="$(ls -1 ./component_db_*.sql.gz | tail -n1)"
+        [ -z "${_importFrom}" ] && return 1
     fi
-
-    # _postgresql_create_dbuser does not work if DB is not local
-    if [ "${_db_hostname}" == "localhost" ] || [ "${_db_hostname}" == "$(hostname -f)" ]; then
-        _postgresql_create_dbuser "${_dbusr}" "${_dbpwd}" "${_dbname}" || return $?
-    elif ! PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -ltA -F','| grep -q "^${_dbname},"; then
-        _log "ERROR" "Didn't run _postgresql_create_dbuser. Please check if DB user: ${_dbusr} and DB: ${_dbname} have been created on ${_db_hostname}."
-        return 1
-    fi
-
-    # If NOT _reuse_orig_db, create the temp DB and import
-    if [[ ! "${_reuse_orig_db}" =~ ^(y|Y) ]]; then
-        if PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -ltA -F','| grep -q "^${_temp_db_name},"; then
-            _log "ERROR" "Please run 'DROP DATABASE ${_temp_db_name};' first"
-            return 1
-        fi
-        _postgresql_create_role_and_db "${_dbusr}" "${_dbpwd}" "${_temp_db_name}" || return $?
-        _log "INFO" "Importing DB data from '${_sql_gz_file}' into '${_temp_db_name}' (ignore 'WARN ${_temp_db_name} already exists') ..."
-        _psql_restore "${_sql_gz_file}" "${_dbusr}" "${_dbpwd}" "${_temp_db_name}" "public" || return $?
-        _log "INFO" "Restore to temp DB completed."
-    fi
-
-    if [[ ! "${_fix_repo_ids_only}" =~ ^(y|Y) ]]; then
-        # NOTE: not using DB transactions in this section
-        # special table(s)
-        for _tablename in ${_comp_related_tables}; do
-            PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name = '${_tablename}' order by table_name;" | while read -r _tbl; do
-                _log "INFO" "DROP TABLE IF EXISTS ${_tbl};"
-                PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -c "DROP TABLE IF EXISTS ${_tbl};"
-            done
-        done
-        # export only, <format>_component, <format>_asset, <format>_asset_blob, ...
-        for _suffix in ${_comp_related_tbl_suffixes}; do
-            PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name like '%_${_suffix}' order by table_name;" | while read -r _tbl; do
-                _log "INFO" "DROP TABLE IF EXISTS ${_tbl};"
-                PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -c "DROP TABLE IF EXISTS ${_tbl};"
-            done
-        done
-
-        # Creating in reverse order
-        for _suffix in $(echo "${_comp_related_tbl_suffixes}" | tr ' ' '\n' | tac); do
-            PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name like '%_${_suffix}' order by table_name;" | while read -r _tbl; do
-                # would not need to use -O -x -a. --column-inserts is super slow comparing to COPY ...
-                _log "INFO" "Importing ${_tbl} (output: ${_TMP%/}/${FUNCNAME}_${_tbl}.log) ..."
-                PGPASSWORD="${_dbpwd}" pg_dump -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -t "${_tbl}" | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} &> ${_TMP%/}/${FUNCNAME}_${_tbl}.log || return $?   # Using -L may generate very large text file
-            done
-        done
-        for _tablename in ${_comp_related_tables}; do
-            PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name = '${_tablename}' order by table_name;" | while read -r _tbl; do
-                # would not need to use -O -x -a. --column-inserts is super slow comparing to COPY ...
-                _log "INFO" "Importing ${_tbl} (output: ${_TMP%/}/${FUNCNAME}_${_tbl}.log) ..."
-                PGPASSWORD="${_dbpwd}" pg_dump -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -t "${_tbl}" | PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} &> ${_TMP%/}/${FUNCNAME}_${_tbl}.log || return $?   # Using -L may generate very large text file
-            done
-        done
-    fi
-
-    # NOTE: May need to fix <format>_content_repository. The tempDB side requires to have 'repository' table.
-    PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -c "select table_name from information_schema.tables where table_name like '%_content_repository' order by table_name;" | while read -r _tbl; do
-        PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_temp_db_name} -tA -F, -c "select cr.repository_id, r.name from ${_tbl} cr join repository r ON cr.config_repository_id = r.id order by cr.repository_id" > ${_TMP%/}/${_temp_db_name}.${_tbl}.list
-        PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -tA -F, -c "select cr.repository_id, r.name from ${_tbl} cr join repository r ON cr.config_repository_id = r.id order by cr.repository_id" > ${_TMP%/}/${_dbname}.${_tbl}.list
-
-        if ! diff -wy --suppress-common-lines ${_TMP%/}/${_temp_db_name}.${_tbl}.list ${_TMP%/}/${_dbname}.${_tbl}.list; then
-            _log "INFO" "Generating update statements for ${_tbl} (${_TMP%/}/${_temp_db_name}.${_tbl}.sql) ..."
-            _gen_update_stmt_for_content_repository "${_tbl}" "${_TMP%/}/${_temp_db_name}.${_tbl}.list" > ${_TMP%/}/${_temp_db_name}.${_tbl}.sql || return $?
-            cat ${_TMP%/}/${_temp_db_name}.${_tbl}.sql | PGPASSWORD="${_dbpwd}" psql --set VERBOSITY=verbose -h ${_db_hostname} -U ${_dbusr} -d ${_dbname}
-        fi
-    done
-
-    _log "INFO" "Restored into ${_dbname}! To keep the original DB, 'ALTER DATABASE ${FUNCNAME}_db RENAME TO ${_dbname}_orig;'"
-    #_log "INFO" "To check:"
-    #echo "VACUUM FULL VERBOSE; SELECT relname, reltuples as row_count_estimate FROM pg_class WHERE relnamespace ='public'::regnamespace::oid AND relkind = 'r' ORDER BY relname;"
-    _log "INFO" "Please make sure '\$_workDirectory/etc/fabric/nexus-store.properties' file is correct, and if necessary, reset 'admin' password. Also make sure it will not connect to the external system (eg: AWS S3, LDAP, SAML, SMTP, HTTP proxy etc.)"
-    # Shouldn't need below as support booter should take care of
-    #_update_nxrm3_db_config "${_db_hostname}" "${_dbusr}" "${_dbpwd}" "${_dbname}" "${_schemas}" "${_workDirectory}" "${_usr}" || return $?
-    #_log "INFO" "Resetting all users' password (not role/privileges) ..."; sleep 3;
-    #PGPASSWORD="${_dbpwd}" psql -h ${_db_hostname} -U ${_dbusr} -d ${_dbname} -c "update security_user SET password='\$shiro1\$SHA-512\$1024\$NE+wqQq/TmjZMvfI7ENh/g==\$V4yPw8T64UQ6GfJfxYq2hLsVrBY8D1v+bktfOxGdt4b/9BthpWPNUy/CBk6V9iA0nHpzYzJFWO8v/tZFtES8CA==';"    #, status='active' WHERE id='admin'
+    (gunzip -c "${_importFrom}" | sed -E 's/^DROP TABLE ([^;]+);$/DROP TABLE \1 cascade;/') | psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -L ./psql_restore.log 2>./psql_restore.log
+    grep -w ERROR ./psql_restore.log && return 1
 }
-function _gen_update_stmt_for_content_repository() {
-    local _tbl="$1"                 # eg. "pypi_content_repository"
-    local _correct_list="$2"        # eg. "1,pypi-local 2,pypi-remote 3,pypi"
-    if [ -f "${_correct_list}" ]; then
-        _correct_list="$(cat "${_correct_list}" | tr '\n' ' ')"
-    fi
-    # Replacing with some dummy UUID to avoid 'violates unique constraint'
-    local _updates_1="UPDATE ${_tbl} SET config_repository_id = (SELECT uuid_in(md5(config_repository_id::text)::cstring));\n"
-    local _updates_2=""
-    for _l in ${_correct_list}; do
-        if [[ "${_l}" =~ ([^, ]+),([^, ]+) ]]; then
-            local _repo_id="${BASH_REMATCH[1]}"
-            local _repo_name="${BASH_REMATCH[2]}"
-            # TODO: sometimes the imported tempDB does not have all repository_id, so assuming the DB dump has all repository for the <format>
-            #_updates_1="${_updates_1}UPDATE ${_tbl} SET config_repository_id = (SELECT uuid_in(md5(random()::text || clock_timestamp()::text)::cstring)) WHERE repository_id = ${_repo_id};\n"
-            _updates_2="${_updates_2}UPDATE ${_tbl} SET config_repository_id = (SELECT id FROM repository WHERE name = '${_repo_name}') WHERE repository_id = ${_repo_id};\n"
-        fi
-    done
-    if [ -z "${_updates_1}" ] || [ -z "${_updates_2}" ]; then
-        _log "ERROR" "Failed to generate update statements\n${_updates_1}\n${_updates_2}"
-        return
-    fi
-    echo -e "BEGIN;\n${_updates_1}${_updates_2}COMMIT;"
-}
-
 
 
 ### Interview / questions related functions ###################################################################
