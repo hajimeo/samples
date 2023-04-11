@@ -1988,8 +1988,11 @@ function f_export_postgresql_component() {
     local _exportTo="${2:-"./component_db_$(date +"%Y%m%d%H%M%S").sql.gz"}"
     source "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
     [[ "${jdbcUrl}" =~ jdbc:postgresql://([^:/]+):?([0-9]*)/([^\?]+) ]]
-    _FMT="*" _DBHOST="${BASH_REMATCH[1]}" _DBPORT="${BASH_REMATCH[2]}" _DBNAME="${BASH_REMATCH[3]}" _DBUSER="${username}" PGPASSWORD="${password}" PGGSSENCMODE=disable;
-    pg_dump -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -c -O -t "repository" -t "${_FMT}_content_repository" -t "${_FMT}_component" -t "${_FMT}_component_tag" -t "${_FMT}_asset" -t "${_FMT}_asset_blob" -t "tag" -Z 6 -f "${_exportTo}"
+    local _dbhost="${BASH_REMATCH[1]}"
+    local _dbport="${BASH_REMATCH[2]}"
+    local _dbname="${BASH_REMATCH[3]}"
+    local _fmt="*"
+    PGPASSWORD="${password}" PGGSSENCMODE=disable pg_dump -h ${_dbhost} -p ${_dbport:-"5432"} -U ${username} -d ${_dbname} -c -O -t "repository" -t "${_fmt}_content_repository" -t "${_fmt}_component" -t "${_fmt}_component_tag" -t "${_fmt}_asset" -t "${_fmt}_asset_blob" -t "tag" -Z 6 -f "${_exportTo}"
 }
 
 # How to verify
@@ -2000,12 +2003,14 @@ function f_restore_postgresql_component() {
     source "${_workingDirectory%/}/etc/fabric/nexus-store.properties" || return $?
     local _importFrom="${2}"
     [[ "${jdbcUrl}" =~ jdbc:postgresql://([^:/]+):?([0-9]*)/([^\?]+) ]]
-    _DBHOST="${BASH_REMATCH[1]}" _DBPORT="${BASH_REMATCH[2]}" _DBNAME="${BASH_REMATCH[3]}" _DBUSER="${username}" PGPASSWORD="${password}" PGGSSENCMODE=disable;
+    local _dbhost="${BASH_REMATCH[1]}"
+    local _dbport="${BASH_REMATCH[2]}"
+    local _dbname="${BASH_REMATCH[3]}"
     if [ -z "${_importFrom}" ]; then
         _importFrom="$(ls -1 ./component_db_*.sql.gz | tail -n1)"
         [ -z "${_importFrom}" ] && return 1
     fi
-    (gunzip -c "${_importFrom}" | sed -E 's/^DROP TABLE ([^;]+);$/DROP TABLE \1 cascade;/') | psql -h ${_DBHOST} -p ${_DBPORT:-"5432"} -U ${_DBUSER} -d ${_DBNAME} -L ./psql_restore.log 2>./psql_restore.log
+    (gunzip -c "${_importFrom}" | sed -E 's/^DROP TABLE ([^;]+);$/DROP TABLE \1 cascade;/') | PGPASSWORD="${password}" PGGSSENCMODE=disable psql -h ${_dbhost} -p ${_dbport:-"5432"} -U ${username} -d ${_dbname} -L ./psql_restore.log 2>./psql_restore.log
     grep -w ERROR ./psql_restore.log && return 1
 }
 
