@@ -4,9 +4,9 @@ usage() {
 USAGE:
     bash ./nxrm3-threaddumps.sh [-p /path/to/nexus-store.properties] [-i 5] [-c 10]
 
-    -p  Path to nexus-store.properties file
-    -i  Interval seconds (default 2)
     -c  How many dumps (default 5)
+    -i  Interval seconds (default 2)
+    -p  Path to nexus-store.properties file
 EOS
 }
 
@@ -46,14 +46,17 @@ EOF
 }
 
 function detectDirs() {    # Best effort. may not return accurate dir path
-    if [ -z "${_PID}" ]; then
-        _PID="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
+    local _pid="${1:-"${_PID}"}"
+    if [ -z "${_pid}" ]; then
+        _pid="$(ps auxwww | grep -F 'org.sonatype.nexus.karaf.NexusMain' | grep -vw grep | awk '{print $2}' | tail -n1)"
+        _PID="${_pid}"
+        [ -z "${_pid}" ] && return 1
     fi
     if [ ! -d "${_INSTALL_DIR}" ]; then
-        _INSTALL_DIR="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
+        _INSTALL_DIR="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dexe4j.moduleName=([^ ]+)\/bin\/nexus .+/\1/p' | head -1)"
     fi
     if [ ! -d "${_WORD_DIR}" ] && [ -d "${_INSTALL_DIR%/}" ]; then
-        local _karafData="$(ps auxwww | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
+        local _karafData="$(ps wwwp ${_pid} | sed -n -E '/org.sonatype.nexus.karaf.NexusMain/ s/.+-Dkaraf.data=([^ ]+) .+/\1/p' | head -n1)"
         _WORD_DIR="${_INSTALL_DIR%/}/${_karafData#/}"
     fi
 }
@@ -75,6 +78,31 @@ function runDbQuery() {
     "${_DB_CONN_TEST_FILE}" "${_storeProp}" "${_query}"
 }
 
+function kill3() {
+    local _pid="$1"
+    local _saveTo="${2:-"/tmp/stdout_${_pid}.out"}"
+    local _wpid=""
+    if ls -l /proc/${_pid}/fd/1 2>/dev/null | grep -qw pipe; then
+        cat /proc/${_pid}/fd/1 >> ${_saveTo} &
+        _wpid=$!
+    elif [ -f /proc/${_pid}/fd/1 ]; then
+        tail -f /proc/${_pid}/fd/1 >> ${_saveTo} &
+        _wpid=$!
+    elif [ -n "${_INSTALL_DIR}" ] && [[ "$(ps wwwp ${_pid})" =~ XX:LogFile=([^[:space:]]+) ]]; then
+        # TODO: this one outputs only the last 10 lines on Mac
+        local jvmLog="${_INSTALL_DIR%/}/${BASH_REMATCH[1]}"
+        tail -f "${jvmLog}" >> ${_saveTo} &
+        _wpid=$!
+    fi
+    if [ -n "${_wpid}" ]; then
+        kill -3 ${_pid}
+        sleep 0.5
+        kill -9 ${_wpid} &>/dev/null
+    else
+        kill -3 ${_pid} >> ${_saveTo}
+    fi
+}
+
 function takeDumps() {
     local _count=${1:-${_COUNT:-5}}
     local _interval=${2:-${_INTERVAL:-2}}
@@ -84,12 +112,13 @@ function takeDumps() {
 
     for _i in $(seq 1 ${_count}); do
         timeout ${_interval}s bash -c "date +'%Y-%m-%d %H:%M:%S'; runDbQuery \"select * from pg_stat_activity where state <> 'idle' order by query_start limit 10\"" >> "${_outPfx}101.log" &
-        [ -n "${_PID}" ] && timeout ${_interval}s kill -3 ${_PID} &
-        (date +"%Y-%m-%d %H:%M:%S"; top -Hb -n1 | head -n60) >> "${_outPfx}001.log" &
-        (date +"%Y-%m-%d %H:%M:%S"; netstat -topen 2>/dev/null || cat /proc/net/tcp 2>/dev/null) >> "${_outPfx}002.log" &
+        # TODO: Does "cat /proc/${_PID}/fd/1" work?
+        [ -n "${_PID}" ] && kill3 "${_PID}" "${_outPfx}000.log"
+        (date +"%Y-%m-%d %H:%M:%S"; top -Hb -n1 | head -n60) >> "${_outPfx}001.log"
+        (date +"%Y-%m-%d %H:%M:%S"; netstat -topen 2>/dev/null || cat /proc/net/tcp 2>/dev/null) >> "${_outPfx}002.log"
         [ ${_i} -lt ${_count} ] && sleep ${_interval}
+        wait
     done
-    wait
     echo ""
 }
 
@@ -119,16 +148,19 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         exit 1
     fi
 
-    while getopts "p:i:c:" opts; do
+    while getopts "c:i:p:" opts; do
         case $opts in
-            p)
-                _PROP_FILE="$OPTARG"
+            c)
+                _COUNT="$OPTARG"
                 ;;
             i)
                 _INTERVAL="$OPTARG"
                 ;;
-            c)
-                _COUNT="$OPTARG"
+            p)
+                _PROP_FILE="$OPTARG"
+                ;;
+            *)
+                echo "$opts $OPTARG is not supported" >&2
                 ;;
         esac
     done

@@ -53,6 +53,29 @@ function test_takeDumps() {
     fi
 }
 
+function test_kill3() {
+    rm -f /tmp/stdout_${_pid}.out
+    local _pid
+    if type jps &>/dev/null; then
+        _pid="$(jps -l | grep -vw Jps | grep -E '^\d+ \S+' | tail -n1 | cut -d' ' -f1)"
+    fi
+    if [ -z "${_pid}" ]; then
+        echo "sleep 3" > /tmp/sleep.sh
+        bash /tmp/sleep.sh &
+        _pid=$!
+    fi
+    detectDirs "${_pid}"
+    if ! kill3 "${_pid}" >/dev/null; then
+        _error
+    fi
+    if [ ! -f "/tmp/stdout_${_pid}.out" ]; then
+        _error "/tmp/stdout_${_pid}.out does not exist"
+    else
+        head "/tmp/stdout_${_pid}.out"
+    fi
+}
+
+
 
 # shellcheck disable=SC2120
 _error() {
