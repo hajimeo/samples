@@ -1,26 +1,35 @@
 #!/usr/bin/env bash
 usage() {
     cat << EOS
+Taking Java thread dumps with some OS / database stats.
+Designed for Nexus official docker image: https://github.com/sonatype/docker-nexus3
+
 USAGE:
     bash ./nxrm3-threaddumps.sh [-p /path/to/nexus-store.properties] [-i 5] [-c 10]
 
     -c  How many dumps (default 5)
     -i  Interval seconds (default 2)
     -p  Path to nexus-store.properties file
+    -f  File to monitor (-r is required)
+    -r  Regex (used in 'grep -E') to monitor -f file
 EOS
 }
 
+
 : "${_INSTALL_DIR:=""}"
 : "${_WORK_DIR:=""}"
-_PROP_FILE=""
 _INTERVAL=2
 _COUNT=5
+_PROP_FILE=""
+_LOG_FILE=""
+_REGEX=""
 _DB_CONN_TEST_FILE="/tmp/DbConnTest.groovy"
-_GROOVY_ALL_VER="2.4.17"
 _PID=""
 
+
 function genDbConnTest() {
-    cat << EOF > "${_DB_CONN_TEST_FILE}"
+    local _dbConnFile="${1:-"${_DB_CONN_TEST_FILE}"}"
+    cat << EOF > "${_dbConnFile}"
 import org.postgresql.*
 import groovy.sql.Sql
 def p = new Properties()
@@ -65,18 +74,18 @@ function runDbQuery() {
     local _query="$1"
     local _storeProp="${2:-"${_PROP_FILE}"}"
     local _timeout="${3:-"30"}"
-    if [ -z "${_storeProp}" ] && [ -d "${_WORD_DIR%/}" ]; then
-        _storeProp="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
-    fi
+    local _dbConnFile="${4:-"${_DB_CONN_TEST_FILE}"}"
+    local _installDir="${5:-"${_INSTALL_DIR}"}"
+    local _groovyAllVer="2.4.17"
     if [ ! -s "${_storeProp}" ]; then
-        echo "Could not find nexus-store.properties file." >&2
+        echo "No nexus-store.properties file." >&2
         return 1
     fi
-    if [ ! -s "${_DB_CONN_TEST_FILE}" ]; then
-        genDbConnTest || return $?
+    if [ ! -s "${_dbConnFile}" ]; then
+        genDbConnTest "${_dbConnFile}" || return $?
     fi
-    timeout ${_timeout}s java -Dgroovy.classpath="$(find "${_INSTALL_DIR%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_INSTALL_DIR%/}/system/org/codehaus/groovy/groovy-all/${_GROOVY_ALL_VER}/groovy-all-${_GROOVY_ALL_VER}.jar" \
-    "${_DB_CONN_TEST_FILE}" "${_storeProp}" "${_query}"
+    timeout ${_timeout}s java -Dgroovy.classpath="$(find "${_installDir%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_installDir%/}/system/org/codehaus/groovy/groovy-all/${_groovyAllVer}/groovy-all-${_groovyAllVer}.jar" \
+    "${_dbConnFile}" "${_storeProp}" "${_query}"
 }
 
 function tailStdout() {
@@ -88,10 +97,10 @@ function tailStdout() {
     #if ls -l /proc/${_pid}/fd/1 2>/dev/null | grep -qw pipe; then
     #    _cmd="cat /proc/${_pid}/fd/1"
     if [ -f /proc/${_pid}/fd/1 ]; then
-        _cmd="tail -f /proc/${_pid}/fd/1"
+        _cmd="tail -n0 -f /proc/${_pid}/fd/1"
     elif [ -n "${_installDir}" ] && [[ "$(ps wwwp ${_pid})" =~ XX:LogFile=([^[:space:]]+) ]]; then
         local jvmLog="${BASH_REMATCH[1]}"
-        _cmd="tail -f "${_installDir%/}/${jvmLog#/}""
+        _cmd="tail -n0 -f "${_installDir%/}/${jvmLog#/}""
     fi
     if [ -z "${_cmd}" ]; then
         echo "No file to tail for pid:${_pid}" >&2
@@ -100,7 +109,7 @@ function tailStdout() {
     if [ -n "${_outputFile}" ]; then
         _cmd="${_cmd} >> ${_outputFile}"
     fi
-    timeout ${_timeout}s bash -c "${_cmd}"  # need shell with timeout
+    eval "timeout ${_timeout}s ${_cmd}"
 }
 
 function takeDumps() {
@@ -112,28 +121,24 @@ function takeDumps() {
     local _outPfx="${_outDir%/}/script-$(date +"%Y%m%d%H%M%S")"
 
     tailStdout "${_pid}" "$(((${_count} + 1) * ${_interval}))" "${_outPfx}000.log" &
-    local _wpid=$!
     sleep 1
 
     for _i in $(seq 1 ${_count}); do
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
-        (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' order by query_start limit 10" "${_storeProp}" "${_interval}") >> "${_outPfx}101.log" &
-        local _wpid2=$!
-        # TODO: Does "cat /proc/${_PID}/fd/1" work?
+        (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' and query not like '% pg_stat_activity %' order by query_start limit 100" "${_storeProp}" "${_interval}") >> "${_outPfx}101.log" &
         kill -3 "${_PID}"
         (date +"%Y-%m-%d %H:%M:%S"; top -H -b -n1 2>/dev/null | head -n60) >> "${_outPfx}001.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -topen 2>/dev/null || cat /proc/net/tcp 2>/dev/null) >> "${_outPfx}002.log"
         [ ${_i} -lt ${_count} ] && sleep ${_interval}
     done
-    [ -n "${_wpid}" ] && sleep 1 && kill ${_wpid} &>/dev/null
     echo ""
+    wait
 }
-
 
 
 main() {
     # Preparing
-    detectDirs || return $?
+    detectDirs
     if [ -z "${_INSTALL_DIR}" ]; then
         echo "Could not find install directory." >&2
         return 1
@@ -142,10 +147,29 @@ main() {
         echo "Could not find work directory." >&2
         return 1
     fi
+    if [ -z "${_PROP_FILE}" ] && [ -d "${_WORD_DIR%/}" ]; then
+        _PROP_FILE="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
+    fi
     genDbConnTest || return $?
 
-    # TODO: trigger below by keyword from the tailing log
-    takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_WORD_DIR%/}/log/tasks" || return $?
+    if [ -n "${_LOG_FILE}" ]; then
+        [ ! -f "${_LOG_FILE}" ] && echo "${_LOG_FILE} does not exist" >&2 && return 1
+        [ -z "${_REGEX}" ] && echo "'-f' is provided but no '-r'" >&2 && return 1
+        local _wpid=""
+        tail -n0 -F "${_LOG_FILE}" | while read -r _l; do
+            if [ -n "${_wpid}" ] && jobs -l | grep -qw "${_wpid}"; then
+                continue
+            fi
+            if echo "${_l}" | grep -E "${_REGEX}"; then
+                takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_WORD_DIR%/}/log/tasks" &
+                _wpid=$!
+                sleep 1
+            fi
+        done
+        wait
+    else
+        takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_WORD_DIR%/}/log/tasks" || return $?
+    fi
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
@@ -155,7 +179,7 @@ if [ "$0" = "$BASH_SOURCE" ]; then
         exit 1
     fi
 
-    while getopts "c:i:p:" opts; do
+    while getopts "c:i:p:f:r:" opts; do
         case $opts in
             c)
                 _COUNT="$OPTARG"
@@ -165,6 +189,12 @@ if [ "$0" = "$BASH_SOURCE" ]; then
                 ;;
             p)
                 _PROP_FILE="$OPTARG"
+                ;;
+            f)
+                _LOG_FILE="$OPTARG"
+                ;;
+            r)
+                _REGEX="$OPTARG"
                 ;;
             *)
                 echo "$opts $OPTARG is not supported" >&2
