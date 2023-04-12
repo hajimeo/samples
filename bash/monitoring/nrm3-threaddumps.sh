@@ -64,6 +64,7 @@ function detectDirs() {    # Best effort. may not return accurate dir path
 function runDbQuery() {
     local _query="$1"
     local _storeProp="${2:-"${_PROP_FILE}"}"
+    local _timeout="${3:-"30"}"
     if [ -z "${_storeProp}" ] && [ -d "${_WORD_DIR%/}" ]; then
         _storeProp="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
     fi
@@ -74,25 +75,32 @@ function runDbQuery() {
     if [ ! -s "${_DB_CONN_TEST_FILE}" ]; then
         genDbConnTest || return $?
     fi
-    java -Dgroovy.classpath="$(find "${_INSTALL_DIR%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_INSTALL_DIR%/}/system/org/codehaus/groovy/groovy-all/${_GROOVY_ALL_VER}/groovy-all-${_GROOVY_ALL_VER}.jar" \
+    timeout ${_timeout}s java -Dgroovy.classpath="$(find "${_INSTALL_DIR%/}/system/org/postgresql/postgresql" -type f -name 'postgresql-42.*.jar' | tail -n1)" -jar "${_INSTALL_DIR%/}/system/org/codehaus/groovy/groovy-all/${_GROOVY_ALL_VER}/groovy-all-${_GROOVY_ALL_VER}.jar" \
     "${_DB_CONN_TEST_FILE}" "${_storeProp}" "${_query}"
 }
 
 function tailStdout() {
     local _pid="$1"
     local _timeout="${2:-"30"}"
-    local _installDir="${3-"${_INSTALL_DIR%/}"}"
-    if ls -l /proc/${_pid}/fd/1 2>/dev/null | grep -qw pipe; then
-        timeout ${_timeout}s cat /proc/${_pid}/fd/1
-    elif [ -f /proc/${_pid}/fd/1 ]; then
-        timeout ${_timeout}s tail -f /proc/${_pid}/fd/1
+    local _outputFile="${3}"
+    local _installDir="${4-"${_INSTALL_DIR%/}"}"
+    local _cmd=""
+    #if ls -l /proc/${_pid}/fd/1 2>/dev/null | grep -qw pipe; then
+    #    _cmd="cat /proc/${_pid}/fd/1"
+    if [ -f /proc/${_pid}/fd/1 ]; then
+        _cmd="tail -f /proc/${_pid}/fd/1"
     elif [ -n "${_installDir}" ] && [[ "$(ps wwwp ${_pid})" =~ XX:LogFile=([^[:space:]]+) ]]; then
         local jvmLog="${BASH_REMATCH[1]}"
-        timeout ${_timeout}s tail -f "${_installDir%/}/${jvmLog#/}"
-    else
-        echo "No file to tail for ${_pid}" >&2
+        _cmd="tail -f "${_installDir%/}/${jvmLog#/}""
+    fi
+    if [ -z "${_cmd}" ]; then
+        echo "No file to tail for pid:${_pid}" >&2
         return 1
     fi
+    if [ -n "${_outputFile}" ]; then
+        _cmd="${_cmd} >> ${_outputFile}"
+    fi
+    timeout ${_timeout}s bash -c "${_cmd}"  # need shell with timeout
 }
 
 function takeDumps() {
@@ -103,21 +111,21 @@ function takeDumps() {
     local _outDir="${5:-"/tmp"}"
     local _outPfx="${_outDir%/}/script-$(date +"%Y%m%d%H%M%S")"
 
-    tailStdout "${_pid}" "$(((${_count} + 1) * ${_interval}))" >> "${_outPfx}000.log" &
+    tailStdout "${_pid}" "$(((${_count} + 1) * ${_interval}))" "${_outPfx}000.log" &
     local _wpid=$!
+    sleep 1
 
     for _i in $(seq 1 ${_count}); do
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
-        (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' order by query_start limit 10" "${_storeProp}") >> "${_outPfx}101.log" &
+        (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' order by query_start limit 10" "${_storeProp}" "${_interval}") >> "${_outPfx}101.log" &
         local _wpid2=$!
         # TODO: Does "cat /proc/${_PID}/fd/1" work?
         kill -3 "${_PID}"
-        (date +"%Y-%m-%d %H:%M:%S"; top -Hb -n1 | head -n60) >> "${_outPfx}001.log"
+        (date +"%Y-%m-%d %H:%M:%S"; top -H -b -n1 2>/dev/null | head -n60) >> "${_outPfx}001.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -topen 2>/dev/null || cat /proc/net/tcp 2>/dev/null) >> "${_outPfx}002.log"
         [ ${_i} -lt ${_count} ] && sleep ${_interval}
-        wait ${_wpid2}
     done
-    [ -n "${_wpid}" ] && sleep 1 && kill ${_wpid}
+    [ -n "${_wpid}" ] && sleep 1 && kill ${_wpid} &>/dev/null
     echo ""
 }
 

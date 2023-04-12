@@ -48,7 +48,7 @@ function test_runDbQuery() {
 }
 
 function test_takeDumps() {
-    if ! takeDumps "1" "1" >/dev/null; then
+    if ! takeDumps "" "1" "1" >/dev/null; then
         _error
     fi
 }
@@ -64,7 +64,7 @@ function test_tailStdout() {
         bash /tmp/sleep.sh -XX:LogFile=/tmp/sleep.sh &
         _pid=$!
     fi
-    tailStdout "${_pid}" "1" "/"
+    tailStdout "${_pid}" "1" "" "/"
     local _rc=$?
     echo ""
     if [ "${_rc}" -ne 0 ] && [ "${_rc}" -ne 124 ] ; then
@@ -85,4 +85,5 @@ if [ "$0" = "$BASH_SOURCE" ]; then
     for _t in $(typeset -F | grep -E '^declare -f test_' | cut -d' ' -f3); do
         ${_t}
     done
+    echo "Tests completed."
 fi
