@@ -78,47 +78,46 @@ function runDbQuery() {
     "${_DB_CONN_TEST_FILE}" "${_storeProp}" "${_query}"
 }
 
-function kill3() {
+function tailStdout() {
     local _pid="$1"
-    local _saveTo="${2:-"/tmp/stdout_${_pid}.out"}"
-    local _wpid=""
+    local _timeout="${2:-"30"}"
+    local _installDir="${3-"${_INSTALL_DIR%/}"}"
     if ls -l /proc/${_pid}/fd/1 2>/dev/null | grep -qw pipe; then
-        cat /proc/${_pid}/fd/1 >> ${_saveTo} &
-        _wpid=$!
+        timeout ${_timeout}s cat /proc/${_pid}/fd/1
     elif [ -f /proc/${_pid}/fd/1 ]; then
-        tail -f /proc/${_pid}/fd/1 >> ${_saveTo} &
-        _wpid=$!
-    elif [ -n "${_INSTALL_DIR}" ] && [[ "$(ps wwwp ${_pid})" =~ XX:LogFile=([^[:space:]]+) ]]; then
-        # TODO: this one outputs only the last 10 lines on Mac
-        local jvmLog="${_INSTALL_DIR%/}/${BASH_REMATCH[1]}"
-        tail -f "${jvmLog}" >> ${_saveTo} &
-        _wpid=$!
-    fi
-    if [ -n "${_wpid}" ]; then
-        kill -3 ${_pid}
-        sleep 0.5
-        kill -9 ${_wpid} &>/dev/null
+        timeout ${_timeout}s tail -f /proc/${_pid}/fd/1
+    elif [ -n "${_installDir}" ] && [[ "$(ps wwwp ${_pid})" =~ XX:LogFile=([^[:space:]]+) ]]; then
+        local jvmLog="${BASH_REMATCH[1]}"
+        timeout ${_timeout}s tail -f "${_installDir%/}/${jvmLog#/}"
     else
-        kill -3 ${_pid} >> ${_saveTo}
+        echo "No file to tail for ${_pid}" >&2
+        return 1
     fi
 }
 
 function takeDumps() {
-    local _count=${1:-${_COUNT:-5}}
-    local _interval=${2:-${_INTERVAL:-2}}
-    local _outDir="${3:-"/tmp"}"
+    local _pid=${1:-${_PID}}
+    local _count=${2:-${_COUNT:-5}}
+    local _interval=${3:-${_INTERVAL:-2}}
+    local _storeProp="${4:-"${_PROP_FILE}"}"
+    local _outDir="${5:-"/tmp"}"
     local _outPfx="${_outDir%/}/script-$(date +"%Y%m%d%H%M%S")"
-    export -f runDbQuery
+
+    tailStdout "${_pid}" "$(((${_count} + 1) * ${_interval}))" >> "${_outPfx}000.log" &
+    local _wpid=$!
 
     for _i in $(seq 1 ${_count}); do
-        timeout ${_interval}s bash -c "date +'%Y-%m-%d %H:%M:%S'; runDbQuery \"select * from pg_stat_activity where state <> 'idle' order by query_start limit 10\"" >> "${_outPfx}101.log" &
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
+        (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' order by query_start limit 10" "${_storeProp}") >> "${_outPfx}101.log" &
+        local _wpid2=$!
         # TODO: Does "cat /proc/${_PID}/fd/1" work?
-        [ -n "${_PID}" ] && kill3 "${_PID}" "${_outPfx}000.log"
+        kill -3 "${_PID}"
         (date +"%Y-%m-%d %H:%M:%S"; top -Hb -n1 | head -n60) >> "${_outPfx}001.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -topen 2>/dev/null || cat /proc/net/tcp 2>/dev/null) >> "${_outPfx}002.log"
         [ ${_i} -lt ${_count} ] && sleep ${_interval}
-        wait
+        wait ${_wpid2}
     done
+    [ -n "${_wpid}" ] && sleep 1 && kill ${_wpid}
     echo ""
 }
 
@@ -138,7 +137,7 @@ main() {
     genDbConnTest || return $?
 
     # TODO: trigger below by keyword from the tailing log
-    takeDumps "${_COUNT}" "${_INTERVAL}" "${_WORD_DIR%/}/log/tasks" || return $?
+    takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_WORD_DIR%/}/log/tasks" || return $?
 }
 
 if [ "$0" = "$BASH_SOURCE" ]; then
