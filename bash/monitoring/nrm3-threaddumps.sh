@@ -156,13 +156,13 @@ function takeDumps() {
 }
 
 function _stopping() {
-    echo -n "Stopping "
+    echo -n -e "\nStopping "
     local _pid="$(cat /tmp/.tailStdout.run 2>/dev/null)"
     [ -z "${_pid}" ] && return
     for _i in $(seq 1 10); do
         sleep 1
         if ! ps -p "$(cat /tmp/.tailStdout.run)" &>/dev/null ; then
-            echo "" > /tmp/.tailStdout.run
+            echo "" | tee /tmp/.tailStdout.run
             exit
         fi
         echo -n "."
