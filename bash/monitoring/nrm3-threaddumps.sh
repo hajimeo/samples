@@ -4,12 +4,16 @@ usage() {
 Taking Java thread dumps with some OS / database stats.
 Designed for Nexus official docker image: https://github.com/sonatype/docker-nexus3
 
-USAGE:
-    bash ./nxrm3-threaddumps.sh [-p /path/to/nexus-store.properties] [-i 5] [-c 10]
+EXAMPLE:
+    cd /nexus-data
+    curl -O https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-threaddumps.sh
+    # Taking thread dumps whenever the log line contains "QuartzTaskInfo"
+    bash ./nxrm3-threaddumps.sh -p ./etc/fabric/nexus-store.properties -f ./log/nexus.log -r "QuartzTaskInfo"
 
+USAGE:
     -c  How many dumps (default 5)
     -i  Interval seconds (default 2)
-    -p  Path to nexus-store.properties file
+    -p  Path to nexus-store.properties file (default empty = no DB check)
     -f  File to monitor (-r is required)
     -r  Regex (used in 'grep -E') to monitor -f file
 EOS
@@ -117,22 +121,27 @@ function takeDumps() {
     local _count=${2:-${_COUNT:-5}}
     local _interval=${3:-${_INTERVAL:-2}}
     local _storeProp="${4:-"${_PROP_FILE}"}"
-    local _outDir="${5:-"/tmp"}"
+    local _installDir="${5-"${_INSTALL_DIR%/}"}"
+    local _outDir="${6:-"/tmp"}"
     local _outPfx="${_outDir%/}/script-$(date +"%Y%m%d%H%M%S")"
 
-    tailStdout "${_pid}" "$(((${_count} + 1) * ${_interval}))" "${_outPfx}000.log" &
+    tailStdout "${_pid}" "$(((${_count} + 1) * ${_interval}))" "${_outPfx}000.log" "${_installDir}" &
     sleep 1
 
+    local _wpid=""
     for _i in $(seq 1 ${_count}); do
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
-        (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' and query not like '% pg_stat_activity %' order by query_start limit 100" "${_storeProp}" "${_interval}") >> "${_outPfx}101.log" &
+        if [ -s "${_storeProp}" ]; then
+            (date +'%Y-%m-%d %H:%M:%S'; runDbQuery "select * from pg_stat_activity where state <> 'idle' and query not like '% pg_stat_activity %' order by query_start limit 100" "${_storeProp}" "${_interval}") >> "${_outPfx}101.log" &
+            _wpid="$!"
+        fi
         kill -3 "${_PID}"
         (date +"%Y-%m-%d %H:%M:%S"; top -H -b -n1 2>/dev/null | head -n60) >> "${_outPfx}001.log"
         (date +"%Y-%m-%d %H:%M:%S"; netstat -topen 2>/dev/null || cat /proc/net/tcp 2>/dev/null) >> "${_outPfx}002.log"
         [ ${_i} -lt ${_count} ] && sleep ${_interval}
     done
+    [ -n "${_wpid}" ] && wait ${_wpid}
     echo ""
-    wait
 }
 
 
@@ -155,14 +164,15 @@ main() {
     if [ -n "${_LOG_FILE}" ]; then
         [ ! -f "${_LOG_FILE}" ] && echo "${_LOG_FILE} does not exist" >&2 && return 1
         [ -z "${_REGEX}" ] && echo "'-f' is provided but no '-r'" >&2 && return 1
-        local _wpid=""
-        tail -n0 -F "${_LOG_FILE}" | while read -r _l; do
-            if [ -n "${_wpid}" ] && jobs -l | grep -qw "${_wpid}"; then
+        local _run="/tmp/.takeDumps.run"
+        tail -n0 -F "${_LOG_FILE}" | while read -r _l; do   # while is a subshell
+            local _run="$(cat /tmp/.takeDumps.run 2>/dev/null)"
+            if [ -n "${_run}" ] && jobs -l | grep -qw "${_run}"; then
                 continue
             fi
             if echo "${_l}" | grep -E "${_REGEX}"; then
                 takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_WORD_DIR%/}/log/tasks" &
-                _wpid=$!
+                echo "$!" > /tmp/.takeDumps.run
                 sleep 1
             fi
         done
