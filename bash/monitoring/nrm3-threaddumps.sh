@@ -6,16 +6,17 @@ Designed for Nexus official docker image: https://github.com/sonatype/docker-nex
 
 EXAMPLE:
     cd /nexus-data
-    curl -O https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-threaddumps.sh
+    curl --compressed -O https://raw.githubusercontent.com/sonatype-nexus-community/nexus-monitoring/main/scripts/nrm3-threaddumps.sh
     # Taking thread dumps whenever the log line contains "QuartzTaskInfo"
-    bash ./nrm3-threaddumps.sh -p ./etc/fabric/nexus-store.properties -f ./log/nexus.log -r "QuartzTaskInfo"
+    bash ./nrm3-threaddumps.sh -s ./etc/fabric/nexus-store.properties -f ./log/nexus.log -r "QuartzTaskInfo"
 
 USAGE:
     -c  How many dumps (default 5)
     -i  Interval seconds (default 2)
-    -p  Path to nexus-store.properties file (default empty = no DB check)
+    -s  Path to nexus-store.properties file (default empty = no DB check)
     -f  File to monitor (-r is required)
     -r  Regex (used in 'grep -E') to monitor -f file
+    -p  PID
 EOS
 }
 
@@ -24,7 +25,7 @@ EOS
 : "${_WORK_DIR:=""}"
 _INTERVAL=2
 _COUNT=5
-_PROP_FILE=""
+_STORE_FILE=""
 _LOG_FILE=""
 _REGEX=""
 _DB_CONN_TEST_FILE="/tmp/DbConnTest.groovy"
@@ -79,7 +80,7 @@ function detectDirs() {    # Best effort. may not return accurate dir path
 function runDbQuery() {
     local __doc__="Run a query against DB connection specified in the _storeProp"
     local _query="$1"
-    local _storeProp="${2:-"${_PROP_FILE}"}"
+    local _storeProp="${2:-"${_STORE_FILE}"}"
     local _timeout="${3:-"30"}"
     local _dbConnFile="${4:-"${_DB_CONN_TEST_FILE}"}"
     local _installDir="${5:-"${_INSTALL_DIR}"}"
@@ -116,6 +117,7 @@ function tailStdout() {
         echo "No file to tail for pid:${_pid}" >&2
         return 1
     fi
+    echo "timeout ${_timeout}s ${_cmd}" > /tmp/.tailStdout.cmd
     if [ -n "${_outputFile}" ]; then
         _cmd="${_cmd} >> ${_outputFile}"
     fi
@@ -127,14 +129,15 @@ function takeDumps() {
     local _pid=${1:-${_PID}}
     local _count=${2:-${_COUNT:-5}}
     local _interval=${3:-${_INTERVAL:-2}}
-    local _storeProp="${4:-"${_PROP_FILE}"}"
+    local _storeProp="${4:-"${_STORE_FILE}"}"
     local _installDir="${5-"${_INSTALL_DIR%/}"}"
     local _outDir="${6:-"/tmp"}"
     local _outPfx="${_outDir%/}/script-$(date +"%Y%m%d%H%M%S")"
 
-    tailStdout "${_pid}" "$(((${_count} + 1) * ${_interval}))" "${_outPfx}000.log" "${_installDir}" &
+    tailStdout "${_pid}" "$((${_count} * ${_interval} + 2))" "${_outPfx}000.log" "${_installDir}" &
+    local _wpid0="$!"
+    echo "${_wpid0}" > /tmp/.tailStdout.run
     sleep 1
-
     for _i in $(seq 1 ${_count}); do
         echo "[$(date +'%Y-%m-%d %H:%M:%S')] taking dump ${_i}/${_count} ..." >&2
         local _wpid=""
@@ -148,13 +151,29 @@ function takeDumps() {
         [ ${_i} -lt ${_count} ] && sleep ${_interval}
         [ -n "${_wpid}" ] && wait ${_wpid}
     done
-    echo ""
+    ps -p ${_wpid0} &>/dev/null && wait ${_wpid0}
+    return 0
 }
 
+function _stopping() {
+    echo -n "Stopping "
+    local _pid="$(cat /tmp/.tailStdout.run 2>/dev/null)"
+    [ -z "${_pid}" ] && return
+    for _i in $(seq 1 10); do
+        sleep 1
+        if ! ps -p "$(cat /tmp/.tailStdout.run)" &>/dev/null ; then
+            echo "" > /tmp/.tailStdout.run
+            exit
+        fi
+        echo -n "."
+    done
+    echo -e "\nFailed to stop gracefully (${_pid})"
+    exit 1
+}
 
 main() {
     # Preparing
-    detectDirs
+    detectDirs "${_PID}"
     if [ -z "${_INSTALL_DIR}" ]; then
         echo "Could not find install directory." >&2
         return 1
@@ -163,50 +182,45 @@ main() {
         echo "Could not find work directory." >&2
         return 1
     fi
-    if [ -z "${_PROP_FILE}" ] && [ -d "${_WORD_DIR%/}" ]; then
-        _PROP_FILE="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
+    if [ -z "${_STORE_FILE}" ] && [ -d "${_WORD_DIR%/}" ]; then
+        _STORE_FILE="${_WORD_DIR%/}/etc/fabric/nexus-store.properties"
     fi
     genDbConnTest || return $?
 
-    if [ -n "${_LOG_FILE}" ]; then
-        [ ! -f "${_LOG_FILE}" ] && echo "${_LOG_FILE} does not exist" >&2 && return 1
-        [ -z "${_REGEX}" ] && echo "'-f' is provided but no '-r'" >&2 && return 1
-
-        echo "Monitoring ${_LOG_FILE} with '${_REGEX}' ..." >&2
-        tail -n0 -F "${_LOG_FILE}" | while read -r _l; do   # while is a subshell
-            local _run="$(cat /tmp/.takeDumps.run 2>/dev/null)"
-            if [ -n "${_run}" ] && jobs -l | grep -q -E "\s${_run}\s+Running"; then
-                continue
-            fi
-            if echo "${_l}" | grep -E "${_REGEX}"; then
-                takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_INSTALL_DIR%/}" "${_WORD_DIR%/}/log/tasks" &
-                echo "$!" > /tmp/.takeDumps.run
-                sleep 1
-            fi
-        done
-        wait
-    else
-        takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_INSTALL_DIR%/}" "${_WORD_DIR%/}/log/tasks" || return $?
+    if [ -z "${_LOG_FILE}" ]; then
+        takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_STORE_FILE}" "${_INSTALL_DIR%/}" "${_WORD_DIR%/}/log/tasks"
+        return $?
     fi
+
+    [ ! -f "${_LOG_FILE}" ] && echo "${_LOG_FILE} does not exist" >&2 && return 1
+    [ -z "${_REGEX}" ] && echo "'-f' is provided but no '-r'" >&2 && return 1
+    echo "Monitoring ${_LOG_FILE} with '${_REGEX}' ..." >&2
+    while true; do
+        if tail -n0 -F "${_LOG_FILE}" | grep --line-buffered -m1 -E "${_REGEX}"; then
+            trap "_stopping" SIGINT
+            takeDumps "${_PID}" "${_COUNT}" "${_INTERVAL}" "${_PROP_FILE}" "${_INSTALL_DIR%/}" "${_WORD_DIR%/}/log/tasks"
+            sleep 1
+        fi
+    done
 }
 
-if [ "$0" = "$BASH_SOURCE" ]; then
+if [ "$0" = "${BASH_SOURCE[0]}" ]; then
     #if [ "$#" -eq 0 ]; then
     if [ "$1" == "-h" ] || [ "$1" == "--help" ] || [ "$1" == "help" ]; then
         usage
         exit 1
     fi
 
-    while getopts "c:i:p:f:r:" opts; do
+    while getopts "c:i:s:p:f:r:" opts; do
         case $opts in
             c)
-                _COUNT="$OPTARG"
+                [ -n "$OPTARG" ] && _COUNT="$OPTARG"
                 ;;
             i)
-                _INTERVAL="$OPTARG"
+                [ -n "$OPTARG" ] && _INTERVAL="$OPTARG"
                 ;;
-            p)
-                _PROP_FILE="$OPTARG"
+            s)
+                _STORE_FILE="$OPTARG"
                 ;;
             f)
                 _LOG_FILE="$OPTARG"
@@ -214,11 +228,14 @@ if [ "$0" = "$BASH_SOURCE" ]; then
             r)
                 _REGEX="$OPTARG"
                 ;;
+            p)
+                _PID="$OPTARG"
+                ;;
             *)
-                echo "$opts $OPTARG is not supported" >&2
+                echo "$opts $OPTARG is not supported. Ignored." >&2
                 ;;
         esac
     done
 
-    main "$@"
+    main #"$@"
 fi

@@ -1,4 +1,4 @@
-source "$(dirname $BASH_SOURCE)/nrm3-threaddumps.sh"
+source "$(dirname ${BASH_SOURCE[0]})/nrm3-threaddumps.sh"
 
 function test_usage() {
     if ! usage >/dev/null; then
